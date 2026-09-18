@@ -17,6 +17,7 @@ import xarray as xr
 
 from climate_indices import compute, fire, indices, palmer, utils
 from climate_indices._cli import _add_common_spi_arguments, _open_with_default_chunks, _prepare_file
+from climate_indices.exceptions import ConvergenceError, InsufficientDataError
 
 # the number of worker processes we'll use for process pools
 _NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count() - 1
@@ -1043,7 +1044,9 @@ def _palmers_scpdsi(
     ``scpdsi()`` rejects a spatial block and stays per-location (ADR-0011), so a
     grid chunk loops over its cells -- the CLI's multiprocessing already
     parallelizes chunks -- while a divisions call computes its one location
-    directly.
+    directly. A location whose calibration cannot fit usable duration factors
+    (``ConvergenceError``/``InsufficientDataError``) is left missing instead of
+    aborting the run, matching the all-missing shortcut in ``palmer.pdsi()``.
 
     :param precips: precipitation block, time-major when spatial_time_major
     :param pet: PET block matching precips
@@ -1058,19 +1061,26 @@ def _palmers_scpdsi(
         parameters["calibration_end_year"],
     )
     if not spatial_time_major:
-        return palmer.scpdsi(precips, pet, cast(float, awc), *calibration_years)[0]
+        try:
+            return palmer.scpdsi(precips, pet, cast(float, awc), *calibration_years)[0]
+        except (ConvergenceError, InsufficientDataError):
+            return np.full(np.shape(precips), np.nan, dtype=float)
 
     cell_series = np.asarray(precips).reshape(precips.shape[0], -1)
     pet_series = np.asarray(pet).reshape(pet.shape[0], -1)
-    awc_values = np.ravel(np.asarray(awc))
+    # ADR-0009 lets a block call broadcast a scalar AWC across its cells
+    awc_values = np.broadcast_to(np.ravel(np.asarray(awc)), (cell_series.shape[1],))
     computed_scpdsi = np.full(cell_series.shape, np.nan, dtype=float)
     for cell in range(cell_series.shape[1]):
-        computed_scpdsi[:, cell] = palmer.scpdsi(
-            cell_series[:, cell],
-            pet_series[:, cell],
-            float(awc_values[cell]),
-            *calibration_years,
-        )[0]
+        try:
+            computed_scpdsi[:, cell] = palmer.scpdsi(
+                cell_series[:, cell],
+                pet_series[:, cell],
+                float(awc_values[cell]),
+                *calibration_years,
+            )[0]
+        except (ConvergenceError, InsufficientDataError):
+            continue  # leave this location missing rather than abort the run
     return computed_scpdsi.reshape(np.asarray(precips).shape)
 
 
@@ -1634,7 +1644,11 @@ def _write_palmer_outputs(context: _ComputeContext) -> None:
     for key, var_name, long_name in _PALMER_OUTPUTS:
         # get the shared memory results array and convert it to a numpy array
         index_values = _shared_array(key, context.output_shape).astype(float)
-        attrs = {"long_name": long_name, "valid_min": -10.0, "valid_max": 10.0}
+        attrs: dict[str, Any] = {"long_name": long_name}
+        if var_name != "scpdsi":
+            # scPDSI's percentile rescaling has no hard bound, unlike the
+            # historical (and conservative) range kept for the standard outputs
+            attrs |= {"valid_min": -10.0, "valid_max": 10.0}
 
         # create a new variable for this output and assign it into the dataset
         variable = xr.Variable(

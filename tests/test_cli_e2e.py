@@ -284,6 +284,13 @@ def test_palmers_writes_all_five_outputs_matching_in_process_computation(
         with xr.open_dataset(tmp_path / f"palmers_{variable_name}.nc") as dataset:
             np.testing.assert_allclose(dataset[variable_name].values[0], expected, equal_nan=True)
 
+    # scPDSI has no hard valid range, so it is written without valid_min/valid_max
+    with xr.open_dataset(tmp_path / "palmers_scpdsi.nc") as dataset:
+        attrs = dataset["scpdsi"].attrs
+        assert attrs["long_name"] == "Self-calibrated Palmer Drought Severity Index"
+        assert "valid_min" not in attrs
+        assert "valid_max" not in attrs
+
     # the CLI exposes all five Palmer outputs, including the self-calibrating scPDSI
     assert {path.name for path in tmp_path.glob("palmers_*.nc")} == {
         "palmers_pdsi.nc",
