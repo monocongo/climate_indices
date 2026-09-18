@@ -4,6 +4,10 @@
 
 Thank you for your interest in contributing to `climate_indices`! This guide will help you get started with the contribution process.
 
+`CONTRIBUTING.md` at the repository root is the canonical contributor process;
+this guide is the site's walkthrough of it. Where the two differ, the root
+document wins.
+
 ### Prerequisites
 1. **Python 3.10+** installed
 2. **uv** package manager installed
