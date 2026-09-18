@@ -110,9 +110,9 @@ backing value under a mask is never read or published.
 
 ## Consequences
 
-- `docs/adr/0009-spatial-block-declaration.md`'s closing sentence, "Palmer has no
-  adapter layer at all (#937)", is now stale for the NumPy layer; an xarray adapter
-  registration landed in #1016 (`climate_indices.pdsi()`).
+- `docs/adr/0009-spatial-block-declaration.md`'s earlier "Palmer has no adapter
+  layer at all (#937)" clause (since deleted in #988) is superseded: the xarray
+  adapter registration landed in #1016 (`climate_indices.pdsi()`).
 - The stale `# TODO(v2.5.0): implement palmer_xarray() wrapper using Pattern C` at the
   end of `palmer.py` is removed: "Pattern C" was defined nowhere in the repository and
   is superseded by the ADR-0009 contract this ADR adopts.

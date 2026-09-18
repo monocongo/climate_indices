@@ -661,8 +661,8 @@ def pdsi(
         precips: Monthly precipitation values in inches.
         pet: Monthly potential evapotranspiration values in inches, matching
             ``precips``.
-        awc: Available water capacity (soil constant) in inches. A scalar, or a
-            DataArray broadcastable to the precipitation's cell dimensions.
+        awc: Available water capacity (soil constant) in inches. A scalar, a NumPy
+            array, or a DataArray whose cell coordinates match the precipitation grid.
         data_start_year: Initial year of the input dataset (required for NumPy,
             optional for xarray).
         calibration_year_initial: Initial year of the calibration period (required

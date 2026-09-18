@@ -401,8 +401,9 @@ plus an available water capacity -- a per-cell field for `pdsi` blocks -- alloca
 `(n_years, 12)` arrays, and loop over years and months (`palmer.py:231`,
 `palmer.py:323`, `palmer.py:365`, `palmer.py:733`). `palmer.pdsi` gained the n-D
 kernel in #937 and the adapter-layer entry point in #1016, and
-`_apply_along_axis_palmers` (`__main__.py:1409,1411`) is converted for grid input.
-The remaining per-cell Palmer path is `scpdsi`. `scpdsi` additionally runs
+`_apply_along_axis_palmers` (`__main__.py:1165`) is converted for grid input.
+The remaining per-cell Palmer index path is `scpdsi` (the CLI's divisions input
+stays per-location by design). `scpdsi` additionally runs
 `_palmer_wells.calculate` per location (`palmer.py:1035`, `palmer.py:1047`), a
 per-month backtracking state machine, and duration-factor fits
 (`self_calibration.py:342`, `self_calibration.py:394`, `self_calibration.py:449`)

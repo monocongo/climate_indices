@@ -1946,6 +1946,17 @@ class TestSpatialPalmerKernel:
 
         assert result["pdsi"].shape == transect.shape
         assert cell_counts == [1] * transect.sizes["lat"]
+        # each latitude keeps its own AWC on the per-cell path, not the first cell's
+        for latitude_index in range(transect.sizes["lat"]):
+            expected = palmer.pdsi(
+                transect.isel(lat=latitude_index).values,
+                pet.isel(lon=0, lat=latitude_index).values,
+                float(awc.isel(lon=0, lat=latitude_index).values),
+                1980,
+                _CALIBRATION_START,
+                _CALIBRATION_END,
+            )
+            np.testing.assert_array_equal(result["pdsi"].isel(lat=latitude_index).values, expected[0])
 
     def test_pdsi_block_matches_pointwise(self, gridded_palmer_inputs):
         """Every cell of a gridded run matches the single-series result for that cell."""

@@ -2563,6 +2563,8 @@ def palmer_pdsi(
         calculation_metadata["awc"] = f"ndarray(shape={np.shape(awc)})"
     else:
         calculation_metadata["awc"] = str(awc)
+    if fitting_params:
+        calculation_metadata["fitting_params"] = f"dict(keys={','.join(sorted(fitting_params))})"
 
     display_names = {"pdsi": "PDSI", "phdi": "PHDI", "pmdi": "PMDI", "z_index": "Z-Index"}
     variables: dict[str, xr.DataArray] = {}
