@@ -100,16 +100,11 @@ Next (optional) run the unit test suite to validate the installation::
 
     uv run pytest
 
-the above should display output similar to this::
-
-   ======================= 38 passed, 18 warnings in 12.19s =======================
-
 Finally, show the package installed into the environment::
 
-   uv list | grep climate-indices
+   uv pip list | grep climate-indices
 
-   # climate-indices v2.1.0 (editable)
-   #     + climate-indices==2.1.0 (from file:///path/to/climate_indices)
+   # climate-indices   X.Y.Z   /path/to/climate_indices
 
 
 
@@ -236,22 +231,6 @@ The options for the entry point script are described below:
 |                        | CPUs), 'single' (uses a single CPU), or         |
 |                        | 'all_but_one' (uses all CPUs minus one).        |
 |                        | Default value is 'all_but_one'.                 |
-+------------------------+-------------------------------------------------+
-| save_params            | Save distribution fitting variables to this file|
-|                        | path. The fittings NetCDF is to be used as input|
-|                        | when using the `load_params` option.            |
-|                        | [NOTE: only via the `spi` entrypoint, which is  |
-|                        | deprecated in 2.4.0 and removed in 3.0.0. In    |
-|                        | the library use the `fitting_params` argument   |
-|                        | of `climate_indices.spi`, see the SPI section.] |
-+------------------------+-------------------------------------------------+
-| load_params            | Load distribution fitting variables from this   |
-|                        | filepath. The fittings NetCDF file is one that  |
-|                        | was created by the `save_params` option.        |
-|                        | [NOTE: only via the `spi` entrypoint, which is  |
-|                        | deprecated in 2.4.0 and removed in 3.0.0. In    |
-|                        | the library use the `fitting_params` argument   |
-|                        | of `climate_indices.spi`, see the SPI section.] |
 +------------------------+-------------------------------------------------+
 
 Example Input and Output Datasets
@@ -404,6 +383,17 @@ Jan. 1951 through Dec. 2010. The output files will be
 `<out_dir>/nclimgrid_lowres_pmdi.nc`, and `<out_dir>/nclimgrid_lowres_zindex.nc`.
 
 .. note::
+   The Palmer routines (:func:`climate_indices.palmer.pdsi`) take precipitation,
+   PET, and available water capacity in inches. The command line normalizes
+   precipitation and PET to millimeters for the other indices, so these inputs
+   may declare either unit: values labeled ``inches``/``inch`` or
+   ``mm``/``millimeters`` are converted to inches before computing. A
+   precipitation rate (``mm/dy``) is not accepted for Palmers -- it is a daily
+   rate, not the monthly accumulated depth ``palmer.pdsi()`` requires. An AWC
+   variable without a ``units`` attribute is assumed to be inches, and one that
+   declares any other unit is rejected.
+
+.. note::
    Self-calibrated PDSI (scPDSI) is available through the NumPy API as
    :func:`climate_indices.palmer.scpdsi`. It is not yet exposed by the
    ``process_climate_indices --index palmers`` command; see `issue #721
@@ -419,7 +409,7 @@ standardized against the same fitted climatology.
 
 The fitting cache is a library-level feature. The legacy ``spi`` script's
 ``--save_params`` and ``--load_params`` options, which cached the same parameters
-in a NetCDF file, are retired along with the script in 3.0.0 -- see
+in a NetCDF file, were removed with the script in 3.0.0 -- see
 :doc:`deprecations/api-changes`.
 
 .. code-block:: python
@@ -484,7 +474,8 @@ input, and the scaling, fit, and transform then add full-grid arrays of their ow
 the grid has to fit in memory alongside them. For a grid that does not, pass the
 xarray data instead -- :func:`climate_indices.spi` and
 :func:`climate_indices.spei` accept a Dask-backed DataArray chunked over the spatial
-dimensions with time as a single chunk -- see :doc:`xarray_migration`.
+dimensions with time as a single chunk -- see :doc:`xarray_migration`. For a
+complete parallel example and the measured speedups, see :doc:`performance`.
 
 
 Tutorials
@@ -516,8 +507,8 @@ User Guides
    data_requirements
    algorithms
    wildfire_applications
-   pypi_release
    xarray_migration
+   performance
    deprecations/index
    troubleshooting
 
@@ -528,6 +519,27 @@ API Reference
    :maxdepth: 2
 
    reference
+   xarray_compatibility
+
+.. Hidden until DOCS-8 wires the architecture decision record into the
+   four-section navigation; the pages must build now because the xarray
+   compatibility matrix links to them as documents. Listed explicitly rather
+   than globbed so adding a file under docs/adr/ cannot publish it by
+   accident.
+.. toctree::
+   :hidden:
+
+   adr/0001-dual-numpy-xarray-api
+   adr/0002-multiprocessing-cli-dask-xarray
+   adr/0003-dask-time-dimension-single-chunk
+   adr/0004-xarray-calendar-semantics
+   adr/0005-fire-module-api
+   adr/0006-fire-recursive-state-and-execution
+   adr/0007-fire-missing-data-policy
+   adr/0008-pattern-compliance-by-behavior-not-source-greps
+   adr/0009-spatial-block-declaration
+   adr/0010-seasonal-carry-is-an-explicit-mask
+   adr/0011-palmer-spatial-block-and-per-location-scpdsi
 
 Get involved
 -------------

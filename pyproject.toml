@@ -63,6 +63,8 @@ dev = [
     "types-psutil>=5.9.0",
 ]
 docs = [
+    # the quickstart doctest writes NetCDF through the h5netcdf backend
+    "h5py>=3.11.0",
     "myst-parser>=4.0",
     "sphinx>=8.1.3",
     "sphinx-autodoc-typehints>=3.0.1",
@@ -76,7 +78,6 @@ performance = [
 [project.scripts]
 climate_indices = "climate_indices.__main__:main"
 process_climate_indices = "climate_indices.__main__:main"
-spi = "climate_indices.__spi__:main"
 
 [project.urls]
 'Homepage' = 'https://github.com/monocongo/climate_indices'
@@ -145,10 +146,6 @@ module = [
     "climate_indices.typed_public_api",
 ]
 strict = true
-
-[[tool.mypy.overrides]]
-module = ["climate_indices.__spi__"]
-ignore_errors = true
 
 [tool.pytest.ini_options]
 filterwarnings = [
@@ -223,6 +220,7 @@ test = [
 ]
 dev = [
     {include-group = "test"},
+    "aiohttp>=3.14.3",
     "build>=1.3.0",
     "cartopy>=0.24.1",
     "distributed>=2025.7.0",

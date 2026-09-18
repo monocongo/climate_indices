@@ -77,6 +77,78 @@ class TestAWCDimensions:
         )
 
 
+class TestScalesRequirement:
+    def test_all_without_scales_raises_value_error(self, monkeypatch):
+        """`--index all` computes SPI/PNP and must require --scales like they do.
+
+        Regression test: `_validate_args` used to omit "all" from the scales
+        requirement, so a missing `--scales` reached the SPI/PNP loop in
+        `process_climate_indices` and raised a bare `TypeError` instead of a
+        clear `ValueError` from validation.
+        """
+        coords = {"division": [_DIVISION_ID], "time": np.arange(12)}
+        datasets = {
+            "precip.nc": xr.Dataset({"precip": (("division", "time"), np.ones((1, 12)))}, coords=coords),
+            "pet.nc": xr.Dataset({"pet": (("division", "time"), np.ones((1, 12)))}, coords=coords),
+            "awc.nc": xr.Dataset({"awc": (("division",), np.ones(1))}, coords={"division": [_DIVISION_ID]}),
+        }
+        monkeypatch.setattr(cli_main.xr, "open_dataset", datasets.__getitem__)
+        arguments = argparse.Namespace(
+            index="all",
+            scales=None,
+            netcdf_precip="precip.nc",
+            var_name_precip="precip",
+            netcdf_temp=None,
+            netcdf_pet="pet.nc",
+            var_name_pet="pet",
+            netcdf_awc="awc.nc",
+            var_name_awc="awc",
+        )
+
+        with pytest.raises(ValueError) as error:
+            cli_main._validate_args(arguments)
+
+        assert str(error.value) == (
+            "Scaled indices (SPI, SPEI, and/or PNP) specified without "
+            "including one or more time scales (missing --scales argument)"
+        )
+
+    def test_all_with_empty_scales_raises_value_error(self, monkeypatch):
+        """An explicitly empty `--scales` list must be rejected like a missing one.
+
+        Regression test: `--scales` uses `nargs="*"`, so `--scales` with no
+        values parses to `[]` rather than `None`. The prior `is None` check
+        let `[]` through, so SPI/SPEI/PNP scale loops ran zero iterations and
+        `--index all` silently wrote only its unscaled outputs.
+        """
+        coords = {"division": [_DIVISION_ID], "time": np.arange(12)}
+        datasets = {
+            "precip.nc": xr.Dataset({"precip": (("division", "time"), np.ones((1, 12)))}, coords=coords),
+            "pet.nc": xr.Dataset({"pet": (("division", "time"), np.ones((1, 12)))}, coords=coords),
+            "awc.nc": xr.Dataset({"awc": (("division",), np.ones(1))}, coords={"division": [_DIVISION_ID]}),
+        }
+        monkeypatch.setattr(cli_main.xr, "open_dataset", datasets.__getitem__)
+        arguments = argparse.Namespace(
+            index="all",
+            scales=[],
+            netcdf_precip="precip.nc",
+            var_name_precip="precip",
+            netcdf_temp=None,
+            netcdf_pet="pet.nc",
+            var_name_pet="pet",
+            netcdf_awc="awc.nc",
+            var_name_awc="awc",
+        )
+
+        with pytest.raises(ValueError) as error:
+            cli_main._validate_args(arguments)
+
+        assert str(error.value) == (
+            "Scaled indices (SPI, SPEI, and/or PNP) specified without "
+            "including one or more time scales (missing --scales argument)"
+        )
+
+
 class TestPalmersWorker:
     def test_writes_all_four_palmer_outputs(
         self,
@@ -103,14 +175,14 @@ class TestPalmersWorker:
         }
         monkeypatch.setattr(cli_main, "_global_shared_arrays", shared_arrays)
 
+        palmers = cli_main._registry_for("palmers")
         params = {
-            "func1d": cli_main._palmers,
+            "func1d": palmers.kernel,
             "sub_array_start": 0,
             "sub_array_end": None,
-            "var_name_precip": "precip",
-            "var_name_pet": "pet",
-            "var_name_awc": "awc",
-            "output_var_name": cli_main._KEY_RESULT_PDSI,
+            "input_var_names": ["precip", "pet", "awc"],
+            "output_var_names": list(palmers.output_keys),
+            "coordinate_input": False,
             "input_type": InputType.divisions,
             "args": {
                 "data_start_year": data_year_start_monthly,
@@ -119,8 +191,10 @@ class TestPalmersWorker:
             },
         }
 
+        # the registration's worker is reachable directly, without monkeypatched dispatch.
         # Should not raise (e.g. KeyError for a missing scpdsi shared array).
-        cli_main._apply_along_axis_palmers(params)
+        assert palmers.worker is not None
+        palmers.worker(params)
 
         def _read(key):
             entry = shared_arrays[key]
@@ -138,3 +212,124 @@ class TestPalmersWorker:
         np.testing.assert_allclose(_read(cli_main._KEY_RESULT_PHDI), expected_phdi, equal_nan=True)
         np.testing.assert_allclose(_read(cli_main._KEY_RESULT_PMDI), expected_pmdi, equal_nan=True)
         np.testing.assert_allclose(_read(cli_main._KEY_RESULT_ZINDEX), expected_zindex, equal_nan=True)
+
+    def test_grid_worker_applies_the_supplied_callable(
+        self,
+        monkeypatch,
+    ):
+        """The grid branch must call ``func1d`` (as the divisions branch does)
+        instead of hard-coding ``palmer.pdsi``, passing the block with a private
+        ``spatial_time_major=True`` so the callable reads it as time-major."""
+        lat, lon, n_time = 2, 2, 24
+        shape = (lat, lon, n_time)
+        shared_arrays = {
+            "precip": _make_shared_array(np.ones(shape), shape),
+            "pet": _make_shared_array(np.ones(shape), shape),
+            "awc": _make_shared_array(np.full((lat, lon), 5.0), (lat, lon)),
+            cli_main._KEY_RESULT_PDSI: _make_empty_shared_array(shape),
+            cli_main._KEY_RESULT_PHDI: _make_empty_shared_array(shape),
+            cli_main._KEY_RESULT_PMDI: _make_empty_shared_array(shape),
+            cli_main._KEY_RESULT_ZINDEX: _make_empty_shared_array(shape),
+        }
+        monkeypatch.setattr(cli_main, "_global_shared_arrays", shared_arrays)
+
+        calls: list[tuple[tuple[int, ...], bool]] = []
+
+        def recording_palmers(precips, pet, awc, parameters):
+            calls.append((precips.shape, parameters.get("spatial_time_major", False)))
+            computed = np.zeros(precips.shape)
+            return computed, computed, computed, computed
+
+        params = {
+            "func1d": recording_palmers,
+            "sub_array_start": 0,
+            "sub_array_end": None,
+            "input_var_names": ("precip", "pet", "awc"),
+            "output_var_names": cli_main._registry_for("palmers").output_keys,
+            "input_type": InputType.grid,
+            "args": {"data_start_year": 1980, "calibration_start_year": 1980, "calibration_end_year": 1981},
+        }
+
+        cli_main._apply_along_axis_palmers(params)
+
+        # the callable saw the time-major block (time, lat, lon) ...
+        assert calls == [((n_time, lat, lon), True)]
+        # ... and its output is what landed in the shared arrays, not palmer.pdsi()'s
+        entry = shared_arrays[cli_main._KEY_RESULT_PDSI]
+        written = np.frombuffer(entry[cli_main._KEY_ARRAY].get_obj()).reshape(entry[cli_main._KEY_SHAPE])
+        np.testing.assert_array_equal(written, np.zeros(shape))
+
+    def test_grid_worker_matches_per_division_computation(
+        self,
+        monkeypatch,
+        division_precip_pet,
+        data_year_start_monthly,
+        calibration_year_start_palmer,
+        calibration_year_end_palmer,
+        palmer_awcs,
+    ):
+        """A 2x2 grid chunk is computed with palmer.pdsi()'s spatial block path
+        (#937) rather than a Python loop over grid cells, and must still match
+        calling palmer.pdsi() once per cell."""
+        precips, pet = division_precip_pet
+        n_time = precips.shape[0]
+        lat, lon = 2, 2
+        shape = (lat, lon, n_time)
+
+        # four distinct AWCs so a broadcasting bug (one AWC applied to every
+        # cell) would be caught
+        awcs = np.array([[6.0, 7.0], [5.0, 8.0]])
+        precip_grid = np.broadcast_to(precips, (lat, lon, n_time)).copy()
+        pet_grid = np.broadcast_to(pet, (lat, lon, n_time)).copy()
+
+        shared_arrays = {
+            "precip": _make_shared_array(precip_grid, shape),
+            "pet": _make_shared_array(pet_grid, shape),
+            "awc": _make_shared_array(awcs, (lat, lon)),
+            cli_main._KEY_RESULT_PDSI: _make_empty_shared_array(shape),
+            cli_main._KEY_RESULT_PHDI: _make_empty_shared_array(shape),
+            cli_main._KEY_RESULT_PMDI: _make_empty_shared_array(shape),
+            cli_main._KEY_RESULT_ZINDEX: _make_empty_shared_array(shape),
+        }
+        monkeypatch.setattr(cli_main, "_global_shared_arrays", shared_arrays)
+
+        palmers = cli_main._registry_for("palmers")
+        params = {
+            "func1d": palmers.kernel,
+            "sub_array_start": 0,
+            "sub_array_end": None,
+            "input_var_names": ("precip", "pet", "awc"),
+            "output_var_names": palmers.output_keys,
+            "input_type": InputType.grid,
+            "args": {
+                "data_start_year": data_year_start_monthly,
+                "calibration_start_year": calibration_year_start_palmer,
+                "calibration_end_year": calibration_year_end_palmer,
+            },
+        }
+
+        cli_main._apply_along_axis_palmers(params)
+
+        def _read(key):
+            entry = shared_arrays[key]
+            return np.frombuffer(entry[cli_main._KEY_ARRAY].get_obj()).reshape(entry[cli_main._KEY_SHAPE])
+
+        grid_pdsi = _read(cli_main._KEY_RESULT_PDSI)
+        grid_phdi = _read(cli_main._KEY_RESULT_PHDI)
+        grid_pmdi = _read(cli_main._KEY_RESULT_PMDI)
+        grid_zindex = _read(cli_main._KEY_RESULT_ZINDEX)
+
+        for i in range(lat):
+            for j in range(lon):
+                expected_pdsi, expected_phdi, expected_pmdi, expected_zindex, _ = palmer.pdsi(
+                    precips,
+                    pet,
+                    awcs[i, j],
+                    data_year_start_monthly,
+                    calibration_year_start_palmer,
+                    calibration_year_end_palmer,
+                )
+                np.testing.assert_array_equal(grid_pdsi[i, j], expected_pdsi)
+                np.testing.assert_array_equal(grid_phdi[i, j], expected_phdi)
+                np.testing.assert_array_equal(grid_pmdi[i, j], expected_pmdi)
+                np.testing.assert_array_equal(grid_zindex[i, j], expected_zindex)

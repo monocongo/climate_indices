@@ -35,10 +35,11 @@ naming the ambiguity rather than a silently re-read result; reordering the cell 
 `spatial_time_major=True` both resolve it. `indices.spi`'s 2-D contract is unchanged, so the
 existing `(years, periods)` callers and their fixtures keep working.
 
-The spatial path is opt-in per index: `spatial_kernel=True` is declared at the adapter call site
-(`typed_public_api.py` for SPI and SPEI), and any index left on the per-cell path keeps
-`vectorize=True` with one kernel call per cell. Registering an index whose kernel does not accept the
-`spatial_time_major` keyword fails loudly at the call rather than misreading its input.
+The spatial path is opt-in per index: `spatial_kernel=True` is declared at each spatial-kernel
+index's adapter call site in `typed_public_api.py` (SPI, SPEI, EDDI, and percentage of normal as of
+this writing), and any index left on the per-cell path keeps `vectorize=True` with one kernel call
+per cell. Registering an index whose kernel does not accept the `spatial_time_major` keyword fails
+loudly at the call rather than misreading its input.
 
 Two layouts now meet in `compute.py`, distinguished by position in the pipeline rather than by any
 runtime marker: time-major `(time, *cells)` on the way in (`prepare_scaled`, `sum_to_scale`), and
@@ -49,14 +50,28 @@ translation between them.
 Gridded execution changes the memory profile as well as the call count: one block is held whole
 inside the fit, with a few `O(years x periods x cells)` temporaries, so the chunk size is the memory
 lever and the documented guidance is to chunk spatially rather than hand the kernel a dense
-continental grid. Dask still requires the time dimension in a single chunk, for the reason recorded
+continental grid. The Pearson Type III path holds a few more block-sized temporaries than the gamma
+path, because SciPy's `pearson3.cdf` builds its mask and argument arrays before the CDF is
+evaluated; a Pearson block therefore peaks higher than the same block on gamma, and the chunk
+budget should account for it. Dask still requires the time dimension in a single chunk, for the reason recorded
 in [ADR-0003](./0003-dask-time-dimension-single-chunk.md) — the fit needs the whole calibration
 window.
 
-The Pearson Type III branch keeps [the per-cell path](../xarray_compatibility.md); its L-moment fit
-is per series, so `Distribution.pearson` still re-enters the single-series kernel once per cell
-(issue #940). EDDI and percentage-of-normal have no cell axis in their kernels yet (#942), and
-Palmer has no adapter layer at all (#937).
+The Pearson Type III branch fits its L-moment parameters across the cell axis as well
+([#940](https://github.com/monocongo/climate_indices/issues/940)), so `Distribution.pearson` no
+longer re-enters the single-series kernel once per cell. `indices.spi` enables
+`fallback_to_gamma=True`, so like gamma, a failed Pearson fit there falls back to gamma for the
+whole block rather than per cell; `indices.spei` passes `fallback_to_gamma=False`, so a failed
+Pearson fit propagates instead of falling back. EDDI and percentage of normal carry a cell axis as
+well (#942): EDDI counts each calendar period's climatology values below every cell's value, and
+percentage of normal averages each cell's calendar-period normals, so neither loops over the grid.
+Unlike the fitting-based kernels they reject an undeclared 3-D input, since their dimension errors
+are pinned to `DataShapeError` rather than `ValueError`. `palmer.pdsi()` adopts this same
+time-major block contract at the NumPy layer (#937); see
+[ADR-0011](./0011-palmer-spatial-block-and-per-location-scpdsi.md) for why its recursion needed a
+masked rewrite rather than a broadcast, why scPDSI stays per-location, and why one K-factor
+reduction has to run along a specific axis to stay bit-for-bit with the per-location path. Palmer
+still has no xarray adapter layer; that registration is a separate follow-up ticket.
 
 The PET entry points do not use the adapter decorator, because latitude arrives as a broadcast
 input rather than a secondary time series. They forward `vectorize=False` themselves and hand

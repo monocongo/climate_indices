@@ -125,16 +125,16 @@ make html
 uv run python -m build
 
 # Output in dist/
-# - climate_indices-2.2.0-py3-none-any.whl
-# - climate_indices-2.2.0.tar.gz
+# - climate_indices-X.Y.Z-py3-none-any.whl
+# - climate_indices-X.Y.Z.tar.gz
 ```
 
 ## Project Structure
 
 ```
 climate_indices/
-├── src/climate_indices/     # Source code (14 modules)
-├── tests/                    # Test suite (26 test files)
+├── src/climate_indices/     # Source code
+├── tests/                    # Test suite
 ├── docs/                     # Documentation
 ├── pyproject.toml            # Build config + dependencies
 ├── uv.lock                   # Dependency lock file

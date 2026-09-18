@@ -37,9 +37,50 @@ surfaced through the existing `climate_indices` CLI only where an xarray
 adapter and a CF registry entry exist (KBDI as `--index kbdi`, #802), so the
 CLI consumes the fire package rather than being a component of this subsystem.
 
-This family covers meteorological and climatological indices only. It excludes
-NFDRS components such as ERC, BI, SC, and IC; fuel models; fire behaviour;
-ignition; and occurrence prediction.
+## Scope and boundary
+
+The dividing line is not drought versus wildfire but **meteorological and
+climatological indices** versus **operational fire-danger and fire-behaviour
+modeling**.
+
+In scope:
+
+- Indices computable from standard meteorological and reanalysis fields
+- Deterministic, well-published algorithms with authoritative reference code
+- Anything that fits the existing NumPy + xarray + CF metadata + Dask pattern
+
+Out of scope:
+
+- NFDRS Ignition Component, Spread Component, Energy Release Component, and
+  Burning Index, which NWCG defines in terms of live and dead fuel moisture
+  and fuel models rather than weather alone
+- Externally supplied fuel-model catalogs, live fuel state, and operational
+  calibration against fuel loads or fire-occurrence records — not the
+  weather-driven dead-fuel-moisture recursions (CFFWIS FFMC, DMC, DC) this
+  package already computes from weather alone
+- Fire-behaviour simulation and rate-of-spread modeling
+- Ignition and occurrence prediction
+- FWI2025 next-generation reformulations, at least initially
+
+A weather-only index such as the McArthur Forest Fire Danger Index would be an
+in-scope proposal. NFDRS Energy Release Component would not: it needs fuel
+models and live and dead fuel state this package does not model.
+
+A separate `fire_weather_indices` repository becomes justified when two or more
+of these are true:
+
+1. An implementation requires fuel-model or fuel-state data structures
+2. An implementation requires operational calibration against fire-occurrence
+   records
+3. The fire code exceeds roughly 30 percent of the package's source volume
+4. Fire-specific dependencies would be forced on all `climate_indices` users
+5. The release cadence needs to diverge
+
+Until then, an out-of-scope fire proposal is not rejected on merit: open an
+issue in this repository labeled `fire-weather` recording it as a candidate
+for the eventual `fire_weather_indices` split, rather than relitigating the
+boundary here. [CONTRIBUTING.md](../../CONTRIBUTING.md#fire-weather-scope)
+records the triage response.
 
 ## API tiers
 
@@ -47,8 +88,9 @@ ignition; and occurrence prediction.
   array-likes, broadcast elementwise inputs where physically meaningful, and
   return NumPy arrays.
 - Xarray support is beta and added function by function. It preserves the
-  `fire.<name>` public route, uses `xarray_adapter` for validation and metadata,
-  and documents its Dask constraints. Recursive indices require one time chunk.
+  `fire.<name>` public route, uses `validation.py` for input-kind, time-axis,
+  and chunk checks (KBDI, HDW, CFFWIS) and `xarray_adapter` for metadata, and
+  documents its Dask constraints. Recursive indices require one time chunk.
 - `typed_public_api.py` remains the unqualified drought/moisture facade. It
   must not gain unqualified fire functions or package-level fire re-exports.
   Fire overloads and xarray dispatch stay with their namespaced facade.
@@ -209,7 +251,7 @@ data: the DC has no calendar, no snow input, and no single threshold that fits
 every region. `drought_code()` therefore takes a keyword-only
 `in_season` boolean mask, time-first and broadcast against the weather inputs,
 and the seasonal carry contract is
-[ADR-0008](../adr/0008-seasonal-carry-is-an-explicit-mask.md). `None` treats
+[ADR-0010](../adr/0010-seasonal-carry-is-an-explicit-mask.md). `None` treats
 every day as in-season, which is the default and leaves the recurrence
 unchanged.
 
@@ -249,7 +291,7 @@ replace.
 
 Stateful xarray fire adapters -- KBDI (#801) and CFFWIS (#807) today --
 validate every time-varying input with
-`xarray_adapter._validate_dask_chunks()`. A Dask `time` dimension must be one
+`climate_indices.validation.validate_dask_chunks()`. A Dask `time` dimension must be one
 chunk, while spatial dimensions may remain chunked. The adapter raises
 `CoordinateValidationError` with a rechunk command rather than silently
 rechunking and materializing a large history.
@@ -331,7 +373,7 @@ output. Do not add fire-specific exception classes.
 Fire outputs have no CF `standard_name`. Xarray metadata comes exclusively from
 `CF_METADATA`: each adapter's `long_name`, units, description, and references
 come from its registry entry, never hand-written in an adapter.
-`xarray_adapter._build_output_attrs` drops a `standard_name` inherited from
+`xarray_adapter.build_output_attrs` drops a `standard_name` inherited from
 the input attributes when the registry entry defines none, so a source
 variable's name (for example `air_temperature`) never misdescribes a computed
 fire output.

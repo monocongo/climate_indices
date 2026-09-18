@@ -11,6 +11,7 @@ points to maintained task-specific guidance instead of duplicating it.
 | Prepare a release | [release-process.md](../release-process.md) |
 | Work on the planned Explorer | [CONTEXT-MAP.md](../../CONTEXT-MAP.md) first |
 | Manage GitHub issues | [issue tracker guide](issue-tracker.md) |
+| Understand or reuse the AI-assisted workflow | [How this project is developed](../ai-assisted-development.md) |
 
 The general documentation landing pages are not agent working guidance; do not
 use them as a source for current project facts without verifying those facts in

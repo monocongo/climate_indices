@@ -1,8 +1,10 @@
 # xarray Compatibility Matrix
 
-The xarray API is beta in v2.5. Numerical results are expected to match the
+:::{warning}
+The xarray API is beta in 3.0.0. Numerical results are expected to match the
 stable NumPy API, while parameter inference, metadata, and coordinate behavior
 may change in a future minor release.
+:::
 
 | Feature | Supported | Coverage |
 | --- | --- | --- |
@@ -21,7 +23,7 @@ may change in a future minor release.
 | Coordinate preservation | Yes | Adapter tests verify time and spatial coordinates are preserved. |
 | CF-style metadata | Yes | `CF_METADATA` registry and adapter tests verify `long_name`, `units`, `references`, version, and history attributes. |
 | Dask-backed arrays | Yes, constrained | The time dimension must be a single chunk, except for the PET adapters, which rechunk a split `time` internally. Adapter tests verify detection and validation. Chunk axes the CLI leaves to Dask (`"auto"`, the KBDI grid and division inputs) resolve against a 100 MB array chunk budget rather than Dask's own default; axes pinned with `-1` are unaffected. See [Chunking guidance for gridded indices](#chunking-guidance-for-gridded-indices) for block sizes. |
-| Spatial (gridded) kernels | Yes, for SPI, SPEI, and PET | `spi`/`spei` receive a time-major `(time, *cells)` block and fit every cell in one pass, so a gridded gamma run costs one kernel call per Dask block instead of one call per cell ([ADR-0008](adr/0008-spatial-block-declaration.md)). The PET entry points (`pet_thornthwaite`, `pet_hargreaves`) hand `indices.pet` and `eto.eto_hargreaves` the same block layout with the per-cell latitude array, so a gridded PET run costs one call per block ([#941](https://github.com/monocongo/climate_indices/issues/941)). The NumPy API keeps 2-D input on the legacy `(years, periods)` reading, and rejects the one gridded shape that is ambiguous with it (a first cell axis of 12 or 366). Inputs with a single non-core dimension keep the per-cell path, as do EDDI and percentage-of-normal ([#942](https://github.com/monocongo/climate_indices/issues/942)) and the Pearson Type III fit ([#940](https://github.com/monocongo/climate_indices/issues/940)). See `tests/test_spatial_kernel.py`. |
+| Spatial (gridded) kernels | Yes, for SPI, SPEI, PET, EDDI, and percentage of normal | `spi`/`spei` receive a time-major `(time, *cells)` block and fit every cell in one pass, so a gridded gamma run costs one kernel call per Dask block instead of one call per cell ([ADR-0009](adr/0009-spatial-block-declaration.md)). The PET entry points (`pet_thornthwaite`, `pet_hargreaves`) hand `indices.pet` and `eto.eto_hargreaves` the same block layout with the per-cell latitude array, so a gridded PET run costs one call per block ([#941](https://github.com/monocongo/climate_indices/issues/941)). `indices.eddi` and `indices.percentage_of_normal` rank, and divide by the normals of, every cell of the block in one pass ([#942](https://github.com/monocongo/climate_indices/issues/942)). The NumPy API keeps 2-D input on the legacy `(years, periods)` reading; a 3-D or higher input is a block for `spi`/`spei`/`pet` unless its first cell axis is the one shape that is ambiguous with that reading (12 or 366, i.e. a `(years, periods, *cells)` array), which must be declared, and for EDDI and percentage of normal every 3-D input must be declared with `spatial_time_major=True`. Inputs with a single non-core dimension keep the per-cell path. See `tests/test_spatial_kernel.py`. |
 | Calendar semantics | Yes, constrained | Standard/gregorian/proleptic_gregorian `datetime64` only; monthly input must begin in January and daily input on January 1. Daily values are converted to the 366-day calendar (February 29 synthesized from February 28 and March 1) and restored afterward. A partial final year is supported; `cftime` calendars are rejected. See [ADR-0004](adr/0004-xarray-calendar-semantics.md). |
 | Automatic temporal inference | Yes | Monthly and daily time-coordinate inference is covered by adapter tests. |
 | Multi-input alignment | Yes | SPEI aligns precipitation and PET with an inner join and emits a warning when timesteps are dropped. |
@@ -70,6 +72,8 @@ applies per cell along the time axis.
   interface changes.
 - Use xarray APIs for labeled, gridded workflows where coordinate preservation
   and metadata are more valuable than strict interface stability.
+- For a complete runnable gridded SPI and SPEI example with the chunking and
+  scheduler guidance applied, see [Gridded Performance](performance.md).
 - Keep Dask chunks spatial when possible and leave `time` as one chunk before
   calling index functions. Spatial chunks set the parallelism granularity: SPI and
   SPEI fit a whole `(time, *cells)` block per call, and the gridded path requires
@@ -85,6 +89,53 @@ applies per cell along the time axis.
   `chunks` when opening your own dataset, with the `DASK_ARRAY__CHUNK_SIZE`
   environment variable, or with `dask.config.set({"array.chunk-size": ...})` — a
   configured budget is honored rather than overwritten.
+- Choose the scheduler at the materialization call: the xarray API never imports
+  or configures Dask ([ADR-0002](adr/0002-multiprocessing-cli-dask-xarray.md)). The
+  gridded kernels are CPU-bound Python/scipy work, and their Python-level portion
+  does not run in parallel under the default threaded scheduler, so materialize a
+  lazy result on worker processes — given `precip`, whose `time` dimension is a
+  single chunk:
+
+  ```python
+  from climate_indices import spi
+  from climate_indices.indices import Distribution
+
+  spi_lazy = spi(
+      values=precip.chunk({"time": -1, "lat": 20, "lon": 20}),
+      scale=3,
+      distribution=Distribution.gamma,
+  )
+  spi_grid = spi_lazy.compute(scheduler="processes")
+  ```
+
+  In a script rather than a notebook, that call belongs under
+  `if __name__ == "__main__":` while Dask spawns its workers — the `processes`
+  scheduler's default start method on every platform — because each worker
+  re-imports the entry module. A Zarr write takes the same scheduler through the
+  delayed write:
+  `spi_lazy.to_zarr(path, compute=False).compute(scheduler="processes")`.
+  NetCDF writes do not: their backend lock is built for the scheduler that is
+  active when the write graph is built, and the default one cannot be pickled to
+  worker processes, so load the result first and write it in memory when the full
+  result fits, or let a distributed client stream the write for larger results.
+- Every `.compute(scheduler="processes")` call builds and tears down its own
+  process pool, so a computation short relative to that start-up spends most of
+  its wall clock there: on the 38 x 87 reference grid the SPI pass measured 1.37 s
+  with the fresh one-worker pool against 0.76 s with a pre-created, warmed pool,
+  and 1.26 s against 0.23 s at eight workers
+  ([#928](https://github.com/monocongo/climate_indices/issues/928) harness,
+  recorded on [#927](https://github.com/monocongo/climate_indices/issues/927)).
+  The serial reference and the fresh-pool rows for SPI, SPEI, PET and EDDI are
+  tabulated in
+  [the #929 before/after table](https://github.com/monocongo/climate_indices/blob/main/benchmarks/README.md#beforeafter-on-the-reference-grid-929).
+  Keep a `dask.distributed.Client` alive across calls — the [tutorial's client
+  cell](https://github.com/monocongo/climate_indices/blob/main/notebooks/zarr_dask_spi_spei.ipynb)
+  does, and `distributed` ships with the `dev` extra — or pass a pre-created pool
+  when the work is short or repeated.
+- The threaded scheduler remains the right choice for I/O-bound or small
+  in-memory work — opening a store, a reduction such as `.mean("time")`, or a grid
+  small enough that serializing each block to a worker process costs more than
+  the parallelism saves.
 - The canonical lazy xarray/Dask SPI/SPEI workflow is the teaching notebook
   `notebooks/zarr_dask_spi_spei.ipynb`: the public typed API on Dask-backed DataArrays
   (`xr.apply_ufunc(..., dask="parallelized")`), one full time chunk with spatial

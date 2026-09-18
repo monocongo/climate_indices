@@ -4,6 +4,7 @@ Common classes and functions used to compute the various climate indices.
 
 import functools
 import warnings
+from collections.abc import Callable
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
@@ -235,7 +236,7 @@ def sum_to_scale(
     (missing) value is part of the group of values to be summed then the sum
     will be np.nan
 
-    A time-major spatial array with shape (time, *cells) is summed window-wise along
+    A time-major spatial array with shape (time, ``*cells``) is summed window-wise along
     its time axis, so every cell's sliding sums are computed by one vectorized pass.
 
     For example if the first array is [3, 4, 6, 2, 1, 3, 5, 8, 5] and
@@ -262,6 +263,12 @@ def sum_to_scale(
     # don't bother if the number of values to sum is 1
     if scale == 1:
         return values
+
+    if np.ma.isMaskedArray(values):
+        # a masked value stands for a missing value: make it an explicit NaN so the
+        # convolution below and the window-wise spatial sum see the missing marker
+        # rather than the data under the mask (np.convolve reads under it)
+        values = np.ma.filled(values.astype(float), np.nan)
 
     if values.ndim > 2:
         # time-major spatial arrays are summed window-wise along the time axis: one
@@ -419,6 +426,41 @@ def calculate_time_step_params(time_step_values: np.ndarray) -> tuple[float, flo
         raise PearsonFittingError(message, underlying_error=e) from e
 
 
+def _pearson_parameters_spatial(
+    calibration_values: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]:
+    """
+    Fit every (time step, cell) of a (years, time_steps, *cells) block at once.
+
+    The cell-axis counterpart of the per-time-step loop in ``pearson_parameters``:
+    the L-moment fit runs once across every cell, and a cell whose sample fails
+    either the minimum-non-zero guard or the L-moment validity check gets the same
+    zeroed-parameter fallback the single-series path applies.
+
+    :param calibration_values: calibration data with shape (years, time_steps, *cells)
+    :return: four parameter arrays shaped (time_steps, *cells) and the count of
+        failed (time step, cell) fits
+    """
+    locs, scales, skews, valid = lmoments.fit_spatial(calibration_values)
+
+    number_of_zeros = np.count_nonzero(calibration_values == 0, axis=0)
+    number_of_non_missing = np.count_nonzero(~np.isnan(calibration_values), axis=0)
+    non_zero_count = number_of_non_missing - number_of_zeros
+    valid = valid & (non_zero_count >= MIN_NON_ZERO_VALUES_FOR_PEARSON)
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        probabilities_of_zero = np.where(number_of_zeros > 0, number_of_zeros / number_of_non_missing, 0.0)
+
+    failed_fitting_count = int(np.count_nonzero(~valid))
+    return (
+        np.where(valid, probabilities_of_zero, 0.0),
+        np.where(valid, locs, 0.0),
+        np.where(valid, scales, 0.0),
+        np.where(valid, skews, 0.0),
+        failed_fitting_count,
+    )
+
+
 def pearson_parameters(
     values: np.ndarray,
     data_start_year: int,
@@ -436,13 +478,18 @@ def pearson_parameters(
         (with Feb. 29th being an average of the Feb. 28th and Mar. 1st values for
         non-leap years) and assuming that the first value of the array is
         January of the initial year for an input array of monthly values or
-        Jan. 1st of initial year for an input array daily values
+        Jan. 1st of initial year for an input array daily values. A time-major
+        spatial block already folded to (years, time_steps, *cells) is also
+        accepted, and then every cell is fitted in one pass; any
+        three-or-more-dimensional input is read as that folded layout, so a
+        time-major block must already be folded (``prepare_scaled`` owns that).
     :param data_start_year:
     :param calibration_start_year:
     :param calibration_end_year:
     :param periodicity: monthly or daily
-    :return: four 1-D array of fitting values for the Pearson Type III
-        distribution, with shape (12,) for monthly or (366,) for daily
+    :return: four arrays of fitting values for the Pearson Type III
+        distribution, with shape (12,) for monthly or (366,) for daily, or
+        (time_steps, *cells) for spatial input
 
         returned array 1: probability of zero
         returned array 2: first Pearson Type III distribution parameter (loc)
@@ -457,47 +504,64 @@ def pearson_parameters(
     )
     log.info("distribution_fitting_started")
 
-    values = reshape_values(values, periodicity)
-    time_steps_per_year = validate_values_shape(values)
+    if getattr(values, "ndim", 0) > 2:
+        # a folded spatial block carries its periods along axis 1 already
+        values = _validate_array(values, periodicity)
+        time_steps_per_year = int(values.shape[1])
+    else:
+        values = reshape_values(values, periodicity)
+        time_steps_per_year = validate_values_shape(values)
     data_end_year = data_start_year + values.shape[0]
     calibration_start_year, calibration_end_year = adjust_calibration_years(
         data_start_year, data_end_year, calibration_start_year, calibration_end_year
     )
     calibration_begin_index = calibration_start_year - data_start_year
     calibration_end_index = (calibration_end_year - data_start_year) + 1
-    calibration_values = values[calibration_begin_index:calibration_end_index, :]
+    calibration_values = values[calibration_begin_index:calibration_end_index, ...]
 
     # check calibration data quality and emit warnings if needed
     _check_calibration_data_quality(calibration_values, calibration_start_year, calibration_end_year)
 
-    probabilities_of_zero = np.zeros((time_steps_per_year,))
-    locs = np.zeros((time_steps_per_year,))
-    scales = np.zeros((time_steps_per_year,))
-    skews = np.zeros((time_steps_per_year,))
+    if calibration_values.ndim > 2:
+        (
+            probabilities_of_zero,
+            locs,
+            scales,
+            skews,
+            failed_fitting_count,
+        ) = _pearson_parameters_spatial(calibration_values)
+        cell_count = int(np.prod(calibration_values.shape[2:], dtype=np.intp))
+        total_fitting_count = time_steps_per_year * cell_count
+    else:
+        probabilities_of_zero = np.zeros((time_steps_per_year,))
+        locs = np.zeros((time_steps_per_year,))
+        scales = np.zeros((time_steps_per_year,))
+        skews = np.zeros((time_steps_per_year,))
 
-    failed_fitting_count = 0
+        failed_fitting_count = 0
 
-    for time_step_index in range(time_steps_per_year):
-        time_step_values = calibration_values[:, time_step_index]
-        try:
-            prob, loc, scale, skew = calculate_time_step_params(time_step_values)
-            probabilities_of_zero[time_step_index] = prob
-            locs[time_step_index] = loc
-            scales[time_step_index] = scale
-            skews[time_step_index] = skew
-        except DistributionFittingError:
-            # Handle fitting failures by using default values
-            failed_fitting_count += 1
-            probabilities_of_zero[time_step_index] = 0.0
-            locs[time_step_index] = 0.0
-            scales[time_step_index] = 0.0
-            skews[time_step_index] = 0.0
+        for time_step_index in range(time_steps_per_year):
+            time_step_values = calibration_values[:, time_step_index]
+            try:
+                prob, loc, scale, skew = calculate_time_step_params(time_step_values)
+                probabilities_of_zero[time_step_index] = prob
+                locs[time_step_index] = loc
+                scales[time_step_index] = scale
+                skews[time_step_index] = skew
+            except DistributionFittingError:
+                # Handle fitting failures by using default values
+                failed_fitting_count += 1
+                probabilities_of_zero[time_step_index] = 0.0
+                locs[time_step_index] = 0.0
+                scales[time_step_index] = 0.0
+                skews[time_step_index] = 0.0
+        total_fitting_count = time_steps_per_year
 
     # Check if we should warn about high failure rate using the fallback strategy
-    if _default_fallback_strategy.should_warn_high_failure_rate(failed_fitting_count, time_steps_per_year):
+    if _default_fallback_strategy.should_warn_high_failure_rate(failed_fitting_count, total_fitting_count):
         _default_fallback_strategy.log_high_failure_rate(
             failure_count=failed_fitting_count,
-            total_count=time_steps_per_year,
+            total_count=total_fitting_count,
             context="pearson_parameters computation",
         )
 
@@ -636,6 +700,60 @@ def _pearson_fit(
     return result
 
 
+def _validate_pearson_parameter_cells(
+    values: np.ndarray, named_parameters: tuple[tuple[str, np.ndarray | None], ...]
+) -> None:
+    """Reject pre-computed Pearson parameters whose period or cell axes do not match a block."""
+    period_length = values.shape[1]
+    cells = values.shape[2:]
+    for name, parameter in named_parameters:
+        if parameter is None:
+            continue
+        parameter = np.asarray(parameter)
+        if parameter.ndim > 1 and (parameter.shape[0] != period_length or parameter.shape[1:] != cells):
+            raise ValueError(
+                f"Fitting parameter '{name}' has shape {parameter.shape}, which must carry the "
+                f"block's period length {period_length} and cell dimensions {cells}"
+            )
+
+
+def _prepare_pearson_spatial_parameters(
+    values: np.ndarray,
+    probabilities_of_zero: np.ndarray | None,
+    locs: np.ndarray | None,
+    scales: np.ndarray | None,
+    skews: np.ndarray | None,
+) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None, np.ndarray | None]:
+    """
+    Shape pre-computed Pearson parameters for a spatial block, or reject them.
+
+    A period-only parameter array is reshaped so that it broadcasts along the
+    period axis instead of aligning with the trailing cell axes. A parameter
+    array carrying cell dimensions must match the block's own cell axes.
+
+    :param values: the folded spatial block, shape (years, time_steps, *cells)
+    :return: the four parameters, each shaped for the block or None
+    """
+    named_parameters = (
+        ("prob_zero", probabilities_of_zero),
+        ("loc", locs),
+        ("scale", scales),
+        ("skew", skews),
+    )
+    _validate_pearson_parameter_cells(values, named_parameters)
+    cells = values.shape[2:]
+    prepared: list[np.ndarray | None] = []
+    for _, parameter in named_parameters:
+        if parameter is None:
+            prepared.append(None)
+            continue
+        parameter = np.asarray(parameter)
+        if parameter.ndim == 1:
+            parameter = parameter.reshape((1, parameter.shape[0], *([1] * len(cells))))
+        prepared.append(parameter)
+    return prepared[0], prepared[1], prepared[2], prepared[3]
+
+
 def transform_fitted_pearson(
     values: np.ndarray,
     data_start_year: int,
@@ -653,7 +771,10 @@ def transform_fitted_pearson(
 
     :param values: 2-D array of values, with each row representing a year containing
                    twelve columns representing the respective calendar months,
-                   or 366 columns representing days as if all years were leap years
+                   or 366 columns representing days as if all years were leap years.
+                   A time-major spatial block already folded to
+                   (years, time_steps, ``*cells``) is also accepted; any
+                   three-or-more-dimensional input is read as that folded layout.
     :param data_start_year: the initial year of the input values array
     :param calibration_start_year: the initial year to use for the calibration period
     :param calibration_end_year: the final year to use for the calibration period
@@ -702,6 +823,13 @@ def transform_fitted_pearson(
 
     # validate (and possibly reshape) the input array
     values = _validate_array(values, periodicity)
+
+    # broadcast period-only parameters and reject parameter arrays whose cell
+    # dimensions do not match a spatial block
+    if values.ndim > 2:
+        probabilities_of_zero, locs, scales, skews = _prepare_pearson_spatial_parameters(
+            values, probabilities_of_zero, locs, scales, skews
+        )
 
     # compute the Pearson Type III fitting values if none were provided
     if any(param_arg is None for param_arg in pearson_param_args):
@@ -912,6 +1040,58 @@ def _check_goodness_of_fit_gamma(
         warnings.warn(warning, stacklevel=3)
 
 
+def _spatial_poor_fits(
+    sorted_values: np.ndarray,
+    valid_counts: np.ndarray,
+    valid_positions: np.ndarray,
+    cdf_values: np.ndarray,
+    critical_tolerance: float,
+    candidate_cdf: Callable[[np.ndarray, tuple[int, ...]], np.ndarray],
+) -> list[tuple[int, float]]:
+    """Poorly fitting (time step, cell) candidates and their exact p-values.
+
+    The D statistic is a maximum over the ranked sample positions, evaluated for
+    every (time step, cell) at once; positions beyond a cell's valid count and
+    samples whose fitted parameters are invalid fall outside the comparison,
+    matching the per-series check's own guards.
+
+    :param sorted_values: Ascending calibration values, shaped (years, time_steps, ...)
+    :param valid_counts: Per-cell valid sample count, shaped (time_steps, ...)
+    :param valid_positions: Mask of positions inside a cell's valid sample with usable parameters
+    :param cdf_values: Fitted CDF at ``sorted_values``, same shape
+    :param critical_tolerance: Epsilon slack when comparing the D statistic to the critical value
+    :param candidate_cdf: CDF for one candidate's sorted column and candidate index
+    :return: The (time step index, p-value) pairs that fail the goodness-of-fit check
+    """
+    ranks = np.arange(1, sorted_values.shape[0] + 1).reshape((-1,) + (1,) * (sorted_values.ndim - 1))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        upper = np.where(valid_positions, ranks / valid_counts - cdf_values, -np.inf)
+        lower = np.where(valid_positions, cdf_values - (ranks - 1) / valid_counts, -np.inf)
+    d_statistics = np.maximum(np.max(upper, axis=0), np.max(lower, axis=0))
+
+    # critical values depend on the per-cell valid count, so evaluate the cached
+    # exact statistic once per distinct count rather than once per cell
+    critical_values = np.full(valid_counts.shape, np.inf)
+    for valid_count in np.unique(valid_counts):
+        if valid_count > 0:
+            critical_values[valid_counts == valid_count] = _ks_critical_value(int(valid_count))
+
+    candidates = np.nonzero(d_statistics >= critical_values - critical_tolerance)
+    poor_fits: list[tuple[int, float]] = []
+    for candidate in zip(*candidates, strict=True):
+        step_index = int(candidate[0])
+        valid_count = int(valid_counts[candidate])
+        sorted_column = sorted_values[(slice(0, valid_count), *candidate)]
+        try:
+            p_value = _ks_poor_fit_p_value(sorted_column, candidate_cdf(sorted_column, candidate))
+        except Exception:
+            # ignore fitting errors during goodness-of-fit check, as the per-series path does
+            continue
+        if p_value is not None:
+            poor_fits.append((step_index, p_value))
+    return poor_fits
+
+
 def _check_goodness_of_fit_gamma_spatial(
     calibration_values: np.ndarray,
     alphas: np.ndarray,
@@ -935,51 +1115,29 @@ def _check_goodness_of_fit_gamma_spatial(
     sorted_values = np.sort(calibration_values, axis=0)
     valid_counts = np.count_nonzero(~np.isnan(calibration_values), axis=0)
 
-    # the D statistic is a maximum over the ranked sample positions, evaluated here
-    # for every (time step, cell) at once; positions beyond a cell's valid count and
-    # samples whose fitted parameters are invalid fall outside the comparison, matching
-    # the per-series check's own guards. The float64 cast matches that check's arithmetic.
     ranks = np.arange(1, num_years + 1).reshape((-1,) + (1,) * (calibration_values.ndim - 1))
     valid_positions = (ranks <= valid_counts) & np.isfinite(alphas[np.newaxis]) & np.isfinite(betas[np.newaxis])
     valid_positions &= (alphas[np.newaxis] > 0) & (betas[np.newaxis] > 0)
     with np.errstate(divide="ignore", invalid="ignore"):
+        # the float64 casts match the per-series check's arithmetic
         cdf_values = scipy.special.gammainc(
             alphas[np.newaxis].astype(float),
             sorted_values.astype(float) / betas[np.newaxis].astype(float),
         )
-        upper = np.where(valid_positions, ranks / valid_counts - cdf_values, -np.inf)
-        lower = np.where(valid_positions, cdf_values - (ranks - 1) / valid_counts, -np.inf)
-    d_statistics = np.maximum(np.max(upper, axis=0), np.max(lower, axis=0))
-
-    # critical values depend on the per-cell valid count, so evaluate the cached
-    # exact statistic once per distinct count rather than once per cell
-    critical_values = np.full(valid_counts.shape, np.inf)
-    for valid_count in np.unique(valid_counts):
-        if valid_count > 0:
-            critical_values[valid_counts == valid_count] = _ks_critical_value(int(valid_count))
     critical_tolerance = 0.0
     if np.issubdtype(calibration_values.dtype, np.floating):
         critical_tolerance = float(np.finfo(calibration_values.dtype).eps)
-
-    candidates = np.nonzero(d_statistics >= critical_values - critical_tolerance)
-    poor_fits: list[tuple[int, float]] = []
-    for candidate in zip(*candidates, strict=True):
-        step_index = int(candidate[0])
-        valid_count = int(valid_counts[candidate])
-        sorted_column = sorted_values[(slice(0, valid_count), *candidate)]
-        try:
-            p_value = _ks_poor_fit_p_value(
-                sorted_column,
-                scipy.special.gammainc(
-                    float(alphas[candidate]),
-                    sorted_column.astype(float) / float(betas[candidate]),
-                ),
-            )
-        except Exception:
-            # ignore fitting errors during goodness-of-fit check, as the per-series path does
-            continue
-        if p_value is not None:
-            poor_fits.append((step_index, p_value))
+    poor_fits = _spatial_poor_fits(
+        sorted_values,
+        valid_counts,
+        valid_positions,
+        cdf_values,
+        critical_tolerance,
+        lambda column, candidate: scipy.special.gammainc(
+            float(alphas[candidate]),
+            column.astype(float) / float(betas[candidate]),
+        ),
+    )
 
     if not poor_fits:
         return
@@ -1020,12 +1178,17 @@ def _check_goodness_of_fit_pearson(
     Performs Kolmogorov-Smirnov tests for each time step and aggregates
     poor fits into a single warning to avoid flooding users with warnings.
 
-    :param calibration_values: Calibration data with shape (years, time_steps)
+    :param calibration_values: Calibration data with shape (years, time_steps),
+        or (years, time_steps, ...) for spatial input
     :param probabilities_of_zero: Probability of zero for each time step
     :param locs: Location parameters for Pearson Type III distribution
     :param scales: Scale parameters for Pearson Type III distribution
     :param skews: Skewness parameters for Pearson Type III distribution
     """
+    if calibration_values.ndim > 2:
+        _check_goodness_of_fit_pearson_spatial(calibration_values, probabilities_of_zero, locs, scales, skews)
+        return
+
     time_steps = calibration_values.shape[1]
     poor_fit_steps = []
 
@@ -1081,6 +1244,90 @@ def _check_goodness_of_fit_pearson(
             total_steps=time_steps,
         )
         warnings.warn(warning, stacklevel=3)
+
+
+def _check_goodness_of_fit_pearson_spatial(
+    calibration_values: np.ndarray,
+    probabilities_of_zero: np.ndarray,
+    locs: np.ndarray,
+    scales: np.ndarray,
+    skews: np.ndarray,
+) -> None:
+    """
+    Pearson Type III goodness-of-fit check across every cell of a (years, time_steps, ...) array.
+
+    The cell-axis counterpart of ``_check_goodness_of_fit_pearson``: one D statistic
+    per (time step, cell) is evaluated with NumPy operations, so the check costs no
+    Python call per cell; only candidates at the critical value defer to SciPy for an
+    exact p-value.
+
+    :param calibration_values: Calibration data with shape (years, time_steps, ...)
+    :param probabilities_of_zero: Probability of zero, shaped (time_steps, ...)
+    :param locs: Location parameters, shaped (time_steps, ...)
+    :param scales: Scale parameters, shaped (time_steps, ...)
+    :param skews: Skewness parameters, shaped (time_steps, ...)
+    """
+    num_years = calibration_values.shape[0]
+    time_steps = calibration_values.shape[1]
+    cell_count = int(np.prod(calibration_values.shape[2:], dtype=np.intp))
+
+    # the per-series check drops zero values as well as NaNs before ranking, so both
+    # are replaced with +inf to let each cell's valid sample lead along the year axis
+    valid_mask = ~np.isnan(calibration_values) & (calibration_values != 0)
+    sorted_values = np.sort(np.where(valid_mask, calibration_values, np.inf), axis=0)
+    valid_counts = np.count_nonzero(valid_mask, axis=0)
+
+    # fit failures are marked by all-zero parameters, and the per-series check skips
+    # cells whose parameters are invalid or whose scale is not positive
+    parameters_valid = ~((locs == 0) & (scales == 0) & (skews == 0))
+    parameters_valid &= np.isfinite(locs) & np.isfinite(scales) & np.isfinite(skews) & (scales > 0)
+    parameters_valid &= valid_counts > 0
+
+    ranks = np.arange(1, num_years + 1).reshape((-1,) + (1,) * (calibration_values.ndim - 1))
+    valid_positions = (ranks <= valid_counts) & parameters_valid[np.newaxis]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        cdf_values = scipy.stats.pearson3.cdf(
+            np.asarray(sorted_values, dtype=float),
+            np.asarray(skews, dtype=float)[np.newaxis],
+            loc=np.asarray(locs, dtype=float)[np.newaxis],
+            scale=np.asarray(scales, dtype=float)[np.newaxis],
+        )
+    critical_tolerance = 0.0
+    if np.issubdtype(calibration_values.dtype, np.floating):
+        critical_tolerance = float(np.finfo(calibration_values.dtype).eps)
+    poor_fits = _spatial_poor_fits(
+        sorted_values,
+        valid_counts,
+        valid_positions,
+        cdf_values,
+        critical_tolerance,
+        lambda column, candidate: cdf_values[(slice(0, column.size), *candidate)],
+    )
+
+    if not poor_fits:
+        return
+
+    # show up to 5 examples
+    examples = poor_fits[:5]
+    example_text = ", ".join([f"step {idx} (p={p:.4f})" for idx, p in examples])
+    if len(poor_fits) > 5:
+        example_text += f", and {len(poor_fits) - 5} more"
+
+    comparisons = time_steps * cell_count
+    message = (
+        f"Pearson Type III distribution shows poor goodness-of-fit for {len(poor_fits)} of "
+        f"{comparisons} time step/cell combinations (p < {GOODNESS_OF_FIT_P_VALUE_THRESHOLD}). "
+        f"Examples: {example_text}. Consider using a different distribution or "
+        f"investigating data quality issues."
+    )
+    warning = GoodnessOfFitWarning(
+        message,
+        distribution_name="pearson3",
+        threshold=GOODNESS_OF_FIT_P_VALUE_THRESHOLD,
+        poor_fit_count=len(poor_fits),
+        total_steps=comparisons,
+    )
+    warnings.warn(warning, stacklevel=3)
 
 
 def _replace_zeros_with_nan(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -1266,31 +1513,31 @@ def prepare_scaled(
     in every index at once. An all-missing 1-D or 2-D input is returned as a flattened
     array without computing anything, which callers can detect with
     ``prepared.ndim == 1`` in order to short-circuit; an all-missing time-major spatial
-    input is returned with its (time, *cells) shape. Shape errors are raised as
+    input is returned with its (time, ``*cells``) shape. Shape errors are raised as
     ``ValueError``, the convention established by ``_validate_array`` and
     ``utils.reshape_to_2d``.
 
     Args:
         values: The array of values, either 1-D, 2-D (years, periods), or a time-major
-            spatial array with shape (time, *cells) and three or more dimensions,
+            spatial array with shape (time, ``*cells``) and three or more dimensions,
             whose trailing cell dimensions are preserved.
         scale: The number of values for which each sliding summation will encompass.
         periodicity: Specifies whether data is monthly (12 time steps per year) or daily.
         clip_negatives: Whether negative values are clipped to zero, defaults to True.
         reshape: Whether the scaled values are reshaped to (years, period_length),
             defaults to True. For a time-major spatial input the result is
-            (years, period_length, *cells). ``indices.percentage_of_normal`` passes
+            (years, period_length, ``*cells``). ``indices.percentage_of_normal`` passes
             False, since it averages the un-reshaped 1-D sums over each calendar period.
         spatial_time_major: Declares that a three-or-more-dimensional ``values`` is a
-            time-major block of independent time series, shaped (time, *cells). That is
+            time-major block of independent time series, shaped (time, ``*cells``). That is
             how a block is read anyway, except when the first cell axis is a calendar
             period length (12 or 366), which makes the shape equally readable as a
-            (years, periods, *cells) array; there the caller has to say which it means.
+            (years, periods, ``*cells``) array; there the caller has to say which it means.
             ``xarray_adapter`` sets this for every block it packs.
 
     Returns:
         The scaled values, either 2-D with shape (years, periodicity.period_length),
-        three or more dimensions with shape (years, periodicity.period_length, *cells)
+        three or more dimensions with shape (years, periodicity.period_length, ``*cells``)
         for a time-major spatial input, or 1-D when an all-missing input or
         ``reshape=False``.
     """
@@ -1308,6 +1555,13 @@ def prepare_scaled(
     # so we return the same array of missing values
     if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
         return values
+
+    # a partially masked input must become explicit NaN before sum_to_scale, since its
+    # spatial branch concatenates through np.concatenate, which drops the mask and lets
+    # the underlying fill values leak into sliding sums, calibration normals, and
+    # percentages.
+    if np.ma.isMaskedArray(values):
+        values = np.ma.filled(values.astype(float), np.nan)
 
     # clip any negative values to zero. np.any(values < 0.0) is NaN-safe (NaN < 0
     # is False) and mask-safe (MaskedArray.any() ignores masked entries), unlike
@@ -1595,7 +1849,8 @@ def fit_and_standardize(
             Deprecated aliases such as "alphas" and "probabilities_of_zero" are
             accepted, and an explicit None means "fit this parameter from the data".
         fallback_to_gamma: Whether to fall back to the gamma distribution when a
-            Pearson Type III fit fails or leaves too many missing values.
+            Pearson Type III fit fails or leaves too many missing values. The
+            decision is made once for the whole input block, not per grid cell.
         fallback_context: Context included in the fall-back warning log message.
 
     Returns:
@@ -1627,6 +1882,19 @@ def fit_and_standardize(
     locs = None if params is None else params.get("loc")
     scales = None if params is None else params.get("scale")
     skews = None if params is None else params.get("skew")
+
+    if values.ndim > 2:
+        # reject mismatched parameter cells before the fall-back try: that is an
+        # argument error, not a Pearson fit failure to fall back from
+        _validate_pearson_parameter_cells(
+            values,
+            (
+                ("prob_zero", probabilities_of_zero),
+                ("loc", locs),
+                ("scale", scales),
+                ("skew", skews),
+            ),
+        )
 
     if not fallback_to_gamma:
         return transform_fitted_pearson(

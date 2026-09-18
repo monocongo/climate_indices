@@ -143,15 +143,14 @@ def test_transform_fitted_gamma(
     )
 
     # confirm that an input array which is not 1-D or 2-D will raise an error
-    pytest.raises(
-        ValueError,
-        compute.transform_fitted_gamma,
-        np.zeros((9, 8, 7, 6), dtype=float),
-        data_year_start_daily,
-        calibration_year_start_daily,
-        calibration_year_end_daily,
-        compute.Periodicity.monthly,
-    )
+    with pytest.raises(ValueError):
+        compute.transform_fitted_gamma(
+            np.zeros((9, 8, 7, 6), dtype=float),
+            data_year_start_daily,
+            calibration_year_start_daily,
+            calibration_year_end_daily,
+            compute.Periodicity.monthly,
+        )
 
 
 def test_transform_fitted_gamma_all_zeros_produces_finite_spi():
@@ -363,35 +362,33 @@ def test_transform_fitted_pearson(
 
     # confirm that we get expected errors when
     # using invalid time series type arguments
-    pytest.raises(
-        ValueError,
-        compute.transform_fitted_pearson,
-        precips_mm_monthly.flatten(),
-        data_year_start_monthly,
-        calibration_year_start_monthly,
-        calibration_year_end_monthly,
-        None,
-    )
-    pytest.raises(
-        ValueError,
-        compute.transform_fitted_pearson,
-        precips_mm_monthly.flatten(),
-        data_year_start_monthly,
-        calibration_year_start_monthly,
-        calibration_year_end_monthly,
-        "unsupported_type",
-    )
+    flat_precips_mm_monthly = precips_mm_monthly.flatten()
+    with pytest.raises(ValueError):
+        compute.transform_fitted_pearson(
+            flat_precips_mm_monthly,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            None,
+        )
+    with pytest.raises(ValueError):
+        compute.transform_fitted_pearson(
+            flat_precips_mm_monthly,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            "unsupported_type",
+        )
 
     # confirm that an input array which is not 1-D or 2-D will raise an error
-    pytest.raises(
-        ValueError,
-        compute.transform_fitted_pearson,
-        np.zeros((9, 8, 7, 6), dtype=float),
-        data_year_start_daily,
-        calibration_year_start_daily,
-        calibration_year_end_daily,
-        compute.Periodicity.monthly,
-    )
+    with pytest.raises(ValueError):
+        compute.transform_fitted_pearson(
+            np.zeros((9, 8, 7, 6), dtype=float),
+            data_year_start_daily,
+            calibration_year_start_daily,
+            calibration_year_end_daily,
+            compute.Periodicity.monthly,
+        )
 
 
 @pytest.mark.usefixtures(

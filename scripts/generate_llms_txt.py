@@ -22,11 +22,12 @@ FULL_FILES = [
     *SUMMARY_FILES,
     "docs/project-overview.md",
     "docs/architecture.md",
-    "docs/component-inventory.md",
     "docs/development-guide.md",
     "docs/contribution-guide.md",
-    "docs/xarray_migration.rst",
-    "docs/algorithms.rst",
+    "docs/ai-assisted-development.md",
+    "docs/xarray_migration.md",
+    "docs/performance.md",
+    "docs/algorithms.md",
 ]
 
 

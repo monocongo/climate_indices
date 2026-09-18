@@ -1,9 +1,10 @@
 """Computation of L-moments used for Pearson Type-III distribution fitting"""
 
 import logging
-from math import exp, lgamma, pi, sqrt
+from math import exp, pi, sqrt
 
 import numpy as np
+from scipy import special
 
 from climate_indices import utils
 
@@ -16,6 +17,21 @@ _logger = utils.get_logger(__name__, logging.WARN)
 # Configuration constants for L-moments computation
 # Minimum number of non-NaN values required for L-moments estimation
 MIN_VALUES_FOR_LMOMENTS = 4
+
+# Pearson Type III parameter-estimation coefficients from the Hosking RC20525
+# 'pearson3' subroutine, shared by the single-series and cell-axis fits
+# (c1, c2, c3, d1, d2, d3, d4, d5, d6)
+_PEARSON3_COEFFICIENTS = (
+    0.2906,
+    0.1882,
+    0.0442,
+    0.36067,
+    -0.59567,
+    0.25361,
+    -2.78861,
+    2.56096,
+    -0.77045,
+)
 
 
 def fit(timeseries: np.ndarray) -> dict[str, float]:
@@ -56,15 +72,7 @@ def _estimate_pearson3_parameters(lmoments: np.ndarray) -> dict[str, float]:
     :rtype: a 3-element, 1-D (flat) numpy array of floats (loc, scale, skew)
     """
 
-    c1 = 0.2906
-    c2 = 0.1882
-    c3 = 0.0442
-    d1 = 0.36067
-    d2 = -0.59567
-    d3 = 0.25361
-    d4 = -2.78861
-    d5 = 2.56096
-    d6 = -0.77045
+    c1, c2, c3, d1, d2, d3, d4, d5, d6 = _PEARSON3_COEFFICIENTS
     t3 = abs(lmoments[2])  # L-skewness?
 
     # ensure the validity of the L-moments
@@ -95,7 +103,7 @@ def _estimate_pearson3_parameters(lmoments: np.ndarray) -> dict[str, float]:
             alpha = t * (d1 + (t * (d2 + (t * d3)))) / (1.0 + (t * (d4 + (t * (d5 + (t * d6))))))
 
         alpha_root = sqrt(alpha)
-        beta = sqrt(pi) * lmoments[1] * exp(lgamma(alpha) - lgamma(alpha + 0.5))
+        beta = sqrt(pi) * lmoments[1] * exp(special.gammaln(alpha) - special.gammaln(alpha + 0.5))
         scale = beta * alpha_root
 
         # the sign of the third L-moment determines
@@ -106,6 +114,135 @@ def _estimate_pearson3_parameters(lmoments: np.ndarray) -> dict[str, float]:
             skew = 2.0 / alpha_root
 
     return {"loc": loc, "skew": skew, "scale": scale}
+
+
+def fit_spatial(values: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Returns the L-Moments fits (loc, scale, skew) for every cell of an array whose
+    first axis is the sample axis.
+
+    Cell-axis counterpart of :func:`fit`: instead of raising on the first cell whose
+    sample is too short or whose L-moments are invalid, the invalid cells are marked
+    in the returned validity mask so the caller can apply its own fallback.
+
+    Args:
+        values: Array of samples with shape (samples, *cells).
+
+    Returns:
+        Tuple of (loc, scale, skew, valid), each array shaped like values.shape[1:].
+    """
+    lmoments, valid = _estimate_lmoments_spatial(values)
+    locs, scales, skews, valid = _estimate_pearson3_parameters_spatial(lmoments, valid)
+    return locs, scales, skews, valid
+
+
+def _estimate_pearson3_parameters_spatial(
+    lmoments: np.ndarray,
+    valid: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Cell-axis counterpart of :func:`_estimate_pearson3_parameters`.
+
+    Every branch is evaluated for every cell with NumPy operations and the result is
+    masked by the validity of the cell's L-moments, rather than returning early. The
+    refined validity mask is returned so callers see the same cells the single-series
+    fit would reject.
+
+    :param lmoments: array of the first three L-moments, shaped (3, *cells)
+    :param valid: boolean array shaped (*cells) marking usable L-moments
+    :return: tuple of (loc, scale, skew, valid) arrays shaped (*cells); invalid cells
+        are zero and marked invalid
+    """
+    c1, c2, c3, d1, d2, d3, d4, d5, d6 = _PEARSON3_COEFFICIENTS
+    locs = lmoments[0]
+    second_lmoment = lmoments[1]
+    t3 = np.abs(lmoments[2])
+    valid = valid & (second_lmoment > 0) & (t3 < 1.0)
+
+    zero_skew = t3 <= 1e-6
+    low_skew = (~zero_skew) & (t3 < 0.333333333)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        t_low = pi * 3 * t3 * t3
+        alpha_low = (1.0 + (c1 * t_low)) / (t_low * (1.0 + (t_low * (c2 + (t_low * c3)))))
+        t_high = 1.0 - t3
+        alpha_high = (
+            t_high * (d1 + (t_high * (d2 + (t_high * d3)))) / (1.0 + (t_high * (d4 + (t_high * (d5 + (t_high * d6))))))
+        )
+        alpha = np.where(zero_skew, 0.0, np.where(low_skew, alpha_low, alpha_high))
+        alpha_root = np.sqrt(alpha)
+        beta = np.sqrt(pi) * second_lmoment * np.exp(special.gammaln(alpha) - special.gammaln(alpha + 0.5))
+        scales = np.where(zero_skew, second_lmoment * sqrt(pi), beta * alpha_root)
+        skews = np.where(zero_skew, 0.0, np.where(lmoments[2] < 0, -2.0 / alpha_root, 2.0 / alpha_root))
+
+    return (
+        np.where(valid, locs, 0.0),
+        np.where(valid, scales, 0.0),
+        np.where(valid, skews, 0.0),
+        valid,
+    )
+
+
+def _estimate_lmoments_spatial(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Cell-axis counterpart of :func:`_estimate_lmoments`.
+
+    The per-series accumulator is a sequential loop over the sorted sample ranks; the
+    same loop runs here with every cell evaluated at once, so each cell's additions
+    happen in the same order as the single-series fit.
+
+    :param values: array of samples with shape (samples, *cells)
+    :return: tuple of (lmoments, valid) with lmoments shaped (3, *cells) and valid
+        shaped (*cells)
+    """
+    if np.ma.isMaskedArray(values):
+        values = np.ma.filled(values.astype(float), np.nan)
+    else:
+        values = np.asarray(values, dtype=float)
+    number_of_values = np.count_nonzero(~np.isnan(values), axis=0)
+    sorted_values = np.sort(values, axis=0)
+
+    sample_count, *cell_shape = values.shape
+    sums = np.zeros((3, *cell_shape))
+    ranks = np.arange(sample_count)
+    in_sample = ranks.reshape((sample_count,) + (1,) * len(cell_shape)) < number_of_values
+    for rank in ranks:
+        ranked_value = np.where(in_sample[rank], sorted_values[rank], 0.0)
+        sums[0] = sums[0] + ranked_value
+        first_term = ranked_value * rank
+        sums[1] = sums[1] + first_term
+        sums[2] = sums[2] + first_term * (rank - 1)
+
+    counts = number_of_values.astype(float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        sums[0] = sums[0] / counts
+        y = counts - 1.0
+        z_val = counts * y
+        sums[1] = sums[1] / z_val
+        y = y - 1.0
+        z_val = z_val * y
+        sums[2] = sums[2] / z_val
+
+    k = 3
+    p0 = -1.0
+    for _ in range(2):
+        ak = float(k)
+        p0 = -p0
+        p = p0
+        temp = p * sums[0]
+        for i in range(1, k):
+            ai = float(i)
+            p = -p * (ak + ai - 1.0) * (ak - ai) / (ai * ai)
+            temp = temp + (p * sums[i])
+        sums[k - 1] = temp
+        k = k - 1
+
+    lmoments = np.zeros((3, *cell_shape))
+    valid = number_of_values >= MIN_VALUES_FOR_LMOMENTS
+    valid = valid & (sums[1] != 0)
+    lmoments[0] = np.where(valid, sums[0], 0.0)
+    lmoments[1] = np.where(valid, sums[1], 0.0)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        lmoments[2] = np.where(valid, sums[2] / sums[1], 0.0)
+    return lmoments, valid
 
 
 def _estimate_lmoments(

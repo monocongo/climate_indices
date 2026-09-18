@@ -176,8 +176,56 @@ def test_spei_uses_provided_pet_file_and_matches_in_process_computation(
         np.testing.assert_allclose(dataset["spei_gamma_06"].values[0], expected, equal_nan=True)
 
 
+def test_spei_with_temperature_input_computes_and_consumes_pet(tmp_path, precips_mm_monthly, temps_celsius):
+    """A temperature-only SPEI run writes PET as a side effect and consumes it."""
+    precips = precips_mm_monthly.reshape(-1)
+    temps = temps_celsius.reshape(-1)
+    precip_path = tmp_path / "precip.nc"
+    temp_path = tmp_path / "temp.nc"
+    output_base = tmp_path / "spei_temp_only"
+
+    _write_divisions(precip_path, precips)
+    _write_divisions(temp_path, temps, var_name="temp", units="degrees_celsius")
+    main(
+        [
+            *_common_arguments("spei", precip_path, output_base),
+            "--scales",
+            "6",
+            "--netcdf_temp",
+            str(temp_path),
+            "--var_name_temp",
+            "temp",
+        ]
+    )
+
+    pet_path = tmp_path / "spei_temp_only_pet_thornthwaite.nc"
+    assert pet_path.exists()
+    with xr.open_dataset(pet_path) as dataset:
+        pet = dataset["pet_thornthwaite"].values[0]
+
+    expected = indices.spei(
+        precips_mm=precips,
+        pet_mm=pet,
+        scale=6,
+        distribution=indices.Distribution.gamma,
+        data_start_year=_DATA_START_YEAR,
+        calibration_year_initial=_CALIBRATION_START_YEAR,
+        calibration_year_final=_CALIBRATION_END_YEAR,
+        periodicity=compute.Periodicity.monthly,
+    )
+    with xr.open_dataset(tmp_path / "spei_temp_only_spei_gamma_06.nc") as dataset:
+        np.testing.assert_allclose(dataset["spei_gamma_06"].values[0], expected, equal_nan=True)
+
+
+def _length_in(values_inches, units):
+    """Express values known in inches under the given length unit label."""
+    return values_inches if units in ("inches", None) else values_inches * 25.4
+
+
+@pytest.mark.parametrize("precip_units", ["mm", "inches"])
+@pytest.mark.parametrize("awc_units", ["mm", "millimeters", "inches", None])
 def test_palmers_writes_all_four_outputs_matching_in_process_computation(
-    tmp_path, precips_mm_monthly, pet_thornthwaite_mm, palmer_awcs
+    tmp_path, precips_mm_monthly, pet_thornthwaite_mm, palmer_awcs, precip_units, awc_units
 ):
     precips = precips_mm_monthly.reshape(-1)
     pet = pet_thornthwaite_mm.reshape(-1)
@@ -185,9 +233,15 @@ def test_palmers_writes_all_four_outputs_matching_in_process_computation(
     precip_path = tmp_path / "precip.nc"
     pet_path = tmp_path / "pet.nc"
     awc_path = tmp_path / "awc.nc"
-    _write_divisions(precip_path, precips)
-    _write_divisions(pet_path, pet, var_name="pet")
-    xr.Dataset({"awc": ("division", np.array([awc]))}, coords={"division": [_DIVISION]}).to_netcdf(awc_path)
+    # both labelings describe the same physical inputs, so the computed indices
+    # must match the in-process computation on the inches palmer.pdsi() takes
+    _write_divisions(precip_path, _length_in(precips / 25.4, precip_units), units=precip_units)
+    _write_divisions(pet_path, _length_in(pet / 25.4, precip_units), var_name="pet", units=precip_units)
+    awc_attrs = {} if awc_units is None else {"units": awc_units}
+    xr.Dataset(
+        {"awc": ("division", np.array([_length_in(awc, awc_units)]), awc_attrs)},
+        coords={"division": [_DIVISION]},
+    ).to_netcdf(awc_path)
     output_base = tmp_path / "palmers"
 
     main(
@@ -205,8 +259,8 @@ def test_palmers_writes_all_four_outputs_matching_in_process_computation(
     )
 
     expected_pdsi, expected_phdi, expected_pmdi, expected_zindex, _ = palmer.pdsi(
-        precips,
-        pet,
+        precips / 25.4,
+        pet / 25.4,
         awc,
         _DATA_START_YEAR,
         _CALIBRATION_START_YEAR,
@@ -229,6 +283,66 @@ def test_palmers_writes_all_four_outputs_matching_in_process_computation(
         "palmers_pmdi.nc",
         "palmers_zindex.nc",
     }
+
+
+def test_palmers_rejects_an_awc_variable_with_unsupported_units(
+    tmp_path, precips_mm_monthly, pet_thornthwaite_mm, palmer_awcs
+):
+    precip_path = tmp_path / "precip.nc"
+    pet_path = tmp_path / "pet.nc"
+    awc_path = tmp_path / "awc.nc"
+    _write_divisions(precip_path, precips_mm_monthly.reshape(-1))
+    _write_divisions(pet_path, pet_thornthwaite_mm.reshape(-1), var_name="pet")
+    xr.Dataset(
+        {"awc": ("division", np.array([palmer_awcs[_DIVISION]]), {"units": "kg m-2"})},
+        coords={"division": [_DIVISION]},
+    ).to_netcdf(awc_path)
+
+    arguments = [
+        *_common_arguments("palmers", precip_path, tmp_path / "palmers"),
+        "--netcdf_pet",
+        str(pet_path),
+        "--var_name_pet",
+        "pet",
+        "--netcdf_awc",
+        str(awc_path),
+        "--var_name_awc",
+        "awc",
+    ]
+
+    with pytest.raises(ValueError, match="Unsupported available water capacity units"):
+        main(arguments)
+
+    assert not list(tmp_path.glob("palmers_*"))
+
+
+def test_palmers_rejects_a_precipitation_rate_label(tmp_path, precips_mm_monthly, pet_thornthwaite_mm, palmer_awcs):
+    precip_path = tmp_path / "precip.nc"
+    pet_path = tmp_path / "pet.nc"
+    awc_path = tmp_path / "awc.nc"
+    _write_divisions(precip_path, precips_mm_monthly.reshape(-1), units="mm/dy")
+    _write_divisions(pet_path, pet_thornthwaite_mm.reshape(-1), var_name="pet")
+    xr.Dataset(
+        {"awc": ("division", np.array([palmer_awcs[_DIVISION]]), {"units": "inches"})},
+        coords={"division": [_DIVISION]},
+    ).to_netcdf(awc_path)
+
+    arguments = [
+        *_common_arguments("palmers", precip_path, tmp_path / "palmers"),
+        "--netcdf_pet",
+        str(pet_path),
+        "--var_name_pet",
+        "pet",
+        "--netcdf_awc",
+        str(awc_path),
+        "--var_name_awc",
+        "awc",
+    ]
+
+    with pytest.raises(ValueError, match="mm/dy"):
+        main(arguments)
+
+    assert not list(tmp_path.glob("palmers_*"))
 
 
 def test_invalid_scale_raises_and_writes_no_output(tmp_path, precips_mm_monthly):
@@ -263,3 +377,93 @@ def test_output_carries_cf_metadata_and_coordinates(tmp_path, precips_mm_monthly
         assert variable.attrs["valid_max"] == 3.09
         assert dataset["division"].values.tolist() == [_DIVISION]
         np.testing.assert_array_equal(dataset["time"].values, _months(precips_mm_monthly.size).values)
+
+
+def test_pnp_matches_in_process_computation(tmp_path, precips_mm_monthly):
+    values = precips_mm_monthly.reshape(-1)
+    precip_path = tmp_path / "precip.nc"
+    _write_timeseries(precip_path, values)
+    output_base = tmp_path / "pnp_timeseries"
+
+    main([*_common_arguments("pnp", precip_path, output_base), "--scales", "6"])
+
+    expected = indices.percentage_of_normal(
+        values,
+        scale=6,
+        data_start_year=_DATA_START_YEAR,
+        calibration_start_year=_CALIBRATION_START_YEAR,
+        calibration_end_year=_CALIBRATION_END_YEAR,
+        periodicity=compute.Periodicity.monthly,
+    )
+    with xr.open_dataset(tmp_path / "pnp_timeseries_pnp_06.nc") as dataset:
+        np.testing.assert_allclose(dataset["pnp_06"].values, expected, equal_nan=True)
+
+
+def test_all_runs_each_index_into_its_own_output(tmp_path, precips_mm_monthly, pet_thornthwaite_mm, palmer_awcs):
+    """`all` runs SPI, SPEI, PNP, and Palmers, skipping PET when one is provided."""
+    precips = precips_mm_monthly.reshape(-1)
+    pet = pet_thornthwaite_mm.reshape(-1)
+    precip_path = tmp_path / "precip.nc"
+    pet_path = tmp_path / "pet.nc"
+    awc_path = tmp_path / "awc.nc"
+    _write_divisions(precip_path, precips)
+    _write_divisions(pet_path, pet, var_name="pet")
+    xr.Dataset(
+        {"awc": ("division", [palmer_awcs[_DIVISION]])},
+        coords={"division": [_DIVISION]},
+    ).to_netcdf(awc_path)
+    output_base = tmp_path / "all"
+
+    main(
+        [
+            *_common_arguments("all", precip_path, output_base),
+            "--scales",
+            "1",
+            "--netcdf_pet",
+            str(pet_path),
+            "--var_name_pet",
+            "pet",
+            "--netcdf_awc",
+            str(awc_path),
+            "--var_name_awc",
+            "awc",
+        ]
+    )
+
+    # SPI and SPEI run once per scale and distribution, PNP once per scale, and
+    # Palmers once into its four outputs; no PET file is written because the
+    # provided PET input is used instead
+    assert {path.name for path in tmp_path.glob("all_*.nc")} == {
+        "all_spi_gamma_01.nc",
+        "all_spi_pearson_01.nc",
+        "all_spei_gamma_01.nc",
+        "all_spei_pearson_01.nc",
+        "all_pnp_01.nc",
+        "all_pdsi.nc",
+        "all_phdi.nc",
+        "all_pmdi.nc",
+        "all_zindex.nc",
+    }
+
+    expected_pnp = indices.percentage_of_normal(
+        precips,
+        scale=1,
+        data_start_year=_DATA_START_YEAR,
+        calibration_start_year=_CALIBRATION_START_YEAR,
+        calibration_end_year=_CALIBRATION_END_YEAR,
+        periodicity=compute.Periodicity.monthly,
+    )
+    with xr.open_dataset(tmp_path / "all_pnp_01.nc") as dataset:
+        np.testing.assert_allclose(dataset["pnp_01"].values[0], expected_pnp, equal_nan=True)
+
+    expected_spi = indices.spi(
+        values=precips,
+        scale=1,
+        distribution=indices.Distribution.gamma,
+        data_start_year=_DATA_START_YEAR,
+        calibration_year_initial=_CALIBRATION_START_YEAR,
+        calibration_year_final=_CALIBRATION_END_YEAR,
+        periodicity=compute.Periodicity.monthly,
+    )
+    with xr.open_dataset(tmp_path / "all_spi_gamma_01.nc") as dataset:
+        np.testing.assert_allclose(dataset["spi_gamma_01"].values[0], expected_spi, equal_nan=True)

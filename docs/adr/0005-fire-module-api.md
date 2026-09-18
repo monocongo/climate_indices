@@ -31,6 +31,8 @@ deferral rather than a silent departure from the trigger above.
 ## Consequences
 
 This amends ADR-0001 only for the fire family. Fire’s naming, unit, state, and
-error contracts are recorded in [the fire subsystem design](../design/fire-subsystem.md).
+error contracts are recorded in the internal fire subsystem design note
+(`docs/design/fire-subsystem.md`), which stays in the repository rather than
+this site because it also plans unimplemented fire indices.
 No fire CLI or fire-specific exception hierarchy is introduced by this
 decision.

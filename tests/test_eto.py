@@ -59,7 +59,8 @@ def test_eto_hargreaves_size_mismatch():
     tmax = np.full(366, 25.0)  # different size
     tmean = np.full(365, 17.5)
 
-    pytest.raises(InvalidArgumentError, eto.eto_hargreaves, tmin, tmax, tmean, 35.0)
+    with pytest.raises(InvalidArgumentError):
+        eto.eto_hargreaves(tmin, tmax, tmean, 35.0)
 
 
 # ------------------------------------------------------------------------------
@@ -70,10 +71,12 @@ def test_eto_hargreaves_invalid_latitude():
     tmean = np.full(366, 17.5)
 
     # latitude > 90 should raise error
-    pytest.raises(InvalidArgumentError, eto.eto_hargreaves, tmin, tmax, tmean, 91.0)
+    with pytest.raises(InvalidArgumentError):
+        eto.eto_hargreaves(tmin, tmax, tmean, 91.0)
 
     # latitude < -90 should raise error
-    pytest.raises(InvalidArgumentError, eto.eto_hargreaves, tmin, tmax, tmean, -91.0)
+    with pytest.raises(InvalidArgumentError):
+        eto.eto_hargreaves(tmin, tmax, tmean, -91.0)
 
 
 # ------------------------------------------------------------------------------
@@ -150,37 +153,36 @@ def test_eto_thornthwaite(temps_celsius, latitude_degrees, data_year_start_month
 
     # make sure that a 3-D array raises an error
     reshaped_temps = np.reshape(temps_celsius[0:1400], (123, 2, 6))
-    pytest.raises(
-        ValueError,
-        eto.eto_thornthwaite,
-        reshaped_temps,
-        latitude_degrees,
-        data_year_start_monthly,
-    )
+    with pytest.raises(ValueError):
+        eto.eto_thornthwaite(
+            reshaped_temps,
+            latitude_degrees,
+            data_year_start_monthly,
+        )
 
     # make sure that an invalid latitude value (lat > 90) raises an error
-    pytest.raises(
-        InvalidArgumentError,
-        eto.eto_thornthwaite,
-        temps_celsius,
-        91.0,  # latitude > 90 is invalid
-        data_year_start_monthly,
-    )
+    with pytest.raises(InvalidArgumentError):
+        eto.eto_thornthwaite(
+            temps_celsius,
+            91.0,  # latitude > 90 is invalid
+            data_year_start_monthly,
+        )
 
     # make sure that an invalid latitude value (lat < -90) raises an error
-    pytest.raises(
-        InvalidArgumentError,
-        eto.eto_thornthwaite,
-        temps_celsius,
-        -91.0,  # latitude < -90 is invalid
-        data_year_start_monthly,
-    )
+    with pytest.raises(InvalidArgumentError):
+        eto.eto_thornthwaite(
+            temps_celsius,
+            -91.0,  # latitude < -90 is invalid
+            data_year_start_monthly,
+        )
 
     # make sure that an invalid latitude value (None) raises an error
-    pytest.raises(TypeError, eto.eto_thornthwaite, temps_celsius, None, data_year_start_monthly)
+    with pytest.raises(TypeError):
+        eto.eto_thornthwaite(temps_celsius, None, data_year_start_monthly)
 
     # make sure that an invalid latitude value (NaN) raises an error
-    pytest.raises(InvalidArgumentError, eto.eto_thornthwaite, temps_celsius, np.nan, data_year_start_monthly)
+    with pytest.raises(InvalidArgumentError):
+        eto.eto_thornthwaite(temps_celsius, np.nan, data_year_start_monthly)
 
 
 # ------------------------------------------------------------------------------
@@ -249,13 +251,18 @@ def test_eto_hargreaves_literature_mehta(
 # ------------------------------------------------------------------------------
 def test_sunset_hour_angle():
     # make sure that an invalid latitude value raises an error
-    pytest.raises(InvalidArgumentError, eto._sunset_hour_angle, np.deg2rad(-100.0), np.deg2rad(0.0))
-    pytest.raises(InvalidArgumentError, eto._sunset_hour_angle, np.nan, np.deg2rad(0.0))
+    with pytest.raises(InvalidArgumentError):
+        eto._sunset_hour_angle(np.deg2rad(-100.0), np.deg2rad(0.0))
+    with pytest.raises(InvalidArgumentError):
+        eto._sunset_hour_angle(np.nan, np.deg2rad(0.0))
 
     # make sure that an invalid solar declination angle raises an error
-    pytest.raises(InvalidArgumentError, eto._sunset_hour_angle, np.deg2rad(0.0), np.deg2rad(-75.0))
-    pytest.raises(InvalidArgumentError, eto._sunset_hour_angle, np.deg2rad(0.0), np.deg2rad(85.0))
-    pytest.raises(InvalidArgumentError, eto._sunset_hour_angle, np.deg2rad(0.0), np.nan)
+    with pytest.raises(InvalidArgumentError):
+        eto._sunset_hour_angle(np.deg2rad(0.0), np.deg2rad(-75.0))
+    with pytest.raises(InvalidArgumentError):
+        eto._sunset_hour_angle(np.deg2rad(0.0), np.deg2rad(85.0))
+    with pytest.raises(InvalidArgumentError):
+        eto._sunset_hour_angle(np.deg2rad(0.0), np.nan)
 
     expected_value = math.pi / 2
     computed_value = eto._sunset_hour_angle(0.0, np.deg2rad(0.0))
@@ -279,11 +286,16 @@ def test_sunset_hour_angle():
 # ------------------------------------------------------------------------------
 def test_solar_declination():
     # make sure invalid arguments raise an error
-    pytest.raises(InvalidArgumentError, eto._solar_declination, 0)
-    pytest.raises(InvalidArgumentError, eto._solar_declination, -1)
-    pytest.raises(InvalidArgumentError, eto._solar_declination, 367)
-    pytest.raises(InvalidArgumentError, eto._solar_declination, 5000)
-    pytest.raises(InvalidArgumentError, eto._solar_declination, np.nan)
+    with pytest.raises(InvalidArgumentError):
+        eto._solar_declination(0)
+    with pytest.raises(InvalidArgumentError):
+        eto._solar_declination(-1)
+    with pytest.raises(InvalidArgumentError):
+        eto._solar_declination(367)
+    with pytest.raises(InvalidArgumentError):
+        eto._solar_declination(5000)
+    with pytest.raises(InvalidArgumentError):
+        eto._solar_declination(np.nan)
 
     expected_value = -0.313551072399921
     computed_value = eto._solar_declination(30)
@@ -298,9 +310,12 @@ def test_solar_declination():
 # ------------------------------------------------------------------------------
 def test_daylight_hours():
     # make sure invalid arguments raise an error
-    pytest.raises(InvalidArgumentError, eto._daylight_hours, math.pi + 1)
-    pytest.raises(InvalidArgumentError, eto._daylight_hours, -1.0)
-    pytest.raises(InvalidArgumentError, eto._daylight_hours, np.nan)
+    with pytest.raises(InvalidArgumentError):
+        eto._daylight_hours(math.pi + 1)
+    with pytest.raises(InvalidArgumentError):
+        eto._daylight_hours(-1.0)
+    with pytest.raises(InvalidArgumentError):
+        eto._daylight_hours(np.nan)
 
     expected_value = 7.999999999999999
     computed_value = eto._daylight_hours(math.pi / 3)

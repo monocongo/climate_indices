@@ -34,12 +34,8 @@ from climate_indices.fire._units import (
 )
 from climate_indices.logging_config import get_logger
 from climate_indices.performance import check_large_array_memory
-from climate_indices.xarray_adapter import (
-    _build_output_attrs,
-    _validate_dask_chunks,
-    _validate_time_dimension,
-    _validate_time_monotonicity,
-)
+from climate_indices.validation import validate_dask_chunks, validate_time_dimension, validate_time_monotonicity
+from climate_indices.xarray_adapter import build_output_attrs
 
 # retrieve structlog logger for this module
 _logger = get_logger(__name__)
@@ -928,7 +924,7 @@ def drought_code(
     a DC input.
 
     ``in_season`` selects the seasonal shutdown contract of
-    ``docs/adr/0008-seasonal-carry-is-an-explicit-mask.md``: an off-season day
+    ``docs/adr/0010-seasonal-carry-is-an-explicit-mask.md``: an off-season day
     is neither an observation nor a missing day, so it freezes the recurrence
     and emits the carried DC instead of a gap NaN. A cell whose recurrence has
     not started yet has no carried value and stays NaN. Off-season days are
@@ -1080,7 +1076,7 @@ def overwinter_drought_code(
     result is NaN.
 
     This is the start-up half of the seasonal carry recorded in
-    ``docs/adr/0008-seasonal-carry-is-an-explicit-mask.md``. The caller owns
+    ``docs/adr/0010-seasonal-carry-is-an-explicit-mask.md``. The caller owns
     the season boundaries: accumulate the precipitation between the season
     shutdown and the next start-up, pass the final autumn DC from
     :func:`drought_code`, and pass the result back as ``initial_dc`` for the
@@ -1489,7 +1485,7 @@ class _CodeRecurrence:
     static_valid: npt.NDArray[np.bool_]
     trailing_gap_days: npt.NDArray[np.int64]
     # optional per-day fire-season mask: off-season days freeze the recurrence
-    # instead of advancing or gap-managing it (ADR-0008)
+    # instead of advancing or gap-managing it (ADR-0010)
     in_season: npt.NDArray[np.bool_] | None = None
     # derived once by the runner so the day loop has a single grouping of
     # per-component state instead of parallel index spaces
@@ -2603,9 +2599,9 @@ class _CFFWISCallOptions:
 def _validate_cffwis_xarray_inputs(weather_inputs: tuple[xr.DataArray, ...], time_dim: str) -> None:
     """Validate each weather input's time axis: known dimension, monotonic, daily."""
     for data in weather_inputs:
-        _validate_time_dimension(data, time_dim)
+        validate_time_dimension(data, time_dim)
         if time_dim in data.coords:
-            _validate_time_monotonicity(data.coords[time_dim])
+            validate_time_monotonicity(data.coords[time_dim])
             _validate_daily_time_coordinate(data, time_dim)
 
 
@@ -2840,7 +2836,7 @@ def _cffwis_variable_results(
             # attributes (calendar, axis, ...) survive spin-up trimming
             trimmed = time_coord.isel({options.time_dim: slice(options.spin_up, options.spin_up + output_time_length)})
             variable = variable.assign_coords({options.time_dim: trimmed})
-        variable.attrs = _build_output_attrs(
+        variable.attrs = build_output_attrs(
             temperature_celsius,
             cf_metadata=CF_METADATA[name],  # type: ignore[arg-type]
             calculation_metadata={"nan_policy": options.nan_policy},
@@ -2890,7 +2886,7 @@ def _cffwis_xarray(
         time_dim,
     )
     for data in (temperature, humidity, wind, precipitation):
-        _validate_dask_chunks(data, time_dim)
+        validate_dask_chunks(data, time_dim)
 
     temperature = _convert_temperature_units(temperature, "celsius", argument_name="temperature_celsius.attrs['units']")
     precipitation = _convert_precipitation_units(precipitation, "mm")
