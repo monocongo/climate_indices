@@ -12,15 +12,26 @@ projections.
 
 ## Reproduce
 
+Set `COLLECTOR` to the external evidence-report collector and `REPO` to this
+checkout; the defaults below assume the maintainer's machine. The `UNTIL` bound
+and commit pin the re-queryable counts to the snapshot.
+
 ```bash
-python3 /Users/jadams/.agents/skills/evidence-report/scripts/collect_report.py --repo /Users/jadams/git/climate_indices --since 2026-09-13 --stdout
-gh api --paginate "search/issues?q=repo:monocongo/climate_indices+is:pr+is:merged+merged:>=2026-09-13&per_page=100"
-gh api "search/issues?q=repo:monocongo/climate_indices+is:pr+is:merged&per_page=1" --jq .total_count
-gh api "search/issues?q=repo:monocongo/climate_indices+is:pr+is:open&per_page=1" --jq .total_count
-gh api repos/monocongo/climate_indices/milestones?state=all&per_page=100
+COLLECTOR="${COLLECTOR:-$HOME/.agents/skills/evidence-report/scripts/collect_report.py}"
+REPO="${REPO:-$(git rev-parse --show-toplevel)}"
+UNTIL=2026-09-18T06:56:00Z
+python3 "$COLLECTOR" --repo "$REPO" --since 2026-09-13 --stdout
+gh api --paginate "search/issues?q=repo:monocongo/climate_indices+is:pr+is:merged+merged:2026-09-13..${UNTIL}&per_page=100"
+gh api "search/issues?q=repo:monocongo/climate_indices+is:pr+is:merged+merged:<=${UNTIL}&per_page=1" --jq .total_count
+gh api "search/issues?q=repo:monocongo/climate_indices+is:pr+is:open+created:<=${UNTIL}&per_page=1" --jq .total_count
+gh api "repos/monocongo/climate_indices/milestones?state=all&per_page=100"
 gh project item-list 8 --owner monocongo --format json
-git log origin/main --first-parent --since=2026-09-13T00:00:00Z --oneline
+git log 196046cf --first-parent --since=2026-09-13T00:00:00Z --oneline
 ```
+
+The bounded searches re-derive the merged and open counts. The milestone,
+project-board, and local-machine figures are point-in-time and drift with live
+state, so this committed report is their archive.
 
 ## Cycle at a glance
 
