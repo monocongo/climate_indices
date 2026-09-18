@@ -327,7 +327,11 @@ def test_release_workflow_smoke_tests_built_wheel() -> None:
     assert 'python -m venv "${RUNNER_TEMP}/wheel-check"' in workflow
     assert 'cd "${RUNNER_TEMP}"' in workflow
     assert (
-        "from climate_indices import eddi, pci, percentage_of_normal, pet_hargreaves, pet_thornthwaite, spei, spi"
+        "from climate_indices import eddi, fire, pci, percentage_of_normal, pet_hargreaves, pet_thornthwaite, spei, spi"
+        in workflow
+    )
+    assert (
+        "assert all(map(callable, (fire.kbdi, fire.cffwis, fire.fosberg_ffwi, fire.hot_dry_windy, fire.haines_index)))"
         in workflow
     )
 
@@ -409,6 +413,22 @@ def test_v240_public_api_importable() -> None:
     from climate_indices import eddi
 
     assert callable(eddi)
+
+
+def test_v300_public_api_importable() -> None:
+    """The 3.0.0 fire namespace must be a public package export with callable entry points.
+
+    The fire subsystem is the headline 3.0.0 addition. If the public __init__ stops
+    exporting it, the package still installs but the namespace is absent from the
+    advertised API.
+    """
+    import climate_indices
+    from climate_indices import fire
+
+    assert "fire" in climate_indices.__all__
+    assert climate_indices.fire is fire
+    for entry_point in ("cffwis", "fosberg_ffwi", "haines_index", "hot_dry_windy", "kbdi"):
+        assert callable(getattr(fire, entry_point)), f"fire.{entry_point} is not callable"
 
 
 # ---------------------------------------------------------------------------
