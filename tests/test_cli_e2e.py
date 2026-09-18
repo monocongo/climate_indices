@@ -224,7 +224,7 @@ def _length_in(values_inches, units):
 
 @pytest.mark.parametrize("precip_units", ["mm", "inches"])
 @pytest.mark.parametrize("awc_units", ["mm", "millimeters", "inches", None])
-def test_palmers_writes_all_four_outputs_matching_in_process_computation(
+def test_palmers_writes_all_five_outputs_matching_in_process_computation(
     tmp_path, precips_mm_monthly, pet_thornthwaite_mm, palmer_awcs, precip_units, awc_units
 ):
     precips = precips_mm_monthly.reshape(-1)
@@ -266,22 +266,31 @@ def test_palmers_writes_all_four_outputs_matching_in_process_computation(
         _CALIBRATION_START_YEAR,
         _CALIBRATION_END_YEAR,
     )
+    expected_scpdsi = palmer.scpdsi(
+        precips / 25.4,
+        pet / 25.4,
+        awc,
+        _DATA_START_YEAR,
+        _CALIBRATION_START_YEAR,
+        _CALIBRATION_END_YEAR,
+    )[0]
     for variable_name, expected in [
         ("pdsi", expected_pdsi),
         ("phdi", expected_phdi),
         ("pmdi", expected_pmdi),
         ("zindex", expected_zindex),
+        ("scpdsi", expected_scpdsi),
     ]:
         with xr.open_dataset(tmp_path / f"palmers_{variable_name}.nc") as dataset:
             np.testing.assert_allclose(dataset[variable_name].values[0], expected, equal_nan=True)
 
-    # self-calibration isn't implemented (CONTEXT.md / issue #716), so the CLI
-    # must write the four outputs and no fifth scpdsi file
+    # the CLI exposes all five Palmer outputs, including the self-calibrating scPDSI
     assert {path.name for path in tmp_path.glob("palmers_*.nc")} == {
         "palmers_pdsi.nc",
         "palmers_phdi.nc",
         "palmers_pmdi.nc",
         "palmers_zindex.nc",
+        "palmers_scpdsi.nc",
     }
 
 
@@ -431,7 +440,7 @@ def test_all_runs_each_index_into_its_own_output(tmp_path, precips_mm_monthly, p
     )
 
     # SPI and SPEI run once per scale and distribution, PNP once per scale, and
-    # Palmers once into its four outputs; no PET file is written because the
+    # Palmers once into its five outputs; no PET file is written because the
     # provided PET input is used instead
     assert {path.name for path in tmp_path.glob("all_*.nc")} == {
         "all_spi_gamma_01.nc",
@@ -443,6 +452,7 @@ def test_all_runs_each_index_into_its_own_output(tmp_path, precips_mm_monthly, p
         "all_phdi.nc",
         "all_pmdi.nc",
         "all_zindex.nc",
+        "all_scpdsi.nc",
     }
 
     expected_pnp = indices.percentage_of_normal(

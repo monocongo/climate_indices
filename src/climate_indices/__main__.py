@@ -9,7 +9,7 @@ from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import numpy as np
 import scipy.constants
@@ -29,6 +29,7 @@ _KEY_RESULT_PDSI = "result_array_pdsi"
 _KEY_RESULT_PHDI = "result_array_phdi"
 _KEY_RESULT_PMDI = "result_array_pmdi"
 _KEY_RESULT_ZINDEX = "result_array_zindex"
+_KEY_RESULT_SCPDSI = "result_array_scpdsi"
 
 # global dictionary to contain shared arrays for use by worker processes
 _global_shared_arrays: dict[str, Any] = {}
@@ -1008,13 +1009,14 @@ def _pnp(precips: np.ndarray, parameters: dict[str, Any]) -> np.ndarray:
 def _palmers(
     precips: np.ndarray,
     pet: np.ndarray,
-    awc: float,
+    awc: float | np.ndarray,
     parameters: dict[str, Any],
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    # The CLI does not yet expose the implemented self-calibrating API;
-    # palmer.pdsi() produces only standard PDSI/PHDI/PMDI/Z-Index here. The grid
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    # pdsi() vectorizes a whole grid chunk (ADR-0009); scpdsi() stays
+    # per-location (ADR-0011) and is looped inside that chunk below. The grid
     # worker passes its block with spatial_time_major=True; the divisions worker's
     # per-location call leaves it unset and gets the legacy 1-D reading.
+    spatial_time_major = parameters.get("spatial_time_major", False)
     computed_pdsi, computed_phdi, computed_pmdi, computed_zindex, _fitting_params = palmer.pdsi(
         precips,
         pet,
@@ -1022,9 +1024,54 @@ def _palmers(
         parameters["data_start_year"],
         parameters["calibration_start_year"],
         parameters["calibration_end_year"],
-        spatial_time_major=parameters.get("spatial_time_major", False),
+        spatial_time_major=spatial_time_major,
     )
-    return computed_pdsi, computed_phdi, computed_pmdi, computed_zindex
+    computed_scpdsi = _palmers_scpdsi(precips, pet, awc, parameters, spatial_time_major)
+    return computed_pdsi, computed_phdi, computed_pmdi, computed_zindex, computed_scpdsi
+
+
+def _palmers_scpdsi(
+    precips: np.ndarray,
+    pet: np.ndarray,
+    awc: float | np.ndarray,
+    parameters: dict[str, Any],
+    spatial_time_major: bool,
+) -> np.ndarray:
+    """
+    Compute the self-calibrating PDSI for every location in a Palmer block.
+
+    ``scpdsi()`` rejects a spatial block and stays per-location (ADR-0011), so a
+    grid chunk loops over its cells -- the CLI's multiprocessing already
+    parallelizes chunks -- while a divisions call computes its one location
+    directly.
+
+    :param precips: precipitation block, time-major when spatial_time_major
+    :param pet: PET block matching precips
+    :param awc: available water capacity, scalar or per-cell
+    :param parameters: the Palmer arguments built by the registration
+    :param spatial_time_major: whether a 3+-D block is read as (time, *cells)
+    :return: the scPDSI series, shaped like the input block
+    """
+    calibration_years = (
+        parameters["data_start_year"],
+        parameters["calibration_start_year"],
+        parameters["calibration_end_year"],
+    )
+    if not spatial_time_major:
+        return palmer.scpdsi(precips, pet, cast(float, awc), *calibration_years)[0]
+
+    cell_series = np.asarray(precips).reshape(precips.shape[0], -1)
+    pet_series = np.asarray(pet).reshape(pet.shape[0], -1)
+    awc_values = np.ravel(np.asarray(awc))
+    computed_scpdsi = np.full(cell_series.shape, np.nan, dtype=float)
+    for cell in range(cell_series.shape[1]):
+        computed_scpdsi[:, cell] = palmer.scpdsi(
+            cell_series[:, cell],
+            pet_series[:, cell],
+            float(awc_values[cell]),
+            *calibration_years,
+        )[0]
+    return computed_scpdsi.reshape(np.asarray(precips).shape)
 
 
 def _init_worker(shared_arrays_dict: dict[str, Any]) -> None:
@@ -1170,7 +1217,8 @@ def _apply_along_axis_palmers(params: dict[str, Any]) -> None:
     A grid chunk is computed in one vectorized call over the whole
     (lat_chunk, lon, time) block through the supplied ``func1d``, which receives
     the block with a private ``spatial_time_major=True`` in its parameters, so the
-    block is read per ADR-0009/ADR-0011 rather than computed per grid cell;
+    standard Palmer indices are read per ADR-0009 rather than
+    computed per grid cell while the kernel loops scPDSI per location (ADR-0011);
     multiprocessing still parallelizes across chunks (ADR-0002). A divisions chunk
     has no cell-adjacency structure to batch, so it stays on the per-location loop.
 
@@ -1183,7 +1231,7 @@ def _apply_along_axis_palmers(params: dict[str, Any]) -> None:
         the function should be applied, "sub_array_start" and "sub_array_end",
         a dictionary of arguments to be passed to the function, "args", the keys
         of the precipitation, PET, and AWC input arrays, "input_var_names", and
-        the keys of the PDSI, PHDI, PMDI, and Z-Index output arrays,
+        the keys of the PDSI, PHDI, PMDI, Z-Index, and scPDSI output arrays,
         "output_var_names".
     """
     func1d = params["func1d"]
@@ -1210,6 +1258,7 @@ def _apply_along_axis_palmers(params: dict[str, Any]) -> None:
     phdi = _shared_array(output_keys[1], shape)[start_index:end_index]
     pmdi = _shared_array(output_keys[2], shape)[start_index:end_index]
     zindex = _shared_array(output_keys[3], shape)[start_index:end_index]
+    scpdsi = _shared_array(output_keys[4], shape)[start_index:end_index]
 
     if params["input_type"] == InputType.grid:
         # sub_array_precip/pet are (lat_chunk, lon, time); pdsi() wants a
@@ -1217,7 +1266,7 @@ def _apply_along_axis_palmers(params: dict[str, Any]) -> None:
         precip_block = np.moveaxis(sub_array_precip, -1, 0)
         pet_block = np.moveaxis(sub_array_pet, -1, 0)
         block_args = {**args, "spatial_time_major": True}
-        block_pdsi, block_phdi, block_pmdi, block_zindex = func1d(
+        block_pdsi, block_phdi, block_pmdi, block_zindex, block_scpdsi = func1d(
             precip_block,
             pet_block,
             sub_array_awc,
@@ -1227,9 +1276,10 @@ def _apply_along_axis_palmers(params: dict[str, Any]) -> None:
         np.copyto(phdi, np.moveaxis(block_phdi, 0, -1))
         np.copyto(pmdi, np.moveaxis(block_pmdi, 0, -1))
         np.copyto(zindex, np.moveaxis(block_zindex, 0, -1))
+        np.copyto(scpdsi, np.moveaxis(block_scpdsi, 0, -1))
     else:  # divisions
         for i, (precip, pet, awc) in enumerate(zip(sub_array_precip, sub_array_pet, sub_array_awc, strict=False)):
-            pdsi[i], phdi[i], pmdi[i], zindex[i] = func1d(precip, pet, awc, parameters=args)
+            pdsi[i], phdi[i], pmdi[i], zindex[i], scpdsi[i] = func1d(precip, pet, awc, parameters=args)
 
 
 @dataclass(frozen=True)
@@ -1271,12 +1321,13 @@ class _IndexRegistration:
     write: Callable[[_ComputeContext], tuple[str, str] | None] | None = None
 
 
-# the four outputs the Palmer routines produce, in the order they are written
+# the five outputs the Palmer routines produce, in the order they are written
 _PALMER_OUTPUTS = (
     (_KEY_RESULT_PDSI, "pdsi", "Palmer Drought Severity Index"),
     (_KEY_RESULT_PHDI, "phdi", "Palmer Hydrological Drought Index"),
     (_KEY_RESULT_PMDI, "pmdi", "Palmer Modified Drought Index"),
     (_KEY_RESULT_ZINDEX, "zindex", "Palmer Z-Index"),
+    (_KEY_RESULT_SCPDSI, "scpdsi", "Self-calibrated Palmer Drought Severity Index"),
 )
 
 # the axis each input type's time dimension lies along
@@ -1498,7 +1549,7 @@ def _compute_single_array(context: _ComputeContext) -> None:
 
 def _compute_palmers(context: _ComputeContext) -> None:
     """
-    Apply the Palmer kernel across the shared inputs, into its four shared result arrays.
+    Apply the Palmer kernel across the shared inputs, into its five shared result arrays.
 
     :param context: the opened inputs and output settings of the request
     """
