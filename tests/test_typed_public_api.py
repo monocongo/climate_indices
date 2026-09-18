@@ -189,7 +189,7 @@ def test_overload_tests_cover_every_public_overloaded_function() -> None:
         for name in climate_indices.__all__
         if callable(member := getattr(climate_indices, name)) and get_overloads(member)
     }
-    assert overloaded == set(_PUBLIC_IMPLEMENTATIONS)
+    assert overloaded == set(_PUBLIC_IMPLEMENTATIONS) == set(_EXPECTED_OVERLOADS)
 
 
 def _assert_same_result(left: xr.DataArray, right: xr.DataArray) -> None:
