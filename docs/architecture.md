@@ -61,6 +61,7 @@ The **climate_indices** library implements a **layered library architecture** op
 ├────────────────────────────────────────────────────────────────────┤
 │  typed_public_api.py  │  Strict mypy, xarray wrappers            │
 │  xarray_adapter.py    │  CF-compliant xarray interface           │
+│  validation.py        │  Shared input validation facade          │
 │  indices.py           │  Legacy numpy API (backward compat)       │
 ├────────────────────────────────────────────────────────────────────┤
 │                    Computation Layer                               │
@@ -111,11 +112,16 @@ process_climate_indices = "climate_indices.__main__:main"
   - Full mypy --strict compliance
 
 - **`xarray_adapter.py`**: CF-compliant xarray interface
-  - Input type detection (`DataArray`, `Dataset`, `ndarray`)
   - Coordinate validation and alignment
   - CF metadata preservation and generation
   - Dask array support with chunking validation
   - PET computation (Thornthwaite, Hargreaves)
+
+- **`validation.py`**: Public validation facade shared by the xarray and fire
+  adapters
+  - Input type detection (`DataArray`, `ndarray`; `Dataset` is rejected with a
+    select-a-variable hint)
+  - Time-dimension, monotonicity, and Dask single-chunk validation
 
 - **`indices.py`**: Legacy numpy API
   - Backward-compatible function signatures
@@ -228,6 +234,7 @@ climate_indices/
 │   ├── __main__.py               # Full-featured CLI entry point
 │   ├── typed_public_api.py       # Strict mypy-compliant API
 │   ├── xarray_adapter.py         # Modern xarray interface
+│   ├── validation.py             # Shared input validation facade
 │   ├── indices.py                # Legacy numpy API (STABLE)
 │   ├── compute.py                # Core computation algorithms
 │   ├── palmer.py                 # Palmer drought indices
@@ -242,6 +249,7 @@ climate_indices/
 │   ├── conftest.py               # Shared fixtures (session-scoped)
 │   ├── test_indices.py           # Legacy API tests
 │   ├── test_xarray_adapter.py    # Modern API tests
+│   ├── test_validation.py        # Validation facade tests
 │   ├── test_compute.py           # Computation tests
 │   ├── test_property_based.py    # Property-based invariant tests
 │   ├── test_backward_compat.py   # Backward compatibility suite
@@ -398,6 +406,7 @@ tests/
 ├── Validation and Error Handling
 │   ├── test_exceptions.py           # Exception hierarchy tests
 │   ├── test_input_validation.py     # Input validation tests
+│   ├── test_validation.py           # Validation facade tests
 │   ├── test_metadata_validation.py  # CF metadata tests
 │   ├── test_computation_errors.py   # Error condition tests
 │   ├── test_data_quality_warnings.py # Warning behavior tests
@@ -564,7 +573,7 @@ See [ADR-0002](adr/0002-multiprocessing-cli-dask-xarray.md).
 
 **Rationale**: Climate indices require access to full time series for distribution fitting.
 
-**Enforcement**: `xarray_adapter.py` validates chunking and raises `CoordinateValidationError` if violated.
+**Enforcement**: `validation.validate_dask_chunks()` validates chunking on the adapter path and raises `CoordinateValidationError` if violated.
 
 See [ADR-0003](adr/0003-dask-time-dimension-single-chunk.md) for the full rationale.
 

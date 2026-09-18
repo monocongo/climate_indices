@@ -34,16 +34,15 @@ from climate_indices import indices
 from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.compute import Periodicity
 from climate_indices.indices import Distribution
-from climate_indices.xarray_adapter import (
-    InputType,
-    detect_input_type,
-    xarray_adapter,
-)
+from climate_indices.validation import InputType, detect_input_type
 from climate_indices.xarray_adapter import (
     pet_hargreaves as _pet_hargreaves_impl,
 )
 from climate_indices.xarray_adapter import (
     pet_thornthwaite as _pet_thornthwaite_impl,
+)
+from climate_indices.xarray_adapter import (
+    xarray_adapter,
 )
 
 # pre-build decorated functions at module level for performance

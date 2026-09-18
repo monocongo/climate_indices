@@ -30,7 +30,7 @@ import json
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
-from enum import Enum, auto
+from enum import Enum
 from typing import Any
 
 import numpy as np
@@ -49,6 +49,13 @@ from climate_indices.exceptions import (
     InsufficientDataError,
 )
 from climate_indices.logging_config import get_logger
+from climate_indices.validation import (
+    InputType,
+    detect_input_type,
+    validate_dask_chunks,
+    validate_time_dimension,
+    validate_time_monotonicity,
+)
 
 
 def _log() -> structlog.stdlib.BoundLogger:
@@ -60,101 +67,9 @@ def _log() -> structlog.stdlib.BoundLogger:
     return get_logger(__name__)
 
 
-# types that can be safely coerced to np.ndarray by the existing numpy functions
-# includes scalar types that numpy operations naturally handle
-_NUMPY_COERCIBLE_TYPES = (
-    np.ndarray,
-    list,
-    tuple,
-    int,
-    float,
-    np.integer,
-    np.floating,
-)
-
 # history attribute formatting
 _HISTORY_SEPARATOR = "\n"
 _HISTORY_TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
-
-
-class InputType(Enum):
-    """Classification of input data types for routing.
-
-    Used by detect_input_type() to determine which computation path to use.
-
-    .. note:: Part of the beta xarray adapter layer. See :doc:`xarray_migration`.
-
-    Attributes:
-        NUMPY: Input is NumPy-coercible (ndarray, list, tuple, scalars)
-        XARRAY: Input is xarray.DataArray
-    """
-
-    NUMPY = auto()
-    XARRAY = auto()
-
-
-def detect_input_type(data: Any) -> InputType:
-    """Classify input data type for routing to appropriate computation path.
-
-    This is a pure classifier—it determines the type category but does not
-    perform any data transformation or coercion. The actual dispatch logic
-    is handled by the @xarray_adapter decorator.
-
-    .. note:: Part of the beta xarray adapter layer. See :doc:`xarray_migration`.
-
-    Args:
-        data: Input data to classify
-
-    Returns:
-        InputType.NUMPY for NumPy-coercible inputs (ndarray, list, tuple, scalars)
-        InputType.XARRAY for xarray.DataArray inputs
-
-    Raises:
-        InputTypeError: If data type is not supported, with remediation hints for
-            common types like pandas Series/DataFrame and polars DataFrame
-
-    Notes:
-        - np.ma.MaskedArray is a subclass of np.ndarray, so it's automatically accepted
-        - Dask-backed xr.DataArray is still classified as XARRAY
-        - bool is a subclass of int in Python, so True/False are classified as NUMPY
-        - xr.Dataset is rejected with a hint to select a specific variable
-    """
-    # check xarray first since it's the new capability
-    if isinstance(data, xr.DataArray):
-        return InputType.XARRAY
-
-    # check numpy-coercible types
-    if isinstance(data, _NUMPY_COERCIBLE_TYPES):
-        return InputType.NUMPY
-
-    # unsupported type - provide helpful error message
-    actual_type = type(data)
-    type_name = f"{actual_type.__module__}.{actual_type.__qualname__}"
-
-    # build remediation hints
-    hints = []
-
-    # check for common data science types
-    if hasattr(data, "to_numpy"):
-        # pandas Series/DataFrame, polars DataFrame
-        hints.append("Convert using data.to_numpy()")
-
-    # special case for xarray Dataset
-    if isinstance(data, xr.Dataset):
-        hints.append("xr.Dataset detected: Use ds['variable_name'] to select a DataArray")
-
-    # build error message
-    accepted = "np.ndarray, list, tuple, int, float, np.integer, np.floating, xr.DataArray"
-    message = f"Unsupported input type: {type_name}. Accepted types: {accepted}."
-
-    if hints:
-        message += " " + " ".join(hints)
-
-    raise InputTypeError(
-        message=message,
-        expected_type=None,  # multiple types accepted
-        actual_type=actual_type,
-    )
 
 
 def _infer_data_start_year(time_coord: xr.DataArray) -> int:
@@ -577,64 +492,6 @@ def _infer_calibration_period(time_coord: xr.DataArray) -> tuple[int, int]:
     return (first_year, last_year)
 
 
-def _validate_time_dimension(data: xr.DataArray, time_dim: str) -> None:
-    """Validate that the time dimension exists in the input DataArray.
-
-    Args:
-        data: Input DataArray to validate
-        time_dim: Name of the expected time dimension
-
-    Raises:
-        CoordinateValidationError: If the time dimension is not found
-    """
-    if time_dim not in data.dims:
-        available_dims = list(data.dims)
-        error_msg = (
-            f"Time dimension '{time_dim}' not found in input. "
-            f"Available dimensions: {available_dims}. "
-            f"Use time_dim parameter to specify custom name."
-        )
-        _log().error(
-            "time_dimension_missing",
-            time_dim=time_dim,
-            available_dims=available_dims,
-            data_shape=data.shape,
-        )
-        raise CoordinateValidationError(
-            message=error_msg,
-            coordinate_name=time_dim,
-            reason="missing_dimension",
-        )
-
-
-def _validate_time_monotonicity(time_coord: xr.DataArray) -> None:
-    """Validate that the time coordinate is monotonically increasing.
-
-    Args:
-        time_coord: Time coordinate DataArray to validate
-
-    Raises:
-        CoordinateValidationError: If the time coordinate is not monotonically increasing
-    """
-    is_monotonic = _is_time_coord_monotonic(time_coord)
-    if is_monotonic:
-        return
-
-    dim_name = str(time_coord.dims[0]) if time_coord.dims else "time"
-    error_msg = _build_non_monotonic_message(time_coord, dim_name)
-
-    _log().error(
-        "time_coordinate_not_monotonic",
-        coordinate_name=dim_name,
-        coordinate_length=len(time_coord),
-    )
-    raise CoordinateValidationError(
-        message=error_msg,
-        coordinate_name=str(dim_name),
-        reason="not_monotonic",
-    )
-
-
 def _validate_latitude_range(
     latitude: float | int | np.floating | np.integer | xr.DataArray,
 ) -> None:
@@ -696,54 +553,6 @@ def _build_latitude_attr(
         return _serialize_attr_value(lat_metadata)
     else:
         return _serialize_attr_value(latitude)
-
-
-def _is_time_coord_monotonic(time_coord: xr.DataArray) -> bool:
-    """Return True if the time coordinate is monotonically increasing."""
-    try:
-        time_index = pd.DatetimeIndex(time_coord.values)
-        return bool(time_index.is_monotonic_increasing)
-    except (TypeError, ValueError):
-        return _is_nonstandard_time_coord_monotonic(time_coord)
-
-
-def _is_nonstandard_time_coord_monotonic(time_coord: xr.DataArray) -> bool:
-    """Fallback monotonicity check for non-standard/cftime coordinates."""
-    time_values = time_coord.values
-    if len(time_values) < 2:
-        return True
-
-    try:
-        diffs = np.diff(time_values.astype("datetime64[ns]").astype(np.int64))
-        return bool(np.all(diffs > 0))
-    except (TypeError, ValueError):
-        coord_name = str(time_coord.name) if time_coord.name is not None else "time"
-        raise CoordinateValidationError(
-            message=f"Cannot validate time coordinate monotonicity: unsupported datetime type {type(time_coord.values[0])}",
-            coordinate_name=coord_name,
-            reason="unsupported_datetime_type",
-        ) from None
-
-
-def _build_non_monotonic_message(time_coord: xr.DataArray, dim_name: str) -> str:
-    """Build a detailed error message for non-monotonic time coordinates."""
-    generic_msg = (
-        f"Time coordinate is not monotonically increasing. "
-        f"Sort the data using data.sortby('{dim_name}') before processing."
-    )
-    try:
-        has_nat = pd.isna(time_coord.values).any()
-    except (TypeError, ValueError):
-        return generic_msg
-
-    if has_nat:
-        return (
-            "Time coordinate is not monotonically increasing. "
-            "Found NaT (Not-a-Time) or NaN values. "
-            "Remove invalid timestamps before processing."
-        )
-
-    return generic_msg
 
 
 def _resolve_scale_from_args(func: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, Any]) -> int | None:
@@ -1295,57 +1104,7 @@ def _infer_temporal_parameters(
     return inferred
 
 
-def _validate_dask_chunks(data: xr.DataArray, dim: str) -> None:
-    """Validate that ``dim`` is not split across multiple Dask chunks.
-
-    Distribution fitting and stateful recurrences require the full time
-    series; HDW's level-maximum reduction requires the full vertical profile.
-    Other dimensions can be arbitrarily chunked for parallel computation.
-    This shared helper is the chunking guard for fire adapters.
-
-    Args:
-        data: Dask-backed DataArray to validate
-        dim: Name of the dimension that must be a single chunk
-
-    Raises:
-        CoordinateValidationError: If dim is split across multiple chunks,
-            with a message including the exact rechunking command to fix it
-    """
-    # skip validation if the dimension doesn't exist (already validated elsewhere)
-    if dim not in data.dims:
-        return
-
-    # skip validation if not chunked (shouldn't happen since we call this after is_dask check)
-    if data.chunks is None:
-        return
-
-    # get chunks for the dimension
-    # data.chunks is a tuple-of-tuples indexed by dimension position
-    dim_chunks = data.chunks[data.dims.index(dim)]
-
-    # validate single chunk on the dimension
-    if len(dim_chunks) > 1:
-        error_msg = (
-            f"Dimension '{dim}' is split across {len(dim_chunks)} chunks. "
-            "Climate index computation requires this dimension in a single chunk. "
-            f"Rechunk using: data = data.chunk({{'{dim}': -1}})"
-        )
-        _log().error(
-            # the event names the validated dimension neutrally; the stable
-            # reason= code below keeps its historical time-axis spelling
-            "multi_chunked_dimension",
-            dim=dim,
-            num_chunks=len(dim_chunks),
-            chunk_sizes=dim_chunks,
-        )
-        raise CoordinateValidationError(
-            message=error_msg,
-            coordinate_name=dim,
-            reason="multi_chunked_time_dimension",
-        )
-
-
-def _build_output_attrs(
+def build_output_attrs(
     input_da: xr.DataArray,
     cf_metadata: dict[str, str] | None = None,
     calculation_metadata: dict[str, Any] | None = None,
@@ -1500,10 +1259,10 @@ def _finalize_ufunc_result(
             dims=input_da.dims,
         )
 
-    # apply metadata using _build_output_attrs
+    # apply metadata using build_output_attrs
     calc_metadata = _capture_calculation_metadata(calculation_metadata_keys, valid_kwargs)
     resolved_index_name = index_display_name if index_display_name is not None else func_name.upper()
-    output_attrs = _build_output_attrs(input_da, cf_metadata, calc_metadata, index_name=resolved_index_name)
+    output_attrs = build_output_attrs(input_da, cf_metadata, calc_metadata, index_name=resolved_index_name)
     result_da.attrs.update(output_attrs)
 
     # deep-copy coordinate attrs to prevent mutation bleed-through
@@ -1673,11 +1432,11 @@ def xarray_adapter(
 
             # coordinate validation
             if infer_params:
-                _validate_time_dimension(input_da, time_dim)
+                validate_time_dimension(input_da, time_dim)
                 time_coord = input_da[time_dim]
                 if "periodicity" in inspect.signature(func).parameters:
                     _validate_supported_calendar(time_coord)
-                _validate_time_monotonicity(time_coord)
+                validate_time_monotonicity(time_coord)
                 resolved_scale = _resolve_scale_from_args(func, tuple(modified_args), modified_kwargs)
                 if resolved_scale is not None:
                     _validate_sufficient_data(time_coord, resolved_scale)
@@ -1695,7 +1454,7 @@ def xarray_adapter(
                 # validate chunking constraints for every Dask-backed time series
                 for dataarray in input_dataarrays:
                     if dataarray.chunks is not None:
-                        _validate_dask_chunks(dataarray, time_dim)
+                        validate_dask_chunks(dataarray, time_dim)
 
             # infer temporal parameters if enabled (shared path)
             inferred_params: dict[str, Any] = {}
@@ -2128,9 +1887,9 @@ def pet_thornthwaite(
     temp_da = temperature
 
     # validate time dimension
-    _validate_time_dimension(temp_da, time_dim)
+    validate_time_dimension(temp_da, time_dim)
     time_coord = temp_da.coords[time_dim]
-    _validate_time_monotonicity(time_coord)
+    validate_time_monotonicity(time_coord)
 
     # enforce the shared calendar contract: Thornthwaite groups values into calendar
     # months from a January origin, so validate before the start year is inferred.
@@ -2382,12 +2141,12 @@ def pet_hargreaves(
     tmax_da = daily_tmax_celsius
 
     # validate time dimension on both inputs
-    _validate_time_dimension(tmin_da, time_dim)
-    _validate_time_dimension(tmax_da, time_dim)
+    validate_time_dimension(tmin_da, time_dim)
+    validate_time_dimension(tmax_da, time_dim)
     tmin_time_coord = tmin_da.coords[time_dim]
     tmax_time_coord = tmax_da.coords[time_dim]
-    _validate_time_monotonicity(tmin_time_coord)
-    _validate_time_monotonicity(tmax_time_coord)
+    validate_time_monotonicity(tmin_time_coord)
+    validate_time_monotonicity(tmax_time_coord)
 
     # align tmin and tmax along time dimension (inner join)
     # this handles cases where they have different time ranges

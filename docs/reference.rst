@@ -30,16 +30,23 @@ The Dask-backed SPI/SPEI workflow is demonstrated end to end in
 <https://github.com/monocongo/climate_indices/blob/main/notebooks/zarr_dask_spi_spei.ipynb>`__;
 :doc:`troubleshooting` covers its setup and failure modes.
 
+climate_indices.validation
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: climate_indices.validation
+   :members:
+   :exclude-members: InputType
+
+.. autoclass:: climate_indices.validation.InputType
+   :members:
+   :exclude-members: NUMPY, XARRAY
+
+
 climate_indices.xarray_adapter
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: climate_indices.xarray_adapter
    :members:
-   :exclude-members: InputType
-
-.. autoclass:: climate_indices.xarray_adapter.InputType
-   :members:
-   :no-index:
 
 
 Core Computation Modules
