@@ -111,18 +111,14 @@ exclude_patterns = [
     "architecture-deepening-review-*.md",
     "ai-assisted-development-report-*.md",
     "test_fixture_management.md",
-    # Published Markdown pages not yet wired into navigation. Later tickets
-    # publish them and delete their paths from this list: DOCS-7 (navigation)
-    # and DOCS-8 (explanation and reference corpus).
+    # Published Markdown pages not yet wired into navigation. DOCS-8
+    # (explanation and reference corpus) publishes these and deletes their
+    # paths from this list.
     "ai-assisted-development.md",
     "algorithm_refs/**",
     "architecture.md",
-    "contribution-guide.md",
-    "deployment-guide.md",
-    "development-guide.md",
     "floating_point_best_practices.md",
     "project-overview.md",
-    "release-process.md",
     "research/nclimgrid-acquisition-and-redistribution.md",
 ]
 

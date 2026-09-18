@@ -199,6 +199,25 @@ def test_scpdsi_rescales_zindex_cumulatively(monkeypatch, palmer_division_inputs
     np.testing.assert_allclose(rescaled, raw_z * 8.0, rtol=0, atol=0, equal_nan=True)
 
 
+def test_sczindex_matches_the_committed_0101_oracle(palmer_division_inputs):
+    """The rescaling passes' real-data result is pinned outside the validation marker.
+
+    The cumulative test above pins the pass arithmetic against monkeypatched
+    percentiles; this one pins the committed 0101 Z-index the same way the
+    ``validation``-marked oracle does, so a rescaling change fails plain
+    ``uv run pytest`` as well.
+    """
+    _, _, _, sczindex, _ = _call(palmer_division_inputs)
+
+    np.testing.assert_allclose(
+        sczindex,
+        np.load(_PALMER_ROOT / "0101" / "sczindex.npy"),
+        atol=ATOL,
+        rtol=RTOL,
+        equal_nan=True,
+    )
+
+
 def test_invalid_fitted_duration_factors_raise_convergence_error(monkeypatch, palmer_division_inputs):
     monkeypatch.setattr(palmer.self_calibration, "duration_factors", lambda _z, _sign: (-1.0, 1.0))
 
@@ -230,8 +249,7 @@ def test_scpdsi_oracle_contains_all_climate_divisions(palmer_division_dirs):
 
 @pytest.mark.validation
 def test_climate_division_matches_scpdsi_oracle(palmer_division_dir, palmer_scpdsi_results):
-    division_dir = palmer_division_dir
-    division = division_dir.name
+    division = palmer_division_dir.name
     scpdsi, scphdi, scpmdi, sczindex, params = palmer_scpdsi_results[division]
     assert params is not None
 
@@ -243,7 +261,7 @@ def test_climate_division_matches_scpdsi_oracle(palmer_division_dir, palmer_scpd
     ):
         np.testing.assert_allclose(
             actual,
-            np.load(division_dir / f"{name}.npy"),
+            np.load(palmer_division_dir / f"{name}.npy"),
             atol=ATOL,
             rtol=RTOL,
             equal_nan=True,
@@ -252,7 +270,7 @@ def test_climate_division_matches_scpdsi_oracle(palmer_division_dir, palmer_scpd
 
     np.testing.assert_allclose(
         [params["wetm"], params["wetb"], params["drym"], params["dryb"]],
-        np.load(division_dir / "scdurfact.npy"),
+        np.load(palmer_division_dir / "scdurfact.npy"),
         atol=ATOL,
         rtol=RTOL,
         err_msg=f"{division}: duration factors mismatch",
