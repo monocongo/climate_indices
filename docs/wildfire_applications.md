@@ -62,7 +62,7 @@ calibration period and event, compute a 14-day EDDI series for a Central
 California point. This uses the xarray `DataArray` route of
 `climate_indices.eddi`, which is **beta**: numerical results match the stable
 NumPy API, but parameter inference, metadata, and coordinate handling may change
-in a future minor release (see :doc:`xarray_migration`).
+in a future minor release (see {doc}`xarray_migration`).
 Use the NumPy API when an integration cannot absorb beta interface changes.
 
 ```python
@@ -117,7 +117,7 @@ behavior indices FFMC, DMC, DC, ISI, BUI, FWI, and DSR, the latter available
 together through the `fire.cffwis()` orchestrator ([Natural Resources
 Canada][nrcan-fwi]). KBDI is also exposed through the existing command line as
 `process_climate_indices --index kbdi`, from daily precipitation and maximum
-temperature inputs (see :doc:`index`).
+temperature inputs (see {doc}`index`).
 
 Haines and HDW are both lower-atmosphere diagnostics rather than
 fuel-moisture or drought measures, but only HDW includes wind, which is why

@@ -62,14 +62,12 @@ extensions = [
 templates_path = ["_templates"]
 
 # The suffix(es) of source filenames.
-# RST and Markdown build side by side during the migration window. Every
-# non-excluded Markdown page becomes a source document, so a published page
-# joins the site by leaving `exclude_patterns` and entering a toctree, while
-# internal pages stay in `exclude_patterns`.
-source_suffix = {
-    ".rst": "restructuredtext",
-    ".md": "markdown",
-}
+# Markdown is the only documentation authoring format; MyST-Parser renders it
+# and keeps Sphinx as the build. Every non-excluded Markdown page becomes a
+# source document, so a published page joins the site by leaving
+# `exclude_patterns` and entering a toctree, while internal pages stay in
+# `exclude_patterns`.
+source_suffix = ".md"
 
 # -- MyST configuration -------------------------------------------------------
 # Heading anchors let a Markdown page cross-link to its own sections (the
@@ -161,7 +159,7 @@ html_theme = "sphinx_rtd_theme"
 # documentation.
 #
 # sphinx_rtd_theme defaults `includehidden` to True, which would put the
-# staged-publication hidden toctree (the ADR build set in index.rst) into the
+# staged-publication hidden toctree (the ADR build set in index.md) into the
 # sidebar. Keep hidden toctrees out of navigation.
 html_theme_options = {"includehidden": False}
 

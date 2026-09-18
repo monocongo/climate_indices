@@ -261,7 +261,7 @@ climate_indices/
 │
 ├── docs/                         # Documentation
 │   ├── conf.py                   # Sphinx configuration
-│   ├── index.rst                 # Main Sphinx doc (ReadTheDocs)
+│   ├── index.md                  # Main Sphinx doc (ReadTheDocs)
 │   ├── reference.md              # API reference (autodoc)
 │   ├── release-process.md        # Maintainer release runbook
 │   └── *.md                      # AI-readable project docs
