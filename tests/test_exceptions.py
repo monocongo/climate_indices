@@ -510,10 +510,19 @@ def test_wrap_value_error_chains_argument_context() -> None:
                 valid_values="A scalar or an array broadcastable to (time, 12)",
             )
         error = raised.value
+        assert str(error) == "scale must broadcast to the input shape."
         assert error.argument_name == "scale"
         assert error.argument_value == "shape (3,)"
         assert error.valid_values == "A scalar or an array broadcastable to (time, 12)"
         assert error.__cause__ is exc
+
+
+def test_wrap_value_error_is_keyword_only() -> None:
+    """The helper keeps the argument context keyword-only, so a call site cannot mis-order it."""
+    parameters = inspect.signature(exceptions.wrap_value_error).parameters
+    assert parameters["exc"].kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
+    for name in ("message", "argument_name", "argument_value", "valid_values"):
+        assert parameters[name].kind == inspect.Parameter.KEYWORD_ONLY, name
 
 
 def test_compute_module_reexports_remain_compatible() -> None:

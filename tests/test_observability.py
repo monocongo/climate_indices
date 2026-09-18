@@ -512,7 +512,9 @@ class TestCalculationFailureHelper:
         except ValueError as exc:
             log_calculation_failure(log, exc, calibration_period="1981-2010")
 
-        event = _events_named(stream, "calculation_failed")[0]
+        failed = _events_named(stream, "calculation_failed")
+        assert len(failed) == 1
+        event = failed[0]
         assert event["level"] == "error"
         assert event["error_type"] == "ValueError"
         assert event["error_message"] == "boom"

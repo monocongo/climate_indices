@@ -139,12 +139,13 @@ def log_calculation_failure(
 
     Args:
         log: Logger already bound with the calling index's context.
-        exc: The in-flight exception being logged.
+        exc: The exception being logged; its traceback is rendered, so call from
+            the handler that caught it.
         **context: Extra fields for the call site (e.g., calibration_period).
     """
     log.error(
         "calculation_failed",
-        exc_info=True,
+        exc_info=exc,
         error_type=type(exc).__name__,
         error_message=str(exc),
         **context,
