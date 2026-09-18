@@ -1,0 +1,26 @@
+[
+  {
+    "id": "0101",
+    "name": "NORTHERN VALLEY",
+    "state": "AL",
+    "latitude": 34.6624,
+    "longitude": -87.27,
+    "speibase_cells": 3
+  },
+  {
+    "id": "3405",
+    "name": "CENTRAL",
+    "state": "OK",
+    "latitude": 35.5339,
+    "longitude": -97.2276,
+    "speibase_cells": 8
+  },
+  {
+    "id": "0205",
+    "name": "SOUTHWEST",
+    "state": "AZ",
+    "latitude": 33.2038,
+    "longitude": -113.9399,
+    "speibase_cells": 7
+  }
+]

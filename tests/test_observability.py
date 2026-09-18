@@ -27,6 +27,7 @@ from climate_indices.logging_config import (
     _reset_logging_for_testing,
     configure_logging,
     get_logger,
+    log_calculation_failure,
 )
 
 # fields every JSON log event must carry as top-level keys
@@ -498,6 +499,27 @@ class TestAllMissingLifecycle:
         stream = _capture_stream(log_level="INFO")
         result = indices.pci(rainfall_mm=np.full(366, np.nan))
         self._assert_all_missing(stream, result, "pci")
+
+
+class TestCalculationFailureHelper:
+    """The shared calculation_failed helper emits the standard error context."""
+
+    def test_log_calculation_failure_emits_error_context(self) -> None:
+        stream = _capture_stream(log_level="DEBUG")
+        log = get_logger("test.failure")
+        try:
+            raise ValueError("boom")
+        except ValueError as exc:
+            log_calculation_failure(log, exc, calibration_period="1981-2010")
+
+        failed = _events_named(stream, "calculation_failed")
+        assert len(failed) == 1
+        event = failed[0]
+        assert event["level"] == "error"
+        assert event["error_type"] == "ValueError"
+        assert event["error_message"] == "boom"
+        assert event["calibration_period"] == "1981-2010"
+        assert "boom" in event["exception"]
 
 
 class TestCalculationFailureContext:

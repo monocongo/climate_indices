@@ -19,6 +19,7 @@ from climate_indices.exceptions import (
     DataShapeError,
     InputAlignmentWarning,
     InvalidArgumentError,
+    wrap_value_error,
 )
 from climate_indices.fire._common import (
     _apply_gap_policy,
@@ -32,7 +33,7 @@ from climate_indices.fire._units import (
     _convert_temperature_units,
     _validate_daily_time_coordinate,
 )
-from climate_indices.logging_config import get_logger
+from climate_indices.logging_config import get_logger, log_calculation_failure
 from climate_indices.performance import check_large_array_memory
 from climate_indices.validation import validate_dask_chunks, validate_time_dimension, validate_time_monotonicity
 from climate_indices.xarray_adapter import build_output_attrs
@@ -198,12 +199,15 @@ def _daily_weather_arrays(
         broadcast = np.broadcast_arrays(*arrays)
     except ValueError as exc:
         shapes = ", ".join(f"{name}={array.shape}" for name, array in zip(names, arrays, strict=True))
-        raise InvalidArgumentError(
-            f"Incompatible array shapes for daily weather inputs: {shapes}. The inputs must broadcast together.",
+        wrap_value_error(
+            exc,
+            message=(
+                f"Incompatible array shapes for daily weather inputs: {shapes}. The inputs must broadcast together."
+            ),
             argument_name="/".join(names),
             argument_value=f"shapes {shapes}",
             valid_values="Arrays broadcastable to a common time-first shape",
-        ) from exc
+        )
     if broadcast[0].ndim == 0:
         raise DataShapeError(
             "Daily weather inputs must include a time dimension.",
@@ -252,12 +256,13 @@ def _month_array(month: npt.ArrayLike, weather_shape: tuple[int, ...]) -> npt.ND
         # retaining an int64 value for every time-cell
         result: npt.NDArray[np.int64] = np.broadcast_to(months, weather_shape)
     except ValueError as exc:
-        raise InvalidArgumentError(
-            "month must broadcast to the time-first weather shape.",
+        wrap_value_error(
+            exc,
+            message="month must broadcast to the time-first weather shape.",
             argument_name="month",
             argument_value=f"shape {months.shape}",
             valid_values=f"A scalar or an array broadcastable to {weather_shape}",
-        ) from exc
+        )
     return result
 
 
@@ -289,12 +294,13 @@ def _season_mask(in_season: npt.ArrayLike, weather_shape: tuple[int, ...]) -> np
     try:
         result: npt.NDArray[np.bool_] = np.broadcast_to(mask, weather_shape)
     except ValueError as exc:
-        raise InvalidArgumentError(
-            "in_season must broadcast to the time-first weather shape.",
+        wrap_value_error(
+            exc,
+            message="in_season must broadcast to the time-first weather shape.",
             argument_name="in_season",
             argument_value=f"shape {mask.shape}",
             valid_values=f"A boolean scalar or an array broadcastable to {weather_shape}",
-        ) from exc
+        )
     return result
 
 
@@ -1240,12 +1246,13 @@ def _broadcast_elementwise(
             + ". The inputs must broadcast together."
         )
         _logger.error(message)
-        raise InvalidArgumentError(
-            message,
+        wrap_value_error(
+            exc,
+            message=message,
             argument_name="/".join(argument_names),
             argument_value=f"shapes {', '.join(str(array.shape) for array in arrays)}",
             valid_values="Arrays broadcastable to a common shape",
-        ) from exc
+        )
     result: tuple[npt.NDArray[np.float64], ...] = tuple(broadcast)
     return result
 
@@ -1282,12 +1289,7 @@ def _elementwise_result(
         )
         return result
     except Exception as exc:
-        log.error(
-            "calculation_failed",
-            exc_info=True,
-            error_type=type(exc).__name__,
-            error_message=str(exc),
-        )
+        log_calculation_failure(log, exc)
         raise
 
 
@@ -1627,12 +1629,7 @@ def _run_cffwis_system(
         )
         return values, state_gap_days
     except Exception as exc:
-        log.error(
-            "calculation_failed",
-            exc_info=True,
-            error_type=type(exc).__name__,
-            error_message=str(exc),
-        )
+        log_calculation_failure(log, exc)
         raise
 
 
@@ -2350,14 +2347,17 @@ def _latitude_from_argument(
     try:
         broadcast = np.broadcast_to(array, spatial_shape)
     except ValueError as exc:
-        raise InvalidArgumentError(
-            "latitude_degrees_north must broadcast to the weather inputs' spatial shape; pass a "
-            "DataArray to place a latitude on a named axis that does not align with the trailing "
-            "dimensions.",
+        wrap_value_error(
+            exc,
+            message=(
+                "latitude_degrees_north must broadcast to the weather inputs' spatial shape; pass a "
+                "DataArray to place a latitude on a named axis that does not align with the trailing "
+                "dimensions."
+            ),
             argument_name="latitude_degrees_north",
             argument_value=f"shape {array.shape}",
             valid_values=f"A scalar or an array broadcastable to the spatial shape {spatial_shape}",
-        ) from exc
+        )
     return xr.DataArray(broadcast, dims=spatial_dims)
 
 
@@ -2466,12 +2466,15 @@ def _infer_month_values(time_coord: xr.DataArray | None, time_dim: str) -> np.nd
     try:
         inferred = time_coord.dt.month
     except (AttributeError, TypeError) as exc:
-        raise InvalidArgumentError(
-            f"month cannot be inferred from the non-datetime '{time_dim}' coordinate. Supply month explicitly.",
+        wrap_value_error(
+            exc,
+            message=(
+                f"month cannot be inferred from the non-datetime '{time_dim}' coordinate. Supply month explicitly."
+            ),
             argument_name="month",
             argument_value="non-datetime time coordinate",
             valid_values=f"An explicit month, or a datetime '{time_dim}' coordinate",
-        ) from exc
+        )
     return np.asarray(inferred)
 
 
@@ -2492,13 +2495,16 @@ def _align_month_to_weather_time(month: xr.DataArray, time_coord: xr.DataArray |
         # mypy loses the isinstance narrowing across xarray's Self-returning reindex
         month = cast(xr.DataArray, month.reindex({time_dim: time_coord}))
     except (KeyError, TypeError, ValueError) as exc:
-        raise InvalidArgumentError(
-            f"month's '{time_dim}' coordinate cannot be matched to the weather inputs' "
-            "coordinate. Align the two, or pass month as a plain array to pair it positionally.",
+        wrap_value_error(
+            exc,
+            message=(
+                f"month's '{time_dim}' coordinate cannot be matched to the weather inputs' "
+                "coordinate. Align the two, or pass month as a plain array to pair it positionally."
+            ),
             argument_name="month",
             argument_value="unmatched time coordinate",
             valid_values=f"Months carrying the weather '{time_dim}' coordinates, or a plain array",
-        ) from exc
+        )
     if bool(month.isnull().any()):
         raise InvalidArgumentError(
             f"month has no value at every aligned weather timestep along '{time_dim}'; its "
