@@ -362,9 +362,10 @@ def test_transform_fitted_pearson(
 
     # confirm that we get expected errors when
     # using invalid time series type arguments
+    flat_precips_mm_monthly = precips_mm_monthly.flatten()
     with pytest.raises(ValueError):
         compute.transform_fitted_pearson(
-            precips_mm_monthly.flatten(),
+            flat_precips_mm_monthly,
             data_year_start_monthly,
             calibration_year_start_monthly,
             calibration_year_end_monthly,
@@ -372,7 +373,7 @@ def test_transform_fitted_pearson(
         )
     with pytest.raises(ValueError):
         compute.transform_fitted_pearson(
-            precips_mm_monthly.flatten(),
+            flat_precips_mm_monthly,
             data_year_start_monthly,
             calibration_year_start_monthly,
             calibration_year_end_monthly,
