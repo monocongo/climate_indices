@@ -153,7 +153,7 @@ The options are described below:
 * - kbdi_initial
   - Initial KBDI value. Default value is 0.0. Applicable only when **index** is 'kbdi'.
 * - chunksizes
-  - Chunking of the written output file, not of the computation: 'none' (default) lets the writer choose the output layout, and 'input' copies the on-disk chunks of the first chunked input variable to the output.
+  - Chunking of the written output file, not of the computation: 'none' (default) lets the writer choose the output layout, and 'input' copies the on-disk chunks of the first chunked input variable to the output (for KBDI, the precipitation variable's chunks).
 * - output_file_base
   - Base file name for all output files.
 
