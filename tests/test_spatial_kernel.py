@@ -2046,7 +2046,8 @@ class TestSpatialPalmerKernel:
 
         for typed_result, direct_result in zip(typed[:4], direct[:4], strict=True):
             np.testing.assert_array_equal(typed_result, direct_result)
-        assert typed[4] is not None and direct[4] is not None
+        assert typed[4] is not None
+        assert direct[4] is not None
         assert typed[4].keys() == direct[4].keys()
         for key in typed[4]:
             np.testing.assert_array_equal(typed[4][key], direct[4][key])
