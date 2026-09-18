@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from climate_indices import compute, indices
+from climate_indices.exceptions import PeriodicityError
 
 # disable logging messages
 logging.disable(logging.CRITICAL)
@@ -124,7 +125,7 @@ def test_transform_fitted_gamma(
     # time series type, confirm we can't use an invalid type
     flat_array = precips_mm_monthly.flatten()
     np.testing.assert_raises(
-        ValueError,
+        PeriodicityError,
         compute.transform_fitted_gamma,
         flat_array,
         data_year_start_monthly,
@@ -133,7 +134,7 @@ def test_transform_fitted_gamma(
         "invalid_value",
     )
     np.testing.assert_raises(
-        ValueError,
+        PeriodicityError,
         compute.transform_fitted_gamma,
         flat_array,
         data_year_start_monthly,
@@ -364,7 +365,7 @@ def test_transform_fitted_pearson(
     # confirm that we get expected errors when
     # using invalid time series type arguments
     pytest.raises(
-        ValueError,
+        PeriodicityError,
         compute.transform_fitted_pearson,
         precips_mm_monthly.flatten(),
         data_year_start_monthly,
@@ -373,7 +374,7 @@ def test_transform_fitted_pearson(
         None,
     )
     pytest.raises(
-        ValueError,
+        PeriodicityError,
         compute.transform_fitted_pearson,
         precips_mm_monthly.flatten(),
         data_year_start_monthly,
@@ -421,7 +422,7 @@ def test_pearson_parameters(
         compute.Periodicity.monthly,
     )
     np.testing.assert_raises(
-        ValueError,
+        PeriodicityError,
         compute.pearson_parameters,
         None,
         data_year_start_monthly,
@@ -748,8 +749,18 @@ def test_prepare_scaled_rejects_unsupported_periodicity_when_unreshaped():
     An invalid periodicity must be rejected even with reshape=False, since
     reshape_values() -- the only other periodicity check -- is skipped in that case.
     """
-    with pytest.raises(ValueError, match="Invalid periodicity argument"):
+    with pytest.raises(PeriodicityError, match="Invalid periodicity argument") as error:
         compute.prepare_scaled(np.arange(12, dtype=float), 3, "monthly", reshape=False)
+
+    assert error.value.periodicity_value == "monthly"
+
+
+def test_reshape_values_rejects_unsupported_periodicity():
+    """The shared reshape helper rejects a periodicity it cannot reshape to."""
+    with pytest.raises(PeriodicityError, match="Invalid periodicity argument") as error:
+        compute.reshape_values(np.arange(24, dtype=float), "monthly")
+
+    assert error.value.periodicity_value == "monthly"
 
 
 def test_prepare_scaled_clips_negatives_alongside_missing_values():

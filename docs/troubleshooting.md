@@ -199,7 +199,7 @@ ______________________________________________________________________
 ### Missing time dimension
 
 :::{warning}
-**Error:** `CoordinateValidationError: Time dimension 'time' not found in input. Available dimensions: ['date']. Use time_dim parameter to specify custom name.`
+**Error:** `DimensionMismatchError: Time dimension 'time' not found in input. Available dimensions: ['date']. Use time_dim parameter to specify custom name.`
 
 **Cause:** Your DataArray uses a different dimension name (e.g., `date`, `timestamp`, `t`), but the function expects `time` by default.
 
@@ -1347,8 +1347,8 @@ ClimateIndicesError (base exception)
 ├── DistributionFittingError
 │   ├── InsufficientDataError
 │   └── PearsonFittingError
-├── DimensionMismatchError
 ├── CoordinateValidationError
+│   └── DimensionMismatchError
 ├── InputTypeError
 └── InvalidArgumentError
 

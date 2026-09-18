@@ -12,7 +12,7 @@ from hypothesis import strategies as st
 
 from climate_indices import fire, pm_eto
 from climate_indices.cf_metadata_registry import CF_METADATA
-from climate_indices.exceptions import CoordinateValidationError, InvalidArgumentError
+from climate_indices.exceptions import CoordinateValidationError, DimensionMismatchError, InvalidArgumentError
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -694,7 +694,7 @@ def test_hdw_xarray_missing_level_dim_raises() -> None:
     temperature, humidity, wind, height = _hdw_profile_dataarrays(xr)
     temperature = temperature.rename({"level": "plev"})
 
-    with pytest.raises(CoordinateValidationError, match="level"):
+    with pytest.raises(DimensionMismatchError, match="level"):
         fire.hot_dry_windy(temperature, humidity, wind, height)
 
 

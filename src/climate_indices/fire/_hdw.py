@@ -11,7 +11,7 @@ import xarray as xr
 
 from climate_indices import pm_eto
 from climate_indices.cf_metadata_registry import CF_METADATA
-from climate_indices.exceptions import CoordinateValidationError, InvalidArgumentError
+from climate_indices.exceptions import DimensionMismatchError, InvalidArgumentError
 from climate_indices.fire._common import _as_float_array
 from climate_indices.fire._units import _convert_temperature_units
 from climate_indices.logging_config import get_logger
@@ -150,11 +150,13 @@ def _hdw_xarray(
         ("height_agl_meters", height),
     ):
         if level_dim not in data.dims:
-            raise CoordinateValidationError(
+            raise DimensionMismatchError(
                 message=(
                     f"Dimension '{level_dim}' not found in {name}. "
                     f"Available dimensions: {list(data.dims)}. Use level_dim to specify a custom name."
                 ),
+                expected_dims=level_dim,
+                actual_dims=tuple(data.dims),
                 coordinate_name=level_dim,
                 reason="missing_dimension",
             )
@@ -302,9 +304,10 @@ def hot_dry_windy(
             input), ``level_axis`` is not the default alongside xarray
             input, or ``height_agl_meters`` is not an ``xr.DataArray`` or a
             1-D array-like when the other inputs are ``xr.DataArray``.
-        CoordinateValidationError: xarray input only -- if ``level_dim`` is
-            missing from any input, or the input is Dask-backed with
-            ``level_dim`` split across multiple chunks.
+        CoordinateValidationError: xarray input only -- if inputs do not align,
+            or the input is Dask-backed with ``level_dim`` split across
+            multiple chunks. A missing ``level_dim`` raises the
+            ``DimensionMismatchError`` specialization instead.
 
     Notes:
         xarray-only: ``temperature_celsius``, ``relative_humidity_percent``,

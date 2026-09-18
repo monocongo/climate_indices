@@ -147,28 +147,6 @@ class ConvergenceError(DistributionFittingError):
         self.iterations = iterations
 
 
-class DimensionMismatchError(ClimateIndicesError):
-    """Raised when array dimensions don't match expected structure.
-
-    This exception is raised when input arrays have incompatible shapes
-    or when required dimensions are missing.
-
-    Attributes:
-        expected_dims: The expected dimension structure
-        actual_dims: The actual dimension structure found
-    """
-
-    def __init__(
-        self,
-        message: str,
-        expected_dims: Any = None,
-        actual_dims: Any = None,
-    ) -> None:
-        super().__init__(message)
-        self.expected_dims = expected_dims
-        self.actual_dims = actual_dims
-
-
 class CoordinateValidationError(ClimateIndicesError):
     """Raised when coordinate validation fails.
 
@@ -189,6 +167,40 @@ class CoordinateValidationError(ClimateIndicesError):
         super().__init__(message)
         self.coordinate_name = coordinate_name
         self.reason = reason
+
+
+class DimensionMismatchError(CoordinateValidationError):
+    """Raised when required named dimensions are missing or incompatible.
+
+    This exception is raised when an input DataArray does not carry the
+    dimension structure the computation expects, e.g. a missing time
+    dimension. Unlike :class:`DataShapeError` (which applies to raw NumPy
+    array shapes), this applies to xarray named dimensions.
+
+    A specialization of :class:`CoordinateValidationError`, so handlers that
+    already catch that type keep catching these failures -- the same
+    relationship :class:`PeriodicityError` has with
+    :class:`InvalidArgumentError`.
+
+    Attributes:
+        expected_dims: The expected dimension structure
+        actual_dims: The actual dimension structure found
+        coordinate_name: Name of the coordinate that failed validation
+        reason: Specific reason why the coordinate is invalid
+    """
+
+    def __init__(
+        self,
+        message: str,
+        expected_dims: Any = None,
+        actual_dims: Any = None,
+        *,
+        coordinate_name: str | None = None,
+        reason: str | None = None,
+    ) -> None:
+        super().__init__(message, coordinate_name=coordinate_name, reason=reason)
+        self.expected_dims = expected_dims
+        self.actual_dims = actual_dims
 
 
 class InputTypeError(ClimateIndicesError):
@@ -271,8 +283,8 @@ class DataShapeError(ClimateIndicesError):
 
     This exception is raised when NumPy arrays have shapes that cannot
     be reshaped or processed for the given computation. Unlike
-    DimensionMismatchError (which applies to xarray named dimensions),
-    this applies to raw array shape validation.
+    :class:`DimensionMismatchError` (which applies to xarray named
+    dimensions), this applies to raw array shape validation.
 
     Attributes:
         expected_shape: Description of the expected shape (e.g., "(years, 12)")

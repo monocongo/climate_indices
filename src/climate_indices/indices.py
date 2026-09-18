@@ -10,7 +10,7 @@ import numpy as np
 import structlog.stdlib
 
 from climate_indices import compute, eto
-from climate_indices.exceptions import DataShapeError, InvalidArgumentError
+from climate_indices.exceptions import DataShapeError, InvalidArgumentError, PeriodicityError
 from climate_indices.logging_config import get_logger
 from climate_indices.performance import check_large_array_memory
 
@@ -114,7 +114,7 @@ def _validate_periodicity(periodicity: compute.Periodicity) -> None:
         periodicity: The periodicity parameter to validate
 
     Raises:
-        InvalidArgumentError: If periodicity is not a Periodicity enum member
+        PeriodicityError: If periodicity is not a Periodicity enum member
     """
     if not isinstance(periodicity, compute.Periodicity):
         message = (  # type: ignore[unreachable]
@@ -123,12 +123,7 @@ def _validate_periodicity(periodicity: compute.Periodicity) -> None:
             f"Supported values: monthly, daily. "
             f"Use compute.Periodicity.monthly or compute.Periodicity.daily."
         )
-        raise InvalidArgumentError(
-            message,
-            argument_name="periodicity",
-            argument_value=str(periodicity),
-            valid_values="monthly, daily",
-        )
+        raise PeriodicityError(message, periodicity_value=str(periodicity))
 
 
 def _raise_if_unsupported_shape(values: np.ndarray, spatial_time_major: bool = False) -> None:
