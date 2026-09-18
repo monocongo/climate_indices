@@ -843,7 +843,12 @@ def _align_inputs(
     # input has to agree, order aside, before anything is aligned away.
     shared_dims = {dim for array in all_arrays for dim in array.dims} - {time_dim}
     for dim in sorted(shared_dims, key=str):
-        coordinate_indexes = [array[dim].to_index().sort_values() for array in all_arrays if dim in array.dims]
+        arrays_with_dim = [array for array in all_arrays if dim in array.dims]
+        # a dimension without a coordinate variable has no labels to compare; xr.align
+        # matches it by position, so leave that case to xr.align
+        if any(dim not in array.coords for array in arrays_with_dim):
+            continue
+        coordinate_indexes = [array[dim].to_index().sort_values() for array in arrays_with_dim]
         if len(coordinate_indexes) > 1 and any(
             not index.equals(coordinate_indexes[0]) for index in coordinate_indexes[1:]
         ):
