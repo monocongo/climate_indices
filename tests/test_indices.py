@@ -50,13 +50,12 @@ def test_pet(
     np.testing.assert_raises(ValueError, indices.pet, temps_celsius, np.nan, data_year_start_monthly)
 
     # confirm that an invalid latitude value raises an error
-    pytest.raises(
-        ValueError,
-        indices.pet,
-        temps_celsius,
-        91.0,  # latitude > 90 is invalid
-        data_year_start_monthly,
-    )
+    with pytest.raises(ValueError):
+        indices.pet(
+            temps_celsius,
+            91.0,  # latitude > 90 is invalid
+            data_year_start_monthly,
+        )
 
     # confirm that an invalid latitude value raises an error
     np.testing.assert_raises(

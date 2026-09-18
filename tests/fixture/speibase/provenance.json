@@ -1,0 +1,124 @@
+{
+  "source": "Consejo Superior de Investigaciones Cient\u00edficas (CSIC)",
+  "url": "https://spei.csic.es/spei_database_2_11/",
+  "download_date": "2026-09-17",
+  "subset_description": "SPEIbase v2.11 global 0.5-degree monthly SPEI, averaged per month across the 0.5-degree grid cells whose centers fall inside three CONUS climate divisions spanning an aridity gradient: 0101 (Northern Valley, Alabama; humid), 3405 (Central, Oklahoma; subhumid), and 0205 (Southwest, Arizona; arid). The stored series is the mean of the per-cell SPEI values, not an index computed from averaged inputs. Timescales 1, 3, 6 and 12 months, January 1901 through December 2022 (1464 months), truncated to the period shared with the committed tests/fixture/palmer/<division>/{precips,temps}.npy inputs. Each <scale>.npy is a (3, 1464) float32 array whose row order matches divisions.json. Cell membership comes from the NCEI CONUS_CLIMATE_DIVISIONS.shp.zip polygons.",
+  "checksum_sha256": "dd8f9ce5aaabb0453ad870469e9bc3ba8c527ff2a58d3aa09dec533c79f300e0",
+  "fixture_version": "1.0.0",
+  "validation_tolerance": {
+    "0101_spei01_correlation": 0.87,
+    "0101_spei01_sign_agreement": 0.83,
+    "0101_spei01_category_agreement": 0.68,
+    "0101_spei03_correlation": 0.88,
+    "0101_spei03_sign_agreement": 0.84,
+    "0101_spei03_category_agreement": 0.69,
+    "0101_spei06_correlation": 0.88,
+    "0101_spei06_sign_agreement": 0.83,
+    "0101_spei06_category_agreement": 0.69,
+    "0101_spei12_correlation": 0.89,
+    "0101_spei12_sign_agreement": 0.85,
+    "0101_spei12_category_agreement": 0.68,
+    "3405_spei01_correlation": 0.9,
+    "3405_spei01_sign_agreement": 0.86,
+    "3405_spei01_category_agreement": 0.73,
+    "3405_spei03_correlation": 0.91,
+    "3405_spei03_sign_agreement": 0.87,
+    "3405_spei03_category_agreement": 0.74,
+    "3405_spei06_correlation": 0.91,
+    "3405_spei06_sign_agreement": 0.89,
+    "3405_spei06_category_agreement": 0.77,
+    "3405_spei12_correlation": 0.92,
+    "3405_spei12_sign_agreement": 0.87,
+    "3405_spei12_category_agreement": 0.75,
+    "0205_spei01_correlation": 0.81,
+    "0205_spei01_sign_agreement": 0.8,
+    "0205_spei01_category_agreement": 0.62,
+    "0205_spei03_correlation": 0.79,
+    "0205_spei03_sign_agreement": 0.78,
+    "0205_spei03_category_agreement": 0.59,
+    "0205_spei06_correlation": 0.79,
+    "0205_spei06_sign_agreement": 0.79,
+    "0205_spei06_category_agreement": 0.56,
+    "0205_spei12_correlation": 0.77,
+    "0205_spei12_sign_agreement": 0.79,
+    "0205_spei12_category_agreement": 0.52
+  },
+  "measured_stats": {
+    "0101_spei01": {
+      "correlation": 0.9248169210894314,
+      "sign_agreement": 0.8818306010928961,
+      "category_agreement": 0.7670765027322405,
+      "mean_abs_difference": 0.29037624859531486
+    },
+    "0101_spei03": {
+      "correlation": 0.9341332350778273,
+      "sign_agreement": 0.8905608755129959,
+      "category_agreement": 0.7722298221614227,
+      "mean_abs_difference": 0.27722393706242865
+    },
+    "0101_spei06": {
+      "correlation": 0.937248911731639,
+      "sign_agreement": 0.8869088416723784,
+      "category_agreement": 0.772446881425634,
+      "mean_abs_difference": 0.27814933497438005
+    },
+    "0101_spei12": {
+      "correlation": 0.9409872325684647,
+      "sign_agreement": 0.9022711631108052,
+      "category_agreement": 0.7632484514796972,
+      "mean_abs_difference": 0.27664619008921393
+    },
+    "3405_spei01": {
+      "correlation": 0.9508013414626721,
+      "sign_agreement": 0.9112021857923497,
+      "category_agreement": 0.8128415300546448,
+      "mean_abs_difference": 0.2301087062098202
+    },
+    "3405_spei03": {
+      "correlation": 0.9620929974422633,
+      "sign_agreement": 0.926812585499316,
+      "category_agreement": 0.8269493844049247,
+      "mean_abs_difference": 0.20400193696662677
+    },
+    "3405_spei06": {
+      "correlation": 0.9688135708552379,
+      "sign_agreement": 0.9431117203564084,
+      "category_agreement": 0.8553803975325566,
+      "mean_abs_difference": 0.18904804676856307
+    },
+    "3405_spei12": {
+      "correlation": 0.9709218001505169,
+      "sign_agreement": 0.9291121816930489,
+      "category_agreement": 0.836200963523744,
+      "mean_abs_difference": 0.18405600644653863
+    },
+    "0205_spei01": {
+      "correlation": 0.8601767248858999,
+      "sign_agreement": 0.8510928961748634,
+      "category_agreement": 0.7062841530054644,
+      "mean_abs_difference": 0.3984063207795109
+    },
+    "0205_spei03": {
+      "correlation": 0.8485574586749561,
+      "sign_agreement": 0.8392612859097127,
+      "category_agreement": 0.6771545827633378,
+      "mean_abs_difference": 0.42201007720331163
+    },
+    "0205_spei06": {
+      "correlation": 0.8409061601049207,
+      "sign_agreement": 0.8416723783413297,
+      "category_agreement": 0.6429061000685401,
+      "mean_abs_difference": 0.4391018281188301
+    },
+    "0205_spei12": {
+      "correlation": 0.8234847467006734,
+      "sign_agreement": 0.8444597384721266,
+      "category_agreement": 0.6001376462491397,
+      "mean_abs_difference": 0.48093333034132396
+    }
+  },
+  "citation": "Beguer\u00eda, S., Vicente-Serrano, S. M., Reig-Gracia, F., and Latorre Garc\u00e9s, B. (2024). SPEIbase v.2.11 [Dataset]. DIGITAL.CSIC. https://doi.org/10.20350/digitalCSIC/16497. Methodology: Vicente-Serrano, S. M., Beguer\u00eda, S., and L\u00f3pez-Moreno, J. I. (2010), Journal of Climate 23(7), 1696-1718; Beguer\u00eda, S. et al. (2014), International Journal of Climatology 34(10), 3001-3023.",
+  "doi": "10.20350/digitalCSIC/16497",
+  "license": "CC-BY 4.0 per the Google Earth Engine catalog entry; the spei.csic.es download site states the Open Database License (ODbL 1.0), which adds a share-alike condition. Attribution required either way; confirm the governing terms when refreshing.",
+  "notes": "PLAUSIBILITY CHECK ONLY, NOT EXTERNAL NUMERICAL VALIDATION. Three known confounds separate these series: (1) SPEIbase v2.11 uses FAO-56 Penman-Monteith PET from CRU TS 4.09, while climate_indices' SPEI here uses Thornthwaite PET computed from the committed nClimDiv temperatures; the two PET families diverge with climate aridity (van der Schrier et al. 2011; see docs/research/spei-dataset-survey.md on branch research/spei-dataset-survey); (2) SPEIbase standardizes with the log-logistic distribution while the compared series uses gamma (climate_indices has no log-logistic implementation, see issue #106); (3) the reference is a 0.5-degree grid average inside a climate division polygon while the compared series is the division's station-derived areal average, and their precipitation inputs (CRU TS, nClimDiv) differ. Cell-center selection makes the reference a sparse sample (3 to 8 cells per division), not a full areal mean. The measured agreement is lowest in the arid Arizona division -- the direction the PET-family mismatch predicts -- and highest in subhumid Oklahoma; with only three divisions the ordering cannot isolate the PET-family confound from the distribution and precipitation-support confounds, which is why no tight numerical gate is defensible. Tests assert per-division, per-timescale correlation, sign-agreement, and drought-category-agreement floors derived from measured_stats with the slack recorded in validation_tolerance; they must not be tightened into an atol/rtol gate or described as independent validation. SPEIbase v2.11 spans 1901-2024; the fixtures retain 1901-2022 to share the committed input period, and the compared climate_indices series is calibrated against the full 1901-2022 period of record."
+}

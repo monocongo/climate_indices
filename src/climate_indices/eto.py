@@ -29,7 +29,7 @@ import numpy as np
 
 from climate_indices import compute, utils
 from climate_indices.exceptions import InvalidArgumentError
-from climate_indices.logging_config import get_logger
+from climate_indices.logging_config import get_logger, log_calculation_failure
 from climate_indices.performance import check_large_array_memory
 
 # retrieve structlog logger for this module
@@ -532,10 +532,5 @@ def eto_hargreaves(
         )
         return result
     except Exception as exc:
-        log.error(
-            "calculation_failed",
-            exc_info=True,
-            error_type=type(exc).__name__,
-            error_message=str(exc),
-        )
+        log_calculation_failure(log, exc)
         raise

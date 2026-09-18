@@ -22,6 +22,7 @@ Two tiers of tests:
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from importlib.metadata import version as get_pkg_version
 from pathlib import Path
@@ -332,13 +333,18 @@ def test_release_workflow_creates_github_release() -> None:
 def test_release_workflow_smoke_tests_built_wheel() -> None:
     """The built wheel must install and expose the public API outside the checkout."""
     workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    wheel_check = workflow.split("\n  wheel-check:", maxsplit=1)[1].split("\n  publish:", maxsplit=1)[0]
 
-    assert "Test wheel installation" in workflow
-    assert 'python -m venv "${RUNNER_TEMP}/wheel-check"' in workflow
-    assert 'cd "${RUNNER_TEMP}"' in workflow
+    assert "Test wheel installation" in wheel_check
+    assert 'python -m venv "${RUNNER_TEMP}/wheel-check"' in wheel_check
+    assert 'cd "${RUNNER_TEMP}"' in wheel_check
     assert (
-        "from climate_indices import eddi, pci, percentage_of_normal, pet_hargreaves, pet_thornthwaite, spei, spi"
-        in workflow
+        "from climate_indices import eddi, fire, pci, percentage_of_normal, pet_hargreaves, pet_thornthwaite, spei, spi"
+        in wheel_check
+    )
+    assert (
+        "assert all(map(callable, (fire.kbdi, fire.cffwis, fire.fosberg_ffwi, fire.hot_dry_windy, fire.haines_index)))"
+        in wheel_check
     )
 
 
@@ -419,6 +425,52 @@ def test_v240_public_api_importable() -> None:
     from climate_indices import eddi
 
     assert callable(eddi)
+
+
+def test_v300_public_api_importable() -> None:
+    """The 3.0.0 fire namespace must be a public package export with a stable surface.
+
+    The fire subsystem is the headline 3.0.0 addition. If the public __init__ stops
+    exporting it, the package still installs but the namespace is absent from the
+    advertised API; the export list is pinned so the 3.0.0 public surface cannot
+    shrink unnoticed.
+    """
+    import climate_indices
+    from climate_indices import fire
+
+    assert "fire" in climate_indices.__all__
+    # A fresh interpreter proves the eager __init__ export: in this process
+    # `from climate_indices import fire` would import the submodule as a fallback
+    # and mask a removed top-level import.
+    subprocess.run([sys.executable, "-c", "import climate_indices; assert climate_indices.fire"], check=True)
+    assert set(fire.__all__) == {
+        "CFFWISResult",
+        "CFFWISState",
+        "DCResult",
+        "DCState",
+        "DMCResult",
+        "DMCState",
+        "FFMCResult",
+        "FFMCState",
+        "KBDIResult",
+        "KBDIState",
+        "buildup_index",
+        "cffwis",
+        "cffwis_fwi",
+        "daily_severity_rating",
+        "drought_code",
+        "duff_moisture_code",
+        "ffmc",
+        "fosberg_ffwi",
+        "haines_index",
+        "haines_index_from_profile",
+        "hot_dry_windy",
+        "initial_spread_index",
+        "kbdi",
+        "overwinter_drought_code",
+    }
+    for name in fire.__all__:
+        assert callable(getattr(fire, name)), f"fire.{name} is not callable"
 
 
 # ---------------------------------------------------------------------------
