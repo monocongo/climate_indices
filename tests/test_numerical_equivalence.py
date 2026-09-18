@@ -58,13 +58,46 @@ def _pointwise(grid: xr.DataArray, kernel: _Kernel, secondary: xr.DataArray | No
     return expected
 
 
-@pytest.mark.parametrize(
-    ("distribution", "atol"),
-    [
-        (indices.Distribution.gamma, 0.0),
-        (indices.Distribution.pearson, _ULP_ATOL),
-    ],
-)
+# gamma is bit-for-bit, the Pearson fit is asserted at the ULP bound
+_ULP_CASES = [
+    (indices.Distribution.gamma, 0.0),
+    (indices.Distribution.pearson, _ULP_ATOL),
+]
+
+
+def _assert_spi_matches_the_serial_numpy_api(
+    grid: xr.DataArray,
+    distribution: indices.Distribution,
+    atol: float,
+    calibration_start_year: int,
+    calibration_end_year: int,
+) -> None:
+    """Assert SPI over a grid matches the NumPy API applied once per cell."""
+    scale = 6
+    data_start_year = int(grid.time.dt.year[0])
+    result = spi(
+        grid,
+        scale=scale,
+        distribution=distribution,
+        calibration_year_initial=calibration_start_year,
+        calibration_year_final=calibration_end_year,
+    )
+    expected = _pointwise(
+        grid,
+        lambda series, _latitude, _cell: indices.spi(
+            np.asarray(series),
+            scale=scale,
+            distribution=distribution,
+            data_start_year=data_start_year,
+            calibration_year_initial=calibration_start_year,
+            calibration_year_final=calibration_end_year,
+            periodicity=compute.Periodicity.monthly,
+        ),
+    )
+    np.testing.assert_allclose(result.values, expected, rtol=0.0, atol=atol, equal_nan=True)
+
+
+@pytest.mark.parametrize(("distribution", "atol"), _ULP_CASES)
 def test_spi_block_path_matches_the_serial_numpy_api(
     gridded_monthly_precip_3d: xr.DataArray,
     calibration_year_start_monthly: int,
@@ -73,39 +106,12 @@ def test_spi_block_path_matches_the_serial_numpy_api(
     atol: float,
 ) -> None:
     """SPI over a Spatial Block matches the serial NumPy API: exact for gamma, ULP-close for Pearson."""
-    scale = 6
-    data_start_year = int(gridded_monthly_precip_3d.time.dt.year[0])
-
-    result = spi(
-        gridded_monthly_precip_3d,
-        scale=scale,
-        distribution=distribution,
-        calibration_year_initial=calibration_year_start_monthly,
-        calibration_year_final=calibration_year_end_monthly,
-    )
-    expected = _pointwise(
-        gridded_monthly_precip_3d,
-        lambda series, _latitude, _cell: indices.spi(
-            np.asarray(series),
-            scale=scale,
-            distribution=distribution,
-            data_start_year=data_start_year,
-            calibration_year_initial=calibration_year_start_monthly,
-            calibration_year_final=calibration_year_end_monthly,
-            periodicity=compute.Periodicity.monthly,
-        ),
+    _assert_spi_matches_the_serial_numpy_api(
+        gridded_monthly_precip_3d, distribution, atol, calibration_year_start_monthly, calibration_year_end_monthly
     )
 
-    np.testing.assert_allclose(result.values, expected, rtol=0.0, atol=atol, equal_nan=True)
 
-
-@pytest.mark.parametrize(
-    ("distribution", "atol"),
-    [
-        (indices.Distribution.gamma, 0.0),
-        (indices.Distribution.pearson, _ULP_ATOL),
-    ],
-)
+@pytest.mark.parametrize(("distribution", "atol"), _ULP_CASES)
 def test_spi_zero_inflated_block_path_matches_the_serial_numpy_api(
     zero_inflated_precip_da: xr.DataArray,
     calibration_year_start_monthly: int,
@@ -114,7 +120,6 @@ def test_spi_zero_inflated_block_path_matches_the_serial_numpy_api(
     atol: float,
 ) -> None:
     """SPI over a zero-inflated grid matches the per-cell result, with the zero-probability branch in play."""
-    scale = 6
     base = zero_inflated_precip_da.values
     grid = xr.DataArray(
         np.stack([base, base * 0.5], axis=1)[:, :, np.newaxis],
@@ -122,38 +127,12 @@ def test_spi_zero_inflated_block_path_matches_the_serial_numpy_api(
         dims=["time", "lat", "lon"],
         attrs={"units": "mm"},
     )
-    data_start_year = int(grid.time.dt.year[0])
-
-    result = spi(
-        grid,
-        scale=scale,
-        distribution=distribution,
-        calibration_year_initial=calibration_year_start_monthly,
-        calibration_year_final=calibration_year_end_monthly,
-    )
-    expected = _pointwise(
-        grid,
-        lambda series, _latitude, _cell: indices.spi(
-            np.asarray(series),
-            scale=scale,
-            distribution=distribution,
-            data_start_year=data_start_year,
-            calibration_year_initial=calibration_year_start_monthly,
-            calibration_year_final=calibration_year_end_monthly,
-            periodicity=compute.Periodicity.monthly,
-        ),
+    _assert_spi_matches_the_serial_numpy_api(
+        grid, distribution, atol, calibration_year_start_monthly, calibration_year_end_monthly
     )
 
-    np.testing.assert_allclose(result.values, expected, rtol=0.0, atol=atol, equal_nan=True)
 
-
-@pytest.mark.parametrize(
-    ("distribution", "atol"),
-    [
-        (indices.Distribution.gamma, 0.0),
-        (indices.Distribution.pearson, _ULP_ATOL),
-    ],
-)
+@pytest.mark.parametrize(("distribution", "atol"), _ULP_CASES)
 def test_spei_block_path_matches_the_serial_numpy_api(
     gridded_monthly_precip_3d: xr.DataArray,
     calibration_year_start_monthly: int,
