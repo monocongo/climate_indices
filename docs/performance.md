@@ -91,6 +91,35 @@ same chunking on the dimensions they share with the other input: each input's
 `time` chunking is validated independently, and a mismatch on `lat`/`lon`
 survives into the compute as a Dask `rechunk-merge` copy.
 
+## Numerical equivalence
+
+The Spatial Kernel runs the same NumPy core as the serial API, so on a fully populated
+monthly grid a gridded result is the serial result: SPI and SPEI with the gamma
+distribution, EDDI, and percentage of normal are bit-for-bit identical to calling the
+NumPy API once per cell. Two paths differ by a few float64 ULP instead, on CPUs where
+scalar and broadcast evaluation of the same library call round differently: Thornthwaite
+PET, whose Spatial Block form reorders the same arithmetic (1.14e-13 measured on the
+`5 x 6` test grid), and the Pearson L-moment fit used by `spi`/`spei` with
+`Distribution.pearson` (4.9e-15 on that grid under NumPy 2.4/scipy 1.17, 1.4e-14 under the
+minimum dependencies). Both are asserted at `atol=1e-12`.
+
+A Spatial Block runs one Pearson fit call over its cells; when that fit fails, `spi`
+falls back to gamma for the whole block rather than per cell. That block semantics is
+documented in [ADR-0009](adr/0009-spatial-block-declaration.md) and is not per-cell
+equivalence.
+
+Chunk layout does not change the numbers either: the same grid computed from a
+different chunk shape matches the in-memory result, bit for bit for gamma SPI, EDDI, and
+percentage of normal, and within the PET tolerance above. Because the Pearson
+gamma fallback is applied per Spatial Block, a chunk shape that isolates different cells
+can change which cells fall back, so the chunk-layout bounds cover the gamma path only.
+`tests/test_numerical_equivalence.py` enforces all of these bounds, so divergence fails
+`pytest` instead of silently changing an index value. Daily xarray grids are
+calendar-adapted to an all-leap 366-day series before the NumPy core and converted back
+afterward, so their serial counterpart is that adapted series rather than the raw Gregorian
+input. Missing-data, partial-year, and daily-grid shapes keep the looser bounds asserted
+in `tests/test_spatial_kernel.py`.
+
 ## Measured speedup
 
 Vectorization is what removes the per-cell Python loop, so its effect is
