@@ -293,6 +293,11 @@ def test_pdsi_returned_params_reproduce_a_duration_factor_override():
             "wetm must be a finite scalar",
             id="masked",
         ),
+        pytest.param(
+            {"wetm": np.ma.array(1.0, mask=True), "wetb": 1.0, "drym": 1.0, "dryb": 1.0},
+            "wetm must be a finite scalar",
+            id="masked-array",
+        ),
     ],
 )
 def test_invalid_duration_factor_override_is_rejected(override, message):
@@ -309,13 +314,13 @@ def test_invalid_duration_factor_override_is_rejected(override, message):
         palmer.pdsi(precips, pet, 5.0, 2000, 2000, 2003, fitting_params=override)
 
 
-def test_duration_factor_override_maps_every_key_to_its_own_field():
+def test_palmer_default_factors_as_override_reproduce_the_default_run():
     """Palmer's own factors, supplied as an override, must reproduce the default run.
 
-    ``DurationFactors.from_defaults()`` has ``wetm == drym`` and ``wetb == dryb``
-    with ``wetm != wetb``, so this pins each slope/intercept slot, and pins that a
-    run given Palmer's own constants through the override is bit-identical to the
-    run that never saw them.
+    Pins that a run given Palmer's constants through the override is bit-identical
+    to the run that never saw them. Slot routing is pinned with distinct values by
+    ``test_pdsi_returned_params_reproduce_a_duration_factor_override``; the default
+    pair values are equal across wet and dry, so they cannot pin routing here.
     """
     rng = np.random.default_rng(42)
     precips = rng.uniform(0.0, 6.0, size=12 * 4)
@@ -340,6 +345,9 @@ def test_duration_factor_override_does_not_preempt_input_validation():
     precips = rng.uniform(0.0, 6.0, size=12 * 4)
     pet = rng.uniform(0.0, 4.0, size=12 * 4)
     override = {"wetm": 1.0}
+
+    with pytest.raises(ValueError, match="Incompatible precipitation and PET arrays"):
+        palmer.pdsi(precips, pet[:-1], 5.0, 2000, 2000, 2003, fitting_params=override)
 
     infinite = precips.copy()
     infinite[0] = np.inf
