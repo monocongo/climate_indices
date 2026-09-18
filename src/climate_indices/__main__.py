@@ -412,6 +412,13 @@ def _validate_pet_or_temperature_input(args: argparse.Namespace, context: _Input
         raise ValueError(msg)
 
     else:
+        # temperature-derived PET is Thornthwaite PET, which is defined for
+        # monthly means only
+        if args.periodicity is not compute.Periodicity.monthly:
+            msg = "Invalid periodicity argument for PET: " + f"'{args.periodicity}' -- only 'monthly' is supported"
+            _logger.error(msg)
+            raise ValueError(msg)
+
         # validate the temperature file
         _validate_matching_input_file(context, "temperature", args.netcdf_temp, args.var_name_temp)
 
@@ -1476,7 +1483,11 @@ def _compute_single_array(context: _ComputeContext) -> None:
     :param context: the opened inputs and output settings of the request
     """
     handler = _registry_for(context.request.index)
-    if _KEY_RESULT not in _global_shared_arrays:
+    # an aggregate pipeline reuses _KEY_RESULT across indices, whose output
+    # shapes can differ (e.g. transposed input dimensions), so reallocate rather
+    # than reshape an incompatible buffer
+    existing = _global_shared_arrays.get(_KEY_RESULT)
+    if existing is None or existing[_KEY_SHAPE] != context.output_shape:
         _allocate_shared_array(_KEY_RESULT, context.output_shape)
 
     if handler.prepare_arrays is not None:
@@ -1772,7 +1783,10 @@ def _run_pet(arguments: argparse.Namespace, input_type: InputType) -> None:
     :param arguments: the parsed command line arguments
     :param input_type: the input type determined by argument validation
     """
-    if arguments.netcdf_pet is not None:
+    # a provided PET file substitutes for a computed one only when a later
+    # index in the pipeline consumes it; --index pet always computes from
+    # temperature
+    if arguments.netcdf_pet is not None and arguments.index != "pet":
         return
 
     arguments.netcdf_temp = _prepare_file(arguments.netcdf_temp, arguments.var_name_temp)

@@ -171,6 +171,85 @@ def test_temperature_only_spei_computes_and_consumes_pet(monkeypatch):
     assert arguments.netcdf_pet == "out_pet.nc"
 
 
+def test_pet_index_computes_pet_when_a_pet_file_is_also_provided(monkeypatch):
+    """--index pet computes PET from temperature rather than skipping the run."""
+    requests: list[cli_main._IndexRequest] = []
+
+    def _record(request: cli_main._IndexRequest) -> tuple[str, str]:
+        requests.append(request)
+        return ("out_pet.nc", "pet")
+
+    monkeypatch.setattr(cli_main, "_compute_write_index", _record)
+    monkeypatch.setattr(cli_main, "_prepare_file", lambda path, _name: path)
+    monkeypatch.setattr(cli_main, "_validate_args", lambda _arguments: InputType.timeseries)
+    arguments = argparse.Namespace(
+        index="pet",
+        multiprocessing="single",
+        periodicity=compute.Periodicity.monthly,
+        chunksizes="input",
+        calibration_start_year=None,
+        calibration_end_year=None,
+        netcdf_temp="temp.nc",
+        var_name_temp="temp",
+        netcdf_pet="provided_pet.nc",
+        var_name_pet="pet",
+        output_file_base="out",
+    )
+
+    cli_main.process_climate_indices(arguments)
+
+    assert [request.index for request in requests] == ["pet"]
+    assert arguments.netcdf_pet == "out_pet.nc"
+
+
+def test_temperature_derived_pet_requires_monthly_periodicity():
+    """A daily temperature input is rejected rather than fed to Thornthwaite PET."""
+    arguments = argparse.Namespace(
+        periodicity=compute.Periodicity.daily,
+        netcdf_temp="temp.nc",
+        var_name_temp="temp",
+        netcdf_pet=None,
+        var_name_pet=None,
+    )
+    context = cli_main._InputContext(
+        input_type=InputType.timeseries,
+        dimensions=("time",),
+        times=np.array([0]),
+    )
+
+    with pytest.raises(ValueError) as error:
+        cli_main._validate_pet_or_temperature_input(arguments, context)
+
+    assert str(error.value) == "Invalid periodicity argument for PET: 'daily' -- only 'monthly' is supported"
+
+
+def test_result_array_is_reallocated_when_the_output_shape_changes(monkeypatch):
+    """A reused result buffer is reallocated when an index's output shape differs."""
+    monkeypatch.setattr(cli_main, "_global_shared_arrays", {})
+    monkeypatch.setattr(cli_main, "_parallel_process", lambda *_args, **_kwargs: None)
+    cli_main._allocate_shared_array(cli_main._KEY_RESULT, (1, 12))
+    request = cli_main._IndexRequest(
+        index="spi",
+        output_file_base="out",
+        input_type=InputType.divisions,
+        periodicity=compute.Periodicity.monthly,
+        chunksizes="none",
+    )
+    context = cli_main._ComputeContext(
+        request=request,
+        dataset=xr.Dataset(),
+        output_dims=("time", "division"),
+        output_shape=(12, 1),
+        output_encodings=None,
+        output_engine=None,
+        arguments={},
+    )
+
+    cli_main._compute_single_array(context)
+
+    assert cli_main._global_shared_arrays[cli_main._KEY_RESULT][cli_main._KEY_SHAPE] == (12, 1)
+
+
 def test_aggregate_index_requires_the_scales_its_members_need(monkeypatch):
     """`all` includes scaled indices, so it requires --scales like they do."""
     time = xr.date_range("1990-01-01", periods=12, freq="MS")
