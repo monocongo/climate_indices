@@ -189,7 +189,8 @@ marked in docstrings.
 
 See `docs/xarray_compatibility.md` for the 3.0.0 compatibility matrix, including
 Dask chunking constraints, metadata behavior, and the current Palmer xarray
-workflow.
+workflow. See `docs/performance.md` for a runnable parallel SPI/SPEI example and
+the measured speedups behind the chunk and scheduler guidance.
 
 ### Validation Notes
 
@@ -481,6 +482,8 @@ applies per cell along the time axis.
   interface changes.
 - Use xarray APIs for labeled, gridded workflows where coordinate preservation
   and metadata are more valuable than strict interface stability.
+- For a complete runnable gridded SPI and SPEI example with the chunking and
+  scheduler guidance applied, see [Gridded Performance](docs/performance.md).
 - Keep Dask chunks spatial when possible and leave `time` as one chunk before
   calling index functions. Spatial chunks set the parallelism granularity: SPI and
   SPEI fit a whole `(time, *cells)` block per call, and the gridded path requires
