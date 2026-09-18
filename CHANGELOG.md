@@ -5,6 +5,96 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-09-18
+
+### Added
+
+- **Wildfire index family (`climate_indices.fire`)**: a public namespace with the
+  Keetch-Byram Drought Index (KBDI), the CFFWIS moisture codes (FFMC, DMC, DC) and
+  behavior indices (ISI, BUI, FWI, DSR) including Drought Code overwintering and
+  seasonal carry, the Fosberg Fire Weather Index, the Hot-Dry-Windy Index, and the
+  Haines Index. Each index ships an xarray adapter and CF metadata registry entries;
+  `climate_indices --index kbdi` runs KBDI from the command line.
+- **Self-calibrated Palmer Drought Severity Index** (`scpdsi`): duration-factor
+  fitting, order-statistic self-calibration, and correlation-adaptive least-squares
+  fitting, exposed from the Palmer CLI dispatch (#721).
+- **Palmer xarray adapter**: `pdsi()` accepts xarray DataArrays, bringing the Palmer
+  family to parity with the xarray support the other indices already had (#1016).
+- **Validation infrastructure**: `VALIDATION.md` records per-index evidence, backed by
+  SPEIbase v2.11 SPEI plausibility fixtures (#779), NOAA EDDI reference fixtures, PET
+  literature fixtures, and a measured scPDSI calibration anchor.
+
+### Changed
+
+- **The xarray DataArray API stays Beta through 3.0.0** and is promoted no earlier
+  than 3.1.0, so the interface may still change in a minor release (ADR-0012).
+  Computation results remain identical to the stable NumPy API.
+- **Python 3.14 support**: `requires-python` is now `>=3.10,<3.15`, and CI covers the
+  new version in the test matrix and in wheel smoke tests.
+- **Documentation rebuilt on MyST Markdown** with a four-section reader-need
+  navigation, replacing the previous reStructuredText sources.
+- **CI**: meta and validation checks moved off the version matrix onto the minimum
+  supported Python, and the release workflow installs the built wheel on the boundary
+  Pythons.
+- **CLI**: Palmer inputs are converted to the inches `palmer.pdsi()` expects, and the
+  PET stage now runs for temperature-only SPEI, scaled, and Palmer runs.
+
+### Breaking
+
+Four changes break behavior without a deprecation period. Each one states what a user
+sees, how to detect it, and what to change in `docs/deprecations/api-changes.md`.
+
+- **Daily xarray calendar alignment**: `spi()`, `spei()`, `eddi()`,
+  `percentage_of_normal()`, and `xarray_adapter.pet_hargreaves()` may return
+  **different, corrected** daily values for any input spanning a non-leap year. The
+  adapter previously passed daily Gregorian values straight into the NumPy core's
+  366-day-per-year layout, silently shifting every value after February 28. Inputs on
+  a supported Gregorian calendar (`standard`, `gregorian`, `proleptic_gregorian`)
+  whose daily coordinates begin on January 1 still succeed, now with corrected
+  numbers; unsupported calendars and other origins raise `CoordinateValidationError`
+  instead of being silently misinterpreted. The NumPy array API is unaffected
+  (ADR-0004).
+- **NumPy gridded input shape guard**: `indices.spi()`, `indices.spei()`, and
+  `compute.prepare_scaled()` read a three-or-more-dimensional NumPy array as a
+  time-major `(time, *cells)` block, and reject the one shape that is ambiguous with a
+  `(years, periods, *cells)` array unless it is declared. Reorder the cell axes so the
+  first one is not a calendar period length, or pass `spatial_time_major=True`. The
+  keyword exists on those three functions; the package-root `spi()` and `spei()`
+  wrappers do not forward it (ADR-0009).
+- **PCI February correction**: `pci()` returns different values. The cumulative
+  day-of-year boundaries had February written as a month length (28 or 29) instead of
+  its cumulative index, which left the February slice empty and let March absorb
+  February while starting three days early in a non-leap year and two in a leap year.
+  Any 365- or 366-day input can move, so recompute PCI values and recalibrate any
+  downstream thresholds tuned against the previous ones (#846).
+- **Periodicity validation type**: the periodicity check shared by
+  `compute.prepare_scaled()`, `compute.transform_fitted_gamma`,
+  `compute.transform_fitted_pearson`, `compute.gamma_parameters()`, and
+  `compute.reshape_values()`, along with the index functions, now raises
+  `PeriodicityError` — a subclass of `InvalidArgumentError`, and not of `ValueError`.
+  Error messages are unchanged, so a handler that catches `ValueError` must be widened
+  to catch `PeriodicityError` or its parent `InvalidArgumentError` from
+  `climate_indices.exceptions`.
+
+### Removed
+
+- **`spi` console script**: deprecated in 2.4.0 and now removed, along with the
+  `climate_indices.__spi__` module. Use `climate_indices --index spi` instead. The
+  `--save_params` and `--load_params` options are retired rather than migrated: fit
+  parameters once with `compute.gamma_parameters()` or
+  `compute.pearson_parameters()` and pass them as the `fitting_params` argument of
+  `indices.spi()` (#919, #957).
+
+### Fixed
+
+- **Palmer**: duration-factor overrides resolve after input validation, masked fitting
+  parameters are treated as missing, fitted coefficients are required to be 12-element
+  vectors, mismatched cell grids are rejected, and per-cell available water capacity
+  pairing is covered by tests (#660, #721, #906, #1016).
+- **Fire**: KBDI percentile window alignment, the Haines xarray adapter's warnings and
+  dtype guard, and the demo manifest input guard (#809).
+- **CLI**: corrected the `spi` deprecation migration guidance (#919).
+
 ## [2.4.0] - 2026-04-05
 
 ### Added
