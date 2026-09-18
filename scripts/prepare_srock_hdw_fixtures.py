@@ -158,7 +158,15 @@ def _fetch(url: str, offset: int | None = None, length: int | None = None) -> by
             if offset is not None and len(payload) != length:
                 raise RuntimeError(f"short range response for {url}[{offset}:{length}]: {len(payload)} bytes")
             CACHE_DIR.mkdir(parents=True, exist_ok=True)
-            cached.write_bytes(payload)
+            # Workers share cache keys, so publish through a staging file: a
+            # reader must never observe a partial write at ``cached``.
+            with tempfile.NamedTemporaryFile(dir=CACHE_DIR, delete=False) as stream:
+                stream.write(payload)
+                staging = Path(stream.name)
+            try:
+                staging.replace(cached)
+            finally:
+                staging.unlink(missing_ok=True)
             return payload
         except urllib.error.HTTPError as error:
             if error.code in (400, 401, 403, 404):
