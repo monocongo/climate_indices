@@ -110,6 +110,7 @@ exclude_patterns = [
     "research/interactive-climate-explorer-landscape.md",
     "explorer/**",
     "architecture-deepening-review-*.md",
+    "ai-assisted-development-report-*.md",
     "test_fixture_management.md",
     # Published Markdown pages not yet wired into navigation. Later tickets
     # publish them and delete their paths from this list: DOCS-7 (navigation)
