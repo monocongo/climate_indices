@@ -293,7 +293,7 @@ guarded only by internal fixtures.
 | Scope | Command | Expected result |
 | --- | --- | --- |
 | Core suite | `uv run pytest -m "not benchmark and not validation"` | Unit, property, xarray, release guardrail, and regression tests pass. |
-| Validation marker suite | `uv run pytest -m validation` | External validation tests, including committed NOAA EDDI fixtures, pass; Palmer and scPDSI regression coverage passes. |
+| Validation marker suite | `uv run pytest -m validation` | External validation tests, including committed NOAA EDDI fixtures and the standard-Palmer nClimDiv comparison, pass; scPDSI oracle cross-validation and all regression coverage pass. |
 | Lint | `uv run ruff check src/ tests/` | No lint findings. |
 | Format | `uv run ruff format --check src/ tests/` | No formatting changes needed. |
 | Notebooks | `uv run jupyter nbconvert --execute --to notebook --inplace notebooks/xarray_getting_started.ipynb notebooks/palmer_indices_xarray.ipynb notebooks/eddi_xarray.ipynb` | All 3.0.0 notebooks execute from a clean checkout. |
@@ -312,7 +312,8 @@ guarded only by internal fixtures.
 | EDDI | Validated | NOAA reference tests use `rtol=1e-5`, `atol=1e-5` | Committed paired NOAA PSL monthly reference ET/EDDI fixtures for 1-, 3-, and 6-month Timescales, 1979–2023, pass in `tests/test_noaa_eddi_reference.py`; maximum observed error is `2.43e-6`. | This is one fixed latitude/longitude subset, not a CONUS-wide assessment. |
 | KBDI | Reference-reproduced, not independently validated | Published Figure 1 series reproduced with `atol=4.0` hundredths of an inch (table-vs-equation discretization, measured maximum 2.91); GHCN station regression `rtol=1e-12`, `atol=1e-9` mm | `tests/test_fire_kbdi_reference.py` reproduces the Keetch & Byram (1968) Figure 1 worked example from a committed fixture, audits the published net-rain wet-spell rule, and runs a complete 30-year GHCN-Daily PRCP/TMAX record for Fresno, California against frozen values from an independent plain-Python calculator; the xclim (Finkele variant) and WFAS cross-checks skip when their optional inputs are absent. Recurrence, gap, and unit contracts are covered by `tests/test_fire_kbdi.py`. | Figure 1 is an exact oracle only for the 1968 integer table workflow, not the corrected continuous Equation 18 the library implements; xclim is a later Australian/FFDI variant, and no reproducible WFAS point oracle was obtainable. |
 | CFFWIS (FFMC, DMC, DC, ISI, BUI, FWI, DSR) | Validated against the NRCan reference implementation | All seven components `atol=1e-9` against full-precision `cffdrs_py` reference outputs; xclim sanity check at `atol=1e-9` for DC/DMC/BUI and `atol=0.5` for the FFMC lineage | `tests/test_fire_cffwis_reference.py` runs the 48-day Van Wagner & Pickett (1985) calibration sample committed as `tests/fixture/cffwis_vwp1985/` against reference values generated at `cffdrs_py` commit `0f57fcc`; the xclim cross-check skips when xclim is absent. Recurrence, gap, unit, and seasonal-carry contracts remain covered by `tests/test_fire_cffwis_moisture.py`, `tests/test_fire_cffwis_behavior.py`, and `tests/test_fire_dc_overwintering.py`. | The committed record is one calibration sample at latitude 40 N, so the external check exercises the northern DMC/DC day-length band only; the other latitude bands are covered by frozen regression vectors, and no independent (non-NRCan-lineage) CFFWIS oracle exists. |
-| Palmer PDSI/PHDI/PMDI/Z-Index and scPDSI family | Regression covered, not independently validated | Palmer and scPDSI regression tests use `atol=5e-5`, `rtol=0`; nClimDiv characterization ceilings documented in `tests/test_nclimdiv_reference.py` | `tests/test_palmer.py` exercises the standard Palmer fixtures; `tests/test_scpdsi.py` compares four self-calibrating outputs and fitted duration factors against Wells-lineage reference fixtures for all 344 climate divisions; `tests/test_nclimdiv_reference.py` characterizes aggregate `pdsi()`/`scpdsi()` agreement against the NOAA NCEI nClimDiv reference arrays. All three are marked `validation`. | `tests/fixture/palmer/provenance.json` distinguishes library-generated standard Palmer outputs from Wells-lineage scPDSI outputs. These fixture sets protect against regressions but are not treated as independent authoritative scientific validation. |
+| PDSI, PHDI, PMDI, Z-Index (standard Palmer) | Qualified independent external-product validation | nClimDiv comparison ceilings documented in `tests/test_nclimdiv_reference.py`; library fixtures `atol=5e-5`, `rtol=0` | `tests/test_nclimdiv_reference.py::test_pdsi_vs_noaa_nclimdiv_qualified_external_validation` compares `pdsi()` against the operational NOAA NCEI nClimDiv arrays for all 344 climate divisions, January 1895 through December 2022 (measured median absolute difference 0.0127; 86.2% of months within 0.05). `tests/test_palmer.py` retains the library-generated standard-Palmer fixtures as regression coverage. Both are marked `validation`. | Qualified rather than absolute: NCEI publishes two decimal places, and the committed `precips.npy`/`pet.npy` inputs are not byte-identical to NCEI's operational inputs, so the practical agreement floor is ~0.013 rather than 0.005. See "Palmer Validation Classification" below. |
+| scPDSI | Independent implementation cross-validation; nClimDiv comparison is characterization only | Wells-lineage oracle fixtures `atol=5e-5`, `rtol=0` in `tests/test_scpdsi.py`; nClimDiv characterization ceilings in `tests/test_nclimdiv_reference.py` | `tests/test_scpdsi.py` compares the four self-calibrating outputs and fitted duration factors against Wells-lineage reference fixtures for all 344 climate divisions. `tests/test_nclimdiv_reference.py::test_scpdsi_vs_noaa_nclimdiv_characterization` characterizes aggregate agreement against nClimDiv, which applies standard Palmer's fixed national calibration rather than per-division self-calibration. Both are marked `validation`. | No qualified external-product reference yet; assessing DRI/WRCC scPDSI for that role remains open (issue #780). The NCEI Fortran and Wells C++ recursion lineages disagree on roughly 6.3% of months by up to 8 PDSI units, and on those months the NCEI-lineage values sit closer to NOAA operational data 88% of the time (`tests/fixture/palmer/provenance.json`). |
 
 ## EDDI Fixture Policy
 
@@ -341,22 +342,41 @@ period. The validation tests compare non-NaN reference values and separately
 verify NaN placement. `scripts/prepare_noaa_eddi_fixtures.py` refuses an
 unexpected table baseline so fixture refreshes are intentional.
 
-## Palmer Authoritative-Reference Decision
+## Palmer Validation Classification
 
-The committed Palmer fixture set remains valuable as a regression suite because
-it covers hundreds of climate divisions and all four Palmer outputs. It is not
-treated as independent validation for 3.0.0 because its provenance identifies the
-source as "climate_indices library reference output."
+The Palmer evidence splits by product family, because the two consume different
+reference artefacts.
 
-Before closing the 3.0.0 scientific validation checklist, one of these must be
-completed:
+**Standard Palmer (`pdsi()`: PDSI, PHDI, PMDI, Z-Index)** is qualified
+independent external-product validation against the operational NOAA NCEI
+nClimDiv arrays in `tests/fixture/nclimdiv/`, enforced by
+`tests/test_nclimdiv_reference.py::test_pdsi_vs_noaa_nclimdiv_qualified_external_validation`.
+Measured over 528,384 division-months, `pdsi()` agrees with nClimDiv to a median
+absolute difference of 0.0127, with 86.2% of months within 0.05. The
+qualification is deliberate and recorded rather than averaged away: NCEI
+publishes two decimal places, and the committed `precips.npy`/`pet.npy` inputs
+are not byte-identical to NCEI's operational inputs, so the practical agreement
+floor is near 0.013 rather than the 0.005 that published precision alone would
+permit. The library-generated standard-Palmer fixtures (`tests/fixture/palmer/`)
+remain in the suite as regression coverage only -- their provenance identifies
+the source as "climate_indices library reference output" -- and they are no
+longer the family's only evidence.
 
-1. Replace or supplement the committed Palmer outputs with independently
-   generated reference values from a documented NOAA/NCEI operational source.
-2. Add a small published numerical example extracted from Palmer (1965) or a
-   later authoritative implementation note, with provenance and tolerances.
-3. Explicitly defer independent Palmer validation in the release issue and keep
-   the current tests labeled as regression coverage only.
+**scPDSI (`scpdsi()`)** has independent implementation cross-validation, not
+external-product validation: `tests/test_scpdsi.py` compares the four
+self-calibrating outputs and fitted duration factors against the Wells-lineage
+C++ oracle fixtures at `atol=5e-5`, `rtol=0`. The nClimDiv comparison in
+`tests/test_nclimdiv_reference.py::test_scpdsi_vs_noaa_nclimdiv_characterization`
+stays explicitly classified as characterization, because nClimDiv uses standard
+Palmer's fixed national K-factors while `scpdsi()` self-calibrates per division.
+The two recursion lineages disagree on roughly 6.3% of months by up to 8 PDSI
+units (the NCEI-lineage values are closer to NOAA operational data on 88% of
+those months; see `tests/fixture/palmer/provenance.json`), so neither series can
+serve as the other's tolerance oracle.
+
+No further standard-Palmer external reference is required for this validation
+contract. scPDSI external-product validation remains open pending the DRI/WRCC
+assessment in issue #780.
 
 ## scPDSI Calibration-Anchor Measurement
 
@@ -390,7 +410,7 @@ This is regression coverage over the committed fixture set, not independent
 scientific validation: it confirms the self-calibration percentile-scaling
 arithmetic behaves as Wells describes for these 344 divisions, not that the
 resulting scPDSI values themselves match an external authoritative source.
-See "Palmer Authoritative-Reference Decision" above for the latter.
+See "Palmer Validation Classification" above for the latter.
 
 ## References
 
@@ -851,23 +871,34 @@ passes over the requested calibration period.
 
 `tests/test_palmer.py` compares PDSI, PHDI, PMDI, Z-Index, and CAFEC
 coefficients against the committed fixture set for climate divisions. The test
-module is marked `validation` and uses `atol=5e-5`, `rtol=0`.
+module is marked `validation` and uses `atol=5e-5`, `rtol=0`. That fixture set
+is regression coverage only: its provenance states the expected outputs were
+generated from this library's own Palmer implementation.
+
+For the standard family (`pdsi()`), qualified independent external-product
+validation comes from the NOAA NCEI nClimDiv comparison in
+`tests/test_nclimdiv_reference.py`: all 344 climate divisions, January 1895
+through December 2022, median absolute difference 0.0127 with 86.2% of months
+within 0.05. The comparison is qualified because NCEI publishes two decimal
+places and the committed precipitation/PET inputs are not byte-identical to
+NCEI's operational inputs, which sets a practical floor near 0.013.
 
 `tests/test_scpdsi.py` compares the four self-calibrating index outputs and
 fitted duration factors against committed Wells-lineage reference fixtures for
-344 climate divisions at the same tolerance.
-
-The committed fixtures are treated as regression coverage, not independent
-scientific validation. Their provenance states that the expected outputs were
-generated from this library's Palmer implementation using NCEI nClimDiv-style
-inputs. That fixture set is useful for detecting behavior drift, but it is not
-an authoritative external reference.
+344 climate divisions at the same tolerance. That comparison is independent
+implementation cross-validation. The nClimDiv comparison for `scpdsi()` in
+`tests/test_nclimdiv_reference.py` is characterization only, because nClimDiv
+applies standard Palmer's fixed national calibration; the NCEI Fortran and
+Wells C++ recursion lineages disagree on roughly 6.3% of months by up to 8
+PDSI units (see `tests/fixture/palmer/provenance.json`).
 
 ## Release Decision
 
-For 3.0.0, independent Palmer reference outputs remain a documented validation
-gap. The release checklist should either add an independently sourced Palmer
-fixture or explicitly defer that item before issue #627 is closed.
+Independent external-product validation for the standard Palmer family is
+satisfied by the nClimDiv comparison above. scPDSI has independent
+implementation cross-validation (Wells oracle) but no qualified
+external-product reference yet; assessing DRI/WRCC scPDSI for that role remains
+open (issue #780).
 
 ## References
 

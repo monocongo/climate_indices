@@ -1,12 +1,20 @@
-"""Characterization tests comparing Palmer-family outputs against NOAA nClimDiv.
+"""Palmer-family comparisons against NOAA nClimDiv.
 
 These tests compare climate_indices' ``pdsi()`` and ``scpdsi()`` outputs
 against the operational NOAA NCEI nClimDiv reference arrays committed under
-``tests/fixture/nclimdiv/`` (see that directory's ``provenance.json``). They
-are loose regression ceilings on aggregated statistics, not tight
-oracle/equality checks -- see VALIDATION.md's "Palmer Authoritative-Reference
-Decision" section for why nClimDiv is treated as an external comparison
-rather than an independently authoritative scientific reference.
+``tests/fixture/nclimdiv/`` (see that directory's ``provenance.json``), and
+the two entry points hold different validation status (see VALIDATION.md's
+"Palmer Validation Classification" section):
+
+- ``pdsi()`` (PDSI, PHDI, PMDI, Z-Index) uses the same fixed, nationally
+  uniform duration/K factors as the operational nClimDiv product, so this is
+  qualified independent external-product validation. NCEI publishes two
+  decimal places and the committed inputs are not byte-identical to NCEI's
+  operational inputs, which sets a practical agreement floor near 0.013.
+- ``scpdsi()`` self-calibrates duration and K-prime factors per division while
+  nClimDiv does not, so the same comparison is characterization only --
+  expected divergence, not a defect. scPDSI's independent check is the
+  Wells-lineage oracle cross-validation in ``tests/test_scpdsi.py``.
 
 Unlike ``test_scpdsi.py::test_climate_division_matches_scpdsi_oracle``, these
 tests deliberately do not compare per-division, per-month values: NOAA's
@@ -160,38 +168,43 @@ def test_ceilings_keep_documented_headroom():
                 )
 
 
+def _assert_ceilings(summary: dict[str, dict[str, float]], ceilings: dict[str, dict[str, float]]) -> None:
+    for series, stats in ceilings.items():
+        for stat, ceiling in stats.items():
+            assert summary[series][stat] < ceiling, f"{series} {stat}: {summary[series]}"
+
+
 @pytest.mark.validation
-@pytest.mark.parametrize(
-    ("entry_point", "ceilings"),
-    [("pdsi", _PDSI_CEILINGS), ("scpdsi", _SCPDSI_CEILINGS)],
-    ids=["pdsi", "scpdsi"],
-)
-def test_palmer_vs_noaa_nclimdiv_characterization(
-    request, entry_point, ceilings, division_dirs, row_by_division, nclimdiv
+def test_pdsi_vs_noaa_nclimdiv_qualified_external_validation(
+    palmer_pdsi_results, division_dirs, row_by_division, nclimdiv
 ):
-    """Aggregate agreement between a Palmer entry point and the NOAA nClimDiv arrays.
+    """Qualified independent external-product validation for standard Palmer.
 
     ``pdsi()`` uses the same fixed, nationally uniform duration/K factors as
     NOAA's operational nClimDiv product, so agreement is close; its measured
     median |Delta| of 0.0127 is consistent with
     ``tests/fixture/nclimdiv/provenance.json``, which records that same median
     alongside 86.2% of months within 0.05 (a fraction this test does not
-    recompute). ``scpdsi()`` self-calibrates duration and K-prime factors per
-    division (Wells, Goddard, and Hayes 2004) while NOAA uses fixed national
-    K-factors, so the two diverge substantially by design -- expected
-    divergence, not a defect -- and its ceilings are correspondingly wider.
+    recompute). The "qualified" qualifier covers NCEI's two-decimal published
+    precision and the non-identical committed inputs, which put the practical
+    agreement floor near 0.013; see VALIDATION.md's "Palmer Validation
+    Classification" section.
     """
-    # entry_point names both palmer.<entry_point> and the cached palmer_<entry_point>_results fixture
-    summary = _summarize_diffs(
-        entry_point,
-        request.getfixturevalue(f"palmer_{entry_point}_results"),
-        division_dirs,
-        row_by_division,
-        nclimdiv,
-    )
-    for series, stats in ceilings.items():
-        for stat, ceiling in stats.items():
-            assert summary[series][stat] < ceiling, f"{series} {stat}: {summary[series]}"
+    summary = _summarize_diffs("pdsi", palmer_pdsi_results, division_dirs, row_by_division, nclimdiv)
+    _assert_ceilings(summary, _PDSI_CEILINGS)
+
+
+@pytest.mark.validation
+def test_scpdsi_vs_noaa_nclimdiv_characterization(palmer_scpdsi_results, division_dirs, row_by_division, nclimdiv):
+    """Characterization only: nClimDiv applies standard Palmer's fixed national
+    K-factors while ``scpdsi()`` self-calibrates duration and K-prime factors
+    per division (Wells, Goddard, and Hayes 2004), so the two diverge by design
+    and its ceilings are correspondingly wider. scPDSI's independent evidence
+    is the Wells-lineage oracle cross-validation in ``tests/test_scpdsi.py``,
+    not this comparison.
+    """
+    summary = _summarize_diffs("scpdsi", palmer_scpdsi_results, division_dirs, row_by_division, nclimdiv)
+    _assert_ceilings(summary, _SCPDSI_CEILINGS)
 
 
 @pytest.mark.validation
