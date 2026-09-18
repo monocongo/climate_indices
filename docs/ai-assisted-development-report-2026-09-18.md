@@ -90,12 +90,15 @@ That prompt appears **187 times** in the session logs; the recent days show it
 accelerating: 4 occurrences on Sep 13, then **38 / 54 / 63** on Sep 15 / 16 /
 17. Corrections land as `fix(review):` commits rather than silent edits.
 
-The loop is now codified as the `resolve-pr-review` skill, opened in
-`skills/resolve-pr-review/` (PR #1045). It treats review text as untrusted
-data, verifies each finding against the branch before editing, fixes with one
-minimal commit per finding carrying a `Review-Anchor:` trailer, validates
-against a `validation.yaml` profile when the repository declares one, emits an
-auditable report, and never auto-resolves GitHub threads.
+Two loop jobs are now codified skills. `resolve-pr-review` (landed in
+`skills/resolve-pr-review/` via PR #1045) treats review text as untrusted data,
+verifies each finding against the branch before editing, fixes with one minimal
+commit per finding carrying a `Review-Anchor:` trailer, validates against a
+`validation.yaml` profile when the repository declares one, emits an auditable
+report, and never auto-resolves GitHub threads. `resolve-pr-conflicts` covers
+the other failure mode: bring the source branch up to date with a merge (never
+a rebase and force-push), resolve each block by preserving the intent of both
+sides, verify with the project's tests, and push only to the source branch.
 
 Merge authority stayed human throughout: every one of the 36 pull requests
 merged on 2026-09-17 and 2026-09-18 came from the maintainer account, and all
