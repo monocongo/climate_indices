@@ -160,7 +160,7 @@ result = indices.spi(precip_da, scale=6, distribution=indices.Distribution.gamma
 ```
 :::
 
-**Cross-reference:** See {doc}`xarray_migration` Pitfall 5 for more on Dataset vs DataArray.
+**Cross-reference:** See {doc}`xarray_migration` Pitfall 6 for more on Dataset vs DataArray.
 
 ### Mixing NumPy/xarray inputs in multi-input functions
 
@@ -468,7 +468,7 @@ result = indices.spi(precip_filled, scale=6, distribution=indices.Distribution.g
 ```
 :::
 
-**Cross-reference:** See {doc}`xarray_migration` Pitfall 6 and {doc}`algorithms` for calibration guidance.
+**Cross-reference:** See {doc}`xarray_migration` Pitfall 7 and {doc}`algorithms` for calibration guidance.
 
 ### Too few non-zero values for Pearson
 

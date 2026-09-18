@@ -9,7 +9,7 @@ This 5-minute tutorial shows you how to compute drought indices (PET, SPI, SPEI)
 **climate_indices**. You'll learn both the recommended **xarray API** (which auto-infers parameters
 from coordinates) and the **NumPy API** (which requires explicit parameters).
 
-# Prerequisites
+## Prerequisites
 
 Install the package using pip or uv:
 
@@ -25,7 +25,7 @@ For visualization examples, also install matplotlib:
 pip install matplotlib
 ```
 
-# Create Sample Data
+## Create Sample Data
 
 First, let's create synthetic monthly precipitation and temperature data covering 30 years
 (360 months). Real-world usage would load data from NetCDF files using `xr.open_dataset()`.
@@ -93,12 +93,12 @@ The xarray API shown below is **beta** and may change in future minor releases.
 Computation results are identical to the stable NumPy API shown later in this tutorial.
 :::
 
-# Compute Indices with xarray (Recommended)
+## Compute Indices with xarray (Recommended)
 
 The xarray API is the recommended approach because it automatically infers parameters like
 `data_start_year` and `periodicity` from the time coordinate, reducing boilerplate and errors.
 
-## PET (Thornthwaite)
+### PET (Thornthwaite)
 
 Potential evapotranspiration (PET) estimates atmospheric water demand. The Thornthwaite method
 requires only monthly temperature and latitude:
@@ -114,7 +114,7 @@ requires only monthly temperature and latitude:
 The result is a `DataArray` with the same time coordinate and inherited metadata. Latitude is in
 decimal degrees (positive for north, negative for south).
 
-## SPI (Standardized Precipitation Index)
+### SPI (Standardized Precipitation Index)
 
 SPI quantifies precipitation anomalies relative to a long-term calibration period. Negative values
 indicate drier-than-normal conditions:
@@ -131,7 +131,7 @@ The `scale` parameter controls the accumulation window (3 months here). The `dis
 parameter selects the fitting distribution (`gamma` is standard for precipitation). The calibration
 period defaults to the full time range.
 
-## SPEI (Standardized Precipitation Evapotranspiration Index)
+### SPEI (Standardized Precipitation Evapotranspiration Index)
 
 SPEI is similar to SPI but accounts for both precipitation and evapotranspiration, making it
 sensitive to temperature-driven droughts:
@@ -146,7 +146,7 @@ sensitive to temperature-driven droughts:
 
 SPEI uses the precipitation minus PET (P - PET) as input, representing the water balance.
 
-# Save and Load NetCDF
+## Save and Load NetCDF
 
 xarray makes it easy to persist results to disk in NetCDF format, the standard for gridded climate
 data:
@@ -190,7 +190,7 @@ ds.to_netcdf("results.nc")
 ds_loaded = xr.open_dataset("results.nc")
 ```
 
-# Compute Indices with NumPy
+## Compute Indices with NumPy
 
 The NumPy API provides explicit control over all parameters but requires more boilerplate. All
 temporal parameters must be specified manually:
@@ -246,7 +246,7 @@ The NumPy API is useful when working with legacy code or when xarray's overhead 
 very large computations. However, the xarray API is recommended for most use cases because it reduces
 parameter redundancy and preserves metadata.
 
-# Visualize Results
+## Visualize Results
 
 Plotting time series helps verify that indices respond correctly to precipitation and temperature
 patterns:
@@ -281,7 +281,7 @@ plt.show()
 Install matplotlib for visualization: `pip install matplotlib`
 :::
 
-# Next Steps
+## Next Steps
 
 Now that you've computed your first drought indices, explore these resources:
 

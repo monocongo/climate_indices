@@ -139,7 +139,7 @@ spi_result = spi(
 
 **Key changes:**
 
-- Import from `climate_indices.spi` instead of `climate_indices.indices.spi`
+- Import from the package root (`from climate_indices import spi`) instead of `climate_indices.indices`
 - Data shape changes from 2D (years, months) to 1D with labeled time dimension
 - Only 2 required parameters (`scale`, `distribution`) instead of 6
 - All temporal parameters (`data_start_year`, `calibration_year_initial`, `calibration_year_final`, `periodicity`) are optional and inferred automatically
@@ -413,18 +413,12 @@ precip_da.coords["time"].attrs = {
     "calendar": "standard",
     "long_name": "time",
 }
-precip_da.coords["lat"].attrs = {
-    "axis": "Y",
-    "standard_name": "latitude",
-    "units": "degrees_north",
-}
 
 # compute SPI
 result = spi(precip_da, scale=6, distribution=Distribution.gamma)
 
 # all coordinate attributes are preserved
 assert result.coords["time"].attrs == precip_da.coords["time"].attrs
-assert result.coords["lat"].attrs == precip_da.coords["lat"].attrs
 ```
 
 ### Direct NetCDF export
