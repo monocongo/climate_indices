@@ -28,6 +28,24 @@ def test_pipelines_cover_the_index_choices():
     assert tuple(cli_main._INDEX_PIPELINES) == _EXPECTED_INDEX_CHOICES
 
 
+@pytest.mark.parametrize(
+    ("layout", "accepted"),
+    [
+        # a grid variable has to be time-last: the shared-array transport copies
+        # storage order and the kernels index a grid's time axis last, so any
+        # other order would be standardized along the wrong axis
+        (DatasetLayout.GRID, (("lat", "lon", "time"), ("lat", "lon"))),
+        # a time-major division variable is copied as-is and then indexed along
+        # its division axis; #1063 tracks rejecting or normalizing it
+        (DatasetLayout.DIVISIONS, (("division", "time"), ("time", "division"), ("division",))),
+        (DatasetLayout.TIMESERIES, (("time",),)),
+    ],
+)
+def test_accepted_dimensions_are_the_orders_the_transport_reads(layout, accepted):
+    """The shared-array gate accepts exactly the orders its kernels can index."""
+    assert cli_main._accepted_dimensions(layout) == accepted
+
+
 def test_registry_covers_every_pipeline_member():
     for pipeline, names in cli_main._INDEX_PIPELINES.items():
         for name in names:
