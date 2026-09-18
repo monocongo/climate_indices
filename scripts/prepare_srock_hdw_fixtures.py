@@ -120,6 +120,7 @@ _FIGURE4A_MARKER_PIXELS = (
 _MAX_DOWNLOAD_ATTEMPTS = 4
 _REQUEST_TIMEOUT_SECONDS = 180
 _DOWNLOAD_WORKERS = 8
+_STAGING_SUFFIX = ".part"
 
 # A per-run decode directory keeps simultaneous sessions (this repository's
 # worktree workflow) from sharing a GRIB file or its index cache.
@@ -138,6 +139,24 @@ def _timestamps() -> list[dt.datetime]:
         moments.extend(dt.datetime(day.year, day.month, day.day, hour, tzinfo=dt.timezone.utc) for hour in _CYCLES_UTC)
         day += dt.timedelta(days=1)
     return moments
+
+
+def _download(url: str, headers: dict[str, str], offset: int | None, length: int | None) -> bytes:
+    """One download attempt, rejecting a short range response."""
+    request = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(request, timeout=_REQUEST_TIMEOUT_SECONDS) as response:
+        payload = response.read()
+    if offset is not None and length is not None and len(payload) != length:
+        raise RuntimeError(f"short range response for {url}[{offset}:{length}]: {len(payload)} bytes")
+    return payload
+
+
+def _write_cache(cached: Path, payload: bytes) -> None:
+    """Store one downloaded payload in the disk cache with a staged replace."""
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    temporary = cached.with_name(cached.name + _STAGING_SUFFIX)
+    temporary.write_bytes(payload)
+    temporary.replace(cached)
 
 
 def _fetch(url: str, offset: int | None = None, length: int | None = None) -> bytes:
@@ -163,24 +182,16 @@ def _fetch(url: str, offset: int | None = None, length: int | None = None) -> by
     last_error: Exception | None = None
     for attempt in range(_MAX_DOWNLOAD_ATTEMPTS):
         try:
-            request = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(request, timeout=_REQUEST_TIMEOUT_SECONDS) as response:
-                payload = response.read()
-            if offset is not None and length is not None and len(payload) != length:
-                raise RuntimeError(f"short range response for {url}[{offset}:{length}]: {len(payload)} bytes")
-            CACHE_DIR.mkdir(parents=True, exist_ok=True)
-            temporary = cached.with_name(cached.name + ".part")
-            temporary.write_bytes(payload)
-            temporary.replace(cached)
+            payload = _download(url, headers, offset, length)
+            _write_cache(cached, payload)
             return payload
         except urllib.error.HTTPError as error:
             if error.code in (400, 401, 403, 404):
                 raise
             last_error = error
-            time.sleep(2.0 * (attempt + 1))
         except Exception as error:  # retried below, surfaced after the final attempt
             last_error = error
-            time.sleep(2.0 * (attempt + 1))
+        time.sleep(2.0 * (attempt + 1))
     assert last_error is not None
     raise RuntimeError(f"failed to download {url}[{offset}:{length}]: {last_error}") from last_error
 
@@ -275,6 +286,20 @@ def _download_profile_messages(moment: dt.datetime) -> bytes | None:
     return b"".join(chunks)
 
 
+def _optional_profile(moment: dt.datetime) -> bytes | None:
+    """``_download_profile_messages``, mapping any 404 to ``None``.
+
+    The inventory and message fetches can 404 on the same archive gap as the
+    pressure-level object itself.
+    """
+    try:
+        return _download_profile_messages(moment)
+    except urllib.error.HTTPError as error:
+        if error.code != 404:
+            raise
+        return None
+
+
 def _pick(datasets: list, name: str, level: float | None = None):
     """Select one variable at the fixture's grid point from decoded datasets."""
     for dataset in datasets:
@@ -357,7 +382,7 @@ def _checksum_of_fixture_files(directory: Path) -> str:
 
 def _save_array(name: str, array: np.ndarray) -> None:
     """Write one fixture array as a staged replace, so a partial run leaves no mixed fixture."""
-    temporary = FIXTURE_DIR / (name + ".part")
+    temporary = FIXTURE_DIR / (name + _STAGING_SUFFIX)
     with temporary.open("wb") as handle:
         np.save(handle, array)
     temporary.replace(FIXTURE_DIR / name)
@@ -365,7 +390,7 @@ def _save_array(name: str, array: np.ndarray) -> None:
 
 def _write_text(name: str, text: str) -> None:
     """Write one fixture text artifact as a staged replace."""
-    temporary = FIXTURE_DIR / (name + ".part")
+    temporary = FIXTURE_DIR / (name + _STAGING_SUFFIX)
     temporary.write_text(text)
     temporary.replace(FIXTURE_DIR / name)
 
@@ -381,12 +406,7 @@ def main() -> None:
     valid_times: list[dt.datetime] = []
     missing: list[dt.datetime] = []
     for index, moment in enumerate(moments, start=1):
-        try:
-            messages = _download_profile_messages(moment)
-        except urllib.error.HTTPError as error:
-            if error.code != 404:
-                raise
-            messages = None
+        messages = _optional_profile(moment)
         if messages is None:
             missing.append(moment)
             continue
