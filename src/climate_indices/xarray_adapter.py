@@ -2313,6 +2313,47 @@ def pet_hargreaves(
     return result_array
 
 
+def _pdsi_numpy_passthrough(
+    precips: np.ndarray | xr.DataArray,
+    pet: np.ndarray | xr.DataArray,
+    awc: float | np.ndarray | xr.DataArray,
+    data_start_year: int | None,
+    calibration_year_initial: int | None,
+    calibration_year_final: int | None,
+    fitting_params: dict[str, Any] | None,
+    spatial_time_major: bool,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any] | None]:
+    """Route a NumPy-coercible ``palmer.pdsi`` call through its stable contract."""
+    if isinstance(pet, xr.DataArray):
+        raise TypeError(
+            "pet must be a numpy array when precips is a numpy array. Convert both to xr.DataArray for the xarray path."
+        )
+    if isinstance(awc, xr.DataArray):
+        raise TypeError(
+            "awc must be a scalar or numpy array when precips is a numpy array. "
+            f"Got xr.DataArray with dims={awc.dims}. Use a scalar awc or convert "
+            "precips and pet to xr.DataArray for spatial broadcasting."
+        )
+    if data_start_year is None or calibration_year_initial is None or calibration_year_final is None:
+        raise ValueError(
+            "data_start_year, calibration_year_initial, and calibration_year_final are required for numpy inputs"
+        )
+    # detect_input_type() routes list, tuple, and scalar input here as
+    # NumPy-coercible, and the kernel coerces too; coerce rather than assert,
+    # which -O strips and which otherwise reports a bare AssertionError. Using
+    # asanyarray rather than asarray keeps a masked array's mask.
+    return palmer.pdsi(
+        np.asanyarray(precips),
+        np.asanyarray(pet),
+        awc,
+        data_start_year,
+        calibration_year_initial,
+        calibration_year_final,
+        fitting_params,
+        spatial_time_major=spatial_time_major,
+    )
+
+
 def palmer_pdsi(
     precips: np.ndarray | xr.DataArray,
     pet: np.ndarray | xr.DataArray,
@@ -2419,34 +2460,15 @@ def palmer_pdsi(
     # numpy passthrough: the stable palmer.pdsi() contract, including its
     # spatial_time_major handling for a directly-declared 3-D block
     if input_type == InputType.NUMPY:
-        if isinstance(pet, xr.DataArray):
-            raise TypeError(
-                "pet must be a numpy array when precips is a numpy array. "
-                "Convert both to xr.DataArray for the xarray path."
-            )
-        if isinstance(awc, xr.DataArray):
-            raise TypeError(
-                "awc must be a scalar or numpy array when precips is a numpy array. "
-                f"Got xr.DataArray with dims={awc.dims}. Use a scalar awc or convert "
-                "precips and pet to xr.DataArray for spatial broadcasting."
-            )
-        if data_start_year is None or calibration_year_initial is None or calibration_year_final is None:
-            raise ValueError(
-                "data_start_year, calibration_year_initial, and calibration_year_final are required for numpy inputs"
-            )
-        # detect_input_type() routes list, tuple, and scalar input here as
-        # NumPy-coercible, and the kernel coerces too; coerce rather than assert,
-        # which -O strips and which otherwise reports a bare AssertionError. Using
-        # asanyarray rather than asarray keeps a masked array's mask.
-        return palmer.pdsi(
-            np.asanyarray(precips),
-            np.asanyarray(pet),
+        return _pdsi_numpy_passthrough(
+            precips,
+            pet,
             awc,
             data_start_year,
             calibration_year_initial,
             calibration_year_final,
             fitting_params,
-            spatial_time_major=spatial_time_major,
+            spatial_time_major,
         )
 
     # xarray path: validate → align → infer → compute → rewrap
