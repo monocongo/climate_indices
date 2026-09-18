@@ -18,10 +18,10 @@ the two entry points hold different validation status (see VALIDATION.md's
 
 Unlike ``test_scpdsi.py::test_climate_division_matches_scpdsi_oracle``, these
 tests deliberately do not compare per-division, per-month values: NOAA's
-national fixed K-factors and climate_indices' per-division self-calibration
-are expected to diverge in the details even when both are implemented
-correctly, so only aggregate statistics across all 344 divisions are
-asserted. If ``pdsi()``/``scpdsi()`` unexpectedly raises for any division,
+national fixed K-factors and ``scpdsi()``'s per-division self-calibration are
+expected to diverge in the details even when both are implemented correctly,
+so only aggregate statistics across all 344 divisions are asserted. If
+``pdsi()``/``scpdsi()`` unexpectedly raises for any division,
 the test fails loudly (no broad except/continue) -- the 344-division oracle
 test in ``test_scpdsi.py`` already proves both functions succeed for every
 real division, so a swallowed exception here would hide a real regression.
