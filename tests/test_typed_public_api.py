@@ -13,8 +13,8 @@ import xarray as xr
 
 if sys.version_info >= (3, 11):
     from typing import get_overloads
-else:
-    from typing_extensions import get_overloads
+else:  # pragma: no cover - overload introspection is unavailable before 3.11
+    get_overloads = None
 
 from climate_indices import (
     eddi,
@@ -140,6 +140,15 @@ _EXPECTED_OVERLOADS: dict[Callable[..., Any], tuple[str, str]] = {
 }
 
 
+# only Python 3.11+ registers @overload stubs at runtime, so the introspection
+# tests below cannot see them on 3.10 (mypy still checks the stubs statically)
+_requires_overload_registry = pytest.mark.skipif(
+    sys.version_info < (3, 11),
+    reason="typing.get_overloads requires the Python 3.11+ overload registry",
+)
+
+
+@_requires_overload_registry
 def test_overloads_mirror_implementations() -> None:
     """Public @overload stubs must mirror the implementation they delegate to (issue #903)."""
     for public, (implementation, internal) in _PUBLIC_IMPLEMENTATIONS.items():
@@ -162,6 +171,7 @@ def test_overloads_mirror_implementations() -> None:
         )
 
 
+@_requires_overload_registry
 def test_overload_signatures_are_frozen() -> None:
     """The overload signatures are the published typing contract; freeze them (issue #903)."""
     for public, expected in _EXPECTED_OVERLOADS.items():
@@ -169,6 +179,7 @@ def test_overload_signatures_are_frozen() -> None:
         assert actual == expected, f"{public.__name__} overload signatures changed: {actual!r} != {expected!r}"
 
 
+@_requires_overload_registry
 def test_overload_tests_cover_every_public_overloaded_function() -> None:
     """A new overloaded public function must be added to the drift tests above."""
     import climate_indices
