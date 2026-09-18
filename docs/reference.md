@@ -22,7 +22,10 @@ deprecations/index
 The installation provides the `climate_indices` command, with
 `process_climate_indices` retained as an alias. It computes one or more climate
 indices from gridded NetCDF datasets, single-location time-series NetCDF
-datasets, and US climate division NetCDF datasets. (The separate `spi` script
+datasets, and US climate division NetCDF datasets. Palmers and 'all' require
+available water capacity, which is supported only for gridded and US climate
+division data, so they cannot be computed from single-location time-series
+input. (The separate `spi` script
 was removed in 3.0.0 -- see
 {doc}`deprecations/api-changes`.)
 
@@ -43,7 +46,7 @@ The options are described below:
 * - periodicity
   - The periodicity of the input dataset files (required). Valid values are 'monthly' and 'daily'.
 
-    **NOTE**: Only SPI, PNP, and KBDI accept daily inputs; KBDI requires daily inputs.
+    **NOTE**: SPI, SPEI (with a PET input), PNP, and KBDI accept daily inputs; KBDI requires daily inputs. Palmers and 'all' require monthly inputs.
 * - netcdf_precip
   - Input NetCDF file containing a precipitation dataset, required for all indices except for PET. Requires the use of **var_name_precip** in conjunction so as to identify the NetCDF's precipitation variable.
 * - var_name_precip
@@ -53,7 +56,7 @@ The options are described below:
 * - var_name_temp
   - Name of the temperature variable within the input temperature NetCDF.
 * - netcdf_pet
-  - Input NetCDF file containing a PET dataset, required for SPEI, Palmers, 'scaled', and 'all'. This option is mutually exclusive with **netcdf_temp/var_name_temp**, as either temperature or PET is required as an input (but not both) when computing SPEI, Palmers, 'scaled', or 'all'. Requires the use of **var_name_pet** in conjunction so as to identify the NetCDF's PET variable.
+  - Input NetCDF file containing a PET dataset. SPEI, Palmers, 'scaled', and 'all' require either this option or **netcdf_temp/var_name_temp** as a PET source, so the two are mutually exclusive (provide exactly one of them). Requires the use of **var_name_pet** in conjunction so as to identify the NetCDF's PET variable.
 * - var_name_pet
   - Name of the PET variable within the input PET NetCDF.
 * - netcdf_awc
