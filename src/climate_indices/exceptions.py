@@ -431,8 +431,9 @@ class BetaFeatureWarning(ClimateIndicesWarning):
 
     Beta features have stable behavior within a minor version but their API
     surface (parameter names, return types, metadata attributes) may change
-    in future minor releases. The core computation results are identical
-    to the stable NumPy API.
+    in future minor releases. The xarray adapter layer is the Beta surface in
+    3.0.0 and is promoted no earlier than 3.1.0 (ADR-0012). The core computation
+    results are identical to the stable NumPy API.
 
     Users can suppress beta warnings via:
         warnings.filterwarnings("ignore", category=BetaFeatureWarning)

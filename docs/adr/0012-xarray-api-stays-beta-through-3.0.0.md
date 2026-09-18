@@ -20,11 +20,12 @@ version. Nothing promises "no breaking changes in minor versions" for this surfa
 
 Promotion to Stable is targeted for **3.1.0 at the earliest**, after the ADR-0004
 calendar change has a release of soak time. Promotion is a separate decision and a
-separate change (#1012 records this decision; a future promotion ticket removes
-`BetaFeatureWarning` from the public surface and updates the README table,
-`docs/xarray_compatibility.md`, and the adapter warnings). Until then
-`BetaFeatureWarning` keeps tagging the adapter paths, and the README API-stability
-table, the compatibility matrix, and the warning class all say Beta and nothing else.
+separate change (#1061 removes `BetaFeatureWarning` from the public surface and
+updates the README table and Beta API paragraph, `docs/xarray_compatibility.md`,
+`docs/xarray_migration.md`, and the adapter warnings). Until then
+`BetaFeatureWarning` remains the public warning category for the adapter paths, and
+the README API-stability table, the compatibility matrix, and the warning class all
+say Beta and nothing else.
 
 ## Consequences
 
@@ -35,5 +36,4 @@ flip the table, and `docs/deprecations/api-changes.md` does not need a fifth bre
 change: holding Beta adds none.
 
 Callers who need an interface they can freeze against continue to use the NumPy API, as
-the compatibility matrix's operational guidance already says. Users who filter
-`BetaFeatureWarning` can keep doing so for at least the 3.0.0 line.
+the compatibility matrix's operational guidance already says.

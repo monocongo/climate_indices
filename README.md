@@ -170,17 +170,17 @@ Python 3.9 support was dropped in v2.2.0 (August 2025) due to `scipy>=1.15.3` re
 | API Surface | Status | Guarantee |
 |:------------|:------:|:----------|
 | NumPy array functions (`indices.spi`, `indices.spei`, `indices.pet`) | **Stable** | No breaking changes in minor versions |
-| xarray DataArray functions (`spi()`, `spei()`, `pet_thornthwaite()`, `pet_hargreaves()`) | **Beta** | No breaking changes in patch versions |
+| xarray DataArray entry points (any index function accepting `xr.DataArray`) | **Beta** | No breaking changes in patch versions |
 
 **Stable API**: The NumPy-based computation functions follow strict semantic versioning.
 
 **Beta API**: The xarray adapter layer provides automatic parameter inference, coordinate
 preservation, CF metadata, and Dask support. While beta, computation results are **identical**
 to the stable NumPy API — only the interface surface (parameter names, metadata attributes,
-coordinate handling) may evolve. Beta features are tagged with ``BetaFeatureWarning`` and
-marked in docstrings. The adapter stays Beta in 3.0.0 and is promoted no earlier than
-3.1.0, once the 3.0.0 calendar alignment has a release of soak time
-([ADR-0012](docs/adr/0012-xarray-api-stays-beta-through-3.0.0.md)).
+coordinate handling) may evolve. Beta features are marked in docstrings, with
+``BetaFeatureWarning`` as their public warning category. The adapter stays Beta in 3.0.0
+and is promoted no earlier than 3.1.0, once the 3.0.0 calendar alignment has a release
+of soak time ([ADR-0012](docs/adr/0012-xarray-api-stays-beta-through-3.0.0.md)).
 
 See `docs/xarray_compatibility.md` for the 3.0.0 compatibility matrix, including
 Dask chunking constraints, metadata behavior, and the Palmer xarray adapter.
