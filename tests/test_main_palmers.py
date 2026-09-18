@@ -175,14 +175,14 @@ class TestPalmersWorker:
         }
         monkeypatch.setattr(cli_main, "_global_shared_arrays", shared_arrays)
 
+        palmers = cli_main._registry_for("palmers")
         params = {
-            "func1d": cli_main._palmers,
+            "func1d": palmers.kernel,
             "sub_array_start": 0,
             "sub_array_end": None,
-            "var_name_precip": "precip",
-            "var_name_pet": "pet",
-            "var_name_awc": "awc",
-            "output_var_name": cli_main._KEY_RESULT_PDSI,
+            "input_var_names": ["precip", "pet", "awc"],
+            "output_var_names": list(palmers.output_keys),
+            "coordinate_input": False,
             "input_type": InputType.divisions,
             "args": {
                 "data_start_year": data_year_start_monthly,
@@ -191,8 +191,10 @@ class TestPalmersWorker:
             },
         }
 
+        # the registration's worker is reachable directly, without monkeypatched dispatch.
         # Should not raise (e.g. KeyError for a missing scpdsi shared array).
-        cli_main._apply_along_axis_palmers(params)
+        assert palmers.worker is not None
+        palmers.worker(params)
 
         def _read(key):
             entry = shared_arrays[key]
@@ -242,10 +244,8 @@ class TestPalmersWorker:
             "func1d": recording_palmers,
             "sub_array_start": 0,
             "sub_array_end": None,
-            "var_name_precip": "precip",
-            "var_name_pet": "pet",
-            "var_name_awc": "awc",
-            "output_var_name": cli_main._KEY_RESULT_PDSI,
+            "input_var_names": ("precip", "pet", "awc"),
+            "output_var_names": cli_main._registry_for("palmers").output_keys,
             "input_type": InputType.grid,
             "args": {"data_start_year": 1980, "calibration_start_year": 1980, "calibration_end_year": 1981},
         }
@@ -293,14 +293,13 @@ class TestPalmersWorker:
         }
         monkeypatch.setattr(cli_main, "_global_shared_arrays", shared_arrays)
 
+        palmers = cli_main._registry_for("palmers")
         params = {
-            "func1d": cli_main._palmers,
+            "func1d": palmers.kernel,
             "sub_array_start": 0,
             "sub_array_end": None,
-            "var_name_precip": "precip",
-            "var_name_pet": "pet",
-            "var_name_awc": "awc",
-            "output_var_name": cli_main._KEY_RESULT_PDSI,
+            "input_var_names": ("precip", "pet", "awc"),
+            "output_var_names": palmers.output_keys,
             "input_type": InputType.grid,
             "args": {
                 "data_start_year": data_year_start_monthly,
