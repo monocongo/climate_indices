@@ -11,10 +11,14 @@ import xarray as xr
 
 from climate_indices import pm_eto
 from climate_indices.cf_metadata_registry import CF_METADATA
-from climate_indices.exceptions import DimensionMismatchError, InvalidArgumentError
+from climate_indices.exceptions import (
+    DimensionMismatchError,
+    InvalidArgumentError,
+    wrap_value_error,
+)
 from climate_indices.fire._common import _as_float_array
 from climate_indices.fire._units import _convert_temperature_units
-from climate_indices.logging_config import get_logger
+from climate_indices.logging_config import get_logger, log_calculation_failure
 from climate_indices.performance import check_large_array_memory
 from climate_indices.validation import (
     InputType,
@@ -374,12 +378,13 @@ def hot_dry_windy(
             f"wind_speed={wind.shape}, height_agl={height.shape}. The inputs must broadcast together."
         )
         _logger.error(message)
-        raise InvalidArgumentError(
-            message,
+        wrap_value_error(
+            exc,
+            message=message,
             argument_name="temperature_celsius/relative_humidity_percent/wind_speed_meters_per_second/height_agl_meters",
             argument_value=f"shapes {temperature.shape}, {humidity.shape}, {wind.shape}, {height.shape}",
             valid_values="Arrays broadcastable to a common shape",
-        ) from exc
+        )
 
     if temperature.ndim == 0:
         # a single level is a degenerate profile; give it an axis to reduce
@@ -421,10 +426,5 @@ def hot_dry_windy(
         )
         return result
     except Exception as exc:
-        log.error(
-            "calculation_failed",
-            exc_info=True,
-            error_type=type(exc).__name__,
-            error_message=str(exc),
-        )
+        log_calculation_failure(log, exc)
         raise

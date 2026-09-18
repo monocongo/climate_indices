@@ -7,7 +7,7 @@ users to catch all library-specific errors with a single handler.
 from __future__ import annotations
 
 import warnings
-from typing import Any
+from typing import Any, NoReturn
 
 __all__ = [
     "ClimateIndicesError",
@@ -29,6 +29,7 @@ __all__ = [
     "BetaFeatureWarning",
     "ClimateIndicesDeprecationWarning",
     "emit_deprecation_warning",
+    "wrap_value_error",
 ]
 
 # private constant for constructing migration guide URLs
@@ -473,6 +474,27 @@ class ClimateIndicesDeprecationWarning(ClimateIndicesWarning, DeprecationWarning
         self.removal_version = removal_version
         self.alternative = alternative
         self.migration_url = migration_url
+
+
+def wrap_value_error(
+    exc: Exception,
+    *,
+    message: str,
+    argument_name: str,
+    argument_value: str,
+    valid_values: str,
+) -> NoReturn:
+    """Raise an InvalidArgumentError carrying standard argument context, chained to exc.
+
+    Intended for ``except`` blocks that translate a broadcasting/parsing failure
+    into the library's argument-validation contract.
+    """
+    raise InvalidArgumentError(
+        message,
+        argument_name=argument_name,
+        argument_value=argument_value,
+        valid_values=valid_values,
+    ) from exc
 
 
 def emit_deprecation_warning(
