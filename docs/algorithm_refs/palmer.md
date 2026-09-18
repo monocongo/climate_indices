@@ -33,6 +33,28 @@ self-calibrating K-prime factors, fits location-specific duration factors,
 uses the Wells recursion, and performs three cumulative Z-index rescaling
 passes over the requested calibration period.
 
+### Exact-zero comparisons
+
+Both recursions branch on exact comparisons against zero (a `# NOSONAR` marker
+and a rationale comment sit at each site). Those zeros are state sentinels, not
+near-equality: the statements that clear a spell, a candidate, or a calibration
+sum assign `0.0` exactly. A tolerance would change the spell state machine and
+the committed reference fixtures, so no tolerance is used in either recursion.
+
+| Compared value | Exact zero means | Zeroed by |
+| --- | --- | --- |
+| `x3` (in `_case`) | no spell is established, so the near-normal (larger-magnitude incipient) value is selected | the spell-end assignments and the initial `0.0` |
+| `px3` | no established spell: PHDI falls back to the PDSI value, and an incipient index may be promoted | the same spell-end assignments, plus the `ppr >= 100` clamp |
+| `px1` / `px2` | no incipient wet/dry index exists to promote | the `px1_computed > 0` / `px2_computed < 0` clamps and the post-promotion resets |
+| `sx1` / `sx2` | the backtrack trail has no candidate from that index at this step | the trail arrays' initial `0.0` and the consumed-candidate resets in `_assign` |
+| `pro` / `ppr`, at 100 and 0 | the spell certainly ends, or no abatement is underway | `ppr` clamped to `100.0` when `>= 100`, reset to `0.0` when a spell ends |
+| CAFEC `numerator` / `denominator` | the month accumulated no water-balance term, so the ratio is undefined and the reference substitutes `both_zero` (1.0 for alpha/beta/gamma, 0.0 for delta) | the water-balance accumulators, initialized to `0.0` |
+| `k8` | no months are pending a spell flush (integer counter, not a float) | the recursion's own counter |
+
+The one exact-zero test that is not a sentinel is the duration-factor divisor
+guard in `DurationFactors.weighting_fraction`, which raises instead of
+dividing; its rationale is in `src/climate_indices/_palmer_duration.py`.
+
 ## Validation
 
 `tests/test_palmer.py` compares PDSI, PHDI, PMDI, Z-Index, and CAFEC

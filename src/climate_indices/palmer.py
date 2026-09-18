@@ -324,10 +324,15 @@ def _calc_cafec_ratio(
     :return the per-month ratios
     :rtype: np.ndarray
     """
-    den_nonzero = denominator != 0
+    # Exact zero is the reference's "this month contributed nothing to the
+    # calibration sums" sentinel, not a float-equality accident: a tolerance
+    # would replace the reference's substitution -- both_zero when both sums
+    # vanish (1.0 for alpha/beta/gamma, 0.0 for delta), 0.0 when only the
+    # denominator does -- with arithmetic on near-zero denominators.
+    den_nonzero = denominator != 0  # NOSONAR
     with np.errstate(divide="ignore", invalid="ignore"):
         ratio = numerator / denominator
-    return np.where(den_nonzero, ratio, np.where(numerator == 0, both_zero, 0.0))
+    return np.where(den_nonzero, ratio, np.where(numerator == 0, both_zero, 0.0))  # NOSONAR
 
 
 def _calc_water_balances(prepared: _PalmerPrepared) -> None:
@@ -552,7 +557,9 @@ def _case(prob: np.ndarray, x1: np.ndarray, x2: np.ndarray, x3: np.ndarray) -> n
     interpolated = np.where(x3 <= 0, (1.0 - pro) * x3 + pro * x1, (1.0 - pro) * x3 + pro * x2)
     established = np.where((prob <= 0) | (prob >= 100), x3, interpolated)
 
-    return np.where(x3 == 0, near_normal, established)
+    # x3 is assigned 0.0 exactly when no spell is established, so its exact
+    # zero -- not a tolerance -- is what selects the near-normal value.
+    return np.where(x3 == 0, near_normal, established)  # NOSONAR
 
 
 def _record_index_values(
@@ -585,7 +592,9 @@ def _record_index_values(
         return
     px3_here = state.px3[years, months, cell_ids]
     state.pdsi[years, months, cell_ids] = values
-    state.phdi[years, months, cell_ids] = np.where(px3_here == 0, values, px3_here)
+    # No established spell (px3 exactly 0.0) means PHDI has no severity of its
+    # own and falls back to the PDSI value recorded for this period.
+    state.phdi[years, months, cell_ids] = np.where(px3_here == 0, values, px3_here)  # NOSONAR
     state.wplm[years, months, cell_ids] = _case(
         state.ppr[years, months, cell_ids],
         state.px1[years, months, cell_ids],
@@ -615,11 +624,13 @@ def _backtrack_assigned_values(state: _PalmerRecursion, active: np.ndarray) -> N
         step = active & (i < state.k8)
         if not np.any(step):
             continue
+        # sx1/sx2 hold 0.0 exactly where the trail has no candidate from that
+        # index; the exact test is what switches the backtracking between them.
         use_sx1_branch = isave == 2
-        sx2_zero = state.sx2[i] == 0
+        sx2_zero = state.sx2[i] == 0  # NOSONAR
         branch_isave_a = np.where(sx2_zero, 1, 2)
         branch_sx_a = np.where(sx2_zero, state.sx1[i], state.sx2[i])
-        sx1_zero = state.sx1[i] == 0
+        sx1_zero = state.sx1[i] == 0  # NOSONAR
         branch_isave_b = np.where(sx1_zero, 2, 1)
         branch_sx_b = np.where(sx1_zero, state.sx2[i], state.sx1[i])
         new_isave = np.where(use_sx1_branch, branch_isave_a, branch_isave_b)
@@ -679,6 +690,8 @@ def _assign(state: _PalmerRecursion, active: np.ndarray) -> None:
     cells = np.arange(state.k8.shape[0])
     state.sx[state.k8[active], cells[active]] = state.x[y, m][active]
 
+    # k8 is an integer count of months pending a spell flush, not a computed
+    # float, so this is an integer test rather than a float comparison.
     direct = active & (state.k8 == 0)
     flush = active & (state.k8 > 0)
 
@@ -780,8 +793,11 @@ def _statement_200(prepared: _PalmerPrepared, state: _PalmerRecursion, active: n
     px1_new = np.where(px1_computed > 0, px1_computed, 0.0)
     state.px1[y, m] = np.where(active, px1_new, state.px1[y, m])
 
+    # px3 exactly 0.0 means no spell is established, and px1/px2 exactly 0.0
+    # mean no incipient wet/dry index exists to promote to x3; the recursions
+    # above clamp to those zeros exactly rather than interpolating to them.
     # if no existing wet spell or drought, x1 becomes the new x3
-    branch1 = active & (state.px1[y, m] >= 1) & (state.px3[y, m] == 0)
+    branch1 = active & (state.px1[y, m] >= 1) & (state.px3[y, m] == 0)  # NOSONAR
     state.px3[y, m] = np.where(branch1, state.px1[y, m], state.px3[y, m])
     state.x[y, m] = np.where(branch1, state.px1[y, m], state.x[y, m])
     state.px1[y, m] = np.where(branch1, 0.0, state.px1[y, m])
@@ -793,7 +809,7 @@ def _statement_200(prepared: _PalmerPrepared, state: _PalmerRecursion, active: n
     state.px2[y, m] = np.where(active & ~branch1, px2_new, state.px2[y, m])
 
     # if no existing wet spell or drought, x2 becomes the new x3
-    branch2 = active & ~branch1 & (state.px2[y, m] <= -1) & (state.px3[y, m] == 0)
+    branch2 = active & ~branch1 & (state.px2[y, m] <= -1) & (state.px3[y, m] == 0)  # NOSONAR
     state.px3[y, m] = np.where(branch2, state.px2[y, m], state.px3[y, m])
     state.x[y, m] = np.where(branch2, state.px2[y, m], state.x[y, m])
     state.px2[y, m] = np.where(branch2, 0.0, state.px2[y, m])
@@ -802,12 +818,12 @@ def _statement_200(prepared: _PalmerPrepared, state: _PalmerRecursion, active: n
     # No established drought (wet spell), but x3 = 0, so either (nonzero) x1
     # or x2 must be used as x3
     resolved = branch1 | branch2
-    px3_still_zero = active & ~resolved & (state.px3[y, m] == 0)
-    branch3 = px3_still_zero & (state.px1[y, m] == 0)
+    px3_still_zero = active & ~resolved & (state.px3[y, m] == 0)  # NOSONAR
+    branch3 = px3_still_zero & (state.px1[y, m] == 0)  # NOSONAR
     state.x[y, m] = np.where(branch3, state.px2[y, m], state.x[y, m])
     state.iass = np.where(branch3, 2, state.iass)
 
-    branch4 = px3_still_zero & ~branch3 & (state.px2[y, m] == 0)
+    branch4 = px3_still_zero & ~branch3 & (state.px2[y, m] == 0)  # NOSONAR
     state.x[y, m] = np.where(branch4, state.px1[y, m], state.x[y, m])
     state.iass = np.where(branch4, 1, state.iass)
 
@@ -848,7 +864,9 @@ def _statement_190(prepared: _PalmerPrepared, state: _PalmerRecursion, active: n
     if not np.any(active):
         return
     y, m = state.year, state.month
-    q = np.where(state.pro == 100, state.ze, state.ze + state.v)
+    # pro is 100.0 exactly where ppr was clamped to that endpoint; the exact
+    # test selects the certain-end form of q.
+    q = np.where(state.pro == 100, state.ze, state.ze + state.v)  # NOSONAR
     with np.errstate(divide="ignore", invalid="ignore"):
         ppr_new = (state.pv / q) * 100
 
@@ -953,7 +971,10 @@ def _advance_month(prepared: _PalmerPrepared, state: _PalmerRecursion, year: int
     _calc_cafec_zindex(prepared, state, year, month)
 
     z = state.z[year, month]
-    established = (state.pro == 100) | (state.pro == 0)
+    # pro takes its endpoints exactly -- clamped to 100.0, reset to 0.0 -- and
+    # either endpoint means a spell is established; values between them are
+    # abatement.
+    established = (state.pro == 100) | (state.pro == 0)  # NOSONAR
     abating = ~established
 
     # End of drought or wet
@@ -1036,7 +1057,8 @@ def _finish_up(state: _PalmerRecursion) -> None:
         x_val = state.x[i, j, step_cells]
         px3_val = state.px3[i, j, step_cells]
         state.pdsi[i, j, step_cells] = x_val
-        state.phdi[i, j, step_cells] = np.where(px3_val == 0, x_val, px3_val)
+        # the same no-established-spell fallback as _record_index_values
+        state.phdi[i, j, step_cells] = np.where(px3_val == 0, x_val, px3_val)  # NOSONAR
         state.wplm[i, j, step_cells] = final_wplm[step_cells]
 
 

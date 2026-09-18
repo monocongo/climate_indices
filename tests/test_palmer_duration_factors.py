@@ -263,3 +263,50 @@ def test_custom_duration_factors_change_pdsi_output():
     palmer._finish_up(state_custom)
 
     assert not np.allclose(state_default.pdsi, state_custom.pdsi, equal_nan=True)
+
+
+def test_cafec_ratio_substitutes_exact_zero_and_leaves_a_zero_denominator():
+    """A month with no accumulated water-balance term takes ``both_zero``.
+
+    A zero denominator with a nonzero numerator is not undefined the same way:
+    the reference leaves 0.0 there. Both cases must stay exact, since a
+    tolerance would fold genuinely small sums into them.
+    """
+    numerator = np.array([0.0, 2.0, 0.0])
+    denominator = np.array([0.0, 0.0, 4.0])
+
+    np.testing.assert_array_equal(
+        palmer._calc_cafec_ratio(numerator, denominator, both_zero=1.0),
+        np.array([1.0, 0.0, 0.0]),
+    )
+    np.testing.assert_array_equal(
+        palmer._calc_cafec_ratio(numerator, denominator, both_zero=0.0),
+        np.array([0.0, 0.0, 0.0]),
+    )
+
+
+def test_case_selects_near_normal_when_no_spell_is_established():
+    """x3 is exactly 0.0 when no spell is established, and that exact zero --
+    not a tolerance -- picks the larger-magnitude incipient index."""
+    prob = np.array([50.0])
+    x1 = np.array([1.5])
+    x2 = np.array([-1.0])
+
+    assert palmer._case(prob, x1, x2, np.array([0.0]))[0] == 1.5
+    # an established spell (x3 != 0) reports the interpolated severity instead
+    assert palmer._case(prob, x1, x2, np.array([-2.0]))[0] == -0.25
+
+
+def test_record_index_values_falls_back_to_pdsi_when_no_spell_is_established():
+    """PHDI has no severity of its own without an established spell (px3
+    exactly 0.0), so it records the PDSI value; with a spell it keeps px3."""
+    _, state = _blank_state()
+    state.px3[0, 0, 0] = 0.0
+    state.px3[0, 1, 0] = -2.5
+    values = np.array([3.0, 4.0])
+
+    palmer._record_index_values(state, np.array([0, 0]), np.array([0, 1]), values, np.array([0]))
+
+    assert state.pdsi[0, 0, 0] == 3.0
+    assert state.phdi[0, 0, 0] == 3.0  # no spell: the recorded PDSI value
+    assert state.phdi[0, 1, 0] == -2.5  # established spell: its own severity
