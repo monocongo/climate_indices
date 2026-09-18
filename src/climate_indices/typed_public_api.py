@@ -595,6 +595,7 @@ def pdsi(
     calibration_year_initial: int,
     calibration_year_final: int,
     fitting_params: dict[str, Any] | None = None,
+    spatial_time_major: bool = False,
     time_dim: str = "time",
 ) -> tuple[
     npt.NDArray[np.float64],
@@ -614,6 +615,7 @@ def pdsi(
     calibration_year_initial: int | None = None,
     calibration_year_final: int | None = None,
     fitting_params: dict[str, Any] | None = None,
+    spatial_time_major: bool = False,
     time_dim: str = "time",
 ) -> xr.Dataset: ...
 
@@ -626,6 +628,7 @@ def pdsi(
     calibration_year_initial: int | None = None,
     calibration_year_final: int | None = None,
     fitting_params: dict[str, Any] | None = None,
+    spatial_time_major: bool = False,
     time_dim: str = "time",
 ) -> (
     tuple[
@@ -667,6 +670,9 @@ def pdsi(
         calibration_year_final: Final year of the calibration period (required for
             NumPy, optional for xarray).
         fitting_params: Optional dict of pre-computed Palmer fitting parameters.
+        spatial_time_major: Declares an ambiguous 3+-D NumPy ``precips``/``pet`` as a
+            time-major ``(time, *cells)`` block (per ADR-0009). Only used for NumPy
+            inputs.
         time_dim: Name of the time dimension for xarray inputs (default: ``"time"``).
 
     Returns:
@@ -681,5 +687,6 @@ def pdsi(
         calibration_year_initial=calibration_year_initial,
         calibration_year_final=calibration_year_final,
         fitting_params=fitting_params,
+        spatial_time_major=spatial_time_major,
         time_dim=time_dim,
     )

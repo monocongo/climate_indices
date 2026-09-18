@@ -2098,3 +2098,72 @@ class TestSpatialPalmerKernel:
         assert typed[4].keys() == direct[4].keys()
         for key in typed[4]:
             np.testing.assert_array_equal(typed[4][key], direct[4][key])
+
+    def test_pdsi_numpy_list_input_coerced(self, gridded_palmer_inputs):
+        """NumPy-coercible list input reaches the kernel instead of failing an assert."""
+        precips, pet, awc = gridded_palmer_inputs
+        from_lists = typed_public_api.pdsi(
+            precips.values.tolist(),
+            pet.values.tolist(),
+            awc.values,
+            1980,
+            _CALIBRATION_START,
+            _CALIBRATION_END,
+        )
+        from_arrays = typed_public_api.pdsi(
+            precips.values,
+            pet.values,
+            awc.values,
+            1980,
+            _CALIBRATION_START,
+            _CALIBRATION_END,
+        )
+
+        for list_result, array_result in zip(from_lists[:4], from_arrays[:4], strict=True):
+            np.testing.assert_array_equal(list_result, array_result)
+
+    def test_pdsi_numpy_ambiguous_block_needs_declaration(self):
+        """A (time, 12, *cells) NumPy block is read as declared time-major, per cell."""
+        time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+        rng = np.random.default_rng(97)
+        shape = (time.size, 12, 2)
+        precips = rng.gamma(shape=2.0, scale=2.0, size=shape) / 25.4
+        pet = np.full(shape, 1.5)
+
+        with pytest.raises(ValueError, match="spatial_time_major"):
+            typed_public_api.pdsi(precips, pet, 5.0, 1980, _CALIBRATION_START, _CALIBRATION_END)
+
+        declared = typed_public_api.pdsi(
+            precips,
+            pet,
+            5.0,
+            1980,
+            _CALIBRATION_START,
+            _CALIBRATION_END,
+            spatial_time_major=True,
+        )
+
+        assert declared[0].shape == shape
+        for first_cell in range(shape[1]):
+            for second_cell in range(shape[2]):
+                expected = palmer.pdsi(
+                    precips[:, first_cell, second_cell],
+                    pet[:, first_cell, second_cell],
+                    5.0,
+                    1980,
+                    _CALIBRATION_START,
+                    _CALIBRATION_END,
+                )
+                for output, expected_values in enumerate(expected[:4]):
+                    np.testing.assert_array_equal(declared[output][:, first_cell, second_cell], expected_values)
+
+    def test_pdsi_partially_overlapping_grid_rejected(self, gridded_palmer_inputs):
+        """A PET grid that overlaps but does not match raises instead of dropping cells."""
+        precips, pet, awc = gridded_palmer_inputs
+        shifted_pet = pet.assign_coords(lat=[20.0, 30.0, 40.0])
+
+        with pytest.raises(CoordinateValidationError) as exc_info:
+            typed_public_api.pdsi(precips, shifted_pet, awc, **self._pdsi_kwargs())
+
+        assert exc_info.value.coordinate_name == "lat"
+        assert exc_info.value.reason == "mismatched_non_time_coordinates"

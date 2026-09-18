@@ -822,7 +822,9 @@ def _align_inputs(
         Tuple of (aligned_primary, dict_of_aligned_secondaries)
 
     Raises:
-        CoordinateValidationError: If alignment results in empty intersection (no overlapping time steps)
+        CoordinateValidationError: If alignment results in empty intersection (no
+            overlapping time steps), or if the inputs share a non-time dimension
+            whose coordinates differ
 
     Warns:
         InputAlignmentWarning: If alignment drops time steps from the primary input
@@ -833,6 +835,28 @@ def _align_inputs(
 
     # collect all DataArrays for alignment
     all_arrays = [primary] + list(secondaries.values())
+
+    # xr.align joins every shared dimension, not just the one named by time_dim: a
+    # secondary on a different spatial grid would lose the cells the two grids do
+    # not share, with no warning (only the time dimension is measured below). Time
+    # overlap is expected and trimmed; a non-time dimension shared by more than one
+    # input has to agree, order aside, before anything is aligned away.
+    shared_dims = {dim for array in all_arrays for dim in array.dims} - {time_dim}
+    for dim in sorted(shared_dims, key=str):
+        coordinate_indexes = [array[dim].to_index().sort_values() for array in all_arrays if dim in array.dims]
+        if len(coordinate_indexes) > 1 and any(
+            not index.equals(coordinate_indexes[0]) for index in coordinate_indexes[1:]
+        ):
+            raise CoordinateValidationError(
+                message=(
+                    f"Inputs share the '{dim}' dimension but not its coordinates. "
+                    f"Only the '{time_dim}' dimension may differ between inputs; matching "
+                    f"cell coordinates are required, because intersecting the '{dim}' "
+                    f"coordinates would silently drop cells from the result."
+                ),
+                coordinate_name=str(dim),
+                reason="mismatched_non_time_coordinates",
+            )
 
     # align using inner join (intersection of coordinates)
     aligned = xr.align(*all_arrays, join="inner")
@@ -2297,6 +2321,7 @@ def palmer_pdsi(
     calibration_year_initial: int | None = None,
     calibration_year_final: int | None = None,
     fitting_params: dict[str, Any] | None = None,
+    spatial_time_major: bool = False,
     time_dim: str = "time",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any] | None] | xr.Dataset:
     """Compute the standard Palmer drought indices, with xarray/Dask support.
@@ -2315,11 +2340,10 @@ def palmer_pdsi(
 
     Args:
         precips: Monthly precipitation values in inches.
-            For numpy: 1-D array, ``(years, 12)`` array, or an unambiguous 3-D
-            time-major ``(time, *cells)`` block. The ambiguous block whose first
-            cell axis is a calendar period length (12 or 366) must be declared with
-            ``spatial_time_major=True`` on :func:`climate_indices.palmer.pdsi`
-            directly; this facade does not expose that keyword.
+            For numpy: 1-D array, ``(years, 12)`` array, or a 3-D time-major
+            ``(time, *cells)`` block -- an ambiguous block whose first cell axis is a
+            calendar period length (12 or 366) requires ``spatial_time_major=True``.
+            List and tuple input is converted with ``np.asanyarray``.
             For xarray: DataArray with a monthly time dimension starting in January
             (may have additional cell dimensions).
         pet: Monthly potential evapotranspiration values in inches, matching
@@ -2334,6 +2358,9 @@ def palmer_pdsi(
         calibration_year_final: Final year of the calibration period. Required for
             NumPy inputs; inferred from the time range for xarray inputs.
         fitting_params: Optional dict of pre-computed Palmer fitting parameters.
+        spatial_time_major: Declares an ambiguous 3+-D numpy ``precips``/``pet`` as a
+            time-major ``(time, *cells)`` block (per ADR-0009). Only used for numpy
+            inputs; the xarray path reads its dimensions from the coordinate labels.
         time_dim: Name of the time dimension in the input DataArrays (default:
             ``"time"``). Only used for xarray inputs.
 
@@ -2350,7 +2377,8 @@ def palmer_pdsi(
         TypeError: If ``pet`` or ``awc`` mixes numpy and xarray with ``precips``, or
             if ``awc`` carries the time dimension.
         CoordinateValidationError: If the xarray time dimension is missing,
-            non-monotonic, not monthly, or does not begin in January.
+            non-monotonic, not monthly, or does not begin in January, or if
+            ``precips`` and ``pet`` share a cell dimension with differing coordinates.
         ValueError: If a NumPy call omits a required temporal parameter, or the
             precipitation and PET shapes are incompatible.
 
@@ -2388,8 +2416,8 @@ def palmer_pdsi(
     """
     input_type = detect_input_type(precips)
 
-    # numpy passthrough: the stable palmer.pdsi() contract for 1-D, (years, 12),
-    # and unambiguous 3-D time-major input
+    # numpy passthrough: the stable palmer.pdsi() contract, including its
+    # spatial_time_major handling for a directly-declared 3-D block
     if input_type == InputType.NUMPY:
         if isinstance(pet, xr.DataArray):
             raise TypeError(
@@ -2406,16 +2434,19 @@ def palmer_pdsi(
             raise ValueError(
                 "data_start_year, calibration_year_initial, and calibration_year_final are required for numpy inputs"
             )
-        assert isinstance(precips, np.ndarray)
-        assert isinstance(pet, np.ndarray)
+        # detect_input_type() routes list, tuple, and scalar input here as
+        # NumPy-coercible, and the kernel coerces too; coerce rather than assert,
+        # which -O strips and which otherwise reports a bare AssertionError. Using
+        # asanyarray rather than asarray keeps a masked array's mask.
         return palmer.pdsi(
-            precips,
-            pet,
+            np.asanyarray(precips),
+            np.asanyarray(pet),
             awc,
             data_start_year,
             calibration_year_initial,
             calibration_year_final,
             fitting_params,
+            spatial_time_major=spatial_time_major,
         )
 
     # xarray path: validate → align → infer → compute → rewrap
