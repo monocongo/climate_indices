@@ -186,12 +186,13 @@ Three rules fix the shape of a chunked input:
    cells in a block, not with the size of the grid. The PET spatial kernels take
    one block per call as well, so the same block sizing applies to them.
 3. **Chunk the shared dimensions of a multi-input index the same way.** SPEI
-   aligns precipitation and PET with `xr.align(join="inner")`, which intersects
-   every indexed coordinate the inputs share, so partially overlapping grids
-   are cropped on `lat`/`lon` as well as `time`; the adapter's
-   `InputAlignmentWarning` reports dropped `time` steps only. That join does not
-   rechunk, and each input's `time` chunking is validated independently, so a
-   mismatch on a shared dimension survives to the compute: `xr.apply_ufunc(...,
+   aligns precipitation and PET with `xr.align(join="inner")`, but the adapter
+   validates shared non-time dimensions first: a mismatched `lat`/`lon`
+   coordinate raises `CoordinateValidationError`, and only `time` is left for
+   the inner join to intersect; the adapter's `InputAlignmentWarning` reports
+   dropped `time` steps. That join does not rechunk, and each input's `time`
+   chunking is validated independently, so a chunk-layout mismatch on a shared
+   dimension survives to the compute: `xr.apply_ufunc(...,
    dask="parallelized")` makes Dask unify the chunks, inserting a
    `rechunk-merge` stage that copies the data when the graph computes — an extra
    copy inside every index that consumes the mismatched pair. Give PET the
