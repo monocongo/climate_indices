@@ -45,76 +45,76 @@
   },
   "measured_stats": {
     "0101_spei01": {
-      "correlation": 0.9248,
-      "sign_agreement": 0.8818,
-      "category_agreement": 0.7671,
-      "mean_abs_difference": 0.2904
+      "correlation": 0.9248169210894314,
+      "sign_agreement": 0.8818306010928961,
+      "category_agreement": 0.7670765027322405,
+      "mean_abs_difference": 0.29037624859531486
     },
     "0101_spei03": {
-      "correlation": 0.9341,
-      "sign_agreement": 0.8906,
-      "category_agreement": 0.7722,
-      "mean_abs_difference": 0.2772
+      "correlation": 0.9341332350778273,
+      "sign_agreement": 0.8905608755129959,
+      "category_agreement": 0.7722298221614227,
+      "mean_abs_difference": 0.27722393706242865
     },
     "0101_spei06": {
-      "correlation": 0.9372,
-      "sign_agreement": 0.8869,
-      "category_agreement": 0.7724,
-      "mean_abs_difference": 0.2781
+      "correlation": 0.937248911731639,
+      "sign_agreement": 0.8869088416723784,
+      "category_agreement": 0.772446881425634,
+      "mean_abs_difference": 0.27814933497438005
     },
     "0101_spei12": {
-      "correlation": 0.941,
-      "sign_agreement": 0.9023,
-      "category_agreement": 0.7632,
-      "mean_abs_difference": 0.2766
+      "correlation": 0.9409872325684647,
+      "sign_agreement": 0.9022711631108052,
+      "category_agreement": 0.7632484514796972,
+      "mean_abs_difference": 0.27664619008921393
     },
     "3405_spei01": {
-      "correlation": 0.9508,
-      "sign_agreement": 0.9112,
-      "category_agreement": 0.8128,
-      "mean_abs_difference": 0.2301
+      "correlation": 0.9508013414626721,
+      "sign_agreement": 0.9112021857923497,
+      "category_agreement": 0.8128415300546448,
+      "mean_abs_difference": 0.2301087062098202
     },
     "3405_spei03": {
-      "correlation": 0.9621,
-      "sign_agreement": 0.9268,
-      "category_agreement": 0.8269,
-      "mean_abs_difference": 0.204
+      "correlation": 0.9620929974422633,
+      "sign_agreement": 0.926812585499316,
+      "category_agreement": 0.8269493844049247,
+      "mean_abs_difference": 0.20400193696662677
     },
     "3405_spei06": {
-      "correlation": 0.9688,
-      "sign_agreement": 0.9431,
-      "category_agreement": 0.8554,
-      "mean_abs_difference": 0.189
+      "correlation": 0.9688135708552379,
+      "sign_agreement": 0.9431117203564084,
+      "category_agreement": 0.8553803975325566,
+      "mean_abs_difference": 0.18904804676856307
     },
     "3405_spei12": {
-      "correlation": 0.9709,
-      "sign_agreement": 0.9291,
-      "category_agreement": 0.8362,
-      "mean_abs_difference": 0.1841
+      "correlation": 0.9709218001505169,
+      "sign_agreement": 0.9291121816930489,
+      "category_agreement": 0.836200963523744,
+      "mean_abs_difference": 0.18405600644653863
     },
     "0205_spei01": {
-      "correlation": 0.8602,
-      "sign_agreement": 0.8511,
-      "category_agreement": 0.7063,
-      "mean_abs_difference": 0.3984
+      "correlation": 0.8601767248858999,
+      "sign_agreement": 0.8510928961748634,
+      "category_agreement": 0.7062841530054644,
+      "mean_abs_difference": 0.3984063207795109
     },
     "0205_spei03": {
-      "correlation": 0.8486,
-      "sign_agreement": 0.8393,
-      "category_agreement": 0.6772,
-      "mean_abs_difference": 0.422
+      "correlation": 0.8485574586749561,
+      "sign_agreement": 0.8392612859097127,
+      "category_agreement": 0.6771545827633378,
+      "mean_abs_difference": 0.42201007720331163
     },
     "0205_spei06": {
-      "correlation": 0.8409,
-      "sign_agreement": 0.8417,
-      "category_agreement": 0.6429,
-      "mean_abs_difference": 0.4391
+      "correlation": 0.8409061601049207,
+      "sign_agreement": 0.8416723783413297,
+      "category_agreement": 0.6429061000685401,
+      "mean_abs_difference": 0.4391018281188301
     },
     "0205_spei12": {
-      "correlation": 0.8235,
-      "sign_agreement": 0.8445,
-      "category_agreement": 0.6001,
-      "mean_abs_difference": 0.4809
+      "correlation": 0.8234847467006734,
+      "sign_agreement": 0.8444597384721266,
+      "category_agreement": 0.6001376462491397,
+      "mean_abs_difference": 0.48093333034132396
     }
   },
   "citation": "Beguer\u00eda, S., Vicente-Serrano, S. M., Reig-Gracia, F., and Latorre Garc\u00e9s, B. (2024). SPEIbase v.2.11 [Dataset]. DIGITAL.CSIC. https://doi.org/10.20350/digitalCSIC/16497. Methodology: Vicente-Serrano, S. M., Beguer\u00eda, S., and L\u00f3pez-Moreno, J. I. (2010), Journal of Climate 23(7), 1696-1718; Beguer\u00eda, S. et al. (2014), International Journal of Climatology 34(10), 3001-3023.",

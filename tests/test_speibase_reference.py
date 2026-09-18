@@ -31,7 +31,9 @@ input period is truncated to 1901-2022, the overlap of SPEIbase v2.11
 """
 
 import json
+from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
+from types import ModuleType
 
 import numpy as np
 import pytest
@@ -42,6 +44,7 @@ from climate_indices import compute, eto, indices
 _FIXTURE_ROOT = Path(__file__).parent / "fixture"
 _PALMER_ROOT = _FIXTURE_ROOT / "palmer"
 _SPEIBASE_ROOT = _FIXTURE_ROOT / "speibase"
+_SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 
 _DATA_START_YEAR = 1895  # tests/fixture/palmer/<division>/ inputs start here
 _SPEI_START_YEAR = 1901  # SPEIbase v2.11 starts here
@@ -51,6 +54,8 @@ _INPUT_OFFSET = (_SPEI_START_YEAR - _DATA_START_YEAR) * 12
 
 _SCALES = (1, 3, 6, 12)
 _FLOOR_METRICS = ("correlation", "sign_agreement", "category_agreement")
+# metrics scripts/prepare_speibase_fixtures.py measures and records per series
+_RECORDED_METRICS = (*_FLOOR_METRICS, "mean_abs_difference")
 
 # Slack below the maximum comparable months per division (longer scales lose
 # the leading `scale - 1` months to the rolling-sum warmup). Every division
@@ -72,8 +77,9 @@ _EXPECTED_TEMPERATURE_RANGE_C = (5.0, 30.0)
 _EXPECTED_PET_RANGE_MM_PER_YEAR = (500.0, 2000.0)
 
 # Floors and measurements live in provenance.json; scripts/prepare_speibase_fixtures.py
-# writes them from its recorded ``_MEASURED_STATS``, which must be re-measured
-# after a fixture refresh (see that script's REFRESHING note).
+# re-measures them from the arrays it just built and refuses to publish a drift
+# beyond its recorded expectations. test_refresh_script_measurement_reproduces_recorded_expectations
+# pins the two together.
 _PROVENANCE = json.loads((_SPEIBASE_ROOT / "provenance.json").read_text(encoding="utf-8"))
 _DIVISIONS = json.loads((_SPEIBASE_ROOT / "divisions.json").read_text(encoding="utf-8"))
 _MEASURED: dict[str, dict[str, float]] = _PROVENANCE["measured_stats"]
@@ -91,6 +97,36 @@ _SLACK_BOUNDS = {
     "sign_agreement": (0.03, 0.10),
     "category_agreement": (0.05, 0.13),
 }
+
+
+def _load_fixture_script() -> ModuleType:
+    """Load scripts/prepare_speibase_fixtures.py without running its main()."""
+    spec = spec_from_file_location("prepare_speibase_fixtures_test", _SCRIPTS_DIR / "prepare_speibase_fixtures.py")
+    assert spec is not None
+    assert spec.loader is not None
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _verify_fixture_checksum():
+    """Reject a mixed or edited fixture generation before any assertion reads it.
+
+    tests/test_provenance_protocol.py checks the same checksum, but that module
+    is skipped by ``pytest -m validation``, which would otherwise compare
+    against an interrupted refresh's mixed arrays and metadata.
+    """
+    import hashlib
+
+    hasher = hashlib.sha256()
+    for npy_file in sorted(_SPEIBASE_ROOT.glob("*.npy")):
+        hasher.update(npy_file.read_bytes())
+    assert hasher.hexdigest() == _PROVENANCE["checksum_sha256"], (
+        "tests/fixture/speibase holds a mixed or edited fixture generation "
+        f"(checksum {hasher.hexdigest()} != provenance {_PROVENANCE['checksum_sha256']}); "
+        "rerun scripts/prepare_speibase_fixtures.py"
+    )
 
 
 def _load_temps_fahrenheit(division: str) -> np.ndarray:
@@ -233,3 +269,31 @@ def test_division_rows_match_fixture_order():
     ]
     for scale in _SCALES:
         assert np.load(_SPEIBASE_ROOT / f"spei{scale:02d}.npy").shape == (len(_DIVISIONS), _N_MONTHS)
+
+
+@pytest.mark.validation
+def test_refresh_script_measurement_reproduces_recorded_expectations():
+    """The refresh script must re-measure the agreement it records in provenance.
+
+    scripts/prepare_speibase_fixtures.py measures provenance.json's
+    ``measured_stats`` from the arrays it just built and refuses to publish a
+    drift away from its recorded expectations. Running that measurement over
+    the committed fixtures pins the two together, so the drift guard cannot be
+    loosened or the expectations edited without this failing first.
+    """
+    script = _load_fixture_script()
+    arrays = {scale: np.load(_SPEIBASE_ROOT / f"spei{scale:02d}.npy") for scale in _SCALES}
+    measured = script._measure_agreement(arrays, _DIVISIONS)
+
+    deviations = {
+        f"{division}_spei{scale:02d} {metric}": abs(stats[metric] - script._EXPECTED_STATS[division][scale][metric])
+        for division, per_scale in measured.items()
+        for scale, stats in per_scale.items()
+        for metric in _RECORDED_METRICS
+    }
+    assert len(deviations) == len(_DIVISIONS) * len(_SCALES) * len(_RECORDED_METRICS)
+    worst_series = max(deviations, key=deviations.get)
+    assert deviations[worst_series] <= script._EXPECTATION_TOLERANCE, (
+        f"{worst_series} deviates {deviations[worst_series]:.4f} from the recorded expectation, "
+        f"over the {script._EXPECTATION_TOLERANCE} band"
+    )
