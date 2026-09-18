@@ -29,8 +29,8 @@ from climate_indices import compute, eddi, indices, percentage_of_normal, pet_th
 
 # The one path whose block form reorders arithmetic: 1.14e-13 measured on the 5 x 6
 # temperature fixture below (about 4 float64 ULP at the worst cell). The bound keeps
-# roughly an order of magnitude of headroom while still tripping on any change that
-# moves a cell's value.
+# roughly an order of magnitude of headroom and trips on any regression larger than
+# itself; drift below the bound is accepted, not reported.
 _THORNTHWAITE_ATOL = 1e-12
 
 # (time series, cell latitude, matching secondary grid cell) -> single-series result
