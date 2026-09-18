@@ -112,11 +112,11 @@ exclude_patterns = [
     # Published Markdown pages not yet wired into navigation. Later tickets
     # publish them and delete their paths from this list: DOCS-7 (navigation)
     # and DOCS-8 (explanation and reference corpus).
-    "ai-assisted-development.md",
     # `wildfire_applications.md` is different: the published page is its
     # `wildfire_applications.rst` include wrapper, so discovering the Markdown
     # file as a second source would warn about a duplicate document. It stays
     # excluded until DOCS-5 or DOCS-6 retires the wrapper.
+    "ai-assisted-development.md",
     "algorithm_refs/**",
     "architecture.md",
     "contribution-guide.md",

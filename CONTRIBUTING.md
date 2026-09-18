@@ -29,6 +29,10 @@ Use these branch prefixes:
 - `fix/<topic>` for bug fixes
 - `docs/<topic>` for documentation-only changes
 - `chore/<topic>` for maintenance
+- `perf/<topic>` for performance work
+- `refactor/<topic>` for behavior-preserving restructuring
+- `test/<topic>` for test-only changes
+- `ci/<topic>` for workflow changes
 - `hotfix/<topic>` for urgent release fixes
 
 Avoid long-lived `release/*` branches. Maintenance branches for older supported

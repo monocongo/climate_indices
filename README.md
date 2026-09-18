@@ -86,7 +86,8 @@ be releasable.
 5. Open a PR into `main`.
 6. The maintainer merges the PR after review and passing CI; agents never merge.
 
-Use `feature/<topic>`, `fix/<topic>`, `docs/<topic>`, `chore/<topic>`, or
+Use `feature/<topic>`, `fix/<topic>`, `docs/<topic>`, `chore/<topic>`,
+`perf/<topic>`, `refactor/<topic>`, `test/<topic>`, `ci/<topic>`, or
 `hotfix/<topic>` branch names. Release branches are avoided; use maintenance
 branches only for approved older-version support.
 
