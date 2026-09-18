@@ -701,7 +701,7 @@ pearson_result = indices.spi(precip_da, scale=6, distribution=indices.Distributi
 ### Invalid periodicity
 
 :::{warning}
-**Error:** `InvalidArgumentError: Invalid periodicity argument: weekly. Periodicity must be a Periodicity enum member. Supported values: monthly, daily. Use compute.Periodicity.monthly or compute.Periodicity.daily.`
+**Error:** `PeriodicityError: Invalid periodicity argument: weekly. Periodicity must be a Periodicity enum member. Supported values: monthly, daily. Use compute.Periodicity.monthly or compute.Periodicity.daily.`
 
 **Cause:** The `periodicity` parameter is not a valid `Periodicity` enum member.
 
@@ -711,7 +711,7 @@ pearson_result = indices.spi(precip_da, scale=6, distribution=indices.Distributi
 from climate_indices import indices, compute
 
 # WRONG: using string
-# result = indices.spi(values, scale=6, periodicity="monthly", ...)  # raises InvalidArgumentError
+# result = indices.spi(values, scale=6, periodicity="monthly", ...)  # raises PeriodicityError
 
 # CORRECT: use enum (numpy path only; xarray infers automatically)
 result = indices.spi(
@@ -1351,6 +1351,7 @@ ClimateIndicesError (base exception)
 │   └── DimensionMismatchError
 ├── InputTypeError
 └── InvalidArgumentError
+    └── PeriodicityError
 
 ClimateIndicesWarning (base warning)
 ├── MissingDataWarning

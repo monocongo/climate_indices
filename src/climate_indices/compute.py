@@ -194,7 +194,7 @@ def _validate_array(
                 reason="missing_periodicity",
                 shape=str(values.shape),
             )
-            raise PeriodicityError(message)
+            raise PeriodicityError(message, periodicity_value=str(periodicity))
 
         elif periodicity is Periodicity.monthly or periodicity is Periodicity.daily:
             # we've been passed a 1-D array with shape (months) or (days),

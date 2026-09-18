@@ -694,8 +694,13 @@ def test_hdw_xarray_missing_level_dim_raises() -> None:
     temperature, humidity, wind, height = _hdw_profile_dataarrays(xr)
     temperature = temperature.rename({"level": "plev"})
 
-    with pytest.raises(DimensionMismatchError, match="level"):
+    with pytest.raises(DimensionMismatchError, match="level") as error:
         fire.hot_dry_windy(temperature, humidity, wind, height)
+
+    assert error.value.expected_dims == "level"
+    assert error.value.actual_dims == tuple(temperature.dims)
+    assert error.value.coordinate_name == "level"
+    assert error.value.reason == "missing_dimension"
 
 
 def test_hdw_xarray_level_axis_non_default_raises() -> None:

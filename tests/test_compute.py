@@ -364,24 +364,25 @@ def test_transform_fitted_pearson(
 
     # confirm that we get expected errors when
     # using invalid time series type arguments
-    pytest.raises(
-        PeriodicityError,
-        compute.transform_fitted_pearson,
-        precips_mm_monthly.flatten(),
-        data_year_start_monthly,
-        calibration_year_start_monthly,
-        calibration_year_end_monthly,
-        None,
-    )
-    pytest.raises(
-        PeriodicityError,
-        compute.transform_fitted_pearson,
-        precips_mm_monthly.flatten(),
-        data_year_start_monthly,
-        calibration_year_start_monthly,
-        calibration_year_end_monthly,
-        "unsupported_type",
-    )
+    with pytest.raises(PeriodicityError, match="requires a corresponding periodicity") as missing_periodicity:
+        compute.transform_fitted_pearson(
+            precips_mm_monthly.flatten(),
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            None,
+        )
+    assert missing_periodicity.value.periodicity_value == "None"
+
+    with pytest.raises(PeriodicityError, match="Unsupported periodicity argument") as unsupported_periodicity:
+        compute.transform_fitted_pearson(
+            precips_mm_monthly.flatten(),
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            "unsupported_type",
+        )
+    assert unsupported_periodicity.value.periodicity_value == "unsupported_type"
 
     # confirm that an input array which is not 1-D or 2-D will raise an error
     pytest.raises(
@@ -753,6 +754,17 @@ def test_prepare_scaled_rejects_unsupported_periodicity_when_unreshaped():
         compute.prepare_scaled(np.arange(12, dtype=float), 3, "monthly", reshape=False)
 
     assert error.value.periodicity_value == "monthly"
+
+
+def test_gamma_parameters_all_missing_rejects_invalid_periodicity():
+    """
+    The all-missing early return must not skip periodicity validation, which is
+    the only check standing between the caller and a silently reshape-free result.
+    """
+    with pytest.raises(PeriodicityError, match="Unsupported periodicity") as error:
+        compute.gamma_parameters(np.full((2, 12), np.nan), 2000, 2000, 2001, None)
+
+    assert error.value.periodicity_value == "None"
 
 
 def test_reshape_values_rejects_unsupported_periodicity():

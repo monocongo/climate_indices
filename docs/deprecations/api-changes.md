@@ -98,16 +98,16 @@ thresholds tuned against the previous values. The fix landed in
 
 ### Periodicity validation type (3.0.0)
 
-**What a user sees:** {func}`climate_indices.compute.prepare_scaled`,
-{func}`climate_indices.compute.reshape_values`,
-{func}`climate_indices.compute.gamma_parameters`, and
-{func}`climate_indices.compute.pearson_parameters` (all through the same
-periodicity check) now raise
+**What a user sees:** the periodicity check shared by
+{func}`climate_indices.compute.prepare_scaled`,
+`compute.transform_fitted_gamma`, `compute.transform_fitted_pearson`,
+`compute.gamma_parameters`, and `compute.reshape_values` now raises
 {class}`PeriodicityError <climate_indices.exceptions.PeriodicityError>` where
-they previously raised a bare `ValueError` for an invalid periodicity argument.
-Error messages are unchanged. The same change lands on
+those paths previously raised a bare `ValueError` for an invalid periodicity
+argument. Error messages are unchanged. The same change lands on
 {func}`climate_indices.indices.spi`, {func}`climate_indices.indices.spei`, and
-the other index functions, which already raised `InvalidArgumentError`.
+the other index functions, which previously raised the parent
+`InvalidArgumentError` instead of the specialization.
 
 **How to detect it:** look for `except ValueError` around a call that passes a
 `periodicity` argument. A run that used to handle the error locally now
@@ -118,6 +118,8 @@ propagates it instead, since `PeriodicityError` derives from
 `InvalidArgumentError`, the type the troubleshooting guide documents for
 `Invalid periodicity argument` — imported from `climate_indices.exceptions`.
 Where a `ValueError` handler has to keep working across the upgrade, catch both.
+The exception's `valid_values` attribute now reads
+`"Periodicity.monthly, Periodicity.daily"`; the message text is unchanged.
 
 A related but non-breaking change: a missing required named dimension (for
 example a time dimension absent from an xarray input) now raises

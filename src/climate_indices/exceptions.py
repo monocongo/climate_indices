@@ -185,8 +185,6 @@ class DimensionMismatchError(CoordinateValidationError):
     Attributes:
         expected_dims: The expected dimension structure
         actual_dims: The actual dimension structure found
-        coordinate_name: Name of the coordinate that failed validation
-        reason: Specific reason why the coordinate is invalid
     """
 
     def __init__(
