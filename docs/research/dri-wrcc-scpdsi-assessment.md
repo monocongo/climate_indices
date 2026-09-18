@@ -113,9 +113,9 @@ This research adds no ticket or dependency edge. The answer does not qualify WWD
 [time]: https://wrcc-archive.dri.edu/wwdt/time/
 [batch]: https://wrcc-archive.dri.edu/wwdt/batchdownload.php
 [listing]: https://wrcc-archive.dri.edu/wwdt/data/PRISM/scpdsi/
-[netcdf]: `scpdsi_current_PRISM.nc`, `scpdsi_2025_10_PRISM.nc`, `scpdsi_2025_9_PRISM.nc`, `scpdsi_1895_12_PRISM.nc`, downloaded 2026-09-18 from https://wrcc-archive.dri.edu/wwdt/data/PRISM/scpdsi/
+[netcdf]: `scpdsi_current_PRISM.nc`, `scpdsi_2025_10_PRISM.nc`, `scpdsi_2025_9_PRISM.nc`, `scpdsi_2025_1_PRISM.nc`, `scpdsi_1895_12_PRISM.nc`, downloaded 2026-09-18 from https://wrcc-archive.dri.edu/wwdt/data/PRISM/scpdsi/
 [regions]: `scpdsi_REGIONS_PRISM.nc`, downloaded 2026-09-18 from https://wrcc-archive.dri.edu/wwdt/data/PRISM/scpdsi/
-[headers]: HTTP HEAD responses for https://wrcc-archive.dri.edu/wwdt/data/PRISM/scpdsi/scpdsi_current_PRISM.nc and `scpdsi_9_PRISM.nc`, 2026-09-18
+[headers]: HTTP HEAD responses for https://wrcc-archive.dri.edu/wwdt/data/PRISM/scpdsi/scpdsi_current_PRISM.nc, `scpdsi_9_PRISM.nc`, and `scpdsi_2025_9_PRISM.nc`, 2026-09-18
 [probe]: HTTP responses for https://wrcc-archive.dri.edu/wwdt/time/text/?lat=39.5&lon=-119.8&variable=SCPDSI&start_year=1895&end_year=2025 and variants, 2026-09-18
 [redirects]: `curl -L` redirect chains for https://wrcc.dri.edu/wwdt/ and https://wwdt.dri.edu/, 2026-09-18
 [root]: https://wrcc-archive.dri.edu/
