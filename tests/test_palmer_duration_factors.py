@@ -263,3 +263,78 @@ def test_custom_duration_factors_change_pdsi_output():
     palmer._finish_up(state_custom)
 
     assert not np.allclose(state_default.pdsi, state_custom.pdsi, equal_nan=True)
+
+
+def test_cafec_ratio_substitutes_exact_zero_and_leaves_a_zero_denominator():
+    """A month with no accumulated water-balance term takes ``both_zero``.
+
+    A zero denominator with a nonzero numerator is not undefined the same way:
+    the reference leaves 0.0 there. The sub-epsilon elements make either exact
+    test fail if it becomes a tolerance.
+    """
+    tiny = np.finfo(float).tiny
+    numerator = np.array([0.0, 2.0, 0.0, 1.0, tiny])
+    denominator = np.array([0.0, 0.0, 4.0, tiny, 0.0])
+
+    np.testing.assert_array_equal(
+        palmer._calc_cafec_ratio(numerator, denominator, both_zero=1.0),
+        np.array([1.0, 0.0, 0.0, 1.0 / tiny, 0.0]),
+    )
+    np.testing.assert_array_equal(
+        palmer._calc_cafec_ratio(numerator, denominator, both_zero=0.0),
+        np.array([0.0, 0.0, 0.0, 1.0 / tiny, 0.0]),
+    )
+
+
+def test_case_selects_near_normal_when_no_spell_is_established():
+    """x3 is exactly 0.0 when no spell is established, and that exact zero --
+    not a tolerance -- picks the larger-magnitude incipient index."""
+    prob = np.array([50.0])
+    x1 = np.array([1.5])
+    x2 = np.array([-1.0])
+
+    assert palmer._case(prob, x1, x2, np.array([0.0]))[0] == 1.5
+    # an established spell (x3 != 0) reports the interpolated severity instead
+    assert palmer._case(prob, x1, x2, np.array([-2.0]))[0] == -0.25
+    # a sub-epsilon x3 is still an established spell under the exact test; a
+    # tolerance would classify it as zero and return the near-normal 1.5
+    assert palmer._case(prob, x1, x2, np.array([-np.finfo(float).tiny]))[0] == 0.75
+
+
+def test_record_index_values_falls_back_to_pdsi_when_no_spell_is_established():
+    """PHDI has no severity of its own without an established spell (px3
+    exactly 0.0), so it records the PDSI value; with a spell it keeps px3."""
+    _, state = _blank_state()
+    state.px3[0, 0, 0] = 0.0
+    state.px3[0, 1, 0] = -2.5
+    state.px3[0, 2, 0] = -np.finfo(float).tiny
+    values = np.array([3.0, 4.0, 5.0])
+
+    palmer._record_index_values(state, np.zeros(3, dtype=int), np.arange(3), values, np.array([0]))
+
+    assert state.pdsi[0, 0, 0] == 3.0
+    assert state.phdi[0, 0, 0] == 3.0  # no spell: the recorded PDSI value
+    assert state.phdi[0, 1, 0] == -2.5  # established spell: its own severity
+    assert state.phdi[0, 2, 0] == -np.finfo(float).tiny  # sub-epsilon, still a spell
+
+
+def test_finish_up_falls_back_to_pdsi_when_no_spell_is_established():
+    """_finish_up repeats the no-established-spell fallback for the months left
+    pending when the record ends, under the same exact-zero test."""
+    _, state = _blank_state()
+    state.k8max = np.array([2])
+    state.indexj[0, 0], state.indexm[0, 0] = 0, 0
+    state.indexj[1, 0], state.indexm[1, 0] = 0, 1
+    state.x[0, 0, 0] = 3.0
+    state.px3[0, 0, 0] = 0.0
+    state.x[0, 1, 0] = 4.0
+    state.px3[0, 1, 0] = -np.finfo(float).tiny
+
+    palmer._finish_up(state)
+
+    assert state.pdsi[0, 0, 0] == 3.0
+    assert state.phdi[0, 0, 0] == 3.0  # no spell: the PDSI value
+    assert state.pdsi[0, 1, 0] == 4.0
+    # a sub-epsilon px3 is still an established spell, so PHDI keeps it rather
+    # than falling back to the PDSI value
+    assert state.phdi[0, 1, 0] == -np.finfo(float).tiny
