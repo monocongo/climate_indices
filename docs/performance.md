@@ -94,10 +94,13 @@ survives into the compute as a Dask `rechunk-merge` copy.
 ## Numerical equivalence
 
 The Spatial Kernel runs the same NumPy core as the serial API, so on a fully populated
-monthly grid a gridded result is the serial result: SPI, SPEI, EDDI, and percentage of normal
-are bit-for-bit identical to calling the NumPy API once per cell. Thornthwaite PET is
-the one exception — its Spatial Block form reorders the same arithmetic and differs by
-a few float64 ULP (1.14e-13 measured on the `5 x 6` test grid), asserted at
+monthly grid a gridded result is the serial result: SPI with the gamma distribution, SPEI,
+EDDI, and percentage of normal are bit-for-bit identical to calling the NumPy API once per
+cell. Two fits differ by a few float64 ULP instead: Thornthwaite PET, whose Spatial Block
+form reorders the same arithmetic (1.14e-13 measured on the `5 x 6` test grid), and
+Pearson SPI, whose block fit rounds that arithmetic through vectorized NumPy transcendentals
+where the serial fit calls the scalar `math` library (4.9e-15 on that grid under NumPy
+2.4/scipy 1.17, 1.4e-14 under the minimum dependencies). Both are asserted at
 `atol=1e-12`.
 
 A Spatial Block is fitted as a unit, so the Pearson fit's whole-block gamma fallback
