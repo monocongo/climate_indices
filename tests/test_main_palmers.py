@@ -74,6 +74,31 @@ class TestAWCDimensions:
             "Invalid dimensions of the AWC variable: ('time', 'division') (expected names and order: [('division',)])"
         )
 
+    def test_rejects_awc_for_a_timeseries_input(self, monkeypatch):
+        """A timeseries layout carries no per-location form for AWC."""
+        coords = {"time": np.arange(12)}
+        datasets = {
+            "precip.nc": xr.Dataset({"precip": (("time",), np.ones(12))}, coords=coords),
+            "pet.nc": xr.Dataset({"pet": (("time",), np.ones(12))}, coords=coords),
+            "awc.nc": xr.Dataset({"awc": (("time",), np.ones(12))}, coords=coords),
+        }
+        monkeypatch.setattr(cli_main.xr, "open_dataset", datasets.__getitem__)
+        arguments = argparse.Namespace(
+            index="palmers",
+            netcdf_precip="precip.nc",
+            var_name_precip="precip",
+            netcdf_temp=None,
+            netcdf_pet="pet.nc",
+            var_name_pet="pet",
+            netcdf_awc="awc.nc",
+            var_name_awc="awc",
+        )
+
+        with pytest.raises(ValueError) as error:
+            cli_main._validate_args(arguments)
+
+        assert str(error.value) == "Available water capacity input requires gridded or US climate division data"
+
 
 class TestScalesRequirement:
     def test_all_without_scales_raises_value_error(self, monkeypatch):

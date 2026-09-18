@@ -262,9 +262,11 @@ class TestDatasetLayout:
         with pytest.raises(ValueError) as exc_info:
             detect_dataset_layout(dimensions, "precipitation")
 
-        message = str(exc_info.value)
-        assert message.startswith(f"Invalid dimensions of the precipitation variable: {dimensions}")
-        assert "Valid dimension names and order" in message
+        assert str(exc_info.value) == (
+            f"Invalid dimensions of the precipitation variable: {dimensions}\n"
+            "Valid dimension names and order: "
+            "[('lat', 'lon', 'time'), ('time', 'lat', 'lon'), ('time', 'division'), ('division', 'time')]"
+        )
 
     def test_unrecognized_layout_event_names_the_variable(self):
         """The structured event must name the variable whose dimensions were rejected."""
@@ -276,8 +278,17 @@ class TestDatasetLayout:
         ):
             detect_dataset_layout(("division",), "temperature")
 
-        assert mock_logger.error.call_args.args[0] == "dataset_layout_unrecognized"
-        assert mock_logger.error.call_args.kwargs["variable"] == "temperature"
+        mock_logger.error.assert_called_once_with(
+            "dataset_layout_unrecognized",
+            variable="temperature",
+            dimensions=("division",),
+            accepted=[
+                ("lat", "lon", "time"),
+                ("time", "lat", "lon"),
+                ("time", "division"),
+                ("division", "time"),
+            ],
+        )
 
     def test_expected_dimensions_are_the_layouts_accepted_orders(self):
         """Each layout reports the dimension orders it accepts, in storage order."""

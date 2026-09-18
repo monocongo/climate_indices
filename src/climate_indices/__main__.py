@@ -147,18 +147,33 @@ class _ComputeContext:
     prepared: xr.Dataset | None = None
 
 
+# the dimension orders the shared-array transport accepts, by layout: it copies
+# each variable's values in storage order, and the kernels index the time axis
+# at a fixed position (_TIME_AXIS_INDEX), so a grid variable has to be stored
+# time-last. The layout classifier is wider -- it accepts a time-major grid for
+# the xarray-backed KBDI path, which never enters the transport
+_TRANSPORT_DIMENSIONS: dict[DatasetLayout, tuple[tuple[Hashable, ...], ...]] = {
+    DatasetLayout.GRID: (("lat", "lon", "time"),),
+    # a time-major division variable is copied as-is and then indexed along its
+    # division axis; #1063 tracks rejecting or normalizing it, which would
+    # narrow the inputs the CLI accepts today
+    DatasetLayout.DIVISIONS: (("division", "time"), ("time", "division")),
+    DatasetLayout.TIMESERIES: (("time",),),
+}
+
+
 def _accepted_dimensions(layout: DatasetLayout) -> tuple[tuple[Hashable, ...], ...]:
     """
     Every dimension order a variable in a dataset of this layout may use.
 
-    A dataset holds the data variables, which carry the layout's time
-    dimension, and per-location companions such as the division latitudes,
-    which do not.
+    The data variables are limited to the orders the shared-array transport and
+    the kernels can read, and a layout's per-location companions -- such as the
+    division latitudes -- are fixed per location, without a time dimension.
 
     param layout: the dataset layout the dimensions are accepted for
     return: the accepted dimension orders, in storage order
     """
-    return (expected_dimensions(layout) or ()) + (expected_dimensions(layout, includes_time=False) or ())
+    return _TRANSPORT_DIMENSIONS[layout] + (expected_dimensions(layout, includes_time=False) or ())
 
 
 def _validate_precipitation_input(args: argparse.Namespace) -> _InputContext:
@@ -417,7 +432,8 @@ def _validate_awc_input(args: argparse.Namespace, context: _InputContext) -> Non
         dimensions = dataset_awc[args.var_name_awc].dims
         expected = expected_dimensions(context.input_type, includes_time=False)
         if expected is None:
-            msg = "Failed to determine the input type (gridded or US climate division)"
+            # the layout was determined; it simply has no per-location form
+            msg = "Available water capacity input requires gridded or US climate division data"
             _logger.error(msg)
             raise ValueError(msg)
 

@@ -31,7 +31,7 @@ The Dask-backed SPI/SPEI workflow is demonstrated end to end in
 ```{eval-rst}
 .. automodule:: climate_indices.validation
    :members:
-   :exclude-members: InputType
+   :exclude-members: InputType, GRID, DIVISIONS, TIMESERIES
 ```
 
 ```{eval-rst}

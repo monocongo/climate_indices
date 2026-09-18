@@ -138,6 +138,15 @@ An index whose NumPy core accepts a Spatial Block, declared per index with `spat
 **Per-Cell Path**:
 The alternative dispatch, `xr.apply_ufunc(..., vectorize=True)`, which calls the kernel once per grid cell over 1-D time series. Still used for inputs with a single non-core dimension. scPDSI has no adapter entry point at all and stays on the per-location NumPy path ([ADR-0011](../../docs/adr/0011-palmer-spatial-block-and-per-location-scpdsi.md)).
 
+### Input validation
+
+**Input Type**:
+The array backend a computation's inputs arrive in — NumPy-coercible (ndarray, list, tuple, scalars) or `xarray.DataArray` — classified by `validation.detect_input_type()` for adapter dispatch. Says nothing about how a dataset is stored.
+
+**Dataset Layout**:
+The storage layout a NetCDF dataset's data variables follow — `grid` (lat/lon), `divisions` (US climate division IDs), or `timeseries` — together with the dimension orders each one accepts: `validation.detect_dataset_layout()` classifies it and `validation.expected_dimensions()` reports the orders, including the time-free ones a per-location companion such as available water capacity uses. The CLI validates its inputs against this contract. Distinct from Input Type: a grid dataset read into NumPy arrays is still `InputType.NUMPY`. The CLI's shared-array transport copies values in storage order and its kernels index the time axis at a fixed position, so a `grid` data variable has to be stored `(lat, lon, time)`.
+_Avoid_: Input type (that term names the array backend above)
+
 ### Metadata & provenance
 
 **Fixture Provenance**:
