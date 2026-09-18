@@ -52,15 +52,22 @@ ones.
   `ShortCalibrationWarning`, and more than 20% missing values inside the
   period emits a warning about fitting reliability.
 - When no calibration period is given, the xarray API uses the full input
-  range. If the input contains NaNs, it raises `InsufficientDataError` when
-  fewer than 30 effective non-NaN years fall inside that range; a complete
-  input shorter than 30 years proceeds with only `ShortCalibrationWarning`.
-- Pearson fitting requires enough non-zero values per calendar period and
-  raises `InsufficientDataError` otherwise; use the gamma distribution for
-  strongly zero-inflated precipitation.
-- Matching the calibration years to the actual data coverage is the caller's
-  responsibility for SPI and SPEI, which do not check the requested years
-  against the input range. `eddi` validates both bounds and raises
+  range. For in-memory inputs that contain NaNs, it raises
+  `InsufficientDataError` when fewer than 30 effective non-NaN years fall
+  inside that range; a complete input shorter than 30 years proceeds with only
+  `ShortCalibrationWarning`.
+- That effective-year check reads input values, so it does not run on
+  Dask-backed inputs: a Dask input with fewer than 30 effective non-NaN years
+  may proceed into fitting without raising `InsufficientDataError`.
+- Pearson fitting requires enough non-zero values per calendar period. SPI
+  falls back to gamma fitting when the Pearson data is insufficient, while
+  SPEI raises `InsufficientDataError`; use the gamma distribution for strongly
+  zero-inflated precipitation.
+- SPI and SPEI do not reject out-of-range calibration requests: when either
+  bound falls outside the input's year coverage, the implementation replaces
+  both bounds with the full available record before fitting. Matching the
+  calibration years to the actual data coverage is therefore the caller's
+  responsibility. `eddi` validates both bounds and raises
   `InvalidArgumentError` when they fall outside the data.
   `percentage_of_normal` raises for a start year before the data and for a
   calibration span larger than the input, but not for an end year beyond the
@@ -89,13 +96,21 @@ ones.
   adapters (`pet_thornthwaite`, `pet_hargreaves`) are the exception: they
   pass `allow_rechunk=True` and silently consolidate a split `time`
   dimension, with a potentially large memory cost.
+- `pci` is a separate case: its xarray wrapper passes the input values
+  directly to `indices.pci` without the chunk validation, so a split `time`
+  dimension is not rejected and accessing `.values` may eagerly materialize
+  the rainfall data.
 
 ## Multiple variables and grids
 
 - Paired inputs (SPEI precipitation and PET, Hargreaves minimum and maximum
   temperature) must share coordinates. The xarray API aligns them with an inner
-  join and warns with `InputAlignmentWarning` when timesteps are dropped; an
-  empty intersection raises `CoordinateValidationError`.
+  join; an empty intersection raises `CoordinateValidationError`. The generic
+  SPEI adapter warns with `InputAlignmentWarning` only when the primary
+  precipitation input loses timesteps, so extra PET timesteps are dropped
+  silently. The Hargreaves adapter compares the aligned length with both the
+  minimum- and maximum-temperature inputs and warns when either loses
+  timesteps.
 - When the inputs must match exactly, align them before calculation with
   `xr.align(..., join="exact")`, which raises instead of intersecting. The
   end-to-end sample does this in `scripts/prepare_e2e_inputs.py`.
@@ -110,16 +125,17 @@ ones.
 | Time coordinate completeness, periodicity, and start month | Caller | Enforced | Caller |
 | Timesteps at least `scale` | Not enforced | Enforced | Not enforced |
 | Calibration length and missing-data warnings | Warned | Warned | Warned |
-| Calibration non-NaN sample size | Caller | Enforced when NaNs are present | Caller |
+| Calibration non-NaN sample size | Caller | Enforced when NaNs are present (in-memory inputs) | Caller |
 | Calibration years inside data coverage | Partial (see note) | Partial (see note) | Partial (see note) |
 | Multi-variable alignment | Caller, by array size | Inner join with warning | Caller |
 | Units | Caller | Caller | Converted and validated |
 | Latitude range | Enforced | Enforced | Enforced |
-| Dask `time` chunk | Not applicable | Enforced, except the PET adapters | Not applicable |
+| Dask `time` chunk | Not applicable | Enforced, except the PET adapters and `pci` | Not applicable |
 
 The coverage checks are index-specific: `eddi` validates both calibration
 bounds, `percentage_of_normal` validates the start year and the calibration
-span only, and SPI and SPEI perform no coverage checks.
+span only, and SPI and SPEI silently replace an out-of-range calibration
+request with the full available record.
 
 ## See also
 
