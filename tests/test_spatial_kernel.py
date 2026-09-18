@@ -2020,20 +2020,22 @@ class TestSpatialPalmerKernel:
         """The adapter's calendar, chunk, and input-type guards fire through the public entry point."""
         precips, pet, awc = gridded_palmer_inputs
         month_count = precips.sizes["time"]
+        kwargs = self._pdsi_kwargs()
+        chunked_precips = precips.chunk({"time": 12})
 
         march_start = precips.assign_coords(time=pd.date_range("1980-03-01", periods=month_count, freq="MS"))
         with pytest.raises(CoordinateValidationError, match="begin in January"):
-            typed_public_api.pdsi(march_start, pet, awc, **self._pdsi_kwargs())
+            typed_public_api.pdsi(march_start, pet, awc, **kwargs)
 
         daily = precips.assign_coords(time=pd.date_range("1980-01-01", periods=month_count, freq="D"))
         with pytest.raises(CoordinateValidationError, match="periodicity"):
-            typed_public_api.pdsi(daily, pet, awc, **self._pdsi_kwargs())
+            typed_public_api.pdsi(daily, pet, awc, **kwargs)
 
         with pytest.raises(CoordinateValidationError, match="chunk"):
-            typed_public_api.pdsi(precips.chunk({"time": 12}), pet, awc, **self._pdsi_kwargs())
+            typed_public_api.pdsi(chunked_precips, pet, awc, **kwargs)
 
         with pytest.raises(TypeError, match="precips and pet must both be"):
-            typed_public_api.pdsi(precips, pet.values, awc, **self._pdsi_kwargs())
+            typed_public_api.pdsi(precips, pet.values, awc, **kwargs)
 
         time_awc = xr.DataArray(
             np.full(month_count, 5.0),
@@ -2041,10 +2043,10 @@ class TestSpatialPalmerKernel:
             dims=["time"],
         )
         with pytest.raises(TypeError, match="must not carry the time dimension"):
-            typed_public_api.pdsi(precips, pet, time_awc, **self._pdsi_kwargs())
+            typed_public_api.pdsi(precips, pet, time_awc, **kwargs)
 
         with pytest.raises(TypeError, match="awc must be a scalar"):
-            typed_public_api.pdsi(precips.values, pet.values, awc, **self._pdsi_kwargs())
+            typed_public_api.pdsi(precips.values, pet.values, awc, **kwargs)
 
     def test_pdsi_partial_final_year_matches_pointwise(self):
         """A block that ends mid-year keeps the partial year's shape and values."""
@@ -2171,10 +2173,11 @@ class TestSpatialPalmerKernel:
     def test_pdsi_partially_overlapping_grid_rejected(self, gridded_palmer_inputs):
         """A PET grid that overlaps but does not match raises instead of dropping cells."""
         precips, pet, awc = gridded_palmer_inputs
+        kwargs = self._pdsi_kwargs()
         shifted_pet = pet.assign_coords(lat=[20.0, 30.0, 40.0])
 
         with pytest.raises(CoordinateValidationError) as exc_info:
-            typed_public_api.pdsi(precips, shifted_pet, awc, **self._pdsi_kwargs())
+            typed_public_api.pdsi(precips, shifted_pet, awc, **kwargs)
 
         assert exc_info.value.coordinate_name == "lat"
         assert exc_info.value.reason == "mismatched_non_time_coordinates"
