@@ -165,7 +165,7 @@ def _fetch(url: str, offset: int | None = None, length: int | None = None) -> by
                 raise
             last_error = error
             time.sleep(2.0 * (attempt + 1))
-        except Exception as error:  # noqa: BLE001 - retried below, surfaced after the final attempt
+        except Exception as error:  # retried below, surfaced after the final attempt
             last_error = error
             time.sleep(2.0 * (attempt + 1))
     assert last_error is not None
