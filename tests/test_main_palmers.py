@@ -3,13 +3,11 @@
 The historical `--index palmers` dispatch bug (`_parallel_process()` had no
 Palmers branch, so every CLI invocation of `--index palmers` raised
 `ValueError` before computing anything) is guarded end-to-end by
-``tests/test_cli_e2e.py::test_palmers_writes_all_four_outputs_matching_in_process_computation``.
+``tests/test_cli_e2e.py::test_palmers_writes_all_five_outputs_matching_in_process_computation``.
 
 Retained here: `_validate_args()` must reject a time-dependent AWC, and a direct
-worker call must write all four Palmer outputs into the shared arrays without
-a `scpdsi` array -- self-calibration isn't implemented (see CONTEXT.md / issue
-#716). The e2e test covers the same contract through the CLI, including the
-absence of a `scpdsi` output file.
+worker call must write all five Palmer outputs, including `scpdsi`, into the
+shared arrays. The e2e test covers the same contract through the CLI.
 """
 
 import argparse
@@ -150,7 +148,7 @@ class TestScalesRequirement:
 
 
 class TestPalmersWorker:
-    def test_writes_all_four_palmer_outputs(
+    def test_writes_all_five_palmer_outputs(
         self,
         monkeypatch,
         division_precip_pet,
@@ -172,6 +170,7 @@ class TestPalmersWorker:
             cli_main._KEY_RESULT_PHDI: _make_empty_shared_array(shape),
             cli_main._KEY_RESULT_PMDI: _make_empty_shared_array(shape),
             cli_main._KEY_RESULT_ZINDEX: _make_empty_shared_array(shape),
+            cli_main._KEY_RESULT_SCPDSI: _make_empty_shared_array(shape),
         }
         monkeypatch.setattr(cli_main, "_global_shared_arrays", shared_arrays)
 
@@ -208,10 +207,19 @@ class TestPalmersWorker:
             calibration_year_start_palmer,
             calibration_year_end_palmer,
         )
+        expected_scpdsi = palmer.scpdsi(
+            precips,
+            pet,
+            awc,
+            data_year_start_monthly,
+            calibration_year_start_palmer,
+            calibration_year_end_palmer,
+        )[0]
         np.testing.assert_allclose(_read(cli_main._KEY_RESULT_PDSI), expected_pdsi, equal_nan=True)
         np.testing.assert_allclose(_read(cli_main._KEY_RESULT_PHDI), expected_phdi, equal_nan=True)
         np.testing.assert_allclose(_read(cli_main._KEY_RESULT_PMDI), expected_pmdi, equal_nan=True)
         np.testing.assert_allclose(_read(cli_main._KEY_RESULT_ZINDEX), expected_zindex, equal_nan=True)
+        np.testing.assert_allclose(_read(cli_main._KEY_RESULT_SCPDSI), expected_scpdsi, equal_nan=True)
 
     def test_grid_worker_applies_the_supplied_callable(
         self,
@@ -230,6 +238,7 @@ class TestPalmersWorker:
             cli_main._KEY_RESULT_PHDI: _make_empty_shared_array(shape),
             cli_main._KEY_RESULT_PMDI: _make_empty_shared_array(shape),
             cli_main._KEY_RESULT_ZINDEX: _make_empty_shared_array(shape),
+            cli_main._KEY_RESULT_SCPDSI: _make_empty_shared_array(shape),
         }
         monkeypatch.setattr(cli_main, "_global_shared_arrays", shared_arrays)
 
@@ -237,8 +246,7 @@ class TestPalmersWorker:
 
         def recording_palmers(precips, pet, awc, parameters):
             calls.append((precips.shape, parameters.get("spatial_time_major", False)))
-            computed = np.zeros(precips.shape)
-            return computed, computed, computed, computed
+            return tuple(np.full(precips.shape, position + 1.0) for position in range(5))
 
         params = {
             "func1d": recording_palmers,
@@ -254,10 +262,12 @@ class TestPalmersWorker:
 
         # the callable saw the time-major block (time, lat, lon) ...
         assert calls == [((n_time, lat, lon), True)]
-        # ... and its output is what landed in the shared arrays, not palmer.pdsi()'s
-        entry = shared_arrays[cli_main._KEY_RESULT_PDSI]
-        written = np.frombuffer(entry[cli_main._KEY_ARRAY].get_obj()).reshape(entry[cli_main._KEY_SHAPE])
-        np.testing.assert_array_equal(written, np.zeros(shape))
+        # ... and each of its five outputs landed in its own shared array, in
+        # registration order, not just the first one
+        for position, key in enumerate(cli_main._registry_for("palmers").output_keys):
+            entry = shared_arrays[key]
+            written = np.frombuffer(entry[cli_main._KEY_ARRAY].get_obj()).reshape(entry[cli_main._KEY_SHAPE])
+            np.testing.assert_array_equal(written, np.full(shape, position + 1.0))
 
     def test_grid_worker_matches_per_division_computation(
         self,
@@ -290,6 +300,7 @@ class TestPalmersWorker:
             cli_main._KEY_RESULT_PHDI: _make_empty_shared_array(shape),
             cli_main._KEY_RESULT_PMDI: _make_empty_shared_array(shape),
             cli_main._KEY_RESULT_ZINDEX: _make_empty_shared_array(shape),
+            cli_main._KEY_RESULT_SCPDSI: _make_empty_shared_array(shape),
         }
         monkeypatch.setattr(cli_main, "_global_shared_arrays", shared_arrays)
 
@@ -318,6 +329,7 @@ class TestPalmersWorker:
         grid_phdi = _read(cli_main._KEY_RESULT_PHDI)
         grid_pmdi = _read(cli_main._KEY_RESULT_PMDI)
         grid_zindex = _read(cli_main._KEY_RESULT_ZINDEX)
+        grid_scpdsi = _read(cli_main._KEY_RESULT_SCPDSI)
 
         for i in range(lat):
             for j in range(lon):
@@ -329,7 +341,59 @@ class TestPalmersWorker:
                     calibration_year_start_palmer,
                     calibration_year_end_palmer,
                 )
+                expected_scpdsi = palmer.scpdsi(
+                    precips,
+                    pet,
+                    awcs[i, j],
+                    data_year_start_monthly,
+                    calibration_year_start_palmer,
+                    calibration_year_end_palmer,
+                )[0]
                 np.testing.assert_array_equal(grid_pdsi[i, j], expected_pdsi)
                 np.testing.assert_array_equal(grid_phdi[i, j], expected_phdi)
                 np.testing.assert_array_equal(grid_pmdi[i, j], expected_pmdi)
                 np.testing.assert_array_equal(grid_zindex[i, j], expected_zindex)
+                np.testing.assert_array_equal(grid_scpdsi[i, j], expected_scpdsi)
+
+    def test_uncalibratable_location_is_left_missing(
+        self,
+        division_precip_pet,
+        data_year_start_monthly,
+        calibration_year_start_palmer,
+        calibration_year_end_palmer,
+        palmer_awcs,
+    ):
+        """A calibration gap that defeats the duration-factor fit must not abort the run.
+
+        `pdsi()` tolerates the gap and still computes, so scPDSI is left missing for
+        that location (the all-missing contract) while the other outputs survive.
+        """
+        precips, pet = division_precip_pet
+        awc = palmer_awcs[_DIVISION_ID]
+        gappy_precips = precips.copy()
+        gappy_precips[12 * (calibration_year_start_palmer - data_year_start_monthly)] = np.nan
+        parameters = {
+            "data_start_year": data_year_start_monthly,
+            "calibration_start_year": calibration_year_start_palmer,
+            "calibration_end_year": calibration_year_end_palmer,
+        }
+
+        # divisions path: the single location's scPDSI is missing, its PDSI is not
+        pdsi, _phdi, _pmdi, _zindex, scpdsi = cli_main._palmers(gappy_precips, pet, awc, parameters)
+        assert np.isfinite(pdsi).any()
+        assert np.isnan(scpdsi).all()
+
+        # grid path: only the gap-bearing cell is missing, the run still completes
+        block = np.empty((precips.shape[0], 1, 2))
+        block[:, 0, 0] = gappy_precips
+        block[:, 0, 1] = precips
+        pet_block = np.broadcast_to(pet[:, None, None], block.shape).copy()
+        grid_pdsi, _grid_phdi, _grid_pmdi, _grid_zindex, grid_scpdsi = cli_main._palmers(
+            block,
+            pet_block,
+            awc,
+            {**parameters, "spatial_time_major": True},
+        )
+        assert np.isfinite(grid_pdsi).all()
+        assert np.isnan(grid_scpdsi[:, 0, 0]).all()
+        assert np.isfinite(grid_scpdsi[:, 0, 1]).all()
