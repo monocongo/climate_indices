@@ -14,8 +14,17 @@ indices themselves, see {doc}`explanation`.
 algorithm-reference
 error-reference
 xarray_compatibility
+research/nclimgrid-acquisition-and-redistribution
 deprecations/index
 ```
+
+## Scientific validation and vocabulary
+
+The validation record — what is verified against which reference, and the known
+gaps — is in
+[VALIDATION.md](https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md).
+The core-library vocabulary these pages and the code use is defined in
+[src/climate_indices/CONTEXT.md](https://github.com/monocongo/climate_indices/blob/main/src/climate_indices/CONTEXT.md).
 
 ## Command-line interface
 

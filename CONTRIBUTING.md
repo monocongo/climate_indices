@@ -119,8 +119,8 @@ vocabulary at `src/climate_indices/CONTEXT.md`):
   only so the previously published `pypi_release.html` URL resolves)
 
 Build infrastructure (`docs/conf.py`, `docs/Makefile`, `docs/make.bat`,
-`docs/_static/`, `docs/_templates/`) and assets referenced by no page
-(`docs/gallery/*.png`) are not pages and are outside this split.
+`docs/_static/`, `docs/_templates/`) is not page content and is outside this
+split.
 
 ### Markdown authoring conventions
 

@@ -235,4 +235,4 @@ configure_logging(
 
 ---
 
-See [architecture.md](https://github.com/monocongo/climate_indices/blob/main/docs/architecture.md) for system design and [development-guide.md](./development-guide.md) for local development setup.
+See {doc}`architecture` for system design and {doc}`development-guide` for local development setup.
