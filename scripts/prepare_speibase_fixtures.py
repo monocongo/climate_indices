@@ -522,14 +522,18 @@ def _write_provenance(directory: Path, checksum: str, measured: dict[str, dict[i
     (directory / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
 
 
-def _areal_average(
+def _grid_cell_mean(
     scale: int,
     netcdf_path: Path,
     masks: dict[str, np.ndarray],
     latitudes: np.ndarray,
     longitudes: np.ndarray,
 ) -> np.ndarray:
-    """Average one SPEIbase timescale over each division's selected grid cells."""
+    """Average one SPEIbase timescale over each division's selected grid cells.
+
+    Unweighted: the selected cell centers are a sparse sample (3 to 8 cells per
+    division), not a full areal mean.
+    """
     import xarray as xr
 
     dataset = xr.open_dataset(netcdf_path, engine="h5netcdf")
@@ -638,7 +642,7 @@ def main() -> None:
 
         arrays = {}
         for scale in _SCALES:
-            arrays[scale] = _areal_average(scale, netcdf_paths[scale], masks, latitudes, longitudes)
+            arrays[scale] = _grid_cell_mean(scale, netcdf_paths[scale], masks, latitudes, longitudes)
             print(f"  SPEI-{scale}: prepared {arrays[scale].shape}", file=sys.stderr)
 
         print("Measuring the agreement with this library's SPEI ...", file=sys.stderr)
