@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "resolve-pr-review report",
+  "type": "object",
+  "required": ["resolutions", "skipped", "validation_summary"],
+  "properties": {
+    "resolutions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "anchor", "reviewer", "resolution", "evidence"],
+        "properties": {
+          "id": {"type": "string"},
+          "anchor": {"type": "string"},
+          "reviewer": {"type": "string"},
+          "finding": {"type": "string"},
+          "resolution": {"enum": ["FIXED", "SKIPPED", "DEFERRED"]},
+          "commit": {"type": ["string", "null"]},
+          "evidence": {"type": "string"},
+          "validation": {"type": "string"}
+        }
+      }
+    },
+    "skipped": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "reason"],
+        "properties": {
+          "id": {"type": "string"},
+          "reason": {"type": "string"}
+        }
+      }
+    },
+    "validation_summary": {
+      "type": "object",
+      "required": ["commands", "outcome"],
+      "properties": {
+        "commands": {"type": "array", "items": {"type": "string"}},
+        "outcome": {"enum": ["pass", "fail", "partial"]},
+        "notes": {"type": "string"}
+      }
+    }
+  }
+}
