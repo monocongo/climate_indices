@@ -93,18 +93,23 @@ survives into the compute as a Dask `rechunk-merge` copy.
 
 ## Numerical equivalence
 
-The block kernel runs the same NumPy core as the serial API, so a gridded result is
-the serial result: SPI, SPEI, EDDI, and percentage of normal are bit-for-bit
-identical to calling the NumPy API once per cell. Thornthwaite PET is the one
-exception — its block form reorders the same arithmetic and differs by a few float64
-ULP (5.7e-14 measured on the reference grid), asserted at `atol=1e-12`.
+The Spatial Kernel runs the same NumPy core as the serial API, so on a fully populated
+grid a gridded result is the serial result: SPI, SPEI, EDDI, and percentage of normal
+are bit-for-bit identical to calling the NumPy API once per cell. Thornthwaite PET is
+the one exception — its Spatial Block form reorders the same arithmetic and differs by
+a few float64 ULP (1.14e-13 measured on the `5 x 6` test grid), asserted at
+`atol=1e-12`.
+
+A Spatial Block is fitted as a unit, so the Pearson fit's whole-block gamma fallback
+answers every cell in the block from one fit; that block semantics is documented in
+[ADR-0009](adr/0009-spatial-block-declaration.md) and is not per-cell equivalence.
 
 Chunk layout does not change the numbers either: the same grid computed from a
-different chunk shape matches the in-memory result bit for bit, within the same
-Thornthwaite tolerance. The bounds are enforced by
-`tests/test_numerical_equivalence.py` for SPI, SPEI, EDDI, percentage of normal, and
-Thornthwaite PET, so divergence fails `pytest` instead of silently changing an
-index value.
+different chunk shape matches the in-memory result, bit for bit for SPI, EDDI, and
+percentage of normal, and within the same Thornthwaite tolerance for PET.
+`tests/test_numerical_equivalence.py` enforces all of these bounds, so divergence fails
+`pytest` instead of silently changing an index value. Missing-data, partial-year, and
+daily-grid shapes keep the looser bounds asserted in `tests/test_spatial_kernel.py`.
 
 ## Measured speedup
 
