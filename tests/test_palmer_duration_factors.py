@@ -269,20 +269,20 @@ def test_cafec_ratio_substitutes_exact_zero_and_leaves_a_zero_denominator():
     """A month with no accumulated water-balance term takes ``both_zero``.
 
     A zero denominator with a nonzero numerator is not undefined the same way:
-    the reference leaves 0.0 there. The last element's sub-epsilon denominator
-    makes both cases fail if the exact tests become tolerances.
+    the reference leaves 0.0 there. The sub-epsilon elements make either exact
+    test fail if it becomes a tolerance.
     """
     tiny = np.finfo(float).tiny
-    numerator = np.array([0.0, 2.0, 0.0, 1.0])
-    denominator = np.array([0.0, 0.0, 4.0, tiny])
+    numerator = np.array([0.0, 2.0, 0.0, 1.0, tiny])
+    denominator = np.array([0.0, 0.0, 4.0, tiny, 0.0])
 
     np.testing.assert_array_equal(
         palmer._calc_cafec_ratio(numerator, denominator, both_zero=1.0),
-        np.array([1.0, 0.0, 0.0, 1.0 / tiny]),
+        np.array([1.0, 0.0, 0.0, 1.0 / tiny, 0.0]),
     )
     np.testing.assert_array_equal(
         palmer._calc_cafec_ratio(numerator, denominator, both_zero=0.0),
-        np.array([0.0, 0.0, 0.0, 1.0 / tiny]),
+        np.array([0.0, 0.0, 0.0, 1.0 / tiny, 0.0]),
     )
 
 
@@ -322,15 +322,19 @@ def test_finish_up_falls_back_to_pdsi_when_no_spell_is_established():
     """_finish_up repeats the no-established-spell fallback for the months left
     pending when the record ends, under the same exact-zero test."""
     _, state = _blank_state()
-    state.k8max = np.array([1])
-    state.indexj[0, 0] = 0
-    state.indexm[0, 0] = 0
+    state.k8max = np.array([2])
+    state.indexj[0, 0], state.indexm[0, 0] = 0, 0
+    state.indexj[1, 0], state.indexm[1, 0] = 0, 1
     state.x[0, 0, 0] = 3.0
-    state.px3[0, 0, 0] = -np.finfo(float).tiny
+    state.px3[0, 0, 0] = 0.0
+    state.x[0, 1, 0] = 4.0
+    state.px3[0, 1, 0] = -np.finfo(float).tiny
 
     palmer._finish_up(state)
 
     assert state.pdsi[0, 0, 0] == 3.0
+    assert state.phdi[0, 0, 0] == 3.0  # no spell: the PDSI value
+    assert state.pdsi[0, 1, 0] == 4.0
     # a sub-epsilon px3 is still an established spell, so PHDI keeps it rather
     # than falling back to the PDSI value
-    assert state.phdi[0, 0, 0] == -np.finfo(float).tiny
+    assert state.phdi[0, 1, 0] == -np.finfo(float).tiny
