@@ -25,6 +25,7 @@ FULL_FILES = [
     "docs/development-guide.md",
     "docs/contribution-guide.md",
     "docs/xarray_migration.md",
+    "docs/performance.md",
     "docs/algorithms.md",
 ]
 

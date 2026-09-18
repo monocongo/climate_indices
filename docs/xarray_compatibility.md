@@ -72,6 +72,8 @@ applies per cell along the time axis.
   interface changes.
 - Use xarray APIs for labeled, gridded workflows where coordinate preservation
   and metadata are more valuable than strict interface stability.
+- For a complete runnable gridded SPI and SPEI example with the chunking and
+  scheduler guidance applied, see [Gridded Performance](performance.md).
 - Keep Dask chunks spatial when possible and leave `time` as one chunk before
   calling index functions. Spatial chunks set the parallelism granularity: SPI and
   SPEI fit a whole `(time, *cells)` block per call, and the gridded path requires
