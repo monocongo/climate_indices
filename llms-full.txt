@@ -371,10 +371,11 @@ confounds separate the two products:
 The tests therefore assert per-division, per-timescale floors on correlation,
 sign agreement, and drought-category agreement, derived from the measurements
 recorded in `tests/fixture/speibase/provenance.json`;
-`scripts/prepare_speibase_fixtures.py` regenerates the fixtures and those
-constants, and `test_floors_keep_documented_slack` pins every floor to within a
-documented band below its measurement so a floor cannot be widened to hide a
-regression. Measured correlation is strongest in the semi-arid Oklahoma
+`scripts/prepare_speibase_fixtures.py` re-measures those values from the arrays
+it just built, refusing to publish a refresh that drifts beyond `0.001` of the
+recorded expectations, and regenerates the floors from the new measurements;
+`test_floors_keep_documented_slack` pins every floor to within a documented
+band below its measurement so a floor cannot be widened to hide a regression. Measured correlation is strongest in the semi-arid Oklahoma
 division (0.95-0.97 across timescales) and weakest in the arid Arizona
 division (0.82-0.86), the pattern the PET-method divergence predicts; a tight
 numerical gate would either fail on that legitimate climate-dependent bias or

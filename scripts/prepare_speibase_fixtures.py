@@ -31,9 +31,15 @@ The script will:
        committed tests/fixture/palmer/<division>/{precips,temps}.npy inputs
     4. Save one (3, 1464) float32 array per timescale under
        tests/fixture/speibase/
-    5. Write divisions.json (row order, names, polygon centroids, cell counts)
-       and provenance.json with a SHA-256 checksum and the measured agreement
-       statistics the test asserts against
+    5. Measure the agreement between each freshly averaged series and this
+       library's SPEI, per division and timescale
+    6. Write divisions.json (row order, names, polygon centroids, cell counts)
+       and provenance.json with a SHA-256 checksum, the step-5 measurements, and
+       the floors derived from them; a refresh whose measurements drift beyond
+       the recorded expectations is refused instead of published
+    7. Publish the complete fixture directory as one transaction, so an
+       interrupted refresh cannot leave arrays and metadata from different
+       generations in place
 
 Source:
     https://spei.csic.es/spei_database_2_11/ (CC-BY 4.0, Beguería et al. 2024)
@@ -90,13 +96,28 @@ _LONGITUDE_BAND = (-126.0, -66.0)
 
 # SPEIbase files are ~380 MB each; anything larger is malformed.
 _MAX_DOWNLOAD_BYTES = 512 * 1024 * 1024
+_DOWNLOAD_CHUNK_BYTES = 1024 * 1024
 
-# Measured agreement between climate_indices.indices.spei() (gamma distribution,
-# Thornthwaite PET, full-period-of-record calibration 1901-2022) and the
-# areal-average SPEIbase v2.11 series, per division and timescale (GitHub issue
-# #779). Loaded into provenance.json, from which tests/test_speibase_reference.py
-# derives its validation floors.
-_MEASURED_STATS = {
+# The compared series is computed from the committed nClimDiv inputs, and the
+# agreement statistics bin against the standard SPEI drought-category
+# boundaries (extreme <= -2, severe -2..-1.5, moderate -1.5..-1, etc.).
+_PALMER_ROOT = FIXTURE_DIR / "palmer"
+_PALMER_INPUT_START_YEAR = 1895  # tests/fixture/palmer/<division>/ inputs start here
+_INPUT_OFFSET = (_DATA_START_YEAR - _PALMER_INPUT_START_YEAR) * 12
+_CATEGORY_BOUNDARIES = (-2.0, -1.5, -1.0, 1.0, 1.5, 2.0)
+
+# Frozen regression expectations from the original fixture generation (GitHub
+# issue #779): agreement between climate_indices.indices.spei() (gamma
+# distribution, Thornthwaite PET, full-period-of-record calibration 1901-2022)
+# and the areal-average SPEIbase v2.11 series, per division and timescale.
+#
+# These are expectations, not the provenance measurements: every refresh
+# re-measures the agreement from the arrays it just built (_measure_agreement)
+# and writes those measurements to provenance.json. A measurement outside
+# _EXPECTATION_TOLERANCE of the expectation fails the refresh, so a silent
+# upstream or library regression cannot quietly overwrite the recorded
+# agreement with a worse one.
+_EXPECTED_STATS = {
     "0101": {
         1: {
             "correlation": 0.9248,
@@ -176,6 +197,11 @@ _MEASURED_STATS = {
         },
     },
 }
+# Absolute band a re-measured statistic may sit outside before the refresh is
+# refused. The recorded expectations are the same computation rounded to four
+# decimals, so this only absorbs cross-platform numerical wobble.
+_EXPECTATION_TOLERANCE = 0.001
+
 # The floors keep this much slack below each measurement; the test's
 # test_floors_keep_documented_slack pins the drift to a narrow, documented band
 # so a floor cannot be widened to hide a regression.
@@ -190,11 +216,25 @@ def _download(url: str, destination: Path, approved_origin: str) -> Path:
     with urllib.request.urlopen(url, timeout=120) as response:  # noqa: S310 -- host validated above
         if not response.url.startswith(approved_origin):
             raise ValueError(f"download redirected off the approved origin: {response.url}")
-        with destination.open("wb") as handle:
-            shutil.copyfileobj(response, handle, length=1024 * 1024)
-    size = destination.stat().st_size
-    if size == 0 or size > _MAX_DOWNLOAD_BYTES:
-        raise ValueError(f"download has implausible size ({size} bytes): {url}")
+        declared = response.headers.get("Content-Length")
+        if declared is not None and declared.isdigit() and int(declared) > _MAX_DOWNLOAD_BYTES:
+            raise ValueError(f"download declares {declared} bytes, over the {_MAX_DOWNLOAD_BYTES} cap: {url}")
+        # Stream in bounded chunks and count as we go: Content-Length is optional
+        # and untrusted, so the cap has to hold without it.
+        written = 0
+        try:
+            with destination.open("wb") as handle:
+                while chunk := response.read(_DOWNLOAD_CHUNK_BYTES):
+                    written += len(chunk)
+                    if written > _MAX_DOWNLOAD_BYTES:
+                        raise ValueError(f"download exceeds the {_MAX_DOWNLOAD_BYTES} byte cap: {url}")
+                    handle.write(chunk)
+        except BaseException:
+            destination.unlink(missing_ok=True)  # never leave a partial download behind
+            raise
+    if written == 0:
+        destination.unlink(missing_ok=True)
+        raise ValueError(f"download has implausible size ({written} bytes): {url}")
     return destination
 
 
@@ -309,7 +349,93 @@ def _compute_checksum(directory: Path) -> str:
     return hasher.hexdigest()
 
 
-def _floors(measured: dict[int, dict[str, float]]) -> dict[str, dict[str, float]]:
+def _load_temps_fahrenheit(division: str) -> np.ndarray:
+    """Load a division's monthly temperatures as float, parsing legacy strings.
+
+    The committed ``temps.npy`` arrays hold a legacy object dtype mixing floats
+    and numeric strings; the nClimDiv source values are degrees Fahrenheit.
+    """
+    values = np.load(_PALMER_ROOT / division / "temps.npy", allow_pickle=True)
+    return np.array([float(str(value).split()[0]) for value in values], dtype=float)
+
+
+def _categories(values: np.ndarray) -> np.ndarray:
+    """SPEI drought-category bins for the standard category boundaries."""
+    return np.digitize(values, _CATEGORY_BOUNDARIES)
+
+
+def _agreement(computed: np.ndarray, reference: np.ndarray) -> dict[str, float]:
+    """Correlation, sign agreement, category agreement, and mean |difference|.
+
+    Statistics and their definitions match the assertions in
+    tests/test_speibase_reference.py, measured over the months both series hold.
+    """
+    from scipy.stats import pearsonr
+
+    both_present = ~np.isnan(computed) & ~np.isnan(reference)
+    computed_values = computed[both_present].astype(np.float64)
+    reference_values = reference[both_present].astype(np.float64)
+    return {
+        "correlation": float(pearsonr(computed_values, reference_values).statistic),
+        "sign_agreement": float(np.mean(np.sign(computed_values) == np.sign(reference_values))),
+        "category_agreement": float(np.mean(_categories(computed_values) == _categories(reference_values))),
+        "mean_abs_difference": float(np.mean(np.abs(computed_values - reference_values))),
+    }
+
+
+def _computed_spei_series(division: str, latitude: float, scale: int) -> np.ndarray:
+    """climate_indices SPEI for one division and timescale over 1901-2022.
+
+    The same compared series tests/test_speibase_reference.py builds: the
+    committed nClimDiv inputs (inches, Fahrenheit), Thornthwaite PET, gamma
+    distribution, and full-period-of-record calibration.
+    """
+    from climate_indices import compute, eto, indices
+
+    precip_mm = (
+        np.load(_PALMER_ROOT / division / "precips.npy").astype(np.float64)[_INPUT_OFFSET : _INPUT_OFFSET + _N_MONTHS]
+        * 25.4
+    )  # committed nClimDiv precipitation is inches
+    temps_c = (_load_temps_fahrenheit(division)[_INPUT_OFFSET : _INPUT_OFFSET + _N_MONTHS] - 32.0) * (5.0 / 9.0)
+    pet_mm = eto.eto_thornthwaite(temps_c, latitude, _DATA_START_YEAR)
+    return indices.spei(
+        precip_mm,
+        pet_mm,
+        scale,
+        indices.Distribution.gamma,
+        compute.Periodicity.monthly,
+        _DATA_START_YEAR,
+        _DATA_START_YEAR,
+        _DATA_END_YEAR,
+    )
+
+
+def _measure_agreement(arrays: dict[int, np.ndarray], rows: list[dict]) -> dict[str, dict[int, dict[str, float]]]:
+    """Measure the agreement of the freshly built arrays, per division and timescale."""
+    measured = {}
+    for row_index, row in enumerate(rows):
+        measured[row["id"]] = {
+            scale: _agreement(_computed_spei_series(row["id"], row["latitude"], scale), arrays[scale][row_index])
+            for scale in _SCALES
+        }
+    return measured
+
+
+def _check_expectations(measured: dict[str, dict[int, dict[str, float]]]) -> None:
+    """Refuse a refresh whose agreement drifted away from the recorded expectations."""
+    for division, per_scale in measured.items():
+        for scale, stats in per_scale.items():
+            for metric, value in stats.items():
+                expected = _EXPECTED_STATS[division][scale][metric]
+                if abs(value - expected) > _EXPECTATION_TOLERANCE:
+                    raise RuntimeError(
+                        f"{division}_spei{scale:02d} {metric} measured {value:.4f}, expected {expected:.4f} "
+                        f"(+-{_EXPECTATION_TOLERANCE}); investigate the drift, then re-record "
+                        f"_EXPECTED_STATS deliberately"
+                    )
+
+
+def _floors(measured: dict[str, dict[int, dict[str, float]]]) -> dict[str, dict[str, float]]:
     """Per-division, per-timescale floors, rounded down, from the measurements."""
     floors = {}
     for division, per_scale in measured.items():
@@ -321,7 +447,7 @@ def _floors(measured: dict[int, dict[str, float]]) -> dict[str, dict[str, float]
     return floors
 
 
-def _write_provenance(directory: Path, checksum: str) -> None:
+def _write_provenance(directory: Path, checksum: str, measured: dict[str, dict[int, dict[str, float]]]) -> None:
     provenance = {
         "source": "Consejo Superior de Investigaciones Científicas (CSIC)",
         "url": f"{_SPEIBASE_BASE_URL}/",
@@ -340,13 +466,11 @@ def _write_provenance(directory: Path, checksum: str) -> None:
         "checksum_sha256": checksum,
         "fixture_version": "1.0.0",
         "validation_tolerance": {
-            f"{key}_{metric}": value
-            for key, metrics in _floors(_MEASURED_STATS).items()
-            for metric, value in metrics.items()
+            f"{key}_{metric}": value for key, metrics in _floors(measured).items() for metric, value in metrics.items()
         },
         "measured_stats": {
             f"{division}_spei{scale:02d}": stats
-            for division, per_scale in _MEASURED_STATS.items()
+            for division, per_scale in measured.items()
             for scale, stats in per_scale.items()
         },
         "citation": (
@@ -410,6 +534,27 @@ def _areal_average(scale: int, netcdf_path: Path, masks: dict[str, np.ndarray]) 
     return array
 
 
+def _publish(staging: Path) -> None:
+    """Replace the published fixture directory with the staged one, as one transaction.
+
+    Arrays and metadata must always come from a single generation: replacing
+    the six files individually leaves a mixed set behind when a later
+    replacement fails. The previous directory is kept as a backup until the
+    swap succeeds, and restored if it does not.
+    """
+    backup = OUTPUT_DIR.with_name(f".{OUTPUT_DIR.name}-backup")
+    shutil.rmtree(backup, ignore_errors=True)
+    if OUTPUT_DIR.exists():
+        os.replace(OUTPUT_DIR, backup)
+    try:
+        os.replace(staging, OUTPUT_DIR)
+    except BaseException:
+        if backup.exists():
+            os.replace(backup, OUTPUT_DIR)
+        raise
+    shutil.rmtree(backup, ignore_errors=True)
+
+
 def main() -> None:
     """Download the dataset, build the fixtures, and write them to tests/fixture/speibase/."""
     import xarray as xr
@@ -467,15 +612,16 @@ def main() -> None:
             arrays[scale] = _areal_average(scale, netcdf_paths[scale], masks)
             print(f"  SPEI-{scale}: prepared {arrays[scale].shape}", file=sys.stderr)
 
+        print("Measuring the agreement with this library's SPEI ...", file=sys.stderr)
+        measured = _measure_agreement(arrays, rows)
+        _check_expectations(measured)
+
         for scale, array in arrays.items():
             np.save(staging / f"spei{scale:02d}.npy", array)
         _write_divisions(staging, rows)
         checksum = _compute_checksum(staging)
-        _write_provenance(staging, checksum)
-        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        staged_names = [f"spei{scale:02d}.npy" for scale in _SCALES] + ["divisions.json", "provenance.json"]
-        for name in staged_names:
-            os.replace(staging / name, OUTPUT_DIR / name)
+        _write_provenance(staging, checksum, measured)
+        _publish(staging)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
         shutil.rmtree(downloads, ignore_errors=True)
