@@ -21,8 +21,12 @@ deprecations/index
 
 The installation provides the `climate_indices` command, with
 `process_climate_indices` retained as an alias. It computes one or more climate
-indices from gridded NetCDF datasets as well as US climate division NetCDF
-datasets. (The separate `spi` script was removed in 3.0.0 -- see
+indices from gridded NetCDF datasets, single-location time-series NetCDF
+datasets, and US climate division NetCDF datasets. Palmers and 'all' require
+available water capacity, which is supported only for gridded and US climate
+division data, so they cannot be computed from single-location time-series
+input. (The separate `spi` script
+was removed in 3.0.0 -- see
 {doc}`deprecations/api-changes`.)
 
 The command is run from a bash shell, i.e.
@@ -38,25 +42,25 @@ The options are described below:
 * - Option
   - Description
 * - index
-  - Which of the climate indices to compute. Valid values are 'spi', 'spei', 'pnp', 'scaled', 'pet', 'palmers', 'kbdi', and 'all'. 'scaled' indicates all three scaled indices (SPI, SPEI, and PNP) and 'palmers' indicates all Palmer indices (PDSI, PHDI, PMDI, Z-Index, scPDSI). KBDI is only available via 'kbdi', not 'all'.
+  - Which of the climate indices to compute (required). Valid values are 'spi', 'spei', 'pnp', 'scaled', 'pet', 'palmers', 'kbdi', and 'all'. 'scaled' indicates all three scaled indices (SPI, SPEI, and PNP) and 'palmers' indicates all Palmer indices (PDSI, PHDI, PMDI, Z-Index, scPDSI). KBDI is only available via 'kbdi', not 'all'.
 * - periodicity
-  - The periodicity of the input dataset files. Valid values are 'monthly' and 'daily'.
+  - The periodicity of the input dataset files (required). Valid values are 'monthly' and 'daily'.
 
-    **NOTE**: Only SPI, PNP, and KBDI accept daily inputs; KBDI requires daily inputs.
+    **NOTE**: SPI, SPEI (with a PET input), PNP, and KBDI accept daily inputs; KBDI requires daily inputs. Palmers and 'all' require monthly inputs.
 * - netcdf_precip
   - Input NetCDF file containing a precipitation dataset, required for all indices except for PET. Requires the use of **var_name_precip** in conjunction so as to identify the NetCDF's precipitation variable.
 * - var_name_precip
   - Name of the precipitation variable within the input precipitation NetCDF.
 * - netcdf_temp
-  - Input NetCDF file containing a temperature dataset, required for PET. For KBDI this dataset must contain daily maximum temperature. If specified in conjunction with an index specification of SPEI or Palmers then PET will be computed and written as a side effect, since these indices require PET. This option is mutually exclusive with **netcdf_pet/var_name_pet**, as either temperature or PET is required as an input (but not both) when computing SPEI and/or Palmers. Requires the use of **var_name_temp** in conjunction so as to identify the NetCDF's temperature variable.
+  - Input NetCDF file containing a temperature dataset, required for PET. For KBDI this dataset must contain daily maximum temperature. If specified in conjunction with an index specification of SPEI, Palmers, 'scaled', or 'all' then PET will be computed and written as a side effect, since these indices require PET. This option is mutually exclusive with **netcdf_pet/var_name_pet**, as either temperature or PET is required as an input (but not both) when computing SPEI, Palmers, 'scaled', or 'all'. Requires the use of **var_name_temp** in conjunction so as to identify the NetCDF's temperature variable.
 * - var_name_temp
   - Name of the temperature variable within the input temperature NetCDF.
 * - netcdf_pet
-  - Input NetCDF file containing a PET dataset, required for SPEI and Palmers. This option is mutually exclusive with **netcdf_temp/var_name_temp**, as either temperature or PET is required as an input (but not both) when computing SPEI and/or Palmers. Requires the use of **var_name_pet** in conjunction so as to identify the NetCDF's PET variable.
+  - Input NetCDF file containing a PET dataset. SPEI, Palmers, 'scaled', and 'all' require either this option or **netcdf_temp/var_name_temp** as a PET source, so the two are mutually exclusive (provide exactly one of them). Requires the use of **var_name_pet** in conjunction so as to identify the NetCDF's PET variable.
 * - var_name_pet
   - Name of the PET variable within the input PET NetCDF.
 * - netcdf_awc
-  - Input NetCDF file containing available water capacity, required for Palmers. Requires the use of **var_name_awc** in conjunction so as to identify the NetCDF's AWC variable.
+  - Input NetCDF file containing available water capacity, required for Palmers and 'all'. Requires the use of **var_name_awc** in conjunction so as to identify the NetCDF's AWC variable.
 * - var_name_awc
   - Name of the available water capacity variable within the input AWC NetCDF.
 * - kbdi_units
@@ -64,9 +68,9 @@ The options are described below:
 * - kbdi_initial
   - Initial KBDI value. Default value is 0.0. Applicable only when **index** is 'kbdi'.
 * - chunksizes
-  - Chunking of the written output file, not of the computation: 'none' (default) lets the writer choose the output layout, and 'input' copies the on-disk chunks of the first chunked input variable to the output.
+  - Chunking of the written output file, not of the computation: 'none' (default) lets the writer choose the output layout, and 'input' copies the on-disk chunks of the first chunked input variable to the output (for KBDI, the precipitation variable's chunks).
 * - output_file_base
-  - Base file name for all output files.
+  - Base file name for all output files (required).
 
     Each computed index will have a corresponding output file whose name will begin with this base name plus the index's abbreviation plus a month scale (if applicable), connected with underscores, plus the '.nc' extension. For example for SPI at 3-month scale the resulting output files will be named **<output_file_base>_spi_gamma_03.nc** and **<output_file_base>_spi_pearson_03.nc**.
 * - scales

@@ -1154,7 +1154,7 @@ The `process_climate_indices` CLI's `--chunksizes` option controls how the
 exactly two values:
 
 - `none` (default): the writer chooses the output layout
-- `input`: copy the first chunked input variable's on-disk chunks to the output
+- `input`: copy the first chunked input variable's on-disk chunks to the output (`kbdi` copies the precipitation variable's chunks)
 
 ```bash
 # default: writer-chosen output chunking
