@@ -147,12 +147,21 @@ def test_spi_zero_inflated_block_path_matches_the_serial_numpy_api(
     np.testing.assert_allclose(result.values, expected, rtol=0.0, atol=atol, equal_nan=True)
 
 
+@pytest.mark.parametrize(
+    ("distribution", "atol"),
+    [
+        (indices.Distribution.gamma, 0.0),
+        (indices.Distribution.pearson, _ULP_ATOL),
+    ],
+)
 def test_spei_block_path_matches_the_serial_numpy_api(
     gridded_monthly_precip_3d: xr.DataArray,
     calibration_year_start_monthly: int,
     calibration_year_end_monthly: int,
+    distribution: indices.Distribution,
+    atol: float,
 ) -> None:
-    """Gamma SPEI over a Spatial Block equals the per-cell result, bit for bit."""
+    """SPEI over a Spatial Block matches the serial NumPy API: exact for gamma, ULP-close for Pearson."""
     scale = 6
     data_start_year = int(gridded_monthly_precip_3d.time.dt.year[0])
     # PET varies per cell, so a block path that pairs a cell with the wrong PET series fails here.
@@ -162,7 +171,7 @@ def test_spei_block_path_matches_the_serial_numpy_api(
         gridded_monthly_precip_3d,
         pet_mm=pet_mm,
         scale=scale,
-        distribution=indices.Distribution.gamma,
+        distribution=distribution,
         calibration_year_initial=calibration_year_start_monthly,
         calibration_year_final=calibration_year_end_monthly,
     )
@@ -172,7 +181,7 @@ def test_spei_block_path_matches_the_serial_numpy_api(
             precips_mm=np.asarray(series),
             pet_mm=np.asarray(pet_cell),
             scale=scale,
-            distribution=indices.Distribution.gamma,
+            distribution=distribution,
             data_start_year=data_start_year,
             calibration_year_initial=calibration_year_start_monthly,
             calibration_year_final=calibration_year_end_monthly,
@@ -181,7 +190,7 @@ def test_spei_block_path_matches_the_serial_numpy_api(
         secondary=pet_mm,
     )
 
-    np.testing.assert_array_equal(result.values, expected)
+    np.testing.assert_allclose(result.values, expected, rtol=0.0, atol=atol, equal_nan=True)
 
 
 def test_eddi_block_path_matches_the_serial_numpy_api(
