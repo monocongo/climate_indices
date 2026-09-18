@@ -22,7 +22,8 @@ Promotion to Stable is targeted for **3.1.0 at the earliest**, after the ADR-000
 calendar change has a release of soak time. Promotion is a separate decision and a
 separate change (#1061 removes `BetaFeatureWarning` from the public surface and
 updates the README table and Beta API paragraph, `docs/xarray_compatibility.md`,
-`docs/xarray_migration.md`, and the adapter warnings). Until then
+`docs/xarray_migration.md`, and the `xarray_adapter.py` and `typed_public_api.py` beta
+notes). Until then
 `BetaFeatureWarning` remains the public warning category for the adapter paths, and
 the README API-stability table, the compatibility matrix, and the warning class all
 say Beta and nothing else.
