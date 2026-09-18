@@ -16,7 +16,12 @@ import xarray as xr
 
 from climate_indices import compute, indices, palmer, typed_public_api
 from climate_indices.cf_metadata_registry import CF_METADATA
-from climate_indices.exceptions import DataShapeError, GoodnessOfFitWarning, InvalidArgumentError
+from climate_indices.exceptions import (
+    CoordinateValidationError,
+    DataShapeError,
+    GoodnessOfFitWarning,
+    InvalidArgumentError,
+)
 from climate_indices.xarray_adapter import xarray_adapter
 
 _CALIBRATION_START = 1981
@@ -1888,8 +1893,9 @@ class TestSpatialPalmerKernel:
     def gridded_palmer_inputs(self, gridded_monthly_precip) -> tuple[xr.DataArray, xr.DataArray, xr.DataArray]:
         """Precipitation, PET, and a per-cell AWC over the shared 3 x 2 grid."""
         pet = xr.full_like(gridded_monthly_precip, 1.5)
+        # distinct AWCs per cell, so a cell-pairing or broadcast regression cannot pass
         awc = xr.DataArray(
-            np.full((3, 2), 5.0),
+            np.array([[4.0, 5.0], [6.0, 7.0], [8.0, 9.0]]),
             coords={
                 "lat": gridded_monthly_precip.coords["lat"],
                 "lon": gridded_monthly_precip.coords["lon"],
@@ -1972,7 +1978,17 @@ class TestSpatialPalmerKernel:
 
         assert np.all(np.isnan(result["pdsi"].isel(lat=1, lon=1).values))
         assert np.all(np.isnan(result["z_index"].isel(lat=1, lon=1).values))
-        assert np.isfinite(result["pdsi"].isel(lat=0, lon=0).values).any()
+        assert np.isfinite(result["pdsi"].isel(lat=0, lon=0).values).all()
+
+    def test_pdsi_all_missing_dtype_is_float64(self, gridded_palmer_inputs):
+        """The all-missing early return still emits the declared float64 outputs."""
+        precips, pet, awc = gridded_palmer_inputs
+        missing = xr.full_like(precips, np.nan, dtype=np.float32)
+
+        result = typed_public_api.pdsi(missing, pet, awc, **self._pdsi_kwargs())
+
+        assert result["pdsi"].dtype == np.float64
+        assert np.all(np.isnan(result["pdsi"].values))
 
     def test_pdsi_dask_block_matches_in_memory(self, gridded_palmer_inputs):
         """The Dask spatial-block path is bit-for-bit with the in-memory result."""
@@ -1986,7 +2002,38 @@ class TestSpatialPalmerKernel:
         )
 
         for name in ("pdsi", "phdi", "pmdi", "z_index"):
+            assert chunked[name].chunks is not None
             np.testing.assert_array_equal(chunked[name].values, in_memory[name].values)
+
+    def test_pdsi_rejects_contract_violations(self, gridded_palmer_inputs):
+        """The adapter's calendar, chunk, and input-type guards fire through the public entry point."""
+        precips, pet, awc = gridded_palmer_inputs
+        month_count = precips.sizes["time"]
+
+        march_start = precips.assign_coords(time=pd.date_range("1980-03-01", periods=month_count, freq="MS"))
+        with pytest.raises(CoordinateValidationError, match="begin in January"):
+            typed_public_api.pdsi(march_start, pet, awc, **self._pdsi_kwargs())
+
+        daily = precips.assign_coords(time=pd.date_range("1980-01-01", periods=month_count, freq="D"))
+        with pytest.raises(CoordinateValidationError, match="periodicity"):
+            typed_public_api.pdsi(daily, pet, awc, **self._pdsi_kwargs())
+
+        with pytest.raises(CoordinateValidationError, match="chunk"):
+            typed_public_api.pdsi(precips.chunk({"time": 12}), pet, awc, **self._pdsi_kwargs())
+
+        with pytest.raises(TypeError, match="precips and pet must both be"):
+            typed_public_api.pdsi(precips, pet.values, awc, **self._pdsi_kwargs())
+
+        time_awc = xr.DataArray(
+            np.full(month_count, 5.0),
+            coords={"time": precips.coords["time"]},
+            dims=["time"],
+        )
+        with pytest.raises(TypeError, match="must not carry the time dimension"):
+            typed_public_api.pdsi(precips, pet, time_awc, **self._pdsi_kwargs())
+
+        with pytest.raises(TypeError, match="awc must be a scalar"):
+            typed_public_api.pdsi(precips.values, pet.values, awc, **self._pdsi_kwargs())
 
     def test_pdsi_partial_final_year_matches_pointwise(self):
         """A block that ends mid-year keeps the partial year's shape and values."""

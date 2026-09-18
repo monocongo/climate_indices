@@ -2315,15 +2315,18 @@ def palmer_pdsi(
 
     Args:
         precips: Monthly precipitation values in inches.
-            For numpy: 1-D array, ``(years, 12)`` array, or a declared time-major
-            spatial block.
+            For numpy: 1-D array, ``(years, 12)`` array, or an unambiguous 3-D
+            time-major ``(time, *cells)`` block. The ambiguous block whose first
+            cell axis is a calendar period length (12 or 366) must be declared with
+            ``spatial_time_major=True`` on :func:`climate_indices.palmer.pdsi`
+            directly; this facade does not expose that keyword.
             For xarray: DataArray with a monthly time dimension starting in January
             (may have additional cell dimensions).
         pet: Monthly potential evapotranspiration values in inches, matching
             ``precips``.
         awc: Available water capacity (soil constant) in inches. A scalar, or a
-            DataArray broadcastable to the precipitation's cell dimensions (e.g. a
-            ``(lat, lon)`` field).
+            DataArray whose cell coordinates match the precipitation grid (its
+            dimensions may be a subset of the precipitation's cell dimensions).
         data_start_year: Initial year of the input dataset. Required for NumPy
             inputs; inferred from the first time coordinate for xarray inputs.
         calibration_year_initial: Initial year of the calibration period. Required
@@ -2342,9 +2345,10 @@ def palmer_pdsi(
         provenance, and each matching the input's shape and coordinates.
 
     Raises:
-        InputTypeError: If the inputs are not both numpy-coercible or both xarray.
-        TypeError: If ``awc`` is a DataArray while the index inputs are numpy arrays,
-            or the two index inputs mix numpy and xarray.
+        InputTypeError: If ``precips`` is neither numpy-coercible nor an
+            ``xr.DataArray``.
+        TypeError: If ``pet`` or ``awc`` mixes numpy and xarray with ``precips``, or
+            if ``awc`` carries the time dimension.
         CoordinateValidationError: If the xarray time dimension is missing,
             non-monotonic, not monthly, or does not begin in January.
         ValueError: If a NumPy call omits a required temporal parameter, or the
@@ -2362,6 +2366,8 @@ def palmer_pdsi(
           per-location duration-factor fit and Wells recursion are not a bulk
           array operation (see ADR-0011). Compute it from NumPy values and rewrap
           the outputs when an xarray result is needed.
+        - The Z-Index variable is named ``z_index``, matching the CF registry entry;
+          the CLI NetCDF writer uses ``zindex`` for the same output.
 
     Examples:
         >>> import numpy as np
@@ -2382,8 +2388,8 @@ def palmer_pdsi(
     """
     input_type = detect_input_type(precips)
 
-    # numpy passthrough: the stable palmer.pdsi() contract, including its
-    # spatial_time_major handling for a directly-declared 3-D block
+    # numpy passthrough: the stable palmer.pdsi() contract for 1-D, (years, 12),
+    # and unambiguous 3-D time-major input
     if input_type == InputType.NUMPY:
         if isinstance(pet, xr.DataArray):
             raise TypeError(
@@ -2455,7 +2461,15 @@ def palmer_pdsi(
     provided.update(inferred)
 
     # normalize AWC for xr.apply_ufunc: a gridded input reaches palmer.pdsi as one
-    # time-major block with the AWC per cell, instead of one call per grid cell
+    # time-major block with the AWC per cell, instead of one call per grid cell. An
+    # AWC carrying the time dimension is neither a scalar nor a cell field, and
+    # apply_ufunc would only report it as an unexpected core dimension.
+    if isinstance(awc, xr.DataArray) and time_dim in awc.dims:
+        raise TypeError(
+            f"awc must not carry the time dimension '{time_dim}': it is a per-cell soil "
+            "constant, not a time series. Use a scalar or a DataArray over the "
+            "precipitation's cell dimensions."
+        )
     use_spatial_kernel, awc_for_ufunc = _spatial_kernel_cell_param(precips_da, awc, time_dim)
 
     def _pdsi_block(
@@ -2472,7 +2486,7 @@ def palmer_pdsi(
             spatial_time_major=True,
             **kwargs,
         )
-        return tuple(np.moveaxis(output, 0, -1) for output in result[:4])
+        return tuple(np.asarray(np.moveaxis(output, 0, -1), dtype=float) for output in result[:4])
 
     def _pdsi_per_cell(
         precips_series: np.ndarray,
@@ -2482,7 +2496,7 @@ def palmer_pdsi(
     ) -> tuple[np.ndarray, ...]:
         """Run palmer.pdsi on one 1-D series, returning its four indices."""
         result = palmer.pdsi(precips_series, pet_series, awc_value, **kwargs)
-        return tuple(result[:4])
+        return tuple(np.asarray(output, dtype=float) for output in result[:4])
 
     # input_core_dims: the time dimension is core for both index inputs; AWC arrives
     #   as a scalar per cell on the per-cell path and a cell array on the other
@@ -2511,6 +2525,15 @@ def palmer_pdsi(
         if key in provided
     }
 
+    # record the broadcast input the way the PET wrappers record latitude
+    if isinstance(awc, xr.DataArray):
+        calculation_metadata["awc"] = f"DataArray(dims={awc.dims})"
+    elif np.ndim(awc) > 0:
+        calculation_metadata["awc"] = f"ndarray(shape={np.shape(awc)})"
+    else:
+        calculation_metadata["awc"] = str(awc)
+
+    display_names = {"pdsi": "PDSI", "phdi": "PHDI", "pmdi": "PMDI", "z_index": "Z-Index"}
     variables: dict[str, xr.DataArray] = {}
     for name, array in zip(("pdsi", "phdi", "pmdi", "z_index"), result_arrays, strict=True):
         variable = array.transpose(*desired_dims)
@@ -2518,7 +2541,7 @@ def palmer_pdsi(
             precips_da,
             cf_metadata=CF_METADATA[name],  # type: ignore[arg-type]
             calculation_metadata=calculation_metadata,
-            index_name=name.upper(),
+            index_name=display_names[name],
         )
         variables[name] = variable
 

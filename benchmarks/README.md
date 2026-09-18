@@ -396,13 +396,13 @@ above. Unmeasured overhead on both paths; no ticket owns it.
 
 ### Structural blockers
 
-`palmer.pdsi` and `palmer.scpdsi` take two 1-D series (precipitation and PET)
-plus a scalar available water capacity, allocate a per-location `data` dict of
+`palmer.pdsi` and `palmer.scpdsi` take two monthly series (precipitation and PET)
+plus an available water capacity -- a per-cell field for `pdsi` blocks -- allocate a per-location `data` dict of
 `(n_years, 12)` arrays, and loop over years and months (`palmer.py:231`,
-`palmer.py:323`, `palmer.py:365`, `palmer.py:733`). There is no adapter-layer
-Palmer call, so today the only per-cell Palmer path is the legacy CLI's
-`_apply_along_axis_palmers` (`__main__.py:1409,1411`); converting it needs an n-D
-kernel, not an `apply_ufunc` flag. `scpdsi` additionally runs
+`palmer.py:323`, `palmer.py:365`, `palmer.py:733`). `palmer.pdsi` gained the n-D
+kernel in #937 and the adapter-layer entry point in #1016, and
+`_apply_along_axis_palmers` (`__main__.py:1409,1411`) is converted for grid input.
+The remaining per-cell Palmer path is `scpdsi`. `scpdsi` additionally runs
 `_palmer_wells.calculate` per location (`palmer.py:1035`, `palmer.py:1047`), a
 per-month backtracking state machine, and duration-factor fits
 (`self_calibration.py:342`, `self_calibration.py:394`, `self_calibration.py:449`)

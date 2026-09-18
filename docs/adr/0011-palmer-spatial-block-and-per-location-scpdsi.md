@@ -5,7 +5,7 @@ a separate, explicit decision before it could grow one: "Adding xarray support f
 Palmer indices requires a separate, explicit architecture decision rather than
 unsupported wiring through `indices.py` or `xarray_adapter.py`." This is that decision
 for `palmer.pdsi()`'s NumPy layer; the xarray adapter registration itself
-(`spatial_kernel=True`, the no-loop guard test) was left to a follow-up ticket, so this
+(the adapter entry point, the no-loop guard test) was left to a follow-up ticket, so this
 ADR grants the permission without spending it. That registration landed in #1016:
 `climate_indices.pdsi()` owns its `xr.apply_ufunc` call and returns a Dataset of the
 four indices.

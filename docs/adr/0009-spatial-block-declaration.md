@@ -38,7 +38,8 @@ existing `(years, periods)` callers and their fixtures keep working.
 The spatial path is opt-in per index: `spatial_kernel=True` is declared at each spatial-kernel
 index's adapter call site in `typed_public_api.py` (SPI, SPEI, EDDI, and percentage of normal as of
 this writing), and any index left on the per-cell path keeps `vectorize=True` with one kernel call
-per cell. Registering an index whose kernel does not accept the `spatial_time_major` keyword fails
+per cell. The PET and Palmer entry points declare the same layout by owning their `xr.apply_ufunc`
+calls instead of using the decorator (#941, #1016). Registering an index whose kernel does not accept the `spatial_time_major` keyword fails
 loudly at the call rather than misreading its input.
 
 Two layouts now meet in `compute.py`, distinguished by position in the pipeline rather than by any
