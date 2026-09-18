@@ -132,7 +132,7 @@ INVALID_ARGUMENT_MESSAGE_CASES = [
     pytest.param(
         INVALID_CALLS["spi-periodicity-monthly"],
         ("monthly", "daily", "compute.Periodicity.monthly", "compute.Periodicity.daily"),
-        "monthly, daily",
+        "Periodicity.monthly, Periodicity.daily",
         id="periodicity",
     ),
 ]
