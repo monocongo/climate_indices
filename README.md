@@ -190,10 +190,13 @@ the measured speedups behind the chunk and scheduler guidance.
 The 3.0.0 validation status is tracked in `VALIDATION.md`. EDDI is validated
 against committed paired NOAA PSL monthly reference ET/EDDI fixtures for 1-, 3-,
 and 6-month Timescales (1979–2023); the maximum observed error is `2.43e-6`.
-Palmer tests cover the committed regression fixtures for PDSI, PHDI, PMDI, and
-Z-Index, plus Wells-lineage reference fixtures for scPDSI's four
-self-calibrating outputs and fitted duration factors. These fixtures are treated
-as regression coverage, not independent authoritative scientific validation.
+Standard Palmer outputs (PDSI, PHDI, PMDI, and Z-Index) carry qualified
+independent external-product validation against the operational NOAA NCEI
+nClimDiv reference arrays. Palmer tests also cover the committed regression
+fixtures for those four outputs, plus Wells-lineage reference fixtures for
+scPDSI's four self-calibrating outputs and fitted duration factors; those
+committed fixtures are regression coverage, not independent authoritative
+scientific validation.
 
 ## Migration Guide for v2.2.0
 
