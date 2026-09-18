@@ -2045,7 +2045,7 @@ climate_indices/
 
 ### Python Style
 - **Line length**: 120 characters
-- **Python version**: 3.10+ (no 3.14+ features)
+- **Python version**: 3.10 minimum (avoid syntax and stdlib added after 3.10)
 - **Type hints**: Required for all functions
 - **Docstrings**: Google-style for all public functions
 - **Imports**: stdlib → third-party → local (enforced by ruff)
@@ -2107,7 +2107,7 @@ uv sync --group dev --force
 
 ---
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contribution guidelines.
+See [CONTRIBUTING.md](https://github.com/monocongo/climate_indices/blob/main/CONTRIBUTING.md) for detailed contribution guidelines.
 
 ## docs/contribution-guide.md
 
@@ -2116,6 +2116,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contribution guidelines.
 ## Getting Started
 
 Thank you for your interest in contributing to `climate_indices`! This guide will help you get started with the contribution process.
+
+`CONTRIBUTING.md` at the repository root is the canonical contributor process;
+this guide is the site's walkthrough of it. Where the two differ, the root
+document wins.
 
 ### Prerequisites
 1. **Python 3.10+** installed
@@ -3565,9 +3569,12 @@ documents both harnesses and the committed raw output.
 
 ## docs/algorithms.md
 
-# Algorithm Documentation and Scientific References
+# Climate Index Background and Selection Guidance
 
-This page provides comprehensive documentation of the climate index algorithms implemented in this library, including scientific references, parameter selection guidance, and implementation details.
+What each index measures, when to use it, and how to choose parameters. For the
+computation steps, formulas, and implementation details, see
+{doc}`algorithm-reference`; the scientific literature is listed in that page's
+bibliography.
 
 ```{contents} Table of Contents
 :backlinks: none
@@ -3586,56 +3593,6 @@ The Standardized Precipitation Index (SPI) is a widely used indicator for charac
 
 SPI values are dimensionless and follow a normal distribution with mean 0 and standard deviation 1, making them comparable across different locations and climate regimes.
 
-### Algorithm Description
-
-The SPI computation follows these steps:
-
-1. **Input validation and preprocessing**
-
-   - Accept 1-D or 2-D arrays of precipitation values (any units)
-   - Clip negative precipitation values to zero
-   - Handle missing data appropriately
-
-2. **Temporal aggregation**
-
-   - Compute sliding sums over the specified timescale (e.g., 1, 3, 6, 12, 24 months)
-   - For monthly data: reshape to (years, 12)
-   - For daily data: reshape to (years, 366) assuming leap year format
-
-3. **Distribution fitting**
-
-   - Fit scaled precipitation to a probability distribution (gamma or Pearson Type III)
-   - Compute distribution parameters separately for each calendar month/day
-   - Use only calibration period data for parameter estimation
-
-   **Gamma distribution** (default):
-
-   - Two-parameter gamma distribution with shape (α) and scale (β) parameters
-   - Parameters estimated using maximum likelihood estimation
-   - Suitable for most precipitation distributions
-
-   **Pearson Type III distribution** (alternative):
-
-   - Three-parameter distribution with location, scale, and skewness
-   - Parameters estimated using L-moments method (Hosking, 1997)
-   - Better for highly skewed precipitation distributions
-   - Automatic fallback to gamma if fitting fails
-
-4. **Cumulative probability transformation**
-
-   - Transform fitted values to cumulative probabilities using the distribution's CDF
-   - Account for zero precipitation values in probability calculations
-
-5. **Inverse normal transformation**
-
-   - Apply inverse normal (Gaussian) CDF to obtain standardized values
-   - This transforms probabilities to standard normal deviates
-
-6. **Clipping to valid range**
-
-   - Constrain final SPI values to [-3.09, 3.09]
-   - This range represents probabilities from 0.001 to 0.999
-
 ### When to Use SPI
 
 **Ideal applications:**
@@ -3653,6 +3610,9 @@ The SPI computation follows these steps:
 - May underestimate drought severity in warming climates
 - Not suitable for studying temperature-driven drought
 - Limited applicability in arid regions with many zero-precipitation months
+
+See {doc}`algorithm-reference` for the SPI computation steps and distribution
+parameters.
 
 ### Parameter Selection
 
@@ -3715,34 +3675,6 @@ The calibration period defines the climatological baseline for "normal" precipit
 The Standardized Precipitation Evapotranspiration Index (SPEI) is an extension of SPI that incorporates the effect of temperature on drought through potential evapotranspiration (PET). Developed by Vicente-Serrano, Begueria, and Lopez-Moreno (2010), SPEI provides a more complete picture of water balance by accounting for both water supply (precipitation) and atmospheric water demand (PET).
 
 SPEI is particularly valuable in warming climates where increased temperatures amplify drought severity through enhanced evaporative demand.
-
-### Algorithm Description
-
-The SPEI computation follows these steps:
-
-1. **Water balance computation**
-
-   - Compute climatic water balance: D = P - PET
-   - Where P is precipitation and PET is potential evapotranspiration
-   - Add constant offset (+1000 mm) to ensure all values are positive
-
-2. **Apply SPI methodology**
-
-   - Apply the same steps as SPI (aggregation, fitting, transformation)
-   - Use water balance (D) instead of precipitation (P) as input
-   - Support both gamma and Pearson Type III distributions
-
-3. **Same constraints as SPI**
-
-   - Clip to valid range [-3.09, 3.09]
-   - Return dimensionless standardized values
-
-**Key differences from SPI:**
-
-- Incorporates temperature effects through PET
-- Requires both precipitation and temperature data
-- More sensitive to warming trends
-- Better represents agricultural drought (crop water stress)
 
 ### When to Use SPEI
 
@@ -3809,6 +3741,8 @@ SPEI uses the same parameter selection guidelines as SPI:
 
 See the Potential Evapotranspiration section below for guidance on choosing between Thornthwaite and Hargreaves methods.
 
+See {doc}`algorithm-reference` for the SPEI computation steps.
+
 ## Potential Evapotranspiration (PET)
 
 ### Overview
@@ -3820,31 +3754,9 @@ This library implements two temperature-based PET methods:
 1. **Thornthwaite (1948)**: Monthly timestep, temperature-only
 2. **Hargreaves (1985)**: Daily timestep, temperature and radiation
 
-### Thornthwaite Method
+The equations and implementation details are in {doc}`algorithm-reference`.
 
-The Thornthwaite method estimates monthly PET using mean temperature and latitude.
-
-**Equation:**
-
-$$
-PET = 1.6 \left( \frac{L}{12} \right) \left( \frac{N}{30} \right) \left( \frac{10 T_a}{I} \right)^a
-$$
-
-Where:
-
-- *PET* = potential evapotranspiration (mm/month)
-- *L* = mean day length for the month (hours)
-- *N* = number of days in the month
-- *T*{sub}`a` = mean daily air temperature (°C, clipped to ≥0)
-- *I* = annual heat index = Σ(*T*{sub}`ai`/5){sup}`1.514` for all 12 months
-- *a* = (6.75×10{sup}`-7`)\*I\*{sup}`3` - (7.71×10{sup}`-5`)\*I\*{sup}`2` + (1.792×10{sup}`-2`)\*I\* + 0.49239
-
-**Implementation details:**
-
-- Automatically adjusts for leap years
-- Negative temperatures are clipped to 0°C (no evaporation below freezing)
-- Day length computed from latitude using solar geometry
-- Returns monthly PET values in mm/month
+### Thornthwaite strengths and limitations
 
 **Strengths:**
 
@@ -3860,30 +3772,7 @@ Where:
 - Does not account for wind speed, humidity, or solar radiation
 - Monthly timestep only (not suitable for daily analysis)
 
-### Hargreaves Method
-
-The Hargreaves method estimates daily PET using temperature range as a proxy for solar radiation.
-
-**Equation (based on FAO-56 equation 52):**
-
-$$
-ET_o = 0.0023 (T_{mean} + 17.8) (T_{max} - T_{min})^{0.5} \times 0.408 \times R_a
-$$
-
-Where:
-
-- *ET*{sub}`o` = reference evapotranspiration over grass (mm/day)
-- *T*{sub}`mean` = mean daily temperature (°C)
-- *T*{sub}`max` = maximum daily temperature (°C)
-- *T*{sub}`min` = minimum daily temperature (°C)
-- *R*{sub}`a` = extraterrestrial radiation (MJ m{sup}`-2` day{sup}`-1`)
-
-**Implementation details:**
-
-- Computes extraterrestrial radiation from day of year and latitude
-- Accounts for Earth-Sun distance variation
-- Returns daily PET values in mm/day
-- Validates temperature relationships (T{sub}`min` ≤ T{sub}`mean` ≤ T{sub}`max`)
+### Hargreaves strengths and limitations
 
 **Strengths:**
 
@@ -3977,28 +3866,6 @@ These indices are based on a water balance model that accounts for precipitation
 - Original PDSI not directly comparable across climates
 - Designed for U.S. climates (may need adjustment elsewhere)
 
-### Algorithm Overview
-
-The Palmer drought indices use a two-layer soil moisture accounting model:
-
-1. **Water balance model**
-
-   - Compute potential recharge, runoff, and loss for each time step
-   - Track moisture in surface and subsurface soil layers
-   - Calculate moisture departure from climatically appropriate conditions
-
-2. **CAFEC procedure**
-
-   - Derive Climatically Appropriate For Existing Conditions (CAFEC) coefficients
-   - Calibrate moisture departure to local climate
-
-3. **Index calculation**
-
-   - PDSI: Cumulative moisture anomaly with persistence
-   - Z-Index: Monthly moisture departure (no persistence)
-   - PHDI: Emphasizes long-term moisture deficits
-   - PMDI: Responds quickly to short-term changes
-
 :::{note}
 The Palmer indices require significant calibration data including soil water holding
 capacity, which may not be available for all locations. SPI and SPEI are often
@@ -4006,19 +3873,14 @@ preferred for global applications due to their simpler data requirements and
 multi-scalar nature.
 :::
 
+The soil-moisture accounting model those indices build on is described in
+{doc}`algorithm-reference`.
+
 ## Additional Indices
 
 ### Precipitation Concentration Index (PCI)
 
 The Precipitation Concentration Index (PCI) quantifies the temporal distribution of precipitation throughout the year (Oliver, 1980).
-
-**Equation:**
-
-$$
-PCI = \frac{\sum_{i=1}^{12} P_i^2}{\left(\sum_{i=1}^{12} P_i\right)^2} \times 100
-$$
-
-Where *P*{sub}`i` is the precipitation in month *i*.
 
 **Interpretation:**
 
@@ -4034,33 +3896,11 @@ Where *P*{sub}`i` is the precipitation in month *i*.
 - Assessing temporal variability of water supply
 - Agricultural planning (growing season water availability)
 
-**Implementation details:**
-
-- Requires complete annual cycle (365 or 366 daily values)
-- Rejects incomplete years or years with missing data
-- Returns single PCI value per year
+The PCI equation and implementation details are in {doc}`algorithm-reference`.
 
 ### Percentage of Normal Precipitation (PNP)
 
 The Percentage of Normal Precipitation (PNP) expresses precipitation as a percentage of the long-term average for a given location and time period.
-
-**Equation:**
-
-$$
-PNP = \frac{P_{observed}}{P_{normal}} \times 100
-$$
-
-Where:
-
-- *P*{sub}`observed` = observed precipitation for the period
-- *P*{sub}`normal` = long-term average precipitation for the same calendar period
-
-**Implementation details:**
-
-- Supports multi-month scales (e.g., 3-month, 6-month)
-- Computes normals separately for each calendar month
-- Standard calibration period: 1981-2010 (U.S. climate normals)
-- Can use any calibration period ≥30 years
 
 **Interpretation:**
 
@@ -4082,6 +3922,272 @@ Where:
 - Skewed distribution (not suitable for statistical analysis)
 - Less sophisticated than SPI/SPEI
 - Sensitive to calibration period selection
+
+The PNP equation and implementation details are in {doc}`algorithm-reference`.
+
+## Validation Datasets and Methods
+
+### Reference Datasets
+
+The climate_indices library has been validated against several authoritative sources:
+
+**NCAR Climate Data Guide**:
+
+- SPI reference implementations
+- Multi-scale validation datasets
+- URL: <https://climatedataguide.ucar.edu/climate-data/standardized-precipitation-index-spi>
+
+**NOAA/NCEI Climate Monitoring**:
+
+- Operational SPI, SPEI, PDSI values for U.S. climate divisions
+- Monthly updates for verification
+- URL: <https://www.ncdc.noaa.gov/temp-and-precip/drought/>
+
+**Global SPEI Database**:
+
+- Vicente-Serrano et al. global SPEI dataset
+- 0.5° resolution, 1901-present
+- URL: <https://spei.csic.es/database.html>
+
+### Validation Approach
+
+**Test methodology**:
+
+1. **Unit tests**: Test individual functions with known inputs/outputs
+2. **Integration tests**: Test complete index calculations
+3. **Regression tests**: Compare against reference implementations
+4. **Property-based tests**: Validate mathematical properties using Hypothesis
+5. **Benchmark tests**: Verify computational efficiency and memory usage
+
+**Validation metrics**:
+
+- Pearson correlation coefficient (r > 0.99 for reference datasets)
+- Root mean square error (RMSE)
+- Maximum absolute error
+- Computation time and memory usage
+
+### External Validation Resources
+
+**NCAR Command Language (NCL)**:
+
+- Mature SPI/SPEI implementations
+- URL: <https://www.ncl.ucar.edu/>
+
+**Climate Indices in Python (other libraries)**:
+
+- `climate-indices` (NCAR/UCAR)
+- `spei` (CRAN R package, Python wrapper)
+
+:::{tip}
+When validating this library's output against other implementations, ensure
+consistent parameter choices (distribution, calibration period, scale) and
+input data preprocessing (missing value handling, time alignment).
+:::
+
+## docs/algorithm-reference.md
+
+# Algorithm Reference
+
+Formulas, computation steps, and implementation details for the indices this
+library implements. For what each index is, when to use it, and how to choose
+parameters, see {doc}`algorithms`.
+
+```{contents} On this page
+:backlinks: none
+:local: true
+```
+
+## SPI computation
+
+The SPI computation follows these steps:
+
+1. **Input validation and preprocessing**
+
+   - Accept 1-D or 2-D arrays of precipitation values (any units)
+   - Clip negative precipitation values to zero
+   - Handle missing data appropriately
+
+2. **Temporal aggregation**
+
+   - Compute sliding sums over the specified timescale (e.g., 1, 3, 6, 12, 24 months)
+   - For monthly data: reshape to (years, 12)
+   - For daily data: reshape to (years, 366) assuming leap year format
+
+3. **Distribution fitting**
+
+   - Fit scaled precipitation to a probability distribution (gamma or Pearson Type III)
+   - Compute distribution parameters separately for each calendar month/day
+   - Use only calibration period data for parameter estimation
+
+   **Gamma distribution** (default):
+
+   - Two-parameter gamma distribution with shape (α) and scale (β) parameters
+   - Parameters estimated using maximum likelihood estimation
+   - Suitable for most precipitation distributions
+
+   **Pearson Type III distribution** (alternative):
+
+   - Three-parameter distribution with location, scale, and skewness
+   - Parameters estimated using L-moments method (Hosking, 1997)
+   - Better for highly skewed precipitation distributions
+   - Automatic fallback to gamma if fitting fails
+
+4. **Cumulative probability transformation**
+
+   - Transform fitted values to cumulative probabilities using the distribution's CDF
+   - Account for zero precipitation values in probability calculations
+
+5. **Inverse normal transformation**
+
+   - Apply inverse normal (Gaussian) CDF to obtain standardized values
+   - This transforms probabilities to standard normal deviates
+
+6. **Clipping to valid range**
+
+   - Constrain final SPI values to [-3.09, 3.09]
+   - This range represents probabilities from 0.001 to 0.999
+
+## SPEI computation
+
+The SPEI computation follows these steps:
+
+1. **Water balance computation**
+
+   - Compute climatic water balance: D = P - PET
+   - Where P is precipitation and PET is potential evapotranspiration
+   - Add constant offset (+1000 mm) to ensure all values are positive
+
+2. **Apply SPI methodology**
+
+   - Apply the same steps as SPI (aggregation, fitting, transformation)
+   - Use water balance (D) instead of precipitation (P) as input
+   - Support both gamma and Pearson Type III distributions
+
+3. **Same constraints as SPI**
+
+   - Clip to valid range [-3.09, 3.09]
+   - Return dimensionless standardized values
+
+**Key differences from SPI:**
+
+- Incorporates temperature effects through PET
+- Requires both precipitation and temperature data
+- More sensitive to warming trends
+- Better represents agricultural drought (crop water stress)
+
+## PET computation
+
+The two temperature-based methods this library implements, and their equations;
+for when to choose each, see {doc}`algorithms`.
+
+### Thornthwaite Method
+
+The Thornthwaite method estimates monthly PET using mean temperature and latitude.
+
+**Equation:**
+
+$$
+PET = 1.6 \left( \frac{L}{12} \right) \left( \frac{N}{30} \right) \left( \frac{10 T_a}{I} \right)^a
+$$
+
+Where:
+
+- *PET* = potential evapotranspiration (mm/month)
+- *L* = mean day length for the month (hours)
+- *N* = number of days in the month
+- *T*{sub}`a` = mean daily air temperature (°C, clipped to ≥0)
+- *I* = annual heat index = Σ(*T*{sub}`ai`/5){sup}`1.514` for all 12 months
+- *a* = (6.75×10{sup}`-7`)\*I\*{sup}`3` - (7.71×10{sup}`-5`)\*I\*{sup}`2` + (1.792×10{sup}`-2`)\*I\* + 0.49239
+
+**Implementation details:**
+
+- Automatically adjusts for leap years
+- Negative temperatures are clipped to 0°C (no evaporation below freezing)
+- Day length computed from latitude using solar geometry
+- Returns monthly PET values in mm/month
+
+### Hargreaves Method
+
+The Hargreaves method estimates daily PET using temperature range as a proxy for solar radiation.
+
+**Equation (based on FAO-56 equation 52):**
+
+$$
+ET_o = 0.0023 (T_{mean} + 17.8) (T_{max} - T_{min})^{0.5} \times 0.408 \times R_a
+$$
+
+Where:
+
+- *ET*{sub}`o` = reference evapotranspiration over grass (mm/day)
+- *T*{sub}`mean` = mean daily temperature (°C)
+- *T*{sub}`max` = maximum daily temperature (°C)
+- *T*{sub}`min` = minimum daily temperature (°C)
+- *R*{sub}`a` = extraterrestrial radiation (MJ m{sup}`-2` day{sup}`-1`)
+
+**Implementation details:**
+
+- Computes extraterrestrial radiation from day of year and latitude
+- Accounts for Earth-Sun distance variation
+- Returns daily PET values in mm/day
+- Validates temperature relationships (T{sub}`min` ≤ T{sub}`mean` ≤ T{sub}`max`)
+
+## Palmer index computation
+
+The Palmer drought indices use a two-layer soil moisture accounting model:
+
+1. **Water balance model**
+
+   - Compute potential recharge, runoff, and loss for each time step
+   - Track moisture in surface and subsurface soil layers
+   - Calculate moisture departure from climatically appropriate conditions
+
+2. **CAFEC procedure**
+
+   - Derive Climatically Appropriate For Existing Conditions (CAFEC) coefficients
+   - Calibrate moisture departure to local climate
+
+3. **Index calculation**
+
+   - PDSI: Cumulative moisture anomaly with persistence
+   - Z-Index: Monthly moisture departure (no persistence)
+   - PHDI: Emphasizes long-term moisture deficits
+   - PMDI: Responds quickly to short-term changes
+
+## PCI computation
+
+**Equation** (Oliver, 1980):
+
+$$
+PCI = \frac{\sum_{i=1}^{12} P_i^2}{\left(\sum_{i=1}^{12} P_i\right)^2} \times 100
+$$
+
+Where *P*{sub}`i` is the precipitation in month *i*.
+
+**Implementation details:**
+
+- Requires complete annual cycle (365 or 366 daily values)
+- Rejects incomplete years or years with missing data
+- Returns single PCI value per year
+
+## PNP computation
+
+**Equation:**
+
+$$
+PNP = \frac{P_{observed}}{P_{normal}} \times 100
+$$
+
+Where:
+
+- *P*{sub}`observed` = observed precipitation for the period
+- *P*{sub}`normal` = long-term average precipitation for the same calendar period
+
+**Implementation details:**
+
+- Supports multi-month scales (e.g., 3-month, 6-month)
+- Computes normals separately for each calendar month
+- Standard calibration period: 1981-2010 (U.S. climate normals)
+- Can use any calibration period ≥30 years
 
 ## Statistical Methods
 
@@ -4168,65 +4274,6 @@ The library performs goodness-of-fit testing to validate that the fitted distrib
 **Fallback strategy**:
 
 If Pearson Type III fitting fails (due to insufficient data or numerical issues), the library automatically falls back to gamma distribution with warning messages in the log.
-
-## Validation Datasets and Methods
-
-### Reference Datasets
-
-The climate_indices library has been validated against several authoritative sources:
-
-**NCAR Climate Data Guide**:
-
-- SPI reference implementations
-- Multi-scale validation datasets
-- URL: <https://climatedataguide.ucar.edu/climate-data/standardized-precipitation-index-spi>
-
-**NOAA/NCEI Climate Monitoring**:
-
-- Operational SPI, SPEI, PDSI values for U.S. climate divisions
-- Monthly updates for verification
-- URL: <https://www.ncdc.noaa.gov/temp-and-precip/drought/>
-
-**Global SPEI Database**:
-
-- Vicente-Serrano et al. global SPEI dataset
-- 0.5° resolution, 1901-present
-- URL: <https://spei.csic.es/database.html>
-
-### Validation Approach
-
-**Test methodology**:
-
-1. **Unit tests**: Test individual functions with known inputs/outputs
-2. **Integration tests**: Test complete index calculations
-3. **Regression tests**: Compare against reference implementations
-4. **Property-based tests**: Validate mathematical properties using Hypothesis
-5. **Benchmark tests**: Verify computational efficiency and memory usage
-
-**Validation metrics**:
-
-- Pearson correlation coefficient (r > 0.99 for reference datasets)
-- Root mean square error (RMSE)
-- Maximum absolute error
-- Computation time and memory usage
-
-### External Validation Resources
-
-**NCAR Command Language (NCL)**:
-
-- Mature SPI/SPEI implementations
-- URL: <https://www.ncl.ucar.edu/>
-
-**Climate Indices in Python (other libraries)**:
-
-- `climate-indices` (NCAR/UCAR)
-- `spei` (CRAN R package, Python wrapper)
-
-:::{tip}
-When validating this library's output against other implementations, ensure
-consistent parameter choices (distribution, calibration period, scale) and
-input data preprocessing (missing value handling, time alignment).
-:::
 
 ## Complete Bibliography
 
