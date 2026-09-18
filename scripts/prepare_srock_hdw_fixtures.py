@@ -27,11 +27,13 @@ MDPI publishes only the figure, no data table. Digitization calibrated the
 y axis on the figure's own 0-500 gridline ticks (50-unit spacing) and the x
 axis on the 29 daily tick marks (Oct 12 through Nov 09); each value is the
 vertical center of the black marker at its tick, mapped through that linear
-calibration. One pixel is about 0.94 HDW units, so the digitized values carry
-roughly +/-5 hPa m s-1 of uncertainty (issue #985 records the decision to use
-event discrimination and a one-sided bound instead of a numeric match, because
-the paper's adiabatically adjusted, independently maximized formulation
-upper-bounds the library's per-level product and only the figure is published).
+calibration, and the pixel pairs are committed alongside the values so the
+mapping stays auditable. One pixel is about 0.94 HDW units, so the digitized
+values carry a conservative +/-5 hPa m s-1 tolerance. Issue #985 records the
+decision to assert event timing and series-shape agreement instead of a
+numeric match: only the figure is published, and the paper's adiabatically
+adjusted, independently maximized formulation is not the library's per-level
+product.
 """
 
 from __future__ import annotations
@@ -55,8 +57,9 @@ FIXTURE_DIR = PROJECT_ROOT / "tests" / "fixture" / "hdw_srock_cedar"
 CACHE_DIR = Path(tempfile.gettempdir()) / "srock_hdw_cache"
 
 _BASE_URL = "https://www.ncei.noaa.gov/oa/prod-cfs-reanalysis"
-_PAPER_URL = "https://doi.org/10.3390/atmos9070279"
+_DATASET_URL = "https://www.ncei.noaa.gov/oa/prod-cfs-reanalysis/"
 _PDF_URL = "https://research.fs.usda.gov/download/treesearch/56562.pdf"
+_PDF_SHA256 = "500c2961f37c3cf71ee5714273b8a5fd429754625aed5cbdde65a3dc5b9fc0e3"
 
 # Figure 4a's grid point and window (the paper's Cedar Fire case study).
 _GRID_LATITUDE = 33.0
@@ -74,48 +77,53 @@ _SURFACE_LEVEL_HEIGHT_METERS = 2.0
 _R_DRY_AIR = 287.05
 _GRAVITY = 9.80665
 
-# Figure 4a of Srock et al. (2018), digitized 2026-09-18. Index 0 is Oct 12
-# and index 28 is Nov 9; see the module docstring for the method and its
-# +/-5 hPa m s-1 uncertainty.
-_FIGURE4A_HDW_HPA_M_S = (
-    160.5,
-    68.0,
-    155.4,
-    129.1,
-    59.5,
-    238.0,
-    272.8,
-    204.2,
-    182.6,
-    187.3,
-    220.2,
-    261.5,
-    142.2,
-    227.7,
-    401.5,
-    282.2,
-    134.7,
-    171.3,
-    59.5,
-    59.5,
-    44.0,
-    61.4,
-    53.9,
-    25.7,
-    25.7,
-    61.0,
-    56.7,
-    65.2,
-    68.0,
+# Figure 4a of Srock et al. (2018), digitized 2026-09-18. Each entry is the
+# pixel (column, row) of one day's black marker center, Oct 12 through Nov 9,
+# in the figure's top-left-origin coordinates. The y axis was calibrated on
+# the left-axis ticks for 500..0; every published value is the marker row
+# mapped through that linear fit, and both the pixels and the fit inputs are
+# committed so the transcription can be re-derived.
+_Y_TICK_PIXELS = (118, 168, 220, 274, 328, 380, 434, 488, 542, 594, 648)
+_Y_TICK_VALUES = (500.0, 450.0, 400.0, 350.0, 300.0, 250.0, 200.0, 150.0, 100.0, 50.0, 0.0)
+_FIGURE4A_MARKER_PIXELS = (
+    (164, 476),
+    (217, 575),
+    (270, 482),
+    (322, 510),
+    (375, 584),
+    (427, 394),
+    (480, 357),
+    (532, 430),
+    (585, 453),
+    (638, 448),
+    (690, 413),
+    (743, 369),
+    (795, 496),
+    (848, 405),
+    (900, 220),
+    (953, 347),
+    (1006, 504),
+    (1058, 465),
+    (1111, 584),
+    (1163, 584),
+    (1216, 600),
+    (1268, 582),
+    (1321, 590),
+    (1374, 620),
+    (1426, 620),
+    (1479, 582),
+    (1531, 587),
+    (1584, 578),
+    (1636, 575),
 )
 
 _MAX_DOWNLOAD_ATTEMPTS = 4
 _REQUEST_TIMEOUT_SECONDS = 180
 _DOWNLOAD_WORKERS = 8
 
-# cfgrib's hypercube loader expects its own index cache; running each
-# timestamp through one temp file keeps the index files out of the tree.
-_DECODE_PATH = Path(tempfile.gettempdir()) / "srock_hdw_decode.grb2"
+# A per-run decode directory keeps simultaneous sessions (this repository's
+# worktree workflow) from sharing a GRIB file or its index cache.
+_DECODE_PATH = Path(tempfile.mkdtemp(prefix="srock_hdw_decode_")) / "decode.grb2"
 
 
 def _timestamp_label(moment: dt.datetime) -> str:
@@ -137,36 +145,33 @@ def _fetch(url: str, offset: int | None = None, length: int | None = None) -> by
 
     Range requests are cached per URL and offset because a refresh run is a
     few thousand small transfers; a single transient failure should not cost
-    the whole download.
+    the whole download. An open-ended range is allowed (``length`` is ``None``)
+    for the last inventory record in a file.
     """
     key = hashlib.sha256(f"{url}:{offset}:{length}".encode()).hexdigest()
     cached = CACHE_DIR / key
     if cached.exists():
-        return cached.read_bytes()
+        payload = cached.read_bytes()
+        if length is None or len(payload) == length:
+            return payload
+        cached.unlink(missing_ok=True)
 
     headers = {}
     if offset is not None:
-        if length is None:
-            raise ValueError("length is required with offset")
-        headers["Range"] = f"bytes={offset}-{offset + length - 1}"
+        end = f"{offset + length - 1}" if length is not None else ""
+        headers["Range"] = f"bytes={offset}-{end}"
     last_error: Exception | None = None
     for attempt in range(_MAX_DOWNLOAD_ATTEMPTS):
         try:
             request = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(request, timeout=_REQUEST_TIMEOUT_SECONDS) as response:
                 payload = response.read()
-            if offset is not None and len(payload) != length:
+            if offset is not None and length is not None and len(payload) != length:
                 raise RuntimeError(f"short range response for {url}[{offset}:{length}]: {len(payload)} bytes")
             CACHE_DIR.mkdir(parents=True, exist_ok=True)
-            # Workers share cache keys, so publish through a staging file: a
-            # reader must never observe a partial write at ``cached``.
-            with tempfile.NamedTemporaryFile(dir=CACHE_DIR, delete=False) as stream:
-                stream.write(payload)
-                staging = Path(stream.name)
-            try:
-                staging.replace(cached)
-            finally:
-                staging.unlink(missing_ok=True)
+            temporary = cached.with_name(cached.name + ".part")
+            temporary.write_bytes(payload)
+            temporary.replace(cached)
             return payload
         except urllib.error.HTTPError as error:
             if error.code in (400, 401, 403, 404):
@@ -191,28 +196,26 @@ def _parse_inventory(inventory: str) -> list[tuple[int, str]]:
     return entries
 
 
-def _message_range(entries: list[tuple[int, str]], match: str) -> tuple[int, int]:
+def _message_range(entries: list[tuple[int, str]], match: str) -> tuple[int, int | None]:
     """The range of the first record whose descriptor contains ``match``.
 
     Multi-field messages (CFSR packs U and V into one GRIB2 message) share an
     offset across inventory rows, so the range runs to the next distinct
-    offset and therefore carries every field of the message.
+    offset and therefore carries every field of the message. The final record
+    has no next offset and returns ``None`` for an open-ended read.
     """
     offsets = sorted({offset for offset, _ in entries})
     for offset, descriptor in entries:
         if match in descriptor:
-            next_offset = next((candidate for candidate in offsets if candidate > offset), offset + 5_000_000)
-            return offset, next_offset - offset
+            next_offset = next((candidate for candidate in offsets if candidate > offset), None)
+            return offset, None if next_offset is None else next_offset - offset
     raise KeyError(match)
 
 
-def _pressure_message(chunks: list[bytes], moment: dt.datetime, level: int, variable: str) -> None:
-    """Append one pressure-level field's raw GRIB2 message for ``moment``."""
-    label = _timestamp_label(moment)
-    stem = f"{moment.year}{moment.month:02d}/{label[:8]}/pgbh00.gdas.{label}"
-    inventory_url = f"{_BASE_URL}/6-hourly-by-pressure-level/{moment.year}/{stem}.inv"
-    grib_url = f"{_BASE_URL}/6-hourly-by-pressure-level/{moment.year}/{stem}.grb2"
-    entries = _parse_inventory(_fetch(inventory_url).decode())
+def _pressure_message(
+    chunks: list[bytes], grib_url: str, entries: list[tuple[int, str]], level: int, variable: str
+) -> None:
+    """Append one pressure-level field's raw GRIB2 message from a parsed inventory."""
     offset, length = _message_range(entries, f"{variable}:{level} mb:")
     chunks.append(_fetch(grib_url, offset, length))
 
@@ -224,8 +227,8 @@ def _surface_message(chunks: list[bytes], moment: dt.datetime, variable: str, ma
     label = _timestamp_label(moment)
     for index, (offset, descriptor) in enumerate(entries):
         if f"d={label}" in descriptor and match in descriptor:
-            next_offset = entries[index + 1][0] if index + 1 < len(entries) else offset + 700_000
-            chunks.append(_fetch(f"{base}.grb2", offset, next_offset - offset))
+            next_offset = entries[index + 1][0] if index + 1 < len(entries) else None
+            chunks.append(_fetch(f"{base}.grb2", offset, None if next_offset is None else next_offset - offset))
             return
     raise KeyError(f"{variable}:{match} at {label}")
 
@@ -233,17 +236,24 @@ def _surface_message(chunks: list[bytes], moment: dt.datetime, variable: str, ma
 def _download_profile_messages(moment: dt.datetime) -> bytes | None:
     """Fetch every GRIB2 message needed for one timestamp, in parallel.
 
-    Returns ``None`` when the NCEI store has no pressure-level analysis for the
-    timestamp (one gap exists on 2003-10-29 12Z, and the surface product alone
-    cannot supply the profile).
+    Returns ``None`` only when the NCEI store answers HTTP 404 for the
+    timestamp's pressure-level object -- the real 2003-10-29 12Z gap. Any
+    other transport failure propagates so a transient outage cannot be
+    mistaken for an archive gap.
     """
     label = _timestamp_label(moment)
     stem = f"{moment.year}{moment.month:02d}/{label[:8]}/pgbh00.gdas.{label}"
     grib_url = f"{_BASE_URL}/6-hourly-by-pressure-level/{moment.year}/{stem}.grb2"
     try:
         _fetch(grib_url, 0, 1)
-    except urllib.error.HTTPError:
-        return None
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return None
+        raise
+
+    entries = _parse_inventory(
+        _fetch(f"{_BASE_URL}/6-hourly-by-pressure-level/{moment.year}/{stem}.inv").decode()
+    )
 
     chunks: list[bytes] = []
     surface_fields = (
@@ -257,7 +267,7 @@ def _download_profile_messages(moment: dt.datetime) -> bytes | None:
     with ThreadPoolExecutor(max_workers=_DOWNLOAD_WORKERS) as pool:
         for level in _PRESSURE_LEVELS_HPA:
             for variable in ("HGT", "TMP", "RH", "UGRD"):
-                jobs.append(pool.submit(_pressure_message, chunks, moment, level, variable))
+                jobs.append(pool.submit(_pressure_message, chunks, grib_url, entries, level, variable))
         for variable, match in surface_fields:
             jobs.append(pool.submit(_surface_message, chunks, moment, variable, match))
         for job in jobs:
@@ -275,6 +285,15 @@ def _pick(datasets: list, name: str, level: float | None = None):
             longitude=_GRID_LONGITUDE,
             method="nearest",
         )
+        selected_latitude = float(selected.latitude)
+        selected_longitude = float(selected.longitude)
+        longitude_error = abs(selected_longitude - _GRID_LONGITUDE)
+        longitude_error = min(longitude_error, 360.0 - longitude_error)
+        if abs(selected_latitude - _GRID_LATITUDE) > 0.25 or longitude_error > 0.25:
+            raise RuntimeError(
+                f"nearest grid point for {name} is ({selected_latitude:.2f}, {selected_longitude:.2f}), "
+                f"not the fixture's ({_GRID_LATITUDE:.1f}, {_GRID_LONGITUDE - 360.0:.1f})"
+            )
         if level is not None:
             selected = selected.sel(isobaricInhPa=level)
         return selected
@@ -284,12 +303,7 @@ def _pick(datasets: list, name: str, level: float | None = None):
 def _profile_from_messages(messages: bytes) -> tuple[list[float], list[float], list[float], list[float]]:
     """Extract the fixture profile arrays from one timestamp's GRIB2 messages."""
     _DECODE_PATH.write_bytes(messages)
-    index_path = _DECODE_PATH.with_name(_DECODE_PATH.name + ".idx")
-    index_path.unlink(missing_ok=True)
-    try:
-        datasets = cfgrib.open_datasets(str(_DECODE_PATH))
-    finally:
-        index_path.unlink(missing_ok=True)
+    datasets = cfgrib.open_datasets(str(_DECODE_PATH), indexpath="")
 
     surface_hpa = float(_pick(datasets, "sp")) / 100.0
     surface_temperature_c = float(_pick(datasets, "t2m")) - 273.15
@@ -333,11 +347,27 @@ def _profile_from_messages(messages: bytes) -> tuple[list[float], list[float], l
 
 
 def _checksum_of_fixture_files(directory: Path) -> str:
-    """Hash every canonical data file, so the CSV is bound like the arrays."""
+    """SHA-256 over every committed ``.npy`` and ``.csv`` fixture artifact."""
     hasher = hashlib.sha256()
-    for path in sorted((*directory.glob("*.npy"), *directory.glob("*.csv"))):
-        hasher.update(path.read_bytes())
+    for pattern in ("*.npy", "*.csv"):
+        for path in sorted(directory.glob(pattern)):
+            hasher.update(path.read_bytes())
     return hasher.hexdigest()
+
+
+def _save_array(name: str, array: np.ndarray) -> None:
+    """Write one fixture array as a staged replace, so a partial run leaves no mixed fixture."""
+    temporary = FIXTURE_DIR / (name + ".part")
+    with temporary.open("wb") as handle:
+        np.save(handle, array)
+    temporary.replace(FIXTURE_DIR / name)
+
+
+def _write_text(name: str, text: str) -> None:
+    """Write one fixture text artifact as a staged replace."""
+    temporary = FIXTURE_DIR / (name + ".part")
+    temporary.write_text(text)
+    temporary.replace(FIXTURE_DIR / name)
 
 
 def main() -> None:
@@ -351,7 +381,12 @@ def main() -> None:
     valid_times: list[dt.datetime] = []
     missing: list[dt.datetime] = []
     for index, moment in enumerate(moments, start=1):
-        messages = _download_profile_messages(moment)
+        try:
+            messages = _download_profile_messages(moment)
+        except urllib.error.HTTPError as error:
+            if error.code != 404:
+                raise
+            messages = None
         if messages is None:
             missing.append(moment)
             continue
@@ -362,31 +397,40 @@ def main() -> None:
         if index % 10 == 0 or index == len(moments):
             print(f"  {index}/{len(moments)} {moment:%Y-%m-%dT%H:%M}Z")
 
+    if not valid_times:
+        raise RuntimeError("no CFSR analyses were retrieved; refusing to write an empty fixture")
+
+    y_fit = np.polyfit(_Y_TICK_PIXELS, _Y_TICK_VALUES, 1)
+    digitized = [
+        (pixel_x, pixel_y, float(np.polyval(y_fit, pixel_y)))
+        for pixel_x, pixel_y in _FIGURE4A_MARKER_PIXELS
+    ]
+    published_values = [value for _, _, value in digitized]
+
     FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
-    np.save(FIXTURE_DIR / "temperature_celsius.npy", np.asarray(temperatures, dtype=np.float64))
-    np.save(FIXTURE_DIR / "relative_humidity_percent.npy", np.asarray(humidities, dtype=np.float64))
-    np.save(FIXTURE_DIR / "wind_speed_meters_per_second.npy", np.asarray(winds, dtype=np.float64))
-    np.save(FIXTURE_DIR / "height_agl_meters.npy", np.asarray(heights, dtype=np.float64))
-    np.save(
-        FIXTURE_DIR / "valid_time.npy",
+    _save_array("temperature_celsius.npy", np.asarray(temperatures, dtype=np.float64))
+    _save_array("relative_humidity_percent.npy", np.asarray(humidities, dtype=np.float64))
+    _save_array("wind_speed_meters_per_second.npy", np.asarray(winds, dtype=np.float64))
+    _save_array("height_agl_meters.npy", np.asarray(heights, dtype=np.float64))
+    _save_array(
+        "valid_time.npy",
         np.asarray([moment.replace(tzinfo=None) for moment in valid_times], dtype="datetime64[ns]"),
     )
 
     day = _START_DATE
-    rows = ["date,published_hdw_hpa_m_s"]
-    for published in _FIGURE4A_HDW_HPA_M_S:
-        rows.append(f"{day.isoformat()},{published:.1f}")
+    rows = ["date,published_hdw_hpa_m_s,figure_pixel_x,figure_pixel_y"]
+    for pixel_x, pixel_y, published in digitized:
+        rows.append(f"{day.isoformat()},{published:.1f},{pixel_x},{pixel_y}")
         day += dt.timedelta(days=1)
-    (FIXTURE_DIR / "reference_daily.csv").write_text("\n".join(rows) + "\n")
+    _write_text("reference_daily.csv", "\n".join(rows) + "\n")
 
     missing_labels = [moment.strftime("%Y-%m-%d %H:%M UTC") for moment in missing]
-    event_day = _START_DATE + dt.timedelta(days=int(np.argmax(_FIGURE4A_HDW_HPA_M_S)))
-    non_event = [value for index, value in enumerate(_FIGURE4A_HDW_HPA_M_S) if index != int(np.argmax(_FIGURE4A_HDW_HPA_M_S))]
+    event_day = _START_DATE + dt.timedelta(days=int(np.argmax(published_values)))
     provenance = {
         "source": "NCEP Climate Forecast System Reanalysis (CFSR), 6-hourly pressure-level and "
         "time-series analyses via the NOAA NCEI object store; published HDW series digitized from "
         "Srock et al. (2018) Figure 4a",
-        "url": _PDF_URL,
+        "url": _DATASET_URL,
         "download_date": dt.date.today().isoformat(),
         "subset_description": (
             f"CFSR vertical profiles at the Figure 4a grid point ({_GRID_LATITUDE:.1f} N, "
@@ -398,8 +442,8 @@ def main() -> None:
             "from the lowest fetched level above the surface. The digitized Figure 4a series has one row "
             "per UTC date."
             + (
-                f" The NCEI store has no pressure-level analysis for {', '.join(missing_labels)}, so "
-                "those daily maxima use the remaining analyses."
+                f" The NCEI store has no complete pressure-level analysis for {', '.join(missing_labels)} "
+                "(HTTP 404 on the absent object), so those daily maxima use the remaining analyses."
                 if missing
                 else ""
             )
@@ -408,11 +452,11 @@ def main() -> None:
         "fixture_version": "1.0.0",
         "validation_tolerance": {
             "digitized_series_uncertainty_hpa_m_s": 5.0,
+            "published_series_correlation": 0.80,
         },
         "measured_stats": {
             "digitized_series": {
-                "event_day_hdw": float(max(_FIGURE4A_HDW_HPA_M_S)),
-                "max_non_event_day_hdw": float(max(non_event)),
+                "event_day_hdw": float(max(published_values)),
             }
         },
         "citation": "Srock, A.F., Charney, J.J., Potter, B.E. and Goodrick, S.L. (2018) The Hot-Dry-Windy "
@@ -422,23 +466,25 @@ def main() -> None:
         "CC-BY 4.0 (MDPI); only a digitized derivative of Figure 4a is committed here, with attribution.",
         "notes": (
             f"Figure 4a's published series is figure-only; values were digitized from the CC-BY PDF "
-            f"({_PDF_URL}) on 2026-09-18 by calibrating the y axis on the figure's 0-500 gridline ticks "
-            f"and the x axis on the 29 daily tick marks, then reading the marker centers. One pixel is "
-            f"about 0.94 HDW units, so the committed values carry roughly +/-5 hPa m s-1 of uncertainty. "
-            f"The library implements the per-level VPD x wind product, while Srock et al. adiabatically "
-            f"adjust VPD to the surface and take the VPD and wind maxima independently over a layer "
-            f"ending at the first level above surface + 50 hPa. That formulation upper-bounds the "
-            f"library's in theory, but the digitized series still cannot be reproduced "
-            f"magnitude-for-magnitude from public metadata: the library's daily maximum exceeds the "
-            f"digitized value on five of 29 days, always driven by the 0000 UTC analyses, and the "
-            f"library's 1800 UTC values alone correlate with the published series at 0.945 with no "
-            f"exceedances. The reference test therefore asserts event timing and series shape, not a "
-            f"one-sided bound or a numerical match (issue #985)."
+            f"({_PDF_URL}, SHA-256 {_PDF_SHA256}) on 2026-09-18 using the marker pixels and left-axis "
+            f"tick calibration recorded in _FIGURE4A_MARKER_PIXELS and _Y_TICK_PIXELS (the committed "
+            f"figure_pixel_x/figure_pixel_y columns let the mapping be re-checked). One pixel is about "
+            f"0.94 hPa m s-1; the +/-5 hPa m s-1 tolerance is a conservative bound on marker-center and "
+            f"axis-calibration error. Each profile's surface row pairs the 2 m temperature and humidity "
+            f"with the 10 m wind at a 2 m height, the library's single-height-per-level contract. The "
+            f"library implements the per-level VPD x wind product, while "
+            f"Srock et al. adiabatically adjust VPD to the surface and take the VPD and wind maxima "
+            f"independently over the surface plus every pressure level up to and including the first "
+            f"above surface + 50 hPa (Srock et al., 2018, Section 3). The 0600 UTC analyses are not "
+            f"fetched, matching the paper's stated 1200/1800/0000 UTC daily maximum. The digitized "
+            f"magnitudes cannot be reproduced from public metadata, so the reference test asserts event "
+            f"timing and series-shape agreement, not a numerical match (issue #985); the measured "
+            f"comparison is recorded in VALIDATION.md."
         ),
     }
-    (FIXTURE_DIR / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
+    _write_text("provenance.json", json.dumps(provenance, indent=2) + "\n")
     print(f"wrote {FIXTURE_DIR.relative_to(PROJECT_ROOT)} ({FIXTURE_DIR / 'provenance.json'})")
-    print(f"digitized event day: {event_day.isoformat()} ({max(_FIGURE4A_HDW_HPA_M_S):.1f} hPa m s-1)")
+    print(f"digitized event day: {event_day.isoformat()} ({max(published_values):.1f} hPa m s-1)")
 
 
 if __name__ == "__main__":
