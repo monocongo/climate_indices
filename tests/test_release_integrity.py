@@ -226,7 +226,7 @@ def test_front_page_python_support_matches_classifiers() -> None:
     versions = _declared_python_versions()
     badge_url = _expected_badge_url()
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    docs_index = (ROOT / "docs" / "index.rst").read_text(encoding="utf-8")
+    docs_index = (ROOT / "docs" / "index.md").read_text(encoding="utf-8")
     release_process = (ROOT / "docs" / "release-process.md").read_text(encoding="utf-8")
 
     support_rows = re.findall(r"^\| (\d+\.\d+) \| Supported \|([^|]*)\|$", readme, re.MULTILINE)
@@ -236,8 +236,18 @@ def test_front_page_python_support_matches_classifiers() -> None:
 
     badge_label = f"Python | {versions[0]}-{versions[-1]}"
     assert f"[![{badge_label}]({badge_url})](#supported-python-versions)" in readme
-    assert f".. |Python| image:: {badge_url}" in docs_index
+    assert f"![Python | {versions[0]}-{versions[-1]}]({badge_url})" in docs_index
     assert badge_url in release_process
+
+
+def test_wildfire_applications_cross_links_use_myst_roles() -> None:
+    """Cross-page links must be MyST `{doc}` roles, not literal RST `:doc:` text."""
+    page = (ROOT / "docs" / "wildfire_applications.md").read_text(encoding="utf-8")
+    assert "{doc}`xarray_migration`" in page
+    assert "{doc}`index`" in page
+    assert ":doc:" not in page, (
+        "docs/wildfire_applications.md must use MyST {doc} roles; an RST :doc: role renders as literal text"
+    )
 
 
 def test_release_process_documents_pypi_metadata_verification() -> None:

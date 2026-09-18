@@ -1090,6 +1090,7 @@ uv sync --group dev
 ```python
 import climate_indices as ci
 import xarray as xr
+from climate_indices.indices import Distribution
 
 # Load precipitation data
 precip = xr.open_dataarray("precip.nc")
@@ -1098,9 +1099,9 @@ precip = xr.open_dataarray("precip.nc")
 spi_6 = ci.spi(
     precip,
     scale=6,
-    distribution="gamma",
-    calibration_start_year=1981,
-    calibration_end_year=2010
+    distribution=Distribution.gamma,
+    calibration_year_initial=1981,
+    calibration_year_final=2010,
 )
 ```
 
@@ -1492,7 +1493,7 @@ climate_indices/
 │
 ├── docs/                         # Documentation
 │   ├── conf.py                   # Sphinx configuration
-│   ├── index.rst                 # Main Sphinx doc (ReadTheDocs)
+│   ├── index.md                  # Main Sphinx doc (ReadTheDocs)
 │   ├── reference.md              # API reference (autodoc)
 │   ├── release-process.md        # Maintainer release runbook
 │   └── *.md                      # AI-readable project docs
@@ -1512,7 +1513,7 @@ climate_indices/
 ### Critical Directories
 - **`src/climate_indices/`**: Production code for the core indices and the fire subsystem
 - **`tests/`**: Test suite and fixture data
-- **`docs/`**: Sphinx RST + Markdown project documentation
+- **`docs/`**: Sphinx + MyST Markdown project documentation
 - **`.github/workflows/`**: CI/CD automation (3 workflows)
 
 ## Data Flow and Computation Patterns
@@ -2370,7 +2371,7 @@ Before submitting:
 4. Add regression test to prevent recurrence
 
 ### Improving Documentation
-1. Update the relevant Markdown page in `docs/` for Sphinx docs (`docs/index.rst` is the Sphinx root document whose toctrees include them)
+1. Update the relevant Markdown page in `docs/` for Sphinx docs (`docs/index.md` is the Sphinx root document whose toctrees include them)
 2. Update docstrings in source code
 3. Build docs locally: `cd docs && make html`
 4. Check for broken links and formatting issues
@@ -2973,7 +2974,7 @@ print(spi_loaded.attrs["references"])  # citation preserved
 ### 1. Time dimension must be named "time"
 
 :::{warning}
-**Error:** `CoordinateValidationError: Time dimension 'time' not found in input. Available dimensions: ['date']. Use time_dim parameter to specify custom name.`
+**Error:** `DimensionMismatchError: Time dimension 'time' not found in input. Available dimensions: ['date']. Use time_dim parameter to specify custom name.`
 
 **Cause:** Your DataArray uses a different dimension name (e.g., `date`, `timestamp`, `t`).
 

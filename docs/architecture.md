@@ -261,7 +261,7 @@ climate_indices/
 │
 ├── docs/                         # Documentation
 │   ├── conf.py                   # Sphinx configuration
-│   ├── index.rst                 # Main Sphinx doc (ReadTheDocs)
+│   ├── index.md                  # Main Sphinx doc (ReadTheDocs)
 │   ├── reference.md              # API reference (autodoc)
 │   ├── release-process.md        # Maintainer release runbook
 │   └── *.md                      # AI-readable project docs
@@ -281,7 +281,7 @@ climate_indices/
 ### Critical Directories
 - **`src/climate_indices/`**: Production code for the core indices and the fire subsystem
 - **`tests/`**: Test suite and fixture data
-- **`docs/`**: Sphinx RST + Markdown project documentation
+- **`docs/`**: Sphinx + MyST Markdown project documentation
 - **`.github/workflows/`**: CI/CD automation (3 workflows)
 
 ## Data Flow and Computation Patterns
