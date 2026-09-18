@@ -1,0 +1,11 @@
+# Copy to the target repo root as validation.yaml.
+# Named command sets for resolve-pr-review; select with the validation_profile input.
+profiles:
+  default:
+    - uv run ruff check src/ tests/
+    - uv run ruff format --check src/ tests/
+    - uv run mypy src/
+    - uv run pytest
+  docs:
+    - uv run --extra docs sphinx-build -E -b html -W --keep-going docs docs/_build/html
+    - uv run --extra docs sphinx-build -E -b doctest docs docs/_build/doctest
