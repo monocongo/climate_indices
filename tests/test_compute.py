@@ -364,9 +364,10 @@ def test_transform_fitted_pearson(
 
     # confirm that we get expected errors when
     # using invalid time series type arguments
+    flattened_precips = precips_mm_monthly.flatten()
     with pytest.raises(PeriodicityError, match="requires a corresponding periodicity") as missing_periodicity:
         compute.transform_fitted_pearson(
-            precips_mm_monthly.flatten(),
+            flattened_precips,
             data_year_start_monthly,
             calibration_year_start_monthly,
             calibration_year_end_monthly,
@@ -376,7 +377,7 @@ def test_transform_fitted_pearson(
 
     with pytest.raises(PeriodicityError, match="Unsupported periodicity argument") as unsupported_periodicity:
         compute.transform_fitted_pearson(
-            precips_mm_monthly.flatten(),
+            flattened_precips,
             data_year_start_monthly,
             calibration_year_start_monthly,
             calibration_year_end_monthly,
