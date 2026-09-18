@@ -195,6 +195,7 @@ def test_scpdsi_rescales_zindex_cumulatively(monkeypatch, palmer_division_inputs
     raw_z = sczindex(-4.0, 4.0)  # ratio 1.0: three no-op passes
     rescaled = sczindex(-2.0, 2.0)  # ratio 2.0 per pass
 
+    assert np.isfinite(raw_z).any()
     np.testing.assert_allclose(rescaled, raw_z * 8.0, rtol=0, atol=0, equal_nan=True)
 
 

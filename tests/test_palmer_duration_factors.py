@@ -230,7 +230,7 @@ def test_custom_duration_factors_change_pdsi_output():
     rng = np.random.default_rng(42)
     precips = rng.uniform(0.0, 6.0, size=12 * 4)
     pet = rng.uniform(0.0, 4.0, size=12 * 4)
-    custom = {"wetm": 1.0, "wetb": 1.0, "drym": 1.0, "dryb": 1.0}
+    custom = {"wetm": 1.0, "wetb": 2.0, "drym": 3.0, "dryb": 4.0}
 
     default_pdsi, *_ = palmer.pdsi(precips, pet, 5.0, 2000, 2000, 2003)
     custom_pdsi, *_ = palmer.pdsi(precips, pet, 5.0, 2000, 2000, 2003, fitting_params=custom)
@@ -240,15 +240,30 @@ def test_custom_duration_factors_change_pdsi_output():
     assert not np.allclose(default_pdsi, custom_pdsi, equal_nan=True)
 
 
+def test_duration_factor_override_distinguishes_wet_from_dry():
+    """Swapping the wet and dry pairs changes the recursion; wet and dry are not interchangeable."""
+    rng = np.random.default_rng(42)
+    precips = rng.uniform(0.0, 6.0, size=12 * 4)
+    pet = rng.uniform(0.0, 4.0, size=12 * 4)
+    wet_heavy = {"wetm": 3.0, "wetb": 1.0, "drym": 1.0, "dryb": 1.0}
+    dry_heavy = {"wetm": 1.0, "wetb": 1.0, "drym": 3.0, "dryb": 1.0}
+
+    wet_pdsi, *_ = palmer.pdsi(precips, pet, 5.0, 2000, 2000, 2003, fitting_params=wet_heavy)
+    dry_pdsi, *_ = palmer.pdsi(precips, pet, 5.0, 2000, 2000, 2003, fitting_params=dry_heavy)
+
+    assert not np.allclose(wet_pdsi, dry_pdsi, equal_nan=True)
+
+
 def test_pdsi_returned_params_reproduce_a_duration_factor_override():
     """The returned parameters echo the effective duration factors, so reuse is lossless."""
     rng = np.random.default_rng(42)
     precips = rng.uniform(0.0, 6.0, size=12 * 4)
     pet = rng.uniform(0.0, 4.0, size=12 * 4)
-    custom = {"wetm": 1.0, "wetb": 1.0, "drym": 1.0, "dryb": 1.0}
+    custom = {"wetm": 1.0, "wetb": 2.0, "drym": 3.0, "dryb": 4.0}
 
     custom_pdsi, *_, params = palmer.pdsi(precips, pet, 5.0, 2000, 2000, 2003, fitting_params=custom)
     assert params is not None
+    assert [params[name] for name in ("wetm", "wetb", "drym", "dryb")] == [1.0, 2.0, 3.0, 4.0]
 
     rerun_pdsi, *_ = palmer.pdsi(precips, pet, 5.0, 2000, 2000, 2003, fitting_params=params)
 

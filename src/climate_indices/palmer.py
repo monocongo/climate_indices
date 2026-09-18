@@ -1714,7 +1714,9 @@ def pdsi(
             fitted ``alpha``, ``beta``, ``gamma``, and ``delta`` parameters
             plus the effective ``wetm``, ``wetb``, ``drym``, and ``dryb``
             duration factors (Palmer's defaults unless overridden). Passing
-            that dictionary back as ``fitting_params`` reproduces the run.
+            that dictionary back as ``fitting_params`` reproduces the run; a
+            spatial block's returned coefficient arrays are re-fit rather
+            than reused, which is numerically equivalent.
             For all-missing input, the parameter dictionary is ``None``. A
             spatial block's outputs keep precips' cell shape, and the
             parameter arrays gain the same trailing shape unless
