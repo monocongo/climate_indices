@@ -265,7 +265,7 @@ class TestDatasetLayout:
         assert str(exc_info.value) == (
             f"Invalid dimensions of the precipitation variable: {dimensions}\n"
             "Valid dimension names and order: "
-            "[('lat', 'lon', 'time'), ('time', 'lat', 'lon'), ('time', 'division'), ('division', 'time')]"
+            "[('lat', 'lon', 'time'), ('time', 'lat', 'lon'), ('time', 'division'), ('division', 'time'), ('time',)]"
         )
 
     def test_unrecognized_layout_event_names_the_variable(self):
@@ -287,6 +287,7 @@ class TestDatasetLayout:
                 ("time", "lat", "lon"),
                 ("time", "division"),
                 ("division", "time"),
+                ("time",),
             ],
         )
 

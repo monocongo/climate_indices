@@ -208,7 +208,7 @@ def detect_dataset_layout(dimensions: tuple[Hashable, ...], variable: str) -> Da
 
     # a list, so the accepted forms read the same in the message as they did
     # when each layout's dimensions were their own module constant
-    accepted = list(_LAYOUT_DIMENSIONS[DatasetLayout.GRID] + _LAYOUT_DIMENSIONS[DatasetLayout.DIVISIONS])
+    accepted = [order for orders in _LAYOUT_DIMENSIONS.values() for order in orders]
     msg = f"Invalid dimensions of the {variable} variable: {dimensions}\nValid dimension names and order: {accepted}"
     _log().error(
         "dataset_layout_unrecognized",
