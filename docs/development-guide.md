@@ -160,7 +160,7 @@ climate_indices/
 
 ### Python Style
 - **Line length**: 120 characters
-- **Python version**: 3.10+ (no 3.14+ features)
+- **Python version**: 3.10 minimum (avoid syntax and stdlib added after 3.10)
 - **Type hints**: Required for all functions
 - **Docstrings**: Google-style for all public functions
 - **Imports**: stdlib → third-party → local (enforced by ruff)

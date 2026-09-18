@@ -89,12 +89,8 @@ The SPEI computation follows these steps:
 
 ## PET computation
 
-Potential evapotranspiration (PET) represents the atmospheric water demand—the amount of water that would evaporate and transpire from a reference surface if sufficient water were available. PET is a key input for SPEI and water balance calculations.
-
-This library implements two temperature-based PET methods:
-
-1. **Thornthwaite (1948)**: Monthly timestep, temperature-only
-2. **Hargreaves (1985)**: Daily timestep, temperature and radiation
+The two temperature-based methods this library implements, and their equations;
+for when to choose each, see {doc}`algorithms`.
 
 ### Thornthwaite Method
 
@@ -171,9 +167,7 @@ The Palmer drought indices use a two-layer soil moisture accounting model:
 
 ## PCI computation
 
-The Precipitation Concentration Index (PCI) quantifies the temporal distribution of precipitation throughout the year (Oliver, 1980).
-
-**Equation:**
+**Equation** (Oliver, 1980):
 
 $$
 PCI = \frac{\sum_{i=1}^{12} P_i^2}{\left(\sum_{i=1}^{12} P_i\right)^2} \times 100
@@ -188,8 +182,6 @@ Where *P*{sub}`i` is the precipitation in month *i*.
 - Returns single PCI value per year
 
 ## PNP computation
-
-The Percentage of Normal Precipitation (PNP) expresses precipitation as a percentage of the long-term average for a given location and time period.
 
 **Equation:**
 

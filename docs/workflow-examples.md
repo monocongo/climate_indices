@@ -7,8 +7,8 @@ distribution-fitting parameters used below are described in
 
 ## Example input and output datasets
 
-Example NetCDF datasets that are valid input to the indices processing scripts
-described above are available from the associated project
+Example NetCDF datasets that are valid input to the `climate_indices` command
+are available from the associated project
 [example_climate_indices](https://github.com/monocongo/example_climate_indices/).
 The input NetCDF files used in the examples below (`nclimdiv.nc`,
 `nclimgrid_lowres_prcp.nc`, etc.) can be fetched from this repository, as well

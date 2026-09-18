@@ -11,6 +11,14 @@ from coordinates) and the **NumPy API** (which requires explicit parameters).
 
 ## Prerequisites
 
+Create and activate a virtual environment (conda shown; any Python 3.10+
+environment works):
+
+```bash
+conda create -n myvenv python=3.10
+conda activate myvenv
+```
+
 Install the package from PyPI:
 
 ```bash
@@ -31,6 +39,14 @@ Optionally validate the installation by running the test suite:
 
 ```bash
 uv run pytest
+```
+
+Then show the package installed into the environment:
+
+```bash
+uv pip list | grep climate-indices
+
+# climate-indices   X.Y.Z   /path/to/climate_indices
 ```
 
 For visualization examples, also install matplotlib:

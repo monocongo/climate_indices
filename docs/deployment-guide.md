@@ -192,12 +192,14 @@ source_suffix = ".md"
 
 ### Dependency Groups
 ```toml
-[project.dependencies]
+[project]
 # Core runtime dependencies
-scipy = ">=1.15.3"
-xarray = ">=2025.6.1"
-dask = ">=2025.7.0"
-structlog = ">=24.1.0"
+dependencies = [
+    "scipy>=1.15.3",
+    "xarray>=2025.6.1",
+    "dask>=2025.7.0",
+    "structlog>=24.1.0",
+]
 
 [dependency-groups]
 dev = [

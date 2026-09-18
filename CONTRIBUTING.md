@@ -113,6 +113,7 @@ vocabulary at `src/climate_indices/CONTEXT.md`):
   `docs/research/interactive-climate-explorer-landscape.md`,
   `docs/research/dri-wrcc-scpdsi-assessment.md`,
   `docs/explorer/`, `docs/architecture-deepening-review-*.md`,
+  `docs/ai-assisted-development-report-*.md`,
   `docs/test_fixture_management.md`, `CONTEXT-MAP.md`
 - Published URL-retention orphan: `docs/pypi_release.md` (`orphan: true`; kept
   only so the previously published `pypi_release.html` URL resolves)

@@ -18,3 +18,8 @@ from a fresh kernel with:
 ```bash
 bash scripts/smoke_e2e_notebook.sh
 ```
+
+See {doc}`troubleshooting` for the workflow's setup and failure modes,
+{doc}`xarray_migration` for the xarray stability guarantees, and
+[ADR-0003](https://github.com/monocongo/climate_indices/blob/main/docs/adr/0003-dask-time-dimension-single-chunk.md)
+for the single-time-chunk correctness constraint.

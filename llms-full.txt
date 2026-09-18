@@ -2042,7 +2042,7 @@ climate_indices/
 
 ### Python Style
 - **Line length**: 120 characters
-- **Python version**: 3.10+ (no 3.14+ features)
+- **Python version**: 3.10 minimum (avoid syntax and stdlib added after 3.10)
 - **Type hints**: Required for all functions
 - **Docstrings**: Google-style for all public functions
 - **Imports**: stdlib → third-party → local (enforced by ruff)
@@ -2113,6 +2113,10 @@ See [CONTRIBUTING.md](https://github.com/monocongo/climate_indices/blob/main/CON
 ## Getting Started
 
 Thank you for your interest in contributing to `climate_indices`! This guide will help you get started with the contribution process.
+
+`CONTRIBUTING.md` at the repository root is the canonical contributor process;
+this guide is the site's walkthrough of it. Where the two differ, the root
+document wins.
 
 ### Prerequisites
 1. **Python 3.10+** installed
@@ -4069,12 +4073,8 @@ The SPEI computation follows these steps:
 
 ## PET computation
 
-Potential evapotranspiration (PET) represents the atmospheric water demand—the amount of water that would evaporate and transpire from a reference surface if sufficient water were available. PET is a key input for SPEI and water balance calculations.
-
-This library implements two temperature-based PET methods:
-
-1. **Thornthwaite (1948)**: Monthly timestep, temperature-only
-2. **Hargreaves (1985)**: Daily timestep, temperature and radiation
+The two temperature-based methods this library implements, and their equations;
+for when to choose each, see {doc}`algorithms`.
 
 ### Thornthwaite Method
 
@@ -4151,9 +4151,7 @@ The Palmer drought indices use a two-layer soil moisture accounting model:
 
 ## PCI computation
 
-The Precipitation Concentration Index (PCI) quantifies the temporal distribution of precipitation throughout the year (Oliver, 1980).
-
-**Equation:**
+**Equation** (Oliver, 1980):
 
 $$
 PCI = \frac{\sum_{i=1}^{12} P_i^2}{\left(\sum_{i=1}^{12} P_i\right)^2} \times 100
@@ -4168,8 +4166,6 @@ Where *P*{sub}`i` is the precipitation in month *i*.
 - Returns single PCI value per year
 
 ## PNP computation
-
-The Percentage of Normal Precipitation (PNP) expresses precipitation as a percentage of the long-term average for a given location and time period.
 
 **Equation:**
 

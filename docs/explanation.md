@@ -90,8 +90,8 @@ entry below.
 % Hidden until DOCS-8 wires the architecture decision record into the
 % four-section navigation; the pages must build now because the xarray
 % compatibility matrix links to them as documents. Listed explicitly rather
-% than globbed so adding a file under docs/adr/ cannot publish it by
-% accident.
+% than globbed so a new file under docs/adr/ cannot enter navigation by
+% accident; one left unlisted fails the warnings-as-errors build as an orphan.
 ```{toctree}
 :hidden:
 
