@@ -106,4 +106,5 @@ adr/0008-pattern-compliance-by-behavior-not-source-greps
 adr/0009-spatial-block-declaration
 adr/0010-seasonal-carry-is-an-explicit-mask
 adr/0011-palmer-spatial-block-and-per-location-scpdsi
+adr/0012-xarray-api-stays-beta-through-3.0.0
 ```
