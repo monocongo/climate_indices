@@ -266,12 +266,13 @@ def _polygon_centroid(shape) -> tuple[float, float]:
         x_next, y_next = np.roll(x, -1), np.roll(y, -1)
         cross = x * y_next - x_next * y
         area = cross.sum() / 2.0
-        if area == 0.0:
+        # a degenerate ring contributes no area and no centroid; abs_tol is machine precision
+        if math.isclose(area, 0.0, abs_tol=1e-12):
             continue
         total_area += area
         centroid_x += ((x + x_next) * cross).sum() / 6.0
         centroid_y += ((y + y_next) * cross).sum() / 6.0
-    if total_area == 0.0:
+    if math.isclose(total_area, 0.0, abs_tol=1e-12):
         raise ValueError("polygon has zero area, cannot compute a centroid")
     return centroid_x / total_area, centroid_y / total_area
 
@@ -382,6 +383,33 @@ def _write_provenance(directory: Path, checksum: str) -> None:
     (directory / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
 
 
+def _areal_average(scale: int, netcdf_path: Path, masks: dict[str, np.ndarray]) -> np.ndarray:
+    """Average one SPEIbase timescale over each division's selected grid cells."""
+    import xarray as xr
+
+    dataset = xr.open_dataset(netcdf_path, engine="h5netcdf")
+    try:
+        if dataset.sizes["time"] < _N_MONTHS:
+            raise RuntimeError(f"SPEI-{scale} has only {dataset.sizes['time']} months, need {_N_MONTHS}")
+        time_first = str(dataset.time.values[0])[:7]
+        if time_first != f"{_DATA_START_YEAR}-01":
+            raise RuntimeError(f"SPEI-{scale} starts at {time_first}, expected {_DATA_START_YEAR}-01")
+        values = dataset.spei.sel(lat=slice(*_LATITUDE_BAND), lon=slice(*_LONGITUDE_BAND)).values[:_N_MONTHS]
+    finally:
+        dataset.close()
+
+    array = np.full((len(_DIVISIONS), _N_MONTHS), np.nan, dtype=np.float32)
+    for row_index, division in enumerate(_DIVISIONS):
+        selected = values[:, masks[division]]
+        if np.isnan(selected).all():
+            raise RuntimeError(f"SPEI-{scale} division {division}: all selected cells are NaN")
+        with warnings.catch_warnings():
+            # leading scale-1 months are all-NaN by construction (rolling-sum warmup)
+            warnings.simplefilter("ignore", RuntimeWarning)
+            array[row_index] = np.nanmean(selected, axis=1)
+    return array
+
+
 def main() -> None:
     """Download the dataset, build the fixtures, and write them to tests/fixture/speibase/."""
     import xarray as xr
@@ -436,28 +464,8 @@ def main() -> None:
 
         arrays = {}
         for scale in _SCALES:
-            dataset = xr.open_dataset(netcdf_paths[scale], engine="h5netcdf")
-            try:
-                if dataset.sizes["time"] < _N_MONTHS:
-                    raise RuntimeError(f"SPEI-{scale} has only {dataset.sizes['time']} months, need {_N_MONTHS}")
-                time_first = str(dataset.time.values[0])[:7]
-                if time_first != f"{_DATA_START_YEAR}-01":
-                    raise RuntimeError(f"SPEI-{scale} starts at {time_first}, expected {_DATA_START_YEAR}-01")
-                values = dataset.spei.sel(lat=slice(*_LATITUDE_BAND), lon=slice(*_LONGITUDE_BAND)).values[:_N_MONTHS]
-            finally:
-                dataset.close()
-
-            array = np.full((len(_DIVISIONS), _N_MONTHS), np.nan, dtype=np.float32)
-            for row_index, division in enumerate(_DIVISIONS):
-                selected = values[:, masks[division]]
-                if np.isnan(selected).all():
-                    raise RuntimeError(f"SPEI-{scale} division {division}: all selected cells are NaN")
-                with warnings.catch_warnings():
-                    # leading scale-1 months are all-NaN by construction (rolling-sum warmup)
-                    warnings.simplefilter("ignore", RuntimeWarning)
-                    array[row_index] = np.nanmean(selected, axis=1)
-            arrays[scale] = array
-            print(f"  SPEI-{scale}: prepared {array.shape}", file=sys.stderr)
+            arrays[scale] = _areal_average(scale, netcdf_paths[scale], masks)
+            print(f"  SPEI-{scale}: prepared {arrays[scale].shape}", file=sys.stderr)
 
         for scale, array in arrays.items():
             np.save(staging / f"spei{scale:02d}.npy", array)
