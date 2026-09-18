@@ -1,0 +1,299 @@
+"""Plausibility tests comparing SPEI against the CSIC SPEIbase v2.11 grids.
+
+These tests compare climate_indices' ``indices.spei()`` (gamma distribution,
+Thornthwaite PET, full-period-of-record calibration) against grid-cell-mean
+SPEIbase v2.11 series committed under ``tests/fixture/speibase/`` (see that
+directory's ``provenance.json``). They are per-division, per-timescale
+agreement floors on correlation, sign agreement, and drought-category
+agreement -- deliberately *not* an ``atol``/``rtol`` gate.
+
+Three known confounds separate the two products, which is why no tight
+numerical tolerance is defensible (see ``docs/research/spei-dataset-survey.md``
+on branch ``research/spei-dataset-survey``):
+
+- SPEIbase v2.11 uses FAO-56 Penman-Monteith PET from CRU TS 4.09, while the
+  compared climate_indices series uses Thornthwaite PET from the committed
+  nClimDiv temperatures. The two PET families diverge with climate aridity
+  (van der Schrier et al. 2011); agreement is weakest in the arid Arizona
+  division, the direction that confound predicts, while the three-division
+  set cannot isolate it from the other two confounds below.
+- SPEIbase standardizes with the log-logistic distribution; climate_indices
+  has no log-logistic implementation (issue #106), so the compared series uses
+  gamma.
+- The reference is a mean of per-cell SPEI values inside a climate division
+  polygon while the compared series is the division's station-derived areal
+  average from different precipitation inputs (CRU TS vs. nClimDiv).
+
+The three divisions span an aridity gradient (humid Alabama, subhumid
+Oklahoma, arid southwest Arizona), as recommended by the dataset survey. The
+input period is truncated to 1901-2022, the overlap of SPEIbase v2.11
+(1901-2024) with the committed ``tests/fixture/palmer/<division>/`` inputs.
+"""
+
+import json
+from importlib.util import module_from_spec, spec_from_file_location
+from pathlib import Path
+from types import ModuleType
+
+import numpy as np
+import pytest
+from scipy.stats import pearsonr
+
+from climate_indices import compute, eto, indices
+
+_FIXTURE_ROOT = Path(__file__).parent / "fixture"
+_PALMER_ROOT = _FIXTURE_ROOT / "palmer"
+_SPEIBASE_ROOT = _FIXTURE_ROOT / "speibase"
+_SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
+
+_DATA_START_YEAR = 1895  # tests/fixture/palmer/<division>/ inputs start here
+_SPEI_START_YEAR = 1901  # SPEIbase v2.11 starts here
+_DATA_END_YEAR = 2022
+_N_MONTHS = (_DATA_END_YEAR - _SPEI_START_YEAR + 1) * 12
+_INPUT_OFFSET = (_SPEI_START_YEAR - _DATA_START_YEAR) * 12
+
+_SCALES = (1, 3, 6, 12)
+_FLOOR_METRICS = ("correlation", "sign_agreement", "category_agreement")
+# metrics scripts/prepare_speibase_fixtures.py measures and records per series
+_RECORDED_METRICS = (*_FLOOR_METRICS, "mean_abs_difference")
+
+# Slack below the maximum comparable months per division (longer scales lose
+# the leading `scale - 1` months to the rolling-sum warmup). Every division
+# must clear this floor, so a regression that turns a division into NaN -- or a
+# fixture whose rows are permuted or absent -- fails loudly instead of washing
+# out in the aggregate.
+_PER_DIVISION_SLACK = 12
+
+# SPEI drought-category boundaries: extreme <= -2, severe -2..-1.5, moderate
+# -1.5..-1, near normal -1..1, and the mirror on the wet side.
+_CATEGORY_BOUNDARIES = (-2.0, -1.5, -1.0, 1.0, 1.5, 2.0)
+
+# Physical ranges that only the correct inch->mm and Fahrenheit->Celsius
+# conversions produce (correct means/totals: 15.6/15.7/21.7 degrees C and
+# 844/887/1351 mm/year). A skipped conversion still passes part of the
+# plausibility matrix -- the gamma fit re-standardizes the series -- so these
+# ranges are asserted separately in test_computed_inputs_are_in_expected_units.
+_EXPECTED_TEMPERATURE_RANGE_C = (5.0, 30.0)
+_EXPECTED_PET_RANGE_MM_PER_YEAR = (500.0, 2000.0)
+
+# Floors and measurements live in provenance.json; scripts/prepare_speibase_fixtures.py
+# re-measures them from the arrays it just built and refuses to publish a drift
+# beyond its recorded expectations. test_refresh_script_measurement_reproduces_recorded_expectations
+# pins the two together.
+_PROVENANCE = json.loads((_SPEIBASE_ROOT / "provenance.json").read_text(encoding="utf-8"))
+_DIVISIONS = json.loads((_SPEIBASE_ROOT / "divisions.json").read_text(encoding="utf-8"))
+_MEASURED: dict[str, dict[str, float]] = _PROVENANCE["measured_stats"]
+_FLOORS: dict[str, dict[str, float]] = {}
+for _key, _value in _PROVENANCE["validation_tolerance"].items():
+    _division, _scale, _metric = _key.split("_", 2)
+    _FLOORS.setdefault(f"{_division}_{_scale}", {})[_metric] = _value
+
+# (minimum, maximum) permitted floor-to-measurement slack. Forces each floor to
+# stay pinned to its measurement within a documented band: close enough that a
+# widened floor cannot silently accommodate a regression, loose enough that a
+# platform-level numerical wobble does not flip a passing test red.
+_SLACK_BOUNDS = {
+    "correlation": (0.03, 0.10),
+    "sign_agreement": (0.03, 0.10),
+    "category_agreement": (0.05, 0.13),
+}
+
+
+def _load_fixture_script() -> ModuleType:
+    """Load scripts/prepare_speibase_fixtures.py without running its main()."""
+    spec = spec_from_file_location("prepare_speibase_fixtures_test", _SCRIPTS_DIR / "prepare_speibase_fixtures.py")
+    assert spec is not None
+    assert spec.loader is not None
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _verify_fixture_checksum():
+    """Reject a mixed or edited fixture generation before any assertion reads it.
+
+    tests/test_provenance_protocol.py checks the same checksum, but that module
+    is skipped by ``pytest -m validation``, which would otherwise compare
+    against an interrupted refresh's mixed arrays and metadata.
+    """
+    import hashlib
+
+    hasher = hashlib.sha256()
+    for npy_file in sorted(_SPEIBASE_ROOT.glob("*.npy")):
+        hasher.update(npy_file.read_bytes())
+    assert hasher.hexdigest() == _PROVENANCE["checksum_sha256"], (
+        "tests/fixture/speibase holds a mixed or edited fixture generation "
+        f"(checksum {hasher.hexdigest()} != provenance {_PROVENANCE['checksum_sha256']}); "
+        "rerun scripts/prepare_speibase_fixtures.py"
+    )
+
+
+def _load_temps_fahrenheit(division: str) -> np.ndarray:
+    """Load a division's monthly temperatures as float, parsing legacy strings.
+
+    The committed ``temps.npy`` arrays hold a legacy object dtype mixing floats
+    and numeric strings; the nClimDiv source values are degrees Fahrenheit.
+    """
+    values = np.load(_PALMER_ROOT / division / "temps.npy", allow_pickle=True)
+    return np.array([float(str(value).split()[0]) for value in values], dtype=float)
+
+
+def _categories(values: np.ndarray) -> np.ndarray:
+    """SPEI drought-category bins (0..6) for the standard category boundaries."""
+    return np.digitize(values, _CATEGORY_BOUNDARIES)
+
+
+def _agreement(computed: np.ndarray, reference: np.ndarray) -> tuple[dict[str, float], int]:
+    """Correlation, sign agreement, and category agreement over shared months."""
+    both_present = ~np.isnan(computed) & ~np.isnan(reference)
+    computed_values = computed[both_present].astype(np.float64)
+    reference_values = reference[both_present].astype(np.float64)
+    stats = {
+        "correlation": float(pearsonr(computed_values, reference_values).statistic),
+        "sign_agreement": float(np.mean(np.sign(computed_values) == np.sign(reference_values))),
+        "category_agreement": float(np.mean(_categories(computed_values) == _categories(reference_values))),
+    }
+    return stats, int(np.count_nonzero(both_present))
+
+
+def _environmental_inputs(division: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Converted inputs for one division over 1901-2022: precip mm, temps C, PET mm."""
+    precip_inches = np.load(_PALMER_ROOT / division["id"] / "precips.npy").astype(np.float64)[
+        _INPUT_OFFSET : _INPUT_OFFSET + _N_MONTHS
+    ]
+    precip_mm = precip_inches * 25.4  # committed nClimDiv precipitation is inches
+    temps_c = (_load_temps_fahrenheit(division["id"])[_INPUT_OFFSET : _INPUT_OFFSET + _N_MONTHS] - 32.0) * (5.0 / 9.0)
+    pet_mm = eto.eto_thornthwaite(temps_c, division["latitude"], _SPEI_START_YEAR)
+    return precip_mm, temps_c, pet_mm
+
+
+def _computed_series(division: dict, scale: int) -> np.ndarray:
+    """climate_indices SPEI for one division and timescale over 1901-2022."""
+    precip_mm, _temps_c, pet_mm = _environmental_inputs(division)
+    return indices.spei(
+        precip_mm,
+        pet_mm,
+        scale,
+        indices.Distribution.gamma,
+        compute.Periodicity.monthly,
+        _SPEI_START_YEAR,
+        _SPEI_START_YEAR,
+        _DATA_END_YEAR,
+    )
+
+
+def test_computed_inputs_are_in_expected_units():
+    """Pin the physical ranges of the converted inputs behind the comparison.
+
+    The floor tests alone can pass with Fahrenheit fed to Thornthwaite (the
+    gamma fit re-standardizes the inflated water balance), so the inch->mm and
+    Fahrenheit->Celsius conversions need their own assertion.
+    """
+    years = _N_MONTHS / 12
+    for division in _DIVISIONS:
+        _precip_mm, temps_c, pet_mm = _environmental_inputs(division)
+        temp_low, temp_high = _EXPECTED_TEMPERATURE_RANGE_C
+        pet_low, pet_high = _EXPECTED_PET_RANGE_MM_PER_YEAR
+        assert temp_low <= temps_c.mean() <= temp_high, (
+            f"{division['id']}: mean temperature {temps_c.mean():.2f} C outside "
+            f"[{temp_low}, {temp_high}] -- check the Fahrenheit conversion"
+        )
+        assert pet_low <= pet_mm.sum() / years <= pet_high, (
+            f"{division['id']}: Thornthwaite PET {pet_mm.sum() / years:.0f} mm/year outside "
+            f"[{pet_low}, {pet_high}] -- check the temperature conversion and latitude"
+        )
+
+
+def test_floors_keep_documented_slack():
+    """Floors must stay within the slack band ``_SLACK_BOUNDS`` documents.
+
+    Without this, a floor can be lowered to accommodate a regression while the
+    stated rationale silently stops describing the assertions.
+    """
+    for series, metrics in _FLOORS.items():
+        for metric, floor in metrics.items():
+            low, high = _SLACK_BOUNDS[metric]
+            slack = _MEASURED[series][metric] - floor
+            assert low <= slack <= high, f"{series} {metric}: floor has {slack:.2f} slack, want {low}-{high}"
+
+
+@pytest.mark.validation
+@pytest.mark.parametrize("scale", _SCALES)
+def test_spei_vs_speibase_plausibility(scale):
+    """Per-division agreement between ``indices.spei()`` and SPEIbase v2.11.
+
+    Asserts loose floors on correlation, sign agreement, and drought-category
+    agreement for every division and timescale, using gamma distribution and
+    Thornthwaite PET over the 1901-2022 overlap period.
+    """
+    reference = np.load(_SPEIBASE_ROOT / f"spei{scale:02d}.npy")
+    assert reference.shape == (len(_DIVISIONS), _N_MONTHS), (
+        f"SPEI-{scale} fixture has shape {reference.shape}, expected "
+        f"({len(_DIVISIONS)}, {_N_MONTHS}); refresh via scripts/prepare_speibase_fixtures.py"
+    )
+    for row, division in enumerate(_DIVISIONS):
+        computed = _computed_series(division, scale)
+        stats, compared_months = _agreement(computed, reference[row])
+        series = f"{division['id']}_spei{scale:02d}"
+
+        min_compared = _N_MONTHS - (scale - 1) - _PER_DIVISION_SLACK
+        assert compared_months >= min_compared, (
+            f"{series}: only {compared_months} months compared, expected at least {min_compared} -- "
+            f"fixture row missing/permuted or computed series is NaN"
+        )
+        for metric in _FLOOR_METRICS:
+            assert stats[metric] >= _FLOORS[series][metric], (
+                f"{series}: {metric} = {stats[metric]:.4f}, floor = {_FLOORS[series][metric]:.4f} "
+                f"(measured {_MEASURED[series][metric]:.4f} with documented slack)"
+            )
+
+
+def test_provenance_declares_all_divisions_and_scales():
+    """provenance.json (the asserted constants) covers every tested series."""
+    expected = {f"{division['id']}_spei{scale:02d}" for division in _DIVISIONS for scale in _SCALES}
+    assert set(_MEASURED) == expected
+    assert set(_FLOORS) == expected
+    for series, metrics in _FLOORS.items():
+        assert set(metrics) == set(_FLOOR_METRICS), (
+            f"{series}: floors missing metrics {set(_FLOOR_METRICS) - set(metrics)}"
+        )
+
+
+def test_division_rows_match_fixture_order():
+    """Every fixture row must line up with divisions.json's pinned metadata."""
+    assert [(division["id"], division["latitude"], division["longitude"]) for division in _DIVISIONS] == [
+        ("0101", 34.6624, -87.27),
+        ("3405", 35.5339, -97.2276),
+        ("0205", 33.2038, -113.9399),
+    ]
+    for scale in _SCALES:
+        assert np.load(_SPEIBASE_ROOT / f"spei{scale:02d}.npy").shape == (len(_DIVISIONS), _N_MONTHS)
+
+
+@pytest.mark.validation
+def test_refresh_script_measurement_reproduces_recorded_expectations():
+    """The refresh script must re-measure the agreement it records in provenance.
+
+    scripts/prepare_speibase_fixtures.py measures provenance.json's
+    ``measured_stats`` from the arrays it just built and refuses to publish a
+    drift away from its recorded expectations. Running that measurement over
+    the committed fixtures pins the two together, so the drift guard cannot be
+    loosened or the expectations edited without this failing first.
+    """
+    script = _load_fixture_script()
+    arrays = {scale: np.load(_SPEIBASE_ROOT / f"spei{scale:02d}.npy") for scale in _SCALES}
+    measured = script._measure_agreement(arrays, _DIVISIONS)
+
+    deviations = {
+        f"{division}_spei{scale:02d} {metric}": abs(stats[metric] - script._EXPECTED_STATS[division][scale][metric])
+        for division, per_scale in measured.items()
+        for scale, stats in per_scale.items()
+        for metric in _RECORDED_METRICS
+    }
+    assert len(deviations) == len(_DIVISIONS) * len(_SCALES) * len(_RECORDED_METRICS)
+    worst_series = max(deviations, key=deviations.get)
+    assert deviations[worst_series] <= script._EXPECTATION_TOLERANCE, (
+        f"{worst_series} deviates {deviations[worst_series]:.4f} from the recorded expectation, "
+        f"over the {script._EXPECTATION_TOLERANCE} band"
+    )
