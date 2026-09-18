@@ -81,9 +81,9 @@ def _load_published_daily() -> dict[str, float]:
     return published
 
 
-def _checksum_of_arrays() -> str:
+def _checksum_of_fixture_files() -> str:
     hasher = hashlib.sha256()
-    for path in sorted(FIXTURE_DIR.glob("*.npy")):
+    for path in sorted((*FIXTURE_DIR.glob("*.npy"), *FIXTURE_DIR.glob("*.csv"))):
         hasher.update(path.read_bytes())
     return hasher.hexdigest()
 
@@ -104,8 +104,8 @@ def _hdw_daily_maxima() -> dict[str, float]:
 
 
 def test_fixture_checksum_matches_provenance() -> None:
-    """The committed arrays must be the exact artifact the provenance records."""
-    assert _checksum_of_arrays() == _load_provenance()["checksum_sha256"]
+    """The committed data files must be the exact artifact the provenance records."""
+    assert _checksum_of_fixture_files() == _load_provenance()["checksum_sha256"]
 
 
 def test_hdw_daily_maximum_falls_on_the_documented_fire_day() -> None:

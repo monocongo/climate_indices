@@ -332,9 +332,10 @@ def _profile_from_messages(messages: bytes) -> tuple[list[float], list[float], l
     return temperatures, humidities, winds, heights
 
 
-def _checksum_of_arrays(directory: Path) -> str:
+def _checksum_of_fixture_files(directory: Path) -> str:
+    """Hash every canonical data file, so the CSV is bound like the arrays."""
     hasher = hashlib.sha256()
-    for path in sorted(directory.glob("*.npy")):
+    for path in sorted((*directory.glob("*.npy"), *directory.glob("*.csv"))):
         hasher.update(path.read_bytes())
     return hasher.hexdigest()
 
@@ -403,7 +404,7 @@ def main() -> None:
                 else ""
             )
         ),
-        "checksum_sha256": _checksum_of_arrays(FIXTURE_DIR),
+        "checksum_sha256": _checksum_of_fixture_files(FIXTURE_DIR),
         "fixture_version": "1.0.0",
         "validation_tolerance": {
             "digitized_series_uncertainty_hpa_m_s": 5.0,
