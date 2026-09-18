@@ -64,7 +64,8 @@ Evidence is a merge condition, not a description:
 - Performance claims ship a benchmark script and a committed result file.
 - Scientific claims ship a reference fixture with a stated tolerance and a
   stated gap; `VALIDATION.md` is the index of those.
-- Architectural claims ship an ADR under `docs/adr/`.
+- Architectural claims resting on a non-obvious, hard-to-reverse decision ship
+  an ADR under `docs/adr/`.
 
 The local gates are the ones `AGENTS.md` lists under *Validate source or test
 changes*, and they are what CI runs: lint, format, types, and tests for every
@@ -107,14 +108,21 @@ git diff --shortstat $R $E -- src
 git diff --shortstat $R $E -- tests
 git diff --shortstat $R $E -- docs
 git log $R..$E --format='%s' | grep -c '^fix(review)'
+
+# The ADR and test counts are snapshots at the window end, not at HEAD.
+git checkout --detach $E
 ls docs/adr/*.md | wc -l
-uv run pytest --collect-only -q
+uv run pytest --collect-only -q -o addopts=   # 2,566 collected
+uv run pytest --collect-only -q               # 2,143 in the default gate
 ```
 
 ## Limits
 
-Merge, tag, and scientific sign-off stay human by design, which means the
-pipeline can only recommend a release, never perform one. Volume can outpace
+Merge, tag, and scientific sign-off stay human by design: a maintainer
+authorizes the release, pushes the tag, and approves the release environment.
+After those gates, the release workflow publishes the built artifacts to PyPI
+and creates the GitHub Release, so the pipeline carries out a release but never
+decides one. Volume can outpace
 verification, which is why `VALIDATION.md` records gaps instead of a green
 checkmark and why the release is gated on a human approving an environment
 rather than on a green pipeline. The likeliest failure mode is not wrong code
