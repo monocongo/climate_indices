@@ -261,7 +261,7 @@ Before submitting:
 4. Add regression test to prevent recurrence
 
 ### Improving Documentation
-1. Update the relevant Markdown page in `docs/` for Sphinx docs (`docs/index.rst` is the Sphinx root document whose toctrees include them)
+1. Update the relevant Markdown page in `docs/` for Sphinx docs (`docs/index.md` is the Sphinx root document whose toctrees include them)
 2. Update docstrings in source code
 3. Build docs locally: `cd docs && make html`
 4. Check for broken links and formatting issues

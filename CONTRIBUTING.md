@@ -90,7 +90,7 @@ Current assignments (the context map and validation status live at the
 repository root — `CONTEXT-MAP.md`, `VALIDATION.md` — and the core-library
 vocabulary at `src/climate_indices/CONTEXT.md`):
 
-- Tutorial: `docs/quickstart.md`, `docs/index.rst`
+- Tutorial: `docs/quickstart.md`, `docs/index.md`
 - How-to guide: `docs/troubleshooting.md`, `docs/xarray_migration.md`,
   `docs/development-guide.md`, `docs/contribution-guide.md`,
   `docs/deployment-guide.md`, `docs/release-process.md`
@@ -116,6 +116,34 @@ vocabulary at `src/climate_indices/CONTEXT.md`):
 Build infrastructure (`docs/conf.py`, `docs/Makefile`, `docs/make.bat`,
 `docs/_static/`, `docs/_templates/`) and assets referenced by no page
 (`docs/gallery/*.png`) are not pages and are outside this split.
+
+### Markdown authoring conventions
+
+Every page source is a Markdown file under `docs/`, rendered by Sphinx through
+MyST-Parser (`docs/conf.py` sets `source_suffix = ".md"`, so an RST file left in
+the tree is silently absent from the site). The conventions a page has to
+follow to build:
+
+- **Directives** use the fenced form: admonitions as `:::{note}` / `:::{warning}`,
+  block directives as ```` ```{list-table} ```` / ```` ```{toctree} ````.
+  reStructuredText directives and roles (`.. note::`, `:doc:`) do not render in
+  Markdown — they stay as literal text — so a page that still carries one is an
+  unfinished conversion.
+- **Autodoc** stays inside `{eval-rst}` blocks, because autodoc emits
+  reStructuredText and MyST would otherwise render the generated markup
+  literally.
+- **Cross-links**: `` {doc}`troubleshooting` `` links another published page by
+  its source path (no suffix); domain roles such as
+  `` {func}`climate_indices.palmer.pdsi` `` resolve through autodoc, so they
+  have to name a module path the reference page documents — an unresolved role
+  renders as plain code and does not fail the gate. Section links use heading
+  anchors (`#some-heading`, provided by `myst_heading_anchors`), and a page
+  that is published to the site links repository-root files by absolute GitHub
+  URL, since they are not Sphinx source documents.
+- **Runnable examples**: examples the docs gate executes are `testsetup`,
+  `testcode`, `doctest`, and `testcleanup` blocks; the build runs
+  `sphinx-build -b doctest` and fails on a failing example. Shell commands go
+  in fenced ```` ```bash ```` blocks, which are not executed.
 
 ## Local validation
 
