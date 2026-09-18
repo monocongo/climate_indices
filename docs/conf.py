@@ -108,6 +108,7 @@ exclude_patterns = [
     "design/**",
     "research/fire-indices-cli-approach.md",
     "research/interactive-climate-explorer-landscape.md",
+    "research/dri-wrcc-scpdsi-assessment.md",
     "explorer/**",
     "architecture-deepening-review-*.md",
     "test_fixture_management.md",
