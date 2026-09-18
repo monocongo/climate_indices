@@ -98,6 +98,10 @@ Use `feature/<topic>`, `fix/<topic>`, `docs/<topic>`, `chore/<topic>`, or
 `hotfix/<topic>` branch names. Release branches are avoided; use maintenance
 branches only for approved older-version support.
 
+The methodology behind this workflow — parallel agent sessions, worktree
+isolation, and the evidence each change must carry — is documented in
+[AI-assisted development](docs/ai-assisted-development.md).
+
 ## Release Recipe
 
 Releases are tag-based. The Git tag, package version, GitHub Release, and PyPI

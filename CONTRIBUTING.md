@@ -96,7 +96,8 @@ vocabulary at `src/climate_indices/CONTEXT.md`):
   troubleshooting guide sends readers there for source provenance and
   attribution),
   `src/climate_indices/CONTEXT.md`, `VALIDATION.md`
-- Explanation: `docs/wildfire_applications.md` with its
+- Explanation: `docs/ai-assisted-development.md`,
+  `docs/wildfire_applications.md` with its
   `docs/wildfire_applications.rst` include, `docs/adr/`,
   `docs/algorithm_refs/`, `docs/architecture.md`,
   `docs/project-overview.md`, `docs/floating_point_best_practices.md`
