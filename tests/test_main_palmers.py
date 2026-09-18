@@ -45,6 +45,31 @@ def _make_empty_shared_array(shape: tuple[int, ...]) -> dict:
     return {cli_main._KEY_ARRAY: shared, cli_main._KEY_SHAPE: shape}
 
 
+class TestCompanionDimensions:
+    def test_rejects_pet_dimensions_outside_the_layout(self, monkeypatch):
+        """A PET variable must carry one of the precipitation layout's accepted orders."""
+        context = cli_main._InputContext(
+            input_type=DatasetLayout.GRID,
+            dimensions=("lat", "lon", "time"),
+            times=np.arange(12),
+            latitudes=np.array([25.0, 26.0]),
+            longitudes=np.array([-100.0, -99.0]),
+        )
+        dataset = xr.Dataset(
+            {"pet": (("lat", "time"), np.ones((2, 12)))},
+            coords={"lat": [25.0, 26.0], "time": np.arange(12)},
+        )
+        monkeypatch.setattr(cli_main.xr, "open_dataset", lambda *args, **kwargs: dataset)
+
+        with pytest.raises(ValueError) as error:
+            cli_main._validate_matching_input_file(context, "PET", "pet.nc", "pet")
+
+        assert str(error.value) == (
+            "Invalid dimensions of the PET variable: ('lat', 'time') "
+            "(expected names and order: [('lat', 'lon', 'time'), ('time', 'lat', 'lon')])"
+        )
+
+
 class TestAWCDimensions:
     @pytest.mark.parametrize("index", ["palmers", "all"])
     def test_rejects_time_dependent_awc(self, monkeypatch, index):

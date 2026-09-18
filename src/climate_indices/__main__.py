@@ -321,7 +321,9 @@ def _validate_matching_input_file(
         # verify that the variable's dimensions are in the expected order
         dimensions = dataset[var_name].dims
         if dimensions not in expected:
-            msg = f"Invalid dimensions of the {label} variable: {dimensions}(expected names and order: {list(expected)}"
+            msg = (
+                f"Invalid dimensions of the {label} variable: {dimensions} (expected names and order: {list(expected)})"
+            )
             _logger.error(msg)
             raise ValueError(msg)
 
