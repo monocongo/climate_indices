@@ -1002,6 +1002,7 @@ uv sync --group dev
 ```python
 import climate_indices as ci
 import xarray as xr
+from climate_indices.indices import Distribution
 
 # Load precipitation data
 precip = xr.open_dataarray("precip.nc")
@@ -1010,9 +1011,9 @@ precip = xr.open_dataarray("precip.nc")
 spi_6 = ci.spi(
     precip,
     scale=6,
-    distribution="gamma",
-    calibration_start_year=1981,
-    calibration_end_year=2010
+    distribution=Distribution.gamma,
+    calibration_year_initial=1981,
+    calibration_year_final=2010,
 )
 ```
 
