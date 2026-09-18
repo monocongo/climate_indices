@@ -130,6 +130,27 @@ def get_logger(name: str) -> structlog.stdlib.BoundLogger:
     return cast(structlog.stdlib.BoundLogger, structlog.get_logger(name))
 
 
+def log_calculation_failure(
+    log: structlog.stdlib.BoundLogger,
+    exc: Exception,
+    **context: object,
+) -> None:
+    """Emit the "calculation_failed" event shared by every traced index function.
+
+    Args:
+        log: Logger already bound with the calling index's context.
+        exc: The in-flight exception being logged.
+        **context: Extra fields for the call site (e.g., calibration_period).
+    """
+    log.error(
+        "calculation_failed",
+        exc_info=True,
+        error_type=type(exc).__name__,
+        error_message=str(exc),
+        **context,
+    )
+
+
 def _reset_logging_for_testing() -> None:
     """
     Reset logging configuration state for testing purposes.
