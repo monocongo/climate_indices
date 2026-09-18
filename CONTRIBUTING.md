@@ -29,6 +29,10 @@ Use these branch prefixes:
 - `fix/<topic>` for bug fixes
 - `docs/<topic>` for documentation-only changes
 - `chore/<topic>` for maintenance
+- `perf/<topic>` for performance work
+- `refactor/<topic>` for behavior-preserving restructuring
+- `test/<topic>` for test-only changes
+- `ci/<topic>` for workflow changes
 - `hotfix/<topic>` for urgent release fixes
 
 Avoid long-lived `release/*` branches. Maintenance branches for older supported
@@ -96,7 +100,8 @@ vocabulary at `src/climate_indices/CONTEXT.md`):
   troubleshooting guide sends readers there for source provenance and
   attribution),
   `src/climate_indices/CONTEXT.md`, `VALIDATION.md`
-- Explanation: `docs/wildfire_applications.md`, `docs/adr/`,
+- Explanation: `docs/ai-assisted-development.md`,
+  `docs/wildfire_applications.md`, `docs/adr/`,
   `docs/algorithm_refs/`, `docs/architecture.md`,
   `docs/project-overview.md`, `docs/floating_point_best_practices.md`
 - Internal: `docs/agent/`, `docs/design/`,
