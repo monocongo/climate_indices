@@ -14,9 +14,10 @@ References:
     Architecture Decision 1: Wrapper Approach (NumPy core + xarray adapter)
     Architecture Decision 2: Decorator Pattern (@xarray_adapter)
 
-.. warning:: **Beta Feature** — The xarray adapter layer is beta and may change
-   in future minor releases. The NumPy computation core (``indices.py``,
-   ``compute.py``) is stable. No breaking changes will occur within a minor version.
+.. warning:: **Beta Feature** — The xarray adapter layer is beta through 3.0.0 and is
+   promoted no earlier than 3.1.0. Its interface may change with a minor version,
+   never in a patch release. The NumPy computation core (``indices.py``,
+   ``compute.py``) is stable: no breaking changes occur in minor versions.
 """
 
 from __future__ import annotations
