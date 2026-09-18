@@ -128,7 +128,7 @@ The options for the entry point script are described below:
 +========================+=================================================+
 | index                  | Which of the climate indices to compute.        |
 |                        | Valid values are 'spi', 'spei', 'pnp', 'scaled',|
-|                        | 'pet', 'palmers', and 'kbdi'. 'scaled'          |
+|                        | 'pet', 'palmers', 'kbdi', and 'all'. 'scaled'   |
 |                        | indicates all three scaled indices (SPI, SPEI,  |
 |                        | and PNP) and 'palmers' indicates all Palmer     |
 |                        | indices (PDSI, PHDI, PMDI, Z-Index, scPDSI).    |
@@ -270,7 +270,7 @@ Upon completion the individual NetCDF files will contain variables for all compu
 `/data/nclimdiv_spei_gamma_03.nc`, `/data/nclimdiv_spei_gamma_06.nc`,
 `/data/nclimdiv_spei_pearson_03.nc`, `/data/nclimdiv_spei_pearson_06.nc`,
 `/data/nclimdiv_pdsi.nc`, `/data/nclimdiv_phdi.nc`, `/data/nclimdiv_pmdi.nc`,
-and `/data/nclimdiv_zindex.nc`.
+`/data/nclimdiv_zindex.nc`, and `/data/nclimdiv_scpdsi.nc`.
 Parallelization will occur utilizing all but one of the available CPUs
 (default since the `--multiprocessing` option is omitted).
 
@@ -374,13 +374,15 @@ Palmers monthly
 --multiprocessing all``
 
 The above command will compute the Palmer drought indices: PDSI (original Palmer Drought Severity Index),
-PHDI (Palmer Hydrological Drought Index), PMDI (Palmer Modified Drought Index), and Z-Index (Palmer
-Z-Index) from input precipitation, potential evapotranspiration, and available water capacity datasets
+PHDI (Palmer Hydrological Drought Index), PMDI (Palmer Modified Drought Index), Z-Index (Palmer
+Z-Index), and scPDSI (Self-calibrated Palmer Drought Severity Index) from input precipitation,
+potential evapotranspiration, and available water capacity datasets
 (in this case, the reduced resolution nClimGrid precipitation, PET, and AWC datasets provided in the
 example inputs directory). The input datasets are monthly data and the calibration period used will be
 Jan. 1951 through Dec. 2010. The output files will be
 `<out_dir>/nclimgrid_lowres_pdsi.nc`, `<out_dir>/nclimgrid_lowres_phdi.nc`,
-`<out_dir>/nclimgrid_lowres_pmdi.nc`, and `<out_dir>/nclimgrid_lowres_zindex.nc`.
+`<out_dir>/nclimgrid_lowres_pmdi.nc`, `<out_dir>/nclimgrid_lowres_zindex.nc`,
+and `<out_dir>/nclimgrid_lowres_scpdsi.nc`.
 
 .. note::
    The Palmer routines (:func:`climate_indices.palmer.pdsi`) take precipitation,
@@ -397,7 +399,7 @@ Jan. 1951 through Dec. 2010. The output files will be
    Self-calibrated PDSI (scPDSI) is available through the NumPy API as
    :func:`climate_indices.palmer.scpdsi` and through
    ``process_climate_indices --index palmers``, which writes it as
-   ``palmers_scpdsi.nc`` alongside PDSI, PHDI, PMDI, and Z-Index.
+   ``<output_file_base>_scpdsi.nc`` alongside PDSI, PHDI, PMDI, and Z-Index.
 
 Parallelization will occur utilizing all CPUs.
 
