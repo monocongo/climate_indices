@@ -227,8 +227,8 @@ These did not outrank the six candidates but should remain visible for later rev
 - `compute.scale_values()` is a shallow Timescale-preparation seam used by the specialized CLI while SPI, SPEI, EDDI, and PNP repeat related preparation knowledge.
 - Lifecycle logging can occur once per spatial cell when xarray vectorization calls legacy NumPy functions; event cardinality and host-application logger configuration need explicit policy.
 - Several metadata entries, exception types, and pattern-compliance claims have no production callers or conflict with ADR-0001’s Palmer decision. Public compatibility must be checked before deletion.
-- Four-channel Palmer output knowledge is repeated across CLI allocation, worker writes, conversion, metadata, and persistence.
-- `self_calibration.py` is well tested but has no production caller while scPDSI remains explicitly unimplemented; retain it only with clear staged-work ownership.
+- Five-channel Palmer output knowledge is repeated across CLI allocation, worker writes, conversion, metadata, and persistence.
+- `self_calibration.py` is well tested but had no production caller while scPDSI remained explicitly unimplemented; `palmer.scpdsi()` shipped in PR #748 and the CLI now exposes it, resolving the staged-work ownership this observation asked for.
 - `pm_eto.py` currently exposes low-level equation helpers without an in-repository computation caller. Confirm intended product scope before deepening or removing it.
 
 ## Suggested order
