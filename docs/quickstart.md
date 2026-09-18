@@ -11,12 +11,26 @@ from coordinates) and the **NumPy API** (which requires explicit parameters).
 
 ## Prerequisites
 
-Install the package using pip or uv:
+Install the package from PyPI:
 
 ```bash
 pip install climate-indices
 # or
 uv pip install climate-indices
+```
+
+To install from source, first install [uv](https://docs.astral.sh/uv/), then sync
+the development environment:
+
+```bash
+pip install uv
+uv sync --dev
+```
+
+Optionally validate the installation by running the test suite:
+
+```bash
+uv run pytest
 ```
 
 For visualization examples, also install matplotlib:

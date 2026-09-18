@@ -222,4 +222,4 @@ uv sync --group dev --force
 
 ---
 
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for detailed contribution guidelines.
+See [CONTRIBUTING.md](https://github.com/monocongo/climate_indices/blob/main/CONTRIBUTING.md) for detailed contribution guidelines.
