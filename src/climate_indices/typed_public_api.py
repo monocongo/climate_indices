@@ -4,11 +4,17 @@ This module provides statically-typed wrappers around the xarray-adapted index
 functions. The @overload signatures enable IDE autocomplete and mypy --strict
 correctness by narrowing return types based on input types:
 
-- spi(np.ndarray, ...) -> np.ndarray      (and likewise for spei, eddi, pnp, pci)
+- spi(np.ndarray, ...) -> np.ndarray      (and likewise for spei, eddi, percentage_of_normal, pci)
 - spi(xr.DataArray, ...) -> xr.DataArray  (and pet_thornthwaite, pet_hargreaves)
 
-Design: Pre-build decorated functions at module level for performance. The public
-functions filter None kwargs and delegate to the pre-built wrapped functions.
+Design: Pre-build decorated functions at module level for performance. Every
+public function except ``pci`` declares its signature once, as a pair of
+@overload stubs (NumPy and xarray) that mirror the wrapped function; the
+implementation takes ``*args/**kwargs`` and delegates through ``_delegate``, so
+it carries no second signature to drift. ``_restore_runtime_signature`` pins each
+public function's ``inspect`` signature (and so the Sphinx reference) to its
+NumPy overload. ``tests/test_typed_public_api.py`` freezes both stubs and pins
+their parameter names to the wrapped function.
 
 PCI uses a manual wrapper instead of @xarray_adapter because its output shape
 (scalar) differs from input shape (365/366 daily values).
@@ -24,7 +30,10 @@ beta xarray path stays on its corresponding ``fire.<name>`` public route.
 from __future__ import annotations
 
 import datetime
-from typing import Any, overload
+import inspect
+import typing
+from collections.abc import Callable
+from typing import Any, cast, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -69,9 +78,46 @@ _wrapped_eddi = xarray_adapter(
 )(indices.eddi)
 
 
-def _not_none(**kwargs: Any) -> dict[str, Any]:
-    """Drop keyword arguments whose values are None, e.g. inferred xarray params."""
-    return {key: value for key, value in kwargs.items() if value is not None}
+def _delegate(
+    func: Callable[..., npt.NDArray[np.float64] | xr.DataArray],
+    data: Any,
+    *args: Any,
+    **kwargs: Any,
+) -> npt.NDArray[np.float64] | xr.DataArray:
+    """Call a pre-built API function with the data positional and the rest keyword.
+
+    The xarray adapter requires the data as its first positional argument and reads
+    the remaining parameters from keywords, so the call is bound and re-forwarded
+    that way; binding also rejects unknown keyword arguments, as the explicit
+    signatures did. Explicit None is dropped for parameters without a default:
+    binding None would suppress the adapter's inference of that parameter, while
+    defaulted parameters (e.g. ``fitting_params``) keep their None.
+    """
+    signature = inspect.signature(func)
+    bound = signature.bind_partial(data, *args, **kwargs)
+    data_parameter = next(iter(signature.parameters))
+    forwarded = {
+        name: value
+        for name, value in bound.arguments.items()
+        if name != data_parameter
+        and not (value is None and signature.parameters[name].default is inspect.Parameter.empty)
+    }
+    return func(data, **forwarded)
+
+
+def _restore_runtime_signature(func: Callable[..., Any]) -> None:
+    """Give a generic implementation the NumPy overload stub's ``inspect`` signature.
+
+    The implementation forwards ``*args/**kwargs``, so without this ``inspect`` and
+    the Sphinx API reference would render that generic form instead of the public
+    parameters. Unavailable before Python 3.11 (no ``typing.get_overloads``).
+    """
+    get_overloads = getattr(typing, "get_overloads", None)
+    if get_overloads is None:
+        return
+    overloads = get_overloads(func)
+    if overloads:
+        cast(Any, func).__signature__ = inspect.signature(overloads[0])
 
 
 # SPI overloads
@@ -101,16 +147,7 @@ def spi(
 ) -> xr.DataArray: ...
 
 
-def spi(
-    values: npt.NDArray[np.float64] | xr.DataArray,
-    scale: int,
-    distribution: Distribution,
-    data_start_year: int | None = None,
-    calibration_year_initial: int | None = None,
-    calibration_year_final: int | None = None,
-    periodicity: Periodicity | None = None,
-    fitting_params: dict[str, Any] | None = None,
-) -> npt.NDArray[np.float64] | xr.DataArray:
+def spi(values: Any, *args: Any, **kwargs: Any) -> npt.NDArray[np.float64] | xr.DataArray:
     """Compute SPI (Standardized Precipitation Index).
 
     This function accepts both NumPy arrays and xarray DataArrays. Type checkers
@@ -144,18 +181,7 @@ def spi(
     Returns:
         SPI values as numpy.ndarray or xarray.DataArray (matches input type).
     """
-    return _wrapped_spi(
-        values,
-        scale=scale,
-        distribution=distribution,
-        fitting_params=fitting_params,
-        **_not_none(
-            data_start_year=data_start_year,
-            calibration_year_initial=calibration_year_initial,
-            calibration_year_final=calibration_year_final,
-            periodicity=periodicity,
-        ),
-    )
+    return _delegate(_wrapped_spi, values, *args, **kwargs)
 
 
 # SPEI overloads
@@ -187,17 +213,7 @@ def spei(
 ) -> xr.DataArray: ...
 
 
-def spei(
-    precips_mm: npt.NDArray[np.float64] | xr.DataArray,
-    pet_mm: npt.NDArray[np.float64] | xr.DataArray,
-    scale: int,
-    distribution: Distribution,
-    periodicity: Periodicity | None = None,
-    data_start_year: int | None = None,
-    calibration_year_initial: int | None = None,
-    calibration_year_final: int | None = None,
-    fitting_params: dict[str, Any] | None = None,
-) -> npt.NDArray[np.float64] | xr.DataArray:
+def spei(precips_mm: Any, pet_mm: Any, *args: Any, **kwargs: Any) -> npt.NDArray[np.float64] | xr.DataArray:
     """Compute SPEI (Standardized Precipitation Evapotranspiration Index).
 
     This function accepts both NumPy arrays and xarray DataArrays. Type checkers
@@ -232,19 +248,7 @@ def spei(
     Returns:
         SPEI values as numpy.ndarray or xarray.DataArray (matches input type).
     """
-    return _wrapped_spei(
-        precips_mm,
-        pet_mm,
-        scale=scale,
-        distribution=distribution,
-        fitting_params=fitting_params,
-        **_not_none(
-            periodicity=periodicity,
-            data_start_year=data_start_year,
-            calibration_year_initial=calibration_year_initial,
-            calibration_year_final=calibration_year_final,
-        ),
-    )
+    return _delegate(_wrapped_spei, precips_mm, pet_mm, *args, **kwargs)
 
 
 # Percentage of Normal (PNP) overloads
@@ -278,14 +282,7 @@ def percentage_of_normal(
 ) -> xr.DataArray: ...
 
 
-def percentage_of_normal(
-    values: npt.NDArray[np.float64] | xr.DataArray,
-    scale: int,
-    data_start_year: int | None = None,
-    calibration_start_year: int | None = None,
-    calibration_end_year: int | None = None,
-    periodicity: Periodicity | None = None,
-) -> npt.NDArray[np.float64] | xr.DataArray:
+def percentage_of_normal(values: Any, *args: Any, **kwargs: Any) -> npt.NDArray[np.float64] | xr.DataArray:
     """Compute Percentage of Normal Precipitation (PNP).
 
     This function accepts both NumPy arrays and xarray DataArrays. Type checkers
@@ -316,16 +313,7 @@ def percentage_of_normal(
     Returns:
         PNP values as numpy.ndarray or xarray.DataArray (matches input type).
     """
-    return _wrapped_percentage_of_normal(
-        values,
-        scale=scale,
-        **_not_none(
-            data_start_year=data_start_year,
-            calibration_start_year=calibration_start_year,
-            calibration_end_year=calibration_end_year,
-            periodicity=periodicity,
-        ),
-    )
+    return _delegate(_wrapped_percentage_of_normal, values, *args, **kwargs)
 
 
 # PCI (Precipitation Concentration Index) overloads
@@ -412,10 +400,7 @@ def pet_thornthwaite(
 
 
 def pet_thornthwaite(
-    temperature: npt.NDArray[np.float64] | xr.DataArray,
-    latitude: float | np.floating | xr.DataArray,
-    data_start_year: int | None = None,
-    time_dim: str = "time",
+    temperature: Any, latitude: Any, *args: Any, **kwargs: Any
 ) -> npt.NDArray[np.float64] | xr.DataArray:
     """Compute potential evapotranspiration using Thornthwaite method.
 
@@ -446,7 +431,7 @@ def pet_thornthwaite(
     Returns:
         PET values in mm/month as numpy.ndarray or xarray.DataArray.
     """
-    return _pet_thornthwaite_impl(temperature, latitude, data_start_year=data_start_year, time_dim=time_dim)
+    return _delegate(_pet_thornthwaite_impl, temperature, latitude, *args, **kwargs)
 
 
 # ETo Hargreaves overloads
@@ -469,10 +454,11 @@ def pet_hargreaves(
 
 
 def pet_hargreaves(
-    daily_tmin_celsius: npt.NDArray[np.float64] | xr.DataArray,
-    daily_tmax_celsius: npt.NDArray[np.float64] | xr.DataArray,
-    latitude: float | np.floating | xr.DataArray,
-    time_dim: str = "time",
+    daily_tmin_celsius: Any,
+    daily_tmax_celsius: Any,
+    latitude: Any,
+    *args: Any,
+    **kwargs: Any,
 ) -> npt.NDArray[np.float64] | xr.DataArray:
     """Compute potential evapotranspiration using Hargreaves method.
 
@@ -503,7 +489,7 @@ def pet_hargreaves(
     Returns:
         PET values in mm/day as numpy.ndarray or xarray.DataArray.
     """
-    return _pet_hargreaves_impl(daily_tmin_celsius, daily_tmax_celsius, latitude, time_dim=time_dim)
+    return _delegate(_pet_hargreaves_impl, daily_tmin_celsius, daily_tmax_celsius, latitude, *args, **kwargs)
 
 
 # EDDI overloads
@@ -529,14 +515,7 @@ def eddi(
 ) -> xr.DataArray: ...
 
 
-def eddi(
-    pet_values: npt.NDArray[np.float64] | xr.DataArray,
-    scale: int,
-    data_start_year: int | None = None,
-    calibration_year_initial: int | None = None,
-    calibration_year_final: int | None = None,
-    periodicity: Periodicity | None = None,
-) -> npt.NDArray[np.float64] | xr.DataArray:
+def eddi(pet_values: Any, *args: Any, **kwargs: Any) -> npt.NDArray[np.float64] | xr.DataArray:
     """Compute EDDI (Evaporative Demand Drought Index).
 
     Accepts both NumPy arrays and xarray DataArrays. Type checkers narrow the
@@ -566,13 +545,8 @@ def eddi(
     Returns:
         EDDI values as numpy.ndarray or xarray.DataArray (matches input type).
     """
-    return _wrapped_eddi(
-        pet_values,
-        scale=scale,
-        **_not_none(
-            data_start_year=data_start_year,
-            calibration_year_initial=calibration_year_initial,
-            calibration_year_final=calibration_year_final,
-            periodicity=periodicity,
-        ),
-    )
+    return _delegate(_wrapped_eddi, pet_values, *args, **kwargs)
+
+
+for _public_function in (spi, spei, percentage_of_normal, eddi, pet_thornthwaite, pet_hargreaves):
+    _restore_runtime_signature(_public_function)
