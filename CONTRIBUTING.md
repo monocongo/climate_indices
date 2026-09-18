@@ -107,6 +107,7 @@ vocabulary at `src/climate_indices/CONTEXT.md`):
 - Internal: `docs/agent/`, `docs/design/`,
   `docs/research/fire-indices-cli-approach.md`,
   `docs/research/interactive-climate-explorer-landscape.md`,
+  `docs/research/dri-wrcc-scpdsi-assessment.md`,
   `docs/explorer/`, `docs/architecture-deepening-review-*.md`,
   `docs/test_fixture_management.md`, `CONTEXT-MAP.md`
 - Published URL-retention orphan: `docs/pypi_release.md` (`orphan: true`; kept
