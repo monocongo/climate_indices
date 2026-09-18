@@ -262,7 +262,7 @@ climate_indices/
 ├── docs/                         # Documentation
 │   ├── conf.py                   # Sphinx configuration
 │   ├── index.rst                 # Main Sphinx doc (ReadTheDocs)
-│   ├── reference.rst             # API reference (autodoc)
+│   ├── reference.md              # API reference (autodoc)
 │   ├── release-process.md        # Maintainer release runbook
 │   └── *.md                      # AI-readable project docs
 │
@@ -644,4 +644,4 @@ Library has no network dependencies; all data is file-based.
 
 ---
 
-**Next Steps**: See [development-guide.md](./development-guide.md) for setup instructions and [deployment-guide.md](./deployment-guide.md) for CI/CD details; the generated API reference is published in the [Sphinx reference page](./reference.rst).
+**Next Steps**: See [development-guide.md](./development-guide.md) for setup instructions and [deployment-guide.md](./deployment-guide.md) for CI/CD details; the generated API reference is published in the [Sphinx reference page](./reference.md).
