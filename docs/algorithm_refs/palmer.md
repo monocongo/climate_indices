@@ -47,8 +47,8 @@ comparisons.
 | --- | --- | --- |
 | `px3`, read as `x3` inside `_case` | no established spell: `_case` selects the near-normal (larger-magnitude incipient) value, PHDI falls back to the PDSI value, and an incipient index may be promoted | the spell-end assignments, `_statement_190`'s `ppr >= 100` clamp, and the initial `0.0` |
 | `px1` / `px2` | no incipient wet/dry index exists to promote | the `px1_computed > 0` / `px2_computed < 0` clamps, the post-promotion and `_statement_210` resets, and the initial `0.0` |
-| `sx1` / `sx2` | the backtrack trail has no candidate from that index at this step | the initial `0.0`: a deferral overwrites a consumed row and `_assign` resets `k8`, so entries above the current trail window are masked out of the backtracking, not cleared |
-| `pro` / `ppr`, at 100 and 0 | the spell certainly ends, or no abatement is underway | `ppr` clamped to `100.0` when `>= 100`, reset to `0.0` when a spell ends, and reset by `_statement_210` when a spell intensifies or an abatement fizzles |
+| `sx1` / `sx2` | the backtrack trail has no candidate from that index at this step | `_statement_200`'s deferral copy of the clamped-to-zero `px1`/`px2`; the initial zeros only fill rows the `i < k8` guard masks out |
+| `pro` / `ppr`, at 100 and 0 | the spell certainly ends, or no abatement is underway | `ppr` clamped to `100.0` when `>= 100`, reset to `0.0` when a spell ends, reset by `_statement_210` when a spell intensifies or an abatement fizzles, and the initial `0.0` |
 | CAFEC `numerator` / `denominator` | the month accumulated no water-balance term, so the ratio is undefined | the water-balance accumulators' initial `0.0`: `both_zero` when both sums vanish (`1.0` for alpha/beta/gamma, `0.0` for delta), `0.0` when only the denominator does |
 | `k8` | no months are pending a spell flush (integer counter, not a float) | the recursion's own counter |
 
