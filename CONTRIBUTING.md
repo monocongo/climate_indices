@@ -90,19 +90,18 @@ Current assignments (the context map and validation status live at the
 repository root — `CONTEXT-MAP.md`, `VALIDATION.md` — and the core-library
 vocabulary at `src/climate_indices/CONTEXT.md`):
 
-- Tutorial: `docs/quickstart.rst`, `docs/index.rst`
-- How-to guide: `docs/troubleshooting.rst`, `docs/xarray_migration.rst`,
+- Tutorial: `docs/quickstart.md`, `docs/index.rst`
+- How-to guide: `docs/troubleshooting.md`, `docs/xarray_migration.md`,
   `docs/development-guide.md`, `docs/contribution-guide.md`,
   `docs/deployment-guide.md`, `docs/release-process.md`
-- Reference: `docs/reference.rst`, `docs/algorithms.rst`,
+- Reference: `docs/reference.md`, `docs/algorithms.md`,
   `docs/deprecations/`, `docs/xarray_compatibility.md`,
   `docs/research/nclimgrid-acquisition-and-redistribution.md` (the
   troubleshooting guide sends readers there for source provenance and
   attribution),
   `src/climate_indices/CONTEXT.md`, `VALIDATION.md`
 - Explanation: `docs/ai-assisted-development.md`,
-  `docs/wildfire_applications.md` with its
-  `docs/wildfire_applications.rst` include, `docs/adr/`,
+  `docs/wildfire_applications.md`, `docs/adr/`,
   `docs/algorithm_refs/`, `docs/architecture.md`,
   `docs/project-overview.md`, `docs/floating_point_best_practices.md`
 - Internal: `docs/agent/`, `docs/design/`,
@@ -110,7 +109,7 @@ vocabulary at `src/climate_indices/CONTEXT.md`):
   `docs/research/interactive-climate-explorer-landscape.md`,
   `docs/explorer/`, `docs/architecture-deepening-review-*.md`,
   `docs/test_fixture_management.md`, `CONTEXT-MAP.md`
-- Published URL-retention orphan: `docs/pypi_release.rst` (`:orphan:`; kept
+- Published URL-retention orphan: `docs/pypi_release.md` (`orphan: true`; kept
   only so the previously published `pypi_release.html` URL resolves)
 
 Build infrastructure (`docs/conf.py`, `docs/Makefile`, `docs/make.bat`,

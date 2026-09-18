@@ -76,8 +76,10 @@ source_suffix = {
 # xarray compatibility matrix does, via `#chunking-guidance-...` links).
 myst_heading_anchors = 3
 
-# `colon_fence` is needed for `:::{warning}`-style Markdown admonitions.
-myst_enable_extensions = ["colon_fence"]
+# `colon_fence` is needed for `:::{warning}`-style Markdown admonitions,
+# `dollarmath` for `$$ ... $$` display equations, and `deflist` for the
+# definition lists the converted pages use.
+myst_enable_extensions = ["colon_fence", "dollarmath", "deflist"]
 
 # The master toctree document.
 master_doc = "index"
@@ -112,10 +114,6 @@ exclude_patterns = [
     # Published Markdown pages not yet wired into navigation. Later tickets
     # publish them and delete their paths from this list: DOCS-7 (navigation)
     # and DOCS-8 (explanation and reference corpus).
-    # `wildfire_applications.md` is different: the published page is its
-    # `wildfire_applications.rst` include wrapper, so discovering the Markdown
-    # file as a second source would warn about a duplicate document. It stays
-    # excluded until DOCS-5 or DOCS-6 retires the wrapper.
     "ai-assisted-development.md",
     "algorithm_refs/**",
     "architecture.md",
@@ -126,7 +124,6 @@ exclude_patterns = [
     "project-overview.md",
     "release-process.md",
     "research/nclimgrid-acquisition-and-redistribution.md",
-    "wildfire_applications.md",
 ]
 
 # The name of the Pygments (syntax highlighting) style to use.
