@@ -2,15 +2,37 @@
 
 from __future__ import annotations
 
+import inspect
+import sys
 from collections.abc import Callable
 from typing import Any
 
 import numpy as np
 import xarray as xr
 
-from climate_indices import spei, spi
+if sys.version_info >= (3, 11):
+    from typing import get_overloads
+else:
+    from typing_extensions import get_overloads
+
+from climate_indices import (
+    eddi,
+    indices,
+    pci,
+    percentage_of_normal,
+    pet_hargreaves,
+    pet_thornthwaite,
+    spei,
+    spi,
+)
 from climate_indices.compute import Periodicity
 from climate_indices.indices import Distribution
+from climate_indices.xarray_adapter import (
+    pet_hargreaves as pet_hargreaves_impl,
+)
+from climate_indices.xarray_adapter import (
+    pet_thornthwaite as pet_thornthwaite_impl,
+)
 from climate_indices.xarray_adapter import xarray_adapter
 
 # fixtures now consolidated in conftest.py
@@ -71,6 +93,40 @@ def _verify_xarray_matches_manual_wrapping(
     attrs_typed = {k: v for k, v in result_typed.attrs.items() if k != "history"}
     attrs_manual = {k: v for k, v in result_manual.attrs.items() if k != "history"}
     assert attrs_typed == attrs_manual
+
+
+# public function -> (implementation it mirrors, adapter-only keyword arguments)
+_PUBLIC_IMPLEMENTATIONS: dict[Callable[..., Any], tuple[Callable[..., Any], tuple[str, ...]]] = {
+    spi: (indices.spi, ("spatial_time_major",)),
+    spei: (indices.spei, ("spatial_time_major",)),
+    eddi: (indices.eddi, ("spatial_time_major",)),
+    percentage_of_normal: (indices.percentage_of_normal, ("spatial_time_major",)),
+    pci: (indices.pci, ()),
+    pet_thornthwaite: (pet_thornthwaite_impl, ()),
+    pet_hargreaves: (pet_hargreaves_impl, ()),
+}
+
+
+def test_overloads_mirror_implementations() -> None:
+    """Public @overload stubs must mirror the implementation they delegate to (issue #903)."""
+    for public, (implementation, internal) in _PUBLIC_IMPLEMENTATIONS.items():
+        implementation_params = [name for name in inspect.signature(implementation).parameters if name not in internal]
+        overloads = get_overloads(public)
+        assert len(overloads) == 2, f"{public.__name__} must keep its NumPy and xarray overloads"
+
+        numpy_params = list(inspect.signature(overloads[0]).parameters)
+        assert numpy_params == implementation_params, (
+            f"{public.__name__} NumPy overload drifted from {implementation.__name__}: "
+            f"{numpy_params} != {implementation_params}"
+        )
+
+        # both stubs name every parameter of the implementation they delegate to;
+        # required-ness and input types are the overloads' own contract
+        xarray_params = list(inspect.signature(overloads[1]).parameters)
+        assert xarray_params == implementation_params, (
+            f"{public.__name__} xarray overload drifted from {implementation.__name__}: "
+            f"{xarray_params} != {implementation_params}"
+        )
 
 
 class TestSPIOverloads:
