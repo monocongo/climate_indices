@@ -158,8 +158,10 @@ def test_time_major_gridded_input_is_rejected(tmp_path, precips_mm_monthly):
     precip_path = tmp_path / "precip_time_major.nc"
     _write_time_major_grid(precip_path, cells.reshape(values.size, len(_LATITUDES), len(_LONGITUDES)))
 
+    arguments = _spi_arguments(precip_path, tmp_path / "spi_time_major")
+
     with pytest.raises(ValueError, match="Invalid dimensions for variable 'precip'"):
-        main(_spi_arguments(precip_path, tmp_path / "spi_time_major"))
+        main(arguments)
 
 
 def test_spei_uses_provided_pet_file_and_matches_in_process_computation(
