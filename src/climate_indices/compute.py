@@ -19,6 +19,7 @@ from climate_indices.exceptions import (
     InsufficientDataError,
     MissingDataWarning,
     PearsonFittingError,
+    PeriodicityError,
     ShortCalibrationWarning,
 )
 from climate_indices.logging_config import get_logger
@@ -193,7 +194,7 @@ def _validate_array(
                 reason="missing_periodicity",
                 shape=str(values.shape),
             )
-            raise ValueError(message)
+            raise PeriodicityError(message, periodicity_value=str(periodicity))
 
         elif periodicity is Periodicity.monthly or periodicity is Periodicity.daily:
             # we've been passed a 1-D array with shape (months) or (days),
@@ -208,7 +209,7 @@ def _validate_array(
                 reason="unsupported_periodicity",
                 periodicity=str(periodicity),
             )
-            raise ValueError(message)
+            raise PeriodicityError(message, periodicity_value=str(periodicity))
 
     elif len(values.shape) < 2 or values.shape[1] not in _PERIOD_LENGTHS:
         # not a 1-D array, and no valid period axis: an already-reshaped spatial
@@ -319,9 +320,10 @@ def _reshape_time_major(values: np.ndarray, periodicity: Periodicity) -> np.ndar
     :param values: time-major array of values, shape (time, *cells)
     :param periodicity: specifies whether data is monthly (12) or daily (366)
     :return: the values with shape (years, period_length, *cells)
+    :raises PeriodicityError: if periodicity is neither monthly nor daily
     """
     if periodicity is not Periodicity.monthly and periodicity is not Periodicity.daily:
-        raise ValueError(f"Invalid periodicity argument: {periodicity}")
+        raise PeriodicityError(f"Invalid periodicity argument: {periodicity}", periodicity_value=str(periodicity))
 
     period_length = periodicity.period_length
     cell_shape = values.shape[1:]
@@ -344,7 +346,7 @@ def reshape_values(values: np.ndarray, periodicity: Periodicity) -> np.ndarray:
     if periodicity is Periodicity.monthly or periodicity is Periodicity.daily:
         return utils.reshape_to_2d(values, periodicity.period_length)
     else:
-        raise ValueError(f"Invalid periodicity argument: {periodicity}")
+        raise PeriodicityError(f"Invalid periodicity argument: {periodicity}", periodicity_value=str(periodicity))
 
 
 def validate_values_shape(values: np.ndarray) -> int:
@@ -1394,7 +1396,7 @@ def gamma_parameters(
         elif periodicity is Periodicity.daily:
             shape = (366,)
         else:
-            raise ValueError(f"Unsupported periodicity: {periodicity}")
+            raise PeriodicityError(f"Unsupported periodicity: {periodicity}", periodicity_value=str(periodicity))
         if values.ndim > 2:
             # validated spatial arrays carry the periods along axis 1: (periods, *cells)
             shape = values.shape[1:]
@@ -1515,7 +1517,7 @@ def prepare_scaled(
     ``prepared.ndim == 1`` in order to short-circuit; an all-missing time-major spatial
     input is returned with its (time, ``*cells``) shape. Shape errors are raised as
     ``ValueError``, the convention established by ``_validate_array`` and
-    ``utils.reshape_to_2d``.
+    ``utils.reshape_to_2d``; an invalid periodicity raises ``PeriodicityError``.
 
     Args:
         values: The array of values, either 1-D, 2-D (years, periods), or a time-major
@@ -1547,7 +1549,7 @@ def prepare_scaled(
     # since reshape_values() is the only other place this is checked and it's
     # skipped entirely when reshape=False
     if periodicity is not Periodicity.monthly and periodicity is not Periodicity.daily:
-        raise ValueError(f"Invalid periodicity argument: {periodicity}")
+        raise PeriodicityError(f"Invalid periodicity argument: {periodicity}", periodicity_value=str(periodicity))
 
     values = _prepare_input_shape(values, spatial_time_major)
 

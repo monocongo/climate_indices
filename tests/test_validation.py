@@ -11,7 +11,7 @@ import pytest
 import xarray as xr
 
 from climate_indices import validation
-from climate_indices.exceptions import CoordinateValidationError
+from climate_indices.exceptions import CoordinateValidationError, DimensionMismatchError
 from climate_indices.validation import (
     validate_dask_chunks,
     validate_time_dimension,
@@ -33,13 +33,17 @@ class TestValidateTimeDimension:
         validate_time_dimension(sample_monthly_precip_da, "time")
 
     def test_missing_dimension_raises(self, no_time_dim_da):
-        """Missing time dimension raises CoordinateValidationError."""
-        with pytest.raises(CoordinateValidationError) as exc_info:
+        """Missing time dimension raises DimensionMismatchError."""
+        with pytest.raises(DimensionMismatchError) as exc_info:
             validate_time_dimension(no_time_dim_da, "time")
 
         assert "not found" in str(exc_info.value).lower()
         assert exc_info.value.coordinate_name == "time"
         assert exc_info.value.reason == "missing_dimension"
+        assert exc_info.value.expected_dims == "time"
+        assert exc_info.value.actual_dims == tuple(no_time_dim_da.dims)
+        # existing handlers that catch the general type keep catching it
+        assert isinstance(exc_info.value, CoordinateValidationError)
 
     def test_error_message_includes_available_dims(self, no_time_dim_da):
         """Error message lists available dimensions."""

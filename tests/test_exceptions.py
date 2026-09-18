@@ -25,7 +25,7 @@ HIERARCHY_CASES = [
     (exceptions.DistributionFittingError, (ClimateIndicesError,), True),
     (exceptions.InsufficientDataError, (exceptions.DistributionFittingError,), True),
     (exceptions.PearsonFittingError, (exceptions.DistributionFittingError,), True),
-    (exceptions.DimensionMismatchError, (ClimateIndicesError,), True),
+    (exceptions.DimensionMismatchError, (exceptions.CoordinateValidationError,), True),
     (exceptions.CoordinateValidationError, (ClimateIndicesError,), True),
     (exceptions.InputTypeError, (ClimateIndicesError,), True),
     (exceptions.InvalidArgumentError, (ClimateIndicesError,), True),
@@ -61,6 +61,7 @@ HIERARCHY_CASES = [
     (exceptions.BetaFeatureWarning, ClimateIndicesError, False),
     (exceptions.ClimateIndicesDeprecationWarning, ClimateIndicesError, False),
     (ClimateIndicesError, exceptions.ClimateIndicesWarning, False),
+    (exceptions.DimensionMismatchError, exceptions.ClimateIndicesWarning, False),
     (exceptions.DistributionFittingError, exceptions.ClimateIndicesWarning, False),
     (exceptions.InsufficientDataError, exceptions.ClimateIndicesWarning, False),
 ]
@@ -71,6 +72,8 @@ CATCHABILITY_CASES = [
     (exceptions.InsufficientDataError, ClimateIndicesError, False),
     (exceptions.PearsonFittingError, ClimateIndicesError, False),
     (exceptions.DimensionMismatchError, ClimateIndicesError, False),
+    # the named-dimension specialization is caught by the general coordinate handler
+    (exceptions.DimensionMismatchError, exceptions.CoordinateValidationError, False),
     (exceptions.CoordinateValidationError, ClimateIndicesError, False),
     (exceptions.InputTypeError, ClimateIndicesError, False),
     (exceptions.InvalidArgumentError, ClimateIndicesError, False),
