@@ -8,6 +8,7 @@ from collections.abc import Callable
 from typing import Any
 
 import numpy as np
+import pytest
 import xarray as xr
 
 if sys.version_info >= (3, 11):
@@ -95,7 +96,7 @@ def _verify_xarray_matches_manual_wrapping(
     assert attrs_typed == attrs_manual
 
 
-# public function -> (implementation it mirrors, adapter-only keyword arguments)
+# public function -> (implementation it mirrors, parameters the public API does not expose)
 _PUBLIC_IMPLEMENTATIONS: dict[Callable[..., Any], tuple[Callable[..., Any], tuple[str, ...]]] = {
     spi: (indices.spi, ("spatial_time_major",)),
     spei: (indices.spei, ("spatial_time_major",)),
@@ -104,6 +105,38 @@ _PUBLIC_IMPLEMENTATIONS: dict[Callable[..., Any], tuple[Callable[..., Any], tupl
     pci: (indices.pci, ()),
     pet_thornthwaite: (pet_thornthwaite_impl, ()),
     pet_hargreaves: (pet_hargreaves_impl, ()),
+}
+
+# the frozen published typing contract: rendered (NumPy, xarray) @overload signatures
+_EXPECTED_OVERLOADS: dict[Callable[..., Any], tuple[str, str]] = {
+    spi: (
+        "(values: 'npt.NDArray[np.float64]', scale: 'int', distribution: 'Distribution', data_start_year: 'int', calibration_year_initial: 'int', calibration_year_final: 'int', periodicity: 'Periodicity', fitting_params: 'dict[str, Any] | None' = None) -> 'npt.NDArray[np.float64]'",
+        "(values: 'xr.DataArray', scale: 'int', distribution: 'Distribution', data_start_year: 'int | None' = None, calibration_year_initial: 'int | None' = None, calibration_year_final: 'int | None' = None, periodicity: 'Periodicity | None' = None, fitting_params: 'dict[str, Any] | None' = None) -> 'xr.DataArray'",
+    ),
+    spei: (
+        "(precips_mm: 'npt.NDArray[np.float64]', pet_mm: 'npt.NDArray[np.float64]', scale: 'int', distribution: 'Distribution', periodicity: 'Periodicity', data_start_year: 'int', calibration_year_initial: 'int', calibration_year_final: 'int', fitting_params: 'dict[str, Any] | None' = None) -> 'npt.NDArray[np.float64]'",
+        "(precips_mm: 'xr.DataArray', pet_mm: 'xr.DataArray', scale: 'int', distribution: 'Distribution', periodicity: 'Periodicity | None' = None, data_start_year: 'int | None' = None, calibration_year_initial: 'int | None' = None, calibration_year_final: 'int | None' = None, fitting_params: 'dict[str, Any] | None' = None) -> 'xr.DataArray'",
+    ),
+    percentage_of_normal: (
+        "(values: 'npt.NDArray[np.float64]', scale: 'int', data_start_year: 'int', calibration_start_year: 'int', calibration_end_year: 'int', periodicity: 'Periodicity') -> 'npt.NDArray[np.float64]'",
+        "(values: 'xr.DataArray', scale: 'int', data_start_year: 'int | None' = None, calibration_start_year: 'int | None' = None, calibration_end_year: 'int | None' = None, periodicity: 'Periodicity | None' = None) -> 'xr.DataArray'",
+    ),
+    eddi: (
+        "(pet_values: 'npt.NDArray[np.float64]', scale: 'int', data_start_year: 'int', calibration_year_initial: 'int', calibration_year_final: 'int', periodicity: 'Periodicity') -> 'npt.NDArray[np.float64]'",
+        "(pet_values: 'xr.DataArray', scale: 'int', data_start_year: 'int | None' = None, calibration_year_initial: 'int | None' = None, calibration_year_final: 'int | None' = None, periodicity: 'Periodicity | None' = None) -> 'xr.DataArray'",
+    ),
+    pci: (
+        "(rainfall_mm: 'npt.NDArray[np.float64]') -> 'npt.NDArray[np.float64]'",
+        "(rainfall_mm: 'xr.DataArray') -> 'xr.DataArray'",
+    ),
+    pet_thornthwaite: (
+        "(temperature: 'npt.NDArray[np.float64]', latitude: 'float', data_start_year: 'int', time_dim: 'str' = 'time') -> 'npt.NDArray[np.float64]'",
+        "(temperature: 'xr.DataArray', latitude: 'float | np.floating | xr.DataArray', data_start_year: 'int | None' = None, time_dim: 'str' = 'time') -> 'xr.DataArray'",
+    ),
+    pet_hargreaves: (
+        "(daily_tmin_celsius: 'npt.NDArray[np.float64]', daily_tmax_celsius: 'npt.NDArray[np.float64]', latitude: 'float', time_dim: 'str' = 'time') -> 'npt.NDArray[np.float64]'",
+        "(daily_tmin_celsius: 'xr.DataArray', daily_tmax_celsius: 'xr.DataArray', latitude: 'float | np.floating | xr.DataArray', time_dim: 'str' = 'time') -> 'xr.DataArray'",
+    ),
 }
 
 
@@ -120,13 +153,90 @@ def test_overloads_mirror_implementations() -> None:
             f"{numpy_params} != {implementation_params}"
         )
 
-        # both stubs name every parameter of the implementation they delegate to;
-        # required-ness and input types are the overloads' own contract
+        # both stubs expose every non-internal parameter of the implementation they
+        # mirror; required-ness and input types are the overloads' own contract
         xarray_params = list(inspect.signature(overloads[1]).parameters)
         assert xarray_params == implementation_params, (
             f"{public.__name__} xarray overload drifted from {implementation.__name__}: "
             f"{xarray_params} != {implementation_params}"
         )
+
+
+def test_overload_signatures_are_frozen() -> None:
+    """The overload signatures are the published typing contract; freeze them (issue #903)."""
+    for public, expected in _EXPECTED_OVERLOADS.items():
+        actual = tuple(str(inspect.signature(overload)) for overload in get_overloads(public))
+        assert actual == expected, f"{public.__name__} overload signatures changed: {actual!r} != {expected!r}"
+
+
+def test_overload_tests_cover_every_public_overloaded_function() -> None:
+    """A new overloaded public function must be added to the drift tests above."""
+    import climate_indices
+
+    overloaded = {
+        member
+        for name in climate_indices.__all__
+        if callable(member := getattr(climate_indices, name)) and get_overloads(member)
+    }
+    assert overloaded == set(_PUBLIC_IMPLEMENTATIONS)
+
+
+def _assert_same_result(left: xr.DataArray, right: xr.DataArray) -> None:
+    """Assert equal values and metadata, ignoring the timestamped history attribute."""
+    np.testing.assert_array_equal(left.values, right.values)
+    assert {key: value for key, value in left.attrs.items() if key != "history"} == {
+        key: value for key, value in right.attrs.items() if key != "history"
+    }
+
+
+class TestDelegateForwarding:
+    """The generic implementations forward calls exactly as the explicit ones did (issue #903)."""
+
+    def test_spi_xarray_positional_arguments_match_keywords(self, sample_monthly_precip_da: xr.DataArray) -> None:
+        """Positional scale/distribution keep the values and calculation metadata."""
+        keyword_result = spi(values=sample_monthly_precip_da, scale=6, distribution=Distribution.gamma)
+        positional_result = spi(sample_monthly_precip_da, 6, Distribution.gamma)
+
+        assert positional_result.attrs["scale"] == 6
+        assert positional_result.attrs["distribution"] == "gamma"
+        assert positional_result.attrs["calibration_year_initial"] == keyword_result.attrs["calibration_year_initial"]
+        _assert_same_result(positional_result, keyword_result)
+
+    def test_spi_dask_positional_arguments_match_keywords(self, sample_monthly_precip_da: xr.DataArray) -> None:
+        """The Dask execution path also receives positionally passed parameters."""
+        chunked = sample_monthly_precip_da.chunk({"time": -1})
+        keyword_result = spi(values=chunked, scale=6, distribution=Distribution.gamma).compute()
+        positional_result = spi(chunked, 6, Distribution.gamma).compute()
+
+        assert positional_result.attrs["scale"] == 6
+        _assert_same_result(positional_result, keyword_result)
+
+    def test_unknown_keyword_argument_is_rejected(self, sample_monthly_precip_da: xr.DataArray) -> None:
+        """A misspelled optional parameter raises instead of being silently dropped."""
+        with pytest.raises(TypeError, match="unexpected keyword argument"):
+            spi(
+                values=sample_monthly_precip_da,
+                scale=6,
+                distribution=Distribution.gamma,
+                calibraton_year_initial=1981,
+            )
+
+    def test_explicit_none_matches_omitted(self, sample_monthly_precip_da: xr.DataArray) -> None:
+        """Explicit None for an inferred parameter is dropped, positionally or by keyword."""
+        omitted = spi(values=sample_monthly_precip_da, scale=6, distribution=Distribution.gamma)
+        keyword_none = spi(
+            values=sample_monthly_precip_da,
+            scale=6,
+            distribution=Distribution.gamma,
+            data_start_year=None,
+            calibration_year_initial=None,
+            calibration_year_final=None,
+            periodicity=None,
+        )
+        positional_none = spi(sample_monthly_precip_da, 6, Distribution.gamma, None)
+
+        _assert_same_result(keyword_none, omitted)
+        _assert_same_result(positional_none, omitted)
 
 
 class TestSPIOverloads:

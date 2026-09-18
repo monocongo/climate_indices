@@ -4,15 +4,17 @@ This module provides statically-typed wrappers around the xarray-adapted index
 functions. The @overload signatures enable IDE autocomplete and mypy --strict
 correctness by narrowing return types based on input types:
 
-- spi(np.ndarray, ...) -> np.ndarray      (and likewise for spei, eddi, pnp, pci)
+- spi(np.ndarray, ...) -> np.ndarray      (and likewise for spei, eddi, percentage_of_normal, pci)
 - spi(xr.DataArray, ...) -> xr.DataArray  (and pet_thornthwaite, pet_hargreaves)
 
-Design: Pre-build decorated functions at module level for performance. Each
-public function declares its signature once, as a pair of @overload stubs
-(NumPy and xarray) that mirror the wrapped function; the implementation takes
-*args/**kwargs and delegates through ``_delegate``, so it carries no second
-signature to drift. ``tests/test_typed_public_api.py`` pins both stubs to the
-wrapped function's signature.
+Design: Pre-build decorated functions at module level for performance. Every
+public function except ``pci`` declares its signature once, as a pair of
+@overload stubs (NumPy and xarray) that mirror the wrapped function; the
+implementation takes ``*args/**kwargs`` and delegates through ``_delegate``, so
+it carries no second signature to drift. ``_restore_runtime_signature`` pins each
+public function's ``inspect`` signature (and so the Sphinx reference) to its
+NumPy overload. ``tests/test_typed_public_api.py`` freezes both stubs and pins
+their parameter names to the wrapped function.
 
 PCI uses a manual wrapper instead of @xarray_adapter because its output shape
 (scalar) differs from input shape (365/366 daily values).
@@ -28,8 +30,10 @@ beta xarray path stays on its corresponding ``fire.<name>`` public route.
 from __future__ import annotations
 
 import datetime
+import inspect
+import typing
 from collections.abc import Callable
-from typing import Any, overload
+from typing import Any, cast, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -76,15 +80,44 @@ _wrapped_eddi = xarray_adapter(
 
 def _delegate(
     func: Callable[..., npt.NDArray[np.float64] | xr.DataArray],
+    data: Any,
     *args: Any,
     **kwargs: Any,
 ) -> npt.NDArray[np.float64] | xr.DataArray:
-    """Call a pre-built API function, dropping None kwargs so absent params are inferred.
+    """Call a pre-built API function with the data positional and the rest keyword.
 
-    Passing an explicit None would bind the parameter and suppress the xarray
-    adapter's inference, so the public wrappers drop them here.
+    The xarray adapter requires the data as its first positional argument and reads
+    the remaining parameters from keywords, so the call is bound and re-forwarded
+    that way; binding also rejects unknown keyword arguments, as the explicit
+    signatures did. Explicit None is dropped for parameters without a default:
+    binding None would suppress the adapter's inference of that parameter, while
+    defaulted parameters (e.g. ``fitting_params``) keep their None.
     """
-    return func(*args, **{key: value for key, value in kwargs.items() if value is not None})
+    signature = inspect.signature(func)
+    bound = signature.bind_partial(data, *args, **kwargs)
+    data_parameter = next(iter(signature.parameters))
+    forwarded = {
+        name: value
+        for name, value in bound.arguments.items()
+        if name != data_parameter
+        and not (value is None and signature.parameters[name].default is inspect.Parameter.empty)
+    }
+    return func(data, **forwarded)
+
+
+def _restore_runtime_signature(func: Callable[..., Any]) -> None:
+    """Give a generic implementation the NumPy overload stub's ``inspect`` signature.
+
+    The implementation forwards ``*args/**kwargs``, so without this ``inspect`` and
+    the Sphinx API reference would render that generic form instead of the public
+    parameters. Unavailable before Python 3.11 (no ``typing.get_overloads``).
+    """
+    get_overloads = getattr(typing, "get_overloads", None)
+    if get_overloads is None:
+        return
+    overloads = get_overloads(func)
+    if overloads:
+        cast(Any, func).__signature__ = inspect.signature(overloads[0])
 
 
 # SPI overloads
@@ -513,3 +546,7 @@ def eddi(pet_values: Any, *args: Any, **kwargs: Any) -> npt.NDArray[np.float64] 
         EDDI values as numpy.ndarray or xarray.DataArray (matches input type).
     """
     return _delegate(_wrapped_eddi, pet_values, *args, **kwargs)
+
+
+for _public_function in (spi, spei, percentage_of_normal, eddi, pet_thornthwaite, pet_hargreaves):
+    _restore_runtime_signature(_public_function)
