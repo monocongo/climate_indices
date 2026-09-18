@@ -162,7 +162,7 @@ exclude = ["tests/", "docs/", "notebooks/", ...]
 
 ### Documentation Hosting
 - **URL**: [https://climate-indices.readthedocs.io/](https://climate-indices.readthedocs.io/)
-- **Source**: `docs/*.md` and `docs/index.rst` (Sphinx)
+- **Source**: `docs/*.md` (Sphinx)
 - **Build**: Automatic on push to `main`
 - **Versions**: Tracks git tags
 
@@ -176,7 +176,11 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.viewcode',
     'sphinx.ext.githubpages',
+    'myst_parser',
 ]
+
+# Markdown is the only page source format (RST retired in 3.0.0)
+source_suffix = ".md"
 ```
 
 ## Dependency Management
