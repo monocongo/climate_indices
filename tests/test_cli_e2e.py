@@ -61,6 +61,14 @@ def _write_grid(path, values, var_name="precip", units="mm") -> None:
     ).to_netcdf(path)
 
 
+def _write_time_major_grid(path, values, var_name="precip", units="mm") -> None:
+    values = np.asarray(values, dtype=float)
+    xr.Dataset(
+        {var_name: (("time", "lat", "lon"), values, {"units": units})},
+        coords={"time": _months(values.shape[0]), "lat": _LATITUDES, "lon": _LONGITUDES},
+    ).to_netcdf(path)
+
+
 def _common_arguments(index, precip_path, output_base) -> list[str]:
     return [
         "--index",
@@ -135,6 +143,25 @@ def test_gridded_spi_matches_in_process_computation(tmp_path, precips_mm_monthly
                     periodicity=compute.Periodicity.monthly,
                 )
                 np.testing.assert_allclose(written[i, j], expected, equal_nan=True, err_msg=f"cell ({i}, {j})")
+
+
+def test_time_major_gridded_input_is_rejected(tmp_path, precips_mm_monthly):
+    """
+    A grid stored time-first is rejected rather than standardized wrongly.
+
+    The shared-array transport copies storage order and the kernels index the
+    grid's time axis last, so accepting this order computes each cell's index
+    from its longitude series instead of raising.
+    """
+    values = precips_mm_monthly.reshape(-1)
+    cells = np.stack([values] * (len(_LATITUDES) * len(_LONGITUDES)), axis=-1)
+    precip_path = tmp_path / "precip_time_major.nc"
+    _write_time_major_grid(precip_path, cells.reshape(values.size, len(_LATITUDES), len(_LONGITUDES)))
+
+    arguments = _spi_arguments(precip_path, tmp_path / "spi_time_major")
+
+    with pytest.raises(ValueError, match="Invalid dimensions for variable 'precip'"):
+        main(arguments)
 
 
 def test_spei_uses_provided_pet_file_and_matches_in_process_computation(
@@ -224,7 +251,7 @@ def _length_in(values_inches, units):
 
 @pytest.mark.parametrize("precip_units", ["mm", "inches"])
 @pytest.mark.parametrize("awc_units", ["mm", "millimeters", "inches", None])
-def test_palmers_writes_all_four_outputs_matching_in_process_computation(
+def test_palmers_writes_all_five_outputs_matching_in_process_computation(
     tmp_path, precips_mm_monthly, pet_thornthwaite_mm, palmer_awcs, precip_units, awc_units
 ):
     precips = precips_mm_monthly.reshape(-1)
@@ -266,22 +293,38 @@ def test_palmers_writes_all_four_outputs_matching_in_process_computation(
         _CALIBRATION_START_YEAR,
         _CALIBRATION_END_YEAR,
     )
+    expected_scpdsi = palmer.scpdsi(
+        precips / 25.4,
+        pet / 25.4,
+        awc,
+        _DATA_START_YEAR,
+        _CALIBRATION_START_YEAR,
+        _CALIBRATION_END_YEAR,
+    )[0]
     for variable_name, expected in [
         ("pdsi", expected_pdsi),
         ("phdi", expected_phdi),
         ("pmdi", expected_pmdi),
         ("zindex", expected_zindex),
+        ("scpdsi", expected_scpdsi),
     ]:
         with xr.open_dataset(tmp_path / f"palmers_{variable_name}.nc") as dataset:
             np.testing.assert_allclose(dataset[variable_name].values[0], expected, equal_nan=True)
 
-    # self-calibration isn't implemented (CONTEXT.md / issue #716), so the CLI
-    # must write the four outputs and no fifth scpdsi file
+    # scPDSI has no hard valid range, so it is written without valid_min/valid_max
+    with xr.open_dataset(tmp_path / "palmers_scpdsi.nc") as dataset:
+        attrs = dataset["scpdsi"].attrs
+        assert attrs["long_name"] == "Self-calibrated Palmer Drought Severity Index"
+        assert "valid_min" not in attrs
+        assert "valid_max" not in attrs
+
+    # the CLI exposes all five Palmer outputs, including the self-calibrating scPDSI
     assert {path.name for path in tmp_path.glob("palmers_*.nc")} == {
         "palmers_pdsi.nc",
         "palmers_phdi.nc",
         "palmers_pmdi.nc",
         "palmers_zindex.nc",
+        "palmers_scpdsi.nc",
     }
 
 
@@ -431,7 +474,7 @@ def test_all_runs_each_index_into_its_own_output(tmp_path, precips_mm_monthly, p
     )
 
     # SPI and SPEI run once per scale and distribution, PNP once per scale, and
-    # Palmers once into its four outputs; no PET file is written because the
+    # Palmers once into its five outputs; no PET file is written because the
     # provided PET input is used instead
     assert {path.name for path in tmp_path.glob("all_*.nc")} == {
         "all_spi_gamma_01.nc",
@@ -443,6 +486,7 @@ def test_all_runs_each_index_into_its_own_output(tmp_path, precips_mm_monthly, p
         "all_phdi.nc",
         "all_pmdi.nc",
         "all_zindex.nc",
+        "all_scpdsi.nc",
     }
 
     expected_pnp = indices.percentage_of_normal(

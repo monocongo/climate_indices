@@ -42,7 +42,8 @@ class _PalmerPrepared:
     """The Palmer inputs, water balance, and calibration results shared by both indices.
 
     Written by ``_prepare_palmer_data`` (plus the index-specific K-factor stage)
-    and read-only afterwards, so no recursion stage can overwrite an input.
+    and read-only afterwards except for ``pdsi()``'s duration-factor override, so
+    no recursion stage can overwrite an input.
     """
 
     # input record and calibration configuration
@@ -163,10 +164,9 @@ def _select_duration_factors(prepared: _PalmerPrepared, state: _PalmerRecursion)
 
     X3 equal to zero means that no wet or dry spell is established. It is
     assigned the wet factors to preserve the recursion's historical
-    non-negative tie-break. This choice is immaterial with Palmer's identical
-    wet and dry defaults (``pdsi()`` always calibrates both from
-    ``DurationFactors.from_defaults()``), but must remain explicit since a
-    single ``prepared`` can still be tested with distinct pairs.
+    non-negative tie-break. With Palmer's identical wet and dry defaults the
+    choice is unobservable; a distinct duration-factor override makes it
+    observable, and the tie-break is kept deliberately.
 
     :param prepared: the prepared Palmer inputs
     :param state: the mutable recursion state
@@ -324,10 +324,15 @@ def _calc_cafec_ratio(
     :return the per-month ratios
     :rtype: np.ndarray
     """
-    den_nonzero = denominator != 0
+    # Exact zero is the reference's "this month contributed nothing to the
+    # calibration sums" sentinel, not a float-equality accident: a tolerance
+    # would replace the reference's substitution -- both_zero when both sums
+    # vanish (1.0 for alpha/beta/gamma, 0.0 for delta), 0.0 when only the
+    # denominator does -- with arithmetic on near-zero denominators.
+    den_nonzero = denominator != 0  # NOSONAR
     with np.errstate(divide="ignore", invalid="ignore"):
         ratio = numerator / denominator
-    return np.where(den_nonzero, ratio, np.where(numerator == 0, both_zero, 0.0))
+    return np.where(den_nonzero, ratio, np.where(numerator == 0, both_zero, 0.0))  # NOSONAR
 
 
 def _calc_water_balances(prepared: _PalmerPrepared) -> None:
@@ -552,7 +557,9 @@ def _case(prob: np.ndarray, x1: np.ndarray, x2: np.ndarray, x3: np.ndarray) -> n
     interpolated = np.where(x3 <= 0, (1.0 - pro) * x3 + pro * x1, (1.0 - pro) * x3 + pro * x2)
     established = np.where((prob <= 0) | (prob >= 100), x3, interpolated)
 
-    return np.where(x3 == 0, near_normal, established)
+    # x3 is assigned 0.0 exactly when no spell is established, so its exact
+    # zero -- not a tolerance -- is what selects the near-normal value.
+    return np.where(x3 == 0, near_normal, established)  # NOSONAR
 
 
 def _record_index_values(
@@ -585,7 +592,9 @@ def _record_index_values(
         return
     px3_here = state.px3[years, months, cell_ids]
     state.pdsi[years, months, cell_ids] = values
-    state.phdi[years, months, cell_ids] = np.where(px3_here == 0, values, px3_here)
+    # No established spell (px3 exactly 0.0) means PHDI has no severity of its
+    # own and falls back to the PDSI value recorded for this period.
+    state.phdi[years, months, cell_ids] = np.where(px3_here == 0, values, px3_here)  # NOSONAR
     state.wplm[years, months, cell_ids] = _case(
         state.ppr[years, months, cell_ids],
         state.px1[years, months, cell_ids],
@@ -615,11 +624,13 @@ def _backtrack_assigned_values(state: _PalmerRecursion, active: np.ndarray) -> N
         step = active & (i < state.k8)
         if not np.any(step):
             continue
+        # sx1/sx2 hold 0.0 exactly where the trail has no candidate from that
+        # index; the exact test is what switches the backtracking between them.
         use_sx1_branch = isave == 2
-        sx2_zero = state.sx2[i] == 0
+        sx2_zero = state.sx2[i] == 0  # NOSONAR
         branch_isave_a = np.where(sx2_zero, 1, 2)
         branch_sx_a = np.where(sx2_zero, state.sx1[i], state.sx2[i])
-        sx1_zero = state.sx1[i] == 0
+        sx1_zero = state.sx1[i] == 0  # NOSONAR
         branch_isave_b = np.where(sx1_zero, 2, 1)
         branch_sx_b = np.where(sx1_zero, state.sx2[i], state.sx1[i])
         new_isave = np.where(use_sx1_branch, branch_isave_a, branch_isave_b)
@@ -679,6 +690,8 @@ def _assign(state: _PalmerRecursion, active: np.ndarray) -> None:
     cells = np.arange(state.k8.shape[0])
     state.sx[state.k8[active], cells[active]] = state.x[y, m][active]
 
+    # k8 is an integer count of months pending a spell flush, not a computed
+    # float, so this is an integer test rather than a float comparison.
     direct = active & (state.k8 == 0)
     flush = active & (state.k8 > 0)
 
@@ -780,8 +793,11 @@ def _statement_200(prepared: _PalmerPrepared, state: _PalmerRecursion, active: n
     px1_new = np.where(px1_computed > 0, px1_computed, 0.0)
     state.px1[y, m] = np.where(active, px1_new, state.px1[y, m])
 
+    # px3 exactly 0.0 means no spell is established, and px1/px2 exactly 0.0
+    # mean no incipient wet/dry index exists to promote to x3; the recursions
+    # above clamp to those zeros exactly rather than interpolating to them.
     # if no existing wet spell or drought, x1 becomes the new x3
-    branch1 = active & (state.px1[y, m] >= 1) & (state.px3[y, m] == 0)
+    branch1 = active & (state.px1[y, m] >= 1) & (state.px3[y, m] == 0)  # NOSONAR
     state.px3[y, m] = np.where(branch1, state.px1[y, m], state.px3[y, m])
     state.x[y, m] = np.where(branch1, state.px1[y, m], state.x[y, m])
     state.px1[y, m] = np.where(branch1, 0.0, state.px1[y, m])
@@ -793,7 +809,7 @@ def _statement_200(prepared: _PalmerPrepared, state: _PalmerRecursion, active: n
     state.px2[y, m] = np.where(active & ~branch1, px2_new, state.px2[y, m])
 
     # if no existing wet spell or drought, x2 becomes the new x3
-    branch2 = active & ~branch1 & (state.px2[y, m] <= -1) & (state.px3[y, m] == 0)
+    branch2 = active & ~branch1 & (state.px2[y, m] <= -1) & (state.px3[y, m] == 0)  # NOSONAR
     state.px3[y, m] = np.where(branch2, state.px2[y, m], state.px3[y, m])
     state.x[y, m] = np.where(branch2, state.px2[y, m], state.x[y, m])
     state.px2[y, m] = np.where(branch2, 0.0, state.px2[y, m])
@@ -802,12 +818,12 @@ def _statement_200(prepared: _PalmerPrepared, state: _PalmerRecursion, active: n
     # No established drought (wet spell), but x3 = 0, so either (nonzero) x1
     # or x2 must be used as x3
     resolved = branch1 | branch2
-    px3_still_zero = active & ~resolved & (state.px3[y, m] == 0)
-    branch3 = px3_still_zero & (state.px1[y, m] == 0)
+    px3_still_zero = active & ~resolved & (state.px3[y, m] == 0)  # NOSONAR
+    branch3 = px3_still_zero & (state.px1[y, m] == 0)  # NOSONAR
     state.x[y, m] = np.where(branch3, state.px2[y, m], state.x[y, m])
     state.iass = np.where(branch3, 2, state.iass)
 
-    branch4 = px3_still_zero & ~branch3 & (state.px2[y, m] == 0)
+    branch4 = px3_still_zero & ~branch3 & (state.px2[y, m] == 0)  # NOSONAR
     state.x[y, m] = np.where(branch4, state.px1[y, m], state.x[y, m])
     state.iass = np.where(branch4, 1, state.iass)
 
@@ -848,7 +864,9 @@ def _statement_190(prepared: _PalmerPrepared, state: _PalmerRecursion, active: n
     if not np.any(active):
         return
     y, m = state.year, state.month
-    q = np.where(state.pro == 100, state.ze, state.ze + state.v)
+    # pro is 100.0 exactly where ppr was clamped to that endpoint; the exact
+    # test selects the certain-end form of q.
+    q = np.where(state.pro == 100, state.ze, state.ze + state.v)  # NOSONAR
     with np.errstate(divide="ignore", invalid="ignore"):
         ppr_new = (state.pv / q) * 100
 
@@ -953,7 +971,10 @@ def _advance_month(prepared: _PalmerPrepared, state: _PalmerRecursion, year: int
     _calc_cafec_zindex(prepared, state, year, month)
 
     z = state.z[year, month]
-    established = (state.pro == 100) | (state.pro == 0)
+    # pro takes its endpoints exactly -- clamped to 100.0, reset to 0.0 -- and
+    # either endpoint means a spell is established; values between them are
+    # abatement.
+    established = (state.pro == 100) | (state.pro == 0)  # NOSONAR
     abating = ~established
 
     # End of drought or wet
@@ -1036,7 +1057,8 @@ def _finish_up(state: _PalmerRecursion) -> None:
         x_val = state.x[i, j, step_cells]
         px3_val = state.px3[i, j, step_cells]
         state.pdsi[i, j, step_cells] = x_val
-        state.phdi[i, j, step_cells] = np.where(px3_val == 0, x_val, px3_val)
+        # the same no-established-spell fallback as _record_index_values
+        state.phdi[i, j, step_cells] = np.where(px3_val == 0, x_val, px3_val)  # NOSONAR
         state.wplm[i, j, step_cells] = final_wplm[step_cells]
 
 
@@ -1108,8 +1130,14 @@ def _validate_fitting_params(prepared: _PalmerPrepared, fitting_params: dict[str
     names = ("alpha", "beta", "gamma", "delta")
     coefficients: list[np.ndarray] = []
     for name in names:
+        supplied = fitting_params.get(name)
+        # np.asarray drops a mask and exposes the backing values underneath, so a
+        # masked coefficient is missing data, not a number (see _fill_masked_with_nan);
+        # reject it like any other malformed set rather than adopt the backing values
+        if np.ma.isMaskedArray(supplied) and np.ma.is_masked(supplied):
+            break
         try:
-            values = np.asarray(fitting_params.get(name), dtype=float)
+            values = np.asarray(supplied, dtype=float)
         except (TypeError, ValueError):
             break
         if values.shape != (12,):
@@ -1309,6 +1337,65 @@ def _bind_palmer_log(
     )
 
 
+_DURATION_FACTOR_PARAM_NAMES = ("wetm", "wetb", "drym", "dryb")
+
+
+def _duration_factor_override(fitting_params: dict[str, Any] | None) -> DurationFactors | None:
+    """
+    Read the optional duration-factor override from the caller's fitting parameters.
+
+    ``pdsi()`` accepts the same ``wetm``/``wetb``/``drym``/``dryb`` keys scPDSI returns,
+    so a caller can run the standard recursion with custom duration factors instead of
+    Palmer's fixed national constants. Supplying only some of the four is a caller
+    error rather than a silent partial default. Only the standard-PDSI path resolves
+    an override: scPDSI's duration factors are always self-calibrated, and it ignores
+    these keys.
+
+    :param fitting_params: the caller's fitting parameters, if any
+    :return: the validated override, or None when no duration factors were supplied
+    :raises ValueError: if only some of the four keys were supplied, or a supplied
+        value is not a finite scalar
+    :raises ConvergenceError: if the override does not yield contracting recurrence
+        coefficients, per :meth:`DurationFactors.from_fitted`
+    """
+    if fitting_params is None:
+        return None
+    supplied = [name for name in _DURATION_FACTOR_PARAM_NAMES if name in fitting_params]
+    if not supplied:
+        return None
+    missing = [name for name in _DURATION_FACTOR_PARAM_NAMES if name not in fitting_params]
+    if missing:
+        raise ValueError(
+            f"duration-factor override requires all of wetm, wetb, drym, and dryb; missing: {', '.join(missing)}"
+        )
+    values = []
+    for name in _DURATION_FACTOR_PARAM_NAMES:
+        supplied = fitting_params[name]
+        # np.asarray drops a mask and exposes the backing values underneath, so a
+        # masked factor is missing data, not a number (see _fill_masked_with_nan).
+        # isMaskedArray first: is_masked reads a bare ``_mask`` attribute off any
+        # object and would raise AttributeError on a non-masked one.
+        if np.ma.isMaskedArray(supplied) and np.ma.is_masked(supplied):
+            raise ValueError(f"duration-factor override {name} must be a finite scalar")
+        try:
+            value = np.asarray(supplied, dtype=float)
+        except (TypeError, ValueError, OverflowError) as error:
+            raise ValueError(f"duration-factor override {name} must be a finite scalar") from error
+        if value.ndim != 0 or not np.isfinite(value):
+            raise ValueError(f"duration-factor override {name} must be a finite scalar")
+        values.append(float(value))
+    try:
+        return DurationFactors.from_fitted(*values)
+    except ConvergenceError as error:
+        # the shared validation names the Wells lineage and the scPDSI
+        # calibration; attribute the failure to this pdsi-only override
+        raise ConvergenceError(
+            f"invalid duration-factor override for the standard PDSI recursion: {error}",
+            algorithm="PDSI duration-factor override",
+            underlying_error=error,
+        ) from error
+
+
 def _prepare_palmer_data(
     precips: np.ndarray,
     pet: np.ndarray,
@@ -1338,6 +1425,10 @@ def _prepare_palmer_data(
         fitting_params=fitting_params,
         spatial_time_major=spatial_time_major,
     )
+    # _initialize_prepared can only set Palmer's fixed defaults, and scPDSI
+    # bypasses these fields entirely (it passes its fitted factors straight to
+    # _palmer_wells.calculate), so a pdsi()-only override is applied by
+    # _palmer_calculation once this stage has finished validating its inputs.
     _calc_water_balances(prepared)
     if prepared.calibrate:
         _calc_cafec_coefficients(prepared)
@@ -1349,9 +1440,10 @@ def _palmer_cafec_params(prepared: _PalmerPrepared) -> dict[str, Any]:
     """
     The alpha/beta/gamma/delta CAFEC parameters, in the caller's shape.
 
-    ``prepared.alpha`` etc. are always 1-D ``(12,)`` when ``fitting_params``
-    was supplied (they are the caller's own arrays, shared across every
-    cell) and otherwise ``(12, n_cells)``, which is reshaped to
+    ``prepared.alpha`` etc. are always 1-D ``(12,)`` when the caller supplied
+    a complete, valid set of ``alpha``/``beta``/``gamma``/``delta`` coefficients
+    (they are the caller's own arrays, shared across every cell) and otherwise
+    ``(12, n_cells)``, which is reshaped to
     ``(12, *cell_shape)`` for a spatial block or squeezed back to ``(12,)``
     for a single location, matching :func:`pdsi`'s pre-existing contract.
     """
@@ -1389,7 +1481,9 @@ def _calculate_pdsi_prepared(prepared: _PalmerPrepared, original_length: int) ->
         phdi = phdi[:, 0]
         wplm = wplm[:, 0]
         z = z[:, 0]
-    return _PalmerResult(pdsi_result, phdi, wplm, z, _palmer_cafec_params(prepared))
+    params = _palmer_cafec_params(prepared)
+    params.update(wetm=prepared.wetm, wetb=prepared.wetb, drym=prepared.drym, dryb=prepared.dryb)
+    return _PalmerResult(pdsi_result, phdi, wplm, z, params)
 
 
 def _calculate_scpdsi_prepared(prepared: _PalmerPrepared, original_length: int) -> _PalmerResult:
@@ -1410,7 +1504,10 @@ def _calculate_scpdsi_prepared(prepared: _PalmerPrepared, original_length: int) 
         drym=drym,
         dryb=dryb,
     )
-    for _ in range(3):
+    # a fixed three rescaling passes, not an iteration to a fixed point; reported
+    # in the result parameters so callers and tests can pin the count
+    rescale_passes = 3
+    for _ in range(rescale_passes):
         calibration_pdsi = _calibration_values(prepared, recursion.pdsi)
         dry_percentile = self_calibration.nan_safe_percentile(calibration_pdsi, 0.02)
         wet_percentile = self_calibration.nan_safe_percentile(calibration_pdsi, 0.98)
@@ -1424,7 +1521,7 @@ def _calculate_scpdsi_prepared(prepared: _PalmerPrepared, original_length: int) 
         )
 
     params: dict[str, Any] = _palmer_cafec_params(prepared)
-    params.update(wetm=wetm, wetb=wetb, drym=drym, dryb=dryb)
+    params.update(wetm=wetm, wetb=wetb, drym=drym, dryb=dryb, rescale_passes=rescale_passes)
     return _PalmerResult(
         recursion.pdsi[:original_length],
         recursion.phdi[:original_length],
@@ -1495,6 +1592,7 @@ def _palmer_calculation(
     calibration_year_final: int,
     fitting_params: dict[str, Any] | None,
     spatial_time_major: bool = False,
+    use_fitting_duration_factors: bool = False,
 ) -> _PalmerResult:
     """Run validation, shared setup, logging, and one Palmer calculation."""
     log = _bind_palmer_log(
@@ -1557,6 +1655,19 @@ def _palmer_calculation(
             log,
             spatial_time_major=spatial_time_major,
         )
+        duration_factors = None
+        if use_fitting_duration_factors:
+            # resolved inside the try (so a malformed override emits the same
+            # calculation_started/calculation_failed lifecycle as other input errors)
+            # and after _prepare_palmer_data (so it cannot mask an input error or turn
+            # the all-missing return below into a raise), but before the recursion,
+            # the only reader of these fields.
+            duration_factors = _duration_factor_override(fitting_params)
+            if duration_factors is not None:
+                prepared.wetm = duration_factors.wetm
+                prepared.wetb = duration_factors.wetb
+                prepared.drym = duration_factors.drym
+                prepared.dryb = duration_factors.dryb
         result = calculate_prepared(prepared, original_length)
         if precips.ndim > 2:
             result = _mask_fully_missing_cells(precips, result)
@@ -1608,6 +1719,21 @@ def pdsi(
         calibration_year_final: Final year of the calibration period.
         fitting_params: Dictionary of the fitted parameters. For a spatial
             block, each coefficient is still (12,), shared across every cell.
+            Supplying all four of ``wetm``, ``wetb``, ``drym``, and ``dryb``
+            overrides Palmer's fixed national duration factors with those
+            scalars (validated like scPDSI's calibrated factors); supplying
+            only some of the four raises :class:`ValueError`. An override
+            produces PDSI with caller-supplied duration factors, not Palmer's
+            (1965) standard index and not scPDSI: the CAFEC
+            ``alpha``/``beta``/``gamma``/``delta`` coefficients stay fitted
+            from the record unless a complete, valid set is supplied alongside
+            (a partial set is discarded and all four are re-fitted), and this
+            repository's external validation covers the default-factor runs.
+            :func:`scpdsi` returns the four keys in its parameter dictionary
+            and ignores them on input; it calibrates them against its own
+            K-prime Z series and then rescales that series around the fitted
+            factors, so feeding that dictionary back here applies factors
+            fitted for that recursion rather than the national defaults.
         spatial_time_major: Declares a three-or-more-dimensional precips/pet
             as a time-major spatial block, per ADR-0009.
 
@@ -1615,11 +1741,31 @@ def pdsi(
         tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any] | None]:
             A five-item tuple containing NumPy arrays of PDSI, PHDI, PMDI, and
             Z-Index values, respectively, and a dictionary containing the
-            fitted ``alpha``, ``beta``, ``gamma``, and ``delta`` parameters.
+            fitted ``alpha``, ``beta``, ``gamma``, and ``delta`` parameters
+            plus the effective ``wetm``, ``wetb``, ``drym``, and ``dryb``
+            duration factors (Palmer's defaults unless overridden). Passing
+            that dictionary back as ``fitting_params`` reproduces the run; a
+            spatial block's returned coefficient arrays are re-fit rather
+            than reused, which is numerically equivalent.
             For all-missing input, the parameter dictionary is ``None``. A
             spatial block's outputs keep precips' cell shape, and the
-            parameter arrays gain the same trailing shape unless
-            ``fitting_params`` was supplied.
+            parameter arrays gain the same trailing shape unless a complete,
+            valid set of ``alpha``/``beta``/``gamma``/``delta`` coefficients was
+            supplied in ``fitting_params``.
+
+    Raises:
+        ValueError: If ``precips`` and ``pet`` have incompatible shapes, if a
+            2-D array's second dimension is not 12, if a spatial block's shape
+            is ambiguous, if ``awc`` is not broadcastable to a block's cell
+            shape, if either data array contains infinite values, or if the
+            calibration period is not an inclusive interval
+            within the input data years; and, for input that is not all-missing,
+            if only some of the ``wetm``/``wetb``/``drym``/``dryb`` override keys
+            were supplied or a supplied value is not a finite scalar.
+        ConvergenceError: If a supplied duration-factor override does not
+            yield contracting recurrence coefficients (never raised for
+            all-missing input, which returns the NaN arrays and ``None``
+            parameters described above).
     """
 
     # _palmer_calculation emits calculation_started, calculation_completed,
@@ -1635,6 +1781,7 @@ def pdsi(
         calibration_year_final,
         fitting_params,
         spatial_time_major=spatial_time_major,
+        use_fitting_duration_factors=True,
     )
 
 
@@ -1665,18 +1812,24 @@ def scpdsi(
         calibration_year_final: Final year of the inclusive calibration period.
         fitting_params: Optional CAFEC coefficients to reuse. Valid ``alpha``,
             ``beta``, ``gamma``, and ``delta`` arrays follow :func:`pdsi`'s
-            behavior; duration factors are always recalibrated.
+            behavior; duration factors are always recalibrated, so the
+            ``wetm``/``wetb``/``drym``/``dryb`` override keys :func:`pdsi`
+            accepts are ignored here.
 
     Returns:
         A tuple containing scPDSI, scPHDI, scPMDI, the cumulatively calibrated
         Z-index, and fitted parameters. The parameter dictionary contains
         ``alpha``, ``beta``, ``gamma``, ``delta``, ``wetm``, ``wetb``,
-        ``drym``, and ``dryb``. All-missing input returns four same-length
+        ``drym``, ``dryb``, and ``rescale_passes`` (the fixed count of Z-index
+        rescaling passes). All-missing input returns four same-length
         missing arrays and ``None``.
 
     Raises:
-        ValueError: If precipitation and PET have different lengths, or if
-            precips/pet is a spatial block (three or more dimensions).
+        ValueError: If precipitation and PET have different numbers of
+            elements, if a 2-D array's second dimension is not 12, if either
+            contains infinite values, if the calibration period is not an
+            inclusive interval within the input data years, or if precips/pet
+            is a spatial block (three or more dimensions).
             scPDSI runs the Wells backtracking recursion once per cell plus
             per-location duration-factor fits, so it stays on the
             per-location path -- see ADR-0011 -- while :func:`pdsi` vectorizes

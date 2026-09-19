@@ -79,10 +79,11 @@ move with the code, are addressed to maintainers, and would otherwise reach
 readers as competing instructions. Because a Markdown suffix publishes every
 page it can find, pages are excluded by path in `docs/conf.py`
 (`exclude_patterns`), not by convention: internal pages are never built into
-the site. A published page stays excluded until it is wired into navigation,
-unless another built page links to it as a document — a link to an excluded
-page fails the warnings-as-errors build — in which case it builds behind a
-hidden toctree until its navigation lands. When a page is added or moves
+the site. A published page stays excluded until it is wired into navigation: a
+link to an excluded page fails the warnings-as-errors build, and the
+release-integrity test rejects a published page parked in a hidden toctree, so
+publishing a page and adding it to its section toctree happen together. When a
+page is added or moves
 between audiences, update that exclusion list and this section in the same
 change.
 
@@ -90,18 +91,22 @@ Current assignments (the context map and validation status live at the
 repository root — `CONTEXT-MAP.md`, `VALIDATION.md` — and the core-library
 vocabulary at `src/climate_indices/CONTEXT.md`):
 
-- Tutorial: `docs/quickstart.md`, `docs/index.rst`
-- How-to guide: `docs/troubleshooting.md`, `docs/xarray_migration.md`,
+- Router: `docs/index.md` (the homepage routes into the four sections below)
+- Tutorial: `docs/tutorials.md`, `docs/quickstart.md`
+- How-to guide: `docs/how-to.md`, `docs/workflow-examples.md`,
+  `docs/troubleshooting.md`, `docs/xarray_migration.md`, `docs/performance.md`,
   `docs/development-guide.md`, `docs/contribution-guide.md`,
   `docs/deployment-guide.md`, `docs/release-process.md`
-- Reference: `docs/reference.md`, `docs/algorithms.md`,
-  `docs/deprecations/`, `docs/xarray_compatibility.md`,
+- Reference: `docs/reference.md`, `docs/algorithm-reference.md`,
+  `docs/data_requirements.md`, `docs/error-reference.md`, `docs/deprecations/`,
+  `docs/xarray_compatibility.md`,
   `docs/research/nclimgrid-acquisition-and-redistribution.md` (the
   troubleshooting guide sends readers there for source provenance and
   attribution),
   `src/climate_indices/CONTEXT.md`, `VALIDATION.md`
-- Explanation: `docs/ai-assisted-development.md`,
+- Explanation: `docs/explanation.md`, `docs/algorithms.md`,
   `docs/wildfire_applications.md`, `docs/adr/`,
+  `docs/ai-assisted-development.md`,
   `docs/algorithm_refs/`, `docs/architecture.md`,
   `docs/project-overview.md`, `docs/floating_point_best_practices.md`
 - Internal: `docs/agent/`, `docs/design/`,
@@ -109,13 +114,42 @@ vocabulary at `src/climate_indices/CONTEXT.md`):
   `docs/research/interactive-climate-explorer-landscape.md`,
   `docs/research/dri-wrcc-scpdsi-assessment.md`,
   `docs/explorer/`, `docs/architecture-deepening-review-*.md`,
+  `docs/ai-assisted-development-report-*.md`,
   `docs/test_fixture_management.md`, `CONTEXT-MAP.md`
 - Published URL-retention orphan: `docs/pypi_release.md` (`orphan: true`; kept
   only so the previously published `pypi_release.html` URL resolves)
 
 Build infrastructure (`docs/conf.py`, `docs/Makefile`, `docs/make.bat`,
-`docs/_static/`, `docs/_templates/`) and assets referenced by no page
-(`docs/gallery/*.png`) are not pages and are outside this split.
+`docs/_static/`, `docs/_templates/`) is not page content and is outside this
+split.
+
+### Markdown authoring conventions
+
+Every page source is a Markdown file under `docs/`, rendered by Sphinx through
+MyST-Parser (`docs/conf.py` sets `source_suffix = ".md"`, so an RST file left in
+the tree is silently absent from the site). The conventions a page has to
+follow to build:
+
+- **Directives** use the fenced form: admonitions as `:::{note}` / `:::{warning}`,
+  block directives as ```` ```{list-table} ```` / ```` ```{toctree} ````.
+  reStructuredText directives and roles (`.. note::`, `:doc:`) do not render in
+  Markdown — they stay as literal text — so a page that still carries one is an
+  unfinished conversion.
+- **Autodoc** stays inside `{eval-rst}` blocks, because autodoc emits
+  reStructuredText and MyST would otherwise render the generated markup
+  literally.
+- **Cross-links**: `` {doc}`troubleshooting` `` links another published page by
+  its source path (no suffix); domain roles such as
+  `` {func}`climate_indices.palmer.pdsi` `` resolve through autodoc, so they
+  have to name a module path the reference page documents — an unresolved role
+  renders as plain code and does not fail the gate. Section links use heading
+  anchors (`#some-heading`, provided by `myst_heading_anchors`), and a page
+  that is published to the site links repository-root files by absolute GitHub
+  URL, since they are not Sphinx source documents.
+- **Runnable examples**: examples the docs gate executes are `testsetup`,
+  `testcode`, `doctest`, and `testcleanup` blocks; the build runs
+  `sphinx-build -b doctest` and fails on a failing example. Shell commands go
+  in fenced ```` ```bash ```` blocks, which are not executed.
 
 ## Local validation
 

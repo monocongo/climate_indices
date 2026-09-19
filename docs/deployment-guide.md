@@ -155,14 +155,14 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-exclude = ["tests/", "docs/", "notebooks/", ...]
+exclude = ["tests/", "docs/", "notebooks/"]
 ```
 
 ## ReadTheDocs Deployment
 
 ### Documentation Hosting
 - **URL**: [https://climate-indices.readthedocs.io/](https://climate-indices.readthedocs.io/)
-- **Source**: `docs/*.md` and `docs/index.rst` (Sphinx)
+- **Source**: `docs/*.md` (Sphinx)
 - **Build**: Automatic on push to `main`
 - **Versions**: Tracks git tags
 
@@ -176,7 +176,11 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.viewcode',
     'sphinx.ext.githubpages',
+    'myst_parser',
 ]
+
+# Markdown is the only page source format (RST retired in 3.0.0)
+source_suffix = ".md"
 ```
 
 ## Dependency Management
@@ -188,19 +192,20 @@ extensions = [
 
 ### Dependency Groups
 ```toml
-[project.dependencies]
+[project]
 # Core runtime dependencies
-scipy>=1.15.3
-xarray>=2025.6.1
-dask>=2025.7.0
-structlog>=24.1.0
+dependencies = [
+    "scipy>=1.15.3",
+    "xarray>=2025.6.1",
+    "dask>=2025.7.0",
+    "structlog>=24.1.0",
+]
 
 [dependency-groups]
 dev = [
     "pytest>=8.4.1",
     "ruff>=0.12.7",
     "mypy",
-    ...
 ]
 ```
 
@@ -230,4 +235,4 @@ configure_logging(
 
 ---
 
-See [architecture.md](./architecture.md) for system design and [development-guide.md](./development-guide.md) for local development setup.
+See {doc}`architecture` for system design and {doc}`development-guide` for local development setup.

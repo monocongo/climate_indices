@@ -56,7 +56,7 @@ A monthly moisture-anomaly index — the weighted difference between actual prec
 _Avoid_: Moisture anomaly index (informal synonym used in one comment; prefer Z-Index)
 
 **scPDSI (Self-calibrated Palmer Drought Severity Index)**:
-The Wells et al. (2004) self-calibrating variant of PDSI, which recalibrates duration factors and the K-prime (K′) climate characteristic per location instead of using fixed national constants. K-prime is distinct from the standard K-Factor defined below. It is available through the NumPy API as `palmer.scpdsi()`. The CLI's `--index palmers` path continues to produce only PDSI, PHDI, PMDI, and Z-Index until CLI support is added separately.
+The Wells et al. (2004) self-calibrating variant of PDSI, which recalibrates duration factors and the K-prime (K′) climate characteristic per location instead of using fixed national constants. K-prime is distinct from the standard K-Factor defined below. It is available through the NumPy API as `palmer.scpdsi()` and through the CLI's `--index palmers` path, which writes it as `<output_file_base>_scpdsi.nc` alongside the four standard outputs.
 
 **CAFEC (Climatically Appropriate For Existing Conditions)**:
 Per-calendar-month calibration coefficients (alpha, beta, gamma, delta) computed from calibration-period water-balance sums, representing the precipitation/moisture terms "appropriate" for that location's climate — actual conditions are compared against CAFEC to produce the Z-Index.
@@ -68,7 +68,7 @@ A location's total soil moisture-holding capacity, in inches, split into a fixed
 Monthly weighting factors that convert the raw CAFEC moisture departure into the Z-Index, calibrated to make Z-Index values comparable in severity across different climates.
 
 **Duration Factors (m, b)** and the **duration-factor weighting fraction (c)**:
-The slope and intercept of the line that maps a spell's accumulated Z-Index onto PDSI severity: fixed at Palmer's (1965) national defaults for standard PDSI, fitted per location by scPDSI. The same pair implies the duration-factor weighting fraction `c`, the share of previously accumulated severity each recursion carries forward (`c = b / (m + b)`, equivalently `1 - m / (m + b)`), while the current period's Z-Index enters divided by `m + b`. The pdi.f and Wells recursions derive `c` with those two different expressions and neither is guaranteed bit-identical to the other, so each keeps its own. Distinct from the K-Factor weighting factors above, which weight the Z-Index rather than the accumulated severity.
+The slope and intercept of the line that maps a spell's accumulated Z-Index onto PDSI severity: Palmer's (1965) national defaults for standard PDSI, overridable through `pdsi()`'s `fitting_params`, and fitted per location by scPDSI. The same pair implies the duration-factor weighting fraction `c`, the share of previously accumulated severity each recursion carries forward (`c = b / (m + b)`, equivalently `1 - m / (m + b)`), while the current period's Z-Index enters divided by `m + b`. The pdi.f and Wells recursions derive `c` with those two different expressions and neither is guaranteed bit-identical to the other, so each keeps its own. Distinct from the K-Factor weighting factors above, which weight the Z-Index rather than the accumulated severity.
 
 ### PET (Potential Evapotranspiration)
 
@@ -133,10 +133,19 @@ A gridded input array shaped `(time, *cells)` — the time axis first, every tra
 _Avoid_: time-major block (the code spelling, not the prose term)
 
 **Spatial Kernel**:
-An index whose NumPy core accepts a Spatial Block, declared per index with `spatial_kernel=True` at its adapter call site. Such an index runs one `xr.apply_ufunc` call per non-core block instead of one per grid cell; indices whose cores still loop over cells keep the Per-Cell Path.
+An index whose NumPy core accepts a Spatial Block, declared per index with `spatial_kernel=True` at its adapter call site, or by an entry point that owns its `xr.apply_ufunc` call (`pet_thornthwaite`/`pet_hargreaves`, `pdsi`). Such an index runs one `xr.apply_ufunc` call per non-core block instead of one per grid cell; indices whose cores still loop over cells keep the Per-Cell Path.
 
 **Per-Cell Path**:
-The alternative dispatch, `xr.apply_ufunc(..., vectorize=True)`, which calls the kernel once per grid cell over 1-D time series. Still used for inputs with a single non-core dimension, and for the index families listed in [ADR-0009](../../docs/adr/0009-spatial-block-declaration.md) (#937).
+The alternative dispatch, `xr.apply_ufunc(..., vectorize=True)`, which calls the kernel once per grid cell over 1-D time series. Still used for inputs with a single non-core dimension. scPDSI has no adapter entry point at all and stays on the per-location NumPy path ([ADR-0011](../../docs/adr/0011-palmer-spatial-block-and-per-location-scpdsi.md)).
+
+### Input validation
+
+**Input Type**:
+The array backend a computation's inputs arrive in — NumPy-coercible (ndarray, list, tuple, scalars) or `xarray.DataArray` — classified by `validation.detect_input_type()` for adapter dispatch. Says nothing about how a dataset is stored.
+
+**Dataset Layout**:
+The storage layout a NetCDF dataset's data variables follow — `grid` (lat/lon), `divisions` (US climate division IDs), or `timeseries` — together with the dimension orders each one accepts: `validation.detect_dataset_layout()` classifies it and `validation.expected_dimensions()` reports the orders, including the time-free ones a per-location companion such as available water capacity uses. The CLI validates its inputs against this contract. Distinct from Input Type: a grid dataset read into NumPy arrays is still `InputType.NUMPY`. The CLI's shared-array transport copies values in storage order and its kernels index the time axis at a fixed position, so a `grid` data variable has to be stored `(lat, lon, time)`.
+_Avoid_: Input type (that term names the array backend above)
 
 ### Metadata & provenance
 

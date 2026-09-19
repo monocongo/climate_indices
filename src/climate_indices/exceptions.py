@@ -7,7 +7,7 @@ users to catch all library-specific errors with a single handler.
 from __future__ import annotations
 
 import warnings
-from typing import Any
+from typing import Any, NoReturn
 
 __all__ = [
     "ClimateIndicesError",
@@ -29,6 +29,7 @@ __all__ = [
     "BetaFeatureWarning",
     "ClimateIndicesDeprecationWarning",
     "emit_deprecation_warning",
+    "wrap_value_error",
 ]
 
 # private constant for constructing migration guide URLs
@@ -147,28 +148,6 @@ class ConvergenceError(DistributionFittingError):
         self.iterations = iterations
 
 
-class DimensionMismatchError(ClimateIndicesError):
-    """Raised when array dimensions don't match expected structure.
-
-    This exception is raised when input arrays have incompatible shapes
-    or when required dimensions are missing.
-
-    Attributes:
-        expected_dims: The expected dimension structure
-        actual_dims: The actual dimension structure found
-    """
-
-    def __init__(
-        self,
-        message: str,
-        expected_dims: Any = None,
-        actual_dims: Any = None,
-    ) -> None:
-        super().__init__(message)
-        self.expected_dims = expected_dims
-        self.actual_dims = actual_dims
-
-
 class CoordinateValidationError(ClimateIndicesError):
     """Raised when coordinate validation fails.
 
@@ -189,6 +168,38 @@ class CoordinateValidationError(ClimateIndicesError):
         super().__init__(message)
         self.coordinate_name = coordinate_name
         self.reason = reason
+
+
+class DimensionMismatchError(CoordinateValidationError):
+    """Raised when required named dimensions are missing or incompatible.
+
+    This exception is raised when an input DataArray does not carry the
+    dimension structure the computation expects, e.g. a missing time
+    dimension. Unlike :class:`DataShapeError` (which applies to raw NumPy
+    array shapes), this applies to xarray named dimensions.
+
+    A specialization of :class:`CoordinateValidationError`, so handlers that
+    already catch that type keep catching these failures -- the same
+    relationship :class:`PeriodicityError` has with
+    :class:`InvalidArgumentError`.
+
+    Attributes:
+        expected_dims: The expected dimension structure
+        actual_dims: The actual dimension structure found
+    """
+
+    def __init__(
+        self,
+        message: str,
+        expected_dims: Any = None,
+        actual_dims: Any = None,
+        *,
+        coordinate_name: str | None = None,
+        reason: str | None = None,
+    ) -> None:
+        super().__init__(message, coordinate_name=coordinate_name, reason=reason)
+        self.expected_dims = expected_dims
+        self.actual_dims = actual_dims
 
 
 class InputTypeError(ClimateIndicesError):
@@ -271,8 +282,8 @@ class DataShapeError(ClimateIndicesError):
 
     This exception is raised when NumPy arrays have shapes that cannot
     be reshaped or processed for the given computation. Unlike
-    DimensionMismatchError (which applies to xarray named dimensions),
-    this applies to raw array shape validation.
+    :class:`DimensionMismatchError` (which applies to xarray named
+    dimensions), this applies to raw array shape validation.
 
     Attributes:
         expected_shape: Description of the expected shape (e.g., "(years, 12)")
@@ -420,8 +431,9 @@ class BetaFeatureWarning(ClimateIndicesWarning):
 
     Beta features have stable behavior within a minor version but their API
     surface (parameter names, return types, metadata attributes) may change
-    in future minor releases. The core computation results are identical
-    to the stable NumPy API.
+    in future minor releases. The xarray adapter layer is the Beta surface in
+    3.0.0 and is promoted no earlier than 3.1.0 (ADR-0012). The core computation
+    results are identical to the stable NumPy API.
 
     Users can suppress beta warnings via:
         warnings.filterwarnings("ignore", category=BetaFeatureWarning)
@@ -463,6 +475,27 @@ class ClimateIndicesDeprecationWarning(ClimateIndicesWarning, DeprecationWarning
         self.removal_version = removal_version
         self.alternative = alternative
         self.migration_url = migration_url
+
+
+def wrap_value_error(
+    exc: Exception,
+    *,
+    message: str,
+    argument_name: str,
+    argument_value: str,
+    valid_values: str,
+) -> NoReturn:
+    """Raise an InvalidArgumentError carrying standard argument context, chained to exc.
+
+    Intended for ``except`` blocks that translate a broadcasting/parsing failure
+    into the library's argument-validation contract.
+    """
+    raise InvalidArgumentError(
+        message,
+        argument_name=argument_name,
+        argument_value=argument_value,
+        valid_values=valid_values,
+    ) from exc
 
 
 def emit_deprecation_warning(

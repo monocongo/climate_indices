@@ -11,8 +11,11 @@ import pytest
 import xarray as xr
 
 from climate_indices import validation
-from climate_indices.exceptions import CoordinateValidationError
+from climate_indices.exceptions import CoordinateValidationError, DimensionMismatchError
 from climate_indices.validation import (
+    DatasetLayout,
+    detect_dataset_layout,
+    expected_dimensions,
     validate_dask_chunks,
     validate_time_dimension,
     validate_time_monotonicity,
@@ -33,13 +36,17 @@ class TestValidateTimeDimension:
         validate_time_dimension(sample_monthly_precip_da, "time")
 
     def test_missing_dimension_raises(self, no_time_dim_da):
-        """Missing time dimension raises CoordinateValidationError."""
-        with pytest.raises(CoordinateValidationError) as exc_info:
+        """Missing time dimension raises DimensionMismatchError."""
+        with pytest.raises(DimensionMismatchError) as exc_info:
             validate_time_dimension(no_time_dim_da, "time")
 
         assert "not found" in str(exc_info.value).lower()
         assert exc_info.value.coordinate_name == "time"
         assert exc_info.value.reason == "missing_dimension"
+        assert exc_info.value.expected_dims == "time"
+        assert exc_info.value.actual_dims == tuple(no_time_dim_da.dims)
+        # existing handlers that catch the general type keep catching it
+        assert isinstance(exc_info.value, CoordinateValidationError)
 
     def test_error_message_includes_available_dims(self, no_time_dim_da):
         """Error message lists available dimensions."""
@@ -222,14 +229,92 @@ class TestValidateDaskChunks:
         validate_dask_chunks(dask_da, "time")
 
 
+class TestDatasetLayout:
+    """Test the dataset-layout classifier the CLI validates its inputs against."""
+
+    @pytest.mark.parametrize(
+        ("dimensions", "layout"),
+        [
+            (("lat", "lon", "time"), DatasetLayout.GRID),
+            (("time", "lat", "lon"), DatasetLayout.GRID),
+            (("time", "division"), DatasetLayout.DIVISIONS),
+            (("division", "time"), DatasetLayout.DIVISIONS),
+            (("time",), DatasetLayout.TIMESERIES),
+        ],
+    )
+    def test_detects_supported_layouts(self, dimensions, layout):
+        """Each supported dimension order classifies as its layout."""
+        assert detect_dataset_layout(dimensions, "precipitation") is layout
+
+    @pytest.mark.parametrize(
+        "dimensions",
+        [
+            (),
+            ("time", "lat"),
+            ("lon", "lat", "time"),
+            ("lat", "lon"),
+            ("division",),
+            ("lat", "lon", "time", "extra"),
+        ],
+    )
+    def test_rejects_unsupported_layouts(self, dimensions):
+        """An unrecognized order is rejected, naming the variable and accepted forms."""
+        with pytest.raises(ValueError) as exc_info:
+            detect_dataset_layout(dimensions, "precipitation")
+
+        assert str(exc_info.value) == (
+            f"Invalid dimensions of the precipitation variable: {dimensions}\n"
+            "Valid dimension names and order: "
+            "[('lat', 'lon', 'time'), ('time', 'lat', 'lon'), ('time', 'division'), ('division', 'time'), ('time',)]"
+        )
+
+    def test_unrecognized_layout_event_names_the_variable(self):
+        """The structured event must name the variable whose dimensions were rejected."""
+        mock_logger = mock.MagicMock()
+
+        with (
+            mock.patch("climate_indices.validation._log", return_value=mock_logger),
+            pytest.raises(ValueError),
+        ):
+            detect_dataset_layout(("division",), "temperature")
+
+        mock_logger.error.assert_called_once_with(
+            "dataset_layout_unrecognized",
+            variable="temperature",
+            dimensions=("division",),
+            accepted=[
+                ("lat", "lon", "time"),
+                ("time", "lat", "lon"),
+                ("time", "division"),
+                ("division", "time"),
+                ("time",),
+            ],
+        )
+
+    def test_expected_dimensions_are_the_layouts_accepted_orders(self):
+        """Each layout reports the dimension orders it accepts, in storage order."""
+        assert expected_dimensions(DatasetLayout.GRID) == (("lat", "lon", "time"), ("time", "lat", "lon"))
+        assert expected_dimensions(DatasetLayout.DIVISIONS) == (("time", "division"), ("division", "time"))
+        assert expected_dimensions(DatasetLayout.TIMESERIES) == (("time",),)
+
+    def test_per_location_companions_carry_no_time_dimension(self):
+        """A layout's fixed-per-location variables have no time dimension."""
+        assert expected_dimensions(DatasetLayout.GRID, includes_time=False) == (("lat", "lon"),)
+        assert expected_dimensions(DatasetLayout.DIVISIONS, includes_time=False) == (("division",),)
+        assert expected_dimensions(DatasetLayout.TIMESERIES, includes_time=False) is None
+
+
 class TestValidationPublicSurface:
     """The facade's public surface stays exactly as declared."""
 
     def test_all_names_resolve(self):
         """Every name in __all__ resolves to a module attribute."""
         assert validation.__all__ == [
+            "DatasetLayout",
             "InputType",
+            "detect_dataset_layout",
             "detect_input_type",
+            "expected_dimensions",
             "validate_dask_chunks",
             "validate_time_dimension",
             "validate_time_monotonicity",

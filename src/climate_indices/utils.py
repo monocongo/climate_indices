@@ -1,4 +1,11 @@
-"""Various utility/convenience functions"""
+"""Various utility/convenience functions
+
+Every name in ``__all__`` is supported public API: helpers with no in-package
+caller (``compute_days``, ``is_data_valid``, ``rmse``, ``sign_change``,
+``gregorian_length_as_366day``, ``reshape_to_divs_years_months``) are kept for
+downstream users rather than deprecated, since removing them would break
+callers without offering an in-library replacement.
+"""
 
 import calendar
 import logging

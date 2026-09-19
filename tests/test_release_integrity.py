@@ -21,7 +21,9 @@ Two tiers of tests:
 
 from __future__ import annotations
 
+import fnmatch
 import re
+import subprocess
 import sys
 from importlib.metadata import version as get_pkg_version
 from pathlib import Path
@@ -225,7 +227,7 @@ def test_front_page_python_support_matches_classifiers() -> None:
     versions = _declared_python_versions()
     badge_url = _expected_badge_url()
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    docs_index = (ROOT / "docs" / "index.rst").read_text(encoding="utf-8")
+    docs_index = (ROOT / "docs" / "index.md").read_text(encoding="utf-8")
     release_process = (ROOT / "docs" / "release-process.md").read_text(encoding="utf-8")
 
     support_rows = re.findall(r"^\| (\d+\.\d+) \| Supported \|([^|]*)\|$", readme, re.MULTILINE)
@@ -235,8 +237,76 @@ def test_front_page_python_support_matches_classifiers() -> None:
 
     badge_label = f"Python | {versions[0]}-{versions[-1]}"
     assert f"[![{badge_label}]({badge_url})](#supported-python-versions)" in readme
-    assert f".. |Python| image:: {badge_url}" in docs_index
+    assert f"![Python | {versions[0]}-{versions[-1]}]({badge_url})" in docs_index
     assert badge_url in release_process
+
+
+def test_wildfire_applications_cross_links_use_myst_roles() -> None:
+    """Cross-page links must be MyST `{doc}` roles, not literal RST `:doc:` text."""
+    page = (ROOT / "docs" / "wildfire_applications.md").read_text(encoding="utf-8")
+    assert "{doc}`xarray_migration`" in page
+    assert "{doc}`index`" in page
+    assert ":doc:" not in page, (
+        "docs/wildfire_applications.md must use MyST {doc} roles; an RST :doc: role renders as literal text"
+    )
+
+
+def test_every_published_docs_page_has_one_visible_section() -> None:
+    """Published pages must be reachable from the four visible section toctrees.
+
+    Sphinx's warnings-as-errors build only catches a page that is in no toctree at
+    all; a page parked in a hidden toctree, or one misassigned to a section, still
+    builds green. This keeps the four-section navigation and the exclusion list in
+    `docs/conf.py` honest without parsing built HTML.
+    """
+    docs = ROOT / "docs"
+    conf = (docs / "conf.py").read_text(encoding="utf-8")
+    exclude_block = re.search(r"^exclude_patterns = \[(.*?)^\]", conf, re.MULTILINE | re.DOTALL)
+    assert exclude_block is not None, "docs/conf.py must define exclude_patterns"
+    excluded = re.findall(r'"([^"]+)"', exclude_block.group(1))
+
+    def is_excluded(relative: str) -> bool:
+        return any(
+            fnmatch.fnmatch(relative, pattern) or any(fnmatch.fnmatch(part, pattern) for part in Path(relative).parts)
+            for pattern in excluded
+        )
+
+    sources = {
+        path.relative_to(docs).with_suffix("").as_posix()
+        for path in docs.rglob("*.md")
+        if not is_excluded(path.relative_to(docs).as_posix())
+    }
+
+    toctree = re.compile(r"^```\{toctree\}(.*?)^```", re.MULTILINE | re.DOTALL)
+    visible: set[str] = set()
+    hidden: set[str] = set()
+    for page in sorted(sources):
+        text = (docs / f"{page}.md").read_text(encoding="utf-8")
+        for block in toctree.findall(text):
+            entries = {
+                (Path(page).parent / line.strip()).as_posix()
+                for line in block.splitlines()
+                if line.strip() and not line.strip().startswith(":")
+            }
+            (hidden if ":hidden:" in block else visible).update(entries)
+
+    orphans = {
+        page
+        for page in sources
+        if re.search(r"^orphan:\s*true\s*$", (docs / f"{page}.md").read_text(encoding="utf-8"), re.MULTILINE)
+    }
+
+    required = sources - orphans - hidden - {"index"}
+    assert required == visible, "every published page must appear in exactly one visible section toctree"
+    assert not visible & hidden, "a page cannot be both a visible section member and hidden"
+    assert not hidden, "no published page may sit in a hidden toctree; add a staged page to its section toctree instead"
+    assert orphans == {"pypi_release"}, "pypi_release is the only documented orphan"
+
+    homepage = toctree.search((docs / "index.md").read_text(encoding="utf-8"))
+    assert homepage is not None, "docs/index.md must route into the four sections"
+    assert {
+        line.strip() for line in homepage.group(1).splitlines() if line.strip() and not line.strip().startswith(":")
+    } == {"tutorials", "how-to", "reference", "explanation"}
 
 
 def test_release_process_documents_pypi_metadata_verification() -> None:
@@ -322,13 +392,18 @@ def test_release_workflow_creates_github_release() -> None:
 def test_release_workflow_smoke_tests_built_wheel() -> None:
     """The built wheel must install and expose the public API outside the checkout."""
     workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    wheel_check = workflow.split("\n  wheel-check:", maxsplit=1)[1].split("\n  publish:", maxsplit=1)[0]
 
-    assert "Test wheel installation" in workflow
-    assert 'python -m venv "${RUNNER_TEMP}/wheel-check"' in workflow
-    assert 'cd "${RUNNER_TEMP}"' in workflow
+    assert "Test wheel installation" in wheel_check
+    assert 'python -m venv "${RUNNER_TEMP}/wheel-check"' in wheel_check
+    assert 'cd "${RUNNER_TEMP}"' in wheel_check
     assert (
-        "from climate_indices import eddi, pci, percentage_of_normal, pet_hargreaves, pet_thornthwaite, spei, spi"
-        in workflow
+        "from climate_indices import eddi, fire, pci, percentage_of_normal, pet_hargreaves, pet_thornthwaite, spei, spi"
+        in wheel_check
+    )
+    assert (
+        "assert all(map(callable, (fire.kbdi, fire.cffwis, fire.fosberg_ffwi, fire.hot_dry_windy, fire.haines_index)))"
+        in wheel_check
     )
 
 
@@ -409,6 +484,52 @@ def test_v240_public_api_importable() -> None:
     from climate_indices import eddi
 
     assert callable(eddi)
+
+
+def test_v300_public_api_importable() -> None:
+    """The 3.0.0 fire namespace must be a public package export with a stable surface.
+
+    The fire subsystem is the headline 3.0.0 addition. If the public __init__ stops
+    exporting it, the package still installs but the namespace is absent from the
+    advertised API; the export list is pinned so the 3.0.0 public surface cannot
+    shrink unnoticed.
+    """
+    import climate_indices
+    from climate_indices import fire
+
+    assert "fire" in climate_indices.__all__
+    # A fresh interpreter proves the eager __init__ export: in this process
+    # `from climate_indices import fire` would import the submodule as a fallback
+    # and mask a removed top-level import.
+    subprocess.run([sys.executable, "-c", "import climate_indices; assert climate_indices.fire"], check=True)
+    assert set(fire.__all__) == {
+        "CFFWISResult",
+        "CFFWISState",
+        "DCResult",
+        "DCState",
+        "DMCResult",
+        "DMCState",
+        "FFMCResult",
+        "FFMCState",
+        "KBDIResult",
+        "KBDIState",
+        "buildup_index",
+        "cffwis",
+        "cffwis_fwi",
+        "daily_severity_rating",
+        "drought_code",
+        "duff_moisture_code",
+        "ffmc",
+        "fosberg_ffwi",
+        "haines_index",
+        "haines_index_from_profile",
+        "hot_dry_windy",
+        "initial_spread_index",
+        "kbdi",
+        "overwinter_drought_code",
+    }
+    for name in fire.__all__:
+        assert callable(getattr(fire, name)), f"fire.{name} is not callable"
 
 
 # ---------------------------------------------------------------------------

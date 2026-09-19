@@ -48,8 +48,9 @@ class DurationFactors:
     def from_defaults(cls) -> DurationFactors:
         """Palmer's (1965) fixed national duration factors, derived from p and q.
 
-        Standard PDSI uses these directly; scPDSI replaces them with per-location
-        fitted values.
+        Standard PDSI uses these unless ``pdsi()`` is given the
+        ``wetm``/``wetb``/``drym``/``dryb`` override keys; scPDSI replaces them
+        with per-location fitted values.
         """
         m = (1.0 - _PALMER_P) / _PALMER_Q
         b = _PALMER_P / _PALMER_Q

@@ -58,5 +58,5 @@ explicit `Periodicity.daily` still computes positionally against Gregorian input
 exists so a caller can opt out of every inference this adapter performs, and no shipped wrapper uses
 it — but it is the one remaining way to get silently drifted output, and anything adopting it takes
 on the conversion itself. `pci()` is also uncovered: it is a manual single-year wrapper requiring
-exactly 365 or 366 values, and its contract needs a separate decision. Palmer has no direct xarray
-API.
+exactly 365 or 366 values, and its contract needs a separate decision. scPDSI has no direct xarray
+API; the standard `pdsi()` adapter landed in #1016.

@@ -12,11 +12,12 @@ Starting with version 2.3.0, the `climate_indices` library provides native suppo
 :::{warning}
 **Beta Feature**
 
-The xarray DataArray API described in this guide is **beta**. The interface
-(parameter inference, metadata attributes, coordinate handling) may change in
-future minor releases. The underlying computation results are intended to be
-identical to the stable NumPy API; no interface breaking changes are planned
-within a minor version.
+The xarray DataArray API described in this guide is **beta** in 3.0.0 and is
+promoted no earlier than 3.1.0
+([ADR-0012](adr/0012-xarray-api-stays-beta-through-3.0.0.md)). The interface
+(parameter inference, metadata attributes, coordinate handling) may change with a
+minor version, never in a patch release. The underlying computation results are
+intended to be identical to the stable NumPy API.
 :::
 
 :::{warning}
@@ -43,7 +44,7 @@ errors this release also adds.
 
 **Who this guide is for:** Users currently working with NumPy arrays who want to leverage xarray's labeled dimensions, automatic metadata handling, and coordinate-aware operations.
 
-**What changed:** All primary index functions (`spi()`, `spei()`, `pet_thornthwaite()`, `pet_hargreaves()`) now accept both `np.ndarray` and `xr.DataArray` inputs. When you pass an xarray DataArray, the library automatically:
+**What changed:** All primary index functions (`spi()`, `spei()`, `eddi()`, `percentage_of_normal()`, `pet_thornthwaite()`, `pet_hargreaves()`, `pdsi()`) now accept both `np.ndarray` and `xr.DataArray` inputs. When you pass an xarray DataArray, the library automatically:
 
 - Infers temporal parameters from time coordinates
 - Preserves all coordinate information in outputs
@@ -442,7 +443,7 @@ print(spi_loaded.attrs["references"])  # citation preserved
 ### 1. Time dimension must be named "time"
 
 :::{warning}
-**Error:** `CoordinateValidationError: Time dimension 'time' not found in input. Available dimensions: ['date']. Use time_dim parameter to specify custom name.`
+**Error:** `DimensionMismatchError: Time dimension 'time' not found in input. Available dimensions: ['date']. Use time_dim parameter to specify custom name.`
 
 **Cause:** Your DataArray uses a different dimension name (e.g., `date`, `timestamp`, `t`).
 
@@ -782,6 +783,9 @@ with Client(n_workers=4, threads_per_worker=1) as client:
 - {func}`climate_indices.spei` — Standardized Precipitation Evapotranspiration Index
 - {func}`climate_indices.xarray_adapter.pet_thornthwaite` — Potential Evapotranspiration (Thornthwaite)
 - {func}`climate_indices.xarray_adapter.pet_hargreaves` — Potential Evapotranspiration (Hargreaves)
+- {func}`climate_indices.eddi` — Evaporative Demand Drought Index
+- {func}`climate_indices.percentage_of_normal` — Percent of Normal Precipitation
+- {func}`climate_indices.pdsi` — Palmer Drought Severity Index family (Dataset output)
 
 **Supporting classes:**
 

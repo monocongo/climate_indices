@@ -14,9 +14,10 @@ References:
     Architecture Decision 1: Wrapper Approach (NumPy core + xarray adapter)
     Architecture Decision 2: Decorator Pattern (@xarray_adapter)
 
-.. warning:: **Beta Feature** — The xarray adapter layer is beta and may change
-   in future minor releases. The NumPy computation core (``indices.py``,
-   ``compute.py``) is stable. No breaking changes will occur within a minor version.
+.. warning:: **Beta Feature** — The xarray adapter layer is beta through 3.0.0 and is
+   promoted no earlier than 3.1.0. Its interface may change with a minor version,
+   never in a patch release. The NumPy computation core (``indices.py``,
+   ``compute.py``) is stable: no breaking changes occur in minor versions.
 """
 
 from __future__ import annotations
@@ -31,14 +32,14 @@ import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import Any, TypeVar
 
 import numpy as np
 import pandas as pd
 import structlog.stdlib
 import xarray as xr
 
-from climate_indices import compute, eto, indices
+from climate_indices import compute, eto, indices, palmer
 from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.compute import MIN_CALIBRATION_YEARS
 from climate_indices.exceptions import (
@@ -822,7 +823,9 @@ def _align_inputs(
         Tuple of (aligned_primary, dict_of_aligned_secondaries)
 
     Raises:
-        CoordinateValidationError: If alignment results in empty intersection (no overlapping time steps)
+        CoordinateValidationError: If alignment results in empty intersection (no
+            overlapping time steps), or if the inputs share a non-time dimension
+            whose coordinates differ
 
     Warns:
         InputAlignmentWarning: If alignment drops time steps from the primary input
@@ -833,6 +836,33 @@ def _align_inputs(
 
     # collect all DataArrays for alignment
     all_arrays = [primary] + list(secondaries.values())
+
+    # xr.align joins every shared dimension, not just the one named by time_dim: a
+    # secondary on a different spatial grid would lose the cells the two grids do
+    # not share, with no warning (only the time dimension is measured below). Time
+    # overlap is expected and trimmed; a non-time dimension shared by more than one
+    # input has to agree, order aside, before anything is aligned away.
+    shared_dims = {dim for array in all_arrays for dim in array.dims} - {time_dim}
+    for dim in sorted(shared_dims, key=str):
+        arrays_with_dim = [array for array in all_arrays if dim in array.dims]
+        # a dimension without a coordinate variable has no labels to compare; xr.align
+        # matches it by position, so leave that case to xr.align
+        if any(dim not in array.coords for array in arrays_with_dim):
+            continue
+        coordinate_indexes = [array[dim].to_index().sort_values() for array in arrays_with_dim]
+        if len(coordinate_indexes) > 1 and any(
+            not index.equals(coordinate_indexes[0]) for index in coordinate_indexes[1:]
+        ):
+            raise CoordinateValidationError(
+                message=(
+                    f"Inputs share the '{dim}' dimension but not its coordinates. "
+                    f"Only the '{time_dim}' dimension may differ between inputs; matching "
+                    f"cell coordinates are required, because intersecting the '{dim}' "
+                    f"coordinates would silently drop cells from the result."
+                ),
+                coordinate_name=str(dim),
+                reason="mismatched_non_time_coordinates",
+            )
 
     # align using inner join (intersection of coordinates)
     aligned = xr.align(*all_arrays, join="inner")
@@ -1741,33 +1771,37 @@ def xarray_adapter(
     return decorator
 
 
-def _spatial_kernel_latitude(
+_CellParam = TypeVar("_CellParam")
+
+
+def _spatial_kernel_cell_param(
     data: xr.DataArray,
-    latitude: float | int | np.floating | np.integer | xr.DataArray,
+    value: _CellParam,
     time_dim: str,
-) -> tuple[bool, float | int | np.floating | np.integer | xr.DataArray]:
-    """Decide whether ``data`` reaches a spatial (per-block) kernel, and with which latitude.
+) -> tuple[bool, _CellParam]:
+    """Decide whether ``data`` reaches a spatial (per-block) kernel, and with which per-cell parameter.
 
-    Returns ``(use_spatial_kernel, latitude_to_pass)``. The block path is skipped, and
-    the latitude returned unchanged, when the input has a single non-core dimension
-    (only one dimension to broadcast over) or when the latitude carries a dimension the
-    input does not (so it cannot be read as a per-cell latitude at all).
+    Used by the broadcast inputs that are not time series: PET's latitude and Palmer's
+    available water capacity (AWC). Returns ``(use_spatial_kernel, value_to_pass)``. The
+    block path is skipped, and the value returned unchanged, when the input has a single
+    non-core dimension (only one dimension to broadcast over) or when the value carries a
+    dimension the input does not (so it cannot be read as a per-cell value at all).
 
-    A DataArray latitude is transposed into the block's cell-dimension order, so the
-    kernel reads its axes in that order; apply_ufunc appends a leading cell dimension it
-    does not carry as a length-1 axis, and leaves a length-1 axis to numpy's right-aligned
+    A DataArray value is transposed into the block's cell-dimension order, so the kernel
+    reads its axes in that order; apply_ufunc appends a leading cell dimension it does not
+    carry as a length-1 axis, and leaves a length-1 axis to numpy's right-aligned
     broadcasting, which the kernel matches.
     """
     if data.ndim <= 2:
-        return False, latitude
+        return False, value
 
     cell_dims = [dim for dim in data.dims if dim != time_dim]
-    if not isinstance(latitude, xr.DataArray):
-        return True, latitude
-    if not set(latitude.dims) <= set(cell_dims):
-        return False, latitude
+    if not isinstance(value, xr.DataArray):
+        return True, value
+    if not set(value.dims) <= set(cell_dims):
+        return False, value
 
-    return True, latitude.transpose(*[dim for dim in cell_dims if dim in latitude.dims])
+    return True, value.transpose(*[dim for dim in cell_dims if dim in value.dims])
 
 
 def pet_thornthwaite(
@@ -1909,7 +1943,7 @@ def pet_thornthwaite(
     # time-major block with the latitude per cell, instead of one call per grid cell; the
     # latitude is aligned with the temperature's cell axes so the kernel reads them in the
     # block's order
-    use_spatial_kernel, lat_for_ufunc = _spatial_kernel_latitude(temp_da, latitude, time_dim)
+    use_spatial_kernel, lat_for_ufunc = _spatial_kernel_cell_param(temp_da, latitude, time_dim)
 
     # wrapper functions to handle read-only array views from apply_ufunc
     # the underlying eto.eto_thornthwaite modifies the temp array in-place,
@@ -2185,7 +2219,7 @@ def pet_hargreaves(
     # one time-major block with the latitude per cell, instead of one call per grid cell;
     # the latitude is aligned with the temperature's cell axes so the kernel reads them in
     # the block's order
-    use_spatial_kernel, lat_for_ufunc = _spatial_kernel_latitude(tmin_aligned, latitude, time_dim)
+    use_spatial_kernel, lat_for_ufunc = _spatial_kernel_cell_param(tmin_aligned, latitude, time_dim)
 
     # wrapper functions to handle read-only array views from apply_ufunc
     # eto.eto_hargreaves may modify arrays in-place, so create writable copies
@@ -2283,3 +2317,301 @@ def pet_hargreaves(
 
     result_array: xr.DataArray = result
     return result_array
+
+
+def _pdsi_numpy_passthrough(
+    precips: np.ndarray | xr.DataArray,
+    pet: np.ndarray | xr.DataArray,
+    awc: float | np.ndarray | xr.DataArray,
+    data_start_year: int | None,
+    calibration_year_initial: int | None,
+    calibration_year_final: int | None,
+    fitting_params: dict[str, Any] | None,
+    spatial_time_major: bool,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any] | None]:
+    """Route a NumPy-coercible ``palmer.pdsi`` call through its stable contract."""
+    if isinstance(pet, xr.DataArray):
+        raise TypeError(
+            "pet must be a numpy array when precips is a numpy array. Convert both to xr.DataArray for the xarray path."
+        )
+    if isinstance(awc, xr.DataArray):
+        raise TypeError(
+            "awc must be a scalar or numpy array when precips is a numpy array. "
+            f"Got xr.DataArray with dims={awc.dims}. Use a scalar awc or convert "
+            "precips and pet to xr.DataArray for spatial broadcasting."
+        )
+    if data_start_year is None or calibration_year_initial is None or calibration_year_final is None:
+        raise ValueError(
+            "data_start_year, calibration_year_initial, and calibration_year_final are required for numpy inputs"
+        )
+    # detect_input_type() routes list, tuple, and scalar input here as
+    # NumPy-coercible, and the kernel coerces too; coerce rather than assert,
+    # which -O strips and which otherwise reports a bare AssertionError. Using
+    # asanyarray rather than asarray keeps a masked array's mask.
+    return palmer.pdsi(
+        np.asanyarray(precips),
+        np.asanyarray(pet),
+        awc,
+        data_start_year,
+        calibration_year_initial,
+        calibration_year_final,
+        fitting_params,
+        spatial_time_major=spatial_time_major,
+    )
+
+
+def palmer_pdsi(
+    precips: np.ndarray | xr.DataArray,
+    pet: np.ndarray | xr.DataArray,
+    awc: float | np.ndarray | xr.DataArray,
+    data_start_year: int | None = None,
+    calibration_year_initial: int | None = None,
+    calibration_year_final: int | None = None,
+    fitting_params: dict[str, Any] | None = None,
+    spatial_time_major: bool = False,
+    time_dim: str = "time",
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any] | None] | xr.Dataset:
+    """Compute the standard Palmer drought indices, with xarray/Dask support.
+
+    This function provides xarray DataArray support for the standard PDSI family
+    (PDSI, PHDI, PMDI, and Z-Index). Like the PET entry points, it uses
+    ``xr.apply_ufunc`` directly rather than the ``@xarray_adapter`` decorator: AWC
+    is a per-cell soil constant with no time axis (the same shape problem PET's
+    latitude solves), and the kernel returns four outputs rather than one. AWC is
+    broadcast the way latitude is -- a scalar for a single location, or a DataArray
+    whose dimensions are a subset of the precipitation's cell dimensions.
+
+    .. warning:: **Beta Feature (xarray path)** — When called with ``xr.DataArray``
+       input, this function uses the beta xarray adapter layer. The NumPy array
+       interface and underlying computation are stable.
+
+    Args:
+        precips: Monthly precipitation values in inches.
+            For numpy: 1-D array, ``(years, 12)`` array, or a 3-D time-major
+            ``(time, *cells)`` block -- an ambiguous block whose first cell axis is a
+            calendar period length (12 or 366) requires ``spatial_time_major=True``.
+            List and tuple input is converted with ``np.asanyarray``.
+            For xarray: DataArray with a monthly time dimension starting in January
+            (may have additional cell dimensions).
+        pet: Monthly potential evapotranspiration values in inches, matching
+            ``precips``.
+        awc: Available water capacity (soil constant) in inches. A scalar, or a
+            DataArray whose cell coordinates match the precipitation grid (its
+            dimensions may be a subset of the precipitation's cell dimensions).
+        data_start_year: Initial year of the input dataset. Required for NumPy
+            inputs; inferred from the first time coordinate for xarray inputs.
+        calibration_year_initial: Initial year of the calibration period. Required
+            for NumPy inputs; inferred from the time range for xarray inputs.
+        calibration_year_final: Final year of the calibration period. Required for
+            NumPy inputs; inferred from the time range for xarray inputs.
+        fitting_params: Optional dict of pre-computed Palmer fitting parameters.
+        spatial_time_major: Declares an ambiguous 3+-D numpy ``precips``/``pet`` as a
+            time-major ``(time, *cells)`` block (per ADR-0009). Only used for numpy
+            inputs; the xarray path reads its dimensions from the coordinate labels.
+        time_dim: Name of the time dimension in the input DataArrays (default:
+            ``"time"``). Only used for xarray inputs.
+
+    Returns:
+        For NumPy input, the five-item tuple ``palmer.pdsi()`` returns: PDSI, PHDI,
+        PMDI, Z-Index, and the fitted parameters (``None`` for all-missing input).
+        For xarray input, an ``xr.Dataset`` with one variable per index -- ``pdsi``,
+        ``phdi``, ``pmdi``, and ``z_index`` -- each carrying its own CF metadata and
+        provenance, and each matching the input's shape and coordinates.
+
+    Raises:
+        InputTypeError: If ``precips`` is neither numpy-coercible nor an
+            ``xr.DataArray``.
+        TypeError: If ``pet`` or ``awc`` mixes numpy and xarray with ``precips``, or
+            if ``awc`` carries the time dimension.
+        CoordinateValidationError: If the xarray time dimension is missing,
+            non-monotonic, not monthly, or does not begin in January, or if
+            ``precips`` and ``pet`` share a cell dimension with differing coordinates.
+        ValueError: If a NumPy call omits a required temporal parameter, or the
+            precipitation and PET shapes are incompatible.
+
+    Notes:
+        - A 3-D or higher xarray input reaches ``palmer.pdsi()`` as one
+          ``(time, *cells)`` block per Dask spatial block, so the recursion runs once
+          per block rather than once per grid cell. A 1-D or 2-D input keeps the
+          per-cell path.
+        - Dask-backed DataArrays stay lazy, but the time dimension must be a single
+          chunk (the recursion spans the whole record); see
+          :doc:`xarray_migration`.
+        - ``palmer.scpdsi()`` deliberately has no xarray entry point: its
+          per-location duration-factor fit and Wells recursion are not a bulk
+          array operation (see ADR-0011). Compute it from NumPy values and rewrap
+          the outputs when an xarray result is needed.
+        - The Z-Index variable is named ``z_index``, matching the CF registry entry;
+          the CLI NetCDF writer uses ``zindex`` for the same output.
+
+    Examples:
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> import xarray as xr
+        >>> from climate_indices import pdsi
+        >>> time = pd.date_range("1980-01-01", periods=480, freq="MS")
+        >>> precips = xr.DataArray(
+        ...     np.random.default_rng(0).gamma(2.0, 2.0, (480, 2, 2)) / 25.4,
+        ...     coords={"time": time, "lat": [35.0, 40.0], "lon": [-100.0, -95.0]},
+        ...     dims=["time", "lat", "lon"],
+        ... )
+        >>> pet = xr.full_like(precips, 1.5)
+        >>> awc = xr.DataArray([[5.0, 5.0], [6.0, 6.0]], dims=["lat", "lon"])
+        >>> result = pdsi(precips, pet, awc, calibration_year_initial=1981, calibration_year_final=2010)
+        >>> list(result.data_vars)
+        ['pdsi', 'phdi', 'pmdi', 'z_index']
+    """
+    input_type = detect_input_type(precips)
+
+    # numpy passthrough: the stable palmer.pdsi() contract, including its
+    # spatial_time_major handling for a directly-declared 3-D block
+    if input_type == InputType.NUMPY:
+        return _pdsi_numpy_passthrough(
+            precips,
+            pet,
+            awc,
+            data_start_year,
+            calibration_year_initial,
+            calibration_year_final,
+            fitting_params,
+            spatial_time_major,
+        )
+
+    # xarray path: validate → align → infer → compute → rewrap
+    assert isinstance(precips, xr.DataArray)
+    if not isinstance(pet, xr.DataArray):
+        raise TypeError(
+            "precips and pet must both be xr.DataArray or both numpy arrays. "
+            f"Got precips={input_type.name}, pet={detect_input_type(pet).name}."
+        )
+    precips_da = precips
+    pet_da = pet
+
+    validate_time_dimension(precips_da, time_dim)
+    validate_time_dimension(pet_da, time_dim)
+    validate_time_monotonicity(precips_da[time_dim])
+    validate_time_monotonicity(pet_da[time_dim])
+
+    # the Palmer recursion is monthly and indexes calendar months from January
+    _build_daily_calendar_plan(precips_da[time_dim], compute.Periodicity.monthly)
+    _build_daily_calendar_plan(pet_da[time_dim], compute.Periodicity.monthly)
+
+    aligned_precips, aligned_secondaries = _align_inputs(precips_da, {"pet": pet_da}, time_dim)
+    precips_da = aligned_precips
+    pet_da = aligned_secondaries["pet"]
+
+    for dataarray in (precips_da, pet_da):
+        if dataarray.chunks is not None:
+            validate_dask_chunks(dataarray, time_dim)
+
+    # infer any temporal parameter the caller left out; AWC is excluded because it
+    # is a broadcast value rather than a time series
+    provided: dict[str, Any] = {
+        key: value
+        for key, value in {
+            "data_start_year": data_start_year,
+            "calibration_year_initial": calibration_year_initial,
+            "calibration_year_final": calibration_year_final,
+            "fitting_params": fitting_params,
+        }.items()
+        if value is not None
+    }
+    inferred = _infer_temporal_parameters(palmer.pdsi, precips_da, [precips_da, pet_da, awc], provided, time_dim)
+    provided.update(inferred)
+
+    # normalize AWC for xr.apply_ufunc: a gridded input reaches palmer.pdsi as one
+    # time-major block with the AWC per cell, instead of one call per grid cell. An
+    # AWC carrying the time dimension is neither a scalar nor a cell field, and
+    # apply_ufunc would only report it as an unexpected core dimension.
+    if isinstance(awc, xr.DataArray) and time_dim in awc.dims:
+        raise TypeError(
+            f"awc must not carry the time dimension '{time_dim}': it is a per-cell soil "
+            "constant, not a time series. Use a scalar or a DataArray over the "
+            "precipitation's cell dimensions."
+        )
+    use_spatial_kernel, awc_for_ufunc = _spatial_kernel_cell_param(precips_da, awc, time_dim)
+
+    def _pdsi_block(
+        precips_block: np.ndarray,
+        pet_block: np.ndarray,
+        awc_block: Any,
+        **kwargs: Any,
+    ) -> tuple[np.ndarray, ...]:
+        """Run palmer.pdsi once on a (time, *cells) block, returning its four indices."""
+        result = palmer.pdsi(
+            np.moveaxis(precips_block, -1, 0),
+            np.moveaxis(pet_block, -1, 0),
+            awc_block,
+            spatial_time_major=True,
+            **kwargs,
+        )
+        return tuple(np.asarray(np.moveaxis(output, 0, -1), dtype=float) for output in result[:4])
+
+    def _pdsi_per_cell(
+        precips_series: np.ndarray,
+        pet_series: np.ndarray,
+        awc_value: Any,
+        **kwargs: Any,
+    ) -> tuple[np.ndarray, ...]:
+        """Run palmer.pdsi on one 1-D series, returning its four indices."""
+        result = palmer.pdsi(precips_series, pet_series, awc_value, **kwargs)
+        return tuple(np.asarray(output, dtype=float) for output in result[:4])
+
+    # input_core_dims: the time dimension is core for both index inputs; AWC arrives
+    #   as a scalar per cell on the per-cell path and a cell array on the other
+    # output_core_dims: each of the four Palmer outputs preserves the time dimension
+    result = xr.apply_ufunc(
+        _pdsi_block if use_spatial_kernel else _pdsi_per_cell,
+        precips_da,
+        pet_da,
+        awc_for_ufunc,
+        input_core_dims=[[time_dim], [time_dim], []],
+        output_core_dims=[[time_dim]] * 4,
+        vectorize=not use_spatial_kernel,
+        dask="parallelized",
+        dask_gufunc_kwargs={"allow_rechunk": True},
+        output_dtypes=[float] * 4,
+        kwargs=provided,
+    )
+    result_arrays = result if isinstance(result, tuple) else (result,)
+
+    # restore original dimension order (apply_ufunc places output core dims last);
+    # an AWC broadcast over a dimension the index inputs lack adds that dimension
+    desired_dims = list(precips_da.dims) + [dim for dim in result_arrays[0].dims if dim not in precips_da.dims]
+    calculation_metadata: dict[str, Any] = {
+        key: provided[key]
+        for key in ("data_start_year", "calibration_year_initial", "calibration_year_final")
+        if key in provided
+    }
+
+    # record the broadcast input the way the PET wrappers record latitude
+    if isinstance(awc, xr.DataArray):
+        calculation_metadata["awc"] = f"DataArray(dims={awc.dims})"
+    elif np.ndim(awc) > 0:
+        calculation_metadata["awc"] = f"ndarray(shape={np.shape(awc)})"
+    else:
+        calculation_metadata["awc"] = str(awc)
+    if fitting_params:
+        calculation_metadata["fitting_params"] = f"dict(keys={','.join(sorted(fitting_params))})"
+
+    display_names = {"pdsi": "PDSI", "phdi": "PHDI", "pmdi": "PMDI", "z_index": "Z-Index"}
+    variables: dict[str, xr.DataArray] = {}
+    for name, array in zip(("pdsi", "phdi", "pmdi", "z_index"), result_arrays, strict=True):
+        variable = array.transpose(*desired_dims)
+        variable.attrs = build_output_attrs(
+            precips_da,
+            cf_metadata=CF_METADATA[name],  # type: ignore[arg-type]
+            calculation_metadata=calculation_metadata,
+            index_name=display_names[name],
+        )
+        variables[name] = variable
+
+    _log().info(
+        "palmer_pdsi_completed",
+        input_shape=precips_da.shape,
+        output_shape=variables["pdsi"].shape,
+        spatial_kernel=use_spatial_kernel,
+        **{key: str(value) for key, value in calculation_metadata.items()},
+    )
+
+    return xr.Dataset(variables)

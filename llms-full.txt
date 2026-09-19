@@ -35,7 +35,7 @@ The following indices are provided:
 - [PCI](https://www.tandfonline.com/doi/abs/10.1111/J.0033-0124.1980.00300.X), Precipitation Concentration Index
 - [EDDI](https://psl.noaa.gov/eddi/), Evaporative Demand Drought Index
 - [Palmer indices](https://www.droughtmanagement.info/literature/USWB_Meteorological_Drought_1965.pdf),
-  including PDSI, PHDI, PMDI, and Z-Index
+  including PDSI, PHDI, PMDI, Z-Index, and [scPDSI](https://doi.org/10.1175/1520-0442(2004)017%3C2335:ASPDSI%3E2.0.CO;2)
 
 This Python implementation of the above climate index algorithms is being developed
 with the following goals in mind:
@@ -178,19 +178,21 @@ Python 3.9 support was dropped in v2.2.0 (August 2025) due to `scipy>=1.15.3` re
 | API Surface | Status | Guarantee |
 |:------------|:------:|:----------|
 | NumPy array functions (`indices.spi`, `indices.spei`, `indices.pet`) | **Stable** | No breaking changes in minor versions |
-| xarray DataArray functions (`spi()`, `spei()`, `pet_thornthwaite()`, `pet_hargreaves()`) | **Beta** | No breaking changes in patch versions |
+| xarray DataArray entry points (any index function accepting `xr.DataArray`) | **Beta** | No breaking changes in patch versions |
 
 **Stable API**: The NumPy-based computation functions follow strict semantic versioning.
 
 **Beta API**: The xarray adapter layer provides automatic parameter inference, coordinate
 preservation, CF metadata, and Dask support. While beta, computation results are **identical**
 to the stable NumPy API — only the interface surface (parameter names, metadata attributes,
-coordinate handling) may evolve. Beta features are tagged with ``BetaFeatureWarning`` and
-marked in docstrings.
+coordinate handling) may evolve. Beta features are marked in docstrings, with
+``BetaFeatureWarning`` as their public warning category. The adapter stays Beta in 3.0.0
+and is promoted no earlier than 3.1.0, once the 3.0.0 calendar alignment has a release
+of soak time ([ADR-0012](docs/adr/0012-xarray-api-stays-beta-through-3.0.0.md)).
 
 See `docs/xarray_compatibility.md` for the 3.0.0 compatibility matrix, including
-Dask chunking constraints, metadata behavior, and the current Palmer xarray
-workflow. See `docs/performance.md` for a runnable parallel SPI/SPEI example and
+Dask chunking constraints, metadata behavior, and the Palmer xarray adapter.
+See `docs/performance.md` for a runnable parallel SPI/SPEI example and
 the measured speedups behind the chunk and scheduler guidance.
 
 ### Validation Notes
@@ -296,7 +298,7 @@ guarded only by internal fixtures.
 | Scope | Command | Expected result |
 | --- | --- | --- |
 | Core suite | `uv run pytest -m "not benchmark and not validation"` | Unit, property, xarray, release guardrail, and regression tests pass. |
-| Validation marker suite | `uv run pytest -m validation` | External validation tests, including committed NOAA EDDI fixtures, the SPEIbase v2.11 SPEI plausibility floors, and the standard-Palmer nClimDiv comparison, pass; scPDSI oracle cross-validation and all regression coverage pass. |
+| Validation marker suite | `uv run pytest -m validation` | External validation tests, including committed NOAA EDDI fixtures, the SPEIbase v2.11 SPEI plausibility floors, the standard-Palmer nClimDiv comparison, and the Srock et al. (2018) HDW event-discrimination fixture, pass; scPDSI oracle cross-validation and all regression coverage pass. |
 | Lint | `uv run ruff check src/ tests/` | No lint findings. |
 | Format | `uv run ruff format --check src/ tests/` | No formatting changes needed. |
 | Notebooks | `uv run jupyter nbconvert --execute --to notebook --inplace notebooks/xarray_getting_started.ipynb notebooks/palmer_indices_xarray.ipynb notebooks/eddi_xarray.ipynb` | All 3.0.0 notebooks execute from a clean checkout. |
@@ -315,6 +317,7 @@ guarded only by internal fixtures.
 | EDDI | Validated | NOAA reference tests use `rtol=1e-5`, `atol=1e-5` | Committed paired NOAA PSL monthly reference ET/EDDI fixtures for 1-, 3-, and 6-month Timescales, 1979–2023, pass in `tests/test_noaa_eddi_reference.py`; maximum observed error is `2.43e-6`. | This is one fixed latitude/longitude subset, not a CONUS-wide assessment. |
 | KBDI | Reference-reproduced, not independently validated | Published Figure 1 series reproduced with `atol=4.0` hundredths of an inch (table-vs-equation discretization, measured maximum 2.91); GHCN station regression `rtol=1e-12`, `atol=1e-9` mm | `tests/test_fire_kbdi_reference.py` reproduces the Keetch & Byram (1968) Figure 1 worked example from a committed fixture, audits the published net-rain wet-spell rule, and runs a complete 30-year GHCN-Daily PRCP/TMAX record for Fresno, California against frozen values from an independent plain-Python calculator; the xclim (Finkele variant) and WFAS cross-checks skip when their optional inputs are absent. Recurrence, gap, and unit contracts are covered by `tests/test_fire_kbdi.py`. | Figure 1 is an exact oracle only for the 1968 integer table workflow, not the corrected continuous Equation 18 the library implements; xclim is a later Australian/FFDI variant, and no reproducible WFAS point oracle was obtainable. |
 | CFFWIS (FFMC, DMC, DC, ISI, BUI, FWI, DSR) | Validated against the NRCan reference implementation | All seven components `atol=1e-9` against full-precision `cffdrs_py` reference outputs; xclim sanity check at `atol=1e-9` for DC/DMC/BUI and `atol=0.5` for the FFMC lineage | `tests/test_fire_cffwis_reference.py` runs the 48-day Van Wagner & Pickett (1985) calibration sample committed as `tests/fixture/cffwis_vwp1985/` against reference values generated at `cffdrs_py` commit `0f57fcc`; the xclim cross-check skips when xclim is absent. Recurrence, gap, unit, and seasonal-carry contracts remain covered by `tests/test_fire_cffwis_moisture.py`, `tests/test_fire_cffwis_behavior.py`, and `tests/test_fire_dc_overwintering.py`. | The committed record is one calibration sample at latitude 40 N, so the external check exercises the northern DMC/DC day-length band only; the other latitude bands are covered by frozen regression vectors, and no independent (non-NRCan-lineage) CFFWIS oracle exists. |
+| HDW | Event-discrimination reproduced; published magnitudes characterization only | Daily-series correlation floor `r >= 0.80` (measured 0.8679; floor stored in `tests/fixture/hdw_srock_cedar/provenance.json`); digitized reference uncertainty +/-5 hPa m s-1 | `tests/test_fire_hdw_reference.py` computes `fire.hot_dry_windy()` on the CFSR reanalysis profiles in `tests/fixture/hdw_srock_cedar/`, extracted at the grid point of Srock et al. (2018) Figure 4a (33.0 N, 116.5 W; 12 October through 9 November 2003), and confirms the daily maximum falls on 26 October 2003 -- the paper's significant fire-behavior day for the Cedar Fire -- 17% above the next-highest day. The digitized Figure 4a series is committed alongside the profiles, with its marker pixel coordinates for audit. | The paper publishes only figures, so the reference series is digitized (+/-5 hPa m s-1). Its adiabatically adjusted, independently maximized formulation (Section 3) is not the library's per-level VPD x wind product, and the digitized magnitudes are not reproducible from public metadata: the library's daily maximum exceeds them on five of 29 days, supplied by the 0000 UTC analysis on all five and by the 1200 UTC series alone on three, while the library's 1800 UTC values alone correlate at 0.945 with no exceedances. Magnitudes are therefore characterization, not validation; unit and example-value contracts remain covered by `tests/test_fire.py`. |
 | PDSI, PHDI, PMDI, Z-Index (standard Palmer) | Qualified independent external-product validation | nClimDiv comparison ceilings documented in `tests/test_nclimdiv_reference.py`; library fixtures `atol=5e-5`, `rtol=0` | `tests/test_nclimdiv_reference.py::test_pdsi_vs_noaa_nclimdiv_qualified_external_validation` compares `pdsi()` against the operational NOAA NCEI nClimDiv arrays for all 344 climate divisions, January 1895 through December 2022 (measured median absolute difference 0.0127; 86.2% of months within 0.05). `tests/test_palmer.py` retains the library-generated standard-Palmer fixtures as regression coverage. Both are marked `validation`. | Qualified rather than absolute: NCEI publishes two decimal places, and the committed `precips.npy`/`pet.npy` inputs are not byte-identical to NCEI's operational inputs, so the practical agreement floor is ~0.013 rather than 0.005. See "Palmer Validation Classification" below. |
 | scPDSI | Independent implementation cross-validation; nClimDiv comparison is characterization only | Wells-lineage oracle fixtures `atol=5e-5`, `rtol=0` in `tests/test_scpdsi.py`; nClimDiv characterization ceilings in `tests/test_nclimdiv_reference.py` | `tests/test_scpdsi.py` compares the four self-calibrating outputs and fitted duration factors against Wells-lineage reference fixtures for all 344 climate divisions. `tests/test_nclimdiv_reference.py::test_scpdsi_vs_noaa_nclimdiv_characterization` characterizes aggregate agreement against nClimDiv, which applies standard Palmer's fixed national calibration rather than per-division self-calibration. Both are marked `validation`. | No qualified external-product reference yet; assessing DRI/WRCC scPDSI for that role remains open (issue #780). The NCEI Fortran and Wells C++ recursion lineages disagree on roughly 6.3% of months by up to 8 PDSI units, and on those months the NCEI-lineage values sit closer to NOAA operational data 88% of the time (`tests/fixture/palmer/provenance.json`). |
 
@@ -495,9 +498,10 @@ See "Palmer Validation Classification" above for the latter.
 # xarray Compatibility Matrix
 
 :::{warning}
-The xarray API is beta in 3.0.0. Numerical results are expected to match the
-stable NumPy API, while parameter inference, metadata, and coordinate behavior
-may change in a future minor release.
+The xarray API is beta in 3.0.0 and is promoted no earlier than 3.1.0
+([ADR-0012](docs/adr/0012-xarray-api-stays-beta-through-3.0.0.md)). Numerical results
+are expected to match the stable NumPy API, while parameter inference, metadata,
+and coordinate behavior may change with a minor version, never in a patch release.
 :::
 
 | Feature | Supported | Coverage |
@@ -513,14 +517,14 @@ may change in a future minor release.
 | `DataArray` inputs for HDW | Yes | `fire.hot_dry_windy()` reduces the caller-named `level_dim` (default `"level"`) to the layer maximum via `xr.apply_ufunc`; CF metadata comes from the `hdw` registry entry, and a CF `units` attribute on temperature is converted to Celsius. Not recursive: every other dimension, including `time` if present, is a plain passthrough with no cadence requirement. Dimensions shared by the inputs must carry identical, identically ordered coordinate labels, because the inputs are matched with xarray's exact join rather than aligned or reindexed. `level_dim` must be a single Dask chunk; other dimensions chunk freely. See `tests/test_fire.py`. |
 | `DataArray` inputs for CFFWIS | Yes | `fire.cffwis()` returns one `Dataset` variable per selected output (`ffmc`, `dmc`, `dc`, `isi`, `bui`, `fwi`, `dsr`), each carrying its own registry CF metadata. Latitude is inferred from a `lat`/`latitude` coordinate when not supplied and month from the datetime `time` coordinate; CF `units` attributes on temperature and precipitation are converted. Per-cell day-length bands come from broadcasting latitude through `xr.apply_ufunc`, one call per Dask spatial block. A daily coordinate clearly not at noon emits `ClimateIndicesWarning`, while sub-daily coordinates and a multi-chunk `time` dimension are rejected. With `return_state=True` the result is a `CFFWISResult` whose selected fields are DataArrays (`None` for components omitted from `outputs`) and whose state stays NumPy. See `tests/test_fire_cffwis_behavior.py`. |
 | `DataArray` inputs for Haines | Yes | `fire.haines_index()` scores caller-selected levels elementwise through `xr.apply_ufunc` with no core dimension, so no dimension has a Dask chunk constraint. CF metadata comes from the per-variant `haines_low`/`haines_mid`/`haines_high` registry entry, including `climate_indices_variant`, and a CF `units` attribute on any temperature input is converted to Celsius. Not recursive: every dimension, including `time`, is a plain passthrough with no cadence requirement. Dimensions shared by the inputs must carry identical, identically ordered coordinate labels, because the inputs are matched with xarray's exact join rather than aligned or reindexed. The elevation-driven variant selection of `fire.haines_index_from_profile()` is NumPy-only. See `tests/test_fire_haines.py`. |
-| Palmer direct xarray API | No | Use the NumPy Palmer function with `.values`, then rewrap outputs. See `notebooks/palmer_indices_xarray.ipynb`. |
+| `DataArray` inputs for PDSI (Palmer) | Yes | `climate_indices.pdsi()` returns an `xr.Dataset` with one variable per index (`pdsi`, `phdi`, `pmdi`, `z_index`), each carrying its own registry CF metadata. AWC is a broadcast input like PET's latitude; a 3-D input reaches `palmer.pdsi()` as one `(time, *cells)` block per Dask spatial block. scPDSI has no xarray entry point ([ADR-0011](docs/adr/0011-palmer-spatial-block-and-per-location-scpdsi.md)). See `tests/test_spatial_kernel.py`; the manual-rewrap pattern remains in `notebooks/palmer_indices_xarray.ipynb`. |
 | Coordinate preservation | Yes | Adapter tests verify time and spatial coordinates are preserved. |
 | CF-style metadata | Yes | `CF_METADATA` registry and adapter tests verify `long_name`, `units`, `references`, version, and history attributes. |
 | Dask-backed arrays | Yes, constrained | The time dimension must be a single chunk, except for the PET adapters, which rechunk a split `time` internally. Adapter tests verify detection and validation. Chunk axes the CLI leaves to Dask (`"auto"`, the KBDI grid and division inputs) resolve against a 100 MB array chunk budget rather than Dask's own default; axes pinned with `-1` are unaffected. See [Chunking guidance for gridded indices](#chunking-guidance-for-gridded-indices) for block sizes. |
-| Spatial (gridded) kernels | Yes, for SPI, SPEI, PET, EDDI, and percentage of normal | `spi`/`spei` receive a time-major `(time, *cells)` block and fit every cell in one pass, so a gridded gamma run costs one kernel call per Dask block instead of one call per cell ([ADR-0009](docs/adr/0009-spatial-block-declaration.md)). The PET entry points (`pet_thornthwaite`, `pet_hargreaves`) hand `indices.pet` and `eto.eto_hargreaves` the same block layout with the per-cell latitude array, so a gridded PET run costs one call per block ([#941](https://github.com/monocongo/climate_indices/issues/941)). `indices.eddi` and `indices.percentage_of_normal` rank, and divide by the normals of, every cell of the block in one pass ([#942](https://github.com/monocongo/climate_indices/issues/942)). The NumPy API keeps 2-D input on the legacy `(years, periods)` reading; a 3-D or higher input is a block for `spi`/`spei`/`pet` unless its first cell axis is the one shape that is ambiguous with that reading (12 or 366, i.e. a `(years, periods, *cells)` array), which must be declared, and for EDDI and percentage of normal every 3-D input must be declared with `spatial_time_major=True`. Inputs with a single non-core dimension keep the per-cell path. See `tests/test_spatial_kernel.py`. |
+| Spatial (gridded) kernels | Yes, for SPI, SPEI, PET, EDDI, percentage of normal, and PDSI | `spi`/`spei` receive a time-major `(time, *cells)` block and fit every cell in one pass, so a gridded gamma run costs one kernel call per Dask block instead of one call per cell ([ADR-0009](docs/adr/0009-spatial-block-declaration.md)). The PET entry points (`pet_thornthwaite`, `pet_hargreaves`) hand `indices.pet` and `eto.eto_hargreaves` the same block layout with the per-cell latitude array, so a gridded PET run costs one call per block ([#941](https://github.com/monocongo/climate_indices/issues/941)). `indices.eddi` and `indices.percentage_of_normal` rank, and divide by the normals of, every cell of the block in one pass ([#942](https://github.com/monocongo/climate_indices/issues/942)). `palmer.pdsi` receives the block with AWC broadcast per cell, so a gridded PDSI run costs one recursion per block ([#1016](https://github.com/monocongo/climate_indices/issues/1016)). The NumPy API keeps 2-D input on the legacy `(years, periods)` reading; a 3-D or higher input is a block for `spi`/`spei`/`pet`/`pdsi` unless its first cell axis is the one shape that is ambiguous with that reading (12 or 366, i.e. a `(years, periods, *cells)` array), which must be declared, and for EDDI and percentage of normal every 3-D input must be declared with `spatial_time_major=True`. Inputs with a single non-core dimension keep the per-cell path. See `tests/test_spatial_kernel.py`. |
 | Calendar semantics | Yes, constrained | Standard/gregorian/proleptic_gregorian `datetime64` only; monthly input must begin in January and daily input on January 1. Daily values are converted to the 366-day calendar (February 29 synthesized from February 28 and March 1) and restored afterward. A partial final year is supported; `cftime` calendars are rejected. See [ADR-0004](docs/adr/0004-xarray-calendar-semantics.md). |
 | Automatic temporal inference | Yes | Monthly and daily time-coordinate inference is covered by adapter tests. |
-| Multi-input alignment | Yes | SPEI aligns precipitation and PET with an inner join and emits a warning when timesteps are dropped. |
+| Multi-input alignment | Yes | SPEI aligns precipitation and PET with an inner join on the time dimension and emits a warning when timesteps are dropped. Shared cell dimensions must carry matching coordinates: intersecting them would silently drop grid cells, so a mismatch raises `CoordinateValidationError` instead. |
 
 ## Stateful fire indices
 
@@ -680,12 +684,13 @@ Three rules fix the shape of a chunked input:
    cells in a block, not with the size of the grid. The PET spatial kernels take
    one block per call as well, so the same block sizing applies to them.
 3. **Chunk the shared dimensions of a multi-input index the same way.** SPEI
-   aligns precipitation and PET with `xr.align(join="inner")`, which intersects
-   every indexed coordinate the inputs share, so partially overlapping grids
-   are cropped on `lat`/`lon` as well as `time`; the adapter's
-   `InputAlignmentWarning` reports dropped `time` steps only. That join does not
-   rechunk, and each input's `time` chunking is validated independently, so a
-   mismatch on a shared dimension survives to the compute: `xr.apply_ufunc(...,
+   aligns precipitation and PET with `xr.align(join="inner")`, but the adapter
+   validates shared non-time dimensions first: a mismatched `lat`/`lon`
+   coordinate raises `CoordinateValidationError`, and only `time` is left for
+   the inner join to intersect; the adapter's `InputAlignmentWarning` reports
+   dropped `time` steps. That join does not rechunk, and each input's `time`
+   chunking is validated independently, so a chunk-layout mismatch on a shared
+   dimension survives to the compute: `xr.apply_ufunc(...,
    dask="parallelized")` makes Dask unify the chunks, inserting a
    `rechunk-merge` stage that copies the data when the graph computes — an extra
    copy inside every index that consumes the mismatched pair. Give PET the
@@ -909,9 +914,11 @@ precipitation, PET, and available water capacity:
 - Self-calibrated Palmer Drought Severity Index (scPDSI)
 
 The public NumPy APIs are `climate_indices.palmer.pdsi()` and
-`climate_indices.palmer.scpdsi()`. The 3.0.0 xarray notebook demonstrates how
-to call the NumPy Palmer routine from labeled xarray inputs and rewrap the
-outputs with coordinates and metadata.
+`climate_indices.palmer.scpdsi()`. `climate_indices.pdsi()` accepts labeled
+xarray inputs and returns an `xr.Dataset` of the four standard outputs
+(`pdsi`, `phdi`, `pmdi`, `z_index`) with CF metadata; scPDSI stays NumPy-only.
+The 3.0.0 xarray notebook demonstrates the manual rewrap pattern for callers
+who need it.
 
 ## Algorithm Notes
 
@@ -929,6 +936,31 @@ The implementation follows the water-balance structure described by Palmer
 self-calibrating K-prime factors, fits location-specific duration factors,
 uses the Wells recursion, and performs three cumulative Z-index rescaling
 passes over the requested calibration period.
+
+### Exact-zero comparisons
+
+Both recursions branch on exact comparisons against zero, and every float
+equality comparison site in `src/climate_indices/palmer.py` carries a rationale
+comment plus a `# NOSONAR` marker. Those zeros are state sentinels, not
+near-equality: the statements that clear a spell, a candidate, or a calibration
+sum assign `0.0` exactly. A tolerance would change the spell state machine and
+the committed reference fixtures, so no tolerance is applied to these
+comparisons.
+
+| Compared value | Exact zero means | Assigned exact `0.0` by |
+| --- | --- | --- |
+| `px3`, read as `x3` inside `_case` | no established spell: `_case` selects the near-normal (larger-magnitude incipient) value, PHDI falls back to the PDSI value, and an incipient index may be promoted | the spell-end assignments, `_statement_190`'s `ppr >= 100` clamp, and the initial `0.0` |
+| `px1` / `px2` | no incipient wet/dry index exists to promote | the `px1_computed > 0` / `px2_computed < 0` clamps, the post-promotion and `_statement_210` resets, and the initial `0.0` |
+| `sx1` / `sx2` | the backtrack trail has no candidate from that index at this step | `_statement_200`'s deferral copy of the clamped-to-zero `px1`/`px2`; the initial zeros only fill rows the `i < k8` guard masks out |
+| `pro` / `ppr`, at 100 and 0 | the spell certainly ends, or no abatement is underway | `ppr` clamped to `100.0` when `>= 100`, reset to `0.0` when a spell ends, reset by `_statement_210` when a spell intensifies or an abatement fizzles, and the initial `0.0` |
+| CAFEC `numerator` / `denominator` | the month accumulated no water-balance term, so the ratio is undefined | the water-balance accumulators' initial `0.0`: `both_zero` when both sums vanish (`1.0` for alpha/beta/gamma, `0.0` for delta), `0.0` when only the denominator does |
+| `k8` | no months are pending a spell flush (integer counter, not a float) | the recursion's own counter |
+
+Exact-zero tests outside these sentinels are guards on a computed divisor, not
+sentinels, and raise rather than dividing: `DurationFactors.from_fitted`'s
+cross-denominator check and `_palmer_wells._abatement_transition`'s `q` guard
+(both `ConvergenceError`), and `DurationFactors.weighting_fraction`'s divisor
+check (`ValueError`).
 
 ## Validation
 
@@ -1062,6 +1094,7 @@ uv sync --group dev
 ```python
 import climate_indices as ci
 import xarray as xr
+from climate_indices.indices import Distribution
 
 # Load precipitation data
 precip = xr.open_dataarray("precip.nc")
@@ -1070,9 +1103,9 @@ precip = xr.open_dataarray("precip.nc")
 spi_6 = ci.spi(
     precip,
     scale=6,
-    distribution="gamma",
-    calibration_start_year=1981,
-    calibration_end_year=2010
+    distribution=Distribution.gamma,
+    calibration_year_initial=1981,
+    calibration_year_final=2010,
 )
 ```
 
@@ -1294,9 +1327,10 @@ The **climate_indices** library implements a **layered library architecture** op
 **Modules**:
 - **`__main__.py`**: Full-featured CLI supporting SPI, SPEI, PET, Palmer, and PNP indices
   - Multiprocessing pool for gridded data parallelization
-  - NetCDF dimension validation and coordinate conversion
+  - NetCDF dimension validation through the validation facade, and coordinate
+    conversion
   - Shared memory arrays for worker processes
-  - Input type detection (grid, divisions, timeseries)
+  - Dataset layout detection (grid, divisions, timeseries)
 
 **Entry Points** (`pyproject.toml`):
 ```toml
@@ -1320,10 +1354,12 @@ process_climate_indices = "climate_indices.__main__:main"
   - Dask array support with chunking validation
   - PET computation (Thornthwaite, Hargreaves)
 
-- **`validation.py`**: Public validation facade shared by the xarray and fire
-  adapters
+- **`validation.py`**: Public validation facade shared by the CLI, the xarray
+  and fire adapters
   - Input type detection (`DataArray`, `ndarray`; `Dataset` is rejected with a
     select-a-variable hint)
+  - Dataset-layout classification (grid, divisions, timeseries) and the
+    dimension orders each layout accepts
   - Time-dimension, monotonicity, and Dask single-chunk validation
 
 - **`indices.py`**: Legacy numpy API
@@ -1464,7 +1500,7 @@ climate_indices/
 │
 ├── docs/                         # Documentation
 │   ├── conf.py                   # Sphinx configuration
-│   ├── index.rst                 # Main Sphinx doc (ReadTheDocs)
+│   ├── index.md                  # Main Sphinx doc (ReadTheDocs)
 │   ├── reference.md              # API reference (autodoc)
 │   ├── release-process.md        # Maintainer release runbook
 │   └── *.md                      # AI-readable project docs
@@ -1484,7 +1520,7 @@ climate_indices/
 ### Critical Directories
 - **`src/climate_indices/`**: Production code for the core indices and the fire subsystem
 - **`tests/`**: Test suite and fixture data
-- **`docs/`**: Sphinx RST + Markdown project documentation
+- **`docs/`**: Sphinx + MyST Markdown project documentation
 - **`.github/workflows/`**: CI/CD automation (3 workflows)
 
 ## Data Flow and Computation Patterns
@@ -2013,7 +2049,7 @@ climate_indices/
 
 ### Python Style
 - **Line length**: 120 characters
-- **Python version**: 3.10+ (no 3.14+ features)
+- **Python version**: 3.10 minimum (avoid syntax and stdlib added after 3.10)
 - **Type hints**: Required for all functions
 - **Docstrings**: Google-style for all public functions
 - **Imports**: stdlib → third-party → local (enforced by ruff)
@@ -2075,7 +2111,7 @@ uv sync --group dev --force
 
 ---
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contribution guidelines.
+See [CONTRIBUTING.md](https://github.com/monocongo/climate_indices/blob/main/CONTRIBUTING.md) for detailed contribution guidelines.
 
 ## docs/contribution-guide.md
 
@@ -2084,6 +2120,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contribution guidelines.
 ## Getting Started
 
 Thank you for your interest in contributing to `climate_indices`! This guide will help you get started with the contribution process.
+
+`CONTRIBUTING.md` at the repository root is the canonical contributor process;
+this guide is the site's walkthrough of it. Where the two differ, the root
+document wins.
 
 ### Prerequisites
 1. **Python 3.10+** installed
@@ -2342,7 +2382,7 @@ Before submitting:
 4. Add regression test to prevent recurrence
 
 ### Improving Documentation
-1. Update the relevant Markdown page in `docs/` for Sphinx docs (`docs/index.rst` is the Sphinx root document whose toctrees include them)
+1. Update the relevant Markdown page in `docs/` for Sphinx docs (`docs/index.md` is the Sphinx root document whose toctrees include them)
 2. Update docstrings in source code
 3. Build docs locally: `cd docs && make html`
 4. Check for broken links and formatting issues
@@ -2397,7 +2437,8 @@ of decision tickets and resolved one at a time: `wayfinder` for the map,
 `grilling` and `domain-modeling` to settle hard-to-reverse choices and pin down
 terminology, `to-issues` to slice the result into independently grabbable
 issues, and `triage` to move them through the workflow. The GitHub operations
-behind those skills are written down in `docs/agent/issue-tracker.md`.
+behind those skills are written down in the repository's maintainer notes,
+`docs/agent/issue-tracker.md`, which are not published here.
 
 The output is an ordinary GitHub milestone, project board, and numbered issues.
 Labels carry the state: `ready-for-agent` opens an issue to parallel agent
@@ -2515,11 +2556,12 @@ Starting with version 2.3.0, the `climate_indices` library provides native suppo
 :::{warning}
 **Beta Feature**
 
-The xarray DataArray API described in this guide is **beta**. The interface
-(parameter inference, metadata attributes, coordinate handling) may change in
-future minor releases. The underlying computation results are intended to be
-identical to the stable NumPy API; no interface breaking changes are planned
-within a minor version.
+The xarray DataArray API described in this guide is **beta** in 3.0.0 and is
+promoted no earlier than 3.1.0
+([ADR-0012](docs/adr/0012-xarray-api-stays-beta-through-3.0.0.md)). The interface
+(parameter inference, metadata attributes, coordinate handling) may change with a
+minor version, never in a patch release. The underlying computation results are
+intended to be identical to the stable NumPy API.
 :::
 
 :::{warning}
@@ -2546,7 +2588,7 @@ errors this release also adds.
 
 **Who this guide is for:** Users currently working with NumPy arrays who want to leverage xarray's labeled dimensions, automatic metadata handling, and coordinate-aware operations.
 
-**What changed:** All primary index functions (`spi()`, `spei()`, `pet_thornthwaite()`, `pet_hargreaves()`) now accept both `np.ndarray` and `xr.DataArray` inputs. When you pass an xarray DataArray, the library automatically:
+**What changed:** All primary index functions (`spi()`, `spei()`, `eddi()`, `percentage_of_normal()`, `pet_thornthwaite()`, `pet_hargreaves()`, `pdsi()`) now accept both `np.ndarray` and `xr.DataArray` inputs. When you pass an xarray DataArray, the library automatically:
 
 - Infers temporal parameters from time coordinates
 - Preserves all coordinate information in outputs
@@ -2945,7 +2987,7 @@ print(spi_loaded.attrs["references"])  # citation preserved
 ### 1. Time dimension must be named "time"
 
 :::{warning}
-**Error:** `CoordinateValidationError: Time dimension 'time' not found in input. Available dimensions: ['date']. Use time_dim parameter to specify custom name.`
+**Error:** `DimensionMismatchError: Time dimension 'time' not found in input. Available dimensions: ['date']. Use time_dim parameter to specify custom name.`
 
 **Cause:** Your DataArray uses a different dimension name (e.g., `date`, `timestamp`, `t`).
 
@@ -3285,6 +3327,9 @@ with Client(n_workers=4, threads_per_worker=1) as client:
 - {func}`climate_indices.spei` — Standardized Precipitation Evapotranspiration Index
 - {func}`climate_indices.xarray_adapter.pet_thornthwaite` — Potential Evapotranspiration (Thornthwaite)
 - {func}`climate_indices.xarray_adapter.pet_hargreaves` — Potential Evapotranspiration (Hargreaves)
+- {func}`climate_indices.eddi` — Evaporative Demand Drought Index
+- {func}`climate_indices.percentage_of_normal` — Percent of Normal Precipitation
+- {func}`climate_indices.pdsi` — Palmer Drought Severity Index family (Dataset output)
 
 **Supporting classes:**
 
@@ -3529,9 +3574,12 @@ documents both harnesses and the committed raw output.
 
 ## docs/algorithms.md
 
-# Algorithm Documentation and Scientific References
+# Climate Index Background and Selection Guidance
 
-This page provides comprehensive documentation of the climate index algorithms implemented in this library, including scientific references, parameter selection guidance, and implementation details.
+What each index measures, when to use it, and how to choose parameters. For the
+computation steps, formulas, and implementation details, see
+{doc}`algorithm-reference`; the scientific literature is listed in that page's
+bibliography.
 
 ```{contents} Table of Contents
 :backlinks: none
@@ -3550,56 +3598,6 @@ The Standardized Precipitation Index (SPI) is a widely used indicator for charac
 
 SPI values are dimensionless and follow a normal distribution with mean 0 and standard deviation 1, making them comparable across different locations and climate regimes.
 
-### Algorithm Description
-
-The SPI computation follows these steps:
-
-1. **Input validation and preprocessing**
-
-   - Accept 1-D or 2-D arrays of precipitation values (any units)
-   - Clip negative precipitation values to zero
-   - Handle missing data appropriately
-
-2. **Temporal aggregation**
-
-   - Compute sliding sums over the specified timescale (e.g., 1, 3, 6, 12, 24 months)
-   - For monthly data: reshape to (years, 12)
-   - For daily data: reshape to (years, 366) assuming leap year format
-
-3. **Distribution fitting**
-
-   - Fit scaled precipitation to a probability distribution (gamma or Pearson Type III)
-   - Compute distribution parameters separately for each calendar month/day
-   - Use only calibration period data for parameter estimation
-
-   **Gamma distribution** (default):
-
-   - Two-parameter gamma distribution with shape (α) and scale (β) parameters
-   - Parameters estimated using maximum likelihood estimation
-   - Suitable for most precipitation distributions
-
-   **Pearson Type III distribution** (alternative):
-
-   - Three-parameter distribution with location, scale, and skewness
-   - Parameters estimated using L-moments method (Hosking, 1997)
-   - Better for highly skewed precipitation distributions
-   - Automatic fallback to gamma if fitting fails
-
-4. **Cumulative probability transformation**
-
-   - Transform fitted values to cumulative probabilities using the distribution's CDF
-   - Account for zero precipitation values in probability calculations
-
-5. **Inverse normal transformation**
-
-   - Apply inverse normal (Gaussian) CDF to obtain standardized values
-   - This transforms probabilities to standard normal deviates
-
-6. **Clipping to valid range**
-
-   - Constrain final SPI values to [-3.09, 3.09]
-   - This range represents probabilities from 0.001 to 0.999
-
 ### When to Use SPI
 
 **Ideal applications:**
@@ -3617,6 +3615,9 @@ The SPI computation follows these steps:
 - May underestimate drought severity in warming climates
 - Not suitable for studying temperature-driven drought
 - Limited applicability in arid regions with many zero-precipitation months
+
+See {doc}`algorithm-reference` for the SPI computation steps and distribution
+parameters.
 
 ### Parameter Selection
 
@@ -3679,34 +3680,6 @@ The calibration period defines the climatological baseline for "normal" precipit
 The Standardized Precipitation Evapotranspiration Index (SPEI) is an extension of SPI that incorporates the effect of temperature on drought through potential evapotranspiration (PET). Developed by Vicente-Serrano, Begueria, and Lopez-Moreno (2010), SPEI provides a more complete picture of water balance by accounting for both water supply (precipitation) and atmospheric water demand (PET).
 
 SPEI is particularly valuable in warming climates where increased temperatures amplify drought severity through enhanced evaporative demand.
-
-### Algorithm Description
-
-The SPEI computation follows these steps:
-
-1. **Water balance computation**
-
-   - Compute climatic water balance: D = P - PET
-   - Where P is precipitation and PET is potential evapotranspiration
-   - Add constant offset (+1000 mm) to ensure all values are positive
-
-2. **Apply SPI methodology**
-
-   - Apply the same steps as SPI (aggregation, fitting, transformation)
-   - Use water balance (D) instead of precipitation (P) as input
-   - Support both gamma and Pearson Type III distributions
-
-3. **Same constraints as SPI**
-
-   - Clip to valid range [-3.09, 3.09]
-   - Return dimensionless standardized values
-
-**Key differences from SPI:**
-
-- Incorporates temperature effects through PET
-- Requires both precipitation and temperature data
-- More sensitive to warming trends
-- Better represents agricultural drought (crop water stress)
 
 ### When to Use SPEI
 
@@ -3773,6 +3746,8 @@ SPEI uses the same parameter selection guidelines as SPI:
 
 See the Potential Evapotranspiration section below for guidance on choosing between Thornthwaite and Hargreaves methods.
 
+See {doc}`algorithm-reference` for the SPEI computation steps.
+
 ## Potential Evapotranspiration (PET)
 
 ### Overview
@@ -3784,31 +3759,9 @@ This library implements two temperature-based PET methods:
 1. **Thornthwaite (1948)**: Monthly timestep, temperature-only
 2. **Hargreaves (1985)**: Daily timestep, temperature and radiation
 
-### Thornthwaite Method
+The equations and implementation details are in {doc}`algorithm-reference`.
 
-The Thornthwaite method estimates monthly PET using mean temperature and latitude.
-
-**Equation:**
-
-$$
-PET = 1.6 \left( \frac{L}{12} \right) \left( \frac{N}{30} \right) \left( \frac{10 T_a}{I} \right)^a
-$$
-
-Where:
-
-- *PET* = potential evapotranspiration (mm/month)
-- *L* = mean day length for the month (hours)
-- *N* = number of days in the month
-- *T*{sub}`a` = mean daily air temperature (°C, clipped to ≥0)
-- *I* = annual heat index = Σ(*T*{sub}`ai`/5){sup}`1.514` for all 12 months
-- *a* = (6.75×10{sup}`-7`)\*I\*{sup}`3` - (7.71×10{sup}`-5`)\*I\*{sup}`2` + (1.792×10{sup}`-2`)\*I\* + 0.49239
-
-**Implementation details:**
-
-- Automatically adjusts for leap years
-- Negative temperatures are clipped to 0°C (no evaporation below freezing)
-- Day length computed from latitude using solar geometry
-- Returns monthly PET values in mm/month
+### Thornthwaite strengths and limitations
 
 **Strengths:**
 
@@ -3824,30 +3777,7 @@ Where:
 - Does not account for wind speed, humidity, or solar radiation
 - Monthly timestep only (not suitable for daily analysis)
 
-### Hargreaves Method
-
-The Hargreaves method estimates daily PET using temperature range as a proxy for solar radiation.
-
-**Equation (based on FAO-56 equation 52):**
-
-$$
-ET_o = 0.0023 (T_{mean} + 17.8) (T_{max} - T_{min})^{0.5} \times 0.408 \times R_a
-$$
-
-Where:
-
-- *ET*{sub}`o` = reference evapotranspiration over grass (mm/day)
-- *T*{sub}`mean` = mean daily temperature (°C)
-- *T*{sub}`max` = maximum daily temperature (°C)
-- *T*{sub}`min` = minimum daily temperature (°C)
-- *R*{sub}`a` = extraterrestrial radiation (MJ m{sup}`-2` day{sup}`-1`)
-
-**Implementation details:**
-
-- Computes extraterrestrial radiation from day of year and latitude
-- Accounts for Earth-Sun distance variation
-- Returns daily PET values in mm/day
-- Validates temperature relationships (T{sub}`min` ≤ T{sub}`mean` ≤ T{sub}`max`)
+### Hargreaves strengths and limitations
 
 **Strengths:**
 
@@ -3941,28 +3871,6 @@ These indices are based on a water balance model that accounts for precipitation
 - Original PDSI not directly comparable across climates
 - Designed for U.S. climates (may need adjustment elsewhere)
 
-### Algorithm Overview
-
-The Palmer drought indices use a two-layer soil moisture accounting model:
-
-1. **Water balance model**
-
-   - Compute potential recharge, runoff, and loss for each time step
-   - Track moisture in surface and subsurface soil layers
-   - Calculate moisture departure from climatically appropriate conditions
-
-2. **CAFEC procedure**
-
-   - Derive Climatically Appropriate For Existing Conditions (CAFEC) coefficients
-   - Calibrate moisture departure to local climate
-
-3. **Index calculation**
-
-   - PDSI: Cumulative moisture anomaly with persistence
-   - Z-Index: Monthly moisture departure (no persistence)
-   - PHDI: Emphasizes long-term moisture deficits
-   - PMDI: Responds quickly to short-term changes
-
 :::{note}
 The Palmer indices require significant calibration data including soil water holding
 capacity, which may not be available for all locations. SPI and SPEI are often
@@ -3970,19 +3878,14 @@ preferred for global applications due to their simpler data requirements and
 multi-scalar nature.
 :::
 
+The soil-moisture accounting model those indices build on is described in
+{doc}`algorithm-reference`.
+
 ## Additional Indices
 
 ### Precipitation Concentration Index (PCI)
 
 The Precipitation Concentration Index (PCI) quantifies the temporal distribution of precipitation throughout the year (Oliver, 1980).
-
-**Equation:**
-
-$$
-PCI = \frac{\sum_{i=1}^{12} P_i^2}{\left(\sum_{i=1}^{12} P_i\right)^2} \times 100
-$$
-
-Where *P*{sub}`i` is the precipitation in month *i*.
 
 **Interpretation:**
 
@@ -3998,33 +3901,11 @@ Where *P*{sub}`i` is the precipitation in month *i*.
 - Assessing temporal variability of water supply
 - Agricultural planning (growing season water availability)
 
-**Implementation details:**
-
-- Requires complete annual cycle (365 or 366 daily values)
-- Rejects incomplete years or years with missing data
-- Returns single PCI value per year
+The PCI equation and implementation details are in {doc}`algorithm-reference`.
 
 ### Percentage of Normal Precipitation (PNP)
 
 The Percentage of Normal Precipitation (PNP) expresses precipitation as a percentage of the long-term average for a given location and time period.
-
-**Equation:**
-
-$$
-PNP = \frac{P_{observed}}{P_{normal}} \times 100
-$$
-
-Where:
-
-- *P*{sub}`observed` = observed precipitation for the period
-- *P*{sub}`normal` = long-term average precipitation for the same calendar period
-
-**Implementation details:**
-
-- Supports multi-month scales (e.g., 3-month, 6-month)
-- Computes normals separately for each calendar month
-- Standard calibration period: 1981-2010 (U.S. climate normals)
-- Can use any calibration period ≥30 years
 
 **Interpretation:**
 
@@ -4046,6 +3927,272 @@ Where:
 - Skewed distribution (not suitable for statistical analysis)
 - Less sophisticated than SPI/SPEI
 - Sensitive to calibration period selection
+
+The PNP equation and implementation details are in {doc}`algorithm-reference`.
+
+## Validation Datasets and Methods
+
+### Reference Datasets
+
+The climate_indices library has been validated against several authoritative sources:
+
+**NCAR Climate Data Guide**:
+
+- SPI reference implementations
+- Multi-scale validation datasets
+- URL: <https://climatedataguide.ucar.edu/climate-data/standardized-precipitation-index-spi>
+
+**NOAA/NCEI Climate Monitoring**:
+
+- Operational SPI, SPEI, PDSI values for U.S. climate divisions
+- Monthly updates for verification
+- URL: <https://www.ncdc.noaa.gov/temp-and-precip/drought/>
+
+**Global SPEI Database**:
+
+- Vicente-Serrano et al. global SPEI dataset
+- 0.5° resolution, 1901-present
+- URL: <https://spei.csic.es/database.html>
+
+### Validation Approach
+
+**Test methodology**:
+
+1. **Unit tests**: Test individual functions with known inputs/outputs
+2. **Integration tests**: Test complete index calculations
+3. **Regression tests**: Compare against reference implementations
+4. **Property-based tests**: Validate mathematical properties using Hypothesis
+5. **Benchmark tests**: Verify computational efficiency and memory usage
+
+**Validation metrics**:
+
+- Pearson correlation coefficient (r > 0.99 for reference datasets)
+- Root mean square error (RMSE)
+- Maximum absolute error
+- Computation time and memory usage
+
+### External Validation Resources
+
+**NCAR Command Language (NCL)**:
+
+- Mature SPI/SPEI implementations
+- URL: <https://www.ncl.ucar.edu/>
+
+**Climate Indices in Python (other libraries)**:
+
+- `climate-indices` (NCAR/UCAR)
+- `spei` (CRAN R package, Python wrapper)
+
+:::{tip}
+When validating this library's output against other implementations, ensure
+consistent parameter choices (distribution, calibration period, scale) and
+input data preprocessing (missing value handling, time alignment).
+:::
+
+## docs/algorithm-reference.md
+
+# Algorithm Reference
+
+Formulas, computation steps, and implementation details for the indices this
+library implements. For what each index is, when to use it, and how to choose
+parameters, see {doc}`algorithms`.
+
+```{contents} On this page
+:backlinks: none
+:local: true
+```
+
+## SPI computation
+
+The SPI computation follows these steps:
+
+1. **Input validation and preprocessing**
+
+   - Accept 1-D or 2-D arrays of precipitation values (any units)
+   - Clip negative precipitation values to zero
+   - Handle missing data appropriately
+
+2. **Temporal aggregation**
+
+   - Compute sliding sums over the specified timescale (e.g., 1, 3, 6, 12, 24 months)
+   - For monthly data: reshape to (years, 12)
+   - For daily data: reshape to (years, 366) assuming leap year format
+
+3. **Distribution fitting**
+
+   - Fit scaled precipitation to a probability distribution (gamma or Pearson Type III)
+   - Compute distribution parameters separately for each calendar month/day
+   - Use only calibration period data for parameter estimation
+
+   **Gamma distribution** (default):
+
+   - Two-parameter gamma distribution with shape (α) and scale (β) parameters
+   - Parameters estimated using maximum likelihood estimation
+   - Suitable for most precipitation distributions
+
+   **Pearson Type III distribution** (alternative):
+
+   - Three-parameter distribution with location, scale, and skewness
+   - Parameters estimated using L-moments method (Hosking, 1997)
+   - Better for highly skewed precipitation distributions
+   - Automatic fallback to gamma if fitting fails
+
+4. **Cumulative probability transformation**
+
+   - Transform fitted values to cumulative probabilities using the distribution's CDF
+   - Account for zero precipitation values in probability calculations
+
+5. **Inverse normal transformation**
+
+   - Apply inverse normal (Gaussian) CDF to obtain standardized values
+   - This transforms probabilities to standard normal deviates
+
+6. **Clipping to valid range**
+
+   - Constrain final SPI values to [-3.09, 3.09]
+   - This range represents probabilities from 0.001 to 0.999
+
+## SPEI computation
+
+The SPEI computation follows these steps:
+
+1. **Water balance computation**
+
+   - Compute climatic water balance: D = P - PET
+   - Where P is precipitation and PET is potential evapotranspiration
+   - Add constant offset (+1000 mm) to ensure all values are positive
+
+2. **Apply SPI methodology**
+
+   - Apply the same steps as SPI (aggregation, fitting, transformation)
+   - Use water balance (D) instead of precipitation (P) as input
+   - Support both gamma and Pearson Type III distributions
+
+3. **Same constraints as SPI**
+
+   - Clip to valid range [-3.09, 3.09]
+   - Return dimensionless standardized values
+
+**Key differences from SPI:**
+
+- Incorporates temperature effects through PET
+- Requires both precipitation and temperature data
+- More sensitive to warming trends
+- Better represents agricultural drought (crop water stress)
+
+## PET computation
+
+The two temperature-based methods this library implements, and their equations;
+for when to choose each, see {doc}`algorithms`.
+
+### Thornthwaite Method
+
+The Thornthwaite method estimates monthly PET using mean temperature and latitude.
+
+**Equation:**
+
+$$
+PET = 1.6 \left( \frac{L}{12} \right) \left( \frac{N}{30} \right) \left( \frac{10 T_a}{I} \right)^a
+$$
+
+Where:
+
+- *PET* = potential evapotranspiration (mm/month)
+- *L* = mean day length for the month (hours)
+- *N* = number of days in the month
+- *T*{sub}`a` = mean daily air temperature (°C, clipped to ≥0)
+- *I* = annual heat index = Σ(*T*{sub}`ai`/5){sup}`1.514` for all 12 months
+- *a* = (6.75×10{sup}`-7`)\*I\*{sup}`3` - (7.71×10{sup}`-5`)\*I\*{sup}`2` + (1.792×10{sup}`-2`)\*I\* + 0.49239
+
+**Implementation details:**
+
+- Automatically adjusts for leap years
+- Negative temperatures are clipped to 0°C (no evaporation below freezing)
+- Day length computed from latitude using solar geometry
+- Returns monthly PET values in mm/month
+
+### Hargreaves Method
+
+The Hargreaves method estimates daily PET using temperature range as a proxy for solar radiation.
+
+**Equation (based on FAO-56 equation 52):**
+
+$$
+ET_o = 0.0023 (T_{mean} + 17.8) (T_{max} - T_{min})^{0.5} \times 0.408 \times R_a
+$$
+
+Where:
+
+- *ET*{sub}`o` = reference evapotranspiration over grass (mm/day)
+- *T*{sub}`mean` = mean daily temperature (°C)
+- *T*{sub}`max` = maximum daily temperature (°C)
+- *T*{sub}`min` = minimum daily temperature (°C)
+- *R*{sub}`a` = extraterrestrial radiation (MJ m{sup}`-2` day{sup}`-1`)
+
+**Implementation details:**
+
+- Computes extraterrestrial radiation from day of year and latitude
+- Accounts for Earth-Sun distance variation
+- Returns daily PET values in mm/day
+- Validates temperature relationships (T{sub}`min` ≤ T{sub}`mean` ≤ T{sub}`max`)
+
+## Palmer index computation
+
+The Palmer drought indices use a two-layer soil moisture accounting model:
+
+1. **Water balance model**
+
+   - Compute potential recharge, runoff, and loss for each time step
+   - Track moisture in surface and subsurface soil layers
+   - Calculate moisture departure from climatically appropriate conditions
+
+2. **CAFEC procedure**
+
+   - Derive Climatically Appropriate For Existing Conditions (CAFEC) coefficients
+   - Calibrate moisture departure to local climate
+
+3. **Index calculation**
+
+   - PDSI: Cumulative moisture anomaly with persistence
+   - Z-Index: Monthly moisture departure (no persistence)
+   - PHDI: Emphasizes long-term moisture deficits
+   - PMDI: Responds quickly to short-term changes
+
+## PCI computation
+
+**Equation** (Oliver, 1980):
+
+$$
+PCI = \frac{\sum_{i=1}^{12} P_i^2}{\left(\sum_{i=1}^{12} P_i\right)^2} \times 100
+$$
+
+Where *P*{sub}`i` is the precipitation in month *i*.
+
+**Implementation details:**
+
+- Requires complete annual cycle (365 or 366 daily values)
+- Rejects incomplete years or years with missing data
+- Returns single PCI value per year
+
+## PNP computation
+
+**Equation:**
+
+$$
+PNP = \frac{P_{observed}}{P_{normal}} \times 100
+$$
+
+Where:
+
+- *P*{sub}`observed` = observed precipitation for the period
+- *P*{sub}`normal` = long-term average precipitation for the same calendar period
+
+**Implementation details:**
+
+- Supports multi-month scales (e.g., 3-month, 6-month)
+- Computes normals separately for each calendar month
+- Standard calibration period: 1981-2010 (U.S. climate normals)
+- Can use any calibration period ≥30 years
 
 ## Statistical Methods
 
@@ -4132,65 +4279,6 @@ The library performs goodness-of-fit testing to validate that the fitted distrib
 **Fallback strategy**:
 
 If Pearson Type III fitting fails (due to insufficient data or numerical issues), the library automatically falls back to gamma distribution with warning messages in the log.
-
-## Validation Datasets and Methods
-
-### Reference Datasets
-
-The climate_indices library has been validated against several authoritative sources:
-
-**NCAR Climate Data Guide**:
-
-- SPI reference implementations
-- Multi-scale validation datasets
-- URL: <https://climatedataguide.ucar.edu/climate-data/standardized-precipitation-index-spi>
-
-**NOAA/NCEI Climate Monitoring**:
-
-- Operational SPI, SPEI, PDSI values for U.S. climate divisions
-- Monthly updates for verification
-- URL: <https://www.ncdc.noaa.gov/temp-and-precip/drought/>
-
-**Global SPEI Database**:
-
-- Vicente-Serrano et al. global SPEI dataset
-- 0.5° resolution, 1901-present
-- URL: <https://spei.csic.es/database.html>
-
-### Validation Approach
-
-**Test methodology**:
-
-1. **Unit tests**: Test individual functions with known inputs/outputs
-2. **Integration tests**: Test complete index calculations
-3. **Regression tests**: Compare against reference implementations
-4. **Property-based tests**: Validate mathematical properties using Hypothesis
-5. **Benchmark tests**: Verify computational efficiency and memory usage
-
-**Validation metrics**:
-
-- Pearson correlation coefficient (r > 0.99 for reference datasets)
-- Root mean square error (RMSE)
-- Maximum absolute error
-- Computation time and memory usage
-
-### External Validation Resources
-
-**NCAR Command Language (NCL)**:
-
-- Mature SPI/SPEI implementations
-- URL: <https://www.ncl.ucar.edu/>
-
-**Climate Indices in Python (other libraries)**:
-
-- `climate-indices` (NCAR/UCAR)
-- `spei` (CRAN R package, Python wrapper)
-
-:::{tip}
-When validating this library's output against other implementations, ensure
-consistent parameter choices (distribution, calibration period, scale) and
-input data preprocessing (missing value handling, time alignment).
-:::
 
 ## Complete Bibliography
 

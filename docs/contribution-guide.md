@@ -4,6 +4,10 @@
 
 Thank you for your interest in contributing to `climate_indices`! This guide will help you get started with the contribution process.
 
+`CONTRIBUTING.md` at the repository root is the canonical contributor process;
+this guide is the site's walkthrough of it. Where the two differ, the root
+document wins.
+
 ### Prerequisites
 1. **Python 3.10+** installed
 2. **uv** package manager installed
@@ -261,7 +265,7 @@ Before submitting:
 4. Add regression test to prevent recurrence
 
 ### Improving Documentation
-1. Update the relevant Markdown page in `docs/` for Sphinx docs (`docs/index.rst` is the Sphinx root document whose toctrees include them)
+1. Update the relevant Markdown page in `docs/` for Sphinx docs (`docs/index.md` is the Sphinx root document whose toctrees include them)
 2. Update docstrings in source code
 3. Build docs locally: `cd docs && make html`
 4. Check for broken links and formatting issues

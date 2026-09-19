@@ -27,7 +27,7 @@ The following indices are provided:
 - [PCI](https://www.tandfonline.com/doi/abs/10.1111/J.0033-0124.1980.00300.X), Precipitation Concentration Index
 - [EDDI](https://psl.noaa.gov/eddi/), Evaporative Demand Drought Index
 - [Palmer indices](https://www.droughtmanagement.info/literature/USWB_Meteorological_Drought_1965.pdf),
-  including PDSI, PHDI, PMDI, and Z-Index
+  including PDSI, PHDI, PMDI, Z-Index, and [scPDSI](https://doi.org/10.1175/1520-0442(2004)017%3C2335:ASPDSI%3E2.0.CO;2)
 
 This Python implementation of the above climate index algorithms is being developed
 with the following goals in mind:
@@ -170,19 +170,21 @@ Python 3.9 support was dropped in v2.2.0 (August 2025) due to `scipy>=1.15.3` re
 | API Surface | Status | Guarantee |
 |:------------|:------:|:----------|
 | NumPy array functions (`indices.spi`, `indices.spei`, `indices.pet`) | **Stable** | No breaking changes in minor versions |
-| xarray DataArray functions (`spi()`, `spei()`, `pet_thornthwaite()`, `pet_hargreaves()`) | **Beta** | No breaking changes in patch versions |
+| xarray DataArray entry points (any index function accepting `xr.DataArray`) | **Beta** | No breaking changes in patch versions |
 
 **Stable API**: The NumPy-based computation functions follow strict semantic versioning.
 
 **Beta API**: The xarray adapter layer provides automatic parameter inference, coordinate
 preservation, CF metadata, and Dask support. While beta, computation results are **identical**
 to the stable NumPy API — only the interface surface (parameter names, metadata attributes,
-coordinate handling) may evolve. Beta features are tagged with ``BetaFeatureWarning`` and
-marked in docstrings.
+coordinate handling) may evolve. Beta features are marked in docstrings, with
+``BetaFeatureWarning`` as their public warning category. The adapter stays Beta in 3.0.0
+and is promoted no earlier than 3.1.0, once the 3.0.0 calendar alignment has a release
+of soak time ([ADR-0012](docs/adr/0012-xarray-api-stays-beta-through-3.0.0.md)).
 
 See `docs/xarray_compatibility.md` for the 3.0.0 compatibility matrix, including
-Dask chunking constraints, metadata behavior, and the current Palmer xarray
-workflow. See `docs/performance.md` for a runnable parallel SPI/SPEI example and
+Dask chunking constraints, metadata behavior, and the Palmer xarray adapter.
+See `docs/performance.md` for a runnable parallel SPI/SPEI example and
 the measured speedups behind the chunk and scheduler guidance.
 
 ### Validation Notes

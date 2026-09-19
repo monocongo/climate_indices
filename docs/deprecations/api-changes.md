@@ -5,7 +5,7 @@ breaking changes that ship without a deprecation period.
 
 ## Breaking changes in 3.0.0
 
-3.0.0 ships three breaking changes that users hit without a deprecation period.
+3.0.0 ships four breaking changes that users hit without a deprecation period.
 Each one below states what a user sees, how to detect it, and what to change.
 
 ### Daily xarray calendar alignment (3.0.0)
@@ -70,9 +70,10 @@ declared-block path instead of the generic 1-D/2-D rejection.
 **What to change:** reorder the cell axes so the first one is not a calendar
 period length, or pass `spatial_time_major=True` when the array really is a
 time-major `(time, *cells)` block. The keyword exists on `indices.spi`,
-`indices.spei`, and `compute.prepare_scaled`; the package-root `spi()` and
-`spei()` wrappers do not forward it. The xarray adapter declares the keyword for
-every block it packs, so only direct NumPy callers are affected. See
+`indices.spei`, and `compute.prepare_scaled`, and the package-root `spi()` and
+`spei()` wrappers accept it and pass it through to those functions. The xarray
+adapter declares the keyword for every block it packs, so only direct NumPy
+callers are affected. See
 [ADR-0009](../adr/0009-spatial-block-declaration.md).
 
 ### PCI February correction (3.0.0)
@@ -96,12 +97,44 @@ March both carry rainfall. A February-only check is not enough.
 thresholds tuned against the previous values. The fix landed in
 [#846](https://github.com/monocongo/climate_indices/pull/846).
 
+### Periodicity validation type (3.0.0)
+
+**What a user sees:** the periodicity check shared by
+{func}`climate_indices.compute.prepare_scaled`,
+`compute.transform_fitted_gamma`, `compute.transform_fitted_pearson`,
+`compute.gamma_parameters`, and `compute.reshape_values` now raises
+{class}`PeriodicityError <climate_indices.exceptions.PeriodicityError>` where
+those paths previously raised a bare `ValueError` for an invalid periodicity
+argument. Error messages are unchanged. The same change lands on
+{func}`climate_indices.indices.spi`, {func}`climate_indices.indices.spei`, and
+the other index functions, which previously raised the parent
+`InvalidArgumentError` instead of the specialization.
+
+**How to detect it:** look for `except ValueError` around a call that passes a
+`periodicity` argument. A run that used to handle the error locally now
+propagates it instead, since `PeriodicityError` derives from
+`InvalidArgumentError`, not from `ValueError`.
+
+**What to change:** catch `PeriodicityError` — or its parent
+`InvalidArgumentError`, the type the troubleshooting guide documents for
+`Invalid periodicity argument` — imported from `climate_indices.exceptions`.
+Where a `ValueError` handler has to keep working across the upgrade, catch both.
+The exception's `valid_values` attribute now reads
+`"Periodicity.monthly, Periodicity.daily"`; the message text is unchanged.
+
+A related but non-breaking change: a missing required named dimension (for
+example a time dimension absent from an xarray input) now raises
+{class}`DimensionMismatchError <climate_indices.exceptions.DimensionMismatchError>`
+instead of `CoordinateValidationError`. `DimensionMismatchError` derives from
+`CoordinateValidationError`, so existing handlers keep catching it.
+
 ## `spi` console script (removed in 3.0.0)
 
-The `spi` console script (`climate_indices.__spi__:main`) was deprecated
-in 2.4.0 and is removed in 3.0.0 (#919): 2.4.0 is the last release that ships
-the script and emits `ClimateIndicesDeprecationWarning` on invocation. From
-3.0.0 on the `climate_indices.__spi__` module is gone, so imports of it and
+The `spi` console script (`climate_indices.__spi__:main`) is removed in 3.0.0
+(#919). Its deprecation warning was added during the 3.0.0 cycle and shipped in
+no release, so no released version warned before the removal: 2.4.0 is the last
+release that ships the script, and it emits no warning when the script is run.
+From 3.0.0 on the `climate_indices.__spi__` module is gone, so imports of it and
 invocations of the `spi` command raise the usual import and shell errors.
 
 Use `climate_indices --index spi` instead, with two caveats:

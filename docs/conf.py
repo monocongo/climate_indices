@@ -62,14 +62,12 @@ extensions = [
 templates_path = ["_templates"]
 
 # The suffix(es) of source filenames.
-# RST and Markdown build side by side during the migration window. Every
-# non-excluded Markdown page becomes a source document, so a published page
-# joins the site by leaving `exclude_patterns` and entering a toctree, while
-# internal pages stay in `exclude_patterns`.
-source_suffix = {
-    ".rst": "restructuredtext",
-    ".md": "markdown",
-}
+# Markdown is the only documentation authoring format; MyST-Parser renders it
+# and keeps Sphinx as the build. Every non-excluded Markdown page becomes a
+# source document, so a published page joins the site by leaving
+# `exclude_patterns` and entering a toctree, while internal pages stay in
+# `exclude_patterns`.
+source_suffix = ".md"
 
 # -- MyST configuration -------------------------------------------------------
 # Heading anchors let a Markdown page cross-link to its own sections (the
@@ -113,19 +111,6 @@ exclude_patterns = [
     "architecture-deepening-review-*.md",
     "ai-assisted-development-report-*.md",
     "test_fixture_management.md",
-    # Published Markdown pages not yet wired into navigation. Later tickets
-    # publish them and delete their paths from this list: DOCS-7 (navigation)
-    # and DOCS-8 (explanation and reference corpus).
-    "ai-assisted-development.md",
-    "algorithm_refs/**",
-    "architecture.md",
-    "contribution-guide.md",
-    "deployment-guide.md",
-    "development-guide.md",
-    "floating_point_best_practices.md",
-    "project-overview.md",
-    "release-process.md",
-    "research/nclimgrid-acquisition-and-redistribution.md",
 ]
 
 # The name of the Pygments (syntax highlighting) style to use.
@@ -162,9 +147,9 @@ html_theme = "sphinx_rtd_theme"
 # further.  For a list of options available for each theme, see the
 # documentation.
 #
-# sphinx_rtd_theme defaults `includehidden` to True, which would put the
-# staged-publication hidden toctree (the ADR build set in index.rst) into the
-# sidebar. Keep hidden toctrees out of navigation.
+# sphinx_rtd_theme defaults `includehidden` to True, which would surface a
+# hidden staging toctree in the sidebar. Keep hidden toctrees out of
+# navigation.
 html_theme_options = {"includehidden": False}
 
 # Add any paths that contain custom static files (such as style sheets) here,

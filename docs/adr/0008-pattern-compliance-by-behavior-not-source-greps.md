@@ -27,7 +27,7 @@ The 42-point NFR list is preserved here for audit. Seven indices, six patterns:
 | PET Hargreaves | `eto.eto_hargreaves` | `pet_hargreaves` | `pet_hargreaves` |
 | PNP | `indices.percentage_of_normal` | `percentage_of_normal` | `percentage_of_normal` |
 | PCI | `indices.pci` | `pci` | `pci` |
-| Palmer | `palmer.pdsi` | per-output keys (`pdsi`, `phdi`, `pmdi`, `z_index`) | none — the NumPy layer gained a spatial block contract in ADR-0011, but there is still no xarray adapter |
+| Palmer | `palmer.pdsi` | per-output keys (`pdsi`, `phdi`, `pmdi`, `z_index`) | `pdsi` — returns an `xr.Dataset` of the four outputs (#1016); scPDSI stays NumPy-only |
 
 Patterns: xarray adapter, `typed_public_api` overloads, CF metadata registry
 entry, structlog lifecycle logging, structured exceptions, property-based tests.
@@ -36,8 +36,8 @@ Each pattern is now verified as follows:
 
 | Pattern | Verification |
 | --- | --- |
-| xarray adapter | `tests/test_typed_public_api.py`, `tests/test_xarray_adapter.py`, `tests/test_xarray_equivalence.py`, `tests/test_pci_xarray.py`, `tests/test_pnp_xarray.py` — DataArray in, DataArray out, values equal the NumPy path |
-| `typed_public_api` overloads | `tests/test_typed_public_api.py` exercises the NumPy and DataArray overloads for SPI and SPEI; `tests/test_pci_xarray.py` and `tests/test_pnp_xarray.py` exercise the PCI and PNP DataArray paths; the PET typed wrappers are exercised for callability only, in `tests/test_release_integrity.py`. `uv run mypy src/ tests/test_type_checking.py` rejects an overload set whose implementation is inconsistent, and the `assert_type()` calls in that file fail if an overload for SPI, SPEI, KBDI, or HWDI is deleted or reordered (#916). Overload sets without `assert_type()` coverage (EDDI, PNP, PCI, percentage-of-normal, the PET wrappers) are still not caught — mypy only checks overloads that exist, and the deleted suite's AST count for "every index declares at least two" is deliberately not replaced |
+| xarray adapter | `tests/test_typed_public_api.py`, `tests/test_xarray_adapter.py`, `tests/test_xarray_equivalence.py`, `tests/test_pci_xarray.py`, `tests/test_pnp_xarray.py` — DataArray in, DataArray out, values equal the NumPy path; `tests/test_spatial_kernel.py::TestSpatialPalmerKernel` covers `pdsi`'s Dataset output |
+| `typed_public_api` overloads | `tests/test_typed_public_api.py` exercises the NumPy and DataArray overloads for SPI and SPEI; `tests/test_pci_xarray.py` and `tests/test_pnp_xarray.py` exercise the PCI and PNP DataArray paths; the PET typed wrappers are exercised for callability only, in `tests/test_release_integrity.py`. `uv run mypy src/ tests/test_type_checking.py` rejects an overload set whose implementation is inconsistent, and the `assert_type()` calls in that file fail if an overload for SPI, SPEI, KBDI, or HWDI is deleted or reordered (#916). Overload sets without `assert_type()` coverage (EDDI, PNP, PCI, percentage-of-normal, the PET wrappers, `pdsi`) are still not caught — mypy only checks overloads that exist, and the deleted suite's AST count for "every index declares at least two" is deliberately not replaced |
 | CF metadata registry | `tests/test_cf_metadata.py` (keys and required fields); `tests/test_xarray_adapter.py` asserts registry metadata lands on output DataArrays |
 | structlog lifecycle logging | `tests/test_observability.py` asserts `calculation_started`/`calculation_completed` are emitted with index context for SPI, SPEI, PNP, PET, PCI, ETo Hargreaves, EDDI, Palmer PDSI, and Palmer scPDSI, asserts the all-missing early-return paths complete, and asserts `calculation_failed` on the failure paths. These assert emitted events, not source text. Palmer's `calculation_failed` event carries only `duration_ms`, with no error context; that pre-existing divergence is not asserted. The #915 consolidation absorbed the two suites this row previously named |
 | structured exceptions | `tests/test_exceptions.py` (hierarchy and catchability) plus the per-index `InvalidArgumentError` assertions in `tests/test_input_validation.py`, `tests/test_indices.py`, and `tests/test_eto.py` |
@@ -45,10 +45,12 @@ Each pattern is now verified as follows:
 
 Two conventions the deleted suite's data recorded, restated accurately: PET
 lifecycle logging is emitted by the `indices.pet()` wrapper rather than
-`eto.eto_thornthwaite()` itself, and Palmer exposes a NumPy-only API: the deleted
-suite's comment describing a manual `palmer_xarray` wrapper described a TODO in
-`palmer.py`, not an implementation, and ADR-0001 requires a separate decision
-before Palmer grows an xarray path.
+`eto.eto_thornthwaite()` itself, and Palmer's xarray path is PDSI-only:
+`climate_indices.pdsi()` landed in #1016 under ADR-0011 and returns a Dataset of
+the four standard outputs, while scPDSI stays NumPy-only. The deleted suite's
+comment describing a manual `palmer_xarray` wrapper described a TODO in
+`palmer.py`, not an implementation; ADR-0001's separate-decision requirement was
+met by ADR-0011.
 
 ## Consequences
 
