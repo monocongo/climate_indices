@@ -220,13 +220,12 @@ process_climate_indices = "climate_indices.__main__:main"
 - **`utils.py`**: Utility functions
   - Calendar conversions: `transform_to_366day()`, `transform_to_gregorian()`
   - Data validation: `is_data_valid()`
-  - Array reshaping: `reshape_to_2d()`, `reshape_to_divs()`
+  - Array reshaping: `reshape_to_2d()`, `reshape_to_divs_years_months()`
   - Periodicity utilities: `gregorian_length_as_366day()`
 
-- **`performance.py`**: Performance tracking
-  - `@measure_execution_time` decorator
-  - Memory usage tracking
-  - Computation duration logging
+- **`performance.py`**: Memory metrics
+  - `get_process_memory_mb()`: current process memory usage
+  - `check_large_array_memory()`: warns when arrays exceed the 1 GB threshold
 
 ## Source Code Organization
 
@@ -388,7 +387,7 @@ result_da = xr.apply_ufunc(
 
 ## Testing Architecture
 
-### Test Organization (26 Test Files)
+### Test Organization (66 Test Files)
 ```
 tests/
 ├── conftest.py                      # Session-scoped fixtures

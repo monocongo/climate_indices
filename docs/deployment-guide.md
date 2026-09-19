@@ -224,8 +224,7 @@ configure_logging(
 ```
 
 ### Performance Metrics
-- Execution time tracking via `@measure_execution_time`
-- Memory usage monitoring
+- Memory usage monitoring via `check_large_array_memory()`
 - Logged in structured format
 
 ### Coverage Tracking

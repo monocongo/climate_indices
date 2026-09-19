@@ -196,9 +196,19 @@ trace_mask = np.logical_and(
 
 ### Test Validation
 ```python
+from climate_indices import compute, indices
+
 # Validate SPI computation results
 expected_spi = load_reference_data()
-computed_spi = indices.spi(precip_data, scale=3)
+computed_spi = indices.spi(
+    precip_data,
+    scale=3,
+    distribution=indices.Distribution.gamma,
+    data_start_year=1980,
+    calibration_year_initial=1981,
+    calibration_year_final=2010,
+    periodicity=compute.Periodicity.monthly,
+)
 
 # Use appropriate tolerance for climate index values
 np.testing.assert_allclose(
