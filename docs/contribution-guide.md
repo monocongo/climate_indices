@@ -79,7 +79,7 @@ source .venv/bin/activate
           SPI values as numpy array (same shape as input)
 
       Raises:
-          InsufficientDataError: If fewer than 10 non-zero values
+          InsufficientDataError: If fewer than 4 non-zero values for Pearson Type III fitting
           InvalidArgumentError: If scale is out of range
 
       Example:
