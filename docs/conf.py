@@ -147,9 +147,9 @@ html_theme = "sphinx_rtd_theme"
 # further.  For a list of options available for each theme, see the
 # documentation.
 #
-# sphinx_rtd_theme defaults `includehidden` to True, which would put the
-# staged-publication hidden toctree (the ADR build set in index.md) into the
-# sidebar. Keep hidden toctrees out of navigation.
+# sphinx_rtd_theme defaults `includehidden` to True, which would surface a
+# hidden staging toctree in the sidebar. Keep hidden toctrees out of
+# navigation.
 html_theme_options = {"includehidden": False}
 
 # Add any paths that contain custom static files (such as style sheets) here,
