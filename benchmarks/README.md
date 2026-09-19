@@ -383,16 +383,15 @@ has no xarray entry point (ADR-0011).
 
 ### Per-cell calendar transforms (not index kernels, cost not accounted for)
 
-The per-cell `np.apply_along_axis` sites (`__main__.py:569`, `__main__.py:1015`)
-call
-`utils.transform_to_366day` / `utils.transform_to_gregorian`, not an index
-function, so they are outside the #923 conversion. They are still per-cell Python
-calls: `np.apply_along_axis` loops the spatial dimensions in Python, and each
-transform loops over years inside that call (`utils.py:396`, `utils.py:515`). The
-daily adapter path runs equivalent transforms per cell through
-`_compute_with_daily_calendar_plan` (`xarray_adapter.py`), driven by
-`_DailyCalendarPlan.to_all_leap`/`to_gregorian`, and counted inside the wrapper
-above. Unmeasured overhead on both paths; no ticket owns it.
+The per-cell `np.apply_along_axis` sites in the CLI (`__main__.py:605`,
+`__main__.py:1585`) call `utils.DailyCalendarPlan.to_all_leap` /
+`to_gregorian`, not an index function, so they are outside the #923 conversion.
+They are still per-cell Python calls: `np.apply_along_axis` loops the spatial
+dimensions in Python, and each transform loops over years inside that call
+(`utils.py:418`, `utils.py:458`). The daily adapter path runs equivalent
+transforms per cell through `_compute_with_daily_calendar_plan`
+(`xarray_adapter.py`), driven by the same plan methods, and counted inside the
+wrapper above. Unmeasured overhead on both paths; no ticket owns it.
 
 ### Structural blockers
 
