@@ -171,8 +171,13 @@ def test_time_major_gridded_input_is_rejected(tmp_path, precips_mm_monthly):
 
     arguments = _spi_arguments(precip_path, tmp_path / "spi_time_major")
 
-    with pytest.raises(ValueError, match="Invalid dimensions for variable 'precip'"):
+    with pytest.raises(ValueError) as error:
         main(arguments)
+
+    assert str(error.value) == (
+        "Invalid dimensions for variable 'precip': ('time', 'lat', 'lon') "
+        "(expected one of [('lat', 'lon', 'time'), ('lat', 'lon')])"
+    )
 
 
 def test_time_major_divisions_input_is_rejected(tmp_path, precips_mm_monthly):
@@ -189,8 +194,13 @@ def test_time_major_divisions_input_is_rejected(tmp_path, precips_mm_monthly):
 
     arguments = _spi_arguments(precip_path, tmp_path / "spi_time_major_divisions")
 
-    with pytest.raises(ValueError, match="Invalid dimensions for variable 'precip'"):
+    with pytest.raises(ValueError) as error:
         main(arguments)
+
+    assert str(error.value) == (
+        "Invalid dimensions for variable 'precip': ('time', 'division') "
+        "(expected one of [('division', 'time'), ('division',)])"
+    )
 
 
 def test_mixed_order_divisions_companion_is_rejected(tmp_path, precips_mm_monthly, pet_thornthwaite_mm):
@@ -218,8 +228,12 @@ def test_mixed_order_divisions_companion_is_rejected(tmp_path, precips_mm_monthl
         "pet",
     ]
 
-    with pytest.raises(ValueError, match="Invalid dimensions for variable 'pet'"):
+    with pytest.raises(ValueError) as error:
         main(arguments)
+
+    assert str(error.value) == (
+        "Invalid dimensions of the PET variable: ('time', 'division') (expected names and order: [('division', 'time')])"
+    )
 
 
 def test_spei_uses_provided_pet_file_and_matches_in_process_computation(

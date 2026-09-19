@@ -298,11 +298,10 @@ def _validate_matching_input_file(
     raise ValueError: if the companion input is invalid or does not match
     """
 
-    expected = expected_dimensions(context.input_type)
-    if expected is None:
-        msg = "Failed to determine the input type (gridded, timeseries, or US climate division)"
-        _logger.error(msg)
-        raise ValueError(msg)
+    # the transport contract rather than the wider layout contract: a companion
+    # rides the shared-array transport, which copies storage order and reads
+    # only a time-last variable
+    expected = _TRANSPORT_DIMENSIONS[context.input_type]
 
     with xr.open_dataset(netcdf_file) as dataset:
         # make sure we have a valid variable name
@@ -568,7 +567,6 @@ def _log_status(request: _IndexRequest) -> None:
 def _drop_data_into_shared_arrays_grid(
     dataset: xr.Dataset,
     var_names: list[str],
-    accepted_dimensions: tuple[tuple[Hashable, ...], ...],
     periodicity: compute.Periodicity,
     data_start_year: int,
 ) -> tuple[int, ...]:
@@ -577,13 +575,7 @@ def _drop_data_into_shared_arrays_grid(
     # get the data arrays we'll use later in the index computations
     global _global_shared_arrays
     for var_name in var_names:
-        # confirm that the dimensions of the data array are valid
         dims = dataset[var_name].dims
-        if dims not in accepted_dimensions:
-            expected = list(accepted_dimensions)
-            message = f"Invalid dimensions for variable '{var_name}': {dims} (expected one of {expected})"
-            _logger.error(message)
-            raise ValueError(message)
 
         # convert daily values into 366-day years
         if periodicity == compute.Periodicity.daily:
@@ -625,15 +617,12 @@ def _drop_data_into_shared_arrays_grid(
 def _drop_data_into_shared_arrays_divisions(
     dataset: xr.Dataset,
     var_names: list[str],
-    accepted_dimensions: tuple[tuple[Hashable, ...], ...],
 ) -> tuple[int, ...]:
     """
     Drop data into shared arrays for use in the index computations.
 
     :param dataset:
     :param var_names:
-    :param accepted_dimensions: the dimension orders a variable in this
-        dataset may use
     :return:
     """
     output_shape = None
@@ -641,14 +630,6 @@ def _drop_data_into_shared_arrays_divisions(
     # get the data arrays we'll use later in the index computations
     global _global_shared_arrays
     for var_name in var_names:
-        # confirm that the dimensions of the data array are valid
-        dims = dataset[var_name].dims
-        if dims not in accepted_dimensions:
-            expected = list(accepted_dimensions)
-            message = f"Invalid dimensions for variable '{var_name}': {dims} (expected one of {expected})"
-            _logger.error(message)
-            raise ValueError(message)
-
         # create a shared memory array, wrap it as a numpy array and
         # copy the data (values) from this variable's DataArray
         shared_array = multiprocessing.Array("d", int(np.prod(dataset[var_name].shape)))
@@ -887,14 +868,23 @@ def _compute_write_index(request: _IndexRequest) -> tuple[str, str] | None:
     # label is rejected without paying for those full-array copies
     prepared = handler.prepare_inputs(request, dataset) if handler.prepare_inputs is not None else None
 
+    # confirm every variable's dimensions before copying any of them, so an
+    # invalid variable cannot leave the shared arrays half filled
     accepted_dimensions = _accepted_dimensions(request.input_type)
+    for var_name in input_var_names:
+        dimensions = dataset[var_name].dims
+        if dimensions not in accepted_dimensions:
+            expected = list(accepted_dimensions)
+            message = f"Invalid dimensions for variable '{var_name}': {dimensions} (expected one of {expected})"
+            _logger.error(message)
+            raise ValueError(message)
+
     if request.input_type == DatasetLayout.DIVISIONS:
-        output_shape = _drop_data_into_shared_arrays_divisions(dataset, input_var_names, accepted_dimensions)
+        output_shape = _drop_data_into_shared_arrays_divisions(dataset, input_var_names)
     else:
         output_shape = _drop_data_into_shared_arrays_grid(
             dataset,
             input_var_names,
-            accepted_dimensions,
             request.periodicity,
             request.data_start_year,
         )
