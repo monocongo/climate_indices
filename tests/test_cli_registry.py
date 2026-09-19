@@ -35,9 +35,10 @@ def test_pipelines_cover_the_index_choices():
         # storage order and the kernels index a grid's time axis last, so any
         # other order would be standardized along the wrong axis
         (DatasetLayout.GRID, (("lat", "lon", "time"), ("lat", "lon"))),
-        # a time-major division variable is copied as-is and then indexed along
-        # its division axis; #1063 tracks rejecting or normalizing it
-        (DatasetLayout.DIVISIONS, (("division", "time"), ("time", "division"), ("division",))),
+        # a division variable likewise has to be time-last: the transport
+        # copies storage order and the kernels index a division's time axis at
+        # position 1, so a time-major store is standardized along the wrong one
+        (DatasetLayout.DIVISIONS, (("division", "time"), ("division",))),
         (DatasetLayout.TIMESERIES, (("time",),)),
     ],
 )

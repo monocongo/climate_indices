@@ -149,15 +149,12 @@ class _ComputeContext:
 
 # the dimension orders the shared-array transport accepts, by layout: it copies
 # each variable's values in storage order, and the kernels index the time axis
-# at a fixed position (_TIME_AXIS_INDEX), so a grid variable has to be stored
-# time-last. The layout classifier is wider -- it accepts a time-major grid for
-# the xarray-backed KBDI path, which never enters the transport
+# at a fixed position (_TIME_AXIS_INDEX), so a time-carrying variable has to be
+# stored time-last. The layout classifier is wider -- it accepts a time-major
+# grid for the xarray-backed KBDI path, which never enters the transport
 _TRANSPORT_DIMENSIONS: dict[DatasetLayout, tuple[tuple[Hashable, ...], ...]] = {
     DatasetLayout.GRID: (("lat", "lon", "time"),),
-    # a time-major division variable is copied as-is and then indexed along its
-    # division axis; #1063 tracks rejecting or normalizing it, which would
-    # narrow the inputs the CLI accepts today
-    DatasetLayout.DIVISIONS: (("division", "time"), ("time", "division")),
+    DatasetLayout.DIVISIONS: (("division", "time"),),
     DatasetLayout.TIMESERIES: (("time",),),
 }
 
@@ -583,7 +580,8 @@ def _drop_data_into_shared_arrays_grid(
         # confirm that the dimensions of the data array are valid
         dims = dataset[var_name].dims
         if dims not in accepted_dimensions:
-            message = f"Invalid dimensions for variable '{var_name}': {dims}"
+            expected = list(accepted_dimensions)
+            message = f"Invalid dimensions for variable '{var_name}': {dims} (expected one of {expected})"
             _logger.error(message)
             raise ValueError(message)
 
@@ -646,7 +644,8 @@ def _drop_data_into_shared_arrays_divisions(
         # confirm that the dimensions of the data array are valid
         dims = dataset[var_name].dims
         if dims not in accepted_dimensions:
-            message = f"Invalid dimensions for variable '{var_name}': {dims}"
+            expected = list(accepted_dimensions)
+            message = f"Invalid dimensions for variable '{var_name}': {dims} (expected one of {expected})"
             _logger.error(message)
             raise ValueError(message)
 
