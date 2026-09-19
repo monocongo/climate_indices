@@ -151,7 +151,7 @@ class TestKBDIValidation:
         )
         _patch_open_dataset(monkeypatch, kbdi_datasets)
 
-        assert cli_main._validate_args(_kbdi_arguments()) == cli_main.InputType.grid
+        assert cli_main._validate_args(_kbdi_arguments()) == cli_main.DatasetLayout.GRID
 
 
 class TestKBDIProcessing:

@@ -15,7 +15,7 @@ import xarray as xr
 
 from climate_indices import __main__ as cli_main
 from climate_indices import compute, indices
-from climate_indices.__main__ import InputType
+from climate_indices.__main__ import DatasetLayout
 
 # the --index values the CLI accepts, in the order they are offered
 _EXPECTED_INDEX_CHOICES = ("spi", "spei", "pnp", "scaled", "pet", "palmers", "kbdi", "all")
@@ -26,6 +26,24 @@ _SHARED_ARRAY_INDICES = ("spi", "spei", "pnp", "pet", "palmers")
 
 def test_pipelines_cover_the_index_choices():
     assert tuple(cli_main._INDEX_PIPELINES) == _EXPECTED_INDEX_CHOICES
+
+
+@pytest.mark.parametrize(
+    ("layout", "accepted"),
+    [
+        # a grid variable has to be time-last: the shared-array transport copies
+        # storage order and the kernels index a grid's time axis last, so any
+        # other order would be standardized along the wrong axis
+        (DatasetLayout.GRID, (("lat", "lon", "time"), ("lat", "lon"))),
+        # a time-major division variable is copied as-is and then indexed along
+        # its division axis; #1063 tracks rejecting or normalizing it
+        (DatasetLayout.DIVISIONS, (("division", "time"), ("time", "division"), ("division",))),
+        (DatasetLayout.TIMESERIES, (("time",),)),
+    ],
+)
+def test_accepted_dimensions_are_the_orders_the_transport_reads(layout, accepted):
+    """The shared-array gate accepts exactly the orders its kernels can index."""
+    assert cli_main._accepted_dimensions(layout) == accepted
 
 
 def test_registry_covers_every_pipeline_member():
@@ -89,10 +107,10 @@ def test_unsupported_index_is_rejected():
 
 def test_process_climate_indices_runs_the_pipeline_in_order(monkeypatch):
     """An --index value runs its registered indices, rather than a chain of ifs."""
-    calls: list[tuple[str, InputType]] = []
+    calls: list[tuple[str, DatasetLayout]] = []
 
     def _recorder(name: str) -> cli_main._IndexRegistration:
-        def _run(arguments: argparse.Namespace, input_type: InputType) -> None:
+        def _run(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
             calls.append((name, input_type))
 
         return cli_main._IndexRegistration(index=name, run=_run)
@@ -102,11 +120,11 @@ def test_process_climate_indices_runs_the_pipeline_in_order(monkeypatch):
         "_INDEX_REGISTRY",
         {name: _recorder(name) for name in cli_main._INDEX_REGISTRY},
     )
-    monkeypatch.setattr(cli_main, "_validate_args", lambda _arguments: InputType.timeseries)
+    monkeypatch.setattr(cli_main, "_validate_args", lambda _arguments: DatasetLayout.TIMESERIES)
 
     cli_main.process_climate_indices(argparse.Namespace(index="all", multiprocessing="single"))
 
-    assert calls == [(name, InputType.timeseries) for name in ("spi", "pet", "spei", "pnp", "palmers")]
+    assert calls == [(name, DatasetLayout.TIMESERIES) for name in ("spi", "pet", "spei", "pnp", "palmers")]
 
 
 def test_requests_carry_only_the_inputs_their_index_declares():
@@ -127,7 +145,7 @@ def test_requests_carry_only_the_inputs_their_index_declares():
         var_name_awc="awc",
     )
 
-    request = cli_main._IndexRequest.from_arguments(arguments, index="spi", input_type=InputType.divisions)
+    request = cli_main._IndexRequest.from_arguments(arguments, index="spi", input_type=DatasetLayout.DIVISIONS)
 
     assert (request.netcdf_precip, request.var_name_precip) == ("precip.nc", "precip")
     assert (request.netcdf_temp, request.var_name_temp) == (None, None)
@@ -144,8 +162,7 @@ def test_temperature_only_spei_computes_and_consumes_pet(monkeypatch):
         return ("out_pet.nc", "pet")
 
     monkeypatch.setattr(cli_main, "_compute_write_index", _record)
-    monkeypatch.setattr(cli_main, "_prepare_file", lambda path, _name: path)
-    monkeypatch.setattr(cli_main, "_validate_args", lambda _arguments: InputType.timeseries)
+    monkeypatch.setattr(cli_main, "_validate_args", lambda _arguments: DatasetLayout.TIMESERIES)
     arguments = argparse.Namespace(
         index="spei",
         multiprocessing="single",
@@ -180,8 +197,7 @@ def test_pet_index_computes_pet_when_a_pet_file_is_also_provided(monkeypatch):
         return ("out_pet.nc", "pet")
 
     monkeypatch.setattr(cli_main, "_compute_write_index", _record)
-    monkeypatch.setattr(cli_main, "_prepare_file", lambda path, _name: path)
-    monkeypatch.setattr(cli_main, "_validate_args", lambda _arguments: InputType.timeseries)
+    monkeypatch.setattr(cli_main, "_validate_args", lambda _arguments: DatasetLayout.TIMESERIES)
     arguments = argparse.Namespace(
         index="pet",
         multiprocessing="single",
@@ -212,7 +228,7 @@ def test_temperature_derived_pet_requires_monthly_periodicity():
         var_name_pet=None,
     )
     context = cli_main._InputContext(
-        input_type=InputType.timeseries,
+        input_type=DatasetLayout.TIMESERIES,
         dimensions=("time",),
         times=np.array([0]),
     )
@@ -231,7 +247,7 @@ def test_result_array_is_reallocated_when_the_output_shape_changes(monkeypatch):
     request = cli_main._IndexRequest(
         index="spi",
         output_file_base="out",
-        input_type=InputType.divisions,
+        input_type=DatasetLayout.DIVISIONS,
         periodicity=compute.Periodicity.monthly,
         chunksizes="none",
     )
