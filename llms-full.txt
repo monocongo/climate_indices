@@ -1194,7 +1194,7 @@ uv run pytest -m benchmark
 ### Critical Architectural Invariants
 - **Time dimension chunking**: Dask arrays MUST have time as single chunk (`time: -1`) for climate indices
 - **Calibration period**: Default minimum 30 years; violations trigger `ShortCalibrationWarning`
-- **Distribution fitting**: Requires minimum 10 non-zero values; insufficient data raises `InsufficientDataError`
+- **Distribution fitting**: Requires minimum 4 non-zero values for Pearson Type III; the L-moments fit raises `InsufficientDataError` below that
 - **Coordinate validation**: Time coordinates must be monotonically increasing; xarray inputs undergo automatic validation
 - **Backward compatibility**: Legacy numpy API (`indices.py`) must remain stable; new features go to xarray API
 
@@ -1216,7 +1216,7 @@ uv run pytest -m benchmark
 1. **Do NOT** use wildcard imports (`from module import *`) - explicitly forbidden by ruff
 2. **Do NOT** chunk time dimension in Dask arrays - causes incorrect index calculations
 3. **Do NOT** modify `indices.py` API - backward compatibility requirement
-4. **Do NOT** commit without running tests - pre-commit hooks will fail
+4. **Do NOT** commit without running tests - skipping them risks CI failures
 5. **Do NOT** use string paths - always use `pathlib.Path` objects
 
 ### Key Files for Modification Scenarios
@@ -1456,13 +1456,12 @@ process_climate_indices = "climate_indices.__main__:main"
 - **`utils.py`**: Utility functions
   - Calendar conversions: `transform_to_366day()`, `transform_to_gregorian()`
   - Data validation: `is_data_valid()`
-  - Array reshaping: `reshape_to_2d()`, `reshape_to_divs()`
+  - Array reshaping: `reshape_to_2d()`, `reshape_to_divs_years_months()`
   - Periodicity utilities: `gregorian_length_as_366day()`
 
-- **`performance.py`**: Performance tracking
-  - `@measure_execution_time` decorator
-  - Memory usage tracking
-  - Computation duration logging
+- **`performance.py`**: Memory metrics
+  - `get_process_memory_mb()`: current process memory usage
+  - `check_large_array_memory()`: returns memory metrics when arrays exceed the 1 GB threshold
 
 ## Source Code Organization
 
@@ -1624,7 +1623,7 @@ result_da = xr.apply_ufunc(
 
 ## Testing Architecture
 
-### Test Organization (26 Test Files)
+### Test Organization (66 Test Files)
 ```
 tests/
 ├── conftest.py                      # Session-scoped fixtures
@@ -2196,7 +2195,7 @@ source .venv/bin/activate
           SPI values as numpy array (same shape as input)
 
       Raises:
-          InsufficientDataError: If fewer than 10 non-zero values
+          InsufficientDataError: If fewer than 4 non-zero values for Pearson Type III fitting
           InvalidArgumentError: If scale is out of range
 
       Example:
