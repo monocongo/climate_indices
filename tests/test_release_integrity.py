@@ -299,9 +299,7 @@ def test_every_published_docs_page_has_one_visible_section() -> None:
     required = sources - orphans - hidden - {"index"}
     assert required == visible, "every published page must appear in exactly one visible section toctree"
     assert not visible & hidden, "a page cannot be both a visible section member and hidden"
-    assert hidden <= {page for page in sources if page.startswith("adr/")}, (
-        "only the staged architecture decision records may sit in a hidden toctree"
-    )
+    assert not hidden, "no published page may sit in a hidden toctree; add a staged page to its section toctree instead"
     assert orphans == {"pypi_release"}, "pypi_release is the only documented orphan"
 
     homepage = toctree.search((docs / "index.md").read_text(encoding="utf-8"))
