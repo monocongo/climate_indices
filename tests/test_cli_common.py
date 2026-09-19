@@ -1,15 +1,13 @@
 """Tests for helpers shared by the climate_indices command-line interfaces."""
 
 import argparse
-from types import SimpleNamespace
 
 import dask
 import numpy as np
-import pytest
 import xarray as xr
 
 from climate_indices import _cli, compute
-from climate_indices._cli import _add_common_spi_arguments, _prepare_file
+from climate_indices._cli import _add_common_spi_arguments
 
 _COMMON_ARGV = [
     "--periodicity",
@@ -28,45 +26,6 @@ _COMMON_ARGV = [
     "--output_file_base",
     "output",
 ]
-
-
-def _patch_dims(monkeypatch, dimensions):
-    """Patch the shared module's xarray dataset lookup to report the given dims."""
-    dataset = {"prcp": SimpleNamespace(dims=dimensions)}
-    monkeypatch.setattr(_cli, "xr", SimpleNamespace(open_dataset=lambda *_args: dataset))
-
-
-@pytest.mark.parametrize(
-    "dimensions",
-    [
-        ("time",),
-        ("lat", "lon"),
-        ("lat", "lon", "time"),
-        ("division",),
-        ("division", "time"),
-    ],
-)
-def test_prepare_file_accepts_supported_dimensions(monkeypatch, dimensions):
-    _patch_dims(monkeypatch, dimensions)
-
-    assert _prepare_file("input.nc", "prcp") == "input.nc"
-
-
-@pytest.mark.parametrize(
-    "dimensions",
-    [
-        (),
-        ("lat",),
-        ("lat", "lon", "time", "extra"),
-        ("division", "lat", "lon"),
-        ("divisions", "time"),
-    ],
-)
-def test_prepare_file_rejects_unsupported_dimensions(monkeypatch, dimensions):
-    _patch_dims(monkeypatch, dimensions)
-
-    with pytest.raises(ValueError, match="dimensions"):
-        _prepare_file("input.nc", "prcp")
 
 
 def test_default_chunk_size_drives_auto_chunking(monkeypatch, tmp_path):

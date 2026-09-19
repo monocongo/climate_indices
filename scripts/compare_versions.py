@@ -211,7 +211,7 @@ def create_fixtures_netcdf(fixtures_dir: Path, precip_nc: Path, temp_nc: Path) -
     lat = np.array([FIXTURE_LATITUDE])
     lon = np.array([-97.0])
 
-    # reshape to (lat=1, lon=1, time) for InputType.grid
+    # reshape to (lat=1, lon=1, time) for DatasetLayout.GRID
     prcp_3d = precips[:n_months].astype(np.float32)[np.newaxis, np.newaxis, :]
     tavg_3d = temps[:n_months].astype(np.float32)[np.newaxis, np.newaxis, :]
 

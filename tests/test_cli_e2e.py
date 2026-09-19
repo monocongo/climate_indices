@@ -61,6 +61,14 @@ def _write_grid(path, values, var_name="precip", units="mm") -> None:
     ).to_netcdf(path)
 
 
+def _write_time_major_grid(path, values, var_name="precip", units="mm") -> None:
+    values = np.asarray(values, dtype=float)
+    xr.Dataset(
+        {var_name: (("time", "lat", "lon"), values, {"units": units})},
+        coords={"time": _months(values.shape[0]), "lat": _LATITUDES, "lon": _LONGITUDES},
+    ).to_netcdf(path)
+
+
 def _common_arguments(index, precip_path, output_base) -> list[str]:
     return [
         "--index",
@@ -135,6 +143,25 @@ def test_gridded_spi_matches_in_process_computation(tmp_path, precips_mm_monthly
                     periodicity=compute.Periodicity.monthly,
                 )
                 np.testing.assert_allclose(written[i, j], expected, equal_nan=True, err_msg=f"cell ({i}, {j})")
+
+
+def test_time_major_gridded_input_is_rejected(tmp_path, precips_mm_monthly):
+    """
+    A grid stored time-first is rejected rather than standardized wrongly.
+
+    The shared-array transport copies storage order and the kernels index the
+    grid's time axis last, so accepting this order computes each cell's index
+    from its longitude series instead of raising.
+    """
+    values = precips_mm_monthly.reshape(-1)
+    cells = np.stack([values] * (len(_LATITUDES) * len(_LONGITUDES)), axis=-1)
+    precip_path = tmp_path / "precip_time_major.nc"
+    _write_time_major_grid(precip_path, cells.reshape(values.size, len(_LATITUDES), len(_LONGITUDES)))
+
+    arguments = _spi_arguments(precip_path, tmp_path / "spi_time_major")
+
+    with pytest.raises(ValueError, match="Invalid dimensions for variable 'precip'"):
+        main(arguments)
 
 
 def test_spei_uses_provided_pet_file_and_matches_in_process_computation(

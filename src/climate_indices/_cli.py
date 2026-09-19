@@ -1,17 +1,13 @@
 """Shared helpers for the climate_indices command-line interfaces."""
 
 import argparse
-import logging
 from collections.abc import Callable
 from typing import Any
 
 import dask
 import xarray as xr
 
-from climate_indices import compute, utils
-
-# Retrieve logger and set desired logging level
-_logger = utils.get_logger(__name__, logging.INFO)
+from climate_indices import compute
 
 _DEFAULT_SCALES_HELP = "Timestep scales over which the PNP, SPI, and SPEI values are to be computed"
 
@@ -52,61 +48,6 @@ def _open_with_default_chunks(
 
     with dask.config.set({"array.chunk-size": DEFAULT_ARRAY_CHUNK_SIZE}):
         return opener(*args, **kwargs)
-
-
-def _prepare_file(netcdf_file: str, var_name: str) -> str:
-    """
-    Validate the dimensions of a NetCDF variable prior to processing.
-
-    The file is returned unchanged; no dimensions are reordered.
-
-    Args:
-        netcdf_file: path of the NetCDF file to be validated.
-        var_name: name of the variable whose dimensions are validated.
-
-    Returns:
-        The name of the NetCDF file containing correct dimensions.
-
-    Raises:
-        ValueError: if the variable's dimensions are not one of the supported forms.
-    """
-
-    # make sure we have the expected dimensions for the data type
-    ds = xr.open_dataset(netcdf_file)
-    dimensions = ds[var_name].dims
-
-    # Validate dimensions based on data type
-    if "division" in dimensions:
-        # Climate divisions data
-        if len(dimensions) == 1:
-            expected_dims = {"division"}
-        elif len(dimensions) == 2:
-            expected_dims = {"division", "time"}
-        else:
-            message = f"Unsupported dimensions for climate division variable '{var_name}': {dimensions}"
-            _logger.error(message)
-            raise ValueError(message)
-    else:
-        # Gridded or timeseries data
-        if len(dimensions) == 1:
-            expected_dims = {"time"}
-        elif len(dimensions) == 2:
-            expected_dims = {"lat", "lon"}
-        elif len(dimensions) == 3:
-            expected_dims = {"lat", "lon", "time"}
-        else:
-            message = f"Unsupported dimensions for variable '{var_name}': {dimensions}"
-            _logger.error(message)
-            raise ValueError(message)
-
-    # Validate that the actual dimensions match expected dimensions
-    actual_dims = set(dimensions)
-    if actual_dims != expected_dims:
-        message = f"Invalid dimensions for variable '{var_name}': got {actual_dims}, expected {expected_dims}"
-        _logger.error(message)
-        raise ValueError(message)
-
-    return netcdf_file
 
 
 def _add_common_spi_arguments(

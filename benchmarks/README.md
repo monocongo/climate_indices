@@ -319,16 +319,16 @@ point.
 
 ### Legacy CLI path (per-cell loop present, parallel across workers)
 
-`__main__.py` validates `(lat, lon, time)` or `(time, lat, lon)`
-(`__main__.py:61`), while the shared-array path stores the
-lat/lon-first order untransposed and the per-cell loops assume it; the
-mismatches that survive validation are tracked in #932. The counts below assume
-`(lat, lon, time)`, split along axis 0 (latitude) across a `multiprocessing.Pool`,
-with the per-cell loop inside each worker. The loops run in parallel across
-processes but are not eliminated, and each worker's per-cell call carries the
-same per-cell overhead the #921 profile measured (per-cell `structlog` records
-and the per-kernel goodness-of-fit check): the Pool divides wall clock, it does
-not reduce total per-cell Python cost.
+`__main__.py`'s layout classifier accepts `(lat, lon, time)` or
+`(time, lat, lon)`, but the shared-array path this section measures stores a grid
+time-last and rejects a time-major grid, which only the xarray-backed KBDI path
+accepts; the mismatches that still survive validation are tracked in #932. The
+counts below assume `(lat, lon, time)`, split along axis 0 (latitude) across a
+`multiprocessing.Pool`, with the per-cell loop inside each worker. The loops run
+in parallel across processes but are not eliminated, and each worker's per-cell
+call carries the same per-cell overhead the #921 profile measured (per-cell
+`structlog` records and the per-kernel goodness-of-fit check): the Pool divides
+wall clock, it does not reduce total per-cell Python cost.
 
 | site | invocation | loop dimensions | calls |
 |---|---|---|---|
@@ -352,8 +352,8 @@ a broadcast: every recursion stage takes an `active` cell mask and writes only
 where it holds, and the K8 backtracking window is preallocated to the record
 length instead of the historical `K8_SIZE = 40` bound. `__main__._apply_along_axis_palmers`
 now passes a whole `(lat_chunk, lon, time)` grid chunk to one `palmer.pdsi()` call
-for `InputType.grid`, instead of the nested `for i / for j` loop the table above
-described; `InputType.divisions` has no cell-adjacency structure to batch and stays
+for `DatasetLayout.GRID`, instead of the nested `for i / for j` loop the table above
+described; `DatasetLayout.DIVISIONS` has no cell-adjacency structure to batch and stays
 on the per-location loop. `tests/test_palmer_spatial.py` pins the equivalence with
 the per-location path (bit-for-bit, not a tolerance — see ADR-0011 for why), the
 ADR-0009 ambiguous-shape rejection, and the all-missing-cell and per-cell-AWC
