@@ -206,7 +206,7 @@ uv run pytest -m benchmark
 1. **Do NOT** use wildcard imports (`from module import *`) - explicitly forbidden by ruff
 2. **Do NOT** chunk time dimension in Dask arrays - causes incorrect index calculations
 3. **Do NOT** modify `indices.py` API - backward compatibility requirement
-4. **Do NOT** commit without running tests - the CI test suite will fail
+4. **Do NOT** commit without running tests - skipping them risks CI failures
 5. **Do NOT** use string paths - always use `pathlib.Path` objects
 
 ### Key Files for Modification Scenarios

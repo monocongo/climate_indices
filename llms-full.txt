@@ -1216,7 +1216,7 @@ uv run pytest -m benchmark
 1. **Do NOT** use wildcard imports (`from module import *`) - explicitly forbidden by ruff
 2. **Do NOT** chunk time dimension in Dask arrays - causes incorrect index calculations
 3. **Do NOT** modify `indices.py` API - backward compatibility requirement
-4. **Do NOT** commit without running tests - the CI test suite will fail
+4. **Do NOT** commit without running tests - skipping them risks CI failures
 5. **Do NOT** use string paths - always use `pathlib.Path` objects
 
 ### Key Files for Modification Scenarios
@@ -1461,7 +1461,7 @@ process_climate_indices = "climate_indices.__main__:main"
 
 - **`performance.py`**: Memory metrics
   - `get_process_memory_mb()`: current process memory usage
-  - `check_large_array_memory()`: warns when arrays exceed the 1 GB threshold
+  - `check_large_array_memory()`: returns memory metrics when arrays exceed the 1 GB threshold
 
 ## Source Code Organization
 
@@ -2195,7 +2195,7 @@ source .venv/bin/activate
           SPI values as numpy array (same shape as input)
 
       Raises:
-          InsufficientDataError: If fewer than 4 non-zero values
+          InsufficientDataError: If fewer than 4 non-zero values for Pearson Type III fitting
           InvalidArgumentError: If scale is out of range
 
       Example:

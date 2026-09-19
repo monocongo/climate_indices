@@ -225,7 +225,7 @@ process_climate_indices = "climate_indices.__main__:main"
 
 - **`performance.py`**: Memory metrics
   - `get_process_memory_mb()`: current process memory usage
-  - `check_large_array_memory()`: warns when arrays exceed the 1 GB threshold
+  - `check_large_array_memory()`: returns memory metrics when arrays exceed the 1 GB threshold
 
 ## Source Code Organization
 
