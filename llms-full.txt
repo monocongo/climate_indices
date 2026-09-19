@@ -3535,6 +3535,21 @@ spi_grid = spi_lazy.compute(scheduler="processes")
 The full scheduler guidance, including Zarr and NetCDF write behavior, is in
 [Operational Guidance](docs/xarray_compatibility.md#operational-guidance).
 
+## Running on a cluster
+
+A `dask.distributed` client keeps the worker pool across calls: it outlives one
+`.compute()`, can stream a Zarr write, and lets a later diagnostic reuse persisted
+blocks. Size it from the block budget rather than from the grid — one worker
+process per CPU with one thread each, since the kernels are Python/scipy work, and
+memory per worker for the blocks it runs at once (the measured per-block figure is
+in [Chunking](#chunking)) — and leave a few blocks per worker.
+
+The [notebook's client cell](https://github.com/monocongo/climate_indices/blob/main/notebooks/zarr_dask_spi_spei.ipynb)
+creates one from the host's physical memory, passes it to the calculation and the
+Zarr write, and closes it on both the success and failure paths. The measured
+fresh-pool versus warm-pool cost is in
+[Operational Guidance](docs/xarray_compatibility.md#operational-guidance).
+
 ## Chunking
 
 Keep `time` in a single chunk and size spatial blocks by cell count, not shape.
