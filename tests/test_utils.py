@@ -487,6 +487,23 @@ def test_transform_to_366day():
     np.testing.assert_raises(TypeError, utils.transform_to_366day, values_365, 1972, 4.9)
     np.testing.assert_raises(ValueError, utils.transform_to_366day, values_365, 1972, 24)
 
+    # an array longer than the declared span, or an empty array, is rejected
+    np.testing.assert_raises(ValueError, utils.transform_to_366day, np.ones(366), 2001, 1)
+    np.testing.assert_raises(ValueError, utils.transform_to_366day, np.array([]), 1972, 1)
+
+
+def test_daily_calendar_plan_from_year_span():
+    """from_year_span distributes observed values across the declared Gregorian years."""
+    assert utils.DailyCalendarPlan.from_year_span(1971, 2, 730) == utils.DailyCalendarPlan(1971, (365, 365))
+    assert utils.DailyCalendarPlan.from_year_span(1972, 1, 366) == utils.DailyCalendarPlan(1972, (366,))
+    # 2020 is a leap year followed by 100 observed days of 2021
+    assert utils.DailyCalendarPlan.from_year_span(2020, 2, 466) == utils.DailyCalendarPlan(2020, (366, 100))
+    # a length shorter than the first year is absorbed by the first year
+    assert utils.DailyCalendarPlan.from_year_span(2019, 2, 100) == utils.DailyCalendarPlan(2019, (100, 0))
+    # trailing years beyond the data contribute nothing, and negative lengths clamp to zero
+    assert utils.DailyCalendarPlan.from_year_span(2019, 3, 400) == utils.DailyCalendarPlan(2019, (365, 35, 0))
+    assert utils.DailyCalendarPlan.from_year_span(2020, 2, -3) == utils.DailyCalendarPlan(2020, (0, 0))
+
 
 def test_tolerance():
     lons, dlon = np.linspace(-180.0, 180.0, 250, retstep=True)
