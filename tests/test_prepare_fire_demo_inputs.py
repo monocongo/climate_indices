@@ -140,6 +140,53 @@ def test_monthly_surface_aggregation_separates_calendar_months(monkeypatch):
     )
 
 
+def test_monthly_surface_completes_the_year_end_precipitation_bin(monkeypatch):
+    """The 31 December bin needs the 1 January 00:00 stamp of the next year."""
+    module = _prepare_module(monkeypatch)
+    times = pd.date_range("2020-12-31", periods=5, freq="6h")
+    latitude, longitude = [30.0], [-100.0]
+    shape = (len(times), 1, 1)
+    temperature = np.full(shape, 283.15)
+    # one accumulation is negative numerical noise: the sum must clip it to zero
+    precipitation = np.array([0.0, 0.001, -0.0005, 0.002, 0.003]).reshape(-1, 1, 1)
+    monthly = module._to_monthly_surface(
+        xr.Dataset(
+            {
+                "2m_temperature": _six_hourly(temperature, times, latitude, longitude, "2m_temperature"),
+                "total_precipitation_6hr": _six_hourly(precipitation, times, latitude, longitude, "precip"),
+            }
+        ),
+        2020,
+    )
+
+    # the January 2021 row is trimmed: only the December bin survives
+    assert list(monthly.time.values) == [np.datetime64("2020-12-01T12:00")]
+    # the four accumulations ending 06, 12, 18, and 24 UTC on 31 December
+    assert _value(monthly.precip_mm.isel(time=0, latitude=0, longitude=0)) == pytest.approx(6.0)
+
+
+def test_baseline_inputs_spans_every_inclusive_year(tmp_path, monkeypatch):
+    """The baseline concatenates one twelve-month frame per inclusive year."""
+    module = _prepare_module(monkeypatch)
+    monkeypatch.setattr(module, "BASELINE_YEARS", (1999, 2001))
+
+    def fake_cache(cache_dir, key, variable, builder):
+        return builder()
+
+    def fake_select(dataset, name, start, end):
+        times = pd.date_range(start, end, freq="6h")
+        return xr.DataArray(np.zeros(len(times)), coords={"time": times}, dims="time", name=name)
+
+    monkeypatch.setattr(module, "_cache", fake_cache)
+    monkeypatch.setattr(module, "_select", fake_select)
+
+    baseline = module._baseline_inputs(lambda: xr.Dataset(), tmp_path)
+
+    assert baseline.sizes["time"] == 12 * 3
+    assert baseline.time.values[0] == np.datetime64("1999-01-01T12:00")
+    assert baseline.time.values[-1] == np.datetime64("2001-12-01T12:00")
+
+
 def test_relative_humidity_matches_saturation_and_clips(monkeypatch):
     """Saturated air reads 100 percent, half saturation reads 50, and overshoot clips."""
     module = _prepare_module(monkeypatch)
@@ -345,7 +392,10 @@ def test_prepare_inputs_publishes_manifest_with_provenance(tmp_path, monkeypatch
         coords={**coordinates, "level": [1000.0]},
     )
     baseline = xr.Dataset(
-        {"tmean_c": (("time", "latitude", "longitude"), np.ones((2, 1, 1)))},
+        {
+            "tmean_c": (("time", "latitude", "longitude"), np.ones((2, 1, 1))),
+            "precip_mm": (("time", "latitude", "longitude"), np.ones((2, 1, 1))),
+        },
         coords=coordinates,
     )
 
@@ -371,7 +421,10 @@ def test_prepare_inputs_publishes_manifest_with_provenance(tmp_path, monkeypatch
         manifest["artifacts"][module.OUTPUT_BASELINE]["sha256"]
         == hashlib.sha256(baseline_path.read_bytes()).hexdigest()
     )
-    assert manifest["baseline_years"] == list(module.BASELINE_YEARS)
+    assert manifest["baseline_years"] == [1991, 2020]
+    published_baseline = xr.load_dataset(baseline_path)
+    assert published_baseline["precip_mm"].attrs["long_name"] == "Monthly precipitation"
+    assert published_baseline["tmean_c"].attrs["long_name"] == "Monthly mean 2 m air temperature"
     assert manifest["source_url"] == module.SOURCE_URL
     assert manifest["domain"]["requested_longitude"] == [-125.0, -65.0]
     assert manifest["domain"]["realized_longitude"] == [-100.0, -100.0]

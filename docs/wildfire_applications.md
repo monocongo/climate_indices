@@ -146,9 +146,10 @@ baseline and places them beside DC and KBDI. It prepares its inputs with
 ARCO-ERA5 store on Google Cloud Storage and caches daily and monthly NetCDF
 files under `data/fire-demo/` (git-ignored). The notebook states every
 approximation it makes -- derived relative humidity, daily summaries in place
-of noon observations, a three-year precipitation baseline for KBDI, and
-temperature-only Thornthwaite PET for EDDI -- so read it as a worked example
-of the API and its chunking constraints, not as a reference product.
+of noon observations, a three-year precipitation baseline for KBDI,
+temperature-only Thornthwaite PET for EDDI, and an in-sample 1991-2020
+calibration window for the standardized indices -- so read it as a worked
+example of the API and its chunking constraints, not as a reference product.
 
 ## Performance and sizing
 
