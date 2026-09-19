@@ -11,18 +11,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Wildfire index family (`climate_indices.fire`)**: a public namespace with the
   Keetch-Byram Drought Index (KBDI), the CFFWIS moisture codes (FFMC, DMC, DC) and
-  behavior indices (ISI, BUI, FWI, DSR) including Drought Code overwintering and
-  seasonal carry, the Fosberg Fire Weather Index, the Hot-Dry-Windy Index, and the
-  Haines Index. Each index ships an xarray adapter and CF metadata registry entries;
+  behavior indices (ISI, BUI, `cffwis_fwi`, DSR) including Drought Code overwintering
+  and seasonal carry, the Fosberg Fire Weather Index, the Hot-Dry-Windy Index, and the
+  Haines Index. KBDI, the CFFWIS orchestrator, Hot-Dry-Windy, and Haines ship xarray
+  adapters; the elementwise Fosberg FFWI stays on the NumPy layer, where it has no
+  dimension to reduce and so no adapter; every index has a CF metadata registry entry.
   `climate_indices --index kbdi` runs KBDI from the command line.
 - **Self-calibrated Palmer Drought Severity Index** (`scpdsi`): duration-factor
   fitting, order-statistic self-calibration, and correlation-adaptive least-squares
   fitting, exposed from the Palmer CLI dispatch (#721).
-- **Palmer xarray adapter**: `pdsi()` accepts xarray DataArrays, bringing the Palmer
-  family to parity with the xarray support the other indices already had (#1016).
+- **Palmer xarray adapter**: `pdsi()` accepts xarray DataArrays and returns the
+  PDSI-family outputs as a Dataset; `scpdsi()` remains NumPy-only (#1016).
 - **Validation infrastructure**: `VALIDATION.md` records per-index evidence, backed by
   SPEIbase v2.11 SPEI plausibility fixtures (#779), NOAA EDDI reference fixtures, PET
   literature fixtures, and a measured scPDSI calibration anchor.
+- **Public `climate_indices.validation` namespace**: the input-preparation and
+  validation checks shared across indices are exported from the package root and
+  documented as public API.
+- **Declared time-major grid blocks**: a three-or-more-dimensional NumPy array runs as
+  a `(time, *cells)` block across SPI, SPEI, EDDI, percentage of normal, PET, PDSI, and
+  `compute.prepare_scaled()` when declared with `spatial_time_major=True`, fitting or
+  ranking every cell in one pass instead of one call per cell (#941, #942).
 
 ### Changed
 
@@ -33,16 +42,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   new version in the test matrix and in wheel smoke tests.
 - **Documentation rebuilt on MyST Markdown** with a four-section reader-need
   navigation, replacing the previous reStructuredText sources.
-- **CI**: meta and validation checks moved off the version matrix onto the minimum
-  supported Python, and the release workflow installs the built wheel on the boundary
-  Pythons.
-- **CLI**: Palmer inputs are converted to the inches `palmer.pdsi()` expects, and the
-  PET stage now runs for temperature-only SPEI, scaled, and Palmer runs.
+- **CI**: meta checks run outside the version matrix on the minimum supported Python
+  (3.10), validation, lint, docs, notebooks, and the security audit each run once on a
+  single pinned interpreter instead of validation re-running across every version, and
+  the release workflow installs the built wheel on the boundary Pythons.
+- **CLI**: Palmer inputs are converted to the inches `palmer.pdsi()` expects, the PET
+  stage now runs for temperature-only SPEI, scaled, and Palmer runs, and `--scales` is
+  now required for every scaled index (#1002). `"auto"` chunk axes resolve against
+  Dask's default `array.chunk-size` while the input is opened, and a caller-configured
+  value is left in place (#925).
 
 ### Breaking
 
-Four changes break behavior without a deprecation period. Each one states what a user
-sees, how to detect it, and what to change in `docs/deprecations/api-changes.md`.
+Four changes alter computed values or exception types without a deprecation period, and
+the console script removed below reaches users without one either: its deprecation
+warning was added during the 3.0.0 cycle and shipped in no release. Each behavioral
+change states what a user sees, how to detect it, and what to change in
+`docs/deprecations/api-changes.md`.
 
 - **Daily xarray calendar alignment**: `spi()`, `spei()`, `eddi()`,
   `percentage_of_normal()`, and `xarray_adapter.pet_hargreaves()` may return
@@ -58,15 +74,16 @@ sees, how to detect it, and what to change in `docs/deprecations/api-changes.md`
   `compute.prepare_scaled()` read a three-or-more-dimensional NumPy array as a
   time-major `(time, *cells)` block, and reject the one shape that is ambiguous with a
   `(years, periods, *cells)` array unless it is declared. Reorder the cell axes so the
-  first one is not a calendar period length, or pass `spatial_time_major=True`. The
-  keyword exists on those three functions; the package-root `spi()` and `spei()`
-  wrappers do not forward it (ADR-0009).
+  first one is not a calendar period length, or pass `spatial_time_major=True`, which
+  the package-root `spi()` and `spei()` wrappers accept and pass through (ADR-0009).
 - **PCI February correction**: `pci()` returns different values. The cumulative
   day-of-year boundaries had February written as a month length (28 or 29) instead of
   its cumulative index, which left the February slice empty and let March absorb
   February while starting three days early in a non-leap year and two in a leap year.
-  Any 365- or 366-day input can move, so recompute PCI values and recalibrate any
-  downstream thresholds tuned against the previous ones (#846).
+  The value moves whenever any of those final three January days (the final two in a
+  leap year) is non-zero, or when February and March both carry rainfall, so recompute
+  PCI values and recalibrate any downstream thresholds tuned against the previous ones
+  (#846).
 - **Periodicity validation type**: the periodicity check shared by
   `compute.prepare_scaled()`, `compute.transform_fitted_gamma`,
   `compute.transform_fitted_pearson`, `compute.gamma_parameters()`, and
@@ -78,11 +95,13 @@ sees, how to detect it, and what to change in `docs/deprecations/api-changes.md`
 
 ### Removed
 
-- **`spi` console script**: deprecated in 2.4.0 and now removed, along with the
-  `climate_indices.__spi__` module. Use `climate_indices --index spi` instead. The
-  `--save_params` and `--load_params` options are retired rather than migrated: fit
-  parameters once with `compute.gamma_parameters()` or
-  `compute.pearson_parameters()` and pass them as the `fitting_params` argument of
+- **`spi` console script**: removed, along with the `climate_indices.__spi__` module.
+  Use `climate_indices --index spi` instead. The deprecation warning was added during
+  the 3.0.0 cycle and shipped in no release, so no released version warned before the
+  removal; 2.4.0 is the last release that ships the script. The `--save_params` and
+  `--load_params` options are retired rather than migrated: fit parameters once with
+  `compute.gamma_parameters()` or `compute.pearson_parameters()` and pass them as a
+  dict — `{"alpha": ..., "beta": ...}` for gamma — to the `fitting_params` argument of
   `indices.spi()` (#919, #957).
 
 ### Fixed
@@ -90,10 +109,14 @@ sees, how to detect it, and what to change in `docs/deprecations/api-changes.md`
 - **Palmer**: duration-factor overrides resolve after input validation, masked fitting
   parameters are treated as missing, fitted coefficients are required to be 12-element
   vectors, mismatched cell grids are rejected, and per-cell available water capacity
-  pairing is covered by tests (#660, #721, #906, #1016).
+  pairing is covered by tests (#721, #906, #1016).
 - **Fire**: KBDI percentile window alignment, the Haines xarray adapter's warnings and
-  dtype guard, and the demo manifest input guard (#809).
-- **CLI**: corrected the `spi` deprecation migration guidance (#919).
+  dtype guard, and the demo manifest input guard (#810, #811).
+- **CLI**: copied chunk sizes are reordered to match the output dimensions and the
+  `h5netcdf` engine is pinned when writing chunked NetCDF output, so `--chunksizes`
+  writes the requested layout under the minimum-dependency environment instead of
+  failing; shared arrays are reset per invocation. The `spi` deprecation migration
+  guidance was corrected (#919).
 
 ## [2.4.0] - 2026-04-05
 

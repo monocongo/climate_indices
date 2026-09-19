@@ -70,9 +70,10 @@ declared-block path instead of the generic 1-D/2-D rejection.
 **What to change:** reorder the cell axes so the first one is not a calendar
 period length, or pass `spatial_time_major=True` when the array really is a
 time-major `(time, *cells)` block. The keyword exists on `indices.spi`,
-`indices.spei`, and `compute.prepare_scaled`; the package-root `spi()` and
-`spei()` wrappers do not forward it. The xarray adapter declares the keyword for
-every block it packs, so only direct NumPy callers are affected. See
+`indices.spei`, and `compute.prepare_scaled`, and the package-root `spi()` and
+`spei()` wrappers accept it and pass it through to those functions. The xarray
+adapter declares the keyword for every block it packs, so only direct NumPy
+callers are affected. See
 [ADR-0009](../adr/0009-spatial-block-declaration.md).
 
 ### PCI February correction (3.0.0)
@@ -129,10 +130,11 @@ instead of `CoordinateValidationError`. `DimensionMismatchError` derives from
 
 ## `spi` console script (removed in 3.0.0)
 
-The `spi` console script (`climate_indices.__spi__:main`) was deprecated
-in 2.4.0 and is removed in 3.0.0 (#919): 2.4.0 is the last release that ships
-the script and emits `ClimateIndicesDeprecationWarning` on invocation. From
-3.0.0 on the `climate_indices.__spi__` module is gone, so imports of it and
+The `spi` console script (`climate_indices.__spi__:main`) is removed in 3.0.0
+(#919). Its deprecation warning was added during the 3.0.0 cycle and shipped in
+no release, so no released version warned before the removal: 2.4.0 is the last
+release that ships the script, and it emits no warning when the script is run.
+From 3.0.0 on the `climate_indices.__spi__` module is gone, so imports of it and
 invocations of the `spi` command raise the usual import and shell errors.
 
 Use `climate_indices --index spi` instead, with two caveats:
