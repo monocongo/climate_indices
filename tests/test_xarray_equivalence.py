@@ -796,9 +796,10 @@ class TestPETXarrayEquivalence:
         end_year = pd.Timestamp(time_coord.values[-1]).year
         total_years = end_year - start_year + 1
 
-        # utils.transform_to_366day requires whole calendar years, so pad the partial
-        # final year with NaN; Hargreaves is a per-day formula with no cross-year
-        # fitting, so the padded positions stay NaN and are trimmed off below
+        # pad the partial final year with NaN to a whole Gregorian year so the
+        # reference conversion sees a complete-year array; Hargreaves is a
+        # per-day formula with no cross-year fitting, so the padded positions
+        # stay NaN and are trimmed off below
         full_length = len(pd.date_range(f"{start_year}-01-01", f"{end_year}-12-31", freq="D"))
         padding = np.full(full_length - len(bench_daily_tmin_np), np.nan)
         all_leap_tmin = utils.transform_to_366day(np.append(bench_daily_tmin_np, padding), start_year, total_years)
