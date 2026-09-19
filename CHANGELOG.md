@@ -76,6 +76,12 @@ change states what a user sees, how to detect it, and what to change in
   `(years, periods, *cells)` array unless it is declared. Reorder the cell axes so the
   first one is not a calendar period length, or pass `spatial_time_major=True`, which
   the package-root `spi()` and `spei()` wrappers accept and pass through (ADR-0009).
+  `indices.eddi()` and `indices.percentage_of_normal()` reject every undeclared
+  three-or-more-dimensional input with `DataShapeError` rather than `ValueError`. For
+  `percentage_of_normal()` that changes the exception type: 2.4.0 passed the 3-D array
+  to `np.convolve` and failed there with numpy's `ValueError`, so a handler catching
+  `ValueError` around it no longer matches. `indices.eddi()` already raised
+  `DataShapeError` in 2.4.0, so only its declared-block path is new.
 - **PCI February correction**: `pci()` returns different values. The cumulative
   day-of-year boundaries had February written as a month length (28 or 29) instead of
   its cumulative index, which left the February slice empty and let March absorb

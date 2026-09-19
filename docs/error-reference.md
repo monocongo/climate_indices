@@ -37,6 +37,8 @@ error message:
   - [Coordinate and Dimension Errors](troubleshooting.md#coordinate-and-dimension-errors)
 * - `latitude must be within [-90, 90]`
   - [Coordinate and Dimension Errors](troubleshooting.md#coordinate-and-dimension-errors)
+* - `Invalid shape of input array` / `DataShapeError`
+  - [Input Shape Errors](troubleshooting.md#input-shape-errors)
 * - `Insufficient data for scale`
   - [Data Sufficiency Errors](troubleshooting.md#data-sufficiency-errors)
 * - `Calibration period contains no data points`
@@ -84,6 +86,7 @@ ClimateIndicesError (base exception)
 │   └── PearsonFittingError
 ├── CoordinateValidationError
 │   └── DimensionMismatchError
+├── DataShapeError
 ├── InputTypeError
 └── InvalidArgumentError
     └── PeriodicityError
