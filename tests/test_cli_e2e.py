@@ -69,6 +69,17 @@ def _write_time_major_grid(path, values, var_name="precip", units="mm") -> None:
     ).to_netcdf(path)
 
 
+def _write_time_major_divisions(path, values, var_name="precip", units="mm") -> None:
+    values = np.asarray(values, dtype=float).reshape(-1, 1)
+    xr.Dataset(
+        {
+            var_name: (("time", "division"), values, {"units": units}),
+            "lat": (("division",), [_LATITUDES[0]]),
+        },
+        coords={"time": _months(values.shape[0]), "division": [_DIVISION]},
+    ).to_netcdf(path)
+
+
 def _common_arguments(index, precip_path, output_base) -> list[str]:
     return [
         "--index",
@@ -160,8 +171,69 @@ def test_time_major_gridded_input_is_rejected(tmp_path, precips_mm_monthly):
 
     arguments = _spi_arguments(precip_path, tmp_path / "spi_time_major")
 
-    with pytest.raises(ValueError, match="Invalid dimensions for variable 'precip'"):
+    with pytest.raises(ValueError) as error:
         main(arguments)
+
+    assert str(error.value) == (
+        "Invalid dimensions for variable 'precip': ('time', 'lat', 'lon') "
+        "(expected one of [('lat', 'lon', 'time'), ('lat', 'lon')])"
+    )
+
+
+def test_time_major_divisions_input_is_rejected(tmp_path, precips_mm_monthly):
+    """
+    A divisions variable stored time-first is rejected rather than standardized wrongly.
+
+    The shared-array transport copies storage order and the kernels index a
+    division's time axis at position 1, so accepting this order computes each
+    index from its division series instead of raising.
+    """
+    values = precips_mm_monthly.reshape(-1)
+    precip_path = tmp_path / "precip_time_major.nc"
+    _write_time_major_divisions(precip_path, values)
+
+    arguments = _spi_arguments(precip_path, tmp_path / "spi_time_major_divisions")
+
+    with pytest.raises(ValueError) as error:
+        main(arguments)
+
+    assert str(error.value) == (
+        "Invalid dimensions for variable 'precip': ('time', 'division') "
+        "(expected one of [('division', 'time'), ('division',)])"
+    )
+
+
+def test_mixed_order_divisions_companion_is_rejected(tmp_path, precips_mm_monthly, pet_thornthwaite_mm):
+    """
+    A time-major PET companion is rejected alongside a time-last precipitation variable.
+
+    Both variables ride the same transport and are zipped positionally into the
+    two-array kernels, so a companion stored time-first would pair each
+    division's series with the wrong PET series rather than raising.
+    """
+    precips = precips_mm_monthly.reshape(-1)
+    pet = pet_thornthwaite_mm.reshape(-1)
+    precip_path = tmp_path / "precip.nc"
+    pet_path = tmp_path / "pet_time_major.nc"
+    _write_divisions(precip_path, precips)
+    _write_time_major_divisions(pet_path, pet, var_name="pet")
+
+    arguments = [
+        *_common_arguments("spei", precip_path, tmp_path / "spei_mixed_order"),
+        "--scales",
+        "6",
+        "--netcdf_pet",
+        str(pet_path),
+        "--var_name_pet",
+        "pet",
+    ]
+
+    with pytest.raises(ValueError) as error:
+        main(arguments)
+
+    assert str(error.value) == (
+        "Invalid dimensions of the PET variable: ('time', 'division') (expected names and order: [('division', 'time')])"
+    )
 
 
 def test_spei_uses_provided_pet_file_and_matches_in_process_computation(
