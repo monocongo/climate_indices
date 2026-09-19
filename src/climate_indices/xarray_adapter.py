@@ -22,7 +22,6 @@ References:
 
 from __future__ import annotations
 
-import calendar
 import copy
 import datetime
 import functools
@@ -30,7 +29,6 @@ import inspect
 import json
 import warnings
 from collections.abc import Callable
-from dataclasses import dataclass
 from enum import Enum
 from typing import Any, TypeVar
 
@@ -39,12 +37,11 @@ import pandas as pd
 import structlog.stdlib
 import xarray as xr
 
-from climate_indices import compute, eto, indices, palmer
+from climate_indices import compute, eto, indices, palmer, utils
 from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.compute import MIN_CALIBRATION_YEARS
 from climate_indices.exceptions import (
     CoordinateValidationError,
-    DataShapeError,
     InputAlignmentWarning,
     InputTypeError,
     InsufficientDataError,
@@ -202,93 +199,6 @@ def _infer_periodicity(time_coord: xr.DataArray) -> compute.Periodicity:
         )
 
 
-@dataclass(frozen=True)
-class _DailyCalendarPlan:
-    """Map Gregorian daily values to the NumPy core's 366-day calendar positions."""
-
-    year_start: int
-    observed_days_by_year: tuple[int, ...]
-
-    @property
-    def original_length(self) -> int:
-        """Return the number of observed Gregorian days."""
-        return sum(self.observed_days_by_year)
-
-    @property
-    def all_leap_length(self) -> int:
-        """Return the number of values required by the 366-day NumPy core."""
-        return len(self.observed_days_by_year) * 366
-
-    def to_all_leap(self, values: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
-        """Insert synthetic February 29 values while retaining a partial final year."""
-        source = np.asarray(values)
-        if source.ndim < 1 or source.shape[0] != self.original_length:
-            raise DataShapeError(
-                "Daily calendar transformation requires one complete xarray time-series slice",
-                expected_shape=f"({self.original_length},)",
-                actual_shape=source.shape,
-            )
-
-        transformed = np.full((self.all_leap_length, *source.shape[1:]), np.nan, dtype=float)
-        source_index = 0
-        target_index = 0
-
-        for year_offset, observed_days in enumerate(self.observed_days_by_year):
-            year = self.year_start + year_offset
-            source_year = source[source_index : source_index + observed_days]
-
-            if calendar.isleap(year):
-                transformed[target_index : target_index + observed_days] = source_year
-            else:
-                days_before_february_29 = min(observed_days, 59)
-                transformed[target_index : target_index + days_before_february_29] = source_year[
-                    :days_before_february_29
-                ]
-                if observed_days > 59:
-                    transformed[target_index + 59] = (source_year[58] + source_year[59]) / 2
-                    transformed[target_index + 60 : target_index + observed_days + 1] = source_year[59:]
-
-            source_index += observed_days
-            target_index += 366
-
-        return transformed
-
-    def to_gregorian(self, values: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
-        """Remove synthetic February 29 values and trim to observed Gregorian days."""
-        source = np.asarray(values)
-        if source.ndim < 1 or source.shape[0] != self.all_leap_length:
-            raise DataShapeError(
-                "Daily calendar restoration requires one complete 366-day time-series slice",
-                expected_shape=f"({self.all_leap_length},)",
-                actual_shape=source.shape,
-            )
-
-        restored = np.full((self.original_length, *source.shape[1:]), np.nan, dtype=float)
-        source_index = 0
-        target_index = 0
-
-        for year_offset, observed_days in enumerate(self.observed_days_by_year):
-            year = self.year_start + year_offset
-            if calendar.isleap(year):
-                restored[target_index : target_index + observed_days] = source[
-                    source_index : source_index + observed_days
-                ]
-            else:
-                days_before_february_29 = min(observed_days, 59)
-                restored[target_index : target_index + days_before_february_29] = source[
-                    source_index : source_index + days_before_february_29
-                ]
-                if observed_days > 59:
-                    restored[target_index + 59 : target_index + observed_days] = source[
-                        source_index + 60 : source_index + observed_days + 1
-                    ]
-
-            source_index += 366
-            target_index += observed_days
-
-        return restored
-
-
 def _resolve_periodicity(
     func: Callable[..., Any],
     modified_args: list[Any],
@@ -331,7 +241,7 @@ def _validate_supported_calendar(time_coord: xr.DataArray) -> None:
 def _build_daily_calendar_plan(
     time_coord: xr.DataArray,
     periodicity: compute.Periodicity,
-) -> _DailyCalendarPlan | None:
+) -> utils.DailyCalendarPlan | None:
     """Validate xarray calendar semantics and plan daily 366-day adaptation."""
     coordinate_name = str(time_coord.name) if time_coord.name is not None else "time"
     _validate_supported_calendar(time_coord)
@@ -365,15 +275,11 @@ def _build_daily_calendar_plan(
         )
 
     last_timestamp = pd.Timestamp(time_coord.values[-1])
-    remaining_days = len(time_coord)
-    observed_days_by_year = []
-    for year in range(first_timestamp.year, last_timestamp.year + 1):
-        days_in_year = 366 if calendar.isleap(year) else 365
-        observed_days = min(remaining_days, days_in_year)
-        observed_days_by_year.append(observed_days)
-        remaining_days -= observed_days
-
-    return _DailyCalendarPlan(first_timestamp.year, tuple(observed_days_by_year))
+    return utils.DailyCalendarPlan.from_year_span(
+        first_timestamp.year,
+        last_timestamp.year - first_timestamp.year + 1,
+        len(time_coord),
+    )
 
 
 def _resolve_daily_calendar_plan(
@@ -383,7 +289,7 @@ def _resolve_daily_calendar_plan(
     modified_kwargs: dict[str, Any],
     inferred_params: dict[str, Any],
     time_dim: str,
-) -> _DailyCalendarPlan | None:
+) -> utils.DailyCalendarPlan | None:
     """Return daily calendar adaptation when the wrapped computation needs it."""
     periodicity = _resolve_periodicity(func, modified_args, modified_kwargs, inferred_params)
     if periodicity is None or time_dim not in input_da.dims:
@@ -393,7 +299,7 @@ def _resolve_daily_calendar_plan(
 
 
 def _validate_calendar_secondary_inputs(
-    calendar_plan: _DailyCalendarPlan | None,
+    calendar_plan: utils.DailyCalendarPlan | None,
     resolved_secondaries: dict[str, tuple[int | None, Any]],
     time_dim: str,
 ) -> None:
@@ -416,7 +322,7 @@ def _validate_calendar_secondary_inputs(
 def _make_calendar_aware_numpy_wrapper(
     func: Callable[..., np.ndarray[Any, Any]],
     valid_kwargs: dict[str, Any],
-    calendar_plan: _DailyCalendarPlan | None,
+    calendar_plan: utils.DailyCalendarPlan | None,
     core_axis_first: bool = False,
 ) -> Callable[..., np.ndarray[Any, Any]]:
     """Build an apply_ufunc callable that restores Gregorian daily output.
@@ -456,7 +362,7 @@ def _compute_with_daily_calendar_plan(
     func: Callable[..., np.ndarray[Any, Any]],
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
-    calendar_plan: _DailyCalendarPlan | None,
+    calendar_plan: utils.DailyCalendarPlan | None,
     time_series_arg_positions: set[int],
     time_series_kwarg_names: set[str],
 ) -> np.ndarray[Any, Any]:

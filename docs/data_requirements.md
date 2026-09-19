@@ -31,8 +31,8 @@ ones.
   January. The xarray API rejects skipped months, duplicate timestamps, and
   unsupported frequencies; the NumPy API assumes this layout positionally.
 - Daily series must begin on January 1. The NumPy API expects the internal
-  366-day layout with complete calendar years; `utils.transform_to_366day`
-  converts Gregorian daily arrays to that layout. The xarray API accepts
+  366-day layout; `utils.transform_to_366day` converts Gregorian daily arrays
+  to that layout and pads a partial final year with NaN. The xarray API accepts
   ordinary Gregorian coordinates and also accepts a partial final year.
 - Supported calendars are `standard`, `gregorian`, and
   `proleptic_gregorian` `datetime64` coordinates. `cftime` calendars are

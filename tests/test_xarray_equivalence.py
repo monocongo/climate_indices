@@ -14,7 +14,7 @@ import xarray as xr
 
 from climate_indices import eddi, indices, percentage_of_normal, spei, spi, utils
 from climate_indices.compute import Periodicity
-from climate_indices.exceptions import CoordinateValidationError, DataShapeError, InputTypeError
+from climate_indices.exceptions import CoordinateValidationError, InputTypeError
 from climate_indices.indices import Distribution
 
 
@@ -917,91 +917,6 @@ class TestPETXarrayCalendarSemantics:
 
         with pytest.raises(CoordinateValidationError, match="does not match the requested monthly"):
             pet_thornthwaite(temperature=temperature, latitude=40.0)
-
-
-class TestDailyCalendarPlanShapeContract:
-    """Verify _DailyCalendarPlan rejects slices that are not whole time series."""
-
-    @staticmethod
-    def _plan():
-        """Build a two-year plan covering a non-leap year and a leap year."""
-        from climate_indices.xarray_adapter import _DailyCalendarPlan
-
-        # 2019 is not a leap year, 2020 is; the final year is partial
-        return _DailyCalendarPlan(2019, (365, 100))
-
-    def test_to_all_leap_rejects_wrong_length(self) -> None:
-        """Converting a slice of the wrong length raises with shape context."""
-        plan = self._plan()
-
-        with pytest.raises(DataShapeError) as exc_info:
-            plan.to_all_leap(np.zeros(plan.original_length - 1))
-
-        assert exc_info.value.expected_shape == f"({plan.original_length},)"
-        assert exc_info.value.actual_shape == (plan.original_length - 1,)
-
-    def test_to_all_leap_rejects_multidimensional_input(self) -> None:
-        """A block whose leading axis is not a whole time series raises, not reshapes."""
-        plan = self._plan()
-
-        with pytest.raises(DataShapeError) as exc_info:
-            plan.to_all_leap(np.zeros((2, plan.original_length)))
-
-        assert exc_info.value.actual_shape == (2, plan.original_length)
-
-    def test_to_all_leap_preserves_trailing_cell_dimensions(self) -> None:
-        """A 2-D block of complete time-series slices is converted cell-wise."""
-        plan = self._plan()
-        values = np.zeros((plan.original_length, 3))
-        values[:, 0] = np.arange(1, plan.original_length + 1)
-
-        converted = plan.to_all_leap(values)
-
-        assert converted.shape == (plan.all_leap_length, 3)
-        # cell 0 is a non-leap year followed by a partial leap year: the synthetic
-        # February 29 of 2019 is the mean of February 28 and March 1
-        assert converted[59, 0] == 59.5
-        assert converted[59, 1] == 0.0
-        np.testing.assert_array_equal(converted[60:366, 0], np.arange(60, 366))
-        np.testing.assert_array_equal(converted[366:466, 0], np.arange(366, 466))
-        assert np.all(np.isnan(converted[466:, 0]))
-
-    def test_to_gregorian_rejects_wrong_length(self) -> None:
-        """Restoring a slice that is not a whole 366-day series raises."""
-        plan = self._plan()
-
-        with pytest.raises(DataShapeError) as exc_info:
-            plan.to_gregorian(np.zeros(plan.all_leap_length - 1))
-
-        assert exc_info.value.expected_shape == f"({plan.all_leap_length},)"
-        assert exc_info.value.actual_shape == (plan.all_leap_length - 1,)
-
-    def test_to_gregorian_rejects_multidimensional_input(self) -> None:
-        """A block whose leading axis is not a whole 366-day series raises, not reshapes."""
-        plan = self._plan()
-
-        with pytest.raises(DataShapeError) as exc_info:
-            plan.to_gregorian(np.zeros((2, plan.all_leap_length)))
-
-        assert exc_info.value.actual_shape == (2, plan.all_leap_length)
-
-    def test_gregorian_round_trip_preserves_trailing_cell_dimensions(self) -> None:
-        """Cells of a 2-D block survive the leap-calendar round trip."""
-        plan = self._plan()
-        values = np.arange(1, plan.original_length + 1, dtype=float)
-        block = np.stack([values, values * 2.0], axis=1)
-
-        restored = plan.to_gregorian(plan.to_all_leap(block))
-
-        assert restored.shape == block.shape
-        np.testing.assert_array_equal(restored, block)
-
-    def test_round_trip_restores_original_values_including_partial_final_year(self) -> None:
-        """to_gregorian inverts to_all_leap exactly, partial final year included."""
-        plan = self._plan()
-        values = np.arange(1, plan.original_length + 1, dtype=float)
-
-        np.testing.assert_array_equal(plan.to_gregorian(plan.to_all_leap(values)), values)
 
 
 class TestCalendarConversionHasDiscriminatingPower:

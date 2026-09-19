@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from climate_indices import compute, indices, palmer
+from climate_indices import compute, indices, palmer, utils
 from climate_indices.__main__ import main
 
 # the fixture data starts in January of this year (see tests/conftest.py)
@@ -583,3 +583,69 @@ def test_all_runs_each_index_into_its_own_output(tmp_path, precips_mm_monthly, p
     )
     with xr.open_dataset(tmp_path / "all_spi_gamma_01.nc") as dataset:
         np.testing.assert_allclose(dataset["spi_gamma_01"].values[0], expected_spi, equal_nan=True)
+
+
+def test_daily_gridded_spi_accepts_a_partial_final_year(tmp_path):
+    """
+    A daily input ending mid-year computes instead of crashing in the conversion.
+
+    The Gregorian-to-366-day conversion used to index the final year's first 59
+    days unconditionally, so a record ending before February 28 (or any partial
+    final year) raised a broadcast ``ValueError``. The shared calendar plan pads
+    the partial final year and restores the observed days on output.
+    """
+    start_year = 1981
+    time = xr.date_range(f"{start_year}-01-01", "2010-06-15", freq="D")
+    generator = np.random.default_rng(seed=8675309)
+    values = generator.gamma(shape=2.0, scale=10.0, size=(len(_LATITUDES), len(_LONGITUDES), time.size))
+    precip_path = tmp_path / "precip_daily_grid.nc"
+    xr.Dataset(
+        {"precip": (("lat", "lon", "time"), values, {"units": "mm"})},
+        coords={"lat": _LATITUDES, "lon": _LONGITUDES, "time": time},
+    ).to_netcdf(precip_path)
+
+    main(
+        [
+            "--index",
+            "spi",
+            "--periodicity",
+            "daily",
+            "--calibration_start_year",
+            str(start_year),
+            "--calibration_end_year",
+            "2010",
+            "--netcdf_precip",
+            str(precip_path),
+            "--var_name_precip",
+            "precip",
+            "--output_file_base",
+            str(tmp_path / "spi_daily"),
+            "--multiprocessing",
+            "single",
+            "--scales",
+            "30",
+        ]
+    )
+
+    # 2010 is a partial final year: 166 observed days padded to 366 for the core
+    plan = utils.DailyCalendarPlan.from_year_span(start_year, 2011 - start_year, time.size)
+    assert plan.observed_days_by_year[-1] == 166
+
+    with xr.open_dataset(tmp_path / "spi_daily_spi_gamma_30.nc") as dataset:
+        written = dataset["spi_gamma_30"].values
+        assert written.shape == values.shape
+        np.testing.assert_array_equal(dataset["time"].values, time.values)
+        for i in range(len(_LATITUDES)):
+            for j in range(len(_LONGITUDES)):
+                expected = plan.to_gregorian(
+                    indices.spi(
+                        values=plan.to_all_leap(values[i, j]),
+                        scale=30,
+                        distribution=indices.Distribution.gamma,
+                        data_start_year=start_year,
+                        calibration_year_initial=start_year,
+                        calibration_year_final=2010,
+                        periodicity=compute.Periodicity.daily,
+                    )
+                )
+                np.testing.assert_allclose(written[i, j], expected, equal_nan=True, err_msg=f"cell ({i}, {j})")
