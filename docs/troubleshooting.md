@@ -800,7 +800,7 @@ verifies each file's SHA-256 before use, so a stale or corrupted cache fails
 loudly instead of feeding wrong values into the tutorial. Reruns need no
 network access once `data/e2e/source/` is populated; delete that directory
 and rerun when a checksum error names a file you did not modify. See
-[docs/research/nclimgrid-acquisition-and-redistribution.md](https://github.com/monocongo/climate_indices/blob/main/docs/research/nclimgrid-acquisition-and-redistribution.md)
+{doc}`research/nclimgrid-acquisition-and-redistribution`
 for the source provenance and attribution constraints.
 
 ### Input contract mismatches
