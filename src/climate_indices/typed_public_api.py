@@ -511,6 +511,7 @@ def eddi(
     calibration_year_initial: int,
     calibration_year_final: int,
     periodicity: Periodicity,
+    spatial_time_major: bool = False,
 ) -> npt.NDArray[np.float64]: ...
 
 
@@ -522,6 +523,7 @@ def eddi(
     calibration_year_initial: int | None = None,
     calibration_year_final: int | None = None,
     periodicity: Periodicity | None = None,
+    spatial_time_major: bool = False,
 ) -> xr.DataArray: ...
 
 
@@ -551,6 +553,9 @@ def eddi(pet_values: Any, *args: Any, **kwargs: Any) -> npt.NDArray[np.float64] 
             NumPy, optional for xarray).
         periodicity: Time series periodicity ('monthly' or 'daily'). Required
             for NumPy, optional for xarray.
+        spatial_time_major: Declares an ambiguous 3+-D NumPy ``pet_values`` as a
+            time-major ``(time, *cells)`` block (per ADR-0009). Only used for
+            NumPy inputs.
 
     Returns:
         EDDI values as numpy.ndarray or xarray.DataArray (matches input type).

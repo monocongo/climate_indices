@@ -62,18 +62,34 @@ The behavior it replaces is not uniform: in 2.4.0 `indices.spei` flattened a
 `compute.prepare_scaled` did not exist. 3.0.0 rejects the ambiguous shape for
 all three, and `indices.spi` accepts declared blocks it used to reject.
 
+Two further NumPy entry points pin their dimension errors to
+{class}`DataShapeError <climate_indices.exceptions.DataShapeError>` rather than
+to `ValueError`: {func}`climate_indices.indices.eddi` and
+{func}`climate_indices.indices.percentage_of_normal` reject **every** undeclared
+three-or-more-dimensional input, not only the ambiguous shape. `indices.eddi`
+already raised `DataShapeError` in 2.4.0, so only its declared-block acceptance
+path is new. `indices.percentage_of_normal` did not: it reached `np.convolve`
+with the 3-D array and failed there with numpy's
+`ValueError: object too deep for desired array`. In 3.0.0 that call raises
+`DataShapeError` instead, carrying `expected_shape` and `actual_shape`, so a
+handler catching `ValueError` around it no longer matches.
+
 **How to detect it:** the run raises `ValueError` naming the shape. Callers
 moving from `indices.spei` see an error where a flattened result used to come
 back; callers moving from `indices.spi` see a shape-specific error and a
 declared-block path instead of the generic 1-D/2-D rejection.
+`indices.eddi` and `indices.percentage_of_normal` raise `DataShapeError` — a
+`ClimateIndicesError`, and not a `ValueError` — for any undeclared 3-D input.
 
 **What to change:** reorder the cell axes so the first one is not a calendar
 period length, or pass `spatial_time_major=True` when the array really is a
 time-major `(time, *cells)` block. The keyword exists on `indices.spi`,
-`indices.spei`, and `compute.prepare_scaled`, and the package-root `spi()` and
-`spei()` wrappers accept it and pass it through to those functions. The xarray
-adapter declares the keyword for every block it packs, so only direct NumPy
-callers are affected. See
+`indices.spei`, `compute.prepare_scaled`, `indices.eddi`,
+`indices.percentage_of_normal`, `indices.pet`, and `palmer.pdsi`; the
+package-root `spi()` and `spei()` wrappers accept it and pass it through to
+those functions. The xarray adapter declares the keyword for every block it
+packs, so only direct NumPy callers are affected. Where a `ValueError` handler
+has to keep working across the upgrade, catch `DataShapeError` as well. See
 [ADR-0009](../adr/0009-spatial-block-declaration.md).
 
 ### PCI February correction (3.0.0)
