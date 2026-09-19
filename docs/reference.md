@@ -12,6 +12,7 @@ indices themselves, see {doc}`explanation`.
 :maxdepth: 1
 
 algorithm-reference
+data_requirements
 error-reference
 xarray_compatibility
 research/nclimgrid-acquisition-and-redistribution

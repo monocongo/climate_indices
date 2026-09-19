@@ -98,7 +98,7 @@ vocabulary at `src/climate_indices/CONTEXT.md`):
   `docs/development-guide.md`, `docs/contribution-guide.md`,
   `docs/deployment-guide.md`, `docs/release-process.md`
 - Reference: `docs/reference.md`, `docs/algorithm-reference.md`,
-  `docs/error-reference.md`, `docs/deprecations/`,
+  `docs/data_requirements.md`, `docs/error-reference.md`, `docs/deprecations/`,
   `docs/xarray_compatibility.md`,
   `docs/research/nclimgrid-acquisition-and-redistribution.md` (the
   troubleshooting guide sends readers there for source provenance and

@@ -58,7 +58,8 @@ pip install matplotlib
 ## Create Sample Data
 
 First, let's create synthetic monthly precipitation and temperature data covering 30 years
-(360 months). Real-world usage would load data from NetCDF files using `xr.open_dataset()`.
+(360 months). Real-world usage would load data from NetCDF files using `xr.open_dataset()`;
+see {doc}`data_requirements` for the full input contract.
 
 ```{testsetup} quickstart
 import numpy as np
