@@ -79,10 +79,11 @@ move with the code, are addressed to maintainers, and would otherwise reach
 readers as competing instructions. Because a Markdown suffix publishes every
 page it can find, pages are excluded by path in `docs/conf.py`
 (`exclude_patterns`), not by convention: internal pages are never built into
-the site. A published page stays excluded until it is wired into navigation,
-unless another built page links to it as a document — a link to an excluded
-page fails the warnings-as-errors build — in which case it builds behind a
-hidden toctree until its navigation lands. When a page is added or moves
+the site. A published page stays excluded until it is wired into navigation: a
+link to an excluded page fails the warnings-as-errors build, and the
+release-integrity test rejects a published page parked in a hidden toctree, so
+publishing a page and adding it to its section toctree happen together. When a
+page is added or moves
 between audiences, update that exclusion list and this section in the same
 change.
 
@@ -97,7 +98,7 @@ vocabulary at `src/climate_indices/CONTEXT.md`):
   `docs/development-guide.md`, `docs/contribution-guide.md`,
   `docs/deployment-guide.md`, `docs/release-process.md`
 - Reference: `docs/reference.md`, `docs/algorithm-reference.md`,
-  `docs/error-reference.md`, `docs/deprecations/`,
+  `docs/data_requirements.md`, `docs/error-reference.md`, `docs/deprecations/`,
   `docs/xarray_compatibility.md`,
   `docs/research/nclimgrid-acquisition-and-redistribution.md` (the
   troubleshooting guide sends readers there for source provenance and
