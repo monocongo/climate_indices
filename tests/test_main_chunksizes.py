@@ -6,7 +6,7 @@ import xarray as xr
 
 from climate_indices import __main__ as cli_main
 from climate_indices import compute, indices
-from climate_indices.__main__ import InputType
+from climate_indices.__main__ import DatasetLayout
 
 
 def test_spei_chunksizes_follow_output_dimension_order(monkeypatch, tmp_path):
@@ -41,7 +41,7 @@ def test_spei_chunksizes_follow_output_dimension_order(monkeypatch, tmp_path):
             var_name_precip="precip",
             netcdf_pet="pet.nc",
             var_name_pet="pet",
-            input_type=InputType.divisions,
+            input_type=DatasetLayout.DIVISIONS,
             periodicity=compute.Periodicity.monthly,
             chunksizes="input",
             output_file_base=str(tmp_path / "out"),

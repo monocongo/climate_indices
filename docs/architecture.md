@@ -91,9 +91,10 @@ The **climate_indices** library implements a **layered library architecture** op
 **Modules**:
 - **`__main__.py`**: Full-featured CLI supporting SPI, SPEI, PET, Palmer, and PNP indices
   - Multiprocessing pool for gridded data parallelization
-  - NetCDF dimension validation and coordinate conversion
+  - NetCDF dimension validation through the validation facade, and coordinate
+    conversion
   - Shared memory arrays for worker processes
-  - Input type detection (grid, divisions, timeseries)
+  - Dataset layout detection (grid, divisions, timeseries)
 
 **Entry Points** (`pyproject.toml`):
 ```toml
@@ -117,10 +118,12 @@ process_climate_indices = "climate_indices.__main__:main"
   - Dask array support with chunking validation
   - PET computation (Thornthwaite, Hargreaves)
 
-- **`validation.py`**: Public validation facade shared by the xarray and fire
-  adapters
+- **`validation.py`**: Public validation facade shared by the CLI, the xarray
+  and fire adapters
   - Input type detection (`DataArray`, `ndarray`; `Dataset` is rejected with a
     select-a-variable hint)
+  - Dataset-layout classification (grid, divisions, timeseries) and the
+    dimension orders each layout accepts
   - Time-dimension, monotonicity, and Dask single-chunk validation
 
 - **`indices.py`**: Legacy numpy API

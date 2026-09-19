@@ -8,7 +8,6 @@ import multiprocessing
 from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum
 from typing import Any, Literal, cast
 
 import numpy as np
@@ -16,8 +15,9 @@ import scipy.constants
 import xarray as xr
 
 from climate_indices import compute, fire, indices, palmer, utils
-from climate_indices._cli import _add_common_spi_arguments, _open_with_default_chunks, _prepare_file
+from climate_indices._cli import _add_common_spi_arguments, _open_with_default_chunks
 from climate_indices.exceptions import ConvergenceError, InsufficientDataError
+from climate_indices.validation import DatasetLayout, detect_dataset_layout, expected_dimensions
 
 # the number of worker processes we'll use for process pools
 _NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count() - 1
@@ -39,35 +39,6 @@ _global_shared_arrays: dict[str, Any] = {}
 _logger = utils.get_logger(__name__, logging.INFO)
 
 
-class InputType(Enum):
-    """
-    Enumeration type for differentiating between gridded, timeseries, and US
-    climate division datasets.
-    """
-
-    grid = 1
-    divisions = 2
-    timeseries = 3
-
-
-# the dimensions we expect to find for each data variable
-# (precipitation, temperature, and/or PET)
-_EXPECTED_DIMENSIONS_DIVISIONS = [("time", "division"), ("division", "time")]
-_EXPECTED_DIMENSIONS_GRID = [("lat", "lon", "time"), ("time", "lat", "lon")]
-_EXPECTED_DIMENSIONS_TIMESERIES = [("time",)]
-
-# available water capacity is fixed per location, without a time dimension
-_EXPECTED_DIMENSIONS_GRID_AWC = [("lat", "lon")]
-_EXPECTED_DIMENSIONS_DIVISIONS_AWC = [("division",)]
-
-# the dimensions each input type expects, for checking a companion input
-_EXPECTED_DIMENSIONS_BY_INPUT_TYPE: dict[InputType, list[Any]] = {
-    InputType.grid: _EXPECTED_DIMENSIONS_GRID,
-    InputType.divisions: _EXPECTED_DIMENSIONS_DIVISIONS,
-    InputType.timeseries: _EXPECTED_DIMENSIONS_TIMESERIES,
-}
-
-
 @dataclass(frozen=True)
 class _InputContext:
     """
@@ -80,7 +51,7 @@ class _InputContext:
     no coordinate data to compare companion inputs against.
     """
 
-    input_type: InputType
+    input_type: DatasetLayout
     dimensions: tuple[Hashable, ...]
     times: np.ndarray
     latitudes: np.ndarray | None = None
@@ -100,7 +71,7 @@ class _IndexRequest:
 
     index: str
     output_file_base: str
-    input_type: InputType
+    input_type: DatasetLayout
     periodicity: compute.Periodicity
     chunksizes: str
     netcdf_precip: str | None = None
@@ -124,7 +95,7 @@ class _IndexRequest:
         arguments: argparse.Namespace,
         *,
         index: str,
-        input_type: InputType,
+        input_type: DatasetLayout,
         scale: int | None = None,
         distribution: indices.Distribution | None = None,
     ) -> _IndexRequest:
@@ -176,30 +147,33 @@ class _ComputeContext:
     prepared: xr.Dataset | None = None
 
 
-def _input_type_for_dimensions(dimensions: tuple[Hashable, ...], variable: str) -> InputType:
+# the dimension orders the shared-array transport accepts, by layout: it copies
+# each variable's values in storage order, and the kernels index the time axis
+# at a fixed position (_TIME_AXIS_INDEX), so a grid variable has to be stored
+# time-last. The layout classifier is wider -- it accepts a time-major grid for
+# the xarray-backed KBDI path, which never enters the transport
+_TRANSPORT_DIMENSIONS: dict[DatasetLayout, tuple[tuple[Hashable, ...], ...]] = {
+    DatasetLayout.GRID: (("lat", "lon", "time"),),
+    # a time-major division variable is copied as-is and then indexed along its
+    # division axis; #1063 tracks rejecting or normalizing it, which would
+    # narrow the inputs the CLI accepts today
+    DatasetLayout.DIVISIONS: (("division", "time"), ("time", "division")),
+    DatasetLayout.TIMESERIES: (("time",),),
+}
+
+
+def _accepted_dimensions(layout: DatasetLayout) -> tuple[tuple[Hashable, ...], ...]:
     """
-    Determine the input type a data variable's dimensions describe.
+    Every dimension order a variable in a dataset of this layout may use.
 
-    param dimensions: dimensions of the data variable, in storage order
-    param variable: the data variable's label, used in the error message
-    return: the input type the dimensions describe
-    raise ValueError: if the dimensions are not one of the supported forms
+    The data variables are limited to the orders the shared-array transport and
+    the kernels can read, and a layout's per-location companions -- such as the
+    division latitudes -- are fixed per location, without a time dimension.
+
+    param layout: the dataset layout the dimensions are accepted for
+    return: the accepted dimension orders, in storage order
     """
-
-    if dimensions in _EXPECTED_DIMENSIONS_GRID:
-        return InputType.grid
-    if dimensions in _EXPECTED_DIMENSIONS_DIVISIONS:
-        return InputType.divisions
-    if dimensions in _EXPECTED_DIMENSIONS_TIMESERIES:
-        return InputType.timeseries
-
-    msg = (
-        f"Invalid dimensions of the {variable} "
-        + f"variable: {dimensions}\nValid dimension names and "
-        + f"order: {_EXPECTED_DIMENSIONS_GRID + _EXPECTED_DIMENSIONS_DIVISIONS}"
-    )
-    _logger.error(msg)
-    raise ValueError(msg)
+    return _TRANSPORT_DIMENSIONS[layout] + (expected_dimensions(layout, includes_time=False) or ())
 
 
 def _validate_precipitation_input(args: argparse.Namespace) -> _InputContext:
@@ -236,22 +210,22 @@ def _validate_precipitation_input(args: argparse.Namespace) -> _InputContext:
 
         # verify that the precipitation variable's dimensions are in the expected order
         dimensions = dataset_precip[args.var_name_precip].dims
-        input_type = _input_type_for_dimensions(dimensions, "precipitation")
+        layout = detect_dataset_layout(dimensions, "precipitation")
 
         # get the values of the precipitation coordinate variables,
         # for comparison against those of the other data variables
         latitudes = None
         longitudes = None
         divisions = None
-        if input_type == InputType.grid:
+        if layout == DatasetLayout.GRID:
             latitudes = dataset_precip["lat"].values[:]
             longitudes = dataset_precip["lon"].values[:]
-        elif input_type == InputType.divisions:
+        elif layout == DatasetLayout.DIVISIONS:
             divisions = dataset_precip["division"].values[:]
         times = dataset_precip["time"].values[:]
 
     return _InputContext(
-        input_type=input_type,
+        input_type=layout,
         dimensions=dimensions,
         times=times,
         latitudes=latitudes,
@@ -299,10 +273,10 @@ def _validate_temperature_input(args: argparse.Namespace) -> _InputContext:
 
         # verify that the temperature variable's dimensions are in the expected order
         dimensions = dataset_temp[args.var_name_temp].dims
-        input_type = _input_type_for_dimensions(dimensions, "temperature")
+        layout = detect_dataset_layout(dimensions, "temperature")
 
         return _InputContext(
-            input_type=input_type,
+            input_type=layout,
             dimensions=dimensions,
             times=dataset_temp["time"].values[:],
         )
@@ -327,8 +301,8 @@ def _validate_matching_input_file(
     raise ValueError: if the companion input is invalid or does not match
     """
 
-    expected_dimensions = _EXPECTED_DIMENSIONS_BY_INPUT_TYPE.get(context.input_type)
-    if expected_dimensions is None:
+    expected = expected_dimensions(context.input_type)
+    if expected is None:
         msg = "Failed to determine the input type (gridded, timeseries, or US climate division)"
         _logger.error(msg)
         raise ValueError(msg)
@@ -346,13 +320,15 @@ def _validate_matching_input_file(
 
         # verify that the variable's dimensions are in the expected order
         dimensions = dataset[var_name].dims
-        if dimensions not in expected_dimensions:
-            msg = f"Invalid dimensions of the {label} variable: {dimensions}(expected names and order: {expected_dimensions}"
+        if dimensions not in expected:
+            msg = (
+                f"Invalid dimensions of the {label} variable: {dimensions} (expected names and order: {list(expected)})"
+            )
             _logger.error(msg)
             raise ValueError(msg)
 
         # verify that the coordinate variables match with those of the precipitation dataset
-        if context.input_type == InputType.grid:
+        if context.input_type == DatasetLayout.GRID:
             assert context.latitudes is not None
             assert context.longitudes is not None
             if not np.allclose(
@@ -372,7 +348,7 @@ def _validate_matching_input_file(
                 _logger.error(msg)
                 raise ValueError(msg)
 
-        elif context.input_type == InputType.divisions:
+        elif context.input_type == DatasetLayout.DIVISIONS:
             assert context.divisions is not None
             if not np.array_equal(context.divisions, dataset["division"][:]):
                 msg = f"Precipitation and {label} variables contain non-matching division IDs"
@@ -456,25 +432,23 @@ def _validate_awc_input(args: argparse.Namespace, context: _InputContext) -> Non
 
         # verify that the AWC variable's dimensions are in the expected order
         dimensions = dataset_awc[args.var_name_awc].dims
-        if context.input_type == InputType.grid:
-            expected_dimensions: list[Any] = _EXPECTED_DIMENSIONS_GRID_AWC
-        elif context.input_type == InputType.divisions:
-            expected_dimensions = _EXPECTED_DIMENSIONS_DIVISIONS_AWC
-        else:
-            msg = "Failed to determine the input type (gridded or US climate division)"
+        expected = expected_dimensions(context.input_type, includes_time=False)
+        if expected is None:
+            # the layout was determined; it simply has no per-location form
+            msg = "Available water capacity input requires gridded or US climate division data"
             _logger.error(msg)
             raise ValueError(msg)
 
-        if dimensions not in expected_dimensions:
+        if dimensions not in expected:
             msg = (
                 f"Invalid dimensions of the AWC variable: {dimensions} "
-                + f"(expected names and order: {expected_dimensions})"
+                + f"(expected names and order: {list(expected)})"
             )
             _logger.error(msg)
             raise ValueError(msg)
 
         # verify that the coordinate variables match with those of the precipitation dataset
-        if context.input_type == InputType.grid:
+        if context.input_type == DatasetLayout.GRID:
             assert context.latitudes is not None
             assert context.longitudes is not None
             if not np.allclose(
@@ -494,7 +468,7 @@ def _validate_awc_input(args: argparse.Namespace, context: _InputContext) -> Non
                 _logger.error(msg)
                 raise ValueError(msg)
 
-        elif context.input_type == InputType.divisions:
+        elif context.input_type == DatasetLayout.DIVISIONS:
             assert context.divisions is not None
             if not np.array_equal(context.divisions, dataset_awc["division"][:]):
                 msg = "Precipitation and AWC variables contain non-matching division IDs"
@@ -525,7 +499,7 @@ def _validate_scales(args: argparse.Namespace) -> None:
         raise ValueError(msg)
 
 
-def _validate_args(args: argparse.Namespace) -> InputType:
+def _validate_args(args: argparse.Namespace) -> DatasetLayout:
     """
     Validate the processing settings to confirm that proper argument
     combinations have been provided.
@@ -597,6 +571,7 @@ def _log_status(request: _IndexRequest) -> None:
 def _drop_data_into_shared_arrays_grid(
     dataset: xr.Dataset,
     var_names: list[str],
+    accepted_dimensions: tuple[tuple[Hashable, ...], ...],
     periodicity: compute.Periodicity,
     data_start_year: int,
 ) -> tuple[int, ...]:
@@ -604,23 +579,10 @@ def _drop_data_into_shared_arrays_grid(
 
     # get the data arrays we'll use later in the index computations
     global _global_shared_arrays
-    expected_dims_3d = (("lat", "lon", "time"), ("lon", "lat", "time"))
-    expected_dims_2d = (("lat", "lon"), ("lon", "lat"))
-    expected_dims_1d = (("time",),)
     for var_name in var_names:
         # confirm that the dimensions of the data array are valid
         dims = dataset[var_name].dims
-        if len(dims) == 3:
-            if dims not in expected_dims_3d:
-                message = f"Invalid dimensions for variable '{var_name}': {dims}"
-                _logger.error(message)
-                raise ValueError(message)
-        elif len(dims) == 2:
-            if dims not in expected_dims_2d:
-                message = f"Invalid dimensions for variable '{var_name}': {dims}"
-                _logger.error(message)
-                raise ValueError(message)
-        elif (len(dims) == 1) and (dims not in expected_dims_1d):
+        if dims not in accepted_dimensions:
             message = f"Invalid dimensions for variable '{var_name}': {dims}"
             _logger.error(message)
             raise ValueError(message)
@@ -665,29 +627,25 @@ def _drop_data_into_shared_arrays_grid(
 def _drop_data_into_shared_arrays_divisions(
     dataset: xr.Dataset,
     var_names: list[str],
+    accepted_dimensions: tuple[tuple[Hashable, ...], ...],
 ) -> tuple[int, ...]:
     """
     Drop data into shared arrays for use in the index computations.
 
     :param dataset:
     :param var_names:
+    :param accepted_dimensions: the dimension orders a variable in this
+        dataset may use
     :return:
     """
     output_shape = None
 
     # get the data arrays we'll use later in the index computations
     global _global_shared_arrays
-    expected_dims_2d = [("division", "time"), ("time", "division")]
-    expected_dims_1d = [("division",)]
     for var_name in var_names:
         # confirm that the dimensions of the data array are valid
         dims = dataset[var_name].dims
-        if len(dims) == 2:
-            if dims not in expected_dims_2d:
-                message = f"Invalid dimensions for variable '{var_name}': {dims}"
-                _logger.error(message)
-                raise ValueError(message)
-        elif (len(dims) == 1) and (dims not in expected_dims_1d):
+        if dims not in accepted_dimensions:
             message = f"Invalid dimensions for variable '{var_name}': {dims}"
             _logger.error(message)
             raise ValueError(message)
@@ -717,10 +675,10 @@ def _drop_data_into_shared_arrays_divisions(
 
 # the chunking xr.open_mfdataset() uses per input type, collapsing the whole
 # dimension so index kernels always see complete series/grids/divisions
-_CHUNKS_BY_INPUT_TYPE: dict[InputType, dict[str, int]] = {
-    InputType.grid: {"lat": -1, "lon": -1},
-    InputType.divisions: {"division": -1},
-    InputType.timeseries: {"time": -1},
+_CHUNKS_BY_INPUT_TYPE: dict[DatasetLayout, dict[str, int]] = {
+    DatasetLayout.GRID: {"lat": -1, "lon": -1},
+    DatasetLayout.DIVISIONS: {"division": -1},
+    DatasetLayout.TIMESERIES: {"time": -1},
 }
 
 
@@ -754,7 +712,7 @@ def _trim_to_input_variables(request: _IndexRequest, dataset: xr.Dataset) -> tup
     """
     input_var_names = [name for name in (request.var_name_precip, request.var_name_temp, request.var_name_pet) if name]
     # keep the latitude variable if we're dealing with divisions
-    if request.input_type == InputType.divisions:
+    if request.input_type == DatasetLayout.DIVISIONS:
         input_var_names.append("lat")
     for var in dataset.data_vars:
         if var not in input_var_names:
@@ -930,12 +888,14 @@ def _compute_write_index(request: _IndexRequest) -> tuple[str, str] | None:
     # label is rejected without paying for those full-array copies
     prepared = handler.prepare_inputs(request, dataset) if handler.prepare_inputs is not None else None
 
-    if request.input_type == InputType.divisions:
-        output_shape = _drop_data_into_shared_arrays_divisions(dataset, input_var_names)
+    accepted_dimensions = _accepted_dimensions(request.input_type)
+    if request.input_type == DatasetLayout.DIVISIONS:
+        output_shape = _drop_data_into_shared_arrays_divisions(dataset, input_var_names, accepted_dimensions)
     else:
         output_shape = _drop_data_into_shared_arrays_grid(
             dataset,
             input_var_names,
+            accepted_dimensions,
             request.periodicity,
             request.data_start_year,
         )
@@ -1209,11 +1169,11 @@ def _apply_along_axis_double(
     computed_array = _shared_array(output_var_name, shape)[start_index:end_index]
 
     for i, (x, y) in enumerate(zip(sub_array_1, sub_array_2, strict=False)):
-        if params["input_type"] == InputType.grid:
+        if params["input_type"] == DatasetLayout.GRID:
             for j in range(x.shape[0]):
                 second_value = y if coordinate_input else y[j]
                 computed_array[i, j] = func1d(x[j], second_value, parameters=params["args"])
-        elif params["input_type"] == InputType.divisions:
+        elif params["input_type"] == DatasetLayout.DIVISIONS:
             computed_array[i] = func1d(x, y, parameters=params["args"])
         else:
             raise ValueError(f"Unsupported input type: '{params['input_type']}'")
@@ -1255,7 +1215,7 @@ def _apply_along_axis_palmers(params: dict[str, Any]) -> None:
     sub_array_pet = _shared_array(pet_array_key, shape)[start_index:end_index]
     # available water capacity is fixed per location, without a time dimension
     awc_shape: tuple[Any, ...]
-    if params["input_type"] == InputType.grid:
+    if params["input_type"] == DatasetLayout.GRID:
         awc_shape = (shape[0], shape[1])
     else:  # divisions
         awc_shape = (shape[0],)
@@ -1270,7 +1230,7 @@ def _apply_along_axis_palmers(params: dict[str, Any]) -> None:
     zindex = _shared_array(output_keys[3], shape)[start_index:end_index]
     scpdsi = _shared_array(output_keys[4], shape)[start_index:end_index]
 
-    if params["input_type"] == InputType.grid:
+    if params["input_type"] == DatasetLayout.GRID:
         # sub_array_precip/pet are (lat_chunk, lon, time); pdsi() wants a
         # time-major (time, *cells) block
         precip_block = np.moveaxis(sub_array_precip, -1, 0)
@@ -1308,7 +1268,7 @@ class _IndexRegistration:
     """
 
     index: str
-    run: Callable[[argparse.Namespace, InputType], None]
+    run: Callable[[argparse.Namespace, DatasetLayout], None]
     # names of the request's input fields this index reads, declared so that
     # from_arguments() copies only the inputs the index actually consumes
     input_paths: tuple[str, ...] = ()
@@ -1341,10 +1301,10 @@ _PALMER_OUTPUTS = (
 )
 
 # the axis each input type's time dimension lies along
-_TIME_AXIS_INDEX: dict[InputType, int] = {
-    InputType.grid: 2,
-    InputType.divisions: 1,
-    InputType.timeseries: 0,
+_TIME_AXIS_INDEX: dict[DatasetLayout, int] = {
+    DatasetLayout.GRID: 2,
+    DatasetLayout.DIVISIONS: 1,
+    DatasetLayout.TIMESERIES: 0,
 }
 
 # the registrations run only after _validate_args() has filled the request, so
@@ -1753,7 +1713,7 @@ def _validate_kbdi_inputs(args: argparse.Namespace, context: _InputContext) -> N
             _logger.error(msg)
             raise ValueError(msg)
 
-        if context.input_type == InputType.grid:
+        if context.input_type == DatasetLayout.GRID:
             assert context.latitudes is not None
             assert context.longitudes is not None
             if not np.allclose(
@@ -1774,7 +1734,7 @@ def _validate_kbdi_inputs(args: argparse.Namespace, context: _InputContext) -> N
                 _logger.error(msg)
                 raise ValueError(msg)
 
-        elif context.input_type == InputType.divisions:
+        elif context.input_type == DatasetLayout.DIVISIONS:
             assert context.divisions is not None
             if not np.array_equal(context.divisions, dataset_temp["division"][:]):
                 msg = "Precipitation and temperature variables contain non-matching division IDs"
@@ -1782,14 +1742,13 @@ def _validate_kbdi_inputs(args: argparse.Namespace, context: _InputContext) -> N
                 raise ValueError(msg)
 
 
-def _run_spi(arguments: argparse.Namespace, input_type: InputType) -> None:
+def _run_spi(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
     """
     Compute SPI for each requested scale and distribution.
 
     :param arguments: the parsed command line arguments
     :param input_type: the input type determined by argument validation
     """
-    arguments.netcdf_precip = _prepare_file(arguments.netcdf_precip, arguments.var_name_precip)
     for scale in arguments.scales:
         for distribution in indices.Distribution:
             _compute_write_index(
@@ -1803,15 +1762,13 @@ def _run_spi(arguments: argparse.Namespace, input_type: InputType) -> None:
             )
 
 
-def _run_spei(arguments: argparse.Namespace, input_type: InputType) -> None:
+def _run_spei(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
     """
     Compute SPEI for each requested scale and distribution.
 
     :param arguments: the parsed command line arguments
     :param input_type: the input type determined by argument validation
     """
-    arguments.netcdf_precip = _prepare_file(arguments.netcdf_precip, arguments.var_name_precip)
-    arguments.netcdf_pet = _prepare_file(arguments.netcdf_pet, arguments.var_name_pet)
     for scale in arguments.scales:
         for distribution in indices.Distribution:
             _compute_write_index(
@@ -1825,19 +1782,18 @@ def _run_spei(arguments: argparse.Namespace, input_type: InputType) -> None:
             )
 
 
-def _run_pnp(arguments: argparse.Namespace, input_type: InputType) -> None:
+def _run_pnp(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
     """
     Compute percentage of normal precipitation for each requested scale.
 
     :param arguments: the parsed command line arguments
     :param input_type: the input type determined by argument validation
     """
-    arguments.netcdf_precip = _prepare_file(arguments.netcdf_precip, arguments.var_name_precip)
     for scale in arguments.scales:
         _compute_write_index(_IndexRequest.from_arguments(arguments, index="pnp", input_type=input_type, scale=scale))
 
 
-def _run_pet(arguments: argparse.Namespace, input_type: InputType) -> None:
+def _run_pet(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
     """
     Compute PET from the temperature input, unless a PET input was provided.
 
@@ -1854,26 +1810,22 @@ def _run_pet(arguments: argparse.Namespace, input_type: InputType) -> None:
     if arguments.netcdf_pet is not None and arguments.index != "pet":
         return
 
-    arguments.netcdf_temp = _prepare_file(arguments.netcdf_temp, arguments.var_name_temp)
     result = _compute_write_index(_IndexRequest.from_arguments(arguments, index="pet", input_type=input_type))
     assert result is not None, "PET computation should return file and variable name"
     arguments.netcdf_pet, arguments.var_name_pet = result
 
 
-def _run_palmers(arguments: argparse.Namespace, input_type: InputType) -> None:
+def _run_palmers(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
     """
     Compute the Palmer drought indices.
 
     :param arguments: the parsed command line arguments
     :param input_type: the input type determined by argument validation
     """
-    arguments.netcdf_precip = _prepare_file(arguments.netcdf_precip, arguments.var_name_precip)
-    arguments.netcdf_pet = _prepare_file(arguments.netcdf_pet, arguments.var_name_pet)
-    arguments.netcdf_awc = _prepare_file(arguments.netcdf_awc, arguments.var_name_awc)
     _compute_write_index(_IndexRequest.from_arguments(arguments, index="palmers", input_type=input_type))
 
 
-def _run_kbdi(arguments: argparse.Namespace, input_type: InputType) -> None:
+def _run_kbdi(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
     """
     Compute KBDI through the fire module's xarray API.
 
@@ -1887,23 +1839,21 @@ def _run_kbdi(arguments: argparse.Namespace, input_type: InputType) -> None:
     request = _IndexRequest.from_arguments(arguments, index="kbdi", input_type=input_type)
     assert request.netcdf_precip is not None and request.var_name_precip is not None
     assert request.netcdf_temp is not None and request.var_name_temp is not None
-    netcdf_precip = _prepare_file(request.netcdf_precip, request.var_name_precip)
-    netcdf_temp = _prepare_file(request.netcdf_temp, request.var_name_temp)
 
     # KBDI's recurrence is sequential over time but independent per grid
     # cell/division, and fire.kbdi() requires the time axis in a single Dask
     # chunk: keep time whole and chunk the spatial axes, so the multi-decade
     # daily inputs are never all resident at once
-    if request.input_type == InputType.grid:
+    if request.input_type == DatasetLayout.GRID:
         chunks: dict[str, Any] = {"lat": "auto", "lon": "auto", "time": -1}
-    elif request.input_type == InputType.divisions:
+    elif request.input_type == DatasetLayout.DIVISIONS:
         chunks = {"division": "auto", "time": -1}
     else:
         chunks = {"time": -1}
 
     with (
-        _open_with_default_chunks(xr.open_dataset, netcdf_precip, chunks=chunks) as dataset_precip,
-        _open_with_default_chunks(xr.open_dataset, netcdf_temp, chunks=chunks) as dataset_temp,
+        _open_with_default_chunks(xr.open_dataset, request.netcdf_precip, chunks=chunks) as dataset_precip,
+        _open_with_default_chunks(xr.open_dataset, request.netcdf_temp, chunks=chunks) as dataset_temp,
     ):
         kbdi_values = fire.kbdi(
             dataset_precip[request.var_name_precip],
