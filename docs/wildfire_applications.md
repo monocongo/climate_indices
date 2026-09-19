@@ -139,14 +139,16 @@ occurrence modeling.
 
 `notebooks/fire_weather_demo.ipynb` runs the family end to end on a public
 ERA5 subset: KBDI over three years, the seven CFFWIS components, Fosberg
-FFWI, and HDW over the 2020 fire season, on a 1.5 degree CONUS grid. It
-prepares its inputs with `scripts/prepare_fire_demo_inputs.py`, which reads
-the anonymously accessible ARCO-ERA5 store on Google Cloud Storage and caches
-daily NetCDF files under `data/fire-demo/` (git-ignored). The notebook states
-every approximation it makes -- derived relative humidity, daily summaries in
-place of noon observations, and a three-year precipitation baseline for KBDI
--- so read it as a worked example of the API and its chunking constraints,
-not as a reference product.
+FFWI, and HDW over the 2020 fire season, on a 1.5 degree CONUS grid. It also
+ranks SPI-3 and EDDI-3 for September 2020 against a 1991-2020 monthly
+baseline and places them beside DC and KBDI. It prepares its inputs with
+`scripts/prepare_fire_demo_inputs.py`, which reads the anonymously accessible
+ARCO-ERA5 store on Google Cloud Storage and caches daily and monthly NetCDF
+files under `data/fire-demo/` (git-ignored). The notebook states every
+approximation it makes -- derived relative humidity, daily summaries in place
+of noon observations, a three-year precipitation baseline for KBDI, and
+temperature-only Thornthwaite PET for EDDI -- so read it as a worked example
+of the API and its chunking constraints, not as a reference product.
 
 ## Performance and sizing
 

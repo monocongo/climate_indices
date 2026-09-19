@@ -99,6 +99,47 @@ def test_daily_surface_completes_the_year_end_precipitation_bin(monkeypatch):
     assert _value(daily.precip_mm.isel(time=0, latitude=0, longitude=0)) == pytest.approx(14.0)
 
 
+def test_monthly_surface_aggregation_separates_calendar_months(monkeypatch):
+    """The baseline means and sums the six-hourly record per calendar month."""
+    module = _prepare_module(monkeypatch)
+    times = pd.date_range("2020-01-30", periods=16, freq="6h")
+    latitude, longitude = [30.0], [-100.0]
+    temperatures = 273.15 + 10.0 + np.arange(len(times), dtype=float)
+    precipitation = np.linspace(0.001, 0.016, len(times))
+    monthly = module._to_monthly_surface(
+        xr.Dataset(
+            {
+                "2m_temperature": _six_hourly(
+                    temperatures.reshape(-1, 1, 1), times, latitude, longitude, "2m_temperature"
+                ),
+                "total_precipitation_6hr": _six_hourly(
+                    precipitation.reshape(-1, 1, 1), times, latitude, longitude, "precip"
+                ),
+            }
+        ),
+        2020,
+    )
+
+    assert list(monthly.time.values) == [np.datetime64("2020-01-01T12:00"), np.datetime64("2020-02-01T12:00")]
+    # precipitation is an accumulation ending at its stamp, so January sums the
+    # stamps covering 1 January 00:00 through 31 January 24:00: indices 0-8
+    # (the 1 February 00:00 stamp covers the last six hours of 31 January)
+    assert _value(monthly.precip_mm.isel(time=0, latitude=0, longitude=0)) == pytest.approx(
+        float(precipitation[0:9].sum() * 1000.0)
+    )
+    assert _value(monthly.precip_mm.isel(time=1, latitude=0, longitude=0)) == pytest.approx(
+        float(precipitation[9:].sum() * 1000.0)
+    )
+    # temperature is instantaneous, so January averages the stamps at 00:00 on
+    # 1 January through 18:00 on 31 January: indices 0-7
+    assert _value(monthly.tmean_c.isel(time=0, latitude=0, longitude=0)) == pytest.approx(
+        float((temperatures[0:8] - 273.15).mean())
+    )
+    assert _value(monthly.tmean_c.isel(time=1, latitude=0, longitude=0)) == pytest.approx(
+        float((temperatures[8:] - 273.15).mean())
+    )
+
+
 def test_relative_humidity_matches_saturation_and_clips(monkeypatch):
     """Saturated air reads 100 percent, half saturation reads 50, and overshoot clips."""
     module = _prepare_module(monkeypatch)
@@ -282,7 +323,7 @@ def test_publish_failure_preserves_previous_output(tmp_path, monkeypatch):
         def to_netcdf(self, target):
             raise RuntimeError("disk full")
 
-    monkeypatch.setattr(module, "_add_units", lambda prepared: Exploding())
+    monkeypatch.setattr(module, "_add_units", lambda prepared, **kwargs: Exploding())
     with pytest.raises(RuntimeError, match="disk full"):
         module._publish(dataset, path)
 
@@ -303,6 +344,10 @@ def test_prepare_inputs_publishes_manifest_with_provenance(tmp_path, monkeypatch
         {"temperature_c": (("time", "level", "latitude", "longitude"), np.ones((2, 1, 1, 1)))},
         coords={**coordinates, "level": [1000.0]},
     )
+    baseline = xr.Dataset(
+        {"tmean_c": (("time", "latitude", "longitude"), np.ones((2, 1, 1)))},
+        coords=coordinates,
+    )
 
     class Source:
         def close(self):
@@ -311,6 +356,7 @@ def test_prepare_inputs_publishes_manifest_with_provenance(tmp_path, monkeypatch
     monkeypatch.setattr(module, "_open_source", Source)
     monkeypatch.setattr(module, "_surface_inputs", lambda dataset, cache_dir: surface)
     monkeypatch.setattr(module, "_level_inputs", lambda dataset, cache_dir: levels)
+    monkeypatch.setattr(module, "_baseline_inputs", lambda dataset, cache_dir: baseline)
 
     manifest = module.prepare_inputs(tmp_path)
 
@@ -319,6 +365,13 @@ def test_prepare_inputs_publishes_manifest_with_provenance(tmp_path, monkeypatch
     assert (
         manifest["artifacts"][module.OUTPUT_SURFACE]["sha256"] == hashlib.sha256(surface_path.read_bytes()).hexdigest()
     )
+    baseline_path = tmp_path / module.OUTPUT_BASELINE
+    assert baseline_path.exists()
+    assert (
+        manifest["artifacts"][module.OUTPUT_BASELINE]["sha256"]
+        == hashlib.sha256(baseline_path.read_bytes()).hexdigest()
+    )
+    assert manifest["baseline_years"] == list(module.BASELINE_YEARS)
     assert manifest["source_url"] == module.SOURCE_URL
     assert manifest["domain"]["requested_longitude"] == [-125.0, -65.0]
     assert manifest["domain"]["realized_longitude"] == [-100.0, -100.0]
@@ -339,6 +392,10 @@ def test_prepare_inputs_skips_opening_source_when_fully_cached(tmp_path, monkeyp
         {"temperature_c": (("time", "level", "latitude", "longitude"), np.ones((2, 1, 1, 1)))},
         coords={**coordinates, "level": [1000.0]},
     )
+    baseline = xr.Dataset(
+        {"tmean_c": (("time", "latitude", "longitude"), np.ones((2, 1, 1)))},
+        coords=coordinates,
+    )
 
     def fail_if_opened():
         raise AssertionError("a fully cached run must not open the remote store")
@@ -346,5 +403,6 @@ def test_prepare_inputs_skips_opening_source_when_fully_cached(tmp_path, monkeyp
     monkeypatch.setattr(module, "_open_source", fail_if_opened)
     monkeypatch.setattr(module, "_surface_inputs", lambda source, cache_dir: surface)
     monkeypatch.setattr(module, "_level_inputs", lambda source, cache_dir: levels)
+    monkeypatch.setattr(module, "_baseline_inputs", lambda source, cache_dir: baseline)
 
     module.prepare_inputs(tmp_path)
