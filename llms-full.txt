@@ -3545,9 +3545,10 @@ memory per worker for the blocks it runs at once (the measured per-block figure 
 in [Chunking](#chunking)) — and leave a few blocks per worker.
 
 The [notebook's client cell](https://github.com/monocongo/climate_indices/blob/main/notebooks/zarr_dask_spi_spei.ipynb)
-creates one from the host's physical memory, passes it to the calculation and the
-Zarr write, and closes it on both the success and failure paths. The measured
-fresh-pool versus warm-pool cost is in
+creates one from the host's physical memory, uses it as the default scheduler for
+the calculation and the Zarr write, and the write cell closes it in a `finally`
+block on both the success and failure paths. The measured fresh-pool versus
+warm-pool cost is in
 [Operational Guidance](docs/xarray_compatibility.md#operational-guidance).
 
 ## Chunking
