@@ -2437,7 +2437,8 @@ of decision tickets and resolved one at a time: `wayfinder` for the map,
 `grilling` and `domain-modeling` to settle hard-to-reverse choices and pin down
 terminology, `to-issues` to slice the result into independently grabbable
 issues, and `triage` to move them through the workflow. The GitHub operations
-behind those skills are written down in `docs/agent/issue-tracker.md`.
+behind those skills are written down in the repository's maintainer notes,
+`docs/agent/issue-tracker.md`, which are not published here.
 
 The output is an ordinary GitHub milestone, project board, and numbered issues.
 Labels carry the state: `ready-for-agent` opens an issue to parallel agent
