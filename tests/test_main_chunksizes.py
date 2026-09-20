@@ -154,6 +154,90 @@ def test_oversized_input_chunks_are_trimmed_to_the_output_shape(monkeypatch, tmp
         assert written["pnp_03"].encoding["chunksizes"] == (2, 3, 24)
 
 
+def test_daily_oversized_input_chunks_are_trimmed_to_the_written_shape(monkeypatch, tmp_path):
+    """The daily write path shrinks 366-day years back to the Gregorian calendar."""
+    time = xr.date_range("1990-01-01", periods=365, freq="D")
+    dataset = xr.Dataset(
+        {"prcp": (("lat", "lon", "time"), np.ones((2, 3, 365)) * 10.0, {"units": "mm"})},
+        coords={"lat": [25.0, 30.0], "lon": [-100.0, -95.0, -90.0], "time": time},
+    )
+    input_file = tmp_path / "prcp.nc"
+    dataset.to_netcdf(
+        input_file,
+        encoding={"prcp": {"chunksizes": (2, 3, 366)}},
+        engine="h5netcdf",
+        unlimited_dims=["time"],
+    )
+
+    monkeypatch.setattr(cli_main, "_global_shared_arrays", {})
+    monkeypatch.setattr(cli_main, "_parallel_process", lambda *_args, **_kwargs: None)
+
+    cli_main._compute_write_index(
+        cli_main._IndexRequest(
+            index="spi",
+            netcdf_precip=str(input_file),
+            var_name_precip="prcp",
+            input_type=DatasetLayout.GRID,
+            periodicity=compute.Periodicity.daily,
+            chunksizes="input",
+            output_file_base=str(tmp_path / "out"),
+            scale=30,
+            distribution=indices.Distribution.gamma,
+            calibration_start_year=1990,
+            calibration_end_year=1990,
+        )
+    )
+
+    with xr.open_dataset(tmp_path / "out_spi_gamma_30.nc", engine="h5netcdf") as written:
+        assert written["spi_gamma_30"].shape == (2, 3, 365)
+        assert written["spi_gamma_30"].encoding["chunksizes"] == (2, 3, 365)
+
+
+def test_input_files_are_opened_in_the_requested_order(monkeypatch, tmp_path):
+    """De-duplicating the input file list must not reorder the files."""
+    time = xr.date_range("1990-01-01", periods=24, freq="MS")
+    coords = {"lat": [25.0, 30.0], "lon": [-100.0, -95.0, -90.0], "time": time}
+    precip_file = tmp_path / "prcp.nc"
+    pet_file = tmp_path / "pet.nc"
+    xr.Dataset({"prcp": (("lat", "lon", "time"), np.ones((2, 3, 24)), {"units": "mm"})}, coords=coords).to_netcdf(
+        precip_file
+    )
+    xr.Dataset({"pet": (("lat", "lon", "time"), np.ones((2, 3, 24)), {"units": "mm"})}, coords=coords).to_netcdf(
+        pet_file
+    )
+
+    opened_file_lists: list[list[str]] = []
+    original_open_mfdataset = cli_main.xr.open_mfdataset
+
+    def _recording_open_mfdataset(files, **kwargs):
+        opened_file_lists.append(list(files))
+        return original_open_mfdataset(files, **kwargs)
+
+    monkeypatch.setattr(cli_main, "_global_shared_arrays", {})
+    monkeypatch.setattr(cli_main.xr, "open_mfdataset", _recording_open_mfdataset)
+    monkeypatch.setattr(cli_main, "_parallel_process", lambda *_args, **_kwargs: None)
+
+    cli_main._compute_write_index(
+        cli_main._IndexRequest(
+            index="spei",
+            netcdf_precip=str(precip_file),
+            var_name_precip="prcp",
+            netcdf_pet=str(pet_file),
+            var_name_pet="pet",
+            input_type=DatasetLayout.GRID,
+            periodicity=compute.Periodicity.monthly,
+            chunksizes="none",
+            output_file_base=str(tmp_path / "out"),
+            scale=3,
+            distribution=indices.Distribution.gamma,
+            calibration_start_year=1990,
+            calibration_end_year=1991,
+        )
+    )
+
+    assert opened_file_lists == [[str(precip_file), str(pet_file)]]
+
+
 @pytest.mark.parametrize(
     ("units", "raw_values"),
     [
