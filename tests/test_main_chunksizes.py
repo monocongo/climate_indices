@@ -70,15 +70,12 @@ def test_pnp_copies_h5netcdf_input_chunksizes(monkeypatch, tmp_path):
     input_file = tmp_path / "prcp.nc"
     dataset.to_netcdf(input_file, encoding={"prcp": {"chunksizes": (2, 3, 12)}}, engine="h5netcdf")
 
-    original_open_mfdataset = cli_main.xr.open_mfdataset
-
-    def _open_mfdataset_without_contiguous(*args, **kwargs):
-        opened = original_open_mfdataset(*args, **kwargs)
-        opened["prcp"].encoding.pop("contiguous", None)
-        return opened
+    # h5netcdf reports on-disk chunks without a `contiguous` key, which is the
+    # condition the copied chunk sizes have to survive
+    with xr.open_dataset(input_file, engine="h5netcdf") as opened:
+        assert "contiguous" not in opened["prcp"].encoding
 
     monkeypatch.setattr(cli_main, "_global_shared_arrays", {})
-    monkeypatch.setattr(cli_main.xr, "open_mfdataset", _open_mfdataset_without_contiguous)
     monkeypatch.setattr(cli_main, "_parallel_process", lambda *_args, **_kwargs: None)
 
     cli_main._compute_write_index(
@@ -98,6 +95,63 @@ def test_pnp_copies_h5netcdf_input_chunksizes(monkeypatch, tmp_path):
 
     with xr.open_dataset(tmp_path / "out_pnp_03.nc", engine="h5netcdf") as written:
         assert written["pnp_03"].encoding["chunksizes"] == (2, 3, 12)
+
+
+def test_input_chunksizes_ignores_contiguous_inputs(tmp_path):
+    """Contiguous inputs report no chunks to copy, even without a ``contiguous`` key."""
+    time = xr.date_range("1990-01-01", periods=24, freq="MS")
+    dataset = xr.Dataset(
+        {"prcp": (("lat", "lon", "time"), np.ones((2, 3, 24)), {"units": "mm"})},
+        coords={"lat": [25.0, 30.0], "lon": [-100.0, -95.0, -90.0], "time": time},
+    )
+    input_file = tmp_path / "contiguous.nc"
+    dataset.to_netcdf(input_file, engine="h5netcdf")
+
+    with xr.open_mfdataset(input_file) as opened:
+        assert "contiguous" not in opened["prcp"].encoding
+        assert cli_main._input_chunksizes(opened) == ((), ())
+
+    # a backend that does report the key as True must be honored as well
+    dataset["prcp"].encoding.update(contiguous=True, chunksizes=(2, 3, 12))
+    assert cli_main._input_chunksizes(dataset) == ((), ())
+
+
+def test_oversized_input_chunks_are_trimmed_to_the_output_shape(monkeypatch, tmp_path):
+    """A chunk larger than the output dimension must not be written verbatim."""
+    time = xr.date_range("1990-01-01", periods=24, freq="MS")
+    dataset = xr.Dataset(
+        {"prcp": (("lat", "lon", "time"), np.ones((2, 3, 24)), {"units": "mm"})},
+        coords={"lat": [25.0, 30.0], "lon": [-100.0, -95.0, -90.0], "time": time},
+    )
+    input_file = tmp_path / "prcp.nc"
+    # an unlimited time dimension permits a chunk larger than the data written so far
+    dataset.to_netcdf(
+        input_file,
+        encoding={"prcp": {"chunksizes": (2, 3, 100)}},
+        engine="h5netcdf",
+        unlimited_dims=["time"],
+    )
+
+    monkeypatch.setattr(cli_main, "_global_shared_arrays", {})
+    monkeypatch.setattr(cli_main, "_parallel_process", lambda *_args, **_kwargs: None)
+
+    cli_main._compute_write_index(
+        cli_main._IndexRequest(
+            index="pnp",
+            netcdf_precip=str(input_file),
+            var_name_precip="prcp",
+            input_type=DatasetLayout.GRID,
+            periodicity=compute.Periodicity.monthly,
+            chunksizes="input",
+            output_file_base=str(tmp_path / "out"),
+            scale=3,
+            calibration_start_year=1990,
+            calibration_end_year=1991,
+        )
+    )
+
+    with xr.open_dataset(tmp_path / "out_pnp_03.nc", engine="h5netcdf") as written:
+        assert written["pnp_03"].encoding["chunksizes"] == (2, 3, 24)
 
 
 @pytest.mark.parametrize(

@@ -889,6 +889,14 @@ def _compute_write_index(request: _IndexRequest) -> tuple[str, str] | None:
             request.data_start_year,
         )
 
+    # an input written with an unlimited dimension can report a chunk larger
+    # than the output's dimension, which the writer either rejects or silently
+    # drops, so trim the copied chunks to the output shape
+    if len(output_chunksizes) == len(output_shape):
+        output_chunksizes = tuple(
+            min(chunk, length) for chunk, length in zip(output_chunksizes, output_shape, strict=True)
+        )
+
     output_encodings = {"chunksizes": output_chunksizes} if output_chunksizes else None
     # a chunksizes encoding is only honored by an HDF5-backed engine, and the
     # supported xarray versions still default to scipy when netCDF4 is absent
