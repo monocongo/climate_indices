@@ -666,12 +666,16 @@ def _input_chunksizes(dataset: xr.Dataset) -> tuple[tuple[int, ...], tuple[Any, 
     """
     Find the first input variable's chunk sizes, for copying onto the output.
 
+    A variable counts as chunked when its encoding reports non-empty
+    ``chunksizes`` and it is not explicitly marked contiguous: backends such
+    as h5netcdf report on-disk chunk sizes without a ``contiguous`` key.
+
     Note that the netcdf spec doesn't require that all data variables have the
     same chunk sizes.
 
     param dataset: the opened inputs
     return: the chunk sizes found and the dimensions they correspond to, or a
-        pair of empty tuples if no variable is chunked
+        pair of empty tuples if no variable reports chunk sizes
     """
     for da in dataset.data_vars.values():
         if not da.encoding.get("contiguous", False):
