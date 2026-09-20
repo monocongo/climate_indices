@@ -217,25 +217,33 @@ def test_input_files_are_opened_in_the_requested_order(monkeypatch, tmp_path):
     monkeypatch.setattr(cli_main.xr, "open_mfdataset", _recording_open_mfdataset)
     monkeypatch.setattr(cli_main, "_parallel_process", lambda *_args, **_kwargs: None)
 
-    cli_main._compute_write_index(
-        cli_main._IndexRequest(
-            index="spei",
-            netcdf_precip=str(precip_file),
-            var_name_precip="prcp",
-            netcdf_pet=str(pet_file),
-            var_name_pet="pet",
-            input_type=DatasetLayout.GRID,
-            periodicity=compute.Periodicity.monthly,
-            chunksizes="none",
-            output_file_base=str(tmp_path / "out"),
-            scale=3,
-            distribution=indices.Distribution.gamma,
-            calibration_start_year=1990,
-            calibration_end_year=1991,
+    # both orderings, so that a `set`-based de-duplication cannot pass by luck
+    for precip_path, precip_var, pet_path, pet_var in (
+        (precip_file, "prcp", pet_file, "pet"),
+        (pet_file, "pet", precip_file, "prcp"),
+    ):
+        cli_main._compute_write_index(
+            cli_main._IndexRequest(
+                index="spei",
+                netcdf_precip=str(precip_path),
+                var_name_precip=precip_var,
+                netcdf_pet=str(pet_path),
+                var_name_pet=pet_var,
+                input_type=DatasetLayout.GRID,
+                periodicity=compute.Periodicity.monthly,
+                chunksizes="none",
+                output_file_base=str(tmp_path / "out"),
+                scale=3,
+                distribution=indices.Distribution.gamma,
+                calibration_start_year=1990,
+                calibration_end_year=1991,
+            )
         )
-    )
 
-    assert opened_file_lists == [[str(precip_file), str(pet_file)]]
+    assert opened_file_lists == [
+        [str(precip_file), str(pet_file)],
+        [str(pet_file), str(precip_file)],
+    ]
 
 
 @pytest.mark.parametrize(
