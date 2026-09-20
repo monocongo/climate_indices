@@ -675,7 +675,8 @@ def _input_chunksizes(dataset: xr.Dataset) -> tuple[tuple[int, ...], tuple[Any, 
 
     param dataset: the opened inputs
     return: the chunk sizes found and the dimensions they correspond to, or a
-        pair of empty tuples if no variable reports chunk sizes
+        pair of empty tuples if no data variable reports chunk sizes without
+        being explicitly marked contiguous
     """
     for da in dataset.data_vars.values():
         if not da.encoding.get("contiguous", False):
@@ -756,6 +757,27 @@ def _reordered_chunksizes(
         output_dims,
     )
     return ()
+
+
+def _trimmed_output_encodings(output_encodings: dict[str, Any] | None, shape: tuple[int, ...]) -> dict[str, Any] | None:
+    """
+    Trim a copied chunksizes encoding to the shape of the data being written.
+
+    An input variable written with an unlimited dimension can report a chunk
+    larger than the output's dimension, which the writer either rejects or
+    silently drops, so trim the requested chunks to the output shape.
+
+    param output_encodings: the encodings to apply to the written variable
+    param shape: the shape of the data being written
+    return: the encodings with any chunk sizes trimmed to the shape, or None
+    """
+    if not output_encodings or len(output_encodings["chunksizes"]) != len(shape):
+        return output_encodings
+    chunksizes = output_encodings["chunksizes"]
+    trimmed = tuple(min(chunk, length) for chunk, length in zip(chunksizes, shape, strict=True))
+    if trimmed != tuple(chunksizes):
+        _logger.warning("Trimming copied input chunksizes %s to the output shape %s", chunksizes, shape)
+    return {"chunksizes": trimmed}
 
 
 def _normalize_precipitation_units(dataset: xr.Dataset, var_name: str | None) -> None:
@@ -893,14 +915,6 @@ def _compute_write_index(request: _IndexRequest) -> tuple[str, str] | None:
             input_var_names,
             request.periodicity,
             request.data_start_year,
-        )
-
-    # an input written with an unlimited dimension can report a chunk larger
-    # than the output's dimension, which the writer either rejects or silently
-    # drops, so trim the copied chunks to the output shape
-    if len(output_chunksizes) == len(output_shape):
-        output_chunksizes = tuple(
-            min(chunk, length) for chunk, length in zip(output_chunksizes, output_shape, strict=True)
         )
 
     output_encodings = {"chunksizes": output_chunksizes} if output_chunksizes else None
@@ -1579,7 +1593,7 @@ def _write_single_output(context: _ComputeContext) -> tuple[str, str]:
         dims=context.output_dims,
         data=index_values,
         attrs=output_var_attributes,
-        encoding=context.output_encodings,
+        encoding=_trimmed_output_encodings(context.output_encodings, index_values.shape),
     )
     dataset[output_var_name] = variable
 
@@ -1618,7 +1632,7 @@ def _write_palmer_outputs(context: _ComputeContext) -> None:
             dims=context.output_dims,
             data=index_values,
             attrs=attrs,
-            encoding=context.output_encodings,
+            encoding=_trimmed_output_encodings(context.output_encodings, index_values.shape),
         )
         dataset[var_name] = variable
 
