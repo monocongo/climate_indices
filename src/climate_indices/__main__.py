@@ -674,7 +674,7 @@ def _input_chunksizes(dataset: xr.Dataset) -> tuple[tuple[int, ...], tuple[Any, 
         pair of empty tuples if no variable is chunked
     """
     for da in dataset.data_vars.values():
-        if not da.encoding.get("contiguous", True):
+        if not da.encoding.get("contiguous", False):
             # tuple of chunksizes, respectively by dimension
             chunksizes = da.encoding.get("chunksizes", ())
             if chunksizes:
