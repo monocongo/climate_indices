@@ -839,8 +839,10 @@ def _compute_write_index(request: _IndexRequest) -> tuple[str, str] | None:
     if chunks is None:
         raise ValueError(f"Unsupported input type: {request.input_type}")
 
-    # Since multiple variables can be in the same file, de-duplicate the filelist.
-    dataset = xr.open_mfdataset(list(set(files)), chunks=chunks)
+    # Since multiple variables can be in the same file, de-duplicate the
+    # filelist, preserving its order so that the variable whose chunk sizes
+    # get copied doesn't depend on set iteration order.
+    dataset = xr.open_mfdataset(list(dict.fromkeys(files)), chunks=chunks)
 
     output_chunksizes: tuple[int, ...] = ()
     chunksizes_dims: tuple[Any, ...] = ()
