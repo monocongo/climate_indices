@@ -68,8 +68,8 @@ def _estimate_pearson3_parameters(lmoments: np.ndarray) -> dict[str, float]:
 
     :param lmoments: 3-element, 1-D (flat) array containing the first
         three L-moments (lambda-1, lambda-2, and tau-3)
-    :return the Pearson Type III parameters corresponding to the input L-moments
-    :rtype: a 3-element, 1-D (flat) numpy array of floats (loc, scale, skew)
+    :return: the Pearson Type III parameters corresponding to the input L-moments
+    :rtype: a dictionary with the keys "loc", "scale", and "skew" (float values)
     """
 
     c1, c2, c3, d1, d2, d3, d4, d5, d6 = _PEARSON3_COEFFICIENTS
@@ -86,8 +86,6 @@ def _estimate_pearson3_parameters(lmoments: np.ndarray) -> dict[str, float]:
 
     # the first Pearson Type III parameter is the same as the first L-moment
     loc = lmoments[0]
-
-    # # the first Pearson Type III parameter is the same as the first L-moment
 
     if t3 <= 1e-6:
         # skewness is effectively zero
