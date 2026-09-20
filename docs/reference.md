@@ -78,7 +78,7 @@ The options are described below:
 * - kbdi_initial
   - Initial KBDI value. Default value is 0.0. Applicable only when **index** is 'kbdi'.
 * - chunksizes
-  - Chunking of the written output file, not of the computation: 'none' (default) lets the writer choose the output layout, and 'input' copies the on-disk chunks of the first chunked input variable to the output, when that variable's dimensions match the output's (for KBDI, the precipitation variable's chunks); otherwise the writer chooses the layout.
+  - Chunking of the written output file, not of the computation: 'none' (default) lets the writer choose the output layout, and 'input' uses the on-disk chunks of the first input variable that reports chunk sizes without being explicitly contiguous (for KBDI, the precipitation variable's chunks). The copied chunks are reordered to the output's dimension order and trimmed to its shape, and are ignored, with a warning, when that variable's dimensions don't match the output's.
 * - output_file_base
   - Base file name for all output files (required).
 
