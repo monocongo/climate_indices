@@ -1884,17 +1884,19 @@ def _run_kbdi(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
         kbdi_values.name = "kbdi_imperial" if arguments.kbdi_units == "imperial" else "kbdi"
         output_file = f"{request.output_file_base}_{kbdi_values.name}.nc"
 
-        # honor --chunksizes input by copying the precipitation
-        # variable's on-disk chunks to the output variable; a chunksizes
-        # encoding is only honored by an HDF5-backed engine, and the
-        # supported xarray versions still default to scipy when
-        # netCDF4 is absent
-        output_engine: Literal["h5netcdf"] | None = None
+        # honor --chunksizes input by copying the precipitation variable's
+        # on-disk chunks to the output variable, trimmed to the written shape;
+        # a chunksizes encoding is only honored by an HDF5-backed engine, and
+        # the supported xarray versions still default to scipy when netCDF4 is
+        # absent
+        output_encodings = None
         if request.chunksizes == "input":
             input_chunksizes = dataset_precip[request.var_name_precip].encoding.get("chunksizes")
             if input_chunksizes:
-                kbdi_values.encoding["chunksizes"] = input_chunksizes
-                output_engine = "h5netcdf"
+                output_encodings = _trimmed_output_encodings({"chunksizes": input_chunksizes}, kbdi_values.shape)
+        output_engine: Literal["h5netcdf"] | None = "h5netcdf" if output_encodings else None
+        if output_encodings:
+            kbdi_values.encoding.update(output_encodings)
 
         _logger.info("Writing KBDI values to file: %s", output_file)
         kbdi_values.to_netcdf(output_file, engine=output_engine)

@@ -288,3 +288,42 @@ class TestKBDIProcessing:
         with xr.open_dataset(tmp_path / "out_kbdi.nc", engine="h5netcdf") as dataset:
             assert dataset["kbdi"].encoding["chunksizes"] == (2, 3, 1000)
             assert np.isfinite(dataset["kbdi"].values).all()
+
+    def test_oversized_input_chunksizes_are_trimmed(self, tmp_path):
+        """An input chunk larger than the written array is trimmed, not dropped."""
+        periods = _DAILY_PERIODS
+        time = xr.date_range("1990-01-01", periods=periods, freq="D")
+        rng = np.random.default_rng(7)
+        coords = {"lat": [25.0, 26.0], "lon": [-100.0, -99.0, -98.0], "time": time}
+        precip = xr.Dataset(
+            {"precip": (("lat", "lon", "time"), rng.gamma(2.0, 2.0, (2, 3, periods)), {"units": "mm"})},
+            coords=coords,
+        )
+        temperature = xr.Dataset(
+            {"tmax": (("time", "lat", "lon"), 25.0 + 5.0 * rng.random((periods, 2, 3)), {"units": "degC"})},
+            coords=coords,
+        )
+        precip_path = tmp_path / "precip.nc"
+        temp_path = tmp_path / "temp.nc"
+        # an unlimited time dimension permits a chunk larger than the data written so far
+        precip.to_netcdf(
+            precip_path,
+            encoding={"precip": {"chunksizes": (2, 3, periods + 1000)}},
+            engine="h5netcdf",
+            unlimited_dims=["time"],
+        )
+        temperature.to_netcdf(temp_path, engine="h5netcdf")
+
+        cli_main.process_climate_indices(
+            _kbdi_arguments(
+                netcdf_precip=str(precip_path),
+                var_name_precip="precip",
+                netcdf_temp=str(temp_path),
+                var_name_temp="tmax",
+                output_file_base=str(tmp_path / "out"),
+                chunksizes="input",
+            ),
+        )
+
+        with xr.open_dataset(tmp_path / "out_kbdi.nc", engine="h5netcdf") as dataset:
+            assert dataset["kbdi"].encoding["chunksizes"] == (2, 3, periods)
