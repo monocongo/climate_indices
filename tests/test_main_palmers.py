@@ -20,7 +20,7 @@ import xarray as xr
 
 from climate_indices import __main__ as cli_main
 from climate_indices import palmer
-from climate_indices.__main__ import InputType
+from climate_indices.__main__ import DatasetLayout
 
 _DIVISION_ID = "0101"
 _FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "fixture", "palmer", _DIVISION_ID)
@@ -43,6 +43,31 @@ def _make_shared_array(values: np.ndarray, shape: tuple[int, ...]) -> dict:
 def _make_empty_shared_array(shape: tuple[int, ...]) -> dict:
     shared = multiprocessing.Array("d", int(np.prod(shape)))
     return {cli_main._KEY_ARRAY: shared, cli_main._KEY_SHAPE: shape}
+
+
+class TestCompanionDimensions:
+    def test_rejects_pet_dimensions_outside_the_layout(self, monkeypatch):
+        """A PET variable must carry one of the precipitation layout's accepted orders."""
+        context = cli_main._InputContext(
+            input_type=DatasetLayout.GRID,
+            dimensions=("lat", "lon", "time"),
+            times=np.arange(12),
+            latitudes=np.array([25.0, 26.0]),
+            longitudes=np.array([-100.0, -99.0]),
+        )
+        dataset = xr.Dataset(
+            {"pet": (("lat", "time"), np.ones((2, 12)))},
+            coords={"lat": [25.0, 26.0], "time": np.arange(12)},
+        )
+        monkeypatch.setattr(cli_main.xr, "open_dataset", lambda *args, **kwargs: dataset)
+
+        with pytest.raises(ValueError) as error:
+            cli_main._validate_matching_input_file(context, "PET", "pet.nc", "pet")
+
+        assert str(error.value) == (
+            "Invalid dimensions of the PET variable: ('lat', 'time') "
+            "(expected names and order: [('lat', 'lon', 'time')])"
+        )
 
 
 class TestAWCDimensions:
@@ -73,6 +98,31 @@ class TestAWCDimensions:
         assert str(error.value) == (
             "Invalid dimensions of the AWC variable: ('time', 'division') (expected names and order: [('division',)])"
         )
+
+    def test_rejects_awc_for_a_timeseries_input(self, monkeypatch):
+        """A timeseries layout carries no per-location form for AWC."""
+        coords = {"time": np.arange(12)}
+        datasets = {
+            "precip.nc": xr.Dataset({"precip": (("time",), np.ones(12))}, coords=coords),
+            "pet.nc": xr.Dataset({"pet": (("time",), np.ones(12))}, coords=coords),
+            "awc.nc": xr.Dataset({"awc": (("time",), np.ones(12))}, coords=coords),
+        }
+        monkeypatch.setattr(cli_main.xr, "open_dataset", datasets.__getitem__)
+        arguments = argparse.Namespace(
+            index="palmers",
+            netcdf_precip="precip.nc",
+            var_name_precip="precip",
+            netcdf_temp=None,
+            netcdf_pet="pet.nc",
+            var_name_pet="pet",
+            netcdf_awc="awc.nc",
+            var_name_awc="awc",
+        )
+
+        with pytest.raises(ValueError) as error:
+            cli_main._validate_args(arguments)
+
+        assert str(error.value) == "Available water capacity input requires gridded or US climate division data"
 
 
 class TestScalesRequirement:
@@ -182,7 +232,7 @@ class TestPalmersWorker:
             "input_var_names": ["precip", "pet", "awc"],
             "output_var_names": list(palmers.output_keys),
             "coordinate_input": False,
-            "input_type": InputType.divisions,
+            "input_type": DatasetLayout.DIVISIONS,
             "args": {
                 "data_start_year": data_year_start_monthly,
                 "calibration_start_year": calibration_year_start_palmer,
@@ -254,7 +304,7 @@ class TestPalmersWorker:
             "sub_array_end": None,
             "input_var_names": ("precip", "pet", "awc"),
             "output_var_names": cli_main._registry_for("palmers").output_keys,
-            "input_type": InputType.grid,
+            "input_type": DatasetLayout.GRID,
             "args": {"data_start_year": 1980, "calibration_start_year": 1980, "calibration_end_year": 1981},
         }
 
@@ -311,7 +361,7 @@ class TestPalmersWorker:
             "sub_array_end": None,
             "input_var_names": ("precip", "pet", "awc"),
             "output_var_names": palmers.output_keys,
-            "input_type": InputType.grid,
+            "input_type": DatasetLayout.GRID,
             "args": {
                 "data_start_year": data_year_start_monthly,
                 "calibration_start_year": calibration_year_start_palmer,

@@ -104,7 +104,7 @@ def _verify_xarray_matches_manual_wrapping(
 _PUBLIC_IMPLEMENTATIONS: dict[Callable[..., Any], tuple[Callable[..., Any], tuple[str, ...]]] = {
     spi: (indices.spi, ("spatial_time_major",)),
     spei: (indices.spei, ("spatial_time_major",)),
-    eddi: (indices.eddi, ("spatial_time_major",)),
+    eddi: (indices.eddi, ()),
     percentage_of_normal: (indices.percentage_of_normal, ("spatial_time_major",)),
     pci: (indices.pci, ()),
     pdsi: (palmer_pdsi_impl, ()),
@@ -127,8 +127,8 @@ _EXPECTED_OVERLOADS: dict[Callable[..., Any], tuple[str, str]] = {
         "(values: 'xr.DataArray', scale: 'int', data_start_year: 'int | None' = None, calibration_start_year: 'int | None' = None, calibration_end_year: 'int | None' = None, periodicity: 'Periodicity | None' = None) -> 'xr.DataArray'",
     ),
     eddi: (
-        "(pet_values: 'npt.NDArray[np.float64]', scale: 'int', data_start_year: 'int', calibration_year_initial: 'int', calibration_year_final: 'int', periodicity: 'Periodicity') -> 'npt.NDArray[np.float64]'",
-        "(pet_values: 'xr.DataArray', scale: 'int', data_start_year: 'int | None' = None, calibration_year_initial: 'int | None' = None, calibration_year_final: 'int | None' = None, periodicity: 'Periodicity | None' = None) -> 'xr.DataArray'",
+        "(pet_values: 'npt.NDArray[np.float64]', scale: 'int', data_start_year: 'int', calibration_year_initial: 'int', calibration_year_final: 'int', periodicity: 'Periodicity', spatial_time_major: 'bool' = False) -> 'npt.NDArray[np.float64]'",
+        "(pet_values: 'xr.DataArray', scale: 'int', data_start_year: 'int | None' = None, calibration_year_initial: 'int | None' = None, calibration_year_final: 'int | None' = None, periodicity: 'Periodicity | None' = None, spatial_time_major: 'bool' = False) -> 'xr.DataArray'",
     ),
     pci: (
         "(rainfall_mm: 'npt.NDArray[np.float64]') -> 'npt.NDArray[np.float64]'",

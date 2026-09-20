@@ -320,6 +320,73 @@ result = pet_thornthwaite(temp_da, latitude=lat_filled)
 
 ______________________________________________________________________
 
+## Input Shape Errors
+
+### Undeclared three-dimensional input
+
+:::{warning}
+**Error:** `DataShapeError: Invalid shape of input array: (480, 5, 6) -- only 1-D and 2-D arrays are supported, or a three-or-more-dimensional time-major block declared with spatial_time_major=True`
+
+**Cause:** A three-or-more-dimensional NumPy array was passed without declaring that it is a time-major block. 3.0.0 reads 3-D input as a `(time, *cells)` block, where every trailing axis is an independent cell to be scaled, fitted, and transformed in one pass, and the reading has to be declared because nothing inside an `ndarray` says which axis is time.
+
+`indices.eddi` and `indices.percentage_of_normal` reject **every** undeclared 3-D input, because their dimension errors are pinned to `DataShapeError` rather than to `ValueError`. The fitting-based kernels (`indices.spi`, `indices.spei`, `compute.prepare_scaled`) accept an undeclared block and reject only the ambiguous shape below.
+
+**Solution:** Pass `spatial_time_major=True`, or reshape to a 1-D or 2-D series:
+
+```python
+import numpy as np
+from climate_indices import indices
+from climate_indices.compute import Periodicity
+
+# (time, lat, lon) for a 40-year monthly grid: 480 timesteps, 5 latitudes, 6 longitudes
+values = np.load("monthly_precip.npy")
+
+# CORRECT: declare the time-major reading
+result = indices.percentage_of_normal(
+    values, 3, 1981, 1981, 2010, Periodicity.monthly,
+    spatial_time_major=True,
+)
+
+result = indices.eddi(
+    values, 3, 1981, 1981, 2010, Periodicity.monthly,
+    spatial_time_major=True,
+)
+```
+:::
+
+### Ambiguous gridded shape (first cell axis is a calendar period length)
+
+:::{warning}
+**Error:** `ValueError: Invalid shape of input array: (30, 12, 2) -- a (time, *cells) block whose first cell axis is a calendar period length is ambiguous with a (years, periods, *cells) array; declare it with spatial_time_major=True`
+
+**Cause:** A `(time, *cells)` block whose first cell axis is a calendar period length (12 or 366) is structurally identical to a `(years, periods, *cells)` array. Reading one as the other returns plausible numbers rather than failing, so `indices.spi`, `indices.spei`, and `compute.prepare_scaled` refuse the shape until the caller says which reading is meant.
+
+**Solution:** Reorder the cell axes so the first one is not 12 or 366, or declare the block:
+
+```python
+from climate_indices import indices
+from climate_indices.compute import Periodicity
+from climate_indices.indices import Distribution
+
+# WRONG: (30, 12, 2) is ambiguous -- 30 years of 12 months, or 30 timesteps of 12 cells
+# result = indices.spi(values, scale=3, ..., periodicity=Periodicity.monthly)
+
+# CORRECT: declare the time-major reading
+result = indices.spi(
+    values,
+    scale=3,
+    distribution=Distribution.gamma,
+    data_start_year=1981,
+    calibration_year_initial=1981,
+    calibration_year_final=2010,
+    periodicity=Periodicity.monthly,
+    spatial_time_major=True,
+)
+```
+:::
+
+______________________________________________________________________
+
 ## Data Sufficiency Errors
 
 ### Time series too short for scale
@@ -800,7 +867,7 @@ verifies each file's SHA-256 before use, so a stale or corrupted cache fails
 loudly instead of feeding wrong values into the tutorial. Reruns need no
 network access once `data/e2e/source/` is populated; delete that directory
 and rerun when a checksum error names a file you did not modify. See
-[docs/research/nclimgrid-acquisition-and-redistribution.md](https://github.com/monocongo/climate_indices/blob/main/docs/research/nclimgrid-acquisition-and-redistribution.md)
+{doc}`research/nclimgrid-acquisition-and-redistribution`
 for the source provenance and attribution constraints.
 
 ### Input contract mismatches
@@ -1154,7 +1221,7 @@ The `process_climate_indices` CLI's `--chunksizes` option controls how the
 exactly two values:
 
 - `none` (default): the writer chooses the output layout
-- `input`: copy the first chunked input variable's on-disk chunks to the output
+- `input`: copy the first chunked input variable's on-disk chunks to the output (`kbdi` copies the precipitation variable's chunks)
 
 ```bash
 # default: writer-chosen output chunking

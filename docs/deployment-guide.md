@@ -224,8 +224,7 @@ configure_logging(
 ```
 
 ### Performance Metrics
-- Execution time tracking via `@measure_execution_time`
-- Memory usage monitoring
+- Memory usage monitoring via `check_large_array_memory()`
 - Logged in structured format
 
 ### Coverage Tracking
@@ -235,4 +234,4 @@ configure_logging(
 
 ---
 
-See [architecture.md](https://github.com/monocongo/climate_indices/blob/main/docs/architecture.md) for system design and [development-guide.md](./development-guide.md) for local development setup.
+See {doc}`architecture` for system design and {doc}`development-guide` for local development setup.

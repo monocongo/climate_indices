@@ -111,15 +111,6 @@ exclude_patterns = [
     "architecture-deepening-review-*.md",
     "ai-assisted-development-report-*.md",
     "test_fixture_management.md",
-    # Published Markdown pages not yet wired into navigation. DOCS-8
-    # (explanation and reference corpus) publishes these and deletes their
-    # paths from this list.
-    "ai-assisted-development.md",
-    "algorithm_refs/**",
-    "architecture.md",
-    "floating_point_best_practices.md",
-    "project-overview.md",
-    "research/nclimgrid-acquisition-and-redistribution.md",
 ]
 
 # The name of the Pygments (syntax highlighting) style to use.
@@ -156,9 +147,9 @@ html_theme = "sphinx_rtd_theme"
 # further.  For a list of options available for each theme, see the
 # documentation.
 #
-# sphinx_rtd_theme defaults `includehidden` to True, which would put the
-# staged-publication hidden toctree (the ADR build set in index.md) into the
-# sidebar. Keep hidden toctrees out of navigation.
+# sphinx_rtd_theme defaults `includehidden` to True, which would surface a
+# hidden staging toctree in the sidebar. Keep hidden toctrees out of
+# navigation.
 html_theme_options = {"includehidden": False}
 
 # Add any paths that contain custom static files (such as style sheets) here,

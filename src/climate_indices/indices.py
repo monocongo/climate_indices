@@ -127,7 +127,13 @@ def _validate_periodicity(periodicity: compute.Periodicity) -> None:
 
 
 def _raise_if_unsupported_shape(values: np.ndarray, spatial_time_major: bool = False) -> None:
-    """Raise the DataShapeError this module has always raised for unsupported input shapes.
+    """Raise this module's `DataShapeError` for an unsupported input shape.
+
+    `eddi` and `percentage_of_normal` pin their dimension errors to `DataShapeError`
+    rather than to the `ValueError` the fitting-based kernels raise for an ambiguous
+    block. Before this guard existed `percentage_of_normal` failed inside
+    `np.convolve` with a numpy `ValueError` instead, so for that index the exception
+    type is part of the 3.0.0 change rather than a pre-existing behavior.
 
     Args:
         values: The input array to validate
@@ -857,9 +863,10 @@ def percentage_of_normal(
 
     try:
         # we expect to operate upon a 1-D array, so if we've been passed a 2-D array
-        # then we flatten it. Input shapes other than 1-D/2-D keep this index's legacy
-        # DataShapeError, and a declared block is the only way a 3-D or higher input
-        # is accepted.
+        # then we flatten it. Every other input shape is a DataShapeError naming the
+        # declared-block path, and a declared block is the only way a 3-D or higher
+        # input is accepted. Unlike the fitting-based kernels, this index rejects an
+        # undeclared 3-D input outright rather than only the ambiguous shape.
         _raise_if_unsupported_shape(values, spatial_time_major)
         if values.ndim == 2:
             values = values.flatten()

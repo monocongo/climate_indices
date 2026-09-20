@@ -8,8 +8,16 @@ learn by doing, start with {doc}`tutorials`; to get a job done, see
 ```{toctree}
 :maxdepth: 1
 
+architecture
+project-overview
 algorithms
+algorithm_refs/eddi
+algorithm_refs/palmer
+algorithm_refs/pet
 wildfire_applications
+floating_point_best_practices
+ai-assisted-development
+adr/index
 ```
 
 ## Indices provided
@@ -85,26 +93,4 @@ entry below.
      month  = "may",
      year   = "2017--"
 }
-```
-
-% Hidden until DOCS-8 wires the architecture decision record into the
-% four-section navigation; the pages must build now because the xarray
-% compatibility matrix links to them as documents. Listed explicitly rather
-% than globbed so a new file under docs/adr/ cannot enter navigation by
-% accident; one left unlisted fails the warnings-as-errors build as an orphan.
-```{toctree}
-:hidden:
-
-adr/0001-dual-numpy-xarray-api
-adr/0002-multiprocessing-cli-dask-xarray
-adr/0003-dask-time-dimension-single-chunk
-adr/0004-xarray-calendar-semantics
-adr/0005-fire-module-api
-adr/0006-fire-recursive-state-and-execution
-adr/0007-fire-missing-data-policy
-adr/0008-pattern-compliance-by-behavior-not-source-greps
-adr/0009-spatial-block-declaration
-adr/0010-seasonal-carry-is-an-explicit-mask
-adr/0011-palmer-spatial-block-and-per-location-scpdsi
-adr/0012-xarray-api-stays-beta-through-3.0.0
 ```

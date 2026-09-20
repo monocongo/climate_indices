@@ -184,7 +184,7 @@ uv run pytest -m benchmark
 ### Critical Architectural Invariants
 - **Time dimension chunking**: Dask arrays MUST have time as single chunk (`time: -1`) for climate indices
 - **Calibration period**: Default minimum 30 years; violations trigger `ShortCalibrationWarning`
-- **Distribution fitting**: Requires minimum 10 non-zero values; insufficient data raises `InsufficientDataError`
+- **Distribution fitting**: Requires minimum 4 non-zero values for Pearson Type III; the L-moments fit raises `InsufficientDataError` below that
 - **Coordinate validation**: Time coordinates must be monotonically increasing; xarray inputs undergo automatic validation
 - **Backward compatibility**: Legacy numpy API (`indices.py`) must remain stable; new features go to xarray API
 
@@ -206,7 +206,7 @@ uv run pytest -m benchmark
 1. **Do NOT** use wildcard imports (`from module import *`) - explicitly forbidden by ruff
 2. **Do NOT** chunk time dimension in Dask arrays - causes incorrect index calculations
 3. **Do NOT** modify `indices.py` API - backward compatibility requirement
-4. **Do NOT** commit without running tests - pre-commit hooks will fail
+4. **Do NOT** commit without running tests - skipping them risks CI failures
 5. **Do NOT** use string paths - always use `pathlib.Path` objects
 
 ### Key Files for Modification Scenarios

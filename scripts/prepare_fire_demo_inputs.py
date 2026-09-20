@@ -23,12 +23,17 @@ Pipeline
        ``SURFACE_YEARS``: ``tmean_c`` (mean), ``tmax_c`` (maximum), ``tmin_c``
        (minimum), ``precip_mm`` (sum of the 6-hour accumulations) and
        ``wind_speed_ms`` (mean of the 10 m wind speed).
-    3. Aggregate the six-hourly level variables to daily means over the
+    3. Aggregate the six-hourly surface variables to monthly values over
+       ``BASELINE_YEARS``: ``tmean_c`` (mean) and ``precip_mm`` (sum). This is
+       the 30-year calibration record the standardized drought indices need,
+       so it reaches further back than the demonstration record even though
+       its output is smaller.
+    4. Aggregate the six-hourly level variables to daily means over the
        ``SEASON_START``-``SEASON_END`` fire season, then derive
        ``relative_humidity_percent`` from specific humidity, temperature and
        the pressure-level value itself, and ``height_agl_m`` from geopotential
        minus the surface geopotential.
-    4. Derive a single surface-level relative humidity per cell and day from
+    5. Derive a single surface-level relative humidity per cell and day from
        the lowest pressure level above the surface.
 
 Output contract (``data/fire-demo/manifest.json`` is the machine-readable
@@ -40,6 +45,8 @@ record)
     ``relative_humidity_percent``, ``wind_speed_ms`` and ``height_agl_m`` with
     dims (time, level, latitude, longitude), plus the derived surface
     ``surface_relative_humidity_percent`` with dims (time, latitude, longitude).
+    ``surface_monthly_1991_2020.nc`` holds ``tmean_c`` and ``precip_mm`` with
+    dims (time, latitude, longitude) at month-start cadence timestamped 12:00.
 
 Approximations this module makes, all recorded in the manifest
     - Relative humidity is derived from ERA5 specific humidity against the
@@ -87,15 +94,18 @@ SOURCE_DESCRIPTION = (
 DOMAIN_LATITUDE = (25.0, 50.0)
 DOMAIN_LONGITUDE = (235.0, 295.0)
 SURFACE_YEARS = (2018, 2019, 2020)
+BASELINE_YEARS = (1991, 2020)
 SEASON_START = "2020-03-01"
 SEASON_END = "2020-10-31"
 SURFACE_VARIABLES = ("2m_temperature", "total_precipitation_6hr", "10m_wind_speed")
+BASELINE_VARIABLES = ("2m_temperature", "total_precipitation_6hr")
 LEVEL_VARIABLES = ("temperature", "specific_humidity", "wind_speed", "geopotential")
 STATIC_VARIABLE = "geopotential_at_surface"
 GRAVITY = 9.80665
 WATER_VAPOR_RATIO = 0.622
 OUTPUT_SURFACE = "surface_daily_2018_2020.nc"
 OUTPUT_LEVELS = "levels_daily_2020_season.nc"
+OUTPUT_BASELINE = "surface_monthly_1991_2020.nc"
 
 
 def _open_source() -> xr.Dataset:
@@ -147,6 +157,28 @@ def _to_daily_surface(dataset: xr.Dataset, year: int) -> xr.Dataset:
     # clearly does not sample noon, and these daily summaries stand in for the
     # noon observations the system is defined on.
     return daily.assign_coords(time=daily.time + pd.Timedelta(hours=12))
+
+
+def _to_monthly_surface(dataset: xr.Dataset, year: int) -> xr.Dataset:
+    """Aggregate the six-hourly surface variables of one year to calendar months.
+
+    ``dataset`` carries the 1 January 00:00 stamp of the next year so the
+    December precipitation bin is complete; the monthly rows are trimmed back
+    to the requested year here. Monthly means and sums of the six-hourly
+    values equal the monthly aggregates of the daily summaries, so the totals
+    the standardized drought indices rank match the daily record's.
+    """
+    monthly = xr.Dataset()
+    monthly["tmean_c"] = (dataset["2m_temperature"] - 273.15).resample(time="1MS").mean()
+    # the same accumulation binning as _to_daily_surface, one month at a time
+    monthly["precip_mm"] = (
+        (dataset["total_precipitation_6hr"] * 1000.0)
+        .clip(min=0.0)
+        .resample(time="1MS", closed="right", label="left")
+        .sum()
+    )
+    monthly = monthly.sel(time=slice(f"{year}-01-01", f"{year}-12-31"))
+    return monthly.assign_coords(time=monthly.time + pd.Timedelta(hours=12))
 
 
 def _relative_humidity(
@@ -269,6 +301,29 @@ def _surface_inputs(source: Callable[[], xr.Dataset], cache_dir: Path) -> xr.Dat
     return xr.concat(years, dim="time")
 
 
+def _baseline_inputs(source: Callable[[], xr.Dataset], cache_dir: Path) -> xr.Dataset:
+    """Build the 30-year monthly surface baseline, cached one year at a time.
+
+    Only the temperature and precipitation variables are fetched: the baseline
+    feeds the standardized drought indices, which need no wind. ``source`` is
+    only called on a cache miss, so a fully cached run never touches the
+    remote store.
+    """
+    years = []
+    for year in range(BASELINE_YEARS[0], BASELINE_YEARS[1] + 1):
+        start, end = f"{year}-01-01", f"{year + 1}-01-01"
+        parts = {}
+        for name in BASELINE_VARIABLES:
+            parts[name] = _cache(
+                cache_dir,
+                f"{name}_{start}_{end}",
+                name,
+                lambda name=name, start=start, end=end: _select(source(), name, start, end),
+            )
+        years.append(_to_monthly_surface(xr.Dataset(parts), year))
+    return xr.concat(years, dim="time")
+
+
 def _level_inputs(source: Callable[[], xr.Dataset], cache_dir: Path) -> xr.Dataset:
     """Build the season's daily level record, cached one variable at a time.
 
@@ -292,13 +347,14 @@ def _level_inputs(source: Callable[[], xr.Dataset], cache_dir: Path) -> xr.Datas
     return _to_daily_levels(xr.Dataset(parts))
 
 
-def _add_units(dataset: xr.Dataset) -> xr.Dataset:
+def _add_units(dataset: xr.Dataset, *, monthly: bool = False) -> xr.Dataset:
     """Attach CF units and plot-friendly long names to the prepared variables."""
+    cadence = "Monthly" if monthly else "Daily"
     units = {
-        "tmean_c": ("degC", "Daily mean 2 m air temperature"),
+        "tmean_c": ("degC", f"{cadence} mean 2 m air temperature"),
         "tmax_c": ("degC", "Daily maximum 2 m air temperature"),
         "tmin_c": ("degC", "Daily minimum 2 m air temperature"),
-        "precip_mm": ("mm", "Daily precipitation"),
+        "precip_mm": ("mm", f"{cadence} precipitation"),
         "wind_speed_ms": ("m s-1", "10 m wind speed"),
         "temperature_c": ("degC", "Air temperature"),
         "relative_humidity_percent": ("percent", "Relative humidity"),
@@ -327,12 +383,12 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _publish(dataset: xr.Dataset, path: Path) -> None:
+def _publish(dataset: xr.Dataset, path: Path, *, monthly: bool = False) -> None:
     """Write a prepared dataset through a temporary file, then atomically publish it."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}")
     try:
-        _add_units(dataset).to_netcdf(temporary)
+        _add_units(dataset, monthly=monthly).to_netcdf(temporary)
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
@@ -353,14 +409,17 @@ def prepare_inputs(output_dir: Path) -> dict[str, Any]:
     try:
         surface = _surface_inputs(source, cache_dir)
         levels = _level_inputs(source, cache_dir)
+        baseline = _baseline_inputs(source, cache_dir)
     finally:
         if opened:
             opened[0].close()
 
     surface_path = output_dir / OUTPUT_SURFACE
     levels_path = output_dir / OUTPUT_LEVELS
+    baseline_path = output_dir / OUTPUT_BASELINE
     _publish(surface, surface_path)
     _publish(levels, levels_path)
+    _publish(baseline, baseline_path, monthly=True)
 
     return {
         "source_url": SOURCE_URL,
@@ -373,6 +432,7 @@ def prepare_inputs(output_dir: Path) -> dict[str, Any]:
             "realized_longitude": [float(surface.longitude.min()), float(surface.longitude.max())],
         },
         "surface_years": list(SURFACE_YEARS),
+        "baseline_years": list(BASELINE_YEARS),
         "season": [SEASON_START, SEASON_END],
         "aggregation": {
             "tmean_c": "daily mean of 6-hourly 2 m temperature",
@@ -382,6 +442,8 @@ def prepare_inputs(output_dir: Path) -> dict[str, Any]:
             "wind_speed_ms": "daily mean of 6-hourly 10 m wind speed",
             "level_fields": "daily mean of the 6-hourly pressure-level fields",
             "level_wind_speed_ms": "daily mean of 6-hourly wind speed on the 13 pressure levels",
+            "baseline_tmean_c": "monthly mean of 6-hourly 2 m temperature",
+            "baseline_precip_mm": "monthly sum of the six-hour accumulations ending 06, 12, 18, and 24 UTC",
         },
         "approximations": [
             "relative humidity is derived from specific humidity and temperature at the same level",
@@ -389,7 +451,9 @@ def prepare_inputs(output_dir: Path) -> dict[str, Any]:
             "daily summaries timestamped 12:00 stand in for noon local-standard-time observations",
             "pressure-level values below the surface are ERA5's own extrapolation",
         ],
-        "artifacts": {name: {"sha256": _sha256(output_dir / name)} for name in (OUTPUT_SURFACE, OUTPUT_LEVELS)},
+        "artifacts": {
+            name: {"sha256": _sha256(output_dir / name)} for name in (OUTPUT_SURFACE, OUTPUT_LEVELS, OUTPUT_BASELINE)
+        },
         "generated_utc": datetime.now(timezone.utc).isoformat(),
     }
 
