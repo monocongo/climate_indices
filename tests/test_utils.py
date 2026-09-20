@@ -500,21 +500,30 @@ def test_daily_calendar_plan_from_year_span():
     assert utils.DailyCalendarPlan.from_year_span(2020, 2, 466) == utils.DailyCalendarPlan(2020, (366, 100))
     # a span whose length is too short, too long, or negative for its years
     # cannot describe a contiguous daily series
-    pytest.raises(ValueError, utils.DailyCalendarPlan.from_year_span, 2019, 2, 100)
-    pytest.raises(ValueError, utils.DailyCalendarPlan.from_year_span, 2019, 3, 400)
-    pytest.raises(ValueError, utils.DailyCalendarPlan.from_year_span, 2019, 2, 732)
-    pytest.raises(ValueError, utils.DailyCalendarPlan.from_year_span, 2020, 2, -3)
+    with pytest.raises(ValueError):
+        utils.DailyCalendarPlan.from_year_span(2019, 2, 100)
+    with pytest.raises(ValueError):
+        utils.DailyCalendarPlan.from_year_span(2019, 3, 400)
+    with pytest.raises(ValueError):
+        utils.DailyCalendarPlan.from_year_span(2019, 2, 732)
+    with pytest.raises(ValueError):
+        utils.DailyCalendarPlan.from_year_span(2020, 2, -3)
 
 
 def test_daily_calendar_plan_validates_year_counts():
     """Construction rejects year counts that cannot describe a contiguous daily series."""
     # a partial year followed by another year would silently shift the boundaries
-    pytest.raises(ValueError, utils.DailyCalendarPlan, 2019, (100, 0))
-    pytest.raises(ValueError, utils.DailyCalendarPlan, 2019, (365, 35, 0))
+    with pytest.raises(ValueError):
+        utils.DailyCalendarPlan(2019, (100, 0))
+    with pytest.raises(ValueError):
+        utils.DailyCalendarPlan(2019, (365, 35, 0))
     # a year cannot hold more days than it has, and counts cannot be negative
-    pytest.raises(ValueError, utils.DailyCalendarPlan, 2019, (366,))
-    pytest.raises(ValueError, utils.DailyCalendarPlan, 2020, (367,))
-    pytest.raises(ValueError, utils.DailyCalendarPlan, 2019, (-1, 0))
+    with pytest.raises(ValueError):
+        utils.DailyCalendarPlan(2019, (366,))
+    with pytest.raises(ValueError):
+        utils.DailyCalendarPlan(2020, (367,))
+    with pytest.raises(ValueError):
+        utils.DailyCalendarPlan(2019, (-1, 0))
 
 
 def test_tolerance():
