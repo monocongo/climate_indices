@@ -11,6 +11,8 @@ write behavior (Zarr streaming versus the NetCDF backend lock) is in
 
 - A finished `climate_indices` run, or the result of {func}`climate_indices.spi`
   and its siblings.
+- The `zarr` package for a Zarr output; it is not installed with the base
+  package.
 - Input, output, and staging paths that do not overlap: a rerun must never read the
   store it is replacing.
 - For a Dask-backed result, `time` in a single chunk and spatial chunks sized as the
@@ -18,25 +20,25 @@ write behavior (Zarr streaming versus the NetCDF backend lock) is in
 
 ## Write NetCDF from the command line
 
-`--output_file_base` is required, and each computed index becomes its own file named
-`<output_file_base>_<index>_<distribution>_<scale>.nc`:
+`--output_file_base` is required, and each computed index becomes its own file
+named after the index's variable. SPI and SPEI files name the distribution and
+scale, `<output_file_base>_<index>_<distribution>_<scale>.nc`:
 
 ```bash
 climate_indices --index spi --periodicity monthly --scales 3 6 \
   --netcdf_precip /data/nclimgrid_prcp.nc --var_name_precip prcp \
   --output_file_base /data/out/indices \
-  --calibration_start_year 1981 --calibration_end_year 2010 \
-  --chunksizes input
+  --calibration_start_year 1981 --calibration_end_year 2010
 ```
 
 That run writes `/data/out/indices_spi_gamma_03.nc`, `..._spi_pearson_03.nc`,
 `..._spi_gamma_06.nc`, and `..._spi_pearson_06.nc`: SPI and SPEI are computed for
 every distribution and every requested scale, since the command has no
-distribution option. `--chunksizes` (default `none`) sets the layout of the
-written file, not of the computation; `input` copies the first chunked input
-variable's on-disk chunks. An index that needs PET comes out with a PET side-effect
-file when temperature is given instead of PET. Copy-and-adapt invocations are in
-{doc}`workflow-examples`.
+distribution option. The other indices use their own variable name instead, for
+example `..._pnp_03.nc` and `..._pet_thornthwaite.nc`. An index that needs PET
+comes out with a PET side-effect file when temperature is given instead of PET.
+Copy-and-adapt invocations, including the output-layout option, are in
+{doc}`workflow-examples` and the [command-line reference](reference.md#command-line-interface).
 
 ## Write Zarr from a lazy xarray result
 
@@ -76,11 +78,12 @@ if __name__ == "__main__":
 ```
 
 Write index results to a store of their own, never back into the prepared inputs,
-and keep the paths non-overlapping. A rerun stages the complete store beside the
-target and swaps it in after a successful write, so a failed calculation leaves the
-previous store intact. Close readers before rerunning, keep one writer per output
-path, and treat the final directory swap as not crash-atomic — the notebook's write
-cell ([notebooks/zarr_dask_spi_spei.ipynb](https://github.com/monocongo/climate_indices/blob/main/notebooks/zarr_dask_spi_spei.ipynb))
+and keep the paths non-overlapping. The call above creates the store; to replace
+an existing one, a rerun stages the complete store beside the target and swaps it
+in after a successful write, so a failed calculation leaves the previous store
+intact. Close readers before rerunning, keep one writer per output path, and treat
+the final directory swap as not crash-atomic — the notebook's write cell
+([notebooks/zarr_dask_spi_spei.ipynb](https://github.com/monocongo/climate_indices/blob/main/notebooks/zarr_dask_spi_spei.ipynb))
 is the staged example.
 
 ## Write NetCDF from a lazy xarray result
@@ -94,8 +97,8 @@ stream the write for a result that does not. Both paths are in
 
 ## Verify the write
 
-Reopen the output and check the provenance metadata that makes it interpretable
-later, without loading the values:
+Reopen the output and check the metadata that makes it interpretable later,
+without loading the values:
 
 ```python
 import xarray as xr
@@ -108,10 +111,9 @@ assert attrs["climate_indices_version"]
 assert bool(reopened["spi"].isel(time=slice(0, 2)).isnull().all())
 ```
 
-The result carries `scale`, `distribution`, the calibration years,
-`climate_indices_version`, and a `history` entry. A command-line NetCDF output
-identifies the distribution and scale in its file name and the index in the
-variable's `long_name`; check with
-`xr.open_dataset("/data/out/indices_spi_gamma_03.nc")["spi_gamma_03"].attrs`. If a
-write fails or a reader rejects the store, the recipes in {doc}`troubleshooting`
-cover the failure modes.
+The xarray result carries `scale`, `distribution`, the requested calibration
+years, `climate_indices_version`, and a `history` entry. A command-line NetCDF
+output records only the variable's `long_name` and valid range, and carries the
+distribution and scale in its file name, so keep the run arguments alongside it:
+`xr.open_dataset("/data/out/indices_spi_gamma_03.nc")["spi_gamma_03"].attrs`
+shows what the file itself does and does not record.
