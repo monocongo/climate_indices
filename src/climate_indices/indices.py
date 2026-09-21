@@ -324,8 +324,8 @@ def eddi(
             are invalid.
     """
     # validate arguments
-    _validate_scale(scale, periodicity)
     _validate_periodicity(periodicity)
+    _validate_scale(scale, periodicity)
 
     # bind structured logging context
     log = _logger.bind(
@@ -513,9 +513,9 @@ def spi(
         ``spatial_time_major`` is set
     """
     # validate arguments
+    _validate_periodicity(periodicity)
     _validate_scale(scale, periodicity)
     _validate_distribution(distribution)
-    _validate_periodicity(periodicity)
 
     # bind context and emit calculation_started event
     log = _logger.bind(
@@ -642,10 +642,11 @@ def spei(
         equally readable as a (years, periods, ``*cells``) array, and then the reading has to
         be declared with ``spatial_time_major``; the xarray adapter declares every block
         it packs, and only that ambiguous shape raises without a declaration.
-    :param pet_mm: an array of monthly PET values, in millimeters,
-        should be of the same size (and shape?) as the input precipitation array
-    :param scale: the number of months over which the values should be scaled
-        before computing the indicator
+    :param pet_mm: an array of PET values, in millimeters, of the same size
+        (and shape) as the input precipitation array
+    :param scale: the number of time steps over which the values should be
+        scaled before computing the indicator (months for monthly data, days
+        for daily data)
     :param distribution: distribution type to be used for the internal
         fitting/transform computation
     :param periodicity: periodicity of the input time series; use
@@ -671,9 +672,9 @@ def spei(
         PET and precipitation arrays
     """
     # validate arguments
+    _validate_periodicity(periodicity)
     _validate_scale(scale, periodicity)
     _validate_distribution(distribution)
-    _validate_periodicity(periodicity)
 
     # bind context and emit calculation_started event
     log = _logger.bind(
@@ -833,8 +834,9 @@ def percentage_of_normal(
             time-major spatial block, shaped (time, ``*cells``), divides every
             cell by its own normals in one pass when it is declared with
             ``spatial_time_major``.
-        scale: Integer number of months over which the normal value is
-            computed (eg 3-months, 6-months, etc.).
+        scale: Integer number of time steps over which the normal value is
+            computed (months for monthly data, days for daily data; e.g.
+            3 months or 90 days).
         data_start_year: The initial year of the input monthly values array.
         calibration_start_year: The initial year of the calibration period
             over which the normal average for each calendar time step is
@@ -857,8 +859,8 @@ def percentage_of_normal(
         1-D or 2-D input, or the (time, ``*cells``) layout of a declared block.
     """
     # validate arguments
-    _validate_scale(scale, periodicity)
     _validate_periodicity(periodicity)
+    _validate_scale(scale, periodicity)
 
     # bind context and emit calculation_started event
     log = _logger.bind(

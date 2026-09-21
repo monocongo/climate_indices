@@ -240,8 +240,8 @@ def spei(precips_mm: Any, pet_mm: Any, *args: Any, **kwargs: Any) -> npt.NDArray
        is stable.
 
     Args:
-        precips_mm: Array of monthly precipitation values in millimeters.
-        pet_mm: Array of monthly PET values in millimeters.
+        precips_mm: Array of precipitation values in millimeters.
+        pet_mm: Array of PET values in millimeters.
         scale: Number of time steps over which values should be scaled.
         distribution: Distribution type for fitting/transform computation.
         periodicity: Time series periodicity ('monthly' or 'daily'). Required
