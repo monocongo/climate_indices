@@ -386,7 +386,12 @@ def test_release_workflow_requires_tag_commit_on_main() -> None:
 def test_release_workflow_creates_github_release() -> None:
     """release.yml must create the GitHub Release after PyPI publish."""
     workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
-    assert 'gh release create "${GITHUB_REF_NAME}" dist/* --repo "${GITHUB_REPOSITORY}"' in workflow, (
+    create_release_job = workflow.split("\n  create-release:", maxsplit=1)[1]
+    release_command = re.search(r"^\s+run: (gh release create .+)$", create_release_job, re.MULTILINE)
+
+    assert create_release_job.startswith("\n    needs: publish\n")
+    assert release_command is not None, "release.yml must create a GitHub Release for the published tag"
+    assert '--repo "${GITHUB_REPOSITORY}"' in release_command.group(1), (
         "release.yml must create the GitHub Release in the triggering repository"
     )
 
