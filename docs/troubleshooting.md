@@ -392,7 +392,7 @@ ______________________________________________________________________
 ### Time series too short for scale
 
 :::{warning}
-**Error:** `InsufficientDataError: Insufficient data for scale=12: 480 time steps available, but at least 12 required.`
+**Error:** `InsufficientDataError: Insufficient data for scale=12: 8 time steps available, but at least 12 required.`
 
 **Cause:** Your time series has fewer time steps than the requested scale. For example, requesting SPI-12 (12-month scale) requires at least 12 time steps.
 
@@ -650,27 +650,34 @@ ______________________________________________________________________
 
 ## Argument Validation Errors
 
-### Invalid scale (not in [1, 72])
+### Invalid scale (outside the periodicity's range)
 
 :::{warning}
-**Error:** `InvalidArgumentError: Invalid scale argument: 100. Scale must be an integer in the range [1, 72]. Common scales: 1 (monthly), 3 (seasonal), 6 (half-year), 12 (annual).`
+**Error (monthly):** `InvalidArgumentError: Invalid scale argument: 100. Scale must be an integer in the range [1, 72]. Common scales: 1 (monthly), 3 (seasonal), 6 (half-year), 12 (annual).`
 
-**Cause:** The `scale` parameter is outside the valid range [1, 72] or is not an integer.
+**Error (daily):** `InvalidArgumentError: Invalid scale argument: 2197. Scale must be an integer in the range [1, 2196]. Common scales: 1 (daily), 7 (weekly), 30 (monthly), 90 (seasonal), 365 (annual).`
+
+**Cause:** The `scale` parameter is outside the valid range (1-72 for monthly data, 1-2196 for daily data) or is not an integer.
 
 **Solution:** Use a valid scale value:
 
 ```python
-# WRONG: scale too large
+# WRONG: scale too large for monthly data
 # result = indices.spi(precip_da, scale=100, ...)  # raises InvalidArgumentError
 
 # CORRECT: use valid scale
 result = indices.spi(precip_da, scale=12, distribution=indices.Distribution.gamma)
 
-# common scales
+# common monthly scales
 spi_1 = indices.spi(precip_da, scale=1, ...)   # 1-month
 spi_3 = indices.spi(precip_da, scale=3, ...)   # 3-month (seasonal)
 spi_6 = indices.spi(precip_da, scale=6, ...)   # 6-month
 spi_12 = indices.spi(precip_da, scale=12, ...) # 12-month (annual)
+
+# daily scales are counted in days (1-2196)
+spi_90 = indices.spi(
+    precip_da, scale=90, distribution=indices.Distribution.gamma, periodicity=compute.Periodicity.daily
+)  # 90-day
 ```
 :::
 

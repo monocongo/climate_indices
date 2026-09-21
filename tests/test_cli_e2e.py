@@ -105,7 +105,7 @@ def _spi_arguments(precip_path, output_base, scales=("6",)) -> list[str]:
     return [*_common_arguments("spi", precip_path, output_base), "--scales", *scales]
 
 
-def _run_daily_spi(precip_path, output_base) -> None:
+def _run_daily_spi(precip_path, output_base, scale="30") -> None:
     main(
         [
             "--index",
@@ -125,7 +125,7 @@ def _run_daily_spi(precip_path, output_base) -> None:
             "--multiprocessing",
             "single",
             "--scales",
-            "30",
+            scale,
         ]
     )
 
@@ -656,6 +656,25 @@ def test_daily_gridded_spi_accepts_a_partial_final_year(tmp_path):
                     )
                 )
                 np.testing.assert_allclose(written[i, j], expected, equal_nan=True, err_msg=f"cell ({i}, {j})")
+
+
+def test_daily_timeseries_spi_accepts_scales_above_the_monthly_maximum(tmp_path):
+    """A 90-day daily SPI runs through the CLI instead of failing in scale validation (#1087)."""
+    time = xr.date_range("1981-01-01", "2010-12-31", freq="D")
+    generator = np.random.default_rng(seed=1087)
+    values = generator.gamma(shape=2.0, scale=10.0, size=time.size)
+    precip_path = tmp_path / "precip_daily_timeseries.nc"
+    xr.Dataset(
+        {"precip": ("time", values, {"units": "mm"})},
+        coords={"time": time},
+    ).to_netcdf(precip_path)
+
+    _run_daily_spi(precip_path, tmp_path / "spi_daily_90", scale="90")
+
+    with xr.open_dataset(tmp_path / "spi_daily_90_spi_gamma_90.nc") as dataset:
+        written = dataset["spi_gamma_90"].values
+        assert written.shape == values.shape
+        assert np.isfinite(written).any()
 
 
 def test_daily_divisions_spi_converts_and_restores(tmp_path):

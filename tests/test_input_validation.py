@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from climate_indices import ClimateIndicesError, compute, indices
-from climate_indices.exceptions import InvalidArgumentError
+from climate_indices.exceptions import InsufficientDataError, InvalidArgumentError
 
 
 @pytest.fixture
@@ -37,6 +37,9 @@ INVALID_CALLS = {
     ),
     "spi-scale-negative": lambda p, pet: indices.spi(
         p, -5, indices.Distribution.gamma, 2000, 2000, 2009, compute.Periodicity.monthly
+    ),
+    "spi-daily-scale-above-maximum": lambda p, pet: indices.spi(
+        p, 2197, indices.Distribution.gamma, 2000, 2000, 2009, compute.Periodicity.daily
     ),
     "percentage-of-normal-scale-none": lambda p, pet: indices.percentage_of_normal(
         p, None, 2000, 2000, 2009, compute.Periodicity.monthly
@@ -82,6 +85,12 @@ INVALID_ARGUMENT_CASES = [
     pytest.param(INVALID_CALLS["spi-scale-above-maximum"], "scale", "73", id="spi-scale-above-maximum"),
     pytest.param(INVALID_CALLS["spi-scale-negative"], "scale", "-5", id="spi-scale-negative"),
     pytest.param(
+        INVALID_CALLS["spi-daily-scale-above-maximum"],
+        "scale",
+        "2197",
+        id="spi-daily-scale-above-maximum",
+    ),
+    pytest.param(
         INVALID_CALLS["percentage-of-normal-scale-none"], "scale", "None", id="percentage-of-normal-scale-none"
     ),
     pytest.param(
@@ -122,6 +131,12 @@ INVALID_ARGUMENT_MESSAGE_CASES = [
         ("[1, 72]", "1 (monthly)", "3 (seasonal)", "6 (half-year)", "12 (annual)"),
         "[1, 72]",
         id="scale",
+    ),
+    pytest.param(
+        INVALID_CALLS["spi-daily-scale-above-maximum"],
+        ("[1, 2196]", "1 (daily)", "7 (weekly)", "30 (monthly)", "90 (seasonal)", "365 (annual)"),
+        "[1, 2196]",
+        id="daily-scale",
     ),
     pytest.param(
         INVALID_CALLS["spi-distribution-none"],
@@ -171,7 +186,7 @@ def test_invalid_argument_message_names_the_value_and_remediation(
 
 @pytest.mark.parametrize("scale", [1, 72])
 def test_scale_boundary_values_are_accepted(valid_precip_data, scale: int) -> None:
-    """The documented scale range is inclusive on both ends."""
+    """The documented monthly scale range is inclusive on both ends."""
     indices.spi(
         valid_precip_data,
         scale,
@@ -181,6 +196,117 @@ def test_scale_boundary_values_are_accepted(valid_precip_data, scale: int) -> No
         2009,
         compute.Periodicity.monthly,
     )
+
+
+@pytest.mark.parametrize("scale", [1, 90, 2196])
+def test_daily_scale_values_are_accepted(scale: int) -> None:
+    """The daily scale range is inclusive on both ends and counted in days."""
+    # 30 complete 366-day years, matching the daily periodicity's calendar
+    values = np.random.default_rng(0).gamma(shape=1.0, scale=2.0, size=366 * 30)
+    result = indices.spi(
+        values,
+        scale,
+        indices.Distribution.gamma,
+        1981,
+        1981,
+        2010,
+        compute.Periodicity.daily,
+    )
+    assert result.shape == values.shape
+    assert np.isfinite(result).any()
+
+
+# daily scale acceptance, one row for every public scaled index
+DAILY_SCALE_CALLS = [
+    pytest.param(
+        lambda p: indices.spi(p, 90, indices.Distribution.gamma, 1981, 1981, 2010, compute.Periodicity.daily),
+        id="spi",
+    ),
+    pytest.param(
+        lambda p: indices.spei(
+            p, p * 0.75, 90, indices.Distribution.gamma, compute.Periodicity.daily, 1981, 1981, 2010
+        ),
+        id="spei",
+    ),
+    pytest.param(
+        lambda p: indices.eddi(p, 90, 1981, 1981, 2010, compute.Periodicity.daily),
+        id="eddi",
+    ),
+    pytest.param(
+        lambda p: indices.percentage_of_normal(p, 90, 1981, 1981, 2010, compute.Periodicity.daily),
+        id="percentage-of-normal",
+    ),
+]
+
+
+@pytest.mark.parametrize("call", DAILY_SCALE_CALLS)
+def test_every_scaled_index_accepts_a_90_day_scale(call) -> None:
+    """A daily scale above the monthly maximum is valid for every scaled index."""
+    values = np.random.default_rng(0).gamma(shape=1.0, scale=2.0, size=366 * 30)
+    result = call(values)
+    assert result.shape == values.shape
+    assert np.isfinite(result).any()
+
+
+def test_scale_longer_than_the_series_raises_insufficient_data() -> None:
+    """A scale in range but longer than the series fails loudly instead of returning NaNs.
+
+    Without the guard, np.convolve's "valid" mode makes percentage_of_normal
+    return a longer array than its input.
+    """
+    values = np.random.default_rng(0).gamma(shape=1.0, scale=2.0, size=60)
+    with pytest.raises(InsufficientDataError):
+        indices.percentage_of_normal(values, 90, 2000, 2000, 2000, compute.Periodicity.daily)
+
+
+def test_prepare_scaled_all_missing_still_rejects_a_scale_longer_than_the_series() -> None:
+    """The shared seam's length guard runs before its all-missing early return."""
+    with pytest.raises(InsufficientDataError):
+        compute.prepare_scaled(np.full(10, np.nan), 20, compute.Periodicity.monthly)
+    with pytest.raises(InsufficientDataError):
+        compute.prepare_scaled(np.ma.masked_all(10), 20, compute.Periodicity.monthly)
+
+
+# public all-missing shortcuts, one row for every index whose all-missing lay-out
+# returns before the shared preparation seam's length guard
+ALL_MISSING_SHORTCUT_CALLS = [
+    pytest.param(
+        lambda: indices.spi(
+            np.full((5, 2, 2), np.nan), 10, indices.Distribution.gamma, 2000, 2000, 2000, compute.Periodicity.daily
+        ),
+        id="spi-spatial-block",
+    ),
+    pytest.param(
+        lambda: indices.spei(
+            np.full(5, np.nan),
+            np.full(5, np.nan),
+            10,
+            indices.Distribution.gamma,
+            compute.Periodicity.daily,
+            2000,
+            2000,
+            2000,
+        ),
+        id="spei-series",
+    ),
+    pytest.param(
+        lambda: indices.eddi(
+            np.full((5, 2, 2), np.nan), 10, 2000, 2000, 2000, compute.Periodicity.daily, spatial_time_major=True
+        ),
+        id="eddi-spatial-block",
+    ),
+    pytest.param(
+        lambda: indices.percentage_of_normal(np.ma.masked_all(14), 20, 2000, 2000, 2000, compute.Periodicity.monthly),
+        id="percentage-of-normal-masked",
+    ),
+]
+
+
+@pytest.mark.parametrize("call", ALL_MISSING_SHORTCUT_CALLS)
+def test_all_missing_shortcuts_still_reject_a_scale_longer_than_the_series(call) -> None:
+    """An all-missing shortcut must not swallow the insufficient-data guard."""
+    with pytest.raises(InsufficientDataError):
+        call()
 
 
 @pytest.mark.parametrize(("call", "argument_name"), CATCH_ALL_CASES)

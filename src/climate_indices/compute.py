@@ -1517,7 +1517,8 @@ def prepare_scaled(
     ``prepared.ndim == 1`` in order to short-circuit; an all-missing time-major spatial
     input is returned with its (time, ``*cells``) shape. Shape errors are raised as
     ``ValueError``, the convention established by ``_validate_array`` and
-    ``utils.reshape_to_2d``; an invalid periodicity raises ``PeriodicityError``.
+    ``utils.reshape_to_2d``; an invalid periodicity raises ``PeriodicityError``, and a
+    scale longer than the series raises ``InsufficientDataError``.
 
     Args:
         values: The array of values, either 1-D, 2-D (years, periods), or a time-major
@@ -1552,6 +1553,20 @@ def prepare_scaled(
         raise PeriodicityError(f"Invalid periodicity argument: {periodicity}", periodicity_value=str(periodicity))
 
     values = _prepare_input_shape(values, spatial_time_major)
+
+    # a scale longer than the series cannot produce a single complete sum, and
+    # np.convolve's "valid" mode would silently return a longer result than the
+    # input; the xarray adapter pre-checks its adapted length, so this is the NumPy
+    # path's equivalent and both paths fail with the same error. This check precedes
+    # the all-missing return so that a short all-missing series fails loudly too.
+    available_steps = values.shape[0]
+    if scale > available_steps:
+        raise InsufficientDataError(
+            f"Insufficient data for scale={scale}: {available_steps} time steps available, "
+            f"but at least {scale} required.",
+            non_zero_count=available_steps,
+            required_count=scale,
+        )
 
     # if we're passed all missing values then we can't compute anything,
     # so we return the same array of missing values

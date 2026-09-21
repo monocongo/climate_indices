@@ -14,7 +14,7 @@
 ### Key Capabilities
 - **Multiple Climate Indices**: SPI, SPEI, PET (Thornthwaite & Hargreaves), Palmer Drought Indices, PNP
 - **Flexible Input Formats**: Supports numpy arrays, xarray DataArrays, and Dask arrays
-- **Multiple Temporal Scales**: Monthly and daily data, multiple time scales (1-72 months/days)
+- **Multiple Temporal Scales**: Monthly and daily data, multiple time scales (1-72 months or 1-2196 days)
 - **Distribution Options**: Gamma and Pearson Type III distributions for SPI/SPEI
 - **CLI Tools**: Two command-line entry points for batch processing NetCDF data
 - **Scientific Rigor**: Based on peer-reviewed methodologies with comprehensive validation

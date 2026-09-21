@@ -1024,7 +1024,7 @@ open (issue #780).
 ### Key Capabilities
 - **Multiple Climate Indices**: SPI, SPEI, PET (Thornthwaite & Hargreaves), Palmer Drought Indices, PNP
 - **Flexible Input Formats**: Supports numpy arrays, xarray DataArrays, and Dask arrays
-- **Multiple Temporal Scales**: Monthly and daily data, multiple time scales (1-72 months/days)
+- **Multiple Temporal Scales**: Monthly and daily data, multiple time scales (1-72 months or 1-2196 days)
 - **Distribution Options**: Gamma and Pearson Type III distributions for SPI/SPEI
 - **CLI Tools**: Two command-line entry points for batch processing NetCDF data
 - **Scientific Rigor**: Based on peer-reviewed methodologies with comprehensive validation
@@ -1398,7 +1398,7 @@ process_climate_indices = "climate_indices.__main__:main"
    ```
    Input: precip (or P-PET)
    ↓
-   Scale to N-month window (sum_to_scale)
+   Scale to an N-step window (sum_to_scale)
    ↓
    Fit distribution (gamma or Pearson Type III) per calendar month/day
    ↓
@@ -1870,7 +1870,7 @@ raise DistributionFittingError(
 
 ### Input Validation
 - **NetCDF files**: Dimension checks, coordinate validation
-- **User inputs**: Scale range [1-72], year validation
+- **User inputs**: Scale range [1-72] monthly / [1-2196] daily, year validation
 - **Path sanitization**: No path traversal in CLI file arguments
 
 ### Dependency Security
@@ -2189,7 +2189,7 @@ source .venv/bin/activate
 
       Args:
           values: Precipitation time series in mm
-          scale: Temporal scale in months (1-72)
+          scale: Temporal scale in months (1-72) or days (1-2196)
           distribution: Fitting distribution (gamma or pearson)
 
       Returns:
@@ -3639,7 +3639,8 @@ parameters.
 
 #### Scale (Timescale)
 
-The scale parameter determines the temporal aggregation period (1-72 months supported).
+The scale parameter determines the temporal aggregation period: 1-72 months for
+monthly data, 1-2196 days for daily data.
 
 **Common scales and applications:**
 
@@ -3754,7 +3755,7 @@ SPEI is particularly valuable in warming climates where increased temperatures a
 
 SPEI uses the same parameter selection guidelines as SPI:
 
-- **Scale**: Same timescale considerations (1-72 months)
+- **Scale**: Same timescale considerations (1-72 months for monthly data, 1-2196 days for daily data)
 - **Distribution**: Gamma (default) or Pearson Type III
 - **Calibration period**: ≥30 years, \<20% missing data, K-S test p=0.05
 
@@ -4205,8 +4206,8 @@ Where:
 
 **Implementation details:**
 
-- Supports multi-month scales (e.g., 3-month, 6-month)
-- Computes normals separately for each calendar month
+- Supports multi-step scales (e.g., 3-month, 6-month, or daily equivalents such as 90-day)
+- Computes normals separately for each calendar time step
 - Standard calibration period: 1981-2010 (U.S. climate normals)
 - Can use any calibration period ≥30 years
 

@@ -34,9 +34,11 @@ _logger = get_logger(__name__)
 _FITTED_INDEX_VALID_MIN = -3.09
 _FITTED_INDEX_VALID_MAX = 3.09
 
-# valid range for scale parameter
+# valid range for the scale parameter; the upper bound spans six calendar years
+# for either periodicity, expressed in that periodicity's own time steps
 SCALE_MIN = 1
 SCALE_MAX = 72
+SCALE_MAX_DAILY = 6 * 366
 
 # Hastings inverse normal approximation constants (Abramowitz & Stegun 26.2.23)
 # used by EDDI for converting empirical probabilities to z-scores
@@ -61,26 +63,33 @@ _PCI_MONTH_STARTS: dict[int, np.ndarray] = {
 }
 
 
-def _validate_scale(scale: int) -> None:
-    """Validate that scale is an integer within the valid range.
+def _validate_scale(scale: int, periodicity: compute.Periodicity) -> None:
+    """Validate that scale is an integer within the valid range for the periodicity.
 
     Args:
         scale: The scale parameter to validate
+        periodicity: The periodicity whose time steps bound the scale
 
     Raises:
-        InvalidArgumentError: If scale is not an integer or is outside [SCALE_MIN, SCALE_MAX]
+        InvalidArgumentError: If scale is not an integer or is outside the valid range
     """
-    if not isinstance(scale, int) or scale < SCALE_MIN or scale > SCALE_MAX:
+    if periodicity is compute.Periodicity.daily:
+        scale_max = SCALE_MAX_DAILY
+        common_scales = "1 (daily), 7 (weekly), 30 (monthly), 90 (seasonal), 365 (annual)"
+    else:
+        scale_max = SCALE_MAX
+        common_scales = "1 (monthly), 3 (seasonal), 6 (half-year), 12 (annual)"
+    if not isinstance(scale, int) or scale < SCALE_MIN or scale > scale_max:
         message = (
             f"Invalid scale argument: {scale}. "
-            f"Scale must be an integer in the range [{SCALE_MIN}, {SCALE_MAX}]. "
-            f"Common scales: 1 (monthly), 3 (seasonal), 6 (half-year), 12 (annual)."
+            f"Scale must be an integer in the range [{SCALE_MIN}, {scale_max}]. "
+            f"Common scales: {common_scales}."
         )
         raise InvalidArgumentError(
             message,
             argument_name="scale",
             argument_value=str(scale),
-            valid_values=f"[{SCALE_MIN}, {SCALE_MAX}]",
+            valid_values=f"[{SCALE_MIN}, {scale_max}]",
         )
 
 
@@ -287,7 +296,8 @@ def eddi(
             shaped (time, ``*cells``), ranks every cell in one pass when it is
             declared with ``spatial_time_major``.
         scale: Number of time steps over which PET values are accumulated
-            before ranking. Must be in [1, 72].
+            before ranking. Must be in [1, 72] for monthly data or [1, 2196]
+            for daily data.
         data_start_year: First year of the input PET dataset.
         calibration_year_initial: First year of the calibration period used
             for empirical ranking.
@@ -312,10 +322,11 @@ def eddi(
             a declared time-major block.
         InvalidArgumentError: If scale, periodicity, or calibration years
             are invalid.
+        InsufficientDataError: If scale exceeds the number of available time steps.
     """
     # validate arguments
-    _validate_scale(scale)
     _validate_periodicity(periodicity)
+    _validate_scale(scale, periodicity)
 
     # bind structured logging context
     log = _logger.bind(
@@ -339,9 +350,12 @@ def eddi(
         _raise_if_unsupported_shape(pet_values, spatial_time_major)
 
         # an all-missing block is returned as it arrived, as the preparation seam
-        # does for the 1-D and 2-D layouts
-        if pet_values.ndim > 2 and (
-            (isinstance(pet_values, np.ma.MaskedArray) and pet_values.mask.all()) or np.all(np.isnan(pet_values))
+        # does for the 1-D and 2-D layouts -- unless the scale exceeds the block's
+        # time steps, which the seam rejects rather than returning silently
+        if (
+            pet_values.ndim > 2
+            and scale <= pet_values.shape[0]
+            and ((isinstance(pet_values, np.ma.MaskedArray) and pet_values.mask.all()) or np.all(np.isnan(pet_values)))
         ):
             _log_calculation_completed(log, t0, pet_values.shape, memory_metrics)
             return pet_values
@@ -503,9 +517,9 @@ def spi(
         ``spatial_time_major`` is set
     """
     # validate arguments
-    _validate_scale(scale)
-    _validate_distribution(distribution)
     _validate_periodicity(periodicity)
+    _validate_scale(scale, periodicity)
+    _validate_distribution(distribution)
 
     # bind context and emit calculation_started event
     log = _logger.bind(
@@ -540,7 +554,9 @@ def spi(
                     "cell axis is a calendar period length is ambiguous with a (years, periods, *cells) "
                     "array; declare it with spatial_time_major=True"
                 )
-            if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
+            if scale <= values.shape[0] and (
+                (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values))
+            ):
                 return values
 
         # flatten, short-circuit all-missing input, clip negatives to zero,
@@ -617,11 +633,11 @@ def spei(
     Compute SPEI fitted to the specified distribution.
 
     PET values are subtracted from the precipitation values to come up with an array
-    of (P - PET) values, which is then scaled to the specified months scale and
+    of (P - PET) values, which is then scaled to the specified timescale and
     finally fitted/transformed to SPEI values corresponding to the input
     precipitation time series.
 
-    :param precips_mm: an array of monthly total precipitation values,
+    :param precips_mm: an array of precipitation values,
         in millimeters, should be of the same size (and shape?) as the input PET array.
         A time-major spatial array with shape (time, ``*cells``), i.e. three or more
         dimensions, is also accepted, and then every cell is scaled and fitted in
@@ -632,10 +648,11 @@ def spei(
         equally readable as a (years, periods, ``*cells``) array, and then the reading has to
         be declared with ``spatial_time_major``; the xarray adapter declares every block
         it packs, and only that ambiguous shape raises without a declaration.
-    :param pet_mm: an array of monthly PET values, in millimeters,
-        should be of the same size (and shape?) as the input precipitation array
-    :param scale: the number of months over which the values should be scaled
-        before computing the indicator
+    :param pet_mm: an array of PET values, in millimeters, of the same size
+        (and shape) as the input precipitation array
+    :param scale: the number of time steps over which the values should be
+        scaled before computing the indicator (months for monthly data, days
+        for daily data)
     :param distribution: distribution type to be used for the internal
         fitting/transform computation
     :param periodicity: periodicity of the input time series; use
@@ -661,9 +678,9 @@ def spei(
         PET and precipitation arrays
     """
     # validate arguments
-    _validate_scale(scale)
-    _validate_distribution(distribution)
     _validate_periodicity(periodicity)
+    _validate_scale(scale, periodicity)
+    _validate_distribution(distribution)
 
     # bind context and emit calculation_started event
     log = _logger.bind(
@@ -683,8 +700,11 @@ def spei(
         fitting_params = compute._normalize_fitting_params(fitting_params)
 
         # if we're passed all missing values then we can't compute anything,
-        # so we return the same array of missing values
-        if (isinstance(precips_mm, np.ma.MaskedArray) and precips_mm.mask.all()) or np.all(np.isnan(precips_mm)):
+        # so we return the same array of missing values -- unless the scale
+        # exceeds its time steps, which the preparation seam must reject
+        if scale <= precips_mm.shape[0] and (
+            (isinstance(precips_mm, np.ma.MaskedArray) and precips_mm.mask.all()) or np.all(np.isnan(precips_mm))
+        ):
             duration_ms = (time.perf_counter() - t0) * 1000.0
             log.info(
                 "calculation_completed",
@@ -823,9 +843,10 @@ def percentage_of_normal(
             time-major spatial block, shaped (time, ``*cells``), divides every
             cell by its own normals in one pass when it is declared with
             ``spatial_time_major``.
-        scale: Integer number of months over which the normal value is
-            computed (eg 3-months, 6-months, etc.).
-        data_start_year: The initial year of the input monthly values array.
+        scale: Integer number of time steps over which the normal value is
+            computed (months for monthly data, days for daily data; e.g.
+            3 months or 90 days).
+        data_start_year: The initial year of the input values array.
         calibration_start_year: The initial year of the calibration period
             over which the normal average for each calendar time step is
             computed.
@@ -847,8 +868,8 @@ def percentage_of_normal(
         1-D or 2-D input, or the (time, ``*cells``) layout of a declared block.
     """
     # validate arguments
-    _validate_scale(scale)
     _validate_periodicity(periodicity)
+    _validate_scale(scale, periodicity)
 
     # bind context and emit calculation_started event
     log = _logger.bind(
@@ -875,9 +896,11 @@ def percentage_of_normal(
         period_length = periodicity.period_length
 
         # bypass processing if all values are masked, or when a spatial block is all
-        # missing, in which case it is returned as it arrived
-        if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or (
-            values.ndim > 2 and np.all(np.isnan(values))
+        # missing, in which case it is returned as it arrived -- unless the scale
+        # exceeds its time steps, which the preparation seam must reject
+        if scale <= values.shape[0] and (
+            (isinstance(values, np.ma.MaskedArray) and values.mask.all())
+            or (values.ndim > 2 and np.all(np.isnan(values)))
         ):
             _log_calculation_completed(log, t0, values.shape, memory_metrics)
             return values

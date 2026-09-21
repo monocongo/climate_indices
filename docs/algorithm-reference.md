@@ -196,8 +196,8 @@ Where:
 
 **Implementation details:**
 
-- Supports multi-month scales (e.g., 3-month, 6-month)
-- Computes normals separately for each calendar month
+- Supports multi-step scales (e.g., 3-month, 6-month, or daily equivalents such as 90-day)
+- Computes normals separately for each calendar time step
 - Standard calibration period: 1981-2010 (U.S. climate normals)
 - Can use any calibration period ≥30 years
 

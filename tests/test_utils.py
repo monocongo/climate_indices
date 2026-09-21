@@ -510,6 +510,24 @@ def test_daily_calendar_plan_from_year_span():
         utils.DailyCalendarPlan.from_year_span(2020, 2, -3)
 
 
+def test_daily_calendar_plan_populated_length():
+    """populated_length counts synthetic February 29 fills but not a partial year's NaN tail."""
+    # six complete years fill all 2196 padded positions, four of them synthetic
+    complete = utils.DailyCalendarPlan.from_year_span(2000, 6, 2192)
+    assert complete.all_leap_length == 2196
+    assert complete.populated_length == 2196
+    # two days short of six complete years fills 2194 populated positions: 2005's
+    # synthesized February 29 consumes one of the three, leaving two NaN pads
+    partial = utils.DailyCalendarPlan.from_year_span(2000, 6, 2190)
+    assert partial.populated_length == 2194
+    # a complete single year fills 366 positions; a partial year fills its observed
+    # days, plus the synthetic February 29 once it has passed February 28
+    assert utils.DailyCalendarPlan.from_year_span(2019, 1, 365).populated_length == 366
+    assert utils.DailyCalendarPlan.from_year_span(2019, 1, 59).populated_length == 59
+    assert utils.DailyCalendarPlan.from_year_span(2019, 1, 60).populated_length == 61
+    assert utils.DailyCalendarPlan.from_year_span(2019, 1, 100).populated_length == 101
+
+
 def test_daily_calendar_plan_validates_year_counts():
     """Construction rejects year counts that cannot describe a contiguous daily series."""
     # a partial year followed by another year would silently shift the boundaries
