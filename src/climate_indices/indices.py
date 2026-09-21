@@ -350,9 +350,12 @@ def eddi(
         _raise_if_unsupported_shape(pet_values, spatial_time_major)
 
         # an all-missing block is returned as it arrived, as the preparation seam
-        # does for the 1-D and 2-D layouts
-        if pet_values.ndim > 2 and (
-            (isinstance(pet_values, np.ma.MaskedArray) and pet_values.mask.all()) or np.all(np.isnan(pet_values))
+        # does for the 1-D and 2-D layouts -- unless the scale exceeds the block's
+        # time steps, which the seam rejects rather than returning silently
+        if (
+            pet_values.ndim > 2
+            and scale <= pet_values.shape[0]
+            and ((isinstance(pet_values, np.ma.MaskedArray) and pet_values.mask.all()) or np.all(np.isnan(pet_values)))
         ):
             _log_calculation_completed(log, t0, pet_values.shape, memory_metrics)
             return pet_values
@@ -551,7 +554,9 @@ def spi(
                     "cell axis is a calendar period length is ambiguous with a (years, periods, *cells) "
                     "array; declare it with spatial_time_major=True"
                 )
-            if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
+            if scale <= values.shape[0] and (
+                (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values))
+            ):
                 return values
 
         # flatten, short-circuit all-missing input, clip negatives to zero,
@@ -695,8 +700,11 @@ def spei(
         fitting_params = compute._normalize_fitting_params(fitting_params)
 
         # if we're passed all missing values then we can't compute anything,
-        # so we return the same array of missing values
-        if (isinstance(precips_mm, np.ma.MaskedArray) and precips_mm.mask.all()) or np.all(np.isnan(precips_mm)):
+        # so we return the same array of missing values -- unless the scale
+        # exceeds its time steps, which the preparation seam must reject
+        if scale <= precips_mm.shape[0] and (
+            (isinstance(precips_mm, np.ma.MaskedArray) and precips_mm.mask.all()) or np.all(np.isnan(precips_mm))
+        ):
             duration_ms = (time.perf_counter() - t0) * 1000.0
             log.info(
                 "calculation_completed",
@@ -888,9 +896,11 @@ def percentage_of_normal(
         period_length = periodicity.period_length
 
         # bypass processing if all values are masked, or when a spatial block is all
-        # missing, in which case it is returned as it arrived
-        if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or (
-            values.ndim > 2 and np.all(np.isnan(values))
+        # missing, in which case it is returned as it arrived -- unless the scale
+        # exceeds its time steps, which the preparation seam must reject
+        if scale <= values.shape[0] and (
+            (isinstance(values, np.ma.MaskedArray) and values.mask.all())
+            or (values.ndim > 2 and np.all(np.isnan(values)))
         ):
             _log_calculation_completed(log, t0, values.shape, memory_metrics)
             return values

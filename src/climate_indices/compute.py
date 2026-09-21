@@ -1554,15 +1554,11 @@ def prepare_scaled(
 
     values = _prepare_input_shape(values, spatial_time_major)
 
-    # if we're passed all missing values then we can't compute anything,
-    # so we return the same array of missing values
-    if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
-        return values
-
     # a scale longer than the series cannot produce a single complete sum, and
     # np.convolve's "valid" mode would silently return a longer result than the
     # input; the xarray adapter pre-checks its adapted length, so this is the NumPy
-    # path's equivalent and both paths fail with the same error
+    # path's equivalent and both paths fail with the same error. This check precedes
+    # the all-missing return so that a short all-missing series fails loudly too.
     available_steps = values.shape[0]
     if scale > available_steps:
         raise InsufficientDataError(
@@ -1571,6 +1567,11 @@ def prepare_scaled(
             non_zero_count=available_steps,
             required_count=scale,
         )
+
+    # if we're passed all missing values then we can't compute anything,
+    # so we return the same array of missing values
+    if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
+        return values
 
     # a partially masked input must become explicit NaN before sum_to_scale, since its
     # spatial branch concatenates through np.concatenate, which drops the mask and lets

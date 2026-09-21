@@ -259,6 +259,56 @@ def test_scale_longer_than_the_series_raises_insufficient_data() -> None:
         indices.percentage_of_normal(values, 90, 2000, 2000, 2000, compute.Periodicity.daily)
 
 
+def test_prepare_scaled_all_missing_still_rejects_a_scale_longer_than_the_series() -> None:
+    """The shared seam's length guard runs before its all-missing early return."""
+    with pytest.raises(InsufficientDataError):
+        compute.prepare_scaled(np.full(10, np.nan), 20, compute.Periodicity.monthly)
+    with pytest.raises(InsufficientDataError):
+        compute.prepare_scaled(np.ma.masked_all(10), 20, compute.Periodicity.monthly)
+
+
+# public all-missing shortcuts, one row for every index whose all-missing lay-out
+# returns before the shared preparation seam's length guard
+ALL_MISSING_SHORTCUT_CALLS = [
+    pytest.param(
+        lambda: indices.spi(
+            np.full((5, 2, 2), np.nan), 10, indices.Distribution.gamma, 2000, 2000, 2000, compute.Periodicity.daily
+        ),
+        id="spi-spatial-block",
+    ),
+    pytest.param(
+        lambda: indices.spei(
+            np.full(5, np.nan),
+            np.full(5, np.nan),
+            10,
+            indices.Distribution.gamma,
+            compute.Periodicity.daily,
+            2000,
+            2000,
+            2000,
+        ),
+        id="spei-series",
+    ),
+    pytest.param(
+        lambda: indices.eddi(
+            np.full((5, 2, 2), np.nan), 10, 2000, 2000, 2000, compute.Periodicity.daily, spatial_time_major=True
+        ),
+        id="eddi-spatial-block",
+    ),
+    pytest.param(
+        lambda: indices.percentage_of_normal(np.ma.masked_all(14), 20, 2000, 2000, 2000, compute.Periodicity.monthly),
+        id="percentage-of-normal-masked",
+    ),
+]
+
+
+@pytest.mark.parametrize("call", ALL_MISSING_SHORTCUT_CALLS)
+def test_all_missing_shortcuts_still_reject_a_scale_longer_than_the_series(call) -> None:
+    """An all-missing shortcut must not swallow the insufficient-data guard."""
+    with pytest.raises(InsufficientDataError):
+        call()
+
+
 @pytest.mark.parametrize(("call", "argument_name"), CATCH_ALL_CASES)
 def test_validation_errors_are_catchable_as_the_base(valid_precip_data, valid_pet_data, call, argument_name) -> None:
     """Callers can catch every validation failure as the library base error."""
