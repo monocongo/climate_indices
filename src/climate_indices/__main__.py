@@ -145,6 +145,8 @@ class _ComputeContext:
     arguments: dict[str, Any]
     # inputs a registration prepared alongside the request, e.g. Palmer's AWC
     prepared: xr.Dataset | None = None
+    # the daily 366-day calendar plan shared by input conversion and output restoration
+    calendar_plan: utils.DailyCalendarPlan | None = None
 
 
 # the dimension orders the shared-array transport accepts, by layout: it copies
@@ -565,11 +567,31 @@ def _log_status(request: _IndexRequest) -> None:
         )
 
 
+def _daily_calendar_plan(dataset: xr.Dataset) -> utils.DailyCalendarPlan:
+    """
+    Plan the 366-day calendar conversion for a daily input dataset.
+
+    The plan's positional mapping assumes a series beginning on January 1 and
+    stepping one calendar day at a time, so those are validated here rather
+    than left to silently misalign the values.
+
+    :param dataset: the input dataset whose time coordinate defines the span
+    :return: the plan shared by the input conversion and the output restoration
+    """
+    time_values = np.asarray(dataset["time"].values, dtype="datetime64[D]")
+    year_start = int(time_values[0].astype("datetime64[Y]").astype(int)) + 1970
+    if time_values[0] != np.datetime64(f"{year_start:04d}-01-01", "D"):
+        raise ValueError("Daily input must begin on January 1 to preserve calendar-day semantics")
+    if time_values.size > 1 and not np.all(np.diff(time_values) == np.timedelta64(1, "D")):
+        raise ValueError("Daily input time coordinate must contain contiguous daily steps")
+    final_year = int(time_values[-1].astype("datetime64[Y]").astype(int)) + 1970
+    return utils.DailyCalendarPlan.from_year_span(year_start, final_year - year_start + 1, len(time_values))
+
+
 def _drop_data_into_shared_arrays_grid(
     dataset: xr.Dataset,
     var_names: list[str],
-    periodicity: compute.Periodicity,
-    data_start_year: int,
+    calendar_plan: utils.DailyCalendarPlan | None,
 ) -> tuple[int, ...]:
     output_shape = None
 
@@ -578,20 +600,12 @@ def _drop_data_into_shared_arrays_grid(
     for var_name in var_names:
         dims = dataset[var_name].dims
 
-        # convert daily values into 366-day years
-        if periodicity == compute.Periodicity.daily:
-            initial_year = int(str(dataset["time"][0].data)[0:4])
-            final_year = int(str(dataset["time"][-1].data)[0:4])
-            total_years = final_year - initial_year + 1
-            var_values = np.apply_along_axis(
-                utils.transform_to_366day,
-                len(dims) - 1,
-                dataset[var_name].values,
-                data_start_year,
-                total_years,
-            )
+        # convert daily values into 366-day years; a time-free companion such
+        # as a division latitude keeps its shape
+        if calendar_plan is not None and "time" in dataset[var_name].dims:
+            var_values = np.apply_along_axis(calendar_plan.to_all_leap, len(dims) - 1, dataset[var_name].values)
 
-        else:  # assumed to be monthly
+        else:  # monthly, or a time-free companion variable
             var_values = dataset[var_name].values
 
         output_shape = var_values.shape
@@ -618,12 +632,14 @@ def _drop_data_into_shared_arrays_grid(
 def _drop_data_into_shared_arrays_divisions(
     dataset: xr.Dataset,
     var_names: list[str],
+    calendar_plan: utils.DailyCalendarPlan | None,
 ) -> tuple[int, ...]:
     """
     Drop data into shared arrays for use in the index computations.
 
     :param dataset:
     :param var_names:
+    :param calendar_plan: the daily conversion plan, or None for monthly input
     :return:
     """
     output_shape = None
@@ -631,21 +647,31 @@ def _drop_data_into_shared_arrays_divisions(
     # get the data arrays we'll use later in the index computations
     global _global_shared_arrays
     for var_name in var_names:
+        # convert daily values into 366-day years; divisions are time-last
+        if calendar_plan is not None and "time" in dataset[var_name].dims:
+            var_values = np.apply_along_axis(
+                calendar_plan.to_all_leap,
+                len(dataset[var_name].dims) - 1,
+                dataset[var_name].values,
+            )
+        else:
+            var_values = dataset[var_name].values
+
         # create a shared memory array, wrap it as a numpy array and
         # copy the data (values) from this variable's DataArray
-        shared_array = multiprocessing.Array("d", int(np.prod(dataset[var_name].shape)))
-        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(dataset[var_name].shape)  # type: ignore[call-overload]
-        np.copyto(shared_array_np, dataset[var_name].values)
+        shared_array = multiprocessing.Array("d", int(np.prod(var_values.shape)))
+        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(var_values.shape)  # type: ignore[call-overload]
+        np.copyto(shared_array_np, var_values)
 
         # add to the dictionary of arrays
         _global_shared_arrays[var_name] = {
             _KEY_ARRAY: shared_array,
-            _KEY_SHAPE: dataset[var_name].shape,
+            _KEY_SHAPE: var_values.shape,
         }
 
         # we know we'll want the output for divisions to be 2-D
-        if len(dataset[var_name].shape) == 2:
-            output_shape = dataset[var_name].shape
+        if len(var_values.shape) == 2:
+            output_shape = var_values.shape
 
         # drop the variable from the dataset (we're assuming this frees the memory)
         dataset = dataset.drop_vars(names=[var_name])
@@ -854,6 +880,10 @@ def _compute_write_index(request: _IndexRequest) -> tuple[str, str] | None:
     # get the initial year of the data
     request.data_start_year = int(str(dataset["time"].values[0])[0:4])
 
+    # a daily input needs the 366-day conversion for the shared arrays and the
+    # inverse conversion when the result is written
+    calendar_plan = _daily_calendar_plan(dataset) if request.periodicity == compute.Periodicity.daily else None
+
     output_dims = _output_dims(request, dataset)
     output_chunksizes = _reordered_chunksizes(output_chunksizes, chunksizes_dims, output_dims)
 
@@ -881,13 +911,12 @@ def _compute_write_index(request: _IndexRequest) -> tuple[str, str] | None:
             raise ValueError(message)
 
     if request.input_type == DatasetLayout.DIVISIONS:
-        output_shape = _drop_data_into_shared_arrays_divisions(dataset, input_var_names)
+        output_shape = _drop_data_into_shared_arrays_divisions(dataset, input_var_names, calendar_plan)
     else:
         output_shape = _drop_data_into_shared_arrays_grid(
             dataset,
             input_var_names,
-            request.periodicity,
-            request.data_start_year,
+            calendar_plan,
         )
 
     output_encodings = {"chunksizes": output_chunksizes} if output_chunksizes else None
@@ -902,6 +931,7 @@ def _compute_write_index(request: _IndexRequest) -> tuple[str, str] | None:
         output_shape=output_shape,
         output_encodings=output_encodings,
         output_engine=output_engine,
+        calendar_plan=calendar_plan,
         prepared=prepared,
         arguments=handler.build_arguments(request) if handler.build_arguments is not None else {},
     )
@@ -1550,14 +1580,12 @@ def _write_single_output(context: _ComputeContext) -> tuple[str, str]:
     # get the shared memory results array and convert it to a numpy array
     index_values = _shared_array(handler.output_keys[0], context.output_shape).astype(float)
 
-    # convert daily values into normal/Gregorian calendar years
-    if request.periodicity == compute.Periodicity.daily:
-        assert request.data_start_year is not None, "the inputs' start year is read when they are opened"
+    # convert daily values back into normal/Gregorian calendar years
+    if context.calendar_plan is not None:
         index_values = np.apply_along_axis(
-            utils.transform_to_gregorian,
+            context.calendar_plan.to_gregorian,
             len(context.output_dims) - 1,
             index_values,
-            request.data_start_year,
         )
 
     # create a new variable to contain the index values, assign into the dataset

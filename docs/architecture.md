@@ -219,6 +219,7 @@ process_climate_indices = "climate_indices.__main__:main"
 
 - **`utils.py`**: Utility functions
   - Calendar conversions: `transform_to_366day()`, `transform_to_gregorian()`
+  - Calendar planning: `DailyCalendarPlan`
   - Data validation: `is_data_valid()`
   - Array reshaping: `reshape_to_2d()`, `reshape_to_divs_years_months()`
   - Periodicity utilities: `gregorian_length_as_366day()`
