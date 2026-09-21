@@ -449,14 +449,20 @@ class DailyCalendarPlan:
         """Return the number of 366-day positions this span actually fills.
 
         A complete final year fills all 366 positions, because ``to_all_leap``
-        synthesizes its February 29 value; a partial final year leaves the rest of
-        its padded positions as NaN, and no sliding window can sum through them.
+        synthesizes its February 29 value. A partial final year fills its observed
+        days, plus that synthesized February 29 once it has passed February 28; the
+        rest of its padded positions stay NaN, and no sliding window can sum
+        through them.
         """
         last_year = self.year_start + len(self.observed_days_by_year) - 1
+        observed_in_last_year = self.observed_days_by_year[-1]
         days_in_last_year = 366 if calendar.isleap(last_year) else 365
-        if self.observed_days_by_year[-1] == days_in_last_year:
+        if observed_in_last_year == days_in_last_year:
             return self.all_leap_length
-        return self.all_leap_length - (366 - self.observed_days_by_year[-1])
+        populated_in_last_year = observed_in_last_year
+        if days_in_last_year == 365 and observed_in_last_year > 59:
+            populated_in_last_year += 1
+        return self.all_leap_length - (366 - populated_in_last_year)
 
     def to_all_leap(self, values: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
         """

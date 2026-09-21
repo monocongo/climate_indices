@@ -1880,16 +1880,18 @@ class TestCoordinateValidationIntegration:
         with pytest.raises(InsufficientDataError):
             needs_scale(values, scale=2197, periodicity=compute.Periodicity.daily)
 
-        # two days short of six complete years leaves 2193 populated padded steps,
-        # three short of the 2196 a partial-year-unaware bound would allow
+        # two days short of six complete years fills 2194 populated padded steps:
+        # 2005's synthetic February 29 consumes one of its two padded gaps, so 2195
+        # is the first uncomputable scale, not the 2194 a partial-year-unaware bound
+        # would reject
         partial_time = pd.date_range("2000-01-01", periods=2190, freq="D")
         partial = xr.DataArray(np.arange(2190, dtype=float), coords={"time": partial_time}, dims=["time"])
 
-        result = needs_scale(partial, scale=2193, periodicity=compute.Periodicity.daily)
+        result = needs_scale(partial, scale=2194, periodicity=compute.Periodicity.daily)
         assert result.shape == partial.shape
 
         with pytest.raises(InsufficientDataError):
-            needs_scale(partial, scale=2194, periodicity=compute.Periodicity.daily)
+            needs_scale(partial, scale=2195, periodicity=compute.Periodicity.daily)
 
     def test_valid_data_passes_validation(self, sample_monthly_precip_da):
         """Valid data passes all validation checks."""
