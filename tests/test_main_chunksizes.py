@@ -60,21 +60,8 @@ def test_spei_chunksizes_follow_output_dimension_order(monkeypatch, tmp_path):
         assert variable.encoding["chunksizes"] == (1, 12)
 
 
-def test_pnp_copies_h5netcdf_input_chunksizes(monkeypatch, tmp_path, caplog):
-    """``--chunksizes input`` preserves chunks reported without ``contiguous``."""
-    time = xr.date_range("1990-01-01", periods=24, freq="MS")
-    dataset = xr.Dataset(
-        {"prcp": (("lat", "lon", "time"), np.ones((2, 3, 24)), {"units": "mm"})},
-        coords={"lat": [25.0, 30.0], "lon": [-100.0, -95.0, -90.0], "time": time},
-    )
-    input_file = tmp_path / "prcp.nc"
-    dataset.to_netcdf(input_file, encoding={"prcp": {"chunksizes": (2, 3, 12)}}, engine="h5netcdf")
-
-    # h5netcdf reports on-disk chunks without a `contiguous` key, which is the
-    # condition the copied chunk sizes have to survive
-    with xr.open_dataset(input_file, engine="h5netcdf") as opened:
-        assert "contiguous" not in opened["prcp"].encoding
-
+def _write_pnp_monthly(monkeypatch, tmp_path, input_file):
+    """Run a `--chunksizes input` monthly PnP write with parallelism stubbed out."""
     monkeypatch.setattr(cli_main, "_global_shared_arrays", {})
     monkeypatch.setattr(cli_main, "_parallel_process", lambda *_args, **_kwargs: None)
 
@@ -92,6 +79,24 @@ def test_pnp_copies_h5netcdf_input_chunksizes(monkeypatch, tmp_path, caplog):
             calibration_end_year=1991,
         )
     )
+
+
+def test_pnp_copies_h5netcdf_input_chunksizes(monkeypatch, tmp_path, caplog):
+    """``--chunksizes input`` preserves chunks reported without ``contiguous``."""
+    time = xr.date_range("1990-01-01", periods=24, freq="MS")
+    dataset = xr.Dataset(
+        {"prcp": (("lat", "lon", "time"), np.ones((2, 3, 24)), {"units": "mm"})},
+        coords={"lat": [25.0, 30.0], "lon": [-100.0, -95.0, -90.0], "time": time},
+    )
+    input_file = tmp_path / "prcp.nc"
+    dataset.to_netcdf(input_file, encoding={"prcp": {"chunksizes": (2, 3, 12)}}, engine="h5netcdf")
+
+    # h5netcdf reports on-disk chunks without a `contiguous` key, which is the
+    # condition the copied chunk sizes have to survive
+    with xr.open_dataset(input_file, engine="h5netcdf") as opened:
+        assert "contiguous" not in opened["prcp"].encoding
+
+    _write_pnp_monthly(monkeypatch, tmp_path, input_file)
 
     with xr.open_dataset(tmp_path / "out_pnp_03.nc", engine="h5netcdf") as written:
         assert written["pnp_03"].encoding["chunksizes"] == (2, 3, 12)
@@ -137,23 +142,7 @@ def test_oversized_input_chunks_are_trimmed_to_the_output_shape(monkeypatch, tmp
         unlimited_dims=["time"],
     )
 
-    monkeypatch.setattr(cli_main, "_global_shared_arrays", {})
-    monkeypatch.setattr(cli_main, "_parallel_process", lambda *_args, **_kwargs: None)
-
-    cli_main._compute_write_index(
-        cli_main._IndexRequest(
-            index="pnp",
-            netcdf_precip=str(input_file),
-            var_name_precip="prcp",
-            input_type=DatasetLayout.GRID,
-            periodicity=compute.Periodicity.monthly,
-            chunksizes="input",
-            output_file_base=str(tmp_path / "out"),
-            scale=3,
-            calibration_start_year=1990,
-            calibration_end_year=1991,
-        )
-    )
+    _write_pnp_monthly(monkeypatch, tmp_path, input_file)
 
     with xr.open_dataset(tmp_path / "out_pnp_03.nc", engine="h5netcdf") as written:
         assert written["pnp_03"].encoding["chunksizes"] == (1, 2, 24)
