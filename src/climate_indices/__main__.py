@@ -1647,6 +1647,7 @@ def _write_palmer_outputs(context: _ComputeContext) -> None:
     :param context: the opened inputs and output settings of the request
     """
     dataset = context.dataset
+    output_encodings = _trimmed_output_encodings(context.output_encodings, context.output_shape)
     for key, var_name, long_name in _PALMER_OUTPUTS:
         # get the shared memory results array and convert it to a numpy array
         index_values = _shared_array(key, context.output_shape).astype(float)
@@ -1661,7 +1662,7 @@ def _write_palmer_outputs(context: _ComputeContext) -> None:
             dims=context.output_dims,
             data=index_values,
             attrs=attrs,
-            encoding=_trimmed_output_encodings(context.output_encodings, index_values.shape),
+            encoding=output_encodings,
         )
         dataset[var_name] = variable
 

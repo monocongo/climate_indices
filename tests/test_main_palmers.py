@@ -271,7 +271,7 @@ class TestPalmersWorker:
         np.testing.assert_allclose(_read(cli_main._KEY_RESULT_ZINDEX), expected_zindex, equal_nan=True)
         np.testing.assert_allclose(_read(cli_main._KEY_RESULT_SCPDSI), expected_scpdsi, equal_nan=True)
 
-    def test_writer_trims_copied_input_chunks_to_the_output_shape(self, monkeypatch, tmp_path):
+    def test_writer_trims_copied_input_chunks_to_the_output_shape(self, monkeypatch, tmp_path, caplog):
         """An oversized copied chunk must not reach any of the five output writers."""
         n_time = 24
         shape = (1, n_time)
@@ -296,6 +296,7 @@ class TestPalmersWorker:
 
         cli_main._write_palmer_outputs(context)
 
+        assert caplog.messages.count("Trimming copied input chunksizes (1, 100) to the output shape (1, 24)") == 1
         for _, var_name, _ in cli_main._PALMER_OUTPUTS:
             with xr.open_dataset(tmp_path / f"out_{var_name}.nc", engine="h5netcdf") as written:
                 assert written[var_name].encoding["chunksizes"] == shape
