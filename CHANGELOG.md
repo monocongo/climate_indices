@@ -129,7 +129,7 @@ change states what a user sees, how to detect it, and what to change in
   input chunk sizes are now trimmed to the shape actually written, with a warning when
   one is reduced, across the single-output, Palmer, and KBDI writers, and the input file
   list is de-duplicated without reordering, so which variable's chunks are copied no
-  longer depends on the per-process string hash seed (#1080, #1084). The eligibility,
+  longer depends on the per-process string hash seed (#1080, #1081, #1084). The eligibility,
   dimension-match, reorder, and trim rules are documented under `--chunksizes`.
 - **CLI daily input**: a daily input whose coordinates start mid-year or contain a gap is
   now rejected with the documented daily contract, where it previously restored the input
