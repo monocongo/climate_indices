@@ -121,12 +121,17 @@ class TestOverheadBudgetPolicy:
 
         timings = iter(
             timing
-            for numpy_first_xarray_time in (2.4, 2.4, 2.4, 6.0)
+            for numpy_time, xarray_time in (
+                (1.0, 1.0),
+                (2.0, 102.0),
+                (100.0, 101.0),
+                (101.0, 101.0),
+            )
             for timing in (
-                (numpy_fn, 2.0),
-                (xarray_fn, numpy_first_xarray_time),
-                (xarray_fn, 3.0),
-                (numpy_fn, 2.0),
+                (numpy_fn, numpy_time),
+                (xarray_fn, xarray_time),
+                (xarray_fn, 12.0),
+                (numpy_fn, 10.0),
             )
         )
 
@@ -144,7 +149,7 @@ class TestOverheadBudgetPolicy:
             number=2,
         )
 
-        assert measured == pytest.approx((2.0, 3.0, 0.7))
+        assert measured == pytest.approx((10.0, 12.0, 1.25))
         assert next(timings, None) is None
 
 
