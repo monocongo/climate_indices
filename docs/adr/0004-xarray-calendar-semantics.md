@@ -38,10 +38,9 @@ Validation costs one periodicity check per invocation. `xr.infer_freq` proved to
 overhead did not amortize as a 1-D series grew. `_match_supported_periodicity()` therefore recognizes
 the two supported layouts with vectorized `datetime64` arithmetic, falling back to `xr.infer_freq`
 only for input it does not match, where the exact frequency string is still wanted for the error
-message. That keeps the check fixed per call and negligible for gridded workloads, and it is why
-`pet_thornthwaite` needs no overhead budget of its own in `tests/test_benchmark_overhead.py`. The
-looser budget that remains on `pet_hargreaves` predates this decision and covers unrelated adapter
-cost — `xr.align` on the tmin/tmax pair — tracked in issue #740.
+message. That keeps the check fixed per call and negligible for gridded workloads, so
+`tests/test_benchmark_overhead.py` guards it with the same absolute fixed-cost budget as the other
+measured adapters rather than an operation-specific ratio tied to NumPy runtime.
 
 Conversion itself is not free, and it is quantized by year: a daily series is padded to whole 366-day
 years, so a partial final year costs a full extra year of core computation no matter how short it is.
