@@ -60,7 +60,7 @@ def test_spei_chunksizes_follow_output_dimension_order(monkeypatch, tmp_path):
         assert variable.encoding["chunksizes"] == (1, 12)
 
 
-def test_pnp_copies_h5netcdf_input_chunksizes(monkeypatch, tmp_path):
+def test_pnp_copies_h5netcdf_input_chunksizes(monkeypatch, tmp_path, caplog):
     """``--chunksizes input`` preserves chunks reported without ``contiguous``."""
     time = xr.date_range("1990-01-01", periods=24, freq="MS")
     dataset = xr.Dataset(
@@ -95,6 +95,7 @@ def test_pnp_copies_h5netcdf_input_chunksizes(monkeypatch, tmp_path):
 
     with xr.open_dataset(tmp_path / "out_pnp_03.nc", engine="h5netcdf") as written:
         assert written["pnp_03"].encoding["chunksizes"] == (2, 3, 12)
+    assert "Trimming copied input chunksizes" not in caplog.text
 
 
 def test_input_chunksizes_ignores_contiguous_inputs(tmp_path):
@@ -127,7 +128,7 @@ def test_oversized_input_chunks_are_trimmed_to_the_output_shape(monkeypatch, tmp
     # an unlimited time dimension permits a chunk larger than the data written so far
     dataset.to_netcdf(
         input_file,
-        encoding={"prcp": {"chunksizes": (2, 3, 100)}},
+        encoding={"prcp": {"chunksizes": (1, 2, 100)}},
         engine="h5netcdf",
         unlimited_dims=["time"],
     )
@@ -151,7 +152,7 @@ def test_oversized_input_chunks_are_trimmed_to_the_output_shape(monkeypatch, tmp
     )
 
     with xr.open_dataset(tmp_path / "out_pnp_03.nc", engine="h5netcdf") as written:
-        assert written["pnp_03"].encoding["chunksizes"] == (2, 3, 24)
+        assert written["pnp_03"].encoding["chunksizes"] == (1, 2, 24)
 
 
 def test_daily_oversized_input_chunks_are_trimmed_to_the_written_shape(monkeypatch, tmp_path):
