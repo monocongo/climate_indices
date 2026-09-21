@@ -1,5 +1,9 @@
 # Gridded index input is read as a time-major block, and ambiguous shapes must be declared
 
+## Status
+
+Accepted.
+
 The fitting-based NumPy kernels (`indices.spi`, `indices.spei`) have always read a flat or
 `(years, periods)` array, and `compute.prepare_scaled` folded a 1-D series onto that layout before
 fitting. Removing the per-grid-cell `xr.apply_ufunc(..., vectorize=True)` loop therefore required a
@@ -76,7 +80,8 @@ xarray adapter landed in #1016: `climate_indices.pdsi()` reaches `palmer.pdsi()`
 with AWC broadcast like PET's latitude, and scPDSI stays without an adapter entry point.
 
 The PET entry points do not use the adapter decorator, because latitude arrives as a broadcast
-input rather than a secondary time series. They forward `vectorize=False` themselves and hand
-`indices.pet` and `eto.eto_hargreaves` the same `(time, *cells)` block, with the latitude as a
+input rather than a secondary time series. On the block path they forward
+`vectorize=False` themselves and hand `indices.pet` and `eto.eto_hargreaves` the
+same `(time, *cells)` block, with the latitude as a
 per-cell array for the day-length and radiation terms (#941); a 2-D input, or a latitude carrying a
 dimension the temperature does not, keeps the per-cell path.

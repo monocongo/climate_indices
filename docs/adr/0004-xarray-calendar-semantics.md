@@ -1,5 +1,9 @@
 # The xarray seam owns calendar conversion, and requires Gregorian January-origin input
 
+## Status
+
+Accepted.
+
 The NumPy index implementations group monthly values into 12 positional slots per year and daily
 values into 366, treating every year as a leap year and every series as beginning in January.
 `xarray_adapter.py` converts Gregorian daily input to that all-leap calendar before computation and
@@ -48,9 +52,11 @@ the most out of it by passing whole years. The padding is correctness-preserving
 unfilled tail slots stay NaN through the computation and are discarded when the result is restored to
 its Gregorian coordinate.
 
-The policy lives in one place — `_build_daily_calendar_plan()` — and is applied both by the
-`@xarray_adapter` decorator (SPI, SPEI, EDDI, PNP) and by the hand-written `pet_thornthwaite` and
-`pet_hargreaves` paths.
+The policy lives in one place — `utils.DailyCalendarPlan.from_year_span()` owns the day
+distribution, and `_build_daily_calendar_plan()` owns the xarray coordinate validation —
+and is applied by the `@xarray_adapter` decorator (SPI, SPEI, EDDI, PNP), by the
+hand-written `pet_thornthwaite` and `pet_hargreaves` paths, and by the CLI through
+`__main__._daily_calendar_plan()`.
 
 Two paths remain uncovered, deliberately. `@xarray_adapter(infer_params=False)` disables coordinate
 inference entirely, and with it the calendar contract, so a function decorated that way and given an

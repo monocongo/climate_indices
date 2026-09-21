@@ -19,7 +19,7 @@ import pytest
 import xarray as xr
 
 from climate_indices import __main__ as cli_main
-from climate_indices import palmer
+from climate_indices import compute, palmer
 from climate_indices.__main__ import DatasetLayout
 
 _DIVISION_ID = "0101"
@@ -270,6 +270,36 @@ class TestPalmersWorker:
         np.testing.assert_allclose(_read(cli_main._KEY_RESULT_PMDI), expected_pmdi, equal_nan=True)
         np.testing.assert_allclose(_read(cli_main._KEY_RESULT_ZINDEX), expected_zindex, equal_nan=True)
         np.testing.assert_allclose(_read(cli_main._KEY_RESULT_SCPDSI), expected_scpdsi, equal_nan=True)
+
+    def test_writer_trims_copied_input_chunks_to_the_output_shape(self, monkeypatch, tmp_path, caplog):
+        """An oversized copied chunk must not reach any of the five output writers."""
+        n_time = 24
+        shape = (1, n_time)
+        shared_arrays = {key: _make_shared_array(np.zeros(n_time), shape) for key, _, _ in cli_main._PALMER_OUTPUTS}
+        monkeypatch.setattr(cli_main, "_global_shared_arrays", shared_arrays)
+        request = cli_main._IndexRequest(
+            index="palmers",
+            output_file_base=str(tmp_path / "out"),
+            input_type=DatasetLayout.DIVISIONS,
+            periodicity=compute.Periodicity.monthly,
+            chunksizes="input",
+        )
+        context = cli_main._ComputeContext(
+            request=request,
+            dataset=xr.Dataset(),
+            output_dims=("division", "time"),
+            output_shape=shape,
+            output_encodings={"chunksizes": (1, 100)},
+            output_engine="h5netcdf",
+            arguments={},
+        )
+
+        cli_main._write_palmer_outputs(context)
+
+        assert caplog.messages.count("Trimming copied input chunksizes (1, 100) to the output shape (1, 24)") == 1
+        for _, var_name, _ in cli_main._PALMER_OUTPUTS:
+            with xr.open_dataset(tmp_path / f"out_{var_name}.nc", engine="h5netcdf") as written:
+                assert written[var_name].encoding["chunksizes"] == shape
 
     def test_grid_worker_applies_the_supplied_callable(
         self,

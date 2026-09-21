@@ -1,5 +1,9 @@
 # The xarray DataArray API stays Beta through 3.0.0 and is promoted no earlier than 3.1.0
 
+## Status
+
+Accepted.
+
 ADR-0001 added an xarray-native API alongside the NumPy core, and it has been documented
 as **Beta** since 2.3.0: computation results match the stable NumPy API, while the
 interface surface (parameter inference, metadata attributes, coordinate handling) may

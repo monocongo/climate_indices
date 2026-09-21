@@ -145,13 +145,16 @@ class _ComputeContext:
     arguments: dict[str, Any]
     # inputs a registration prepared alongside the request, e.g. Palmer's AWC
     prepared: xr.Dataset | None = None
+    # the daily 366-day calendar plan shared by input conversion and output restoration
+    calendar_plan: utils.DailyCalendarPlan | None = None
 
 
 # the dimension orders the shared-array transport accepts, by layout: it copies
 # each variable's values in storage order, and the kernels index the time axis
 # at a fixed position (_TIME_AXIS_INDEX), so a time-carrying variable has to be
 # stored time-last. The layout classifier is wider -- it accepts a time-major
-# grid for the xarray-backed KBDI path, which never enters the transport
+# grid or divisions variable for the xarray-backed KBDI path, which never enters
+# the transport
 _TRANSPORT_DIMENSIONS: dict[DatasetLayout, tuple[tuple[Hashable, ...], ...]] = {
     DatasetLayout.GRID: (("lat", "lon", "time"),),
     DatasetLayout.DIVISIONS: (("division", "time"),),
@@ -564,11 +567,31 @@ def _log_status(request: _IndexRequest) -> None:
         )
 
 
+def _daily_calendar_plan(dataset: xr.Dataset) -> utils.DailyCalendarPlan:
+    """
+    Plan the 366-day calendar conversion for a daily input dataset.
+
+    The plan's positional mapping assumes a series beginning on January 1 and
+    stepping one calendar day at a time, so those are validated here rather
+    than left to silently misalign the values.
+
+    :param dataset: the input dataset whose time coordinate defines the span
+    :return: the plan shared by the input conversion and the output restoration
+    """
+    time_values = np.asarray(dataset["time"].values, dtype="datetime64[D]")
+    year_start = int(time_values[0].astype("datetime64[Y]").astype(int)) + 1970
+    if time_values[0] != np.datetime64(f"{year_start:04d}-01-01", "D"):
+        raise ValueError("Daily input must begin on January 1 to preserve calendar-day semantics")
+    if time_values.size > 1 and not np.all(np.diff(time_values) == np.timedelta64(1, "D")):
+        raise ValueError("Daily input time coordinate must contain contiguous daily steps")
+    final_year = int(time_values[-1].astype("datetime64[Y]").astype(int)) + 1970
+    return utils.DailyCalendarPlan.from_year_span(year_start, final_year - year_start + 1, len(time_values))
+
+
 def _drop_data_into_shared_arrays_grid(
     dataset: xr.Dataset,
     var_names: list[str],
-    periodicity: compute.Periodicity,
-    data_start_year: int,
+    calendar_plan: utils.DailyCalendarPlan | None,
 ) -> tuple[int, ...]:
     output_shape = None
 
@@ -577,20 +600,12 @@ def _drop_data_into_shared_arrays_grid(
     for var_name in var_names:
         dims = dataset[var_name].dims
 
-        # convert daily values into 366-day years
-        if periodicity == compute.Periodicity.daily:
-            initial_year = int(str(dataset["time"][0].data)[0:4])
-            final_year = int(str(dataset["time"][-1].data)[0:4])
-            total_years = final_year - initial_year + 1
-            var_values = np.apply_along_axis(
-                utils.transform_to_366day,
-                len(dims) - 1,
-                dataset[var_name].values,
-                data_start_year,
-                total_years,
-            )
+        # convert daily values into 366-day years; a time-free companion such
+        # as a division latitude keeps its shape
+        if calendar_plan is not None and "time" in dataset[var_name].dims:
+            var_values = np.apply_along_axis(calendar_plan.to_all_leap, len(dims) - 1, dataset[var_name].values)
 
-        else:  # assumed to be monthly
+        else:  # monthly, or a time-free companion variable
             var_values = dataset[var_name].values
 
         output_shape = var_values.shape
@@ -617,12 +632,14 @@ def _drop_data_into_shared_arrays_grid(
 def _drop_data_into_shared_arrays_divisions(
     dataset: xr.Dataset,
     var_names: list[str],
+    calendar_plan: utils.DailyCalendarPlan | None,
 ) -> tuple[int, ...]:
     """
     Drop data into shared arrays for use in the index computations.
 
     :param dataset:
     :param var_names:
+    :param calendar_plan: the daily conversion plan, or None for monthly input
     :return:
     """
     output_shape = None
@@ -630,21 +647,31 @@ def _drop_data_into_shared_arrays_divisions(
     # get the data arrays we'll use later in the index computations
     global _global_shared_arrays
     for var_name in var_names:
+        # convert daily values into 366-day years; divisions are time-last
+        if calendar_plan is not None and "time" in dataset[var_name].dims:
+            var_values = np.apply_along_axis(
+                calendar_plan.to_all_leap,
+                len(dataset[var_name].dims) - 1,
+                dataset[var_name].values,
+            )
+        else:
+            var_values = dataset[var_name].values
+
         # create a shared memory array, wrap it as a numpy array and
         # copy the data (values) from this variable's DataArray
-        shared_array = multiprocessing.Array("d", int(np.prod(dataset[var_name].shape)))
-        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(dataset[var_name].shape)  # type: ignore[call-overload]
-        np.copyto(shared_array_np, dataset[var_name].values)
+        shared_array = multiprocessing.Array("d", int(np.prod(var_values.shape)))
+        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(var_values.shape)  # type: ignore[call-overload]
+        np.copyto(shared_array_np, var_values)
 
         # add to the dictionary of arrays
         _global_shared_arrays[var_name] = {
             _KEY_ARRAY: shared_array,
-            _KEY_SHAPE: dataset[var_name].shape,
+            _KEY_SHAPE: var_values.shape,
         }
 
         # we know we'll want the output for divisions to be 2-D
-        if len(dataset[var_name].shape) == 2:
-            output_shape = dataset[var_name].shape
+        if len(var_values.shape) == 2:
+            output_shape = var_values.shape
 
         # drop the variable from the dataset (we're assuming this frees the memory)
         dataset = dataset.drop_vars(names=[var_name])
@@ -666,12 +693,17 @@ def _input_chunksizes(dataset: xr.Dataset) -> tuple[tuple[int, ...], tuple[Any, 
     """
     Find the first input variable's chunk sizes, for copying onto the output.
 
+    A variable counts as chunked when its encoding reports non-empty
+    ``chunksizes`` and it is not explicitly marked contiguous: backends such
+    as h5netcdf report on-disk chunk sizes without a ``contiguous`` key.
+
     Note that the netcdf spec doesn't require that all data variables have the
     same chunk sizes.
 
     param dataset: the opened inputs
     return: the chunk sizes found and the dimensions they correspond to, or a
-        pair of empty tuples if no variable is chunked
+        pair of empty tuples if no data variable reports chunk sizes without
+        being explicitly marked contiguous
     """
     for da in dataset.data_vars.values():
         if not da.encoding.get("contiguous", False):
@@ -752,6 +784,27 @@ def _reordered_chunksizes(
         output_dims,
     )
     return ()
+
+
+def _trimmed_output_encodings(output_encodings: dict[str, Any] | None, shape: tuple[int, ...]) -> dict[str, Any] | None:
+    """
+    Trim a copied chunksizes encoding to the shape of the data being written.
+
+    An input variable written with an unlimited dimension can report a chunk
+    larger than the output's dimension, which the writer either rejects or
+    silently drops, so trim the requested chunks to the output shape.
+
+    param output_encodings: the encodings to apply to the written variable
+    param shape: the shape of the data being written
+    return: the encodings with any chunk sizes trimmed to the shape, or None
+    """
+    if not output_encodings or len(output_encodings["chunksizes"]) != len(shape):
+        return output_encodings
+    chunksizes = output_encodings["chunksizes"]
+    trimmed = tuple(min(chunk, length) for chunk, length in zip(chunksizes, shape, strict=True))
+    if trimmed != tuple(chunksizes):
+        _logger.warning("Trimming copied input chunksizes %s to the output shape %s", chunksizes, shape)
+    return {"chunksizes": trimmed}
 
 
 def _normalize_precipitation_units(dataset: xr.Dataset, var_name: str | None) -> None:
@@ -839,8 +892,10 @@ def _compute_write_index(request: _IndexRequest) -> tuple[str, str] | None:
     if chunks is None:
         raise ValueError(f"Unsupported input type: {request.input_type}")
 
-    # Since multiple variables can be in the same file, de-duplicate the filelist.
-    dataset = xr.open_mfdataset(list(set(files)), chunks=chunks)
+    # Since multiple variables can be in the same file, de-duplicate the
+    # filelist, preserving its order so that the variable whose chunk sizes
+    # get copied doesn't depend on set iteration order.
+    dataset = xr.open_mfdataset(list(dict.fromkeys(files)), chunks=chunks)
 
     output_chunksizes: tuple[int, ...] = ()
     chunksizes_dims: tuple[Any, ...] = ()
@@ -852,6 +907,10 @@ def _compute_write_index(request: _IndexRequest) -> tuple[str, str] | None:
 
     # get the initial year of the data
     request.data_start_year = int(str(dataset["time"].values[0])[0:4])
+
+    # a daily input needs the 366-day conversion for the shared arrays and the
+    # inverse conversion when the result is written
+    calendar_plan = _daily_calendar_plan(dataset) if request.periodicity == compute.Periodicity.daily else None
 
     output_dims = _output_dims(request, dataset)
     output_chunksizes = _reordered_chunksizes(output_chunksizes, chunksizes_dims, output_dims)
@@ -880,18 +939,16 @@ def _compute_write_index(request: _IndexRequest) -> tuple[str, str] | None:
             raise ValueError(message)
 
     if request.input_type == DatasetLayout.DIVISIONS:
-        output_shape = _drop_data_into_shared_arrays_divisions(dataset, input_var_names)
+        output_shape = _drop_data_into_shared_arrays_divisions(dataset, input_var_names, calendar_plan)
     else:
         output_shape = _drop_data_into_shared_arrays_grid(
             dataset,
             input_var_names,
-            request.periodicity,
-            request.data_start_year,
+            calendar_plan,
         )
 
     output_encodings = {"chunksizes": output_chunksizes} if output_chunksizes else None
-    # a chunksizes encoding is only honored by an HDF5-backed engine, and the
-    # supported xarray versions still default to scipy when netCDF4 is absent
+    # pin the HDF5-backed writer so copied chunk sizes are always honored
     output_engine: Literal["h5netcdf"] | None = "h5netcdf" if output_chunksizes else None
 
     context = _ComputeContext(
@@ -901,6 +958,7 @@ def _compute_write_index(request: _IndexRequest) -> tuple[str, str] | None:
         output_shape=output_shape,
         output_encodings=output_encodings,
         output_engine=output_engine,
+        calendar_plan=calendar_plan,
         prepared=prepared,
         arguments=handler.build_arguments(request) if handler.build_arguments is not None else {},
     )
@@ -1549,14 +1607,12 @@ def _write_single_output(context: _ComputeContext) -> tuple[str, str]:
     # get the shared memory results array and convert it to a numpy array
     index_values = _shared_array(handler.output_keys[0], context.output_shape).astype(float)
 
-    # convert daily values into normal/Gregorian calendar years
-    if request.periodicity == compute.Periodicity.daily:
-        assert request.data_start_year is not None, "the inputs' start year is read when they are opened"
+    # convert daily values back into normal/Gregorian calendar years
+    if context.calendar_plan is not None:
         index_values = np.apply_along_axis(
-            utils.transform_to_gregorian,
+            context.calendar_plan.to_gregorian,
             len(context.output_dims) - 1,
             index_values,
-            request.data_start_year,
         )
 
     # create a new variable to contain the index values, assign into the dataset
@@ -1565,7 +1621,7 @@ def _write_single_output(context: _ComputeContext) -> tuple[str, str]:
         dims=context.output_dims,
         data=index_values,
         attrs=output_var_attributes,
-        encoding=context.output_encodings,
+        encoding=_trimmed_output_encodings(context.output_encodings, index_values.shape),
     )
     dataset[output_var_name] = variable
 
@@ -1590,6 +1646,7 @@ def _write_palmer_outputs(context: _ComputeContext) -> None:
     :param context: the opened inputs and output settings of the request
     """
     dataset = context.dataset
+    output_encodings = _trimmed_output_encodings(context.output_encodings, context.output_shape)
     for key, var_name, long_name in _PALMER_OUTPUTS:
         # get the shared memory results array and convert it to a numpy array
         index_values = _shared_array(key, context.output_shape).astype(float)
@@ -1604,7 +1661,7 @@ def _write_palmer_outputs(context: _ComputeContext) -> None:
             dims=context.output_dims,
             data=index_values,
             attrs=attrs,
-            encoding=context.output_encodings,
+            encoding=output_encodings,
         )
         dataset[var_name] = variable
 
@@ -1856,17 +1913,17 @@ def _run_kbdi(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
         kbdi_values.name = "kbdi_imperial" if arguments.kbdi_units == "imperial" else "kbdi"
         output_file = f"{request.output_file_base}_{kbdi_values.name}.nc"
 
-        # honor --chunksizes input by copying the precipitation
-        # variable's on-disk chunks to the output variable; a chunksizes
-        # encoding is only honored by an HDF5-backed engine, and the
-        # supported xarray versions still default to scipy when
-        # netCDF4 is absent
-        output_engine: Literal["h5netcdf"] | None = None
+        # honor --chunksizes input by copying the precipitation variable's
+        # on-disk chunks to the output variable, trimmed to the written shape;
+        # pin the HDF5-backed writer so copied chunk sizes are always honored
+        output_encodings = None
         if request.chunksizes == "input":
             input_chunksizes = dataset_precip[request.var_name_precip].encoding.get("chunksizes")
             if input_chunksizes:
-                kbdi_values.encoding["chunksizes"] = input_chunksizes
-                output_engine = "h5netcdf"
+                output_encodings = _trimmed_output_encodings({"chunksizes": input_chunksizes}, kbdi_values.shape)
+        output_engine: Literal["h5netcdf"] | None = "h5netcdf" if output_encodings else None
+        if output_encodings:
+            kbdi_values.encoding.update(output_encodings)
 
         _logger.info("Writing KBDI values to file: %s", output_file)
         kbdi_values.to_netcdf(output_file, engine=output_engine)

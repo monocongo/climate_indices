@@ -2,6 +2,7 @@
 
 Every name in ``__all__`` is supported public API: helpers with no in-package
 caller (``compute_days``, ``is_data_valid``, ``rmse``, ``sign_change``,
+``transform_to_366day``, ``transform_to_gregorian``,
 ``gregorian_length_as_366day``, ``reshape_to_divs_years_months``) are kept for
 downstream users rather than deprecated, since removing them would break
 callers without offering an in-library replacement.
@@ -9,10 +10,13 @@ callers without offering an in-library replacement.
 
 import calendar
 import logging
+from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 import numpy as np
 
+from climate_indices.exceptions import DataShapeError
 from climate_indices.logging_config import get_logger as _get_structlog_logger
 
 # module-level structlog logger
@@ -20,6 +24,7 @@ _logger = _get_structlog_logger(__name__)
 
 # declare the function names that should be included in the public API for this module
 __all__ = [
+    "DailyCalendarPlan",
     "compute_days",
     "count_zeros_and_non_missings",
     "get_logger",
@@ -332,6 +337,16 @@ def gregorian_length_as_366day(
     length_gregorian: int,
     year_start: int,
 ) -> int:
+    """
+    Return the number of values a Gregorian span occupies in a 366-day year layout.
+
+    A trailing partial year is counted with only its observed days, not padded;
+    ``DailyCalendarPlan.all_leap_length`` is the padded length for the same span.
+
+    :param length_gregorian: the number of Gregorian days in the span
+    :param year_start: the Gregorian year of the first day
+    :return: the number of 366-day-layout values
+    """
     year = year_start
     remaining = length_gregorian
     length_366day = 0
@@ -350,6 +365,175 @@ def gregorian_length_as_366day(
         year += 1
 
     return length_366day
+
+
+@dataclass(frozen=True)
+class DailyCalendarPlan:
+    """
+    Map Gregorian daily values to the NumPy core's 366-day calendar positions.
+
+    The values are assumed to begin on January 1 of ``year_start`` and to step
+    one calendar day at a time; the plan is a positional mapping and validates
+    only the total length, not the timestamps themselves.
+
+    :param year_start: the Gregorian year of the first value
+    :param observed_days_by_year: the number of Gregorian values falling in each year
+    """
+
+    year_start: int
+    observed_days_by_year: tuple[int, ...]
+
+    def __post_init__(self) -> None:
+        """Reject year counts that cannot describe one contiguous daily series."""
+        for offset, observed_days in enumerate(self.observed_days_by_year):
+            days_in_year = 366 if calendar.isleap(self.year_start + offset) else 365
+            if not 0 <= observed_days <= days_in_year:
+                raise ValueError(
+                    f"Invalid observed days for {self.year_start + offset}: "
+                    f"{observed_days} is outside 0..{days_in_year}"
+                )
+            if offset < len(self.observed_days_by_year) - 1 and observed_days != days_in_year:
+                raise ValueError(
+                    f"Invalid observed days for {self.year_start + offset}: "
+                    f"only the final year may be partial, got {observed_days} of {days_in_year}"
+                )
+
+    @classmethod
+    def from_year_span(cls, year_start: int, total_years: int, observed_length: int) -> "DailyCalendarPlan":
+        """
+        Plan the conversion of ``observed_length`` Gregorian daily values spanning ``total_years`` years.
+
+        Values are distributed across the years in calendar order. Only the
+        final year may be partial; its missing positions are held as NaN when
+        the plan converts to the 366-day layout.
+
+        Args:
+            year_start: the Gregorian year of the first value.
+            total_years: the number of Gregorian years the values span.
+            observed_length: the number of Gregorian daily values.
+
+        Returns:
+            The plan for this span.
+
+        Raises:
+            ValueError: if ``observed_length`` is negative or exceeds the days
+                in the declared span, or if the span cannot be distributed
+                with only a partial final year.
+        """
+        if observed_length < 0:
+            raise ValueError("Invalid observed length: must not be negative")
+        year_capacities = tuple(
+            366 if calendar.isleap(year) else 365 for year in range(year_start, year_start + total_years)
+        )
+        if observed_length > sum(year_capacities):
+            raise ValueError("Invalid observed length: exceeds the days in the declared span")
+        remaining = observed_length
+        observed_days: list[int] = []
+        for days_in_year in year_capacities:
+            observed_days.append(min(remaining, days_in_year))
+            remaining -= observed_days[-1]
+        return cls(year_start, tuple(observed_days))
+
+    @property
+    def original_length(self) -> int:
+        """Return the number of observed Gregorian days."""
+        return sum(self.observed_days_by_year)
+
+    @property
+    def all_leap_length(self) -> int:
+        """Return the number of values required by the 366-day NumPy core."""
+        return len(self.observed_days_by_year) * 366
+
+    def to_all_leap(self, values: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
+        """
+        Insert synthetic February 29 values while retaining a partial final year.
+
+        Args:
+            values: an array whose leading axis is one complete Gregorian record.
+
+        Returns:
+            The values in the 366-day layout, padded with NaN.
+
+        Raises:
+            DataShapeError: if the leading axis length is not ``original_length``.
+        """
+        source = np.asarray(values)
+        if source.ndim < 1 or source.shape[0] != self.original_length:
+            raise DataShapeError(
+                "Daily calendar transformation requires one complete time-series slice",
+                expected_shape=f"({self.original_length},)",
+                actual_shape=source.shape,
+            )
+
+        transformed = np.full((self.all_leap_length, *source.shape[1:]), np.nan, dtype=float)
+        source_index = 0
+        target_index = 0
+
+        for year_offset, observed_days in enumerate(self.observed_days_by_year):
+            year = self.year_start + year_offset
+            source_year = source[source_index : source_index + observed_days]
+
+            if calendar.isleap(year):
+                transformed[target_index : target_index + observed_days] = source_year
+            else:
+                days_before_february_29 = min(observed_days, 59)
+                transformed[target_index : target_index + days_before_february_29] = source_year[
+                    :days_before_february_29
+                ]
+                if observed_days > 59:
+                    transformed[target_index + 59] = (source_year[58] + source_year[59]) / 2
+                    transformed[target_index + 60 : target_index + observed_days + 1] = source_year[59:]
+
+            source_index += observed_days
+            target_index += 366
+
+        return transformed
+
+    def to_gregorian(self, values: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
+        """
+        Remove synthetic February 29 values and trim to observed Gregorian days.
+
+        Args:
+            values: an array whose leading axis is one complete 366-day record.
+
+        Returns:
+            The values in the Gregorian layout, trimmed to the observed days.
+
+        Raises:
+            DataShapeError: if the leading axis length is not ``all_leap_length``.
+        """
+        source = np.asarray(values)
+        if source.ndim < 1 or source.shape[0] != self.all_leap_length:
+            raise DataShapeError(
+                "Daily calendar restoration requires one complete 366-day time-series slice",
+                expected_shape=f"({self.all_leap_length},)",
+                actual_shape=source.shape,
+            )
+
+        restored = np.full((self.original_length, *source.shape[1:]), np.nan, dtype=float)
+        source_index = 0
+        target_index = 0
+
+        for year_offset, observed_days in enumerate(self.observed_days_by_year):
+            year = self.year_start + year_offset
+            if calendar.isleap(year):
+                restored[target_index : target_index + observed_days] = source[
+                    source_index : source_index + observed_days
+                ]
+            else:
+                days_before_february_29 = min(observed_days, 59)
+                restored[target_index : target_index + days_before_february_29] = source[
+                    source_index : source_index + days_before_february_29
+                ]
+                if observed_days > 59:
+                    restored[target_index + 59 : target_index + observed_days] = source[
+                        source_index + 60 : source_index + observed_days + 1
+                    ]
+
+            source_index += 366
+            target_index += observed_days
+
+        return restored
 
 
 def transform_to_366day(
@@ -373,6 +557,9 @@ def transform_to_366day(
     that corresponds to Feb. 29th in the non-leap year having a value that's an
     average of the Feb 28th and Mar. 1st values.
 
+    Every year but the last must be complete; a partial final year is padded
+    with NaN to a whole 366-day year.
+
     :param original: 1-D array of daily values
     :param year_start: the year corresponding to the initial year of the input
         array, used to determine whether  each increment of daily values
@@ -380,10 +567,8 @@ def transform_to_366day(
     :param total_years: the total number of years represented by the input array
     :return: 1-D array of values with size (total_years * 366)
     """
-    # the original time series is assumed to be a one-dimensional
-    # array of floats corresponding to a number of full years
-
-    # validate the arguments
+    # the Gregorian values are laid out one year after another, with only the
+    # final year permitted to be partial; the plan pads it to a whole 366-day year
     if len(original.shape) > 1:
         message = "Invalid input array: only 1-D arrays are supported"
         _logger.error(
@@ -394,66 +579,28 @@ def transform_to_366day(
         )
         raise ValueError(message)
 
-    # allocate the new array for 366 daily values per year,
-    # including a faux Feb 29 for non-leap years
-    all_leap = np.full((total_years * 366,), np.nan)
+    if year_start < 1:
+        raise ValueError("Invalid year start: years must be positive")
+    if total_years < 0:
+        raise ValueError("Invalid total years: must not be negative")
+    if total_years == 0:
+        # preserved legacy behavior: no years requested, no values returned
+        return np.full((0,), np.nan)
+    if len(original) == 0:
+        raise ValueError("Invalid input array: an empty array cannot represent any year")
 
-    # index of the first day of the year within the original and all_leap arrays
-    original_index = 0
-    all_leap_index = 0
+    plan = DailyCalendarPlan.from_year_span(year_start, total_years, len(original))
+    if plan.original_length != len(original):
+        # more values than the declared span can hold
+        raise ValueError("Incompatible shapes")
+    for offset, observed_days in enumerate(plan.observed_days_by_year[:-1]):
+        days_in_year = 366 if calendar.isleap(year_start + offset) else 365
+        if observed_days != days_in_year:
+            # only the final year may be short; an earlier gap means the input
+            # length contradicts the declared span
+            raise ValueError("Incompatible shapes")
 
-    # loop over each year
-    for year in range(year_start, year_start + total_years):
-        if calendar.isleap(year):
-            # write the next 366 days from the original time
-            # series into the all_leap array
-            all_leap[all_leap_index : (all_leap_index + 366)] = original[original_index : (original_index + 366)]
-
-            # increment the "start day of the current year" index for the original
-            # so that the next iteration jumps ahead a full year
-            original_index += 366
-
-        else:
-            # write the first 59 days (Jan 1 through Feb 28) from
-            # the original time series into the all_leap array
-            all_leap[all_leap_index : (all_leap_index + 59)] = original[original_index : (original_index + 59)]
-
-            # average the Feb 28th and March 1st values as the faux Feb 29th value
-            all_leap[all_leap_index + 59] = (original[original_index + 58] + original[original_index + 59]) / 2
-
-            # write the remaining days of the year (Mar 1 through Dec 31)
-            # from the original into the all_leap array
-            original_year_end_index = original_index + 365
-            if len(original) < original_year_end_index:
-                # this should be the final year, and we're just adding the remaining days
-                remainder = original[original_index + 59 :]
-                difference = len(all_leap[all_leap_index + 60 :]) - len(remainder)
-                if difference > 0:
-                    final_days = np.pad(
-                        remainder,
-                        (
-                            0,
-                            difference,
-                        ),
-                        mode="constant",
-                        constant_values=np.nan,
-                    )
-                elif difference != 0:
-                    raise ValueError("Incompatible shapes")
-                else:
-                    final_days = remainder
-                all_leap[all_leap_index + 60 :] = final_days
-                continue
-            else:
-                all_leap[all_leap_index + 60 : (all_leap_index + 366)] = original[
-                    original_index + 59 : original_year_end_index
-                ]
-
-            # increment the "start day of the current year" index for the original
-            # so the next iteration jumps ahead a full year
-            original_index += 365
-
-        all_leap_index += 366
+    all_leap = plan.to_all_leap(original)
 
     _logger.debug(
         "array_transformation_completed",
@@ -494,11 +641,7 @@ def transform_to_gregorian(
         values) of the input array, used to determine whether each 366
         increment of daily values represents an actual leap year
     """
-    # original time series is assumed to be a one-dimensional array of floats
-    # corresponding to a number of full years, with each year containing
-    # 366 days, as if each year is a leap year
-
-    # validate the arguments
+    # the input is the NumPy core's 366-day layout, one whole year per 366 values
     if len(original.shape) > 1:
         message = "Invalid input array: only 1-D arrays are supported"
         _logger.error(message)
@@ -507,47 +650,18 @@ def transform_to_gregorian(
         message = "Invalid input array: only 1-D arrays containing " + "multiples of 366 days are supported"
         _logger.error(message)
         raise ValueError(message)
+    if not isinstance(year_start, (int, np.integer)):
+        raise TypeError("Invalid year start: year must be an integer")
+    if year_start < 1:
+        raise ValueError("Invalid year start: years must be positive")
 
-    # find the total number of actual days between the start and end year
     total_years = int(original.size / 366)
-    year_end = year_start + total_years - 1
-    days_actual = (datetime(year_end, 12, 31) - datetime(year_start, 1, 1)).days + 1
-
-    # allocate the new array we'll write daily values into,
-    # including a faux Feb 29 for non-leap years
-    gregorian = np.full((days_actual,), np.nan)
-
-    # index of the first day of the year within the original and gregorian arrays
-    original_index = 0
-    gregorian_index = 0
-
-    # loop over each year
-    for year in range(year_start, year_start + total_years):
-        if calendar.isleap(year):
-            # write the next 366 days from the original
-            # time series into the gregorian array
-            gregorian[gregorian_index : (gregorian_index + 366)] = original[original_index : (original_index + 366)]
-
-            # increment the "start day of the current year" index for the original
-            # so the next iteration jumps ahead a full year
-            gregorian_index += 366
-
-        else:
-            # write the first 59 days (Jan 1 through Feb 28) from the original
-            # time series into the gregorian array
-            gregorian[gregorian_index : (gregorian_index + 59)] = original[original_index : (original_index + 59)]
-
-            # write the remaining days of the year (Mar 1 through Dec 31)
-            # from the original into the gregorian array
-            gregorian[(gregorian_index + 59) : (gregorian_index + 365)] = original[
-                (original_index + 60) : (original_index + 366)
-            ]
-
-            # increment the "start day of the current year" index for
-            # the original so the next iteration jumps ahead a full year
-            gregorian_index += 365
-
-        original_index += 366
+    # the input's 366-day layout gives every year a full Gregorian complement
+    plan = DailyCalendarPlan(
+        year_start,
+        tuple(366 if calendar.isleap(year) else 365 for year in range(year_start, year_start + total_years)),
+    )
+    gregorian = plan.to_gregorian(original)
 
     _logger.debug(
         "array_transformation_completed",
