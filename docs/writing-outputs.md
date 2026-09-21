@@ -95,6 +95,22 @@ does not go straight to `.to_netcdf()`. Load the result first when it fits in me
 stream the write for a result that does not. Both paths are in
 [Operational Guidance](xarray_compatibility.md#operational-guidance).
 
+Write several results into one file by naming each in a Dataset:
+
+```python
+import xarray as xr
+
+combined = xr.Dataset({
+    "pet": pet,         # one DataArray per computed index
+    "spi_3": spi_3,
+    "spei_3": spei_3,
+})
+combined.to_netcdf("out/indices.nc")
+
+# later
+loaded = xr.open_dataset("out/indices.nc")
+```
+
 ## Verify the write
 
 Reopen the output and check the metadata that makes it interpretable later,
