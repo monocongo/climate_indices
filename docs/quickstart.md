@@ -154,7 +154,9 @@ that do not fit in memory.
 
 ## Plot the results
 
-Plotting confirms that the indices track the synthetic seasonal pattern:
+Plotting confirms the result carries the input time axis. PET follows the
+synthetic seasonal cycle; SPI and SPEI are standardized per calendar month, so
+they show anomalies rather than the cycle:
 
 ```python
 import matplotlib.pyplot as plt
