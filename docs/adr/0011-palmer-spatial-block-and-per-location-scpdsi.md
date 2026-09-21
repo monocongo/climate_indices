@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted.
+Amended: the per-location cost argument below counted a duration-factor fit per
+recursion. The code fits the wet and dry factors once per location and reuses them
+across all four recursions (`palmer.py`, `_calculate_scpdsi_prepared`), so the
+fits are one pair, not four. The decision — scPDSI stays on the per-location
+path — is unchanged.
 
 ADR-0001 named Palmer the documented exception to the modern xarray API and required
 a separate, explicit decision before it could grow one: "Adding xarray support for
@@ -29,12 +33,12 @@ whole recursion has one code path rather than a duplicated scalar and vectorized
 - `_calculate_scpdsi_prepared` runs a full Wells backtracking recursion
   (`_palmer_wells.calculate`) **four times** per location -- once raw, three more after
   percentile rescaling -- not once.
-- Each of those runs is preceded by a duration-factor fit
-  (`self_calibration.duration_factors`) that itself makes twenty rolling-window passes
-  over the calibration Z-index (ten window lengths, wet and dry sides) plus a
-  correlation-adaptive least-squares fit with a trailing-point-dropping loop. None of
-  this is bulk array arithmetic; it is per-location control flow at least as intricate
-  as the PDSI spell recursion, times four.
+- The two duration-factor fits (wet and dry, `self_calibration.duration_factors`)
+  run once per location, before the four recursions, and are reused by them; each
+  fit makes twenty rolling-window passes over the calibration Z-index (ten window
+  lengths, wet and dry sides) plus a correlation-adaptive least-squares fit with
+  a trailing-point-dropping loop. None of this is bulk array arithmetic; it is
+  per-location control flow at least as intricate as the PDSI spell recursion.
 - `_palmer_wells.calculate` raises `ConvergenceError` on a non-contracting duration
   factor or a zero denominator. In a blocked kernel, one cell's `ConvergenceError` would
   fail the whole block; PDSI's masked recursion has no such per-cell exception path to

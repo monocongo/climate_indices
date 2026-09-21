@@ -2,11 +2,13 @@
 
 ## Status
 
-Amended: the shared time-chunk helper the Decision section names is
-`validation.validate_dask_chunks`; the `xarray_adapter._validate_dask_chunks`
-spelling this record carried did not name a symbol that ever existed. The
-decision — require a single `time` chunk, raise `CoordinateValidationError`
-otherwise, never rechunk automatically — is unchanged.
+Amended: the shared dimension-chunk guard is now
+`validation.validate_dask_chunks`. The `xarray_adapter._validate_dask_chunks`
+spelling this record carried named the private function until `68e04aac` moved it
+behind the public validation facade; fire adapters call the moved helper with the
+`time` dimension. The decision — require a single `time` chunk, raise
+`CoordinateValidationError` otherwise, never rechunk automatically — is
+unchanged.
 
 KBDI and the CFFWIS moisture codes are daily nonlinear recurrences. Unlike the
 existing weather-only Fosberg calculation, they must retain both the published

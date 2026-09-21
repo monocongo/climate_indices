@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted.
+Amended: the state contract this record describes is the scalar one. The stateful
+fire implementations also carry per-cell state for spatial input, where
+`trailing_gap_days` is an `int64` array whose `-1` entries mark cells whose
+recurrence has not started (`fire/_cffwis.py`, `fire/_kbdi.py`; #799–#807). The
+policy itself is unchanged.
 
 A daily recurrence turns every missing observation into a fork in the state:
 treat the day as no change, poison the rest of the series, or invent an

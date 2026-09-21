@@ -5,8 +5,8 @@ they were made. Each record states the decision and the consequences the code
 has to live with.
 
 Each record opens with a `## Status` line naming its standing against the
-current code: `Accepted`, `Amended` (the decision stands, but a later change
-moved its detail), or `Superseded by ADR-NNNN`. The authoring conventions are in
+current code: `Accepted`, `Amended` (the decision stands; the record's text was
+corrected in place), or `Superseded by ADR-NNNN`. The authoring conventions are in
 [CONTRIBUTING.md](https://github.com/monocongo/climate_indices/blob/main/CONTRIBUTING.md).
 
 ```{toctree}

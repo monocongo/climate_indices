@@ -2,8 +2,9 @@
 
 ## Status
 
-Amended: the legacy `__spi__.py` entry point named below was removed in 3.0.0
-(see [the API changes record](../deprecations/api-changes.md)), leaving
+Amended: the `__spi__.py` entry point this record originally named was removed
+in 3.0.0 (`84b35215`, #957; see
+[the API changes record](../deprecations/api-changes.md)), leaving
 `__main__.py` as the whole CLI path. The decision — multiprocessing for the CLI,
 Dask for the xarray API — is unchanged.
 

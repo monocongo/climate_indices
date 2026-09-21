@@ -29,14 +29,14 @@ xarray adapter and CF metadata registry, and do not add unqualified entries to
 `typed_public_api.py`. CFFWIS returns named outputs: a result object for NumPy
 and an `xarray.Dataset` for xarray.
 
-Keep `fire.py` flat until it exceeds roughly 1,500 lines or CFFWIS state
-handling needs separated modules. Promotion to a `fire` package must preserve
-the `from climate_indices import fire` import and every public function name.
-`fire.py` passed that line count with the CFFWIS moisture codes (#803).
-Promotion was deferred to a dedicated mechanical refactor tracked against the
-remaining CFFWIS work (#804) and landed in `cec29737`: the flat module was a
-deliberate, recorded deferral rather than a silent departure from the trigger
-above, and that deferral is now complete.
+The original instruction was to keep `fire.py` flat until it exceeded roughly
+1,500 lines or CFFWIS state handling needed separated modules, and any promotion
+to a `fire` package had to preserve the `from climate_indices import fire` import
+and every public function name. `fire.py` passed that line count with the CFFWIS
+moisture codes (#803); promotion was deferred to a dedicated mechanical refactor
+tracked against the remaining CFFWIS work (#804) and landed in `cec29737`, so the
+flat module was a deliberate, recorded deferral rather than a silent departure
+from the trigger above, and that deferral is now complete.
 
 ## Consequences
 
