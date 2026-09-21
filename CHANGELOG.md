@@ -123,6 +123,24 @@ change states what a user sees, how to detect it, and what to change in
   writes the requested layout under the minimum-dependency environment instead of
   failing; shared arrays are reset per invocation. The `spi` deprecation migration
   guidance was corrected (#919).
+- **CLI `--chunksizes input`**: the option was a silent no-op with the `h5netcdf`
+  backend, and a copied chunk size larger than the dimension being written was dropped by
+  the writer, so it was ignored again for inputs carrying an unlimited dimension. Copied
+  input chunk sizes are now trimmed to the shape actually written, with a warning when
+  one is reduced, across the single-output, Palmer, and KBDI writers, and the input file
+  list is de-duplicated without reordering, so which variable's chunks are copied no
+  longer depends on the per-process string hash seed (#1080, #1084). The eligibility,
+  dimension-match, reorder, and trim rules are documented under `--chunksizes`.
+- **CLI daily input**: a daily input whose coordinates start mid-year or contain a gap is
+  now rejected with the documented daily contract, where it previously restored the input
+  length and wrote silently shifted values. Daily climate-division input is converted with
+  the same calendar plan the grid transport uses instead of being written back
+  unconverted, and time-free companions such as a division latitude are skipped.
+- **`utils` daily calendar plan**: `transform_to_366day` raises `ValueError` rather than
+  `DataShapeError` for input longer than its declared span, an empty array is rejected
+  instead of being accepted as a zero-length partial year, and `DailyCalendarPlan` and
+  `from_year_span` validate their contract on construction rather than clamping a
+  negative or over-capacity length.
 - **CLI input layout**: the shared-array transport accepts only the time-last orders its
   kernels index — `("division", "time")` for climate divisions, time-last for grids — so
   a time-major `("time", "division")` or `("time", "lat", "lon")` input is rejected
