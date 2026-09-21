@@ -768,30 +768,25 @@ class TestInferTemporalParameters:
         # should return empty dict (no time dimension)
         assert inferred == {}
 
-    def test_bind_partial_failure_returns_empty_provided(self, sample_monthly_precip_da):
-        """Handle bind_partial TypeError gracefully."""
+    def test_bind_failure_skips_inference(self, sample_monthly_precip_da):
+        """Arguments that do not bind get no fabricated temporal params (#1090)."""
 
-        def func_with_conflicting_params(
+        def func_needs_params(
             values: np.ndarray,
             data_start_year: int,
             periodicity: compute.Periodicity,
         ) -> np.ndarray:
             return values
 
-        # create a scenario that might cause bind_partial to fail
-        # (e.g., duplicate argument in args and kwargs)
-        # note: this is hard to trigger in practice, but we test the fallback
         inferred = _infer_temporal_parameters(
-            func_with_conflicting_params,
+            func_needs_params,
             sample_monthly_precip_da,
             modified_args=[],
-            modified_kwargs={},
+            modified_kwargs={"bogus": 1},
             time_dim="time",
         )
 
-        # should still infer parameters even if binding fails
-        assert "data_start_year" in inferred
-        assert "periodicity" in inferred
+        assert inferred == {}
 
 
 class TestXarrayAdapterLogging:
@@ -929,6 +924,31 @@ class TestXarrayAdapterIntegration:
 
         result = defaulted(sample_monthly_precip_da)
         np.testing.assert_array_equal(result.values, sample_monthly_precip_da.values * 2)
+
+    def test_bind_failure_does_not_override_explicit_temporal_params(self, sample_monthly_precip_da):
+        """A typo'd keyword must not let inferred values replace explicit params (#1090)."""
+        calls = []
+
+        @xarray_adapter()
+        def masked(
+            values: np.ndarray,
+            data_start_year: int,
+            periodicity: compute.Periodicity,
+        ) -> np.ndarray:
+            calls.append((data_start_year, periodicity))
+            return np.full(values.shape, float(data_start_year))
+
+        # sample_monthly_precip_da is a monthly 1980-2019 coordinate, so inference
+        # would produce data_start_year=1980 and periodicity=monthly if it ran
+        with pytest.raises(PeriodicityError, match="do not bind"):
+            masked(
+                sample_monthly_precip_da,
+                data_start_year=1990,
+                periodicity=compute.Periodicity.daily,
+                bogus=1,
+            )
+
+        assert calls == []
 
 
 def _finalize_numpy_result(

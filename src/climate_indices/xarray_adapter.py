@@ -1031,7 +1031,8 @@ def _infer_temporal_parameters(
     Returns:
         Dictionary of inferred parameters (data_start_year, periodicity,
         calibration_year_initial, calibration_year_final). Only includes
-        parameters that are in the function signature and not already provided.
+        parameters that are in the function signature and not already provided,
+        and is empty when the arguments do not bind to the signature.
     """
     inferred: dict[str, Any] = {}
 
@@ -1051,8 +1052,9 @@ def _infer_temporal_parameters(
         bound.apply_defaults()
         provided_params = set(bound.arguments.keys())
     except TypeError:
-        # if binding fails, skip inference
-        provided_params = set()
+        # arguments do not bind (unknown keyword, duplicate argument, ...):
+        # skip inference so fabricated values cannot override explicit ones
+        return inferred
 
     # infer data_start_year if not provided
     if "data_start_year" in sig.parameters and "data_start_year" not in provided_params:
