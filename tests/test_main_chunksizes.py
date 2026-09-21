@@ -99,7 +99,7 @@ def test_pnp_copies_h5netcdf_input_chunksizes(monkeypatch, tmp_path, caplog):
 
 
 def test_input_chunksizes_ignores_contiguous_inputs(tmp_path):
-    """Contiguous inputs report no chunks to copy, even without a ``contiguous`` key."""
+    """Contiguous inputs are skipped while later chunked variables remain eligible."""
     time = xr.date_range("1990-01-01", periods=24, freq="MS")
     dataset = xr.Dataset(
         {"prcp": (("lat", "lon", "time"), np.ones((2, 3, 24)), {"units": "mm"})},
@@ -115,6 +115,10 @@ def test_input_chunksizes_ignores_contiguous_inputs(tmp_path):
     # a backend that does report the key as True must be honored as well
     dataset["prcp"].encoding.update(contiguous=True, chunksizes=(2, 3, 12))
     assert cli_main._input_chunksizes(dataset) == ((), ())
+
+    dataset["later"] = dataset["prcp"].copy()
+    dataset["later"].encoding.update(contiguous=False, chunksizes=(1, 2, 6))
+    assert cli_main._input_chunksizes(dataset) == ((1, 2, 6), ("lat", "lon", "time"))
 
 
 def test_oversized_input_chunks_are_trimmed_to_the_output_shape(monkeypatch, tmp_path):
