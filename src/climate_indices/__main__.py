@@ -948,8 +948,7 @@ def _compute_write_index(request: _IndexRequest) -> tuple[str, str] | None:
         )
 
     output_encodings = {"chunksizes": output_chunksizes} if output_chunksizes else None
-    # a chunksizes encoding is only honored by an HDF5-backed engine, and the
-    # supported xarray versions still default to scipy when netCDF4 is absent
+    # pin the HDF5-backed writer so copied chunk sizes are always honored
     output_engine: Literal["h5netcdf"] | None = "h5netcdf" if output_chunksizes else None
 
     context = _ComputeContext(
@@ -1916,9 +1915,7 @@ def _run_kbdi(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
 
         # honor --chunksizes input by copying the precipitation variable's
         # on-disk chunks to the output variable, trimmed to the written shape;
-        # a chunksizes encoding is only honored by an HDF5-backed engine, and
-        # the supported xarray versions still default to scipy when netCDF4 is
-        # absent
+        # pin the HDF5-backed writer so copied chunk sizes are always honored
         output_encodings = None
         if request.chunksizes == "input":
             input_chunksizes = dataset_precip[request.var_name_precip].encoding.get("chunksizes")
