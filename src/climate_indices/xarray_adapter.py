@@ -497,15 +497,17 @@ def _validate_sufficient_data(
     Args:
         time_coord: Time coordinate DataArray
         scale: Scale parameter for the index calculation
-        calendar_plan: Daily calendar adaptation, whose padded length is what the
-            NumPy core actually receives. Six complete Gregorian years are 2190
-            observed days but 2196 padded steps, so the raw coordinate length
-            would reject a scale of 2196 that the core can compute.
+        calendar_plan: Daily calendar adaptation, whose populated length is what the
+            NumPy core can actually sum. Six complete Gregorian years (2000-2005)
+            are 2192 observed days but fill all 2196 padded steps once their
+            synthetic February 29 values are added, so the raw coordinate length
+            would reject a scale of 2196 that the core can compute. A partial final
+            year's padded NaN tail is excluded, since no window can sum through it.
 
     Raises:
         InsufficientDataError: If there are fewer time steps than the scale requires
     """
-    n_timesteps = calendar_plan.all_leap_length if calendar_plan is not None else len(time_coord)
+    n_timesteps = calendar_plan.populated_length if calendar_plan is not None else len(time_coord)
     if n_timesteps < scale:
         error_msg = (
             f"Insufficient data for scale={scale}: {n_timesteps} time steps available, but at least {scale} required."

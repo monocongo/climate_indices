@@ -162,7 +162,7 @@ process_climate_indices = "climate_indices.__main__:main"
    ```
    Input: precip (or P-PET)
    ↓
-   Scale to N-month window (sum_to_scale)
+   Scale to an N-step window (sum_to_scale)
    ↓
    Fit distribution (gamma or Pearson Type III) per calendar month/day
    ↓

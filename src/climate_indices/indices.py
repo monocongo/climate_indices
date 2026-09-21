@@ -322,6 +322,7 @@ def eddi(
             a declared time-major block.
         InvalidArgumentError: If scale, periodicity, or calibration years
             are invalid.
+        InsufficientDataError: If scale exceeds the number of available time steps.
     """
     # validate arguments
     _validate_periodicity(periodicity)
@@ -627,11 +628,11 @@ def spei(
     Compute SPEI fitted to the specified distribution.
 
     PET values are subtracted from the precipitation values to come up with an array
-    of (P - PET) values, which is then scaled to the specified months scale and
+    of (P - PET) values, which is then scaled to the specified timescale and
     finally fitted/transformed to SPEI values corresponding to the input
     precipitation time series.
 
-    :param precips_mm: an array of monthly total precipitation values,
+    :param precips_mm: an array of precipitation values,
         in millimeters, should be of the same size (and shape?) as the input PET array.
         A time-major spatial array with shape (time, ``*cells``), i.e. three or more
         dimensions, is also accepted, and then every cell is scaled and fitted in
@@ -837,7 +838,7 @@ def percentage_of_normal(
         scale: Integer number of time steps over which the normal value is
             computed (months for monthly data, days for daily data; e.g.
             3 months or 90 days).
-        data_start_year: The initial year of the input monthly values array.
+        data_start_year: The initial year of the input values array.
         calibration_start_year: The initial year of the calibration period
             over which the normal average for each calendar time step is
             computed.

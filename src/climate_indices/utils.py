@@ -444,6 +444,20 @@ class DailyCalendarPlan:
         """Return the number of values required by the 366-day NumPy core."""
         return len(self.observed_days_by_year) * 366
 
+    @property
+    def populated_length(self) -> int:
+        """Return the number of 366-day positions this span actually fills.
+
+        A complete final year fills all 366 positions, because ``to_all_leap``
+        synthesizes its February 29 value; a partial final year leaves the rest of
+        its padded positions as NaN, and no sliding window can sum through them.
+        """
+        last_year = self.year_start + len(self.observed_days_by_year) - 1
+        days_in_last_year = 366 if calendar.isleap(last_year) else 365
+        if self.observed_days_by_year[-1] == days_in_last_year:
+            return self.all_leap_length
+        return self.all_leap_length - (366 - self.observed_days_by_year[-1])
+
     def to_all_leap(self, values: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
         """
         Insert synthetic February 29 values while retaining a partial final year.

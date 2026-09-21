@@ -1756,23 +1756,34 @@ class TestCoordinateValidationIntegration:
 
         assert "insufficient data" in str(exc_info.value).lower()
 
-    def test_daily_padded_length_bounds_the_scale(self):
-        """Six Gregorian years are 2190 observed days but 2196 padded 366-day steps."""
+    def test_daily_populated_length_bounds_the_scale(self):
+        """A complete six-year daily span fills 2196 padded steps; a partial tail does not."""
 
         @xarray_adapter(infer_params=True)
         def needs_scale(values: np.ndarray, scale: int, periodicity: compute.Periodicity) -> np.ndarray:
             return values
 
-        time = pd.date_range("2000-01-01", periods=2190, freq="D")
-        values = xr.DataArray(np.arange(2190, dtype=float), coords={"time": time}, dims=["time"])
+        # 2000-2005: 2192 observed days across six years, whose four synthetic
+        # February 29 values fill all 2196 padded positions
+        time = pd.date_range("2000-01-01", periods=2192, freq="D")
+        values = xr.DataArray(np.arange(2192, dtype=float), coords={"time": time}, dims=["time"])
 
-        # the raw Gregorian length is 2190, so a scale of 2196 is only valid against
-        # the padded length the NumPy core actually receives
         result = needs_scale(values, scale=2196, periodicity=compute.Periodicity.daily)
         assert result.shape == values.shape
 
         with pytest.raises(InsufficientDataError):
             needs_scale(values, scale=2197, periodicity=compute.Periodicity.daily)
+
+        # two days short of six complete years leaves 2193 populated padded steps,
+        # three short of the 2196 a partial-year-unaware bound would allow
+        partial_time = pd.date_range("2000-01-01", periods=2190, freq="D")
+        partial = xr.DataArray(np.arange(2190, dtype=float), coords={"time": partial_time}, dims=["time"])
+
+        result = needs_scale(partial, scale=2193, periodicity=compute.Periodicity.daily)
+        assert result.shape == partial.shape
+
+        with pytest.raises(InsufficientDataError):
+            needs_scale(partial, scale=2194, periodicity=compute.Periodicity.daily)
 
     def test_valid_data_passes_validation(self, sample_monthly_precip_da):
         """Valid data passes all validation checks."""

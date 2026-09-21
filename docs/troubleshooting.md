@@ -392,7 +392,7 @@ ______________________________________________________________________
 ### Time series too short for scale
 
 :::{warning}
-**Error:** `InsufficientDataError: Insufficient data for scale=12: 480 time steps available, but at least 12 required.`
+**Error:** `InsufficientDataError: Insufficient data for scale=12: 8 time steps available, but at least 12 required.`
 
 **Cause:** Your time series has fewer time steps than the requested scale. For example, requesting SPI-12 (12-month scale) requires at least 12 time steps.
 
