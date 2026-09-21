@@ -154,6 +154,10 @@ that do not fit in memory.
 
 ## Plot the results
 
+:::{note}
+Matplotlib is not installed with `climate-indices`; install it for this section: `pip install matplotlib`
+:::
+
 Plotting confirms the result carries the input time axis. PET follows the
 synthetic seasonal cycle; SPI and SPEI are standardized per calendar month, so
 they show anomalies rather than the cycle:
@@ -183,10 +187,6 @@ axes[2].set_ylabel("mm/month")
 plt.tight_layout()
 plt.show()
 ```
-
-:::{note}
-Install matplotlib for visualization: `pip install matplotlib`
-:::
 
 ## Next steps
 
