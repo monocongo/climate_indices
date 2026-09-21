@@ -571,11 +571,11 @@ See [ADR-0002](adr/0002-multiprocessing-cli-dask-xarray.md).
 
 ### 3. Time Dimension Chunking Constraint
 
-**Decision**: Dask arrays MUST have time as single chunk.
+**Decision**: Dask arrays MUST have time as single chunk. The two PET entry points are the exception: they accept a split `time` and rechunk it internally, because their kernels are per-day arithmetic rather than fits.
 
 **Rationale**: Climate indices require access to full time series for distribution fitting.
 
-**Enforcement**: `validation.validate_dask_chunks()` validates chunking on the adapter path and raises `CoordinateValidationError` if violated.
+**Enforcement**: `validation.validate_dask_chunks()` validates chunking on the adapter path and raises `CoordinateValidationError` if violated; the PET entry points skip it.
 
 See [ADR-0003](adr/0003-dask-time-dimension-single-chunk.md) for the full rationale.
 

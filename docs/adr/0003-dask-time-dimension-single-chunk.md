@@ -9,7 +9,7 @@ rule. The two PET entry points accept chunked `time` and let Dask rechunk it
 fits. Every fitting and stateful index still rejects a split `time` through
 `validation.validate_dask_chunks`.
 
-`xarray_adapter.py` requires that Dask-backed input arrays have the time dimension as one unbroken chunk (spatial dimensions may be chunked freely), and raises `CoordinateValidationError` if that's violated. This is enforced because distribution fitting and calibration need the full time series for a given cell in one place — splitting time across chunks would silently produce wrong statistics (or require a much more complex cross-chunk fitting implementation we haven't built). A user who doesn't know this constraint exists would reasonably expect Dask to chunk time like any other dimension, so this is worth stating explicitly rather than only discovering it via the validation error.
+`xarray_adapter.py` requires that Dask-backed input arrays have the time dimension as one unbroken chunk (spatial dimensions may be chunked freely), and raises `CoordinateValidationError` if that's violated. The two hand-written PET entry points are the exception: they accept a split `time` and rechunk it internally. The requirement is enforced because distribution fitting and calibration need the full time series for a given cell in one place — splitting time across chunks would silently produce wrong statistics (or require a much more complex cross-chunk fitting implementation we haven't built). A user who doesn't know this constraint exists would reasonably expect Dask to chunk time like any other dimension, so this is worth stating explicitly rather than only discovering it via the validation error.
 
 ## Consequences
 

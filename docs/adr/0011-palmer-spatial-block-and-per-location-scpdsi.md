@@ -34,10 +34,11 @@ whole recursion has one code path rather than a duplicated scalar and vectorized
   (`_palmer_wells.calculate`) **four times** per location -- once raw, three more after
   percentile rescaling -- not once.
 - The two duration-factor fits (wet and dry, `self_calibration.duration_factors`)
-  run once per location, before the four recursions, and are reused by them; each
-  fit makes twenty rolling-window passes over the calibration Z-index (ten window
-  lengths, wet and dry sides) plus a correlation-adaptive least-squares fit with
-  a trailing-point-dropping loop. None of this is bulk array arithmetic; it is
+  run once per location, before the four recursions, and are reused by them. Each
+  takes one representative extreme rolling Z sum per spell duration — ten window
+  lengths, one sign — and fits a line through those ten points, so the pair makes
+  twenty window passes plus two correlation-adaptive least-squares fits with a
+  trailing-point-dropping loop. None of this is bulk array arithmetic; it is
   per-location control flow at least as intricate as the PDSI spell recursion.
 - `_palmer_wells.calculate` raises `ConvergenceError` on a non-contracting duration
   factor or a zero denominator. In a blocked kernel, one cell's `ConvergenceError` would

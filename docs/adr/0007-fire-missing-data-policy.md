@@ -2,9 +2,8 @@
 
 ## Status
 
-Amended: the state contract this record describes is the scalar one. The stateful
-fire implementations also carry per-cell state for spatial input, where
-`trailing_gap_days` is an `int64` array whose `-1` entries mark cells whose
+Amended: the state dataclasses carry `trailing_gap_days` as an integer array
+rather than the scalar `int` this record named — `-1` marks a cell whose
 recurrence has not started (`fire/_cffwis.py`, `fire/_kbdi.py`; #799–#807). The
 policy itself is unchanged.
 
@@ -49,9 +48,11 @@ values.
 
 The limit applies to the continuous series, not to one call. Each per-index
 state dataclass ([ADR-0006](./0006-fire-recursive-state-and-execution.md))
-therefore carries `trailing_gap_days: int | None`: the number of missing days
-immediately before the return point, `0` when the last input day was valid,
-and `None` while no valid day has started the recurrence. A resumed call
+therefore carries `trailing_gap_days: npt.NDArray[np.int64] | None` — the per-cell
+number of missing days immediately before the return point, `0` when the last
+input day was valid and `-1` for a cell whose recurrence has not started (a 0-d
+array for a single location) — or `None` while no valid day has started any
+cell. A resumed call
 measures its leading missing run against the state: `None` means the run is
 still pre-start, so it is unbounded and never poisons; otherwise a run that
 pushes `trailing_gap_days + run_length` past `max_gap_days` poisons, exactly

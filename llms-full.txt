@@ -1192,7 +1192,7 @@ uv run pytest -m benchmark
 5. **For error handling**: Study `src/climate_indices/exceptions.py` (complete hierarchy with attributes)
 
 ### Critical Architectural Invariants
-- **Time dimension chunking**: Dask arrays MUST have time as single chunk (`time: -1`) for climate indices
+- **Time dimension chunking**: Dask arrays MUST have time as single chunk (`time: -1`) for climate indices; the PET entry points are the exception and rechunk a split `time` internally
 - **Calibration period**: Default minimum 30 years; violations trigger `ShortCalibrationWarning`
 - **Distribution fitting**: Requires minimum 4 non-zero values for Pearson Type III; the L-moments fit raises `InsufficientDataError` below that
 - **Coordinate validation**: Time coordinates must be monotonically increasing; xarray inputs undergo automatic validation
@@ -1807,11 +1807,11 @@ See [ADR-0002](docs/adr/0002-multiprocessing-cli-dask-xarray.md).
 
 ### 3. Time Dimension Chunking Constraint
 
-**Decision**: Dask arrays MUST have time as single chunk.
+**Decision**: Dask arrays MUST have time as single chunk. The two PET entry points are the exception: they accept a split `time` and rechunk it internally, because their kernels are per-day arithmetic rather than fits.
 
 **Rationale**: Climate indices require access to full time series for distribution fitting.
 
-**Enforcement**: `validation.validate_dask_chunks()` validates chunking on the adapter path and raises `CoordinateValidationError` if violated.
+**Enforcement**: `validation.validate_dask_chunks()` validates chunking on the adapter path and raises `CoordinateValidationError` if violated; the PET entry points skip it.
 
 See [ADR-0003](docs/adr/0003-dask-time-dimension-single-chunk.md) for the full rationale.
 
