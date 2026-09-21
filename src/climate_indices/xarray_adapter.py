@@ -224,6 +224,7 @@ def _resolve_periodicity(
     if periodicity is None:
         try:
             bound = signature.bind_partial(*modified_args, **modified_kwargs)
+            bound.apply_defaults()
         except TypeError as error:
             _log().error(
                 "periodicity_resolution_failed",
@@ -247,8 +248,10 @@ def _resolve_periodicity(
         )
         raise PeriodicityError(
             message=(
-                f"Could not resolve the periodicity for {func.__name__}: expected a Periodicity member, "
-                f"got {periodicity!r}."
+                f"Invalid periodicity argument: {periodicity}. "
+                "Periodicity must be a Periodicity enum member. "
+                "Supported values: monthly, daily. "
+                "Use compute.Periodicity.monthly or compute.Periodicity.daily."
             ),
             periodicity_value=str(periodicity),
         )

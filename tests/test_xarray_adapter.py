@@ -621,11 +621,31 @@ class TestResolvePeriodicity:
 
     def test_bound_non_periodicity_raises(self, caplog):
         """Path 3: an explicit non-Periodicity value fails closed and is logged."""
-        with caplog.at_level("ERROR"), pytest.raises(PeriodicityError) as exc_info:
+        with (
+            caplog.at_level("ERROR"),
+            pytest.raises(PeriodicityError, match="Invalid periodicity argument") as exc_info,
+        ):
             _resolve_periodicity(self._needs_periodicity, [np.array([1.0])], {"periodicity": "daily"}, {})
 
         assert exc_info.value.periodicity_value == "daily"
         assert any("periodicity_resolution_failed" in record.message for record in caplog.records)
+
+    def test_declared_default_is_returned(self):
+        """A declared default Periodicity resolves instead of counting as unresolved."""
+
+        def defaulted(
+            values: np.ndarray,
+            periodicity: compute.Periodicity = compute.Periodicity.monthly,
+        ) -> np.ndarray:
+            return values
+
+        resolved = _resolve_periodicity(defaulted, [np.array([1.0])], {}, {})
+        assert resolved is compute.Periodicity.monthly
+
+    def test_explicit_none_raises(self):
+        """An explicit None has no resolvable Periodicity and fails closed."""
+        with pytest.raises(PeriodicityError, match="Invalid periodicity argument"):
+            _resolve_periodicity(self._needs_periodicity, [np.array([1.0])], {"periodicity": None}, {})
 
     def test_explicit_periodicity_returned(self):
         """An explicitly provided Periodicity member is returned unchanged."""
@@ -891,10 +911,24 @@ class TestXarrayAdapterIntegration:
             calls.append(periodicity)
             return values
 
-        with pytest.raises(PeriodicityError, match="Could not resolve the periodicity"):
+        with pytest.raises(PeriodicityError, match="Invalid periodicity argument"):
             needs_periodicity(sample_monthly_precip_da, periodicity="daily")
 
         assert calls == []
+
+    def test_declared_default_periodicity_is_honored(self, sample_monthly_precip_da):
+        """A defaulted periodicity resolves through the decorator instead of raising."""
+
+        @xarray_adapter()
+        def defaulted(
+            values: np.ndarray,
+            periodicity: compute.Periodicity = compute.Periodicity.monthly,
+        ) -> np.ndarray:
+            assert periodicity is compute.Periodicity.monthly
+            return values * 2
+
+        result = defaulted(sample_monthly_precip_da)
+        np.testing.assert_array_equal(result.values, sample_monthly_precip_da.values * 2)
 
 
 def _finalize_numpy_result(
