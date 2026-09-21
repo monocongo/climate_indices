@@ -23,13 +23,13 @@ UNTIL=2026-09-21T15:03:00Z
 python3 "$COLLECTOR" --repo "$REPO" --since 2026-09-13 --stdout
 gh api --paginate "search/issues?q=repo:monocongo/climate_indices+is:pr+is:merged+merged:2026-09-13..${UNTIL}&per_page=100"
 gh api "search/issues?q=repo:monocongo/climate_indices+is:pr+is:merged+merged:<=${UNTIL}&per_page=1" --jq .total_count
-gh api "search/issues?q=repo:monocongo/climate_indices+is:pr+is:open+created:<=${UNTIL}&per_page=1" --jq .total_count
+# Open PRs at snapshot: use the committed value below.
 gh api "repos/monocongo/climate_indices/milestones?state=all&per_page=100"
 gh project item-list 8 --owner monocongo --format json
 git log 3631c663 --first-parent --since=2026-09-13T00:00:00Z --oneline
 ```
 
-The bounded searches re-derive the merged and open counts. The milestone,
+The bounded searches re-derive only the merged counts. The open-PR, milestone,
 project-board, and local-machine figures are point-in-time and drift with live
 state, so this committed report is their archive.
 
