@@ -693,12 +693,17 @@ def _input_chunksizes(dataset: xr.Dataset) -> tuple[tuple[int, ...], tuple[Any, 
     """
     Find the first input variable's chunk sizes, for copying onto the output.
 
+    A variable counts as chunked when its encoding reports non-empty
+    ``chunksizes`` and it is not explicitly marked contiguous: backends such
+    as h5netcdf report on-disk chunk sizes without a ``contiguous`` key.
+
     Note that the netcdf spec doesn't require that all data variables have the
     same chunk sizes.
 
     param dataset: the opened inputs
     return: the chunk sizes found and the dimensions they correspond to, or a
-        pair of empty tuples if no variable is chunked
+        pair of empty tuples if no data variable reports chunk sizes without
+        being explicitly marked contiguous
     """
     for da in dataset.data_vars.values():
         if not da.encoding.get("contiguous", False):
@@ -779,6 +784,27 @@ def _reordered_chunksizes(
         output_dims,
     )
     return ()
+
+
+def _trimmed_output_encodings(output_encodings: dict[str, Any] | None, shape: tuple[int, ...]) -> dict[str, Any] | None:
+    """
+    Trim a copied chunksizes encoding to the shape of the data being written.
+
+    An input variable written with an unlimited dimension can report a chunk
+    larger than the output's dimension, which the writer either rejects or
+    silently drops, so trim the requested chunks to the output shape.
+
+    param output_encodings: the encodings to apply to the written variable
+    param shape: the shape of the data being written
+    return: the encodings with any chunk sizes trimmed to the shape, or None
+    """
+    if not output_encodings or len(output_encodings["chunksizes"]) != len(shape):
+        return output_encodings
+    chunksizes = output_encodings["chunksizes"]
+    trimmed = tuple(min(chunk, length) for chunk, length in zip(chunksizes, shape, strict=True))
+    if trimmed != tuple(chunksizes):
+        _logger.warning("Trimming copied input chunksizes %s to the output shape %s", chunksizes, shape)
+    return {"chunksizes": trimmed}
 
 
 def _normalize_precipitation_units(dataset: xr.Dataset, var_name: str | None) -> None:
@@ -866,8 +892,10 @@ def _compute_write_index(request: _IndexRequest) -> tuple[str, str] | None:
     if chunks is None:
         raise ValueError(f"Unsupported input type: {request.input_type}")
 
-    # Since multiple variables can be in the same file, de-duplicate the filelist.
-    dataset = xr.open_mfdataset(list(set(files)), chunks=chunks)
+    # Since multiple variables can be in the same file, de-duplicate the
+    # filelist, preserving its order so that the variable whose chunk sizes
+    # get copied doesn't depend on set iteration order.
+    dataset = xr.open_mfdataset(list(dict.fromkeys(files)), chunks=chunks)
 
     output_chunksizes: tuple[int, ...] = ()
     chunksizes_dims: tuple[Any, ...] = ()
@@ -920,8 +948,7 @@ def _compute_write_index(request: _IndexRequest) -> tuple[str, str] | None:
         )
 
     output_encodings = {"chunksizes": output_chunksizes} if output_chunksizes else None
-    # a chunksizes encoding is only honored by an HDF5-backed engine, and the
-    # supported xarray versions still default to scipy when netCDF4 is absent
+    # pin the HDF5-backed writer so copied chunk sizes are always honored
     output_engine: Literal["h5netcdf"] | None = "h5netcdf" if output_chunksizes else None
 
     context = _ComputeContext(
@@ -1594,7 +1621,7 @@ def _write_single_output(context: _ComputeContext) -> tuple[str, str]:
         dims=context.output_dims,
         data=index_values,
         attrs=output_var_attributes,
-        encoding=context.output_encodings,
+        encoding=_trimmed_output_encodings(context.output_encodings, index_values.shape),
     )
     dataset[output_var_name] = variable
 
@@ -1619,6 +1646,7 @@ def _write_palmer_outputs(context: _ComputeContext) -> None:
     :param context: the opened inputs and output settings of the request
     """
     dataset = context.dataset
+    output_encodings = _trimmed_output_encodings(context.output_encodings, context.output_shape)
     for key, var_name, long_name in _PALMER_OUTPUTS:
         # get the shared memory results array and convert it to a numpy array
         index_values = _shared_array(key, context.output_shape).astype(float)
@@ -1633,7 +1661,7 @@ def _write_palmer_outputs(context: _ComputeContext) -> None:
             dims=context.output_dims,
             data=index_values,
             attrs=attrs,
-            encoding=context.output_encodings,
+            encoding=output_encodings,
         )
         dataset[var_name] = variable
 
@@ -1885,17 +1913,17 @@ def _run_kbdi(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
         kbdi_values.name = "kbdi_imperial" if arguments.kbdi_units == "imperial" else "kbdi"
         output_file = f"{request.output_file_base}_{kbdi_values.name}.nc"
 
-        # honor --chunksizes input by copying the precipitation
-        # variable's on-disk chunks to the output variable; a chunksizes
-        # encoding is only honored by an HDF5-backed engine, and the
-        # supported xarray versions still default to scipy when
-        # netCDF4 is absent
-        output_engine: Literal["h5netcdf"] | None = None
+        # honor --chunksizes input by copying the precipitation variable's
+        # on-disk chunks to the output variable, trimmed to the written shape;
+        # pin the HDF5-backed writer so copied chunk sizes are always honored
+        output_encodings = None
         if request.chunksizes == "input":
             input_chunksizes = dataset_precip[request.var_name_precip].encoding.get("chunksizes")
             if input_chunksizes:
-                kbdi_values.encoding["chunksizes"] = input_chunksizes
-                output_engine = "h5netcdf"
+                output_encodings = _trimmed_output_encodings({"chunksizes": input_chunksizes}, kbdi_values.shape)
+        output_engine: Literal["h5netcdf"] | None = "h5netcdf" if output_encodings else None
+        if output_encodings:
+            kbdi_values.encoding.update(output_encodings)
 
         _logger.info("Writing KBDI values to file: %s", output_file)
         kbdi_values.to_netcdf(output_file, engine=output_engine)

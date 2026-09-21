@@ -60,25 +60,9 @@ def test_spei_chunksizes_follow_output_dimension_order(monkeypatch, tmp_path):
         assert variable.encoding["chunksizes"] == (1, 12)
 
 
-def test_pnp_copies_h5netcdf_input_chunksizes(monkeypatch, tmp_path):
-    """``--chunksizes input`` preserves chunks reported without ``contiguous``."""
-    time = xr.date_range("1990-01-01", periods=24, freq="MS")
-    dataset = xr.Dataset(
-        {"prcp": (("lat", "lon", "time"), np.ones((2, 3, 24)), {"units": "mm"})},
-        coords={"lat": [25.0, 30.0], "lon": [-100.0, -95.0, -90.0], "time": time},
-    )
-    input_file = tmp_path / "prcp.nc"
-    dataset.to_netcdf(input_file, encoding={"prcp": {"chunksizes": (2, 3, 12)}}, engine="h5netcdf")
-
-    original_open_mfdataset = cli_main.xr.open_mfdataset
-
-    def _open_mfdataset_without_contiguous(*args, **kwargs):
-        opened = original_open_mfdataset(*args, **kwargs)
-        opened["prcp"].encoding.pop("contiguous", None)
-        return opened
-
+def _write_pnp_monthly(monkeypatch, tmp_path, input_file):
+    """Run a `--chunksizes input` monthly PnP write with parallelism stubbed out."""
     monkeypatch.setattr(cli_main, "_global_shared_arrays", {})
-    monkeypatch.setattr(cli_main.xr, "open_mfdataset", _open_mfdataset_without_contiguous)
     monkeypatch.setattr(cli_main, "_parallel_process", lambda *_args, **_kwargs: None)
 
     cli_main._compute_write_index(
@@ -96,8 +80,174 @@ def test_pnp_copies_h5netcdf_input_chunksizes(monkeypatch, tmp_path):
         )
     )
 
+
+def test_pnp_copies_h5netcdf_input_chunksizes(monkeypatch, tmp_path, caplog):
+    """``--chunksizes input`` preserves chunks reported without ``contiguous``."""
+    time = xr.date_range("1990-01-01", periods=24, freq="MS")
+    dataset = xr.Dataset(
+        {"prcp": (("lat", "lon", "time"), np.ones((2, 3, 24)), {"units": "mm"})},
+        coords={"lat": [25.0, 30.0], "lon": [-100.0, -95.0, -90.0], "time": time},
+    )
+    input_file = tmp_path / "prcp.nc"
+    dataset.to_netcdf(input_file, encoding={"prcp": {"chunksizes": (2, 3, 12)}}, engine="h5netcdf")
+
+    # h5netcdf reports on-disk chunks without a `contiguous` key, which is the
+    # condition the copied chunk sizes have to survive
+    with xr.open_dataset(input_file, engine="h5netcdf") as opened:
+        assert "contiguous" not in opened["prcp"].encoding
+
+    _write_pnp_monthly(monkeypatch, tmp_path, input_file)
+
     with xr.open_dataset(tmp_path / "out_pnp_03.nc", engine="h5netcdf") as written:
         assert written["pnp_03"].encoding["chunksizes"] == (2, 3, 12)
+    assert "Trimming copied input chunksizes" not in caplog.text
+
+
+def test_input_chunksizes_ignores_contiguous_inputs(tmp_path):
+    """Contiguous inputs are skipped while later chunked variables remain eligible."""
+    time = xr.date_range("1990-01-01", periods=24, freq="MS")
+    dataset = xr.Dataset(
+        {"prcp": (("lat", "lon", "time"), np.ones((2, 3, 24)), {"units": "mm"})},
+        coords={"lat": [25.0, 30.0], "lon": [-100.0, -95.0, -90.0], "time": time},
+    )
+    input_file = tmp_path / "contiguous.nc"
+    dataset.to_netcdf(input_file, engine="h5netcdf")
+
+    with xr.open_mfdataset(input_file, engine="h5netcdf") as opened:
+        assert "contiguous" not in opened["prcp"].encoding
+        assert cli_main._input_chunksizes(opened) == ((), ())
+
+    # a backend that does report the key as True must be honored as well
+    dataset["prcp"].encoding.update(contiguous=True, chunksizes=(2, 3, 12))
+    assert cli_main._input_chunksizes(dataset) == ((), ())
+
+    dataset["later"] = dataset["prcp"].copy()
+    dataset["later"].encoding.update(contiguous=False, chunksizes=(1, 2, 6))
+    assert cli_main._input_chunksizes(dataset) == ((1, 2, 6), ("lat", "lon", "time"))
+
+
+def test_oversized_input_chunks_are_trimmed_to_the_output_shape(monkeypatch, tmp_path):
+    """A chunk larger than the output dimension must not be written verbatim."""
+    time = xr.date_range("1990-01-01", periods=24, freq="MS")
+    dataset = xr.Dataset(
+        {"prcp": (("lat", "lon", "time"), np.ones((2, 3, 24)), {"units": "mm"})},
+        coords={"lat": [25.0, 30.0], "lon": [-100.0, -95.0, -90.0], "time": time},
+    )
+    input_file = tmp_path / "prcp.nc"
+    # an unlimited time dimension permits a chunk larger than the data written so far
+    dataset.to_netcdf(
+        input_file,
+        encoding={"prcp": {"chunksizes": (1, 2, 100)}},
+        engine="h5netcdf",
+        unlimited_dims=["time"],
+    )
+
+    _write_pnp_monthly(monkeypatch, tmp_path, input_file)
+
+    with xr.open_dataset(tmp_path / "out_pnp_03.nc", engine="h5netcdf") as written:
+        assert written["pnp_03"].encoding["chunksizes"] == (1, 2, 24)
+
+
+def test_daily_oversized_input_chunks_are_trimmed_to_the_written_shape(monkeypatch, tmp_path):
+    """The daily write path shrinks 366-day years back to the Gregorian calendar."""
+    time = xr.date_range("1990-01-01", periods=365, freq="D")
+    dataset = xr.Dataset(
+        {"prcp": (("lat", "lon", "time"), np.ones((2, 3, 365)) * 10.0, {"units": "mm"})},
+        coords={"lat": [25.0, 30.0], "lon": [-100.0, -95.0, -90.0], "time": time},
+    )
+    input_file = tmp_path / "prcp.nc"
+    dataset.to_netcdf(
+        input_file,
+        encoding={"prcp": {"chunksizes": (2, 3, 366)}},
+        engine="h5netcdf",
+        unlimited_dims=["time"],
+    )
+
+    monkeypatch.setattr(cli_main, "_global_shared_arrays", {})
+    monkeypatch.setattr(cli_main, "_parallel_process", lambda *_args, **_kwargs: None)
+
+    cli_main._compute_write_index(
+        cli_main._IndexRequest(
+            index="spi",
+            netcdf_precip=str(input_file),
+            var_name_precip="prcp",
+            input_type=DatasetLayout.GRID,
+            periodicity=compute.Periodicity.daily,
+            chunksizes="input",
+            output_file_base=str(tmp_path / "out"),
+            scale=30,
+            distribution=indices.Distribution.gamma,
+            calibration_start_year=1990,
+            calibration_end_year=1990,
+        )
+    )
+
+    with xr.open_dataset(tmp_path / "out_spi_gamma_30.nc", engine="h5netcdf") as written:
+        assert written["spi_gamma_30"].shape == (2, 3, 365)
+        assert written["spi_gamma_30"].encoding["chunksizes"] == (2, 3, 365)
+
+
+def test_input_files_are_opened_in_the_requested_order(monkeypatch, tmp_path):
+    """De-duplicating the input file list must not reorder the files."""
+    time = xr.date_range("1990-01-01", periods=24, freq="MS")
+    coords = {"lat": [25.0, 30.0], "lon": [-100.0, -95.0, -90.0], "time": time}
+    precip_file = tmp_path / "prcp.nc"
+    pet_file = tmp_path / "pet.nc"
+    shared_file = tmp_path / "both.nc"
+    xr.Dataset({"prcp": (("lat", "lon", "time"), np.ones((2, 3, 24)), {"units": "mm"})}, coords=coords).to_netcdf(
+        precip_file
+    )
+    xr.Dataset({"pet": (("lat", "lon", "time"), np.ones((2, 3, 24)), {"units": "mm"})}, coords=coords).to_netcdf(
+        pet_file
+    )
+    xr.Dataset(
+        {
+            "prcp": (("lat", "lon", "time"), np.ones((2, 3, 24)), {"units": "mm"}),
+            "pet": (("lat", "lon", "time"), np.ones((2, 3, 24)), {"units": "mm"}),
+        },
+        coords=coords,
+    ).to_netcdf(shared_file)
+
+    opened_file_lists: list[list[str]] = []
+    original_open_mfdataset = cli_main.xr.open_mfdataset
+
+    def _recording_open_mfdataset(files, **kwargs):
+        opened_file_lists.append(list(files))
+        return original_open_mfdataset(files, **kwargs)
+
+    monkeypatch.setattr(cli_main, "_global_shared_arrays", {})
+    monkeypatch.setattr(cli_main.xr, "open_mfdataset", _recording_open_mfdataset)
+    monkeypatch.setattr(cli_main, "_parallel_process", lambda *_args, **_kwargs: None)
+
+    # both orderings, so that a `set`-based de-duplication cannot pass by luck
+    for precip_path, precip_var, pet_path, pet_var in (
+        (precip_file, "prcp", pet_file, "pet"),
+        (pet_file, "pet", precip_file, "prcp"),
+        (shared_file, "prcp", shared_file, "pet"),
+    ):
+        cli_main._compute_write_index(
+            cli_main._IndexRequest(
+                index="spei",
+                netcdf_precip=str(precip_path),
+                var_name_precip=precip_var,
+                netcdf_pet=str(pet_path),
+                var_name_pet=pet_var,
+                input_type=DatasetLayout.GRID,
+                periodicity=compute.Periodicity.monthly,
+                chunksizes="none",
+                output_file_base=str(tmp_path / "out"),
+                scale=3,
+                distribution=indices.Distribution.gamma,
+                calibration_start_year=1990,
+                calibration_end_year=1991,
+            )
+        )
+
+    assert opened_file_lists == [
+        [str(precip_file), str(pet_file)],
+        [str(pet_file), str(precip_file)],
+        [str(shared_file)],
+    ]
 
 
 @pytest.mark.parametrize(
