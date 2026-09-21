@@ -1,5 +1,9 @@
 # Gridded index input is read as a time-major block, and ambiguous shapes must be declared
 
+## Status
+
+Accepted.
+
 The fitting-based NumPy kernels (`indices.spi`, `indices.spei`) have always read a flat or
 `(years, periods)` array, and `compute.prepare_scaled` folded a 1-D series onto that layout before
 fitting. Removing the per-grid-cell `xr.apply_ufunc(..., vectorize=True)` loop therefore required a

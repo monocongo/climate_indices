@@ -1,5 +1,9 @@
 # Seasonal carry is an explicit in-season mask
 
+## Status
+
+Accepted.
+
 The Drought Code is the only CFFWIS moisture code carried across the winter:
 the FFMC and DMC are assumed to reach saturation from overwinter precipitation,
 while the DC's long response time means a wrong spring start-up biases a large

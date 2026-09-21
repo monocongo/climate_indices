@@ -1,5 +1,9 @@
 # Palmer adopts the spatial-block contract; scPDSI stays per-location
 
+## Status
+
+Accepted.
+
 ADR-0001 named Palmer the documented exception to the modern xarray API and required
 a separate, explicit decision before it could grow one: "Adding xarray support for
 Palmer indices requires a separate, explicit architecture decision rather than

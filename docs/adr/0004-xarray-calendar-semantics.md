@@ -1,5 +1,9 @@
 # The xarray seam owns calendar conversion, and requires Gregorian January-origin input
 
+## Status
+
+Accepted.
+
 The NumPy index implementations group monthly values into 12 positional slots per year and daily
 values into 366, treating every year as a leap year and every series as beginning in January.
 `xarray_adapter.py` converts Gregorian daily input to that all-leap calendar before computation and

@@ -1,5 +1,9 @@
 # Recursive fire indices never bridge missing days by default
 
+## Status
+
+Accepted.
+
 A daily recurrence turns every missing observation into a fork in the state:
 treat the day as no change, poison the rest of the series, or invent an
 interpolated value. The package's existing xarray contract already propagates

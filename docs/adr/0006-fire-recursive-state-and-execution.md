@@ -1,5 +1,13 @@
 # Recursive fire indices use explicit state and a pure-NumPy baseline
 
+## Status
+
+Amended: the shared time-chunk helper the Decision section names is
+`validation.validate_dask_chunks`; the `xarray_adapter._validate_dask_chunks`
+spelling this record carried did not name a symbol that ever existed. The
+decision — require a single `time` chunk, raise `CoordinateValidationError`
+otherwise, never rechunk automatically — is unchanged.
+
 KBDI and the CFFWIS moisture codes are daily nonlinear recurrences. Unlike the
 existing weather-only Fosberg calculation, they must retain both the published
 code seed and auxiliary bookkeeping across an append boundary. They also need
@@ -41,7 +49,7 @@ benchmark shows that a pure-NumPy spatial tile misses an agreed runtime target;
 an accelerator must preserve this state and bitwise append contract.
 
 Fire xarray adapters must call the existing shared
-`xarray_adapter._validate_dask_chunks()` for every time-varying input and raise
+`validation.validate_dask_chunks()` for every time-varying input and raise
 `CoordinateValidationError` when `time` has multiple chunks. They do not
 rechunk automatically: hidden rechunking can materialize an impractically large
 daily history. Spatial chunks remain unrestricted.
