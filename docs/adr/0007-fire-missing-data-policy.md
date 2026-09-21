@@ -1,5 +1,12 @@
 # Recursive fire indices never bridge missing days by default
 
+## Status
+
+Amended: the state dataclasses carry `trailing_gap_days` as an integer array
+rather than the scalar `int` this record named — `-1` marks a cell whose
+recurrence has not started (`fire/_cffwis.py`, `fire/_kbdi.py`; #799–#807). The
+policy itself is unchanged.
+
 A daily recurrence turns every missing observation into a fork in the state:
 treat the day as no change, poison the rest of the series, or invent an
 interpolated value. The package's existing xarray contract already propagates
@@ -41,13 +48,17 @@ values.
 
 The limit applies to the continuous series, not to one call. Each per-index
 state dataclass ([ADR-0006](./0006-fire-recursive-state-and-execution.md))
-therefore carries `trailing_gap_days: int | None`: the number of missing days
-immediately before the return point, `0` when the last input day was valid,
-and `None` while no valid day has started the recurrence. A resumed call
-measures its leading missing run against the state: `None` means the run is
-still pre-start, so it is unbounded and never poisons; otherwise a run that
-pushes `trailing_gap_days + run_length` past `max_gap_days` poisons, exactly
-as the one-shot series would. The count keeps accumulating while no valid day
+therefore carries `trailing_gap_days: npt.NDArray[np.int64] | None` — the per-cell
+number of missing days immediately before the return point, `0` when the last
+input day was valid and `-1` for a cell whose recurrence has not started (a 0-d
+array for a single location) — or `None` while no valid day has started any
+cell. A per-cell `-1` stays pre-start: it is not an elapsed missing day and
+does not count against `max_gap_days`, unlike `None`, which means no cell has
+started. A resumed call measures its leading missing run against the state:
+`None` means the run is still pre-start, so it is unbounded and never poisons;
+otherwise a run that pushes `trailing_gap_days + run_length` past
+`max_gap_days` poisons, exactly as the one-shot series would, and only
+non-negative `trailing_gap_days` values enter that sum. The count keeps accumulating while no valid day
 resumes the recurrence, so an all-missing continuation of a started state
 still poisons once it exceeds the allowance, while an all-missing
 continuation of a not-started state stays `None`. A call without

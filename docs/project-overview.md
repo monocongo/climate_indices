@@ -182,7 +182,7 @@ uv run pytest -m benchmark
 5. **For error handling**: Study `src/climate_indices/exceptions.py` (complete hierarchy with attributes)
 
 ### Critical Architectural Invariants
-- **Time dimension chunking**: Dask arrays MUST have time as single chunk (`time: -1`) for climate indices
+- **Time dimension chunking**: Dask arrays MUST have time as single chunk (`time: -1`) for climate indices; the PET entry points are the exception and rechunk a split `time` internally
 - **Calibration period**: Default minimum 30 years; violations trigger `ShortCalibrationWarning`
 - **Distribution fitting**: Requires minimum 4 non-zero values for Pearson Type III; the L-moments fit raises `InsufficientDataError` below that
 - **Coordinate validation**: Time coordinates must be monotonically increasing; xarray inputs undergo automatic validation
@@ -204,7 +204,7 @@ uv run pytest -m benchmark
 
 ### Common Pitfalls
 1. **Do NOT** use wildcard imports (`from module import *`) - explicitly forbidden by ruff
-2. **Do NOT** chunk time dimension in Dask arrays - causes incorrect index calculations
+2. **Do NOT** chunk time dimension in Dask arrays for fitting and stateful indices - causes incorrect index calculations
 3. **Do NOT** modify `indices.py` API - backward compatibility requirement
 4. **Do NOT** commit without running tests - skipping them risks CI failures
 5. **Do NOT** use string paths - always use `pathlib.Path` objects

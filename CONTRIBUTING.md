@@ -151,6 +151,27 @@ follow to build:
   `sphinx-build -b doctest` and fails on a failing example. Shell commands go
   in fenced ```` ```bash ```` blocks, which are not executed.
 
+### Architecture decision records
+
+`docs/adr/` is published, so a reader treats a record as a description of
+current code: someone who trusts one greps a symbol and expects to find it.
+Every record therefore opens with a `## Status` line naming its standing:
+
+- `Accepted` — the record describes the code as it is. A new record gets this.
+- `Amended` — the decision stands, but the record's text needed correcting: a
+  symbol was renamed, a module became a package, a deferral completed, or a claim
+  the code contradicts. Correct the detail in place and name what moved it — the
+  change and its commit or issue — or, when the text was never accurate, the code
+  that contradicts it. An amendment corrects names and facts and keeps the
+  reasoning that led to the decision legible; it does not rewrite it.
+- `Superseded by ADR-NNNN` — a newer record replaces this one in whole. Leave the
+  superseded text as written and name the replacing record.
+
+A record whose stale name is corrected without a status is the failure this
+convention exists to prevent: a reader cannot tell a past decision from a
+present-tense claim. A change that makes an existing record stale updates its
+text and its status together.
+
 ## Local validation
 
 Run the checks that CI expects before opening a PR:

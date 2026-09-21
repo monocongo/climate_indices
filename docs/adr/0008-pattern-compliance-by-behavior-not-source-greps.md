@@ -1,5 +1,9 @@
 # Cross-cutting index patterns are verified by behavior, not source greps
 
+## Status
+
+Accepted.
+
 v2.4.0 shipped NFR-PATTERN-COVERAGE — 42 compliance points, seven indices × six
 canonical patterns — checked by `tests/test_pattern_compliance.py`. That suite
 asserted on source text (`"calculation_started" in source`), AST node counts
