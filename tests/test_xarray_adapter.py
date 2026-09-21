@@ -22,6 +22,7 @@ from climate_indices.exceptions import (
     CoordinateValidationError,
     InputAlignmentWarning,
     InsufficientDataError,
+    PeriodicityError,
 )
 from climate_indices.xarray_adapter import (
     CF_METADATA,
@@ -34,6 +35,7 @@ from climate_indices.xarray_adapter import (
     _infer_data_start_year,
     _infer_periodicity,
     _infer_temporal_parameters,
+    _resolve_periodicity,
     _resolve_scale_from_args,
     _resolve_secondary_inputs,
     _serialize_attr_value,
@@ -580,6 +582,82 @@ class TestXarrayAdapterInferenceHelpers:
         assert "datetime" in str(exc_info.value).lower()
 
 
+class TestResolvePeriodicity:
+    """`_resolve_periodicity` fails closed when a declared periodicity cannot resolve (#759)."""
+
+    @staticmethod
+    def _needs_periodicity(values: np.ndarray, periodicity: compute.Periodicity) -> np.ndarray:
+        return values
+
+    def test_function_without_periodicity_returns_none(self):
+        """No periodicity parameter is not an error: resolution stays quiet."""
+
+        def no_periodicity(values: np.ndarray, scale: int) -> np.ndarray:
+            return values * scale
+
+        assert _resolve_periodicity(no_periodicity, [], {}, {}) is None
+
+    def test_inferred_periodicity_returned(self):
+        """An inferred Periodicity member is returned unchanged."""
+        resolved = _resolve_periodicity(
+            self._needs_periodicity,
+            [np.array([1.0])],
+            {},
+            {"periodicity": compute.Periodicity.monthly},
+        )
+        assert resolved is compute.Periodicity.monthly
+
+    def test_inferred_non_periodicity_raises(self):
+        """Path 1: a non-Periodicity inferred value fails closed."""
+        with pytest.raises(PeriodicityError) as exc_info:
+            _resolve_periodicity(self._needs_periodicity, [], {}, {"periodicity": "daily"})
+
+        assert exc_info.value.periodicity_value == "daily"
+
+    def test_binding_failure_raises(self):
+        """Path 2: arguments that do not bind to the signature fail closed."""
+        with pytest.raises(PeriodicityError, match="do not bind"):
+            _resolve_periodicity(self._needs_periodicity, [], {"unexpected": 1}, {})
+
+    def test_bound_non_periodicity_raises(self, caplog):
+        """Path 3: an explicit non-Periodicity value fails closed and is logged."""
+        with (
+            caplog.at_level("ERROR"),
+            pytest.raises(PeriodicityError, match="Invalid periodicity argument") as exc_info,
+        ):
+            _resolve_periodicity(self._needs_periodicity, [np.array([1.0])], {"periodicity": "daily"}, {})
+
+        assert exc_info.value.periodicity_value == "daily"
+        assert any("periodicity_resolution_failed" in record.message for record in caplog.records)
+
+    def test_declared_default_is_returned(self):
+        """A declared default Periodicity resolves instead of counting as unresolved."""
+
+        def defaulted(
+            values: np.ndarray,
+            periodicity: compute.Periodicity = compute.Periodicity.monthly,
+        ) -> np.ndarray:
+            return values
+
+        resolved = _resolve_periodicity(defaulted, [np.array([1.0])], {}, {})
+        assert resolved is compute.Periodicity.monthly
+
+    def test_explicit_none_raises(self):
+        """An explicit None has no resolvable Periodicity and fails closed."""
+        with pytest.raises(PeriodicityError, match="Invalid periodicity argument"):
+            _resolve_periodicity(self._needs_periodicity, [np.array([1.0])], {"periodicity": None}, {})
+
+    def test_explicit_periodicity_returned(self):
+        """An explicitly provided Periodicity member is returned unchanged."""
+        resolved = _resolve_periodicity(
+            self._needs_periodicity,
+            [np.array([1.0])],
+            {"periodicity": compute.Periodicity.daily},
+            {},
+        )
+        assert resolved is compute.Periodicity.daily
+
+
 class TestInferTemporalParameters:
     """Test the _infer_temporal_parameters orchestrator function."""
 
@@ -823,6 +901,34 @@ class TestXarrayAdapterIntegration:
         # should return numpy array, not DataArray
         assert isinstance(result, np.ndarray)
         assert not isinstance(result, xr.DataArray)
+
+    def test_invalid_periodicity_fails_closed_before_compute(self, sample_monthly_precip_da):
+        """A declared periodicity that cannot resolve raises at the seam (#759)."""
+        calls = []
+
+        @xarray_adapter()
+        def needs_periodicity(values: np.ndarray, periodicity: compute.Periodicity) -> np.ndarray:
+            calls.append(periodicity)
+            return values
+
+        with pytest.raises(PeriodicityError, match="Invalid periodicity argument"):
+            needs_periodicity(sample_monthly_precip_da, periodicity="daily")
+
+        assert calls == []
+
+    def test_declared_default_periodicity_is_honored(self, sample_monthly_precip_da):
+        """A defaulted periodicity resolves through the decorator instead of raising."""
+
+        @xarray_adapter()
+        def defaulted(
+            values: np.ndarray,
+            periodicity: compute.Periodicity = compute.Periodicity.monthly,
+        ) -> np.ndarray:
+            assert periodicity is compute.Periodicity.monthly
+            return values * 2
+
+        result = defaulted(sample_monthly_precip_da)
+        np.testing.assert_array_equal(result.values, sample_monthly_precip_da.values * 2)
 
 
 def _finalize_numpy_result(
