@@ -26,7 +26,7 @@ from climate_indices.indices import Distribution
 from climate_indices.xarray_adapter import pet_hargreaves, pet_thornthwaite
 
 # measurement parameters for stable paired overhead measurement
-_OVERHEAD_REPEAT = 7  # paired trials (median filters CI noise)
+_OVERHEAD_REPEAT = 8  # equal trials per order (median filters CI noise)
 _OVERHEAD_NUMBER = 3  # calls per trial (amortizes per-call overhead)
 # Recent hosted runs measured up to ~2.5ms fixed adapter cost; 3ms preserves
 # runner headroom. For gridded data, this cost is amortized across spatial points.
@@ -37,9 +37,9 @@ def _assert_overhead_within_budget(
     operation: str,
     numpy_time: float,
     xarray_time: float,
+    overhead: float,
 ) -> None:
     """Assert that measured xarray fixed overhead is below the shared budget."""
-    overhead = xarray_time - numpy_time
     assert overhead < _OVERHEAD_BUDGET_SECONDS, (
         f"{operation} xarray fixed overhead {overhead * 1000:.3f}ms meets or exceeds "
         f"{_OVERHEAD_BUDGET_SECONDS * 1000:.3f}ms budget "
@@ -75,6 +75,7 @@ class TestOverheadBudgetPolicy:
             "PET Hargreaves",
             numpy_time=0.002,
             xarray_time=0.0049,
+            overhead=0.0029,
         )
 
     def test_shared_budget_rejects_material_slowdown_with_diagnostics(self) -> None:
@@ -84,6 +85,7 @@ class TestOverheadBudgetPolicy:
                 "PET Hargreaves",
                 numpy_time=0.002,
                 xarray_time=0.0051,
+                overhead=0.0031,
             )
 
         expected_message = (
@@ -99,6 +101,7 @@ class TestOverheadBudgetPolicy:
                 "PET Hargreaves",
                 numpy_time=0.0,
                 xarray_time=_OVERHEAD_BUDGET_SECONDS,
+                overhead=_OVERHEAD_BUDGET_SECONDS,
             )
 
         expected_message = (
@@ -118,13 +121,12 @@ class TestOverheadBudgetPolicy:
 
         timings = iter(
             [
-                (numpy_fn, 1.0),
-                (xarray_fn, 1.4),
-                (xarray_fn, 9.0),
-                (numpy_fn, 1.0),
-                (numpy_fn, 5.0),
-                (xarray_fn, 5.5),
+                (numpy_fn, 2.0),
+                (xarray_fn, 5.1),
+                (xarray_fn, 4.5),
+                (numpy_fn, 2.6),
             ]
+            * 4
         )
 
         def fake_timeit(fn, *, number: int) -> float:
@@ -137,11 +139,11 @@ class TestOverheadBudgetPolicy:
         measured = TestOverheadThreshold._measure_overhead(
             numpy_fn,
             xarray_fn,
-            trials=3,
+            trials=8,
             number=2,
         )
 
-        assert measured == (5.0, 5.5)
+        assert measured == pytest.approx((2.3, 4.8, 2.5))
         assert next(timings, None) is None
 
 
@@ -324,8 +326,8 @@ class TestOverheadThreshold:
     (primary use case), overhead is amortized across spatial dimensions and
     becomes negligible.
 
-    Uses alternating paired trials and their median delta to filter CI noise and
-    host-speed drift while catching real regressions.
+    Uses equally balanced path orders and their median deltas to filter CI noise
+    and host-speed drift while catching real regressions.
     """
 
     @staticmethod
@@ -334,13 +336,16 @@ class TestOverheadThreshold:
         xarray_fn,
         trials: int = _OVERHEAD_REPEAT,
         number: int = _OVERHEAD_NUMBER,
-    ) -> tuple[float, float]:
+    ) -> tuple[float, float, float]:
         """
-        Run both paths and return representative paired timings.
+        Return median path timings and order-neutral fixed overhead.
 
-        Alternates path order and selects the pair nearest the median overhead.
+        Alternates path order, then averages each order's median delta.
         Includes warmup calls to avoid first-call JIT/import effects.
         """
+        if trials <= 0 or trials % 2:
+            raise ValueError("trials must be a positive even number")
+
         # warmup
         numpy_fn()
         xarray_fn()
@@ -355,11 +360,12 @@ class TestOverheadThreshold:
                 xarray_time = timeit(xarray_fn, number=number) / number
             measurements.append((numpy_time, xarray_time))
 
-        median_overhead = median(xarray - numpy for numpy, xarray in measurements)
-        return min(
-            measurements,
-            key=lambda times: abs(times[1] - times[0] - median_overhead),
-        )
+        numpy_time = median(numpy for numpy, _ in measurements)
+        xarray_time = median(xarray for _, xarray in measurements)
+        numpy_first_overhead = median(xarray - numpy for numpy, xarray in measurements[::2])
+        xarray_first_overhead = median(xarray - numpy for numpy, xarray in measurements[1::2])
+        overhead = (numpy_first_overhead + xarray_first_overhead) / 2
+        return numpy_time, xarray_time, overhead
 
     def test_spi_overhead(
         self,
@@ -367,7 +373,7 @@ class TestOverheadThreshold:
         bench_monthly_precip_da: xr.DataArray,
     ) -> None:
         """Verify SPI xarray overhead stays within threshold."""
-        np_time, xa_time = self._measure_overhead(
+        np_time, xa_time, overhead = self._measure_overhead(
             lambda: indices.spi(
                 values=bench_monthly_precip_np,
                 scale=6,
@@ -383,7 +389,7 @@ class TestOverheadThreshold:
                 distribution=Distribution.gamma,
             ),
         )
-        _assert_overhead_within_budget("SPI", np_time, xa_time)
+        _assert_overhead_within_budget("SPI", np_time, xa_time, overhead)
 
     def test_spei_overhead(
         self,
@@ -393,7 +399,7 @@ class TestOverheadThreshold:
         bench_monthly_pet_da: xr.DataArray,
     ) -> None:
         """Verify SPEI xarray overhead stays within threshold."""
-        np_time, xa_time = self._measure_overhead(
+        np_time, xa_time, overhead = self._measure_overhead(
             lambda: indices.spei(
                 precips_mm=bench_monthly_precip_np,
                 pet_mm=bench_monthly_pet_np,
@@ -411,7 +417,7 @@ class TestOverheadThreshold:
                 distribution=Distribution.gamma,
             ),
         )
-        _assert_overhead_within_budget("SPEI", np_time, xa_time)
+        _assert_overhead_within_budget("SPEI", np_time, xa_time, overhead)
 
     def test_pet_thornthwaite_overhead(
         self,
@@ -419,7 +425,7 @@ class TestOverheadThreshold:
         bench_monthly_temp_da: xr.DataArray,
     ) -> None:
         """Verify PET Thornthwaite xarray overhead stays within threshold."""
-        np_time, xa_time = self._measure_overhead(
+        np_time, xa_time, overhead = self._measure_overhead(
             lambda: indices.pet(
                 temperature_celsius=bench_monthly_temp_np,
                 latitude_degrees=40.0,
@@ -430,7 +436,7 @@ class TestOverheadThreshold:
                 latitude=40.0,
             ),
         )
-        _assert_overhead_within_budget("PET Thornthwaite", np_time, xa_time)
+        _assert_overhead_within_budget("PET Thornthwaite", np_time, xa_time, overhead)
 
     def test_pet_hargreaves_overhead(
         self,
@@ -440,7 +446,7 @@ class TestOverheadThreshold:
         bench_daily_tmax_da: xr.DataArray,
     ) -> None:
         """Verify PET Hargreaves xarray overhead stays within threshold."""
-        np_time, xa_time = self._measure_overhead(
+        np_time, xa_time, overhead = self._measure_overhead(
             lambda: _pet_hargreaves_numpy(
                 daily_tmin_celsius=bench_daily_tmin_np,
                 daily_tmax_celsius=bench_daily_tmax_np,
@@ -452,4 +458,4 @@ class TestOverheadThreshold:
                 latitude=40.0,
             ),
         )
-        _assert_overhead_within_budget("PET Hargreaves", np_time, xa_time)
+        _assert_overhead_within_budget("PET Hargreaves", np_time, xa_time, overhead)
