@@ -1,25 +1,12 @@
 # Quickstart Tutorial
 
-```{contents}
-:backlinks: none
-:local: true
-```
+This tutorial computes PET, SPI, and SPEI from one synthetic 30-year series using
+the recommended xarray API. It takes about five minutes. Real inputs reach the
+same functions; the input contract is in {doc}`data_requirements`.
 
-This 5-minute tutorial shows you how to compute drought indices (PET, SPI, SPEI) using
-**climate_indices**. You'll learn both the recommended **xarray API** (which auto-infers parameters
-from coordinates) and the **NumPy API** (which requires explicit parameters).
+## Install
 
-## Prerequisites
-
-Create and activate a virtual environment (conda shown; any Python 3.10+
-environment works):
-
-```bash
-conda create -n myvenv python=3.10
-conda activate myvenv
-```
-
-Install the package from PyPI:
+Requires Python 3.10+. Install the package from PyPI:
 
 ```bash
 pip install climate-indices
@@ -27,39 +14,9 @@ pip install climate-indices
 uv pip install climate-indices
 ```
 
-To install from source, first install [uv](https://docs.astral.sh/uv/), then sync
-the development environment:
+## Create sample data
 
-```bash
-pip install uv
-uv sync --dev
-```
-
-Optionally validate the installation by running the test suite:
-
-```bash
-uv run pytest
-```
-
-Then show the package installed into the environment:
-
-```bash
-uv pip list | grep climate-indices
-
-# climate-indices   X.Y.Z   /path/to/climate_indices
-```
-
-For visualization examples, also install matplotlib:
-
-```bash
-pip install matplotlib
-```
-
-## Create Sample Data
-
-First, let's create synthetic monthly precipitation and temperature data covering 30 years
-(360 months). Real-world usage would load data from NetCDF files using `xr.open_dataset()`;
-see {doc}`data_requirements` for the full input contract.
+Create 30 years of synthetic monthly precipitation and temperature (360 months):
 
 ```{testsetup} quickstart
 import numpy as np
@@ -85,6 +42,9 @@ precip_raw = np.clip(precip_raw, 0, None)
 seasonal_temp = 15 + 10 * np.sin(2 * np.pi * (months - 3) / 12)
 temp_raw = seasonal_temp + np.random.normal(0, 2, n_months)
 ```
+
+Label the arrays with a time coordinate, which also carries the start year and
+periodicity that the xarray API infers:
 
 ```{doctest} quickstart
 >>> # wrap arrays in xarray DataArrays with time coordinates
@@ -113,26 +73,16 @@ temp_raw = seasonal_temp + np.random.normal(0, 2, n_months)
 (360,)
 ```
 
-The **time coordinate** is essential for the xarray API — it enables automatic inference of the data
-start year and periodicity. The **units attributes** document the expected units: precipitation in
-mm/month and temperature in degrees Celsius.
-
 :::{warning}
 **Beta Feature**
 
 The xarray API shown below is **beta** and may change in future minor releases.
-Computation results are identical to the stable NumPy API shown later in this tutorial.
+Computation results are identical to the stable NumPy array API.
 :::
 
-## Compute Indices with xarray (Recommended)
+## Compute PET
 
-The xarray API is the recommended approach because it automatically infers parameters like
-`data_start_year` and `periodicity` from the time coordinate, reducing boilerplate and errors.
-
-### PET (Thornthwaite)
-
-Potential evapotranspiration (PET) estimates atmospheric water demand. The Thornthwaite method
-requires only monthly temperature and latitude:
+PET (Thornthwaite) needs monthly temperature and latitude:
 
 ```{doctest} quickstart
 >>> pet_result = pet_thornthwaite(temp_da, latitude=40.0)
@@ -142,13 +92,12 @@ requires only monthly temperature and latitude:
 'Potential Evapotranspiration (Thornthwaite method)'
 ```
 
-The result is a `DataArray` with the same time coordinate and inherited metadata. Latitude is in
-decimal degrees (positive for north, negative for south).
+The result keeps the time coordinate and the metadata. Latitude is in decimal
+degrees, positive north.
 
-### SPI (Standardized Precipitation Index)
+## Compute SPI
 
-SPI quantifies precipitation anomalies relative to a long-term calibration period. Negative values
-indicate drier-than-normal conditions:
+SPI compares precipitation against its own long-term calibration period:
 
 ```{doctest} quickstart
 >>> spi_result = spi(precip_da, scale=3, distribution=Distribution.gamma)
@@ -158,14 +107,12 @@ indicate drier-than-normal conditions:
 'Standardized Precipitation Index'
 ```
 
-The `scale` parameter controls the accumulation window (3 months here). The `distribution`
-parameter selects the fitting distribution (`gamma` is standard for precipitation). The calibration
-period defaults to the full time range.
+`scale` is the accumulation window in months; the calibration period defaults to
+the full time range.
 
-### SPEI (Standardized Precipitation Evapotranspiration Index)
+## Compute SPEI
 
-SPEI is similar to SPI but accounts for both precipitation and evapotranspiration, making it
-sensitive to temperature-driven droughts:
+SPEI is SPI on the water balance, so it also responds to temperature:
 
 ```{doctest} quickstart
 >>> spei_result = spei(precip_da, pet_result, scale=3, distribution=Distribution.gamma)
@@ -175,12 +122,9 @@ sensitive to temperature-driven droughts:
 'Standardized Precipitation Evapotranspiration Index'
 ```
 
-SPEI uses the precipitation minus PET (P - PET) as input, representing the water balance.
+## Save and reopen the results
 
-## Save and Load NetCDF
-
-xarray makes it easy to persist results to disk in NetCDF format, the standard for gridded climate
-data:
+Write the SPI result to NetCDF and read it back:
 
 ```{doctest} quickstart
 >>> import tempfile
@@ -205,82 +149,12 @@ data:
 os.unlink(temp_path)
 ```
 
-For multi-variable datasets, use `xr.Dataset` instead:
+{doc}`writing-outputs` covers Zarr output, multi-variable datasets, and writes
+that do not fit in memory.
 
-```python
-ds = xr.Dataset({
-    "precipitation": precip_da,
-    "temperature": temp_da,
-    "pet": pet_result,
-    "spi_3": spi_result,
-    "spei_3": spei_result,
-})
-ds.to_netcdf("results.nc")
+## Plot the results
 
-# later
-ds_loaded = xr.open_dataset("results.nc")
-```
-
-## Compute Indices with NumPy
-
-The NumPy API provides explicit control over all parameters but requires more boilerplate. All
-temporal parameters must be specified manually:
-
-```{doctest} quickstart
->>> from climate_indices.indices import spi as spi_numpy
->>> from climate_indices.indices import spei as spei_numpy
->>> from climate_indices.indices import pet
->>> from climate_indices.compute import Periodicity
->>>
->>> # extract raw NumPy arrays
->>> precip_values = precip_da.values
->>> temp_values = temp_da.values
->>>
->>> # compute PET (Thornthwaite)
->>> pet_np = pet(
-...     temp_values,
-...     latitude_degrees=40.0,
-...     data_start_year=1990
-... )
->>> pet_np.shape
-(360,)
->>>
->>> # compute SPI with explicit calibration period and periodicity
->>> spi_np = spi_numpy(
-...     precip_values,
-...     scale=3,
-...     distribution=Distribution.gamma,
-...     data_start_year=1990,
-...     calibration_year_initial=1990,
-...     calibration_year_final=2019,
-...     periodicity=Periodicity.monthly
-... )
->>> spi_np.shape
-(360,)
->>>
->>> # compute SPEI using P - PET
->>> spei_np = spei_numpy(
-...     precip_values,
-...     pet_np,
-...     scale=3,
-...     distribution=Distribution.gamma,
-...     data_start_year=1990,
-...     calibration_year_initial=1990,
-...     calibration_year_final=2019,
-...     periodicity=Periodicity.monthly
-... )
->>> spei_np.shape
-(360,)
-```
-
-The NumPy API is useful when working with legacy code or when xarray's overhead is undesirable for
-very large computations. However, the xarray API is recommended for most use cases because it reduces
-parameter redundancy and preserves metadata.
-
-## Visualize Results
-
-Plotting time series helps verify that indices respond correctly to precipitation and temperature
-patterns:
+Plotting confirms that the indices track the synthetic seasonal pattern:
 
 ```python
 import matplotlib.pyplot as plt
@@ -312,19 +186,8 @@ plt.show()
 Install matplotlib for visualization: `pip install matplotlib`
 :::
 
-## Next Steps
+## Next steps
 
-Now that you've computed your first drought indices, explore these resources:
-
-- **xarray Migration Guide**: {doc}`xarray_migration` — Learn how to transition from the legacy
-  NumPy API to the xarray API and understand chunking strategies for large datasets.
-- **API Reference**: {doc}`reference` — Complete documentation of all functions, parameters, and
-  distributions.
-- **Example Datasets**: Download sample NetCDF files from the
-  [NOAA Climate Prediction Center](https://www.cpc.ncep.noaa.gov/) or
-  [NCAR Climate Data Guide](https://climatedataguide.ucar.edu/) to practice with real data.
-- **Multi-dimensional Grids**: The xarray API supports 2-D, 3-D, and 4-D arrays (e.g., time × lat ×
-  lon). Simply pass gridded `DataArray` objects — the functions broadcast automatically.
-- **Dask Integration**: For out-of-core computation on datasets larger than memory, chunk your data
-  along spatial dimensions and keep the time dimension as a single chunk. See the xarray migration
-  guide for details.
+- Follow a longer worked example in the {doc}`tutorials` index.
+- Move an existing NumPy-array workflow to this API with {doc}`xarray_migration`.
+- Look up every function, parameter, and distribution in {doc}`reference`.
