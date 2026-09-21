@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from climate_indices import compute, indices, palmer
+from climate_indices import compute, indices, palmer, utils
 from climate_indices.__main__ import main
 
 # the fixture data starts in January of this year (see tests/conftest.py)
@@ -103,6 +103,31 @@ def _common_arguments(index, precip_path, output_base) -> list[str]:
 
 def _spi_arguments(precip_path, output_base, scales=("6",)) -> list[str]:
     return [*_common_arguments("spi", precip_path, output_base), "--scales", *scales]
+
+
+def _run_daily_spi(precip_path, output_base) -> None:
+    main(
+        [
+            "--index",
+            "spi",
+            "--periodicity",
+            "daily",
+            "--calibration_start_year",
+            "1981",
+            "--calibration_end_year",
+            "2010",
+            "--netcdf_precip",
+            str(precip_path),
+            "--var_name_precip",
+            "precip",
+            "--output_file_base",
+            str(output_base),
+            "--multiprocessing",
+            "single",
+            "--scales",
+            "30",
+        ]
+    )
 
 
 def test_timeseries_spi_matches_in_process_computation(tmp_path, precips_mm_monthly):
@@ -207,9 +232,9 @@ def test_mixed_order_divisions_companion_is_rejected(tmp_path, precips_mm_monthl
     """
     A time-major PET companion is rejected alongside a time-last precipitation variable.
 
-    Both variables ride the same transport and are zipped positionally into the
-    two-array kernels, so a companion stored time-first would pair each
-    division's series with the wrong PET series rather than raising.
+    Companions are validated against the shared-array transport contract, so a
+    time-major PET file is rejected before it can be zipped positionally against
+    a time-last precipitation variable.
     """
     precips = precips_mm_monthly.reshape(-1)
     pet = pet_thornthwaite_mm.reshape(-1)
@@ -583,3 +608,112 @@ def test_all_runs_each_index_into_its_own_output(tmp_path, precips_mm_monthly, p
     )
     with xr.open_dataset(tmp_path / "all_spi_gamma_01.nc") as dataset:
         np.testing.assert_allclose(dataset["spi_gamma_01"].values[0], expected_spi, equal_nan=True)
+
+
+def test_daily_gridded_spi_accepts_a_partial_final_year(tmp_path):
+    """
+    A daily input ending mid-year computes instead of failing in the conversion.
+
+    The Gregorian-to-366-day conversion assumed whole calendar years: a partial
+    final year either raised in the conversion (short or leap-year tails) or
+    restored to the full Gregorian span and then failed the output size check.
+    The shared calendar plan pads the partial final year and restores the
+    observed days on output.
+    """
+    start_year = 1981
+    time = xr.date_range(f"{start_year}-01-01", "2010-06-15", freq="D")
+    generator = np.random.default_rng(seed=8675309)
+    values = generator.gamma(shape=2.0, scale=10.0, size=(len(_LATITUDES), len(_LONGITUDES), time.size))
+    precip_path = tmp_path / "precip_daily_grid.nc"
+    xr.Dataset(
+        {"precip": (("lat", "lon", "time"), values, {"units": "mm"})},
+        coords={"lat": _LATITUDES, "lon": _LONGITUDES, "time": time},
+    ).to_netcdf(precip_path)
+
+    _run_daily_spi(precip_path, tmp_path / "spi_daily")
+
+    # 2010 is a partial final year: 166 observed days padded to 366 for the core
+    plan = utils.DailyCalendarPlan.from_year_span(start_year, 2011 - start_year, time.size)
+    assert plan.observed_days_by_year[-1] == 166
+
+    with xr.open_dataset(tmp_path / "spi_daily_spi_gamma_30.nc") as dataset:
+        written = dataset["spi_gamma_30"].values
+        assert written.shape == values.shape
+        np.testing.assert_array_equal(dataset["time"].values, time.values)
+        # the observed tail is real output, not NaN left over from the padding
+        assert np.isfinite(written[..., -1]).all()
+        for i in range(len(_LATITUDES)):
+            for j in range(len(_LONGITUDES)):
+                expected = plan.to_gregorian(
+                    indices.spi(
+                        values=plan.to_all_leap(values[i, j]),
+                        scale=30,
+                        distribution=indices.Distribution.gamma,
+                        data_start_year=start_year,
+                        calibration_year_initial=start_year,
+                        calibration_year_final=2010,
+                        periodicity=compute.Periodicity.daily,
+                    )
+                )
+                np.testing.assert_allclose(written[i, j], expected, equal_nan=True, err_msg=f"cell ({i}, {j})")
+
+
+def test_daily_divisions_spi_converts_and_restores(tmp_path):
+    """A daily divisions input uses the same calendar plan as the grid transport."""
+    start_year = 1981
+    time = xr.date_range(f"{start_year}-01-01", "2010-06-15", freq="D")
+    generator = np.random.default_rng(seed=112358)
+    values = generator.gamma(shape=2.0, scale=10.0, size=(1, time.size))
+    precip_path = tmp_path / "precip_daily_divisions.nc"
+    xr.Dataset(
+        {
+            "precip": (("division", "time"), values, {"units": "mm"}),
+            "lat": (("division",), [_LATITUDES[0]]),
+        },
+        coords={"division": [_DIVISION], "time": time},
+    ).to_netcdf(precip_path)
+
+    _run_daily_spi(precip_path, tmp_path / "spi_daily_divisions")
+
+    plan = utils.DailyCalendarPlan.from_year_span(start_year, 2011 - start_year, time.size)
+    with xr.open_dataset(tmp_path / "spi_daily_divisions_spi_gamma_30.nc") as dataset:
+        written = dataset["spi_gamma_30"].values
+        assert written.shape == values.shape
+        expected = plan.to_gregorian(
+            indices.spi(
+                values=plan.to_all_leap(values[0]),
+                scale=30,
+                distribution=indices.Distribution.gamma,
+                data_start_year=start_year,
+                calibration_year_initial=start_year,
+                calibration_year_final=2010,
+                periodicity=compute.Periodicity.daily,
+            )
+        )
+        np.testing.assert_allclose(written[0], expected, equal_nan=True)
+
+
+def test_daily_input_starting_mid_year_is_rejected(tmp_path):
+    """A daily series that does not begin January 1 is rejected, not silently shifted."""
+    time = xr.date_range("1981-06-01", "2010-12-31", freq="D")
+    precip_path = tmp_path / "precip_mid_year.nc"
+    xr.Dataset(
+        {"precip": (("time",), np.ones(time.size), {"units": "mm"})},
+        coords={"time": time},
+    ).to_netcdf(precip_path)
+
+    with pytest.raises(ValueError, match="begin on January 1"):
+        _run_daily_spi(precip_path, tmp_path / "spi_mid_year")
+
+
+def test_daily_input_with_a_gap_is_rejected(tmp_path):
+    """A daily series with a missing day is rejected, not positionally compacted."""
+    time = xr.date_range("1981-01-01", "2010-12-31", freq="D").delete(100)
+    precip_path = tmp_path / "precip_gap.nc"
+    xr.Dataset(
+        {"precip": (("time",), np.ones(time.size), {"units": "mm"})},
+        coords={"time": time},
+    ).to_netcdf(precip_path)
+
+    with pytest.raises(ValueError, match="contiguous daily steps"):
+        _run_daily_spi(precip_path, tmp_path / "spi_gap")
