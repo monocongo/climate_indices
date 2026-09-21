@@ -107,7 +107,7 @@ def test_input_chunksizes_ignores_contiguous_inputs(tmp_path):
     input_file = tmp_path / "contiguous.nc"
     dataset.to_netcdf(input_file, engine="h5netcdf")
 
-    with xr.open_mfdataset(input_file) as opened:
+    with xr.open_mfdataset(input_file, engine="h5netcdf") as opened:
         assert "contiguous" not in opened["prcp"].encoding
         assert cli_main._input_chunksizes(opened) == ((), ())
 
