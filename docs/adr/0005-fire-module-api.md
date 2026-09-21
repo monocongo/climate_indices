@@ -1,4 +1,13 @@
-# Fire APIs are namespaced in `fire.py`
+# Fire APIs are namespaced in the `fire` package
+
+## Status
+
+Amended: the flat-module deferral recorded in the Decision section is complete.
+`cec29737` ("refactor(fire): promote the flat module to a fire package")
+promoted `fire.py` to `src/climate_indices/fire/`, so the trigger is met and
+nothing remains deferred. The naming decision itself — `from climate_indices
+import fire`, `fire.cffwis_fwi()`, no unqualified `typed_public_api.py` entries —
+is unchanged.
 
 [ADR-0001](./0001-dual-numpy-xarray-api.md) places new non-Palmer calculations
 in `compute.py` and exposes them through the top-level typed/xarray API. Fire
@@ -9,7 +18,7 @@ and couple unrelated API evolution.
 
 ## Decision
 
-Fire computations live in `climate_indices.fire`, a stable NumPy module. It is
+Fire computations live in `climate_indices.fire`, a stable NumPy subpackage. It is
 publicly imported as `from climate_indices import fire`; its functions are not
 re-exported from the package root. The Canadian FWI component is
 `fire.cffwis_fwi()`, never `fire.fwi()`, and Fosberg remains
@@ -20,13 +29,14 @@ xarray adapter and CF metadata registry, and do not add unqualified entries to
 `typed_public_api.py`. CFFWIS returns named outputs: a result object for NumPy
 and an `xarray.Dataset` for xarray.
 
-Keep `fire.py` flat until it exceeds roughly 1,500 lines or CFFWIS state
-handling needs separated modules. Promotion to a `fire` package must preserve
-the `from climate_indices import fire` import and every public function name.
-`fire.py` passed that line count with the CFFWIS moisture codes (#803);
-promotion is deferred to a dedicated mechanical refactor tracked against the
-remaining CFFWIS work (#804), so the flat module is a deliberate, recorded
-deferral rather than a silent departure from the trigger above.
+The original instruction was to keep `fire.py` flat until it exceeded roughly
+1,500 lines or CFFWIS state handling needed separated modules, and any promotion
+to a `fire` package had to preserve the `from climate_indices import fire` import
+and every public function name. `fire.py` passed that line count with the CFFWIS
+moisture codes (#803); promotion was deferred to a dedicated mechanical refactor
+tracked against the remaining CFFWIS work (#804) and landed in `cec29737`, so the
+flat module was a deliberate, recorded deferral rather than a silent departure
+from the trigger above, and that deferral is now complete.
 
 ## Consequences
 
