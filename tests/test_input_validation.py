@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from climate_indices import ClimateIndicesError, compute, indices
-from climate_indices.exceptions import InvalidArgumentError
+from climate_indices.exceptions import InsufficientDataError, InvalidArgumentError
 
 
 @pytest.fixture
@@ -200,10 +200,10 @@ def test_scale_boundary_values_are_accepted(valid_precip_data, scale: int) -> No
 
 @pytest.mark.parametrize("scale", [1, 90, 2196])
 def test_daily_scale_values_are_accepted(scale: int) -> None:
-    """The daily scale is bounded in days, so a 90-day timescale is valid."""
+    """The daily scale range is inclusive on both ends and counted in days."""
     # 30 complete 366-day years, matching the daily periodicity's calendar
     values = np.random.default_rng(0).gamma(shape=1.0, scale=2.0, size=366 * 30)
-    indices.spi(
+    result = indices.spi(
         values,
         scale,
         indices.Distribution.gamma,
@@ -212,6 +212,51 @@ def test_daily_scale_values_are_accepted(scale: int) -> None:
         2010,
         compute.Periodicity.daily,
     )
+    assert result.shape == values.shape
+    assert np.isfinite(result).any()
+
+
+# daily scale acceptance, one row for every public scaled index
+DAILY_SCALE_CALLS = [
+    pytest.param(
+        lambda p: indices.spi(p, 90, indices.Distribution.gamma, 1981, 1981, 2010, compute.Periodicity.daily),
+        id="spi",
+    ),
+    pytest.param(
+        lambda p: indices.spei(
+            p, p * 0.75, 90, indices.Distribution.gamma, compute.Periodicity.daily, 1981, 1981, 2010
+        ),
+        id="spei",
+    ),
+    pytest.param(
+        lambda p: indices.eddi(p, 90, 1981, 1981, 2010, compute.Periodicity.daily),
+        id="eddi",
+    ),
+    pytest.param(
+        lambda p: indices.percentage_of_normal(p, 90, 1981, 1981, 2010, compute.Periodicity.daily),
+        id="percentage-of-normal",
+    ),
+]
+
+
+@pytest.mark.parametrize("call", DAILY_SCALE_CALLS)
+def test_every_scaled_index_accepts_a_90_day_scale(call) -> None:
+    """A daily scale above the monthly maximum is valid for every scaled index."""
+    values = np.random.default_rng(0).gamma(shape=1.0, scale=2.0, size=366 * 30)
+    result = call(values)
+    assert result.shape == values.shape
+    assert np.isfinite(result).any()
+
+
+def test_scale_longer_than_the_series_raises_insufficient_data() -> None:
+    """A scale in range but longer than the series fails loudly instead of returning NaNs.
+
+    Without the guard, np.convolve's "valid" mode makes percentage_of_normal
+    return a longer array than its input.
+    """
+    values = np.random.default_rng(0).gamma(shape=1.0, scale=2.0, size=60)
+    with pytest.raises(InsufficientDataError):
+        indices.percentage_of_normal(values, 90, 2000, 2000, 2000, compute.Periodicity.daily)
 
 
 @pytest.mark.parametrize(("call", "argument_name"), CATCH_ALL_CASES)

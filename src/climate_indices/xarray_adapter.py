@@ -487,17 +487,25 @@ def _resolve_scale_from_args(func: Callable[..., Any], args: tuple[Any, ...], kw
         return None
 
 
-def _validate_sufficient_data(time_coord: xr.DataArray, scale: int) -> None:
+def _validate_sufficient_data(
+    time_coord: xr.DataArray,
+    scale: int,
+    calendar_plan: utils.DailyCalendarPlan | None = None,
+) -> None:
     """Validate that there is sufficient data for the given scale.
 
     Args:
         time_coord: Time coordinate DataArray
         scale: Scale parameter for the index calculation
+        calendar_plan: Daily calendar adaptation, whose padded length is what the
+            NumPy core actually receives. Six complete Gregorian years are 2190
+            observed days but 2196 padded steps, so the raw coordinate length
+            would reject a scale of 2196 that the core can compute.
 
     Raises:
         InsufficientDataError: If there are fewer time steps than the scale requires
     """
-    n_timesteps = len(time_coord)
+    n_timesteps = calendar_plan.all_leap_length if calendar_plan is not None else len(time_coord)
     if n_timesteps < scale:
         error_msg = (
             f"Insufficient data for scale={scale}: {n_timesteps} time steps available, but at least {scale} required."
@@ -1374,8 +1382,6 @@ def xarray_adapter(
                     _validate_supported_calendar(time_coord)
                 validate_time_monotonicity(time_coord)
                 resolved_scale = _resolve_scale_from_args(func, tuple(modified_args), modified_kwargs)
-                if resolved_scale is not None:
-                    _validate_sufficient_data(time_coord, resolved_scale)
 
             # detect Dask-backed arrays
             input_dataarrays = _collect_input_dataarrays(
@@ -1415,6 +1421,8 @@ def xarray_adapter(
                     time_dim,
                 )
                 _validate_calendar_secondary_inputs(calendar_plan, resolved_secondaries, time_dim)
+                if resolved_scale is not None:
+                    _validate_sufficient_data(time_coord, resolved_scale, calendar_plan)
 
             # spatial kernels read the core dimension first, with the cell dimensions
             # ahead of it, so apply_ufunc makes one call per non-core block instead of
