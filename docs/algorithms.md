@@ -47,7 +47,8 @@ parameters.
 
 #### Scale (Timescale)
 
-The scale parameter determines the temporal aggregation period (1-72 months supported).
+The scale parameter determines the temporal aggregation period: 1-72 months for
+monthly data, 1-2196 days for daily data.
 
 **Common scales and applications:**
 
@@ -162,7 +163,7 @@ SPEI is particularly valuable in warming climates where increased temperatures a
 
 SPEI uses the same parameter selection guidelines as SPI:
 
-- **Scale**: Same timescale considerations (1-72 months)
+- **Scale**: Same timescale considerations (1-72 months for monthly data, 1-2196 days for daily data)
 - **Distribution**: Gamma (default) or Pearson Type III
 - **Calibration period**: ≥30 years, \<20% missing data, K-S test p=0.05
 

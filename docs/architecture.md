@@ -634,7 +634,7 @@ raise DistributionFittingError(
 
 ### Input Validation
 - **NetCDF files**: Dimension checks, coordinate validation
-- **User inputs**: Scale range [1-72], year validation
+- **User inputs**: Scale range [1-72] monthly / [1-2196] daily, year validation
 - **Path sanitization**: No path traversal in CLI file arguments
 
 ### Dependency Security

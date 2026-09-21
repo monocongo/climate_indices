@@ -72,7 +72,7 @@ source .venv/bin/activate
 
       Args:
           values: Precipitation time series in mm
-          scale: Temporal scale in months (1-72)
+          scale: Temporal scale in months (1-72) or days (1-2196)
           distribution: Fitting distribution (gamma or pearson)
 
       Returns:

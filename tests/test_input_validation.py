@@ -38,6 +38,9 @@ INVALID_CALLS = {
     "spi-scale-negative": lambda p, pet: indices.spi(
         p, -5, indices.Distribution.gamma, 2000, 2000, 2009, compute.Periodicity.monthly
     ),
+    "spi-daily-scale-above-maximum": lambda p, pet: indices.spi(
+        p, 2197, indices.Distribution.gamma, 2000, 2000, 2009, compute.Periodicity.daily
+    ),
     "percentage-of-normal-scale-none": lambda p, pet: indices.percentage_of_normal(
         p, None, 2000, 2000, 2009, compute.Periodicity.monthly
     ),
@@ -82,6 +85,12 @@ INVALID_ARGUMENT_CASES = [
     pytest.param(INVALID_CALLS["spi-scale-above-maximum"], "scale", "73", id="spi-scale-above-maximum"),
     pytest.param(INVALID_CALLS["spi-scale-negative"], "scale", "-5", id="spi-scale-negative"),
     pytest.param(
+        INVALID_CALLS["spi-daily-scale-above-maximum"],
+        "scale",
+        "2197",
+        id="spi-daily-scale-above-maximum",
+    ),
+    pytest.param(
         INVALID_CALLS["percentage-of-normal-scale-none"], "scale", "None", id="percentage-of-normal-scale-none"
     ),
     pytest.param(
@@ -122,6 +131,12 @@ INVALID_ARGUMENT_MESSAGE_CASES = [
         ("[1, 72]", "1 (monthly)", "3 (seasonal)", "6 (half-year)", "12 (annual)"),
         "[1, 72]",
         id="scale",
+    ),
+    pytest.param(
+        INVALID_CALLS["spi-daily-scale-above-maximum"],
+        ("[1, 2196]", "1 (daily)", "7 (weekly)", "30 (monthly)", "90 (seasonal)", "365 (annual)"),
+        "[1, 2196]",
+        id="daily-scale",
     ),
     pytest.param(
         INVALID_CALLS["spi-distribution-none"],
@@ -171,7 +186,7 @@ def test_invalid_argument_message_names_the_value_and_remediation(
 
 @pytest.mark.parametrize("scale", [1, 72])
 def test_scale_boundary_values_are_accepted(valid_precip_data, scale: int) -> None:
-    """The documented scale range is inclusive on both ends."""
+    """The documented monthly scale range is inclusive on both ends."""
     indices.spi(
         valid_precip_data,
         scale,
@@ -180,6 +195,22 @@ def test_scale_boundary_values_are_accepted(valid_precip_data, scale: int) -> No
         2000,
         2009,
         compute.Periodicity.monthly,
+    )
+
+
+@pytest.mark.parametrize("scale", [1, 90, 2196])
+def test_daily_scale_values_are_accepted(scale: int) -> None:
+    """The daily scale is bounded in days, so a 90-day timescale is valid."""
+    # 30 complete 366-day years, matching the daily periodicity's calendar
+    values = np.random.default_rng(0).gamma(shape=1.0, scale=2.0, size=366 * 30)
+    indices.spi(
+        values,
+        scale,
+        indices.Distribution.gamma,
+        1981,
+        1981,
+        2010,
+        compute.Periodicity.daily,
     )
 
 

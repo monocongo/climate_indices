@@ -228,7 +228,7 @@ class InvalidArgumentError(ClimateIndicesError):
     """Raised when an argument value is outside the valid range or set.
 
     This exception is raised when function arguments have the correct type
-    but invalid values (e.g., scale=0 when valid range is [1, 72]).
+    but invalid values (e.g., a scale below the valid minimum).
 
     Attributes:
         argument_name: Name of the argument that failed validation

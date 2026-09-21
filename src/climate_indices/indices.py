@@ -34,9 +34,11 @@ _logger = get_logger(__name__)
 _FITTED_INDEX_VALID_MIN = -3.09
 _FITTED_INDEX_VALID_MAX = 3.09
 
-# valid range for scale parameter
+# valid range for the scale parameter; the upper bound spans six calendar years
+# for either periodicity, expressed in that periodicity's own time steps
 SCALE_MIN = 1
 SCALE_MAX = 72
+SCALE_MAX_DAILY = 6 * 366
 
 # Hastings inverse normal approximation constants (Abramowitz & Stegun 26.2.23)
 # used by EDDI for converting empirical probabilities to z-scores
@@ -61,26 +63,33 @@ _PCI_MONTH_STARTS: dict[int, np.ndarray] = {
 }
 
 
-def _validate_scale(scale: int) -> None:
-    """Validate that scale is an integer within the valid range.
+def _validate_scale(scale: int, periodicity: compute.Periodicity) -> None:
+    """Validate that scale is an integer within the valid range for the periodicity.
 
     Args:
         scale: The scale parameter to validate
+        periodicity: The periodicity whose time steps bound the scale
 
     Raises:
-        InvalidArgumentError: If scale is not an integer or is outside [SCALE_MIN, SCALE_MAX]
+        InvalidArgumentError: If scale is not an integer or is outside the valid range
     """
-    if not isinstance(scale, int) or scale < SCALE_MIN or scale > SCALE_MAX:
+    if periodicity is compute.Periodicity.daily:
+        scale_max = SCALE_MAX_DAILY
+        common_scales = "1 (daily), 7 (weekly), 30 (monthly), 90 (seasonal), 365 (annual)"
+    else:
+        scale_max = SCALE_MAX
+        common_scales = "1 (monthly), 3 (seasonal), 6 (half-year), 12 (annual)"
+    if not isinstance(scale, int) or scale < SCALE_MIN or scale > scale_max:
         message = (
             f"Invalid scale argument: {scale}. "
-            f"Scale must be an integer in the range [{SCALE_MIN}, {SCALE_MAX}]. "
-            f"Common scales: 1 (monthly), 3 (seasonal), 6 (half-year), 12 (annual)."
+            f"Scale must be an integer in the range [{SCALE_MIN}, {scale_max}]. "
+            f"Common scales: {common_scales}."
         )
         raise InvalidArgumentError(
             message,
             argument_name="scale",
             argument_value=str(scale),
-            valid_values=f"[{SCALE_MIN}, {SCALE_MAX}]",
+            valid_values=f"[{SCALE_MIN}, {scale_max}]",
         )
 
 
@@ -287,7 +296,8 @@ def eddi(
             shaped (time, ``*cells``), ranks every cell in one pass when it is
             declared with ``spatial_time_major``.
         scale: Number of time steps over which PET values are accumulated
-            before ranking. Must be in [1, 72].
+            before ranking. Must be in [1, 72] for monthly data or [1, 2196]
+            for daily data.
         data_start_year: First year of the input PET dataset.
         calibration_year_initial: First year of the calibration period used
             for empirical ranking.
@@ -314,7 +324,7 @@ def eddi(
             are invalid.
     """
     # validate arguments
-    _validate_scale(scale)
+    _validate_scale(scale, periodicity)
     _validate_periodicity(periodicity)
 
     # bind structured logging context
@@ -503,7 +513,7 @@ def spi(
         ``spatial_time_major`` is set
     """
     # validate arguments
-    _validate_scale(scale)
+    _validate_scale(scale, periodicity)
     _validate_distribution(distribution)
     _validate_periodicity(periodicity)
 
@@ -661,7 +671,7 @@ def spei(
         PET and precipitation arrays
     """
     # validate arguments
-    _validate_scale(scale)
+    _validate_scale(scale, periodicity)
     _validate_distribution(distribution)
     _validate_periodicity(periodicity)
 
@@ -847,7 +857,7 @@ def percentage_of_normal(
         1-D or 2-D input, or the (time, ``*cells``) layout of a declared block.
     """
     # validate arguments
-    _validate_scale(scale)
+    _validate_scale(scale, periodicity)
     _validate_periodicity(periodicity)
 
     # bind context and emit calculation_started event
