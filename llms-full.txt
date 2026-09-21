@@ -1214,7 +1214,7 @@ uv run pytest -m benchmark
 
 ### Common Pitfalls
 1. **Do NOT** use wildcard imports (`from module import *`) - explicitly forbidden by ruff
-2. **Do NOT** chunk time dimension in Dask arrays - causes incorrect index calculations
+2. **Do NOT** chunk time dimension in Dask arrays for fitting and stateful indices - causes incorrect index calculations
 3. **Do NOT** modify `indices.py` API - backward compatibility requirement
 4. **Do NOT** commit without running tests - skipping them risks CI failures
 5. **Do NOT** use string paths - always use `pathlib.Path` objects
@@ -1808,7 +1808,7 @@ See [ADR-0002](docs/adr/0002-multiprocessing-cli-dask-xarray.md).
 
 ### 3. Time Dimension Chunking Constraint
 
-**Decision**: Dask arrays MUST have time as single chunk. The two PET entry points are the exception: they accept a split `time` and rechunk it internally, because their kernels are per-day arithmetic rather than fits.
+**Decision**: For fitting and stateful indices, Dask arrays MUST have time as a single chunk. The two PET entry points are the exception: they accept a split `time` and rechunk it internally, because their kernels are period-based arithmetic rather than fits.
 
 **Rationale**: Climate indices require access to full time series for distribution fitting.
 
@@ -1854,7 +1854,7 @@ raise DistributionFittingError(
 1. **Vectorization**: Numpy broadcasting instead of loops
 2. **Shared memory**: CLI uses multiprocessing.Array for zero-copy
 3. **Lazy evaluation**: Dask defers computation until .compute()
-4. **Chunking**: Spatial chunks in Dask, single time chunk
+4. **Chunking**: Spatial chunks in Dask, single time chunk for fitting and stateful indices
 5. **Caching**: Distribution fitting parameters can be fitted once and passed
    back in through the `fitting_params` argument of `indices.spi()`
 

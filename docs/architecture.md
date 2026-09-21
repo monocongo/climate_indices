@@ -572,7 +572,7 @@ See [ADR-0002](adr/0002-multiprocessing-cli-dask-xarray.md).
 
 ### 3. Time Dimension Chunking Constraint
 
-**Decision**: Dask arrays MUST have time as single chunk. The two PET entry points are the exception: they accept a split `time` and rechunk it internally, because their kernels are per-day arithmetic rather than fits.
+**Decision**: For fitting and stateful indices, Dask arrays MUST have time as a single chunk. The two PET entry points are the exception: they accept a split `time` and rechunk it internally, because their kernels are period-based arithmetic rather than fits.
 
 **Rationale**: Climate indices require access to full time series for distribution fitting.
 
@@ -618,7 +618,7 @@ raise DistributionFittingError(
 1. **Vectorization**: Numpy broadcasting instead of loops
 2. **Shared memory**: CLI uses multiprocessing.Array for zero-copy
 3. **Lazy evaluation**: Dask defers computation until .compute()
-4. **Chunking**: Spatial chunks in Dask, single time chunk
+4. **Chunking**: Spatial chunks in Dask, single time chunk for fitting and stateful indices
 5. **Caching**: Distribution fitting parameters can be fitted once and passed
    back in through the `fitting_params` argument of `indices.spi()`
 

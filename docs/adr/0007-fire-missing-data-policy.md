@@ -52,11 +52,13 @@ therefore carries `trailing_gap_days: npt.NDArray[np.int64] | None` — the per-
 number of missing days immediately before the return point, `0` when the last
 input day was valid and `-1` for a cell whose recurrence has not started (a 0-d
 array for a single location) — or `None` while no valid day has started any
-cell. A resumed call
-measures its leading missing run against the state: `None` means the run is
-still pre-start, so it is unbounded and never poisons; otherwise a run that
-pushes `trailing_gap_days + run_length` past `max_gap_days` poisons, exactly
-as the one-shot series would. The count keeps accumulating while no valid day
+cell. A per-cell `-1` stays pre-start: it is not an elapsed missing day and
+does not count against `max_gap_days`, unlike `None`, which means no cell has
+started. A resumed call measures its leading missing run against the state:
+`None` means the run is still pre-start, so it is unbounded and never poisons;
+otherwise a run that pushes `trailing_gap_days + run_length` past
+`max_gap_days` poisons, exactly as the one-shot series would, and only
+non-negative `trailing_gap_days` values enter that sum. The count keeps accumulating while no valid day
 resumes the recurrence, so an all-missing continuation of a started state
 still poisons once it exceeds the allowance, while an all-missing
 continuation of a not-started state stays `None`. A call without
