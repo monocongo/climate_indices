@@ -153,6 +153,22 @@ class TestKBDIValidation:
 
         assert cli_main._validate_args(_kbdi_arguments()) == cli_main.DatasetLayout.GRID
 
+    def test_accepts_reordered_divisions_dimensions(self, monkeypatch, kbdi_datasets):
+        time = xr.date_range("1990-01-01", periods=_DAILY_PERIODS, freq="D")
+        rng = np.random.default_rng(1)
+        coords = {"division": ["0101"], "time": time}
+        kbdi_datasets["precip.nc"] = xr.Dataset(
+            {"precip": (("time", "division"), rng.gamma(2.0, 2.0, (_DAILY_PERIODS, 1)), {"units": "mm"})},
+            coords=coords,
+        )
+        kbdi_datasets["temp.nc"] = xr.Dataset(
+            {"tmax": (("division", "time"), 25.0 + 5.0 * rng.random((1, _DAILY_PERIODS)), {"units": "degC"})},
+            coords=coords,
+        )
+        _patch_open_dataset(monkeypatch, kbdi_datasets)
+
+        assert cli_main._validate_args(_kbdi_arguments()) == cli_main.DatasetLayout.DIVISIONS
+
 
 class TestKBDIProcessing:
     @pytest.mark.parametrize(

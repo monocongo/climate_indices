@@ -123,6 +123,19 @@ change states what a user sees, how to detect it, and what to change in
   writes the requested layout under the minimum-dependency environment instead of
   failing; shared arrays are reset per invocation. The `spi` deprecation migration
   guidance was corrected (#919).
+- **CLI input layout**: the shared-array transport accepts only the time-last orders its
+  kernels index — `("division", "time")` for climate divisions, time-last for grids — so
+  a time-major `("time", "division")` or `("time", "lat", "lon")` input is rejected
+  instead of being standardized along the wrong axis and written out with wrong values
+  (#902, #1063). Companion PET and temperature variables are checked against the same
+  orders as the precipitation variable, so an input the run cannot read fails before any
+  handler runs rather than after earlier variables were copied, and every variable's
+  dimensions are confirmed before any of them is copied. The accepted-layout list in that error is
+  built from the layout classifier itself, so it names the `("time",)` time-series order
+  and cannot drift again, and the companion-dimensions message is well-formed.
+- **Typed public API**: the package-root `eddi()` overloads now declare
+  `spatial_time_major`, which the runtime already forwarded, so a typed caller can pass
+  the keyword the documentation describes.
 
 ## [2.4.0] - 2026-04-05
 
