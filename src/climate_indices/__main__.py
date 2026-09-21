@@ -151,7 +151,8 @@ class _ComputeContext:
 # each variable's values in storage order, and the kernels index the time axis
 # at a fixed position (_TIME_AXIS_INDEX), so a time-carrying variable has to be
 # stored time-last. The layout classifier is wider -- it accepts a time-major
-# grid for the xarray-backed KBDI path, which never enters the transport
+# grid or divisions variable for the xarray-backed KBDI path, which never enters
+# the transport
 _TRANSPORT_DIMENSIONS: dict[DatasetLayout, tuple[tuple[Hashable, ...], ...]] = {
     DatasetLayout.GRID: (("lat", "lon", "time"),),
     DatasetLayout.DIVISIONS: (("division", "time"),),

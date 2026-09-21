@@ -207,9 +207,9 @@ def test_mixed_order_divisions_companion_is_rejected(tmp_path, precips_mm_monthl
     """
     A time-major PET companion is rejected alongside a time-last precipitation variable.
 
-    Both variables ride the same transport and are zipped positionally into the
-    two-array kernels, so a companion stored time-first would pair each
-    division's series with the wrong PET series rather than raising.
+    Companions are validated against the shared-array transport contract, so a
+    time-major PET file is rejected before it can be zipped positionally against
+    a time-last precipitation variable.
     """
     precips = precips_mm_monthly.reshape(-1)
     pet = pet_thornthwaite_mm.reshape(-1)
