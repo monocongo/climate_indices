@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from climate_indices import utils
+from climate_indices.exceptions import DataShapeError
 
 # disable logging messages
 logging.disable(logging.CRITICAL)
@@ -461,9 +462,19 @@ def test_transform_to_366day():
         "Not transforming the 1-D array of 366-days " + "into a corresponding 366-day array",
     )
 
+    # a final year may be partial; its missing days are padded with NaN
+    partial_leap_year = utils.transform_to_366day(np.arange(50, dtype=float), 1972, 1)
+    assert partial_leap_year.size == 366
+    np.testing.assert_array_equal(partial_leap_year[:50], np.arange(50))
+    assert np.all(np.isnan(partial_leap_year[50:]))
+
+    partial_january = utils.transform_to_366day(np.ones(31), 2025, 1)
+    assert partial_january.size == 366
+    np.testing.assert_array_equal(partial_january[:31], np.ones(31))
+    assert np.all(np.isnan(partial_january[31:]))
+
     # make sure that the function croaks with a ValueError
     # whenever it gets invalid array arguments
-    np.testing.assert_raises(ValueError, utils.transform_to_366day, values_365[:50], 1972, 1)
     np.testing.assert_raises(ValueError, utils.transform_to_366day, np.ones((2, 10)), 1972, 1)
 
     # make sure that the function croaks with a ValueError whenever it gets invalid year arguments
@@ -475,6 +486,44 @@ def test_transform_to_366day():
     np.testing.assert_raises(ValueError, utils.transform_to_366day, values_365, 1972, -5)
     np.testing.assert_raises(TypeError, utils.transform_to_366day, values_365, 1972, 4.9)
     np.testing.assert_raises(ValueError, utils.transform_to_366day, values_365, 1972, 24)
+
+    # an array longer than the declared span, or an empty array, is rejected
+    np.testing.assert_raises(ValueError, utils.transform_to_366day, np.ones(366), 2001, 1)
+    np.testing.assert_raises(ValueError, utils.transform_to_366day, np.array([]), 1972, 1)
+
+
+def test_daily_calendar_plan_from_year_span():
+    """from_year_span distributes observed values across the declared Gregorian years."""
+    assert utils.DailyCalendarPlan.from_year_span(1971, 2, 730) == utils.DailyCalendarPlan(1971, (365, 365))
+    assert utils.DailyCalendarPlan.from_year_span(1972, 1, 366) == utils.DailyCalendarPlan(1972, (366,))
+    # 2020 is a leap year followed by 100 observed days of 2021
+    assert utils.DailyCalendarPlan.from_year_span(2020, 2, 466) == utils.DailyCalendarPlan(2020, (366, 100))
+    # a span whose length is too short, too long, or negative for its years
+    # cannot describe a contiguous daily series
+    with pytest.raises(ValueError):
+        utils.DailyCalendarPlan.from_year_span(2019, 2, 100)
+    with pytest.raises(ValueError):
+        utils.DailyCalendarPlan.from_year_span(2019, 3, 400)
+    with pytest.raises(ValueError):
+        utils.DailyCalendarPlan.from_year_span(2019, 2, 732)
+    with pytest.raises(ValueError):
+        utils.DailyCalendarPlan.from_year_span(2020, 2, -3)
+
+
+def test_daily_calendar_plan_validates_year_counts():
+    """Construction rejects year counts that cannot describe a contiguous daily series."""
+    # a partial year followed by another year would silently shift the boundaries
+    with pytest.raises(ValueError):
+        utils.DailyCalendarPlan(2019, (100, 0))
+    with pytest.raises(ValueError):
+        utils.DailyCalendarPlan(2019, (365, 35, 0))
+    # a year cannot hold more days than it has, and counts cannot be negative
+    with pytest.raises(ValueError):
+        utils.DailyCalendarPlan(2019, (366,))
+    with pytest.raises(ValueError):
+        utils.DailyCalendarPlan(2020, (367,))
+    with pytest.raises(ValueError):
+        utils.DailyCalendarPlan(2019, (-1, 0))
 
 
 def test_tolerance():
@@ -504,3 +553,86 @@ def test_tolerance():
     # singleton dimensions have no spacing to derive a tolerance from
     tol = utils.get_tolerance(np.array([25.0]))
     assert tol > 0, tolerance_greater
+
+
+class TestDailyCalendarPlanShapeContract:
+    """Verify DailyCalendarPlan rejects slices that are not whole time series."""
+
+    @staticmethod
+    def _plan():
+        """Build a two-year plan covering a non-leap year and a leap year."""
+        # 2019 is not a leap year, 2020 is; the final year is partial
+        return utils.DailyCalendarPlan(2019, (365, 100))
+
+    def test_to_all_leap_rejects_wrong_length(self) -> None:
+        """Converting a slice of the wrong length raises with shape context."""
+        plan = self._plan()
+
+        with pytest.raises(DataShapeError) as exc_info:
+            plan.to_all_leap(np.zeros(plan.original_length - 1))
+
+        assert exc_info.value.expected_shape == f"({plan.original_length},)"
+        assert exc_info.value.actual_shape == (plan.original_length - 1,)
+
+    def test_to_all_leap_rejects_multidimensional_input(self) -> None:
+        """A block whose leading axis is not a whole time series raises, not reshapes."""
+        plan = self._plan()
+
+        with pytest.raises(DataShapeError) as exc_info:
+            plan.to_all_leap(np.zeros((2, plan.original_length)))
+
+        assert exc_info.value.actual_shape == (2, plan.original_length)
+
+    def test_to_all_leap_preserves_trailing_cell_dimensions(self) -> None:
+        """A 2-D block of complete time-series slices is converted cell-wise."""
+        plan = self._plan()
+        values = np.zeros((plan.original_length, 3))
+        values[:, 0] = np.arange(1, plan.original_length + 1)
+
+        converted = plan.to_all_leap(values)
+
+        assert converted.shape == (plan.all_leap_length, 3)
+        # cell 0 is a non-leap year followed by a partial leap year: the synthetic
+        # February 29 of 2019 is the mean of February 28 and March 1
+        assert converted[59, 0] == 59.5
+        assert converted[59, 1] == 0.0
+        np.testing.assert_array_equal(converted[60:366, 0], np.arange(60, 366))
+        np.testing.assert_array_equal(converted[366:466, 0], np.arange(366, 466))
+        assert np.all(np.isnan(converted[466:, 0]))
+
+    def test_to_gregorian_rejects_wrong_length(self) -> None:
+        """Restoring a slice that is not a whole 366-day series raises."""
+        plan = self._plan()
+
+        with pytest.raises(DataShapeError) as exc_info:
+            plan.to_gregorian(np.zeros(plan.all_leap_length - 1))
+
+        assert exc_info.value.expected_shape == f"({plan.all_leap_length},)"
+        assert exc_info.value.actual_shape == (plan.all_leap_length - 1,)
+
+    def test_to_gregorian_rejects_multidimensional_input(self) -> None:
+        """A block whose leading axis is not a whole 366-day series raises, not reshapes."""
+        plan = self._plan()
+
+        with pytest.raises(DataShapeError) as exc_info:
+            plan.to_gregorian(np.zeros((2, plan.all_leap_length)))
+
+        assert exc_info.value.actual_shape == (2, plan.all_leap_length)
+
+    def test_gregorian_round_trip_preserves_trailing_cell_dimensions(self) -> None:
+        """Cells of a 2-D block survive the leap-calendar round trip."""
+        plan = self._plan()
+        values = np.arange(1, plan.original_length + 1, dtype=float)
+        block = np.stack([values, values * 2.0], axis=1)
+
+        restored = plan.to_gregorian(plan.to_all_leap(block))
+
+        assert restored.shape == block.shape
+        np.testing.assert_array_equal(restored, block)
+
+    def test_round_trip_restores_original_values_including_partial_final_year(self) -> None:
+        """to_gregorian inverts to_all_leap exactly, partial final year included."""
+        plan = self._plan()
+        values = np.arange(1, plan.original_length + 1, dtype=float)
+
+        np.testing.assert_array_equal(plan.to_gregorian(plan.to_all_leap(values)), values)
