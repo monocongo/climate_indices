@@ -120,13 +120,14 @@ class TestOverheadBudgetPolicy:
             pass
 
         timings = iter(
-            [
+            timing
+            for numpy_first_xarray_time in (2.4, 2.4, 2.4, 6.0)
+            for timing in (
                 (numpy_fn, 2.0),
-                (xarray_fn, 5.1),
-                (xarray_fn, 4.5),
-                (numpy_fn, 2.6),
-            ]
-            * 4
+                (xarray_fn, numpy_first_xarray_time),
+                (xarray_fn, 3.0),
+                (numpy_fn, 2.0),
+            )
         )
 
         def fake_timeit(fn, *, number: int) -> float:
@@ -143,7 +144,7 @@ class TestOverheadBudgetPolicy:
             number=2,
         )
 
-        assert measured == pytest.approx((2.3, 4.8, 2.5))
+        assert measured == pytest.approx((2.0, 3.0, 0.7))
         assert next(timings, None) is None
 
 
