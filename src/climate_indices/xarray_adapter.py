@@ -45,6 +45,7 @@ from climate_indices.exceptions import (
     InputAlignmentWarning,
     InputTypeError,
     InsufficientDataError,
+    PeriodicityError,
 )
 from climate_indices.logging_config import get_logger
 from climate_indices.validation import (
@@ -205,18 +206,54 @@ def _resolve_periodicity(
     modified_kwargs: dict[str, Any],
     inferred_params: dict[str, Any],
 ) -> compute.Periodicity | None:
-    """Resolve a wrapped function's explicit or inferred Periodicity."""
-    periodicity = inferred_params.get("periodicity")
-    if periodicity is not None:
-        return periodicity if isinstance(periodicity, compute.Periodicity) else None
+    """Resolve a wrapped function's explicit or inferred Periodicity.
 
-    try:
-        bound = inspect.signature(func).bind_partial(*modified_args, **modified_kwargs)
-    except TypeError:
+    Returns None only when the wrapped function does not declare a periodicity
+    parameter. A declared periodicity that cannot be resolved raises instead of
+    silently skipping daily calendar conversion (see #759).
+
+    Raises:
+        PeriodicityError: If the wrapped function declares a periodicity parameter
+            but its value cannot be resolved from the inferred or bound arguments.
+    """
+    signature = inspect.signature(func)
+    if "periodicity" not in signature.parameters:
         return None
 
-    periodicity = bound.arguments.get("periodicity")
-    return periodicity if isinstance(periodicity, compute.Periodicity) else None
+    periodicity = inferred_params.get("periodicity")
+    if periodicity is None:
+        try:
+            bound = signature.bind_partial(*modified_args, **modified_kwargs)
+        except TypeError as error:
+            _log().error(
+                "periodicity_resolution_failed",
+                function_name=func.__name__,
+                reason="argument_binding_failed",
+            )
+            raise PeriodicityError(
+                message=(
+                    f"Could not resolve the periodicity for {func.__name__}: its arguments do not bind to its "
+                    "signature. Daily calendar conversion cannot be planned."
+                ),
+            ) from error
+        periodicity = bound.arguments.get("periodicity")
+
+    if not isinstance(periodicity, compute.Periodicity):
+        _log().error(
+            "periodicity_resolution_failed",
+            function_name=func.__name__,
+            reason="not_a_periodicity",
+            periodicity_value=str(periodicity),
+        )
+        raise PeriodicityError(
+            message=(
+                f"Could not resolve the periodicity for {func.__name__}: expected a Periodicity member, "
+                f"got {periodicity!r}."
+            ),
+            periodicity_value=str(periodicity),
+        )
+
+    return periodicity
 
 
 def _validate_supported_calendar(time_coord: xr.DataArray) -> None:
