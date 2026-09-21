@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted.
+Amended: issue #758 replaced operation-specific ratio budgets with one absolute fixed-cost budget.
 
 The NumPy index implementations group monthly values into 12 positional slots per year and daily
 values into 366, treating every year as a leap year and every series as beginning in January.
