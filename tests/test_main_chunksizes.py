@@ -199,12 +199,20 @@ def test_input_files_are_opened_in_the_requested_order(monkeypatch, tmp_path):
     coords = {"lat": [25.0, 30.0], "lon": [-100.0, -95.0, -90.0], "time": time}
     precip_file = tmp_path / "prcp.nc"
     pet_file = tmp_path / "pet.nc"
+    shared_file = tmp_path / "both.nc"
     xr.Dataset({"prcp": (("lat", "lon", "time"), np.ones((2, 3, 24)), {"units": "mm"})}, coords=coords).to_netcdf(
         precip_file
     )
     xr.Dataset({"pet": (("lat", "lon", "time"), np.ones((2, 3, 24)), {"units": "mm"})}, coords=coords).to_netcdf(
         pet_file
     )
+    xr.Dataset(
+        {
+            "prcp": (("lat", "lon", "time"), np.ones((2, 3, 24)), {"units": "mm"}),
+            "pet": (("lat", "lon", "time"), np.ones((2, 3, 24)), {"units": "mm"}),
+        },
+        coords=coords,
+    ).to_netcdf(shared_file)
 
     opened_file_lists: list[list[str]] = []
     original_open_mfdataset = cli_main.xr.open_mfdataset
@@ -221,6 +229,7 @@ def test_input_files_are_opened_in_the_requested_order(monkeypatch, tmp_path):
     for precip_path, precip_var, pet_path, pet_var in (
         (precip_file, "prcp", pet_file, "pet"),
         (pet_file, "pet", precip_file, "prcp"),
+        (shared_file, "prcp", shared_file, "pet"),
     ):
         cli_main._compute_write_index(
             cli_main._IndexRequest(
@@ -243,6 +252,7 @@ def test_input_files_are_opened_in_the_requested_order(monkeypatch, tmp_path):
     assert opened_file_lists == [
         [str(precip_file), str(pet_file)],
         [str(pet_file), str(precip_file)],
+        [str(shared_file)],
     ]
 
 
