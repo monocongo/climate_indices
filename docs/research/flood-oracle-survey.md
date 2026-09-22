@@ -133,6 +133,7 @@ the handling of leading windows and missing days.
   - **Table 5 is tabulated numeric output** for the Hickman, Nebraska (USA) example of
     1 January 1995 - 31 December 1996, columns for Equation (2) and Equation (3):
     dry duration 232-493 vs 250-494; drought duration 259-493 vs 366-493; minimum CNS
+    (unit and column identity unconfirmed - see the fixture caveats below)
     -299.8 on day 493 vs -256.3 on day 494; minimum APD -214.4 on day 484 vs -217.1 on
     day 484; minimum PRN -70.5 on day 484 vs -173.4 on day 484; minimum EDI -2.5 on
     day 469 vs -1.22 on day 469. The table's column headers are "(2) Fig. 2b" and
@@ -570,11 +571,17 @@ Using `VALIDATION.md` vocabulary explicitly:
   keys are exactly `source`, `url`, `download_date`, `subset_description`,
   `checksum_sha256`, `fixture_version`, and `validation_tolerance`, and the schema sets
   `additionalProperties: false`, so a misspelled or extra key fails validation.
-- Byun & Wilhite Table 5 prints one decimal for CNS/APD/PRN (`0.1 mm`) and mixed
+- Byun & Wilhite Table 5 prints one decimal for APD/PRN (`0.1 mm`) and mixed
   precision for EDI (`-2.5` to one decimal, `-1.22` to two); the day numbers are
-  integers. Any comparison tolerance follows each printed value's own precision
-  (half a unit in the last place: `+/-0.05` and `+/-0.005`, not a uniform rule), and by
-  the paper's
+  integers. **CNS's unit is unconfirmed and is not grouped with APD/PRN's `0.1 mm`
+  here**: independent drought-index literature describes a similarly-named
+  accumulated-negative-SEP quantity as a duration (a day count), not millimeters, and
+  the transcribed magnitude (-299.8, approaching the length of the whole ~730-day
+  Hickman record) is implausible for a precipitation-depth quantity either way.
+  Re-confirm CNS's definition and unit against the primary Table 5 image before it
+  enters a fixture (folds into gap 4). Any
+  comparison tolerance follows each printed value's own confirmed precision (half a unit
+  in the last place: `+/-0.05` and `+/-0.005`, not a uniform rule), and the paper's
   5-day-running-mean and variable-`DS` conventions.
 - A digitized figure carries a read-off uncertainty that must be stated in the units of
   the plot axis, as the HDW fixture does (`+/-5 hPa m s-1`). Figure 2's index panels are
