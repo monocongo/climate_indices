@@ -20,20 +20,33 @@ warnings are filtered for every run, and the Dask sweep additionally runs with
 logging quiet, because per-cell log volume costs more than the computation at
 this grid size.
 
+``--netcdf`` switches to the real-grid mode: a NetCDF precipitation file with
+``time``, ``lat`` and ``lon`` dimensions (the Morocco CHIRPS v3 case from
+Ouranosinc/xclim#2091) replaces the synthetic grid, and only SPI runs, because
+SPEI, PET and EDDI need inputs the precipitation file does not carry. The real-grid
+mode records the file SHA-256 and the checkout revision, treats the finite cells of
+the first time step as the land mask, replaces zeros with ``0.01`` mm for the gamma
+fit, times every sample of every configuration, and separates the NetCDF read and
+write from the compute.
+
 Run from the repository root::
 
     uv run benchmarks/parallel_scaling.py
     uv run benchmarks/parallel_scaling.py --cores 1,2,3,4 --indices spi,spei --repeat 5
     uv run benchmarks/parallel_scaling.py --indices spi,spei,pet,eddi --serial-only
+    uv run benchmarks/parallel_scaling.py --netcdf mar_cli_chirps3.nc --cores 1,2,4,8 --scale 6
+    uv run benchmarks/parallel_scaling.py --netcdf mar_cli_chirps3.nc --scale 6 --distribution pearson
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import logging
 import math
 import os
 import platform
+import subprocess
 import time
 import warnings
 from collections.abc import Callable
@@ -41,6 +54,7 @@ from typing import NamedTuple
 
 import dask
 import numpy as np
+import scipy
 import xarray as xr
 from profile_gridded_spi import (
     CALIBRATION_PERIOD,
@@ -54,7 +68,7 @@ from profile_gridded_spi import (
     run_spi,
 )
 
-from climate_indices import eddi, pet_thornthwaite, spei
+from climate_indices import eddi, pet_thornthwaite, spei, spi
 from climate_indices.compute import Periodicity
 from climate_indices.exceptions import GoodnessOfFitWarning
 from climate_indices.indices import Distribution
@@ -65,11 +79,16 @@ TEMPERATURE_SEED = SEED + 1
 
 
 class _Grid(NamedTuple):
-    """Reference-grid inputs shared by every index runner."""
+    """Reference-grid inputs shared by every index runner.
+
+    ``pet`` and ``temperature`` are None in the real-grid mode, which only SPI
+    uses; ``valid_cells`` is the ``(lat, lon)`` land mask when the grid has one.
+    """
 
     precip: xr.DataArray
-    pet: xr.DataArray
-    temperature: xr.DataArray
+    pet: xr.DataArray | None = None
+    temperature: xr.DataArray | None = None
+    valid_cells: np.ndarray | None = None
 
 
 _Runner = Callable[[_Grid], xr.DataArray]
@@ -212,7 +231,7 @@ def _chunk_for_workers(array: xr.DataArray, workers: int) -> xr.DataArray:
     )
 
 
-def _require_finite_tail(values: np.ndarray, leading_pad: int) -> None:
+def _require_finite_tail(values: np.ndarray, leading_pad: int, valid_cells: np.ndarray | None = None) -> None:
     """Reject output that degenerated past the index's leading NaN padding.
 
     SPI, SPEI and EDDI pad the first ``scale - 1`` time steps with NaN, so the
@@ -220,12 +239,24 @@ def _require_finite_tail(values: np.ndarray, leading_pad: int) -> None:
     Anything else non-finite means the fit degenerated and the timing above
     measures nothing useful.
 
+    On a masked grid only the land cells may be finite, and the masked cells must
+    stay NaN -- a run that filled the ocean would still time, but would not be
+    the workload the fixture describes.
+
     Args:
         values: index output on the reference grid
         leading_pad: number of leading time steps allowed to be NaN
+        valid_cells: ``(lat, lon)`` land mask, or None when the grid is fully populated
     """
-    if not np.isfinite(values[leading_pad:]).all():
-        raise RuntimeError(f"non-finite output beyond the leading {leading_pad} padded time steps")
+    tail = values[leading_pad:]
+    if valid_cells is None:
+        if not np.isfinite(tail).all():
+            raise RuntimeError(f"non-finite output beyond the leading {leading_pad} padded time steps")
+        return
+    if not np.isfinite(tail[:, valid_cells]).all():
+        raise RuntimeError(f"non-finite land-cell output beyond the leading {leading_pad} padded time steps")
+    if np.isfinite(tail[:, ~valid_cells]).any():
+        raise RuntimeError("finite output on cells the input mask marked as missing")
 
 
 def _time_serial(grid: _Grid, index: _Index) -> float:
@@ -233,11 +264,11 @@ def _time_serial(grid: _Grid, index: _Index) -> float:
     start = time.perf_counter()
     values = index.run(grid).values
     elapsed = time.perf_counter() - start
-    _require_finite_tail(values, index.leading_pad)
+    _require_finite_tail(values, index.leading_pad, grid.valid_cells)
     return elapsed
 
 
-def _serial_timings(grid: _Grid, index: _Index, repeat: int) -> tuple[float, float]:
+def _serial_timings(grid: _Grid, index: _Index, repeat: int) -> tuple[tuple[float, ...], tuple[float, ...]]:
     """Time the serial in-memory call at the default INFO level, then quiet.
 
     Both samples filter goodness-of-fit warnings, as the Dask runs do, so the
@@ -248,31 +279,36 @@ def _serial_timings(grid: _Grid, index: _Index, repeat: int) -> tuple[float, flo
     Args:
         grid: reference-grid inputs
         index: index to benchmark
-        repeat: timed runs per level, the fastest of each is reported
+        repeat: timed runs per level; every observation is returned, not just the fastest
 
     Returns:
-        Fastest INFO seconds and fastest WARNING seconds
+        INFO samples and WARNING samples, both in run order
     """
     logging.getLogger().setLevel(logging.INFO)
-    info = min(_time_serial(grid, index) for _ in range(repeat))
+    info = tuple(_time_serial(grid, index) for _ in range(repeat))
     logging.getLogger().setLevel(logging.WARNING)
-    quiet = min(_time_serial(grid, index) for _ in range(repeat))
+    quiet = tuple(_time_serial(grid, index) for _ in range(repeat))
     return info, quiet
 
 
-def _measure(index: _Index, grid: _Grid, workers: int, repeat: int) -> float:
-    """Return the fastest of ``repeat`` runs on ``workers`` Dask processors.
+def _measure(index: _Index, grid: _Grid, workers: int, repeat: int) -> tuple[float, ...]:
+    """Return every timed run on ``workers`` Dask processors, in run order.
 
     One extra warm-up run keeps parent-side first-call imports out of the timed
     samples. Every ``compute()`` call creates a fresh process pool, so pool
     start-up stays inside every measurement, as it does for any caller of the
     ``processes`` scheduler. The pool initializer installs the goodness-of-fit
     filter in each worker before any task runs.
+
+    The full spread is returned rather than the minimum alone: the run-to-run
+    variance is part of the reported evidence (#1097), and a fastest-only table
+    hides it.
     """
     inputs = _Grid(
         precip=_chunk_for_workers(grid.precip, workers),
-        pet=_chunk_for_workers(grid.pet, workers),
-        temperature=_chunk_for_workers(grid.temperature, workers),
+        pet=_chunk_for_workers(grid.pet, workers) if grid.pet is not None else None,
+        temperature=_chunk_for_workers(grid.temperature, workers) if grid.temperature is not None else None,
+        valid_cells=grid.valid_cells,
     )
     timings = []
     for _ in range(repeat + 1):
@@ -286,8 +322,8 @@ def _measure(index: _Index, grid: _Grid, workers: int, repeat: int) -> float:
             initializer=_quiet_worker,
         )
         timings.append(time.perf_counter() - start)
-    _require_finite_tail(result.values, index.leading_pad)
-    return min(timings[1:])
+    _require_finite_tail(result.values, index.leading_pad, grid.valid_cells)
+    return tuple(timings[1:])
 
 
 def _spatial_blocks(array: xr.DataArray, workers: int) -> int:
@@ -296,9 +332,9 @@ def _spatial_blocks(array: xr.DataArray, workers: int) -> int:
     return math.prod(len(axis_chunks) for axis_chunks in chunked.chunks[1:])
 
 
-def _default_workers() -> tuple[int, ...]:
+def _default_workers(cells: int = REFERENCE_LAT * REFERENCE_LON) -> tuple[int, ...]:
     """Powers of two from 1 up to the CPU count, never above the grid's cells."""
-    limit = min(os.cpu_count() or 1, REFERENCE_LAT * REFERENCE_LON)
+    limit = min(os.cpu_count() or 1, cells)
     counts = [1]
     while counts[-1] * 2 <= limit:
         counts.append(counts[-1] * 2)
@@ -306,18 +342,221 @@ def _default_workers() -> tuple[int, ...]:
 
 
 def _worker_counts(value: str) -> tuple[int, ...]:
-    """Parse a comma-separated list of worker counts.
-
-    Counts outside ``1..spatial cells`` cannot produce a block per worker, so
-    they are rejected as argument errors rather than failing mid-benchmark.
-    """
+    """Parse a comma-separated list of positive worker counts."""
     counts = tuple(int(count) for count in value.split(","))
     if any(count < 1 for count in counts):
         raise argparse.ArgumentTypeError("worker counts must be at least 1")
-    cells = REFERENCE_LAT * REFERENCE_LON
+    return counts
+
+
+def _validate_worker_counts(counts: tuple[int, ...], cells: int) -> None:
+    """Reject worker counts above the grid's cells, which cannot produce a block each."""
     if any(count > cells for count in counts):
         raise argparse.ArgumentTypeError(f"worker counts must not exceed the {cells} spatial cells")
-    return counts
+
+
+def _require_worker_counts(counts: tuple[int, ...], cells: int) -> None:
+    """Exit with the message instead of a traceback when ``counts`` cannot fit ``cells``."""
+    try:
+        _validate_worker_counts(counts, cells)
+    except argparse.ArgumentTypeError as error:
+        raise SystemExit(str(error)) from error
+
+
+def _format_samples(samples: tuple[float, ...]) -> str:
+    """Render every observation of a configuration, so the spread stays in the artifact."""
+    return ", ".join(f"{seconds:.3f}" for seconds in samples)
+
+
+def _hash_file(path: str) -> str:
+    """SHA-256 of ``path``, read in chunks so a large fixture never sits in memory twice."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _cpu_model() -> str:
+    """CPU model name; ``platform.processor()`` is empty on some arm64 hosts."""
+    if platform.system() == "Darwin":
+        try:
+            completed = subprocess.run(
+                ["sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True, text=True, check=True
+            )
+            return completed.stdout.strip()
+        except (OSError, subprocess.CalledProcessError):
+            pass
+    return platform.processor() or platform.machine()
+
+
+def _revision() -> str:
+    """The checkout's commit SHA, or "unknown" outside a git checkout."""
+    try:
+        completed = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True)
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown"
+    return completed.stdout.strip()
+
+
+def _environment() -> str:
+    """Environment header retained with every results artifact."""
+    return (
+        f"environment: python {platform.python_version()}; {platform.platform()}; "
+        f"numpy {np.__version__}; scipy {scipy.__version__}; xarray {xr.__version__}; dask {dask.__version__}; "
+        f"cpu {_cpu_model()}; {os.cpu_count()} CPUs"
+    )
+
+
+def load_netcdf_grid(path: str, var_name: str) -> _Grid:
+    """Load a real precipitation grid for the SPI workload.
+
+    The finite cells of the first time step define the land mask: every time step
+    outside it is forced to NaN, so the fit never sees an ocean cell. Zeros become
+    0.01 mm, because a gamma has no support at zero. The spatial axes are then
+    cyclically rolled so the first cell is a land cell: the adapter's calibration
+    preflight samples the first spatial point only, and an all-NaN first cell is a
+    hard error there. Rolling values and coordinates together keeps every cell
+    paired with its own labels, so the workload and the output are unchanged.
+
+    Args:
+        path: NetCDF file whose precipitation variable has ``time``, ``lat`` and ``lon`` dims
+        var_name: variable holding monthly precipitation in mm
+
+    Returns:
+        Grid with the prepared precipitation field; PET and temperature stay None
+    """
+    with xr.open_dataset(path) as dataset:
+        precip = dataset[var_name].transpose("time", "lat", "lon")
+        values = precip.values.astype(np.float64)
+        time = precip["time"].values
+        latitude = precip["lat"].values
+        longitude = precip["lon"].values
+
+    valid_cells = np.isfinite(values[0])
+    if not valid_cells.any():
+        raise ValueError(f"{path}: {var_name} has no finite cell in the first time step")
+    values[:, ~valid_cells] = np.nan
+    values[values == 0] = 0.01
+
+    first_lat, first_lon = np.argwhere(valid_cells)[0]
+    roll_lat, roll_lon = -int(first_lat), -int(first_lon)
+    values = np.roll(values, (roll_lat, roll_lon), axis=(1, 2))
+    valid_cells = np.roll(valid_cells, (roll_lat, roll_lon), axis=(0, 1))
+
+    grid = xr.DataArray(
+        values,
+        coords={
+            "time": time,
+            "lat": np.roll(latitude, roll_lat),
+            "lon": np.roll(longitude, roll_lon),
+        },
+        dims=["time", "lat", "lon"],
+        attrs={
+            "units": "mm",
+            "roll_lat": roll_lat,
+            "roll_lon": roll_lon,
+            "land_cells": int(valid_cells.sum()),
+        },
+    )
+    return _Grid(precip=grid, valid_cells=valid_cells)
+
+
+def _run_real_grid(args: argparse.Namespace) -> None:
+    """Benchmark SPI on a real NetCDF grid: read, eager serial, then Dask workers.
+
+    The read is timed on its own, and the Dask table reports compute-only
+    seconds plus a total that adds the read (and the write, when requested), so
+    the NetCDF I/O never hides inside a compute figure.
+    """
+    scale = args.scale or 6
+    distribution = Distribution[args.distribution or "gamma"]
+    calibration_initial = args.calibration_start or 1991
+    calibration_final = args.calibration_end or 2020
+
+    read_start = time.perf_counter()
+    grid = load_netcdf_grid(args.netcdf, args.var_name)
+    read_seconds = time.perf_counter() - read_start
+
+    lat_cells, lon_cells = grid.precip.sizes["lat"], grid.precip.sizes["lon"]
+    workers = args.cores or _default_workers(lat_cells * lon_cells)
+    _require_worker_counts(workers, lat_cells * lon_cells)
+
+    data_start_year = int(grid.precip["time"].dt.year[0])
+
+    def run(_grid: _Grid) -> xr.DataArray:
+        """Run SPI-``scale`` with the real-grid mode's parameters."""
+        return spi(
+            values=_grid.precip,
+            scale=scale,
+            distribution=distribution,
+            data_start_year=data_start_year,
+            calibration_year_initial=calibration_initial,
+            calibration_year_final=calibration_final,
+            periodicity=Periodicity.monthly,
+        )
+
+    index = _Index(run, scale - 1)
+    valid = grid.valid_cells
+    assert valid is not None
+
+    print(f"checkout revision: {_revision()}")
+    print(f"fixture: {os.path.abspath(args.netcdf)} sha256={_hash_file(args.netcdf)}")
+    print(f"grid: time={grid.precip.sizes['time']} lat={lat_cells} lon={lon_cells}")
+    print(
+        f"input: scale={scale}; calibration={calibration_initial}-{calibration_final}; "
+        f"distribution={distribution.value}; zeros replaced with 0.01 mm; "
+        f"land mask from the first time step ({int(valid.sum())} of {valid.size} cells); "
+        f"spatial axes rolled by lat={grid.precip.attrs['roll_lat']} lon={grid.precip.attrs['roll_lon']} "
+        "so the sampled preflight cell holds data"
+    )
+    print(_environment())
+    print(f"process: read {read_seconds:.3f} s; {args.repeat} timed runs per configuration after a warm-up")
+
+    _quiet_logging()
+    index.run(grid)
+    serial = tuple(_time_serial(grid, index) for _ in range(args.repeat))
+    write_seconds = _write_output(index, grid, args.write_output)
+    serial_total = read_seconds + min(serial) + write_seconds
+    print(
+        f"\nspi eager serial in-memory (quiet log): samples=[{_format_samples(serial)}] "
+        f"min={min(serial):.3f} s; read={read_seconds:.3f} s; write={write_seconds:.3f} s; "
+        f"total={serial_total:.3f} s"
+    )
+    if args.serial_only:
+        return
+
+    print(
+        f"\nDask worker counts: {','.join(str(count) for count in workers)}; scheduler=processes; chunksize=1; "
+        "time=-1 (ADR-0003); compute-only seconds, total adds read + write"
+    )
+    print(f"{'workers':>8} {'blocks':>7} {'compute':>9} {'speedup':>8} {'total':>9}  samples")
+    baseline = None
+    for worker_count in workers:
+        samples = _measure(index, grid, worker_count, args.repeat)
+        if baseline is None:
+            baseline = min(samples)
+        speedup = baseline / min(samples)
+        blocks = _spatial_blocks(grid.precip, worker_count)
+        total = read_seconds + min(samples) + write_seconds
+        print(
+            f"{worker_count:>8} {blocks:>7} {min(samples):>9.3f} {speedup:>7.2f}x {total:>9.3f}  "
+            f"[{_format_samples(samples)}]"
+        )
+
+
+def _write_output(index: _Index, grid: _Grid, path: str | None) -> float:
+    """Time writing the index result to NetCDF, or return 0.0 when no path was given.
+
+    The compute and the ``float32`` cast happen before the timer, so the seconds
+    are NetCDF encoding and disk I/O, not a second compute figure.
+    """
+    if not path:
+        return 0.0
+    payload = index.run(grid).astype("float32")
+    start = time.perf_counter()
+    payload.to_netcdf(path)
+    return time.perf_counter() - start
 
 
 def _parse_args() -> argparse.Namespace:
@@ -329,22 +568,53 @@ def _parse_args() -> argparse.Namespace:
         help="comma-separated Dask worker counts (default: powers of two up to the CPU count)",
     )
     parser.add_argument(
-        "--indices", default="spi,spei", help="comma-separated indices to benchmark (default: spi,spei)"
+        "--indices", help="comma-separated indices to benchmark (default: spi,spei; spi only with --netcdf)"
     )
     parser.add_argument(
-        "--repeat", type=int, default=3, help="timed runs per worker count, fastest reported (default: 3)"
+        "--repeat", type=int, default=3, help="timed runs per configuration (default: 3); every sample is reported"
     )
     parser.add_argument(
         "--serial-only",
         action="store_true",
         help="time only the in-memory single-process path, skipping the Dask worker counts",
     )
+    parser.add_argument(
+        "--netcdf",
+        help="NetCDF precipitation grid (dims time, lat, lon) to benchmark instead of the synthetic grid",
+    )
+    parser.add_argument("--var-name", default="precip", help="precipitation variable in --netcdf (default: precip)")
+    parser.add_argument("--scale", type=int, help="SPI timescale in --netcdf mode (default: 6)")
+    parser.add_argument("--calibration-start", type=int, help="first calibration year in --netcdf mode (default: 1991)")
+    parser.add_argument("--calibration-end", type=int, help="last calibration year in --netcdf mode (default: 2020)")
+    parser.add_argument(
+        "--distribution", choices=("gamma", "pearson"), help="SPI distribution in --netcdf mode (default: gamma)"
+    )
+    parser.add_argument("--write-output", help="write the last result to this NetCDF and report the write time")
     args = parser.parse_args()
+    args.indices = args.indices or ("spi" if args.netcdf else "spi,spei")
     unknown = sorted(set(args.indices.split(",")) - _RUNNERS.keys())
     if unknown:
         parser.error(f"unknown indices: {', '.join(unknown)}")
     if args.repeat < 1:
         parser.error("--repeat must be at least 1")
+    if args.netcdf and args.indices != "spi":
+        parser.error("--netcdf benchmarks SPI only, because the fixture carries no PET or temperature")
+    if not args.netcdf:
+        netcdf_only = [
+            flag
+            for flag, value in (
+                ("--scale", args.scale),
+                ("--calibration-start", args.calibration_start),
+                ("--calibration-end", args.calibration_end),
+                ("--distribution", args.distribution),
+                ("--write-output", args.write_output),
+            )
+            if value is not None
+        ]
+        if netcdf_only:
+            parser.error(f"{', '.join(netcdf_only)} require --netcdf")
+    elif args.scale is not None and args.scale < 1:
+        parser.error("--scale must be at least 1")
     return args
 
 
@@ -368,15 +638,17 @@ def main() -> None:
     """Benchmark every requested index: serial in-memory, then across Dask workers."""
     args = _parse_args()
     _quiet_worker()
+    if args.netcdf:
+        _run_real_grid(args)
+        return
     workers = args.cores or _default_workers()
+    _require_worker_counts(workers, REFERENCE_LAT * REFERENCE_LON)
     print(
         f"reference grid: {REFERENCE_LAT}x{REFERENCE_LON} cells, {REFERENCE_YEARS} years monthly; scale={SCALE}; "
         f"calibration={CALIBRATION_PERIOD[0]}-{CALIBRATION_PERIOD[1]}"
     )
-    print(
-        f"environment: python {platform.python_version()}; {platform.platform()}; {os.cpu_count()} CPUs; "
-        f"dask {dask.__version__}; xarray {xr.__version__}; fastest of {args.repeat} runs after a warm-up"
-    )
+    print(f"checkout revision: {_revision()}")
+    print(_environment() + f"; {args.repeat} runs after a warm-up, every sample retained")
 
     grid = build_inputs()
     names = args.indices.split(",")
@@ -385,7 +657,10 @@ def main() -> None:
         # one untimed run keeps first-call imports and caches out of the samples
         index.run(grid)
         info, quiet = _serial_timings(grid, index, args.repeat)
-        print(f"\n{name}\nserial in-memory: {info:.3f} s (INFO, GoF warnings filtered) | {quiet:.3f} s (quiet log)")
+        print(
+            f"\n{name}\nserial in-memory: {min(info):.3f} s (INFO, GoF warnings filtered) | "
+            f"{min(quiet):.3f} s (quiet log); samples INFO=[{_format_samples(info)}] quiet=[{_format_samples(quiet)}]"
+        )
     if args.serial_only:
         return
 
@@ -393,17 +668,21 @@ def main() -> None:
     print(f"\nDask worker counts: {','.join(str(count) for count in workers)}; scheduler=processes")
     for name in names:
         index = _RUNNERS[name]
-        print(f"\n{name}\n{'workers':>8} {'blocks':>7} {'seconds':>9} {'speedup':>8} {'efficiency':>11}")
+        print(f"\n{name}\n{'workers':>8} {'blocks':>7} {'seconds':>9} {'speedup':>8} {'efficiency':>11}  samples")
         baseline = None
         for worker_count in workers:
-            seconds = _measure(index, grid, worker_count, args.repeat)
+            samples = _measure(index, grid, worker_count, args.repeat)
+            seconds = min(samples)
             if baseline is None:
                 baseline = seconds
             speedup = baseline / seconds
             blocks = _spatial_blocks(grid.precip, worker_count)
             # relative to the baseline's worker count, which need not be one
             efficiency = speedup * workers[0] / worker_count
-            print(f"{worker_count:>8} {blocks:>7} {seconds:>9.3f} {speedup:>7.2f}x {efficiency:>10.0%}")
+            print(
+                f"{worker_count:>8} {blocks:>7} {seconds:>9.3f} {speedup:>7.2f}x {efficiency:>10.0%}  "
+                f"[{_format_samples(samples)}]"
+            )
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ from pathlib import Path
 from types import ModuleType
 
 import numpy as np
+import pandas as pd
 import pytest
 import xarray as xr
 
@@ -56,13 +57,87 @@ def test_chunking_yields_a_block_per_worker(workers: int) -> None:
 
 
 def test_worker_counts_reject_counts_outside_the_grid() -> None:
-    """Non-positive and above-cell worker counts fail argument parsing."""
+    """Non-positive counts fail parsing; counts above the cells fail validation."""
     with pytest.raises(argparse.ArgumentTypeError):
         parallel_scaling._worker_counts("0,2")
     cells = parallel_scaling.REFERENCE_LAT * parallel_scaling.REFERENCE_LON
     with pytest.raises(argparse.ArgumentTypeError):
-        parallel_scaling._worker_counts(str(cells + 1))
+        parallel_scaling._validate_worker_counts((cells + 1,), cells)
+    parallel_scaling._validate_worker_counts((1, cells), cells)
     assert parallel_scaling._worker_counts("1,4") == (1, 4)
+
+
+def test_netcdf_mode_rejects_arguments_it_cannot_honour(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The real-grid mode is SPI-only, and its options require --netcdf."""
+    monkeypatch.setattr(sys, "argv", ["parallel_scaling.py", "--netcdf", "x.nc", "--indices", "spi,spei"])
+    with pytest.raises(SystemExit):
+        parallel_scaling._parse_args()
+    monkeypatch.setattr(sys, "argv", ["parallel_scaling.py", "--scale", "6"])
+    with pytest.raises(SystemExit):
+        parallel_scaling._parse_args()
+
+
+def _write_grid_fixture(path: Path) -> None:
+    """Write a small lat-lon-time precipitation file shaped like the CHIRPS fixture.
+
+    The first latitude row is all NaN (the ocean), one land cell has a zero month,
+    and the dimension order matches the fixture (lat, lon, time) to pin the transpose.
+    """
+    values = np.full((3, 3, 4), np.nan)
+    values[1:, :, :] = 2.0
+    values[1, 0, 1] = 0.0
+    xr.Dataset(
+        {"precip": (("lat", "lon", "time"), values)},
+        coords={
+            "lat": [10.0, 20.0, 30.0],
+            "lon": [1.0, 2.0, 3.0],
+            "time": pd.date_range("2000-01-01", periods=4, freq="MS"),
+        },
+    ).to_netcdf(path, engine="h5netcdf")
+
+
+def test_load_netcdf_grid_masks_zeros_and_rolls_the_sampled_cell(tmp_path: Path) -> None:
+    """The real-grid loader preserves the ocean mask, replaces zeros, and starts on a land cell."""
+    path = tmp_path / "fixture.nc"
+    _write_grid_fixture(path)
+
+    grid = parallel_scaling.load_netcdf_grid(str(path), "precip")
+    values = grid.precip.values
+    valid = grid.valid_cells
+    assert valid is not None
+
+    # time first, the zero month replaced, the ocean row still NaN and rolled last
+    assert grid.precip.dims == ("time", "lat", "lon")
+    expected = np.full(values.shape, 2.0)
+    expected[:, 2] = np.nan
+    expected[1, 0, 0] = 0.01
+    np.testing.assert_array_equal(values, expected)
+    np.testing.assert_array_equal(valid[:2], np.ones((2, 3), dtype=bool))
+    np.testing.assert_array_equal(valid[2], np.zeros(3, dtype=bool))
+
+    # rolled by one latitude so cell [0, 0] is a land cell, with its label following it
+    assert grid.precip.attrs["roll_lat"] == -1
+    assert grid.precip.attrs["roll_lon"] == 0
+    np.testing.assert_array_equal(grid.precip.lat.values, [20.0, 30.0, 10.0])
+    np.testing.assert_array_equal(grid.precip.lon.values, [1.0, 2.0, 3.0])
+
+
+def test_require_finite_tail_enforces_the_land_mask() -> None:
+    """A masked grid must be finite on land and NaN on the cells the mask excludes."""
+    values = np.ones((4, 2, 2))
+    valid = np.array([[True, False], [True, True]])
+    values[:, ~valid] = np.nan
+    parallel_scaling._require_finite_tail(values, 0, valid)
+
+    degenerate = values.copy()
+    degenerate[1, 0, 0] = np.nan
+    with pytest.raises(RuntimeError, match="land-cell"):
+        parallel_scaling._require_finite_tail(degenerate, 0, valid)
+
+    filled_ocean = values.copy()
+    filled_ocean[:, 0, 1] = 0.0
+    with pytest.raises(RuntimeError, match="marked as missing"):
+        parallel_scaling._require_finite_tail(filled_ocean, 0, valid)
 
 
 def test_quiet_worker_silences_only_goodness_of_fit() -> None:

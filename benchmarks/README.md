@@ -423,3 +423,100 @@ predate), and the spell recursion is a masked n-D kernel -- see
 stays blocked here: its four Wells recursions and per-location duration-factor fits
 per cell, plus a `ConvergenceError` path a blocked kernel has nowhere to put, make
 it a second version of this same effort rather than an extension of it.
+
+## Real-grid SPI benchmark: v2.4.0 vs main on the Morocco CHIRPS case (#1097)
+
+```bash
+# fixture (external, ~33 MB; not committed):
+# https://drive.google.com/file/d/1Px9dOCoqY7Ro-22Nl4pPKUOpJEb7AHsD/view
+uv run benchmarks/parallel_scaling.py \
+  --netcdf mar_cli_chirps3_month1_1981_2024c.nc --scale 6 --cores 1,2,4,8 --repeat 3 \
+  --write-output /tmp/spi6_gamma_output.nc
+CLIMATE_INDICES_CHIRPS_NC=mar_cli_chirps3_month1_1981_2024c.nc \
+  uv run pytest tests/test_numerical_equivalence.py -m validation -k chirps -v --disable-warnings
+```
+
+Fixture: Morocco CHIRPS v3 monthly precipitation from
+[Ouranosinc/xclim#2091](https://github.com/Ouranosinc/xclim/issues/2091),
+34,164,848 bytes, sha256
+`19e2f96275233cc88030639e641b2fe09d49937f315b5b1a3e97c819f6d28cea`; `time=528`
+(1981-01 to 2024-12), `lat=165`, `lon=244`, units mm. 12,738,528 cells are NaN
+(the ocean mask, 59.9%) and 1,428,447 are zero.
+
+Workload: SPI-6, `dist="gamma"`, calibration 1991-2020, `time` as a single chunk
+(ADR-0003), zeros replaced with 0.01 mm, land mask taken from the first time
+step, 16,134 land cells. Three timed runs per configuration after a warm-up; the
+Dask side is `scheduler="processes"` with `chunksize=1` and the spatial chunks
+chosen per worker count, so pool start-up is inside every timing. Compute-only
+seconds are the minimum of the three samples, with all three in brackets.
+
+| configuration | v2.4.0 `d4ed0fc` | main `873aa035` |
+| --- | ---: | ---: |
+| eager serial in-memory | 34.347 s [34.347, 34.458, 34.560] | 1.224 s [1.224, 1.271, 1.293] |
+| Dask, 1 worker | 35.423 s [35.423, 35.901, 36.161] | 2.546 s [2.546, 2.613, 2.745] |
+| Dask, 2 workers | 22.082 s [22.814, 22.082, 22.396] | 2.060 s [2.366, 2.161, 2.060] |
+| Dask, 4 workers | 17.453 s [17.453, 17.604, 18.238] | 1.750 s [1.753, 1.765, 1.750] |
+| Dask, 8 workers | 11.695 s [12.006, 12.031, 11.695] | 1.901 s [1.997, 1.916, 1.901] |
+| NetCDF read | 1.012 s | 1.060 s |
+| NetCDF write (float32) | 0.032 s | 0.104 s |
+
+Measured, not inferred:
+
+- The eager in-memory call on `main` is 28.1x faster than on `v2.4.0` on the
+  same grid and the same case (34.347 s -> 1.224 s, compute only).
+- On `v2.4.0` Dask scales: 3.03x from 1 to 8 workers (35.423 s -> 11.695 s).
+  It does not close the gap to `main`: the release's best Dask configuration is
+  still 9.6x slower than `main`'s eager call.
+- On `main` Dask still does not beat the eager call at this size, now by a wider
+  margin than on the 38x87 grid: the best configuration (4 workers) is 1.43x
+  slower than eager (1.750 s vs 1.224 s), and 8 workers is slower than 4. The
+  within-Dask speedup is 1.45x from 1 to 4 workers; the fresh `processes` pool
+  costs about 1.3 s per `compute()`.
+- Read and write are outside the compute figures; a full serial workflow at this
+  size is read 1.060 s + compute 1.224 s + write 0.104 s on `main`.
+
+Interpretation (not measured): once the serial kernel is fast enough that the
+whole 40,260-cell grid is 1.2 s of work, the fixed pool cost is most of what
+Dask would do at this size, so the parallel path loses regardless of the worker
+count. Worker-count tuning cannot recover it.
+
+Reproduce with the same commands; the results are retained verbatim in
+`benchmarks/results/chirps_spi6_gamma_main.txt` and
+`benchmarks/results/chirps_spi6_gamma_v2.4.0.txt`.
+
+### Correctness gate
+
+`benchmarks/results/chirps_spi6_equivalence.txt` is the `pytest -m validation -k
+chirps` output: SPI-6 `gamma` over the prepared CHIRPS grid matches the per-cell
+NumPy API bit for bit, and the Dask-backed grid with `scheduler="processes"`
+matches the eager grid bit for bit. No timing above is quoted before that gate.
+
+Pearson is not timed. On this fixture it fails the gate: the eager block is 60%
+missing cells and the block-path Pearson result is all-NaN, so no speedup could
+be claimed from it. The failure is pinned by an `xfail(strict=True)` case in
+`tests/test_numerical_equivalence.py` and reported as
+[#1118](https://github.com/monocongo/climate_indices/issues/1118); `gamma` is the
+release-to-main control, as #1097 requires.
+
+### Deviations and limits
+
+- `v2.4.0` predates `benchmarks/`, so `parallel_scaling.py` and
+  `profile_gridded_spi.py` were copied into that checkout to run it; the numbers
+  are the same harness on both sides. The release's `requires-python` is
+  `<3.14`, so that side ran Python 3.13.13 against `main`'s 3.14.7. `h5py` was
+  installed into the v2.4.0 environment because its `h5netcdf` has no HDF5
+  backend otherwise; the environment lines in the two result files record both.
+- `main` requires the first spatial cell of a masked grid to hold data (its
+  calibration preflight samples the first spatial point only), and the CHIRPS
+  grid's first cell is ocean. The harness rolls both spatial axes so cell
+  `[0, 0]` is a land cell, keeping every value with its own coordinates; the
+  roll offset is printed in the results header. This changes no per-cell value.
+- Same-session comparisons only: run-to-run spread is up to ~15% between
+  sessions, and the synthetic control rerun for #1097
+  (`benchmarks/results/parallel_scaling_1097.txt`) shows SPI at 0.202 s serial
+  against the 0.204 s in the committed #928 artifact, but its Dask figures moved
+  further (0.683 s at one worker against 0.863 s), so do not compare numbers
+  across sessions.
+- No cross-PR multiplication: the 28.1x here is this grid, this index, and these
+  two commits; it does not compose with #818's per-cell figures, #944's 6x, or
+  the xclim `APP`-fit speedup from xclim#2091.

@@ -1,0 +1,15 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.7, pytest-9.1.1, pluggy-1.6.0 -- /Users/jadams/git/climate_indices-1097/.venv/bin/python
+cachedir: .pytest_cache
+benchmark: 5.3.0 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+hypothesis profile 'deterministic' -> database=None, derandomize=True
+rootdir: /Users/jadams/git/climate_indices-1097
+configfile: pyproject.toml
+plugins: cov-7.1.0, benchmark-5.3.0, anyio-4.14.2, zarr-3.3.0, hypothesis-6.168.0
+collecting ... collected 13 items / 10 deselected / 3 selected
+
+tests/test_numerical_equivalence.py::test_chirps_spi6_matches_the_serial_numpy_api[Distribution.gamma-0.0] PASSED [ 33%]
+tests/test_numerical_equivalence.py::test_chirps_spi6_matches_the_serial_numpy_api[Distribution.pearson-1e-12] XFAIL [ 66%]
+tests/test_numerical_equivalence.py::test_chirps_spi6_dask_matches_the_eager_grid PASSED [100%]
+
+========== 2 passed, 10 deselected, 1 xfailed, 11 warnings in 45.80s ===========

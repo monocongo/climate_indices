@@ -1,0 +1,15 @@
+checkout revision: 873aa0351957b7ba79c84e4c691ff6441a2e5b52
+fixture: /tmp/ci1097/mar_cli_chirps3_month1_1981_2024c.nc sha256=19e2f96275233cc88030639e641b2fe09d49937f315b5b1a3e97c819f6d28cea
+grid: time=528 lat=165 lon=244
+input: scale=6; calibration=1991-2020; distribution=gamma; zeros replaced with 0.01 mm; land mask from the first time step (16134 of 40260 cells); spatial axes rolled by lat=0 lon=-1 so the sampled preflight cell holds data
+environment: python 3.14.7; macOS-26.6.2-arm64-arm-64bit-Mach-O; numpy 2.4.2; scipy 1.17.0; xarray 2026.1.0; dask 2026.8.0; cpu Apple M5; 10 CPUs
+process: read 1.060 s; 3 timed runs per configuration after a warm-up
+
+spi eager serial in-memory (quiet log): samples=[1.224, 1.271, 1.293] min=1.224 s; read=1.060 s; write=0.104 s; total=2.388 s
+
+Dask worker counts: 1,2,4,8; scheduler=processes; chunksize=1; time=-1 (ADR-0003); compute-only seconds, total adds read + write
+ workers  blocks   compute  speedup     total  samples
+       1       1     2.546    1.00x     3.710  [2.546, 2.613, 2.745]
+       2       2     2.060    1.24x     3.224  [2.366, 2.161, 2.060]
+       4       4     1.750    1.45x     2.914  [1.753, 1.765, 1.750]
+       8       8     1.901    1.34x     3.065  [1.997, 1.916, 1.901]

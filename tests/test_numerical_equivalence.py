@@ -23,7 +23,12 @@ Two boundaries that these bounds do not cover, on purpose:
 
 from __future__ import annotations
 
+import importlib.util
+import os
+import sys
 from collections.abc import Callable
+from pathlib import Path
+from types import ModuleType
 
 import numpy as np
 import pytest
@@ -321,3 +326,76 @@ def test_dask_chunk_layout_does_not_change_the_result(
         rtol=0.0,
         equal_nan=True,
     )
+
+
+# The real-grid check runs only when the Morocco CHIRPS v3 fixture of #1097 is on
+# disk; the file is external, mutable, and far too large to commit. Point
+# CLIMATE_INDICES_CHIRPS_NC at the NetCDF and run with `-m validation`.
+_CHIRPS_NETCDF = os.environ.get("CLIMATE_INDICES_CHIRPS_NC")
+
+
+def _load_benchmark_harness() -> ModuleType:
+    """Import the benchmark harness so the check uses the benchmark's own grid preparation."""
+    benchmarks = Path(__file__).resolve().parents[1] / "benchmarks"
+    spec = importlib.util.spec_from_file_location("parallel_scaling", benchmarks / "parallel_scaling.py")
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["parallel_scaling"] = module
+    sys.path.insert(0, str(benchmarks))
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.remove(str(benchmarks))
+    return module
+
+
+def _chirps_grid() -> xr.DataArray:
+    """Load the CHIRPS fixture exactly as the benchmark does."""
+    assert _CHIRPS_NETCDF is not None
+    return _load_benchmark_harness().load_netcdf_grid(_CHIRPS_NETCDF, "precip").precip
+
+
+@pytest.mark.validation
+@pytest.mark.skipif(_CHIRPS_NETCDF is None, reason="CLIMATE_INDICES_CHIRPS_NC is not set")
+@pytest.mark.parametrize(
+    ("distribution", "atol"),
+    [
+        (indices.Distribution.gamma, 0.0),
+        pytest.param(
+            indices.Distribution.pearson,
+            _ULP_ATOL,
+            marks=pytest.mark.xfail(
+                strict=True,
+                reason="block-path Pearson returns all-NaN once half a block's cells are missing (the ocean mask); "
+                "the eager block is 60% missing, so no cell has a value to compare. Tracked in #1118",
+            ),
+        ),
+    ],
+)
+def test_chirps_spi6_matches_the_serial_numpy_api(distribution: indices.Distribution, atol: float) -> None:
+    """SPI-6 over the Morocco CHIRPS grid matches the per-cell API: exact for gamma, Pearson known-broken."""
+    _assert_spi_matches_the_serial_numpy_api(_chirps_grid(), distribution, atol, 1991, 2020)
+
+
+@pytest.mark.validation
+@pytest.mark.skipif(_CHIRPS_NETCDF is None, reason="CLIMATE_INDICES_CHIRPS_NC is not set")
+def test_chirps_spi6_dask_matches_the_eager_grid() -> None:
+    """A Dask-backed CHIRPS grid matches the eager grid bit for bit, as the benchmark's worker runs must."""
+    grid = _chirps_grid()
+    eager = spi(
+        grid,
+        scale=6,
+        distribution=indices.Distribution.gamma,
+        calibration_year_initial=1991,
+        calibration_year_final=2020,
+    )
+    lazy = spi(
+        grid.chunk({"time": -1, "lat": 83, "lon": 61}),
+        scale=6,
+        distribution=indices.Distribution.gamma,
+        calibration_year_initial=1991,
+        calibration_year_final=2020,
+    )
+    assert lazy.chunks is not None
+    np.testing.assert_array_equal(lazy.compute(scheduler="processes", num_workers=2).values, eager.values)
