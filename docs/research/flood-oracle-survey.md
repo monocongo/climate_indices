@@ -12,18 +12,21 @@ retrieval rather than asserted present.
 Which publicly accessible references can validate this library's planned Effective
 Precipitation (PE) kernel, Effective Drought Index (EDI), Flood Index (I_F), and
 Antecedent Precipitation Index (API)? For each candidate: what it is, what exactly it
-would validate, its classification in `VALIDATION.md` vocabulary (**exact reference**,
-**independent implementation**, **digitized figure**, **regression coverage**), its
+would validate, its classification under this survey's ticket-derived vocabulary
+(**exact reference**, **independent implementation**, **digitized figure**,
+**regression coverage**) — mapped to `VALIDATION.md`'s own tiers below — its
 licensing, whether its values are tabulated or only plotted, its access URL/DOI, and its
 limitations. Then name one primary oracle per index and record the remaining gaps.
 
 The classification vocabulary is load-bearing. Issue #1101 asks for candidates to be
 classified as **exact reference**, **independent implementation**, **digitized
-figure**, or **regression source**. Those are the ticket's terms: `VALIDATION.md`
-itself says "an exact oracle only for the 1968 integer table workflow" in the KBDI row
-and otherwise uses "characterization", "reference-reproduced", and "independent
-implementation cross-validation" rather than either phrase. This survey uses the
-ticket's spelling and maps it to the `VALIDATION.md` tiers as follows: a published
+figure**, or **regression source**. Those are the ticket's terms, not `VALIDATION.md`'s
+own: `VALIDATION.md` itself says "an exact oracle only for the 1968 integer table
+workflow" in the KBDI row and otherwise uses "characterization", "reference-reproduced",
+and "independent implementation cross-validation". It never uses "exact reference" at
+all, and it never uses "independent implementation" as a standalone label — only inside
+that one compound term. This survey uses the ticket's spelling and maps it to the
+`VALIDATION.md` tiers as follows: a published
 worked example whose numbers are tabulated is an *exact reference*; a
 published-but-figure-only series is a *digitized figure* with a stated read-off
 uncertainty (the HDW / Srock et al. entry); a second implementation of the same
@@ -52,10 +55,11 @@ instead of promoting them.
   unverified because the full text is paywalled. The venue for the decision is **#1099**,
   which owns the convention #1107 consumes (gap 1).
 - **API**: no accessible source tabulates index values. Kohler & Linsley (1951) is not
-  digitized online; the located implementations are regression support (a fixed-`k`
-  `ahrapi`) or a different definition (the USACE/NRCS weighted method). Unless that
-  changes on manual retrieval, the API row can only reach
-  specification-plus-regression status (gap 7).
+  digitized online; the located implementations are an independent implementation with
+  no published oracle values (a fixed-`k` `ahrapi`) or a different definition (the
+  USACE/NRCS weighted method). Unless that changes on manual retrieval, the API row can
+  only reach specification-level status, with independent-implementation and internal
+  regression coverage only (gap 7).
 
 No numeric anchor in this survey rests on a digitized series. Maintainer scientific
 sign-off on this survey is the ticket's gate.
@@ -203,7 +207,9 @@ the handling of leading windows and missing days.
   diagnosis. Moishin et al. romanize the authors as "Byeon, H.-R. and Jeong, J.-S.";
   Byun & Lee (2002) list it as Byun and Jung. The same paper under two spellings.
 - **Access**: not fetched. No online copy located in this environment.
-- **Classification**: originating-group **specification precedent**; unverified values.
+- **Classification**: **unverified** - not retrieved in this environment; assumed
+  specification-level (an originating-group source) pending retrieval, per the "no
+  reproducible numbers" rule above.
 - **Licensing**: unknown; Korean Water Resources Association.
 - **Limitations**: requires manual retrieval; unknown whether values are tabulated.
 
@@ -299,9 +305,10 @@ the handling of leading windows and missing days.
   `fi > 0`, `fi >= 1`, `fi >= 1.5`, with duration, severity, AWRI and peak severity.
 - **Access**: `https://github.com/memoishin/flood_monitoring_dss`, last push
   2021-04-26, checked 2026-09-22.
-- **Classification**: **regression-only source** at best. It has a working
-  implementation of the same lineage but **no committed expected values and no tests**,
-  so agreement with it is not scientific validation.
+- **Classification**: **independent implementation**, but not usable as an oracle - like
+  `rrk4910/EDI` below, it has a working implementation of the same lineage but **no
+  committed expected values and no tests**, so agreement with it is not scientific
+  validation.
 - **Licensing**: none (no license file). It cannot be copied or vendored; only
   inspected, or reimplemented from its published algorithm.
 - **Limitations**: its annual maxima are calendar-year (`year` from the input date),
@@ -316,8 +323,9 @@ the handling of leading windows and missing days.
   `http://eprints.usq.edu.au/26754/8/Deo_Byun_Adamowski_Kim_AP20_2014_PV.pdf`. The USQ
   eprints host refused connections on 2026-09-22 (and r.jina.ai could not reach it
   either), so the PDF could not be fetched.
-- **Classification**: **exact reference candidate** (originating-group published
-  version); cannot be classified further until retrieved. Requires manual retrieval.
+- **Classification**: **unverified** - not retrieved. An originating-group published
+  version, so plausibly promotable to exact reference once retrieved, but not classified
+  as such yet, per the "never upgrade merely by association" rule above.
 - **Licensing**: not determinable while the host is unreachable; USQ repositories often
   post publisher versions with unclear reuse terms - check before committing anything.
 - **Limitations**: site availability. This is the most promising route to a full,
@@ -440,10 +448,10 @@ the handling of leading windows and missing days.
     Engineering Field Handbook weighting factors (Combined Method)" citing Sprecher &
     Warne (2000), ERDC/EL TR-WRAP-00-1, and NRCS Engineering Field Handbook Chapter 19
     (1997); its drought determination uses PDSI, not API.
-  - **Classification**: **operational product, but for a different antecedent-
-    precipitation definition** (NRCS monthly weighting factors), not the Kohler &
-    Linsley exponential recursion. It is not an oracle for #1109; it is evidence that
-    "antecedent precipitation index" is not one definition in agency practice. The two
+  - **Classification**: **not applicable** to this survey's API definition - it
+    implements NRCS monthly weighting factors, not the Kohler & Linsley exponential
+    recursion. It is not an oracle for #1109; it is evidence that "antecedent
+    precipitation index" is not one definition in agency practice. The two
     cited URLs (`el.erdc.usace.army.mil/elpubs/...` and `info.usda.gov/CED/...`) were
     dead on 2026-09-22 - the ERDC and NRCS documents themselves require manual retrieval.
 - **De Moraes et al. (2024)**, *International Journal of Geosciences* 15, 70-86,
@@ -475,7 +483,7 @@ convention; the last two are not validation evidence as they stand.
 | PE kernel | Byun & Wilhite (1999), Eq. (2); Byun & Lee (2002) for the open algebra | exact reference, conditional on the variable-`DS` convention (Table 5); digitized figure for the plotted EP series | Table 5 (Hickman, NE) for the variable-`DS` chain; Fig. 2b for EP; Fig. 1 for the weight curve |
 | EDI | Byun & Wilhite (1999), Eq. (9)/Table 5 | exact reference, conditional on the variable-`DS` convention and a multi-decade MEP baseline | min EDI -2.5 (Eq. 2) and -1.22 (Eq. 3) on day 469, Table 5 |
 | I_F | Deo et al. (2015) | specification-level: definition and abstract-level event statistics; implemented kernel unverified; exponential-vs-double-sum conflict | none reproducible; the abstract's `I_acc_F`/`I_max_F`/`D_F`/`T` need the Brisbane/Lockyer record |
-| API | Kohler & Linsley (1951) | specification-level; numeric content unverified; no numeric oracle found | none; the analytic `P/(1-k)` limit and the MIT `ahrapi` implementation are regression support only |
+| API | Kohler & Linsley (1951) | specification-level; numeric content unverified; no numeric oracle found | none; the analytic `P/(1-k)` limit is regression coverage and the MIT `ahrapi` implementation is an independent implementation, neither an oracle |
 
 For the PE kernel, Byun & Lee (2002) is the openly accessible confirmation of the exact
 algebra and should be cited alongside the 1999 paper. For the EDI, the 1999 Table 5 is
@@ -545,8 +553,8 @@ Using `VALIDATION.md` vocabulary explicitly:
    example `DS = 365 + 35 - 1`.
 7. **Kohler & Linsley (1951) retrieval.** Obtain the 10-page report and record whether
    it contains tabulated index values. If not, the API row must be signed off as
-   specification-plus-regression coverage, or an alternative external product using the
-   same recursion must be found.
+   specification-level, with independent-implementation and regression coverage only, or
+   an alternative external product using the same recursion must be found.
 8. **Nosrati citation correction.** Issue #1107 cites "Nosrati et al. (2011)"; the
    located work is Nosrati et al. (2010), and its FI uses AWRI, not Deo's PE. Fix the
    reference before it is used to justify a convention.
