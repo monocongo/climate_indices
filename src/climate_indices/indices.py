@@ -629,14 +629,17 @@ def standardized_index(
             parameters, with keys "alpha" and "beta" for gamma and "prob_zero",
             "loc", "scale", and "skew" for Pearson Type III. Older keys such as
             "alphas" and "probabilities_of_zero" are deprecated.
-        spatial_time_major: Read a time-major block of independent time series,
-            shaped (time, ``*cells``), and fit every cell in one pass. It is
-            required only for the ambiguous shape whose first cell axis is a
-            calendar period length (12 or 366); see :func:`spi` for the layout.
+        spatial_time_major: Read a three-or-more-dimensional time-major block of
+            independent time series, shaped (time, ``*cells``), and fit every cell
+            in one pass. It is required only for the ambiguous shape whose first
+            cell axis is a calendar period length (12 or 366); see :func:`spi` for
+            the layout. A 2-D block is always read as one series, however
+            declared.
 
     Returns:
         1-D array of standardized values, unitless and of the same length as the
-        flattened input; a declared spatial block is returned in its input shape.
+        flattened input; a declared time-major block (three or more dimensions) is
+        returned in its input shape.
     """
     return _standardized_index_pipeline(
         values,

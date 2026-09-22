@@ -38,18 +38,31 @@ def test_standardized_index_matches_pinned_spi_result(
 ) -> None:
     """Golden SPI fixtures pin standardized_index independently of spi() itself."""
     expected = request.getfixturevalue(expected_fixture)
+    calibration_initial = request.getfixturevalue(calibration_start)
+    calibration_final = request.getfixturevalue(calibration_end)
+    values = np.asarray(precips_mm_monthly).flatten()
 
     computed = indices.standardized_index(
-        values=np.asarray(precips_mm_monthly).flatten(),
+        values=values,
         scale=scale,
         distribution=distribution,
         data_start_year=data_year_start_monthly,
-        calibration_year_initial=request.getfixturevalue(calibration_start),
-        calibration_year_final=request.getfixturevalue(calibration_end),
+        calibration_year_initial=calibration_initial,
+        calibration_year_final=calibration_final,
+        periodicity=compute.Periodicity.monthly,
+    )
+    spi = indices.spi(
+        values=values,
+        scale=scale,
+        distribution=distribution,
+        data_start_year=data_year_start_monthly,
+        calibration_year_initial=calibration_initial,
+        calibration_year_final=calibration_final,
         periodicity=compute.Periodicity.monthly,
     )
 
-    np.testing.assert_allclose(computed, expected, atol=0.001)
+    np.testing.assert_array_equal(computed, spi)
+    np.testing.assert_allclose(computed, expected, atol=1e-8)
 
 
 @pytest.mark.usefixtures(
