@@ -332,7 +332,8 @@ def test_release_process_documents_the_rehearsal_boundary() -> None:
     assert "## Release rehearsal" in release_process
     section = release_process.split("## Release rehearsal", 1)[1].split("\n## ", 1)[0]
     assert "`publish` fails" in section
-    assert "`create-release`" in section and "skipped" in section
+    assert "`create-release`" in section
+    assert "skipped" in section
     assert "not a trusted publisher" in section
 
 
