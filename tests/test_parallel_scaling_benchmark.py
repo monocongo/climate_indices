@@ -35,11 +35,11 @@ def _load_module(name: str, path: Path) -> ModuleType:
     return module
 
 
+# left on sys.path for the test session: _measure's processes scheduler pickles worker
+# tasks by module name ("parallel_scaling"), and a spawned child re-imports that name
+# fresh, so it needs the same path the parent used to load it.
 sys.path.insert(0, str(BENCHMARKS))
-try:
-    parallel_scaling = _load_module("parallel_scaling", BENCHMARKS / "parallel_scaling.py")
-finally:
-    sys.path.remove(str(BENCHMARKS))
+parallel_scaling = _load_module("parallel_scaling", BENCHMARKS / "parallel_scaling.py")
 
 
 @pytest.mark.parametrize("workers", [1, 2, 3, 4, 5, 8, 13, 16, 24, 48, 64, 110, 128, 256, 400, 1444, 2000, 3306])
@@ -68,11 +68,14 @@ def test_worker_counts_reject_counts_outside_the_grid() -> None:
 
 
 def test_netcdf_mode_rejects_arguments_it_cannot_honour(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The real-grid mode is SPI-only, and its options require --netcdf."""
+    """The real-grid mode is SPI-only, its options require --netcdf, and --scale must be at least 1."""
     monkeypatch.setattr(sys, "argv", ["parallel_scaling.py", "--netcdf", "x.nc", "--indices", "spi,spei"])
     with pytest.raises(SystemExit):
         parallel_scaling._parse_args()
     monkeypatch.setattr(sys, "argv", ["parallel_scaling.py", "--scale", "6"])
+    with pytest.raises(SystemExit):
+        parallel_scaling._parse_args()
+    monkeypatch.setattr(sys, "argv", ["parallel_scaling.py", "--netcdf", "x.nc", "--scale", "0"])
     with pytest.raises(SystemExit):
         parallel_scaling._parse_args()
 
@@ -162,6 +165,21 @@ def test_require_finite_tail_enforces_the_land_mask() -> None:
     filled_ocean[:, 0, 1] = 0.0
     with pytest.raises(RuntimeError, match="marked as missing"):
         parallel_scaling._require_finite_tail(filled_ocean, 0, valid)
+
+
+def test_measure_threads_the_land_mask_through_dask_workers() -> None:
+    """A masked grid's ``valid_cells`` survives ``_chunk_for_workers``/``_Grid`` reconstruction
+    and the round trip through the ``processes`` scheduler, matching the real-grid mode's path.
+    """
+    values = np.full((6, 2, 2), 2.0)
+    values[:, 1, 1] = np.nan
+    precip = xr.DataArray(values, coords={"lat": [10.0, 20.0], "lon": [1.0, 2.0]}, dims=("time", "lat", "lon"))
+    valid_cells = np.array([[True, True], [True, False]])
+    grid = parallel_scaling._Grid(precip=precip, valid_cells=valid_cells)
+    index = parallel_scaling._Index(lambda g: g.precip, 0)
+
+    samples = parallel_scaling._measure(index, grid, workers=2, repeat=1)
+    assert len(samples) == 1
 
 
 def test_quiet_worker_silences_only_goodness_of_fit() -> None:
