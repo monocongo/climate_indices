@@ -557,7 +557,9 @@ Using `VALIDATION.md` vocabulary explicitly:
 4. **Byun & Wilhite digitization/permission.** The 1999 AMS article is free to read but
    not CC-licensed. Decide whether transcribing Table 5's twelve numbers and/or
    digitizing Figure 2 for a committed fixture is acceptable, and whether permission is
-   needed. Record the decision in the fixture `provenance.json`.
+   needed. While re-reading Table 5 for that decision, also re-confirm CNS's definition
+   and unit, currently unconfirmed (see the fixture caveats below). Record the decision
+   in the fixture `provenance.json`.
 5. **Hickman inputs and baseline.** Table 5 reproduction needs more than the 1995-1996
    daily precipitation for Hickman, Nebraska and the paper's substitution rules: MEP and
    its standard deviation are per-calendar-day statistics of a multi-decade baseline,
@@ -598,7 +600,7 @@ Using `VALIDATION.md` vocabulary explicitly:
   the transcribed magnitude (-299.8, approaching the length of the whole ~730-day
   Hickman record) is implausible for a precipitation-depth quantity either way.
   Re-confirm CNS's definition and unit against the primary Table 5 image before it
-  enters a fixture (folds into gap 4). Any
+  enters a fixture (gap 4). Any
   comparison tolerance follows each printed value's own confirmed precision (half a unit
   in the last place: `+/-0.05` and `+/-0.005`, not a uniform rule), and the paper's
   5-day-running-mean and variable-`DS` conventions.
