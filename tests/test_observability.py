@@ -530,6 +530,22 @@ class TestAllMissingLifecycle:
         result = indices.pci(rainfall_mm=np.full(366, np.nan))
         self._assert_all_missing(stream, result, "pci")
 
+    def test_standardized_index_spatial(self) -> None:
+        stream = _capture_stream(log_level="INFO")
+        values = np.full((240, 2, 3), np.nan)
+        result = indices.standardized_index(
+            values=values,
+            scale=3,
+            distribution=indices.Distribution.gamma,
+            data_start_year=2000,
+            calibration_year_initial=2000,
+            calibration_year_final=2019,
+            periodicity=compute.Periodicity.monthly,
+            spatial_time_major=True,
+        )
+        assert result.shape == values.shape
+        self._assert_all_missing(stream, result, "standardized_index")
+
 
 class TestCalculationFailureHelper:
     """The shared calculation_failed helper emits the standard error context."""

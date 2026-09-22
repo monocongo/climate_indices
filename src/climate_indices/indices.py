@@ -535,6 +535,7 @@ def _standardized_index_pipeline(
             if scale <= values.shape[0] and (
                 (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values))
             ):
+                _log_calculation_completed(log, t0, values.shape, memory_metrics)
                 return values
 
         # flatten, short-circuit all-missing input, clip negatives to zero,
