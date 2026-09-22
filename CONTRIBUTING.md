@@ -94,7 +94,8 @@ vocabulary at `src/climate_indices/CONTEXT.md`):
 - Router: `docs/index.md` (the homepage routes into the four sections below)
 - Tutorial: `docs/tutorials.md`, `docs/quickstart.md`
 - How-to guide: `docs/how-to.md`, `docs/workflow-examples.md`,
-  `docs/troubleshooting.md`, `docs/xarray_migration.md`, `docs/performance.md`,
+  `docs/standardized-hydrologic-indices.md`, `docs/troubleshooting.md`,
+  `docs/xarray_migration.md`, `docs/performance.md`,
   `docs/development-guide.md`, `docs/contribution-guide.md`,
   `docs/deployment-guide.md`, `docs/release-process.md`
 - Reference: `docs/reference.md`, `docs/algorithm-reference.md`,
