@@ -40,6 +40,15 @@ numbers - is **specification-level**, which is not validation evidence at all. S
 candidates below fall in that last class; the recommendation table labels them as such
 instead of promoting them.
 
+Terms used below, defined once: the source papers call effective precipitation **EP**;
+this survey and the library's tickets call the same quantity **PE** - the two are
+interchangeable throughout. **MEP** is EP's per-calendar-day mean (the climatological
+baseline), **DEP** its deviation from MEP, **SEP** the standardized deviation, **APD**
+the accumulated precipitation deficit, and **PRN** the precipitation needed for a return
+to normal - all defined in full in candidate 1 below. **AWRI** (Available Water
+Resources Index) is PE normalized by the harmonic sum `sum 1/N`, from the Byun & Lee
+(2002) restatement (candidate 2).
+
 ## Answer
 
 - **PE kernel and EDI**: Byun & Wilhite (1999) Table 5 is the only located exact
