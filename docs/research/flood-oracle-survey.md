@@ -61,8 +61,10 @@ instead of promoting them.
   only reach specification-level status, with independent-implementation and internal
   regression coverage only (gap 7).
 
-No numeric anchor in this survey rests on a digitized series. Maintainer scientific
-sign-off on this survey is the ticket's gate.
+No primary oracle recommended in this survey rests on a digitized series alone - Table 5's
+tabulated values anchor the PE/EDI recommendation; the Figure 1/2 entries below are
+supplementary, lower-tier evidence, not primary anchors. Maintainer scientific sign-off on
+this survey is the ticket's gate.
 
 ## What climate_indices plans to compute
 
@@ -146,8 +148,9 @@ the handling of leading windows and missing days.
     Hickman; Figure 3 is the 113-station High Plains annual minimum series, which the
     paper cross-checks qualitatively against the recorded 1989 drought.
 - **Classification**: **exact reference** for the tabulated Table 5 end-to-end values,
-  **digitized figure** for the EP/EDI daily series (Figure 2) and for Figure 1's weight
-  curve. The EP series itself is never tabulated.
+  **digitized figure** for the Figure 2 index-chain panels (2b/2c, `EDI * 100`-scaled per
+  their own column headers - not raw EP, which is never separately plotted or tabulated)
+  and for Figure 1's weight curve.
 - **Licensing**: AMS copyright, no Creative Commons license found on the fetched page.
   Free to read is not the same as free to redistribute or to derive from. The existing
   digitized-figure precedent (HDW / Srock et al.) rests on a CC BY article
@@ -481,7 +484,7 @@ convention; the last two are not validation evidence as they stand.
 
 | Index | Primary oracle | Classification | Numeric anchor |
 | --- | --- | --- | --- |
-| PE kernel | Byun & Wilhite (1999), Eq. (2); Byun & Lee (2002) for the open algebra | exact reference, conditional on the variable-`DS` convention (Table 5); digitized figure for the plotted EP series | Table 5 (Hickman, NE) for the variable-`DS` chain; Fig. 2b for EP; Fig. 1 for the weight curve |
+| PE kernel | Byun & Wilhite (1999), Eq. (2); Byun & Lee (2002) for the open algebra | exact reference, conditional on the variable-`DS` convention (Table 5); digitized figure for the plotted index-chain panels (not raw EP, never separately plotted) | Table 5 (Hickman, NE) for the variable-`DS` chain; Fig. 2b for the Eq. (2) index panel; Fig. 1 for the weight curve |
 | EDI | Byun & Wilhite (1999), Eq. (9)/Table 5 | exact reference, conditional on the variable-`DS` convention and a multi-decade MEP baseline | min EDI -2.5 (Eq. 2) and -1.22 (Eq. 3) on day 469, Table 5 |
 | I_F | Deo et al. (2015) | specification-level: definition and abstract-level event statistics; implemented kernel unverified; exponential-vs-double-sum conflict | none reproducible; the abstract's `I_acc_F`/`I_max_F`/`D_F`/`T` need the Brisbane/Lockyer record |
 | API | Kohler & Linsley (1951) | specification-level; numeric content unverified; no numeric oracle found | none; the analytic `P/(1-k)` limit is regression coverage and the MIT `ahrapi` implementation is an independent implementation, neither an oracle |
@@ -504,8 +507,8 @@ Using `VALIDATION.md` vocabulary explicitly:
   reconstructed), from Deo et al. (2015) for I_F (if the full text is retrieved and its
   convention is matched), and from Kohler & Linsley (1951) for API (only if that report
   turns out to tabulate values reproducible against a public precipitation record).
-- **Digitized figures** would be required for the EP/EDI daily series (Byun & Wilhite
-  Fig. 2), for the weight curve (Fig. 1), and for any Deo et al. (2015) series whose
+- **Digitized figures** would be required for the EDI daily-index series (Byun & Wilhite
+  Fig. 2b/2c), for the weight curve (Fig. 1), and for any Deo et al. (2015) series whose
   table cannot be obtained. The HDW / Srock et al. precedent shows the cost and the
   disclosure pattern (marker pixel coordinates, a stated read-off uncertainty, and a
   shape/timing assertion rather than a tight magnitude `atol`); it does not supply a
