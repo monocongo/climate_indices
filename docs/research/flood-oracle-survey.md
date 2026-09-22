@@ -17,15 +17,48 @@ would validate, its classification in `VALIDATION.md` vocabulary (**exact refere
 licensing, whether its values are tabulated or only plotted, its access URL/DOI, and its
 limitations. Then name one primary oracle per index and record the remaining gaps.
 
-The classification vocabulary is load-bearing. In `VALIDATION.md`, a published worked
-example whose numbers are tabulated is an *exact reference* (the KBDI SE-38 Figure 1
-entry calls it "an exact oracle only for the 1968 integer table workflow"); a
+The classification vocabulary is load-bearing. Issue #1101 asks for candidates to be
+classified as **exact reference**, **independent implementation**, **digitized
+figure**, or **regression source**. Those are the ticket's terms: `VALIDATION.md`
+itself says "an exact oracle only for the 1968 integer table workflow" in the KBDI row
+and otherwise uses "characterization", "reference-reproduced", and "independent
+implementation cross-validation" rather than either phrase. This survey uses the
+ticket's spelling and maps it to the `VALIDATION.md` tiers as follows: a published
+worked example whose numbers are tabulated is an *exact reference*; a
 published-but-figure-only series is a *digitized figure* with a stated read-off
 uncertainty (the HDW / Srock et al. entry); a second implementation of the same
 algorithm is an *independent implementation* (the scPDSI Wells-lineage fixtures); and
-fixtures generated from this library's own output are *regression coverage* only. A
-figure-only source is never upgraded to "exact reference" merely because it was once
-attached to a paper.
+fixtures generated from this library's own output are *regression coverage* only.
+
+Two rules keep the tiers honest. A figure-only source is never upgraded to "exact
+reference" merely because it was once attached to a paper. And a source that supplies
+only the formula, the definitional wording, or the specification - with no reproducible
+numbers - is **specification-level**, which is not validation evidence at all. Several
+candidates below fall in that last class; the recommendation table labels them as such
+instead of promoting them.
+
+## Answer
+
+- **PE kernel and EDI**: Byun & Wilhite (1999) Table 5 is the only located exact
+  reference - tabulated end-to-end output for Hickman, Nebraska, re-verified against the
+  AMS table image during this review - but it is a valid oracle only under the paper's
+  *variable* summation duration, which #1099 has not yet decided, and only with a
+  30-year per-calendar-day MEP baseline behind it (gaps 5 and 6). Byun & Lee (2002) is
+  the openly accessible confirmation of the equation algebra.
+- **I_F**: Deo et al. (2015) is the definitional source, but its abstract describes an
+  exponentially decaying effective precipitation while #1105/#1107 plan the harmonic
+  double sum. The two forms are not algebraically equivalent, so this is a real
+  convention conflict, and whether the 2015 implementation matched its abstract is
+  unverified because the full text is paywalled. The venue for the decision is **#1099**,
+  which owns the convention #1107 consumes (gap 1).
+- **API**: no accessible source tabulates index values. Kohler & Linsley (1951) is not
+  digitized online; the located implementations are regression support (a fixed-`k`
+  `ahrapi`) or a different definition (the USACE/NRCS weighted method). Unless that
+  changes on manual retrieval, the API row can only reach
+  specification-plus-regression status (gap 7).
+
+No numeric anchor in this survey rests on a digitized series. Maintainer scientific
+sign-off on this survey is the ticket's gate.
 
 ## What climate_indices plans to compute
 
@@ -81,13 +114,27 @@ the handling of leading windows and missing days.
     mean); Table 3 defines dry duration, the summation duration `DS = 365 + dry
     duration`, and drought duration as consecutive `EDI < -1.0`; Table 4 defines
     `EDI_j` as the standardized `PRN_j`.
+  - **`DS` is not defined consistently within the paper.** Table 3 reads `DS = 365 +
+    dry duration`, while the article's own worked example says "The DS of 5 June is 399
+    (365 + 35 - 1)" - a one-day difference that shifts every subsequent value. The two
+    readings need to be separated before `DS` is implemented, and Table 3 should be
+    re-read during fixture extraction.
+  - The paper does not settle the depletion-function choice: "choosing one of the two or
+    finding another equation for the best result is beyond the scope of this study". It
+    prefers Equation (2) over (3) for "the upper basins of rivers, mountainous areas,
+    or sandy areas" and Equation (3) for "lower basins of rivers, areas with good water
+    retention, or long-term drought". Any statement that the 1999 paper selected the
+    double sum outright is a misreading - which is why the convention question in gap 1
+    is a decision, not a lookup.
   - **Table 5 is tabulated numeric output** for the Hickman, Nebraska (USA) example of
     1 January 1995 - 31 December 1996, columns for Equation (2) and Equation (3):
     dry duration 232-493 vs 250-494; drought duration 259-493 vs 366-493; minimum CNS
     -299.8 on day 493 vs -256.3 on day 494; minimum APD -214.4 on day 484 vs -217.1 on
     day 484; minimum PRN -70.5 on day 484 vs -173.4 on day 484; minimum EDI -2.5 on
-    day 469 vs -1.22 on day 469. (Transcribed from the Table 5 GIF by this survey;
-    re-read the image during fixture extraction before relying on any digit.)
+    day 469 vs -1.22 on day 469. The table's column headers are "(2) Fig. 2b" and
+    "(3) Fig. 2c". (Transcribed from the Table 5 GIF by this survey and re-read against
+    the same GIF during review; re-read once more before the numbers enter a committed
+    fixture.)
   - Figures 1-3 are plotted: Figure 1 is the weight-vs-day-pass curve for the three
     equations (caption example: weight 6.4 one day before vs `1/365` at 365 days before
     for Equation (2)); Figure 2 is the daily precipitation and both index panels for
@@ -104,11 +151,18 @@ the handling of leading windows and missing days.
   precipitation series, which is plotted (Figure 2a) but not tabulated, plus the paper's
   missing-data substitution (it began with 193 High Plains stations, discarded those
   missing more than 1% of data, leaving 113, then substituted nearest-station or
-  calendar-day averages); (ii) the paper's EDI uses the *variable* `DS` and a per-
-  calendar-day 5-day-running-mean MEP and ST(EP) - the library's `D = 365` fixed-window
-  form will not reproduce it unless #1099 adopts the extension; (iii) the paper's test
-  is design-level, not independently implemented: it is the originating group's own
-  arithmetic; (iv) permission for a committed digitized derivative is unresolved.
+  calendar-day averages); (ii) it also requires the climatological baseline the
+  anomalies are measured against - a multi-decade record of the same calendar days, for
+  MEP and its standard deviation. Two years of Hickman data cannot produce them, and
+  `EP` needs more than `DS` days of prior history before its first comparable value, so
+  the baseline record and its warm-up are part of the oracle rather than an
+  implementation detail (gap 5); (iii) the paper's EDI uses the *variable* `DS` and a
+  per-calendar-day 5-day-running-mean MEP and ST(EP) - the library's `D = 365`
+  fixed-window form will not reproduce it unless #1099 adopts the extension, and the
+  standardization denominator is not pinned to one quantity, which changes the result;
+  (iv) the paper's test is design-level, not independently implemented: it is the
+  originating group's own arithmetic; (v) permission for a committed digitized
+  derivative is unresolved.
 
 ### 2. Byun & Lee (2002), *J. Meteor. Soc. Japan* 80(1), 33-44 - originating-group algorithm restatement (PE, AWRI, earlier FI)
 
@@ -126,12 +180,12 @@ the handling of leading windows and missing days.
   - Eq. (5): the drought index `DI = ( W' - Mean(W') ) / St( W' - Mean(W') )`, which it
     explicitly attributes back to Byun & Wilhite (1999);
   - Eq. (3)-(4): an earlier **Flood Index** `FI = V / St(V)`, `V = W - A_max(W)`, where
-    `A_max(W)` is the mean of the yearly maximum of W. It also states that Byun &
-    Wilhite (1999) compared three depletion equations and concluded that Eq. (1) (the
-    double sum) was best for mountainous terrain, and that the 1999 paper uses `D` as a
-    variable while this paper fixes `D = 365`.
-- **Classification**: **exact reference for the algorithm specification** (equations),
-  but not a numeric oracle: AWRI/FI series are plotted. The tables are about monsoon
+    `A_max(W)` is the mean of the yearly maximum of W. It also states that the 1999
+    paper uses `D` as a variable while this paper fixes `D = 365`. (This paper's
+    second-hand summary of what the 1999 paper concluded about the depletion function
+    does not match the 1999 text itself; see candidate 1's limitations.)
+- **Classification**: **specification-level** - it fixes the equation algebra but
+  carries no numeric oracle: AWRI/FI series are plotted. The tables are about monsoon
   onset definitions, not index values.
 - **Licensing**: J-STAGE free access, copyright the Meteorological Society of Japan; no
   CC license found. Same redistribution caveat as candidate 1.
@@ -174,8 +228,11 @@ the handling of leading windows and missing days.
   is the maximum I_F.
   - **The abstract itself tabulates event values**: Brisbane January 1974 `I_acc_F = 118`,
     `I_max_F = 4.4`, `D_F = 104 days`, `T = 106.2 years`; December 2010-January 2011
-    `I_acc_F = 61.8`, `I_max_F = 2.6`, `D_F = 89 days`, `T = 53 years`; Lockyer Valley
-    December 2010-January 2011 the most severe with `T = 104.4 years`.
+    `I_acc_F = 61.8`, `I_max_F = 2.6`, `D_F = 89 days`, `T = 53 years`; and Lockyer
+    Valley December 2010-January 2011 described as most severe with `T = 104.4 years`.
+    The superlative is the abstract's own wording and reads as scoped to that valley
+    rather than to every event, since the Brisbane 1974 return period it lists is
+    longer. All three values are abstract-level until the full text is retrieved.
 - **Classification**: **exact reference for the definition and for the abstract-level
   event statistics**, with the caveat below; the daily series and any in-paper tables
   could not be inspected, so their tabulated-vs-plotted status is **unverified and
@@ -183,17 +240,21 @@ the handling of leading windows and missing days.
 - **Licensing**: Springer, all rights reserved (TDM only). Digitizing or transcribing
   in-paper figures or tables into a committed fixture is a permission question.
 - **Limitations** - the most important convention finding in this survey:
-  1. **The 2015 PE depletion function is exponential, not the harmonic double sum the
-     library plans.** The abstract says "exponentially-decaying time-reduction
-     function", which is Byun & Wilhite's Equation (1), not Equation (2). The same
-     wording appears in the 2019 follow-up (candidate 6). The library's planned I_F
-     (double-sum PE, #1105 + #1107) therefore does not match the primary oracle's stated
-     kernel. It matches Moishin et al. (2021, candidate 5), a later same-lineage paper
-     that uses the double sum for PE and cites a different source for it. This must be
-     resolved by a maintainer decision (adopt the exponential PE for I_F, or accept and
-     document the divergence) before #1107 is implemented as specified.
+  1. **The 2015 abstract describes an exponentially decaying PE; the kernel the 2015
+     paper implements is unverified.** The abstract says the index is computed "using
+     exponentially-decaying time-reduction function", and the 2019 follow-up (candidate
+     8) repeats that wording. That is the Byun & Wilhite Equation (1) form, which is not
+     the harmonic double sum the library plans - the two are not algebraically
+     equivalent - so a genuine convention question exists for I_F. The abstract alone
+     does not settle what the 2015 implementation did, though: Moishin et al. (2021,
+     candidate 5), co-authored by Deo, implements the *double sum* for the same index
+     and attributes that PE form to Byun & Jung (1998). The defensible statement is
+     therefore "the abstracts describe exponential PE; the implemented kernel is
+     unverified until the full text or Byun & Jung (1998) is retrieved". The decision
+     belongs to **#1099**, which owns the I_F convention that #1107 consumes.
   2. **Normalization is against yearly maxima "in the hydrological period"** (a water
-     year, not plainly a calendar year), which #1107 already flags as unresolved.
+     year, not plainly a calendar year). #1107 flags this as unresolved, but it is the
+     same convention decision as (1) and belongs with #1099.
   3. Reproducing the abstract's event numbers requires the Brisbane/Lockyer daily
      precipitation and the paper's decay constant, neither of which is publicly
      available as a dataset in this environment.
@@ -221,8 +282,9 @@ the handling of leading windows and missing days.
   application results for Fiji, not a fixture for the Brisbane/Lockyer values. I_F
   series are plotted; the five tables are model-performance tables, not I_F values.
 - **Licensing**: **CC BY 4.0** (verified in the article PDF: "This work is licensed under
-  a Creative Commons Attribution 4.0 License"). This is the one flood-index source in
-  this survey whose figures may be reused with attribution.
+  a Creative Commons Attribution 4.0 License"). This is the one source with CC BY terms
+  that states the Deo-lineage I_F equations; Chand et al. (2024) and Shen et al. (2025)
+  below are also CC BY 4.0, but neither states that chain.
 - **Limitations**: (i) it uses the double-sum PE while Deo et al. (2015) describes the
   exponential form, so it cannot arbitrate that mismatch; (ii) the Fiji hourly/daily
   rainfall input is from the Fiji Meteorological Service and is not released with the
@@ -289,13 +351,17 @@ the handling of leading windows and missing days.
   variable-`DS` EDI standardization. Usable only as a cross-check of input/output
   plumbing, not as an oracle.
 - **`tidyindex`** (`huizezhang-sherry/tidyindex`, MIT + file LICENSE, `idx_edi()` in
-  `R/drought-indexes.R`): computes the harmonic weights as
-  `digamma(n + 1) - digamma(1)` (= `H_n`), reverses them over the aggregation window,
-  and z-scores the result. This is the same fixed linear filter the #1105 kernel uses,
-  arrived at independently. **Classification: independent implementation of the kernel
-  identity**; it is a periodic/rolling z-score EDI, not the variable-`DS` EDI of the
-  1999 paper, and it has no published external expected values. Useful as a corroboration
-  that `w_m = H_D - H_{m-1}` is not this project's invention; not an oracle.
+  `R/drought-indexes.R`): multiplies precipitation by `rev(digamma(row_number() + 1) -
+  digamma(1))` - the harmonic numbers `H_n`, reversed - sums over a rolling window, and
+  z-scores the result. **That is harmonic weighting, but it is not the kernel's filter.**
+  The #1105 kernel's coefficient on the observation `m` days back is `H_D - H_{m-1}`;
+  tidyindex's coefficients are `H_n` in reverse order. They agree at the most recent lag
+  and differ at every other one - at `D = 2`, `[1.5, 1.0]` against the kernel's
+  `[1.5, 0.5]`. **Classification: independent implementation of a harmonic-weight
+  EDI**, cited as precedent that harmonic differential weighting is an established EDI
+  construction, not as an implementation of this kernel. It is a periodic/rolling
+  z-score EDI, not the variable-`DS` EDI of the 1999 paper, and it publishes no external
+  expected values, so it is not an oracle.
 - **`royalosyin/Calculate-Precipitation-based-Agricultural-Drought-Indices-with-Python`**
   (MIT): mentions EDI in its index list but contains no EDI implementation (checked the
   notebook's function definitions 2026-09-22). Excluded.
@@ -399,12 +465,16 @@ basin/period, and license before use).
 
 ## Recommendation: one primary oracle per index
 
+Below, *exact reference* means the source carries tabulated, reproducible numbers, and
+*specification-level* means it fixes the definition without supplying a usable numeric
+oracle. Only the first row is validation evidence as it stands.
+
 | Index | Primary oracle | Classification | Numeric anchor |
 | --- | --- | --- | --- |
-| PE kernel | Byun & Wilhite (1999), Eq. (2) | exact reference for the equation; tabulated end-to-end values in Table 5; digitized figure for the EP series | Table 5 (Hickman, NE) for the chain; Fig. 2b for EP; Fig. 1 for the weight curve |
-| EDI | Byun & Wilhite (1999), Eq. (9)/Table 5 | exact reference, conditional on the variable-`DS` convention | min EDI -2.5 (Eq. 2) and -1.22 (Eq. 3) on day 469, Table 5 |
-| I_F | Deo et al. (2015) | exact reference for definition and abstract event statistics; full-text tabulation unverified; exponential-PE convention conflict | `I_acc_F`/`I_max_F`/`D_F`/`T` in the abstract |
-| API | Kohler & Linsley (1951) | exact reference (specification); numeric content unverified; no numeric oracle found | none; analytic `P/(1-k)` and the MIT `ahrapi` implementation are regression support only |
+| PE kernel | Byun & Wilhite (1999), Eq. (2); Byun & Lee (2002) for the open algebra | exact reference (Table 5); digitized figure for the plotted EP series | Table 5 (Hickman, NE) for the chain; Fig. 2b for EP; Fig. 1 for the weight curve |
+| EDI | Byun & Wilhite (1999), Eq. (9)/Table 5 | exact reference, conditional on the variable-`DS` convention and a multi-decade MEP baseline | min EDI -2.5 (Eq. 2) and -1.22 (Eq. 3) on day 469, Table 5 |
+| I_F | Deo et al. (2015) | specification-level: definition and abstract-level event statistics; implemented kernel unverified; exponential-vs-double-sum conflict | none reproducible; the abstract's `I_acc_F`/`I_max_F`/`D_F`/`T` need the Brisbane/Lockyer record |
+| API | Kohler & Linsley (1951) | specification-level; numeric content unverified; no numeric oracle found | none; the analytic `P/(1-k)` limit and the MIT `ahrapi` implementation are regression support only |
 
 For the PE kernel, Byun & Lee (2002) is the openly accessible confirmation of the exact
 algebra and should be cited alongside the 1999 paper. For the EDI, the 1999 Table 5 is
@@ -442,11 +512,13 @@ Using `VALIDATION.md` vocabulary explicitly:
 
 ## Remaining gaps and required maintainer sign-off
 
-1. **I_F PE-kernel conflict (highest priority).** Deo et al. (2015) and Deo et al.
-   (2019) describe an exponentially decaying PE; #1105/#1107 plan the harmonic
-   double-sum. Either #1107's PE convention changes, or the divergence is documented and
-   signed off. Until the 2015 full text is retrieved, even the exponential parameterization
-   (decay constant, summation length, hydrological-period definition) is unknown.
+1. **I_F PE-kernel conflict (highest priority) - decision belongs to #1099.** The Deo
+   et al. (2015) and (2019) abstracts describe an exponentially decaying PE; #1105/#1107
+   plan the harmonic double-sum. Either the planned kernel changes, or the divergence is
+   documented and signed off. Until the 2015 full text or Byun & Jung (1998) is
+   retrieved, even the exponential parameterization (decay constant, summation length,
+   hydrological-period definition) is unknown. #1107 consumes this decision; it cannot
+   make it.
 2. **Retrieve Deo et al. (2015) full text** through an institutional subscription/ILL
    and record whether I_F values are tabulated or only plotted; then decide between
    transcription and digitization. If figures are used, confirm reuse terms.
@@ -457,13 +529,19 @@ Using `VALIDATION.md` vocabulary explicitly:
    not CC-licensed. Decide whether transcribing Table 5's twelve numbers and/or
    digitizing Figure 2 for a committed fixture is acceptable, and whether permission is
    needed. Record the decision in the fixture `provenance.json`.
-5. **Hickman inputs.** Table 5 reproduction requires the 1995-1996 daily precipitation
-   for Hickman, Nebraska and the paper's substitution rules. Confirm the station record
-   source and whether the paper's data handling can be matched before promising a tight
-   tolerance; otherwise the Table 5 check is qualitative/loose.
-6. **Adopt or reject the variable-duration EDI** (#1099). If rejected, Byun & Wilhite
-   Table 5 is not a valid EDI oracle for this library and the only remaining EDI
-   evidence is formula-level plus internal regression.
+5. **Hickman inputs and baseline.** Table 5 reproduction needs more than the 1995-1996
+   daily precipitation for Hickman, Nebraska and the paper's substitution rules: MEP and
+   its standard deviation are per-calendar-day statistics of a multi-decade baseline,
+   `EP` needs more than `DS` days of prior history, and the 5-day running-mean
+   alignment, the dry-day threshold that defines dry duration, and the standardization
+   denominator are all unpinned. Confirm the station record source and whether the
+   paper's data handling can be matched before promising a tight tolerance; otherwise
+   the Table 5 check is qualitative/loose.
+6. **Adopt or reject the variable-duration EDI, and fix what `DS` means** (#1099). If
+   rejected, Byun & Wilhite Table 5 is not a valid EDI oracle for this library and the
+   only remaining EDI evidence is formula-level plus internal regression. If adopted,
+   #1099 must also choose between `DS = 365 + dry duration` and the paper's own worked
+   example `DS = 365 + 35 - 1`.
 7. **Kohler & Linsley (1951) retrieval.** Obtain the 10-page report and record whether
    it contains tabulated index values. If not, the API row must be signed off as
    specification-plus-regression coverage, or an alternative external product using the
@@ -479,8 +557,10 @@ Using `VALIDATION.md` vocabulary explicitly:
 
 ## Fixture and tolerance caveats for #1104
 
-- Follow `tests/fixture/provenance_schema.json` for any committed oracle (source, URL,
-  download date, subset, checksum, fixture version, explicit `validation_tolerance`).
+- Follow `tests/fixture/provenance_schema.json` for any committed oracle. Its required
+  keys are exactly `source`, `url`, `download_date`, `subset_description`,
+  `checksum_sha256`, `fixture_version`, and `validation_tolerance`, and the schema sets
+  `additionalProperties: false`, so a misspelled or extra key fails validation.
 - Byun & Wilhite Table 5 prints one decimal for CNS/APD/PRN (`0.1 mm`) and two
   significant digits for EDI (`-2.5`, `-1.22`); the day numbers are integers. Any
   comparison tolerance is floored by that printing precision, and by the paper's
