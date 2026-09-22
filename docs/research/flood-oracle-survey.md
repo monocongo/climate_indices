@@ -233,10 +233,10 @@ the handling of leading windows and missing days.
     The superlative is the abstract's own wording and reads as scoped to that valley
     rather than to every event, since the Brisbane 1974 return period it lists is
     longer. All three values are abstract-level until the full text is retrieved.
-- **Classification**: **exact reference for the definition and for the abstract-level
-  event statistics**, with the caveat below; the daily series and any in-paper tables
-  could not be inspected, so their tabulated-vs-plotted status is **unverified and
-  requires manual retrieval**.
+- **Classification**: **specification-level** for the definition and the abstract-level
+  event statistics (not reproducible without the Brisbane/Lockyer record); the daily
+  series and any in-paper tables could not be inspected, so their tabulated-vs-plotted
+  status is **unverified and requires manual retrieval**.
 - **Licensing**: Springer, all rights reserved (TDM only). Digitizing or transcribing
   in-paper figures or tables into a committed fixture is a permission question.
 - **Limitations** - the most important convention finding in this survey:
@@ -334,8 +334,8 @@ the handling of leading windows and missing days.
 - **Access**: paywalled. DOI:
   [10.1007/s00704-018-2657-4](https://doi.org/10.1007/s00704-018-2657-4). OpenAlex
   reports no OA full text; its USQ eprints copy (34937) is on the same unreachable host.
-- **Classification**: **exact reference for the definition wording**; numeric tables and
-  figures unverified.
+- **Classification**: **specification-level** (definition wording only); numeric tables
+  and figures unverified.
 - **Licensing**: Springer, all rights reserved.
 - **Limitations**: no tabulated I_F values accessible; the rainfall inputs and calibrations
   are not public in this environment.
@@ -409,7 +409,7 @@ the handling of leading windows and missing days.
     scan; the NOAA Institutional Repository, HathiTrust, and Google Books routes were
     blocked or quota-exhausted on 2026-09-22. **Requires manual retrieval** (library or
     interlibrary loan; the NOAA Central Library likely holds the series).
-  - **Classification**: **exact reference (specification)**, numeric content
+  - **Classification**: **specification-level**, numeric content
     **unverified**. It is a U.S. Government work and therefore public domain if a copy
     is obtained - unlike candidates 1 and 4, a scan could be redistributed.
   - **Limitations**: whether the report tabulates index values or only figures a
@@ -564,6 +564,7 @@ Using `VALIDATION.md` vocabulary explicitly:
 - Byun & Wilhite Table 5 prints one decimal for CNS/APD/PRN (`0.1 mm`) and two
   significant digits for EDI (`-2.5`, `-1.22`); the day numbers are integers. Any
   comparison tolerance is floored by that printing precision, and by the paper's
+  the paper's
   5-day-running-mean and variable-`DS` conventions.
 - A digitized figure carries a read-off uncertainty that must be stated in the units of
   the plot axis, as the HDW fixture does (`+/-5 hPa m s-1`). Figure 2's index panels are
