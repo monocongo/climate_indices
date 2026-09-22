@@ -548,14 +548,22 @@ def _run_real_grid(args: argparse.Namespace) -> None:
 
 
 def _write_output(index: _Index, grid: _Grid, path: str | None) -> float:
-    """Time writing the index result to NetCDF, or return 0.0 when no path was given.
+    """Time writing the computed SPI result to NetCDF, or return 0.0 when no path was given.
 
     The compute and the ``float32`` cast happen before the timer, so the seconds
-    are NetCDF encoding and disk I/O, not a second compute figure.
+    are NetCDF encoding and disk I/O, not a second compute figure. ``grid`` may
+    have been rolled to give the calibration preflight a land cell at ``[0, 0]``
+    (see ``load_netcdf_grid``); the result is rolled back before writing so the
+    file on disk carries the input's own monotonic lat/lon order rather than the
+    wrapped one.
     """
     if not path:
         return 0.0
     payload = index.run(grid).astype("float32")
+    roll_lat = grid.precip.attrs.get("roll_lat")
+    roll_lon = grid.precip.attrs.get("roll_lon")
+    if roll_lat is not None and roll_lon is not None:
+        payload = payload.roll(lat=-roll_lat, lon=-roll_lon, roll_coords=True)
     start = time.perf_counter()
     payload.to_netcdf(path)
     return time.perf_counter() - start
@@ -591,7 +599,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--distribution", choices=("gamma", "pearson"), help="SPI distribution in --netcdf mode (default: gamma)"
     )
-    parser.add_argument("--write-output", help="write the last result to this NetCDF and report the write time")
+    parser.add_argument("--write-output", help="write the computed SPI result to this NetCDF and report the write time")
     args = parser.parse_args()
     args.indices = args.indices or ("spi" if args.netcdf else "spi,spei")
     unknown = sorted(set(args.indices.split(",")) - _RUNNERS.keys())

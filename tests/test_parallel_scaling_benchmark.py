@@ -80,12 +80,16 @@ def test_netcdf_mode_rejects_arguments_it_cannot_honour(monkeypatch: pytest.Monk
 def _write_grid_fixture(path: Path) -> None:
     """Write a small lat-lon-time precipitation file shaped like the CHIRPS fixture.
 
-    The first latitude row is all NaN (the ocean), one land cell has a zero month,
-    and the dimension order matches the fixture (lat, lon, time) to pin the transpose.
+    The first latitude row is all NaN (the ocean); the first longitude cell of the
+    second row is NaN too, so the first land cell is at lat index 1, lon index 1 --
+    pinning a roll on both spatial axes rather than latitude alone. One land cell
+    has a zero month, and the dimension order matches the fixture (lat, lon, time)
+    to pin the transpose.
     """
     values = np.full((3, 3, 4), np.nan)
     values[1:, :, :] = 2.0
-    values[1, 0, 1] = 0.0
+    values[1, 0, :] = np.nan
+    values[1, 1, 1] = 0.0
     xr.Dataset(
         {"precip": (("lat", "lon", "time"), values)},
         coords={
@@ -106,20 +110,40 @@ def test_load_netcdf_grid_masks_zeros_and_rolls_the_sampled_cell(tmp_path: Path)
     valid = grid.valid_cells
     assert valid is not None
 
-    # time first, the zero month replaced, the ocean row still NaN and rolled last
+    # time first, the zero month replaced, both ocean cells still NaN and rolled last
     assert grid.precip.dims == ("time", "lat", "lon")
     expected = np.full(values.shape, 2.0)
-    expected[:, 2] = np.nan
+    expected[:, 0, 2] = np.nan
+    expected[:, 2, :] = np.nan
     expected[1, 0, 0] = 0.01
     np.testing.assert_array_equal(values, expected)
-    np.testing.assert_array_equal(valid[:2], np.ones((2, 3), dtype=bool))
+    np.testing.assert_array_equal(valid[0], [True, True, False])
+    np.testing.assert_array_equal(valid[1], np.ones(3, dtype=bool))
     np.testing.assert_array_equal(valid[2], np.zeros(3, dtype=bool))
 
-    # rolled by one latitude so cell [0, 0] is a land cell, with its label following it
+    # rolled by one cell on both axes so cell [0, 0] is a land cell, with its label following it
     assert grid.precip.attrs["roll_lat"] == -1
-    assert grid.precip.attrs["roll_lon"] == 0
+    assert grid.precip.attrs["roll_lon"] == -1
     np.testing.assert_array_equal(grid.precip.lat.values, [20.0, 30.0, 10.0])
-    np.testing.assert_array_equal(grid.precip.lon.values, [1.0, 2.0, 3.0])
+    np.testing.assert_array_equal(grid.precip.lon.values, [2.0, 3.0, 1.0])
+
+
+def test_write_output_restores_the_input_coordinate_order(tmp_path: Path) -> None:
+    """``load_netcdf_grid`` rolls the grid; the written NetCDF must not carry that roll."""
+    source = tmp_path / "fixture.nc"
+    _write_grid_fixture(source)
+    grid = parallel_scaling.load_netcdf_grid(str(source), "precip")
+    index = parallel_scaling._Index(lambda g: g.precip, 0)
+
+    out_path = tmp_path / "output.nc"
+    parallel_scaling._write_output(index, grid, str(out_path))
+
+    with xr.open_dataarray(out_path) as written:
+        np.testing.assert_array_equal(written.lat.values, [10.0, 20.0, 30.0])
+        np.testing.assert_array_equal(written.lon.values, [1.0, 2.0, 3.0])
+        assert bool(np.isnan(written.sel(lat=10.0).values).all())
+        assert bool(np.isnan(written.sel(lat=20.0, lon=1.0).isel(time=0).values))
+        np.testing.assert_allclose(written.sel(lat=20.0, lon=2.0).values, [2.0, 0.01, 2.0, 2.0])
 
 
 def test_require_finite_tail_enforces_the_land_mask() -> None:
