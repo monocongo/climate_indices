@@ -104,6 +104,8 @@ skills-lock.json
 
 # Local reports
 reports/
+/report.md
+/report.json
 
 # Reproducible notebook inputs and outputs
 /data/e2e/

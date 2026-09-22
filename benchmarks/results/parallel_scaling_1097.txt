@@ -1,0 +1,45 @@
+reference grid: 38x87 cells, 40 years monthly; scale=3; calibration=1981-2010
+checkout revision: 873aa0351957b7ba79c84e4c691ff6441a2e5b52
+environment: python 3.14.7; macOS-26.6.2-arm64-arm-64bit-Mach-O; numpy 2.4.2; scipy 1.17.0; xarray 2026.1.0; dask 2026.8.0; cpu Apple M5; 10 CPUs; 3 runs after a warm-up, every sample retained
+
+spi
+serial in-memory: 0.202 s (INFO, GoF warnings filtered) | 0.201 s (quiet log); samples INFO=[0.202, 0.202, 0.202] quiet=[0.201, 0.202, 0.201]
+
+spei
+serial in-memory: 0.217 s (INFO, GoF warnings filtered) | 0.218 s (quiet log); samples INFO=[0.217, 0.218, 0.220] quiet=[0.220, 0.222, 0.218]
+
+pet
+serial in-memory: 0.020 s (INFO, GoF warnings filtered) | 0.020 s (quiet log); samples INFO=[0.020, 0.020, 0.020] quiet=[0.020, 0.020, 0.020]
+
+eddi
+serial in-memory: 0.042 s (INFO, GoF warnings filtered) | 0.042 s (quiet log); samples INFO=[0.042, 0.042, 0.042] quiet=[0.043, 0.042, 0.042]
+
+Dask worker counts: 1,2,4,8; scheduler=processes
+
+spi
+ workers  blocks   seconds  speedup  efficiency  samples
+       1       1     0.871    1.00x       100%  [0.883, 0.871, 0.894]
+       2       2     0.850    1.03x        51%  [0.850, 0.863, 0.878]
+       4       4     0.892    0.98x        24%  [0.904, 0.893, 0.892]
+       8       8     1.287    0.68x         8%  [1.287, 1.312, 1.377]
+
+spei
+ workers  blocks   seconds  speedup  efficiency  samples
+       1       1     0.925    1.00x       100%  [0.975, 0.932, 0.925]
+       2       2     0.874    1.06x        53%  [0.877, 0.874, 0.893]
+       4       4     0.931    0.99x        25%  [0.931, 0.933, 0.960]
+       8       8     1.269    0.73x         9%  [1.364, 1.326, 1.269]
+
+pet
+ workers  blocks   seconds  speedup  efficiency  samples
+       1       1     0.683    1.00x       100%  [0.699, 0.683, 0.685]
+       2       2     0.750    0.91x        46%  [0.759, 0.750, 0.750]
+       4       4     0.871    0.78x        20%  [0.904, 0.886, 0.871]
+       8       8     1.269    0.54x         7%  [1.269, 1.287, 1.311]
+
+eddi
+ workers  blocks   seconds  speedup  efficiency  samples
+       1       1     0.690    1.00x       100%  [0.743, 0.690, 0.701]
+       2       2     0.766    0.90x        45%  [0.795, 0.780, 0.766]
+       4       4     0.894    0.77x        19%  [0.959, 0.953, 0.894]
+       8       8     1.255    0.55x         7%  [1.255, 1.293, 1.273]

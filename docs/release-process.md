@@ -66,6 +66,132 @@ uv run --no-sync --no-build python -m build
 uv run --no-sync --no-build twine check dist/*
 ```
 
+## Release rehearsal (pre-publication smoke test)
+
+The release workflow cannot be rehearsed end to end upstream: `publish` either
+publishes or fails, and `create-release` runs only after it. Rehearse everything
+up to that boundary on a private copy of the repository, so a defect in the tag
+guard, the version match, the test matrix, the build, or the wheel checks
+surfaces before the real tag.
+
+This rehearsal is the substitute for a release candidate: the workflow guard
+accepts only exact `vX.Y.Z` tags, so there is no `rc` lane to publish.
+
+Run it from the frozen release candidate — the commit the real tag will point
+at, with the release-prep PR already merged.
+
+### Rehearsal target
+
+Use one private copy repository, `<owner>/climate_indices-rehearsal`, created
+once and reused for every release: push each candidate as its `main`, then push
+the release tag. Upstream cannot be forked into its own owner, and a fork under
+a second account costs an account switch without proving anything more.
+
+The copy must have Actions enabled, must not be a PyPI trusted publisher, and
+must not define a `release` environment protection rule: a required review would
+park `publish` in an approval wait, which is not the expected outcome and
+evidence of nothing. Never add publishing credentials to the copy.
+
+```bash
+gh repo create <owner>/climate_indices-rehearsal --private \
+  --description "Release-workflow rehearsal; not a PyPI publisher"
+```
+
+### Rehearsal steps
+
+```bash
+set -u                            # abort on unset variables
+CANDIDATE=<full 40-character sha of the frozen candidate>
+TAG=vX.Y.Z                        # the real release tag, not an rc
+TARGET=<owner>/climate_indices-rehearsal
+
+git fetch -q origin || { echo "cannot fetch origin"; exit 1; }
+git checkout --detach "$CANDIDATE"
+SHA="$(git rev-parse HEAD)"
+[[ "$SHA" == "$CANDIDATE" ]] || { echo "not at the frozen candidate: $SHA"; exit 1; }
+git merge-base --is-ancestor "$SHA" origin/main \
+  || { echo "candidate is not on origin/main: $SHA"; exit 1; }
+git status --short                # must be empty
+```
+
+1. Push the candidate as the copy's `main`, then the copy-only tag. The
+   `validate-release-tag` job requires the tagged commit to be reachable from
+   the copy's `origin/main`, so `main` lands first. The tag push starts the
+   unchanged workflow. The copy holds no unique state, so these pushes force it
+   to the new candidate when a rehearsal is repeated:
+
+```bash
+: "${SHA:?run the rehearsal setup block in this shell first}"
+: "${TAG:?run the rehearsal setup block in this shell first}"
+: "${TARGET:?run the rehearsal setup block in this shell first}"
+
+git push --force "https://github.com/$TARGET.git" "${SHA}:refs/heads/main"
+git ls-remote --heads "https://github.com/$TARGET.git" main    # prints $SHA
+
+git push --force "https://github.com/$TARGET.git" "${SHA}:refs/tags/$TAG"
+git ls-remote --tags "https://github.com/$TARGET.git" "$TAG"   # prints $SHA
+```
+
+Never push a rehearsal tag upstream. Re-pushing the same candidate is a no-op,
+so no new run starts: use `gh run rerun <run-id> -R "$TARGET"` to retry an identical
+rehearsal.
+
+2. Watch the run and read every job's conclusion:
+
+```bash
+gh run list -R "$TARGET" --workflow=release.yml --limit 3
+RUN=<run id>
+gh run watch "$RUN" -R "$TARGET" --exit-status   # exits non-zero; expected
+gh run view "$RUN" -R "$TARGET" --json jobs --jq '.jobs[] | "\(.conclusion)\t\(.name)"'
+```
+
+Expected: `validate-release-tag`, every `test` leg, `security-audit`, `build`,
+and both `wheel-check` legs succeed; `publish` fails; `create-release` is
+skipped. The `publish` failure must be PyPI rejecting the OIDC exchange because
+the copy is not a trusted publisher. A network error, an approval wait, or an
+action-resolution failure is a different defect to diagnose and not a pass, and
+that rejection must not be remedied by configuring the copy:
+
+```bash
+gh run view "$RUN" -R "$TARGET" --log-failed \
+  | grep -i -B2 -A6 "server refused the request\|invalid-publisher"
+```
+
+3. Collect the artifacts, checksums, and timing:
+
+```bash
+gh run download "$RUN" -R "$TARGET" -n dist -D /tmp/rehearsal-dist
+ls -l /tmp/rehearsal-dist && shasum -a 256 /tmp/rehearsal-dist/*
+gh run view "$RUN" -R "$TARGET" --json createdAt,updatedAt,attempt
+```
+
+4. Confirm nothing was published:
+
+```bash
+git ls-remote --tags origin "$TAG"     # empty
+gh release view "$TAG"                 # not found
+curl -s https://pypi.org/pypi/climate-indices/json \
+  | python3 -c "import json,sys; print('${TAG#v}' in json.load(sys.stdin)['releases'])"
+```
+
+5. Record the evidence on the release ticket — candidate SHA, copy repository,
+   run URL, attempt number, every job conclusion, the verbatim PyPI rejection,
+   artifact filenames with `sha256`, timing, and the not-published confirmation
+   above — before the run logs expire. Reuse or delete the copy afterwards; it
+   holds no unique state.
+
+### What a rehearsal does not prove
+
+- `create-release`: it is skipped because `publish` fails first, so GitHub
+  Release creation still executes for the first time on the real tag. If it
+  fails after a successful publish, the release is complete and the GitHub
+  Release can be created manually from the run's `dist` artifacts, within their
+  retention window.
+- PyPI trusted publishing and the upstream `release` environment: only the real
+  repository can validate these. Confirm the trusted publisher (owner,
+  repository `climate_indices`, workflow `release.yml`, environment `release`)
+  and the environment's required reviewers before tagging.
+
 ## Tag creation
 
 After the release PR is merged and `main` is green, create the annotated tag

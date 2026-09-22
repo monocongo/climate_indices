@@ -22,9 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fitting, exposed from the Palmer CLI dispatch (#721).
 - **Palmer xarray adapter**: `pdsi()` accepts xarray DataArrays and returns the
   PDSI-family outputs as a Dataset; `scpdsi()` remains NumPy-only (#1016).
-- **Validation infrastructure**: `VALIDATION.md` records per-index evidence, backed by
-  SPEIbase v2.11 SPEI plausibility fixtures (#779), NOAA EDDI reference fixtures, PET
-  literature fixtures, and a measured scPDSI calibration anchor.
+- **Validation infrastructure**: `VALIDATION.md` records per-index evidence and known
+  gaps, backed by committed external fixtures: NOAA PSL EDDI reference series (maximum
+  observed error `2.43e-6`), SPEIbase v2.11 SPEI plausibility floors (#779), NOAA NCEI
+  climate-divisional SPI characterization across all 344 divisions, the nClimDiv
+  standard-Palmer comparison (median absolute difference 0.0127), Wells-lineage scPDSI
+  oracle fixtures (`atol=5e-5`), the NRCan CFFWIS reference (`atol=1e-9`), the Keetch
+  & Byram (1968) KBDI Figure 1 record, the Srock et al. (2018) HDW case study, and PET
+  literature worked examples. `pytest -m validation` runs the external checks.
 - **Public `climate_indices.validation` namespace**: the input-preparation and
   validation checks shared across indices are exported from the package root and
   documented as public API.
@@ -38,10 +43,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The xarray DataArray API stays Beta through 3.0.0** and is promoted no earlier
   than 3.1.0, so the interface may still change in a minor release (ADR-0012).
   Computation results remain identical to the stable NumPy API.
+- **Gridded vectorization**: the xarray adapter's per-cell Python loop is replaced by
+  one NumPy kernel call per `(time, *cells)` block for SPI, SPEI, EDDI, percentage of
+  normal, PET, and PDSI. On the 38x87-cell, 40-year reference grid, serial in-process
+  speedups are 4.4x (SPI), 3.6x (SPEI), 53x (Thornthwaite PET), 342x (EDDI), and
+  111.3x (gridded PDSI, 135.4 s to 1.2 s); computing the SPI goodness-of-fit K-S
+  statistic directly adds ~9.2x on its own. Gamma SPI, EDDI, and percentage of normal
+  are bit-for-bit identical to the serial NumPy API, and Thornthwaite PET and the
+  Pearson Type III fit are asserted at `atol=1e-12` by
+  `tests/test_numerical_equivalence.py`. Reproducible harnesses and committed
+  before/after artifacts live under `benchmarks/` (#818, #921-#944, #1017).
 - **Python 3.14 support**: `requires-python` is now `>=3.10,<3.15`, and CI covers the
   new version in the test matrix and in wheel smoke tests.
 - **Documentation rebuilt on MyST Markdown** with a four-section reader-need
-  navigation, replacing the previous reStructuredText sources.
+  navigation, replacing the previous reStructuredText sources. The xarray/Zarr
+  end-to-end workflow is documented and smoke-executed: canonical calculation path,
+  reproducible inputs, persisted results reopened with complete metadata, maps and
+  selectable-location time series, and the xarray/Zarr, Palmer, EDDI, and Zarr/Dask
+  notebooks.
+- **Test suite**: the pattern-compliance source-grep suite is retired, static-data,
+  xarray-metadata, and logging suites are table-driven, the CF-metadata contract and
+  notebook execution have single owners, and a real CLI end-to-end QA suite replaces
+  the mocked Palmer orchestration tests. Palmer oracle sweeps are cached per validation
+  session, `assert_type()` checks are enforced in CI, and assertions are no longer
+  swallowed by `try/except` (#909-#920, #935, #938, #1031, #1033).
 - **CI**: meta checks run outside the version matrix on the minimum supported Python
   (3.10), validation, lint, docs, notebooks, and the security audit each run once on a
   single pinned interpreter instead of validation re-running across every version, and
@@ -49,8 +74,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI**: Palmer inputs are converted to the inches `palmer.pdsi()` expects, the PET
   stage now runs for temperature-only SPEI, scaled, and Palmer runs, and `--scales` is
   now required for every scaled index (#1002). `"auto"` chunk axes resolve against
-  Dask's default `array.chunk-size` while the input is opened, and a caller-configured
-  value is left in place (#925).
+  a 100 MB array chunk budget while the input is opened, and a caller-configured
+  `array.chunk-size` is honored rather than overwritten (#925).
 
 ### Breaking
 

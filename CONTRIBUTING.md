@@ -105,7 +105,7 @@ vocabulary at `src/climate_indices/CONTEXT.md`):
   attribution),
   `src/climate_indices/CONTEXT.md`, `VALIDATION.md`
 - Explanation: `docs/explanation.md`, `docs/algorithms.md`,
-  `docs/wildfire_applications.md`, `docs/adr/`,
+  `docs/wildfire_applications.md`, `docs/flood_applications.md`, `docs/adr/`,
   `docs/ai-assisted-development.md`,
   `docs/algorithm_refs/`, `docs/architecture.md`,
   `docs/project-overview.md`, `docs/floating_point_best_practices.md`
