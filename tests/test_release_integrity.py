@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import fnmatch
 import re
+import shlex
 import subprocess
 import sys
 from importlib.metadata import version as get_pkg_version
@@ -392,10 +393,18 @@ def test_release_workflow_creates_github_release() -> None:
 
     assert create_release_job.startswith("\n    needs: publish\n")
     assert release_command is not None, "release.yml must create a GitHub Release for the published tag"
-    command = release_command.group(1).split(" #", maxsplit=1)[0]
-    assert '--repo "${GITHUB_REPOSITORY}"' in command, (
-        "release.yml must create the GitHub Release in the triggering repository"
-    )
+    lexer = shlex.shlex(release_command.group(1), posix=True, punctuation_chars=";&")
+    lexer.whitespace_split = True
+    first_command = []
+    for token in lexer:
+        if token in {";", "&", "&&"}:
+            break
+        first_command.append(token)
+
+    assert first_command[:3] == ["gh", "release", "create"]
+    assert "--repo" in first_command
+    repo_index = first_command.index("--repo")
+    assert first_command[repo_index + 1 : repo_index + 2] == ["${GITHUB_REPOSITORY}"]
 
 
 def test_release_workflow_smoke_tests_built_wheel() -> None:
