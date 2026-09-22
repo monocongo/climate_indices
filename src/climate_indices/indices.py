@@ -15,7 +15,7 @@ from climate_indices.logging_config import get_logger, log_calculation_failure
 from climate_indices.performance import check_large_array_memory
 
 # declare the function names that should be included in the public API for this module
-__all__ = ["eddi", "percentage_of_normal", "pci", "pet", "spei", "spi"]
+__all__ = ["eddi", "percentage_of_normal", "pci", "pet", "spei", "spi", "standardized_index"]
 
 
 class Distribution(Enum):
@@ -460,7 +460,7 @@ def eddi(
         raise
 
 
-def spi(
+def _standardized_index_pipeline(
     values: np.ndarray,
     scale: int,
     distribution: Distribution,
@@ -468,53 +468,31 @@ def spi(
     calibration_year_initial: int,
     calibration_year_final: int,
     periodicity: compute.Periodicity,
-    fitting_params: dict[str, Any] | None = None,
+    fitting_params: dict[str, Any] | None,
     *,
+    index_type: str,
+    fallback_context: str,
     spatial_time_major: bool = False,
 ) -> np.ndarray:
-    """
-    Computes SPI (Standardized Precipitation Index).
+    """Scale, fit, and transform a series in the pipeline shared by the index wrappers.
 
-    :param values: 1-D numpy array of precipitation values, in any units,
-        first value assumed to correspond to January of the initial year if
-        the periodicity is monthly, or January 1st of the initial year if daily.
-        A time-major spatial array with shape (time, ``*cells``), i.e. three or more
-        dimensions, is also accepted, and then every cell is scaled and fitted in
-        one pass.
-        Two-dimensional input is still read as the legacy (years, periods) layout
-        and flattened into a single series, not treated as a (time, cells) grid.
-        When the first cell axis is a calendar period length (12 or 366) the shape is
-        equally readable as a (years, periods, ``*cells``) array, and then the reading has to
-        be declared with ``spatial_time_major``; the xarray adapter declares every block
-        it packs, and only that ambiguous shape raises without a declaration.
-    :param scale: number of time steps over which the values should be scaled
-        before the index is computed
-    :param distribution: distribution type to be used for the internal
-        fitting/transform computation
-    :param data_start_year: the initial year of the input precipitation dataset
-    :param calibration_year_initial: initial year of the calibration period
-    :param calibration_year_final: final year of the calibration period
-    :param periodicity: periodicity of the input time series; use
-        ``compute.Periodicity.monthly`` for monthly data (12 values/year) or
-        ``compute.Periodicity.daily`` for daily data (366 values/year).
-    :param fitting_params: optional dictionary of pre-computed distribution
-        fitting parameters, if the distribution is gamma then this dict should
-        contain two arrays, keyed as "alpha" and "beta", and if the
-        distribution is Pearson then this dict should contain four arrays keyed
-        as "prob_zero", "loc", "scale", and "skew". Older keys such as
-        "alphas" and "probabilities_of_zero" are deprecated. For spatial input a 1-D
-        parameter array is read as one value per calendar period and broadcast
-        across cells.
-    :param spatial_time_major: read ``values`` as a time-major block of independent
-        time series, shaped (time, ``*cells``), and fit every cell in one pass. The
-        xarray adapter sets this for every block it packs; the NumPy API requires
-        it only for an ambiguous shape, where the first cell axis is a calendar
-        period length (12 or 366) and could be read as (years, periods, ``*cells``).
-    :return: SPI values fitted to the gamma distribution at the specified time
-        step scale, unitless
-    :rtype: 1-D numpy.ndarray of floats of the same length as the input array
-        of precipitation values, or of the same (time, ``*cells``) shape when
-        ``spatial_time_major`` is set
+    Args:
+        values: 1-D array of non-negative values, or a time-major spatial block;
+            see :func:`spi` for the accepted layouts.
+        scale: Number of time steps accumulated before fitting.
+        distribution: Distribution to fit, gamma or Pearson Type III.
+        data_start_year: Initial year of the input values.
+        calibration_year_initial: Initial year of the calibration period.
+        calibration_year_final: Final year of the calibration period.
+        periodicity: Monthly or daily time steps.
+        fitting_params: Optional pre-computed fitting parameters; deprecated
+            aliases are normalized here.
+        index_type: Value bound to the ``index_type`` log field.
+        fallback_context: Context included in the Pearson-to-gamma fallback warning.
+        spatial_time_major: Read a time-major spatial block as independent series.
+
+    Returns:
+        Standardized values in the input's size and layout.
     """
     # validate arguments
     _validate_periodicity(periodicity)
@@ -523,7 +501,7 @@ def spi(
 
     # bind context and emit calculation_started event
     log = _logger.bind(
-        index_type="spi",
+        index_type=index_type,
         scale=scale,
         distribution=distribution.value,
         input_shape=values.shape,
@@ -589,7 +567,7 @@ def spi(
             periodicity,
             fitting_params,
             fallback_to_gamma=True,
-            fallback_context="SPI computation",
+            fallback_context=fallback_context,
         )
 
         # clip values to within the valid range
@@ -614,6 +592,136 @@ def spi(
     except Exception as exc:
         log_calculation_failure(log, exc, calibration_period=f"{calibration_year_initial}-{calibration_year_final}")
         raise
+
+
+def standardized_index(
+    values: np.ndarray,
+    scale: int,
+    distribution: Distribution,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: compute.Periodicity,
+    fitting_params: dict[str, Any] | None = None,
+) -> np.ndarray:
+    """Standardize a non-negative monthly or daily series against a fitted distribution.
+
+    This is the generic form of :func:`spi`: it accumulates the series over ``scale``
+    time steps, fits the specified distribution over the calibration period, and
+    transforms every accumulated value to a normalized sigma (z-score-like) value.
+    It is input-agnostic, so a runoff or streamflow series can be standardized the
+    same way; the package does not model those quantities.
+
+    A Pearson Type III fit falls back to gamma when the fit fails or leaves too many
+    values missing. Log-logistic fitting is tracked by #106 and is not available yet,
+    so no caller should claim it.
+
+    Args:
+        values: 1-D array of non-negative values, in any units; the first value is
+            assumed to correspond to the start of ``data_start_year``. A 2-D array
+            is read as the legacy (years, periods) layout and flattened.
+        scale: Number of time steps over which the values are accumulated before
+            the index is computed.
+        distribution: Distribution type used for the internal fitting/transform
+            computation.
+        data_start_year: Initial year of the input series.
+        calibration_year_initial: Initial year of the Calibration Period.
+        calibration_year_final: Final year of the Calibration Period.
+        periodicity: Periodicity of the series; ``compute.Periodicity.monthly`` for
+            monthly data (12 values/year) or ``compute.Periodicity.daily`` for daily
+            data (366 values/year).
+        fitting_params: Optional dictionary of pre-computed distribution fitting
+            parameters, with keys "alpha" and "beta" for gamma and "prob_zero",
+            "loc", "scale", and "skew" for Pearson Type III. Older keys such as
+            "alphas" and "probabilities_of_zero" are deprecated.
+
+    Returns:
+        1-D array of standardized values, unitless and of the same length as the
+        flattened input.
+    """
+    return _standardized_index_pipeline(
+        values,
+        scale,
+        distribution,
+        data_start_year,
+        calibration_year_initial,
+        calibration_year_final,
+        periodicity,
+        fitting_params,
+        index_type="standardized_index",
+        fallback_context="standardized index computation",
+    )
+
+
+def spi(
+    values: np.ndarray,
+    scale: int,
+    distribution: Distribution,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: compute.Periodicity,
+    fitting_params: dict[str, Any] | None = None,
+    *,
+    spatial_time_major: bool = False,
+) -> np.ndarray:
+    """
+    Computes SPI (Standardized Precipitation Index).
+
+    :param values: 1-D numpy array of precipitation values, in any units,
+        first value assumed to correspond to January of the initial year if
+        the periodicity is monthly, or January 1st of the initial year if daily.
+        A time-major spatial array with shape (time, ``*cells``), i.e. three or more
+        dimensions, is also accepted, and then every cell is scaled and fitted in
+        one pass.
+        Two-dimensional input is still read as the legacy (years, periods) layout
+        and flattened into a single series, not treated as a (time, cells) grid.
+        When the first cell axis is a calendar period length (12 or 366) the shape is
+        equally readable as a (years, periods, ``*cells``) array, and then the reading has to
+        be declared with ``spatial_time_major``; the xarray adapter declares every block
+        it packs, and only that ambiguous shape raises without a declaration.
+    :param scale: number of time steps over which the values should be scaled
+        before the index is computed
+    :param distribution: distribution type to be used for the internal
+        fitting/transform computation
+    :param data_start_year: the initial year of the input precipitation dataset
+    :param calibration_year_initial: initial year of the calibration period
+    :param calibration_year_final: final year of the calibration period
+    :param periodicity: periodicity of the input time series; use
+        ``compute.Periodicity.monthly`` for monthly data (12 values/year) or
+        ``compute.Periodicity.daily`` for daily data (366 values/year).
+    :param fitting_params: optional dictionary of pre-computed distribution
+        fitting parameters, if the distribution is gamma then this dict should
+        contain two arrays, keyed as "alpha" and "beta", and if the
+        distribution is Pearson then this dict should contain four arrays keyed
+        as "prob_zero", "loc", "scale", and "skew". Older keys such as
+        "alphas" and "probabilities_of_zero" are deprecated. For spatial input a 1-D
+        parameter array is read as one value per calendar period and broadcast
+        across cells.
+    :param spatial_time_major: read ``values`` as a time-major block of independent
+        time series, shaped (time, ``*cells``), and fit every cell in one pass. The
+        xarray adapter sets this for every block it packs; the NumPy API requires
+        it only for an ambiguous shape, where the first cell axis is a calendar
+        period length (12 or 366) and could be read as (years, periods, ``*cells``).
+    :return: SPI values fitted to the gamma distribution at the specified time
+        step scale, unitless
+    :rtype: 1-D numpy.ndarray of floats of the same length as the input array
+        of precipitation values, or of the same (time, ``*cells``) shape when
+        ``spatial_time_major`` is set
+    """
+    return _standardized_index_pipeline(
+        values,
+        scale,
+        distribution,
+        data_start_year,
+        calibration_year_initial,
+        calibration_year_final,
+        periodicity,
+        fitting_params,
+        index_type="spi",
+        fallback_context="SPI computation",
+        spatial_time_major=spatial_time_major,
+    )
 
 
 def spei(
