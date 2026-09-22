@@ -1,0 +1,17 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.7, pytest-9.1.1, pluggy-1.6.0
+cachedir: .pytest_cache
+benchmark: 5.3.0 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+hypothesis profile 'deterministic' -> database=None, derandomize=True
+configfile: pyproject.toml
+plugins: cov-7.1.0, benchmark-5.3.0, anyio-4.14.2, zarr-3.3.0, hypothesis-6.168.0
+collecting ... collected 16 items / 10 deselected / 6 selected
+
+tests/test_numerical_equivalence.py::test_chirps_spi6_matches_the_serial_numpy_api[Distribution.gamma-0.0] PASSED [ 16%]
+tests/test_numerical_equivalence.py::test_chirps_spi6_matches_the_serial_numpy_api[Distribution.pearson-1e-12] XFAIL [ 33%]
+tests/test_numerical_equivalence.py::test_chirps_spi6_dask_matches_the_eager_grid[1] PASSED [ 50%]
+tests/test_numerical_equivalence.py::test_chirps_spi6_dask_matches_the_eager_grid[2] PASSED [ 66%]
+tests/test_numerical_equivalence.py::test_chirps_spi6_dask_matches_the_eager_grid[4] PASSED [ 83%]
+tests/test_numerical_equivalence.py::test_chirps_spi6_dask_matches_the_eager_grid[8] PASSED [100%]
+
+========== 5 passed, 10 deselected, 1 xfailed, 17 warnings in 57.72s ===========
