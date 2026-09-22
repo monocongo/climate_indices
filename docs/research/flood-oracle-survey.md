@@ -191,7 +191,8 @@ the handling of leading windows and missing days.
     `A_max(W)` is the mean of the yearly maximum of W. It also states that the 1999
     paper uses `D` as a variable while this paper fixes `D = 365`. (This paper's
     second-hand summary of what the 1999 paper concluded about the depletion function
-    does not match the 1999 text itself; see candidate 1's limitations.)
+    does not match the 1999 text itself; see candidate 1's "What it would validate"
+    discussion of the depletion function above.)
 - **Classification**: **specification-level** - it fixes the equation algebra but
   carries no numeric oracle: AWRI/FI series are plotted. The tables are about monsoon
   onset definitions, not index values.
