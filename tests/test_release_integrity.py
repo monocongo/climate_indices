@@ -334,7 +334,8 @@ def test_release_process_documents_the_rehearsal_boundary() -> None:
     assert "`publish` fails" in section
     assert "`create-release`" in section
     assert "skipped" in section
-    assert "not a trusted publisher" in section
+    boundary = " ".join(section.split())
+    assert "only the real repository can validate these" in boundary
 
 
 def test_llms_bundles_reference_main_branch_not_master() -> None:
