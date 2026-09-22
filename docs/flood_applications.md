@@ -84,8 +84,8 @@ potential of the approach in one region, not a transferable rule.
 
 The flood family below is planned, not implemented. Module names, function
 names, and arguments will be fixed before implementation in the flood design
-decision ([FLOOD-02 #1099][flood-1099]); nothing on this page documents a
-callable API. The [flood-family epic #1098][flood-epic] tracks the
+decision ([FLOOD-02 #1099][flood-1099]); the planned indices below are not
+yet callable APIs. The [flood-family epic #1098][flood-epic] tracks the
 implementation order.
 
 - **Effective Precipitation (PE)** — *planned (FLOOD-08 [#1105][flood-1105])*.
