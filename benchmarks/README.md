@@ -525,15 +525,16 @@ Reproduce with the same commands; the results are retained verbatim in
   count. #1097 asked for identical spatial chunking across worker counts, so the
   within-Dask speedup mixes added workers with finer chunks; the eager-vs-Dask
   and release-vs-main figures do not depend on that choice.
-- The land mask is the first time step's finite cells, and every cell outside it
-  must stay NaN at every step. A grid whose missing-cell pattern varies in time
-  aborts in the finite-tail gate rather than benchmarking partially-masked cells.
+- The land mask is the first time step's finite cells; every later step outside
+  it is forced to NaN, so a cell that is missing first and finite later is
+  dropped from the fit rather than benchmarked. A first-step land cell that goes
+  missing later aborts in the finite-tail gate.
 - Same-checkout comparisons only: run-to-run spread reaches ~15% within one
   session (the CHIRPS 2-worker samples) and ~7.5% between the #928 and #1097
   synthetic reruns (SPI at 8 workers, 1.287 s against 1.197 s), so do not read
   small deltas across sessions. The v2.4.0-vs-main gaps above (28.1x, 9.6x) are
   far larger than that spread, but they also cross Python versions (3.13.13 vs
-  3.14.7, disclosed below).
+  3.14.7, disclosed above).
 - No cross-PR multiplication: the 28.1x here is this grid, this index, and these
   two commits; it does not compose with #818's per-cell figures, #944's 6x, or
   the xclim `APP`-fit speedup from xclim#2091.

@@ -632,6 +632,8 @@ def _parse_args() -> argparse.Namespace:
             parser.error(f"{', '.join(netcdf_only)} require --netcdf")
     elif args.scale is not None and args.scale < 1:
         parser.error("--scale must be at least 1")
+    if args.var_name == "":
+        parser.error("--var-name must not be empty")
     args.var_name = args.var_name or "precip"
     return args
 

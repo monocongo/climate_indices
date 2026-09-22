@@ -83,6 +83,9 @@ def test_netcdf_mode_rejects_arguments_it_cannot_honour(monkeypatch: pytest.Monk
     monkeypatch.setattr(sys, "argv", ["parallel_scaling.py", "--netcdf", "x.nc", "--scale", "0"])
     with pytest.raises(SystemExit):
         parallel_scaling._parse_args()
+    monkeypatch.setattr(sys, "argv", ["parallel_scaling.py", "--netcdf", "x.nc", "--var-name", ""])
+    with pytest.raises(SystemExit):
+        parallel_scaling._parse_args()
 
 
 def _write_grid_fixture(path: Path) -> None:
