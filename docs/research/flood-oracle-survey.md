@@ -467,11 +467,12 @@ basin/period, and license before use).
 
 Below, *exact reference* means the source carries tabulated, reproducible numbers, and
 *specification-level* means it fixes the definition without supplying a usable numeric
-oracle. Only the first row is validation evidence as it stands.
+oracle. The first two rows are validation evidence only under the variable-`DS`
+convention; the last two are not validation evidence as they stand.
 
 | Index | Primary oracle | Classification | Numeric anchor |
 | --- | --- | --- | --- |
-| PE kernel | Byun & Wilhite (1999), Eq. (2); Byun & Lee (2002) for the open algebra | exact reference (Table 5); digitized figure for the plotted EP series | Table 5 (Hickman, NE) for the chain; Fig. 2b for EP; Fig. 1 for the weight curve |
+| PE kernel | Byun & Wilhite (1999), Eq. (2); Byun & Lee (2002) for the open algebra | exact reference, conditional on the variable-`DS` convention (Table 5); digitized figure for the plotted EP series | Table 5 (Hickman, NE) for the variable-`DS` chain; Fig. 2b for EP; Fig. 1 for the weight curve |
 | EDI | Byun & Wilhite (1999), Eq. (9)/Table 5 | exact reference, conditional on the variable-`DS` convention and a multi-decade MEP baseline | min EDI -2.5 (Eq. 2) and -1.22 (Eq. 3) on day 469, Table 5 |
 | I_F | Deo et al. (2015) | specification-level: definition and abstract-level event statistics; implemented kernel unverified; exponential-vs-double-sum conflict | none reproducible; the abstract's `I_acc_F`/`I_max_F`/`D_F`/`T` need the Brisbane/Lockyer record |
 | API | Kohler & Linsley (1951) | specification-level; numeric content unverified; no numeric oracle found | none; the analytic `P/(1-k)` limit and the MIT `ahrapi` implementation are regression support only |
