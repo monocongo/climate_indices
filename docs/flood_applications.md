@@ -105,8 +105,9 @@ implementation order.
   [#1113][flood-1113])*. `indices.standardized_index()` exposes the existing
   distribution-fitting machinery for any non-negative monthly or daily series,
   and {doc}`standardized-hydrologic-indices` shows the SRI and SSI recipes
-  (FLOOD-17 [#1114][flood-1114]). The xarray entry point and any named wrappers
-  await the flood design decision ([FLOOD-02 #1099][flood-1099]).
+  (FLOOD-17 [#1114][flood-1114]). Named wrappers await the flood design
+  decision ([FLOOD-02 #1099][flood-1099]), and the xarray entry point also needs
+  the CF metadata registry entries ([FLOOD-06 #1103][flood-1103]).
 
 Heavy-precipitation triggers (Rx1day, Rx5day, and R95pTOT per
 [Zhang et al. (2011)][zhang-2011]) are conditional: whether this package
@@ -147,6 +148,7 @@ this package.
 [validation]: https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md
 [flood-epic]: https://github.com/monocongo/climate_indices/issues/1098
 [flood-1099]: https://github.com/monocongo/climate_indices/issues/1099
+[flood-1103]: https://github.com/monocongo/climate_indices/issues/1103
 [flood-1100]: https://github.com/monocongo/climate_indices/issues/1100
 [flood-1105]: https://github.com/monocongo/climate_indices/issues/1105
 [flood-1106]: https://github.com/monocongo/climate_indices/issues/1106
