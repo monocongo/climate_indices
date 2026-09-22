@@ -562,9 +562,10 @@ Using `VALIDATION.md` vocabulary explicitly:
   keys are exactly `source`, `url`, `download_date`, `subset_description`,
   `checksum_sha256`, `fixture_version`, and `validation_tolerance`, and the schema sets
   `additionalProperties: false`, so a misspelled or extra key fails validation.
-- Byun & Wilhite Table 5 prints one decimal for CNS/APD/PRN (`0.1 mm`) and two
-  significant digits for EDI (`-2.5`, `-1.22`); the day numbers are integers. Any
-  comparison tolerance is floored by that printing precision, and by the paper's
+- Byun & Wilhite Table 5 prints one decimal for CNS/APD/PRN (`0.1 mm`) and mixed
+  precision for EDI (`-2.5` to one decimal, `-1.22` to two); the day numbers are
+  integers. Any comparison tolerance follows each printed value's own precision
+  (half a unit in the last place: `+/-0.05` and `+/-0.005`, not a uniform rule), and by
   the paper's
   5-day-running-mean and variable-`DS` conventions.
 - A digitized figure carries a read-off uncertainty that must be stated in the units of
