@@ -9,10 +9,11 @@ occur, or where it would occur. This page is a companion to
 
 **None of the indices described here predicts whether, where, or when a flood
 will occur.** Use them for hydroclimate context and wet-extreme situational
-awareness, not as flood forecasts. Every index in this family, implemented or
-planned, describes flood *potential* — accumulated wetness plus
-heavy-precipitation triggers — and stops at the meteorological and
-climatological boundary ([flood-family epic #1098][flood-epic]).
+awareness, not as flood forecasts. Every index in this family describes
+wetness conditions relevant to flood potential; the family stops at the
+meteorological and climatological boundary, with one documented exception:
+input-agnostic standardization that can also accept runoff or streamflow
+([flood-family epic #1098][flood-epic]).
 
 ## From wet anomalies to flood potential
 
@@ -37,33 +38,35 @@ a flood depends on how the catchment, soils, and channels respond
 
 ## The wet tail of SPI, SPEI, and PHDI
 
-SPI, SPEI, and PHDI are symmetric: positive values describe wetter-than-normal
-conditions at the chosen Timescale, and were not designed only for drought.
-The existing indices therefore already carry flood-potential information in
-their upper tail.
+SPI and SPEI are symmetric and multi-scalar: at any chosen Timescale,
+positive values describe wetter-than-normal conditions, and neither was
+designed only for drought. PHDI is a single fixed monthly water-balance index,
+and its positive side describes an established wet spell. The existing indices
+therefore already carry flood-potential information in their upper tail.
 
-The SPI and SPEI standardization is documented in {doc}`algorithms`: values
-are dimensionless, normally distributed with mean 0 and standard deviation 1,
-and comparable across locations and climate regimes. Positive values are
-wetter than the Calibration Period norm; negative values are drier. PHDI, the
-Palmer Hydrological Drought Index, tracks established ("backed-out") wet- and
-dry-spell severity, so its positive side describes an accumulated moisture
-surplus rather than the immediate anomaly SPI reports.
+SPI and SPEI are dimensionless and standardized to mean 0 and standard
+deviation 1, comparable across locations and climate regimes; positive values
+are wetter than the Calibration Period norm. The computation and the clipping
+of values to [-3.09, 3.09] are documented in {doc}`algorithm-reference`. PHDI,
+the Palmer Hydrological Drought Index, is a water-balance severity value for
+established ("backed-out") wet and dry spells rather than a
+distribution-standardized probability, so its positive side describes an
+accumulated surplus rather than a statement about recent rainfall.
 
-The wet tail is not an observation of flooding. It is a standardized
-probability statement about accumulated moisture relative to the calibration
-history, and it is only one input to flood risk
+The SPI and SPEI wet tail is not an observation of flooding. It is a
+standardized probability statement about accumulated moisture relative to the
+calibration history, and it is only one input to flood risk
 ([Seiler et al. (2002)][seiler-2002]; [flood-family epic #1098][flood-epic]).
 
 ### Timescale and flood type
 
-The accumulation window ("Timescale" in prose; `scale` in code) determines
-which part of the wetness chain an anomaly reflects. Reading the same
-accumulation semantics documented for drought in {doc}`algorithms` on the wet
-tail:
+For SPI and SPEI, the accumulation window ("Timescale" in prose; `scale` in
+code) determines which part of the wetness chain an anomaly reflects. PHDI
+has no selectable Timescale. Reading the same accumulation semantics
+documented for drought in {doc}`algorithms` on the wet tail:
 
 - **1–3 months**: recent precipitation surplus and near-surface soil
-  moisture — conditions that can precede rapid, rainfall-driven flooding.
+  moisture — antecedent wetness that can precondition a catchment's response.
 - **6–12 months**: accumulated wetness and streamflow influence — conditions
   that can precede seasonal riverine flooding when catchments are already
   wet.
@@ -72,11 +75,10 @@ tail:
 
 These mappings are interpretive guidance based on the accumulation window, not
 calibrated flood thresholds. No universal SPI or SPEI value marks the onset of
-flooding, and a region's flood response can differ from its moisture anomaly
-([Seiler et al. (2002)][seiler-2002]). Seiler et al. (2002) found the wet SPI
-tail tracked conditions leading up to major flood events in southern Córdoba,
-Argentina; that demonstrates the potential of the approach in one region, not
-a transferable rule.
+flooding, and a region's flood response can differ from its moisture anomaly.
+Seiler et al. (2002) found the wet SPI tail tracked conditions leading up to
+major flood events in southern Córdoba, Argentina; that demonstrates the
+potential of the approach in one region, not a transferable rule.
 
 ## Planned wet-extreme indices
 
@@ -102,13 +104,15 @@ implementation order.
 - **Generic standardization API** — *planned (FLOOD-16
   [#1113][flood-1113])*. The existing distribution-fitting machinery exposed
   for any non-negative monthly or daily series, so runoff or streamflow can
-  be standardized as SRI or SSI with the documented wrappers (FLOOD-17
-  [#1114][flood-1114]).
+  be standardized as SRI or SSI with the wrappers planned in FLOOD-17
+  ([#1114][flood-1114]).
 
 Heavy-precipitation triggers (Rx1day, Rx5day, and R95pTOT per
 [Zhang et al. (2011)][zhang-2011]) are conditional: whether this package
 should duplicate existing `xclim` coverage is an open scope decision
-([FLOOD-03 #1100][flood-1100]).
+([FLOOD-03 #1100][flood-1100]), as are the WAP/SWAP wet-anomaly indices and
+snowmelt-dependent indices such as SMRI. Until then, none of these is part of
+this package.
 
 ## What these indices cannot tell you
 
@@ -120,6 +124,9 @@ should duplicate existing `xclim` coverage is an open scope decision
   (TWI, HAND), inundation mapping and remote-sensing flood extent, and
   flood-frequency or return-period analysis of discharge records are outside
   the family's scope ([flood-family epic #1098][flood-epic]).
+- **SPI and SPEI are less reliable in arid regions** with many
+  zero-precipitation months ({doc}`algorithms` documents the limitation), so
+  the wet tail there deserves more caution than in humid climates.
 - **They are not yet validated.** No flood index is implemented yet, so
   [VALIDATION.md][validation] has no flood section at present; the planned
   [FLOOD-20 #1117][flood-1117] adds one as implementations land. Until then,
