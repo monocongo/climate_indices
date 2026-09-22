@@ -488,6 +488,9 @@ No statement here claims an operational EDI product exists. If one is required, 
 and KMA/NDIAC portals need manual retrieval (record the product name, index definition,
 basin/period, and license before use).
 
+- **Classification**: **unverified** - no operational EDI product could be confirmed
+  from primary sources in this environment.
+
 ## Recommendation: one primary oracle per index
 
 Below, *exact reference* means the source carries tabulated, reproducible numbers, and
