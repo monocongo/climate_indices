@@ -109,15 +109,17 @@ the handling of leading windows and missing days.
   (APD), precipitation needed for a return to normal (PRN), and the EDI. It defines
   three candidate depletion functions and explicitly declines to resolve which is best,
   testing two of them on the High Plains.
-- **Full-text access actually obtained**: AMS serves the full article HTML and the
-  table/figure GIFs without authentication. Fetched 2026-09-22 via
+- **Full-text access actually obtained**: fetched 2026-09-22 via
   `https://journals.ametsoc.org/doi/pdf/10.1175/1520-0442(1999)012%3C2747:OQODSA%3E2.0.CO;2`
-  (article HTML) and
+  (the AMS PDF endpoint - not HTML) and
   `https://journals.ametsoc.org/view/journals/clim/12/9/full-i1520-0442-12-9-2747-t05.gif`
-  (Table 5). The normal XML/PDF paths returned CAPTCHA/403; the metadata record is also
-  at `https://digitalcommons.unl.edu/droughtfacpub/32` (abstract fetched; PDF blocked by
-  Cloudflare). Semantic Scholar reports the AMS PDF as BRONZE open access (free to read,
-  no license). DOI:
+  (Table 5). The AMS XML-view path and the plain DOI landing page returned CAPTCHA/403 on
+  both the original fetch and on a later re-check, so this access is **not reproducible
+  on re-fetch**; treat the original PDF/GIF fetch as unconfirmed rather than as standing
+  access. The metadata record is also at
+  `https://digitalcommons.unl.edu/droughtfacpub/32` (abstract fetched; PDF blocked by
+  Cloudflare). Semantic Scholar independently confirms the AMS PDF as BRONZE open access
+  (`isOpenAccess: true`, free to read, no license). DOI:
   [10.1175/1520-0442(1999)012<2747:OQODSA>2.0.CO;2](https://doi.org/10.1175/1520-0442(1999)012%3C2747:OQODSA%3E2.0.CO;2).
 - **What it would validate**: the PE kernel itself and the whole
   EP -> MEP -> DEP -> SEP -> PRN -> EDI chain, including the variable-duration summation
