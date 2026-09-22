@@ -371,7 +371,9 @@ def _format_samples(samples: tuple[float, ...]) -> str:
 def _hash_file(path: str) -> str:
     """SHA-256 of ``path``, read in chunks so a large fixture never sits in memory twice."""
     digest = hashlib.sha256()
-    with open(path, "rb") as stream:
+    # the path is this benchmark's own --netcdf argument: a local, read-only input,
+    # not an untrusted path boundary
+    with open(path, "rb") as stream:  # NOSONAR
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
