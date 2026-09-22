@@ -53,8 +53,8 @@ Resources Index) is PE normalized by the harmonic sum `sum 1/N`, from the Byun &
 
 - **PE kernel and EDI**: Byun & Wilhite (1999) Table 5 is the only located exact
   reference - tabulated end-to-end output for Hickman, Nebraska, re-verified against the
-  AMS table image during this review - but it is a valid oracle only under the paper's
-  *variable* summation duration, which #1099 has not yet decided, and only with a
+  AMS table image on the stated research date - but it is a valid oracle only under the
+  paper's *variable* summation duration, which #1099 has not yet decided, and only with a
   30-year per-calendar-day MEP baseline behind it (gaps 5 and 6). Byun & Lee (2002) is
   the openly accessible confirmation of the equation algebra.
 - **I_F**: Deo et al. (2015) is the definitional source, but its abstract describes an
@@ -152,8 +152,8 @@ the handling of leading windows and missing days.
     day 484; minimum PRN -70.5 on day 484 vs -173.4 on day 484; minimum EDI -2.5 on
     day 469 vs -1.22 on day 469. The table's column headers are "(2) Fig. 2b" and
     "(3) Fig. 2c". (Transcribed from the Table 5 GIF by this survey and re-read against
-    the same GIF during review; re-read once more before the numbers enter a committed
-    fixture.)
+    the same GIF on the stated research date; re-read once more before the numbers enter
+    a committed fixture.)
   - Figures 1-3 are plotted: Figure 1 is the weight-vs-day-pass curve for the three
     equations (caption example: weight 6.4 one day before vs `1/365` at 365 days before
     for Equation (2)); Figure 2 is the daily precipitation and both index panels for
