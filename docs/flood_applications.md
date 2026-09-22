@@ -84,8 +84,8 @@ potential of the approach in one region, not a transferable rule.
 
 The flood family below is planned, not implemented. Module names, function
 names, and arguments will be fixed before implementation in the flood design
-decision ([FLOOD-02 #1099][flood-1099]); nothing on this page documents a
-callable API. The [flood-family epic #1098][flood-epic] tracks the
+decision ([FLOOD-02 #1099][flood-1099]); the planned indices below are not
+yet callable APIs. The [flood-family epic #1098][flood-epic] tracks the
 implementation order.
 
 - **Effective Precipitation (PE)** — *planned (FLOOD-08 [#1105][flood-1105])*.
@@ -101,11 +101,12 @@ implementation order.
 - **Antecedent Precipitation Index (API)** — *planned (FLOOD-12
   [#1109][flood-1109])*. A daily recursive wetness measure with an explicit
   decay constant.
-- **Generic standardization API** — *planned (FLOOD-16
-  [#1113][flood-1113])*. The existing distribution-fitting machinery exposed
-  for any non-negative monthly or daily series, so runoff or streamflow can
-  be standardized as SRI or SSI with the wrappers planned in FLOOD-17
-  ([#1114][flood-1114]).
+- **Generic standardization API** — *NumPy API available (FLOOD-16
+  [#1113][flood-1113])*. `indices.standardized_index()` exposes the existing
+  distribution-fitting machinery for any non-negative monthly or daily series,
+  so runoff or streamflow can be standardized as SRI or SSI with the wrappers
+  planned in FLOOD-17 ([#1114][flood-1114]). The xarray entry point is not wired
+  yet.
 
 Heavy-precipitation triggers (Rx1day, Rx5day, and R95pTOT per
 [Zhang et al. (2011)][zhang-2011]) are conditional: whether this package
