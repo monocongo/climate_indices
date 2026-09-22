@@ -101,11 +101,12 @@ implementation order.
 - **Antecedent Precipitation Index (API)** — *planned (FLOOD-12
   [#1109][flood-1109])*. A daily recursive wetness measure with an explicit
   decay constant.
-- **Generic standardization API** — *planned (FLOOD-16
-  [#1113][flood-1113])*. The existing distribution-fitting machinery exposed
-  for any non-negative monthly or daily series, so runoff or streamflow can
-  be standardized as SRI or SSI with the wrappers planned in FLOOD-17
-  ([#1114][flood-1114]).
+- **Generic standardization API** — *NumPy API available (FLOOD-16
+  [#1113][flood-1113])*. `indices.standardized_index()` exposes the existing
+  distribution-fitting machinery for any non-negative monthly or daily series,
+  so runoff or streamflow can be standardized as SRI or SSI with the wrappers
+  planned in FLOOD-17 ([#1114][flood-1114]). The xarray entry point is not wired
+  yet.
 
 Heavy-precipitation triggers (Rx1day, Rx5day, and R95pTOT per
 [Zhang et al. (2011)][zhang-2011]) are conditional: whether this package

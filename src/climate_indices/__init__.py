@@ -12,7 +12,6 @@ from climate_indices.exceptions import (
     InputAlignmentWarning,
     emit_deprecation_warning,
 )
-from climate_indices.indices import standardized_index
 from climate_indices.logging_config import configure_logging
 from climate_indices.typed_public_api import (
     eddi,
@@ -59,7 +58,6 @@ __all__ = [
     "pet_thornthwaite",
     "spei",
     "spi",
-    "standardized_index",
     "validation",
     "xarray_adapter",
 ]

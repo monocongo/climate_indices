@@ -240,6 +240,36 @@ class TestCalculationLifecycle:
         assert completed[0]["duration_ms"] > 0
         assert tuple(completed[0]["output_shape"]) == result.shape
 
+    def test_standardized_index(
+        self,
+        precips_mm_monthly,
+        data_year_start_monthly,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
+    ) -> None:
+        """The generic NumPy API emits its lifecycle events under its own index_type."""
+        stream = _capture_stream(log_level="INFO")
+        result = indices.standardized_index(
+            values=precips_mm_monthly,
+            scale=6,
+            distribution=indices.Distribution.gamma,
+            data_start_year=data_year_start_monthly,
+            calibration_year_initial=calibration_year_start_monthly,
+            calibration_year_final=calibration_year_end_monthly,
+            periodicity=compute.Periodicity.monthly,
+        )
+
+        started = _events_named(stream, "calculation_started")
+        completed = _events_named(stream, "calculation_completed")
+        assert len(started) == 1
+        assert len(completed) == 1
+        assert started[0]["index_type"] == "standardized_index"
+        assert started[0]["scale"] == 6
+        assert started[0]["distribution"] == "gamma"
+        assert "input_shape" in started[0]
+        assert completed[0]["duration_ms"] > 0
+        assert tuple(completed[0]["output_shape"]) == result.shape
+
     def test_spei(
         self,
         precips_mm_monthly,

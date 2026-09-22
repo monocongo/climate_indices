@@ -546,13 +546,7 @@ def _standardized_index_pipeline(
 
         # an all-missing input comes back un-reshaped, so there's nothing to compute
         if values.ndim == 1:
-            duration_ms = (time.perf_counter() - t0) * 1000.0
-            log.info(
-                "calculation_completed",
-                duration_ms=round(duration_ms, 2),
-                output_shape=values.shape,
-                **(memory_metrics or {}),
-            )
+            _log_calculation_completed(log, t0, values.shape, memory_metrics)
             return values
 
         # fit the scaled values to the specified distribution and transform to
@@ -580,13 +574,7 @@ def _standardized_index_pipeline(
         else:
             # reshape the array back to 1-D and return the original size array
             result = values.flatten()[0:original_length]
-        duration_ms = (time.perf_counter() - t0) * 1000.0
-        log.info(
-            "calculation_completed",
-            duration_ms=round(duration_ms, 2),
-            output_shape=result.shape,
-            **(memory_metrics or {}),
-        )
+        _log_calculation_completed(log, t0, result.shape, memory_metrics)
         result_values: np.ndarray = result
         return result_values
     except Exception as exc:
@@ -603,6 +591,8 @@ def standardized_index(
     calibration_year_final: int,
     periodicity: compute.Periodicity,
     fitting_params: dict[str, Any] | None = None,
+    *,
+    spatial_time_major: bool = False,
 ) -> np.ndarray:
     """Standardize a non-negative monthly or daily series against a fitted distribution.
 
@@ -616,10 +606,15 @@ def standardized_index(
     values missing. Log-logistic fitting is tracked by #106 and is not available yet,
     so no caller should claim it.
 
+    This is a NumPy-array entry point only; xarray and Dask dispatch are not wired
+    for it.
+
     Args:
         values: 1-D array of non-negative values, in any units; the first value is
             assumed to correspond to the start of ``data_start_year``. A 2-D array
-            is read as the legacy (years, periods) layout and flattened.
+            is read as the legacy (years, periods) layout and flattened, and a
+            time-major spatial block with more than two dimensions is accepted
+            when declared with ``spatial_time_major``.
         scale: Number of time steps over which the values are accumulated before
             the index is computed.
         distribution: Distribution type used for the internal fitting/transform
@@ -634,10 +629,14 @@ def standardized_index(
             parameters, with keys "alpha" and "beta" for gamma and "prob_zero",
             "loc", "scale", and "skew" for Pearson Type III. Older keys such as
             "alphas" and "probabilities_of_zero" are deprecated.
+        spatial_time_major: Read a time-major block of independent time series,
+            shaped (time, ``*cells``), and fit every cell in one pass. It is
+            required only for the ambiguous shape whose first cell axis is a
+            calendar period length (12 or 366); see :func:`spi` for the layout.
 
     Returns:
         1-D array of standardized values, unitless and of the same length as the
-        flattened input.
+        flattened input; a declared spatial block is returned in its input shape.
     """
     return _standardized_index_pipeline(
         values,
@@ -650,6 +649,7 @@ def standardized_index(
         fitting_params,
         index_type="standardized_index",
         fallback_context="standardized index computation",
+        spatial_time_major=spatial_time_major,
     )
 
 
