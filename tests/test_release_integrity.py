@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import fnmatch
 import re
+import shlex
 import subprocess
 import sys
 from importlib.metadata import version as get_pkg_version
@@ -386,7 +387,24 @@ def test_release_workflow_requires_tag_commit_on_main() -> None:
 def test_release_workflow_creates_github_release() -> None:
     """release.yml must create the GitHub Release after PyPI publish."""
     workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
-    assert "gh release create" in workflow, "release.yml must create a GitHub Release for the published tag"
+    create_release_job = workflow.split("\n  create-release:", maxsplit=1)[1]
+    create_release_job = re.split(r"^  (?=\S)", create_release_job, maxsplit=1, flags=re.MULTILINE)[0]
+    release_command = re.search(r"^\s+run: (gh release create .+)$", create_release_job, re.MULTILINE)
+
+    assert create_release_job.startswith("\n    needs: publish\n")
+    assert release_command is not None, "release.yml must create a GitHub Release for the published tag"
+    lexer = shlex.shlex(release_command.group(1), posix=True, punctuation_chars=";&")
+    lexer.whitespace_split = True
+    first_command = []
+    for token in lexer:
+        if token in {";", "&", "&&"}:
+            break
+        first_command.append(token)
+
+    assert first_command[:3] == ["gh", "release", "create"]
+    assert "--repo" in first_command
+    repo_index = first_command.index("--repo")
+    assert first_command[repo_index + 1 : repo_index + 2] == ["${GITHUB_REPOSITORY}"]
 
 
 def test_release_workflow_smoke_tests_built_wheel() -> None:
