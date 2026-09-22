@@ -467,9 +467,11 @@ Measured, not inferred:
 - On `v2.4.0` Dask scales: 3.03x from 1 to 8 workers (35.423 s -> 11.695 s).
   It does not close the gap to `main`: the release's best Dask configuration is
   still 9.6x slower than `main`'s eager call.
-- On `main` Dask still does not beat the eager call at this size, now by a wider
-  margin than on the 38x87 grid: the best configuration (4 workers) is 1.43x
-  slower than eager (1.750 s vs 1.224 s), and 8 workers is slower than 4. The
+- On `main` Dask still does not beat the eager call at this size, but by a
+  narrower margin than on the 38x87 grid: there the best Dask configuration
+  (2 workers, 0.837 s) is 4.10x slower than eager (0.204 s quiet, from the
+  table above); here the best configuration (4 workers) is 1.43x slower than
+  eager (1.750 s vs 1.224 s), and 8 workers is slower than 4. The
   within-Dask speedup is 1.45x from 1 to 4 workers. The one-worker Dask call is
   1.322 s above the eager call (2.546 s vs 1.224 s); that difference is the
   measured total process-scheduler overhead (pool start-up, scheduling,
@@ -518,8 +520,8 @@ release-to-main control, as #1097 requires.
   sessions, and the synthetic control rerun for #1097
   (`benchmarks/results/parallel_scaling_1097.txt`) shows SPI at 0.202 s serial
   against the 0.204 s in the committed #928 artifact, but its Dask figures moved
-  further (0.683 s at one worker against 0.863 s), so do not compare numbers
-  across sessions.
+  more: at 8 workers, 1.287 s against 1.197 s (+7.5%), so do not compare
+  numbers across sessions.
 - No cross-PR multiplication: the 28.1x here is this grid, this index, and these
   two commits; it does not compose with #818's per-cell figures, #944's 6x, or
   the xclim `APP`-fit speedup from xclim#2091.
