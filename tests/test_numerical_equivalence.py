@@ -380,9 +380,12 @@ def test_chirps_spi6_matches_the_serial_numpy_api(distribution: indices.Distribu
 
 @pytest.mark.validation
 @pytest.mark.skipif(_CHIRPS_NETCDF is None, reason="CLIMATE_INDICES_CHIRPS_NC is not set")
-def test_chirps_spi6_dask_matches_the_eager_grid() -> None:
-    """A Dask-backed CHIRPS grid matches the eager grid bit for bit, as the benchmark's worker runs must."""
-    grid = _chirps_grid()
+@pytest.mark.parametrize("workers", [1, 2, 4, 8])
+def test_chirps_spi6_dask_matches_the_eager_grid(workers: int) -> None:
+    """A Dask-backed CHIRPS grid matches the eager grid bit for bit under every worker count the benchmark times."""
+    harness = _load_benchmark_harness()
+    assert _CHIRPS_NETCDF is not None
+    grid = harness.load_netcdf_grid(_CHIRPS_NETCDF, "precip").precip
     eager = spi(
         grid,
         scale=6,
@@ -391,11 +394,13 @@ def test_chirps_spi6_dask_matches_the_eager_grid() -> None:
         calibration_year_final=2020,
     )
     lazy = spi(
-        grid.chunk({"time": -1, "lat": 83, "lon": 61}),
+        harness._chunk_for_workers(grid, workers),
         scale=6,
         distribution=indices.Distribution.gamma,
         calibration_year_initial=1991,
         calibration_year_final=2020,
     )
     assert lazy.chunks is not None
-    np.testing.assert_array_equal(lazy.compute(scheduler="processes", num_workers=2).values, eager.values)
+    np.testing.assert_array_equal(
+        lazy.compute(scheduler="processes", num_workers=workers, chunksize=1).values, eager.values
+    )

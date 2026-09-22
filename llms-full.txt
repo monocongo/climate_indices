@@ -3509,7 +3509,10 @@ pays when the work per block exceeds that fixed cost -- larger grids, longer
 series, or a worker pool that outlives one compute call.
 
 The real-grid case is that boundary measured (#1097): on the Morocco CHIRPS v3
-grid (40,260 cells, 528 months, SPI-6 gamma), `main` runs the eager in-memory
+grid (40,260 cells, 528 months, SPI-6 gamma) -- after the numerical-equivalence
+gate passed (gamma bit-for-bit against the per-cell NumPy API, and the Dask grid
+bit-for-bit against the eager grid under every worker count the benchmark times)
+-- `main` runs the eager in-memory
 call in 1.22 s while the `v2.4.0` release took 34.35 s, and the release's Dask
 path needed 8 workers (11.70 s) to come within 10x of the new eager figure. On
 `main` the one-worker Dask call is 1.32 s above the eager call (2.55 s vs

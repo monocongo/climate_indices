@@ -468,8 +468,9 @@ def _run_real_grid(args: argparse.Namespace) -> None:
     """Benchmark SPI on a real NetCDF grid: read, eager serial, then Dask workers.
 
     The read is timed on its own, and the Dask table reports compute-only
-    seconds plus a total that adds the read (and the write, when requested), so
-    the NetCDF I/O never hides inside a compute figure.
+    seconds plus a total that adds the read and, when requested, the write of
+    the eager serial result, so the NetCDF I/O never hides inside a compute
+    figure.
     """
     scale = args.scale or 6
     distribution = Distribution[args.distribution or "gamma"]
@@ -530,7 +531,7 @@ def _run_real_grid(args: argparse.Namespace) -> None:
 
     print(
         f"\nDask worker counts: {','.join(str(count) for count in workers)}; scheduler=processes; chunksize=1; "
-        "time=-1 (ADR-0003); compute-only seconds, total adds read + write"
+        "time=-1 (ADR-0003); compute-only seconds, total adds read + the eager serial write"
     )
     print(f"{'workers':>8} {'blocks':>7} {'compute':>9} {'speedup':>8} {'total':>9}  samples")
     baseline = None
@@ -559,11 +560,14 @@ def _write_output(index: _Index, grid: _Grid, path: str | None) -> float:
     """
     if not path:
         return 0.0
-    payload = index.run(grid).astype("float32")
+    payload = index.run(grid).astype("float32").rename("spi")
     roll_lat = grid.precip.attrs.get("roll_lat")
     roll_lon = grid.precip.attrs.get("roll_lon")
     if roll_lat is not None and roll_lon is not None:
         payload = payload.roll(lat=-roll_lat, lon=-roll_lon, roll_coords=True)
+    # the loader's marker attrs describe the in-memory roll, not the file on disk
+    for attr in ("roll_lat", "roll_lon", "land_cells"):
+        payload.attrs.pop(attr, None)
     start = time.perf_counter()
     payload.to_netcdf(path)
     return time.perf_counter() - start
@@ -592,12 +596,14 @@ def _parse_args() -> argparse.Namespace:
         "--netcdf",
         help="NetCDF precipitation grid (dims time, lat, lon) to benchmark instead of the synthetic grid",
     )
-    parser.add_argument("--var-name", default="precip", help="precipitation variable in --netcdf (default: precip)")
+    parser.add_argument("--var-name", help="precipitation variable in --netcdf (default: precip)")
     parser.add_argument("--scale", type=int, help="SPI timescale in --netcdf mode (default: 6)")
     parser.add_argument("--calibration-start", type=int, help="first calibration year in --netcdf mode (default: 1991)")
     parser.add_argument("--calibration-end", type=int, help="last calibration year in --netcdf mode (default: 2020)")
     parser.add_argument(
-        "--distribution", choices=("gamma", "pearson"), help="SPI distribution in --netcdf mode (default: gamma)"
+        "--distribution",
+        choices=("gamma", "pearson"),
+        help="SPI distribution in --netcdf mode (default: gamma); pearson degenerates on heavily masked grids (#1118)",
     )
     parser.add_argument("--write-output", help="write the computed SPI result to this NetCDF and report the write time")
     args = parser.parse_args()
@@ -613,6 +619,7 @@ def _parse_args() -> argparse.Namespace:
         netcdf_only = [
             flag
             for flag, value in (
+                ("--var-name", args.var_name),
                 ("--scale", args.scale),
                 ("--calibration-start", args.calibration_start),
                 ("--calibration-end", args.calibration_end),
@@ -625,6 +632,7 @@ def _parse_args() -> argparse.Namespace:
             parser.error(f"{', '.join(netcdf_only)} require --netcdf")
     elif args.scale is not None and args.scale < 1:
         parser.error("--scale must be at least 1")
+    args.var_name = args.var_name or "precip"
     return args
 
 

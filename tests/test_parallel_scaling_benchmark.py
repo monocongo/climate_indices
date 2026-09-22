@@ -37,8 +37,9 @@ def _load_module(name: str, path: Path) -> ModuleType:
 
 # left on sys.path for the test session: _measure's processes scheduler pickles worker
 # tasks by module name ("parallel_scaling"), and a spawned child re-imports that name
-# fresh, so it needs the same path the parent used to load it.
-sys.path.insert(0, str(BENCHMARKS))
+# fresh, so it needs the same path the parent used to load it. Appended, not
+# prepended, so a benchmarks/ module can never shadow a site-packages import.
+sys.path.append(str(BENCHMARKS))
 parallel_scaling = _load_module("parallel_scaling", BENCHMARKS / "parallel_scaling.py")
 
 
@@ -57,13 +58,16 @@ def test_chunking_yields_a_block_per_worker(workers: int) -> None:
 
 
 def test_worker_counts_reject_counts_outside_the_grid() -> None:
-    """Non-positive counts fail parsing; counts above the cells fail validation."""
+    """Non-positive counts fail parsing; counts above the cells fail validation and exit cleanly."""
     with pytest.raises(argparse.ArgumentTypeError):
         parallel_scaling._worker_counts("0,2")
     cells = parallel_scaling.REFERENCE_LAT * parallel_scaling.REFERENCE_LON
     with pytest.raises(argparse.ArgumentTypeError):
         parallel_scaling._validate_worker_counts((cells + 1,), cells)
     parallel_scaling._validate_worker_counts((1, cells), cells)
+    parallel_scaling._require_worker_counts((1, cells), cells)
+    with pytest.raises(SystemExit, match="must not exceed"):
+        parallel_scaling._require_worker_counts((cells + 1,), cells)
     assert parallel_scaling._worker_counts("1,4") == (1, 4)
 
 
@@ -72,9 +76,10 @@ def test_netcdf_mode_rejects_arguments_it_cannot_honour(monkeypatch: pytest.Monk
     monkeypatch.setattr(sys, "argv", ["parallel_scaling.py", "--netcdf", "x.nc", "--indices", "spi,spei"])
     with pytest.raises(SystemExit):
         parallel_scaling._parse_args()
-    monkeypatch.setattr(sys, "argv", ["parallel_scaling.py", "--scale", "6"])
-    with pytest.raises(SystemExit):
-        parallel_scaling._parse_args()
+    for ignored in (["--scale", "6"], ["--var-name", "precip"], ["--write-output", "out.nc"]):
+        monkeypatch.setattr(sys, "argv", ["parallel_scaling.py", *ignored])
+        with pytest.raises(SystemExit):
+            parallel_scaling._parse_args()
     monkeypatch.setattr(sys, "argv", ["parallel_scaling.py", "--netcdf", "x.nc", "--scale", "0"])
     with pytest.raises(SystemExit):
         parallel_scaling._parse_args()
@@ -147,6 +152,21 @@ def test_write_output_restores_the_input_coordinate_order(tmp_path: Path) -> Non
         assert bool(np.isnan(written.sel(lat=10.0).values).all())
         assert bool(np.isnan(written.sel(lat=20.0, lon=1.0).isel(time=0).values))
         np.testing.assert_allclose(written.sel(lat=20.0, lon=2.0).values, [2.0, 0.01, 2.0, 2.0])
+        assert written.name == "spi"
+        # the in-memory roll markers must not survive into the un-rolled file
+        assert {"roll_lat", "roll_lon", "land_cells"}.isdisjoint(written.attrs)
+    assert parallel_scaling._write_output(index, grid, None) == 0.0
+
+
+def test_load_netcdf_grid_rejects_an_all_missing_first_time_step(tmp_path: Path) -> None:
+    """The land mask needs at least one finite cell in the first time step."""
+    path = tmp_path / "empty.nc"
+    xr.Dataset(
+        {"precip": (("lat", "lon", "time"), np.full((2, 2, 3), np.nan))},
+        coords={"lat": [10.0, 20.0], "lon": [1.0, 2.0], "time": pd.date_range("2000-01-01", periods=3, freq="MS")},
+    ).to_netcdf(path, engine="h5netcdf")
+    with pytest.raises(ValueError, match="no finite cell"):
+        parallel_scaling.load_netcdf_grid(str(path), "precip")
 
 
 def test_require_finite_tail_enforces_the_land_mask() -> None:
@@ -168,8 +188,8 @@ def test_require_finite_tail_enforces_the_land_mask() -> None:
 
 
 def test_measure_threads_the_land_mask_through_dask_workers() -> None:
-    """A masked grid's ``valid_cells`` survives ``_chunk_for_workers``/``_Grid`` reconstruction
-    and the round trip through the ``processes`` scheduler, matching the real-grid mode's path.
+    """A masked grid survives ``_chunk_for_workers``/``_Grid`` and the ``processes`` round trip:
+    the run completes and the NaN ocean cells pass the parent-side finite-tail gate.
     """
     values = np.full((6, 2, 2), 2.0)
     values[:, 1, 1] = np.nan
@@ -180,6 +200,19 @@ def test_measure_threads_the_land_mask_through_dask_workers() -> None:
 
     samples = parallel_scaling._measure(index, grid, workers=2, repeat=1)
     assert len(samples) == 1
+
+
+def test_measure_rejects_a_run_that_fills_the_land_mask() -> None:
+    """``_measure`` applies the land mask to the values the workers returned, not just to the input."""
+    values = np.full((6, 2, 2), 2.0)
+    values[:, 1, 1] = np.nan
+    precip = xr.DataArray(values, coords={"lat": [10.0, 20.0], "lon": [1.0, 2.0]}, dims=("time", "lat", "lon"))
+    valid_cells = np.array([[True, True], [True, False]])
+    grid = parallel_scaling._Grid(precip=precip, valid_cells=valid_cells)
+    index = parallel_scaling._Index(lambda g: g.precip.fillna(1.0), 0)
+
+    with pytest.raises(RuntimeError, match="marked as missing"):
+        parallel_scaling._measure(index, grid, workers=2, repeat=1)
 
 
 def test_quiet_worker_silences_only_goodness_of_fit() -> None:
