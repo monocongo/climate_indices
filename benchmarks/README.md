@@ -470,15 +470,18 @@ Measured, not inferred:
 - On `main` Dask still does not beat the eager call at this size, now by a wider
   margin than on the 38x87 grid: the best configuration (4 workers) is 1.43x
   slower than eager (1.750 s vs 1.224 s), and 8 workers is slower than 4. The
-  within-Dask speedup is 1.45x from 1 to 4 workers; the fresh `processes` pool
-  costs about 1.3 s per `compute()`.
+  within-Dask speedup is 1.45x from 1 to 4 workers. The one-worker Dask call is
+  1.322 s above the eager call (2.546 s vs 1.224 s); that difference is the
+  measured total process-scheduler overhead (pool start-up, scheduling,
+  serialization, result transfer), not pool start-up alone.
 - Read and write are outside the compute figures; a full serial workflow at this
   size is read 1.060 s + compute 1.224 s + write 0.104 s on `main`.
 
 Interpretation (not measured): once the serial kernel is fast enough that the
-whole 40,260-cell grid is 1.2 s of work, the fixed pool cost is most of what
-Dask would do at this size, so the parallel path loses regardless of the worker
-count. Worker-count tuning cannot recover it.
+whole 40,260-cell grid is 1.2 s of work, the fixed overhead of a fresh
+`processes` pool is most of what Dask would do at this size, so the parallel
+path loses regardless of the worker count. Worker-count tuning cannot recover
+it.
 
 Reproduce with the same commands; the results are retained verbatim in
 `benchmarks/results/chirps_spi6_gamma_main.txt` and

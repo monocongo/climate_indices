@@ -3512,9 +3512,11 @@ The real-grid case is that boundary measured (#1097): on the Morocco CHIRPS v3
 grid (40,260 cells, 528 months, SPI-6 gamma), `main` runs the eager in-memory
 call in 1.22 s while the `v2.4.0` release took 34.35 s, and the release's Dask
 path needed 8 workers (11.70 s) to come within 10x of the new eager figure. On
-`main` the pool's fixed cost still dominates at this size: the best Dask
-configuration (4 workers) is 1.4x slower than the same call in memory. The
-numbers, method, and retained raw output are in
+`main` the one-worker Dask call is 1.32 s above the eager call (2.55 s vs
+1.22 s), and the best configuration (4 workers) is still 1.4x slower than the
+same call in memory. Interpretation: that 1.32 s is the total process-scheduler
+overhead, and it dominates because the whole grid is only 1.2 s of serial work.
+The numbers, method, and retained raw output are in
 [the #1097 section of benchmarks/README.md](https://github.com/monocongo/climate_indices/blob/main/benchmarks/README.md#real-grid-spi-benchmark-v240-vs-main-on-the-morocco-chirps-case-1097).
 
 ## Scheduler
