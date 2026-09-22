@@ -55,6 +55,18 @@ def test_sri_recipe_standardizes_runoff_with_the_spi_pipeline() -> None:
     )
 
     np.testing.assert_array_equal(sri, spi)
+    expected = np.clip(
+        compute.transform_fitted_gamma(
+            compute.prepare_scaled(runoff, 3, compute.Periodicity.monthly),
+            _START_YEAR,
+            _START_YEAR,
+            _END_YEAR,
+            compute.Periodicity.monthly,
+        ),
+        -3.09,
+        3.09,
+    ).flatten()
+    np.testing.assert_array_equal(sri, expected)
     assert np.isnan(sri[:2]).all()
     assert np.isfinite(sri[2:]).all()
     assert float(np.nanstd(sri)) > 0.5

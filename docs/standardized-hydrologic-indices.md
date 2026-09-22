@@ -86,15 +86,19 @@ and {doc}`choosing-parameters`. In particular:
   outside the input's year coverage is silently replaced by the full record.
 - The first `scale - 1` outputs are NaN because no complete accumulation
   window exists before them — 2 leading NaNs for the SRI recipe and 11 for the
-  SSI recipe.
+  SSI recipe. Those steps are also missing from the fitted calibration sample
+  (349 of the 360 values in the SSI recipe's 30-year window), even though the
+  30-year length check passes.
 - Input values must be non-negative. Negative values, such as a missing-data
   fill value left in the series, are clipped to zero with only a log warning,
   so convert them to NaN before calling.
 - Pearson Type III needs at least four non-zero values in every calendar
-  period. A failed Pearson fit falls back to gamma with logging rather than an
-  exception, so check the fit before relying on `distribution=pearson` for
-  short or strongly zero-inflated records; gamma is the documented choice
-  there.
+  period. A period that falls short is fitted with zeroed parameters rather
+  than raising — its outputs are NaN or clipped extremes — and the
+  Pearson-to-gamma fallback fires only when the transform itself fails or
+  leaves more than half the outputs missing. Check the fit before relying on
+  `distribution=pearson`; gamma is the documented choice for strongly
+  zero-inflated records.
 
 The NumPy API returns one standardized value per input time step, unitless and
 clipped to [-3.09, 3.09] as SPI values are.
