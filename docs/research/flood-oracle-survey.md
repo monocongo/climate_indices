@@ -1,0 +1,578 @@
+# Flood oracle survey: PE, EDI, I_F, and API
+
+Resolves: [#1101](https://github.com/monocongo/climate_indices/issues/1101) (child of the
+`v3.1 - Flood subsystem foundation` milestone)
+
+Research date: 2026-09-22. All access statements below describe what was actually
+fetched on that date; anything that could not be fetched is marked as requiring manual
+retrieval rather than asserted present.
+
+## Question
+
+Which publicly accessible references can validate this library's planned Effective
+Precipitation (PE) kernel, Effective Drought Index (EDI), Flood Index (I_F), and
+Antecedent Precipitation Index (API)? For each candidate: what it is, what exactly it
+would validate, its classification in `VALIDATION.md` vocabulary (**exact reference**,
+**independent implementation**, **digitized figure**, **regression coverage**), its
+licensing, whether its values are tabulated or only plotted, its access URL/DOI, and its
+limitations. Then name one primary oracle per index and record the remaining gaps.
+
+The classification vocabulary is load-bearing. In `VALIDATION.md`, a published worked
+example whose numbers are tabulated is an *exact reference* (the KBDI SE-38 Figure 1
+entry calls it "an exact oracle only for the 1968 integer table workflow"); a
+published-but-figure-only series is a *digitized figure* with a stated read-off
+uncertainty (the HDW / Srock et al. entry); a second implementation of the same
+algorithm is an *independent implementation* (the scPDSI Wells-lineage fixtures); and
+fixtures generated from this library's own output are *regression coverage* only. A
+figure-only source is never upgraded to "exact reference" merely because it was once
+attached to a paper.
+
+## What climate_indices plans to compute
+
+From the dependent flood tickets, so the oracle assessment is against the intended
+functions and not a paraphrase:
+
+- **PE kernel** ([#1105](https://github.com/monocongo/climate_indices/issues/1105)):
+  `PE_t = sum_{n=1..D} [ (sum_{m=1..n} P_m) / n ]`, `D = 365` by default, evaluated as
+  the fixed harmonic filter `PE_t = sum_m w_m P_m`, `w_m = H_D - H_{m-1}`. Leading `D-1`
+  days are NaN.
+- **EDI** ([#1106](https://github.com/monocongo/climate_indices/issues/1106)): per
+  calendar day, `MEP`, `DEP = PE - MEP`, `PRN = DEP / sum_{n=1..D}(1/n)`,
+  `EDI = PRN / SD(PRN)`, with the variable-duration extension applied or omitted per
+  [#1099](https://github.com/monocongo/climate_indices/issues/1099).
+- **I_F** ([#1107](https://github.com/monocongo/climate_indices/issues/1107)):
+  `I_F = (PE - mean(PE_max)) / SD(PE_max)`, with the annual-maximum (water year vs
+  calendar year) and calibration-window conventions still to be fixed.
+- **API** ([#1109](https://github.com/monocongo/climate_indices/issues/1109)):
+  `API_t = k * API_{t-1} + P_t`, `0 < k < 1`, with the lag convention documented
+  against the alternative `k * (API_{t-1} + P_{t-1})`.
+
+Any oracle must therefore pin down four conventions, not just a formula: the depletion
+function, the summation duration, the calendar-day vs annual-maximum normalization, and
+the handling of leading windows and missing days.
+
+## Candidates investigated
+
+### 1. Byun & Wilhite (1999), *Journal of Climate* 12, 2747-2756 - originating paper (PE, EDI)
+
+- **What it is**: the paper that introduced effective precipitation (EP), its mean
+  (MEP), deviation (DEP), standardized deficit (SEP), accumulated precipitation deficit
+  (APD), precipitation needed for a return to normal (PRN), and the EDI. It defines
+  three candidate depletion functions and explicitly declines to resolve which is best,
+  testing two of them on the High Plains.
+- **Full-text access actually obtained**: AMS serves the full article HTML and the
+  table/figure GIFs without authentication. Fetched 2026-09-22 via
+  `https://journals.ametsoc.org/doi/pdf/10.1175/1520-0442(1999)012%3C2747:OQODSA%3E2.0.CO;2`
+  (article HTML) and
+  `https://journals.ametsoc.org/view/journals/clim/12/9/full-i1520-0442-12-9-2747-t05.gif`
+  (Table 5). The normal XML/PDF paths returned CAPTCHA/403; the metadata record is also
+  at `https://digitalcommons.unl.edu/droughtfacpub/32` (abstract fetched; PDF blocked by
+  Cloudflare). Semantic Scholar reports the AMS PDF as BRONZE open access (free to read,
+  no license). DOI:
+  [10.1175/1520-0442(1999)012<2747:OQODSA>2.0.CO;2](https://doi.org/10.1175/1520-0442(1999)012%3C2747:OQODSA%3E2.0.CO;2).
+- **What it would validate**: the PE kernel itself and the whole
+  EP -> MEP -> DEP -> SEP -> PRN -> EDI chain, including the variable-duration summation
+  convention.
+  - Equation (2) (the form the library plans) is the double sum. The paper's own
+    two-day worked identity is exact: `EP_2 = P_1 + (P_1 + P_2)/2`; the alternative
+    Equation (3) gives `EP_2 = (2 P_1 + P_2)/3`; Equation (1) is an exponential decay,
+    `EP_2 = P_1 exp(-1/2) + P_2 exp(-2/2)`.
+  - Table 2 records that MEP is a 30-year mean of EP per calendar day (5-day running
+    mean); Table 3 defines dry duration, the summation duration `DS = 365 + dry
+    duration`, and drought duration as consecutive `EDI < -1.0`; Table 4 defines
+    `EDI_j` as the standardized `PRN_j`.
+  - **Table 5 is tabulated numeric output** for the Hickman, Nebraska (USA) example of
+    1 January 1995 - 31 December 1996, columns for Equation (2) and Equation (3):
+    dry duration 232-493 vs 250-494; drought duration 259-493 vs 366-493; minimum CNS
+    -299.8 on day 493 vs -256.3 on day 494; minimum APD -214.4 on day 484 vs -217.1 on
+    day 484; minimum PRN -70.5 on day 484 vs -173.4 on day 484; minimum EDI -2.5 on
+    day 469 vs -1.22 on day 469. (Transcribed from the Table 5 GIF by this survey;
+    re-read the image during fixture extraction before relying on any digit.)
+  - Figures 1-3 are plotted: Figure 1 is the weight-vs-day-pass curve for the three
+    equations (caption example: weight 6.4 one day before vs `1/365` at 365 days before
+    for Equation (2)); Figure 2 is the daily precipitation and both index panels for
+    Hickman; Figure 3 is the 113-station High Plains annual minimum series, which the
+    paper cross-checks qualitatively against the recorded 1989 drought.
+- **Classification**: **exact reference** for the tabulated Table 5 end-to-end values,
+  **digitized figure** for the EP/EDI daily series (Figure 2) and for Figure 1's weight
+  curve. The EP series itself is never tabulated.
+- **Licensing**: AMS copyright, no Creative Commons license found on the fetched page.
+  Free to read is not the same as free to redistribute or to derive from. The existing
+  digitized-figure precedent (HDW / Srock et al.) rests on a CC BY article
+  (`atmosphere` 9(7):279); that precedent does **not** transfer here.
+- **Limitations**: (i) reproducing Table 5 requires the Hickman 1995-1996 daily
+  precipitation series, which is plotted (Figure 2a) but not tabulated, plus the paper's
+  missing-data substitution (it began with 193 High Plains stations, discarded those
+  missing more than 1% of data, leaving 113, then substituted nearest-station or
+  calendar-day averages); (ii) the paper's EDI uses the *variable* `DS` and a per-
+  calendar-day 5-day-running-mean MEP and ST(EP) - the library's `D = 365` fixed-window
+  form will not reproduce it unless #1099 adopts the extension; (iii) the paper's test
+  is design-level, not independently implemented: it is the originating group's own
+  arithmetic; (iv) permission for a committed digitized derivative is unresolved.
+
+### 2. Byun & Lee (2002), *J. Meteor. Soc. Japan* 80(1), 33-44 - originating-group algorithm restatement (PE, AWRI, earlier FI)
+
+- **What it is**: the AWRI paper (same first author) that restates the effective-
+  precipitation formulation and applies it to Korean rainy seasons. It is the accessible
+  originating-group source for the exact kernel algebra.
+- **Access**: open PDF on J-STAGE, fetched 2026-09-22:
+  `https://www.jstage.jst.go.jp/article/jmsj/80/1/80_1_33/_pdf`. DOI:
+  [10.2151/jmsj.80.33](https://doi.org/10.2151/jmsj.80.33).
+- **What it would validate**: the kernel formula and the harmonic normalization,
+  verbatim:
+  - Eq. (1): `E = sum_{N=1..D} ( sum_{m=1..N} P_m / N )`, where `P_m` is the
+    precipitation of `m` days before and `D` the accumulation duration;
+  - Eq. (2): `W = E / ( sum_{N=1..D} 1/N )` (the AWRI), with `D = 365` in that study;
+  - Eq. (5): the drought index `DI = ( W' - Mean(W') ) / St( W' - Mean(W') )`, which it
+    explicitly attributes back to Byun & Wilhite (1999);
+  - Eq. (3)-(4): an earlier **Flood Index** `FI = V / St(V)`, `V = W - A_max(W)`, where
+    `A_max(W)` is the mean of the yearly maximum of W. It also states that Byun &
+    Wilhite (1999) compared three depletion equations and concluded that Eq. (1) (the
+    double sum) was best for mountainous terrain, and that the 1999 paper uses `D` as a
+    variable while this paper fixes `D = 365`.
+- **Classification**: **exact reference for the algorithm specification** (equations),
+  but not a numeric oracle: AWRI/FI series are plotted. The tables are about monsoon
+  onset definitions, not index values.
+- **Licensing**: J-STAGE free access, copyright the Meteorological Society of Japan; no
+  CC license found. Same redistribution caveat as candidate 1.
+- **Limitations**: it validates the *formula*, not this library's numeric output; the
+  paper's AWRI is divided by `sum 1/N`, which is a different output from raw PE. This
+  source also shows that a "flood index" existed in the Byun lineage (2002) before Deo
+  et al. (2015), normalized against the annual maximum of AWRI rather than of PE -
+  oracle conflation risk.
+
+### 3. Byun & Jung (1998), *J. Korea Water Resour. Assoc.* 31(6), 657-665 - originating-group flood precursor
+
+- **What it is**: "Quantified diagnosis of flood possibility by using effective
+  precipitation index" (in Korean with an English abstract). Both Byun & Lee (2002) and
+  Moishin et al. (2021) cite it as the effective-precipitation source for flood
+  diagnosis. Moishin et al. romanize the authors as "Byeon, H.-R. and Jeong, J.-S.";
+  Byun & Lee (2002) list it as Byun and Jung. The same paper under two spellings.
+- **Access**: not fetched. No online copy located in this environment.
+- **Classification**: originating-group **specification precedent**; unverified values.
+- **Licensing**: unknown; Korean Water Resources Association.
+- **Limitations**: requires manual retrieval; unknown whether values are tabulated.
+
+### 4. Deo, Byun, Adamowski & Kim (2015), *Water Resources Management* 29(11), 4075-4093 - originating paper (I_F)
+
+- **What it is**: the paper that introduces the real-time flood monitoring index I_F for
+  Brisbane and Lockyer Valley, with event severity, duration, peak danger and return
+  periods.
+- **Access**: paywalled. The abstract was fetched 2026-09-22 from
+  `https://link.springer.com/article/10.1007/s11269-015-1046-3`; the standard browser
+  path and the r.jina.ai render both returned only the reference list, and the Springer
+  PDF is gated. Crossref records only the Springer text-and-data-mining license
+  (`http://www.springer.com/tdm`); OpenAlex marks it closed (its only repository location
+  is a DOI handle with no full text); Semantic Scholar reports CLOSED. DOI:
+  [10.1007/s11269-015-1046-3](https://doi.org/10.1007/s11269-015-1046-3).
+- **What it would validate**: the I_F definition and the derived event statistics. The
+  abstract states I_F is "based on Effective Precipitation (P E)", computed "using
+  exponentially-decaying time-reduction function", and "comparing and normalizing the
+  P E per day with the means and standard deviations of yearly maximums in the
+  hydrological period"; flood start is `I_F >= 0`, severity is the running sum of
+  consecutive positive I_F, duration is the count of positive I_F days, and peak danger
+  is the maximum I_F.
+  - **The abstract itself tabulates event values**: Brisbane January 1974 `I_acc_F = 118`,
+    `I_max_F = 4.4`, `D_F = 104 days`, `T = 106.2 years`; December 2010-January 2011
+    `I_acc_F = 61.8`, `I_max_F = 2.6`, `D_F = 89 days`, `T = 53 years`; Lockyer Valley
+    December 2010-January 2011 the most severe with `T = 104.4 years`.
+- **Classification**: **exact reference for the definition and for the abstract-level
+  event statistics**, with the caveat below; the daily series and any in-paper tables
+  could not be inspected, so their tabulated-vs-plotted status is **unverified and
+  requires manual retrieval**.
+- **Licensing**: Springer, all rights reserved (TDM only). Digitizing or transcribing
+  in-paper figures or tables into a committed fixture is a permission question.
+- **Limitations** - the most important convention finding in this survey:
+  1. **The 2015 PE depletion function is exponential, not the harmonic double sum the
+     library plans.** The abstract says "exponentially-decaying time-reduction
+     function", which is Byun & Wilhite's Equation (1), not Equation (2). The same
+     wording appears in the 2019 follow-up (candidate 6). The library's planned I_F
+     (double-sum PE, #1105 + #1107) therefore does not match the primary oracle's stated
+     kernel. It matches Moishin et al. (2021, candidate 5), a later same-lineage paper
+     that uses the double sum for PE and cites a different source for it. This must be
+     resolved by a maintainer decision (adopt the exponential PE for I_F, or accept and
+     document the divergence) before #1107 is implemented as specified.
+  2. **Normalization is against yearly maxima "in the hydrological period"** (a water
+     year, not plainly a calendar year), which #1107 already flags as unresolved.
+  3. Reproducing the abstract's event numbers requires the Brisbane/Lockyer daily
+     precipitation and the paper's decay constant, neither of which is publicly
+     available as a dataset in this environment.
+  4. The paper is the originating group's own application; a fixture from it is external
+     to this codebase but not independent of the method's inventors.
+
+### 5. Moishin, Deo, Prasad, Raj & Abdulla (2021), *IEEE Access* 9 - same-lineage, openly licensed (PE, AWRI, I_F)
+
+- **What it is**: a ConvLSTM flood-forecasting study for nine Fiji sites that restates
+  the I_F computation chain and forecasts it. Deo is a co-author of the 2015 I_F paper;
+  this is same-lineage, not an independent group.
+- **Access**: open PDF, fetched 2026-09-22:
+  `https://ieeexplore.ieee.org/ielx7/6287639/9312710/09378529.pdf`. DOI:
+  [10.1109/ACCESS.2021.3065939](https://doi.org/10.1109/ACCESS.2021.3065939).
+- **What it would validate**: the algebra, with explicit equation numbers:
+  - Eq. (6): `PE_i = sum_{N=1..D} [ sum_{m=1..N} P_m / N ]`, `1 <= m <= 365`;
+  - Eq. (7): `AWRI = PE / W`;
+  - Eq. (8): `W = sum_{n=1..D} 1/n`;
+  - Eq. (9): `I_F = ( PE - mean(E_Pmax) ) / sigma(E_Pmax)`, where the mean and standard
+    deviation are taken over the **yearly maximum daily PE** during 1991-2019.
+  Its references identify the chain: PE from Byun & Jung (1998), AWRI from Byun & Lee
+  (2002), I_F from Deo et al. (2015).
+- **Classification**: **independent implementation of the algorithm** (a second worked
+  computation of the same formulas, by the method's wider group); its numbers are
+  application results for Fiji, not a fixture for the Brisbane/Lockyer values. I_F
+  series are plotted; the five tables are model-performance tables, not I_F values.
+- **Licensing**: **CC BY 4.0** (verified in the article PDF: "This work is licensed under
+  a Creative Commons Attribution 4.0 License"). This is the one flood-index source in
+  this survey whose figures may be reused with attribution.
+- **Limitations**: (i) it uses the double-sum PE while Deo et al. (2015) describes the
+  exponential form, so it cannot arbitrate that mismatch; (ii) the Fiji hourly/daily
+  rainfall input is from the Fiji Meteorological Service and is not released with the
+  paper, so its plotted I_F series cannot be re-derived; (iii) same-lineage authorship
+  means it is not independent validation of the inventors' method.
+
+### 6. Moishin, `flood_monitoring_dss` (GitHub) - same-lineage code (PE, AWRI, FI)
+
+- **What it is**: a Streamlit decision-support app whose `flood_index.py` computes
+  `ep` (365-day double-sum), `awri = ep / H_365`, and
+  `fi = (ep - mean(calendar-year maxima ep)) / stdev(...)`, then event runs at
+  `fi > 0`, `fi >= 1`, `fi >= 1.5`, with duration, severity, AWRI and peak severity.
+- **Access**: `https://github.com/memoishin/flood_monitoring_dss`, last push
+  2021-04-26, checked 2026-09-22.
+- **Classification**: **regression-only source** at best. It has a working
+  implementation of the same lineage but **no committed expected values and no tests**,
+  so agreement with it is not scientific validation.
+- **Licensing**: none (no license file). It cannot be copied or vendored; only
+  inspected, or reimplemented from its published algorithm.
+- **Limitations**: its annual maxima are calendar-year (`year` from the input date),
+  while Deo et al. (2015) says hydrological-period maxima; also unlicensed.
+
+### 7. Deo et al. (2014), "Diagnosis of flood events in Brisbane (Australia) using a flood index based on daily effective precipitation" - conference precursor
+
+- **What it is**: the European Commission / International Conference on Analysis and
+  Management of Changing Risks for Natural Hazards paper that precedes the 2015 journal
+  article, cited by Moishin et al. (2021) as reference [5].
+- **Access**: OpenAlex records a published-version PDF at
+  `http://eprints.usq.edu.au/26754/8/Deo_Byun_Adamowski_Kim_AP20_2014_PV.pdf`. The USQ
+  eprints host refused connections on 2026-09-22 (and r.jina.ai could not reach it
+  either), so the PDF could not be fetched.
+- **Classification**: **exact reference candidate** (originating-group published
+  version); cannot be classified further until retrieved. Requires manual retrieval.
+- **Licensing**: not determinable while the host is unreachable; USQ repositories often
+  post publisher versions with unclear reuse terms - check before committing anything.
+- **Limitations**: site availability. This is the most promising route to a full,
+  same-group statement of the I_F equations and example tables without a Springer
+  subscription, if the repository returns.
+
+### 8. Deo et al. (2019), *Theoretical and Applied Climatology* 137, 1201-1215 - follow-up application
+
+- **What it is**: the same I_F applied to Dhaka and Bogra, Bangladesh. The abstract
+  fetched 2026-09-22 states I_F is again a daily effective-precipitation index using
+  "an exponentially decaying time-reduction function", normalized against "the average
+  and standard deviation of yearly maximums, within the considered hydrological
+  period", with the same `I_F >= 0` event rules.
+- **Access**: paywalled. DOI:
+  [10.1007/s00704-018-2657-4](https://doi.org/10.1007/s00704-018-2657-4). OpenAlex
+  reports no OA full text; its USQ eprints copy (34937) is on the same unreachable host.
+- **Classification**: **exact reference for the definition wording**; numeric tables and
+  figures unverified.
+- **Licensing**: Springer, all rights reserved.
+- **Limitations**: no tabulated I_F values accessible; the rainfall inputs and calibrations
+  are not public in this environment.
+
+### 9. Independent implementations: `rrk4910/EDI` (R) and `tidyindex` (R)
+
+- **`rrk4910/EDI`**: an R package (v0.1.0, packaged 2019-12-05) whose `edi.R` reverses
+  the series, builds a weighted double-loop sum, and z-scores it with `scale()`. The
+  DESCRIPTION declares GPL-3; the repository has no LICENSE file. It is not on CRAN
+  (checked against the CRAN package-name index 2026-09-22) and has no tests or expected
+  values. **Classification: independent implementation**, but a weak one: its weighting
+  loop does not match the Byun & Wilhite Eq. (2) identity as published, and it omits the
+  variable-`DS` EDI standardization. Usable only as a cross-check of input/output
+  plumbing, not as an oracle.
+- **`tidyindex`** (`huizezhang-sherry/tidyindex`, MIT + file LICENSE, `idx_edi()` in
+  `R/drought-indexes.R`): computes the harmonic weights as
+  `digamma(n + 1) - digamma(1)` (= `H_n`), reverses them over the aggregation window,
+  and z-scores the result. This is the same fixed linear filter the #1105 kernel uses,
+  arrived at independently. **Classification: independent implementation of the kernel
+  identity**; it is a periodic/rolling z-score EDI, not the variable-`DS` EDI of the
+  1999 paper, and it has no published external expected values. Useful as a corroboration
+  that `w_m = H_D - H_{m-1}` is not this project's invention; not an oracle.
+- **`royalosyin/Calculate-Precipitation-based-Agricultural-Drought-Indices-with-Python`**
+  (MIT): mentions EDI in its index list but contains no EDI implementation (checked the
+  notebook's function definitions 2026-09-22). Excluded.
+- **No package oracle exists on the standard channels**: the CRAN package-name index has
+  no EDI package (its `drought`, `droughtevents`, `msdrought`, `PowerSDI`, `SCI`, and
+  `SPEI` packages are SPI/SPEI/multivariate tools), and the PyPI name index has no EDI
+  drought package (`pydrought` 0.2 is SPI-only).
+
+### 10. Adjacent flood-index lineages (do not conflate with Deo et al. 2015)
+
+- **Nosrati, Mohseni Saravi & Shahbazi (2010)**, "Investigation of Flood Event
+  Possibility over Iran Using Flood Index", chapter in *Survival and Sustainability*,
+  pp. 1355-1361,
+  [10.1007/978-3-540-95991-5_127](https://doi.org/10.1007/978-3-540-95991-5_127).
+  Closed; abstract fetched 2026-09-22 (Googlebot user-agent) states the FI is computed
+  via the **Available Water Resources Index** and compares FI with AWRI - i.e., the
+  Byun & Lee (2002) lineage, not Deo et al. (2015). Issue #1107 cites "Nosrati et al.
+  (2011)"; Crossref/OpenAlex index no 2011 flood-index paper by Nosrati, so the citation
+  needs correction before use. **Classification: independent implementation of a
+  different flood-index definition**; not an oracle for Deo-style I_F.
+- **Chand, Nguyen-Huy, Deo, Ghimire, Ali & Ghahramani (2024)**, *Water* 16(11), 1560,
+  [10.3390/w16111560](https://doi.org/10.3390/w16111560), CC BY 4.0. Defines an hourly
+  `SWRI` from a 24-hour water-resources index with weights
+  `(H_24 - H_{m-1})/H_24` (`W = H_24 ~ 3.8`; e.g. 0.74 for two hours before), and
+  normalizes against **mean monthly maxima**, not annual maxima. **Classification:
+  independent implementation of an hourly extension**; it corroborates the harmonic
+  weight algebra but uses a different normalization window, so it cannot validate I_F
+  as specified.
+- **Shen, Yang, Zhang, Chen & Li (2025)**, *Hydrology* 12(5), 104,
+  [10.3390/hydrology12050104](https://doi.org/10.3390/hydrology12050104), CC BY 4.0.
+  Uses the daily I_F ("daily effective precipitation") as a forecasting target with an
+  independent deep-learning application; no reusable fixture data identified.
+  **Classification: independent implementation of a downstream application**; not a
+  numeric oracle by itself.
+- **Earlier Byun-lineage flood index** (candidate 2's Eq. 3-4) normalizes AWRI, not PE.
+  Any fixture must state which lineage it encodes.
+
+### 11. Antecedent Precipitation Index candidates (API)
+
+- **Kohler & Linsley (1951), "Predicting the runoff from storm rainfall", U.S. Weather
+  Bureau Research Paper No. 34** - the specification the ticket names.
+  - **Access**: no digitized copy located. The OpenLibrary work record is
+    `https://openlibrary.org/works/OL7350422W` (edition `/books/OL17720246M`, 1951,
+    10 pages, sourced from a Columbia University MARC record). Internet Archive has no
+    scan; the NOAA Institutional Repository, HathiTrust, and Google Books routes were
+    blocked or quota-exhausted on 2026-09-22. **Requires manual retrieval** (library or
+    interlibrary loan; the NOAA Central Library likely holds the series).
+  - **Classification**: **exact reference (specification)**, numeric content
+    **unverified**. It is a U.S. Government work and therefore public domain if a copy
+    is obtained - unlike candidates 1 and 4, a scan could be redistributed.
+  - **Limitations**: whether the report tabulates index values or only figures a
+    storm-runoff relation is unknown; the commonly cited recursion
+    `API_t = k * API_{t-1} + P_t` could not be verified against the 1951 text itself in
+    this environment, only against sources that cite it.
+- **`robbub98/ahrapi`** (R, v0.1.0, MIT + file LICENSE, copyright Robert Bartram 2026)
+  - **What it is**: an Antecedent Precipitation Analysis package for the July 2021 Ahr
+    Valley flood; `R/compute_api.R` implements `API_t = k * API_{t-1} + P_t` with
+    `k = 0.95` default, `initial = 0`, and cites "Kohler, M. A., & Linsley, R. K.
+    (1951). Predicting the runoff from storm rainfall. U.S. Weather Bureau Research
+    Paper, 34."
+  - **Access**: `https://github.com/robbub98/ahrapi` (pushed 2026-08-05).
+  - **Classification**: **independent implementation**. Its test suite covers file
+    reading only (`tests/testthat/test-placeholder.R`, `test-read_radolan.R`) and
+    contains no API expected values, so it is not an oracle.
+  - **Limitations**: it sets missing precipitation to 0 to preserve recurrence, which
+    differs from the fire-domain missing-data contract (`ADR-0007`) this library will
+    follow; the vignette's derived values are station-analysis results, not a published
+    worked example.
+- **`alexgruber/pyapi`**: a 2019 Python class with `gamma = 0.85`, no license, no tests,
+  one star. **Not usable** for a committed fixture.
+- **USACE Antecedent Precipitation Tool** (`jDeters-USACE/Antecedent-Precipitation-Tool`,
+  migrated to `erdc/Antecedent-Precipitation-Tool`, releases through v3.0.9; USACE
+  public domain per 17 USC 105, with a joint-work caveat).
+  - **What it is**: an operational agency tool, actively maintained. Its README states
+    it evaluates antecedent precipitation with "30-day rolling totals and NRCS
+    Engineering Field Handbook weighting factors (Combined Method)" citing Sprecher &
+    Warne (2000), ERDC/EL TR-WRAP-00-1, and NRCS Engineering Field Handbook Chapter 19
+    (1997); its drought determination uses PDSI, not API.
+  - **Classification**: **operational product, but for a different antecedent-
+    precipitation definition** (NRCS monthly weighting factors), not the Kohler &
+    Linsley exponential recursion. It is not an oracle for #1109; it is evidence that
+    "antecedent precipitation index" is not one definition in agency practice. The two
+    cited URLs (`el.erdc.usace.army.mil/elpubs/...` and `info.usda.gov/CED/...`) were
+    dead on 2026-09-22 - the ERDC and NRCS documents themselves require manual retrieval.
+- **De Moraes et al. (2024)**, *International Journal of Geosciences* 15, 70-86,
+  [10.4236/ijg.2024.151006](https://doi.org/10.4236/ijg.2024.151006), CC BY 4.0.
+  An open-access application using a **modified** API whose recession coefficient depends
+  on air temperature; it cites Kohler & Linsley (1951). **Classification: independent
+  implementation of a variant**; it cannot validate a fixed-`k` recursion.
+
+### 12. Operational EDI products - not verified
+
+The ticket's example of an agency publishing EDI operationally could not be confirmed
+from primary sources in this environment. The APCC "Global Drought" monitoring page
+(`https://www.apcc21.org/monitoring/drought`) and the Korean national drought portal
+(`https://www.drought.go.kr/`) are JavaScript shells with no index names in the served
+HTML; KMA drought pages are navigation shells; `drought.kma.go.kr` refused connections.
+No statement here claims an operational EDI product exists. If one is required, the APCC
+and KMA/NDIAC portals need manual retrieval (record the product name, index definition,
+basin/period, and license before use).
+
+## Recommendation: one primary oracle per index
+
+| Index | Primary oracle | Classification | Numeric anchor |
+| --- | --- | --- | --- |
+| PE kernel | Byun & Wilhite (1999), Eq. (2) | exact reference for the equation; tabulated end-to-end values in Table 5; digitized figure for the EP series | Table 5 (Hickman, NE) for the chain; Fig. 2b for EP; Fig. 1 for the weight curve |
+| EDI | Byun & Wilhite (1999), Eq. (9)/Table 5 | exact reference, conditional on the variable-`DS` convention | min EDI -2.5 (Eq. 2) and -1.22 (Eq. 3) on day 469, Table 5 |
+| I_F | Deo et al. (2015) | exact reference for definition and abstract event statistics; full-text tabulation unverified; exponential-PE convention conflict | `I_acc_F`/`I_max_F`/`D_F`/`T` in the abstract |
+| API | Kohler & Linsley (1951) | exact reference (specification); numeric content unverified; no numeric oracle found | none; analytic `P/(1-k)` and the MIT `ahrapi` implementation are regression support only |
+
+For the PE kernel, Byun & Lee (2002) is the openly accessible confirmation of the exact
+algebra and should be cited alongside the 1999 paper. For the EDI, the 1999 Table 5 is
+the only located external numeric anchor, and it only tests the variable-`DS` form.
+For I_F, Moishin et al. (2021, CC BY 4.0) is the only openly licensed same-lineage
+statement of the equations, but it encodes the double-sum kernel that the 2015 abstract
+does not describe. For API, the survey found **no accessible source with tabulated
+values**, so the API row currently cannot reach external-validation status the way SPI,
+SPEI, EDDI, and the Palmer family have.
+
+## External validation vs regression coverage
+
+Using `VALIDATION.md` vocabulary explicitly:
+
+- **External scientific validation** could come from Byun & Wilhite (1999) Table 5 for
+  PE/EDI (if the variable-duration convention is adopted and the Hickman inputs are
+  reconstructed), from Deo et al. (2015) for I_F (if the full text is retrieved and its
+  convention is matched), and from Kohler & Linsley (1951) for API (only if that report
+  turns out to tabulate values reproducible against a public precipitation record).
+- **Digitized figures** would be required for the EP/EDI daily series (Byun & Wilhite
+  Fig. 2), for the weight curve (Fig. 1), and for any Deo et al. (2015) series whose
+  table cannot be obtained. The HDW / Srock et al. precedent shows the cost and the
+  disclosure pattern (marker pixel coordinates, a stated read-off uncertainty, and a
+  shape/timing assertion rather than a tight magnitude `atol`); it does not supply a
+  licensing answer for AMS or Springer figures.
+- **Independent implementations** available for cross-checking, not for oracle duty:
+  `tidyindex` (MIT; harmonic kernel), `rrk4910/EDI` (GPL-3; weak), `robbub98/ahrapi`
+  (MIT; fixed-`k` API), `alexgruber/pyapi` (unlicensed), and the same-lineage
+  `memoishin/flood_monitoring_dss` (unlicensed).
+- **Regression coverage** is what remains if the above are not adopted: frozen vectors
+  generated from this library's own implementation, the analytic constant-input limit
+  `API -> P/(1-k)`, the random-data naive-double-sum equivalence test from #1105, and
+  the state round-trip test from #1109. These are valuable contract tests but must not be
+  described as external validation in `VALIDATION.md`.
+
+## Remaining gaps and required maintainer sign-off
+
+1. **I_F PE-kernel conflict (highest priority).** Deo et al. (2015) and Deo et al.
+   (2019) describe an exponentially decaying PE; #1105/#1107 plan the harmonic
+   double-sum. Either #1107's PE convention changes, or the divergence is documented and
+   signed off. Until the 2015 full text is retrieved, even the exponential parameterization
+   (decay constant, summation length, hydrological-period definition) is unknown.
+2. **Retrieve Deo et al. (2015) full text** through an institutional subscription/ILL
+   and record whether I_F values are tabulated or only plotted; then decide between
+   transcription and digitization. If figures are used, confirm reuse terms.
+3. **Retrieve the 2014 USQ conference PDF** when `eprints.usq.edu.au` returns (or via
+   ILL). This is the best chance of a same-group worked example with tables outside the
+   Springer paywall.
+4. **Byun & Wilhite digitization/permission.** The 1999 AMS article is free to read but
+   not CC-licensed. Decide whether transcribing Table 5's twelve numbers and/or
+   digitizing Figure 2 for a committed fixture is acceptable, and whether permission is
+   needed. Record the decision in the fixture `provenance.json`.
+5. **Hickman inputs.** Table 5 reproduction requires the 1995-1996 daily precipitation
+   for Hickman, Nebraska and the paper's substitution rules. Confirm the station record
+   source and whether the paper's data handling can be matched before promising a tight
+   tolerance; otherwise the Table 5 check is qualitative/loose.
+6. **Adopt or reject the variable-duration EDI** (#1099). If rejected, Byun & Wilhite
+   Table 5 is not a valid EDI oracle for this library and the only remaining EDI
+   evidence is formula-level plus internal regression.
+7. **Kohler & Linsley (1951) retrieval.** Obtain the 10-page report and record whether
+   it contains tabulated index values. If not, the API row must be signed off as
+   specification-plus-regression coverage, or an alternative external product using the
+   same recursion must be found.
+8. **Nosrati citation correction.** Issue #1107 cites "Nosrati et al. (2011)"; the
+   located work is Nosrati et al. (2010), and its FI uses AWRI, not Deo's PE. Fix the
+   reference before it is used to justify a convention.
+9. **Operational EDI product.** No APCC/KMA/other operational EDI publication could be
+   verified; confirm manually if an operational product is a required evidence tier.
+10. **Licensing of same-lineage code.** `memoishin/flood_monitoring_dss` has no license,
+    and `rrk4910/EDI` declares GPL-3 only in its DESCRIPTION; neither can be vendored
+    into this BSD-licensed repository. Only algorithms may be re-derived from them.
+
+## Fixture and tolerance caveats for #1104
+
+- Follow `tests/fixture/provenance_schema.json` for any committed oracle (source, URL,
+  download date, subset, checksum, fixture version, explicit `validation_tolerance`).
+- Byun & Wilhite Table 5 prints one decimal for CNS/APD/PRN (`0.1 mm`) and two
+  significant digits for EDI (`-2.5`, `-1.22`); the day numbers are integers. Any
+  comparison tolerance is floored by that printing precision, and by the paper's
+  5-day-running-mean and variable-`DS` conventions.
+- A digitized figure carries a read-off uncertainty that must be stated in the units of
+  the plot axis, as the HDW fixture does (`+/-5 hPa m s-1`). Figure 2's index panels are
+  scaled (`EDI * 100`), so convert before comparing.
+- The Brisbane/Lockyer and Fiji applications cannot be recreated without their input
+  rainfall; do not write a test that appears to reproduce them but actually tests only
+  this library against itself.
+- Because Byun & Wilhite (1999) is the originating group's own arithmetic, passing its
+  Table 5 demonstrates reproduction of a published calculation, not independent
+  correctness of the method. Say so in `VALIDATION.md`, exactly as the scPDSI entry
+  distinguishes independent-implementation cross-validation from external-product
+  validation.
+
+## Sources
+
+- Byun, H.-R., and Wilhite, D. A. (1999). Objective Quantification of Drought Severity
+  and Duration. *Journal of Climate*, 12(9), 2747-2756.
+  https://doi.org/10.1175/1520-0442(1999)012%3C2747:OQODSA%3E2.0.CO;2. Full text and
+  table images fetched 2026-09-22 from `journals.ametsoc.org/doi/pdf/...` and
+  `journals.ametsoc.org/view/journals/clim/12/9/...`. Metadata record:
+  [UNL DigitalCommons](https://digitalcommons.unl.edu/droughtfacpub/32).
+- Byun, H.-R., and Lee, D.-K. (2002). Defining Three Rainy Seasons and the Hydrological
+  Summer Monsoon in Korea using Available Water Resources Index. *Journal of the
+  Meteorological Society of Japan*, 80(1), 33-44.
+  https://doi.org/10.2151/jmsj.80.33. PDF:
+  https://www.jstage.jst.go.jp/article/jmsj/80/1/80_1_33/_pdf (fetched 2026-09-22).
+- Byun, H.-R., and Jung, J.-S. (1998). Quantified diagnosis of flood possibility by
+  using effective precipitation index (in Korean with English abstract). *Journal of
+  Korea Water Resources Association*, 31(6), 657-665. Cited in Byun & Lee (2002) and
+  Moishin et al. (2021); not fetched.
+- Deo, R. C., Byun, H.-R., Adamowski, J. F., and Kim, D.-W. (2015). A Real-time Flood
+  Monitoring Index Based on Daily Effective Precipitation and its Application to
+  Brisbane and Lockyer Valley Flood Events. *Water Resources Management*, 29(11),
+  4075-4093. https://doi.org/10.1007/s11269-015-1046-3. Abstract fetched 2026-09-22;
+  full text paywalled.
+- Deo, R. C., Byun, H.-R., Adamowski, J. F., and Kim, D.-W. (2014). Diagnosis of flood
+  events in Brisbane (Australia) using a flood index based on daily effective
+  precipitation. *Proceedings of the International Conference on Analysis and Management
+  of Changing Risks for Natural Hazards*, European Commission. Published-version PDF
+  recorded by OpenAlex at `http://eprints.usq.edu.au/26754/8/Deo_Byun_Adamowski_Kim_AP20_2014_PV.pdf`;
+  host unreachable 2026-09-22.
+- Deo, R. C., et al. (2019). Quantifying flood events in Bangladesh with a daily-step
+  flood monitoring index based on the concept of daily effective precipitation.
+  *Theoretical and Applied Climatology*, 137, 1201-1215.
+  https://doi.org/10.1007/s00704-018-2657-4. Abstract fetched 2026-09-22.
+- Moishin, M., Deo, R. C., Prasad, R., Raj, N., and Abdulla, S. (2021). Designing
+  Deep-Based Learning Flood Forecast Model With ConvLSTM Hybrid Algorithm. *IEEE
+  Access*, 9. https://doi.org/10.1109/ACCESS.2021.3065939. PDF:
+  https://ieeexplore.ieee.org/ielx7/6287639/9312710/09378529.pdf (fetched 2026-09-22;
+  CC BY 4.0).
+- Moishin, M. `flood_monitoring_dss`. https://github.com/memoishin/flood_monitoring_dss
+  (inspected 2026-09-22; no license; no tests).
+- Chand, R., Nguyen-Huy, T., Deo, R. C., Ghimire, S., Ali, M., and Ghahramani, A.
+  (2024). Copula-Probabilistic Flood Risk Analysis with an Hourly Flood Monitoring
+  Index. *Water*, 16(11), 1560. https://doi.org/10.3390/w16111560 (CC BY 4.0).
+- Shen, J., Yang, M., Zhang, J., Chen, N., and Li, B. (2025). A New Custom Deep Learning
+  Model Coupled with a Flood Index for Multi-Step-Ahead Flood Forecasting. *Hydrology*,
+  12(5), 104. https://doi.org/10.3390/hydrology12050104 (CC BY 4.0).
+- Nosrati, K., Mohseni Saravi, M., and Shahbazi, A. (2010). Investigation of Flood
+  Event Possibility over Iran Using Flood Index. In *Survival and Sustainability*,
+  1355-1361. https://doi.org/10.1007/978-3-540-95991-5_127. Abstract fetched
+  2026-09-22 (closed access).
+- Kumar, R. R., Singh, K. N., Mishra, D. C., and Budhlakoti, N. `EDI` R package v0.1.0
+  (GPL-3 per DESCRIPTION). https://github.com/rrk4910/EDI (inspected 2026-09-22; not on
+  CRAN).
+- Zhang, H. `tidyindex` R package (MIT + file LICENSE).
+  https://github.com/huizezhang-sherry/tidyindex (inspected 2026-09-22).
+- Kohler, M. A., and Linsley, R. K. (1951). *Predicting the runoff from storm rainfall*.
+  U.S. Weather Bureau Research Paper No. 34. OpenLibrary work
+  https://openlibrary.org/works/OL7350422W (edition OL17720246M, 10 pages). No online
+  copy located; requires manual retrieval.
+- Bartram, R. `ahrapi` R package v0.1.0 (MIT + file LICENSE).
+  https://github.com/robbub98/ahrapi (inspected 2026-09-22).
+- U.S. Army Corps of Engineers. *Antecedent Precipitation Tool*.
+  https://github.com/jDeters-USACE/Antecedent-Precipitation-Tool (README; migrated to
+  https://github.com/erdc/Antecedent-Precipitation-Tool, releases through v3.0.9). USACE
+  public domain with joint-work caveat.
+- De Moraes, M. A. E., et al. (2024). Antecedent Precipitation Index to Estimate Soil
+  Moisture and Correlate as a Triggering Process in the Occurrence of Landslides.
+  *International Journal of Geosciences*, 15, 70-86.
+  https://doi.org/10.4236/ijg.2024.151006 (CC BY 4.0).
+- `VALIDATION.md` (HDW / Srock et al. digitized-figure entry; KBDI exact-oracle entry;
+  external-validation vs regression-coverage language) and
+  `tests/fixture/hdw_srock_cedar/provenance.json`.
+- `tests/fixture/provenance_schema.json`; `docs/research/dri-wrcc-scpdsi-assessment.md`
+  (structure precedent for a repository oracle survey).
+
+Note: issue #1101 and `VALIDATION.md` both cite `docs/research/spi-dataset-survey.md`,
+which is not present on `main` - it exists only on the unmerged
+`research/spi-dataset-survey` branch. This survey therefore takes
+`docs/research/dri-wrcc-scpdsi-assessment.md` as its structural precedent. The dangling
+reference in `VALIDATION.md` is pre-existing and outside this ticket's scope.
