@@ -105,7 +105,7 @@ CANDIDATE=<full 40-character sha of the frozen candidate>
 TAG=vX.Y.Z                        # the real release tag, not an rc
 TARGET=<owner>/climate_indices-rehearsal
 
-git fetch -q origin
+git fetch -q origin || { echo "cannot fetch origin"; exit 1; }
 git checkout --detach "$CANDIDATE"
 SHA="$(git rev-parse HEAD)"
 [[ "$SHA" == "$CANDIDATE" ]] || { echo "not at the frozen candidate: $SHA"; exit 1; }
@@ -132,7 +132,9 @@ git push --force "https://github.com/$TARGET.git" "${SHA}:refs/tags/$TAG"
 git ls-remote --tags "https://github.com/$TARGET.git" "$TAG"   # prints $SHA
 ```
 
-Never push a rehearsal tag upstream.
+Never push a rehearsal tag upstream. Re-pushing the same candidate is a no-op,
+so no new run starts: use `gh run rerun <run-id> -R "$TARGET"` to retry an identical
+rehearsal.
 
 2. Watch the run and read every job's conclusion:
 
