@@ -61,8 +61,9 @@ Resources Index) is PE normalized by the harmonic sum `sum 1/N`, from the Byun &
   exponentially decaying effective precipitation while #1105/#1107 plan the harmonic
   double sum. The two forms are not algebraically equivalent, so this is a real
   convention conflict, and whether the 2015 implementation matched its abstract is
-  unverified because the full text is paywalled. The venue for the decision is **#1099**,
-  which owns the convention #1107 consumes (gap 1).
+  unverified because the full text is paywalled. The decision should be routed to
+  **#1099** - it is not yet on that ticket's checklist, but #1099 owns the other flood-
+  module conventions and #1107 can only consume this one, not make it (gap 1).
 - **API**: no accessible source tabulates index values. Kohler & Linsley (1951) is not
   digitized online; the located implementations are an independent implementation with
   no published oracle values (a fixed-`k` `ahrapi`) or a different definition (the
@@ -535,13 +536,13 @@ Using `VALIDATION.md` vocabulary explicitly:
 
 ## Remaining gaps and required maintainer sign-off
 
-1. **I_F PE-kernel conflict (highest priority) - decision belongs to #1099.** The Deo
-   et al. (2015) and (2019) abstracts describe an exponentially decaying PE; #1105/#1107
-   plan the harmonic double-sum. Either the planned kernel changes, or the divergence is
-   documented and signed off. Until the 2015 full text or Byun & Jung (1998) is
-   retrieved, even the exponential parameterization (decay constant, summation length,
-   hydrological-period definition) is unknown. #1107 consumes this decision; it cannot
-   make it.
+1. **I_F PE-kernel conflict (highest priority) - decision should be routed to #1099,**
+   which is not yet on that ticket's checklist. The Deo et al. (2015) and (2019)
+   abstracts describe an exponentially decaying PE; #1105/#1107 plan the harmonic
+   double-sum. Either the planned kernel changes, or the divergence is documented and
+   signed off. Until the 2015 full text or Byun & Jung (1998) is retrieved, even the
+   exponential parameterization (decay constant, summation length, hydrological-period
+   definition) is unknown. #1107 consumes this decision; it cannot make it.
 2. **Retrieve Deo et al. (2015) full text** through an institutional subscription/ILL
    and record whether I_F values are tabulated or only plotted; then decide between
    transcription and digitization. If figures are used, confirm reuse terms.
