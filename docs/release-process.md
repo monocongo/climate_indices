@@ -100,7 +100,7 @@ gh repo create <owner>/climate_indices-rehearsal --private \
 ### Rehearsal steps
 
 ```bash
-set -u                            # an empty $CANDIDATE would delete remote refs
+set -u                            # abort on unset variables
 CANDIDATE=<full 40-character sha of the frozen candidate>
 TAG=vX.Y.Z                        # the real release tag, not an rc
 TARGET=<owner>/climate_indices-rehearsal
@@ -109,19 +109,26 @@ git fetch -q origin
 git checkout --detach "$CANDIDATE"
 SHA="$(git rev-parse HEAD)"
 [[ "$SHA" == "$CANDIDATE" ]] || { echo "not at the frozen candidate: $SHA"; exit 1; }
+git merge-base --is-ancestor "$SHA" origin/main \
+  || { echo "candidate is not on origin/main: $SHA"; exit 1; }
 git status --short                # must be empty
 ```
 
 1. Push the candidate as the copy's `main`, then the copy-only tag. The
    `validate-release-tag` job requires the tagged commit to be reachable from
    the copy's `origin/main`, so `main` lands first. The tag push starts the
-   unchanged workflow:
+   unchanged workflow. The copy holds no unique state, so these pushes force it
+   to the new candidate when a rehearsal is repeated:
 
 ```bash
-git push "https://github.com/$TARGET.git" "${SHA}:refs/heads/main"
+: "${SHA:?run the rehearsal setup block in this shell first}"
+: "${TAG:?run the rehearsal setup block in this shell first}"
+: "${TARGET:?run the rehearsal setup block in this shell first}"
+
+git push --force "https://github.com/$TARGET.git" "${SHA}:refs/heads/main"
 git ls-remote --heads "https://github.com/$TARGET.git" main    # prints $SHA
 
-git push "https://github.com/$TARGET.git" "${SHA}:refs/tags/$TAG"
+git push --force "https://github.com/$TARGET.git" "${SHA}:refs/tags/$TAG"
 git ls-remote --tags "https://github.com/$TARGET.git" "$TAG"   # prints $SHA
 ```
 
@@ -132,7 +139,7 @@ Never push a rehearsal tag upstream.
 ```bash
 gh run list -R "$TARGET" --workflow=release.yml --limit 3
 RUN=<run id>
-gh run watch "$RUN" -R "$TARGET"       # exits non-zero; expected
+gh run watch "$RUN" -R "$TARGET" --exit-status   # exits non-zero; expected
 gh run view "$RUN" -R "$TARGET" --json jobs --jq '.jobs[] | "\(.conclusion)\t\(.name)"'
 ```
 
@@ -145,7 +152,7 @@ that rejection must not be remedied by configuring the copy:
 
 ```bash
 gh run view "$RUN" -R "$TARGET" --log-failed \
-  | grep -i -B2 -A6 "trusted publishing\|oidc\|publisher"
+  | grep -i -B2 -A6 "server refused the request\|invalid-publisher"
 ```
 
 3. Collect the artifacts, checksums, and timing:
@@ -153,7 +160,7 @@ gh run view "$RUN" -R "$TARGET" --log-failed \
 ```bash
 gh run download "$RUN" -R "$TARGET" -n dist -D /tmp/rehearsal-dist
 ls -l /tmp/rehearsal-dist && shasum -a 256 /tmp/rehearsal-dist/*
-gh run view "$RUN" -R "$TARGET" --json createdAt,updatedAt,runAttempt
+gh run view "$RUN" -R "$TARGET" --json createdAt,updatedAt,attempt
 ```
 
 4. Confirm nothing was published:
