@@ -322,6 +322,20 @@ def test_release_process_documents_pypi_metadata_verification() -> None:
     assert _expected_badge_url() in release_process
 
 
+def test_release_process_documents_the_rehearsal_boundary() -> None:
+    """The rehearsal runbook must state the failure it expects and what it cannot prove.
+
+    `create-release` is skipped when `publish` fails, so a green rehearsal must not
+    read as a proven release path.
+    """
+    release_process = (ROOT / "docs" / "release-process.md").read_text(encoding="utf-8")
+    assert "## Release rehearsal" in release_process
+    section = release_process.split("## Release rehearsal", 1)[1].split("\n## ", 1)[0]
+    assert "`publish` fails" in section
+    assert "`create-release`" in section and "skipped" in section
+    assert "not a trusted publisher" in section
+
+
 def test_llms_bundles_reference_main_branch_not_master() -> None:
     """Generated llms bundles must not reference the renamed default branch."""
     for relative_path in (Path("llms.txt"), Path("llms-full.txt")):
