@@ -1,7 +1,7 @@
 # Flood oracle survey: PE, EDI, I_F, and API
 
 Resolves: [#1101](https://github.com/monocongo/climate_indices/issues/1101) (child of the
-`v3.1 - Flood subsystem foundation` milestone)
+`v3.1 — Flood subsystem foundation` milestone)
 
 Research date: 2026-09-22. All access statements below describe what was actually
 fetched on that date; anything that could not be fetched is marked as requiring manual
