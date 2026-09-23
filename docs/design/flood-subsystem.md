@@ -45,7 +45,8 @@ deviations from the published definitions.
 
 ## API tiers
 
-The NumPy API is the stable tier and lands first (FLOOD-08 through FLOOD-12).
+The NumPy API is the stable tier and lands first (FLOOD-08 through FLOOD-10 and
+FLOOD-12).
 Xarray adapters, CF metadata, and Dask support follow (FLOOD-11, FLOOD-13) and
 stay on their `flood.<name>` route as beta paths under
 [ADR-0012](../adr/0012-xarray-api-stays-beta-through-3.0.0.md). Family API
@@ -65,14 +66,17 @@ a unit-dependent constant or threshold, PE and API are millimeters by
 construction, and EDI and I_F are dimensionless and scale-invariant. Xarray
 adapters convert at their boundary, as `fire/_units.py` does. There is no
 `periodicity=` parameter — these indices are daily only, under the calendar
-contract of [ADR-0004](../adr/0004-xarray-calendar-semantics.md).
+contract of [ADR-0004](../adr/0004-xarray-calendar-semantics.md). The
+`duration` arguments default to the 365-day window
+[ADR-0014](../adr/0014-flood-family-scientific-conventions.md) fixes as the
+convention; other windows are caller experiments, not the recorded form.
 
 | Public name | Inputs | Output / accepted alternative |
 | --- | --- | --- |
 | `effective_precipitation(precipitation, *, duration=365, spatial_time_major=False)` | daily precipitation in mm | effective precipitation in mm; the leading `duration - 1` days are NaN for want of a full window |
 | `edi(pe, data_start_year, calibration_year_initial, calibration_year_final, *, duration=365, spatial_time_major=False)` | effective precipitation in mm from the row above, and the calendar years bounding the Calibration Period | dimensionless EDI; `duration` must match the kernel that produced `pe`, because `H_duration` is the denominator of PRN, and a mismatch is not detectable from the array |
 | `flood_index(pe, data_start_year, calibration_year_initial, calibration_year_final, *, year_start_month, spatial_time_major=False)` | effective precipitation in mm, the Calibration Period years, and the caller's year boundary as a calendar month | dimensionless I_F, standardized against the mean and standard deviation of the annual maxima of PE; `year_start_month` is required and has no default, and partial leading and trailing periods are excluded from the maxima |
-| `antecedent_precipitation_index(precipitation, k, *, initial_state=None, return_state=False, spin_up=0, nan_policy="propagate", max_gap_days=0, spatial_time_major=False)` | daily precipitation in mm, and a decay constant `0 < k < 1` | antecedent precipitation in mm; constant input converges to the closed form `P / (1 − k)` |
+| `antecedent_precipitation_index(precipitation, k, *, initial_state=None, return_state=False, spin_up=0, nan_policy="propagate", max_gap_days=0, spatial_time_major=False)` | daily precipitation in mm, and a decay constant `0 < k < 1` | antecedent precipitation in mm; for the non-lagged recursion, constant input converges to the closed form `P / (1 − k)`, which is the regression test FLOOD-12 specifies |
 
 `spatial_time_major` is the keyword-only block declaration of
 [ADR-0009](../adr/0009-spatial-block-declaration.md) and behaves as it does for
@@ -94,9 +98,13 @@ documents the other in the docstring.
   their Table 5, both blocked on the Hickman 1995–1996 daily record and on a
   settled dry-day threshold and duration definition.
 - **A numeric I_F oracle**, blocked on the Deo et al. (2015) full text; I_F is
-  specification-level until then, and its exponential kernel is not implemented
-  (ADR-0014).
+  specification-level until then, and the exponential kernel its abstracts
+  describe is not implemented (ADR-0014).
 - **A numeric API oracle**, blocked on Kohler & Linsley (1951).
 - **Flood-event helpers** (onset, duration, severity as runs of `I_F > 0`).
 - **WAP and SWAP**, deferred as a separate lineage; **SMRI** and snowmelt
   indices, out of scope.
+- **The public names of the precipitation-extreme indices** (Rx1day, Rx5day,
+  R95pTOT), which are in scope per ADR-0014 decision 6 and land in this package
+  with FLOOD-14 ([#1111](https://github.com/monocongo/climate_indices/issues/1111));
+  they are absent from the table above because their names are not yet fixed.

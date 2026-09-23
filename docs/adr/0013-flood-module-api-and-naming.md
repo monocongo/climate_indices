@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted.
+Accepted. Nothing this record names exists yet: the package and its four
+public names land with FLOOD-08 through FLOOD-13 (#1105–#1110).
 
 The flood family ([#1098](https://github.com/monocongo/climate_indices/issues/1098))
 adds effective precipitation (PE), the Effective Drought Index (EDI), the Flood
@@ -48,8 +49,8 @@ looking for it will look for it beside them, so it also rides at
 `climate_indices.edi`.
 
 **The root route lands with the xarray adapter (#1108), not with the NumPy
-implementation (#1106).** Every name exported from the package root today
-carries both a NumPy and an xarray path, declared as an overload pair in
+implementation (#1106).** Every index function exported from the package root
+today carries both a NumPy and an xarray path, declared as an overload pair in
 `typed_public_api.py` (PCI is a hand-written wrapper, but it has both). Adding a
 NumPy-only root name would make EDI the first root name without an xarray path,
 a precedent worth more than the interim convenience of exposing it early.
@@ -71,6 +72,11 @@ than this site because it also plans unimplemented indices — the arrangement
 Nothing is added to `indices.py`, so the existing top-level drought API is
 unchanged by this family, and a future reader who greps `climate_indices.edi`
 finds a route that exists rather than one this record merely planned.
+
+This amends [ADR-0001](./0001-dual-numpy-xarray-api.md) only for the flood
+family, as [ADR-0005](./0005-fire-module-api.md) did for fire. Named wrappers
+over `indices.standardized_index()` are outside this decision and stay open
+([#1132](https://github.com/monocongo/climate_indices/issues/1132)).
 
 The CLI is not part of this subsystem: as with fire, flood indices reach the CLI
 through the existing `climate_indices` CLI only where an xarray adapter and a CF
