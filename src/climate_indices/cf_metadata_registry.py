@@ -68,6 +68,19 @@ _HAINES_1988 = (
 )
 
 
+_BYUN_WILHITE_1999 = (
+    "Byun, H.-R., & Wilhite, D. A. (1999). "
+    "Objective Quantification of Drought Severity and Duration. "
+    "Journal of Climate, 12(9), 2747-2756. "
+    "https://doi.org/10.1175/1520-0442(1999)012<2747:OQODSA>2.0.CO;2; "
+    "Byun, H.-R., & Lee, D.-K. (2002). "
+    "Defining Three Rainy Seasons and the Hydrological Summer Monsoon in Korea "
+    "using Available Water Resources Index. "
+    "Journal of the Meteorological Society of Japan, 80(1), 33-44. "
+    "https://doi.org/10.2151/jmsj.80.33"
+)
+
+
 CF_METADATA: dict[str, CFAttributes] = {
     "spi": {
         "long_name": "Standardized Precipitation Index",
@@ -195,34 +208,33 @@ CF_METADATA: dict[str, CFAttributes] = {
         "long_name": "Effective Precipitation",
         "units": "mm",
         "description": "Daily accumulated wetness indicating flood potential, not flooding.",
-        "references": (
-            "Byun, H.-R., & Wilhite, D. A. (1999). "
-            "Objective Quantification of Drought Severity and Duration. "
-            "Journal of Climate, 12(9), 2747-2756. "
-            "https://doi.org/10.1175/1520-0442(1999)012<2747:OQODSA>2.0.CO;2"
-        ),
+        "references": _BYUN_WILHITE_1999,
     },
     "edi": {
         "long_name": "Effective Drought Index",
         "units": "dimensionless",
-        "description": "Fixed-window index of wet and dry anomalies; wet values indicate flood potential, not flooding.",
-        "references": (
-            "Byun, H.-R., & Wilhite, D. A. (1999). "
-            "Objective Quantification of Drought Severity and Duration. "
-            "Journal of Climate, 12(9), 2747-2756. "
-            "https://doi.org/10.1175/1520-0442(1999)012<2747:OQODSA>2.0.CO;2"
+        "description": (
+            "Fixed-window standardized effective precipitation anomaly; positive values "
+            "mean above-normal effective precipitation. May inform flood potential, not flooding."
         ),
+        "references": _BYUN_WILHITE_1999,
     },
     "flood_index": {
         "long_name": "Flood Index",
         "units": "dimensionless",
-        "description": "I_F using harmonic effective precipitation; indicates flood potential, not flooding.",
+        "description": (
+            "I_F uses harmonic effective precipitation (Moishin et al., 2021); "
+            "the kernel in Deo et al. (2015) is unverified. Indicates flood potential, not flooding."
+        ),
         "references": (
             "Deo, R. C., Byun, H.-R., Adamowski, J. F., & Kim, D.-W. (2015). "
             "A Real-time Flood Monitoring Index Based on Daily Effective Precipitation "
             "and its Application to Brisbane and Lockyer Valley Flood Events. "
             "Water Resources Management, 29(11), 4075-4093. "
-            "https://doi.org/10.1007/s11269-015-1046-3"
+            "https://doi.org/10.1007/s11269-015-1046-3; "
+            "Moishin, M., Deo, R. C., Prasad, R., Raj, N., & Abdulla, S. (2021). "
+            "Designing Deep-Based Learning Flood Forecast Model With ConvLSTM Hybrid Algorithm. "
+            "IEEE Access, 9. https://doi.org/10.1109/ACCESS.2021.3065939"
         ),
     },
     "antecedent_precipitation_index": {
