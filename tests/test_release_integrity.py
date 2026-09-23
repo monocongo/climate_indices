@@ -89,7 +89,8 @@ def _job_legs(job: str) -> set[tuple[str, str]]:
     """Expand a job's inline python-version x os matrix, plus `include` entries, to (python, os) legs."""
     pythons = re.findall(r"^\s+python-version:\s*\[([^]]+)]", job, re.MULTILINE)
     systems = re.findall(r"^\s+os:\s*\[([^]]+)]", job, re.MULTILINE)
-    assert len(pythons) == 1 and len(systems) == 1, "Expected one inline python-version and os list"
+    assert len(pythons) == 1, "Expected one inline python-version list"
+    assert len(systems) == 1, "Expected one inline os list"
     legs = {
         (python, system)
         for python in re.findall(r"\d+\.\d+", pythons[0])
