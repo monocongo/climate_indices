@@ -15,35 +15,50 @@ and the family's scope boundary.
 
 The recurring constraint: for this family, the published material that would
 settle a question is frequently unobtainable. The Byun & Wilhite (1999) Table 5
-values are tabulated, but reproducing them needs the Hickman, Nebraska 1995–1996
-daily series (plotted only, never tabulated), the paper's missing-data
-substitution rules, and a multi-decade per-calendar-day baseline, and the fetch
-that produced the transcription is not reproducible on re-fetch, so the values
-would need re-reading before entering a fixture. Deo et al.
-(2015) is paywalled, and its abstract alone does not describe the kernel it
-implements. Kohler & Linsley (1951) has no digitized copy. Where a convention
-cannot be pinned from accessible sources, this record prefers a documented,
-citable deviation over an unreproducible claim of reproduction.
+values are tabulated and have since been read directly from a copy of the
+article, but reproducing them still needs the Hickman, Nebraska 1995–1996 daily
+series (plotted only, never tabulated), the paper's missing-data substitution
+rules, and a multi-decade per-calendar-day baseline; the paper names its data
+source as 193 High Plains stations with 37 years (1960–96) of daily
+precipitation, reduced to 113 after discarding stations missing more than 1% of
+their record. Deo et al. (2015) is paywalled, and its abstract alone does not
+describe the kernel it implements. Kohler & Linsley (1951) is partially
+retrievable through HathiTrust, which confirms its definitional content but
+supplies no tabulated values. Where a convention cannot be pinned from
+accessible sources, this record prefers a documented, citable deviation over an
+unreproducible claim of reproduction.
 
 ## Decision
 
 1. **EDI is the fixed-window form.** The summation duration is `D = 365`, and
-   `PRN = DEP / H_D` with `H_D = Σ_{n=1..D} 1/n`, `EDI = PRN / SD(PRN)`. The
-   Byun & Wilhite (1999) variable-duration extension — in which the summation
-   duration grows with the current dry spell — is **not** implemented. Adopting
-   it would convert a fixed linear filter into a recursion whose window depends
-   on dry-spell history, and both of its inputs are unresolved: the dry-day
-   threshold that defines a dry spell, and the duration definition, which the
-   paper contradicts itself on (Table 3 reads `DS = 365 + dry duration`, its own
-   worked example says `DS = 365 + 35 − 1`). Its only payoff is Table 5, which is
-   unreproducible regardless (see above). Fixing the window at 365 does not
-   depart from the originating group: Byun & Lee (2002) restates the same algebra
-   with `D = 365` fixed, and notes that the 1999 paper used `D` as a variable.
+   `PRN = DEP / H_D` with `H_D = Σ_{n=1..D} 1/n`. The Byun & Wilhite (1999)
+   variable-duration extension — in which the summation duration grows with the
+   current dry spell — is **not** implemented. The paper defines both of its
+   inputs: dry duration is the period of consecutive negative values of `SEP`
+   (Table 3), where `SEP = DEP / ST(EP)` (Eq. 5) over a per-calendar-day
+   `ST(EP)`, and the duration is `DS = 365 + dry duration − 1`. That last form is
+   the paper's own worked example — 35 days of dry duration on 5 June gives
+   `399 = 365 + 35 − 1` — and it disagrees by one with the shorthand in Table 4's
+   header, where each `j` is "CNS plus i"; the worked example is the operative
+   reading, corroborated by the reported maximum `DS` of 610 against 245 detected
+   dry days (`365 + 245 − 1 = 609`). The reason to reject the extension is
+   therefore not that its definition is unclear but that it is circular and
+   data-hungry: `DS` depends on `SEP`, and `SEP` depends on the multi-decade
+   per-calendar-day `MEP` and `ST(EP)` baseline, so the index cannot be computed
+   without that baseline. Its only payoff is Table 5, which is unreproducible
+   regardless (see above). Fixing the window at 365 does not depart from the
+   originating group: Byun & Lee (2002) restates the same algebra with `D = 365`
+   fixed, and notes that the 1999 paper used `D` as a variable. The paper also
+   defines a 15-day variant (`i` is 365 or 15); only 365 is implemented.
    Two deviations from the paper are deliberate and belong in the docstrings: no
-   5-day running-mean smoothing of the per-calendar-day MEP, and the
-   standardization denominator pinned to `SD(PRN)` — the Table 4 reading of EDI
-   as the standardized PRN, which Byun & Lee's Eq. (5) coincides with at
-   `D = 365` — where the 1999 paper does not pin one quantity.
+   5-day running-mean smoothing of the per-calendar-day `MEP` and `ST(EP)`, and
+   `D` fixed where the paper's `DS` varies. No further deviation is needed in the
+   standardization step: with `D` fixed, Eq. (9)'s two forms `PRN / ST(PRN)` and
+   `DEP / ST(DEP)` coincide, because the `Σ 1/N` factor is then a constant, and
+   `ST(DEP)` equals `ST(EP)`, since `MEP` is a per-calendar-day constant offset.
+   The fixed-window EDI is therefore the paper's own `SEP`. The paper does not
+   state whether `ST` is a sample or population standard deviation, so that
+   choice is recorded in the docstring rather than here.
 2. **I_F uses the same PE kernel as EDI**, and that kernel is chosen
    explicitly: the harmonic double sum of Byun & Wilhite Eq. (2), whose weights
    are `w_m = H_D − H_{m−1}`, **selected over Eq. (3)**. The 1999 paper declines
@@ -109,7 +124,11 @@ citable deviation over an unreproducible claim of reproduction.
 written ([#1117](https://github.com/monocongo/climate_indices/issues/1117)):
 PE and EDI can be checked against the originating group's own algebra
 (Byun & Lee 2002 Eq. (1)/(2)/(5)) and internal regression; API has the analytic
-`P/(1 − k)` limit, an independent `ahrapi` comparison, and regression; I_F has
+`P/(1 − k)` limit, an independent `ahrapi` comparison, and regression, and its
+recursion is now cited rather than assumed (Kohler & Linsley 1951 Eq. (3): each
+day's index is the previous day's multiplied by `k` with that day's rain added —
+the non-lagged form — with typical `k` of 0.85–0.90 and an assumed initial value
+converging within several weeks); I_F has
 no Deo-algebra check available and stays specification-level until the full text
 arrives. `tidyindex` is precedent that harmonic weighting on a rolling window is
 an established EDI construction — it does **not** share this kernel's weights
@@ -118,9 +137,11 @@ is external validation, and only the precipitation-extreme indices can reach
 that tier, through `climdex.pcic`.
 
 Deferred work is blocked on retrieval rather than on design: reproducing Table 5
-and implementing the variable-duration EDI both wait on the Hickman record and a
-settled dry-day threshold; an I_F numeric oracle waits on the Deo et al. (2015)
-full text; an API numeric oracle waits on Kohler & Linsley (1951). A reader who
+and implementing the variable-duration EDI both wait on the Hickman record, whose
+source the paper names, with the dry-day threshold and the `DS` definition now
+settled by decision 1; an I_F numeric oracle waits on the Deo et al. (2015) full
+text; an API numeric oracle waits on the remaining pages of Kohler & Linsley
+(1951), whose retrieved portion tabulates no values. A reader who
 wants the published variable-duration EDI should treat it as an unimplemented
 index, not as a bug in `edi()`.
 
