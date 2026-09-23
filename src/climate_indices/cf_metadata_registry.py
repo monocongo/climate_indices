@@ -189,6 +189,52 @@ CF_METADATA: dict[str, CFAttributes] = {
             "U.S. Department of Commerce, Weather Bureau, Washington, D.C."
         ),
     },
+    # Flood-family metadata precedes the NumPy kernels and xarray adapters (#1103).
+    # These describe flood potential, not observed flooding; none has a CF standard_name.
+    "effective_precipitation": {
+        "long_name": "Effective Precipitation",
+        "units": "mm",
+        "description": "Daily accumulated wetness indicating flood potential, not flooding.",
+        "references": (
+            "Byun, H.-R., & Wilhite, D. A. (1999). "
+            "Objective Quantification of Drought Severity and Duration. "
+            "Journal of Climate, 12(9), 2747-2756. "
+            "https://doi.org/10.1175/1520-0442(1999)012<2747:OQODSA>2.0.CO;2"
+        ),
+    },
+    "edi": {
+        "long_name": "Effective Drought Index",
+        "units": "dimensionless",
+        "description": "Fixed-window index of wet and dry anomalies; wet values indicate flood potential, not flooding.",
+        "references": (
+            "Byun, H.-R., & Wilhite, D. A. (1999). "
+            "Objective Quantification of Drought Severity and Duration. "
+            "Journal of Climate, 12(9), 2747-2756. "
+            "https://doi.org/10.1175/1520-0442(1999)012<2747:OQODSA>2.0.CO;2"
+        ),
+    },
+    "flood_index": {
+        "long_name": "Flood Index",
+        "units": "dimensionless",
+        "description": "I_F using harmonic effective precipitation; indicates flood potential, not flooding.",
+        "references": (
+            "Deo, R. C., Byun, H.-R., Adamowski, J. F., & Kim, D.-W. (2015). "
+            "A Real-time Flood Monitoring Index Based on Daily Effective Precipitation "
+            "and its Application to Brisbane and Lockyer Valley Flood Events. "
+            "Water Resources Management, 29(11), 4075-4093. "
+            "https://doi.org/10.1007/s11269-015-1046-3"
+        ),
+    },
+    "antecedent_precipitation_index": {
+        "long_name": "Antecedent Precipitation Index",
+        "units": "mm",
+        "description": "Daily antecedent wetness indicating flood potential, not flooding.",
+        "references": (
+            "Kohler, M. A., & Linsley, R. K. (1951). "
+            "Predicting the runoff from storm rainfall. "
+            "U.S. Weather Bureau Research Paper No. 34."
+        ),
+    },
     # Fire-weather indices (#793). Only entries for indices implemented in
     # `climate_indices.fire` are added here. One entry per output convention:
     # the Haines Index gets one per elevation variant (#810), because the
