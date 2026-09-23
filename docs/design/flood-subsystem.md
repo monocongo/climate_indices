@@ -88,15 +88,26 @@ API is a daily recursion, and it follows [ADR-0006](../adr/0006-fire-recursive-s
 and [ADR-0007](../adr/0007-fire-missing-data-policy.md) exactly as KBDI does:
 `spin_up`, `nan_policy`, `max_gap_days`, `initial_state`, and `return_state`
 mean what they mean there, and no flood-specific variant is introduced. The
-recursion has two published forms — `k · API_{t−1} + P_t` and the lagged
-`k · (API_{t−1} + P_{t−1})` — and the implementation picks one, cites it, and
-documents the other in the docstring.
+recursion's published form is the non-lagged one — Kohler & Linsley (1951)
+Eq. (3) gives `I₁ = k · I₀`, and the text states that "if rain occurs on any
+day, the amount of rain observed is added to the index" — so
+`API_t = k · API_{t−1} + P_t`. Typical `k` is 0.85–0.90 for the eastern and
+central United States; the source carries the index forward through the whole
+record, which is what the ADR-0006/0007 contract provides, and treats an assumed
+initial value as converging "within several weeks", which is the `spin_up`
+convention. The lagged variant `k · (API_{t−1} + P_{t−1})` that some sources use
+is documented in the docstring as the alternative and is not implemented.
 
 ## Deferred
 
 - **Variable-duration EDI** (the Byun & Wilhite extension) and reproduction of
-  their Table 5, both blocked on the Hickman 1995–1996 daily record and on a
-  settled dry-day threshold and duration definition.
+  their Table 5, both blocked on the Hickman 1995–1996 daily record: the dry-day
+  threshold and the `DS` definition are settled by ADR-0014 decision 1, and the
+  paper names its data source (193 High Plains stations, 37 years 1960–96,
+  reduced to 113). Anyone building a Table 5 fixture should note that its
+  "Minimum of CNS" row cannot be a consecutive-day count under the paper's own
+  definition of CNS, and that the Fig. 2 legend plots ANES in those panels — the
+  row appears mislabelled, so it is not a CNS fixture.
 - **A numeric I_F oracle**, blocked on the Deo et al. (2015) full text; I_F is
   specification-level until then, and the exponential kernel its abstracts
   describe is not implemented (ADR-0014).
