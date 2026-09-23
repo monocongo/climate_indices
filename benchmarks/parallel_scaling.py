@@ -574,6 +574,50 @@ def _connect_cluster(address: str, revision: str) -> Any:
     return client
 
 
+def _run_distributed_sweep(
+    index: _Index,
+    grid: _Grid,
+    client: Any,
+    workers: tuple[int, ...],
+    repeat: int,
+    serial_digest: str,
+    address: str,
+    read_seconds: float,
+    write_seconds: float,
+) -> None:
+    """Sweep worker counts on a connected ``dask.distributed`` cluster, printing each row.
+
+    Split out of ``_run_real_grid`` to keep that function's branching flat. The
+    eager serial digest is the equivalence gate: a mismatch raises rather than
+    printing a number, so no distributed speedup is ever reported for a result
+    that differs from the serial one.
+    """
+    print(
+        f"\nDask worker counts: {','.join(str(count) for count in workers)}; scheduler=distributed "
+        f"({address}); time=-1 (ADR-0003); every result gated against the eager serial digest; "
+        "compute-only seconds exclude distribute; total adds read + distribute + compute + the eager serial write"
+    )
+    print(
+        f"{'workers':>8} {'hosts':>6} {'blocks':>7} {'distribute':>10} {'compute':>9} {'speedup':>8} "
+        f"{'total':>9}  samples"
+    )
+    baseline = None
+    for worker_count in workers:
+        addresses, hosts = _select_workers(client.scheduler_info()["workers"], worker_count)
+        distribute_seconds, samples, digest = _measure_distributed(index, grid, client, addresses, repeat)
+        if digest != serial_digest:
+            raise RuntimeError(f"distributed result at {worker_count} workers does not match the eager serial run")
+        if baseline is None:
+            baseline = min(samples)
+        speedup = baseline / min(samples)
+        blocks = _spatial_blocks(grid.precip, worker_count)
+        total = read_seconds + distribute_seconds + min(samples) + write_seconds
+        print(
+            f"{worker_count:>8} {hosts:>6} {blocks:>7} {distribute_seconds:>10.3f} {min(samples):>9.3f} "
+            f"{speedup:>7.2f}x {total:>9.3f}  [{_format_samples(samples)}]"
+        )
+
+
 def _run_real_grid(args: argparse.Namespace) -> None:
     """Benchmark SPI on a real NetCDF grid: read, eager serial, then Dask workers.
 
@@ -661,30 +705,18 @@ def _run_real_grid(args: argparse.Namespace) -> None:
 
     if client is not None:
         assert serial_digest is not None
-        print(
-            f"\nDask worker counts: {','.join(str(count) for count in workers)}; scheduler=distributed "
-            f"({args.scheduler}); time=-1 (ADR-0003); every result gated against the eager serial digest; "
-            "compute-only seconds exclude distribute; total adds read + distribute + compute + the eager serial write"
+        assert args.scheduler is not None
+        _run_distributed_sweep(
+            index,
+            grid,
+            client,
+            workers,
+            args.repeat,
+            serial_digest,
+            args.scheduler,
+            read_seconds,
+            write_seconds,
         )
-        print(
-            f"{'workers':>8} {'hosts':>6} {'blocks':>7} {'distribute':>10} {'compute':>9} {'speedup':>8} "
-            f"{'total':>9}  samples"
-        )
-        baseline = None
-        for worker_count in workers:
-            addresses, hosts = _select_workers(client.scheduler_info()["workers"], worker_count)
-            distribute_seconds, samples, digest = _measure_distributed(index, grid, client, addresses, args.repeat)
-            if digest != serial_digest:
-                raise RuntimeError(f"distributed result at {worker_count} workers does not match the eager serial run")
-            if baseline is None:
-                baseline = min(samples)
-            speedup = baseline / min(samples)
-            blocks = _spatial_blocks(grid.precip, worker_count)
-            total = read_seconds + distribute_seconds + min(samples) + write_seconds
-            print(
-                f"{worker_count:>8} {hosts:>6} {blocks:>7} {distribute_seconds:>10.3f} {min(samples):>9.3f} "
-                f"{speedup:>7.2f}x {total:>9.3f}  [{_format_samples(samples)}]"
-            )
         return
 
     print(

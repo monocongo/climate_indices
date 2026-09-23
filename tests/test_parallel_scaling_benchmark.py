@@ -283,6 +283,31 @@ def test_measure_distributed_rejects_a_run_that_fills_the_land_mask(distributed_
         parallel_scaling._measure_distributed(index, grid, distributed_client, addresses, repeat=1)
 
 
+def test_run_distributed_sweep_prints_a_gated_row(
+    distributed_client: distributed.Client, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The extracted sweep prints its header and row, and raises on a digest mismatch."""
+    values = np.full((6, 2, 2), 2.0)
+    values[:, 1, 1] = np.nan
+    precip = xr.DataArray(values, coords={"lat": [10.0, 20.0], "lon": [1.0, 2.0]}, dims=("time", "lat", "lon"))
+    grid = parallel_scaling._Grid(precip=precip, valid_cells=np.array([[True, True], [True, False]]))
+    index = parallel_scaling._Index(lambda g: g.precip, 0)
+    digest = hashlib.sha256(memoryview(np.ascontiguousarray(values))).hexdigest()
+
+    parallel_scaling._run_distributed_sweep(
+        index, grid, distributed_client, (2,), 1, digest, "tcp://scheduler:8786", 0.5, 0.25
+    )
+    out = capsys.readouterr().out
+    assert "scheduler=distributed (tcp://scheduler:8786)" in out
+    assert "gated against the eager serial digest" in out
+    assert out.strip().splitlines()[-1].startswith(f"{2:>8}")
+
+    with pytest.raises(RuntimeError, match="does not match the eager serial run"):
+        parallel_scaling._run_distributed_sweep(
+            index, grid, distributed_client, (2,), 1, "0" * 64, "tcp://scheduler:8786", 0.0, 0.0
+        )
+
+
 def test_quiet_worker_silences_only_goodness_of_fit() -> None:
     """The worker-side filter must leave unrelated warning categories visible."""
     with warnings.catch_warnings(record=True) as caught:
