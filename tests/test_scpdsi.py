@@ -254,7 +254,8 @@ def test_climate_division_matches_scpdsi_oracle(palmer_division_dir, palmer_divi
     if os.environ.get("PYTEST_XDIST_WORKER"):
         scpdsi, scphdi, scpmdi, sczindex, params = _call(palmer_division_inputs, division)
     else:
-        scpdsi, scphdi, scpmdi, sczindex, params = request.getfixturevalue("palmer_scpdsi_results")[division]
+        # Direct fixture injection reruns the 344-division sweep in every xdist worker.
+        scpdsi, scphdi, scpmdi, sczindex, params = request.getfixturevalue("palmer_scpdsi_results")[division]  # NOSONAR
     assert params is not None
 
     for name, actual in (
