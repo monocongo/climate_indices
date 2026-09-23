@@ -68,7 +68,7 @@ _HAINES_1988 = (
 )
 
 
-_BYUN_WILHITE_1999 = (
+_BYUN_PE_EDI_REFERENCES = (
     "Byun, H.-R., & Wilhite, D. A. (1999). "
     "Objective Quantification of Drought Severity and Duration. "
     "Journal of Climate, 12(9), 2747-2756. "
@@ -208,16 +208,17 @@ CF_METADATA: dict[str, CFAttributes] = {
         "long_name": "Effective Precipitation",
         "units": "mm",
         "description": "Daily accumulated wetness indicating flood potential, not flooding.",
-        "references": _BYUN_WILHITE_1999,
+        "references": _BYUN_PE_EDI_REFERENCES,
     },
     "edi": {
         "long_name": "Effective Drought Index",
         "units": "dimensionless",
         "description": (
             "Fixed-window standardized effective precipitation anomaly; positive values "
-            "mean above-normal effective precipitation. May inform flood potential, not flooding."
+            "mean above-normal effective precipitation, negative values below-normal. "
+            "May inform flood potential, not flooding."
         ),
-        "references": _BYUN_WILHITE_1999,
+        "references": _BYUN_PE_EDI_REFERENCES,
     },
     "flood_index": {
         "long_name": "Flood Index",

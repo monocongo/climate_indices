@@ -234,6 +234,19 @@ def test_flood_entries_describe_potential_without_inventing_standard_names(index
     assert "standard_name" not in CF_METADATA[index_name]
 
 
+@pytest.mark.parametrize(
+    ("index_name", "phrases"),
+    [
+        ("edi", ("Fixed-window", "positive values", "negative values")),
+        ("flood_index", ("harmonic", "unverified")),
+    ],
+)
+def test_flood_descriptions_disclose_scientific_conventions(index_name: str, phrases: tuple[str, ...]) -> None:
+    """Describe EDI's sign and the flood index's unverified kernel lineage."""
+    for phrase in phrases:
+        assert phrase in CF_METADATA[index_name]["description"]
+
+
 @pytest.mark.parametrize("index_name", FIRE_KEYS)
 def test_fire_entries_describe_themselves_without_inventing_standard_names(index_name: str) -> None:
     """Fire adapters take their description from the registry; no fire entry claims a CF standard_name."""
