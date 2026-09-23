@@ -29,6 +29,14 @@ the first time step as the land mask, replaces zeros with ``0.01`` mm for the ga
 fit, times every sample of every configuration, and separates the NetCDF read and
 write from the compute.
 
+``--scheduler ADDRESS`` (with ``--netcdf``) replaces the local ``processes``
+scheduler with a running ``dask.distributed`` cluster: ``--cores`` then counts
+worker *processes* on that cluster rather than local cores, packed one node at
+a time (#1127). Inputs are persisted onto the selected workers before timing
+starts, reported separately as the distribute time, and every distributed
+result must match the eager serial run's output bit for bit or the benchmark
+raises rather than reporting a number.
+
 Run from the repository root::
 
     uv run benchmarks/parallel_scaling.py
@@ -36,6 +44,8 @@ Run from the repository root::
     uv run benchmarks/parallel_scaling.py --indices spi,spei,pet,eddi --serial-only
     uv run benchmarks/parallel_scaling.py --netcdf mar_cli_chirps3.nc --cores 1,2,4,8 --scale 6
     uv run benchmarks/parallel_scaling.py --netcdf mar_cli_chirps3.nc --scale 6 --distribution pearson
+    uv run benchmarks/parallel_scaling.py --netcdf nclimgrid_prcp.nc --var-name prcp --scale 6 \\
+        --scheduler tcp://10.0.0.1:8786 --cores 16,32,64
 """
 
 from __future__ import annotations
@@ -50,7 +60,7 @@ import subprocess
 import time
 import warnings
 from collections.abc import Callable
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import dask
 import numpy as np
@@ -326,15 +336,84 @@ def _measure(index: _Index, grid: _Grid, workers: int, repeat: int) -> tuple[flo
     return tuple(timings[1:])
 
 
+def _select_workers(workers_info: dict[str, dict[str, Any]], count: int) -> tuple[tuple[str, ...], int]:
+    """Pick ``count`` worker addresses from a ``Client.scheduler_info()["workers"]`` mapping.
+
+    Sorted by ``(host, address)`` and taken in order, so selection packs one node
+    at a time: with N processes per node, ``--cores N,2N,3N`` means 1, 2 and 3
+    nodes. Returns the chosen addresses and the number of distinct hosts among
+    them, so the results table can show node count alongside worker count.
+    """
+    ordered = sorted(workers_info.items(), key=lambda item: (item[1].get("host", item[0]), item[0]))
+    if count > len(ordered):
+        raise ValueError(f"cluster has {len(ordered)} worker processes, requested {count}")
+    selected = ordered[:count]
+    addresses = tuple(address for address, _ in selected)
+    hosts = len({info.get("host", address) for address, info in selected})
+    return addresses, hosts
+
+
+def _measure_distributed(
+    index: _Index, grid: _Grid, client: Any, addresses: tuple[str, ...], repeat: int
+) -> tuple[float, tuple[float, ...], str]:
+    """Persist chunked inputs onto ``addresses``, then time ``repeat`` distributed computes.
+
+    Mirrors ``_measure``: one warm-up run plus ``repeat`` timed runs, every
+    sample returned. Persisting the input onto the selected workers is untimed
+    and reported separately as the distribute time, since sending a multi-GB
+    grid over the network is not part of what the compute-only figure claims to
+    measure. The finite-tail gate runs once, against the last timed run's
+    result, exactly as ``_measure`` does.
+
+    Returns:
+        distribute seconds, every timed compute sample, and the SHA-256 of the
+        gathered result -- ``_run_real_grid`` compares this against the eager
+        serial digest before printing any speedup.
+    """
+    import distributed
+
+    workers = len(addresses)
+    inputs = _Grid(
+        precip=_chunk_for_workers(grid.precip, workers),
+        pet=_chunk_for_workers(grid.pet, workers) if grid.pet is not None else None,
+        temperature=_chunk_for_workers(grid.temperature, workers) if grid.temperature is not None else None,
+        valid_cells=grid.valid_cells,
+    )
+    distribute_start = time.perf_counter()
+    persisted = _Grid(
+        precip=client.persist(inputs.precip, workers=addresses),
+        pet=client.persist(inputs.pet, workers=addresses) if inputs.pet is not None else None,
+        temperature=client.persist(inputs.temperature, workers=addresses) if inputs.temperature is not None else None,
+        valid_cells=inputs.valid_cells,
+    )
+    futures = []
+    for value in (persisted.precip, persisted.pet, persisted.temperature):
+        if value is not None:
+            futures.extend(distributed.futures_of(value))
+    distributed.wait(futures)
+    distribute_seconds = time.perf_counter() - distribute_start
+
+    timings = []
+    result = None
+    for _ in range(repeat + 1):
+        start = time.perf_counter()
+        result = index.run(persisted).compute(workers=list(addresses), allow_other_workers=False)
+        timings.append(time.perf_counter() - start)
+    assert result is not None
+    _require_finite_tail(result.values, index.leading_pad, grid.valid_cells)
+    digest = hashlib.sha256(memoryview(np.ascontiguousarray(result.values))).hexdigest()
+    return distribute_seconds, tuple(timings[1:]), digest
+
+
 def _spatial_blocks(array: xr.DataArray, workers: int) -> int:
     """Number of spatial blocks ``workers`` produces for ``array``."""
     chunked = _chunk_for_workers(array, workers)
     return math.prod(len(axis_chunks) for axis_chunks in chunked.chunks[1:])
 
 
-def _default_workers(cells: int = REFERENCE_LAT * REFERENCE_LON) -> tuple[int, ...]:
-    """Powers of two from 1 up to the CPU count, never above the grid's cells."""
-    limit = min(os.cpu_count() or 1, cells)
+def _default_workers(cells: int = REFERENCE_LAT * REFERENCE_LON, cap: int | None = None) -> tuple[int, ...]:
+    """Powers of two from 1 up to ``cap`` (default: the CPU count), never above the grid's cells."""
+    limit = min(cap if cap is not None else (os.cpu_count() or 1), cells)
     counts = [1]
     while counts[-1] * 2 <= limit:
         counts.append(counts[-1] * 2)
@@ -464,13 +543,47 @@ def load_netcdf_grid(path: str, var_name: str) -> _Grid:
     return _Grid(precip=grid, valid_cells=valid_cells)
 
 
+def _require_cluster_capacity(counts: tuple[int, ...], available: int) -> None:
+    """Exit with a message if any worker count exceeds the connected cluster's worker processes."""
+    exceeding = [count for count in counts if count > available]
+    if exceeding:
+        raise SystemExit(f"worker counts {exceeding} exceed the {available} connected worker processes")
+
+
+def _connect_cluster(address: str, revision: str) -> Any:
+    """Connect to a running ``dask.distributed`` scheduler and verify every worker matches this run.
+
+    Refuses to proceed if any worker is not logging at WARNING or was not
+    started from this checkout's commit: either mismatch would make the
+    timings incomparable to the single-machine baseline without saying so.
+    ``client.get_versions(check=True)`` covers the Python/library versions.
+    """
+    import distributed
+
+    client = distributed.Client(address)
+    client.get_versions(check=True)
+    client.run(_quiet_worker)
+    levels = client.run(lambda: os.environ.get(ENV_LOG_LEVEL))
+    bad_levels = {worker: level for worker, level in levels.items() if level != "WARNING"}
+    if bad_levels:
+        raise SystemExit(f"workers not running with {ENV_LOG_LEVEL}=WARNING: {bad_levels}")
+    revisions = client.run(_revision)
+    bad_revisions = {worker: rev for worker, rev in revisions.items() if rev != revision}
+    if bad_revisions:
+        raise SystemExit(f"workers not on checkout revision {revision}: {bad_revisions}")
+    return client
+
+
 def _run_real_grid(args: argparse.Namespace) -> None:
     """Benchmark SPI on a real NetCDF grid: read, eager serial, then Dask workers.
 
     The read is timed on its own, and the Dask table reports compute-only
     seconds plus a total that adds the read and, when requested, the write of
     the eager serial result, so the NetCDF I/O never hides inside a compute
-    figure.
+    figure. ``--scheduler`` switches the worker sweep from the local
+    ``processes`` scheduler to a ``dask.distributed`` cluster (#1127); that
+    branch adds a distribute-time column and gates every result against the
+    eager serial digest before reporting it.
     """
     scale = args.scale or 6
     distribution = Distribution[args.distribution or "gamma"]
@@ -482,8 +595,7 @@ def _run_real_grid(args: argparse.Namespace) -> None:
     read_seconds = time.perf_counter() - read_start
 
     lat_cells, lon_cells = grid.precip.sizes["lat"], grid.precip.sizes["lon"]
-    workers = args.cores or _default_workers(lat_cells * lon_cells)
-    _require_worker_counts(workers, lat_cells * lon_cells)
+    cells = lat_cells * lon_cells
 
     data_start_year = int(grid.precip["time"].dt.year[0])
 
@@ -503,7 +615,8 @@ def _run_real_grid(args: argparse.Namespace) -> None:
     valid = grid.valid_cells
     assert valid is not None
 
-    print(f"checkout revision: {_revision()}")
+    revision = _revision()
+    print(f"checkout revision: {revision}")
     print(f"fixture: {os.path.abspath(args.netcdf)} sha256={_hash_file(args.netcdf)}")
     print(f"grid: time={grid.precip.sizes['time']} lat={lat_cells} lon={lon_cells}")
     print(
@@ -514,11 +627,28 @@ def _run_real_grid(args: argparse.Namespace) -> None:
         "so the sampled preflight cell holds data"
     )
     print(_environment())
+
+    client = None
+    if args.scheduler:
+        client = _connect_cluster(args.scheduler, revision)
+        cluster_workers = client.scheduler_info()["workers"]
+        workers = args.cores or _default_workers(cells, cap=len(cluster_workers))
+        _require_worker_counts(workers, cells)
+        _require_cluster_capacity(workers, len(cluster_workers))
+        print(f"cluster: {len(cluster_workers)} worker processes at {args.scheduler}")
+    else:
+        workers = args.cores or _default_workers(cells)
+        _require_worker_counts(workers, cells)
+
     print(f"process: read {read_seconds:.3f} s; {args.repeat} timed runs per configuration after a warm-up")
 
     _quiet_logging()
     index.run(grid)
     serial = tuple(_time_serial(grid, index) for _ in range(args.repeat))
+    serial_digest = None
+    if args.scheduler:
+        # one extra untimed pass: the digest is the equivalence gate, not a timing
+        serial_digest = hashlib.sha256(memoryview(np.ascontiguousarray(index.run(grid).values))).hexdigest()
     write_seconds = _write_output(index, grid, args.write_output)
     serial_total = read_seconds + min(serial) + write_seconds
     print(
@@ -527,6 +657,34 @@ def _run_real_grid(args: argparse.Namespace) -> None:
         f"total={serial_total:.3f} s"
     )
     if args.serial_only:
+        return
+
+    if client is not None:
+        assert serial_digest is not None
+        print(
+            f"\nDask worker counts: {','.join(str(count) for count in workers)}; scheduler=distributed "
+            f"({args.scheduler}); time=-1 (ADR-0003); every result gated against the eager serial digest; "
+            "compute-only seconds exclude distribute; total adds read + distribute + compute + the eager serial write"
+        )
+        print(
+            f"{'workers':>8} {'hosts':>6} {'blocks':>7} {'distribute':>10} {'compute':>9} {'speedup':>8} "
+            f"{'total':>9}  samples"
+        )
+        baseline = None
+        for worker_count in workers:
+            addresses, hosts = _select_workers(client.scheduler_info()["workers"], worker_count)
+            distribute_seconds, samples, digest = _measure_distributed(index, grid, client, addresses, args.repeat)
+            if digest != serial_digest:
+                raise RuntimeError(f"distributed result at {worker_count} workers does not match the eager serial run")
+            if baseline is None:
+                baseline = min(samples)
+            speedup = baseline / min(samples)
+            blocks = _spatial_blocks(grid.precip, worker_count)
+            total = read_seconds + distribute_seconds + min(samples) + write_seconds
+            print(
+                f"{worker_count:>8} {hosts:>6} {blocks:>7} {distribute_seconds:>10.3f} {min(samples):>9.3f} "
+                f"{speedup:>7.2f}x {total:>9.3f}  [{_format_samples(samples)}]"
+            )
         return
 
     print(
@@ -606,6 +764,11 @@ def _parse_args() -> argparse.Namespace:
         help="SPI distribution in --netcdf mode (default: gamma); pearson degenerates on heavily masked grids (#1118)",
     )
     parser.add_argument("--write-output", help="write the computed SPI result to this NetCDF and report the write time")
+    parser.add_argument(
+        "--scheduler",
+        help="dask.distributed scheduler address (e.g. tcp://host:8786) in --netcdf mode; --cores then "
+        "counts worker processes on that cluster instead of local processes (#1127)",
+    )
     args = parser.parse_args()
     args.indices = args.indices or ("spi" if args.netcdf else "spi,spei")
     unknown = sorted(set(args.indices.split(",")) - _RUNNERS.keys())
@@ -625,6 +788,7 @@ def _parse_args() -> argparse.Namespace:
                 ("--calibration-end", args.calibration_end),
                 ("--distribution", args.distribution),
                 ("--write-output", args.write_output),
+                ("--scheduler", args.scheduler),
             )
             if value is not None
         ]

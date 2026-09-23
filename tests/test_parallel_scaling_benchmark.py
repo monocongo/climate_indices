@@ -7,6 +7,7 @@ in ``benchmarks/parallel_scaling.py`` and are run manually.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import math
 import sys
@@ -14,6 +15,7 @@ import warnings
 from pathlib import Path
 from types import ModuleType
 
+import distributed
 import numpy as np
 import pandas as pd
 import pytest
@@ -76,7 +78,12 @@ def test_netcdf_mode_rejects_arguments_it_cannot_honour(monkeypatch: pytest.Monk
     monkeypatch.setattr(sys, "argv", ["parallel_scaling.py", "--netcdf", "x.nc", "--indices", "spi,spei"])
     with pytest.raises(SystemExit):
         parallel_scaling._parse_args()
-    for ignored in (["--scale", "6"], ["--var-name", "precip"], ["--write-output", "out.nc"]):
+    for ignored in (
+        ["--scale", "6"],
+        ["--var-name", "precip"],
+        ["--write-output", "out.nc"],
+        ["--scheduler", "tcp://x:8786"],
+    ):
         monkeypatch.setattr(sys, "argv", ["parallel_scaling.py", *ignored])
         with pytest.raises(SystemExit):
             parallel_scaling._parse_args()
@@ -216,6 +223,64 @@ def test_measure_rejects_a_run_that_fills_the_land_mask() -> None:
 
     with pytest.raises(RuntimeError, match="marked as missing"):
         parallel_scaling._measure(index, grid, workers=2, repeat=1)
+
+
+def test_select_workers_packs_addresses_node_major() -> None:
+    """Selection sorts by (host, address) and packs one host's processes before the next."""
+    workers_info = {
+        "tcp://10.0.0.2:1": {"host": "10.0.0.2"},
+        "tcp://10.0.0.1:2": {"host": "10.0.0.1"},
+        "tcp://10.0.0.1:1": {"host": "10.0.0.1"},
+        "tcp://10.0.0.2:2": {"host": "10.0.0.2"},
+    }
+    addresses, hosts = parallel_scaling._select_workers(workers_info, 2)
+    assert addresses == ("tcp://10.0.0.1:1", "tcp://10.0.0.1:2")
+    assert hosts == 1
+
+    addresses, hosts = parallel_scaling._select_workers(workers_info, 4)
+    assert hosts == 2
+
+    with pytest.raises(ValueError, match="requested 5"):
+        parallel_scaling._select_workers(workers_info, 5)
+
+
+@pytest.fixture
+def distributed_client() -> distributed.Client:
+    """A 2-worker in-process ``distributed`` cluster for the distributed-measure tests."""
+    with distributed.Client(n_workers=2, threads_per_worker=1, processes=False, dashboard_address=None) as client:
+        yield client
+
+
+def test_measure_distributed_persists_and_gates_equivalence(distributed_client: distributed.Client) -> None:
+    """A masked grid round-trips through persist + distributed compute with a stable, reproducible digest."""
+    values = np.full((6, 2, 2), 2.0)
+    values[:, 1, 1] = np.nan
+    precip = xr.DataArray(values, coords={"lat": [10.0, 20.0], "lon": [1.0, 2.0]}, dims=("time", "lat", "lon"))
+    valid_cells = np.array([[True, True], [True, False]])
+    grid = parallel_scaling._Grid(precip=precip, valid_cells=valid_cells)
+    index = parallel_scaling._Index(lambda g: g.precip, 0)
+    addresses = tuple(distributed_client.scheduler_info()["workers"])
+
+    distribute_seconds, samples, digest = parallel_scaling._measure_distributed(
+        index, grid, distributed_client, addresses, repeat=1
+    )
+    assert distribute_seconds >= 0.0
+    assert len(samples) == 1
+    assert digest == hashlib.sha256(memoryview(np.ascontiguousarray(values))).hexdigest()
+
+
+def test_measure_distributed_rejects_a_run_that_fills_the_land_mask(distributed_client: distributed.Client) -> None:
+    """``_measure_distributed`` applies the land mask to the gathered result, not just the input."""
+    values = np.full((6, 2, 2), 2.0)
+    values[:, 1, 1] = np.nan
+    precip = xr.DataArray(values, coords={"lat": [10.0, 20.0], "lon": [1.0, 2.0]}, dims=("time", "lat", "lon"))
+    valid_cells = np.array([[True, True], [True, False]])
+    grid = parallel_scaling._Grid(precip=precip, valid_cells=valid_cells)
+    index = parallel_scaling._Index(lambda g: g.precip.fillna(1.0), 0)
+    addresses = tuple(distributed_client.scheduler_info()["workers"])
+
+    with pytest.raises(RuntimeError, match="marked as missing"):
+        parallel_scaling._measure_distributed(index, grid, distributed_client, addresses, repeat=1)
 
 
 def test_quiet_worker_silences_only_goodness_of_fit() -> None:
