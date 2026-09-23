@@ -214,7 +214,8 @@ def _time_cli(args: argparse.Namespace) -> None:
     warnings.filterwarnings("ignore", category=GoodnessOfFitWarning)
 
     output_dir = _safe_write_path(args.output_dir, "--output-dir")
-    output_dir.mkdir(parents=True, exist_ok=True)
+    # S8707: operator-chosen --output-dir (see _safe_write_path); only fixed nclimgrid_*.nc names are joined.
+    output_dir.mkdir(parents=True, exist_ok=True)  # NOSONAR (S8707)
     output_base = str(output_dir / "nclimgrid")
     argv = _cli_argv(
         args.prepared,
