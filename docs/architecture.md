@@ -472,10 +472,9 @@ uv run pytest tests/test_property_based.py
 ```yaml
 Matrix (core suite):
   test (every event):
-    - ubuntu-latest: Python 3.10, 3.11, 3.14
+    - ubuntu-latest: Python 3.10, 3.11, 3.12, 3.13, 3.14
     - macos-latest: Python 3.14
   test-full (everything except pull requests):
-    - ubuntu-latest: Python 3.12, 3.13
     - macos-latest: Python 3.10
 Steps:
   1. Checkout code

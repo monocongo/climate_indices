@@ -47,17 +47,16 @@ ENTRYPOINT ["python", "-m", "climate_indices"]
 schedule (Mondays), and manual dispatch
 
 **Core test matrix** (`pytest -n auto`, split across two jobs):
-- `test` (every event): ubuntu-latest on Python 3.10, 3.11, and 3.14, plus
-  macOS on 3.14
-- `test-full` (everything except pull requests): ubuntu-latest on Python 3.12
-  and 3.13, plus macOS on 3.10
+- `test` (every event): ubuntu-latest on Python 3.10, 3.11, 3.12, 3.13, and 3.14,
+  plus macOS on 3.14
+- `test-full` (everything except pull requests): macOS on Python 3.10
 
 `uv.lock` resolves three distinct dependency stacks (3.10; 3.11; and 3.12
-through 3.14, which install identical packages), so a pull request runs one leg
-per stack plus both support boundaries. Together the two jobs cover every
-supported Python on Linux and both boundaries on macOS, and
-`tests/test_release_integrity.py` enforces that the two never overlap and never
-drop a supported version.
+through 3.14, which install identical packages), yet interpreter behavior
+differs, so a pull request still exercises every supported minor on Linux.
+Together the two jobs cover every supported Python on Linux and both boundaries
+on macOS, and `tests/test_release_integrity.py` enforces that the two never
+overlap and never drop a supported version.
 
 Single-owner jobs run once per event: `lint` (ruff, mypy), `docs`, `validation`
 (3.12), `meta` (repo checks, 3.10), `test-minimum-deps` (3.10), `notebooks`, and

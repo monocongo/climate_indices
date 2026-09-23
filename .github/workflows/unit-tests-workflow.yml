@@ -90,12 +90,11 @@ jobs:
   # Compatibility policy: expensive or environment-independent suites run once
   # (`validation` on 3.12, repo/meta checks on 3.10, minimum dependencies on
   # 3.10). The full behavior suite runs on every supported interpreter, split
-  # across two jobs by how much a leg adds. uv.lock resolves three distinct
-  # dependency stacks: 3.10 (numpy 2.2, pandas 2, zarr 2.x), 3.11 (zarr 3.1),
-  # and 3.12-3.14 (identical packages, zarr 3.3). A pull request therefore runs
-  # one leg per stack plus both support boundaries and macOS on the newest
-  # interpreter (this job); the legs that repeat a stack (`test-full`) run on
-  # pushes to main, merge groups, the weekly schedule, and manual dispatch.
+  # across two jobs by event. uv.lock resolves three distinct dependency stacks
+  # (3.10; 3.11; 3.12-3.14), but interpreter behavior differs, so a pull
+  # request runs every supported minor on Linux plus macOS on the newest
+  # interpreter (this job); `test-full` keeps the remaining macOS minimum leg
+  # on pushes to main, merge groups, the weekly schedule, and manual dispatch.
   # Do not replace legs with a smoke-only subset, and keep the two jobs
   # disjoint: tests/test_release_integrity.py enforces both.
   test:
@@ -105,7 +104,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.10', '3.11', '3.14']
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
         os: [ubuntu-latest]
         include:
           - python-version: '3.14'
@@ -140,10 +139,9 @@ jobs:
           --ignore=tests/test_review_scripts.py
           --ignore=tests/test_type_checking.py
 
-  # The remaining legs of the full matrix; see the policy above `test`. Keep
-  # the steps the same as `test` (the integrity tests compare the core
-  # command) so a leg means the same thing in both jobs; the one difference is
-  # the source-build denial on the install step below.
+  # The remaining leg of the full matrix; see the policy above `test`. Keep the
+  # steps the same as `test` (the integrity tests compare the core command) so a
+  # leg means the same thing in both jobs.
   test-full:
     if: github.event_name != 'pull_request'
     runs-on: ${{ matrix.os }}
@@ -152,11 +150,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.12', '3.13']
-        os: [ubuntu-latest]
-        include:
-          - python-version: '3.10'
-            os: macos-latest
+        python-version: ['3.10']
+        os: [macos-latest]
 
     steps:
       - name: Checkout code
@@ -170,11 +165,10 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
 
-      # Only the 3.10 leg may build from source: it resolves zarr 2.x, whose
-      # asciitree dependency ships as an sdist-only release. Every other leg
-      # denies source builds, like the other jobs that install the lock.
+      # Python 3.10 resolves zarr 2.x, whose asciitree dependency ships as an
+      # sdist-only release, so source builds must stay allowed here.
       - name: Install dependencies
-        run: uv sync --locked --dev ${{ matrix.python-version != '3.10' && '--no-build' || '' }}
+        run: uv sync --locked --dev  # NOSONAR: 3.10 needs the sdist-only asciitree from the zarr 2.x stack
 
       - name: Run core tests
         run: >
