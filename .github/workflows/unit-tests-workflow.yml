@@ -141,8 +141,9 @@ jobs:
           --ignore=tests/test_type_checking.py
 
   # The remaining legs of the full matrix; see the policy above `test`. Keep
-  # the steps identical to `test` (the integrity tests compare the core
-  # command) so a leg means the same thing in both jobs.
+  # the steps the same as `test` (the integrity tests compare the core
+  # command) so a leg means the same thing in both jobs; the one difference is
+  # the source-build denial on the install step below.
   test-full:
     if: github.event_name != 'pull_request'
     runs-on: ${{ matrix.os }}
@@ -169,10 +170,11 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
 
-      # `--no-build` is not usable here: Python 3.10 resolves zarr 2.x, whose
-      # asciitree dependency ships as an sdist-only release.
+      # Only the 3.10 leg may build from source: it resolves zarr 2.x, whose
+      # asciitree dependency ships as an sdist-only release. Every other leg
+      # denies source builds, like the other jobs that install the lock.
       - name: Install dependencies
-        run: uv sync --locked --dev
+        run: uv sync --locked --dev ${{ matrix.python-version != '3.10' && '--no-build' || '' }}
 
       - name: Run core tests
         run: >

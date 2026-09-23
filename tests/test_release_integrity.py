@@ -296,13 +296,20 @@ def test_full_matrix_runs_beyond_pull_requests_and_the_pull_request_job_is_ungat
 
 
 def test_test_full_job_runs_the_same_core_command_as_the_pull_request_job() -> None:
-    """A leg must mean the same thing in `test` and `test-full`: same install, same core command."""
+    """A leg must mean the same thing in `test` and `test-full`: locked dev install, same core command.
+
+    `test-full` additionally denies source builds on every leg except 3.10, whose zarr 2.x
+    stack needs the sdist-only asciitree; `test` is left as it was.
+    """
     workflow = (ROOT / UNIT_TESTS_WORKFLOW).read_text(encoding="utf-8")
     pull_request_job = _workflow_job(workflow, "test")
     full_job = _workflow_job(workflow, "test-full")
 
-    install = "- name: Install dependencies\n        run: uv sync --locked --dev\n"
-    assert install in pull_request_job and install in full_job
+    assert "- name: Install dependencies\n        run: uv sync --locked --dev\n" in pull_request_job
+    assert (
+        "- name: Install dependencies\n"
+        "        run: uv sync --locked --dev ${{ matrix.python-version != '3.10' && '--no-build' || '' }}\n"
+    ) in full_job
     assert (
         pull_request_job.split("- name: Run core tests")[1].strip()
         == full_job.split("- name: Run core tests")[1].strip()
