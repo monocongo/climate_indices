@@ -257,6 +257,7 @@ def test_unit_test_jobs_cover_every_supported_python_without_overlap() -> None:
     pull_request_legs, full_legs = _unit_test_legs()
 
     assert {python for python, _ in pull_request_legs | full_legs} == set(_declared_python_versions())
+    assert {(python, "ubuntu-latest") for python in _declared_python_versions()} <= pull_request_legs | full_legs
     assert not pull_request_legs & full_legs, "a leg in both jobs runs twice on pushes to main"
 
 
