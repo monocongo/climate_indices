@@ -2,8 +2,9 @@
 
 ## Status
 
-Accepted. The indices it describes land with FLOOD-08 through FLOOD-13
-(#1105–#1110); none exists yet.
+Amended: the effective-precipitation kernel landed in #1105; the remaining
+indices land with FLOOD-09 through FLOOD-13 (#1106–#1110). The scientific
+conventions are unchanged.
 
 The flood oracle survey (#1101, `docs/research/flood-oracle-survey.md`) established
 which external oracles for PE, EDI, I_F, and API are actually reproducible, and
