@@ -381,7 +381,8 @@ def _sweep_workers() -> int | None:
     """
     if os.environ.get("PYTEST_XDIST_WORKER"):
         return None
-    return os.cpu_count()
+    # ponytail: cap spawn workers to four; raise only if a larger pool improves sweeps without memory pressure.
+    return min(os.cpu_count() or 1, 4)
 
 
 @pytest.fixture(scope="session")

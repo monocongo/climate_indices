@@ -59,6 +59,14 @@ def test_process_pool_sweep_matches_serial_and_isolates_failures(palmer_awcs):
     assert isinstance(failure.value.__cause__, Exception)
 
 
+def test_sweep_worker_count_is_bounded(monkeypatch):
+    monkeypatch.delenv("PYTEST_XDIST_WORKER", raising=False)
+    monkeypatch.setattr(conftest.os, "cpu_count", lambda: 64)
+    assert conftest._sweep_workers() == 4
+    monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw0")
+    assert conftest._sweep_workers() is None
+
+
 def test_division_input_load_failure_is_recorded_not_raised(tmp_path, monkeypatch):
     """A fixture load failure stays per-division instead of poisoning the session fixture."""
     directory = tmp_path / "001"
