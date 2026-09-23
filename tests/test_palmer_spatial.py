@@ -50,7 +50,7 @@ class TestSpatialBlockMatchesPerLocation:
     worth of K-factor rounding happened to expose.
     """
 
-    def test_grid_block_matches_sweep_results(self, palmer_awcs, palmer_pdsi_results):
+    def test_grid_block_matches_per_division_calls(self, palmer_awcs):
         divisions = sorted(d for d in palmer_awcs if (_FIXTURE_ROOT / d).is_dir())[:12]
         rows, cols = 3, 4
         precips_block, pet_block, awc_block = _stack_divisions(divisions, palmer_awcs, rows, cols)
@@ -69,11 +69,18 @@ class TestSpatialBlockMatchesPerLocation:
         assert params is not None
         assert params["alpha"].shape == (12, rows, cols)
 
+        # Only these divisions are compared, so call pdsi() for just them rather than
+        # taking the session sweep fixture, which computes all 344 divisions.
         for idx, division in enumerate(divisions):
             r, c = divmod(idx, cols)
-            expected_pdsi, expected_phdi, expected_pmdi, expected_zindex, expected_params = palmer_pdsi_results[
-                division
-            ]
+            expected_pdsi, expected_phdi, expected_pmdi, expected_zindex, expected_params = palmer.pdsi(
+                np.load(_FIXTURE_ROOT / division / "precips.npy"),
+                np.load(_FIXTURE_ROOT / division / "pet.npy"),
+                palmer_awcs[division],
+                _DATA_START_YEAR,
+                _CALIBRATION_START,
+                _CALIBRATION_END,
+            )
             np.testing.assert_array_equal(pdsi[:, r, c], expected_pdsi, err_msg=f"{division}: PDSI")
             np.testing.assert_array_equal(phdi[:, r, c], expected_phdi, err_msg=f"{division}: PHDI")
             np.testing.assert_array_equal(pmdi[:, r, c], expected_pmdi, err_msg=f"{division}: PMDI")

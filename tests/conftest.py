@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import multiprocessing
 import os
+from concurrent.futures import Future, ProcessPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -294,7 +296,11 @@ def palmer_division_inputs(palmer_awcs) -> _PalmerSweep:
     return inputs
 
 
-def _palmer_sweep(entry_point: str, inputs: dict[str, tuple[np.ndarray, np.ndarray, float]]) -> _PalmerSweep:
+def _palmer_sweep(
+    entry_point: str,
+    inputs: dict[str, tuple[np.ndarray, np.ndarray, float]],
+    max_workers: int | None = None,
+) -> _PalmerSweep:
     """Run one Palmer entry point across every fixture climate division.
 
     The session-scoped fixtures below cache the result so the 344-division
@@ -309,39 +315,83 @@ def _palmer_sweep(entry_point: str, inputs: dict[str, tuple[np.ndarray, np.ndarr
     the sweep keeps going and the failure resurfaces where its division is
     read, so one bad division cannot turn every consumer into a setup error.
 
+    Each division is independent, so a ``max_workers`` process pool splits the
+    sweep without changing any result (the divisions are bit-identical to a
+    serial run). ``None`` computes in this process, which is what tests that
+    monkeypatch ``palmer`` rely on.
+
     :param entry_point: the ``palmer`` function name to run
     :param inputs: division-keyed ``(precips, pet, awc)`` fixture inputs
+    :param max_workers: worker processes to split the divisions across, or
+        ``None`` to compute serially in this process
     """
     from climate_indices import palmer
 
-    results: _PalmerSweep = _PalmerSweep()
-    for division in inputs:
-        try:
-            # indexing re-raises a stored fixture-load failure for this division
-            precips, pet, awc = inputs[division]
-            results[division] = getattr(palmer, entry_point)(
-                precips,
-                pet,
-                awc,
-                _DATA_YEAR_START_MONTHLY,
-                _CALIBRATION_YEAR_START_PALMER,
-                _CALIBRATION_YEAR_END_PALMER,
-            )
-        except Exception as error:
-            failure = RuntimeError(f"palmer.{entry_point}() failed for division {division}")
-            failure.__cause__ = error
-            results[division] = failure
-    return results
+    entry = getattr(palmer, entry_point)
+    # spawn on every platform: fork from a pytest process that already holds dask
+    # or BLAS threads can deadlock, and the start method should not vary by OS
+    executor = (
+        ProcessPoolExecutor(max_workers, mp_context=multiprocessing.get_context("spawn")) if max_workers else None
+    )
+    outcomes: dict[str, tuple | Exception | Future] = {}
+    try:
+        for division in inputs:
+            try:
+                # indexing re-raises a stored fixture-load failure for this division
+                precips, pet, awc = inputs[division]
+                arguments = (
+                    precips,
+                    pet,
+                    awc,
+                    _DATA_YEAR_START_MONTHLY,
+                    _CALIBRATION_YEAR_START_PALMER,
+                    _CALIBRATION_YEAR_END_PALMER,
+                )
+                outcomes[division] = entry(*arguments) if executor is None else executor.submit(entry, *arguments)
+            except Exception as error:
+                outcomes[division] = _sweep_failure(entry_point, division, error)
+
+        # resolve in input order so the sweep iterates the same as a serial run
+        results: _PalmerSweep = _PalmerSweep()
+        for division, outcome in outcomes.items():
+            if isinstance(outcome, Future):
+                try:
+                    outcome = outcome.result()
+                except Exception as error:
+                    outcome = _sweep_failure(entry_point, division, error)
+            results[division] = outcome
+        return results
+    finally:
+        if executor is not None:
+            executor.shutdown()
+
+
+def _sweep_failure(entry_point: str, division: str, error: Exception) -> RuntimeError:
+    """The recorded stand-in for a division whose sweep computation raised."""
+    failure = RuntimeError(f"palmer.{entry_point}() failed for division {division}")
+    failure.__cause__ = error
+    return failure
+
+
+def _sweep_workers() -> int | None:
+    """Worker processes for the session sweeps, or ``None`` to stay serial.
+
+    An xdist worker already owns one core, so it computes serially rather than
+    nesting a process pool inside each worker.
+    """
+    if os.environ.get("PYTEST_XDIST_WORKER"):
+        return None
+    return os.cpu_count()
 
 
 @pytest.fixture(scope="session")
 def palmer_pdsi_results(palmer_division_inputs) -> _PalmerSweep:
-    return _palmer_sweep("pdsi", palmer_division_inputs)
+    return _palmer_sweep("pdsi", palmer_division_inputs, _sweep_workers())
 
 
 @pytest.fixture(scope="session")
 def palmer_scpdsi_results(palmer_division_inputs) -> _PalmerSweep:
-    return _palmer_sweep("scpdsi", palmer_division_inputs)
+    return _palmer_sweep("scpdsi", palmer_division_inputs, _sweep_workers())
 
 
 # Hargreaves fixtures for daily evapotranspiration calculations

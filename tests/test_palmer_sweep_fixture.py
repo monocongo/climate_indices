@@ -1,5 +1,7 @@
 """Regression coverage for the session-scoped Palmer sweep helpers in conftest."""
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -33,6 +35,28 @@ def test_failing_division_does_not_abort_the_sweep(monkeypatch):
     with pytest.raises(RuntimeError, match="palmer.pdsi\\(\\) failed for division 001") as failure:
         results["001"]
     assert isinstance(failure.value.__cause__, ValueError)
+
+
+def test_process_pool_sweep_matches_serial_and_isolates_failures(palmer_awcs):
+    """A pooled sweep must equal the serial one and still isolate a failing division.
+
+    The pool computes in child processes, so nothing here is monkeypatched: a real
+    division proves bit-identical results, and an unusable AWC proves that a
+    child-side exception is recorded against its own division, in input order.
+    """
+    root = Path(__file__).parent / "fixture" / "palmer" / "0101"
+    good = (np.load(root / "precips.npy"), np.load(root / "pet.npy"), palmer_awcs["0101"])
+    inputs = {"001": (good[0], good[1], "bad"), "002": good}
+
+    pooled = conftest._palmer_sweep("pdsi", inputs, max_workers=2)
+    serial = conftest._palmer_sweep("pdsi", {"002": good})
+
+    assert list(pooled) == ["001", "002"]
+    for pooled_array, serial_array in zip(pooled["002"][:4], serial["002"][:4], strict=True):
+        np.testing.assert_array_equal(pooled_array, serial_array)
+    with pytest.raises(RuntimeError, match="palmer.pdsi\\(\\) failed for division 001") as failure:
+        pooled["001"]
+    assert isinstance(failure.value.__cause__, Exception)
 
 
 def test_division_input_load_failure_is_recorded_not_raised(tmp_path, monkeypatch):
