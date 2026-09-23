@@ -594,31 +594,47 @@ both distributions unconditionally, with no flag to select one) but not
 compared -- xarray-path Pearson is known-broken on a heavily masked grid
 (#1118), so there is nothing correct to compare it against.
 
-| configuration | compute (min of 3) | total (min of 3) |
+| configuration | compute (min of 3) | total |
 | --- | ---: | ---: |
-| CLI gamma, `multiprocessing.Pool`, 9 workers | 28.679 s | 34.176 s |
-| CLI pearson, `multiprocessing.Pool`, 9 workers | 104.726 s | 112.858 s |
-| xarray eager, serial in-memory | 63.156 s | 81.511 s |
-| xarray/Dask, 1 worker | 129.821 s | 148.177 s |
-| xarray/Dask, 2 workers | 90.661 s | 109.017 s |
-| xarray/Dask, 4 workers | 69.561 s | 87.916 s |
-| xarray/Dask, 8 workers | 65.001 s | 83.357 s |
+| CLI gamma, `multiprocessing.Pool`, 9 workers | 28.679 s | 34.176 s (min of 3) |
+| CLI pearson, `multiprocessing.Pool`, 9 workers | 104.726 s | 112.858 s (min of 3) |
+| xarray eager, serial in-memory | 63.156 s | 81.511 s (derived) |
+| xarray/Dask, 1 worker | 129.821 s | 148.177 s (derived) |
+| xarray/Dask, 2 workers | 90.661 s | 109.017 s (derived) |
+| xarray/Dask, 4 workers | 69.561 s | 87.916 s (derived) |
+| xarray/Dask, 8 workers | 65.001 s | 83.357 s (derived) |
 
-"compute" is Pool-map-only for the CLI and Dask-`.compute()`-only for xarray;
-"total" is open + shared-memory copy + compute + write for the CLI, and
-read + compute + write for xarray (xarray's read, 17.850 s, and write,
-0.506 s, are shared across every xarray row above). Every sample is retained
-in `benchmarks/results/nclimgrid_spi6_cli.txt` and
+"compute" is Pool-map-only for the CLI and Dask-`.compute()`-only for xarray,
+independently sampled 3 times on every row. "total" is open + shared-memory
+copy + compute + write for the CLI, independently sampled 3 times; for xarray
+it is read + compute + write, but read (17.850 s) and write (0.506 s) were
+each measured once and reused across every xarray row above ("derived" =
+that row's own compute sample + the shared read + the shared write, not a
+separately-sampled total). Every sample is retained in
+`benchmarks/results/nclimgrid_spi6_cli.txt` and
 `benchmarks/results/nclimgrid_spi6_gamma_xarray.txt`.
 
 Measured, not inferred:
 
 - At this scale the CLI's 9-worker `multiprocessing.Pool` path is faster than
-  either xarray/Dask configuration: 2.20x faster (compute) than xarray eager,
-  and 2.27x faster than the best Dask configuration (8 workers). On total time
-  the gap is larger -- 2.39x and 2.44x -- because the CLI's "total" already
-  includes its own file-open and shared-memory copy, while xarray's read and
-  write are the smaller, shared 17.85 s / 0.51 s figures above.
+  either xarray/Dask configuration on **compute**: 2.20x faster than xarray
+  eager, and 2.27x faster than the best Dask configuration (8 workers). Eager
+  pays no process-spawn cost at all, so the CLI-vs-eager ratio is if anything
+  conservative for the CLI, which is paying Pool-spawn overhead eager never
+  incurs; CLI-vs-Dask-8 is the more tightly controlled comparison, since both
+  are spawn-inclusive.
+- On **total** the gap is larger -- 2.39x and 2.44x -- but this number is not
+  independently confirmatory the way compute is: xarray's read (17.850 s) is
+  this session's first, cold touch of the fixture, while the CLI reopened the
+  same file 4 times (one warm-up, three timed) against an OS page cache that
+  read had already warmed, and did so via `xr.open_mfdataset`'s
+  time-auto-chunked, dask-threaded materialization rather than the harness's
+  plain single-threaded `xr.open_dataset(...).values` read (see "Deviations
+  and limits"). The CLI's own I/O overhead (open + copy + write, 34.176 -
+  28.679 = 5.497 s) being smaller than xarray's read + write (18.356 s) is
+  consistent with both of those advantages, not just with the CLI's shared-
+  memory architecture. Treat compute (2.20x/2.27x) as the controlled
+  comparison; total is directionally consistent but not independent evidence.
 - xarray/Dask scales with worker count on this grid (129.821 s -> 65.001 s,
   1.997x from 1 to 8 workers) but never beats its own eager call: even the
   best Dask configuration (8 workers, 65.001 s) is slightly slower than eager
@@ -642,14 +658,30 @@ scheduler at CONUS scale, not a reason to revisit the vectorization work
 
 ### Deviations and limits
 
-- Memory pressure: this 32 GB machine's swap grew from a 5.7 GB baseline to a
-  peak of 18.75 GB during the Dask sweep and 13.49 GB during the CLI run
-  (`sysctl vm.swapusage`, recorded before/after each run). Both runs likely
-  include some paging cost, and the Dask sweep's numbers may be inflated more
-  than the CLI's, since Dask's per-worker serialization holds more concurrent
-  copies of the ~1.66 GB (float32) grid than the CLI's single shared buffer.
-  The CLI ran second, after the Dask sweep had already raised swap usage, so
-  its advantage is not an artifact of running under less memory pressure.
+- Memory pressure: this 32 GB machine's swap (`sysctl vm.swapusage`, checked
+  before/after each run, not traced continuously) was 5.70 GB used (17.8% of
+  RAM) at the start of the session, before either run; 18.75 GB used (58.6%)
+  by the time the Dask sweep finished; and 13.49 GB used (42.2%) by the time
+  the CLI run finished. Swap was never reset between runs, so the CLI started
+  from the Dask sweep's already-elevated 18.75 GB and ended lower -- it ran
+  under that same elevated pressure, not less of it, so its advantage is not
+  an artifact of a cleaner starting state. It is still an artifact of running
+  under pressure at all: with both paths swapping by more than half of
+  physical RAM at points, the exact ratios above (2.20x-2.44x) should be read
+  as directionally reliable, not precise -- a run with enough free RAM that
+  neither path swaps could shrink or widen the gap. The qualitative
+  conclusion (CLI faster at this scale) rests on the
+  shared-memory-vs-pickling architecture argument above, not on the exact
+  multiplier.
+- The CLI's file open (`xr.open_mfdataset` with `lat`/`lon` chunked whole and
+  `time` left to dask's auto-chunking, `__main__._CHUNKS_BY_INPUT_TYPE`)
+  materializes via dask's threaded scheduler; the xarray/Dask harness's own
+  reference read (`load_netcdf_grid`) is a plain, single-threaded
+  `xr.open_dataset(...).values` call. This is a second, unmeasured
+  contributor -- alongside the page-cache warmth noted above -- to the CLI's
+  smaller I/O overhead in the "total" column, independent of the
+  multiprocessing.Pool-vs-Dask architecture difference the Interpretation
+  above is about.
 - The CLI's own INFO-level logging and the library's `RuntimeWarning`/
   `MissingDataWarning` output (this grid's 43.1% masked fraction exceeds the
   20% missing-data threshold checked per call) are not suppressed on the CLI

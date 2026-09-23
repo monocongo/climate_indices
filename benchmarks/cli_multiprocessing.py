@@ -160,7 +160,11 @@ def _assert_equivalence(cli_path: str, cli_var: str, xarray_path: str) -> None:
     `parallel_scaling.load_netcdf_grid` rolls its spatial axes so its
     calibration preflight samples a land cell; the CLI never rolls. Sorting
     both sides by lat/lon compares by coordinate label, not storage position,
-    so the roll cannot hide a mismatch.
+    so the roll cannot hide a mismatch -- this assumes unique lat/lon values,
+    true for nClimGrid's regular grid; a grid with duplicate coordinates could
+    make the roll-then-sort round trip pair the wrong cells, though the fit
+    values at swapped cells are never bit-identical in practice, so it would
+    fail loudly here rather than pass silently.
     """
     with xr.open_dataset(cli_path) as cli_ds, xr.open_dataset(xarray_path) as xarray_ds:
         cli_da = cli_ds[cli_var].transpose("time", "lat", "lon").sortby(["lat", "lon"]).astype(np.float32).load()

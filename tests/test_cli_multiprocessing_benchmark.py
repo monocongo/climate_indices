@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import re
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -168,3 +169,10 @@ def test_time_cli_matches_the_xarray_dask_output(tmp_path: Path, capsys: pytest.
     assert "equivalence: CLI spi_gamma_06 == xarray" in output
     assert "cli gamma (multiprocessing.Pool, 1 workers): compute samples=[" in output
     assert "cli pearson (multiprocessing.Pool, 1 workers): compute samples=[" in output
+
+    # the warm-up run's own sample must be discarded, not leaked into the
+    # reported count -- --repeat 1 above, so exactly one sample per metric
+    for distribution in ("gamma", "pearson"):
+        match = re.search(rf"cli {distribution} .*?compute samples=\[([^\]]+)\]", output)
+        assert match is not None
+        assert len(match.group(1).split(",")) == 1, f"{distribution} compute: warm-up sample leaked into the count"
