@@ -43,24 +43,32 @@ ENTRYPOINT ["python", "-m", "climate_indices"]
 
 ### 1. Unit Tests Workflow (`unit-tests-workflow.yml`)
 
-**Trigger**: Push to any branch, pull requests
+**Trigger**: Pull requests to `main`, pushes to `main`, merge groups, a weekly
+schedule (Mondays), and manual dispatch
 
-**Matrix**:
-- Python versions: 3.10, 3.11, 3.12, 3.13, 3.14
-- OS: ubuntu-latest
+**Core test matrix** (`pytest -n auto`, split across two jobs):
+- `test` (every event): ubuntu-latest on Python 3.10, 3.11, and 3.14, plus
+  macOS on 3.14
+- `test-full` (everything except pull requests): ubuntu-latest on Python 3.12
+  and 3.13, plus macOS on 3.10
 
-**Steps**:
+`uv.lock` resolves three distinct dependency stacks (3.10; 3.11; and 3.12
+through 3.14, which install identical packages), so a pull request runs one leg
+per stack plus both support boundaries. Together the two jobs cover every
+supported Python on Linux and both boundaries on macOS, and
+`tests/test_release_integrity.py` enforces that the two never overlap and never
+drop a supported version.
+
+Single-owner jobs run once per event: `lint` (ruff, mypy), `docs`, `validation`
+(3.12), `meta` (repo checks, 3.10), `test-minimum-deps` (3.10), `notebooks`, and
+`security-audit`.
+
+**Steps** (each test leg):
 1. Checkout code
 2. Setup Python and uv
-3. Install dependencies: `uv sync --dev`
-4. Run tests: `pytest`
-
-**Configuration**:
-```yaml
-strategy:
-  matrix:
-    python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
-```
+3. Install dependencies: `uv sync --locked --dev`
+4. Run core tests: `pytest -n auto` (validation and repo checks are excluded;
+   their own jobs run them)
 
 ### 2. Release Workflow (`release.yml`)
 

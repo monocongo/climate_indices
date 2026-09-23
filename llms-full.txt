@@ -162,8 +162,10 @@ git push origin vX.Y.Z
 | 3.13 | Supported | |
 | 3.14 | Supported | Latest supported version |
 
-All versions are tested on Linux (ubuntu-latest). Python 3.10 and 3.14 are additionally
-tested on macOS. Both latest and minimum declared dependency versions are tested in CI.
+All versions are tested on Linux (ubuntu-latest) on every push to `main`. Python 3.10 and
+3.14 are additionally tested on macOS. Pull requests run a subset (3.10, 3.11, and 3.14 on
+Linux, plus 3.14 on macOS), because 3.12 through 3.14 install identical dependency versions.
+Both latest and minimum declared dependency versions are tested in CI.
 
 ### Version Support Policy
 
@@ -1704,16 +1706,20 @@ uv run pytest tests/test_property_based.py
 ### GitHub Actions Workflows
 
 #### 1. unit-tests-workflow.yml
-**Trigger**: Push, pull request
+**Trigger**: Pull request and push to main, merge group, weekly schedule, manual dispatch
 ```yaml
-Matrix:
-  - OS: ubuntu-latest
-  - Python: [3.10, 3.11, 3.12, 3.13, 3.14]
+Matrix (core suite):
+  test (every event):
+    - ubuntu-latest: Python 3.10, 3.11, 3.14
+    - macos-latest: Python 3.14
+  test-full (everything except pull requests):
+    - ubuntu-latest: Python 3.12, 3.13
+    - macos-latest: Python 3.10
 Steps:
   1. Checkout code
   2. Setup Python + uv
-  3. uv sync --dev
-  4. Run pytest
+  3. uv sync --locked --dev
+  4. Run pytest -n auto
 ```
 
 #### 2. release.yml
