@@ -2,8 +2,9 @@
 
 No numeric oracle artifact is committed here, so this directory intentionally
 has no `provenance.json`. The schema applies when an external reference dataset
-is added. `tests/test_flood_reference.py` instead records exact, source-backed
-algebraic identities:
+is added. `tests/test_flood_reference.py` asserts the selected Eq. (2) identity,
+its endpoint weights, and the API closed form. The paper's candidate identities
+are recorded here to make the ADR-0014 selection explicit:
 
 - Byun and Wilhite's (1999) exact two-day identities: Eq. (1)
   `EP₂ = P₁ exp(-1/2) + P₂ exp(-1)`, Eq. (2)
