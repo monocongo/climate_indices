@@ -30,6 +30,8 @@ def effective_precipitation(
         duration: Number of days in each window, 365 by default.
         spatial_time_major: Declare a Spatial Block when its first cell axis
             has length 12 or 366, which is ambiguous with a calendar layout.
+            It does not apply to 1-D or 2-D input; a 2-D array is always read
+            as ``(years, days)`` (ADR-0009).
 
     Returns:
         Effective precipitation in mm, with the same shape as the input.
