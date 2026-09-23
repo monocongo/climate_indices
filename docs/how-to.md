@@ -10,6 +10,7 @@ the indices themselves, see {doc}`explanation`; for formulas and parameters, see
 :maxdepth: 1
 
 workflow-examples
+standardized-hydrologic-indices
 choosing-parameters
 troubleshooting
 xarray_migration
