@@ -125,9 +125,11 @@ jobs:
       # Repo/meta checks are owned by the single `meta` job; validation by
       # the single `validation` job. Do not reintroduce them here: the
       # version/distro matrix exists to exercise behavior on each interpreter.
+      # `-n auto` spreads the suite over the runner's cores; it is deliberately
+      # not in `addopts` so local debugging (`-s`, `--pdb`) stays single-process.
       - name: Run core tests
         run: >
-          uv run --no-sync --no-build pytest
+          uv run --no-sync --no-build pytest -n auto
           --ignore=tests/test_release_integrity.py
           --ignore=tests/test_review_scripts.py
           --ignore=tests/test_type_checking.py
@@ -207,7 +209,7 @@ jobs:
 
       - name: Run core tests with minimum dependencies
         run: >
-          uv run --no-sync --no-build pytest
+          uv run --no-sync --no-build pytest -n auto
           --ignore=tests/test_release_integrity.py
           --ignore=tests/test_review_scripts.py
           --ignore=tests/test_type_checking.py
