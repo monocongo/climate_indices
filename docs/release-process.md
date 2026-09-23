@@ -70,7 +70,7 @@ uv run --no-sync --no-build twine check dist/*
 
 The release workflow cannot be rehearsed end to end upstream: `publish` either
 publishes or fails, and `create-release` runs only after it. Rehearse everything
-up to that boundary on a private copy of the repository, so a defect in the tag
+up to that boundary in a separate rehearsal repository, so a defect in the tag
 guard, the version match, the test matrix, the build, or the wheel checks
 surfaces before the real tag.
 
@@ -82,17 +82,21 @@ at, with the release-prep PR already merged.
 
 ### Rehearsal target
 
-Use one private copy repository, `<owner>/climate_indices-rehearsal`, created
-once and reused for every release: push each candidate as its `main`, then push
-the release tag. Upstream cannot be forked into its own owner, and a fork under
-a second account costs an account switch without proving anything more.
+Rehearsals run in a **rehearsal repository**: a repository that is not
+`monocongo/climate_indices`. The default is one private copy,
+`<owner>/climate_indices-rehearsal`, created once and reused for every release:
+push each candidate as its `main`, then push the release tag. A fork under a
+different owner is equivalent — upstream cannot be forked into its own owner,
+and a fork costs an account switch without proving anything more.
 
-The copy must have Actions enabled, must not be a PyPI trusted publisher, and
-must not define a `release` environment protection rule: a required review would
-park `publish` in an approval wait, which is not the expected outcome and
-evidence of nothing. Never add publishing credentials to the copy.
+Whichever target is used, it must have Actions enabled, must not be a PyPI
+trusted publisher, and must not define a `release` environment protection rule:
+a required review would park `publish` in an approval wait, which is not the
+expected outcome and evidences nothing. Never add publishing credentials to the
+rehearsal repository.
 
 ```bash
+# the default private copy; a fork under another owner is equivalent
 gh repo create <owner>/climate_indices-rehearsal --private \
   --description "Release-workflow rehearsal; not a PyPI publisher"
 ```
@@ -103,7 +107,7 @@ gh repo create <owner>/climate_indices-rehearsal --private \
 set -u                            # abort on unset variables
 CANDIDATE=<full 40-character sha of the frozen candidate>
 TAG=vX.Y.Z                        # the real release tag, not an rc
-TARGET=<owner>/climate_indices-rehearsal
+TARGET=<owner>/climate_indices-rehearsal   # or <fork-owner>/climate_indices for an equivalent fork
 
 git fetch -q origin || { echo "cannot fetch origin"; exit 1; }
 git checkout --detach "$CANDIDATE"
@@ -114,11 +118,11 @@ git merge-base --is-ancestor "$SHA" origin/main \
 git status --short                # must be empty
 ```
 
-1. Push the candidate as the copy's `main`, then the copy-only tag. The
+1. Push the candidate as the rehearsal repository's `main`, then its tag. The
    `validate-release-tag` job requires the tagged commit to be reachable from
-   the copy's `origin/main`, so `main` lands first. The tag push starts the
-   unchanged workflow. The copy holds no unique state, so these pushes force it
-   to the new candidate when a rehearsal is repeated:
+   the repository's `origin/main`, so `main` lands first. The tag push starts the
+   unchanged workflow. The rehearsal repository holds no unique state, so these
+   pushes force it to the new candidate when a rehearsal is repeated:
 
 ```bash
 : "${SHA:?run the rehearsal setup block in this shell first}"
@@ -148,9 +152,10 @@ gh run view "$RUN" -R "$TARGET" --json jobs --jq '.jobs[] | "\(.conclusion)\t\(.
 Expected: `validate-release-tag`, every `test` leg, `security-audit`, `build`,
 and both `wheel-check` legs succeed; `publish` fails; `create-release` is
 skipped. The `publish` failure must be PyPI rejecting the OIDC exchange because
-the copy is not a trusted publisher. A network error, an approval wait, or an
-action-resolution failure is a different defect to diagnose and not a pass, and
-that rejection must not be remedied by configuring the copy:
+the rehearsal repository is not a trusted publisher. A network error, an
+approval wait, or an action-resolution failure is a different defect to diagnose
+and not a pass, and that rejection must not be remedied by configuring the
+rehearsal repository:
 
 ```bash
 gh run view "$RUN" -R "$TARGET" --log-failed \
@@ -174,11 +179,11 @@ curl -s https://pypi.org/pypi/climate-indices/json \
   | python3 -c "import json,sys; print('${TAG#v}' in json.load(sys.stdin)['releases'])"
 ```
 
-5. Record the evidence on the release ticket — candidate SHA, copy repository,
-   run URL, attempt number, every job conclusion, the verbatim PyPI rejection,
-   artifact filenames with `sha256`, timing, and the not-published confirmation
-   above — before the run logs expire. Reuse or delete the copy afterwards; it
-   holds no unique state.
+5. Record the evidence on the release ticket — candidate SHA, rehearsal
+   repository, run URL, attempt number, every job conclusion, the verbatim PyPI
+   rejection, artifact filenames with `sha256`, timing, and the not-published
+   confirmation above — before the run logs expire. Reuse or delete the rehearsal
+   repository afterwards; it holds no unique state.
 
 ### What a rehearsal does not prove
 

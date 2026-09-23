@@ -104,9 +104,10 @@ The NumPy API returns one standardized value per input time step, unitless and
 clipped to [-3.09, 3.09] as SPI values are.
 
 The xarray entry point for `indices.standardized_index()` is not wired yet:
-named wrappers await the flood design decision
-([FLOOD-02 #1099][flood-1099]), and the xarray surface also needs the CF
-metadata registry entries ([FLOOD-06 #1103][flood-1103]).
+named wrappers are still an open decision
+([#1132](https://github.com/monocongo/climate_indices/issues/1132)), and the
+xarray surface also needs the CF metadata registry entries
+([FLOOD-06 #1103][flood-1103]).
 
 ## Sources
 
@@ -116,5 +117,4 @@ metadata registry entries ([FLOOD-06 #1103][flood-1103]).
 [shukla-2008]: https://doi.org/10.1029/2007GL032487
 [vicente-serrano-2012]: https://doi.org/10.1061/(ASCE)HE.1943-5584.0000433
 [log-logistic]: https://github.com/monocongo/climate_indices/issues/106
-[flood-1099]: https://github.com/monocongo/climate_indices/issues/1099
 [flood-1103]: https://github.com/monocongo/climate_indices/issues/1103
