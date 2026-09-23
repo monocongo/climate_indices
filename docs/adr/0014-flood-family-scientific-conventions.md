@@ -38,10 +38,13 @@ unreproducible claim of reproduction.
    (Table 3), where `SEP = DEP / ST(EP)` (Eq. 5) over a per-calendar-day
    `ST(EP)`, and the duration is `DS = 365 + dry duration − 1`. That last form is
    the paper's own worked example — 35 days of dry duration on 5 June gives
-   `399 = 365 + 35 − 1` — and it disagrees by one with the shorthand in Table 4's
-   header, where each `j` is "CNS plus i"; the worked example is the operative
-   reading, corroborated by the reported maximum `DS` of 610 against 245 detected
-   dry days (`365 + 245 − 1 = 609`). The reason to reject the extension is
+   `399 = 365 + 35 − 1` — and it disagrees by one with the shorthand in Table 3's
+   definition and Table 4's header, where each `j` is "CNS plus i". The paper's
+   own real-data maxima follow the shorthand, not the worked example: 245 detected
+   dry days give a largest `DS` of 610 and 262 give 627 (`365 + 245 = 610`,
+   `365 + 262 = 627`). The worked example remains the operative reading here, and
+   the one-day inconsistency is moot for the fixed 365-day window. The reason to
+   reject the extension is
    therefore not that its definition is unclear but that it is circular and
    data-hungry: `DS` depends on `SEP`, and `SEP` depends on the multi-decade
    per-calendar-day `MEP` and `ST(EP)` baseline, so the index cannot be computed
