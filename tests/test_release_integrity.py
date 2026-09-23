@@ -294,6 +294,8 @@ def test_full_matrix_runs_beyond_pull_requests_and_the_pull_request_job_is_ungat
     assert re.search(r"^    if: github\.event_name != 'pull_request'$", full_job, re.MULTILINE)
     assert not re.search(r"^    if:", pull_request_job, re.MULTILINE)
     assert re.search(r"^  push:\n    branches: \[main]$", workflow, re.MULTILINE)
+    assert re.search(r"^  merge_group:", workflow, re.MULTILINE)
+    assert re.search(r"^  workflow_dispatch:", workflow, re.MULTILINE)
     assert re.search(r"^  schedule:\n    - cron: ", workflow, re.MULTILINE)
 
 
