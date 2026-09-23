@@ -102,7 +102,7 @@ def _require_flood_function(name: str, issue: int) -> Callable[..., Any]:
     ],
 )
 def test_planned_public_signature(name: str, issue: int, expected: tuple[tuple[str, Any, Any], ...]) -> None:
-    """Freeze names, argument kinds, and defaults settled by ADR-0013/0014."""
+    """Freeze names, argument kinds, and defaults from the flood subsystem design."""
     function = _require_flood_function(name, issue)
     actual = tuple(
         (parameter.name, parameter.kind, parameter.default)
@@ -114,11 +114,16 @@ def test_planned_public_signature(name: str, issue: int, expected: tuple[tuple[s
 def test_effective_precipitation_matches_equation_2_two_day_identity() -> None:
     """Byun and Wilhite Eq. (2): EP₂ = P₁ + (P₁ + P₂) / 2."""
     effective_precipitation = _require_flood_function("effective_precipitation", 1105)
-    older, current = 2.0, 4.0
+    older, most_recent = 2.0, 4.0
 
-    actual = effective_precipitation(np.array([older, current]), duration=2)
+    actual = effective_precipitation(np.array([older, most_recent]), duration=2)
 
-    np.testing.assert_allclose(actual, [np.nan, current + (current + older) / 2], rtol=0.0, atol=0.0)
+    np.testing.assert_allclose(
+        actual,
+        [np.nan, most_recent + (most_recent + older) / 2],
+        rtol=0.0,
+        atol=0.0,
+    )
 
 
 def test_effective_precipitation_has_harmonic_endpoint_weights() -> None:

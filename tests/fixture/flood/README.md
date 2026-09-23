@@ -5,9 +5,11 @@ has no `provenance.json`. The schema applies when an external reference dataset
 is added. `tests/test_flood_reference.py` instead records exact, source-backed
 algebraic identities:
 
-- Byun and Wilhite (1999) Eq. (2), selected by ADR-0014:
-  `EP₂ = P₁ + (P₁ + P₂) / 2`.
-- The same kernel's endpoint weights: `w₁ = H_D` and `w_D = 1 / D`.
+- Byun and Wilhite's (1999) exact two-day identities: Eq. (1)
+  `EP₂ = P₁ exp(-1/2) + P₂ exp(-1)`, Eq. (2)
+  `EP₂ = P₁ + (P₁ + P₂) / 2`, and Eq. (3)
+  `EP₂ = (2 P₁ + P₂) / 3`. ADR-0014 selects Eq. (2).
+- The selected kernel's endpoint weights: `w₁ = H_D` and `w_D = 1 / D`.
 - Kohler and Linsley (1951) Eq. (3), for constant precipitation:
   `API → P / (1 - k)`.
 
