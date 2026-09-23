@@ -115,6 +115,7 @@ vocabulary at `src/climate_indices/CONTEXT.md`):
   `docs/research/fire-indices-cli-approach.md`,
   `docs/research/interactive-climate-explorer-landscape.md`,
   `docs/research/dri-wrcc-scpdsi-assessment.md`,
+  `docs/research/flood-oracle-survey.md`,
   `docs/explorer/`, `docs/architecture-deepening-review-*.md`,
   `docs/ai-assisted-development-report-*.md`,
   `docs/test_fixture_management.md`, `CONTEXT-MAP.md`
