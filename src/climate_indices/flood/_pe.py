@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import numpy.typing as npt
-from scipy.signal import convolve
+from scipy.ndimage import correlate1d
 
 from climate_indices.exceptions import DataShapeError, InputTypeError, InvalidArgumentError
 
@@ -73,9 +73,16 @@ def effective_precipitation(
         )
     series = values.reshape(-1) if values.ndim == 2 else values
     result = np.full(series.shape, np.nan, dtype=np.float64)
-    if series.shape[0] >= duration:
-        # w_m = sum(n=m..D, 1/n); convolution reverses the time ordering.
+    if series.size and series.shape[0] >= duration:
+        # w_m = sum(n=m..D, 1/n); correlate1d takes oldest-first weights.
         weights = np.cumsum((1.0 / np.arange(1, duration + 1, dtype=np.float64))[::-1])[::-1]
-        kernel = weights.reshape((duration,) + (1,) * (series.ndim - 1))
-        result[duration - 1 :] = convolve(series, kernel, mode="valid", method="direct")
+        correlate1d(
+            series,
+            weights[::-1],
+            axis=0,
+            origin=(duration - 1) // 2,
+            mode="constant",
+            output=result,
+        )
+        result[: duration - 1] = np.nan
     return result.reshape(values.shape)

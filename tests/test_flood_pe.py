@@ -33,6 +33,14 @@ def test_pe_missing_window_recovers_per_cell_and_year_layout() -> None:
     result = flood.effective_precipitation(values, duration=3)
     assert np.isnan(result.reshape(-1)[[0, 1, 3, 4, 5]]).all()
     np.testing.assert_allclose(result.reshape(-1)[[2, 6, 7]], [3, 3, 3])
+    # A complete window crosses the boundary between the two calendar rows.
+    assert flood.effective_precipitation(np.ones((2, 4)), duration=3)[1, 0] == pytest.approx(3)
+    masked = np.ma.array([1, 2, 100, 4, 5], mask=[0, 0, 1, 0, 0])
+    np.testing.assert_allclose(
+        flood.effective_precipitation(masked, duration=2),
+        [np.nan, 3.5, np.nan, np.nan, 9.5],
+        equal_nan=True,
+    )
     block = np.ones((6, 2, 1))
     block[2, 0, 0] = np.nan
     actual = flood.effective_precipitation(block, duration=3)
@@ -46,7 +54,15 @@ def test_pe_short_window_and_ambiguous_shape() -> None:
     block = np.ones((4, 12, 2))
     with pytest.raises(ValueError, match="spatial_time_major=True"):
         flood.effective_precipitation(block, duration=2)
-    assert flood.effective_precipitation(block, duration=2, spatial_time_major=True).shape == block.shape
+    block[1, 0, 0] = 8
+    assert flood.effective_precipitation(block, duration=2, spatial_time_major=True)[1, 0, 0] == pytest.approx(12.5)
+    assert flood.effective_precipitation(np.empty((3, 0, 2)), duration=2).shape == (3, 0, 2)
+
+
+def test_pe_default_duration() -> None:
+    result = flood.effective_precipitation(np.ones(365))
+    assert np.isnan(result[:364]).all()
+    assert result[-1] == pytest.approx(365)
 
 
 @pytest.mark.parametrize("duration", [0, -1, 1.5, True])
