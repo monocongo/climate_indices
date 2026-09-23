@@ -105,8 +105,9 @@ def test_prepare_masks_from_the_first_step_and_replaces_zeros(tmp_path: Path) ->
         assert not np.any(values[:, 1:, :] == 0.0), "no land cell may still read exactly zero"
 
 
-def test_assert_equivalence_rejects_a_changed_value(tmp_path: Path) -> None:
-    """The comparison must fail loudly when a single cell differs between the two outputs."""
+@pytest.mark.parametrize("change_time", [False, True], ids=["value", "time"])
+def test_assert_equivalence_rejects_changed_output(tmp_path: Path, change_time: bool) -> None:
+    """Reject changed values or time labels before reporting equivalence."""
     coords = {
         "time": pd.date_range("2000-01-01", periods=2, freq="MS"),
         "lat": [10.0, 20.0, 30.0],
@@ -119,30 +120,11 @@ def test_assert_equivalence_rejects_a_changed_value(tmp_path: Path) -> None:
         cli_path
     )
     changed = values.copy()
-    changed[0, 0, 0] += 1.0
+    if change_time:
+        coords["time"] = pd.date_range("2000-02-01", periods=2, freq="MS")
+    else:
+        changed[0, 0, 0] += 1.0
     xr.DataArray(changed, coords=coords, dims=["time", "lat", "lon"], name="spi_gamma_06").to_dataset().to_netcdf(
-        xarray_path
-    )
-
-    with pytest.raises(AssertionError):
-        cli_multiprocessing._assert_equivalence(str(cli_path), "spi_gamma_06", str(xarray_path))
-
-
-def test_assert_equivalence_rejects_changed_time_coordinates(tmp_path: Path) -> None:
-    """Identical payloads on differently labeled time axes must not pass the gate."""
-    coords = {
-        "time": pd.date_range("2000-01-01", periods=2, freq="MS"),
-        "lat": [10.0, 20.0, 30.0],
-        "lon": [1.0, 2.0, 3.0, 4.0],
-    }
-    values = np.arange(24, dtype=np.float32).reshape(2, 3, 4)
-    cli_path = tmp_path / "cli.nc"
-    xarray_path = tmp_path / "xarray.nc"
-    xr.DataArray(values, coords=coords, dims=["time", "lat", "lon"], name="spi_gamma_06").to_dataset().to_netcdf(
-        cli_path
-    )
-    shifted = dict(coords, time=pd.date_range("2000-02-01", periods=2, freq="MS"))
-    xr.DataArray(values, coords=shifted, dims=["time", "lat", "lon"], name="spi_gamma_06").to_dataset().to_netcdf(
         xarray_path
     )
 
