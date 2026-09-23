@@ -128,6 +128,28 @@ def test_assert_equivalence_rejects_a_changed_value(tmp_path: Path) -> None:
         cli_multiprocessing._assert_equivalence(str(cli_path), "spi_gamma_06", str(xarray_path))
 
 
+def test_assert_equivalence_rejects_changed_time_coordinates(tmp_path: Path) -> None:
+    """Identical payloads on differently labeled time axes must not pass the gate."""
+    coords = {
+        "time": pd.date_range("2000-01-01", periods=2, freq="MS"),
+        "lat": [10.0, 20.0, 30.0],
+        "lon": [1.0, 2.0, 3.0, 4.0],
+    }
+    values = np.arange(24, dtype=np.float32).reshape(2, 3, 4)
+    cli_path = tmp_path / "cli.nc"
+    xarray_path = tmp_path / "xarray.nc"
+    xr.DataArray(values, coords=coords, dims=["time", "lat", "lon"], name="spi_gamma_06").to_dataset().to_netcdf(
+        cli_path
+    )
+    shifted = dict(coords, time=pd.date_range("2000-02-01", periods=2, freq="MS"))
+    xr.DataArray(values, coords=shifted, dims=["time", "lat", "lon"], name="spi_gamma_06").to_dataset().to_netcdf(
+        xarray_path
+    )
+
+    with pytest.raises(AssertionError):
+        cli_multiprocessing._assert_equivalence(str(cli_path), "spi_gamma_06", str(xarray_path))
+
+
 def test_time_cli_matches_the_xarray_dask_output(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """The real CLI entry point, run single-process, matches the xarray/Dask adapter on the same grid.
 

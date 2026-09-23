@@ -192,6 +192,7 @@ def _assert_equivalence(cli_path: str, cli_var: str, xarray_path: str) -> None:
 
     if cli_da.shape != xarray_da.shape:
         raise SystemExit(f"equivalence: shape mismatch {cli_da.shape} (CLI) vs {xarray_da.shape} (xarray)")
+    np.testing.assert_array_equal(cli_da["time"].values, xarray_da["time"].values)
     np.testing.assert_array_equal(cli_da["lat"].values, xarray_da["lat"].values)
     np.testing.assert_array_equal(cli_da["lon"].values, xarray_da["lon"].values)
     np.testing.assert_array_equal(cli_da.values, xarray_da.values)
