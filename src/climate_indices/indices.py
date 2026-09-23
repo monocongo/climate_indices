@@ -15,7 +15,7 @@ from climate_indices.logging_config import get_logger, log_calculation_failure
 from climate_indices.performance import check_large_array_memory
 
 # declare the function names that should be included in the public API for this module
-__all__ = ["eddi", "percentage_of_normal", "pci", "pet", "spei", "spi"]
+__all__ = ["eddi", "percentage_of_normal", "pci", "pet", "spei", "spi", "standardized_index"]
 
 
 class Distribution(Enum):
@@ -460,6 +460,203 @@ def eddi(
         raise
 
 
+def _standardized_index_pipeline(
+    values: np.ndarray,
+    scale: int,
+    distribution: Distribution,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: compute.Periodicity,
+    fitting_params: dict[str, Any] | None,
+    *,
+    index_type: str,
+    fallback_context: str,
+    spatial_time_major: bool = False,
+) -> np.ndarray:
+    """Scale, fit, and transform a series in the pipeline shared by the index wrappers.
+
+    Args:
+        values: 1-D array of non-negative values, or a time-major spatial block;
+            see :func:`spi` for the accepted layouts.
+        scale: Number of time steps accumulated before fitting.
+        distribution: Distribution to fit, gamma or Pearson Type III.
+        data_start_year: Initial year of the input values.
+        calibration_year_initial: Initial year of the calibration period.
+        calibration_year_final: Final year of the calibration period.
+        periodicity: Monthly or daily time steps.
+        fitting_params: Optional pre-computed fitting parameters; deprecated
+            aliases are normalized here.
+        index_type: Value bound to the ``index_type`` log field.
+        fallback_context: Context included in the Pearson-to-gamma fallback warning.
+        spatial_time_major: Read a time-major spatial block as independent series.
+
+    Returns:
+        Standardized values in the input's size and layout.
+    """
+    # validate arguments
+    _validate_periodicity(periodicity)
+    _validate_scale(scale, periodicity)
+    _validate_distribution(distribution)
+
+    # bind context and emit calculation_started event
+    log = _logger.bind(
+        index_type=index_type,
+        scale=scale,
+        distribution=distribution.value,
+        input_shape=values.shape,
+        input_elements=values.size,
+    )
+    log.info("calculation_started")
+    t0 = time.perf_counter()
+    memory_metrics = check_large_array_memory(values)
+
+    try:
+        # normalize any deprecated fitting-parameter aliases once, so the diagnostic
+        # stays bounded per spatial operation
+        fitting_params = compute._normalize_fitting_params(fitting_params)
+
+        # remember the original length and shape of the array, in order to facilitate
+        # returning an array of the same size and layout
+        original_length = values.size
+        original_shape = values.shape
+
+        # spatial input arrives time-major, packed as (time, *cells), and is fitted in a
+        # single pass over every cell rather than one call per cell; the xarray adapter
+        # is the caller that packs it that way. An all-missing block is returned as it
+        # arrived, leaving the main flow unchanged.
+        if values.ndim > 2:
+            if not spatial_time_major and values.shape[1] in compute._PERIOD_LENGTHS:
+                raise ValueError(
+                    f"Invalid shape of input array: {values.shape} -- a (time, *cells) block whose first "
+                    "cell axis is a calendar period length is ambiguous with a (years, periods, *cells) "
+                    "array; declare it with spatial_time_major=True"
+                )
+            if scale <= values.shape[0] and (
+                (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values))
+            ):
+                _log_calculation_completed(log, t0, values.shape, memory_metrics)
+                return values
+
+        # flatten, short-circuit all-missing input, clip negatives to zero,
+        # and scale/reshape in the shared preparation seam. Shape errors raise the
+        # plain ValueError from prepare_scaled -- spi()'s dimension errors are pinned
+        # to ValueError by tests/test_backward_compat.py::TestErrorHierarchyDocumented,
+        # unlike eddi()/percentage_of_normal() which use DataShapeError.
+        values = compute.prepare_scaled(values, scale, periodicity, spatial_time_major=spatial_time_major)
+
+        # an all-missing input comes back un-reshaped, so there's nothing to compute
+        if values.ndim == 1:
+            _log_calculation_completed(log, t0, values.shape, memory_metrics)
+            return values
+
+        # fit the scaled values to the specified distribution and transform to
+        # corresponding normalized sigmas, falling back to gamma when a Pearson
+        # Type III fit fails
+        values = compute.fit_and_standardize(
+            values,
+            distribution,
+            data_start_year,
+            calibration_year_initial,
+            calibration_year_final,
+            periodicity,
+            fitting_params,
+            fallback_to_gamma=True,
+            fallback_context=fallback_context,
+        )
+
+        # clip values to within the valid range
+        values = np.clip(values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX)
+
+        if values.ndim > 2:
+            # (years, periods, *cells) back to the time-major input layout, dropping any
+            # padded time steps beyond the original number of them
+            result = values.reshape(-1, *values.shape[2:])[: original_shape[0]]
+        else:
+            # reshape the array back to 1-D and return the original size array
+            result = values.flatten()[0:original_length]
+        _log_calculation_completed(log, t0, result.shape, memory_metrics)
+        result_values: np.ndarray = result
+        return result_values
+    except Exception as exc:
+        log_calculation_failure(log, exc, calibration_period=f"{calibration_year_initial}-{calibration_year_final}")
+        raise
+
+
+def standardized_index(
+    values: np.ndarray,
+    scale: int,
+    distribution: Distribution,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: compute.Periodicity,
+    fitting_params: dict[str, Any] | None = None,
+    *,
+    spatial_time_major: bool = False,
+) -> np.ndarray:
+    """Standardize a non-negative monthly or daily series against a fitted distribution.
+
+    This is the generic form of :func:`spi`: it accumulates the series over ``scale``
+    time steps, fits the specified distribution over the calibration period, and
+    transforms every accumulated value to a normalized sigma (z-score-like) value.
+    It is input-agnostic, so a runoff or streamflow series can be standardized the
+    same way; the package does not model those quantities.
+
+    A Pearson Type III fit falls back to gamma when the fit fails or leaves too many
+    values missing. Log-logistic fitting is tracked by #106 and is not available yet,
+    so no caller should claim it.
+
+    This is a NumPy-array entry point only; xarray and Dask dispatch are not wired
+    for it.
+
+    Args:
+        values: 1-D array of non-negative values, in any units; the first value is
+            assumed to correspond to the start of ``data_start_year``. A 2-D array
+            is read as the legacy (years, periods) layout and flattened, and a
+            time-major spatial block with more than two dimensions is accepted
+            when declared with ``spatial_time_major``.
+        scale: Number of time steps over which the values are accumulated before
+            the index is computed.
+        distribution: Distribution type used for the internal fitting/transform
+            computation.
+        data_start_year: Initial year of the input series.
+        calibration_year_initial: Initial year of the Calibration Period.
+        calibration_year_final: Final year of the Calibration Period.
+        periodicity: Periodicity of the series; ``compute.Periodicity.monthly`` for
+            monthly data (12 values/year) or ``compute.Periodicity.daily`` for daily
+            data (366 values/year).
+        fitting_params: Optional dictionary of pre-computed distribution fitting
+            parameters, with keys "alpha" and "beta" for gamma and "prob_zero",
+            "loc", "scale", and "skew" for Pearson Type III. Older keys such as
+            "alphas" and "probabilities_of_zero" are deprecated.
+        spatial_time_major: Read a three-or-more-dimensional time-major block of
+            independent time series, shaped (time, ``*cells``), and fit every cell
+            in one pass. It is required only for the ambiguous shape whose first
+            cell axis is a calendar period length (12 or 366); see :func:`spi` for
+            the layout. A 2-D block is always read as one series, however
+            declared.
+
+    Returns:
+        1-D array of standardized values, unitless and of the same length as the
+        flattened input; a declared time-major block (three or more dimensions) is
+        returned in its input shape.
+    """
+    return _standardized_index_pipeline(
+        values,
+        scale,
+        distribution,
+        data_start_year,
+        calibration_year_initial,
+        calibration_year_final,
+        periodicity,
+        fitting_params,
+        index_type="standardized_index",
+        fallback_context="standardized index computation",
+        spatial_time_major=spatial_time_major,
+    )
+
+
 def spi(
     values: np.ndarray,
     scale: int,
@@ -516,104 +713,19 @@ def spi(
         of precipitation values, or of the same (time, ``*cells``) shape when
         ``spatial_time_major`` is set
     """
-    # validate arguments
-    _validate_periodicity(periodicity)
-    _validate_scale(scale, periodicity)
-    _validate_distribution(distribution)
-
-    # bind context and emit calculation_started event
-    log = _logger.bind(
+    return _standardized_index_pipeline(
+        values,
+        scale,
+        distribution,
+        data_start_year,
+        calibration_year_initial,
+        calibration_year_final,
+        periodicity,
+        fitting_params,
         index_type="spi",
-        scale=scale,
-        distribution=distribution.value,
-        input_shape=values.shape,
-        input_elements=values.size,
+        fallback_context="SPI computation",
+        spatial_time_major=spatial_time_major,
     )
-    log.info("calculation_started")
-    t0 = time.perf_counter()
-    memory_metrics = check_large_array_memory(values)
-
-    try:
-        # normalize any deprecated fitting-parameter aliases once, so the diagnostic
-        # stays bounded per spatial operation
-        fitting_params = compute._normalize_fitting_params(fitting_params)
-
-        # remember the original length and shape of the array, in order to facilitate
-        # returning an array of the same size and layout
-        original_length = values.size
-        original_shape = values.shape
-
-        # spatial input arrives time-major, packed as (time, *cells), and is fitted in a
-        # single pass over every cell rather than one call per cell; the xarray adapter
-        # is the caller that packs it that way. An all-missing block is returned as it
-        # arrived, leaving the main flow unchanged.
-        if values.ndim > 2:
-            if not spatial_time_major and values.shape[1] in compute._PERIOD_LENGTHS:
-                raise ValueError(
-                    f"Invalid shape of input array: {values.shape} -- a (time, *cells) block whose first "
-                    "cell axis is a calendar period length is ambiguous with a (years, periods, *cells) "
-                    "array; declare it with spatial_time_major=True"
-                )
-            if scale <= values.shape[0] and (
-                (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values))
-            ):
-                return values
-
-        # flatten, short-circuit all-missing input, clip negatives to zero,
-        # and scale/reshape in the shared preparation seam. Shape errors raise the
-        # plain ValueError from prepare_scaled -- spi()'s dimension errors are pinned
-        # to ValueError by tests/test_backward_compat.py::TestErrorHierarchyDocumented,
-        # unlike eddi()/percentage_of_normal() which use DataShapeError.
-        values = compute.prepare_scaled(values, scale, periodicity, spatial_time_major=spatial_time_major)
-
-        # an all-missing input comes back un-reshaped, so there's nothing to compute
-        if values.ndim == 1:
-            duration_ms = (time.perf_counter() - t0) * 1000.0
-            log.info(
-                "calculation_completed",
-                duration_ms=round(duration_ms, 2),
-                output_shape=values.shape,
-                **(memory_metrics or {}),
-            )
-            return values
-
-        # fit the scaled values to the specified distribution and transform to
-        # corresponding normalized sigmas, falling back to gamma when a Pearson
-        # Type III fit fails
-        values = compute.fit_and_standardize(
-            values,
-            distribution,
-            data_start_year,
-            calibration_year_initial,
-            calibration_year_final,
-            periodicity,
-            fitting_params,
-            fallback_to_gamma=True,
-            fallback_context="SPI computation",
-        )
-
-        # clip values to within the valid range
-        values = np.clip(values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX)
-
-        if values.ndim > 2:
-            # (years, periods, *cells) back to the time-major input layout, dropping any
-            # padded time steps beyond the original number of them
-            result = values.reshape(-1, *values.shape[2:])[: original_shape[0]]
-        else:
-            # reshape the array back to 1-D and return the original size array
-            result = values.flatten()[0:original_length]
-        duration_ms = (time.perf_counter() - t0) * 1000.0
-        log.info(
-            "calculation_completed",
-            duration_ms=round(duration_ms, 2),
-            output_shape=result.shape,
-            **(memory_metrics or {}),
-        )
-        result_values: np.ndarray = result
-        return result_values
-    except Exception as exc:
-        log_calculation_failure(log, exc, calibration_period=f"{calibration_year_initial}-{calibration_year_final}")
-        raise
 
 
 def spei(
