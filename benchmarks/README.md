@@ -538,3 +538,133 @@ Reproduce with the same commands; the results are retained verbatim in
 - No cross-PR multiplication: the 28.1x here is this grid, this index, and these
   two commits; it does not compose with #818's per-cell figures, #944's 6x, or
   the xclim `APP`-fit speedup from xclim#2091.
+
+## Legacy CLI multiprocessing vs xarray/Dask on CONUS nClimGrid (#1121)
+
+Neither #1097 (above) nor #928 puts the CLI's `multiprocessing.Pool` path
+(ADR-0002) in the comparison -- both sides of that grid are the xarray/Dask
+API. This section is the other half: SPI-6 gamma over a real, full-CONUS
+precipitation grid, through both `process_climate_indices` (the CLI) and
+`parallel_scaling.py --netcdf` (the xarray/Dask API), on the same `main`
+checkout, with output equivalence asserted before any number is compared.
+
+```bash
+uv run benchmarks/cli_multiprocessing.py prepare \
+  nclimgrid_prcp.nc nclimgrid_prcp_1981_2024.nc --start 1981 --end 2024
+uv run benchmarks/parallel_scaling.py --netcdf nclimgrid_prcp_1981_2024.nc \
+  --var-name prcp --scale 6 --cores 1,2,4,8 --repeat 3 \
+  --write-output xarray_spi6_gamma.nc
+uv run benchmarks/cli_multiprocessing.py time nclimgrid_prcp_1981_2024.nc \
+  --var-name prcp --scale 6 --repeat 3 \
+  --output-dir cli_out --xarray-output xarray_spi6_gamma.nc
+```
+
+Fixture: nClimGrid-Monthly precipitation from the NOAA-managed NODD bucket
+(`noaa-nclimgrid-monthly-pds/nclimgrid_prcp.nc`), 1,796,927,222 bytes, sha256
+`85118392e6be2321b76472631290916d45e81865866ee0d950fb1ad9b14b9c44`, retrieved
+2026-09-22T21:24:54Z (ETag `2ad66993ba82dfe27af796d4d37ee7e0`, Last-Modified
+2026-09-08). Per
+[`docs/research/nclimgrid-acquisition-and-redistribution.md`](../docs/research/nclimgrid-acquisition-and-redistribution.md),
+this is a retrieval-pinned snapshot of a mutable period-of-record object, not
+an immutable per-month source; full endpoint, checksum, citation, and
+redistribution-notice fields are in
+`benchmarks/results/nclimgrid_fixture_provenance.txt`.
+
+Workload: `benchmarks/cli_multiprocessing.py prepare` trims the fixture to
+1981-01 through 2024-12 (528 months, matching #1097's CHIRPS series length so
+only spatial scale changes between the two issues), masks every step to the
+land cells of the first step, and replaces zeros with 0.01 mm -- the same
+treatment `parallel_scaling.load_netcdf_grid` applies, so both paths compute
+from byte-identical input. Full CONUS grid: 825,460 cells (596 lat x 1385
+lon), 469,758 land (56.9%), 355,702 masked (43.1%, outside the CONUS land
+mask); 2,291,008 zero months replaced. SPI-6, `dist="gamma"`, calibration
+1991-2020. Three timed runs per configuration after a warm-up; the CLI's
+worker count is fixed by ADR-0002 (`--multiprocessing all_but_one`, 9 workers
+on the 10-CPU benchmark machine), not swept.
+
+### Correctness gate
+
+The CLI's `spi_gamma_06` output matches the xarray/Dask output cell for cell:
+245,683,434 finite land-cell/time-step values (469,758 land cells x 523
+post-padding months) compared bit for bit at float32, after sorting both
+sides by lat/lon (the xarray harness rolls its spatial axes to seed its
+calibration preflight with a land cell; the CLI never rolls). No timing below
+is quoted before that gate. Pearson is timed on the CLI side (the CLI computes
+both distributions unconditionally, with no flag to select one) but not
+compared -- xarray-path Pearson is known-broken on a heavily masked grid
+(#1118), so there is nothing correct to compare it against.
+
+| configuration | compute (min of 3) | total (min of 3) |
+| --- | ---: | ---: |
+| CLI gamma, `multiprocessing.Pool`, 9 workers | 28.679 s | 34.176 s |
+| CLI pearson, `multiprocessing.Pool`, 9 workers | 104.726 s | 112.858 s |
+| xarray eager, serial in-memory | 63.156 s | 81.511 s |
+| xarray/Dask, 1 worker | 129.821 s | 148.177 s |
+| xarray/Dask, 2 workers | 90.661 s | 109.017 s |
+| xarray/Dask, 4 workers | 69.561 s | 87.916 s |
+| xarray/Dask, 8 workers | 65.001 s | 83.357 s |
+
+"compute" is Pool-map-only for the CLI and Dask-`.compute()`-only for xarray;
+"total" is open + shared-memory copy + compute + write for the CLI, and
+read + compute + write for xarray (xarray's read, 17.850 s, and write,
+0.506 s, are shared across every xarray row above). Every sample is retained
+in `benchmarks/results/nclimgrid_spi6_cli.txt` and
+`benchmarks/results/nclimgrid_spi6_gamma_xarray.txt`.
+
+Measured, not inferred:
+
+- At this scale the CLI's 9-worker `multiprocessing.Pool` path is faster than
+  either xarray/Dask configuration: 2.20x faster (compute) than xarray eager,
+  and 2.27x faster than the best Dask configuration (8 workers). On total time
+  the gap is larger -- 2.39x and 2.44x -- because the CLI's "total" already
+  includes its own file-open and shared-memory copy, while xarray's read and
+  write are the smaller, shared 17.85 s / 0.51 s figures above.
+- xarray/Dask scales with worker count on this grid (129.821 s -> 65.001 s,
+  1.997x from 1 to 8 workers) but never beats its own eager call: even the
+  best Dask configuration (8 workers, 65.001 s) is slightly slower than eager
+  (63.156 s). Dask at 1 worker (129.821 s) is more than 2x slower than eager,
+  a wider gap than #1097's CHIRPS case showed at 1/29th the land-cell count.
+- The CLI's pearson leg (104.726 s compute) is not comparable to any xarray
+  number (see the correctness gate above), but is recorded as a fact: at this
+  grid size, computing both distributions the CLI always computes takes
+  133.4 s of compute (28.679 + 104.726).
+
+Interpretation (not measured): the CLI's `multiprocessing.Array` shared memory
+is a single zero-copy buffer every worker indexes into directly; Dask's
+`scheduler="processes"` instead pickles each block's input and result across
+process boundaries. At CHIRPS scale (#1097, 16,134 land cells) that transport
+cost was small next to the fit; at this grid's 469,758 land cells -- 29x more
+-- it appears to cost more than the fit saves by parallelizing, which is
+consistent with Dask-8 barely reaching eager's serial time instead of clearly
+beating it. This is a negative result for the xarray/Dask API's process
+scheduler at CONUS scale, not a reason to revisit the vectorization work
+(#1097's 28.1x), which is a different, already-settled axis.
+
+### Deviations and limits
+
+- Memory pressure: this 32 GB machine's swap grew from a 5.7 GB baseline to a
+  peak of 18.75 GB during the Dask sweep and 13.49 GB during the CLI run
+  (`sysctl vm.swapusage`, recorded before/after each run). Both runs likely
+  include some paging cost, and the Dask sweep's numbers may be inflated more
+  than the CLI's, since Dask's per-worker serialization holds more concurrent
+  copies of the ~1.66 GB (float32) grid than the CLI's single shared buffer.
+  The CLI ran second, after the Dask sweep had already raised swap usage, so
+  its advantage is not an artifact of running under less memory pressure.
+- The CLI's own INFO-level logging and the library's `RuntimeWarning`/
+  `MissingDataWarning` output (this grid's 43.1% masked fraction exceeds the
+  20% missing-data threshold checked per call) are not suppressed on the CLI
+  side the way `_quiet_logging()`/`_quiet_worker()` suppress them for the
+  Dask sweep; `benchmarks/results/nclimgrid_spi6_cli.txt` retains only the
+  benchmark's own summary lines, not that interleaved output.
+- `--multiprocessing` is a real CLI flag (`single`, `all_but_one`, `all`), so
+  the worker count is configurable in principle; only the default
+  (`all_but_one`) is timed here, matching the issue's "single data point --
+  worker count is fixed by ADR-0002" framing.
+- Same-session comparison only, per the discipline above; do not compare
+  these seconds to #1097's CHIRPS seconds or #928's synthetic-grid seconds --
+  compare the *ratios* (CLI vs. eager vs. Dask), which is what this section's
+  measured claims are built from.
+- A distributed (multi-node) Dask cluster is a different comparison --
+  network serialization and a distributed scheduler replace local
+  process-pool overhead entirely -- and is out of scope here; tracked
+  separately in #1127.
