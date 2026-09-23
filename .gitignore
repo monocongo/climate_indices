@@ -40,6 +40,8 @@ nosetests.xml
 coverage.xml
 *.cover
 .hypothesis/
+# pytest-testmon's database, plus its SQLite -shm/-wal sidecars
+.testmondata*
 
 # Sphinx documentation
 docs/_build/
