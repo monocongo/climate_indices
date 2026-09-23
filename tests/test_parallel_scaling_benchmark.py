@@ -261,12 +261,13 @@ def test_measure_distributed_persists_and_gates_equivalence(distributed_client: 
     index = parallel_scaling._Index(lambda g: g.precip, 0)
     addresses = tuple(distributed_client.scheduler_info()["workers"])
 
+    expected_digest = hashlib.sha256(memoryview(np.ascontiguousarray(values))).hexdigest()
     distribute_seconds, samples, digest = parallel_scaling._measure_distributed(
-        index, grid, distributed_client, addresses, repeat=1
+        index, grid, distributed_client, addresses, repeat=1, serial_digest=expected_digest
     )
     assert distribute_seconds >= 0.0
     assert len(samples) == 1
-    assert digest == hashlib.sha256(memoryview(np.ascontiguousarray(values))).hexdigest()
+    assert digest == expected_digest
 
 
 def test_measure_distributed_rejects_a_run_that_fills_the_land_mask(distributed_client: distributed.Client) -> None:
@@ -280,7 +281,37 @@ def test_measure_distributed_rejects_a_run_that_fills_the_land_mask(distributed_
     addresses = tuple(distributed_client.scheduler_info()["workers"])
 
     with pytest.raises(RuntimeError, match="marked as missing"):
-        parallel_scaling._measure_distributed(index, grid, distributed_client, addresses, repeat=1)
+        parallel_scaling._measure_distributed(
+            index, grid, distributed_client, addresses, repeat=1, serial_digest="0" * 64
+        )
+
+
+@pytest.mark.parametrize("bad_value, error", [(3.0, "does not match"), (np.nan, "non-finite output")])
+def test_measure_distributed_rejects_an_invalid_earlier_run(
+    distributed_client: distributed.Client, bad_value: float, error: str
+) -> None:
+    """An invalid timed run cannot be hidden by a later valid compute."""
+    values = np.full((2, 1, 1), 2.0)
+    precip = xr.DataArray(values, dims=("time", "lat", "lon"))
+    grid = parallel_scaling._Grid(precip=precip)
+    digest = hashlib.sha256(memoryview(np.ascontiguousarray(values))).hexdigest()
+    calls = []
+
+    class Computation:
+        def compute(self, **kwargs: object) -> xr.DataArray:
+            calls.append(kwargs)
+            result = precip.copy()
+            if len(calls) == 2:
+                result.values[1, 0, 0] = bad_value
+            return result
+
+    index = parallel_scaling._Index(lambda _: Computation(), 0)
+    addresses = tuple(distributed_client.scheduler_info()["workers"])
+    with pytest.raises(RuntimeError, match=error):
+        parallel_scaling._measure_distributed(
+            index, grid, distributed_client, addresses, repeat=2, serial_digest=digest
+        )
+    assert len(calls) == 2
 
 
 def test_run_distributed_sweep_prints_a_gated_row(

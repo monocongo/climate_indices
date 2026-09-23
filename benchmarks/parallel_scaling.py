@@ -354,7 +354,7 @@ def _select_workers(workers_info: dict[str, dict[str, Any]], count: int) -> tupl
 
 
 def _measure_distributed(
-    index: _Index, grid: _Grid, client: Any, addresses: tuple[str, ...], repeat: int
+    index: _Index, grid: _Grid, client: Any, addresses: tuple[str, ...], repeat: int, serial_digest: str
 ) -> tuple[float, tuple[float, ...], str]:
     """Persist chunked inputs onto ``addresses``, then time ``repeat`` distributed computes.
 
@@ -362,13 +362,13 @@ def _measure_distributed(
     sample returned. Persisting the input onto the selected workers is untimed
     and reported separately as the distribute time, since sending a multi-GB
     grid over the network is not part of what the compute-only figure claims to
-    measure. The finite-tail gate runs once, against the last timed run's
-    result, exactly as ``_measure`` does.
+    measure. Every run, including warm-up, must match the eager serial result
+    before its timing can be retained.
 
     Returns:
         distribute seconds, every timed compute sample, and the SHA-256 of the
-        gathered result -- ``_run_real_grid`` compares this against the eager
-        serial digest before printing any speedup.
+        gathered result; each compute is checked against the eager serial digest
+        before any speedup can be printed.
     """
     import distributed
 
@@ -394,14 +394,15 @@ def _measure_distributed(
     distribute_seconds = time.perf_counter() - distribute_start
 
     timings = []
-    result = None
     for _ in range(repeat + 1):
         start = time.perf_counter()
         result = index.run(persisted).compute(workers=list(addresses), allow_other_workers=False)
-        timings.append(time.perf_counter() - start)
-    assert result is not None
-    _require_finite_tail(result.values, index.leading_pad, grid.valid_cells)
-    digest = hashlib.sha256(memoryview(np.ascontiguousarray(result.values))).hexdigest()
+        elapsed = time.perf_counter() - start
+        _require_finite_tail(result.values, index.leading_pad, grid.valid_cells)
+        digest = hashlib.sha256(memoryview(np.ascontiguousarray(result.values))).hexdigest()
+        if digest != serial_digest:
+            raise RuntimeError(f"distributed result at {workers} workers does not match the eager serial run")
+        timings.append(elapsed)
     return distribute_seconds, tuple(timings[1:]), digest
 
 
@@ -604,9 +605,7 @@ def _run_distributed_sweep(
     baseline = None
     for worker_count in workers:
         addresses, hosts = _select_workers(client.scheduler_info()["workers"], worker_count)
-        distribute_seconds, samples, digest = _measure_distributed(index, grid, client, addresses, repeat)
-        if digest != serial_digest:
-            raise RuntimeError(f"distributed result at {worker_count} workers does not match the eager serial run")
+        distribute_seconds, samples, _ = _measure_distributed(index, grid, client, addresses, repeat, serial_digest)
         if baseline is None:
             baseline = min(samples)
         speedup = baseline / min(samples)
