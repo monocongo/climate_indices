@@ -24,4 +24,6 @@ corrected in place), or `Superseded by ADR-NNNN`. The authoring conventions are 
 0010-seasonal-carry-is-an-explicit-mask
 0011-palmer-spatial-block-and-per-location-scpdsi
 0012-xarray-api-stays-beta-through-3.0.0
+0013-flood-module-api-and-naming
+0014-flood-family-scientific-conventions
 ```

@@ -83,9 +83,10 @@ potential of the approach in one region, not a transferable rule.
 ## Planned wet-extreme indices
 
 The flood family below is planned, not implemented. Module names, function
-names, and arguments will be fixed before implementation in the flood design
-decision ([FLOOD-02 #1099][flood-1099]); the planned indices below are not
-yet callable APIs. The [flood-family epic #1098][flood-epic] tracks the
+names, and arguments are fixed by
+[ADR-0013](adr/0013-flood-module-api-and-naming.md) and recorded in the flood
+subsystem design note, so the indices below are not yet callable APIs but will
+not be renamed. The [flood-family epic #1098][flood-epic] tracks the
 implementation order.
 
 - **Effective Precipitation (PE)** — *planned (FLOOD-08 [#1105][flood-1105])*.
@@ -94,10 +95,15 @@ implementation order.
 - **Effective Drought Index (EDI)** — *planned (FLOOD-09 [#1106][flood-1106])*.
   A daily standardized index derived from effective precipitation
   ([Byun & Wilhite (1999)][byun-1999]); despite the name, it shares its
-  kernel with the flood family.
+  kernel with the flood family. It implements the fixed-window form of the
+  index, not the paper's variable-duration extension
+  ([ADR-0014](adr/0014-flood-family-scientific-conventions.md)).
 - **Flood Index (I_F)** — *planned (FLOOD-10 [#1107][flood-1107])*. A daily
   flood-potential index that standardizes effective precipitation
-  ([Deo et al. (2015)][deo-2015]).
+  ([Deo et al. (2015)][deo-2015]). The annual-maximum window follows the
+  caller's year boundary, and the deviation from the published exponential
+  kernel is recorded in
+  [ADR-0014](adr/0014-flood-family-scientific-conventions.md).
 - **Antecedent Precipitation Index (API)** — *planned (FLOOD-12
   [#1109][flood-1109])*. A daily recursive wetness measure with an explicit
   decay constant.
@@ -110,11 +116,14 @@ implementation order.
   the CF metadata registry entries ([FLOOD-06 #1103][flood-1103]).
 
 Heavy-precipitation triggers (Rx1day, Rx5day, and R95pTOT per
-[Zhang et al. (2011)][zhang-2011]) are conditional: whether this package
-should duplicate existing `xclim` coverage is an open scope decision
-([FLOOD-03 #1100][flood-1100]), as are the WAP/SWAP wet-anomaly indices and
-snowmelt-dependent indices such as SMRI. Until then, none of these is part of
-this package.
+[Zhang et al. (2011)][zhang-2011]) are in scope, validated against the ETCCDI
+reference implementation `climdex.pcic`, with `xclim` an optional cross-check
+that never becomes a dependency ([FLOOD-03 #1100][flood-1100]). The WAP/SWAP
+wet-anomaly indices are deferred, and snowmelt-dependent indices such as SMRI
+are out of scope, as is anything needing a calibrated hydrologic model,
+terrain or land-cover data, or routed discharge
+([ADR-0014](adr/0014-flood-family-scientific-conventions.md)). None of these
+is part of this package yet.
 
 ## What these indices cannot tell you
 
