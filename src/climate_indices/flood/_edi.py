@@ -42,8 +42,9 @@ def edi(
         calibration_year_initial: First year of the Calibration Period.
         calibration_year_final: Last year of the Calibration Period (inclusive).
             Only complete years may be used to fit the climatology.
-        duration: PE window length, default 365. Must match the length used to
-            produce ``pe``; this cannot be inferred from the input array.
+        duration: PE window length, default 365. Accepted for symmetry with
+            :func:`effective_precipitation`; the fixed-window harmonic factor
+            cancels during standardization, so this argument does not affect EDI.
         spatial_time_major: Declare an ambiguous Spatial Block whose first cell
             axis has length 12 or 366. A 2-D array is always ``(years, 366)``.
 
@@ -97,9 +98,13 @@ def edi(
             "Calibration Period must span at least two complete input years.",
             argument_name="calibration_year_initial/calibration_year_final",
         )
-    padded = np.full((int(np.ceil(series.shape[0] / _DAYS_PER_YEAR)) * _DAYS_PER_YEAR, *series.shape[1:]), np.nan)
-    padded[: series.shape[0]] = series
-    years = padded.reshape(-1, _DAYS_PER_YEAR, *series.shape[1:])
+    padded = series
+    if series.shape[0] % _DAYS_PER_YEAR:
+        padded = np.full(
+            (((series.shape[0] + _DAYS_PER_YEAR - 1) // _DAYS_PER_YEAR) * _DAYS_PER_YEAR, *series.shape[1:]), np.nan
+        )
+        padded[: series.shape[0]] = series
+    years = padded.reshape(padded.shape[0] // _DAYS_PER_YEAR, _DAYS_PER_YEAR, *series.shape[1:])
     calibration = years[calibration_year_initial - data_start_year : calibration_year_final - data_start_year + 1]
     valid = np.isfinite(calibration)
     counts = valid.sum(axis=0)
@@ -110,7 +115,7 @@ def edi(
     variance = np.divide(
         (deviations * deviations).sum(axis=0), counts, out=np.full(counts.shape, np.nan), where=counts > 1
     )
+    result = np.full(years.shape, np.nan)
     with np.errstate(invalid="ignore", divide="ignore"):
-        result = (years - mean) / np.sqrt(variance)
-    result = np.where(variance > 0, result, np.nan)
-    return result.reshape(-1, *series.shape[1:])[: series.shape[0]].reshape(values.shape)
+        np.divide(years - mean, np.sqrt(variance), out=result, where=variance > 0)
+    return result.reshape(padded.shape[0], *series.shape[1:])[: series.shape[0]].reshape(values.shape)

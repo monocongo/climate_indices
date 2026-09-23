@@ -11,6 +11,7 @@ learn by doing, start with {doc}`tutorials`; to get a job done, see
 architecture
 project-overview
 algorithms
+algorithm_refs/edi
 algorithm_refs/eddi
 algorithm_refs/palmer
 algorithm_refs/pet

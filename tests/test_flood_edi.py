@@ -21,6 +21,14 @@ def test_edi_standardizes_each_calendar_day_on_calibration_years_only() -> None:
     np.testing.assert_allclose(flood.edi(values.ravel(), 2000, 2000, 2002), result.ravel())
 
 
+def test_edi_accepts_pe_kernel_output_and_keeps_window_nans() -> None:
+    rain = _pe_years(1, 3, 5)
+    pe = flood.effective_precipitation(rain, duration=3)
+    result = flood.edi(pe, 2000, 2000, 2002, duration=3)
+    assert np.isnan(result[0, :2]).all()
+    assert np.isfinite(result[0, 2:]).all()
+
+
 def test_edi_uses_daily_baselines_and_preserves_missing_observations() -> None:
     values = _pe_years(1, 3, 5)
     values[:, 1] = [2, 4, 6]
@@ -53,6 +61,8 @@ def test_edi_partial_year_and_independent_spatial_cells() -> None:
     with pytest.raises(ValueError, match="spatial_time_major=True"):
         flood.edi(ambiguous, 2000, 2000, 2001)
     assert flood.edi(ambiguous, 2000, 2000, 2001, spatial_time_major=True).shape == ambiguous.shape
+    empty = np.empty((732, 0, 2))
+    assert flood.edi(empty, 2000, 2000, 2001).shape == empty.shape
 
 
 @pytest.mark.parametrize("years", [(2001, 2001), (1999, 2001), (2000, 2002), (2000, 1999), (2000.5, 2001)])
