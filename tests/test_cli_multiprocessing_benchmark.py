@@ -64,6 +64,19 @@ def _write_source_fixture(path: Path, periods: int, start: str, zero_at: str) ->
     ).to_netcdf(path, engine="h5netcdf")
 
 
+def test_safe_write_path_rejects_traversal_but_keeps_documented_usage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The S8707 guard: relative paths stay in the working directory; absolute paths still work."""
+    with pytest.raises(SystemExit, match="outside the working directory"):
+        cli_multiprocessing._safe_write_path("../../etc", "--output-dir")
+
+    assert cli_multiprocessing._safe_write_path(str(tmp_path / "cli"), "--output-dir") == (tmp_path / "cli").resolve()
+
+    monkeypatch.chdir(tmp_path)
+    assert cli_multiprocessing._safe_write_path("cli_out", "--output-dir") == (tmp_path / "cli_out").resolve()
+
+
 def test_prepare_masks_from_the_first_step_and_replaces_zeros(tmp_path: Path) -> None:
     """prepare trims time, masks every step to the first step's finite cells, and zero-fixes land cells."""
     source = tmp_path / "source.nc"

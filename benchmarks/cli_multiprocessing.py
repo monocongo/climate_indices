@@ -61,6 +61,22 @@ _INCH_UNITS = {"inches", "inch"}
 _DISTRIBUTIONS = ("gamma", "pearson")
 
 
+def _safe_write_path(value: str, flag: str) -> Path:
+    """Resolve ``value``, refusing a relative path that escapes the working directory.
+
+    These arguments are agent-supplied in benchmark runs, so a relative value
+    like ``../../.ssh`` must not create or overwrite files outside the checkout
+    (pythonsecurity:S8707). Absolute paths are documented usage
+    (``--output-dir /tmp/cli``) and pass through after normalisation.
+    """
+    resolved = os.path.realpath(value)
+    if not os.path.isabs(value):
+        base = os.path.realpath(os.getcwd())
+        if resolved != base and not resolved.startswith(base + os.sep):
+            raise SystemExit(f"{flag} {value!r} is outside the working directory")
+    return Path(resolved)
+
+
 def _prepare(args: argparse.Namespace) -> None:
     """Trim a source nClimGrid NetCDF to one time span and prepare it like the xarray harness.
 
@@ -103,11 +119,12 @@ def _prepare(args: argparse.Namespace) -> None:
         {"prcp": (("lat", "lon", "time"), np.moveaxis(values, 0, -1), {"units": "mm"})},
         coords={"time": da["time"].values, "lat": da["lat"].values, "lon": da["lon"].values},
     )
-    prepared.to_netcdf(args.target, engine="h5netcdf")
+    target = _safe_write_path(args.target, "target")
+    prepared.to_netcdf(target, engine="h5netcdf")
 
     land_cells = int(valid_cells.sum())
     print(f"source: {os.path.abspath(args.source)}")
-    print(f"target: {os.path.abspath(args.target)} sha256={_hash_file(args.target)}")
+    print(f"target: {target} sha256={_hash_file(str(target))}")
     print(
         f"grid: time={values.shape[0]} lat={values.shape[1]} lon={values.shape[2]}; "
         f"land={land_cells} of {valid_cells.size} cells ({land_cells / valid_cells.size:.1%}); "
@@ -196,7 +213,7 @@ def _time_cli(args: argparse.Namespace) -> None:
     os.environ[ENV_LOG_LEVEL] = "WARNING"
     warnings.filterwarnings("ignore", category=GoodnessOfFitWarning)
 
-    output_dir = Path(args.output_dir)
+    output_dir = _safe_write_path(args.output_dir, "--output-dir")
     output_dir.mkdir(parents=True, exist_ok=True)
     output_base = str(output_dir / "nclimgrid")
     argv = _cli_argv(
