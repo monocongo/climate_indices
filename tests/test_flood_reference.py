@@ -1,0 +1,147 @@
+"""Source-backed flood-family identities and frozen public contracts (#1104).
+
+These tests encode algebra printed in the primary sources, not vectors generated
+by climate_indices. Numeric paper oracles remain unavailable; see
+``tests/fixture/flood/README.md``. Tests skip with their implementation issue
+until each planned function lands.
+"""
+
+from __future__ import annotations
+
+import importlib
+import inspect
+from collections.abc import Callable
+from typing import Any
+
+import numpy as np
+import pytest
+
+pytestmark = pytest.mark.validation
+
+
+def _require_flood_function(name: str, issue: int) -> Callable[..., Any]:
+    try:
+        flood = importlib.import_module("climate_indices.flood")
+    except ModuleNotFoundError as error:
+        if error.name != "climate_indices.flood":
+            raise
+        pytest.skip(f"climate_indices.flood is not implemented; tracked by #{issue}")
+
+    function = getattr(flood, name, None)
+    if function is None:
+        pytest.skip(f"flood.{name}() is not implemented; tracked by #{issue}")
+    return function
+
+
+@pytest.mark.parametrize(
+    ("name", "issue", "expected"),
+    [
+        (
+            "effective_precipitation",
+            1105,
+            (
+                ("precipitation", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),
+                ("duration", inspect.Parameter.KEYWORD_ONLY, 365),
+                ("spatial_time_major", inspect.Parameter.KEYWORD_ONLY, False),
+            ),
+        ),
+        (
+            "edi",
+            1106,
+            (
+                ("pe", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),
+                ("data_start_year", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),
+                (
+                    "calibration_year_initial",
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    inspect.Parameter.empty,
+                ),
+                (
+                    "calibration_year_final",
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    inspect.Parameter.empty,
+                ),
+                ("duration", inspect.Parameter.KEYWORD_ONLY, 365),
+                ("spatial_time_major", inspect.Parameter.KEYWORD_ONLY, False),
+            ),
+        ),
+        (
+            "flood_index",
+            1107,
+            (
+                ("pe", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),
+                ("data_start_year", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),
+                (
+                    "calibration_year_initial",
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    inspect.Parameter.empty,
+                ),
+                (
+                    "calibration_year_final",
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    inspect.Parameter.empty,
+                ),
+                ("year_start_month", inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.empty),
+                ("spatial_time_major", inspect.Parameter.KEYWORD_ONLY, False),
+            ),
+        ),
+        (
+            "antecedent_precipitation_index",
+            1109,
+            (
+                ("precipitation", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),
+                ("k", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),
+                ("initial_state", inspect.Parameter.KEYWORD_ONLY, None),
+                ("return_state", inspect.Parameter.KEYWORD_ONLY, False),
+                ("spin_up", inspect.Parameter.KEYWORD_ONLY, 0),
+                ("nan_policy", inspect.Parameter.KEYWORD_ONLY, "propagate"),
+                ("max_gap_days", inspect.Parameter.KEYWORD_ONLY, 0),
+                ("spatial_time_major", inspect.Parameter.KEYWORD_ONLY, False),
+            ),
+        ),
+    ],
+)
+def test_planned_public_signature(name: str, issue: int, expected: tuple[tuple[str, Any, Any], ...]) -> None:
+    """Freeze names, argument kinds, and defaults settled by ADR-0013/0014."""
+    function = _require_flood_function(name, issue)
+    actual = tuple(
+        (parameter.name, parameter.kind, parameter.default)
+        for parameter in inspect.signature(function).parameters.values()
+    )
+    assert actual == expected
+
+
+def test_effective_precipitation_matches_equation_2_two_day_identity() -> None:
+    """Byun and Wilhite Eq. (2): EP₂ = P₁ + (P₁ + P₂) / 2."""
+    effective_precipitation = _require_flood_function("effective_precipitation", 1105)
+    older, current = 2.0, 4.0
+
+    actual = effective_precipitation(np.array([older, current]), duration=2)
+
+    np.testing.assert_allclose(actual, [np.nan, current + (current + older) / 2], rtol=0.0, atol=0.0)
+
+
+def test_effective_precipitation_has_harmonic_endpoint_weights() -> None:
+    """Eq. (2)'s newest and oldest weights are H_D and 1/D."""
+    effective_precipitation = _require_flood_function("effective_precipitation", 1105)
+    duration = 5
+    newest_impulse = np.zeros(duration)
+    newest_impulse[-1] = 1.0
+    oldest_impulse = newest_impulse[::-1]
+
+    newest_weight = effective_precipitation(newest_impulse, duration=duration)[-1]
+    oldest_weight = effective_precipitation(oldest_impulse, duration=duration)[-1]
+
+    assert newest_weight == pytest.approx(sum(1 / n for n in range(1, duration + 1)))
+    assert oldest_weight == pytest.approx(1 / duration)
+
+
+def test_antecedent_precipitation_converges_to_constant_input_closed_form() -> None:
+    """Kohler and Linsley's non-lagged recurrence converges to P / (1 - k)."""
+    antecedent_precipitation_index = _require_flood_function("antecedent_precipitation_index", 1109)
+    precipitation = 2.0
+    k = 0.5
+
+    actual = antecedent_precipitation_index(np.full(60, precipitation), k)
+
+    assert actual[-1] == pytest.approx(precipitation / (1 - k), rel=0.0, abs=1e-15)
