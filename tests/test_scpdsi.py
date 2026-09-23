@@ -248,9 +248,9 @@ def test_scpdsi_oracle_contains_all_climate_divisions(palmer_division_dirs):
 
 
 @pytest.mark.validation
-def test_climate_division_matches_scpdsi_oracle(palmer_division_dir, palmer_scpdsi_results):
+def test_climate_division_matches_scpdsi_oracle(palmer_division_dir, palmer_division_inputs):
     division = palmer_division_dir.name
-    scpdsi, scphdi, scpmdi, sczindex, params = palmer_scpdsi_results[division]
+    scpdsi, scphdi, scpmdi, sczindex, params = _call(palmer_division_inputs, division)
     assert params is not None
 
     for name, actual in (
