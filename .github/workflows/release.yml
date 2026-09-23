@@ -58,6 +58,11 @@ jobs:
     - name: Install dependencies
       run: uv sync --locked --dev
 
+    # Unlike the pull-request workflow, every check below runs on every Python:
+    # this is the last gate before publishing, and the pull-request `lint` and
+    # `validation` jobs only see the 3.12 dependency stack, so mypy and the
+    # numerical validation on the 3.10 and 3.11 stacks are checked only here.
+    # Core tests run under xdist (`-n auto`); the others stay serial.
     - name: Run ruff linter
       run: uv run --no-sync --no-build ruff check src/ tests/
 
@@ -68,7 +73,7 @@ jobs:
       run: uv run --no-sync --no-build mypy src/
 
     - name: Run core tests
-      run: uv run --no-sync --no-build pytest
+      run: uv run --no-sync --no-build pytest -n auto
 
     - name: Run validation tests
       run: uv run --no-sync --no-build pytest -m validation
