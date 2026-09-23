@@ -315,7 +315,7 @@ def test_measure_distributed_rejects_an_invalid_earlier_run(
 
 
 def test_run_distributed_sweep_prints_a_gated_row(
-    distributed_client: distributed.Client, capsys: pytest.CaptureFixture[str]
+    distributed_client: distributed.Client, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The extracted sweep prints its header and row, and raises on a digest mismatch."""
     values = np.full((6, 2, 2), 2.0)
@@ -324,7 +324,13 @@ def test_run_distributed_sweep_prints_a_gated_row(
     grid = parallel_scaling._Grid(precip=precip, valid_cells=np.array([[True, True], [True, False]]))
     index = parallel_scaling._Index(lambda g: g.precip, 0)
     digest = hashlib.sha256(memoryview(np.ascontiguousarray(values))).hexdigest()
+    scheduler_info = distributed_client.scheduler_info
 
+    def all_workers(*, n_workers: int = 5) -> dict:
+        assert n_workers == -1
+        return scheduler_info(n_workers=n_workers)
+
+    monkeypatch.setattr(distributed_client, "scheduler_info", all_workers)
     parallel_scaling._run_distributed_sweep(
         index, grid, distributed_client, (2,), 1, digest, "tcp://scheduler:8786", 0.5, 0.25
     )

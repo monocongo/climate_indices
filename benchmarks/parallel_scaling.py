@@ -604,7 +604,7 @@ def _run_distributed_sweep(
     )
     baseline = None
     for worker_count in workers:
-        addresses, hosts = _select_workers(client.scheduler_info()["workers"], worker_count)
+        addresses, hosts = _select_workers(client.scheduler_info(n_workers=-1)["workers"], worker_count)
         distribute_seconds, samples, _ = _measure_distributed(index, grid, client, addresses, repeat, serial_digest)
         if baseline is None:
             baseline = min(samples)
@@ -674,7 +674,7 @@ def _run_real_grid(args: argparse.Namespace) -> None:
     client = None
     if args.scheduler:
         client = _connect_cluster(args.scheduler, revision)
-        cluster_workers = client.scheduler_info()["workers"]
+        cluster_workers = client.scheduler_info(n_workers=-1)["workers"]
         workers = args.cores or _default_workers(cells, cap=len(cluster_workers))
         _require_worker_counts(workers, cells)
         _require_cluster_capacity(workers, len(cluster_workers))
