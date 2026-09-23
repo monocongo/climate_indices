@@ -1,0 +1,10 @@
+checkout revision: 11ed94b68991e35464c0a93e0c5c34ce14057096
+fixture: /private/tmp/ci1121/nclimgrid_prcp_1981_2024.nc sha256=e88478c201fce89994e03937db1a13e34cd0c9c929578c5fe925d5a69a7c3cb2
+grid: time=528 lat=596 lon=1385
+environment: python 3.14.7; macOS-26.6.2-arm64-arm-64bit-Mach-O; numpy 2.4.2; scipy 1.17.0; xarray 2026.1.0; dask 2026.8.0; cpu Apple M5; 10 CPUs
+process: workers=9 (--multiprocessing all_but_one); 3 timed runs after a warm-up
+
+equivalence: CLI spi_gamma_06 == xarray __xarray_dataarray_variable__, 245683434 finite cells, bit for bit
+
+cli gamma (multiprocessing.Pool, 9 workers): compute samples=[31.409, 28.679, 32.442] min=28.679 s; total samples=[36.900, 34.176, 37.216] min=34.176 s
+cli pearson (multiprocessing.Pool, 9 workers): compute samples=[108.659, 104.726, 107.399] min=104.726 s; total samples=[117.680, 112.858, 115.133] min=112.858 s
