@@ -120,6 +120,7 @@ def edi(
         (deviations * deviations).sum(axis=0), counts, out=np.full(counts.shape, np.nan), where=counts > 1
     )
     result = np.full(years.shape, np.nan)
+    rounding = 8 * np.finfo(np.float64).eps * np.abs(mean)
     with np.errstate(invalid="ignore", divide="ignore"):
-        np.divide(years - mean, np.sqrt(variance), out=result, where=variance > 0)
+        np.divide(years - mean, np.sqrt(variance), out=result, where=variance > rounding * rounding)
     return result.reshape(padded.shape[0], *series.shape[1:])[: series.shape[0]].reshape(values.shape)

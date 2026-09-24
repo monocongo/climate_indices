@@ -47,6 +47,13 @@ def test_edi_uses_daily_baselines_and_preserves_missing_observations() -> None:
     assert np.isnan(flood.edi(masked, 2000, 2000, 2002)[0, 0])
 
 
+def test_edi_ignores_rounding_variance_without_discarding_small_signals() -> None:
+    constant = _pe_years(0.1, 0.1, 0.1)
+    assert np.isnan(flood.edi(constant, 2000, 2000, 2002)).all()
+    small = _pe_years(1e-18, 2e-18, 3e-18)
+    assert flood.edi(small, 2000, 2000, 2002)[0, 0] == pytest.approx(-np.sqrt(1.5))
+
+
 def test_edi_partial_year_and_independent_spatial_cells() -> None:
     values = _pe_years(1, 3, 5)
     block = np.stack((values.ravel(), values.ravel() * 2), axis=1).reshape(1098, 1, 2)
