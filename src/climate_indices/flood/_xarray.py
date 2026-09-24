@@ -184,8 +184,14 @@ def _api_xarray(
         output_dtypes=[float, float, np.int64],
     )
     values = values.transpose(*rain.dims)
-    if time_dim in rain.coords:
-        values = values.assign_coords({time_dim: rain.coords[time_dim].values[spin_up:]})
+    # apply_ufunc drops every coordinate along the excluded time dimension; restore them with their attrs.
+    values = values.assign_coords(
+        {
+            name: coord.isel({time_dim: slice(spin_up, None)})
+            for name, coord in rain.coords.items()
+            if time_dim in coord.dims
+        }
+    )
     values.attrs = build_output_attrs(
         precipitation,
         cf_metadata=CF_METADATA["antecedent_precipitation_index"],  # type: ignore[arg-type]
@@ -199,7 +205,7 @@ def _api_xarray(
     loaded = xr.Dataset({"values": values, "api": api, "gaps": gaps}).load()
     final_gaps = loaded["gaps"].values
     return APIResult(
-        values=loaded["values"],
+        values=loaded["values"].rename(values.name),
         state=APIState(loaded["api"].values, None if np.all(final_gaps < 0) else final_gaps),
     )
 

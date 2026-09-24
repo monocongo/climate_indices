@@ -161,6 +161,32 @@ def test_api_xarray_time_only_and_ambiguous_spatial_axis() -> None:
     np.testing.assert_array_equal(gridded.compute(), np.broadcast_to(result.values.values[:, None], (4, 12)))
 
 
+def test_api_xarray_spin_up_keeps_time_coordinates_and_name() -> None:
+    dates = pd.date_range("2001-01-01", periods=6)
+    rain = xr.DataArray(
+        np.arange(6.0),
+        dims="time",
+        name="precip",
+        coords={
+            "time": ("time", dates, {"long_name": "observation time"}),
+            "month": ("time", dates.month.values, {"units": "1"}),
+        },
+        attrs={"units": "mm"},
+    )
+    eager = flood.antecedent_precipitation_index(rain, 0.9, spin_up=2)
+    stateful = flood.antecedent_precipitation_index(rain, 0.9, spin_up=2, return_state=True)
+    assert isinstance(eager, xr.DataArray)
+    assert isinstance(stateful, flood.APIResult)
+    for values in (eager, stateful.values):
+        assert values.name == "precip"
+        assert values.time.attrs == {"long_name": "observation time"}
+        assert values.month.attrs == {"units": "1"}
+        np.testing.assert_array_equal(values.month, rain.month.isel(time=slice(2, None)))
+    unnamed = flood.antecedent_precipitation_index(rain.rename(None), 0.9, return_state=True)
+    assert isinstance(unnamed, flood.APIResult)
+    assert unnamed.values.name is None
+
+
 def test_flood_infers_only_complete_calibration_periods() -> None:
     pe = flood.effective_precipitation(_rain_grid().isel(time=slice(None, -60)), duration=30)
     assert flood.edi(pe, duration=30).attrs["calibration_year_final"] == 2003
