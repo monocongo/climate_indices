@@ -115,10 +115,13 @@ unreproducible claim of reproduction.
    `I_F > 0`.) Unvalidatable code does not belong in a validation-gated
    milestone.
 6. **Scope boundary.** Rx1day, Rx5day, and R95pTOT are **out of scope**: the
-   `xclim` package already implements those ETCCDI precipitation extremes, and
-   duplicating them here would add a second implementation this repository does
-   not own an oracle for, for capability the family's purpose — accumulated and
-   effective wetness — does not need. FLOOD-14 and FLOOD-15
+   `xclim` package already implements the ETCCDI precipitation-extreme
+   calculations — `max_1day_precipitation_amount` and
+   `max_n_day_precipitation_amount` for Rx1day/Rx5day, and
+   `days_over_precip_thresh` for the above-percentile statistic R95pTOT
+   measures — and duplicating them here would add a second implementation this
+   repository does not own an oracle for, for capability the family's purpose —
+   accumulated and effective wetness — does not need. FLOOD-14 and FLOOD-15
    ([#1111](https://github.com/monocongo/climate_indices/issues/1111),
    [#1112](https://github.com/monocongo/climate_indices/issues/1112)) are closed
    as not planned. WAP and SWAP (Lu 2009; Lu et al. 2013) are **not planned**:
@@ -140,8 +143,8 @@ unreproducible claim of reproduction.
    Until then, an out-of-scope flood proposal is not rejected on merit: open an
    issue labeled `flood` recording it as a candidate for the eventual split,
    rather than relitigating the boundary here.
-   [CONTRIBUTING.md](../../CONTRIBUTING.md#flood-and-wet-extreme-scope) records
-   the triage response.
+   [CONTRIBUTING.md](https://github.com/monocongo/climate_indices/blob/main/CONTRIBUTING.md#flood-and-wet-extreme-scope)
+   records the triage response.
 
 ## Consequences
 

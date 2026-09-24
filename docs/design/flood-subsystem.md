@@ -41,7 +41,7 @@ Out of scope:
   precipitation and temperature do not provide
 - Terrain-, soil-, land-cover-, or routing-dependent quantities
 - The ETCCDI precipitation extremes (Rx1day, Rx5day, R95pTOT), which `xclim`
-  already implements; FLOOD-14 and FLOOD-15
+  already implements (ADR-0014 decision 6); FLOOD-14 and FLOOD-15
   ([#1111](https://github.com/monocongo/climate_indices/issues/1111),
   [#1112](https://github.com/monocongo/climate_indices/issues/1112)) are closed
   as not planned
@@ -140,7 +140,3 @@ is documented in the docstring as the alternative and is not implemented.
   describe is not implemented (ADR-0014).
 - **A numeric API oracle**, blocked on Kohler & Linsley (1951).
 - **Flood-event helpers** (onset, duration, severity as runs of `I_F > 0`).
-- **WAP and SWAP** (Lu 2009; Lu et al. 2013), a separate lineage, and **SMRI**
-  and snowmelt indices: out of scope (ADR-0014 decision 6), along with the
-  ETCCDI precipitation extremes (Rx1day, Rx5day, R95pTOT), which `xclim`
-  already implements.

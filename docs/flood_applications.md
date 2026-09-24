@@ -120,7 +120,7 @@ The [flood-family epic #1098][flood-epic] tracks the implementation order.
 
 The heavy-precipitation triggers (Rx1day, Rx5day, and R95pTOT per
 [Zhang et al. (2011)][zhang-2011]) are out of scope: `xclim` already implements
-those ETCCDI indices, and duplicating them here would add a second
+those ETCCDI calculations, and duplicating them here would add a second
 implementation this repository does not own an oracle for
 ([FLOOD-03 #1100][flood-1100]). The WAP/SWAP wet-anomaly indices are not
 planned, and snowmelt-dependent indices such as SMRI are out of scope, as is
