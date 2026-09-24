@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from climate_indices import flood
-from climate_indices.exceptions import InvalidArgumentError
+from climate_indices.exceptions import InputTypeError, InvalidArgumentError
 
 
 def test_source_recursion_and_closed_form() -> None:
@@ -58,9 +58,7 @@ def test_spatial_cells_and_state_are_independent() -> None:
     assert result.values[-1, 1, 0] == 3
     with pytest.raises(ValueError, match="spatial_time_major=True"):
         flood.antecedent_precipitation_index(np.ones((3, 12, 2)), 0.5)
-    assert flood.antecedent_precipitation_index(
-        np.ones((3, 12, 2)), 0.5, spatial_time_major=True
-    ).shape == (3, 12, 2)
+    assert flood.antecedent_precipitation_index(np.ones((3, 12, 2)), 0.5, spatial_time_major=True).shape == (3, 12, 2)
 
 
 @pytest.mark.parametrize("k", [0, 1, -0.1, np.nan, np.inf, True])
@@ -71,7 +69,7 @@ def test_rejects_invalid_decay(k: float) -> None:
 
 @pytest.mark.parametrize("values", [[-1], [np.inf], ["rain"]])
 def test_rejects_invalid_precipitation(values: list) -> None:
-    with pytest.raises((InvalidArgumentError, TypeError), match="precipitation|numeric"):
+    with pytest.raises((InvalidArgumentError, InputTypeError), match="precipitation|numeric"):
         flood.antecedent_precipitation_index(values, 0.5)
 
 

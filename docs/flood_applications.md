@@ -22,7 +22,7 @@ A useful conceptual chain is:
 ```text
 Antecedent climatic wetness          SPI / SPEI / PHDI wet tail          (available)
               ↓
-Accumulated / effective wetness      PE (available) → EDI, I_F ; API    (planned)
+Accumulated / effective wetness      PE → EDI ; API (available), I_F (planned)
               ↓
 Heavy-precipitation triggers         Rx1day / Rx5day / R95pTOT           (planned)
               ↓
@@ -82,8 +82,8 @@ potential of the approach in one region, not a transferable rule.
 
 ## Wet-extreme indices
 
-The NumPy PE kernel and EDI are available as `flood.effective_precipitation()`
-and `flood.edi()`; the remaining flood-family indices are planned. Module and function names are fixed
+The NumPy PE kernel, EDI, and API are available as `flood.effective_precipitation()`,
+`flood.edi()`, and `flood.antecedent_precipitation_index()`; I_F is planned. Module and function names are fixed
 by [ADR-0013](adr/0013-flood-module-api-and-naming.md), with argument names,
 units, and signatures recorded in the internal flood subsystem design note.
 The [flood-family epic #1098][flood-epic] tracks the implementation order.
@@ -106,9 +106,13 @@ The [flood-family epic #1098][flood-epic] tracks the implementation order.
   caller's year boundary, and the kernel question — the abstracts describe an
   exponential form while the implemented kernel is unverified — is recorded in
   [ADR-0014](adr/0014-flood-family-scientific-conventions.md).
-- **Antecedent Precipitation Index (API)** — *planned (FLOOD-12
-  [#1109][flood-1109])*. A daily recursive wetness measure with an explicit
-  decay constant.
+- **Antecedent Precipitation Index (API)** — *NumPy API available (FLOOD-12
+  [#1109][flood-1109])*. A daily recursive wetness measure in mm:
+  `API_t = k * API_(t-1) + P_t`, where `0 < k < 1` and today's precipitation
+  is added after decay. `flood.antecedent_precipitation_index(precipitation, k)`
+  accepts daily mm input and defaults to a zero seed. Missing days propagate
+  by default; the optional bridge policy and returned state support explicit
+  gap handling and append runs. API shows flood potential, not flooding.
 - **Generic standardization API** — *NumPy API available (FLOOD-16
   [#1113][flood-1113])*. `indices.standardized_index()` exposes the existing
   distribution-fitting machinery for any non-negative monthly or daily series,
