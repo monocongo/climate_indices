@@ -108,7 +108,7 @@ The [flood-family epic #1098][flood-epic] tracks the implementation order.
   [ADR-0014](adr/0014-flood-family-scientific-conventions.md); see
   {doc}`algorithm_refs/flood_index` for the algorithm and validation status.
 - **Antecedent Precipitation Index (API)** — *NumPy and beta xarray APIs available
-  (FLOOD-12 [#1109][flood-1109], FLOOD-13 #1110)*. A daily recursive wetness measure in mm, after
+  (FLOOD-12 [#1109][flood-1109], FLOOD-13 [#1110][flood-1110])*. A daily recursive wetness measure in mm, after
   Kohler & Linsley (1951): `API_t = k * API_(t-1) + P_t`, where `0 < k < 1` and
   today's precipitation is added after decay. `flood.antecedent_precipitation_index(precipitation, k)`
   accepts daily mm input and defaults to a zero seed. Missing days propagate
@@ -175,6 +175,7 @@ is part of this package yet.
 [flood-1106]: https://github.com/monocongo/climate_indices/issues/1106
 [flood-1107]: https://github.com/monocongo/climate_indices/issues/1107
 [flood-1109]: https://github.com/monocongo/climate_indices/issues/1109
+[flood-1110]: https://github.com/monocongo/climate_indices/issues/1110
 [flood-1113]: https://github.com/monocongo/climate_indices/issues/1113
 [flood-1114]: https://github.com/monocongo/climate_indices/issues/1114
 [flood-1117]: https://github.com/monocongo/climate_indices/issues/1117

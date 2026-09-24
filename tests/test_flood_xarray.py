@@ -137,6 +137,16 @@ def test_api_xarray_gap_state_and_time_last() -> None:
     np.testing.assert_array_equal(result.state.trailing_gap_days, expected.state.trailing_gap_days[..., 0])
 
 
+def test_api_xarray_time_only_accepts_scalar_state() -> None:
+    rain = xr.DataArray([1.0, 2.0, 3.0, 4.0], dims="time", coords={"time": pd.date_range("2001-01-01", periods=4)})
+    seeded = flood.antecedent_precipitation_index(np.ones((4, 1)), 0.5, return_state=True)
+    assert isinstance(seeded, flood.APIResult)
+    resumed = flood.antecedent_precipitation_index(rain, 0.5, initial_state=seeded.state, return_state=True)
+    assert isinstance(resumed, flood.APIResult)
+    expected = flood.antecedent_precipitation_index(rain.values, 0.5, initial_state=seeded.state)
+    np.testing.assert_array_equal(resumed.values, expected)
+
+
 def test_api_xarray_time_only_and_ambiguous_spatial_axis() -> None:
     dates = pd.date_range("2001-01-01", periods=4)
     rain = xr.DataArray([1.0, 2.0, 3.0, 4.0], dims="time", coords={"time": dates})

@@ -155,7 +155,7 @@ def _validate_daily_time_coordinate(data: xr.DataArray, time_dim: str) -> None:
         raise CoordinateValidationError(
             message=(
                 f"Stateful indices require consecutive daily '{time_dim}' steps, but '{time_dim}' is not daily. "
-                "Aggregate the observations to daily totals and daily maxima before calling."
+                "Aggregate the observations to consecutive daily steps before calling."
             ),
             coordinate_name=time_dim,
             reason="not_daily",

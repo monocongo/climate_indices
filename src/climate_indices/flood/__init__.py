@@ -251,7 +251,8 @@ def antecedent_precipitation_index(
             with convertible CF ``units`` (missing units assume mm).
         k: Decay constant strictly between zero and one.
         initial_state: State from a prior call; spatial fields match input cells.
-        return_state: Return values and copied final NumPy state.
+        return_state: Return values and copied final NumPy state; DataArray
+            values are loaded eagerly.
         spin_up: Leading days to compute but omit from values.
         nan_policy: Missing-day policy, ``"propagate"`` or ``"bridge"``.
         max_gap_days: Maximum gap length for bridge; zero for propagate.

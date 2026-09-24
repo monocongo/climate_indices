@@ -119,13 +119,10 @@ def _api_xarray(
     state_args: list[xr.DataArray] = []
     if initial_state is not None:
         # Reject invalid state before returning a lazy graph; the core validates each tile again.
-        _resume_state(initial_state, spatial_shape or (1,))
-        gap = initial_state.trailing_gap_days
-        if gap is None:
-            gap = np.full(spatial_shape, -1, dtype=np.int64)
+        seed_api, seed_gaps = _resume_state(initial_state, spatial_shape or (1,))
         state_args = [
-            _wrap_spatial(initial_state.api, spatial_shape, spatial_dims),
-            _wrap_spatial(gap, spatial_shape, spatial_dims),
+            _wrap_spatial(seed_api.reshape(spatial_shape), spatial_shape, spatial_dims),
+            _wrap_spatial(seed_gaps.reshape(spatial_shape), spatial_shape, spatial_dims),
         ]
 
     output_len = max(rain.sizes[time_dim] - spin_up, 0)
