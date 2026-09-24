@@ -6,6 +6,12 @@ Amended: the effective-precipitation kernel landed in #1105; the remaining
 indices land with FLOOD-09 through FLOOD-13 (#1106–#1110). The scientific
 conventions are unchanged.
 
+Amended again by the flood scope decision
+([#1100](https://github.com/monocongo/climate_indices/issues/1100)): decision 6
+takes the precipitation-extreme indices out of scope and moves WAP/SWAP from
+deferred to not planned. The scientific conventions for the shipped indices are
+unchanged.
+
 The flood oracle survey (#1101, `docs/research/flood-oracle-survey.md`) established
 which external oracles for PE, EDI, I_F, and API are actually reproducible, and
 which are gated behind paywalled or undigitized material. It left several
@@ -108,19 +114,37 @@ unreproducible claim of reproduction.
    therefore have no reproducible oracle. (The surveyed same-lineage code uses
    `I_F > 0`.) Unvalidatable code does not belong in a validation-gated
    milestone.
-6. **Scope boundary.** Rx1day, Rx5day, and R95pTOT stay in scope: their planned
-   oracle is `climdex.pcic` (R), the ETCCDI reference implementation named by
-   FLOOD-14 ([#1111](https://github.com/monocongo/climate_indices/issues/1111)),
-   pending confirmation of its definitions and percentile conventions against
-   Zhang et al. (2011), with `xclim` an optional cross-check that skips when
-   absent and never becomes a dependency. WAP and
-   SWAP (Lu 2009; Lu et al. 2013) are **deferred**, not rejected: they are a
-   separate lineage, no oracle for them was identified, and they would
-   introduce a second standardization convention before the first exists. SMRI
-   and other snowmelt-dependent indices are **out of scope**, since they need
-   snow-pack inputs that daily precipitation and temperature do not provide. A
-   sibling repository takes anything requiring a calibrated hydrologic model,
-   terrain or land-cover data, or routed discharge.
+6. **Scope boundary.** Rx1day, Rx5day, and R95pTOT are **out of scope**: the
+   `xclim` package already implements the ETCCDI precipitation-extreme
+   calculations — `max_1day_precipitation_amount` and
+   `max_n_day_precipitation_amount` for Rx1day/Rx5day, and
+   `days_over_precip_thresh` for the above-percentile statistic R95pTOT
+   measures — and duplicating them here would add a second implementation this
+   repository does not own an oracle for, for capability the family's purpose —
+   accumulated and effective wetness — does not need. FLOOD-14 and FLOOD-15
+   ([#1111](https://github.com/monocongo/climate_indices/issues/1111),
+   [#1112](https://github.com/monocongo/climate_indices/issues/1112)) are closed
+   as not planned. WAP and SWAP (Lu 2009; Lu et al. 2013) are **not planned**:
+   they are a separate lineage, no oracle for them was identified, and they
+   would introduce a second standardization convention before the first exists.
+   SMRI and other snowmelt-dependent indices are **out of scope**, since they
+   need snow-pack inputs that daily precipitation and temperature do not
+   provide.
+
+   A separate repository becomes justified when two or more of these are true:
+
+   1. An implementation requires a calibrated rainfall-runoff or routing model
+   2. An implementation requires terrain, soil, or land-cover data, or
+      remote-sensing flood extent
+   3. The flood code exceeds roughly 30 percent of the package's source volume
+   4. Flood-specific dependencies would be forced on all `climate_indices` users
+   5. The release cadence needs to diverge
+
+   Until then, an out-of-scope flood proposal is not rejected on merit: open an
+   issue labeled `flood` recording it as a candidate for the eventual split,
+   rather than relitigating the boundary here.
+   [CONTRIBUTING.md](https://github.com/monocongo/climate_indices/blob/main/CONTRIBUTING.md#flood-and-wet-extreme-scope)
+   records the triage response.
 
 ## Consequences
 
@@ -137,8 +161,9 @@ no Deo-algebra check available and stays specification-level until the full text
 arrives. `tidyindex` is precedent that harmonic weighting on a rolling window is
 an established EDI construction — it does **not** share this kernel's weights
 (`H_D − H_{m−1}`, against its reversed `H_n`) and is not an oracle. None of this
-is external validation, and only the precipitation-extreme indices can reach
-that tier, through `climdex.pcic`.
+is external validation: no reproducible numeric paper oracle has been
+identified for PE, EDI, I_F, or API, so the family stops at the source-algebra
+and regression tiers.
 
 Deferred work is blocked on retrieval rather than on design: reproducing Table 5
 and implementing the variable-duration EDI both wait on the Hickman record, whose
