@@ -103,10 +103,12 @@ def test_api_xarray_spatial_chunks_units_and_resume() -> None:
     np.testing.assert_array_equal(xr.concat([first.values, second.values], dim="time"), result.compute())
     np.testing.assert_array_equal(first.state.api, expected[5])
     np.testing.assert_array_equal(second.state.api, expected[-1])
+    rechunked = rain.chunk({"time": 3})
+    strided = rain.isel(time=slice(None, None, 2))
     with pytest.raises(CoordinateValidationError, match="Rechunk"):
-        flood.antecedent_precipitation_index(rain.chunk({"time": 3}), 0.85)
+        flood.antecedent_precipitation_index(rechunked, 0.85)
     with pytest.raises(CoordinateValidationError, match="daily"):
-        flood.antecedent_precipitation_index(rain.isel(time=slice(None, None, 2)), 0.85)
+        flood.antecedent_precipitation_index(strided, 0.85)
 
 
 def test_api_xarray_gap_state_and_time_last() -> None:
