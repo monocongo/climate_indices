@@ -66,10 +66,12 @@ def test_flood_dask_keeps_spatial_chunks_and_requires_full_time_chunk() -> None:
         (flood.flood_index(pe, year_start_month=1), flood.flood_index(eager_pe, year_start_month=1)),
     ):
         np.testing.assert_allclose(result.compute().values, expected.values, equal_nan=True)
+    split_rain = rain.chunk({"time": 100})
+    split_pe = pe.chunk({"time": 100})
     with pytest.raises(CoordinateValidationError, match="chunk"):
-        flood.effective_precipitation(rain.chunk({"time": 100}))
+        flood.effective_precipitation(split_rain)
     with pytest.raises(CoordinateValidationError, match="chunk"):
-        flood.edi(pe.chunk({"time": 100}), duration=30)
+        flood.edi(split_pe, duration=30)
 
 
 def test_flood_infers_only_complete_calibration_periods() -> None:
@@ -114,11 +116,14 @@ def test_flood_units_calendar_and_numpy_passthrough() -> None:
     result = flood.effective_precipitation(time_last, duration=30)
     result.time.attrs["axis"] = "other"
     assert time_last.time.attrs["axis"] == "T"
+    invalid_units = rain.assign_attrs(units="bananas")
+    missing_january_1 = rain.isel(time=slice(1, None))
+    monthly_rain = rain.resample(time="MS").sum()
     with pytest.raises(InvalidArgumentError, match="units"):
-        flood.effective_precipitation(rain.assign_attrs(units="bananas"))
+        flood.effective_precipitation(invalid_units)
     with pytest.raises(CoordinateValidationError, match="January 1"):
-        flood.effective_precipitation(rain.isel(time=slice(1, None)))
+        flood.effective_precipitation(missing_january_1)
     with pytest.raises(CoordinateValidationError, match="periodicity"):
-        flood.effective_precipitation(rain.resample(time="MS").sum())
+        flood.effective_precipitation(monthly_rain)
     values = np.ones(60)
     np.testing.assert_allclose(flood.effective_precipitation(values, duration=30)[29:], 30.0)
