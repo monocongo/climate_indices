@@ -82,8 +82,9 @@ potential of the approach in one region, not a transferable rule.
 
 ## Wet-extreme indices
 
-The NumPy PE kernel, EDI, and API are available as `flood.effective_precipitation()`,
-`flood.edi()`, and `flood.antecedent_precipitation_index()`; I_F is planned. Module and function names are fixed
+The NumPy PE kernel, EDI, I_F, and API are available as `flood.effective_precipitation()`,
+`flood.edi()`, `flood.flood_index()`, and `flood.antecedent_precipitation_index()`; the remaining flood-family
+indices are planned. Module and function names are fixed
 by [ADR-0013](adr/0013-flood-module-api-and-naming.md), with argument names,
 units, and signatures recorded in the internal flood subsystem design note.
 The [flood-family epic #1098][flood-epic] tracks the implementation order.
@@ -100,12 +101,13 @@ The [flood-family epic #1098][flood-epic] tracks the implementation order.
   not the paper's variable-duration extension
   ([ADR-0014](adr/0014-flood-family-scientific-conventions.md)); see
   {doc}`algorithm_refs/edi` for the algorithm and validation status.
-- **Flood Index (I_F)** — *planned (FLOOD-10 [#1107][flood-1107])*. A daily
-  flood-potential index that standardizes effective precipitation
+- **Flood Index (I_F)** — *NumPy API available (FLOOD-10
+  [#1107][flood-1107])*. A daily flood-potential index that standardizes effective precipitation
   ([Deo et al. (2015)][deo-2015]). The annual-maximum window follows the
   caller's year boundary, and the kernel question — the abstracts describe an
   exponential form while the implemented kernel is unverified — is recorded in
-  [ADR-0014](adr/0014-flood-family-scientific-conventions.md).
+  [ADR-0014](adr/0014-flood-family-scientific-conventions.md); see
+  {doc}`algorithm_refs/flood_index` for the algorithm and validation status.
 - **Antecedent Precipitation Index (API)** — *NumPy API available (FLOOD-12
   [#1109][flood-1109])*. A daily recursive wetness measure in mm:
   `API_t = k * API_(t-1) + P_t`, where `0 < k < 1` and today's precipitation
