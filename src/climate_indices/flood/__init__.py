@@ -13,6 +13,7 @@ import numpy.typing as npt
 import pandas as pd
 import xarray as xr
 
+from climate_indices.flood._antecedent import APIResult, APIState, antecedent_precipitation_index
 from climate_indices.flood._edi import edi as _numpy_edi
 from climate_indices.flood._if import flood_index as _numpy_flood_index
 from climate_indices.flood._pe import effective_precipitation as _numpy_pe
@@ -193,4 +194,11 @@ def flood_index(
     )
 
 
-__all__ = ["edi", "effective_precipitation", "flood_index"]
+__all__ = [
+    "APIResult",
+    "APIState",
+    "antecedent_precipitation_index",
+    "edi",
+    "effective_precipitation",
+    "flood_index",
+]
