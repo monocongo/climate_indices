@@ -19,8 +19,8 @@ class APIState:
 
     ``trailing_gap_days=None`` means no valid day has started any cell;
     ``-1`` marks individual cells that have not started. A NaN ``api`` is only
-    valid where ``trailing_gap_days`` shows that a gap has started the cell; a
-    not-started cell holds a number. Values are in mm.
+    valid where ``trailing_gap_days`` is ``>= 0`` (the cell has started); a
+    not-started cell (``-1`` or ``None``) holds a number. Values are in mm.
     """
 
     api: npt.NDArray[np.float64]

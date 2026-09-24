@@ -22,7 +22,7 @@ A useful conceptual chain is:
 ```text
 Antecedent climatic wetness          SPI / SPEI / PHDI wet tail          (available)
               ↓
-Accumulated / effective wetness      PE → EDI, I_F, API                  (available)
+Accumulated / effective wetness      PE → EDI, I_F ; API                 (available)
               ↓
 Heavy-precipitation triggers         Rx1day / Rx5day / R95pTOT           (planned)
               ↓
