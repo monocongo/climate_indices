@@ -42,6 +42,7 @@ dependencies = [
 # dependencies but use different configuration sections. See [dependency-groups].test for details.
 test = [
     "coverage>=7.10.1",
+    "distributed>=2025.7.0",
     "hypothesis>=6.100.0",
     "jsonschema>=4.0.0",
     "pytest>=8.4.1",
@@ -213,6 +214,7 @@ exclude = [
 # must be maintained manually. Keep these sections synchronized when updating test dependencies.
 test = [
     "coverage>=7.10.1",
+    "distributed>=2025.7.0",
     "hypothesis>=6.100.0",
     "jsonschema>=4.0.0",
     "pytest>=8.4.1",

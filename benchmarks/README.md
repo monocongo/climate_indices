@@ -539,6 +539,124 @@ Reproduce with the same commands; the results are retained verbatim in
   two commits; it does not compose with #818's per-cell figures, #944's 6x, or
   the xclim `APP`-fit speedup from xclim#2091.
 
+## Scale-out on an EC2 Dask cluster (#1127)
+
+#928, #937 and #1097 above all measure Dask's `processes` scheduler on one
+machine: multiple worker *processes*, not worker *nodes*. This is a distinct
+comparison axis -- the same SPI workload through `dask.distributed` against
+remote workers on a real cluster, where network serialization and a
+distributed scheduler replace local process-pool overhead. It is reported next
+to the single-machine numbers, never folded into them.
+
+`benchmarks/parallel_scaling.py --netcdf ... --scheduler ADDRESS` runs this
+mode: it connects to a running `dask.distributed` scheduler, and `--cores`
+then counts worker *processes* on that cluster rather than local cores,
+packed one node at a time (`_select_workers`, node-major by `(host,
+address)`). Chunked inputs are persisted onto the selected workers before
+timing starts (reported separately as `distribute` seconds, not part of
+`compute`), and every distributed result must match the eager serial run's
+output bit for bit -- `_run_real_grid` raises rather than printing a number if
+it does not. The harness also refuses to run if any connected worker is not
+logging at `WARNING` or was not started from the client's own checkout
+revision, since either mismatch would make the timings incomparable to the
+single-machine baseline without saying so.
+
+This section is a runbook for a maintainer to provision and run the cluster
+directly; it is not automated by any agent, and no cloud credentials are used
+by an agent to run it.
+
+### Cluster provisioning (manual, maintainer-run)
+
+**Region and topology.** us-east-1, next to the `noaa-nclimgrid-monthly-pds`
+NODD bucket, so reading the fixture costs no egress. One placement group. One
+security group, self-referencing so the scheduler and worker ports (8786,
+8787, and the ephemeral worker range) are reachable only from other instances
+in the same group; SSH open only from the maintainer's own IP.
+
+**A Dask scheduler has no authentication.** It must never be reachable from
+the public internet -- keep the security group closed to everything but the
+maintainer's SSH and the group's own instances.
+
+**Cost control.**
+- Every instance: `--instance-initiated-shutdown-behavior terminate`, plus
+  `shutdown -h +180` in user-data, so a forgotten cluster self-terminates
+  after 3 hours regardless of what else fails.
+- Tag every resource `Project=climate-indices-1127`.
+- Teardown: `aws ec2 terminate-instances` filtered by that tag, then
+  `aws ec2 describe-instances` to confirm nothing is left `running` or
+  `pending`, then delete the security group and placement group.
+- `m7i.4xlarge` on-demand pricing is approximate and drifts; check current
+  pricing before estimating total cost. 1 client + 4 workers for a few hours
+  is a small fraction of an `m7i.4xlarge`'s daily on-demand rate.
+
+**Nodes.** 5x `m7i.4xlarge` (16 vCPU, 64 GB), one client/scheduler node and
+four worker nodes -- the single-machine `processes` baseline for comparison
+runs on the client node, so it uses the same hardware the distributed run
+does. User-data on every node: install `uv`, clone the repository at the
+commit under test, `uv sync --group test`.
+
+Worker nodes:
+
+```bash
+CLIMATE_INDICES_LOG_LEVEL=WARNING uv run dask worker tcp://<scheduler-private-ip>:8786 \
+  --nworkers 16 --nthreads 1
+```
+
+`--nworkers 16 --nthreads 1` mirrors the `processes` scheduler's one-thread
+worker processes at 16 workers per node, so the two scheduler backends are
+compared at the same process-per-core ratio.
+
+Client/scheduler node:
+
+```bash
+uv run dask scheduler
+```
+
+**Fixture**, on the client node:
+
+```bash
+aws s3 cp --no-sign-request s3://noaa-nclimgrid-monthly-pds/nclimgrid_prcp.nc .
+aws s3api head-object --no-sign-request --bucket noaa-nclimgrid-monthly-pds \
+  --key nclimgrid_prcp.nc
+```
+
+Record the `head-object` output (ETag, `Last-Modified`, size) in the results
+header alongside the harness's own SHA-256. Per
+`docs/research/nclimgrid-acquisition-and-redistribution.md` this is a mutable
+period-of-record object, so this is a retrieval-pinned snapshot, not a claim
+of an immutable source. #1121 pinned this object's provenance in
+`benchmarks/results/nclimgrid_fixture_provenance.txt`; confirm the digest
+matches before reusing it.
+
+**Runs**, from the client node, each `tee`'d into `benchmarks/results/`:
+
+```bash
+# 1. single-machine baseline, on the client node, before workers matter to it
+uv run benchmarks/parallel_scaling.py --netcdf nclimgrid_prcp.nc --var-name prcp \
+  --scale 6 --cores 1,2,4,8,16 --repeat 3 \
+  | tee benchmarks/results/nclimgrid_spi6_ec2_single.txt
+
+# 2. distributed, same workload, across 1/2/4 worker nodes (16 processes per node)
+uv run benchmarks/parallel_scaling.py --netcdf nclimgrid_prcp.nc --var-name prcp \
+  --scale 6 --cores 16,32,64 --repeat 3 --scheduler tcp://<scheduler-private-ip>:8786 \
+  | tee benchmarks/results/nclimgrid_spi6_ec2_distributed.txt
+```
+
+Prepend the instance type and AMI ID to each results file before committing
+it. Hand both files back for the write-up below; **do not** commit the
+fixture itself (1.47 GB; stays external, as #1097's CHIRPS fixture did).
+
+### Findings
+
+Pending the maintainer's cluster run. Once `nclimgrid_spi6_ec2_single.txt` and
+`nclimgrid_spi6_ec2_distributed.txt` land, this subsection reports, following
+the #1097 discipline above: the environment header, the equivalence gate
+result stated before any speedup, every sample retained with the minimum
+reported, and a "Deviations and limits" list. The key comparisons: `processes`
+at 16 workers vs. distributed at 1 node x 16 (isolates distributed-scheduler
+and network overhead from local process-pool overhead, same hardware both
+sides); the 1 -> 2 -> 4 node curve; and `distribute` seconds set against
+`compute` seconds.
 ## Legacy CLI multiprocessing vs xarray/Dask on CONUS nClimGrid (#1121)
 
 Neither #1097 (above) nor #928 puts the CLI's `multiprocessing.Pool` path

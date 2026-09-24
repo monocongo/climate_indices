@@ -7,6 +7,7 @@ in ``benchmarks/parallel_scaling.py`` and are run manually.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import math
 import sys
@@ -14,6 +15,7 @@ import warnings
 from pathlib import Path
 from types import ModuleType
 
+import distributed
 import numpy as np
 import pandas as pd
 import pytest
@@ -76,7 +78,12 @@ def test_netcdf_mode_rejects_arguments_it_cannot_honour(monkeypatch: pytest.Monk
     monkeypatch.setattr(sys, "argv", ["parallel_scaling.py", "--netcdf", "x.nc", "--indices", "spi,spei"])
     with pytest.raises(SystemExit):
         parallel_scaling._parse_args()
-    for ignored in (["--scale", "6"], ["--var-name", "precip"], ["--write-output", "out.nc"]):
+    for ignored in (
+        ["--scale", "6"],
+        ["--var-name", "precip"],
+        ["--write-output", "out.nc"],
+        ["--scheduler", "tcp://x:8786"],
+    ):
         monkeypatch.setattr(sys, "argv", ["parallel_scaling.py", *ignored])
         with pytest.raises(SystemExit):
             parallel_scaling._parse_args()
@@ -216,6 +223,126 @@ def test_measure_rejects_a_run_that_fills_the_land_mask() -> None:
 
     with pytest.raises(RuntimeError, match="marked as missing"):
         parallel_scaling._measure(index, grid, workers=2, repeat=1)
+
+
+def test_select_workers_packs_addresses_node_major() -> None:
+    """Selection sorts by (host, address) and packs one host's processes before the next."""
+    workers_info = {
+        "tcp://10.0.0.2:1": {"host": "10.0.0.2"},
+        "tcp://10.0.0.1:2": {"host": "10.0.0.1"},
+        "tcp://10.0.0.1:1": {"host": "10.0.0.1"},
+        "tcp://10.0.0.2:2": {"host": "10.0.0.2"},
+    }
+    addresses, hosts = parallel_scaling._select_workers(workers_info, 2)
+    assert addresses == ("tcp://10.0.0.1:1", "tcp://10.0.0.1:2")
+    assert hosts == 1
+
+    addresses, hosts = parallel_scaling._select_workers(workers_info, 4)
+    assert hosts == 2
+
+    with pytest.raises(ValueError, match="requested 5"):
+        parallel_scaling._select_workers(workers_info, 5)
+
+
+@pytest.fixture
+def distributed_client() -> distributed.Client:
+    """A 2-worker in-process ``distributed`` cluster for the distributed-measure tests."""
+    with distributed.Client(n_workers=2, threads_per_worker=1, processes=False, dashboard_address=None) as client:
+        yield client
+
+
+def test_measure_distributed_persists_and_gates_equivalence(distributed_client: distributed.Client) -> None:
+    """A masked grid round-trips through persist + distributed compute with a stable, reproducible digest."""
+    values = np.full((6, 2, 2), 2.0)
+    values[:, 1, 1] = np.nan
+    precip = xr.DataArray(values, coords={"lat": [10.0, 20.0], "lon": [1.0, 2.0]}, dims=("time", "lat", "lon"))
+    valid_cells = np.array([[True, True], [True, False]])
+    grid = parallel_scaling._Grid(precip=precip, valid_cells=valid_cells)
+    index = parallel_scaling._Index(lambda g: g.precip, 0)
+    addresses = tuple(distributed_client.scheduler_info()["workers"])
+
+    expected_digest = hashlib.sha256(memoryview(np.ascontiguousarray(values))).hexdigest()
+    distribute_seconds, samples, digest = parallel_scaling._measure_distributed(
+        index, grid, distributed_client, addresses, repeat=1, serial_digest=expected_digest
+    )
+    assert distribute_seconds >= 0.0
+    assert len(samples) == 1
+    assert digest == expected_digest
+
+
+def test_measure_distributed_rejects_a_run_that_fills_the_land_mask(distributed_client: distributed.Client) -> None:
+    """``_measure_distributed`` applies the land mask to the gathered result, not just the input."""
+    values = np.full((6, 2, 2), 2.0)
+    values[:, 1, 1] = np.nan
+    precip = xr.DataArray(values, coords={"lat": [10.0, 20.0], "lon": [1.0, 2.0]}, dims=("time", "lat", "lon"))
+    valid_cells = np.array([[True, True], [True, False]])
+    grid = parallel_scaling._Grid(precip=precip, valid_cells=valid_cells)
+    index = parallel_scaling._Index(lambda g: g.precip.fillna(1.0), 0)
+    addresses = tuple(distributed_client.scheduler_info()["workers"])
+
+    with pytest.raises(RuntimeError, match="marked as missing"):
+        parallel_scaling._measure_distributed(
+            index, grid, distributed_client, addresses, repeat=1, serial_digest="0" * 64
+        )
+
+
+@pytest.mark.parametrize("bad_value, error", [(3.0, "does not match"), (np.nan, "non-finite output")])
+def test_measure_distributed_rejects_an_invalid_earlier_run(
+    distributed_client: distributed.Client, bad_value: float, error: str
+) -> None:
+    """An invalid timed run cannot be hidden by a later valid compute."""
+    values = np.full((2, 1, 1), 2.0)
+    precip = xr.DataArray(values, dims=("time", "lat", "lon"))
+    grid = parallel_scaling._Grid(precip=precip)
+    digest = hashlib.sha256(memoryview(np.ascontiguousarray(values))).hexdigest()
+    calls = []
+
+    class Computation:
+        def compute(self, **kwargs: object) -> xr.DataArray:
+            calls.append(kwargs)
+            result = precip.copy()
+            if len(calls) == 2:
+                result.values[1, 0, 0] = bad_value
+            return result
+
+    index = parallel_scaling._Index(lambda _: Computation(), 0)
+    addresses = tuple(distributed_client.scheduler_info()["workers"])
+    with pytest.raises(RuntimeError, match=error):
+        parallel_scaling._measure_distributed(
+            index, grid, distributed_client, addresses, repeat=2, serial_digest=digest
+        )
+    assert len(calls) == 2
+
+
+def test_run_distributed_sweep_prints_a_gated_row(
+    distributed_client: distributed.Client, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The extracted sweep prints its header and row, and raises on a digest mismatch."""
+    values = np.full((6, 2, 2), 2.0)
+    values[:, 1, 1] = np.nan
+    precip = xr.DataArray(values, coords={"lat": [10.0, 20.0], "lon": [1.0, 2.0]}, dims=("time", "lat", "lon"))
+    grid = parallel_scaling._Grid(precip=precip, valid_cells=np.array([[True, True], [True, False]]))
+    index = parallel_scaling._Index(lambda g: g.precip, 0)
+    digest = hashlib.sha256(memoryview(np.ascontiguousarray(values))).hexdigest()
+    scheduler_info = distributed_client.scheduler_info
+
+    def all_workers(*, n_workers: int = 5) -> dict:
+        assert n_workers == -1
+        return scheduler_info(n_workers=n_workers)
+
+    monkeypatch.setattr(distributed_client, "scheduler_info", all_workers)
+    parallel_scaling._run_distributed_sweep(
+        index, grid, distributed_client, (2,), 1, digest, "tcp://scheduler:8786", 0.5, 0.25
+    )
+    out = capsys.readouterr().out
+    assert "scheduler=distributed (tcp://scheduler:8786)" in out
+    assert "gated against the eager serial digest" in out
+    assert out.strip().splitlines()[-1].startswith(f"{2:>8}")
+
+    with pytest.raises(RuntimeError, match="does not match the eager serial run"):
+        parallel_scaling._run_distributed_sweep(
+            index, grid, distributed_client, (2,), 1, "0" * 64, "tcp://scheduler:8786", 0.0, 0.0
+        )
 
 
 def test_quiet_worker_silences_only_goodness_of_fit() -> None:

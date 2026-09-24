@@ -792,6 +792,7 @@ performance = [
 ]
 test = [
     { name = "coverage" },
+    { name = "distributed" },
     { name = "hypothesis" },
     { name = "jsonschema" },
     { name = "pytest" },
@@ -844,6 +845,7 @@ security = [
 ]
 test = [
     { name = "coverage" },
+    { name = "distributed" },
     { name = "hypothesis" },
     { name = "jsonschema" },
     { name = "pytest" },
@@ -864,6 +866,7 @@ requires-dist = [
     { name = "coverage", marker = "extra == 'test'", specifier = ">=7.10.1" },
     { name = "dask", specifier = ">=2025.7.0" },
     { name = "distributed", marker = "extra == 'dev'", specifier = ">=2025.7.0" },
+    { name = "distributed", marker = "extra == 'test'", specifier = ">=2025.7.0" },
     { name = "h5netcdf", specifier = ">=1.6.3" },
     { name = "h5py", marker = "extra == 'dev'", specifier = ">=3.11.0" },
     { name = "h5py", marker = "extra == 'docs'", specifier = ">=3.11.0" },
@@ -929,6 +932,7 @@ security = [
 ]
 test = [
     { name = "coverage", specifier = ">=7.10.1" },
+    { name = "distributed", specifier = ">=2025.7.0" },
     { name = "hypothesis", specifier = ">=6.100.0" },
     { name = "jsonschema", specifier = ">=4.0.0" },
     { name = "pytest", specifier = ">=8.4.1" },
