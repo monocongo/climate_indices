@@ -48,6 +48,29 @@ uv run mypy src/ tests/test_type_checking.py
 uv run pytest
 ```
 
+For a faster inner loop, `uv run pytest -n auto` spreads the suite over your
+cores. To rerun only the tests your edits affect, use pytest-testmon. It is a
+local accelerator (CI always runs everything), not a substitute for the full
+`uv run pytest` above before you open a PR:
+
+```bash
+COVERAGE_CORE=ctrace uv run pytest --testmon              # first run records which tests touch which code
+COVERAGE_CORE=ctrace uv run pytest --testmon-forceselect  # later runs select only tests your edits affect
+```
+
+- Use `--testmon-forceselect`, not plain `--testmon` after the first run:
+  `addopts` passes `-m`, which makes plain `--testmon` run everything.
+- Keep `COVERAGE_CORE=ctrace`. On Python 3.14 coverage's default `sysmon` core
+  made testmon select far too few tests (21 instead of 241 after editing
+  `compute.sum_to_scale`), silently skipping affected ones.
+- testmon does not see non-Python files (fixtures, notebooks, docs, workflows,
+  `pyproject.toml`) or code that runs in worker processes: editing the CLI pool
+  worker `_apply_along_axis` in `src/climate_indices/__main__.py` selected zero
+  tests. Run the full suite when a change touches those, `__main__.py`, or
+  `tests/conftest.py`.
+- If a selection looks wrong, delete `.testmondata*` and let the first command
+  rebuild it.
+
 For documentation changes, also run the published-docs gate:
 
 ```bash

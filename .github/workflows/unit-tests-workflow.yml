@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
   merge_group:
+  # Full matrix (see the `test-full` job) on days when nothing merges, so a
+  # runner-image or interpreter patch release cannot break a leg unnoticed.
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -84,12 +89,14 @@ jobs:
 
   # Compatibility policy: expensive or environment-independent suites run once
   # (`validation` on 3.12, repo/meta checks on 3.10, minimum dependencies on
-  # 3.10). The full behavior suite runs on every supported interpreter here
-  # because each leg also resolves a different dependency stack from uv.lock
-  # (e.g. zarr 2.x on 3.10, zarr 3.1 on 3.11, zarr 3.3 on 3.12+), and the suite
-  # costs about a minute per leg. Do not replace these legs with a smoke-only
-  # subset: that trades real dependency/interpreter coverage for no wall-clock
-  # gain, since the matrix runs in parallel.
+  # 3.10). The full behavior suite runs on every supported interpreter, split
+  # across two jobs by event. uv.lock resolves three distinct dependency stacks
+  # (3.10; 3.11; 3.12-3.14), but interpreter behavior differs, so a pull
+  # request runs every supported minor on Linux plus macOS on the newest
+  # interpreter (this job); `test-full` keeps the remaining macOS minimum leg
+  # on pushes to main, merge groups, the weekly schedule, and manual dispatch.
+  # Do not replace legs with a smoke-only subset, and keep the two jobs
+  # disjoint: tests/test_release_integrity.py enforces both.
   test:
     runs-on: ${{ matrix.os }}
     permissions:
@@ -100,8 +107,6 @@ jobs:
         python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
         os: [ubuntu-latest]
         include:
-          - python-version: '3.10'
-            os: macos-latest
           - python-version: '3.14'
             os: macos-latest
 
@@ -125,9 +130,49 @@ jobs:
       # Repo/meta checks are owned by the single `meta` job; validation by
       # the single `validation` job. Do not reintroduce them here: the
       # version/distro matrix exists to exercise behavior on each interpreter.
+      # `-n auto` spreads the suite over the runner's cores; it is deliberately
+      # not in `addopts` so local debugging (`-s`, `--pdb`) stays single-process.
       - name: Run core tests
         run: >
-          uv run --no-sync --no-build pytest
+          uv run --no-sync --no-build pytest -n auto
+          --ignore=tests/test_release_integrity.py
+          --ignore=tests/test_review_scripts.py
+          --ignore=tests/test_type_checking.py
+
+  # The remaining leg of the full matrix; see the policy above `test`. Keep the
+  # steps the same as `test` (the integrity tests compare the core command) so a
+  # leg means the same thing in both jobs.
+  test-full:
+    if: github.event_name != 'pull_request'
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10']
+        os: [macos-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
+
+      # Python 3.10 resolves zarr 2.x, whose asciitree dependency ships as an
+      # sdist-only release, so source builds must stay allowed here.
+      - name: Install dependencies
+        run: uv sync --locked --dev  # NOSONAR: 3.10 needs the sdist-only asciitree from the zarr 2.x stack
+
+      - name: Run core tests
+        run: >
+          uv run --no-sync --no-build pytest -n auto
           --ignore=tests/test_release_integrity.py
           --ignore=tests/test_review_scripts.py
           --ignore=tests/test_type_checking.py
@@ -207,7 +252,7 @@ jobs:
 
       - name: Run core tests with minimum dependencies
         run: >
-          uv run --no-sync --no-build pytest
+          uv run --no-sync --no-build pytest -n auto
           --ignore=tests/test_release_integrity.py
           --ignore=tests/test_review_scripts.py
           --ignore=tests/test_type_checking.py

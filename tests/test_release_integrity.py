@@ -75,6 +75,30 @@ def _workflow_python_matrix(relative_path: Path) -> list[str]:
     return re.findall(r"['\"](\d+\.\d+)['\"]", matches[0])
 
 
+UNIT_TESTS_WORKFLOW = Path(".github/workflows/unit-tests-workflow.yml")
+
+
+def _workflow_job(workflow: str, job: str) -> str:
+    """Return one top-level job's text, without the comment block that precedes the next job."""
+    match = re.search(rf"^  {re.escape(job)}:\n(.*?)(?=^  [\w-]+:\n|\Z)", workflow, re.MULTILINE | re.DOTALL)
+    assert match, f"Expected a top-level job named {job!r}"
+    return re.split(r"^  #", match.group(1), maxsplit=1, flags=re.MULTILINE)[0]
+
+
+def _job_legs(job: str) -> set[tuple[str, str]]:
+    """Expand a job's inline python-version x os matrix, plus `include` entries, to (python, os) legs."""
+    pythons = re.findall(r"^\s+python-version:\s*\[([^]]+)]", job, re.MULTILINE)
+    systems = re.findall(r"^\s+os:\s*\[([^]]+)]", job, re.MULTILINE)
+    assert len(pythons) == 1, "Expected one inline python-version list"
+    assert len(systems) == 1, "Expected one inline os list"
+    legs = {
+        (python, system)
+        for python in re.findall(r"\d+\.\d+", pythons[0])
+        for system in re.findall(r"[\w.-]+", systems[0])
+    }
+    return legs | set(re.findall(r"- python-version:\s*['\"](\d+\.\d+)['\"]\s+os:\s*([\w.-]+)", job))
+
+
 def _expected_badge_url() -> str:
     """Derive the static Shields badge URL from package classifiers."""
     versions = _declared_python_versions()
@@ -192,27 +216,106 @@ def test_workflow_python_matrix_rejects_multiple_matrices(tmp_path: Path) -> Non
         _workflow_python_matrix(workflow)
 
 
-@pytest.mark.parametrize(
-    "workflow",
-    [
-        Path(".github/workflows/unit-tests-workflow.yml"),
-        Path(".github/workflows/release.yml"),
-    ],
-)
-def test_workflow_python_matrix_matches_classifiers(workflow: Path) -> None:
-    """Unit-test and release matrices must cover exactly the supported minors."""
-    assert _workflow_python_matrix(workflow) == _declared_python_versions()
+def test_job_helpers_expand_legs_and_stop_at_the_next_jobs_comment() -> None:
+    """A job's text must end before the comment block that introduces the next job."""
+    workflow = (
+        "jobs:\n"
+        "  a:\n"
+        "    strategy:\n"
+        "      matrix:\n"
+        "        python-version: ['3.10', '3.11']\n"
+        "        os: [ubuntu-latest]\n"
+        "        include:\n"
+        "          - python-version: '3.11'\n"
+        "            os: macos-latest\n"
+        "\n"
+        "  # about b\n"
+        "  b-c:\n"
+        "    steps: []\n"
+    )
+
+    job = _workflow_job(workflow, "a")
+
+    assert "about b" not in job
+    assert _job_legs(job) == {("3.10", "ubuntu-latest"), ("3.11", "ubuntu-latest"), ("3.11", "macos-latest")}
+    assert _workflow_job(workflow, "b-c").strip() == "steps: []"
+
+
+def test_release_workflow_python_matrix_matches_classifiers() -> None:
+    """The release matrix must cover exactly the supported minors."""
+    assert _workflow_python_matrix(Path(".github/workflows/release.yml")) == _declared_python_versions()
+
+
+def _unit_test_legs() -> tuple[set[tuple[str, str]], set[tuple[str, str]]]:
+    """The (python, os) legs of the pull-request `test` job and the `test-full` remainder."""
+    workflow = (ROOT / UNIT_TESTS_WORKFLOW).read_text(encoding="utf-8")
+    return _job_legs(_workflow_job(workflow, "test")), _job_legs(_workflow_job(workflow, "test-full"))
+
+
+def test_unit_test_jobs_cover_every_supported_python_without_overlap() -> None:
+    """`test` and `test-full` together cover exactly the supported minors, and no leg runs in both."""
+    pull_request_legs, full_legs = _unit_test_legs()
+
+    assert {python for python, _ in pull_request_legs | full_legs} == set(_declared_python_versions())
+    assert {(python, "ubuntu-latest") for python in _declared_python_versions()} <= pull_request_legs | full_legs
+    assert {(python, "ubuntu-latest") for python in _declared_python_versions()} <= pull_request_legs
+    assert not pull_request_legs & full_legs, "a leg in both jobs runs twice on pushes to main"
+
+
+def test_pull_request_legs_cover_both_boundaries_on_linux_and_the_newest_on_macos() -> None:
+    """The legs every pull request runs must still hit both support boundaries."""
+    pull_request_legs, _ = _unit_test_legs()
+    versions = _declared_python_versions()
+
+    assert (versions[0], "ubuntu-latest") in pull_request_legs
+    assert (versions[-1], "ubuntu-latest") in pull_request_legs
+    assert (versions[-1], "macos-latest") in pull_request_legs
 
 
 def test_macos_covers_minimum_and_maximum_python() -> None:
-    """The unit-test workflow must exercise both support boundaries on macOS."""
-    workflow = (ROOT / ".github" / "workflows" / "unit-tests-workflow.yml").read_text(encoding="utf-8")
-    macos_versions = re.findall(
-        r"- python-version:\s*['\"](\d+\.\d+)['\"]\s+os:\s*macos-latest",
-        workflow,
-    )
+    """Across both unit-test jobs, macOS must exercise both support boundaries."""
+    pull_request_legs, full_legs = _unit_test_legs()
     versions = _declared_python_versions()
-    assert macos_versions == [versions[0], versions[-1]]
+
+    macos_versions = {python for python, system in pull_request_legs | full_legs if system == "macos-latest"}
+    assert macos_versions == {versions[0], versions[-1]}
+
+
+def test_full_matrix_runs_beyond_pull_requests_and_the_pull_request_job_is_ungated() -> None:
+    """`test-full` must run on main pushes and the schedule, `test` on every event.
+
+    Gating `test-full` with `!= 'pull_request'` also runs it in a merge queue, which is
+    where a merge is checked before it lands. Losing the schedule or the main trigger,
+    or gating `test`, would silently shrink what a leg means.
+    """
+    workflow = (ROOT / UNIT_TESTS_WORKFLOW).read_text(encoding="utf-8")
+    pull_request_job = _workflow_job(workflow, "test")
+    full_job = _workflow_job(workflow, "test-full")
+
+    assert re.search(r"^    if: github\.event_name != 'pull_request'$", full_job, re.MULTILINE)
+    assert not re.search(r"^    if:", pull_request_job, re.MULTILINE)
+    assert re.search(r"^  push:\n    branches: \[main]$", workflow, re.MULTILINE)
+    assert re.search(r"^  merge_group:", workflow, re.MULTILINE)
+    assert re.search(r"^  workflow_dispatch:", workflow, re.MULTILINE)
+    assert re.search(r"^  schedule:\n    - cron: ", workflow, re.MULTILINE)
+
+
+def test_test_full_job_runs_the_same_core_command_as_the_pull_request_job() -> None:
+    """A leg must mean the same thing in `test` and `test-full`: locked dev install, same core command.
+
+    Source builds stay allowed in both jobs: the 3.10 legs need the sdist-only asciitree
+    from the zarr 2.x stack, so neither job can pass `--no-build`.
+    """
+    workflow = (ROOT / UNIT_TESTS_WORKFLOW).read_text(encoding="utf-8")
+    pull_request_job = _workflow_job(workflow, "test")
+    full_job = _workflow_job(workflow, "test-full")
+
+    assert "- name: Install dependencies\n        run: uv sync --locked --dev" in pull_request_job
+    assert "- name: Install dependencies\n        run: uv sync --locked --dev" in full_job
+    assert (
+        pull_request_job.split("- name: Run core tests")[1].strip()
+        == full_job.split("- name: Run core tests")[1].strip()
+    )
 
 
 def test_docker_uses_latest_supported_python() -> None:

@@ -154,8 +154,10 @@ git push origin vX.Y.Z
 | 3.13 | Supported | |
 | 3.14 | Supported | Latest supported version |
 
-All versions are tested on Linux (ubuntu-latest). Python 3.10 and 3.14 are additionally
-tested on macOS. Both latest and minimum declared dependency versions are tested in CI.
+All supported versions are tested on Linux (ubuntu-latest) for every pull request and push
+to `main`. Python 3.14 is additionally tested on macOS on every event, and 3.10 on macOS on
+pushes to `main`, merge groups, the weekly schedule, and manual dispatch. Both latest and
+minimum declared dependency versions are tested in CI.
 
 ### Version Support Policy
 

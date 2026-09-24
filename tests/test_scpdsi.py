@@ -1,6 +1,7 @@
 """Public-contract and oracle validation tests for :func:`palmer.scpdsi`."""
 
 import inspect
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -248,9 +249,13 @@ def test_scpdsi_oracle_contains_all_climate_divisions(palmer_division_dirs):
 
 
 @pytest.mark.validation
-def test_climate_division_matches_scpdsi_oracle(palmer_division_dir, palmer_scpdsi_results):
+def test_climate_division_matches_scpdsi_oracle(palmer_division_dir, palmer_division_inputs, request):
     division = palmer_division_dir.name
-    scpdsi, scphdi, scpmdi, sczindex, params = palmer_scpdsi_results[division]
+    if os.environ.get("PYTEST_XDIST_WORKER"):
+        scpdsi, scphdi, scpmdi, sczindex, params = _call(palmer_division_inputs, division)
+    else:
+        # Direct fixture injection reruns the 344-division sweep in every xdist worker.
+        scpdsi, scphdi, scpmdi, sczindex, params = request.getfixturevalue("palmer_scpdsi_results")[division]  # NOSONAR
     assert params is not None
 
     for name, actual in (
