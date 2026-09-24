@@ -6,7 +6,8 @@ climate_indices library against published scientific results.
 ## Provenance Protocol
 
 Every reference dataset directory **must** include a `provenance.json` file
-that records the origin, integrity, and version of the data. This enables
+that records the origin, integrity, and version of the data. Data-free status
+directories may omit it until an oracle artifact is committed. This enables
 reproducible validation and guards against silent data corruption.
 
 ### Required Fields

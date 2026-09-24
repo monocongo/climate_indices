@@ -441,6 +441,10 @@ def test_release_process_documents_the_rehearsal_boundary() -> None:
     assert "`publish` fails; `create-release` is skipped" in boundary
     assert "not a trusted publisher" in boundary
     assert "only the real repository can validate these" in boundary
+    assert "Rehearsals run in a **rehearsal repository**" in boundary, (
+        "the runbook must define the rehearsal target once so the release ticket and this page agree"
+    )
+    assert "A fork under a different owner is equivalent" in boundary
 
 
 def test_llms_bundles_reference_main_branch_not_master() -> None:

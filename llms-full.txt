@@ -3527,6 +3527,23 @@ overhead, and it dominates because the whole grid is only 1.2 s of serial work.
 The numbers, method, and retained raw output are in
 [the #1097 section of benchmarks/README.md](https://github.com/monocongo/climate_indices/blob/main/benchmarks/README.md#real-grid-spi-benchmark-v240-vs-main-on-the-morocco-chirps-case-1097).
 
+#1097 compares eager against Dask -- both xarray/Dask API. #1121 puts the
+CLI's `multiprocessing.Pool` path (ADR-0002) in the same comparison, at CONUS
+scale: on a full nClimGrid-Monthly precipitation grid (825,460 cells, 469,758
+land, 528 months, SPI-6 gamma), the CLI's 9-worker Pool path (28.68 s compute)
+is faster than both the xarray eager call (63.16 s) and the best Dask
+configuration (8 workers, 65.00 s) -- 2.2x and 2.3x respectively -- with
+output equivalence asserted between the CLI and xarray/Dask paths before that
+comparison. Dask does not beat eager at this scale either (8 workers, 65.00 s,
+is slightly slower than eager's 63.16 s), consistent with #1097's finding that
+Dask's process-scheduler overhead dominates once the serial call is fast.
+Interpretation: the CLI's `multiprocessing.Array` shared memory is a
+zero-copy buffer every worker indexes into directly, while Dask's
+`scheduler="processes"` pickles each block's input and result across process
+boundaries -- a cost that appears to outweigh Dask's parallelism gain at this
+grid's land-cell count. The numbers, method, and retained raw output are in
+[the #1121 section of benchmarks/README.md](https://github.com/monocongo/climate_indices/blob/main/benchmarks/README.md#legacy-cli-multiprocessing-vs-xarraydask-on-conus-nclimgrid-1121).
+
 ## Scheduler
 
 Choose the scheduler at the materialization call; the xarray API never imports or

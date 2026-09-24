@@ -1,0 +1,15 @@
+checkout revision: 11ed94b68991e35464c0a93e0c5c34ce14057096
+fixture: /private/tmp/ci1121/nclimgrid_prcp_1981_2024.nc sha256=e88478c201fce89994e03937db1a13e34cd0c9c929578c5fe925d5a69a7c3cb2
+grid: time=528 lat=596 lon=1385
+input: scale=6; calibration=1991-2020; distribution=gamma; zeros replaced with 0.01 mm; land mask from the first time step (469758 of 825460 cells); spatial axes rolled by lat=0 lon=-709 so the sampled preflight cell holds data
+environment: python 3.14.7; macOS-26.6.2-arm64-arm-64bit-Mach-O; numpy 2.4.2; scipy 1.17.0; xarray 2026.1.0; dask 2026.8.0; cpu Apple M5; 10 CPUs
+process: read 17.850 s; 3 timed runs per configuration after a warm-up
+
+spi eager serial in-memory (quiet log): samples=[65.616, 63.156, 70.244] min=63.156 s; read=17.850 s; write=0.506 s; total=81.511 s
+
+Dask worker counts: 1,2,4,8; scheduler=processes; chunksize=1; time=-1 (ADR-0003); compute-only seconds, total adds read + write
+ workers  blocks   compute  speedup     total  samples
+       1       1   129.821    1.00x   148.177  [129.821, 145.926, 134.978]
+       2       2    90.661    1.43x   109.017  [90.661, 95.407, 109.882]
+       4       4    69.561    1.87x    87.916  [77.732, 69.561, 75.422]
+       8       8    65.001    2.00x    83.357  [67.290, 65.001, 66.601]

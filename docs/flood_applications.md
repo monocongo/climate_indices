@@ -22,7 +22,7 @@ A useful conceptual chain is:
 ```text
 Antecedent climatic wetness          SPI / SPEI / PHDI wet tail          (available)
               ↓
-Accumulated / effective wetness      PE → EDI, I_F ; API                 (planned)
+Accumulated / effective wetness      PE (available) → EDI, I_F ; API    (planned)
               ↓
 Heavy-precipitation triggers         Rx1day / Rx5day / R95pTOT           (planned)
               ↓
@@ -80,19 +80,19 @@ Seiler et al. (2002) found the wet SPI tail tracked conditions leading up to
 major flood events in southern Córdoba, Argentina; that demonstrates the
 potential of the approach in one region, not a transferable rule.
 
-## Planned wet-extreme indices
+## Wet-extreme indices
 
-The flood family below is planned, not implemented. Module and function names
-are fixed by [ADR-0013](adr/0013-flood-module-api-and-naming.md) —
-`flood.effective_precipitation()`, `flood.edi()`, `flood.flood_index()`, and
-`flood.antecedent_precipitation_index()` — with argument names, units, and
-signatures recorded in the internal flood subsystem design note, so the indices
-below are not yet callable APIs but will not be renamed. The
-[flood-family epic #1098][flood-epic] tracks the implementation order.
+The NumPy PE kernel is available as `flood.effective_precipitation()`; the
+remaining flood-family indices are planned. Module and function names are fixed
+by [ADR-0013](adr/0013-flood-module-api-and-naming.md), with argument names,
+units, and signatures recorded in the internal flood subsystem design note.
+The [flood-family epic #1098][flood-epic] tracks the implementation order.
 
-- **Effective Precipitation (PE)** — *planned (FLOOD-08 [#1105][flood-1105])*.
-  The daily accumulated-wetness kernel shared by EDI and I_F, after
-  [Byun & Wilhite (1999)][byun-1999].
+- **Effective Precipitation (PE)** — *NumPy API available (FLOOD-08
+  [#1105][flood-1105])*. The daily accumulated-wetness kernel shared by EDI
+  and I_F, after [Byun & Wilhite (1999)][byun-1999]. Its fixed 365-day
+  window yields NaN until a full window is available and for any window with
+  a missing day. It measures flood potential, not flooding.
 - **Effective Drought Index (EDI)** — *planned (FLOOD-09 [#1106][flood-1106])*.
   A daily standardized index derived from effective precipitation
   ([Byun & Wilhite (1999)][byun-1999]); despite the name, it shares its
@@ -141,10 +141,10 @@ is part of this package yet.
 - **SPI and SPEI are less reliable in arid regions** with many
   zero-precipitation months ({doc}`algorithms` documents the limitation), so
   the wet tail there deserves more caution than in humid climates.
-- **They are not yet validated.** No flood index is implemented yet, so
-  [VALIDATION.md][validation] has no flood section at present; the planned
-  [FLOOD-20 #1117][flood-1117] adds one as implementations land. Until then,
-  treat this page as orientation, not as evidence of validated skill.
+- **They are not yet externally validated.** PE has source-backed algebraic
+  checks, not a reproducible numeric paper oracle. [VALIDATION.md][validation]
+  has no flood section yet; [FLOOD-20 #1117][flood-1117] will record evidence
+  per index. Treat this page as orientation, not evidence of validated skill.
 
 ## Sources
 

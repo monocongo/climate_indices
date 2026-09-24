@@ -1,0 +1,55 @@
+nClimGrid-Monthly precipitation fixture provenance (#1121)
+Per docs/research/nclimgrid-acquisition-and-redistribution.md: a retrieval-pinned
+snapshot of a mutable NCEI period-of-record object, not a claim of an immutable
+per-month source object.
+
+Source
+  endpoint:        https://noaa-nclimgrid-monthly-pds.s3.amazonaws.com/nclimgrid_prcp.nc
+  route:           AWS S3 Explorer (NODD dataset noaa-nclimgrid-monthly-pds), Region us-east-1
+  object key:      nclimgrid_prcp.nc
+  retrieval time:  2026-09-22T21:24:54Z (S3 response Date header)
+  size:            1796927222 bytes
+  Last-Modified:   2026-09-08T21:23:02Z
+  ETag:            "2ad66993ba82dfe27af796d4d37ee7e0"
+  x-amz-checksum:  crc32 tTnCCg== (base64) = b539c20a (hex), FULL_OBJECT
+  project SHA-256: 85118392e6be2321b76472631290916d45e81865866ee0d950fb1ad9b14b9c44
+  full response headers: see the `curl -D` capture retained alongside this run
+
+Native grid (as downloaded, full period of record)
+  variable: prcp, units millimeter
+  dims: time=1580 (1895-01 to 2026-08), lat=596, lon=1385
+  bounds: lat 24.56-49.35 N, lon -124.69 to -67.02 W (CONUS bounding box)
+
+Selected time coordinates and reduction recipe (benchmarks/cli_multiprocessing.py prepare)
+  1. sel(time=slice("1981-01-01", "2024-12-31")) -> 528 months, matching #1097's
+     CHIRPS series length so only spatial scale changes between the two issues
+  2. land mask = finite cells of the first prepared time step (1981-01); every
+     other time step forced to that same mask
+  3. zeros -> 0.01 mm (gamma has no support at zero)
+  4. cast to float32, written with no inherited packing encoding
+  5. dims reordered to (lat, lon, time) -- the CLI's shared-array transport
+     (climate_indices.__main__._TRANSPORT_DIMENSIONS) accepts only this order;
+     the xarray/Dask harness transposes on read, so it accepts either order
+
+Prepared fixture
+  path (external, not committed): nclimgrid_prcp_1981_2024.nc
+  sha256: e88478c201fce89994e03937db1a13e34cd0c9c929578c5fe925d5a69a7c3cb2
+  grid: time=528 lat=596 lon=1385
+  land=469758 of 825460 cells (56.9%); masked (non-CONUS/ocean)=355702 (43.1%)
+  zeros replaced with 0.01 mm: 2291008
+
+Citation (NCEI-specified format; subset and access date filled in per the
+research doc's instruction -- this is a reduced/modified subset, not the whole
+unmodified dataset)
+  Vose, Russell S., Applequist, Scott, Squires, Mike, Durre, Imke, Menne,
+  Matthew J., Williams, Claude N. Jr., Fenimore, Chris, Gleason, Karin, and
+  Arndt, Derek (2014): NOAA Monthly U.S. Climate Gridded Dataset (NClimGrid),
+  Version 1. Monthly precipitation, CONUS, 1981-01 to 2024-12, reduced to a
+  land-masked, zero-adjusted float32 grid for this benchmark. NOAA National
+  Centers for Environmental Information. DOI:10.7289/V5SX6B56. Accessed
+  2026-09-22.
+
+Notices (NODD dataset entry, registry.opendata.aws/noaa-nclimgrid)
+  - This is a reduced and modified derivative of the NOAA NClimGrid dataset,
+    not original, unaltered NOAA data.
+  - No claim or implication of NOAA endorsement or affiliation.
