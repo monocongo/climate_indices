@@ -122,6 +122,19 @@ def test_missing_days_inside_spin_up_still_obey_gap_policy() -> None:
     assert np.isnan(api(rain, 0.5, spin_up=3, nan_policy="bridge", max_gap_days=1)).all()
 
 
+@pytest.mark.parametrize("shape", [(5, 0, 3), (5, 3, 0), (5, 0, 0)])
+def test_empty_spatial_axis_returns_empty_block(shape: tuple[int, ...]) -> None:
+    result = api(np.ones(shape), 0.5, return_state=True)
+    assert result.values.shape == shape
+    assert result.state.api.shape == shape[1:]
+
+
+@pytest.mark.parametrize("width", [np.int8, np.uint8, np.uint64])
+def test_numpy_integer_spin_up_of_any_width(width: type[np.integer]) -> None:
+    np.testing.assert_array_equal(api(np.ones(400), 0.5, spin_up=width(3)), api(np.ones(400), 0.5, spin_up=3))
+    assert api(np.ones(5), 0.5, spin_up=width(10)).shape == (0,)
+
+
 def test_spatial_cells_and_state_are_independent() -> None:
     values = np.array([[1, np.nan], [np.nan, 2], [3, 3], [1, 1]])[:, :, None]
     result = api(values, 0.5, return_state=True)

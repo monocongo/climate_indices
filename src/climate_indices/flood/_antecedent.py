@@ -154,6 +154,8 @@ def antecedent_precipitation_index(
     """
     _validate_decay(k)
     _validate_recurrence_options(nan_policy, max_gap_days, spin_up, "initial_state", None, initial_state)
+    # NumPy integers of a narrow or unsigned width would overflow when subtracted from the series length
+    spin_up = int(spin_up)
     values = _validated_precipitation(precipitation, spatial_time_major)
     series = values.reshape(-1) if values.ndim == 2 else values
     spatial_shape = series.shape[1:]
@@ -177,7 +179,7 @@ def antecedent_precipitation_index(
         current[active] = k * current[active] + rain[active]
         if day >= spin_up:
             result[day - spin_up] = np.where(active, current, np.nan)
-    output = result.reshape((-1, *spatial_shape))
+    output = result.reshape((result.shape[0], *spatial_shape))
     if values.ndim == 2 and spin_up == 0:
         output = output.reshape(values.shape)
     if not return_state:
