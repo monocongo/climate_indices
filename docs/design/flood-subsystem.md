@@ -31,13 +31,40 @@ dependency is stated in the signature table below and in the docstring.
 ## Scope and boundary
 
 In scope: indices computed from meteorological and climatological inputs, plus
-input-agnostic standardization that can accept runoff or streamflow. Out of
-scope: hydrologic and hydraulic modeling, inundation mapping, flood-frequency
-analysis of discharge, snowmelt-dependent indices, and terrain-, soil-,
-land-cover-, or routing-dependent quantities. A sibling repository takes
-anything needing a calibrated hydrologic model, terrain or land-cover data, or
-routed discharge. The indices describe flood *potential*, not flooding, and
-every docstring and doc page has to say so.
+input-agnostic standardization that can accept runoff or streamflow.
+
+Out of scope:
+
+- Hydrologic and hydraulic modeling, inundation mapping, and flood-frequency
+  analysis of discharge
+- Snowmelt-dependent indices such as SMRI, which need snow-pack inputs daily
+  precipitation and temperature do not provide
+- Terrain-, soil-, land-cover-, or routing-dependent quantities
+- The ETCCDI precipitation extremes (Rx1day, Rx5day, R95pTOT), which `xclim`
+  already implements; FLOOD-14 and FLOOD-15
+  ([#1111](https://github.com/monocongo/climate_indices/issues/1111),
+  [#1112](https://github.com/monocongo/climate_indices/issues/1112)) are closed
+  as not planned
+- WAP and SWAP (Lu 2009; Lu et al. 2013), a separate lineage with no identified
+  oracle and a second standardization convention
+
+A separate repository becomes justified when two or more of these are true:
+
+1. An implementation requires a calibrated rainfall-runoff or routing model
+2. An implementation requires terrain, soil, or land-cover data, or
+   remote-sensing flood extent
+3. The flood code exceeds roughly 30 percent of the package's source volume
+4. Flood-specific dependencies would be forced on all `climate_indices` users
+5. The release cadence needs to diverge
+
+Until then, an out-of-scope flood proposal is not rejected on merit: open an
+issue labeled `flood` recording it as a candidate for the eventual split,
+rather than relitigating the boundary here.
+[CONTRIBUTING.md](../../CONTRIBUTING.md#flood-and-wet-extreme-scope) records the
+triage response.
+
+The indices describe flood *potential*, not flooding, and every docstring and
+doc page has to say so.
 
 [ADR-0014](../adr/0014-flood-family-scientific-conventions.md) records the
 scientific conventions these signatures serve, including the deliberate
@@ -113,9 +140,7 @@ is documented in the docstring as the alternative and is not implemented.
   describe is not implemented (ADR-0014).
 - **A numeric API oracle**, blocked on Kohler & Linsley (1951).
 - **Flood-event helpers** (onset, duration, severity as runs of `I_F > 0`).
-- **WAP and SWAP**, deferred as a separate lineage; **SMRI** and snowmelt
-  indices, out of scope.
-- **The public names of the precipitation-extreme indices** (Rx1day, Rx5day,
-  R95pTOT), which are in scope per ADR-0014 decision 6 and land in this package
-  with FLOOD-14 ([#1111](https://github.com/monocongo/climate_indices/issues/1111));
-  they are absent from the table above because their names are not yet fixed.
+- **WAP and SWAP** (Lu 2009; Lu et al. 2013), a separate lineage, and **SMRI**
+  and snowmelt indices: out of scope (ADR-0014 decision 6), along with the
+  ETCCDI precipitation extremes (Rx1day, Rx5day, R95pTOT), which `xclim`
+  already implements.
