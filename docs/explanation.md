@@ -12,6 +12,7 @@ architecture
 project-overview
 algorithms
 algorithm_refs/edi
+algorithm_refs/flood_index
 algorithm_refs/eddi
 algorithm_refs/palmer
 algorithm_refs/pet
