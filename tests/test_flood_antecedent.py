@@ -44,7 +44,8 @@ def test_gap_policy_across_append_boundary() -> None:
             values[3:], 0.5, nan_policy=policy, max_gap_days=limit, initial_state=first.state
         )
         np.testing.assert_array_equal(np.concatenate((first.values, tail)), full)
-        assert np.isnan(full[0]) and np.isnan(full[2:4]).all()
+        assert np.isnan(full[0])
+        assert np.isnan(full[2:4]).all()
         assert np.isnan(full[4]) == (policy == "propagate" or limit == 1)
     blank = flood.antecedent_precipitation_index([np.nan], 0.5, return_state=True)
     assert blank.state.trailing_gap_days is None
@@ -80,10 +81,10 @@ def test_rejects_invalid_configuration_and_state() -> None:
         with pytest.raises(InvalidArgumentError):
             flood.antecedent_precipitation_index([1], 0.5, **kwargs)
     state = flood.antecedent_precipitation_index([2], 0.5, return_state=True).state
+    negative_api = replace(state, api=np.array(-1.0))
     with pytest.raises(InvalidArgumentError, match="initial_state"):
-        flood.antecedent_precipitation_index([1], 0.5, initial_state=replace(state, api=np.array(-1.0)))
+        flood.antecedent_precipitation_index([1], 0.5, initial_state=negative_api)
     for gap in (-2, 1.5, np.inf, 2**63):
+        bad_gap = replace(state, trailing_gap_days=np.array(gap))
         with pytest.raises(InvalidArgumentError, match="trailing_gap_days"):
-            flood.antecedent_precipitation_index(
-                [1], 0.5, initial_state=replace(state, trailing_gap_days=np.array(gap))
-            )
+            flood.antecedent_precipitation_index([1], 0.5, initial_state=bad_gap)
