@@ -8,8 +8,9 @@ from typing import Literal
 import numpy as np
 import numpy.typing as npt
 
-from climate_indices.exceptions import DataShapeError, InputTypeError, InvalidArgumentError
+from climate_indices.exceptions import InvalidArgumentError
 from climate_indices.fire._common import _apply_gap_policy, _static_spatial_array, _validate_recurrence_options
+from climate_indices.flood._common import _validated_daily
 
 
 @dataclass(frozen=True)
@@ -46,29 +47,6 @@ def _validate_decay(k: object) -> None:
             argument_name="k",
             argument_value=str(k),
         )
-
-
-def _validated_precipitation(precipitation: npt.ArrayLike, spatial_time_major: bool) -> npt.NDArray[np.float64]:
-    """Return precipitation as a float array with masked values as NaN, after validating it."""
-    if np.asarray(precipitation).dtype.kind not in "biuf":
-        raise InputTypeError(
-            "precipitation must be numeric.", expected_type=float, actual_type=np.asarray(precipitation).dtype.type
-        )
-    values = np.asarray(np.ma.asarray(precipitation, dtype=np.float64).filled(np.nan), dtype=np.float64)
-    if values.ndim == 0:
-        raise DataShapeError(
-            "precipitation must have a time axis.", expected_shape="(time, ...)", actual_shape=values.shape
-        )
-    if np.any(np.isinf(values)) or np.any(values < 0):
-        raise InvalidArgumentError(
-            "precipitation must be non-negative and finite or NaN.", argument_name="precipitation"
-        )
-    if values.ndim > 2 and not spatial_time_major and values.shape[1] in (12, 366):
-        raise ValueError(
-            f"Invalid shape of input array: {values.shape} -- a (time, *cells) block whose first "
-            "cell axis is a calendar period length; declare it with spatial_time_major=True"
-        )
-    return values
 
 
 def _validated_gaps(trailing_gap_days: npt.NDArray[np.int64], internal_shape: tuple[int, ...]) -> npt.NDArray[np.int64]:
@@ -160,7 +138,7 @@ def antecedent_precipitation_index(
     _validate_recurrence_options(nan_policy, max_gap_days, spin_up, "initial_state", None, initial_state)
     # NumPy integers of a narrow or unsigned width would overflow when subtracted from the series length
     spin_up = int(spin_up)
-    values = _validated_precipitation(precipitation, spatial_time_major)
+    values = _validated_daily(precipitation, "precipitation", spatial_time_major, None)
     series = values.reshape(-1) if values.ndim == 2 else values
     spatial_shape = series.shape[1:]
     internal_shape = spatial_shape or (1,)
