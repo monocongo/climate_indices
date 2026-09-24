@@ -2,7 +2,7 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
-from climate_indices import fire
+from climate_indices import fire, flood
 from climate_indices.cf_metadata_registry import CF_METADATA, CFAttributes
 from climate_indices.exceptions import (
     BetaFeatureWarning,
@@ -12,6 +12,7 @@ from climate_indices.exceptions import (
     InputAlignmentWarning,
     emit_deprecation_warning,
 )
+from climate_indices.flood import edi
 from climate_indices.logging_config import configure_logging
 from climate_indices.typed_public_api import (
     eddi,
@@ -49,8 +50,10 @@ __all__ = [
     "InputType",
     "detect_input_type",
     "eddi",
+    "edi",
     "emit_deprecation_warning",
     "fire",
+    "flood",
     "pci",
     "pdsi",
     "percentage_of_normal",

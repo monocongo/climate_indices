@@ -1251,7 +1251,7 @@ def _finalize_ufunc_result(
     calc_metadata = _capture_calculation_metadata(calculation_metadata_keys, valid_kwargs)
     resolved_index_name = index_display_name if index_display_name is not None else func_name.upper()
     output_attrs = build_output_attrs(input_da, cf_metadata, calc_metadata, index_name=resolved_index_name)
-    result_da.attrs.update(output_attrs)
+    result_da.attrs = output_attrs
 
     # deep-copy coordinate attrs to prevent mutation bleed-through
     # (xarray currently preserves coord attrs through DataArray(coords=...),
@@ -1276,6 +1276,7 @@ def xarray_adapter(
     additional_input_names: list[str] | None = None,
     skipna: bool = False,
     spatial_kernel: bool = False,
+    validate_calibration_sample: bool = True,
 ) -> Callable[[Callable[..., np.ndarray[Any, Any]]], Callable[..., np.ndarray[Any, Any] | xr.DataArray]]:
     """Decorator factory that adapts NumPy index functions to accept xarray DataArrays.
 
@@ -1312,6 +1313,8 @@ def xarray_adapter(
             (NaN in → NaN out). If True, implements pairwise deletion for NaN handling
             (FR-INPUT-004). Currently only skipna=False is implemented; skipna=True
             raises NotImplementedError.
+        validate_calibration_sample: Enforce the fitting-based indices' 30-year
+            non-NaN minimum. Disable for indices with their own calibration contract.
         spatial_kernel: If True, the wrapped function accepts the core ``time_dim``
             dimension alongside any number of cell dimensions, packed as
             ``(time, *cells)``, so ``apply_ufunc`` makes one call per non-core block
@@ -1575,7 +1578,12 @@ def xarray_adapter(
                 # similar to Dask path but without dask="parallelized"
 
                 # validate calibration period has sufficient non-NaN data
-                if nan_assessment["has_nan"] and infer_params and time_dim in input_da.dims:
+                if (
+                    nan_assessment["has_nan"]
+                    and infer_params
+                    and validate_calibration_sample
+                    and time_dim in input_da.dims
+                ):
                     time_coord = input_da[time_dim]
                     cal_initial = call_kwargs.get("calibration_year_initial")
                     cal_final = call_kwargs.get("calibration_year_final")
@@ -1663,7 +1671,7 @@ def xarray_adapter(
 
             # validate calibration period has sufficient non-NaN data
             # this validation requires .values, so it only runs in the in-memory path
-            if nan_assessment["has_nan"] and infer_params and time_dim in input_da.dims:
+            if nan_assessment["has_nan"] and infer_params and validate_calibration_sample and time_dim in input_da.dims:
                 time_coord = input_da[time_dim]
                 # check if we have calibration years (either inferred or provided)
                 cal_initial = call_kwargs.get("calibration_year_initial")
