@@ -84,7 +84,7 @@ def test_rejects_invalid_configuration_and_state() -> None:
     negative_api = replace(state, api=np.array(-1.0))
     with pytest.raises(InvalidArgumentError, match="initial_state"):
         flood.antecedent_precipitation_index([1], 0.5, initial_state=negative_api)
-    for gap in (-2, 1.5, np.inf, 2**63):
+    for gap in (-2, 1.5, np.inf, 2**63, np.iinfo(np.int64).max):
         bad_gap = replace(state, trailing_gap_days=np.array(gap))
         with pytest.raises(InvalidArgumentError, match="trailing_gap_days"):
             flood.antecedent_precipitation_index([1], 0.5, initial_state=bad_gap)
