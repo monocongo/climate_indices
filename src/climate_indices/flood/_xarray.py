@@ -76,7 +76,7 @@ _wrapped_pe = xarray_adapter(
 _wrapped_edi = xarray_adapter(
     cf_metadata=CF_METADATA["edi"],  # type: ignore[arg-type]
     index_display_name="EDI",
-    calculation_metadata_keys=["duration", "calibration_year_initial", "calibration_year_final"],
+    calculation_metadata_keys=["calibration_year_initial", "calibration_year_final"],
     spatial_kernel=True,
     validate_calibration_sample=False,
 )(_edi_daily)

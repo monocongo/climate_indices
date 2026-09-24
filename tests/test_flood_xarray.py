@@ -36,6 +36,7 @@ def test_flood_xarray_matches_numpy_on_gregorian_grid_and_preserves_metadata() -
     assert "input" in pe.attrs["history"]
     assert "climate_indices_version" in pe.attrs
 
+    assert flood.edi(pe).attrs["duration"] == 30  # PE provenance, not EDI's no-op default
     all_leap_pe = plan.to_all_leap(pe.values)
     for actual, expected in (
         (flood.edi(pe, duration=30), flood.edi(all_leap_pe, 2000, 2000, 2004, duration=30, spatial_time_major=True)),
