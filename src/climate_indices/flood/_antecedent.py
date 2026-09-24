@@ -18,7 +18,9 @@ class APIState:
     """State for resuming an antecedent precipitation recurrence.
 
     ``trailing_gap_days=None`` means no valid day has started any cell;
-    ``-1`` marks individual cells that have not started. Values are in mm.
+    ``-1`` marks individual cells that have not started. A NaN ``api`` is only
+    valid where ``trailing_gap_days`` shows that a gap has started the cell; a
+    not-started cell holds a number. Values are in mm.
     """
 
     api: npt.NDArray[np.float64]
@@ -105,8 +107,8 @@ def antecedent_precipitation_index(
     rain observed on the current day: ``API_t = k * API_(t-1) + P_t``.
     Some sources instead lag precipitation, using
     ``k * (API_(t-1) + P_(t-1))``; that variant is not implemented.
-    An assumed initial value converges within several weeks; the default
-    seed is zero. Typical ``k`` is 0.85–0.90 in the eastern and central US.
+    For typical ``k`` (0.85–0.90 in the eastern and central US) an assumed
+    initial value converges within several weeks; the default seed is zero.
     No external tabulated numeric oracle is available for this index.
 
     Args:
@@ -124,14 +126,15 @@ def antecedent_precipitation_index(
             length 12 or 366; 2-D input is always a ``(years, days)`` series.
 
     Returns:
-        Index in mm, with input shape and leading ``spin_up`` days omitted;
+        Index in mm, in the input's shape with the leading ``spin_up`` days removed;
         for 2-D input, nonzero ``spin_up`` returns the remaining flattened
         daily record because it may not contain whole years. With
         ``return_state=True``, returns :class:`APIResult` instead.
 
     Raises:
-        DataShapeError: If precipitation has no time axis.
         InvalidArgumentError: If precipitation, k, configuration or state is invalid.
+        InputTypeError: If precipitation or a state field is non-numeric.
+        DataShapeError: If precipitation has no time axis.
         ValueError: If a Spatial Block has an undeclared ambiguous shape.
     """
     _validate_decay(k)
