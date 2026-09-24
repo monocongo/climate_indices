@@ -1,6 +1,7 @@
 """Antecedent Precipitation Index recursion and append contract."""
 
 from dataclasses import replace
+from fractions import Fraction
 
 import numpy as np
 import pytest
@@ -178,9 +179,11 @@ def test_resume_does_not_mutate_supplied_state() -> None:
     np.testing.assert_array_equal(api(rain, 0.5, initial_state=state), first)
 
 
-@pytest.mark.parametrize("k", [0, 1, -0.1, np.nan, np.inf, True])
-def test_rejects_invalid_decay(k: float) -> None:
-    with pytest.raises(InvalidArgumentError, match="k"):
+@pytest.mark.parametrize(
+    "k", [0, 1, -0.1, np.nan, np.inf, True, 10**30, -(10**30), Fraction(1, 2), np.array(0.5)], ids=repr
+)
+def test_rejects_invalid_decay(k: object) -> None:
+    with pytest.raises(InvalidArgumentError, match="k must be a real scalar"):
         api([1], k)
 
 

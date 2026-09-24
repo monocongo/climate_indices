@@ -37,11 +37,15 @@ def _validate_decay(k: object) -> None:
     if (  # NOSONAR S2589: false positive, valid k passes this check (test_flood_antecedent)
         isinstance(k, bool)
         or not isinstance(k, (int, float, np.integer, np.floating))
-        or not np.isfinite(k)
         or k <= 0
         or k >= 1
+        or not np.isfinite(k)  # last: np.isfinite raises TypeError for ints beyond uint64, which the bounds catch
     ):
-        raise InvalidArgumentError("k must be between zero and one.", argument_name="k", argument_value=str(k))
+        raise InvalidArgumentError(
+            "k must be a real scalar (int or float) strictly between zero and one.",
+            argument_name="k",
+            argument_value=str(k),
+        )
 
 
 def _validated_precipitation(precipitation: npt.ArrayLike, spatial_time_major: bool) -> npt.NDArray[np.float64]:
