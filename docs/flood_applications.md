@@ -24,7 +24,7 @@ Antecedent climatic wetness          SPI / SPEI / PHDI wet tail          (availa
               ↓
 Accumulated / effective wetness      PE (available) → EDI, I_F ; API    (planned)
               ↓
-Heavy-precipitation triggers         Rx1day / Rx5day / R95pTOT           (planned)
+Heavy-precipitation triggers         Rx1day / Rx5day / R95pTOT           (out of scope)
               ↓
 Hydrologic response (boundary)       SRI / SSI via generic standardization (recipes available)
               ↓
@@ -119,14 +119,14 @@ The [flood-family epic #1098][flood-epic] tracks the implementation order.
   xarray entry point also needs the CF metadata registry entries
   ([FLOOD-06 #1103][flood-1103]).
 
-Heavy-precipitation triggers (Rx1day, Rx5day, and R95pTOT per
-[Zhang et al. (2011)][zhang-2011]) are in scope, planned for validation against
-the ETCCDI reference implementation `climdex.pcic` once its definitions and
-percentile conventions are confirmed, with `xclim` an optional cross-check that
-never becomes a dependency ([FLOOD-03 #1100][flood-1100]). The WAP/SWAP
-wet-anomaly indices are deferred, and snowmelt-dependent indices such as SMRI
-are out of scope, as is anything needing a calibrated hydrologic model,
-terrain or land-cover data, or routed discharge
+The heavy-precipitation triggers (Rx1day, Rx5day, and R95pTOT per
+[Zhang et al. (2011)][zhang-2011]) are out of scope: `xclim` already implements
+those ETCCDI calculations, and duplicating them here would add a second
+implementation this repository does not own an oracle for
+([FLOOD-03 #1100][flood-1100]). The WAP/SWAP wet-anomaly indices are not
+planned, and snowmelt-dependent indices such as SMRI are out of scope, as is
+anything needing a calibrated hydrologic model, terrain or land-cover data, or
+routed discharge
 ([ADR-0014](adr/0014-flood-family-scientific-conventions.md)). None of these
 is part of this package yet.
 

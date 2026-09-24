@@ -60,6 +60,18 @@ repository, and concrete in-scope and out-of-scope examples are in
 Point an out-of-scope proposal there rather than dismissing it: it is a
 candidate for that sibling, not a rejection on merit.
 
+## Flood and wet-extreme scope
+
+`climate_indices` accepts meteorological and climatological wetness indices;
+hydrologic and hydraulic modeling, inundation mapping, and flood-frequency
+analysis of discharge are out of scope. The ETCCDI precipitation extremes
+(Rx1day, Rx5day, R95pTOT) are also out of scope because `xclim` already
+implements them. The exact boundary, the five criteria for a future sibling
+repository, and the WAP/SWAP and snowmelt exclusions are in
+[the flood subsystem design](docs/design/flood-subsystem.md#scope-and-boundary).
+Point an out-of-scope proposal there rather than dismissing it: until the
+criteria are met, it is a candidate for that sibling, not a rejection on merit.
+
 ## Documentation audience
 
 Everything on the published site is for users and contributors of the shipped
