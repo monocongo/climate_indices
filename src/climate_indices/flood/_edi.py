@@ -35,7 +35,11 @@ def edi(
         pe: Daily effective precipitation in mm from
             :func:`effective_precipitation`. Input starts on January 1, with
             366 positional days per year (including February 29 every year).
-            Accepts 1-D, ``(years, 366)``, or a Spatial Block
+            For Gregorian precipitation, convert to this layout *before*
+            calculating PE: use :func:`climate_indices.utils.transform_to_366day`
+            for 1-D input or :meth:`climate_indices.utils.DailyCalendarPlan.to_all_leap`
+            for Spatial Blocks. Both fill non-leap-year February 29 with the
+            mean of February 28 and March 1. Accepts 1-D, ``(years, 366)``, or a Spatial Block
             ``(time, *cells)``; missing values may be NaN or masked. The PE
             window's leading NaNs and any other gaps remain NaN in the result.
         data_start_year: Calendar year of the first observation.

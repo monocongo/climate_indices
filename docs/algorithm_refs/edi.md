@@ -12,8 +12,13 @@ cancels in `PRN / SD(PRN)`. Positive values indicate wetter conditions;
 negative values indicate drier conditions. These indices describe flood
 *potential*, not observed flooding.
 
-Input starts January 1 and uses a 366-day all-leap layout for every year;
-the first `duration - 1` PE values are NaN. An incomplete final year may be
+Input starts January 1 and uses a 366-day all-leap layout for every year.
+Convert Gregorian precipitation *before* computing PE: use
+`utils.transform_to_366day` for 1-D input or the equivalent
+`DailyCalendarPlan.to_all_leap` for Spatial Blocks. Both fill February 29
+in non-leap years with the mean of February 28 and March 1; leaving it NaN
+would make every PE window spanning that day NaN. The first `duration - 1`
+PE values are NaN. An incomplete final year may be
 computed but cannot belong to the Calibration Period. Missing observations
 remain NaN; days with fewer than two finite calibration values or zero
 variance yield NaN. The `duration` argument is accepted for symmetry with
