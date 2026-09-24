@@ -225,3 +225,9 @@ def test_rejects_missing_api_in_unstarted_cell(gaps: np.ndarray | None) -> None:
 def test_rejects_initial_state_of_wrong_type() -> None:
     with pytest.raises(InvalidArgumentError, match="initial_state"):
         api([1], 0.5, initial_state="not a state")  # type: ignore[arg-type]
+
+
+def test_rejects_non_numeric_state_field_without_naming_another_family() -> None:
+    with pytest.raises(InputTypeError, match="must be numeric") as excinfo:
+        api([1], 0.5, initial_state=flood.APIState(api=np.array("3"), trailing_gap_days=None))
+    assert "fire" not in str(excinfo.value).lower()

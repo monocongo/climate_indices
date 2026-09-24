@@ -1,4 +1,4 @@
-"""Helpers shared by the fire-weather NumPy modules."""
+"""Helpers shared by the fire-weather NumPy modules and the flood API recurrence."""
 
 from __future__ import annotations
 
@@ -158,8 +158,7 @@ def _as_float_array(values: npt.ArrayLike) -> npt.NDArray[np.float64]:
     """
     if np.asarray(values).dtype.kind not in "biuf":
         raise InputTypeError(
-            "Fire index inputs must be numeric: datetime, string, object, and complex "
-            "arrays are not coerced to float64.",
+            "Index inputs must be numeric: datetime, string, object, and complex arrays are not coerced to float64.",
             expected_type=float,
             actual_type=np.asarray(values).dtype.type,
         )
