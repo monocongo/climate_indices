@@ -25,6 +25,10 @@ EXPECTED_KEYS = {
     "phdi",
     "pmdi",
     "z_index",
+    "effective_precipitation",
+    "edi",
+    "flood_index",
+    "antecedent_precipitation_index",
     "kbdi",
     "kbdi_imperial",
     "ffwi",
@@ -42,6 +46,13 @@ EXPECTED_KEYS = {
 }
 
 REQUIRED_FIELDS = {"long_name", "units", "references"}
+
+FLOOD_KEYS = (
+    "effective_precipitation",
+    "edi",
+    "flood_index",
+    "antecedent_precipitation_index",
+)
 
 FIRE_KEYS = (
     "kbdi",
@@ -86,6 +97,14 @@ ENTRY_VALUE_ROWS = [
     ("pmdi", "units", "dimensionless"),
     ("z_index", "long_name", "Palmer Z-Index"),
     ("z_index", "units", "dimensionless"),
+    ("effective_precipitation", "long_name", "Effective Precipitation"),
+    ("effective_precipitation", "units", "mm"),
+    ("edi", "long_name", "Effective Drought Index"),
+    ("edi", "units", "dimensionless"),
+    ("flood_index", "long_name", "Flood Index"),
+    ("flood_index", "units", "dimensionless"),
+    ("antecedent_precipitation_index", "long_name", "Antecedent Precipitation Index"),
+    ("antecedent_precipitation_index", "units", "mm"),
     ("kbdi", "long_name", "Keetch-Byram Drought Index"),
     ("kbdi", "units", "mm"),
     ("kbdi", "climate_indices_variant", "metric"),
@@ -146,6 +165,10 @@ REFERENCE_ROWS = [
     ("phdi", ("Palmer", "1965")),
     ("pmdi", ("Heddinghaus", "1991")),
     ("z_index", ("Palmer", "1965")),
+    ("effective_precipitation", ("Byun", "Wilhite", "1999", "Lee", "2002")),
+    ("edi", ("Byun", "Wilhite", "1999", "Lee", "2002")),
+    ("flood_index", ("Deo", "2015", "Moishin", "2021")),
+    ("antecedent_precipitation_index", ("Kohler", "Linsley", "1951")),
     ("kbdi", ("Keetch", "1968")),
     ("kbdi_imperial", ("Keetch", "1968")),
     ("ffwi", ("Fosberg", "1978")),
@@ -202,6 +225,26 @@ def test_references_cite_their_source(index_name: str, fragments: tuple[str, ...
     references = CF_METADATA[index_name]["references"]
     for fragment in fragments:
         assert fragment in references, f"'{index_name}' references lack '{fragment}'"
+
+
+@pytest.mark.parametrize("index_name", FLOOD_KEYS)
+def test_flood_entries_describe_potential_without_inventing_standard_names(index_name: str) -> None:
+    """Flood-family metadata must not claim to represent observed flooding or CF standard names."""
+    assert "flood potential, not flooding" in CF_METADATA[index_name]["description"]
+    assert "standard_name" not in CF_METADATA[index_name]
+
+
+@pytest.mark.parametrize(
+    ("index_name", "phrases"),
+    [
+        ("edi", ("Fixed-window", "positive values", "negative values")),
+        ("flood_index", ("harmonic", "unverified")),
+    ],
+)
+def test_flood_descriptions_disclose_scientific_conventions(index_name: str, phrases: tuple[str, ...]) -> None:
+    """Describe EDI's sign and the flood index's unverified kernel lineage."""
+    for phrase in phrases:
+        assert phrase in CF_METADATA[index_name]["description"]
 
 
 @pytest.mark.parametrize("index_name", FIRE_KEYS)

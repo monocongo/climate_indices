@@ -2,8 +2,9 @@
 
 ## Status
 
-Accepted. Nothing this record names exists yet: the package and its four
-public names land with FLOOD-08 through FLOOD-13 (#1105–#1110).
+Amended: `flood.effective_precipitation()` and the `flood` package landed in
+#1105. The remaining public names land with FLOOD-09 through FLOOD-13
+(#1106–#1110); the API decision is unchanged.
 
 The flood family ([#1098](https://github.com/monocongo/climate_indices/issues/1098))
 adds effective precipitation (PE), the Effective Drought Index (EDI), the Flood

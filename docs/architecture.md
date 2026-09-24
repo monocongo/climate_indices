@@ -468,16 +468,19 @@ uv run pytest tests/test_property_based.py
 ### GitHub Actions Workflows
 
 #### 1. unit-tests-workflow.yml
-**Trigger**: Push, pull request
+**Trigger**: Pull request and push to main, merge group, weekly schedule, manual dispatch
 ```yaml
-Matrix:
-  - OS: ubuntu-latest
-  - Python: [3.10, 3.11, 3.12, 3.13, 3.14]
+Matrix (core suite):
+  test (every event):
+    - ubuntu-latest: Python 3.10, 3.11, 3.12, 3.13, 3.14
+    - macos-latest: Python 3.14
+  test-full (everything except pull requests):
+    - macos-latest: Python 3.10
 Steps:
   1. Checkout code
   2. Setup Python + uv
-  3. uv sync --dev
-  4. Run pytest
+  3. uv sync --locked --dev
+  4. Run pytest -n auto
 ```
 
 #### 2. release.yml
