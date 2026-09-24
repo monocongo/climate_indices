@@ -74,6 +74,81 @@ def test_flood_dask_keeps_spatial_chunks_and_requires_full_time_chunk() -> None:
         flood.edi(split_pe, duration=30)
 
 
+def test_api_xarray_spatial_chunks_units_and_resume() -> None:
+    dates = pd.date_range("2001-01-01", periods=12)
+    rain = xr.DataArray(
+        np.arange(36, dtype=float).reshape(12, 3) / 25.4,
+        dims=("time", "site"),
+        coords={"time": dates, "site": [1, 2, 3]},
+        attrs={"units": "inch", "standard_name": "precipitation_amount"},
+    ).chunk({"time": -1, "site": 1})
+    expected = flood.antecedent_precipitation_index((rain.values * 25.4)[..., None], 0.85, spatial_time_major=True)[
+        ..., 0
+    ]
+    result = flood.antecedent_precipitation_index(rain, 0.85)
+    assert isinstance(result, xr.DataArray)
+    assert result.chunks == rain.chunks
+    np.testing.assert_array_equal(result.compute().values, expected)
+    assert result.attrs["units"] == "mm"
+    assert "standard_name" not in result.attrs
+
+    first = flood.antecedent_precipitation_index(rain.isel(time=slice(None, 6)), 0.85, return_state=True)
+    assert isinstance(first, flood.APIResult)
+    assert isinstance(first.values, xr.DataArray)
+    assert isinstance(first.state.api, np.ndarray)
+    second = flood.antecedent_precipitation_index(
+        rain.isel(time=slice(6, None)), 0.85, initial_state=first.state, return_state=True
+    )
+    assert isinstance(second, flood.APIResult)
+    np.testing.assert_array_equal(xr.concat([first.values, second.values], dim="time"), result.compute())
+    np.testing.assert_array_equal(first.state.api, expected[5])
+    np.testing.assert_array_equal(second.state.api, expected[-1])
+    with pytest.raises(CoordinateValidationError, match="Rechunk"):
+        flood.antecedent_precipitation_index(rain.chunk({"time": 3}), 0.85)
+    with pytest.raises(CoordinateValidationError, match="daily"):
+        flood.antecedent_precipitation_index(rain.isel(time=slice(None, None, 2)), 0.85)
+
+
+def test_api_xarray_gap_state_and_time_last() -> None:
+    rain = xr.DataArray(
+        [[1.0, np.nan], [np.nan, 2.0], [3.0, 4.0]],
+        dims=("time", "site"),
+        coords={"time": pd.date_range("2001-01-01", periods=3)},
+    ).transpose("site", "time")
+    result = flood.antecedent_precipitation_index(
+        rain, 0.9, nan_policy="bridge", max_gap_days=1, spin_up=1, return_state=True
+    )
+    assert isinstance(result, flood.APIResult)
+    assert isinstance(result.values, xr.DataArray)
+    assert result.values.dims == rain.dims
+    xr.testing.assert_equal(result.values.time, rain.time.isel(time=slice(1, None)))
+    expected = flood.antecedent_precipitation_index(
+        rain.transpose("time", "site").values[..., None],
+        0.9,
+        nan_policy="bridge",
+        max_gap_days=1,
+        spin_up=1,
+        return_state=True,
+        spatial_time_major=True,
+    )
+    assert isinstance(expected, flood.APIResult)
+    np.testing.assert_array_equal(result.values.transpose("time", "site"), expected.values[..., 0])
+    np.testing.assert_array_equal(result.state.api, expected.state.api[..., 0])
+    np.testing.assert_array_equal(result.state.trailing_gap_days, expected.state.trailing_gap_days[..., 0])
+
+
+def test_api_xarray_time_only_and_ambiguous_spatial_axis() -> None:
+    dates = pd.date_range("2001-01-01", periods=4)
+    rain = xr.DataArray([1.0, 2.0, 3.0, 4.0], dims="time", coords={"time": dates})
+    result = flood.antecedent_precipitation_index(rain, 0.5, return_state=True)
+    assert isinstance(result, flood.APIResult)
+    np.testing.assert_array_equal(result.values, [1.0, 2.5, 4.25, 6.125])
+    assert result.state.api.shape == ()
+    grid = rain.expand_dims(site=range(12)).transpose("time", "site")
+    gridded = flood.antecedent_precipitation_index(grid.chunk({"time": -1, "site": 3}), 0.5)
+    np.testing.assert_array_equal(gridded.compute(), np.broadcast_to(result.values.values[:, None], (4, 12)))
+
+
 def test_flood_infers_only_complete_calibration_periods() -> None:
     pe = flood.effective_precipitation(_rain_grid().isel(time=slice(None, -60)), duration=30)
     assert flood.edi(pe, duration=30).attrs["calibration_year_final"] == 2003

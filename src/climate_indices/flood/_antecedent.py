@@ -7,6 +7,7 @@ from typing import Literal
 
 import numpy as np
 import numpy.typing as npt
+import xarray as xr
 
 from climate_indices.exceptions import InvalidArgumentError
 from climate_indices.fire._common import _apply_gap_policy, _static_spatial_array, _validate_recurrence_options
@@ -31,7 +32,7 @@ class APIState:
 class APIResult:
     """Antecedent precipitation values and copied final state."""
 
-    values: npt.NDArray[np.float64]
+    values: npt.NDArray[np.float64] | xr.DataArray
     state: APIState
 
 

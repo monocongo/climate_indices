@@ -107,13 +107,16 @@ The [flood-family epic #1098][flood-epic] tracks the implementation order.
   exponential form while the implemented kernel is unverified — is recorded in
   [ADR-0014](adr/0014-flood-family-scientific-conventions.md); see
   {doc}`algorithm_refs/flood_index` for the algorithm and validation status.
-- **Antecedent Precipitation Index (API)** — *NumPy API available (FLOOD-12
-  [#1109][flood-1109])*. A daily recursive wetness measure in mm, after
+- **Antecedent Precipitation Index (API)** — *NumPy and beta xarray APIs available
+  (FLOOD-12 [#1109][flood-1109], FLOOD-13 #1110)*. A daily recursive wetness measure in mm, after
   Kohler & Linsley (1951): `API_t = k * API_(t-1) + P_t`, where `0 < k < 1` and
   today's precipitation is added after decay. `flood.antecedent_precipitation_index(precipitation, k)`
   accepts daily mm input and defaults to a zero seed. Missing days propagate
   by default; the optional bridge policy and returned state support explicit
-  gap handling and append runs. API shows flood potential, not flooding.
+  gap handling and append runs. DataArray inputs accept CF precipitation units,
+  preserve spatial Dask chunks, and require one complete `time` chunk; returned
+  state stays NumPy and the values are loaded when `return_state=True`.
+  API shows flood potential, not flooding.
 - **Generic standardization API** — *NumPy API available (FLOOD-16
   [#1113][flood-1113])*. `indices.standardized_index()` exposes the existing
   distribution-fitting machinery for any non-negative monthly or daily series,

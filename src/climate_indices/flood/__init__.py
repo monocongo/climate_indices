@@ -6,18 +6,20 @@ The NumPy API is stable; DataArray dispatch is beta.
 
 from __future__ import annotations
 
-from typing import Any, overload
+from typing import Any, Literal, overload
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import xarray as xr
 
-from climate_indices.flood._antecedent import APIResult, APIState, antecedent_precipitation_index
+from climate_indices.flood._antecedent import APIResult, APIState
+from climate_indices.flood._antecedent import antecedent_precipitation_index as _numpy_api
 from climate_indices.flood._edi import edi as _numpy_edi
 from climate_indices.flood._if import flood_index as _numpy_flood_index
 from climate_indices.flood._pe import effective_precipitation as _numpy_pe
 from climate_indices.flood._xarray import (
+    _api_xarray,
     _wrapped_edi,
     _wrapped_flood_index,
     _wrapped_pe,
@@ -190,6 +192,94 @@ def flood_index(
         calibration_year_initial,
         calibration_year_final,
         year_start_month=year_start_month,
+        spatial_time_major=spatial_time_major,
+    )
+
+
+@overload
+def antecedent_precipitation_index(
+    precipitation: xr.DataArray,
+    k: float,
+    *,
+    initial_state: APIState | None = None,
+    return_state: bool = False,
+    spin_up: int = 0,
+    nan_policy: Literal["propagate", "bridge"] = "propagate",
+    max_gap_days: int = 0,
+    spatial_time_major: bool = False,
+    time_dim: str = "time",
+) -> xr.DataArray | APIResult: ...
+
+
+@overload
+def antecedent_precipitation_index(
+    precipitation: npt.ArrayLike,
+    k: float,
+    *,
+    initial_state: APIState | None = None,
+    return_state: bool = False,
+    spin_up: int = 0,
+    nan_policy: Literal["propagate", "bridge"] = "propagate",
+    max_gap_days: int = 0,
+    spatial_time_major: bool = False,
+    time_dim: str = "time",
+) -> npt.NDArray[np.float64] | APIResult: ...
+
+
+def antecedent_precipitation_index(
+    precipitation: npt.ArrayLike | xr.DataArray,
+    k: float,
+    *,
+    initial_state: APIState | None = None,
+    return_state: bool = False,
+    spin_up: int = 0,
+    nan_policy: Literal["propagate", "bridge"] = "propagate",
+    max_gap_days: int = 0,
+    spatial_time_major: bool = False,
+    time_dim: str = "time",
+) -> npt.NDArray[np.float64] | xr.DataArray | APIResult:
+    """Compute daily antecedent wetness in mm (flood potential, not flooding).
+
+    NumPy input follows the stable recurrence; DataArray input uses beta xarray
+    dispatch with CF unit conversion and spatial Dask blocks. Its ``time_dim``
+    must be consecutive daily samples in a single chunk, with any spatial
+    chunking. ``return_state=True`` loads the values and returns a NumPy
+    :class:`APIState` for bitwise-equivalent append processing.
+
+    Args:
+        precipitation: Non-negative daily precipitation in mm, or DataArray
+            with convertible CF ``units`` (missing units assume mm).
+        k: Decay constant strictly between zero and one.
+        initial_state: State from a prior call; spatial fields match input cells.
+        return_state: Return values and copied final NumPy state.
+        spin_up: Leading days to compute but omit from values.
+        nan_policy: Missing-day policy, ``"propagate"`` or ``"bridge"``.
+        max_gap_days: Maximum gap length for bridge; zero for propagate.
+        spatial_time_major: NumPy Spatial Block declaration; ignored for DataArray.
+        time_dim: Time dimension name for DataArray input.
+
+    Returns:
+        Daily API values, or :class:`APIResult` when state requested.
+    """
+    if isinstance(precipitation, xr.DataArray):
+        return _api_xarray(
+            precipitation,
+            k,
+            initial_state=initial_state,
+            return_state=return_state,
+            spin_up=spin_up,
+            nan_policy=nan_policy,
+            max_gap_days=max_gap_days,
+            time_dim=time_dim,
+        )
+    return _numpy_api(
+        precipitation,
+        k,
+        initial_state=initial_state,
+        return_state=return_state,
+        spin_up=spin_up,
+        nan_policy=nan_policy,
+        max_gap_days=max_gap_days,
         spatial_time_major=spatial_time_major,
     )
 
