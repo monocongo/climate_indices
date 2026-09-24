@@ -34,7 +34,13 @@ class APIResult:
 
 def _validate_decay(k: object) -> None:
     """Reject a decay constant that is not a real number strictly between zero and one."""
-    if isinstance(k, (bool, np.bool_)) or not isinstance(k, (int, float, np.integer, np.floating)) or not 0 < k < 1:
+    if (
+        isinstance(k, (bool, np.bool_))
+        or not isinstance(k, (int, float, np.integer, np.floating))
+        or not np.isfinite(k)
+        or k <= 0
+        or k >= 1
+    ):
         raise InvalidArgumentError("k must be between zero and one.", argument_name="k", argument_value=str(k))
 
 
