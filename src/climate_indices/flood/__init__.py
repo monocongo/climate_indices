@@ -242,9 +242,11 @@ def antecedent_precipitation_index(
 
     NumPy input follows the stable recurrence; DataArray input uses beta xarray
     dispatch with CF unit conversion and spatial Dask blocks. Its ``time_dim``
-    must be consecutive daily samples in a single chunk, with any spatial
-    chunking. ``return_state=True`` loads the values and returns a NumPy
-    :class:`APIState` for bitwise-equivalent append processing.
+    must be a single chunk, with any spatial chunking. An attached time
+    coordinate must hold consecutive daily samples; a dimension-only time axis
+    is aligned positionally and trusted as daily. ``return_state=True`` loads
+    the values and returns a NumPy :class:`APIState` for bitwise-equivalent
+    append processing.
 
     Args:
         precipitation: Non-negative daily precipitation in mm, or DataArray
