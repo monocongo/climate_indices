@@ -134,8 +134,8 @@ _EXPECTED_OVERLOADS: dict[Callable[..., Any], tuple[str, str]] = {
         "(pet_values: 'xr.DataArray', scale: 'int', data_start_year: 'int | None' = None, calibration_year_initial: 'int | None' = None, calibration_year_final: 'int | None' = None, periodicity: 'Periodicity | None' = None, spatial_time_major: 'bool' = False) -> 'xr.DataArray'",
     ),
     edi: (
-        "(pe: 'npt.ArrayLike', data_start_year: 'int', calibration_year_initial: 'int', calibration_year_final: 'int', *, duration: 'int' = 365, spatial_time_major: 'bool' = False) -> 'npt.NDArray[np.float64]'",
         "(pe: 'xr.DataArray', data_start_year: 'int | None' = None, calibration_year_initial: 'int | None' = None, calibration_year_final: 'int | None' = None, *, duration: 'int' = 365, spatial_time_major: 'bool' = False) -> 'xr.DataArray'",
+        "(pe: 'npt.ArrayLike', data_start_year: 'int', calibration_year_initial: 'int', calibration_year_final: 'int', *, duration: 'int' = 365, spatial_time_major: 'bool' = False) -> 'npt.NDArray[np.float64]'",
     ),
     pci: (
         "(rainfall_mm: 'npt.NDArray[np.float64]') -> 'npt.NDArray[np.float64]'",
@@ -172,7 +172,13 @@ def test_overloads_mirror_implementations() -> None:
         overloads = get_overloads(public)
         assert len(overloads) == 2, f"{public.__name__} must keep its NumPy and xarray overloads"
 
-        numpy_params = list(inspect.signature(overloads[0]).parameters)
+        numpy_overload = next(
+            stub
+            for stub in overloads
+            if "npt."
+            in str(inspect.signature(stub).parameters[next(iter(inspect.signature(stub).parameters))].annotation)
+        )
+        numpy_params = list(inspect.signature(numpy_overload).parameters)
         assert numpy_params == implementation_params, (
             f"{public.__name__} NumPy overload drifted from {implementation.__name__}: "
             f"{numpy_params} != {implementation_params}"
@@ -180,7 +186,8 @@ def test_overloads_mirror_implementations() -> None:
 
         # both stubs expose every non-internal parameter of the implementation they
         # mirror; required-ness and input types are the overloads' own contract
-        xarray_params = list(inspect.signature(overloads[1]).parameters)
+        xarray_overload = next(stub for stub in overloads if stub is not numpy_overload)
+        xarray_params = list(inspect.signature(xarray_overload).parameters)
         assert xarray_params == implementation_params, (
             f"{public.__name__} xarray overload drifted from {implementation.__name__}: "
             f"{xarray_params} != {implementation_params}"

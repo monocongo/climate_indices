@@ -92,6 +92,9 @@ _wrapped_flood_index = xarray_adapter(
 def convert_pe_input(data: xr.DataArray, *, argument_name: str) -> xr.DataArray:
     """Convert daily precipitation or effective precipitation to millimeters lazily."""
     converted = _convert_precipitation_units(data, "mm", argument_name=f"{argument_name}.attrs['units']")
+    # Unconverted units return the original object; never change caller metadata.
+    if converted is data:
+        converted = data.copy(deep=False)
     # xarray arithmetic drops attrs; keep source history for the adapter's output.
     converted.attrs = {**data.attrs, "units": "mm"}
     return converted

@@ -30,7 +30,7 @@ import json
 import warnings
 from collections.abc import Callable
 from enum import Enum
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 import numpy as np
 import pandas as pd
@@ -1247,6 +1247,9 @@ def _finalize_ufunc_result(
             dims=input_da.dims,
         )
 
+    # A ufunc can return input coordinate variables by reference; detach their
+    # metadata without copying large result data before writing output attrs.
+    result_da = cast(xr.DataArray, result_da.copy(deep=False))
     # apply metadata using build_output_attrs
     calc_metadata = _capture_calculation_metadata(calculation_metadata_keys, valid_kwargs)
     resolved_index_name = index_display_name if index_display_name is not None else func_name.upper()

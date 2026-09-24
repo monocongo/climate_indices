@@ -26,14 +26,14 @@ from climate_indices.flood._xarray import (
 
 @overload
 def effective_precipitation(
-    precipitation: npt.ArrayLike, *, duration: int = 365, spatial_time_major: bool = False
-) -> npt.NDArray[np.float64]: ...
+    precipitation: xr.DataArray, *, duration: int = 365, spatial_time_major: bool = False
+) -> xr.DataArray: ...
 
 
 @overload
 def effective_precipitation(
-    precipitation: xr.DataArray, *, duration: int = 365, spatial_time_major: bool = False
-) -> xr.DataArray: ...
+    precipitation: npt.ArrayLike, *, duration: int = 365, spatial_time_major: bool = False
+) -> npt.NDArray[np.float64]: ...
 
 
 def effective_precipitation(
@@ -62,19 +62,11 @@ def _last_complete_calibration_year(pe: xr.DataArray, year_start_month: int) -> 
     last = pd.Timestamp(pe.time.values[-1])
     if year_start_month == 1:
         return int(last.year if last.is_year_end else last.year - 1)
-    return int(last.year - 1 - (last.month < year_start_month))
-
-
-@overload
-def edi(
-    pe: npt.ArrayLike,
-    data_start_year: int,
-    calibration_year_initial: int,
-    calibration_year_final: int,
-    *,
-    duration: int = 365,
-    spatial_time_major: bool = False,
-) -> npt.NDArray[np.float64]: ...
+    end_month = year_start_month - 1
+    end_year = last.year if last.month >= year_start_month else last.year - 1
+    if last.month == end_month and last.is_month_end:
+        end_year = last.year
+    return int(end_year - 1)
 
 
 @overload
@@ -87,6 +79,18 @@ def edi(
     duration: int = 365,
     spatial_time_major: bool = False,
 ) -> xr.DataArray: ...
+
+
+@overload
+def edi(
+    pe: npt.ArrayLike,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    *,
+    duration: int = 365,
+    spatial_time_major: bool = False,
+) -> npt.NDArray[np.float64]: ...
 
 
 def edi(
@@ -129,18 +133,6 @@ def edi(
 
 @overload
 def flood_index(
-    pe: npt.ArrayLike,
-    data_start_year: int,
-    calibration_year_initial: int,
-    calibration_year_final: int,
-    *,
-    year_start_month: int,
-    spatial_time_major: bool = False,
-) -> npt.NDArray[np.float64]: ...
-
-
-@overload
-def flood_index(
     pe: xr.DataArray,
     data_start_year: int | None = None,
     calibration_year_initial: int | None = None,
@@ -149,6 +141,18 @@ def flood_index(
     year_start_month: int,
     spatial_time_major: bool = False,
 ) -> xr.DataArray: ...
+
+
+@overload
+def flood_index(
+    pe: npt.ArrayLike,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    *,
+    year_start_month: int,
+    spatial_time_major: bool = False,
+) -> npt.NDArray[np.float64]: ...
 
 
 def flood_index(

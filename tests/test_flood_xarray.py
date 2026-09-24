@@ -78,6 +78,12 @@ def test_flood_infers_only_complete_calibration_periods() -> None:
     assert flood.flood_index(pe, year_start_month=7).attrs["calibration_year_final"] == 2003
     earlier = pe.isel(time=slice(None, -300))
     assert flood.flood_index(earlier, year_start_month=7).attrs["calibration_year_final"] == 2002
+    june_30 = pe.sel(time=slice(None, "2004-06-30"))
+    inferred = flood.flood_index(june_30, year_start_month=7)
+    assert inferred.attrs["calibration_year_final"] == 2003
+    np.testing.assert_allclose(
+        inferred, flood.flood_index(june_30, year_start_month=7, calibration_year_final=2003), equal_nan=True
+    )
 
 
 def test_flood_units_calendar_and_numpy_passthrough() -> None:
@@ -98,6 +104,15 @@ def test_flood_units_calendar_and_numpy_passthrough() -> None:
         flood.flood_index(pe, year_start_month=1),
         equal_nan=True,
     )
+    no_units = rain.copy()
+    del no_units.attrs["units"]
+    flood.effective_precipitation(no_units, duration=30)
+    assert "units" not in no_units.attrs
+    time_last = rain.transpose("lat", "lon", "time")
+    time_last.time.attrs["axis"] = "T"
+    result = flood.effective_precipitation(time_last, duration=30)
+    result.time.attrs["axis"] = "other"
+    assert time_last.time.attrs["axis"] == "T"
     with pytest.raises(InvalidArgumentError, match="units"):
         flood.effective_precipitation(rain.assign_attrs(units="bananas"))
     with pytest.raises(CoordinateValidationError, match="January 1"):
