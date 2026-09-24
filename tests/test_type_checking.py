@@ -102,6 +102,17 @@ def test_spei_xarray_return_type() -> None:
     assert_type(result, xr.DataArray)
 
 
+def test_flood_xarray_return_types() -> None:
+    """DataArray must match the xarray overload before the broad ArrayLike overload."""
+    from climate_indices import flood
+
+    dates = pd.date_range("2000-01-01", "2002-12-31", freq="D")
+    pe = xr.DataArray(np.arange(len(dates), dtype=float), dims=["time"], coords={"time": dates})
+    assert_type(flood.effective_precipitation(pe), xr.DataArray)
+    assert_type(flood.edi(pe), xr.DataArray)
+    assert_type(flood.flood_index(pe, year_start_month=1), xr.DataArray)
+
+
 def test_kbdi_numpy_return_type() -> None:
     """Verify mypy infers np.ndarray for NumPy input.
 
