@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 from typing import Any
 
 import numpy as np
@@ -93,6 +94,48 @@ _wrapped_flood_index = xarray_adapter(
 )(_flood_index_daily)
 
 
+def _api_block(
+    values: np.ndarray,
+    *state: np.ndarray,
+    k: float,
+    spin_up: int,
+    nan_policy: str,
+    max_gap_days: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Run the NumPy recurrence on one Spatial Block, time on the last axis."""
+    initial = None
+    time_first = np.moveaxis(values, -1, 0).copy()
+    # A 2-D NumPy input means (years, days), not a Spatial Block.
+    single_spatial_axis = time_first.ndim == 2
+    if single_spatial_axis:
+        time_first = time_first[..., None]
+    if state:
+        gaps = state[1].astype(np.int64)
+        api_seed = state[0].copy()
+        if single_spatial_axis:
+            gaps = gaps[..., None]
+            api_seed = api_seed[..., None]
+        initial = APIState(api_seed, None if np.all(gaps < 0) else gaps.copy())
+    result = _numpy_api(
+        time_first,
+        k,
+        initial_state=initial,
+        return_state=True,
+        spin_up=spin_up,
+        nan_policy=nan_policy,  # type: ignore[arg-type]
+        max_gap_days=max_gap_days,
+        spatial_time_major=True,
+    )
+    assert isinstance(result, APIResult)
+    assert isinstance(result.values, np.ndarray)
+    gaps_out = result.state.trailing_gap_days
+    if gaps_out is None:
+        gaps_out = np.full(result.state.api.shape, -1, dtype=np.int64)
+    if single_spatial_axis:
+        return np.moveaxis(result.values[..., 0], 0, -1), result.state.api[..., 0], gaps_out[..., 0]
+    return np.moveaxis(result.values, 0, -1), result.state.api, gaps_out
+
+
 def _api_xarray(
     precipitation: xr.DataArray,
     k: float,
@@ -127,41 +170,10 @@ def _api_xarray(
 
     output_len = max(rain.sizes[time_dim] - spin_up, 0)
 
-    def _block(values: np.ndarray, *state: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        initial = None
-        time_first = np.moveaxis(values, -1, 0).copy()
-        # A 2-D NumPy input means (years, days), not a Spatial Block.
-        single_spatial_axis = time_first.ndim == 2
-        if single_spatial_axis:
-            time_first = time_first[..., None]
-        if state:
-            gaps = state[1].astype(np.int64)
-            api_seed = state[0].copy()
-            if single_spatial_axis:
-                gaps = gaps[..., None]
-                api_seed = api_seed[..., None]
-            initial = APIState(api_seed, None if np.all(gaps < 0) else gaps.copy())
-        result = _numpy_api(
-            time_first,
-            k,
-            initial_state=initial,
-            return_state=True,
-            spin_up=spin_up,
-            nan_policy=nan_policy,  # type: ignore[arg-type]
-            max_gap_days=max_gap_days,
-            spatial_time_major=True,
-        )
-        assert isinstance(result, APIResult)
-        assert isinstance(result.values, np.ndarray)
-        gaps_out = result.state.trailing_gap_days
-        if gaps_out is None:
-            gaps_out = np.full(result.state.api.shape, -1, dtype=np.int64)
-        if single_spatial_axis:
-            return np.moveaxis(result.values[..., 0], 0, -1), result.state.api[..., 0], gaps_out[..., 0]
-        return np.moveaxis(result.values, 0, -1), result.state.api, gaps_out
+    block = functools.partial(_api_block, k=k, spin_up=spin_up, nan_policy=nan_policy, max_gap_days=max_gap_days)
 
     values, api, gaps = xr.apply_ufunc(
-        _block,
+        block,
         rain,
         *state_args,
         input_core_dims=[[time_dim]] + [[] for _ in state_args],
