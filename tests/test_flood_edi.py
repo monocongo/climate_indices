@@ -67,14 +67,16 @@ def test_edi_partial_year_and_independent_spatial_cells() -> None:
 
 @pytest.mark.parametrize("years", [(2001, 2001), (1999, 2001), (2000, 2002), (2000, 1999), (2000.5, 2001)])
 def test_edi_rejects_invalid_calibration_period(years: tuple[int, int]) -> None:
+    values = _pe_years(1, 3)
     with pytest.raises(InvalidArgumentError):
-        flood.edi(_pe_years(1, 3), 2000, *years)
+        flood.edi(values, 2000, *years)
 
 
 @pytest.mark.parametrize("duration", [0, -1, 1.5, True])
 def test_edi_rejects_invalid_duration(duration: object) -> None:
+    values = _pe_years(1, 3)
     with pytest.raises(InvalidArgumentError):
-        flood.edi(_pe_years(1, 3), 2000, 2000, 2001, duration=duration)  # type: ignore[arg-type]
+        flood.edi(values, 2000, 2000, 2001, duration=duration)  # type: ignore[arg-type]
 
 
 def test_edi_rejects_invalid_input() -> None:
@@ -83,5 +85,6 @@ def test_edi_rejects_invalid_input() -> None:
     with pytest.raises(InputTypeError):
         flood.edi(["wet"], 2000, 2000, 2001)
     for invalid in (-1.0, np.inf):
+        values = _pe_years(1, invalid)
         with pytest.raises(InvalidArgumentError):
-            flood.edi(_pe_years(1, invalid), 2000, 2000, 2001)
+            flood.edi(values, 2000, 2000, 2001)
