@@ -24,9 +24,12 @@ def test_state_round_trip_and_year_layout() -> None:
     np.testing.assert_array_equal(
         np.concatenate((first.values, second)), flood.antecedent_precipitation_index(values, 0.8)
     )
+    by_year = flood.antecedent_precipitation_index(values.reshape(2, 3), 0.8)
+    assert by_year.shape == (2, 3)
+    np.testing.assert_array_equal(by_year.reshape(-1), flood.antecedent_precipitation_index(values, 0.8))
     np.testing.assert_array_equal(
-        flood.antecedent_precipitation_index(values.reshape(2, 3), 0.8).reshape(-1),
-        flood.antecedent_precipitation_index(values, 0.8),
+        flood.antecedent_precipitation_index(values.reshape(2, 3), 0.8, spin_up=2),
+        flood.antecedent_precipitation_index(values, 0.8, spin_up=2),
     )
 
 
@@ -53,7 +56,6 @@ def test_spatial_cells_and_state_are_independent() -> None:
     result = flood.antecedent_precipitation_index(values, 0.5, return_state=True)
     np.testing.assert_array_equal(result.values[:, 0, 0], [1, np.nan, np.nan, np.nan])
     np.testing.assert_array_equal(result.values[:, 1, 0], [np.nan, 2, 4, 3])
-    assert result.state.trailing_gap_days[0, 0] == 0
     result.state.api[1, 0] = 99
     assert result.values[-1, 1, 0] == 3
     with pytest.raises(ValueError, match="spatial_time_major=True"):
@@ -80,3 +82,8 @@ def test_rejects_invalid_configuration_and_state() -> None:
     state = flood.antecedent_precipitation_index([2], 0.5, return_state=True).state
     with pytest.raises(InvalidArgumentError, match="initial_state"):
         flood.antecedent_precipitation_index([1], 0.5, initial_state=replace(state, api=np.array(-1.0)))
+    for gap in (-2, 1.5, np.inf, 2**63):
+        with pytest.raises(InvalidArgumentError, match="trailing_gap_days"):
+            flood.antecedent_precipitation_index(
+                [1], 0.5, initial_state=replace(state, trailing_gap_days=np.array(gap))
+            )

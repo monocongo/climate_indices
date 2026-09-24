@@ -69,7 +69,8 @@ def antecedent_precipitation_index(
 
     Returns:
         Index in mm, with input shape and leading ``spin_up`` days omitted;
-        for 2-D input, omission is from the flattened daily record. With
+        for 2-D input, nonzero ``spin_up`` returns the remaining flattened
+        daily record because it may not contain whole years. With
         ``return_state=True``, returns :class:`APIResult` instead.
 
     Raises:
@@ -115,9 +116,14 @@ def antecedent_precipitation_index(
             raw_gaps = _static_spatial_array(
                 initial_state.trailing_gap_days, internal_shape, "initial_state.trailing_gap_days"
             )
-            if np.any(~np.isfinite(raw_gaps)) or np.any(raw_gaps < -1) or np.any(raw_gaps != np.floor(raw_gaps)):
+            if (
+                np.any(~np.isfinite(raw_gaps))
+                or np.any(raw_gaps < -1)
+                or np.any(raw_gaps >= float(np.iinfo(np.int64).max))
+                or np.any(raw_gaps != np.floor(raw_gaps))
+            ):
                 raise InvalidArgumentError(
-                    "initial_state.trailing_gap_days must be integers >= -1.",
+                    "initial_state.trailing_gap_days must be integers >= -1 within int64 range.",
                     argument_name="initial_state.trailing_gap_days",
                 )
             gaps = raw_gaps.astype(np.int64)
