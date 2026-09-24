@@ -82,8 +82,8 @@ potential of the approach in one region, not a transferable rule.
 
 ## Wet-extreme indices
 
-The NumPy PE kernel is available as `flood.effective_precipitation()`; the
-remaining flood-family indices are planned. Module and function names are fixed
+The NumPy PE kernel and EDI are available as `flood.effective_precipitation()`
+and `flood.edi()`; the remaining flood-family indices are planned. Module and function names are fixed
 by [ADR-0013](adr/0013-flood-module-api-and-naming.md), with argument names,
 units, and signatures recorded in the internal flood subsystem design note.
 The [flood-family epic #1098][flood-epic] tracks the implementation order.
@@ -93,12 +93,13 @@ The [flood-family epic #1098][flood-epic] tracks the implementation order.
   and I_F, after [Byun & Wilhite (1999)][byun-1999]. Its fixed 365-day
   window yields NaN until a full window is available and for any window with
   a missing day. It measures flood potential, not flooding.
-- **Effective Drought Index (EDI)** — *planned (FLOOD-09 [#1106][flood-1106])*.
-  A daily standardized index derived from effective precipitation
-  ([Byun & Wilhite (1999)][byun-1999]); despite the name, it shares its
-  kernel with the flood family. It implements the fixed-window form of the
-  index, not the paper's variable-duration extension
-  ([ADR-0014](adr/0014-flood-family-scientific-conventions.md)).
+- **Effective Drought Index (EDI)** — *NumPy API available (FLOOD-09
+  [#1106][flood-1106])*. A daily standardized index derived from effective
+  precipitation ([Byun & Wilhite (1999)][byun-1999]); despite the name, it
+  shares its kernel with the flood family. It implements the fixed-window form,
+  not the paper's variable-duration extension
+  ([ADR-0014](adr/0014-flood-family-scientific-conventions.md)); see
+  {doc}`algorithm_refs/edi` for the algorithm and validation status.
 - **Flood Index (I_F)** — *planned (FLOOD-10 [#1107][flood-1107])*. A daily
   flood-potential index that standardizes effective precipitation
   ([Deo et al. (2015)][deo-2015]). The annual-maximum window follows the
