@@ -5,9 +5,8 @@ from __future__ import annotations
 import numpy as np
 import numpy.typing as npt
 
-from climate_indices.exceptions import DataShapeError, InputTypeError, InvalidArgumentError
-
-_DAYS_PER_YEAR = 366
+from climate_indices.exceptions import InvalidArgumentError
+from climate_indices.flood._common import _DAYS_PER_YEAR, _validated_pe
 
 
 def edi(
@@ -67,23 +66,7 @@ def edi(
         raise InvalidArgumentError(
             "duration must be a positive integer.", argument_name="duration", argument_value=str(duration)
         )
-    if np.asarray(pe).dtype.kind not in "biuf":
-        raise InputTypeError("pe must be numeric.", expected_type=float, actual_type=np.asarray(pe).dtype.type)
-    values = np.asarray(np.ma.asarray(pe, dtype=np.float64).filled(np.nan), dtype=np.float64)
-    if values.ndim == 0:
-        raise DataShapeError("pe must have a time axis.", expected_shape="(time, ...)", actual_shape=values.shape)
-    if values.ndim == 2 and values.shape[1] != _DAYS_PER_YEAR:
-        raise DataShapeError(
-            "pe must have 366 days per year.", expected_shape="(years, 366)", actual_shape=values.shape
-        )
-    if values.ndim > 2 and not spatial_time_major and values.shape[1] in (12, _DAYS_PER_YEAR):
-        raise ValueError(
-            f"Invalid shape of input array: {values.shape} -- a (time, *cells) block whose first "
-            "cell axis is a calendar period length is ambiguous with a (years, periods, *cells) "
-            "array; declare it with spatial_time_major=True"
-        )
-    if np.any(np.isinf(values)) or np.any(values < 0):
-        raise InvalidArgumentError("pe must be non-negative and finite or NaN.", argument_name="pe")
+    values = _validated_pe(pe, spatial_time_major)
 
     series = values.reshape(-1) if values.ndim == 2 else values
     complete_years = series.shape[0] // _DAYS_PER_YEAR
