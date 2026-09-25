@@ -36,6 +36,10 @@ The following indices are provided:
 - [EDDI](https://psl.noaa.gov/eddi/), Evaporative Demand Drought Index
 - [Palmer indices](https://www.droughtmanagement.info/literature/USWB_Meteorological_Drought_1965.pdf),
   including PDSI, PHDI, PMDI, Z-Index, and [scPDSI](https://doi.org/10.1175/1520-0442(2004)017%3C2335:ASPDSI%3E2.0.CO;2)
+- [Flood-potential indices](https://climate-indices.readthedocs.io/en/latest/flood_applications.html),
+  including Effective Precipitation (PE), the Effective Drought Index (EDI), the Flood Index (I_F),
+  and the Antecedent Precipitation Index (API): daily accumulated-wetness measures that indicate
+  flood potential, not flooding
 
 This Python implementation of the above climate index algorithms is being developed
 with the following goals in mind:
@@ -60,6 +64,7 @@ See [drought.gov](https://www.drought.gov/drought/python-climate-indices).
 
 - [__Documentation__](https://climate-indices.readthedocs.io/en/latest/)
 - [Climate Indices for Wildfire Applications](https://climate-indices.readthedocs.io/en/latest/wildfire_applications.html)
+- [Climate Indices for Flood and Wet-Extreme Applications](https://climate-indices.readthedocs.io/en/latest/flood_applications.html)
 - [__License__](https://github.com/monocongo/climate_indices/blob/main/LICENSE)
 - [__Disclaimer__](https://github.com/monocongo/climate_indices/blob/main/DISCLAIMER)
 
@@ -300,7 +305,7 @@ guarded only by internal fixtures.
 | Scope | Command | Expected result |
 | --- | --- | --- |
 | Core suite | `uv run pytest -m "not benchmark and not validation"` | Unit, property, xarray, release guardrail, and regression tests pass. |
-| Validation marker suite | `uv run pytest -m validation` | External validation tests, including committed NOAA EDDI fixtures, the SPEIbase v2.11 SPEI plausibility floors, the standard-Palmer nClimDiv comparison, and the Srock et al. (2018) HDW event-discrimination fixture, pass; scPDSI oracle cross-validation and all regression coverage pass. |
+| Validation marker suite | `uv run pytest -m validation` | External validation tests, including committed NOAA EDDI fixtures, the SPEIbase v2.11 SPEI plausibility floors, the standard-Palmer nClimDiv comparison, the Srock et al. (2018) HDW event-discrimination fixture, and the flood-family source-identity checks (specification-level, not external; see "Flood Evidence Classification"), pass; scPDSI oracle cross-validation passes. |
 | Lint | `uv run ruff check src/ tests/` | No lint findings. |
 | Format | `uv run ruff format --check src/ tests/` | No formatting changes needed. |
 | Notebooks | `uv run jupyter nbconvert --execute --to notebook --inplace notebooks/xarray_getting_started.ipynb notebooks/palmer_indices_xarray.ipynb notebooks/eddi_xarray.ipynb` | All 3.0.0 notebooks execute from a clean checkout. |
@@ -322,6 +327,55 @@ guarded only by internal fixtures.
 | HDW | Event-discrimination reproduced; published magnitudes characterization only | Daily-series correlation floor `r >= 0.80` (measured 0.8679; floor stored in `tests/fixture/hdw_srock_cedar/provenance.json`); digitized reference uncertainty +/-5 hPa m s-1 | `tests/test_fire_hdw_reference.py` computes `fire.hot_dry_windy()` on the CFSR reanalysis profiles in `tests/fixture/hdw_srock_cedar/`, extracted at the grid point of Srock et al. (2018) Figure 4a (33.0 N, 116.5 W; 12 October through 9 November 2003), and confirms the daily maximum falls on 26 October 2003 -- the paper's significant fire-behavior day for the Cedar Fire -- 17% above the next-highest day. The digitized Figure 4a series is committed alongside the profiles, with its marker pixel coordinates for audit. | The paper publishes only figures, so the reference series is digitized (+/-5 hPa m s-1). Its adiabatically adjusted, independently maximized formulation (Section 3) is not the library's per-level VPD x wind product, and the digitized magnitudes are not reproducible from public metadata: the library's daily maximum exceeds them on five of 29 days, supplied by the 0000 UTC analysis on all five and by the 1200 UTC series alone on three, while the library's 1800 UTC values alone correlate at 0.945 with no exceedances. Magnitudes are therefore characterization, not validation; unit and example-value contracts remain covered by `tests/test_fire.py`. |
 | PDSI, PHDI, PMDI, Z-Index (standard Palmer) | Qualified independent external-product validation | nClimDiv comparison ceilings documented in `tests/test_nclimdiv_reference.py`; library fixtures `atol=5e-5`, `rtol=0` | `tests/test_nclimdiv_reference.py::test_pdsi_vs_noaa_nclimdiv_qualified_external_validation` compares `pdsi()` against the operational NOAA NCEI nClimDiv arrays for all 344 climate divisions, January 1895 through December 2022 (measured median absolute difference 0.0127; 86.2% of months within 0.05). `tests/test_palmer.py` retains the library-generated standard-Palmer fixtures as regression coverage. Both are marked `validation`. | Qualified rather than absolute: NCEI publishes two decimal places, and the committed `precips.npy`/`pet.npy` inputs are not byte-identical to NCEI's operational inputs, so the practical agreement floor is ~0.013 rather than 0.005. See "Palmer Validation Classification" below. |
 | scPDSI | Independent implementation cross-validation; nClimDiv comparison is characterization only | Wells-lineage oracle fixtures `atol=5e-5`, `rtol=0` in `tests/test_scpdsi.py`; nClimDiv characterization ceilings in `tests/test_nclimdiv_reference.py` | `tests/test_scpdsi.py` compares the four self-calibrating outputs and fitted duration factors against Wells-lineage reference fixtures for all 344 climate divisions. `tests/test_nclimdiv_reference.py::test_scpdsi_vs_noaa_nclimdiv_characterization` characterizes aggregate agreement against nClimDiv, which applies standard Palmer's fixed national calibration rather than per-division self-calibration. Both are marked `validation`. | No qualified external-product reference yet; assessing DRI/WRCC scPDSI for that role remains open (issue #780). The NCEI Fortran and Wells C++ recursion lineages disagree on roughly 6.3% of months by up to 8 PDSI units, and on those months the NCEI-lineage values sit closer to NOAA operational data 88% of the time (`tests/fixture/palmer/provenance.json`). |
+| PE (effective precipitation) | Regression only; specification-level (no external oracle adopted) | Eq. (2) identity `atol=0`; endpoint weights at `pytest.approx` defaults; naive double-sum equivalence `rtol=1e-14`, `atol=1e-13` | `tests/test_flood_reference.py` (marked `validation`) checks the Byun & Wilhite (1999) Eq. (2) two-day identity and the harmonic endpoint weights `w₁ = H_D`, `w_D = 1 / D`, and freezes the public signature; `tests/test_flood_pe.py` checks the harmonic double sum against an independent naive sum, full-window NaN behavior, missing-day recovery, and Spatial Block layouts. | No numeric oracle is committed. The tabulated Byun & Wilhite (1999) Table 5 follows the paper's variable summation duration, not the fixed 365-day contract of ADR-0014, and its Hickman, Nebraska input record is not yet acquired (issue #1135); see "Flood Evidence Classification" and `tests/fixture/flood/README.md`. |
+| EDI | Regression only; specification-level (no external oracle adopted) | Fixed-window algebra checked against closed-form expectations at NumPy defaults; contract tolerances in `tests/test_flood_edi.py` | `tests/test_flood_edi.py` checks Eq. (9)'s fixed-window algebra (the harmonic factor cancels, leaving `DEP / SD(PE)` per calendar day), calibration-period validation, per-calendar-day baselines, and missing-data behavior; `tests/test_flood_reference.py` freezes the public signature. | The published Table 5 end-to-end values need the variable-duration convention this implementation does not use and the Hickman, Nebraska record (issue #1135); no other numeric oracle was located (`docs/research/flood-oracle-survey.md`). |
+| I_F (Flood Index) | Regression only; specification-level (no external oracle adopted) | Declared normalization and year boundaries checked against closed-form expectations in `tests/test_flood_index.py` | `tests/test_flood_index.py` checks `I_F = (PE − mean(PE_max)) / SD(PE_max)` against complete annual maxima, `year_start_month` boundaries, partial-period exclusion, and missing maxima; `tests/test_flood_reference.py` freezes the public signature. | The Deo et al. (2015) full text is paywalled and its abstract describes an exponential kernel the library does not implement — ADR-0014 selects the harmonic double sum — so no reproducible I_F values are available. |
+| API (Antecedent Precipitation Index) | Regression only; specification-level (no external oracle adopted) | Exact fixture `api([4, 0, 2], 0.5) == [4, 2, 3]`; constant-input limit `abs=1e-15` | `tests/test_flood_reference.py` (marked `validation`) checks the analytic `P / (1 − k)` limit, and `tests/test_flood_antecedent.py::test_source_recursion_and_closed_form` checks the Kohler & Linsley (1951) Eq. (3) recursion via the exact fixture; the same file covers the state round-trip, gap policies, and Spatial Block contracts outside the `validation` marker. | No accessible source tabulates index values; the retrieved Kohler & Linsley pages are definitional only and the located MIT `ahrapi` implementation was not adopted as a fixture (`docs/research/flood-oracle-survey.md`). |
+
+## Flood Evidence Classification
+
+The flood family — effective precipitation (PE), the Effective Drought Index
+(EDI), the Flood Index (I_F), and the Antecedent Precipitation Index (API) — is
+**not externally validated**. No reproducible numeric oracle from a published
+source is committed, so every flood row above is classified **regression
+only**: the tests encode primary-source algebra and public contracts, not an
+external reference dataset. Under the vocabulary that
+`docs/research/flood-oracle-survey.md` uses and maps to this document, no flood
+index reaches *exact reference*, *independent implementation*, or *digitized
+figure* status:
+
+- **Exact reference**: Byun & Wilhite (1999) Table 5 is the only located
+  tabulated end-to-end reference. It is not usable as this library's oracle: it
+  follows the paper's variable summation duration while
+  [ADR-0014](docs/adr/0014-flood-family-scientific-conventions.md) fixes the
+  365-day harmonic window, and the Hickman, Nebraska input record it requires
+  is not yet acquired (issue #1135).
+- **Independent implementation**: `tidyindex` (a harmonic-weight rolling
+  z-score) and `rrk4910/EDI` (a weighted double-sum variant that omits the
+  variable-duration standardization), plus the MIT `ahrapi` package (fixed-`k`
+  API), implement related but non-identical algorithms; none reproduces this
+  library's conventions and none is committed as a fixture.
+- **Digitized figure**: the Byun & Wilhite Figure 2 index panels are
+  supplementary lower-tier evidence the survey recommends only behind the
+  tabulated values; no figure has been digitized.
+- **Regression only**: what is committed. `tests/test_flood_reference.py`
+  (marked `validation`) pins the Byun & Wilhite (1999) Eq. (2) two-day
+  identity, the harmonic endpoint weights `w₁ = H_D` and `w_D = 1 / D`, and the
+  `P / (1 − k)` constant-input limit, and freezes the public signatures. The
+  per-index contract suites, run outside the `validation` marker, cover the
+  Eq. (3) API recursion, the fixed-window EDI algebra, annual-maximum
+  normalization, missing data, and Spatial Block layouts, and
+  `tests/test_flood_xarray.py` checks NumPy/eager/Dask equivalence for the beta
+  xarray route.
+
+Even the tabulated Table 5, if it is eventually committed, would show
+reproduction of the originating group's own arithmetic rather than independent
+correctness of the method — the same distinction the scPDSI entry draws between
+independent-implementation cross-validation and external-product validation.
+`tests/fixture/flood/README.md` lists the retrieval work each index needs before
+a numeric oracle can be committed. Flood indices describe flood potential,
+not flooding: they are wetness measures upstream of terrain, soils, and
+routing, so even a validated value would not be a flood prediction.
 
 ## EDDI Fixture Policy
 
@@ -474,6 +528,19 @@ See "Palmer Validation Classification" above for the latter.
   parameter fitting, evapotranspiration models, tools, datasets and drought
   monitoring. International Journal of Climatology, 34(10), 3001-3023.
   https://doi.org/10.1002/joc.3887
+- Byun, H.-R., and Lee, D.-K. (2002). Defining three rainy seasons and the
+  hydrological summer monsoon in Korea using Available Water Resources Index.
+  Journal of the Meteorological Society of Japan, 80(1), 33-44.
+  https://doi.org/10.2151/jmsj.80.33
+- Byun, H.-R., and Wilhite, D. A. (1999). Objective quantification of drought
+  severity and duration. Journal of Climate, 12(9), 2747-2756.
+  https://doi.org/10.1175/1520-0442(1999)012%3C2747:OQODSA%3E2.0.CO;2
+- Deo, R. C., Byun, H.-R., Adamowski, J. F., and Kim, D.-W. (2015). A real-time
+  flood monitoring index based on daily effective precipitation and its
+  application to Brisbane and Lockyer Valley flood events. Water Resources
+  Management, 29(11), 4075-4093. https://doi.org/10.1007/s11269-015-1046-3
+- Kohler, M. A., and Linsley, R. K. (1951). Predicting the runoff from storm
+  rainfall. U.S. Weather Bureau Research Paper No. 34.
 - Hobbins, M. T., Wood, A., McEvoy, D. J., Huntington, J. L., Morton, C.,
   Anderson, M., and Hain, C. (2016). The Evaporative Demand Drought Index.
   Part I. Journal of Hydrometeorology, 17, 1745-1761.
@@ -511,7 +578,7 @@ and coordinate behavior may change with a minor version, never in a patch releas
 | `DataArray` inputs for SPI | Yes | `tests/test_xarray_equivalence.py` compares 1-D and gridded xarray outputs to NumPy. |
 | `DataArray` inputs for SPEI | Yes | `tests/test_xarray_equivalence.py` compares xarray precipitation/PET inputs to NumPy. |
 | `DataArray` inputs for EDDI | Yes | EDDI wrapper and metadata tests cover the typed public API. |
-| `DataArray` inputs for flood PE, EDI, and I_F | Yes | `flood.effective_precipitation()`, `flood.edi()` (also `climate_indices.edi()`), and `flood.flood_index()` accept daily precipitation/PE with CF units converted to mm. Gregorian dates are converted to all-leap days before each NumPy computation and restored afterward; PE must be computed before EDI/I_F and use the same duration. The latter two infer calendar and Calibration Period years when omitted; I_F still requires `year_start_month`. A complete `time` Dask chunk is mandatory; spatial chunks run independently. `tests/test_flood_xarray.py` compares NumPy, eager xarray, and Dask outputs. These indices describe flood potential, not observed flooding. When chaining xarray PE into EDI/I_F, the second adapter reconstructs non-leap February 29 by interpolating **PE**, not the rainfall that produced it; the chained result can differ from applying both NumPy kernels to a single all-leap rainfall array ([#1147](https://github.com/monocongo/climate_indices/issues/1147)). |
+| `DataArray` inputs for flood PE, EDI, I_F, and API | Yes | `flood.effective_precipitation()`, `flood.edi()` (also `climate_indices.edi()`), `flood.flood_index()`, and `flood.antecedent_precipitation_index()` accept daily precipitation/PE with CF units converted to mm. For PE, EDI, and I_F, Gregorian dates are converted to all-leap days before each NumPy computation and restored afterward; API consumes the daily series as given. PE must be computed before EDI/I_F and use the same duration. EDI and I_F infer calendar and Calibration Period years when omitted; I_F still requires `year_start_month`. API keeps its recursive-state contract (`initial_state`/`return_state`, `spin_up`, `nan_policy`/`max_gap_days`), and the returned state stays NumPy. A complete `time` Dask chunk is mandatory; spatial chunks run independently. `tests/test_flood_xarray.py` compares NumPy, eager xarray, and Dask outputs. These indices describe flood potential, not observed flooding. When chaining xarray PE into EDI/I_F, the second adapter reconstructs non-leap February 29 by interpolating **PE**, not the rainfall that produced it; the chained result can differ from applying both NumPy kernels to a single all-leap rainfall array ([#1147](https://github.com/monocongo/climate_indices/issues/1147)). |
 | `DataArray` inputs for PET Thornthwaite | Yes | xarray adapter tests cover scalar and spatial latitude handling. |
 | `DataArray` inputs for PET Hargreaves | Yes | xarray adapter tests cover aligned daily temperature inputs. |
 | `DataArray` inputs for PNP | Yes | PNP wrapper tests cover scale handling and metadata. |
@@ -524,7 +591,7 @@ and coordinate behavior may change with a minor version, never in a patch releas
 | Coordinate preservation | Yes | Adapter tests verify time and spatial coordinates are preserved. |
 | CF-style metadata | Yes | `CF_METADATA` registry and adapter tests verify `long_name`, `units`, `references`, version, and history attributes. |
 | Dask-backed arrays | Yes, constrained | The time dimension must be a single chunk, except for the PET adapters, which rechunk a split `time` internally. Adapter tests verify detection and validation. Chunk axes the CLI leaves to Dask (`"auto"`, the KBDI and flood-index grid and division inputs) resolve against a 100 MB array chunk budget rather than Dask's own default; axes pinned with `-1` are unaffected. See [Chunking guidance for gridded indices](#chunking-guidance-for-gridded-indices) for block sizes. |
-| Spatial (gridded) kernels | Yes, for SPI, SPEI, PET, EDDI, percentage of normal, PDSI, and flood PE/EDI/I_F | `spi`/`spei` receive a time-major `(time, *cells)` block and fit every cell in one pass, so a gridded gamma run costs one kernel call per Dask block instead of one call per cell ([ADR-0009](docs/adr/0009-spatial-block-declaration.md)). The PET entry points (`pet_thornthwaite`, `pet_hargreaves`) hand `indices.pet` and `eto.eto_hargreaves` the same block layout with the per-cell latitude array, so a gridded PET run costs one call per block ([#941](https://github.com/monocongo/climate_indices/issues/941)). `indices.eddi` and `indices.percentage_of_normal` rank, and divide by the normals of, every cell of the block in one pass ([#942](https://github.com/monocongo/climate_indices/issues/942)). `palmer.pdsi` receives the block with AWC broadcast per cell, so a gridded PDSI run costs one recursion per block ([#1016](https://github.com/monocongo/climate_indices/issues/1016)). The NumPy API keeps 2-D input on the legacy `(years, periods)` reading; a 3-D or higher input is a block for `spi`/`spei`/`pet`/`pdsi` unless its first cell axis is the one shape that is ambiguous with that reading (12 or 366, i.e. a `(years, periods, *cells)` array), which must be declared, and for EDDI and percentage of normal every 3-D input must be declared with `spatial_time_major=True`. Inputs with a single non-core dimension keep the per-cell path. See `tests/test_spatial_kernel.py`. |
+| Spatial (gridded) kernels | Yes, for SPI, SPEI, PET, EDDI, percentage of normal, PDSI, and flood PE/EDI/I_F/API | `spi`/`spei` receive a time-major `(time, *cells)` block and fit every cell in one pass, so a gridded gamma run costs one kernel call per Dask block instead of one call per cell ([ADR-0009](docs/adr/0009-spatial-block-declaration.md)). The PET entry points (`pet_thornthwaite`, `pet_hargreaves`) hand `indices.pet` and `eto.eto_hargreaves` the same block layout with the per-cell latitude array, so a gridded PET run costs one call per block ([#941](https://github.com/monocongo/climate_indices/issues/941)). `indices.eddi` and `indices.percentage_of_normal` rank, and divide by the normals of, every cell of the block in one pass ([#942](https://github.com/monocongo/climate_indices/issues/942)). `palmer.pdsi` receives the block with AWC broadcast per cell, so a gridded PDSI run costs one recursion per block ([#1016](https://github.com/monocongo/climate_indices/issues/1016)). The NumPy API keeps 2-D input on the legacy `(years, periods)` reading; a 3-D or higher input is a block for `spi`/`spei`/`pet`/`pdsi` unless its first cell axis is the one shape that is ambiguous with that reading (12 or 366, i.e. a `(years, periods, *cells)` array), which must be declared, and for EDDI and percentage of normal every 3-D input must be declared with `spatial_time_major=True`. Inputs with a single non-core dimension keep the per-cell path. See `tests/test_spatial_kernel.py`. |
 | Calendar semantics | Yes, constrained | Standard/gregorian/proleptic_gregorian `datetime64` only; monthly input must begin in January and daily input on January 1. Daily values are converted to the 366-day calendar (February 29 synthesized from February 28 and March 1) and restored afterward. A partial final year is supported; `cftime` calendars are rejected. See [ADR-0004](docs/adr/0004-xarray-calendar-semantics.md). |
 | Automatic temporal inference | Yes | Monthly and daily time-coordinate inference is covered by adapter tests. |
 | Multi-input alignment | Yes | SPEI aligns precipitation and PET with an inner join on the time dimension and emits a warning when timesteps are dropped. Shared cell dimensions must carry matching coordinates: intersecting them would silently drop grid cells, so a mismatch raises `CoordinateValidationError` instead. |
@@ -3641,7 +3708,7 @@ bibliography.
 
 ## Overview
 
-The `climate_indices` library implements scientifically validated algorithms for computing drought and climate variability indices. All implementations follow peer-reviewed methodologies and have been validated against reference datasets. The algorithms are designed for operational climate monitoring, research applications, and climate impact assessments.
+The `climate_indices` library implements algorithms for computing drought and climate variability indices. The implementations follow peer-reviewed methodologies, but validation evidence varies by index: some have been validated against reference datasets, while the flood indices have regression and specification checks only, with no adopted external numeric oracle. The algorithms are designed for operational climate monitoring, research applications, and climate impact assessments.
 
 ## Standardized Precipitation Index (SPI)
 

@@ -28,6 +28,10 @@ The following indices are provided:
 - [EDDI](https://psl.noaa.gov/eddi/), Evaporative Demand Drought Index
 - [Palmer indices](https://www.droughtmanagement.info/literature/USWB_Meteorological_Drought_1965.pdf),
   including PDSI, PHDI, PMDI, Z-Index, and [scPDSI](https://doi.org/10.1175/1520-0442(2004)017%3C2335:ASPDSI%3E2.0.CO;2)
+- [Flood-potential indices](https://climate-indices.readthedocs.io/en/latest/flood_applications.html),
+  including Effective Precipitation (PE), the Effective Drought Index (EDI), the Flood Index (I_F),
+  and the Antecedent Precipitation Index (API): daily accumulated-wetness measures that indicate
+  flood potential, not flooding
 
 This Python implementation of the above climate index algorithms is being developed
 with the following goals in mind:
@@ -52,6 +56,7 @@ See [drought.gov](https://www.drought.gov/drought/python-climate-indices).
 
 - [__Documentation__](https://climate-indices.readthedocs.io/en/latest/)
 - [Climate Indices for Wildfire Applications](https://climate-indices.readthedocs.io/en/latest/wildfire_applications.html)
+- [Climate Indices for Flood and Wet-Extreme Applications](https://climate-indices.readthedocs.io/en/latest/flood_applications.html)
 - [__License__](https://github.com/monocongo/climate_indices/blob/main/LICENSE)
 - [__Disclaimer__](https://github.com/monocongo/climate_indices/blob/main/DISCLAIMER)
 

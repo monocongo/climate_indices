@@ -72,10 +72,10 @@ deviations from the published definitions.
 
 ## API tiers
 
-The NumPy API is the stable tier and lands first (FLOOD-08 through FLOOD-10 and
+The NumPy API is the stable tier and landed first (FLOOD-08 through FLOOD-10 and
 FLOOD-12).
-Xarray adapters, CF metadata, and Dask support follow (FLOOD-11, FLOOD-13) and
-stay on their `flood.<name>` route as beta paths under
+Xarray adapters, CF metadata, and Dask support landed with FLOOD-11 and FLOOD-13
+and stay on their `flood.<name>` route as beta paths under
 [ADR-0012](../adr/0012-xarray-api-stays-beta-through-3.0.0.md). Family API
 additions do not go into `typed_public_api.py`; `edi` is the single exception and
 reaches the package root with its xarray adapter, for the reasons recorded in

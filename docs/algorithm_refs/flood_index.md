@@ -27,8 +27,12 @@ same-lineage statement of the double sum, not a numeric oracle for this API.
 
 `tests/test_flood_index.py` checks the declared normalization and year-boundary
 contract; no numeric external oracle is available yet (see
-`tests/fixture/flood/README.md`). Only the NumPy route is implemented;
-xarray/CF integration follows in [#1108](https://github.com/monocongo/climate_indices/issues/1108).
+`tests/fixture/flood/README.md`). The NumPy route is stable, DataArray dispatch
+is beta ([#1108](https://github.com/monocongo/climate_indices/issues/1108)), and
+the CLI reaches the same index as `--index flood_index`
+([#1115](https://github.com/monocongo/climate_indices/issues/1115)).
+`VALIDATION.md` records I_F as regression only in its Flood Evidence
+Classification section.
 
 ## References
 
