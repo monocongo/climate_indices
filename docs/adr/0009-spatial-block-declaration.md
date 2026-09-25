@@ -66,8 +66,10 @@ The Pearson Type III branch fits its L-moment parameters across the cell axis as
 ([#940](https://github.com/monocongo/climate_indices/issues/940)), so `Distribution.pearson` no
 longer re-enters the single-series kernel once per cell. `indices.spi` enables
 `fallback_to_gamma=True`, so like gamma, a failed Pearson fit there falls back to gamma for the
-whole block rather than per cell; `indices.spei` passes `fallback_to_gamma=False`, so a failed
-Pearson fit propagates instead of falling back. EDDI and percentage of normal carry a cell axis as
+whole block rather than per cell, and its excessive-missing trigger counts only the values the fit
+lost, so the cells a masked grid already lacks do not decide it
+([#1118](https://github.com/monocongo/climate_indices/issues/1118)); `indices.spei` passes
+`fallback_to_gamma=False`, so a failed Pearson fit propagates instead of falling back. EDDI and percentage of normal carry a cell axis as
 well (#942): EDDI counts each calendar period's climatology values below every cell's value, and
 percentage of normal averages each cell's calendar-period normals, so neither loops over the grid.
 Unlike the fitting-based kernels they reject an undeclared 3-D input, since their dimension errors
