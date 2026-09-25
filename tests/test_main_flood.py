@@ -17,11 +17,27 @@ from climate_indices import __main__ as cli_main
 from climate_indices import _cli, compute, flood
 from climate_indices.exceptions import InvalidArgumentError
 
-# six complete calendar years of daily record, leaving PE's 364 leading NaN days
-# well clear of the 2016-2019 calibration period the tests pass through
-_DAILY_PERIODS = 2191
-_CALIBRATION = {"calibration_year_initial": 2016, "calibration_year_final": 2019}
+# six complete calendar years of daily record, 2015 through 2020: PE is undefined
+# for the first 364 days, and the 2016-2018 calibration years the tests pass
+# differ from the ones the library infers, so a CLI that dropped them would
+# change the result
+_DAILY_PERIODS = 2192
+_CALIBRATION = {"calibration_year_initial": 2016, "calibration_year_final": 2018}
 _DECAY = 0.9
+# variable names other than the ones the CLI writes, so reading a hard-coded name fails
+_PRECIP_VARIABLE = "prcp"
+_PE_VARIABLE = "eff_pe"
+
+_INDICES = ("pe", "edi", "flood_index", "api")
+# the indices computed from PE, which take the calibration years
+_FROM_PE = ("edi", "flood_index")
+# the flood functions each index calls, in the order it calls them
+_FLOOD_CALLS = {
+    "pe": {"effective_precipitation"},
+    "edi": {"effective_precipitation", "edi"},
+    "flood_index": {"effective_precipitation", "flood_index"},
+    "api": {"antecedent_precipitation_index"},
+}
 
 
 def _daily_precipitation(*shape: int, dims: tuple[str, ...] = ("time",), coords: dict | None = None) -> xr.DataArray:
@@ -32,8 +48,48 @@ def _daily_precipitation(*shape: int, dims: tuple[str, ...] = ("time",), coords:
         dims=dims,
         coords={**(coords or {}), "time": time},
         attrs={"units": "mm"},
-        name="precip",
+        name=_PRECIP_VARIABLE,
     )
+
+
+def _grid(*dims: str) -> tuple[xr.DataArray, str]:
+    coords = {"lat": [25.0, 26.0], "lon": [-100.0, -99.0, -98.0]}
+    precipitation = _daily_precipitation(2, 3, dims=("lat", "lon", "time"), coords=coords)
+    return precipitation.transpose(*dims), "lat"
+
+
+def _divisions(*dims: str) -> tuple[xr.DataArray, str]:
+    coords = {"division": ["0101", "0102", "0103"]}
+    precipitation = _daily_precipitation(3, dims=("division", "time"), coords=coords)
+    return precipitation.transpose(*dims), "division"
+
+
+# each layout's input, and the spatial dimension the CLI is expected to chunk
+_LAYOUTS = {
+    "lat_lon_time": lambda: _grid("lat", "lon", "time"),
+    "time_lat_lon": lambda: _grid("time", "lat", "lon"),
+    "division_time": lambda: _divisions("division", "time"),
+    "time_division": lambda: _divisions("time", "division"),
+}
+
+
+def _expected(index: str, precipitation: xr.DataArray) -> xr.DataArray:
+    """The library's own result for what the CLI writes for an index, on the arguments the tests pass."""
+    if index == "api":
+        return flood.antecedent_precipitation_index(precipitation, _DECAY)
+    pe = flood.effective_precipitation(precipitation)
+    if index == "edi":
+        return flood.edi(pe, **_CALIBRATION)
+    if index == "flood_index":
+        return flood.flood_index(pe, **_CALIBRATION, year_start_month=1)
+    return pe
+
+
+def _calibration_arguments(index: str) -> dict[str, int]:
+    """The calibration years, for the indices that take them."""
+    if index in _FROM_PE:
+        return {"calibration_start_year": 2016, "calibration_end_year": 2018}
+    return {}
 
 
 @pytest.fixture
@@ -51,7 +107,7 @@ def precip_file(tmp_path, precipitation):
 @pytest.fixture
 def pe_file(tmp_path, precipitation):
     path = tmp_path / "pe.nc"
-    flood.effective_precipitation(precipitation).rename("pe").to_netcdf(path)
+    flood.effective_precipitation(precipitation).rename(_PE_VARIABLE).to_netcdf(path)
     return str(path)
 
 
@@ -63,7 +119,7 @@ def _flood_arguments(index, **overrides):
         "calibration_start_year": None,
         "calibration_end_year": None,
         "netcdf_precip": "precip.nc",
-        "var_name_precip": "precip",
+        "var_name_precip": _PRECIP_VARIABLE,
         "netcdf_temp": None,
         "var_name_temp": None,
         "netcdf_pet": None,
@@ -155,10 +211,10 @@ class TestFloodValidation:
 
         assert str(error.value) == "Missing the required --api_k argument"
 
-    @pytest.mark.parametrize("index", ["edi", "flood_index"])
+    @pytest.mark.parametrize("index", _FROM_PE)
     def test_rejects_both_precipitation_and_pe_files(self, index):
         with pytest.raises(ValueError) as error:
-            cli_main._validate_args(_flood_arguments(index, netcdf_pe="pe.nc", var_name_pe="pe"))
+            cli_main._validate_args(_flood_arguments(index, netcdf_pe="pe.nc", var_name_pe=_PE_VARIABLE))
 
         assert (
             str(error.value) == "Both precipitation and PE files were specified, only one of these should be provided"
@@ -166,16 +222,22 @@ class TestFloodValidation:
 
     def test_rejects_a_pe_variable_name_without_a_pe_file(self):
         with pytest.raises(ValueError) as error:
-            cli_main._validate_args(_flood_arguments("edi", var_name_pe="pe"))
+            cli_main._validate_args(_flood_arguments("edi", var_name_pe=_PE_VARIABLE))
 
         assert str(error.value) == "The --var_name_pe argument requires the --netcdf_pe argument"
 
-    @pytest.mark.parametrize("index", ["edi", "flood_index"])
+    @pytest.mark.parametrize("index", _FROM_PE)
     def test_requires_precipitation_or_pe(self, index):
         with pytest.raises(ValueError) as error:
             cli_main._validate_args(_flood_arguments(index, netcdf_precip=None))
 
         assert str(error.value) == "Missing the required precipitation file"
+
+    def test_requires_a_pe_variable_name_with_a_pe_file(self, pe_file):
+        with pytest.raises(ValueError) as error:
+            cli_main._validate_args(_flood_arguments("edi", netcdf_precip=None, netcdf_pe=pe_file))
+
+        assert str(error.value) == "Missing effective precipitation variable name"
 
     def test_rejects_missing_pe_variable(self, pe_file):
         arguments = _flood_arguments("edi", netcdf_precip=None, netcdf_pe=pe_file, var_name_pe="bogus")
@@ -187,18 +249,60 @@ class TestFloodValidation:
 
     def test_rejects_a_pe_file_of_unsupported_dimensions(self, tmp_path):
         path = tmp_path / "pe_bad.nc"
-        xr.DataArray(np.ones((2, 3)), dims=("x", "y"), name="pe").to_netcdf(path)
+        xr.DataArray(np.ones((2, 3)), dims=("x", "y"), name=_PE_VARIABLE).to_netcdf(path)
 
         with pytest.raises(ValueError) as error:
-            cli_main._validate_args(_flood_arguments("edi", netcdf_precip=None, netcdf_pe=str(path), var_name_pe="pe"))
+            cli_main._validate_args(
+                _flood_arguments("edi", netcdf_precip=None, netcdf_pe=str(path), var_name_pe=_PE_VARIABLE)
+            )
 
         assert str(error.value).startswith("Invalid dimensions of the effective precipitation variable")
 
-    @pytest.mark.parametrize("index", ["edi", "flood_index"])
+    @pytest.mark.parametrize("index", _FROM_PE)
     def test_a_pe_file_alone_determines_the_input_type(self, index, pe_file):
-        arguments = _flood_arguments(index, netcdf_precip=None, netcdf_pe=pe_file, var_name_pe="pe")
+        arguments = _flood_arguments(index, netcdf_precip=None, netcdf_pe=pe_file, var_name_pe=_PE_VARIABLE)
 
         assert cli_main._validate_args(arguments) == cli_main.DatasetLayout.TIMESERIES
+
+
+class TestPrecipitationInputMessages:
+    """The shared precipitation validator keeps its messages for the ordinary precipitation input."""
+
+    def test_missing_file(self):
+        arguments = argparse.Namespace(netcdf_precip=None, var_name_precip=_PRECIP_VARIABLE)
+
+        with pytest.raises(ValueError) as error:
+            cli_main._validate_precipitation_input(arguments)
+
+        assert str(error.value) == "Missing the required precipitation file"
+
+    def test_missing_variable_name(self):
+        arguments = argparse.Namespace(netcdf_precip="precip.nc", var_name_precip=None)
+
+        with pytest.raises(ValueError) as error:
+            cli_main._validate_precipitation_input(arguments)
+
+        assert str(error.value) == "Missing precipitation variable name"
+
+    def test_unknown_variable(self, precip_file):
+        arguments = argparse.Namespace(netcdf_precip=precip_file, var_name_precip="bogus")
+
+        with pytest.raises(ValueError) as error:
+            cli_main._validate_precipitation_input(arguments)
+
+        message = str(error.value)
+        assert message.startswith("Invalid precipitation variable name: 'bogus'")
+        assert message.endswith(f"does not exist in precipitation file '{precip_file}'")
+
+    def test_unsupported_dimensions(self, tmp_path):
+        path = tmp_path / "precip_bad.nc"
+        xr.DataArray(np.ones((2, 3)), dims=("x", "y"), name=_PRECIP_VARIABLE).to_netcdf(path)
+        arguments = argparse.Namespace(netcdf_precip=str(path), var_name_precip=_PRECIP_VARIABLE)
+
+        with pytest.raises(ValueError) as error:
+            cli_main._validate_precipitation_input(arguments)
+
+        assert str(error.value).startswith("Invalid dimensions of the precipitation variable")
 
 
 class TestFloodProcessing:
@@ -211,28 +315,20 @@ class TestFloodProcessing:
             assert list(dataset.data_vars) == ["pe"]
             assert dataset["pe"].attrs["long_name"] == "Effective Precipitation"
             assert dataset["pe"].attrs["units"] == "mm"
-            np.testing.assert_allclose(
-                dataset["pe"].values, flood.effective_precipitation(precipitation).values, equal_nan=True
-            )
+            np.testing.assert_allclose(dataset["pe"].values, _expected("pe", precipitation).values, equal_nan=True)
 
-    @pytest.mark.parametrize("index", ["edi", "flood_index"])
+    @pytest.mark.parametrize("index", _FROM_PE)
     def test_pe_indices_compute_and_write_pe_first(self, tmp_path, precipitation, precip_file, index):
         cli_main.process_climate_indices(
             _flood_arguments(
                 index,
                 netcdf_precip=precip_file,
-                calibration_start_year=2016,
-                calibration_end_year=2019,
                 output_file_base=str(tmp_path / "out"),
+                **_calibration_arguments(index),
             )
         )
 
-        pe = flood.effective_precipitation(precipitation)
-        expected = (
-            flood.edi(pe, **_CALIBRATION)
-            if index == "edi"
-            else flood.flood_index(pe, **_CALIBRATION, year_start_month=1)
-        )
+        expected = _expected(index, precipitation)
         assert (tmp_path / "out_pe.nc").exists()
         with xr.open_dataset(tmp_path / f"out_{index}.nc") as dataset:
             assert list(dataset.data_vars) == [index]
@@ -241,29 +337,22 @@ class TestFloodProcessing:
             np.testing.assert_allclose(dataset[index].values, expected.values, equal_nan=True)
             assert np.isfinite(dataset[index].values).any()
 
-    @pytest.mark.parametrize("index", ["edi", "flood_index"])
+    @pytest.mark.parametrize("index", _FROM_PE)
     def test_a_provided_pe_file_replaces_the_pe_step(self, tmp_path, precipitation, pe_file, index):
         cli_main.process_climate_indices(
             _flood_arguments(
                 index,
                 netcdf_precip=None,
                 netcdf_pe=pe_file,
-                var_name_pe="pe",
-                calibration_start_year=2016,
-                calibration_end_year=2019,
+                var_name_pe=_PE_VARIABLE,
                 output_file_base=str(tmp_path / "out"),
+                **_calibration_arguments(index),
             )
         )
 
-        pe = flood.effective_precipitation(precipitation)
-        expected = (
-            flood.edi(pe, **_CALIBRATION)
-            if index == "edi"
-            else flood.flood_index(pe, **_CALIBRATION, year_start_month=1)
-        )
         assert not (tmp_path / "out_pe.nc").exists()
         with xr.open_dataset(tmp_path / f"out_{index}.nc") as dataset:
-            np.testing.assert_allclose(dataset[index].values, expected.values, equal_nan=True)
+            np.testing.assert_allclose(dataset[index].values, _expected(index, precipitation).values, equal_nan=True)
 
     def test_flood_index_honors_the_year_start_month(self, tmp_path, precipitation, precip_file):
         cli_main.process_climate_indices(
@@ -271,16 +360,14 @@ class TestFloodProcessing:
                 "flood_index",
                 netcdf_precip=precip_file,
                 year_start_month=7,
-                calibration_start_year=2016,
-                calibration_end_year=2018,
                 output_file_base=str(tmp_path / "out"),
+                **_calibration_arguments("flood_index"),
             )
         )
 
         expected = flood.flood_index(
             flood.effective_precipitation(precipitation),
-            calibration_year_initial=2016,
-            calibration_year_final=2018,
+            **_CALIBRATION,
             year_start_month=7,
         )
         with xr.open_dataset(tmp_path / "out_flood_index.nc") as dataset:
@@ -339,71 +426,71 @@ class TestFloodProcessing:
 
         assert (tmp_path / "out_api.nc").exists()
 
-    @pytest.mark.parametrize(
-        "dims",
-        [("lat", "lon", "time"), ("time", "lat", "lon")],
-        ids=["lat_lon_time", "time_lat_lon"],
-    )
-    def test_gridded_inputs_keep_time_whole_and_chunk_space(self, monkeypatch, tmp_path, dims):
-        coords = {"lat": [25.0, 26.0], "lon": [-100.0, -99.0, -98.0]}
-        gridded = _daily_precipitation(2, 3, coords=coords, dims=("lat", "lon", "time")).transpose(*dims)
-        path = tmp_path / "grid.nc"
-        gridded.to_netcdf(path)
+    @pytest.mark.parametrize("layout", _LAYOUTS)
+    @pytest.mark.parametrize("index", _INDICES)
+    def test_spatial_inputs_keep_time_whole_and_chunk_space(self, monkeypatch, tmp_path, index, layout):
+        precipitation, spatial_dim = _LAYOUTS[layout]()
+        path = tmp_path / "input.nc"
+        precipitation.to_netcdf(path)
+        expected = _expected(index, precipitation)
 
+        # capture the DataArray each flood call is given
         captured = {}
-        original_api = flood.antecedent_precipitation_index
+        for name in _FLOOD_CALLS["edi"] | _FLOOD_CALLS["flood_index"] | _FLOOD_CALLS["api"]:
+            original = getattr(flood, name)
 
-        def _capture_api(precipitation, *args, **kwargs):
-            captured["precipitation"] = precipitation
-            return original_api(precipitation, *args, **kwargs)
+            def _capture(data, *args, _name=name, _original=original, **kwargs):
+                captured[_name] = data
+                return _original(data, *args, **kwargs)
 
-        monkeypatch.setattr(cli_main.flood, "antecedent_precipitation_index", _capture_api)
+            monkeypatch.setattr(cli_main.flood, name, _capture)
         # a budget too small to hold one element splits the auto-chunked spatial
         # axes, so the assertions below fail if the CLI stops applying the default
         monkeypatch.setattr(_cli, "DEFAULT_ARRAY_CHUNK_SIZE", "1 B")
 
         cli_main.process_climate_indices(
             _flood_arguments(
-                "api",
+                index,
                 netcdf_precip=str(path),
                 output_file_base=str(tmp_path / "out"),
+                **_calibration_arguments(index),
             )
         )
 
-        chunks = captured["precipitation"].chunks
-        assert chunks is not None
-        assert len(chunks[captured["precipitation"].dims.index("time")]) == 1
-        assert len(chunks[captured["precipitation"].dims.index("lat")]) > 1
-        with xr.open_dataset(tmp_path / "out_api.nc") as dataset:
-            np.testing.assert_allclose(dataset["api"].values, original_api(gridded, _DECAY).values)
+        assert set(captured) == _FLOOD_CALLS[index]
+        for data in captured.values():
+            assert data.chunks is not None
+            assert len(data.chunks[data.dims.index("time")]) == 1
+            assert len(data.chunks[data.dims.index(spatial_dim)]) > 1
+        with xr.open_dataset(tmp_path / f"out_{index}.nc") as dataset:
+            np.testing.assert_allclose(dataset[index].values, expected.values, equal_nan=True)
 
     @pytest.mark.filterwarnings("ignore:The specified chunks separate the stored chunks")
-    def test_chunksizes_input_copies_the_input_chunks(self, tmp_path, precipitation):
-        gridded = _daily_precipitation(
-            2, 3, coords={"lat": [25.0, 26.0], "lon": [-100.0, -99.0, -98.0]}, dims=("lat", "lon", "time")
-        )
+    @pytest.mark.parametrize("index", _INDICES)
+    def test_chunksizes_input_copies_the_input_chunks(self, tmp_path, index):
+        precipitation, _ = _LAYOUTS["lat_lon_time"]()
         path = tmp_path / "grid.nc"
-        gridded.to_netcdf(path, encoding={"precip": {"chunksizes": (2, 3, 500)}}, engine="h5netcdf")
+        precipitation.to_netcdf(path, encoding={_PRECIP_VARIABLE: {"chunksizes": (2, 3, 500)}}, engine="h5netcdf")
 
         cli_main.process_climate_indices(
             _flood_arguments(
-                "api",
+                index,
                 netcdf_precip=str(path),
                 chunksizes="input",
                 output_file_base=str(tmp_path / "out"),
             )
         )
 
-        with xr.open_dataset(tmp_path / "out_api.nc", engine="h5netcdf") as dataset:
-            assert dataset["api"].encoding["chunksizes"] == (2, 3, 500)
+        with xr.open_dataset(tmp_path / f"out_{index}.nc", engine="h5netcdf") as dataset:
+            assert dataset[index].encoding["chunksizes"] == (2, 3, 500)
 
 
 class TestFloodRegistration:
     def test_aggregate_indices_do_not_run_the_flood_indices(self):
         for aggregate in ("scaled", "all"):
-            assert not set(cli_main._INDEX_PIPELINES[aggregate]) & {"pe", "edi", "flood_index", "api"}
+            assert not set(cli_main._INDEX_PIPELINES[aggregate]) & set(_INDICES)
 
-    @pytest.mark.parametrize("index", ["pe", "edi", "flood_index", "api"])
+    @pytest.mark.parametrize("index", _INDICES)
     def test_flood_indices_compute_through_xarray_only(self, index):
         registration = cli_main._registry_for(index)
 
@@ -426,7 +513,7 @@ class TestFloodRegistration:
                 "--netcdf_pe",
                 "pe.nc",
                 "--var_name_pe",
-                "pe",
+                _PE_VARIABLE,
                 "--year_start_month",
                 "10",
                 "--api_k",
@@ -437,7 +524,7 @@ class TestFloodRegistration:
         )
 
         assert captured["netcdf_pe"] == "pe.nc"
-        assert captured["var_name_pe"] == "pe"
+        assert captured["var_name_pe"] == _PE_VARIABLE
         assert captured["year_start_month"] == 10
         assert captured["api_k"] == 0.85
 
