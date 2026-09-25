@@ -219,7 +219,7 @@ def _validate_precipitation_input(
     with xr.open_dataset(netcdf_file) as dataset_precip:
         # make sure we have a valid variable name
         if var_name not in dataset_precip.variables:
-            msg = f"Invalid {label} variable name: '{var_name}'" + f"does not exist in {label} file '{netcdf_file}'"
+            msg = f"Invalid {label} variable name: '{var_name}' does not exist in {label} file '{netcdf_file}'"
             _logger.error(msg)
             raise ValueError(msg)
 
