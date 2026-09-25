@@ -576,6 +576,20 @@ class TestFloodRegistration:
         assert captured["year_start_month"] == 10
         assert captured["api_k"] == 0.85
 
-    def test_the_cli_rejects_an_out_of_range_year_start_month(self):
-        with pytest.raises(SystemExit):
-            cli_main.main(["--index", "flood_index", "--periodicity", "daily", "--year_start_month", "13"])
+    def test_the_cli_rejects_an_out_of_range_year_start_month(self, capsys):
+        with pytest.raises(SystemExit) as error:
+            cli_main.main(
+                [
+                    "--index",
+                    "flood_index",
+                    "--periodicity",
+                    "daily",
+                    "--year_start_month",
+                    "13",
+                    "--output_file_base",
+                    "out",
+                ]
+            )
+
+        assert error.value.code == 2
+        assert "--year_start_month" in capsys.readouterr().err
