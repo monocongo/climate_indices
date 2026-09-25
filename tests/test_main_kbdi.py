@@ -50,6 +50,10 @@ def _kbdi_arguments(**overrides):
         "var_name_pet": None,
         "netcdf_awc": None,
         "var_name_awc": None,
+        "netcdf_pe": None,
+        "var_name_pe": None,
+        "year_start_month": None,
+        "api_k": None,
         "output_file_base": "output",
         "multiprocessing": "single",
         "chunksizes": "none",
@@ -93,6 +97,18 @@ class TestKBDIValidation:
             ({"var_name_pet": "pet"}, "The --netcdf_pet and --var_name_pet arguments are not applicable to KBDI"),
             ({"netcdf_awc": "awc.nc"}, "The --netcdf_awc and --var_name_awc arguments are not applicable to KBDI"),
             ({"var_name_awc": "awc"}, "The --netcdf_awc and --var_name_awc arguments are not applicable to KBDI"),
+            *(
+                (
+                    {name: value},
+                    "The --netcdf_pe, --var_name_pe, --year_start_month, and --api_k arguments are not applicable to KBDI",
+                )
+                for name, value in (
+                    ("netcdf_pe", "pe.nc"),
+                    ("var_name_pe", "pe"),
+                    ("year_start_month", 3),
+                    ("api_k", 0.9),
+                )
+            ),
             ({"netcdf_temp": None}, "Missing the required temperature file argument"),
             ({"var_name_temp": None}, "Missing temperature variable name"),
         ],

@@ -8,13 +8,14 @@ import multiprocessing
 from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Literal, cast
 
 import numpy as np
 import scipy.constants
 import xarray as xr
 
-from climate_indices import compute, fire, indices, palmer, utils
+from climate_indices import compute, fire, flood, indices, palmer, utils
 from climate_indices._cli import _add_common_spi_arguments, _open_with_default_chunks
 from climate_indices.exceptions import ConvergenceError, InsufficientDataError
 from climate_indices.validation import DatasetLayout, detect_dataset_layout, expected_dimensions
@@ -80,6 +81,8 @@ class _IndexRequest:
     var_name_temp: str | None = None
     netcdf_pet: str | None = None
     var_name_pet: str | None = None
+    netcdf_pe: str | None = None
+    var_name_pe: str | None = None
     netcdf_awc: str | None = None
     var_name_awc: str | None = None
     scale: int | None = None
@@ -123,6 +126,8 @@ class _IndexRequest:
             var_name_temp=inputs.get("var_name_temp"),
             netcdf_pet=inputs.get("netcdf_pet"),
             var_name_pet=inputs.get("var_name_pet"),
+            netcdf_pe=inputs.get("netcdf_pe"),
+            var_name_pe=inputs.get("var_name_pe"),
             netcdf_awc=inputs.get("netcdf_awc"),
             var_name_awc=inputs.get("var_name_awc"),
             calibration_start_year=arguments.calibration_start_year,
@@ -176,41 +181,51 @@ def _accepted_dimensions(layout: DatasetLayout) -> tuple[tuple[Hashable, ...], .
     return _TRANSPORT_DIMENSIONS[layout] + (expected_dimensions(layout, includes_time=False) or ())
 
 
-def _validate_precipitation_input(args: argparse.Namespace) -> _InputContext:
+def _validate_precipitation_input(
+    args: argparse.Namespace,
+    *,
+    netcdf_file: str | None = None,
+    var_name: str | None = None,
+    label: str = "precipitation",
+) -> _InputContext:
     """
     Validate the precipitation input and derive the input type from it.
 
     param args: an arguments object of the type returned by
         argparse.ArgumentParser.parse_args()
+    param netcdf_file: the file to validate in place of ``--netcdf_precip``, for
+        an input that carries the precipitation input's dimensions, such as PE
+    param var_name: the variable name to validate in place of ``--var_name_precip``
+    param label: the input's name in the error messages
     return: the validated input, for comparison against the companion inputs
-    raise ValueError: if the precipitation input is missing or invalid
+    raise ValueError: if the input is missing or invalid
     """
+    if netcdf_file is None:
+        netcdf_file = args.netcdf_precip
+        var_name = args.var_name_precip
 
-    # make sure a precipitation file was specified
-    if args.netcdf_precip is None:
-        msg = "Missing the required precipitation file"
+    # make sure a file was specified
+    if netcdf_file is None:
+        msg = f"Missing the required {label} file"
         _logger.error(msg)
         raise ValueError(msg)
 
-    # make sure a precipitation variable name was specified
-    if args.var_name_precip is None:
-        msg = "Missing precipitation variable name"
+    # make sure a variable name was specified
+    if var_name is None:
+        msg = f"Missing {label} variable name"
         _logger.error(msg)
         raise ValueError(msg)
 
-    with xr.open_dataset(args.netcdf_precip) as dataset_precip:
-        # make sure we have a valid precipitation variable name
-        if args.var_name_precip not in dataset_precip.variables:
-            msg = (
-                f"Invalid precipitation variable name: '{args.var_name_precip}'"
-                + f"does not exist in precipitation file '{args.netcdf_precip}'"
-            )
+    with xr.open_dataset(netcdf_file) as dataset_precip:
+        # make sure we have a valid variable name
+        if var_name not in dataset_precip.variables:
+            msg = f"Invalid {label} variable name: '{var_name}' does not exist in {label} file '{netcdf_file}'"
             _logger.error(msg)
             raise ValueError(msg)
 
-        # verify that the precipitation variable's dimensions are in the expected order
-        dimensions = dataset_precip[args.var_name_precip].dims
-        layout = detect_dataset_layout(dimensions, "precipitation")
+        # verify that the variable's dimensions are in the expected order
+        dimensions = dataset_precip[var_name].dims
+        layout = detect_dataset_layout(dimensions, label)
 
         # get the values of the precipitation coordinate variables,
         # for comparison against those of the other data variables
@@ -280,6 +295,39 @@ def _validate_temperature_input(args: argparse.Namespace) -> _InputContext:
             dimensions=dimensions,
             times=dataset_temp["time"].values[:],
         )
+
+
+def _validate_pe_or_precipitation_input(args: argparse.Namespace) -> _InputContext:
+    """
+    Validate the input of an index computed from effective precipitation (PE).
+
+    The index takes either a precomputed PE file, or a precipitation file from
+    which PE is computed first. As with a PET file and a temperature file, only
+    one may be provided, since there is no way to determine which to use.
+
+    param args: an arguments object of the type returned by
+        argparse.ArgumentParser.parse_args()
+    return: the validated input, for comparison against the companion inputs
+    raise ValueError: if both inputs are provided, or the input is missing or invalid
+    """
+    if args.netcdf_pe is None:
+        if args.var_name_pe is not None:
+            msg = "The --var_name_pe argument requires the --netcdf_pe argument"
+            _logger.error(msg)
+            raise ValueError(msg)
+        return _validate_precipitation_input(args)
+
+    if args.netcdf_precip is not None:
+        msg = "Both precipitation and PE files were specified, only one of these should be provided"
+        _logger.error(msg)
+        raise ValueError(msg)
+
+    return _validate_precipitation_input(
+        args,
+        netcdf_file=args.netcdf_pe,
+        var_name=args.var_name_pe,
+        label="effective precipitation",
+    )
 
 
 def _validate_matching_input_file(
@@ -520,7 +568,9 @@ def _validate_args(args: argparse.Namespace) -> DatasetLayout:
             handler.validate_arguments(args)
 
     # the input that determines the input type, and the shape companions must match
-    if any(handler.requires_precip for handler in handlers):
+    if any(handler.requires_pe for handler in handlers):
+        context = _validate_pe_or_precipitation_input(args)
+    elif any(handler.requires_precip for handler in handlers):
         context = _validate_precipitation_input(args)
     else:
         context = _validate_temperature_input(args)
@@ -1320,6 +1370,9 @@ class _IndexRegistration:
     # from_arguments() copies only the inputs the index actually consumes
     input_paths: tuple[str, ...] = ()
     requires_precip: bool = False
+    # takes a PE file, or a precipitation file to compute PE from, rather than
+    # precipitation alone
+    requires_pe: bool = False
     requires_pet_or_temp: bool = False
     requires_awc: bool = False
     requires_scales: bool = False
@@ -1714,6 +1767,11 @@ def _validate_kbdi_arguments(args: argparse.Namespace) -> None:
         _logger.error(msg)
         raise ValueError(msg)
 
+    if any(getattr(args, name) is not None for name in ("netcdf_pe", "var_name_pe", "year_start_month", "api_k")):
+        msg = "The --netcdf_pe, --var_name_pe, --year_start_month, and --api_k arguments are not applicable to KBDI"
+        _logger.error(msg)
+        raise ValueError(msg)
+
     if args.netcdf_temp is None:
         msg = "Missing the required temperature file argument"
         _logger.error(msg)
@@ -1786,6 +1844,70 @@ def _validate_kbdi_inputs(args: argparse.Namespace, context: _InputContext) -> N
                 msg = "Precipitation and temperature variables contain non-matching division IDs"
                 _logger.error(msg)
                 raise ValueError(msg)
+
+
+# the flood indices that standardize effective precipitation against a calibration period
+_PE_STANDARDIZED_INDICES = ("edi", "flood_index")
+
+
+def _validate_flood_arguments(args: argparse.Namespace) -> None:
+    """
+    Validate that a flood index was given the arguments it can use.
+
+    The flood indices are computed for daily inputs only, through the flood
+    module, and do not use the scale, temperature, PET, or AWC arguments of the
+    other indices. Each also takes only the arguments of its own kind: the PE
+    and calibration arguments belong to EDI and the Flood Index, the year
+    boundary to the Flood Index, and the decay constant to API.
+
+    :param args: an arguments object of the type returned by
+        argparse.ArgumentParser.parse_args()
+    :raise ValueError: if an argument the index cannot use was provided, or if
+        one it requires is missing
+    """
+    index = args.index
+
+    if args.periodicity is not compute.Periodicity.daily:
+        msg = f"Invalid periodicity argument for {index}: '{args.periodicity}' -- only 'daily' is supported"
+        _logger.error(msg)
+        raise ValueError(msg)
+
+    # each entry is the flags of one argument group, and the values it holds
+    inapplicable: list[tuple[str, list[Any]]] = [
+        ("--scales", [args.scales]),
+        ("--netcdf_temp and --var_name_temp", [args.netcdf_temp, args.var_name_temp]),
+        ("--netcdf_pet and --var_name_pet", [args.netcdf_pet, args.var_name_pet]),
+        ("--netcdf_awc and --var_name_awc", [args.netcdf_awc, args.var_name_awc]),
+    ]
+    if index not in _PE_STANDARDIZED_INDICES:
+        inapplicable += [
+            (
+                "--calibration_start_year and --calibration_end_year",
+                [args.calibration_start_year, args.calibration_end_year],
+            ),
+            ("--netcdf_pe and --var_name_pe", [args.netcdf_pe, args.var_name_pe]),
+        ]
+    if index != "flood_index":
+        inapplicable.append(("--year_start_month", [args.year_start_month]))
+    if index != "api":
+        inapplicable.append(("--api_k", [args.api_k]))
+
+    for flags, values in inapplicable:
+        if any(value is not None for value in values):
+            verb = "arguments are" if len(values) > 1 else "argument is"
+            msg = f"The {flags} {verb} not applicable to --index {index}"
+            _logger.error(msg)
+            raise ValueError(msg)
+
+    if index == "flood_index" and args.year_start_month is None:
+        msg = "Missing the required --year_start_month argument"
+        _logger.error(msg)
+        raise ValueError(msg)
+
+    if index == "api" and args.api_k is None:
+        msg = "Missing the required --api_k argument"
+        _logger.error(msg)
+        raise ValueError(msg)
 
 
 def _run_spi(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
@@ -1871,6 +1993,66 @@ def _run_palmers(arguments: argparse.Namespace, input_type: DatasetLayout) -> No
     _compute_write_index(_IndexRequest.from_arguments(arguments, index="palmers", input_type=input_type))
 
 
+def _time_whole_chunks(input_type: DatasetLayout) -> dict[str, Any]:
+    """
+    Dask chunks for a daily input of an xarray-backed index: time whole, space split.
+
+    The recurrences and annual statistics behind these indices run sequentially
+    over time but independently per grid cell/division, and their xarray
+    adapters require the time axis in a single Dask chunk: keeping time whole
+    and chunking the spatial axes means the multi-decade daily inputs are never
+    all resident at once.
+
+    :param input_type: the input type determined by argument validation
+    :return: the chunk sizes to open the input with
+    """
+    if input_type == DatasetLayout.GRID:
+        return {"lat": "auto", "lon": "auto", "time": -1}
+    if input_type == DatasetLayout.DIVISIONS:
+        return {"division": "auto", "time": -1}
+    return {"time": -1}
+
+
+def _write_xarray_index(
+    request: _IndexRequest,
+    values: xr.DataArray,
+    output_file: str,
+    source: xr.DataArray,
+) -> None:
+    """
+    Write an xarray-computed index to NetCDF, honoring ``--chunksizes``.
+
+    :param request: the index's request
+    :param values: the computed index, already named for its output variable
+    :param output_file: the NetCDF file to write
+    :param source: the input variable whose on-disk chunks ``--chunksizes input`` copies
+    """
+    # honor --chunksizes input by copying the source variable's on-disk chunks
+    # to the output variable, trimmed to the written shape; pin the
+    # HDF5-backed writer so copied chunk sizes are always honored
+    output_encodings = None
+    if request.chunksizes == "input":
+        input_chunksizes = source.encoding.get("chunksizes")
+        if input_chunksizes:
+            output_encodings = _trimmed_output_encodings({"chunksizes": input_chunksizes}, values.shape)
+    output_engine: Literal["h5netcdf"] | None = "h5netcdf" if output_encodings else None
+    if output_encodings:
+        values.encoding.update(output_encodings)
+
+    _logger.info("Writing %s values to file: %s", request.index.upper(), output_file)
+
+    # to_netcdf() truncates its target before the lazy computation runs, so a
+    # kernel error would leave a hollow file in place of any earlier output:
+    # write beside the target and replace it only once the values are written
+    temporary_file = f"{output_file}.tmp"
+    try:
+        values.to_netcdf(temporary_file, engine=output_engine)
+        Path(temporary_file).replace(output_file)
+    except BaseException:
+        Path(temporary_file).unlink(missing_ok=True)
+        raise
+
+
 def _run_kbdi(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
     """
     Compute KBDI through the fire module's xarray API.
@@ -1886,16 +2068,7 @@ def _run_kbdi(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
     assert request.netcdf_precip is not None and request.var_name_precip is not None
     assert request.netcdf_temp is not None and request.var_name_temp is not None
 
-    # KBDI's recurrence is sequential over time but independent per grid
-    # cell/division, and fire.kbdi() requires the time axis in a single Dask
-    # chunk: keep time whole and chunk the spatial axes, so the multi-decade
-    # daily inputs are never all resident at once
-    if request.input_type == DatasetLayout.GRID:
-        chunks: dict[str, Any] = {"lat": "auto", "lon": "auto", "time": -1}
-    elif request.input_type == DatasetLayout.DIVISIONS:
-        chunks = {"division": "auto", "time": -1}
-    else:
-        chunks = {"time": -1}
+    chunks = _time_whole_chunks(request.input_type)
 
     with (
         _open_with_default_chunks(xr.open_dataset, request.netcdf_precip, chunks=chunks) as dataset_precip,
@@ -1912,21 +2085,136 @@ def _run_kbdi(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
         # input; use the CF variable name the `units` argument selected
         kbdi_values.name = "kbdi_imperial" if arguments.kbdi_units == "imperial" else "kbdi"
         output_file = f"{request.output_file_base}_{kbdi_values.name}.nc"
+        _write_xarray_index(request, kbdi_values, output_file, dataset_precip[request.var_name_precip])
 
-        # honor --chunksizes input by copying the precipitation variable's
-        # on-disk chunks to the output variable, trimmed to the written shape;
-        # pin the HDF5-backed writer so copied chunk sizes are always honored
-        output_encodings = None
-        if request.chunksizes == "input":
-            input_chunksizes = dataset_precip[request.var_name_precip].encoding.get("chunksizes")
-            if input_chunksizes:
-                output_encodings = _trimmed_output_encodings({"chunksizes": input_chunksizes}, kbdi_values.shape)
-        output_engine: Literal["h5netcdf"] | None = "h5netcdf" if output_encodings else None
-        if output_encodings:
-            kbdi_values.encoding.update(output_encodings)
 
-        _logger.info("Writing KBDI values to file: %s", output_file)
-        kbdi_values.to_netcdf(output_file, engine=output_engine)
+def _run_pe(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
+    """
+    Compute effective precipitation (PE) through the flood module's xarray API.
+
+    This is also the first step of the indices computed from PE: it writes the
+    PE file, and points ``--netcdf_pe`` at it for them to consume, as the PET
+    step does for SPEI.
+
+    :param arguments: the parsed command line arguments
+    :param input_type: the input type determined by argument validation
+    """
+    request = _IndexRequest.from_arguments(arguments, index="pe", input_type=input_type)
+    assert request.netcdf_precip is not None and request.var_name_precip is not None
+
+    with _open_with_default_chunks(
+        xr.open_dataset, request.netcdf_precip, chunks=_time_whole_chunks(input_type)
+    ) as dataset_precip:
+        precipitation = dataset_precip[request.var_name_precip]
+        pe_values = flood.effective_precipitation(precipitation)
+
+        # the xarray route names the result after its precipitation input
+        pe_values.name = "pe"
+        output_file = f"{request.output_file_base}_pe.nc"
+        _write_xarray_index(request, pe_values, output_file, precipitation)
+
+    arguments.netcdf_pe, arguments.var_name_pe = output_file, "pe"
+
+
+def _run_from_pe(
+    arguments: argparse.Namespace,
+    input_type: DatasetLayout,
+    index: str,
+    compute_index: Callable[[xr.DataArray], xr.DataArray],
+) -> None:
+    """
+    Compute an index from effective precipitation, computing PE first if it was not provided.
+
+    :param arguments: the parsed command line arguments
+    :param input_type: the input type determined by argument validation
+    :param index: the index to compute
+    :param compute_index: the flood module's xarray call that computes the index from PE
+    """
+    if arguments.netcdf_pe is None:
+        _run_pe(arguments, input_type)
+
+    request = _IndexRequest.from_arguments(arguments, index=index, input_type=input_type)
+    assert request.netcdf_pe is not None and request.var_name_pe is not None
+
+    with _open_with_default_chunks(
+        xr.open_dataset, request.netcdf_pe, chunks=_time_whole_chunks(input_type)
+    ) as dataset_pe:
+        pe = dataset_pe[request.var_name_pe]
+        index_values = compute_index(pe)
+
+        # the xarray route names the result after its PE input
+        index_values.name = index
+        _write_xarray_index(request, index_values, f"{request.output_file_base}_{index}.nc", pe)
+
+
+def _run_edi(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
+    """
+    Compute the Effective Drought Index through the flood module's xarray API.
+
+    :param arguments: the parsed command line arguments
+    :param input_type: the input type determined by argument validation
+    """
+    _run_from_pe(
+        arguments,
+        input_type,
+        "edi",
+        lambda pe: flood.edi(
+            pe,
+            calibration_year_initial=arguments.calibration_start_year,
+            calibration_year_final=arguments.calibration_end_year,
+        ),
+    )
+
+
+def _run_flood_index(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
+    """
+    Compute the Flood Index through the flood module's xarray API.
+
+    Unless a calibration start year was given, calibration starts in the second
+    year of the record: PE is undefined for a record's first 364 days, so its
+    first year would put an annual maximum drawn from a day or two of PE into
+    the calibration sample. This differs from ``flood.flood_index()``, which
+    infers the record's first year.
+
+    :param arguments: the parsed command line arguments
+    :param input_type: the input type determined by argument validation
+    """
+
+    def _flood_index(pe: xr.DataArray) -> xr.DataArray:
+        calibration_start_year = arguments.calibration_start_year
+        if calibration_start_year is None:
+            calibration_start_year = int(pe["time"].dt.year[0]) + 1
+
+        return flood.flood_index(
+            pe,
+            calibration_year_initial=calibration_start_year,
+            calibration_year_final=arguments.calibration_end_year,
+            year_start_month=arguments.year_start_month,
+        )
+
+    _run_from_pe(arguments, input_type, "flood_index", _flood_index)
+
+
+def _run_api(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
+    """
+    Compute the Antecedent Precipitation Index through the flood module's xarray API.
+
+    :param arguments: the parsed command line arguments
+    :param input_type: the input type determined by argument validation
+    """
+    request = _IndexRequest.from_arguments(arguments, index="api", input_type=input_type)
+    assert request.netcdf_precip is not None and request.var_name_precip is not None
+
+    with _open_with_default_chunks(
+        xr.open_dataset, request.netcdf_precip, chunks=_time_whole_chunks(input_type)
+    ) as dataset_precip:
+        precipitation = dataset_precip[request.var_name_precip]
+        api_values = flood.antecedent_precipitation_index(precipitation, arguments.api_k)
+        assert isinstance(api_values, xr.DataArray)
+
+        # the xarray route names the result after its precipitation input
+        api_values.name = "api"
+        _write_xarray_index(request, api_values, f"{request.output_file_base}_api.nc", precipitation)
 
 
 _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
@@ -2018,6 +2306,34 @@ _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
         validate_arguments=_validate_kbdi_arguments,
         validate_inputs=_validate_kbdi_inputs,
     ),
+    "pe": _IndexRegistration(
+        index="pe",
+        run=_run_pe,
+        input_paths=("netcdf_precip", "var_name_precip"),
+        requires_precip=True,
+        validate_arguments=_validate_flood_arguments,
+    ),
+    "edi": _IndexRegistration(
+        index="edi",
+        run=_run_edi,
+        input_paths=("netcdf_pe", "var_name_pe"),
+        requires_pe=True,
+        validate_arguments=_validate_flood_arguments,
+    ),
+    "flood_index": _IndexRegistration(
+        index="flood_index",
+        run=_run_flood_index,
+        input_paths=("netcdf_pe", "var_name_pe"),
+        requires_pe=True,
+        validate_arguments=_validate_flood_arguments,
+    ),
+    "api": _IndexRegistration(
+        index="api",
+        run=_run_api,
+        input_paths=("netcdf_precip", "var_name_precip"),
+        requires_precip=True,
+        validate_arguments=_validate_flood_arguments,
+    ),
 }
 
 # the indices behind each --index value, in the order they are run: PET runs
@@ -2030,6 +2346,13 @@ _INDEX_PIPELINES: dict[str, tuple[str, ...]] = {
     "pet": ("pet",),
     "palmers": ("pet", "palmers"),
     "kbdi": ("kbdi",),
+    # EDI and the Flood Index compute PE first when no PE file was provided, so
+    # each names only itself here: the PE step reads the precipitation input
+    # that a provided PE file replaces
+    "pe": ("pe",),
+    "edi": ("edi",),
+    "flood_index": ("flood_index",),
+    "api": ("api",),
     "all": ("spi", "pet", "spei", "pnp", "palmers"),
 }
 
@@ -2117,6 +2440,24 @@ def main(argv: Sequence[str] | None = None) -> None:
         parser.add_argument(
             "--var_name_awc",
             help="Available water capacity variable name used in the AWC NetCDF file",
+        )
+        parser.add_argument(
+            "--netcdf_pe",
+            help="Effective precipitation NetCDF file to be used as input for EDI and Flood Index computations,"
+            " in place of a precipitation file",
+        )
+        parser.add_argument("--var_name_pe", help="Effective precipitation variable name used in the PE NetCDF file")
+        parser.add_argument(
+            "--year_start_month",
+            help="Calendar month (1-12) on which each year of Flood Index annual maxima starts",
+            type=int,
+            choices=range(1, 13),
+            metavar="{1..12}",
+        )
+        parser.add_argument(
+            "--api_k",
+            help="Daily decay constant of the Antecedent Precipitation Index, strictly between 0 and 1",
+            type=float,
         )
         parser.add_argument(
             "--kbdi_units",
