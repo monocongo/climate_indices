@@ -188,8 +188,10 @@ class TestFloodValidation:
         ],
     )
     def test_rejects_inapplicable_arguments(self, index, overrides, message):
+        arguments = _flood_arguments(index, **overrides)
+
         with pytest.raises(ValueError) as error:
-            cli_main._validate_args(_flood_arguments(index, **overrides))
+            cli_main._validate_args(arguments)
 
         assert str(error.value) == message
 
@@ -213,29 +215,37 @@ class TestFloodValidation:
 
     @pytest.mark.parametrize("index", _FROM_PE)
     def test_rejects_both_precipitation_and_pe_files(self, index):
+        arguments = _flood_arguments(index, netcdf_pe="pe.nc", var_name_pe=_PE_VARIABLE)
+
         with pytest.raises(ValueError) as error:
-            cli_main._validate_args(_flood_arguments(index, netcdf_pe="pe.nc", var_name_pe=_PE_VARIABLE))
+            cli_main._validate_args(arguments)
 
         assert (
             str(error.value) == "Both precipitation and PE files were specified, only one of these should be provided"
         )
 
     def test_rejects_a_pe_variable_name_without_a_pe_file(self):
+        arguments = _flood_arguments("edi", var_name_pe=_PE_VARIABLE)
+
         with pytest.raises(ValueError) as error:
-            cli_main._validate_args(_flood_arguments("edi", var_name_pe=_PE_VARIABLE))
+            cli_main._validate_args(arguments)
 
         assert str(error.value) == "The --var_name_pe argument requires the --netcdf_pe argument"
 
     @pytest.mark.parametrize("index", _FROM_PE)
     def test_requires_precipitation_or_pe(self, index):
+        arguments = _flood_arguments(index, netcdf_precip=None)
+
         with pytest.raises(ValueError) as error:
-            cli_main._validate_args(_flood_arguments(index, netcdf_precip=None))
+            cli_main._validate_args(arguments)
 
         assert str(error.value) == "Missing the required precipitation file"
 
     def test_requires_a_pe_variable_name_with_a_pe_file(self, pe_file):
+        arguments = _flood_arguments("edi", netcdf_precip=None, netcdf_pe=pe_file)
+
         with pytest.raises(ValueError) as error:
-            cli_main._validate_args(_flood_arguments("edi", netcdf_precip=None, netcdf_pe=pe_file))
+            cli_main._validate_args(arguments)
 
         assert str(error.value) == "Missing effective precipitation variable name"
 
@@ -251,10 +261,10 @@ class TestFloodValidation:
         path = tmp_path / "pe_bad.nc"
         xr.DataArray(np.ones((2, 3)), dims=("x", "y"), name=_PE_VARIABLE).to_netcdf(path)
 
+        arguments = _flood_arguments("edi", netcdf_precip=None, netcdf_pe=str(path), var_name_pe=_PE_VARIABLE)
+
         with pytest.raises(ValueError) as error:
-            cli_main._validate_args(
-                _flood_arguments("edi", netcdf_precip=None, netcdf_pe=str(path), var_name_pe=_PE_VARIABLE)
-            )
+            cli_main._validate_args(arguments)
 
         assert str(error.value).startswith("Invalid dimensions of the effective precipitation variable")
 
@@ -422,10 +432,12 @@ class TestFloodProcessing:
             np.testing.assert_allclose(dataset["api"].values, expected.values)
 
     def test_api_rejects_an_out_of_range_decay_constant(self, tmp_path, precip_file):
+        arguments = _flood_arguments(
+            "api", netcdf_precip=precip_file, api_k=1.5, output_file_base=str(tmp_path / "out")
+        )
+
         with pytest.raises(InvalidArgumentError):
-            cli_main.process_climate_indices(
-                _flood_arguments("api", netcdf_precip=precip_file, api_k=1.5, output_file_base=str(tmp_path / "out"))
-            )
+            cli_main.process_climate_indices(arguments)
 
         assert not (tmp_path / "out_api.nc").exists()
 
@@ -435,16 +447,16 @@ class TestFloodProcessing:
         previous = tmp_path / "out_edi.nc"
         xr.Dataset({"edi": ("time", [1.0, 2.0, 3.0])}).to_netcdf(previous)
 
+        arguments = _flood_arguments(
+            "edi",
+            netcdf_precip=precip_file,
+            calibration_start_year=1900,
+            calibration_end_year=1990,
+            output_file_base=str(tmp_path / "out"),
+        )
+
         with pytest.raises(InvalidArgumentError):
-            cli_main.process_climate_indices(
-                _flood_arguments(
-                    "edi",
-                    netcdf_precip=precip_file,
-                    calibration_start_year=1900,
-                    calibration_end_year=1990,
-                    output_file_base=str(tmp_path / "out"),
-                )
-            )
+            cli_main.process_climate_indices(arguments)
 
         with xr.open_dataset(previous) as dataset:
             assert dataset["edi"].values.tolist() == [1.0, 2.0, 3.0]
