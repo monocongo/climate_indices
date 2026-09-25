@@ -8,6 +8,7 @@ import multiprocessing
 from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Literal, cast
 
 import numpy as np
@@ -2034,7 +2035,17 @@ def _write_xarray_index(
         values.encoding.update(output_encodings)
 
     _logger.info("Writing %s values to file: %s", request.index.upper(), output_file)
-    values.to_netcdf(output_file, engine=output_engine)
+
+    # to_netcdf() truncates its target before the lazy computation runs, so a
+    # kernel error would leave a hollow file in place of any earlier output:
+    # write beside the target and replace it only once the values are written
+    temporary_file = f"{output_file}.tmp"
+    try:
+        values.to_netcdf(temporary_file, engine=output_engine)
+        Path(temporary_file).replace(output_file)
+    except BaseException:
+        Path(temporary_file).unlink(missing_ok=True)
+        raise
 
 
 def _run_kbdi(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:

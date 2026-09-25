@@ -306,6 +306,27 @@ class TestFloodProcessing:
 
         assert not (tmp_path / "out_api.nc").exists()
 
+    def test_a_failed_run_keeps_the_previous_output(self, tmp_path, precip_file):
+        # the calibration period precedes the record, which the kernel rejects
+        # only once the lazy computation runs inside to_netcdf()
+        previous = tmp_path / "out_edi.nc"
+        xr.Dataset({"edi": ("time", [1.0, 2.0, 3.0])}).to_netcdf(previous)
+
+        with pytest.raises(InvalidArgumentError):
+            cli_main.process_climate_indices(
+                _flood_arguments(
+                    "edi",
+                    netcdf_precip=precip_file,
+                    calibration_start_year=1900,
+                    calibration_end_year=1990,
+                    output_file_base=str(tmp_path / "out"),
+                )
+            )
+
+        with xr.open_dataset(previous) as dataset:
+            assert dataset["edi"].values.tolist() == [1.0, 2.0, 3.0]
+        assert not (tmp_path / "out_edi.nc.tmp").exists()
+
     def test_flood_indices_do_not_route_through_the_shared_daily_path(self, monkeypatch, tmp_path, precip_file):
         def _fail_compute_write_index(request):
             raise AssertionError("flood indices must not route through _compute_write_index()")
