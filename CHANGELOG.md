@@ -185,7 +185,8 @@ change states what a user sees, how to detect it, and what to change in
   same. The Pearson-to-gamma fall-back counted input that was already missing as a
   failed fit, and then fitted gamma to the Pearson result instead of the scaled input.
   It now judges only the values the fit lost and refits the scaled input, so block,
-  chunked, and per-cell results agree on such grids (#1118).
+  chunked, and per-cell results agree on such grids wherever Pearson fits every valid
+  cell (#1118).
 
 ## [2.4.0] - 2026-04-05
 

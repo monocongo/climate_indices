@@ -96,7 +96,8 @@ and {doc}`choosing-parameters`. In particular:
   period. A period that falls short is fitted with zeroed parameters rather
   than raising — its outputs are NaN or clipped extremes — and the
   Pearson-to-gamma fallback fires only when the transform itself fails or
-  leaves more than half the outputs missing. Check the fit before relying on
+  loses more than half of the valid inputs (input that was already missing
+  does not count). Check the fit before relying on
   `distribution=pearson`; gamma is the documented choice for strongly
   zero-inflated records.
 
