@@ -3,7 +3,7 @@
 ## Status
 
 Amended: the effective-precipitation kernel landed in #1105; the remaining
-indices land with FLOOD-09 through FLOOD-13 (#1106–#1110). The scientific
+indices landed with FLOOD-09 through FLOOD-13 (#1106–#1110). The scientific
 conventions are unchanged.
 
 Amended again by the flood scope decision
@@ -178,4 +178,4 @@ index, not as a bug in `edi()`.
 The epic's scope table ([#1098](https://github.com/monocongo/climate_indices/issues/1098))
 reflects decision 6, and the family's documented deviation from the published
 definition is recorded in the EDI and I_F algorithm reference pages as those
-indices land.
+indices landed.
