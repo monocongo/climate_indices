@@ -1879,28 +1879,26 @@ def fit_and_standardize(
     Raises:
         ValueError: If the distribution is neither gamma nor Pearson Type III.
     """
-    params = _normalize_fitting_params(fitting_params)
+    params = _normalize_fitting_params(fitting_params) or {}
 
     if distribution.value == "gamma":
-        alphas = None if params is None else params.get("alpha")
-        betas = None if params is None else params.get("beta")
         return transform_fitted_gamma(
             values,
             data_start_year,
             calibration_start_year,
             calibration_end_year,
             periodicity,
-            alphas,
-            betas,
+            params.get("alpha"),
+            params.get("beta"),
         )
 
     if distribution.value != "pearson":
         raise ValueError(f"Unsupported distribution: {distribution}")
 
-    probabilities_of_zero = None if params is None else params.get("prob_zero")
-    locs = None if params is None else params.get("loc")
-    scales = None if params is None else params.get("scale")
-    skews = None if params is None else params.get("skew")
+    probabilities_of_zero = params.get("prob_zero")
+    locs = params.get("loc")
+    scales = params.get("scale")
+    skews = params.get("skew")
 
     if values.ndim > 2:
         # reject mismatched parameter cells before the fall-back try: that is an
