@@ -287,6 +287,45 @@ The library performs goodness-of-fit testing to validate that the fitted distrib
 
 If Pearson Type III fitting fails (due to insufficient data or numerical issues), the library automatically falls back to gamma distribution with warning messages in the log.
 
+### Run Theory (Event Identification)
+
+Run theory characterizes drought and wet events as *runs*: maximal contiguous
+periods on one side of a threshold (Yevjevich, 1967). `climate_indices.runs`
+reports detection and metrics only; severity classes, spatial aggregation, and
+period slicing stay downstream.
+
+For a run of $d$ values $x_i$ on the chosen side of a threshold $T$:
+
+$$
+\text{magnitude} = \sum_{i=1}^{d} |x_i - T|
+\qquad
+\text{intensity} = \frac{\text{magnitude}}{d}
+$$
+
+The **peak** is the minimum value in the run when below the threshold, the
+maximum when above. **Interarrival** is the number of time steps from one run's
+start to the next run's start, so the final run has none (NaN).
+
+Conventions:
+
+- Direction is explicit (`direction="below"` or `"above"`) and never inferred
+  from the threshold's sign, so a threshold such as "above -0.5" is expressible
+  and wet runs take their peak on the maximum side.
+- A NaN value is not in any run and terminates the run it would otherwise
+  continue, so gaps split runs.
+- A value exactly equal to the threshold is not in a run.
+- `min_duration` filters runs after identification, and interarrival is
+  computed between surviving runs only.
+
+The primitive is index-agnostic: a dry SPI spell, a wet SPEI spell, and a KBDI
+drought spell (``direction="above"``, since KBDI rises in drought) are the same
+run concept on a different series.
+
+**Reference**: Yevjevich, V. (1967). *An objective approach to definitions and
+investigations of continental hydrologic droughts*. Hydrology Papers 23,
+Colorado State University. Drought classes: McKee et al. (1993) and WMO (2012),
+both in the bibliography below.
+
 ## Complete Bibliography
 
 **SPI and Drought Indices:**

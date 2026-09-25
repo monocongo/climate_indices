@@ -24,6 +24,10 @@ _Avoid_: pearson3 (this spelling only appears in test-fixture filenames, not in 
 **Probability of Zero**:
 The empirical fraction of zero-valued observations at a given calendar time step, tracked separately because precipitation (and P−PET series for SPEI) can be exactly zero, which the continuous Gamma/Pearson distributions can't represent directly. Mixed into the fitted CDF so zero-precipitation periods still get a well-defined standardized value.
 
+**Run (Run Theory)**
+A maximal contiguous sequence of time steps on one side of a threshold, found by `runs.identify_runs()` and returned as a `RunSet`. A run's *duration* is its length in time steps, its *magnitude* the sum of absolute deviations from the threshold, its *intensity* the magnitude per time step, its *peak* the most extreme value on the run's side (minimum for below, maximum for above), and its *interarrival* the steps from one run's start to the next run's start. Direction is explicit (`"below"`/`"above"`), never inferred from the threshold's sign; NaN terminates a run. A drought event, a wet event, and a KBDI drought spell (``direction="above"``, since KBDI rises in drought) are all runs on different series.
+_Avoid_: Spell (the Palmer/KBDI-specific name for a run; keep it in those contexts, not for the generic primitive)
+
 ### Indices
 
 **SPI (Standardized Precipitation Index)**:
