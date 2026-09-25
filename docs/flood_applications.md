@@ -142,6 +142,16 @@ routed discharge
 ([ADR-0014](adr/0014-flood-family-scientific-conventions.md)). None of these
 is part of this package yet.
 
+## Worked example: Brisbane and Lockyer Valley, January 2011
+
+`notebooks/flood_event_brisbane_2011.ipynb` runs I_F, API, and SPI-3 end to
+end on NOAA PSL CPC daily precipitation around the January 2011 Brisbane and
+Lockyer Valley flood event, and compares them at the cell nearest Brisbane.
+It downloads its own inputs (cached under the git-ignored `data/flood-demo/`)
+and is executed locally by `scripts/smoke_flood_demo_notebook.sh`; no CI job
+runs it because it needs the network. Read the notebook's "How to read this"
+section for what the indices do and do not show about the event.
+
 ## What these indices cannot tell you
 
 - **Flood potential is not flooding.** Terrain, soils, land cover, and river
