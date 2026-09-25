@@ -1928,6 +1928,11 @@ def fit_and_standardize(
             skews,
         )
 
+    if values.ndim == 1:
+        # the Pearson fit reshapes a 1-D series to (years, periods); do it here so the
+        # valid-input mask below has the shape of the fitted result
+        values = _validate_array(values, periodicity)
+
     try:
         standardized = transform_fitted_pearson(
             values,

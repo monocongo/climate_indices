@@ -977,3 +977,18 @@ def test_fit_and_standardize_does_not_count_missing_input_as_a_failed_pearson_fi
 
     gamma.assert_not_called()
     np.testing.assert_array_equal(computed, pearson_result)
+
+
+@pytest.mark.parametrize("length", [360, 350])
+def test_fit_and_standardize_accepts_1d_input_when_the_fall_back_is_enabled(length):
+    """
+    A 1-D series is reshaped to (years, periods) as the Pearson fit reshapes it, so the
+    fall-back check sees an input of the same shape as the fitted result (#1118).
+    """
+    values = np.random.default_rng(0).gamma(2.0, 30.0, length)
+    args = (indices.Distribution.pearson, 2000, 2000, 2028, compute.Periodicity.monthly)
+
+    computed = compute.fit_and_standardize(values, *args, fallback_to_gamma=True)
+
+    assert computed.shape == (30, 12)
+    np.testing.assert_allclose(computed, compute.fit_and_standardize(values, *args), equal_nan=True)
