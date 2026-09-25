@@ -12,7 +12,7 @@ bibliography.
 
 ## Overview
 
-The `climate_indices` library implements scientifically validated algorithms for computing drought and climate variability indices. All implementations follow peer-reviewed methodologies and have been validated against reference datasets. The algorithms are designed for operational climate monitoring, research applications, and climate impact assessments.
+The `climate_indices` library implements algorithms for computing drought and climate variability indices. The implementations follow peer-reviewed methodologies, but validation evidence varies by index: some have been validated against reference datasets, while the flood indices have regression and specification checks only, with no adopted external numeric oracle. The algorithms are designed for operational climate monitoring, research applications, and climate impact assessments.
 
 ## Standardized Precipitation Index (SPI)
 

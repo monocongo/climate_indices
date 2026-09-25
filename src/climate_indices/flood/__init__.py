@@ -105,7 +105,7 @@ def edi(
     duration: int = 365,
     spatial_time_major: bool = False,
 ) -> npt.NDArray[np.float64] | xr.DataArray:
-    """Calculate fixed-window EDI from PE (moisture conditions, not flooding).
+    """Calculate fixed-window EDI from PE (flood potential, not flooding).
 
     DataArray dispatch is beta; omitted years are inferred from daily coordinates.
     PE must be computed with the same duration and in millimeters.
