@@ -1948,8 +1948,10 @@ def fit_and_standardize(
 
         # check if fallback is needed due to excessive NaN values, judging only the
         # values the fit lost: input that was already missing (an ocean mask, a sparse
-        # series) says nothing about whether the Pearson fit worked
-        if _default_fallback_strategy.should_fallback_from_excessive_nans(standardized[~np.isnan(values)]):
+        # series) says nothing about whether the Pearson fit worked, and an input with
+        # nothing valid has nothing to lose
+        valid = ~np.isnan(values)
+        if valid.any() and _default_fallback_strategy.should_fallback_from_excessive_nans(standardized[valid]):
             raise ValueError("Pearson distribution fitting resulted in excessive missing values")
 
     except (ValueError, Warning, DistributionFittingError) as e:

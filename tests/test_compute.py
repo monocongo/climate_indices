@@ -992,3 +992,25 @@ def test_fit_and_standardize_accepts_1d_input_when_the_fall_back_is_enabled(leng
 
     assert computed.shape == (30, 12)
     np.testing.assert_allclose(computed, compute.fit_and_standardize(values, *args), equal_nan=True)
+
+
+def test_fit_and_standardize_does_not_fall_back_when_the_input_is_entirely_missing():
+    """
+    An input with no valid values has nothing for the Pearson fit to lose, so it is not
+    a failed fit and does not trigger the gamma fall back (#1118).
+    """
+    values = np.full((10, 12), np.nan)
+
+    with mock.patch("climate_indices.compute.transform_fitted_gamma") as gamma:
+        computed = compute.fit_and_standardize(
+            values,
+            indices.Distribution.pearson,
+            2000,
+            2000,
+            2009,
+            compute.Periodicity.monthly,
+            fallback_to_gamma=True,
+        )
+
+    gamma.assert_not_called()
+    assert np.isnan(computed).all()
