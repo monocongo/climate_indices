@@ -57,23 +57,22 @@ class RunSet:
     Runs appear in time order. All arrays have the same length, and an index
     without runs is represented by zero-length arrays rather than ``None``.
 
-    Attributes:
-        start_index: Index of each run's first time step.
-        end_index: Index of each run's last time step (inclusive).
-        duration: Number of time steps in each run.
-        magnitude: Cumulative deviation from the threshold (the sum of
-            ``threshold - value`` for ``direction="below"``, ``value - threshold``
-            for ``direction="above"``), always positive.
-        intensity: Mean deviation per time step, ``magnitude / duration``.
-        peak_value: Most extreme value in each run: the minimum for
-            ``direction="below"``, the maximum for ``direction="above"``.
-        peak_index: Index of ``peak_value``; the first occurrence when tied.
-        interarrival: Number of time steps from each run's start to the next
-            run's start, computed after ``min_duration`` filtering; the last
-            run has no successor and holds NaN.
-
     Instances compare by value, treating NaN entries as equal, and are
     unhashable because their fields are arrays.
+
+    :param start_index: index of each run's first time step
+    :param end_index: index of each run's last time step (inclusive)
+    :param duration: number of time steps in each run
+    :param magnitude: cumulative deviation from the threshold (the sum of
+        ``threshold - value`` for ``direction="below"``, ``value - threshold``
+        for ``direction="above"``), always positive
+    :param intensity: mean deviation per time step, ``magnitude / duration``
+    :param peak_value: most extreme value in each run: the minimum for
+        ``direction="below"``, the maximum for ``direction="above"``
+    :param peak_index: index of ``peak_value``; the first occurrence when tied
+    :param interarrival: number of time steps from each run's start to the next
+        run's start, computed after ``min_duration`` filtering; the last run
+        has no successor and holds NaN
     """
 
     start_index: npt.NDArray[np.int64]
