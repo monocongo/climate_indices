@@ -3,8 +3,8 @@
 A *run* is a maximal contiguous sequence of time steps on one side of a threshold
 (Yevjevich, 1967). For drought monitoring a run below a negative SPI/SPEI
 threshold is a drought event; a run above a positive threshold is a wet event.
-The same primitive applies to any standardized index (SPI, SPEI, EDDI, PDSI,
-KBDI): see ``docs/algorithm-reference.md``.
+The same primitive applies to any index series, standardized or not (SPI, SPEI,
+EDDI, PDSI, KBDI): see ``docs/algorithm-reference.md``.
 
 Conventions:
 
@@ -18,6 +18,9 @@ Conventions:
   strict).
 - ``min_duration`` filters runs *after* identification, and ``interarrival`` is
   then computed between the surviving runs only.
+- Masked array elements count as missing, like NaN; non-numeric arrays
+  (datetime, string, object, or complex) are rejected with
+  :class:`~climate_indices.exceptions.InputTypeError`.
 
 The functions here return run metrics only: spatial aggregation, period slicing,
 and DataFrame formatting stay downstream.
@@ -25,14 +28,20 @@ and DataFrame formatting stay downstream.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, fields
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
 import xarray as xr
 
-from climate_indices.exceptions import DataShapeError, DimensionMismatchError, InvalidArgumentError
+from climate_indices.exceptions import (
+    DataShapeError,
+    DimensionMismatchError,
+    InputTypeError,
+    InvalidArgumentError,
+)
 
 __all__ = ["RunSet", "identify_runs", "identify_runs_xarray"]
 
@@ -41,7 +50,7 @@ Direction = Literal["below", "above"]
 _VALID_DIRECTIONS: tuple[str, ...] = ("below", "above")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class RunSet:
     """Metrics for the runs found in a time series, one array entry per run.
 
@@ -62,6 +71,9 @@ class RunSet:
         interarrival: Number of time steps from each run's start to the next
             run's start, computed after ``min_duration`` filtering; the last
             run has no successor and holds NaN.
+
+    Instances compare by value, treating NaN entries as equal, and are
+    unhashable because their fields are arrays.
     """
 
     start_index: npt.NDArray[np.int64]
@@ -87,8 +99,24 @@ class RunSet:
         )
 
 
-def _validate_options(threshold: float, direction: str, min_duration: int) -> None:
-    """Validate the run-selection options shared by both public functions."""
+def _require_numeric(dtype: np.dtype[Any]) -> None:
+    """Reject dtypes that would otherwise be coerced into meaningless numbers."""
+    if dtype.kind not in "biuf":
+        raise InputTypeError(
+            "Index values must be numeric: datetime, string, object, and complex arrays are not coerced to float64.",
+            expected_type=float,
+            actual_type=dtype.type,
+        )
+
+
+def _as_float_series(values: npt.ArrayLike) -> npt.NDArray[np.float64]:
+    """Coerce a series to float64, turning masked elements into NaN."""
+    _require_numeric(np.asarray(values).dtype)
+    return np.asarray(np.ma.asarray(values, dtype=np.float64).filled(np.nan), dtype=np.float64)
+
+
+def _resolve_options(threshold: float, direction: str, min_duration: int) -> tuple[float, int]:
+    """Validate the run-selection options and return the threshold and minimum duration."""
     if direction not in _VALID_DIRECTIONS:
         raise InvalidArgumentError(
             "direction must be 'below' or 'above'.",
@@ -96,9 +124,13 @@ def _validate_options(threshold: float, direction: str, min_duration: int) -> No
             argument_value=direction,
             valid_values="'below' or 'above'",
         )
-    if not np.isfinite(threshold):
+    try:
+        threshold_value = float(threshold)
+    except (TypeError, ValueError):
+        threshold_value = math.nan
+    if not math.isfinite(threshold_value):
         raise InvalidArgumentError(
-            "threshold must be finite.",
+            "threshold must be a finite number.",
             argument_name="threshold",
             argument_value=str(threshold),
             valid_values="any finite number",
@@ -110,6 +142,7 @@ def _validate_options(threshold: float, direction: str, min_duration: int) -> No
             argument_value=str(min_duration),
             valid_values="integer >= 1",
         )
+    return threshold_value, int(min_duration)
 
 
 def identify_runs(
@@ -122,7 +155,8 @@ def identify_runs(
 
     Args:
         values: One-dimensional time series of index values (for example SPI or
-            SPEI), in time order.
+            SPEI), in time order. Masked elements count as missing, like NaN.
+            Non-numeric arrays are rejected.
         threshold: Run threshold. Defaults to -1.0, the conventional
             moderate-drought SPI threshold.
         direction: ``"below"`` to find runs of values below ``threshold``, or
@@ -142,6 +176,8 @@ def identify_runs(
             not a positive integer.
         DataShapeError: If ``values`` is not one-dimensional. For gridded data
             use :func:`identify_runs_xarray`.
+        InputTypeError: If ``values`` is not numeric (datetime, string, object,
+            or complex).
 
     Examples:
         >>> import numpy as np
@@ -153,9 +189,9 @@ def identify_runs(
         >>> found.start_index.tolist(), found.duration.tolist()
         ([1, 5], [2, 2])
     """
-    _validate_options(threshold, direction, min_duration)
+    threshold_value, min_duration_value = _resolve_options(threshold, direction, min_duration)
 
-    series = np.asarray(values, dtype=np.float64)
+    series = _as_float_series(values)
     if series.ndim != 1:
         raise DataShapeError(
             "values must be a one-dimensional time series; use identify_runs_xarray for gridded data.",
@@ -163,6 +199,17 @@ def identify_runs(
             actual_shape=series.shape,
         )
 
+    return _identify_runs(series, threshold_value, direction, min_duration_value)
+
+
+def _identify_runs(
+    series: npt.NDArray[np.float64],
+    threshold: float,
+    direction: Direction,
+    min_duration: int,
+) -> RunSet:
+    """Find runs in a validated one-dimensional float64 series (the apply_ufunc kernel)."""
+    series = np.asarray(series, dtype=np.float64)
     condition = series < threshold if direction == "below" else series > threshold
     condition &= ~np.isnan(series)
 
@@ -237,37 +284,51 @@ def identify_runs_xarray(
         Otherwise, an object-dtype ``xr.DataArray`` with the time dimension
         removed, holding one :class:`RunSet` per cell, with the input's
         coordinates and the options recorded in ``attrs``. Dask-backed input
-        keeps its chunks, except the time dimension, which is rechunked whole so
-        that runs spanning chunk boundaries are not split. Per-cell results are
-        ragged by nature, so downstream aggregation is expected to reduce them
-        to fixed-shape statistics.
+        stays lazy, with the time dimension rechunked whole (whole-series runs
+        cannot be computed chunk by chunk) and the cell chunks preserved.
+        Per-cell results are ragged by nature, so downstream aggregation is
+        expected to reduce them to fixed-shape statistics.
 
     Raises:
         DimensionMismatchError: If ``data`` has no ``time_dim`` dimension.
+        InputTypeError: If ``data`` is not numeric (datetime, string, object,
+            or complex).
         InvalidArgumentError: If ``direction``, ``threshold``, or
             ``min_duration`` is invalid.
     """
     if time_dim not in data.dims:
         raise DimensionMismatchError(
-            f"data must have a {time_dim!r} dimension.",
-            expected_dims=f"({time_dim}, ...)",
+            message=(
+                f"Dimension '{time_dim}' not found in data. "
+                f"Available dimensions: {list(data.dims)}. Use time_dim to specify a custom name."
+            ),
+            expected_dims=time_dim,
             actual_dims=tuple(data.dims),
             coordinate_name=time_dim,
+            reason="missing_dimension",
         )
-    _validate_options(threshold, direction, min_duration)
+    threshold_value, min_duration_value = _resolve_options(threshold, direction, min_duration)
+    _require_numeric(data.dtype)
 
     if data.ndim == 1:
-        return identify_runs(data.values, threshold=threshold, direction=direction, min_duration=min_duration)
+        return identify_runs(
+            data.values, threshold=threshold_value, direction=direction, min_duration=min_duration_value
+        )
+
+    if data.chunks is not None:
+        # whole-series runs need the time dimension in one chunk, and pre-chunking it
+        # here also stops apply_ufunc from rebalancing the cell chunks
+        data = data.chunk({time_dim: -1})
 
     found = xr.apply_ufunc(
-        identify_runs,
+        _identify_runs,
         data,
         input_core_dims=[[time_dim]],
         output_core_dims=[[]],
         vectorize=True,
         dask="parallelized",
         output_dtypes=[object],
-        kwargs={"threshold": threshold, "direction": direction, "min_duration": min_duration},
+        kwargs={"threshold": threshold_value, "direction": direction, "min_duration": min_duration_value},
         dask_gufunc_kwargs={"allow_rechunk": True},
     )
     assert isinstance(found, xr.DataArray)  # single output, so apply_ufunc cannot return a tuple

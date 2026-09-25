@@ -10,7 +10,12 @@ import pytest
 import xarray as xr
 
 from climate_indices import runs
-from climate_indices.exceptions import DataShapeError, DimensionMismatchError, InvalidArgumentError
+from climate_indices.exceptions import (
+    DataShapeError,
+    DimensionMismatchError,
+    InputTypeError,
+    InvalidArgumentError,
+)
 
 # the study copy is an optional, local-only oracle (`precip-index`); the comparison
 # tests skip when it is not checked out (e.g. CI)
@@ -162,6 +167,64 @@ def test_list_input_is_accepted() -> None:
     np.testing.assert_array_equal(found.duration, [2])
 
 
+def test_masked_elements_are_treated_as_missing() -> None:
+    masked = np.ma.masked_array([0.5, -1.5, -999.0, -1.5], mask=[False, False, True, False])
+
+    found = runs.identify_runs(masked, threshold=-1.0)
+
+    # the masked element is missing, so it terminates the run rather than
+    # contributing its fill value
+    np.testing.assert_array_equal(found.start_index, [1, 3])
+    np.testing.assert_array_equal(found.duration, [1, 1])
+    np.testing.assert_allclose(found.magnitude, [0.5, 0.5])
+    np.testing.assert_allclose(found.peak_value, [-1.5, -1.5])
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        np.array(["0.5", "-2.0"]),
+        np.array(["2020-01-01"], dtype="datetime64[D]"),
+        np.array([0.5 + 9j, -1.5 + 0j]),
+        np.array([0.5, None], dtype=object),
+    ],
+)
+def test_non_numeric_input_is_rejected(values: np.ndarray) -> None:
+    with pytest.raises(InputTypeError, match="numeric"):
+        runs.identify_runs(values, threshold=-1.0)
+
+
+def test_non_scalar_threshold_raises() -> None:
+    with pytest.raises(InvalidArgumentError, match="threshold"):
+        runs.identify_runs(BELOW_SERIES, threshold=np.array([-1.0, -2.0]))  # type: ignore[arg-type]
+
+
+def test_min_duration_accepts_numpy_integer_and_rejects_bool() -> None:
+    found = runs.identify_runs(BELOW_SERIES, threshold=-1.0, min_duration=np.int64(2))
+    np.testing.assert_array_equal(found.start_index, [1, 5])
+
+    with pytest.raises(InvalidArgumentError, match="min_duration"):
+        runs.identify_runs(BELOW_SERIES, threshold=-1.0, min_duration=True)  # type: ignore[arg-type]
+
+
+def test_interarrival_is_between_surviving_runs_only() -> None:
+    # runs [0-3] (kept), [6] (discarded by min_duration), [10-12] (kept)
+    series = np.array([-1.5, -1.2, -1.4, -1.3, 0.1, 0.2, -1.1, 0.3, 0.1, 0.2, -1.6, -1.2, -1.3])
+
+    found = runs.identify_runs(series, threshold=-1.0, min_duration=2)
+
+    np.testing.assert_array_equal(found.start_index, [0, 10])
+    np.testing.assert_allclose(found.interarrival, [10.0, np.nan], equal_nan=True)
+
+
+def test_peak_index_is_first_when_tied() -> None:
+    below = runs.identify_runs(np.array([-1.5, -1.5, -1.2, 0.0]), threshold=-1.0)
+    above = runs.identify_runs(np.array([1.5, 1.5, 1.2]), threshold=1.0, direction="above")
+
+    np.testing.assert_array_equal(below.peak_index, [0])
+    np.testing.assert_array_equal(above.peak_index, [0])
+
+
 def test_run_set_equality_compares_values_and_treats_nan_interarrival_as_equal() -> None:
     first = runs.identify_runs(BELOW_SERIES, threshold=-1.0)
     second = runs.identify_runs(BELOW_SERIES, threshold=-1.0)
@@ -170,6 +233,8 @@ def test_run_set_equality_compares_values_and_treats_nan_interarrival_as_equal()
     assert first == second
     assert first != different
     assert first != "not a run set"
+    with pytest.raises(TypeError, match="unhashable"):
+        hash(first)
 
 
 def test_two_dimensional_numpy_input_is_rejected() -> None:
@@ -248,13 +313,41 @@ def test_xarray_dask_matches_eager() -> None:
     dask_data = eager.chunk({"time": 7, "lat": 2})
     found = runs.identify_runs_xarray(dask_data, threshold=-1.0)
 
-    # the time axis is rechunked whole, so runs spanning chunk boundaries survive
+    # the time axis is rechunked whole, so runs spanning chunk boundaries survive,
+    # and the cell chunks are preserved rather than rebalanced
     assert found.chunks is not None  # still lazy
+    assert found.chunks == dask_data.isel(time=0, drop=True).chunks
     computed = found.compute()
     expected = runs.identify_runs_xarray(eager, threshold=-1.0)
     for i in range(3):
         for j in range(2):
             assert computed.values[i, j] == expected.values[i, j]
+
+
+def test_xarray_time_dim_not_leading() -> None:
+    values = np.array([[0.5, -1.2, -1.5, -0.8, 0.3, -1.1, -1.3], [0.5, 0.4, 0.2, 0.3, 0.1, 0.0, -0.2]])
+    data = xr.DataArray(values, dims=["lat", "time"], coords={"lat": [10.0, 20.0]})
+
+    found = runs.identify_runs_xarray(data, threshold=-1.0, time_dim="time")
+
+    assert found.dims == ("lat",)
+    for i in range(values.shape[0]):
+        assert found.values[i] == runs.identify_runs(values[i], threshold=-1.0)
+
+
+def test_xarray_validation_errors() -> None:
+    data = xr.DataArray(np.zeros((6, 2)), dims=["time", "cells"])
+
+    for kwargs in ({"direction": "sideways"}, {"threshold": np.nan}, {"min_duration": 0}):
+        with pytest.raises(InvalidArgumentError):
+            runs.identify_runs_xarray(data, **kwargs)  # type: ignore[arg-type]
+
+
+def test_xarray_non_numeric_input_is_rejected() -> None:
+    data = xr.DataArray(np.array([["0.5", "-2.0"], ["0.1", "0.2"]]), dims=["time", "cells"])
+
+    with pytest.raises(InputTypeError, match="numeric"):
+        runs.identify_runs_xarray(data, threshold=-1.0)
 
 
 def test_xarray_custom_time_dim() -> None:
@@ -280,6 +373,8 @@ def test_xarray_attrs_record_the_options() -> None:
     assert found.attrs["threshold"] == -1.5
     assert found.attrs["direction"] == "above"
     assert found.attrs["min_duration"] == 3
+    assert found.name == "runs"
+    assert "long_name" in found.attrs
 
 
 def _compare_with_study(series: np.ndarray, threshold: float, min_duration: int, study: object) -> None:
