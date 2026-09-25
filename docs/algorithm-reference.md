@@ -318,7 +318,8 @@ Conventions:
   computed between surviving runs only.
 
 The primitive is index-agnostic: a dry SPI spell, a wet SPEI spell, and a KBDI
-wet spell are the same run concept on a different series.
+drought spell (``direction="above"``, since KBDI rises in drought) are the same
+run concept on a different series.
 
 **Reference**: Yevjevich, V. (1967). *An objective approach to definitions and
 investigations of continental hydrologic droughts*. Hydrology Papers 23,

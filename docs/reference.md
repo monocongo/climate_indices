@@ -185,6 +185,13 @@ The Dask-backed SPI/SPEI workflow is demonstrated end to end in
    :members:
 ```
 
+### climate_indices.runs
+
+```{eval-rst}
+.. automodule:: climate_indices.runs
+   :members:
+```
+
 ### climate_indices.utils
 
 ```{eval-rst}
