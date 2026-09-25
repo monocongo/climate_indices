@@ -52,13 +52,13 @@ The options are described below:
 * - Option
   - Description
 * - index
-  - Which of the climate indices to compute (required). Valid values are 'spi', 'spei', 'pnp', 'scaled', 'pet', 'palmers', 'kbdi', and 'all'. 'scaled' indicates all three scaled indices (SPI, SPEI, and PNP) and 'palmers' indicates all Palmer indices (PDSI, PHDI, PMDI, Z-Index, scPDSI). KBDI is only available via 'kbdi', not 'all'.
+  - Which of the climate indices to compute (required). Valid values are 'spi', 'spei', 'pnp', 'scaled', 'pet', 'palmers', 'kbdi', 'pe', 'edi', 'flood_index', 'api', and 'all'. 'scaled' indicates all three scaled indices (SPI, SPEI, and PNP) and 'palmers' indicates all Palmer indices (PDSI, PHDI, PMDI, Z-Index, scPDSI). KBDI and the flood indices (effective precipitation 'pe', the Effective Drought Index 'edi', the Flood Index 'flood_index', and the Antecedent Precipitation Index 'api') are only available via their own values, not 'all'. The flood indices show flood potential, not flooding.
 * - periodicity
   - The periodicity of the input dataset files (required). Valid values are 'monthly' and 'daily'.
 
-    **NOTE**: SPI, SPEI (with a PET input), PNP, and KBDI accept daily inputs; KBDI requires daily inputs. Palmers and 'all' require monthly inputs.
+    **NOTE**: SPI, SPEI (with a PET input), PNP, and KBDI accept daily inputs; KBDI and the flood indices require daily inputs. Palmers and 'all' require monthly inputs.
 * - netcdf_precip
-  - Input NetCDF file containing a precipitation dataset, required for all indices except for PET. Requires the use of **var_name_precip** in conjunction so as to identify the NetCDF's precipitation variable.
+  - Input NetCDF file containing a precipitation dataset, required for all indices except for PET, and except for EDI and the Flood Index when **netcdf_pe** is provided instead. Requires the use of **var_name_precip** in conjunction so as to identify the NetCDF's precipitation variable.
 * - var_name_precip
   - Name of the precipitation variable within the input precipitation NetCDF.
 * - netcdf_temp
@@ -73,12 +73,20 @@ The options are described below:
   - Input NetCDF file containing available water capacity, required for Palmers and 'all'. Requires the use of **var_name_awc** in conjunction so as to identify the NetCDF's AWC variable.
 * - var_name_awc
   - Name of the available water capacity variable within the input AWC NetCDF.
+* - netcdf_pe
+  - Input NetCDF file containing effective precipitation (PE), as written by **index** 'pe'. Applicable only when **index** is 'edi' or 'flood_index', which otherwise compute PE from **netcdf_precip** and write it as `<output_file_base>_pe.nc`. This option is mutually exclusive with **netcdf_precip**, since there is no way to determine which to use (provide exactly one of them). Requires the use of **var_name_pe** in conjunction so as to identify the NetCDF's PE variable.
+* - var_name_pe
+  - Name of the effective precipitation variable within the input PE NetCDF.
+* - year_start_month
+  - Calendar month (1-12) on which each year of annual maxima starts. Required when **index** is 'flood_index', and applicable only then.
+* - api_k
+  - Daily decay constant of the Antecedent Precipitation Index, strictly between 0 and 1. Required when **index** is 'api', and applicable only then.
 * - kbdi_units
   - Units of the KBDI input and output values. Valid values are 'metric' (millimeters and degrees Celsius; default) and 'imperial' (inches and degrees Fahrenheit, with output in hundredths of an inch). Applicable only when **index** is 'kbdi'.
 * - kbdi_initial
   - Initial KBDI value. Default value is 0.0. Applicable only when **index** is 'kbdi'.
 * - chunksizes
-  - Chunking of the written output file, not of the computation: 'none' (default) lets the writer choose the output layout, and 'input' uses the on-disk chunks of the first input variable that reports chunk sizes without being explicitly contiguous (for KBDI, the precipitation variable's chunks). The copied chunks are reordered to the output's dimension order and trimmed to its shape, and are ignored, with a warning, when that variable's dimensions don't match the output's.
+  - Chunking of the written output file, not of the computation: 'none' (default) lets the writer choose the output layout, and 'input' uses the on-disk chunks of the first input variable that reports chunk sizes without being explicitly contiguous (for KBDI, PE, and API, the precipitation variable's chunks; for EDI and the Flood Index, the PE variable's). The copied chunks are reordered to the output's dimension order and trimmed to its shape, and are ignored, with a warning, when that variable's dimensions don't match the output's.
 * - output_file_base
   - Base file name for all output files (required).
 
@@ -88,9 +96,9 @@ The options are described below:
 
     **NOTE**: When used for US climate divisions processing this option specifies month scales
 * - calibration_start_year
-  - Initial year of the calibration period.
+  - Initial year of the calibration period. Optional for EDI and the Flood Index, and inferred from the input when omitted.
 * - calibration_end_year
-  - Final year of the calibration period (inclusive).
+  - Final year of the calibration period (inclusive). Optional for EDI and the Flood Index, and inferred from the input when omitted. For the Flood Index it is the start year of the last complete annual period, as set by **year_start_month**.
 * - multiprocessing
   - Valid values are 'all' (uses all available CPUs), 'single' (uses a single CPU), or 'all_but_one' (uses all CPUs minus one). Default value is 'all_but_one'.
 ```
