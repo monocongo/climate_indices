@@ -277,6 +277,7 @@ def test_invalid_min_duration_raises(min_duration: float) -> None:
         10**400,
         np.ma.masked,
         np.ma.masked_array(1.0, mask=True),
+        np.array(True),
     ],
 )
 def test_non_finite_threshold_raises(threshold: object) -> None:
@@ -394,6 +395,17 @@ def test_xarray_non_numeric_input_is_rejected() -> None:
 
     with pytest.raises(InputTypeError, match="numeric"):
         runs.identify_runs_xarray(data, threshold=-1.0)
+
+
+def test_xarray_empty_time_dim_on_dask_matches_eager() -> None:
+    eager = xr.DataArray(np.zeros((0, 2)), dims=["time", "cells"])
+
+    found = runs.identify_runs_xarray(eager.chunk({"time": 1}), threshold=-1.0)
+
+    # an empty time axis has to bypass dask's gufunc, which divides by the core chunk size
+    assert found.dims == ("cells",)
+    assert [len(run_set) for run_set in found.values] == [0, 0]
+    np.testing.assert_array_equal(found.values, runs.identify_runs_xarray(eager, threshold=-1.0).values)
 
 
 def test_xarray_custom_time_dim() -> None:

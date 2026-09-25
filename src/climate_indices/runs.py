@@ -110,8 +110,9 @@ def _require_numeric(dtype: np.dtype[Any]) -> None:
 
 def _as_float_series(values: npt.ArrayLike) -> npt.NDArray[np.float64]:
     """Coerce a series to float64, turning masked elements into NaN."""
-    _require_numeric(np.asarray(values).dtype)
-    return np.asarray(np.ma.asarray(values, dtype=np.float64).filled(np.nan), dtype=np.float64)
+    array = values if np.ma.isMaskedArray(values) else np.asarray(values)
+    _require_numeric(np.asarray(array).dtype)
+    return np.asarray(np.ma.asarray(array, dtype=np.float64).filled(np.nan), dtype=np.float64)
 
 
 def _invalid_threshold(threshold: object) -> InvalidArgumentError:
@@ -133,7 +134,7 @@ def _as_finite_threshold(threshold: object) -> float:
     is a footgun rather than a feature.
     """
     if isinstance(threshold, np.ndarray):
-        if np.ma.is_masked(threshold) or threshold.ndim != 0 or threshold.dtype.kind not in "biuf":
+        if np.ma.is_masked(threshold) or threshold.ndim != 0 or threshold.dtype.kind not in "iuf":
             raise _invalid_threshold(threshold)
         raw: object = threshold.item()
     elif isinstance(threshold, bool) or not isinstance(threshold, (int, float, np.integer, np.floating)):
@@ -310,9 +311,11 @@ def identify_runs_xarray(
         removed, holding one :class:`RunSet` per cell, with the input's
         coordinates and the options recorded in ``attrs``. Dask-backed input
         stays lazy, with the time dimension rechunked whole (whole-series runs
-        cannot be computed chunk by chunk) and the cell chunks preserved.
-        Per-cell results are ragged by nature, so downstream aggregation is
-        expected to reduce them to fixed-shape statistics.
+        cannot be computed chunk by chunk) and the cell chunks preserved, so a
+        cell block holds its entire time series in memory at once — roughly the
+        whole input for a cube chunked only along time. Per-cell results are
+        ragged by nature, so downstream aggregation is expected to reduce them
+        to fixed-shape statistics.
 
     Raises:
         DimensionMismatchError: If ``data`` has no ``time_dim`` dimension.
@@ -342,8 +345,9 @@ def identify_runs_xarray(
 
     if data.chunks is not None:
         # whole-series runs need the time dimension in one chunk, and pre-chunking it
-        # here also stops apply_ufunc from rebalancing the cell chunks
-        data = data.chunk({time_dim: -1})
+        # here also stops apply_ufunc from rebalancing the cell chunks; an empty time
+        # axis must go eager because dask's gufunc divides by the core chunk size
+        data = data.compute() if data.sizes[time_dim] == 0 else data.chunk({time_dim: -1})
 
     found = xr.apply_ufunc(
         _identify_runs,
