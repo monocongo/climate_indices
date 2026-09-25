@@ -152,7 +152,8 @@ unreproducible claim of reproduction.
 written ([#1117](https://github.com/monocongo/climate_indices/issues/1117)):
 PE and EDI can be checked against the originating group's own algebra
 (Byun & Lee 2002 Eq. (1)/(2)/(5)) and internal regression; API has the analytic
-`P/(1 − k)` limit, an independent `ahrapi` comparison, and regression, and its
+`P/(1 − k)` limit, an available-but-unadopted independent `ahrapi`
+implementation, and regression, and its
 recursion is now cited rather than assumed (Kohler & Linsley 1951 Eq. (3): each
 day's index is the previous day's multiplied by `k` with that day's rain added —
 the non-lagged form — with typical `k` of 0.85–0.90 and an assumed initial value
