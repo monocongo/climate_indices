@@ -603,9 +603,10 @@ def standardized_index(
     It is input-agnostic, so a runoff or streamflow series can be standardized the
     same way; the package does not model those quantities.
 
-    A Pearson Type III fit falls back to gamma when the fit fails or leaves too many
-    values missing. Log-logistic fitting is tracked by #106 and is not available yet,
-    so no caller should claim it.
+    A Pearson Type III fit falls back to gamma when the fit fails or loses too many of
+    the input's valid values; input that was already missing does not count.
+    Log-logistic fitting is tracked by #106 and is not available yet, so no caller
+    should claim it.
 
     This is a NumPy-array entry point only; xarray and Dask dispatch are not wired
     for it.
