@@ -1866,8 +1866,10 @@ def fit_and_standardize(
             Deprecated aliases such as "alphas" and "probabilities_of_zero" are
             accepted, and an explicit None means "fit this parameter from the data".
         fallback_to_gamma: Whether to fall back to the gamma distribution when a
-            Pearson Type III fit fails or leaves too many missing values. The
-            decision is made once for the whole input block, not per grid cell.
+            Pearson Type III fit fails or loses too many of the input's valid
+            values; input that was already missing does not count. The fall back
+            fits gamma to the scaled input, and the decision is made once for the
+            whole input block, not per grid cell.
         fallback_context: Context included in the fall-back warning log message.
 
     Returns:
@@ -1926,10 +1928,6 @@ def fit_and_standardize(
             skews,
         )
 
-    # the fall back is fitted to whatever the Pearson attempt left behind, as the
-    # indices have always done it: a failed call leaves the scaled input in place,
-    # while an excessive-NaN result takes that result as the fall-back input
-    standardized = values
     try:
         standardized = transform_fitted_pearson(
             values,
@@ -1943,16 +1941,19 @@ def fit_and_standardize(
             skews,
         )
 
-        # check if fallback is needed due to excessive NaN values
-        if _default_fallback_strategy.should_fallback_from_excessive_nans(standardized):
+        # check if fallback is needed due to excessive NaN values, judging only the
+        # values the fit lost: input that was already missing (an ocean mask, a sparse
+        # series) says nothing about whether the Pearson fit worked
+        if _default_fallback_strategy.should_fallback_from_excessive_nans(standardized[~np.isnan(values)]):
             raise ValueError("Pearson distribution fitting resulted in excessive missing values")
 
     except (ValueError, Warning, DistributionFittingError) as e:
         # use the centralized fallback strategy for consistent logging and behavior
         _default_fallback_strategy.log_fallback_warning(str(e), context=fallback_context)
 
+        # the fall back refits the scaled input, never the Pearson result it replaces
         return transform_fitted_gamma(
-            standardized,
+            values,
             data_start_year,
             calibration_start_year,
             calibration_end_year,

@@ -649,6 +649,26 @@ class TestSpatialPearsonEquivalence:
 
         np.testing.assert_array_equal(pearson_result.values, gamma_result.values)
 
+    def test_spi_pearson_matches_pointwise_when_most_cells_are_missing(self, gridded_monthly_precip, spatial_spi):
+        """Missing cells (an ocean mask) do not make the block-wide Pearson fall back fire (#1118)."""
+        grid = gridded_monthly_precip.copy()
+        # two of the three latitude rows are missing; the first row stays valid so the
+        # adapter's calibration preflight, which samples the first cell, passes
+        grid.values[:, 1:, :] = np.nan
+
+        result = spatial_spi(
+            grid,
+            scale=3,
+            distribution=indices.Distribution.pearson,
+            calibration_year_initial=_CALIBRATION_START,
+            calibration_year_final=_CALIBRATION_END,
+        )
+        expected = _pointwise_spi(grid.values, 3, indices.Distribution.pearson)
+
+        assert np.isfinite(result.values[:, 0, :]).any()
+        np.testing.assert_array_equal(np.isnan(result.values), np.isnan(expected))
+        np.testing.assert_allclose(result.values, expected, atol=1e-8, rtol=1e-7, equal_nan=True)
+
 
 def _goodness_of_fit_warnings(
     adapter,
