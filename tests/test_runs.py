@@ -301,9 +301,12 @@ def test_threshold_accepts_scalar_numeric_types() -> None:
 
 
 def test_threshold_is_not_silently_rounded() -> None:
+    series = np.array([1.0, -5.0])
+    threshold = Decimal("1.0000000000000000008")
+
     # Decimal is rejected rather than rounded to float64, so this stays an error
     with pytest.raises(InvalidArgumentError, match="threshold"):
-        runs.identify_runs(np.array([1.0, -5.0]), threshold=Decimal("1.0000000000000000008"))
+        runs.identify_runs(series, threshold=threshold)
 
 
 def test_xarray_1d_input_returns_run_set_directly() -> None:
