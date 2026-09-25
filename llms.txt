@@ -305,7 +305,7 @@ guarded only by internal fixtures.
 | Scope | Command | Expected result |
 | --- | --- | --- |
 | Core suite | `uv run pytest -m "not benchmark and not validation"` | Unit, property, xarray, release guardrail, and regression tests pass. |
-| Validation marker suite | `uv run pytest -m validation` | External validation tests, including committed NOAA EDDI fixtures, the SPEIbase v2.11 SPEI plausibility floors, the standard-Palmer nClimDiv comparison, the Srock et al. (2018) HDW event-discrimination fixture, and the flood-family source-identity checks (specification-level, not external; see "Flood Evidence Classification"), pass; scPDSI oracle cross-validation and all regression coverage pass. |
+| Validation marker suite | `uv run pytest -m validation` | External validation tests, including committed NOAA EDDI fixtures, the SPEIbase v2.11 SPEI plausibility floors, the standard-Palmer nClimDiv comparison, the Srock et al. (2018) HDW event-discrimination fixture, and the flood-family source-identity checks (specification-level, not external; see "Flood Evidence Classification"), pass; scPDSI oracle cross-validation passes. |
 | Lint | `uv run ruff check src/ tests/` | No lint findings. |
 | Format | `uv run ruff format --check src/ tests/` | No formatting changes needed. |
 | Notebooks | `uv run jupyter nbconvert --execute --to notebook --inplace notebooks/xarray_getting_started.ipynb notebooks/palmer_indices_xarray.ipynb notebooks/eddi_xarray.ipynb` | All 3.0.0 notebooks execute from a clean checkout. |
