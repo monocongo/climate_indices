@@ -1085,3 +1085,20 @@ def test_supplied_fitting_params_reproduce_the_inline_fit(
         inline_grid,
         equal_nan=True,
     )
+
+
+def test_spi_pearson_keeps_a_series_that_is_more_than_half_missing():
+    """
+    A single series with more than half of its values missing is fitted with Pearson
+    rather than tripping the gamma fall back on the missing input alone (#1118).
+    """
+    values = np.random.default_rng(7).gamma(2.0, 2.0, 480)
+    values[:288] = np.nan
+    args = (1, indices.Distribution.pearson, 1980, 1981, 2010, compute.Periodicity.monthly)
+
+    pearson = indices.spi(values, *args)
+    gamma = indices.spi(values, 1, indices.Distribution.gamma, 1980, 1981, 2010, compute.Periodicity.monthly)
+
+    assert np.count_nonzero(np.isfinite(pearson)) == np.count_nonzero(np.isfinite(values))
+    # the values are Pearson's, not the fall back's
+    assert not np.allclose(pearson, gamma, equal_nan=True)

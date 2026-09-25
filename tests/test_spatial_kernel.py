@@ -654,7 +654,7 @@ class TestSpatialPearsonEquivalence:
         grid = gridded_monthly_precip.copy()
         # two of the three latitude rows are missing; the first row stays valid so the
         # adapter's calibration preflight, which samples the first cell, passes
-        grid.values[:, 1:, :] = np.nan
+        grid[:, 1:, :] = np.nan
 
         result = spatial_spi(
             grid,
@@ -668,6 +668,29 @@ class TestSpatialPearsonEquivalence:
         assert np.isfinite(result.values[:, 0, :]).any()
         np.testing.assert_array_equal(np.isnan(result.values), np.isnan(expected))
         np.testing.assert_allclose(result.values, expected, atol=1e-8, rtol=1e-7, equal_nan=True)
+
+    @pytest.mark.parametrize("chunks", [{"lat": 1, "lon": 1}, {"lat": 3, "lon": 1}, {"lat": 2, "lon": 2}])
+    def test_spi_pearson_on_a_masked_grid_does_not_depend_on_chunking(
+        self, gridded_monthly_precip, spatial_spi, per_cell_spi, chunks
+    ):
+        """Block, per-cell, and chunked runs agree once missing cells no longer decide the fall back (#1118)."""
+        grid = gridded_monthly_precip.copy()
+        grid[:, 1:, :] = np.nan
+        kwargs = {
+            "scale": 3,
+            "distribution": indices.Distribution.pearson,
+            "calibration_year_initial": _CALIBRATION_START,
+            "calibration_year_final": _CALIBRATION_END,
+        }
+
+        block = spatial_spi(grid, **kwargs)
+        per_cell = per_cell_spi(grid, **kwargs)
+        chunked = spatial_spi(grid.chunk({"time": -1, **chunks}), **kwargs).compute()
+
+        assert np.isfinite(block.values[:, 0, :]).any()
+        for other in (per_cell, chunked):
+            np.testing.assert_array_equal(np.isnan(other.values), np.isnan(block.values))
+            np.testing.assert_allclose(other.values, block.values, atol=1e-8, rtol=1e-7, equal_nan=True)
 
 
 def _goodness_of_fit_warnings(
