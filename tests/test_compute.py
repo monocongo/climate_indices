@@ -1014,3 +1014,34 @@ def test_fit_and_standardize_does_not_fall_back_when_the_input_is_entirely_missi
 
     gamma.assert_not_called()
     assert np.isnan(computed).all()
+
+
+@pytest.mark.parametrize(("lost", "falls_back"), [(60, False), (61, True)])
+def test_fit_and_standardize_falls_back_only_when_pearson_loses_over_half_of_the_valid_values(lost, falls_back):
+    """
+    The trigger weighs the values Pearson lost against the input's valid values, so it
+    still fires for a partly missing input, and only for strictly more than half (#1118).
+    """
+    values = np.arange(1.0, 145.0).reshape(12, 12)
+    values[:2] = np.nan  # 24 values already missing, 120 valid
+    pearson_result = np.where(np.isnan(values), np.nan, 0.5)
+    pearson_result.flat[np.flatnonzero(~np.isnan(values))[:lost]] = np.nan
+
+    with mock.patch("climate_indices.compute.transform_fitted_pearson", return_value=pearson_result):
+        with mock.patch("climate_indices.compute.transform_fitted_gamma", return_value=np.ones(values.shape)) as gamma:
+            computed = compute.fit_and_standardize(
+                values,
+                indices.Distribution.pearson,
+                2000,
+                2000,
+                2011,
+                compute.Periodicity.monthly,
+                fallback_to_gamma=True,
+            )
+
+    if falls_back:
+        assert gamma.call_count == 1
+        np.testing.assert_array_equal(computed, np.ones(values.shape))
+    else:
+        gamma.assert_not_called()
+        np.testing.assert_array_equal(computed, pearson_result)
