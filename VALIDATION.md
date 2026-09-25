@@ -10,7 +10,7 @@ guarded only by internal fixtures.
 | Scope | Command | Expected result |
 | --- | --- | --- |
 | Core suite | `uv run pytest -m "not benchmark and not validation"` | Unit, property, xarray, release guardrail, and regression tests pass. |
-| Validation marker suite | `uv run pytest -m validation` | External validation tests, including committed NOAA EDDI fixtures, the SPEIbase v2.11 SPEI plausibility floors, the standard-Palmer nClimDiv comparison, and the Srock et al. (2018) HDW event-discrimination fixture, pass; scPDSI oracle cross-validation and all regression coverage pass. |
+| Validation marker suite | `uv run pytest -m validation` | External validation tests, including committed NOAA EDDI fixtures, the SPEIbase v2.11 SPEI plausibility floors, the standard-Palmer nClimDiv comparison, the Srock et al. (2018) HDW event-discrimination fixture, and the flood-family source-identity checks (specification-level, not external; see "Flood Evidence Classification"), pass; scPDSI oracle cross-validation and all regression coverage pass. |
 | Lint | `uv run ruff check src/ tests/` | No lint findings. |
 | Format | `uv run ruff format --check src/ tests/` | No formatting changes needed. |
 | Notebooks | `uv run jupyter nbconvert --execute --to notebook --inplace notebooks/xarray_getting_started.ipynb notebooks/palmer_indices_xarray.ipynb notebooks/eddi_xarray.ipynb` | All 3.0.0 notebooks execute from a clean checkout. |
@@ -32,6 +32,54 @@ guarded only by internal fixtures.
 | HDW | Event-discrimination reproduced; published magnitudes characterization only | Daily-series correlation floor `r >= 0.80` (measured 0.8679; floor stored in `tests/fixture/hdw_srock_cedar/provenance.json`); digitized reference uncertainty +/-5 hPa m s-1 | `tests/test_fire_hdw_reference.py` computes `fire.hot_dry_windy()` on the CFSR reanalysis profiles in `tests/fixture/hdw_srock_cedar/`, extracted at the grid point of Srock et al. (2018) Figure 4a (33.0 N, 116.5 W; 12 October through 9 November 2003), and confirms the daily maximum falls on 26 October 2003 -- the paper's significant fire-behavior day for the Cedar Fire -- 17% above the next-highest day. The digitized Figure 4a series is committed alongside the profiles, with its marker pixel coordinates for audit. | The paper publishes only figures, so the reference series is digitized (+/-5 hPa m s-1). Its adiabatically adjusted, independently maximized formulation (Section 3) is not the library's per-level VPD x wind product, and the digitized magnitudes are not reproducible from public metadata: the library's daily maximum exceeds them on five of 29 days, supplied by the 0000 UTC analysis on all five and by the 1200 UTC series alone on three, while the library's 1800 UTC values alone correlate at 0.945 with no exceedances. Magnitudes are therefore characterization, not validation; unit and example-value contracts remain covered by `tests/test_fire.py`. |
 | PDSI, PHDI, PMDI, Z-Index (standard Palmer) | Qualified independent external-product validation | nClimDiv comparison ceilings documented in `tests/test_nclimdiv_reference.py`; library fixtures `atol=5e-5`, `rtol=0` | `tests/test_nclimdiv_reference.py::test_pdsi_vs_noaa_nclimdiv_qualified_external_validation` compares `pdsi()` against the operational NOAA NCEI nClimDiv arrays for all 344 climate divisions, January 1895 through December 2022 (measured median absolute difference 0.0127; 86.2% of months within 0.05). `tests/test_palmer.py` retains the library-generated standard-Palmer fixtures as regression coverage. Both are marked `validation`. | Qualified rather than absolute: NCEI publishes two decimal places, and the committed `precips.npy`/`pet.npy` inputs are not byte-identical to NCEI's operational inputs, so the practical agreement floor is ~0.013 rather than 0.005. See "Palmer Validation Classification" below. |
 | scPDSI | Independent implementation cross-validation; nClimDiv comparison is characterization only | Wells-lineage oracle fixtures `atol=5e-5`, `rtol=0` in `tests/test_scpdsi.py`; nClimDiv characterization ceilings in `tests/test_nclimdiv_reference.py` | `tests/test_scpdsi.py` compares the four self-calibrating outputs and fitted duration factors against Wells-lineage reference fixtures for all 344 climate divisions. `tests/test_nclimdiv_reference.py::test_scpdsi_vs_noaa_nclimdiv_characterization` characterizes aggregate agreement against nClimDiv, which applies standard Palmer's fixed national calibration rather than per-division self-calibration. Both are marked `validation`. | No qualified external-product reference yet; assessing DRI/WRCC scPDSI for that role remains open (issue #780). The NCEI Fortran and Wells C++ recursion lineages disagree on roughly 6.3% of months by up to 8 PDSI units, and on those months the NCEI-lineage values sit closer to NOAA operational data 88% of the time (`tests/fixture/palmer/provenance.json`). |
+| PE (effective precipitation) | Regression only; specification-level (no external oracle adopted) | Source identities exact (`atol=0`); naive double-sum equivalence `rtol=1e-14`, `atol=1e-13` | `tests/test_flood_reference.py` (marked `validation`) checks the Byun & Wilhite (1999) Eq. (2) two-day identity and the harmonic endpoint weights `w₁ = H_D`, `w_D = 1 / D`, and freezes the public signature; `tests/test_flood_pe.py` checks the harmonic double sum against an independent naive sum, full-window NaN behavior, missing-day recovery, and Spatial Block layouts. | No numeric oracle is committed. The tabulated Byun & Wilhite (1999) Table 5 follows the paper's variable summation duration, not the fixed 365-day contract of ADR-0014, and its Hickman, Nebraska input record is not yet acquired (issue #1135); see "Flood Evidence Classification" and `tests/fixture/flood/README.md`. |
+| EDI | Regression only; specification-level (no external oracle adopted) | Fixed-window algebra exact; contract tolerances in `tests/test_flood_edi.py` | `tests/test_flood_edi.py` checks Eq. (9)'s fixed-window algebra (the harmonic factor cancels, leaving `DEP / SD(PE)` per calendar day), calibration-period validation, per-calendar-day baselines, and missing-data behavior; `tests/test_flood_reference.py` freezes the public signature. | The published Table 5 end-to-end values need the variable-duration convention this implementation does not use and the Hickman, Nebraska record (issue #1135); no other numeric oracle was located (`docs/research/flood-oracle-survey.md`). |
+| I_F (Flood Index) | Regression only; specification-level (no external oracle adopted) | Declared normalization and year boundaries checked with exact fixtures in `tests/test_flood_index.py` | `tests/test_flood_index.py` checks `I_F = (PE − mean(PE_max)) / SD(PE_max)` against complete annual maxima, `year_start_month` boundaries, partial-period exclusion, and missing maxima; `tests/test_flood_reference.py` freezes the public signature. | The Deo et al. (2015) full text is paywalled and its abstract describes an exponential kernel the library does not implement — ADR-0014 selects the harmonic double sum — so no reproducible I_F values are available. |
+| API (Antecedent Precipitation Index) | Regression only; specification-level (no external oracle adopted) | Exact fixture `api([4, 0, 2], 0.5) == [4, 2, 3]`; constant-input limit `abs=1e-15` | `tests/test_flood_reference.py` (marked `validation`) checks the Kohler & Linsley (1951) Eq. (3) recursion and the analytic `P / (1 − k)` limit; `tests/test_flood_antecedent.py` covers the state round-trip, gap policies, and Spatial Block contracts. | No accessible source tabulates index values; the retrieved Kohler & Linsley pages are definitional only and the located MIT `ahrapi` implementation was not adopted as a fixture (`docs/research/flood-oracle-survey.md`). |
+
+## Flood Evidence Classification
+
+The flood family — effective precipitation (PE), the Effective Drought Index
+(EDI), the Flood Index (I_F), and the Antecedent Precipitation Index (API) — is
+**not externally validated**. No reproducible numeric oracle from a published
+source is committed, so every flood row above is classified **regression
+only**: the tests encode primary-source algebra and public contracts, not an
+external reference dataset. Under the vocabulary that
+`docs/research/flood-oracle-survey.md` uses and maps to this document, no flood
+index reaches *exact reference*, *independent implementation*, or *digitized
+figure* status:
+
+- **Exact reference**: Byun & Wilhite (1999) Table 5 is the only located
+  tabulated end-to-end reference. It is not usable as this library's oracle: it
+  follows the paper's variable summation duration while
+  [ADR-0014](docs/adr/0014-flood-family-scientific-conventions.md) fixes the
+  365-day harmonic window, and the Hickman, Nebraska input record it requires
+  is not yet acquired (issue #1135).
+- **Independent implementation**: `tidyindex` and `rrk4910/EDI` (harmonic and
+  variable-duration EDI lineages) and the MIT `ahrapi` package (fixed-`k` API)
+  implement related but non-identical algorithms; none reproduces this
+  library's conventions and none is committed as a fixture.
+- **Digitized figure**: the Byun & Wilhite Figure 2 index panels are
+  supplementary lower-tier evidence the survey recommends only behind the
+  tabulated values; no figure has been digitized.
+- **Regression only**: what is committed. `tests/test_flood_reference.py`
+  (marked `validation`) pins the Byun & Wilhite (1999) Eq. (2) two-day
+  identity, the harmonic endpoint weights `w₁ = H_D` and `w_D = 1 / D`, the
+  Kohler & Linsley (1951) Eq. (3) API recursion, and the `P / (1 − k)`
+  constant-input limit, and freezes the public signatures. The per-index
+  contract suites cover the fixed-window EDI algebra, annual-maximum
+  normalization, missing data, and Spatial Block layouts, and
+  `tests/test_flood_xarray.py` checks NumPy/eager/Dask equivalence for the beta
+  xarray route.
+
+Even the tabulated Table 5, if it is eventually committed, would show
+reproduction of the originating group's own arithmetic rather than independent
+correctness of the method — the same distinction the scPDSI entry draws between
+independent-implementation cross-validation and external-product validation.
+`tests/fixture/flood/README.md` lists the retrieval work each index needs before
+a numeric oracle can be committed. Flood indices describe flood potential,
+not flooding: they are wetness measures upstream of terrain, soils, and
+routing, so even a validated value would not be a flood prediction.
 
 ## EDDI Fixture Policy
 
@@ -184,6 +232,19 @@ See "Palmer Validation Classification" above for the latter.
   parameter fitting, evapotranspiration models, tools, datasets and drought
   monitoring. International Journal of Climatology, 34(10), 3001-3023.
   https://doi.org/10.1002/joc.3887
+- Byun, H.-R., and Lee, D.-K. (2002). Defining three rainy seasons and the
+  hydrological summer monsoon in Korea using Available Water Resources Index.
+  Journal of the Meteorological Society of Japan, 80(1), 33-44.
+  https://doi.org/10.2151/jmsj.80.33
+- Byun, H.-R., and Wilhite, D. A. (1999). Objective quantification of drought
+  severity and duration. Journal of Climate, 12(9), 2747-2756.
+  https://doi.org/10.1175/1520-0442(1999)012%3C2747:OQODSA%3E2.0.CO;2
+- Deo, R. C., Byun, H.-R., Adamowski, J. F., and Kim, D.-W. (2015). A real-time
+  flood monitoring index based on daily effective precipitation and its
+  application to Brisbane and Lockyer Valley flood events. Water Resources
+  Management, 29(11), 4075-4093. https://doi.org/10.1007/s11269-015-1046-3
+- Kohler, M. A., and Linsley, R. K. (1951). Predicting the runoff from storm
+  rainfall. U.S. Weather Bureau Research Paper No. 34.
 - Hobbins, M. T., Wood, A., McEvoy, D. J., Huntington, J. L., Morton, C.,
   Anderson, M., and Hain, C. (2016). The Evaporative Demand Drought Index.
   Part I. Journal of Hydrometeorology, 17, 1745-1761.

@@ -82,26 +82,28 @@ potential of the approach in one region, not a transferable rule.
 
 ## Wet-extreme indices
 
-The NumPy PE kernel, EDI, I_F, and API are available as `flood.effective_precipitation()`,
-`flood.edi()`, `flood.flood_index()`, and `flood.antecedent_precipitation_index()`. Module and function names are fixed
+PE, EDI, I_F, and API are available through the stable NumPy API and beta xarray
+dispatch as `flood.effective_precipitation()`, `flood.edi()` (also
+`climate_indices.edi()`), `flood.flood_index()`, and
+`flood.antecedent_precipitation_index()`. Module and function names are fixed
 by [ADR-0013](adr/0013-flood-module-api-and-naming.md), with argument names,
 units, and signatures recorded in the internal flood subsystem design note.
 The [flood-family epic #1098][flood-epic] tracks the implementation order.
 
-- **Effective Precipitation (PE)** — *NumPy API available (FLOOD-08
-  [#1105][flood-1105])*. The daily accumulated-wetness kernel shared by EDI
+- **Effective Precipitation (PE)** — *NumPy and beta xarray APIs available
+  (FLOOD-08 [#1105][flood-1105], FLOOD-11 [#1108][flood-1108])*. The daily accumulated-wetness kernel shared by EDI
   and I_F, after [Byun & Wilhite (1999)][byun-1999]. Its fixed 365-day
   window yields NaN until a full window is available and for any window with
   a missing day. It measures flood potential, not flooding.
-- **Effective Drought Index (EDI)** — *NumPy API available (FLOOD-09
-  [#1106][flood-1106])*. A daily standardized index derived from effective
+- **Effective Drought Index (EDI)** — *NumPy and beta xarray APIs available
+  (FLOOD-09 [#1106][flood-1106], FLOOD-11 [#1108][flood-1108])*. A daily standardized index derived from effective
   precipitation ([Byun & Wilhite (1999)][byun-1999]); despite the name, it
   shares its kernel with the flood family. It implements the fixed-window form,
   not the paper's variable-duration extension
   ([ADR-0014](adr/0014-flood-family-scientific-conventions.md)); see
   {doc}`algorithm_refs/edi` for the algorithm and validation status.
-- **Flood Index (I_F)** — *NumPy API available (FLOOD-10
-  [#1107][flood-1107])*. A daily flood-potential index that standardizes effective precipitation
+- **Flood Index (I_F)** — *NumPy and beta xarray APIs available
+  (FLOOD-10 [#1107][flood-1107], FLOOD-11 [#1108][flood-1108])*. A daily flood-potential index that standardizes effective precipitation
   ([Deo et al. (2015)][deo-2015]). The annual-maximum window follows the
   caller's year boundary, and the kernel question — the abstracts describe an
   exponential form while the implemented kernel is unverified — is recorded in
@@ -124,7 +126,7 @@ The [flood-family epic #1098][flood-epic] tracks the implementation order.
   (FLOOD-17 [#1114][flood-1114]). Named wrappers are still an open decision
   ([#1132](https://github.com/monocongo/climate_indices/issues/1132)), and the
   xarray entry point also needs the CF metadata registry entries
-  ([FLOOD-06 #1103][flood-1103]).
+  ([#1132][flood-1132]).
 
 PE, EDI, I_F, and API are also exposed through the existing command line as
 `process_climate_indices --index pe`, `edi`, `flood_index`, and `api`, from daily
@@ -155,10 +157,12 @@ is part of this package yet.
 - **SPI and SPEI are less reliable in arid regions** with many
   zero-precipitation months ({doc}`algorithms` documents the limitation), so
   the wet tail there deserves more caution than in humid climates.
-- **They are not yet externally validated.** PE has source-backed algebraic
-  checks, not a reproducible numeric paper oracle. [VALIDATION.md][validation]
-  has no flood section yet; [FLOOD-20 #1117][flood-1117] will record evidence
-  per index. Treat this page as orientation, not evidence of validated skill.
+- **They are not yet externally validated.** No flood index has a committed
+  numeric oracle, and [VALIDATION.md][validation] records every flood row as
+  regression only, with the unadopted *exact reference*,
+  *independent implementation*, and *digitized figure* paths documented in its
+  Flood Evidence Classification section. Treat this page as orientation, not
+  evidence of validated skill.
 
 ## Sources
 
@@ -174,13 +178,13 @@ is part of this package yet.
 [zhang-2011]: https://doi.org/10.1002/wcc.147
 [validation]: https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md
 [flood-epic]: https://github.com/monocongo/climate_indices/issues/1098
-[flood-1103]: https://github.com/monocongo/climate_indices/issues/1103
 [flood-1100]: https://github.com/monocongo/climate_indices/issues/1100
 [flood-1105]: https://github.com/monocongo/climate_indices/issues/1105
 [flood-1106]: https://github.com/monocongo/climate_indices/issues/1106
 [flood-1107]: https://github.com/monocongo/climate_indices/issues/1107
+[flood-1108]: https://github.com/monocongo/climate_indices/issues/1108
 [flood-1109]: https://github.com/monocongo/climate_indices/issues/1109
 [flood-1110]: https://github.com/monocongo/climate_indices/issues/1110
 [flood-1113]: https://github.com/monocongo/climate_indices/issues/1113
 [flood-1114]: https://github.com/monocongo/climate_indices/issues/1114
-[flood-1117]: https://github.com/monocongo/climate_indices/issues/1117
+[flood-1132]: https://github.com/monocongo/climate_indices/issues/1132

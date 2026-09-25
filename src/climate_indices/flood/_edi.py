@@ -27,8 +27,8 @@ def edi(
     standard deviation (``ddof=0``). The published variable-duration dry-spell
     extension and five-day smoothing of daily climatology are **not** applied.
     Only the 365-day default is the recorded EDI convention; other durations
-    are caller experiments. This index describes moisture conditions, not
-    observed flooding.
+    are caller experiments. This index describes conditions relevant to flood
+    potential, not flooding.
 
     Args:
         pe: Daily effective precipitation in mm from

@@ -1,4 +1,4 @@
-"""Beta xarray dispatch for daily flood-potential indices."""
+"""Beta xarray dispatch for daily flood-potential indices, which describe flood potential, not flooding."""
 
 from __future__ import annotations
 
