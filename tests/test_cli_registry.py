@@ -18,7 +18,20 @@ from climate_indices import compute, indices
 from climate_indices.__main__ import DatasetLayout
 
 # the --index values the CLI accepts, in the order they are offered
-_EXPECTED_INDEX_CHOICES = ("spi", "spei", "pnp", "scaled", "pet", "palmers", "kbdi", "all")
+_EXPECTED_INDEX_CHOICES = (
+    "spi",
+    "spei",
+    "pnp",
+    "scaled",
+    "pet",
+    "palmers",
+    "kbdi",
+    "pe",
+    "edi",
+    "flood_index",
+    "api",
+    "all",
+)
 
 # the indices that compute through the shared-memory arrays, with one kernel each
 _SHARED_ARRAY_INDICES = ("spi", "spei", "pnp", "pet", "palmers")
@@ -63,7 +76,7 @@ def test_consumers_of_computed_pet_run_it_first():
     assert cli_main._INDEX_PIPELINES["all"] == ("spi", "pet", "spei", "pnp", "palmers")
 
 
-@pytest.mark.parametrize("index", ("spi", "spei", "pnp", "pet", "palmers", "kbdi"))
+@pytest.mark.parametrize("index", ("spi", "spei", "pnp", "pet", "palmers", "kbdi", "pe", "edi", "flood_index", "api"))
 def test_each_registration_declares_its_runner(index):
     registration = cli_main._registry_for(index)
 

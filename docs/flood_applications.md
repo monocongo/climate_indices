@@ -126,6 +126,11 @@ The [flood-family epic #1098][flood-epic] tracks the implementation order.
   xarray entry point also needs the CF metadata registry entries
   ([FLOOD-06 #1103][flood-1103]).
 
+PE, EDI, I_F, and API are also exposed through the existing command line as
+`process_climate_indices --index pe`, `edi`, `flood_index`, and `api`, from daily
+precipitation, or from a PE file for EDI and I_F (see {doc}`workflow-examples`).
+They are not computed by the `--index all` selection.
+
 The heavy-precipitation triggers (Rx1day, Rx5day, and R95pTOT per
 [Zhang et al. (2011)][zhang-2011]) are out of scope: `xclim` already implements
 those ETCCDI calculations, and duplicating them here would add a second
