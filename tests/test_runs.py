@@ -263,7 +263,21 @@ def test_invalid_min_duration_raises(min_duration: float) -> None:
 
 
 @pytest.mark.parametrize(
-    "threshold", [np.nan, np.inf, -np.inf, "-1.0", b"-1.0", Decimal("1e400"), [1.0], np.array([-1.5]), True, 10**400]
+    "threshold",
+    [
+        np.nan,
+        np.inf,
+        -np.inf,
+        "-1.0",
+        b"-1.0",
+        Decimal("1e400"),
+        [1.0],
+        np.array([-1.5]),
+        True,
+        10**400,
+        np.ma.masked,
+        np.ma.masked_array(1.0, mask=True),
+    ],
 )
 def test_non_finite_threshold_raises(threshold: object) -> None:
     with pytest.raises(InvalidArgumentError, match="threshold"):
@@ -275,7 +289,13 @@ def test_threshold_accepts_scalar_numeric_types() -> None:
     assert len(expected) == 2
 
     # every scalar spelling of -1.0 behaves identically, including a 0-d array
-    for threshold in (np.float32(-1.0), np.float64(-1.0), np.int64(-1), np.array(-1.0)):
+    for threshold in (
+        np.float32(-1.0),
+        np.float64(-1.0),
+        np.int64(-1),
+        np.array(-1.0),
+        np.ma.masked_array(-1.0, mask=False),
+    ):
         assert runs.identify_runs(BELOW_SERIES, threshold=threshold) == expected
 
 

@@ -134,7 +134,7 @@ def _as_finite_threshold(threshold: object) -> float:
     is a footgun rather than a feature.
     """
     if isinstance(threshold, np.ndarray):
-        if threshold.ndim != 0 or threshold.dtype.kind not in "biuf":
+        if np.ma.is_masked(threshold) or threshold.ndim != 0 or threshold.dtype.kind not in "biuf":
             raise _invalid_threshold(threshold)
         raw: object = threshold.item()
     elif isinstance(threshold, bool) or not isinstance(threshold, (int, float, np.integer, np.floating)):
