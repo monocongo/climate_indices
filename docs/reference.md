@@ -96,7 +96,7 @@ The options are described below:
 
     **NOTE**: When used for US climate divisions processing this option specifies month scales
 * - calibration_start_year
-  - Initial year of the calibration period. Optional for EDI and the Flood Index, and inferred from the input when omitted.
+  - Initial year of the calibration period. Optional for EDI and the Flood Index, and inferred from the input when omitted: EDI starts in the first year of the record, and the Flood Index in the second, since effective precipitation is undefined for a record's first 364 days.
 * - calibration_end_year
   - Final year of the calibration period (inclusive). Optional for EDI and the Flood Index, and inferred from the input when omitted. For the Flood Index it is the start year of the last complete annual period, as set by **year_start_month**.
 * - multiprocessing

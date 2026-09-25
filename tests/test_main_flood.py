@@ -373,6 +373,42 @@ class TestFloodProcessing:
         with xr.open_dataset(tmp_path / "out_flood_index.nc") as dataset:
             np.testing.assert_allclose(dataset["flood_index"].values, expected.values, equal_nan=True)
 
+    @pytest.mark.parametrize("from_pe_file", [False, True], ids=["from_precipitation", "from_pe_file"])
+    def test_flood_index_calibrates_from_the_second_year_by_default(
+        self, tmp_path, precipitation, precip_file, pe_file, from_pe_file
+    ):
+        # PE's first 364 days are undefined, so the record's first year would
+        # enter the calibration sample with a maximum from a day or two of PE
+        inputs = {"netcdf_precip": precip_file}
+        if from_pe_file:
+            inputs = {"netcdf_precip": None, "netcdf_pe": pe_file, "var_name_pe": _PE_VARIABLE}
+        cli_main.process_climate_indices(
+            _flood_arguments("flood_index", output_file_base=str(tmp_path / "out"), **inputs)
+        )
+
+        pe = flood.effective_precipitation(precipitation)
+        expected = flood.flood_index(pe, calibration_year_initial=2016, year_start_month=1)
+        library_default = flood.flood_index(pe, year_start_month=1)
+        assert not np.allclose(expected.values, library_default.values, equal_nan=True)
+        with xr.open_dataset(tmp_path / "out_flood_index.nc") as dataset:
+            np.testing.assert_allclose(dataset["flood_index"].values, expected.values, equal_nan=True)
+
+    def test_flood_index_honors_an_explicit_calibration_start_year(self, tmp_path, precipitation, precip_file):
+        cli_main.process_climate_indices(
+            _flood_arguments(
+                "flood_index",
+                netcdf_precip=precip_file,
+                calibration_start_year=2017,
+                output_file_base=str(tmp_path / "out"),
+            )
+        )
+
+        expected = flood.flood_index(
+            flood.effective_precipitation(precipitation), calibration_year_initial=2017, year_start_month=1
+        )
+        with xr.open_dataset(tmp_path / "out_flood_index.nc") as dataset:
+            np.testing.assert_allclose(dataset["flood_index"].values, expected.values, equal_nan=True)
+
     def test_api_writes_cf_annotated_output(self, tmp_path, precipitation, precip_file):
         cli_main.process_climate_indices(
             _flood_arguments("api", netcdf_precip=precip_file, api_k=0.8, output_file_base=str(tmp_path / "out"))

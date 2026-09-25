@@ -130,7 +130,6 @@ process_climate_indices --index edi --periodicity daily \
 
 process_climate_indices --index flood_index --periodicity daily \
 --netcdf_pe <out_dir>/flood_example_pe.nc --var_name_pe pe --year_start_month 10 \
---calibration_start_year 1992 \
 --output_file_base <out_dir>/flood_example
 
 process_climate_indices --index api --periodicity daily --api_k 0.9 \
@@ -146,10 +145,11 @@ precipitation (PE): given `--netcdf_precip` they first compute PE and write it t
 its place, as in the second command, they reuse an existing PE file, so one PE
 file can feed both indices. Provide one of the two, not both. The calibration
 years are optional and inferred from the input when omitted. PE is undefined
-for the first 364 days of a record, so the second command starts I_F's
-calibration a year into a record that begins in 1991. For I_F, the calibration
-end year is the start year of the last complete annual period, which is 2019
-for a record ending in 2020 with `--year_start_month 10`. I_F requires
+for the first 364 days of a record, so an omitted I_F calibration start year
+defaults to the second year of the record, 1992 for the second command. For
+I_F, the calibration end year is the start year of the last complete annual
+period, which is 2019 for a record ending in 2020 with `--year_start_month 10`.
+I_F requires
 `--year_start_month`, the calendar month on which each year of annual maxima
 starts, and API requires `--api_k`, its daily decay constant between 0 and 1.
 `--index pe` writes only PE. The output files are `<out_dir>/flood_example_edi.nc`,

@@ -2170,20 +2170,29 @@ def _run_flood_index(arguments: argparse.Namespace, input_type: DatasetLayout) -
     """
     Compute the Flood Index through the flood module's xarray API.
 
+    Unless a calibration start year was given, calibration starts in the second
+    year of the record: PE is undefined for a record's first 364 days, so its
+    first year would put an annual maximum drawn from a day or two of PE into
+    the calibration sample. This differs from ``flood.flood_index()``, which
+    infers the record's first year.
+
     :param arguments: the parsed command line arguments
     :param input_type: the input type determined by argument validation
     """
-    _run_from_pe(
-        arguments,
-        input_type,
-        "flood_index",
-        lambda pe: flood.flood_index(
+
+    def _flood_index(pe: xr.DataArray) -> xr.DataArray:
+        calibration_start_year = arguments.calibration_start_year
+        if calibration_start_year is None:
+            calibration_start_year = int(pe["time"].dt.year[0]) + 1
+
+        return flood.flood_index(
             pe,
-            calibration_year_initial=arguments.calibration_start_year,
+            calibration_year_initial=calibration_start_year,
             calibration_year_final=arguments.calibration_end_year,
             year_start_month=arguments.year_start_month,
-        ),
-    )
+        )
+
+    _run_from_pe(arguments, input_type, "flood_index", _flood_index)
 
 
 def _run_api(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
