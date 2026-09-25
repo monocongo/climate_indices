@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from decimal import Decimal
 from pathlib import Path
 
 import numpy as np
@@ -180,6 +181,14 @@ def test_masked_elements_are_treated_as_missing() -> None:
     np.testing.assert_allclose(found.peak_value, [-1.5, -1.5])
 
 
+def test_all_masked_input_returns_empty_run_set() -> None:
+    assert len(runs.identify_runs(np.ma.masked_all(3), threshold=-1.0)) == 0
+
+    # a masked element is missing even when its fill value is in run range
+    zero_filled = np.ma.masked_array([0.5, -1.5, 0.0, -1.5], mask=[False, False, True, False], fill_value=0.0)
+    np.testing.assert_array_equal(runs.identify_runs(zero_filled, threshold=-1.0).start_index, [1, 3])
+
+
 @pytest.mark.parametrize(
     "values",
     [
@@ -233,7 +242,7 @@ def test_run_set_equality_compares_values_and_treats_nan_interarrival_as_equal()
     assert first == second
     assert first != different
     assert first != "not a run set"
-    with pytest.raises(TypeError, match="unhashable"):
+    with pytest.raises(TypeError, match="unhashable type: 'RunSet'"):
         hash(first)
 
 
@@ -253,10 +262,27 @@ def test_invalid_min_duration_raises(min_duration: float) -> None:
         runs.identify_runs(BELOW_SERIES, threshold=-1.0, min_duration=min_duration)  # type: ignore[arg-type]
 
 
-@pytest.mark.parametrize("threshold", [np.nan, np.inf, -np.inf])
-def test_non_finite_threshold_raises(threshold: float) -> None:
+@pytest.mark.parametrize(
+    "threshold", [np.nan, np.inf, -np.inf, "-1.0", b"-1.0", Decimal("1e400"), [1.0], np.array([-1.5]), True, 10**400]
+)
+def test_non_finite_threshold_raises(threshold: object) -> None:
     with pytest.raises(InvalidArgumentError, match="threshold"):
-        runs.identify_runs(BELOW_SERIES, threshold=threshold)
+        runs.identify_runs(BELOW_SERIES, threshold=threshold)  # type: ignore[arg-type]
+
+
+def test_threshold_accepts_scalar_numeric_types() -> None:
+    expected = runs.identify_runs(BELOW_SERIES, threshold=-1.0)
+    assert len(expected) == 2
+
+    # every scalar spelling of -1.0 behaves identically, including a 0-d array
+    for threshold in (np.float32(-1.0), np.float64(-1.0), np.int64(-1), np.array(-1.0)):
+        assert runs.identify_runs(BELOW_SERIES, threshold=threshold) == expected
+
+
+def test_threshold_is_not_silently_rounded() -> None:
+    # Decimal is rejected rather than rounded to float64, so this stays an error
+    with pytest.raises(InvalidArgumentError, match="threshold"):
+        runs.identify_runs(np.array([1.0, -5.0]), threshold=Decimal("1.0000000000000000008"))
 
 
 def test_xarray_1d_input_returns_run_set_directly() -> None:
@@ -368,9 +394,11 @@ def test_xarray_missing_time_dim_raises() -> None:
 def test_xarray_attrs_record_the_options() -> None:
     data = xr.DataArray(np.zeros((6, 2)), dims=["time", "cells"])
 
-    found = runs.identify_runs_xarray(data, threshold=-1.5, direction="above", min_duration=3)
+    found = runs.identify_runs_xarray(data, threshold=np.float32(-1.5), direction="above", min_duration=3)
 
+    # the coerced threshold is recorded, not the caller's original object
     assert found.attrs["threshold"] == -1.5
+    assert isinstance(found.attrs["threshold"], float)
     assert found.attrs["direction"] == "above"
     assert found.attrs["min_duration"] == 3
     assert found.name == "runs"

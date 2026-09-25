@@ -115,6 +115,41 @@ def _as_float_series(values: npt.ArrayLike) -> npt.NDArray[np.float64]:
     return np.asarray(np.ma.asarray(values, dtype=np.float64).filled(np.nan), dtype=np.float64)
 
 
+def _invalid_threshold(threshold: object) -> InvalidArgumentError:
+    """Build the error for a threshold that is not a finite number."""
+    return InvalidArgumentError(
+        "threshold must be a finite number.",
+        argument_name="threshold",
+        argument_value=repr(threshold),
+        valid_values="a finite int, float, or 0-d numeric array",
+    )
+
+
+def _as_finite_threshold(threshold: object) -> float:
+    """Coerce a scalar numeric threshold to float64, rejecting anything else.
+
+    The type check is deliberate: a bare ``float()`` call would silently parse
+    numeric strings and round a high-precision ``Decimal``, and comparing a
+    float64 series against a threshold that carries more precision than float64
+    is a footgun rather than a feature.
+    """
+    if isinstance(threshold, np.ndarray):
+        if threshold.ndim != 0 or threshold.dtype.kind not in "biuf":
+            raise _invalid_threshold(threshold)
+        raw: object = threshold.item()
+    elif isinstance(threshold, bool) or not isinstance(threshold, (int, float, np.integer, np.floating)):
+        raise _invalid_threshold(threshold)
+    else:
+        raw = threshold
+    try:
+        value = float(raw)  # type: ignore[arg-type]  # raw is a scalar int, float, or NumPy scalar here
+    except (TypeError, ValueError, OverflowError):
+        raise _invalid_threshold(threshold) from None
+    if not math.isfinite(value):
+        raise _invalid_threshold(threshold)
+    return value
+
+
 def _resolve_options(threshold: float, direction: str, min_duration: int) -> tuple[float, int]:
     """Validate the run-selection options and return the threshold and minimum duration."""
     if direction not in _VALID_DIRECTIONS:
@@ -124,17 +159,7 @@ def _resolve_options(threshold: float, direction: str, min_duration: int) -> tup
             argument_value=direction,
             valid_values="'below' or 'above'",
         )
-    try:
-        threshold_value = float(threshold)
-    except (TypeError, ValueError):
-        threshold_value = math.nan
-    if not math.isfinite(threshold_value):
-        raise InvalidArgumentError(
-            "threshold must be a finite number.",
-            argument_name="threshold",
-            argument_value=str(threshold),
-            valid_values="any finite number",
-        )
+    threshold_value = _as_finite_threshold(threshold)
     if isinstance(min_duration, bool) or not isinstance(min_duration, (int, np.integer)) or min_duration < 1:
         raise InvalidArgumentError(
             "min_duration must be a positive integer.",
@@ -172,8 +197,9 @@ def identify_runs(
 
     Raises:
         InvalidArgumentError: If ``direction`` is not ``"below"`` or
-            ``"above"``, ``threshold`` is not finite, or ``min_duration`` is
-            not a positive integer.
+            ``"above"``, ``threshold`` is not a finite number (numeric
+            strings and ``Decimal`` values are rejected, not parsed or
+            rounded), or ``min_duration`` is not a positive integer.
         DataShapeError: If ``values`` is not one-dimensional. For gridded data
             use :func:`identify_runs_xarray`.
         InputTypeError: If ``values`` is not numeric (datetime, string, object,
@@ -334,9 +360,9 @@ def identify_runs_xarray(
     assert isinstance(found, xr.DataArray)  # single output, so apply_ufunc cannot return a tuple
     found.name = "runs"
     found.attrs = {
-        "threshold": threshold,
+        "threshold": threshold_value,
         "direction": direction,
-        "min_duration": min_duration,
+        "min_duration": min_duration_value,
         "long_name": "Run theory events per cell (RunSet objects)",
     }
     return found
