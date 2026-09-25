@@ -92,6 +92,7 @@ def test_flood_facade_omits_rejected_aliases() -> None:
                 ("nan_policy", inspect.Parameter.KEYWORD_ONLY, "propagate"),
                 ("max_gap_days", inspect.Parameter.KEYWORD_ONLY, 0),
                 ("spatial_time_major", inspect.Parameter.KEYWORD_ONLY, False),
+                ("time_dim", inspect.Parameter.KEYWORD_ONLY, "time"),
             ),
         ),
     ],
