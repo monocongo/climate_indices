@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Smoke-execute notebooks/flood_event_brisbane_2011.ipynb from a fresh kernel.
 #
-# Local use only: the notebook needs the network (NOAA PSL), which is why no CI
-# job runs it (#917).
+# Local use only: the notebook needs the network (NOAA PSL), so no CI job runs
+# it.
 #
 # Downloads the yearly NOAA PSL CPC subsets on the first run, then caches them
 # under the git-ignored data/flood-demo/. Results go to a scratch directory so a
