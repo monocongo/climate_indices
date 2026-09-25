@@ -1767,6 +1767,11 @@ def _validate_kbdi_arguments(args: argparse.Namespace) -> None:
         _logger.error(msg)
         raise ValueError(msg)
 
+    if any(getattr(args, name) is not None for name in ("netcdf_pe", "var_name_pe", "year_start_month", "api_k")):
+        msg = "The --netcdf_pe, --var_name_pe, --year_start_month, and --api_k arguments are not applicable to KBDI"
+        _logger.error(msg)
+        raise ValueError(msg)
+
     if args.netcdf_temp is None:
         msg = "Missing the required temperature file argument"
         _logger.error(msg)
