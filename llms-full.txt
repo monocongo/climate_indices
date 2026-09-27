@@ -1482,10 +1482,11 @@ process_climate_indices = "climate_indices.__main__:main"
    - **Pearson Type III**: L-moments (location, scale, skew parameters)
    - **Calibration period**: Default 30+ years, user-configurable
    - **Handling zeros**: Probability of zero tracked separately
-   - **Fall-back policy**: SPI falls back from a failed (or mostly-missing) Pearson Type III
-     fit to gamma; SPEI propagates the failure. `compute.fit_and_standardize()` takes this
-     as `fallback_to_gamma`, so the divergence is a parameter of one seam rather than a
-     copy of the fit/dispatch branch in each index function.
+   - **Fall-back policy**: SPI falls back from a failed Pearson Type III fit, or one that
+     loses most of the input's valid values, to gamma; SPEI propagates the failure.
+     `compute.fit_and_standardize()` takes this as `fallback_to_gamma`, so the divergence
+     is a parameter of one seam rather than a copy of the fit/dispatch branch in each
+     index function.
 
 #### 4. Math/Statistics Layer
 **Purpose**: Low-level mathematical and statistical functions.

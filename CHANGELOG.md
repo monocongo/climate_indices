@@ -179,6 +179,14 @@ change states what a user sees, how to detect it, and what to change in
 - **Typed public API**: the package-root `eddi()` overloads now declare
   `spatial_time_major`, which the runtime already forwarded, so a typed caller can pass
   the keyword the documentation describes.
+- **SPI with `Distribution.pearson` on masked or sparse input**: a block with half or more
+  of its cells missing (an ocean mask) came back entirely NaN, where the per-cell API
+  returned finite values, and a single series that was more than half missing did the
+  same. The Pearson-to-gamma fall-back counted input that was already missing as a
+  failed fit, and then fitted gamma to the Pearson result instead of the scaled input.
+  It now judges only the values the fit lost and refits the scaled input, so block,
+  chunked, and per-cell results agree on such grids wherever Pearson fits every valid
+  cell (#1118).
 
 ## [2.4.0] - 2026-04-05
 
