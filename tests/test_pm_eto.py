@@ -803,6 +803,8 @@ class TestPenmanMonteithFromMeteorology:
     def test_rh_min_without_rh_max_rejected(self) -> None:
         from climate_indices.exceptions import InvalidArgumentError
 
+        humidity = HumidityInputs(rh_min=63.0)
+        radiation = RadiationInputs(sunshine_hours=9.25)
         with pytest.raises(InvalidArgumentError):
             penman_monteith_eto(
                 12.3,
@@ -811,8 +813,8 @@ class TestPenmanMonteithFromMeteorology:
                 100.0,
                 2.78,
                 187,
-                humidity=HumidityInputs(rh_min=63.0),
-                radiation=RadiationInputs(sunshine_hours=9.25),
+                humidity=humidity,
+                radiation=radiation,
             )
 
     def test_nan_propagates(self) -> None:
