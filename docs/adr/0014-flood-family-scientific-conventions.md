@@ -12,6 +12,11 @@ takes the precipitation-extreme indices out of scope and moves WAP/SWAP from
 deferred to not planned. The scientific conventions for the shipped indices are
 unchanged.
 
+Amended for [#1151](https://github.com/monocongo/climate_indices/issues/1151):
+decision 3 now specifies the DataArray calibration-start default, shared by the
+CLI, to exclude the standard PE warm-up year. Explicit calibration years and
+NumPy kernel semantics are unchanged.
+
 The flood oracle survey (#1101, `docs/research/flood-oracle-survey.md`) established
 which external oracles for PE, EDI, I_F, and API are actually reproducible, and
 which are gated behind paywalled or undigitized material. It left several
@@ -98,6 +103,25 @@ unreproducible claim of reproduction.
    recoverable. Partial
    leading and trailing periods are excluded from the maxima sample rather than
    completed by inference.
+
+   For DataArray input, an omitted `calibration_year_initial` means the first
+   coordinate year plus one, for every `year_start_month`; the CLI delegates to
+   this same default. With the standard 365-day PE window, the first year has
+   only two finite positional days. Its maximum is not representative of an
+   entire annual period and must not enter the default calibration sample.
+   The omitted end remains the start year of the last complete annual period.
+   At least two complete calibration periods must remain; shorter records fail
+   rather than falling back to the warm-up year.
+
+   This is a conservative coordinate-only policy, not a finite-coverage test:
+   it preserves lazy Dask execution and avoids a new per-cell coverage threshold
+   or changed NumPy semantics. It also drops a year for fully populated PE and
+   shorter windows. Callers can explicitly include that year, or choose a later
+   start for longer windows or leading gaps; the default does not detect those
+   cases. Data-dependent inference and kernel coverage thresholds are not adopted.
+   EDI keeps its first-year default: it uses finite samples independently for
+   each calendar day, not an annual maximum. The warm-up NaNs contribute no
+   samples; the finite days at the end of that year remain valid observations.
 4. **The calendar contract is [ADR-0004](./0004-xarray-calendar-semantics.md)
    verbatim.** Flood indices are daily only: 366-day positional layout, every
    year read as a leap year, series beginning in January, with Gregorian
