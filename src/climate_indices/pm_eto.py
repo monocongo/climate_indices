@@ -726,7 +726,7 @@ def wind_speed_2m(
         )
     conversion = 4.87 / np.log(67.8 * height - 5.42)
     # at the standard height Eq 47 reduces to unity; return the input exactly
-    return np.where(height == 2.0, np.asarray(wind_speed), np.asarray(wind_speed) * conversion)
+    return np.where(height == 2.0, np.asarray(wind_speed), np.asarray(wind_speed) * conversion)  # NOSONAR
 
 
 # ---------------------------------------------------------------------------
