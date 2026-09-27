@@ -193,9 +193,10 @@ change states what a user sees, how to detect it, and what to change in
   calibration data, and a grid whose time dimension wasn't axis 0 crashed with an
   `IndexError` instead of being checked. The same grid run through Dask skipped the
   check entirely and computed, so eager and Dask disagreed. The whole-grid sample is
-  dropped: a gridded input no longer runs this preflight check, matching Dask, and a
-  cell without enough calibration data comes back NaN instead of failing the whole
-  grid. The single-series (1-D) check is unchanged (#979, #1156).
+  dropped: a gridded input no longer runs this preflight check, matching Dask.
+  Neither path enforces a per-cell 30-year non-NaN minimum, so sparse cells can
+  still produce finite results. The in-memory single-series (1-D) check is
+  unchanged (#979, #1156).
 
 ## [2.4.0] - 2026-04-05
 

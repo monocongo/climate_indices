@@ -1318,9 +1318,9 @@ def xarray_adapter(
             raises NotImplementedError.
         validate_calibration_sample: Enforce the fitting-based indices' 30-year
             non-NaN minimum. Disable for indices with their own calibration contract.
-            Only checked for a 1-D (single time series) input; a gridded input has
-            no single representative cell to sample, so per-cell fits return NaN
-            for cells with too little data instead (see #1156).
+            Only checked for an in-memory 1-D (single time series) input. Gridded
+            inputs skip this preflight check, as Dask inputs do; no per-cell
+            30-year non-NaN minimum is enforced (see #1156).
         spatial_kernel: If True, the wrapped function accepts the core ``time_dim``
             dimension alongside any number of cell dimensions, packed as
             ``(time, *cells)``, so ``apply_ufunc`` makes one call per non-core block
@@ -1584,8 +1584,8 @@ def xarray_adapter(
                 # similar to Dask path but without dask="parallelized"
 
                 # No whole-grid calibration preflight here (see #1156): a single
-                # sample cell can't stand in for a grid, so eager and Dask now agree
-                # and per-cell fits return NaN where a cell lacks enough data.
+                # sample cell can't stand in for a grid. Like Dask, this path
+                # does not enforce a per-cell 30-year non-NaN minimum.
 
                 # collect input DataArrays for apply_ufunc in parameter order
                 input_dataarrays = _collect_input_dataarrays(
