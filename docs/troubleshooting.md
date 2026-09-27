@@ -415,7 +415,7 @@ da_extended = xr.open_dataarray("extended_data.nc")
 :::{warning}
 **Error:** `InsufficientDataError: Calibration period (1950-1980) contains no data points. Check that calibration years overlap with time coordinate range.`
 
-**Cause:** The specified calibration period falls completely outside your data's time range.
+**Cause:** The specified calibration period falls completely outside your data's time range. This preflight applies to a single-series (1-D) in-memory input containing NaNs; gridded, Dask-backed, and NaN-free inputs are not checked here.
 
 **Solution:** Adjust calibration period to match your data:
 
