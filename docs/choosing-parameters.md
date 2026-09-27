@@ -15,8 +15,8 @@ the value contract is in {doc}`data_requirements`.
   366-day daily layout or Gregorian coordinates, declared units, and the missing
   values marked.
 - The years the input actually covers, and how much of the calibration window is
-  non-missing — for a single-series in-memory xarray input, the API raises when
-  the window holds fewer than 30 effective non-NaN years.
+  non-missing — for a single-series in-memory xarray input that contains NaNs,
+  the API raises when the window holds fewer than 30 effective non-NaN years.
 - For a gridded fit, a sense of how zero-inflated the precipitation is.
 
 ## Choose the distribution

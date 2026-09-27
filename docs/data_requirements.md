@@ -53,9 +53,10 @@ ones.
   `ShortCalibrationWarning`, and more than 20% missing values inside the
   period emits a warning about fitting reliability.
 - When no calibration period is given, the xarray API uses the full input
-  range. For a single-series (1-D) in-memory input that contains NaNs, it
-  raises `InsufficientDataError` when fewer than 30 effective non-NaN years
-  fall inside that range; a complete input shorter than 30 years proceeds with
+  range. For a single-series (1-D) in-memory input that contains NaNs and takes
+  `calibration_year_initial`/`calibration_year_final` (the fitting-based
+  indices), it raises `InsufficientDataError` when fewer than 30 effective
+  non-NaN years fall inside that range; a complete input shorter than 30 years proceeds with
   only `ShortCalibrationWarning`.
 - That effective-year check reads input values and samples a single series, so
   it does not run on gridded (more than one dimension) or Dask-backed inputs:
@@ -128,7 +129,7 @@ ones.
 | Time coordinate completeness, periodicity, and start month | Caller | Enforced | Caller |
 | Timesteps at least `scale` | Not enforced | Enforced | Not enforced |
 | Calibration length and missing-data warnings | Warned | Warned | Warned |
-| Calibration non-NaN sample size | Caller | Enforced when NaNs are present (in-memory 1-D input) | Caller |
+| Calibration non-NaN sample size | Caller | Enforced when NaNs are present (in-memory 1-D fitting-based input) | Caller |
 | Calibration years inside data coverage | Partial (see note) | Partial (see note) | Partial (see note) |
 | Multi-variable alignment | Caller, by array size | Inner join with warning | Caller |
 | Units | Caller | Caller | Converted and validated |
