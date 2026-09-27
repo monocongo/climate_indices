@@ -59,6 +59,7 @@ def _last_complete_calibration_year(pe: xr.DataArray, year_start_month: int) -> 
         "time" not in pe.coords
         or not pe.sizes.get("time")
         or not np.issubdtype(pe.time.dtype, np.datetime64)
+        or np.isnat(pe.time.values[-1])
         or not 1 <= year_start_month <= 12
     ):
         return None
@@ -185,6 +186,7 @@ def flood_index(
             and "time" in pe.coords
             and pe.sizes.get("time")
             and np.issubdtype(pe.time.dtype, np.datetime64)
+            and not np.isnat(pe.time.values[0])
         ):
             calibration_year_initial = int(pd.Timestamp(pe.time.values[0]).year) + 1
         if calibration_year_final is None:

@@ -76,6 +76,18 @@ def test_flood_index_default_skips_first_year(year_start_month: int, duration: i
     assert not np.allclose(default.compute(), first_year.compute(), equal_nan=True)
 
 
+@pytest.mark.parametrize("invalid_position", [0, -1])
+def test_flood_defaults_reject_nat_endpoints(invalid_position: int) -> None:
+    pe = _rain_grid()
+    dates = pe.time.values.copy()
+    dates[invalid_position] = np.datetime64("NaT")
+    pe = pe.assign_coords(time=dates)
+    with pytest.raises(CoordinateValidationError, match="invalid timestamps"):
+        flood.flood_index(pe, year_start_month=1)
+    with pytest.raises(CoordinateValidationError, match="invalid timestamps"):
+        flood.edi(pe)
+
+
 def test_edi_default_uses_finite_samples_per_calendar_day() -> None:
     rain = _rain_grid().isel(lat=0, lon=0)
     pe = flood.effective_precipitation(rain)
