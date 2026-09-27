@@ -27,12 +27,22 @@ from climate_indices.pm_eto import (
     actual_vapor_pressure_from_rhmin_rhmax,
     actual_vapor_pressure_from_tmin,
     atmospheric_pressure,
+    clear_sky_solar_radiation,
+    daylight_hours,
+    extraterrestrial_radiation,
     latent_heat_of_vaporization,
     mean_saturation_vapor_pressure,
+    net_longwave_radiation,
+    net_radiation,
+    net_shortwave_radiation,
+    penman_monteith_eto,
     pm_eto,
     psychrometric_constant,
     saturation_vapor_pressure,
+    solar_radiation_from_sunshine,
+    solar_radiation_from_temperature_range,
     vapor_pressure_slope,
+    wind_speed_2m,
 )
 
 # ---------------------------------------------------------------------------
@@ -645,3 +655,174 @@ class TestFAO56Example18:
             gamma=self.GAMMA,
         )
         assert total == pytest.approx(float(eto), abs=MATH_ABS_TOL)
+
+
+# ===================================================================
+# Tests for FAO-56 Chapter 3 radiation and wind helpers
+# ===================================================================
+
+
+class TestExtraterrestrialRadiation:
+    """FAO-56 Eq 21-25 against worked examples and Annex 2 values."""
+
+    @pytest.mark.parametrize(
+        ("latitude_degrees", "day_of_year", "expected_ra"),
+        [
+            # Example 10 (Rio de Janeiro, 15 May), Example 16 (Bangkok, 15 April),
+            # Example 15 (Lyon, 15 July), Example 18 (Uccle, 6 July)
+            (-22.90, 135, 25.1),
+            (13.73, 105, 38.1),
+            (45.72, 196, 40.6),
+            (50.80, 187, 41.09),
+        ],
+    )
+    def test_fao56_worked_examples(self, latitude_degrees: float, day_of_year: int, expected_ra: float) -> None:
+        result = extraterrestrial_radiation(np.radians(latitude_degrees), day_of_year)
+        assert result == pytest.approx(expected_ra, abs=0.1)
+
+    def test_daylight_hours_matches_fao56_examples(self) -> None:
+        # Example 10: Rio de Janeiro, 15 May -> N = 10.9 h
+        assert daylight_hours(np.radians(-22.90), 135) == pytest.approx(10.9, abs=0.05)
+        # Example 18: Uccle, 6 July -> N = 16.1 h
+        assert daylight_hours(np.radians(50.80), 187) == pytest.approx(16.1, abs=0.05)
+
+    def test_array_input(self) -> None:
+        latitudes = np.radians(np.array([-22.90, 13.73]))
+        days = np.array([135, 105])
+        result = extraterrestrial_radiation(latitudes, days)
+        assert result.shape == (2,)
+        assert result[0] == pytest.approx(25.1, abs=0.1)
+
+
+class TestSolarRadiationHelpers:
+    """FAO-56 Eq 35, 37, 38, 50."""
+
+    def test_solar_radiation_from_sunshine_example_10(self) -> None:
+        # Rio de Janeiro, May: n = 7.1 h, N = 10.9 h, Ra = 25.1
+        result = solar_radiation_from_sunshine(7.1, 10.9, 25.1)
+        assert result == pytest.approx(14.5, abs=0.1)
+
+    def test_solar_radiation_from_temperature_range_example_15(self) -> None:
+        # Lyon, July, interior: Tmin = 14.8, Tmax = 26.6, Ra = 40.6
+        result = solar_radiation_from_temperature_range(14.8, 26.6, 40.6, coastal=False)
+        assert result == pytest.approx(22.3, abs=0.1)
+
+    def test_solar_radiation_from_temperature_range_example_16(self) -> None:
+        # Bangkok, April, coastal: Tmin = 25.6, Tmax = 34.8, Ra = 38.1
+        result = solar_radiation_from_temperature_range(25.6, 34.8, 38.1, coastal=True)
+        assert result == pytest.approx(21.9, abs=0.1)
+
+    def test_clear_sky_and_shortwave_example_16(self) -> None:
+        rso = clear_sky_solar_radiation(38.1, 2.0)
+        assert rso == pytest.approx(28.5, abs=0.1)
+        assert net_shortwave_radiation(21.9) == pytest.approx(16.9, abs=0.1)
+
+    def test_net_longwave_example_11(self) -> None:
+        # Rio de Janeiro, May: Tmin = 19.1, Tmax = 25.1, ea = 2.1, Rs = 14.5, Rso = 18.8
+        result = net_longwave_radiation(19.1, 25.1, 2.1, 14.5, 18.8)
+        assert result == pytest.approx(3.5, abs=0.05)
+
+    def test_net_radiation_example_16(self) -> None:
+        result = net_radiation(25.6, 34.8, 2.85, 21.9, 28.5)
+        assert result == pytest.approx(13.9, abs=0.1)
+
+    def test_relative_solar_radiation_is_capped(self) -> None:
+        # Rs > Rso must be limited to 1.0 in Eq 39
+        capped = net_longwave_radiation(20.0, 30.0, 2.0, 40.0, 30.0)
+        uncapped = net_longwave_radiation(20.0, 30.0, 2.0, 30.0, 30.0)
+        assert capped == pytest.approx(float(uncapped), abs=MATH_ABS_TOL)
+
+
+class TestWindSpeed2m:
+    """FAO-56 Eq 47 against Example 14."""
+
+    def test_example_14(self) -> None:
+        assert wind_speed_2m(3.2, 10.0) == pytest.approx(2.4, abs=0.05)
+
+    def test_two_metre_height_is_unchanged(self) -> None:
+        assert wind_speed_2m(3.0, 2.0) == pytest.approx(3.0, abs=MATH_ABS_TOL)
+
+    def test_non_positive_height_rejected(self) -> None:
+        from climate_indices.exceptions import InvalidArgumentError
+
+        with pytest.raises(InvalidArgumentError):
+            wind_speed_2m(3.0, 0.0)
+
+
+class TestPenmanMonteithFromMeteorology:
+    """End-to-end FAO-56 Example 18 grass-reference validation."""
+
+    def test_fao56_example_18(self) -> None:
+        eto = penman_monteith_eto(
+            daily_tmin_celsius=12.3,
+            daily_tmax_celsius=21.5,
+            latitude_degrees=50.80,
+            elevation_m=100.0,
+            wind_speed_m_s=2.78,
+            day_of_year=187,
+            wind_speed_height_m=10.0,
+            rh_min=63.0,
+            rh_max=84.0,
+            sunshine_hours=9.25,
+        )
+        assert eto == pytest.approx(3.88, abs=0.05)
+
+    def test_dewpoint_pathway_matches_example_18(self) -> None:
+        # e_a from Example 18 = 1.409 kPa; the equivalent dewpoint is ~12.05 degC
+        dewpoint = 12.05
+        from_dewpoint = penman_monteith_eto(
+            12.3,
+            21.5,
+            50.80,
+            100.0,
+            2.78,
+            187,
+            wind_speed_height_m=10.0,
+            tdew_celsius=dewpoint,
+            sunshine_hours=9.25,
+        )
+        assert from_dewpoint == pytest.approx(3.88, abs=0.1)
+
+    def test_temperature_range_radiation_pathway(self) -> None:
+        # Bangkok Example 16-style inputs; the temperature-range estimate is
+        # limited to the clear-sky radiation internally
+        eto = penman_monteith_eto(
+            25.6,
+            34.8,
+            13.73,
+            2.0,
+            2.0,
+            105,
+            tdew_celsius=actual_vapor_pressure_from_dewpoint(17.0),
+            coastal=True,
+        )
+        assert np.isfinite(eto)
+        assert eto > 0
+
+    def test_rh_min_without_rh_max_rejected(self) -> None:
+        from climate_indices.exceptions import InvalidArgumentError
+
+        with pytest.raises(InvalidArgumentError):
+            penman_monteith_eto(
+                12.3,
+                21.5,
+                50.80,
+                100.0,
+                2.78,
+                187,
+                rh_min=63.0,
+                sunshine_hours=9.25,
+            )
+
+    def test_nan_propagates(self) -> None:
+        eto = penman_monteith_eto(
+            np.array([12.3, np.nan]),
+            np.array([21.5, 21.5]),
+            50.80,
+            100.0,
+            np.array([2.78, 2.78]),
+            np.array([187, 187]),
+            rh_max=84.0,
+        )
+        assert np.isfinite(eto[0])
+        assert np.isnan(eto[1])

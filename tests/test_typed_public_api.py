@@ -24,6 +24,7 @@ from climate_indices import (
     pdsi,
     percentage_of_normal,
     pet_hargreaves,
+    pet_penman_monteith,
     pet_thornthwaite,
     spei,
     spi,
@@ -36,6 +37,9 @@ from climate_indices.xarray_adapter import (
 )
 from climate_indices.xarray_adapter import (
     pet_hargreaves as pet_hargreaves_impl,
+)
+from climate_indices.xarray_adapter import (
+    pet_penman_monteith as pet_penman_monteith_impl,
 )
 from climate_indices.xarray_adapter import (
     pet_thornthwaite as pet_thornthwaite_impl,
@@ -113,6 +117,7 @@ _PUBLIC_IMPLEMENTATIONS: dict[Callable[..., Any], tuple[Callable[..., Any], tupl
     pdsi: (palmer_pdsi_impl, ()),
     pet_thornthwaite: (pet_thornthwaite_impl, ()),
     pet_hargreaves: (pet_hargreaves_impl, ()),
+    pet_penman_monteith: (pet_penman_monteith_impl, ()),
 }
 
 # the frozen published typing contract: rendered (NumPy, xarray) @overload signatures
@@ -148,6 +153,10 @@ _EXPECTED_OVERLOADS: dict[Callable[..., Any], tuple[str, str]] = {
     pet_hargreaves: (
         "(daily_tmin_celsius: 'npt.NDArray[np.float64]', daily_tmax_celsius: 'npt.NDArray[np.float64]', latitude: 'float', time_dim: 'str' = 'time') -> 'npt.NDArray[np.float64]'",
         "(daily_tmin_celsius: 'xr.DataArray', daily_tmax_celsius: 'xr.DataArray', latitude: 'float | np.floating | xr.DataArray', time_dim: 'str' = 'time') -> 'xr.DataArray'",
+    ),
+    pet_penman_monteith: (
+        "(daily_tmin_celsius: 'npt.NDArray[np.float64]', daily_tmax_celsius: 'npt.NDArray[np.float64]', latitude: 'float', elevation_m: 'float', wind_speed_m_s: 'npt.NDArray[np.float64] | float', day_of_year: 'npt.NDArray[np.float64]', wind_speed_height_m: 'float' = 2.0, tdew_celsius: 'npt.NDArray[np.float64] | None' = None, rh_min: 'npt.NDArray[np.float64] | None' = None, rh_max: 'npt.NDArray[np.float64] | None' = None, rh_mean: 'npt.NDArray[np.float64] | None' = None, solar_radiation_mj_m2_day: 'npt.NDArray[np.float64] | None' = None, sunshine_hours: 'npt.NDArray[np.float64] | None' = None, coastal: 'bool' = False, soil_heat_flux_mj_m2_day: 'npt.NDArray[np.float64] | float' = 0.0, albedo: 'float' = 0.23, time_dim: 'str' = 'time') -> 'npt.NDArray[np.float64]'",
+        "(daily_tmin_celsius: 'xr.DataArray', daily_tmax_celsius: 'xr.DataArray', latitude: 'float | np.floating | xr.DataArray', elevation_m: 'float | np.floating | xr.DataArray', wind_speed_m_s: 'np.ndarray | xr.DataArray | float', day_of_year: 'np.ndarray | xr.DataArray | None' = None, wind_speed_height_m: 'float' = 2.0, tdew_celsius: 'np.ndarray | xr.DataArray | None' = None, rh_min: 'np.ndarray | xr.DataArray | None' = None, rh_max: 'np.ndarray | xr.DataArray | None' = None, rh_mean: 'np.ndarray | xr.DataArray | None' = None, solar_radiation_mj_m2_day: 'np.ndarray | xr.DataArray | None' = None, sunshine_hours: 'np.ndarray | xr.DataArray | None' = None, coastal: 'bool' = False, soil_heat_flux_mj_m2_day: 'np.ndarray | xr.DataArray | float' = 0.0, albedo: 'float' = 0.23, time_dim: 'str' = 'time') -> 'xr.DataArray'",
     ),
     pdsi: (
         "(precips: 'npt.NDArray[np.float64]', pet: 'npt.NDArray[np.float64]', awc: 'float | npt.NDArray[np.float64]', data_start_year: 'int', calibration_year_initial: 'int', calibration_year_final: 'int', fitting_params: 'dict[str, Any] | None' = None, spatial_time_major: 'bool' = False, time_dim: 'str' = 'time') -> 'tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], dict[str, Any] | None]'",
