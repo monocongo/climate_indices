@@ -82,6 +82,18 @@ def _add_common_spi_arguments(
     )
     parser.add_argument("--calibration_end_year", help="Final year of calibration period", type=int)
     parser.add_argument(
+        "--calibration_year_initial",
+        dest="calibration_start_year",
+        help="Alias for --calibration_start_year",
+        type=int,
+    )
+    parser.add_argument(
+        "--calibration_year_final",
+        dest="calibration_end_year",
+        help="Alias for --calibration_end_year",
+        type=int,
+    )
+    parser.add_argument(
         "--netcdf_precip",
         help="Precipitation NetCDF file to be used as input for indices computations",
     )

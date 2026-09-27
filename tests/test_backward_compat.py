@@ -410,8 +410,8 @@ class TestSignatureStability:
             "values",
             "scale",
             "data_start_year",
-            "calibration_start_year",
-            "calibration_end_year",
+            "calibration_year_initial",
+            "calibration_year_final",
             "periodicity",
         ],
         "pet": [

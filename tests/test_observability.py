@@ -341,8 +341,8 @@ class TestCalculationLifecycle:
             values=precips_mm_monthly.flatten(),
             scale=6,
             data_start_year=data_year_start_monthly,
-            calibration_start_year=calibration_year_start_monthly,
-            calibration_end_year=calibration_year_end_monthly,
+            calibration_year_initial=calibration_year_start_monthly,
+            calibration_year_final=calibration_year_end_monthly,
             periodicity=compute.Periodicity.monthly,
         )
 
@@ -672,8 +672,8 @@ class TestCalculationFailureContext:
                 values=np.random.rand(240),
                 scale=6,
                 data_start_year=2010,
-                calibration_start_year=2000,
-                calibration_end_year=2019,
+                calibration_year_initial=2000,
+                calibration_year_final=2019,
                 periodicity=compute.Periodicity.monthly,
             )
 

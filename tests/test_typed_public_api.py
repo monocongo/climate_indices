@@ -126,8 +126,8 @@ _EXPECTED_OVERLOADS: dict[Callable[..., Any], tuple[str, str]] = {
         "(precips_mm: 'xr.DataArray', pet_mm: 'xr.DataArray', scale: 'int', distribution: 'Distribution', periodicity: 'Periodicity | None' = None, data_start_year: 'int | None' = None, calibration_year_initial: 'int | None' = None, calibration_year_final: 'int | None' = None, fitting_params: 'dict[str, Any] | None' = None) -> 'xr.DataArray'",
     ),
     percentage_of_normal: (
-        "(values: 'npt.NDArray[np.float64]', scale: 'int', data_start_year: 'int', calibration_start_year: 'int', calibration_end_year: 'int', periodicity: 'Periodicity') -> 'npt.NDArray[np.float64]'",
-        "(values: 'xr.DataArray', scale: 'int', data_start_year: 'int | None' = None, calibration_start_year: 'int | None' = None, calibration_end_year: 'int | None' = None, periodicity: 'Periodicity | None' = None) -> 'xr.DataArray'",
+        "(values: 'npt.NDArray[np.float64]', scale: 'int', data_start_year: 'int', calibration_year_initial: 'int', calibration_year_final: 'int', periodicity: 'Periodicity') -> 'npt.NDArray[np.float64]'",
+        "(values: 'xr.DataArray', scale: 'int', data_start_year: 'int | None' = None, calibration_year_initial: 'int | None' = None, calibration_year_final: 'int | None' = None, periodicity: 'Periodicity | None' = None) -> 'xr.DataArray'",
     ),
     eddi: (
         "(pet_values: 'npt.NDArray[np.float64]', scale: 'int', data_start_year: 'int', calibration_year_initial: 'int', calibration_year_final: 'int', periodicity: 'Periodicity', spatial_time_major: 'bool' = False) -> 'npt.NDArray[np.float64]'",

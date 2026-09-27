@@ -7,12 +7,15 @@ CF metadata application, and coordinate preservation.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pytest
 import xarray as xr
 
 from climate_indices import percentage_of_normal
 from climate_indices.compute import Periodicity
+from climate_indices.exceptions import ClimateIndicesDeprecationWarning
 from climate_indices.indices import percentage_of_normal as numpy_pnp
 
 
@@ -35,8 +38,8 @@ def pnp_numpy_result(sample_monthly_precip_da: xr.DataArray) -> np.ndarray:
         values=sample_monthly_precip_da.values,
         scale=6,
         data_start_year=start_year,
-        calibration_start_year=start_year,
-        calibration_end_year=end_year,
+        calibration_year_initial=start_year,
+        calibration_year_final=end_year,
         periodicity=Periodicity.monthly,
     )
 
@@ -140,9 +143,50 @@ class TestPNPNumpyPassthrough:
             values=values,
             scale=6,
             data_start_year=1980,
-            calibration_start_year=1980,
-            calibration_end_year=2019,
+            calibration_year_initial=1980,
+            calibration_year_final=2019,
             periodicity=Periodicity.monthly,
         )
         assert isinstance(result, np.ndarray)
         assert result.shape == values.shape
+
+
+def test_pnp_legacy_calibration_keywords_warn_and_match() -> None:
+    """The deprecated start/end keywords warn but return canonical-equal values."""
+    rng = np.random.default_rng(7)
+    values = rng.gamma(shape=2.0, scale=50.0, size=480)
+    canonical = numpy_pnp(
+        values=values,
+        scale=6,
+        data_start_year=1980,
+        calibration_year_initial=1980,
+        calibration_year_final=2019,
+        periodicity=Periodicity.monthly,
+    )
+    with pytest.warns(ClimateIndicesDeprecationWarning):
+        legacy = numpy_pnp(
+            values=values,
+            scale=6,
+            data_start_year=1980,
+            calibration_start_year=1980,
+            calibration_end_year=2019,
+            periodicity=Periodicity.monthly,
+        )
+    np.testing.assert_array_equal(canonical, legacy)
+
+
+def test_pnp_canonical_calibration_keywords_do_not_warn() -> None:
+    """The canonical keywords emit no deprecation warning."""
+    rng = np.random.default_rng(8)
+    values = rng.gamma(shape=2.0, scale=50.0, size=480)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        numpy_pnp(
+            values=values,
+            scale=6,
+            data_start_year=1980,
+            calibration_year_initial=1980,
+            calibration_year_final=2019,
+            periodicity=Periodicity.monthly,
+        )
+    assert not [w for w in caught if issubclass(w.category, ClimateIndicesDeprecationWarning)]

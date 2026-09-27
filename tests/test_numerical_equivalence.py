@@ -219,8 +219,8 @@ def test_percentage_of_normal_block_path_matches_the_serial_numpy_api(
     result = percentage_of_normal(
         gridded_monthly_precip_3d,
         scale=scale,
-        calibration_start_year=calibration_year_start_monthly,
-        calibration_end_year=calibration_year_end_monthly,
+        calibration_year_initial=calibration_year_start_monthly,
+        calibration_year_final=calibration_year_end_monthly,
     )
     expected = _pointwise(
         gridded_monthly_precip_3d,
@@ -228,8 +228,8 @@ def test_percentage_of_normal_block_path_matches_the_serial_numpy_api(
             values=np.asarray(series),
             scale=scale,
             data_start_year=data_start_year,
-            calibration_start_year=calibration_year_start_monthly,
-            calibration_end_year=calibration_year_end_monthly,
+            calibration_year_initial=calibration_year_start_monthly,
+            calibration_year_final=calibration_year_end_monthly,
             periodicity=compute.Periodicity.monthly,
         ),
     )
@@ -301,14 +301,14 @@ def test_dask_chunk_layout_does_not_change_the_result(
     pnp_eager = percentage_of_normal(
         gridded_monthly_precip_3d,
         scale=6,
-        calibration_start_year=calibration_year_start_monthly,
-        calibration_end_year=calibration_year_end_monthly,
+        calibration_year_initial=calibration_year_start_monthly,
+        calibration_year_final=calibration_year_end_monthly,
     )
     pnp_lazy = percentage_of_normal(
         dask_monthly_precip_3d,
         scale=6,
-        calibration_start_year=calibration_year_start_monthly,
-        calibration_end_year=calibration_year_end_monthly,
+        calibration_year_initial=calibration_year_start_monthly,
+        calibration_year_final=calibration_year_end_monthly,
     )
     assert pnp_lazy.chunks is not None
     np.testing.assert_array_equal(pnp_lazy.compute().values, pnp_eager.values)
