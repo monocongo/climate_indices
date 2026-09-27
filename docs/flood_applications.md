@@ -109,6 +109,15 @@ The [flood-family epic #1098][flood-epic] tracks the implementation order.
   exponential form while the implemented kernel is unverified — is recorded in
   [ADR-0014](adr/0014-flood-family-scientific-conventions.md); see
   {doc}`algorithm_refs/flood_index` for the algorithm and validation status.
+  For DataArray input, omitted `calibration_year_initial` defaults to the first
+  coordinate year plus one, excluding the standard 365-day PE warm-up year.
+  This coordinate-only default preserves Dask laziness but also skips a year
+  for fully populated PE or shorter windows: pass an explicit start to include
+  it, or a later start for longer windows or leading gaps. The omitted end is
+  the start year of the last complete annual period defined by `year_start_month`.
+  At least two complete calibration periods must remain. The CLI uses the same
+  default; NumPy still requires explicit years. EDI retains its first-year
+  default because it uses finite observations per calendar day, not annual maxima.
 - **Antecedent Precipitation Index (API)** — *NumPy and beta xarray APIs available
   (FLOOD-12 [#1109][flood-1109], FLOOD-13 [#1110][flood-1110])*. A daily recursive wetness measure in mm, after
   Kohler & Linsley (1951): `API_t = k * API_(t-1) + P_t`, where `0 < k < 1` and
