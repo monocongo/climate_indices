@@ -12,7 +12,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from climate_indices import pet_penman_monteith
+from climate_indices import HumidityInputs, RadiationInputs, pet_penman_monteith
 from climate_indices.exceptions import CoordinateValidationError
 from climate_indices.xarray_adapter import pet_penman_monteith as pet_penman_monteith_impl
 
@@ -53,9 +53,8 @@ class TestPenmanMonteithXarrayEquivalence:
             elevation_m=100.0,
             wind_speed_m_s=wind,
             wind_speed_height_m=10.0,
-            rh_min=rh_min,
-            rh_max=rh_max,
-            sunshine_hours=sunshine,
+            humidity=HumidityInputs(rh_min=rh_min, rh_max=rh_max),
+            radiation=RadiationInputs(sunshine_hours=sunshine),
         )
 
         expected = pet_penman_monteith(
@@ -66,9 +65,8 @@ class TestPenmanMonteithXarrayEquivalence:
             values["wind"],
             time.dayofyear.to_numpy(),
             10.0,
-            rh_min=values["rh_min"],
-            rh_max=values["rh_max"],
-            sunshine_hours=values["sunshine"],
+            humidity=HumidityInputs(rh_min=values["rh_min"], rh_max=values["rh_max"]),
+            radiation=RadiationInputs(sunshine_hours=values["sunshine"]),
         )
         np.testing.assert_allclose(result.values, expected, rtol=1e-9, atol=1e-9)
 
@@ -98,9 +96,8 @@ class TestPenmanMonteithXarrayEquivalence:
             elevation_m=100.0,
             wind_speed_m_s=broadcast(values["wind"]),
             wind_speed_height_m=10.0,
-            rh_min=broadcast(values["rh_min"]),
-            rh_max=broadcast(values["rh_max"]),
-            sunshine_hours=broadcast(values["sunshine"]),
+            humidity=HumidityInputs(rh_min=broadcast(values["rh_min"]), rh_max=broadcast(values["rh_max"])),
+            radiation=RadiationInputs(sunshine_hours=broadcast(values["sunshine"])),
         )
 
         assert result.dims == ("time", "lat", "lon")
@@ -112,9 +109,8 @@ class TestPenmanMonteithXarrayEquivalence:
             values["wind"],
             time.dayofyear.to_numpy(),
             10.0,
-            rh_min=values["rh_min"],
-            rh_max=values["rh_max"],
-            sunshine_hours=values["sunshine"],
+            humidity=HumidityInputs(rh_min=values["rh_min"], rh_max=values["rh_max"]),
+            radiation=RadiationInputs(sunshine_hours=values["sunshine"]),
         )
         np.testing.assert_allclose(result.isel(lat=0, lon=0).values, expected, rtol=1e-9, atol=1e-9)
 
@@ -131,9 +127,8 @@ class TestPenmanMonteithXarrayEquivalence:
             latitude=50.80,
             elevation_m=100.0,
             wind_speed_m_s=2.78,
-            rh_min=63.0,
-            rh_max=84.0,
-            sunshine_hours=9.25,
+            humidity=HumidityInputs(rh_min=63.0, rh_max=84.0),
+            radiation=RadiationInputs(sunshine_hours=9.25),
         )
 
         assert result.chunks is not None

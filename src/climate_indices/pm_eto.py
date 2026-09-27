@@ -22,6 +22,7 @@ Allen, R.G., Pereira, L.S., Raes, D. and Smith, M. (1998)
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -31,6 +32,35 @@ from climate_indices.exceptions import InvalidArgumentError
 
 # union type for function signatures
 FloatOrArray = float | npt.NDArray[np.floating[Any]]
+
+
+@dataclass(frozen=True)
+class HumidityInputs:
+    """Optional FAO-56 actual-vapour-pressure inputs, in pathway precedence order.
+
+    Only one pathway is used, chosen by precedence: dewpoint, then
+    ``rh_min``/``rh_max``, then ``rh_max`` alone, then ``rh_mean``, and finally
+    the arid-region ``e0(Tmin - 2)`` estimate when none is supplied.
+    """
+
+    tdew_celsius: Any = None
+    rh_min: Any = None
+    rh_max: Any = None
+    rh_mean: Any = None
+
+
+@dataclass(frozen=True)
+class RadiationInputs:
+    """Optional FAO-56 solar-radiation inputs, in pathway precedence order.
+
+    Supplied solar radiation is used first, then sunshine hours, and finally the
+    temperature-range estimate when neither is supplied.
+    """
+
+    solar_radiation_mj_m2_day: Any = None
+    sunshine_hours: Any = None
+    coastal: bool = False
+
 
 # ---------------------------------------------------------------------------
 # Physical constants (FAO-56, Chapter 2)
@@ -738,32 +768,30 @@ def _select_actual_vapor_pressure(
     tmin_celsius: FloatOrArray,
     tmax_celsius: FloatOrArray,
     e_s: FloatOrArray,
-    tdew_celsius: FloatOrArray | None,
-    rh_min: FloatOrArray | None,
-    rh_max: FloatOrArray | None,
-    rh_mean: FloatOrArray | None,
+    humidity: HumidityInputs | None,
 ) -> FloatOrArray:
     """Select the best available FAO-56 actual-vapour-pressure pathway."""
-    if tdew_celsius is not None:
-        return actual_vapor_pressure_from_dewpoint(tdew_celsius)
-    if rh_min is not None and rh_max is not None:
+    humidity = humidity or HumidityInputs()
+    if humidity.tdew_celsius is not None:
+        return actual_vapor_pressure_from_dewpoint(humidity.tdew_celsius)
+    if humidity.rh_min is not None and humidity.rh_max is not None:
         return actual_vapor_pressure_from_rhmin_rhmax(
             saturation_vapor_pressure(tmin_celsius),
             saturation_vapor_pressure(tmax_celsius),
-            rh_min,
-            rh_max,
+            humidity.rh_min,
+            humidity.rh_max,
         )
-    if rh_min is not None:
+    if humidity.rh_min is not None:
         raise InvalidArgumentError(
             "rh_min was provided without rh_max; both are required for Eq 17.",
             argument_name="rh_min",
-            argument_value=str(rh_min),
+            argument_value=str(humidity.rh_min),
             valid_values="provide both rh_min and rh_max, or neither",
         )
-    if rh_max is not None:
-        return actual_vapor_pressure_from_rhmax(saturation_vapor_pressure(tmin_celsius), rh_max)
-    if rh_mean is not None:
-        return actual_vapor_pressure_from_rhmean(e_s, rh_mean)
+    if humidity.rh_max is not None:
+        return actual_vapor_pressure_from_rhmax(saturation_vapor_pressure(tmin_celsius), humidity.rh_max)
+    if humidity.rh_mean is not None:
+        return actual_vapor_pressure_from_rhmean(e_s, humidity.rh_mean)
     return actual_vapor_pressure_from_tmin(tmin_celsius)
 
 
@@ -772,9 +800,7 @@ def _select_solar_radiation(
     tmax_celsius: FloatOrArray,
     extraterrestrial_radiation_mj_m2_day: FloatOrArray,
     daylength_hours: FloatOrArray,
-    solar_radiation_mj_m2_day: FloatOrArray | None,
-    sunshine_hours: FloatOrArray | None,
-    coastal: bool,
+    radiation: RadiationInputs | None,
 ) -> tuple[FloatOrArray, bool]:
     """Select supplied, sunshine-based, or temperature-based solar radiation.
 
@@ -783,15 +809,16 @@ def _select_solar_radiation(
         range (and so must be limited to the clear-sky radiation).
 
     """
-    if solar_radiation_mj_m2_day is not None:
-        return solar_radiation_mj_m2_day, False
-    if sunshine_hours is not None:
+    radiation = radiation or RadiationInputs()
+    if radiation.solar_radiation_mj_m2_day is not None:
+        return radiation.solar_radiation_mj_m2_day, False
+    if radiation.sunshine_hours is not None:
         return solar_radiation_from_sunshine(
-            sunshine_hours, daylength_hours, extraterrestrial_radiation_mj_m2_day
+            radiation.sunshine_hours, daylength_hours, extraterrestrial_radiation_mj_m2_day
         ), False
     return (
         solar_radiation_from_temperature_range(
-            tmin_celsius, tmax_celsius, extraterrestrial_radiation_mj_m2_day, coastal
+            tmin_celsius, tmax_celsius, extraterrestrial_radiation_mj_m2_day, radiation.coastal
         ),
         True,
     )
@@ -805,13 +832,8 @@ def penman_monteith_eto(
     wind_speed_m_s: Any,
     day_of_year: Any,
     wind_speed_height_m: Any = 2.0,
-    tdew_celsius: Any = None,
-    rh_min: Any = None,
-    rh_max: Any = None,
-    rh_mean: Any = None,
-    solar_radiation_mj_m2_day: Any = None,
-    sunshine_hours: Any = None,
-    coastal: bool = False,
+    humidity: HumidityInputs | None = None,
+    radiation: RadiationInputs | None = None,
     soil_heat_flux_mj_m2_day: Any = 0.0,
     albedo: Any = REFERENCE_ALBEDO,
 ) -> FloatOrArray:
@@ -843,15 +865,10 @@ def penman_monteith_eto(
         wind_speed_m_s: Wind speed measured at ``wind_speed_height_m`` [m s-1].
         day_of_year: Day of the year, 1-365 (366 in a leap year).
         wind_speed_height_m: Height at which the wind speed was measured [m].
-        tdew_celsius: Dewpoint temperature [degC], if available.
-        rh_min: Minimum daily relative humidity [%], with ``rh_max``.
-        rh_max: Maximum daily relative humidity [%].
-        rh_mean: Mean daily relative humidity [%].
-        solar_radiation_mj_m2_day: Incoming solar radiation [MJ m-2 day-1].
-        sunshine_hours: Actual duration of bright sunshine [hours day-1].
-        coastal: Use the coastal temperature-range coefficient ``kRs = 0.19``
-            rather than the interior ``0.16`` when solar radiation is estimated
-            from the temperature range.
+        humidity: Optional actual-vapour-pressure inputs, in pathway precedence
+            order; see :class:`HumidityInputs`.
+        radiation: Optional solar-radiation inputs, in pathway precedence order;
+            see :class:`RadiationInputs`.
         soil_heat_flux_mj_m2_day: Soil heat flux density [MJ m-2 day-1]. Use 0
             for daily steps.
         albedo: Canopy reflection coefficient (0.23 for the grass reference).
@@ -871,7 +888,7 @@ def penman_monteith_eto(
     gamma = psychrometric_constant(atmospheric_pressure(elevation_m))
     e_s = mean_saturation_vapor_pressure(tmin, tmax)
     delta = vapor_pressure_slope(tmean)
-    e_a = _select_actual_vapor_pressure(tmin, tmax, e_s, tdew_celsius, rh_min, rh_max, rh_mean)
+    e_a = _select_actual_vapor_pressure(tmin, tmax, e_s, humidity)
 
     ra = extraterrestrial_radiation(latitude_radians, day)
     rso = clear_sky_solar_radiation(ra, elevation_m)
@@ -880,9 +897,7 @@ def penman_monteith_eto(
         tmax,
         ra,
         daylight_hours(latitude_radians, day),
-        solar_radiation_mj_m2_day,
-        sunshine_hours,
-        coastal,
+        radiation,
     )
     if from_temperature:
         # FAO-56 Eq 50: limit the temperature-range estimate to the clear-sky value

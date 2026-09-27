@@ -936,8 +936,9 @@ returned PET is in millimetres per day — the same convention as
 
 **Required versus optional inputs.** The required inputs are daily minimum and
 maximum temperature, latitude, elevation, wind speed, and (for NumPy input) the
-day of year. Humidity and radiation inputs are optional. Humidity pathway
-precedence is dewpoint, then RHmin/RHmax, then RHmax, then RHmean, and finally
+day of year. Humidity and radiation inputs are optional and grouped into
+`climate_indices.HumidityInputs` and `climate_indices.RadiationInputs`.
+Humidity pathway precedence is dewpoint, then RHmin/RHmax, then RHmax, then RHmean, and finally
 the arid-region `e0(Tmin - 2)` estimate. Radiation precedence is supplied solar
 radiation, then sunshine hours, then the temperature-range estimate (Eq 50,
 with the interior `kRs = 0.16` or coastal `kRs = 0.19` coefficient); the

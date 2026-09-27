@@ -2288,6 +2288,98 @@ def pet_hargreaves(
     return result_array
 
 
+def _align_penman_monteith_inputs(
+    tmin: xr.DataArray,
+    tmax: xr.DataArray,
+    optional_inputs: dict[str, Any],
+    time_dim: str,
+) -> tuple[xr.DataArray, xr.DataArray, dict[str, Any]]:
+    """Align meteorological inputs and infer days on the shared daily calendar."""
+    time_bearing = [
+        (name, value)
+        for name, value in optional_inputs.items()
+        if isinstance(value, xr.DataArray) and time_dim in value.dims
+    ]
+    aligned = xr.align(tmin, tmax, *[value for _, value in time_bearing], join="inner")
+    if len(aligned[0].coords[time_dim]) < max(len(tmin.coords[time_dim]), len(tmax.coords[time_dim])):
+        warnings.warn(
+            "Input alignment dropped non-overlapping timesteps before the Penman-Monteith calculation.",
+            InputAlignmentWarning,
+            stacklevel=3,
+        )
+    tmin_aligned, tmax_aligned = aligned[0], aligned[1]
+    optional_inputs = optional_inputs.copy()
+    for (name, _), value in zip(time_bearing, aligned[2:], strict=True):
+        optional_inputs[name] = value
+
+    if len(tmin_aligned.coords[time_dim]) == 0:
+        raise CoordinateValidationError(
+            message=(f"No overlapping timesteps remain after aligning the Penman-Monteith inputs along '{time_dim}'."),
+            coordinate_name=time_dim,
+            reason="empty coordinate",
+        )
+
+    # enforce the shared January-start daily calendar contract used by the PET family
+    _ = _build_daily_calendar_plan(tmin_aligned.coords[time_dim], compute.Periodicity.daily)
+    if optional_inputs["day_of_year"] is None:
+        optional_inputs["day_of_year"] = tmin_aligned[time_dim].dt.dayofyear
+    return tmin_aligned, tmax_aligned, optional_inputs
+
+
+def _penman_monteith_kernel_input(value: Any, time_dim: str) -> tuple[Any, list[str]]:
+    """Return an apply_ufunc input and core dims, encoding absent inputs as NaN."""
+    if value is None:
+        return np.float64(np.nan), []
+    if isinstance(value, xr.DataArray):
+        return value, [time_dim] if time_dim in value.dims else []
+    return value, []
+
+
+def _absent_if_nan_scalar(value: Any) -> Any:
+    """Recover ``None`` for an absent optional input from its NaN sentinel."""
+    if np.ndim(value) == 0 and np.isnan(value):
+        return None
+    return value
+
+
+def _finalize_penman_monteith_result(
+    result: xr.DataArray,
+    tmin_aligned: xr.DataArray,
+    latitude: float | np.floating | xr.DataArray,
+    elevation_m: Any,
+) -> xr.DataArray:
+    """Restore dimension order and stamp CF, version, history, and latitude attrs."""
+    desired_dims = list(tmin_aligned.dims) + [dim for dim in result.dims if dim not in tmin_aligned.dims]
+    result = result.transpose(*desired_dims)
+    result.attrs.update(CF_METADATA["pet_penman_monteith"])
+    for key, value in tmin_aligned.attrs.items():
+        if key not in result.attrs:
+            result.attrs[key] = value
+
+    from climate_indices import __version__
+
+    result.attrs["climate_indices_version"] = __version__
+    if isinstance(latitude, xr.DataArray):
+        lat_desc = f"DataArray(dims={latitude.dims})"
+    else:
+        lat_desc = str(latitude)
+    history_entry = _build_history_entry(
+        "PET Penman-Monteith",
+        __version__,
+        {"latitude": lat_desc, "elevation_m": str(elevation_m)},
+    )
+    result.attrs["history"] = _append_history(tmin_aligned.attrs, history_entry)
+    result.attrs["latitude"] = _build_latitude_attr(latitude)
+
+    _log().info(
+        "pet_penman_monteith_completed",
+        input_shape=tmin_aligned.shape,
+        output_shape=result.shape,
+        latitude=lat_desc,
+    )
+    return result
+
+
 def pet_penman_monteith(
     daily_tmin_celsius: np.ndarray | xr.DataArray,
     daily_tmax_celsius: np.ndarray | xr.DataArray,
@@ -2296,13 +2388,8 @@ def pet_penman_monteith(
     wind_speed_m_s: np.ndarray | xr.DataArray | float,
     day_of_year: np.ndarray | xr.DataArray | None = None,
     wind_speed_height_m: float = 2.0,
-    tdew_celsius: np.ndarray | xr.DataArray | None = None,
-    rh_min: np.ndarray | xr.DataArray | None = None,
-    rh_max: np.ndarray | xr.DataArray | None = None,
-    rh_mean: np.ndarray | xr.DataArray | None = None,
-    solar_radiation_mj_m2_day: np.ndarray | xr.DataArray | None = None,
-    sunshine_hours: np.ndarray | xr.DataArray | None = None,
-    coastal: bool = False,
+    humidity: pm_eto.HumidityInputs | None = None,
+    radiation: pm_eto.RadiationInputs | None = None,
     soil_heat_flux_mj_m2_day: np.ndarray | xr.DataArray | float = 0.0,
     albedo: float = pm_eto.REFERENCE_ALBEDO,
     time_dim: str = "time",
@@ -2338,14 +2425,10 @@ def pet_penman_monteith(
         day_of_year: Day of the year, 1-365 (366 in a leap year). Required for
             NumPy input; inferred from the time coordinate for xarray input.
         wind_speed_height_m: Height at which the wind speed was measured [m].
-        tdew_celsius: Dewpoint temperature [degC], if available.
-        rh_min: Minimum daily relative humidity [%], with ``rh_max``.
-        rh_max: Maximum daily relative humidity [%].
-        rh_mean: Mean daily relative humidity [%].
-        solar_radiation_mj_m2_day: Incoming solar radiation [MJ m-2 day-1].
-        sunshine_hours: Actual duration of bright sunshine [hours day-1].
-        coastal: Use the coastal temperature-range coefficient (``kRs = 0.19``)
-            when solar radiation is estimated from the temperature range.
+        humidity: Optional actual-vapour-pressure inputs, in pathway precedence
+            order; see :class:`climate_indices.pm_eto.HumidityInputs`.
+        radiation: Optional solar-radiation inputs, in pathway precedence order;
+            see :class:`climate_indices.pm_eto.RadiationInputs`.
         soil_heat_flux_mj_m2_day: Soil heat flux density [MJ m-2 day-1]; use 0 for
             daily steps.
         albedo: Canopy reflection coefficient (0.23 for the grass reference).
@@ -2375,6 +2458,8 @@ def pet_penman_monteith(
         )
 
     _validate_latitude_range(latitude)
+    humidity = humidity or pm_eto.HumidityInputs()
+    radiation = radiation or pm_eto.RadiationInputs()
 
     if input_type == InputType.NUMPY:
         if isinstance(day_of_year, xr.DataArray) or day_of_year is None:
@@ -2396,13 +2481,8 @@ def pet_penman_monteith(
                 wind_speed_m_s,
                 day_of_year,
                 wind_speed_height_m=wind_speed_height_m,
-                tdew_celsius=tdew_celsius,
-                rh_min=rh_min,
-                rh_max=rh_max,
-                rh_mean=rh_mean,
-                solar_radiation_mj_m2_day=solar_radiation_mj_m2_day,
-                sunshine_hours=sunshine_hours,
-                coastal=coastal,
+                humidity=humidity,
+                radiation=radiation,
                 soil_heat_flux_mj_m2_day=soil_heat_flux_mj_m2_day,
                 albedo=albedo,
             )
@@ -2425,53 +2505,17 @@ def pet_penman_monteith(
         "day_of_year": day_of_year,
         "wind_speed_m_s": wind_speed_m_s,
         "elevation_m": elevation_m,
-        "tdew_celsius": tdew_celsius,
-        "rh_min": rh_min,
-        "rh_max": rh_max,
-        "rh_mean": rh_mean,
-        "solar_radiation_mj_m2_day": solar_radiation_mj_m2_day,
-        "sunshine_hours": sunshine_hours,
+        "tdew_celsius": humidity.tdew_celsius,
+        "rh_min": humidity.rh_min,
+        "rh_max": humidity.rh_max,
+        "rh_mean": humidity.rh_mean,
+        "solar_radiation_mj_m2_day": radiation.solar_radiation_mj_m2_day,
+        "sunshine_hours": radiation.sunshine_hours,
         "soil_heat_flux_mj_m2_day": soil_heat_flux_mj_m2_day,
     }
-    time_bearing = [
-        (name, value)
-        for name, value in optional_inputs.items()
-        if isinstance(value, xr.DataArray) and time_dim in value.dims
-    ]
-    aligned = xr.align(tmin_da, tmax_da, *[value for _, value in time_bearing], join="inner")
-    if len(aligned[0].coords[time_dim]) < max(len(tmin_da.coords[time_dim]), len(tmax_da.coords[time_dim])):
-        warnings.warn(
-            "Input alignment dropped non-overlapping timesteps before the Penman-Monteith calculation.",
-            InputAlignmentWarning,
-            stacklevel=2,
-        )
-    tmin_aligned, tmax_aligned = aligned[0], aligned[1]
-    for (name, _), value in zip(time_bearing, aligned[2:], strict=True):
-        optional_inputs[name] = value
-
-    if len(tmin_aligned.coords[time_dim]) == 0:
-        raise CoordinateValidationError(
-            message=(f"No overlapping timesteps remain after aligning the Penman-Monteith inputs along '{time_dim}'."),
-            coordinate_name=time_dim,
-            reason="empty coordinate",
-        )
-
-    # enforce the shared January-start daily calendar contract used by the PET family
-    _ = _build_daily_calendar_plan(tmin_aligned.coords[time_dim], compute.Periodicity.daily)
-
-    # infer the day of the year from the time coordinate when not supplied
-    day_of_year_value = optional_inputs["day_of_year"]
-    if day_of_year_value is None:
-        day_of_year_value = tmin_aligned[time_dim].dt.dayofyear
-        optional_inputs["day_of_year"] = day_of_year_value
-
-    def _as_kernel_input(value: Any) -> tuple[Any, list[str]]:
-        """Return a value apply_ufunc can take, and the core dims it carries."""
-        if value is None:
-            return np.float64(np.nan), []
-        if isinstance(value, xr.DataArray):
-            return value, [time_dim] if time_dim in value.dims else []
-        return value, []
+    tmin_aligned, tmax_aligned, optional_inputs = _align_penman_monteith_inputs(
+        tmin_da, tmax_da, optional_inputs, time_dim
+    )
 
     kernel_inputs = [
         tmin_aligned,
@@ -2491,15 +2535,9 @@ def pet_penman_monteith(
     core_dims: list[list[str]] = []
     ufunc_inputs: list[Any] = []
     for value in kernel_inputs:
-        ufunc_value, dims = _as_kernel_input(value)
+        ufunc_value, dims = _penman_monteith_kernel_input(value, time_dim)
         ufunc_inputs.append(ufunc_value)
         core_dims.append(dims)
-
-    def _absent_if_nan_scalar(value: Any) -> Any:
-        """Recover ``None`` for an absent optional input from its NaN sentinel."""
-        if np.ndim(value) == 0 and np.isnan(value):
-            return None
-        return value
 
     def _penman_monteith_kernel(
         tmin: np.ndarray,
@@ -2515,7 +2553,6 @@ def pet_penman_monteith(
         solar: Any,
         sunshine: Any,
         soil: Any,
-        **kwargs: Any,
     ) -> Any:
         return pm_eto.penman_monteith_eto(
             tmin,
@@ -2524,14 +2561,20 @@ def pet_penman_monteith(
             elevation,
             wind,
             day,
-            tdew_celsius=_absent_if_nan_scalar(tdew),
-            rh_min=_absent_if_nan_scalar(rh_min_value),
-            rh_max=_absent_if_nan_scalar(rh_max_value),
-            rh_mean=_absent_if_nan_scalar(rh_mean_value),
-            solar_radiation_mj_m2_day=_absent_if_nan_scalar(solar),
-            sunshine_hours=_absent_if_nan_scalar(sunshine),
+            humidity=pm_eto.HumidityInputs(
+                tdew_celsius=_absent_if_nan_scalar(tdew),
+                rh_min=_absent_if_nan_scalar(rh_min_value),
+                rh_max=_absent_if_nan_scalar(rh_max_value),
+                rh_mean=_absent_if_nan_scalar(rh_mean_value),
+            ),
+            radiation=pm_eto.RadiationInputs(
+                solar_radiation_mj_m2_day=_absent_if_nan_scalar(solar),
+                sunshine_hours=_absent_if_nan_scalar(sunshine),
+                coastal=radiation.coastal,
+            ),
             soil_heat_flux_mj_m2_day=soil,
-            **kwargs,
+            wind_speed_height_m=wind_speed_height_m,
+            albedo=albedo,
         )
 
     result = xr.apply_ufunc(
@@ -2543,46 +2586,9 @@ def pet_penman_monteith(
         dask="parallelized",
         dask_gufunc_kwargs={"allow_rechunk": True},
         output_dtypes=[float],
-        kwargs={"wind_speed_height_m": wind_speed_height_m, "coastal": coastal, "albedo": albedo},
     )
 
-    # restore original dimension order (apply_ufunc places output core dims last)
-    desired_dims = list(tmin_aligned.dims) + [dim for dim in result.dims if dim not in tmin_aligned.dims]
-    result = result.transpose(*desired_dims)
-
-    cf_attrs = CF_METADATA["pet_penman_monteith"]
-    result.attrs.update(cf_attrs)
-
-    for key, value in tmin_aligned.attrs.items():
-        if key not in result.attrs:
-            result.attrs[key] = value
-
-    from climate_indices import __version__
-
-    result.attrs["climate_indices_version"] = __version__
-
-    if isinstance(latitude, xr.DataArray):
-        lat_desc = f"DataArray(dims={latitude.dims})"
-    else:
-        lat_desc = str(latitude)
-
-    history_entry = _build_history_entry(
-        "PET Penman-Monteith",
-        __version__,
-        {"latitude": lat_desc, "elevation_m": str(elevation_m)},
-    )
-    result.attrs["history"] = _append_history(tmin_aligned.attrs, history_entry)
-    result.attrs["latitude"] = _build_latitude_attr(latitude)
-
-    _log().info(
-        "pet_penman_monteith_completed",
-        input_shape=tmin_aligned.shape,
-        output_shape=result.shape,
-        latitude=lat_desc,
-    )
-
-    result_array: xr.DataArray = result
-    return result_array
+    return _finalize_penman_monteith_result(result, tmin_aligned, latitude, elevation_m)
 
 
 def _pdsi_numpy_passthrough(

@@ -21,6 +21,8 @@ from climate_indices.pm_eto import (
     LATENT_HEAT_DEFAULT,
     MOLECULAR_WEIGHT_RATIO,
     SPECIFIC_HEAT_MOIST_AIR,
+    HumidityInputs,
+    RadiationInputs,
     actual_vapor_pressure_from_dewpoint,
     actual_vapor_pressure_from_rhmax,
     actual_vapor_pressure_from_rhmean,
@@ -761,9 +763,8 @@ class TestPenmanMonteithFromMeteorology:
             wind_speed_m_s=2.78,
             day_of_year=187,
             wind_speed_height_m=10.0,
-            rh_min=63.0,
-            rh_max=84.0,
-            sunshine_hours=9.25,
+            humidity=HumidityInputs(rh_min=63.0, rh_max=84.0),
+            radiation=RadiationInputs(sunshine_hours=9.25),
         )
         assert eto == pytest.approx(3.88, abs=0.05)
 
@@ -778,8 +779,8 @@ class TestPenmanMonteithFromMeteorology:
             2.78,
             187,
             wind_speed_height_m=10.0,
-            tdew_celsius=dewpoint,
-            sunshine_hours=9.25,
+            humidity=HumidityInputs(tdew_celsius=dewpoint),
+            radiation=RadiationInputs(sunshine_hours=9.25),
         )
         assert from_dewpoint == pytest.approx(3.88, abs=0.1)
 
@@ -793,8 +794,8 @@ class TestPenmanMonteithFromMeteorology:
             2.0,
             2.0,
             105,
-            tdew_celsius=actual_vapor_pressure_from_dewpoint(17.0),
-            coastal=True,
+            humidity=HumidityInputs(tdew_celsius=actual_vapor_pressure_from_dewpoint(17.0)),
+            radiation=RadiationInputs(coastal=True),
         )
         assert np.isfinite(eto)
         assert eto > 0
@@ -810,8 +811,8 @@ class TestPenmanMonteithFromMeteorology:
                 100.0,
                 2.78,
                 187,
-                rh_min=63.0,
-                sunshine_hours=9.25,
+                humidity=HumidityInputs(rh_min=63.0),
+                radiation=RadiationInputs(sunshine_hours=9.25),
             )
 
     def test_nan_propagates(self) -> None:
@@ -822,7 +823,7 @@ class TestPenmanMonteithFromMeteorology:
             100.0,
             np.array([2.78, 2.78]),
             np.array([187, 187]),
-            rh_max=84.0,
+            humidity=HumidityInputs(rh_max=84.0),
         )
         assert np.isfinite(eto[0])
         assert np.isnan(eto[1])

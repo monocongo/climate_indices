@@ -43,7 +43,7 @@ import numpy as np
 import numpy.typing as npt
 import xarray as xr
 
-from climate_indices import indices
+from climate_indices import indices, pm_eto
 from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.compute import Periodicity
 from climate_indices.indices import Distribution
@@ -515,13 +515,8 @@ def pet_penman_monteith(
     wind_speed_m_s: npt.NDArray[np.float64] | float,
     day_of_year: npt.NDArray[np.float64],
     wind_speed_height_m: float = 2.0,
-    tdew_celsius: npt.NDArray[np.float64] | None = None,
-    rh_min: npt.NDArray[np.float64] | None = None,
-    rh_max: npt.NDArray[np.float64] | None = None,
-    rh_mean: npt.NDArray[np.float64] | None = None,
-    solar_radiation_mj_m2_day: npt.NDArray[np.float64] | None = None,
-    sunshine_hours: npt.NDArray[np.float64] | None = None,
-    coastal: bool = False,
+    humidity: pm_eto.HumidityInputs | None = None,
+    radiation: pm_eto.RadiationInputs | None = None,
     soil_heat_flux_mj_m2_day: npt.NDArray[np.float64] | float = 0.0,
     albedo: float = 0.23,
     time_dim: str = "time",
@@ -537,13 +532,8 @@ def pet_penman_monteith(
     wind_speed_m_s: np.ndarray | xr.DataArray | float,
     day_of_year: np.ndarray | xr.DataArray | None = None,
     wind_speed_height_m: float = 2.0,
-    tdew_celsius: np.ndarray | xr.DataArray | None = None,
-    rh_min: np.ndarray | xr.DataArray | None = None,
-    rh_max: np.ndarray | xr.DataArray | None = None,
-    rh_mean: np.ndarray | xr.DataArray | None = None,
-    solar_radiation_mj_m2_day: np.ndarray | xr.DataArray | None = None,
-    sunshine_hours: np.ndarray | xr.DataArray | None = None,
-    coastal: bool = False,
+    humidity: pm_eto.HumidityInputs | None = None,
+    radiation: pm_eto.RadiationInputs | None = None,
     soil_heat_flux_mj_m2_day: np.ndarray | xr.DataArray | float = 0.0,
     albedo: float = 0.23,
     time_dim: str = "time",
@@ -558,13 +548,8 @@ def pet_penman_monteith(
     wind_speed_m_s: Any,
     day_of_year: Any = None,
     wind_speed_height_m: float = 2.0,
-    tdew_celsius: Any = None,
-    rh_min: Any = None,
-    rh_max: Any = None,
-    rh_mean: Any = None,
-    solar_radiation_mj_m2_day: Any = None,
-    sunshine_hours: Any = None,
-    coastal: bool = False,
+    humidity: pm_eto.HumidityInputs | None = None,
+    radiation: pm_eto.RadiationInputs | None = None,
     soil_heat_flux_mj_m2_day: Any = 0.0,
     albedo: float = 0.23,
     time_dim: str = "time",
@@ -592,14 +577,10 @@ def pet_penman_monteith(
         wind_speed_m_s: Wind speed measured at ``wind_speed_height_m`` [m s-1].
         day_of_year: Day of the year (required for NumPy, inferred for xarray).
         wind_speed_height_m: Height at which the wind speed was measured [m].
-        tdew_celsius: Dewpoint temperature [degC], if available.
-        rh_min: Minimum daily relative humidity [%], with ``rh_max``.
-        rh_max: Maximum daily relative humidity [%].
-        rh_mean: Mean daily relative humidity [%].
-        solar_radiation_mj_m2_day: Incoming solar radiation [MJ m-2 day-1].
-        sunshine_hours: Actual duration of bright sunshine [hours day-1].
-        coastal: Use the coastal temperature-range coefficient when estimating
-            solar radiation from the temperature range.
+        humidity: Optional actual-vapour-pressure inputs, in pathway precedence
+            order; see :class:`climate_indices.pm_eto.HumidityInputs`.
+        radiation: Optional solar-radiation inputs, in pathway precedence order;
+            see :class:`climate_indices.pm_eto.RadiationInputs`.
         soil_heat_flux_mj_m2_day: Soil heat flux density [MJ m-2 day-1].
         albedo: Canopy reflection coefficient (0.23 for the grass reference).
         time_dim: Name of the time dimension in the input DataArray.
@@ -616,13 +597,8 @@ def pet_penman_monteith(
         wind_speed_m_s,
         day_of_year,
         wind_speed_height_m,
-        tdew_celsius,
-        rh_min,
-        rh_max,
-        rh_mean,
-        solar_radiation_mj_m2_day,
-        sunshine_hours,
-        coastal,
+        humidity,
+        radiation,
         soil_heat_flux_mj_m2_day,
         albedo,
         time_dim,
