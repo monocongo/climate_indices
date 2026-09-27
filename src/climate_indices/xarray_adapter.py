@@ -1318,6 +1318,9 @@ def xarray_adapter(
             raises NotImplementedError.
         validate_calibration_sample: Enforce the fitting-based indices' 30-year
             non-NaN minimum. Disable for indices with their own calibration contract.
+            Only checked for a 1-D (single time series) input; a gridded input has
+            no single representative cell to sample, so per-cell fits return NaN
+            for cells with too little data instead (see #1156).
         spatial_kernel: If True, the wrapped function accepts the core ``time_dim``
             dimension alongside any number of cell dimensions, packed as
             ``(time, *cells)``, so ``apply_ufunc`` makes one call per non-core block
@@ -1580,29 +1583,9 @@ def xarray_adapter(
                 # use xr.apply_ufunc with vectorize=True to handle spatial broadcasting
                 # similar to Dask path but without dask="parallelized"
 
-                # validate calibration period has sufficient non-NaN data
-                if (
-                    nan_assessment["has_nan"]
-                    and infer_params
-                    and validate_calibration_sample
-                    and time_dim in input_da.dims
-                ):
-                    time_coord = input_da[time_dim]
-                    cal_initial = call_kwargs.get("calibration_year_initial")
-                    cal_final = call_kwargs.get("calibration_year_final")
-                    if cal_initial is not None and cal_final is not None:
-                        # for multi-dimensional validation, use first spatial point
-                        sample_values = input_da.values
-                        if sample_values.ndim > 1:
-                            # extract first spatial slice along time dimension
-                            slices = [slice(None)] + [0] * (sample_values.ndim - 1)
-                            sample_values = sample_values[tuple(slices)]
-                        _validate_calibration_non_nan_sample_size(
-                            time_coord,
-                            sample_values,
-                            calibration_year_initial=cal_initial,
-                            calibration_year_final=cal_final,
-                        )
+                # No whole-grid calibration preflight here (see #1156): a single
+                # sample cell can't stand in for a grid, so eager and Dask now agree
+                # and per-cell fits return NaN where a cell lacks enough data.
 
                 # collect input DataArrays for apply_ufunc in parameter order
                 input_dataarrays = _collect_input_dataarrays(

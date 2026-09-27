@@ -187,6 +187,15 @@ change states what a user sees, how to detect it, and what to change in
   It now judges only the values the fit lost and refits the scaled input, so block,
   chunked, and per-cell results agree on such grids wherever Pearson fits every valid
   cell (#1118).
+- **xarray adapter gridded calibration check**: an eager, in-memory grid was checked
+  against a single sampled cell at index `[0, ...]`, so a grid whose first cell was
+  masked (an ocean corner) was rejected even though every other cell had enough
+  calibration data, and a grid whose time dimension wasn't axis 0 crashed with an
+  `IndexError` instead of being checked. The same grid run through Dask skipped the
+  check entirely and computed, so eager and Dask disagreed. The whole-grid sample is
+  dropped: a gridded input no longer runs this preflight check, matching Dask, and a
+  cell without enough calibration data comes back NaN instead of failing the whole
+  grid. The single-series (1-D) check is unchanged (#979, #1156).
 
 ## [2.4.0] - 2026-04-05
 
