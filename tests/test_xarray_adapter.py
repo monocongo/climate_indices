@@ -3219,7 +3219,7 @@ class TestGriddedCalibrationCheckSymmetry:
 
         # the masked cell stays NaN; every other cell gets a finite fit
         assert np.isnan(result.values[:, 0, 0]).all()
-        assert np.isfinite(result.values[:, 1:, :]).any()
+        assert np.isfinite(result.values[:, 1:, :]).any(axis=0).all()
 
     def test_eager_and_dask_grid_agree(self):
         """Eager and Dask runs of the same masked grid produce the same result."""
@@ -3258,4 +3258,4 @@ class TestGriddedCalibrationCheckSymmetry:
         )
 
         assert isinstance(result, xr.DataArray)
-        assert result.sizes == da.sizes
+        assert result.dims == da.transpose("lat", "time", "lon").dims
