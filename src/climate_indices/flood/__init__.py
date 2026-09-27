@@ -169,11 +169,24 @@ def flood_index(
 ) -> npt.NDArray[np.float64] | xr.DataArray:
     """Calculate the Flood Index from PE (flood potential, not flooding).
 
-    DataArray dispatch is beta; omitted years are inferred from daily coordinates.
-    ``year_start_month`` defines complete annual calibration periods.
+    DataArray dispatch is beta. The omitted calibration start defaults to the
+    first coordinate year plus one, excluding the standard 365-day PE warm-up
+    year without loading data. This also skips a year for PE with no warm-up
+    NaNs or a shorter duration; pass an explicit start to include it, or a later
+    start for longer warm-up or leading gaps. The omitted calibration end is
+    the start year of the last complete annual period; the omitted data start
+    is the first coordinate year. ``year_start_month`` defines annual periods.
+    At least two complete calibration periods must remain.
     """
     if isinstance(pe, xr.DataArray):
         kwargs: dict[str, Any] = {"year_start_month": year_start_month}
+        if (
+            calibration_year_initial is None
+            and "time" in pe.coords
+            and pe.sizes.get("time")
+            and np.issubdtype(pe.time.dtype, np.datetime64)
+        ):
+            calibration_year_initial = int(pd.Timestamp(pe.time.values[0]).year) + 1
         if calibration_year_final is None:
             calibration_year_final = _last_complete_calibration_year(pe, year_start_month)
         for key, value in (
