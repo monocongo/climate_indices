@@ -53,13 +53,15 @@ ones.
   `ShortCalibrationWarning`, and more than 20% missing values inside the
   period emits a warning about fitting reliability.
 - When no calibration period is given, the xarray API uses the full input
-  range. For in-memory inputs that contain NaNs, it raises
-  `InsufficientDataError` when fewer than 30 effective non-NaN years fall
-  inside that range; a complete input shorter than 30 years proceeds with only
-  `ShortCalibrationWarning`.
-- That effective-year check reads input values, so it does not run on
-  Dask-backed inputs: a Dask input with fewer than 30 effective non-NaN years
-  may proceed into fitting without raising `InsufficientDataError`.
+  range. For a single-series (1-D) in-memory input that contains NaNs, it
+  raises `InsufficientDataError` when fewer than 30 effective non-NaN years
+  fall inside that range; a complete input shorter than 30 years proceeds with
+  only `ShortCalibrationWarning`.
+- That effective-year check reads input values and samples a single series, so
+  it does not run on gridded (more than one dimension) or Dask-backed inputs:
+  neither path enforces a per-cell 30-year non-NaN minimum, and a grid whose
+  cells are sparse inside the calibration window may proceed into fitting
+  without raising `InsufficientDataError`.
 - Pearson fitting requires enough non-zero values per calendar period. SPI
   falls back to gamma fitting when the Pearson data is insufficient, while
   SPEI raises `InsufficientDataError`; use the gamma distribution for strongly
@@ -126,7 +128,7 @@ ones.
 | Time coordinate completeness, periodicity, and start month | Caller | Enforced | Caller |
 | Timesteps at least `scale` | Not enforced | Enforced | Not enforced |
 | Calibration length and missing-data warnings | Warned | Warned | Warned |
-| Calibration non-NaN sample size | Caller | Enforced when NaNs are present (in-memory inputs) | Caller |
+| Calibration non-NaN sample size | Caller | Enforced when NaNs are present (in-memory 1-D input) | Caller |
 | Calibration years inside data coverage | Partial (see note) | Partial (see note) | Partial (see note) |
 | Multi-variable alignment | Caller, by array size | Inner join with warning | Caller |
 | Units | Caller | Caller | Converted and validated |

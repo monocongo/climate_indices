@@ -442,7 +442,7 @@ result = indices.spi(da, scale=6, distribution=indices.Distribution.gamma)
 :::{warning}
 **Error:** `InsufficientDataError: Insufficient non-NaN data in calibration period (1980-2010). Found 245 non-NaN values (20.4 effective years), but at least 30 years of non-NaN data required for reliable distribution fitting.`
 
-**Cause:** Your data contains too many NaN values within the calibration period, leaving fewer than 30 years of valid observations for distribution fitting.
+**Cause:** Your data contains too many NaN values within the calibration period, leaving fewer than 30 years of valid observations for distribution fitting. This check applies to a single-series (1-D) in-memory input; gridded in-memory and Dask-backed inputs are not preflighted, so a grid with sparse cells fits from the values that remain instead of raising.
 
 **Solution 1:** Extend the calibration period to include more data:
 

@@ -15,8 +15,8 @@ the value contract is in {doc}`data_requirements`.
   366-day daily layout or Gregorian coordinates, declared units, and the missing
   values marked.
 - The years the input actually covers, and how much of the calibration window is
-  non-missing — the in-memory xarray API raises when the window holds fewer than
-  30 effective non-NaN years.
+  non-missing — for a single-series in-memory xarray input, the API raises when
+  the window holds fewer than 30 effective non-NaN years.
 - For a gridded fit, a sense of how zero-inflated the precipitation is.
 
 ## Choose the distribution
@@ -53,11 +53,12 @@ period-only parameters, or let each block fit.
 
 - 30 years is the documented minimum. On the NumPy path a shorter period emits
   `ShortCalibrationWarning`, and more than 20% missing values inside the period
-  warns about fitting reliability. An in-memory xarray input that contains
-  missing values is checked against the same threshold and raises
+  warns about fitting reliability. A single-series in-memory xarray input that
+  contains missing values is checked against the same threshold and raises
   `InsufficientDataError` when the window falls short, as it does for a window
-  with no overlap at all. A Dask-backed input skips that check, so confirm your
-  own coverage there. {doc}`data_requirements` is the full contract.
+  with no overlap at all. Gridded in-memory inputs and Dask-backed inputs skip
+  that check, so confirm your own coverage there. {doc}`data_requirements` is
+  the full contract.
 - The period must fall inside the input's year coverage. Matching it there is the
   caller's responsibility for SPI and SPEI: a request outside the record is
   replaced with the full available record, without an error, and the result
