@@ -78,7 +78,7 @@ def test_numpy_input_returns_fit_diagnostics() -> None:
     )
 
     assert isinstance(result, FitDiagnostics)
-    assert set(result.parameters) == {"alpha", "beta"}
+    assert set(result.parameters) == {"alpha", "beta", "prob_zero"}
     np.testing.assert_array_equal(result.parameters["alpha"], expected.parameters["alpha"])
     np.testing.assert_array_equal(result.ks_p_value, expected.ks_p_value)
 
