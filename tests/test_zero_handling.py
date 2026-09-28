@@ -648,6 +648,32 @@ def test_a_supplied_gamma_shape_or_scale_with_the_wrong_cells_is_rejected(name: 
         compute.fit_diagnostics(block.reshape(40, 12, 1, 3), indices.Distribution.gamma, *arguments, parameters)
 
 
+def test_a_supplied_gamma_shape_and_scale_that_broadcast_are_still_accepted() -> None:
+    """Shapes that broadcast without growing the values keep their result: (periods, 1, 1) and 2-D (1, periods)."""
+    block = np.stack([_half_zero_monthly(seed=seed) for seed in range(3)], axis=-1).reshape(40, 12, 1, 3)
+    arguments = (1981, 1981, 2020, _MONTHLY)
+
+    singleton_cells = compute.transform_fitted_gamma(
+        block, *arguments, np.full((12, 1, 1), 2.0), np.full((12, 1, 1), 30.0)
+    )
+    full_cells = compute.transform_fitted_gamma(block, *arguments, np.full((12, 1, 3), 2.0), np.full((12, 1, 3), 30.0))
+    np.testing.assert_array_equal(singleton_cells, full_cells)
+
+    series = block[..., 0, 0]
+    row = compute.transform_fitted_gamma(series, *arguments, np.full((1, 12), 2.0), np.full((1, 12), 30.0))
+    np.testing.assert_array_equal(
+        row, compute.transform_fitted_gamma(series, *arguments, np.full(12, 2.0), np.full(12, 30.0))
+    )
+
+    diagnostics = compute.fit_diagnostics(
+        block,
+        indices.Distribution.gamma,
+        *arguments,
+        {"alpha": np.full((12, 1, 1), 2.0), "beta": np.full((12, 1, 1), 30.0)},
+    )
+    assert diagnostics.parameters["alpha"].shape == (12, 1, 3)
+
+
 @pytest.mark.parametrize("probability_of_zero", [1.2, -0.1])
 def test_a_supplied_gamma_zero_mass_outside_the_unit_interval_is_rejected(probability_of_zero: float) -> None:
     """A probability outside [0, 1] is an argument error, not a silent NaN."""

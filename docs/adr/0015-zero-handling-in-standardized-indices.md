@@ -86,8 +86,8 @@ asked by [#1185](https://github.com/monocongo/climate_indices/issues/1185).
    step no mass). `p0` is computed over the calibration period and read from
    `fitting_params["prob_zero"]` when supplied; a supplied value must lie in
    `[0, 1]` (NaN marks an undefined mass) and match the values' cell
-   dimensions, as Pearson parameters must; a supplied `alpha` or `beta` follows
-   the same cell rule. Pearson keeps its existing handling of a step without
+   dimensions, as Pearson parameters must; a supplied `alpha` or `beta` must
+   broadcast to the values, which keeps shapes such as `(periods, 1, 1)` valid. Pearson keeps its existing handling of a step without
    calibration data rather than this rule, so its classic output does not move
    relative to the previous release: the minimum-non-zero guard gives the step
    `p0 = 0` and zeroed parameters, so its non-zero values are NaN while its zeros

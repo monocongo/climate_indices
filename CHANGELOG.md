@@ -49,8 +49,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and SPEI and EDDI do not take it. The xarray `spi()` rejects an unknown mode when it
   is called, Dask-backed input included. `compute.transform_fitted_gamma()` also gains a
   `probabilities_of_zero` argument, the gamma counterpart of the Pearson transform's,
-  and a supplied gamma `alpha` or `beta` whose cell dimensions do not match the values
-  raises `ValueError` rather than an `IndexError` from NumPy. CF metadata and the CLI
+  and a supplied gamma `alpha` or `beta` that does not broadcast to the values raises
+  `ValueError` rather than an `IndexError` from NumPy. CF metadata and the CLI
   flag follow in #1187 (ADR-0015, #1186).
 
 ### Changed

@@ -506,6 +506,35 @@ def _validate_gamma_probabilities_of_zero(values: np.ndarray, probabilities_of_z
     return probabilities_of_zero
 
 
+def _validate_broadcastable_parameters(
+    target_shape: tuple[int, ...], named_parameters: tuple[tuple[str, np.ndarray | None], ...]
+) -> None:
+    """
+    Reject a supplied gamma ``alpha`` or ``beta`` that does not broadcast to ``target_shape``.
+
+    Any shape NumPy broadcasts without growing the target, such as ``(periods, 1, 1)``
+    for a ``(years, periods, lat, lon)`` block, stays accepted; one that would fail or
+    add axes raises ``ValueError`` naming the parameter rather than an error from NumPy.
+
+    :param target_shape: the shape the parameter is applied to
+    :param named_parameters: (name, parameter) pairs, where a parameter may be None
+    :raises ValueError: if a parameter does not broadcast to ``target_shape``
+    """
+    for name, parameter in named_parameters:
+        if parameter is None:
+            continue
+        shape = np.shape(parameter)
+        try:
+            broadcasts = np.broadcast_shapes(target_shape, shape) == tuple(target_shape)
+        except ValueError:
+            broadcasts = False
+        if not broadcasts:
+            raise ValueError(
+                f"Fitting parameter '{name}' has shape {shape}, which does not broadcast to the "
+                f"values' shape {tuple(target_shape)}; give one value per period, or per period and cell"
+            )
+
+
 def _place_zeros(
     fitted_values: np.ndarray,
     zero_mask: np.ndarray,
@@ -904,7 +933,7 @@ def _pearson_fit(
 def _validate_pearson_parameter_cells(
     values: np.ndarray, named_parameters: tuple[tuple[str, np.ndarray | None], ...]
 ) -> None:
-    """Reject pre-computed gamma or Pearson parameters whose period or cell axes do not match a block."""
+    """Reject pre-computed Pearson parameters whose period or cell axes do not match a block."""
     period_length = values.shape[1]
     cells = values.shape[2:]
     for name, parameter in named_parameters:
@@ -1974,9 +2003,10 @@ def transform_fitted_gamma(
         and shape of the input array
     :rtype: numpy.ndarray of floats
     :raises ValueError: if ``zero_handling`` is not one of the three modes, a
-        supplied ``alphas``, ``betas``, or ``probabilities_of_zero`` has cell
-        dimensions that do not match the values, or a supplied
-        ``probabilities_of_zero`` has a value outside [0, 1]
+        supplied ``alphas`` or ``betas`` does not broadcast to the values, a
+        supplied ``probabilities_of_zero`` has cell dimensions that do not match
+        the values, or a supplied ``probabilities_of_zero`` has a value outside
+        [0, 1]
     """
     validate_output_scale(output_scale)
     _validate_zero_handling(zero_handling)
@@ -2002,12 +2032,10 @@ def transform_fitted_gamma(
     # validate (and possibly reshape) the input array
     values = _validate_array(values, periodicity)
 
-    # supplied shape and scale follow the cell rule of the zero mass and the Pearson
-    # parameters, so a mismatch raises ValueError instead of failing inside NumPy
-    _validate_pearson_parameter_cells(values, (("alpha", alphas), ("beta", betas)))
     if probabilities_of_zero is not None:
         probabilities_of_zero = _validate_gamma_probabilities_of_zero(values, probabilities_of_zero)
     alphas, betas, probabilities_of_zero = _broadcast_fitting_parameters(values, alphas, betas, probabilities_of_zero)
+    _validate_broadcastable_parameters(values.shape, (("alpha", alphas), ("beta", betas)))
 
     # Replace zeros with NaNs for fitting (zeros are excluded from gamma fitting)
     # and get mask of zero positions for later probability calculations
@@ -2701,8 +2729,10 @@ def fit_diagnostics(
             values, data_start_year, calibration_start_year, calibration_end_year, periodicity
         )
     else:
-        _validate_pearson_parameter_cells(values, (("alpha", alphas), ("beta", betas)))
         alphas, betas = _as_period_cell_parameters(values, alphas, betas)
+        # the per-step diagnostics index every parameter at (time_step, *cell)
+        _validate_broadcastable_parameters(values.shape[1:], (("alpha", alphas), ("beta", betas)))
+        alphas, betas = (np.array(np.broadcast_to(parameter, values.shape[1:])) for parameter in (alphas, betas))
 
     # the fall back refits the zero mass too, so only a requested gamma fit reads a
     # supplied one, as the transform does
