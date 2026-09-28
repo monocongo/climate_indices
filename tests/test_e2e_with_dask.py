@@ -12,6 +12,7 @@ test importorskip("matplotlib").
 import ast
 import json
 import linecache
+import sys
 import traceback
 from collections import Counter
 from pathlib import Path
@@ -138,6 +139,56 @@ def e2e_data_any_calendar(request, tmp_path, monkeypatch):
     _publish_store(tmp_path, ds)
     monkeypatch.setenv("CLIMATE_INDICES_E2E_DATA", str(tmp_path))
     return tmp_path, ds
+
+
+def test_spi_fit_notebook_computes_on_prepared_sample(e2e_data, monkeypatch):
+    """The fit audit runs offline, including when the plotting extra is absent."""
+    monkeypatch.setattr(sys.modules[__name__], "NOTEBOOK", REPO_ROOT / "notebooks" / "check_spi_fit.ipynb")
+    namespace = {}
+    _exec_cells(namespace, _code_cells()[:2])
+
+    for scale in (1, 3, 12):
+        for distribution in (indices.Distribution.gamma, indices.Distribution.pearson):
+            fit = namespace["fits"][scale, distribution].isel(lat=0, lon=0)
+            pit = namespace["pits"][scale, distribution]
+            assert fit.n_valid.sel(month=1).item() > 0
+            assert np.isfinite(fit.ks_p_value.sel(month=1).item())
+            assert fit.distribution_used.item() == distribution.value
+            assert np.isfinite(pit.values).any()
+            if scale == 1:
+                assert fit.prob_zero.sel(month=5).item() > 0
+
+
+def test_spi_fit_notebook_plots_on_prepared_sample(e2e_data, monkeypatch):
+    """PIT histograms and fit maps execute from the shared prepared store."""
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    monkeypatch.setattr(sys.modules[__name__], "NOTEBOOK", REPO_ROOT / "notebooks" / "check_spi_fit.ipynb")
+    previous_figures = set(plt.get_fignums())
+    try:
+        namespace = {}
+        _exec_cells(namespace, _code_cells())
+        figures = [plt.figure(number) for number in sorted(set(plt.get_fignums()) - previous_figures)]
+        assert len(figures) == 3
+        assert all(sum(patch.get_height() for patch in axis.patches) > 0 for axis in figures[0].axes)
+        for figure in figures[1:]:
+            assert all("January" in axis.get_title() for axis in figure.axes if axis.get_title())
+            assert any(axis.collections for axis in figure.axes)
+        np.testing.assert_allclose(
+            figures[1].axes[0].collections[0].get_array(),
+            namespace["fits"][1, indices.Distribution.gamma].ks_p_value.sel(month=1).values,
+            equal_nan=True,
+        )
+        # A block-level Pearson fallback must not be plotted as a Pearson fit.
+        namespace["fits"][1, indices.Distribution.pearson]["distribution_used"][0, 0] = "gamma"
+        _exec_cells(namespace, _code_cells()[-1:])
+        fallback_ks = plt.figure(sorted(set(plt.get_fignums()) - previous_figures)[-2])
+        assert np.ma.getmaskarray(fallback_ks.axes[1].collections[0].get_array())[0, 0]
+    finally:
+        for number in set(plt.get_fignums()) - previous_figures:
+            plt.close(number)
 
 
 def _synthetic_dataset(time_freq="MS") -> xr.Dataset:
