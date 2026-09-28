@@ -46,6 +46,7 @@ import xarray as xr
 from climate_indices import indices, pm_eto
 from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.compute import Periodicity
+from climate_indices.exceptions import emit_deprecation_warning
 from climate_indices.indices import Distribution
 from climate_indices.validation import InputType, detect_input_type
 from climate_indices.xarray_adapter import (
@@ -268,9 +269,41 @@ def spei(precips_mm: Any, pet_mm: Any, *args: Any, **kwargs: Any) -> npt.NDArray
 _wrapped_percentage_of_normal = xarray_adapter(
     cf_metadata=CF_METADATA["percentage_of_normal"],  # type: ignore[arg-type]
     index_display_name="PNP",
-    calculation_metadata_keys=["scale", "calibration_start_year", "calibration_end_year"],
+    calculation_metadata_keys=["scale", "calibration_year_initial", "calibration_year_final"],
     spatial_kernel=True,
 )(indices.percentage_of_normal)
+
+
+def _translate_pnp_calibration_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Map the deprecated PNP ``calibration_start_year``/``_end_year`` aliases onto the canonical names."""
+    translated = dict(kwargs)
+    if "calibration_start_year" in translated or "calibration_end_year" in translated:
+        emit_deprecation_warning(
+            feature="Parameters 'calibration_start_year'/'calibration_end_year'",
+            alternative="Use 'calibration_year_initial'/'calibration_year_final'",
+            deprecated_in="3.1.0",
+            removal_version="4.0.0",
+        )
+        for legacy, canonical in (
+            ("calibration_start_year", "calibration_year_initial"),
+            ("calibration_end_year", "calibration_year_final"),
+        ):
+            if legacy in translated and canonical not in translated:
+                translated[canonical] = translated.pop(legacy)
+            else:
+                translated.pop(legacy, None)
+    return translated
+
+
+@overload
+def percentage_of_normal(
+    values: npt.NDArray[np.float64],
+    scale: int,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: Periodicity,
+) -> npt.NDArray[np.float64]: ...
 
 
 @overload
@@ -286,11 +319,66 @@ def percentage_of_normal(
 
 @overload
 def percentage_of_normal(
+    values: npt.NDArray[np.float64],
+    scale: int,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
+) -> npt.NDArray[np.float64]: ...
+
+
+@overload
+def percentage_of_normal(
+    values: npt.NDArray[np.float64],
+    scale: int,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_year_final: int,
+    periodicity: Periodicity,
+) -> npt.NDArray[np.float64]: ...
+
+
+@overload
+def percentage_of_normal(
+    values: xr.DataArray,
+    scale: int,
+    data_start_year: int | None = None,
+    calibration_year_initial: int | None = None,
+    calibration_year_final: int | None = None,
+    periodicity: Periodicity | None = None,
+) -> xr.DataArray: ...
+
+
+@overload
+def percentage_of_normal(
     values: xr.DataArray,
     scale: int,
     data_start_year: int | None = None,
     calibration_start_year: int | None = None,
     calibration_end_year: int | None = None,
+    periodicity: Periodicity | None = None,
+) -> xr.DataArray: ...
+
+
+@overload
+def percentage_of_normal(
+    values: xr.DataArray,
+    scale: int,
+    data_start_year: int | None = None,
+    calibration_year_initial: int | None = None,
+    calibration_end_year: int | None = None,
+    periodicity: Periodicity | None = None,
+) -> xr.DataArray: ...
+
+
+@overload
+def percentage_of_normal(
+    values: xr.DataArray,
+    scale: int,
+    data_start_year: int | None = None,
+    calibration_start_year: int | None = None,
+    calibration_year_final: int | None = None,
     periodicity: Periodicity | None = None,
 ) -> xr.DataArray: ...
 
@@ -316,9 +404,9 @@ def percentage_of_normal(values: Any, *args: Any, **kwargs: Any) -> npt.NDArray[
         scale: Number of time steps over which the normal is computed.
         data_start_year: Initial year of the input dataset (required for NumPy,
             optional for xarray).
-        calibration_start_year: Initial year of calibration period (required
+        calibration_year_initial: Initial year of calibration period (required
             for NumPy, optional for xarray).
-        calibration_end_year: Final year of calibration period (required for
+        calibration_year_final: Final year of calibration period (required for
             NumPy, optional for xarray).
         periodicity: Time series periodicity ('monthly' or 'daily'). Required
             for NumPy, optional for xarray.
@@ -326,7 +414,11 @@ def percentage_of_normal(values: Any, *args: Any, **kwargs: Any) -> npt.NDArray[
     Returns:
         PNP values as numpy.ndarray or xarray.DataArray (matches input type).
     """
-    return _delegate(_wrapped_percentage_of_normal, values, *args, **kwargs)
+    result = _delegate(_wrapped_percentage_of_normal, values, *args, **_translate_pnp_calibration_kwargs(kwargs))
+    if isinstance(result, xr.DataArray):
+        result.attrs["calibration_start_year"] = result.attrs["calibration_year_initial"]
+        result.attrs["calibration_end_year"] = result.attrs["calibration_year_final"]
+    return result
 
 
 # PCI (Precipitation Concentration Index) overloads

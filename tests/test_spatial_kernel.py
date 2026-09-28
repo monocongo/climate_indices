@@ -985,8 +985,8 @@ class TestSpatialBlockContracts:
             values,
             scale,
             data_start_year,
-            calibration_start_year,
-            calibration_end_year,
+            calibration_year_initial,
+            calibration_year_final,
             periodicity,
         ):
             return values
@@ -998,8 +998,8 @@ class TestSpatialBlockContracts:
                 gridded_monthly_precip,
                 scale=3,
                 data_start_year=1980,
-                calibration_start_year=_CALIBRATION_START,
-                calibration_end_year=_CALIBRATION_END,
+                calibration_year_initial=_CALIBRATION_START,
+                calibration_year_final=_CALIBRATION_END,
                 periodicity=compute.Periodicity.monthly,
             )
 
@@ -1380,8 +1380,8 @@ def _percentage_of_normal_grid(values: np.ndarray, scale: int) -> np.ndarray:
             series,
             scale=scale,
             data_start_year=1980,
-            calibration_start_year=_CALIBRATION_START,
-            calibration_end_year=_CALIBRATION_END,
+            calibration_year_initial=_CALIBRATION_START,
+            calibration_year_final=_CALIBRATION_END,
             periodicity=compute.Periodicity.monthly,
         ),
     )
@@ -1573,8 +1573,8 @@ class TestSpatialPercentageOfNormal:
             gridded_monthly_precip,
             scale=3,
             data_start_year=1980,
-            calibration_start_year=_CALIBRATION_START,
-            calibration_end_year=_CALIBRATION_END,
+            calibration_year_initial=_CALIBRATION_START,
+            calibration_year_final=_CALIBRATION_END,
         )
 
         assert shapes == [(40 * 12, 3, 2)]
@@ -1588,8 +1588,8 @@ class TestSpatialPercentageOfNormal:
             gridded_monthly_precip,
             scale=3,
             data_start_year=1980,
-            calibration_start_year=_CALIBRATION_START,
-            calibration_end_year=_CALIBRATION_END,
+            calibration_year_initial=_CALIBRATION_START,
+            calibration_year_final=_CALIBRATION_END,
         )
 
         np.testing.assert_allclose(
@@ -1610,15 +1610,15 @@ class TestSpatialPercentageOfNormal:
             partial,
             scale=3,
             data_start_year=1980,
-            calibration_start_year=_CALIBRATION_START,
-            calibration_end_year=_CALIBRATION_END,
+            calibration_year_initial=_CALIBRATION_START,
+            calibration_year_final=_CALIBRATION_END,
         )
         per_cell_result = per_cell_percentage_of_normal(
             partial,
             scale=3,
             data_start_year=1980,
-            calibration_start_year=_CALIBRATION_START,
-            calibration_end_year=_CALIBRATION_END,
+            calibration_year_initial=_CALIBRATION_START,
+            calibration_year_final=_CALIBRATION_END,
         )
 
         assert spatial_result.shape == partial.shape
@@ -1645,15 +1645,15 @@ class TestSpatialPercentageOfNormal:
             missing_cell,
             scale=6,
             data_start_year=1980,
-            calibration_start_year=_CALIBRATION_START,
-            calibration_end_year=_CALIBRATION_END,
+            calibration_year_initial=_CALIBRATION_START,
+            calibration_year_final=_CALIBRATION_END,
         )
         per_cell_result = per_cell_percentage_of_normal(
             missing_cell,
             scale=6,
             data_start_year=1980,
-            calibration_start_year=_CALIBRATION_START,
-            calibration_end_year=_CALIBRATION_END,
+            calibration_year_initial=_CALIBRATION_START,
+            calibration_year_final=_CALIBRATION_END,
         )
 
         np.testing.assert_array_equal(np.isnan(spatial_result.values), np.isnan(per_cell_result.values))
@@ -1679,15 +1679,15 @@ class TestSpatialPercentageOfNormal:
             daily,
             scale=30,
             data_start_year=2000,
-            calibration_start_year=2000,
-            calibration_end_year=2003,
+            calibration_year_initial=2000,
+            calibration_year_final=2003,
         )
         per_cell_result = per_cell_percentage_of_normal(
             daily,
             scale=30,
             data_start_year=2000,
-            calibration_start_year=2000,
-            calibration_end_year=2003,
+            calibration_year_initial=2000,
+            calibration_year_final=2003,
         )
 
         assert spatial_result.shape == daily.shape
@@ -1707,15 +1707,15 @@ class TestSpatialPercentageOfNormal:
             chunked,
             scale=6,
             data_start_year=1980,
-            calibration_start_year=_CALIBRATION_START,
-            calibration_end_year=_CALIBRATION_END,
+            calibration_year_initial=_CALIBRATION_START,
+            calibration_year_final=_CALIBRATION_END,
         )
         eager_result = spatial_percentage_of_normal(
             gridded_monthly_precip,
             scale=6,
             data_start_year=1980,
-            calibration_start_year=_CALIBRATION_START,
-            calibration_end_year=_CALIBRATION_END,
+            calibration_year_initial=_CALIBRATION_START,
+            calibration_year_final=_CALIBRATION_END,
         )
 
         assert lazy_result.chunks is not None
@@ -1895,8 +1895,8 @@ class TestSpatialNonParametricBlockContracts:
             ambiguous_grid,
             scale=3,
             data_start_year=1980,
-            calibration_start_year=1980,
-            calibration_end_year=1981,
+            calibration_year_initial=1980,
+            calibration_year_final=1981,
         )
 
         assert eddi_result.shape == ambiguous_grid.shape
