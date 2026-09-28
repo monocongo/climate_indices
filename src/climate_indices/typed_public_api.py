@@ -43,12 +43,15 @@ import numpy as np
 import numpy.typing as npt
 import xarray as xr
 
-from climate_indices import indices, pm_eto
+from climate_indices import compute, indices, pm_eto
 from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.compute import Periodicity
 from climate_indices.exceptions import emit_deprecation_warning
 from climate_indices.indices import Distribution
 from climate_indices.validation import InputType, detect_input_type
+from climate_indices.xarray_adapter import (
+    fit_diagnostics as _fit_diagnostics_impl,
+)
 from climate_indices.xarray_adapter import (
     palmer_pdsi as _palmer_pdsi_impl,
 )
@@ -851,12 +854,94 @@ def pdsi(
     return _delegate(_palmer_pdsi_impl, precips, pet, awc, *args, **kwargs)
 
 
+# Fit-diagnostics overloads
+@overload
+def fit_diagnostics(
+    values: npt.NDArray[np.float64],
+    scale: int,
+    distribution: Distribution,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: Periodicity,
+    fitting_params: dict[str, Any] | None = None,
+    spatial_time_major: bool = False,
+    time_dim: str = "time",
+) -> compute.FitDiagnostics: ...
+
+
+@overload
+def fit_diagnostics(
+    values: xr.DataArray,
+    scale: int,
+    distribution: Distribution,
+    data_start_year: int | None = None,
+    calibration_year_initial: int | None = None,
+    calibration_year_final: int | None = None,
+    periodicity: Periodicity | None = None,
+    fitting_params: dict[str, Any] | None = None,
+    spatial_time_major: bool = False,
+    time_dim: str = "time",
+) -> xr.Dataset: ...
+
+
+def fit_diagnostics(
+    values: Any, scale: Any, distribution: Any, *args: Any, **kwargs: Any
+) -> compute.FitDiagnostics | xr.Dataset:
+    """Fit a distribution and return per-calendar-step diagnostics.
+
+    This function accepts both NumPy arrays and xarray DataArrays. Type checkers
+    will narrow the return type based on the input type.
+
+    For NumPy inputs, all temporal parameters are required and the return is the
+    :class:`climate_indices.compute.FitDiagnostics` that
+    :func:`climate_indices.indices.fit_diagnostics` produces. For xarray inputs,
+    temporal parameters are optional and inferred from the time coordinate, and the
+    return is an ``xr.Dataset`` of the fitted parameters, ``prob_zero``,
+    ``n_valid``, ``ks_statistic``, ``ks_p_value``, and ``distribution_used`` over a
+    ``month`` or ``dayofyear`` dimension plus the input's cell dimensions. A Pearson
+    Type III request keeps both parameter families, with the inapplicable one NaN
+    per cell, and ``distribution_used`` names the family that does apply.
+
+    .. warning:: **Beta Feature (xarray path only)** — When called with an
+       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
+       The xarray interface (parameter inference, metadata handling, coordinate
+       preservation) may change in future minor releases. The NumPy array interface
+       is stable.
+
+    Args:
+        values: NumPy array or xarray DataArray of non-negative values.
+        scale: Number of time steps over which values are accumulated before fitting.
+        distribution: Distribution type for the fit, gamma or Pearson Type III.
+        data_start_year: Initial year of the input dataset (required for NumPy,
+            optional for xarray).
+        calibration_year_initial: Initial year of the calibration period (required
+            for NumPy, optional for xarray).
+        calibration_year_final: Final year of the calibration period (required for
+            NumPy, optional for xarray).
+        periodicity: Time series periodicity ('monthly' or 'daily'). Required
+            for NumPy, optional for xarray.
+        fitting_params: Optional dict of pre-computed distribution fitting
+            parameters.
+        spatial_time_major: Declares an ambiguous 3+-D NumPy ``values`` as a
+            time-major ``(time, *cells)`` block (per ADR-0009). Only used for NumPy
+            inputs.
+        time_dim: Name of the time dimension for xarray inputs (default: ``"time"``).
+
+    Returns:
+        A :class:`climate_indices.compute.FitDiagnostics` for numpy.ndarray input,
+        or an ``xr.Dataset`` of the diagnostics for xarray.DataArray input.
+    """
+    return _delegate(_fit_diagnostics_impl, values, scale, distribution, *args, **kwargs)
+
+
 for _public_function in (
     spi,
     spei,
     percentage_of_normal,
     eddi,
     pdsi,
+    fit_diagnostics,
     pet_thornthwaite,
     pet_hargreaves,
     pet_penman_monteith,

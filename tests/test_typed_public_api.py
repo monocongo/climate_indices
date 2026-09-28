@@ -19,6 +19,7 @@ else:  # pragma: no cover - overload introspection is unavailable before 3.11
 from climate_indices import (
     eddi,
     edi,
+    fit_diagnostics,
     indices,
     pci,
     pdsi,
@@ -32,6 +33,9 @@ from climate_indices import (
 from climate_indices.compute import Periodicity
 from climate_indices.flood._edi import edi as numpy_edi
 from climate_indices.indices import Distribution
+from climate_indices.xarray_adapter import (
+    fit_diagnostics as fit_diagnostics_impl,
+)
 from climate_indices.xarray_adapter import (
     palmer_pdsi as palmer_pdsi_impl,
 )
@@ -115,6 +119,7 @@ _PUBLIC_IMPLEMENTATIONS: dict[Callable[..., Any], tuple[Callable[..., Any], tupl
     percentage_of_normal: (indices.percentage_of_normal, ("spatial_time_major",)),
     pci: (indices.pci, ()),
     pdsi: (palmer_pdsi_impl, ()),
+    fit_diagnostics: (fit_diagnostics_impl, ()),
     pet_thornthwaite: (pet_thornthwaite_impl, ()),
     pet_hargreaves: (pet_hargreaves_impl, ()),
     pet_penman_monteith: (pet_penman_monteith_impl, ()),
@@ -167,6 +172,10 @@ _EXPECTED_OVERLOADS: dict[Callable[..., Any], tuple[str, ...]] = {
     pdsi: (
         "(precips: 'npt.NDArray[np.float64]', pet: 'npt.NDArray[np.float64]', awc: 'float | npt.NDArray[np.float64]', data_start_year: 'int', calibration_year_initial: 'int', calibration_year_final: 'int', fitting_params: 'dict[str, Any] | None' = None, spatial_time_major: 'bool' = False, time_dim: 'str' = 'time') -> 'tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], dict[str, Any] | None]'",
         "(precips: 'xr.DataArray', pet: 'xr.DataArray', awc: 'float | npt.NDArray[np.float64] | xr.DataArray', data_start_year: 'int | None' = None, calibration_year_initial: 'int | None' = None, calibration_year_final: 'int | None' = None, fitting_params: 'dict[str, Any] | None' = None, spatial_time_major: 'bool' = False, time_dim: 'str' = 'time') -> 'xr.Dataset'",
+    ),
+    fit_diagnostics: (
+        "(values: 'npt.NDArray[np.float64]', scale: 'int', distribution: 'Distribution', data_start_year: 'int', calibration_year_initial: 'int', calibration_year_final: 'int', periodicity: 'Periodicity', fitting_params: 'dict[str, Any] | None' = None, spatial_time_major: 'bool' = False, time_dim: 'str' = 'time') -> 'compute.FitDiagnostics'",
+        "(values: 'xr.DataArray', scale: 'int', distribution: 'Distribution', data_start_year: 'int | None' = None, calibration_year_initial: 'int | None' = None, calibration_year_final: 'int | None' = None, periodicity: 'Periodicity | None' = None, fitting_params: 'dict[str, Any] | None' = None, spatial_time_major: 'bool' = False, time_dim: 'str' = 'time') -> 'xr.Dataset'",
     ),
 }
 
