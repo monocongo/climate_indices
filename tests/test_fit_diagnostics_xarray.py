@@ -376,6 +376,48 @@ def test_supplied_fitting_params_reproduce_the_fit() -> None:
     assert second["alpha"].attrs["fitting_params"] == "dict(keys=alpha,beta)"
     assert "fitting_params" not in first["alpha"].attrs
 
+    # a gridded block round-trips its cell-shaped parameters as well
+    grid_first = fit_diagnostics(
+        _monthly_grid_da(),
+        1,
+        Distribution.gamma,
+        calibration_year_initial=_CALIBRATION_START_YEAR,
+        calibration_year_final=_CALIBRATION_END_YEAR,
+    )
+    grid_second = fit_diagnostics(
+        _monthly_grid_da(),
+        1,
+        Distribution.gamma,
+        calibration_year_initial=_CALIBRATION_START_YEAR,
+        calibration_year_final=_CALIBRATION_END_YEAR,
+        fitting_params={name: grid_first[name].values for name in ("alpha", "beta")},
+    )
+    np.testing.assert_array_equal(grid_second["alpha"].values, grid_first["alpha"].values)
+
+
+def test_rejects_cell_shaped_fitting_params_for_a_two_dimensional_input() -> None:
+    """The per-cell 2-D path cannot slice cell-shaped parameters, so it says so early."""
+    values = np.arange(1.0, (_MONTHLY_SERIES.size * 2) + 1.0).reshape(_MONTHLY_SERIES.size, 2)
+    time = pd.date_range("1981-01-01", periods=_MONTHLY_SERIES.size, freq="MS")
+    grid = xr.DataArray(values, coords={"time": time, "station": ["a", "b"]}, dims=["time", "station"])
+    first = fit_diagnostics(
+        grid,
+        1,
+        Distribution.gamma,
+        calibration_year_initial=_CALIBRATION_START_YEAR,
+        calibration_year_final=_CALIBRATION_END_YEAR,
+    )
+
+    with pytest.raises(ValueError, match="one value per calendar step"):
+        fit_diagnostics(
+            grid,
+            1,
+            Distribution.gamma,
+            calibration_year_initial=_CALIBRATION_START_YEAR,
+            calibration_year_final=_CALIBRATION_END_YEAR,
+            fitting_params={name: first[name].values for name in ("alpha", "beta")},
+        )
+
 
 @pytest.mark.parametrize("distribution", [Distribution.gamma, Distribution.pearson])
 def test_all_missing_input_reports_no_valid_sample(distribution: Distribution) -> None:

@@ -902,8 +902,8 @@ def fit_diagnostics(
     ``month`` or ``dayofyear`` dimension plus the input's cell dimensions. A Pearson
     Type III request keeps both parameter families, with the inapplicable one NaN
     per fitted block, and ``distribution_used`` names the family that does apply;
-    neither carries the ``month``/``dayofyear`` dimension, since the fall back is
-    decided per fitted block (per Dask chunk for chunked input).
+    ``distribution_used`` does not carry the ``month``/``dayofyear`` dimension, since
+    the fall back is decided per fitted block (per Dask chunk for chunked input).
 
     .. warning:: **Beta Feature (xarray path only)** — When called with an
        ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
@@ -924,7 +924,8 @@ def fit_diagnostics(
         periodicity: Time series periodicity ('monthly' or 'daily'). Required
             for NumPy, optional for xarray.
         fitting_params: Optional dict of pre-computed distribution fitting
-            parameters.
+            parameters; for a 1-D or 2-D input each array carries one value per
+            calendar step.
         spatial_time_major: Declares an ambiguous 3+-D NumPy ``values`` as a
             time-major ``(time, *cells)`` block (per ADR-0009). Only used for NumPy
             inputs.

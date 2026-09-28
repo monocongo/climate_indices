@@ -3014,7 +3014,8 @@ def fit_diagnostics(
         periodicity: Monthly or daily time steps. Required for NumPy inputs;
             inferred from the time coordinate for xarray inputs.
         fitting_params: Optional pre-computed fitting parameters; deprecated
-            aliases are normalized by the NumPy core.
+            aliases are normalized by the NumPy core. One value per calendar step
+            for a 1-D or 2-D input; a 3-D input also accepts cell-shaped arrays.
         spatial_time_major: Declares a three-or-more-dimensional NumPy ``values`` as
             a time-major ``(time, *cells)`` block (per ADR-0009). Only used for NumPy
             inputs; the xarray path reads its dimensions from the coordinate labels.
@@ -3031,10 +3032,10 @@ def fit_diagnostics(
         Type III request keeps both parameter families: the one that does not apply
         to a fitted block (its fit fell back to gamma) is NaN there, and
         ``distribution_used`` names the family that does apply. ``distribution_used``
-        and the fitted-parameter variables do not carry the calendar-step dimension:
-        the fall back is decided per fitted block, so their values are constant over
-        each calendar step. For chunked input the fall back is decided per chunk, as
-        in the index adapters, so chunking can change it.
+        does not carry the calendar-step dimension, so its value is constant over
+        each calendar step; the fitted-parameter variables keep it. For chunked
+        input the fall back is decided per chunk, as in the index adapters, so
+        chunking can change it.
 
     Raises:
         ValueError: If a NumPy call omits a required temporal parameter.
@@ -3088,6 +3089,17 @@ def fit_diagnostics(
         }.items()
         if value is not None
     }
+    # a 1-D or 2-D input takes the per-cell path, which cannot slice a parameter
+    # array per cell, so cell-shaped parameters fail early instead of deep inside
+    # the NumPy core's boolean checks
+    if fitting_params and input_da.ndim <= 2:
+        cell_shaped = sorted(name for name, value in fitting_params.items() if np.ndim(value) > 1)
+        if cell_shaped:
+            raise ValueError(
+                "fitting_params must carry one value per calendar step for a 1-D or 2-D input; "
+                f"cell-shaped parameters ({', '.join(cell_shaped)}) are only supported for a "
+                "3-D or higher time-major block"
+            )
     # inference is metadata-only, so it stays safe for Dask-backed input
     provided.update(_infer_temporal_parameters(indices.fit_diagnostics, input_da, [input_da], provided, time_dim))
     calendar_plan = _resolve_daily_calendar_plan(indices.fit_diagnostics, input_da, [input_da], {}, provided, time_dim)
