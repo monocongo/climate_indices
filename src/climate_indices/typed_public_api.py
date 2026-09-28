@@ -45,7 +45,7 @@ import xarray as xr
 
 from climate_indices import indices, pm_eto
 from climate_indices.cf_metadata_registry import CF_METADATA
-from climate_indices.compute import Periodicity
+from climate_indices.compute import Periodicity, ZeroHandling
 from climate_indices.exceptions import emit_deprecation_warning
 from climate_indices.indices import Distribution
 from climate_indices.validation import InputType, detect_input_type
@@ -145,6 +145,8 @@ def spi(
     calibration_year_final: int,
     periodicity: Periodicity,
     fitting_params: dict[str, Any] | None = None,
+    *,
+    zero_handling: ZeroHandling = "classic",
 ) -> npt.NDArray[np.float64]: ...
 
 
@@ -158,6 +160,8 @@ def spi(
     calibration_year_final: int | None = None,
     periodicity: Periodicity | None = None,
     fitting_params: dict[str, Any] | None = None,
+    *,
+    zero_handling: ZeroHandling = "classic",
 ) -> xr.DataArray: ...
 
 
@@ -191,6 +195,9 @@ def spi(values: Any, *args: Any, **kwargs: Any) -> npt.NDArray[np.float64] | xr.
             for NumPy, optional for xarray.
         fitting_params: Optional dict of pre-computed distribution fitting
             parameters.
+        zero_handling: Where a zero accumulation is placed within the zero mass:
+            "classic" (the default), "center_of_mass", or "mean_zero". See
+            :func:`climate_indices.indices.spi`.
 
     Returns:
         SPI values as numpy.ndarray or xarray.DataArray (matches input type).

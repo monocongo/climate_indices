@@ -4,9 +4,14 @@
 
 Accepted. Implementation is tracked by
 [#1186](https://github.com/monocongo/climate_indices/issues/1186) through
-[#1188](https://github.com/monocongo/climate_indices/issues/1188). Until they
-land, `zero_handling` does not exist in the code, and gamma `p0` is still
-counted over the whole record. This record is amended as each one lands.
+[#1188](https://github.com/monocongo/climate_indices/issues/1188). The NumPy
+implementation (#1186) is in place: `zero_handling` is accepted by `spi()`,
+`standardized_index()`, the package-root `spi()`, and the `compute` gamma and
+Pearson transforms, and gamma `p0` is counted over the calibration period. The
+xarray adapter forwards the keyword but does not yet record it in CF metadata,
+and the CLI has no flag for it until
+[#1187](https://github.com/monocongo/climate_indices/issues/1187) lands. This
+record is amended as each one lands.
 
 SPI and `indices.standardized_index()` treat zero accumulations as a point mass
 of probability `p0` below the fitted gamma or Pearson Type III distribution:

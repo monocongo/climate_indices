@@ -21,7 +21,7 @@ timescale, not calibration years. No numerical behavior changes.
 
 ## Breaking changes in 3.0.0
 
-3.0.0 ships four breaking changes that users hit without a deprecation period.
+3.0.0 ships five breaking changes that users hit without a deprecation period.
 Each one below states what a user sees, how to detect it, and what to change.
 
 ### Daily xarray calendar alignment (3.0.0)
@@ -159,6 +159,36 @@ example a time dimension absent from an xarray input) now raises
 {class}`DimensionMismatchError <climate_indices.exceptions.DimensionMismatchError>`
 instead of `CoordinateValidationError`. `DimensionMismatchError` derives from
 `CoordinateValidationError`, so existing handlers keep catching it.
+
+### Gamma probability of zero from the calibration period (3.0.0)
+
+**What a user sees:** gamma {func}`~climate_indices.typed_public_api.spi`,
+`indices.standardized_index()`, {func}`~climate_indices.typed_public_api.spei`,
+and `compute.transform_fitted_gamma()` can return different values. The gamma
+probability of zero, the mass placed below the fitted distribution, was the
+zero count over every year of the record, with missing years counted in the
+denominator, while `alpha` and `beta` came from the calibration period. It is
+now the calibration period's zero count over its non-missing values, as the
+Pearson Type III fit already computed it, and a gamma `fitting_params`
+dictionary may supply it as `prob_zero`. `fit_diagnostics()` reports the same
+value for gamma.
+
+**How to detect it:** an output moves only when its input holds a zero (for
+SPEI, an exact zero in the offset P − PET series) and the calibration period
+either is shorter than the record with a different zero fraction, or holds a
+missing value, including the leading values that a scale above 1 leaves
+missing. Where a calendar step's zero fraction changes, every value at that
+step moves, not only its zeros. SPI whose Pearson Type III fit falls back to
+gamma moves the same way. A full-record calibration without missing values is
+bit-identical.
+
+**What to change:** recompute affected outputs. To reproduce a previous gamma
+result, pass the zero fraction of the scaled values over every year of the
+record as `fitting_params["prob_zero"]`.
+To keep a reused gamma fit's zero mass fixed across datasets, compute the
+calibration period's zero fraction and save it as `prob_zero` alongside `alpha`
+and `beta`. See
+[ADR-0015](../adr/0015-zero-handling-in-standardized-indices.md).
 
 ## `spi` console script (removed in 3.0.0)
 

@@ -37,6 +37,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a `(time, *cells)` block across SPI, SPEI, EDDI, percentage of normal, PET, PDSI, and
   `compute.prepare_scaled()` when declared with `spatial_time_major=True`, fitting or
   ranking every cell in one pass instead of one call per cell (#941, #942).
+- **Zero handling for SPI and `standardized_index()`**: a keyword-only `zero_handling`
+  chooses where a zero accumulation is placed within the probability of zero `p0`:
+  `"classic"` (the default and the existing score, `Φ⁻¹(p0)`), `"center_of_mass"`
+  (`Φ⁻¹(p0 / 2)`, Stagge et al., 2015), or `"mean_zero"` (`−φ(Φ⁻¹(p0)) / p0`, Allen
+  and Otero, 2024). It is accepted by `indices.spi()`, `indices.standardized_index()`,
+  the package-root `spi()`, `compute.fit_and_standardize()`,
+  `compute.transform_fitted_gamma()`, and `compute.transform_fitted_pearson()` for
+  series, legacy 2-D, and declared time-major input. A Pearson Type III fit that falls
+  back to gamma applies the same mode, a moved zero is still clipped to `[-3.09, 3.09]`,
+  and SPEI and EDDI do not take it. CF metadata and the CLI flag follow in #1187
+  (ADR-0015, #1186).
 
 ### Changed
 
@@ -79,7 +90,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
-Four changes alter computed values or exception types without a deprecation period, and
+Five changes alter computed values or exception types without a deprecation period, and
 the console script removed below reaches users without one either: its deprecation
 warning was added during the 3.0.0 cycle and shipped in no release. Each behavioral
 change states what a user sees, how to detect it, and what to change in
@@ -123,6 +134,18 @@ change states what a user sees, how to detect it, and what to change in
   Error messages are unchanged, so a handler that catches `ValueError` must be widened
   to catch `PeriodicityError` or its parent `InvalidArgumentError` from
   `climate_indices.exceptions`.
+- **Gamma probability of zero from the calibration period**: the gamma transform
+  counted zeros over every year of the record, with missing years in the denominator,
+  while its shape and scale came from the calibration period. It now divides the
+  calibration period's zero count by its non-missing count, as the Pearson Type III fit
+  already did, and reads `prob_zero` from gamma `fitting_params` when one is given.
+  Classic gamma SPI and `standardized_index()`, gamma SPEI whose offset P − PET series
+  holds an exact zero, and SPI whose Pearson fit falls back to gamma can return
+  different values when the input has a zero and the calibration period either is
+  shorter than the record or holds a missing value. A full-record calibration without
+  missing values is bit-identical, and the NOAA and SPEIbase comparisons are unchanged.
+  `fit_diagnostics()` reports the same calibration-period `prob_zero` for gamma
+  (ADR-0015, #1186).
 
 ### Removed
 

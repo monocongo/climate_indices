@@ -61,6 +61,33 @@ def test_spi_xarray_return_type() -> None:
     assert_type(result, xr.DataArray)
 
 
+def test_spi_zero_handling_types() -> None:
+    """Verify both overloads accept a zero_handling mode and keep their return types."""
+    rng = np.random.default_rng(42)
+    values = rng.gamma(shape=2.0, scale=50.0, size=480)
+    values[::3] = 0.0
+    numpy_result = spi(
+        values,
+        1,
+        Distribution.gamma,
+        1980,
+        1980,
+        2019,
+        Periodicity.monthly,
+        zero_handling="mean_zero",
+    )
+    assert_type(numpy_result, npt.NDArray[np.float64])
+
+    time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+    xarray_result = spi(
+        xr.DataArray(values, coords={"time": time}, dims=["time"]),
+        1,
+        Distribution.gamma,
+        zero_handling="center_of_mass",
+    )
+    assert_type(xarray_result, xr.DataArray)
+
+
 def test_pnp_legacy_keyword_types() -> None:
     """Legacy calibration keywords remain typed on both NumPy and xarray routes."""
     values = np.ones(480)

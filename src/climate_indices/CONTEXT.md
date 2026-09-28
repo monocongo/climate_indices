@@ -22,7 +22,11 @@ The statistical model — Gamma or Pearson Type III — chosen to represent a sc
 _Avoid_: pearson3 (this spelling only appears in test-fixture filenames, not in API/domain language)
 
 **Probability of Zero**:
-The empirical fraction of zero-valued observations at a given calendar time step, tracked separately because precipitation (and P−PET series for SPEI) can be exactly zero, which the continuous Gamma/Pearson distributions can't represent directly. Mixed into the fitted CDF so zero-precipitation periods still get a well-defined standardized value.
+The empirical fraction of zero-valued observations at a given calendar time step, tracked separately because precipitation (and P−PET series for SPEI) can be exactly zero, which the continuous Gamma/Pearson distributions can't represent directly. Mixed into the fitted CDF so zero-precipitation periods still get a well-defined standardized value. Both distributions count it over the Calibration Period's non-missing values ([ADR-0015](../../docs/adr/0015-zero-handling-in-standardized-indices.md)), and both read a caller's own value from `fitting_params["prob_zero"]`.
+
+**Zero Handling**:
+Where a zero accumulation is placed within the Probability of Zero `p0`, chosen by the keyword-only `zero_handling` of `spi()`, `standardized_index()`, and the gamma and Pearson transforms. `"classic"` (the default) scores a zero `Φ⁻¹(p0)`, the top of the zero mass; `"center_of_mass"` scores it `Φ⁻¹(p0 / 2)` (Stagge et al., 2015); `"mean_zero"` scores it `−φ(Φ⁻¹(p0)) / p0` (Allen & Otero, 2024), the conditional mean of the zero mass. It is a transform choice, not a fit result, so it is never stored in `fitting_params`. SPEI and EDDI have no zero mass to place and do not take it.
+_Avoid_: zero placement, zero method
 
 **Run (Run Theory)**
 A maximal contiguous sequence of time steps on one side of a threshold, found by `runs.identify_runs()` and returned as a `RunSet`. A run's *duration* is its length in time steps, its *magnitude* the sum of absolute deviations from the threshold, its *intensity* the magnitude per time step, its *peak* the most extreme value on the run's side (minimum for below, maximum for above), and its *interarrival* the steps from one run's start to the next run's start. Direction is explicit (`"below"`/`"above"`), never inferred from the threshold's sign; NaN terminates a run. A drought event, a wet event, and a KBDI drought spell (``direction="above"``, since KBDI rises in drought) are all runs on different series.

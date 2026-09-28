@@ -7,7 +7,7 @@ import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, get_args
 
 import numpy as np
 import scipy.special
@@ -45,6 +45,7 @@ __all__ = [
     "InsufficientDataError",
     "PearsonFittingError",
     "DistributionFallbackStrategy",
+    "ZeroHandling",
 ]
 
 # module-level structlog logger
@@ -67,6 +68,13 @@ MIN_CALIBRATION_YEARS = 30
 
 # Kolmogorov-Smirnov test p-value threshold for goodness-of-fit warnings
 GOODNESS_OF_FIT_P_VALUE_THRESHOLD = 0.05
+
+#: Where a zero accumulation is placed within the probability mass at zero, see
+#: ADR-0015: "classic" scores it Φ⁻¹(p0), "center_of_mass" Φ⁻¹(p0 / 2), and
+#: "mean_zero" −φ(Φ⁻¹(p0)) / p0.
+ZeroHandling = Literal["classic", "center_of_mass", "mean_zero"]
+
+_ZERO_HANDLING_MODES: tuple[str, ...] = get_args(ZeroHandling)
 
 
 class DistributionFallbackStrategy:
@@ -398,6 +406,78 @@ def _summarize_array(arr: np.ndarray | None, name: str = "array") -> str:
     )
 
 
+def _validate_zero_handling(zero_handling: str) -> None:
+    """Reject a zero-handling mode other than the three ADR-0015 names."""
+    if not isinstance(zero_handling, str) or zero_handling not in _ZERO_HANDLING_MODES:
+        raise ValueError(
+            f"Invalid zero_handling argument: {zero_handling!r} -- "
+            "must be one of 'classic', 'center_of_mass', or 'mean_zero'"
+        )
+
+
+def _calibration_probabilities_of_zero(calibration_values: np.ndarray) -> np.ndarray:
+    """
+    The zero fraction of each calendar step's non-missing calibration values.
+
+    A step (or cell) with no non-missing calibration value carries no zero mass.
+
+    :param calibration_values: calibration data, shape (years, time_steps) or
+        (years, time_steps, *cells)
+    :return: probabilities of zero, shape (time_steps,) or (time_steps, *cells)
+    """
+    if np.ma.isMaskedArray(calibration_values):
+        # a mask is a missing marker, so it must not count as a non-missing value
+        calibration_values = np.ma.filled(calibration_values.astype(float), np.nan)
+    number_of_zeros = np.count_nonzero(calibration_values == 0, axis=0)
+    number_of_non_missing = np.count_nonzero(~np.isnan(calibration_values), axis=0)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        probabilities_of_zero: np.ndarray = np.where(
+            number_of_non_missing > 0, number_of_zeros / number_of_non_missing, 0.0
+        )
+    return probabilities_of_zero
+
+
+def _place_zeros(
+    fitted_values: np.ndarray,
+    zero_mask: np.ndarray,
+    probabilities_of_zero: np.ndarray,
+    zero_handling: ZeroHandling,
+) -> np.ndarray:
+    """
+    Give the zero positions the normal-scale score a zero-handling mode assigns.
+
+    ``"classic"`` returns ``fitted_values`` unchanged. The other modes overwrite the
+    positions in ``zero_mask`` with a score computed in closed form from each step's
+    probability of zero ``p0``: ``Φ⁻¹(p0 / 2)`` for ``"center_of_mass"`` and
+    ``−φ(Φ⁻¹(p0)) / p0`` for ``"mean_zero"``. Only steps with ``0 < p0 < 1`` are
+    moved; at ``p0 == 0`` or ``p0 == 1`` every mode keeps the classic result
+    (ADR-0015, decision 5).
+
+    :param fitted_values: normal-scale transformed values, shape (years, time_steps)
+        or (years, time_steps, *cells)
+    :param zero_mask: positions holding a zero (or, for Pearson Type III, a trace
+        value), broadcastable to ``fitted_values``
+    :param probabilities_of_zero: probability of zero per step, broadcastable to
+        ``fitted_values`` along its trailing axes
+    :param zero_handling: the zero-handling mode
+    :return: the values with their zero positions moved
+    """
+    if zero_handling == "classic":
+        return fitted_values
+
+    probabilities_of_zero = np.asarray(probabilities_of_zero, dtype=float)
+    movable = (probabilities_of_zero > 0.0) & (probabilities_of_zero < 1.0)
+    # a placeholder inside (0, 1) keeps the closed forms finite where no zero moves
+    safe_probabilities = np.where(movable, probabilities_of_zero, 0.5)
+    if zero_handling == "center_of_mass":
+        zero_scores = scipy.stats.norm.ppf(safe_probabilities / 2.0)
+    else:
+        zero_scores = -scipy.stats.norm.pdf(scipy.stats.norm.ppf(safe_probabilities)) / safe_probabilities
+
+    placed: np.ndarray = np.where(zero_mask & movable, zero_scores, fitted_values)
+    return placed
+
+
 def calculate_time_step_params(time_step_values: np.ndarray) -> tuple[float, float, float, float]:
     """
     Calculate Pearson Type III parameters for a time step's values.
@@ -609,6 +689,7 @@ def _pearson_fit(
     skew: np.ndarray,
     loc: np.ndarray,
     scale: np.ndarray,
+    zero_handling: ZeroHandling = "classic",
 ) -> np.ndarray:
     """
     Perform fitting of an array of values to a Pearson Type III distribution
@@ -620,6 +701,9 @@ def _pearson_fit(
     :param skew: first Pearson Type III parameter, the skew of the distribution
     :param loc: second Pearson Type III parameter, the loc of the distribution
     :param scale: third Pearson Type III parameter, the scale of the distribution
+    :param zero_handling: where a zero or trace value (below 0.0005, where the
+        probability of zero is positive) is placed within the zero mass; a
+        non-classic mode overrides the support-limit masks at those positions
     """
 
     # only fit to the distribution if the values array is valid/not missing
@@ -695,6 +779,10 @@ def _pearson_fit(
                     underlying_error=e,
                 ) from e
 
+            # a non-classic mode moves the zero and trace positions, overriding the
+            # support-limit masks there (ADR-0015, decision 2)
+            fitted_values = _place_zeros(fitted_values, zero_mask, probabilities_of_zero, zero_handling)
+
         else:
             fitted_values = values
 
@@ -769,6 +857,8 @@ def transform_fitted_pearson(
     locs: np.ndarray | None = None,
     scales: np.ndarray | None = None,
     skews: np.ndarray | None = None,
+    *,
+    zero_handling: ZeroHandling = "classic",
 ) -> np.ndarray:
     """
     Fit values to a Pearson Type III distribution and transform the values
@@ -799,10 +889,19 @@ def transform_fitted_pearson(
     :param locs: pre-computed loc values for each month or day of the year
     :param scales: pre-computed scale values for each month or day of the year
     :param skews: pre-computed skew values for each month or day of the year
+    :param zero_handling: where a zero or trace value (below 0.0005, where the
+        probability of zero is positive) is placed within the zero mass:
+        ``"classic"`` (the default, and the existing behavior) scores it
+        ``Φ⁻¹(p0)``, ``"center_of_mass"`` ``Φ⁻¹(p0 / 2)``, and ``"mean_zero"``
+        ``−φ(Φ⁻¹(p0)) / p0``. Only steps with ``0 < p0 < 1`` are moved, and a moved
+        position overrides the support-limit masks. See ADR-0015.
     :return: 2-D array of transformed/fitted values, corresponding in size
              and shape of the input array
     :rtype: numpy.ndarray of floats
+    :raises ValueError: if ``zero_handling`` is not one of the three modes
     """
+    _validate_zero_handling(zero_handling)
+
     log = _logger.bind(
         operation="transform_fitted_pearson",
         distribution="pearson3",
@@ -863,7 +962,7 @@ def transform_fitted_pearson(
     assert skews is not None
 
     # fit each value to the Pearson Type III distribution
-    values = _pearson_fit(values, probabilities_of_zero, skews, locs, scales)
+    values = _pearson_fit(values, probabilities_of_zero, skews, locs, scales, zero_handling)
 
     log.info("distribution_transform_completed", output_shape=str(values.shape))
     return values
@@ -1658,15 +1757,18 @@ def scale_values(
 
 
 def _broadcast_fitting_parameters(
-    values: np.ndarray, alphas: np.ndarray | None, betas: np.ndarray | None
-) -> tuple[np.ndarray | None, np.ndarray | None]:
+    values: np.ndarray,
+    alphas: np.ndarray | None,
+    betas: np.ndarray | None,
+    probabilities_of_zero: np.ndarray | None = None,
+) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None]:
     """
     Reshape period-only fit parameters, shape (periods,), so that NumPy broadcasts
     them along axis 1 of a time-major spatial array instead of aligning them with the
     trailing cell axes.
     """
     if values.ndim <= 2:
-        return alphas, betas
+        return alphas, betas, probabilities_of_zero
 
     if alphas is not None:
         alphas = np.asarray(alphas)
@@ -1678,7 +1780,12 @@ def _broadcast_fitting_parameters(
         if betas.ndim == 1:
             betas = betas.reshape(1, -1, *([1] * (values.ndim - 2)))
 
-    return alphas, betas
+    if probabilities_of_zero is not None:
+        probabilities_of_zero = np.asarray(probabilities_of_zero)
+        if probabilities_of_zero.ndim == 1:
+            probabilities_of_zero = probabilities_of_zero.reshape(1, -1, *([1] * (values.ndim - 2)))
+
+    return alphas, betas, probabilities_of_zero
 
 
 def transform_fitted_gamma(
@@ -1689,6 +1796,9 @@ def transform_fitted_gamma(
     periodicity: Periodicity,
     alphas: np.ndarray | None = None,
     betas: np.ndarray | None = None,
+    probabilities_of_zero: np.ndarray | None = None,
+    *,
+    zero_handling: ZeroHandling = "classic",
 ) -> np.ndarray:
     """
     Fit values to a gamma distribution and transform the values to corresponding
@@ -1711,10 +1821,22 @@ def transform_fitted_gamma(
         year filled with NaN values, with array size == (# years * 366)
     :param alphas: pre-computed gamma fitting parameters
     :param betas: pre-computed gamma fitting parameters
+    :param probabilities_of_zero: pre-computed probability of zero for each month or
+        day of the year; when omitted it is the zero fraction of each step's
+        non-missing calibration-period values, matching ``pearson_parameters``
+        (ADR-0015, decision 4). A step whose probability of zero is 1 is treated as
+        having none, as no gamma distribution can be fitted to it.
+    :param zero_handling: where a zero is placed within the zero mass:
+        ``"classic"`` (the default, and the existing behavior) scores it
+        ``Φ⁻¹(p0)``, ``"center_of_mass"`` ``Φ⁻¹(p0 / 2)``, and ``"mean_zero"``
+        ``−φ(Φ⁻¹(p0)) / p0``. Only steps with ``0 < p0 < 1`` are moved. See ADR-0015.
     :return: 2-D array of transformed/fitted values, corresponding in size
         and shape of the input array
     :rtype: numpy.ndarray of floats
+    :raises ValueError: if ``zero_handling`` is not one of the three modes
     """
+    _validate_zero_handling(zero_handling)
+
     log = _logger.bind(
         operation="transform_fitted_gamma",
         distribution="gamma",
@@ -1731,15 +1853,21 @@ def transform_fitted_gamma(
     # validate (and possibly reshape) the input array
     values = _validate_array(values, periodicity)
 
-    alphas, betas = _broadcast_fitting_parameters(values, alphas, betas)
+    alphas, betas, probabilities_of_zero = _broadcast_fitting_parameters(values, alphas, betas, probabilities_of_zero)
 
     # Replace zeros with NaNs for fitting (zeros are excluded from gamma fitting)
     # and get mask of zero positions for later probability calculations
     zero_mask, values_for_fitting = _replace_zeros_with_nan(values)
 
-    # find the percentage of zero values for each time step
-    zeros = zero_mask.sum(axis=0)
-    probabilities_of_zero = zeros / values.shape[0]
+    # find the fraction of zero values for each time step over the calibration
+    # period's non-missing values, unless it was provided
+    if probabilities_of_zero is None:
+        calibration_start_year, calibration_end_year = adjust_calibration_years(
+            data_start_year, data_start_year + values.shape[0], calibration_start_year, calibration_end_year
+        )
+        probabilities_of_zero = _calibration_probabilities_of_zero(
+            values[calibration_start_year - data_start_year : calibration_end_year - data_start_year + 1, ...]
+        )
 
     # If a time step has all zeros (probability of zero is 1.0), the resulting SPI
     # would be +infinity (extreme wetness) which is incorrect for a dry region.
@@ -1752,7 +1880,7 @@ def transform_fitted_gamma(
     #   - norm.ppf(0.0) = -infinity (extreme drought)
     # This is the correct interpretation: a location with 100% zero precipitation
     # in the historical record is in extreme drought, not extreme wetness.
-    probabilities_of_zero[np.isclose(probabilities_of_zero, 1.0)] = 0.0
+    probabilities_of_zero = np.where(np.isclose(probabilities_of_zero, 1.0), 0.0, probabilities_of_zero)
 
     # compute fitting parameters if none were provided
     if (alphas is None) or (betas is None):
@@ -1796,8 +1924,6 @@ def transform_fitted_gamma(
     # cumulative distribution) function
     try:
         result_values: np.ndarray = scipy.stats.norm.ppf(probabilities)
-        log.info("distribution_transform_completed", output_shape=str(result_values.shape))
-        return result_values
     except (ValueError, RuntimeError, FloatingPointError) as e:
         raise DistributionFittingError(
             f"Normal distribution inverse CDF (ppf) computation failed during gamma transformation: {e}",
@@ -1811,6 +1937,10 @@ def transform_fitted_gamma(
             suggestion="Try using pearson3 distribution instead",
             underlying_error=e,
         ) from e
+
+    result_values = _place_zeros(result_values, zero_mask, probabilities_of_zero, zero_handling)
+    log.info("distribution_transform_completed", output_shape=str(result_values.shape))
+    return result_values
 
 
 # normalized fitting-parameter keys, paired with the deprecated alias accepted for each
@@ -1864,6 +1994,8 @@ def _fit_pearson_with_fallback(
     scales: np.ndarray | None,
     skews: np.ndarray | None,
     fallback_context: str,
+    *,
+    zero_handling: ZeroHandling = "classic",
 ) -> tuple[np.ndarray, bool, dict[str, np.ndarray] | None]:
     """Transform a Pearson Type III fit, falling back to gamma when the fit fails.
 
@@ -1879,6 +2011,7 @@ def _fit_pearson_with_fallback(
         scales: Scale parameter, or None to fit it from the data.
         skews: Skewness parameter, or None to fit it from the data.
         fallback_context: Context included in the fall-back warning log message.
+        zero_handling: Zero-placement mode, applied by whichever transform runs.
 
     Returns:
         The transformed values, whether the gamma fall back was used, and the fitted
@@ -1900,6 +2033,7 @@ def _fit_pearson_with_fallback(
             locs,
             scales,
             skews,
+            zero_handling=zero_handling,
         )
 
         # check if fallback is needed due to excessive NaN values, judging only the
@@ -1932,6 +2066,7 @@ def _fit_pearson_with_fallback(
             periodicity,
             alphas=alphas,
             betas=betas,
+            zero_handling=zero_handling,
         )
         return fallback_values, True, {"alpha": alphas, "beta": betas}
 
@@ -1949,6 +2084,7 @@ def fit_and_standardize(
     *,
     fallback_to_gamma: bool = False,
     fallback_context: str = "",
+    zero_handling: ZeroHandling = "classic",
 ) -> np.ndarray:
     """
     Fit values to the specified distribution and transform the values to the
@@ -1972,24 +2108,31 @@ def fit_and_standardize(
         periodicity: The type of time series represented by the input data, either
             monthly (12 time steps per year) or daily (366 time steps per year).
         fitting_params: Optional dictionary of pre-computed distribution fitting
-            parameters, with the keys "alpha" and "beta" when fitting to gamma and
-            "prob_zero", "loc", "scale", and "skew" when fitting to Pearson Type III.
-            Deprecated aliases such as "alphas" and "probabilities_of_zero" are
-            accepted, and an explicit None means "fit this parameter from the data".
+            parameters, with the keys "alpha" and "beta" (and optionally
+            "prob_zero") when fitting to gamma and "prob_zero", "loc", "scale", and
+            "skew" when fitting to Pearson Type III. Deprecated aliases such as
+            "alphas" and "probabilities_of_zero" are accepted, and an explicit None
+            means "fit this parameter from the data". A gamma fit without
+            "prob_zero" computes it over the calibration period.
         fallback_to_gamma: Whether to fall back to the gamma distribution when a
             Pearson Type III fit fails or loses too many of the input's valid
             values; input that was already missing does not count. The fall back
             fits gamma to the scaled input, and the decision is made once for the
             whole input block, not per grid cell.
         fallback_context: Context included in the fall-back warning log message.
+        zero_handling: Where a zero accumulation is placed within the zero mass,
+            one of "classic" (the default), "center_of_mass", or "mean_zero"; see
+            ADR-0015. A gamma fall back applies the same mode.
 
     Returns:
         2-D array of transformed/fitted values, corresponding in size and shape to
         the input array.
 
     Raises:
-        ValueError: If the distribution is neither gamma nor Pearson Type III.
+        ValueError: If the distribution is neither gamma nor Pearson Type III, or
+            ``zero_handling`` is not one of the three modes.
     """
+    _validate_zero_handling(zero_handling)
     params = _normalize_fitting_params(fitting_params) or {}
 
     if distribution.value == "gamma":
@@ -2001,6 +2144,8 @@ def fit_and_standardize(
             periodicity,
             params.get("alpha"),
             params.get("beta"),
+            params.get("prob_zero"),
+            zero_handling=zero_handling,
         )
 
     if distribution.value != "pearson":
@@ -2035,6 +2180,7 @@ def fit_and_standardize(
             locs,
             scales,
             skews,
+            zero_handling=zero_handling,
         )
 
     standardized, _, _ = _fit_pearson_with_fallback(
@@ -2048,6 +2194,7 @@ def fit_and_standardize(
         scales,
         skews,
         fallback_context,
+        zero_handling=zero_handling,
     )
     return standardized
 
@@ -2069,10 +2216,10 @@ class FitDiagnostics:
     #: ``alpha``/``beta`` for gamma, and ``prob_zero``/``loc``/``scale``/``skew``
     #: for Pearson Type III.
     parameters: dict[str, np.ndarray]
-    #: Probability of a zero accumulation, per calendar step. For gamma this is the
-    #: zero fraction over the full input record; the transform clamps an all-zero
-    #: step's mass to 0, which this field reports as 1.0. For Pearson Type III it is
-    #: computed over the calibration period, matching ``pearson_parameters``.
+    #: Probability of a zero accumulation, per calendar step, computed over the
+    #: calibration period's non-missing values for both distributions (or the
+    #: ``prob_zero`` supplied in ``fitting_params``). For gamma the transform clamps
+    #: an all-zero step's mass to 0, which this field reports as 1.0.
     prob_zero: np.ndarray
     #: Number of non-missing, non-zero calibration values entering the
     #: Kolmogorov-Smirnov test.
@@ -2351,7 +2498,13 @@ def fit_diagnostics(
     else:
         alphas, betas = _as_period_cell_parameters(values, alphas, betas)
 
-    probabilities_of_zero = np.count_nonzero(values == 0, axis=0) / values.shape[0]
+    # the fall back refits the zero mass too, so only a requested gamma fit reads a
+    # supplied one, as the transform does
+    supplied_probabilities_of_zero = params.get("prob_zero") if fallback_parameters is None else None
+    if supplied_probabilities_of_zero is None:
+        probabilities_of_zero = _calibration_probabilities_of_zero(calibration_values)
+    else:
+        (probabilities_of_zero,) = _as_period_cell_parameters(values, np.asarray(supplied_probabilities_of_zero))
     parameters_valid = np.isfinite(alphas) & np.isfinite(betas) & (alphas > 0) & (betas > 0)
     ks_statistic, ks_p_value, n_valid = _ks_fit_diagnostics(
         calibration_values,
