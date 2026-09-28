@@ -8,6 +8,7 @@ through monkeypatched dispatch.
 """
 
 import argparse
+import logging
 
 import numpy as np
 import pytest
@@ -313,3 +314,36 @@ def test_aggregate_index_requires_the_scales_its_members_need(monkeypatch):
         "Scaled indices (SPI, SPEI, and/or PNP) specified without "
         "including one or more time scales (missing --scales argument)"
     )
+
+
+def test_aggregate_output_scale_warns_for_outputs_that_ignore_it(monkeypatch, caplog):
+    """`scaled` applies --output_scale only to SPI/SPEI, so warn about the PNP/PET outputs."""
+    time = xr.date_range("1990-01-01", periods=12, freq="MS")
+    coords = {"division": ["0101"], "time": time}
+    datasets = {
+        "precip.nc": xr.Dataset({"precip": (("division", "time"), np.ones((1, 12)))}, coords=coords),
+        "pet.nc": xr.Dataset({"pet": (("division", "time"), np.ones((1, 12)))}, coords=coords),
+    }
+    monkeypatch.setattr(cli_main.xr, "open_dataset", datasets.__getitem__)
+    arguments = argparse.Namespace(
+        index="scaled",
+        periodicity=compute.Periodicity.monthly,
+        scales=[6],
+        calibration_start_year=1990,
+        calibration_end_year=1991,
+        netcdf_precip="precip.nc",
+        var_name_precip="precip",
+        netcdf_temp=None,
+        var_name_temp=None,
+        netcdf_pet="pet.nc",
+        var_name_pet="pet",
+        netcdf_awc=None,
+        var_name_awc=None,
+        output_scale="probability",
+    )
+
+    with caplog.at_level(logging.WARNING):
+        cli_main._validate_args(arguments)
+
+    assert "--output_scale argument does not apply" in caplog.text
+    assert "pnp" in caplog.text
