@@ -640,12 +640,13 @@ def test_a_supplied_gamma_shape_or_scale_with_the_wrong_cells_is_rejected(name: 
     block = np.stack([_positive_monthly(40, seed).flatten() for seed in range(3)], axis=-1).reshape(480, 1, 3)
     parameters = {"alpha": np.full((12, 1, 3), 2.0), "beta": np.full((12, 1, 3), 30.0)}
     parameters[name] = np.full((12, 3), parameters[name].flat[0])
+    folded = block.reshape(40, 12, 1, 3)
     arguments = (1981, 1981, 2020, _MONTHLY)
 
     with pytest.raises(ValueError, match=f"'{name}' has shape \\(12, 3\\)"):
         indices.spi(block, 1, indices.Distribution.gamma, *arguments, parameters, spatial_time_major=True)
     with pytest.raises(ValueError, match=f"'{name}' has shape \\(12, 3\\)"):
-        compute.fit_diagnostics(block.reshape(40, 12, 1, 3), indices.Distribution.gamma, *arguments, parameters)
+        compute.fit_diagnostics(folded, indices.Distribution.gamma, *arguments, parameters)
 
 
 def test_a_supplied_gamma_shape_and_scale_that_broadcast_are_still_accepted() -> None:
