@@ -308,11 +308,33 @@ def percentage_of_normal(
 
 @overload
 def percentage_of_normal(
+    values: npt.NDArray[np.float64],
+    scale: int,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
+) -> npt.NDArray[np.float64]: ...
+
+
+@overload
+def percentage_of_normal(
     values: xr.DataArray,
     scale: int,
     data_start_year: int | None = None,
     calibration_year_initial: int | None = None,
     calibration_year_final: int | None = None,
+    periodicity: Periodicity | None = None,
+) -> xr.DataArray: ...
+
+
+@overload
+def percentage_of_normal(
+    values: xr.DataArray,
+    scale: int,
+    data_start_year: int | None = None,
+    calibration_start_year: int | None = None,
+    calibration_end_year: int | None = None,
     periodicity: Periodicity | None = None,
 ) -> xr.DataArray: ...
 

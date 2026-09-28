@@ -21,9 +21,10 @@ else:
     from typing_extensions import assert_type
 import xarray as xr
 
-from climate_indices import fire, spei, spi
+from climate_indices import fire, percentage_of_normal, spei, spi
 from climate_indices.compute import Periodicity
 from climate_indices.indices import Distribution
+from climate_indices.indices import percentage_of_normal as numpy_pnp
 
 
 def test_spi_numpy_return_type() -> None:
@@ -58,6 +59,39 @@ def test_spi_xarray_return_type() -> None:
         distribution=Distribution.gamma,
     )
     assert_type(result, xr.DataArray)
+
+
+def test_pnp_legacy_keyword_types() -> None:
+    """Legacy calibration keywords remain typed on both NumPy and xarray routes."""
+    values = np.ones(480)
+    assert_type(
+        numpy_pnp(
+            values,
+            1,
+            1980,
+            calibration_start_year=1980,
+            calibration_end_year=2019,
+            periodicity=Periodicity.monthly,
+        ),
+        np.ndarray,
+    )
+    assert_type(
+        percentage_of_normal(
+            values,
+            1,
+            1980,
+            calibration_start_year=1980,
+            calibration_end_year=2019,
+            periodicity=Periodicity.monthly,
+        ),
+        npt.NDArray[np.float64],
+    )
+    dates = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+    data = xr.DataArray(values, coords={"time": dates}, dims=["time"])
+    assert_type(
+        percentage_of_normal(data, 1, calibration_start_year=1980, calibration_end_year=2019),
+        xr.DataArray,
+    )
 
 
 def test_spei_numpy_return_type() -> None:

@@ -6,7 +6,7 @@ import functools
 import time
 from collections.abc import Callable
 from enum import Enum
-from typing import Any, ParamSpec, TypeVar, cast
+from typing import Any, ParamSpec, TypeVar, cast, overload
 
 import numpy as np
 import structlog.stdlib
@@ -964,7 +964,34 @@ def _pnp_calibration_alias(func: Callable[_P, _R]) -> Callable[_P, _R]:
     return wrapper
 
 
-@_pnp_calibration_alias
+@overload
+def percentage_of_normal(
+    values: np.ndarray,
+    scale: int,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: compute.Periodicity,
+    *,
+    spatial_time_major: bool = False,
+) -> np.ndarray: ...
+
+
+@overload
+def percentage_of_normal(
+    values: np.ndarray,
+    scale: int,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: compute.Periodicity,
+    *,
+    spatial_time_major: bool = False,
+) -> np.ndarray: ...
+
+
+# The decorator translates legacy keywords before this canonical implementation binds.
+@_pnp_calibration_alias  # type: ignore[misc]
 def percentage_of_normal(
     values: np.ndarray,
     scale: int,
