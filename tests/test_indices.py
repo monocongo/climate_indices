@@ -1102,3 +1102,84 @@ def test_spi_pearson_keeps_a_series_that_is_more_than_half_missing():
     assert np.count_nonzero(np.isfinite(pearson)) == np.count_nonzero(np.isfinite(values))
     # the values are Pearson's, not the fall back's
     assert not np.allclose(pearson, gamma, equal_nan=True)
+
+
+def test_fit_diagnostics_scales_before_fitting():
+    """``indices.fit_diagnostics`` diagnoses the scaled series, matching ``compute`` on it."""
+    values = np.arange(1.0, 481.0)
+
+    diagnostics = indices.fit_diagnostics(
+        values, 3, indices.Distribution.gamma, 1981, 1981, 2010, compute.Periodicity.monthly
+    )
+    scaled = compute.prepare_scaled(values, 3, compute.Periodicity.monthly)
+    expected = compute.fit_diagnostics(
+        scaled,
+        indices.Distribution.gamma,
+        1981,
+        1981,
+        2010,
+        compute.Periodicity.monthly,
+        fallback_to_gamma=True,
+    )
+
+    assert diagnostics.n_valid.shape == (12,)
+    np.testing.assert_array_equal(diagnostics.ks_statistic, expected.ks_statistic)
+    np.testing.assert_array_equal(diagnostics.parameters["alpha"], expected.parameters["alpha"])
+
+
+def test_fit_diagnostics_rejects_an_undeclared_ambiguous_block():
+    """The same ambiguous (time, cells) shape that ``spi`` rejects is rejected here."""
+    values = np.arange(1.0, (40 * 12 * 12 * 3) + 1.0).reshape(40 * 12, 12, 3)
+
+    with pytest.raises(ValueError, match="declare it with spatial_time_major"):
+        indices.fit_diagnostics(values, 1, indices.Distribution.gamma, 1981, 1981, 2010, compute.Periodicity.monthly)
+
+
+def test_fit_diagnostics_folds_and_fits_a_declared_time_major_block():
+    """A declared (time, *cells) block fits per cell, matching a standalone series call."""
+    block = np.arange(1.0, (40 * 12 * 12 * 3) + 1.0).reshape(40 * 12, 12, 3)
+
+    diagnostics = indices.fit_diagnostics(
+        block, 1, indices.Distribution.gamma, 1981, 1981, 2010, compute.Periodicity.monthly, spatial_time_major=True
+    )
+    single = indices.fit_diagnostics(
+        block[:, 0, 0], 1, indices.Distribution.gamma, 1981, 1981, 2010, compute.Periodicity.monthly
+    )
+
+    assert diagnostics.n_valid.shape == (12, 12, 3)
+    np.testing.assert_allclose(diagnostics.ks_statistic[:, 0, 0], single.ks_statistic)
+    np.testing.assert_allclose(diagnostics.parameters["alpha"][:, 0, 0], single.parameters["alpha"])
+
+
+def test_fit_diagnostics_folds_an_all_missing_declared_block():
+    """An all-missing time-major block still returns one diagnostic axis per cell."""
+    values = np.full((40 * 12, 12, 3), np.nan)
+
+    diagnostics = indices.fit_diagnostics(
+        values, 1, indices.Distribution.gamma, 1981, 1981, 2010, compute.Periodicity.monthly, spatial_time_major=True
+    )
+
+    assert diagnostics.n_valid.shape == (12, 12, 3)
+    assert np.all(diagnostics.n_valid == 0)
+
+
+def test_fit_diagnostics_folds_an_all_missing_undeclared_block():
+    values = np.full((40 * 12, 5, 6), np.nan)
+
+    diagnostics = indices.fit_diagnostics(
+        values, 1, indices.Distribution.gamma, 1981, 1981, 2010, compute.Periodicity.monthly
+    )
+
+    assert diagnostics.n_valid.shape == (12, 5, 6)
+    assert np.all(diagnostics.n_valid == 0)
+
+
+def test_fit_diagnostics_supports_daily_periodicity():
+    """A daily series gets 366 calendar steps rather than a monthly axis."""
+    values = np.arange(1.0, (10 * 366) + 1.0)
+
+    diagnostics = indices.fit_diagnostics(
+        values, 1, indices.Distribution.gamma, 2000, 2000, 2009, compute.Periodicity.daily
+    )
+
+    assert diagnostics.n_valid.shape == (366,)
