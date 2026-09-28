@@ -3050,7 +3050,8 @@ def fit_diagnostics(
             inferred from the time coordinate for xarray inputs.
         fitting_params: Optional pre-computed fitting parameters; deprecated
             aliases are normalized by the NumPy core. One value per calendar step
-            for a 1-D or 2-D input; a 3-D input also accepts cell-shaped arrays.
+            for a 1-D or 2-D input; a 3-D input also accepts cell-shaped arrays,
+            provided a Dask-backed input keeps each cell dimension in a single chunk.
         spatial_time_major: Declares a three-or-more-dimensional NumPy ``values`` as
             a time-major ``(time, *cells)`` block (per ADR-0009). Only used for NumPy
             inputs; the xarray path reads its dimensions from the coordinate labels.
@@ -3073,7 +3074,9 @@ def fit_diagnostics(
         chunking can change it.
 
     Raises:
-        ValueError: If a NumPy call omits a required temporal parameter.
+        ValueError: If a NumPy call omits a required temporal parameter, or
+            ``fitting_params`` carries cell-shaped arrays for a 1-D or 2-D input or
+            for a Dask-backed input with a cell dimension split across chunks.
         CoordinateValidationError: If the xarray time dimension is missing,
             non-monotonic, unsupported (cftime), does not begin in January, or its
             periodicity does not match the requested ``periodicity``.
@@ -3127,13 +3130,28 @@ def fit_diagnostics(
     # a 1-D or 2-D input takes the per-cell path, which cannot slice a parameter
     # array per cell, so cell-shaped parameters fail early instead of deep inside
     # the NumPy core's boolean checks
-    if fitting_params and input_da.ndim <= 2:
-        cell_shaped = sorted(name for name, value in fitting_params.items() if np.ndim(value) > 1)
-        if cell_shaped:
+    cell_shaped = sorted(name for name, value in (fitting_params or {}).items() if np.ndim(value) > 1)
+    if cell_shaped and input_da.ndim <= 2:
+        raise ValueError(
+            "fitting_params must carry one value per calendar step for a 1-D or 2-D input; "
+            f"cell-shaped parameters ({', '.join(cell_shaped)}) are only supported for a "
+            "3-D or higher time-major block"
+        )
+    # every Dask block receives the whole grid's parameters through apply_ufunc's
+    # kwargs, so a cell dimension split across chunks would hand a block parameters
+    # for cells it does not hold; fail here rather than when the graph computes
+    if cell_shaped and input_da.chunks is not None:
+        split_dims = [
+            str(dim)
+            for dim, dim_chunks in zip(input_da.dims, input_da.chunks, strict=True)
+            if dim != time_dim and len(dim_chunks) > 1
+        ]
+        if split_dims:
+            rechunk = ", ".join(f"'{dim}': -1" for dim in split_dims)
             raise ValueError(
-                "fitting_params must carry one value per calendar step for a 1-D or 2-D input; "
-                f"cell-shaped parameters ({', '.join(cell_shaped)}) are only supported for a "
-                "3-D or higher time-major block"
+                f"cell-shaped fitting_params ({', '.join(cell_shaped)}) require each cell dimension "
+                f"in a single Dask chunk (split: {', '.join(split_dims)}); pass one value per "
+                f"calendar step, or rechunk using: data = data.chunk({{{rechunk}}})"
             )
     # inference is metadata-only, so it stays safe for Dask-backed input
     provided.update(_infer_temporal_parameters(indices.fit_diagnostics, input_da, [input_da], provided, time_dim))

@@ -959,7 +959,8 @@ def fit_diagnostics(
             for NumPy, optional for xarray.
         fitting_params: Optional dict of pre-computed distribution fitting
             parameters; for a 1-D or 2-D input each array carries one value per
-            calendar step.
+            calendar step. A 3-D or higher input also accepts cell-shaped arrays,
+            provided a Dask-backed input keeps each cell dimension in a single chunk.
         spatial_time_major: Declares an ambiguous 3+-D NumPy ``values`` as a
             time-major ``(time, *cells)`` block (per ADR-0009). Only used for NumPy
             inputs.

@@ -419,6 +419,39 @@ def test_rejects_cell_shaped_fitting_params_for_a_two_dimensional_input() -> Non
         )
 
 
+def test_cell_shaped_fitting_params_need_unsplit_dask_cell_dimensions() -> None:
+    """Every Dask block receives the whole grid's parameters, so a split cell dimension fails early."""
+    first = fit_diagnostics(
+        _monthly_grid_da(),
+        1,
+        Distribution.gamma,
+        calibration_year_initial=_CALIBRATION_START_YEAR,
+        calibration_year_final=_CALIBRATION_END_YEAR,
+    )
+    supplied = {name: first[name].values for name in ("alpha", "beta")}
+
+    with pytest.raises(ValueError, match=r"single Dask chunk \(split: lat, lon\)"):
+        fit_diagnostics(
+            _monthly_grid_da().chunk({"time": -1, "lat": 1, "lon": 2}),
+            1,
+            Distribution.gamma,
+            calibration_year_initial=_CALIBRATION_START_YEAR,
+            calibration_year_final=_CALIBRATION_END_YEAR,
+            fitting_params=supplied,
+        )
+
+    # cell dimensions held in one chunk keep the cell-shaped parameters working
+    unsplit = fit_diagnostics(
+        _monthly_grid_da().chunk({"time": -1, "lat": -1, "lon": -1}),
+        1,
+        Distribution.gamma,
+        calibration_year_initial=_CALIBRATION_START_YEAR,
+        calibration_year_final=_CALIBRATION_END_YEAR,
+        fitting_params=supplied,
+    )
+    np.testing.assert_array_equal(unsplit["alpha"].compute().values, first["alpha"].values)
+
+
 @pytest.mark.parametrize("distribution", [Distribution.gamma, Distribution.pearson])
 def test_all_missing_input_reports_no_valid_sample(distribution: Distribution) -> None:
     """An all-NaN series yields a Dataset of missing diagnostics rather than an error."""
