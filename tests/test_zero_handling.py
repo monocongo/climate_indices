@@ -241,8 +241,10 @@ def test_indices_without_zero_mass_do_not_take_the_parameter(index: str) -> None
         "spei": (values, values / 2.0, 1, indices.Distribution.gamma, _MONTHLY, 1981, 1981, 2020),
         "eddi": (values, 1, 1981, 1981, 2020, _MONTHLY),
     }
+    compute_index = getattr(indices, index)
+    index_arguments = arguments[index]
     with pytest.raises(TypeError, match="zero_handling"):
-        getattr(indices, index)(*arguments[index], zero_handling="mean_zero")
+        compute_index(*index_arguments, zero_handling="mean_zero")
 
 
 # ---------------------------------------------------------------------------

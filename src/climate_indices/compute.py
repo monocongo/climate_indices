@@ -2351,6 +2351,18 @@ def _diagnostic_pearson_parameters(
     return probabilities_of_zero, locs, scales, skews, True
 
 
+def _diagnostic_gamma_probabilities_of_zero(
+    values: np.ndarray,
+    calibration_values: np.ndarray,
+    supplied_probabilities_of_zero: np.ndarray | None,
+) -> np.ndarray:
+    """The gamma zero mass the transform uses: the supplied one, else the calibration period's."""
+    if supplied_probabilities_of_zero is None:
+        return _calibration_probabilities_of_zero(calibration_values)
+    (probabilities_of_zero,) = _as_period_cell_parameters(values, np.asarray(supplied_probabilities_of_zero))
+    return probabilities_of_zero
+
+
 def fit_diagnostics(
     values: np.ndarray,
     distribution: "Distribution",
@@ -2500,11 +2512,9 @@ def fit_diagnostics(
 
     # the fall back refits the zero mass too, so only a requested gamma fit reads a
     # supplied one, as the transform does
-    supplied_probabilities_of_zero = params.get("prob_zero") if fallback_parameters is None else None
-    if supplied_probabilities_of_zero is None:
-        probabilities_of_zero = _calibration_probabilities_of_zero(calibration_values)
-    else:
-        (probabilities_of_zero,) = _as_period_cell_parameters(values, np.asarray(supplied_probabilities_of_zero))
+    probabilities_of_zero = _diagnostic_gamma_probabilities_of_zero(
+        values, calibration_values, params.get("prob_zero") if fallback_parameters is None else None
+    )
     parameters_valid = np.isfinite(alphas) & np.isfinite(betas) & (alphas > 0) & (betas > 0)
     ks_statistic, ks_p_value, n_valid = _ks_fit_diagnostics(
         calibration_values,
