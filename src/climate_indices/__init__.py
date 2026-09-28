@@ -14,12 +14,14 @@ from climate_indices.exceptions import (
 )
 from climate_indices.flood import edi
 from climate_indices.logging_config import configure_logging
+from climate_indices.pm_eto import HumidityInputs, RadiationInputs
 from climate_indices.typed_public_api import (
     eddi,
     pci,
     pdsi,
     percentage_of_normal,
     pet_hargreaves,
+    pet_penman_monteith,
     pet_thornthwaite,
     spei,
     spi,
@@ -48,6 +50,8 @@ __all__ = [
     "configure_logging",
     "InputAlignmentWarning",
     "InputType",
+    "HumidityInputs",
+    "RadiationInputs",
     "detect_input_type",
     "eddi",
     "edi",
@@ -58,6 +62,7 @@ __all__ = [
     "pdsi",
     "percentage_of_normal",
     "pet_hargreaves",
+    "pet_penman_monteith",
     "pet_thornthwaite",
     "spei",
     "spi",

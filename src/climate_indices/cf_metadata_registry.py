@@ -124,6 +124,16 @@ CF_METADATA: dict[str, CFAttributes] = {
             "https://doi.org/10.13031/2013.26773"
         ),
     },
+    "pet_penman_monteith": {
+        "long_name": "Potential Evapotranspiration (FAO-56 Penman-Monteith method)",
+        "units": "mm/day",
+        "references": (
+            "Allen, R. G., Pereira, L. S., Raes, D., & Smith, M. (1998). "
+            "Crop evapotranspiration - Guidelines for computing crop water requirements. "
+            "FAO Irrigation and Drainage Paper 56. Rome, FAO. "
+            "https://www.fao.org/4/x0490e/x0490e00.htm"
+        ),
+    },
     "percentage_of_normal": {
         "long_name": "Percent of Normal Precipitation",
         "units": "%",
