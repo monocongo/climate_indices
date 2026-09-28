@@ -86,7 +86,13 @@ asked by [#1185](https://github.com/monocongo/climate_indices/issues/1185).
    step no mass). `p0` is computed over the calibration period and read from
    `fitting_params["prob_zero"]` when supplied; a supplied value must lie in
    `[0, 1]` (NaN marks an undefined mass) and match the values' cell
-   dimensions, as Pearson parameters must. `gamma_parameters()` still returns
+   dimensions, as Pearson parameters must; a supplied `alpha` or `beta` follows
+   the same cell rule. Pearson keeps its existing handling of a step without
+   calibration data rather than this rule, so its classic output does not move
+   relative to the previous release: the minimum-non-zero guard gives the step
+   `p0 = 0` and zeroed parameters, so its non-zero values are NaN while its zeros
+   still take the trace floor's score, clipped to −3.09. The two distributions
+   therefore differ at such a step's zeros, which is accepted here. `gamma_parameters()` still returns
    the existing `(alpha, beta)` tuple, while `fit_diagnostics()` returns gamma
    `prob_zero` with `alpha` and `beta`, so its parameters reproduce a fit.
    Callers saving a reusable gamma `fitting_params` dictionary must include
@@ -94,9 +100,13 @@ asked by [#1185](https://github.com/monocongo/climate_indices/issues/1185).
    Dictionaries without `prob_zero` remain valid: the transform computes it
    from the calibration window of the values being transformed.
 
-5. **Edge cases.** With `p0 == 0` there are no calibration zeros, but the
+5. **Edge cases.** A mode acts on the *effective* `p0`, the value left after the
+   invalid-fit handling below. With `p0 == 0` there are no calibration zeros, but the
    transformed record may contain zeros outside that period. Every mode gives
-   those zeros the same `"classic"` result. With `p0 == 1` (every calibration
+   those zeros the same `"classic"` result. Pearson's minimum-non-zero guard
+   also sets `p0` to 0 where a step has fewer than 4 non-zero calibration
+   values, so in exactly the arid steps this record targets its zeros score
+   −3.09 in every mode. With `p0 == 1` (every calibration
    value zero), no continuous distribution can be fitted. Keep the existing
    invalid-fit handling rather than inventing a zero score: gamma resets `p0`
    (a supplied one only when it is exactly 1) to 0, so zeros transform to `−∞`
