@@ -3,7 +3,9 @@
 The probability scale is the fitted cumulative probability before the
 inverse-normal transform, so ``norm.ppf(probability output)`` must reproduce the
 default z-score output wherever that output was not clipped to the [-3.09, 3.09]
-range. This holds for the NumPy API, the xarray adapter, and the CLI.
+range. The scale is deliberately unclipped, so the returned probabilities must
+reach beyond that range's [0.001, 0.999]. This holds for the NumPy API, the
+xarray adapter, and the CLI.
 """
 
 from __future__ import annotations
@@ -17,6 +19,19 @@ from climate_indices import compute, indices, spei, spi, typed_public_api
 from climate_indices.exceptions import InvalidArgumentError
 
 _DISTRIBUTIONS = (indices.Distribution.gamma, indices.Distribution.pearson)
+
+_METADATA_CASES = [
+    ("spi", "probability", "Standardized Precipitation Index probability"),
+    ("spi", "bounded", "Standardized Precipitation Index bounded probability"),
+    ("spei", "probability", "Standardized Precipitation Evapotranspiration Index probability"),
+    ("spei", "bounded", "Standardized Precipitation Evapotranspiration Index bounded probability"),
+]
+
+
+def _assert_unclipped_tails(probability: np.ndarray) -> None:
+    """The PIT reaches beyond the z-clip's probability range, i.e. it is unclipped."""
+    assert np.nanmin(probability) < norm.cdf(-3.09)
+    assert np.nanmax(probability) > norm.cdf(3.09)
 
 
 @pytest.mark.parametrize("distribution", _DISTRIBUTIONS)
@@ -43,10 +58,12 @@ def test_spi_probability_inverts_to_the_normal_output(
 
     assert np.nanmin(probability) >= 0.0
     assert np.nanmax(probability) <= 1.0
+    _assert_unclipped_tails(probability)
     np.testing.assert_allclose(bounded, (2.0 * probability) - 1.0, equal_nan=True)
 
     reconstructed = norm.ppf(probability)
     within_clip = np.abs(z_scores) < 3.09
+    assert within_clip.any()
     np.testing.assert_allclose(reconstructed[within_clip], z_scores[within_clip], atol=1e-9)
 
 
@@ -81,6 +98,9 @@ def test_spei_probability_inverts_to_the_normal_output(
         output_scale="probability",
     )
 
+    # the P−PET series is offset and its fitted range need not reach the tails,
+    # so only the inversion is asserted here; the unclipped property is pinned on
+    # the (zero-inflated) precipitation SPI test above
     reconstructed = norm.ppf(probability)
     within_clip = np.abs(z_scores) < 3.09
     np.testing.assert_allclose(reconstructed[within_clip], z_scores[within_clip], atol=1e-9)
@@ -106,9 +126,32 @@ def test_standardized_index_probability_inverts_to_the_normal_output(
     z_scores = indices.standardized_index(*common)
     probability = indices.standardized_index(*common, output_scale="probability")
 
+    _assert_unclipped_tails(probability)
     reconstructed = norm.ppf(probability)
     within_clip = np.abs(z_scores) < 3.09
     np.testing.assert_allclose(reconstructed[within_clip], z_scores[within_clip], atol=1e-9)
+
+
+@pytest.mark.parametrize("distribution", _DISTRIBUTIONS)
+def test_pearson_probability_is_not_shifted_at_the_support_boundary(
+    precips_mm_monthly,
+    data_year_start_monthly,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+    distribution,
+) -> None:
+    """Pearson values at or below the fitted support floor take a PIT of 0, not the 0.0005 sentinel."""
+    probability = indices.spi(
+        precips_mm_monthly,
+        6,
+        distribution,
+        data_year_start_monthly,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
+        compute.Periodicity.monthly,
+        output_scale="probability",
+    )
+    assert np.nanmin(probability) < 0.0005
 
 
 def test_invalid_output_scale_raises(
@@ -138,51 +181,78 @@ def test_compute_transform_output_scales(
     data_year_end_monthly,
     transformed_gamma_monthly,
 ) -> None:
-    """The compute transforms expose the probabilities on the non-normal scales."""
-    common = (
+    """The compute transforms expose the fitted CDF for the non-normal scales."""
+    transformed = compute.transform_fitted_gamma(
         precips_mm_monthly,
         data_year_start_monthly,
         data_year_start_monthly,
         data_year_end_monthly,
         compute.Periodicity.monthly,
+        output_scale=output_scale,
     )
-    probabilities = compute.transform_fitted_gamma(*common, output_scale="probability")
-    transformed = compute.transform_fitted_gamma(*common, output_scale=output_scale)
-    expected = probabilities if output_scale == "probability" else (2.0 * probabilities) - 1.0
-    np.testing.assert_allclose(transformed, expected, equal_nan=True)
-    assert not np.allclose(transformed, transformed_gamma_monthly, equal_nan=True)
+    # the independent expectation: the z-score fixture's own cumulative probability,
+    # mapped to the requested scale, wherever the fixture was not clipped
+    within_clip = np.abs(transformed_gamma_monthly) < 3.09
+    expected = norm.cdf(transformed_gamma_monthly)
+    if output_scale == "bounded":
+        expected = (2.0 * expected) - 1.0
+    np.testing.assert_allclose(transformed[within_clip], expected[within_clip], atol=1e-9)
 
 
-def test_fit_and_standardize_forwards_output_scale(
+def test_fit_and_standardize_forwards_both_non_normal_scales(
     precips_mm_monthly,
     data_year_start_monthly,
     data_year_end_monthly,
 ) -> None:
-    probability = compute.fit_and_standardize(
+    common = (
         precips_mm_monthly,
         indices.Distribution.gamma,
         data_year_start_monthly,
         data_year_start_monthly,
         data_year_end_monthly,
         compute.Periodicity.monthly,
-        output_scale="probability",
     )
+    probability = compute.fit_and_standardize(*common, output_scale="probability")
+    bounded = compute.fit_and_standardize(*common, output_scale="bounded")
+
     assert np.nanmin(probability) >= 0.0
     assert np.nanmax(probability) <= 1.0
+    np.testing.assert_allclose(bounded, (2.0 * probability) - 1.0, equal_nan=True)
 
 
-def test_xarray_probability_output_carries_distinct_metadata(sample_monthly_precip_da) -> None:
-    """The xarray path returns probabilities with probability metadata, not z-score metadata."""
+@pytest.mark.parametrize(("index_name", "output_scale", "long_name"), _METADATA_CASES)
+def test_xarray_non_normal_output_carries_distinct_metadata(
+    index_name, output_scale, long_name, sample_monthly_precip_da, sample_monthly_pet_da
+) -> None:
+    """Each non-normal scale returns probability metadata, not the z-score metadata."""
+    if index_name == "spi":
+        result = spi(
+            sample_monthly_precip_da,
+            scale=6,
+            distribution=indices.Distribution.gamma,
+            output_scale=output_scale,
+        )
+    else:
+        result = spei(
+            sample_monthly_precip_da,
+            sample_monthly_pet_da,
+            scale=6,
+            distribution=indices.Distribution.gamma,
+            output_scale=output_scale,
+        )
+    assert isinstance(result, xr.DataArray)
+    assert result.attrs["long_name"] == long_name
+    assert result.attrs["units"] == "1"
+    assert result.attrs["climate_indices_variant"] == output_scale
+
+
+def test_xarray_probability_inverts_to_the_normal_output(sample_monthly_precip_da) -> None:
     probability = spi(
         sample_monthly_precip_da,
         scale=6,
         distribution=indices.Distribution.gamma,
         output_scale="probability",
     )
-    assert isinstance(probability, xr.DataArray)
-    assert probability.attrs["long_name"] == "Standardized Precipitation Index probability"
-    assert probability.attrs["units"] == "1"
-
     z_score = spi(
         sample_monthly_precip_da,
         scale=6,
@@ -195,16 +265,14 @@ def test_xarray_probability_output_carries_distinct_metadata(sample_monthly_prec
     np.testing.assert_allclose(reconstructed[within_clip], z_score.values[within_clip], atol=1e-9)
 
 
-def test_xarray_spei_bounded_output_carries_distinct_metadata(sample_monthly_precip_da, sample_monthly_pet_da) -> None:
-    bounded = spei(
-        sample_monthly_precip_da,
-        sample_monthly_pet_da,
-        scale=6,
-        distribution=indices.Distribution.gamma,
-        output_scale="bounded",
-    )
-    assert bounded.attrs["long_name"] == ("Standardized Precipitation Evapotranspiration Index bounded probability")
-    assert bounded.attrs["units"] == "1"
+def test_output_scale_maps_cover_every_declared_scale() -> None:
+    """A scale added to OUTPUT_SCALES must be given a CLI label, attrs, and a CF variant."""
+    from climate_indices.__main__ import _OUTPUT_SCALE_ATTRS, _OUTPUT_SCALE_LABELS
+    from climate_indices.typed_public_api import _SPEI_CF_METADATA_VARIANTS, _SPI_CF_METADATA_VARIANTS
+
+    assert set(_OUTPUT_SCALE_LABELS) == set(_OUTPUT_SCALE_ATTRS) == set(compute.OUTPUT_SCALES)
+    for variants in (_SPI_CF_METADATA_VARIANTS, _SPEI_CF_METADATA_VARIANTS):
+        assert {"normal"} | set(variants) == set(compute.OUTPUT_SCALES)
 
 
 def test_typed_public_api_defaults_to_normal(sample_monthly_precip_da) -> None:

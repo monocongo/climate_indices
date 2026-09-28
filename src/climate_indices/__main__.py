@@ -573,10 +573,25 @@ def _validate_args(args: argparse.Namespace) -> DatasetLayout:
 
     # only the standardized indices have an output scale to set
     output_scale = getattr(args, "output_scale", None)
-    if output_scale is not None and not any(handler.index in _OUTPUT_SCALE_INDICES for handler in handlers):
-        msg = f"The --output_scale argument is not applicable to --index {args.index}"
-        _logger.error(msg)
-        raise ValueError(msg)
+    if output_scale is not None:
+        standardized = any(handler.index in _OUTPUT_SCALE_INDICES for handler in handlers)
+        if not standardized:
+            msg = f"The --output_scale argument is not applicable to --index {args.index}"
+            _logger.error(msg)
+            raise ValueError(msg)
+        # a mixed pipeline (e.g. --index all) applies the scale to its SPI/SPEI
+        # members only, so say which outputs ignore it rather than doing so silently
+        unsupported = [
+            handler.index
+            for handler in handlers
+            if handler.variable_attributes is not None and handler.index not in _OUTPUT_SCALE_INDICES
+        ]
+        if unsupported:
+            _logger.warning(
+                "The --output_scale argument does not apply to the %s output(s) of --index %s",
+                ", ".join(unsupported),
+                args.index,
+            )
 
     # the input that determines the input type, and the shape companions must match
     if any(handler.requires_pe for handler in handlers):
@@ -1526,8 +1541,18 @@ _OUTPUT_SCALE_LABELS: dict[str, str] = {
 }
 _OUTPUT_SCALE_ATTRS: dict[str, dict[str, Any]] = {
     "normal": {"valid_min": -3.09, "valid_max": 3.09},
-    "probability": {"units": "1", "valid_min": 0.0, "valid_max": 1.0},
-    "bounded": {"units": "1", "valid_min": -1.0, "valid_max": 1.0},
+    "probability": {
+        "units": "1",
+        "valid_min": 0.0,
+        "valid_max": 1.0,
+        "climate_indices_variant": "probability",
+    },
+    "bounded": {
+        "units": "1",
+        "valid_min": -1.0,
+        "valid_max": 1.0,
+        "climate_indices_variant": "bounded",
+    },
 }
 
 

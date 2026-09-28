@@ -123,6 +123,14 @@ def _validate_distribution(distribution: Distribution) -> None:
         )
 
 
+def _clip_fitted_values(values: np.ndarray, output_scale: compute.OutputScale) -> np.ndarray:
+    """Clip z-scores to the supported range; the probability scales are already bounded."""
+    if output_scale == "normal":
+        clipped: np.ndarray = np.clip(values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX)
+        return clipped
+    return values
+
+
 def _validate_periodicity(periodicity: compute.Periodicity) -> None:
     """Validate that periodicity is a valid Periodicity enum member.
 
@@ -480,7 +488,7 @@ def _standardized_index_pipeline(
     index_type: str,
     fallback_context: str,
     spatial_time_major: bool = False,
-    output_scale: str = "normal",
+    output_scale: compute.OutputScale = "normal",
 ) -> np.ndarray:
     """Scale, fit, and transform a series in the pipeline shared by the index wrappers.
 
@@ -580,8 +588,7 @@ def _standardized_index_pipeline(
 
         # clip z-scores to the supported range; probability-scale outputs are
         # already bounded by construction and must not be z-clipped
-        if output_scale == "normal":
-            values = np.clip(values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX)
+        values = _clip_fitted_values(values, output_scale)
 
         if values.ndim > 2:
             # (years, periods, *cells) back to the time-major input layout, dropping any
@@ -609,7 +616,7 @@ def standardized_index(
     fitting_params: dict[str, Any] | None = None,
     *,
     spatial_time_major: bool = False,
-    output_scale: str = "normal",
+    output_scale: compute.OutputScale = "normal",
 ) -> np.ndarray:
     """Standardize a non-negative monthly or daily series against a fitted distribution.
 
@@ -690,7 +697,7 @@ def spi(
     fitting_params: dict[str, Any] | None = None,
     *,
     spatial_time_major: bool = False,
-    output_scale: str = "normal",
+    output_scale: compute.OutputScale = "normal",
 ) -> np.ndarray:
     """
     Computes SPI (Standardized Precipitation Index).
@@ -768,7 +775,7 @@ def spei(
     fitting_params: dict[str, Any] | None = None,
     *,
     spatial_time_major: bool = False,
-    output_scale: str = "normal",
+    output_scale: compute.OutputScale = "normal",
 ) -> np.ndarray:
     """
     Compute SPEI fitted to the specified distribution.
@@ -940,10 +947,7 @@ def spei(
 
         # clip z-scores to the supported range; probability-scale outputs are
         # already bounded by construction and must not be z-clipped
-        if output_scale == "normal":
-            values = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX)
-        else:
-            values = transformed_fitted_values
+        values = _clip_fitted_values(transformed_fitted_values, output_scale)
 
         if values.ndim > 2:
             # (years, periods, *cells) back to the time-major input layout, dropping any

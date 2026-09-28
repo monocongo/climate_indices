@@ -90,11 +90,13 @@ The options are described below:
 * - output_file_base
   - Base file name for all output files (required).
 
-    Each computed index will have a corresponding output file whose name will begin with this base name plus the index's abbreviation plus a timescale (if applicable), connected with underscores, plus the '.nc' extension. For example for SPI at 3-month scale the resulting output files will be named **<output_file_base>_spi_gamma_03.nc** and **<output_file_base>_spi_pearson_03.nc**.
+    Each computed index will have a corresponding output file whose name will begin with this base name plus the index's abbreviation plus a timescale (if applicable), connected with underscores, plus the '.nc' extension. For example for SPI at 3-month scale the resulting output files will be named **<output_file_base>_spi_gamma_03.nc** and **<output_file_base>_spi_pearson_03.nc**. A non-default **output_scale** adds its name to the file and variable, for example **<output_file_base>_spi_gamma_03_probability.nc**.
 * - scales
   - Time step scales over which the PNP, SPI, and SPEI values are to be computed. Required when the **index** argument is 'spi', 'spei', 'pnp', 'scaled', or 'all'. The **periodicity** option will infer whether the scales used are month or day scales.
 
     **NOTE**: When used for US climate divisions processing this option specifies month scales
+* - output_scale
+  - Output convention for the standardized SPI and SPEI values, applicable only when **index** includes SPI or SPEI. 'normal' (default) writes standard-normal z-scores; 'probability' writes the fitted cumulative probability in [0, 1] without clipping; 'bounded' writes its 2p - 1 mapping in [-1, 1]. In a mixed pipeline such as 'all' the other outputs ignore it. Each scale writes its own output files and variable names (see **output_file_base**).
 * - calibration_start_year
   - Initial year of the calibration period. Optional for EDI and the Flood Index, and inferred from the input when omitted: EDI starts in the first year of the record, and the Flood Index in the second, since effective precipitation is undefined for a record's first 364 days.
 * - calibration_end_year

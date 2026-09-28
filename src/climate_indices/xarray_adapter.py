@@ -1211,15 +1211,18 @@ def _resolve_cf_metadata(
     cf_metadata_variants: dict[str, dict[str, str]] | None,
     valid_kwargs: dict[str, Any],
 ) -> dict[str, str] | None:
-    """Select the CF metadata for the requested output scale, defaulting to the base entry.
+    """Select the CF metadata for the requested output scale, layering it over the base entry.
 
     A variant is keyed by the value of the wrapped function's ``output_scale``
     keyword (e.g. "probability"); an omitted or unregistered scale keeps the
-    base metadata.
+    base metadata, and a variant overrides only the keys it sets.
     """
     if not cf_metadata_variants:
         return cf_metadata
-    return cf_metadata_variants.get(valid_kwargs.get("output_scale", "normal"), cf_metadata)
+    variant = cf_metadata_variants.get(valid_kwargs.get("output_scale", "normal"))
+    if variant is None:
+        return cf_metadata
+    return {**(cf_metadata or {}), **variant}
 
 
 def _finalize_ufunc_result(

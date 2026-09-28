@@ -196,10 +196,12 @@ def identify_runs(
         a :class:`RunSet` of length zero.
 
     Note:
-        On a probability-scale series (``output_scale="probability"``) the
-        conventional drought thresholds are lower-tail probabilities: 0.1,
-        0.05, and 0.025, approximately the z-score thresholds -1.28, -1.64,
-        and -1.96. Identify them with ``direction="below"``, as for z-scores.
+        On a probability-scale series (``output_scale="probability"``) thresholds
+        are lower-tail probabilities, identified with ``direction="below"`` as for
+        z-scores. The 10%, 5%, and 2.5% levels (0.1, 0.05, 0.025) correspond to
+        z-scores of about -1.28, -1.64, and -1.96, which differ from the
+        McKee/WMO class boundaries of -1.0, -1.5, and -2.0 (about 0.159, 0.067,
+        and 0.023 on this scale).
 
     Raises:
         InvalidArgumentError: If ``direction`` is not ``"below"`` or

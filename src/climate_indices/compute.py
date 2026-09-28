@@ -6,7 +6,7 @@ import functools
 import warnings
 from collections.abc import Callable
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import scipy.special
@@ -33,6 +33,7 @@ if TYPE_CHECKING:
 # declare the function names that should be included in the public API for this module
 __all__ = [
     "Periodicity",
+    "OutputScale",
     "OUTPUT_SCALES",
     "validate_output_scale",
     "fit_and_standardize",
@@ -177,7 +178,21 @@ _PERIOD_LENGTHS = frozenset(periodicity.period_length for periodicity in Periodi
 # z-score ("normal", the default), the fitted cumulative probability
 # ("probability", the PIT value in [0, 1]), and its signed counterpart
 # ("bounded", 2p - 1 in [-1, 1])
-OUTPUT_SCALES = ("normal", "probability", "bounded")
+OutputScale = Literal["normal", "probability", "bounded"]
+OUTPUT_SCALES: tuple[OutputScale, ...] = ("normal", "probability", "bounded")
+
+
+def _map_non_normal_scale(probabilities: np.ndarray, output_scale: OutputScale) -> np.ndarray | None:
+    """Map fitted cumulative probabilities to the requested scale.
+
+    Returns None for the default "normal" scale, whose z-scores come from the
+    inverse-normal transform, so the caller keeps its own error handling there.
+    """
+    if output_scale == "probability":
+        return probabilities
+    if output_scale == "bounded":
+        return (2.0 * probabilities) - 1.0
+    return None
 
 
 def validate_output_scale(output_scale: str) -> None:
@@ -630,7 +645,7 @@ def _pearson_fit(
     skew: np.ndarray,
     loc: np.ndarray,
     scale: np.ndarray,
-    output_scale: str = "normal",
+    output_scale: OutputScale = "normal",
 ) -> np.ndarray:
     """
     Perform fitting of an array of values to a Pearson Type III distribution
@@ -680,16 +695,21 @@ def _pearson_fit(
                 underlying_error=e,
             ) from e
 
-        # turn zero, trace, or minimum values either into either zero
-        # or minimum value based on the probability of zero
+        # a zero value carries the point mass, in every mode
         values[zero_mask] = 0.0
-        values[trace_mask] = 0.0005
 
-        # The original values were found to be outside the
-        # range of the fitted distribution, so we will set
-        # the probabilities to something just within the range.
-        values[minimums_mask] = 0.0005
-        values[maximums_mask] = 0.9995
+        # The normal-scale sentinels keep norm.ppf finite just inside the
+        # distribution's support boundaries, where the CDF is exactly 0 or 1.
+        # On the probability scales the computed CDF is the result, so the
+        # boundaries are pinned to 0 and 1 instead of nudged inward (which would
+        # report a probability the fitted distribution never assigns).
+        if output_scale == "normal":
+            values[trace_mask] = 0.0005
+            values[minimums_mask] = 0.0005
+            values[maximums_mask] = 0.9995
+        else:
+            values[minimums_mask] = 0.0
+            values[maximums_mask] = 1.0
 
         if not np.all(np.isnan(values)):
             # calculate the probability value, clipped between 0 and 1
@@ -701,10 +721,9 @@ def _pearson_fit(
 
             # on the probability and bounded scales the fitted cumulative
             # probability is the result, so the inverse-normal transform is skipped
-            if output_scale == "probability":
-                fitted_values = probabilities
-            elif output_scale == "bounded":
-                fitted_values = (2.0 * probabilities) - 1.0
+            scaled = _map_non_normal_scale(probabilities, output_scale)
+            if scaled is not None:
+                fitted_values = scaled
 
             # otherwise the values we return are the values at which the
             # probabilities of a normal distribution are less than or equal to
@@ -802,7 +821,7 @@ def transform_fitted_pearson(
     locs: np.ndarray | None = None,
     scales: np.ndarray | None = None,
     skews: np.ndarray | None = None,
-    output_scale: str = "normal",
+    output_scale: OutputScale = "normal",
 ) -> np.ndarray:
     """
     Fit values to a Pearson Type III distribution and transform the values
@@ -1705,7 +1724,7 @@ def transform_fitted_gamma(
     periodicity: Periodicity,
     alphas: np.ndarray | None = None,
     betas: np.ndarray | None = None,
-    output_scale: str = "normal",
+    output_scale: OutputScale = "normal",
 ) -> np.ndarray:
     """
     Fit values to a gamma distribution and transform the values to corresponding
@@ -1814,21 +1833,17 @@ def transform_fitted_gamma(
 
     # on the probability and bounded scales the fitted cumulative probability is
     # the result, so the inverse-normal transform is skipped
-    result_values: np.ndarray
-    if output_scale == "probability":
-        log.info("distribution_transform_completed", output_shape=str(probabilities.shape))
-        return probabilities
-    if output_scale == "bounded":
-        result_values = (2.0 * probabilities) - 1.0
-        log.info("distribution_transform_completed", output_shape=str(result_values.shape))
-        return result_values
+    scaled = _map_non_normal_scale(probabilities, output_scale)
+    if scaled is not None:
+        log.info("distribution_transform_completed", output_shape=str(scaled.shape))
+        return scaled
 
     # the values we'll return are the values at which the probabilities of
     # a normal distribution are less than or equal to the computed probabilities,
     # as determined by the normal distribution's quantile (or inverse
     # cumulative distribution) function
     try:
-        result_values = scipy.stats.norm.ppf(probabilities)
+        result_values: np.ndarray = scipy.stats.norm.ppf(probabilities)
         log.info("distribution_transform_completed", output_shape=str(result_values.shape))
         return result_values
     except (ValueError, RuntimeError, FloatingPointError) as e:
@@ -1897,7 +1912,7 @@ def fit_and_standardize(
     *,
     fallback_to_gamma: bool = False,
     fallback_context: str = "",
-    output_scale: str = "normal",
+    output_scale: OutputScale = "normal",
 ) -> np.ndarray:
     """
     Fit values to the specified distribution and transform the values to the
@@ -1940,6 +1955,7 @@ def fit_and_standardize(
         the input array.
 
     Raises:
+        InvalidArgumentError: If ``output_scale`` is not one of ``compute.OUTPUT_SCALES``.
         ValueError: If the distribution is neither gamma nor Pearson Type III.
     """
     validate_output_scale(output_scale)

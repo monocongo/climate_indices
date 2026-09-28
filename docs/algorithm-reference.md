@@ -82,7 +82,8 @@ The SPEI computation follows these steps:
 
 3. **Same constraints as SPI**
 
-   - Clip to valid range [-3.09, 3.09]
+   - Clip to valid range [-3.09, 3.09] on the default `output_scale="normal"`
+     only; `"probability"` and `"bounded"` are not z-clipped
    - Return dimensionless standardized values
 
 **Key differences from SPI:**
@@ -327,10 +328,12 @@ drought spell (``direction="above"``, since KBDI rises in drought) are the same
 run concept on a different series.
 
 A probability-scale series (`output_scale="probability"`) reports a lower-tail
-probability, so its drought runs also use `direction="below"`, with thresholds
-0.1, 0.05, and 0.025 standing in for the z-score thresholds -1.28, -1.64, and
--1.96. Probability-scale outputs are not clipped, so a run can be counted all
-the way into the tail.
+probability, so its drought runs also use `direction="below"`. The 10%, 5%, and
+2.5% one-sided levels (0.1, 0.05, 0.025) correspond to z-scores of about -1.28,
+-1.64, and -1.96. Note this is a different ladder from the McKee/WMO drought
+classes of -1.0, -1.5, and -2.0, whose probability-scale equivalents are about
+0.159, 0.067, and 0.023. Probability-scale outputs are not clipped, so a run can
+be counted all the way into the tail.
 
 **Reference**: Yevjevich, V. (1967). *An objective approach to definitions and
 investigations of continental hydrologic droughts*. Hydrology Papers 23,

@@ -151,14 +151,18 @@ def test_timeseries_spi_matches_in_process_computation(tmp_path, precips_mm_mont
         np.testing.assert_allclose(dataset["spi_gamma_06"].values, expected, equal_nan=True)
 
 
-def test_timeseries_spi_probability_output_scale(tmp_path, precips_mm_monthly):
-    """--output_scale probability writes the fitted probabilities and their metadata."""
+@pytest.mark.parametrize(
+    ("output_scale", "valid_min", "valid_max"),
+    [("probability", 0.0, 1.0), ("bounded", -1.0, 1.0)],
+)
+def test_timeseries_spi_output_scale(tmp_path, precips_mm_monthly, output_scale, valid_min, valid_max):
+    """--output_scale writes the requested scale, its metadata, and its own output name."""
     values = precips_mm_monthly.reshape(-1)
     precip_path = tmp_path / "precip.nc"
     _write_timeseries(precip_path, values)
-    output_base = tmp_path / "spi_probability"
+    output_base = tmp_path / "spi_scaled"
 
-    main([*_spi_arguments(precip_path, output_base), "--output_scale", "probability"])
+    main([*_spi_arguments(precip_path, output_base), "--output_scale", output_scale])
 
     expected = indices.spi(
         values=values,
@@ -168,15 +172,17 @@ def test_timeseries_spi_probability_output_scale(tmp_path, precips_mm_monthly):
         calibration_year_initial=_CALIBRATION_START_YEAR,
         calibration_year_final=_CALIBRATION_END_YEAR,
         periodicity=compute.Periodicity.monthly,
-        output_scale="probability",
+        output_scale=output_scale,
     )
-    with xr.open_dataset(tmp_path / "spi_probability_spi_gamma_06_probability.nc") as dataset:
-        written = dataset["spi_gamma_06_probability"]
+    var_name = f"spi_gamma_06_{output_scale}"
+    with xr.open_dataset(tmp_path / f"spi_scaled_{var_name}.nc") as dataset:
+        written = dataset[var_name]
         np.testing.assert_allclose(written.values, expected, equal_nan=True)
         assert written.attrs["units"] == "1"
-        assert written.attrs["valid_min"] == 0.0
-        assert written.attrs["valid_max"] == 1.0
-        assert "probability" in written.attrs["long_name"]
+        assert written.attrs["valid_min"] == valid_min
+        assert written.attrs["valid_max"] == valid_max
+        assert written.attrs["climate_indices_variant"] == output_scale
+        assert output_scale.replace("_", " ") in written.attrs["long_name"]
 
 
 def test_output_scale_is_rejected_for_a_non_standardized_index(tmp_path, precips_mm_monthly):
