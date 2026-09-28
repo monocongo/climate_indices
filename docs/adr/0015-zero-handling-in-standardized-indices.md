@@ -65,11 +65,13 @@ asked by [#1185](https://github.com/monocongo/climate_indices/issues/1185).
    this change) stay valid, and `p0` is then computed from the calibration
    window of the values being transformed.
 
-5. **Edge cases.** With `p0 == 0` there are no zeros, so every mode equals
-   `"classic"`. With `p0 == 1` (every calibration value zero) every mode keeps
-   today's classic behaviour. Gamma resets `p0` to 0, so the zeros transform to
-   `−∞` and are clipped to −3.09. Pearson's minimum-non-zero guard zeroes that
-   step's parameters, which triggers the existing fallback. No mode defines its
+5. **Edge cases.** With `p0 == 0` there are no calibration zeros, but the
+   transformed record may contain zeros outside that period. Every mode gives
+   those zeros the same `"classic"` result. With `p0 == 1` (every calibration
+   value zero), every mode keeps today's classic behaviour. Gamma resets `p0`
+   to 0, so the zeros transform to `−∞` and are clipped to −3.09. Pearson's
+   minimum-non-zero guard zeroes that step's parameters, which triggers the
+   existing fallback. No mode defines its
    own all-zero semantics, because there is no fitted distribution to place the
    zeros against.
 
