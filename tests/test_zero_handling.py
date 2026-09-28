@@ -320,9 +320,10 @@ def test_all_zero_calibration_step_keeps_the_classic_placement() -> None:
 @pytest.mark.parametrize("mode", ("centre_of_mass", "mean-zero", ""))
 def test_unknown_zero_handling_raises_value_error(mode: str) -> None:
     """Only the three documented values are accepted."""
+    values = _monthly_precip()
     with pytest.raises(ValueError, match="zero_handling"):
         indices.spi(
-            _monthly_precip(),
+            values,
             3,
             indices.Distribution.gamma,
             1980,
