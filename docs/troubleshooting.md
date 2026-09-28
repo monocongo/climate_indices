@@ -869,7 +869,7 @@ directory.
 
 ### Input preparation and checksum failures
 
-The preparation script downloads about 5 MB of pinned source NetCDF and
+The preparation script downloads about 15 MB of pinned source NetCDF and
 verifies each file's SHA-256 before use, so a stale or corrupted cache fails
 loudly instead of feeding wrong values into the tutorial. Reruns need no
 network access once `data/e2e/source/` is populated; delete that directory

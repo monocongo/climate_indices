@@ -12,6 +12,7 @@ the indices themselves, see {doc}`explanation`; for formulas and parameters, see
 workflow-examples
 standardized-hydrologic-indices
 choosing-parameters
+checking-distribution-fit
 troubleshooting
 xarray_migration
 performance
