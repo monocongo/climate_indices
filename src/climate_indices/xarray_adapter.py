@@ -1235,6 +1235,7 @@ def _finalize_ufunc_result(
     calculation_metadata_keys: list[str] | tuple[str, ...] | None,
     index_display_name: str | None,
     func_name: str,
+    is_spi: bool = False,
 ) -> xr.DataArray:
     """Rewrap a computation result with the input's coords, dims, attrs, and name.
 
@@ -1253,6 +1254,7 @@ def _finalize_ufunc_result(
         calculation_metadata_keys: Keys to extract from valid_kwargs for metadata
         index_display_name: Display name for the index (or None to use func_name.upper())
         func_name: Name of the wrapped function
+        is_spi: Whether the wrapped function is indices.spi
 
     Returns:
         Finalized DataArray with restored dimensions, metadata, and coordinate attributes
@@ -1277,9 +1279,10 @@ def _finalize_ufunc_result(
     resolved_index_name = index_display_name if index_display_name is not None else func_name.upper()
     resolved_cf_metadata = _resolve_cf_metadata(cf_metadata, cf_metadata_variants, valid_kwargs)
     output_attrs = build_output_attrs(input_da, resolved_cf_metadata, calc_metadata, index_name=resolved_index_name)
-    if func_name == "spi" and cf_metadata == CF_METADATA["spi"]:
+    if is_spi:
         compute.validate_output_scale(valid_kwargs.get("output_scale", "normal"))
         output_attrs.pop("valid_range", None)
+        output_attrs.pop("actual_range", None)
         output_attrs.update(
             spi_output_attributes(
                 valid_kwargs.get("zero_handling", "classic"), valid_kwargs.get("output_scale", "normal")
@@ -1571,6 +1574,7 @@ def xarray_adapter(
                     calculation_metadata_keys=calculation_metadata_keys,
                     index_display_name=index_display_name,
                     func_name=func.__name__,
+                    is_spi=func is indices.spi,
                 )
 
                 # log completion (NaN metrics omitted for Dask—would trigger compute)
@@ -1658,6 +1662,7 @@ def xarray_adapter(
                     calculation_metadata_keys=calculation_metadata_keys,
                     index_display_name=index_display_name,
                     func_name=func.__name__,
+                    is_spi=func is indices.spi,
                 )
 
                 # log completion
@@ -1744,6 +1749,7 @@ def xarray_adapter(
                 calculation_metadata_keys=calculation_metadata_keys,
                 index_display_name=index_display_name,
                 func_name=func.__name__,
+                is_spi=func is indices.spi,
             )
 
             # log completion with NaN metrics
