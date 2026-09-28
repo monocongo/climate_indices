@@ -627,6 +627,7 @@ def test_all_runs_each_index_into_its_own_output(tmp_path, precips_mm_monthly, p
         "all_spi_gamma_01.nc",
         "all_spi_pearson_01.nc",
         "all_spei_gamma_01.nc",
+        "all_spei_loglogistic_01.nc",
         "all_spei_pearson_01.nc",
         "all_pnp_01.nc",
         "all_pdsi.nc",

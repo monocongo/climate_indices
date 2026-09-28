@@ -1,7 +1,7 @@
 """Computation of L-moments used for Pearson Type-III distribution fitting"""
 
 import logging
-from math import exp, pi, sqrt
+from math import exp, pi, sin, sqrt
 
 import numpy as np
 from scipy import special
@@ -17,6 +17,10 @@ _logger = utils.get_logger(__name__, logging.WARN)
 # Configuration constants for L-moments computation
 # Minimum number of non-NaN values required for L-moments estimation
 MIN_VALUES_FOR_LMOMENTS = 4
+
+# Generalized logistic (GLO) parameter estimation treats a smaller |shape| than this
+# as exactly zero, matching the SMALL constant in Hosking's PELGLO subroutine
+_GLO_SMALL = 1e-6
 
 # Pearson Type III parameter-estimation coefficients from the Hosking RC20525
 # 'pearson3' subroutine, shared by the single-series and cell-axis fits
@@ -321,3 +325,103 @@ def _estimate_lmoments(
         lmoments[2] = sums[2] / sums[1]
 
     return lmoments
+
+
+def fit_glo(timeseries: np.ndarray) -> dict[str, float]:
+    """
+    Returns the generalized logistic (GLO) L-moments fit (loc, scale, shape)
+    corresponding to the input array of values.
+
+    This is the distribution R's ``SPEI`` package fits as ``"log-Logistic"``
+    (``lmom``'s PELGLO with unbiased-PWM L-moments), so it is what SPEIbase uses.
+
+    :param timeseries: 1-D (flattened) array of float values
+    :return: a dictionary with the keys "loc", "scale", and "shape"
+    :rtype: dict[str, float]
+    """
+    lmoments = _estimate_lmoments(timeseries)
+    if (lmoments[1] <= 0.0) or (abs(lmoments[2]) >= 1.0):
+        message = "Unable to calculate log-logistic parameters due to invalid L-moments"
+        _logger.error(message)
+        raise ValueError(message)
+    return _estimate_glo_parameters(lmoments)
+
+
+def _estimate_glo_parameters(lmoments: np.ndarray) -> dict[str, float]:
+    """
+    Estimate parameters via L-moments for the generalized logistic distribution,
+    a Python translation of the PELGLO subroutine from J. R. M. Hosking's
+    'FORTRAN ROUTINES FOR USE WITH THE METHOD OF L-MOMENTS, VERSION 3'
+    (IBM Research Report RC20525) as distributed in the R package ``lmom``.
+
+    :param lmoments: 3-element, 1-D (flat) array containing the first three
+        L-moments (lambda-1, lambda-2, and tau-3)
+    :return: the GLO parameters (loc, scale, shape)
+    :rtype: dict[str, float]
+    :raises ValueError: if the L-moments are invalid for a GLO fit
+    """
+    second_lmoment = float(lmoments[1])
+    shape = -float(lmoments[2])
+    if (second_lmoment <= 0.0) or (abs(shape) >= 1.0):
+        message = "Unable to calculate log-logistic parameters due to invalid L-moments"
+        _logger.error(message)
+        raise ValueError(message)
+
+    if abs(shape) <= _GLO_SMALL:
+        return {"loc": float(lmoments[0]), "scale": second_lmoment, "shape": 0.0}
+
+    gg = shape * pi / sin(shape * pi)
+    scale = second_lmoment / gg
+    return {
+        "loc": float(lmoments[0]) - scale * (1.0 - gg) / shape,
+        "scale": scale,
+        "shape": shape,
+    }
+
+
+def fit_glo_spatial(values: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Returns the GLO L-moments fits (loc, scale, shape) for every cell of an
+    array whose first axis is the sample axis.
+
+    Cell-axis counterpart of :func:`fit_glo`: a cell whose sample is too short or
+    whose L-moments are invalid is marked in the returned validity mask rather
+    than raising on the first one.
+
+    Args:
+        values: Array of samples with shape (samples, *cells).
+
+    Returns:
+        Tuple of (loc, scale, shape, valid), each array shaped like values.shape[1:].
+    """
+    lmoments, valid = _estimate_lmoments_spatial(values)
+    locs, scales, shapes, valid = _estimate_glo_parameters_spatial(lmoments, valid)
+    return locs, scales, shapes, valid
+
+
+def _estimate_glo_parameters_spatial(
+    lmoments: np.ndarray,
+    valid: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Cell-axis counterpart of :func:`_estimate_glo_parameters`.
+
+    :param lmoments: array of the first three L-moments, shaped (3, *cells)
+    :param valid: boolean array shaped (*cells) marking usable L-moments
+    :return: tuple of (loc, scale, shape, valid) arrays shaped (*cells); invalid
+        cells are zero and marked invalid
+    """
+    second_lmoment = lmoments[1]
+    shape = -lmoments[2]
+    valid = valid & (second_lmoment > 0.0) & (np.abs(shape) < 1.0)
+
+    negligible = np.abs(shape) <= _GLO_SMALL
+    with np.errstate(divide="ignore", invalid="ignore"):
+        gg = shape * pi / np.sin(shape * pi)
+        scale = np.where(negligible, second_lmoment, second_lmoment / gg)
+        loc = np.where(negligible, lmoments[0], lmoments[0] - scale * (1.0 - gg) / shape)
+    return (
+        np.where(valid, loc, 0.0),
+        np.where(valid, scale, 0.0),
+        np.where(valid, np.where(negligible, 0.0, shape), 0.0),
+        valid,
+    )

@@ -1981,6 +1981,13 @@ def _validate_flood_arguments(args: argparse.Namespace) -> None:
         raise ValueError(msg)
 
 
+# the distributions `--index spi` computes; log-logistic is the SPEI reference
+# distribution and `indices.spi()` rejects it (#106)
+_SPI_DISTRIBUTIONS = tuple(
+    distribution for distribution in indices.Distribution if distribution is not indices.Distribution.loglogistic
+)
+
+
 def _run_spi(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
     """
     Compute SPI for each requested scale and distribution.
@@ -1989,7 +1996,7 @@ def _run_spi(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
     :param input_type: the input type determined by argument validation
     """
     for scale in arguments.scales:
-        for distribution in indices.Distribution:
+        for distribution in _SPI_DISTRIBUTIONS:
             _compute_write_index(
                 _IndexRequest.from_arguments(
                     arguments,
