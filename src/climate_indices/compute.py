@@ -2244,7 +2244,7 @@ def fit_diagnostics(
         fallback_context: Context included in the fall-back warning log message.
 
     Returns:
-        A :class:`FitDiagnostics` whose ``parameter`` arrays can be fed back through
+        A :class:`FitDiagnostics` whose ``parameters`` arrays can be fed back through
         ``fitting_params`` to reproduce the fit.
 
     Raises:
