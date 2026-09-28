@@ -43,7 +43,7 @@ import numpy as np
 import numpy.typing as npt
 import xarray as xr
 
-from climate_indices import indices
+from climate_indices import indices, pm_eto
 from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.compute import Periodicity
 from climate_indices.exceptions import emit_deprecation_warning
@@ -54,6 +54,9 @@ from climate_indices.xarray_adapter import (
 )
 from climate_indices.xarray_adapter import (
     pet_hargreaves as _pet_hargreaves_impl,
+)
+from climate_indices.xarray_adapter import (
+    pet_penman_monteith as _pet_penman_monteith_impl,
 )
 from climate_indices.xarray_adapter import (
     pet_thornthwaite as _pet_thornthwaite_impl,
@@ -524,6 +527,106 @@ def pet_hargreaves(
     return _delegate(_pet_hargreaves_impl, daily_tmin_celsius, daily_tmax_celsius, latitude, *args, **kwargs)
 
 
+# ETo Penman-Monteith overloads
+@overload
+def pet_penman_monteith(
+    daily_tmin_celsius: npt.NDArray[np.float64],
+    daily_tmax_celsius: npt.NDArray[np.float64],
+    latitude: float,
+    elevation_m: float,
+    wind_speed_m_s: npt.NDArray[np.float64] | float,
+    day_of_year: npt.NDArray[np.float64],
+    wind_speed_height_m: float = 2.0,
+    humidity: pm_eto.HumidityInputs | None = None,
+    radiation: pm_eto.RadiationInputs | None = None,
+    soil_heat_flux_mj_m2_day: npt.NDArray[np.float64] | float = 0.0,
+    albedo: float = 0.23,
+    time_dim: str = "time",
+) -> npt.NDArray[np.float64]: ...
+
+
+@overload
+def pet_penman_monteith(
+    daily_tmin_celsius: xr.DataArray,
+    daily_tmax_celsius: xr.DataArray,
+    latitude: float | np.floating | xr.DataArray,
+    elevation_m: float | np.floating | xr.DataArray,
+    wind_speed_m_s: np.ndarray | xr.DataArray | float,
+    day_of_year: np.ndarray | xr.DataArray | None = None,
+    wind_speed_height_m: float = 2.0,
+    humidity: pm_eto.HumidityInputs | None = None,
+    radiation: pm_eto.RadiationInputs | None = None,
+    soil_heat_flux_mj_m2_day: np.ndarray | xr.DataArray | float = 0.0,
+    albedo: float = 0.23,
+    time_dim: str = "time",
+) -> xr.DataArray: ...
+
+
+def pet_penman_monteith(
+    daily_tmin_celsius: Any,
+    daily_tmax_celsius: Any,
+    latitude: Any,
+    elevation_m: Any,
+    wind_speed_m_s: Any,
+    day_of_year: Any = None,
+    wind_speed_height_m: float = 2.0,
+    humidity: pm_eto.HumidityInputs | None = None,
+    radiation: pm_eto.RadiationInputs | None = None,
+    soil_heat_flux_mj_m2_day: Any = 0.0,
+    albedo: float = 0.23,
+    time_dim: str = "time",
+) -> npt.NDArray[np.float64] | xr.DataArray:
+    """Compute potential evapotranspiration using FAO-56 Penman-Monteith.
+
+    This function accepts both NumPy arrays and xarray DataArrays. Type checkers
+    will narrow the return type based on the input type.
+
+    For NumPy inputs, ``day_of_year`` and scalar ``latitude`` are required. For
+    xarray inputs, ``day_of_year`` is inferred from the time coordinate if not
+    provided, and ``latitude`` may be a scalar or DataArray for spatial
+    broadcasting.
+
+    .. warning:: **Beta Feature (xarray path only)** -- When called with an
+       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
+       The xarray interface may change in future minor releases. The NumPy array
+       interface is stable.
+
+    Args:
+        daily_tmin_celsius: Daily minimum temperature values in degrees Celsius.
+        daily_tmax_celsius: Daily maximum temperature values in degrees Celsius.
+        latitude: Latitude in degrees north (range: -90 to 90).
+        elevation_m: Station elevation above sea level in metres.
+        wind_speed_m_s: Wind speed measured at ``wind_speed_height_m`` [m s-1].
+        day_of_year: Day of the year (required for NumPy, inferred for xarray).
+        wind_speed_height_m: Height at which the wind speed was measured [m].
+        humidity: Optional actual-vapour-pressure inputs, in pathway precedence
+            order; see :class:`climate_indices.pm_eto.HumidityInputs`.
+        radiation: Optional solar-radiation inputs, in pathway precedence order;
+            see :class:`climate_indices.pm_eto.RadiationInputs`.
+        soil_heat_flux_mj_m2_day: Soil heat flux density [MJ m-2 day-1].
+        albedo: Canopy reflection coefficient (0.23 for the grass reference).
+        time_dim: Name of the time dimension in the input DataArray.
+
+    Returns:
+        PET values in mm/day as numpy.ndarray or xarray.DataArray.
+    """
+    return _delegate(
+        _pet_penman_monteith_impl,
+        daily_tmin_celsius,
+        daily_tmax_celsius,
+        latitude,
+        elevation_m,
+        wind_speed_m_s,
+        day_of_year,
+        wind_speed_height_m,
+        humidity,
+        radiation,
+        soil_heat_flux_mj_m2_day,
+        albedo,
+        time_dim,
+    )
+
+
 # EDDI overloads
 @overload
 def eddi(
@@ -678,5 +781,14 @@ def pdsi(
     return _delegate(_palmer_pdsi_impl, precips, pet, awc, *args, **kwargs)
 
 
-for _public_function in (spi, spei, percentage_of_normal, eddi, pdsi, pet_thornthwaite, pet_hargreaves):
+for _public_function in (
+    spi,
+    spei,
+    percentage_of_normal,
+    eddi,
+    pdsi,
+    pet_thornthwaite,
+    pet_hargreaves,
+    pet_penman_monteith,
+):
     _restore_runtime_signature(_public_function)

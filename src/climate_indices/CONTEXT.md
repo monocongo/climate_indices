@@ -85,6 +85,9 @@ Monthly PET estimated from mean air temperature and day length, via a temperatur
 **Hargreaves Method**:
 Daily PET estimated from min/max/mean temperature and extraterrestrial radiation (Hargreaves, 1985; FAO-56 eq. 52).
 
+**Penman-Monteith Method**:
+Daily PET (reference evapotranspiration, ETo) from the full FAO-56 energy-balance and aerodynamic equation, driven by temperature, humidity, wind speed, solar radiation, and elevation (Allen et al., 1998; FAO-56 eq. 6).
+
 ### Fire family
 
 Fire-weather and fuel-dryness indices live in the namespaced `fire` package (`from climate_indices import fire`), never as unqualified package functions — see [ADR-0005](../../docs/adr/0005-fire-module-api.md) and the [fire subsystem design](../../docs/design/fire-subsystem.md).

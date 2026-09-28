@@ -22,13 +22,45 @@ Allen, R.G., Pereira, L.S., Raes, D. and Smith, M. (1998)
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 
+from climate_indices.exceptions import InvalidArgumentError
+
 # union type for function signatures
 FloatOrArray = float | npt.NDArray[np.floating[Any]]
+
+
+@dataclass(frozen=True)
+class HumidityInputs:
+    """Optional FAO-56 actual-vapour-pressure inputs, in pathway precedence order.
+
+    Only one pathway is used, chosen by precedence: dewpoint, then
+    ``rh_min``/``rh_max``, then ``rh_max`` alone, then ``rh_mean``, and finally
+    the arid-region ``e0(Tmin - 2)`` estimate when none is supplied.
+    """
+
+    tdew_celsius: Any = None
+    rh_min: Any = None
+    rh_max: Any = None
+    rh_mean: Any = None
+
+
+@dataclass(frozen=True)
+class RadiationInputs:
+    """Optional FAO-56 solar-radiation inputs, in pathway precedence order.
+
+    Supplied solar radiation is used first, then sunshine hours, and finally the
+    temperature-range estimate when neither is supplied.
+    """
+
+    solar_radiation_mj_m2_day: Any = None
+    sunshine_hours: Any = None
+    coastal: bool = False
+
 
 # ---------------------------------------------------------------------------
 # Physical constants (FAO-56, Chapter 2)
@@ -54,6 +86,18 @@ BASE_TEMPERATURE_K = 293.0
 
 # exponent in the atmospheric pressure equation (Eq 7)
 PRESSURE_EXPONENT = 5.26
+
+# solar constant [MJ m-2 min-1] (FAO-56 Eq 21)
+SOLAR_CONSTANT = 0.0820
+
+# Stefan-Boltzmann constant [MJ K-4 m-2 day-1] (FAO-56 Eq 39)
+STEFAN_BOLTZMANN = 4.903e-9
+
+# albedo of the hypothetical grass reference crop (FAO-56 Eq 38)
+REFERENCE_ALBEDO = 0.23
+
+# Kelvin offset used in the net longwave radiation equation (FAO-56 Eq 39)
+KELVIN_OFFSET = 273.16
 
 
 # ---------------------------------------------------------------------------
@@ -410,3 +454,454 @@ def pm_eto(
     denominator = d + gam * (1.0 + 0.34 * u2)
 
     return numerator / denominator  # type: ignore[no-any-return]
+
+
+# ---------------------------------------------------------------------------
+# Radiation and wind helpers (FAO-56 Chapter 3, Eq 21-50)
+# ---------------------------------------------------------------------------
+
+
+def _sunset_hour_angle(
+    latitude_radians: FloatOrArray,
+    solar_declination_radians: FloatOrArray,
+) -> FloatOrArray:
+    """Calculate the sunset hour angle (Eq 25), clipped to the arccos domain."""
+    cosine = -np.tan(np.asarray(latitude_radians)) * np.tan(np.asarray(solar_declination_radians))
+    return np.arccos(np.clip(cosine, -1.0, 1.0))  # type: ignore[no-any-return]
+
+
+def _inverse_relative_distance(day_of_year: FloatOrArray) -> FloatOrArray:
+    """Calculate the inverse relative Earth-Sun distance (Eq 23)."""
+    return 1.0 + 0.033 * np.cos((2.0 * np.pi / 365.0) * np.asarray(day_of_year))
+
+
+def _solar_declination(day_of_year: FloatOrArray) -> FloatOrArray:
+    """Calculate the solar declination (Eq 24)."""
+    return 0.409 * np.sin((2.0 * np.pi / 365.0) * np.asarray(day_of_year) - 1.39)
+
+
+def extraterrestrial_radiation(
+    latitude_radians: FloatOrArray,
+    day_of_year: FloatOrArray,
+) -> FloatOrArray:
+    """Calculate extraterrestrial radiation.
+
+    Implements FAO-56 Equation 21 (Allen et al., 1998):
+
+        Ra = (24 * 60 / pi) * Gsc * dr * [ws * sin(phi) * sin(delta)
+             + cos(phi) * cos(delta) * sin(ws)]
+
+    with the inverse relative Earth-Sun distance *dr* from Equation 23, the
+    solar declination *delta* from Equation 24, and the sunset hour angle *ws*
+    from Equation 25.
+
+    Args:
+        latitude_radians: Latitude in radians (positive north).
+        day_of_year: Day of the year, 1-365 (366 in a leap year).
+
+    Returns:
+        Extraterrestrial radiation in MJ m-2 day-1.
+
+    """
+    latitude = np.asarray(latitude_radians)
+    day = np.asarray(day_of_year)
+    declination = _solar_declination(day)
+    sunset_hour_angle = _sunset_hour_angle(latitude, declination)
+    return (  # type: ignore[no-any-return]
+        (24.0 * 60.0 / np.pi)
+        * SOLAR_CONSTANT
+        * _inverse_relative_distance(day)
+        * (
+            sunset_hour_angle * np.sin(latitude) * np.sin(declination)
+            + np.cos(latitude) * np.cos(declination) * np.sin(sunset_hour_angle)
+        )
+    )
+
+
+def daylight_hours(
+    latitude_radians: FloatOrArray,
+    day_of_year: FloatOrArray,
+) -> FloatOrArray:
+    """Calculate the maximum possible daylight hours (FAO-56 Eq 34).
+
+    Args:
+        latitude_radians: Latitude in radians (positive north).
+        day_of_year: Day of the year, 1-365 (366 in a leap year).
+
+    Returns:
+        Daylight hours in hours day-1.
+
+    """
+    latitude = np.asarray(latitude_radians)
+    day = np.asarray(day_of_year)
+    return (24.0 / np.pi) * _sunset_hour_angle(latitude, _solar_declination(day))
+
+
+def clear_sky_solar_radiation(
+    extraterrestrial_radiation_mj_m2_day: FloatOrArray,
+    elevation_m: FloatOrArray,
+) -> FloatOrArray:
+    """Calculate clear-sky solar radiation.
+
+    Implements FAO-56 Equation 37 (Allen et al., 1998):
+
+        Rso = (0.75 + 2e-5 * z) * Ra
+
+    Args:
+        extraterrestrial_radiation_mj_m2_day: Extraterrestrial radiation
+            [MJ m-2 day-1] (Eq 21).
+        elevation_m: Station elevation above sea level [m].
+
+    Returns:
+        Clear-sky solar radiation in MJ m-2 day-1.
+
+    """
+    return (0.75 + 2.0e-5 * np.asarray(elevation_m)) * np.asarray(  # type: ignore[no-any-return]
+        extraterrestrial_radiation_mj_m2_day
+    )
+
+
+def net_shortwave_radiation(
+    solar_radiation_mj_m2_day: FloatOrArray,
+    albedo: FloatOrArray = REFERENCE_ALBEDO,
+) -> FloatOrArray:
+    """Calculate net shortwave radiation.
+
+    Implements FAO-56 Equation 38 (Allen et al., 1998):
+
+        Rns = (1 - alpha) * Rs
+
+    Args:
+        solar_radiation_mj_m2_day: Incoming solar radiation [MJ m-2 day-1].
+        albedo: Canopy reflection coefficient (0.23 for the grass reference).
+
+    Returns:
+        Net shortwave radiation in MJ m-2 day-1.
+
+    """
+    return (1.0 - np.asarray(albedo)) * np.asarray(solar_radiation_mj_m2_day)  # type: ignore[no-any-return]
+
+
+def net_longwave_radiation(
+    tmin_celsius: FloatOrArray,
+    tmax_celsius: FloatOrArray,
+    actual_vp_kpa: FloatOrArray,
+    solar_radiation_mj_m2_day: FloatOrArray,
+    clear_sky_solar_radiation_mj_m2_day: FloatOrArray,
+) -> FloatOrArray:
+    """Calculate net outgoing longwave radiation.
+
+    Implements FAO-56 Equation 39 (Allen et al., 1998):
+
+        Rnl = sigma * [(Tmax,K^4 + Tmin,K^4) / 2]
+              * (0.34 - 0.14 * sqrt(ea)) * (1.35 * Rs / Rso - 0.35)
+
+    The relative shortwave radiation *Rs / Rso* is limited to 1.0, as required
+    by FAO-56.
+
+    Args:
+        tmin_celsius: Daily minimum air temperature [degC].
+        tmax_celsius: Daily maximum air temperature [degC].
+        actual_vp_kpa: Actual vapour pressure [kPa] (Eq 14-19).
+        solar_radiation_mj_m2_day: Solar radiation [MJ m-2 day-1] (Eq 35-37).
+        clear_sky_solar_radiation_mj_m2_day: Clear-sky solar radiation
+            [MJ m-2 day-1] (Eq 36-37).
+
+    Returns:
+        Net outgoing longwave radiation in MJ m-2 day-1.
+
+    """
+    tmax_kelvin = np.asarray(tmax_celsius) + KELVIN_OFFSET
+    tmin_kelvin = np.asarray(tmin_celsius) + KELVIN_OFFSET
+    relative_solar = np.minimum(
+        np.asarray(solar_radiation_mj_m2_day) / np.asarray(clear_sky_solar_radiation_mj_m2_day),
+        1.0,
+    )
+    return (  # type: ignore[no-any-return]
+        STEFAN_BOLTZMANN
+        * ((tmax_kelvin**4 + tmin_kelvin**4) / 2.0)
+        * (0.34 - 0.14 * np.sqrt(np.asarray(actual_vp_kpa)))
+        * (1.35 * relative_solar - 0.35)
+    )
+
+
+def net_radiation(
+    tmin_celsius: FloatOrArray,
+    tmax_celsius: FloatOrArray,
+    actual_vp_kpa: FloatOrArray,
+    solar_radiation_mj_m2_day: FloatOrArray,
+    clear_sky_solar_radiation_mj_m2_day: FloatOrArray,
+    albedo: FloatOrArray = REFERENCE_ALBEDO,
+) -> FloatOrArray:
+    """Calculate net radiation from the shortwave and longwave components.
+
+    Implements FAO-56 Equation 40 (Allen et al., 1998):
+
+        Rn = Rns - Rnl
+
+    Args:
+        tmin_celsius: Daily minimum air temperature [degC].
+        tmax_celsius: Daily maximum air temperature [degC].
+        actual_vp_kpa: Actual vapour pressure [kPa] (Eq 14-19).
+        solar_radiation_mj_m2_day: Solar radiation [MJ m-2 day-1] (Eq 35-37).
+        clear_sky_solar_radiation_mj_m2_day: Clear-sky solar radiation
+            [MJ m-2 day-1] (Eq 36-37).
+        albedo: Canopy reflection coefficient (0.23 for the grass reference).
+
+    Returns:
+        Net radiation in MJ m-2 day-1.
+
+    """
+    return net_shortwave_radiation(solar_radiation_mj_m2_day, albedo) - net_longwave_radiation(
+        tmin_celsius,
+        tmax_celsius,
+        actual_vp_kpa,
+        solar_radiation_mj_m2_day,
+        clear_sky_solar_radiation_mj_m2_day,
+    )
+
+
+def solar_radiation_from_sunshine(
+    sunshine_hours: FloatOrArray,
+    daylight_hours_value: FloatOrArray,
+    extraterrestrial_radiation_mj_m2_day: FloatOrArray,
+) -> FloatOrArray:
+    """Estimate solar radiation from measured sunshine duration.
+
+    Implements FAO-56 Equation 35 (Allen et al., 1998) with the recommended
+    Angstrom coefficients ``as = 0.25`` and ``bs = 0.50``:
+
+        Rs = [as + bs * (n / N)] * Ra
+
+    Args:
+        sunshine_hours: Actual duration of bright sunshine [hours day-1].
+        daylight_hours_value: Maximum possible daylight hours *N* [hours day-1]
+            (Eq 34).
+        extraterrestrial_radiation_mj_m2_day: Extraterrestrial radiation
+            [MJ m-2 day-1] (Eq 21).
+
+    Returns:
+        Solar radiation in MJ m-2 day-1.
+
+    """
+    return (0.25 + 0.50 * np.asarray(sunshine_hours) / np.asarray(daylight_hours_value)) * np.asarray(  # type: ignore[no-any-return]
+        extraterrestrial_radiation_mj_m2_day
+    )
+
+
+def solar_radiation_from_temperature_range(
+    tmin_celsius: FloatOrArray,
+    tmax_celsius: FloatOrArray,
+    extraterrestrial_radiation_mj_m2_day: FloatOrArray,
+    coastal: bool = False,
+) -> FloatOrArray:
+    """Estimate solar radiation from the daily temperature range.
+
+    Implements FAO-56 Equation 50 (Allen et al., 1998):
+
+        Rs = kRs * sqrt(Tmax - Tmin) * Ra
+
+    where ``kRs = 0.16`` for interior locations and ``0.19`` for coastal
+    locations. The result should be limited to the clear-sky radiation before
+    use in Equation 39.
+
+    Args:
+        tmin_celsius: Daily minimum air temperature [degC].
+        tmax_celsius: Daily maximum air temperature [degC].
+        extraterrestrial_radiation_mj_m2_day: Extraterrestrial radiation
+            [MJ m-2 day-1] (Eq 21).
+        coastal: Whether the location is coastal (``kRs = 0.19``) rather than
+            interior (``kRs = 0.16``).
+
+    Returns:
+        Solar radiation in MJ m-2 day-1.
+
+    """
+    krs = 0.19 if coastal else 0.16
+    temperature_range = np.maximum(np.asarray(tmax_celsius) - np.asarray(tmin_celsius), 0.0)
+    return (  # type: ignore[no-any-return]
+        krs * np.sqrt(temperature_range) * np.asarray(extraterrestrial_radiation_mj_m2_day)
+    )
+
+
+def wind_speed_2m(
+    wind_speed: FloatOrArray,
+    measurement_height_m: FloatOrArray = 2.0,
+) -> FloatOrArray:
+    """Convert wind speed measured at any height to the 2 m standard height.
+
+    Implements FAO-56 Equation 47 (Allen et al., 1998):
+
+        u2 = uz * 4.87 / ln(67.8 * z - 5.42)
+
+    where *z* is the measurement height in metres. At ``z = 2`` the conversion
+    factor is essentially 1.
+
+    Args:
+        wind_speed: Wind speed measured at ``measurement_height_m`` [m s-1].
+        measurement_height_m: Height above the ground at which the wind speed
+            was measured [m].
+
+    Returns:
+        Wind speed at 2 m above the ground in m s-1.
+
+    """
+    height = np.asarray(measurement_height_m)
+    if np.any(height <= 0.0):
+        raise InvalidArgumentError(
+            f"Wind measurement height must be positive. Received: {measurement_height_m!r}",
+            argument_name="measurement_height_m",
+            argument_value=str(measurement_height_m),
+            valid_values="> 0 m",
+        )
+    conversion = 4.87 / np.log(67.8 * height - 5.42)
+    # at the standard height Eq 47 reduces to unity; return the input exactly
+    return np.where(height == 2.0, np.asarray(wind_speed), np.asarray(wind_speed) * conversion)  # NOSONAR
+
+
+# ---------------------------------------------------------------------------
+# High-level Penman-Monteith ETo from meteorological inputs
+# ---------------------------------------------------------------------------
+
+
+def _select_actual_vapor_pressure(
+    tmin_celsius: FloatOrArray,
+    tmax_celsius: FloatOrArray,
+    e_s: FloatOrArray,
+    humidity: HumidityInputs | None,
+) -> FloatOrArray:
+    """Select the best available FAO-56 actual-vapour-pressure pathway."""
+    humidity = humidity or HumidityInputs()
+    if humidity.tdew_celsius is not None:
+        return actual_vapor_pressure_from_dewpoint(humidity.tdew_celsius)
+    if humidity.rh_min is not None and humidity.rh_max is not None:
+        return actual_vapor_pressure_from_rhmin_rhmax(
+            saturation_vapor_pressure(tmin_celsius),
+            saturation_vapor_pressure(tmax_celsius),
+            humidity.rh_min,
+            humidity.rh_max,
+        )
+    if humidity.rh_min is not None:
+        raise InvalidArgumentError(
+            "rh_min was provided without rh_max; both are required for Eq 17.",
+            argument_name="rh_min",
+            argument_value=str(humidity.rh_min),
+            valid_values="provide both rh_min and rh_max, or neither",
+        )
+    if humidity.rh_max is not None:
+        return actual_vapor_pressure_from_rhmax(saturation_vapor_pressure(tmin_celsius), humidity.rh_max)
+    if humidity.rh_mean is not None:
+        return actual_vapor_pressure_from_rhmean(e_s, humidity.rh_mean)
+    return actual_vapor_pressure_from_tmin(tmin_celsius)
+
+
+def _select_solar_radiation(
+    tmin_celsius: FloatOrArray,
+    tmax_celsius: FloatOrArray,
+    extraterrestrial_radiation_mj_m2_day: FloatOrArray,
+    daylength_hours: FloatOrArray,
+    radiation: RadiationInputs | None,
+) -> tuple[FloatOrArray, bool]:
+    """Select supplied, sunshine-based, or temperature-based solar radiation.
+
+    Returns:
+        The solar radiation and whether it was estimated from the temperature
+        range (and so must be limited to the clear-sky radiation).
+
+    """
+    radiation = radiation or RadiationInputs()
+    if radiation.solar_radiation_mj_m2_day is not None:
+        return radiation.solar_radiation_mj_m2_day, False
+    if radiation.sunshine_hours is not None:
+        return solar_radiation_from_sunshine(
+            radiation.sunshine_hours, daylength_hours, extraterrestrial_radiation_mj_m2_day
+        ), False
+    return (
+        solar_radiation_from_temperature_range(
+            tmin_celsius, tmax_celsius, extraterrestrial_radiation_mj_m2_day, radiation.coastal
+        ),
+        True,
+    )
+
+
+def penman_monteith_eto(
+    daily_tmin_celsius: Any,
+    daily_tmax_celsius: Any,
+    latitude_degrees: Any,
+    elevation_m: Any,
+    wind_speed_m_s: Any,
+    day_of_year: Any,
+    wind_speed_height_m: Any = 2.0,
+    humidity: HumidityInputs | None = None,
+    radiation: RadiationInputs | None = None,
+    soil_heat_flux_mj_m2_day: Any = 0.0,
+    albedo: Any = REFERENCE_ALBEDO,
+) -> FloatOrArray:
+    """Compute FAO-56 Penman-Monteith reference evapotranspiration from meteorology.
+
+    This is a convenience wrapper around :func:`pm_eto` that derives the FAO-56
+    intermediate variables from the supplied meteorological inputs:
+
+    - atmospheric pressure and the psychrometric constant from elevation
+      (Eq 7-8);
+    - saturation vapour pressure, actual vapour pressure, and the slope of the
+      saturation vapour pressure curve from temperature and the best available
+      humidity pathway (Eq 11-19);
+    - wind speed at the 2 m standard height (Eq 47);
+    - net radiation from supplied, sunshine-based, or temperature-range solar
+      radiation and clear-sky radiation (Eq 21-40).
+
+    Humidity pathway precedence is dewpoint, then RHmin/RHmax, then RHmax, then
+    RHmean, and finally the arid-region ``e0(Tmin - 2)`` estimate. Radiation
+    precedence is supplied solar radiation, then sunshine hours, then the
+    temperature-range estimate. For daily steps the soil heat flux defaults to
+    zero.
+
+    Args:
+        daily_tmin_celsius: Daily minimum air temperature [degC].
+        daily_tmax_celsius: Daily maximum air temperature [degC].
+        latitude_degrees: Latitude in degrees north (range -90 to 90).
+        elevation_m: Station elevation above sea level [m].
+        wind_speed_m_s: Wind speed measured at ``wind_speed_height_m`` [m s-1].
+        day_of_year: Day of the year, 1-365 (366 in a leap year).
+        wind_speed_height_m: Height at which the wind speed was measured [m].
+        humidity: Optional actual-vapour-pressure inputs, in pathway precedence
+            order; see :class:`HumidityInputs`.
+        radiation: Optional solar-radiation inputs, in pathway precedence order;
+            see :class:`RadiationInputs`.
+        soil_heat_flux_mj_m2_day: Soil heat flux density [MJ m-2 day-1]. Use 0
+            for daily steps.
+        albedo: Canopy reflection coefficient (0.23 for the grass reference).
+
+    Returns:
+        Reference evapotranspiration ETo in mm/day, same shape as the inputs.
+
+    """
+    tmin = np.asarray(daily_tmin_celsius)
+    tmax = np.asarray(daily_tmax_celsius)
+    tmean = (tmin + tmax) / 2.0
+
+    latitude_radians = np.radians(np.asarray(latitude_degrees))
+    day = np.asarray(day_of_year)
+
+    wind_2m = wind_speed_2m(wind_speed_m_s, wind_speed_height_m)
+    gamma = psychrometric_constant(atmospheric_pressure(elevation_m))
+    e_s = mean_saturation_vapor_pressure(tmin, tmax)
+    delta = vapor_pressure_slope(tmean)
+    e_a = _select_actual_vapor_pressure(tmin, tmax, e_s, humidity)
+
+    ra = extraterrestrial_radiation(latitude_radians, day)
+    rso = clear_sky_solar_radiation(ra, elevation_m)
+    rs, from_temperature = _select_solar_radiation(
+        tmin,
+        tmax,
+        ra,
+        daylight_hours(latitude_radians, day),
+        radiation,
+    )
+    if from_temperature:
+        # FAO-56 Eq 50: limit the temperature-range estimate to the clear-sky value
+        rs = np.minimum(rs, rso)
+
+    rn = net_radiation(tmin, tmax, e_a, rs, rso, albedo)
+    return pm_eto(rn, soil_heat_flux_mj_m2_day, tmean, wind_2m, e_s, e_a, delta, gamma)
