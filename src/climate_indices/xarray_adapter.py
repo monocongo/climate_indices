@@ -38,7 +38,7 @@ import structlog.stdlib
 import xarray as xr
 
 from climate_indices import compute, eto, indices, palmer, pm_eto, utils
-from climate_indices.cf_metadata_registry import CF_METADATA
+from climate_indices.cf_metadata_registry import CF_METADATA, spi_output_attributes
 from climate_indices.compute import MIN_CALIBRATION_YEARS
 from climate_indices.exceptions import (
     CoordinateValidationError,
@@ -1277,6 +1277,14 @@ def _finalize_ufunc_result(
     resolved_index_name = index_display_name if index_display_name is not None else func_name.upper()
     resolved_cf_metadata = _resolve_cf_metadata(cf_metadata, cf_metadata_variants, valid_kwargs)
     output_attrs = build_output_attrs(input_da, resolved_cf_metadata, calc_metadata, index_name=resolved_index_name)
+    if func_name == "spi" and cf_metadata == CF_METADATA["spi"]:
+        compute.validate_output_scale(valid_kwargs.get("output_scale", "normal"))
+        output_attrs.pop("valid_range", None)
+        output_attrs.update(
+            spi_output_attributes(
+                valid_kwargs.get("zero_handling", "classic"), valid_kwargs.get("output_scale", "normal")
+            )
+        )
     result_da.attrs = output_attrs
 
     # deep-copy coordinate attrs to prevent mutation bleed-through
