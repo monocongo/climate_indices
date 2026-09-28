@@ -2061,36 +2061,31 @@ class FitDiagnostics:
     ``fitting_params`` keys to the arrays that produced the fit, so it can be passed
     straight back to :func:`fit_and_standardize` (or to ``spi`` /
     ``standardized_index``) to reproduce it.
-
-    Attributes:
-        distribution: The distribution actually used, after any Pearson-to-gamma fall
-            back.
-        parameters: The fitted parameters, keyed as ``fitting_params`` accepts them:
-            ``alpha``/``beta`` for gamma, and ``prob_zero``/``loc``/``scale``/``skew``
-            for Pearson Type III.
-        prob_zero: Probability of a zero accumulation, per calendar step. For gamma
-            this is the zero fraction over the full input record; the transform
-            clamps an all-zero step's mass to 0, which this field reports as 1.0. For
-            Pearson Type III it is computed over the calibration period, matching
-            ``pearson_parameters``.
-        n_valid: Number of non-missing, non-zero calibration values entering the
-            Kolmogorov-Smirnov test.
-        ks_statistic: Kolmogorov-Smirnov D statistic of the fit, missing where the
-            step has no valid sample or no usable fitted parameters.
-        ks_p_value: Exact Kolmogorov-Smirnov p-value, on the same eligibility as
-            ``ks_statistic``. It is computed for every eligible calendar step (and
-            cell), unlike the goodness-of-fit warning path, which skips the exact
-            p-value for clearly acceptable fits; retrieving it is therefore more
-            expensive.
-        fell_back_to_gamma: Whether a Pearson Type III fit fell back to gamma.
     """
 
+    #: The distribution actually used, after any Pearson-to-gamma fall back.
     distribution: "Distribution"
+    #: The fitted parameters, keyed as ``fitting_params`` accepts them:
+    #: ``alpha``/``beta`` for gamma, and ``prob_zero``/``loc``/``scale``/``skew``
+    #: for Pearson Type III.
     parameters: dict[str, np.ndarray]
+    #: Probability of a zero accumulation, per calendar step. For gamma this is the
+    #: zero fraction over the full input record; the transform clamps an all-zero
+    #: step's mass to 0, which this field reports as 1.0. For Pearson Type III it is
+    #: computed over the calibration period, matching ``pearson_parameters``.
     prob_zero: np.ndarray
+    #: Number of non-missing, non-zero calibration values entering the
+    #: Kolmogorov-Smirnov test.
     n_valid: np.ndarray
+    #: Kolmogorov-Smirnov D statistic of the fit, missing where the step has no
+    #: valid sample or no usable fitted parameters.
     ks_statistic: np.ndarray
+    #: Exact Kolmogorov-Smirnov p-value, on the same eligibility as
+    #: ``ks_statistic``. It is computed for every eligible calendar step (and cell),
+    #: unlike the goodness-of-fit warning path, which skips the exact p-value for
+    #: clearly acceptable fits; retrieving it is therefore more expensive.
     ks_p_value: np.ndarray
+    #: Whether a Pearson Type III fit fell back to gamma.
     fell_back_to_gamma: bool
 
 
