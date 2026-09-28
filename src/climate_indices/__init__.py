@@ -17,6 +17,7 @@ from climate_indices.logging_config import configure_logging
 from climate_indices.pm_eto import HumidityInputs, RadiationInputs
 from climate_indices.typed_public_api import (
     eddi,
+    fit_diagnostics,
     pci,
     pdsi,
     percentage_of_normal,
@@ -57,6 +58,7 @@ __all__ = [
     "edi",
     "emit_deprecation_warning",
     "fire",
+    "fit_diagnostics",
     "flood",
     "pci",
     "pdsi",

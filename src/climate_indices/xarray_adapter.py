@@ -2925,3 +2925,391 @@ def palmer_pdsi(
     )
 
     return xr.Dataset(variables)
+
+
+#: Per-variable CF metadata for the fit-diagnostics Dataset. Diagnostics are an audit
+#: surface rather than an index, so they carry their own CF metadata here instead of
+#: a CF_METADATA entry; provenance is added by ``build_output_attrs`` per variable.
+_FIT_DIAGNOSTICS_THOM_1958 = (
+    "Thom, H. C. S. (1958). A note on the gamma distribution. "
+    "Monthly Weather Review, 86(4), 117-122. "
+    "https://doi.org/10.1175/1520-0493(1958)086<0117:ANOTGD>2.0.CO;2"
+)
+_FIT_DIAGNOSTICS_STAGGE_2015 = (
+    "Stagge, J. H., Tallaksen, L. M., Gudmundsson, L., Van Loon, A. F., & Stahl, K. (2015). "
+    "Candidate distributions for climatological drought indices (SPI and SPEI). "
+    "International Journal of Climatology, 35(13), 4027-4040. https://doi.org/10.1002/joc.4267"
+)
+_FIT_DIAGNOSTICS_MASSEY_1951 = (
+    "Massey, F. J. (1951). The Kolmogorov-Smirnov test for goodness of fit. "
+    "Journal of the American Statistical Association, 46(253), 68-78. "
+    "https://doi.org/10.1080/01621459.1951.10500769"
+)
+_FIT_DIAGNOSTICS_CF_METADATA: dict[str, dict[str, str]] = {
+    "alpha": {
+        "long_name": "Gamma shape parameter",
+        "units": "1",
+        "description": "Fitted gamma shape parameter, per calendar step and cell.",
+        "references": _FIT_DIAGNOSTICS_THOM_1958,
+    },
+    "beta": {
+        "long_name": "Gamma scale parameter",
+        "units": "1",
+        "description": "Fitted gamma scale parameter, per calendar step and cell.",
+        "references": _FIT_DIAGNOSTICS_THOM_1958,
+    },
+    "loc": {
+        "long_name": "Pearson Type III location parameter",
+        "units": "1",
+        "description": "Fitted Pearson Type III location parameter, per calendar step and cell.",
+        "references": _FIT_DIAGNOSTICS_STAGGE_2015,
+    },
+    "scale": {
+        "long_name": "Pearson Type III scale parameter",
+        "units": "1",
+        "description": "Fitted Pearson Type III scale parameter, per calendar step and cell.",
+        "references": _FIT_DIAGNOSTICS_STAGGE_2015,
+    },
+    "skew": {
+        "long_name": "Pearson Type III skewness parameter",
+        "units": "1",
+        "description": "Fitted Pearson Type III skewness parameter, per calendar step and cell.",
+        "references": _FIT_DIAGNOSTICS_STAGGE_2015,
+    },
+    "prob_zero": {
+        "long_name": "Probability of zero accumulation",
+        "units": "1",
+        "description": "Probability mass the fitted distribution places at a zero accumulation.",
+        "references": _FIT_DIAGNOSTICS_STAGGE_2015,
+    },
+    "n_valid": {
+        "long_name": "Valid calibration sample count",
+        "units": "1",
+        "description": "Non-missing, non-zero calibration values entering the Kolmogorov-Smirnov test.",
+        "references": _FIT_DIAGNOSTICS_MASSEY_1951,
+    },
+    "ks_statistic": {
+        "long_name": "Kolmogorov-Smirnov D statistic",
+        "units": "1",
+        "description": "Maximum distance between the fitted CDF and the calibration sample's empirical CDF.",
+        "references": _FIT_DIAGNOSTICS_MASSEY_1951,
+    },
+    "ks_p_value": {
+        "long_name": "Kolmogorov-Smirnov exact p-value",
+        "units": "1",
+        "description": "Exact Kolmogorov-Smirnov p-value of the fitted distribution.",
+        "references": _FIT_DIAGNOSTICS_MASSEY_1951,
+    },
+    "distribution_used": {
+        "long_name": "Distribution used after any fall back",
+        "description": "Distribution actually used, after any Pearson Type III fall back to gamma.",
+        "references": _FIT_DIAGNOSTICS_STAGGE_2015,
+    },
+}
+
+#: The fitted-parameter variables each distribution reports. A Pearson Type III
+#: request also carries the gamma slots, because a failed fit falls back to gamma
+#: block by block and the inapplicable family is then NaN.
+_FIT_DIAGNOSTICS_GAMMA_SLOTS: tuple[str, ...] = ("alpha", "beta")
+_FIT_DIAGNOSTICS_PEARSON_SLOTS: tuple[str, ...] = ("loc", "scale", "skew")
+_FIT_DIAGNOSTICS_FIELDS: tuple[str, ...] = ("prob_zero", "n_valid", "ks_statistic", "ks_p_value")
+
+
+def _validate_diagnostics_fitting_params(
+    input_da: xr.DataArray, fitting_params: dict[str, Any] | None, time_dim: str
+) -> None:
+    """Reject parameter layouts that the xarray path cannot align to cells."""
+    # a 1-D or 2-D input takes the per-cell path, which cannot slice a parameter
+    # array per cell, so cell-shaped parameters fail early instead of deep inside
+    # the NumPy core's boolean checks
+    cell_shaped = sorted(name for name, value in (fitting_params or {}).items() if np.ndim(value) > 1)
+    if cell_shaped and input_da.ndim <= 2:
+        raise ValueError(
+            "fitting_params must carry one value per calendar step for a 1-D or 2-D input; "
+            f"cell-shaped parameters ({', '.join(cell_shaped)}) are only supported for a "
+            "3-D or higher time-major block"
+        )
+    # every Dask block receives the whole grid's parameters through apply_ufunc's
+    # kwargs, so a cell dimension split across chunks would hand a block parameters
+    # for cells it does not hold; fail here rather than when the graph computes
+    if cell_shaped and input_da.chunks is not None:
+        split_dims = [
+            str(dim)
+            for dim, dim_chunks in zip(input_da.dims, input_da.chunks, strict=True)
+            if dim != time_dim and len(dim_chunks) > 1
+        ]
+        if split_dims:
+            rechunk = ", ".join(f"'{dim}': -1" for dim in split_dims)
+            raise ValueError(
+                f"cell-shaped fitting_params ({', '.join(cell_shaped)}) require each cell dimension "
+                f"in a single Dask chunk (split: {', '.join(split_dims)}); pass one value per "
+                f"calendar step, or rechunk using: data = data.chunk({{{rechunk}}})"
+            )
+
+
+def _diagnostics_dataset(
+    input_da: xr.DataArray,
+    by_name: dict[str, xr.DataArray],
+    variable_names: tuple[str, ...],
+    period_dim: str,
+    period_length: int,
+    provided: dict[str, Any],
+    fitting_params: dict[str, Any] | None,
+    time_dim: str,
+) -> xr.Dataset:
+    """Rewrap block outputs with calendar coordinates and CF metadata."""
+    cell_dims = [dim for dim in input_da.dims if dim != time_dim]
+    calculation_metadata: dict[str, Any] = {key: value for key, value in provided.items() if key != "fitting_params"}
+    if fitting_params:
+        calculation_metadata["fitting_params"] = f"dict(keys={','.join(sorted(fitting_params))})"
+
+    variables: dict[str, xr.DataArray] = {}
+    for name in variable_names:
+        variable = by_name[name].transpose(period_dim, *cell_dims)
+        variable = variable.assign_coords({period_dim: np.arange(1, period_length + 1)})
+        variable.attrs = build_output_attrs(
+            input_da,
+            cf_metadata=_FIT_DIAGNOSTICS_CF_METADATA[name],
+            calculation_metadata=calculation_metadata,
+            index_name="Fit diagnostics",
+        )
+        variables[name] = variable
+
+    distribution_used = xr.where(by_name["distribution_code"] > 0, "pearson", "gamma")  # type: ignore[no-untyped-call]
+    distribution_used.attrs = build_output_attrs(
+        input_da,
+        cf_metadata=_FIT_DIAGNOSTICS_CF_METADATA["distribution_used"],
+        calculation_metadata=calculation_metadata,
+        index_name="Fit diagnostics",
+    )
+    # a categorical variable carries no units, and the input's would otherwise leak through
+    distribution_used.attrs.pop("units", None)
+    variables["distribution_used"] = distribution_used
+    return xr.Dataset(variables)
+
+
+def _diagnostics_block(
+    block: np.ndarray,
+    *,
+    calendar_plan: utils.DailyCalendarPlan | None,
+    parameter_slots: tuple[str, ...],
+    **kwargs: Any,
+) -> tuple[np.ndarray, ...]:
+    """Run the NumPy diagnostics once on one calendar-aware (time, *cells) block."""
+    time_first = np.moveaxis(block, -1, 0)
+    if calendar_plan is not None:
+        time_first = calendar_plan.to_all_leap(time_first)
+    diagnostics = indices.fit_diagnostics(time_first, spatial_time_major=True, **kwargs)
+    # a parameter that does not apply to the fitted distribution is NaN, so the
+    # Dataset schema stays fixed whichever way a block-level fall back goes
+    reference = next(iter(diagnostics.parameters.values()))
+    fitted: list[np.ndarray] = []
+    for name in parameter_slots:
+        parameter = diagnostics.parameters.get(name)
+        fitted.append(
+            np.moveaxis(
+                np.asarray(parameter, dtype=float) if parameter is not None else np.full_like(reference, np.nan),
+                0,
+                -1,
+            )
+        )
+    for name in _FIT_DIAGNOSTICS_FIELDS:
+        fitted.append(np.moveaxis(np.asarray(getattr(diagnostics, name), dtype=float), 0, -1))
+    # the code is 1.0 for pearson, 0.0 for gamma (requested or fallen back to),
+    # broadcast over the block's cell dims because apply_ufunc's non-vectorized
+    # path expects every output to carry the loop dimensions
+    code = np.full(block.shape[:-1], float(diagnostics.distribution.value == "pearson"))
+    return (*fitted, code)
+
+
+def _numpy_fit_diagnostics(
+    values: np.ndarray,
+    scale: int,
+    distribution: indices.Distribution,
+    data_start_year: int | None,
+    calibration_year_initial: int | None,
+    calibration_year_final: int | None,
+    periodicity: compute.Periodicity | None,
+    fitting_params: dict[str, Any] | None,
+    spatial_time_major: bool,
+) -> compute.FitDiagnostics:
+    """Preserve the NumPy core's required temporal parameters and layout."""
+    if (
+        data_start_year is None
+        or calibration_year_initial is None
+        or calibration_year_final is None
+        or periodicity is None
+    ):
+        raise ValueError(
+            "data_start_year, calibration_year_initial, calibration_year_final, and periodicity "
+            "are required for numpy inputs"
+        )
+    return indices.fit_diagnostics(
+        values,
+        scale,
+        distribution,
+        data_start_year,
+        calibration_year_initial,
+        calibration_year_final,
+        periodicity,
+        fitting_params,
+        spatial_time_major=spatial_time_major,
+    )
+
+
+def fit_diagnostics(
+    values: np.ndarray | xr.DataArray,
+    scale: int,
+    distribution: indices.Distribution,
+    data_start_year: int | None = None,
+    calibration_year_initial: int | None = None,
+    calibration_year_final: int | None = None,
+    periodicity: compute.Periodicity | None = None,
+    fitting_params: dict[str, Any] | None = None,
+    spatial_time_major: bool = False,
+    time_dim: str = "time",
+) -> compute.FitDiagnostics | xr.Dataset:
+    """Fit a distribution and return per-calendar-step diagnostics, with xarray/Dask support.
+
+    This is the audit surface of :func:`climate_indices.indices.fit_diagnostics` as a
+    CF-annotated ``xr.Dataset``: one variable per fitted parameter plus ``prob_zero``,
+    ``n_valid``, ``ks_statistic``, ``ks_p_value``, and ``distribution_used``, each over
+    a calendar-step dimension (``month`` or ``dayofyear``) and the input's cell
+    dimensions. It uses ``xr.apply_ufunc`` directly rather than the ``@xarray_adapter``
+    decorator because a Dataset of variables, not the input shape, is the result.
+
+    .. warning:: **Beta Feature (xarray path)** — When called with ``xr.DataArray``
+       input, this function uses the beta xarray adapter layer. The NumPy array
+       interface and underlying computation are stable.
+
+    Args:
+        values: NumPy array or xarray DataArray of non-negative values. The NumPy
+            layouts are the ones :func:`climate_indices.indices.fit_diagnostics`
+            accepts; the xarray layout is read from its dimensions, with the core
+            time dimension plus any number of cell dimensions.
+        scale: Number of time steps accumulated before fitting.
+        distribution: Distribution to fit, gamma or Pearson Type III. A failed
+            Pearson Type III fit falls back to gamma, as it does for the indices.
+        data_start_year: Initial year of the input values. Required for NumPy
+            inputs; inferred from the first time coordinate for xarray inputs.
+        calibration_year_initial: Initial year of the calibration period. Required
+            for NumPy inputs; inferred from the time range for xarray inputs.
+        calibration_year_final: Final year of the calibration period. Required for
+            NumPy inputs; inferred from the time range for xarray inputs.
+        periodicity: Monthly or daily time steps. Required for NumPy inputs;
+            inferred from the time coordinate for xarray inputs.
+        fitting_params: Optional pre-computed fitting parameters; deprecated
+            aliases are normalized by the NumPy core. One value per calendar step
+            for a 1-D or 2-D input; a 3-D input also accepts cell-shaped arrays,
+            provided a Dask-backed input keeps each cell dimension in a single chunk.
+        spatial_time_major: Declares a three-or-more-dimensional NumPy ``values`` as
+            a time-major ``(time, *cells)`` block (per ADR-0009). Only used for NumPy
+            inputs; the xarray path reads its dimensions from the coordinate labels.
+        time_dim: Name of the time dimension in the input DataArray (default:
+            ``"time"``). Only used for xarray inputs.
+
+    Returns:
+        For NumPy input, the :class:`climate_indices.compute.FitDiagnostics` that
+        :func:`climate_indices.indices.fit_diagnostics` returns. For xarray input, an
+        ``xr.Dataset`` whose variables are reduced over time only: a calendar-step
+        dimension (``month`` for monthly data, ``dayofyear`` for daily data) plus the
+        input's cell dimensions, each variable carrying CF attributes and provenance
+        (scale, distribution, calibration period, version, and history). A Pearson
+        Type III request keeps both parameter families: the one that does not apply
+        to a fitted block (its fit fell back to gamma) is NaN there, and
+        ``distribution_used`` names the family that does apply. ``distribution_used``
+        does not carry the calendar-step dimension, so its value is constant over
+        each calendar step; the fitted-parameter variables keep it. For chunked
+        input the fall back is decided per chunk, as in the index adapters, so
+        chunking can change it.
+
+    Raises:
+        ValueError: If a NumPy call omits a required temporal parameter, or
+            ``fitting_params`` carries cell-shaped arrays for a 1-D or 2-D input or
+            for a Dask-backed input with a cell dimension split across chunks.
+        CoordinateValidationError: If the xarray time dimension is missing,
+            non-monotonic, unsupported (cftime), does not begin in January, or its
+            periodicity does not match the requested ``periodicity``.
+        InsufficientDataError: If the series is shorter than ``scale``.
+    """
+    # numpy passthrough: the stable indices.fit_diagnostics() contract
+    if detect_input_type(values) == InputType.NUMPY:
+        return _numpy_fit_diagnostics(
+            np.asanyarray(values),
+            scale,
+            distribution,
+            data_start_year,
+            calibration_year_initial,
+            calibration_year_final,
+            periodicity,
+            fitting_params,
+            spatial_time_major,
+        )
+
+    # xarray path: validate → infer → compute per block → rewrap as a Dataset
+    assert isinstance(values, xr.DataArray)
+    input_da = values
+    validate_time_dimension(input_da, time_dim)
+    validate_time_monotonicity(input_da[time_dim])
+    if input_da.chunks is not None:
+        validate_dask_chunks(input_da, time_dim)
+
+    provided: dict[str, Any] = {
+        key: value
+        for key, value in {
+            "scale": scale,
+            "distribution": distribution,
+            "data_start_year": data_start_year,
+            "calibration_year_initial": calibration_year_initial,
+            "calibration_year_final": calibration_year_final,
+            "periodicity": periodicity,
+            "fitting_params": fitting_params,
+        }.items()
+        if value is not None
+    }
+    _validate_diagnostics_fitting_params(input_da, fitting_params, time_dim)
+    # inference is metadata-only, so it stays safe for Dask-backed input
+    provided.update(_infer_temporal_parameters(indices.fit_diagnostics, input_da, [input_da], provided, time_dim))
+    calendar_plan = _resolve_daily_calendar_plan(indices.fit_diagnostics, input_da, [input_da], {}, provided, time_dim)
+    _validate_sufficient_data(input_da[time_dim], scale, calendar_plan)
+
+    resolved_periodicity = provided["periodicity"]
+    period_dim = "month" if resolved_periodicity is compute.Periodicity.monthly else "dayofyear"
+    period_length = 12 if resolved_periodicity is compute.Periodicity.monthly else 366
+
+    # a Pearson Type III request keeps the gamma parameter slots too: the fit can
+    # fall back block by block, and the family that did not apply is NaN there
+    if distribution is indices.Distribution.pearson:
+        parameter_slots = (*_FIT_DIAGNOSTICS_PEARSON_SLOTS, *_FIT_DIAGNOSTICS_GAMMA_SLOTS)
+    else:
+        parameter_slots = _FIT_DIAGNOSTICS_GAMMA_SLOTS
+    variable_names = (*parameter_slots, *_FIT_DIAGNOSTICS_FIELDS)
+
+    kernel_outputs = (*parameter_slots, *_FIT_DIAGNOSTICS_FIELDS, "distribution_code")
+    result = xr.apply_ufunc(
+        functools.partial(_diagnostics_block, calendar_plan=calendar_plan, parameter_slots=parameter_slots),
+        input_da,
+        input_core_dims=[[time_dim]],
+        output_core_dims=[[period_dim]] * (len(kernel_outputs) - 1) + [[]],
+        # a 2-D input has a single cell dimension, for which the block reading is
+        # ambiguous with the legacy (years, periods) layout, so it keeps the
+        # per-cell path the index adapters use
+        vectorize=input_da.ndim == 2,
+        dask="parallelized",
+        dask_gufunc_kwargs={"allow_rechunk": True, "output_sizes": {period_dim: period_length}},
+        output_dtypes=[float] * len(kernel_outputs),
+        kwargs=provided,
+    )
+    arrays = result if isinstance(result, tuple) else (result,)
+    by_name = dict(zip(kernel_outputs, arrays, strict=True))
+    dataset = _diagnostics_dataset(
+        input_da, by_name, variable_names, period_dim, period_length, provided, fitting_params, time_dim
+    )
+    _log().info(
+        "fit_diagnostics_completed",
+        input_shape=input_da.shape,
+        period_dim=period_dim,
+        distribution=distribution.value,
+    )
+
+    return dataset

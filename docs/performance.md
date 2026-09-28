@@ -256,7 +256,9 @@ exact p-value whenever a fit is clearly acceptable, while diagnostics computes i
 for each such step and cell, and each p-value is a `scipy.stats.kstest` call. On a
 gridded block that is the dominant cost by a wide margin. Run it on a calibration
 series, or on the cells you are auditing, rather than on a full production grid.
-The same NumPy core backs the xarray surface tracked for a later release.
+The same NumPy core backs the xarray `fit_diagnostics()` surface, which returns the
+diagnostics as an `xr.Dataset` over a `month`/`dayofyear` dimension plus the input's
+cell dimensions; it re-fits per Dask spatial chunk, so the same block cost applies.
 
 ## Measuring your own
 
