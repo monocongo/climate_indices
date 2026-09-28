@@ -1163,6 +1163,17 @@ def test_fit_diagnostics_folds_an_all_missing_declared_block():
     assert np.all(diagnostics.n_valid == 0)
 
 
+def test_fit_diagnostics_folds_an_all_missing_undeclared_block():
+    values = np.full((40 * 12, 5, 6), np.nan)
+
+    diagnostics = indices.fit_diagnostics(
+        values, 1, indices.Distribution.gamma, 1981, 1981, 2010, compute.Periodicity.monthly
+    )
+
+    assert diagnostics.n_valid.shape == (12, 5, 6)
+    assert np.all(diagnostics.n_valid == 0)
+
+
 def test_fit_diagnostics_supports_daily_periodicity():
     """A daily series gets 366 calendar steps rather than a monthly axis."""
     values = np.arange(1.0, (10 * 366) + 1.0)

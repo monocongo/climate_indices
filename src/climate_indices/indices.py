@@ -742,7 +742,7 @@ def fit_diagnostics(
 
         # an all-missing time-major block comes back unfolded, keeping the input shape;
         # fold it so the diagnostic arrays carry (time_steps, *cells), not the time axis
-        if spatial_time_major and values.ndim > 2 and scaled_values.shape == values.shape:
+        if values.ndim > 2 and scaled_values.shape == values.shape:
             scaled_values = compute._reshape_time_major(scaled_values, periodicity)
 
         diagnostics = compute.fit_diagnostics(

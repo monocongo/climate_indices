@@ -2169,6 +2169,7 @@ def _diagnostic_pearson_parameters(
     calibration_start_year: int,
     calibration_end_year: int,
     periodicity: Periodicity,
+    fallback_to_gamma: bool,
 ) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None, np.ndarray | None, bool]:
     """Prepare Pearson parameters and flag a partial caller-supplied set."""
     probabilities_of_zero = params.get("prob_zero")
@@ -2185,9 +2186,15 @@ def _diagnostic_pearson_parameters(
         )
 
     if all(parameter is None for parameter in supplied):
-        probabilities_of_zero, locs, scales, skews = pearson_parameters(
-            values, data_start_year, calibration_start_year, calibration_end_year, periodicity
-        )
+        try:
+            probabilities_of_zero, locs, scales, skews = pearson_parameters(
+                values, data_start_year, calibration_start_year, calibration_end_year, periodicity
+            )
+        except (ValueError, Warning, DistributionFittingError):
+            if not fallback_to_gamma:
+                raise
+            # Let the guarded transform refit and apply its gamma fallback.
+            return None, None, None, None, False
         return probabilities_of_zero, locs, scales, skews, False
     if probabilities_of_zero is not None and locs is not None and scales is not None and skews is not None:
         probabilities_of_zero, locs, scales, skews = _as_period_cell_parameters(
@@ -2267,7 +2274,13 @@ def fit_diagnostics(
     fallback_parameters: dict[str, np.ndarray] | None = None
     if distribution.value != "gamma":
         probabilities_of_zero, locs, scales, skews, partial = _diagnostic_pearson_parameters(
-            values, params, data_start_year, calibration_start_year, calibration_end_year, periodicity
+            values,
+            params,
+            data_start_year,
+            calibration_start_year,
+            calibration_end_year,
+            periodicity,
+            fallback_to_gamma,
         )
 
         if fallback_to_gamma:

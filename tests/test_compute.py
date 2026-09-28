@@ -1141,6 +1141,21 @@ def test_fit_diagnostics_reports_the_gamma_fall_back():
     np.testing.assert_array_equal(diagnostics.parameters["beta"], expected_betas)
 
 
+def test_fit_diagnostics_falls_back_when_pearson_parameter_fitting_raises():
+    values = np.arange(1.0, 481.0).reshape(40, 12)
+
+    with mock.patch("climate_indices.compute.pearson_parameters", side_effect=ValueError("Pearson fit failed")):
+        with pytest.raises(ValueError, match="Pearson fit failed"):
+            compute.fit_diagnostics(values, indices.Distribution.pearson, 1981, 1981, 2010, compute.Periodicity.monthly)
+        diagnostics = compute.fit_diagnostics(
+            values, indices.Distribution.pearson, 1981, 1981, 2010, compute.Periodicity.monthly, fallback_to_gamma=True
+        )
+
+    assert diagnostics.fell_back_to_gamma
+    assert diagnostics.distribution is indices.Distribution.gamma
+    assert set(diagnostics.parameters) == {"alpha", "beta"}
+
+
 def test_fit_diagnostics_uses_supplied_parameters_without_refitting():
     """Caller-supplied parameters are normalized and reported, not refitted from the data."""
     values = np.arange(1.0, 481.0).reshape(40, 12)
