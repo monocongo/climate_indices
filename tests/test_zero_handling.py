@@ -137,8 +137,11 @@ def test_gamma_zero_mass_uses_the_calibration_window() -> None:
     assert np.all(narrowed[0:5, :] == -np.inf)
 
     full = compute.transform_fitted_gamma(scaled, 1980, 1980, 2019, compute.Periodicity.monthly)
-    not_all_zero = ~np.isin(full, (-3.09, np.inf, np.nan))
-    assert not np.allclose(narrowed[not_all_zero], full[not_all_zero])
+    # the fitted shape and scale also move with the window: compare the finite nonzero
+    # scores, since the -inf zero positions above would make any mismatch trivial
+    nonzero = (scaled != 0.0) & np.isfinite(full) & np.isfinite(narrowed)
+    assert nonzero.any()
+    assert not np.allclose(narrowed[nonzero], full[nonzero])
 
 
 def test_gamma_calibration_window_follows_the_full_record_fallback() -> None:
