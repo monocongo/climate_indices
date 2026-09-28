@@ -17,7 +17,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from climate_indices import compute, indices
+from climate_indices import compute, indices, spi
 from climate_indices.exceptions import (
     CoordinateValidationError,
     InputAlignmentWarning,
@@ -3190,3 +3190,72 @@ class TestDaskBackedArraySupport:
         assert np.isnan(computed_result.values[10])
         assert np.isnan(computed_result.values[50])
         assert np.isnan(computed_result.values[100])
+
+
+class TestGriddedCalibrationCheckSymmetry:
+    """Regression tests for #1156: a masked cell no longer rejects a whole grid."""
+
+    def _masked_corner_grid(self) -> xr.DataArray:
+        time = pd.date_range("1981-01-01", periods=44 * 12, freq="MS")
+        rng = np.random.default_rng(0)
+        values = rng.gamma(2.0, 30.0, size=(time.size, 4, 4))
+        values[:, 0, 0] = np.nan  # first cell masked; the other 15 are complete
+        return xr.DataArray(
+            values,
+            coords={"time": time, "lat": range(4), "lon": range(4)},
+            dims=["time", "lat", "lon"],
+            attrs={"units": "mm"},
+        )
+
+    def test_masked_first_cell_no_longer_rejects_whole_grid(self):
+        """A grid whose [0, 0] cell is masked still computes for every other cell."""
+        result = spi(
+            self._masked_corner_grid(),
+            scale=6,
+            distribution=indices.Distribution.gamma,
+            calibration_year_initial=1991,
+            calibration_year_final=2020,
+        )
+
+        # the masked cell stays NaN; every other cell gets a finite fit
+        assert np.isnan(result.values[:, 0, 0]).all()
+        assert np.isfinite(result.values[:, 1:, :]).any(axis=0).all()
+
+    def test_eager_and_dask_grid_agree(self):
+        """Eager and Dask runs of the same masked grid produce the same result."""
+        da = self._masked_corner_grid()
+        kwargs = {
+            "scale": 6,
+            "distribution": indices.Distribution.gamma,
+            "calibration_year_initial": 1991,
+            "calibration_year_final": 2020,
+        }
+
+        eager_result = spi(da, **kwargs)
+        dask_result = spi(da.chunk({"lat": 2, "lon": 2, "time": -1}), **kwargs).compute()
+
+        np.testing.assert_allclose(eager_result.values, dask_result.values, equal_nan=True)
+
+    def test_non_time_first_grid_with_nan_does_not_raise(self):
+        """#979 companion: a transposed grid no longer IndexErrors on this check."""
+        time = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
+        rng = np.random.default_rng(5)
+        values = rng.gamma(2.0, 2.0, size=(time.size, 3, 2))
+        values[10, 1, 0] = np.nan
+
+        da = xr.DataArray(
+            values,
+            coords={"time": time, "lat": [1.0, 2.0, 3.0], "lon": [0.0, 5.0]},
+            dims=["time", "lat", "lon"],
+        )
+
+        result = spi(
+            da.transpose("lat", "time", "lon"),
+            scale=3,
+            distribution=indices.Distribution.gamma,
+            calibration_year_initial=1981,
+            calibration_year_final=2010,
+        )
+
+        assert isinstance(result, xr.DataArray)
+        assert result.dims == da.transpose("lat", "time", "lon").dims

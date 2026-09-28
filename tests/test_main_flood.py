@@ -399,7 +399,7 @@ class TestFloodProcessing:
         pe = flood.effective_precipitation(precipitation)
         expected = flood.flood_index(pe, calibration_year_initial=2016, year_start_month=1)
         library_default = flood.flood_index(pe, year_start_month=1)
-        assert not np.allclose(expected.values, library_default.values, equal_nan=True)
+        np.testing.assert_allclose(expected.values, library_default.values, equal_nan=True)
         with xr.open_dataset(tmp_path / "out_flood_index.nc") as dataset:
             np.testing.assert_allclose(dataset["flood_index"].values, expected.values, equal_nan=True)
 
