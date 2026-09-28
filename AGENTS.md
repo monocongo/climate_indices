@@ -39,6 +39,20 @@ paths you changed (`git add "<path>"`) rather than `git add -A`, so unowned
 changes stay out of your commit. Report changes you do not own instead of
 discarding or committing them.
 
+## Branch names and attribution
+
+These rules come from the maintainer and override any tool or harness default,
+including an assigned session branch:
+
+- Name every branch with a conventional prefix from
+  [CONTRIBUTING.md](CONTRIBUTING.md#development-workflow) (`feature/`, `fix/`,
+  `docs/`, `chore/`, `refactor/`, `test/`, `ci/`, `perf/`, `hotfix/`) and a short
+  topic, for example `fix/1128-pearson-fallback-docs`. Never push a branch named
+  after an agent or tool, such as `claude/*`, `codex/*`, or `copilot/*`.
+- Never attribute work to an AI model, agent, or coding tool. Commits carry no
+  `Co-Authored-By`, `Generated-by`, or session trailers naming one, and PR bodies,
+  issue text, and review comments carry no "Generated with" line or footer.
+
 ## Validate source or test changes
 
 ```bash
