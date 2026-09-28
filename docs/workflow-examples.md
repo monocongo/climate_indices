@@ -266,8 +266,11 @@ Perform the fitting over the calibration period only, and keep the parameters fo
 as long as that climatology is the one to standardize against -- for example with
 `np.savez("nclimgrid_fitting.npz", alpha=alphas, beta=betas)` and `np.load()` in
 later runs. The parameters are then used exactly as supplied: the calibration years
-still passed to `indices.spi()` no longer take part in any fit, so they have to
-match the period the parameters were fitted over.
+still passed to `indices.spi()` no longer take part in the `alpha` and `beta` fit,
+but without a supplied `prob_zero` they still choose the window the gamma zero
+fraction is counted over, so they have to match the period the parameters were
+fitted over. Save that zero fraction as `prob_zero` alongside `alpha` and `beta`
+to fix the zero mass as well.
 
 They also have to come from the same fitting scale and the same series the
 consuming call standardizes. The parameter arrays record neither, and

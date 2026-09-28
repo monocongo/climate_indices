@@ -38,6 +38,25 @@ def _half_zero_monthly(years: int = 40, seed: int = 11) -> np.ndarray:
     return values
 
 
+def _stepped_zero_monthly(years: int = 40, seed: int = 17) -> np.ndarray:
+    """A (years, 12) series whose calendar month m holds 2 * (m + 1) zeros."""
+    values = _positive_monthly(years, seed)
+    for month in range(12):
+        values[: 2 * (month + 1), month] = 0.0
+    return values
+
+
+# each month's zero fraction in a 40-year _stepped_zero_monthly series
+_STEPPED_PROBABILITIES_OF_ZERO = np.array([2.0 * (month + 1) / 40.0 for month in range(12)])
+
+
+def _assert_each_months_zeros(computed: np.ndarray, values: np.ndarray, expected_scores: np.ndarray) -> None:
+    """Every zero in calendar month m holds that month's expected score."""
+    for month in range(12):
+        zeros = values[:, month] == 0
+        np.testing.assert_allclose(computed[zeros, month], expected_scores[month], atol=1e-12)
+
+
 def _spi(values: np.ndarray, distribution: indices.Distribution, **kwargs: Any) -> np.ndarray:
     """SPI-1 of a 1981-onward monthly series, calibrated on 1981-2020 unless told otherwise."""
     calibration = kwargs.pop("calibration", (1981, 2020))
@@ -103,6 +122,60 @@ def test_non_zero_values_keep_their_classic_transform(distribution: indices.Dist
     positive = values.flatten() > 0
     np.testing.assert_array_equal(moved[positive], classic[positive])
     assert np.all(moved[~positive] < classic[~positive])
+
+
+@pytest.mark.parametrize("compute_index", [indices.spi, indices.standardized_index])
+@pytest.mark.parametrize("distribution", _DISTRIBUTIONS)
+@pytest.mark.parametrize("zero_handling", ["center_of_mass", "mean_zero"])
+def test_each_steps_zeros_take_the_score_of_that_steps_zero_mass(
+    compute_index: Callable[..., np.ndarray], distribution: indices.Distribution, zero_handling: str
+) -> None:
+    """Month m's zeros score the closed form for month m's own p0 = 2 * (m + 1) / 40."""
+    values = _stepped_zero_monthly()
+
+    computed = compute_index(
+        values.flatten(), 1, distribution, 1981, 1981, 2020, _MONTHLY, zero_handling=zero_handling
+    ).reshape(values.shape)
+
+    expected = [_zero_score(probability, zero_handling) for probability in _STEPPED_PROBABILITIES_OF_ZERO]
+    _assert_each_months_zeros(computed, values, np.array(expected))
+
+
+# supplied Pearson Type III parameters whose lower bound, loc - 2 * scale / skew = -15,
+# sits below zero, so no support-limit mask reaches the zeros
+_PEARSON_PARAMETERS = {
+    "prob_zero": _STEPPED_PROBABILITIES_OF_ZERO,
+    "loc": np.full(12, 5.0),
+    "scale": np.full(12, 10.0),
+    "skew": np.full(12, 1.0),
+}
+
+
+@pytest.mark.parametrize("zero_handling", [None, "classic", "center_of_mass", "mean_zero"])
+def test_the_transforms_and_fit_and_standardize_score_each_steps_zeros(zero_handling: str | None) -> None:
+    """
+    The compute transforms and fit_and_standardize, Pearson without the fall back
+    included, place each step's zeros by the mode, and default to the classic
+    Φ⁻¹(p0) when no mode is given.
+    """
+    values = _stepped_zero_monthly()
+    mode: dict[str, Any] = {} if zero_handling is None else {"zero_handling": zero_handling}
+    arguments = (1981, 1981, 2020, _MONTHLY)
+    pearson = _PEARSON_PARAMETERS
+    gamma = indices.Distribution.gamma
+
+    results = (
+        compute.transform_fitted_gamma(values, *arguments, **mode),
+        compute.fit_and_standardize(values, gamma, *arguments, **mode),
+        compute.transform_fitted_pearson(
+            values, *arguments, pearson["prob_zero"], pearson["loc"], pearson["scale"], pearson["skew"], **mode
+        ),
+        compute.fit_and_standardize(values, indices.Distribution.pearson, *arguments, pearson, **mode),
+    )
+
+    expected = [_zero_score(probability, zero_handling or "classic") for probability in _STEPPED_PROBABILITIES_OF_ZERO]
+    for result in results:
+        _assert_each_months_zeros(result, values, np.array(expected))
 
 
 @pytest.mark.parametrize("zero_handling", ["center_of_mass", "mean_zero"])
@@ -216,6 +289,10 @@ _INVALID_MODE_CALLS: dict[str, Callable[[str], Any]] = {
     "fit_and_standardize": lambda mode: compute.fit_and_standardize(
         _half_zero_monthly(), indices.Distribution.gamma, 1981, 1981, 2020, _MONTHLY, zero_handling=mode
     ),
+    "spi_all_missing": lambda mode: _spi(np.full((40, 12), np.nan), indices.Distribution.gamma, zero_handling=mode),
+    "standardized_index_all_missing": lambda mode: indices.standardized_index(
+        np.full(480, np.nan), 1, indices.Distribution.gamma, 1981, 1981, 2020, _MONTHLY, zero_handling=mode
+    ),
     "transform_fitted_gamma": lambda mode: compute.transform_fitted_gamma(
         np.full((40, 12), np.nan), 1981, 1981, 2020, _MONTHLY, zero_handling=mode
     ),
@@ -274,7 +351,7 @@ def test_every_layout_gives_the_series_result(distribution: indices.Distribution
 def test_a_period_only_zero_mass_broadcasts_across_a_spatial_block() -> None:
     """A supplied (periods,) gamma prob_zero applies to every cell, as alpha and beta do."""
     cells = np.stack([_half_zero_monthly(seed=seed) for seed in range(4)], axis=-1)
-    parameters = {"prob_zero": np.full(12, 0.2)}
+    parameters = {"prob_zero": np.linspace(0.1, 0.32, 12)}
 
     spatial = indices.spi(
         cells.reshape(480, 2, 2),
@@ -294,7 +371,11 @@ def test_a_period_only_zero_mass_broadcasts_across_a_spatial_block() -> None:
             cells[..., cell], indices.Distribution.gamma, fitting_params=parameters, zero_handling="mean_zero"
         )
         np.testing.assert_allclose(spatial[:, cell], expected, atol=1e-8, rtol=1e-7)
-    np.testing.assert_allclose(spatial[cells.reshape(480, 4) == 0], _zero_score(0.2, "mean_zero"), atol=1e-12)
+        _assert_each_months_zeros(
+            spatial[:, cell].reshape(40, 12),
+            cells[..., cell],
+            np.array([_zero_score(probability, "mean_zero") for probability in parameters["prob_zero"]]),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -316,26 +397,20 @@ def _pre_adr_gamma_spi(values: np.ndarray, scale: int, first_year: int, last_yea
     )
 
 
-@pytest.mark.parametrize(
-    ("series", "scale"),
-    [
-        ("spi_fixture", 1),
-        ("spi_fixture", 6),
-        ("spi_fixture_with_zeros", 1),
-        ("zero_inflated", 1),
-        ("half_zero", 1),
-    ],
-)
-def test_classic_gamma_is_unchanged_for_a_full_record_calibration_without_missing_values(
-    precips_mm_monthly, data_year_start_monthly, series: str, scale: int
+@pytest.mark.parametrize("series", ["spi_fixture", "spi_fixture_with_zeros", "zero_inflated", "half_zero"])
+def test_classic_gamma_is_unchanged_for_complete_years_at_scale_one(
+    precips_mm_monthly, data_year_start_monthly, series: str
 ) -> None:
     """
     Classic gamma SPI and standardized_index are bit-identical to the whole-record zero
-    mass when the calibration period is the full record and no value is missing.
+    mass when the calibration period is the full record of complete years, at scale 1,
+    with no value missing and no ``prob_zero`` supplied.
 
     The zero mass is the only input of the transform that ADR-0015 changes, so the
-    pre-ADR output is the transform given that whole-record zero mass.
+    pre-ADR output is the transform given that whole-record zero mass. The tests
+    below pin the cases outside those conditions, where the output moves.
     """
+    scale = 1
     # the SPI fixture's final year is padded after February, so keep the complete years
     fixture = np.asarray(precips_mm_monthly)[:-1]
     first_year = data_year_start_monthly
@@ -461,3 +536,196 @@ def test_a_gamma_zero_mass_is_read_from_fitting_params_under_either_key() -> Non
 
     np.testing.assert_array_equal(canonical, deprecated)
     np.testing.assert_allclose(canonical[values.flatten() == 0], _zero_score(0.3, "classic"), atol=1e-12)
+
+
+def test_the_leading_steps_a_scale_above_one_leaves_missing_leave_the_denominator() -> None:
+    """An SPI-3 January zero mass counts the 39 January sums, not the 40 years."""
+    values = _positive_monthly(40, seed=19)
+    # nine January sums of November, December, and January are zero, in years 2 to 10
+    for year in range(1, 10):
+        values[year - 1, 10:] = 0.0
+        values[year, 0] = 0.0
+
+    computed = indices.spi(values.flatten(), 3, indices.Distribution.gamma, 1981, 1981, 2020, _MONTHLY)
+
+    january = computed.reshape(values.shape)[:, 0]
+    assert np.isnan(january[0])
+    np.testing.assert_allclose(january[1:10], scipy.stats.norm.ppf(9.0 / 39.0), atol=1e-12)
+    assert scipy.stats.norm.ppf(9.0 / 39.0) != pytest.approx(scipy.stats.norm.ppf(9.0 / 40.0))
+
+
+def test_the_padded_final_year_leaves_the_denominator() -> None:
+    """A record ending in June pads July with NaN, so July's zero mass counts 39 years."""
+    values = _positive_monthly(40, seed=23)
+    values[:9, 6] = 0.0
+    series = values.flatten()[:-6]
+
+    computed = indices.spi(series, 1, indices.Distribution.gamma, 1981, 1981, 2020, _MONTHLY)
+
+    july = np.append(computed, np.full(6, np.nan)).reshape(values.shape)[:, 6]
+    np.testing.assert_allclose(july[:9], scipy.stats.norm.ppf(9.0 / 39.0), atol=1e-12)
+
+
+def test_a_gamma_prob_zero_key_that_was_ignored_now_sets_the_zero_mass() -> None:
+    """A gamma fitting_params that already carried prob_zero now changes every value."""
+    values = _half_zero_monthly()
+    alphas, betas = compute.gamma_parameters(values, 1981, 1981, 2020, _MONTHLY)
+
+    without_key = _spi(values, indices.Distribution.gamma, fitting_params={"alpha": alphas, "beta": betas})
+    with_key = _spi(
+        values,
+        indices.Distribution.gamma,
+        fitting_params={"alpha": alphas, "beta": betas, "prob_zero": np.full(12, 0.3)},
+    )
+
+    positive = values.flatten() > 0
+    assert np.all(with_key[positive] != without_key[positive])
+
+
+# ---------------------------------------------------------------------------
+# a supplied gamma zero mass
+
+
+@pytest.mark.parametrize("probability_of_zero", [np.full((12, 3), 0.2), np.full((12, 1, 1), 0.2), np.full(11, 0.2)])
+def test_a_supplied_gamma_zero_mass_with_the_wrong_cells_is_rejected(probability_of_zero: np.ndarray) -> None:
+    """The gamma prob_zero follows the Pearson rule for cell dimensions, rather than broadcasting."""
+    block = np.stack([_half_zero_monthly(seed=seed).flatten() for seed in range(3)], axis=-1).reshape(480, 1, 3)
+    parameters = {"prob_zero": probability_of_zero}
+
+    with pytest.raises(ValueError, match="prob_zero"):
+        indices.spi(
+            block, 1, indices.Distribution.gamma, 1981, 1981, 2020, _MONTHLY, parameters, spatial_time_major=True
+        )
+
+
+@pytest.mark.parametrize("probability_of_zero", [1.2, -0.1])
+def test_a_supplied_gamma_zero_mass_outside_the_unit_interval_is_rejected(probability_of_zero: float) -> None:
+    """A probability outside [0, 1] is an argument error, not a silent NaN."""
+    parameters = {"prob_zero": np.full(12, probability_of_zero)}
+
+    with pytest.raises(ValueError, match=r"\[0, 1\]"):
+        _spi(_half_zero_monthly(), indices.Distribution.gamma, fitting_params=parameters)
+
+
+def test_only_a_supplied_gamma_zero_mass_of_exactly_one_is_reset() -> None:
+    """A supplied 0.99999 is a zero mass; a supplied 1 means no gamma fit, as a computed 1 does."""
+    values = _half_zero_monthly()
+    arguments = (values, 1981, 1981, 2020, _MONTHLY)
+
+    near_one = compute.transform_fitted_gamma(*arguments, probabilities_of_zero=np.full(12, 0.99999))
+    one = compute.transform_fitted_gamma(*arguments, probabilities_of_zero=np.ones(12))
+
+    np.testing.assert_allclose(near_one[values == 0], scipy.stats.norm.ppf(0.99999))
+    np.testing.assert_array_equal(one[values == 0], -np.inf)
+
+
+def test_an_undefined_zero_mass_leaves_its_zeros_missing() -> None:
+    """
+    A step without calibration data has no zero mass, so its zeros are NaN rather than
+    an extreme drought, while its non-zero values keep supplied parameters' scores.
+    A supplied NaN means the same, so fit_diagnostics' report round-trips.
+    """
+    complete = _positive_monthly(40, seed=29)
+    alphas, betas = compute.gamma_parameters(complete, 1981, 1981, 2020, _MONTHLY)
+    values = complete.copy()
+    values[10:, 0] = np.nan  # no January value inside the 1991-2020 calibration period
+    values[:5, 0] = 0.0
+    arguments = (values, 1981, 1991, 2020, _MONTHLY)
+
+    fitted = compute.transform_fitted_gamma(*arguments)
+    supplied = compute.transform_fitted_gamma(*arguments, alphas, betas)
+    diagnostics = compute.fit_diagnostics(values, indices.Distribution.gamma, 1981, 1991, 2020, _MONTHLY)
+    round_trip = compute.transform_fitted_gamma(
+        *arguments, diagnostics.parameters["alpha"], diagnostics.parameters["beta"], diagnostics.parameters["prob_zero"]
+    )
+
+    assert np.all(np.isnan(fitted[:5, 0]))
+    assert np.all(np.isnan(supplied[:5, 0]))
+    assert np.all(np.isfinite(supplied[5:10, 0]))
+    assert np.isnan(diagnostics.prob_zero[0])
+    np.testing.assert_array_equal(round_trip, fitted)
+
+
+@pytest.mark.parametrize("zero_handling", ["center_of_mass", "mean_zero"])
+def test_a_negative_value_passed_to_the_gamma_transform_is_placed_with_the_zeros(zero_handling: str) -> None:
+    """The index functions clip negatives, and a direct caller's negative ranks with the zeros."""
+    values = _half_zero_monthly()
+    values[0, :] = -1.0
+
+    transformed = compute.transform_fitted_gamma(values, 1981, 1981, 2020, _MONTHLY, zero_handling=zero_handling)
+
+    # the negative row displaces a zero, leaving 19 zeros in each month's 40 values
+    np.testing.assert_allclose(transformed[0], _zero_score(19.0 / 40.0, zero_handling), atol=1e-12)
+    np.testing.assert_array_equal(transformed[0], transformed[2])
+
+
+def test_a_masked_calibration_value_is_missing() -> None:
+    """A masked zero is neither counted in the zero mass nor scored."""
+    values = _half_zero_monthly()
+    mask = np.zeros(values.shape, dtype=bool)
+    mask[:4, :] = True  # two of each month's zeros, and two non-zero values
+
+    masked = compute.transform_fitted_gamma(np.ma.array(values, mask=mask), 1981, 1981, 2020, _MONTHLY)
+
+    assert np.all(np.isnan(masked[:4]))
+    # 18 zeros among each month's 36 non-missing calibration values
+    np.testing.assert_allclose(masked[4::2], scipy.stats.norm.ppf(18.0 / 36.0), atol=1e-12)
+
+
+def test_a_calibration_period_outside_the_record_uses_the_full_record() -> None:
+    """Calibration years beyond the data fall back to the record for the zero mass too."""
+    values = _stepped_zero_monthly()
+
+    outside = indices.spi(values.flatten(), 1, indices.Distribution.gamma, 1981, 1900, 2100, _MONTHLY)
+
+    np.testing.assert_array_equal(outside, _spi(values, indices.Distribution.gamma))
+    _assert_each_months_zeros(
+        outside.reshape(values.shape), values, scipy.stats.norm.ppf(_STEPPED_PROBABILITIES_OF_ZERO)
+    )
+
+
+def test_every_mode_keeps_the_classic_result_for_a_supplied_pearson_zero_mass_of_one() -> None:
+    """The p0 == 1 guard, reachable for Pearson only through supplied parameters (decision 5)."""
+    values = _stepped_zero_monthly()
+    parameters = dict(_PEARSON_PARAMETERS, prob_zero=np.where(np.arange(12) == 0, 1.0, _STEPPED_PROBABILITIES_OF_ZERO))
+
+    results = [
+        compute.fit_and_standardize(
+            values, indices.Distribution.pearson, 1981, 1981, 2020, _MONTHLY, parameters, zero_handling=mode
+        )
+        for mode in _MODES
+    ]
+
+    for result in results[1:]:
+        np.testing.assert_array_equal(result[:, 0], results[0][:, 0])
+
+
+def test_fit_diagnostics_round_trips_a_supplied_gamma_zero_mass() -> None:
+    """
+    A supplied gamma prob_zero is reported and returned in parameters, so feeding the
+    parameters back reproduces the fit; a Pearson fall back computes its own zero mass.
+    """
+    values = _stepped_zero_monthly(50)
+    supplied = {"prob_zero": np.linspace(0.05, 0.3, 12)}
+    arguments = (1981, 1981, 2010, _MONTHLY)
+
+    diagnostics = compute.fit_diagnostics(values, indices.Distribution.gamma, *arguments, supplied)
+
+    np.testing.assert_array_equal(diagnostics.prob_zero, supplied["prob_zero"])
+    np.testing.assert_array_equal(
+        compute.fit_and_standardize(values, indices.Distribution.gamma, *arguments, diagnostics.parameters),
+        compute.fit_and_standardize(values, indices.Distribution.gamma, *arguments, supplied),
+    )
+
+    failed_pearson = mock.patch(
+        "climate_indices.compute.transform_fitted_pearson",
+        side_effect=compute.DistributionFittingError("Pearson failed", distribution_name="pearson3"),
+    )
+    with failed_pearson:
+        fallen_back = compute.fit_diagnostics(
+            values, indices.Distribution.pearson, *arguments, _PEARSON_PARAMETERS, fallback_to_gamma=True
+        )
+
+    assert fallen_back.fell_back_to_gamma
+    np.testing.assert_array_equal(fallen_back.prob_zero, _calibration_probabilities_of_zero(values, 1981, 2010))
+    np.testing.assert_array_equal(fallen_back.parameters["prob_zero"], fallen_back.prob_zero)

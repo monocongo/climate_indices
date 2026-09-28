@@ -1097,7 +1097,7 @@ def test_fit_diagnostics_parameters_round_trip(distribution):
     assert diagnostics.distribution is distribution
     assert not diagnostics.fell_back_to_gamma
     expected_keys = (
-        {"alpha", "beta"}
+        {"alpha", "beta", "prob_zero"}
         if distribution is indices.Distribution.gamma
         else {
             "prob_zero",
@@ -1165,7 +1165,7 @@ def test_fit_diagnostics_reports_the_gamma_fall_back():
 
     assert diagnostics.fell_back_to_gamma
     assert diagnostics.distribution is indices.Distribution.gamma
-    assert set(diagnostics.parameters) == {"alpha", "beta"}
+    assert set(diagnostics.parameters) == {"alpha", "beta", "prob_zero"}
     expected_alphas, expected_betas = compute.gamma_parameters(values, 1981, 1981, 2010, compute.Periodicity.monthly)
     np.testing.assert_array_equal(diagnostics.parameters["alpha"], expected_alphas)
     np.testing.assert_array_equal(diagnostics.parameters["beta"], expected_betas)
@@ -1183,7 +1183,7 @@ def test_fit_diagnostics_falls_back_when_pearson_parameter_fitting_raises():
 
     assert diagnostics.fell_back_to_gamma
     assert diagnostics.distribution is indices.Distribution.gamma
-    assert set(diagnostics.parameters) == {"alpha", "beta"}
+    assert set(diagnostics.parameters) == {"alpha", "beta", "prob_zero"}
 
 
 def test_fit_diagnostics_uses_supplied_parameters_without_refitting():

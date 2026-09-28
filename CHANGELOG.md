@@ -46,8 +46,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `compute.transform_fitted_gamma()`, and `compute.transform_fitted_pearson()` for
   series, legacy 2-D, and declared time-major input. A Pearson Type III fit that falls
   back to gamma applies the same mode, a moved zero is still clipped to `[-3.09, 3.09]`,
-  and SPEI and EDDI do not take it. CF metadata and the CLI flag follow in #1187
-  (ADR-0015, #1186).
+  and SPEI and EDDI do not take it. `compute.transform_fitted_gamma()` also gains a
+  `probabilities_of_zero` argument, the gamma counterpart of the Pearson transform's.
+  CF metadata and the CLI flag follow in #1187 (ADR-0015, #1186).
 
 ### Changed
 
@@ -138,14 +139,23 @@ change states what a user sees, how to detect it, and what to change in
   counted zeros over every year of the record, with missing years in the denominator,
   while its shape and scale came from the calibration period. It now divides the
   calibration period's zero count by its non-missing count, as the Pearson Type III fit
-  already did, and reads `prob_zero` from gamma `fitting_params` when one is given.
-  Classic gamma SPI and `standardized_index()`, gamma SPEI whose offset P − PET series
-  holds an exact zero, and SPI whose Pearson fit falls back to gamma can return
-  different values when the input has a zero and the calibration period either is
-  shorter than the record or holds a missing value. A full-record calibration without
-  missing values is bit-identical, and the NOAA and SPEIbase comparisons are unchanged.
-  `fit_diagnostics()` reports the same calibration-period `prob_zero` for gamma
-  (ADR-0015, #1186).
+  already did. Classic gamma SPI and `standardized_index()`, gamma SPEI, and SPI whose
+  Pearson fit falls back to gamma can return different values:
+  - at a step with a zero (for SPEI, an exact zero in the offset P − PET series) when
+    the calibration period is shorter than the record, or holds a missing value, which
+    includes the NaN padding of a record that ends partway through a year and the
+    leading `scale − 1` values of a scaled series;
+  - everywhere, zeros or not, when a gamma `fitting_params` already carried `prob_zero`
+    or `probabilities_of_zero`: gamma ignored the key, which now sets the zero mass
+    and must lie in `[0, 1]` and match the values' cells;
+  - at the zeros of a step with no calibration data, which are now NaN rather than an
+    extreme drought.
+
+  A full-record calibration of complete years, at scale 1, with no missing values and
+  no `prob_zero` key is bit-identical, and the NOAA and SPEIbase comparisons are
+  unchanged. `fit_diagnostics()` reports the same calibration-period `prob_zero` for
+  gamma and returns it in `parameters`, and `compute.transform_fitted_gamma()` reads a
+  masked entry as missing (ADR-0015, #1186).
 
 ### Removed
 

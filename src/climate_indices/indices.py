@@ -833,11 +833,17 @@ def spi(
         period length (12 or 366) and could be read as (years, periods, ``*cells``).
     :param zero_handling: where a zero accumulation is placed within the
         probability mass ``p0`` at zero: ``"classic"`` (the default) scores it
-        ``Φ⁻¹(p0)``, the top of the zero mass, as NOAA/NCEI and SPEIbase do;
+        ``Φ⁻¹(p0)``, the top of the zero mass, as NOAA/NCEI and SPEIbase do,
+        unless a Pearson Type III support-limit mask overrides that score;
         ``"center_of_mass"`` scores it ``Φ⁻¹(p0 / 2)`` (Stagge et al., 2015); and
         ``"mean_zero"`` scores it ``−φ(Φ⁻¹(p0)) / p0`` (Allen and Otero, 2024), the
-        conditional mean of the zero mass. Only steps with ``0 < p0 < 1`` are
-        moved, and the result is still clipped to [-3.09, 3.09]. See ADR-0015.
+        conditional mean of the zero mass. Only steps whose effective ``p0``
+        satisfies ``0 < p0 < 1`` are moved: a Pearson step with fewer than four
+        non-zero calibration values has its ``p0`` reset to 0, so its zeros score
+        -3.09 in every mode. Pearson moves trace values below 0.0005 with the
+        zeros although ``p0`` counts only exact zeros, so the modes' mean
+        properties are approximate there. The result is still clipped to
+        [-3.09, 3.09]. See ADR-0015.
     :return: SPI values fitted to the gamma distribution at the specified time
         step scale, unitless
     :rtype: 1-D numpy.ndarray of floats of the same length as the input array
@@ -909,9 +915,11 @@ def spei(
     :param calibration_year_final: final year of the calibration period
     :param fitting_params: optional dictionary of pre-computed distribution
         fitting parameters, if the distribution is gamma then this dict should
-        contain two arrays, keyed as "alpha" and "beta", and if the
-        distribution is Pearson then this dict should contain four arrays keyed
-        as "prob_zero", "loc", "scale", and "skew"
+        contain two arrays, keyed as "alpha" and "beta", and optionally a third
+        keyed as "prob_zero", and if the distribution is Pearson then this dict
+        should contain four arrays keyed as "prob_zero", "loc", "scale", and
+        "skew". A gamma set without "prob_zero" computes it over the calibration
+        period of the values given.
         Older keys such as "alphas" and "probabilities_of_zero" are deprecated.
     :param spatial_time_major: read ``precips_mm``/``pet_mm`` as time-major blocks of
         independent time series, shaped (time, ``*cells``), and fit every cell in one pass.

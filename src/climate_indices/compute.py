@@ -419,7 +419,8 @@ def _calibration_probabilities_of_zero(calibration_values: np.ndarray) -> np.nda
     """
     The zero fraction of each calendar step's non-missing calibration values.
 
-    A step (or cell) with no non-missing calibration value carries no zero mass.
+    A step (or cell) with no non-missing calibration value has no defined zero mass,
+    which is reported as NaN.
 
     :param calibration_values: calibration data, shape (years, time_steps) or
         (years, time_steps, *cells)
@@ -432,7 +433,36 @@ def _calibration_probabilities_of_zero(calibration_values: np.ndarray) -> np.nda
     number_of_non_missing = np.count_nonzero(~np.isnan(calibration_values), axis=0)
     with np.errstate(divide="ignore", invalid="ignore"):
         probabilities_of_zero: np.ndarray = np.where(
-            number_of_non_missing > 0, number_of_zeros / number_of_non_missing, 0.0
+            number_of_non_missing > 0, number_of_zeros / number_of_non_missing, np.nan
+        )
+    return probabilities_of_zero
+
+
+def _validate_gamma_probabilities_of_zero(values: np.ndarray, probabilities_of_zero: np.ndarray) -> np.ndarray:
+    """
+    Reject a supplied gamma probability of zero that does not fit the values.
+
+    Its cell dimensions follow the rule for Pearson Type III parameters, and every
+    value must lie in [0, 1]; NaN marks a step whose zero mass is undefined, as a
+    step without calibration data reports it.
+
+    :param values: the validated values, shape (years, time_steps) or
+        (years, time_steps, *cells)
+    :param probabilities_of_zero: the supplied probability of zero
+    :return: the probability of zero as a float array
+    :raises ValueError: if the shape or a value does not fit
+    """
+    probabilities_of_zero = np.asarray(probabilities_of_zero, dtype=float)
+    period_length = values.shape[1]
+    if probabilities_of_zero.ndim == 1 and probabilities_of_zero.shape[0] != period_length:
+        raise ValueError(
+            f"Fitting parameter 'prob_zero' has shape {probabilities_of_zero.shape}, which must carry "
+            f"the period length {period_length}"
+        )
+    _validate_pearson_parameter_cells(values, (("prob_zero", probabilities_of_zero),))
+    if np.any((probabilities_of_zero < 0.0) | (probabilities_of_zero > 1.0)):
+        raise ValueError(
+            "Fitting parameter 'prob_zero' must lie in [0, 1], or be NaN where a step's zero mass is undefined"
         )
     return probabilities_of_zero
 
@@ -448,7 +478,8 @@ def _place_zeros(
 
     ``"classic"`` returns ``fitted_values`` unchanged. The other modes overwrite the
     positions in ``zero_mask`` with a score computed in closed form from each step's
-    probability of zero ``p0``: ``Φ⁻¹(p0 / 2)`` for ``"center_of_mass"`` and
+    effective probability of zero ``p0``, the one the transform used after its
+    invalid-fit resets: ``Φ⁻¹(p0 / 2)`` for ``"center_of_mass"`` and
     ``−φ(Φ⁻¹(p0)) / p0`` for ``"mean_zero"``. Only steps with ``0 < p0 < 1`` are
     moved; at ``p0 == 0`` or ``p0 == 1`` every mode keeps the classic result
     (ADR-0015, decision 5).
@@ -892,9 +923,14 @@ def transform_fitted_pearson(
     :param zero_handling: where a zero or trace value (below 0.0005, where the
         probability of zero is positive) is placed within the zero mass:
         ``"classic"`` (the default, and the existing behavior) scores it
-        ``Φ⁻¹(p0)``, ``"center_of_mass"`` ``Φ⁻¹(p0 / 2)``, and ``"mean_zero"``
-        ``−φ(Φ⁻¹(p0)) / p0``. Only steps with ``0 < p0 < 1`` are moved, and a moved
-        position overrides the support-limit masks. See ADR-0015.
+        ``Φ⁻¹(p0)`` unless a support-limit mask overrides that score,
+        ``"center_of_mass"`` ``Φ⁻¹(p0 / 2)``, and ``"mean_zero"``
+        ``−φ(Φ⁻¹(p0)) / p0``. Only steps whose effective ``p0`` satisfies
+        ``0 < p0 < 1`` are moved; a step whose fit failed, for example with fewer
+        than four non-zero calibration values, has ``p0`` reset to 0 and keeps the
+        classic score. A moved position overrides the support-limit masks. Trace
+        values move although ``p0`` counts only exact zeros, so the modes' mean
+        properties are approximate on this path. See ADR-0015.
     :return: 2-D array of transformed/fitted values, corresponding in size
              and shape of the input array
     :rtype: numpy.ndarray of floats
@@ -1822,18 +1858,25 @@ def transform_fitted_gamma(
     :param alphas: pre-computed gamma fitting parameters
     :param betas: pre-computed gamma fitting parameters
     :param probabilities_of_zero: pre-computed probability of zero for each month or
-        day of the year; when omitted it is the zero fraction of each step's
-        non-missing calibration-period values, matching ``pearson_parameters``
-        (ADR-0015, decision 4). A step whose probability of zero is 1 is treated as
-        having none, as no gamma distribution can be fitted to it.
+        day of the year, in [0, 1], shaped like ``alphas``; when omitted it is the
+        zero fraction of each step's non-missing calibration-period values,
+        matching ``pearson_parameters`` (ADR-0015, decision 4). A step whose
+        probability of zero is 1 is treated as having none, as no gamma
+        distribution can be fitted to it. A step with no calibration data, or a
+        NaN supplied here, has no defined zero mass, and its zeros are NaN.
     :param zero_handling: where a zero is placed within the zero mass:
         ``"classic"`` (the default, and the existing behavior) scores it
         ``Φ⁻¹(p0)``, ``"center_of_mass"`` ``Φ⁻¹(p0 / 2)``, and ``"mean_zero"``
-        ``−φ(Φ⁻¹(p0)) / p0``. Only steps with ``0 < p0 < 1`` are moved. See ADR-0015.
+        ``−φ(Φ⁻¹(p0)) / p0``. Only steps whose effective ``p0``, after the resets
+        above, satisfies ``0 < p0 < 1`` are moved. The values are expected to be
+        non-negative, as the index functions clip them; a negative value is
+        placed with the zeros. See ADR-0015.
     :return: 2-D array of transformed/fitted values, corresponding in size
         and shape of the input array
     :rtype: numpy.ndarray of floats
-    :raises ValueError: if ``zero_handling`` is not one of the three modes
+    :raises ValueError: if ``zero_handling`` is not one of the three modes, or a
+        supplied ``probabilities_of_zero`` has cell dimensions that do not match
+        the values or a value outside [0, 1]
     """
     _validate_zero_handling(zero_handling)
 
@@ -1850,9 +1893,15 @@ def transform_fitted_gamma(
     if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
         return values
 
+    # a mask is a missing marker, so make it the explicit NaN the transform reads
+    if np.ma.isMaskedArray(values):
+        values = np.ma.filled(values.astype(float), np.nan)
+
     # validate (and possibly reshape) the input array
     values = _validate_array(values, periodicity)
 
+    if probabilities_of_zero is not None:
+        probabilities_of_zero = _validate_gamma_probabilities_of_zero(values, probabilities_of_zero)
     alphas, betas, probabilities_of_zero = _broadcast_fitting_parameters(values, alphas, betas, probabilities_of_zero)
 
     # Replace zeros with NaNs for fitting (zeros are excluded from gamma fitting)
@@ -1860,14 +1909,22 @@ def transform_fitted_gamma(
     zero_mask, values_for_fitting = _replace_zeros_with_nan(values)
 
     # find the fraction of zero values for each time step over the calibration
-    # period's non-missing values, unless it was provided
+    # period's non-missing values, unless it was provided; a computed fraction
+    # reaches 1 only where every calibration value is zero
     if probabilities_of_zero is None:
-        calibration_start_year, calibration_end_year = adjust_calibration_years(
+        first_year, last_year = adjust_calibration_years(
             data_start_year, data_start_year + values.shape[0], calibration_start_year, calibration_end_year
         )
         probabilities_of_zero = _calibration_probabilities_of_zero(
-            values[calibration_start_year - data_start_year : calibration_end_year - data_start_year + 1, ...]
+            values[first_year - data_start_year : last_year - data_start_year + 1, ...]
         )
+        all_zero_steps = np.isclose(probabilities_of_zero, 1.0)
+    else:
+        all_zero_steps = probabilities_of_zero == 1.0
+
+    # a step without calibration data (or a supplied NaN) has no defined zero mass:
+    # its non-zero values transform as with none, and its zeros are NaN below
+    undefined_zero_mass = np.isnan(probabilities_of_zero)
 
     # If a time step has all zeros (probability of zero is 1.0), the resulting SPI
     # would be +infinity (extreme wetness) which is incorrect for a dry region.
@@ -1880,7 +1937,7 @@ def transform_fitted_gamma(
     #   - norm.ppf(0.0) = -infinity (extreme drought)
     # This is the correct interpretation: a location with 100% zero precipitation
     # in the historical record is in extreme drought, not extreme wetness.
-    probabilities_of_zero = np.where(np.isclose(probabilities_of_zero, 1.0), 0.0, probabilities_of_zero)
+    probabilities_of_zero = np.where(all_zero_steps | undefined_zero_mass, 0.0, probabilities_of_zero)
 
     # compute fitting parameters if none were provided
     if (alphas is None) or (betas is None):
@@ -1938,7 +1995,11 @@ def transform_fitted_gamma(
             underlying_error=e,
         ) from e
 
-    result_values = _place_zeros(result_values, zero_mask, probabilities_of_zero, zero_handling)
+    # a negative value is below every zero, so it is placed with them
+    placement_mask = values <= 0.0
+    result_values = _place_zeros(result_values, placement_mask, probabilities_of_zero, zero_handling)
+    if np.any(undefined_zero_mass):
+        result_values = np.where(placement_mask & undefined_zero_mass, np.nan, result_values)
     log.info("distribution_transform_completed", output_shape=str(result_values.shape))
     return result_values
 
@@ -2213,13 +2274,15 @@ class FitDiagnostics:
     #: The distribution actually used, after any Pearson-to-gamma fall back.
     distribution: "Distribution"
     #: The fitted parameters, keyed as ``fitting_params`` accepts them:
-    #: ``alpha``/``beta`` for gamma, and ``prob_zero``/``loc``/``scale``/``skew``
-    #: for Pearson Type III.
+    #: ``alpha``/``beta``/``prob_zero`` for gamma, and
+    #: ``prob_zero``/``loc``/``scale``/``skew`` for Pearson Type III.
     parameters: dict[str, np.ndarray]
     #: Probability of a zero accumulation, per calendar step, computed over the
-    #: calibration period's non-missing values for both distributions (or the
-    #: ``prob_zero`` supplied in ``fitting_params``). For gamma the transform clamps
-    #: an all-zero step's mass to 0, which this field reports as 1.0.
+    #: calibration period's non-missing values for both distributions, or the
+    #: ``prob_zero`` supplied in ``fitting_params`` for the distribution requested;
+    #: a Pearson-to-gamma fall back computes its own. For gamma, NaN marks a step
+    #: without calibration data, and the transform clamps an all-zero step's mass
+    #: to 0, which this field reports as 1.0.
     prob_zero: np.ndarray
     #: Number of non-missing, non-zero calibration values entering the
     #: Kolmogorov-Smirnov test.
@@ -2359,7 +2422,8 @@ def _diagnostic_gamma_probabilities_of_zero(
     """The gamma zero mass the transform uses: the supplied one, else the calibration period's."""
     if supplied_probabilities_of_zero is None:
         return _calibration_probabilities_of_zero(calibration_values)
-    (probabilities_of_zero,) = _as_period_cell_parameters(values, np.asarray(supplied_probabilities_of_zero))
+    supplied = _validate_gamma_probabilities_of_zero(values, supplied_probabilities_of_zero)
+    (probabilities_of_zero,) = _as_period_cell_parameters(values, supplied)
     return probabilities_of_zero
 
 
@@ -2523,7 +2587,7 @@ def fit_diagnostics(
     )
     return FitDiagnostics(
         distribution=Distribution.gamma,
-        parameters={"alpha": alphas, "beta": betas},
+        parameters={"alpha": alphas, "beta": betas, "prob_zero": probabilities_of_zero},
         prob_zero=probabilities_of_zero,
         n_valid=n_valid,
         ks_statistic=ks_statistic,
