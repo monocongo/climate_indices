@@ -5,7 +5,10 @@ description: "Repository conventions for the climate_indices Python scientific-c
 
 # climate_indices Conventions
 
-> Generated from [monocongo/climate_indices](https://github.com/monocongo/climate_indices) on 2026-08-08, then reviewed against this repository.
+> Generated from [monocongo/climate_indices](https://github.com/monocongo/climate_indices) on 2026-08-08;
+> module map and validation refreshed 2026-09-28. [`AGENTS.md`](../../../AGENTS.md) is the canonical
+> source for workflow, validation gates, and maintainer-only actions; where this skill and
+> `AGENTS.md` disagree, `AGENTS.md` wins.
 
 Use this skill when changing `climate_indices`, writing its tests or documentation,
 or preparing commits.
@@ -20,10 +23,13 @@ The package uses responsibility-focused modules:
 
 | Area | Modules |
 | --- | --- |
-| Command-line interfaces | `__main__.py` |
+| Command-line interfaces | `__main__.py`, `_cli.py` |
 | Public APIs | `indices.py` (NumPy), `typed_public_api.py`, `xarray_adapter.py` |
-| Climate-index computation | `compute.py`, `palmer.py` |
+| Climate-index computation | `compute.py`, `palmer.py`, `_palmer_duration.py`, `_palmer_wells.py`, `self_calibration.py`, `runs.py` |
+| Fire-weather family | `fire/` (public API in `fire/__init__.py`; private `_<index>.py` modules) |
+| Flood-potential family | `flood/` (public API in `flood/__init__.py`; private `_<index>.py` modules, `_xarray.py`) |
 | PET and statistics | `eto.py`, `pm_eto.py`, `lmoments.py` |
+| Input validation | `validation.py` (shared by the xarray adapter, fire adapters, and typed API) |
 | Supporting services | `cf_metadata_registry.py`, `exceptions.py`, `logging_config.py`, `performance.py`, `utils.py` |
 
 Keep changes within the established module boundary. Read
@@ -96,7 +102,8 @@ Keep the subject concise, descriptive, and focused on one coherent change.
 
 ## Validation
 
-For source or test changes, run:
+Run the gates in `AGENTS.md` § *Validate source or test changes*. The core set
+for any source or test change is:
 
 ```bash
 uv run ruff check src/ tests/
@@ -105,11 +112,13 @@ uv run mypy src/ tests/test_type_checking.py
 uv run pytest
 ```
 
-For packaging, release, or workflow changes, also run:
+`AGENTS.md` adds the docs build for documentation changes,
+`tests/test_release_integrity.py` for packaging, release, or workflow changes,
+and `uv run scripts/generate_llms_txt.py` when a bundled document changes.
 
-```bash
-uv run pytest tests/test_release_integrity.py
-```
+Scientific tolerances and reference fixtures are evidence, not test settings:
+do not loosen a tolerance or regenerate a fixture to make a test pass. A change
+to either needs a `VALIDATION.md` entry and maintainer sign-off.
 
 ## Feature Workflow
 

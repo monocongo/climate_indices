@@ -93,7 +93,10 @@ _bmad-output/
 .claude/CLAUDE.local.md
 .claude/handovers/
 .claude/settings.local.json
-.claude/skills/
+# Personal skill installs stay local; project skills live in .agents/skills and
+# are symlinked here so Claude Code finds them.
+.claude/skills/*
+!.claude/skills/climate-indices-conventions
 
 # Agent session handoffs
 .handoffs/

@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
+  "permissions": {
+    "allow": [
+      "Bash(uv run ruff check *)",
+      "Bash(uv run ruff format *)",
+      "Bash(uv run mypy *)",
+      "Bash(uv run pytest)",
+      "Bash(uv run pytest *)",
+      "Bash(uv run --extra docs sphinx-build *)",
+      "Bash(uv run scripts/generate_llms_txt.py)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs"
+    ],
+    "ask": [
+      "Bash(git push *--force-with-lease*)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean *)",
+      "Bash(uv add *)",
+      "Bash(uv remove *)",
+      "Bash(uv pip install *)",
+      "Bash(pip install *)",
+      "Edit(./.claude/settings.json)",
+      "Edit(./.mcp.json)",
+      "Edit(./uv.lock)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(~/.pypirc)",
+      "Read(~/.netrc)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.config/gh/hosts.yml)",
+      "Bash(gh pr merge *)",
+      "Bash(gh pr merge)",
+      "Bash(gh api */merge*)",
+      "mcp__github__merge_pull_request",
+      "mcp__github__enable_pr_auto_merge",
+      "Bash(git push --force *)",
+      "Bash(git push * --force)",
+      "Bash(git push * --force *)",
+      "Bash(git push -f *)",
+      "Bash(git push * -f)",
+      "Bash(git push * -f *)",
+      "Bash(git push * main)",
+      "Bash(git push *:main)",
+      "Bash(git push *:refs/heads/main)",
+      "Bash(git push *--tags*)",
+      "Bash(git push *refs/tags/*)",
+      "Bash(git push * v*.*.*)",
+      "Bash(git tag v*)",
+      "Bash(git tag -a *)",
+      "Bash(git tag -s *)",
+      "Bash(uv publish*)",
+      "Bash(twine upload*)",
+      "Bash(gh release create*)"
+    ]
+  }
+}

@@ -11,6 +11,7 @@ points to maintained task-specific guidance instead of duplicating it.
 | Prepare a release | [release-process.md](../release-process.md) |
 | Work on the planned Explorer | [CONTEXT-MAP.md](../../CONTEXT-MAP.md) first |
 | Manage GitHub issues | [issue tracker guide](issue-tracker.md) |
+| Clean up or audit home-level agent configuration (`~/.claude`, `~/.agents`, `~/.codex`) | [agent home hygiene](agent-home-hygiene.md) |
 | Understand or reuse the AI-assisted workflow | [How this project is developed](../ai-assisted-development.md) |
 
 The general documentation landing pages are not agent working guidance; do not
