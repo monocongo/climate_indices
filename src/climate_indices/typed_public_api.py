@@ -370,7 +370,11 @@ def percentage_of_normal(values: Any, *args: Any, **kwargs: Any) -> npt.NDArray[
     Returns:
         PNP values as numpy.ndarray or xarray.DataArray (matches input type).
     """
-    return _delegate(_wrapped_percentage_of_normal, values, *args, **_translate_pnp_calibration_kwargs(kwargs))
+    result = _delegate(_wrapped_percentage_of_normal, values, *args, **_translate_pnp_calibration_kwargs(kwargs))
+    if isinstance(result, xr.DataArray):
+        result.attrs["calibration_start_year"] = result.attrs["calibration_year_initial"]
+        result.attrs["calibration_end_year"] = result.attrs["calibration_year_final"]
+    return result
 
 
 # PCI (Precipitation Concentration Index) overloads

@@ -14,8 +14,10 @@ while every other Python index API used
 Existing calls using the old names keep working and emit
 `ClimateIndicesDeprecationWarning`; the aliases are removed in 4.0.0. The CLI
 keeps `--calibration_start_year`/`--calibration_end_year` and adds
-`--calibration_year_initial`/`--calibration_year_final` aliases. No numerical
-behavior changes.
+`--calibration_year_initial`/`--calibration_year_final` aliases. PNP xarray
+outputs retain the existing `calibration_start_year`/`calibration_end_year`
+attributes alongside the canonical names; their history entry still records the
+timescale, not calibration years. No numerical behavior changes.
 
 ## Breaking changes in 3.0.0
 

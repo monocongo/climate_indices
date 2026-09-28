@@ -101,6 +101,31 @@ class TestPNPXarrayCFMetadata:
         assert pnp_xarray_result.attrs["scale"] == 6
 
 
+def test_pnp_calibration_attrs_preserve_legacy_names(sample_monthly_precip_da: xr.DataArray) -> None:
+    """PNP xarray output keeps the pre-rename attrs for inferred and explicit years."""
+    inferred = percentage_of_normal(values=sample_monthly_precip_da, scale=6)
+    explicit = percentage_of_normal(
+        values=sample_monthly_precip_da,
+        scale=6,
+        calibration_year_initial=1981,
+        calibration_year_final=2018,
+    )
+    with pytest.warns(ClimateIndicesDeprecationWarning):
+        legacy = percentage_of_normal(
+            values=sample_monthly_precip_da,
+            scale=6,
+            calibration_start_year=1981,
+            calibration_end_year=2018,
+        )
+
+    for result, start, end in ((inferred, 1980, 2019), (explicit, 1981, 2018), (legacy, 1981, 2018)):
+        assert result.attrs["calibration_start_year"] == result.attrs["calibration_year_initial"] == start
+        assert result.attrs["calibration_end_year"] == result.attrs["calibration_year_final"] == end
+        assert "PNP-6 calculated" in result.attrs["history"]
+        assert "calibration_" not in result.attrs["history"]
+    np.testing.assert_array_equal(explicit.values, legacy.values)
+
+
 class TestPNPCoordinatePreservation:
     """Validate coordinate preservation through PNP xarray computation."""
 
