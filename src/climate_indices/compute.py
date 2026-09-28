@@ -2162,6 +2162,41 @@ def _ks_fit_diagnostics(
     return ks_statistic, ks_p_value, n_valid
 
 
+def _diagnostic_pearson_parameters(
+    values: np.ndarray,
+    params: dict[str, Any],
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
+) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None, np.ndarray | None, bool]:
+    """Prepare Pearson parameters and flag a partial caller-supplied set."""
+    probabilities_of_zero = params.get("prob_zero")
+    locs = params.get("loc")
+    scales = params.get("scale")
+    skews = params.get("skew")
+    supplied = (probabilities_of_zero, locs, scales, skews)
+
+    if values.ndim > 2:
+        # reject mismatched cells before the fall-back try: an argument error is not a fit failure
+        _validate_pearson_parameter_cells(
+            values,
+            (("prob_zero", probabilities_of_zero), ("loc", locs), ("scale", scales), ("skew", skews)),
+        )
+
+    if all(parameter is None for parameter in supplied):
+        probabilities_of_zero, locs, scales, skews = pearson_parameters(
+            values, data_start_year, calibration_start_year, calibration_end_year, periodicity
+        )
+        return probabilities_of_zero, locs, scales, skews, False
+    if probabilities_of_zero is not None and locs is not None and scales is not None and skews is not None:
+        probabilities_of_zero, locs, scales, skews = _as_period_cell_parameters(
+            values, probabilities_of_zero, locs, scales, skews
+        )
+        return probabilities_of_zero, locs, scales, skews, False
+    return probabilities_of_zero, locs, scales, skews, True
+
+
 def fit_diagnostics(
     values: np.ndarray,
     distribution: "Distribution",
@@ -2231,38 +2266,9 @@ def fit_diagnostics(
     fell_back_to_gamma = False
     fallback_parameters: dict[str, np.ndarray] | None = None
     if distribution.value != "gamma":
-        probabilities_of_zero = params.get("prob_zero")
-        locs = params.get("loc")
-        scales = params.get("scale")
-        skews = params.get("skew")
-        supplied = (probabilities_of_zero, locs, scales, skews)
-        partial = False
-
-        if values.ndim > 2:
-            # reject mismatched parameter cells before the fall-back try, exactly as
-            # fit_and_standardize does: an argument error is not a fit failure
-            _validate_pearson_parameter_cells(
-                values,
-                (
-                    ("prob_zero", probabilities_of_zero),
-                    ("loc", locs),
-                    ("scale", scales),
-                    ("skew", skews),
-                ),
-            )
-
-        if all(parameter is None for parameter in supplied):
-            probabilities_of_zero, locs, scales, skews = pearson_parameters(
-                values, data_start_year, calibration_start_year, calibration_end_year, periodicity
-            )
-        elif probabilities_of_zero is not None and locs is not None and scales is not None and skews is not None:
-            probabilities_of_zero, locs, scales, skews = _as_period_cell_parameters(
-                values, probabilities_of_zero, locs, scales, skews
-            )
-        else:
-            # the set is partial and stays as supplied; the transform's all-or-none
-            # rule decides below, matching fit_and_standardize's own policy
-            partial = True
+        probabilities_of_zero, locs, scales, skews, partial = _diagnostic_pearson_parameters(
+            values, params, data_start_year, calibration_start_year, calibration_end_year, periodicity
+        )
 
         if fallback_to_gamma:
             # the fall back belongs to the block, so run the same transform the index
