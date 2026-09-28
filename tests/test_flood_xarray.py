@@ -42,7 +42,7 @@ def test_flood_xarray_matches_numpy_on_gregorian_grid_and_preserves_metadata() -
         (flood.edi(pe, duration=30), flood.edi(all_leap_pe, 2000, 2000, 2004, duration=30, spatial_time_major=True)),
         (
             flood.flood_index(pe, year_start_month=1),
-            flood.flood_index(all_leap_pe, 2000, 2000, 2004, year_start_month=1, spatial_time_major=True),
+            flood.flood_index(all_leap_pe, 2000, 2001, 2004, year_start_month=1, spatial_time_major=True),
         ),
     ):
         assert isinstance(actual, xr.DataArray)
@@ -51,6 +51,54 @@ def test_flood_xarray_matches_numpy_on_gregorian_grid_and_preserves_metadata() -
         assert actual.attrs["units"] == "dimensionless"
         assert "standard_name" not in actual.attrs
     assert edi is flood.edi
+
+
+@pytest.mark.parametrize("year_start_month", [1, 10])
+@pytest.mark.parametrize("duration", [1, 365])
+@pytest.mark.parametrize("lazy", [False, True])
+def test_flood_index_default_skips_first_year(year_start_month: int, duration: int, lazy: bool) -> None:
+    from dask.callbacks import Callback
+
+    rain = _rain_grid()
+    if lazy:
+        rain = rain.chunk({"time": -1, "lat": 1, "lon": 2})
+    pe = flood.effective_precipitation(rain, duration=duration)
+    tasks = []
+    with Callback(pretask=lambda *args: tasks.append(args[0])):
+        default = flood.flood_index(pe, year_start_month=year_start_month)
+    assert not tasks  # Inference must not compute the PE data.
+    assert default.chunks == pe.chunks
+    assert default.attrs["calibration_year_initial"] == 2001
+    explicit = flood.flood_index(pe, calibration_year_initial=2001, year_start_month=year_start_month)
+    np.testing.assert_allclose(default.compute(), explicit.compute(), equal_nan=True)
+    first_year = flood.flood_index(pe, calibration_year_initial=2000, year_start_month=year_start_month)
+    assert first_year.attrs["calibration_year_initial"] == 2000
+    assert not np.allclose(default.compute(), first_year.compute(), equal_nan=True)
+
+
+@pytest.mark.parametrize("invalid_position", [0, -1])
+def test_flood_defaults_reject_nat_endpoints(invalid_position: int) -> None:
+    pe = _rain_grid()
+    dates = pe.time.values.copy()
+    dates[invalid_position] = np.datetime64("NaT")
+    pe = pe.assign_coords(time=dates)
+    with pytest.raises(CoordinateValidationError, match="invalid timestamps"):
+        flood.flood_index(pe, year_start_month=1)
+    with pytest.raises(CoordinateValidationError, match="invalid timestamps"):
+        flood.edi(pe)
+
+
+def test_edi_default_uses_finite_samples_per_calendar_day() -> None:
+    rain = _rain_grid().isel(lat=0, lon=0)
+    pe = flood.effective_precipitation(rain)
+    plan = DailyCalendarPlan.from_year_span(2000, 5, rain.sizes["time"])
+    years = plan.to_all_leap(pe.values).reshape(5, 366)
+    assert np.isnan(years[0, :364]).all()
+    assert np.isfinite(years[0, 364:]).all()
+    expected = (years - np.nanmean(years, axis=0)) / np.nanstd(years, axis=0)
+    actual = flood.edi(pe)
+    assert actual.attrs["calibration_year_initial"] == 2000
+    np.testing.assert_allclose(actual, plan.to_gregorian(expected.ravel()), equal_nan=True)
 
 
 def test_flood_dask_keeps_spatial_chunks_and_requires_full_time_chunk() -> None:
