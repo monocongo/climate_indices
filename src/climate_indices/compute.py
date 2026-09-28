@@ -2025,7 +2025,8 @@ def transform_fitted_gamma(
         )
         all_zero_steps = np.isclose(probabilities_of_zero, 1.0)
     else:
-        all_zero_steps = probabilities_of_zero == 1.0
+        # validated to lie in [0, 1], so this selects exactly a supplied mass of 1
+        all_zero_steps = probabilities_of_zero >= 1.0
 
     # a step without calibration data (or a supplied NaN) has no defined zero mass:
     # its non-zero values transform as with none, and its zeros are NaN below

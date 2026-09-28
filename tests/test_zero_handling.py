@@ -651,10 +651,11 @@ def test_a_supplied_gamma_shape_or_scale_with_the_wrong_cells_is_rejected(name: 
 @pytest.mark.parametrize("probability_of_zero", [1.2, -0.1])
 def test_a_supplied_gamma_zero_mass_outside_the_unit_interval_is_rejected(probability_of_zero: float) -> None:
     """A probability outside [0, 1] is an argument error, not a silent NaN."""
+    values = _half_zero_monthly()
     parameters = {"prob_zero": np.full(12, probability_of_zero)}
 
     with pytest.raises(ValueError, match=r"\[0, 1\]"):
-        _spi(_half_zero_monthly(), indices.Distribution.gamma, fitting_params=parameters)
+        _spi(values, indices.Distribution.gamma, fitting_params=parameters)
 
 
 def test_only_a_supplied_gamma_zero_mass_of_exactly_one_is_reset() -> None:
