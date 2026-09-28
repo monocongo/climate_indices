@@ -22,7 +22,11 @@ The statistical model — Gamma or Pearson Type III — chosen to represent a sc
 _Avoid_: pearson3 (this spelling only appears in test-fixture filenames, not in API/domain language)
 
 **Probability of Zero**:
-The empirical fraction of zero-valued observations at a given calendar time step, tracked separately because precipitation (and P−PET series for SPEI) can be exactly zero, which the continuous Gamma/Pearson distributions can't represent directly. Mixed into the fitted CDF so zero-precipitation periods still get a well-defined standardized value.
+The empirical fraction of zero-valued observations at a given calendar time step, tracked separately because precipitation (and P−PET series for SPEI) can be exactly zero, which the continuous Gamma/Pearson distributions can't represent directly. Mixed into the fitted CDF so zero-precipitation periods still get a well-defined standardized value. Both distributions count it over the Calibration Period's non-missing values ([ADR-0015](../../docs/adr/0015-zero-handling-in-standardized-indices.md)), and both read a caller's own value from `fitting_params["prob_zero"]`. A gamma step with no non-missing calibration value has no defined zero mass (NaN), and its zeros are NaN.
+
+**Zero Handling**:
+Where a zero accumulation is placed within the Probability of Zero `p0`, chosen by the keyword-only `zero_handling` of `spi()`, `standardized_index()`, and the gamma and Pearson transforms. `"classic"` (the default) scores a zero `Φ⁻¹(p0)`, the top of the zero mass, unless a Pearson Type III support-limit mask overrides it; `"center_of_mass"` scores it `Φ⁻¹(p0 / 2)` (Stagge et al., 2015); `"mean_zero"` scores it `−φ(Φ⁻¹(p0)) / p0` (Allen & Otero, 2024), the conditional mean of the zero mass. Only steps whose effective `p0` lies strictly between 0 and 1 move, so a Pearson step whose fit failed (fewer than four non-zero calibration values) keeps the classic score. It is a transform choice, not a fit result, so it is never stored in `fitting_params`. SPEI (whose offset P − PET series has no physical zero mass) and EDDI (non-parametric, with no `p0`) do not take it.
+_Avoid_: zero placement, zero method
 
 **Run (Run Theory)**
 A maximal contiguous sequence of time steps on one side of a threshold, found by `runs.identify_runs()` and returned as a `RunSet`. A run's *duration* is its length in time steps, its *magnitude* the sum of absolute deviations from the threshold, its *intensity* the magnitude per time step, its *peak* the most extreme value on the run's side (minimum for below, maximum for above), and its *interarrival* the steps from one run's start to the next run's start. Direction is explicit (`"below"`/`"above"`), never inferred from the threshold's sign; NaN terminates a run. A drought event, a wet event, and a KBDI drought spell (``direction="above"``, since KBDI rises in drought) are all runs on different series.
@@ -132,9 +136,6 @@ The `0.0272 * FWI ** 1.77` transform of the Canadian FWI that makes seasonal ave
 
 **L-Moments**:
 Linear-combination-of-order-statistics summary measures of a sample's location, scale, and skew — used here as a more robust alternative to conventional moments for fitting the Pearson Type III distribution.
-
-**Zero Handling**:
-Where a zero accumulation lands on the normal scale in the gamma and Pearson Type III SPI transforms, and in `indices.standardized_index()`. The keyword-only `zero_handling` option takes `"classic"` (the default; `Φ⁻¹(p0)`, the top of the zero mass, matching NOAA/NCEI and SPEIbase), `"center_of_mass"` (`Φ⁻¹(p0 / 2)`, Stagge et al., 2015), or `"mean_zero"` (`−φ(Φ⁻¹(p0)) / p0`, the normal-scale mean of the zero mass, Allen and Otero, 2024). The mode places the zero mass and nothing else: all other values keep the classic transform, the `[-3.09, 3.09]` clip still applies, and `p0` is counted over the calibration window for both distributions. SPEI and EDDI have no zero mass to place and do not take the option. See [ADR-0015](../../docs/adr/0015-zero-handling-in-standardized-indices.md).
 
 ### Gridded execution
 

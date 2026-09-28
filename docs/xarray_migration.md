@@ -44,7 +44,7 @@ errors this release also adds.
 
 **Who this guide is for:** Users currently working with NumPy arrays who want to leverage xarray's labeled dimensions, automatic metadata handling, and coordinate-aware operations.
 
-**What changed:** All primary index functions (`spi()`, `spei()`, `eddi()`, `percentage_of_normal()`, `pet_thornthwaite()`, `pet_hargreaves()`, `pdsi()`) now accept both `np.ndarray` and `xr.DataArray` inputs. When you pass an xarray DataArray, the library automatically:
+**What changed:** All primary index functions (`spi()`, `spei()`, `eddi()`, `percentage_of_normal()`, `pet_thornthwaite()`, `pet_hargreaves()`, `pdsi()`) and the audit surface `fit_diagnostics()` now accept both `np.ndarray` and `xr.DataArray` inputs. When you pass an xarray DataArray, the library automatically:
 
 - Infers temporal parameters from time coordinates
 - Preserves all coordinate information in outputs
@@ -786,6 +786,7 @@ with Client(n_workers=4, threads_per_worker=1) as client:
 - {func}`climate_indices.eddi` — Evaporative Demand Drought Index
 - {func}`climate_indices.percentage_of_normal` — Percent of Normal Precipitation
 - {func}`climate_indices.pdsi` — Palmer Drought Severity Index family (Dataset output)
+- {func}`climate_indices.fit_diagnostics` — Distribution fit diagnostics (Dataset output, beta)
 
 **Supporting classes:**
 

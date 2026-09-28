@@ -22,7 +22,16 @@ from climate_indices.logging_config import get_logger, log_calculation_failure
 from climate_indices.performance import check_large_array_memory
 
 # declare the function names that should be included in the public API for this module
-__all__ = ["eddi", "percentage_of_normal", "pci", "pet", "spei", "spi", "standardized_index"]
+__all__ = [
+    "eddi",
+    "fit_diagnostics",
+    "percentage_of_normal",
+    "pci",
+    "pet",
+    "spei",
+    "spi",
+    "standardized_index",
+]
 
 
 class Distribution(Enum):
@@ -121,6 +130,14 @@ def _validate_distribution(distribution: Distribution) -> None:
             argument_value=str(distribution),
             valid_values="gamma, pearson",
         )
+
+
+def _clip_fitted_values(values: np.ndarray, output_scale: compute.OutputScale) -> np.ndarray:
+    """Clip z-scores to the supported range; the probability scales are already bounded."""
+    if output_scale == "normal":
+        clipped: np.ndarray = np.clip(values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX)
+        return clipped
+    return values
 
 
 def _validate_periodicity(periodicity: compute.Periodicity) -> None:
@@ -480,7 +497,8 @@ def _standardized_index_pipeline(
     index_type: str,
     fallback_context: str,
     spatial_time_major: bool = False,
-    zero_handling: str = "classic",
+    output_scale: compute.OutputScale = "normal",
+    zero_handling: compute.ZeroHandling = "classic",
 ) -> np.ndarray:
     """Scale, fit, and transform a series in the pipeline shared by the index wrappers.
 
@@ -498,8 +516,9 @@ def _standardized_index_pipeline(
         index_type: Value bound to the ``index_type`` log field.
         fallback_context: Context included in the Pearson-to-gamma fallback warning.
         spatial_time_major: Read a time-major spatial block as independent series.
-        zero_handling: Where a zero accumulation lands on the normal scale, one of
-            "classic" (the default), "center_of_mass", or "mean_zero"; see ADR-0015.
+        output_scale: One of ``compute.OUTPUT_SCALES``; non-normal scales are not
+            clipped to the z-score range.
+        zero_handling: Where a zero accumulation is placed within the zero mass.
 
     Returns:
         Standardized values in the input's size and layout.
@@ -508,6 +527,7 @@ def _standardized_index_pipeline(
     _validate_periodicity(periodicity)
     _validate_scale(scale, periodicity)
     _validate_distribution(distribution)
+    compute.validate_output_scale(output_scale)
     compute._validate_zero_handling(zero_handling)
 
     # bind context and emit calculation_started event
@@ -515,6 +535,7 @@ def _standardized_index_pipeline(
         index_type=index_type,
         scale=scale,
         distribution=distribution.value,
+        output_scale=output_scale,
         input_shape=values.shape,
         input_elements=values.size,
     )
@@ -572,13 +593,16 @@ def _standardized_index_pipeline(
             calibration_year_final,
             periodicity,
             fitting_params,
-            zero_handling=zero_handling,
             fallback_to_gamma=True,
             fallback_context=fallback_context,
+            output_scale=output_scale,
+            zero_handling=zero_handling,
         )
 
-        # clip values to within the valid range
-        values = np.clip(values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX)
+        # clip z-scores to the supported range, including any zeros a
+        # zero-handling mode moved (ADR-0015, decision 6); probability-scale
+        # outputs are already bounded by construction and must not be z-clipped
+        values = _clip_fitted_values(values, output_scale)
 
         if values.ndim > 2:
             # (years, periods, *cells) back to the time-major input layout, dropping any
@@ -606,7 +630,8 @@ def standardized_index(
     fitting_params: dict[str, Any] | None = None,
     *,
     spatial_time_major: bool = False,
-    zero_handling: str = "classic",
+    output_scale: compute.OutputScale = "normal",
+    zero_handling: compute.ZeroHandling = "classic",
 ) -> np.ndarray:
     """Standardize a non-negative monthly or daily series against a fitted distribution.
 
@@ -641,26 +666,31 @@ def standardized_index(
             monthly data (12 values/year) or ``compute.Periodicity.daily`` for daily
             data (366 values/year).
         fitting_params: Optional dictionary of pre-computed distribution fitting
-            parameters, with keys "alpha" and "beta" for gamma and "prob_zero",
-            "loc", "scale", and "skew" for Pearson Type III; "prob_zero" is also
-            accepted with gamma, where it supplies the zero mass. Older keys such as
-            "alphas" and "probabilities_of_zero" are deprecated.
+            parameters, with keys "alpha" and "beta" (and optionally "prob_zero")
+            for gamma and "prob_zero", "loc", "scale", and "skew" for Pearson Type
+            III. A gamma set without "prob_zero" computes it over the calibration
+            period of the values given. Older keys such as "alphas" and
+            "probabilities_of_zero" are deprecated.
         spatial_time_major: Read a three-or-more-dimensional time-major block of
             independent time series, shaped (time, ``*cells``), and fit every cell
             in one pass. It is required only for the ambiguous shape whose first
             cell axis is a calendar period length (12 or 366); see :func:`spi` for
             the layout. A 2-D block is always read as one series, however
             declared.
-        zero_handling: Where a zero accumulation lands on the normal scale, one of
-            "classic" (the default, matching NOAA/NCEI and SPEIbase conventions),
-            "center_of_mass" (Stagge et al., 2015), or "mean_zero" (Allen and Otero,
-            2024); see ADR-0015. Applies to both the gamma and Pearson Type III
-            transforms.
+        output_scale: Output convention, one of ``compute.OUTPUT_SCALES``.
+            "normal" (the default) returns the standard-normal z-score,
+            "probability" returns the fitted cumulative probability in [0, 1]
+            without clipping, and "bounded" returns ``2p - 1`` in [-1, 1].
+        zero_handling: Where a zero accumulation is placed within the zero mass;
+            see :func:`spi`.
 
     Returns:
         1-D array of standardized values, unitless and of the same length as the
         flattened input; a declared time-major block (three or more dimensions) is
         returned in its input shape.
+
+    Raises:
+        ValueError: If ``zero_handling`` is not one of the three modes.
     """
     return _standardized_index_pipeline(
         values,
@@ -674,8 +704,99 @@ def standardized_index(
         index_type="standardized_index",
         fallback_context="standardized index computation",
         spatial_time_major=spatial_time_major,
+        output_scale=output_scale,
         zero_handling=zero_handling,
     )
+
+
+def fit_diagnostics(
+    values: np.ndarray,
+    scale: int,
+    distribution: Distribution,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: compute.Periodicity,
+    fitting_params: dict[str, Any] | None = None,
+    *,
+    spatial_time_major: bool = False,
+) -> compute.FitDiagnostics:
+    """Scale a series, fit a distribution, and return per-calendar-step fit diagnostics.
+
+    This is :func:`standardized_index` with the audit surface instead of the index
+    values: it accumulates the series over ``scale`` time steps, fits ``distribution``
+    over the calibration period, and returns the fitted parameters, the probability of
+    zero, the number of valid calibration values, and the Kolmogorov-Smirnov D
+    statistic and exact p-value for every calendar step. A Pearson Type III fit falls
+    back to gamma under the same policy as ``standardized_index``, and the fall back is
+    reported rather than applied silently.
+
+    Only the NumPy path is supported; the xarray and Dask surface is tracked
+    separately. A fitted parameter set returned here can be passed back as
+    ``fitting_params`` to ``spi`` or ``standardized_index`` to reproduce a fit.
+
+    Args:
+        values: 1-D array of non-negative values, or a time-major spatial block;
+            see :func:`spi` for the accepted layouts.
+        scale: Number of time steps accumulated before fitting.
+        distribution: Distribution to fit, gamma or Pearson Type III.
+        data_start_year: Initial year of the input values.
+        calibration_year_initial: Initial year of the calibration period.
+        calibration_year_final: Final year of the calibration period.
+        periodicity: Monthly or daily time steps.
+        fitting_params: Optional pre-computed fitting parameters; deprecated
+            aliases are normalized here. A parameter left as None is fitted from
+            the data.
+        spatial_time_major: Read a time-major spatial block as independent series.
+
+    Returns:
+        A :class:`climate_indices.compute.FitDiagnostics` whose arrays carry the
+        scaled series' calendar steps.
+    """
+    # validate arguments
+    _validate_periodicity(periodicity)
+    _validate_scale(scale, periodicity)
+    _validate_distribution(distribution)
+
+    log = _logger.bind(
+        index_type="fit_diagnostics",
+        scale=scale,
+        distribution=distribution.value,
+        input_shape=values.shape,
+        input_elements=values.size,
+    )
+    log.info("calculation_started")
+    t0 = time.perf_counter()
+    memory_metrics = check_large_array_memory(values)
+
+    try:
+        fitting_params = compute._normalize_fitting_params(fitting_params)
+
+        # prepare_scaled owns the ambiguous-shape rejection, so no separate guard here
+        scaled_values = compute.prepare_scaled(values, scale, periodicity, spatial_time_major=spatial_time_major)
+
+        # an all-missing time-major block comes back unfolded, keeping the input shape;
+        # fold it so the diagnostic arrays carry (time_steps, *cells), not the time axis
+        if values.ndim > 2 and scaled_values.shape == values.shape:
+            scaled_values = compute._reshape_time_major(scaled_values, periodicity)
+
+        diagnostics = compute.fit_diagnostics(
+            scaled_values,
+            distribution,
+            data_start_year,
+            calibration_year_initial,
+            calibration_year_final,
+            periodicity,
+            fitting_params,
+            fallback_to_gamma=True,
+            fallback_context="fit diagnostics",
+        )
+
+        _log_calculation_completed(log, t0, diagnostics.ks_statistic.shape, memory_metrics)
+        return diagnostics
+    except Exception as exc:
+        log_calculation_failure(log, exc, calibration_period=f"{calibration_year_initial}-{calibration_year_final}")
+        raise
 
 
 def spi(
@@ -689,7 +810,8 @@ def spi(
     fitting_params: dict[str, Any] | None = None,
     *,
     spatial_time_major: bool = False,
-    zero_handling: str = "classic",
+    output_scale: compute.OutputScale = "normal",
+    zero_handling: compute.ZeroHandling = "classic",
 ) -> np.ndarray:
     """
     Computes SPI (Standardized Precipitation Index).
@@ -718,10 +840,11 @@ def spi(
         ``compute.Periodicity.daily`` for daily data (366 values/year).
     :param fitting_params: optional dictionary of pre-computed distribution
         fitting parameters, if the distribution is gamma then this dict should
-        contain two arrays, keyed as "alpha" and "beta" (a "prob_zero" array is
-        also honored, supplying the zero mass), and if the
-        distribution is Pearson then this dict should contain four arrays keyed
-        as "prob_zero", "loc", "scale", and "skew". Older keys such as
+        contain two arrays, keyed as "alpha" and "beta", and optionally a third
+        keyed as "prob_zero", and if the distribution is Pearson then this dict
+        should contain four arrays keyed as "prob_zero", "loc", "scale", and
+        "skew". A gamma set without "prob_zero" computes it over the calibration
+        period of the values given. Older keys such as
         "alphas" and "probabilities_of_zero" are deprecated. For spatial input a 1-D
         parameter array is read as one value per calendar period and broadcast
         across cells.
@@ -730,15 +853,31 @@ def spi(
         xarray adapter sets this for every block it packs; the NumPy API requires
         it only for an ambiguous shape, where the first cell axis is a calendar
         period length (12 or 366) and could be read as (years, periods, ``*cells``).
-    :param zero_handling: where a zero accumulation lands on the normal scale, one of
-        "classic" (the default, matching NOAA/NCEI and SPEIbase conventions),
-        "center_of_mass" (Stagge et al., 2015), or "mean_zero" (Allen and Otero,
-        2024); see ADR-0015
+    :param output_scale: output convention, one of ``compute.OUTPUT_SCALES``.
+        "normal" (the default) returns the standard-normal z-score,
+        "probability" returns the fitted cumulative probability in [0, 1]
+        without clipping, and "bounded" returns ``2p - 1`` in [-1, 1].
+    :param zero_handling: where a zero accumulation is placed within the
+        probability mass ``p0`` at zero: ``"classic"`` (the default) scores it
+        ``Φ⁻¹(p0)``, the top of the zero mass, as NOAA/NCEI and SPEIbase do,
+        unless a Pearson Type III support-limit mask overrides that score;
+        ``"center_of_mass"`` scores it ``Φ⁻¹(p0 / 2)`` (Stagge et al., 2015); and
+        ``"mean_zero"`` scores it ``−φ(Φ⁻¹(p0)) / p0`` (Allen and Otero, 2024), the
+        conditional mean of the zero mass. Only steps whose effective ``p0``
+        satisfies ``0 < p0 < 1`` are moved: a Pearson step with fewer than four
+        non-zero calibration values has its ``p0`` reset to 0, so its zeros keep
+        the classic score (-3.09 on the normal scale) in every mode. Pearson moves
+        trace values below 0.0005 with the zeros although ``p0`` counts only exact
+        zeros, so the modes' mean properties are approximate there. A
+        normal-scale result is still clipped to [-3.09, 3.09]. On the probability
+        and bounded scales both non-classic modes place a zero at ``p0 / 2``.
+        See ADR-0015.
     :return: SPI values fitted to the gamma distribution at the specified time
         step scale, unitless
     :rtype: 1-D numpy.ndarray of floats of the same length as the input array
         of precipitation values, or of the same (time, ``*cells``) shape when
         ``spatial_time_major`` is set
+    :raises ValueError: if ``zero_handling`` is not one of the three modes
     """
     return _standardized_index_pipeline(
         values,
@@ -752,6 +891,7 @@ def spi(
         index_type="spi",
         fallback_context="SPI computation",
         spatial_time_major=spatial_time_major,
+        output_scale=output_scale,
         zero_handling=zero_handling,
     )
 
@@ -768,6 +908,7 @@ def spei(
     fitting_params: dict[str, Any] | None = None,
     *,
     spatial_time_major: bool = False,
+    output_scale: compute.OutputScale = "normal",
 ) -> np.ndarray:
     """
     Compute SPEI fitted to the specified distribution.
@@ -804,15 +945,21 @@ def spei(
     :param calibration_year_final: final year of the calibration period
     :param fitting_params: optional dictionary of pre-computed distribution
         fitting parameters, if the distribution is gamma then this dict should
-        contain two arrays, keyed as "alpha" and "beta", and if the
-        distribution is Pearson then this dict should contain four arrays keyed
-        as "prob_zero", "loc", "scale", and "skew"
+        contain two arrays, keyed as "alpha" and "beta", and optionally a third
+        keyed as "prob_zero", and if the distribution is Pearson then this dict
+        should contain four arrays keyed as "prob_zero", "loc", "scale", and
+        "skew". A gamma set without "prob_zero" computes it over the calibration
+        period of the values given.
         Older keys such as "alphas" and "probabilities_of_zero" are deprecated.
     :param spatial_time_major: read ``precips_mm``/``pet_mm`` as time-major blocks of
         independent time series, shaped (time, ``*cells``), and fit every cell in one pass.
         The xarray adapter sets this for every block it packs; the NumPy API requires
         it only for an ambiguous shape, where the first cell axis is a calendar
         period length (12 or 366) and could be read as (years, periods, ``*cells``).
+    :param output_scale: output convention, one of ``compute.OUTPUT_SCALES``.
+        "normal" (the default) returns the standard-normal z-score,
+        "probability" returns the fitted cumulative probability in [0, 1]
+        without clipping, and "bounded" returns ``2p - 1`` in [-1, 1].
     :return: an array of SPEI values
     :rtype: numpy.ndarray of type float, of the same size and shape as the input
         PET and precipitation arrays
@@ -821,12 +968,14 @@ def spei(
     _validate_periodicity(periodicity)
     _validate_scale(scale, periodicity)
     _validate_distribution(distribution)
+    compute.validate_output_scale(output_scale)
 
     # bind context and emit calculation_started event
     log = _logger.bind(
         index_type="spei",
         scale=scale,
         distribution=distribution.value,
+        output_scale=output_scale,
         input_shape=precips_mm.shape,
         input_elements=precips_mm.size,
     )
@@ -928,10 +1077,12 @@ def spei(
             periodicity,
             fitting_params,
             fallback_to_gamma=False,
+            output_scale=output_scale,
         )
 
-        # clip values to within the valid range
-        values = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX)
+        # clip z-scores to the supported range; probability-scale outputs are
+        # already bounded by construction and must not be z-clipped
+        values = _clip_fitted_values(transformed_fitted_values, output_scale)
 
         if values.ndim > 2:
             # (years, periods, *cells) back to the time-major input layout, dropping any

@@ -20,8 +20,8 @@ explanation
 
 :::{note}
 **Upgrading to 3.0.0?** 3.0.0 ships breaking changes to daily xarray calendar
-alignment, the NumPy gridded input shape guard, the PCI February calculation, and
-periodicity argument validation. See {doc}`deprecations/api-changes` for what each
+alignment, the NumPy gridded input shape guard, the PCI February calculation,
+periodicity argument validation, and the gamma probability of zero. See {doc}`deprecations/api-changes` for what each
 one changes and how to adapt, and
 [CHANGELOG.md](https://github.com/monocongo/climate_indices/blob/main/CHANGELOG.md)
 for the full release history.

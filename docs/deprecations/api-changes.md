@@ -21,7 +21,7 @@ timescale, not calibration years. No numerical behavior changes.
 
 ## Breaking changes in 3.0.0
 
-3.0.0 ships four breaking changes that users hit without a deprecation period.
+3.0.0 ships five breaking changes that users hit without a deprecation period.
 Each one below states what a user sees, how to detect it, and what to change.
 
 ### Daily xarray calendar alignment (3.0.0)
@@ -159,6 +159,51 @@ example a time dimension absent from an xarray input) now raises
 {class}`DimensionMismatchError <climate_indices.exceptions.DimensionMismatchError>`
 instead of `CoordinateValidationError`. `DimensionMismatchError` derives from
 `CoordinateValidationError`, so existing handlers keep catching it.
+
+### Gamma probability of zero from the calibration period (3.0.0)
+
+**What a user sees:** gamma {func}`~climate_indices.typed_public_api.spi`,
+`indices.standardized_index()`, {func}`~climate_indices.typed_public_api.spei`,
+and `compute.transform_fitted_gamma()` can return different values. The gamma
+probability of zero, the mass placed below the fitted distribution, was the
+zero count over every year of the record, with missing years counted in the
+denominator, while `alpha` and `beta` came from the calibration period. It is
+now the calibration period's zero count over its non-missing values, as the
+Pearson Type III fit already computed it. A gamma `fitting_params` dictionary
+may supply it as `prob_zero`, and `compute.transform_fitted_gamma()` takes it
+as `probabilities_of_zero`; either must lie in `[0, 1]`, with NaN for a step
+whose zero mass is undefined. `fit_diagnostics()` reports the same value for
+gamma and returns it in `parameters`.
+
+**How to detect it:** a full-record calibration of complete years, at scale 1,
+with no missing value and no `prob_zero` key is bit-identical. Outside those
+conditions an output moves when:
+
+- its input holds a zero (for SPEI, an exact zero in the offset P − PET series)
+  at a calendar step whose calibration zero fraction differs from the whole
+  record's. That happens when the calibration period is shorter than the
+  record, or holds a missing value, which includes the NaN padding of a record
+  that ends partway through a year and the leading `scale − 1` values of a
+  scaled series. Every value at that step moves, not only its zeros;
+- a gamma `fitting_params` already carried `prob_zero` or
+  `probabilities_of_zero`. Gamma ignored the key, which now sets the zero mass,
+  so every value can move even without zeros;
+- a step has no calibration data. Its zeros are now NaN rather than an extreme
+  drought.
+
+SPI whose Pearson Type III fit falls back to gamma moves the same way, and a
+direct `compute.transform_fitted_gamma()` call now reads a masked entry as
+missing.
+
+**What to change:** recompute affected outputs. To reproduce a previous gamma
+result, pass the zero fraction of the scaled values over every year of the
+record, the NaN-padded final year included, as `fitting_params["prob_zero"]`
+(or as `probabilities_of_zero` to `compute.transform_fitted_gamma()`), and
+drop a `prob_zero` key that the previous release ignored. To keep a reused
+gamma fit's zero mass fixed across datasets, save the calibration period's zero
+fraction as `prob_zero` alongside `alpha` and `beta`, as `fit_diagnostics()`
+returns it. See
+[ADR-0015](../adr/0015-zero-handling-in-standardized-indices.md).
 
 ## `spi` console script (removed in 3.0.0)
 

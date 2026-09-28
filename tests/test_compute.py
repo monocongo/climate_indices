@@ -3,6 +3,8 @@ from unittest import mock
 
 import numpy as np
 import pytest
+import scipy.special
+import scipy.stats
 
 from climate_indices import compute, indices
 from climate_indices.exceptions import PeriodicityError
@@ -76,7 +78,7 @@ def test_transform_fitted_gamma(
     )
 
     # compute sigmas of transformed (normalized) values fitted to a gamma
-    # distribution, using the full period of record as the calibration period
+    # distribution, using a calibration period one year shorter than the record
     computed_values = compute.transform_fitted_gamma(
         precips_mm_daily.flatten(),
         data_year_start_daily,
@@ -85,14 +87,44 @@ def test_transform_fitted_gamma(
         compute.Periodicity.daily,
     )
 
-    # Check that non-NaN values in fixture match
+    # the daily fixture predates ADR-0015, when the probability of zero was the zero
+    # count over every year of the record, missing years included; supplying that
+    # probability reproduces it, so the calibration-window probability is the only change
+    whole_record_probabilities_of_zero = np.count_nonzero(precips_mm_daily == 0, axis=0) / precips_mm_daily.shape[0]
+    whole_record_values = compute.transform_fitted_gamma(
+        precips_mm_daily.flatten(),
+        data_year_start_daily,
+        calibration_year_start_daily,
+        calibration_year_end_daily,
+        compute.Periodicity.daily,
+        probabilities_of_zero=whole_record_probabilities_of_zero,
+    )
     mask_valid_fixture = ~np.isnan(transformed_gamma_daily)
     np.testing.assert_allclose(
-        computed_values[mask_valid_fixture],
+        whole_record_values[mask_valid_fixture],
         transformed_gamma_daily[mask_valid_fixture],
         atol=0.001,
         err_msg="Transformed gamma fitted daily values mismatch on valid fixture values",
     )
+
+    # by default the probability of zero comes from the calibration period's
+    # non-missing values, which moves the fixture's values
+    calibration_values = precips_mm_daily[: calibration_year_end_daily - data_year_start_daily + 1]
+    calibration_probabilities_of_zero = np.count_nonzero(calibration_values == 0, axis=0) / np.count_nonzero(
+        ~np.isnan(calibration_values), axis=0
+    )
+    np.testing.assert_array_equal(
+        computed_values,
+        compute.transform_fitted_gamma(
+            precips_mm_daily.flatten(),
+            data_year_start_daily,
+            calibration_year_start_daily,
+            calibration_year_end_daily,
+            compute.Periodicity.daily,
+            probabilities_of_zero=calibration_probabilities_of_zero,
+        ),
+    )
+    assert not np.allclose(computed_values[mask_valid_fixture], transformed_gamma_daily[mask_valid_fixture], atol=0.001)
 
     # Check that values where input was zero are NOT NaN in computed result
     # and are finite (either a real number or -inf for extreme drought)
@@ -1045,3 +1077,197 @@ def test_fit_and_standardize_falls_back_only_when_pearson_loses_over_half_of_the
     else:
         gamma.assert_not_called()
         np.testing.assert_array_equal(computed, pearson_result)
+
+
+@pytest.mark.parametrize("distribution", [indices.Distribution.gamma, indices.Distribution.pearson])
+def test_fit_diagnostics_parameters_round_trip(distribution):
+    """
+    The parameters reported for a fit are the ones that reproduce it: feeding them
+    back through ``fitting_params`` returns the same standardized values.
+    """
+    values = np.arange(1.0, 481.0).reshape(40, 12)
+
+    diagnostics = compute.fit_diagnostics(values, distribution, 1981, 1981, 2010, compute.Periodicity.monthly)
+    from_the_data = compute.fit_and_standardize(values, distribution, 1981, 1981, 2010, compute.Periodicity.monthly)
+    from_the_parameters = compute.fit_and_standardize(
+        values, distribution, 1981, 1981, 2010, compute.Periodicity.monthly, diagnostics.parameters
+    )
+
+    np.testing.assert_array_equal(from_the_parameters, from_the_data)
+    assert diagnostics.distribution is distribution
+    assert not diagnostics.fell_back_to_gamma
+    expected_keys = (
+        {"alpha", "beta", "prob_zero"}
+        if distribution is indices.Distribution.gamma
+        else {
+            "prob_zero",
+            "loc",
+            "scale",
+            "skew",
+        }
+    )
+    assert set(diagnostics.parameters) == expected_keys
+
+
+def test_fit_diagnostics_reports_valid_counts_and_zero_probability():
+    """The valid count excludes missing and zero calibration values, and the zero mass is reported."""
+    values = np.arange(1.0, 481.0).reshape(40, 12)
+    values[0, :] = 0.0
+    values[1, :] = np.nan
+
+    diagnostics = compute.fit_diagnostics(
+        values, indices.Distribution.gamma, 1981, 1981, 2010, compute.Periodicity.monthly
+    )
+
+    # the 1981-2010 calibration window holds 30 of the 40 years, one of which is
+    # zero and one missing, so the zero mass is one of its 29 non-missing values
+    np.testing.assert_array_equal(diagnostics.n_valid, np.full(12, 28))
+    np.testing.assert_allclose(diagnostics.prob_zero, np.full(12, 1.0 / 29.0))
+    assert np.all((diagnostics.ks_p_value >= 0.0) & (diagnostics.ks_p_value <= 1.0))
+
+
+def test_fit_diagnostics_supports_spatial_blocks():
+    """A folded spatial block gets (time_steps, *cells) diagnostics that also round-trip."""
+    values = np.arange(1.0, (40 * 12 * 6) + 1.0).reshape(40, 12, 2, 3)
+
+    diagnostics = compute.fit_diagnostics(
+        values, indices.Distribution.gamma, 1981, 1981, 2010, compute.Periodicity.monthly
+    )
+    from_the_parameters = compute.fit_and_standardize(
+        values, indices.Distribution.gamma, 1981, 1981, 2010, compute.Periodicity.monthly, diagnostics.parameters
+    )
+
+    assert diagnostics.n_valid.shape == (12, 2, 3)
+    assert diagnostics.parameters["alpha"].shape == (12, 2, 3)
+    np.testing.assert_array_equal(
+        from_the_parameters,
+        compute.fit_and_standardize(values, indices.Distribution.gamma, 1981, 1981, 2010, compute.Periodicity.monthly),
+    )
+
+
+def test_fit_diagnostics_reports_the_gamma_fall_back():
+    """A failed Pearson Type III fit is reported as the gamma fit it actually became."""
+    values = np.arange(1.0, 481.0).reshape(40, 12)
+
+    with mock.patch(
+        "climate_indices.compute.transform_fitted_pearson",
+        side_effect=compute.DistributionFittingError("Pearson failed", distribution_name="pearson3"),
+    ):
+        diagnostics = compute.fit_diagnostics(
+            values,
+            indices.Distribution.pearson,
+            1981,
+            1981,
+            2010,
+            compute.Periodicity.monthly,
+            fallback_to_gamma=True,
+        )
+
+    assert diagnostics.fell_back_to_gamma
+    assert diagnostics.distribution is indices.Distribution.gamma
+    assert set(diagnostics.parameters) == {"alpha", "beta", "prob_zero"}
+    expected_alphas, expected_betas = compute.gamma_parameters(values, 1981, 1981, 2010, compute.Periodicity.monthly)
+    np.testing.assert_array_equal(diagnostics.parameters["alpha"], expected_alphas)
+    np.testing.assert_array_equal(diagnostics.parameters["beta"], expected_betas)
+
+
+def test_fit_diagnostics_falls_back_when_pearson_parameter_fitting_raises():
+    values = np.arange(1.0, 481.0).reshape(40, 12)
+
+    with mock.patch("climate_indices.compute.pearson_parameters", side_effect=ValueError("Pearson fit failed")):
+        with pytest.raises(ValueError, match="Pearson fit failed"):
+            compute.fit_diagnostics(values, indices.Distribution.pearson, 1981, 1981, 2010, compute.Periodicity.monthly)
+        diagnostics = compute.fit_diagnostics(
+            values, indices.Distribution.pearson, 1981, 1981, 2010, compute.Periodicity.monthly, fallback_to_gamma=True
+        )
+
+    assert diagnostics.fell_back_to_gamma
+    assert diagnostics.distribution is indices.Distribution.gamma
+    assert set(diagnostics.parameters) == {"alpha", "beta", "prob_zero"}
+
+
+def test_fit_diagnostics_uses_supplied_parameters_without_refitting():
+    """Caller-supplied parameters are normalized and reported, not refitted from the data."""
+    values = np.arange(1.0, 481.0).reshape(40, 12)
+    alphas = np.full(12, 4.0)
+    betas = np.full(12, 8.0)
+
+    with mock.patch("climate_indices.compute.gamma_parameters", side_effect=AssertionError("refit")):
+        diagnostics = compute.fit_diagnostics(
+            values,
+            indices.Distribution.gamma,
+            1981,
+            1981,
+            2010,
+            compute.Periodicity.monthly,
+            {"alphas": alphas, "betas": betas},
+        )
+
+    np.testing.assert_array_equal(diagnostics.parameters["alpha"], alphas)
+    np.testing.assert_array_equal(diagnostics.parameters["beta"], betas)
+
+
+def test_fit_diagnostics_matches_scipy_kolmogorov_smirnov():
+    """The reported D statistic and p-value match SciPy on the same calibration sample."""
+    values = np.arange(1.0, 481.0).reshape(40, 12)
+
+    diagnostics = compute.fit_diagnostics(
+        values, indices.Distribution.gamma, 1981, 1981, 2010, compute.Periodicity.monthly
+    )
+
+    calibration_sample = values[:30, 0]
+    sample = np.sort(calibration_sample[(~np.isnan(calibration_sample)) & (calibration_sample != 0)])
+    alpha = diagnostics.parameters["alpha"][0]
+    beta = diagnostics.parameters["beta"][0]
+    expected = scipy.stats.kstest(sample, lambda column: scipy.special.gammainc(alpha, column / beta))
+
+    assert diagnostics.ks_statistic[0] == pytest.approx(expected.statistic)
+    assert diagnostics.ks_p_value[0] == pytest.approx(expected.pvalue)
+
+
+@pytest.mark.parametrize("all_missing", [np.full((40, 12), np.nan), np.ma.masked_all((40, 12))])
+def test_fit_diagnostics_reports_missing_for_an_all_missing_input(all_missing):
+    """A masked or all-NaN input has no valid sample and reports missing diagnostics."""
+    diagnostics = compute.fit_diagnostics(
+        all_missing, indices.Distribution.gamma, 1981, 1981, 2010, compute.Periodicity.monthly
+    )
+
+    assert diagnostics.n_valid.shape == (12,)
+    assert np.all(diagnostics.n_valid == 0)
+    assert np.all(np.isnan(diagnostics.ks_statistic))
+    assert np.all(np.isnan(diagnostics.ks_p_value))
+
+
+def test_fit_diagnostics_rejects_a_partial_pearson_parameter_set():
+    """A partial parameter set is the same argument error the transform raises, not a silent fit."""
+    values = np.arange(1.0, 481.0).reshape(40, 12)
+
+    with pytest.raises(ValueError, match="either none or all"):
+        compute.fit_diagnostics(
+            values,
+            indices.Distribution.pearson,
+            1981,
+            1981,
+            2010,
+            compute.Periodicity.monthly,
+            {"loc": np.ones(12)},
+        )
+
+
+def test_fit_diagnostics_reports_fallback_for_a_partial_pearson_parameter_set():
+    """With the fall back enabled, a partial Pearson set is reported as the gamma fit it became."""
+    values = np.arange(1.0, 481.0).reshape(40, 12)
+
+    diagnostics = compute.fit_diagnostics(
+        values,
+        indices.Distribution.pearson,
+        1981,
+        1981,
+        2010,
+        compute.Periodicity.monthly,
+        {"loc": np.ones(12)},
+        fallback_to_gamma=True,
+    )
+
+    assert diagnostics.fell_back_to_gamma
+    assert diagnostics.distribution is indices.Distribution.gamma

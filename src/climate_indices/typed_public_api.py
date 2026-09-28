@@ -43,12 +43,15 @@ import numpy as np
 import numpy.typing as npt
 import xarray as xr
 
-from climate_indices import indices, pm_eto
+from climate_indices import compute, indices, pm_eto
 from climate_indices.cf_metadata_registry import CF_METADATA
-from climate_indices.compute import Periodicity
+from climate_indices.compute import OutputScale, Periodicity, ZeroHandling
 from climate_indices.exceptions import emit_deprecation_warning
 from climate_indices.indices import Distribution
 from climate_indices.validation import InputType, detect_input_type
+from climate_indices.xarray_adapter import (
+    fit_diagnostics as _fit_diagnostics_impl,
+)
 from climate_indices.xarray_adapter import (
     palmer_pdsi as _palmer_pdsi_impl,
 )
@@ -65,9 +68,21 @@ from climate_indices.xarray_adapter import (
     xarray_adapter,
 )
 
+# the CF metadata each non-normal output scale swaps in for SPI and SPEI; the
+# default "normal" scale keeps the base entry, so it has no variant here
+_SPI_CF_METADATA_VARIANTS: dict[str, dict[str, str]] = {
+    "probability": CF_METADATA["spi_probability"],  # type: ignore[dict-item]
+    "bounded": CF_METADATA["spi_bounded"],  # type: ignore[dict-item]
+}
+_SPEI_CF_METADATA_VARIANTS: dict[str, dict[str, str]] = {
+    "probability": CF_METADATA["spei_probability"],  # type: ignore[dict-item]
+    "bounded": CF_METADATA["spei_bounded"],  # type: ignore[dict-item]
+}
+
 # pre-build decorated functions at module level for performance
 _wrapped_spi = xarray_adapter(
     cf_metadata=CF_METADATA["spi"],  # type: ignore[arg-type]
+    cf_metadata_variants=_SPI_CF_METADATA_VARIANTS,
     index_display_name="SPI",
     calculation_metadata_keys=["scale", "distribution", "calibration_year_initial", "calibration_year_final"],
     spatial_kernel=True,
@@ -75,6 +90,7 @@ _wrapped_spi = xarray_adapter(
 
 _wrapped_spei = xarray_adapter(
     cf_metadata=CF_METADATA["spei"],  # type: ignore[arg-type]
+    cf_metadata_variants=_SPEI_CF_METADATA_VARIANTS,
     index_display_name="SPEI",
     calculation_metadata_keys=["scale", "distribution", "calibration_year_initial", "calibration_year_final"],
     additional_input_names=["pet_mm"],
@@ -146,7 +162,8 @@ def spi(
     periodicity: Periodicity,
     fitting_params: dict[str, Any] | None = None,
     *,
-    zero_handling: str = "classic",
+    output_scale: OutputScale = "normal",
+    zero_handling: ZeroHandling = "classic",
 ) -> npt.NDArray[np.float64]: ...
 
 
@@ -161,7 +178,8 @@ def spi(
     periodicity: Periodicity | None = None,
     fitting_params: dict[str, Any] | None = None,
     *,
-    zero_handling: str = "classic",
+    output_scale: OutputScale = "normal",
+    zero_handling: ZeroHandling = "classic",
 ) -> xr.DataArray: ...
 
 
@@ -195,10 +213,13 @@ def spi(values: Any, *args: Any, **kwargs: Any) -> npt.NDArray[np.float64] | xr.
             for NumPy, optional for xarray.
         fitting_params: Optional dict of pre-computed distribution fitting
             parameters.
-        zero_handling: Where a zero accumulation lands on the normal scale, one of
-            "classic" (the default, matching NOAA/NCEI and SPEIbase conventions),
-            "center_of_mass" (Stagge et al., 2015), or "mean_zero" (Allen and Otero,
-            2024); see ADR-0015.
+        output_scale: Output convention, one of ``compute.OUTPUT_SCALES``.
+            "normal" (the default) returns the standard-normal z-score,
+            "probability" returns the fitted cumulative probability in [0, 1]
+            without clipping, and "bounded" returns ``2p - 1``.
+        zero_handling: Where a zero accumulation is placed within the zero mass:
+            "classic" (the default), "center_of_mass", or "mean_zero". See
+            :func:`climate_indices.indices.spi`.
 
     Returns:
         SPI values as numpy.ndarray or xarray.DataArray (matches input type).
@@ -218,6 +239,8 @@ def spei(
     calibration_year_initial: int,
     calibration_year_final: int,
     fitting_params: dict[str, Any] | None = None,
+    *,
+    output_scale: OutputScale = "normal",
 ) -> npt.NDArray[np.float64]: ...
 
 
@@ -232,6 +255,8 @@ def spei(
     calibration_year_initial: int | None = None,
     calibration_year_final: int | None = None,
     fitting_params: dict[str, Any] | None = None,
+    *,
+    output_scale: OutputScale = "normal",
 ) -> xr.DataArray: ...
 
 
@@ -266,6 +291,10 @@ def spei(precips_mm: Any, pet_mm: Any, *args: Any, **kwargs: Any) -> npt.NDArray
             NumPy, optional for xarray).
         fitting_params: Optional dict of pre-computed distribution fitting
             parameters.
+        output_scale: Output convention, one of ``compute.OUTPUT_SCALES``.
+            "normal" (the default) returns the standard-normal z-score,
+            "probability" returns the fitted cumulative probability in [0, 1]
+            without clipping, and "bounded" returns ``2p - 1``.
 
     Returns:
         SPEI values as numpy.ndarray or xarray.DataArray (matches input type).
@@ -859,12 +888,98 @@ def pdsi(
     return _delegate(_palmer_pdsi_impl, precips, pet, awc, *args, **kwargs)
 
 
+# Fit-diagnostics overloads
+@overload
+def fit_diagnostics(
+    values: npt.NDArray[np.float64],
+    scale: int,
+    distribution: Distribution,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: Periodicity,
+    fitting_params: dict[str, Any] | None = None,
+    spatial_time_major: bool = False,
+    time_dim: str = "time",
+) -> compute.FitDiagnostics: ...
+
+
+@overload
+def fit_diagnostics(
+    values: xr.DataArray,
+    scale: int,
+    distribution: Distribution,
+    data_start_year: int | None = None,
+    calibration_year_initial: int | None = None,
+    calibration_year_final: int | None = None,
+    periodicity: Periodicity | None = None,
+    fitting_params: dict[str, Any] | None = None,
+    spatial_time_major: bool = False,
+    time_dim: str = "time",
+) -> xr.Dataset: ...
+
+
+def fit_diagnostics(
+    values: Any, scale: Any, distribution: Any, *args: Any, **kwargs: Any
+) -> compute.FitDiagnostics | xr.Dataset:
+    """Fit a distribution and return per-calendar-step diagnostics.
+
+    This function accepts both NumPy arrays and xarray DataArrays. Type checkers
+    will narrow the return type based on the input type.
+
+    For NumPy inputs, all temporal parameters are required and the return is the
+    :class:`climate_indices.compute.FitDiagnostics` that
+    :func:`climate_indices.indices.fit_diagnostics` produces. For xarray inputs,
+    temporal parameters are optional and inferred from the time coordinate, and the
+    return is an ``xr.Dataset`` of the fitted parameters, ``prob_zero``,
+    ``n_valid``, ``ks_statistic``, ``ks_p_value``, and ``distribution_used`` over a
+    ``month`` or ``dayofyear`` dimension plus the input's cell dimensions. A Pearson
+    Type III request keeps both parameter families, with the inapplicable one NaN
+    per fitted block, and ``distribution_used`` names the family that does apply;
+    ``distribution_used`` does not carry the ``month``/``dayofyear`` dimension, since
+    the fall back is decided per fitted block (per Dask chunk for chunked input).
+
+    .. warning:: **Beta Feature (xarray path only)** — When called with an
+       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
+       The xarray interface (parameter inference, metadata handling, coordinate
+       preservation) may change in future minor releases. The NumPy array interface
+       is stable.
+
+    Args:
+        values: NumPy array or xarray DataArray of non-negative values.
+        scale: Number of time steps over which values are accumulated before fitting.
+        distribution: Distribution type for the fit, gamma or Pearson Type III.
+        data_start_year: Initial year of the input dataset (required for NumPy,
+            optional for xarray).
+        calibration_year_initial: Initial year of the calibration period (required
+            for NumPy, optional for xarray).
+        calibration_year_final: Final year of the calibration period (required for
+            NumPy, optional for xarray).
+        periodicity: Time series periodicity ('monthly' or 'daily'). Required
+            for NumPy, optional for xarray.
+        fitting_params: Optional dict of pre-computed distribution fitting
+            parameters; for a 1-D or 2-D input each array carries one value per
+            calendar step. A 3-D or higher input also accepts cell-shaped arrays,
+            provided a Dask-backed input keeps each cell dimension in a single chunk.
+        spatial_time_major: Declares an ambiguous 3+-D NumPy ``values`` as a
+            time-major ``(time, *cells)`` block (per ADR-0009). Only used for NumPy
+            inputs.
+        time_dim: Name of the time dimension for xarray inputs (default: ``"time"``).
+
+    Returns:
+        A :class:`climate_indices.compute.FitDiagnostics` for numpy.ndarray input,
+        or an ``xr.Dataset`` of the diagnostics for xarray.DataArray input.
+    """
+    return _delegate(_fit_diagnostics_impl, values, scale, distribution, *args, **kwargs)
+
+
 for _public_function in (
     spi,
     spei,
     percentage_of_normal,
     eddi,
     pdsi,
+    fit_diagnostics,
     pet_thornthwaite,
     pet_hargreaves,
     pet_penman_monteith,
