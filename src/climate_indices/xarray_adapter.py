@@ -1283,11 +1283,15 @@ def _finalize_ufunc_result(
         compute.validate_output_scale(valid_kwargs.get("output_scale", "normal"))
         output_attrs.pop("valid_range", None)
         output_attrs.pop("actual_range", None)
-        output_attrs.update(
-            spi_output_attributes(
-                valid_kwargs.get("zero_handling", "classic"), valid_kwargs.get("output_scale", "normal")
-            )
+        spi_attrs = spi_output_attributes(
+            valid_kwargs.get("zero_handling", "classic"), valid_kwargs.get("output_scale", "normal")
         )
+        # preserve a distinct caller-provided reference rather than replacing it
+        caller_references = (resolved_cf_metadata or {}).get("references")
+        spi_references = spi_attrs["references"]
+        if caller_references and isinstance(spi_references, str) and caller_references not in spi_references:
+            spi_attrs["references"] = f"{caller_references}; {spi_references}"
+        output_attrs.update(spi_attrs)
     result_da.attrs = output_attrs
 
     # deep-copy coordinate attrs to prevent mutation bleed-through
