@@ -550,6 +550,36 @@ def _validate_scales(args: argparse.Namespace) -> None:
         raise ValueError(msg)
 
 
+def _validate_output_scale(args: argparse.Namespace, handlers: Sequence[_IndexRegistration]) -> None:
+    """
+    Validate that ``--output_scale`` applies to at least one requested index,
+    and warn about any requested indices it will be ignored for.
+
+    param args: an arguments object of the type returned by
+        argparse.ArgumentParser.parse_args()
+    param handlers: the handlers registered for the requested ``--index`` value
+    raise ValueError: if none of the requested indices accept ``--output_scale``
+    """
+    standardized = any(handler.index in _OUTPUT_SCALE_INDICES for handler in handlers)
+    if not standardized:
+        msg = f"The --output_scale argument is not applicable to --index {args.index}"
+        _logger.error(msg)
+        raise ValueError(msg)
+    # a mixed pipeline (e.g. --index all) applies the scale to its SPI/SPEI
+    # members only, so say which outputs ignore it rather than doing so silently
+    unsupported = [
+        handler.index
+        for handler in handlers
+        if handler.variable_attributes is not None and handler.index not in _OUTPUT_SCALE_INDICES
+    ]
+    if unsupported:
+        _logger.warning(
+            "The --output_scale argument does not apply to the %s output(s) of --index %s",
+            ", ".join(unsupported),
+            args.index,
+        )
+
+
 def _validate_args(args: argparse.Namespace) -> DatasetLayout:
     """
     Validate the processing settings to confirm that proper argument
@@ -572,26 +602,8 @@ def _validate_args(args: argparse.Namespace) -> DatasetLayout:
             handler.validate_arguments(args)
 
     # only the standardized indices have an output scale to set
-    output_scale = getattr(args, "output_scale", None)
-    if output_scale is not None:
-        standardized = any(handler.index in _OUTPUT_SCALE_INDICES for handler in handlers)
-        if not standardized:
-            msg = f"The --output_scale argument is not applicable to --index {args.index}"
-            _logger.error(msg)
-            raise ValueError(msg)
-        # a mixed pipeline (e.g. --index all) applies the scale to its SPI/SPEI
-        # members only, so say which outputs ignore it rather than doing so silently
-        unsupported = [
-            handler.index
-            for handler in handlers
-            if handler.variable_attributes is not None and handler.index not in _OUTPUT_SCALE_INDICES
-        ]
-        if unsupported:
-            _logger.warning(
-                "The --output_scale argument does not apply to the %s output(s) of --index %s",
-                ", ".join(unsupported),
-                args.index,
-            )
+    if getattr(args, "output_scale", None) is not None:
+        _validate_output_scale(args, handlers)
 
     # the input that determines the input type, and the shape companions must match
     if any(handler.requires_pe for handler in handlers):
