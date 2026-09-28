@@ -4275,10 +4275,15 @@ The SPI computation follows these steps:
 
    - Apply inverse normal (Gaussian) CDF to obtain standardized values
    - This transforms probabilities to standard normal deviates
+   - `output_scale="probability"` stops after step 4 and returns the fitted
+     cumulative probability in [0, 1] (the probability integral transform, or
+     PIT, value); `output_scale="bounded"` returns its `2p - 1` mapping in
+     [-1, 1]. Neither is passed through the inverse normal transform
 
 6. **Clipping to valid range**
 
-   - Constrain final SPI values to [-3.09, 3.09]
+   - Constrain final SPI values to [-3.09, 3.09] on the default
+     `output_scale="normal"` only
    - This range represents probabilities from 0.001 to 0.999
 
 ## SPEI computation
@@ -4299,7 +4304,8 @@ The SPEI computation follows these steps:
 
 3. **Same constraints as SPI**
 
-   - Clip to valid range [-3.09, 3.09]
+   - Clip to valid range [-3.09, 3.09] on the default `output_scale="normal"`
+     only; `"probability"` and `"bounded"` are not z-clipped
    - Return dimensionless standardized values
 
 **Key differences from SPI:**
@@ -4542,6 +4548,14 @@ Conventions:
 The primitive is index-agnostic: a dry SPI spell, a wet SPEI spell, and a KBDI
 drought spell (``direction="above"``, since KBDI rises in drought) are the same
 run concept on a different series.
+
+A probability-scale series (`output_scale="probability"`) reports a lower-tail
+probability, so its drought runs also use `direction="below"`. The 10%, 5%, and
+2.5% one-sided levels (0.1, 0.05, 0.025) correspond to z-scores of about -1.28,
+-1.64, and -1.96. Note this is a different ladder from the McKee/WMO drought
+classes of -1.0, -1.5, and -2.0, whose probability-scale equivalents are about
+0.159, 0.067, and 0.023. Probability-scale outputs are not clipped, so a run can
+be counted all the way into the tail.
 
 **Reference**: Yevjevich, V. (1967). *An objective approach to definitions and
 investigations of continental hydrologic droughts*. Hydrology Papers 23,

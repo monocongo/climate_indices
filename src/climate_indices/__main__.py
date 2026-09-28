@@ -87,6 +87,9 @@ class _IndexRequest:
     var_name_awc: str | None = None
     scale: int | None = None
     distribution: indices.Distribution | None = None
+    # the output convention for the standardized indices; "normal" unless a
+    # non-default --output_scale was given
+    output_scale: str = "normal"
     calibration_start_year: int | None = None
     calibration_end_year: int | None = None
     # the initial year of the inputs, read from them as the computation starts
@@ -134,6 +137,7 @@ class _IndexRequest:
             calibration_end_year=arguments.calibration_end_year,
             scale=scale,
             distribution=distribution,
+            output_scale=getattr(arguments, "output_scale", None) or "normal",
         )
 
 
@@ -546,6 +550,36 @@ def _validate_scales(args: argparse.Namespace) -> None:
         raise ValueError(msg)
 
 
+def _validate_output_scale(args: argparse.Namespace, handlers: Sequence[_IndexRegistration]) -> None:
+    """
+    Validate that ``--output_scale`` applies to at least one requested index,
+    and warn about any requested indices it will be ignored for.
+
+    param args: an arguments object of the type returned by
+        argparse.ArgumentParser.parse_args()
+    param handlers: the handlers registered for the requested ``--index`` value
+    raise ValueError: if none of the requested indices accept ``--output_scale``
+    """
+    standardized = any(handler.index in _OUTPUT_SCALE_INDICES for handler in handlers)
+    if not standardized:
+        msg = f"The --output_scale argument is not applicable to --index {args.index}"
+        _logger.error(msg)
+        raise ValueError(msg)
+    # a mixed pipeline (e.g. --index all) applies the scale to its SPI/SPEI
+    # members only, so say which outputs ignore it rather than doing so silently
+    unsupported = [
+        handler.index
+        for handler in handlers
+        if handler.variable_attributes is not None and handler.index not in _OUTPUT_SCALE_INDICES
+    ]
+    if unsupported:
+        _logger.warning(
+            "The --output_scale argument does not apply to the %s output(s) of --index %s",
+            ", ".join(unsupported),
+            args.index,
+        )
+
+
 def _validate_args(args: argparse.Namespace) -> DatasetLayout:
     """
     Validate the processing settings to confirm that proper argument
@@ -566,6 +600,10 @@ def _validate_args(args: argparse.Namespace) -> DatasetLayout:
     for handler in handlers:
         if handler.validate_arguments is not None:
             handler.validate_arguments(args)
+
+    # only the standardized indices have an output scale to set
+    if getattr(args, "output_scale", None) is not None:
+        _validate_output_scale(args, handlers)
 
     # the input that determines the input type, and the shape companions must match
     if any(handler.requires_pe for handler in handlers):
@@ -591,6 +629,10 @@ def _validate_args(args: argparse.Namespace) -> DatasetLayout:
 
     return context.input_type
 
+
+# the CLI indices that write a standardized (SPI/SPEI) output, the only ones
+# that accept --output_scale
+_OUTPUT_SCALE_INDICES = ("spi", "spei")
 
 # the increment each periodicity's log messages are expressed in
 _SCALE_INCREMENTS: dict[compute.Periodicity, str] = {
@@ -1037,6 +1079,7 @@ def _spi(precips: np.ndarray, parameters: dict[str, Any]) -> np.ndarray:
         calibration_year_initial=parameters["calibration_year_initial"],
         calibration_year_final=parameters["calibration_year_final"],
         periodicity=parameters["periodicity"],
+        output_scale=parameters["output_scale"],
     )
 
 
@@ -1050,6 +1093,7 @@ def _spei(precips: np.ndarray, pet_mm: np.ndarray, parameters: dict[str, Any]) -
         calibration_year_initial=parameters["calibration_year_initial"],
         calibration_year_final=parameters["calibration_year_final"],
         periodicity=parameters["periodicity"],
+        output_scale=parameters["output_scale"],
     )
 
 
@@ -1474,6 +1518,7 @@ def _spi_arguments(request: _IndexRequest) -> dict[str, Any]:
         "calibration_year_initial": request.calibration_start_year,
         "calibration_year_final": request.calibration_end_year,
         "periodicity": request.periodicity,
+        "output_scale": request.output_scale,
     }
 
 
@@ -1499,30 +1544,55 @@ def _pet_arguments(request: _IndexRequest) -> dict[str, Any]:
     return {"data_start_year": request.data_start_year}
 
 
-def _spi_variable_attributes(request: _IndexRequest) -> tuple[str, dict[str, Any]]:
+# the output-scale label and value range each standardized-index output carries;
+# "normal" keeps the z-score metadata the CLI has always written
+_OUTPUT_SCALE_LABELS: dict[str, str] = {
+    "normal": "",
+    "probability": " (probability)",
+    "bounded": " (bounded probability)",
+}
+_OUTPUT_SCALE_ATTRS: dict[str, dict[str, Any]] = {
+    "normal": {"valid_min": -3.09, "valid_max": 3.09},
+    "probability": {
+        "units": "1",
+        "valid_min": 0.0,
+        "valid_max": 1.0,
+        "climate_indices_variant": "probability",
+    },
+    "bounded": {
+        "units": "1",
+        "valid_min": -1.0,
+        "valid_max": 1.0,
+        "climate_indices_variant": "bounded",
+    },
+}
+
+
+def _standardized_variable_attributes(
+    request: _IndexRequest, index_name: str, var_name_base: str
+) -> tuple[str, dict[str, Any]]:
+    """Name and describe a standardized-index output for the requested output scale."""
     assert request.distribution is not None, _UNVALIDATED_DISTRIBUTION
     assert request.scale is not None, _UNVALIDATED_SCALE
+    label = _OUTPUT_SCALE_LABELS[request.output_scale]
     long_name = (
-        f"Standardized Precipitation Index ({request.distribution.value.capitalize()} distribution), "
-        + f"{request.scale}-{_get_scale_increment(request.periodicity)}"
+        f"{index_name} ({request.distribution.value.capitalize()} distribution), "
+        + f"{request.scale}-{_get_scale_increment(request.periodicity)}{label}"
     )
-    attrs = {"long_name": long_name, "valid_min": -3.09, "valid_max": 3.09}
-    var_name = "spi_" + request.distribution.value + "_" + str(request.scale).zfill(2)
+    attrs = {"long_name": long_name, **_OUTPUT_SCALE_ATTRS[request.output_scale]}
+    var_name = var_name_base + "_" + request.distribution.value + "_" + str(request.scale).zfill(2)
+    if request.output_scale != "normal":
+        var_name += "_" + request.output_scale
 
     return var_name, attrs
+
+
+def _spi_variable_attributes(request: _IndexRequest) -> tuple[str, dict[str, Any]]:
+    return _standardized_variable_attributes(request, "Standardized Precipitation Index", "spi")
 
 
 def _spei_variable_attributes(request: _IndexRequest) -> tuple[str, dict[str, Any]]:
-    assert request.distribution is not None, _UNVALIDATED_DISTRIBUTION
-    assert request.scale is not None, _UNVALIDATED_SCALE
-    long_name = (
-        f"Standardized Precipitation Evapotranspiration Index ({request.distribution.value.capitalize()} distribution), "
-        + f"{request.scale}-{_get_scale_increment(request.periodicity)}"
-    )
-    attrs = {"long_name": long_name, "valid_min": -3.09, "valid_max": 3.09}
-    var_name = "spei_" + request.distribution.value + "_" + str(request.scale).zfill(2)
-
-    return var_name, attrs
+    return _standardized_variable_attributes(request, "Standardized Precipitation Evapotranspiration Index", "spei")
 
 
 def _pnp_variable_attributes(request: _IndexRequest) -> tuple[str, dict[str, Any]]:
@@ -1875,6 +1945,7 @@ def _validate_flood_arguments(args: argparse.Namespace) -> None:
     # each entry is the flags of one argument group, and the values it holds
     inapplicable: list[tuple[str, list[Any]]] = [
         ("--scales", [args.scales]),
+        ("--output_scale", [getattr(args, "output_scale", None)]),
         ("--netcdf_temp and --var_name_temp", [args.netcdf_temp, args.var_name_temp]),
         ("--netcdf_pet and --var_name_pet", [args.netcdf_pet, args.var_name_pet]),
         ("--netcdf_awc and --var_name_awc", [args.netcdf_awc, args.var_name_awc]),
