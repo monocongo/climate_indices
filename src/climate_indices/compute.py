@@ -904,7 +904,7 @@ def _pearson_fit(
 def _validate_pearson_parameter_cells(
     values: np.ndarray, named_parameters: tuple[tuple[str, np.ndarray | None], ...]
 ) -> None:
-    """Reject pre-computed Pearson parameters whose period or cell axes do not match a block."""
+    """Reject pre-computed gamma or Pearson parameters whose period or cell axes do not match a block."""
     period_length = values.shape[1]
     cells = values.shape[2:]
     for name, parameter in named_parameters:
@@ -1973,9 +1973,10 @@ def transform_fitted_gamma(
     :return: 2-D array of transformed/fitted values, corresponding in size
         and shape of the input array
     :rtype: numpy.ndarray of floats
-    :raises ValueError: if ``zero_handling`` is not one of the three modes, or a
-        supplied ``probabilities_of_zero`` has cell dimensions that do not match
-        the values or a value outside [0, 1]
+    :raises ValueError: if ``zero_handling`` is not one of the three modes, a
+        supplied ``alphas``, ``betas``, or ``probabilities_of_zero`` has cell
+        dimensions that do not match the values, or a supplied
+        ``probabilities_of_zero`` has a value outside [0, 1]
     """
     validate_output_scale(output_scale)
     _validate_zero_handling(zero_handling)
@@ -2001,6 +2002,9 @@ def transform_fitted_gamma(
     # validate (and possibly reshape) the input array
     values = _validate_array(values, periodicity)
 
+    # supplied shape and scale follow the cell rule of the zero mass and the Pearson
+    # parameters, so a mismatch raises ValueError instead of failing inside NumPy
+    _validate_pearson_parameter_cells(values, (("alpha", alphas), ("beta", betas)))
     if probabilities_of_zero is not None:
         probabilities_of_zero = _validate_gamma_probabilities_of_zero(values, probabilities_of_zero)
     alphas, betas, probabilities_of_zero = _broadcast_fitting_parameters(values, alphas, betas, probabilities_of_zero)
@@ -2696,6 +2700,7 @@ def fit_diagnostics(
             values, data_start_year, calibration_start_year, calibration_end_year, periodicity
         )
     else:
+        _validate_pearson_parameter_cells(values, (("alpha", alphas), ("beta", betas)))
         alphas, betas = _as_period_cell_parameters(values, alphas, betas)
 
     # the fall back refits the zero mass too, so only a requested gamma fit reads a

@@ -248,7 +248,12 @@ def test_every_mode_keeps_the_classic_result_where_the_calibration_has_no_zeros(
 def test_every_mode_keeps_the_classic_result_for_an_all_zero_calibration_step(
     distribution: indices.Distribution,
 ) -> None:
-    """With p0 == 1 no distribution can be fitted, and the existing handling is kept (decision 5)."""
+    """
+    With every calibration value zero no distribution can be fitted, and the existing
+    handling is kept (decision 5). Gamma resets that step's p0 to 0 and Pearson's
+    minimum-non-zero guard zeroes its parameters, so the placement's own ``p0 == 1``
+    guard is not reached here; a supplied Pearson ``prob_zero`` of 1 covers it below.
+    """
     values = _positive_monthly(40, seed=4)
     values[:, 0] = 0.0
 
@@ -332,7 +337,11 @@ _INVALID_MODE_CALLS: dict[str, Callable[[str], Any]] = {
 @pytest.mark.parametrize("call", list(_INVALID_MODE_CALLS.values()), ids=list(_INVALID_MODE_CALLS))
 @pytest.mark.parametrize("mode", ["mean", "Classic", None])
 def test_an_unknown_mode_raises_value_error_naming_the_modes(call: Callable[[str], Any], mode: Any) -> None:
-    """Any value other than the three modes raises, even for input with nothing to transform."""
+    """
+    Any value other than the three modes raises. The all-missing cases check that the
+    public entry points and the transforms validate the mode before their all-missing
+    shortcut.
+    """
     with pytest.raises(ValueError, match="'classic', 'center_of_mass', or 'mean_zero'"):
         call(mode)
 
@@ -623,6 +632,20 @@ def test_a_supplied_gamma_zero_mass_with_the_wrong_cells_is_rejected(probability
         indices.spi(
             block, 1, indices.Distribution.gamma, 1981, 1981, 2020, _MONTHLY, parameters, spatial_time_major=True
         )
+
+
+@pytest.mark.parametrize("name", ["alpha", "beta"])
+def test_a_supplied_gamma_shape_or_scale_with_the_wrong_cells_is_rejected(name: str) -> None:
+    """A (periods, cells) alpha or beta that misses the block's cells raises ValueError, not IndexError."""
+    block = np.stack([_positive_monthly(40, seed).flatten() for seed in range(3)], axis=-1).reshape(480, 1, 3)
+    parameters = {"alpha": np.full((12, 1, 3), 2.0), "beta": np.full((12, 1, 3), 30.0)}
+    parameters[name] = np.full((12, 3), parameters[name].flat[0])
+    arguments = (1981, 1981, 2020, _MONTHLY)
+
+    with pytest.raises(ValueError, match=f"'{name}' has shape \\(12, 3\\)"):
+        indices.spi(block, 1, indices.Distribution.gamma, *arguments, parameters, spatial_time_major=True)
+    with pytest.raises(ValueError, match=f"'{name}' has shape \\(12, 3\\)"):
+        compute.fit_diagnostics(block.reshape(40, 12, 1, 3), indices.Distribution.gamma, *arguments, parameters)
 
 
 @pytest.mark.parametrize("probability_of_zero", [1.2, -0.1])

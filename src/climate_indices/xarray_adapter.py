@@ -1412,6 +1412,11 @@ def xarray_adapter(
                     "NaN values are propagated through calculations by default."
                 )
 
+            # a zero-handling mode is an argument error, so reject it now rather than
+            # when a Dask-backed result is computed (ADR-0015)
+            if "zero_handling" in kwargs:
+                compute._validate_zero_handling(kwargs["zero_handling"])
+
             # resolve and align secondary inputs
             modified_args = list(args)
             modified_kwargs = dict(kwargs)

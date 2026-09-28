@@ -330,6 +330,17 @@ class TestSPIOverloads:
         np.testing.assert_array_equal(dask_result.compute().values, expected)
         assert not np.array_equal(expected, indices.spi(precipitation.values, *arguments))
 
+    @pytest.mark.parametrize("chunked", [False, True], ids=["in_memory", "dask"])
+    def test_spi_rejects_an_unknown_mode_at_call_time(
+        self, sample_monthly_precip_da: xr.DataArray, chunked: bool
+    ) -> None:
+        """An invalid zero_handling raises when spi is called, not when a Dask result is computed."""
+        precipitation = sample_monthly_precip_da.chunk({"time": -1}) if chunked else sample_monthly_precip_da
+
+        # nothing is computed here, so a lazy Dask result would not reach the kernel's check
+        with pytest.raises(ValueError, match="'classic', 'center_of_mass', or 'mean_zero'"):
+            spi(precipitation, 1, Distribution.gamma, zero_handling="bogus")
+
     def test_spi_xarray_returns_dataarray(self, sample_monthly_precip_da: xr.DataArray) -> None:
         """xarray input should return xarray.DataArray."""
         result = spi(
