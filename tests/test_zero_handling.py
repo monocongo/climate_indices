@@ -278,6 +278,33 @@ def test_a_moved_zero_is_clipped_like_every_other_value(zero_handling: str, uncl
 
 
 # ---------------------------------------------------------------------------
+# the probability scales
+
+
+@pytest.mark.parametrize("output_scale", ["probability", "bounded"])
+@pytest.mark.parametrize("distribution", _DISTRIBUTIONS)
+@pytest.mark.parametrize("zero_handling", _MODES)
+def test_the_probability_scales_place_a_moved_zero_at_the_centre_of_the_zero_mass(
+    zero_handling: str, distribution: indices.Distribution, output_scale: str
+) -> None:
+    """
+    On the probability scales a zero maps to p0 under "classic" and to p0 / 2 under both
+    other modes, "mean_zero" included (ADR-0015, decision 7); other values keep their
+    classic probability.
+    """
+    values = _half_zero_monthly()
+
+    classic = _spi(values, distribution, output_scale=output_scale)
+    computed = _spi(values, distribution, output_scale=output_scale, zero_handling=zero_handling)
+
+    zero_probability = 0.5 if zero_handling == "classic" else 0.25
+    expected = zero_probability if output_scale == "probability" else (2.0 * zero_probability) - 1.0
+    zeros = values.flatten() == 0
+    np.testing.assert_allclose(computed[zeros], expected, atol=1e-12)
+    np.testing.assert_array_equal(computed[~zeros], classic[~zeros])
+
+
+# ---------------------------------------------------------------------------
 # argument handling
 
 
@@ -639,7 +666,10 @@ def test_an_undefined_zero_mass_leaves_its_zeros_missing() -> None:
         *arguments, diagnostics.parameters["alpha"], diagnostics.parameters["beta"], diagnostics.parameters["prob_zero"]
     )
 
+    probability = compute.transform_fitted_gamma(*arguments, output_scale="probability")
+
     assert np.all(np.isnan(fitted[:5, 0]))
+    assert np.all(np.isnan(probability[:5, 0]))
     assert np.all(np.isnan(supplied[:5, 0]))
     assert np.all(np.isfinite(supplied[5:10, 0]))
     assert np.isnan(diagnostics.prob_zero[0])
