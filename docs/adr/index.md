@@ -26,4 +26,5 @@ corrected in place), or `Superseded by ADR-NNNN`. The authoring conventions are 
 0012-xarray-api-stays-beta-through-3.0.0
 0013-flood-module-api-and-naming
 0014-flood-family-scientific-conventions
+0015-zero-handling-in-standardized-indices
 ```
