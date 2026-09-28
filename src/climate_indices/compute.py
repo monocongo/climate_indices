@@ -174,6 +174,15 @@ _PERIOD_LENGTHS = frozenset(periodicity.period_length for periodicity in Periodi
 _ZERO_HANDLING_MODES = ("classic", "center_of_mass", "mean_zero")
 
 
+def _validate_zero_handling(zero_handling: str) -> None:
+    """Reject a zero-placement mode that is not one of the three accepted values."""
+    if zero_handling not in _ZERO_HANDLING_MODES:
+        raise ValueError(
+            f"Invalid zero_handling value: {zero_handling!r}. Expected one of "
+            "'classic', 'center_of_mass', or 'mean_zero'."
+        )
+
+
 def _validate_array(
     values: np.ndarray,
     periodicity: Periodicity,
@@ -613,14 +622,10 @@ def _zero_score(
     :param probabilities_of_zero: probability of the zero mass at each time step
     :param zero_handling: one of ``"classic"``, ``"center_of_mass"``, or ``"mean_zero"``
     :return: array of scores, shaped like ``probabilities_of_zero``, with NaN where the
-        probability is not strictly between zero and one, or under ``"classic"``
+        probability is not strictly between zero and one
     :raises ValueError: if the mode is not one of the three accepted values
     """
-    if zero_handling not in _ZERO_HANDLING_MODES:
-        raise ValueError(
-            f"Invalid zero_handling value: {zero_handling!r}. Expected one of "
-            "'classic', 'center_of_mass', or 'mean_zero'."
-        )
+    _validate_zero_handling(zero_handling)
 
     # only a strictly interior zero mass is placed by a mode: p0 == 0 has no
     # calibration zeros to place and p0 == 1 has no continuous fit, so both leave the
@@ -869,6 +874,10 @@ def transform_fitted_pearson(
                 "parameters are specified -- either none or all of "
                 "these must be specified"
             )
+
+    # validate the mode before any early return, so an unknown value is rejected even
+    # when there is nothing to transform
+    _validate_zero_handling(zero_handling)
 
     # if we're passed all missing values then we can't compute anything,
     # and we'll return the same array of missing values
@@ -1764,6 +1773,10 @@ def transform_fitted_gamma(
     )
     log.info("distribution_transform_started")
 
+    # validate the mode before any early return, so an unknown value is rejected even
+    # when there is nothing to transform
+    _validate_zero_handling(zero_handling)
+
     # if we're passed all missing values then we can't compute anything,
     # then we return the same array of missing values
     if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
@@ -1772,21 +1785,27 @@ def transform_fitted_gamma(
     # validate (and possibly reshape) the input array
     values = _validate_array(values, periodicity)
 
+    # the calibration window is resolved once, with the full-period-of-record fallback
+    # that gamma_parameters() itself applies, so the zero mass is counted over the same
+    # window the shape and scale are fitted on (ADR-0015 decision 4)
+    calibration_start_year, calibration_end_year = adjust_calibration_years(
+        data_start_year,
+        data_start_year + values.shape[0] - 1,
+        calibration_start_year,
+        calibration_end_year,
+    )
+
     alphas, betas = _broadcast_fitting_parameters(values, alphas, betas)
 
     # Replace zeros with NaNs for fitting (zeros are excluded from gamma fitting)
     # and get mask of zero positions for later probability calculations
     zero_mask, values_for_fitting = _replace_zeros_with_nan(values)
 
-    # find the probability of a zero value for each time step, over the calibration
-    # window's non-missing values, so that it agrees with the window the shape and
-    # scale were fitted on (ADR-0015 decision 4); a supplied probability is used as-is
+    # find the probability of a zero value for each time step; a supplied probability
+    # is used as-is
     if probabilities_of_zero is None:
-        data_end_year = data_start_year + values.shape[0] - 1
-        calibration_start_year = max(calibration_start_year, data_start_year)
-        calibration_end_year = min(calibration_end_year, data_end_year)
-        calibration_begin_index = max(calibration_start_year - data_start_year, 0)
-        calibration_end_index = max((calibration_end_year - data_start_year) + 1, 0)
+        calibration_begin_index = calibration_start_year - data_start_year
+        calibration_end_index = (calibration_end_year - data_start_year) + 1
         calibration_zeros = zero_mask[calibration_begin_index:calibration_end_index, ...]
         calibration_values = values[calibration_begin_index:calibration_end_index, ...]
         zeros = calibration_zeros.sum(axis=0)
@@ -1796,7 +1815,8 @@ def transform_fitted_gamma(
         with np.errstate(divide="ignore", invalid="ignore"):
             computed_of_zero = np.where(non_missing > 0, zeros / np.maximum(non_missing, 1), 0.0)
     else:
-        computed_of_zero = np.asarray(probabilities_of_zero)
+        # a copy: the all-zero reset below must not write into the caller's array
+        computed_of_zero = np.array(probabilities_of_zero, copy=True)
     probabilities_of_zero = _broadcast_period_only(computed_of_zero, values.ndim)
     assert probabilities_of_zero is not None
 
@@ -1957,7 +1977,8 @@ def fit_and_standardize(
             monthly (12 time steps per year) or daily (366 time steps per year).
         fitting_params: Optional dictionary of pre-computed distribution fitting
             parameters, with the keys "alpha" and "beta" when fitting to gamma and
-            "prob_zero", "loc", "scale", and "skew" when fitting to Pearson Type III.
+            "prob_zero", "loc", "scale", and "skew" when fitting to Pearson Type III;
+            "prob_zero" is also accepted with gamma, where it supplies the zero mass.
             Deprecated aliases such as "alphas" and "probabilities_of_zero" are
             accepted, and an explicit None means "fit this parameter from the data".
         zero_handling: Where a zero accumulation lands on the normal scale, one of
@@ -2058,7 +2079,10 @@ def fit_and_standardize(
         # use the centralized fallback strategy for consistent logging and behavior
         _default_fallback_strategy.log_fallback_warning(str(e), context=fallback_context)
 
-        # the fall back refits the scaled input, never the Pearson result it replaces
+        # the fall back refits the scaled input, never the Pearson result it replaces.
+        # A zero mass the caller supplied is not a Pearson fit result and still applies,
+        # while a fitted one is recomputed from the gamma fit's calibration window.
+        fallback_of_zero = params.get("prob_zero")
         return transform_fitted_gamma(
             values,
             data_start_year,
@@ -2068,6 +2092,7 @@ def fit_and_standardize(
             alphas=None,
             betas=None,
             zero_handling=zero_handling,
+            probabilities_of_zero=fallback_of_zero,
         )
 
     return standardized

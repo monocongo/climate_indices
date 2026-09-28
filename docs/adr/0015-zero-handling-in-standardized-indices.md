@@ -4,9 +4,16 @@
 
 Accepted. Implementation is tracked by
 [#1186](https://github.com/monocongo/climate_indices/issues/1186) through
-[#1188](https://github.com/monocongo/climate_indices/issues/1188). Until they
-land, `zero_handling` does not exist in the code, and gamma `p0` is still
-counted over the whole record. This record is amended as each one lands.
+[#1188](https://github.com/monocongo/climate_indices/issues/1188). [#1186]
+landed the keyword-only `zero_handling` option on the NumPy `spi()` and
+`standardized_index()` and on the gamma and Pearson transforms, together with
+the calibration-window gamma `p0` of decision 4. The xarray and CLI surfaces
+and the CF metadata follow in [#1187], and the fixtures, external comparison,
+and docs follow in [#1188]. This record is amended as each one lands.
+
+[#1186]: https://github.com/monocongo/climate_indices/issues/1186
+[#1187]: https://github.com/monocongo/climate_indices/issues/1187
+[#1188]: https://github.com/monocongo/climate_indices/issues/1188
 
 SPI and `indices.standardized_index()` treat zero accumulations as a point mass
 of probability `p0` below the fitted gamma or Pearson Type III distribution:
@@ -153,8 +160,10 @@ handling on SPEI would get classic output with nothing to say so.
   has no `zero_handling` option.
   That is decision 4, and it is a correction. Full-record calibration with no
   missing values, as in the committed NOAA and SPEIbase comparisons, leaves
-  those outputs unchanged. The fixtures and their tolerances are re-checked,
-  and the CHANGELOG entry names the change.
+  those outputs unchanged, except at the leading steps the rolling sum pads
+  with NaN whatever the input: those steps carry no accumulated observation,
+  so the new divisor of decision 4 drops them. The fixtures and their
+  tolerances are re-checked, and the CHANGELOG entry names the change.
 - `gamma_parameters()` keeps its two-array return value. Callers that want a
   fixed zero mass across datasets must add calibration-window `prob_zero` to
   their own gamma `fitting_params` dictionary.

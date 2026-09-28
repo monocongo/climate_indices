@@ -131,6 +131,27 @@ def test_gamma_zero_mass_uses_the_calibration_window() -> None:
     # the full record still counts the 1980s zeros, at the same fraction as before
     assert np.allclose(_window_probabilities_of_zero(scaled, 1980, 1980, 2019), legacy)
 
+    # the transform reads the narrowed window, not the whole record: with no zeros in
+    # it, the zero positions transform to -inf before the pipeline's clip
+    narrowed = compute.transform_fitted_gamma(scaled, 1980, 1990, 2019, compute.Periodicity.monthly)
+    assert np.all(narrowed[0:5, :] == -np.inf)
+
+    full = compute.transform_fitted_gamma(scaled, 1980, 1980, 2019, compute.Periodicity.monthly)
+    not_all_zero = ~np.isin(full, (-3.09, np.inf, np.nan))
+    assert not np.allclose(narrowed[not_all_zero], full[not_all_zero])
+
+
+def test_gamma_calibration_window_follows_the_full_record_fallback() -> None:
+    """An out-of-range calibration window falls back to the full record for p0 too."""
+    scaled = compute.prepare_scaled(_monthly_precip(), 1, compute.Periodicity.monthly)
+
+    full = compute.transform_fitted_gamma(scaled, 1980, 1980, 2019, compute.Periodicity.monthly)
+    for calibration in ((1990, 2050), (2025, 2030), (1500, 1990)):
+        computed = compute.transform_fitted_gamma(
+            scaled, 1980, calibration[0], calibration[1], compute.Periodicity.monthly
+        )
+        np.testing.assert_array_equal(computed, full)
+
 
 def test_gamma_zero_mass_excludes_missing_calibration_values() -> None:
     """The zero mass divisor is the window's non-missing values per calendar step."""
@@ -162,36 +183,48 @@ def test_gamma_zero_mass_excludes_missing_calibration_values() -> None:
 
 def test_gamma_classic_changes_when_the_calibration_window_narrows() -> None:
     """A shorter window moves classic gamma output through the window's zero mass."""
-    scaled = compute.prepare_scaled(_monthly_precip(), 3, compute.Periodicity.monthly)
+    rng = np.random.default_rng(20260928)
+    values = rng.gamma(0.8, 7.0, size=(40, 12)) + 1.0
+    values[0:5, :] = 0.0  # zeros only in 1980-1984
+    scaled = compute.prepare_scaled(values, 1, compute.Periodicity.monthly)
 
-    full = compute.transform_fitted_gamma(scaled, 1980, 1980, 2019, compute.Periodicity.monthly)
     narrowed = compute.transform_fitted_gamma(scaled, 1980, 1990, 2019, compute.Periodicity.monthly)
+    # the 1990-2019 window has no zeros, so this step's classic zero score is -inf
+    assert np.all(narrowed[0:5, :] == -np.inf)
 
-    assert not np.allclose(full, narrowed)
+    # with the whole-record mass the same positions carry a finite classic score instead
+    probability_of_zero = _legacy_probabilities_of_zero(scaled)
+    expected = compute.scipy.stats.norm.ppf(probability_of_zero)
+    assert np.all(np.isfinite(expected))
+    assert not np.allclose(narrowed[0:5, :], expected)
 
 
 @pytest.mark.parametrize("mode", ("center_of_mass", "mean_zero"))
 def test_gamma_modes_reach_the_pearson_fallback_transform(mode: str) -> None:
     """The mode survives the Pearson-to-gamma fall back."""
-    values = np.arange(1.0, 121.0).reshape(10, 12)
+    scaled = compute.prepare_scaled(_monthly_precip(), 1, compute.Periodicity.monthly)
     with mock.patch(
         "climate_indices.compute.transform_fitted_pearson",
         side_effect=compute.DistributionFittingError("Pearson failed", distribution_name="pearson3"),
     ):
         fell_back = compute.fit_and_standardize(
-            values,
+            scaled.copy(),
             indices.Distribution.pearson,
-            2000,
-            2000,
-            2009,
+            1980,
+            1980,
+            2019,
             compute.Periodicity.monthly,
             fallback_to_gamma=True,
             zero_handling=mode,
         )
     direct = compute.fit_and_standardize(
-        values, indices.Distribution.gamma, 2000, 2000, 2009, compute.Periodicity.monthly, zero_handling=mode
+        scaled.copy(), indices.Distribution.gamma, 1980, 1980, 2019, compute.Periodicity.monthly, zero_handling=mode
+    )
+    classic = compute.fit_and_standardize(
+        scaled.copy(), indices.Distribution.gamma, 1980, 1980, 2019, compute.Periodicity.monthly
     )
     np.testing.assert_array_equal(fell_back, direct)
+    assert not np.allclose(fell_back, classic, equal_nan=True)
 
 
 @pytest.mark.parametrize("mode", ("center_of_mass", "mean_zero"))
@@ -329,3 +362,202 @@ def test_gamma_reads_a_supplied_zero_mass_for_a_spatial_block() -> None:
         {"alpha": alphas, "beta": betas, "prob_zero": aim / 2.0},
     )
     assert not np.allclose(halved, fitted)
+
+
+@pytest.mark.parametrize("mode", _MODES)
+def test_one_dimensional_input_matches_the_legacy_two_dimensional_layout(mode: str) -> None:
+    """A 1-D series and the legacy (years, periods) layout take the same path."""
+    values = _monthly_precip()
+    flat = indices.spi(
+        values.flatten(),
+        1,
+        indices.Distribution.gamma,
+        1980,
+        1980,
+        2019,
+        compute.Periodicity.monthly,
+        zero_handling=mode,
+    )
+    two_d = indices.spi(
+        values, 1, indices.Distribution.gamma, 1980, 1980, 2019, compute.Periodicity.monthly, zero_handling=mode
+    )
+    np.testing.assert_array_equal(flat, two_d)
+
+
+@pytest.mark.parametrize("mode", ("center_of_mass", "mean_zero"))
+def test_spatial_block_matches_one_call_per_cell(mode: str) -> None:
+    """A time-major block gives each cell the result of its own single-series call."""
+    series = _monthly_precip()
+    flat = series.flatten()
+    # (time, lat, lon), the layout the xarray adapter packs
+    block = np.stack([flat, flat * 0.5, np.zeros_like(flat)], axis=-1)[:, None, :]
+
+    computed = indices.spi(
+        block,
+        6,
+        indices.Distribution.gamma,
+        1980,
+        1980,
+        2019,
+        compute.Periodicity.monthly,
+        spatial_time_major=True,
+        zero_handling=mode,
+    )
+    assert computed.shape == block.shape
+    for lon in range(block.shape[-1]):
+        single = indices.spi(
+            block[:, 0, lon],
+            6,
+            indices.Distribution.gamma,
+            1980,
+            1980,
+            2019,
+            compute.Periodicity.monthly,
+            zero_handling=mode,
+        )
+        np.testing.assert_array_equal(computed[:, 0, lon], single)
+
+
+def test_all_zero_calibration_step_scores_extreme_drought() -> None:
+    """An all-zero calibration step (p0 == 1) keeps the classic -3.09, never +3.09."""
+    rng = np.random.default_rng(20260928)
+    values = rng.gamma(0.8, 7.0, size=(40, 12)) + 1.0
+    values[:, 0] = 0.0
+
+    for mode in _MODES:
+        computed = indices.spi(
+            values, 1, indices.Distribution.gamma, 1980, 1980, 2019, compute.Periodicity.monthly, zero_handling=mode
+        )
+        january = computed.reshape(40, 12)[:, 0]
+        np.testing.assert_array_equal(january, np.full(40, -3.09))
+
+
+@pytest.mark.parametrize("entry", ("standardized_index", "gamma", "pearson"))
+def test_unknown_zero_handling_raises_from_every_compute_entry_point(entry: str) -> None:
+    """The mode is rejected whether it enters through the index API or the transforms."""
+    values = _monthly_precip()
+    if entry == "standardized_index":
+        call = lambda: indices.standardized_index(  # noqa: E731
+            values, 1, indices.Distribution.gamma, 1980, 1980, 2019, compute.Periodicity.monthly, zero_handling="bogus"
+        )
+    elif entry == "gamma":
+        call = lambda: compute.transform_fitted_gamma(  # noqa: E731
+            values, 1980, 1980, 2019, compute.Periodicity.monthly, zero_handling="bogus"
+        )
+    else:
+        call = lambda: compute.transform_fitted_pearson(  # noqa: E731
+            values, 1980, 1980, 2019, compute.Periodicity.monthly, zero_handling="bogus"
+        )
+    with pytest.raises(ValueError, match="zero_handling"):
+        call()
+
+
+def test_supplied_zero_mass_is_not_mutated_and_applies_under_a_mode() -> None:
+    """A saved zero mass is read-only input and still drives non-classic placement."""
+    scaled = compute.prepare_scaled(_monthly_precip(), 1, compute.Periodicity.monthly)
+    zero_mask, values_for_fitting = _replace_zeros_with_nan(scaled)
+    alphas, betas = compute.gamma_parameters(values_for_fitting, 1980, 1980, 2019, compute.Periodicity.monthly)
+    supplied = np.where(
+        np.isclose(zero_mask.sum(axis=0) / zero_mask.shape[0], 1.0), 0.0, zero_mask.sum(axis=0) / zero_mask.shape[0]
+    )
+    supplied[3] = 1.0  # an all-zero step, which the transform resets internally
+    supplied[5] = 0.2  # a placed zero mass, to see the mode score
+    untouched = supplied.copy()
+
+    computed = compute.fit_and_standardize(
+        scaled.copy(),
+        indices.Distribution.gamma,
+        1980,
+        1980,
+        2019,
+        compute.Periodicity.monthly,
+        {"alpha": alphas, "beta": betas, "prob_zero": supplied},
+        zero_handling="mean_zero",
+    )
+
+    np.testing.assert_array_equal(supplied, untouched)
+    expected = compute._zero_score(np.where(supplied == 1.0, 0.0, supplied), "mean_zero")
+    assert np.isfinite(computed[:, 5][zero_mask[:, 5]]).all()
+    np.testing.assert_allclose(computed[:, 5][zero_mask[:, 5]], expected[5])
+
+
+def test_non_classic_modes_score_from_a_supplied_zero_mass() -> None:
+    """A supplied gamma zero mass drives the mode score, not a recomputed one."""
+    scaled = compute.prepare_scaled(_monthly_precip(), 1, compute.Periodicity.monthly)
+    zero_mask, values_for_fitting = _replace_zeros_with_nan(scaled)
+    alphas, betas = compute.gamma_parameters(values_for_fitting, 1980, 1980, 2019, compute.Periodicity.monthly)
+    supplied = zero_mask.sum(axis=0) / zero_mask.shape[0]
+    supplied[3] = 0.25  # deliberately different from the fitted mass
+
+    computed = compute.fit_and_standardize(
+        scaled.copy(),
+        indices.Distribution.gamma,
+        1980,
+        1980,
+        2019,
+        compute.Periodicity.monthly,
+        {"alpha": alphas, "beta": betas, "prob_zero": supplied},
+        zero_handling="center_of_mass",
+    )
+    np.testing.assert_allclose(computed[:, 3][zero_mask[:, 3]], compute._zero_score(supplied, "center_of_mass")[3])
+
+
+@pytest.mark.parametrize("mode", ("center_of_mass", "mean_zero"))
+def test_non_classic_zero_scores_are_clipped(mode: str) -> None:
+    """A zero mass small enough pushes a mode's zero score past the fitted-index bound."""
+    values = np.full((200, 12), 5.0)
+    values[0:1, 0] = 0.0  # one January zero in 200 years, p0 = 0.005
+
+    computed = indices.spi(
+        values, 1, indices.Distribution.gamma, 1980, 1980, 2179, compute.Periodicity.monthly, zero_handling=mode
+    )
+    # the mode's score for p0 = 0.005 is below -3.09 before the pipeline clips it
+    assert np.all(computed[0] >= -3.09)
+    assert np.all(computed[0] <= 3.09)
+
+
+def test_gamma_spei_uses_the_calibration_window_zero_mass() -> None:
+    """SPEI shares the gamma transform, so its zero mass follows the window too."""
+    rng = np.random.default_rng(20260928)
+    precips = rng.gamma(0.8, 7.0, size=(40, 12)) + 1.0
+    precips[0:5, :] = 0.0
+    pet = np.full((40, 12), 0.5)  # P - PET is exactly zero for the 1980s Januarys
+
+    full = indices.spei(precips, pet, 1, indices.Distribution.gamma, compute.Periodicity.monthly, 1980, 1980, 2019)
+    narrowed = indices.spei(precips, pet, 1, indices.Distribution.gamma, compute.Periodicity.monthly, 1980, 1990, 2019)
+    assert not np.allclose(full, narrowed)
+
+
+def test_pearson_trace_value_is_placed_by_a_mode() -> None:
+    """A Pearson trace value (below the 0.0005 threshold, p0 > 0) is moved by a mode."""
+    rng = np.random.default_rng(20260928)
+    values = rng.gamma(2.0, 8.0, size=(40, 12)) + 0.001
+    values[0:8, 0] = 0.0  # a zero mass for January
+    values[8:12, 0] = 0.0001  # traces, below the threshold but not zero
+
+    scaled = compute.prepare_scaled(values, 1, compute.Periodicity.monthly)
+    zero_mask, values_for_fitting = _replace_zeros_with_nan(scaled)
+    probabilities_of_zero, locs, scales, skews = compute.pearson_parameters(
+        scaled, 1980, 1980, 2019, compute.Periodicity.monthly
+    )
+    trace_mask = (scaled < 0.0005) & (probabilities_of_zero > 0.0) & ~zero_mask
+    assert trace_mask.any()
+
+    classic = compute.transform_fitted_pearson(
+        scaled, 1980, 1980, 2019, compute.Periodicity.monthly, probabilities_of_zero, locs, scales, skews
+    )
+    computed = compute.transform_fitted_pearson(
+        scaled,
+        1980,
+        1980,
+        2019,
+        compute.Periodicity.monthly,
+        probabilities_of_zero,
+        locs,
+        scales,
+        skews,
+        zero_handling="mean_zero",
+    )
+    expected = compute._zero_score(probabilities_of_zero, "mean_zero")
+    np.testing.assert_allclose(computed[trace_mask], np.broadcast_to(expected, scaled.shape)[trace_mask])
+    assert not np.allclose(computed[trace_mask], classic[trace_mask])

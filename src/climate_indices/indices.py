@@ -508,11 +508,7 @@ def _standardized_index_pipeline(
     _validate_periodicity(periodicity)
     _validate_scale(scale, periodicity)
     _validate_distribution(distribution)
-    if zero_handling not in compute._ZERO_HANDLING_MODES:
-        raise ValueError(
-            f"Invalid zero_handling value: {zero_handling!r}. Expected one of "
-            "'classic', 'center_of_mass', or 'mean_zero'."
-        )
+    compute._validate_zero_handling(zero_handling)
 
     # bind context and emit calculation_started event
     log = _logger.bind(
@@ -646,7 +642,8 @@ def standardized_index(
             data (366 values/year).
         fitting_params: Optional dictionary of pre-computed distribution fitting
             parameters, with keys "alpha" and "beta" for gamma and "prob_zero",
-            "loc", "scale", and "skew" for Pearson Type III. Older keys such as
+            "loc", "scale", and "skew" for Pearson Type III; "prob_zero" is also
+            accepted with gamma, where it supplies the zero mass. Older keys such as
             "alphas" and "probabilities_of_zero" are deprecated.
         spatial_time_major: Read a three-or-more-dimensional time-major block of
             independent time series, shaped (time, ``*cells``), and fit every cell
@@ -721,7 +718,8 @@ def spi(
         ``compute.Periodicity.daily`` for daily data (366 values/year).
     :param fitting_params: optional dictionary of pre-computed distribution
         fitting parameters, if the distribution is gamma then this dict should
-        contain two arrays, keyed as "alpha" and "beta", and if the
+        contain two arrays, keyed as "alpha" and "beta" (a "prob_zero" array is
+        also honored, supplying the zero mass), and if the
         distribution is Pearson then this dict should contain four arrays keyed
         as "prob_zero", "loc", "scale", and "skew". Older keys such as
         "alphas" and "probabilities_of_zero" are deprecated. For spatial input a 1-D
