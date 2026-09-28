@@ -133,8 +133,12 @@ _EXPECTED_OVERLOADS: dict[Callable[..., Any], tuple[str, ...]] = {
     percentage_of_normal: (
         "(values: 'npt.NDArray[np.float64]', scale: 'int', data_start_year: 'int', calibration_year_initial: 'int', calibration_year_final: 'int', periodicity: 'Periodicity') -> 'npt.NDArray[np.float64]'",
         "(values: 'npt.NDArray[np.float64]', scale: 'int', data_start_year: 'int', calibration_start_year: 'int', calibration_end_year: 'int', periodicity: 'Periodicity') -> 'npt.NDArray[np.float64]'",
+        "(values: 'npt.NDArray[np.float64]', scale: 'int', data_start_year: 'int', calibration_year_initial: 'int', calibration_end_year: 'int', periodicity: 'Periodicity') -> 'npt.NDArray[np.float64]'",
+        "(values: 'npt.NDArray[np.float64]', scale: 'int', data_start_year: 'int', calibration_start_year: 'int', calibration_year_final: 'int', periodicity: 'Periodicity') -> 'npt.NDArray[np.float64]'",
         "(values: 'xr.DataArray', scale: 'int', data_start_year: 'int | None' = None, calibration_year_initial: 'int | None' = None, calibration_year_final: 'int | None' = None, periodicity: 'Periodicity | None' = None) -> 'xr.DataArray'",
         "(values: 'xr.DataArray', scale: 'int', data_start_year: 'int | None' = None, calibration_start_year: 'int | None' = None, calibration_end_year: 'int | None' = None, periodicity: 'Periodicity | None' = None) -> 'xr.DataArray'",
+        "(values: 'xr.DataArray', scale: 'int', data_start_year: 'int | None' = None, calibration_year_initial: 'int | None' = None, calibration_end_year: 'int | None' = None, periodicity: 'Periodicity | None' = None) -> 'xr.DataArray'",
+        "(values: 'xr.DataArray', scale: 'int', data_start_year: 'int | None' = None, calibration_start_year: 'int | None' = None, calibration_year_final: 'int | None' = None, periodicity: 'Periodicity | None' = None) -> 'xr.DataArray'",
     ),
     eddi: (
         "(pet_values: 'npt.NDArray[np.float64]', scale: 'int', data_start_year: 'int', calibration_year_initial: 'int', calibration_year_final: 'int', periodicity: 'Periodicity', spatial_time_major: 'bool' = False) -> 'npt.NDArray[np.float64]'",
@@ -182,9 +186,9 @@ def test_overloads_mirror_implementations() -> None:
         implementation_params = [name for name in inspect.signature(implementation).parameters if name not in internal]
         overloads = get_overloads(public)
         if public is percentage_of_normal:
-            # PNP also exposes deprecated NumPy/xarray keyword overloads.
-            assert len(overloads) == 4
-            overloads = [overloads[0], overloads[2]]
+            # PNP also exposes deprecated and mixed NumPy/xarray keyword overloads.
+            assert len(overloads) == 8
+            overloads = [overloads[0], overloads[4]]
         assert len(overloads) == 2, f"{public.__name__} must keep its NumPy and xarray overloads"
 
         numpy_overload = next(

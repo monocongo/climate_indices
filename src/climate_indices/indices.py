@@ -990,6 +990,32 @@ def percentage_of_normal(
 ) -> np.ndarray: ...
 
 
+@overload
+def percentage_of_normal(
+    values: np.ndarray,
+    scale: int,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_end_year: int,
+    periodicity: compute.Periodicity,
+    *,
+    spatial_time_major: bool = False,
+) -> np.ndarray: ...
+
+
+@overload
+def percentage_of_normal(
+    values: np.ndarray,
+    scale: int,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_year_final: int,
+    periodicity: compute.Periodicity,
+    *,
+    spatial_time_major: bool = False,
+) -> np.ndarray: ...
+
+
 # The decorator translates legacy keywords before this canonical implementation binds.
 @_pnp_calibration_alias  # type: ignore[misc]
 def percentage_of_normal(

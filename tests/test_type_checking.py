@@ -86,12 +86,35 @@ def test_pnp_legacy_keyword_types() -> None:
         ),
         npt.NDArray[np.float64],
     )
+    assert_type(
+        numpy_pnp(
+            values, 1, 1980, calibration_year_initial=1980, calibration_end_year=2019, periodicity=Periodicity.monthly
+        ),
+        np.ndarray,
+    )
+    assert_type(
+        numpy_pnp(
+            values, 1, 1980, calibration_start_year=1980, calibration_year_final=2019, periodicity=Periodicity.monthly
+        ),
+        np.ndarray,
+    )
+    assert_type(
+        percentage_of_normal(
+            values, 1, 1980, calibration_year_initial=1980, calibration_end_year=2019, periodicity=Periodicity.monthly
+        ),
+        npt.NDArray[np.float64],
+    )
+    assert_type(
+        percentage_of_normal(
+            values, 1, 1980, calibration_start_year=1980, calibration_year_final=2019, periodicity=Periodicity.monthly
+        ),
+        npt.NDArray[np.float64],
+    )
     dates = pd.date_range("1980-01-01", "2019-12-01", freq="MS")
     data = xr.DataArray(values, coords={"time": dates}, dims=["time"])
-    assert_type(
-        percentage_of_normal(data, 1, calibration_start_year=1980, calibration_end_year=2019),
-        xr.DataArray,
-    )
+    assert_type(percentage_of_normal(data, 1, calibration_start_year=1980, calibration_end_year=2019), xr.DataArray)
+    assert_type(percentage_of_normal(data, 1, calibration_year_initial=1980, calibration_end_year=2019), xr.DataArray)
+    assert_type(percentage_of_normal(data, 1, calibration_start_year=1980, calibration_year_final=2019), xr.DataArray)
 
 
 def test_spei_numpy_return_type() -> None:
