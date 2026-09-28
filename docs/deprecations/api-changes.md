@@ -3,6 +3,22 @@
 This page records feature-level deprecation and migration notes, including
 breaking changes that ship without a deprecation period.
 
+## Deprecations
+
+### PNP `calibration_start_year`/`calibration_end_year` (deprecated in 3.1.0)
+
+`percentage_of_normal` used `calibration_start_year`/`calibration_end_year`
+while every other Python index API used
+`calibration_year_initial`/`calibration_year_final`. The canonical spelling is now
+`calibration_year_initial`/`calibration_year_final` for the whole Python API.
+Existing calls using the old names keep working and emit
+`ClimateIndicesDeprecationWarning`; the aliases are removed in 4.0.0. The CLI
+keeps `--calibration_start_year`/`--calibration_end_year` and adds
+`--calibration_year_initial`/`--calibration_year_final` aliases. PNP xarray
+outputs retain the existing `calibration_start_year`/`calibration_end_year`
+attributes alongside the canonical names; their history entry still records the
+timescale, not calibration years. No numerical behavior changes.
+
 ## Breaking changes in 3.0.0
 
 3.0.0 ships four breaking changes that users hit without a deprecation period.

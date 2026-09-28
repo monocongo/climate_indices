@@ -531,8 +531,8 @@ def test_pnp_matches_in_process_computation(tmp_path, precips_mm_monthly):
         values,
         scale=6,
         data_start_year=_DATA_START_YEAR,
-        calibration_start_year=_CALIBRATION_START_YEAR,
-        calibration_end_year=_CALIBRATION_END_YEAR,
+        calibration_year_initial=_CALIBRATION_START_YEAR,
+        calibration_year_final=_CALIBRATION_END_YEAR,
         periodicity=compute.Periodicity.monthly,
     )
     with xr.open_dataset(tmp_path / "pnp_timeseries_pnp_06.nc") as dataset:
@@ -590,8 +590,8 @@ def test_all_runs_each_index_into_its_own_output(tmp_path, precips_mm_monthly, p
         precips,
         scale=1,
         data_start_year=_DATA_START_YEAR,
-        calibration_start_year=_CALIBRATION_START_YEAR,
-        calibration_end_year=_CALIBRATION_END_YEAR,
+        calibration_year_initial=_CALIBRATION_START_YEAR,
+        calibration_year_final=_CALIBRATION_END_YEAR,
         periodicity=compute.Periodicity.monthly,
     )
     with xr.open_dataset(tmp_path / "all_pnp_01.nc") as dataset:

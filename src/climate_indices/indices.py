@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
+import functools
 import time
+from collections.abc import Callable
 from enum import Enum
-from typing import Any, cast
+from typing import Any, ParamSpec, TypeVar, cast, overload
 
 import numpy as np
 import structlog.stdlib
 
 from climate_indices import compute, eto
-from climate_indices.exceptions import DataShapeError, InvalidArgumentError, PeriodicityError
+from climate_indices.exceptions import (
+    DataShapeError,
+    InvalidArgumentError,
+    PeriodicityError,
+    emit_deprecation_warning,
+)
 from climate_indices.logging_config import get_logger, log_calculation_failure
 from climate_indices.performance import check_large_array_memory
 
@@ -927,12 +934,96 @@ def spei(
         raise
 
 
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+
+def _pnp_calibration_alias(func: Callable[_P, _R]) -> Callable[_P, _R]:
+    """Accept the deprecated ``calibration_start_year``/``_end_year`` PNP keywords."""
+
+    @functools.wraps(func)
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
+        legacy_kwargs = cast("dict[str, Any]", kwargs)
+        if "calibration_start_year" in legacy_kwargs or "calibration_end_year" in legacy_kwargs:
+            emit_deprecation_warning(
+                feature="Parameters 'calibration_start_year'/'calibration_end_year'",
+                alternative="Use 'calibration_year_initial'/'calibration_year_final'",
+                deprecated_in="3.1.0",
+                removal_version="4.0.0",
+            )
+            for legacy, canonical in (
+                ("calibration_start_year", "calibration_year_initial"),
+                ("calibration_end_year", "calibration_year_final"),
+            ):
+                if legacy in legacy_kwargs and canonical not in legacy_kwargs:
+                    legacy_kwargs[canonical] = legacy_kwargs.pop(legacy)
+                else:
+                    legacy_kwargs.pop(legacy, None)
+        return func(*args, **kwargs)
+
+    return wrapper
+
+
+@overload
+def percentage_of_normal(
+    values: np.ndarray,
+    scale: int,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: compute.Periodicity,
+    *,
+    spatial_time_major: bool = False,
+) -> np.ndarray: ...
+
+
+@overload
 def percentage_of_normal(
     values: np.ndarray,
     scale: int,
     data_start_year: int,
     calibration_start_year: int,
     calibration_end_year: int,
+    periodicity: compute.Periodicity,
+    *,
+    spatial_time_major: bool = False,
+) -> np.ndarray: ...
+
+
+@overload
+def percentage_of_normal(
+    values: np.ndarray,
+    scale: int,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_end_year: int,
+    periodicity: compute.Periodicity,
+    *,
+    spatial_time_major: bool = False,
+) -> np.ndarray: ...
+
+
+@overload
+def percentage_of_normal(
+    values: np.ndarray,
+    scale: int,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_year_final: int,
+    periodicity: compute.Periodicity,
+    *,
+    spatial_time_major: bool = False,
+) -> np.ndarray: ...
+
+
+# The decorator translates legacy keywords before this canonical implementation binds.
+@_pnp_calibration_alias  # type: ignore[misc]
+def percentage_of_normal(
+    values: np.ndarray,
+    scale: int,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
     periodicity: compute.Periodicity,
     *,
     spatial_time_major: bool = False,
@@ -960,11 +1051,14 @@ def percentage_of_normal(
             computed (months for monthly data, days for daily data; e.g.
             3 months or 90 days).
         data_start_year: The initial year of the input values array.
-        calibration_start_year: The initial year of the calibration period
+        calibration_year_initial: The initial year of the calibration period
             over which the normal average for each calendar time step is
-            computed.
-        calibration_end_year: The final year of the calibration period over
+            computed. The deprecated ``calibration_start_year`` keyword is
+            accepted as an alias.
+        calibration_year_final: The final year of the calibration period over
             which the normal average for each calendar time step is computed.
+            The deprecated ``calibration_end_year`` keyword is accepted as an
+            alias.
         periodicity: Periodicity of the input time series; use
             ``compute.Periodicity.monthly`` for monthly data (12 values/year)
             or ``compute.Periodicity.daily`` for daily data (366 values/year).
@@ -980,6 +1074,8 @@ def percentage_of_normal(
         precipitation values array (numpy.ndarray of type float): 1-D for a
         1-D or 2-D input, or the (time, ``*cells``) layout of a declared block.
     """
+    calibration_start_year = calibration_year_initial
+    calibration_end_year = calibration_year_final
     # validate arguments
     _validate_periodicity(periodicity)
     _validate_scale(scale, periodicity)
