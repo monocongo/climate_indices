@@ -583,6 +583,16 @@ def _validate_output_scale(args: argparse.Namespace, handlers: Sequence[_IndexRe
         )
 
 
+def _validate_cli_zero_handling(args: argparse.Namespace, handlers: Sequence[_IndexRegistration]) -> None:
+    """Validate that the requested zero-handling mode applies to SPI only."""
+    zero_handling = getattr(args, "zero_handling", "classic")
+    compute._validate_zero_handling(zero_handling)
+    if zero_handling != "classic" and any(handler.index == "spei" for handler in handlers):
+        raise ValueError("--zero_handling is not supported for SPEI")
+    if zero_handling != "classic" and not any(handler.index == "spi" for handler in handlers):
+        raise ValueError(f"--zero_handling is not applicable to --index {args.index}")
+
+
 def _validate_args(args: argparse.Namespace) -> DatasetLayout:
     """
     Validate the processing settings to confirm that proper argument
@@ -608,12 +618,7 @@ def _validate_args(args: argparse.Namespace) -> DatasetLayout:
     if getattr(args, "output_scale", None) is not None:
         _validate_output_scale(args, handlers)
 
-    zero_handling = getattr(args, "zero_handling", "classic")
-    compute._validate_zero_handling(zero_handling)
-    if zero_handling != "classic" and any(handler.index == "spei" for handler in handlers):
-        raise ValueError("--zero_handling is not supported for SPEI")
-    if zero_handling != "classic" and not any(handler.index == "spi" for handler in handlers):
-        raise ValueError(f"--zero_handling is not applicable to --index {args.index}")
+    _validate_cli_zero_handling(args, handlers)
 
     # the input that determines the input type, and the shape companions must match
     if any(handler.requires_pe for handler in handlers):

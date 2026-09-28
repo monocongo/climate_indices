@@ -357,8 +357,9 @@ class TestSPIOverloads:
                 assert "Stagge" not in result.attrs["references"]
 
     def test_spi_rejects_an_unknown_output_scale_under_dask(self, sample_monthly_precip_da: xr.DataArray) -> None:
+        precipitation = sample_monthly_precip_da.chunk({"time": -1})
         with pytest.raises(InvalidArgumentError, match="output_scale"):
-            spi(sample_monthly_precip_da.chunk({"time": -1}), 1, Distribution.gamma, output_scale="percentile")
+            spi(precipitation, 1, Distribution.gamma, output_scale="percentile")
 
     @pytest.mark.parametrize("distribution", [Distribution.gamma, Distribution.pearson])
     @pytest.mark.parametrize("mode", ["classic", "center_of_mass", "mean_zero"])
