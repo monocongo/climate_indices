@@ -78,7 +78,7 @@ def test_transform_fitted_gamma(
     )
 
     # compute sigmas of transformed (normalized) values fitted to a gamma
-    # distribution, using the full period of record as the calibration period
+    # distribution, using a calibration period one year shorter than the record
     computed_values = compute.transform_fitted_gamma(
         precips_mm_daily.flatten(),
         data_year_start_daily,
@@ -87,14 +87,44 @@ def test_transform_fitted_gamma(
         compute.Periodicity.daily,
     )
 
-    # Check that non-NaN values in fixture match
+    # the daily fixture predates ADR-0015, when the probability of zero was the zero
+    # count over every year of the record, missing years included; supplying that
+    # probability reproduces it, so the calibration-window probability is the only change
+    whole_record_probabilities_of_zero = np.count_nonzero(precips_mm_daily == 0, axis=0) / precips_mm_daily.shape[0]
+    whole_record_values = compute.transform_fitted_gamma(
+        precips_mm_daily.flatten(),
+        data_year_start_daily,
+        calibration_year_start_daily,
+        calibration_year_end_daily,
+        compute.Periodicity.daily,
+        probabilities_of_zero=whole_record_probabilities_of_zero,
+    )
     mask_valid_fixture = ~np.isnan(transformed_gamma_daily)
     np.testing.assert_allclose(
-        computed_values[mask_valid_fixture],
+        whole_record_values[mask_valid_fixture],
         transformed_gamma_daily[mask_valid_fixture],
         atol=0.001,
         err_msg="Transformed gamma fitted daily values mismatch on valid fixture values",
     )
+
+    # by default the probability of zero comes from the calibration period's
+    # non-missing values, which moves the fixture's values
+    calibration_values = precips_mm_daily[: calibration_year_end_daily - data_year_start_daily + 1]
+    calibration_probabilities_of_zero = np.count_nonzero(calibration_values == 0, axis=0) / np.count_nonzero(
+        ~np.isnan(calibration_values), axis=0
+    )
+    np.testing.assert_array_equal(
+        computed_values,
+        compute.transform_fitted_gamma(
+            precips_mm_daily.flatten(),
+            data_year_start_daily,
+            calibration_year_start_daily,
+            calibration_year_end_daily,
+            compute.Periodicity.daily,
+            probabilities_of_zero=calibration_probabilities_of_zero,
+        ),
+    )
+    assert not np.allclose(computed_values[mask_valid_fixture], transformed_gamma_daily[mask_valid_fixture], atol=0.001)
 
     # Check that values where input was zero are NOT NaN in computed result
     # and are finite (either a real number or -inf for extreme drought)
@@ -1067,7 +1097,7 @@ def test_fit_diagnostics_parameters_round_trip(distribution):
     assert diagnostics.distribution is distribution
     assert not diagnostics.fell_back_to_gamma
     expected_keys = (
-        {"alpha", "beta"}
+        {"alpha", "beta", "prob_zero"}
         if distribution is indices.Distribution.gamma
         else {
             "prob_zero",
@@ -1090,9 +1120,9 @@ def test_fit_diagnostics_reports_valid_counts_and_zero_probability():
     )
 
     # the 1981-2010 calibration window holds 30 of the 40 years, one of which is
-    # zero and one missing
+    # zero and one missing, so the zero mass is one of its 29 non-missing values
     np.testing.assert_array_equal(diagnostics.n_valid, np.full(12, 28))
-    np.testing.assert_allclose(diagnostics.prob_zero, np.full(12, 1.0 / 40.0))
+    np.testing.assert_allclose(diagnostics.prob_zero, np.full(12, 1.0 / 29.0))
     assert np.all((diagnostics.ks_p_value >= 0.0) & (diagnostics.ks_p_value <= 1.0))
 
 
@@ -1135,7 +1165,7 @@ def test_fit_diagnostics_reports_the_gamma_fall_back():
 
     assert diagnostics.fell_back_to_gamma
     assert diagnostics.distribution is indices.Distribution.gamma
-    assert set(diagnostics.parameters) == {"alpha", "beta"}
+    assert set(diagnostics.parameters) == {"alpha", "beta", "prob_zero"}
     expected_alphas, expected_betas = compute.gamma_parameters(values, 1981, 1981, 2010, compute.Periodicity.monthly)
     np.testing.assert_array_equal(diagnostics.parameters["alpha"], expected_alphas)
     np.testing.assert_array_equal(diagnostics.parameters["beta"], expected_betas)
@@ -1153,7 +1183,7 @@ def test_fit_diagnostics_falls_back_when_pearson_parameter_fitting_raises():
 
     assert diagnostics.fell_back_to_gamma
     assert diagnostics.distribution is indices.Distribution.gamma
-    assert set(diagnostics.parameters) == {"alpha", "beta"}
+    assert set(diagnostics.parameters) == {"alpha", "beta", "prob_zero"}
 
 
 def test_fit_diagnostics_uses_supplied_parameters_without_refitting():

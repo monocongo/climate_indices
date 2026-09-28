@@ -84,28 +84,75 @@ _BYUN_PE_EDI_REFERENCES = (
 )
 
 
+# SPI and SPEI share each index's citation text across its output variants
+# (z-score, probability, bounded probability); keep the rendered `references`
+# identical across the entries that cite it.
+_SPI_REFERENCES = (
+    "McKee, T. B., Doesken, N. J., & Kleist, J. (1993). "
+    "The relationship of drought frequency and duration to time scales. "
+    "Proceedings of the 8th Conference on Applied Climatology, "
+    "17-22 January, Anaheim, CA. "
+    "American Meteorological Society, Boston, MA, 179-184."
+)
+
+_SPEI_REFERENCES = (
+    "Vicente-Serrano, S. M., Begueria, S., & Lopez-Moreno, J. I. (2010). "
+    "A Multiscalar Drought Index Sensitive to Global Warming: "
+    "The Standardized Precipitation Evapotranspiration Index. "
+    "Journal of Climate, 23(7), 1696-1718. "
+    "https://doi.org/10.1175/2009JCLI2909.1"
+)
+
 CF_METADATA: dict[str, CFAttributes] = {
     "spi": {
         "long_name": "Standardized Precipitation Index",
         "units": "dimensionless",
-        "references": (
-            "McKee, T. B., Doesken, N. J., & Kleist, J. (1993). "
-            "The relationship of drought frequency and duration to time scales. "
-            "Proceedings of the 8th Conference on Applied Climatology, "
-            "17-22 January, Anaheim, CA. "
-            "American Meteorological Society, Boston, MA, 179-184."
+        "references": _SPI_REFERENCES,
+    },
+    # the probability-scale variants return the fitted cumulative probability,
+    # not the standard-normal z-score, so they carry distinct long_name/units
+    "spi_probability": {
+        "long_name": "Standardized Precipitation Index probability",
+        "units": "1",
+        "description": (
+            "Fitted cumulative probability of the accumulated precipitation, the "
+            "probability integral transform (PIT) value in [0, 1], before the "
+            "inverse-normal transform."
         ),
+        "climate_indices_variant": "probability",
+        "references": _SPI_REFERENCES,
+    },
+    "spi_bounded": {
+        "long_name": "Standardized Precipitation Index bounded probability",
+        "units": "1",
+        "description": ("Fitted cumulative probability of the accumulated precipitation mapped to [-1, 1] as 2p - 1."),
+        "climate_indices_variant": "bounded",
+        "references": _SPI_REFERENCES,
     },
     "spei": {
         "long_name": "Standardized Precipitation Evapotranspiration Index",
         "units": "dimensionless",
-        "references": (
-            "Vicente-Serrano, S. M., Begueria, S., & Lopez-Moreno, J. I. (2010). "
-            "A Multiscalar Drought Index Sensitive to Global Warming: "
-            "The Standardized Precipitation Evapotranspiration Index. "
-            "Journal of Climate, 23(7), 1696-1718. "
-            "https://doi.org/10.1175/2009JCLI2909.1"
+        "references": _SPEI_REFERENCES,
+    },
+    "spei_probability": {
+        "long_name": "Standardized Precipitation Evapotranspiration Index probability",
+        "units": "1",
+        "description": (
+            "Fitted cumulative probability of the accumulated precipitation minus "
+            "PET, the probability integral transform (PIT) value in [0, 1], before "
+            "the inverse-normal transform."
         ),
+        "climate_indices_variant": "probability",
+        "references": _SPEI_REFERENCES,
+    },
+    "spei_bounded": {
+        "long_name": "Standardized Precipitation Evapotranspiration Index bounded probability",
+        "units": "1",
+        "description": (
+            "Fitted cumulative probability of the accumulated precipitation minus PET mapped to [-1, 1] as 2p - 1."
+        ),
+        "climate_indices_variant": "bounded",
+        "references": _SPEI_REFERENCES,
     },
     "pet_thornthwaite": {
         "long_name": "Potential Evapotranspiration (Thornthwaite method)",

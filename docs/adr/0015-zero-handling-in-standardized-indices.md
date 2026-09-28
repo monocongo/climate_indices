@@ -2,11 +2,20 @@
 
 ## Status
 
-Accepted. Implementation is tracked by
-[#1186](https://github.com/monocongo/climate_indices/issues/1186) through
-[#1188](https://github.com/monocongo/climate_indices/issues/1188). Until they
-land, `zero_handling` does not exist in the code, and gamma `p0` is still
-counted over the whole record. This record is amended as each one lands.
+Amended: the NumPy implementation landed in
+[#1186](https://github.com/monocongo/climate_indices/issues/1186)
+([#1204](https://github.com/monocongo/climate_indices/pull/1204)).
+`zero_handling` is accepted by `spi()`, `standardized_index()`, the package-root
+`spi()`, and the `compute` gamma and Pearson transforms, and gamma `p0` is
+counted over the calibration period. Decision 4 now records that
+implementation, including the undefined zero mass of a step without calibration
+data, and the Consequences name when classic output stays unchanged. The xarray
+adapter forwards the keyword but does not record it in CF metadata, and the CLI
+has no flag for it, until
+[#1187](https://github.com/monocongo/climate_indices/issues/1187) lands; the
+cross-implementation fixtures and docs follow in
+[#1188](https://github.com/monocongo/climate_indices/issues/1188). This record
+is amended as each one lands.
 
 SPI and `indices.standardized_index()` treat zero accumulations as a point mass
 of probability `p0` below the fitted gamma or Pearson Type III distribution:
@@ -63,28 +72,45 @@ asked by [#1185](https://github.com/monocongo/climate_indices/issues/1185).
    `ValueError`, rather than ignoring it; EDDI has no CLI route.
 
 4. **`p0` comes from the calibration period, for both distributions.** Pearson
-   already computes `p0` over the non-missing calibration values and returns
+   already computed `p0` over the non-missing calibration values and returned
    its array from `pearson_parameters()`; callers pass it in `fitting_params` as
-   `prob_zero`. Gamma does neither. It counts zeros over all years, including
+   `prob_zero`. Gamma did neither. It counted zeros over all years, including
    missing ones in the denominator, in `compute.transform_fitted_gamma()` and
-   keeps only `alpha` and `beta`, so its `p0` disagrees with the window its shape
+   kept only `alpha` and `beta`, so its `p0` disagreed with the window its shape
    and scale were fitted on. The modes make `p0` decide where every zero lands,
    so this epic makes gamma match Pearson: divide calibration-window zero counts
-   by non-missing calibration counts (with no mass where all values are missing).
-   `p0` is computed over the calibration period and read from
-   `fitting_params["prob_zero"]` when supplied. `gamma_parameters()` still
-   returns the existing `(alpha, beta)` tuple; callers saving a reusable gamma
-   `fitting_params` dictionary must compute and include calibration-window
-   `prob_zero` separately to preserve the zero mass across datasets. Dictionaries
-   without `prob_zero` remain valid: the transform computes it from the
-   calibration window of the values being transformed.
+   by non-missing calibration counts. A step with no non-missing calibration
+   value has no defined zero mass: its `p0` is NaN and its zeros transform to
+   NaN, as its non-zero values do without supplied parameters, rather than
+   scoring as an extreme drought (amended in #1186, which first gave such a
+   step no mass). `p0` is computed over the calibration period and read from
+   `fitting_params["prob_zero"]` when supplied; a supplied value must lie in
+   `[0, 1]` (NaN marks an undefined mass) and match the values' cell
+   dimensions, as Pearson parameters must; a supplied `alpha` or `beta` must
+   broadcast to the values, which keeps shapes such as `(periods, 1, 1)` valid. Pearson keeps its existing handling of a step without
+   calibration data rather than this rule, so its classic output does not move
+   relative to the previous release: the minimum-non-zero guard gives the step
+   `p0 = 0` and zeroed parameters, so its non-zero values are NaN while its zeros
+   still take the trace floor's score, clipped to −3.09. The two distributions
+   therefore differ at such a step's zeros, which is accepted here. `gamma_parameters()` still returns
+   the existing `(alpha, beta)` tuple, while `fit_diagnostics()` returns gamma
+   `prob_zero` with `alpha` and `beta`, so its parameters reproduce a fit.
+   Callers saving a reusable gamma `fitting_params` dictionary must include
+   calibration-window `prob_zero` to preserve the zero mass across datasets.
+   Dictionaries without `prob_zero` remain valid: the transform computes it
+   from the calibration window of the values being transformed.
 
-5. **Edge cases.** With `p0 == 0` there are no calibration zeros, but the
+5. **Edge cases.** A mode acts on the *effective* `p0`, the value left after the
+   invalid-fit handling below. With `p0 == 0` there are no calibration zeros, but the
    transformed record may contain zeros outside that period. Every mode gives
-   those zeros the same `"classic"` result. With `p0 == 1` (every calibration
+   those zeros the same `"classic"` result. Pearson's minimum-non-zero guard
+   also sets `p0` to 0 where a step has fewer than 4 non-zero calibration
+   values, so in exactly the arid steps this record targets its zeros score
+   −3.09 in every mode. With `p0 == 1` (every calibration
    value zero), no continuous distribution can be fitted. Keep the existing
    invalid-fit handling rather than inventing a zero score: gamma resets `p0`
-   to 0, so zeros transform to `−∞` and are clipped to −3.09; nonzero values
+   (a supplied one only when it is exactly 1) to 0, so zeros transform to `−∞`
+   and are clipped to −3.09; nonzero values
    outside the calibration window may remain NaN. Pearson's minimum-non-zero
    guard zeroes that step's parameters; its trace floor can give zeros a finite
    score, and nonzero values outside the window may trigger the gamma fallback.
@@ -144,34 +170,38 @@ handling on SPEI would get classic output with nothing to say so.
 
 - **Backward compatibility is narrower than "unchanged".** The `"classic"`
   default leaves Pearson-transformed SPI outputs unchanged, but Pearson SPI
-  that falls back to gamma can also change. Gamma SPI and gamma
-  `standardized_index()` outputs change wherever the calibration window is
-  shorter than the record and the in-window and whole-record zero fractions
-  differ, or when missing calibration values change `p0` (which requires at
-  least one zero). The shared gamma correction can also change gamma SPEI when
-  the accumulated offset P − PET series contains an exact zero, although SPEI
-  has no `zero_handling` option.
-  That is decision 4, and it is a correction. Full-record calibration with no
-  missing values, as in the committed NOAA and SPEIbase comparisons, leaves
-  those outputs unchanged. The fixtures and their tolerances are re-checked,
-  and the CHANGELOG entry names the change.
+  that falls back to gamma can also change. Classic gamma SPI and gamma
+  `standardized_index()` outputs are unchanged only for a full-record
+  calibration of complete years, at scale 1, with no missing value and no
+  `prob_zero` in a gamma `fitting_params`. They change at a step with a zero
+  when the calibration window is shorter than the record and the in-window and
+  whole-record zero fractions differ, or when a calibration value is missing,
+  which includes the NaN padding of a partial final year and the leading
+  `scale − 1` values of a scaled series. A gamma `fitting_params` that already
+  carried `prob_zero` (or `probabilities_of_zero`), which gamma ignored, now
+  sets the zero mass and can move every value. A step with no calibration data
+  now gives its zeros NaN. The shared gamma correction can also change gamma
+  SPEI through any of these, although SPEI has no `zero_handling` option; the
+  offset P − PET series needs an exact zero for the denominator to matter.
+  That is decision 4, and it is a correction. The committed NOAA and SPEIbase
+  comparisons pass unchanged, and the CHANGELOG entry names the change.
 - `gamma_parameters()` keeps its two-array return value. Callers that want a
   fixed zero mass across datasets must add calibration-window `prob_zero` to
-  their own gamma `fitting_params` dictionary.
-- The NumPy transforms take `zero_handling` alongside `p0`
-  ([#1186](https://github.com/monocongo/climate_indices/issues/1186)). That
-  issue's blanket "classic output is unchanged" acceptance must be narrowed
-  to full-record calibration without missing values and cover the changed
-  gamma `p0` denominator, including SPEI and Pearson-to-gamma fallback.
-  Surface wiring, unsupported-mode rejection, and
-  the CF attribute/bounds follow in
+  their own gamma `fitting_params` dictionary, or take the one
+  `fit_diagnostics()` returns.
+- The NumPy transforms took `zero_handling` alongside `p0` in
+  [#1186](https://github.com/monocongo/climate_indices/issues/1186), whose
+  blanket "classic output is unchanged" acceptance was narrowed to the
+  conditions above and covers the changed gamma `p0` denominator, including
+  SPEI and Pearson-to-gamma fallback. Surface wiring, unsupported-mode
+  rejection, and the CF attribute/bounds follow in
   [#1187](https://github.com/monocongo/climate_indices/issues/1187).
   Cross-implementation fixtures against the SEI R package, docs (including
   the gamma parameter-reuse guidance in `choosing-parameters.md`), and the
   `VALIDATION.md` entry follow in
   [#1188](https://github.com/monocongo/climate_indices/issues/1188).
-- The Zero Handling term joins `src/climate_indices/CONTEXT.md` with the
-  NumPy implementation, once the parameter exists.
+- The Zero Handling term joined `src/climate_indices/CONTEXT.md` with the
+  NumPy implementation in #1186.
 
 ## References
 
