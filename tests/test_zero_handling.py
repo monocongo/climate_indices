@@ -131,14 +131,18 @@ def test_gamma_zero_mass_uses_the_calibration_window() -> None:
     # the full record still counts the 1980s zeros, at the same fraction as before
     assert np.allclose(_window_probabilities_of_zero(scaled, 1980, 1980, 2019), legacy)
 
-    # the transform reads the narrowed window, not the whole record: with no zeros in
-    # it, the zero positions transform to -inf before the pipeline's clip
-    narrowed = compute.transform_fitted_gamma(scaled, 1980, 1990, 2019, compute.Periodicity.monthly)
+    # Hold zero mass fixed to isolate the fitted shape and scale. Nonzero values from
+    # 1985-1989 remain in the full fit but not in the narrowed fit.
+    shared_zero_mass = _window_probabilities_of_zero(scaled, 1980, 1990, 2019)
+    narrowed = compute.transform_fitted_gamma(
+        scaled, 1980, 1990, 2019, compute.Periodicity.monthly, probabilities_of_zero=shared_zero_mass
+    )
     assert np.all(narrowed[0:5, :] == -np.inf)
 
-    full = compute.transform_fitted_gamma(scaled, 1980, 1980, 2019, compute.Periodicity.monthly)
-    # the fitted shape and scale also move with the window: compare the finite nonzero
-    # scores, since the -inf zero positions above would make any mismatch trivial
+    full = compute.transform_fitted_gamma(
+        scaled, 1980, 1980, 2019, compute.Periodicity.monthly, probabilities_of_zero=shared_zero_mass
+    )
+    # Compare finite nonzero scores; -inf zero positions would make any mismatch trivial.
     nonzero = (scaled != 0.0) & np.isfinite(full) & np.isfinite(narrowed)
     assert nonzero.any()
     assert not np.allclose(narrowed[nonzero], full[nonzero])
