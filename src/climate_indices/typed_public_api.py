@@ -145,6 +145,8 @@ def spi(
     calibration_year_final: int,
     periodicity: Periodicity,
     fitting_params: dict[str, Any] | None = None,
+    *,
+    zero_handling: str = "classic",
 ) -> npt.NDArray[np.float64]: ...
 
 
@@ -158,6 +160,8 @@ def spi(
     calibration_year_final: int | None = None,
     periodicity: Periodicity | None = None,
     fitting_params: dict[str, Any] | None = None,
+    *,
+    zero_handling: str = "classic",
 ) -> xr.DataArray: ...
 
 
@@ -191,6 +195,10 @@ def spi(values: Any, *args: Any, **kwargs: Any) -> npt.NDArray[np.float64] | xr.
             for NumPy, optional for xarray.
         fitting_params: Optional dict of pre-computed distribution fitting
             parameters.
+        zero_handling: Where a zero accumulation lands on the normal scale, one of
+            "classic" (the default, matching NOAA/NCEI and SPEIbase conventions),
+            "center_of_mass" (Stagge et al., 2015), or "mean_zero" (Allen and Otero,
+            2024); see ADR-0015.
 
     Returns:
         SPI values as numpy.ndarray or xarray.DataArray (matches input type).

@@ -133,6 +133,9 @@ The `0.0272 * FWI ** 1.77` transform of the Canadian FWI that makes seasonal ave
 **L-Moments**:
 Linear-combination-of-order-statistics summary measures of a sample's location, scale, and skew — used here as a more robust alternative to conventional moments for fitting the Pearson Type III distribution.
 
+**Zero Handling**:
+Where a zero accumulation lands on the normal scale in the gamma and Pearson Type III SPI transforms, and in `indices.standardized_index()`. The keyword-only `zero_handling` option takes `"classic"` (the default; `Φ⁻¹(p0)`, the top of the zero mass, matching NOAA/NCEI and SPEIbase), `"center_of_mass"` (`Φ⁻¹(p0 / 2)`, Stagge et al., 2015), or `"mean_zero"` (`−φ(Φ⁻¹(p0)) / p0`, the normal-scale mean of the zero mass, Allen and Otero, 2024). The mode places the zero mass and nothing else: all other values keep the classic transform, the `[-3.09, 3.09]` clip still applies, and `p0` is counted over the calibration window for both distributions. SPEI and EDDI have no zero mass to place and do not take the option. See [ADR-0015](../../docs/adr/0015-zero-handling-in-standardized-indices.md).
+
 ### Gridded execution
 
 **Spatial Block** (spelled time-major in code):

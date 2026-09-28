@@ -123,8 +123,8 @@ _PUBLIC_IMPLEMENTATIONS: dict[Callable[..., Any], tuple[Callable[..., Any], tupl
 # the frozen published typing contract: rendered @overload signatures
 _EXPECTED_OVERLOADS: dict[Callable[..., Any], tuple[str, ...]] = {
     spi: (
-        "(values: 'npt.NDArray[np.float64]', scale: 'int', distribution: 'Distribution', data_start_year: 'int', calibration_year_initial: 'int', calibration_year_final: 'int', periodicity: 'Periodicity', fitting_params: 'dict[str, Any] | None' = None) -> 'npt.NDArray[np.float64]'",
-        "(values: 'xr.DataArray', scale: 'int', distribution: 'Distribution', data_start_year: 'int | None' = None, calibration_year_initial: 'int | None' = None, calibration_year_final: 'int | None' = None, periodicity: 'Periodicity | None' = None, fitting_params: 'dict[str, Any] | None' = None) -> 'xr.DataArray'",
+        "(values: 'npt.NDArray[np.float64]', scale: 'int', distribution: 'Distribution', data_start_year: 'int', calibration_year_initial: 'int', calibration_year_final: 'int', periodicity: 'Periodicity', fitting_params: 'dict[str, Any] | None' = None, *, zero_handling: 'str' = 'classic') -> 'npt.NDArray[np.float64]'",
+        "(values: 'xr.DataArray', scale: 'int', distribution: 'Distribution', data_start_year: 'int | None' = None, calibration_year_initial: 'int | None' = None, calibration_year_final: 'int | None' = None, periodicity: 'Periodicity | None' = None, fitting_params: 'dict[str, Any] | None' = None, *, zero_handling: 'str' = 'classic') -> 'xr.DataArray'",
     ),
     spei: (
         "(precips_mm: 'npt.NDArray[np.float64]', pet_mm: 'npt.NDArray[np.float64]', scale: 'int', distribution: 'Distribution', periodicity: 'Periodicity', data_start_year: 'int', calibration_year_initial: 'int', calibration_year_final: 'int', fitting_params: 'dict[str, Any] | None' = None) -> 'npt.NDArray[np.float64]'",
