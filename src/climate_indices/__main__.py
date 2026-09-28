@@ -1058,8 +1058,8 @@ def _pnp(precips: np.ndarray, parameters: dict[str, Any]) -> np.ndarray:
         precips,
         scale=parameters["scale"],
         data_start_year=parameters["data_start_year"],
-        calibration_start_year=parameters["calibration_start_year"],
-        calibration_end_year=parameters["calibration_end_year"],
+        calibration_year_initial=parameters["calibration_start_year"],
+        calibration_year_final=parameters["calibration_end_year"],
         periodicity=parameters["periodicity"],
     )
 

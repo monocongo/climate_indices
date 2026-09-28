@@ -862,8 +862,8 @@ def test_pnp_output_shape_matches_input(precip: np.ndarray, scale: int) -> None:
         precip,
         scale=scale,
         data_start_year=1950,
-        calibration_start_year=1950,
-        calibration_end_year=1950 + len(precip) // 12 - 1,
+        calibration_year_initial=1950,
+        calibration_year_final=1950 + len(precip) // 12 - 1,
         periodicity=compute.Periodicity.monthly,
     )
 
@@ -882,8 +882,8 @@ def test_pnp_non_negative_for_non_negative_input(precip: np.ndarray, scale: int)
         precip,
         scale=scale,
         data_start_year=1950,
-        calibration_start_year=1950,
-        calibration_end_year=1950 + len(precip) // 12 - 1,
+        calibration_year_initial=1950,
+        calibration_year_final=1950 + len(precip) // 12 - 1,
         periodicity=compute.Periodicity.monthly,
     )
 
@@ -907,8 +907,8 @@ def test_pnp_uniform_precipitation_yields_approximately_one() -> None:
         precip,
         scale=scale,
         data_start_year=1950,
-        calibration_start_year=1950,
-        calibration_end_year=1989,
+        calibration_year_initial=1950,
+        calibration_year_final=1989,
         periodicity=compute.Periodicity.monthly,
     )
 
@@ -949,8 +949,8 @@ def test_pnp_scales_linearly_with_input(multiplier: float) -> None:
         base_precip,
         scale=scale,
         data_start_year=1950,
-        calibration_start_year=1950,
-        calibration_end_year=1950 + num_years - 1,
+        calibration_year_initial=1950,
+        calibration_year_final=1950 + num_years - 1,
         periodicity=compute.Periodicity.monthly,
     )
 
@@ -958,8 +958,8 @@ def test_pnp_scales_linearly_with_input(multiplier: float) -> None:
         scaled_precip,
         scale=scale,
         data_start_year=1950,
-        calibration_start_year=1950,
-        calibration_end_year=1950 + num_years - 1,
+        calibration_year_initial=1950,
+        calibration_year_final=1950 + num_years - 1,
         periodicity=compute.Periodicity.monthly,
     )
 

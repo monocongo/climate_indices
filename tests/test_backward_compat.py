@@ -385,7 +385,7 @@ class TestPublicAPIEquivalence:
 class TestSignatureStability:
     """Verify function signatures have not introduced new required parameters."""
 
-    # v1.x reference signatures (required parameters only, in order)
+    # Required current parameters, in order; PNP legacy keyword calls are tested in test_pnp_xarray.py.
     REFERENCE_SIGNATURES = {
         "spi": [
             "values",
@@ -410,8 +410,8 @@ class TestSignatureStability:
             "values",
             "scale",
             "data_start_year",
-            "calibration_start_year",
-            "calibration_end_year",
+            "calibration_year_initial",
+            "calibration_year_final",
             "periodicity",
         ],
         "pet": [

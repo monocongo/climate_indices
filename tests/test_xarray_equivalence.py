@@ -296,8 +296,8 @@ class TestSPIXarrayGregorianDailyCalendar:
                 values=utils.transform_to_366day(precip_values, start_year, end_year - start_year + 1),
                 scale=3,
                 data_start_year=start_year,
-                calibration_start_year=start_year,
-                calibration_end_year=end_year,
+                calibration_year_initial=start_year,
+                calibration_year_final=end_year,
                 periodicity=Periodicity.daily,
             ),
             start_year,
@@ -306,8 +306,8 @@ class TestSPIXarrayGregorianDailyCalendar:
         result = percentage_of_normal(
             values=precip,
             scale=3,
-            calibration_start_year=start_year,
-            calibration_end_year=end_year,
+            calibration_year_initial=start_year,
+            calibration_year_final=end_year,
         )
 
         assert isinstance(result, xr.DataArray)
@@ -976,8 +976,8 @@ class TestCalendarConversionHasDiscriminatingPower:
         kwargs = {
             "scale": 3,
             "data_start_year": self.START_YEAR,
-            "calibration_start_year": self.START_YEAR,
-            "calibration_end_year": self.END_YEAR,
+            "calibration_year_initial": self.START_YEAR,
+            "calibration_year_final": self.END_YEAR,
             "periodicity": Periodicity.daily,
         }
         self._assert_conversion_changes_result(
