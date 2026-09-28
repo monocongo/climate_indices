@@ -155,6 +155,29 @@ class TestPenmanMonteithXarrayEquivalence:
         with pytest.raises(CoordinateValidationError):
             pet_penman_monteith(tmin, tmax, latitude=50.80, elevation_m=100.0, wind_speed_m_s=2.78)
 
+    def test_per_cell_nan_optional_input_propagates(self) -> None:
+        """A real NaN in a time-less optional field must not read as absent."""
+        periods = 3
+        time = _daily_coord(periods)
+        cells = [0, 1]
+        coords = {"time": time, "cell": cells}
+        tmin = xr.DataArray(np.full((periods, 2), 12.3), coords=coords, dims=["time", "cell"])
+        tmax = xr.DataArray(np.full((periods, 2), 21.5), coords=coords, dims=["time", "cell"])
+        rh_min = xr.DataArray([63.0, 63.0], coords={"cell": cells}, dims=["cell"])
+        rh_max = xr.DataArray([84.0, np.nan], coords={"cell": cells}, dims=["cell"])
+
+        result = pet_penman_monteith(
+            tmin,
+            tmax,
+            latitude=50.80,
+            elevation_m=100.0,
+            wind_speed_m_s=2.78,
+            humidity=HumidityInputs(rh_min=rh_min, rh_max=rh_max),
+        )
+
+        assert np.isfinite(result.isel(cell=0).values).all()
+        assert np.isnan(result.isel(cell=1).values).all()
+
     def test_requires_day_of_year_for_numpy(self) -> None:
         with pytest.raises(ValueError, match="day_of_year"):
             pet_penman_monteith(

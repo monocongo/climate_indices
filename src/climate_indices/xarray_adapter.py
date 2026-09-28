@@ -2318,13 +2318,6 @@ def _penman_monteith_kernel_input(value: Any, time_dim: str) -> tuple[Any, list[
     return value, []
 
 
-def _absent_if_nan_scalar(value: Any) -> Any:
-    """Recover ``None`` for an absent optional input from its NaN sentinel."""
-    if np.ndim(value) == 0 and np.isnan(value):
-        return None
-    return value
-
-
 def _finalize_penman_monteith_result(
     result: xr.DataArray,
     tmin_aligned: xr.DataArray,
@@ -2522,6 +2515,25 @@ def pet_penman_monteith(
         ufunc_inputs.append(ufunc_value)
         core_dims.append(dims)
 
+    # absence is recorded here, from the caller's arguments, so a real NaN scalar
+    # reaching the kernel still propagates rather than reading as an omitted input
+    absent_optionals = {
+        name
+        for name in (
+            "tdew_celsius",
+            "rh_min",
+            "rh_max",
+            "rh_mean",
+            "solar_radiation_mj_m2_day",
+            "sunshine_hours",
+        )
+        if optional_inputs[name] is None
+    }
+
+    def _optional(value: Any, name: str) -> Any:
+        """Return ``None`` only for an input the caller actually omitted."""
+        return None if name in absent_optionals else value
+
     def _penman_monteith_kernel(
         tmin: np.ndarray,
         tmax: np.ndarray,
@@ -2545,14 +2557,14 @@ def pet_penman_monteith(
             wind,
             day,
             humidity=pm_eto.HumidityInputs(
-                tdew_celsius=_absent_if_nan_scalar(tdew),
-                rh_min=_absent_if_nan_scalar(rh_min_value),
-                rh_max=_absent_if_nan_scalar(rh_max_value),
-                rh_mean=_absent_if_nan_scalar(rh_mean_value),
+                tdew_celsius=_optional(tdew, "tdew_celsius"),
+                rh_min=_optional(rh_min_value, "rh_min"),
+                rh_max=_optional(rh_max_value, "rh_max"),
+                rh_mean=_optional(rh_mean_value, "rh_mean"),
             ),
             radiation=pm_eto.RadiationInputs(
-                solar_radiation_mj_m2_day=_absent_if_nan_scalar(solar),
-                sunshine_hours=_absent_if_nan_scalar(sunshine),
+                solar_radiation_mj_m2_day=_optional(solar, "solar_radiation_mj_m2_day"),
+                sunshine_hours=_optional(sunshine, "sunshine_hours"),
                 coastal=radiation.coastal,
             ),
             soil_heat_flux_mj_m2_day=soil,
