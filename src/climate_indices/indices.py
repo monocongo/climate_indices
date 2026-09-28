@@ -480,6 +480,7 @@ def _standardized_index_pipeline(
     index_type: str,
     fallback_context: str,
     spatial_time_major: bool = False,
+    output_scale: str = "normal",
 ) -> np.ndarray:
     """Scale, fit, and transform a series in the pipeline shared by the index wrappers.
 
@@ -497,6 +498,8 @@ def _standardized_index_pipeline(
         index_type: Value bound to the ``index_type`` log field.
         fallback_context: Context included in the Pearson-to-gamma fallback warning.
         spatial_time_major: Read a time-major spatial block as independent series.
+        output_scale: One of ``compute.OUTPUT_SCALES``; non-normal scales are not
+            clipped to the z-score range.
 
     Returns:
         Standardized values in the input's size and layout.
@@ -505,12 +508,14 @@ def _standardized_index_pipeline(
     _validate_periodicity(periodicity)
     _validate_scale(scale, periodicity)
     _validate_distribution(distribution)
+    compute.validate_output_scale(output_scale)
 
     # bind context and emit calculation_started event
     log = _logger.bind(
         index_type=index_type,
         scale=scale,
         distribution=distribution.value,
+        output_scale=output_scale,
         input_shape=values.shape,
         input_elements=values.size,
     )
@@ -570,10 +575,13 @@ def _standardized_index_pipeline(
             fitting_params,
             fallback_to_gamma=True,
             fallback_context=fallback_context,
+            output_scale=output_scale,
         )
 
-        # clip values to within the valid range
-        values = np.clip(values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX)
+        # clip z-scores to the supported range; probability-scale outputs are
+        # already bounded by construction and must not be z-clipped
+        if output_scale == "normal":
+            values = np.clip(values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX)
 
         if values.ndim > 2:
             # (years, periods, *cells) back to the time-major input layout, dropping any
@@ -601,6 +609,7 @@ def standardized_index(
     fitting_params: dict[str, Any] | None = None,
     *,
     spatial_time_major: bool = False,
+    output_scale: str = "normal",
 ) -> np.ndarray:
     """Standardize a non-negative monthly or daily series against a fitted distribution.
 
@@ -644,6 +653,10 @@ def standardized_index(
             cell axis is a calendar period length (12 or 366); see :func:`spi` for
             the layout. A 2-D block is always read as one series, however
             declared.
+        output_scale: Output convention, one of ``compute.OUTPUT_SCALES``.
+            "normal" (the default) returns the standard-normal z-score,
+            "probability" returns the fitted cumulative probability in [0, 1]
+            without clipping, and "bounded" returns ``2p - 1`` in [-1, 1].
 
     Returns:
         1-D array of standardized values, unitless and of the same length as the
@@ -662,6 +675,7 @@ def standardized_index(
         index_type="standardized_index",
         fallback_context="standardized index computation",
         spatial_time_major=spatial_time_major,
+        output_scale=output_scale,
     )
 
 
@@ -676,6 +690,7 @@ def spi(
     fitting_params: dict[str, Any] | None = None,
     *,
     spatial_time_major: bool = False,
+    output_scale: str = "normal",
 ) -> np.ndarray:
     """
     Computes SPI (Standardized Precipitation Index).
@@ -715,6 +730,10 @@ def spi(
         xarray adapter sets this for every block it packs; the NumPy API requires
         it only for an ambiguous shape, where the first cell axis is a calendar
         period length (12 or 366) and could be read as (years, periods, ``*cells``).
+    :param output_scale: output convention, one of ``compute.OUTPUT_SCALES``.
+        "normal" (the default) returns the standard-normal z-score,
+        "probability" returns the fitted cumulative probability in [0, 1]
+        without clipping, and "bounded" returns ``2p - 1`` in [-1, 1].
     :return: SPI values fitted to the gamma distribution at the specified time
         step scale, unitless
     :rtype: 1-D numpy.ndarray of floats of the same length as the input array
@@ -733,6 +752,7 @@ def spi(
         index_type="spi",
         fallback_context="SPI computation",
         spatial_time_major=spatial_time_major,
+        output_scale=output_scale,
     )
 
 
@@ -748,6 +768,7 @@ def spei(
     fitting_params: dict[str, Any] | None = None,
     *,
     spatial_time_major: bool = False,
+    output_scale: str = "normal",
 ) -> np.ndarray:
     """
     Compute SPEI fitted to the specified distribution.
@@ -793,6 +814,10 @@ def spei(
         The xarray adapter sets this for every block it packs; the NumPy API requires
         it only for an ambiguous shape, where the first cell axis is a calendar
         period length (12 or 366) and could be read as (years, periods, ``*cells``).
+    :param output_scale: output convention, one of ``compute.OUTPUT_SCALES``.
+        "normal" (the default) returns the standard-normal z-score,
+        "probability" returns the fitted cumulative probability in [0, 1]
+        without clipping, and "bounded" returns ``2p - 1`` in [-1, 1].
     :return: an array of SPEI values
     :rtype: numpy.ndarray of type float, of the same size and shape as the input
         PET and precipitation arrays
@@ -801,12 +826,14 @@ def spei(
     _validate_periodicity(periodicity)
     _validate_scale(scale, periodicity)
     _validate_distribution(distribution)
+    compute.validate_output_scale(output_scale)
 
     # bind context and emit calculation_started event
     log = _logger.bind(
         index_type="spei",
         scale=scale,
         distribution=distribution.value,
+        output_scale=output_scale,
         input_shape=precips_mm.shape,
         input_elements=precips_mm.size,
     )
@@ -908,10 +935,15 @@ def spei(
             periodicity,
             fitting_params,
             fallback_to_gamma=False,
+            output_scale=output_scale,
         )
 
-        # clip values to within the valid range
-        values = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX)
+        # clip z-scores to the supported range; probability-scale outputs are
+        # already bounded by construction and must not be z-clipped
+        if output_scale == "normal":
+            values = np.clip(transformed_fitted_values, _FITTED_INDEX_VALID_MIN, _FITTED_INDEX_VALID_MAX)
+        else:
+            values = transformed_fitted_values
 
         if values.ndim > 2:
             # (years, periods, *cells) back to the time-major input layout, dropping any

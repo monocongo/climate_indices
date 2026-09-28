@@ -195,6 +195,12 @@ def identify_runs(
         intensity, peak, and interarrival metrics. An input without runs yields
         a :class:`RunSet` of length zero.
 
+    Note:
+        On a probability-scale series (``output_scale="probability"``) the
+        conventional drought thresholds are lower-tail probabilities: 0.1,
+        0.05, and 0.025, approximately the z-score thresholds -1.28, -1.64,
+        and -1.96. Identify them with ``direction="below"``, as for z-scores.
+
     Raises:
         InvalidArgumentError: If ``direction`` is not ``"below"`` or
             ``"above"``, ``threshold`` is not a finite number (numeric

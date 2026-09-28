@@ -17,6 +17,7 @@ from climate_indices.exceptions import (
     DistributionFittingError,
     GoodnessOfFitWarning,
     InsufficientDataError,
+    InvalidArgumentError,
     MissingDataWarning,
     PearsonFittingError,
     PeriodicityError,
@@ -32,6 +33,8 @@ if TYPE_CHECKING:
 # declare the function names that should be included in the public API for this module
 __all__ = [
     "Periodicity",
+    "OUTPUT_SCALES",
+    "validate_output_scale",
     "fit_and_standardize",
     "prepare_scaled",
     "scale_values",
@@ -169,6 +172,27 @@ class Periodicity(Enum):
 # the valid number of time steps per year, i.e. the length of the second axis
 # of a 2-D (years, periods) input array
 _PERIOD_LENGTHS = frozenset(periodicity.period_length for periodicity in Periodicity)
+
+# the output conventions the standardized indices return: the standard-normal
+# z-score ("normal", the default), the fitted cumulative probability
+# ("probability", the PIT value in [0, 1]), and its signed counterpart
+# ("bounded", 2p - 1 in [-1, 1])
+OUTPUT_SCALES = ("normal", "probability", "bounded")
+
+
+def validate_output_scale(output_scale: str) -> None:
+    """Validate that an output scale is one of the accepted values.
+
+    :param output_scale: the output-scale value to validate
+    :raises InvalidArgumentError: if the value is not one of ``OUTPUT_SCALES``
+    """
+    if output_scale not in OUTPUT_SCALES:
+        raise InvalidArgumentError(
+            f"Invalid output_scale argument: {output_scale!r}. Supported values: {', '.join(OUTPUT_SCALES)}.",
+            argument_name="output_scale",
+            argument_value=repr(output_scale),
+            valid_values=", ".join(OUTPUT_SCALES),
+        )
 
 
 def _validate_array(
@@ -606,6 +630,7 @@ def _pearson_fit(
     skew: np.ndarray,
     loc: np.ndarray,
     scale: np.ndarray,
+    output_scale: str = "normal",
 ) -> np.ndarray:
     """
     Perform fitting of an array of values to a Pearson Type III distribution
@@ -617,6 +642,9 @@ def _pearson_fit(
     :param skew: first Pearson Type III parameter, the skew of the distribution
     :param loc: second Pearson Type III parameter, the loc of the distribution
     :param scale: third Pearson Type III parameter, the scale of the distribution
+    :param output_scale: one of ``compute.OUTPUT_SCALES``; "probability" returns the
+        fitted cumulative probability and "bounded" returns ``2p - 1``, both without
+        the inverse-normal transform
     """
 
     # only fit to the distribution if the values array is valid/not missing
@@ -671,26 +699,34 @@ def _pearson_fit(
                 1.0,
             )
 
-            # the values we'll return are the values at which the probabilities
-            # of a normal distribution are less than or equal to the computed
-            # probabilities, as determined by the normal distribution's
-            # quantile (or inverse cumulative distribution) function
-            try:
-                fitted_values = scipy.stats.norm.ppf(probabilities)
-            except (ValueError, RuntimeError, FloatingPointError) as e:
-                raise DistributionFittingError(
-                    f"Normal distribution inverse CDF (ppf) computation failed during Pearson transformation: {e}",
-                    distribution_name="pearson3",
-                    input_shape=probabilities.shape,
-                    parameters={
-                        "probabilities": _summarize_array(probabilities, "probabilities"),
-                        "skew": _summarize_array(skew, "skew"),
-                        "loc": _summarize_array(loc, "loc"),
-                        "scale": _summarize_array(scale, "scale"),
-                    },
-                    suggestion="Try using gamma distribution instead",
-                    underlying_error=e,
-                ) from e
+            # on the probability and bounded scales the fitted cumulative
+            # probability is the result, so the inverse-normal transform is skipped
+            if output_scale == "probability":
+                fitted_values = probabilities
+            elif output_scale == "bounded":
+                fitted_values = (2.0 * probabilities) - 1.0
+
+            # otherwise the values we return are the values at which the
+            # probabilities of a normal distribution are less than or equal to
+            # the computed probabilities, as determined by the normal
+            # distribution's quantile (or inverse cumulative distribution) function
+            else:
+                try:
+                    fitted_values = scipy.stats.norm.ppf(probabilities)
+                except (ValueError, RuntimeError, FloatingPointError) as e:
+                    raise DistributionFittingError(
+                        f"Normal distribution inverse CDF (ppf) computation failed during Pearson transformation: {e}",
+                        distribution_name="pearson3",
+                        input_shape=probabilities.shape,
+                        parameters={
+                            "probabilities": _summarize_array(probabilities, "probabilities"),
+                            "skew": _summarize_array(skew, "skew"),
+                            "loc": _summarize_array(loc, "loc"),
+                            "scale": _summarize_array(scale, "scale"),
+                        },
+                        suggestion="Try using gamma distribution instead",
+                        underlying_error=e,
+                    ) from e
 
         else:
             fitted_values = values
@@ -766,6 +802,7 @@ def transform_fitted_pearson(
     locs: np.ndarray | None = None,
     scales: np.ndarray | None = None,
     skews: np.ndarray | None = None,
+    output_scale: str = "normal",
 ) -> np.ndarray:
     """
     Fit values to a Pearson Type III distribution and transform the values
@@ -796,12 +833,17 @@ def transform_fitted_pearson(
     :param locs: pre-computed loc values for each month or day of the year
     :param scales: pre-computed scale values for each month or day of the year
     :param skews: pre-computed skew values for each month or day of the year
+    :param output_scale: one of ``compute.OUTPUT_SCALES``; "probability" returns the
+        fitted cumulative probability, "bounded" returns ``2p - 1``, and "normal"
+        (the default) returns the standard-normal z-score
     :return: 2-D array of transformed/fitted values, corresponding in size
              and shape of the input array
     :rtype: numpy.ndarray of floats
     """
+    validate_output_scale(output_scale)
     log = _logger.bind(
         operation="transform_fitted_pearson",
+        output_scale=output_scale,
         distribution="pearson3",
         periodicity=str(periodicity),
         input_shape=str(values.shape),
@@ -860,7 +902,7 @@ def transform_fitted_pearson(
     assert skews is not None
 
     # fit each value to the Pearson Type III distribution
-    values = _pearson_fit(values, probabilities_of_zero, skews, locs, scales)
+    values = _pearson_fit(values, probabilities_of_zero, skews, locs, scales, output_scale)
 
     log.info("distribution_transform_completed", output_shape=str(values.shape))
     return values
@@ -1663,6 +1705,7 @@ def transform_fitted_gamma(
     periodicity: Periodicity,
     alphas: np.ndarray | None = None,
     betas: np.ndarray | None = None,
+    output_scale: str = "normal",
 ) -> np.ndarray:
     """
     Fit values to a gamma distribution and transform the values to corresponding
@@ -1685,12 +1728,17 @@ def transform_fitted_gamma(
         year filled with NaN values, with array size == (# years * 366)
     :param alphas: pre-computed gamma fitting parameters
     :param betas: pre-computed gamma fitting parameters
+    :param output_scale: one of ``compute.OUTPUT_SCALES``; "probability" returns the
+        fitted cumulative probability, "bounded" returns ``2p - 1``, and "normal"
+        (the default) returns the standard-normal z-score
     :return: 2-D array of transformed/fitted values, corresponding in size
         and shape of the input array
     :rtype: numpy.ndarray of floats
     """
+    validate_output_scale(output_scale)
     log = _logger.bind(
         operation="transform_fitted_gamma",
+        output_scale=output_scale,
         distribution="gamma",
         periodicity=str(periodicity),
         input_shape=str(values.shape),
@@ -1762,14 +1810,25 @@ def transform_fitted_gamma(
 
     # TODO explain this better
     # (normalize including the probability of zero, putting into the range [0..1]?)
-    probabilities = probabilities_of_zero + ((1 - probabilities_of_zero) * gamma_probabilities)
+    probabilities: np.ndarray = probabilities_of_zero + ((1 - probabilities_of_zero) * gamma_probabilities)
+
+    # on the probability and bounded scales the fitted cumulative probability is
+    # the result, so the inverse-normal transform is skipped
+    result_values: np.ndarray
+    if output_scale == "probability":
+        log.info("distribution_transform_completed", output_shape=str(probabilities.shape))
+        return probabilities
+    if output_scale == "bounded":
+        result_values = (2.0 * probabilities) - 1.0
+        log.info("distribution_transform_completed", output_shape=str(result_values.shape))
+        return result_values
 
     # the values we'll return are the values at which the probabilities of
     # a normal distribution are less than or equal to the computed probabilities,
     # as determined by the normal distribution's quantile (or inverse
     # cumulative distribution) function
     try:
-        result_values: np.ndarray = scipy.stats.norm.ppf(probabilities)
+        result_values = scipy.stats.norm.ppf(probabilities)
         log.info("distribution_transform_completed", output_shape=str(result_values.shape))
         return result_values
     except (ValueError, RuntimeError, FloatingPointError) as e:
@@ -1838,6 +1897,7 @@ def fit_and_standardize(
     *,
     fallback_to_gamma: bool = False,
     fallback_context: str = "",
+    output_scale: str = "normal",
 ) -> np.ndarray:
     """
     Fit values to the specified distribution and transform the values to the
@@ -1871,6 +1931,9 @@ def fit_and_standardize(
             fits gamma to the scaled input, and the decision is made once for the
             whole input block, not per grid cell.
         fallback_context: Context included in the fall-back warning log message.
+        output_scale: One of ``compute.OUTPUT_SCALES``. "normal" (the default)
+            returns the standard-normal z-score, "probability" the fitted
+            cumulative probability in [0, 1], and "bounded" ``2p - 1`` in [-1, 1].
 
     Returns:
         2-D array of transformed/fitted values, corresponding in size and shape to
@@ -1879,6 +1942,7 @@ def fit_and_standardize(
     Raises:
         ValueError: If the distribution is neither gamma nor Pearson Type III.
     """
+    validate_output_scale(output_scale)
     params = _normalize_fitting_params(fitting_params) or {}
 
     if distribution.value == "gamma":
@@ -1890,6 +1954,7 @@ def fit_and_standardize(
             periodicity,
             params.get("alpha"),
             params.get("beta"),
+            output_scale,
         )
 
     if distribution.value != "pearson":
@@ -1924,6 +1989,7 @@ def fit_and_standardize(
             locs,
             scales,
             skews,
+            output_scale,
         )
 
     if values.ndim == 1:
@@ -1942,6 +2008,7 @@ def fit_and_standardize(
             locs,
             scales,
             skews,
+            output_scale,
         )
 
         # check if fallback is needed due to excessive NaN values, judging only the
@@ -1965,6 +2032,7 @@ def fit_and_standardize(
             periodicity,
             alphas=None,
             betas=None,
+            output_scale=output_scale,
         )
 
     return standardized

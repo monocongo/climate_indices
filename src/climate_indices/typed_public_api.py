@@ -68,6 +68,10 @@ from climate_indices.xarray_adapter import (
 # pre-build decorated functions at module level for performance
 _wrapped_spi = xarray_adapter(
     cf_metadata=CF_METADATA["spi"],  # type: ignore[arg-type]
+    cf_metadata_variants={
+        "probability": CF_METADATA["spi_probability"],  # type: ignore[dict-item]
+        "bounded": CF_METADATA["spi_bounded"],  # type: ignore[dict-item]
+    },
     index_display_name="SPI",
     calculation_metadata_keys=["scale", "distribution", "calibration_year_initial", "calibration_year_final"],
     spatial_kernel=True,
@@ -75,6 +79,10 @@ _wrapped_spi = xarray_adapter(
 
 _wrapped_spei = xarray_adapter(
     cf_metadata=CF_METADATA["spei"],  # type: ignore[arg-type]
+    cf_metadata_variants={
+        "probability": CF_METADATA["spei_probability"],  # type: ignore[dict-item]
+        "bounded": CF_METADATA["spei_bounded"],  # type: ignore[dict-item]
+    },
     index_display_name="SPEI",
     calculation_metadata_keys=["scale", "distribution", "calibration_year_initial", "calibration_year_final"],
     additional_input_names=["pet_mm"],
@@ -145,6 +153,8 @@ def spi(
     calibration_year_final: int,
     periodicity: Periodicity,
     fitting_params: dict[str, Any] | None = None,
+    *,
+    output_scale: str = "normal",
 ) -> npt.NDArray[np.float64]: ...
 
 
@@ -158,6 +168,8 @@ def spi(
     calibration_year_final: int | None = None,
     periodicity: Periodicity | None = None,
     fitting_params: dict[str, Any] | None = None,
+    *,
+    output_scale: str = "normal",
 ) -> xr.DataArray: ...
 
 
@@ -191,6 +203,10 @@ def spi(values: Any, *args: Any, **kwargs: Any) -> npt.NDArray[np.float64] | xr.
             for NumPy, optional for xarray.
         fitting_params: Optional dict of pre-computed distribution fitting
             parameters.
+        output_scale: Output convention, one of ``compute.OUTPUT_SCALES``.
+            "normal" (the default) returns the standard-normal z-score,
+            "probability" returns the fitted cumulative probability in [0, 1]
+            without clipping, and "bounded" returns ``2p - 1``.
 
     Returns:
         SPI values as numpy.ndarray or xarray.DataArray (matches input type).
@@ -210,6 +226,8 @@ def spei(
     calibration_year_initial: int,
     calibration_year_final: int,
     fitting_params: dict[str, Any] | None = None,
+    *,
+    output_scale: str = "normal",
 ) -> npt.NDArray[np.float64]: ...
 
 
@@ -224,6 +242,8 @@ def spei(
     calibration_year_initial: int | None = None,
     calibration_year_final: int | None = None,
     fitting_params: dict[str, Any] | None = None,
+    *,
+    output_scale: str = "normal",
 ) -> xr.DataArray: ...
 
 
@@ -258,6 +278,10 @@ def spei(precips_mm: Any, pet_mm: Any, *args: Any, **kwargs: Any) -> npt.NDArray
             NumPy, optional for xarray).
         fitting_params: Optional dict of pre-computed distribution fitting
             parameters.
+        output_scale: Output convention, one of ``compute.OUTPUT_SCALES``.
+            "normal" (the default) returns the standard-normal z-score,
+            "probability" returns the fitted cumulative probability in [0, 1]
+            without clipping, and "bounded" returns ``2p - 1``.
 
     Returns:
         SPEI values as numpy.ndarray or xarray.DataArray (matches input type).

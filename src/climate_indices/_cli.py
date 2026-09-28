@@ -76,6 +76,16 @@ def _add_common_spi_arguments(
         nargs="*",
     )
     parser.add_argument(
+        "--output_scale",
+        help=(
+            "Scale the standardized SPI/SPEI output: 'normal' (default) is the "
+            "standard-normal z-score, 'probability' the fitted cumulative probability "
+            "in [0, 1], and 'bounded' its 2p - 1 mapping in [-1, 1]"
+        ),
+        choices=list(compute.OUTPUT_SCALES),
+        default=None,
+    )
+    parser.add_argument(
         "--calibration_start_year",
         help="Initial year of the calibration period",
         type=int,

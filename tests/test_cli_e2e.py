@@ -151,6 +151,50 @@ def test_timeseries_spi_matches_in_process_computation(tmp_path, precips_mm_mont
         np.testing.assert_allclose(dataset["spi_gamma_06"].values, expected, equal_nan=True)
 
 
+def test_timeseries_spi_probability_output_scale(tmp_path, precips_mm_monthly):
+    """--output_scale probability writes the fitted probabilities and their metadata."""
+    values = precips_mm_monthly.reshape(-1)
+    precip_path = tmp_path / "precip.nc"
+    _write_timeseries(precip_path, values)
+    output_base = tmp_path / "spi_probability"
+
+    main([*_spi_arguments(precip_path, output_base), "--output_scale", "probability"])
+
+    expected = indices.spi(
+        values=values,
+        scale=6,
+        distribution=indices.Distribution.gamma,
+        data_start_year=_DATA_START_YEAR,
+        calibration_year_initial=_CALIBRATION_START_YEAR,
+        calibration_year_final=_CALIBRATION_END_YEAR,
+        periodicity=compute.Periodicity.monthly,
+        output_scale="probability",
+    )
+    with xr.open_dataset(tmp_path / "spi_probability_spi_gamma_06_probability.nc") as dataset:
+        written = dataset["spi_gamma_06_probability"]
+        np.testing.assert_allclose(written.values, expected, equal_nan=True)
+        assert written.attrs["units"] == "1"
+        assert written.attrs["valid_min"] == 0.0
+        assert written.attrs["valid_max"] == 1.0
+        assert "probability" in written.attrs["long_name"]
+
+
+def test_output_scale_is_rejected_for_a_non_standardized_index(tmp_path, precips_mm_monthly):
+    values = precips_mm_monthly.reshape(-1)
+    precip_path = tmp_path / "precip.nc"
+    _write_timeseries(precip_path, values)
+
+    arguments = [
+        *_common_arguments("pnp", precip_path, tmp_path / "pnp"),
+        "--scales",
+        "6",
+        "--output_scale",
+        "probability",
+    ]
+    with pytest.raises(ValueError, match="--output_scale"):
+        main(arguments)
+
+
 def test_gridded_spi_matches_in_process_computation(tmp_path, precips_mm_monthly):
     values = precips_mm_monthly.reshape(-1)
     # offset each grid cell's seasonal cycle so a mis-indexed cell cannot match

@@ -53,10 +53,15 @@ The SPI computation follows these steps:
 
    - Apply inverse normal (Gaussian) CDF to obtain standardized values
    - This transforms probabilities to standard normal deviates
+   - `output_scale="probability"` stops after step 4 and returns the fitted
+     cumulative probability in [0, 1] (the probability integral transform, or
+     PIT, value); `output_scale="bounded"` returns its `2p - 1` mapping in
+     [-1, 1]. Neither is passed through the inverse normal transform
 
 6. **Clipping to valid range**
 
-   - Constrain final SPI values to [-3.09, 3.09]
+   - Constrain final SPI values to [-3.09, 3.09] on the default
+     `output_scale="normal"` only
    - This range represents probabilities from 0.001 to 0.999
 
 ## SPEI computation
@@ -320,6 +325,12 @@ Conventions:
 The primitive is index-agnostic: a dry SPI spell, a wet SPEI spell, and a KBDI
 drought spell (``direction="above"``, since KBDI rises in drought) are the same
 run concept on a different series.
+
+A probability-scale series (`output_scale="probability"`) reports a lower-tail
+probability, so its drought runs also use `direction="below"`, with thresholds
+0.1, 0.05, and 0.025 standing in for the z-score thresholds -1.28, -1.64, and
+-1.96. Probability-scale outputs are not clipped, so a run can be counted all
+the way into the tail.
 
 **Reference**: Yevjevich, V. (1967). *An objective approach to definitions and
 investigations of continental hydrologic droughts*. Hydrology Papers 23,

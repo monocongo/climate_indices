@@ -1206,12 +1206,29 @@ def _collect_input_dataarrays(
     return input_dataarrays
 
 
+def _resolve_cf_metadata(
+    cf_metadata: dict[str, str] | None,
+    cf_metadata_variants: dict[str, dict[str, str]] | None,
+    valid_kwargs: dict[str, Any],
+) -> dict[str, str] | None:
+    """Select the CF metadata for the requested output scale, defaulting to the base entry.
+
+    A variant is keyed by the value of the wrapped function's ``output_scale``
+    keyword (e.g. "probability"); an omitted or unregistered scale keeps the
+    base metadata.
+    """
+    if not cf_metadata_variants:
+        return cf_metadata
+    return cf_metadata_variants.get(valid_kwargs.get("output_scale", "normal"), cf_metadata)
+
+
 def _finalize_ufunc_result(
     result: np.ndarray[Any, Any] | xr.DataArray,
     input_da: xr.DataArray,
     valid_kwargs: dict[str, Any],
     *,
     cf_metadata: dict[str, str] | None,
+    cf_metadata_variants: dict[str, dict[str, str]] | None = None,
     calculation_metadata_keys: list[str] | tuple[str, ...] | None,
     index_display_name: str | None,
     func_name: str,
@@ -1228,6 +1245,8 @@ def _finalize_ufunc_result(
         input_da: Original input DataArray
         valid_kwargs: Filtered kwargs passed to the wrapped function
         cf_metadata: CF convention metadata for the output
+        cf_metadata_variants: Optional CF metadata keyed by ``output_scale`` value,
+            overriding ``cf_metadata`` for the requested scale
         calculation_metadata_keys: Keys to extract from valid_kwargs for metadata
         index_display_name: Display name for the index (or None to use func_name.upper())
         func_name: Name of the wrapped function
@@ -1253,7 +1272,8 @@ def _finalize_ufunc_result(
     # apply metadata using build_output_attrs
     calc_metadata = _capture_calculation_metadata(calculation_metadata_keys, valid_kwargs)
     resolved_index_name = index_display_name if index_display_name is not None else func_name.upper()
-    output_attrs = build_output_attrs(input_da, cf_metadata, calc_metadata, index_name=resolved_index_name)
+    resolved_cf_metadata = _resolve_cf_metadata(cf_metadata, cf_metadata_variants, valid_kwargs)
+    output_attrs = build_output_attrs(input_da, resolved_cf_metadata, calc_metadata, index_name=resolved_index_name)
     result_da.attrs = output_attrs
 
     # deep-copy coordinate attrs to prevent mutation bleed-through
@@ -1272,6 +1292,7 @@ def _finalize_ufunc_result(
 def xarray_adapter(
     *,
     cf_metadata: dict[str, str] | None = None,
+    cf_metadata_variants: dict[str, dict[str, str]] | None = None,
     time_dim: str = "time",
     infer_params: bool = True,
     calculation_metadata_keys: list[str] | tuple[str, ...] | None = None,
@@ -1296,6 +1317,9 @@ def xarray_adapter(
         cf_metadata: Optional dict of CF Convention metadata to apply to output DataArray.
             Keys should be CF attribute names (e.g., 'standard_name', 'long_name', 'units').
             These override conflicting attributes from the input DataArray.
+        cf_metadata_variants: Optional mapping from an ``output_scale`` value
+            (e.g. "probability") to the CF metadata for that output convention,
+            overriding ``cf_metadata`` when that scale is requested.
         time_dim: Name of the time dimension in the input DataArray (default: "time").
             Used for parameter inference and alignment.
         infer_params: If True, automatically infer missing parameters (data_start_year,
@@ -1527,6 +1551,7 @@ def xarray_adapter(
                     input_da,
                     valid_kwargs,
                     cf_metadata=cf_metadata,
+                    cf_metadata_variants=cf_metadata_variants,
                     calculation_metadata_keys=calculation_metadata_keys,
                     index_display_name=index_display_name,
                     func_name=func.__name__,
@@ -1613,6 +1638,7 @@ def xarray_adapter(
                     input_da,
                     valid_kwargs,
                     cf_metadata=cf_metadata,
+                    cf_metadata_variants=cf_metadata_variants,
                     calculation_metadata_keys=calculation_metadata_keys,
                     index_display_name=index_display_name,
                     func_name=func.__name__,
@@ -1698,6 +1724,7 @@ def xarray_adapter(
                 input_da,
                 valid_kwargs,
                 cf_metadata=cf_metadata,
+                cf_metadata_variants=cf_metadata_variants,
                 calculation_metadata_keys=calculation_metadata_keys,
                 index_display_name=index_display_name,
                 func_name=func.__name__,
