@@ -22,7 +22,16 @@ from climate_indices.logging_config import get_logger, log_calculation_failure
 from climate_indices.performance import check_large_array_memory
 
 # declare the function names that should be included in the public API for this module
-__all__ = ["eddi", "percentage_of_normal", "pci", "pet", "spei", "spi", "standardized_index"]
+__all__ = [
+    "eddi",
+    "fit_diagnostics",
+    "percentage_of_normal",
+    "pci",
+    "pet",
+    "spei",
+    "spi",
+    "standardized_index",
+]
 
 
 class Distribution(Enum):
@@ -684,6 +693,96 @@ def standardized_index(
         spatial_time_major=spatial_time_major,
         output_scale=output_scale,
     )
+
+
+def fit_diagnostics(
+    values: np.ndarray,
+    scale: int,
+    distribution: Distribution,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: compute.Periodicity,
+    fitting_params: dict[str, Any] | None = None,
+    *,
+    spatial_time_major: bool = False,
+) -> compute.FitDiagnostics:
+    """Scale a series, fit a distribution, and return per-calendar-step fit diagnostics.
+
+    This is :func:`standardized_index` with the audit surface instead of the index
+    values: it accumulates the series over ``scale`` time steps, fits ``distribution``
+    over the calibration period, and returns the fitted parameters, the probability of
+    zero, the number of valid calibration values, and the Kolmogorov-Smirnov D
+    statistic and exact p-value for every calendar step. A Pearson Type III fit falls
+    back to gamma under the same policy as ``standardized_index``, and the fall back is
+    reported rather than applied silently.
+
+    Only the NumPy path is supported; the xarray and Dask surface is tracked
+    separately. A fitted parameter set returned here can be passed back as
+    ``fitting_params`` to ``spi`` or ``standardized_index`` to reproduce a fit.
+
+    Args:
+        values: 1-D array of non-negative values, or a time-major spatial block;
+            see :func:`spi` for the accepted layouts.
+        scale: Number of time steps accumulated before fitting.
+        distribution: Distribution to fit, gamma or Pearson Type III.
+        data_start_year: Initial year of the input values.
+        calibration_year_initial: Initial year of the calibration period.
+        calibration_year_final: Final year of the calibration period.
+        periodicity: Monthly or daily time steps.
+        fitting_params: Optional pre-computed fitting parameters; deprecated
+            aliases are normalized here. A parameter left as None is fitted from
+            the data.
+        spatial_time_major: Read a time-major spatial block as independent series.
+
+    Returns:
+        A :class:`climate_indices.compute.FitDiagnostics` whose arrays carry the
+        scaled series' calendar steps.
+    """
+    # validate arguments
+    _validate_periodicity(periodicity)
+    _validate_scale(scale, periodicity)
+    _validate_distribution(distribution)
+
+    log = _logger.bind(
+        index_type="fit_diagnostics",
+        scale=scale,
+        distribution=distribution.value,
+        input_shape=values.shape,
+        input_elements=values.size,
+    )
+    log.info("calculation_started")
+    t0 = time.perf_counter()
+    memory_metrics = check_large_array_memory(values)
+
+    try:
+        fitting_params = compute._normalize_fitting_params(fitting_params)
+
+        # prepare_scaled owns the ambiguous-shape rejection, so no separate guard here
+        scaled_values = compute.prepare_scaled(values, scale, periodicity, spatial_time_major=spatial_time_major)
+
+        # an all-missing time-major block comes back unfolded, keeping the input shape;
+        # fold it so the diagnostic arrays carry (time_steps, *cells), not the time axis
+        if values.ndim > 2 and scaled_values.shape == values.shape:
+            scaled_values = compute._reshape_time_major(scaled_values, periodicity)
+
+        diagnostics = compute.fit_diagnostics(
+            scaled_values,
+            distribution,
+            data_start_year,
+            calibration_year_initial,
+            calibration_year_final,
+            periodicity,
+            fitting_params,
+            fallback_to_gamma=True,
+            fallback_context="fit diagnostics",
+        )
+
+        _log_calculation_completed(log, t0, diagnostics.ks_statistic.shape, memory_metrics)
+        return diagnostics
+    except Exception as exc:
+        log_calculation_failure(log, exc, calibration_period=f"{calibration_year_initial}-{calibration_year_final}")
+        raise
 
 
 def spi(
