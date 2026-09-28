@@ -3,7 +3,10 @@
 Centralizes CF-compliant metadata (long_name, units, references) for
 climate indices, including some without an xarray adapter yet: an entry may
 land ahead of its adapter (see docs/design/fire-subsystem.md), but no
-adapter ships before its entry. Each entry follows the CF Conventions
+index adapter ships before its entry. An auxiliary or audit surface that is
+not an index output (for example the fit-diagnostics Dataset) defines its
+per-variable CF metadata beside its adapter instead; such entries are not
+enumerated here. Each entry follows the CF Conventions
 (https://cfconventions.org/) attribute model.
 
 This module is a leaf dependency with no local imports, ensuring it can
