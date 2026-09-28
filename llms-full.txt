@@ -1166,11 +1166,11 @@ open (issue #780).
 - **Drought / Moisture Indices**: SPI, SPEI, PNP, EDDI, PCI
 - **Palmer Family**: PDSI, PHDI, PMDI, Palmer Z-Index, and self-calibrated scPDSI
 - **Flood-Potential Indices**: `climate_indices.flood` namespace — Effective Precipitation, fixed-window EDI, Flood Index, and the recursive Antecedent Precipitation Index
-- **PET Methods**: Thornthwaite and Hargreaves (public API); FAO-56 Penman-Monteith primitives are internal (`pm_eto.py`) and back the fire-weather indices
+- **PET Methods**: Thornthwaite, Hargreaves, and FAO-56 Penman-Monteith (`climate_indices.pet_penman_monteith`) are public APIs; lower-level primitives in `pm_eto.py` are internal and back the fire-weather indices
 - **Fire-Weather Indices**: `climate_indices.fire` namespace — Fosberg Fire Weather Index (FFWI), Hot-Dry-Windy Index (HDW), Keetch-Byram Drought Index (KBDI), and the Canadian Forest Fire Weather Index System (FFMC, DMC, DC, ISI, BUI, FWI, DSR)
 - **Run Theory**: `runs` module for identifying contiguous above/below-threshold events (duration, magnitude, intensity, peak, interarrival)
 - **Flexible Input Formats**: NumPy arrays, xarray DataArrays, and Dask arrays
-- **Multiple Temporal Scales**: Monthly and daily data, time scales 1-72 months/days (where applicable)
+- **Multiple Temporal Scales**: Monthly data at 1–72 months; daily data at 1–2,196 days (where applicable)
 - **Distribution Options**: Gamma and Pearson Type III distributions for SPI/SPEI
 - **CLI Tools**: A single `climate_indices` CLI for batch processing NetCDF data across the index families
 - **Scientific Rigor**: Peer-reviewed methodologies with comprehensive validation against reference datasets
@@ -1350,9 +1350,9 @@ uv run pytest -m benchmark
 9. **For error handling**: Study `src/climate_indices/exceptions.py` (complete hierarchy with attributes)
 
 ### Critical Architectural Invariants
-- **Time dimension chunking**: Dask arrays MUST have time as a single chunk (`time: -1`) for climate indices
+- **Time dimension chunking**: SPI/SPEI and stateful fire adapters reject split Dask time chunks; PET adapters rechunk split time internally. See [chunking guidance](docs/xarray_compatibility.md#chunking-guidance-for-gridded-indices).
 - **Calibration period**: Default minimum 30 years; violations trigger `ShortCalibrationWarning`
-- **Distribution fitting**: Requires minimum 10 non-zero values; insufficient data raises `InsufficientDataError`
+- **Pearson Type III fitting**: Requires at least 4 non-zero values per calendar time step; fewer raise `InsufficientDataError`
 - **Coordinate validation**: Time coordinates must be monotonically increasing; xarray inputs undergo automatic validation
 - **Backward compatibility**: Legacy NumPy API (`indices.py`) must remain stable; new features go to the xarray API
 - **Fire namespace**: Fire-weather indices are exposed only under `climate_indices.fire`; they are not top-level package functions (see ADR-0005)
@@ -1374,7 +1374,7 @@ uv run pytest -m benchmark
 
 ### Common Pitfalls
 1. **Do NOT** use wildcard imports (`from module import *`) - explicitly forbidden by ruff
-2. **Do NOT** chunk the time dimension in Dask arrays - causes incorrect index calculations
+2. **Dask time chunks**: SPI/SPEI and stateful fire adapters reject split time chunks; PET adapters accept them and rechunk internally
 3. **Do NOT** modify the `indices.py` API in a breaking way - backward compatibility requirement
 4. **Do NOT** commit without running tests - pre-commit hooks will fail
 5. **Do NOT** use string paths - always use `pathlib.Path` objects
@@ -1395,7 +1395,7 @@ uv run pytest -m benchmark
 
 ---
 
-**Next Steps**: See [architecture.md](docs/architecture.md) for detailed technical architecture, [development-guide.md](docs/development-guide.md) for setup instructions, and [reference.rst](docs/reference.rst) for API reference details.
+**Next Steps**: See [architecture.md](docs/architecture.md) for detailed technical architecture, [development-guide.md](docs/development-guide.md) for setup instructions, and [reference.md](docs/reference.md) for API reference details.
 
 ## docs/architecture.md
 
