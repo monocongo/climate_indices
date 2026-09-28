@@ -430,9 +430,10 @@ def test_cell_shaped_fitting_params_need_unsplit_dask_cell_dimensions() -> None:
     )
     supplied = {name: first[name].values for name in ("alpha", "beta")}
 
+    split_grid = _monthly_grid_da().chunk({"time": -1, "lat": 1, "lon": 2})
     with pytest.raises(ValueError, match=r"single Dask chunk \(split: lat, lon\)"):
         fit_diagnostics(
-            _monthly_grid_da().chunk({"time": -1, "lat": 1, "lon": 2}),
+            split_grid,
             1,
             Distribution.gamma,
             calibration_year_initial=_CALIBRATION_START_YEAR,
@@ -473,9 +474,10 @@ def test_all_missing_input_reports_no_valid_sample(distribution: Distribution) -
 
 def test_scale_longer_than_the_series_is_rejected() -> None:
     """The adapter rejects a scale the series cannot support, as the NumPy core does."""
+    series = _monthly_series_da()
     with pytest.raises(InsufficientDataError, match="Insufficient data for scale"):
         fit_diagnostics(
-            _monthly_series_da(),
+            series,
             1000,
             Distribution.gamma,
             calibration_year_initial=_CALIBRATION_START_YEAR,
@@ -486,9 +488,10 @@ def test_scale_longer_than_the_series_is_rejected() -> None:
 def test_rejects_monthly_input_that_does_not_begin_in_january() -> None:
     """Monthly input must begin in January, matching the index adapters."""
     time = pd.date_range("2000-03-01", periods=24, freq="MS")
+    series = xr.DataArray(np.arange(1.0, 25.0), coords={"time": time}, dims=["time"])
     with pytest.raises(CoordinateValidationError, match="begin in January"):
         fit_diagnostics(
-            xr.DataArray(np.arange(1.0, 25.0), coords={"time": time}, dims=["time"]),
+            series,
             1,
             Distribution.gamma,
         )
@@ -497,9 +500,10 @@ def test_rejects_monthly_input_that_does_not_begin_in_january() -> None:
 def test_rejects_daily_input_that_does_not_begin_on_january_first() -> None:
     """Daily input must begin on January 1, matching the index adapters."""
     time = pd.date_range("2000-01-02", periods=365, freq="D")
+    series = xr.DataArray(np.arange(1.0, 366.0), coords={"time": time}, dims=["time"])
     with pytest.raises(CoordinateValidationError, match="begin on January 1"):
         fit_diagnostics(
-            xr.DataArray(np.arange(1.0, 366.0), coords={"time": time}, dims=["time"]),
+            series,
             1,
             Distribution.gamma,
         )
@@ -507,9 +511,10 @@ def test_rejects_daily_input_that_does_not_begin_on_january_first() -> None:
 
 def test_rejects_a_time_dimension_split_across_dask_chunks() -> None:
     """The time dimension must be a single chunk; rechunking is left to the caller."""
+    chunked = _monthly_series_da().chunk({"time": 120})
     with pytest.raises(CoordinateValidationError, match="single chunk"):
         fit_diagnostics(
-            _monthly_series_da().chunk({"time": 120}),
+            chunked,
             1,
             Distribution.gamma,
         )
