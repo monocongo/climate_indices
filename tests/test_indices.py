@@ -569,21 +569,32 @@ def test_masked_array_edge_cases(
     )
 
     # also test a compute function directly: transform_fitted_gamma
-    # this validates the pattern at the compute module level
-    # create monthly test data (12 months minimum required)
-    test_values = np.array([10.0, 20.0, 30.0, 40.0, 50.0, 15.0, 25.0, 35.0, 45.0, 55.0, 12.0, 22.0])
+    # this validates the pattern at the compute module level, on 30 years of
+    # monthly values so that every calendar month can be fitted
+    test_values = np.random.default_rng(3).gamma(2.0, 30.0, size=360)
+    plain_result = compute.transform_fitted_gamma(test_values, 1900, 1900, 1929, compute.Periodicity.monthly)
 
-    # (a) no mask
+    # (a) no mask: a mask marks missing values, so an empty one changes nothing
     masked_values_no_mask = np.ma.array(test_values, mask=False)
     result_compute_no_mask = compute.transform_fitted_gamma(
         masked_values_no_mask,
         1900,  # data_start_year
         1900,  # calibration_start_year
-        1901,  # calibration_end_year
+        1929,  # calibration_end_year
         compute.Periodicity.monthly,
     )
     assert not np.all(np.isnan(result_compute_no_mask)), (
         "compute.transform_fitted_gamma with mask=False should produce valid results"
+    )
+    np.testing.assert_array_equal(result_compute_no_mask, plain_result)
+
+    # (b) partial mask: a masked value is missing, as a NaN in its place is
+    masked_values_partial = np.ma.array(test_values, mask=np.arange(test_values.size) % 7 == 0)
+    np.testing.assert_array_equal(
+        compute.transform_fitted_gamma(masked_values_partial, 1900, 1900, 1929, compute.Periodicity.monthly),
+        compute.transform_fitted_gamma(
+            np.ma.filled(masked_values_partial, np.nan), 1900, 1900, 1929, compute.Periodicity.monthly
+        ),
     )
 
     # (c) full mask - should trigger early return
