@@ -642,6 +642,49 @@ def _minimum_possible(
     return result
 
 
+def _pearson_output_from_probabilities(
+    probabilities: np.ndarray,
+    output_scale: OutputScale,
+    skew: np.ndarray,
+    loc: np.ndarray,
+    scale: np.ndarray,
+) -> np.ndarray:
+    """
+    Map fitted Pearson Type III cumulative probabilities onto the requested output scale.
+
+    On the probability and bounded scales the fitted cumulative probability is
+    the result, so the inverse-normal transform is skipped; on the normal scale
+    the result is the normal distribution's quantile at each probability.
+
+    :param probabilities: fitted cumulative probabilities, clipped to [0, 1]
+    :param output_scale: one of ``compute.OUTPUT_SCALES``
+    :param skew: first Pearson Type III parameter, for error context only
+    :param loc: second Pearson Type III parameter, for error context only
+    :param scale: third Pearson Type III parameter, for error context only
+    """
+    scaled = _map_non_normal_scale(probabilities, output_scale)
+    if scaled is not None:
+        return scaled
+
+    try:
+        result: np.ndarray = scipy.stats.norm.ppf(probabilities)
+        return result
+    except (ValueError, RuntimeError, FloatingPointError) as e:
+        raise DistributionFittingError(
+            f"Normal distribution inverse CDF (ppf) computation failed during Pearson transformation: {e}",
+            distribution_name="pearson3",
+            input_shape=probabilities.shape,
+            parameters={
+                "probabilities": _summarize_array(probabilities, "probabilities"),
+                "skew": _summarize_array(skew, "skew"),
+                "loc": _summarize_array(loc, "loc"),
+                "scale": _summarize_array(scale, "scale"),
+            },
+            suggestion="Try using gamma distribution instead",
+            underlying_error=e,
+        ) from e
+
+
 def _pearson_fit(
     values: np.ndarray,
     probabilities_of_zero: np.ndarray,
@@ -721,34 +764,7 @@ def _pearson_fit(
                 0.0,
                 1.0,
             )
-
-            # on the probability and bounded scales the fitted cumulative
-            # probability is the result, so the inverse-normal transform is skipped
-            scaled = _map_non_normal_scale(probabilities, output_scale)
-            if scaled is not None:
-                fitted_values = scaled
-
-            # otherwise the values we return are the values at which the
-            # probabilities of a normal distribution are less than or equal to
-            # the computed probabilities, as determined by the normal
-            # distribution's quantile (or inverse cumulative distribution) function
-            else:
-                try:
-                    fitted_values = scipy.stats.norm.ppf(probabilities)
-                except (ValueError, RuntimeError, FloatingPointError) as e:
-                    raise DistributionFittingError(
-                        f"Normal distribution inverse CDF (ppf) computation failed during Pearson transformation: {e}",
-                        distribution_name="pearson3",
-                        input_shape=probabilities.shape,
-                        parameters={
-                            "probabilities": _summarize_array(probabilities, "probabilities"),
-                            "skew": _summarize_array(skew, "skew"),
-                            "loc": _summarize_array(loc, "loc"),
-                            "scale": _summarize_array(scale, "scale"),
-                        },
-                        suggestion="Try using gamma distribution instead",
-                        underlying_error=e,
-                    ) from e
+            fitted_values = _pearson_output_from_probabilities(probabilities, output_scale, skew, loc, scale)
 
         else:
             fitted_values = values
