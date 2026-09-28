@@ -2885,65 +2885,90 @@ def palmer_pdsi(
 
 
 #: Per-variable CF metadata for the fit-diagnostics Dataset. Diagnostics are an audit
-#: surface rather than an index, so they carry their own metadata instead of the
-#: index registry; provenance is added by ``build_output_attrs`` per variable.
-_FIT_DIAGNOSTICS_METADATA: dict[str, dict[str, str]] = {
+#: surface rather than an index, so they carry their own CF metadata here instead of
+#: a CF_METADATA entry; provenance is added by ``build_output_attrs`` per variable.
+_FIT_DIAGNOSTICS_THOM_1958 = (
+    "Thom, H. C. S. (1958). A note on the gamma distribution. "
+    "Monthly Weather Review, 86(4), 117-122. "
+    "https://doi.org/10.1175/1520-0493(1958)086<0117:ANOTGD>2.0.CO;2"
+)
+_FIT_DIAGNOSTICS_STAGGE_2015 = (
+    "Stagge, J. H., Tallaksen, L. M., Gudmundsson, L., Van Loon, A. F., & Stahl, K. (2015). "
+    "Candidate distributions for climatological drought indices (SPI and SPEI). "
+    "International Journal of Climatology, 35(13), 4027-4040. https://doi.org/10.1002/joc.4267"
+)
+_FIT_DIAGNOSTICS_MASSEY_1951 = (
+    "Massey, F. J. (1951). The Kolmogorov-Smirnov test for goodness of fit. "
+    "Journal of the American Statistical Association, 46(253), 68-78. "
+    "https://doi.org/10.1080/01621459.1951.10500769"
+)
+_FIT_DIAGNOSTICS_CF_METADATA: dict[str, dict[str, str]] = {
     "alpha": {
         "long_name": "Gamma shape parameter",
         "units": "1",
         "description": "Fitted gamma shape parameter, per calendar step and cell.",
+        "references": _FIT_DIAGNOSTICS_THOM_1958,
     },
     "beta": {
         "long_name": "Gamma scale parameter",
         "units": "1",
         "description": "Fitted gamma scale parameter, per calendar step and cell.",
+        "references": _FIT_DIAGNOSTICS_THOM_1958,
     },
     "loc": {
         "long_name": "Pearson Type III location parameter",
         "units": "1",
         "description": "Fitted Pearson Type III location parameter, per calendar step and cell.",
+        "references": _FIT_DIAGNOSTICS_STAGGE_2015,
     },
     "scale": {
         "long_name": "Pearson Type III scale parameter",
         "units": "1",
         "description": "Fitted Pearson Type III scale parameter, per calendar step and cell.",
+        "references": _FIT_DIAGNOSTICS_STAGGE_2015,
     },
     "skew": {
         "long_name": "Pearson Type III skewness parameter",
         "units": "1",
         "description": "Fitted Pearson Type III skewness parameter, per calendar step and cell.",
+        "references": _FIT_DIAGNOSTICS_STAGGE_2015,
     },
     "prob_zero": {
         "long_name": "Probability of zero accumulation",
         "units": "1",
         "description": "Probability mass the fitted distribution places at a zero accumulation.",
+        "references": _FIT_DIAGNOSTICS_STAGGE_2015,
     },
     "n_valid": {
         "long_name": "Valid calibration sample count",
         "units": "1",
         "description": "Non-missing, non-zero calibration values entering the Kolmogorov-Smirnov test.",
+        "references": _FIT_DIAGNOSTICS_MASSEY_1951,
     },
     "ks_statistic": {
         "long_name": "Kolmogorov-Smirnov D statistic",
         "units": "1",
         "description": "Maximum distance between the fitted CDF and the calibration sample's empirical CDF.",
+        "references": _FIT_DIAGNOSTICS_MASSEY_1951,
     },
     "ks_p_value": {
         "long_name": "Kolmogorov-Smirnov exact p-value",
         "units": "1",
         "description": "Exact Kolmogorov-Smirnov p-value of the fitted distribution.",
+        "references": _FIT_DIAGNOSTICS_MASSEY_1951,
     },
     "distribution_used": {
         "long_name": "Distribution used after any fall back",
-        "units": "1",
         "description": "Distribution actually used, after any Pearson Type III fall back to gamma.",
+        "references": _FIT_DIAGNOSTICS_STAGGE_2015,
     },
 }
 
 #: The fitted-parameter variables each distribution reports. A Pearson Type III
 #: request also carries the gamma slots, because a failed fit falls back to gamma
 #: block by block and the inapplicable family is then NaN.
-_FIT_DIAGNOSTICS_PARAMETER_SLOTS: tuple[str, ...] = ("alpha", "beta", "loc", "scale", "skew")
+_FIT_DIAGNOSTICS_GAMMA_SLOTS: tuple[str, ...] = ("alpha", "beta")
+_FIT_DIAGNOSTICS_PEARSON_SLOTS: tuple[str, ...] = ("loc", "scale", "skew")
 _FIT_DIAGNOSTICS_FIELDS: tuple[str, ...] = ("prob_zero", "n_valid", "ks_statistic", "ks_p_value")
 
 
@@ -2956,7 +2981,6 @@ def fit_diagnostics(
     calibration_year_final: int | None = None,
     periodicity: compute.Periodicity | None = None,
     fitting_params: dict[str, Any] | None = None,
-    *,
     spatial_time_major: bool = False,
     time_dim: str = "time",
 ) -> compute.FitDiagnostics | xr.Dataset:
@@ -3005,14 +3029,18 @@ def fit_diagnostics(
         input's cell dimensions, each variable carrying CF attributes and provenance
         (scale, distribution, calibration period, version, and history). A Pearson
         Type III request keeps both parameter families: the one that does not apply
-        to a cell (its fit fell back to gamma) is NaN there, and ``distribution_used``
-        names the family that does apply.
+        to a fitted block (its fit fell back to gamma) is NaN there, and
+        ``distribution_used`` names the family that does apply. ``distribution_used``
+        and the fitted-parameter variables do not carry the calendar-step dimension:
+        the fall back is decided per fitted block, so their values are constant over
+        each calendar step. For chunked input the fall back is decided per chunk, as
+        in the index adapters, so chunking can change it.
 
     Raises:
-        ValueError: If a NumPy call omits a required temporal parameter, or the input
-            periodicity does not match the time coordinate.
+        ValueError: If a NumPy call omits a required temporal parameter.
         CoordinateValidationError: If the xarray time dimension is missing,
-            non-monotonic, unsupported (cftime), or does not begin in January.
+            non-monotonic, unsupported (cftime), does not begin in January, or its
+            periodicity does not match the requested ``periodicity``.
         InsufficientDataError: If the series is shorter than ``scale``.
     """
     # numpy passthrough: the stable indices.fit_diagnostics() contract
@@ -3072,9 +3100,10 @@ def fit_diagnostics(
     # a Pearson Type III request keeps the gamma parameter slots too: the fit can
     # fall back block by block, and the family that did not apply is NaN there
     if distribution is indices.Distribution.pearson:
-        variable_names = ("prob_zero", "loc", "scale", "skew", "alpha", "beta", *_FIT_DIAGNOSTICS_FIELDS[1:])
+        parameter_slots = (*_FIT_DIAGNOSTICS_PEARSON_SLOTS, *_FIT_DIAGNOSTICS_GAMMA_SLOTS)
     else:
-        variable_names = ("alpha", "beta", *_FIT_DIAGNOSTICS_FIELDS)
+        parameter_slots = _FIT_DIAGNOSTICS_GAMMA_SLOTS
+    variable_names = (*parameter_slots, *_FIT_DIAGNOSTICS_FIELDS)
 
     def _diagnostics_block(block: np.ndarray, **kwargs: Any) -> tuple[np.ndarray, ...]:
         """Run the NumPy diagnostics once on one calendar-aware (time, *cells) block."""
@@ -3086,7 +3115,7 @@ def fit_diagnostics(
         # Dataset schema stays fixed whichever way a block-level fall back goes
         reference = next(iter(diagnostics.parameters.values()))
         fitted: list[np.ndarray] = []
-        for name in _FIT_DIAGNOSTICS_PARAMETER_SLOTS:
+        for name in parameter_slots:
             parameter = diagnostics.parameters.get(name)
             fitted.append(
                 np.moveaxis(
@@ -3103,13 +3132,16 @@ def fit_diagnostics(
         code = np.full(block.shape[:-1], float(diagnostics.distribution.value == "pearson"))
         return (*fitted, code)
 
-    kernel_outputs = (*_FIT_DIAGNOSTICS_PARAMETER_SLOTS, *_FIT_DIAGNOSTICS_FIELDS, "distribution_code")
+    kernel_outputs = (*parameter_slots, *_FIT_DIAGNOSTICS_FIELDS, "distribution_code")
     result = xr.apply_ufunc(
         _diagnostics_block,
         input_da,
         input_core_dims=[[time_dim]],
         output_core_dims=[[period_dim]] * (len(kernel_outputs) - 1) + [[]],
-        vectorize=False,
+        # a 2-D input has a single cell dimension, for which the block reading is
+        # ambiguous with the legacy (years, periods) layout, so it keeps the
+        # per-cell path the index adapters use
+        vectorize=input_da.ndim == 2,
         dask="parallelized",
         dask_gufunc_kwargs={"allow_rechunk": True, "output_sizes": {period_dim: period_length}},
         output_dtypes=[float] * len(kernel_outputs),
@@ -3119,6 +3151,8 @@ def fit_diagnostics(
     by_name = dict(zip(kernel_outputs, arrays, strict=True))
     cell_dims = [dim for dim in input_da.dims if dim != time_dim]
     calculation_metadata: dict[str, Any] = {key: value for key, value in provided.items() if key != "fitting_params"}
+    if fitting_params:
+        calculation_metadata["fitting_params"] = f"dict(keys={','.join(sorted(fitting_params))})"
 
     variables: dict[str, xr.DataArray] = {}
     for name in variable_names:
@@ -3126,7 +3160,7 @@ def fit_diagnostics(
         variable = variable.assign_coords({period_dim: np.arange(1, period_length + 1)})
         variable.attrs = build_output_attrs(
             input_da,
-            cf_metadata=_FIT_DIAGNOSTICS_METADATA[name],
+            cf_metadata=_FIT_DIAGNOSTICS_CF_METADATA[name],
             calculation_metadata=calculation_metadata,
             index_name="Fit diagnostics",
         )
@@ -3135,10 +3169,12 @@ def fit_diagnostics(
     distribution_used = xr.where(by_name["distribution_code"] > 0, "pearson", "gamma")  # type: ignore[no-untyped-call]
     distribution_used.attrs = build_output_attrs(
         input_da,
-        cf_metadata=_FIT_DIAGNOSTICS_METADATA["distribution_used"],
+        cf_metadata=_FIT_DIAGNOSTICS_CF_METADATA["distribution_used"],
         calculation_metadata=calculation_metadata,
         index_name="Fit diagnostics",
     )
+    # a categorical variable carries no units, and the input's would otherwise leak through
+    distribution_used.attrs.pop("units", None)
     variables["distribution_used"] = distribution_used
 
     _log().info(

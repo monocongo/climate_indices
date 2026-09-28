@@ -901,7 +901,9 @@ def fit_diagnostics(
     ``n_valid``, ``ks_statistic``, ``ks_p_value``, and ``distribution_used`` over a
     ``month`` or ``dayofyear`` dimension plus the input's cell dimensions. A Pearson
     Type III request keeps both parameter families, with the inapplicable one NaN
-    per cell, and ``distribution_used`` names the family that does apply.
+    per fitted block, and ``distribution_used`` names the family that does apply;
+    neither carries the ``month``/``dayofyear`` dimension, since the fall back is
+    decided per fitted block (per Dask chunk for chunked input).
 
     .. warning:: **Beta Feature (xarray path only)** — When called with an
        ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
