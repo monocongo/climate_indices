@@ -246,6 +246,18 @@ store) before the index calls to pay the copy once. The measured block table and
 the daily-grid caveat are in
 [Chunking guidance for gridded indices](xarray_compatibility.md#chunking-guidance-for-gridded-indices).
 
+## Fit diagnostics
+
+`indices.fit_diagnostics()` returns the fitted parameters, the probability of zero,
+the valid calibration count, and the Kolmogorov-Smirnov D statistic and exact
+p-value for every calendar step. It is for auditing a fit, not for operational
+grids: the index path skips the exact p-value whenever a fit is clearly
+acceptable, while diagnostics computes it for every step and every cell, and each
+p-value is a `scipy.stats.kstest` call. On a gridded block that is the dominant
+cost by a wide margin. Run it on a calibration series, or on the cells you are
+auditing, rather than on a full production grid. The same NumPy core backs the
+xarray surface tracked for a later release.
+
 ## Measuring your own
 
 Re-run the reference harness on your own machine and dependency set rather than

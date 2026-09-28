@@ -1045,3 +1045,92 @@ def test_fit_and_standardize_falls_back_only_when_pearson_loses_over_half_of_the
     else:
         gamma.assert_not_called()
         np.testing.assert_array_equal(computed, pearson_result)
+
+
+@pytest.mark.parametrize("distribution", [indices.Distribution.gamma, indices.Distribution.pearson])
+def test_fit_diagnostics_parameters_round_trip(distribution):
+    """
+    The parameters reported for a fit are the ones that reproduce it: feeding them
+    back through ``fitting_params`` returns the same standardized values.
+    """
+    values = np.arange(1.0, 481.0).reshape(40, 12)
+
+    diagnostics = compute.fit_diagnostics(values, distribution, 1981, 1981, 2010, compute.Periodicity.monthly)
+    from_the_data = compute.fit_and_standardize(values, distribution, 1981, 1981, 2010, compute.Periodicity.monthly)
+    from_the_parameters = compute.fit_and_standardize(
+        values, distribution, 1981, 1981, 2010, compute.Periodicity.monthly, diagnostics.parameters
+    )
+
+    np.testing.assert_array_equal(from_the_parameters, from_the_data)
+    assert diagnostics.distribution is distribution
+    assert not diagnostics.fell_back_to_gamma
+    expected_keys = (
+        {"alpha", "beta"}
+        if distribution is indices.Distribution.gamma
+        else {
+            "prob_zero",
+            "loc",
+            "scale",
+            "skew",
+        }
+    )
+    assert set(diagnostics.parameters) == expected_keys
+
+
+def test_fit_diagnostics_reports_valid_counts_and_zero_probability():
+    """The valid count excludes missing and zero calibration values, and the zero mass is reported."""
+    values = np.arange(1.0, 481.0).reshape(40, 12)
+    values[0, :] = 0.0
+    values[1, :] = np.nan
+
+    diagnostics = compute.fit_diagnostics(
+        values, indices.Distribution.gamma, 1981, 1981, 2010, compute.Periodicity.monthly
+    )
+
+    # the 1981-2010 calibration window holds 30 of the 40 years, one of which is
+    # zero and one missing
+    np.testing.assert_array_equal(diagnostics.n_valid, np.full(12, 28))
+    np.testing.assert_allclose(diagnostics.prob_zero, np.full(12, 1.0 / 40.0))
+    assert np.all((diagnostics.ks_p_value >= 0.0) & (diagnostics.ks_p_value <= 1.0))
+
+
+def test_fit_diagnostics_supports_spatial_blocks():
+    """A folded spatial block gets (time_steps, *cells) diagnostics that also round-trip."""
+    values = np.arange(1.0, (40 * 12 * 6) + 1.0).reshape(40, 12, 2, 3)
+
+    diagnostics = compute.fit_diagnostics(
+        values, indices.Distribution.gamma, 1981, 1981, 2010, compute.Periodicity.monthly
+    )
+    from_the_parameters = compute.fit_and_standardize(
+        values, indices.Distribution.gamma, 1981, 1981, 2010, compute.Periodicity.monthly, diagnostics.parameters
+    )
+
+    assert diagnostics.n_valid.shape == (12, 2, 3)
+    assert diagnostics.parameters["alpha"].shape == (12, 2, 3)
+    np.testing.assert_array_equal(
+        from_the_parameters,
+        compute.fit_and_standardize(values, indices.Distribution.gamma, 1981, 1981, 2010, compute.Periodicity.monthly),
+    )
+
+
+def test_fit_diagnostics_reports_the_gamma_fall_back():
+    """A failed Pearson Type III fit is reported as the gamma fit it actually became."""
+    values = np.arange(1.0, 481.0).reshape(40, 12)
+
+    with mock.patch(
+        "climate_indices.compute.transform_fitted_pearson",
+        side_effect=compute.DistributionFittingError("Pearson failed", distribution_name="pearson3"),
+    ):
+        diagnostics = compute.fit_diagnostics(
+            values,
+            indices.Distribution.pearson,
+            1981,
+            1981,
+            2010,
+            compute.Periodicity.monthly,
+            fallback_to_gamma=True,
+        )
+
+    assert diagnostics.fell_back_to_gamma
+    assert diagnostics.distribution is indices.Distribution.gamma
+    assert set(diagnostics.parameters) == {"alpha", "beta"}
