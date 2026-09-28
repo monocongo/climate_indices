@@ -730,18 +730,12 @@ def fit_diagnostics(
     try:
         fitting_params = compute._normalize_fitting_params(fitting_params)
 
-        if values.ndim > 2 and not spatial_time_major and values.shape[1] in compute._PERIOD_LENGTHS:
-            raise ValueError(
-                f"Invalid shape of input array: {values.shape} -- a (time, *cells) block whose first "
-                "cell axis is a calendar period length is ambiguous with a (years, periods, *cells) "
-                "array; declare it with spatial_time_major=True"
-            )
-
+        # prepare_scaled owns the ambiguous-shape rejection, so no separate guard here
         scaled_values = compute.prepare_scaled(values, scale, periodicity, spatial_time_major=spatial_time_major)
 
-        # an all-missing time-major block comes back unfolded, so fold it here to give
-        # the diagnostic arrays the (time_steps, *cells) shape rather than the time axis
-        if scaled_values.ndim > 2 and scaled_values.shape[1] not in compute._PERIOD_LENGTHS:
+        # an all-missing time-major block comes back unfolded, keeping the input shape;
+        # fold it so the diagnostic arrays carry (time_steps, *cells), not the time axis
+        if spatial_time_major and values.ndim > 2 and scaled_values.shape == values.shape:
             scaled_values = compute._reshape_time_major(scaled_values, periodicity)
 
         diagnostics = compute.fit_diagnostics(

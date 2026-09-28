@@ -1133,3 +1133,42 @@ def test_fit_diagnostics_rejects_an_undeclared_ambiguous_block():
 
     with pytest.raises(ValueError, match="declare it with spatial_time_major"):
         indices.fit_diagnostics(values, 1, indices.Distribution.gamma, 1981, 1981, 2010, compute.Periodicity.monthly)
+
+
+def test_fit_diagnostics_folds_and_fits_a_declared_time_major_block():
+    """A declared (time, *cells) block fits per cell, matching a standalone series call."""
+    block = np.arange(1.0, (40 * 12 * 12 * 3) + 1.0).reshape(40 * 12, 12, 3)
+
+    diagnostics = indices.fit_diagnostics(
+        block, 1, indices.Distribution.gamma, 1981, 1981, 2010, compute.Periodicity.monthly, spatial_time_major=True
+    )
+    single = indices.fit_diagnostics(
+        block[:, 0, 0], 1, indices.Distribution.gamma, 1981, 1981, 2010, compute.Periodicity.monthly
+    )
+
+    assert diagnostics.n_valid.shape == (12, 12, 3)
+    np.testing.assert_allclose(diagnostics.ks_statistic[:, 0, 0], single.ks_statistic)
+    np.testing.assert_allclose(diagnostics.parameters["alpha"][:, 0, 0], single.parameters["alpha"])
+
+
+def test_fit_diagnostics_folds_an_all_missing_declared_block():
+    """An all-missing time-major block still returns one diagnostic axis per cell."""
+    values = np.full((40 * 12, 12, 3), np.nan)
+
+    diagnostics = indices.fit_diagnostics(
+        values, 1, indices.Distribution.gamma, 1981, 1981, 2010, compute.Periodicity.monthly, spatial_time_major=True
+    )
+
+    assert diagnostics.n_valid.shape == (12, 12, 3)
+    assert np.all(diagnostics.n_valid == 0)
+
+
+def test_fit_diagnostics_supports_daily_periodicity():
+    """A daily series gets 366 calendar steps rather than a monthly axis."""
+    values = np.arange(1.0, (10 * 366) + 1.0)
+
+    diagnostics = indices.fit_diagnostics(
+        values, 1, indices.Distribution.gamma, 2000, 2000, 2009, compute.Periodicity.daily
+    )
+
+    assert diagnostics.n_valid.shape == (366,)

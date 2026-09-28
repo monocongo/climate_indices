@@ -3,6 +3,8 @@ from unittest import mock
 
 import numpy as np
 import pytest
+import scipy.special
+import scipy.stats
 
 from climate_indices import compute, indices
 from climate_indices.exceptions import PeriodicityError
@@ -1134,3 +1136,93 @@ def test_fit_diagnostics_reports_the_gamma_fall_back():
     assert diagnostics.fell_back_to_gamma
     assert diagnostics.distribution is indices.Distribution.gamma
     assert set(diagnostics.parameters) == {"alpha", "beta"}
+    expected_alphas, expected_betas = compute.gamma_parameters(values, 1981, 1981, 2010, compute.Periodicity.monthly)
+    np.testing.assert_array_equal(diagnostics.parameters["alpha"], expected_alphas)
+    np.testing.assert_array_equal(diagnostics.parameters["beta"], expected_betas)
+
+
+def test_fit_diagnostics_uses_supplied_parameters_without_refitting():
+    """Caller-supplied parameters are normalized and reported, not refitted from the data."""
+    values = np.arange(1.0, 481.0).reshape(40, 12)
+    alphas = np.full(12, 4.0)
+    betas = np.full(12, 8.0)
+
+    with mock.patch("climate_indices.compute.gamma_parameters", side_effect=AssertionError("refit")):
+        diagnostics = compute.fit_diagnostics(
+            values,
+            indices.Distribution.gamma,
+            1981,
+            1981,
+            2010,
+            compute.Periodicity.monthly,
+            {"alphas": alphas, "betas": betas},
+        )
+
+    np.testing.assert_array_equal(diagnostics.parameters["alpha"], alphas)
+    np.testing.assert_array_equal(diagnostics.parameters["beta"], betas)
+
+
+def test_fit_diagnostics_matches_scipy_kolmogorov_smirnov():
+    """The reported D statistic and p-value match SciPy on the same calibration sample."""
+    values = np.arange(1.0, 481.0).reshape(40, 12)
+
+    diagnostics = compute.fit_diagnostics(
+        values, indices.Distribution.gamma, 1981, 1981, 2010, compute.Periodicity.monthly
+    )
+
+    calibration_sample = values[:30, 0]
+    sample = np.sort(calibration_sample[(~np.isnan(calibration_sample)) & (calibration_sample != 0)])
+    alpha = diagnostics.parameters["alpha"][0]
+    beta = diagnostics.parameters["beta"][0]
+    expected = scipy.stats.kstest(sample, lambda column: scipy.special.gammainc(alpha, column / beta))
+
+    assert diagnostics.ks_statistic[0] == pytest.approx(expected.statistic)
+    assert diagnostics.ks_p_value[0] == pytest.approx(expected.pvalue)
+
+
+@pytest.mark.parametrize("all_missing", [np.full((40, 12), np.nan), np.ma.masked_all((40, 12))])
+def test_fit_diagnostics_reports_missing_for_an_all_missing_input(all_missing):
+    """A masked or all-NaN input has no valid sample and reports missing diagnostics."""
+    diagnostics = compute.fit_diagnostics(
+        all_missing, indices.Distribution.gamma, 1981, 1981, 2010, compute.Periodicity.monthly
+    )
+
+    assert diagnostics.n_valid.shape == (12,)
+    assert np.all(diagnostics.n_valid == 0)
+    assert np.all(np.isnan(diagnostics.ks_statistic))
+    assert np.all(np.isnan(diagnostics.ks_p_value))
+
+
+def test_fit_diagnostics_rejects_a_partial_pearson_parameter_set():
+    """A partial parameter set is the same argument error the transform raises, not a silent fit."""
+    values = np.arange(1.0, 481.0).reshape(40, 12)
+
+    with pytest.raises(ValueError, match="either none or all"):
+        compute.fit_diagnostics(
+            values,
+            indices.Distribution.pearson,
+            1981,
+            1981,
+            2010,
+            compute.Periodicity.monthly,
+            {"loc": np.ones(12)},
+        )
+
+
+def test_fit_diagnostics_reports_fallback_for_a_partial_pearson_parameter_set():
+    """With the fall back enabled, a partial Pearson set is reported as the gamma fit it became."""
+    values = np.arange(1.0, 481.0).reshape(40, 12)
+
+    diagnostics = compute.fit_diagnostics(
+        values,
+        indices.Distribution.pearson,
+        1981,
+        1981,
+        2010,
+        compute.Periodicity.monthly,
+        {"loc": np.ones(12)},
+        fallback_to_gamma=True,
+    )
+
+    assert diagnostics.fell_back_to_gamma
+    assert diagnostics.distribution is indices.Distribution.gamma

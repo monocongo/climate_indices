@@ -1864,7 +1864,7 @@ def _fit_pearson_with_fallback(
     scales: np.ndarray | None,
     skews: np.ndarray | None,
     fallback_context: str,
-) -> tuple[np.ndarray, bool]:
+) -> tuple[np.ndarray, bool, dict[str, np.ndarray] | None]:
     """Transform a Pearson Type III fit, falling back to gamma when the fit fails.
 
     The fall back is a property of the whole input block, not of one grid cell: when a
@@ -1881,7 +1881,8 @@ def _fit_pearson_with_fallback(
         fallback_context: Context included in the fall-back warning log message.
 
     Returns:
-        The transformed values and whether the gamma fall back was used.
+        The transformed values, whether the gamma fall back was used, and the fitted
+        gamma parameters when it was (otherwise None).
     """
     if values.ndim == 1:
         # the Pearson fit reshapes a 1-D series to (years, periods); do it here so the
@@ -1913,19 +1914,28 @@ def _fit_pearson_with_fallback(
         # use the centralized fallback strategy for consistent logging and behavior
         _default_fallback_strategy.log_fallback_warning(str(e), context=fallback_context)
 
-        # the fall back refits the scaled input, never the Pearson result it replaces
+        # the fall back refits the scaled input, never the Pearson result it replaces;
+        # the parameters are fitted here rather than inside the transform so a caller
+        # reporting the fit can name the distribution it actually used
+        alphas, betas = gamma_parameters(
+            values,
+            data_start_year,
+            calibration_start_year,
+            calibration_end_year,
+            periodicity,
+        )
         fallback_values = transform_fitted_gamma(
             values,
             data_start_year,
             calibration_start_year,
             calibration_end_year,
             periodicity,
-            alphas=None,
-            betas=None,
+            alphas=alphas,
+            betas=betas,
         )
-        return fallback_values, True
+        return fallback_values, True, {"alpha": alphas, "beta": betas}
 
-    return standardized, False
+    return standardized, False, None
 
 
 def fit_and_standardize(
@@ -2027,7 +2037,7 @@ def fit_and_standardize(
             skews,
         )
 
-    standardized, _ = _fit_pearson_with_fallback(
+    standardized, _, _ = _fit_pearson_with_fallback(
         values,
         data_start_year,
         calibration_start_year,
@@ -2042,7 +2052,7 @@ def fit_and_standardize(
     return standardized
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class FitDiagnostics:
     """Per-calendar-step diagnostics for a fitted distribution.
 
@@ -2059,14 +2069,17 @@ class FitDiagnostics:
             ``alpha``/``beta`` for gamma, and ``prob_zero``/``loc``/``scale``/``skew``
             for Pearson Type III.
         prob_zero: Probability of a zero accumulation, per calendar step. For gamma
-            this is the zero mass the transform applies over the full input record;
-            for Pearson Type III it is computed over the calibration period, matching
+            this is the zero fraction over the full input record; the transform
+            clamps an all-zero step's mass to 0, which this field reports as 1.0. For
+            Pearson Type III it is computed over the calibration period, matching
             ``pearson_parameters``.
         n_valid: Number of non-missing, non-zero calibration values entering the
             Kolmogorov-Smirnov test.
-        ks_statistic: Kolmogorov-Smirnov D statistic of the fit.
-        ks_p_value: Exact Kolmogorov-Smirnov p-value. It is computed for every calendar
-            step, unlike the goodness-of-fit warning path, which skips the exact
+        ks_statistic: Kolmogorov-Smirnov D statistic of the fit, missing where the
+            step has no valid sample or no usable fitted parameters.
+        ks_p_value: Exact Kolmogorov-Smirnov p-value, on the same eligibility as
+            ``ks_statistic``. It is computed for every eligible calendar step (and
+            cell), unlike the goodness-of-fit warning path, which skips the exact
             p-value for clearly acceptable fits; retrieving it is therefore more
             expensive.
         fell_back_to_gamma: Whether a Pearson Type III fit fell back to gamma.
@@ -2116,8 +2129,8 @@ def _ks_fit_diagnostics(
 
     The sample is the calibration period's non-missing, non-zero values, matching the
     goodness-of-fit warnings. Unlike that path, which skips the exact p-value for
-    clearly acceptable fits, the p-value is computed for every series; on a large grid
-    the per-cell SciPy calls make this the dominant cost.
+    clearly acceptable fits, the p-value is computed for every eligible series; on a
+    large grid the per-cell SciPy calls make this the dominant cost.
 
     Args:
         calibration_values: Calibration data, shaped (years, time_steps) or
@@ -2147,8 +2160,9 @@ def _ks_fit_diagnostics(
             continue
         sample = sorted_values[(slice(0, count), *index)]
         cdf_values = cdf_for_series(sample, index)
-        ks_statistic[index] = _ks_d_statistic(sample, cdf_values)
-        ks_p_value[index] = float(scipy.stats.kstest(sample, lambda _, cdf=cdf_values: cdf).pvalue)
+        kstest_result = scipy.stats.kstest(sample, lambda _, cdf=cdf_values: cdf)
+        ks_statistic[index] = float(kstest_result.statistic)
+        ks_p_value[index] = float(kstest_result.pvalue)
 
     return ks_statistic, ks_p_value, n_valid
 
@@ -2206,6 +2220,9 @@ def fit_diagnostics(
     params = _normalize_fitting_params(fitting_params) or {}
     if distribution.value not in ("gamma", "pearson"):
         raise ValueError(f"Unsupported distribution: {distribution}")
+    # a mask is a missing marker: make it the explicit NaN the diagnostics read
+    if np.ma.isMaskedArray(values):
+        values = np.ma.filled(values.astype(float), np.nan)
     values = _validate_array(values, periodicity)
 
     data_end_year = data_start_year + values.shape[0]
@@ -2217,24 +2234,45 @@ def fit_diagnostics(
     ]
 
     fell_back_to_gamma = False
+    fallback_parameters: dict[str, np.ndarray] | None = None
     if distribution.value != "gamma":
         probabilities_of_zero = params.get("prob_zero")
         locs = params.get("loc")
         scales = params.get("scale")
         skews = params.get("skew")
-        if probabilities_of_zero is None or locs is None or scales is None or skews is None:
+        supplied = (probabilities_of_zero, locs, scales, skews)
+        partial = False
+
+        if values.ndim > 2:
+            # reject mismatched parameter cells before the fall-back try, exactly as
+            # fit_and_standardize does: an argument error is not a fit failure
+            _validate_pearson_parameter_cells(
+                values,
+                (
+                    ("prob_zero", probabilities_of_zero),
+                    ("loc", locs),
+                    ("scale", scales),
+                    ("skew", skews),
+                ),
+            )
+
+        if all(parameter is None for parameter in supplied):
             probabilities_of_zero, locs, scales, skews = pearson_parameters(
                 values, data_start_year, calibration_start_year, calibration_end_year, periodicity
             )
-        else:
+        elif probabilities_of_zero is not None and locs is not None and scales is not None and skews is not None:
             probabilities_of_zero, locs, scales, skews = _as_period_cell_parameters(
                 values, probabilities_of_zero, locs, scales, skews
             )
+        else:
+            # the set is partial and stays as supplied; the transform's all-or-none
+            # rule decides below, matching fit_and_standardize's own policy
+            partial = True
 
         if fallback_to_gamma:
             # the fall back belongs to the block, so run the same transform the index
             # runs and report whichever distribution it used
-            _, fell_back_to_gamma = _fit_pearson_with_fallback(
+            _, fell_back_to_gamma, fallback_parameters = _fit_pearson_with_fallback(
                 values,
                 data_start_year,
                 calibration_start_year,
@@ -2246,8 +2284,19 @@ def fit_diagnostics(
                 skews,
                 fallback_context,
             )
+        elif partial:
+            raise ValueError(
+                "At least one but not all of the Pearson Type III fitting "
+                "parameters are specified -- either none or all of "
+                "these must be specified"
+            )
 
         if not fell_back_to_gamma:
+            # parameters are complete here: they were fitted or supplied in full
+            assert probabilities_of_zero is not None
+            assert locs is not None
+            assert scales is not None
+            assert skews is not None
             parameters_valid = ~((locs == 0) & (scales == 0) & (skews == 0))
             parameters_valid &= np.isfinite(locs) & np.isfinite(scales) & np.isfinite(skews) & (scales > 0)
             ks_statistic, ks_p_value, n_valid = _ks_fit_diagnostics(
@@ -2278,7 +2327,10 @@ def fit_diagnostics(
     # gamma, either requested or the fall back from a failed Pearson fit
     alphas = params.get("alpha")
     betas = params.get("beta")
-    if fell_back_to_gamma or alphas is None or betas is None:
+    if fallback_parameters is not None:
+        # reuse the gamma fit the fall back already made rather than fitting it twice
+        alphas, betas = fallback_parameters["alpha"], fallback_parameters["beta"]
+    elif alphas is None or betas is None:
         alphas, betas = gamma_parameters(
             values, data_start_year, calibration_start_year, calibration_end_year, periodicity
         )
