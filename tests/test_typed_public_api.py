@@ -31,6 +31,7 @@ from climate_indices import (
     spi,
 )
 from climate_indices.compute import Periodicity
+from climate_indices.exceptions import InvalidArgumentError
 from climate_indices.flood._edi import edi as numpy_edi
 from climate_indices.indices import Distribution
 from climate_indices.xarray_adapter import (
@@ -324,20 +325,69 @@ class TestSPIOverloads:
         assert not isinstance(result, xr.DataArray)
         assert result.shape == values.shape
 
-    def test_spi_forwards_zero_handling_on_every_route(self, sample_monthly_precip_da: xr.DataArray) -> None:
-        """The overloads' zero_handling reaches the NumPy kernel from NumPy, xarray, and Dask input (#1186)."""
+    @pytest.mark.parametrize("distribution", [Distribution.gamma, Distribution.pearson])
+    @pytest.mark.parametrize("mode", ["classic", "center_of_mass", "mean_zero"])
+    def test_spi_forwards_zero_handling_on_every_route(
+        self, sample_monthly_precip_da: xr.DataArray, distribution: Distribution, mode: str
+    ) -> None:
+        """Every mode retains NumPy parity and self-describing metadata under Dask."""
         precipitation = sample_monthly_precip_da.where(sample_monthly_precip_da > 60.0, 0.0)
-        arguments = (1, Distribution.gamma, 1980, 1980, 2019, Periodicity.monthly)
-        expected = indices.spi(precipitation.values, *arguments, zero_handling="mean_zero")
+        precipitation.attrs.update(
+            valid_min=0.0, valid_max=1000.0, valid_range=[0.0, 1000.0], references="input source"
+        )
+        arguments = (1, distribution, 1980, 1980, 2019, Periodicity.monthly)
+        expected = indices.spi(precipitation.values, *arguments, zero_handling=mode)
 
-        numpy_result = spi(precipitation.values, *arguments, zero_handling="mean_zero")
-        xarray_result = spi(precipitation, 1, Distribution.gamma, zero_handling="mean_zero")
-        dask_result = spi(precipitation.chunk({"time": -1}), 1, Distribution.gamma, zero_handling="mean_zero")
+        numpy_result = spi(precipitation.values, *arguments, zero_handling=mode)
+        xarray_result = spi(precipitation, 1, distribution, zero_handling=mode)
+        dask_result = spi(precipitation.chunk({"time": -1}), 1, distribution, zero_handling=mode)
 
         np.testing.assert_array_equal(numpy_result, expected)
         np.testing.assert_array_equal(xarray_result.values, expected)
         np.testing.assert_array_equal(dask_result.compute().values, expected)
-        assert not np.array_equal(expected, indices.spi(precipitation.values, *arguments))
+        for result in (xarray_result, dask_result):
+            assert result.attrs["zero_handling"] == mode
+            assert result.attrs["valid_min"] == -3.09
+            assert result.attrs["valid_max"] == 3.09
+            assert "valid_range" not in result.attrs
+            assert "McKee" in result.attrs["references"]
+            if mode != "classic":
+                assert ("Stagge" if mode == "center_of_mass" else "Allen") in result.attrs["references"]
+            else:
+                assert "Stagge" not in result.attrs["references"]
+
+    def test_spi_rejects_an_unknown_output_scale_under_dask(self, sample_monthly_precip_da: xr.DataArray) -> None:
+        precipitation = sample_monthly_precip_da.chunk({"time": -1})
+        with pytest.raises(InvalidArgumentError, match="output_scale"):
+            spi(precipitation, 1, Distribution.gamma, output_scale="percentile")
+
+    @pytest.mark.parametrize("distribution", [Distribution.gamma, Distribution.pearson])
+    @pytest.mark.parametrize("mode", ["classic", "center_of_mass", "mean_zero"])
+    def test_spatial_dask_zero_handling_parity(
+        self, sample_monthly_precip_da: xr.DataArray, distribution: Distribution, mode: str
+    ) -> None:
+        values = sample_monthly_precip_da.values
+        cells = np.stack([np.where(values > threshold, values, 0.0) for threshold in (30, 50, 70, 90)])
+        grid = xr.DataArray(
+            cells.T.reshape(-1, 2, 2),
+            dims=("time", "lat", "lon"),
+            coords={"time": sample_monthly_precip_da.time, "lat": [0, 1], "lon": [0, 1]},
+        )
+        result = spi(grid.chunk({"time": -1, "lat": 1, "lon": 1}), 1, distribution, zero_handling=mode)
+        actual = result.compute().values
+        for row in range(2):
+            for col in range(2):
+                expected = indices.spi(
+                    grid.values[:, row, col],
+                    1,
+                    distribution,
+                    1980,
+                    1980,
+                    2019,
+                    Periodicity.monthly,
+                    zero_handling=mode,
+                )
+                np.testing.assert_allclose(actual[:, row, col], expected, equal_nan=True)
 
     @pytest.mark.parametrize("chunked", [False, True], ids=["in_memory", "dask"])
     def test_spi_rejects_an_unknown_mode_at_call_time(
@@ -364,6 +414,7 @@ class TestSPIOverloads:
         # verify CF metadata was applied
         assert "long_name" in result.attrs
         assert result.attrs["long_name"] == "Standardized Precipitation Index"
+        assert result.attrs["zero_handling"] == "classic"
 
     def test_spi_xarray_temporal_params_optional(self, sample_monthly_precip_da: xr.DataArray) -> None:
         """xarray inputs can omit temporal params (inferred from coordinates)."""

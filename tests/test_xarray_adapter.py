@@ -1490,6 +1490,35 @@ class TestAttributeLayering:
 class TestEndToEndIntegration:
     """End-to-end integration test with real SPI and full metadata capture."""
 
+    @pytest.mark.parametrize("cf_metadata", [CF_METADATA["spi"], {"long_name": "Custom SPI"}, None])
+    @pytest.mark.parametrize("dask_backed", [False, True])
+    def test_spi_metadata_with_custom_attrs_and_input_range(
+        self, sample_monthly_precip_da: xr.DataArray, cf_metadata: dict[str, str] | None, dask_backed: bool
+    ) -> None:
+        precipitation = sample_monthly_precip_da.copy(deep=True)
+        precipitation.attrs.update(
+            valid_min=0.0, valid_max=1000.0, valid_range=[0.0, 1000.0], actual_range=[0.0, 200.0]
+        )
+        if dask_backed:
+            precipitation = precipitation.chunk({"time": -1})
+
+        wrapped_spi = xarray_adapter(cf_metadata=cf_metadata)(indices.spi)
+        result = wrapped_spi(
+            precipitation,
+            scale=1,
+            distribution=indices.Distribution.gamma,
+            zero_handling="center_of_mass",
+            output_scale="probability",
+        )
+
+        assert result.attrs["zero_handling"] == "center_of_mass"
+        assert result.attrs["valid_min"] == 0.0
+        assert result.attrs["valid_max"] == 1.0
+        assert "valid_range" not in result.attrs
+        assert "actual_range" not in result.attrs
+        if cf_metadata is not None:
+            assert result.attrs["long_name"] == cf_metadata["long_name"]
+
     def test_spi_with_calculation_metadata_keys(self, sample_monthly_precip_da):
         """SPI with calculation_metadata_keys captures scale, distribution, and history."""
         # wrap SPI with calculation metadata capture
@@ -1527,6 +1556,35 @@ class TestEndToEndIntegration:
         # result values are correct (not all NaN)
         assert not np.all(np.isnan(result.values))
         assert result.shape == sample_monthly_precip_da.shape
+
+    def test_spi_preserves_custom_references(self, sample_monthly_precip_da: xr.DataArray) -> None:
+        """A caller-provided references value is retained alongside the SPI citations."""
+        wrapped_spi = xarray_adapter(cf_metadata={**CF_METADATA["spi"], "references": "custom source"})(indices.spi)
+
+        result = wrapped_spi(
+            sample_monthly_precip_da,
+            scale=1,
+            distribution=indices.Distribution.gamma,
+        )
+
+        assert result.attrs["references"].startswith("custom source; ")
+        assert "McKee" in result.attrs["references"]
+
+    def test_spi_preserves_custom_references_with_zero_handling(self, sample_monthly_precip_da: xr.DataArray) -> None:
+        """Custom references plus a non-default zero_handling cite both sources."""
+        wrapped_spi = xarray_adapter(cf_metadata={**CF_METADATA["spi"], "references": "custom source"})(indices.spi)
+
+        result = wrapped_spi(
+            sample_monthly_precip_da,
+            scale=1,
+            distribution=indices.Distribution.gamma,
+            zero_handling="center_of_mass",
+        )
+
+        references = result.attrs["references"]
+        assert references.startswith("custom source; ")
+        assert "McKee" in references
+        assert "Stagge" in references
 
 
 # (calculation metadata, expected description suffix, fragments that must be absent) rows.

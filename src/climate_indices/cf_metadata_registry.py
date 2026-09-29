@@ -95,6 +95,33 @@ _SPI_REFERENCES = (
     "American Meteorological Society, Boston, MA, 179-184."
 )
 
+_ZERO_HANDLING_REFERENCES = {
+    "center_of_mass": (
+        "Stagge, J. H., Tallaksen, L. M., Gudmundsson, L., Van Loon, A. F., & Stahl, K. (2015). "
+        "Candidate distributions for climatological drought indices (SPI and SPEI). "
+        "International Journal of Climatology, 35(13), 4027-4040. "
+        "https://doi.org/10.1002/joc.4267"
+    ),
+    "mean_zero": (
+        "Allen, S., & Otero, N. (2024). Calculating standardised indices using SEI. "
+        "The R Journal, 16(4), 102-122, Appendix. "
+        "https://doi.org/10.32614/RJ-2024-038"
+    ),
+}
+
+
+def spi_output_attributes(zero_handling: str, output_scale: str = "normal") -> dict[str, str | float]:
+    """Describe SPI's zero placement and output range across its file surfaces."""
+    bounds = {"normal": (-3.09, 3.09), "probability": (0.0, 1.0), "bounded": (-1.0, 1.0)}
+    if output_scale not in bounds:
+        raise ValueError(f"Invalid output_scale argument: {output_scale!r}. Supported values: {', '.join(bounds)}.")
+    valid_min, valid_max = bounds[output_scale]
+    references = _SPI_REFERENCES
+    if zero_handling in _ZERO_HANDLING_REFERENCES:
+        references += "; " + _ZERO_HANDLING_REFERENCES[zero_handling]
+    return {"zero_handling": zero_handling, "references": references, "valid_min": valid_min, "valid_max": valid_max}
+
+
 _SPEI_REFERENCES = (
     "Vicente-Serrano, S. M., Begueria, S., & Lopez-Moreno, J. I. (2010). "
     "A Multiscalar Drought Index Sensitive to Global Warming: "

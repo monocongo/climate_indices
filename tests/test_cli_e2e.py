@@ -151,18 +151,60 @@ def test_timeseries_spi_matches_in_process_computation(tmp_path, precips_mm_mont
         np.testing.assert_allclose(dataset["spi_gamma_06"].values, expected, equal_nan=True)
 
 
+@pytest.mark.parametrize("mode", ["classic", "center_of_mass", "mean_zero"])
+def test_spi_zero_handling_flag_writes_values_and_metadata(tmp_path, precips_mm_monthly, mode):
+    values = precips_mm_monthly.reshape(-1).copy()
+    values[::5] = 0.0
+    precip_path = tmp_path / "precip.nc"
+    _write_timeseries(precip_path, values)
+    main([*_spi_arguments(precip_path, tmp_path / "spi", scales=("1",)), "--zero_handling", mode])
+
+    for distribution in indices.Distribution:
+        expected = indices.spi(
+            values,
+            1,
+            distribution,
+            _DATA_START_YEAR,
+            _CALIBRATION_START_YEAR,
+            _CALIBRATION_END_YEAR,
+            compute.Periodicity.monthly,
+            zero_handling=mode,
+        )
+        name = f"spi_{distribution.value}_01"
+        with xr.open_dataset(tmp_path / f"spi_{name}.nc") as dataset:
+            output = dataset[name]
+            np.testing.assert_allclose(output.values, expected, equal_nan=True)
+            assert output.attrs["zero_handling"] == mode
+            assert "McKee" in output.attrs["references"]
+            if mode != "classic":
+                assert ("Stagge" if mode == "center_of_mass" else "Allen") in output.attrs["references"]
+
+
+def test_zero_handling_help_and_spei_rejection(tmp_path, precips_mm_monthly, capsys):
+    with pytest.raises(SystemExit, match="0"):
+        main(["--help"])
+    assert "--zero_handling {classic,center_of_mass,mean_zero}" in capsys.readouterr().out
+
+    precip_path = tmp_path / "precip.nc"
+    _write_timeseries(precip_path, precips_mm_monthly)
+    arguments = [*_common_arguments("spei", precip_path, tmp_path / "spei"), "--scales", "1"]
+    with pytest.raises(ValueError, match="--zero_handling is not supported for SPEI"):
+        main([*arguments, "--zero_handling", "mean_zero"])
+
+
 @pytest.mark.parametrize(
     ("output_scale", "valid_min", "valid_max"),
     [("probability", 0.0, 1.0), ("bounded", -1.0, 1.0)],
 )
 def test_timeseries_spi_output_scale(tmp_path, precips_mm_monthly, output_scale, valid_min, valid_max):
     """--output_scale writes the requested scale, its metadata, and its own output name."""
-    values = precips_mm_monthly.reshape(-1)
+    values = precips_mm_monthly.reshape(-1).copy()
+    values.reshape(-1, 12)[::5, :6] = 0.0
     precip_path = tmp_path / "precip.nc"
     _write_timeseries(precip_path, values)
     output_base = tmp_path / "spi_scaled"
 
-    main([*_spi_arguments(precip_path, output_base), "--output_scale", output_scale])
+    main([*_spi_arguments(precip_path, output_base), "--output_scale", output_scale, "--zero_handling", "mean_zero"])
 
     expected = indices.spi(
         values=values,
@@ -173,6 +215,7 @@ def test_timeseries_spi_output_scale(tmp_path, precips_mm_monthly, output_scale,
         calibration_year_final=_CALIBRATION_END_YEAR,
         periodicity=compute.Periodicity.monthly,
         output_scale=output_scale,
+        zero_handling="mean_zero",
     )
     var_name = f"spi_gamma_06_{output_scale}"
     with xr.open_dataset(tmp_path / f"spi_scaled_{var_name}.nc") as dataset:
@@ -183,6 +226,8 @@ def test_timeseries_spi_output_scale(tmp_path, precips_mm_monthly, output_scale,
         assert written.attrs["valid_max"] == valid_max
         assert written.attrs["climate_indices_variant"] == output_scale
         assert output_scale.replace("_", " ") in written.attrs["long_name"]
+        assert written.attrs["zero_handling"] == "mean_zero"
+        assert "Allen" in written.attrs["references"]
 
 
 def test_output_scale_is_rejected_for_a_non_standardized_index(tmp_path, precips_mm_monthly):
@@ -565,6 +610,7 @@ def test_output_carries_cf_metadata_and_coordinates(tmp_path, precips_mm_monthly
         assert variable.attrs["long_name"] == "Standardized Precipitation Index (Gamma distribution), 6-month"
         assert variable.attrs["valid_min"] == -3.09
         assert variable.attrs["valid_max"] == 3.09
+        assert variable.attrs["zero_handling"] == "classic"
         assert dataset["division"].values.tolist() == [_DIVISION]
         np.testing.assert_array_equal(dataset["time"].values, _months(precips_mm_monthly.size).values)
 
