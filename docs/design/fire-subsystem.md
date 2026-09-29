@@ -6,12 +6,15 @@ Fire-weather and fuel-dryness indices live in one namespaced package:
 
 ```text
 src/climate_indices/fire/
-    __init__.py   public facade
-    _cffwis.py    Canadian Forest Fire Weather Index System
-    _fosberg.py   Fosberg FFWI
-    _haines.py    Haines Index
-    _hdw.py       Hot-Dry-Windy Index
-    _kbdi.py      Keetch-Byram Drought Index
+    __init__.py            public facade
+    _cffwis.py             CFFWIS public NumPy API and the cffwis() orchestrator
+    _cffwis_codes.py       one definition per CFFWIS moisture code
+    _cffwis_behavior.py    CFFWIS behaviour indices and DSR
+    _cffwis_xarray.py      CFFWIS xarray adapter
+    _fosberg.py            Fosberg FFWI
+    _haines.py             Haines Index
+    _hdw.py                Hot-Dry-Windy Index
+    _kbdi.py               Keetch-Byram Drought Index
 from climate_indices import fire
 ```
 
@@ -33,7 +36,13 @@ recurrence state needed isolated implementation modules. The CFFWIS moisture
 codes (#803) crossed that line; #803's record deferred the promotion to the
 remaining CFFWIS work (#804), which landed the package
 above without changing `from climate_indices import fire` or any public
-function name. The implementation modules carry a leading underscore so
+function name. The architecture-deepening follow-up (#1221) split the CFFWIS
+
+text into its seams: each moisture code's seed, bounds, validity rule and
+daily step is one `_MoistureCode` definition in `_cffwis_codes.py`, shared by
+the single-code functions and the `cffwis()` orchestrator; the behaviour
+indices live in `_cffwis_behavior.py` and the xarray adapter in
+`_cffwis_xarray.py`, again without changing any public name. The implementation modules carry a leading underscore so
 `fire.kbdi` and `fire.cffwis` stay bound to the functions rather than the
 modules. No fire CLI is part of this subsystem itself: fire indices are
 surfaced through the existing `climate_indices` CLI only where an xarray
@@ -104,7 +113,7 @@ The one multi-output exception is CFFWIS: NumPy returns a named
 by CFFWIS terminology, not a callable. There is no `fire.fwi()`.
 
 The CFFWIS xarray route (#807) is a manual multi-output adapter in
-`_cffwis.py`, following the KBDI/HDW precedent rather than widening the
+`_cffwis_xarray.py`, following the KBDI/HDW precedent rather than widening the
 generic decorator: one `xr.apply_ufunc` call runs the shared NumPy core once
 per Dask spatial block, and each selected output is rewrapped with its own
 `CF_METADATA` entry under the same validation and one-time-chunk guarantees.
