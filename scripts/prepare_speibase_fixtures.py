@@ -209,16 +209,22 @@ _FLOOR_MARGINS = {"correlation": 0.05, "sign_agreement": 0.05, "category_agreeme
 _FLOOR_METRICS = ("correlation", "sign_agreement", "category_agreement")
 
 
-def _download(url: str, destination: Path, approved_origin: str) -> Path:
+def _download(
+    url: str,
+    destination: Path,
+    approved_origin: str,
+    max_bytes: int = _MAX_DOWNLOAD_BYTES,
+    timeout: float = 120,
+) -> Path:
     """Fetch a URL to a local file, refusing off-origin redirects and oversized payloads."""
     if not url.startswith(approved_origin):
         raise ValueError(f"URL must use {approved_origin}, got: {url}")
-    with urllib.request.urlopen(url, timeout=120) as response:  # noqa: S310 -- host validated above
+    with urllib.request.urlopen(url, timeout=timeout) as response:  # noqa: S310 -- host validated above
         if not response.url.startswith(approved_origin):
             raise ValueError(f"download redirected off the approved origin: {response.url}")
         declared = response.headers.get("Content-Length")
-        if declared is not None and declared.isdigit() and int(declared) > _MAX_DOWNLOAD_BYTES:
-            raise ValueError(f"download declares {declared} bytes, over the {_MAX_DOWNLOAD_BYTES} cap: {url}")
+        if declared is not None and declared.isdigit() and int(declared) > max_bytes:
+            raise ValueError(f"download declares {declared} bytes, over the {max_bytes} cap: {url}")
         # Stream in bounded chunks and count as we go: Content-Length is optional
         # and untrusted, so the cap has to hold without it.
         written = 0
@@ -226,8 +232,8 @@ def _download(url: str, destination: Path, approved_origin: str) -> Path:
             with destination.open("wb") as handle:
                 while chunk := response.read(_DOWNLOAD_CHUNK_BYTES):
                     written += len(chunk)
-                    if written > _MAX_DOWNLOAD_BYTES:
-                        raise ValueError(f"download exceeds the {_MAX_DOWNLOAD_BYTES} byte cap: {url}")
+                    if written > max_bytes:
+                        raise ValueError(f"download exceeds the {max_bytes} byte cap: {url}")
                     handle.write(chunk)
         except BaseException:
             destination.unlink(missing_ok=True)  # never leave a partial download behind
@@ -369,23 +375,37 @@ def _categories(values: np.ndarray) -> np.ndarray:
     return np.digitize(values, _CATEGORY_BOUNDARIES)
 
 
-def _agreement(computed: np.ndarray, reference: np.ndarray) -> dict[str, float]:
-    """Correlation, sign agreement, category agreement, and mean |difference|.
+def _monthly_days(start_year: int, n_months: int) -> np.ndarray:
+    """Days in each month, leap-aware, for a monthly series starting in January."""
+    base = np.array([31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31], dtype=float)
+    days = np.tile(base, n_months // 12 + 1)[:n_months]
+    for index in range(n_months):
+        year = start_year + index // 12
+        if (year % 4 == 0 and year % 100 != 0) or year % 400 == 0:
+            if index % 12 == 1:
+                days[index] = 29.0
+    return days
+
+
+def _agreement(computed: np.ndarray, reference: np.ndarray) -> tuple[dict[str, float], int]:
+    """Correlation, sign agreement, category agreement, mean |difference|, and shared-month count.
 
     Statistics and their definitions match the assertions in
-    tests/test_speibase_reference.py, measured over the months both series hold.
+    tests/test_speibase_reference.py and tests/test_speibase_like_for_like.py,
+    measured over the months both series hold.
     """
     from scipy.stats import pearsonr
 
     both_present = ~np.isnan(computed) & ~np.isnan(reference)
     computed_values = computed[both_present].astype(np.float64)
     reference_values = reference[both_present].astype(np.float64)
-    return {
+    stats = {
         "correlation": float(pearsonr(computed_values, reference_values).statistic),
         "sign_agreement": float(np.mean(np.sign(computed_values) == np.sign(reference_values))),
         "category_agreement": float(np.mean(_categories(computed_values) == _categories(reference_values))),
         "mean_abs_difference": float(np.mean(np.abs(computed_values - reference_values))),
     }
+    return stats, int(np.count_nonzero(both_present))
 
 
 def _computed_spei_series(division: str, latitude: float, scale: int) -> np.ndarray:
@@ -420,7 +440,7 @@ def _measure_agreement(arrays: dict[int, np.ndarray], rows: list[dict]) -> dict[
     measured = {}
     for row_index, row in enumerate(rows):
         measured[row["id"]] = {
-            scale: _agreement(_computed_spei_series(row["id"], row["latitude"], scale), arrays[scale][row_index])
+            scale: _agreement(_computed_spei_series(row["id"], row["latitude"], scale), arrays[scale][row_index])[0]
             for scale in _SCALES
         }
     return measured

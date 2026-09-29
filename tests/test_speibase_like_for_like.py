@@ -34,7 +34,6 @@ from types import ModuleType
 
 import numpy as np
 import pytest
-from scipy.stats import pearsonr
 
 from climate_indices import compute, indices
 
@@ -53,8 +52,6 @@ _RECORDED_METRICS = (*_FLOOR_METRICS, "mean_abs_difference")
 # Keep in sync with scripts/prepare_speibase_cru_ts_inputs.py:_FLOOR_MARGINS.
 _FLOOR_MARGINS = {"correlation": 0.02, "sign_agreement": 0.02, "category_agreement": 0.03}
 
-_CATEGORY_BOUNDARIES = (-2.0, -1.5, -1.0, 1.0, 1.5, 2.0)
-
 _PROVENANCE = json.loads((_INPUT_ROOT / "provenance.json").read_text(encoding="utf-8"))
 _DIVISIONS = json.loads((_INPUT_ROOT / "divisions.json").read_text(encoding="utf-8"))
 _SPEIBASE_DIVISIONS = json.loads((_SPEIBASE_ROOT / "divisions.json").read_text(encoding="utf-8"))
@@ -65,16 +62,21 @@ for _key, _value in _PROVENANCE["validation_tolerance"].items():
     _FLOORS.setdefault(f"{_division}_{_scale}", {})[_metric] = _value
 
 
-def _load_fixture_script() -> ModuleType:
-    """Load scripts/prepare_speibase_cru_ts_inputs.py without running its main()."""
-    spec = spec_from_file_location(
-        "prepare_speibase_cru_ts_inputs_test", _SCRIPTS_DIR / "prepare_speibase_cru_ts_inputs.py"
-    )
+def _load_script(name: str) -> ModuleType:
+    """Load a scripts/ module without running its main()."""
+    spec = spec_from_file_location(f"{name}_test", _SCRIPTS_DIR / f"{name}.py")
     assert spec is not None
     assert spec.loader is not None
     module = module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+_INPUTS_SCRIPT = _load_script("prepare_speibase_cru_ts_inputs")
+# The inputs script imports scripts/prepare_speibase_fixtures.py for the shared
+# cell selection; reuse that same module for the agreement and monthly-days
+# helpers so this test measures agreement exactly as the toolkit script does.
+_TOOLKIT = _INPUTS_SCRIPT._speibase
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -88,18 +90,6 @@ def _verify_fixture_checksum():
         f"(checksum {hasher.hexdigest()} != provenance {_PROVENANCE['checksum_sha256']}); "
         "rerun scripts/prepare_speibase_cru_ts_inputs.py"
     )
-
-
-def _monthly_days(start_year: int, n_months: int) -> np.ndarray:
-    """Days in each month, leap-aware, for a monthly series starting in January."""
-    base = np.array([31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31], dtype=float)
-    days = np.tile(base, n_months // 12 + 1)[:n_months]
-    for index in range(n_months):
-        year = start_year + index // 12
-        if (year % 4 == 0 and year % 100 != 0) or year % 400 == 0:
-            if index % 12 == 1:
-                days[index] = 29.0
-    return days
 
 
 def _load_inputs(division: str) -> tuple[np.ndarray, np.ndarray]:
@@ -117,23 +107,6 @@ def _cells(division: str) -> list:
     return next(row["cells"] for row in _DIVISIONS if row["id"] == division)
 
 
-def _categories(values: np.ndarray) -> np.ndarray:
-    return np.digitize(values, _CATEGORY_BOUNDARIES)
-
-
-def _agreement(computed: np.ndarray, reference: np.ndarray) -> tuple[dict[str, float], int]:
-    """Correlation, sign agreement, and category agreement over shared months."""
-    both_present = ~np.isnan(computed) & ~np.isnan(reference)
-    computed_values = computed[both_present].astype(np.float64)
-    reference_values = reference[both_present].astype(np.float64)
-    stats = {
-        "correlation": float(pearsonr(computed_values, reference_values).statistic),
-        "sign_agreement": float(np.mean(np.sign(computed_values) == np.sign(reference_values))),
-        "category_agreement": float(np.mean(_categories(computed_values) == _categories(reference_values))),
-    }
-    return stats, int(np.count_nonzero(both_present))
-
-
 def _computed_series(division: str, scale: int) -> np.ndarray:
     """Division-mean SPEI from the CRU TS inputs, calibrated over 1901-2024.
 
@@ -141,7 +114,7 @@ def _computed_series(division: str, scale: int) -> np.ndarray:
     per-cell values, matching SPEIbase's per-cell-then-mean pipeline.
     """
     precip, pet = _load_inputs(division)
-    pet_mm = pet * _monthly_days(_DATA_START_YEAR, _N_MONTHS)
+    pet_mm = pet * _TOOLKIT._monthly_days(_DATA_START_YEAR, _N_MONTHS)
     cells = [
         indices.spei(
             precip[row],
@@ -183,12 +156,12 @@ def test_input_cells_match_speibase_selection():
 
 def test_monthly_days_leap_handling():
     """The PET mm/day -> mm/month conversion must follow the Gregorian leap rule."""
-    assert _monthly_days(1903, 12)[1] == 28.0
-    leap = _monthly_days(1904, 12)
+    assert _TOOLKIT._monthly_days(1903, 12)[1] == 28.0
+    leap = _TOOLKIT._monthly_days(1904, 12)
     assert leap[1] == 29.0 and leap[0] == 31.0  # February adjusts, January does not
-    assert _monthly_days(1900, 12)[1] == 28.0  # century not divisible by 400
-    assert _monthly_days(2000, 12)[1] == 29.0  # 400-year rule
-    assert _monthly_days(1901, _N_MONTHS).sum() == 45291.0  # 1901-2024 day count
+    assert _TOOLKIT._monthly_days(1900, 12)[1] == 28.0  # century not divisible by 400
+    assert _TOOLKIT._monthly_days(2000, 12)[1] == 29.0  # 400-year rule
+    assert _TOOLKIT._monthly_days(1901, _N_MONTHS).sum() == 45291.0  # 1901-2024 day count
 
 
 def test_provenance_declares_all_series():
@@ -227,7 +200,7 @@ def test_spei_like_for_like(scale: int):
     for row, division_row in enumerate(_DIVISIONS):
         division = division_row["id"]
         computed = _computed_series(division, scale)[:reference_months]
-        stats, compared_months = _agreement(computed, reference[row])
+        stats, compared_months = _TOOLKIT._agreement(computed, reference[row])
         series = f"{division}_spei{scale:02d}"
 
         min_compared = reference_months - (scale - 1)
@@ -245,7 +218,7 @@ def test_spei_like_for_like(scale: int):
 @pytest.mark.validation
 def test_refresh_script_measurement_reproduces_recorded_expectations():
     """The refresh script must re-measure the agreement it records in provenance."""
-    script = _load_fixture_script()
+    script = _INPUTS_SCRIPT
     inputs = {row["id"]: {"pre": _load_inputs(row["id"])[0], "pet": _load_inputs(row["id"])[1]} for row in _DIVISIONS}
     measured = script._measure_agreement(inputs)
 

@@ -49,14 +49,12 @@ from __future__ import annotations
 
 import datetime as dt
 import gzip
-import hashlib
 import json
 import math
 import os
 import shutil
 import sys
 import tempfile
-import urllib.request
 import warnings
 from pathlib import Path
 
@@ -67,8 +65,9 @@ FIXTURE_DIR = PROJECT_ROOT / "tests" / "fixture"
 OUTPUT_DIR = FIXTURE_DIR / "speibase_cru_ts"
 _SPEIBASE_DIR = FIXTURE_DIR / "speibase"
 
-# Reuse the shapefile download, polygon selection, and division parsing from the
-# SPEIbase fixture script so both fixtures select identical grid cells.
+# Reuse the shapefile download, polygon selection, division parsing, download
+# bounds, and agreement helpers from the SPEIbase fixture script so both
+# fixtures select identical grid cells and measure agreement the same way.
 sys.path.insert(0, str(Path(__file__).parent))
 import prepare_speibase_fixtures as _speibase  # noqa: E402
 
@@ -90,7 +89,6 @@ _SCALES = (1, 3, 6, 12)
 _LATITUDE_BAND = (24.0, 50.0)
 _LONGITUDE_BAND = (-126.0, -66.0)
 
-_CATEGORY_BOUNDARIES = (-2.0, -1.5, -1.0, 1.0, 1.5, 2.0)
 _FLOOR_METRICS = ("correlation", "sign_agreement", "category_agreement")
 _RECORDED_METRICS = (*_FLOOR_METRICS, "mean_abs_difference")
 _FLOOR_MARGINS = {"correlation": 0.02, "sign_agreement": 0.02, "category_agreement": 0.03}
@@ -182,40 +180,13 @@ _EXPECTED_STATS: dict[str, dict[int, dict[str, float]]] = {
 _EXPECTATION_TOLERANCE = 0.001
 
 
-def _download(url: str, destination: Path) -> Path:
-    """Fetch a URL to a local file, refusing off-origin redirects and oversized payloads."""
-    if not url.startswith(_CRU_APPROVED_ORIGIN):
-        raise ValueError(f"URL must use {_CRU_APPROVED_ORIGIN}, got: {url}")
-    with urllib.request.urlopen(url, timeout=300) as response:  # noqa: S310 -- host validated above
-        if not response.url.startswith(_CRU_APPROVED_ORIGIN):
-            raise ValueError(f"download redirected off the approved origin: {response.url}")
-        declared = response.headers.get("Content-Length")
-        if declared is not None and declared.isdigit() and int(declared) > _MAX_DOWNLOAD_BYTES:
-            raise ValueError(f"download declares {declared} bytes, over the {_MAX_DOWNLOAD_BYTES} cap: {url}")
-        written = 0
-        try:
-            with destination.open("wb") as handle:
-                while chunk := response.read(_DOWNLOAD_CHUNK_BYTES):
-                    written += len(chunk)
-                    if written > _MAX_DOWNLOAD_BYTES:
-                        raise ValueError(f"download exceeds the {_MAX_DOWNLOAD_BYTES} byte cap: {url}")
-                    handle.write(chunk)
-        except BaseException:
-            destination.unlink(missing_ok=True)  # never leave a partial download behind
-            raise
-    if written == 0:
-        destination.unlink(missing_ok=True)
-        raise ValueError(f"download has implausible size ({written} bytes): {url}")
-    return destination
-
-
 def _fetch_grid(variable: str, downloads: Path) -> Path:
     """Download and decompress one CRU TS 4.09 variable grid."""
     compressed = downloads / f"cru_ts4.09.{_DATA_START_YEAR}.{_DATA_END_YEAR}.{variable}.dat.nc.gz"
     if not compressed.exists():
         url = f"{_CRU_BASE_URL}/{variable}/" + compressed.name
         print(f"Downloading {url} ...", file=sys.stderr)
-        _download(url, compressed)
+        _speibase._download(url, compressed, _CRU_APPROVED_ORIGIN, _MAX_DOWNLOAD_BYTES, timeout=300)
     netcdf = downloads / compressed.name.removesuffix(".gz")
     if not netcdf.exists():
         partial = netcdf.with_name(netcdf.name + ".part")
@@ -247,18 +218,6 @@ def _fetch_shapefile(downloads: Path) -> Path:
     return _speibase._download_shapefile(downloads)
 
 
-def _monthly_days(start_year: int, n_months: int) -> np.ndarray:
-    """Days in each month, leap-aware, for a monthly series starting in January."""
-    base = np.array([31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31], dtype=float)
-    days = np.tile(base, n_months // 12 + 1)[:n_months]
-    for index in range(n_months):
-        year = start_year + index // 12
-        if (year % 4 == 0 and year % 100 != 0) or year % 400 == 0:
-            if index % 12 == 1:
-                days[index] = 29.0
-    return days
-
-
 def _cell_series(dataset, variable: str, mask: np.ndarray) -> np.ndarray:
     """Extract (n_cells, n_months) for the selected cells, in row-major grid order."""
     rows, columns = np.where(mask)
@@ -266,25 +225,6 @@ def _cell_series(dataset, variable: str, mask: np.ndarray) -> np.ndarray:
     if values.shape[0] < _N_MONTHS:
         raise RuntimeError(f"{variable} has only {values.shape[0]} months, need {_N_MONTHS}")
     return values[:, rows, columns].T  # (n_cells, n_months)
-
-
-def _categories(values: np.ndarray) -> np.ndarray:
-    return np.digitize(values, _CATEGORY_BOUNDARIES)
-
-
-def _agreement(computed: np.ndarray, reference: np.ndarray) -> dict[str, float]:
-    """Correlation, sign agreement, category agreement, and mean |difference|."""
-    from scipy.stats import pearsonr
-
-    both_present = ~np.isnan(computed) & ~np.isnan(reference)
-    computed_values = computed[both_present].astype(np.float64)
-    reference_values = reference[both_present].astype(np.float64)
-    return {
-        "correlation": float(pearsonr(computed_values, reference_values).statistic),
-        "sign_agreement": float(np.mean(np.sign(computed_values) == np.sign(reference_values))),
-        "category_agreement": float(np.mean(_categories(computed_values) == _categories(reference_values))),
-        "mean_abs_difference": float(np.mean(np.abs(computed_values - reference_values))),
-    }
 
 
 def _computed_series(precip: np.ndarray, pet: np.ndarray, scale: int) -> np.ndarray:
@@ -297,7 +237,7 @@ def _computed_series(precip: np.ndarray, pet: np.ndarray, scale: int) -> np.ndar
     """
     from climate_indices import compute, indices
 
-    pet_mm = pet * _monthly_days(_DATA_START_YEAR, _N_MONTHS)
+    pet_mm = pet * _speibase._monthly_days(_DATA_START_YEAR, _N_MONTHS)
     cells = [
         indices.spei(
             precip[row],
@@ -328,10 +268,10 @@ def _measure_agreement(inputs: dict[str, dict[str, np.ndarray]]) -> dict[str, di
     measured = {}
     for row_index, division in enumerate(_DIVISIONS):
         measured[division] = {
-            scale: _agreement(
+            scale: _speibase._agreement(
                 _computed_series(inputs[division]["pre"], inputs[division]["pet"], scale)[:reference_months],
                 reference[scale][row_index],
-            )
+            )[0]
             for scale in _SCALES
         }
     return measured
@@ -360,13 +300,6 @@ def _floors(measured: dict[str, dict[int, dict[str, float]]]) -> dict[str, float
         for scale, stats in per_scale.items()
         for metric in _FLOOR_METRICS
     }
-
-
-def _compute_checksum(directory: Path) -> str:
-    hasher = hashlib.sha256()
-    for npy_file in sorted(directory.glob("*.npy")):
-        hasher.update(npy_file.read_bytes())
-    return hasher.hexdigest()
 
 
 def _write_provenance(directory: Path, checksum: str, measured: dict[str, dict[int, dict[str, float]]]) -> None:
@@ -425,10 +358,6 @@ def _write_provenance(directory: Path, checksum: str, measured: dict[str, dict[i
         ),
     }
     (directory / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
-
-
-def _write_divisions(directory: Path, rows: list[dict]) -> None:
-    (directory / "divisions.json").write_text(json.dumps(rows, indent=2) + "\n", encoding="utf-8")
 
 
 def main() -> None:
@@ -501,8 +430,8 @@ def main() -> None:
         for division, arrays in inputs.items():
             np.save(staging / f"pre_{division}.npy", arrays["pre"].astype(np.float32))
             np.save(staging / f"pet_{division}.npy", arrays["pet"].astype(np.float32))
-        _write_divisions(staging, rows)
-        checksum = _compute_checksum(staging)
+        _speibase._write_divisions(staging, rows)
+        checksum = _speibase._compute_checksum(staging)
         _write_provenance(staging, checksum, measured)
         _publish(staging, OUTPUT_DIR)
     finally:
