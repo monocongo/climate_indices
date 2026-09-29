@@ -143,7 +143,7 @@ process_climate_indices = "climate_indices.__main__:main"
 **Modules**:
 - **`compute.py`**: Core computation functions
   - `prepare_scaled()`: Shared flatten/clip/roll-sum/reshape preparation for the fitting-based indices
-  - `scale_values()`: Rolling sum computation for temporal scaling (wrapper over `prepare_scaled()`)
+  - `is_all_missing()`, `reshape_time_major()`, `unfold_time_major()`: single owner of all-missing detection and the time-major block round trip
   - `fit_and_standardize()`: Shared parameter normalization, gamma/Pearson dispatch, and Pearson→gamma fall-back seam for SPI and SPEI
   - `gamma_parameters()`, `pearson_parameters()`: Distribution fitting
   - `transform_fitted_gamma()`, `transform_fitted_pearson()`: CDF transformation
@@ -315,7 +315,7 @@ climate_indices/
                         │
                         ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  Temporal Scaling (compute.scale_values)                        │
+│  Temporal Scaling (compute.prepare_scaled)                      │
 │  - Rolling sum over N months/days                               │
 │  - Handles NaN propagation                                      │
 │  - Output: scaled_values (same shape as input)                  │

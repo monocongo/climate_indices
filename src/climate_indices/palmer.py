@@ -1071,10 +1071,10 @@ def _reshape_palmer_input(values: np.ndarray, spatial_time_major: bool) -> tuple
     before and given a trailing cell axis of length 1, so the recursion has
     one code path for a single location and a spatial block. Three or more
     dimensions are read as a time-major ``(time, *cells)`` block per
-    ADR-0009 -- ``compute._prepare_input_shape`` raises for an undeclared
+    ADR-0009 -- ``compute.prepare_input_shape`` raises for an undeclared
     ambiguous shape -- with its trailing cell dimensions flattened to
     ``n_cells`` and folded onto a (years, 12) axis by
-    ``compute._reshape_time_major``, the same helper ``eto.py`` reuses for
+    ``compute.reshape_time_major``, the same helper ``eto.py`` reuses for
     its own spatial block.
 
     :param values: the input array
@@ -1085,11 +1085,11 @@ def _reshape_palmer_input(values: np.ndarray, spatial_time_major: bool) -> tuple
     if values.ndim <= 2:
         reshaped = utils.reshape_to_2d(values, 12)
         return reshaped.reshape(*reshaped.shape, 1), ()
-    block = compute._prepare_input_shape(values, spatial_time_major)
+    block = compute.prepare_input_shape(values, spatial_time_major)
     cell_shape = block.shape[1:]
     n_cells = int(np.prod(cell_shape))
     flat = block.reshape(block.shape[0], n_cells)
-    folded = compute._reshape_time_major(flat, compute.Periodicity.monthly)
+    folded = compute.reshape_time_major(flat, compute.Periodicity.monthly)
     return folded, cell_shape
 
 

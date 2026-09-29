@@ -313,6 +313,100 @@ def test_spi_ambiguous_3d_input_raises():
         )
 
 
+def test_spei_ambiguous_3d_all_missing_input_raises():
+    """SPEI's all-missing shortcut must not skip the ambiguous-shape guard.
+
+    An all-NaN (time, periods, *cells) block is still ambiguous with the legacy
+    (years, periods, *cells) layout, so it raises the same ValueError SPI does
+    instead of returning the input unchanged.
+    """
+    all_nans = np.full((24, 12, 2), np.nan)
+
+    with pytest.raises(ValueError, match="Invalid shape of input array"):
+        indices.spei(
+            all_nans,
+            all_nans,
+            1,
+            indices.Distribution.gamma,
+            compute.Periodicity.monthly,
+            1900,
+            1900,
+            1901,
+        )
+
+
+@pytest.mark.parametrize(
+    ("precips", "pet"),
+    [
+        pytest.param(np.full((24, 2, 2), np.nan), np.zeros((24, 3)), id="spatial"),
+        pytest.param(np.full(240, np.nan), np.zeros(120), id="series"),
+    ],
+)
+def test_spei_incompatible_pet_raises_even_when_precipitation_all_missing(precips, pet):
+    """The PET compatibility check runs before the all-missing shortcut."""
+    with pytest.raises(ValueError, match="Incompatible precipitation and PET arrays"):
+        indices.spei(
+            precips,
+            pet,
+            1,
+            indices.Distribution.gamma,
+            compute.Periodicity.monthly,
+            1900,
+            1900,
+            1901,
+        )
+
+
+def test_spei_all_missing_pet_keeps_the_cell_axes():
+    """An all-NaN PET block still returns the precipitation input's layout."""
+    precips = np.random.default_rng(0).uniform(0.0, 100.0, (480, 3, 2))
+    pet = np.full((480, 3, 2), np.nan)
+
+    result = indices.spei(
+        precips,
+        pet,
+        1,
+        indices.Distribution.gamma,
+        compute.Periodicity.monthly,
+        1900,
+        1900,
+        1901,
+    )
+
+    assert result.shape == precips.shape
+    assert np.all(np.isnan(result))
+
+
+@pytest.mark.parametrize(
+    ("shape", "spatial_time_major"),
+    [pytest.param((24,), False, id="series"), pytest.param((24, 3, 2), True, id="spatial-block")],
+)
+def test_partially_missing_all_nan_sums_unfold_to_the_input_layout(shape, spatial_time_major):
+    """A partially missing series whose scaled windows are all NaN still unfolds.
+
+    The all-missing short-circuit must be decided on the input, not on the scaled
+    block: a block whose every sliding window contains one missing step is all NaN
+    after scaling but is not an all-missing input, so it must return the caller's
+    layout rather than the folded (years, periods, *cells) array.
+    """
+    values = np.ones(shape)
+    values[0::3] = np.nan
+
+    result = indices.spi(
+        values,
+        3,
+        indices.Distribution.gamma,
+        1900,
+        1900,
+        1901,
+        compute.Periodicity.monthly,
+        spatial_time_major=spatial_time_major,
+    )
+
+    assert result.shape == values.shape
+    assert np.all(np.isnan(result))
+
+
 @pytest.mark.usefixtures(
     "precips_mm_monthly",
     "precips_mm_daily",
@@ -646,7 +740,7 @@ def test_spei(
     )
     np.testing.assert_allclose(
         computed_spei,
-        all_nans,
+        all_nans.flatten(),
         equal_nan=True,
         err_msg="SPEI/Gamma not handling all-NaN arrays as expected",
     )
@@ -819,16 +913,21 @@ def test_fitting_indices_share_one_preparation_seam(
             compute.Periodicity.monthly,
         )
 
-    # SPI and EDDI prepare with the defaults; SPEI and PNP opt out of clipping and
-    # reshaping. The spatial-block declaration is not part of that contract, so only
-    # those two keywords are compared.
+    # The shared pipeline states the clipping policy for SPI and SPEI, EDDI prepares
+    # with the defaults, and PNP still declines both clipping and reshaping. The
+    # spatial-block declaration is not part of that contract, so only those two
+    # keywords are compared.
     assert prepare_scaled.call_count == 4
     prep_kwargs = [
         {key: value for key, value in call.kwargs.items() if key in {"clip_negatives", "reshape"}}
         for call in prepare_scaled.call_args_list
     ]
-    assert prep_kwargs.count({}) == 2
-    assert [call for call in prep_kwargs if call] == [{"clip_negatives": False, "reshape": False}] * 2
+    assert prep_kwargs == [
+        {"clip_negatives": True},
+        {"clip_negatives": False},
+        {},
+        {"clip_negatives": False, "reshape": False},
+    ]
 
 
 def test_fitting_indices_share_one_fit_seam(
