@@ -2,8 +2,8 @@
 # /// script
 # dependencies = [
 #   "numpy",
+#   "scipy",
 #   "xarray",
-#   "h5netcdf",
 #   "netCDF4",
 #   "pyshp",
 # ]
@@ -77,6 +77,9 @@ _CRU_APPROVED_ORIGIN = "https://crudata.uea.ac.uk/"
 # The uncompressed precipitation grid is ~2 GB; the compressed download is
 # ~700 MB, so cap generously above it and below anything malformed.
 _MAX_DOWNLOAD_BYTES = 1_200_000_000
+# The precipitation grid decompresses to ~6.2 GB; cap the gzip expansion too,
+# so a malformed or hostile stream cannot exhaust the disk.
+_MAX_DECOMPRESSED_BYTES = 8_000_000_000
 _DOWNLOAD_CHUNK_BYTES = 1024 * 1024
 
 _DIVISIONS = ("0101", "3405", "0205")
@@ -186,6 +189,9 @@ def _download(url: str, destination: Path) -> Path:
     with urllib.request.urlopen(url, timeout=300) as response:  # noqa: S310 -- host validated above
         if not response.url.startswith(_CRU_APPROVED_ORIGIN):
             raise ValueError(f"download redirected off the approved origin: {response.url}")
+        declared = response.headers.get("Content-Length")
+        if declared is not None and declared.isdigit() and int(declared) > _MAX_DOWNLOAD_BYTES:
+            raise ValueError(f"download declares {declared} bytes, over the {_MAX_DOWNLOAD_BYTES} cap: {url}")
         written = 0
         try:
             with destination.open("wb") as handle:
@@ -212,8 +218,21 @@ def _fetch_grid(variable: str, downloads: Path) -> Path:
         _download(url, compressed)
     netcdf = downloads / compressed.name.removesuffix(".gz")
     if not netcdf.exists():
-        with gzip.open(compressed, "rb") as source, netcdf.open("wb") as target:
-            shutil.copyfileobj(source, target)
+        partial = netcdf.with_name(netcdf.name + ".part")
+        decompressed = 0
+        try:
+            with gzip.open(compressed, "rb") as source, partial.open("wb") as target:
+                while chunk := source.read(_DOWNLOAD_CHUNK_BYTES):
+                    decompressed += len(chunk)
+                    if decompressed > _MAX_DECOMPRESSED_BYTES:
+                        raise ValueError(
+                            f"decompressed grid exceeds the {_MAX_DECOMPRESSED_BYTES} byte cap: {compressed.name}"
+                        )
+                    target.write(chunk)
+        except BaseException:
+            partial.unlink(missing_ok=True)  # never leave a partial decompression behind
+            raise
+        os.replace(partial, netcdf)
     return netcdf
 
 
@@ -222,7 +241,7 @@ def _fetch_shapefile(downloads: Path) -> Path:
     extracted = downloads / "divisions"
     if extracted.exists():
         shapes = sorted(extracted.glob("*.shp"))
-        if len(shapes) == 1:
+        if len(shapes) == 1 and all(shapes[0].with_suffix(ext).exists() for ext in (".shx", ".dbf")):
             return shapes[0]
     shutil.rmtree(extracted, ignore_errors=True)
     return _speibase._download_shapefile(downloads)
@@ -240,7 +259,7 @@ def _monthly_days(start_year: int, n_months: int) -> np.ndarray:
     return days
 
 
-def _cell_series(dataset, variable: str, mask: np.ndarray, latitudes: np.ndarray) -> np.ndarray:
+def _cell_series(dataset, variable: str, mask: np.ndarray) -> np.ndarray:
     """Extract (n_cells, n_months) for the selected cells, in row-major grid order."""
     rows, columns = np.where(mask)
     values = dataset[variable].sel(lat=slice(*_LATITUDE_BAND), lon=slice(*_LONGITUDE_BAND)).values[:_N_MONTHS]
@@ -272,7 +291,9 @@ def _computed_series(precip: np.ndarray, pet: np.ndarray, scale: int) -> np.ndar
     """Division-mean SPEI: standardize each cell with log-logistic, then average.
 
     Mirrors SPEIbase, which standardizes per cell before averaging. CRU TS PET
-    is mm/day, converted to mm/month with the leap-aware month lengths.
+    is mm/day, converted to mm/month with the leap-aware month lengths; a
+    near-uniform month length would match the committed SPEIbase v2.11 grids
+    more closely, so that convention is the dominant residual (see provenance).
     """
     from climate_indices import compute, indices
 
@@ -290,11 +311,14 @@ def _computed_series(precip: np.ndarray, pet: np.ndarray, scale: int) -> np.ndar
         )
         for row in range(precip.shape[0])
     ]
+    stacked = np.vstack(cells)
+    if np.isnan(stacked[:, scale - 1 :]).all(axis=1).any():
+        raise RuntimeError("a selected cell produced an all-NaN SPEI series; refusing to drop it silently")
     with np.errstate(invalid="ignore"):
         with warnings.catch_warnings():
             # leading scale-1 months are all-NaN by construction (rolling-sum warmup)
             warnings.simplefilter("ignore", RuntimeWarning)
-            return np.nanmean(np.vstack(cells), axis=0)
+            return np.nanmean(stacked, axis=0)
 
 
 def _measure_agreement(inputs: dict[str, dict[str, np.ndarray]]) -> dict[str, dict[int, dict[str, float]]]:
@@ -386,13 +410,18 @@ def _write_provenance(directory: Path, checksum: str, measured: dict[str, dict[i
             "can reproduce SPEIbase's pipeline: standardize each 0.5-degree cell with the "
             "log-logistic (generalized logistic) distribution using unbiased-PWM L-moments over "
             "1901-2024, then average the per-cell SPEI inside each climate division, and compare that "
-            "mean against tests/fixture/speibase/. The remaining differences are the fitting "
-            "implementation (climate_indices' L-moment code vs. R SPEI's ub-pwm), parameter-rounding, "
-            "and any residual preprocessing, not the PET method, distribution family, precipitation "
-            "input, or spatial-support confounds that separated the earlier gamma/Thornthwaite "
-            "plausibility check. CRU TS PET is stored in mm/day and must be multiplied by the "
-            "leap-aware days in each month before differencing with precipitation, matching "
-            "SPEIbase's R/computeSPEI.R (`etp * ndays`)."
+            "mean against tests/fixture/speibase/. The remaining differences are small and are "
+            "dominated by a PET day-length convention difference, not by the fit: this script "
+            "multiplies CRU TS PET by the leap-aware calendar month lengths, matching the public "
+            "SPEIbase R/functions.R (`spei.nc`: `etp * ndays` with `Hmisc::monthDays`), while a "
+            "near-uniform month length reproduces the committed SPEIbase v2.11 grids two to four "
+            "times more closely, so v2.11's effective generation convention could not be confirmed "
+            "from public code. The rest is the fit implementation and parameter rounding, and "
+            "climate_indices.lmoments.fit_glo is a Python port of the same `lmom` PELGLO routine "
+            "R SPEI uses, so this validates the port and the per-cell-to-division pipeline rather "
+            "than an algorithmically independent estimator. It removes the PET method, distribution "
+            "family, precipitation input, and spatial-support confounds that separated the earlier "
+            "gamma/Thornthwaite plausibility check."
         ),
     }
     (directory / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
@@ -423,6 +452,11 @@ def main() -> None:
         pre_dataset = xr.open_dataset(pre_path, engine="netcdf4")
         pet_dataset = xr.open_dataset(pet_path, engine="netcdf4")
         try:
+            if not (
+                np.array_equal(pre_dataset.lat.values, pet_dataset.lat.values)
+                and np.array_equal(pre_dataset.lon.values, pet_dataset.lon.values)
+            ):
+                raise RuntimeError("pre and pet grids do not share coordinates; cell selection would diverge")
             latitudes = pre_dataset.lat.sel(lat=slice(*_LATITUDE_BAND)).values
             longitudes = pre_dataset.lon.sel(lon=slice(*_LONGITUDE_BAND)).values
             grid_longitudes, grid_latitudes = np.meshgrid(longitudes, latitudes)
@@ -438,8 +472,8 @@ def main() -> None:
                         f"division {division}: selected {mask.sum()} CRU TS cells, but the SPEIbase "
                         f"fixture used {expected_cells}; the grids or polygon selection diverged"
                     )
-                precip = _cell_series(pre_dataset, "pre", mask, latitudes)
-                pet = _cell_series(pet_dataset, "pet", mask, latitudes)
+                precip = _cell_series(pre_dataset, "pre", mask)
+                pet = _cell_series(pet_dataset, "pet", mask)
                 inputs[division] = {"pre": precip, "pet": pet}
                 longitude, latitude = _speibase._polygon_centroid(division_shapes[division]["shape"])
                 rows.append(
