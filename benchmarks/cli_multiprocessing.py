@@ -112,9 +112,10 @@ def _prepare(args: argparse.Namespace) -> None:
     zero_count = int((values == 0).sum())
     values[values == 0] = np.float32(0.01)
 
-    # the CLI's shared-array transport accepts (lat, lon, time) only, time last
-    # (climate_indices._cli_transport._TRANSPORT_DIMENSIONS); the xarray harness
-    # transposes its own input on read, so it accepts either order
+    # this fixture is prepared in (lat, lon, time) order, time last; the CLI's
+    # shared-array transport also accepts (time, lat, lon) and transposes it on
+    # read (climate_indices._cli_transport._TRANSPORT_DIMENSIONS); the xarray
+    # harness transposes its own input on read, so it accepts either order
     prepared = xr.Dataset(
         {"prcp": (("lat", "lon", "time"), np.moveaxis(values, 0, -1), {"units": "mm"})},
         coords={"time": da["time"].values, "lat": da["lat"].values, "lon": da["lon"].values},
