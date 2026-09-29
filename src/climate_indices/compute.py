@@ -385,15 +385,15 @@ def is_all_missing(values: np.ndarray) -> bool:
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 def reshape_time_major(values: np.ndarray, periodicity: Periodicity) -> np.ndarray:
     """
-    Reshape a time-major spatial array to (years, periods, *cells).
+    Reshape a time-major spatial array to (years, periods, ``*cells``).
 
     The spatial counterpart of ``utils.reshape_to_2d``: the time axis is folded onto
     a new period axis while every trailing cell dimension is left untouched, and a
     trailing partial period is padded with NaN values as in the 1-D case.
 
-    :param values: time-major array of values, shape (time, *cells)
+    :param values: time-major array of values, shape (time, ``*cells``)
     :param periodicity: specifies whether data is monthly (12) or daily (366)
-    :return: the values with shape (years, period_length, *cells)
+    :return: the values with shape (years, period_length, ``*cells``)
     :raises PeriodicityError: if periodicity is neither monthly nor daily
     """
     if periodicity is not Periodicity.monthly and periodicity is not Periodicity.daily:
@@ -498,8 +498,8 @@ def _calibration_probabilities_of_zero(calibration_values: np.ndarray) -> np.nda
     which is reported as NaN.
 
     :param calibration_values: calibration data, shape (years, time_steps) or
-        (years, time_steps, *cells)
-    :return: probabilities of zero, shape (time_steps,) or (time_steps, *cells)
+        (years, time_steps, ``*cells``)
+    :return: probabilities of zero, shape (time_steps,) or (time_steps, ``*cells``)
     """
     if np.ma.isMaskedArray(calibration_values):
         # a mask is a missing marker, so it must not count as a non-missing value
@@ -522,7 +522,7 @@ def _validate_gamma_probabilities_of_zero(values: np.ndarray, probabilities_of_z
     step without calibration data reports it.
 
     :param values: the validated values, shape (years, time_steps) or
-        (years, time_steps, *cells)
+        (years, time_steps, ``*cells``)
     :param probabilities_of_zero: the supplied probability of zero
     :return: the probability of zero as a float array
     :raises ValueError: if the shape or a value does not fit
@@ -593,7 +593,7 @@ def _place_zeros(
     classic result (ADR-0015, decision 5).
 
     :param fitted_values: transformed values on ``output_scale``, shape
-        (years, time_steps) or (years, time_steps, *cells)
+        (years, time_steps) or (years, time_steps, ``*cells``)
     :param zero_mask: positions holding a zero (or, for Pearson Type III, a trace
         value), broadcastable to ``fitted_values``
     :param probabilities_of_zero: probability of zero per step, broadcastable to
@@ -656,15 +656,15 @@ def _pearson_parameters_spatial(
     calibration_values: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]:
     """
-    Fit every (time step, cell) of a (years, time_steps, *cells) block at once.
+    Fit every (time step, cell) of a (years, time_steps, ``*cells``) block at once.
 
     The cell-axis counterpart of the per-time-step loop in ``pearson_parameters``:
     the L-moment fit runs once across every cell, and a cell whose sample fails
     either the minimum-non-zero guard or the L-moment validity check gets the same
     zeroed-parameter fallback the single-series path applies.
 
-    :param calibration_values: calibration data with shape (years, time_steps, *cells)
-    :return: four parameter arrays shaped (time_steps, *cells) and the count of
+    :param calibration_values: calibration data with shape (years, time_steps, ``*cells``)
+    :return: four parameter arrays shaped (time_steps, ``*cells``) and the count of
         failed (time step, cell) fits
     """
     locs, scales, skews, valid = lmoments.fit_spatial(calibration_values)
@@ -737,7 +737,7 @@ def pearson_parameters(
         non-leap years) and assuming that the first value of the array is
         January of the initial year for an input array of monthly values or
         Jan. 1st of initial year for an input array daily values. A time-major
-        spatial block already folded to (years, time_steps, *cells) is also
+        spatial block already folded to (years, time_steps, ``*cells``) is also
         accepted, and then every cell is fitted in one pass; any
         three-or-more-dimensional input is read as that folded layout, so a
         time-major block must already be folded (``prepare_scaled`` owns that).
@@ -747,7 +747,7 @@ def pearson_parameters(
     :param periodicity: monthly or daily
     :return: four arrays of fitting values for the Pearson Type III
         distribution, with shape (12,) for monthly or (366,) for daily, or
-        (time_steps, *cells) for spatial input
+        (time_steps, ``*cells``) for spatial input
 
         returned array 1: probability of zero
         returned array 2: first Pearson Type III distribution parameter (loc)
@@ -1033,7 +1033,7 @@ def _validate_pearson_fitting_params(
     Called before any fitting so a caller's argument error raises from every index,
     regardless of ``fallback_to_gamma``, instead of resembling a failed fit.
 
-    :param values: the validated values, shape (years, periods) or (years, periods, *cells)
+    :param values: the validated values, shape (years, periods) or (years, periods, ``*cells``)
     :raises ValueError: if the set is partial, or a parameter does not carry the period (and cell) axes
     """
     _reject_partial_pearson_parameters((probabilities_of_zero, locs, scales, skews))
@@ -1053,7 +1053,7 @@ def _prepare_spatial_parameters(
     period axis instead of aligning with the trailing cell axes. A parameter
     array carrying cell dimensions must match the block's own cell axes.
 
-    :param values: the folded spatial block, shape (years, time_steps, *cells)
+    :param values: the folded spatial block, shape (years, time_steps, ``*cells``)
     :param named_parameters: (name, parameter) pairs, each parameter possibly None
     :return: the parameters in order, each shaped for the block or None
     """
@@ -1818,7 +1818,7 @@ def prepare_input_shape(values: np.ndarray, spatial_time_major: bool) -> np.ndar
     spatial block keeps its trailing cell dims, so that the scaling and everything
     downstream runs once per cell set rather than per cell, but only when the caller
     says the block is time-major: reading it by default would silently re-read a
-    (years, periods, *cells) array along the wrong axis.
+    (years, periods, ``*cells``) array along the wrong axis.
     """
     shape = values.shape
     if len(shape) == 2:
@@ -1836,7 +1836,7 @@ def prepare_input_shape(values: np.ndarray, spatial_time_major: bool) -> np.ndar
             )
             raise ValueError(
                 f"Invalid shape of input array: {shape} -- a (time, *cells) block whose first cell axis "
-                "is a calendar period length is ambiguous with a (years, periods, *cells) array; "
+                "is a calendar period length is ambiguous with a (years, periods, ``*cells``) array; "
                 "declare it with spatial_time_major=True"
             )
         return values
@@ -2498,7 +2498,7 @@ def _fit_pearson_with_fallback(
     does not count against the fit.
 
     Args:
-        values: 2-D (years, periods) or folded (years, periods, *cells) scaled values.
+        values: 2-D (years, periods) or folded (years, periods, ``*cells``) scaled values.
         probabilities_of_zero: Probability of zero, or None to fit it from the data.
         locs: Location parameter, or None to fit it from the data.
         scales: Scale parameter, or None to fit it from the data.
@@ -2731,7 +2731,7 @@ class FitDiagnostics:
     """Per-calendar-step diagnostics for a fitted distribution.
 
     Each array is shaped ``(time_steps,)`` for a single series and
-    ``(time_steps, *cells)`` for a spatial block. ``parameters`` maps the canonical
+    ``(time_steps, ``*cells``)`` for a spatial block. ``parameters`` maps the canonical
     ``fitting_params`` keys to the arrays that produced the fit, so it can be passed
     straight back to :func:`fit_and_standardize` (or to ``spi`` /
     ``standardized_index``) to reproduce it.
@@ -2769,7 +2769,7 @@ def _as_period_cell_parameters(
     values: np.ndarray,
     *parameters: np.ndarray,
 ) -> tuple[np.ndarray, ...]:
-    """Broadcast period-only fit parameters to a folded block's (time_steps, *cells).
+    """Broadcast period-only fit parameters to a folded block's (time_steps, ``*cells``).
 
     A parameter supplied for a spatial block may carry one value per calendar period,
     which NumPy would otherwise align with the trailing cell axes. A parameter that
@@ -2805,13 +2805,13 @@ def _ks_fit_diagnostics(
 
     Args:
         calibration_values: Calibration data, shaped (years, time_steps) or
-            (years, time_steps, *cells).
+            (years, time_steps, ``*cells``).
         parameters_valid: Per (time step, cell) flag marking usable fitted parameters.
         cdf_for_series: Fitted CDF for one series' sorted sample and its index.
 
     Returns:
         The D statistic, p-value, and valid sample count, each shaped
-        (time_steps,) or (time_steps, *cells).
+        (time_steps,) or (time_steps, ``*cells``).
     """
     shape = (calibration_values.shape[1], *calibration_values.shape[2:])
     n_valid = np.zeros(shape, dtype=np.intp)
