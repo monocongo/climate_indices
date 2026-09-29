@@ -961,6 +961,11 @@ def _validate_pearson_parameter_cells(
         if parameter is None:
             continue
         parameter = np.asarray(parameter)
+        if parameter.ndim == 0:
+            raise ValueError(
+                f"Fitting parameter '{name}' has shape {parameter.shape}, which must carry "
+                f"the period length {period_length}"
+            )
         if parameter.ndim == 1:
             if parameter.shape[0] != period_length:
                 raise ValueError(
