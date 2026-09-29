@@ -1313,7 +1313,7 @@ INFER_TIME_PARAMETERS: dict[str, Callable[[xr.DataArray], Any]] = {
 
 
 def xarray_adapter(
-    *,
+    *,  # NOSONAR (S107) the public decorator API declares each contract parameter explicitly
     calendar: compute.Periodicity | str | None = None,
     inferred_parameters: dict[str, Callable[[xr.DataArray], Any]] | None = None,
     argument_validators: tuple[Callable[[dict[str, Any]], None], ...] = (),
