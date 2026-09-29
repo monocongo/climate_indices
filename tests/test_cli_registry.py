@@ -456,3 +456,59 @@ def test_several_unconsumed_flags_are_reported_together(extra, expected):
         cli_main.main(argv)
 
     assert str(error.value) == expected
+
+
+@pytest.mark.parametrize(
+    ("index", "extra"),
+    [
+        # a PE file replaces the precipitation input, so its variable name is unused
+        ("edi", ["--netcdf_pe", "pe.nc", "--var_name_pe", "pe"]),
+        ("flood_index", ["--netcdf_pe", "pe.nc", "--var_name_pe", "pe"]),
+        # a PET file replaces the temperature input, so its variable name is unused
+        ("spei", ["--netcdf_pet", "pet.nc", "--var_name_pet", "pet"]),
+    ],
+)
+def test_variable_name_of_a_replaced_input_is_rejected(index, extra):
+    """The variable name of the input a provided file replaces is not silently ignored."""
+    shadowed = "--var_name_precip" if "--netcdf_pe" in extra else "--var_name_temp"
+    argv = [
+        "--index",
+        index,
+        "--periodicity",
+        "monthly",
+        "--output_file_base",
+        "out",
+        *extra,
+        shadowed,
+        "unused",
+    ]
+
+    with pytest.raises(ValueError) as error:
+        cli_main.main(argv)
+
+    assert str(error.value) == f"The {shadowed} argument is not applicable to --index {index}"
+
+
+def test_a_replaced_inputs_file_keeps_its_mutual_exclusion_message():
+    """A shadowed variable name does not preempt the file-level conflict check."""
+    argv = [
+        "--index",
+        "edi",
+        "--periodicity",
+        "daily",
+        "--output_file_base",
+        "out",
+        "--netcdf_precip",
+        "precip.nc",
+        "--var_name_precip",
+        "prcp",
+        "--netcdf_pe",
+        "pe.nc",
+        "--var_name_pe",
+        "pe",
+    ]
+
+    with pytest.raises(ValueError) as error:
+        cli_main.main(argv)
+
+    assert str(error.value) == "Both precipitation and PE files were specified, only one of these should be provided"

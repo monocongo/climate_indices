@@ -135,6 +135,10 @@ def _flood_arguments(index, **overrides):
         "chunksizes": "none",
     }
     arguments.update(overrides)
+    # a precipitation variable name without its file is an unconsumed argument,
+    # which validation now rejects; keep the fixture consistent with the CLI
+    if arguments["netcdf_precip"] is None and "var_name_precip" not in overrides:
+        arguments["var_name_precip"] = None
     # a Flood Index and API run needs the argument that defines them
     if index == "flood_index" and arguments["year_start_month"] is None:
         arguments["year_start_month"] = 1

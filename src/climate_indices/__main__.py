@@ -649,6 +649,17 @@ def _validate_consumed_flags(args: argparse.Namespace, handlers: Sequence[_Index
     parser = _build_parser()
     known = {action.dest for action in parser._actions}  # noqa: SLF001 -- argparse exposes no ordered public view
     consumed = set().union(*(handler.consumed_flags for handler in handlers))
+
+    # a selected input source shadows the variable name of the input it
+    # replaces; the file flags keep their own mutual-exclusion checks, so only
+    # subtract a name when the replaced file itself is absent
+    if getattr(args, "netcdf_pe", None) is not None and getattr(args, "netcdf_precip", None) is None:
+        consumed.discard("var_name_precip")
+    if getattr(args, "netcdf_pet", None) is not None and getattr(args, "netcdf_temp", None) is None:
+        consumed.discard("var_name_temp")
+    if getattr(args, "netcdf_temp", None) is not None and getattr(args, "netcdf_pet", None) is None:
+        consumed.discard("var_name_pet")
+
     provided = {
         dest
         for dest, value in vars(args).items()
