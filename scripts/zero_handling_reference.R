@@ -11,12 +11,14 @@
 #
 # input.csv columns: year, month, value (contiguous monthly rows, 1..12)
 
-suppressMessages(library(SEI))
-suppressMessages(library(SCI))
+suppressMessages({
+  library(SEI)
+  library(SCI)
+})
 
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) != 2) {
-  stop("usage: zero_handling_reference.R <input.csv> <output_dir>")
+  stop("usage: zero_handling_reference.R <input.csv> <output_dir>", call. = FALSE)
 }
 input_path <- args[[1]]
 output_dir <- args[[2]]
@@ -24,13 +26,13 @@ dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
 
 d <- read.csv(input_path)
 if (!all(c("year", "month", "value") %in% names(d))) {
-  stop("input must have year, month, and value columns")
+  stop("input must have year, month, and value columns", call. = FALSE)
 }
 if (nrow(d) %% 12 != 0) {
-  stop("input must contain complete calendar years")
+  stop("input must contain complete calendar years", call. = FALSE)
 }
 if (!all(sort(unique(d$month)) == 1:12)) {
-  stop("input must cover every calendar month 1..12")
+  stop("input must cover every calendar month 1..12", call. = FALSE)
 }
 month_factor <- factor(d$month, levels = 1:12)
 n_years <- nrow(d) / 12

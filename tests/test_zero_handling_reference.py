@@ -177,7 +177,8 @@ def test_sei_fitted_parameters_are_not_climate_indices_own_fit() -> None:
     shape = _load("sei_shape.npy")
     rate = _load("sei_rate.npy")
     notes = _provenance()["notes"]
-    assert "SEI 0.2.0" in notes and "SCI 1.0.3" in notes
+    assert "SEI 0.2.0" in notes
+    assert "SCI 1.0.3" in notes
 
     alphas, betas = compute.gamma_parameters(
         values, _DATA_START_YEAR, _DATA_START_YEAR, _CALIBRATION_END_YEAR, compute.Periodicity.monthly
