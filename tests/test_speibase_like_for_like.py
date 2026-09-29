@@ -9,14 +9,20 @@ Monteith PET (``tests/fixture/speibase_cru_ts/``) — and standardizing with the
 log-logistic distribution, then averaging the per-cell SPEI inside each climate
 division exactly as SPEIbase does.
 
-What remains is the independent implementation of the fit (climate_indices'
-L-moment code against R SPEI's unbiased-PWM estimator), parameter rounding, and
-any residual preprocessing, so the agreement floors here are tight (correlation
->= 0.99) rather than the loose plausibility floors in the sibling module.
+What remains is a small residual dominated by a PET day-length convention
+difference — this test multiplies by leap-aware month lengths, matching the
+public SPEIbase ``R/functions.R``, while a near-uniform month matches the
+committed v2.11 grids more closely — plus the fit implementation and parameter
+rounding. ``climate_indices.lmoments.fit_glo`` is a port of the same ``lmom``
+PELGLO routine R SPEI uses, so this validates the port and the
+per-cell-to-division pipeline rather than an algorithmically independent
+estimator. The agreement floors are tight (correlation >= 0.97) rather than the
+loose plausibility floors in the sibling module.
 
 The compared series uses the corrected CRU TS units: precipitation is mm/month,
 PET is mm/day, and PET is multiplied by the leap-aware month length before the
-P - PET difference (matching ``sbegueria/SPEIbase``'s ``R/computeSPEI.R``).
+P - PET difference (following ``sbegueria/SPEIbase``'s ``R/functions.R``,
+``spei.nc``).
 """
 
 import hashlib
@@ -44,6 +50,8 @@ _N_MONTHS = (_DATA_END_YEAR - _DATA_START_YEAR + 1) * 12
 _SCALES = (1, 3, 6, 12)
 _FLOOR_METRICS = ("correlation", "sign_agreement", "category_agreement")
 _RECORDED_METRICS = (*_FLOOR_METRICS, "mean_abs_difference")
+# Keep in sync with scripts/prepare_speibase_cru_ts_inputs.py:_FLOOR_MARGINS.
+_FLOOR_MARGINS = {"correlation": 0.02, "sign_agreement": 0.02, "category_agreement": 0.03}
 
 _CATEGORY_BOUNDARIES = (-2.0, -1.5, -1.0, 1.0, 1.5, 2.0)
 
@@ -147,14 +155,22 @@ def _computed_series(division: str, scale: int) -> np.ndarray:
         )
         for row in range(precip.shape[0])
     ]
+    stacked = np.vstack(cells)
+    assert not np.isnan(stacked[:, scale - 1 :]).all(axis=1).any(), (
+        f"{division} SPEI-{scale}: a cell produced an all-NaN series"
+    )
     with warnings.catch_warnings():
         # leading scale-1 months are all-NaN by construction (rolling-sum warmup)
         warnings.simplefilter("ignore", RuntimeWarning)
-        return np.nanmean(np.vstack(cells), axis=0)
+        return np.nanmean(stacked, axis=0)
 
 
 def test_input_cells_match_speibase_selection():
     """The CRU TS inputs must use the same cells SPEIbase was averaged over."""
+    assert [row["id"] for row in _DIVISIONS] == [row["id"] for row in _SPEIBASE_DIVISIONS], (
+        "speibase_cru_ts/divisions.json row order must match tests/fixture/speibase/divisions.json, "
+        "which fixes the reference array row order"
+    )
     reference_cells = {row["id"]: row["speibase_cells"] for row in _SPEIBASE_DIVISIONS}
     for row in _DIVISIONS:
         division = row["id"]
@@ -162,6 +178,17 @@ def test_input_cells_match_speibase_selection():
         assert len(row["cells"]) == reference_cells[division], (
             f"{division}: {len(row['cells'])} CRU TS cells != {reference_cells[division]} SPEIbase cells"
         )
+        _load_inputs(division)  # asserts the array shapes match the recorded cell count
+
+
+def test_monthly_days_leap_handling():
+    """The PET mm/day -> mm/month conversion must follow the Gregorian leap rule."""
+    assert _monthly_days(1903, 12)[1] == 28.0
+    leap = _monthly_days(1904, 12)
+    assert leap[1] == 29.0 and leap[0] == 31.0  # February adjusts, January does not
+    assert _monthly_days(1900, 12)[1] == 28.0  # century not divisible by 400
+    assert _monthly_days(2000, 12)[1] == 29.0  # 400-year rule
+    assert _monthly_days(1901, _N_MONTHS).sum() == 45291.0  # 1901-2024 day count
 
 
 def test_provenance_declares_all_series():
@@ -173,6 +200,22 @@ def test_provenance_declares_all_series():
         assert set(metrics) == set(_FLOOR_METRICS), (
             f"{series}: floors missing metrics {set(_FLOOR_METRICS) - set(metrics)}"
         )
+
+
+def test_floors_keep_documented_slack():
+    """Every floor must stay pinned to its measurement within the documented margin.
+
+    Without this, a floor can be edited down to accommodate a regression while
+    the stated rationale stops describing the assertions. Floors are quantized
+    down to two decimals, so the slack sits in [margin, margin + 0.01).
+    """
+    for series, metrics in _FLOORS.items():
+        for metric, floor in metrics.items():
+            slack = _MEASURED[series][metric] - floor
+            margin = _FLOOR_MARGINS[metric]
+            assert margin <= slack <= margin + 0.01, (
+                f"{series} {metric}: floor has {slack:.4f} slack, want {margin}-{margin + 0.01}"
+            )
 
 
 @pytest.mark.validation
