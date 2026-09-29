@@ -61,7 +61,11 @@ PALMER_ROOT = PROJECT_ROOT / "tests" / "fixture" / "palmer"
 DIVISIONS_JSON = PROJECT_ROOT / "tests" / "fixture" / "speibase" / "divisions.json"
 
 # R reports these through packageVersion(); the committed fixtures assume them
-_PINNED_R_PACKAGES = {"SPEI": "1.8.1", "TLMoments": "0.7.5.3", "lmom": "3.3"}
+_PINNED_R_PACKAGES = {
+    "SPEI": "1.8.1",
+    "TLMoments": "0.7.5.3",  # NOSONAR (S1313) a package version, not an IP address
+    "lmom": "3.3",
+}
 
 _SCALES = (1, 3, 6, 12)
 _SYNTHETIC_SCALES = (1, 6)
