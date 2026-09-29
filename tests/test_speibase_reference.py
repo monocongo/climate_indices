@@ -37,7 +37,6 @@ from types import ModuleType
 
 import numpy as np
 import pytest
-from scipy.stats import pearsonr
 
 from climate_indices import compute, eto, indices
 
@@ -63,10 +62,6 @@ _RECORDED_METRICS = (*_FLOOR_METRICS, "mean_abs_difference")
 # fixture whose rows are permuted or absent -- fails loudly instead of washing
 # out in the aggregate.
 _PER_DIVISION_SLACK = 12
-
-# SPEI drought-category boundaries: extreme <= -2, severe -2..-1.5, moderate
-# -1.5..-1, near normal -1..1, and the mirror on the wet side.
-_CATEGORY_BOUNDARIES = (-2.0, -1.5, -1.0, 1.0, 1.5, 2.0)
 
 # Physical ranges that only the correct inch->mm and Fahrenheit->Celsius
 # conversions produce (correct means/totals: 15.6/15.7/21.7 degrees C and
@@ -109,6 +104,11 @@ def _load_fixture_script() -> ModuleType:
     return module
 
 
+# The fixtures toolkit owns the shared agreement, category, and monthly-days
+# helpers so both SPEIbase test modules measure agreement identically.
+_SCRIPT = _load_fixture_script()
+
+
 @pytest.fixture(scope="module", autouse=True)
 def _verify_fixture_checksum():
     """Reject a mixed or edited fixture generation before any assertion reads it.
@@ -137,24 +137,6 @@ def _load_temps_fahrenheit(division: str) -> np.ndarray:
     """
     values = np.load(_PALMER_ROOT / division / "temps.npy", allow_pickle=True)
     return np.array([float(str(value).split()[0]) for value in values], dtype=float)
-
-
-def _categories(values: np.ndarray) -> np.ndarray:
-    """SPEI drought-category bins (0..6) for the standard category boundaries."""
-    return np.digitize(values, _CATEGORY_BOUNDARIES)
-
-
-def _agreement(computed: np.ndarray, reference: np.ndarray) -> tuple[dict[str, float], int]:
-    """Correlation, sign agreement, and category agreement over shared months."""
-    both_present = ~np.isnan(computed) & ~np.isnan(reference)
-    computed_values = computed[both_present].astype(np.float64)
-    reference_values = reference[both_present].astype(np.float64)
-    stats = {
-        "correlation": float(pearsonr(computed_values, reference_values).statistic),
-        "sign_agreement": float(np.mean(np.sign(computed_values) == np.sign(reference_values))),
-        "category_agreement": float(np.mean(_categories(computed_values) == _categories(reference_values))),
-    }
-    return stats, int(np.count_nonzero(both_present))
 
 
 def _environmental_inputs(division: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -234,7 +216,7 @@ def test_spei_vs_speibase_plausibility(scale):
     )
     for row, division in enumerate(_DIVISIONS):
         computed = _computed_series(division, scale)
-        stats, compared_months = _agreement(computed, reference[row])
+        stats, compared_months = _SCRIPT._agreement(computed, reference[row])
         series = f"{division['id']}_spei{scale:02d}"
 
         min_compared = _N_MONTHS - (scale - 1) - _PER_DIVISION_SLACK
@@ -281,7 +263,7 @@ def test_refresh_script_measurement_reproduces_recorded_expectations():
     the committed fixtures pins the two together, so the drift guard cannot be
     loosened or the expectations edited without this failing first.
     """
-    script = _load_fixture_script()
+    script = _SCRIPT
     arrays = {scale: np.load(_SPEIBASE_ROOT / f"spei{scale:02d}.npy") for scale in _SCALES}
     measured = script._measure_agreement(arrays, _DIVISIONS)
 
