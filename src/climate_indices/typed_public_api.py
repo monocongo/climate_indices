@@ -33,7 +33,6 @@ beta xarray path stays on its corresponding ``fire.<name>`` public route.
 
 from __future__ import annotations
 
-import datetime
 import inspect
 import typing
 from collections.abc import Callable
@@ -50,6 +49,10 @@ from climate_indices.exceptions import emit_deprecation_warning
 from climate_indices.indices import Distribution
 from climate_indices.validation import InputType, detect_input_type
 from climate_indices.xarray_adapter import (
+    build_output_attrs,
+    xarray_adapter,
+)
+from climate_indices.xarray_adapter import (
     fit_diagnostics as _fit_diagnostics_impl,
 )
 from climate_indices.xarray_adapter import (
@@ -63,9 +66,6 @@ from climate_indices.xarray_adapter import (
 )
 from climate_indices.xarray_adapter import (
     pet_thornthwaite as _pet_thornthwaite_impl,
-)
-from climate_indices.xarray_adapter import (
-    xarray_adapter,
 )
 
 # the CF metadata each non-normal output scale swaps in for SPI and SPEI; the
@@ -505,20 +505,10 @@ def pci(
     assert isinstance(rainfall_mm, xr.DataArray)
     result_values = indices.pci(rainfall_mm.values)
 
-    # build CF metadata attributes for the scalar output
-    cf_meta = CF_METADATA["pci"]
-    from climate_indices import __version__
-
-    output_attrs: dict[str, Any] = {}
-    output_attrs.update(cf_meta)
-    output_attrs["climate_indices_version"] = __version__
-    timestamp = datetime.datetime.now(tz=datetime.timezone.utc).isoformat(timespec="seconds")
-    output_attrs["history"] = f"{timestamp} PCI computed by climate_indices {__version__}"
-
     # PCI output is a scalar (shape (1,)), return as 0-D DataArray
     return xr.DataArray(
         result_values[0],
-        attrs=output_attrs,
+        attrs=build_output_attrs(rainfall_mm, CF_METADATA["pci"], None, "PCI"),  # type: ignore[arg-type]
     )
 
 

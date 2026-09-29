@@ -1994,37 +1994,18 @@ def pet_thornthwaite(
     desired_dims = list(temp_da.dims) + [dim for dim in result.dims if dim not in temp_da.dims]
     result = result.transpose(*desired_dims)
 
-    # apply CF metadata from registry
-    cf_attrs = CF_METADATA["pet_thornthwaite"]
-    result.attrs.update(cf_attrs)
+    # CF metadata, provenance and calculation attrs share one owner with the other indices
+    result.attrs = build_output_attrs(
+        temp_da,
+        CF_METADATA["pet_thornthwaite"],  # type: ignore[arg-type]
+        {"latitude": _build_latitude_attr(lat_for_ufunc), "data_start_year": data_start_year},
+        "PET Thornthwaite",
+    )
 
-    # copy over non-conflicting attributes from input
-    for key, value in temp_da.attrs.items():
-        if key not in result.attrs:
-            result.attrs[key] = value
-
-    # add version attribute
-    from climate_indices import __version__
-
-    result.attrs["climate_indices_version"] = __version__
-
-    # build and append history entry
-    # serialize latitude for history
     if isinstance(latitude, xr.DataArray):
         lat_desc = f"DataArray(dims={latitude.dims})"
     else:
         lat_desc = str(lat_for_ufunc)
-
-    history_entry = _build_history_entry(
-        "PET Thornthwaite",
-        __version__,
-        {"latitude": lat_desc, "data_start_year": data_start_year},
-    )
-    result.attrs["history"] = _append_history(temp_da.attrs, history_entry)
-
-    # add calculation metadata as attributes
-    result.attrs["latitude"] = _build_latitude_attr(lat_for_ufunc)
-    result.attrs["data_start_year"] = data_start_year
 
     _log().info(
         "pet_thornthwaite_completed",
@@ -2193,31 +2174,10 @@ def pet_hargreaves(
     validate_time_monotonicity(tmin_time_coord)
     validate_time_monotonicity(tmax_time_coord)
 
-    # align tmin and tmax along time dimension (inner join)
-    # this handles cases where they have different time ranges
-    tmin_aligned, tmax_aligned = xr.align(tmin_da, tmax_da, join="inner")
-
-    # warn if alignment dropped timesteps
-    original_tmin_len = len(tmin_time_coord)
-    original_tmax_len = len(tmax_time_coord)
-    aligned_len = len(tmin_aligned.coords[time_dim])
-
-    if aligned_len < original_tmin_len or aligned_len < original_tmax_len:
-        warnings.warn(
-            f"Input alignment: tmin had {original_tmin_len} timesteps, "
-            f"tmax had {original_tmax_len} timesteps. "
-            f"After inner join, {aligned_len} timesteps remain. "
-            f"Non-overlapping timesteps were dropped.",
-            InputAlignmentWarning,
-            stacklevel=2,
-        )
-
-    # raise error if no overlap
-    if aligned_len == 0:
-        raise CoordinateValidationError(
-            f"No overlapping timesteps found between tmin and tmax along '{time_dim}' dimension. "
-            f"Cannot proceed with PET calculation."
-        )
+    # trim tmin and tmax to their shared time steps (warning when steps are dropped);
+    # mismatched cell coordinates are rejected rather than silently intersected
+    tmin_aligned, aligned_secondaries = _align_inputs(tmin_da, {"tmax": tmax_da}, time_dim)
+    tmax_aligned = aligned_secondaries["tmax"]
 
     # enforce the shared calendar contract and plan the 366-day adaptation that
     # eto.eto_hargreaves assumes; built from the aligned coordinate, not the inputs
@@ -2288,36 +2248,18 @@ def pet_hargreaves(
     desired_dims = list(tmin_aligned.dims) + [d for d in result.dims if d not in tmin_aligned.dims]
     result = result.transpose(*desired_dims)
 
-    # apply CF metadata from registry
-    cf_attrs = CF_METADATA["pet_hargreaves"]
-    result.attrs.update(cf_attrs)
+    # CF metadata, provenance and calculation attrs share one owner with the other indices
+    result.attrs = build_output_attrs(
+        tmin_aligned,
+        CF_METADATA["pet_hargreaves"],  # type: ignore[arg-type]
+        {"latitude": _build_latitude_attr(lat_for_ufunc)},
+        "PET Hargreaves",
+    )
 
-    # copy over non-conflicting attributes from tmin (primary input)
-    for key, value in tmin_aligned.attrs.items():
-        if key not in result.attrs:
-            result.attrs[key] = value
-
-    # add version attribute
-    from climate_indices import __version__
-
-    result.attrs["climate_indices_version"] = __version__
-
-    # build and append history entry
-    # serialize latitude for history
     if isinstance(latitude, xr.DataArray):
         lat_desc = f"DataArray(dims={latitude.dims})"
     else:
         lat_desc = str(lat_for_ufunc)
-
-    history_entry = _build_history_entry(
-        "PET Hargreaves",
-        __version__,
-        {"latitude": lat_desc},
-    )
-    result.attrs["history"] = _append_history(tmin_aligned.attrs, history_entry)
-
-    # add calculation metadata as attributes
-    result.attrs["latitude"] = _build_latitude_attr(lat_for_ufunc)
 
     _log().info(
         "pet_hargreaves_completed",
@@ -2342,24 +2284,11 @@ def _align_penman_monteith_inputs(
         for name, value in optional_inputs.items()
         if isinstance(value, xr.DataArray) and time_dim in value.dims
     ]
-    aligned = xr.align(tmin, tmax, *[value for _, value in time_bearing], join="inner")
-    if len(aligned[0].coords[time_dim]) < max(len(tmin.coords[time_dim]), len(tmax.coords[time_dim])):
-        warnings.warn(
-            "Input alignment dropped non-overlapping timesteps before the Penman-Monteith calculation.",
-            InputAlignmentWarning,
-            stacklevel=3,
-        )
-    tmin_aligned, tmax_aligned = aligned[0], aligned[1]
-    optional_inputs = optional_inputs.copy()
-    for (name, _), value in zip(time_bearing, aligned[2:], strict=True):
-        optional_inputs[name] = value
-
-    if len(tmin_aligned.coords[time_dim]) == 0:
-        raise CoordinateValidationError(
-            message=(f"No overlapping timesteps remain after aligning the Penman-Monteith inputs along '{time_dim}'."),
-            coordinate_name=time_dim,
-            reason="empty coordinate",
-        )
+    # the shared alignment policy trims to the common time steps (warning when steps are
+    # dropped) and rejects mismatched cell coordinates rather than silently intersecting
+    tmin_aligned, aligned_secondaries = _align_inputs(tmin, {"tmax": tmax, **dict(time_bearing)}, time_dim)
+    tmax_aligned = aligned_secondaries.pop("tmax")
+    optional_inputs = {**optional_inputs, **aligned_secondaries}
 
     # enforce the shared January-start daily calendar contract used by the PET family
     _ = _build_daily_calendar_plan(tmin_aligned.coords[time_dim], compute.Periodicity.daily)
@@ -2381,30 +2310,20 @@ def _finalize_penman_monteith_result(
     result: xr.DataArray,
     tmin_aligned: xr.DataArray,
     latitude: float | np.floating | xr.DataArray,
-    elevation_m: Any,
 ) -> xr.DataArray:
     """Restore dimension order and stamp CF, version, history, and latitude attrs."""
     desired_dims = list(tmin_aligned.dims) + [dim for dim in result.dims if dim not in tmin_aligned.dims]
     result = result.transpose(*desired_dims)
-    result.attrs.update(CF_METADATA["pet_penman_monteith"])
-    for key, value in tmin_aligned.attrs.items():
-        if key not in result.attrs:
-            result.attrs[key] = value
-
-    from climate_indices import __version__
-
-    result.attrs["climate_indices_version"] = __version__
+    result.attrs = build_output_attrs(
+        tmin_aligned,
+        CF_METADATA["pet_penman_monteith"],  # type: ignore[arg-type]
+        {"latitude": _build_latitude_attr(latitude)},
+        "PET Penman-Monteith",
+    )
     if isinstance(latitude, xr.DataArray):
         lat_desc = f"DataArray(dims={latitude.dims})"
     else:
         lat_desc = str(latitude)
-    history_entry = _build_history_entry(
-        "PET Penman-Monteith",
-        __version__,
-        {"latitude": lat_desc, "elevation_m": str(elevation_m)},
-    )
-    result.attrs["history"] = _append_history(tmin_aligned.attrs, history_entry)
-    result.attrs["latitude"] = _build_latitude_attr(latitude)
 
     _log().info(
         "pet_penman_monteith_completed",
@@ -2642,7 +2561,7 @@ def pet_penman_monteith(
         output_dtypes=[float],
     )
 
-    return _finalize_penman_monteith_result(result, tmin_aligned, latitude, elevation_m)
+    return _finalize_penman_monteith_result(result, tmin_aligned, latitude)
 
 
 def _pdsi_numpy_passthrough(
