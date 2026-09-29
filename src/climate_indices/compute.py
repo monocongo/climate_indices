@@ -1836,7 +1836,7 @@ def prepare_input_shape(values: np.ndarray, spatial_time_major: bool) -> np.ndar
             )
             raise ValueError(
                 f"Invalid shape of input array: {shape} -- a (time, *cells) block whose first cell axis "
-                "is a calendar period length is ambiguous with a (years, periods, ``*cells``) array; "
+                "is a calendar period length is ambiguous with a (years, periods, *cells) array; "
                 "declare it with spatial_time_major=True"
             )
         return values
