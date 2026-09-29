@@ -156,32 +156,32 @@ class TestFloodValidation:
             (
                 "api",
                 {"netcdf_temp": "temp.nc"},
-                "The --netcdf_temp and --var_name_temp arguments are not applicable to --index api",
+                "The --netcdf_temp argument is not applicable to --index api",
             ),
             (
                 "pe",
                 {"var_name_pet": "pet"},
-                "The --netcdf_pet and --var_name_pet arguments are not applicable to --index pe",
+                "The --var_name_pet argument is not applicable to --index pe",
             ),
             (
                 "flood_index",
                 {"netcdf_awc": "awc.nc"},
-                "The --netcdf_awc and --var_name_awc arguments are not applicable to --index flood_index",
+                "The --netcdf_awc argument is not applicable to --index flood_index",
             ),
             (
                 "pe",
                 {"calibration_start_year": 2016},
-                "The --calibration_start_year and --calibration_end_year arguments are not applicable to --index pe",
+                "The --calibration_start_year argument is not applicable to --index pe",
             ),
             (
                 "api",
                 {"calibration_end_year": 2019},
-                "The --calibration_start_year and --calibration_end_year arguments are not applicable to --index api",
+                "The --calibration_end_year argument is not applicable to --index api",
             ),
             (
                 "api",
                 {"netcdf_pe": "pe.nc"},
-                "The --netcdf_pe and --var_name_pe arguments are not applicable to --index api",
+                "The --netcdf_pe argument is not applicable to --index api",
             ),
             ("edi", {"year_start_month": 3}, "The --year_start_month argument is not applicable to --index edi"),
             ("flood_index", {"api_k": 0.9}, "The --api_k argument is not applicable to --index flood_index"),

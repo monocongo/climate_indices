@@ -347,3 +347,52 @@ def test_aggregate_output_scale_warns_for_outputs_that_ignore_it(monkeypatch, ca
 
     assert "--output_scale argument does not apply" in caplog.text
     assert "pnp" in caplog.text
+
+
+def test_every_index_specific_argument_is_declared_by_a_registration():
+    """The parser's arguments are checked against the registrations' declarations."""
+    parser = cli_main._build_parser()
+    consumed = set().union(*(registration.consumed_flags for registration in cli_main._INDEX_REGISTRY.values()))
+
+    for action in parser._actions:
+        if action.dest in cli_main._UNIVERSAL_FLAGS or action.dest == "help":
+            continue
+        assert action.dest in consumed, f"--{action.dest} is not declared by any registration"
+
+
+def test_registrations_declare_only_known_arguments():
+    """A registration's consumed flags all name real command line arguments."""
+    known = {action.dest for action in cli_main._build_parser()._actions}
+
+    for registration in cli_main._INDEX_REGISTRY.values():
+        assert registration.consumed_flags <= known, registration.index
+
+
+# one argument each --index value does not consume; API owns --api_k, so it gets
+# the unconsumed --scales instead
+_UNCONSUMED_ARGUMENTS = {
+    "spi": ("--api_k", "0.9"),
+    "spei": ("--api_k", "0.9"),
+    "pnp": ("--api_k", "0.9"),
+    "scaled": ("--api_k", "0.9"),
+    "pet": ("--api_k", "0.9"),
+    "palmers": ("--api_k", "0.9"),
+    "kbdi": ("--api_k", "0.9"),
+    "pe": ("--api_k", "0.9"),
+    "edi": ("--api_k", "0.9"),
+    "flood_index": ("--api_k", "0.9"),
+    "api": ("--scales", "1"),
+    "all": ("--api_k", "0.9"),
+}
+
+
+@pytest.mark.parametrize(("index", "argument"), _UNCONSUMED_ARGUMENTS.items())
+def test_unconsumed_argument_is_rejected_through_main(index, argument):
+    """A flag handed to an index that does not consume it is an error, not a no-op."""
+    flag, value = argument
+    argv = ["--index", index, "--periodicity", "monthly", "--output_file_base", "out", flag, value]
+
+    with pytest.raises(ValueError) as error:
+        cli_main.main(argv)
+
+    assert str(error.value) == f"The {flag} argument is not applicable to --index {index}"
