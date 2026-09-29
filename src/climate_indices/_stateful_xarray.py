@@ -39,9 +39,9 @@ class StatefulAlignment:
 
     ``spatial_dims``/``spatial_shape`` come from the union of the primary
     inputs' dimensions (the same union ``xr.broadcast`` would produce) without
-    broadcasting any data; ``spatial_chunks`` is the finest spatial chunking
-    the Dask-backed primary inputs carry, so a static state operand can be
-    partitioned to the weather tiles.
+    broadcasting any data; ``spatial_chunks`` is one of the primary inputs'
+    spatial chunkings, so a static state operand can be partitioned alongside
+    the weather tiles without adding new Dask boundaries.
     """
 
     spatial_dims: tuple[str, ...]
@@ -85,11 +85,13 @@ def broadcast_topology(inputs: Sequence[xr.DataArray]) -> tuple[tuple[str, ...],
 
 
 def spatial_chunk_targets(inputs: Sequence[xr.DataArray], spatial_dims: tuple[str, ...]) -> dict[str, tuple[int, ...]]:
-    """The finest spatial chunking the Dask-backed inputs carry.
+    """A shared spatial chunking the Dask-backed inputs carry, per dimension.
 
     Static spatial operands (seeds, resumed state) are partitioned to this
-    chunking so ``apply_ufunc`` hands a worker only its own tile instead of the
-    whole grid. Empty when no input is Dask-backed.
+    chunking so ``apply_ufunc`` hands a worker a tile of its own instead of the
+    whole grid. The coarsest shared chunking is chosen so the operand adds no
+    new Dask boundaries; ``apply_ufunc`` still unifies every input to the
+    finest of their chunkings on its own. Empty when no input is Dask-backed.
     """
     targets: dict[str, tuple[int, ...]] = {}
     for dim in spatial_dims:
@@ -189,7 +191,9 @@ def align_time_series_inputs(
                 aligned_size=aligned_length,
                 dropped_count=original_length - aligned_length,
             ),
-            stacklevel=3,
+            # points one frame above the adapter helper, at the public index
+            # function, so a caller's warning filters see it
+            stacklevel=4,
         )
     return tuple(aligned)
 
@@ -265,7 +269,8 @@ def stateful_recurrence_xarray(
     extra_arrays = tuple(data for data, _ in extras)
     if extra_arrays:
         # an extra time series (month) shares the aligned time coordinate, so it
-        # must not introduce a second time length
+        # must not introduce a second time length; CFFWIS resolves its month
+        # before this point, so the guard serves external adapter callers
         for data, core_dim in extras:
             if core_dim == time_dim and data.sizes.get(time_dim) not in (None, alignment.time_length):
                 raise CoordinateValidationError(
