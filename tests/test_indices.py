@@ -202,19 +202,19 @@ def test_pnp(
         )
 
 
-def test_pnp_calibration_period_extends_past_data():
-    """Calibration windows with a trailing partial period still average per calendar time step."""
-    # 481 monthly values starting 1900, i.e. 40 years plus one extra month
+def test_pnp_calibration_period_ending_in_partial_final_year():
+    """A calibration window ending in a partial final year still averages per calendar time step."""
+    # 481 monthly values starting 1900, i.e. 40 years plus one extra month reaching into 1940
     values = np.arange(481, dtype=float)
 
-    # the calibration period starts past the data start and ends past the data end,
+    # the calibration period starts past the data start and ends in the partial year 1940,
     # so the calibration window is 121 values, i.e. 10 whole years plus one month
     computed_pnp = indices.percentage_of_normal(
         values,
         1,
         1900,
         1930,
-        1969,
+        1940,
         compute.Periodicity.monthly,
     )
 
@@ -230,21 +230,19 @@ def test_pnp_calibration_period_extends_past_data():
     np.testing.assert_allclose(computed_pnp, expected, equal_nan=True)
 
 
-def test_pnp_calibration_period_beyond_data_returns_missing():
-    """A calibration window past the end of the data yields all-NaN percentages, without raising."""
+def test_pnp_calibration_period_beyond_data_raises():
+    """A calibration window past the end of the data is rejected, not returned as all-NaN (#1230)."""
     values = np.arange(240, dtype=float)  # 20 years of monthly values starting 1900
 
-    computed_pnp = indices.percentage_of_normal(
-        values,
-        1,
-        1900,
-        1921,
-        1925,
-        compute.Periodicity.monthly,
-    )
-
-    assert computed_pnp.shape == values.shape
-    assert np.isnan(computed_pnp).all()
+    with pytest.raises(InvalidArgumentError, match="calibration end year"):
+        indices.percentage_of_normal(
+            values,
+            1,
+            1900,
+            1921,
+            1925,
+            compute.Periodicity.monthly,
+        )
 
 
 def test_pnp_2d_input_matches_flattened_1d():

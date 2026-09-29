@@ -683,7 +683,7 @@ class TestCalculationFailureContext:
         assert event["index_type"] == "percentage_of_normal"
         assert event["scale"] == 6
         assert "distribution" not in event
-        assert event["error_type"] == "InvalidArgumentError"
+        assert event["error_type"] == "CalibrationPeriodError"
         assert event["calibration_period"] == "2000-2019"
 
     def test_pet_invalid_latitude(self) -> None:

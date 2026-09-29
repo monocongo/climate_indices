@@ -1159,6 +1159,11 @@ def percentage_of_normal(
         Percent of normal precipitation values corresponding to the scaled
         precipitation values array (numpy.ndarray of type float): 1-D for a
         1-D or 2-D input, or the (time, ``*cells``) layout of a declared block.
+
+    Raises:
+        CalibrationPeriodError: The calibration period is reversed, starts before
+            the data, or ends after the last year the data reaches. It is both an
+            ``InvalidArgumentError`` and a ``ValueError``.
     """
     calibration_start_year = calibration_year_initial
     calibration_end_year = calibration_year_final
@@ -1190,6 +1195,19 @@ def percentage_of_normal(
         # calendar months for monthly data (12 periods), or days for daily data (366)
         period_length = periodicity.period_length
 
+        # a calibration period the record does not cover is an error, not clamped. The
+        # record counts a trailing partial period as a year, since the calibration slice
+        # below pads it with NaN, and a spatial block is measured on its time axis.
+        # Resolve before the missing-input return below, so a reversed or uncovered
+        # window is rejected even when the input carries no values to compute.
+        period = resolve_calibration_period(
+            data_start_year,
+            -(-values.shape[0] // period_length),
+            calibration_start_year,
+            calibration_end_year,
+            policy="reject",
+        )
+
         # bypass processing if all values are masked, or when a spatial block is all
         # missing, in which case it is returned as it arrived -- unless the scale
         # exceeds its time steps, which the preparation seam must reject. This is
@@ -1202,32 +1220,6 @@ def percentage_of_normal(
         ):
             _log_calculation_completed(log, t0, values.shape, memory_metrics)
             return values
-
-        # make sure we've been provided with sane calibration limits
-        if data_start_year > calibration_start_year:
-            raise InvalidArgumentError(
-                "Invalid start year arguments: calibration start year "
-                f"({calibration_start_year}) is before the data start year ({data_start_year}).",
-                argument_name="calibration_start_year",
-                argument_value=str(calibration_start_year),
-                valid_values=f">= data_start_year ({data_start_year})",
-            )
-
-        # note: this check counts 12 time steps per year regardless of periodicity,
-        # as it always has. Tightening it to period_length would reject Gregorian
-        # daily input (365/366 days per year), which is a separate behavior change.
-        # A spatial block is measured on its time axis, since every cell shares it and
-        # the element count would let any block pass on cell count alone.
-        if ((calibration_end_year - calibration_start_year + 1) * 12) > values.shape[0]:
-            raise InvalidArgumentError(
-                "Invalid calibration period: total calibration years exceeds the "
-                "actual number of years of data. "
-                f"Calibration period: {calibration_start_year}-{calibration_end_year}, "
-                f"data size: {values.shape[0]} time steps.",
-                argument_name="calibration_end_year",
-                argument_value=str(calibration_end_year),
-                valid_values=f"calibration period must fit within {values.shape[0]} data values",
-            )
 
         # get an array containing a sliding sum on the specified time step
         # scale -- i.e. if the scale is 3 then the first two elements will be
@@ -1247,45 +1239,39 @@ def percentage_of_normal(
 
         # extract the timesteps over which we'll compute the normal
         # average for each time step of the year
-        calibration_years = calibration_end_year - calibration_start_year + 1
-        calibration_start_index = (calibration_start_year - data_start_year) * period_length
-        calibration_end_index = calibration_start_index + (calibration_years * period_length)
-        calibration_period_sums = scale_sums[calibration_start_index:calibration_end_index]
+        calibration_period_sums = scale_sums[
+            period.start_index * period_length : (period.end_index + 1) * period_length
+        ]
 
-        if calibration_period_sums.size:
-            # pad a trailing partial period with NaN (ignored by the average) so that the
-            # calibration period reshapes into whole calendar periods, e.g. when the
-            # calibration period extends past the end of the data
-            if calibration_period_sums.shape[0] % period_length:
-                calibration_period_sums = np.concatenate(
-                    [
-                        calibration_period_sums,
-                        np.full(
-                            (-calibration_period_sums.shape[0] % period_length, *calibration_period_sums.shape[1:]),
-                            np.nan,
-                        ),
-                    ],
-                )
+        # pad a trailing partial period with NaN (ignored by the average) so that the
+        # calibration period reshapes into whole calendar periods, e.g. when the
+        # calibration period ends in the record's partial final year
+        if calibration_period_sums.shape[0] % period_length:
+            calibration_period_sums = np.concatenate(
+                [
+                    calibration_period_sums,
+                    np.full(
+                        (-calibration_period_sums.shape[0] % period_length, *calibration_period_sums.shape[1:]),
+                        np.nan,
+                    ),
+                ],
+            )
 
-            # for each time step in the calibration period, get the average of
-            # the scale sum for that calendar time step (i.e. average all January sums,
-            # then all February sums, etc.); a spatial block keeps its cell axes and
-            # averages each cell's calibration years for every calendar time step. A
-            # cell that is missing for the whole calibration period (not just the whole
-            # block, which is short-circuited above) is an expected all-NaN slice, not
-            # an error, so it's handled with an explicit count/sum rather than
-            # np.nanmean's "Mean of empty slice" warning: xarray_adapter's Dask kernel
-            # runs one task per spatial block, and warnings.catch_warnings() mutates
-            # process-global filter state, so one block's context can suppress or
-            # restore filters while a concurrent block is still inside np.nanmean.
-            reshaped_sums = calibration_period_sums.reshape(-1, period_length, *calibration_period_sums.shape[1:])
-            valid_counts = np.sum(~np.isnan(reshaped_sums), axis=0)
-            averages = np.nansum(reshaped_sums, axis=0) / np.maximum(valid_counts, 1)
-            averages = np.where(valid_counts > 0, averages, np.nan)
-        else:
-            # the calibration window lies beyond the end of the data, so no normal
-            # values are available -- every percentage is missing
-            averages = np.full((period_length, *scale_sums.shape[1:]), np.nan)
+        # for each time step in the calibration period, get the average of
+        # the scale sum for that calendar time step (i.e. average all January sums,
+        # then all February sums, etc.); a spatial block keeps its cell axes and
+        # averages each cell's calibration years for every calendar time step. A
+        # cell that is missing for the whole calibration period (not just the whole
+        # block, which is short-circuited above) is an expected all-NaN slice, not
+        # an error, so it's handled with an explicit count/sum rather than
+        # np.nanmean's "Mean of empty slice" warning: xarray_adapter's Dask kernel
+        # runs one task per spatial block, and warnings.catch_warnings() mutates
+        # process-global filter state, so one block's context can suppress or
+        # restore filters while a concurrent block is still inside np.nanmean.
+        reshaped_sums = calibration_period_sums.reshape(-1, period_length, *calibration_period_sums.shape[1:])
+        valid_counts = np.sum(~np.isnan(reshaped_sums), axis=0)
+        averages = np.nansum(reshaped_sums, axis=0) / np.maximum(valid_counts, 1)
+        averages = np.where(valid_counts > 0, averages, np.nan)
 
         # for each time step of the scale_sums array find its corresponding percentage
         # of the time steps scale average for its respective calendar time step, leaving

@@ -2858,6 +2858,14 @@ def fit_and_standardize(
     validate_output_scale(output_scale)
     _validate_zero_handling(zero_handling)
 
+    # reject a reversed window here, before the dispatch: a complete supplied
+    # parameter set skips the resolver calls inside the transforms, so without this
+    # an index would transform values for a reversed Calibration Period instead of
+    # rejecting it. A window the record does not cover still clamps, as the fits do.
+    resolve_calibration_period(
+        data_start_year, values.shape[0], calibration_start_year, calibration_end_year, policy="clamp"
+    )
+
     # an all-missing input has nothing to fit, so return it before any fit: a direct
     # caller must not see a MissingDataWarning or a fit-failure event from it. Validate
     # a supplied parameter set first, as the transforms do, so an argument error still

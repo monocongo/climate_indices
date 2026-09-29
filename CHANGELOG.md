@@ -100,7 +100,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
-Five changes alter computed values or exception types without a deprecation period, and
+Six changes alter computed values or exception types without a deprecation period, and
 the console script removed below reaches users without one either: its deprecation
 warning was added during the 3.0.0 cycle and shipped in no release. Each behavioral
 change states what a user sees, how to detect it, and what to change in
@@ -165,6 +165,24 @@ change states what a user sees, how to detect it, and what to change in
   unchanged. `fit_diagnostics()` reports the same calibration-period `prob_zero` for
   gamma and returns it in `parameters`, and `compute.transform_fitted_gamma()` reads a
   masked entry as missing (ADR-0015, #1186).
+- **Calibration Period windows the record cannot represent**: a reversed window (start
+  year after end year) now raises `CalibrationPeriodError`, which is both an
+  `InvalidArgumentError` and a `ValueError`, in every index, and `percentage_of_normal()`
+  now rejects any window its record does not cover with the same error. The gamma and
+  Pearson fits (`spi()`, `spei()`, `standardized_index()`, `fit_diagnostics()`) still
+  clamp a window that is not reversed; EDDI and Palmer already rejected both. Before:
+  - a reversed window gave all-NaN when it lay inside the record, and fit some other
+    rows of the record when it ended before it (#1231);
+  - `percentage_of_normal()` gave all-NaN for a reversed window or one that starts after
+    the record, and averaged only the years that exist for a window that ends past the
+    data but is short enough to pass its length check (#1230).
+
+  Two more `percentage_of_normal()` changes follow from measuring the window in years
+  rather than 12 steps per year: a window longer than a daily record is now rejected (a
+  4-year window on a 3-year daily record used to pass), and a window that ends in the
+  record's partial final year is now accepted (2000-2010 on 121 monthly values used to
+  raise). A window the record covers returns the same numbers, and the `error_type` of
+  its logged `calculation_failed` event is now `CalibrationPeriodError`.
 
 ### Removed
 
@@ -269,9 +287,8 @@ change states what a user sees, how to detect it, and what to change in
   `InvalidArgumentError` and a `ValueError`, so existing `except` clauses keep working.
   The message wording is shared, EDDI no longer logs a separate error line before
   raising, and the `error_type` of the logged `calculation_failed` event is now
-  `CalibrationPeriodError` for both. A reversed window is still accepted by SPI, and
-  percentage of normal keeps its own window handling; making the per-index policies
-  uniform is a separate decision (#1214).
+  `CalibrationPeriodError` for both. Reversed windows and percentage of normal's
+  windows are settled separately, under Breaking (#1214, #1230, #1231).
 - **Pearson-to-gamma fall back**: `spi()` and `standardized_index()` treated any
   argument error as a failed Pearson Type III fit and silently returned gamma values.
   A partial or mis-shaped `fitting_params` set is now rejected before the fit, and

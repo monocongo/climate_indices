@@ -12,6 +12,11 @@ from climate_indices._calibration_period import CalibrationPeriodError, resolve_
 from climate_indices.exceptions import InvalidArgumentError, ShortCalibrationWarning
 
 MONTHLY = compute.Periodicity.monthly
+DAILY = compute.Periodicity.daily
+
+# reversed windows against a 1981-2009 record: inside it, straddling its start, straddling
+# its end, before it and after it
+REVERSED_WINDOWS = [(2005, 2002), (1990, 1970), (2020, 2000), (1975, 1970), (2020, 2010)]
 
 
 def _record(n_years: int, seed: int = 0) -> np.ndarray:
@@ -54,10 +59,16 @@ class TestClamp:
         period = self.resolve(1985, 2011)
         assert (period.start_year, period.end_year) == (1981, 2009)
 
-    def test_reversed_window_inside_record_selects_no_rows(self):
-        period = self.resolve(2005, 2002)
-        assert period.n_years <= 0
-        assert np.arange(29)[period.rows].size == 0
+    @pytest.mark.parametrize("window", REVERSED_WINDOWS)
+    def test_reversed_window_raises_wherever_it_lies(self, window):
+        # it used to select no rows inside the record and, ending before the record,
+        # wrap to some other rows (#1231)
+        with pytest.raises(CalibrationPeriodError, match="initial year"):
+            self.resolve(*window)
+
+    def test_single_year_window_is_kept(self):
+        period = self.resolve(1985, 1985)
+        assert (period.n_years, period.rows) == (1, slice(4, 5))
 
 
 class TestReject:
@@ -155,3 +166,103 @@ class TestThroughIndices:
         pet = np.full(10 * 12, 100.0)
         with pytest.raises(InvalidArgumentError, match="calibration end year"):
             indices.eddi(pet, 1, 2000, 2000, 2010, MONTHLY)
+
+    @pytest.mark.parametrize("distribution", [indices.Distribution.gamma, indices.Distribution.pearson])
+    @pytest.mark.parametrize("window", REVERSED_WINDOWS)
+    def test_spi_rejects_a_reversed_window(self, distribution, window):
+        # the Pearson to gamma fallback must not swallow it
+        values = _record(29)
+        with pytest.raises(CalibrationPeriodError, match="initial year"):
+            indices.spi(values, 1, distribution, 1981, *window, MONTHLY)
+
+    @pytest.mark.parametrize("distribution", [indices.Distribution.gamma, indices.Distribution.pearson])
+    @pytest.mark.parametrize("window", REVERSED_WINDOWS)
+    def test_fit_diagnostics_rejects_a_reversed_window(self, distribution, window):
+        values = _record(29)
+        with pytest.raises(CalibrationPeriodError, match="initial year"):
+            indices.fit_diagnostics(values, 1, distribution, 1981, *window, MONTHLY)
+
+    @pytest.mark.parametrize("window", REVERSED_WINDOWS)
+    def test_transform_fitted_gamma_rejects_a_reversed_window(self, window):
+        values = _record(29, seed=3)
+        values[::7] = 0.0
+        with pytest.raises(CalibrationPeriodError, match="initial year"):
+            compute.transform_fitted_gamma(
+                values, 1981, *window, MONTHLY, alphas=np.full(12, 2.0), betas=np.full(12, 30.0)
+            )
+
+    @pytest.mark.parametrize("window", REVERSED_WINDOWS)
+    def test_spi_rejects_a_reversed_window_with_saved_fitting_parameters(self, window):
+        # a complete supplied parameter set skips the transforms' own resolver calls
+        values = _record(29, seed=3)
+        values[::7] = 0.0
+        fitting_params = {
+            "alpha": np.full(12, 2.0),
+            "beta": np.full(12, 30.0),
+            "prob_zero": np.zeros(12),
+        }
+        with pytest.raises(CalibrationPeriodError, match="initial year"):
+            indices.spi(values, 1, indices.Distribution.gamma, 1981, *window, MONTHLY, fitting_params=fitting_params)
+
+    @pytest.mark.parametrize("distribution", [indices.Distribution.gamma, indices.Distribution.pearson])
+    @pytest.mark.parametrize("window", REVERSED_WINDOWS)
+    def test_spei_rejects_a_reversed_window(self, distribution, window):
+        values = _record(29)
+        pet = _record(29, seed=1) / 2
+        with pytest.raises(CalibrationPeriodError, match="initial year"):
+            indices.spei(values, pet, 1, distribution, MONTHLY, 1981, *window)
+
+    @pytest.mark.parametrize("window", REVERSED_WINDOWS)
+    def test_eddi_rejects_a_reversed_window(self, window):
+        with pytest.raises(CalibrationPeriodError, match="initial year"):
+            indices.eddi(np.full(29 * 12, 100.0), 1, 1981, *window, MONTHLY)
+
+
+class TestPercentageOfNormalWindow:
+    """Percentage of normal rejects a window its record does not cover (#1230)."""
+
+    @pytest.mark.parametrize("window", [(2000, 2009), (2003, 2007), (2009, 2009)])
+    def test_monthly_window_the_record_covers_resolves(self, window):
+        result = indices.percentage_of_normal(_record(10), 1, 2000, *window, MONTHLY)
+        assert np.isfinite(result).all()
+
+    @pytest.mark.parametrize(
+        "window",
+        [
+            (1999, 2005),  # starts before the record
+            (2005, 2012),  # partly past it: it used to average the years that exist
+            (2010, 2012),  # wholly past it: it used to be all-NaN
+            (2000, 2012),  # longer than the record
+            (2005, 2002),  # reversed: it used to be all-NaN
+        ],
+    )
+    def test_monthly_window_the_record_does_not_cover_raises(self, window):
+        values = _record(10)
+        with pytest.raises(CalibrationPeriodError):
+            indices.percentage_of_normal(values, 1, 2000, *window, MONTHLY)
+
+    @pytest.mark.parametrize("window", [(2005, 2002), (2010, 2012)])
+    def test_all_missing_input_still_rejects_an_invalid_window(self, window):
+        values = np.ma.masked_all((10, 12))
+        with pytest.raises(CalibrationPeriodError):
+            indices.percentage_of_normal(values, 1, 2000, *window, MONTHLY)
+
+    def test_a_trailing_partial_year_counts_as_a_record_year(self):
+        # 121 months from 2000 reach into 2010
+        values = np.random.default_rng(0).gamma(2.0, 30.0, size=121)
+        assert np.isfinite(indices.percentage_of_normal(values, 1, 2000, 2000, 2010, MONTHLY)).all()
+        with pytest.raises(CalibrationPeriodError):
+            indices.percentage_of_normal(values, 1, 2000, 2000, 2011, MONTHLY)
+
+    @pytest.mark.parametrize("window", [(2000, 2002), (2001, 2002)])
+    def test_daily_window_the_record_covers_resolves(self, window):
+        # 1096 Gregorian days: 2000 (leap), 2001 and 2002
+        values = np.random.default_rng(1).gamma(2.0, 3.0, size=1096)
+        assert np.isfinite(indices.percentage_of_normal(values, 1, 2000, *window, DAILY)).any()
+
+    @pytest.mark.parametrize("window", [(2000, 2003), (1999, 2001), (2002, 2000), (2003, 2004)])
+    def test_daily_window_the_record_does_not_cover_raises(self, window):
+        # (2000, 2003) used to pass a check that counted 12 steps per year
+        values = np.random.default_rng(1).gamma(2.0, 3.0, size=1096)
+        with pytest.raises(CalibrationPeriodError):
+            indices.percentage_of_normal(values, 1, 2000, *window, DAILY)
