@@ -11,7 +11,6 @@ shared arrays. The e2e test covers the same contract through the CLI.
 """
 
 import argparse
-import multiprocessing
 import os
 
 import numpy as np
@@ -19,7 +18,7 @@ import pytest
 import xarray as xr
 
 from climate_indices import __main__ as cli_main
-from climate_indices import compute, palmer
+from climate_indices import _cli_transport, compute, palmer
 from climate_indices.__main__ import DatasetLayout
 
 _DIVISION_ID = "0101"
@@ -33,16 +32,20 @@ def division_precip_pet():
     return precips, pet
 
 
-def _make_shared_array(values: np.ndarray, shape: tuple[int, ...]) -> dict:
-    shared = multiprocessing.Array("d", int(np.prod(shape)))
-    view = np.frombuffer(shared.get_obj()).reshape(shape)
-    np.copyto(view, values.reshape(shape))
-    return {cli_main._KEY_ARRAY: shared, cli_main._KEY_SHAPE: shape}
+def _palmer_transport(precips, pet, awc, shape: tuple[int, ...], awc_shape: tuple[int, ...]):
+    """A transport with the three Palmer inputs and five empty result buffers."""
+    transport = _cli_transport.Transport(1)
+    transport.store.write("precip", np.asarray(precips).reshape(shape))
+    transport.store.write("pet", np.asarray(pet).reshape(shape))
+    transport.store.write("awc", np.asarray(awc).reshape(awc_shape))
+    for key in _cli_transport.PALMER_RESULT_KEYS:
+        transport.allocate(key, shape)
+    return transport
 
 
-def _make_empty_shared_array(shape: tuple[int, ...]) -> dict:
-    shared = multiprocessing.Array("d", int(np.prod(shape)))
-    return {cli_main._KEY_ARRAY: shared, cli_main._KEY_SHAPE: shape}
+def _run_palmer_worker(transport, item: _cli_transport.WorkItem) -> None:
+    """Run one Palmer work item through the in-process executor (the test seam)."""
+    _cli_transport.InlineExecutor(transport.store).map(_cli_transport.run_palmers, [item])
 
 
 class TestCompanionDimensions:
@@ -200,7 +203,6 @@ class TestScalesRequirement:
 class TestPalmersWorker:
     def test_writes_all_five_palmer_outputs(
         self,
-        monkeypatch,
         division_precip_pet,
         data_year_start_monthly,
         calibration_year_start_palmer,
@@ -212,42 +214,31 @@ class TestPalmersWorker:
         n_time = precips.shape[0]
         shape = (1, n_time)
 
-        shared_arrays = {
-            "precip": _make_shared_array(precips, shape),
-            "pet": _make_shared_array(pet, shape),
-            "awc": _make_shared_array(np.array([awc]), (1,)),
-            cli_main._KEY_RESULT_PDSI: _make_empty_shared_array(shape),
-            cli_main._KEY_RESULT_PHDI: _make_empty_shared_array(shape),
-            cli_main._KEY_RESULT_PMDI: _make_empty_shared_array(shape),
-            cli_main._KEY_RESULT_ZINDEX: _make_empty_shared_array(shape),
-            cli_main._KEY_RESULT_SCPDSI: _make_empty_shared_array(shape),
-        }
-        monkeypatch.setattr(cli_main, "_global_shared_arrays", shared_arrays)
+        transport = _palmer_transport(precips, pet, np.array([awc]), shape, (1,))
 
         palmers = cli_main._registry_for("palmers")
-        params = {
-            "func1d": palmers.kernel,
-            "sub_array_start": 0,
-            "sub_array_end": None,
-            "input_var_names": ["precip", "pet", "awc"],
-            "output_var_names": list(palmers.output_keys),
-            "coordinate_input": False,
-            "input_type": DatasetLayout.DIVISIONS,
-            "args": {
+        assert palmers.worker is not None
+        item = _cli_transport.WorkItem(
+            kernel=palmers.kernel,
+            input_names=("precip", "pet", "awc"),
+            output_names=palmers.output_keys,
+            coordinate_input=False,
+            layout=DatasetLayout.DIVISIONS,
+            arguments={
                 "data_start_year": data_year_start_monthly,
                 "calibration_start_year": calibration_year_start_palmer,
                 "calibration_end_year": calibration_year_end_palmer,
             },
-        }
+            start=0,
+            end=None,
+        )
 
-        # the registration's worker is reachable directly, without monkeypatched dispatch.
+        # the registration's worker is reachable through the in-process executor.
         # Should not raise (e.g. KeyError for a missing scpdsi shared array).
-        assert palmers.worker is not None
-        palmers.worker(params)
+        _run_palmer_worker(transport, item)
 
         def _read(key):
-            entry = shared_arrays[key]
-            return np.frombuffer(entry[cli_main._KEY_ARRAY].get_obj()).reshape(entry[cli_main._KEY_SHAPE])[0]
+            return transport.read(key, shape)[0]
 
         expected_pdsi, expected_phdi, expected_pmdi, expected_zindex, _ = palmer.pdsi(
             precips,
@@ -265,21 +256,19 @@ class TestPalmersWorker:
             calibration_year_start_palmer,
             calibration_year_end_palmer,
         )[0]
-        np.testing.assert_allclose(_read(cli_main._KEY_RESULT_PDSI), expected_pdsi, equal_nan=True)
-        np.testing.assert_allclose(_read(cli_main._KEY_RESULT_PHDI), expected_phdi, equal_nan=True)
-        np.testing.assert_allclose(_read(cli_main._KEY_RESULT_PMDI), expected_pmdi, equal_nan=True)
-        np.testing.assert_allclose(_read(cli_main._KEY_RESULT_ZINDEX), expected_zindex, equal_nan=True)
-        np.testing.assert_allclose(_read(cli_main._KEY_RESULT_SCPDSI), expected_scpdsi, equal_nan=True)
+        np.testing.assert_allclose(_read(_cli_transport.PALMER_RESULT_KEYS[0]), expected_pdsi, equal_nan=True)
+        np.testing.assert_allclose(_read(_cli_transport.PALMER_RESULT_KEYS[1]), expected_phdi, equal_nan=True)
+        np.testing.assert_allclose(_read(_cli_transport.PALMER_RESULT_KEYS[2]), expected_pmdi, equal_nan=True)
+        np.testing.assert_allclose(_read(_cli_transport.PALMER_RESULT_KEYS[3]), expected_zindex, equal_nan=True)
+        np.testing.assert_allclose(_read(_cli_transport.PALMER_RESULT_KEYS[4]), expected_scpdsi, equal_nan=True)
 
-    def test_writer_trims_copied_input_chunks_to_the_output_shape(self, monkeypatch, tmp_path, caplog):
+    def test_writer_trims_copied_input_chunks_to_the_output_shape(self, tmp_path, caplog):
         """An oversized copied chunk must not reach any of the five output writers."""
         n_time = 24
         shape = (1, n_time)
-        shared_arrays = {
-            key: _make_shared_array(np.zeros(n_time), shape)
-            for key, _var_name, _cf_key, _index_name in cli_main._PALMER_OUTPUTS
-        }
-        monkeypatch.setattr(cli_main, "_global_shared_arrays", shared_arrays)
+        transport = _cli_transport.Transport(1)
+        for key, _var_name, _cf_key, _index_name in cli_main._PALMER_OUTPUTS:
+            transport.allocate(key, shape)
         request = cli_main._IndexRequest(
             index="palmers",
             output_file_base=str(tmp_path / "out"),
@@ -296,6 +285,7 @@ class TestPalmersWorker:
             output_encodings={"chunksizes": (1, 100)},
             output_engine="h5netcdf",
             arguments={},
+            transport=transport,
         )
 
         cli_main._write_palmer_outputs(context)
@@ -307,24 +297,13 @@ class TestPalmersWorker:
 
     def test_grid_worker_applies_the_supplied_callable(
         self,
-        monkeypatch,
     ):
         """The grid branch must call ``func1d`` (as the divisions branch does)
         instead of hard-coding ``palmer.pdsi``, passing the block with a private
         ``spatial_time_major=True`` so the callable reads it as time-major."""
         lat, lon, n_time = 2, 2, 24
         shape = (lat, lon, n_time)
-        shared_arrays = {
-            "precip": _make_shared_array(np.ones(shape), shape),
-            "pet": _make_shared_array(np.ones(shape), shape),
-            "awc": _make_shared_array(np.full((lat, lon), 5.0), (lat, lon)),
-            cli_main._KEY_RESULT_PDSI: _make_empty_shared_array(shape),
-            cli_main._KEY_RESULT_PHDI: _make_empty_shared_array(shape),
-            cli_main._KEY_RESULT_PMDI: _make_empty_shared_array(shape),
-            cli_main._KEY_RESULT_ZINDEX: _make_empty_shared_array(shape),
-            cli_main._KEY_RESULT_SCPDSI: _make_empty_shared_array(shape),
-        }
-        monkeypatch.setattr(cli_main, "_global_shared_arrays", shared_arrays)
+        transport = _palmer_transport(np.ones(shape), np.ones(shape), np.full((lat, lon), 5.0), shape, (lat, lon))
 
         calls: list[tuple[tuple[int, ...], bool]] = []
 
@@ -332,30 +311,29 @@ class TestPalmersWorker:
             calls.append((precips.shape, parameters.get("spatial_time_major", False)))
             return tuple(np.full(precips.shape, position + 1.0) for position in range(5))
 
-        params = {
-            "func1d": recording_palmers,
-            "sub_array_start": 0,
-            "sub_array_end": None,
-            "input_var_names": ("precip", "pet", "awc"),
-            "output_var_names": cli_main._registry_for("palmers").output_keys,
-            "input_type": DatasetLayout.GRID,
-            "args": {"data_start_year": 1980, "calibration_start_year": 1980, "calibration_end_year": 1981},
-        }
+        output_keys = cli_main._registry_for("palmers").output_keys
+        item = _cli_transport.WorkItem(
+            kernel=recording_palmers,
+            input_names=("precip", "pet", "awc"),
+            output_names=output_keys,
+            coordinate_input=False,
+            layout=DatasetLayout.GRID,
+            arguments={"data_start_year": 1980, "calibration_start_year": 1980, "calibration_end_year": 1981},
+            start=0,
+            end=None,
+        )
 
-        cli_main._apply_along_axis_palmers(params)
+        _run_palmer_worker(transport, item)
 
         # the callable saw the time-major block (time, lat, lon) ...
         assert calls == [((n_time, lat, lon), True)]
         # ... and each of its five outputs landed in its own shared array, in
         # registration order, not just the first one
-        for position, key in enumerate(cli_main._registry_for("palmers").output_keys):
-            entry = shared_arrays[key]
-            written = np.frombuffer(entry[cli_main._KEY_ARRAY].get_obj()).reshape(entry[cli_main._KEY_SHAPE])
-            np.testing.assert_array_equal(written, np.full(shape, position + 1.0))
+        for position, key in enumerate(output_keys):
+            np.testing.assert_array_equal(transport.read(key, shape), np.full(shape, position + 1.0))
 
     def test_grid_worker_matches_per_division_computation(
         self,
-        monkeypatch,
         division_precip_pet,
         data_year_start_monthly,
         calibration_year_start_palmer,
@@ -376,44 +354,31 @@ class TestPalmersWorker:
         precip_grid = np.broadcast_to(precips, (lat, lon, n_time)).copy()
         pet_grid = np.broadcast_to(pet, (lat, lon, n_time)).copy()
 
-        shared_arrays = {
-            "precip": _make_shared_array(precip_grid, shape),
-            "pet": _make_shared_array(pet_grid, shape),
-            "awc": _make_shared_array(awcs, (lat, lon)),
-            cli_main._KEY_RESULT_PDSI: _make_empty_shared_array(shape),
-            cli_main._KEY_RESULT_PHDI: _make_empty_shared_array(shape),
-            cli_main._KEY_RESULT_PMDI: _make_empty_shared_array(shape),
-            cli_main._KEY_RESULT_ZINDEX: _make_empty_shared_array(shape),
-            cli_main._KEY_RESULT_SCPDSI: _make_empty_shared_array(shape),
-        }
-        monkeypatch.setattr(cli_main, "_global_shared_arrays", shared_arrays)
+        transport = _palmer_transport(precip_grid, pet_grid, awcs, shape, (lat, lon))
 
         palmers = cli_main._registry_for("palmers")
-        params = {
-            "func1d": palmers.kernel,
-            "sub_array_start": 0,
-            "sub_array_end": None,
-            "input_var_names": ("precip", "pet", "awc"),
-            "output_var_names": palmers.output_keys,
-            "input_type": DatasetLayout.GRID,
-            "args": {
+        item = _cli_transport.WorkItem(
+            kernel=palmers.kernel,
+            input_names=("precip", "pet", "awc"),
+            output_names=palmers.output_keys,
+            coordinate_input=False,
+            layout=DatasetLayout.GRID,
+            arguments={
                 "data_start_year": data_year_start_monthly,
                 "calibration_start_year": calibration_year_start_palmer,
                 "calibration_end_year": calibration_year_end_palmer,
             },
-        }
+            start=0,
+            end=None,
+        )
 
-        cli_main._apply_along_axis_palmers(params)
+        _run_palmer_worker(transport, item)
 
-        def _read(key):
-            entry = shared_arrays[key]
-            return np.frombuffer(entry[cli_main._KEY_ARRAY].get_obj()).reshape(entry[cli_main._KEY_SHAPE])
-
-        grid_pdsi = _read(cli_main._KEY_RESULT_PDSI)
-        grid_phdi = _read(cli_main._KEY_RESULT_PHDI)
-        grid_pmdi = _read(cli_main._KEY_RESULT_PMDI)
-        grid_zindex = _read(cli_main._KEY_RESULT_ZINDEX)
-        grid_scpdsi = _read(cli_main._KEY_RESULT_SCPDSI)
+        grid_pdsi = transport.read(palmers.output_keys[0], shape)
+        grid_phdi = transport.read(palmers.output_keys[1], shape)
+        grid_pmdi = transport.read(palmers.output_keys[2], shape)
+        grid_zindex = transport.read(palmers.output_keys[3], shape)
+        grid_scpdsi = transport.read(palmers.output_keys[4], shape)
 
         for i in range(lat):
             for j in range(lon):

@@ -15,7 +15,7 @@ import pytest
 import xarray as xr
 
 from climate_indices import __main__ as cli_main
-from climate_indices import compute, indices
+from climate_indices import _cli_transport, compute, indices
 from climate_indices.__main__ import DatasetLayout
 
 # the --index values the CLI accepts, in the order they are offered
@@ -58,7 +58,7 @@ def test_pipelines_cover_the_index_choices():
 )
 def test_accepted_dimensions_are_the_orders_the_transport_reads(layout, accepted):
     """The shared-array gate accepts exactly the orders its kernels can index."""
-    assert cli_main._accepted_dimensions(layout) == accepted
+    assert _cli_transport.accepted_dimensions(layout) == accepted
 
 
 def test_registry_covers_every_pipeline_member():
@@ -125,7 +125,7 @@ def test_process_climate_indices_runs_the_pipeline_in_order(monkeypatch):
     calls: list[tuple[str, DatasetLayout]] = []
 
     def _recorder(name: str) -> cli_main._IndexRegistration:
-        def _run(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
+        def _run(arguments: argparse.Namespace, input_type: DatasetLayout, _transport) -> None:
             calls.append((name, input_type))
 
         return cli_main._IndexRegistration(index=name, run=_run)
@@ -172,7 +172,7 @@ def test_temperature_only_spei_computes_and_consumes_pet(monkeypatch):
     """A temperature-only SPEI run computes PET and feeds its output to SPEI."""
     requests: list[cli_main._IndexRequest] = []
 
-    def _record(request: cli_main._IndexRequest) -> tuple[str, str]:
+    def _record(request: cli_main._IndexRequest, _transport) -> tuple[str, str]:
         requests.append(request)
         return ("out_pet.nc", "pet")
 
@@ -207,7 +207,7 @@ def test_pet_index_computes_pet_when_a_pet_file_is_also_provided(monkeypatch):
     """--index pet computes PET from temperature rather than skipping the run."""
     requests: list[cli_main._IndexRequest] = []
 
-    def _record(request: cli_main._IndexRequest) -> tuple[str, str]:
+    def _record(request: cli_main._IndexRequest, _transport) -> tuple[str, str]:
         requests.append(request)
         return ("out_pet.nc", "pet")
 
@@ -256,9 +256,9 @@ def test_temperature_derived_pet_requires_monthly_periodicity():
 
 def test_result_array_is_reallocated_when_the_output_shape_changes(monkeypatch):
     """A reused result buffer is reallocated when an index's output shape differs."""
-    monkeypatch.setattr(cli_main, "_global_shared_arrays", {})
     monkeypatch.setattr(cli_main, "_parallel_process", lambda *_args, **_kwargs: None)
-    cli_main._allocate_shared_array(cli_main._KEY_RESULT, (1, 12))
+    transport = _cli_transport.Transport(1)
+    transport.allocate(_cli_transport.RESULT_ARRAY_KEY, (1, 12))
     request = cli_main._IndexRequest(
         index="spi",
         output_file_base="out",
@@ -274,11 +274,12 @@ def test_result_array_is_reallocated_when_the_output_shape_changes(monkeypatch):
         output_encodings=None,
         output_engine=None,
         arguments={},
+        transport=transport,
     )
 
     cli_main._compute_single_array(context)
 
-    assert cli_main._global_shared_arrays[cli_main._KEY_RESULT][cli_main._KEY_SHAPE] == (12, 1)
+    assert transport.shape(_cli_transport.RESULT_ARRAY_KEY) == (12, 1)
 
 
 def test_aggregate_index_requires_the_scales_its_members_need(monkeypatch):

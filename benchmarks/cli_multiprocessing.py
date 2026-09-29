@@ -234,16 +234,16 @@ def _time_cli(args: argparse.Namespace) -> None:
     original_write = cli._compute_write_index
     original_parallel = cli._parallel_process
 
-    def _timed_write(request: cli._IndexRequest) -> tuple[str, str] | None:
+    def _timed_write(request: cli._IndexRequest, transport: cli.Transport) -> tuple[str, str] | None:
         start = time.perf_counter()
-        result = original_write(request)
+        result = original_write(request, transport)
         assert request.distribution is not None
         total_samples[request.distribution.value].append(time.perf_counter() - start)
         return result
 
-    def _timed_parallel(request: cli._IndexRequest, arguments: dict[str, Any]) -> None:
+    def _timed_parallel(request: cli._IndexRequest, arguments: dict[str, Any], transport: cli.Transport) -> None:
         start = time.perf_counter()
-        original_parallel(request, arguments)
+        original_parallel(request, arguments, transport)
         assert request.distribution is not None
         compute_samples[request.distribution.value].append(time.perf_counter() - start)
 

@@ -5,7 +5,7 @@ import pytest
 import xarray as xr
 
 from climate_indices import __main__ as cli_main
-from climate_indices import compute, indices
+from climate_indices import _cli_transport, compute, indices
 from climate_indices.__main__ import DatasetLayout
 
 
@@ -30,7 +30,6 @@ def test_spei_chunksizes_follow_output_dimension_order(monkeypatch, tmp_path):
     dataset["precip"].encoding.update(contiguous=False, chunksizes=(1, 12))
     dataset["pet"].encoding.update(contiguous=False, chunksizes=(1, 12))
 
-    monkeypatch.setattr(cli_main, "_global_shared_arrays", {})
     monkeypatch.setattr(cli_main.xr, "open_mfdataset", lambda *_args, **_kwargs: dataset)
     monkeypatch.setattr(cli_main, "_parallel_process", lambda *_args, **_kwargs: None)
 
@@ -49,7 +48,8 @@ def test_spei_chunksizes_follow_output_dimension_order(monkeypatch, tmp_path):
             distribution=indices.Distribution.gamma,
             calibration_start_year=1990,
             calibration_end_year=1991,
-        )
+        ),
+        _cli_transport.Transport(1),
     )
 
     with xr.open_dataset(tmp_path / "out_spei_gamma_03.nc") as written:
@@ -62,7 +62,6 @@ def test_spei_chunksizes_follow_output_dimension_order(monkeypatch, tmp_path):
 
 def _write_pnp_monthly(monkeypatch, tmp_path, input_file):
     """Run a `--chunksizes input` monthly PnP write with parallelism stubbed out."""
-    monkeypatch.setattr(cli_main, "_global_shared_arrays", {})
     monkeypatch.setattr(cli_main, "_parallel_process", lambda *_args, **_kwargs: None)
 
     cli_main._compute_write_index(
@@ -77,7 +76,8 @@ def _write_pnp_monthly(monkeypatch, tmp_path, input_file):
             scale=3,
             calibration_start_year=1990,
             calibration_end_year=1991,
-        )
+        ),
+        _cli_transport.Transport(1),
     )
 
 
@@ -163,7 +163,6 @@ def test_daily_oversized_input_chunks_are_trimmed_to_the_written_shape(monkeypat
         unlimited_dims=["time"],
     )
 
-    monkeypatch.setattr(cli_main, "_global_shared_arrays", {})
     monkeypatch.setattr(cli_main, "_parallel_process", lambda *_args, **_kwargs: None)
 
     cli_main._compute_write_index(
@@ -179,7 +178,8 @@ def test_daily_oversized_input_chunks_are_trimmed_to_the_written_shape(monkeypat
             distribution=indices.Distribution.gamma,
             calibration_start_year=1990,
             calibration_end_year=1990,
-        )
+        ),
+        _cli_transport.Transport(1),
     )
 
     with xr.open_dataset(tmp_path / "out_spi_gamma_30.nc", engine="h5netcdf") as written:
@@ -215,7 +215,6 @@ def test_input_files_are_opened_in_the_requested_order(monkeypatch, tmp_path):
         opened_file_lists.append(list(files))
         return original_open_mfdataset(files, **kwargs)
 
-    monkeypatch.setattr(cli_main, "_global_shared_arrays", {})
     monkeypatch.setattr(cli_main.xr, "open_mfdataset", _recording_open_mfdataset)
     monkeypatch.setattr(cli_main, "_parallel_process", lambda *_args, **_kwargs: None)
 
@@ -240,7 +239,8 @@ def test_input_files_are_opened_in_the_requested_order(monkeypatch, tmp_path):
                 distribution=indices.Distribution.gamma,
                 calibration_start_year=1990,
                 calibration_end_year=1991,
-            )
+            ),
+            _cli_transport.Transport(1),
         )
 
     assert opened_file_lists == [

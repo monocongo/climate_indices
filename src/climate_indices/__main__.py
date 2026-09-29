@@ -16,26 +16,22 @@ import xarray as xr
 from climate_indices import compute, fire, flood, indices, palmer, utils
 from climate_indices._cli import _add_common_spi_arguments, _open_with_default_chunks
 from climate_indices._cli_output import build_index_attrs, write_netcdf_atomic
+from climate_indices._cli_transport import (
+    LATITUDE_ARRAY_KEY,
+    PALMER_RESULT_KEYS,
+    RESULT_ARRAY_KEY,
+    Transport,
+    WorkItem,
+    accepted_dimensions,
+    run_along_axis,
+    run_along_axis_double,
+    run_palmers,
+    transport_dimensions,
+)
 from climate_indices._units import _convert_precipitation_units, _convert_temperature_units
 from climate_indices.cf_metadata_registry import spi_output_attributes, standardized_output_bounds
 from climate_indices.exceptions import ConvergenceError, InsufficientDataError
 from climate_indices.validation import DatasetLayout, detect_dataset_layout, expected_dimensions
-
-# the number of worker processes we'll use for process pools
-_NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count() - 1
-# shared memory array dictionary keys
-_KEY_ARRAY = "array"
-_KEY_SHAPE = "shape"
-_KEY_LAT = "lat"
-_KEY_RESULT = "result_array"
-_KEY_RESULT_PDSI = "result_array_pdsi"
-_KEY_RESULT_PHDI = "result_array_phdi"
-_KEY_RESULT_PMDI = "result_array_pmdi"
-_KEY_RESULT_ZINDEX = "result_array_zindex"
-_KEY_RESULT_SCPDSI = "result_array_scpdsi"
-
-# global dictionary to contain shared arrays for use by worker processes
-_global_shared_arrays: dict[str, Any] = {}
 
 # Retrieve logger and set desired logging level
 _logger = utils.get_logger(__name__, logging.INFO)
@@ -155,37 +151,12 @@ class _ComputeContext:
     output_encodings: dict[str, Any] | None
     output_engine: Literal["h5netcdf"] | None
     arguments: dict[str, Any]
+    # the shared-array transport for this CLI invocation
+    transport: Transport
     # inputs a registration prepared alongside the request, e.g. Palmer's AWC
     prepared: xr.Dataset | None = None
     # the daily 366-day calendar plan shared by input conversion and output restoration
     calendar_plan: utils.DailyCalendarPlan | None = None
-
-
-# the dimension orders the shared-array transport accepts, by layout: it copies
-# each variable's values in storage order, and the kernels index the time axis
-# at a fixed position (_TIME_AXIS_INDEX), so a time-carrying variable has to be
-# stored time-last. The layout classifier is wider -- it accepts a time-major
-# grid or divisions variable for the xarray-backed KBDI path, which never enters
-# the transport
-_TRANSPORT_DIMENSIONS: dict[DatasetLayout, tuple[tuple[Hashable, ...], ...]] = {
-    DatasetLayout.GRID: (("lat", "lon", "time"),),
-    DatasetLayout.DIVISIONS: (("division", "time"),),
-    DatasetLayout.TIMESERIES: (("time",),),
-}
-
-
-def _accepted_dimensions(layout: DatasetLayout) -> tuple[tuple[Hashable, ...], ...]:
-    """
-    Every dimension order a variable in a dataset of this layout may use.
-
-    The data variables are limited to the orders the shared-array transport and
-    the kernels can read, and a layout's per-location companions -- such as the
-    division latitudes -- are fixed per location, without a time dimension.
-
-    param layout: the dataset layout the dimensions are accepted for
-    return: the accepted dimension orders, in storage order
-    """
-    return _TRANSPORT_DIMENSIONS[layout] + (expected_dimensions(layout, includes_time=False) or ())
 
 
 def _validate_precipitation_input(
@@ -359,7 +330,7 @@ def _validate_matching_input_file(
     # the transport contract rather than the wider layout contract: a companion
     # rides the shared-array transport, which copies storage order and reads
     # only a time-last variable
-    expected = _TRANSPORT_DIMENSIONS[context.input_type]
+    expected = transport_dimensions(context.input_type)
 
     with xr.open_dataset(netcdf_file) as dataset:
         # make sure we have a valid variable name
@@ -695,98 +666,6 @@ def _daily_calendar_plan(dataset: xr.Dataset) -> utils.DailyCalendarPlan:
     return utils.DailyCalendarPlan.from_year_span(year_start, final_year - year_start + 1, len(time_values))
 
 
-def _drop_data_into_shared_arrays_grid(
-    dataset: xr.Dataset,
-    var_names: list[str],
-    calendar_plan: utils.DailyCalendarPlan | None,
-) -> tuple[int, ...]:
-    output_shape = None
-
-    # get the data arrays we'll use later in the index computations
-    global _global_shared_arrays
-    for var_name in var_names:
-        dims = dataset[var_name].dims
-
-        # convert daily values into 366-day years; a time-free companion such
-        # as a division latitude keeps its shape
-        if calendar_plan is not None and "time" in dataset[var_name].dims:
-            var_values = np.apply_along_axis(calendar_plan.to_all_leap, len(dims) - 1, dataset[var_name].values)
-
-        else:  # monthly, or a time-free companion variable
-            var_values = dataset[var_name].values
-
-        output_shape = var_values.shape
-
-        # create a shared memory array, wrap it as a numpy array and
-        # copy the data (values) from this variable's DataArray
-        shared_array = multiprocessing.Array("d", int(np.prod(var_values.shape)))
-        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(var_values.shape)  # type: ignore[call-overload]
-        np.copyto(shared_array_np, var_values)
-
-        # add to the dictionary of arrays
-        _global_shared_arrays[var_name] = {
-            _KEY_ARRAY: shared_array,
-            _KEY_SHAPE: var_values.shape,
-        }
-
-        # drop the variable from the dataset (we're assuming this frees the memory)
-        dataset = dataset.drop_vars(names=[var_name])
-
-    assert output_shape is not None, "No variables processed; output shape is unknown"
-    return output_shape
-
-
-def _drop_data_into_shared_arrays_divisions(
-    dataset: xr.Dataset,
-    var_names: list[str],
-    calendar_plan: utils.DailyCalendarPlan | None,
-) -> tuple[int, ...]:
-    """
-    Drop data into shared arrays for use in the index computations.
-
-    :param dataset:
-    :param var_names:
-    :param calendar_plan: the daily conversion plan, or None for monthly input
-    :return:
-    """
-    output_shape = None
-
-    # get the data arrays we'll use later in the index computations
-    global _global_shared_arrays
-    for var_name in var_names:
-        # convert daily values into 366-day years; divisions are time-last
-        if calendar_plan is not None and "time" in dataset[var_name].dims:
-            var_values = np.apply_along_axis(
-                calendar_plan.to_all_leap,
-                len(dataset[var_name].dims) - 1,
-                dataset[var_name].values,
-            )
-        else:
-            var_values = dataset[var_name].values
-
-        # create a shared memory array, wrap it as a numpy array and
-        # copy the data (values) from this variable's DataArray
-        shared_array = multiprocessing.Array("d", int(np.prod(var_values.shape)))
-        shared_array_np = np.frombuffer(shared_array.get_obj()).reshape(var_values.shape)  # type: ignore[call-overload]
-        np.copyto(shared_array_np, var_values)
-
-        # add to the dictionary of arrays
-        _global_shared_arrays[var_name] = {
-            _KEY_ARRAY: shared_array,
-            _KEY_SHAPE: var_values.shape,
-        }
-
-        # we know we'll want the output for divisions to be 2-D
-        if len(var_values.shape) == 2:
-            output_shape = var_values.shape
-
-        # drop the variable from the dataset (we're assuming this frees the memory)
-        dataset = dataset.drop_vars(names=[var_name])
-
-    assert output_shape is not None, "No variables processed; output shape is unknown"
-    return output_shape
-
-
 # the chunking xr.open_mfdataset() uses per input type, collapsing the whole
 # dimension so index kernels always see complete series/grids/divisions
 _CHUNKS_BY_INPUT_TYPE: dict[DatasetLayout, dict[str, int]] = {
@@ -975,12 +854,13 @@ def _normalize_pet_units(dataset: xr.Dataset, var_name: str | None, *, monthly: 
     )
 
 
-def _compute_write_index(request: _IndexRequest) -> tuple[str, str] | None:
+def _compute_write_index(request: _IndexRequest, transport: Transport) -> tuple[str, str] | None:
     """
     Computes a climate index and writes the result into a corresponding NetCDF.
 
-    param request: the index, inputs, and output settings to compute with
-    return: the name of the output file and of the variable written into it, or
+    :param request: the index, inputs, and output settings to compute with
+    :param transport: the shared-array transport for this CLI invocation
+    :return: the name of the output file and of the variable written into it, or
         None for an index that writes more than one output file
     """
 
@@ -1034,23 +914,16 @@ def _compute_write_index(request: _IndexRequest) -> tuple[str, str] | None:
 
     # confirm every variable's dimensions before copying any of them, so an
     # invalid variable cannot leave the shared arrays half filled
-    accepted_dimensions = _accepted_dimensions(request.input_type)
+    valid_dimensions = accepted_dimensions(request.input_type)
     for var_name in input_var_names:
         dimensions = dataset[var_name].dims
-        if dimensions not in accepted_dimensions:
-            expected = list(accepted_dimensions)
+        if dimensions not in valid_dimensions:
+            expected = list(valid_dimensions)
             message = f"Invalid dimensions for variable '{var_name}': {dimensions} (expected one of {expected})"
             _logger.error(message)
             raise ValueError(message)
 
-    if request.input_type == DatasetLayout.DIVISIONS:
-        output_shape = _drop_data_into_shared_arrays_divisions(dataset, input_var_names, calendar_plan)
-    else:
-        output_shape = _drop_data_into_shared_arrays_grid(
-            dataset,
-            input_var_names,
-            calendar_plan,
-        )
+    output_shape = transport.copy_in(dataset, input_var_names, calendar_plan, request.input_type)
 
     output_encodings = {"chunksizes": output_chunksizes} if output_chunksizes else None
     # pin the HDF5-backed writer so copied chunk sizes are always honored
@@ -1065,6 +938,7 @@ def _compute_write_index(request: _IndexRequest) -> tuple[str, str] | None:
         output_engine=output_engine,
         calendar_plan=calendar_plan,
         prepared=prepared,
+        transport=transport,
         arguments=handler.build_arguments(request) if handler.build_arguments is not None else {},
     )
 
@@ -1199,212 +1073,31 @@ def _palmers_scpdsi(
     return computed_scpdsi.reshape(np.asarray(precips).shape)
 
 
-def _init_worker(shared_arrays_dict: dict[str, Any]) -> None:
-    global _global_shared_arrays
-    _global_shared_arrays = shared_arrays_dict
-
-
-def _parallel_process(request: _IndexRequest, arguments: dict[str, Any]) -> None:
+def _parallel_process(request: _IndexRequest, arguments: dict[str, Any], transport: Transport) -> None:
     """
     Apply the requested index's kernel across the shared-memory input arrays.
 
-    The work is split along the first axis — latitude, or division — with one
-    worker process per sub-array.
+    The transport splits the work along the first axis -- latitude, or division
+    -- and runs one worker process per chunk.
 
     :param request: the index request being computed
     :param arguments: the kernel's arguments, as the index's registration builds them
+    :param transport: the shared-array transport for this CLI invocation
     """
     handler = _registry_for(request.index)
     assert handler.kernel is not None
     assert handler.worker is not None
     assert handler.input_array_keys is not None
 
-    # find the start index of each sub-array we'll split out per worker process,
-    # assuming the shape of the output array is the same as all input arrays
-    shape = _global_shared_arrays[handler.output_keys[0]][_KEY_SHAPE]
-    # if there are fewer chunks than the available number of processes
-    # then only create the necessary number of tasks
-    required_processes = min(shape[0], _NUMBER_OF_WORKER_PROCESSES)
-    d, m = divmod(shape[0], required_processes)
-    split_indices = list(range(0, ((d + 1) * (m + 1)), (d + 1)))
-    if d != 0:
-        split_indices += list(range(split_indices[-1] + d, shape[0], d))
-
-    # build a list of parameters for each application of the kernel to an array chunk
-    chunk_params = []
-    for i in range(required_processes):
-        chunk_params.append(
-            {
-                "func1d": handler.kernel,
-                "input_var_names": handler.input_array_keys(request),
-                "coordinate_input": handler.coordinate_input,
-                "output_var_names": handler.output_keys,
-                "sub_array_start": split_indices[i],
-                "sub_array_end": split_indices[i + 1] if i < (required_processes - 1) else None,
-                "input_type": request.input_type,
-                "args": arguments,
-            }
-        )
-
-    # instantiate a process pool
-    with multiprocessing.Pool(
-        processes=_NUMBER_OF_WORKER_PROCESSES,
-        initializer=_init_worker,
-        initargs=(_global_shared_arrays,),
-    ) as pool:
-        pool.map(handler.worker, chunk_params)
-
-
-def _apply_along_axis(params: dict[str, Any]) -> None:
-    """
-    Like numpy.apply_along_axis(), but with arguments in a dict instead.
-    Applicable for applying a function across subarrays of a single input array.
-
-    This function is useful with multiprocessing.Pool().map(): (1) map() only
-    handles functions that take a single argument, and (2) this function can
-    generally be imported from a module, as required by map().
-
-    :param dict params: dictionary of parameters including a function name,
-        "func1d", start and stop indices for specifying the subarray to which
-        the function should be applied, "sub_array_start" and "sub_array_end",
-        a dictionary of arguments to be passed to the function, "args", the
-        keys of the input and output shared arrays, "input_var_names" and
-        "output_var_names", and the input type, "input_type".
-    """
-    func1d = params["func1d"]
-    start_index = params["sub_array_start"]
-    end_index = params["sub_array_end"]
-    input_var_name = params["input_var_names"][0]
-    output_var_name = params["output_var_names"][0]
-    shape = _global_shared_arrays[input_var_name][_KEY_SHAPE]
-
-    sub_array = _shared_array(input_var_name, shape)[start_index:end_index]
-    axis_index = _TIME_AXIS_INDEX[params["input_type"]]
-    computed_array = np.apply_along_axis(func1d, axis=axis_index, arr=sub_array, parameters=params["args"])
-
-    np.copyto(_shared_array(output_var_name, shape)[start_index:end_index], computed_array)
-
-
-def _apply_along_axis_double(
-    params: dict[str, Any],
-) -> None:
-    """
-    Like numpy.apply_along_axis(), but with arguments in a dict instead.
-    Applicable for applying a function across subarrays of two input arrays.
-
-    This function is useful with multiprocessing.Pool().map(): (1) map() only
-    handles functions that take a single argument, and (2) this function can
-    generally be imported from a module, as required by map().
-
-    :param dict params: dictionary of parameters including a function name,
-        "func1d", start and stop indices for specifying the subarray to which
-        the function should be applied, "sub_array_start" and "sub_array_end",
-        a dictionary of arguments to be passed to the function, "args", the keys
-        of the two input arrays and of the output array, "input_var_names" and
-        "output_var_names", the input type, "input_type", and whether the second
-        input is a coordinate fixed per row rather than a per-cell value,
-        "coordinate_input".
-    :return: None
-    """
-
-    func1d = params["func1d"]
-    start_index = params["sub_array_start"]
-    end_index = params["sub_array_end"]
-    first_array_key, second_array_key = params["input_var_names"]
-    output_var_name = params["output_var_names"][0]
-    coordinate_input = params["coordinate_input"]
-
-    shape = _global_shared_arrays[output_var_name][_KEY_SHAPE]
-    # a coordinate input has one value per row rather than per cell
-    second_shape = (shape[0],) if coordinate_input else shape
-    sub_array_1 = _shared_array(first_array_key, shape)[start_index:end_index]
-    sub_array_2 = _shared_array(second_array_key, second_shape)[start_index:end_index]
-
-    # get the output shared memory array, convert to numpy, and get the subarray slice
-    computed_array = _shared_array(output_var_name, shape)[start_index:end_index]
-
-    for i, (x, y) in enumerate(zip(sub_array_1, sub_array_2, strict=False)):
-        if params["input_type"] == DatasetLayout.GRID:
-            for j in range(x.shape[0]):
-                second_value = y if coordinate_input else y[j]
-                computed_array[i, j] = func1d(x[j], second_value, parameters=params["args"])
-        elif params["input_type"] == DatasetLayout.DIVISIONS:
-            computed_array[i] = func1d(x, y, parameters=params["args"])
-        else:
-            raise ValueError(f"Unsupported input type: '{params['input_type']}'")
-
-
-def _apply_along_axis_palmers(params: dict[str, Any]) -> None:
-    """
-    Applies the Palmer computation across subarrays of the Palmer-specific
-    input (shared-memory) arrays.
-
-    A grid chunk is computed in one vectorized call over the whole
-    (lat_chunk, lon, time) block through the supplied ``func1d``, which receives
-    the block with a private ``spatial_time_major=True`` in its parameters, so the
-    standard Palmer indices are read per ADR-0009 rather than
-    computed per grid cell while the kernel loops scPDSI per location (ADR-0011);
-    multiprocessing still parallelizes across chunks (ADR-0002). A divisions chunk
-    has no cell-adjacency structure to batch, so it stays on the per-location loop.
-
-    This function is useful with multiprocessing.Pool().map(): (1) map() only
-    handles functions that take a single argument, and (2) this function can
-    generally be imported from a module, as required by map().
-
-    :param dict params: dictionary of parameters including a function name,
-        "func1d", start and stop indices for specifying the subarray to which
-        the function should be applied, "sub_array_start" and "sub_array_end",
-        a dictionary of arguments to be passed to the function, "args", the keys
-        of the precipitation, PET, and AWC input arrays, "input_var_names", and
-        the keys of the PDSI, PHDI, PMDI, Z-Index, and scPDSI output arrays,
-        "output_var_names".
-    """
-    func1d = params["func1d"]
-    start_index = params["sub_array_start"]
-    end_index = params["sub_array_end"]
-    precip_array_key, pet_array_key, awc_array_key = params["input_var_names"]
-    output_keys = params["output_var_names"]
-
-    shape = _global_shared_arrays[output_keys[0]][_KEY_SHAPE]
-    sub_array_precip = _shared_array(precip_array_key, shape)[start_index:end_index]
-    sub_array_pet = _shared_array(pet_array_key, shape)[start_index:end_index]
-    # available water capacity is fixed per location, without a time dimension
-    awc_shape: tuple[Any, ...]
-    if params["input_type"] == DatasetLayout.GRID:
-        awc_shape = (shape[0], shape[1])
-    else:  # divisions
-        awc_shape = (shape[0],)
-    sub_array_awc = _shared_array(awc_array_key, awc_shape)[start_index:end_index]
-
-    args = params["args"]
-
-    # get the output shared memory arrays, convert to numpy, and get the subarray slices
-    pdsi = _shared_array(output_keys[0], shape)[start_index:end_index]
-    phdi = _shared_array(output_keys[1], shape)[start_index:end_index]
-    pmdi = _shared_array(output_keys[2], shape)[start_index:end_index]
-    zindex = _shared_array(output_keys[3], shape)[start_index:end_index]
-    scpdsi = _shared_array(output_keys[4], shape)[start_index:end_index]
-
-    if params["input_type"] == DatasetLayout.GRID:
-        # sub_array_precip/pet are (lat_chunk, lon, time); pdsi() wants a
-        # time-major (time, *cells) block
-        precip_block = np.moveaxis(sub_array_precip, -1, 0)
-        pet_block = np.moveaxis(sub_array_pet, -1, 0)
-        block_args = {**args, "spatial_time_major": True}
-        block_pdsi, block_phdi, block_pmdi, block_zindex, block_scpdsi = func1d(
-            precip_block,
-            pet_block,
-            sub_array_awc,
-            parameters=block_args,
-        )
-        np.copyto(pdsi, np.moveaxis(block_pdsi, 0, -1))
-        np.copyto(phdi, np.moveaxis(block_phdi, 0, -1))
-        np.copyto(pmdi, np.moveaxis(block_pmdi, 0, -1))
-        np.copyto(zindex, np.moveaxis(block_zindex, 0, -1))
-        np.copyto(scpdsi, np.moveaxis(block_scpdsi, 0, -1))
-    else:  # divisions
-        for i, (precip, pet, awc) in enumerate(zip(sub_array_precip, sub_array_pet, sub_array_awc, strict=False)):
-            pdsi[i], phdi[i], pmdi[i], zindex[i], scpdsi[i] = func1d(precip, pet, awc, parameters=args)
+    transport.execute(
+        kernel=handler.kernel,
+        input_names=handler.input_array_keys(request),
+        output_names=handler.output_keys,
+        coordinate_input=handler.coordinate_input,
+        layout=request.input_type,
+        arguments=arguments,
+        worker=handler.worker,
+    )
 
 
 @dataclass(frozen=True)
@@ -1423,7 +1116,7 @@ class _IndexRegistration:
     """
 
     index: str
-    run: Callable[[argparse.Namespace, DatasetLayout], None]
+    run: Callable[[argparse.Namespace, DatasetLayout, Transport], None]
     # names of the request's input fields this index reads, declared so that
     # from_arguments() copies only the inputs the index actually consumes
     input_paths: tuple[str, ...] = ()
@@ -1439,12 +1132,12 @@ class _IndexRegistration:
     build_arguments: Callable[[_IndexRequest], dict[str, Any]] | None = None
     variable_attributes: Callable[[_IndexRequest, xr.DataArray], tuple[str, dict[str, Any]]] | None = None
     prepare_inputs: Callable[[_IndexRequest, xr.Dataset], xr.Dataset] | None = None
-    prepare_arrays: Callable[[_IndexRequest, xr.Dataset], None] | None = None
+    prepare_arrays: Callable[[_ComputeContext], None] | None = None
     kernel: Callable[..., Any] | None = None
     input_array_keys: Callable[[_IndexRequest], tuple[str, ...]] | None = None
-    output_keys: tuple[str, ...] = (_KEY_RESULT,)
+    output_keys: tuple[str, ...] = (RESULT_ARRAY_KEY,)
     coordinate_input: bool = False
-    worker: Callable[[dict[str, Any]], None] | None = None
+    worker: Callable[[WorkItem], None] | None = None
     compute: Callable[[_ComputeContext], None] | None = None
     write: Callable[[_ComputeContext], tuple[str, str] | None] | None = None
 
@@ -1452,19 +1145,12 @@ class _IndexRegistration:
 # the five outputs the Palmer routines produce, in the order they are written:
 # shared-array key, output variable name, CF_METADATA key, history display name
 _PALMER_OUTPUTS = (
-    (_KEY_RESULT_PDSI, "pdsi", "pdsi", "PDSI"),
-    (_KEY_RESULT_PHDI, "phdi", "phdi", "PHDI"),
-    (_KEY_RESULT_PMDI, "pmdi", "pmdi", "PMDI"),
-    (_KEY_RESULT_ZINDEX, "zindex", "z_index", "Palmer Z-Index"),
-    (_KEY_RESULT_SCPDSI, "scpdsi", "scpdsi", "scPDSI"),
+    (PALMER_RESULT_KEYS[0], "pdsi", "pdsi", "PDSI"),
+    (PALMER_RESULT_KEYS[1], "phdi", "phdi", "PHDI"),
+    (PALMER_RESULT_KEYS[2], "pmdi", "pmdi", "PMDI"),
+    (PALMER_RESULT_KEYS[3], "zindex", "z_index", "Palmer Z-Index"),
+    (PALMER_RESULT_KEYS[4], "scpdsi", "scpdsi", "scPDSI"),
 )
-
-# the axis each input type's time dimension lies along
-_TIME_AXIS_INDEX: dict[DatasetLayout, int] = {
-    DatasetLayout.GRID: 2,
-    DatasetLayout.DIVISIONS: 1,
-    DatasetLayout.TIMESERIES: 0,
-}
 
 # the registrations run only after _validate_args() has filled the request, so
 # these assertions are invariant checks rather than input validation; keep each
@@ -1475,31 +1161,6 @@ _UNVALIDATED_TEMP = "the temperature variable name was not validated"
 _UNVALIDATED_AWC = "the AWC variable name was not validated"
 _UNVALIDATED_DISTRIBUTION = "the distribution was not validated"
 _UNVALIDATED_SCALE = "the scale was not validated"
-
-
-def _shared_array(name: str, shape: tuple[int, ...]) -> np.ndarray:
-    """
-    Return a shared-memory array's values as a numpy array of the given shape.
-
-    :param str name: the shared arrays dictionary key
-    :param tuple shape: the shape the array's values are mapped onto
-    :return: the shared array's values
-    """
-    shared = _global_shared_arrays[name][_KEY_ARRAY]
-    return np.frombuffer(shared.get_obj()).reshape(shape)
-
-
-def _allocate_shared_array(name: str, shape: tuple[int, ...]) -> None:
-    """
-    Create a shared-memory array under the given key, for worker processes to fill.
-
-    :param str name: the shared arrays dictionary key
-    :param tuple shape: the shape of the values the array will hold
-    """
-    _global_shared_arrays[name] = {
-        _KEY_ARRAY: multiprocessing.Array("d", int(np.prod(shape))),
-        _KEY_SHAPE: shape,
-    }
 
 
 def _precipitation_array_key(request: _IndexRequest) -> tuple[str, ...]:
@@ -1515,7 +1176,7 @@ def _precipitation_and_pet_array_keys(request: _IndexRequest) -> tuple[str, ...]
 
 def _temperature_and_latitude_array_keys(request: _IndexRequest) -> tuple[str, ...]:
     assert request.var_name_temp is not None, _UNVALIDATED_TEMP
-    return (request.var_name_temp, _KEY_LAT)
+    return (request.var_name_temp, LATITUDE_ARRAY_KEY)
 
 
 def _palmer_array_keys(request: _IndexRequest) -> tuple[str, ...]:
@@ -1676,16 +1337,14 @@ def _prepare_palmer_inputs(request: _IndexRequest, dataset: xr.Dataset) -> xr.Da
     return awc_dataset
 
 
-def _prepare_latitude_array(request: _IndexRequest, dataset: xr.Dataset) -> None:
+def _prepare_latitude_array(context: _ComputeContext) -> None:
     """
     Copy the latitude coordinate into a shared-memory array for the PET workers.
 
-    :param request: the index request being computed
-    :param dataset: the opened inputs
+    :param context: the opened inputs and output settings of the request
     """
-    latitudes = dataset["lat"]
-    _allocate_shared_array(_KEY_LAT, latitudes.shape)
-    np.copyto(_shared_array(_KEY_LAT, latitudes.shape), latitudes.values)
+    latitudes = context.dataset["lat"]
+    context.transport.store.write(LATITUDE_ARRAY_KEY, latitudes.values)
 
 
 def _compute_single_array(context: _ComputeContext) -> None:
@@ -1695,17 +1354,17 @@ def _compute_single_array(context: _ComputeContext) -> None:
     :param context: the opened inputs and output settings of the request
     """
     handler = _registry_for(context.request.index)
-    # an aggregate pipeline reuses _KEY_RESULT across indices, whose output
-    # shapes can differ (e.g. transposed input dimensions), so reallocate rather
-    # than reshape an incompatible buffer
-    existing = _global_shared_arrays.get(_KEY_RESULT)
-    if existing is None or existing[_KEY_SHAPE] != context.output_shape:
-        _allocate_shared_array(_KEY_RESULT, context.output_shape)
+    # an aggregate pipeline reuses the result buffer across indices, whose
+    # output shapes can differ (e.g. transposed input dimensions), so reallocate
+    # rather than reshape an incompatible buffer
+    transport = context.transport
+    if RESULT_ARRAY_KEY not in transport or transport.shape(RESULT_ARRAY_KEY) != context.output_shape:
+        transport.allocate(RESULT_ARRAY_KEY, context.output_shape)
 
     if handler.prepare_arrays is not None:
-        handler.prepare_arrays(context.request, context.dataset)
+        handler.prepare_arrays(context)
 
-    _parallel_process(context.request, context.arguments)
+    _parallel_process(context.request, context.arguments, transport)
 
 
 def _compute_palmers(context: _ComputeContext) -> None:
@@ -1721,18 +1380,18 @@ def _compute_palmers(context: _ComputeContext) -> None:
     assert context.prepared is not None, "the AWC dataset is opened before the shared arrays are filled"
 
     # read AWC data into a shared memory array; already opened and unit-validated
+    transport = context.transport
     awc_array = context.prepared[request.var_name_awc]
-    _allocate_shared_array(request.var_name_awc, awc_array.shape)
-    np.copyto(_shared_array(request.var_name_awc, awc_array.shape), awc_array.values)
+    transport.store.write(request.var_name_awc, awc_array.values)
 
-    # add shared memory arrays for the computed Palmers to the dictionary of shared arrays
+    # add shared memory arrays for the computed Palmers to the store
     for key, _var_name, _cf_key, _index_name in _PALMER_OUTPUTS:
-        if key not in _global_shared_arrays:
-            _allocate_shared_array(key, context.output_shape)
+        if key not in transport:
+            transport.allocate(key, context.output_shape)
 
     # TODO once we support daily Palmers then we'll need to convert values
     #  from a 366-day calendar back into a normal/Gregorian calendar
-    _parallel_process(request, context.arguments)
+    _parallel_process(request, context.arguments, transport)
 
 
 def _output_source(request: _IndexRequest, dataset: xr.Dataset) -> xr.DataArray:
@@ -1769,7 +1428,7 @@ def _write_single_output(context: _ComputeContext) -> tuple[str, str]:
     )
 
     # get the shared memory results array and convert it to a numpy array
-    index_values = _shared_array(handler.output_keys[0], context.output_shape).astype(float)
+    index_values = context.transport.read(handler.output_keys[0], context.output_shape).astype(float)
 
     # convert daily values back into normal/Gregorian calendar years
     if context.calendar_plan is not None:
@@ -1814,7 +1473,7 @@ def _write_palmer_outputs(context: _ComputeContext) -> None:
     output_encodings = _trimmed_output_encodings(context.output_encodings, context.output_shape)
     for key, var_name, cf_key, index_name in _PALMER_OUTPUTS:
         # get the shared memory results array and convert it to a numpy array
-        index_values = _shared_array(key, context.output_shape).astype(float)
+        index_values = context.transport.read(key, context.output_shape).astype(float)
         # scPDSI's percentile rescaling has no hard bound, unlike the
         # historical (and conservative) range kept for the standard outputs
         extra = None if var_name == "scpdsi" else {"valid_min": -10.0, "valid_max": 10.0}
@@ -2027,7 +1686,7 @@ _SPI_DISTRIBUTIONS = tuple(
 )
 
 
-def _run_spi(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
+def _run_spi(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
     """
     Compute SPI for each requested scale and distribution.
 
@@ -2043,11 +1702,12 @@ def _run_spi(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
                     input_type=input_type,
                     scale=scale,
                     distribution=distribution,
-                )
+                ),
+                transport,
             )
 
 
-def _run_spei(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
+def _run_spei(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
     """
     Compute SPEI for each requested scale and distribution.
 
@@ -2063,11 +1723,12 @@ def _run_spei(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
                     input_type=input_type,
                     scale=scale,
                     distribution=distribution,
-                )
+                ),
+                transport,
             )
 
 
-def _run_pnp(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
+def _run_pnp(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
     """
     Compute percentage of normal precipitation for each requested scale.
 
@@ -2075,10 +1736,12 @@ def _run_pnp(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
     :param input_type: the input type determined by argument validation
     """
     for scale in arguments.scales:
-        _compute_write_index(_IndexRequest.from_arguments(arguments, index="pnp", input_type=input_type, scale=scale))
+        _compute_write_index(
+            _IndexRequest.from_arguments(arguments, index="pnp", input_type=input_type, scale=scale), transport
+        )
 
 
-def _run_pet(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
+def _run_pet(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
     """
     Compute PET from the temperature input, unless a PET input was provided.
 
@@ -2095,19 +1758,21 @@ def _run_pet(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
     if arguments.netcdf_pet is not None and arguments.index != "pet":
         return
 
-    result = _compute_write_index(_IndexRequest.from_arguments(arguments, index="pet", input_type=input_type))
+    result = _compute_write_index(
+        _IndexRequest.from_arguments(arguments, index="pet", input_type=input_type), transport
+    )
     assert result is not None, "PET computation should return file and variable name"
     arguments.netcdf_pet, arguments.var_name_pet = result
 
 
-def _run_palmers(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
+def _run_palmers(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
     """
     Compute the Palmer drought indices.
 
     :param arguments: the parsed command line arguments
     :param input_type: the input type determined by argument validation
     """
-    _compute_write_index(_IndexRequest.from_arguments(arguments, index="palmers", input_type=input_type))
+    _compute_write_index(_IndexRequest.from_arguments(arguments, index="palmers", input_type=input_type), transport)
 
 
 def _time_whole_chunks(input_type: DatasetLayout) -> dict[str, Any]:
@@ -2164,7 +1829,7 @@ def _write_xarray_index(
     write_netcdf_atomic(values, output_file, engine=output_engine)
 
 
-def _run_kbdi(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
+def _run_kbdi(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
     """
     Compute KBDI through the fire module's xarray API.
 
@@ -2199,7 +1864,7 @@ def _run_kbdi(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
         _write_xarray_index(request, kbdi_values, output_file, dataset_precip[request.var_name_precip])
 
 
-def _run_pe(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
+def _run_pe(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
     """
     Compute effective precipitation (PE) through the flood module's xarray API.
 
@@ -2232,6 +1897,7 @@ def _run_from_pe(
     input_type: DatasetLayout,
     index: str,
     compute_index: Callable[[xr.DataArray], xr.DataArray],
+    transport: Transport,
 ) -> None:
     """
     Compute an index from effective precipitation, computing PE first if it was not provided.
@@ -2242,7 +1908,7 @@ def _run_from_pe(
     :param compute_index: the flood module's xarray call that computes the index from PE
     """
     if arguments.netcdf_pe is None:
-        _run_pe(arguments, input_type)
+        _run_pe(arguments, input_type, transport)
 
     request = _IndexRequest.from_arguments(arguments, index=index, input_type=input_type)
     assert request.netcdf_pe is not None and request.var_name_pe is not None
@@ -2258,7 +1924,7 @@ def _run_from_pe(
         _write_xarray_index(request, index_values, f"{request.output_file_base}_{index}.nc", pe)
 
 
-def _run_edi(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
+def _run_edi(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
     """
     Compute the Effective Drought Index through the flood module's xarray API.
 
@@ -2274,10 +1940,11 @@ def _run_edi(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
             calibration_year_initial=arguments.calibration_start_year,
             calibration_year_final=arguments.calibration_end_year,
         ),
+        transport,
     )
 
 
-def _run_flood_index(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
+def _run_flood_index(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
     """
     Compute the Flood Index through the flood module's xarray API.
 
@@ -2295,10 +1962,11 @@ def _run_flood_index(arguments: argparse.Namespace, input_type: DatasetLayout) -
             calibration_year_final=arguments.calibration_end_year,
             year_start_month=arguments.year_start_month,
         ),
+        transport,
     )
 
 
-def _run_api(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
+def _run_api(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
     """
     Compute the Antecedent Precipitation Index through the flood module's xarray API.
 
@@ -2331,7 +1999,7 @@ _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
         variable_attributes=_spi_variable_attributes,
         kernel=_spi,
         input_array_keys=_precipitation_array_key,
-        worker=_apply_along_axis,
+        worker=run_along_axis,
         compute=_compute_single_array,
         write=_write_single_output,
     ),
@@ -2346,7 +2014,7 @@ _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
         variable_attributes=_spei_variable_attributes,
         kernel=_spei,
         input_array_keys=_precipitation_and_pet_array_keys,
-        worker=_apply_along_axis_double,
+        worker=run_along_axis_double,
         compute=_compute_single_array,
         write=_write_single_output,
     ),
@@ -2360,7 +2028,7 @@ _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
         variable_attributes=_pnp_variable_attributes,
         kernel=_pnp,
         input_array_keys=_precipitation_array_key,
-        worker=_apply_along_axis,
+        worker=run_along_axis,
         compute=_compute_single_array,
         write=_write_single_output,
     ),
@@ -2374,7 +2042,7 @@ _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
         kernel=_pet,
         input_array_keys=_temperature_and_latitude_array_keys,
         coordinate_input=True,
-        worker=_apply_along_axis_double,
+        worker=run_along_axis_double,
         compute=_compute_single_array,
         write=_write_single_output,
     ),
@@ -2397,7 +2065,7 @@ _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
         kernel=_palmers,
         input_array_keys=_palmer_array_keys,
         output_keys=tuple(key for key, _var_name, _cf_key, _index_name in _PALMER_OUTPUTS),
-        worker=_apply_along_axis_palmers,
+        worker=run_palmers,
         compute=_compute_palmers,
         write=_write_palmer_outputs,
     ),
@@ -2615,27 +2283,25 @@ def process_climate_indices(
     :return: The results of the climate indices processing
     """
 
-    # start each invocation with fresh shared arrays, so result storage
-    # retained from an earlier invocation in this process (with a possibly
-    # incompatible shape) is never reused
-    global _global_shared_arrays
-    _global_shared_arrays = {}
-
     try:
         # validate the arguments and determine the input type
         input_type = _validate_args(arguments)
 
-        global _NUMBER_OF_WORKER_PROCESSES
         if arguments.multiprocessing == "single":
-            _NUMBER_OF_WORKER_PROCESSES = 1
+            processes = 1
         elif arguments.multiprocessing == "all":
-            _NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count()
+            processes = multiprocessing.cpu_count()
         else:  # default ("all_but_one")
-            _NUMBER_OF_WORKER_PROCESSES = multiprocessing.cpu_count() - 1
+            processes = multiprocessing.cpu_count() - 1
+
+        # a fresh transport per invocation, so result storage retained from an
+        # earlier invocation in this process (with a possibly incompatible
+        # shape) is never reused
+        transport = Transport(processes)
 
         # run every index behind the --index value, in pipeline order
         for handler in _handlers_for_index(arguments.index):
-            handler.run(arguments, input_type)
+            handler.run(arguments, input_type, transport)
 
     except Exception:
         _logger.exception("Failed to complete", exc_info=True)
