@@ -23,6 +23,7 @@ from climate_indices._cli_transport import (
     Transport,
     WorkItem,
     accepted_dimensions,
+    canonical_dimensions,
     run_along_axis,
     run_along_axis_double,
     run_palmers,
@@ -718,26 +719,23 @@ def _trim_to_input_variables(request: _IndexRequest, dataset: xr.Dataset) -> tup
     return dataset, input_var_names
 
 
-def _output_dims(request: _IndexRequest, dataset: xr.Dataset) -> tuple[Hashable, ...]:
+def _output_dims(request: _IndexRequest) -> tuple[Hashable, ...]:
     """
-    The output variable's dimensions, matching whichever input carries them.
+    The output variable's dimensions: the input's canonical time-last order.
 
-    The shape of output variables is assumed to match that of the input, so
-    use either the precipitation or temperature variable's dimensions.
+    The shared arrays store every time-carrying variable time-last, so a
+    time-major input is written back time-last, matching the computed values.
 
     param request: the index request being computed
-    param dataset: the opened, trimmed inputs
     return: the output variable's dimensions
     raise ValueError: if neither a precipitation nor temperature variable name
         was specified
     """
-    if request.var_name_precip is not None:
-        return dataset[request.var_name_precip].dims
-    if request.var_name_temp is not None:
-        return dataset[request.var_name_temp].dims
-    raise ValueError(
-        "Unable to determine output dimensions, no precipitation or temperature variable name was specified."
-    )
+    if request.var_name_precip is None and request.var_name_temp is None:
+        raise ValueError(
+            "Unable to determine output dimensions, no precipitation or temperature variable name was specified."
+        )
+    return canonical_dimensions(request.input_type)
 
 
 def _reordered_chunksizes(
@@ -894,7 +892,7 @@ def _compute_write_index(request: _IndexRequest, transport: Transport) -> tuple[
     # inverse conversion when the result is written
     calendar_plan = _daily_calendar_plan(dataset) if request.periodicity == compute.Periodicity.daily else None
 
-    output_dims = _output_dims(request, dataset)
+    output_dims = _output_dims(request)
     output_chunksizes = _reordered_chunksizes(output_chunksizes, chunksizes_dims, output_dims)
 
     # convert data into the appropriate units, if necessary

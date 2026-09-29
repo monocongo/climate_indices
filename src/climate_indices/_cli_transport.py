@@ -39,16 +39,25 @@ PALMER_RESULT_KEYS = (
     "result_array_scpdsi",
 )
 
-# the dimension orders the transport accepts, by layout: it copies each
-# variable's values in storage order, and the kernels index the time axis at a
-# fixed position (_TIME_AXIS_INDEX), so a time-carrying variable has to be
-# stored time-last. The layout classifier is wider -- it accepts a time-major
-# grid or divisions variable for the xarray-backed KBDI path, which never enters
-# the transport
+# the order the transport stores a time-carrying variable in: time-last, which
+# is where _TIME_AXIS_INDEX expects it and what the kernels index. copy_in
+# transposes any other accepted order to this one.
+_CANONICAL_DIMENSIONS: dict[DatasetLayout, tuple[Hashable, ...]] = {
+    DatasetLayout.GRID: ("lat", "lon", "time"),
+    DatasetLayout.DIVISIONS: ("division", "time"),
+    DatasetLayout.TIMESERIES: ("time",),
+}
+
+# the time-major orders a time-carrying variable may arrive in, per layout
+_TIME_MAJOR_DIMENSIONS: dict[DatasetLayout, tuple[tuple[Hashable, ...], ...]] = {
+    DatasetLayout.GRID: (("time", "lat", "lon"),),
+    DatasetLayout.DIVISIONS: (("time", "division"),),
+    DatasetLayout.TIMESERIES: (),
+}
+
+# every order the transport reads for a layout, canonical first
 _TRANSPORT_DIMENSIONS: dict[DatasetLayout, tuple[tuple[Hashable, ...], ...]] = {
-    DatasetLayout.GRID: (("lat", "lon", "time"),),
-    DatasetLayout.DIVISIONS: (("division", "time"),),
-    DatasetLayout.TIMESERIES: (("time",),),
+    layout: (_CANONICAL_DIMENSIONS[layout], *_TIME_MAJOR_DIMENSIONS[layout]) for layout in _CANONICAL_DIMENSIONS
 }
 
 # the axis each input type's time dimension lies along
@@ -57,6 +66,11 @@ _TIME_AXIS_INDEX: dict[DatasetLayout, int] = {
     DatasetLayout.DIVISIONS: 1,
     DatasetLayout.TIMESERIES: 0,
 }
+
+
+def canonical_dimensions(layout: DatasetLayout) -> tuple[Hashable, ...]:
+    """The time-last order the transport stores a time-carrying variable in."""
+    return _CANONICAL_DIMENSIONS[layout]
 
 
 def transport_dimensions(layout: DatasetLayout) -> tuple[tuple[Hashable, ...], ...]:
@@ -315,13 +329,18 @@ class Transport:
         last variable's shape; a divisions output shape comes from the 2-D
         variable rather than a 1-D companion.
         """
+        canonical = canonical_dimensions(layout)
         output_shape: tuple[int, ...] | None = None
         for var_name in var_names:
-            dims = dataset[var_name].dims
-            if calendar_plan is not None and "time" in dims:
-                var_values = np.apply_along_axis(calendar_plan.to_all_leap, len(dims) - 1, dataset[var_name].values)
+            variable = dataset[var_name]
+            # a time-major variable is transposed to the canonical time-last
+            # storage order before the kernels index it
+            if variable.ndim == len(canonical) and tuple(variable.dims) != canonical:
+                variable = variable.transpose(*canonical)
+            if calendar_plan is not None and "time" in variable.dims:
+                var_values = np.apply_along_axis(calendar_plan.to_all_leap, len(variable.dims) - 1, variable.values)
             else:
-                var_values = dataset[var_name].values
+                var_values = variable.values
 
             self.store.write(var_name, var_values)
 

@@ -45,19 +45,17 @@ def test_pipelines_cover_the_index_choices():
 @pytest.mark.parametrize(
     ("layout", "accepted"),
     [
-        # a grid variable has to be time-last: the shared-array transport copies
-        # storage order and the kernels index a grid's time axis last, so any
-        # other order would be standardized along the wrong axis
-        (DatasetLayout.GRID, (("lat", "lon", "time"), ("lat", "lon"))),
-        # a division variable likewise has to be time-last: the transport
-        # copies storage order and the kernels index a division's time axis at
-        # position 1, so a time-major store is standardized along the wrong one
-        (DatasetLayout.DIVISIONS, (("division", "time"), ("division",))),
+        # a grid variable may arrive time-last or time-major; copy_in transposes
+        # the latter to the time-last order the kernels index, and the
+        # per-location companion has no time dimension
+        (DatasetLayout.GRID, (("lat", "lon", "time"), ("time", "lat", "lon"), ("lat", "lon"))),
+        # a division variable likewise may arrive time-last or time-major
+        (DatasetLayout.DIVISIONS, (("division", "time"), ("time", "division"), ("division",))),
         (DatasetLayout.TIMESERIES, (("time",),)),
     ],
 )
 def test_accepted_dimensions_are_the_orders_the_transport_reads(layout, accepted):
-    """The shared-array gate accepts exactly the orders its kernels can index."""
+    """The shared-array gate accepts every order the transport can canonicalize."""
     assert _cli_transport.accepted_dimensions(layout) == accepted
 
 

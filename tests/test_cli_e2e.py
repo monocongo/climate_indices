@@ -278,84 +278,97 @@ def test_gridded_spi_matches_in_process_computation(tmp_path, precips_mm_monthly
                 np.testing.assert_allclose(written[i, j], expected, equal_nan=True, err_msg=f"cell ({i}, {j})")
 
 
-def test_time_major_gridded_input_is_rejected(tmp_path, precips_mm_monthly):
+def test_time_major_gridded_input_is_canonicalized(tmp_path, precips_mm_monthly):
     """
-    A grid stored time-first is rejected rather than standardized wrongly.
+    A grid stored time-first is transposed to the canonical time-last order.
 
-    The shared-array transport copies storage order and the kernels index the
-    grid's time axis last, so accepting this order computes each cell's index
-    from its longitude series instead of raising.
+    The shared-array transport stores every time-carrying variable time-last,
+    so a time-major input is transposed before the kernels index its time axis,
+    and the written output is time-last.
     """
     values = precips_mm_monthly.reshape(-1)
     cells = np.stack([values] * (len(_LATITUDES) * len(_LONGITUDES)), axis=-1)
     precip_path = tmp_path / "precip_time_major.nc"
     _write_time_major_grid(precip_path, cells.reshape(values.size, len(_LATITUDES), len(_LONGITUDES)))
 
-    arguments = _spi_arguments(precip_path, tmp_path / "spi_time_major")
+    main(_spi_arguments(precip_path, tmp_path / "spi_time_major"))
 
-    with pytest.raises(ValueError) as error:
-        main(arguments)
+    with xr.open_dataset(tmp_path / "spi_time_major_spi_gamma_06.nc") as dataset:
+        written = dataset["spi_gamma_06"].values
 
-    assert str(error.value) == (
-        "Invalid dimensions for variable 'precip': ('time', 'lat', 'lon') "
-        "(expected one of [('lat', 'lon', 'time'), ('lat', 'lon')])"
+    assert written.shape == (len(_LATITUDES), len(_LONGITUDES), values.size)
+    expected = indices.spi(
+        values=values,
+        scale=6,
+        distribution=indices.Distribution.gamma,
+        data_start_year=_DATA_START_YEAR,
+        calibration_year_initial=_CALIBRATION_START_YEAR,
+        calibration_year_final=_CALIBRATION_END_YEAR,
+        periodicity=compute.Periodicity.monthly,
     )
+    for i in range(len(_LATITUDES)):
+        for j in range(len(_LONGITUDES)):
+            np.testing.assert_allclose(written[i, j], expected, equal_nan=True, err_msg=f"cell ({i}, {j})")
 
 
-def test_time_major_divisions_input_is_rejected(tmp_path, precips_mm_monthly):
-    """
-    A divisions variable stored time-first is rejected rather than standardized wrongly.
-
-    The shared-array transport copies storage order and the kernels index a
-    division's time axis at position 1, so accepting this order computes each
-    index from its division series instead of raising.
-    """
+def test_time_major_divisions_input_is_canonicalized(tmp_path, precips_mm_monthly):
+    """A divisions variable stored time-first is transposed and standardized correctly."""
     values = precips_mm_monthly.reshape(-1)
     precip_path = tmp_path / "precip_time_major.nc"
     _write_time_major_divisions(precip_path, values)
 
-    arguments = _spi_arguments(precip_path, tmp_path / "spi_time_major_divisions")
+    main(_spi_arguments(precip_path, tmp_path / "spi_time_major_divisions"))
 
-    with pytest.raises(ValueError) as error:
-        main(arguments)
+    with xr.open_dataset(tmp_path / "spi_time_major_divisions_spi_gamma_06.nc") as dataset:
+        written = dataset["spi_gamma_06"].values
 
-    assert str(error.value) == (
-        "Invalid dimensions for variable 'precip': ('time', 'division') "
-        "(expected one of [('division', 'time'), ('division',)])"
+    expected = indices.spi(
+        values=values,
+        scale=6,
+        distribution=indices.Distribution.gamma,
+        data_start_year=_DATA_START_YEAR,
+        calibration_year_initial=_CALIBRATION_START_YEAR,
+        calibration_year_final=_CALIBRATION_END_YEAR,
+        periodicity=compute.Periodicity.monthly,
     )
+    assert written.shape == (1, values.size)
+    np.testing.assert_allclose(written[0], expected, equal_nan=True)
 
 
-def test_mixed_order_divisions_companion_is_rejected(tmp_path, precips_mm_monthly, pet_thornthwaite_mm):
+def test_mixed_order_divisions_companion_is_canonicalized(tmp_path, precips_mm_monthly, pet_thornthwaite_mm):
     """
-    A time-major PET companion is rejected alongside a time-last precipitation variable.
+    A time-major PET companion and a time-last precipitation variable still compute.
 
-    Companions are validated against the shared-array transport contract, so a
-    time-major PET file is rejected before it can be zipped positionally against
-    a time-last precipitation variable.
+    Both are canonicalized to time-last before the shared arrays are filled, so
+    mixed-order inputs no longer zip positionally against each other.
     """
     precips = precips_mm_monthly.reshape(-1)
     pet = pet_thornthwaite_mm.reshape(-1)
     precip_path = tmp_path / "precip.nc"
-    pet_path = tmp_path / "pet_time_major.nc"
+    pet_last = tmp_path / "pet.nc"
+    pet_major = tmp_path / "pet_time_major.nc"
     _write_divisions(precip_path, precips)
-    _write_time_major_divisions(pet_path, pet, var_name="pet")
+    _write_divisions(pet_last, pet, var_name="pet")
+    _write_time_major_divisions(pet_major, pet, var_name="pet")
 
-    arguments = [
-        *_common_arguments("spei", precip_path, tmp_path / "spei_mixed_order"),
-        "--scales",
-        "6",
-        "--netcdf_pet",
-        str(pet_path),
-        "--var_name_pet",
-        "pet",
-    ]
+    def _run_spei(pet_path, output_base):
+        main(
+            [
+                *_common_arguments("spei", precip_path, output_base),
+                "--scales",
+                "6",
+                "--netcdf_pet",
+                str(pet_path),
+                "--var_name_pet",
+                "pet",
+            ]
+        )
+        with xr.open_dataset(f"{output_base}_spei_gamma_06.nc") as dataset:
+            return dataset["spei_gamma_06"].values
 
-    with pytest.raises(ValueError) as error:
-        main(arguments)
-
-    assert str(error.value) == (
-        "Invalid dimensions of the PET variable: ('time', 'division') (expected names and order: [('division', 'time')])"
-    )
+    time_last = _run_spei(pet_last, tmp_path / "spei_last")
+    time_major = _run_spei(pet_major, tmp_path / "spei_major")
+    np.testing.assert_allclose(time_major, time_last, equal_nan=True)
 
 
 def test_spei_uses_provided_pet_file_and_matches_in_process_computation(

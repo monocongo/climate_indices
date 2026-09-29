@@ -69,7 +69,7 @@ class TestCompanionDimensions:
 
         assert str(error.value) == (
             "Invalid dimensions of the PET variable: ('lat', 'time') "
-            "(expected names and order: [('lat', 'lon', 'time')])"
+            "(expected names and order: [('lat', 'lon', 'time'), ('time', 'lat', 'lon')])"
         )
 
 
