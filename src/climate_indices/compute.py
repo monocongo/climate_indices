@@ -2891,7 +2891,6 @@ def fit_diagnostics(
     period = resolve_calibration_period(
         data_start_year, values.shape[0], calibration_start_year, calibration_end_year, policy="clamp"
     )
-    calibration_start_year, calibration_end_year = period.start_year, period.end_year
     calibration_values = values[period.rows, ...]
 
     fell_back_to_gamma = False

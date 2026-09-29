@@ -30,8 +30,10 @@ class CalibrationPeriod:
     """A Calibration Period resolved against a record of whole years.
 
     ``start_year`` and ``end_year`` are inclusive. A window that ends before it
-    starts is kept as requested, so ``n_years`` is then zero or negative and
-    ``rows`` selects nothing.
+    starts is kept as requested, so ``n_years`` is then zero or negative. ``rows`` is
+    a plain ``slice(start_index, end_index + 1)``: it selects nothing for a reversed
+    window inside the record, but a reversed window that ends before the record's
+    first year gives a negative stop that wraps, as it always has (#1214).
     """
 
     start_year: int

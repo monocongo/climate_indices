@@ -1610,6 +1610,7 @@ def _palmer_calculation(
         all_missing = np.all(np.isnan(precips))
         if all_missing:
             reshaped, _ = _reshape_palmer_input(precips, spatial_time_major)
+            # validation only: an all-missing input has nothing to slice
             resolve_calibration_period(
                 data_start_year,
                 int(reshaped.shape[0]),
