@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import math
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -20,6 +21,7 @@ from climate_indices.exceptions import (
     InputAlignmentWarning,
     InvalidArgumentError,
 )
+from climate_indices.fire import _kbdi
 
 # the corrected Equation 18 contract, restated here so a test failure points at
 # the implementation rather than at a shared helper
@@ -886,6 +888,34 @@ class TestKBDIXarrayEquivalence:
         np.testing.assert_array_equal(result.state.kbdi, expected.state.kbdi)
         np.testing.assert_array_equal(result.state.wet_spell_precipitation, expected.state.wet_spell_precipitation)
 
+    def test_state_operands_are_chunked_to_the_weather_blocks(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The Dask resume path partitions every static seed to the weather chunks (#1222)."""
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays(days=60)
+        precip_dask = precip_da.chunk({"time": -1, "lat": 1, "lon": 1})
+        temp_dask = temp_da.chunk({"time": -1, "lat": 1, "lon": 1})
+        history = fire.kbdi(precip_da, temp_da, mean_annual_da, return_state=True)
+        assert isinstance(history, fire.KBDIResult)
+
+        captured: list[tuple[int, ...] | None] = []
+        original = _kbdi._wrap_spatial
+
+        def spy(*args: Any, **kwargs: Any) -> Any:
+            captured.append(kwargs.get("chunks"))
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(_kbdi, "_wrap_spatial", spy)
+        fire.kbdi(precip_dask, temp_dask, mean_annual_da, initial_state=history.state, return_state=True)
+        assert captured
+        assert all(chunks == {"lat": (1, 1), "lon": (1, 1, 1)} for chunks in captured)
+
+    def test_dimension_only_mismatch_raises_the_typed_alignment_error(self) -> None:
+        """Two dimension-only inputs of different sizes must not leak xr.AlignmentError (#1222)."""
+        precip = xr.DataArray(np.ones((4, 3)), dims=["time", "cell"])
+        temp = xr.DataArray(np.ones((4, 4)), dims=["time", "cell"])
+        with pytest.raises(CoordinateValidationError) as conflict:
+            fire.kbdi(precip, temp, None)
+        assert conflict.value.reason == "alignment_conflict"
+
     def test_dims_and_coords_preserved(self) -> None:
         precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays()
         result = fire.kbdi(precip_da, temp_da, mean_annual_da)
@@ -1090,6 +1120,21 @@ class TestKBDIXarraySpinUp:
         result = fire.kbdi(precip_da, temp_da, mean_annual_da, spin_up=spin_up)
         assert result.sizes["time"] == 50 - spin_up
         assert result.coords["time"].values[0] == precip_da.coords["time"].values[spin_up]
+
+    def test_spin_up_keeps_time_attributes_and_extra_time_coordinates(self) -> None:
+        """The shared adapter restores every time-varying coordinate, not just time values (#1222)."""
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays(days=50)
+        extra = {
+            "time": precip_da.coords["time"].assign_attrs(long_name="observation time"),
+            "doy": ("time", precip_da.coords["time"].dt.dayofyear.values, {"long_name": "day of year"}),
+        }
+        precip_da = precip_da.assign_coords(extra)
+        temp_da = temp_da.assign_coords(extra)
+        spin_up = 7
+        result = fire.kbdi(precip_da, temp_da, mean_annual_da, spin_up=spin_up)
+        assert result.time.attrs == {"long_name": "observation time"}
+        assert result.doy.attrs == {"long_name": "day of year"}
+        np.testing.assert_array_equal(result.doy, precip_da.doy.isel(time=slice(spin_up, None)))
 
 
 class TestKBDIXarrayStateRoundTrip:

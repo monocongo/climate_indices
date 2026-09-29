@@ -159,6 +159,44 @@ def test_api_xarray_spatial_chunks_units_and_resume() -> None:
         flood.antecedent_precipitation_index(strided, 0.85)
 
 
+def test_api_resume_state_is_chunked_to_the_weather_blocks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The Dask resume path partitions the seed to the weather chunks (#1222)."""
+    import climate_indices.flood._xarray as module
+
+    dates = pd.date_range("2001-01-01", periods=8)
+    rain = xr.DataArray(
+        np.arange(24, dtype=float).reshape(8, 3),
+        dims=("time", "site"),
+        coords={"time": dates, "site": [1, 2, 3]},
+        attrs={"units": "mm"},
+    ).chunk({"time": -1, "site": 1})
+    history = flood.antecedent_precipitation_index(rain, 0.85, return_state=True)
+    assert isinstance(history, flood.APIResult)
+
+    captured: list[dict[str, tuple[int, ...]] | None] = []
+    original = module._wrap_spatial
+
+    def spy(*args: object, **kwargs: object) -> xr.DataArray:
+        captured.append(kwargs.get("chunks"))  # type: ignore[arg-type]
+        return original(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(module, "_wrap_spatial", spy)
+    flood.antecedent_precipitation_index(rain, 0.85, initial_state=history.state, return_state=True)
+    assert captured == [{"site": (1, 1, 1)}, {"site": (1, 1, 1)}]
+
+
+def test_api_xarray_empty_record_returns_an_empty_result() -> None:
+    """A zero-length record is a valid empty result, not an alignment failure (#1222)."""
+    rain = xr.DataArray(
+        np.empty((0, 3)),
+        dims=("time", "site"),
+        coords={"time": pd.DatetimeIndex([]), "site": [1, 2, 3]},
+    )
+    result = flood.antecedent_precipitation_index(rain, 0.85)
+    assert isinstance(result, xr.DataArray)
+    assert result.sizes["time"] == 0
+
+
 def test_api_xarray_gap_state_and_time_last() -> None:
     rain = xr.DataArray(
         [[1.0, np.nan], [np.nan, 2.0], [3.0, 4.0]],
