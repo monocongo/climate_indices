@@ -1283,6 +1283,63 @@ def test_fit_diagnostics_supports_spatial_blocks():
     )
 
 
+def test_fit_diagnostics_aligns_supplied_period_only_parameters_to_the_period_axis():
+    """A period-only supplied parameter spreads over cells, not over the period axis (#1248)."""
+    values = np.arange(1.0, (40 * 12 * 4) + 1.0).reshape(40, 12, 4)
+    locs = 1.0 + np.arange(12) * 0.1
+    parameters = {
+        "prob_zero": np.full(12, 0.1),
+        "loc": locs,
+        "scale": np.full(12, 1.0),
+        "skew": np.full(12, 1.0),
+    }
+
+    diagnostics = compute.fit_diagnostics(
+        values,
+        indices.Distribution.pearson,
+        1981,
+        1981,
+        2010,
+        compute.Periodicity.monthly,
+        parameters,
+    )
+
+    assert diagnostics.parameters["loc"].shape == (12, 4)
+    for cell in range(4):
+        np.testing.assert_array_equal(diagnostics.parameters["loc"][:, cell], locs)
+
+
+def test_pearson_lost_valid_fraction_matches_the_transform():
+    """The fall-back estimate counts exactly the values the Pearson transform drops (#1248).
+
+    An invalid scale makes the fitted CDF NaN everywhere, but the transform still pins
+    values past the support boundary to finite sentinels, so the estimate must not
+    count those as lost and report a fall back the index never took.
+    """
+    values = np.arange(1.0, 481.0).reshape(40, 12)
+    parameters = {
+        "prob_zero": np.zeros(12),
+        "loc": np.full(12, 100.0),
+        "scale": np.full(12, -1.0),
+        "skew": np.full(12, 1.0),
+    }
+    standardized = compute.transform_fitted_pearson(
+        values,
+        1981,
+        1981,
+        2010,
+        compute.Periodicity.monthly,
+        parameters["prob_zero"],
+        parameters["loc"],
+        parameters["scale"],
+        parameters["skew"],
+    )
+    valid = ~np.isnan(values)
+    actual_lost = np.count_nonzero(valid & np.isnan(standardized)) / np.count_nonzero(valid)
+
+    assert compute._pearson_lost_valid_fraction(values, parameters) == actual_lost
+
+
 def test_fit_diagnostics_reports_the_gamma_fall_back():
     """A Pearson fit that loses too many valid values is reported as the gamma fit it became (#1216).
 

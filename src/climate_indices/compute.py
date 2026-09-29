@@ -2394,6 +2394,10 @@ def _broadcast_parameters(
     for name, parameter in parameters.items():
         parameter = np.asarray(parameter)
         if full:
+            # a period-only parameter must land on the period axis before it spreads
+            # to the cells, or it would align with a trailing cell axis instead
+            if parameter.ndim == 1 and values.ndim > 2:
+                parameter = parameter.reshape((parameter.shape[0], *([1] * (values.ndim - 2))))
             # the per-cell diagnostics index every parameter at (time_step, *cell)
             parameter = np.array(np.broadcast_to(parameter, values.shape[1:]))
         elif parameter.ndim == 1:
@@ -2679,10 +2683,21 @@ def _pearson_lost_valid_fraction(values: np.ndarray, parameters: dict[str, np.nd
         return 0.0
     parameters = _broadcast_parameters(values, parameters)
     probabilities_of_zero = np.broadcast_to(np.asarray(parameters["prob_zero"], dtype=float), values.shape)
-    with np.errstate(invalid="ignore"):
-        cdf = scipy.stats.pearson3.cdf(values, parameters["skew"], loc=parameters["loc"], scale=parameters["scale"])
-    below_threshold = (values < 0.0005) & np.isfinite(probabilities_of_zero)
-    lost = (np.isnan(cdf) & ~below_threshold) | np.isnan(probabilities_of_zero)
+    skews = np.asarray(parameters["skew"], dtype=float)
+    locs = np.asarray(parameters["loc"], dtype=float)
+    scales = np.asarray(parameters["scale"], dtype=float)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        cdf = scipy.stats.pearson3.cdf(values, skews, loc=locs, scale=scales)
+        minimums_possible = _minimum_possible(skews, locs, scales)
+    # mirror _pearson_fit's masks: a value at or below the lower support and a value at
+    # or above the upper one are pinned to a finite sentinel just like a zero or trace
+    # value, so none of them counts as lost even when the fitted CDF is NaN there
+    placed = (
+        ((values < 0.0005) & np.isfinite(probabilities_of_zero))
+        | ((values <= minimums_possible) & (skews >= 0))
+        | ((values >= minimums_possible) & (skews < 0))
+    )
+    lost = (np.isnan(cdf) & ~placed) | np.isnan(probabilities_of_zero)
     return float(np.count_nonzero(lost & valid)) / float(np.count_nonzero(valid))
 
 
