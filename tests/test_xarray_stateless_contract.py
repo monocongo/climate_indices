@@ -146,15 +146,19 @@ def test_partial_time_overlap_is_trimmed_with_a_warning(call: Callable[..., xr.D
 
 
 def test_penman_monteith_time_series_input_is_trimmed_with_tmin_and_tmax() -> None:
+    wind_speed = _daily_series(_DAILY_STEPS - 30, 2.0)
+
     with pytest.warns(InputAlignmentWarning):
-        result = _penman_monteith({}, wind_speed_m_s=_daily_series(_DAILY_STEPS - 30, 2.0))
+        result = _penman_monteith({}, wind_speed_m_s=wind_speed)
 
     assert result.sizes["time"] == _DAILY_STEPS - 30
 
 
 def test_penman_monteith_gridded_input_with_mismatched_cells_is_rejected() -> None:
+    wind_speed = _daily([20.0, 30.0, 40.0], 2.0, {})
+
     with pytest.raises(CoordinateValidationError) as excinfo:
-        _penman_monteith({}, wind_speed_m_s=_daily([20.0, 30.0, 40.0], 2.0, {}))
+        _penman_monteith({}, wind_speed_m_s=wind_speed)
 
     assert excinfo.value.reason == "mismatched_non_time_coordinates"
 
