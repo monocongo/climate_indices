@@ -357,6 +357,30 @@ _RecurrenceGaps = tuple[npt.NDArray[np.int64] | None, ...]
 _FinalizedT = TypeVar("_FinalizedT")
 
 
+def _allocate_histories(
+    components: tuple[DailyRecurrence, ...],
+    record: tuple[bool, ...] | None,
+    n_days: int,
+    spin_up: int,
+) -> _RecurrenceValues:
+    """Allocate one daily history per recorded component; unrecorded slots stay None."""
+    records = (True,) * len(components) if record is None else record
+    return tuple(
+        np.full((max(n_days - spin_up, 0), *component.weather_valid.shape[1:]), np.nan, dtype=np.float64)
+        if keep
+        else None
+        for component, keep in zip(components, records, strict=True)
+    )
+
+
+def _first_output_shape(values: _RecurrenceValues) -> tuple[int, ...] | None:
+    """Return the first recorded history's shape, or None when nothing was recorded."""
+    for value in values:
+        if value is not None:
+            return value.shape
+    return None
+
+
 @dataclass
 class DailyRecurrence:
     """One recurrence threaded through the shared daily day loop."""
@@ -466,13 +490,7 @@ def run_daily_recurrences(
     try:
         # the allocation is inside the try so an output-allocation failure
         # still reports the recurrence lifecycle
-        records = (True,) * len(components) if record is None else record
-        values: _RecurrenceValues = tuple(
-            np.full((max(n_days - spin_up, 0), *component.weather_valid.shape[1:]), np.nan, dtype=np.float64)
-            if keep
-            else None
-            for component, keep in zip(components, records, strict=True)
-        )
+        values = _allocate_histories(components, record, n_days, spin_up)
         for component in components:
             _initialize_component(component)
         memory_metrics = check_large_array_memory(*memory_arrays, *(value for value in values if value is not None))
@@ -495,9 +513,7 @@ def run_daily_recurrences(
             result: object = (values, state_gap_days)
         else:
             result = finalize(values, state_gap_days)
-        logged_shape = output_shape
-        if logged_shape is None:
-            logged_shape = next(value.shape for value in values if value is not None)
+        logged_shape = output_shape if output_shape is not None else _first_output_shape(values)
         duration_ms = (time.perf_counter() - t0) * 1000.0
         log.info(
             "calculation_completed",
