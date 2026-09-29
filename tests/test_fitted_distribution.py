@@ -42,6 +42,47 @@ def test_transform_and_diagnostics_share_one_seam() -> None:
     np.testing.assert_array_equal(p_value, diagnostics.ks_p_value)
     np.testing.assert_array_equal(n_valid, diagnostics.n_valid)
     assert set(parameters) == set(diagnostics.parameters)
+    for name, parameter in parameters.items():
+        np.testing.assert_array_equal(parameter, diagnostics.parameters[name])
+
+
+def test_pearson_fallback_decision_is_shared_by_index_and_diagnostics() -> None:
+    """The fall-back decision agrees between ``fit_and_standardize`` and ``fit_diagnostics``.
+
+    A zero-heavy block whose failed Pearson steps still place their sub-0.0005 values
+    must not be reported as a gamma fall back when the index path keeps Pearson (#1216).
+    """
+    rng = np.random.default_rng(7)
+    values = rng.gamma(2.0, 2.0, size=(40, 12))
+    # seven calendar steps have only two non-zero calibration values, so their Pearson
+    # fit fails and every value below 0.0005 is placed rather than lost
+    values[:, :7] = 0.0
+    values[::20, :7] = 1.0
+
+    diagnostics = compute.fit_diagnostics(
+        values,
+        indices.Distribution.pearson,
+        1981,
+        1981,
+        2010,
+        compute.Periodicity.monthly,
+        fallback_to_gamma=True,
+    )
+    standardized = compute.fit_and_standardize(
+        values,
+        indices.Distribution.pearson,
+        1981,
+        1981,
+        2010,
+        compute.Periodicity.monthly,
+        fallback_to_gamma=True,
+    )
+    # compare against the Pearson transform: equality means no fall back happened
+    pearson_only = compute.transform_fitted_pearson(values, 1981, 1981, 2010, compute.Periodicity.monthly)
+    stayed_pearson = bool(np.array_equal(standardized, pearson_only, equal_nan=True))
+
+    assert stayed_pearson
+    assert diagnostics.fell_back_to_gamma is False
 
 
 def test_resolve_from_supplied_parameters_does_not_refit(monkeypatch) -> None:

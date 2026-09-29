@@ -1074,7 +1074,8 @@ def transform_fitted_pearson(
              and shape of the input array
     :rtype: numpy.ndarray of floats
     :raises ValueError: if ``zero_handling`` is not one of the three modes, or the
-        ``fitting_params`` set is partial or does not carry the period (and cell) axes
+        Pearson Type III parameter set is partial or does not carry the period (and
+        cell) axes
     """
     validate_output_scale(output_scale)
     _validate_zero_handling(zero_handling)
@@ -2287,6 +2288,12 @@ def transform_fitted_loglogistic(
     # the distribution object is imported lazily: indices imports this module
     from climate_indices.indices import Distribution
 
+    params = {"loc": locs, "scale": scales, "shape": shapes}
+
+    # validate a partial or mis-shaped supplied set before the all-missing return, as
+    # transform_fitted_pearson does
+    FittedDistribution.validate_supplied(_validate_array(values, periodicity), Distribution.loglogistic, params)
+
     # if we're passed all missing values then we can't compute anything,
     # and we'll return the same array of missing values
     if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
@@ -2303,7 +2310,7 @@ def transform_fitted_loglogistic(
         calibration_start_year,
         calibration_end_year,
         periodicity,
-        {"loc": locs, "scale": scales, "shape": shapes},
+        params,
     )
 
     parameters = _broadcast_parameters(values, fitted.parameters)
@@ -2404,6 +2411,9 @@ def _resolve_gamma_parameters(
     periodicity: Periodicity,
 ) -> dict[str, np.ndarray]:
     """Fit or take the gamma parameters, resolving the probability of zero."""
+    # a mask is a missing marker, as the gamma transform treats it
+    if np.ma.isMaskedArray(values):
+        values = np.ma.filled(values.astype(float), np.nan)
     alphas = params.get("alpha")
     betas = params.get("beta")
     if alphas is None or betas is None:
@@ -2451,6 +2461,9 @@ def _resolve_loglogistic_parameters(
     periodicity: Periodicity,
 ) -> dict[str, np.ndarray]:
     """Fit or take the three generalized-logistic parameters as one set."""
+    # a mask is a missing marker, as the log-logistic transform treats it
+    if np.ma.isMaskedArray(values):
+        values = np.ma.filled(values.astype(float), np.nan)
     supplied = [params.get(key) for key in _PARAMETER_KEYS["loglogistic"]]
     if all(parameter is None for parameter in supplied):
         locs, scales, shapes = loglogistic_parameters(
@@ -2530,7 +2543,7 @@ class FittedDistribution:
     ) -> "FittedDistribution":
         """Build a fitted distribution from the data or from the caller's parameters.
 
-        The canonical keys of ``fitting_params`` are resolved once: a parameter left as
+        The canonical keys of ``fitting_params`` are resolved here: a parameter left as
         None is fitted from the calibration period of ``values``; a supplied one is
         validated and broadcast. Deprecated key aliases are normalized here.
         """
@@ -2538,6 +2551,9 @@ class FittedDistribution:
             _PARAMETER_KEYS[distribution.value]
         except KeyError as err:
             raise ValueError(f"Unsupported distribution: {distribution}") from err
+        # fold a 1-D series like the transforms do, so the period-axis validation and
+        # the period-to-cell broadcast see the same shape the index pipeline uses
+        values = _validate_array(values, periodicity)
         params = _normalize_fitting_params(fitting_params) or {}
         cls.validate_supplied(values, distribution, params)
         kind = distribution.value
@@ -2618,6 +2634,8 @@ class FittedDistribution:
         to ``(periods, *cells)``, so they can be reported and fed back to reproduce the
         fit.
         """
+        if self.distribution.value not in ("gamma", "pearson"):
+            raise ValueError(f"Unsupported distribution for diagnostics: {self.distribution}")
         parameters = _broadcast_parameters(calibration_values, self.parameters, full=True)
         if self.distribution.value == "pearson":
             locs, scales, skews = parameters["loc"], parameters["scale"], parameters["skew"]
@@ -2650,18 +2668,21 @@ class FittedDistribution:
 def _pearson_lost_valid_fraction(values: np.ndarray, parameters: dict[str, np.ndarray]) -> float:
     """Fraction of the input's valid values a Pearson Type III transform would lose.
 
-    A valid input reaches NaN in the transform only where the fitted CDF is NaN (the
-    support-limit masks assign finite sentinels, and a zero is placed rather than
-    dropped), so the fit's own outcome decides the gamma fall back without producing
-    standardized values.
+    The transform turns a value below 0.0005 into a finite sentinel wherever the zero
+    mass is defined (``_pearson_fit``'s zero and trace masks), so only a NaN fitted CDF
+    at or above that threshold is lost. A NaN zero mass loses every value. This mirrors
+    the transform's NaN pattern, so the fall back is decided from the fit outcome
+    without producing standardized values.
     """
     valid = ~np.isnan(values)
     if not valid.any():
         return 0.0
     parameters = _broadcast_parameters(values, parameters)
+    probabilities_of_zero = np.broadcast_to(np.asarray(parameters["prob_zero"], dtype=float), values.shape)
     with np.errstate(invalid="ignore"):
         cdf = scipy.stats.pearson3.cdf(values, parameters["skew"], loc=parameters["loc"], scale=parameters["scale"])
-    lost = np.isnan(cdf) | np.broadcast_to(np.isnan(np.asarray(parameters["prob_zero"], dtype=float)), values.shape)
+    below_threshold = (values < 0.0005) & np.isfinite(probabilities_of_zero)
+    lost = (np.isnan(cdf) & ~below_threshold) | np.isnan(probabilities_of_zero)
     return float(np.count_nonzero(lost & valid)) / float(np.count_nonzero(valid))
 
 
@@ -2813,8 +2834,8 @@ def fit_and_standardize(
 
     Raises:
         InvalidArgumentError: If ``output_scale`` is not one of ``compute.OUTPUT_SCALES``.
-        ValueError: If the distribution is neither gamma nor Pearson Type III,
-            ``zero_handling`` is not one of the three modes, or a Pearson
+        ValueError: If the distribution is none of gamma, Pearson Type III, or
+            log-logistic, ``zero_handling`` is not one of the three modes, or a Pearson
             ``fitting_params`` set is partial or does not carry the period (and cell) axes.
     """
     validate_output_scale(output_scale)
