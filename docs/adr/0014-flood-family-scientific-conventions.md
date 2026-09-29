@@ -146,8 +146,9 @@ unreproducible claim of reproduction.
    Gregorian PE is identical in both chains, and the chains differ only in the
    synthetic February 29 PE, which reaches results through EDI's February 29
    calibration and through I_F when a synthetic February 29 is an annual
-   maximum. Measured on synthetic seasonal daily rain (40 cells, 30 years,
-   365- and 30-day windows), the synthetic-day PE differs by 0.7% on average
+   maximum. Measured with `scripts/probe_flood_feb29_pe.py` on synthetic
+   seasonal daily rain (40 cells, 1990–2019, seed 0; 365- and 30-day windows),
+   the synthetic-day PE differs by 0.7% on average
    and 8% at most (365-day window); EDI differs only on real February 29s
    (mean 0.02–0.04, maximum 0.13–0.34); I_F agrees to within 5e-15. With storms
    multiplied 25-fold across February 26 to March 3 in every year, EDI differs
@@ -160,7 +161,9 @@ unreproducible claim of reproduction.
    door. A caller who needs the exact all-leap chain runs the NumPy kernels on
    `DailyCalendarPlan.to_all_leap(precipitation)`.
    `test_flood_chain_interpolates_february_29_pe_in_non_leap_years` pins both
-   the chain and its gap to the all-leap computation.
+   the chain and its gap to the all-leap computation on a five-year,
+   single-cell series; the probe, which documents its rain generator and
+   calibration windows, supplies the magnitudes above.
 5. **Flood-event helpers are out of scope for the initial implementation.**
    Onset, duration, and severity as runs of `I_F >= 0` — the abstract's flood
    start, with severity the running sum of consecutive positive values and
