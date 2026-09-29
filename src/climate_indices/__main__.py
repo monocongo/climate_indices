@@ -8,15 +8,15 @@ import multiprocessing
 from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Literal, cast
 
 import numpy as np
-import scipy.constants
 import xarray as xr
 
 from climate_indices import compute, fire, flood, indices, palmer, utils
 from climate_indices._cli import _add_common_spi_arguments, _open_with_default_chunks
+from climate_indices._cli_output import build_index_attrs, write_netcdf_atomic
+from climate_indices._units import _convert_precipitation_units, _convert_temperature_units
 from climate_indices.cf_metadata_registry import spi_output_attributes
 from climate_indices.exceptions import ConvergenceError, InsufficientDataError
 from climate_indices.validation import DatasetLayout, detect_dataset_layout, expected_dimensions
@@ -918,66 +918,57 @@ def _normalize_precipitation_units(dataset: xr.Dataset, var_name: str | None) ->
     """
     Convert a precipitation variable's values to millimeters, in place.
 
+    Delegates to the shared CF-units module, so every CLI index accepts the
+    same unit spellings the xarray adapters do.
+
     param dataset: the dataset holding the variable
     param var_name: name of the precipitation variable, or None when the
         index takes no precipitation input
-    raise ValueError: if the variable's units are not millimeters, a daily
-        rate, or inches
+    raise InvalidArgumentError: if the variable's units are unrecognized
     """
     if var_name is None:
         return
-    precip_unit = dataset[var_name].units.lower()
-    if precip_unit in ("mm", "millimeters", "millimeter", "mm/dy"):
-        return
-    if precip_unit in ("inches", "inch"):
-        # inches to mm conversion (1 inch == 25.4 mm)
-        dataset[var_name].values *= 25.4
-    else:
-        raise ValueError(f"Unsupported precipitation units: {precip_unit}")
+    dataset[var_name] = _convert_precipitation_units(
+        dataset[var_name], "mm", argument_name=f"{var_name}.attrs['units']"
+    )
 
 
 def _normalize_temperature_units(dataset: xr.Dataset, var_name: str | None) -> None:
     """
     Convert a temperature variable's values to degrees Celsius, in place.
 
+    Delegates to the shared CF-units module, so every CLI index accepts the
+    same unit spellings the xarray adapters do.
+
     param dataset: the dataset holding the variable
     param var_name: name of the temperature variable, or None when the index
         takes no temperature input
-    raise ValueError: if the variable's units are not Celsius, Fahrenheit, or
-        Kelvin
+    raise InvalidArgumentError: if the variable's units are unrecognized
     """
     if var_name is None:
         return
-    temp_unit = dataset[var_name].units.lower()
-    if temp_unit in ("degree_celsius", "degrees_celsius", "celsius", "c"):
-        return
-    if temp_unit in ("f", "fahrenheit", "degree_fahrenheit", "degrees_fahrenheit"):
-        dataset[var_name].values = scipy.constants.convert_temperature(dataset[var_name].values, "f", "c")
-    elif temp_unit in ("k", "kelvin"):
-        dataset[var_name].values = scipy.constants.convert_temperature(dataset[var_name].values, "k", "c")
-    else:
-        raise ValueError(f"Unsupported temperature units: {temp_unit}")
+    dataset[var_name] = _convert_temperature_units(
+        dataset[var_name], "celsius", argument_name=f"{var_name}.attrs['units']"
+    )
 
 
 def _normalize_pet_units(dataset: xr.Dataset, var_name: str | None) -> None:
     """
     Convert a PET variable's values to millimeters, in place.
 
+    Delegates to the shared CF-units module, so every CLI index accepts the
+    same unit spellings the xarray adapters do.
+
     param dataset: the dataset holding the variable
     param var_name: name of the PET variable, or None when the index takes no
         PET input
-    raise ValueError: if the variable's units are not millimeters or inches
+    raise InvalidArgumentError: if the variable's units are unrecognized
     """
     if var_name is None:
         return
-    pet_unit = dataset[var_name].units.lower()
-    if pet_unit in ("mm", "millimeters", "millimeter"):
-        return
-    if pet_unit in ("inches", "inch"):
-        # inches to mm conversion (1 inch == 25.4 mm)
-        dataset[var_name].values *= 25.4
-    else:
-        raise ValueError(f"Unsupported PET units: {dataset[var_name].units}")
+    dataset[var_name] = _convert_precipitation_units(
+        dataset[var_name], "mm", argument_name=f"{var_name}.attrs['units']"
+    )
 
 
 def _compute_write_index(request: _IndexRequest) -> tuple[str, str] | None:
@@ -1439,7 +1430,7 @@ class _IndexRegistration:
     validate_arguments: Callable[[argparse.Namespace], None] | None = None
     validate_inputs: Callable[[argparse.Namespace, _InputContext], None] | None = None
     build_arguments: Callable[[_IndexRequest], dict[str, Any]] | None = None
-    variable_attributes: Callable[[_IndexRequest], tuple[str, dict[str, Any]]] | None = None
+    variable_attributes: Callable[[_IndexRequest, xr.DataArray], tuple[str, dict[str, Any]]] | None = None
     prepare_inputs: Callable[[_IndexRequest, xr.Dataset], xr.Dataset] | None = None
     prepare_arrays: Callable[[_IndexRequest, xr.Dataset], None] | None = None
     kernel: Callable[..., Any] | None = None
@@ -1451,13 +1442,14 @@ class _IndexRegistration:
     write: Callable[[_ComputeContext], tuple[str, str] | None] | None = None
 
 
-# the five outputs the Palmer routines produce, in the order they are written
+# the five outputs the Palmer routines produce, in the order they are written:
+# shared-array key, output variable name, CF_METADATA key, history display name
 _PALMER_OUTPUTS = (
-    (_KEY_RESULT_PDSI, "pdsi", "Palmer Drought Severity Index"),
-    (_KEY_RESULT_PHDI, "phdi", "Palmer Hydrological Drought Index"),
-    (_KEY_RESULT_PMDI, "pmdi", "Palmer Modified Drought Index"),
-    (_KEY_RESULT_ZINDEX, "zindex", "Palmer Z-Index"),
-    (_KEY_RESULT_SCPDSI, "scpdsi", "Self-calibrated Palmer Drought Severity Index"),
+    (_KEY_RESULT_PDSI, "pdsi", "pdsi", "PDSI"),
+    (_KEY_RESULT_PHDI, "phdi", "phdi", "PHDI"),
+    (_KEY_RESULT_PMDI, "pmdi", "pmdi", "PMDI"),
+    (_KEY_RESULT_ZINDEX, "zindex", "z_index", "Palmer Z-Index"),
+    (_KEY_RESULT_SCPDSI, "scpdsi", "scpdsi", "scPDSI"),
 )
 
 # the axis each input type's time dimension lies along
@@ -1561,42 +1553,27 @@ def _pet_arguments(request: _IndexRequest) -> dict[str, Any]:
     return {"data_start_year": request.data_start_year}
 
 
-# the output-scale label and value range each standardized-index output carries;
-# "normal" keeps the z-score metadata the CLI has always written
-_OUTPUT_SCALE_LABELS: dict[str, str] = {
-    "normal": "",
-    "probability": " (probability)",
-    "bounded": " (bounded probability)",
-}
-_OUTPUT_SCALE_ATTRS: dict[str, dict[str, Any]] = {
-    "normal": {"valid_min": -3.09, "valid_max": 3.09},
-    "probability": {
-        "units": "1",
-        "valid_min": 0.0,
-        "valid_max": 1.0,
-        "climate_indices_variant": "probability",
-    },
-    "bounded": {
-        "units": "1",
-        "valid_min": -1.0,
-        "valid_max": 1.0,
-        "climate_indices_variant": "bounded",
-    },
-}
-
-
 def _standardized_variable_attributes(
-    request: _IndexRequest, index_name: str, var_name_base: str
+    request: _IndexRequest, source: xr.DataArray, cf_base: str, display_name: str, var_name_base: str
 ) -> tuple[str, dict[str, Any]]:
-    """Name and describe a standardized-index output for the requested output scale."""
+    """Name and describe a standardized-index output for the requested output scale.
+
+    The long name, units and variant metadata come from ``CF_METADATA``; the
+    scale and distribution are recorded in the history entry instead.
+    """
     assert request.distribution is not None, _UNVALIDATED_DISTRIBUTION
     assert request.scale is not None, _UNVALIDATED_SCALE
-    label = _OUTPUT_SCALE_LABELS[request.output_scale]
-    long_name = (
-        f"{index_name} ({request.distribution.display_name.capitalize()} distribution), "
-        + f"{request.scale}-{_get_scale_increment(request.periodicity)}{label}"
+    cf_key = cf_base if request.output_scale == "normal" else f"{cf_base}_{request.output_scale}"
+    attrs = build_index_attrs(
+        source,
+        cf_key,
+        index_name=display_name,
+        calculation_metadata={
+            "scale": request.scale,
+            "distribution": request.distribution,
+            "output_scale": request.output_scale,
+        },
     )
-    attrs = {"long_name": long_name, **_OUTPUT_SCALE_ATTRS[request.output_scale]}
     var_name = var_name_base + "_" + request.distribution.value + "_" + str(request.scale).zfill(2)
     if request.output_scale != "normal":
         var_name += "_" + request.output_scale
@@ -1604,34 +1581,37 @@ def _standardized_variable_attributes(
     return var_name, attrs
 
 
-def _spi_variable_attributes(request: _IndexRequest) -> tuple[str, dict[str, Any]]:
-    name, attrs = _standardized_variable_attributes(request, "Standardized Precipitation Index", "spi")
+def _spi_variable_attributes(request: _IndexRequest, source: xr.DataArray) -> tuple[str, dict[str, Any]]:
+    name, attrs = _standardized_variable_attributes(request, source, "spi", "SPI", "spi")
     attrs.update(spi_output_attributes(request.zero_handling, request.output_scale))
     return name, attrs
 
 
-def _spei_variable_attributes(request: _IndexRequest) -> tuple[str, dict[str, Any]]:
-    return _standardized_variable_attributes(request, "Standardized Precipitation Evapotranspiration Index", "spei")
+def _spei_variable_attributes(request: _IndexRequest, source: xr.DataArray) -> tuple[str, dict[str, Any]]:
+    return _standardized_variable_attributes(request, source, "spei", "SPEI", "spei")
 
 
-def _pnp_variable_attributes(request: _IndexRequest) -> tuple[str, dict[str, Any]]:
+def _pnp_variable_attributes(request: _IndexRequest, source: xr.DataArray) -> tuple[str, dict[str, Any]]:
     assert request.scale is not None, _UNVALIDATED_SCALE
-    long_name = "Percentage of Normal Precipitation, " + f"{request.scale}-{_get_scale_increment(request.periodicity)}"
-    attrs = {"long_name": long_name, "valid_min": -1000.0, "valid_max": 1000.0}
+    attrs = build_index_attrs(
+        source,
+        "pnp",
+        index_name="PNP",
+        calculation_metadata={"scale": request.scale},
+        extra={"valid_min": -1000.0, "valid_max": 1000.0},
+    )
     var_name = "pnp_" + str(request.scale).zfill(2)
 
     return var_name, attrs
 
 
-def _pet_variable_attributes(request: _IndexRequest) -> tuple[str, dict[str, Any]]:
-    long_name = "Potential Evapotranspiration (Thornthwaite)"
-    attrs = {
-        "long_name": long_name,
-        "valid_min": 0.0,
-        "valid_max": 10000.0,
-        "units": "millimeters",
-    }
-
+def _pet_variable_attributes(request: _IndexRequest, source: xr.DataArray) -> tuple[str, dict[str, Any]]:
+    attrs = build_index_attrs(
+        source,
+        "pet_thornthwaite",
+        index_name="PET",
+        extra={"valid_min": 0.0, "valid_max": 10000.0},
+    )
     return "pet_thornthwaite", attrs
 
 
@@ -1724,13 +1704,31 @@ def _compute_palmers(context: _ComputeContext) -> None:
     np.copyto(_shared_array(request.var_name_awc, awc_array.shape), awc_array.values)
 
     # add shared memory arrays for the computed Palmers to the dictionary of shared arrays
-    for key, _var_name, _long_name in _PALMER_OUTPUTS:
+    for key, _var_name, _cf_key, _index_name in _PALMER_OUTPUTS:
         if key not in _global_shared_arrays:
             _allocate_shared_array(key, context.output_shape)
 
     # TODO once we support daily Palmers then we'll need to convert values
     #  from a 366-day calendar back into a normal/Gregorian calendar
     _parallel_process(request, context.arguments)
+
+
+def _output_source(request: _IndexRequest, dataset: xr.Dataset) -> xr.DataArray:
+    """
+    The input DataArray a shared-memory index was computed from.
+
+    Precipitation is the primary input for every index but PET, which is
+    computed from temperature alone; that order is what the output's history
+    and inherited attributes draw on.
+
+    :param request: the index request being written
+    :param dataset: the opened inputs
+    :return: the primary input variable
+    """
+    for var_name in (request.var_name_precip, request.var_name_temp, request.var_name_pet):
+        if var_name is not None:
+            return dataset[var_name]
+    raise ValueError(f"the '{request.index}' index has no input variable to draw output metadata from")
 
 
 def _write_single_output(context: _ComputeContext) -> tuple[str, str]:
@@ -1744,7 +1742,9 @@ def _write_single_output(context: _ComputeContext) -> tuple[str, str]:
     handler = _registry_for(request.index)
     assert handler.variable_attributes is not None, "a single-output index names its output variable"
 
-    output_var_name, output_var_attributes = handler.variable_attributes(request)
+    output_var_name, output_var_attributes = handler.variable_attributes(
+        request, _output_source(request, context.dataset)
+    )
 
     # get the shared memory results array and convert it to a numpy array
     index_values = _shared_array(handler.output_keys[0], context.output_shape).astype(float)
@@ -1776,7 +1776,7 @@ def _write_single_output(context: _ComputeContext) -> tuple[str, str]:
 
     # write the dataset as NetCDF
     netcdf_file_name = request.output_file_base + "_" + output_var_name + ".nc"
-    dataset.to_netcdf(netcdf_file_name, engine=context.output_engine)
+    write_netcdf_atomic(dataset, netcdf_file_name, engine=context.output_engine)
 
     return netcdf_file_name, output_var_name
 
@@ -1788,15 +1788,15 @@ def _write_palmer_outputs(context: _ComputeContext) -> None:
     :param context: the opened inputs and output settings of the request
     """
     dataset = context.dataset
+    source = _output_source(context.request, dataset)
     output_encodings = _trimmed_output_encodings(context.output_encodings, context.output_shape)
-    for key, var_name, long_name in _PALMER_OUTPUTS:
+    for key, var_name, cf_key, index_name in _PALMER_OUTPUTS:
         # get the shared memory results array and convert it to a numpy array
         index_values = _shared_array(key, context.output_shape).astype(float)
-        attrs: dict[str, Any] = {"long_name": long_name}
-        if var_name != "scpdsi":
-            # scPDSI's percentile rescaling has no hard bound, unlike the
-            # historical (and conservative) range kept for the standard outputs
-            attrs |= {"valid_min": -10.0, "valid_max": 10.0}
+        # scPDSI's percentile rescaling has no hard bound, unlike the
+        # historical (and conservative) range kept for the standard outputs
+        extra = None if var_name == "scpdsi" else {"valid_min": -10.0, "valid_max": 10.0}
+        attrs = build_index_attrs(source, cf_key, index_name=index_name, extra=extra)
 
         # create a new variable for this output and assign it into the dataset
         variable = xr.Variable(
@@ -1807,8 +1807,6 @@ def _write_palmer_outputs(context: _ComputeContext) -> None:
         )
         dataset[var_name] = variable
 
-        # TODO set global attributes accordingly for this new dataset
-
         # remove all data variables except for the new one
         drop_var_names = [name for name in dataset.data_vars if name != var_name]
         if len(drop_var_names):
@@ -1816,7 +1814,7 @@ def _write_palmer_outputs(context: _ComputeContext) -> None:
 
         # write the dataset as NetCDF
         netcdf_file_name = context.request.output_file_base + "_" + var_name + ".nc"
-        dataset.to_netcdf(netcdf_file_name, engine=context.output_engine)
+        write_netcdf_atomic(dataset, netcdf_file_name, engine=context.output_engine)
 
 
 def _validate_kbdi_arguments(args: argparse.Namespace) -> None:
@@ -2141,13 +2139,7 @@ def _write_xarray_index(
     # to_netcdf() truncates its target before the lazy computation runs, so a
     # kernel error would leave a hollow file in place of any earlier output:
     # write beside the target and replace it only once the values are written
-    temporary_file = f"{output_file}.tmp"
-    try:
-        values.to_netcdf(temporary_file, engine=output_engine)
-        Path(temporary_file).replace(output_file)
-    except BaseException:
-        Path(temporary_file).unlink(missing_ok=True)
-        raise
+    write_netcdf_atomic(values, output_file, engine=output_engine)
 
 
 def _run_kbdi(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
@@ -2382,7 +2374,7 @@ _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
         prepare_inputs=_prepare_palmer_inputs,
         kernel=_palmers,
         input_array_keys=_palmer_array_keys,
-        output_keys=tuple(key for key, _var_name, _long_name in _PALMER_OUTPUTS),
+        output_keys=tuple(key for key, _var_name, _cf_key, _index_name in _PALMER_OUTPUTS),
         worker=_apply_along_axis_palmers,
         compute=_compute_palmers,
         write=_write_palmer_outputs,

@@ -289,6 +289,20 @@ CF_METADATA: dict[str, CFAttributes] = {
             "U.S. Department of Commerce, Weather Bureau, Washington, D.C."
         ),
     },
+    "scpdsi": {
+        "long_name": "Self-calibrated Palmer Drought Severity Index",
+        "units": "dimensionless",
+        "description": (
+            "PDSI with duration factors and the K-prime climate characteristic "
+            "fitted per location instead of the fixed national constants."
+        ),
+        "references": (
+            "Wells, N., Goddard, S., & Hayes, M. J. (2004). "
+            "A Self-Calibrating Palmer Drought Severity Index. "
+            "Journal of Climate, 17(12), 2335-2351. "
+            "https://doi.org/10.1175/1520-0442(2004)017<2335:ASPDSI>2.0.CO;2"
+        ),
+    },
     # Flood-family metadata precedes the NumPy kernels and xarray adapters (#1103).
     # These describe flood potential, not observed flooding; none has a CF standard_name.
     "effective_precipitation": {

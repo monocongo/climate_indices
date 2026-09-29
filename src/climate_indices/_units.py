@@ -13,6 +13,8 @@ from climate_indices.exceptions import CoordinateValidationError, InvalidArgumen
 # list in __main__.py's legacy CLI unit handling, plus the CF flux unit the
 # NetCDF/Zarr ecosystem commonly uses for precipitation rate.
 _PRECIP_UNITS_MM = frozenset({"mm", "millimeters", "millimeter"})
+# a per-month depth is the monthly-periodicity spelling of the millimeter total
+_PRECIP_UNITS_MM_PER_MONTH = frozenset({"mm/month", "mm/mo", "mm month-1", "mm mo-1"})
 _PRECIP_UNITS_MM_PER_DAY = frozenset({"mm/dy", "mm day-1", "mm/day"})
 _PRECIP_UNITS_MM_PER_YEAR = frozenset({"mm/year", "mm/yr", "mm year-1", "mm yr-1"})
 _PRECIP_UNITS_INCH = frozenset({"inch", "inches"})
@@ -67,7 +69,11 @@ def _convert_precipitation_units(
         if normalized in _PRECIP_UNITS_FLUX:
             data = data * _SECONDS_PER_DAY
         source: Literal["mm", "inch"] = "mm"
-    elif normalized in _PRECIP_UNITS_MM or (annual and normalized in _PRECIP_UNITS_MM_PER_YEAR):
+    elif (
+        normalized in _PRECIP_UNITS_MM
+        or normalized in _PRECIP_UNITS_MM_PER_MONTH
+        or (annual and normalized in _PRECIP_UNITS_MM_PER_YEAR)
+    ):
         source = "mm"
     elif normalized in _PRECIP_UNITS_INCH or (annual and normalized in _PRECIP_UNITS_INCH_PER_YEAR):
         source = "inch"

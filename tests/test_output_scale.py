@@ -266,11 +266,14 @@ def test_xarray_probability_inverts_to_the_normal_output(sample_monthly_precip_d
 
 
 def test_output_scale_maps_cover_every_declared_scale() -> None:
-    """A scale added to OUTPUT_SCALES must be given a CLI label, attrs, and a CF variant."""
-    from climate_indices.__main__ import _OUTPUT_SCALE_ATTRS, _OUTPUT_SCALE_LABELS
+    """A scale added to OUTPUT_SCALES must be given a CF_METADATA entry and a CF variant."""
+    from climate_indices.cf_metadata_registry import CF_METADATA
     from climate_indices.typed_public_api import _SPEI_CF_METADATA_VARIANTS, _SPI_CF_METADATA_VARIANTS
 
-    assert set(_OUTPUT_SCALE_LABELS) == set(_OUTPUT_SCALE_ATTRS) == set(compute.OUTPUT_SCALES)
+    for base in ("spi", "spei"):
+        assert base in CF_METADATA
+        for scale in set(compute.OUTPUT_SCALES) - {"normal"}:
+            assert f"{base}_{scale}" in CF_METADATA
     for variants in (_SPI_CF_METADATA_VARIANTS, _SPEI_CF_METADATA_VARIANTS):
         assert {"normal"} | set(variants) == set(compute.OUTPUT_SCALES)
 

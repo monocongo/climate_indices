@@ -19,6 +19,7 @@ import xarray as xr
 
 from climate_indices import compute, indices, palmer, utils
 from climate_indices.__main__ import _SPI_DISTRIBUTIONS, main
+from climate_indices.cf_metadata_registry import CF_METADATA
 
 # the fixture data starts in January of this year (see tests/conftest.py)
 _DATA_START_YEAR = 1895
@@ -506,7 +507,12 @@ def test_palmers_writes_all_five_outputs_matching_in_process_computation(
     # scPDSI has no hard valid range, so it is written without valid_min/valid_max
     with xr.open_dataset(tmp_path / "palmers_scpdsi.nc") as dataset:
         attrs = dataset["scpdsi"].attrs
-        assert attrs["long_name"] == "Self-calibrated Palmer Drought Severity Index"
+        entry = CF_METADATA["scpdsi"]
+        assert attrs["long_name"] == entry["long_name"]
+        assert attrs["units"] == entry["units"]
+        assert attrs["references"] == entry["references"]
+        assert attrs["climate_indices_version"]
+        assert "scPDSI" in attrs["history"]
         assert "valid_min" not in attrs
         assert "valid_max" not in attrs
 
@@ -607,7 +613,12 @@ def test_output_carries_cf_metadata_and_coordinates(tmp_path, precips_mm_monthly
         variable = dataset["spi_gamma_06"]
         assert list(dataset.data_vars) == ["spi_gamma_06"]
         assert variable.dims == ("division", "time")
-        assert variable.attrs["long_name"] == "Standardized Precipitation Index (Gamma distribution), 6-month"
+        entry = CF_METADATA["spi"]
+        assert variable.attrs["long_name"] == entry["long_name"]
+        assert variable.attrs["units"] == entry["units"]
+        assert variable.attrs["references"].startswith(entry["references"])
+        assert variable.attrs["climate_indices_version"]
+        assert "SPI" in variable.attrs["history"]
         assert variable.attrs["valid_min"] == -3.09
         assert variable.attrs["valid_max"] == 3.09
         assert variable.attrs["zero_handling"] == "classic"

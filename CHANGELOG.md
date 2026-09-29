@@ -278,6 +278,21 @@ change states what a user sees, how to detect it, and what to change in
   run no longer changes which distribution is fitted (the warning propagates instead),
   and the swap is reported through the public `distribution_fallback` log event rather
   than a private strategy method (#1215).
+- **CLI output metadata and writes have one owner**: both CLI backends now write
+  through `climate_indices._cli_output`, which sources variable attributes from
+  `CF_METADATA`, stamps the library version and a history entry, and writes to a
+  temporary file that replaces the target only once the whole file is on disk. The
+  shared-array route (SPI, SPEI, percent of normal, Thornthwaite PET, and the Palmer
+  outputs) stops hand-writing long names, units and valid ranges, so its long names,
+  units and references now match the xarray adapters and the registry: PET units are
+  `mm/month` rather than `millimeters`, percent of normal is `Percent of Normal
+  Precipitation` rather than `Percentage of Normal Precipitation, N-month`, and the
+  Palmer Z-Index uses the `z_index` registry entry. A self-calibrated PDSI registry
+  entry (`scpdsi`) is added. Every CLI index now normalizes temperature and
+  precipitation units through `climate_indices._units`, so spellings such as `degC`
+  and `kg m-2 s-1` are accepted by every index, and the `mm/month` PET output is
+  accepted as input to a subsequent run. The `_OUTPUT_SCALE_*` maps and the per-index
+  `_*_variable_attributes` long-name builders are removed (#1223).
 
 ## [2.4.0] - 2026-04-05
 
