@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass
 from typing import Literal, overload
 
@@ -19,23 +18,18 @@ from climate_indices._recurrence import (
     _validated_trailing_gaps,
     run_daily_recurrences,
 )
+from climate_indices._stateful_xarray import StatefulAlignment, stateful_recurrence_xarray
 from climate_indices._units import (
     _convert_precipitation_units,
     _convert_temperature_units,
-    _validate_daily_time_coordinate,
 )
 from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.exceptions import (
-    CoordinateValidationError,
-    InputAlignmentWarning,
     InvalidArgumentError,
 )
 from climate_indices.validation import (
     InputType,
     detect_input_type,
-    validate_dask_chunks,
-    validate_time_dimension,
-    validate_time_monotonicity,
 )
 from climate_indices.xarray_adapter import _wrap_spatial, build_output_attrs
 
@@ -551,121 +545,63 @@ def _kbdi_xarray(
     call time (the KBDI-specific problem named in
     ``docs/design/fire-subsystem.md``: the same function selects between two
     registry entries depending on a runtime argument, which a decoration-time
-    ``cf_metadata`` dict cannot do). Delegates the actual recurrence to
-    :func:`kbdi`'s NumPy path via :func:`xarray.apply_ufunc`, one call per
-    Dask spatial chunk with the full ``time`` axis, since :func:`kbdi` already
-    vectorizes over an arbitrary spatial shape internally -- unlike
-    :func:`~climate_indices.xarray_adapter.pet_hargreaves`, this does not need
-    ``vectorize=True`` per-cell looping.
+    ``cf_metadata`` dict cannot do). Delegates the recurrence to
+    :func:`kbdi`'s NumPy path through
+    :func:`~climate_indices._stateful_xarray.stateful_recurrence_xarray`, one
+    call per Dask spatial block with the full ``time`` axis.
     """
-    precip_da = precipitation
-    temp_da = maximum_temperature
-
-    validate_time_dimension(precip_da, time_dim)
-    validate_time_dimension(temp_da, time_dim)
-    # a dimension-only time axis carries no cadence metadata: xarray aligns it
-    # positionally, so monotonicity and daily checks apply only to real coords
-    for data in (precip_da, temp_da):
-        if time_dim in data.coords:
-            validate_time_monotonicity(data.coords[time_dim])
-            _validate_daily_time_coordinate(data, time_dim)
-
-    shared_spatial_dims = [str(dim) for dim in precip_da.dims if dim in temp_da.dims and dim != time_dim]
-    precip_aligned, temp_aligned = xr.align(precip_da, temp_da, join="inner")
-    for dim in sorted(shared_spatial_dims):
-        if precip_aligned.sizes[dim] != precip_da.sizes[dim] or temp_aligned.sizes[dim] != temp_da.sizes[dim]:
-            raise CoordinateValidationError(
-                message=(
-                    f"Input alignment dropped coordinates along non-time dimension '{dim}': "
-                    f"precipitation had {precip_da.sizes[dim]}, maximum_temperature had "
-                    f"{temp_da.sizes[dim]}; after the inner join they have "
-                    f"{precip_aligned.sizes[dim]} and {temp_aligned.sizes[dim]}. "
-                    "Subset or align the inputs explicitly; KBDI never reduces spatial coverage silently."
-                ),
-                coordinate_name=dim,
-                reason="non_time_alignment_dropped_coordinates",
-            )
-    aligned_len = precip_aligned.sizes[time_dim]
-    original_len = max(precip_da.sizes[time_dim], temp_da.sizes[time_dim])
-    if aligned_len == 0:
-        raise CoordinateValidationError(
-            message=(
-                f"No overlapping timesteps found between precipitation and maximum_temperature "
-                f"along '{time_dim}'. Cannot compute KBDI."
-            ),
-            coordinate_name=time_dim,
-            reason="empty_intersection_after_alignment",
-        )
-    if aligned_len < original_len:
-        warnings.warn(
-            InputAlignmentWarning(
-                message=(
-                    f"Input alignment: precipitation had {precip_da.sizes[time_dim]} timesteps, "
-                    f"maximum_temperature had {temp_da.sizes[time_dim]} timesteps. "
-                    f"After inner join, {aligned_len} remain."
-                ),
-                original_size=original_len,
-                aligned_size=aligned_len,
-                dropped_count=original_len - aligned_len,
-            ),
-            stacklevel=3,
-        )
-
-    validate_dask_chunks(precip_aligned, time_dim)
-    validate_dask_chunks(temp_aligned, time_dim)
-
     precip_target: Literal["mm", "inch"] = "inch" if units == "imperial" else "mm"
     temp_target: Literal["celsius", "fahrenheit"] = "fahrenheit" if units == "imperial" else "celsius"
-    precip_aligned = _convert_precipitation_units(precip_aligned, precip_target)
-    temp_aligned = _convert_temperature_units(temp_aligned, temp_target)
+    precip_da = _convert_precipitation_units(precipitation, precip_target)
+    temp_da = _convert_temperature_units(maximum_temperature, temp_target)
 
-    # one shared spatial topology: a time-only input must broadcast to the
-    # other's grid before apply_ufunc and the final transpose see its dims
-    precip_aligned, temp_aligned = xr.broadcast(precip_aligned, temp_aligned)
-
-    spatial_dims = tuple(d for d in precip_aligned.dims if d != time_dim)
-    spatial_shape = tuple(precip_aligned.sizes[d] for d in spatial_dims)
-
-    # validate initial conditions eagerly: a bad seed must fail this call, not a
-    # later lazy evaluation (the NumPy core revalidates per chunk)
     maximum = 800.0 if units == "imperial" else _KBDI_MAX_MM
-    internal_spatial_shape = spatial_shape or (1,)
-    if initial_state is not None:
-        _kbdi_state_arrays(initial_state, internal_spatial_shape, units, maximum)
-    elif initial_kbdi is not None and not isinstance(initial_kbdi, xr.DataArray):
-        # a DataArray seed may be Dask-backed; validating it eagerly would compute it
-        _kbdi_initial_value(initial_kbdi, internal_spatial_shape, maximum)
 
-    mean_annual_arg: xr.DataArray | None = None
-    if mean_annual_precipitation is not None:
-        if isinstance(mean_annual_precipitation, xr.DataArray):
-            mean_annual_precipitation = _convert_precipitation_units(
-                mean_annual_precipitation,
-                precip_target,
-                argument_name="mean_annual_precipitation.attrs['units']",
-                annual=True,
+    def build_extra_inputs(alignment: StatefulAlignment) -> tuple[tuple[xr.DataArray, None], ...]:
+        spatial_dims = alignment.spatial_dims
+        spatial_shape = alignment.spatial_shape
+        chunks = alignment.spatial_chunks
+        # validate initial conditions eagerly: a bad seed must fail this call, not a later lazy
+        # evaluation (the NumPy core revalidates per chunk)
+        if initial_state is not None:
+            _kbdi_state_arrays(initial_state, alignment.internal_spatial_shape, units, maximum)
+        elif initial_kbdi is not None and not isinstance(initial_kbdi, xr.DataArray):
+            # a DataArray seed may be Dask-backed; validating it eagerly would compute it
+            _kbdi_initial_value(initial_kbdi, alignment.internal_spatial_shape, maximum)
+
+        extras: list[tuple[xr.DataArray, None]] = []
+        if mean_annual_precipitation is not None:
+            mean_annual = mean_annual_precipitation
+            if isinstance(mean_annual, xr.DataArray):
+                mean_annual = _convert_precipitation_units(
+                    mean_annual,
+                    precip_target,
+                    argument_name="mean_annual_precipitation.attrs['units']",
+                    annual=True,
+                )
+            extras.append((_wrap_spatial(mean_annual, spatial_shape, spatial_dims, chunks=chunks), None))
+        if initial_state is not None:
+            gap_source = (
+                initial_state.trailing_gap_days
+                if initial_state.trailing_gap_days is not None
+                else np.full(spatial_shape, -1, dtype=np.int64)
             )
-        mean_annual_arg = _wrap_spatial(mean_annual_precipitation, spatial_shape, spatial_dims)
-    seed_kbdi_arg: xr.DataArray | None = None
-    seed_wet_arg: xr.DataArray | None = None
-    seed_gap_arg: xr.DataArray | None = None
-    if initial_state is not None:
-        gap_source = (
-            initial_state.trailing_gap_days
-            if initial_state.trailing_gap_days is not None
-            else np.full(spatial_shape, -1, dtype=np.int64)
-        )
-        seed_kbdi_arg = _wrap_spatial(initial_state.kbdi, spatial_shape, spatial_dims)
-        seed_wet_arg = _wrap_spatial(initial_state.wet_spell_precipitation, spatial_shape, spatial_dims)
-        seed_gap_arg = _wrap_spatial(gap_source, spatial_shape, spatial_dims)
-    elif initial_kbdi is not None:
-        seed_kbdi_arg = _wrap_spatial(initial_kbdi, spatial_shape, spatial_dims)
+            extras.append((_wrap_spatial(initial_state.kbdi, spatial_shape, spatial_dims, chunks=chunks), None))
+            extras.append(
+                (_wrap_spatial(initial_state.wet_spell_precipitation, spatial_shape, spatial_dims, chunks=chunks), None)
+            )
+            extras.append((_wrap_spatial(gap_source, spatial_shape, spatial_dims, chunks=chunks), None))
+        elif initial_kbdi is not None:
+            extras.append((_wrap_spatial(initial_kbdi, spatial_shape, spatial_dims, chunks=chunks), None))
+        return tuple(extras)
 
-    optional_slots = (mean_annual_arg, seed_kbdi_arg, seed_wet_arg, seed_gap_arg)
-    include_mask = tuple(slot is not None for slot in optional_slots)
-    optional_args = [slot for slot in optional_slots if slot is not None]
-
-    output_time_len = max(aligned_len - spin_up, 0)
+    # Which optional operands reach the block, in the order build_extra_inputs supplies them.
+    include_mask = (
+        mean_annual_precipitation is not None,
+        initial_state is not None or initial_kbdi is not None,
+        initial_state is not None,
+        initial_state is not None,
+    )
 
     def _kbdi_block(
         precip_block: np.ndarray, temp_block: np.ndarray, *optional_blocks: np.ndarray
@@ -680,6 +616,9 @@ def _kbdi_xarray(
         # apply_ufunc places core dims (time) last; kbdi()'s NumPy path is time-first.
         precip_t = np.moveaxis(precip_block, -1, 0).copy()
         temp_t = np.moveaxis(temp_block, -1, 0).copy()
+        # a time-only input and a gridded one reach the block with different shapes; the gap
+        # fill and the state fields describe the block's broadcast spatial shape
+        block_spatial_shape = np.broadcast_shapes(precip_block.shape[:-1], temp_block.shape[:-1])
 
         call_initial_state = None
         call_initial_kbdi = None
@@ -713,31 +652,24 @@ def _kbdi_xarray(
         values_out = np.moveaxis(result.values, 0, -1)
         gap_out = result.state.trailing_gap_days
         if gap_out is None:
-            gap_out = np.full(precip_t.shape[1:], -1, dtype=np.int64)
+            gap_out = np.full(block_spatial_shape, -1, dtype=np.int64)
         return values_out, result.state.kbdi, result.state.wet_spell_precipitation, gap_out
 
-    values_result, kbdi_result, wet_result, gap_result = xr.apply_ufunc(
+    adapter_output = stateful_recurrence_xarray(
+        [("precipitation", precip_da), ("maximum_temperature", temp_da)],
         _kbdi_block,
-        precip_aligned,
-        temp_aligned,
-        *optional_args,
-        input_core_dims=[[time_dim], [time_dim]] + [[] for _ in optional_args],
-        output_core_dims=[[time_dim], [], [], []],
-        exclude_dims={time_dim},
-        vectorize=False,
-        dask="parallelized",
-        dask_gufunc_kwargs={"output_sizes": {time_dim: output_time_len}},
+        time_dim=time_dim,
+        spin_up=spin_up,
+        output_core_dims=[time_dim, None, None, None],
         output_dtypes=[float, float, float, np.int64],
+        index_display_name="KBDI",
+        build_extra_inputs=build_extra_inputs,
     )
-
-    values_result = values_result.transpose(*precip_aligned.dims)
-    if time_dim in precip_aligned.coords:
-        new_time_values = precip_aligned.coords[time_dim].values[spin_up : spin_up + output_time_len]
-        values_result = values_result.assign_coords({time_dim: new_time_values})
+    values_result, kbdi_result, wet_result, gap_result = adapter_output.outputs
 
     cf_key = "kbdi_imperial" if units == "imperial" else "kbdi"
     values_result.attrs = build_output_attrs(
-        precip_da,
+        precipitation,
         cf_metadata=CF_METADATA[cf_key],  # type: ignore[arg-type]
         # "units" is deliberately excluded here: it's a CF attribute the
         # registry entry above already sets ("mm" / "0.01 in"), and

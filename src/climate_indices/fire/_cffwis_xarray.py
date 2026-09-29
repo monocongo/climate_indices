@@ -19,16 +19,15 @@ import numpy.typing as npt
 import xarray as xr
 
 from climate_indices._recurrence import _as_float_array
+from climate_indices._stateful_xarray import StatefulAlignment, stateful_recurrence_xarray
 from climate_indices._units import (
     _convert_precipitation_units,
     _convert_temperature_units,
-    _validate_daily_time_coordinate,
 )
 from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.exceptions import (
     ClimateIndicesWarning,
     CoordinateValidationError,
-    InputAlignmentWarning,
     InvalidArgumentError,
     wrap_value_error,
 )
@@ -49,7 +48,6 @@ from climate_indices.fire._cffwis_codes import (
     FFMC_CODE,
     _CFFWISComponent,
 )
-from climate_indices.validation import validate_dask_chunks, validate_time_dimension, validate_time_monotonicity
 from climate_indices.xarray_adapter import _wrap_spatial, build_output_attrs
 
 # ---------------------------------------------------------------------------
@@ -100,128 +98,6 @@ def _warn_if_not_noon_referenced(weather_inputs: tuple[xr.DataArray, ...], time_
         ClimateIndicesWarning,
         stacklevel=3,
     )
-
-
-def _broadcast_topology(weather: tuple[xr.DataArray, ...]) -> tuple[tuple[str, ...], dict[str, int]]:
-    """Return the dims and sizes ``xr.broadcast`` would produce, without broadcasting data.
-
-    The broadcast dims come in order of appearance across the inputs, exactly
-    as ``xarray.core.variable._unified_dims`` orders them; ``xr.align`` has
-    already matched the sizes of the shared dims.
-    """
-    dims: list[str] = []
-    sizes: dict[str, int] = {}
-    for data in weather:
-        for dim in data.dims:
-            name = str(dim)
-            if name not in sizes:
-                dims.append(name)
-                sizes[name] = data.sizes[dim]
-    return tuple(dims), sizes
-
-
-def _spatial_chunk_targets(
-    weather: tuple[xr.DataArray, ...], spatial_dims: tuple[str, ...]
-) -> dict[str, tuple[int, ...]]:
-    """The finest spatial chunking the Dask-backed weather inputs carry.
-
-    Static spatial operands (seeds, resumed state) are partitioned to this
-    chunking so ``apply_ufunc`` hands a worker only its own tile instead of the
-    whole grid. Empty when no weather input is Dask-backed.
-    """
-    targets: dict[str, tuple[int, ...]] = {}
-    for dim in spatial_dims:
-        chunkings = [
-            data.chunks[data.dims.index(dim)] for data in weather if data.chunks is not None and dim in data.dims
-        ]
-        if chunkings:
-            targets[dim] = min(chunkings, key=len)
-    return targets
-
-
-def _align_cffwis_inputs(
-    temperature_celsius: xr.DataArray,
-    relative_humidity_percent: xr.DataArray,
-    wind_speed_meters_per_second: xr.DataArray,
-    precipitation_mm: xr.DataArray,
-    time_dim: str,
-) -> tuple[xr.DataArray, xr.DataArray, xr.DataArray, xr.DataArray]:
-    """Align the four weather inputs, protecting spatial coverage and reporting time drops.
-
-    Follows the KBDI adapter's inner-join contract: a shared spatial dimension
-    that loses coordinates is an error, while a shortened time axis is the
-    documented intersection and only warns. The four inputs are aligned in one
-    call so a partial mismatch cannot pair one input's grid with another's.
-    """
-    inputs = (temperature_celsius, relative_humidity_percent, wind_speed_meters_per_second, precipitation_mm)
-    names = (
-        "temperature_celsius",
-        "relative_humidity_percent",
-        "wind_speed_meters_per_second",
-        "precipitation_mm",
-    )
-    shared_spatial_dims = sorted(
-        {
-            str(dim)
-            for first in range(len(inputs))
-            for second in range(first + 1, len(inputs))
-            for dim in inputs[first].dims
-            if dim in inputs[second].dims and dim != time_dim
-        }
-    )
-    try:
-        aligned = xr.align(*inputs, join="inner")
-    except xr.AlignmentError as exc:
-        raise CoordinateValidationError(
-            message=(
-                "Cannot align the CFFWIS weather inputs: their dimension sizes or coordinate labels "
-                f"conflict ({exc}). Give the inputs matching spatial shapes and a shared time axis."
-            ),
-            coordinate_name=time_dim,
-            reason="alignment_conflict",
-        ) from exc
-    for dim in shared_spatial_dims:
-        original_sizes = {name: data.sizes[dim] for name, data in zip(names, inputs, strict=True) if dim in data.sizes}
-        aligned_sizes = {name: data.sizes[dim] for name, data in zip(names, aligned, strict=True) if dim in data.sizes}
-        if any(aligned_sizes[name] != size for name, size in original_sizes.items()):
-            raise CoordinateValidationError(
-                message=(
-                    f"Input alignment dropped coordinates along non-time dimension '{dim}': "
-                    + ", ".join(f"{name} had {size}" for name, size in original_sizes.items())
-                    + "; after the inner join they have "
-                    + ", ".join(f"{name} {size}" for name, size in aligned_sizes.items())
-                    + ". Subset or align the inputs explicitly; CFFWIS never reduces spatial coverage silently."
-                ),
-                coordinate_name=dim,
-                reason="non_time_alignment_dropped_coordinates",
-            )
-    time_sizes = {name: data.sizes[time_dim] for name, data in zip(names, inputs, strict=True)}
-    aligned_length = aligned[0].sizes[time_dim]
-    if aligned_length == 0:
-        raise CoordinateValidationError(
-            message=(
-                f"No overlapping timesteps found across the CFFWIS weather inputs along '{time_dim}'. "
-                "Cannot compute the Canadian Forest Fire Weather Index System."
-            ),
-            coordinate_name=time_dim,
-            reason="empty_intersection_after_alignment",
-        )
-    original_length = max(time_sizes.values())
-    if aligned_length < original_length:
-        warnings.warn(
-            InputAlignmentWarning(
-                message=(
-                    "Input alignment: "
-                    + ", ".join(f"{name} had {size} timesteps" for name, size in time_sizes.items())
-                    + f". After inner join, {aligned_length} remain."
-                ),
-                original_size=original_length,
-                aligned_size=aligned_length,
-                dropped_count=original_length - aligned_length,
-            ),
-            stacklevel=3,
-        )
-    return aligned[0], aligned[1], aligned[2], aligned[3]
 
 
 _LATITUDE_DEGREE_UNITS = frozenset({"degrees_north", "degree_north", "degrees", "degree", "deg"})
@@ -546,15 +422,6 @@ class _CFFWISCallOptions:
     time_dim: str
 
 
-def _validate_cffwis_xarray_inputs(weather_inputs: tuple[xr.DataArray, ...], time_dim: str) -> None:
-    """Validate each weather input's time axis: known dimension, monotonic, daily."""
-    for data in weather_inputs:
-        validate_time_dimension(data, time_dim)
-        if time_dim in data.coords:
-            validate_time_monotonicity(data.coords[time_dim])
-            _validate_daily_time_coordinate(data, time_dim)
-
-
 def _selected_component_names(selected: frozenset[_CFFWISComponent]) -> tuple[str, ...]:
     """The requested output names in the component registry's order."""
     return tuple(name for name in _CFFWIS_COMPONENTS if name in selected)
@@ -717,65 +584,16 @@ def _cffwis_block(
     return tuple(computed) if len(computed) != 1 else computed[0]
 
 
-def _cffwis_apply_ufunc(
-    weather: tuple[xr.DataArray, xr.DataArray, xr.DataArray, xr.DataArray],
-    latitude: xr.DataArray,
-    month_data: xr.DataArray,
-    optional_args: list[xr.DataArray],
-    optional_kinds: tuple[str, ...],
-    options: _CFFWISCallOptions,
-    output_time_length: int,
-) -> tuple[xr.DataArray, ...]:
-    """Run the shared NumPy orchestrator once per spatial block via apply_ufunc."""
-    temperature, humidity, wind, precipitation = weather
-    time_dim = options.time_dim
-    active_components = _selected_component_names(options.selected)
-    output_core_dims: list[list[str]] = [[time_dim]] * len(active_components)
-    output_dtypes: list[type[np.generic]] = [np.float64] * len(active_components)
-    if options.return_state:
-        output_core_dims += [[]] * 6
-        output_dtypes += [np.float64, np.int64] * 3
-    apply_results = xr.apply_ufunc(
-        _cffwis_block,
-        temperature,
-        humidity,
-        wind,
-        precipitation,
-        latitude,
-        month_data,
-        *optional_args,
-        input_core_dims=[[time_dim]] * 4 + [[], [time_dim]] + [[] for _ in optional_args],
-        output_core_dims=output_core_dims,
-        exclude_dims={time_dim},
-        vectorize=False,
-        dask="parallelized",
-        dask_gufunc_kwargs={"output_sizes": {time_dim: output_time_length}},
-        output_dtypes=output_dtypes,
-        kwargs={"options": options, "optional_kinds": optional_kinds},
-    )
-    return apply_results if isinstance(apply_results, tuple) else (apply_results,)
-
-
 def _cffwis_variable_results(
     result_arrays: tuple[xr.DataArray, ...],
     active_components: tuple[str, ...],
-    output_dims: tuple[str, ...],
-    time_coord: xr.DataArray | None,
     temperature_celsius: xr.DataArray,
     options: _CFFWISCallOptions,
-    output_time_length: int,
 ) -> dict[str, xr.DataArray]:
-    """Wrap each apply_ufunc output with its dims, time coordinate, and CF attrs."""
+    """Attach each component's CF metadata; the adapter has restored the time coordinates."""
     variable_results: dict[str, xr.DataArray] = {}
     for position, name in enumerate(active_components):
         variable = result_arrays[position]
-        if variable.dims != output_dims:
-            variable = variable.transpose(*output_dims)
-        if time_coord is not None:
-            # slice the coordinate rather than its values so CF coordinate
-            # attributes (calendar, axis, ...) survive spin-up trimming
-            trimmed = time_coord.isel({options.time_dim: slice(options.spin_up, options.spin_up + output_time_length)})
-            variable = variable.assign_coords({options.time_dim: trimmed})
         variable.attrs = build_output_attrs(
             temperature_celsius,
             cf_metadata=CF_METADATA[name],  # type: ignore[arg-type]
@@ -797,88 +615,67 @@ def _cffwis_xarray(
 ) -> xr.Dataset | CFFWISResult:
     """xarray dispatch for :func:`cffwis`. See :func:`cffwis` for the full contract.
 
-    The multi-output adapter the design doc calls for: one
-    :func:`xarray.apply_ufunc` call runs the shared NumPy orchestrator once per
-    Dask spatial block with the full ``time`` axis, then each selected output
-    is rewrapped with its own ``CF_METADATA`` entry. The per-cell day-length
-    broadcast needs no adapter logic -- passing a latitude DataArray through
-    ``apply_ufunc`` gives every block its own latitudes, and the core's
-    latitude-band tables are already elementwise. Per-call registry resolution
-    is not CFFWIS's problem (its entries are fixed), unlike KBDI's
-    ``units``-dependent ``kbdi``/``kbdi_imperial`` choice.
+    One :func:`~climate_indices._stateful_xarray.stateful_recurrence_xarray`
+    call runs the shared NumPy orchestrator once per Dask spatial block with
+    the full ``time`` axis, then each selected output is rewrapped with its own
+    ``CF_METADATA`` entry. The per-cell day-length broadcast needs no adapter
+    logic -- passing a latitude DataArray through ``apply_ufunc`` gives every
+    block its own latitudes, and the core's latitude-band tables are already
+    elementwise. Per-call registry resolution is not CFFWIS's problem (its
+    entries are fixed), unlike KBDI's ``units``-dependent
+    ``kbdi``/``kbdi_imperial`` choice.
     """
     time_dim = options.time_dim
     active_components = _selected_component_names(options.selected)
-    weather_inputs = (
-        temperature_celsius,
-        relative_humidity_percent,
-        wind_speed_meters_per_second,
-        precipitation_mm,
-    )
-    _validate_cffwis_xarray_inputs(weather_inputs, time_dim)
-    _warn_if_not_noon_referenced(weather_inputs, time_dim)
+    raw_weather = (temperature_celsius, relative_humidity_percent, wind_speed_meters_per_second, precipitation_mm)
+    _warn_if_not_noon_referenced(raw_weather, time_dim)
 
-    temperature, humidity, wind, precipitation = _align_cffwis_inputs(
-        temperature_celsius,
-        relative_humidity_percent,
-        wind_speed_meters_per_second,
-        precipitation_mm,
-        time_dim,
+    temperature = _convert_temperature_units(
+        temperature_celsius, "celsius", argument_name="temperature_celsius.attrs['units']"
     )
-    for data in (temperature, humidity, wind, precipitation):
-        validate_dask_chunks(data, time_dim)
+    precipitation = _convert_precipitation_units(precipitation_mm, "mm")
+    weather = (temperature, relative_humidity_percent, wind_speed_meters_per_second, precipitation)
 
-    temperature = _convert_temperature_units(temperature, "celsius", argument_name="temperature_celsius.attrs['units']")
-    precipitation = _convert_precipitation_units(precipitation, "mm")
-    weather = (temperature, humidity, wind, precipitation)
-    # one shared spatial topology: a time-only input joins the others' grid.
-    # apply_ufunc performs that broadcast per block, so the adapter must not
-    # xr.broadcast first: expanding a Dask input over the new spatial
-    # dimensions places the whole grid in a single task, which is exactly what
-    # the bounded spatial-block execution exists to avoid.
-    broadcast_dims, broadcast_sizes = _broadcast_topology(weather)
-    spatial_dims = tuple(dim for dim in broadcast_dims if dim != time_dim)
-    spatial_shape = tuple(broadcast_sizes[dim] for dim in spatial_dims)
-    spatial_chunks = _spatial_chunk_targets(weather, spatial_dims)
-    time_length = broadcast_sizes[time_dim]
-    output_time_length = max(time_length - options.spin_up, 0)
+    output_core_dims: list[str | None] = [time_dim] * len(active_components)
+    output_dtypes: list[type] = [np.float64] * len(active_components)
+    if options.return_state:
+        output_core_dims += [None] * 6
+        output_dtypes += [np.float64, np.int64] * 3
 
-    latitude = _resolve_cffwis_latitude(
-        latitude_degrees_north,
-        weather,
-        time_dim,
-        spatial_dims,
-        spatial_shape,
+    def build_extra_inputs(alignment: StatefulAlignment) -> tuple[tuple[xr.DataArray, str | None], ...]:
+        time_coord = alignment.time_source.coords[time_dim] if alignment.time_source is not None else None
+        latitude = _resolve_cffwis_latitude(
+            latitude_degrees_north,
+            weather,
+            time_dim,
+            alignment.spatial_dims,
+            alignment.spatial_shape,
+        )
+        month_data = _resolve_cffwis_month(month, time_coord, time_dim, alignment.time_length)
+        _validate_cffwis_seeds(options, alignment.internal_spatial_shape)
+        optional_args = _cffwis_optional_args(
+            options, alignment.spatial_shape, alignment.spatial_dims, alignment.spatial_chunks
+        )
+        return ((latitude, None), (month_data, time_dim), *((arg, None) for arg in optional_args))
+
+    adapter_output = stateful_recurrence_xarray(
+        [
+            ("temperature_celsius", temperature),
+            ("relative_humidity_percent", relative_humidity_percent),
+            ("wind_speed_meters_per_second", wind_speed_meters_per_second),
+            ("precipitation_mm", precipitation),
+        ],
+        _cffwis_block,
+        time_dim=time_dim,
+        spin_up=options.spin_up,
+        output_core_dims=output_core_dims,
+        output_dtypes=output_dtypes,
+        index_display_name="CFFWIS",
+        build_extra_inputs=build_extra_inputs,
+        kernel_kwargs={"options": options, "optional_kinds": _cffwis_optional_kinds(options)},
     )
-    # a not-yet-broadcast input may not carry the time coordinate another one
-    # does; the aligned weather inputs share it, so infer month and trim the
-    # output from the same first coordinate-bearing input
-    time_coord = next((data.coords[time_dim] for data in weather if time_dim in data.coords), None)
-    month_data = _resolve_cffwis_month(month, time_coord, time_dim, time_length)
-
-    internal_spatial_shape = spatial_shape or (1,)
-    _validate_cffwis_seeds(options, internal_spatial_shape)
-
-    optional_kinds = _cffwis_optional_kinds(options)
-    optional_args = _cffwis_optional_args(options, spatial_shape, spatial_dims, spatial_chunks)
-    result_arrays = _cffwis_apply_ufunc(
-        weather,
-        latitude,
-        month_data,
-        optional_args,
-        optional_kinds,
-        options,
-        output_time_length,
-    )
-    variable_results = _cffwis_variable_results(
-        result_arrays,
-        active_components,
-        broadcast_dims,
-        time_coord,
-        temperature_celsius,
-        options,
-        output_time_length,
-    )
+    result_arrays = adapter_output.outputs
+    variable_results = _cffwis_variable_results(result_arrays, active_components, temperature_celsius, options)
 
     if not options.return_state:
         return xr.Dataset(variable_results)

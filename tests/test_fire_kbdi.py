@@ -1091,6 +1091,21 @@ class TestKBDIXarraySpinUp:
         assert result.sizes["time"] == 50 - spin_up
         assert result.coords["time"].values[0] == precip_da.coords["time"].values[spin_up]
 
+    def test_spin_up_keeps_time_attributes_and_extra_time_coordinates(self) -> None:
+        """The shared adapter restores every time-varying coordinate, not just time values (#1222)."""
+        precip_da, temp_da, mean_annual_da, *_ = _gridded_dataarrays(days=50)
+        extra = {
+            "time": precip_da.coords["time"].assign_attrs(long_name="observation time"),
+            "doy": ("time", precip_da.coords["time"].dt.dayofyear.values, {"long_name": "day of year"}),
+        }
+        precip_da = precip_da.assign_coords(extra)
+        temp_da = temp_da.assign_coords(extra)
+        spin_up = 7
+        result = fire.kbdi(precip_da, temp_da, mean_annual_da, spin_up=spin_up)
+        assert result.time.attrs == {"long_name": "observation time"}
+        assert result.doy.attrs == {"long_name": "day of year"}
+        np.testing.assert_array_equal(result.doy, precip_da.doy.isel(time=slice(spin_up, None)))
+
 
 class TestKBDIXarrayStateRoundTrip:
     """Resuming a gridded recurrence from xarray-path state reproduces the one-shot series."""

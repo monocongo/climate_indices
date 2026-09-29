@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import functools
-
 import numpy as np
 import xarray as xr
 
 from climate_indices._recurrence import _validate_recurrence_options
-from climate_indices._units import _convert_precipitation_units, _validate_daily_time_coordinate
+from climate_indices._stateful_xarray import StatefulAlignment, stateful_recurrence_xarray
+from climate_indices._units import _convert_precipitation_units
 from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.compute import Periodicity
 from climate_indices.flood._antecedent import APIResult, APIState, _resume_state, _validate_decay
@@ -16,7 +15,6 @@ from climate_indices.flood._antecedent import antecedent_precipitation_index as 
 from climate_indices.flood._edi import edi as _numpy_edi
 from climate_indices.flood._if import flood_index as _numpy_flood_index
 from climate_indices.flood._pe import effective_precipitation as _numpy_pe
-from climate_indices.validation import validate_dask_chunks, validate_time_dimension, validate_time_monotonicity
 from climate_indices.xarray_adapter import (
     INFER_TIME_PARAMETERS,
     _wrap_spatial,
@@ -114,47 +112,36 @@ def _api_xarray(
     _validate_decay(k)
     _validate_recurrence_options(nan_policy, max_gap_days, spin_up, "initial_state", None, initial_state)
     spin_up = int(spin_up)
-    validate_time_dimension(precipitation, time_dim)
-    if time_dim in precipitation.coords:
-        validate_time_monotonicity(precipitation.coords[time_dim])
-        _validate_daily_time_coordinate(precipitation, time_dim)
-    validate_dask_chunks(precipitation, time_dim)
     rain = convert_pe_input(precipitation, argument_name="precipitation")
-    spatial_dims = tuple(dim for dim in rain.dims if dim != time_dim)
-    spatial_shape = tuple(rain.sizes[dim] for dim in spatial_dims)
-    state_args: list[xr.DataArray] = []
-    if initial_state is not None:
+
+    def build_extra_inputs(alignment: StatefulAlignment) -> tuple[tuple[xr.DataArray, None], ...]:
+        if initial_state is None:
+            return ()
         # Reject invalid state before returning a lazy graph; the core validates each tile again.
-        seed_api, seed_gaps = _resume_state(initial_state, spatial_shape or (1,))
-        state_args = [
-            _wrap_spatial(seed_api.reshape(spatial_shape), spatial_shape, spatial_dims),
-            _wrap_spatial(seed_gaps.reshape(spatial_shape), spatial_shape, spatial_dims),
-        ]
+        seed_api, seed_gaps = _resume_state(initial_state, alignment.internal_spatial_shape)
+        seed_shape = alignment.spatial_shape
+        return tuple(
+            (
+                _wrap_spatial(
+                    seed.reshape(seed_shape), seed_shape, alignment.spatial_dims, chunks=alignment.spatial_chunks
+                ),
+                None,
+            )
+            for seed in (seed_api, seed_gaps)
+        )
 
-    output_len = max(rain.sizes[time_dim] - spin_up, 0)
-
-    block = functools.partial(_api_block, k=k, spin_up=spin_up, nan_policy=nan_policy, max_gap_days=max_gap_days)
-
-    values, api, gaps = xr.apply_ufunc(
-        block,
-        rain,
-        *state_args,
-        input_core_dims=[[time_dim]] + [[] for _ in state_args],
-        output_core_dims=[[time_dim], [], []],
-        exclude_dims={time_dim},
-        dask="parallelized",
-        dask_gufunc_kwargs={"output_sizes": {time_dim: output_len}},
+    adapter_output = stateful_recurrence_xarray(
+        [("precipitation", rain)],
+        _api_block,
+        time_dim=time_dim,
+        spin_up=spin_up,
+        output_core_dims=[time_dim, None, None],
         output_dtypes=[float, float, np.int64],
+        index_display_name="API",
+        build_extra_inputs=build_extra_inputs,
+        kernel_kwargs={"k": k, "spin_up": spin_up, "nan_policy": nan_policy, "max_gap_days": max_gap_days},
     )
-    values = values.transpose(*rain.dims)
-    # apply_ufunc drops every coordinate along the excluded time dimension; restore them with their attrs.
-    values = values.assign_coords(
-        {
-            name: coord.isel({time_dim: slice(spin_up, None)})
-            for name, coord in rain.coords.items()
-            if time_dim in coord.dims
-        }
-    )
+    values, api, gaps = adapter_output.outputs
     values.attrs = build_output_attrs(
         precipitation,
         cf_metadata=CF_METADATA["antecedent_precipitation_index"],  # type: ignore[arg-type]
