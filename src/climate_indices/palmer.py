@@ -10,8 +10,9 @@ from structlog.stdlib import BoundLogger
 
 from climate_indices import _palmer_pdi, _palmer_wells, compute, self_calibration, utils
 from climate_indices._calibration_period import resolve_calibration_period
+from climate_indices._palmer_common import _py_max, _py_min
 from climate_indices._palmer_duration import DurationFactors
-from climate_indices._palmer_pdi import PdiDurationFactors, _py_max, _py_min
+from climate_indices._palmer_pdi import PdiDurationFactors
 from climate_indices.exceptions import ConvergenceError
 from climate_indices.logging_config import get_logger
 
@@ -848,8 +849,9 @@ def _mask_fully_missing_cells(precips: np.ndarray, result: _PalmerResult) -> _Pa
     shortcut above and returns NaN outputs directly. Inside a block that is
     NOT entirely missing, that shortcut never fires, so a fully-missing cell
     instead runs the recursion like any other: Python's ``max(0, ...)``/
-    ``min(0.0, ...)`` calls in ``_palmer_pdi._statement_200`` (replicated exactly by
-    :func:`_py_max`/:func:`_py_min` for bit-for-bit equivalence) silently
+    ``min(0.0, ...)`` calls in ``_palmer_pdi._statement_170``/``_statement_180``
+    (replicated exactly by :func:`_py_max`/:func:`_py_min` for bit-for-bit
+    equivalence) silently
     turn a NaN Z-index into 0 rather than propagating it, so an unmasked
     fully-missing cell would read back as a misleadingly ordinary near-zero
     PDSI instead of missing data -- the wrong answer for a real grid's
@@ -1013,7 +1015,8 @@ def pdsi(
             block, each coefficient is still (12,), shared across every cell.
             Supplying all four of ``wetm``, ``wetb``, ``drym``, and ``dryb``
             overrides Palmer's fixed national duration factors with those
-            scalars (validated like scPDSI's calibrated factors); supplying
+            scalars (validated against the ``pdi.f`` recurrence terms, narrower
+            than scPDSI's factor validation); supplying
             only some of the four raises :class:`ValueError`. An override
             produces PDSI with caller-supplied duration factors, not Palmer's
             (1965) standard index and not scPDSI: the CAFEC

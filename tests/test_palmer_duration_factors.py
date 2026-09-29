@@ -82,13 +82,23 @@ def test_pdi_validation_rejects_a_zero_denominator():
         _palmer_pdi.PdiDurationFactors.from_fitted(1.0, -1.0, 1.0, 1.0)
 
 
-def test_select_duration_factors_prefers_wet_factors_when_x3_is_zero():
+def test_select_duration_factors_follows_the_sign_of_x3():
+    """No established spell (x3 == 0) takes the wet pair; the sign of x3 selects after that."""
     factors = _palmer_pdi.PdiDurationFactors.from_fitted(1.0, 2.0, 3.0, 4.0)
     state = _state()
+
     state.x3 = np.array([0.0])
-
     m, b = _palmer_pdi._select_duration_factors(factors, state)
+    np.testing.assert_array_equal(m, [1.0])
+    np.testing.assert_array_equal(b, [2.0])
 
+    state.x3 = np.array([-1.0])
+    m, b = _palmer_pdi._select_duration_factors(factors, state)
+    np.testing.assert_array_equal(m, [3.0])
+    np.testing.assert_array_equal(b, [4.0])
+
+    state.x3 = np.array([1.0])
+    m, b = _palmer_pdi._select_duration_factors(factors, state)
     np.testing.assert_array_equal(m, [1.0])
     np.testing.assert_array_equal(b, [2.0])
 
@@ -106,8 +116,10 @@ def test_pdi_factors_are_not_interchangeable_between_wet_and_dry_spells():
 def test_pdi_recursion_pins_a_z_sequence_through_its_interface():
     """A Z sequence driven through the recursion interface locks its arithmetic.
 
-    The values were captured from the lineage-preserving refactor and are
-    re-checked bit-for-bit against the NOAA/nClimDiv fixtures by ``test_palmer``.
+    The values were captured from the lineage-preserving refactor, so this is a
+    regression pin, not an independent correctness check. ``test_palmer``
+    corroborates the same path against the committed fixtures at ``atol=5e-5``,
+    and only runs under ``-m validation``.
     """
     z = np.array([2.0, 3.0, -1.0, -4.0, 0.5, -0.75, -0.25, 1.5, -2.0, 0.0, 2.5, -3.0]).reshape(1, 12, 1)
 
@@ -156,9 +168,18 @@ def test_pdi_recursion_pins_a_z_sequence_through_its_interface():
         -0.428571428571,
     ]
 
-    np.testing.assert_allclose(result.pdsi.reshape(-1), expected, rtol=0, atol=1e-11)
-    np.testing.assert_allclose(result.phdi.reshape(-1), phdi_expected, rtol=0, atol=1e-11)
-    np.testing.assert_allclose(result.pmdi.reshape(-1), pmdi_expected, rtol=0, atol=1e-11)
+    np.testing.assert_allclose(result.pdsi.reshape(-1), expected, rtol=0, atol=1e-12)
+    np.testing.assert_allclose(result.phdi.reshape(-1), phdi_expected, rtol=0, atol=1e-12)
+    np.testing.assert_allclose(result.pmdi.reshape(-1), pmdi_expected, rtol=0, atol=1e-12)
+
+
+def test_pdi_recursion_rejects_infinite_z_values():
+    """The pdi.f entry point rejects infinite Z like its Wells sibling."""
+    z = np.zeros((1, 12, 1))
+    z[0, 0, 0] = np.inf
+
+    with pytest.raises(ConvergenceError, match="non-finite"):
+        _palmer_pdi.calculate(z, _palmer_pdi.PdiDurationFactors.from_fitted(1.0, 1.0, 1.0, 1.0))
 
 
 def test_calc_cafec_zindex_writes_the_zindex():

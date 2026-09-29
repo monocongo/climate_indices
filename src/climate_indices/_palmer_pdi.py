@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from climate_indices._palmer_common import _py_max, _py_min
 from climate_indices.exceptions import ConvergenceError
 
 
@@ -199,23 +200,6 @@ def _select_duration_factors(factors: PdiDurationFactors, state: _State) -> tupl
     m = np.where(state.x3 >= 0, factors.wetm, factors.drym)
     b = np.where(state.x3 >= 0, factors.wetb, factors.dryb)
     return m, b
-
-
-def _py_max(a: float | np.ndarray, b: float | np.ndarray) -> np.ndarray:
-    """``max(a, b)`` matching Python's builtin comparison order, not ``np.maximum``.
-
-    Python's ``max(a, b)`` returns ``b`` only if ``b > a``, so a NaN in ``b`` never
-    wins while a NaN in ``a`` always loses unless ``b`` also fails to compare
-    greater -- an asymmetry ``np.maximum`` does not have.  The recursion below calls
-    Python's builtin with data-dependent NaN possible in either position, so
-    replicating this exact rule is required for bit-for-bit equivalence.
-    """
-    return np.where(np.asarray(b) > a, b, a)
-
-
-def _py_min(a: float | np.ndarray, b: float | np.ndarray) -> np.ndarray:
-    """``min(a, b)`` matching Python's builtin comparison order; see :func:`_py_max`."""
-    return np.where(np.asarray(b) < a, b, a)
 
 
 def _case(prob: np.ndarray, x1: np.ndarray, x2: np.ndarray, x3: np.ndarray) -> np.ndarray:
@@ -599,10 +583,19 @@ def calculate(z_values: np.ndarray, factors: PdiDurationFactors) -> PdiResult:
 
     Returns:
         The final PDSI, PHDI, and PMDI series, each shaped like ``z_values``.
+
+    Raises:
+        ValueError: if ``z_values`` does not have shape ``(years, 12, n_cells)``.
+        ConvergenceError: if a Z-index value is infinite.
     """
     z = np.asarray(z_values, dtype=float)
     if z.ndim != 3:
         raise ValueError(f"z_values must have shape (years, 12, n_cells), got {z.shape}")
+    if np.any(np.isinf(z)):
+        raise ConvergenceError(
+            "PDSI spell recursion received non-finite Z-index values",
+            algorithm="PDSI spell recursion",
+        )
     state = _initialize_state(z)
     n_years = z.shape[0]
     for year in range(n_years):
