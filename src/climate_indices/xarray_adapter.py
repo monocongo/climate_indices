@@ -763,6 +763,8 @@ def _align_inputs(
     primary: xr.DataArray,
     secondaries: dict[str, xr.DataArray],
     time_dim: str = "time",
+    *,
+    warn_on_any_drop: bool = False,
 ) -> tuple[xr.DataArray, dict[str, xr.DataArray]]:
     """Align primary and secondary DataArrays using inner join on coordinates.
 
@@ -774,6 +776,8 @@ def _align_inputs(
         primary: Primary input DataArray (e.g., precipitation)
         secondaries: Dict mapping parameter names to secondary DataArrays (e.g., {"pet": pet_da})
         time_dim: Name of the time dimension to align on (default: "time")
+        warn_on_any_drop: Warn when any input loses time steps, not only the primary.
+            For inputs of equal standing, such as the PET tmin/tmax pair.
 
     Returns:
         Tuple of (aligned_primary, dict_of_aligned_secondaries)
@@ -784,7 +788,8 @@ def _align_inputs(
             whose coordinates differ
 
     Warns:
-        InputAlignmentWarning: If alignment drops time steps from the primary input
+        InputAlignmentWarning: If alignment drops time steps from the primary input,
+            or from any input when ``warn_on_any_drop`` is set
     """
     if not secondaries:
         # no secondaries to align, return primary unchanged
@@ -831,6 +836,10 @@ def _align_inputs(
     if time_dim in aligned_primary.dims:
         aligned_size = len(aligned_primary[time_dim])
         original_size = len(primary[time_dim])
+        dropped_from = "primary input"
+        if warn_on_any_drop:
+            original_size = max(len(array[time_dim]) for array in all_arrays if time_dim in array.dims)
+            dropped_from = "the longest input"
 
         if aligned_size == 0:
             raise CoordinateValidationError(
@@ -847,7 +856,7 @@ def _align_inputs(
         if aligned_size < original_size:
             dropped_count = original_size - aligned_size
             warning_msg = (
-                f"Input alignment dropped {dropped_count} time step(s) from primary input. "
+                f"Input alignment dropped {dropped_count} time step(s) from {dropped_from}. "
                 f"Original size: {original_size}, aligned size: {aligned_size}. "
                 f"Computation will use only the intersection of input time ranges."
             )
@@ -2176,7 +2185,7 @@ def pet_hargreaves(
 
     # trim tmin and tmax to their shared time steps (warning when steps are dropped);
     # mismatched cell coordinates are rejected rather than silently intersected
-    tmin_aligned, aligned_secondaries = _align_inputs(tmin_da, {"tmax": tmax_da}, time_dim)
+    tmin_aligned, aligned_secondaries = _align_inputs(tmin_da, {"tmax": tmax_da}, time_dim, warn_on_any_drop=True)
     tmax_aligned = aligned_secondaries["tmax"]
 
     # enforce the shared calendar contract and plan the 366-day adaptation that
@@ -2286,7 +2295,9 @@ def _align_penman_monteith_inputs(
     ]
     # the shared alignment policy trims to the common time steps (warning when steps are
     # dropped) and rejects mismatched cell coordinates rather than silently intersecting
-    tmin_aligned, aligned_secondaries = _align_inputs(tmin, {"tmax": tmax, **dict(time_bearing)}, time_dim)
+    tmin_aligned, aligned_secondaries = _align_inputs(
+        tmin, {"tmax": tmax, **dict(time_bearing)}, time_dim, warn_on_any_drop=True
+    )
     tmax_aligned = aligned_secondaries.pop("tmax")
     optional_inputs = {**optional_inputs, **aligned_secondaries}
 

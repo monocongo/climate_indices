@@ -36,15 +36,23 @@ def _thornthwaite(attrs: dict[str, Any]) -> xr.DataArray:
     return ci.pet_thornthwaite(temperature, 35.0, 1990)
 
 
-def _hargreaves(attrs: dict[str, Any], tmax_lats: list[float] = LATS, tmax_steps: int = _DAILY_STEPS) -> xr.DataArray:
-    return ci.pet_hargreaves(_daily(LATS, 10, attrs), _daily(tmax_lats, 25, {}, tmax_steps), 35.0)
+def _hargreaves(
+    attrs: dict[str, Any],
+    tmax_lats: list[float] = LATS,
+    tmin_steps: int = _DAILY_STEPS,
+    tmax_steps: int = _DAILY_STEPS,
+) -> xr.DataArray:
+    return ci.pet_hargreaves(_daily(LATS, 10, attrs, tmin_steps), _daily(tmax_lats, 25, {}, tmax_steps), 35.0)
 
 
 def _penman_monteith(
-    attrs: dict[str, Any], tmax_lats: list[float] = LATS, tmax_steps: int = _DAILY_STEPS
+    attrs: dict[str, Any],
+    tmax_lats: list[float] = LATS,
+    tmin_steps: int = _DAILY_STEPS,
+    tmax_steps: int = _DAILY_STEPS,
 ) -> xr.DataArray:
     return ci.pet_penman_monteith(
-        _daily(LATS, 10, attrs),
+        _daily(LATS, 10, attrs, tmin_steps),
         _daily(tmax_lats, 25, {}, tmax_steps),
         latitude=35.0,
         elevation_m=100.0,
@@ -95,9 +103,12 @@ def test_mismatched_cell_coordinates_are_rejected_not_intersected(call: Callable
 
 
 @pytest.mark.parametrize("call", TWO_INPUT.values(), ids=TWO_INPUT.keys())
-def test_partial_time_overlap_is_trimmed_with_a_warning(call: Callable[..., xr.DataArray]) -> None:
+@pytest.mark.parametrize("shorter", ["tmin", "tmax"])
+def test_partial_time_overlap_is_trimmed_with_a_warning(call: Callable[..., xr.DataArray], shorter: str) -> None:
+    steps = {"tmin_steps": _DAILY_STEPS, "tmax_steps": _DAILY_STEPS, f"{shorter}_steps": _DAILY_STEPS - 30}
+
     with pytest.warns(InputAlignmentWarning):
-        result = call({}, tmax_steps=_DAILY_STEPS - 30)
+        result = call({}, **steps)
 
     assert result.sizes["time"] == _DAILY_STEPS - 30
     assert result.sizes["lat"] == len(LATS)
