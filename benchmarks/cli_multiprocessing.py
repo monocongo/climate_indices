@@ -112,9 +112,10 @@ def _prepare(args: argparse.Namespace) -> None:
     zero_count = int((values == 0).sum())
     values[values == 0] = np.float32(0.01)
 
-    # the CLI's shared-array transport accepts (lat, lon, time) only, time last
-    # (climate_indices.__main__._TRANSPORT_DIMENSIONS); the xarray harness
-    # transposes its own input on read, so it accepts either order
+    # this fixture is prepared in (lat, lon, time) order, time last; the CLI's
+    # shared-array transport also accepts (time, lat, lon) and transposes it on
+    # read (climate_indices._cli_transport._TRANSPORT_DIMENSIONS); the xarray
+    # harness transposes its own input on read, so it accepts either order
     prepared = xr.Dataset(
         {"prcp": (("lat", "lon", "time"), np.moveaxis(values, 0, -1), {"units": "mm"})},
         coords={"time": da["time"].values, "lat": da["lat"].values, "lon": da["lon"].values},
@@ -234,16 +235,16 @@ def _time_cli(args: argparse.Namespace) -> None:
     original_write = cli._compute_write_index
     original_parallel = cli._parallel_process
 
-    def _timed_write(request: cli._IndexRequest) -> tuple[str, str] | None:
+    def _timed_write(request: cli._IndexRequest, transport: cli.Transport) -> tuple[str, str] | None:
         start = time.perf_counter()
-        result = original_write(request)
+        result = original_write(request, transport)
         assert request.distribution is not None
         total_samples[request.distribution.value].append(time.perf_counter() - start)
         return result
 
-    def _timed_parallel(request: cli._IndexRequest, arguments: dict[str, Any]) -> None:
+    def _timed_parallel(request: cli._IndexRequest, arguments: dict[str, Any], transport: cli.Transport) -> None:
         start = time.perf_counter()
-        original_parallel(request, arguments)
+        original_parallel(request, arguments, transport)
         assert request.distribution is not None
         compute_samples[request.distribution.value].append(time.perf_counter() - start)
 
@@ -253,6 +254,8 @@ def _time_cli(args: argparse.Namespace) -> None:
         )
     mode = args.multiprocessing or "all_but_one"
     workers = {"single": 1, "all": os.cpu_count() or 1}.get(mode, (os.cpu_count() or 1) - 1)
+    # single runs the shared-array transport in-process, not through a Pool
+    executor = "in-process map" if mode == "single" else "multiprocessing.Pool"
 
     print(f"checkout revision: {_revision()}")
     print(f"fixture: {os.path.abspath(args.prepared)} sha256={_hash_file(args.prepared)}")
@@ -281,7 +284,7 @@ def _time_cli(args: argparse.Namespace) -> None:
         compute = tuple(compute_samples[name])
         total = tuple(total_samples[name])
         print(
-            f"\ncli {name} (multiprocessing.Pool, {workers} workers): "
+            f"\ncli {name} ({executor}, {workers} workers): "
             f"compute samples=[{_format_samples(compute)}] min={min(compute):.3f} s; "
             f"total samples=[{_format_samples(total)}] min={min(total):.3f} s"
         )

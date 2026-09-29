@@ -184,8 +184,8 @@ def test_time_cli_matches_the_xarray_dask_output(tmp_path: Path, capsys: pytest.
 
     output = capsys.readouterr().out
     assert "equivalence: CLI spi_gamma_06 == xarray" in output
-    assert "cli gamma (multiprocessing.Pool, 1 workers): compute samples=[" in output
-    assert "cli pearson (multiprocessing.Pool, 1 workers): compute samples=[" in output
+    assert "cli gamma (in-process map, 1 workers): compute samples=[" in output
+    assert "cli pearson (in-process map, 1 workers): compute samples=[" in output
 
     # the warm-up run's own sample must be discarded, not leaked into the
     # reported count -- --repeat 1 above, so exactly one sample per metric
