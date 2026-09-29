@@ -1,0 +1,124 @@
+{
+  "source": "Climatic Research Unit (CRU), University of East Anglia",
+  "url": "https://crudata.uea.ac.uk/cru/data/hrg/cru_ts_4.09/cruts.2503051245.v4.09/",
+  "download_date": "2026-09-29",
+  "subset_description": "CRU TS 4.09 monthly precipitation (mm/month) and FAO-56 Penman-Monteith potential evapotranspiration (mm/day), extracted at the 0.5-degree grid cells whose centers fall inside three CONUS climate divisions spanning an aridity gradient: 0101 (Northern Valley, Alabama; humid), 3405 (Central, Oklahoma; subhumid), and 0205 (Southwest, Arizona; arid). January 1901 through December 2024 (1488 months), the period SPEIbase v2.11 was computed from. Each pre_<division>.npy and pet_<division>.npy is a (n_cells, 1488) float32 array whose cell order matches divisions.json. Cell membership comes from the NCEI CONUS_CLIMATE_DIVISIONS.shp.zip polygons and matches tests/fixture/speibase/.",
+  "checksum_sha256": "4f79aebb1782edf1cd5c093b9df5c3e6ebb1b7d089d0c72cdc13cf41fe26c088",
+  "fixture_version": "1.0.0",
+  "validation_tolerance": {
+    "0101_spei01_correlation": 0.97,
+    "0101_spei01_sign_agreement": 0.97,
+    "0101_spei01_category_agreement": 0.96,
+    "0101_spei03_correlation": 0.97,
+    "0101_spei03_sign_agreement": 0.97,
+    "0101_spei03_category_agreement": 0.96,
+    "0101_spei06_correlation": 0.97,
+    "0101_spei06_sign_agreement": 0.97,
+    "0101_spei06_category_agreement": 0.96,
+    "0101_spei12_correlation": 0.97,
+    "0101_spei12_sign_agreement": 0.97,
+    "0101_spei12_category_agreement": 0.96,
+    "3405_spei01_correlation": 0.97,
+    "3405_spei01_sign_agreement": 0.97,
+    "3405_spei01_category_agreement": 0.96,
+    "3405_spei03_correlation": 0.97,
+    "3405_spei03_sign_agreement": 0.97,
+    "3405_spei03_category_agreement": 0.96,
+    "3405_spei06_correlation": 0.97,
+    "3405_spei06_sign_agreement": 0.97,
+    "3405_spei06_category_agreement": 0.96,
+    "3405_spei12_correlation": 0.97,
+    "3405_spei12_sign_agreement": 0.97,
+    "3405_spei12_category_agreement": 0.96,
+    "0205_spei01_correlation": 0.97,
+    "0205_spei01_sign_agreement": 0.97,
+    "0205_spei01_category_agreement": 0.96,
+    "0205_spei03_correlation": 0.97,
+    "0205_spei03_sign_agreement": 0.97,
+    "0205_spei03_category_agreement": 0.96,
+    "0205_spei06_correlation": 0.97,
+    "0205_spei06_sign_agreement": 0.97,
+    "0205_spei06_category_agreement": 0.95,
+    "0205_spei12_correlation": 0.97,
+    "0205_spei12_sign_agreement": 0.97,
+    "0205_spei12_category_agreement": 0.94
+  },
+  "measured_stats": {
+    "0101_spei01": {
+      "correlation": 0.9999812422672705,
+      "sign_agreement": 0.9993169398907104,
+      "category_agreement": 0.9965846994535519,
+      "mean_abs_difference": 0.0026923738965235052
+    },
+    "0101_spei03": {
+      "correlation": 0.9999863171757511,
+      "sign_agreement": 0.9986320109439124,
+      "category_agreement": 0.9979480164158687,
+      "mean_abs_difference": 0.003209606802498643
+    },
+    "0101_spei06": {
+      "correlation": 0.9999863951582377,
+      "sign_agreement": 0.997943797121316,
+      "category_agreement": 0.9965729952021933,
+      "mean_abs_difference": 0.0036249608493657006
+    },
+    "0101_spei12": {
+      "correlation": 0.9999878574373402,
+      "sign_agreement": 0.9993117687543015,
+      "category_agreement": 0.9944941500344116,
+      "mean_abs_difference": 0.003960984990751171
+    },
+    "3405_spei01": {
+      "correlation": 0.9999256425761567,
+      "sign_agreement": 0.9979508196721312,
+      "category_agreement": 0.9972677595628415,
+      "mean_abs_difference": 0.005228658580753481
+    },
+    "3405_spei03": {
+      "correlation": 0.9999375482038774,
+      "sign_agreement": 0.9972640218878249,
+      "category_agreement": 0.9945280437756497,
+      "mean_abs_difference": 0.00622367622650907
+    },
+    "3405_spei06": {
+      "correlation": 0.999962742542518,
+      "sign_agreement": 0.9965729952021933,
+      "category_agreement": 0.9938313913639479,
+      "mean_abs_difference": 0.005808044947260331
+    },
+    "3405_spei12": {
+      "correlation": 0.9999719527463334,
+      "sign_agreement": 0.9958706125258087,
+      "category_agreement": 0.9951823812801102,
+      "mean_abs_difference": 0.00574779070914907
+    },
+    "0205_spei01": {
+      "correlation": 0.9996416441381007,
+      "sign_agreement": 0.994535519125683,
+      "category_agreement": 0.9952185792349727,
+      "mean_abs_difference": 0.008025186103874206
+    },
+    "0205_spei03": {
+      "correlation": 0.999746944880906,
+      "sign_agreement": 0.9972640218878249,
+      "category_agreement": 0.9924760601915185,
+      "mean_abs_difference": 0.012789278228154887
+    },
+    "0205_spei06": {
+      "correlation": 0.9997784243361882,
+      "sign_agreement": 0.9952021932830706,
+      "category_agreement": 0.9876627827278959,
+      "mean_abs_difference": 0.013960104136795364
+    },
+    "0205_spei12": {
+      "correlation": 0.9997886720216737,
+      "sign_agreement": 0.9931176875430144,
+      "category_agreement": 0.9779766001376462,
+      "mean_abs_difference": 0.015958303164257677
+    }
+  },
+  "citation": "Harris, I., Osborn, T. J., Jones, P., and Lister, D. (2020). Version 4 of the CRU TS monthly high-resolution gridded multivariate climate dataset. Scientific Data 7, 109. https://doi.org/10.1038/s41597-020-0453-3. CRU TS 4.09 data developed by the Climatic Research Unit (CRU) at the University of East Anglia.",
+  "doi": "10.1038/s41597-020-0453-3",
+  "license": "Open Government Licence v3.0 (UK). Attribution: CRU TS 4.09 data developed by the Climatic Research Unit (CRU) at the University of East Anglia.",
+  "notes": "INPUT FIXTURES FOR THE LIKE-FOR-LIKE SPEIBASE COMPARISON, NOT A STANDALONE REFERENCE SERIES. These are the exact inputs SPEIbase v2.11 was computed from (CRU TS 4.09 precipitation and FAO-56 Penman-Monteith PET), so tests/test_speibase_like_for_like.py can reproduce SPEIbase's pipeline: standardize each 0.5-degree cell with the log-logistic (generalized logistic) distribution using unbiased-PWM L-moments over 1901-2024, then average the per-cell SPEI inside each climate division, and compare that mean against tests/fixture/speibase/. The remaining differences are small and are dominated by a PET day-length convention difference, not by the fit: this script multiplies CRU TS PET by the leap-aware calendar month lengths, matching the public SPEIbase R/functions.R (`spei.nc`: `etp * ndays` with `Hmisc::monthDays`), while a near-uniform month length reproduces the committed SPEIbase v2.11 grids two to four times more closely, so v2.11's effective generation convention could not be confirmed from public code. The rest is the fit implementation and parameter rounding, and climate_indices.lmoments.fit_glo is a Python port of the same `lmom` PELGLO routine R SPEI uses, so this validates the port and the per-cell-to-division pipeline rather than an algorithmically independent estimator. It removes the PET method, distribution family, precipitation input, and spatial-support confounds that separated the earlier gamma/Thornthwaite plausibility check."
+}
