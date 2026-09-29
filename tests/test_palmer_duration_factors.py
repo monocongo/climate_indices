@@ -71,6 +71,17 @@ def test_pdi_validation_accepts_factors_the_wells_cross_coefficient_would_reject
     with pytest.raises(ConvergenceError):
         DurationFactors.from_fitted(1.0, -0.4, 0.3, 1.0)
 
+    # the same factors the Wells lineage rejects must drive the public pdsi()
+    # override end to end, not just pass validation
+    rng = np.random.default_rng(42)
+    precips = rng.uniform(0.0, 6.0, size=12 * 4)
+    pet = rng.uniform(0.0, 4.0, size=12 * 4)
+    override = {"wetm": 1.0, "wetb": -0.4, "drym": 0.3, "dryb": 1.0}
+
+    overridden_pdsi, *_ = palmer.pdsi(precips, pet, 5.0, 2000, 2000, 2003, fitting_params=override)
+
+    assert np.isfinite(overridden_pdsi).any()
+
 
 def test_pdi_validation_rejects_a_non_contracting_weighting_fraction():
     with pytest.raises(ConvergenceError, match="wetc"):
@@ -181,6 +192,16 @@ def test_pdi_recursion_rejects_infinite_z_values():
 
     with pytest.raises(ConvergenceError, match="non-finite"):
         _palmer_pdi.calculate(z, factors)
+
+
+def test_pdi_recursion_rejects_a_non_twelve_month_axis():
+    """The documented (years, 12, n_cells) contract covers the month axis, not just ndim."""
+    factors = _palmer_pdi.PdiDurationFactors.from_fitted(1.0, 1.0, 1.0, 1.0)
+
+    with pytest.raises(ValueError, match="shape"):
+        _palmer_pdi.calculate(np.zeros((1, 11, 1)), factors)
+    with pytest.raises(ValueError, match="shape"):
+        _palmer_pdi.calculate(np.zeros((1, 13, 1)), factors)
 
 
 def test_calc_cafec_zindex_writes_the_zindex():

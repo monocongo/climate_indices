@@ -589,7 +589,7 @@ def calculate(z_values: np.ndarray, factors: PdiDurationFactors) -> PdiResult:
         ConvergenceError: if a Z-index value is infinite.
     """
     z = np.asarray(z_values, dtype=float)
-    if z.ndim != 3:
+    if z.ndim != 3 or z.shape[1] != 12:
         raise ValueError(f"z_values must have shape (years, 12, n_cells), got {z.shape}")
     if np.any(np.isinf(z)):
         raise ConvergenceError(
