@@ -483,7 +483,42 @@ def kbdi(
         static_valid,
         trailing_gap_days,
     )
-    values, gap_days = run_daily_recurrences(
+
+    def finalize(
+        values: tuple[npt.NDArray[np.float64] | None, ...],
+        gap_days: tuple[npt.NDArray[np.int64] | None, ...],
+    ) -> npt.NDArray[np.float64] | KBDIResult:
+        """Convert units and finalize the returned state inside the runner's guarded region."""
+        values_array = values[0]
+        assert values_array is not None
+        state_gap_array = gap_days[0]
+        state_gap_days: npt.NDArray[np.int64] | None = (
+            None if state_gap_array is None else state_gap_array.reshape(spatial_shape).copy()
+        )
+
+        if units == "imperial":
+            returned_values = values_array / _KBDI_MM_PER_POINT
+            returned_kbdi = kbdi_value / _KBDI_MM_PER_POINT
+            returned_wet_spell = wet_spell / 25.4
+        else:
+            returned_values = values_array
+            returned_kbdi = kbdi_value
+            returned_wet_spell = wet_spell
+
+        result = returned_values.reshape(-1, *spatial_shape)
+        if not return_state:
+            return result
+        return KBDIResult(
+            values=result,
+            state=KBDIState(
+                kbdi=returned_kbdi.reshape(spatial_shape).copy(),
+                wet_spell_precipitation=returned_wet_spell.reshape(spatial_shape).copy(),
+                trailing_gap_days=state_gap_days,
+                units=units,
+            ),
+        )
+
+    return run_daily_recurrences(
         (component,),
         memory_arrays=(precipitation_array, temperature_array, mean_annual),
         spin_up=spin_up,
@@ -491,34 +526,8 @@ def kbdi(
         max_gap_days=max_gap_days,
         system_name="kbdi",
         fast_path=False,
-    )
-    values_array = values[0]
-    assert values_array is not None
-    state_gap_array = gap_days[0]
-    state_gap_days: npt.NDArray[np.int64] | None = (
-        None if state_gap_array is None else state_gap_array.reshape(spatial_shape).copy()
-    )
-
-    if units == "imperial":
-        returned_values = values_array / _KBDI_MM_PER_POINT
-        returned_kbdi = kbdi_value / _KBDI_MM_PER_POINT
-        returned_wet_spell = wet_spell / 25.4
-    else:
-        returned_values = values_array
-        returned_kbdi = kbdi_value
-        returned_wet_spell = wet_spell
-
-    result = returned_values.reshape(-1, *spatial_shape)
-    if not return_state:
-        return result
-    return KBDIResult(
-        values=result,
-        state=KBDIState(
-            kbdi=returned_kbdi.reshape(spatial_shape).copy(),
-            wet_spell_precipitation=returned_wet_spell.reshape(spatial_shape).copy(),
-            trailing_gap_days=state_gap_days,
-            units=units,
-        ),
+        finalize=finalize,
+        output_shape=(max(precipitation_array.shape[0] - spin_up, 0), *spatial_shape),
     )
 
 

@@ -18,7 +18,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, TypeVar, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -250,6 +250,113 @@ def _active_view(
     return tuple(array[active] for array in arrays)
 
 
+def _initialize_component(component: DailyRecurrence) -> None:
+    """Derive one component's started/poisoned flags and cache its static-validity reduction."""
+    component.started = component.trailing_gap_days >= 0
+    component.poisoned = np.isnan(component.value)
+    component.static_all_valid = bool(component.static_valid.all())
+
+
+def _component_day_active(
+    component: DailyRecurrence,
+    day: int,
+    *,
+    fast_path: bool,
+    nan_policy: Literal["propagate", "bridge"],
+    max_gap_days: int,
+) -> tuple[npt.NDArray[np.bool_] | None, npt.NDArray[np.bool_] | None]:
+    """Return the active cells for one component-day and the off-season carry mask."""
+    # off-season days neither advance the recurrence nor count as
+    # missing, so they emit the carried state instead of a gap NaN
+    season_today = None if component.in_season is None else component.in_season[day]
+    if fast_path and season_today is None and component.static_all_valid and component.weather_valid[day].all():
+        # A fully valid day with a usable static input: the gap policy reduces
+        # to "every unpoisoned cell is active, the trailing count resets, and a
+        # started recurrence stays started", with no partial-mask bookkeeping.
+        component.trailing_gap_days.fill(0)
+        component.started.fill(True)
+        active = None if not component.poisoned.any() else ~component.poisoned
+        return active, None
+    # A cell whose static input is unusable has no recurrence to gap-manage: it
+    # never starts, so it is not an elapsed missing day.
+    active = _apply_gap_policy(
+        component.value,
+        component.weather_valid[day],
+        component.static_valid,
+        component.started,
+        component.poisoned,
+        component.trailing_gap_days,
+        nan_policy=nan_policy,
+        max_gap_days=max_gap_days,
+        in_season=season_today,
+    )
+    carried = ~season_today & component.static_valid & component.started if season_today is not None else None
+    return active, carried
+
+
+def _advance_component(
+    component: DailyRecurrence,
+    day: int,
+    active: npt.NDArray[np.bool_] | None,
+    all_active: bool,
+) -> None:
+    """Advance one component by a day, rejecting a non-finite result from finite inputs."""
+    if active is not None and not np.any(active):
+        return
+    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+        updated = component.step(day, None if all_active else active)
+    if np.any(~np.isfinite(updated)):
+        raise InvalidArgumentError(
+            f"{component.index_type} produced a non-finite value from finite inputs.",
+            argument_name=component.index_type,
+            argument_value="non-finite result",
+            valid_values="Finite inputs whose result stays within float64",
+        )
+    if all_active:
+        component.value[:] = updated
+    else:
+        component.value[active] = updated
+
+
+def _record_component_day(
+    output: npt.NDArray[np.float64] | None,
+    component: DailyRecurrence,
+    day: int,
+    spin_up: int,
+    active: npt.NDArray[np.bool_] | None,
+    all_active: bool,
+    carried: npt.NDArray[np.bool_] | None,
+) -> None:
+    """Write one component's day into its recorded history, honoring the seasonal carry mask."""
+    if day < spin_up or output is None:
+        return
+    output_day = output[day - spin_up]
+    if carried is None:
+        if all_active:
+            output_day[:] = component.value
+        else:
+            assert active is not None
+            output_day[:] = np.where(active, component.value, np.nan)
+    else:
+        emitted = carried if active is None else (carried | active)
+        output_day[:] = np.where(emitted, component.value, np.nan)
+
+
+def _final_state_gaps(
+    components: tuple[DailyRecurrence, ...],
+) -> tuple[npt.NDArray[np.int64] | None, ...]:
+    """Return each component's trailing gap counts, or None when it never started."""
+    return tuple(
+        component.trailing_gap_days.copy() if np.any(component.started | component.poisoned) else None
+        for component in components
+    )
+
+
+_RecurrenceValues = tuple[npt.NDArray[np.float64] | None, ...]
+_RecurrenceGaps = tuple[npt.NDArray[np.int64] | None, ...]
+_FinalizedT = TypeVar("_FinalizedT")
+
+
 @dataclass
 class DailyRecurrence:
     """One recurrence threaded through the shared daily day loop."""
@@ -270,6 +377,7 @@ class DailyRecurrence:
     static_all_valid: bool = field(init=False, default=False)
 
 
+@overload
 def run_daily_recurrences(
     components: tuple[DailyRecurrence, ...],
     *,
@@ -280,7 +388,40 @@ def run_daily_recurrences(
     system_name: str,
     fast_path: bool,
     record: tuple[bool, ...] | None = None,
-) -> tuple[tuple[npt.NDArray[np.float64] | None, ...], tuple[npt.NDArray[np.int64] | None, ...]]:
+    finalize: None = None,
+    output_shape: tuple[int, ...] | None = None,
+) -> tuple[_RecurrenceValues, _RecurrenceGaps]: ...
+
+
+@overload
+def run_daily_recurrences(
+    components: tuple[DailyRecurrence, ...],
+    *,
+    memory_arrays: tuple[npt.NDArray[np.float64], ...],
+    spin_up: int,
+    nan_policy: Literal["propagate", "bridge"],
+    max_gap_days: int,
+    system_name: str,
+    fast_path: bool,
+    record: tuple[bool, ...] | None = None,
+    finalize: Callable[[_RecurrenceValues, _RecurrenceGaps], _FinalizedT],
+    output_shape: tuple[int, ...] | None = None,
+) -> _FinalizedT: ...
+
+
+def run_daily_recurrences(
+    components: tuple[DailyRecurrence, ...],
+    *,
+    memory_arrays: tuple[npt.NDArray[np.float64], ...],
+    spin_up: int,
+    nan_policy: Literal["propagate", "bridge"],
+    max_gap_days: int,
+    system_name: str,
+    fast_path: bool,
+    record: tuple[bool, ...] | None = None,
+    finalize: Callable[[_RecurrenceValues, _RecurrenceGaps], object] | None = None,
+    output_shape: tuple[int, ...] | None = None,
+) -> object:
     """Run one or more daily recurrences through one shared time loop.
 
     ``step(day, active)`` returns the next code value for every cell when
@@ -302,6 +443,14 @@ def run_daily_recurrences(
     the histories a selected output reads. The default records every
     component, which is what the single-code wrapper needs.
 
+    ``finalize`` optionally converts the recorded histories and final state
+    into the caller's returned object. It runs inside the guarded region, so
+    its allocations count as part of the recurrence: a failure there emits
+    ``calculation_failed`` instead of a premature ``calculation_completed``.
+    ``output_shape`` names the shape the caller actually returns, so the
+    completion event reports the API shape rather than the internal
+    ``(time, 1)`` normalization a one-dimensional input carries here.
+
     Every recurrence that runs through here emits the same ``calculation_started``
     and ``calculation_completed`` (or ``calculation_failed``) lifecycle events,
     so no family can drift into silent execution.
@@ -318,94 +467,45 @@ def run_daily_recurrences(
         # the allocation is inside the try so an output-allocation failure
         # still reports the recurrence lifecycle
         records = (True,) * len(components) if record is None else record
-        values = tuple(
+        values: _RecurrenceValues = tuple(
             np.full((max(n_days - spin_up, 0), *component.weather_valid.shape[1:]), np.nan, dtype=np.float64)
             if keep
             else None
             for component, keep in zip(components, records, strict=True)
         )
         for component in components:
-            component.started = component.trailing_gap_days >= 0
-            component.poisoned = np.isnan(component.value)
-            component.static_all_valid = bool(component.static_valid.all())
+            _initialize_component(component)
         memory_metrics = check_large_array_memory(*memory_arrays, *(value for value in values if value is not None))
 
         for day in range(n_days):
             for index, component in enumerate(components):
-                # off-season days neither advance the recurrence nor count as
-                # missing, so they emit the carried state instead of a gap NaN
-                season_today = None if component.in_season is None else component.in_season[day]
-                carried = None
-                if (
-                    fast_path
-                    and season_today is None
-                    and component.static_all_valid
-                    and component.weather_valid[day].all()
-                ):
-                    # A fully valid day with a usable static input: the gap
-                    # policy reduces to "every unpoisoned cell is active, the
-                    # trailing count resets, and a started recurrence stays
-                    # started", with no partial-mask bookkeeping needed.
-                    component.trailing_gap_days.fill(0)
-                    component.started.fill(True)
-                    active = None if not component.poisoned.any() else ~component.poisoned
-                else:
-                    # A cell whose static input is unusable has no recurrence
-                    # to gap-manage: it never starts, so it is not an elapsed
-                    # missing day.
-                    active = _apply_gap_policy(
-                        component.value,
-                        component.weather_valid[day],
-                        component.static_valid,
-                        component.started,
-                        component.poisoned,
-                        component.trailing_gap_days,
-                        nan_policy=nan_policy,
-                        max_gap_days=max_gap_days,
-                        in_season=season_today,
-                    )
-                    if season_today is not None:
-                        carried = ~season_today & component.static_valid & component.started
+                active, carried = _component_day_active(
+                    component,
+                    day,
+                    fast_path=fast_path,
+                    nan_policy=nan_policy,
+                    max_gap_days=max_gap_days,
+                )
                 all_active = active is None or bool(active.all())
-                if active is None or np.any(active):
-                    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
-                        updated = component.step(day, None if all_active else active)
-                    if np.any(~np.isfinite(updated)):
-                        raise InvalidArgumentError(
-                            f"{component.index_type} produced a non-finite value from finite inputs.",
-                            argument_name=component.index_type,
-                            argument_value="non-finite result",
-                            valid_values="Finite inputs whose result stays within float64",
-                        )
-                    if all_active:
-                        component.value[:] = updated
-                    else:
-                        component.value[active] = updated
-                output = values[index]
-                if day >= spin_up and output is not None:
-                    output_day = output[day - spin_up]
-                    if carried is None:
-                        if all_active:
-                            output_day[:] = component.value
-                        else:
-                            assert active is not None
-                            output_day[:] = np.where(active, component.value, np.nan)
-                    else:
-                        emitted = carried if active is None else (carried | active)
-                        output_day[:] = np.where(emitted, component.value, np.nan)
+                _advance_component(component, day, active, all_active)
+                _record_component_day(values[index], component, day, spin_up, active, all_active, carried)
 
-        state_gap_days = tuple(
-            component.trailing_gap_days.copy() if np.any(component.started | component.poisoned) else None
-            for component in components
-        )
+        state_gap_days = _final_state_gaps(components)
+        if finalize is None:
+            result: object = (values, state_gap_days)
+        else:
+            result = finalize(values, state_gap_days)
+        logged_shape = output_shape
+        if logged_shape is None:
+            logged_shape = next(value.shape for value in values if value is not None)
         duration_ms = (time.perf_counter() - t0) * 1000.0
         log.info(
             "calculation_completed",
             duration_ms=round(duration_ms, 2),
-            output_shape=next(value.shape for value in values if value is not None),
+            output_shape=logged_shape,
             **(memory_metrics or {}),
         )
-        return values, state_gap_days
+        return result
     except Exception as exc:
         log_calculation_failure(log, exc)
         raise
