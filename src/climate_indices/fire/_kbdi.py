@@ -586,11 +586,18 @@ def _kbdi_xarray(
                 if initial_state.trailing_gap_days is not None
                 else np.full(spatial_shape, -1, dtype=np.int64)
             )
-            extras.append((_wrap_spatial(initial_state.kbdi, spatial_shape, spatial_dims, chunks=chunks), None))
-            extras.append(
-                (_wrap_spatial(initial_state.wet_spell_precipitation, spatial_shape, spatial_dims, chunks=chunks), None)
+            extras.extend(
+                (
+                    (_wrap_spatial(initial_state.kbdi, spatial_shape, spatial_dims, chunks=chunks), None),
+                    (
+                        _wrap_spatial(
+                            initial_state.wet_spell_precipitation, spatial_shape, spatial_dims, chunks=chunks
+                        ),
+                        None,
+                    ),
+                    (_wrap_spatial(gap_source, spatial_shape, spatial_dims, chunks=chunks), None),
+                )
             )
-            extras.append((_wrap_spatial(gap_source, spatial_shape, spatial_dims, chunks=chunks), None))
         elif initial_kbdi is not None:
             extras.append((_wrap_spatial(initial_kbdi, spatial_shape, spatial_dims, chunks=chunks), None))
         return tuple(extras)
