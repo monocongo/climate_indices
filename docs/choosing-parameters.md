@@ -45,12 +45,33 @@ To standardize new data against a fit computed once — a projection run, or a r
 that must not refit — compute the parameters and pass them as `fitting_params`
 (gamma: `alpha` and `beta`; Pearson: `prob_zero`, `loc`, `scale`, `skew`).
 {doc}`workflow-examples` has the fit-and-reuse example and the scale-matching
-caveat. Two limits apply. The zero probability is still counted from the values
-each call receives, so a reused gamma fit fixes the continuous part of the
-distribution, not the zero mass. And per-cell parameter arrays align only on the
-NumPy API or on a whole-grid in-memory call: the xarray adapter passes one
-`fitting_params` value to every Dask block, so a Dask run should reuse
-period-only parameters, or let each block fit.
+caveat. Two limits apply. A reused gamma fit fixes the continuous part of the
+distribution only; the zero mass is counted from the values each call receives
+unless the saved `fitting_params` also carries `prob_zero` (or the deprecated
+`probabilities_of_zero`), which then sets the mass too (ADR-0015). And per-cell
+parameter arrays align only on the NumPy API or on a whole-grid in-memory call:
+the xarray adapter passes one `fitting_params` value to every Dask block, so a
+Dask run should reuse period-only parameters, or let each block fit.
+
+## Choose a zero-handling mode
+
+SPI and `standardized_index()` take a `zero_handling` argument that places the
+probability mass of exact zero accumulations when the fit is transformed; SPEI
+does not, because its `P − PET` series has no physical zero mass (ADR-0015).
+
+- `"classic"` (the default) scores a zero at `Φ⁻¹(p0)`, the top of the zero mass.
+  It matches NOAA/NCEI and SPEIbase output, so keep it whenever results are
+  compared with those products.
+- Where zeros are common — arid cells, dry seasons, daily and short-timescale SPI
+  — `p0` can exceed 0.5, and a completely dry period then scores `SPI ≥ 0`. Use
+  `"center_of_mass"` or `"mean_zero"` there. `"center_of_mass"` (Stagge et al.,
+  2015) scores a zero at the centre of the mass, giving an ideal probability-scale
+  mean of 0.5; `"mean_zero"` (Allen & Otero, 2024) gives the conditional mean of
+  the mass, an ideal normal-scale mean of 0.
+
+Both non-classic modes move the zero mass only. For Pearson Type III a positive
+trace value below 0.0005 shares a zero's position where `0 < p0 < 1`, so it moves
+too. The formulas and their edge cases are in {doc}`algorithm-reference`.
 
 ## Choose the calibration period
 
