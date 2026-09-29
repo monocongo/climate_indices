@@ -86,8 +86,10 @@ too. The formulas and their edge cases are in {doc}`algorithm-reference`.
   `ShortCalibrationWarning`, and more than 20% missing values inside the period
   warns about fitting reliability. A single-series in-memory xarray input that
   contains missing values is checked against the same threshold and raises
-  `InsufficientDataError` when the window falls short, as it does for a window
-  with no overlap at all. Gridded in-memory inputs and Dask-backed inputs skip
+  `InsufficientDataError` when the window falls short. A window the record
+  does not cover is fitted on the years it does cover, or on the whole record,
+  with a `CalibrationPeriodClampedWarning`, and the check reads those years.
+  Gridded in-memory inputs and Dask-backed inputs skip
   that check, so confirm your own coverage there. {doc}`data_requirements` is
   the full contract.
 - The period must fall inside the input's year coverage. Matching it there is the

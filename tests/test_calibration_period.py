@@ -5,11 +5,14 @@ from __future__ import annotations
 import warnings
 
 import numpy as np
+import pandas as pd
 import pytest
+import xarray as xr
 
+import climate_indices as ci
 from climate_indices import compute, indices
 from climate_indices._calibration_period import CalibrationPeriodError, resolve_calibration_period
-from climate_indices.exceptions import InvalidArgumentError, ShortCalibrationWarning
+from climate_indices.exceptions import CalibrationPeriodClampedWarning, InvalidArgumentError, ShortCalibrationWarning
 
 MONTHLY = compute.Periodicity.monthly
 DAILY = compute.Periodicity.daily
@@ -266,3 +269,98 @@ class TestPercentageOfNormalWindow:
         values = np.random.default_rng(1).gamma(2.0, 3.0, size=1096)
         with pytest.raises(CalibrationPeriodError):
             indices.percentage_of_normal(values, 1, 2000, *window, DAILY)
+
+
+def _clamped_warnings(caught: list[warnings.WarningMessage]) -> list[CalibrationPeriodClampedWarning]:
+    return [w.message for w in caught if issubclass(w.category, CalibrationPeriodClampedWarning)]
+
+
+def _monthly_precip(first_year: int, n_years: int) -> xr.DataArray:
+    time = pd.date_range(f"{first_year}-01-01", periods=n_years * 12, freq="MS")
+    return xr.DataArray(
+        _record(n_years),
+        coords={"time": time},
+        dims=("time",),
+        name="precipitation",
+        attrs={"units": "mm/month"},
+    )
+
+
+class TestReportsTheWindowUsed:
+    """A clamped window is announced, and the metadata names the years the fit used (#1050)."""
+
+    @pytest.mark.parametrize("distribution", [indices.Distribution.gamma, indices.Distribution.pearson])
+    @pytest.mark.parametrize(
+        ("data_start", "n_years", "window", "used"),
+        [
+            (1990, 31, (1981, 2010), (1990, 2020)),  # starts before the record
+            (1976, 34, (1981, 2010), (1981, 2009)),  # ends one year past it, keeps its start
+            (1990, 31, (1981, 2040), (1990, 2020)),  # neither end covered
+        ],
+    )
+    def test_spi_warns_once_when_the_window_is_clamped(self, distribution, data_start, n_years, window, used):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            indices.spi(_record(n_years), 3, distribution, data_start, *window, MONTHLY)
+        (warning,) = _clamped_warnings(caught)
+        assert (warning.requested_years, warning.effective_years) == (window, used)
+        assert f"{window[0]}-{window[1]}" in str(warning)
+        assert f"{used[0]}-{used[1]}" in str(warning)
+
+    def test_spei_warns_when_the_window_is_clamped(self):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            indices.spei(_record(31), _record(31, 1) * 0.5, 3, indices.Distribution.gamma, MONTHLY, 1990, 1981, 2010)
+        assert len(_clamped_warnings(caught)) == 1
+
+    @pytest.mark.parametrize("distribution", [indices.Distribution.gamma, indices.Distribution.pearson])
+    @pytest.mark.parametrize("window", [(1990, 2020), (1995, 2015)])
+    def test_spi_is_silent_when_the_record_covers_the_window(self, distribution, window):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            indices.spi(_record(31), 3, distribution, 1990, *window, MONTHLY)
+        assert _clamped_warnings(caught) == []
+
+    def test_xarray_spi_attrs_report_the_window_used(self):
+        # the #1050 reproduction
+        precip = _monthly_precip(1990, 31)
+        requested = ci.spi(
+            precip,
+            scale=6,
+            distribution=indices.Distribution.gamma,
+            calibration_year_initial=1981,
+            calibration_year_final=2010,
+        )
+        explicit = ci.spi(
+            precip,
+            scale=6,
+            distribution=indices.Distribution.gamma,
+            calibration_year_initial=1990,
+            calibration_year_final=2020,
+        )
+        assert (requested.attrs["calibration_year_initial"], requested.attrs["calibration_year_final"]) == (1990, 2020)
+        np.testing.assert_array_equal(requested.values, explicit.values)
+
+    def test_xarray_spi_attrs_keep_a_window_the_record_covers(self):
+        result = ci.spi(
+            _monthly_precip(1990, 31),
+            scale=6,
+            distribution=indices.Distribution.gamma,
+            calibration_year_initial=1995,
+            calibration_year_final=2015,
+        )
+        assert (result.attrs["calibration_year_initial"], result.attrs["calibration_year_final"]) == (1995, 2015)
+
+    def test_xarray_sample_size_check_reads_the_window_the_fit_uses(self):
+        # 1981-2010 selects only 21 of this record's years, but the fit clamps to all 31 and
+        # a single missing month leaves them well above the 30-year minimum
+        precip = _monthly_precip(1990, 31)
+        precip[100] = np.nan
+        result = ci.spi(
+            precip,
+            scale=6,
+            distribution=indices.Distribution.gamma,
+            calibration_year_initial=1981,
+            calibration_year_final=2010,
+        )
+        assert result.attrs["calibration_year_initial"] == 1990

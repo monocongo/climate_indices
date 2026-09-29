@@ -48,7 +48,11 @@ ones.
 ## Calibration period
 
 - The calibration period is the baseline the index is fitted or ranked
-  against, and it must fall inside the input's year coverage.
+  against, and it must fall inside the input's year coverage. A window the
+  record does not cover is clamped by the gamma, Pearson Type III and
+  log-logistic fits, which emit `CalibrationPeriodClampedWarning`, and the
+  xarray result's `calibration_year_initial` and `calibration_year_final`
+  attributes name the years the fit used.
 - 30 years is the documented minimum. A shorter period emits
   `ShortCalibrationWarning`, and more than 20% missing values inside the
   period emits a warning about fitting reliability.

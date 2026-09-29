@@ -14,8 +14,9 @@ import scipy.special
 import scipy.stats
 
 from climate_indices import lmoments, utils
-from climate_indices._calibration_period import resolve_calibration_period
+from climate_indices._calibration_period import CalibrationPeriod, resolve_calibration_period
 from climate_indices.exceptions import (
+    CalibrationPeriodClampedWarning,
     DistributionFittingError,
     GoodnessOfFitWarning,
     InsufficientDataError,
@@ -693,14 +694,15 @@ def _calibration_block(
     calibration_start_year: int,
     calibration_end_year: int,
     periodicity: Periodicity,
-) -> tuple[np.ndarray, int]:
+) -> tuple[np.ndarray, int, CalibrationPeriod]:
     """
     Fold an input into (years, time_steps, ...) and slice out its calibration years.
 
     A three-or-more-dimensional input is read as an already folded time-major spatial
     block. The calibration data quality is checked, and warnings are emitted, here.
 
-    :return: the calibration values and the number of time steps per year
+    :return: the calibration values, the number of time steps per year, and the
+        Calibration Period the record allowed, which can differ from the one requested
     """
     if getattr(values, "ndim", 0) > 2:
         # a folded spatial block carries its periods along axis 1 already
@@ -715,8 +717,10 @@ def _calibration_block(
     calibration_values = values[period.rows, ...]
 
     # check calibration data quality and emit warnings if needed
-    _check_calibration_data_quality(calibration_values, period.start_year, period.end_year)
-    return calibration_values, time_steps_per_year
+    _check_calibration_data_quality(
+        calibration_values, period.start_year, period.end_year, (calibration_start_year, calibration_end_year)
+    )
+    return calibration_values, time_steps_per_year, period
 
 
 def pearson_parameters(
@@ -762,9 +766,10 @@ def pearson_parameters(
     )
     log.info("distribution_fitting_started")
 
-    calibration_values, time_steps_per_year = _calibration_block(
+    calibration_values, time_steps_per_year, period = _calibration_block(
         values, data_start_year, calibration_start_year, calibration_end_year, periodicity
     )
+    log = log.bind(calibration_period=f"{period.start_year}-{period.end_year}")
 
     if calibration_values.ndim > 2:
         (
@@ -1139,18 +1144,34 @@ def _check_calibration_data_quality(
     calibration_values: np.ndarray,
     calibration_start_year: int,
     calibration_end_year: int,
+    requested_years: tuple[int, int],
 ) -> None:
     """
     Check calibration period data quality and emit warnings if issues are detected.
 
     Emits warnings for:
-    1. Short calibration period (< MIN_CALIBRATION_YEARS)
-    2. Excessive missing data (> MISSING_DATA_THRESHOLD)
+    1. A requested period the record clamped to other years
+    2. Short calibration period (< MIN_CALIBRATION_YEARS)
+    3. Excessive missing data (> MISSING_DATA_THRESHOLD)
 
     :param calibration_values: Calibration data array with shape (years, time_steps)
-    :param calibration_start_year: Start year of calibration period
-    :param calibration_end_year: End year of calibration period (inclusive)
+    :param calibration_start_year: Start year of the calibration period the fit uses
+    :param calibration_end_year: End year of the calibration period the fit uses (inclusive)
+    :param requested_years: the (start, end) years the caller asked for (#1050)
     """
+    # a window the record did not cover is fitted as other years than the ones requested
+    if requested_years != (calibration_start_year, calibration_end_year):
+        used = (calibration_start_year, calibration_end_year)
+        warnings.warn(
+            CalibrationPeriodClampedWarning(
+                f"Calibration period {requested_years[0]}-{requested_years[1]} is not covered by "
+                f"the record, so the fit used {used[0]}-{used[1]} instead.",
+                requested_years=requested_years,
+                effective_years=used,
+            ),
+            stacklevel=3,
+        )
+
     # check calibration period length
     actual_years = (calibration_end_year - calibration_start_year) + 1
     if actual_years < MIN_CALIBRATION_YEARS:
@@ -1725,7 +1746,10 @@ def gamma_parameters(
     original_calibration = original_values[period.rows, :]
 
     # check calibration data quality and emit warnings if needed
-    _check_calibration_data_quality(original_calibration, period.start_year, period.end_year)
+    _check_calibration_data_quality(
+        original_calibration, period.start_year, period.end_year, (calibration_start_year, calibration_end_year)
+    )
+    log = log.bind(calibration_period=f"{period.start_year}-{period.end_year}")
 
     # compute the gamma distribution's shape and scale parameters, alpha and beta
     # using method of moments estimation
@@ -2143,9 +2167,10 @@ def loglogistic_parameters(
     )
     log.info("distribution_fitting_started")
 
-    calibration_values, time_steps_per_year = _calibration_block(
+    calibration_values, time_steps_per_year, period = _calibration_block(
         values, data_start_year, calibration_start_year, calibration_end_year, periodicity
     )
+    log = log.bind(calibration_period=f"{period.start_year}-{period.end_year}")
 
     if calibration_values.ndim > 2:
         locs, scales, shapes, failed_fitting_count = _loglogistic_parameters_spatial(calibration_values)

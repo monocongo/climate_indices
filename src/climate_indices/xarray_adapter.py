@@ -39,6 +39,7 @@ import structlog.stdlib
 import xarray as xr
 
 from climate_indices import compute, eto, indices, palmer, pm_eto, utils
+from climate_indices._calibration_period import resolve_calibration_period
 from climate_indices.cf_metadata_registry import CF_METADATA, spi_output_attributes
 from climate_indices.compute import MIN_CALIBRATION_YEARS
 from climate_indices.exceptions import (
@@ -438,6 +439,21 @@ def _infer_calibration_period(time_coord: xr.DataArray) -> tuple[int, int]:
     first_year = pd.Timestamp(time_coord.values[0]).year
     last_year = pd.Timestamp(time_coord.values[-1]).year
     return (first_year, last_year)
+
+
+def _effective_calibration_years(time_coord: xr.DataArray, initial: int, final: int) -> tuple[int, int]:
+    """Return the years a fit uses for a requested calibration window (#1050).
+
+    A distribution fit clamps a window the record does not cover, so the requested
+    years can differ from the fitted ones. A reversed window is returned as given:
+    the fit rejects it, and rejecting it here would move that error out of the
+    wrapped function.
+    """
+    if initial > final:
+        return initial, final
+    first_year, last_year = _infer_calibration_period(time_coord)
+    period = resolve_calibration_period(first_year, last_year - first_year + 1, initial, final, policy="clamp")
+    return period.start_year, period.end_year
 
 
 def _validate_latitude_range(
@@ -1237,6 +1253,7 @@ def _finalize_ufunc_result(
     index_display_name: str | None,
     func_name: str,
     is_spi: bool = False,
+    time_dim: str = "time",
 ) -> xr.DataArray:
     """Rewrap a computation result with the input's coords, dims, attrs, and name.
 
@@ -1256,6 +1273,8 @@ def _finalize_ufunc_result(
         index_display_name: Display name for the index (or None to use func_name.upper())
         func_name: Name of the wrapped function
         is_spi: Whether the wrapped function is indices.spi
+        time_dim: Name of the input's time dimension, read to report the calibration
+            years a clamped window actually used
 
     Returns:
         Finalized DataArray with restored dimensions, metadata, and coordinate attributes
@@ -1277,6 +1296,14 @@ def _finalize_ufunc_result(
     result_da = cast(xr.DataArray, result_da.copy(deep=False))
     # apply metadata using build_output_attrs
     calc_metadata = _capture_calculation_metadata(calculation_metadata_keys, valid_kwargs)
+    if calc_metadata is not None and time_dim in input_da.coords:
+        # report the years the fit used, not the ones requested (#1050)
+        initial = calc_metadata.get("calibration_year_initial")
+        final = calc_metadata.get("calibration_year_final")
+        if initial is not None and final is not None:
+            calc_metadata["calibration_year_initial"], calc_metadata["calibration_year_final"] = (
+                _effective_calibration_years(input_da[time_dim], initial, final)
+            )
     resolved_index_name = index_display_name if index_display_name is not None else func_name.upper()
     resolved_cf_metadata = _resolve_cf_metadata(
         cf_metadata, cf_metadata_variants, valid_kwargs, metadata_variant_parameter
@@ -1660,6 +1687,7 @@ def xarray_adapter(
                     index_display_name=index_display_name,
                     func_name=func.__name__,
                     is_spi=func is indices.spi,
+                    time_dim=time_dim,
                 )
 
                 # log completion (NaN metrics omitted for Dask—would trigger compute)
@@ -1749,6 +1777,7 @@ def xarray_adapter(
                     index_display_name=index_display_name,
                     func_name=func.__name__,
                     is_spi=func is indices.spi,
+                    time_dim=time_dim,
                 )
 
                 # log completion
@@ -1796,6 +1825,8 @@ def xarray_adapter(
                 cal_initial = call_kwargs.get("calibration_year_initial")
                 cal_final = call_kwargs.get("calibration_year_final")
                 if cal_initial is not None and cal_final is not None:
+                    # the fit clamps a window the record does not cover, so check its years (#1050)
+                    cal_initial, cal_final = _effective_calibration_years(time_coord, cal_initial, cal_final)
                     _validate_calibration_non_nan_sample_size(
                         time_coord,
                         numpy_values,
@@ -1837,6 +1868,7 @@ def xarray_adapter(
                 index_display_name=index_display_name,
                 func_name=func.__name__,
                 is_spi=func is indices.spi,
+                time_dim=time_dim,
             )
 
             # log completion with NaN metrics

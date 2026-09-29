@@ -85,7 +85,9 @@ and {doc}`choosing-parameters`. In particular:
 
 - Use a Calibration Period of at least 30 years where the record allows;
   a shorter one emits `ShortCalibrationWarning`, and a window that falls
-  outside the input's year coverage is silently replaced by the full record.
+  outside the input's year coverage is replaced by the full record, with a
+  `CalibrationPeriodClampedWarning` and the years used in the result's
+  `calibration_year_initial` and `calibration_year_final` attributes.
 - The first `scale - 1` outputs are NaN because no complete accumulation
   window exists before them — 2 leading NaNs for the SRI recipe and 11 for the
   SSI recipe. Those steps are also missing from the fitted calibration sample
