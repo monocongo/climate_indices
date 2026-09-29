@@ -47,8 +47,8 @@
 │                                     │     self_calibration.py, eto.py, pm_eto.py,
 │                                     │     runs.py, validation.py
 ├─────────────────────────────────────┤
-│   Math/Statistics Layer             │  ← lmoments.py, _palmer_wells.py,
-│                                     │     _palmer_duration.py
+│   Math/Statistics Layer             │  ← lmoments.py, _palmer_duration.py,
+│                                     │     _palmer_pdi.py, _palmer_wells.py
 ├─────────────────────────────────────┤
 │   Infrastructure Layer              │  ← utils.py, logging_config.py,
 │                                     │     exceptions.py, performance.py
@@ -192,7 +192,7 @@ uv run pytest -m benchmark
 1. **For understanding computation**: Start with `docs/architecture.md`, then `src/climate_indices/compute.py` and `src/climate_indices/indices.py`
 2. **For understanding the public API**: Read `src/climate_indices/typed_public_api.py` (strict mypy typing) and `src/climate_indices/xarray_adapter.py`
 3. **For understanding the CLI**: Examine `src/climate_indices/__main__.py` (the index pipeline registry and `--index` handling) and `src/climate_indices/_cli.py` (shared argument registration)
-4. **For understanding Palmer calculations**: Read `src/climate_indices/palmer.py`, `src/climate_indices/_palmer_wells.py`, `src/climate_indices/_palmer_duration.py`, and `src/climate_indices/self_calibration.py`
+4. **For understanding Palmer calculations**: Read `src/climate_indices/palmer.py`, `src/climate_indices/_palmer_pdi.py`, `src/climate_indices/_palmer_wells.py`, `src/climate_indices/_palmer_duration.py`, and `src/climate_indices/self_calibration.py`
 5. **For understanding fire-weather indices**: Read `src/climate_indices/fire/__init__.py` and the subsystem design in `docs/design/fire-subsystem.md`
 6. **For understanding flood-potential indices**: Read `src/climate_indices/flood/__init__.py` (public dispatch) and the `flood/_pe.py`, `flood/_edi.py`, `flood/_if.py`, `flood/_antecedent.py` kernels
 7. **For understanding run theory**: Read `src/climate_indices/runs.py`
@@ -234,7 +234,7 @@ uv run pytest -m benchmark
 |------|--------------|------------|
 | Add new index | `compute.py`, `indices.py`, `typed_public_api.py`, `xarray_adapter.py` | `test_compute.py`, `test_indices.py`, `test_typed_public_api.py`, `test_xarray_adapter.py` |
 | Add new distribution | `compute.py`, `indices.py`, `lmoments.py` | `test_compute.py`, `test_property_based.py` |
-| Modify Palmer indices | `palmer.py`, `_palmer_wells.py`, `_palmer_duration.py`, `self_calibration.py` | `test_palmer.py`, `test_scpdsi.py`, `test_self_calibration.py` |
+| Modify Palmer indices | `palmer.py`, `_palmer_pdi.py`, `_palmer_wells.py`, `_palmer_duration.py`, `self_calibration.py` | `test_palmer.py`, `test_scpdsi.py`, `test_self_calibration.py` |
 | Add a fire-weather index | `fire/` subpackage | `test_fire*.py`, reference tests |
 | Add a flood-potential index | `flood/` subpackage, `typed_public_api.py` | `test_flood*.py`, `test_main_flood.py` |
 | Modify run extraction | `runs.py` | `test_runs.py` |

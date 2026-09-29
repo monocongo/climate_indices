@@ -1,10 +1,10 @@
-"""Tests for the `_PalmerPrepared` and `_PalmerRecursion` structs behind one Palmer location."""
+"""Tests for the `_PalmerPrepared` input struct and the pdi.f recursion state behind one Palmer location."""
 
 from typing import Any
 
 import numpy as np
 
-from climate_indices import palmer
+from climate_indices import _palmer_pdi, palmer
 
 _VALID_PARAMS: dict[str, Any] = {
     "alpha": [1.0] * 12,
@@ -26,14 +26,14 @@ def _initialize(fitting_params: dict[str, Any] | None = None) -> palmer._PalmerP
     )
 
 
-def test_initialize_recursion_defaults_the_recursion_state():
+def test_initialize_state_defaults_the_recursion_state():
     """The recursion assigns these before reading them, and zero before it runs.
 
     A single location carries an internal n_cells == 1 cell axis (see
     ADR-0011), so every "scalar" field below is a length-1 array.
     """
     prepared = _initialize()
-    state = palmer._initialize_recursion(prepared)
+    state = _palmer_pdi._initialize_state(np.full((prepared.n_years, 12, prepared.n_cells), np.nan))
 
     assert prepared.calibrate is True
     assert prepared.n_cells == 1
