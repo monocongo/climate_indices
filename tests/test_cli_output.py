@@ -25,14 +25,16 @@ def test_monthly_depth_units_are_accepted(units: str) -> None:
 
 @pytest.mark.parametrize("units", ["mm/day", "mm day-1", "kg m-2 s-1"])
 def test_a_rate_is_rejected_for_a_monthly_depth(units: str) -> None:
+    data = _precip(units)
     with pytest.raises(InvalidArgumentError, match="per-day rate"):
-        _convert_precipitation_units(_precip(units), "mm", monthly=True)
+        _convert_precipitation_units(data, "mm", monthly=True)
 
 
 @pytest.mark.parametrize("units", ["mm/month", "mm month-1"])
 def test_a_monthly_depth_is_rejected_for_a_daily_series(units: str) -> None:
+    data = _precip(units)
     with pytest.raises(InvalidArgumentError, match="Unsupported precipitation units"):
-        _convert_precipitation_units(_precip(units), "mm")
+        _convert_precipitation_units(data, "mm")
 
 
 def test_atomic_write_cleans_up_the_temporary_file_on_failure(monkeypatch, tmp_path) -> None:
@@ -44,8 +46,9 @@ def test_atomic_write_cleans_up_the_temporary_file_on_failure(monkeypatch, tmp_p
         raise RuntimeError("write failed")
 
     monkeypatch.setattr(xr.DataArray, "to_netcdf", fail)
+    data = _precip("mm")
     with pytest.raises(RuntimeError, match="write failed"):
-        _cli_output.write_netcdf_atomic(_precip("mm"), str(target))
+        _cli_output.write_netcdf_atomic(data, str(target))
 
     assert not (tmp_path / "out.nc.tmp").exists()
     assert target.read_text() == "previous"
