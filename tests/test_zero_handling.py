@@ -810,3 +810,89 @@ def test_fit_diagnostics_round_trips_a_supplied_gamma_zero_mass() -> None:
     assert fallen_back.fell_back_to_gamma
     np.testing.assert_array_equal(fallen_back.prob_zero, _calibration_probabilities_of_zero(values, 1981, 2010))
     np.testing.assert_array_equal(fallen_back.parameters["prob_zero"], fallen_back.prob_zero)
+
+
+# ---------------------------------------------------------------------------
+# closed forms across the zero mass, and the modes' ideal means (issue #1188)
+
+# the three modes' normal-scale score at p0 = 0.1, 0.5, and 0.9
+_SCORES_BY_PROBABILITY = {
+    "classic": {0.1: -1.2816, 0.5: 0.0, 0.9: 1.2816},
+    "center_of_mass": {0.1: -1.6449, 0.5: -0.6745, 0.9: -0.1257},
+    "mean_zero": {0.1: -1.7550, 0.5: -0.7979, 0.9: -0.1950},
+}
+
+
+@pytest.mark.parametrize("probability_of_zero", [0.1, 0.5, 0.9])
+@pytest.mark.parametrize("zero_handling", _MODES)
+def test_the_closed_forms_hold_across_the_zero_mass(probability_of_zero: float, zero_handling: str) -> None:
+    """Every mode scores a zero at its ADR-0015 closed form for the step's own p0."""
+    values = _positive_monthly(40, seed=43)
+    values[::4, :] = 0.0  # the supplied mass governs, not this series' zero fraction
+
+    computed = compute.transform_fitted_gamma(
+        values,
+        1981,
+        1981,
+        2020,
+        _MONTHLY,
+        np.full(12, 2.0),
+        np.full(12, 30.0),
+        np.full(12, probability_of_zero),
+        zero_handling=zero_handling,
+    )
+
+    expected = _zero_score(probability_of_zero, zero_handling)
+    np.testing.assert_allclose(computed[values == 0], expected, atol=1e-12)
+    assert expected == pytest.approx(_SCORES_BY_PROBABILITY[zero_handling][probability_of_zero], abs=1e-4)
+
+
+def _zero_inflated_gamma_sample(years: int, probability_of_zero: float, seed: int) -> np.ndarray:
+    """A (years, 12) zero-inflated gamma sample with the given zero fraction."""
+    rng = np.random.default_rng(seed)
+    values = rng.gamma(2.0, 30.0, size=(years, 12))
+    values[rng.random(values.shape) < probability_of_zero] = 0.0
+    return values
+
+
+def test_mean_zero_gives_a_zero_normal_scale_sample_mean() -> None:
+    """
+    On a large zero-inflated gamma sample the mean_zero sample mean is 0: with the
+    calibration-window p0, the transformed positives have the truncated normal mean
+    that cancels the zeros' -phi(Phi^-1(p0)) / p0 (ADR-0015's ideal property).
+    """
+    values = _zero_inflated_gamma_sample(6000, 0.5, seed=37)
+
+    computed = _spi(values, indices.Distribution.gamma, calibration=(1981, 7980), zero_handling="mean_zero")
+
+    assert float(np.nanmean(computed)) == pytest.approx(0.0, abs=0.02)
+
+
+def test_center_of_mass_gives_a_half_probability_scale_sample_mean() -> None:
+    """On the probability scale the center_of_mass sample mean is the ideal 1/2."""
+    values = _zero_inflated_gamma_sample(6000, 0.5, seed=41)
+
+    computed = _spi(
+        values,
+        indices.Distribution.gamma,
+        calibration=(1981, 7980),
+        output_scale="probability",
+        zero_handling="center_of_mass",
+    )
+
+    assert float(np.nanmean(computed)) == pytest.approx(0.5, abs=0.01)
+
+
+@pytest.mark.parametrize("distribution", _DISTRIBUTIONS)
+@pytest.mark.parametrize("zero_handling", _MODES)
+def test_every_zero_ranks_at_or_below_every_positive(distribution: indices.Distribution, zero_handling: str) -> None:
+    """A moved zero stays below every positive accumulation, in every mode and distribution."""
+    values = _half_zero_monthly()
+
+    computed = _spi(values, distribution, zero_handling=zero_handling).reshape(values.shape)
+
+    for month in range(12):
+        zeros = computed[values[:, month] == 0, month]
+        positives = computed[values[:, month] > 0, month]
+        assert np.all(np.isfinite(zeros))
+        assert zeros.max() <= positives.min()
