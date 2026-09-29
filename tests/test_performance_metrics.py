@@ -421,6 +421,33 @@ class TestMemoryMetricsInLogs:
         assert "process_memory_mb" in completed
         assert completed["process_memory_mb"] == pytest.approx(2048.75)
 
+    def test_spei_memory_check_includes_pet(
+        self,
+        precips_mm_monthly,
+        data_year_start_monthly,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
+    ):
+        """SPEI counts PET alongside precipitation in the memory diagnostic."""
+        pet_mm = np.full_like(precips_mm_monthly, 50.0)
+
+        with patch("climate_indices.indices.check_large_array_memory", return_value=None) as mock_check:
+            indices.spei(
+                precips_mm_monthly,
+                pet_mm,
+                6,
+                indices.Distribution.gamma,
+                compute.Periodicity.monthly,
+                data_year_start_monthly,
+                calibration_year_start_monthly,
+                calibration_year_end_monthly,
+            )
+
+        called_arrays = mock_check.call_args.args
+        assert len(called_arrays) == 2
+        assert called_arrays[0] is precips_mm_monthly
+        assert called_arrays[1] is pet_mm
+
 
 class TestCustomMetricsViaContextBinding:
     """Test that custom metrics can be added via context binding API."""

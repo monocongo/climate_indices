@@ -451,7 +451,7 @@ def eddi(
 
 
 def _standardized_index_pipeline(
-    values: np.ndarray,
+    values: np.ndarray,  # NOSONAR (S107) the shared pipeline mirrors the public index wrappers
     scale: int,
     distribution: Distribution,
     data_start_year: int,
@@ -462,6 +462,7 @@ def _standardized_index_pipeline(
     *,
     index_type: str,
     fallback_context: str,
+    memory_arrays: tuple[np.ndarray, ...] = (),
     spatial_time_major: bool = False,
     output_scale: compute.OutputScale = "normal",
     zero_handling: compute.ZeroHandling = "classic",
@@ -486,6 +487,9 @@ def _standardized_index_pipeline(
             aliases are normalized here.
         index_type: Value bound to the ``index_type`` log field.
         fallback_context: Context included in the Pearson-to-gamma fallback warning.
+        memory_arrays: Additional input arrays counted alongside ``values`` in the
+            large-array memory diagnostic; :func:`spei` passes PET, which the
+            pipeline does not otherwise see before its water balance is formed.
         spatial_time_major: Read a time-major spatial block as independent series.
         output_scale: One of ``compute.OUTPUT_SCALES``; non-normal scales are not
             clipped to the z-score range.
@@ -523,7 +527,7 @@ def _standardized_index_pipeline(
     )
     log.info("calculation_started")
     t0 = time.perf_counter()
-    memory_metrics = check_large_array_memory(values)
+    memory_metrics = check_large_array_memory(values, *memory_arrays)
 
     try:
         # normalize any deprecated fitting-parameter aliases once, so the diagnostic
@@ -1001,6 +1005,7 @@ def spei(
         fitting_params,
         index_type="spei",
         fallback_context="SPEI computation",
+        memory_arrays=(pet_mm,),
         preprocess=lambda precipitation: _spei_water_balance(precipitation, pet_mm),
         spatial_time_major=spatial_time_major,
         allowed_distributions=(Distribution.gamma, Distribution.pearson, Distribution.loglogistic),
