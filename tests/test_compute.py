@@ -428,6 +428,24 @@ def test_transform_fitted_pearson(
         )
 
 
+def test_transform_fitted_pearson_rejects_mis_shaped_parameters_for_all_missing_values():
+    """An all-missing input must not skip the parameter shape check (#1233)."""
+    all_nans = np.full((40, 12), np.nan)
+
+    with pytest.raises(ValueError, match="must carry the period length"):
+        compute.transform_fitted_pearson(
+            all_nans,
+            1981,
+            1981,
+            2010,
+            compute.Periodicity.monthly,
+            np.zeros(11),
+            np.ones(11),
+            np.ones(11),
+            np.ones(11),
+        )
+
+
 @pytest.mark.usefixtures(
     "precips_mm_monthly",
     "data_year_start_monthly",
