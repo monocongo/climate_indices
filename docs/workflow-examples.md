@@ -201,9 +201,9 @@ and `<out_dir>/nclimgrid_lowres_scpdsi.nc`.
 The Palmer routines ({func}`climate_indices.palmer.pdsi`) take precipitation,
 PET, and available water capacity in inches. The command line normalizes
 precipitation and PET to millimeters for the other indices, so these inputs
-may declare either unit: values labeled `inches`/`inch` or
-`mm`/`millimeters` are converted to inches before computing. A
-precipitation rate (`mm/dy`) is not accepted for Palmers -- it is a daily
+may declare a depth: values labeled `inches`/`inch`, `mm`/`millimeters`, or
+`mm/month` are converted to inches before computing. A precipitation rate
+(`mm/dy`, `mm/day`, `kg m-2 s-1`) is not accepted for Palmers -- it is a daily
 rate, not the monthly accumulated depth `palmer.pdsi()` requires. An AWC
 variable without a `units` attribute is assumed to be inches, and one that
 declares any other unit is rejected.
