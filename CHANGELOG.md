@@ -180,7 +180,17 @@ change states what a user sees, how to detect it, and what to change in
     rows of the record when it ended before it (#1231);
   - `percentage_of_normal()` gave all-NaN for a reversed window or one that starts after
     the record, and averaged only the years that exist for a window that ends past the
-    data but is short enough to pass its length check (#1230).
+    data but is short enough to pass its length check (#1230);
+  - `spi()`, `spei()`, `standardized_index()`, `eddi()` and `percentage_of_normal()`
+    returned an all-missing input before checking its window, so a reversed window (and,
+    for `eddi()` and `percentage_of_normal()`, one the record does not cover) passed
+    unnoticed. The window is now checked first, and a window that passes still returns the
+    missing input unchanged. Palmer, `fit_diagnostics()` and the flood indices already
+    checked it;
+  - a complete `fitting_params` set skipped the window check inside the gamma, Pearson
+    and log-logistic transforms, so `spi()`, `spei()` and `standardized_index()`
+    transformed values for a reversed window. They now check it before the transform,
+    and a window that is not reversed but is not covered still clamps.
 
   Two more `percentage_of_normal()` changes follow from measuring the window in years
   rather than 12 steps per year: a window longer than a daily record is now rejected (a

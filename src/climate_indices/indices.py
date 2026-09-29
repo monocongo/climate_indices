@@ -12,7 +12,7 @@ import numpy as np
 import structlog.stdlib
 
 from climate_indices import compute, eto
-from climate_indices._calibration_period import resolve_calibration_period
+from climate_indices._calibration_period import CalibrationPeriod, CalibrationPolicy, resolve_calibration_period
 from climate_indices.exceptions import (
     DataShapeError,
     InvalidArgumentError,
@@ -352,6 +352,18 @@ def eddi(
         # and a declared block is the only way a 3-D or higher input is accepted
         _raise_if_unsupported_shape(pet_values, spatial_time_major)
 
+        # a calibration period the record does not cover is an error, not clamped. It is
+        # resolved before the all-missing returns below, so a reversed or uncovered
+        # window is rejected even when the input carries no values to rank.
+        period = _resolve_unfolded_window(
+            pet_values,
+            periodicity,
+            data_start_year,
+            calibration_year_initial,
+            calibration_year_final,
+            policy="reject",
+        )
+
         # an all-missing block is returned as it arrived, as the preparation seam
         # does for the 1-D and 2-D layouts -- unless the scale exceeds the block's
         # time steps, which the seam rejects rather than returning silently
@@ -375,11 +387,7 @@ def eddi(
         pad_rows = leading_scale_pads.reshape(-1, *pet_values.shape[2:])
         pad_rows[: min(scale - 1, pad_rows.shape[0])] = True
 
-        # a calibration period the record does not cover is an error, not clamped
         num_years = pet_values.shape[0]
-        period = resolve_calibration_period(
-            data_start_year, num_years, calibration_year_initial, calibration_year_final, policy="reject"
-        )
 
         # Rank every calendar period against its own climatology. The rank is a count
         # of climatology values below the current value, so each period is walked as a
@@ -448,6 +456,32 @@ def eddi(
     except Exception as exc:
         log_calculation_failure(log, exc, calibration_period=f"{calibration_year_initial}-{calibration_year_final}")
         raise
+
+
+def _resolve_unfolded_window(
+    values: np.ndarray,
+    periodicity: compute.Periodicity,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    *,
+    policy: CalibrationPolicy,
+) -> CalibrationPeriod:
+    """Resolve a Calibration Period against a series that is not folded into (years, periods) yet.
+
+    An all-missing input is returned without being folded, so its window can only be
+    checked from the time axis: a 1-D or 2-D series is measured by its length and a
+    time-major block by its first axis. As when the series is folded, a trailing
+    partial year counts as a year.
+    """
+    n_steps = values.shape[0] if values.ndim > 2 else values.size
+    return resolve_calibration_period(
+        data_start_year,
+        -(-n_steps // periodicity.period_length),
+        calibration_year_initial,
+        calibration_year_final,
+        policy=policy,
+    )
 
 
 def _standardized_index_pipeline(
@@ -562,6 +596,16 @@ def _standardized_index_pipeline(
         # its input layout for a time-major block -- so there is nothing to compute
         # and the caller's layout is already what was returned
         if input_all_missing:
+            # validation only: nothing is fitted, but a reversed window is an error
+            # whatever the values, and a window the record does not cover still clamps
+            _resolve_unfolded_window(
+                values,
+                periodicity,
+                data_start_year,
+                calibration_year_initial,
+                calibration_year_final,
+                policy="clamp",
+            )
             _log_calculation_completed(log, t0, values.shape, memory_metrics)
             return values
 
@@ -1200,9 +1244,10 @@ def percentage_of_normal(
         # below pads it with NaN, and a spatial block is measured on its time axis.
         # Resolve before the missing-input return below, so a reversed or uncovered
         # window is rejected even when the input carries no values to compute.
-        period = resolve_calibration_period(
+        period = _resolve_unfolded_window(
+            values,
+            periodicity,
             data_start_year,
-            -(-values.shape[0] // period_length),
             calibration_start_year,
             calibration_end_year,
             policy="reject",

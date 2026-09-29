@@ -10,7 +10,7 @@ import pytest
 import xarray as xr
 
 import climate_indices as ci
-from climate_indices import compute, indices
+from climate_indices import compute, indices, palmer
 from climate_indices._calibration_period import CalibrationPeriodError, resolve_calibration_period
 from climate_indices.exceptions import CalibrationPeriodClampedWarning, InvalidArgumentError, ShortCalibrationWarning
 
@@ -364,3 +364,94 @@ class TestReportsTheWindowUsed:
             calibration_year_final=2010,
         )
         assert result.attrs["calibration_year_initial"] == 1990
+
+
+def _missing() -> np.ndarray:
+    """An all-missing 1981-2009 monthly record."""
+    return np.full(29 * 12, np.nan)
+
+
+GAMMA, PEARSON = indices.Distribution.gamma, indices.Distribution.pearson
+
+# every index that takes a Calibration Period, called on an all-missing record. The fits
+# clamp a window the record does not cover; the ranking and Palmer indices reject it.
+CLAMPING_INDICES = {
+    "spi-gamma": lambda window: indices.spi(_missing(), 1, GAMMA, 1981, *window, MONTHLY),
+    "spi-pearson": lambda window: indices.spi(_missing(), 1, PEARSON, 1981, *window, MONTHLY),
+    "spei": lambda window: indices.spei(_missing(), _missing(), 1, GAMMA, MONTHLY, 1981, *window),
+    "standardized_index": lambda window: indices.standardized_index(_missing(), 1, GAMMA, 1981, *window, MONTHLY),
+    "fit_diagnostics": lambda window: indices.fit_diagnostics(_missing(), 1, GAMMA, 1981, *window, MONTHLY),
+}
+REJECTING_INDICES = {
+    "eddi": lambda window: indices.eddi(_missing(), 1, 1981, *window, MONTHLY),
+    "percentage_of_normal": lambda window: indices.percentage_of_normal(_missing(), 1, 1981, *window, MONTHLY),
+    "pdsi": lambda window: palmer.pdsi(_missing(), _missing(), 5.0, 1981, *window),
+    "scpdsi": lambda window: palmer.scpdsi(_missing(), _missing(), 5.0, 1981, *window),
+}
+ALL_INDICES = CLAMPING_INDICES | REJECTING_INDICES
+
+
+class TestAllMissingInput:
+    """A window is checked before an all-missing input is returned, so it is rejected whatever the values."""
+
+    @pytest.mark.parametrize("window", REVERSED_WINDOWS)
+    @pytest.mark.parametrize("call", ALL_INDICES.values(), ids=ALL_INDICES.keys())
+    def test_a_reversed_window_raises(self, call, window):
+        with pytest.raises(CalibrationPeriodError, match="initial year"):
+            call(window)
+
+    @pytest.mark.parametrize("window", [(1970, 2030), (2010, 2012), (1975, 1980)])
+    @pytest.mark.parametrize("call", REJECTING_INDICES.values(), ids=REJECTING_INDICES.keys())
+    def test_a_window_the_record_does_not_cover_raises_where_the_index_rejects_it(self, call, window):
+        with pytest.raises(CalibrationPeriodError):
+            call(window)
+
+    @pytest.mark.parametrize("window", [(1970, 2030), (2010, 2012), (1975, 1980)])
+    @pytest.mark.parametrize("call", CLAMPING_INDICES.values(), ids=CLAMPING_INDICES.keys())
+    def test_a_window_the_record_does_not_cover_still_clamps_where_the_index_clamps_it(self, call, window):
+        call(window)
+
+    @pytest.mark.parametrize(
+        "name", ["spi-gamma", "spi-pearson", "spei", "standardized_index", "eddi", "percentage_of_normal"]
+    )
+    def test_a_window_the_record_covers_returns_the_missing_input(self, name):
+        result = ALL_INDICES[name]((1981, 2009))
+        assert result.shape == (29 * 12,)
+        assert np.isnan(result).all()
+
+    @pytest.mark.parametrize(
+        "values",
+        [
+            np.full((29, 12), np.nan),  # folded to (years, periods)
+            np.ma.masked_all(29 * 12),  # masked rather than NaN
+        ],
+        ids=["folded", "masked"],
+    )
+    @pytest.mark.parametrize("index", ["spi", "eddi", "percentage_of_normal"])
+    def test_a_reversed_window_raises_for_a_folded_or_masked_input(self, index, values):
+        window = (1990, 1985)
+        calls = {
+            "spi": lambda: indices.spi(values, 1, GAMMA, 1981, *window, MONTHLY),
+            "eddi": lambda: indices.eddi(values, 1, 1981, *window, MONTHLY),
+            "percentage_of_normal": lambda: indices.percentage_of_normal(values, 1, 1981, *window, MONTHLY),
+        }
+        with pytest.raises(CalibrationPeriodError, match="initial year"):
+            calls[index]()
+
+    @pytest.mark.parametrize("window", [(1990, 1985), (1970, 2030)])
+    def test_a_time_major_block_is_measured_on_its_time_axis(self, window):
+        block = np.full((29 * 12, 3, 2), np.nan)
+        # a block's first axis is time, not years: its 348 steps are 29 years
+        covered = indices.eddi(block, 1, 1981, 1981, 2009, MONTHLY, spatial_time_major=True)
+        assert covered.shape == block.shape
+        with pytest.raises(CalibrationPeriodError):
+            indices.eddi(block, 1, 1981, *window, MONTHLY, spatial_time_major=True)
+        with pytest.raises(CalibrationPeriodError, match="initial year"):
+            indices.spi(block, 1, GAMMA, 1981, 1990, 1985, MONTHLY, spatial_time_major=True)
+
+    def test_a_trailing_partial_year_counts_as_a_record_year(self):
+        # 121 months from 2000 reach into 2010
+        partial = np.full(121, np.nan)
+        indices.eddi(partial, 1, 2000, 2000, 2010, MONTHLY)
+        with pytest.raises(CalibrationPeriodError):
+            indices.eddi(partial, 1, 2000, 2000, 2011, MONTHLY)

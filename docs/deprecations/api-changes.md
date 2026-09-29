@@ -237,6 +237,16 @@ the data. Its window is now measured in years rather than 12 steps per year, so
 a window longer than a daily record is rejected, and a window ending in the
 record's partial final year is accepted.
 
+The window is now checked before anything else can return early. An all-missing
+input with a reversed window raises from `spi`, `spei`, `standardized_index`,
+`eddi` and `percentage_of_normal`, where it used to come back as missing values;
+`eddi` and `percentage_of_normal` also reject a window the record does not cover.
+A window that passes still returns the missing input unchanged. Palmer,
+`fit_diagnostics` and the flood indices already checked it. `spi`, `spei` and
+`standardized_index` also reject a reversed window when a complete
+`fitting_params` set is supplied, where the supplied parameters used to skip the
+check and transform the values anyway.
+
 **How to detect it:** look for `percentage_of_normal` calls with a fixed window,
 such as 1981-2010, on records that may end earlier, and for code that expects
 all-NaN output instead of an exception from a reversed or uncovered window.
