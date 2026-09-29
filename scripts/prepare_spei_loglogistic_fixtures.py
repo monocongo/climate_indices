@@ -132,10 +132,11 @@ def _write_input_csv(series: dict[str, np.ndarray], start_year: int, path: Path)
     path.write_text("\n".join(rows) + "\n", encoding="utf-8")
 
 
-def _read_fitted(path: Path, name: str, length: int) -> np.ndarray:
-    data = np.genfromtxt(
-        path, delimiter=",", names=True, dtype=None, encoding="utf-8", missing_values="NA", filling_values=np.nan
-    )
+def _read_fitted(path: Path, name: str, length: int, series_names: list[str]) -> np.ndarray:
+    # pin every column's dtype: an all-NA column would otherwise be inferred as
+    # boolean and np.genfromtxt would coerce its filling value to True (1.0)
+    dtype = [("year", "i8"), ("month", "i8"), *((series_name, "f8") for series_name in series_names)]
+    data = np.genfromtxt(path, delimiter=",", names=True, dtype=dtype, missing_values="NA", filling_values=np.nan)
     values = np.asarray(data[name], dtype=np.float64)
     if values.shape != (length,):
         raise ValueError(f"{path.name}:{name} has shape {values.shape}, expected ({length},)")
@@ -144,9 +145,8 @@ def _read_fitted(path: Path, name: str, length: int) -> np.ndarray:
 
 def _read_params(path: Path, name: str) -> np.ndarray:
     """Return the (3, 12) loc/scale/shape matrix for one series."""
-    data = np.genfromtxt(
-        path, delimiter=",", names=True, dtype=None, encoding="utf-8", missing_values="NA", filling_values=np.nan
-    )
+    dtype = [("series", "U32"), ("month", "i8"), ("loc", "f8"), ("scale", "f8"), ("shape", "f8")]
+    data = np.genfromtxt(path, delimiter=",", names=True, dtype=dtype, missing_values="NA", filling_values=np.nan)
     rows = data[data["series"] == name]
     if rows.shape != (12,):
         raise ValueError(f"{path.name}:{name} has {rows.shape[0]} rows, expected 12")
@@ -173,6 +173,27 @@ def _check_versions(output_dir: Path) -> dict[str, str]:
     return versions
 
 
+def _publish(staging: Path) -> None:
+    """Replace the published fixture directory with the staged one, as one transaction.
+
+    Arrays and metadata must always come from a single generation: replacing the
+    files individually leaves a mixed set behind when a later write fails. The
+    previous directory is kept as a backup until the swap succeeds, and restored
+    if it does not.
+    """
+    backup = FIXTURE_DIR.with_name(f".{FIXTURE_DIR.name}-backup")
+    shutil.rmtree(backup, ignore_errors=True)
+    if FIXTURE_DIR.exists():
+        os.replace(FIXTURE_DIR, backup)
+    try:
+        os.replace(staging, FIXTURE_DIR)
+    except BaseException:
+        if backup.exists():
+            os.replace(backup, FIXTURE_DIR)
+        raise
+    shutil.rmtree(backup, ignore_errors=True)
+
+
 def main() -> int:
     if not R_SCRIPT.exists():
         raise FileNotFoundError(R_SCRIPT)
@@ -183,11 +204,14 @@ def main() -> int:
     division_series: dict[str, np.ndarray] = {}
     for division in divisions:
         precip_mm, pet_mm = _environmental_inputs(division)
+        # mirror indices.spei's negative-precipitation clip before the water balance
+        precip_mm = np.clip(precip_mm, 0.0, None)
         division_series[f"d{division['id']}"] = (precip_mm - pet_mm) + _WATER_BALANCE_OFFSET_MM
     synthetic_precip, synthetic_pet = _synthetic_inputs()
     synthetic_series = {"synthetic": (synthetic_precip - synthetic_pet) + _WATER_BALANCE_OFFSET_MM}
 
-    FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
+    division_names = list(division_series)
+    staging = Path(tempfile.mkdtemp(prefix=f".{FIXTURE_DIR.name}-staging-", dir=FIXTURE_DIR.parent))
 
     # keep R's own user-library default unless this session installed the
     # packages into the conventional ~/.R/library instead
@@ -195,85 +219,103 @@ def main() -> int:
     if "R_LIBS_USER" not in env and (Path.home() / ".R" / "library").is_dir():
         env["R_LIBS_USER"] = str(Path.home() / ".R" / "library")
 
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_path = Path(tmp)
-        versions: dict[str, str] = {}
-        for label, series, start_year, scales, scale_out in (
-            ("real", division_series, _DATA_START_YEAR, _SCALES, _SCALES),
-            ("synthetic", synthetic_series, _SYNTHETIC_START_YEAR, _SYNTHETIC_SCALES, _SYNTHETIC_SCALES),
-        ):
-            output_dir = tmp_path / label
-            input_csv = tmp_path / f"{label}.csv"
-            _write_input_csv(series, start_year, input_csv)
-            subprocess.run(
-                ["Rscript", str(R_SCRIPT), str(input_csv), str(output_dir), *(str(scale) for scale in scales)],
-                check=True,
-                cwd=PROJECT_ROOT,
-                env=env,
-            )
-            versions = versions or _check_versions(output_dir)
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            versions: dict[str, str] = {}
+            for label, series, start_year, scales, scale_out in (
+                ("real", division_series, _DATA_START_YEAR, _SCALES, _SCALES),
+                ("synthetic", synthetic_series, _SYNTHETIC_START_YEAR, _SYNTHETIC_SCALES, _SYNTHETIC_SCALES),
+            ):
+                output_dir = tmp_path / label
+                input_csv = tmp_path / f"{label}.csv"
+                _write_input_csv(series, start_year, input_csv)
+                subprocess.run(
+                    ["Rscript", str(R_SCRIPT), str(input_csv), str(output_dir), *(str(scale) for scale in scales)],
+                    check=True,
+                    cwd=PROJECT_ROOT,
+                    env=env,
+                )
+                checked = _check_versions(output_dir)
+                versions = versions or checked
 
-            if label == "real":
-                for scale in scale_out:
-                    fitted = np.stack(
-                        [_read_fitted(output_dir / f"fitted_{scale:02d}.csv", name, _N_MONTHS) for name in series]
-                    )
-                    params = np.stack([_read_params(output_dir / f"params_{scale:02d}.csv", name) for name in series])
-                    np.save(FIXTURE_DIR / f"r_spei_{scale:02d}.npy", fitted)
-                    np.save(FIXTURE_DIR / f"r_params_{scale:02d}.npy", params)
-            else:
-                for scale in scale_out:
-                    np.save(
-                        FIXTURE_DIR / f"r_synthetic_spei_{scale:02d}.npy",
-                        _read_fitted(output_dir / f"fitted_{scale:02d}.csv", "synthetic", _SYNTHETIC_YEARS * 12),
-                    )
-                    np.save(
-                        FIXTURE_DIR / f"r_synthetic_params_{scale:02d}.npy",
-                        _read_params(output_dir / f"params_{scale:02d}.csv", "synthetic"),
-                    )
+                if label == "real":
+                    for scale in scale_out:
+                        fitted = np.stack(
+                            [
+                                _read_fitted(output_dir / f"fitted_{scale:02d}.csv", name, _N_MONTHS, division_names)
+                                for name in series
+                            ]
+                        )
+                        params = np.stack(
+                            [_read_params(output_dir / f"params_{scale:02d}.csv", name) for name in series]
+                        )
+                        np.save(staging / f"r_spei_{scale:02d}.npy", fitted)
+                        np.save(staging / f"r_params_{scale:02d}.npy", params)
+                else:
+                    for scale in scale_out:
+                        np.save(
+                            staging / f"r_synthetic_spei_{scale:02d}.npy",
+                            _read_fitted(
+                                output_dir / f"fitted_{scale:02d}.csv",
+                                "synthetic",
+                                _SYNTHETIC_YEARS * 12,
+                                ["synthetic"],
+                            ),
+                        )
+                        np.save(
+                            staging / f"r_synthetic_params_{scale:02d}.npy",
+                            _read_params(output_dir / f"params_{scale:02d}.csv", "synthetic"),
+                        )
 
-    np.save(FIXTURE_DIR / "synthetic_precip_mm.npy", synthetic_precip)
-    np.save(FIXTURE_DIR / "synthetic_pet_mm.npy", synthetic_pet)
+            np.save(staging / "synthetic_precip_mm.npy", synthetic_precip)
+            np.save(staging / "synthetic_pet_mm.npy", synthetic_pet)
 
-    provenance = {
-        "source": "R SPEI package (CRAN)",
-        "url": "https://cran.r-project.org/package=SPEI",
-        "download_date": dt.date.today().isoformat(),
-        "subset_description": (
-            "Standardized log-logistic SPEI from the R SPEI package for three CONUS climate "
-            "divisions (nClimDiv precip/temps, Thornthwaite PET, 1901-2022) at timescales "
-            "1/3/6/12, plus a short highly skewed synthetic series at timescales 1/6."
-        ),
-        "checksum_sha256": _compute_checksum(FIXTURE_DIR),
-        "fixture_version": "1.0.0",
-        "validation_tolerance": {
-            "series_atol": 1e-6,
-            "parameter_atol": 1e-6,
-            "parameter_rtol": 1e-8,
-        },
-        "citation": (
-            "Vicente-Serrano, S. M., Beguería, S. & López-Moreno, J. I. (2010). J. Climate 23, "
-            "1696-1718; Beguería, S., et al. (2014). Int. J. Climatol. 34, 3001-3023; "
-            "https://cran.r-project.org/package=SPEI"
-        ),
-        "doi": "10.1175/2009JCLI2909.1",
-        "license": "R packages under their CRAN licenses (GPL-3)",
-        "notes": (
-            "Generated by scripts/prepare_spei_loglogistic_fixtures.py via "
-            "scripts/spei_loglogistic_reference.R. "
-            f"R {versions.get('R')}, SPEI {versions.get('SPEI')}, TLMoments {versions.get('TLMoments')}, "
-            f"lmom {versions.get('lmom')}. SPEI fits each calendar step with unbiased-PWM L-moments "
-            "(TLMoments::PWM + lmom::pelglo), the estimator lmoments.fit_glo implements, so the fitted "
-            "parameters and the standardized series agree to machine precision; the recorded tolerances "
-            "absorb only cross-platform numerical wobble. The R input is the (P - PET) + 1000 water "
-            "balance indices.spei builds internally, so both sides fit the identical scaled series; the "
-            "offset cancels in the standardized values. SPEI does not clip to the [-3.09, 3.09] range "
-            "this library enforces, so comparisons exclude the clipped tail. The synthetic series has a "
-            "constant calendar month; neither implementation can fit that step, and both report it "
-            "missing (SPEI as NA, this library as a zeroed scale -> NaN)."
-        ),
-    }
-    (FIXTURE_DIR / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
+        provenance = {
+            "source": "R SPEI package (CRAN)",
+            "url": "https://cran.r-project.org/package=SPEI",
+            "download_date": dt.date.today().isoformat(),
+            "subset_description": (
+                "Standardized log-logistic SPEI from the R SPEI package for three CONUS climate "
+                "divisions (nClimDiv precip/temps, Thornthwaite PET, 1901-2022) at timescales "
+                "1/3/6/12, plus a short highly skewed synthetic series at timescales 1/6."
+            ),
+            "checksum_sha256": _compute_checksum(staging),
+            "fixture_version": "1.0.0",
+            "validation_tolerance": {
+                "series_atol": 1e-6,
+                "parameter_atol": 1e-6,
+                "parameter_rtol": 1e-8,
+            },
+            "citation": (
+                "Vicente-Serrano, S. M., Beguería, S. & López-Moreno, J. I. (2010). J. Climate 23, "
+                "1696-1718; Beguería, S., et al. (2014). Int. J. Climatol. 34, 3001-3023; "
+                "https://cran.r-project.org/package=SPEI"
+            ),
+            "doi": "10.1175/2009JCLI2909.1",
+            "license": "R packages under their CRAN licenses (GPL-3)",
+            "notes": (
+                "Generated by scripts/prepare_spei_loglogistic_fixtures.py via "
+                "scripts/spei_loglogistic_reference.R. "
+                f"R {versions.get('R')}, SPEI {versions.get('SPEI')}, TLMoments {versions.get('TLMoments')}, "
+                f"lmom {versions.get('lmom')}. SPEI fits each calendar step with unbiased-PWM L-moments "
+                "(TLMoments::PWM + lmom::pelglo), the estimator lmoments.fit_glo implements, so the fitted "
+                "parameters and the standardized series agree to machine precision (series ~1e-12, "
+                "parameters <=~1e-10); the recorded tolerances absorb only cross-platform numerical "
+                "wobble. The R input is the (P - PET) + 1000 water balance indices.spei builds "
+                "internally, so both sides fit the identical scaled series; the offset cancels in the "
+                "standardized values. SPEI does not clip to the [-3.09, 3.09] range this library enforces, "
+                "so the comparison covers finite values inside that range and asserts this library's clip "
+                "on the out-of-range tail separately. The synthetic series has a constant calendar month "
+                "that is unfittable at scale 1 (both implementations report it missing: SPEI as NA, this "
+                "library as a zeroed scale -> NaN); at scale 6 the constant month enters non-constant "
+                "multi-month sums and is fittable."
+            ),
+        }
+        (staging / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
+        _publish(staging)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
     print(f"wrote {FIXTURE_DIR}")
     return 0
 

@@ -106,6 +106,8 @@ def _spei(precip_mm: np.ndarray, pet_mm: np.ndarray, scale: int, start_year: int
 
 def _parameters(precip_mm: np.ndarray, pet_mm: np.ndarray, scale: int, start_year: int, end_year: int) -> np.ndarray:
     """The library's (3, 12) loc/scale/shape parameters for one scaled series."""
+    # mirror indices.spei's negative-precipitation clip before forming the water balance
+    precip_mm = np.clip(precip_mm, 0.0, None)
     scaled = compute.prepare_scaled(
         (precip_mm - pet_mm) + 1000.0, scale, compute.Periodicity.monthly, clip_negatives=False
     )
@@ -163,7 +165,8 @@ def test_synthetic_short_skewed_series_matches_r_spei(scale: int) -> None:
         atol=_SERIES_ATOL,
         err_msg=f"synthetic SPEI-{scale} differs from R SPEI",
     )
-    beyond = np.isfinite(reference) & (np.abs(reference) >= _CLIP)
+    # SPEI reports a value beyond the fitted support as +/-inf; this library clips it
+    beyond = ~np.isnan(reference) & (np.abs(reference) >= _CLIP)
     if beyond.any():
         np.testing.assert_array_equal(computed[beyond], np.sign(reference[beyond]) * _CLIP)
 
@@ -182,6 +185,7 @@ def test_synthetic_short_skewed_series_matches_r_spei(scale: int) -> None:
     )
 
 
+@pytest.mark.validation
 def test_synthetic_constant_step_is_missing_like_r_spei() -> None:
     """A constant calendar step cannot be fitted by either implementation.
 
@@ -220,3 +224,10 @@ def test_fixture_exercises_extreme_skew_and_a_negative_location() -> None:
     # underlying GLO location is negative for the arid divisions
     real_locations = np.load(_SPEI_ROOT / "r_params_01.npy")[:, 0, :] - 1000.0
     assert real_locations.min() < 0.0, "real fixture does not include a negative location parameter"
+
+    # the synthetic scale-1 fit maps one value beyond the GLO support (SPEI reports it
+    # as -inf), so the clip assertion in the parametrized test is actually exercised
+    synthetic_reference = np.load(_SPEI_ROOT / "r_synthetic_spei_01.npy")
+    assert np.any(~np.isnan(synthetic_reference) & (np.abs(synthetic_reference) >= _CLIP)), (
+        "synthetic fixture does not reach this library's clip range"
+    )

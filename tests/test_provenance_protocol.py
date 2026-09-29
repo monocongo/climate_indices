@@ -198,6 +198,30 @@ class TestProvenanceChecksum:
             f"rerun scripts/prepare_speibase_fixtures.py."
         )
 
+    def test_spei_loglogistic_checksum_matches(self) -> None:
+        """Verify the R SPEI log-logistic fixture checksum matches provenance.json.
+
+        The checksum covers the complete canonical array set, so a corrupted,
+        partially refreshed, or replaced array fails loudly before the set is
+        used as an independent-implementation reference.
+        """
+        fixture_dir = FIXTURE_DIR / "spei_loglogistic"
+        provenance_path = fixture_dir / "provenance.json"
+        if not provenance_path.exists():
+            pytest.skip("SPEI log-logistic provenance.json not yet created")
+
+        with provenance_path.open() as f:
+            provenance = json.load(f)
+
+        actual_checksum = _compute_checksum_for_npy_files(fixture_dir)
+        assert actual_checksum == provenance["checksum_sha256"], (
+            f"SPEI log-logistic fixture checksum mismatch. "
+            f"Expected: {provenance['checksum_sha256']}, "
+            f"Actual: {actual_checksum}. "
+            f"If the fixture data was intentionally refreshed, "
+            f"rerun scripts/prepare_spei_loglogistic_fixtures.py."
+        )
+
 
 class TestProvenanceProtocolCoverage:
     """Ensure provenance protocol is being followed for reference datasets."""
