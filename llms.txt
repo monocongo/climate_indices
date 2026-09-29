@@ -1155,8 +1155,9 @@ passes over the requested calibration period.
 ### Exact-zero comparisons
 
 Both recursions branch on exact comparisons against zero, and every float
-equality comparison site in `src/climate_indices/palmer.py` carries a rationale
-comment plus a `# NOSONAR` marker. Those zeros are state sentinels, not
+equality comparison site in `src/climate_indices/palmer.py` and the pdi.f
+recursion in `src/climate_indices/_palmer_pdi.py` carries a rationale comment
+plus a `# NOSONAR` marker. Those zeros are state sentinels, not
 near-equality: the statements that clear a spell, a candidate, or a calibration
 sum assign `0.0` exactly. A tolerance would change the spell state machine and
 the committed reference fixtures, so no tolerance is applied to these
@@ -1174,7 +1175,7 @@ comparisons.
 Exact-zero tests outside these sentinels are guards on a computed divisor, not
 sentinels, and raise rather than dividing: `DurationFactors.from_fitted`'s
 cross-denominator check and `_palmer_wells._abatement_transition`'s `q` guard
-(both `ConvergenceError`), and `DurationFactors.weighting_fraction`'s divisor
+(both `ConvergenceError`), and `_palmer_pdi._weighting_fraction`'s divisor
 check (`ValueError`).
 
 ## Validation

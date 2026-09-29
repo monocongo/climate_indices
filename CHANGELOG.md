@@ -278,6 +278,16 @@ change states what a user sees, how to detect it, and what to change in
   run no longer changes which distribution is fitted (the warning propagates instead),
   and the swap is reported through the public `distribution_fallback` log event rather
   than a private strategy method (#1215).
+- **`pdsi()` duration-factor override validation**: an override was validated with the
+  Wells-lineage coefficients even though the standard PDSI recursion computes only
+  `c = b / (m + b)`, so a factor set the recursion could use was rejected when the
+  unrelated Wells cross coefficient `dryc = 1 - drym / (drym + wetb)` was not a
+  contraction -- for example `{"wetm": 1.0, "wetb": -0.4, "drym": 0.3, "dryb": 1.0}`.
+  The override is now validated against the coefficients the standard recursion
+  actually uses. The standard PDSI spell recursion also takes a precomputed Z-index
+  series and its own `PdiDurationFactors`, like the scPDSI Wells recursion, instead
+  of recomputing the Z-index mid-recursion. Default-factor PDSI and scPDSI results are
+  unchanged (#1226).
 
 ## [2.4.0] - 2026-04-05
 

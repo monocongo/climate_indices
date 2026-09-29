@@ -286,10 +286,7 @@ def _assign_period(
 def calculate(
     z_values: np.ndarray,
     *,
-    wetm: float,
-    wetb: float,
-    drym: float,
-    dryb: float,
+    factors: DurationFactors,
 ) -> WellsResult:
     """Run the Wells Palmer recursion over a Z-index series.
 
@@ -298,23 +295,17 @@ def calculate(
 
     Args:
         z_values: Chronological Z-index values; NaN denotes a missing period.
-        wetm: Wet duration-factor slope.
-        wetb: Wet duration-factor intercept.
-        drym: Dry duration-factor slope.
-        dryb: Dry duration-factor intercept.
+        factors: The validated duration factors the recurrence uses, built once
+            by the caller rather than rebuilt here.
 
     Returns:
         The final PDSI-family series and the state arrays used to derive them.
 
     Raises:
-        ConvergenceError: If fitted factors make a recurrence denominator
-            non-finite, non-positive, or zero as applicable; if any derived
-            recurrence coefficient (``wetc``, ``dryc``, ``dry_spell_c``) is
-            non-finite or has magnitude >= 1, which additionally requires both
-            fitted slopes ``wetm`` and ``drym`` to be strictly positive; or if a
-            Z-index value is infinite.
+        ConvergenceError: If a Z-index value is infinite.  Invalid duration
+            factors raise from :meth:`DurationFactors.from_fitted` before this
+            function is reached.
     """
-    factors = DurationFactors.from_fitted(wetm, wetb, drym, dryb)
     z = np.asarray(z_values, dtype=float).reshape(-1)
     if np.any(np.isinf(z)):
         raise ConvergenceError(
