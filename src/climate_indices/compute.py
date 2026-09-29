@@ -44,6 +44,7 @@ __all__ = [
     "scale_values",
     "sum_to_scale",
     "transform_fitted_gamma",
+    "transform_fitted_loglogistic",
     "transform_fitted_pearson",
     "DistributionFittingError",
     "InsufficientDataError",
@@ -651,6 +652,41 @@ def _pearson_parameters_spatial(
     )
 
 
+def _calibration_block(
+    values: np.ndarray,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
+) -> tuple[np.ndarray, int]:
+    """
+    Fold an input into (years, time_steps, ...) and slice out its calibration years.
+
+    A three-or-more-dimensional input is read as an already folded time-major spatial
+    block. The calibration data quality is checked, and warnings are emitted, here.
+
+    :return: the calibration values and the number of time steps per year
+    """
+    if getattr(values, "ndim", 0) > 2:
+        # a folded spatial block carries its periods along axis 1 already
+        values = _validate_array(values, periodicity)
+        time_steps_per_year = int(values.shape[1])
+    else:
+        values = reshape_values(values, periodicity)
+        time_steps_per_year = validate_values_shape(values)
+    data_end_year = data_start_year + values.shape[0]
+    calibration_start_year, calibration_end_year = adjust_calibration_years(
+        data_start_year, data_end_year, calibration_start_year, calibration_end_year
+    )
+    calibration_begin_index = calibration_start_year - data_start_year
+    calibration_end_index = (calibration_end_year - data_start_year) + 1
+    calibration_values = values[calibration_begin_index:calibration_end_index, ...]
+
+    # check calibration data quality and emit warnings if needed
+    _check_calibration_data_quality(calibration_values, calibration_start_year, calibration_end_year)
+    return calibration_values, time_steps_per_year
+
+
 def pearson_parameters(
     values: np.ndarray,
     data_start_year: int,
@@ -694,23 +730,9 @@ def pearson_parameters(
     )
     log.info("distribution_fitting_started")
 
-    if getattr(values, "ndim", 0) > 2:
-        # a folded spatial block carries its periods along axis 1 already
-        values = _validate_array(values, periodicity)
-        time_steps_per_year = int(values.shape[1])
-    else:
-        values = reshape_values(values, periodicity)
-        time_steps_per_year = validate_values_shape(values)
-    data_end_year = data_start_year + values.shape[0]
-    calibration_start_year, calibration_end_year = adjust_calibration_years(
-        data_start_year, data_end_year, calibration_start_year, calibration_end_year
+    calibration_values, time_steps_per_year = _calibration_block(
+        values, data_start_year, calibration_start_year, calibration_end_year, periodicity
     )
-    calibration_begin_index = calibration_start_year - data_start_year
-    calibration_end_index = (calibration_end_year - data_start_year) + 1
-    calibration_values = values[calibration_begin_index:calibration_end_index, ...]
-
-    # check calibration data quality and emit warnings if needed
-    _check_calibration_data_quality(calibration_values, calibration_start_year, calibration_end_year)
 
     if calibration_values.ndim > 2:
         (
@@ -947,29 +969,20 @@ def _validate_pearson_parameter_cells(
             )
 
 
-def _prepare_pearson_spatial_parameters(
-    values: np.ndarray,
-    probabilities_of_zero: np.ndarray | None,
-    locs: np.ndarray | None,
-    scales: np.ndarray | None,
-    skews: np.ndarray | None,
-) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None, np.ndarray | None]:
+def _prepare_spatial_parameters(
+    values: np.ndarray, named_parameters: tuple[tuple[str, np.ndarray | None], ...]
+) -> tuple[np.ndarray | None, ...]:
     """
-    Shape pre-computed Pearson parameters for a spatial block, or reject them.
+    Shape pre-computed fitting parameters for a spatial block, or reject them.
 
     A period-only parameter array is reshaped so that it broadcasts along the
     period axis instead of aligning with the trailing cell axes. A parameter
     array carrying cell dimensions must match the block's own cell axes.
 
     :param values: the folded spatial block, shape (years, time_steps, *cells)
-    :return: the four parameters, each shaped for the block or None
+    :param named_parameters: (name, parameter) pairs, each parameter possibly None
+    :return: the parameters in order, each shaped for the block or None
     """
-    named_parameters = (
-        ("prob_zero", probabilities_of_zero),
-        ("loc", locs),
-        ("scale", scales),
-        ("skew", skews),
-    )
     _validate_pearson_parameter_cells(values, named_parameters)
     cells = values.shape[2:]
     prepared: list[np.ndarray | None] = []
@@ -981,7 +994,21 @@ def _prepare_pearson_spatial_parameters(
         if parameter.ndim == 1:
             parameter = parameter.reshape((1, parameter.shape[0], *([1] * len(cells))))
         prepared.append(parameter)
-    return prepared[0], prepared[1], prepared[2], prepared[3]
+    return tuple(prepared)
+
+
+def _prepare_pearson_spatial_parameters(
+    values: np.ndarray,
+    probabilities_of_zero: np.ndarray | None,
+    locs: np.ndarray | None,
+    scales: np.ndarray | None,
+    skews: np.ndarray | None,
+) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None, np.ndarray | None]:
+    """Shape pre-computed Pearson parameters for a spatial block, or reject them."""
+    prob_zero, loc, scale, skew = _prepare_spatial_parameters(
+        values, (("prob_zero", probabilities_of_zero), ("loc", locs), ("scale", scales), ("skew", skews))
+    )
+    return prob_zero, loc, scale, skew
 
 
 def transform_fitted_pearson(
@@ -2147,12 +2174,242 @@ def transform_fitted_gamma(
     return result_values
 
 
+# |shape| below this is treated as a zero-shape (ordinary logistic) GLO fit, matching
+# PELGLO's SMALL constant in the R lmom package
+_LOGLOGISTIC_SHAPE_TOLERANCE = 1e-6
+
+
+def loglogistic_parameters(
+    values: np.ndarray,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Compute the generalized logistic (GLO) distribution parameters corresponding to
+    an array of values.
+
+    This is the distribution R's ``SPEI`` package fits as ``"log-Logistic"`` (ub-pwm
+    L-moments), i.e. the reference distribution for SPEI. Every value participates in
+    the fit, including zeros: unlike gamma and Pearson Type III there is no separate
+    zero mass, because SPEI's P−PET series is offset and has no physical zero mass.
+
+    :param values: 2-D array of values, with each row representing a year containing
+        twelve columns representing the respective calendar months, or 366 days per
+        column as if all years were leap years; a time-major spatial block already
+        folded to (years, time_steps, ``*cells``) is also accepted, and then every
+        cell is fitted in one pass.
+    :param data_start_year: the initial year of the input values array
+    :param calibration_start_year: the initial year to use for the calibration period
+    :param calibration_end_year: the final year to use for the calibration period
+    :param periodicity: monthly or daily
+    :return: three arrays of fitting values for the GLO distribution, with shape
+        (12,) for monthly or (366,) for daily, or (time_steps, ``*cells``) for
+        spatial input: location, scale, and shape
+    :rtype: tuple of three numpy.ndarrays of floats (loc, scale, shape)
+    """
+    log = _logger.bind(
+        operation="loglogistic_parameters",
+        distribution="loglogistic",
+        periodicity=str(periodicity),
+        calibration_period=f"{calibration_start_year}-{calibration_end_year}",
+    )
+    log.info("distribution_fitting_started")
+
+    calibration_values, time_steps_per_year = _calibration_block(
+        values, data_start_year, calibration_start_year, calibration_end_year, periodicity
+    )
+
+    if calibration_values.ndim > 2:
+        locs, scales, shapes, failed_fitting_count = _loglogistic_parameters_spatial(calibration_values)
+        cell_count = int(np.prod(calibration_values.shape[2:], dtype=np.intp))
+        total_fitting_count = time_steps_per_year * cell_count
+    else:
+        locs = np.zeros((time_steps_per_year,))
+        scales = np.zeros((time_steps_per_year,))
+        shapes = np.zeros((time_steps_per_year,))
+        failed_fitting_count = 0
+
+        for time_step_index in range(time_steps_per_year):
+            try:
+                params = lmoments.fit_glo(calibration_values[:, time_step_index])
+                locs[time_step_index] = params["loc"]
+                scales[time_step_index] = params["scale"]
+                shapes[time_step_index] = params["shape"]
+            except ValueError:
+                # a step that cannot be fitted is marked invalid by its zeroed scale,
+                # and the transform reports NaN there rather than aborting the series
+                failed_fitting_count += 1
+        total_fitting_count = time_steps_per_year
+
+    if _default_fallback_strategy.should_warn_high_failure_rate(failed_fitting_count, total_fitting_count):
+        # not log_high_failure_rate: its text names Pearson Type III and a Gamma remedy
+        log.warning(
+            "high_fitting_failure_rate",
+            failure_count=failed_fitting_count,
+            total_count=total_fitting_count,
+        )
+
+    log.info("distribution_fitting_completed", output_shape=str(locs.shape))
+    return locs, scales, shapes
+
+
+def _loglogistic_parameters_spatial(
+    calibration_values: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
+    """Fit every (time step, cell) of a (years, time_steps, ``*cells``) block at once.
+
+    :param calibration_values: calibration data with shape (years, time_steps, ``*cells``)
+    :return: three parameter arrays shaped (time_steps, ``*cells``) and the count of
+        failed (time step, cell) fits
+    """
+    locs, scales, shapes, valid = lmoments.fit_glo_spatial(calibration_values)
+    failed_fitting_count = int(np.count_nonzero(~valid))
+    return locs, scales, shapes, failed_fitting_count
+
+
+def _loglogistic_fit(
+    values: np.ndarray,
+    locs: np.ndarray,
+    scales: np.ndarray,
+    shapes: np.ndarray,
+    output_scale: OutputScale = "normal",
+) -> np.ndarray:
+    """Transform values through the fitted GLO cumulative distribution.
+
+    This is Hosking's ``cdfglo``: with parameters (loc, scale, shape) and
+    ``z = (x − loc) / scale``,
+
+        ``F(x) = 1 / (1 + exp(−y))``, where
+        ``y = z`` for ``shape = 0``, else ``y = −log(1 − shape·z) / shape``.
+
+    A position whose parameters are missing, non-finite, non-positive in scale, or
+    outside the GLO's ``|shape| < 1`` support is reported as NaN. A finite value
+    beyond the fitted support follows ``cdfglo``: it maps to a probability of 0 or 1,
+    whose normal-scale z is infinite and which the index layer clips to its range.
+
+    :param values: an array of values to transform
+    :param locs: location parameter, broadcastable to ``values``
+    :param scales: scale parameter, broadcastable to ``values``
+    :param shapes: shape parameter, broadcastable to ``values``
+    :param output_scale: one of ``compute.OUTPUT_SCALES``
+    :return: transformed values, shaped like the broadcast of the parameters
+    """
+    if np.all(np.isnan(values)):
+        return values
+
+    valid = np.isfinite(locs) & np.isfinite(scales) & np.isfinite(shapes) & (scales > 0.0) & (np.abs(shapes) < 1.0)
+    negligible_shape = np.abs(shapes) <= _LOGLOGISTIC_SHAPE_TOLERANCE
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        z = (values - locs) / scales
+        y = np.where(negligible_shape, z, -np.log(np.maximum(0.0, 1.0 - (shapes * z))) / shapes)
+        probabilities = 1.0 / (1.0 + np.exp(-y))
+    probabilities = np.clip(probabilities, 0.0, 1.0)
+
+    scaled = _map_non_normal_scale(probabilities, output_scale)
+    if scaled is None:
+        scaled = scipy.stats.norm.ppf(probabilities)
+    result: np.ndarray = np.where(valid, scaled, np.nan)
+    return result
+
+
+def transform_fitted_loglogistic(
+    values: np.ndarray,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
+    locs: np.ndarray | None = None,
+    scales: np.ndarray | None = None,
+    shapes: np.ndarray | None = None,
+    output_scale: OutputScale = "normal",
+) -> np.ndarray:
+    """
+    Fit values to a generalized logistic (GLO) distribution and transform the values
+    to corresponding normalized sigmas.
+
+    :param values: 2-D array of values, with each row representing a year containing
+        twelve columns representing the respective calendar months, or 366 columns
+        representing days as if all years were leap years. A time-major spatial block
+        already folded to (years, time_steps, ``*cells``) is also accepted.
+    :param data_start_year: the initial year of the input values array
+    :param calibration_start_year: the initial year to use for the calibration period
+    :param calibration_end_year: the final year to use for the calibration period
+    :param periodicity: the periodicity of the time series represented by the input data
+    :param locs: pre-computed GLO location parameters, one per calendar step
+    :param scales: pre-computed GLO scale parameters, one per calendar step
+    :param shapes: pre-computed GLO shape parameters, one per calendar step
+    :param output_scale: one of ``compute.OUTPUT_SCALES``; "probability" returns the
+        fitted cumulative probability, "bounded" returns ``2p - 1``, and "normal"
+        (the default) returns the standard-normal z-score
+    :return: 2-D array of transformed/fitted values, corresponding in size and shape
+        to the input array
+    :rtype: numpy.ndarray of floats
+    :raises ValueError: if only some of the three fitting parameters are provided
+    """
+    validate_output_scale(output_scale)
+
+    log = _logger.bind(
+        operation="transform_fitted_loglogistic",
+        output_scale=output_scale,
+        distribution="loglogistic",
+        periodicity=str(periodicity),
+        input_shape=str(values.shape),
+    )
+    log.info("distribution_transform_started")
+
+    parameter_args = (locs, scales, shapes)
+    if any(parameter is None for parameter in parameter_args) and not all(
+        parameter is None for parameter in parameter_args
+    ):
+        raise ValueError(
+            "At least one but not all of the log-logistic fitting parameters are "
+            "specified -- either none or all of these must be specified"
+        )
+
+    # if we're passed all missing values then we can't compute anything,
+    # and we'll return the same array of missing values
+    if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
+        return values
+
+    if np.ma.isMaskedArray(values):
+        values = np.ma.filled(values.astype(float), np.nan)
+
+    values = _validate_array(values, periodicity)
+
+    if values.ndim > 2:
+        locs, scales, shapes = _prepare_spatial_parameters(
+            values, (("loc", locs), ("scale", scales), ("shape", shapes))
+        )
+
+    # compute the GLO fitting values if none were provided
+    if all(parameter is None for parameter in (locs, scales, shapes)):
+        locs, scales, shapes = loglogistic_parameters(
+            values,
+            data_start_year,
+            calibration_start_year,
+            calibration_end_year,
+            periodicity,
+        )
+
+    assert locs is not None
+    assert scales is not None
+    assert shapes is not None
+
+    values = _loglogistic_fit(values, locs, scales, shapes, output_scale)
+
+    log.info("distribution_transform_completed", output_shape=str(values.shape))
+    return values
+
+
 # normalized fitting-parameter keys, paired with the deprecated alias accepted for each
 _FIT_ALTNAMES = (
     ("alpha", "alphas"),
     ("beta", "betas"),
     ("skew", "skews"),
     ("scale", "scales"),
+    ("shape", "shapes"),
     ("loc", "locs"),
     ("prob_zero", "probabilities_of_zero"),
 )
@@ -2311,7 +2568,8 @@ def fit_and_standardize(
             year containing twelve columns representing the respective calendar
             months, or 366 days per column as if all years were leap years; a
             time-major spatial block with more than two dimensions is also accepted.
-        distribution: The distribution to fit the values to.
+        distribution: The distribution to fit the values to: gamma, Pearson Type III,
+            or the generalized logistic ("loglogistic") that SPEI standardizes with.
         data_start_year: The initial year of the input values array.
         calibration_start_year: The initial year to use for the calibration period.
         calibration_end_year: The final year to use for the calibration period.
@@ -2335,7 +2593,8 @@ def fit_and_standardize(
             cumulative probability in [0, 1], and "bounded" ``2p - 1`` in [-1, 1].
         zero_handling: Where a zero accumulation is placed within the zero mass,
             one of "classic" (the default), "center_of_mass", or "mean_zero"; see
-            ADR-0015. A gamma fall back applies the same mode.
+            ADR-0015. A gamma fall back applies the same mode. The log-logistic fit
+            has no zero mass, so the mode does not apply to it.
 
     Returns:
         2-D array of transformed/fitted values, corresponding in size and shape to
@@ -2362,6 +2621,22 @@ def fit_and_standardize(
             params.get("prob_zero"),
             output_scale,
             zero_handling=zero_handling,
+        )
+
+    if distribution.value == "loglogistic":
+        # the GLO is the SPEI reference distribution: P−PET is offset and has no
+        # physical zero mass, so it has no zero-placement mode and zero_handling is
+        # not applied on this branch
+        return transform_fitted_loglogistic(
+            values,
+            data_start_year,
+            calibration_start_year,
+            calibration_end_year,
+            periodicity,
+            params.get("loc"),
+            params.get("scale"),
+            params.get("shape"),
+            output_scale,
         )
 
     if distribution.value != "pearson":

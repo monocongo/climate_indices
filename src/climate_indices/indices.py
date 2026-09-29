@@ -41,6 +41,22 @@ class Distribution(Enum):
 
     pearson = "pearson"
     gamma = "gamma"
+    #: Generalized logistic (Hosking's GLO), the "log-Logistic" distribution R's
+    #: SPEI package and SPEIbase fit; see ADR-0016. Supported by ``spei()`` only.
+    loglogistic = "loglogistic"
+
+    @property
+    def display_name(self) -> str:
+        """Human-readable name for prose and metadata ("log-logistic", not "loglogistic")."""
+        return _DISTRIBUTION_DISPLAY_NAMES[self]
+
+
+#: human-readable distribution names; every member but ``loglogistic`` is its own value
+_DISTRIBUTION_DISPLAY_NAMES = {
+    Distribution.pearson: "pearson",
+    Distribution.gamma: "gamma",
+    Distribution.loglogistic: "log-logistic",
+}
 
 
 # retrieve structlog logger for this module
@@ -109,27 +125,44 @@ def _validate_scale(scale: int, periodicity: compute.Periodicity) -> None:
         )
 
 
-def _validate_distribution(distribution: Distribution) -> None:
-    """Validate that distribution is a valid Distribution enum member.
+def _validate_distribution(
+    distribution: Distribution,
+    allowed: tuple[Distribution, ...] = (Distribution.gamma, Distribution.pearson),
+) -> None:
+    """Validate that distribution is a Distribution enum member allowed on this surface.
+
+    The default ``allowed`` set omits log-logistic, so a zero-mass-sensitive surface
+    that forgets to pass an explicit set fails safe: the generalized logistic is the
+    SPEI reference distribution, whose offset P−PET input has no physical zero mass,
+    and the zero-placement treatment a precipitation or generic non-negative series
+    needs is not implemented for it (#106). ``spei()`` passes the three-member set.
 
     Args:
         distribution: The distribution parameter to validate
+        allowed: The members accepted by the calling surface
 
     Raises:
-        InvalidArgumentError: If distribution is not a Distribution enum member
+        InvalidArgumentError: If distribution is not an allowed Distribution member
     """
-    if not isinstance(distribution, Distribution):
-        message = (  # type: ignore[unreachable]
-            f"Unsupported distribution: {distribution}. "
-            f"Supported distributions: gamma, pearson. "
-            f"Use indices.Distribution.gamma or indices.Distribution.pearson."
+    supported = allowed
+    valid_values = ", ".join(member.value for member in supported)
+    if isinstance(distribution, Distribution) and distribution in supported:
+        return
+
+    remediation = ", ".join(f"indices.Distribution.{member.name}" for member in supported)
+    message = f"Unsupported distribution: {distribution}. Supported distributions: {valid_values}. Use {remediation}."
+    if distribution is Distribution.loglogistic:
+        message += (
+            " Log-logistic has no zero-placement treatment for a series with a physical "
+            "zero mass; use gamma or Pearson Type III here. SPEI is the supported "
+            "log-logistic surface."
         )
-        raise InvalidArgumentError(
-            message,
-            argument_name="distribution",
-            argument_value=str(distribution),
-            valid_values="gamma, pearson",
-        )
+    raise InvalidArgumentError(
+        message,
+        argument_name="distribution",
+        argument_value=str(distribution),
+        valid_values=valid_values,
+    )
 
 
 def _clip_fitted_values(values: np.ndarray, output_scale: compute.OutputScale) -> np.ndarray:
@@ -506,7 +539,8 @@ def _standardized_index_pipeline(
         values: 1-D array of non-negative values, or a time-major spatial block;
             see :func:`spi` for the accepted layouts.
         scale: Number of time steps accumulated before fitting.
-        distribution: Distribution to fit, gamma or Pearson Type III.
+        distribution: Distribution to fit, gamma or Pearson Type III; the
+            log-logistic (generalized logistic) fit is rejected on this surface.
         data_start_year: Initial year of the input values.
         calibration_year_initial: Initial year of the calibration period.
         calibration_year_final: Final year of the calibration period.
@@ -526,7 +560,7 @@ def _standardized_index_pipeline(
     # validate arguments
     _validate_periodicity(periodicity)
     _validate_scale(scale, periodicity)
-    _validate_distribution(distribution)
+    _validate_distribution(distribution, (Distribution.gamma, Distribution.pearson))
     compute.validate_output_scale(output_scale)
     compute._validate_zero_handling(zero_handling)
 
@@ -643,8 +677,9 @@ def standardized_index(
 
     A Pearson Type III fit falls back to gamma when the fit fails or loses too many of
     the input's valid values; input that was already missing does not count.
-    Log-logistic fitting is tracked by #106 and is not available yet, so no caller
-    should claim it.
+    Log-logistic (generalized logistic) fitting is available for :func:`spei` but is
+    rejected here: a non-negative series has a physical zero mass that the GLO path
+    does not yet place.
 
     This is a NumPy-array entry point only; xarray and Dask dispatch are not wired
     for it.
@@ -739,7 +774,8 @@ def fit_diagnostics(
         values: 1-D array of non-negative values, or a time-major spatial block;
             see :func:`spi` for the accepted layouts.
         scale: Number of time steps accumulated before fitting.
-        distribution: Distribution to fit, gamma or Pearson Type III.
+        distribution: Distribution to fit, gamma or Pearson Type III; the
+            log-logistic (generalized logistic) fit is rejected on this surface.
         data_start_year: Initial year of the input values.
         calibration_year_initial: Initial year of the calibration period.
         calibration_year_final: Final year of the calibration period.
@@ -756,7 +792,7 @@ def fit_diagnostics(
     # validate arguments
     _validate_periodicity(periodicity)
     _validate_scale(scale, periodicity)
-    _validate_distribution(distribution)
+    _validate_distribution(distribution, (Distribution.gamma, Distribution.pearson))
 
     log = _logger.bind(
         index_type="fit_diagnostics",
@@ -831,7 +867,9 @@ def spi(
     :param scale: number of time steps over which the values should be scaled
         before the index is computed
     :param distribution: distribution type to be used for the internal
-        fitting/transform computation
+        fitting/transform computation: gamma or Pearson Type III. The
+        log-logistic (generalized logistic) fit is rejected here, since it has no
+        zero-placement treatment for the precipitation series; use :func:`spei`.
     :param data_start_year: the initial year of the input precipitation dataset
     :param calibration_year_initial: initial year of the calibration period
     :param calibration_year_final: final year of the calibration period
@@ -935,7 +973,8 @@ def spei(
         scaled before computing the indicator (months for monthly data, days
         for daily data)
     :param distribution: distribution type to be used for the internal
-        fitting/transform computation
+        fitting/transform computation: gamma, Pearson Type III, or loglogistic
+        (the generalized logistic that SPEIbase standardizes with; see ADR-0016)
     :param periodicity: periodicity of the input time series; use
         ``compute.Periodicity.monthly`` for monthly data (12 values/year) or
         ``compute.Periodicity.daily`` for daily data (366 values/year).
@@ -946,10 +985,12 @@ def spei(
     :param fitting_params: optional dictionary of pre-computed distribution
         fitting parameters, if the distribution is gamma then this dict should
         contain two arrays, keyed as "alpha" and "beta", and optionally a third
-        keyed as "prob_zero", and if the distribution is Pearson then this dict
+        keyed as "prob_zero", if the distribution is Pearson then this dict
         should contain four arrays keyed as "prob_zero", "loc", "scale", and
-        "skew". A gamma set without "prob_zero" computes it over the calibration
-        period of the values given.
+        "skew", and if the distribution is loglogistic then this dict should
+        contain three arrays keyed as "loc", "scale", and "shape". A gamma set
+        without "prob_zero" computes it over the calibration period of the values
+        given.
         Older keys such as "alphas" and "probabilities_of_zero" are deprecated.
     :param spatial_time_major: read ``precips_mm``/``pet_mm`` as time-major blocks of
         independent time series, shaped (time, ``*cells``), and fit every cell in one pass.
@@ -967,7 +1008,7 @@ def spei(
     # validate arguments
     _validate_periodicity(periodicity)
     _validate_scale(scale, periodicity)
-    _validate_distribution(distribution)
+    _validate_distribution(distribution, (Distribution.gamma, Distribution.pearson, Distribution.loglogistic))
     compute.validate_output_scale(output_scale)
 
     # bind context and emit calculation_started event
