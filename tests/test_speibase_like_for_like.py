@@ -159,7 +159,8 @@ def test_monthly_days_leap_handling():
     """The PET mm/day -> mm/month conversion must follow the Gregorian leap rule."""
     assert _TOOLKIT._monthly_days(1903, 12)[1] == 28.0
     leap = _TOOLKIT._monthly_days(1904, 12)
-    assert leap[1] == 29.0 and leap[0] == 31.0  # February adjusts, January does not
+    assert leap[1] == 29.0  # February adjusts
+    assert leap[0] == 31.0  # January does not
     assert _TOOLKIT._monthly_days(1900, 12)[1] == 28.0  # century not divisible by 400
     assert _TOOLKIT._monthly_days(2000, 12)[1] == 29.0  # 400-year rule
     assert _TOOLKIT._monthly_days(1901, _N_MONTHS).sum() == 45291.0  # 1901-2024 day count
