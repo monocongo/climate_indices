@@ -50,8 +50,35 @@ def test_atomic_write_cleans_up_the_temporary_file_on_failure(monkeypatch, tmp_p
     with pytest.raises(RuntimeError, match="write failed"):
         _cli_output.write_netcdf_atomic(data, str(target))
 
-    assert not (tmp_path / "out.nc.tmp").exists()
     assert target.read_text() == "previous"
+    assert list(tmp_path.glob("out.nc.*.tmp")) == []
+
+
+def test_atomic_write_uses_a_unique_temporary_file(monkeypatch, tmp_path) -> None:
+    target = tmp_path / "out.nc"
+    seen: list[str] = []
+
+    def record(self, path, **kwargs):
+        seen.append(str(path))
+        Path(path).write_text("written")
+
+    monkeypatch.setattr(xr.DataArray, "to_netcdf", record)
+    data = _precip("mm")
+    _cli_output.write_netcdf_atomic(data, str(target))
+    _cli_output.write_netcdf_atomic(data, str(target))
+
+    assert len(set(seen)) == 2
+    assert all(path != str(target) for path in seen)
+
+
+def test_build_index_attrs_drops_input_cell_methods() -> None:
+    source = xr.DataArray(
+        np.array([1.0]),
+        dims=("time",),
+        attrs={"units": "mm", "cell_methods": "time: sum"},
+    )
+    attrs = _cli_output.build_index_attrs(source, "spi", index_name="SPI")
+    assert "cell_methods" not in attrs
 
 
 def test_build_index_attrs_drops_the_inputs_own_valid_range() -> None:

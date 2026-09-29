@@ -1120,6 +1120,12 @@ def build_output_attrs(
             # would misdescribe the computed result.
             output_attrs.pop("standard_name", None)
 
+    # cell_methods describes how the input was aggregated (e.g. a time sum),
+    # which no longer holds for a computed index; do not inherit it unless a
+    # caller supplied one explicitly through cf_metadata.
+    if "cell_methods" not in (cf_metadata or {}):
+        output_attrs.pop("cell_methods", None)
+
     # add calculation metadata (e.g., scale, distribution)
     if calculation_metadata is not None:
         for key, value in calculation_metadata.items():

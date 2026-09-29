@@ -13,6 +13,8 @@ so a failed computation cannot leave a hollow file where an earlier output was.
 
 from __future__ import annotations
 
+import os
+import tempfile
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -67,7 +69,13 @@ def write_netcdf_atomic(
     :param output_file: the NetCDF file to write
     :param engine: the NetCDF engine, or None to let xarray choose
     """
-    temporary_file = f"{output_file}.tmp"
+    output_path = Path(output_file)
+    # A unique temporary per write: two CLI processes writing the same target
+    # must not replace or delete each other's in-progress file.
+    file_descriptor, temporary_file = tempfile.mkstemp(
+        dir=output_path.parent, prefix=f"{output_path.name}.", suffix=".tmp"
+    )
+    os.close(file_descriptor)
     try:
         obj.to_netcdf(temporary_file, engine=engine)
         Path(temporary_file).replace(output_file)
