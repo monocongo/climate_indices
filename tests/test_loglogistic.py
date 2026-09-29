@@ -8,6 +8,8 @@ Cross-implementation fixtures against R SPEI are tracked by #1195.
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import pytest
 from scipy import stats
@@ -251,6 +253,21 @@ def test_loglogistic_parameters_mark_degenerate_steps_invalid() -> None:
     assert np.all(scales == 0.0)
     assert np.all(locs == 0.0)
     assert np.all(shapes == 0.0)
+
+
+def test_loglogistic_high_failure_rate_warning_names_loglogistic(caplog: pytest.LogCaptureFixture) -> None:
+    """The high-failure warning must not borrow the Pearson Type III wording."""
+    with caplog.at_level(logging.WARNING):
+        compute.loglogistic_parameters(
+            np.full((60, 12), 5.0),
+            _DATA_START_YEAR,
+            _CALIBRATION_START_YEAR,
+            _CALIBRATION_END_YEAR,
+            compute.Periodicity.monthly,
+        )
+    assert "high_fitting_failure_rate" in caplog.text
+    assert "loglogistic" in caplog.text
+    assert "Pearson" not in caplog.text
 
 
 def test_spei_loglogistic_degenerate_series_is_missing() -> None:

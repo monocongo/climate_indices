@@ -2244,10 +2244,11 @@ def loglogistic_parameters(
         total_fitting_count = time_steps_per_year
 
     if _default_fallback_strategy.should_warn_high_failure_rate(failed_fitting_count, total_fitting_count):
-        _default_fallback_strategy.log_high_failure_rate(
+        # not log_high_failure_rate: its text names Pearson Type III and a Gamma remedy
+        log.warning(
+            "high_fitting_failure_rate",
             failure_count=failed_fitting_count,
             total_count=total_fitting_count,
-            context="loglogistic_parameters computation",
         )
 
     log.info("distribution_fitting_completed", output_shape=str(locs.shape))
