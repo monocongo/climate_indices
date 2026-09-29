@@ -18,13 +18,8 @@ def _run(
     drym: float = 1.0,
     dryb: float = 1.0,
 ) -> _palmer_wells.WellsResult:
-    return _palmer_wells.calculate(
-        np.asarray(z, dtype=float),
-        wetm=wetm,
-        wetb=wetb,
-        drym=drym,
-        dryb=dryb,
-    )
+    factors = DurationFactors.from_fitted(wetm, wetb, drym, dryb)
+    return _palmer_wells.calculate(np.asarray(z, dtype=float), factors=factors)
 
 
 def test_wet_and_dry_spells_establish_at_half_unit_thresholds():

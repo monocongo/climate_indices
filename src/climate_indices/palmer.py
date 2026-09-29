@@ -8,9 +8,11 @@ from typing import Any, NamedTuple
 import numpy as np
 from structlog.stdlib import BoundLogger
 
-from climate_indices import _palmer_wells, compute, self_calibration, utils
+from climate_indices import _palmer_pdi, _palmer_wells, compute, self_calibration, utils
 from climate_indices._calibration_period import resolve_calibration_period
+from climate_indices._palmer_common import _py_max, _py_min
 from climate_indices._palmer_duration import DurationFactors
+from climate_indices._palmer_pdi import PdiDurationFactors
 from climate_indices.exceptions import ConvergenceError
 from climate_indices.logging_config import get_logger
 
@@ -98,104 +100,6 @@ class _PalmerPrepared:
     wetb: float
     drym: float
     dryb: float
-
-
-@dataclass
-class _PalmerRecursion:
-    """Mutable per-location recursion state and the arrays the recursion fills.
-
-    Constructed from a prepared struct by ``_initialize_recursion``. The
-    month-carry fields a statement assigns before reading default to zero, so
-    the struct exists ahead of the recursion that fills them.
-
-    Every field below carries the same trailing ``(n_cells,)`` (or
-    ``(n_months, n_cells)`` / ``(n_years, 12, n_cells)``) cell axis as
-    :class:`_PalmerPrepared`, including the "scalar" month-carry state
-    (``v``, ``pro``, ``x1``, ``x2``, ``x3``, ``iass``, ``k8``, ...): each is a
-    length-``n_cells`` array so a single location (``n_cells == 1``) and a
-    spatial block share one code path. ``year``/``month`` stay plain ints --
-    every cell in a block shares the same calendar step, so they are the
-    Python loop indices ``_calc_zindex`` advances, not per-cell state.
-    """
-
-    # recursion state: the K8 window (indexed by month-of-record, not the
-    # fixed K8_SIZE historical bound -- see _initialize_recursion), per-month
-    # candidates, and the current severity
-    indexj: np.ndarray
-    indexm: np.ndarray
-    sx: np.ndarray
-    sx1: np.ndarray
-    sx2: np.ndarray
-    sx3: np.ndarray
-    ppr: np.ndarray
-    px1: np.ndarray
-    px2: np.ndarray
-    px3: np.ndarray
-    x: np.ndarray
-
-    # arrays the recursion and the CAFEC stage write, and the results built from them
-    z: np.ndarray
-    pdsi: np.ndarray
-    phdi: np.ndarray
-    wplm: np.ndarray
-
-    # loop control, assigned by the _calc_zindex driver before the recursion runs
-    k8: np.ndarray
-    k8max: np.ndarray
-    year: int
-    month: int
-
-    # month-carry state a statement assigns before reading it; zero until then
-    iass: np.ndarray
-    v: np.ndarray
-    pro: np.ndarray
-    x1: np.ndarray
-    x2: np.ndarray
-    x3: np.ndarray
-    ze: np.ndarray
-    ud: np.ndarray
-    uw: np.ndarray
-    pv: np.ndarray
-
-
-def _select_duration_factors(prepared: _PalmerPrepared, state: _PalmerRecursion) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Select the wet or dry duration factors based on the sign of the
-    currently-established spell's severity (X3), per cell.
-
-    X3 equal to zero means that no wet or dry spell is established. It is
-    assigned the wet factors to preserve the recursion's historical
-    non-negative tie-break. With Palmer's identical wet and dry defaults the
-    choice is unobservable; a distinct duration-factor override makes it
-    observable, and the tie-break is kept deliberately.
-
-    :param prepared: the prepared Palmer inputs
-    :param state: the mutable recursion state
-    :return a tuple of (m, b) arrays - the duration-factor slope and intercept, per cell
-    :rtype: tuple[np.ndarray, np.ndarray]
-    """
-    m = np.where(state.x3 >= 0, prepared.wetm, prepared.drym)
-    b = np.where(state.x3 >= 0, prepared.wetb, prepared.dryb)
-    return m, b
-
-
-def _py_max(a: float | np.ndarray, b: float | np.ndarray) -> np.ndarray:
-    """``max(a, b)`` matching Python's builtin comparison order, not ``np.maximum``.
-
-    Python's ``max(a, b)`` returns ``b`` only if ``b > a``, so a NaN in ``b`` never
-    wins (its comparison is always False) while a NaN in ``a`` always loses unless
-    ``b`` also fails to compare greater -- an asymmetry ``np.maximum`` does not
-    have (it propagates NaN from either operand). The recursion below calls Python's
-    builtin at several call sites with data-dependent NaN possible in either
-    position, so replicating this exact rule is required for bit-for-bit
-    equivalence with the per-location path.
-    """
-    return np.where(np.asarray(b) > a, b, a)
-
-
-def _py_min(a: float | np.ndarray, b: float | np.ndarray) -> np.ndarray:
-    """``min(a, b)`` matching Python's builtin comparison order; see :func:`_py_max`."""
-    return np.where(np.asarray(b) < a, b, a)
 
 
 def _get_awc_bot(awc: float | np.ndarray) -> float | np.ndarray:
@@ -467,18 +371,17 @@ def _calc_scpdsi_k_factors(prepared: _PalmerPrepared) -> None:
     prepared.ak = k_prime
 
 
-def _calc_cafec_zindex(prepared: _PalmerPrepared, state: _PalmerRecursion, year: int, month: int) -> float:
+def _calc_cafec_zindex(prepared: _PalmerPrepared, z: np.ndarray, year: int, month: int) -> float:
     """
     Calculate one month's CAFEC (climatically appropriate for existing
     conditions) precipitation and raw Z-index, writing the Z-index into the
-    recursion state.
+    precomputed series.
 
-    The standard PDSI recursion (_calc_zindex) and the scPDSI recursion
-    (_calc_scpdsi_raw_zindex) compute these identically; only the recurrences
-    downstream of them differ.
+    The standard PDSI recursion and the scPDSI recursion consume the same Z
+    series; only the recurrences downstream of it differ.
 
     :param prepared: the prepared Palmer inputs
-    :param state: the mutable recursion state
+    :param z: the Z-index series to write into, shape (n_years, 12, n_cells)
     :param year: row index into the monthly arrays
     :param month: month index, 0 = January
     :return the CAFEC precipitation value, returned so tests can pin its exact
@@ -491,15 +394,17 @@ def _calc_cafec_zindex(prepared: _PalmerPrepared, state: _PalmerRecursion, year:
         + prepared.gamma[month] * prepared.spdat[year, month]
         - prepared.delta[month] * prepared.pldat[year, month]
     )
-    state.z[year, month] = prepared.ak[month] * (prepared.precips[year, month] - cafec)
+    z[year, month] = prepared.ak[month] * (prepared.precips[year, month] - cafec)
     return cafec
 
 
-def _calc_scpdsi_raw_zindex(prepared: _PalmerPrepared, state: _PalmerRecursion) -> None:
-    """Calculate raw Z-index values for the entire input record."""
+def _calc_raw_zindex(prepared: _PalmerPrepared) -> np.ndarray:
+    """Calculate the K-factor-weighted Z-index series for the entire record."""
+    z = np.full((prepared.n_years, 12, prepared.n_cells), np.nan)
     for year in range(prepared.n_years):
         for month in range(12):
-            _calc_cafec_zindex(prepared, state, year, month)
+            _calc_cafec_zindex(prepared, z, year, month)
+    return z
 
 
 def _calibration_values(prepared: _PalmerPrepared, values: np.ndarray) -> np.ndarray:
@@ -530,537 +435,6 @@ def _rescale_scpdsi_zindex(z_values: np.ndarray, dry_percentile: float, wet_perc
             algorithm="scPDSI percentile calibration",
         )
     return np.where(z_values < 0.0, z_values * dry_ratio, z_values * wet_ratio)
-
-
-def _case(prob: np.ndarray, x1: np.ndarray, x2: np.ndarray, x3: np.ndarray) -> np.ndarray:
-    """
-    Select the preliminary (or near-real time) PDSI, for every cell.
-
-    Selects the PDSI from the given x values
-    defined below and the probability (prob) of ending either a
-    drought or wet spell.
-
-    :param prob: the probability of ending either a drought
-                 or wet spell
-    :param x1: Index for incipient wet spells (always positive)
-    :param x2: Index for incipient dry spells (always negative)
-    :param x3: severity index for an established wet spell (positive)
-               or drought (negative)
-    :returns the selected pdsi (either preliminary or final)
-    :rtype: np.ndarray
-    """
-    # if x3 = 0 the index is near normal and either a dry or wet spell
-    # exists. Choose the largest absolute value of x1 or x2
-    near_normal = np.where(np.abs(x1) > np.abs(x2), x1, x2)
-
-    # A weather spell is established and palm = x3 is final
-    pro = prob / 100.0
-    interpolated = np.where(x3 <= 0, (1.0 - pro) * x3 + pro * x1, (1.0 - pro) * x3 + pro * x2)
-    established = np.where((prob <= 0) | (prob >= 100), x3, interpolated)
-
-    # x3 is assigned 0.0 exactly when no spell is established, so its exact
-    # zero -- not a tolerance -- is what selects the near-normal value.
-    return np.where(x3 == 0, near_normal, established)  # NOSONAR
-
-
-def _record_index_values(
-    state: _PalmerRecursion,
-    years: np.ndarray,
-    months: np.ndarray,
-    values: np.ndarray,
-    cell_ids: np.ndarray,
-) -> None:
-    """
-    Record PDSI, PHDI, and PMDI for a set of (cell, month) entries.
-
-    Used both when no spell is open (k8 == 0), where ``values`` is this
-    month's preliminary X value for each entry's cell, and when a spell
-    closes and ``_assign`` flushes the backtracked trail, where ``values``
-    is the assigned severity. Vectorized over an explicit list of
-    (year, month, cell) triples rather than a single (year, month) pair, so
-    the same function serves an immediate single-month record (years/months
-    constant, one entry per resolving cell) and a multi-month backtracked
-    flush (years/months vary per cell, one entry per (cell,
-    historical-month-in-its-spell) pair).
-
-    :param state: the mutable recursion state
-    :param years: row index into the monthly arrays, one per entry
-    :param months: month index (0 = January), one per entry
-    :param values: the PDSI value to record, one per entry
-    :param cell_ids: which cell each entry belongs to
-    """
-    if cell_ids.size == 0:
-        return
-    px3_here = state.px3[years, months, cell_ids]
-    state.pdsi[years, months, cell_ids] = values
-    # No established spell (px3 exactly 0.0) means PHDI has no severity of its
-    # own and falls back to the PDSI value recorded for this period.
-    state.phdi[years, months, cell_ids] = np.where(px3_here == 0, values, px3_here)  # NOSONAR
-    state.wplm[years, months, cell_ids] = _case(
-        state.ppr[years, months, cell_ids],
-        state.px1[years, months, cell_ids],
-        state.px2[years, months, cell_ids],
-        px3_here,
-    )
-
-
-def _backtrack_assigned_values(state: _PalmerRecursion, active: np.ndarray) -> None:
-    """
-    Backtrack through the x1/x2 trail arrays, for every active cell.
-
-    Stores the assigned x1 (or x2) in sx until it is zero, then switches to
-    the other until it is zero, etc. Each step's choice depends on the
-    previous step's, so this stays a Python loop over the K8 window -- bounded
-    by the largest k8 among the active cells this month, not by the record
-    length -- vectorized across cells within each step.
-
-    :param state: the mutable recursion state
-    :param active: which cells backtrack this call (iass in {1, 2}, k8 > 0)
-    """
-    if not np.any(active):
-        return
-    isave = np.where(active, state.iass, 0)
-    max_k8 = int(state.k8[active].max())
-    for i in range(max_k8 - 1, -1, -1):
-        step = active & (i < state.k8)
-        if not np.any(step):
-            continue
-        # sx1/sx2 hold 0.0 exactly where the trail has no candidate from that
-        # index; the exact test is what switches the backtracking between them.
-        use_sx1_branch = isave == 2
-        sx2_zero = state.sx2[i] == 0  # NOSONAR
-        branch_isave_a = np.where(sx2_zero, 1, 2)
-        branch_sx_a = np.where(sx2_zero, state.sx1[i], state.sx2[i])
-        sx1_zero = state.sx1[i] == 0  # NOSONAR
-        branch_isave_b = np.where(sx1_zero, 2, 1)
-        branch_sx_b = np.where(sx1_zero, state.sx2[i], state.sx1[i])
-        new_isave = np.where(use_sx1_branch, branch_isave_a, branch_isave_b)
-        new_sx = np.where(use_sx1_branch, branch_sx_a, branch_sx_b)
-        isave = np.where(step, new_isave, isave)
-        state.sx[i] = np.where(step, new_sx, state.sx[i])
-
-
-def _flush_spells(state: _PalmerRecursion, flush: np.ndarray, cells: np.ndarray) -> None:
-    """
-    Output the PDSI/PHDI/PMDI entries for the cells whose spell closes this month.
-
-    :param state: the mutable recursion state
-    :param flush: which cells close an open spell this month (k8 > 0)
-    :param cells: every cell index, parallel to ``flush``
-    """
-    use_all_x3 = flush & (state.iass == 3)
-    backtrack = flush & ~use_all_x3
-
-    # use all x3 values
-    if np.any(use_all_x3):
-        max_k8_x3 = int(state.k8[use_all_x3].max())
-        for idx in range(max_k8_x3):
-            step = use_all_x3 & (idx < state.k8)
-            if np.any(step):
-                state.sx[idx] = np.where(step, state.sx3[idx], state.sx[idx])
-    if np.any(backtrack):
-        _backtrack_assigned_values(state, backtrack)
-
-    # proper assignments to array sx have been made, output the mess
-    max_k8_flush = int(state.k8[flush].max())
-    for idx in range(max_k8_flush + 1):
-        step = flush & (idx <= state.k8)
-        if not np.any(step):
-            continue
-        step_cells = cells[step]
-        _record_index_values(
-            state,
-            state.indexj[idx][step],
-            state.indexm[idx][step],
-            state.sx[idx][step],
-            step_cells,
-        )
-
-
-def _assign(state: _PalmerRecursion, active: np.ndarray) -> None:
-    """
-    Assign x values, for every active cell.
-
-    :param state: the mutable recursion state
-    :param active: which cells this call resolves this month (the caller has
-        already set ``state.iass`` to 1, 2, or 3 for these cells)
-    """
-    if not np.any(active):
-        return
-    y, m = state.year, state.month
-    cells = np.arange(state.k8.shape[0])
-    state.sx[state.k8[active], cells[active]] = state.x[y, m][active]
-
-    # k8 is an integer count of months pending a spell flush, not a computed
-    # float, so this is an integer test rather than a float comparison.
-    direct = active & (state.k8 == 0)
-    flush = active & (state.k8 > 0)
-
-    if np.any(direct):
-        direct_cells = cells[direct]
-        n = direct_cells.size
-        _record_index_values(
-            state,
-            np.full(n, y),
-            np.full(n, m),
-            state.x[y, m][direct],
-            direct_cells,
-        )
-
-    if np.any(flush):
-        _flush_spells(state, flush, cells)
-
-    state.k8 = np.where(active, 0, state.k8)
-    # k8max is deliberately not reset here: it is the high-water mark
-    # _finish_up reads once the whole recursion ends, not per-spell state.
-
-
-def _statement_220(state: _PalmerRecursion, active: np.ndarray) -> None:
-    """
-    Save this month's calculated variables (v,pro,x1,x2,x3) for
-    use with next month's data, for every active cell.
-
-    Translated from statement 220 in NCEI's pdi.f
-
-    :param state: the mutable recursion state
-    :param active: which cells this call updates
-    """
-    if not np.any(active):
-        return
-    y, m = state.year, state.month
-    state.v = np.where(active, state.pv, state.v)
-    state.pro = np.where(active, state.ppr[y, m], state.pro)
-    state.x1 = np.where(active, state.px1[y, m], state.x1)
-    state.x2 = np.where(active, state.px2[y, m], state.x2)
-    state.x3 = np.where(active, state.px3[y, m], state.x3)
-
-
-def _statement_210(prepared: _PalmerPrepared, state: _PalmerRecursion, active: np.ndarray) -> None:
-    """
-    prob(end) returns to 0. A possible abatement has fizzled out,
-    so we accept all stored values of x3, for every active cell.
-
-    Translated from statement 210 in NCEI's pdi.f. Always resolves through
-    ``_assign`` with iass=3: ``_assign``'s own k8==0 branch already performs
-    the direct record the scalar recursion inlined here, so there is no
-    separate direct-record path to keep in sync.
-
-    :param prepared: the prepared Palmer inputs
-    :param state: the mutable recursion state
-    :param active: which cells this call updates
-    """
-    if not np.any(active):
-        return
-    y, m = state.year, state.month
-    state.pv = np.where(active, 0.0, state.pv)
-    state.px1[y, m] = np.where(active, 0.0, state.px1[y, m])
-    state.px2[y, m] = np.where(active, 0.0, state.px2[y, m])
-    state.ppr[y, m] = np.where(active, 0.0, state.ppr[y, m])
-    m_factor, b_factor = _select_duration_factors(prepared, state)
-    px3_new = DurationFactors.weighting_fraction(m_factor, b_factor) * state.x3 + state.z[y, m] / (m_factor + b_factor)
-    state.px3[y, m] = np.where(active, px3_new, state.px3[y, m])
-    state.x[y, m] = np.where(active, state.px3[y, m], state.x[y, m])
-
-    state.iass = np.where(active, 3, state.iass)
-    _assign(state, active)
-    _statement_220(state, active)
-
-
-def _statement_200(prepared: _PalmerPrepared, state: _PalmerRecursion, active: np.ndarray) -> None:
-    """
-    Continue x1 and x2 calculations
-    if either indicates the start of a new wet or drought,
-    and if the last wet or drought has ended, use x1 or x2
-    as the new x3, for every active cell.
-
-    Translated from statement 200 in NCEI's pdi.f. The four early-return
-    branches and the deferral fallthrough are mutually exclusive outcomes,
-    computed for every active cell and combined by mask, since a Python early
-    return cannot resolve one cell's branch independently of its neighbour's.
-    Each branch's write is masked to that branch alone, so a later branch's
-    condition -- which, like the original's sequential ``if``, reads state a
-    prior branch may have written -- sees an unmodified value for any cell
-    the prior branch did not touch.
-
-    :param prepared: the prepared Palmer inputs
-    :param state: the mutable recursion state
-    :param active: which cells this call updates
-    """
-    if not np.any(active):
-        return
-    y, m = state.year, state.month
-    wetm, wetb = prepared.wetm, prepared.wetb
-    px1_computed = DurationFactors.weighting_fraction(wetm, wetb) * state.x1 + state.z[y, m] / (wetm + wetb)
-    px1_new = np.where(px1_computed > 0, px1_computed, 0.0)
-    state.px1[y, m] = np.where(active, px1_new, state.px1[y, m])
-
-    # px3 exactly 0.0 means no spell is established, and px1/px2 exactly 0.0
-    # mean no incipient wet/dry index exists to promote to x3; the recursions
-    # above clamp to those zeros exactly rather than interpolating to them.
-    # if no existing wet spell or drought, x1 becomes the new x3
-    branch1 = active & (state.px1[y, m] >= 1) & (state.px3[y, m] == 0)  # NOSONAR
-    state.px3[y, m] = np.where(branch1, state.px1[y, m], state.px3[y, m])
-    state.x[y, m] = np.where(branch1, state.px1[y, m], state.x[y, m])
-    state.px1[y, m] = np.where(branch1, 0.0, state.px1[y, m])
-    state.iass = np.where(branch1, 1, state.iass)
-
-    drym, dryb = prepared.drym, prepared.dryb
-    px2_computed = DurationFactors.weighting_fraction(drym, dryb) * state.x2 + state.z[y, m] / (drym + dryb)
-    px2_new = np.where(px2_computed < 0, px2_computed, 0.0)
-    state.px2[y, m] = np.where(active & ~branch1, px2_new, state.px2[y, m])
-
-    # if no existing wet spell or drought, x2 becomes the new x3
-    branch2 = active & ~branch1 & (state.px2[y, m] <= -1) & (state.px3[y, m] == 0)  # NOSONAR
-    state.px3[y, m] = np.where(branch2, state.px2[y, m], state.px3[y, m])
-    state.x[y, m] = np.where(branch2, state.px2[y, m], state.x[y, m])
-    state.px2[y, m] = np.where(branch2, 0.0, state.px2[y, m])
-    state.iass = np.where(branch2, 2, state.iass)
-
-    # No established drought (wet spell), but x3 = 0, so either (nonzero) x1
-    # or x2 must be used as x3
-    resolved = branch1 | branch2
-    px3_still_zero = active & ~resolved & (state.px3[y, m] == 0)  # NOSONAR
-    branch3 = px3_still_zero & (state.px1[y, m] == 0)  # NOSONAR
-    state.x[y, m] = np.where(branch3, state.px2[y, m], state.x[y, m])
-    state.iass = np.where(branch3, 2, state.iass)
-
-    branch4 = px3_still_zero & ~branch3 & (state.px2[y, m] == 0)  # NOSONAR
-    state.x[y, m] = np.where(branch4, state.px1[y, m], state.x[y, m])
-    state.iass = np.where(branch4, 1, state.iass)
-
-    assign_mask = branch1 | branch2 | branch3 | branch4
-    _assign(state, assign_mask)
-
-    # at this point there is no determined value to assign to x for the
-    # remaining cells: all the values of x1, x2, and x3 are saved. At a later
-    # time x3 will reach a value where it is the value of x (pdsi). At that
-    # time, _assign backtracks through choosing the appropriate x1 or x2 to
-    # be that month's x.
-    defer = active & ~assign_mask
-    if np.any(defer):
-        cells = np.arange(state.k8.shape[0])
-        defer_cells = cells[defer]
-        rows = state.k8[defer]
-        state.sx1[rows, defer_cells] = state.px1[y, m][defer]
-        state.sx2[rows, defer_cells] = state.px2[y, m][defer]
-        state.sx3[rows, defer_cells] = state.px3[y, m][defer]
-        state.x[y, m] = np.where(defer, state.px3[y, m], state.x[y, m])
-        state.k8 = np.where(defer, state.k8 + 1, state.k8)
-        state.k8max = np.where(defer, state.k8, state.k8max)
-
-    _statement_220(state, active)
-
-
-def _statement_190(prepared: _PalmerPrepared, state: _PalmerRecursion, active: np.ndarray) -> None:
-    """
-    drought or wet continues, calculate prob(end) (variable ze), for every
-    active cell.
-
-    Translated from statement 190 in NCEI's pdi.f
-
-    :param prepared: the prepared Palmer inputs
-    :param state: the mutable recursion state
-    :param active: which cells this call updates
-    """
-    if not np.any(active):
-        return
-    y, m = state.year, state.month
-    # pro is 100.0 exactly where ppr was clamped to that endpoint; the exact
-    # test selects the certain-end form of q.
-    q = np.where(state.pro == 100, state.ze, state.ze + state.v)  # NOSONAR
-    with np.errstate(divide="ignore", invalid="ignore"):
-        ppr_new = (state.pv / q) * 100
-
-    m_factor, b_factor = _select_duration_factors(prepared, state)
-    px3_candidate = DurationFactors.weighting_fraction(m_factor, b_factor) * state.x3 + state.z[y, m] / (
-        m_factor + b_factor
-    )
-    over = ppr_new >= 100
-    ppr_final = np.where(over, 100.0, ppr_new)
-    px3_final = np.where(over, 0.0, px3_candidate)
-    state.ppr[y, m] = np.where(active, ppr_final, state.ppr[y, m])
-    state.px3[y, m] = np.where(active, px3_final, state.px3[y, m])
-
-    _statement_200(prepared, state, active)
-
-
-def _statement_180(prepared: _PalmerPrepared, state: _PalmerRecursion, active: np.ndarray) -> None:
-    """
-    drought abatement is possible, for every active cell.
-
-    Translated from statement 180 in NCEI's pdi.f
-
-    :param prepared: the prepared Palmer inputs
-    :param state: the mutable recursion state
-    :param active: which cells this call updates
-    """
-    if not np.any(active):
-        return
-    y, m = state.year, state.month
-    uw_new = state.z[y, m] + 0.15
-    pv_new = uw_new + _py_max(state.v, 0.0)
-    state.uw = np.where(active, uw_new, state.uw)
-    state.pv = np.where(active, pv_new, state.pv)
-
-    # During a drought, PV <= 0 implies prob(end) has returned to 0
-    fizzled = active & (state.pv <= 0)
-    _statement_210(prepared, state, fizzled)
-
-    continuing = active & ~fizzled
-    m_factor, b_factor = prepared.drym, prepared.dryb
-    ze_new = -b_factor * state.x3 - 0.5 * (m_factor + b_factor)
-    state.ze = np.where(continuing, ze_new, state.ze)
-    _statement_190(prepared, state, continuing)
-
-
-def _statement_170(prepared: _PalmerPrepared, state: _PalmerRecursion, active: np.ndarray) -> None:
-    """
-    Wet spell abatement is possible, for every active cell.
-
-    Translated from statement 170 in NCEI's pdi.f
-
-    :param prepared: the prepared Palmer inputs
-    :param state: the mutable recursion state
-    :param active: which cells this call updates
-    """
-    if not np.any(active):
-        return
-    y, m = state.year, state.month
-    ud_new = state.z[y, m] - 0.15
-    pv_new = ud_new + _py_min(state.v, 0.0)
-    state.ud = np.where(active, ud_new, state.ud)
-    state.pv = np.where(active, pv_new, state.pv)
-
-    # During a wet spell, PV >= 0 implies prob(end) has returned to 0
-    fizzled = active & (state.pv >= 0)
-    _statement_210(prepared, state, fizzled)
-
-    continuing = active & ~fizzled
-    m_factor, b_factor = prepared.wetm, prepared.wetb
-    ze_new = -b_factor * state.x3 + 0.5 * (m_factor + b_factor)
-    state.ze = np.where(continuing, ze_new, state.ze)
-    _statement_190(prepared, state, continuing)
-
-
-def _advance_month(prepared: _PalmerPrepared, state: _PalmerRecursion, year: int, month: int) -> None:
-    """
-    Advance the Z-index recursion by one month, for every cell at once.
-
-    Rereads monthly parameters for calculation of the 'K' monthly weighting
-    factors used in z-index calculation, then dispatches every cell to the
-    established-spell logic (no abatement underway) or the
-    abatement-in-progress logic. Every cell shares this same calendar step
-    (``year``/``month``); the six masks below partition every cell into
-    exactly one of the four statement calls, mirroring the scalar
-    recursion's ``_step_established_spell`` dispatch (including its NaN
-    fallthrough, reachable only when ``state.x3`` is NaN) and its abatement
-    branch.
-
-    :param prepared: the prepared Palmer inputs
-    :param state: the mutable recursion state
-    :param year: row index into the monthly arrays
-    :param month: month index, 0 = January
-    """
-    state.year = year
-    state.month = month
-    cells = np.arange(state.k8.shape[0])
-    state.indexj[state.k8, cells] = year
-    state.indexm[state.k8, cells] = month
-    state.ze = np.zeros_like(state.ze)
-    state.ud = np.zeros_like(state.ud)
-    state.uw = np.zeros_like(state.uw)
-    _calc_cafec_zindex(prepared, state, year, month)
-
-    z = state.z[year, month]
-    # pro takes its endpoints exactly -- clamped to 100.0, reset to 0.0 -- and
-    # either endpoint means a spell is established; values between them are
-    # abatement.
-    established = (state.pro == 100) | (state.pro == 0)  # NOSONAR
-    abating = ~established
-
-    # End of drought or wet
-    spell_ended = established & (state.x3 >= -0.5) & (state.x3 <= 0.5)
-    # We are in a wet spell
-    wet = established & (state.x3 > 0.5)
-    # We are in a drought
-    dry = established & (state.x3 < -0.5)
-    # The wet/drought spell intensifies
-    wet_intensify = wet & (z >= 0.15)
-    dry_intensify = dry & (z <= -0.15)
-    # The wet/drought spell starts to abate (and may end)
-    wet_abate = wet & ~wet_intensify
-    dry_abate = dry & ~dry_intensify
-    # a NaN x3 satisfies none of spell_ended/wet/dry (every comparison
-    # against NaN is False), matching the scalar dispatch's own fallthrough
-    nan_x3_fallback = established & ~spell_ended & ~wet & ~dry
-
-    # Abatement is underway; a NaN x3 also takes the wet path here, matching
-    # the "no abatement" branch's NaN fallthrough above
-    abating_wet_or_nan = abating & ((state.x3 > 0) | np.isnan(state.x3))
-    abating_dry = abating & ~abating_wet_or_nan
-
-    # check for new wet or drought start
-    y, m = year, month
-    state.pv = np.where(spell_ended, 0.0, state.pv)
-    state.ppr[y, m] = np.where(spell_ended, 0.0, state.ppr[y, m])
-    state.px3[y, m] = np.where(spell_ended, 0.0, state.px3[y, m])
-    _statement_200(prepared, state, spell_ended)
-    _statement_210(prepared, state, wet_intensify | dry_intensify)
-    _statement_170(prepared, state, wet_abate | nan_x3_fallback | abating_wet_or_nan)
-    _statement_180(prepared, state, dry_abate | abating_dry)
-
-
-def _calc_zindex(prepared: _PalmerPrepared, state: _PalmerRecursion) -> None:
-    """
-    Calculate Z Index
-
-    The only remaining Python loop is over the shared calendar record (every
-    cell advances the same month together); no loop runs over the cell axis.
-
-    :param prepared: the prepared Palmer inputs
-    :param state: the mutable recursion state
-    """
-    for year in range(prepared.n_years):
-        for month in range(12):
-            _advance_month(prepared, state, year, month)
-
-
-def _finish_up(state: _PalmerRecursion) -> None:
-    """
-    Flush any spell still open when the record ends, for every cell.
-
-    Whatever px3/x value was computed at deferral time is written out
-    directly -- there is no later month to trigger ``_assign``'s backtrack
-    selection between x1 and x2 -- using the final month's probability state
-    for every leftover entry, per cell.
-
-    :param state: the mutable recursion state
-    """
-    if not np.any(state.k8max > 0):
-        return
-    cells = np.arange(state.k8.shape[0])
-    i_end = state.pdsi.shape[0] - 1
-    max_k8max = int(state.k8max.max())
-    final_wplm = _case(
-        state.ppr[i_end, 11],
-        state.px1[i_end, 11],
-        state.px2[i_end, 11],
-        state.px3[i_end, 11],
-    )
-
-    for k8 in range(max_k8max):
-        step = k8 < state.k8max
-        if not np.any(step):
-            continue
-        step_cells = cells[step]
-        i = state.indexj[k8][step]
-        j = state.indexm[k8][step]
-        x_val = state.x[i, j, step_cells]
-        px3_val = state.px3[i, j, step_cells]
-        state.pdsi[i, j, step_cells] = x_val
-        # the same no-established-spell fallback as _record_index_values
-        state.phdi[i, j, step_cells] = np.where(px3_val == 0, x_val, px3_val)  # NOSONAR
-        state.wplm[i, j, step_cells] = final_wplm[step_cells]
 
 
 def _reshape_palmer_input(values: np.ndarray, spatial_time_major: bool) -> tuple[np.ndarray, tuple[int, ...]]:
@@ -1193,9 +567,9 @@ def _initialize_prepared(
         data_start_year, n_years, calibration_year_initial, calibration_year_final, policy="reject"
     )
 
-    # duration factors default to Palmer's fixed national values and are read by
-    # the standard PDSI recursion through _select_duration_factors. scPDSI does not
-    # override these fields: it passes its per-location fitted factors straight to
+    # duration factors default to Palmer's fixed national values; the standard PDSI
+    # recursion reads them through _palmer_pdi.calculate. scPDSI does not override
+    # these fields: it passes its per-location fitted factors straight to
     # _palmer_wells.calculate. ``calibrate`` is settled by _validate_fitting_params,
     # and the CAFEC coefficients, moisture-demand ratio, and Z-index factors are
     # filled by the stage that owns them before anything reads them.
@@ -1247,56 +621,6 @@ def _initialize_prepared(
     return prepared
 
 
-def _initialize_recursion(prepared: _PalmerPrepared) -> _PalmerRecursion:
-    """
-    Construct the zeroed recursion state for one calculation over the prepared record.
-
-    The K8 window (``indexj``/``indexm``/``sx``/``sx1``/``sx2``/``sx3``) is
-    preallocated to the full month count rather than the historical
-    ``K8_SIZE`` bound: a spell cannot outlast the record, this removes the
-    scalar recursion's runtime ``np.append`` growth, and unlike that growth
-    it is safe to size once for every cell rather than per cell.
-
-    :param prepared: the prepared Palmer inputs
-    :return the initialized recursion state
-    :rtype: _PalmerRecursion
-    """
-    n_years = prepared.n_years
-    n_cells = prepared.n_cells
-    n_months = n_years * 12
-    return _PalmerRecursion(
-        indexj=np.zeros((n_months, n_cells), dtype=int),
-        indexm=np.zeros((n_months, n_cells), dtype=int),
-        sx=np.zeros((n_months, n_cells)),
-        sx1=np.zeros((n_months, n_cells)),
-        sx2=np.zeros((n_months, n_cells)),
-        sx3=np.zeros((n_months, n_cells)),
-        ppr=np.zeros((n_years, 12, n_cells)),
-        px1=np.zeros((n_years, 12, n_cells)),
-        px2=np.zeros((n_years, 12, n_cells)),
-        px3=np.zeros((n_years, 12, n_cells)),
-        x=np.zeros((n_years, 12, n_cells)),
-        z=np.full((n_years, 12, n_cells), np.nan),
-        pdsi=np.full((n_years, 12, n_cells), np.nan),
-        phdi=np.full((n_years, 12, n_cells), np.nan),
-        wplm=np.full((n_years, 12, n_cells), np.nan),
-        k8=np.zeros((n_cells,), dtype=int),
-        k8max=np.zeros((n_cells,), dtype=int),
-        year=0,
-        month=0,
-        iass=np.zeros((n_cells,), dtype=int),
-        v=np.zeros((n_cells,)),
-        pro=np.zeros((n_cells,)),
-        x1=np.zeros((n_cells,)),
-        x2=np.zeros((n_cells,)),
-        x3=np.zeros((n_cells,)),
-        ze=np.zeros((n_cells,)),
-        ud=np.zeros((n_cells,)),
-        uw=np.zeros((n_cells,)),
-        pv=np.zeros((n_cells,)),
-    )
-
-
 def _bind_palmer_log(
     index_type: str,
     precips: np.ndarray,
@@ -1320,7 +644,7 @@ def _bind_palmer_log(
 _DURATION_FACTOR_PARAM_NAMES = ("wetm", "wetb", "drym", "dryb")
 
 
-def _duration_factor_override(fitting_params: dict[str, Any] | None) -> DurationFactors | None:
+def _duration_factor_override(fitting_params: dict[str, Any] | None) -> PdiDurationFactors | None:
     """
     Read the optional duration-factor override from the caller's fitting parameters.
 
@@ -1335,8 +659,8 @@ def _duration_factor_override(fitting_params: dict[str, Any] | None) -> Duration
     :return: the validated override, or None when no duration factors were supplied
     :raises ValueError: if only some of the four keys were supplied, or a supplied
         value is not a finite scalar
-    :raises ConvergenceError: if the override does not yield contracting recurrence
-        coefficients, per :meth:`DurationFactors.from_fitted`
+    :raises ConvergenceError: if the override does not yield contracting ``pdi.f``
+        recurrence coefficients, per :meth:`PdiDurationFactors.from_fitted`
     """
     if fitting_params is None:
         return None
@@ -1365,10 +689,10 @@ def _duration_factor_override(fitting_params: dict[str, Any] | None) -> Duration
             raise ValueError(f"duration-factor override {name} must be a finite scalar")
         values.append(float(value))
     try:
-        return DurationFactors.from_fitted(*values)
+        return PdiDurationFactors.from_fitted(*values)
     except ConvergenceError as error:
-        # the shared validation names the Wells lineage and the scPDSI
-        # calibration; attribute the failure to this pdsi-only override
+        # the pattern-matching validation names the pdi.f lineage; attribute the
+        # failure to this pdsi-only override
         raise ConvergenceError(
             f"invalid duration-factor override for the standard PDSI recursion: {error}",
             algorithm="PDSI duration-factor override",
@@ -1443,14 +767,14 @@ def _palmer_cafec_params(prepared: _PalmerPrepared) -> dict[str, Any]:
 def _calculate_pdsi_prepared(prepared: _PalmerPrepared, original_length: int) -> _PalmerResult:
     """Complete standard PDSI after the shared Palmer preparation stages."""
     _calc_kfactors(prepared)
-    state = _initialize_recursion(prepared)
-    _calc_zindex(prepared, state)
-    _finish_up(state)
+    z = _calc_raw_zindex(prepared)
+    factors = PdiDurationFactors.from_fitted(prepared.wetm, prepared.wetb, prepared.drym, prepared.dryb)
+    recursion = _palmer_pdi.calculate(z, factors)
 
-    pdsi_result = _trim_time_major(state.pdsi, original_length)
-    phdi = _trim_time_major(state.phdi, original_length)
-    wplm = _trim_time_major(state.wplm, original_length)
-    z = _trim_time_major(state.z, original_length)
+    pdsi_result = _trim_time_major(recursion.pdsi, original_length)
+    phdi = _trim_time_major(recursion.phdi, original_length)
+    wplm = _trim_time_major(recursion.pmdi, original_length)
+    z = _trim_time_major(z, original_length)
     if prepared.cell_shape:
         pdsi_result = pdsi_result.reshape(original_length, *prepared.cell_shape)
         phdi = phdi.reshape(original_length, *prepared.cell_shape)
@@ -1469,21 +793,14 @@ def _calculate_pdsi_prepared(prepared: _PalmerPrepared, original_length: int) ->
 def _calculate_scpdsi_prepared(prepared: _PalmerPrepared, original_length: int) -> _PalmerResult:
     """Complete self-calibrating PDSI after shared Palmer preparation."""
     _calc_scpdsi_k_factors(prepared)
-    state = _initialize_recursion(prepared)
-    _calc_scpdsi_raw_zindex(prepared, state)
-
-    z_values = state.z.reshape(-1)
+    z = _calc_raw_zindex(prepared)
+    z_values = z.reshape(-1)
     calibration_z = _calibration_values(prepared, z_values)
     wetm, wetb = self_calibration.duration_factors(calibration_z, self_calibration.WET_SIGN)
     drym, dryb = self_calibration.duration_factors(calibration_z, self_calibration.DRY_SIGN)
+    factors = DurationFactors.from_fitted(wetm, wetb, drym, dryb)
 
-    recursion = _palmer_wells.calculate(
-        z_values,
-        wetm=wetm,
-        wetb=wetb,
-        drym=drym,
-        dryb=dryb,
-    )
+    recursion = _palmer_wells.calculate(z_values, factors=factors)
     # a fixed three rescaling passes, not an iteration to a fixed point; reported
     # in the result parameters so callers and tests can pin the count
     rescale_passes = 3
@@ -1492,13 +809,7 @@ def _calculate_scpdsi_prepared(prepared: _PalmerPrepared, original_length: int) 
         dry_percentile = self_calibration.nan_safe_percentile(calibration_pdsi, 0.02)
         wet_percentile = self_calibration.nan_safe_percentile(calibration_pdsi, 0.98)
         z_values = _rescale_scpdsi_zindex(z_values, dry_percentile, wet_percentile)
-        recursion = _palmer_wells.calculate(
-            z_values,
-            wetm=wetm,
-            wetb=wetb,
-            drym=drym,
-            dryb=dryb,
-        )
+        recursion = _palmer_wells.calculate(z_values, factors=factors)
 
     params: dict[str, Any] = _palmer_cafec_params(prepared)
     params.update(wetm=wetm, wetb=wetb, drym=drym, dryb=dryb, rescale_passes=rescale_passes)
@@ -1538,8 +849,9 @@ def _mask_fully_missing_cells(precips: np.ndarray, result: _PalmerResult) -> _Pa
     shortcut above and returns NaN outputs directly. Inside a block that is
     NOT entirely missing, that shortcut never fires, so a fully-missing cell
     instead runs the recursion like any other: Python's ``max(0, ...)``/
-    ``min(0.0, ...)`` calls in ``_statement_200`` (replicated exactly by
-    :func:`_py_max`/:func:`_py_min` for bit-for-bit equivalence) silently
+    ``min(0.0, ...)`` calls in ``_palmer_pdi._statement_170``/``_statement_180``
+    (replicated exactly by :func:`_py_max`/:func:`_py_min` for bit-for-bit
+    equivalence) silently
     turn a NaN Z-index into 0 rather than propagating it, so an unmasked
     fully-missing cell would read back as a misleadingly ordinary near-zero
     PDSI instead of missing data -- the wrong answer for a real grid's
@@ -1703,7 +1015,8 @@ def pdsi(
             block, each coefficient is still (12,), shared across every cell.
             Supplying all four of ``wetm``, ``wetb``, ``drym``, and ``dryb``
             overrides Palmer's fixed national duration factors with those
-            scalars (validated like scPDSI's calibrated factors); supplying
+            scalars (validated against the ``pdi.f`` recurrence terms, narrower
+            than scPDSI's factor validation); supplying
             only some of the four raises :class:`ValueError`. An override
             produces PDSI with caller-supplied duration factors, not Palmer's
             (1965) standard index and not scPDSI: the CAFEC

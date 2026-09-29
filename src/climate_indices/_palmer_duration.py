@@ -4,13 +4,13 @@ A duration-factor pair ``(m, b)`` fixes how much previously accumulated spell
 severity each Palmer recursion carries forward, and which share of the
 climatically expected moisture it expects back. The two lineages express that
 fraction differently: the NCEI ``pdi.f`` lineage followed by
-:mod:`climate_indices.palmer` divides it out (``c = b / (m + b)``), while the
+:mod:`climate_indices._palmer_pdi` divides it out (``c = b / (m + b)``), while the
 Wells lineage followed by :mod:`climate_indices._palmer_wells` subtracts the
 complement (``c = 1 - m / (m + b)``). The forms agree in exact arithmetic but
 may differ bitwise (by more than one ulp when the factors differ wildly in
 scale), and both recursions branch on exact comparisons against spell severity,
-so each lineage keeps its own expression here rather than perturbing the
-other's state machine.
+so each lineage keeps its own expression in its own recursion module rather than
+perturbing the other's state machine.
 
 Palmer's (1965) fixed national duration factors come from the published ``p``
 and ``q`` constants; self-calibrating PDSI replaces them with per-location
@@ -126,22 +126,3 @@ class DurationFactors:
             dryc=dryc,
             dry_spell_c=dry_spell_c,
         )
-
-    @staticmethod
-    def weighting_fraction(m: float | np.ndarray, b: float | np.ndarray) -> float | np.ndarray:
-        """The duration-factor weighting fraction ``c = b / (m + b)`` as the pdi.f lineage computes it.
-
-        ``m``/``b`` are scalars for the standard per-location recursion and
-        length-``n_cells`` arrays for :mod:`climate_indices.palmer`'s
-        vectorized ``pdsi()`` recursion; the zero check covers every cell.
-
-        :param m: duration-factor slope
-        :param b: duration-factor intercept
-        :return the weighting fraction c = b / (m + b)
-        :rtype: float | np.ndarray
-        :raises ValueError: if the duration factors sum to zero for any element
-        """
-        denominator = m + b
-        if bool(np.any(denominator == 0)):
-            raise ValueError("duration-factor slope and intercept must not sum to zero")
-        return b / denominator

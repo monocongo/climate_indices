@@ -294,6 +294,16 @@ change states what a user sees, how to detect it, and what to change in
   a subsequent monthly run; a per-day rate is rejected for a monthly depth rather
   than used as a monthly total. The `_OUTPUT_SCALE_ATTRS` and `_OUTPUT_SCALE_LABELS`
   maps and the hand-written long-name construction are removed (#1223).
+- **`pdsi()` duration-factor override validation**: an override was validated with the
+  Wells-lineage coefficients even though the standard PDSI recursion computes only
+  `c = b / (m + b)`, so a factor set the recursion could use was rejected when the
+  unrelated Wells cross coefficient `dryc = 1 - drym / (drym + wetb)` was not a
+  contraction -- for example `{"wetm": 1.0, "wetb": -0.4, "drym": 0.3, "dryb": 1.0}`.
+  The override is now validated against the coefficients the standard recursion
+  actually uses. The standard PDSI spell recursion also takes a precomputed Z-index
+  series and its own `PdiDurationFactors`, like the scPDSI Wells recursion, instead
+  of recomputing the Z-index mid-recursion. Default-factor PDSI and scPDSI results are
+  unchanged (#1226).
 
 ## [2.4.0] - 2026-04-05
 

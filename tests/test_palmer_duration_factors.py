@@ -3,16 +3,14 @@ import types
 import numpy as np
 import pytest
 
-from climate_indices import palmer
+from climate_indices import _palmer_pdi, palmer
 from climate_indices._palmer_duration import DurationFactors
 from climate_indices.exceptions import ConvergenceError
 
 
-def _blank_state() -> tuple[palmer._PalmerPrepared, palmer._PalmerRecursion]:
-    """A minimal, structurally-valid prepared struct and recursion state for
-    exercising the recursion functions directly, without needing realistic
-    precip/PET content."""
-    prepared = palmer._initialize_prepared(
+def _prepared() -> palmer._PalmerPrepared:
+    """A minimal, structurally-valid prepared struct for exercising the CAFEC stage."""
+    return palmer._initialize_prepared(
         precips=np.zeros(12),
         pet=np.zeros(12),
         awc=1.0,
@@ -20,16 +18,15 @@ def _blank_state() -> tuple[palmer._PalmerPrepared, palmer._PalmerRecursion]:
         calibration_year_initial=2000,
         calibration_year_final=2000,
     )
-    return prepared, palmer._initialize_recursion(prepared)
 
 
-# every recursion state field carries an internal n_cells == 1 cell axis (see
-# ADR-0011); this is the "every cell" mask for a single-cell _blank_state()
-_ACTIVE = np.array([True])
+def _state() -> _palmer_pdi._State:
+    """A recursion state for one year of a single location, every Z value missing."""
+    return _palmer_pdi._initialize_state(np.full((1, 12, 1), np.nan))
 
 
 def test_initialize_prepared_sets_default_duration_factors():
-    prepared, _ = _blank_state()
+    prepared = _prepared()
 
     # standard Palmer PDSI has no wet/dry distinction in its duration factors
     assert prepared.wetm == pytest.approx(prepared.drym)
@@ -46,7 +43,7 @@ def test_initialize_prepared_sets_default_duration_factors():
 
 def test_duration_factor_c_rejects_zero_factor_sum():
     with pytest.raises(ValueError, match="must not sum to zero"):
-        DurationFactors.weighting_fraction(1.0, -1.0)
+        _palmer_pdi._weighting_fraction(1.0, -1.0)
 
 
 def test_weighting_fraction_keeps_the_division_form():
@@ -57,154 +54,164 @@ def test_weighting_fraction_keeps_the_division_form():
     """
     m, b = 0.1, 0.2
 
-    assert DurationFactors.weighting_fraction(m, b) == b / (m + b)
-    assert DurationFactors.weighting_fraction(m, b) != 1.0 - m / (m + b)
+    assert _palmer_pdi._weighting_fraction(m, b) == b / (m + b)
+    assert _palmer_pdi._weighting_fraction(m, b) != 1.0 - m / (m + b)
 
 
-def test_select_duration_factors_uses_wet_factors_when_x3_is_zero():
-    prepared, state = _blank_state()
-    prepared.wetm, prepared.wetb = 1.0, 2.0
-    prepared.drym, prepared.dryb = 3.0, 4.0
-    state.x3 = 0.0
+def test_pdi_validation_accepts_factors_the_wells_cross_coefficient_would_reject():
+    """The pdi.f recurrence never forms the Wells cross coefficient.
 
-    assert palmer._select_duration_factors(prepared, state) == (1.0, 2.0)
+    ``c = b / (m + b)`` is -0.667 (wet) and 0.769 (dry), both contractions, so the
+    pdi.f recursion can use these factors.  The Wells lineage additionally derives
+    ``dryc = 1 - drym / (drym + wetb) = 4.0`` and rejects the same set.
+    """
+    factors = _palmer_pdi.PdiDurationFactors.from_fitted(1.0, -0.4, 0.3, 1.0)
 
+    assert factors.wetm == 1.0
+    with pytest.raises(ConvergenceError):
+        DurationFactors.from_fitted(1.0, -0.4, 0.3, 1.0)
 
-def test_statement_180_ze_uses_custom_dry_duration_factors():
-    prepared, state = _blank_state()
-    prepared.drym, prepared.dryb = 1.0, 2.0  # non-default, to prove they're used
+    # the same factors the Wells lineage rejects must drive the public pdsi()
+    # override end to end, not just pass validation
+    rng = np.random.default_rng(42)
+    precips = rng.uniform(0.0, 6.0, size=12 * 4)
+    pet = rng.uniform(0.0, 4.0, size=12 * 4)
+    override = {"wetm": 1.0, "wetb": -0.4, "drym": 0.3, "dryb": 1.0}
 
-    state.year, state.month = 0, 0
-    state.x3 = -2.0  # an established drought
-    state.v = 0.0
-    # z chosen so that pv = (z + 0.15) + max(v, 0) > 0, falling into the
-    # branch that actually computes ze (rather than short-circuiting to
-    # _statement_210 for a fizzled abatement)
-    state.z[0, 0] = 0.5
+    overridden_pdsi, *_ = palmer.pdsi(precips, pet, 5.0, 2000, 2000, 2003, fitting_params=override)
 
-    # Calculate expected value before calling _statement_180 (which may modify x3)
-    m, b = prepared.drym, prepared.dryb
-    x3_original = state.x3
-    expected_ze = -b * x3_original - 0.5 * (m + b)
-
-    palmer._statement_180(prepared, state, _ACTIVE)
-
-    assert state.ze == pytest.approx(expected_ze)
+    assert np.isfinite(overridden_pdsi).any()
 
 
-def test_statement_170_ze_uses_custom_wet_duration_factors():
-    prepared, state = _blank_state()
-    prepared.wetm, prepared.wetb = 3.0, 5.0  # non-default, to prove they're used
-
-    state.year, state.month = 0, 0
-    state.x3 = 2.0  # an established wet spell
-    state.v = 0.0
-    # z chosen so that pv = (z - 0.15) + min(v, 0) < 0, falling into the
-    # branch that actually computes ze
-    state.z[0, 0] = -0.5
-
-    # Calculate expected value before calling _statement_170 (which may modify x3)
-    m, b = prepared.wetm, prepared.wetb
-    x3_original = state.x3
-    expected_ze = -b * x3_original + 0.5 * (m + b)
-
-    palmer._statement_170(prepared, state, _ACTIVE)
-
-    assert state.ze == pytest.approx(expected_ze)
+def test_pdi_validation_rejects_a_non_contracting_weighting_fraction():
+    with pytest.raises(ConvergenceError, match="wetc"):
+        _palmer_pdi.PdiDurationFactors.from_fitted(1.0, -0.5, 1.0, 1.0)
 
 
-def test_statement_210_px3_selects_dry_factors_when_x3_negative():
-    prepared, state = _blank_state()
-    prepared.drym, prepared.dryb = 1.0, 4.0
-    prepared.wetm, prepared.wetb = 99.0, 99.0  # deliberately different, must NOT be used
-
-    state.year, state.month = 0, 0
-    state.x3 = -1.5  # established drought -> dry factors expected
-    state.z[0, 0] = 2.0
-
-    # Calculate expected value before calling _statement_210, which
-    # unconditionally calls _statement_220 and overwrites state.x3
-    # with the freshly computed px3.
-    m, b = prepared.drym, prepared.dryb
-    c = DurationFactors.weighting_fraction(m, b)
-    expected_px3 = c * state.x3 + state.z[0, 0] / (m + b)
-
-    palmer._statement_210(prepared, state, _ACTIVE)
-
-    assert state.px3[0, 0] == pytest.approx(expected_px3)
+def test_pdi_validation_rejects_a_zero_denominator():
+    with pytest.raises(ConvergenceError, match="standard PDSI recursion"):
+        _palmer_pdi.PdiDurationFactors.from_fitted(1.0, -1.0, 1.0, 1.0)
 
 
-def test_statement_190_px3_selects_wet_factors_when_x3_positive():
-    prepared, state = _blank_state()
-    prepared.wetm, prepared.wetb = 2.0, 6.0
-    prepared.drym, prepared.dryb = 99.0, 99.0  # deliberately different, must NOT be used
+def test_select_duration_factors_follows_the_sign_of_x3():
+    """No established spell (x3 == 0) takes the wet pair; the sign of x3 selects after that."""
+    factors = _palmer_pdi.PdiDurationFactors.from_fitted(1.0, 2.0, 3.0, 4.0)
+    state = _state()
 
-    state.year, state.month = 0, 0
-    state.x3 = 2.0  # established wet spell -> wet factors expected
-    state.pro = 0.0  # not 100, so q = ze + v
-    state.ze = 10.0
-    state.v = 0.0
-    state.pv = 1.0  # ppr = (pv / q) * 100 = 10 < 100, falls into the px3 branch
-    state.z[0, 0] = 4.0
+    state.x3 = np.array([0.0])
+    m, b = _palmer_pdi._select_duration_factors(factors, state)
+    np.testing.assert_array_equal(m, [1.0])
+    np.testing.assert_array_equal(b, [2.0])
 
-    # Calculate expected value before calling _statement_190, which
-    # unconditionally calls _statement_200 -> (on this code path)
-    # _statement_220, overwriting state.x3 with the freshly computed px3.
-    m, b = prepared.wetm, prepared.wetb
-    c = DurationFactors.weighting_fraction(m, b)
-    expected_px3 = c * state.x3 + state.z[0, 0] / (m + b)
+    state.x3 = np.array([-1.0])
+    m, b = _palmer_pdi._select_duration_factors(factors, state)
+    np.testing.assert_array_equal(m, [3.0])
+    np.testing.assert_array_equal(b, [4.0])
 
-    palmer._statement_190(prepared, state, _ACTIVE)
-
-    assert state.px3[0, 0] == pytest.approx(expected_px3)
+    state.x3 = np.array([1.0])
+    m, b = _palmer_pdi._select_duration_factors(factors, state)
+    np.testing.assert_array_equal(m, [1.0])
+    np.testing.assert_array_equal(b, [2.0])
 
 
-def test_statement_200_px1_always_uses_wet_factors_px2_always_dry():
-    prepared, state = _blank_state()
-    prepared.wetm, prepared.wetb = 1.0, 3.0
-    prepared.drym, prepared.dryb = 2.0, 2.0
+def test_pdi_factors_are_not_interchangeable_between_wet_and_dry_spells():
+    """Swapping the wet and dry pairs changes the recursion, through its interface."""
+    z = np.array([2.0, 3.0, -1.0, -4.0, 0.5, -0.75, -0.25, 1.5, -2.0, 0.0, 2.5, -3.0]).reshape(1, 12, 1)
 
-    state.year, state.month = 0, 0
-    state.x1, state.x2 = 1.0, -1.0
-    state.z[0, 0] = 0.4
-    # a nonzero px3 prevents the early-return "new spell begins" branches,
-    # so both px1 and px2 get computed and asserted on
-    state.px3[0, 0] = 5.0
-    # this code path falls through to the final bookkeeping section, which
-    # unconditionally calls _statement_220 (needs pv/ppr present)
-    state.pv = 0.0
-    state.ppr[0, 0] = 0.0
+    wet_heavy = _palmer_pdi.calculate(z, _palmer_pdi.PdiDurationFactors.from_fitted(3.0, 1.0, 1.0, 1.0))
+    dry_heavy = _palmer_pdi.calculate(z, _palmer_pdi.PdiDurationFactors.from_fitted(1.0, 1.0, 3.0, 1.0))
 
-    # Calculate expected values before calling _statement_200, which (on
-    # this code path) unconditionally calls _statement_220, overwriting
-    # state.x1 and state.x2 with the freshly computed px1/px2.
-    x1_original, x2_original = state.x1, state.x2
-    wetm, wetb = prepared.wetm, prepared.wetb
-    drym, dryb = prepared.drym, prepared.dryb
-    z = state.z[0, 0]
+    assert not np.allclose(wet_heavy.pdsi, dry_heavy.pdsi, equal_nan=True)
 
-    c_wet = DurationFactors.weighting_fraction(wetm, wetb)
-    expected_px1 = max(0.0, c_wet * x1_original + z / (wetm + wetb))
 
-    c_dry = DurationFactors.weighting_fraction(drym, dryb)
-    expected_px2 = min(0.0, c_dry * x2_original + z / (drym + dryb))
+def test_pdi_recursion_pins_a_z_sequence_through_its_interface():
+    """A Z sequence driven through the recursion interface locks its arithmetic.
 
-    palmer._statement_200(prepared, state, _ACTIVE)
+    The values were captured from the lineage-preserving refactor, so this is a
+    regression pin, not an independent correctness check. ``test_palmer``
+    corroborates the same path against the committed fixtures at ``atol=5e-5``,
+    and only runs under ``-m validation``.
+    """
+    z = np.array([2.0, 3.0, -1.0, -4.0, 0.5, -0.75, -0.25, 1.5, -2.0, 0.0, 2.5, -3.0]).reshape(1, 12, 1)
 
-    assert state.px1[0, 0] == pytest.approx(expected_px1)
-    assert state.px2[0, 0] == pytest.approx(expected_px2)
+    result = _palmer_pdi.calculate(z, _palmer_pdi.PdiDurationFactors.from_fitted(1.0, 2.0, 3.0, 4.0))
+
+    expected = [
+        0.666666666667,
+        1.444444444444,
+        -0.142857142857,
+        -0.65306122449,
+        -0.301749271137,
+        -0.279571012078,
+        -0.195469149759,
+        0.5,
+        -0.285714285714,
+        -0.163265306122,
+        0.833333333333,
+        -0.428571428571,
+    ]
+    phdi_expected = [
+        0.666666666667,
+        1.444444444444,
+        0.62962962963,
+        -0.65306122449,
+        -0.301749271137,
+        -0.279571012078,
+        -0.195469149759,
+        0.5,
+        -0.285714285714,
+        -0.163265306122,
+        0.833333333333,
+        -0.428571428571,
+    ]
+    pmdi_expected = [
+        0.666666666667,
+        1.444444444444,
+        -0.009989417989,
+        -0.65306122449,
+        -0.301749271137,
+        -0.279571012078,
+        -0.195469149759,
+        0.5,
+        -0.285714285714,
+        -0.163265306122,
+        0.833333333333,
+        -0.428571428571,
+    ]
+
+    np.testing.assert_allclose(result.pdsi.reshape(-1), expected, rtol=0, atol=1e-12)
+    np.testing.assert_allclose(result.phdi.reshape(-1), phdi_expected, rtol=0, atol=1e-12)
+    np.testing.assert_allclose(result.pmdi.reshape(-1), pmdi_expected, rtol=0, atol=1e-12)
+
+
+def test_pdi_recursion_rejects_infinite_z_values():
+    """The pdi.f entry point rejects infinite Z like its Wells sibling."""
+    z = np.zeros((1, 12, 1))
+    z[0, 0, 0] = np.inf
+    factors = _palmer_pdi.PdiDurationFactors.from_fitted(1.0, 1.0, 1.0, 1.0)
+
+    with pytest.raises(ConvergenceError, match="non-finite"):
+        _palmer_pdi.calculate(z, factors)
+
+
+def test_pdi_recursion_rejects_a_non_twelve_month_axis():
+    """The documented (years, 12, n_cells) contract covers the month axis, not just ndim."""
+    factors = _palmer_pdi.PdiDurationFactors.from_fitted(1.0, 1.0, 1.0, 1.0)
+
+    with pytest.raises(ValueError, match="shape"):
+        _palmer_pdi.calculate(np.zeros((1, 11, 1)), factors)
+    with pytest.raises(ValueError, match="shape"):
+        _palmer_pdi.calculate(np.zeros((1, 13, 1)), factors)
 
 
 def test_calc_cafec_zindex_writes_the_zindex():
-    """The shared CAFEC/Z-index step serves both the PDSI and scPDSI recursions.
+    """The shared CAFEC/Z-index step feeds both the PDSI and scPDSI recursions.
 
     The CAFEC value and the Z-index are recomputed with the pre-refactor
     named-intermediate grouping and compared exactly: the recursion branches on
     exact comparisons downstream, so a 1-ulp reassociation is a behavior change.
-    The constants are chosen so that common reassociations (swapping the CAFEC
-    terms, distributing ``ak`` over the departure) change the last bit.
     """
-    prepared, state = _blank_state()
+    prepared = _prepared()
     prepared.alpha = np.full((12,), 3.24)
     prepared.beta = np.full((12,), 1.52)
     prepared.gamma = np.full((12,), 6.51)
@@ -215,8 +222,9 @@ def test_calc_cafec_zindex_writes_the_zindex():
     prepared.spdat[0, 0] = 0.59
     prepared.pldat[0, 0] = 5.07
     prepared.precips[0, 0] = 0.3
+    z = np.full((1, 12, 1), np.nan)
 
-    cafec = palmer._calc_cafec_zindex(prepared, state, 0, 0)
+    cafec = palmer._calc_cafec_zindex(prepared, z, 0, 0)
 
     cet = prepared.alpha[0] * prepared.pet[0, 0]
     cr = prepared.beta[0] * prepared.prdat[0, 0]
@@ -224,7 +232,7 @@ def test_calc_cafec_zindex_writes_the_zindex():
     cl = prepared.delta[0] * prepared.pldat[0, 0]
     expected_cafec = cet + cr + cro - cl
     assert cafec == expected_cafec
-    assert state.z[0, 0] == prepared.ak[0] * (prepared.precips[0, 0] - expected_cafec)
+    assert z[0, 0] == prepared.ak[0] * (prepared.precips[0, 0] - expected_cafec)
 
 
 def test_custom_duration_factors_change_pdsi_output():
@@ -413,24 +421,24 @@ def test_case_selects_near_normal_when_no_spell_is_established():
     x1 = np.array([1.5])
     x2 = np.array([-1.0])
 
-    assert palmer._case(prob, x1, x2, np.array([0.0]))[0] == 1.5
+    assert _palmer_pdi._case(prob, x1, x2, np.array([0.0]))[0] == 1.5
     # an established spell (x3 != 0) reports the interpolated severity instead
-    assert palmer._case(prob, x1, x2, np.array([-2.0]))[0] == -0.25
+    assert _palmer_pdi._case(prob, x1, x2, np.array([-2.0]))[0] == -0.25
     # a sub-epsilon x3 is still an established spell under the exact test; a
     # tolerance would classify it as zero and return the near-normal 1.5
-    assert palmer._case(prob, x1, x2, np.array([-np.finfo(float).tiny]))[0] == 0.75
+    assert _palmer_pdi._case(prob, x1, x2, np.array([-np.finfo(float).tiny]))[0] == 0.75
 
 
 def test_record_index_values_falls_back_to_pdsi_when_no_spell_is_established():
     """PHDI has no severity of its own without an established spell (px3
     exactly 0.0), so it records the PDSI value; with a spell it keeps px3."""
-    _, state = _blank_state()
+    state = _state()
     state.px3[0, 0, 0] = 0.0
     state.px3[0, 1, 0] = -2.5
     state.px3[0, 2, 0] = -np.finfo(float).tiny
     values = np.array([3.0, 4.0, 5.0])
 
-    palmer._record_index_values(state, np.zeros(3, dtype=int), np.arange(3), values, np.array([0]))
+    _palmer_pdi._record_index_values(state, np.zeros(3, dtype=int), np.arange(3), values, np.array([0]))
 
     assert state.pdsi[0, 0, 0] == 3.0
     assert state.phdi[0, 0, 0] == 3.0  # no spell: the recorded PDSI value
@@ -441,7 +449,7 @@ def test_record_index_values_falls_back_to_pdsi_when_no_spell_is_established():
 def test_finish_up_falls_back_to_pdsi_when_no_spell_is_established():
     """_finish_up repeats the no-established-spell fallback for the months left
     pending when the record ends, under the same exact-zero test."""
-    _, state = _blank_state()
+    state = _state()
     state.k8max = np.array([2])
     state.indexj[0, 0], state.indexm[0, 0] = 0, 0
     state.indexj[1, 0], state.indexm[1, 0] = 0, 1
@@ -450,7 +458,7 @@ def test_finish_up_falls_back_to_pdsi_when_no_spell_is_established():
     state.x[0, 1, 0] = 4.0
     state.px3[0, 1, 0] = -np.finfo(float).tiny
 
-    palmer._finish_up(state)
+    _palmer_pdi._finish_up(state)
 
     assert state.pdsi[0, 0, 0] == 3.0
     assert state.phdi[0, 0, 0] == 3.0  # no spell: the PDSI value
