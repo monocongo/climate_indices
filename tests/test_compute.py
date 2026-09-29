@@ -772,6 +772,40 @@ def test_prepare_scaled_rejects_unsupported_periodicity_when_unreshaped():
     assert error.value.periodicity_value == "monthly"
 
 
+def test_is_all_missing_detects_nan_and_masked():
+    """The single all-missing owner covers NaN arrays, masked arrays, and partial data."""
+    assert compute.is_all_missing(np.full(3, np.nan))
+    assert compute.is_all_missing(np.ma.masked_all(3))
+    assert not compute.is_all_missing(np.array([1.0, np.nan]))
+    assert not compute.is_all_missing(np.array([1.0, 2.0]))
+
+
+def test_prepare_input_shape_flattens_and_rejects_an_ambiguous_block():
+    """The public shape helper keeps the legacy flatten and the ADR-0009 guard."""
+    assert compute.prepare_input_shape(np.zeros((2, 12)), False).shape == (24,)
+    with pytest.raises(ValueError, match="ambiguous"):
+        compute.prepare_input_shape(np.zeros((24, 12, 2)), False)
+    assert compute.prepare_input_shape(np.zeros((24, 12, 2)), True).shape == (24, 12, 2)
+
+
+def test_reshape_and_unfold_time_major_round_trip():
+    """The fold/unfold pair restores the time-major layout and trims calendar padding."""
+    monthly = compute.Periodicity.monthly
+
+    # 30 time steps pad to 36 on fold, then trim back to the original 30 on unfold
+    block = np.arange(30 * 3 * 2, dtype=float).reshape(30, 3, 2)
+    folded = compute.reshape_time_major(block, monthly)
+    assert folded.shape == (3, 12, 3, 2)
+    unfolded = compute.unfold_time_major(folded, block.shape)
+    np.testing.assert_array_equal(unfolded, block)
+
+    # a flattened 1-D series is restored to its original length
+    series = np.arange(30, dtype=float)
+    folded_series = compute.reshape_time_major(series, monthly)
+    assert folded_series.shape == (3, 12)
+    assert compute.unfold_time_major(folded_series, series.shape).shape == (30,)
+
+
 def test_gamma_parameters_all_missing_rejects_invalid_periodicity():
     """
     The all-missing early return must not skip periodicity validation, which is

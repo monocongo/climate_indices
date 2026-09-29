@@ -472,6 +472,7 @@ def _standardized_index_pipeline(
     allowed_distributions: tuple[Distribution, ...] = (Distribution.gamma, Distribution.pearson),
     clip_negatives: bool = True,
     fallback_to_gamma: bool = True,
+    preprocess: Callable[[np.ndarray], np.ndarray] | None = None,
 ) -> np.ndarray:
     """Scale, fit, and transform a series in the pipeline shared by the index wrappers.
 
@@ -500,6 +501,10 @@ def _standardized_index_pipeline(
             adds its +1000 offset before this pipeline.
         fallback_to_gamma: Whether a failed Pearson Type III fit falls back to
             gamma; :func:`spei` passes False so the failure propagates.
+        preprocess: Optional index-specific transform applied to ``values`` inside
+            the traced section before preparation. :func:`spei` uses it to form the
+            P - PET + offset water balance, so an error it raises is logged with
+            this pipeline's full failure context.
 
     Returns:
         Standardized values in the input's size and layout.
@@ -529,13 +534,22 @@ def _standardized_index_pipeline(
         # stays bounded per spatial operation
         fitting_params = compute._normalize_fitting_params(fitting_params)
 
+        # an index with a derived input (SPEI's water balance) forms it here, inside
+        # the traced section, so validation and the failure log stay in one place
+        if preprocess is not None:
+            values = preprocess(values)
+
         # prepare_scaled owns flatten/fold, the ambiguous-shape guard, the
         # insufficient-data check, negative clipping, scaling, and the all-missing
-        # short-circuit. Shape errors raise the plain ValueError from prepare_scaled
-        # -- spi()'s dimension errors are pinned to ValueError by
+        # return. Shape errors raise the plain ValueError from prepare_scaled --
+        # spi()'s dimension errors are pinned to ValueError by
         # tests/test_backward_compat.py::TestErrorHierarchyDocumented, unlike
         # eddi()/percentage_of_normal() which use DataShapeError.
         original_shape = values.shape
+        # all-missing is decided on the input, before folding, so a partially missing
+        # series whose scaled windows happen to be all NaN still reaches the fit and
+        # the unfold instead of returning a folded block
+        input_all_missing = compute.is_all_missing(values)
         values = compute.prepare_scaled(
             values,
             scale,
@@ -547,7 +561,7 @@ def _standardized_index_pipeline(
         # all-missing input comes back un-reshaped -- flattened for a 1-D/2-D series,
         # its input layout for a time-major block -- so there is nothing to compute
         # and the caller's layout is already what was returned
-        if compute.is_all_missing(values):
+        if input_all_missing:
             _log_calculation_completed(log, t0, values.shape, memory_metrics)
             return values
 
@@ -738,12 +752,13 @@ def fit_diagnostics(
     try:
         fitting_params = compute._normalize_fitting_params(fitting_params)
 
-        # prepare_scaled owns the ambiguous-shape rejection, so no separate guard here
+        # prepare_scaled owns the ambiguous-shape rejection, so no separate guard here;
+        # an all-missing time-major block comes back unfolded, keeping the input shape,
+        # so fold it before fitting so the diagnostic arrays carry (time_steps, *cells)
+        # rather than the time axis
+        input_all_missing = values.ndim > 2 and compute.is_all_missing(values)
         scaled_values = compute.prepare_scaled(values, scale, periodicity, spatial_time_major=spatial_time_major)
-
-        # an all-missing time-major block comes back unfolded, keeping the input shape;
-        # fold it so the diagnostic arrays carry (time_steps, *cells), not the time axis
-        if values.ndim > 2 and scaled_values.shape == values.shape:
+        if input_all_missing:
             scaled_values = compute.reshape_time_major(scaled_values, periodicity)
 
         diagnostics = compute.fit_diagnostics(
@@ -865,6 +880,43 @@ def spi(
     )
 
 
+def _spei_water_balance(precips_mm: np.ndarray, pet_mm: np.ndarray) -> np.ndarray:
+    """Form the P - PET + 1000 water balance that SPEI standardizes.
+
+    A single PET time series is one series for every cell, so it is given singleton
+    cell axes to broadcast across a spatial block. The two arrays must broadcast
+    together: a spatial block needs matching time lengths and cell axes, while the
+    series path keeps its size-based check. Negative precipitation is clipped to
+    zero before the subtraction, and the offset keeps the result positive.
+    """
+    if precips_mm.ndim > 2 and pet_mm.ndim == 1 and pet_mm.size == precips_mm.shape[0]:
+        pet_mm = pet_mm.reshape((pet_mm.shape[0],) + (1,) * (precips_mm.ndim - 1))
+
+    if precips_mm.ndim > 2 or pet_mm.ndim > 2:
+        try:
+            np.broadcast_shapes(precips_mm.shape, pet_mm.shape)
+            compatible = True
+        except ValueError:
+            compatible = False
+    else:
+        compatible = precips_mm.size == pet_mm.size
+    if not compatible:
+        message = "Incompatible precipitation and PET arrays"
+        _logger.error(message)
+        raise ValueError(message)
+
+    # clip any negative precipitation to zero; np.any(...) is NaN-safe, unlike np.amin
+    if bool(np.any(precips_mm < 0.0)):
+        _logger.warning("Input contains negative values -- all negatives clipped to zero")
+        precips_mm = np.clip(precips_mm, a_min=0.0, a_max=None)
+
+    if precips_mm.ndim > 2:
+        spatial_balance: np.ndarray = (precips_mm - pet_mm) + 1000.0
+        return spatial_balance
+    series_balance: np.ndarray = (precips_mm.flatten() - pet_mm.flatten()) + 1000.0
+    return series_balance
+
+
 def spei(
     precips_mm: np.ndarray,
     pet_mm: np.ndarray,
@@ -935,65 +987,15 @@ def spei(
     :raises ValueError: if the precipitation and PET arrays are incompatible, or a
         Pearson ``fitting_params`` set is partial or does not carry the period (and cell) axes
     :return: an array of SPEI values
-    :rtype: numpy.ndarray of type float, of the same size and shape as the input
-        PET and precipitation arrays
+    :rtype: numpy.ndarray of type float; 1-D for a 1-D or 2-D input (the input is
+        flattened), or the input's ``(time, *cells)`` shape for a declared time-major
+        block
     """
-    try:
-        # a single PET time series is one series for every cell: give it singleton
-        # cell axes so it broadcasts across a spatial block rather than looking
-        # mismatched
-        if precips_mm.ndim > 2 and pet_mm.ndim == 1 and pet_mm.size == precips_mm.shape[0]:
-            pet_mm = pet_mm.reshape((pet_mm.shape[0],) + (1,) * (precips_mm.ndim - 1))
-
-        # validate that the two input arrays are compatible before any all-missing
-        # short-circuit: a mismatched PET must raise even when precipitation is all
-        # NaN. A spatial block needs matching time lengths and cell axes that broadcast
-        # together, while the series path keeps its size-based check.
-        if precips_mm.ndim > 2 or pet_mm.ndim > 2:
-            try:
-                np.broadcast_shapes(precips_mm.shape, pet_mm.shape)
-                compatible = True
-            except ValueError:
-                compatible = False
-        else:
-            compatible = precips_mm.size == pet_mm.size
-        if not compatible:
-            message = "Incompatible precipitation and PET arrays"
-            _logger.error(message)
-            raise ValueError(message)
-
-        # clip any negative precipitation to zero before forming the water balance.
-        # np.any(...) is NaN-safe, unlike np.amin.
-        if bool(np.any(precips_mm < 0.0)):
-            _logger.warning("Input contains negative values -- all negatives clipped to zero")
-            precips_mm = np.clip(precips_mm, a_min=0.0, a_max=None)
-
-        # subtract the PET from precipitation, adding an offset to ensure that all
-        # values are positive
-        if precips_mm.ndim > 2:
-            p_minus_pet = (precips_mm - pet_mm) + 1000.0
-        else:
-            p_minus_pet = (precips_mm.flatten() - pet_mm.flatten()) + 1000.0
-    except Exception as exc:
-        # the shared pipeline owns the calculation lifecycle logs; this pre-pipeline
-        # water-balance validation keeps its own failure context so the event contract
-        # for an incompatible PET holds before the pipeline is ever entered
-        log_calculation_failure(
-            _logger.bind(
-                index_type="spei",
-                scale=scale,
-                input_shape=precips_mm.shape,
-                input_elements=precips_mm.size,
-            ),
-            exc,
-            calibration_period=f"{calibration_year_initial}-{calibration_year_final}",
-        )
-        raise
-
     # the shared pipeline owns validation, logging, the ambiguous-shape guard,
-    # scaling, fitting, clipping and the unfold back to the input layout
+    # scaling, fitting, clipping and the unfold back to the input layout; the SPEI-only
+    # water balance is formed inside its traced section
     return _standardized_index_pipeline(
-        p_minus_pet,
+        precips_mm,
         scale,
         distribution,
         data_start_year,
@@ -1003,6 +1005,7 @@ def spei(
         fitting_params,
         index_type="spei",
         fallback_context="SPEI computation",
+        preprocess=lambda precipitation: _spei_water_balance(precipitation, pet_mm),
         spatial_time_major=spatial_time_major,
         allowed_distributions=(Distribution.gamma, Distribution.pearson, Distribution.loglogistic),
         output_scale=output_scale,

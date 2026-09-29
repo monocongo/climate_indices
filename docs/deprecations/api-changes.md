@@ -19,6 +19,21 @@ outputs retain the existing `calibration_start_year`/`calibration_end_year`
 attributes alongside the canonical names; their history entry still records the
 timescale, not calibration years. No numerical behavior changes.
 
+## Breaking changes in 3.1.0
+
+### `compute.scale_values` removed (3.1.0)
+
+**What a user sees:** `from climate_indices.compute import scale_values` or
+`compute.scale_values(...)` now raises `ImportError`/`AttributeError`.
+
+**How to detect it:** grep for `scale_values` in code that imports from
+`climate_indices.compute`.
+
+**What to change:** call
+`compute.prepare_scaled(values, scale, periodicity)` instead. `scale_values` was
+a thin pass-through over `prepare_scaled`, which owns the shared preparation
+pipeline.
+
 ## Breaking changes in 3.0.0
 
 3.0.0 ships five breaking changes that users hit without a deprecation period.

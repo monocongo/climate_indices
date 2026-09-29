@@ -335,11 +335,15 @@ def test_spei_ambiguous_3d_all_missing_input_raises():
         )
 
 
-def test_spei_incompatible_pet_raises_even_when_precipitation_all_missing():
+@pytest.mark.parametrize(
+    ("precips", "pet"),
+    [
+        pytest.param(np.full((24, 2, 2), np.nan), np.zeros((24, 3)), id="spatial"),
+        pytest.param(np.full(240, np.nan), np.zeros(120), id="series"),
+    ],
+)
+def test_spei_incompatible_pet_raises_even_when_precipitation_all_missing(precips, pet):
     """The PET compatibility check runs before the all-missing shortcut."""
-    precips = np.full((24, 2, 2), np.nan)
-    pet = np.zeros((24, 3))
-
     with pytest.raises(ValueError, match="Incompatible precipitation and PET arrays"):
         indices.spei(
             precips,
@@ -370,6 +374,37 @@ def test_spei_all_missing_pet_keeps_the_cell_axes():
     )
 
     assert result.shape == precips.shape
+    assert np.all(np.isnan(result))
+
+
+@pytest.mark.parametrize(
+    ("shape", "spatial_time_major"),
+    [pytest.param((24,), False, id="series"), pytest.param((24, 3, 2), True, id="spatial-block")],
+)
+def test_partially_missing_all_nan_sums_unfold_to_the_input_layout(shape, spatial_time_major):
+    """A partially missing series whose scaled windows are all NaN still unfolds.
+
+    The all-missing short-circuit must be decided on the input, not on the scaled
+    block: a block whose every sliding window contains one missing step is all NaN
+    after scaling but is not an all-missing input, so it must return the caller's
+    layout rather than the folded (years, periods, *cells) array.
+    """
+    values = np.ones(shape)
+    values[0::3] = np.nan
+
+    result = indices.spi(
+        values,
+        3,
+        indices.Distribution.gamma,
+        1900,
+        1900,
+        1901,
+        compute.Periodicity.monthly,
+        spatial_time_major=spatial_time_major,
+    )
+
+    assert result.shape == values.shape
+    assert np.all(np.isnan(result))
 
 
 @pytest.mark.usefixtures(
