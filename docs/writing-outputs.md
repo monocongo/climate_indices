@@ -129,7 +129,10 @@ assert bool(reopened["spi"].isel(time=slice(0, 2)).isnull().all())
 
 The xarray result carries `scale`, `distribution`, the requested calibration
 years, `climate_indices_version`, and a `history` entry. A command-line NetCDF
-output records only the variable's `long_name` and valid range, and carries the
-distribution and scale in its file name, so keep the run arguments alongside it:
+output carries the same provenance: its variable attributes come from the CF
+metadata registry (`long_name`, `units`, `references`, and any registered
+variant), plus `climate_indices_version` and a `history` entry, and the scale
+and distribution where they apply. The distribution and scale also appear in
+the file name, so keep the run arguments alongside it:
 `xr.open_dataset("/data/out/indices_spi_gamma_03.nc")["spi_gamma_03"].attrs`
 shows what the file itself does and does not record.
