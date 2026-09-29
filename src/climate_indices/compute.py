@@ -994,6 +994,11 @@ def _validate_pearson_parameter_cells(
         if parameter is None:
             continue
         parameter = np.asarray(parameter)
+        if parameter.ndim == 0:
+            raise ValueError(
+                f"Fitting parameter '{name}' has shape {parameter.shape}, which must carry "
+                f"the period length {period_length}"
+            )
         if parameter.ndim == 1:
             if parameter.shape[0] != period_length:
                 raise ValueError(
@@ -1158,22 +1163,19 @@ def transform_fitted_pearson(
 
     # sanity check for the fitting parameters arguments
     pearson_param_args = [probabilities_of_zero, locs, scales, skews]
-    _reject_partial_pearson_parameters((probabilities_of_zero, locs, scales, skews))
+
+    # validate (and possibly reshape) the input array before the all-missing return,
+    # so a partial or mis-shaped parameter set is rejected even when the values carry
+    # no data and the fit is skipped
+    validated_values = _validate_array(values, periodicity)
+    _validate_pearson_fitting_params(validated_values, probabilities_of_zero, locs, scales, skews)
 
     # if we're passed all missing values then we can't compute anything,
-    # and we'll return the same array of missing values
+    # and we'll return the same array of missing values, un-reshaped
     if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
         return values
 
-    # validate (and possibly reshape) the input array
-    values = _validate_array(values, periodicity)
-
-    # reject parameter arrays that do not carry the period (and cell) axes before any
-    # fitting, so an argument error cannot be mistaken for a failed fit
-    _validate_pearson_parameter_cells(
-        values,
-        (("prob_zero", probabilities_of_zero), ("loc", locs), ("scale", scales), ("skew", skews)),
-    )
+    values = validated_values
 
     # broadcast period-only parameters and reject parameter arrays whose cell
     # dimensions do not match a spatial block
