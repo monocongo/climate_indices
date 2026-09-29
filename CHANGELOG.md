@@ -51,7 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `probabilities_of_zero` argument, the gamma counterpart of the Pearson transform's,
   and a supplied gamma `alpha` or `beta` that does not broadcast to the values raises
   `ValueError` rather than an `IndexError` from NumPy. CF metadata and the CLI
-  flag follow in #1187 (ADR-0015, #1186).
+  flag landed in #1187, and the zero-placement tests and guidance in #1188
+  (ADR-0015, #1186).
 
 ### Changed
 
