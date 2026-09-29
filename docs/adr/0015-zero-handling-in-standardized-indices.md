@@ -122,7 +122,7 @@ asked by [#1185](https://github.com/monocongo/climate_indices/issues/1185).
 6. **Clipping.** The existing `[−3.09, 3.09]` clip applies to every mode,
    including the zeros a mode moves. The CLI bounds remain valid; the xarray
    SPI output must replace any inherited input `valid_min`/`valid_max` with
-   these bounds when the metadata is wired (#1187). Clipping either tail can
+   these bounds, wired in #1187. Clipping either tail can
    move the mean away from zero, even when the zero score itself is inside
    the bounds. The `"mean_zero"` zero score passes −3.09 below
    `p0 ≈ 0.0026` (for example `p0 = 0.001` gives −3.37); the
