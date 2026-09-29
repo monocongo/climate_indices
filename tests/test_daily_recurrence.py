@@ -162,8 +162,9 @@ def test_gap_policy_routes_through_the_one_runtime(
 @pytest.mark.parametrize("case", _CASES, ids=_IDS)
 def test_trailing_gap_days_rejects_int64_overflow(case: _Case) -> None:
     """Every recurrence applies the same gap-count bound, above 2**63."""
+    overflow_state = case.state_with_gaps()
     with pytest.raises(InvalidArgumentError, match="trailing_gap_days"):
-        case.run(_BASE, _MONTH, initial_state=case.state_with_gaps())
+        case.run(_BASE, _MONTH, initial_state=overflow_state)
 
 
 @pytest.mark.parametrize("case", _CASES, ids=_IDS)
