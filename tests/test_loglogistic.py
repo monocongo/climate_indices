@@ -310,6 +310,13 @@ def test_spi_family_rejects_loglogistic(surface: str) -> None:
         )
 
 
+def test_loglogistic_display_name_is_hyphenated() -> None:
+    """Prose and metadata spell the distribution "log-logistic", not "loglogistic"."""
+    assert indices.Distribution.loglogistic.display_name == "log-logistic"
+    assert indices.Distribution.gamma.display_name == "gamma"
+    assert indices.Distribution.pearson.display_name == "pearson"
+
+
 def test_cli_spi_distribution_loop_excludes_loglogistic() -> None:
     from climate_indices import __main__ as cli_main
 

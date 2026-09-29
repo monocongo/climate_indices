@@ -962,8 +962,14 @@ def _build_history_entry(
         # build calculation description
         distribution = calculation_metadata.get("distribution")
         if distribution is not None:
-            # serialize enum to string using .name attribute
-            dist_name = distribution.name if isinstance(distribution, Enum) else str(distribution)
+            # a Distribution carries the prose spelling ("log-logistic"); any other
+            # enum falls back to its .name
+            if isinstance(distribution, indices.Distribution):
+                dist_name = distribution.display_name
+            elif isinstance(distribution, Enum):
+                dist_name = distribution.name
+            else:
+                dist_name = str(distribution)
             description = f"{description_parts[0]} calculated using {dist_name} distribution"
         elif scale is not None:
             description = f"{description_parts[0]} calculated"

@@ -45,6 +45,19 @@ class Distribution(Enum):
     #: SPEI package and SPEIbase fit; see ADR-0016. Supported by ``spei()`` only.
     loglogistic = "loglogistic"
 
+    @property
+    def display_name(self) -> str:
+        """Human-readable name for prose and metadata ("log-logistic", not "loglogistic")."""
+        return _DISTRIBUTION_DISPLAY_NAMES[self]
+
+
+#: human-readable distribution names; every member but ``loglogistic`` is its own value
+_DISTRIBUTION_DISPLAY_NAMES = {
+    Distribution.pearson: "pearson",
+    Distribution.gamma: "gamma",
+    Distribution.loglogistic: "log-logistic",
+}
+
 
 # retrieve structlog logger for this module
 _logger = get_logger(__name__)
@@ -112,23 +125,26 @@ def _validate_scale(scale: int, periodicity: compute.Periodicity) -> None:
         )
 
 
-def _validate_distribution(distribution: Distribution, allowed: tuple[Distribution, ...] | None = None) -> None:
+def _validate_distribution(
+    distribution: Distribution,
+    allowed: tuple[Distribution, ...] = (Distribution.gamma, Distribution.pearson),
+) -> None:
     """Validate that distribution is a Distribution enum member allowed on this surface.
 
-    ``spi()``, ``standardized_index()``, and ``fit_diagnostics()`` pass an ``allowed``
-    set that omits log-logistic: the generalized logistic is the SPEI reference
-    distribution, whose offset P−PET input has no physical zero mass, and the
-    zero-placement treatment a precipitation or generic non-negative series needs is
-    not implemented for it (#106).
+    The default ``allowed`` set omits log-logistic, so a zero-mass-sensitive surface
+    that forgets to pass an explicit set fails safe: the generalized logistic is the
+    SPEI reference distribution, whose offset P−PET input has no physical zero mass,
+    and the zero-placement treatment a precipitation or generic non-negative series
+    needs is not implemented for it (#106). ``spei()`` passes the three-member set.
 
     Args:
         distribution: The distribution parameter to validate
-        allowed: The members accepted by the calling surface; every member when None
+        allowed: The members accepted by the calling surface
 
     Raises:
         InvalidArgumentError: If distribution is not an allowed Distribution member
     """
-    supported = tuple(Distribution) if allowed is None else allowed
+    supported = allowed
     valid_values = ", ".join(member.value for member in supported)
     if isinstance(distribution, Distribution) and distribution in supported:
         return

@@ -655,7 +655,7 @@ def _log_status(request: _IndexRequest) -> None:
 
     else:
         _logger.info(
-            f"Computing {request.scale}-{_get_scale_increment(request.periodicity)} {request.index.upper()}/{request.distribution.value.capitalize()}"
+            f"Computing {request.scale}-{_get_scale_increment(request.periodicity)} {request.index.upper()}/{request.distribution.display_name.capitalize()}"
         )
 
 
@@ -1576,7 +1576,7 @@ def _standardized_variable_attributes(
     assert request.scale is not None, _UNVALIDATED_SCALE
     label = _OUTPUT_SCALE_LABELS[request.output_scale]
     long_name = (
-        f"{index_name} ({request.distribution.value.capitalize()} distribution), "
+        f"{index_name} ({request.distribution.display_name.capitalize()} distribution), "
         + f"{request.scale}-{_get_scale_increment(request.periodicity)}{label}"
     )
     attrs = {"long_name": long_name, **_OUTPUT_SCALE_ATTRS[request.output_scale]}

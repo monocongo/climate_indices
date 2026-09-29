@@ -24,18 +24,21 @@ generalized logistic (GLO), which R's `SPEI` package fits under the name
 `"log-Logistic"`; the 3-parameter Fisk distribution implemented by SciPy
 `fisk`; and SciPy's `genlogistic`, a different family again. R `SPEI`
 (`R/spei.R`) calls `lmom`'s `pelglo`/`parglo` and `lmom::cdfglo` with `ub-pwm`
-L-moments by default, and SPEIbase v2.11 is built with that code. SciPy `fisk`
-is not the same distribution and `fisk.fit` is MLE only, so it would diverge
-from the SPEI literature and from SPEIbase exactly in the tails a drought index
-cares about.
+L-moments by default, and SPEIbase v2.11 is built with that code.
+
+SciPy `fisk` is the same family only on the GLO's lower-bounded shape branch
+(`k < 0`, where Fisk's `c = 1/|k|`, `scale = α/|k|`, and `loc = ξ + α/k`); it
+cannot represent the upper-bounded `k > 0` branch. Its estimator `fisk.fit` is
+MLE only, so fitting with it would diverge from the SPEI literature and from
+SPEIbase exactly in the tails a drought index cares about.
 
 ## Decision
 
 1. **The distribution is Hosking's GLO.** `Distribution.loglogistic` is the
-   generalized logistic that R `SPEI` fits as `"log-Logistic"`, not Fisk and not
-   `scipy.stats.genlogistic`. The public enum name is `loglogistic` because that
-   is the name used by the SPEI literature and documentation; `glo` and `fisk`
-   were the alternatives.
+   generalized logistic that R `SPEI` fits as `"log-Logistic"`, not
+   `scipy.stats.genlogistic` and not a Fisk fit. The public enum name is
+   `loglogistic` because that is the name used by the SPEI literature and
+   documentation; `glo` and `fisk` were the alternatives.
 
 2. **Parameter estimation is L-moments (`ub-pwm`).** `lmoments.fit_glo()`
    estimates the first three sample L-moments with the existing SAMLMR
@@ -61,7 +64,10 @@ cares about.
 
 - Adding the enum member would otherwise make `--index spi` compute
   log-logistic SPI, so `_run_spi` iterates a filtered `_SPI_DISTRIBUTIONS`
-  while `_run_spei` keeps iterating all members.
+  while `_run_spei` keeps iterating all members. `--index spei` and
+  `--index all` therefore write one more output per scale
+  (`spei_loglogistic_NN.nc`) than they did before; that is a user-visible
+  CLI output change, not a silent one.
 - `spi()` and `standardized_index()` carry an explicit rejection rather than
   silently standardizing zeros as if they were a fitted value.
 - `VALIDATION.md` keeps its gamma-based SPEIbase plausibility classification
