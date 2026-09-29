@@ -57,8 +57,9 @@ def _kbdi_arguments(**overrides):
         "output_file_base": "output",
         "multiprocessing": "single",
         "chunksizes": "none",
-        "kbdi_units": "metric",
-        "kbdi_initial": 0.0,
+        # None means the flag was not provided; _run_kbdi resolves the defaults
+        "kbdi_units": None,
+        "kbdi_initial": None,
     }
     arguments.update(overrides)
     return argparse.Namespace(**arguments)
@@ -187,6 +188,7 @@ class TestKBDIProcessing:
     @pytest.mark.parametrize(
         ("units", "var_name", "cf_units", "variant"),
         [
+            (None, "kbdi", "mm", "metric"),
             ("metric", "kbdi", "mm", "metric"),
             ("imperial", "kbdi_imperial", "0.01 in", "imperial"),
         ],

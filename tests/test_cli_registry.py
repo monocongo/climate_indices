@@ -368,10 +368,37 @@ def test_registrations_declare_only_known_arguments():
         assert registration.consumed_flags <= known, registration.index
 
 
+def test_each_registration_declares_exactly_the_flags_it_consumes():
+    """Over-declaration is a defect too: a flag declared here but not read is silently accepted."""
+    precip = frozenset({"netcdf_precip", "var_name_precip"})
+    temperature = frozenset({"netcdf_temp", "var_name_temp"})
+    pet = frozenset({"netcdf_pet", "var_name_pet"})
+    awc = frozenset({"netcdf_awc", "var_name_awc"})
+    pe = frozenset({"netcdf_pe", "var_name_pe"})
+    calibration = frozenset({"calibration_start_year", "calibration_end_year"})
+    scales = frozenset({"scales"})
+    expected = {
+        "spi": precip | calibration | scales,
+        "spei": precip | temperature | pet | calibration | scales,
+        "pnp": precip | calibration | scales,
+        "pet": temperature,
+        "palmers": precip | temperature | pet | awc | calibration,
+        "kbdi": precip | temperature | frozenset({"kbdi_units", "kbdi_initial"}),
+        "pe": precip,
+        "edi": precip | pe | calibration,
+        "flood_index": precip | pe | calibration | frozenset({"year_start_month"}),
+        "api": precip | frozenset({"api_k"}),
+    }
+
+    assert {name: registration.consumed_flags for name, registration in cli_main._INDEX_REGISTRY.items()} == expected
+
+
 # one argument each --index value does not consume; API owns --api_k, so it gets
 # the unconsumed --scales instead
 _UNCONSUMED_ARGUMENTS = {
-    "spi": ("--api_k", "0.9"),
+    # --kbdi_units is declared by KBDI only, so its None default is what makes
+    # this detectable
+    "spi": ("--kbdi_units", "imperial"),
     "spei": ("--api_k", "0.9"),
     "pnp": ("--api_k", "0.9"),
     "scaled": ("--api_k", "0.9"),
@@ -396,3 +423,36 @@ def test_unconsumed_argument_is_rejected_through_main(index, argument):
         cli_main.main(argv)
 
     assert str(error.value) == f"The {flag} argument is not applicable to --index {index}"
+
+
+def test_an_unconsumed_flag_with_a_falsy_value_is_still_rejected():
+    """A provided zero is a value, not an absent argument."""
+    argv = ["--index", "spi", "--periodicity", "monthly", "--output_file_base", "out", "--kbdi_initial", "0"]
+
+    with pytest.raises(ValueError) as error:
+        cli_main.main(argv)
+
+    assert str(error.value) == "The --kbdi_initial argument is not applicable to --index spi"
+
+
+@pytest.mark.parametrize(
+    ("extra", "expected"),
+    [
+        (
+            ["--netcdf_temp", "x", "--var_name_temp", "y"],
+            "The --netcdf_temp and --var_name_temp arguments are not applicable to --index api",
+        ),
+        (
+            ["--netcdf_temp", "x", "--var_name_temp", "y", "--netcdf_awc", "z"],
+            "The --netcdf_temp, --var_name_temp, and --netcdf_awc arguments are not applicable to --index api",
+        ),
+    ],
+)
+def test_several_unconsumed_flags_are_reported_together(extra, expected):
+    """The rejection names every unconsumed flag in one message."""
+    argv = ["--index", "api", "--periodicity", "monthly", "--output_file_base", "out", *extra]
+
+    with pytest.raises(ValueError) as error:
+        cli_main.main(argv)
+
+    assert str(error.value) == expected

@@ -564,8 +564,6 @@ class TestFloodRegistration:
                 _PE_VARIABLE,
                 "--year_start_month",
                 "10",
-                "--api_k",
-                "0.85",
                 "--output_file_base",
                 "out",
             ]
@@ -574,7 +572,6 @@ class TestFloodRegistration:
         assert captured["netcdf_pe"] == "pe.nc"
         assert captured["var_name_pe"] == _PE_VARIABLE
         assert captured["year_start_month"] == 10
-        assert captured["api_k"] == 0.85
 
     def test_the_cli_rejects_an_out_of_range_year_start_month(self, capsys):
         with pytest.raises(SystemExit) as error:
