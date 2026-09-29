@@ -36,7 +36,7 @@ pipeline.
 
 ## Breaking changes in 3.0.0
 
-3.0.0 ships five breaking changes that users hit without a deprecation period.
+3.0.0 ships six breaking changes that users hit without a deprecation period.
 Each one below states what a user sees, how to detect it, and what to change.
 
 ### Daily xarray calendar alignment (3.0.0)
@@ -219,6 +219,35 @@ gamma fit's zero mass fixed across datasets, save the calibration period's zero
 fraction as `prob_zero` alongside `alpha` and `beta`, as `fit_diagnostics()`
 returns it. See
 [ADR-0015](../adr/0015-zero-handling-in-standardized-indices.md).
+
+### Calibration Period windows the record cannot represent (3.0.0)
+
+**What a user sees:** a calibration window whose first year is after its last
+(for example `calibration_year_initial=2010, calibration_year_final=2000`) now
+raises `CalibrationPeriodError` from every index. So does
+{func}`climate_indices.indices.percentage_of_normal` for any window its record
+does not cover: one that starts before the data, ends after the last year the
+data reaches, or starts after the data. `CalibrationPeriodError` is both an
+`InvalidArgumentError` and a `ValueError`, so a handler for either still catches
+it. Before, a reversed window gave all-NaN from the fitted indices (or, when it
+ended before the record, a fit on some other rows of it), and
+`percentage_of_normal` gave all-NaN for a reversed window or one that starts
+after the record, or averaged only the years that exist for one that ends past
+the data. Its window is now measured in years rather than 12 steps per year, so
+a window longer than a daily record is rejected, and a window ending in the
+record's partial final year is accepted.
+
+**How to detect it:** look for `percentage_of_normal` calls with a fixed window,
+such as 1981-2010, on records that may end earlier, and for code that expects
+all-NaN output instead of an exception from a reversed or uncovered window.
+The logged `calculation_failed` event for `percentage_of_normal` now carries
+`error_type="CalibrationPeriodError"`.
+
+**What to change:** pass a window the record covers, for example
+`min(calibration_year_final, last_data_year)`. A reversed window is a swapped
+argument pair. The fitted indices (`spi`, `spei`, `standardized_index`,
+`fit_diagnostics`) keep clamping a window that is not reversed to the record, so
+no change is needed there. A window the record covers returns the same numbers.
 
 ## `spi` console script (removed in 3.0.0)
 

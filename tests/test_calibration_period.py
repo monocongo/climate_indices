@@ -199,3 +199,46 @@ class TestThroughIndices:
     def test_eddi_rejects_a_reversed_window(self, window):
         with pytest.raises(CalibrationPeriodError, match="initial year"):
             indices.eddi(np.full(29 * 12, 100.0), 1, 1981, *window, MONTHLY)
+
+
+class TestPercentageOfNormalWindow:
+    """Percentage of normal rejects a window its record does not cover (#1230)."""
+
+    @pytest.mark.parametrize("window", [(2000, 2009), (2003, 2007), (2009, 2009)])
+    def test_monthly_window_the_record_covers_resolves(self, window):
+        result = indices.percentage_of_normal(_record(10), 1, 2000, *window, MONTHLY)
+        assert np.isfinite(result).all()
+
+    @pytest.mark.parametrize(
+        "window",
+        [
+            (1999, 2005),  # starts before the record
+            (2005, 2012),  # partly past it: it used to average the years that exist
+            (2010, 2012),  # wholly past it: it used to be all-NaN
+            (2000, 2012),  # longer than the record
+            (2005, 2002),  # reversed: it used to be all-NaN
+        ],
+    )
+    def test_monthly_window_the_record_does_not_cover_raises(self, window):
+        with pytest.raises(CalibrationPeriodError):
+            indices.percentage_of_normal(_record(10), 1, 2000, *window, MONTHLY)
+
+    def test_a_trailing_partial_year_counts_as_a_record_year(self):
+        # 121 months from 2000 reach into 2010
+        values = np.random.default_rng(0).gamma(2.0, 30.0, size=121)
+        assert np.isfinite(indices.percentage_of_normal(values, 1, 2000, 2000, 2010, MONTHLY)).all()
+        with pytest.raises(CalibrationPeriodError):
+            indices.percentage_of_normal(values, 1, 2000, 2000, 2011, MONTHLY)
+
+    @pytest.mark.parametrize("window", [(2000, 2002), (2001, 2002)])
+    def test_daily_window_the_record_covers_resolves(self, window):
+        # 1096 Gregorian days: 2000 (leap), 2001 and 2002
+        values = np.random.default_rng(1).gamma(2.0, 3.0, size=1096)
+        assert np.isfinite(indices.percentage_of_normal(values, 1, 2000, *window, DAILY)).any()
+
+    @pytest.mark.parametrize("window", [(2000, 2003), (1999, 2001), (2002, 2000), (2003, 2004)])
+    def test_daily_window_the_record_does_not_cover_raises(self, window):
+        # (2000, 2003) used to pass a check that counted 12 steps per year
+        values = np.random.default_rng(1).gamma(2.0, 3.0, size=1096)
+        with pytest.raises(CalibrationPeriodError):
+            indices.percentage_of_normal(values, 1, 2000, *window, DAILY)
