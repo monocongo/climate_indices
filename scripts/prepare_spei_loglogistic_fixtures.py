@@ -201,6 +201,32 @@ def _publish(staging: Path) -> None:
     shutil.rmtree(backup, ignore_errors=True)
 
 
+def _stage_real(
+    output_dir: Path, staging: Path, series: dict[str, np.ndarray], scales: tuple[int, ...], division_names: list[str]
+) -> None:
+    """Stack the per-division R output for each scale into the staging directory."""
+    for scale in scales:
+        fitted = np.stack(
+            [_read_fitted(output_dir / f"fitted_{scale:02d}.csv", name, _N_MONTHS, division_names) for name in series]
+        )
+        params = np.stack([_read_params(output_dir / f"params_{scale:02d}.csv", name) for name in series])
+        np.save(staging / f"r_spei_{scale:02d}.npy", fitted)
+        np.save(staging / f"r_params_{scale:02d}.npy", params)
+
+
+def _stage_synthetic(output_dir: Path, staging: Path, scales: tuple[int, ...]) -> None:
+    """Copy the synthetic-series R output for each scale into the staging directory."""
+    for scale in scales:
+        np.save(
+            staging / f"r_synthetic_spei_{scale:02d}.npy",
+            _read_fitted(output_dir / f"fitted_{scale:02d}.csv", "synthetic", _SYNTHETIC_YEARS * 12, ["synthetic"]),
+        )
+        np.save(
+            staging / f"r_synthetic_params_{scale:02d}.npy",
+            _read_params(output_dir / f"params_{scale:02d}.csv", "synthetic"),
+        )
+
+
 def main() -> int:
     if not R_SCRIPT.exists():
         raise FileNotFoundError(R_SCRIPT)
@@ -247,33 +273,9 @@ def main() -> int:
                 versions = versions or checked
 
                 if label == "real":
-                    for scale in scale_out:
-                        fitted = np.stack(
-                            [
-                                _read_fitted(output_dir / f"fitted_{scale:02d}.csv", name, _N_MONTHS, division_names)
-                                for name in series
-                            ]
-                        )
-                        params = np.stack(
-                            [_read_params(output_dir / f"params_{scale:02d}.csv", name) for name in series]
-                        )
-                        np.save(staging / f"r_spei_{scale:02d}.npy", fitted)
-                        np.save(staging / f"r_params_{scale:02d}.npy", params)
+                    _stage_real(output_dir, staging, series, scale_out, division_names)
                 else:
-                    for scale in scale_out:
-                        np.save(
-                            staging / f"r_synthetic_spei_{scale:02d}.npy",
-                            _read_fitted(
-                                output_dir / f"fitted_{scale:02d}.csv",
-                                "synthetic",
-                                _SYNTHETIC_YEARS * 12,
-                                ["synthetic"],
-                            ),
-                        )
-                        np.save(
-                            staging / f"r_synthetic_params_{scale:02d}.npy",
-                            _read_params(output_dir / f"params_{scale:02d}.csv", "synthetic"),
-                        )
+                    _stage_synthetic(output_dir, staging, scale_out)
 
             np.save(staging / "synthetic_precip_mm.npy", synthetic_precip)
             np.save(staging / "synthetic_pet_mm.npy", synthetic_pet)
