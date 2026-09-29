@@ -309,8 +309,9 @@ change states what a user sees, how to detect it, and what to change in
   every time-carrying input to the time-last order its kernels index, so a CF-typical
   `(time, lat, lon)` grid or `(time, division)` division variable is accepted alongside
   the time-last order, and precipitation in one order can be paired with a companion in
-  the other. A time-major input was previously rejected, and mixed-order inputs passed
-  validation but crashed or scrambled the axes (#1224, #932).
+  the other. This supersedes the time-last-only acceptance noted above: a time-major
+  input, or a time-major companion beside a time-last precipitation variable, was
+  previously rejected with `Invalid dimensions ...` (#1224, #932).
 
 ## [2.4.0] - 2026-04-05
 

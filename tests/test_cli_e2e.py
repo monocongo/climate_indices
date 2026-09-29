@@ -859,6 +859,40 @@ def test_daily_divisions_spi_converts_and_restores(tmp_path):
         np.testing.assert_allclose(written[0], expected, equal_nan=True)
 
 
+def test_daily_divisions_time_major_spi_converts_and_restores(tmp_path):
+    """A daily input stored time-first is canonicalized before the calendar conversion."""
+    start_year = 1981
+    time = xr.date_range(f"{start_year}-01-01", "2010-06-15", freq="D")
+    values = np.random.default_rng(seed=112358).gamma(shape=2.0, scale=10.0, size=time.size)
+    precip_path = tmp_path / "precip_daily_divisions_time_major.nc"
+    xr.Dataset(
+        {
+            "precip": (("time", "division"), values[:, None], {"units": "mm"}),
+            "lat": (("division",), [_LATITUDES[0]]),
+        },
+        coords={"time": time, "division": [_DIVISION]},
+    ).to_netcdf(precip_path)
+
+    _run_daily_spi(precip_path, tmp_path / "spi_daily_divisions_time_major")
+
+    plan = utils.DailyCalendarPlan.from_year_span(start_year, 2011 - start_year, time.size)
+    with xr.open_dataset(tmp_path / "spi_daily_divisions_time_major_spi_gamma_30.nc") as dataset:
+        written = dataset["spi_gamma_30"].values
+        assert written.shape == (1, time.size)
+        expected = plan.to_gregorian(
+            indices.spi(
+                values=plan.to_all_leap(values),
+                scale=30,
+                distribution=indices.Distribution.gamma,
+                data_start_year=start_year,
+                calibration_year_initial=start_year,
+                calibration_year_final=2010,
+                periodicity=compute.Periodicity.daily,
+            )
+        )
+        np.testing.assert_allclose(written[0], expected, equal_nan=True)
+
+
 def test_daily_input_starting_mid_year_is_rejected(tmp_path):
     """A daily series that does not begin January 1 is rejected, not silently shifted."""
     time = xr.date_range("1981-06-01", "2010-12-31", freq="D")

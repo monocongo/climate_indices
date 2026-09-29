@@ -329,8 +329,8 @@ def _validate_matching_input_file(
     """
 
     # the transport contract rather than the wider layout contract: a companion
-    # rides the shared-array transport, which copies storage order and reads
-    # only a time-last variable
+    # rides the shared-array transport, which canonicalizes any accepted order to
+    # time-last before the kernels index it
     expected = transport_dimensions(context.input_type)
 
     with xr.open_dataset(netcdf_file) as dataset:
