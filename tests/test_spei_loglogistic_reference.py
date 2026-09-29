@@ -156,6 +156,14 @@ def test_synthetic_short_skewed_series_matches_r_spei(scale: int) -> None:
 
     computed = _spei(precip_mm, pet_mm, scale, _SYNTHETIC_START_YEAR, end_year)
 
+    # the masks below skip non-finite reference values; pin where those may occur so
+    # a refreshed fixture with unintended gaps cannot pass by comparing less
+    expected_missing = np.zeros(reference.shape, dtype=bool)
+    expected_missing[: scale - 1] = True  # leading months a longer scale cannot form
+    if scale == 1:
+        expected_missing[_SYNTHETIC_CONSTANT_MONTH - 1 :: 12] = True  # the unfittable step
+    np.testing.assert_array_equal(np.isnan(reference), expected_missing)
+
     # R SPEI does not clip; compare where its output is finite and inside the clip,
     # then assert this library clips the out-of-range tail it reports.
     comparable = np.isfinite(reference) & (np.abs(reference) < _CLIP - 1e-9)
@@ -175,6 +183,10 @@ def test_synthetic_short_skewed_series_matches_r_spei(scale: int) -> None:
     # leave the unfittable-step contract to test_synthetic_constant_step_is_missing_like_r_spei.
     computed_params = _parameters(precip_mm, pet_mm, scale, _SYNTHETIC_START_YEAR, end_year)
     reference_params = np.load(_SPEI_ROOT / f"r_synthetic_params_{scale:02d}.npy")
+    expected_unfit = np.zeros(reference_params.shape, dtype=bool)
+    if scale == 1:
+        expected_unfit[:, _SYNTHETIC_CONSTANT_MONTH - 1] = True
+    np.testing.assert_array_equal(np.isnan(reference_params), expected_unfit)
     valid = np.isfinite(reference_params)
     np.testing.assert_allclose(
         computed_params[valid],
