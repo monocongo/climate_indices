@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
 import numpy as np
@@ -37,6 +38,7 @@ from climate_indices import compute, eto, indices
 _FIXTURE_ROOT = Path(__file__).parent / "fixture"
 _SPEI_ROOT = _FIXTURE_ROOT / "spei_loglogistic"
 _PALMER_ROOT = _FIXTURE_ROOT / "palmer"
+_PREPARE_SCRIPT = Path(__file__).parent.parent / "scripts" / "prepare_spei_loglogistic_fixtures.py"
 _DIVISIONS = json.loads((_FIXTURE_ROOT / "speibase" / "divisions.json").read_text(encoding="utf-8"))
 _PROVENANCE = json.loads((_SPEI_ROOT / "provenance.json").read_text(encoding="utf-8"))
 
@@ -243,3 +245,22 @@ def test_fixture_exercises_extreme_skew_and_a_negative_location() -> None:
     assert np.any(~np.isnan(synthetic_reference) & (np.abs(synthetic_reference) >= _CLIP)), (
         "synthetic fixture does not reach this library's clip range"
     )
+
+
+def test_publish_restores_an_interrupted_swap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A backup left with no live fixture directory is recovered, not deleted."""
+    spec = spec_from_file_location("prepare_spei_loglogistic_fixtures_test", _PREPARE_SCRIPT)
+    assert spec is not None
+    assert spec.loader is not None
+    script = module_from_spec(spec)
+    spec.loader.exec_module(script)
+
+    backup = tmp_path / ".fixtures-backup"
+    backup.mkdir()
+    (backup / "r_spei_01.npy").write_bytes(b"live")
+    monkeypatch.setattr(script, "FIXTURE_DIR", tmp_path / "fixtures")
+
+    with pytest.raises(FileNotFoundError):
+        script._publish(tmp_path / "missing-staging")
+
+    assert (tmp_path / "fixtures" / "r_spei_01.npy").read_bytes() == b"live"

@@ -183,9 +183,12 @@ def _publish(staging: Path) -> None:
     Arrays and metadata must always come from a single generation: replacing the
     files individually leaves a mixed set behind when a later write fails. The
     previous directory is kept as a backup until the swap succeeds, and restored
-    if it does not.
+    if it does not. A backup left with no live directory is an interrupted swap
+    and is restored before anything is removed.
     """
     backup = FIXTURE_DIR.with_name(f".{FIXTURE_DIR.name}-backup")
+    if backup.exists() and not FIXTURE_DIR.exists():
+        os.replace(backup, FIXTURE_DIR)
     shutil.rmtree(backup, ignore_errors=True)
     if FIXTURE_DIR.exists():
         os.replace(FIXTURE_DIR, backup)
