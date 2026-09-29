@@ -116,6 +116,22 @@ class TestPCIXarrayCFMetadata:
         assert "references" in pci_xarray_result_365.attrs
         assert "Oliver" in pci_xarray_result_365.attrs["references"]
 
+    def test_input_validity_attrs_not_inherited(self) -> None:
+        """Rainfall validity limits must not be carried onto the computed index."""
+        rainfall = xr.DataArray(
+            np.full(365, 10.0),
+            dims=["time"],
+            attrs={
+                "valid_min": 10.0,
+                "valid_max": 1000.0,
+                "valid_range": [10.0, 1000.0],
+                "actual_range": [10.0, 10.0],
+            },
+        )
+        result = pci(rainfall_mm=rainfall)
+        for key in ("valid_min", "valid_max", "valid_range", "actual_range"):
+            assert key not in result.attrs
+
     def test_has_version(self, pci_xarray_result_365: xr.DataArray) -> None:
         assert "climate_indices_version" in pci_xarray_result_365.attrs
 

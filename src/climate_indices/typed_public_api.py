@@ -505,11 +505,14 @@ def pci(
     assert isinstance(rainfall_mm, xr.DataArray)
     result_values = indices.pci(rainfall_mm.values)
 
+    output_attrs = build_output_attrs(rainfall_mm, CF_METADATA["pci"], None, "PCI")  # type: ignore[arg-type]
+    # Input validity limits describe the daily rainfall, not the computed index;
+    # carrying them onto the scalar PCI result can contradict its value.
+    for key in ("valid_min", "valid_max", "valid_range", "actual_range"):
+        output_attrs.pop(key, None)
+
     # PCI output is a scalar (shape (1,)), return as 0-D DataArray
-    return xr.DataArray(
-        result_values[0],
-        attrs=build_output_attrs(rainfall_mm, CF_METADATA["pci"], None, "PCI"),  # type: ignore[arg-type]
-    )
+    return xr.DataArray(result_values[0], attrs=output_attrs)
 
 
 # ETo Thornthwaite overloads
