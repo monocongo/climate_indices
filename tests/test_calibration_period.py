@@ -12,6 +12,11 @@ from climate_indices._calibration_period import CalibrationPeriodError, resolve_
 from climate_indices.exceptions import InvalidArgumentError, ShortCalibrationWarning
 
 MONTHLY = compute.Periodicity.monthly
+DAILY = compute.Periodicity.daily
+
+# reversed windows against a 1981-2009 record: inside it, straddling its start, straddling
+# its end, before it and after it
+REVERSED_WINDOWS = [(2005, 2002), (1990, 1970), (2020, 2000), (1975, 1970), (2020, 2010)]
 
 
 def _record(n_years: int, seed: int = 0) -> np.ndarray:
@@ -54,10 +59,16 @@ class TestClamp:
         period = self.resolve(1985, 2011)
         assert (period.start_year, period.end_year) == (1981, 2009)
 
-    def test_reversed_window_inside_record_selects_no_rows(self):
-        period = self.resolve(2005, 2002)
-        assert period.n_years <= 0
-        assert np.arange(29)[period.rows].size == 0
+    @pytest.mark.parametrize("window", REVERSED_WINDOWS)
+    def test_reversed_window_raises_wherever_it_lies(self, window):
+        # it used to select no rows inside the record and, ending before the record,
+        # wrap to some other rows (#1231)
+        with pytest.raises(CalibrationPeriodError, match="initial year"):
+            self.resolve(*window)
+
+    def test_single_year_window_is_kept(self):
+        period = self.resolve(1985, 1985)
+        assert (period.n_years, period.rows) == (1, slice(4, 5))
 
 
 class TestReject:
@@ -155,3 +166,36 @@ class TestThroughIndices:
         pet = np.full(10 * 12, 100.0)
         with pytest.raises(InvalidArgumentError, match="calibration end year"):
             indices.eddi(pet, 1, 2000, 2000, 2010, MONTHLY)
+
+    @pytest.mark.parametrize("distribution", [indices.Distribution.gamma, indices.Distribution.pearson])
+    @pytest.mark.parametrize("window", REVERSED_WINDOWS)
+    def test_spi_rejects_a_reversed_window(self, distribution, window):
+        # the Pearson to gamma fallback must not swallow it
+        with pytest.raises(CalibrationPeriodError, match="initial year"):
+            indices.spi(_record(29), 1, distribution, 1981, *window, MONTHLY)
+
+    @pytest.mark.parametrize("distribution", [indices.Distribution.gamma, indices.Distribution.pearson])
+    @pytest.mark.parametrize("window", REVERSED_WINDOWS)
+    def test_fit_diagnostics_rejects_a_reversed_window(self, distribution, window):
+        with pytest.raises(CalibrationPeriodError, match="initial year"):
+            indices.fit_diagnostics(_record(29), 1, distribution, 1981, *window, MONTHLY)
+
+    @pytest.mark.parametrize("window", REVERSED_WINDOWS)
+    def test_transform_fitted_gamma_rejects_a_reversed_window(self, window):
+        values = _record(29, seed=3)
+        values[::7] = 0.0
+        with pytest.raises(CalibrationPeriodError, match="initial year"):
+            compute.transform_fitted_gamma(
+                values, 1981, *window, MONTHLY, alphas=np.full(12, 2.0), betas=np.full(12, 30.0)
+            )
+
+    @pytest.mark.parametrize("distribution", [indices.Distribution.gamma, indices.Distribution.pearson])
+    @pytest.mark.parametrize("window", REVERSED_WINDOWS)
+    def test_spei_rejects_a_reversed_window(self, distribution, window):
+        with pytest.raises(CalibrationPeriodError, match="initial year"):
+            indices.spei(_record(29), _record(29, seed=1) / 2, 1, distribution, MONTHLY, 1981, *window)
+
+    @pytest.mark.parametrize("window", REVERSED_WINDOWS)
+    def test_eddi_rejects_a_reversed_window(self, window):
+        with pytest.raises(CalibrationPeriodError, match="initial year"):
+            indices.eddi(np.full(29 * 12, 100.0), 1, 1981, *window, MONTHLY)
