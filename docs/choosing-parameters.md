@@ -30,6 +30,13 @@ option and writes both for every requested scale.
 - Use `indices.Distribution.pearson` for highly skewed data, or when a gamma fit
   is poor by the Kolmogorov-Smirnov check (p < 0.05). It has more parameters and
   needs more data for a stable estimate.
+- Use `indices.Distribution.loglogistic` for SPEI when you want the distribution
+  that SPEIbase and the R `SPEI` package standardize with. It fits Hosking's
+  generalized logistic with unbiased-PWM L-moments. It is SPEI-only: on `spi()`
+  and `standardized_index()` a non-negative series has a physical zero mass that
+  the log-logistic path does not place, so those surfaces reject it
+  ([ADR-0016](adr/0016-log-logistic-distribution-for-spei.md)). SPEI's `P - PET`
+  series is offset and has no physical zero mass, so it accepts the fit directly.
 
 The fallout of an unstable Pearson fit differs by index: SPI falls back to gamma
 for that fit, while SPEI does not fall back at all, so check the Pearson fit
