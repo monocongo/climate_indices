@@ -41,7 +41,9 @@ class StatefulAlignment:
     inputs' dimensions (the same union ``xr.broadcast`` would produce) without
     broadcasting any data; ``spatial_chunks`` is one of the primary inputs'
     spatial chunkings, so a static state operand can be partitioned alongside
-    the weather tiles without adding new Dask boundaries.
+    the weather tiles without adding new Dask boundaries. ``aligned_inputs`` are
+    the primary inputs after the shared inner join, so a callback that resolves
+    a coordinate from them sees the same labels in the same order.
     """
 
     spatial_dims: tuple[str, ...]
@@ -51,6 +53,7 @@ class StatefulAlignment:
     time_source: xr.DataArray | None
     time_length: int
     time_dim: str
+    aligned_inputs: tuple[xr.DataArray, ...]
 
     @property
     def internal_spatial_shape(self) -> tuple[int, ...]:
@@ -225,6 +228,31 @@ def restore_time_coordinates(
     return restored
 
 
+def _validate_extra_time_lengths(
+    extras: Sequence[ExtraInput],
+    alignment: StatefulAlignment,
+    *,
+    index_display_name: str,
+) -> None:
+    """Reject an extra time series whose length differs from the aligned inputs'.
+
+    An extra time series (month) shares the aligned time coordinate, so it must
+    not introduce a second time length. CFFWIS resolves its month before this
+    point, so the guard serves external adapter callers.
+    """
+    time_dim = alignment.time_dim
+    for data, core_dim in extras:
+        if core_dim == time_dim and data.sizes.get(time_dim) not in (None, alignment.time_length):
+            raise CoordinateValidationError(
+                message=(
+                    f"An extra {index_display_name} input varies along '{time_dim}' with "
+                    f"{data.sizes[time_dim]} entries but the aligned inputs have {alignment.time_length}."
+                ),
+                coordinate_name=time_dim,
+                reason="extra_input_time_length_mismatch",
+            )
+
+
 def stateful_recurrence_xarray(
     inputs: Sequence[NamedInput],
     kernel: Callable[..., Any],
@@ -265,24 +293,12 @@ def stateful_recurrence_xarray(
         time_source=next((data for data in aligned if time_dim in data.coords), None),
         time_length=broadcast_sizes[time_dim],
         time_dim=time_dim,
+        aligned_inputs=aligned,
     )
 
     extras: tuple[ExtraInput, ...] = tuple(build_extra_inputs(alignment)) if build_extra_inputs is not None else ()
     extra_arrays = tuple(data for data, _ in extras)
-    if extra_arrays:
-        # an extra time series (month) shares the aligned time coordinate, so it
-        # must not introduce a second time length; CFFWIS resolves its month
-        # before this point, so the guard serves external adapter callers
-        for data, core_dim in extras:
-            if core_dim == time_dim and data.sizes.get(time_dim) not in (None, alignment.time_length):
-                raise CoordinateValidationError(
-                    message=(
-                        f"An extra {index_display_name} input varies along '{time_dim}' with "
-                        f"{data.sizes[time_dim]} entries but the aligned inputs have {alignment.time_length}."
-                    ),
-                    coordinate_name=time_dim,
-                    reason="extra_input_time_length_mismatch",
-                )
+    _validate_extra_time_lengths(extras, alignment, index_display_name=index_display_name)
 
     output_time_length = max(alignment.time_length - spin_up, 0)
     input_core_dims: list[list[str]] = [[time_dim] for _ in aligned]

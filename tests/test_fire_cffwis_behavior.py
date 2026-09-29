@@ -1201,6 +1201,14 @@ class TestCFFWISXarrayCoordinates:
         assert isinstance(result, xr.Dataset)
         _assert_matches_numpy(inputs, result)
 
+    def test_latitude_inferred_after_aligning_reordered_labels(self) -> None:
+        """Inputs sharing latitude labels in a different order align, then agree on one latitude."""
+        inputs = _gridded_inputs()
+        reordered = replace(inputs, humidity=inputs.humidity.isel(lat=slice(None, None, -1)))
+        result = _xarray_cffwis(reordered)
+        assert isinstance(result, xr.Dataset)
+        _assert_matches_numpy(inputs, result.sel(lat=inputs.temperature["lat"]))
+
     def test_scalar_latitude_matches_uniform_numpy(self) -> None:
         inputs = _gridded_inputs()
         scalar = _xarray_cffwis(inputs, latitude_degrees_north=46.0)

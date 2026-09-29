@@ -634,7 +634,6 @@ def _cffwis_xarray(
         temperature_celsius, "celsius", argument_name="temperature_celsius.attrs['units']"
     )
     precipitation = _convert_precipitation_units(precipitation_mm, "mm")
-    weather = (temperature, relative_humidity_percent, wind_speed_meters_per_second, precipitation)
 
     output_core_dims: list[str | None] = [time_dim] * len(active_components)
     output_dtypes: list[type] = [np.float64] * len(active_components)
@@ -646,7 +645,7 @@ def _cffwis_xarray(
         time_coord = alignment.time_source.coords[time_dim] if alignment.time_source is not None else None
         latitude = _resolve_cffwis_latitude(
             latitude_degrees_north,
-            weather,
+            alignment.aligned_inputs,
             time_dim,
             alignment.spatial_dims,
             alignment.spatial_shape,
