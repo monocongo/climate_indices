@@ -112,9 +112,11 @@ ones.
   join; an empty intersection raises `CoordinateValidationError`. The generic
   SPEI adapter warns with `InputAlignmentWarning` only when the primary
   precipitation input loses timesteps, so extra PET timesteps are dropped
-  silently. The Hargreaves adapter compares the aligned length with both the
-  minimum- and maximum-temperature inputs and warns when either loses
-  timesteps.
+  silently. The Hargreaves and Penman-Monteith adapters warn when either
+  temperature input, or a Penman-Monteith time-series input, loses timesteps.
+  Only time is trimmed: for SPEI, Hargreaves, and Penman-Monteith, a shared
+  cell dimension with differing coordinates raises
+  `CoordinateValidationError` instead of being intersected.
 - When the inputs must match exactly, align them before calculation with
   `xr.align(..., join="exact")`, which raises instead of intersecting. The
   end-to-end sample does this in `scripts/prepare_e2e_inputs.py`.

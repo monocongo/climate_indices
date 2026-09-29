@@ -2065,8 +2065,9 @@ def pet_hargreaves(
 
     Raises:
         InputTypeError: If temperature inputs are not numpy-coercible or xr.DataArray
-        CoordinateValidationError: If time dimension missing/invalid or tmin/tmax don't align
-        InputAlignmentWarning: If tmin/tmax have different time coordinates (auto-aligned)
+        CoordinateValidationError: If time dimension missing/invalid, tmin/tmax share no time
+            steps, or they share a cell dimension with differing coordinates
+        InputAlignmentWarning: If either input loses time steps to the shared time range (auto-aligned)
         ValueError: If latitude is out of range [-90, 90]
 
     Examples:
@@ -2125,8 +2126,10 @@ def pet_hargreaves(
           For gridded inputs, a (time, ``*cells``) block reaches it with the per-cell
           latitude array, so a 3-D or higher input costs one call per block rather
           than one xr.apply_ufunc call per grid cell.
-        - For xarray inputs with misaligned time coordinates, xr.align(join='inner')
-          is automatically applied, and InputAlignmentWarning is emitted if timesteps differ.
+        - For xarray inputs, only the time dimension is trimmed to the shared range, and
+          InputAlignmentWarning is emitted if either input loses timesteps. A cell
+          dimension with differing coordinates raises CoordinateValidationError rather
+          than being intersected.
         - Mean temperature is auto-derived: tmean = (tmin + tmax) / 2
         - Dask-backed DataArrays remain lazy (dask="parallelized")
         - CF Convention metadata and provenance history are automatically applied
@@ -2411,7 +2414,9 @@ def pet_penman_monteith(
         InvalidArgumentError: If ``rh_min`` is given without ``rh_max``, or the
             wind measurement height is not positive.
         CoordinateValidationError: If the xarray time dimension is missing,
-            non-monotonic, or not a January-start daily coordinate.
+            non-monotonic, or not a January-start daily coordinate, or if the
+            temperature and time-series inputs share a cell dimension with differing
+            coordinates.
     """
     input_type = detect_input_type(daily_tmin_celsius)
     tmax_input_type = detect_input_type(daily_tmax_celsius)
