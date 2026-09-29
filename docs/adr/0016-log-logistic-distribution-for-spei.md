@@ -9,7 +9,9 @@ implementation sub-issue of the log-logistic epic
 Cross-implementation fixtures and the SPEIbase evidence upgrade follow in
 [#1195](https://github.com/monocongo/climate_indices/issues/1195) and
 [#1196](https://github.com/monocongo/climate_indices/issues/1196). This record
-is amended as each one lands.
+is amended as each one lands; #1195 and #1196 have landed, and the input-matched
+log-logistic SPEIbase comparison in `tests/test_speibase_like_for_like.py`
+upgraded the SPEI evidence in `VALIDATION.md`.
 
 ## Context
 
@@ -70,10 +72,12 @@ SPEIbase exactly in the tails a drought index cares about.
   CLI output change, not a silent one.
 - `spi()` and `standardized_index()` carry an explicit rejection rather than
   silently standardizing zeros as if they were a fitted value.
-- `VALIDATION.md` keeps its gamma-based SPEIbase plausibility classification
-  until the like-for-like log-logistic re-run in #1196. This change already
-  removed the "log-logistic is not implemented" availability caveats from the
-  user-facing docs, so #1196 owns the validation upgrade only.
+- `VALIDATION.md` gained an input-matched log-logistic SPEIbase comparison in
+  #1196 (`tests/test_speibase_like_for_like.py`), a cross-implementation check
+  of this port against the grids SPEIbase v2.11 was computed from; the earlier
+  gamma/Thornthwaite comparison remains classified as plausibility. The
+  "log-logistic is not implemented" availability caveats were removed when the
+  implementation landed.
 - A later SPI/`standardized_index()` log-logistic surface, if wanted, has to add
   a zero-placement mode for the GLO first.
 
