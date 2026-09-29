@@ -47,6 +47,16 @@ class TestClamp:
         assert (period.start_year, period.end_year, period.n_years) == (1981, 2009, 29)
         assert period.rows == slice(0, 29)
 
+    def test_window_one_year_past_the_record_keeps_its_start(self):
+        # long-standing behaviour: only the phantom year is dropped, not the start
+        period = self.resolve(1985, 2010)
+        assert (period.start_year, period.end_year, period.n_years) == (1985, 2009, 25)
+        assert period.rows == slice(4, 29)
+
+    def test_window_two_years_past_the_record_falls_back_to_the_whole_record(self):
+        period = self.resolve(1985, 2011)
+        assert (period.start_year, period.end_year) == (1981, 2009)
+
     def test_reversed_window_inside_record_selects_no_rows(self):
         period = self.resolve(2005, 2002)
         assert period.n_years <= 0
@@ -92,6 +102,21 @@ class TestThroughIndices:
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             indices.spi(_record(29), 1, indices.Distribution.gamma, 1981, *window, MONTHLY)
+        assert len(_short_calibration_warnings(caught)) == 1
+
+    @pytest.mark.parametrize("distribution", [indices.Distribution.gamma, indices.Distribution.pearson])
+    def test_spi_window_one_year_past_the_record_keeps_its_start(self, distribution):
+        # the WMO 1981-2010 window on a record ending in 2009 fits 1981-2009, not the
+        # whole 1976-2009 record; the phantom 2010 must not change that fit
+        values = _record(34)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            past = indices.spi(values, 3, distribution, 1976, 1981, 2010, MONTHLY)
+        cut = indices.spi(values, 3, distribution, 1976, 1981, 2009, MONTHLY)
+        whole = indices.spi(values, 3, distribution, 1976, 1976, 2009, MONTHLY)
+        np.testing.assert_array_equal(past, cut)
+        assert not np.array_equal(past, whole, equal_nan=True)
+        # 1981-2009 is 29 years
         assert len(_short_calibration_warnings(caught)) == 1
 
     def test_spi_covering_thirty_year_record_does_not_warn(self):
