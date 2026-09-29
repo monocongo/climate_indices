@@ -2989,6 +2989,70 @@ def _ks_fit_diagnostics(
     return ks_statistic, ks_p_value, n_valid
 
 
+def _resolve_pearson_diagnostics_fit(
+    values: np.ndarray,
+    distribution: "Distribution",
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
+    fitting_params: dict[str, Any] | None,
+    *,
+    fallback_to_gamma: bool,
+    fallback_context: str,
+) -> tuple[FittedDistribution, bool]:
+    """Resolve a Pearson Type III diagnostic fit, applying the two gamma fall-back triggers."""
+    # only needed to name the gamma fall back's result; importing at module load would
+    # be circular because indices imports this module
+    from climate_indices.indices import Distribution
+
+    fell_back_to_gamma = False
+    try:
+        fitted = FittedDistribution.resolve(
+            values,
+            distribution,
+            data_start_year,
+            calibration_start_year,
+            calibration_end_year,
+            periodicity,
+            fitting_params,
+        )
+        # the second fall-back trigger: a fit that lost more than half of the input's
+        # valid values, judged from the fit outcome rather than a discarded transform
+        lost_valid_fraction = _pearson_lost_valid_fraction(values, fitted.parameters) if fallback_to_gamma else 0.0
+    except DistributionFittingError as exc:
+        # a failed Pearson fit is the fall back's first trigger; it is decided from
+        # the fit itself, so the diagnostics surface never runs the transform
+        if not fallback_to_gamma:
+            raise
+        _default_fallback_strategy.log_fallback_warning(str(exc), context=fallback_context)
+        fitted = FittedDistribution.resolve(
+            values,
+            Distribution.gamma,
+            data_start_year,
+            calibration_start_year,
+            calibration_end_year,
+            periodicity,
+        )
+        fell_back_to_gamma = True
+    else:
+        if fallback_to_gamma and lost_valid_fraction > _default_fallback_strategy.max_nan_percentage:
+            _default_fallback_strategy.log_fallback_warning(
+                "Pearson distribution fitting resulted in excessive missing values",
+                context=fallback_context,
+            )
+            fitted = FittedDistribution.resolve(
+                values,
+                Distribution.gamma,
+                data_start_year,
+                calibration_start_year,
+                calibration_end_year,
+                periodicity,
+            )
+            fell_back_to_gamma = True
+    return fitted, fell_back_to_gamma
+
+
 def fit_diagnostics(
     values: np.ndarray,
     distribution: "Distribution",
@@ -3037,10 +3101,6 @@ def fit_diagnostics(
             Pearson ``fitting_params`` set is partial or does not carry the period
             (and cell) axes.
     """
-    # only needed to name the gamma fall back's result; importing at module load would
-    # be circular because indices imports this module
-    from climate_indices.indices import Distribution
-
     if distribution.value not in ("gamma", "pearson"):
         raise ValueError(f"Unsupported distribution: {distribution}")
     # a mask is a missing marker: make it the explicit NaN the diagnostics read
@@ -3055,49 +3115,17 @@ def fit_diagnostics(
 
     fell_back_to_gamma = False
     if distribution.value == "pearson":
-        try:
-            fitted = FittedDistribution.resolve(
-                values,
-                distribution,
-                data_start_year,
-                calibration_start_year,
-                calibration_end_year,
-                periodicity,
-                fitting_params,
-            )
-            # the second fall-back trigger: a fit that lost more than half of the input's
-            # valid values, judged from the fit outcome rather than a discarded transform
-            lost_valid_fraction = _pearson_lost_valid_fraction(values, fitted.parameters) if fallback_to_gamma else 0.0
-        except DistributionFittingError as exc:
-            # a failed Pearson fit is the fall back's first trigger; it is decided from
-            # the fit itself, so the diagnostics surface never runs the transform
-            if not fallback_to_gamma:
-                raise
-            _default_fallback_strategy.log_fallback_warning(str(exc), context=fallback_context)
-            fitted = FittedDistribution.resolve(
-                values,
-                Distribution.gamma,
-                data_start_year,
-                calibration_start_year,
-                calibration_end_year,
-                periodicity,
-            )
-            fell_back_to_gamma = True
-        else:
-            if fallback_to_gamma and lost_valid_fraction > _default_fallback_strategy.max_nan_percentage:
-                _default_fallback_strategy.log_fallback_warning(
-                    "Pearson distribution fitting resulted in excessive missing values",
-                    context=fallback_context,
-                )
-                fitted = FittedDistribution.resolve(
-                    values,
-                    Distribution.gamma,
-                    data_start_year,
-                    calibration_start_year,
-                    calibration_end_year,
-                    periodicity,
-                )
-                fell_back_to_gamma = True
+        fitted, fell_back_to_gamma = _resolve_pearson_diagnostics_fit(
+            values,
+            distribution,
+            data_start_year,
+            calibration_start_year,
+            calibration_end_year,
+            periodicity,
+            fitting_params,
+            fallback_to_gamma=fallback_to_gamma,
+            fallback_context=fallback_context,
+        )
     else:
         fitted = FittedDistribution.resolve(
             values,
