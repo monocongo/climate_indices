@@ -206,10 +206,12 @@ handling on SPEI would get classic output with nothing to say so.
   [#1188](https://github.com/monocongo/climate_indices/issues/1188).
   Cross-implementation fixtures against the R `SEI` and `SCI` packages landed
   in
-  [#1209](https://github.com/monocongo/climate_indices/issues/1209); they pin
-  the zero constants exactly and reproduce the full SEI series from its fitted
-  `shape`/`rate`, while the all-zero-step divergence from ADR-0015 decision 5
-  remains.
+  [#1209](https://github.com/monocongo/climate_indices/issues/1209). The `SEI`
+  fixtures pin the zero constants exactly and reproduce the full SEI series
+  from its fitted `shape`/`rate`; the `SCI` fixture carries only its Weibull
+  `p0` estimator, which is compared to the exercised mode within the
+  estimator's documented difference. The all-zero-step divergence from
+  decision 5 remains.
 - The Zero Handling term joined `src/climate_indices/CONTEXT.md` with the
   NumPy implementation in #1186.
 

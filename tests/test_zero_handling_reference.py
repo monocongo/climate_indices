@@ -83,6 +83,7 @@ def test_sei_zero_placement_constants_match_exactly(zero_handling: str) -> None:
     np.testing.assert_allclose(
         computed[zeros & movable],
         sei[zeros & movable],
+        rtol=0.0,
         atol=_provenance()["validation_tolerance"]["zero_constant_atol"],
     )
 
@@ -112,6 +113,7 @@ def test_sei_parameter_matched_full_series_matches_sei(zero_handling: str) -> No
     np.testing.assert_allclose(
         computed[:, fitted],
         sei[:, fitted],
+        rtol=0.0,
         atol=_provenance()["validation_tolerance"]["parameter_matched_atol"],
     )
 
@@ -130,30 +132,61 @@ def test_sei_end_to_end_index_agrees_within_documented_tolerance(zero_handling: 
     np.testing.assert_allclose(
         computed[:, fitted],
         reference[:, fitted],
+        rtol=0.0,
         atol=_provenance()["validation_tolerance"]["end_to_end_atol"],
     )
 
 
 def test_sci_center_of_mass_matches_within_its_p0_estimator_bias() -> None:
-    """SCI's centre-of-mass placement agrees with ours up to its Weibull p0 estimator."""
+    """SCI's centre-of-mass placement agrees with our exercised mode up to its Weibull p0 estimator."""
     values = _load("input_precipitation_mm.npy")
     sci_p0 = _load("sci_center_of_mass_probability.npy")
     probabilities_of_zero = _probabilities_of_zero(values)
     sample_size = values.shape[0]
+    movable = (probabilities_of_zero > 0.0) & (probabilities_of_zero < 1.0)
 
     # SCI estimates p0 with the Weibull plotting position np/(n+1) and places a
     # zero at the centre of [0, (np+1)/(n+1)]; climate_indices uses np/n and np/(2n).
     defined = np.isfinite(sci_p0)
-    np.testing.assert_allclose(sci_p0[defined], probabilities_of_zero[defined] * sample_size / (sample_size + 1))
-    sci_placement = scipy.stats.norm.ppf((sci_p0 + 1.0 / (sample_size + 1)) / 2.0)
-    our_placement = scipy.stats.norm.ppf(probabilities_of_zero / 2.0)
-
-    movable = (probabilities_of_zero > 0.0) & (probabilities_of_zero < 1.0)
     np.testing.assert_allclose(
-        our_placement[movable],
+        sci_p0[defined],
+        probabilities_of_zero[defined] * sample_size / (sample_size + 1),
+        rtol=0.0,
+        atol=1e-12,
+    )
+    sci_placement = scipy.stats.norm.ppf((sci_p0 + 1.0 / (sample_size + 1)) / 2.0)
+
+    # exercise the library's mode, not just the closed form, and pin it exactly
+    computed = _spi(values, "center_of_mass")
+    closed_form = scipy.stats.norm.ppf(probabilities_of_zero / 2.0)
+    movable_zeros = (values == 0) & np.broadcast_to(movable, values.shape)
+    np.testing.assert_allclose(
+        computed[movable_zeros], np.broadcast_to(closed_form, values.shape)[movable_zeros], rtol=0.0, atol=1e-12
+    )
+    np.testing.assert_allclose(
+        closed_form[movable],
         sci_placement[movable],
+        rtol=0.0,
         atol=_provenance()["validation_tolerance"]["sci_center_of_mass_atol"],
     )
+
+
+def test_sei_fitted_parameters_are_not_climate_indices_own_fit() -> None:
+    """The SEI fixture carries an external MLE fit, not this library's method-of-moments output."""
+    values = _load("input_precipitation_mm.npy")
+    shape = _load("sei_shape.npy")
+    rate = _load("sei_rate.npy")
+    notes = _provenance()["notes"]
+    assert "SEI 0.2.0" in notes and "SCI 1.0.3" in notes
+
+    alphas, betas = compute.gamma_parameters(
+        values, _DATA_START_YEAR, _DATA_START_YEAR, _CALIBRATION_END_YEAR, compute.Periodicity.monthly
+    )
+    fittable = np.isfinite(shape) & np.isfinite(rate)
+    # MLE (SEI) and Thom's method of moments differ by a few tenths of a percent;
+    # a self-generated fixture would match exactly instead.
+    assert np.max(np.abs((alphas[fittable] - shape[fittable]) / shape[fittable])) > 1e-3
+    assert np.max(np.abs((betas[fittable] - 1.0 / rate[fittable]) / (1.0 / rate[fittable]))) > 1e-3
 
 
 def test_all_zero_calibration_step_follows_adr_not_sei() -> None:
@@ -165,9 +198,10 @@ def test_all_zero_calibration_step_follows_adr_not_sei() -> None:
 
     for zero_handling in _MODES:
         computed = _spi(values, zero_handling)
-        np.testing.assert_allclose(computed[zeros_all_zero_step], -_SPI_LIMIT)
+        np.testing.assert_allclose(computed[zeros_all_zero_step], -_SPI_LIMIT, rtol=0.0)
 
-    # SEI places its censored constant (0 on the normal scale) even with no fit.
+    # SEI's censored modes place a constant (0 on the normal scale) even with no
+    # fit; its classic mode gives +Inf instead.
     for zero_handling in ("center_of_mass", "mean_zero"):
         sei = _load(_SEI_FILES[zero_handling])
-        np.testing.assert_allclose(sei[zeros_all_zero_step], 0.0)
+        np.testing.assert_allclose(sei[zeros_all_zero_step], 0.0, rtol=0.0)

@@ -29,6 +29,9 @@ if (!all(c("year", "month", "value") %in% names(d))) {
 if (nrow(d) %% 12 != 0) {
   stop("input must contain complete calendar years")
 }
+if (!all(sort(unique(d$month)) == 1:12)) {
+  stop("input must cover every calendar month 1..12")
+}
 month_factor <- factor(d$month, levels = 1:12)
 n_years <- nrow(d) / 12
 
@@ -43,6 +46,10 @@ write_by_month <- function(mat, path) {
 # SEI: in-sample gamma MLE by fitdistrplus, `lower = 0` censors precipitation
 # below zero, and `cens` picks the censored-PIT constant. The three values
 # "none", "prob", and "normal" are classic, centre-of-mass, and mean-zero.
+# `cens` is a transform choice, so the fitted parameters must be identical
+# across the three modes; stop rather than publish a mode-dependent fit.
+sei_shapes <- NULL
+sei_rates <- NULL
 for (cens_mode in c("none", "prob", "normal")) {
   res <- std_index(
     d$value,
@@ -59,12 +66,18 @@ for (cens_mode in c("none", "prob", "normal")) {
 
   shapes <- vapply(res$params, function(p) if (length(p) == 2) p[["shape"]] else NA_real_, numeric(1))
   rates <- vapply(res$params, function(p) if (length(p) == 2) p[["rate"]] else NA_real_, numeric(1))
-  write.csv(
-    data.frame(month = 1:12, shape = shapes, rate = rates),
-    file.path(output_dir, "sei_params.csv"),
-    row.names = FALSE, quote = FALSE
-  )
+  if (is.null(sei_shapes)) {
+    sei_shapes <- shapes
+    sei_rates <- rates
+  } else {
+    stopifnot(isTRUE(all.equal(shapes, sei_shapes)), isTRUE(all.equal(rates, sei_rates)))
+  }
 }
+write.csv(
+  data.frame(month = 1:12, shape = sei_shapes, rate = sei_rates),
+  file.path(output_dir, "sei_params.csv"),
+  row.names = FALSE, quote = FALSE
+)
 
 # SCI: `p0.center.mass = TRUE` estimates the zero probability with the Weibull
 # plotting position and places the zero mass centre accordingly. Only the

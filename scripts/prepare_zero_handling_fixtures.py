@@ -40,6 +40,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -56,8 +57,9 @@ _N_YEARS = 100
 
 # exact zeros per calendar month over the record; the calendar-month zero
 # fraction is what the gamma transform uses as p0. The set spans near-zero
-# (month 7, p0 == 0), a mid range, near-one (month 11, p0 == 0.95), and one
-# all-zero step (month 6, p0 == 1) that no continuous distribution can fit.
+# (month 1, p0 == 0.02), a mid range, near-one (months 3 and 11, p0 == 0.88),
+# and one all-zero step (month 6, p0 == 1) that no continuous distribution can
+# fit. p0 == 1 is covered by the all-zero-step test rather than the movable set.
 _ZERO_COUNTS = np.array([2, 50, 88, 10, 75, 100, 0, 25, 60, 20, 88, 40], dtype=int)
 
 _GENERATOR_SEED = 20260914
@@ -88,8 +90,10 @@ def _read_matrix(path: Path) -> np.ndarray:
     header = path.read_text().splitlines()[0].split(",")
     if header != [f"M{month}" for month in range(1, 13)]:
         raise ValueError(f"{path.name} has unexpected columns: {header}")
-    matrix = np.loadtxt(path, delimiter=",", skiprows=1).reshape(_N_YEARS, 12)
-    return np.asarray(matrix, dtype=np.float64)
+    matrix = np.asarray(np.loadtxt(path, delimiter=",", skiprows=1), dtype=np.float64)
+    if matrix.shape != (_N_YEARS, 12):
+        raise ValueError(f"{path.name} has shape {matrix.shape}, expected {(_N_YEARS, 12)}")
+    return matrix
 
 
 def _compute_checksum(directory: Path) -> str:
@@ -103,9 +107,17 @@ def _compute_checksum(directory: Path) -> str:
 def main() -> int:
     if not R_SCRIPT.exists():
         raise FileNotFoundError(R_SCRIPT)
+    if shutil.which("Rscript") is None:
+        raise SystemExit("Rscript not found; install R with the SEI 0.2.0 and SCI 1.0-3 packages")
 
     FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
     input_values = _generate_input()
+
+    # keep R's own user-library default unless this session installed the
+    # packages into the conventional ~/.R/library instead
+    env = dict(os.environ)
+    if "R_LIBS_USER" not in env and (Path.home() / ".R" / "library").is_dir():
+        env["R_LIBS_USER"] = str(Path.home() / ".R" / "library")
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
@@ -115,7 +127,7 @@ def main() -> int:
             ["Rscript", str(R_SCRIPT), str(input_csv), str(tmp_path)],
             check=True,
             cwd=PROJECT_ROOT,
-            env={**os.environ, "R_LIBS_USER": os.environ.get("R_LIBS_USER", str(Path.home() / ".R" / "library"))},
+            env=env,
         )
 
         np.save(FIXTURE_DIR / "input_precipitation_mm.npy", input_values)
@@ -140,7 +152,7 @@ def main() -> int:
 
     provenance = {
         "source": "R SEI and SCI packages",
-        "url": "https://cran.r-project.org/package=SEI",
+        "url": "https://cran.r-project.org/package=SEI (https://cran.r-project.org/package=SCI)",
         "download_date": dt.date.today().isoformat(),
         "subset_description": (
             f"Deterministic {_N_YEARS}-year zero-heavy monthly precipitation series and the R "
@@ -157,7 +169,9 @@ def main() -> int:
         },
         "citation": (
             "Allen, S. & Otero, N. (2024). Calculating Standardised Indices Using SEI. "
-            "The R Journal 16(4), 102-122. https://doi.org/10.32614/RJ-2024-038"
+            "The R Journal 16(4), 102-122. https://doi.org/10.32614/RJ-2024-038; "
+            "Gudmundsson, L. & Stagge, J. H. (2014). SCI: Standardized Climate Indices. "
+            "https://cran.r-project.org/package=SCI"
         ),
         "doi": "10.32614/RJ-2024-038",
         "license": "R packages under their CRAN licenses (GPL-3)",
@@ -168,12 +182,14 @@ def main() -> int:
             "SEI fits gamma by MLE (fitdistrplus) while climate_indices uses Thom's "
             "method-of-moments approximation, so the full series is compared against "
             "SEI's fitted shape/rate; only the zero-placement constants are exact. "
-            "Month 6 is all zeros: SEI still assigns its censored constant while "
-            "climate_indices treats the undefined mass as classic (ADR-0015 decision 5). "
+            "Month 6 is all zeros: SEI's censored modes still assign their constant "
+            "while climate_indices treats the undefined mass as classic (ADR-0015 "
+            "decision 5); SEI's classic mode gives +Inf there. "
             "SCI estimates p0 with the Weibull plotting position np/(n+1) and places "
             "zeros at (np+1)/(2(n+1)), so its centre-of-mass constant differs from "
-            "climate_indices' np/(2n) by up to ~0.15 in z for p0 near 0; the "
-            "sci_center_of_mass_atol records that estimator difference."
+            "climate_indices' np/(2n). The gap is at most 0.16 in z for this fixture "
+            "(smallest non-degenerate p0 is 0.02) and grows for sparser steps; the "
+            "sci_center_of_mass_atol records it."
         ),
     }
     (FIXTURE_DIR / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
