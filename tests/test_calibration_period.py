@@ -171,14 +171,16 @@ class TestThroughIndices:
     @pytest.mark.parametrize("window", REVERSED_WINDOWS)
     def test_spi_rejects_a_reversed_window(self, distribution, window):
         # the Pearson to gamma fallback must not swallow it
+        values = _record(29)
         with pytest.raises(CalibrationPeriodError, match="initial year"):
-            indices.spi(_record(29), 1, distribution, 1981, *window, MONTHLY)
+            indices.spi(values, 1, distribution, 1981, *window, MONTHLY)
 
     @pytest.mark.parametrize("distribution", [indices.Distribution.gamma, indices.Distribution.pearson])
     @pytest.mark.parametrize("window", REVERSED_WINDOWS)
     def test_fit_diagnostics_rejects_a_reversed_window(self, distribution, window):
+        values = _record(29)
         with pytest.raises(CalibrationPeriodError, match="initial year"):
-            indices.fit_diagnostics(_record(29), 1, distribution, 1981, *window, MONTHLY)
+            indices.fit_diagnostics(values, 1, distribution, 1981, *window, MONTHLY)
 
     @pytest.mark.parametrize("window", REVERSED_WINDOWS)
     def test_transform_fitted_gamma_rejects_a_reversed_window(self, window):
@@ -192,8 +194,10 @@ class TestThroughIndices:
     @pytest.mark.parametrize("distribution", [indices.Distribution.gamma, indices.Distribution.pearson])
     @pytest.mark.parametrize("window", REVERSED_WINDOWS)
     def test_spei_rejects_a_reversed_window(self, distribution, window):
+        values = _record(29)
+        pet = _record(29, seed=1) / 2
         with pytest.raises(CalibrationPeriodError, match="initial year"):
-            indices.spei(_record(29), _record(29, seed=1) / 2, 1, distribution, MONTHLY, 1981, *window)
+            indices.spei(values, pet, 1, distribution, MONTHLY, 1981, *window)
 
     @pytest.mark.parametrize("window", REVERSED_WINDOWS)
     def test_eddi_rejects_a_reversed_window(self, window):
@@ -220,8 +224,9 @@ class TestPercentageOfNormalWindow:
         ],
     )
     def test_monthly_window_the_record_does_not_cover_raises(self, window):
+        values = _record(10)
         with pytest.raises(CalibrationPeriodError):
-            indices.percentage_of_normal(_record(10), 1, 2000, *window, MONTHLY)
+            indices.percentage_of_normal(values, 1, 2000, *window, MONTHLY)
 
     def test_a_trailing_partial_year_counts_as_a_record_year(self):
         # 121 months from 2000 reach into 2010
