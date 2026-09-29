@@ -70,7 +70,7 @@ does not, because its `P − PET` series has no physical zero mass (ADR-0015).
   the mass, an ideal normal-scale mean of 0.
 
 Both non-classic modes move the zero mass only. For Pearson Type III a positive
-trace value below 0.0005 shares a zero's position where `p0 > 0`, so it moves
+trace value below 0.0005 shares a zero's position where `0 < p0 < 1`, so it moves
 too. The formulas and their edge cases are in {doc}`algorithm-reference`.
 
 ## Choose the calibration period
