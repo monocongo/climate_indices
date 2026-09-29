@@ -1,12 +1,14 @@
 """One output path for the CLI: attributes from the CF registry, atomic writes.
 
-Both CLI backends -- the shared-memory NumPy route and the xarray route -- end
-here. Attributes come from :data:`climate_indices.cf_metadata_registry.CF_METADATA`
-through the same ``build_output_attrs`` layering the xarray adapters use, so a
-CLI output carries the registry's long name, units and references plus the
-library version and a history entry. Writes go beside the target and replace it
-only once the whole file is on disk, so a failed computation cannot leave a
-hollow file where an earlier output was.
+Both CLI backends -- the shared-memory NumPy route and the xarray route -- write
+through ``write_netcdf_atomic`` here. The shared-memory route also builds its
+variable attributes with ``build_index_attrs``: they come from
+:data:`climate_indices.cf_metadata_registry.CF_METADATA` through the same
+``build_output_attrs`` layering the xarray adapters use, so a CLI output carries
+the registry's long name, units and references plus the library version and a
+history entry. (The xarray route already stamped those attrs in its adapter.)
+Writes go beside the target and replace it only once the whole file is on disk,
+so a failed computation cannot leave a hollow file where an earlier output was.
 """
 
 from __future__ import annotations
@@ -44,6 +46,10 @@ def build_index_attrs(
         calculation_metadata,
         index_name=index_name,
     )
+    # The source's own valid range describes the input, not the computed index;
+    # drop it so only an explicit ``extra`` range reaches the output.
+    for range_attr in ("valid_min", "valid_max", "valid_range", "actual_range"):
+        attrs.pop(range_attr, None)
     if extra:
         attrs.update(extra)
     return attrs

@@ -110,16 +110,21 @@ _ZERO_HANDLING_REFERENCES = {
 }
 
 
-def spi_output_attributes(zero_handling: str, output_scale: str = "normal") -> dict[str, str | float]:
-    """Describe SPI's zero placement and output range across its file surfaces."""
+def standardized_output_bounds(output_scale: str = "normal") -> dict[str, float]:
+    """The valid range a standardized index output carries at ``output_scale``."""
     bounds = {"normal": (-3.09, 3.09), "probability": (0.0, 1.0), "bounded": (-1.0, 1.0)}
     if output_scale not in bounds:
         raise ValueError(f"Invalid output_scale argument: {output_scale!r}. Supported values: {', '.join(bounds)}.")
     valid_min, valid_max = bounds[output_scale]
+    return {"valid_min": valid_min, "valid_max": valid_max}
+
+
+def spi_output_attributes(zero_handling: str, output_scale: str = "normal") -> dict[str, str | float]:
+    """Describe SPI's zero placement and output range across its file surfaces."""
     references = _SPI_REFERENCES
     if zero_handling in _ZERO_HANDLING_REFERENCES:
         references += "; " + _ZERO_HANDLING_REFERENCES[zero_handling]
-    return {"zero_handling": zero_handling, "references": references, "valid_min": valid_min, "valid_max": valid_max}
+    return {"zero_handling": zero_handling, "references": references, **standardized_output_bounds(output_scale)}
 
 
 _SPEI_REFERENCES = (

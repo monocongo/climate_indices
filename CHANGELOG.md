@@ -290,9 +290,10 @@ change states what a user sees, how to detect it, and what to change in
   Palmer Z-Index uses the `z_index` registry entry. A self-calibrated PDSI registry
   entry (`scpdsi`) is added. Every CLI index now normalizes temperature and
   precipitation units through `climate_indices._units`, so spellings such as `degC`
-  and `kg m-2 s-1` are accepted by every index, and the `mm/month` PET output is
-  accepted as input to a subsequent run. The `_OUTPUT_SCALE_*` maps and the per-index
-  `_*_variable_attributes` long-name builders are removed (#1223).
+  are accepted by every index, and the `mm/month` PET output is accepted as input to
+  a subsequent monthly run; a per-day rate is rejected for a monthly depth rather
+  than used as a monthly total. The `_OUTPUT_SCALE_ATTRS` and `_OUTPUT_SCALE_LABELS`
+  maps and the hand-written long-name construction are removed (#1223).
 
 ## [2.4.0] - 2026-04-05
 

@@ -17,7 +17,7 @@ from climate_indices import compute, fire, flood, indices, palmer, utils
 from climate_indices._cli import _add_common_spi_arguments, _open_with_default_chunks
 from climate_indices._cli_output import build_index_attrs, write_netcdf_atomic
 from climate_indices._units import _convert_precipitation_units, _convert_temperature_units
-from climate_indices.cf_metadata_registry import spi_output_attributes
+from climate_indices.cf_metadata_registry import spi_output_attributes, standardized_output_bounds
 from climate_indices.exceptions import ConvergenceError, InsufficientDataError
 from climate_indices.validation import DatasetLayout, detect_dataset_layout, expected_dimensions
 
@@ -914,22 +914,24 @@ def _trimmed_output_encodings(output_encodings: dict[str, Any] | None, shape: tu
     return {"chunksizes": trimmed}
 
 
-def _normalize_precipitation_units(dataset: xr.Dataset, var_name: str | None) -> None:
+def _normalize_precipitation_units(dataset: xr.Dataset, var_name: str | None, *, monthly: bool) -> None:
     """
     Convert a precipitation variable's values to millimeters, in place.
 
     Delegates to the shared CF-units module, so every CLI index accepts the
-    same unit spellings the xarray adapters do.
+    same unit spellings the xarray adapters do. A monthly run takes a monthly
+    depth and rejects a per-day rate, which is not a monthly total.
 
     param dataset: the dataset holding the variable
     param var_name: name of the precipitation variable, or None when the
         index takes no precipitation input
+    param monthly: True when the input is a monthly depth rather than a daily value
     raise InvalidArgumentError: if the variable's units are unrecognized
     """
     if var_name is None:
         return
     dataset[var_name] = _convert_precipitation_units(
-        dataset[var_name], "mm", argument_name=f"{var_name}.attrs['units']"
+        dataset[var_name], "mm", argument_name=f"{var_name}.attrs['units']", monthly=monthly
     )
 
 
@@ -952,22 +954,24 @@ def _normalize_temperature_units(dataset: xr.Dataset, var_name: str | None) -> N
     )
 
 
-def _normalize_pet_units(dataset: xr.Dataset, var_name: str | None) -> None:
+def _normalize_pet_units(dataset: xr.Dataset, var_name: str | None, *, monthly: bool) -> None:
     """
     Convert a PET variable's values to millimeters, in place.
 
     Delegates to the shared CF-units module, so every CLI index accepts the
-    same unit spellings the xarray adapters do.
+    same unit spellings the xarray adapters do. A monthly run takes a monthly
+    depth and rejects a per-day rate, which is not a monthly total.
 
     param dataset: the dataset holding the variable
     param var_name: name of the PET variable, or None when the index takes no
         PET input
+    param monthly: True when the input is a monthly depth rather than a daily value
     raise InvalidArgumentError: if the variable's units are unrecognized
     """
     if var_name is None:
         return
     dataset[var_name] = _convert_precipitation_units(
-        dataset[var_name], "mm", argument_name=f"{var_name}.attrs['units']"
+        dataset[var_name], "mm", argument_name=f"{var_name}.attrs['units']", monthly=monthly
     )
 
 
@@ -1015,9 +1019,10 @@ def _compute_write_index(request: _IndexRequest) -> tuple[str, str] | None:
 
     # convert data into the appropriate units, if necessary
     # precipitation and PET should be in millimeters, temperature in Celsius
-    _normalize_precipitation_units(dataset, request.var_name_precip)
+    monthly_inputs = request.periodicity == compute.Periodicity.monthly
+    _normalize_precipitation_units(dataset, request.var_name_precip, monthly=monthly_inputs)
     _normalize_temperature_units(dataset, request.var_name_temp)
-    _normalize_pet_units(dataset, request.var_name_pet)
+    _normalize_pet_units(dataset, request.var_name_pet, monthly=monthly_inputs)
 
     # the Palmer routines take inches, whereas the conversions above normalize
     # precipitation and PET to millimeters for every other index; this runs
@@ -1554,12 +1559,18 @@ def _pet_arguments(request: _IndexRequest) -> dict[str, Any]:
 
 
 def _standardized_variable_attributes(
-    request: _IndexRequest, source: xr.DataArray, cf_base: str, display_name: str, var_name_base: str
+    request: _IndexRequest,
+    source: xr.DataArray,
+    cf_base: str,
+    display_name: str,
+    var_name_base: str,
+    extra: dict[str, Any] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Name and describe a standardized-index output for the requested output scale.
 
     The long name, units and variant metadata come from ``CF_METADATA``; the
-    scale and distribution are recorded in the history entry instead.
+    scale and distribution are recorded in the history entry instead. ``extra``
+    carries the output scale's valid range, which the registry does not hold.
     """
     assert request.distribution is not None, _UNVALIDATED_DISTRIBUTION
     assert request.scale is not None, _UNVALIDATED_SCALE
@@ -1573,6 +1584,7 @@ def _standardized_variable_attributes(
             "distribution": request.distribution,
             "output_scale": request.output_scale,
         },
+        extra=extra,
     )
     var_name = var_name_base + "_" + request.distribution.value + "_" + str(request.scale).zfill(2)
     if request.output_scale != "normal":
@@ -1582,13 +1594,25 @@ def _standardized_variable_attributes(
 
 
 def _spi_variable_attributes(request: _IndexRequest, source: xr.DataArray) -> tuple[str, dict[str, Any]]:
-    name, attrs = _standardized_variable_attributes(request, source, "spi", "SPI", "spi")
-    attrs.update(spi_output_attributes(request.zero_handling, request.output_scale))
-    return name, attrs
+    return _standardized_variable_attributes(
+        request,
+        source,
+        "spi",
+        "SPI",
+        "spi",
+        extra=spi_output_attributes(request.zero_handling, request.output_scale),
+    )
 
 
 def _spei_variable_attributes(request: _IndexRequest, source: xr.DataArray) -> tuple[str, dict[str, Any]]:
-    return _standardized_variable_attributes(request, source, "spei", "SPEI", "spei")
+    return _standardized_variable_attributes(
+        request,
+        source,
+        "spei",
+        "SPEI",
+        "spei",
+        extra=standardized_output_bounds(request.output_scale),
+    )
 
 
 def _pnp_variable_attributes(request: _IndexRequest, source: xr.DataArray) -> tuple[str, dict[str, Any]]:
