@@ -317,6 +317,14 @@ change states what a user sees, how to detect it, and what to change in
   probability of zero and its missing-data quality check from the same calibration
   values, so a zero counts as valid there, matching `gamma_parameters()`. Public
   signatures and fitted values are unchanged (#1216).
+- **CLI shared-array route accepts either dimension order**: the shared-memory route
+  (SPI, SPEI, percent of normal, Thornthwaite PET, and the Palmer outputs) canonicalizes
+  every time-carrying input to the time-last order its kernels index, so a CF-typical
+  `(time, lat, lon)` grid or `(time, division)` division variable is accepted alongside
+  the time-last order, and precipitation in one order can be paired with a companion in
+  the other. This supersedes the time-last-only acceptance noted above: a time-major
+  input, or a time-major companion beside a time-last precipitation variable, was
+  previously rejected with `Invalid dimensions ...` (#1224, #932).
 
 ## [2.4.0] - 2026-04-05
 
