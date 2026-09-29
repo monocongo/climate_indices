@@ -1186,6 +1186,24 @@ def test_fit_and_standardize_does_not_fall_back_when_the_input_is_entirely_missi
     assert np.isnan(computed).all()
 
 
+@pytest.mark.parametrize(
+    "distribution",
+    [indices.Distribution.gamma, indices.Distribution.loglogistic, indices.Distribution.pearson],
+)
+def test_fit_and_standardize_returns_all_missing_without_fitting(distribution):
+    """
+    A direct all-missing call returns the input before any fit, so the calibration
+    quality and fit-failure warnings a fit would raise never fire.
+    """
+    values = np.full((30, 12), np.nan)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        computed = compute.fit_and_standardize(values, distribution, 2000, 2000, 2029, compute.Periodicity.monthly)
+
+    assert np.isnan(computed).all()
+
+
 @pytest.mark.parametrize(("lost", "falls_back"), [(60, False), (61, True)])
 def test_fit_and_standardize_falls_back_only_when_pearson_loses_over_half_of_the_valid_values(lost, falls_back):
     """

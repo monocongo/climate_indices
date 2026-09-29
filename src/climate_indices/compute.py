@@ -2858,6 +2858,15 @@ def fit_and_standardize(
     validate_output_scale(output_scale)
     _validate_zero_handling(zero_handling)
 
+    # an all-missing input has nothing to fit, so return it before any fit: a direct
+    # caller must not see a MissingDataWarning or a fit-failure event from it. Validate
+    # a supplied parameter set first, as the transforms do, so an argument error still
+    # raises regardless of whether the values carry any data.
+    if distribution.value in _PARAMETER_KEYS and is_all_missing(values):
+        params = _normalize_fitting_params(fitting_params) or {}
+        FittedDistribution.validate_supplied(_validate_array(values, periodicity), distribution, params)
+        return values
+
     if distribution.value in ("gamma", "loglogistic"):
         # the GLO is the SPEI reference distribution: P−PET is offset and has no
         # physical zero mass, so it has no zero-placement mode and zero_handling is
