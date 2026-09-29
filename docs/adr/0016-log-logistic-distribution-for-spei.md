@@ -65,8 +65,9 @@ cares about.
 - `spi()` and `standardized_index()` carry an explicit rejection rather than
   silently standardizing zeros as if they were a fitted value.
 - `VALIDATION.md` keeps its gamma-based SPEIbase plausibility classification
-  until the like-for-like log-logistic re-run in #1196; #1196 also removes the
-  "log-logistic is not implemented" caveats from the user-facing docs.
+  until the like-for-like log-logistic re-run in #1196. This change already
+  removed the "log-logistic is not implemented" availability caveats from the
+  user-facing docs, so #1196 owns the validation upgrade only.
 - A later SPI/`standardized_index()` log-logistic surface, if wanted, has to add
   a zero-placement mode for the GLO first.
 
@@ -74,7 +75,12 @@ cares about.
 
 - Hosking, J. R. M. & Wallis, J. R. (1997). *Regional Frequency Analysis: An
   Approach Based on L-Moments.* Cambridge University Press.
-- Vicente-Serrano, S. M., Beguería, S. & López-Moreno, J. I. (2010).
-  *J. Climate* 23, 1696–1718. https://doi.org/10.1175/2009JCLI2909.1
-- Beguería, S., et al. (2014). SPEI revisited. *Int. J. Climatol.* 34,
-  3001–3023. https://doi.org/10.1002/joc.3887
+- Vicente-Serrano, S. M., Beguería, S. & López-Moreno, J. I. (2010). A
+  Multiscalar Drought Index Sensitive to Global Warming: The Standardized
+  Precipitation Evapotranspiration Index. *Journal of Climate* 23, 1696–1718.
+  <https://doi.org/10.1175/2009JCLI2909.1>
+- Beguería, S., Vicente-Serrano, S. M., Reig, F. & Latorre, B. (2014).
+  Standardized precipitation evapotranspiration index (SPEI) revisited:
+  parameter fitting, evapotranspiration models, tools, datasets and drought
+  monitoring. *International Journal of Climatology* 34, 3001–3023.
+  <https://doi.org/10.1002/joc.3887>

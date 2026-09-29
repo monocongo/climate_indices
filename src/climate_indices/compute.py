@@ -2298,7 +2298,9 @@ def _loglogistic_fit(
         ``y = z`` for ``shape = 0``, else ``y = −log(1 − shape·z) / shape``.
 
     A position whose parameters are missing, non-finite, non-positive in scale, or
-    outside the GLO's ``|shape| < 1`` support is reported as NaN.
+    outside the GLO's ``|shape| < 1`` support is reported as NaN. A finite value
+    beyond the fitted support follows ``cdfglo``: it maps to a probability of 0 or 1,
+    whose normal-scale z is infinite and which the index layer clips to its range.
 
     :param values: an array of values to transform
     :param locs: location parameter, broadcastable to ``values``

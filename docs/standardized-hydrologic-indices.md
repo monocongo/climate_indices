@@ -76,7 +76,7 @@ generalized logistic that SPEI standardizes with as "log-logistic"
 (the latter on `spei()` only); the two-parameter gamma is also available. The
 remaining distributions — lognormal, general extreme value, generalized Pareto,
 and Weibull — are not implemented; the log-logistic support landed with
-[#106][log-logistic].
+[#106][log-logistic] ([ADR-0016](adr/0016-log-logistic-distribution-for-spei.md)).
 
 ## Calibration, input, and fitting caveats
 

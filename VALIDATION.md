@@ -128,8 +128,10 @@ confounds separate the two products:
   temperatures; the two PET families diverge with climate aridity (van der
   Schrier et al. 2011).
 - SPEIbase standardizes with the log-logistic distribution; climate_indices
-  now implements it (issue #106), but the committed comparison still fits gamma,
-  so a like-for-like re-run is tracked by #1196.
+  now implements it (issue #106,
+  [ADR-0016](docs/adr/0016-log-logistic-distribution-for-spei.md)), but the
+  committed comparison still fits gamma, so a like-for-like re-run is tracked by
+  #1196.
 - The reference is a 0.5-degree grid average inside a climate division polygon
   while the compared series is the division's station-derived areal average,
   from different precipitation inputs (CRU TS vs. nClimDiv).

@@ -35,15 +35,15 @@ def _synthetic_series(seed: int = 42, years: int = 60) -> tuple[np.ndarray, np.n
 
 
 def test_glo_parameters_match_pelglo_closed_form() -> None:
-    """The L-moment conversion reproduces Hosking's PELGLO equations."""
-    lmoments_input = np.array([10.0, 2.0, 0.4])
-    shape = -0.4
-    gg = shape * np.pi / np.sin(shape * np.pi)
-    scale = 2.0 / gg
-    params = lmoments._estimate_glo_parameters(lmoments_input)
-    assert params["scale"] == pytest.approx(scale)
-    assert params["shape"] == pytest.approx(shape)
-    assert params["loc"] == pytest.approx(10.0 - scale * (1.0 - gg) / shape)
+    """The L-moment conversion reproduces Hosking's PELGLO equations.
+
+    The expected values are independent of the implementation: they are the PELGLO
+    output for (lambda-1, lambda-2, tau-3) = (10, 2, 0.4).
+    """
+    params = lmoments._estimate_glo_parameters(np.array([10.0, 2.0, 0.4]))
+    assert params["loc"] == pytest.approx(8.7841336432)
+    assert params["scale"] == pytest.approx(1.5136534573)
+    assert params["shape"] == pytest.approx(-0.4)
 
 
 def test_glo_parameters_zero_shape_is_the_logistic_limit() -> None:
@@ -73,6 +73,22 @@ def test_transform_round_trips_the_glo_quantile(shape: float) -> None:
     padded[: probabilities.size] = _glo_quantile(probabilities, loc, scale, shape)
     standardized = compute._loglogistic_fit(padded.reshape(1, 12), loc, scale, shape)
     np.testing.assert_allclose(standardized[0, : probabilities.size], stats.norm.ppf(probabilities))
+
+
+def test_transform_maps_out_of_support_like_cdfglo() -> None:
+    """A value beyond the fitted support follows cdfglo's 0/1 rather than NaN.
+
+    ``lmom::cdfglo`` clamps ``1 - shape*z`` at zero, so a value beyond the support
+    yields a probability of 0 or 1 and the normal-scale z is infinite; the index
+    layer clips that to the supported range, as it does for the other transforms.
+    """
+    values = np.full((1, 12), np.nan)
+    values[0, 0] = 10.0
+    probabilities = compute._loglogistic_fit(values, 0.0, 1.0, 0.5, output_scale="probability")
+    assert probabilities[0, 0] == 1.0
+    z_scores = compute._loglogistic_fit(values, 0.0, 1.0, 0.5)
+    assert np.isposinf(z_scores[0, 0])
+    assert np.isfinite(np.clip(z_scores[0, 0], -3.09, 3.09))
 
 
 def test_transform_reports_nan_where_the_fit_is_invalid() -> None:
@@ -173,6 +189,109 @@ def test_spei_loglogistic_spatial_matches_per_cell() -> None:
         for j in range(block.shape[2]):
             per_cell = indices.spei(block[:, i, j], pet_block[:, i, j], **kwargs)
             np.testing.assert_allclose(block_result[:, i, j], per_cell, equal_nan=True)
+
+
+def test_spei_loglogistic_fitting_params_reproduce_the_fit() -> None:
+    """A parameter set fitted by the public API reproduces the transform exactly."""
+    precip, pet = _synthetic_series()
+    kwargs = {
+        "scale": 6,
+        "distribution": indices.Distribution.loglogistic,
+        "periodicity": compute.Periodicity.monthly,
+        "data_start_year": _DATA_START_YEAR,
+        "calibration_year_initial": _CALIBRATION_START_YEAR,
+        "calibration_year_final": _CALIBRATION_END_YEAR,
+    }
+    baseline = indices.spei(precip, pet, **kwargs)
+    scaled = compute.prepare_scaled((precip - pet) + 1000.0, 6, compute.Periodicity.monthly, clip_negatives=False)
+    locs, scales, shapes = compute.loglogistic_parameters(
+        scaled, _DATA_START_YEAR, _CALIBRATION_START_YEAR, _CALIBRATION_END_YEAR, compute.Periodicity.monthly
+    )
+    repeated = indices.spei(precip, pet, fitting_params={"loc": locs, "scale": scales, "shape": shapes}, **kwargs)
+    np.testing.assert_allclose(baseline, repeated, equal_nan=True)
+
+
+def test_spei_loglogistic_spatial_fitting_params_broadcast() -> None:
+    """Period-only parameters broadcast across a folded block's cells."""
+    precip, pet = _synthetic_series()
+    block = np.stack([np.stack([precip, precip * 1.1], axis=-1)] * 2, axis=1)
+    pet_block = np.stack([np.stack([pet, pet], axis=-1)] * 2, axis=1)
+    locs, scales, shapes = compute.loglogistic_parameters(
+        precip.reshape(-1, 12),
+        _DATA_START_YEAR,
+        _CALIBRATION_START_YEAR,
+        _CALIBRATION_END_YEAR,
+        compute.Periodicity.monthly,
+    )
+    result = indices.spei(
+        block,
+        pet_block,
+        scale=6,
+        distribution=indices.Distribution.loglogistic,
+        periodicity=compute.Periodicity.monthly,
+        data_start_year=_DATA_START_YEAR,
+        calibration_year_initial=_CALIBRATION_START_YEAR,
+        calibration_year_final=_CALIBRATION_END_YEAR,
+        fitting_params={"loc": locs, "scale": scales, "shape": shapes},
+        spatial_time_major=True,
+    )
+    assert result.shape == block.shape
+    assert np.isfinite(result).any()
+
+
+def test_loglogistic_parameters_mark_degenerate_steps_invalid() -> None:
+    """A constant calibration step cannot be fitted and is marked by a zero scale."""
+    locs, scales, shapes = compute.loglogistic_parameters(
+        np.full((60, 12), 5.0),
+        _DATA_START_YEAR,
+        _CALIBRATION_START_YEAR,
+        _CALIBRATION_END_YEAR,
+        compute.Periodicity.monthly,
+    )
+    assert np.all(scales == 0.0)
+    assert np.all(locs == 0.0)
+    assert np.all(shapes == 0.0)
+
+
+def test_spei_loglogistic_degenerate_series_is_missing() -> None:
+    """A series with no variability cannot be fitted and standardizes to NaN."""
+    result = indices.spei(
+        np.full(60 * 12, 100.0),
+        np.full(60 * 12, 90.0),
+        scale=6,
+        distribution=indices.Distribution.loglogistic,
+        periodicity=compute.Periodicity.monthly,
+        data_start_year=_DATA_START_YEAR,
+        calibration_year_initial=_CALIBRATION_START_YEAR,
+        calibration_year_final=_CALIBRATION_END_YEAR,
+    )
+    assert np.all(np.isnan(result))
+
+
+def test_spei_loglogistic_all_missing_returns_missing() -> None:
+    missing = np.full(60 * 12, np.nan)
+    result = indices.spei(
+        missing,
+        missing,
+        scale=6,
+        distribution=indices.Distribution.loglogistic,
+        periodicity=compute.Periodicity.monthly,
+        data_start_year=_DATA_START_YEAR,
+        calibration_year_initial=_CALIBRATION_START_YEAR,
+        calibration_year_final=_CALIBRATION_END_YEAR,
+    )
+    assert np.all(np.isnan(result))
+
+
+def test_loglogistic_parameters_daily_shapes() -> None:
+    """The daily path fits one parameter per day of the 366-day calendar."""
+    rng = np.random.default_rng(13)
+    series = np.clip(rng.gamma(2.0, 20.0, 366 * 60), 0.0, None)
+    locs, scales, shapes = compute.loglogistic_parameters(
+        series, _DATA_START_YEAR, _CALIBRATION_START_YEAR, _CALIBRATION_END_YEAR, compute.Periodicity.daily
+    )
+    assert locs.shape == scales.shape == shapes.shape == (366,)
+    assert np.isfinite(scales).all()
 
 
 @pytest.mark.parametrize("surface", ["spi", "standardized_index", "fit_diagnostics"])
