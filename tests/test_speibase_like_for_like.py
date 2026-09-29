@@ -27,6 +27,7 @@ P - PET difference (following ``sbegueria/SPEIbase``'s ``R/functions.R``,
 
 import hashlib
 import json
+import os
 import warnings
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
@@ -162,6 +163,33 @@ def test_monthly_days_leap_handling():
     assert _TOOLKIT._monthly_days(1900, 12)[1] == 28.0  # century not divisible by 400
     assert _TOOLKIT._monthly_days(2000, 12)[1] == 29.0  # 400-year rule
     assert _TOOLKIT._monthly_days(1901, _N_MONTHS).sum() == 45291.0  # 1901-2024 day count
+
+
+def test_publish_recovers_interrupted_backup(tmp_path, monkeypatch):
+    """An interrupted refresh must not let the next run discard the last published fixtures."""
+    output = tmp_path / "published"
+    backup = tmp_path / ".published-backup"
+    output.mkdir()
+    (output / "fixture.npy").write_bytes(b"previous")
+    # Simulate a refresh that moved the published fixtures aside, then stopped before installing.
+    os.replace(output, backup)
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    (staging / "fixture.npy").write_bytes(b"current")
+
+    real_replace = os.replace
+
+    def failing_install(source, target):
+        if Path(source) == staging:
+            raise OSError("simulated install failure")
+        return real_replace(source, target)
+
+    monkeypatch.setattr(os, "replace", failing_install)
+    with pytest.raises(OSError, match="simulated install failure"):
+        _INPUTS_SCRIPT._publish(staging, output)
+
+    assert (output / "fixture.npy").read_bytes() == b"previous"
+    assert not backup.exists()
 
 
 def test_provenance_declares_all_series():

@@ -445,8 +445,8 @@ def main() -> None:
 def _publish(staging: Path, output_dir: Path) -> None:
     """Replace the published fixture directory with the staged one, as one transaction."""
     backup = output_dir.with_name(f".{output_dir.name}-backup")
-    shutil.rmtree(backup, ignore_errors=True)
     if output_dir.exists():
+        shutil.rmtree(backup, ignore_errors=True)
         os.replace(output_dir, backup)
     try:
         os.replace(staging, output_dir)
