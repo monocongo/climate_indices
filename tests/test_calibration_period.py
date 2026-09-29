@@ -332,13 +332,13 @@ class TestAllMissingInput:
     @pytest.mark.parametrize("index", ["spi", "eddi", "percentage_of_normal"])
     def test_a_reversed_window_raises_for_a_folded_or_masked_input(self, index, values):
         window = (1990, 1985)
+        calls = {
+            "spi": lambda: indices.spi(values, 1, GAMMA, 1981, *window, MONTHLY),
+            "eddi": lambda: indices.eddi(values, 1, 1981, *window, MONTHLY),
+            "percentage_of_normal": lambda: indices.percentage_of_normal(values, 1, 1981, *window, MONTHLY),
+        }
         with pytest.raises(CalibrationPeriodError, match="initial year"):
-            if index == "spi":
-                indices.spi(values, 1, GAMMA, 1981, *window, MONTHLY)
-            elif index == "eddi":
-                indices.eddi(values, 1, 1981, *window, MONTHLY)
-            else:
-                indices.percentage_of_normal(values, 1, 1981, *window, MONTHLY)
+            calls[index]()
 
     @pytest.mark.parametrize("window", [(1990, 1985), (1970, 2030)])
     def test_a_time_major_block_is_measured_on_its_time_axis(self, window):
