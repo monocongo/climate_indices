@@ -86,15 +86,17 @@ def _convert_precipitation_units(
     elif normalized in _PRECIP_UNITS_INCH or (annual and normalized in _PRECIP_UNITS_INCH_PER_YEAR):
         source = "inch"
     else:
+        if annual:
+            valid_values = "An annual total (mm, inch) or a per-year rate (mm year-1, inch year-1)"
+        elif monthly:
+            valid_values = "mm / mm month-1, inch(es)"
+        else:
+            valid_values = "mm / mm day-1, inch(es), or kg m-2 s-1"
         raise InvalidArgumentError(
             f"Unsupported precipitation units attribute: {raw_units!r}.",
             argument_name=argument_name,
             argument_value=str(raw_units),
-            valid_values=(
-                "An annual total (mm, inch) or a per-year rate (mm year-1, inch year-1)"
-                if annual
-                else ("mm / mm month-1, inch(es)" if monthly else "mm / mm day-1, inch(es), or kg m-2 s-1")
-            ),
+            valid_values=valid_values,
         )
     if source == target:
         return data
