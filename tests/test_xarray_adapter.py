@@ -17,7 +17,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from climate_indices import compute, indices, spi
+from climate_indices import compute, indices, spei, spi
 from climate_indices.exceptions import (
     CoordinateValidationError,
     InputAlignmentWarning,
@@ -54,7 +54,6 @@ def _registered_spi(**kwargs: object):
         calendar="periodicity",
         inferred_parameters=INFER_TIME_PARAMETERS,
         timescale_parameter="scale",
-        spatial_block_parameter="spatial_time_major",
         **kwargs,
     )(indices.spi)
 
@@ -65,7 +64,6 @@ def _registered_spei(**kwargs: object):
         calendar="periodicity",
         inferred_parameters=INFER_TIME_PARAMETERS,
         timescale_parameter="scale",
-        spatial_block_parameter="spatial_time_major",
         **kwargs,
     )(indices.spei)
 
@@ -96,6 +94,30 @@ def test_registered_spi_rejects_invalid_arguments_before_dask_compute(
             periodicity=compute.Periodicity.monthly,
             **valid,
         )
+
+
+def test_registered_spei_rejects_invalid_arguments_before_dask_compute(
+    sample_monthly_precip_da: xr.DataArray, sample_monthly_pet_da: xr.DataArray
+) -> None:
+    """SPEI's own validator set rejects a bad scale or distribution before graph build."""
+    for invalid in ({"scale": 0}, {"distribution": "gamma"}):
+        options = {"scale": 3, "distribution": indices.Distribution.gamma, **invalid}
+        with pytest.raises(InvalidArgumentError):
+            spei(
+                sample_monthly_precip_da.chunk({"time": -1}),
+                sample_monthly_pet_da.chunk({"time": -1}),
+                **options,
+            )
+
+
+def test_registration_rejects_undeclared_contract_parameters() -> None:
+    """A declared timescale or metadata-variant typo fails at registration, not silently."""
+    with pytest.raises(ValueError, match="not accepted"):
+        xarray_adapter(calendar="periodicty")(lambda values: values)
+    with pytest.raises(ValueError, match="not accepted"):
+        xarray_adapter(timescale_parameter="scale")(lambda values: values)
+    with pytest.raises(ValueError, match="metadata_variant_parameter"):
+        xarray_adapter(cf_metadata_variants={"probability": {}})(lambda values: values)
 
 
 def test_calendar_registration_uses_declared_parameter(sample_daily_precip_da: xr.DataArray) -> None:
@@ -1996,6 +2018,16 @@ class TestCoordinateValidationIntegration:
             needs_scale(short_monthly_da, scale=6)
 
         assert "insufficient data" in str(exc_info.value).lower()
+
+    def test_positional_timescale_bounds_the_data(self, short_monthly_da):
+        """A positionally passed timescale still drives the declared length check."""
+
+        @xarray_adapter(timescale_parameter="scale")
+        def needs_scale(values: np.ndarray, scale: int) -> np.ndarray:
+            return values
+
+        with pytest.raises(InsufficientDataError):
+            needs_scale(short_monthly_da, 6)
 
     def test_daily_populated_length_bounds_the_scale(self):
         """A complete six-year daily span fills 2196 padded steps; a partial tail does not."""

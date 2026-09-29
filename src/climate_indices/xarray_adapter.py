@@ -364,7 +364,6 @@ def _make_calendar_aware_numpy_wrapper(
     valid_kwargs: dict[str, Any],
     calendar_plan: utils.DailyCalendarPlan | None,
     core_axis_first: bool = False,
-    spatial_block_parameter: str | None = None,
 ) -> Callable[..., np.ndarray[Any, Any]]:
     """Build an apply_ufunc callable that restores Gregorian daily output.
 
@@ -378,8 +377,7 @@ def _make_calendar_aware_numpy_wrapper(
     if core_axis_first:
         # a block whose first cell axis is a calendar period length is ambiguous with a
         # (years, periods, *cells) array, so the kernel is told which reading this is
-        if spatial_block_parameter is not None:
-            valid_kwargs = {**valid_kwargs, spatial_block_parameter: True}
+        valid_kwargs = {**valid_kwargs, "spatial_time_major": True}
 
     def wrapper(*numpy_arrays: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
         # every positional argument here is a time series: _collect_input_dataarrays
@@ -1321,7 +1319,6 @@ def xarray_adapter(
     argument_validators: tuple[Callable[[dict[str, Any]], None], ...] = (),
     deprecated_aliases: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
     timescale_parameter: str | None = None,
-    spatial_block_parameter: str | None = None,
     metadata_variant_parameter: str | None = None,
     cf_metadata: dict[str, str] | None = None,
     cf_metadata_variants: dict[str, dict[str, str]] | None = None,
@@ -1352,8 +1349,8 @@ def xarray_adapter(
         argument_validators: Checks on bound arguments, run for NumPy and xarray before dispatch.
         deprecated_aliases: Translate deprecated keyword aliases before argument binding.
         timescale_parameter: Name of the timescale argument for the data-length check.
-        spatial_block_parameter: Kernel argument declaring a time-major Spatial Block.
-        metadata_variant_parameter: Name of the argument selecting CF metadata variants.
+        metadata_variant_parameter: Name of the argument selecting the CF metadata
+            variant. Required whenever ``cf_metadata_variants`` is given.
         cf_metadata: Optional dict of CF Convention metadata to apply to output DataArray.
             Keys should be CF attribute names (e.g., 'standard_name', 'long_name', 'units').
             These override conflicting attributes from the input DataArray.
@@ -1362,9 +1359,10 @@ def xarray_adapter(
             overriding ``cf_metadata`` when that scale is requested.
         time_dim: Name of the time dimension in the input DataArray (default: "time").
             Used for parameter inference and alignment.
-        infer_params: If True, automatically infer missing parameters (data_start_year,
-            periodicity, calibration_year_initial, calibration_year_final) from the time
-            coordinate. Explicit parameter values always override inferred values.
+        infer_params: If True, infer the missing parameters declared in
+            ``inferred_parameters`` from the time coordinate. Explicit parameter values
+            always override inferred values; a registration that declares no
+            ``inferred_parameters`` infers nothing.
         calculation_metadata_keys: Optional sequence of parameter names to capture as
             output metadata attributes. For example, ["scale", "distribution"] will
             add these kwargs to the output DataArray.attrs. Enum values are automatically
@@ -1433,6 +1431,13 @@ def xarray_adapter(
         unknown_inferences = set(inferred_parameters or {}) - declared
         if unknown_inferences:
             raise ValueError(f"Inferred parameters not accepted by {func.__name__}: {sorted(unknown_inferences)}")
+        for contract_name in (timescale_parameter, metadata_variant_parameter):
+            if contract_name is not None and contract_name not in declared:
+                raise ValueError(f"Declared parameter {contract_name!r} is not accepted by {func.__name__}")
+        if cf_metadata_variants and metadata_variant_parameter is None:
+            raise ValueError(
+                f"{func.__name__} declares cf_metadata_variants but no metadata_variant_parameter to select one"
+            )
 
         def validate_arguments(args: tuple[Any, ...], kwargs: dict[str, Any]) -> None:
             try:
@@ -1618,11 +1623,7 @@ def xarray_adapter(
 
                 # create a calendar-aware callable for apply_ufunc
                 _numpy_func_wrapper = _make_calendar_aware_numpy_wrapper(
-                    func,
-                    valid_kwargs,
-                    calendar_plan,
-                    core_axis_first=use_spatial_kernel,
-                    spatial_block_parameter=spatial_block_parameter,
+                    func, valid_kwargs, calendar_plan, core_axis_first=use_spatial_kernel
                 )
 
                 # call apply_ufunc with Dask support
@@ -1712,11 +1713,7 @@ def xarray_adapter(
 
                 # create a calendar-aware callable for apply_ufunc
                 _numpy_func_wrapper = _make_calendar_aware_numpy_wrapper(
-                    func,
-                    valid_kwargs,
-                    calendar_plan,
-                    core_axis_first=use_spatial_kernel,
-                    spatial_block_parameter=spatial_block_parameter,
+                    func, valid_kwargs, calendar_plan, core_axis_first=use_spatial_kernel
                 )
 
                 # call apply_ufunc without Dask support (in-memory execution)

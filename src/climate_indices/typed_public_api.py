@@ -92,14 +92,15 @@ _SPI_VALIDATORS = (
 )
 _SPEI_VALIDATORS = (
     *_TEMPORAL_VALIDATORS,
-    lambda args: indices._validate_distribution(args["distribution"], tuple(Distribution)),
+    lambda args: indices._validate_distribution(
+        args["distribution"], (Distribution.gamma, Distribution.pearson, Distribution.loglogistic)
+    ),
     lambda args: compute.validate_output_scale(args["output_scale"]),
 )
 
 # pre-build decorated functions at module level for performance
 _wrapped_spi = xarray_adapter(
     calendar="periodicity",
-    spatial_block_parameter="spatial_time_major",
     inferred_parameters=INFER_TIME_PARAMETERS,
     argument_validators=_SPI_VALIDATORS,
     timescale_parameter="scale",
@@ -113,7 +114,6 @@ _wrapped_spi = xarray_adapter(
 
 _wrapped_spei = xarray_adapter(
     calendar="periodicity",
-    spatial_block_parameter="spatial_time_major",
     inferred_parameters=INFER_TIME_PARAMETERS,
     argument_validators=_SPEI_VALIDATORS,
     timescale_parameter="scale",
@@ -128,7 +128,6 @@ _wrapped_spei = xarray_adapter(
 
 _wrapped_eddi = xarray_adapter(
     calendar="periodicity",
-    spatial_block_parameter="spatial_time_major",
     inferred_parameters=INFER_TIME_PARAMETERS,
     argument_validators=_TEMPORAL_VALIDATORS,
     timescale_parameter="scale",
@@ -339,7 +338,6 @@ def spei(precips_mm: Any, pet_mm: Any, *args: Any, **kwargs: Any) -> npt.NDArray
 # Percentage of Normal (PNP) overloads
 _wrapped_percentage_of_normal = xarray_adapter(
     calendar="periodicity",
-    spatial_block_parameter="spatial_time_major",
     inferred_parameters=INFER_TIME_PARAMETERS,
     argument_validators=_TEMPORAL_VALIDATORS,
     timescale_parameter="scale",

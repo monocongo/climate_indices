@@ -23,10 +23,10 @@ from climate_indices.xarray_adapter import (
     xarray_adapter,
 )
 
+# The flood cores validate their own options inside the kernel, so the flood
+# registrations declare no separate validators.
 _wrapped_pe = xarray_adapter(
     calendar=Periodicity.daily,
-    spatial_block_parameter="spatial_time_major",
-    inferred_parameters={},
     argument_validators=(),
     cf_metadata=CF_METADATA["effective_precipitation"],  # type: ignore[arg-type]
     index_display_name="Effective Precipitation",
@@ -36,7 +36,6 @@ _wrapped_pe = xarray_adapter(
 )(_numpy_pe)
 _wrapped_edi = xarray_adapter(
     calendar=Periodicity.daily,
-    spatial_block_parameter="spatial_time_major",
     inferred_parameters={k: v for k, v in INFER_TIME_PARAMETERS.items() if k != "periodicity"},
     argument_validators=(),
     cf_metadata=CF_METADATA["edi"],  # type: ignore[arg-type]
@@ -47,7 +46,6 @@ _wrapped_edi = xarray_adapter(
 )(_numpy_edi)
 _wrapped_flood_index = xarray_adapter(
     calendar=Periodicity.daily,
-    spatial_block_parameter="spatial_time_major",
     inferred_parameters={k: v for k, v in INFER_TIME_PARAMETERS.items() if k != "periodicity"},
     argument_validators=(),
     cf_metadata=CF_METADATA["flood_index"],  # type: ignore[arg-type]

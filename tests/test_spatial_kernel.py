@@ -47,7 +47,6 @@ def spatial_spi():
     return xarray_adapter(
         calendar="periodicity",
         inferred_parameters=INFER_TIME_PARAMETERS,
-        spatial_block_parameter="spatial_time_major",
         cf_metadata=CF_METADATA["spi"],  # type: ignore[arg-type]
         index_display_name="SPI",
         spatial_kernel=True,
@@ -71,7 +70,6 @@ def spatial_spei():
     return xarray_adapter(
         calendar="periodicity",
         inferred_parameters=INFER_TIME_PARAMETERS,
-        spatial_block_parameter="spatial_time_major",
         cf_metadata=CF_METADATA["spei"],  # type: ignore[arg-type]
         index_display_name="SPEI",
         additional_input_names=["pet_mm"],
@@ -1001,9 +999,7 @@ class TestSpatialBlockContracts:
         ):
             return values
 
-        unregistered = xarray_adapter(
-            index_display_name="PNP", spatial_kernel=True, spatial_block_parameter="spatial_time_major"
-        )(kernel_without_the_declaration)
+        unregistered = xarray_adapter(index_display_name="PNP", spatial_kernel=True)(kernel_without_the_declaration)
 
         with pytest.raises(TypeError, match="spatial_time_major"):
             unregistered(
@@ -1356,7 +1352,6 @@ def _spatial_adapter(metadata_key: str, kernel, *, spatial_kernel: bool = True):
     return xarray_adapter(
         calendar="periodicity",
         inferred_parameters=INFER_TIME_PARAMETERS,
-        spatial_block_parameter="spatial_time_major" if spatial_kernel else None,
         cf_metadata=CF_METADATA[metadata_key],  # type: ignore[arg-type]
         index_display_name=metadata_key.upper(),
         spatial_kernel=spatial_kernel,

@@ -81,7 +81,6 @@ def _verify_xarray_matches_manual_wrapping(
     # manually wrap the function
     adapter_kwargs: dict[str, Any] = {
         "calendar": "periodicity",
-        "spatial_block_parameter": "spatial_time_major",
         "inferred_parameters": INFER_TIME_PARAMETERS,
         "timescale_parameter": "scale",
         "cf_metadata": cf_metadata,
