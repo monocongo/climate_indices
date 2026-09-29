@@ -469,6 +469,9 @@ def _standardized_index_pipeline(
     spatial_time_major: bool = False,
     output_scale: compute.OutputScale = "normal",
     zero_handling: compute.ZeroHandling = "classic",
+    allowed_distributions: tuple[Distribution, ...] = (Distribution.gamma, Distribution.pearson),
+    clip_negatives: bool = True,
+    fallback_to_gamma: bool = True,
 ) -> np.ndarray:
     """Scale, fit, and transform a series in the pipeline shared by the index wrappers.
 
@@ -490,6 +493,13 @@ def _standardized_index_pipeline(
         output_scale: One of ``compute.OUTPUT_SCALES``; non-normal scales are not
             clipped to the z-score range.
         zero_handling: Where a zero accumulation is placed within the zero mass.
+        allowed_distributions: The distribution members this surface accepts; the
+            default omits log-logistic, which only :func:`spei` supports.
+        clip_negatives: Whether preparation clips negative values to zero before
+            scaling. :func:`spei` passes False because it clips precipitation and
+            adds its +1000 offset before this pipeline.
+        fallback_to_gamma: Whether a failed Pearson Type III fit falls back to
+            gamma; :func:`spei` passes False so the failure propagates.
 
     Returns:
         Standardized values in the input's size and layout.
@@ -497,7 +507,7 @@ def _standardized_index_pipeline(
     # validate arguments
     _validate_periodicity(periodicity)
     _validate_scale(scale, periodicity)
-    _validate_distribution(distribution, (Distribution.gamma, Distribution.pearson))
+    _validate_distribution(distribution, allowed_distributions)
     compute.validate_output_scale(output_scale)
     compute._validate_zero_handling(zero_handling)
 
@@ -519,43 +529,31 @@ def _standardized_index_pipeline(
         # stays bounded per spatial operation
         fitting_params = compute._normalize_fitting_params(fitting_params)
 
-        # remember the original length and shape of the array, in order to facilitate
-        # returning an array of the same size and layout
-        original_length = values.size
+        # prepare_scaled owns flatten/fold, the ambiguous-shape guard, the
+        # insufficient-data check, negative clipping, scaling, and the all-missing
+        # short-circuit. Shape errors raise the plain ValueError from prepare_scaled
+        # -- spi()'s dimension errors are pinned to ValueError by
+        # tests/test_backward_compat.py::TestErrorHierarchyDocumented, unlike
+        # eddi()/percentage_of_normal() which use DataShapeError.
         original_shape = values.shape
+        values = compute.prepare_scaled(
+            values,
+            scale,
+            periodicity,
+            clip_negatives=clip_negatives,
+            spatial_time_major=spatial_time_major,
+        )
 
-        # spatial input arrives time-major, packed as (time, *cells), and is fitted in a
-        # single pass over every cell rather than one call per cell; the xarray adapter
-        # is the caller that packs it that way. An all-missing block is returned as it
-        # arrived, leaving the main flow unchanged.
-        if values.ndim > 2:
-            if not spatial_time_major and values.shape[1] in compute._PERIOD_LENGTHS:
-                raise ValueError(
-                    f"Invalid shape of input array: {values.shape} -- a (time, *cells) block whose first "
-                    "cell axis is a calendar period length is ambiguous with a (years, periods, *cells) "
-                    "array; declare it with spatial_time_major=True"
-                )
-            if scale <= values.shape[0] and (
-                (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values))
-            ):
-                _log_calculation_completed(log, t0, values.shape, memory_metrics)
-                return values
-
-        # flatten, short-circuit all-missing input, clip negatives to zero,
-        # and scale/reshape in the shared preparation seam. Shape errors raise the
-        # plain ValueError from prepare_scaled -- spi()'s dimension errors are pinned
-        # to ValueError by tests/test_backward_compat.py::TestErrorHierarchyDocumented,
-        # unlike eddi()/percentage_of_normal() which use DataShapeError.
-        values = compute.prepare_scaled(values, scale, periodicity, spatial_time_major=spatial_time_major)
-
-        # an all-missing input comes back un-reshaped, so there's nothing to compute
-        if values.ndim == 1:
+        # all-missing input comes back un-reshaped -- flattened for a 1-D/2-D series,
+        # its input layout for a time-major block -- so there is nothing to compute
+        # and the caller's layout is already what was returned
+        if compute.is_all_missing(values):
             _log_calculation_completed(log, t0, values.shape, memory_metrics)
             return values
 
         # fit the scaled values to the specified distribution and transform to
         # corresponding normalized sigmas, falling back to gamma when a Pearson
-        # Type III fit fails
+        # Type III fit fails and the caller asked for the fall back
         values = compute.fit_and_standardize(
             values,
             distribution,
@@ -564,7 +562,7 @@ def _standardized_index_pipeline(
             calibration_year_final,
             periodicity,
             fitting_params,
-            fallback_to_gamma=True,
+            fallback_to_gamma=fallback_to_gamma,
             fallback_context=fallback_context,
             output_scale=output_scale,
             zero_handling=zero_handling,
@@ -575,16 +573,10 @@ def _standardized_index_pipeline(
         # outputs are already bounded by construction and must not be z-clipped
         values = _clip_fitted_values(values, output_scale)
 
-        if values.ndim > 2:
-            # (years, periods, *cells) back to the time-major input layout, dropping any
-            # padded time steps beyond the original number of them
-            result = values.reshape(-1, *values.shape[2:])[: original_shape[0]]
-        else:
-            # reshape the array back to 1-D and return the original size array
-            result = values.flatten()[0:original_length]
+        # one module owns the unfold back to the caller's layout
+        result = compute.unfold_time_major(values, original_shape)
         _log_calculation_completed(log, t0, result.shape, memory_metrics)
-        result_values: np.ndarray = result
-        return result_values
+        return result
     except Exception as exc:
         log_calculation_failure(log, exc, calibration_period=f"{calibration_year_initial}-{calibration_year_final}")
         raise
@@ -752,7 +744,7 @@ def fit_diagnostics(
         # an all-missing time-major block comes back unfolded, keeping the input shape;
         # fold it so the diagnostic arrays carry (time_steps, *cells), not the time axis
         if values.ndim > 2 and scaled_values.shape == values.shape:
-            scaled_values = compute._reshape_time_major(scaled_values, periodicity)
+            scaled_values = compute.reshape_time_major(scaled_values, periodicity)
 
         diagnostics = compute.fit_diagnostics(
             scaled_values,
@@ -946,53 +938,17 @@ def spei(
     :rtype: numpy.ndarray of type float, of the same size and shape as the input
         PET and precipitation arrays
     """
-    # validate arguments
-    _validate_periodicity(periodicity)
-    _validate_scale(scale, periodicity)
-    _validate_distribution(distribution, (Distribution.gamma, Distribution.pearson, Distribution.loglogistic))
-    compute.validate_output_scale(output_scale)
-
-    # bind context and emit calculation_started event
-    log = _logger.bind(
-        index_type="spei",
-        scale=scale,
-        distribution=distribution.value,
-        output_scale=output_scale,
-        input_shape=precips_mm.shape,
-        input_elements=precips_mm.size,
-    )
-    log.info("calculation_started")
-    t0 = time.perf_counter()
-    memory_metrics = check_large_array_memory(precips_mm, pet_mm)
-
     try:
-        # normalize any deprecated fitting-parameter aliases once, so the diagnostic
-        # stays bounded per spatial operation
-        fitting_params = compute._normalize_fitting_params(fitting_params)
-
-        # if we're passed all missing values then we can't compute anything,
-        # so we return the same array of missing values -- unless the scale
-        # exceeds its time steps, which the preparation seam must reject
-        if scale <= precips_mm.shape[0] and (
-            (isinstance(precips_mm, np.ma.MaskedArray) and precips_mm.mask.all()) or np.all(np.isnan(precips_mm))
-        ):
-            duration_ms = (time.perf_counter() - t0) * 1000.0
-            log.info(
-                "calculation_completed",
-                duration_ms=round(duration_ms, 2),
-                output_shape=precips_mm.shape,
-                **(memory_metrics or {}),
-            )
-            return precips_mm
-
-        # a single PET time series is one series for every cell: give it singleton cell
-        # axes so it broadcasts across a spatial block rather than looking mismatched
+        # a single PET time series is one series for every cell: give it singleton
+        # cell axes so it broadcasts across a spatial block rather than looking
+        # mismatched
         if precips_mm.ndim > 2 and pet_mm.ndim == 1 and pet_mm.size == precips_mm.shape[0]:
             pet_mm = pet_mm.reshape((pet_mm.shape[0],) + (1,) * (precips_mm.ndim - 1))
 
-        # validate that the two input arrays are compatible: a spatial block needs matching
-        # time lengths and cell axes that broadcast together, while the series path keeps
-        # its size-based check
+        # validate that the two input arrays are compatible before any all-missing
+        # short-circuit: a mismatched PET must raise even when precipitation is all
+        # NaN. A spatial block needs matching time lengths and cell axes that broadcast
+        # together, while the series path keeps its size-based check.
         if precips_mm.ndim > 2 or pet_mm.ndim > 2:
             try:
                 np.broadcast_shapes(precips_mm.shape, pet_mm.shape)
@@ -1006,85 +962,53 @@ def spei(
             _logger.error(message)
             raise ValueError(message)
 
-        # spatial input arrives time-major, packed as (time, *cells), and is fitted in a
-        # single pass over every cell rather than one call per cell; the xarray adapter
-        # is the caller that packs it that way.
-        if precips_mm.ndim > 2:
-            if not spatial_time_major and precips_mm.shape[1] in compute._PERIOD_LENGTHS:
-                raise ValueError(
-                    f"Invalid shape of input array: {precips_mm.shape} -- a (time, *cells) block whose first "
-                    "cell axis is a calendar period length is ambiguous with a (years, periods, *cells) "
-                    "array; declare it with spatial_time_major=True"
-                )
-
-        # clip any negative values to zero. np.any(...) is NaN-safe, unlike np.amin.
+        # clip any negative precipitation to zero before forming the water balance.
+        # np.any(...) is NaN-safe, unlike np.amin.
         if bool(np.any(precips_mm < 0.0)):
             _logger.warning("Input contains negative values -- all negatives clipped to zero")
             precips_mm = np.clip(precips_mm, a_min=0.0, a_max=None)
 
-        # subtract the PET from precipitation, adding an offset
-        # to ensure that all values are positive
+        # subtract the PET from precipitation, adding an offset to ensure that all
+        # values are positive
         if precips_mm.ndim > 2:
             p_minus_pet = (precips_mm - pet_mm) + 1000.0
         else:
             p_minus_pet = (precips_mm.flatten() - pet_mm.flatten()) + 1000.0
-
-        # remember the original length and shape of the input array, in order to
-        # facilitate returning an array of the same size and layout
-        original_length = precips_mm.size
-        original_shape = precips_mm.shape
-
-        # get a sliding sums array, with each element's value
-        # scaled by the specified number of time steps. The scale is applied to the
-        # PET-adjusted values, which the fitting transform reshapes itself.
-        scaled_values = compute.prepare_scaled(
-            p_minus_pet,
-            scale,
-            periodicity,
-            clip_negatives=False,
-            # spatial values are reshaped here instead: the fitting transform reads
-            # (years, periods, *cells) once an array has more than two dimensions
-            reshape=p_minus_pet.ndim > 2,
-            spatial_time_major=spatial_time_major,
-        )
-
-        # fit the scaled values to the specified distribution and transform to
-        # corresponding normalized sigmas
-        transformed_fitted_values = compute.fit_and_standardize(
-            scaled_values,
-            distribution,
-            data_start_year,
-            calibration_year_initial,
-            calibration_year_final,
-            periodicity,
-            fitting_params,
-            fallback_to_gamma=False,
-            output_scale=output_scale,
-        )
-
-        # clip z-scores to the supported range; probability-scale outputs are
-        # already bounded by construction and must not be z-clipped
-        values = _clip_fitted_values(transformed_fitted_values, output_scale)
-
-        if values.ndim > 2:
-            # (years, periods, *cells) back to the time-major input layout, dropping any
-            # padded time steps beyond the original number of them
-            result = values.reshape(-1, *values.shape[2:])[: original_shape[0]]
-        else:
-            # reshape the array back to 1-D and return the original size array
-            result = values.flatten()[0:original_length]
-        duration_ms = (time.perf_counter() - t0) * 1000.0
-        log.info(
-            "calculation_completed",
-            duration_ms=round(duration_ms, 2),
-            output_shape=result.shape,
-            **(memory_metrics or {}),
-        )
-        result_values: np.ndarray = result
-        return result_values
     except Exception as exc:
-        log_calculation_failure(log, exc, calibration_period=f"{calibration_year_initial}-{calibration_year_final}")
+        # the shared pipeline owns the calculation lifecycle logs; this pre-pipeline
+        # water-balance validation keeps its own failure context so the event contract
+        # for an incompatible PET holds before the pipeline is ever entered
+        log_calculation_failure(
+            _logger.bind(
+                index_type="spei",
+                scale=scale,
+                input_shape=precips_mm.shape,
+                input_elements=precips_mm.size,
+            ),
+            exc,
+            calibration_period=f"{calibration_year_initial}-{calibration_year_final}",
+        )
         raise
+
+    # the shared pipeline owns validation, logging, the ambiguous-shape guard,
+    # scaling, fitting, clipping and the unfold back to the input layout
+    return _standardized_index_pipeline(
+        p_minus_pet,
+        scale,
+        distribution,
+        data_start_year,
+        calibration_year_initial,
+        calibration_year_final,
+        periodicity,
+        fitting_params,
+        index_type="spei",
+        fallback_context="SPEI computation",
+        spatial_time_major=spatial_time_major,
+        allowed_distributions=(Distribution.gamma, Distribution.pearson, Distribution.loglogistic),
+        output_scale=output_scale,
+        clip_negatives=False,
+        fallback_to_gamma=False,
+    )
 
 
 _P = ParamSpec("_P")

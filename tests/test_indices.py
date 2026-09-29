@@ -313,6 +313,65 @@ def test_spi_ambiguous_3d_input_raises():
         )
 
 
+def test_spei_ambiguous_3d_all_missing_input_raises():
+    """SPEI's all-missing shortcut must not skip the ambiguous-shape guard.
+
+    An all-NaN (time, periods, *cells) block is still ambiguous with the legacy
+    (years, periods, *cells) layout, so it raises the same ValueError SPI does
+    instead of returning the input unchanged.
+    """
+    all_nans = np.full((24, 12, 2), np.nan)
+
+    with pytest.raises(ValueError, match="Invalid shape of input array"):
+        indices.spei(
+            all_nans,
+            all_nans,
+            1,
+            indices.Distribution.gamma,
+            compute.Periodicity.monthly,
+            1900,
+            1900,
+            1901,
+        )
+
+
+def test_spei_incompatible_pet_raises_even_when_precipitation_all_missing():
+    """The PET compatibility check runs before the all-missing shortcut."""
+    precips = np.full((24, 2, 2), np.nan)
+    pet = np.zeros((24, 3))
+
+    with pytest.raises(ValueError, match="Incompatible precipitation and PET arrays"):
+        indices.spei(
+            precips,
+            pet,
+            1,
+            indices.Distribution.gamma,
+            compute.Periodicity.monthly,
+            1900,
+            1900,
+            1901,
+        )
+
+
+def test_spei_all_missing_pet_keeps_the_cell_axes():
+    """An all-NaN PET block still returns the precipitation input's layout."""
+    precips = np.random.default_rng(0).uniform(0.0, 100.0, (480, 3, 2))
+    pet = np.full((480, 3, 2), np.nan)
+
+    result = indices.spei(
+        precips,
+        pet,
+        1,
+        indices.Distribution.gamma,
+        compute.Periodicity.monthly,
+        1900,
+        1900,
+        1901,
+    )
+
+    assert result.shape == precips.shape
+
+
 @pytest.mark.usefixtures(
     "precips_mm_monthly",
     "precips_mm_daily",
@@ -646,7 +705,7 @@ def test_spei(
     )
     np.testing.assert_allclose(
         computed_spei,
-        all_nans,
+        all_nans.flatten(),
         equal_nan=True,
         err_msg="SPEI/Gamma not handling all-NaN arrays as expected",
     )
@@ -819,16 +878,21 @@ def test_fitting_indices_share_one_preparation_seam(
             compute.Periodicity.monthly,
         )
 
-    # SPI and EDDI prepare with the defaults; SPEI and PNP opt out of clipping and
-    # reshaping. The spatial-block declaration is not part of that contract, so only
-    # those two keywords are compared.
+    # The shared pipeline states the clipping policy for SPI and SPEI, EDDI prepares
+    # with the defaults, and PNP still declines both clipping and reshaping. The
+    # spatial-block declaration is not part of that contract, so only those two
+    # keywords are compared.
     assert prepare_scaled.call_count == 4
     prep_kwargs = [
         {key: value for key, value in call.kwargs.items() if key in {"clip_negatives", "reshape"}}
         for call in prepare_scaled.call_args_list
     ]
-    assert prep_kwargs.count({}) == 2
-    assert [call for call in prep_kwargs if call] == [{"clip_negatives": False, "reshape": False}] * 2
+    assert prep_kwargs == [
+        {"clip_negatives": True},
+        {"clip_negatives": False},
+        {},
+        {"clip_negatives": False, "reshape": False},
+    ]
 
 
 def test_fitting_indices_share_one_fit_seam(

@@ -306,7 +306,7 @@ def eto_thornthwaite(
     # into (years, 12, *cells), a 1-D/2-D series into (years, 12)
     spatial_block = spatial_time_major and monthly_temps_celsius.ndim > 2
     if spatial_block:
-        values = compute._reshape_time_major(monthly_temps_celsius, compute.Periodicity.monthly)
+        values = compute.reshape_time_major(monthly_temps_celsius, compute.Periodicity.monthly)
     else:
         values = utils.reshape_to_2d(monthly_temps_celsius, 12)
 

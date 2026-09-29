@@ -715,22 +715,6 @@ def test_prepare_scaled_fills_masked_values_with_nan():
     assert computed[0, 4] == 4.0
 
 
-def test_scale_values_delegates_to_prepare_scaled():
-    """
-    The public scaling wrapper keeps its contract by delegating to the shared seam.
-    """
-    values = np.array([-2.0, 3.0, 4.0, 5.0] * 6).reshape(2, 12)
-
-    scaled = compute.scale_values(values, 3, compute.Periodicity.monthly)
-
-    assert scaled.shape == (2, 12)
-    assert scaled[0, 2] == 0.0 + 3.0 + 4.0  # the negative value was clipped before summing
-    np.testing.assert_array_equal(
-        scaled,
-        compute.prepare_scaled(values, 3, compute.Periodicity.monthly),
-    )
-
-
 def test_prepare_scaled_returns_all_missing_input_unreshaped():
     """
     All-missing input is handed back flattened and un-reshaped so that callers can short-circuit.
@@ -779,8 +763,8 @@ def test_prepare_scaled_rejects_unsupported_shapes():
 
 def test_prepare_scaled_rejects_unsupported_periodicity_when_unreshaped():
     """
-    An invalid periodicity must be rejected even with reshape=False, since
-    reshape_values() -- the only other periodicity check -- is skipped in that case.
+    An invalid periodicity must be rejected even with reshape=False, since the
+    reshape step's periodicity check is skipped in that case.
     """
     with pytest.raises(PeriodicityError, match="Invalid periodicity argument") as error:
         compute.prepare_scaled(np.arange(12, dtype=float), 3, "monthly", reshape=False)
