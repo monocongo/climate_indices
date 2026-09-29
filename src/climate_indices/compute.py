@@ -7,7 +7,7 @@ import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Literal, get_args
+from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 
 import numpy as np
 import scipy.special
@@ -1012,79 +1012,6 @@ def _validate_pearson_parameter_cells(
             )
 
 
-def _reject_partial_pearson_parameters(supplied: tuple[np.ndarray | None, ...]) -> None:
-    """Reject a Pearson Type III parameter set that supplies some but not all of the four."""
-    if any(parameter is None for parameter in supplied) and not all(parameter is None for parameter in supplied):
-        raise ValueError(
-            "At least one but not all of the Pearson Type III fitting parameters are specified -- "
-            "either none or all of these must be specified"
-        )
-
-
-def _validate_pearson_fitting_params(
-    values: np.ndarray,
-    probabilities_of_zero: np.ndarray | None,
-    locs: np.ndarray | None,
-    scales: np.ndarray | None,
-    skews: np.ndarray | None,
-) -> None:
-    """Reject a partial or mis-shaped pre-computed Pearson Type III parameter set.
-
-    Called before any fitting so a caller's argument error raises from every index,
-    regardless of ``fallback_to_gamma``, instead of resembling a failed fit.
-
-    :param values: the validated values, shape (years, periods) or (years, periods, ``*cells``)
-    :raises ValueError: if the set is partial, or a parameter does not carry the period (and cell) axes
-    """
-    _reject_partial_pearson_parameters((probabilities_of_zero, locs, scales, skews))
-    _validate_pearson_parameter_cells(
-        values,
-        (("prob_zero", probabilities_of_zero), ("loc", locs), ("scale", scales), ("skew", skews)),
-    )
-
-
-def _prepare_spatial_parameters(
-    values: np.ndarray, named_parameters: tuple[tuple[str, np.ndarray | None], ...]
-) -> tuple[np.ndarray | None, ...]:
-    """
-    Shape pre-computed fitting parameters for a spatial block, or reject them.
-
-    A period-only parameter array is reshaped so that it broadcasts along the
-    period axis instead of aligning with the trailing cell axes. A parameter
-    array carrying cell dimensions must match the block's own cell axes.
-
-    :param values: the folded spatial block, shape (years, time_steps, ``*cells``)
-    :param named_parameters: (name, parameter) pairs, each parameter possibly None
-    :return: the parameters in order, each shaped for the block or None
-    """
-    _validate_pearson_parameter_cells(values, named_parameters)
-    cells = values.shape[2:]
-    prepared: list[np.ndarray | None] = []
-    for _, parameter in named_parameters:
-        if parameter is None:
-            prepared.append(None)
-            continue
-        parameter = np.asarray(parameter)
-        if parameter.ndim == 1:
-            parameter = parameter.reshape((1, parameter.shape[0], *([1] * len(cells))))
-        prepared.append(parameter)
-    return tuple(prepared)
-
-
-def _prepare_pearson_spatial_parameters(
-    values: np.ndarray,
-    probabilities_of_zero: np.ndarray | None,
-    locs: np.ndarray | None,
-    scales: np.ndarray | None,
-    skews: np.ndarray | None,
-) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None, np.ndarray | None]:
-    """Shape pre-computed Pearson parameters for a spatial block, or reject them."""
-    prob_zero, loc, scale, skew = _prepare_spatial_parameters(
-        values, (("prob_zero", probabilities_of_zero), ("loc", locs), ("scale", scales), ("skew", skews))
-    )
-    return prob_zero, loc, scale, skew
-
-
 def transform_fitted_pearson(
     values: np.ndarray,
     data_start_year: int,
@@ -1161,49 +1088,47 @@ def transform_fitted_pearson(
     )
     log.info("distribution_transform_started")
 
-    # sanity check for the fitting parameters arguments
-    pearson_param_args = [probabilities_of_zero, locs, scales, skews]
+    # the distribution object is imported lazily: indices imports this module
+    from climate_indices.indices import Distribution
+
+    params = {"prob_zero": probabilities_of_zero, "loc": locs, "scale": scales, "skew": skews}
 
     # validate (and possibly reshape) the input array before the all-missing return,
     # so a partial or mis-shaped parameter set is rejected even when the values carry
     # no data and the fit is skipped
     validated_values = _validate_array(values, periodicity)
-    _validate_pearson_fitting_params(validated_values, probabilities_of_zero, locs, scales, skews)
+    FittedDistribution.validate_supplied(validated_values, Distribution.pearson, params)
 
     # if we're passed all missing values then we can't compute anything,
     # and we'll return the same array of missing values, un-reshaped
     if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
         return values
 
-    values = validated_values
+    # fit the parameters from the data if none were provided, otherwise use the
+    # supplied set, which resolution has already broadcast for a spatial block
+    fitted = FittedDistribution.resolve(
+        validated_values,
+        Distribution.pearson,
+        data_start_year,
+        calibration_start_year,
+        calibration_end_year,
+        periodicity,
+        params,
+    )
 
-    # broadcast period-only parameters and reject parameter arrays whose cell
-    # dimensions do not match a spatial block
-    if values.ndim > 2:
-        probabilities_of_zero, locs, scales, skews = _prepare_pearson_spatial_parameters(
-            values, probabilities_of_zero, locs, scales, skews
-        )
-
-    # compute the Pearson Type III fitting values if none were provided
-    if any(param_arg is None for param_arg in pearson_param_args):
-        # compute the values we'll use to fit to the Pearson Type III distribution;
-        # pearson_parameters resolves the calibration period against the record
-        probabilities_of_zero, locs, scales, skews = pearson_parameters(
-            values,
-            data_start_year,
-            calibration_start_year,
-            calibration_end_year,
-            periodicity,
-        )
-
-    # mypy narrowing: at this point parameters are guaranteed to be non-None
-    assert probabilities_of_zero is not None
-    assert locs is not None
-    assert scales is not None
-    assert skews is not None
+    # broadcast a period-only parameter across a spatial block's cells
+    parameters = _broadcast_parameters(validated_values, fitted.parameters)
 
     # fit each value to the Pearson Type III distribution
-    values = _pearson_fit(values, probabilities_of_zero, skews, locs, scales, output_scale, zero_handling)
+    values = _pearson_fit(
+        validated_values,
+        parameters["prob_zero"],
+        parameters["skew"],
+        parameters["loc"],
+        parameters["scale"],
+        output_scale,
+        zero_handling,
+    )
 
     log.info("distribution_transform_completed", output_shape=str(values.shape))
     return values
@@ -1326,9 +1251,18 @@ def _ks_poor_fit_p_value(
     if d_statistic < critical_value - critical_tolerance:
         return None
 
-    # Match scipy.stats.kstest at the threshold, including its version-specific dtype handling.
-    p_value = scipy.stats.kstest(sorted_values, lambda _: cdf_values).pvalue
+    p_value = _ks_exact_p_value(sorted_values, cdf_values)
     return float(p_value) if p_value < GOODNESS_OF_FIT_P_VALUE_THRESHOLD else None
+
+
+def _ks_exact_p_value(sorted_values: np.ndarray, cdf_values: np.ndarray) -> Any:
+    """Exact Kolmogorov-Smirnov p-value for a sample and its fitted CDF values.
+
+    Shared by the goodness-of-fit warnings and the fit-diagnostics surface, so both
+    report the same test. The value is returned unwrapped, so a caller's threshold
+    comparison keeps SciPy's version-specific dtype handling.
+    """
+    return scipy.stats.kstest(sorted_values, lambda _: cdf_values).pvalue
 
 
 def _check_goodness_of_fit_gamma(
@@ -1965,38 +1899,6 @@ def prepare_scaled(
     return scaled_values
 
 
-def _broadcast_fitting_parameters(
-    values: np.ndarray,
-    alphas: np.ndarray | None,
-    betas: np.ndarray | None,
-    probabilities_of_zero: np.ndarray | None = None,
-) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None]:
-    """
-    Reshape period-only fit parameters, shape (periods,), so that NumPy broadcasts
-    them along axis 1 of a time-major spatial array instead of aligning them with the
-    trailing cell axes.
-    """
-    if values.ndim <= 2:
-        return alphas, betas, probabilities_of_zero
-
-    if alphas is not None:
-        alphas = np.asarray(alphas)
-        if alphas.ndim == 1:
-            alphas = alphas.reshape(1, -1, *([1] * (values.ndim - 2)))
-
-    if betas is not None:
-        betas = np.asarray(betas)
-        if betas.ndim == 1:
-            betas = betas.reshape(1, -1, *([1] * (values.ndim - 2)))
-
-    if probabilities_of_zero is not None:
-        probabilities_of_zero = np.asarray(probabilities_of_zero)
-        if probabilities_of_zero.ndim == 1:
-            probabilities_of_zero = probabilities_of_zero.reshape(1, -1, *([1] * (values.ndim - 2)))
-
-    return alphas, betas, probabilities_of_zero
-
-
 def _missing_where_zero_mass_undefined(
     transformed: np.ndarray, placement_mask: np.ndarray, undefined_zero_mass: np.ndarray
 ) -> np.ndarray:
@@ -2092,30 +1994,28 @@ def transform_fitted_gamma(
     # validate (and possibly reshape) the input array
     values = _validate_array(values, periodicity)
 
-    if probabilities_of_zero is not None:
-        probabilities_of_zero = _validate_gamma_probabilities_of_zero(values, probabilities_of_zero)
-    alphas, betas, probabilities_of_zero = _broadcast_fitting_parameters(values, alphas, betas, probabilities_of_zero)
-    _validate_broadcastable_parameters(values.shape, (("alpha", alphas), ("beta", betas)))
+    from climate_indices.indices import Distribution
 
-    # Replace zeros with NaNs for fitting (zeros are excluded from gamma fitting)
-    # and get mask of zero positions for later probability calculations
-    zero_mask, values_for_fitting = _replace_zeros_with_nan(values)
+    params = {"alpha": alphas, "beta": betas, "prob_zero": probabilities_of_zero}
+    FittedDistribution.validate_supplied(values, Distribution.gamma, params)
+    fitted = FittedDistribution.resolve(
+        values,
+        Distribution.gamma,
+        data_start_year,
+        calibration_start_year,
+        calibration_end_year,
+        periodicity,
+        params,
+    )
+    parameters = _broadcast_parameters(values, fitted.parameters)
+    alphas = parameters["alpha"]
+    betas = parameters["beta"]
+    probabilities_of_zero = parameters["prob_zero"]
 
-    # find the fraction of zero values for each time step over the calibration
-    # period's non-missing values, unless it was provided; a computed fraction
-    # reaches 1 only where every calibration value is zero
-    if probabilities_of_zero is None:
-        period = resolve_calibration_period(
-            data_start_year, values.shape[0], calibration_start_year, calibration_end_year, policy="clamp"
-        )
-        probabilities_of_zero = _calibration_probabilities_of_zero(values[period.rows, ...])
-        all_zero_steps = np.isclose(probabilities_of_zero, 1.0)
-    else:
-        # validated to lie in [0, 1], so this selects exactly a supplied mass of 1
-        all_zero_steps = probabilities_of_zero >= 1.0
-
-    # a step without calibration data (or a supplied NaN) has no defined zero mass:
-    # its non-zero values transform as with none, and its zeros are NaN below
+    # a step whose mass is 1 (every calibration value zero) has no gamma fit, and a
+    # step without calibration data (or a supplied NaN) has no defined zero mass:
+    # both transform their non-zero values as with none, and their zeros are NaN below
+    all_zero_steps = probabilities_of_zero >= 1.0
     undefined_zero_mass = np.isnan(probabilities_of_zero)
 
     # If a time step has all zeros (probability of zero is 1.0), the resulting SPI
@@ -2131,15 +2031,9 @@ def transform_fitted_gamma(
     # in the historical record is in extreme drought, not extreme wetness.
     probabilities_of_zero = np.where(all_zero_steps | undefined_zero_mass, 0.0, probabilities_of_zero)
 
-    # compute fitting parameters if none were provided
-    if (alphas is None) or (betas is None):
-        alphas, betas = gamma_parameters(
-            values_for_fitting,
-            data_start_year,
-            calibration_start_year,
-            calibration_end_year,
-            periodicity,
-        )
+    # Replace zeros with NaNs for the CDF (zeros are excluded from the gamma fit)
+    # and get mask of zero positions for later probability calculations
+    zero_mask, values_for_fitting = _replace_zeros_with_nan(values)
 
     # find the gamma probability values using the gamma CDF
     try:
@@ -2390,14 +2284,8 @@ def transform_fitted_loglogistic(
     )
     log.info("distribution_transform_started")
 
-    parameter_args = (locs, scales, shapes)
-    if any(parameter is None for parameter in parameter_args) and not all(
-        parameter is None for parameter in parameter_args
-    ):
-        raise ValueError(
-            "At least one but not all of the log-logistic fitting parameters are "
-            "specified -- either none or all of these must be specified"
-        )
+    # the distribution object is imported lazily: indices imports this module
+    from climate_indices.indices import Distribution
 
     # if we're passed all missing values then we can't compute anything,
     # and we'll return the same array of missing values
@@ -2408,27 +2296,24 @@ def transform_fitted_loglogistic(
         values = np.ma.filled(values.astype(float), np.nan)
 
     values = _validate_array(values, periodicity)
+    fitted = FittedDistribution.resolve(
+        values,
+        Distribution.loglogistic,
+        data_start_year,
+        calibration_start_year,
+        calibration_end_year,
+        periodicity,
+        {"loc": locs, "scale": scales, "shape": shapes},
+    )
 
-    if values.ndim > 2:
-        locs, scales, shapes = _prepare_spatial_parameters(
-            values, (("loc", locs), ("scale", scales), ("shape", shapes))
-        )
-
-    # compute the GLO fitting values if none were provided
-    if all(parameter is None for parameter in (locs, scales, shapes)):
-        locs, scales, shapes = loglogistic_parameters(
-            values,
-            data_start_year,
-            calibration_start_year,
-            calibration_end_year,
-            periodicity,
-        )
-
-    assert locs is not None
-    assert scales is not None
-    assert shapes is not None
-
-    values = _loglogistic_fit(values, locs, scales, shapes, output_scale)
+    parameters = _broadcast_parameters(values, fitted.parameters)
+    values = _loglogistic_fit(
+        values,
+        parameters["loc"],
+        parameters["scale"],
+        parameters["shape"],
+        output_scale,
+    )
 
     log.info("distribution_transform_completed", output_shape=str(values.shape))
     return values
@@ -2475,16 +2360,319 @@ def _normalize_fitting_params(params: dict[str, Any] | None) -> dict[str, Any] |
     return normed
 
 
-def _fit_pearson_with_fallback(
+# canonical fitting-parameter keys every surface resolves through
+_PARAMETER_KEYS: dict[str, tuple[str, ...]] = {
+    "gamma": ("alpha", "beta", "prob_zero"),
+    "pearson": ("prob_zero", "loc", "scale", "skew"),
+    "loglogistic": ("loc", "scale", "shape"),
+}
+
+
+def _broadcast_parameters(
     values: np.ndarray,
+    parameters: dict[str, np.ndarray],
+    *,
+    full: bool = False,
+) -> dict[str, np.ndarray]:
+    """Shape period-only fit parameters for a folded (years, periods, ``*cells``) block.
+
+    A one-dimensional (period-only) parameter is reshaped so NumPy aligns it with the
+    period axis rather than the trailing cell axes. With ``full`` it is expanded to the
+    block's ``(periods, *cells)`` shape, which the per-cell diagnostics index. A
+    parameter that already carries its cell dimensions is passed through unchanged.
+    """
+    if not full and values.ndim <= 2:
+        return parameters
+    prepared: dict[str, np.ndarray] = {}
+    for name, parameter in parameters.items():
+        parameter = np.asarray(parameter)
+        if full:
+            # the per-cell diagnostics index every parameter at (time_step, *cell)
+            parameter = np.array(np.broadcast_to(parameter, values.shape[1:]))
+        elif parameter.ndim == 1:
+            parameter = parameter.reshape((1, parameter.shape[0], *([1] * (values.ndim - 2))))
+        prepared[name] = parameter
+    return prepared
+
+
+def _resolve_gamma_parameters(
+    values: np.ndarray,
+    params: dict[str, Any],
     data_start_year: int,
     calibration_start_year: int,
     calibration_end_year: int,
     periodicity: Periodicity,
-    probabilities_of_zero: np.ndarray | None,
-    locs: np.ndarray | None,
-    scales: np.ndarray | None,
-    skews: np.ndarray | None,
+) -> dict[str, np.ndarray]:
+    """Fit or take the gamma parameters, resolving the probability of zero."""
+    alphas = params.get("alpha")
+    betas = params.get("beta")
+    if alphas is None or betas is None:
+        alphas, betas = gamma_parameters(
+            values, data_start_year, calibration_start_year, calibration_end_year, periodicity
+        )
+
+    probabilities_of_zero = params.get("prob_zero")
+    if probabilities_of_zero is None:
+        period = resolve_calibration_period(
+            data_start_year, values.shape[0], calibration_start_year, calibration_end_year, policy="clamp"
+        )
+        probabilities_of_zero = _calibration_probabilities_of_zero(values[period.rows, ...])
+
+    return {"alpha": alphas, "beta": betas, "prob_zero": probabilities_of_zero}
+
+
+def _resolve_pearson_parameters(
+    values: np.ndarray,
+    params: dict[str, Any],
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
+) -> dict[str, np.ndarray]:
+    """Fit or take the four Pearson Type III parameters as one set."""
+    supplied = [params.get(key) for key in _PARAMETER_KEYS["pearson"]]
+    if all(parameter is None for parameter in supplied):
+        probabilities_of_zero, locs, scales, skews = pearson_parameters(
+            values, data_start_year, calibration_start_year, calibration_end_year, periodicity
+        )
+    else:
+        probabilities_of_zero, locs, scales, skews = cast(
+            "tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]", tuple(supplied)
+        )
+    return {"prob_zero": probabilities_of_zero, "loc": locs, "scale": scales, "skew": skews}
+
+
+def _resolve_loglogistic_parameters(
+    values: np.ndarray,
+    params: dict[str, Any],
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
+) -> dict[str, np.ndarray]:
+    """Fit or take the three generalized-logistic parameters as one set."""
+    supplied = [params.get(key) for key in _PARAMETER_KEYS["loglogistic"]]
+    if all(parameter is None for parameter in supplied):
+        locs, scales, shapes = loglogistic_parameters(
+            values, data_start_year, calibration_start_year, calibration_end_year, periodicity
+        )
+    else:
+        locs, scales, shapes = cast("tuple[np.ndarray, np.ndarray, np.ndarray]", tuple(supplied))
+    return {"loc": locs, "scale": scales, "shape": shapes}
+
+
+@dataclass(frozen=True, eq=False)
+class FittedDistribution:
+    """A distribution fitted over a Calibration Period.
+
+    One module owns everything a fit knows: which parameters the distribution has, how
+    caller-supplied ``fitting_params`` are normalized and validated, how a period-only
+    parameter array is broadcast across a spatial block's cells, and how the fit is
+    transformed and diagnosed. The gamma, Pearson Type III and log-logistic transforms
+    and the diagnostics surface are compositions over it; the public
+    ``transform_fitted_*`` functions remain compatibility adapters.
+
+    ``parameters`` is keyed as the ``fitting_params`` argument accepts the fit:
+    ``alpha``/``beta``/``prob_zero`` for gamma, ``prob_zero``/``loc``/``scale``/``skew``
+    for Pearson Type III, and ``loc``/``scale``/``shape`` for the log-logistic
+    (generalized logistic).
+    """
+
+    distribution: "Distribution"
+    parameters: dict[str, np.ndarray]
+    periodicity: Periodicity
+
+    @classmethod
+    def validate_supplied(cls, values: np.ndarray, distribution: "Distribution", params: dict[str, Any]) -> None:
+        """Reject a partial or mis-shaped caller-supplied parameter set, before any fit.
+
+        Called before the all-missing early return as well as before a fit, so a
+        caller's argument error raises from every surface regardless of whether the
+        values carry any data.
+        """
+        kind = distribution.value
+        if kind == "gamma":
+            supplied_prob_zero = params.get("prob_zero")
+            if supplied_prob_zero is not None:
+                _validate_gamma_probabilities_of_zero(values, supplied_prob_zero)
+            alphas, betas = params.get("alpha"), params.get("beta")
+            if alphas is not None or betas is not None:
+                present = {
+                    name: parameter for name, parameter in (("alpha", alphas), ("beta", betas)) if parameter is not None
+                }
+                prepared = _broadcast_parameters(values, present)
+                _validate_broadcastable_parameters(
+                    values.shape, (("alpha", prepared.get("alpha")), ("beta", prepared.get("beta")))
+                )
+            return
+
+        keys = _PARAMETER_KEYS[kind]
+        supplied = [params.get(key) for key in keys]
+        if any(parameter is None for parameter in supplied) and not all(parameter is None for parameter in supplied):
+            label = "Pearson Type III" if kind == "pearson" else "log-logistic"
+            raise ValueError(
+                f"At least one but not all of the {label} fitting parameters are specified -- "
+                "either none or all of these must be specified"
+            )
+        if not all(parameter is None for parameter in supplied):
+            _validate_pearson_parameter_cells(values, tuple(zip(keys, supplied, strict=True)))
+
+    @classmethod
+    def resolve(
+        cls,
+        values: np.ndarray,
+        distribution: "Distribution",
+        data_start_year: int,
+        calibration_start_year: int,
+        calibration_end_year: int,
+        periodicity: Periodicity,
+        fitting_params: dict[str, Any] | None = None,
+    ) -> "FittedDistribution":
+        """Build a fitted distribution from the data or from the caller's parameters.
+
+        The canonical keys of ``fitting_params`` are resolved once: a parameter left as
+        None is fitted from the calibration period of ``values``; a supplied one is
+        validated and broadcast. Deprecated key aliases are normalized here.
+        """
+        try:
+            _PARAMETER_KEYS[distribution.value]
+        except KeyError as err:
+            raise ValueError(f"Unsupported distribution: {distribution}") from err
+        params = _normalize_fitting_params(fitting_params) or {}
+        cls.validate_supplied(values, distribution, params)
+        kind = distribution.value
+        if kind == "gamma":
+            parameters = _resolve_gamma_parameters(
+                values, params, data_start_year, calibration_start_year, calibration_end_year, periodicity
+            )
+        elif kind == "pearson":
+            parameters = _resolve_pearson_parameters(
+                values, params, data_start_year, calibration_start_year, calibration_end_year, periodicity
+            )
+        else:
+            parameters = _resolve_loglogistic_parameters(
+                values, params, data_start_year, calibration_start_year, calibration_end_year, periodicity
+            )
+        return cls(distribution, parameters, periodicity)
+
+    def transform(
+        self,
+        values: np.ndarray,
+        output_scale: OutputScale = "normal",
+        *,
+        zero_handling: ZeroHandling = "classic",
+    ) -> np.ndarray:
+        """Transform values through this fit on the requested output scale.
+
+        Delegates to the public ``transform_fitted_*`` adapters, which remain the single
+        numerical implementation and the seam a caller can replace.
+        """
+        kind = self.distribution.value
+        if kind == "gamma":
+            return transform_fitted_gamma(
+                values,
+                0,
+                0,
+                0,
+                self.periodicity,
+                self.parameters["alpha"],
+                self.parameters["beta"],
+                self.parameters["prob_zero"],
+                output_scale,
+                zero_handling=zero_handling,
+            )
+        if kind == "pearson":
+            parameters = self.parameters
+            return transform_fitted_pearson(
+                values,
+                0,
+                0,
+                0,
+                self.periodicity,
+                parameters["prob_zero"],
+                parameters["loc"],
+                parameters["scale"],
+                parameters["skew"],
+                output_scale,
+                zero_handling=zero_handling,
+            )
+        parameters = self.parameters
+        return transform_fitted_loglogistic(
+            values,
+            0,
+            0,
+            0,
+            self.periodicity,
+            parameters["loc"],
+            parameters["scale"],
+            parameters["shape"],
+            output_scale,
+        )
+
+    def diagnostics(
+        self, calibration_values: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[str, np.ndarray]]:
+        """Kolmogorov-Smirnov D, exact p-value, valid sample count and spread parameters.
+
+        The parameters returned are the ones the per-cell diagnostics index, i.e. spread
+        to ``(periods, *cells)``, so they can be reported and fed back to reproduce the
+        fit.
+        """
+        parameters = _broadcast_parameters(calibration_values, self.parameters, full=True)
+        if self.distribution.value == "pearson":
+            locs, scales, skews = parameters["loc"], parameters["scale"], parameters["skew"]
+            parameters_valid = ~((locs == 0) & (scales == 0) & (skews == 0))
+            parameters_valid &= np.isfinite(locs) & np.isfinite(scales) & np.isfinite(skews) & (scales > 0)
+            statistics = _ks_fit_diagnostics(
+                calibration_values,
+                parameters_valid,
+                lambda sample, index: scipy.stats.pearson3.cdf(
+                    sample,
+                    float(skews[index]),
+                    loc=float(locs[index]),
+                    scale=float(scales[index]),
+                ),
+            )
+            return (*statistics, parameters)
+
+        alphas, betas = parameters["alpha"], parameters["beta"]
+        parameters_valid = np.isfinite(alphas) & np.isfinite(betas) & (alphas > 0) & (betas > 0)
+        statistics = _ks_fit_diagnostics(
+            calibration_values,
+            parameters_valid,
+            lambda sample, index: scipy.special.gammainc(
+                float(alphas[index]), sample.astype(float) / float(betas[index])
+            ),
+        )
+        return (*statistics, parameters)
+
+
+def _pearson_lost_valid_fraction(values: np.ndarray, parameters: dict[str, np.ndarray]) -> float:
+    """Fraction of the input's valid values a Pearson Type III transform would lose.
+
+    A valid input reaches NaN in the transform only where the fitted CDF is NaN (the
+    support-limit masks assign finite sentinels, and a zero is placed rather than
+    dropped), so the fit's own outcome decides the gamma fall back without producing
+    standardized values.
+    """
+    valid = ~np.isnan(values)
+    if not valid.any():
+        return 0.0
+    parameters = _broadcast_parameters(values, parameters)
+    with np.errstate(invalid="ignore"):
+        cdf = scipy.stats.pearson3.cdf(values, parameters["skew"], loc=parameters["loc"], scale=parameters["scale"])
+    lost = np.isnan(cdf) | np.broadcast_to(np.isnan(np.asarray(parameters["prob_zero"], dtype=float)), values.shape)
+    return float(np.count_nonzero(lost & valid)) / float(np.count_nonzero(valid))
+
+
+def _fit_pearson_with_fallback(
+    values: np.ndarray,
+    distribution: "Distribution",
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
+    fitting_params: dict[str, Any] | None,
     fallback_context: str,
     output_scale: OutputScale = "normal",
     *,
@@ -2499,10 +2687,8 @@ def _fit_pearson_with_fallback(
 
     Args:
         values: 2-D (years, periods) or folded (years, periods, ``*cells``) scaled values.
-        probabilities_of_zero: Probability of zero, or None to fit it from the data.
-        locs: Location parameter, or None to fit it from the data.
-        scales: Scale parameter, or None to fit it from the data.
-        skews: Skewness parameter, or None to fit it from the data.
+        distribution: The Pearson Type III ``indices.Distribution`` member to fit.
+        fitting_params: Pre-computed parameters, or None to fit them from the data.
         fallback_context: Context included in the fall-back warning log message.
         output_scale: One of ``compute.OUTPUT_SCALES``, applied to whichever
             distribution produces the result.
@@ -2512,25 +2698,26 @@ def _fit_pearson_with_fallback(
         The transformed values, whether the gamma fall back was used, and the fitted
         gamma parameters when it was (otherwise None).
     """
+    # only needed to name the gamma fall back's result; importing at module load would
+    # be circular because indices imports this module
+    from climate_indices.indices import Distribution
+
     if values.ndim == 1:
         # the Pearson fit reshapes a 1-D series to (years, periods); do it here so the
         # valid-input mask below has the shape of the fitted result
         values = _validate_array(values, periodicity)
 
     try:
-        standardized = transform_fitted_pearson(
+        fitted = FittedDistribution.resolve(
             values,
+            distribution,
             data_start_year,
             calibration_start_year,
             calibration_end_year,
             periodicity,
-            probabilities_of_zero,
-            locs,
-            scales,
-            skews,
-            output_scale,
-            zero_handling=zero_handling,
+            fitting_params,
         )
+        standardized = fitted.transform(values, output_scale, zero_handling=zero_handling)
 
         # check if fallback is needed due to excessive NaN values, judging only the
         # values the fit lost: input that was already missing (an ocean mask, a sparse
@@ -2541,33 +2728,24 @@ def _fit_pearson_with_fallback(
             raise _PearsonFitLost("Pearson distribution fitting resulted in excessive missing values")
 
     except (DistributionFittingError, _PearsonFitLost) as e:
-        # only a fit outcome reaches here: the transform rejects an argument error (a
-        # partial or mis-shaped parameter set) with a plain ValueError, which this
-        # narrowed except lets propagate, so spi raises where it once fell back
+        # only a fit outcome reaches here: a caller's argument error (a partial or
+        # mis-shaped parameter set) raises a plain ValueError from ``resolve``, which
+        # this narrowed except lets propagate, so spi raises where it once fell back
         _default_fallback_strategy.log_fallback_warning(str(e), context=fallback_context)
 
         # the fall back refits the scaled input, never the Pearson result it replaces;
-        # the parameters are fitted here rather than inside the transform so a caller
-        # reporting the fit can name the distribution it actually used
-        alphas, betas = gamma_parameters(
+        # the fitted distribution is built here rather than inside the transform so a
+        # caller reporting the fit can name the distribution it actually used
+        fallback = FittedDistribution.resolve(
             values,
+            Distribution.gamma,
             data_start_year,
             calibration_start_year,
             calibration_end_year,
             periodicity,
         )
-        fallback_values = transform_fitted_gamma(
-            values,
-            data_start_year,
-            calibration_start_year,
-            calibration_end_year,
-            periodicity,
-            alphas=alphas,
-            betas=betas,
-            output_scale=output_scale,
-            zero_handling=zero_handling,
-        )
-        return fallback_values, True, {"alpha": alphas, "beta": betas}
+        fallback_values = fallback.transform(values, output_scale, zero_handling=zero_handling)
+        return fallback_values, True, {"alpha": fallback.parameters["alpha"], "beta": fallback.parameters["beta"]}
 
     return standardized, False, None
 
@@ -2641,84 +2819,45 @@ def fit_and_standardize(
     """
     validate_output_scale(output_scale)
     _validate_zero_handling(zero_handling)
-    params = _normalize_fitting_params(fitting_params) or {}
 
-    if distribution.value == "gamma":
-        return transform_fitted_gamma(
-            values,
-            data_start_year,
-            calibration_start_year,
-            calibration_end_year,
-            periodicity,
-            params.get("alpha"),
-            params.get("beta"),
-            params.get("prob_zero"),
-            output_scale,
-            zero_handling=zero_handling,
-        )
-
-    if distribution.value == "loglogistic":
+    if distribution.value in ("gamma", "loglogistic"):
         # the GLO is the SPEI reference distribution: P−PET is offset and has no
         # physical zero mass, so it has no zero-placement mode and zero_handling is
-        # not applied on this branch
-        return transform_fitted_loglogistic(
+        # not applied on that branch (the transform ignores it)
+        fitted = FittedDistribution.resolve(
             values,
+            distribution,
             data_start_year,
             calibration_start_year,
             calibration_end_year,
             periodicity,
-            params.get("loc"),
-            params.get("scale"),
-            params.get("shape"),
-            output_scale,
+            fitting_params,
         )
+        return fitted.transform(values, output_scale, zero_handling=zero_handling)
 
     if distribution.value != "pearson":
         raise ValueError(f"Unsupported distribution: {distribution}")
 
-    probabilities_of_zero = params.get("prob_zero")
-    locs = params.get("loc")
-    scales = params.get("scale")
-    skews = params.get("skew")
-
-    if values.ndim > 2:
-        # reject mismatched parameter cells before the fall-back try: that is an
-        # argument error, not a Pearson fit failure to fall back from
-        _validate_pearson_parameter_cells(
-            values,
-            (
-                ("prob_zero", probabilities_of_zero),
-                ("loc", locs),
-                ("scale", scales),
-                ("skew", skews),
-            ),
-        )
-
     if not fallback_to_gamma:
-        return transform_fitted_pearson(
+        fitted = FittedDistribution.resolve(
             values,
+            distribution,
             data_start_year,
             calibration_start_year,
             calibration_end_year,
             periodicity,
-            probabilities_of_zero,
-            locs,
-            scales,
-            skews,
-            output_scale,
-            zero_handling=zero_handling,
+            fitting_params,
         )
+        return fitted.transform(values, output_scale, zero_handling=zero_handling)
 
     standardized, _, _ = _fit_pearson_with_fallback(
         values,
+        distribution,
         data_start_year,
         calibration_start_year,
         calibration_end_year,
         periodicity,
-        probabilities_of_zero,
-        locs,
-        scales,
-        skews,
+        fitting_params,
         fallback_context,
         output_scale,
         zero_handling=zero_handling,
@@ -2765,32 +2904,6 @@ class FitDiagnostics:
     fell_back_to_gamma: bool
 
 
-def _as_period_cell_parameters(
-    values: np.ndarray,
-    *parameters: np.ndarray,
-) -> tuple[np.ndarray, ...]:
-    """Broadcast period-only fit parameters to a folded block's (time_steps, ``*cells``).
-
-    A parameter supplied for a spatial block may carry one value per calendar period,
-    which NumPy would otherwise align with the trailing cell axes. A parameter that
-    already carries the cell dimensions is passed through unchanged.
-    """
-    if values.ndim <= 2:
-        return parameters
-
-    prepared: list[np.ndarray] = []
-    for parameter in parameters:
-        parameter = np.asarray(parameter)
-        if parameter.ndim == 1:
-            broadcast = np.broadcast_to(
-                parameter.reshape((1, parameter.shape[0], *([1] * (values.ndim - 2)))),
-                values.shape,
-            )[0]
-            parameter = np.array(broadcast)
-        prepared.append(parameter)
-    return tuple(prepared)
-
-
 def _ks_fit_diagnostics(
     calibration_values: np.ndarray,
     parameters_valid: np.ndarray,
@@ -2831,65 +2944,11 @@ def _ks_fit_diagnostics(
             continue
         sample = sorted_values[(slice(0, count), *index)]
         cdf_values = cdf_for_series(sample, index)
-        kstest_result = scipy.stats.kstest(sample, lambda _, cdf=cdf_values: cdf)
-        ks_statistic[index] = float(kstest_result.statistic)
-        ks_p_value[index] = float(kstest_result.pvalue)
+        # the same D statistic and exact p-value the goodness-of-fit warnings use
+        ks_statistic[index] = _ks_d_statistic(sample, cdf_values)
+        ks_p_value[index] = float(_ks_exact_p_value(sample, cdf_values))
 
     return ks_statistic, ks_p_value, n_valid
-
-
-def _diagnostic_pearson_parameters(
-    values: np.ndarray,
-    params: dict[str, Any],
-    data_start_year: int,
-    calibration_start_year: int,
-    calibration_end_year: int,
-    periodicity: Periodicity,
-    fallback_to_gamma: bool,
-) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None, np.ndarray | None]:
-    """Fit or take the caller's Pearson parameters, rejecting a partial or mis-shaped set."""
-    probabilities_of_zero = params.get("prob_zero")
-    locs = params.get("loc")
-    scales = params.get("scale")
-    skews = params.get("skew")
-    supplied = (probabilities_of_zero, locs, scales, skews)
-
-    # an argument error raises here in every surface, regardless of the fall back
-    _validate_pearson_fitting_params(values, probabilities_of_zero, locs, scales, skews)
-
-    if all(parameter is None for parameter in supplied):
-        try:
-            probabilities_of_zero, locs, scales, skews = pearson_parameters(
-                values, data_start_year, calibration_start_year, calibration_end_year, periodicity
-            )
-        except DistributionFittingError:
-            if not fallback_to_gamma:
-                raise
-            # Let the guarded transform refit and apply its gamma fallback.
-            return None, None, None, None
-        return probabilities_of_zero, locs, scales, skews
-    # the partial set was rejected above, so all four are supplied here
-    assert probabilities_of_zero is not None
-    assert locs is not None
-    assert scales is not None
-    assert skews is not None
-    probabilities_of_zero, locs, scales, skews = _as_period_cell_parameters(
-        values, probabilities_of_zero, locs, scales, skews
-    )
-    return probabilities_of_zero, locs, scales, skews
-
-
-def _diagnostic_gamma_probabilities_of_zero(
-    values: np.ndarray,
-    calibration_values: np.ndarray,
-    supplied_probabilities_of_zero: np.ndarray | None,
-) -> np.ndarray:
-    """The gamma zero mass the transform uses: the supplied one, else the calibration period's."""
-    if supplied_probabilities_of_zero is None:
-        return _calibration_probabilities_of_zero(calibration_values)
-    supplied = _validate_gamma_probabilities_of_zero(values, supplied_probabilities_of_zero)
-    (probabilities_of_zero,) = _as_period_cell_parameters(values, supplied)
-    return probabilities_of_zero
 
 
 def fit_diagnostics(
@@ -2944,7 +3003,6 @@ def fit_diagnostics(
     # be circular because indices imports this module
     from climate_indices.indices import Distribution
 
-    params = _normalize_fitting_params(fitting_params) or {}
     if distribution.value not in ("gamma", "pearson"):
         raise ValueError(f"Unsupported distribution: {distribution}")
     # a mask is a missing marker: make it the explicit NaN the diagnostics read
@@ -2958,98 +3016,66 @@ def fit_diagnostics(
     calibration_values = values[period.rows, ...]
 
     fell_back_to_gamma = False
-    fallback_parameters: dict[str, np.ndarray] | None = None
-    if distribution.value != "gamma":
-        probabilities_of_zero, locs, scales, skews = _diagnostic_pearson_parameters(
-            values,
-            params,
-            data_start_year,
-            calibration_start_year,
-            calibration_end_year,
-            periodicity,
-            fallback_to_gamma,
-        )
-
-        if fallback_to_gamma:
-            # the fall back belongs to the block, so run the same transform the index
-            # runs and report whichever distribution it used
-            _, fell_back_to_gamma, fallback_parameters = _fit_pearson_with_fallback(
+    if distribution.value == "pearson":
+        try:
+            fitted = FittedDistribution.resolve(
                 values,
+                distribution,
                 data_start_year,
                 calibration_start_year,
                 calibration_end_year,
                 periodicity,
-                probabilities_of_zero,
-                locs,
-                scales,
-                skews,
-                fallback_context,
+                fitting_params,
             )
-
-        if not fell_back_to_gamma:
-            # parameters are complete here: they were fitted or supplied in full
-            assert probabilities_of_zero is not None
-            assert locs is not None
-            assert scales is not None
-            assert skews is not None
-            parameters_valid = ~((locs == 0) & (scales == 0) & (skews == 0))
-            parameters_valid &= np.isfinite(locs) & np.isfinite(scales) & np.isfinite(skews) & (scales > 0)
-            ks_statistic, ks_p_value, n_valid = _ks_fit_diagnostics(
-                calibration_values,
-                parameters_valid,
-                lambda sample, index: scipy.stats.pearson3.cdf(
-                    sample,
-                    float(skews[index]),
-                    loc=float(locs[index]),
-                    scale=float(scales[index]),
-                ),
+            # the second fall-back trigger: a fit that lost more than half of the input's
+            # valid values, judged from the fit outcome rather than a discarded transform
+            lost_valid_fraction = _pearson_lost_valid_fraction(values, fitted.parameters) if fallback_to_gamma else 0.0
+        except DistributionFittingError as exc:
+            # a failed Pearson fit is the fall back's first trigger; it is decided from
+            # the fit itself, so the diagnostics surface never runs the transform
+            if not fallback_to_gamma:
+                raise
+            _default_fallback_strategy.log_fallback_warning(str(exc), context=fallback_context)
+            fitted = FittedDistribution.resolve(
+                values,
+                Distribution.gamma,
+                data_start_year,
+                calibration_start_year,
+                calibration_end_year,
+                periodicity,
             )
-            return FitDiagnostics(
-                distribution=distribution,
-                parameters={
-                    "prob_zero": probabilities_of_zero,
-                    "loc": locs,
-                    "scale": scales,
-                    "skew": skews,
-                },
-                prob_zero=probabilities_of_zero,
-                n_valid=n_valid,
-                ks_statistic=ks_statistic,
-                ks_p_value=ks_p_value,
-                fell_back_to_gamma=False,
-            )
-
-    # gamma, either requested or the fall back from a failed Pearson fit
-    alphas = params.get("alpha")
-    betas = params.get("beta")
-    if fallback_parameters is not None:
-        # reuse the gamma fit the fall back already made rather than fitting it twice
-        alphas, betas = fallback_parameters["alpha"], fallback_parameters["beta"]
-    elif alphas is None or betas is None:
-        alphas, betas = gamma_parameters(
-            values, data_start_year, calibration_start_year, calibration_end_year, periodicity
-        )
+            fell_back_to_gamma = True
+        else:
+            if fallback_to_gamma and lost_valid_fraction > _default_fallback_strategy.max_nan_percentage:
+                _default_fallback_strategy.log_fallback_warning(
+                    "Pearson distribution fitting resulted in excessive missing values",
+                    context=fallback_context,
+                )
+                fitted = FittedDistribution.resolve(
+                    values,
+                    Distribution.gamma,
+                    data_start_year,
+                    calibration_start_year,
+                    calibration_end_year,
+                    periodicity,
+                )
+                fell_back_to_gamma = True
     else:
-        alphas, betas = _as_period_cell_parameters(values, alphas, betas)
-        # the per-step diagnostics index every parameter at (time_step, *cell)
-        _validate_broadcastable_parameters(values.shape[1:], (("alpha", alphas), ("beta", betas)))
-        alphas, betas = (np.array(np.broadcast_to(parameter, values.shape[1:])) for parameter in (alphas, betas))
+        fitted = FittedDistribution.resolve(
+            values,
+            distribution,
+            data_start_year,
+            calibration_start_year,
+            calibration_end_year,
+            periodicity,
+            fitting_params,
+        )
 
-    # the fall back refits the zero mass too, so only a requested gamma fit reads a
-    # supplied one, as the transform does
-    probabilities_of_zero = _diagnostic_gamma_probabilities_of_zero(
-        values, calibration_values, params.get("prob_zero") if fallback_parameters is None else None
-    )
-    parameters_valid = np.isfinite(alphas) & np.isfinite(betas) & (alphas > 0) & (betas > 0)
-    ks_statistic, ks_p_value, n_valid = _ks_fit_diagnostics(
-        calibration_values,
-        parameters_valid,
-        lambda sample, index: scipy.special.gammainc(float(alphas[index]), sample.astype(float) / float(betas[index])),
-    )
+    ks_statistic, ks_p_value, n_valid, parameters = fitted.diagnostics(calibration_values)
     return FitDiagnostics(
-        distribution=Distribution.gamma,
-        parameters={"alpha": alphas, "beta": betas, "prob_zero": probabilities_of_zero},
-        prob_zero=probabilities_of_zero,
+        distribution=fitted.distribution,
+        parameters=parameters,
+        prob_zero=parameters["prob_zero"],
         n_valid=n_valid,
         ks_statistic=ks_statistic,
         ks_p_value=ks_p_value,

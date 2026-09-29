@@ -1284,12 +1284,16 @@ def test_fit_diagnostics_supports_spatial_blocks():
 
 
 def test_fit_diagnostics_reports_the_gamma_fall_back():
-    """A failed Pearson Type III fit is reported as the gamma fit it actually became."""
+    """A Pearson fit that loses too many valid values is reported as the gamma fit it became (#1216).
+
+    The diagnostics surface decides the fall back from the fit outcome, so it never runs
+    the standardized-value transform to discover the lost values.
+    """
     values = np.arange(1.0, 481.0).reshape(40, 12)
 
-    with mock.patch(
-        "climate_indices.compute.transform_fitted_pearson",
-        side_effect=compute.DistributionFittingError("Pearson failed", distribution_name="pearson3"),
+    with (
+        mock.patch("climate_indices.compute._pearson_lost_valid_fraction", return_value=1.0),
+        mock.patch("climate_indices.compute.transform_fitted_pearson") as pearson_transform,
     ):
         diagnostics = compute.fit_diagnostics(
             values,
@@ -1300,6 +1304,8 @@ def test_fit_diagnostics_reports_the_gamma_fall_back():
             compute.Periodicity.monthly,
             fallback_to_gamma=True,
         )
+
+    pearson_transform.assert_not_called()
 
     assert diagnostics.fell_back_to_gamma
     assert diagnostics.distribution is indices.Distribution.gamma

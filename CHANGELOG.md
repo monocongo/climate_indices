@@ -304,6 +304,19 @@ change states what a user sees, how to detect it, and what to change in
   series and its own `PdiDurationFactors`, like the scPDSI Wells recursion, instead
   of recomputing the Z-index mid-recursion. Default-factor PDSI and scPDSI results are
   unchanged (#1226).
+- **A fitted distribution has one owner**: `compute.FittedDistribution` now resolves a
+  gamma, Pearson Type III or log-logistic fit from the data or from a caller's
+  `fitting_params` in one place -- key normalization, partial-set rejection,
+  period-to-cell broadcasting and the gamma probability of zero included -- and the
+  transforms, `fit_and_standardize()`, the Pearson-to-gamma fall back and
+  `fit_diagnostics()` are compositions over it. The three period-to-cell broadcast
+  helpers and the duplicated partial-parameter check are gone, the goodness-of-fit
+  warnings and the fit diagnostics report the Kolmogorov-Smirnov statistic through one
+  implementation, and `fit_diagnostics()` decides a fall back from the fit outcome
+  rather than discarding a standardized-value transform. A gamma fit now resolves its
+  probability of zero and its missing-data quality check from the same calibration
+  values, so a zero counts as valid there, matching `gamma_parameters()`. Public
+  signatures and fitted values are unchanged (#1216).
 
 ## [2.4.0] - 2026-04-05
 
