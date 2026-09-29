@@ -220,7 +220,7 @@ def _fetch_shapefile(downloads: Path) -> Path:
 
 def _cell_series(dataset, variable: str, mask: np.ndarray) -> np.ndarray:
     """Extract (n_cells, n_months) for the selected cells, in row-major grid order."""
-    rows, columns = np.where(mask)
+    rows, columns = np.nonzero(mask)
     values = dataset[variable].sel(lat=slice(*_LATITUDE_BAND), lon=slice(*_LONGITUDE_BAND)).values[:_N_MONTHS]
     if values.shape[0] < _N_MONTHS:
         raise RuntimeError(f"{variable} has only {values.shape[0]} months, need {_N_MONTHS}")
@@ -254,11 +254,10 @@ def _computed_series(precip: np.ndarray, pet: np.ndarray, scale: int) -> np.ndar
     stacked = np.vstack(cells)
     if np.isnan(stacked[:, scale - 1 :]).all(axis=1).any():
         raise RuntimeError("a selected cell produced an all-NaN SPEI series; refusing to drop it silently")
-    with np.errstate(invalid="ignore"):
-        with warnings.catch_warnings():
-            # leading scale-1 months are all-NaN by construction (rolling-sum warmup)
-            warnings.simplefilter("ignore", RuntimeWarning)
-            return np.nanmean(stacked, axis=0)
+    with np.errstate(invalid="ignore"), warnings.catch_warnings():
+        # leading scale-1 months are all-NaN by construction (rolling-sum warmup)
+        warnings.simplefilter("ignore", RuntimeWarning)
+        return np.nanmean(stacked, axis=0)
 
 
 def _measure_agreement(inputs: dict[str, dict[str, np.ndarray]]) -> dict[str, dict[int, dict[str, float]]]:
@@ -414,7 +413,9 @@ def main() -> None:
                         "longitude": round(longitude, 4),
                         "cells": [
                             [round(float(la), 4), round(float(lo), 4)]
-                            for la, lo in zip(latitudes[np.where(mask)[0]], longitudes[np.where(mask)[1]], strict=True)
+                            for la, lo in zip(
+                                latitudes[np.nonzero(mask)[0]], longitudes[np.nonzero(mask)[1]], strict=True
+                            )
                         ],
                     }
                 )
