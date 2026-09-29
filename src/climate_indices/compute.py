@@ -82,6 +82,14 @@ ZeroHandling = Literal["classic", "center_of_mass", "mean_zero"]
 _ZERO_HANDLING_MODES: tuple[str, ...] = get_args(ZeroHandling)
 
 
+class _PearsonFitLost(Exception):
+    """The Pearson Type III fit lost too many of the input's valid values to be usable.
+
+    A fit outcome that warrants a gamma fall back, not an argument error: it is raised
+    after a fit has run, so ``_fit_pearson_with_fallback`` may act on it.
+    """
+
+
 class DistributionFallbackStrategy:
     """Strategy class for managing Pearson→Gamma distribution fallback logic."""
 
@@ -96,6 +104,15 @@ class DistributionFallbackStrategy:
         self.high_failure_threshold = high_failure_threshold
         self._logger = get_logger(self.__class__.__name__)
 
+    def log_fallback_warning(self, reason: str, context: str = "") -> None:
+        """Emit the ``distribution_fallback`` event recording the distribution swap."""
+        self._logger.bind(
+            from_distribution="pearson",
+            to_distribution="gamma",
+            reason=reason,
+            context=context,
+        ).warning("distribution_fallback")
+
     def should_fallback_from_excessive_nans(self, values: np.ndarray) -> bool:
         """Check if fallback is needed due to excessive NaN values."""
         if values.size == 0:
@@ -109,14 +126,6 @@ class DistributionFallbackStrategy:
             return False
         failure_rate = failure_count / total_count
         return bool(failure_rate > self.high_failure_threshold)
-
-    def log_fallback_warning(self, reason: str, context: str = "") -> None:
-        """Log a fallback warning with consistent formatting."""
-        message = f"Pearson Type III distribution fitting failed ({reason}). "
-        message += "Falling back to Gamma distribution for robust computation."
-        if context:
-            message += f" Context: {context}"
-        self._logger.warning(message)
 
     def log_high_failure_rate(self, failure_count: int, total_count: int, context: str = "") -> None:
         """Log high failure rate warning."""
@@ -962,11 +971,44 @@ def _validate_pearson_parameter_cells(
         if parameter is None:
             continue
         parameter = np.asarray(parameter)
-        if parameter.ndim > 1 and (parameter.shape[0] != period_length or parameter.shape[1:] != cells):
+        if parameter.ndim == 1:
+            if parameter.shape[0] != period_length:
+                raise ValueError(
+                    f"Fitting parameter '{name}' has shape {parameter.shape}, which must carry "
+                    f"the period length {period_length}"
+                )
+        elif parameter.ndim > 1 and (parameter.shape[0] != period_length or parameter.shape[1:] != cells):
             raise ValueError(
                 f"Fitting parameter '{name}' has shape {parameter.shape}, which must carry the "
                 f"block's period length {period_length} and cell dimensions {cells}"
             )
+
+
+def _validate_pearson_fitting_params(
+    values: np.ndarray,
+    probabilities_of_zero: np.ndarray | None,
+    locs: np.ndarray | None,
+    scales: np.ndarray | None,
+    skews: np.ndarray | None,
+) -> None:
+    """Reject a partial or mis-shaped pre-computed Pearson Type III parameter set.
+
+    Called before any fitting so a caller's argument error raises from every index,
+    regardless of ``fallback_to_gamma``, instead of resembling a failed fit.
+
+    :param values: the validated values, shape (years, periods) or (years, periods, *cells)
+    :raises ValueError: if the set is partial, or a parameter does not carry the period (and cell) axes
+    """
+    supplied = (probabilities_of_zero, locs, scales, skews)
+    if any(parameter is None for parameter in supplied) and not all(parameter is None for parameter in supplied):
+        raise ValueError(
+            "At least one but not all of the Pearson Type III fitting parameters are specified -- "
+            "either none or all of these must be specified"
+        )
+    _validate_pearson_parameter_cells(
+        values,
+        (("prob_zero", probabilities_of_zero), ("loc", locs), ("scale", scales), ("skew", skews)),
+    )
 
 
 def _prepare_spatial_parameters(
@@ -1103,6 +1145,13 @@ def transform_fitted_pearson(
 
     # validate (and possibly reshape) the input array
     values = _validate_array(values, periodicity)
+
+    # reject parameter arrays that do not carry the period (and cell) axes before any
+    # fitting, so an argument error cannot be mistaken for a failed fit
+    _validate_pearson_parameter_cells(
+        values,
+        (("prob_zero", probabilities_of_zero), ("loc", locs), ("scale", scales), ("skew", skews)),
+    )
 
     # broadcast period-only parameters and reject parameter arrays whose cell
     # dimensions do not match a spatial block
@@ -2486,6 +2535,10 @@ def _fit_pearson_with_fallback(
         # valid-input mask below has the shape of the fitted result
         values = _validate_array(values, periodicity)
 
+    # an argument error raises here rather than being caught below as a fit failure:
+    # this is what makes spi raise the error spei raises for a partial or mis-shaped set
+    _validate_pearson_fitting_params(values, probabilities_of_zero, locs, scales, skews)
+
     try:
         standardized = transform_fitted_pearson(
             values,
@@ -2507,9 +2560,9 @@ def _fit_pearson_with_fallback(
         # nothing valid has nothing to lose
         valid = ~np.isnan(values)
         if valid.any() and _default_fallback_strategy.should_fallback_from_excessive_nans(standardized[valid]):
-            raise ValueError("Pearson distribution fitting resulted in excessive missing values")
+            raise _PearsonFitLost("Pearson distribution fitting resulted in excessive missing values")
 
-    except (ValueError, Warning, DistributionFittingError) as e:
+    except (DistributionFittingError, _PearsonFitLost) as e:
         # use the centralized fallback strategy for consistent logging and behavior
         _default_fallback_strategy.log_fallback_warning(str(e), context=fallback_context)
 
@@ -2832,7 +2885,7 @@ def _diagnostic_pearson_parameters(
             probabilities_of_zero, locs, scales, skews = pearson_parameters(
                 values, data_start_year, calibration_start_year, calibration_end_year, periodicity
             )
-        except (ValueError, Warning, DistributionFittingError):
+        except DistributionFittingError:
             if not fallback_to_gamma:
                 raise
             # Let the guarded transform refit and apply its gamma fallback.

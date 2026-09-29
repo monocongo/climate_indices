@@ -629,7 +629,7 @@ class TestSpatialPearsonEquivalence:
         """A raised Pearson fit re-fits the whole block as gamma, not only the failing cell."""
 
         def raising_transform(*args, **kwargs):
-            raise ValueError("forced pearson fit failure")
+            raise compute.DistributionFittingError("forced pearson fit failure", distribution_name="pearson3")
 
         monkeypatch.setattr(compute, "transform_fitted_pearson", raising_transform)
         pearson_result = spatial_spi(

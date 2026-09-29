@@ -18,6 +18,7 @@ tests use full-period-of-record calibration, not the README's stated window.
 """
 
 import json
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -97,22 +98,16 @@ def test_ceilings_keep_documented_headroom():
 
 
 @pytest.fixture
-def pearson_fallbacks(monkeypatch) -> list[str]:
+def pearson_fallbacks(caplog) -> list:
     """Record any Pearson->gamma fallback inside ``indices.spi()``.
 
-    The characterization claims Pearson Type III coverage; ``spi()`` silently
-    falls back to gamma on fitting failure or excessive NaNs, so the test must
-    observe and reject that fallback rather than comparing gamma values.
+    The characterization claims Pearson Type III coverage; ``spi()`` falls back to
+    gamma on fitting failure or excessive NaNs, so the test must observe and reject
+    that fallback rather than comparing gamma values. Observes the public
+    ``distribution_fallback`` event, not a private strategy method (#1215).
     """
-    fallbacks: list[str] = []
-    original = compute._default_fallback_strategy.log_fallback_warning
-
-    def spy(reason: str, context: str = "") -> None:
-        fallbacks.append(reason)
-        original(reason, context)
-
-    monkeypatch.setattr(compute._default_fallback_strategy, "log_fallback_warning", spy)
-    return fallbacks
+    caplog.set_level(logging.WARNING)
+    return caplog.records
 
 
 @pytest.mark.validation
@@ -145,7 +140,12 @@ def test_spi_vs_noaa_ncei_climdiv_characterization(scale, divisions, precips_by_
         )
         diffs.append(row_diffs)
 
-    assert not pearson_fallbacks, f"scale {scale}: Pearson fit fell back to gamma: {pearson_fallbacks}"
+    fallbacks = [
+        record.msg.get("reason")
+        for record in pearson_fallbacks
+        if isinstance(record.msg, dict) and record.msg.get("event") == "distribution_fallback"
+    ]
+    assert not fallbacks, f"scale {scale}: Pearson fit fell back to gamma: {fallbacks}"
 
     summary = _summarize(diffs)
     for stat, ceiling in _CEILINGS[scale].items():

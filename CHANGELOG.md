@@ -234,6 +234,15 @@ change states what a user sees, how to detect it, and what to change in
   Neither path enforces a per-cell 30-year non-NaN minimum, so sparse cells can
   still produce finite results. The in-memory single-series (1-D) check is
   unchanged (#979, #1156).
+- **Pearson-to-gamma fall back**: `spi()` and `standardized_index()` treated any
+  argument error as a failed Pearson Type III fit and silently returned gamma values.
+  A partial or mis-shaped `fitting_params` set is now rejected before the fit, and
+  raises the same `ValueError` in every index regardless of `fallback_to_gamma`, where
+  it previously raised only on the SPEI path; only a genuine fit failure falls back.
+  `fit_diagnostics()` no longer reports a fall back for an argument error, a
+  `-W error::GoodnessOfFitWarning` run no longer changes which distribution is fitted,
+  and the swap is reported through the public `distribution_fallback` log event rather
+  than a private strategy method (#1215).
 
 ## [2.4.0] - 2026-04-05
 
