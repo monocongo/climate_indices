@@ -198,6 +198,29 @@ class TestProvenanceChecksum:
             f"rerun scripts/prepare_speibase_fixtures.py."
         )
 
+    def test_zero_handling_checksum_matches(self) -> None:
+        """Verify the R SEI/SCI zero-placement fixture checksum matches provenance.json.
+
+        The checksum covers the shared input and every SEI/SCI reference array,
+        so a partially refreshed or corrupted fixture fails before it is used as
+        an independent-implementation comparison.
+        """
+        fixture_dir = FIXTURE_DIR / "zero_handling"
+        provenance_path = fixture_dir / "provenance.json"
+        assert provenance_path.exists(), "zero_handling provenance.json missing"
+
+        with provenance_path.open() as f:
+            provenance = json.load(f)
+
+        actual_checksum = _compute_checksum_for_npy_files(fixture_dir)
+        assert actual_checksum == provenance["checksum_sha256"], (
+            f"zero_handling fixture checksum mismatch. "
+            f"Expected: {provenance['checksum_sha256']}, "
+            f"Actual: {actual_checksum}. "
+            f"If the fixture data was intentionally refreshed, "
+            f"rerun scripts/prepare_zero_handling_fixtures.py."
+        )
+
 
 class TestProvenanceProtocolCoverage:
     """Ensure provenance protocol is being followed for reference datasets."""
