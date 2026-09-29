@@ -670,7 +670,7 @@ def _log_status(request: _IndexRequest) -> None:
 
     else:
         _logger.info(
-            f"Computing {request.scale}-{_get_scale_increment(request.periodicity)} {request.index.upper()}/{request.distribution.value.capitalize()}"
+            f"Computing {request.scale}-{_get_scale_increment(request.periodicity)} {request.index.upper()}/{request.distribution.display_name.capitalize()}"
         )
 
 
@@ -1593,7 +1593,7 @@ def _standardized_variable_attributes(
     assert request.scale is not None, _UNVALIDATED_SCALE
     label = _OUTPUT_SCALE_LABELS[request.output_scale]
     long_name = (
-        f"{index_name} ({request.distribution.value.capitalize()} distribution), "
+        f"{index_name} ({request.distribution.display_name.capitalize()} distribution), "
         + f"{request.scale}-{_get_scale_increment(request.periodicity)}{label}"
     )
     attrs = {"long_name": long_name, **_OUTPUT_SCALE_ATTRS[request.output_scale]}
@@ -2000,6 +2000,13 @@ def _validate_flood_arguments(args: argparse.Namespace) -> None:
         raise ValueError(msg)
 
 
+# the distributions `--index spi` computes; log-logistic is the SPEI reference
+# distribution and `indices.spi()` rejects it (#106)
+_SPI_DISTRIBUTIONS = tuple(
+    distribution for distribution in indices.Distribution if distribution is not indices.Distribution.loglogistic
+)
+
+
 def _run_spi(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
     """
     Compute SPI for each requested scale and distribution.
@@ -2008,7 +2015,7 @@ def _run_spi(arguments: argparse.Namespace, input_type: DatasetLayout) -> None:
     :param input_type: the input type determined by argument validation
     """
     for scale in arguments.scales:
-        for distribution in indices.Distribution:
+        for distribution in _SPI_DISTRIBUTIONS:
             _compute_write_index(
                 _IndexRequest.from_arguments(
                     arguments,

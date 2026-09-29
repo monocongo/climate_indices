@@ -19,7 +19,7 @@ The following indices are provided:
 - [SPI](https://climatedataguide.ucar.edu/climate-data/standardized-precipitation-index-spi),
   Standardized Precipitation Index, utilizing both gamma and Pearson Type III distributions
 - [SPEI](https://www.researchgate.net/publication/252361460_The_Standardized_Precipitation-Evapotranspiration_Index_SPEI_a_multiscalar_drought_index),
-  Standardized Precipitation Evapotranspiration Index, utilizing both gamma and Pearson Type III distributions
+  Standardized Precipitation Evapotranspiration Index, utilizing gamma, Pearson Type III, and generalized-logistic (log-logistic) distributions
 - [PET](https://www.ncdc.noaa.gov/monitoring-references/dyk/potential-evapotranspiration), Potential Evapotranspiration, utilizing the [Thornthwaite](http://dx.doi.org/10.2307/21073),
   [Hargreaves](http://dx.doi.org/10.13031/2013.26773), or [FAO-56 Penman-Monteith](https://www.fao.org/4/x0490e/x0490e00.htm) equations
 - [PNP](http://www.droughtmanagement.info/percent-of-normal-precipitation/),

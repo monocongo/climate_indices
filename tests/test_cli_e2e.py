@@ -18,7 +18,7 @@ import pytest
 import xarray as xr
 
 from climate_indices import compute, indices, palmer, utils
-from climate_indices.__main__ import main
+from climate_indices.__main__ import _SPI_DISTRIBUTIONS, main
 
 # the fixture data starts in January of this year (see tests/conftest.py)
 _DATA_START_YEAR = 1895
@@ -159,7 +159,7 @@ def test_spi_zero_handling_flag_writes_values_and_metadata(tmp_path, precips_mm_
     _write_timeseries(precip_path, values)
     main([*_spi_arguments(precip_path, tmp_path / "spi", scales=("1",)), "--zero_handling", mode])
 
-    for distribution in indices.Distribution:
+    for distribution in _SPI_DISTRIBUTIONS:
         expected = indices.spi(
             values,
             1,
@@ -673,6 +673,7 @@ def test_all_runs_each_index_into_its_own_output(tmp_path, precips_mm_monthly, p
         "all_spi_gamma_01.nc",
         "all_spi_pearson_01.nc",
         "all_spei_gamma_01.nc",
+        "all_spei_loglogistic_01.nc",
         "all_spei_pearson_01.nc",
         "all_pnp_01.nc",
         "all_pdsi.nc",

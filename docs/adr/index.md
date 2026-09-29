@@ -27,4 +27,5 @@ corrected in place), or `Superseded by ADR-NNNN`. The authoring conventions are 
 0013-flood-module-api-and-naming
 0014-flood-family-scientific-conventions
 0015-zero-handling-in-standardized-indices
+0016-log-logistic-distribution-for-spei
 ```
