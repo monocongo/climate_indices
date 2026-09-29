@@ -355,11 +355,7 @@ def eddi(
         # an all-missing block is returned as it arrived, as the preparation seam
         # does for the 1-D and 2-D layouts -- unless the scale exceeds the block's
         # time steps, which the seam rejects rather than returning silently
-        if (
-            pet_values.ndim > 2
-            and scale <= pet_values.shape[0]
-            and ((isinstance(pet_values, np.ma.MaskedArray) and pet_values.mask.all()) or np.all(np.isnan(pet_values)))
-        ):
+        if pet_values.ndim > 2 and scale <= pet_values.shape[0] and compute.is_all_missing(pet_values):
             _log_calculation_completed(log, t0, pet_values.shape, memory_metrics)
             return pet_values
 
@@ -1186,7 +1182,10 @@ def percentage_of_normal(
 
         # bypass processing if all values are masked, or when a spatial block is all
         # missing, in which case it is returned as it arrived -- unless the scale
-        # exceeds its time steps, which the preparation seam must reject
+        # exceeds its time steps, which the preparation seam must reject. This is
+        # deliberately stricter than compute.is_all_missing: a masked-all input
+        # short-circuits at any rank, but a NaN-all 1-D/2-D input still goes through
+        # the seam (it averages the un-reshaped sums).
         if scale <= values.shape[0] and (
             (isinstance(values, np.ma.MaskedArray) and values.mask.all())
             or (values.ndim > 2 and np.all(np.isnan(values)))
