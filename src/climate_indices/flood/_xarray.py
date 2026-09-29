@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import functools
-from typing import Any
 
 import numpy as np
 import xarray as xr
@@ -18,80 +17,45 @@ from climate_indices.flood._edi import edi as _numpy_edi
 from climate_indices.flood._if import flood_index as _numpy_flood_index
 from climate_indices.flood._pe import effective_precipitation as _numpy_pe
 from climate_indices.validation import validate_dask_chunks, validate_time_dimension, validate_time_monotonicity
-from climate_indices.xarray_adapter import build_output_attrs, xarray_adapter
-
-
-def _pe_daily(
-    precipitation: np.ndarray[Any, Any],
-    *,
-    duration: int = 365,
-    periodicity: Periodicity = Periodicity.daily,
-    spatial_time_major: bool = False,
-) -> np.ndarray[Any, Any]:
-    return _numpy_pe(precipitation, duration=duration, spatial_time_major=spatial_time_major)
-
-
-def _edi_daily(
-    pe: np.ndarray[Any, Any],
-    data_start_year: int,
-    calibration_year_initial: int,
-    calibration_year_final: int,
-    *,
-    duration: int = 365,
-    periodicity: Periodicity = Periodicity.daily,
-    spatial_time_major: bool = False,
-) -> np.ndarray[Any, Any]:
-    return _numpy_edi(
-        pe,
-        data_start_year,
-        calibration_year_initial,
-        calibration_year_final,
-        duration=duration,
-        spatial_time_major=spatial_time_major,
-    )
-
-
-def _flood_index_daily(
-    pe: np.ndarray[Any, Any],
-    data_start_year: int,
-    calibration_year_initial: int,
-    calibration_year_final: int,
-    *,
-    year_start_month: int,
-    periodicity: Periodicity = Periodicity.daily,
-    spatial_time_major: bool = False,
-) -> np.ndarray[Any, Any]:
-    return _numpy_flood_index(
-        pe,
-        data_start_year,
-        calibration_year_initial,
-        calibration_year_final,
-        year_start_month=year_start_month,
-        spatial_time_major=spatial_time_major,
-    )
-
+from climate_indices.xarray_adapter import (
+    INFER_TIME_PARAMETERS,
+    build_output_attrs,
+    xarray_adapter,
+)
 
 _wrapped_pe = xarray_adapter(
+    calendar=Periodicity.daily,
+    spatial_block_parameter="spatial_time_major",
+    inferred_parameters={},
+    argument_validators=(),
     cf_metadata=CF_METADATA["effective_precipitation"],  # type: ignore[arg-type]
     index_display_name="Effective Precipitation",
     calculation_metadata_keys=["duration"],
     spatial_kernel=True,
     validate_calibration_sample=False,
-)(_pe_daily)
+)(_numpy_pe)
 _wrapped_edi = xarray_adapter(
+    calendar=Periodicity.daily,
+    spatial_block_parameter="spatial_time_major",
+    inferred_parameters={k: v for k, v in INFER_TIME_PARAMETERS.items() if k != "periodicity"},
+    argument_validators=(),
     cf_metadata=CF_METADATA["edi"],  # type: ignore[arg-type]
     index_display_name="EDI",
     calculation_metadata_keys=["calibration_year_initial", "calibration_year_final"],
     spatial_kernel=True,
     validate_calibration_sample=False,
-)(_edi_daily)
+)(_numpy_edi)
 _wrapped_flood_index = xarray_adapter(
+    calendar=Periodicity.daily,
+    spatial_block_parameter="spatial_time_major",
+    inferred_parameters={k: v for k, v in INFER_TIME_PARAMETERS.items() if k != "periodicity"},
+    argument_validators=(),
     cf_metadata=CF_METADATA["flood_index"],  # type: ignore[arg-type]
     index_display_name="Flood Index",
     calculation_metadata_keys=["year_start_month", "calibration_year_initial", "calibration_year_final"],
     spatial_kernel=True,
     validate_calibration_sample=False,
-)(_flood_index_daily)
+)(_numpy_flood_index)
 
 
 def _api_block(

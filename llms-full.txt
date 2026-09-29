@@ -3422,7 +3422,7 @@ da = xr.open_dataarray(
 
 ### Lazy evaluation
 
-Dask-backed DataArrays use lazy evaluation — computations build a task graph but don't execute until you call `.compute()` or trigger output (e.g., `.to_netcdf()`):
+Dask-backed DataArrays use lazy evaluation — computations build a task graph but don't execute until you call `.compute()` or trigger output (e.g., `.to_netcdf()`). Invalid SPI/SPEI options (including timescale, distribution, and output scale) raise when you call the function, before a graph is built:
 
 ```python
 # open dataset with chunking (no data loaded yet)
