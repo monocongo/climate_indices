@@ -1344,7 +1344,7 @@ def _prepare_latitude_array(context: _ComputeContext) -> None:
     :param context: the opened inputs and output settings of the request
     """
     latitudes = context.dataset["lat"]
-    context.transport.store.write(LATITUDE_ARRAY_KEY, latitudes.values)
+    context.transport.write(LATITUDE_ARRAY_KEY, latitudes.values)
 
 
 def _compute_single_array(context: _ComputeContext) -> None:
@@ -1382,7 +1382,7 @@ def _compute_palmers(context: _ComputeContext) -> None:
     # read AWC data into a shared memory array; already opened and unit-validated
     transport = context.transport
     awc_array = context.prepared[request.var_name_awc]
-    transport.store.write(request.var_name_awc, awc_array.values)
+    transport.write(request.var_name_awc, awc_array.values)
 
     # add shared memory arrays for the computed Palmers to the store
     for key, _var_name, _cf_key, _index_name in _PALMER_OUTPUTS:
@@ -1428,7 +1428,8 @@ def _write_single_output(context: _ComputeContext) -> tuple[str, str]:
     )
 
     # get the shared memory results array and convert it to a numpy array
-    index_values = context.transport.read(handler.output_keys[0], context.output_shape).astype(float)
+    # the shared buffer holds float64, so this is already a private copy
+    index_values = context.transport.read(handler.output_keys[0], context.output_shape)
 
     # convert daily values back into normal/Gregorian calendar years
     if context.calendar_plan is not None:
@@ -1473,7 +1474,8 @@ def _write_palmer_outputs(context: _ComputeContext) -> None:
     output_encodings = _trimmed_output_encodings(context.output_encodings, context.output_shape)
     for key, var_name, cf_key, index_name in _PALMER_OUTPUTS:
         # get the shared memory results array and convert it to a numpy array
-        index_values = context.transport.read(key, context.output_shape).astype(float)
+        # the shared buffer holds float64, so this is already a private copy
+        index_values = context.transport.read(key, context.output_shape)
         # scPDSI's percentile rescaling has no hard bound, unlike the
         # historical (and conservative) range kept for the standard outputs
         extra = None if var_name == "scpdsi" else {"valid_min": -10.0, "valid_max": 10.0}

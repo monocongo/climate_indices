@@ -7,10 +7,11 @@ untyped per-worker parameter dictionary, and three hand-written workers. This
 module owns them behind one interface: *run this kernel over these named inputs
 and return these named outputs*.
 
-The store is an instance, not a module global, so two invocations in one process
-cannot reuse each other's buffers. The only module state is the store a spawned
-worker reads, which :func:`_initialize_worker` sets from ``Pool(initializer=...)``
--- a shared ``multiprocessing.Array`` cannot be pickled through the task queue.
+The store is an instance, not a module global, so two transports in one process
+cannot reuse each other's buffers. A worker reads the store through the module
+reference :func:`_initialize_worker` sets from ``Pool(initializer=...)`` (a
+shared ``multiprocessing.Array`` cannot be pickled through the task queue); the
+inline executor sets and then restores it around its map.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from typing import Any, Protocol
 import numpy as np
 import xarray as xr
 
+from climate_indices.utils import DailyCalendarPlan
 from climate_indices.validation import DatasetLayout, expected_dimensions
 
 # the store keys that are not input variable names: the latitude companion, the
@@ -265,9 +267,12 @@ class InlineExecutor:
 
     def map(self, worker: Callable[[WorkItem], None], items: Sequence[WorkItem]) -> None:
         global _worker_store
-        _worker_store = self._store
-        for item in items:
-            worker(item)
+        previous, _worker_store = _worker_store, self._store
+        try:
+            for item in items:
+                worker(item)
+        finally:
+            _worker_store = previous
 
 
 class PoolExecutor:
@@ -291,13 +296,15 @@ class Transport:
 
     def __init__(self, processes: int) -> None:
         self.store = SharedArrayStore()
-        self.processes = processes
+        # a one-CPU host's default all-but-one count is zero, which would make
+        # _partition divide by zero rather than run the single process
+        self.processes = max(1, processes)
 
     def copy_in(
         self,
         dataset: xr.Dataset,
         var_names: list[str],
-        calendar_plan: Any,
+        calendar_plan: DailyCalendarPlan | None,
         layout: DatasetLayout,
     ) -> tuple[int, ...]:
         """
@@ -360,6 +367,9 @@ class Transport:
 
     def allocate(self, name: str, shape: tuple[int, ...]) -> None:
         self.store.allocate(name, shape)
+
+    def write(self, name: str, values: np.ndarray) -> None:
+        self.store.write(name, values)
 
     def __contains__(self, name: str) -> bool:
         return name in self.store

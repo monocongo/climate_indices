@@ -113,7 +113,7 @@ def _prepare(args: argparse.Namespace) -> None:
     values[values == 0] = np.float32(0.01)
 
     # the CLI's shared-array transport accepts (lat, lon, time) only, time last
-    # (climate_indices.__main__._TRANSPORT_DIMENSIONS); the xarray harness
+    # (climate_indices._cli_transport._TRANSPORT_DIMENSIONS); the xarray harness
     # transposes its own input on read, so it accepts either order
     prepared = xr.Dataset(
         {"prcp": (("lat", "lon", "time"), np.moveaxis(values, 0, -1), {"units": "mm"})},
@@ -253,6 +253,8 @@ def _time_cli(args: argparse.Namespace) -> None:
         )
     mode = args.multiprocessing or "all_but_one"
     workers = {"single": 1, "all": os.cpu_count() or 1}.get(mode, (os.cpu_count() or 1) - 1)
+    # single runs the shared-array transport in-process, not through a Pool
+    executor = "in-process map" if mode == "single" else "multiprocessing.Pool"
 
     print(f"checkout revision: {_revision()}")
     print(f"fixture: {os.path.abspath(args.prepared)} sha256={_hash_file(args.prepared)}")
@@ -281,7 +283,7 @@ def _time_cli(args: argparse.Namespace) -> None:
         compute = tuple(compute_samples[name])
         total = tuple(total_samples[name])
         print(
-            f"\ncli {name} (multiprocessing.Pool, {workers} workers): "
+            f"\ncli {name} ({executor}, {workers} workers): "
             f"compute samples=[{_format_samples(compute)}] min={min(compute):.3f} s; "
             f"total samples=[{_format_samples(total)}] min={min(total):.3f} s"
         )
