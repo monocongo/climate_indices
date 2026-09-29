@@ -9,6 +9,7 @@ import numpy as np
 from structlog.stdlib import BoundLogger
 
 from climate_indices import _palmer_wells, compute, self_calibration, utils
+from climate_indices._calibration_period import resolve_calibration_period
 from climate_indices._palmer_duration import DurationFactors
 from climate_indices.exceptions import ConvergenceError
 from climate_indices.logging_config import get_logger
@@ -1152,25 +1153,6 @@ def _validate_fitting_params(prepared: _PalmerPrepared, fitting_params: dict[str
         prepared.delta = coefficients[3]
 
 
-def _validate_calibration_period(
-    data_start_year: int,
-    n_years: int,
-    calibration_year_initial: int,
-    calibration_year_final: int,
-) -> None:
-    """Ensure the inclusive calibration period is represented by the input record."""
-    data_final_year = data_start_year + n_years - 1
-    if (
-        calibration_year_initial > calibration_year_final
-        or calibration_year_initial < data_start_year
-        or calibration_year_final > data_final_year
-    ):
-        raise ValueError(
-            "calibration period must be an inclusive interval within the input data years "
-            f"[{data_start_year}, {data_final_year}]"
-        )
-
-
 def _initialize_prepared(
     precips: np.ndarray,
     pet: np.ndarray,
@@ -1206,11 +1188,9 @@ def _initialize_prepared(
     n_years = int(precips.shape[0])
     n_cells = int(precips.shape[2])
     awc = _reshape_palmer_awc(awc, cell_shape, n_cells)
-    _validate_calibration_period(
-        data_start_year,
-        n_years,
-        calibration_year_initial,
-        calibration_year_final,
+    # a calibration period the record does not cover is an error, not clamped
+    period = resolve_calibration_period(
+        data_start_year, n_years, calibration_year_initial, calibration_year_final, policy="reject"
     )
 
     # duration factors default to Palmer's fixed national values and are read by
@@ -1226,9 +1206,9 @@ def _initialize_prepared(
         awc=awc,
         awc_bot=_get_awc_bot(awc),
         n_years=n_years,
-        n_calb_years=calibration_year_final - calibration_year_initial + 1,
-        calibration_year_initial_idx=calibration_year_initial - data_start_year,
-        calibration_year_final_idx=calibration_year_final - data_start_year,
+        n_calb_years=period.n_years,
+        calibration_year_initial_idx=period.start_index,
+        calibration_year_final_idx=period.end_index,
         calibrate=True,
         n_cells=n_cells,
         cell_shape=cell_shape,
@@ -1630,11 +1610,12 @@ def _palmer_calculation(
         all_missing = np.all(np.isnan(precips))
         if all_missing:
             reshaped, _ = _reshape_palmer_input(precips, spatial_time_major)
-            _validate_calibration_period(
+            resolve_calibration_period(
                 data_start_year,
                 int(reshaped.shape[0]),
                 calibration_year_initial,
                 calibration_year_final,
+                policy="reject",
             )
             duration_ms = (time.perf_counter() - t0) * 1000.0
             log.info(
