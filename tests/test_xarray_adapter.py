@@ -83,8 +83,9 @@ def test_registered_spi_rejects_invalid_arguments_before_dask_compute(
     """The public NumPy and xarray entries reject the same argument errors eagerly."""
     valid = {"scale": 3, "distribution": indices.Distribution.gamma}
     valid.update(invalid)
+    chunked_precip = sample_monthly_precip_da.chunk({"time": -1})
     with pytest.raises(error):
-        spi(sample_monthly_precip_da.chunk({"time": -1}), **valid)
+        spi(chunked_precip, **valid)
     with pytest.raises(error):
         spi(
             sample_monthly_precip_da.values,
@@ -102,22 +103,23 @@ def test_registered_spei_rejects_invalid_arguments_before_dask_compute(
     """SPEI's own validator set rejects a bad scale or distribution before graph build."""
     for invalid in ({"scale": 0}, {"distribution": "gamma"}):
         options = {"scale": 3, "distribution": indices.Distribution.gamma, **invalid}
+        chunked_precip = sample_monthly_precip_da.chunk({"time": -1})
+        chunked_pet = sample_monthly_pet_da.chunk({"time": -1})
         with pytest.raises(InvalidArgumentError):
-            spei(
-                sample_monthly_precip_da.chunk({"time": -1}),
-                sample_monthly_pet_da.chunk({"time": -1}),
-                **options,
-            )
+            spei(chunked_precip, chunked_pet, **options)
 
 
 def test_registration_rejects_undeclared_contract_parameters() -> None:
     """A declared timescale or metadata-variant typo fails at registration, not silently."""
+    calendar_decorator = xarray_adapter(calendar="periodicty")
     with pytest.raises(ValueError, match="not accepted"):
-        xarray_adapter(calendar="periodicty")(lambda values: values)
+        calendar_decorator(lambda values: values)
+    timescale_decorator = xarray_adapter(timescale_parameter="scale")
     with pytest.raises(ValueError, match="not accepted"):
-        xarray_adapter(timescale_parameter="scale")(lambda values: values)
+        timescale_decorator(lambda values: values)
+    variant_decorator = xarray_adapter(cf_metadata_variants={"probability": {}})
     with pytest.raises(ValueError, match="metadata_variant_parameter"):
-        xarray_adapter(cf_metadata_variants={"probability": {}})(lambda values: values)
+        variant_decorator(lambda values: values)
 
 
 def test_calendar_registration_uses_declared_parameter(sample_daily_precip_da: xr.DataArray) -> None:
@@ -135,8 +137,9 @@ def test_calendar_registration_uses_declared_parameter(sample_daily_precip_da: x
 
 def test_registration_rejects_undeclared_inference() -> None:
     """A contract typo cannot silently drop a coordinate-derived value."""
+    inference_decorator = xarray_adapter(inferred_parameters={"start_year": _infer_data_start_year})
     with pytest.raises(ValueError, match="not accepted"):
-        xarray_adapter(inferred_parameters={"start_year": _infer_data_start_year})(lambda values: values)
+        inference_decorator(lambda values: values)
 
 
 def _standard_normal(size: int | tuple[int, ...]) -> np.ndarray:
