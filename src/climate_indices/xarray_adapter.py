@@ -2050,16 +2050,9 @@ def pet_thornthwaite(
     # block's order
     use_spatial_kernel, lat_for_ufunc = _spatial_kernel_cell_param(temp_da, latitude, time_dim)
 
-    # wrapper functions to handle read-only array views from apply_ufunc
-    # the underlying eto.eto_thornthwaite modifies the temp array in-place,
-    # so we must create a writable copy
-    def _pet_with_copy(temps: np.ndarray, lat: np.ndarray, year: int) -> np.ndarray:
-        """Wrapper for indices.pet that creates a writable copy of temps."""
-        return indices.pet(temps.copy(), lat, year)
-
     def _pet_block(temps: np.ndarray, lat: np.ndarray, year: int) -> np.ndarray:
         """Wrapper for indices.pet that reads a (time, *cells) block with per-cell latitudes."""
-        pet = indices.pet(np.moveaxis(temps, -1, 0).copy(), lat, year, spatial_time_major=True)
+        pet = indices.pet(np.moveaxis(temps, -1, 0), lat, year, spatial_time_major=True)
         return np.moveaxis(pet, 0, -1)
 
     # compute using xr.apply_ufunc with spatial broadcasting
@@ -2070,7 +2063,7 @@ def pet_thornthwaite(
     # whereas the spatial kernel path hands the whole (time, *cells) block over at once
     # dask_gufunc_kwargs: allow_rechunk=True permits chunked core dimensions (for dask arrays)
     result = xr.apply_ufunc(
-        _pet_block if use_spatial_kernel else _pet_with_copy,
+        _pet_block if use_spatial_kernel else indices.pet,
         temp_da,
         lat_for_ufunc,
         data_start_year,
