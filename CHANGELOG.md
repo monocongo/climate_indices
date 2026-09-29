@@ -174,6 +174,15 @@ change states what a user sees, how to detect it, and what to change in
 
 ### Fixed
 
+- **xarray PET and PCI provenance and alignment**: `pet_hargreaves` and
+  `pet_penman_monteith` now reject a `tmin`/`tmax` (and other time-series) pair whose
+  non-time coordinates differ with `CoordinateValidationError`, as SPEI already did,
+  instead of silently intersecting them and dropping cells; time steps outside the
+  shared range are still trimmed with an `InputAlignmentWarning`, and an empty time
+  intersection now reports the reason `empty_intersection_after_alignment`. Thornthwaite,
+  Hargreaves, and Penman-Monteith output no longer inherits the input's `standard_name`
+  (for example `air_temperature`), and `pci` output keeps the input's `history` and
+  other attributes, appending its own entry in the shared format (#1218).
 - **Palmer**: duration-factor overrides resolve after input validation, masked fitting
   parameters are treated as missing, fitted coefficients are required to be 12-element
   vectors, mismatched cell grids are rejected, and per-cell available water capacity
