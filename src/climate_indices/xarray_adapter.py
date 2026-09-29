@@ -1399,11 +1399,15 @@ def xarray_adapter(
     Example:
         .. code-block:: python
 
+            from climate_indices.xarray_adapter import INFER_TIME_PARAMETERS
+
             @xarray_adapter(
+                calendar="periodicity",
+                inferred_parameters=INFER_TIME_PARAMETERS,
                 cf_metadata={'standard_name': 'spi', 'units': '1'},
                 calculation_metadata_keys=['scale', 'distribution']
             )
-            def spi(values, scale, distribution, data_start_year, ...):
+            def spi(values, scale, distribution, periodicity, data_start_year, ...):
                 # existing NumPy implementation
                 return numpy_result
 
