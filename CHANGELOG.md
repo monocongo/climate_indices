@@ -171,6 +171,9 @@ change states what a user sees, how to detect it, and what to change in
   `compute.gamma_parameters()` or `compute.pearson_parameters()` and pass them as a
   dict — `{"alpha": ..., "beta": ...}` for gamma — to the `fitting_params` argument of
   `indices.spi()` (#919, #957).
+- **`compute.adjust_calibration_years()`**: removed. It was undocumented and used
+  only inside `compute`; window resolution moved to `climate_indices._calibration_period`
+  (#1214).
 
 ### Fixed
 
@@ -243,6 +246,27 @@ change states what a user sees, how to detect it, and what to change in
   Neither path enforces a per-cell 30-year non-NaN minimum, so sparse cells can
   still produce finite results. The in-memory single-series (1-D) check is
   unchanged (#979, #1156).
+- **Calibration Period past the end of the record**: gamma and Pearson Type III
+  fitting (`spi()`, `standardized_index()`, `fit_diagnostics()` and the `compute`
+  fitting and transform functions) took a record's last year to be one year later than
+  it is. A window running past the data was replaced by that phantom-extended record,
+  and a window ending exactly one year past the data was kept as requested; either way
+  the phantom year counted toward the 30-year minimum, so `ShortCalibrationWarning`
+  never fired for a record shorter than that. Windows now resolve against the true last
+  year, so the warning counts real years and fires. Results are unchanged: a window
+  ending exactly one year past the data still keeps its start and is cut at the last
+  year, and any other window the record does not cover still falls back to the whole
+  record.
+- **Calibration Period resolution has one owner**: `climate_indices._calibration_period`
+  resolves the window for those fits, EDDI and Palmer, and each names whether it clamps
+  or rejects a window the record does not cover. EDDI and Palmer still reject such a
+  window, now with one shared `CalibrationPeriodError` that is both an
+  `InvalidArgumentError` and a `ValueError`, so existing `except` clauses keep working.
+  The message wording is shared, EDDI no longer logs a separate error line before
+  raising, and the `error_type` of the logged `calculation_failed` event is now
+  `CalibrationPeriodError` for both. A reversed window is still accepted by SPI, and
+  percentage of normal keeps its own window handling; making the per-index policies
+  uniform is a separate decision (#1214).
 
 ## [2.4.0] - 2026-04-05
 

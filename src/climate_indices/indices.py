@@ -12,6 +12,7 @@ import numpy as np
 import structlog.stdlib
 
 from climate_indices import compute, eto
+from climate_indices._calibration_period import resolve_calibration_period
 from climate_indices.exceptions import (
     DataShapeError,
     InvalidArgumentError,
@@ -271,61 +272,6 @@ def _hastings_inverse_normal(probability: np.ndarray) -> np.ndarray:
     return cast(np.ndarray, z)
 
 
-def _validate_eddi_calibration_period(
-    calibration_year_initial: int,
-    calibration_year_final: int,
-    data_start_year: int,
-    data_end_year: int,
-) -> None:
-    """Raise InvalidArgumentError if EDDI's calibration period doesn't fit the data.
-
-    Args:
-        calibration_year_initial: First year of the calibration period.
-        calibration_year_final: Last year of the calibration period.
-        data_start_year: First year of the input PET dataset.
-        data_end_year: Last year of the input PET dataset.
-
-    Raises:
-        InvalidArgumentError: If the calibration years are out of order or fall
-            outside the data's year range.
-    """
-    if calibration_year_initial > calibration_year_final:
-        message = (
-            f"Invalid calibration year arguments: initial year "
-            f"({calibration_year_initial}) is after final year ({calibration_year_final})"
-        )
-        _logger.error(message)
-        raise InvalidArgumentError(
-            message,
-            argument_name="calibration_year_initial",
-            argument_value=str(calibration_year_initial),
-        )
-
-    if calibration_year_initial < data_start_year:
-        message = (
-            f"Invalid calibration year arguments: calibration start year "
-            f"({calibration_year_initial}) is before data start year ({data_start_year})"
-        )
-        _logger.error(message)
-        raise InvalidArgumentError(
-            message,
-            argument_name="calibration_year_initial",
-            argument_value=str(calibration_year_initial),
-        )
-
-    if calibration_year_final > data_end_year:
-        message = (
-            f"Invalid calibration year arguments: calibration end year "
-            f"({calibration_year_final}) is after data end year ({data_end_year})"
-        )
-        _logger.error(message)
-        raise InvalidArgumentError(
-            message,
-            argument_name="calibration_year_final",
-            argument_value=str(calibration_year_final),
-        )
-
-
 def eddi(
     pet_values: np.ndarray,
     scale: int,
@@ -433,18 +379,11 @@ def eddi(
         pad_rows = leading_scale_pads.reshape(-1, *pet_values.shape[2:])
         pad_rows[: min(scale - 1, pad_rows.shape[0])] = True
 
-        # compute data dimensions for validation
+        # a calibration period the record does not cover is an error, not clamped
         num_years = pet_values.shape[0]
-        data_end_year = data_start_year + num_years - 1
-
-        # validate calibration period
-        _validate_eddi_calibration_period(
-            calibration_year_initial, calibration_year_final, data_start_year, data_end_year
+        period = resolve_calibration_period(
+            data_start_year, num_years, calibration_year_initial, calibration_year_final, policy="reject"
         )
-
-        # determine calibration period indices
-        calibration_start_year_index = calibration_year_initial - data_start_year
-        calibration_end_year_index = calibration_year_final - data_start_year
 
         # Rank every calendar period against its own climatology. The rank is a count
         # of climatology values below the current value, so each period is walked as a
@@ -457,7 +396,7 @@ def eddi(
         # up front, so they scale with one period's climatology instead of the whole
         # calibration block times the period count (366 for a daily block). Missing
         # climatology values never compare below a value, so they stay out of the count.
-        climatology = pet_values[calibration_start_year_index : calibration_end_year_index + 1]
+        climatology = pet_values[period.rows]
         cell_shape = pet_values.shape[2:]
         cells_per_time_step = int(np.prod(cell_shape, dtype=np.int64)) or 1
         num_climatology_years = climatology.shape[0]
@@ -470,9 +409,7 @@ def eddi(
             period_values = pet_values[:, period_index].reshape(num_years, cells_per_time_step)
             period_valid_counts = np.count_nonzero(~np.isnan(period_climatology), axis=0)
             period_pads = np.count_nonzero(
-                leading_scale_pads[calibration_start_year_index : calibration_end_year_index + 1, period_index].reshape(
-                    num_climatology_years, cells_per_time_step
-                ),
+                leading_scale_pads[period.rows, period_index].reshape(num_climatology_years, cells_per_time_step),
                 axis=0,
             )
             for cell_start in range(0, cells_per_time_step, cells_per_chunk):
