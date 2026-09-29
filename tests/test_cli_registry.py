@@ -435,6 +435,19 @@ def test_an_unconsumed_flag_with_a_falsy_value_is_still_rejected():
     assert str(error.value) == "The --kbdi_initial argument is not applicable to --index spi"
 
 
+@pytest.mark.parametrize("spelling", ["--calibration_start_year", "--calibration_year_initial"])
+def test_an_aliased_flag_is_reported_under_every_spelling(spelling):
+    """Both spellings share one dest, so the message names the pair rather than guessing which was typed."""
+    argv = ["--index", "api", "--periodicity", "monthly", "--output_file_base", "out", spelling, "1981"]
+
+    with pytest.raises(ValueError) as error:
+        cli_main.main(argv)
+
+    assert str(error.value) == (
+        "The --calibration_start_year/--calibration_year_initial argument is not applicable to --index api"
+    )
+
+
 @pytest.mark.parametrize(
     ("extra", "expected"),
     [

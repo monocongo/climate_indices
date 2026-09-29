@@ -175,12 +175,12 @@ class TestFloodValidation:
             (
                 "pe",
                 {"calibration_start_year": 2016},
-                "The --calibration_start_year argument is not applicable to --index pe",
+                "The --calibration_start_year/--calibration_year_initial argument is not applicable to --index pe",
             ),
             (
                 "api",
                 {"calibration_end_year": 2019},
-                "The --calibration_end_year argument is not applicable to --index api",
+                "The --calibration_end_year/--calibration_year_final argument is not applicable to --index api",
             ),
             (
                 "api",

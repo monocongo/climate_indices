@@ -612,15 +612,14 @@ def _flag_display(parser: argparse.ArgumentParser, dests: set[str]) -> list[str]
     """The command line spelling of each provided dest, in parser order.
 
     A dest with alias spellings (the calibration year aliases share one) is
-    reported once, under the first spelling the parser offers.
+    reported once, naming every spelling because the parsed namespace does not
+    record which one was typed.
     """
-    names: list[str] = []
-    seen: set[str] = set()
+    spellings: dict[str, list[str]] = {}
     for action in parser._actions:  # noqa: SLF001 -- argparse exposes no ordered public view
-        if action.dest in dests and action.option_strings and action.dest not in seen:
-            seen.add(action.dest)
-            names.append(action.option_strings[0])
-    return names
+        if action.dest in dests and action.option_strings:
+            spellings.setdefault(action.dest, []).append(action.option_strings[0])
+    return ["/".join(names) for names in spellings.values()]
 
 
 def _join_flag_names(names: Sequence[str]) -> str:

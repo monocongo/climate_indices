@@ -88,11 +88,11 @@ class TestKBDIValidation:
             ({"scales": [1, 3]}, "The --scales argument is not applicable to --index kbdi"),
             (
                 {"calibration_start_year": 1990},
-                "The --calibration_start_year argument is not applicable to --index kbdi",
+                "The --calibration_start_year/--calibration_year_initial argument is not applicable to --index kbdi",
             ),
             (
                 {"calibration_end_year": 2020},
-                "The --calibration_end_year argument is not applicable to --index kbdi",
+                "The --calibration_end_year/--calibration_year_final argument is not applicable to --index kbdi",
             ),
             ({"netcdf_pet": "pet.nc"}, "The --netcdf_pet argument is not applicable to --index kbdi"),
             ({"var_name_pet": "pet"}, "The --var_name_pet argument is not applicable to --index kbdi"),
