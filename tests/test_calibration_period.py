@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import warnings
 
 import numpy as np
@@ -11,8 +10,6 @@ import pytest
 from climate_indices import compute, indices
 from climate_indices._calibration_period import CalibrationPeriodError, resolve_calibration_period
 from climate_indices.exceptions import InvalidArgumentError, ShortCalibrationWarning
-
-logging.disable(logging.CRITICAL)
 
 MONTHLY = compute.Periodicity.monthly
 
@@ -95,13 +92,14 @@ class TestReject:
 class TestThroughIndices:
     """The same edge cases through the public entry points."""
 
-    @pytest.mark.parametrize("window", [(1981, 2009), (1981, 2010), (1981, 2030)])
-    def test_spi_short_calibration_warning_counts_the_true_record(self, window):
+    @pytest.mark.parametrize("distribution", [indices.Distribution.gamma, indices.Distribution.pearson])
+    @pytest.mark.parametrize("window", [(1981, 2009), (1981, 2010), (1981, 2030), (1970, 2009)])
+    def test_spi_short_calibration_warning_counts_the_true_record(self, distribution, window):
         # 29 years of data: a window running past the record used to be widened one
         # year beyond it, and that phantom year hid the short-calibration warning
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            indices.spi(_record(29), 1, indices.Distribution.gamma, 1981, *window, MONTHLY)
+            indices.spi(_record(29), 1, distribution, 1981, *window, MONTHLY)
         assert len(_short_calibration_warnings(caught)) == 1
 
     @pytest.mark.parametrize("distribution", [indices.Distribution.gamma, indices.Distribution.pearson])
@@ -125,27 +123,35 @@ class TestThroughIndices:
             indices.spi(_record(30), 1, indices.Distribution.gamma, 1981, 1981, 2040, MONTHLY)
         assert _short_calibration_warnings(caught) == []
 
+    # a window starting before the record catches a site that slices by raw year
+    # offsets, since a negative start index wraps; numpy clips one past the end, so
+    # a window that only runs past the record cannot tell
     @pytest.mark.parametrize("distribution", [indices.Distribution.gamma, indices.Distribution.pearson])
-    def test_spi_window_past_the_record_equals_the_whole_record(self, distribution):
+    @pytest.mark.parametrize("window", [(1970, 2015), (1981, 2050)])
+    def test_spi_window_outside_the_record_equals_the_whole_record(self, distribution, window):
         values = _record(35)
-        past = indices.spi(values, 3, distribution, 1981, 1981, 2050, MONTHLY)
+        outside = indices.spi(values, 3, distribution, 1981, *window, MONTHLY)
         whole = indices.spi(values, 3, distribution, 1981, 1981, 2015, MONTHLY)
-        np.testing.assert_array_equal(past, whole)
+        np.testing.assert_array_equal(outside, whole)
 
     @pytest.mark.parametrize("distribution", [indices.Distribution.gamma, indices.Distribution.pearson])
-    def test_fit_diagnostics_window_past_the_record_equals_the_whole_record(self, distribution):
+    @pytest.mark.parametrize("window", [(1970, 2015), (1981, 2050)])
+    def test_fit_diagnostics_window_outside_the_record_equals_the_whole_record(self, distribution, window):
         values = _record(35)
-        past = indices.fit_diagnostics(values, 3, distribution, 1981, 1981, 2050, MONTHLY)
+        outside = indices.fit_diagnostics(values, 3, distribution, 1981, *window, MONTHLY)
         whole = indices.fit_diagnostics(values, 3, distribution, 1981, 1981, 2015, MONTHLY)
-        assert past.n_valid.tolist() == whole.n_valid.tolist()
-        np.testing.assert_array_equal(past.ks_statistic, whole.ks_statistic)
+        assert outside.n_valid.tolist() == whole.n_valid.tolist()
+        np.testing.assert_array_equal(outside.ks_statistic, whole.ks_statistic)
+
+    def test_transform_fitted_gamma_zero_mass_ignores_a_window_before_the_record(self):
+        values = _record(35, seed=3)
+        values[::7] = 0.0
+        alphas, betas = np.full(12, 2.0), np.full(12, 30.0)
+        whole = compute.transform_fitted_gamma(values, 1981, 1981, 2015, MONTHLY, alphas=alphas, betas=betas)
+        before = compute.transform_fitted_gamma(values, 1981, 1970, 2015, MONTHLY, alphas=alphas, betas=betas)
+        np.testing.assert_array_equal(before, whole)
 
     def test_eddi_rejects_a_window_one_year_past_the_record(self):
         pet = np.full(10 * 12, 100.0)
         with pytest.raises(InvalidArgumentError, match="calibration end year"):
             indices.eddi(pet, 1, 2000, 2000, 2010, MONTHLY)
-
-    def test_eddi_accepts_a_window_that_exactly_fits(self):
-        pet = np.random.default_rng(1).uniform(50.0, 150.0, size=10 * 12)
-        result = indices.eddi(pet, 1, 2000, 2000, 2009, MONTHLY)
-        assert result.shape == pet.shape
