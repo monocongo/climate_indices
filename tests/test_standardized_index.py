@@ -214,17 +214,28 @@ def test_standardized_index_reports_its_own_fallback_context(
     assert fallbacks[0]["to_distribution"] == "gamma"
 
 
-def test_spi_and_spei_raise_the_same_error_for_a_partial_pearson_parameter_set(
+@pytest.mark.parametrize(
+    ("parameters", "match"),
+    [
+        ({"loc": np.ones(12), "scale": np.ones(12), "skew": np.ones(12)}, "either none or all"),
+        (
+            {"prob_zero": np.zeros(11), "loc": np.ones(11), "scale": np.ones(11), "skew": np.ones(11)},
+            "must carry the period length",
+        ),
+    ],
+)
+def test_spi_and_spei_raise_the_same_error_for_a_bad_pearson_parameter_set(
     precips_mm_monthly,
     data_year_start_monthly,
     calibration_year_start_monthly,
     calibration_year_end_monthly,
+    parameters,
+    match,
 ) -> None:
     """A caller's argument error raises from SPI instead of silently becoming gamma (#1215)."""
     values = np.asarray(precips_mm_monthly)
-    partial = {"loc": np.ones(12), "scale": np.ones(12), "skew": np.ones(12)}
 
-    with pytest.raises(ValueError, match="either none or all") as spi_error:
+    with pytest.raises(ValueError, match=match) as spi_error:
         indices.spi(
             values,
             6,
@@ -233,9 +244,9 @@ def test_spi_and_spei_raise_the_same_error_for_a_partial_pearson_parameter_set(
             calibration_year_start_monthly,
             calibration_year_end_monthly,
             compute.Periodicity.monthly,
-            partial,
+            parameters,
         )
-    with pytest.raises(ValueError, match="either none or all") as spei_error:
+    with pytest.raises(ValueError, match=match) as spei_error:
         indices.spei(
             values,
             values * 0.5,
@@ -245,7 +256,7 @@ def test_spi_and_spei_raise_the_same_error_for_a_partial_pearson_parameter_set(
             data_year_start_monthly,
             calibration_year_start_monthly,
             calibration_year_end_monthly,
-            partial,
+            parameters,
         )
 
     assert str(spi_error.value) == str(spei_error.value)

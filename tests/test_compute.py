@@ -1344,9 +1344,21 @@ def test_fit_diagnostics_raises_for_a_partial_pearson_parameter_set_with_the_fal
     gamma.assert_not_called()
 
 
-def test_fit_diagnostics_raises_for_mis_shaped_pearson_parameters_with_the_fall_back_enabled():
-    """A Pearson parameter that does not carry the period axis is an argument error (#1215)."""
+@pytest.mark.parametrize("fallback_to_gamma", [False, True])
+@pytest.mark.parametrize("periods", [11, 13])
+def test_fit_diagnostics_raises_for_mis_shaped_pearson_parameters(fallback_to_gamma, periods):
+    """A Pearson parameter that does not carry the period axis is an argument error (#1215).
+
+    Both the short set (an ``IndexError`` from the diagnostics indexing) and the long
+    set (silently misaligned per-step diagnostics) must fail loudly.
+    """
     values = np.arange(1.0, 481.0).reshape(40, 12)
+    parameters = {
+        "prob_zero": np.zeros(periods),
+        "loc": np.ones(periods),
+        "scale": np.ones(periods),
+        "skew": np.ones(periods),
+    }
 
     with pytest.raises(ValueError, match="must carry the period length"):
         compute.fit_diagnostics(
@@ -1356,6 +1368,31 @@ def test_fit_diagnostics_raises_for_mis_shaped_pearson_parameters_with_the_fall_
             1981,
             2010,
             compute.Periodicity.monthly,
-            {"loc": np.ones(11), "scale": np.ones(11), "skew": np.ones(11), "prob_zero": np.zeros(11)},
-            fallback_to_gamma=True,
+            parameters,
+            fallback_to_gamma=fallback_to_gamma,
         )
+
+
+def test_fit_diagnostics_propagates_a_goodness_of_fit_warning_error():
+    """Under ``-W error::GoodnessOfFitWarning`` the diagnostics surface does not fall back (#1215)."""
+    values = np.arange(1.0, 481.0).reshape(40, 12)
+
+    with mock.patch(
+        "climate_indices.compute._check_goodness_of_fit_pearson",
+        side_effect=lambda *args, **kwargs: warnings.warn(GoodnessOfFitWarning("poor fit"), stacklevel=2),
+    ):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", GoodnessOfFitWarning)
+            with mock.patch("climate_indices.compute.transform_fitted_gamma") as gamma:
+                with pytest.raises(GoodnessOfFitWarning):
+                    compute.fit_diagnostics(
+                        values,
+                        indices.Distribution.pearson,
+                        1981,
+                        1981,
+                        2010,
+                        compute.Periodicity.monthly,
+                        fallback_to_gamma=True,
+                    )
+
+    gamma.assert_not_called()

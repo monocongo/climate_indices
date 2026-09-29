@@ -239,8 +239,8 @@ change states what a user sees, how to detect it, and what to change in
   A partial or mis-shaped `fitting_params` set is now rejected before the fit, and
   raises the same `ValueError` in every index regardless of `fallback_to_gamma`, where
   it previously raised only on the SPEI path; only a genuine fit failure falls back.
-  `fit_diagnostics()` no longer reports a fall back for an argument error, a
-  `-W error::GoodnessOfFitWarning` run no longer changes which distribution is fitted,
+  `fit_diagnostics()` no longer reports a fall back for an argument error, a `-W error`
+  run no longer changes which distribution is fitted (the warning propagates instead),
   and the swap is reported through the public `distribution_fallback` log event rather
   than a private strategy method (#1215).
 

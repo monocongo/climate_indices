@@ -725,7 +725,8 @@ def standardized_index(
         returned in its input shape.
 
     Raises:
-        ValueError: If ``zero_handling`` is not one of the three modes.
+        ValueError: If ``zero_handling`` is not one of the three modes, or a Pearson
+            ``fitting_params`` set is partial or does not carry the period (and cell) axes.
     """
     return _standardized_index_pipeline(
         values,
@@ -915,7 +916,8 @@ def spi(
     :rtype: 1-D numpy.ndarray of floats of the same length as the input array
         of precipitation values, or of the same (time, ``*cells``) shape when
         ``spatial_time_major`` is set
-    :raises ValueError: if ``zero_handling`` is not one of the three modes
+    :raises ValueError: if ``zero_handling`` is not one of the three modes, or a
+        Pearson ``fitting_params`` set is partial or does not carry the period (and cell) axes
     """
     return _standardized_index_pipeline(
         values,
@@ -1001,6 +1003,8 @@ def spei(
         "normal" (the default) returns the standard-normal z-score,
         "probability" returns the fitted cumulative probability in [0, 1]
         without clipping, and "bounded" returns ``2p - 1`` in [-1, 1].
+    :raises ValueError: if the precipitation and PET arrays are incompatible, or a
+        Pearson ``fitting_params`` set is partial or does not carry the period (and cell) axes
     :return: an array of SPEI values
     :rtype: numpy.ndarray of type float, of the same size and shape as the input
         PET and precipitation arrays

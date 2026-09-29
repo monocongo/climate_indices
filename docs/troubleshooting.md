@@ -1331,6 +1331,9 @@ The library emits structured log events for important operations:
   - Climate index calculation completed successfully
 * - `calculation_failed`
   - Climate index calculation failed with error
+* - `distribution_fallback`
+  - A Pearson Type III fit failed and gamma was used instead, with `from_distribution`,
+    `to_distribution`, `reason`, and `context` fields
 * - `time_dimension_missing`
   - Time dimension not found in DataArray
 * - `time_coordinate_not_monotonic`

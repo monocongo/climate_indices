@@ -972,7 +972,8 @@ def _validate_pearson_parameter_cells(
             continue
         parameter = np.asarray(parameter)
         if parameter.ndim == 1:
-            if parameter.shape[0] != period_length:
+            # a single value broadcasts across the period axis, as the gamma parameters do
+            if parameter.shape[0] not in (1, period_length):
                 raise ValueError(
                     f"Fitting parameter '{name}' has shape {parameter.shape}, which must carry "
                     f"the period length {period_length}"
@@ -982,6 +983,15 @@ def _validate_pearson_parameter_cells(
                 f"Fitting parameter '{name}' has shape {parameter.shape}, which must carry the "
                 f"block's period length {period_length} and cell dimensions {cells}"
             )
+
+
+def _reject_partial_pearson_parameters(supplied: tuple[np.ndarray | None, ...]) -> None:
+    """Reject a Pearson Type III parameter set that supplies some but not all of the four."""
+    if any(parameter is None for parameter in supplied) and not all(parameter is None for parameter in supplied):
+        raise ValueError(
+            "At least one but not all of the Pearson Type III fitting parameters are specified -- "
+            "either none or all of these must be specified"
+        )
 
 
 def _validate_pearson_fitting_params(
@@ -999,12 +1009,7 @@ def _validate_pearson_fitting_params(
     :param values: the validated values, shape (years, periods) or (years, periods, *cells)
     :raises ValueError: if the set is partial, or a parameter does not carry the period (and cell) axes
     """
-    supplied = (probabilities_of_zero, locs, scales, skews)
-    if any(parameter is None for parameter in supplied) and not all(parameter is None for parameter in supplied):
-        raise ValueError(
-            "At least one but not all of the Pearson Type III fitting parameters are specified -- "
-            "either none or all of these must be specified"
-        )
+    _reject_partial_pearson_parameters((probabilities_of_zero, locs, scales, skews))
     _validate_pearson_parameter_cells(
         values,
         (("prob_zero", probabilities_of_zero), ("loc", locs), ("scale", scales), ("skew", skews)),
@@ -1114,7 +1119,8 @@ def transform_fitted_pearson(
     :return: 2-D array of transformed/fitted values, corresponding in size
              and shape of the input array
     :rtype: numpy.ndarray of floats
-    :raises ValueError: if ``zero_handling`` is not one of the three modes
+    :raises ValueError: if ``zero_handling`` is not one of the three modes, or the
+        ``fitting_params`` set is partial or does not carry the period (and cell) axes
     """
     validate_output_scale(output_scale)
     _validate_zero_handling(zero_handling)
@@ -1130,13 +1136,7 @@ def transform_fitted_pearson(
 
     # sanity check for the fitting parameters arguments
     pearson_param_args = [probabilities_of_zero, locs, scales, skews]
-    if any(param_arg is None for param_arg in pearson_param_args):
-        if sum(1 for x in pearson_param_args if x is None) < len(pearson_param_args):
-            raise ValueError(
-                "At least one but not all of the Pearson Type III fitting "
-                "parameters are specified -- either none or all of "
-                "these must be specified"
-            )
+    _reject_partial_pearson_parameters((probabilities_of_zero, locs, scales, skews))
 
     # if we're passed all missing values then we can't compute anything,
     # and we'll return the same array of missing values
@@ -2535,10 +2535,6 @@ def _fit_pearson_with_fallback(
         # valid-input mask below has the shape of the fitted result
         values = _validate_array(values, periodicity)
 
-    # an argument error raises here rather than being caught below as a fit failure:
-    # this is what makes spi raise the error spei raises for a partial or mis-shaped set
-    _validate_pearson_fitting_params(values, probabilities_of_zero, locs, scales, skews)
-
     try:
         standardized = transform_fitted_pearson(
             values,
@@ -2563,7 +2559,9 @@ def _fit_pearson_with_fallback(
             raise _PearsonFitLost("Pearson distribution fitting resulted in excessive missing values")
 
     except (DistributionFittingError, _PearsonFitLost) as e:
-        # use the centralized fallback strategy for consistent logging and behavior
+        # only a fit outcome reaches here: the transform rejects an argument error (a
+        # partial or mis-shaped parameter set) with a plain ValueError, which this
+        # narrowed except lets propagate, so spi raises where it once fell back
         _default_fallback_strategy.log_fallback_warning(str(e), context=fallback_context)
 
         # the fall back refits the scaled input, never the Pearson result it replaces;
@@ -2655,8 +2653,9 @@ def fit_and_standardize(
 
     Raises:
         InvalidArgumentError: If ``output_scale`` is not one of ``compute.OUTPUT_SCALES``.
-        ValueError: If the distribution is neither gamma nor Pearson Type III, or
-            ``zero_handling`` is not one of the three modes.
+        ValueError: If the distribution is neither gamma nor Pearson Type III,
+            ``zero_handling`` is not one of the three modes, or a Pearson
+            ``fitting_params`` set is partial or does not carry the period (and cell) axes.
     """
     validate_output_scale(output_scale)
     _validate_zero_handling(zero_handling)
@@ -2865,20 +2864,16 @@ def _diagnostic_pearson_parameters(
     calibration_end_year: int,
     periodicity: Periodicity,
     fallback_to_gamma: bool,
-) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None, np.ndarray | None, bool]:
-    """Prepare Pearson parameters and flag a partial caller-supplied set."""
+) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None, np.ndarray | None]:
+    """Fit or take the caller's Pearson parameters, rejecting a partial or mis-shaped set."""
     probabilities_of_zero = params.get("prob_zero")
     locs = params.get("loc")
     scales = params.get("scale")
     skews = params.get("skew")
     supplied = (probabilities_of_zero, locs, scales, skews)
 
-    if values.ndim > 2:
-        # reject mismatched cells before the fall-back try: an argument error is not a fit failure
-        _validate_pearson_parameter_cells(
-            values,
-            (("prob_zero", probabilities_of_zero), ("loc", locs), ("scale", scales), ("skew", skews)),
-        )
+    # an argument error raises here in every surface, regardless of the fall back
+    _validate_pearson_fitting_params(values, probabilities_of_zero, locs, scales, skews)
 
     if all(parameter is None for parameter in supplied):
         try:
@@ -2889,14 +2884,17 @@ def _diagnostic_pearson_parameters(
             if not fallback_to_gamma:
                 raise
             # Let the guarded transform refit and apply its gamma fallback.
-            return None, None, None, None, False
-        return probabilities_of_zero, locs, scales, skews, False
-    if probabilities_of_zero is not None and locs is not None and scales is not None and skews is not None:
-        probabilities_of_zero, locs, scales, skews = _as_period_cell_parameters(
-            values, probabilities_of_zero, locs, scales, skews
-        )
-        return probabilities_of_zero, locs, scales, skews, False
-    return probabilities_of_zero, locs, scales, skews, True
+            return None, None, None, None
+        return probabilities_of_zero, locs, scales, skews
+    # the partial set was rejected above, so all four are supplied here
+    assert probabilities_of_zero is not None
+    assert locs is not None
+    assert scales is not None
+    assert skews is not None
+    probabilities_of_zero, locs, scales, skews = _as_period_cell_parameters(
+        values, probabilities_of_zero, locs, scales, skews
+    )
+    return probabilities_of_zero, locs, scales, skews
 
 
 def _diagnostic_gamma_probabilities_of_zero(
@@ -2956,7 +2954,9 @@ def fit_diagnostics(
         ``fitting_params`` to reproduce the fit.
 
     Raises:
-        ValueError: If the distribution is neither gamma nor Pearson Type III.
+        ValueError: If the distribution is neither gamma nor Pearson Type III, or a
+            Pearson ``fitting_params`` set is partial or does not carry the period
+            (and cell) axes.
     """
     # only needed to name the gamma fall back's result; importing at module load would
     # be circular because indices imports this module
@@ -2981,7 +2981,7 @@ def fit_diagnostics(
     fell_back_to_gamma = False
     fallback_parameters: dict[str, np.ndarray] | None = None
     if distribution.value != "gamma":
-        probabilities_of_zero, locs, scales, skews, partial = _diagnostic_pearson_parameters(
+        probabilities_of_zero, locs, scales, skews = _diagnostic_pearson_parameters(
             values,
             params,
             data_start_year,
@@ -3005,12 +3005,6 @@ def fit_diagnostics(
                 scales,
                 skews,
                 fallback_context,
-            )
-        elif partial:
-            raise ValueError(
-                "At least one but not all of the Pearson Type III fitting "
-                "parameters are specified -- either none or all of "
-                "these must be specified"
             )
 
         if not fell_back_to_gamma:
