@@ -1144,6 +1144,28 @@ class TestSpatialPETKernels:
         assert result.shape == transect.shape
         assert calls == [(transect.sizes["time"],)] * transect.sizes["lat"]
 
+    @pytest.mark.parametrize("read_only", [False, True])
+    def test_adapter_paths_preserve_input(self, gridded_monthly_temps, read_only):
+        """Both adapter paths leave the caller's temperature DataArray unchanged."""
+        from climate_indices.xarray_adapter import pet_thornthwaite
+
+        # per-cell path: a (time, lat) transect with scalar latitude
+        transect = gridded_monthly_temps.isel(lon=0).copy(deep=True)
+        transect_before = transect.values.copy()
+        if read_only:
+            transect.values.flags.writeable = False
+        pet_thornthwaite(transect, 20.0)
+        np.testing.assert_array_equal(transect.values, transect_before)
+
+        # spatial path: the 3-D grid with a per-cell latitude array
+        grid = gridded_monthly_temps.copy(deep=True)
+        grid_before = grid.values.copy()
+        if read_only:
+            grid.values.flags.writeable = False
+        latitudes = xr.DataArray(grid.coords["lat"].values, dims=["lat"])
+        pet_thornthwaite(grid, latitudes)
+        np.testing.assert_array_equal(grid.values, grid_before)
+
     def test_gridded_thornthwaite_matches_pointwise(self, gridded_monthly_temps):
         """Every cell matches the single-series result for that cell's latitude."""
         from climate_indices.xarray_adapter import pet_thornthwaite
