@@ -298,8 +298,9 @@ def test_loglogistic_parameters_daily_shapes() -> None:
 def test_spi_family_rejects_loglogistic(surface: str) -> None:
     """The GLO is SPEI-only: a non-negative series has a zero mass it cannot place."""
     precip, _ = _synthetic_series()
+    surface_fn = getattr(indices, surface)
     with pytest.raises(InvalidArgumentError, match="zero mass"):
-        getattr(indices, surface)(
+        surface_fn(
             precip,
             scale=6,
             distribution=indices.Distribution.loglogistic,
