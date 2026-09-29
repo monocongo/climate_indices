@@ -169,7 +169,10 @@ def align_time_series_inputs(
                 reason="non_time_alignment_dropped_coordinates",
             )
     aligned_length = aligned[0].sizes[time_dim]
-    if aligned_length == 0:
+    original_length = max(data.sizes[time_dim] for _, data in inputs)
+    # an already-empty record yields an empty result; only an alignment that
+    # empties a non-empty input is an error
+    if aligned_length == 0 and original_length > 0:
         raise CoordinateValidationError(
             message=(
                 f"No overlapping timesteps found across the {index_display_name} inputs along "
@@ -178,7 +181,6 @@ def align_time_series_inputs(
             coordinate_name=time_dim,
             reason="empty_intersection_after_alignment",
         )
-    original_length = max(data.sizes[time_dim] for _, data in inputs)
     if aligned_length < original_length:
         warnings.warn(
             InputAlignmentWarning(

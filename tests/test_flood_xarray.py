@@ -185,6 +185,18 @@ def test_api_resume_state_is_chunked_to_the_weather_blocks(monkeypatch: pytest.M
     assert captured == [{"site": (1, 1, 1)}, {"site": (1, 1, 1)}]
 
 
+def test_api_xarray_empty_record_returns_an_empty_result() -> None:
+    """A zero-length record is a valid empty result, not an alignment failure (#1222)."""
+    rain = xr.DataArray(
+        np.empty((0, 3)),
+        dims=("time", "site"),
+        coords={"time": pd.DatetimeIndex([]), "site": [1, 2, 3]},
+    )
+    result = flood.antecedent_precipitation_index(rain, 0.85)
+    assert isinstance(result, xr.DataArray)
+    assert result.sizes["time"] == 0
+
+
 def test_api_xarray_gap_state_and_time_last() -> None:
     rain = xr.DataArray(
         [[1.0, np.nan], [np.nan, 2.0], [3.0, 4.0]],

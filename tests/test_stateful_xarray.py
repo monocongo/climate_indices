@@ -148,6 +148,26 @@ def test_empty_time_intersection_raises() -> None:
     assert empty.value.reason == "empty_intersection_after_alignment"
 
 
+def test_already_empty_input_returns_an_empty_result() -> None:
+    empty = xr.DataArray(
+        np.empty((0, 3)),
+        dims=["time", "cell"],
+        coords={"time": pd.DatetimeIndex([]), "cell": [0, 1, 2]},
+    )
+    result = stateful_recurrence_xarray(
+        [("values", empty)],
+        _kernel,
+        time_dim="time",
+        spin_up=0,
+        output_core_dims=["time"],
+        output_dtypes=[float],
+        index_display_name="Fake",
+    )
+    (values,) = result.outputs
+    assert values.sizes["time"] == 0
+    assert values.dims == ("time", "cell")
+
+
 def test_extra_time_series_must_match_the_aligned_time_length() -> None:
     values = _time_series()
     with pytest.raises(CoordinateValidationError) as mismatch:
