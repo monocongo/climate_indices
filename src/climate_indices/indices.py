@@ -1019,28 +1019,33 @@ _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
 
+def _translate_pnp_calibration_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Translate PNP's deprecated calibration keywords once for both public entries."""
+    translated = dict(kwargs)
+    if "calibration_start_year" in translated or "calibration_end_year" in translated:
+        emit_deprecation_warning(
+            feature="Parameters 'calibration_start_year'/'calibration_end_year'",
+            alternative="Use 'calibration_year_initial'/'calibration_year_final'",
+            deprecated_in="3.1.0",
+            removal_version="4.0.0",
+        )
+        for legacy, canonical in (
+            ("calibration_start_year", "calibration_year_initial"),
+            ("calibration_end_year", "calibration_year_final"),
+        ):
+            if legacy in translated and canonical not in translated:
+                translated[canonical] = translated.pop(legacy)
+            else:
+                translated.pop(legacy, None)
+    return translated
+
+
 def _pnp_calibration_alias(func: Callable[_P, _R]) -> Callable[_P, _R]:
     """Accept the deprecated ``calibration_start_year``/``_end_year`` PNP keywords."""
 
     @functools.wraps(func)
     def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
-        legacy_kwargs = cast("dict[str, Any]", kwargs)
-        if "calibration_start_year" in legacy_kwargs or "calibration_end_year" in legacy_kwargs:
-            emit_deprecation_warning(
-                feature="Parameters 'calibration_start_year'/'calibration_end_year'",
-                alternative="Use 'calibration_year_initial'/'calibration_year_final'",
-                deprecated_in="3.1.0",
-                removal_version="4.0.0",
-            )
-            for legacy, canonical in (
-                ("calibration_start_year", "calibration_year_initial"),
-                ("calibration_end_year", "calibration_year_final"),
-            ):
-                if legacy in legacy_kwargs and canonical not in legacy_kwargs:
-                    legacy_kwargs[canonical] = legacy_kwargs.pop(legacy)
-                else:
-                    legacy_kwargs.pop(legacy, None)
-        return func(*args, **kwargs)
+        return func(*args, **_translate_pnp_calibration_kwargs(cast("dict[str, Any]", kwargs)))
 
     return wrapper
 

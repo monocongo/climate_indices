@@ -34,6 +34,7 @@ from climate_indices.compute import Periodicity
 from climate_indices.exceptions import InvalidArgumentError
 from climate_indices.flood._edi import edi as numpy_edi
 from climate_indices.indices import Distribution
+from climate_indices.xarray_adapter import INFER_TIME_PARAMETERS, xarray_adapter
 from climate_indices.xarray_adapter import (
     fit_diagnostics as fit_diagnostics_impl,
 )
@@ -49,7 +50,6 @@ from climate_indices.xarray_adapter import (
 from climate_indices.xarray_adapter import (
     pet_thornthwaite as pet_thornthwaite_impl,
 )
-from climate_indices.xarray_adapter import xarray_adapter
 
 # fixtures now consolidated in conftest.py
 
@@ -80,6 +80,9 @@ def _verify_xarray_matches_manual_wrapping(
     """
     # manually wrap the function
     adapter_kwargs: dict[str, Any] = {
+        "calendar": "periodicity",
+        "inferred_parameters": INFER_TIME_PARAMETERS,
+        "timescale_parameter": "scale",
         "cf_metadata": cf_metadata,
         "index_display_name": index_display_name,
         "calculation_metadata_keys": calculation_metadata_keys,

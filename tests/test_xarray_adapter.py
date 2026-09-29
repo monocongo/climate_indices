@@ -17,15 +17,17 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from climate_indices import compute, indices, spi
+from climate_indices import compute, indices, spei, spi
 from climate_indices.exceptions import (
     CoordinateValidationError,
     InputAlignmentWarning,
     InsufficientDataError,
+    InvalidArgumentError,
     PeriodicityError,
 )
 from climate_indices.xarray_adapter import (
     CF_METADATA,
+    INFER_TIME_PARAMETERS,
     _align_inputs,
     _append_history,
     _assess_nan_density,
@@ -36,7 +38,6 @@ from climate_indices.xarray_adapter import (
     _infer_periodicity,
     _infer_temporal_parameters,
     _resolve_periodicity,
-    _resolve_scale_from_args,
     _resolve_secondary_inputs,
     _serialize_attr_value,
     _validate_calibration_non_nan_sample_size,
@@ -45,6 +46,100 @@ from climate_indices.xarray_adapter import (
     build_output_attrs,
     xarray_adapter,
 )
+
+
+def _registered_spi(**kwargs: object):
+    """Register SPI with its calendar and coordinate contract for adapter integration tests."""
+    return xarray_adapter(
+        calendar="periodicity",
+        inferred_parameters=INFER_TIME_PARAMETERS,
+        timescale_parameter="scale",
+        **kwargs,
+    )(indices.spi)
+
+
+def _registered_spei(**kwargs: object):
+    """Register SPEI with its calendar and coordinate contract for adapter integration tests."""
+    return xarray_adapter(
+        calendar="periodicity",
+        inferred_parameters=INFER_TIME_PARAMETERS,
+        timescale_parameter="scale",
+        **kwargs,
+    )(indices.spei)
+
+
+@pytest.mark.parametrize(
+    ("invalid", "error"),
+    [
+        ({"output_scale": "bogus"}, InvalidArgumentError),
+        ({"scale": 0}, InvalidArgumentError),
+        ({"distribution": "gamma"}, InvalidArgumentError),
+        ({"zero_handling": "bogus"}, ValueError),
+    ],
+)
+def test_registered_spi_rejects_invalid_arguments_before_dask_compute(
+    sample_monthly_precip_da: xr.DataArray, invalid: dict[str, object], error: type[Exception]
+) -> None:
+    """The public NumPy and xarray entries reject the same argument errors eagerly."""
+    valid = {"scale": 3, "distribution": indices.Distribution.gamma}
+    valid.update(invalid)
+    chunked_precip = sample_monthly_precip_da.chunk({"time": -1})
+    with pytest.raises(error):
+        spi(chunked_precip, **valid)
+    with pytest.raises(error):
+        spi(
+            sample_monthly_precip_da.values,
+            data_start_year=1980,
+            calibration_year_initial=1980,
+            calibration_year_final=2019,
+            periodicity=compute.Periodicity.monthly,
+            **valid,
+        )
+
+
+def test_registered_spei_rejects_invalid_arguments_before_dask_compute(
+    sample_monthly_precip_da: xr.DataArray, sample_monthly_pet_da: xr.DataArray
+) -> None:
+    """SPEI's own validator set rejects a bad scale or distribution before graph build."""
+    for invalid in ({"scale": 0}, {"distribution": "gamma"}):
+        options = {"scale": 3, "distribution": indices.Distribution.gamma, **invalid}
+        chunked_precip = sample_monthly_precip_da.chunk({"time": -1})
+        chunked_pet = sample_monthly_pet_da.chunk({"time": -1})
+        with pytest.raises(InvalidArgumentError):
+            spei(chunked_precip, chunked_pet, **options)
+
+
+def test_registration_rejects_undeclared_contract_parameters() -> None:
+    """A declared timescale or metadata-variant typo fails at registration, not silently."""
+    calendar_decorator = xarray_adapter(calendar="periodicty")
+    with pytest.raises(ValueError, match="not accepted"):
+        calendar_decorator(lambda values: values)
+    timescale_decorator = xarray_adapter(timescale_parameter="scale")
+    with pytest.raises(ValueError, match="not accepted"):
+        timescale_decorator(lambda values: values)
+    variant_decorator = xarray_adapter(cf_metadata_variants={"probability": {}})
+    with pytest.raises(ValueError, match="metadata_variant_parameter"):
+        variant_decorator(lambda values: values)
+
+
+def test_calendar_registration_uses_declared_parameter(sample_daily_precip_da: xr.DataArray) -> None:
+    """A nonstandard kernel argument can own the daily calendar contract."""
+
+    @xarray_adapter(calendar="frequency", inferred_parameters={"frequency": _infer_periodicity})
+    def identity(values: np.ndarray, frequency: compute.Periodicity) -> np.ndarray:
+        assert frequency is compute.Periodicity.daily
+        assert values.shape[0] % 366 == 0
+        return values
+
+    result = identity(sample_daily_precip_da)
+    xr.testing.assert_equal(result, sample_daily_precip_da.assign_attrs(result.attrs))
+
+
+def test_registration_rejects_undeclared_inference() -> None:
+    """A contract typo cannot silently drop a coordinate-derived value."""
+    inference_decorator = xarray_adapter(inferred_parameters={"start_year": _infer_data_start_year})
+    with pytest.raises(ValueError, match="not accepted"):
+        inference_decorator(lambda values: values)
 
 
 def _standard_normal(size: int | tuple[int, ...]) -> np.ndarray:
@@ -216,7 +311,7 @@ class TestXarrayAdapterParameterInference:
     def test_infer_data_start_year(self, sample_monthly_precip_da):
         """data_start_year inferred from time coordinate."""
 
-        @xarray_adapter(infer_params=True)
+        @xarray_adapter(inferred_parameters={"data_start_year": _infer_data_start_year})
         def needs_start_year(
             values: np.ndarray,
             data_start_year: int,
@@ -231,7 +326,7 @@ class TestXarrayAdapterParameterInference:
     def test_infer_periodicity_monthly(self, sample_monthly_precip_da):
         """periodicity inferred as monthly from monthly time series."""
 
-        @xarray_adapter(infer_params=True)
+        @xarray_adapter(calendar="periodicity", inferred_parameters={"periodicity": _infer_periodicity})
         def needs_periodicity(
             values: np.ndarray,
             periodicity: compute.Periodicity,
@@ -245,7 +340,7 @@ class TestXarrayAdapterParameterInference:
     def test_infer_periodicity_daily(self, sample_daily_precip_da):
         """periodicity inferred as daily from daily time series."""
 
-        @xarray_adapter(infer_params=True)
+        @xarray_adapter(calendar="periodicity", inferred_parameters={"periodicity": _infer_periodicity})
         def needs_periodicity(
             values: np.ndarray,
             periodicity: compute.Periodicity,
@@ -259,7 +354,9 @@ class TestXarrayAdapterParameterInference:
     def test_infer_calibration_period_defaults_to_full_range(self, sample_monthly_precip_da):
         """Calibration period defaults to full time range."""
 
-        @xarray_adapter(infer_params=True)
+        @xarray_adapter(
+            inferred_parameters={k: v for k, v in INFER_TIME_PARAMETERS.items() if k.startswith("calibration_")}
+        )
         def needs_calibration(
             values: np.ndarray,
             calibration_year_initial: int,
@@ -276,7 +373,7 @@ class TestXarrayAdapterParameterInference:
     def test_explicit_params_override_inferred(self, sample_monthly_precip_da):
         """Explicit parameters override inferred values."""
 
-        @xarray_adapter(infer_params=True)
+        @xarray_adapter(inferred_parameters={"data_start_year": _infer_data_start_year})
         def needs_start_year(
             values: np.ndarray,
             data_start_year: int,
@@ -310,8 +407,7 @@ class TestXarrayAdapterParameterInference:
 
     def test_inferred_params_match_explicit_spi(self, sample_monthly_precip_da):
         """Architecture verification: inferred params match explicit values (arch.md:274)."""
-        # wrap real SPI function
-        wrapped_spi = xarray_adapter(cf_metadata=CF_METADATA["spi"])(indices.spi)
+        wrapped_spi = _registered_spi(cf_metadata=CF_METADATA["spi"])
 
         # call 1: let inference do the work (only provide scale and distribution)
         result_inferred = wrapped_spi(
@@ -340,7 +436,7 @@ class TestXarrayAdapterParameterInference:
     def test_partial_override_start_year_only(self, sample_monthly_precip_da):
         """Provide data_start_year explicitly, infer periodicity and calibration."""
 
-        @xarray_adapter(infer_params=True)
+        @xarray_adapter(calendar="periodicity", inferred_parameters=INFER_TIME_PARAMETERS)
         def needs_all_params(
             values: np.ndarray,
             data_start_year: int,
@@ -363,7 +459,7 @@ class TestXarrayAdapterParameterInference:
     def test_partial_override_calibration_only(self, sample_monthly_precip_da):
         """Provide calibration explicitly, infer data_start_year and periodicity."""
 
-        @xarray_adapter(infer_params=True)
+        @xarray_adapter(calendar="periodicity", inferred_parameters=INFER_TIME_PARAMETERS)
         def needs_all_params(
             values: np.ndarray,
             data_start_year: int,
@@ -389,7 +485,9 @@ class TestXarrayAdapterParameterInference:
     def test_override_calibration_initial_without_final(self, sample_monthly_precip_da):
         """Provide only calibration_year_initial, infer calibration_year_final."""
 
-        @xarray_adapter(infer_params=True)
+        @xarray_adapter(
+            inferred_parameters={k: v for k, v in INFER_TIME_PARAMETERS.items() if k.startswith("calibration_")}
+        )
         def needs_calibration(
             values: np.ndarray,
             calibration_year_initial: int,
@@ -849,7 +947,10 @@ class TestXarrayAdapterLogging:
     def test_logs_inferred_parameter_values(self, sample_monthly_precip_da, caplog):
         """Logs parameters_inferred event with actual inferred values."""
 
-        @xarray_adapter(infer_params=True)
+        @xarray_adapter(
+            calendar="periodicity",
+            inferred_parameters={k: INFER_TIME_PARAMETERS[k] for k in ("data_start_year", "periodicity")},
+        )
         def needs_params(
             values: np.ndarray,
             data_start_year: int,
@@ -876,8 +977,7 @@ class TestXarrayAdapterIntegration:
 
     def test_works_with_actual_spi_function(self, sample_monthly_precip_da):
         """Decorator works with the actual indices.spi() function."""
-        # wrap the real SPI function with registry metadata
-        wrapped_spi = xarray_adapter(cf_metadata=CF_METADATA["spi"])(indices.spi)
+        wrapped_spi = _registered_spi(cf_metadata=CF_METADATA["spi"])
 
         # call with xarray DataArray - params will be inferred
         result = wrapped_spi(
@@ -917,7 +1017,7 @@ class TestXarrayAdapterIntegration:
         """A declared periodicity that cannot resolve raises at the seam (#759)."""
         calls = []
 
-        @xarray_adapter()
+        @xarray_adapter(calendar="periodicity", inferred_parameters={"periodicity": _infer_periodicity})
         def needs_periodicity(values: np.ndarray, periodicity: compute.Periodicity) -> np.ndarray:
             calls.append(periodicity)
             return values
@@ -930,7 +1030,7 @@ class TestXarrayAdapterIntegration:
     def test_declared_default_periodicity_is_honored(self, sample_monthly_precip_da):
         """A defaulted periodicity resolves through the decorator instead of raising."""
 
-        @xarray_adapter()
+        @xarray_adapter(calendar="periodicity")
         def defaulted(
             values: np.ndarray,
             periodicity: compute.Periodicity = compute.Periodicity.monthly,
@@ -945,7 +1045,10 @@ class TestXarrayAdapterIntegration:
         """A typo'd keyword must not let inferred values replace explicit params (#1090)."""
         calls = []
 
-        @xarray_adapter()
+        @xarray_adapter(
+            calendar="periodicity",
+            inferred_parameters={k: INFER_TIME_PARAMETERS[k] for k in ("data_start_year", "periodicity")},
+        )
         def masked(
             values: np.ndarray,
             data_start_year: int,
@@ -1502,7 +1605,7 @@ class TestEndToEndIntegration:
         if dask_backed:
             precipitation = precipitation.chunk({"time": -1})
 
-        wrapped_spi = xarray_adapter(cf_metadata=cf_metadata)(indices.spi)
+        wrapped_spi = _registered_spi(cf_metadata=cf_metadata)
         result = wrapped_spi(
             precipitation,
             scale=1,
@@ -1522,10 +1625,10 @@ class TestEndToEndIntegration:
     def test_spi_with_calculation_metadata_keys(self, sample_monthly_precip_da):
         """SPI with calculation_metadata_keys captures scale, distribution, and history."""
         # wrap SPI with calculation metadata capture
-        wrapped_spi = xarray_adapter(
+        wrapped_spi = _registered_spi(
             cf_metadata=CF_METADATA["spi"],
             calculation_metadata_keys=["scale", "distribution"],
-        )(indices.spi)
+        )
 
         result = wrapped_spi(
             sample_monthly_precip_da,
@@ -1559,7 +1662,7 @@ class TestEndToEndIntegration:
 
     def test_spi_preserves_custom_references(self, sample_monthly_precip_da: xr.DataArray) -> None:
         """A caller-provided references value is retained alongside the SPI citations."""
-        wrapped_spi = xarray_adapter(cf_metadata={**CF_METADATA["spi"], "references": "custom source"})(indices.spi)
+        wrapped_spi = _registered_spi(cf_metadata={**CF_METADATA["spi"], "references": "custom source"})
 
         result = wrapped_spi(
             sample_monthly_precip_da,
@@ -1572,7 +1675,7 @@ class TestEndToEndIntegration:
 
     def test_spi_preserves_custom_references_with_zero_handling(self, sample_monthly_precip_da: xr.DataArray) -> None:
         """Custom references plus a non-default zero_handling cite both sources."""
-        wrapped_spi = xarray_adapter(cf_metadata={**CF_METADATA["spi"], "references": "custom source"})(indices.spi)
+        wrapped_spi = _registered_spi(cf_metadata={**CF_METADATA["spi"], "references": "custom source"})
 
         result = wrapped_spi(
             sample_monthly_precip_da,
@@ -1880,57 +1983,6 @@ class TestValidateSufficientData:
             _validate_sufficient_data(empty_time, scale=1)
 
 
-class TestResolveScaleFromArgs:
-    """Test _resolve_scale_from_args() function."""
-
-    def test_scale_from_kwargs(self):
-        """Scale extracted from kwargs."""
-
-        def func(values: np.ndarray, scale: int) -> np.ndarray:
-            return values
-
-        result = _resolve_scale_from_args(func, (np.array([1, 2, 3]),), {"scale": 3})
-        assert result == 3
-
-    def test_scale_from_positional_args(self):
-        """Scale extracted from positional arguments."""
-
-        def func(values: np.ndarray, scale: int) -> np.ndarray:
-            return values
-
-        result = _resolve_scale_from_args(func, (np.array([1, 2, 3]), 6), {})
-        assert result == 6
-
-    def test_scale_not_in_signature_returns_none(self):
-        """Function without scale parameter returns None."""
-
-        def func(values: np.ndarray, other_param: int) -> np.ndarray:
-            return values
-
-        result = _resolve_scale_from_args(func, (np.array([1, 2, 3]),), {"other_param": 5})
-        assert result is None
-
-    def test_scale_not_provided_returns_none(self):
-        """Scale in signature but not provided returns None."""
-
-        def func(values: np.ndarray, scale: int) -> np.ndarray:
-            return values
-
-        result = _resolve_scale_from_args(func, (np.array([1, 2, 3]),), {})
-        assert result is None
-
-    def test_binding_failure_returns_none(self):
-        """Binding failure gracefully returns None."""
-
-        def func(values: np.ndarray, scale: int) -> np.ndarray:
-            return values
-
-        # pass extra unexpected arguments to cause binding failure
-        result = _resolve_scale_from_args(func, (np.array([1, 2, 3]),), {"unexpected": 99})
-        # should not crash, returns None
-        assert result is None
-
-
 class TestCoordinateValidationIntegration:
     """Integration tests for coordinate validation through the decorator."""
 
@@ -1961,7 +2013,7 @@ class TestCoordinateValidationIntegration:
     def test_insufficient_data_raises(self, short_monthly_da):
         """Insufficient data for scale raises InsufficientDataError."""
 
-        @xarray_adapter(infer_params=True)
+        @xarray_adapter(inferred_parameters={"data_start_year": _infer_data_start_year}, timescale_parameter="scale")
         def needs_scale(values: np.ndarray, scale: int, data_start_year: int) -> np.ndarray:
             return values
 
@@ -1970,10 +2022,20 @@ class TestCoordinateValidationIntegration:
 
         assert "insufficient data" in str(exc_info.value).lower()
 
+    def test_positional_timescale_bounds_the_data(self, short_monthly_da):
+        """A positionally passed timescale still drives the declared length check."""
+
+        @xarray_adapter(timescale_parameter="scale")
+        def needs_scale(values: np.ndarray, scale: int) -> np.ndarray:
+            return values
+
+        with pytest.raises(InsufficientDataError):
+            needs_scale(short_monthly_da, 6)
+
     def test_daily_populated_length_bounds_the_scale(self):
         """A complete six-year daily span fills 2196 padded steps; a partial tail does not."""
 
-        @xarray_adapter(infer_params=True)
+        @xarray_adapter(calendar="periodicity", timescale_parameter="scale")
         def needs_scale(values: np.ndarray, scale: int, periodicity: compute.Periodicity) -> np.ndarray:
             return values
 
@@ -2004,7 +2066,7 @@ class TestCoordinateValidationIntegration:
     def test_valid_data_passes_validation(self, sample_monthly_precip_da):
         """Valid data passes all validation checks."""
 
-        @xarray_adapter(infer_params=True)
+        @xarray_adapter(inferred_parameters={"data_start_year": _infer_data_start_year}, timescale_parameter="scale")
         def needs_scale(values: np.ndarray, scale: int, data_start_year: int) -> np.ndarray:
             return values * scale
 
@@ -2061,7 +2123,7 @@ class TestCoordinateValidationIntegration:
             dims=["date"],
         )
 
-        @xarray_adapter(time_dim="date", infer_params=True)
+        @xarray_adapter(time_dim="date", inferred_parameters={"data_start_year": _infer_data_start_year})
         def needs_date(values: np.ndarray, data_start_year: int) -> np.ndarray:
             return values
 
@@ -2390,13 +2452,12 @@ class TestSPEIIntegration:
 
     def test_spei_with_matching_dataarrays(self, sample_monthly_precip_da, sample_monthly_pet_da):
         """SPEI computation with matching precipitation and PET DataArrays."""
-        # wrap real spei function with decorator
-        wrapped_spei = xarray_adapter(
+        wrapped_spei = _registered_spei(
             additional_input_names=["pet_mm"],
             cf_metadata=CF_METADATA["spei"],
             calculation_metadata_keys=["scale", "distribution"],
             index_display_name="SPEI",
-        )(indices.spei)
+        )
 
         result = wrapped_spei(
             sample_monthly_precip_da,
@@ -2415,11 +2476,11 @@ class TestSPEIIntegration:
 
     def test_spei_with_offset_dataarrays_aligned(self, sample_monthly_precip_da, sample_monthly_pet_offset_da):
         """SPEI computation aligns offset DataArrays correctly."""
-        wrapped_spei = xarray_adapter(
+        wrapped_spei = _registered_spei(
             additional_input_names=["pet_mm"],
             cf_metadata=CF_METADATA["spei"],
             index_display_name="SPEI",
-        )(indices.spei)
+        )
 
         with pytest.warns(InputAlignmentWarning) as warning_list:
             result = wrapped_spei(
@@ -2463,12 +2524,12 @@ class TestSPEIIntegration:
 
     def test_spei_history_entry(self, sample_monthly_precip_da, sample_monthly_pet_da):
         """SPEI adds history entry to output."""
-        wrapped_spei = xarray_adapter(
+        wrapped_spei = _registered_spei(
             additional_input_names=["pet_mm"],
             cf_metadata=CF_METADATA["spei"],
             calculation_metadata_keys=["scale"],
             index_display_name="SPEI",
-        )(indices.spei)
+        )
 
         result = wrapped_spei(
             sample_monthly_precip_da,
@@ -2485,10 +2546,10 @@ class TestSPEIIntegration:
 
     def test_spei_calculation_metadata(self, sample_monthly_precip_da, sample_monthly_pet_da):
         """SPEI includes calculation metadata in output attributes."""
-        wrapped_spei = xarray_adapter(
+        wrapped_spei = _registered_spei(
             additional_input_names=["pet_mm"],
             calculation_metadata_keys=["scale", "distribution"],
-        )(indices.spei)
+        )
 
         result = wrapped_spei(
             sample_monthly_precip_da,
@@ -2759,7 +2820,7 @@ class TestNanHandlingDecoratorIntegration:
     def test_calibration_validation_triggered(self, monthly_precip_heavy_nan):
         """Insufficient calibration non-NaN data raises error."""
 
-        @xarray_adapter(infer_params=True)
+        @xarray_adapter(calendar="periodicity", inferred_parameters=INFER_TIME_PARAMETERS, timescale_parameter="scale")
         def mock_index(
             values: np.ndarray,
             scale: int,
@@ -2818,11 +2879,11 @@ class TestNanHandlingSPIIntegration:
 
     def test_spi_with_scattered_nan(self, monthly_precip_with_nan):
         """SPI handles scattered NaN correctly."""
-        wrapped_spi = xarray_adapter(
+        wrapped_spi = _registered_spi(
             cf_metadata=CF_METADATA["spi"],
             calculation_metadata_keys=["scale", "distribution"],
             index_display_name="SPI",
-        )(indices.spi)
+        )
 
         result = wrapped_spi(
             monthly_precip_with_nan,
@@ -2842,11 +2903,11 @@ class TestNanHandlingSPIIntegration:
 
     def test_spi_heavy_nan_raises_error(self, monthly_precip_heavy_nan):
         """SPI with insufficient non-NaN data raises InsufficientDataError."""
-        wrapped_spi = xarray_adapter(
+        wrapped_spi = _registered_spi(
             cf_metadata=CF_METADATA["spi"],
             calculation_metadata_keys=["scale", "distribution"],
             index_display_name="SPI",
-        )(indices.spi)
+        )
 
         with pytest.raises(InsufficientDataError) as exc_info:
             wrapped_spi(
@@ -2859,11 +2920,11 @@ class TestNanHandlingSPIIntegration:
 
     def test_spi_nan_output_has_additional_nan_from_convolution(self, monthly_precip_with_nan):
         """SPI output may have additional NaN from convolution padding."""
-        wrapped_spi = xarray_adapter(
+        wrapped_spi = _registered_spi(
             cf_metadata=CF_METADATA["spi"],
             calculation_metadata_keys=["scale", "distribution"],
             index_display_name="SPI",
-        )(indices.spi)
+        )
 
         result = wrapped_spi(
             monthly_precip_with_nan,
@@ -2880,11 +2941,11 @@ class TestNanHandlingSPIIntegration:
 
     def test_spi_clean_data_no_nan_related_errors(self, sample_monthly_precip_da):
         """SPI with clean data runs without NaN-related issues."""
-        wrapped_spi = xarray_adapter(
+        wrapped_spi = _registered_spi(
             cf_metadata=CF_METADATA["spi"],
             calculation_metadata_keys=["scale", "distribution"],
             index_display_name="SPI",
-        )(indices.spi)
+        )
 
         result = wrapped_spi(
             sample_monthly_precip_da,
@@ -2897,11 +2958,11 @@ class TestNanHandlingSPIIntegration:
 
     def test_spi_coordinates_preserved_with_nan(self, monthly_precip_with_nan):
         """SPI preserves coordinates even with NaN present."""
-        wrapped_spi = xarray_adapter(
+        wrapped_spi = _registered_spi(
             cf_metadata=CF_METADATA["spi"],
             calculation_metadata_keys=["scale", "distribution"],
             index_display_name="SPI",
-        )(indices.spi)
+        )
 
         result = wrapped_spi(
             monthly_precip_with_nan,
@@ -3161,11 +3222,11 @@ class TestDaskBackedArraySupport:
 
     def test_in_memory_path_unchanged(self, sample_monthly_precip_da):
         """In-memory path behavior is unchanged (regression test)."""
-        wrapped_spi = xarray_adapter(
+        wrapped_spi = _registered_spi(
             cf_metadata=CF_METADATA["spi"],
             calculation_metadata_keys=["scale", "distribution"],
             index_display_name="SPI",
-        )(indices.spi)
+        )
 
         result = wrapped_spi(
             sample_monthly_precip_da,
@@ -3182,11 +3243,11 @@ class TestDaskBackedArraySupport:
 
     def test_dask_spi_integration(self, dask_monthly_precip_1d):
         """Integration test: Dask SPI produces correct values when computed."""
-        wrapped_spi = xarray_adapter(
+        wrapped_spi = _registered_spi(
             cf_metadata=CF_METADATA["spi"],
             calculation_metadata_keys=["scale", "distribution"],
             index_display_name="SPI",
-        )(indices.spi)
+        )
 
         result = wrapped_spi(
             dask_monthly_precip_1d,
@@ -3227,12 +3288,11 @@ class TestDaskBackedArraySupport:
             name=dask_monthly_precip_1d.name,
         ).chunk({"time": -1})
 
-        # wrap SPI with xarray_adapter
-        wrapped_spi = xarray_adapter(
+        wrapped_spi = _registered_spi(
             cf_metadata=CF_METADATA["spi"],
             calculation_metadata_keys=["scale", "distribution"],
             index_display_name="SPI",
-        )(indices.spi)
+        )
 
         result = wrapped_spi(
             data_with_nan,

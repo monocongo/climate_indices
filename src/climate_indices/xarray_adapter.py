@@ -503,31 +503,6 @@ def _build_latitude_attr(
         return _serialize_attr_value(latitude)
 
 
-def _resolve_scale_from_args(func: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, Any]) -> int | None:
-    """Resolve the scale parameter from function arguments.
-
-    Args:
-        func: The function being called
-        args: Positional arguments passed to the function
-        kwargs: Keyword arguments passed to the function
-
-    Returns:
-        The scale value if present in the signature and provided, None otherwise
-    """
-    try:
-        sig = inspect.signature(func)
-        # check if scale is in the signature
-        if "scale" not in sig.parameters:
-            return None
-
-        # bind provided args/kwargs to extract scale
-        bound = sig.bind_partial(*args, **kwargs)
-        return bound.arguments.get("scale")
-    except (TypeError, ValueError):
-        # if binding fails, return None
-        return None
-
-
 def _validate_sufficient_data(
     time_coord: xr.DataArray,
     scale: int,
@@ -1226,6 +1201,7 @@ def _resolve_cf_metadata(
     cf_metadata: dict[str, str] | None,
     cf_metadata_variants: dict[str, dict[str, str]] | None,
     valid_kwargs: dict[str, Any],
+    metadata_variant_parameter: str | None = None,
 ) -> dict[str, str] | None:
     """Select the CF metadata for the requested output scale, layering it over the base entry.
 
@@ -1235,7 +1211,9 @@ def _resolve_cf_metadata(
     """
     if not cf_metadata_variants:
         return cf_metadata
-    variant = cf_metadata_variants.get(valid_kwargs.get("output_scale", "normal"))
+    variant = cf_metadata_variants.get(
+        valid_kwargs.get(metadata_variant_parameter, "normal") if metadata_variant_parameter else "normal"
+    )
     if variant is None:
         return cf_metadata
     return {**(cf_metadata or {}), **variant}
@@ -1248,6 +1226,7 @@ def _finalize_ufunc_result(
     *,
     cf_metadata: dict[str, str] | None,
     cf_metadata_variants: dict[str, dict[str, str]] | None = None,
+    metadata_variant_parameter: str | None = None,
     calculation_metadata_keys: list[str] | tuple[str, ...] | None,
     index_display_name: str | None,
     func_name: str,
@@ -1293,7 +1272,9 @@ def _finalize_ufunc_result(
     # apply metadata using build_output_attrs
     calc_metadata = _capture_calculation_metadata(calculation_metadata_keys, valid_kwargs)
     resolved_index_name = index_display_name if index_display_name is not None else func_name.upper()
-    resolved_cf_metadata = _resolve_cf_metadata(cf_metadata, cf_metadata_variants, valid_kwargs)
+    resolved_cf_metadata = _resolve_cf_metadata(
+        cf_metadata, cf_metadata_variants, valid_kwargs, metadata_variant_parameter
+    )
     output_attrs = build_output_attrs(input_da, resolved_cf_metadata, calc_metadata, index_name=resolved_index_name)
     if is_spi:
         compute.validate_output_scale(valid_kwargs.get("output_scale", "normal"))
@@ -1323,8 +1304,23 @@ def _finalize_ufunc_result(
     return result_da
 
 
+# Registration-level coordinate inference; call sites select only the values their kernel accepts.
+INFER_TIME_PARAMETERS: dict[str, Callable[[xr.DataArray], Any]] = {
+    "data_start_year": _infer_data_start_year,
+    "periodicity": _infer_periodicity,
+    "calibration_year_initial": lambda time: _infer_calibration_period(time)[0],
+    "calibration_year_final": lambda time: _infer_calibration_period(time)[1],
+}
+
+
 def xarray_adapter(
-    *,
+    *,  # NOSONAR (S107) the public decorator API declares each contract parameter explicitly
+    calendar: compute.Periodicity | str | None = None,
+    inferred_parameters: dict[str, Callable[[xr.DataArray], Any]] | None = None,
+    argument_validators: tuple[Callable[[dict[str, Any]], None], ...] = (),
+    deprecated_aliases: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+    timescale_parameter: str | None = None,
+    metadata_variant_parameter: str | None = None,
     cf_metadata: dict[str, str] | None = None,
     cf_metadata_variants: dict[str, dict[str, str]] | None = None,
     time_dim: str = "time",
@@ -1348,6 +1344,14 @@ def xarray_adapter(
        minor releases. NumPy passthrough behavior is stable.
 
     Args:
+        calendar: Fixed periodicity, the parameter name holding an inferred/explicit
+            periodicity, or None for no calendar conversion.
+        inferred_parameters: Parameter names mapped to coordinate-based inference functions.
+        argument_validators: Checks on bound arguments, run for NumPy and xarray before dispatch.
+        deprecated_aliases: Translate deprecated keyword aliases before argument binding.
+        timescale_parameter: Name of the timescale argument for the data-length check.
+        metadata_variant_parameter: Name of the argument selecting the CF metadata
+            variant. Required whenever ``cf_metadata_variants`` is given.
         cf_metadata: Optional dict of CF Convention metadata to apply to output DataArray.
             Keys should be CF attribute names (e.g., 'standard_name', 'long_name', 'units').
             These override conflicting attributes from the input DataArray.
@@ -1356,9 +1360,10 @@ def xarray_adapter(
             overriding ``cf_metadata`` when that scale is requested.
         time_dim: Name of the time dimension in the input DataArray (default: "time").
             Used for parameter inference and alignment.
-        infer_params: If True, automatically infer missing parameters (data_start_year,
-            periodicity, calibration_year_initial, calibration_year_final) from the time
-            coordinate. Explicit parameter values always override inferred values.
+        infer_params: If True, infer the missing parameters declared in
+            ``inferred_parameters`` from the time coordinate. Explicit parameter values
+            always override inferred values; a registration that declares no
+            ``inferred_parameters`` infers nothing.
         calculation_metadata_keys: Optional sequence of parameter names to capture as
             output metadata attributes. For example, ["scale", "distribution"] will
             add these kwargs to the output DataArray.attrs. Enum values are automatically
@@ -1394,11 +1399,15 @@ def xarray_adapter(
     Example:
         .. code-block:: python
 
+            from climate_indices.xarray_adapter import INFER_TIME_PARAMETERS
+
             @xarray_adapter(
+                calendar="periodicity",
+                inferred_parameters=INFER_TIME_PARAMETERS,
                 cf_metadata={'standard_name': 'spi', 'units': '1'},
                 calculation_metadata_keys=['scale', 'distribution']
             )
-            def spi(values, scale, distribution, data_start_year, ...):
+            def spi(values, scale, distribution, periodicity, data_start_year, ...):
                 # existing NumPy implementation
                 return numpy_result
 
@@ -1420,17 +1429,44 @@ def xarray_adapter(
     """
 
     def decorator(func: Callable[..., np.ndarray[Any, Any]]) -> Callable[..., np.ndarray[Any, Any] | xr.DataArray]:
+        signature = inspect.signature(func)
+        declared = set(signature.parameters)
+        if isinstance(calendar, str) and calendar not in declared:
+            raise ValueError(f"Calendar parameter {calendar!r} is not accepted by {func.__name__}")
+        unknown_inferences = set(inferred_parameters or {}) - declared
+        if unknown_inferences:
+            raise ValueError(f"Inferred parameters not accepted by {func.__name__}: {sorted(unknown_inferences)}")
+        for contract_name in (timescale_parameter, metadata_variant_parameter):
+            if contract_name is not None and contract_name not in declared:
+                raise ValueError(f"Declared parameter {contract_name!r} is not accepted by {func.__name__}")
+        if cf_metadata_variants and metadata_variant_parameter is None:
+            raise ValueError(
+                f"{func.__name__} declares cf_metadata_variants but no metadata_variant_parameter to select one"
+            )
+
+        def validate_arguments(args: tuple[Any, ...], kwargs: dict[str, Any]) -> None:
+            try:
+                bound = signature.bind(*args, **kwargs)
+            except TypeError:
+                return  # Keep the wrapped function's existing binding error.
+            bound.apply_defaults()
+            for validator in argument_validators:
+                validator(bound.arguments)
+
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> np.ndarray[Any, Any] | xr.DataArray:
             # first positional argument is always the data
             if not args:
                 raise ValueError(f"{func.__name__} requires at least one positional argument (data)")
 
+            if deprecated_aliases is not None:
+                kwargs = deprecated_aliases(kwargs)
             data = args[0]
             input_type = detect_input_type(data)
 
-            # numpy passthrough - no transformation needed
+            # Run the same declared argument contract before NumPy dispatch or lazy graph creation.
             if input_type == InputType.NUMPY:
+                validate_arguments(args, kwargs)
                 return func(*args, **kwargs)
 
             # xarray path: detect → [resolve → align] → validate → extract → infer → compute → rewrap → log
@@ -1442,11 +1478,6 @@ def xarray_adapter(
                     "skipna=True not yet implemented (FR-INPUT-004). "
                     "NaN values are propagated through calculations by default."
                 )
-
-            # a zero-handling mode is an argument error, so reject it now rather than
-            # when a Dask-backed result is computed (ADR-0015)
-            if "zero_handling" in kwargs:
-                compute._validate_zero_handling(kwargs["zero_handling"])
 
             # resolve and align secondary inputs
             modified_args = list(args)
@@ -1464,7 +1495,7 @@ def xarray_adapter(
                 }
 
                 if dataarray_secondaries:
-                    if infer_params and "periodicity" in inspect.signature(func).parameters:
+                    if calendar is not None:
                         if time_dim in input_da.dims:
                             _validate_supported_calendar(input_da[time_dim])
                         for secondary in dataarray_secondaries.values():
@@ -1494,10 +1525,9 @@ def xarray_adapter(
             if infer_params:
                 validate_time_dimension(input_da, time_dim)
                 time_coord = input_da[time_dim]
-                if "periodicity" in inspect.signature(func).parameters:
+                if calendar is not None:
                     _validate_supported_calendar(time_coord)
                 validate_time_monotonicity(time_coord)
-                resolved_scale = _resolve_scale_from_args(func, tuple(modified_args), modified_kwargs)
 
             # detect Dask-backed arrays
             input_dataarrays = _collect_input_dataarrays(
@@ -1517,7 +1547,17 @@ def xarray_adapter(
             # infer temporal parameters if enabled (shared path)
             inferred_params: dict[str, Any] = {}
             if infer_params:
-                inferred_params = _infer_temporal_parameters(func, input_da, modified_args, modified_kwargs, time_dim)
+                if time_dim in input_da.dims:
+                    try:
+                        bound = signature.bind_partial(*modified_args, **modified_kwargs)
+                        bound.apply_defaults()
+                        inferred_params = {
+                            name: infer(input_da[time_dim])
+                            for name, infer in (inferred_parameters or {}).items()
+                            if name not in bound.arguments
+                        }
+                    except TypeError:
+                        pass  # Preserve the wrapped function's binding error.
                 # log which parameters were inferred and their values
                 if inferred_params:
                     _log().info(
@@ -1526,19 +1566,37 @@ def xarray_adapter(
                         **{k: str(v) for k, v in inferred_params.items()},
                     )
 
+            call_kwargs = {**modified_kwargs, **inferred_params}
+            validate_arguments(tuple(modified_args), call_kwargs)
             calendar_plan = None
-            if infer_params:
-                calendar_plan = _resolve_daily_calendar_plan(
-                    func,
-                    input_da,
-                    modified_args,
-                    modified_kwargs,
-                    inferred_params,
-                    time_dim,
-                )
+            if infer_params and calendar is not None and time_dim in input_da.dims:
+                if isinstance(calendar, str):
+                    try:
+                        bound = signature.bind_partial(*modified_args, **call_kwargs)
+                        bound.apply_defaults()
+                    except TypeError as error:
+                        raise PeriodicityError(
+                            message=f"Could not resolve the periodicity for {func.__name__}: its arguments do not bind to its signature. Daily calendar conversion cannot be planned."
+                        ) from error
+                    periodicity = bound.arguments.get(calendar)
+                    if not isinstance(periodicity, compute.Periodicity):
+                        raise PeriodicityError(
+                            message=f"Invalid periodicity argument: {periodicity}. Periodicity must be a Periodicity enum member. Supported values: monthly, daily. Use compute.Periodicity.monthly or compute.Periodicity.daily.",
+                            periodicity_value=str(periodicity),
+                        )
+                else:
+                    periodicity = calendar
+                calendar_plan = _build_daily_calendar_plan(input_da[time_dim], periodicity)
                 _validate_calendar_secondary_inputs(calendar_plan, resolved_secondaries, time_dim)
-                if resolved_scale is not None:
-                    _validate_sufficient_data(time_coord, resolved_scale, calendar_plan)
+            if infer_params and timescale_parameter is not None and time_dim in input_da.dims:
+                try:
+                    bound = signature.bind_partial(*modified_args, **call_kwargs)
+                    if timescale_parameter in bound.arguments:
+                        _validate_sufficient_data(
+                            input_da[time_dim], bound.arguments[timescale_parameter], calendar_plan
+                        )
+                except TypeError:
+                    pass
 
             # spatial kernels read the core dimension first, with the cell dimensions
             # ahead of it, so apply_ufunc makes one call per non-core block instead of
@@ -1591,6 +1649,7 @@ def xarray_adapter(
                     valid_kwargs,
                     cf_metadata=cf_metadata,
                     cf_metadata_variants=cf_metadata_variants,
+                    metadata_variant_parameter=metadata_variant_parameter,
                     calculation_metadata_keys=calculation_metadata_keys,
                     index_display_name=index_display_name,
                     func_name=func.__name__,
@@ -1679,6 +1738,7 @@ def xarray_adapter(
                     valid_kwargs,
                     cf_metadata=cf_metadata,
                     cf_metadata_variants=cf_metadata_variants,
+                    metadata_variant_parameter=metadata_variant_parameter,
                     calculation_metadata_keys=calculation_metadata_keys,
                     index_display_name=index_display_name,
                     func_name=func.__name__,
@@ -1766,6 +1826,7 @@ def xarray_adapter(
                 valid_kwargs,
                 cf_metadata=cf_metadata,
                 cf_metadata_variants=cf_metadata_variants,
+                metadata_variant_parameter=metadata_variant_parameter,
                 calculation_metadata_keys=calculation_metadata_keys,
                 index_display_name=index_display_name,
                 func_name=func.__name__,

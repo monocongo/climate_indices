@@ -45,10 +45,10 @@ import xarray as xr
 from climate_indices import compute, indices, pm_eto
 from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.compute import OutputScale, Periodicity, ZeroHandling
-from climate_indices.exceptions import emit_deprecation_warning
 from climate_indices.indices import Distribution
 from climate_indices.validation import InputType, detect_input_type
 from climate_indices.xarray_adapter import (
+    INFER_TIME_PARAMETERS,
     build_output_attrs,
     xarray_adapter,
 )
@@ -79,8 +79,32 @@ _SPEI_CF_METADATA_VARIANTS: dict[str, dict[str, str]] = {
     "bounded": CF_METADATA["spei_bounded"],  # type: ignore[dict-item]
 }
 
+# Validators mirror the NumPy core; run here before xarray builds a Dask graph.
+_TEMPORAL_VALIDATORS = (
+    lambda args: indices._validate_periodicity(args["periodicity"]),
+    lambda args: indices._validate_scale(args["scale"], args["periodicity"]),
+)
+_SPI_VALIDATORS = (
+    *_TEMPORAL_VALIDATORS,
+    lambda args: indices._validate_distribution(args["distribution"]),
+    lambda args: compute.validate_output_scale(args["output_scale"]),
+    lambda args: compute._validate_zero_handling(args["zero_handling"]),
+)
+_SPEI_VALIDATORS = (
+    *_TEMPORAL_VALIDATORS,
+    lambda args: indices._validate_distribution(
+        args["distribution"], (Distribution.gamma, Distribution.pearson, Distribution.loglogistic)
+    ),
+    lambda args: compute.validate_output_scale(args["output_scale"]),
+)
+
 # pre-build decorated functions at module level for performance
 _wrapped_spi = xarray_adapter(
+    calendar="periodicity",
+    inferred_parameters=INFER_TIME_PARAMETERS,
+    argument_validators=_SPI_VALIDATORS,
+    timescale_parameter="scale",
+    metadata_variant_parameter="output_scale",
     cf_metadata=CF_METADATA["spi"],  # type: ignore[arg-type]
     cf_metadata_variants=_SPI_CF_METADATA_VARIANTS,
     index_display_name="SPI",
@@ -89,6 +113,11 @@ _wrapped_spi = xarray_adapter(
 )(indices.spi)
 
 _wrapped_spei = xarray_adapter(
+    calendar="periodicity",
+    inferred_parameters=INFER_TIME_PARAMETERS,
+    argument_validators=_SPEI_VALIDATORS,
+    timescale_parameter="scale",
+    metadata_variant_parameter="output_scale",
     cf_metadata=CF_METADATA["spei"],  # type: ignore[arg-type]
     cf_metadata_variants=_SPEI_CF_METADATA_VARIANTS,
     index_display_name="SPEI",
@@ -98,6 +127,10 @@ _wrapped_spei = xarray_adapter(
 )(indices.spei)
 
 _wrapped_eddi = xarray_adapter(
+    calendar="periodicity",
+    inferred_parameters=INFER_TIME_PARAMETERS,
+    argument_validators=_TEMPORAL_VALIDATORS,
+    timescale_parameter="scale",
     cf_metadata=CF_METADATA["eddi"],  # type: ignore[arg-type]
     index_display_name="EDDI",
     calculation_metadata_keys=["scale", "calibration_year_initial", "calibration_year_final"],
@@ -304,32 +337,16 @@ def spei(precips_mm: Any, pet_mm: Any, *args: Any, **kwargs: Any) -> npt.NDArray
 
 # Percentage of Normal (PNP) overloads
 _wrapped_percentage_of_normal = xarray_adapter(
+    calendar="periodicity",
+    inferred_parameters=INFER_TIME_PARAMETERS,
+    argument_validators=_TEMPORAL_VALIDATORS,
+    timescale_parameter="scale",
+    deprecated_aliases=indices._translate_pnp_calibration_kwargs,
     cf_metadata=CF_METADATA["percentage_of_normal"],  # type: ignore[arg-type]
     index_display_name="PNP",
     calculation_metadata_keys=["scale", "calibration_year_initial", "calibration_year_final"],
     spatial_kernel=True,
 )(indices.percentage_of_normal)
-
-
-def _translate_pnp_calibration_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
-    """Map the deprecated PNP ``calibration_start_year``/``_end_year`` aliases onto the canonical names."""
-    translated = dict(kwargs)
-    if "calibration_start_year" in translated or "calibration_end_year" in translated:
-        emit_deprecation_warning(
-            feature="Parameters 'calibration_start_year'/'calibration_end_year'",
-            alternative="Use 'calibration_year_initial'/'calibration_year_final'",
-            deprecated_in="3.1.0",
-            removal_version="4.0.0",
-        )
-        for legacy, canonical in (
-            ("calibration_start_year", "calibration_year_initial"),
-            ("calibration_end_year", "calibration_year_final"),
-        ):
-            if legacy in translated and canonical not in translated:
-                translated[canonical] = translated.pop(legacy)
-            else:
-                translated.pop(legacy, None)
-    return translated
 
 
 @overload
@@ -451,7 +468,9 @@ def percentage_of_normal(values: Any, *args: Any, **kwargs: Any) -> npt.NDArray[
     Returns:
         PNP values as numpy.ndarray or xarray.DataArray (matches input type).
     """
-    result = _delegate(_wrapped_percentage_of_normal, values, *args, **_translate_pnp_calibration_kwargs(kwargs))
+    result = _delegate(
+        _wrapped_percentage_of_normal, values, *args, **indices._translate_pnp_calibration_kwargs(kwargs)
+    )
     if isinstance(result, xr.DataArray):
         result.attrs["calibration_start_year"] = result.attrs["calibration_year_initial"]
         result.attrs["calibration_end_year"] = result.attrs["calibration_year_final"]
