@@ -22,7 +22,7 @@ guarded only by internal fixtures.
 | --- | --- | --- | --- | --- |
 | SPI | Validated (internal) + qualified external comparison (Pearson III) | Gamma `atol=1e-8`, Pearson `atol=1e-5` in xarray equivalence tests; NOAA NCEI climdiv characterization ceilings documented in `tests/test_ncei_spi_reference.py` | Legacy NumPy fixtures and xarray equivalence tests compare gamma and Pearson outputs across scales. `tests/test_ncei_spi_reference.py` characterizes `indices.spi()` (Pearson III, full-period-of-record calibration) against NOAA NCEI's operational climdiv SPI product for all 344 climate divisions and all 7 published timescales; marked `validation`. | `tests/fixture/ncei_spi/provenance.json` records that NCEI's climate-divisional SPI product's independence from this codebase's lineage could not be confirmed as airtight from public documentation alone (see `docs/research/spi-dataset-survey.md`), and that NCEI's actual calibration behavior is a full/expanding period-of-record window rather than its documented fixed 1931-1990 baseline (Baldwin & Chen 2020). WMO SPI User Guide worked-example extraction remains outstanding (issue #778). |
 | SPI zero placement | Regression only; closed-form plus property evidence (no independent implementation) | Closed forms `atol=1e-12`; sample-mean properties `abs=0.02` (normal scale) and `abs=0.01` (probability scale) | `tests/test_zero_handling.py` pins each ADR-0015 mode's normal-scale closed form at `p0 ∈ {0.1, 0.5, 0.9}`, the ideal normal-scale sample mean of `"mean_zero"` and probability-scale sample mean of `"center_of_mass"` on a 6000-year zero-inflated gamma sample, and that every zero ranks at or below every positive accumulation. | No independent implementation is compared: the cross-implementation fixtures against the R `SEI`/`SCI` packages are not committed (issue #1209). The evidence is specification-level, derived from the same definitions the code implements. |
-| SPEI | Validated (internal) + independent-implementation comparison (log-logistic, input-matched SPEIbase v2.11); gamma/Thornthwaite plausibility check | Gamma `atol=1e-8`, Pearson `atol=1e-5` in xarray equivalence tests; log-logistic like-for-like floors (correlation >= 0.97) in `tests/fixture/speibase_cru_ts/provenance.json`; gamma plausibility floors in `tests/fixture/speibase/provenance.json` | Legacy NumPy fixtures and xarray equivalence tests compare gamma and Pearson outputs across scales. `tests/test_speibase_like_for_like.py` feeds `indices.spei()` the CRU TS 4.09 precipitation and FAO-56 Penman-Monteith PET that SPEIbase v2.11 was computed from, standardizes each 0.5-degree cell with the log-logistic distribution over 1901-2024, averages the per-cell series inside three CONUS climate divisions, and reproduces the CSIC SPEIbase v2.11 grids (correlation 0.9996-0.99999, mean absolute difference 0.003-0.016 across divisions and timescales). `tests/test_speibase_reference.py` retains the earlier gamma/Thornthwaite comparison against grid-cell-mean SPEIbase as a plausibility check. Both are marked `validation`. | The like-for-like comparison removes the PET-method, distribution-family, precipitation-input, and spatial-support confounds; what remains is the independent L-moment fit implementation (climate_indices' unbiased-PWM code against R SPEI's) and parameter rounding, so its residuals characterize the fit rather than the climate signal. The gamma/Thornthwaite comparison remains plausibility only; see "SPEI Plausibility Classification" below. |
+| SPEI | Validated (internal) + input-matched cross-implementation comparison (log-logistic, SPEIbase v2.11); gamma/Thornthwaite plausibility check | Gamma `atol=1e-8`, Pearson `atol=1e-5` in xarray equivalence tests; log-logistic like-for-like floors (correlation >= 0.97) in `tests/fixture/speibase_cru_ts/provenance.json`; gamma plausibility floors in `tests/fixture/speibase/provenance.json` | Legacy NumPy fixtures and xarray equivalence tests compare gamma and Pearson outputs across scales. `tests/test_speibase_like_for_like.py` feeds `indices.spei()` the CRU TS 4.09 precipitation and FAO-56 Penman-Monteith PET that SPEIbase v2.11 was computed from, standardizes each 0.5-degree cell with the log-logistic distribution over 1901-2024, averages the per-cell series inside three CONUS climate divisions, and reproduces the CSIC SPEIbase v2.11 grids (correlation 0.9996-0.99999, mean absolute difference 0.003-0.016 across divisions and timescales). `tests/test_speibase_reference.py` retains the earlier gamma/Thornthwaite comparison against grid-cell-mean SPEIbase as a plausibility check. Both are marked `validation`. | The like-for-like comparison removes the PET-method, distribution-family, and combined precipitation/spatial-support confounds of the plausibility check. `climate_indices.lmoments.fit_glo` is a port of the same `lmom` PELGLO routine R `SPEI` uses, so the near-machine-precision agreement is expected, not algorithm independence. The small residual is dominated by a PET day-length convention difference: the test uses leap-aware month lengths (matching public SPEIbase `R/functions.R`), while a near-uniform month reproduces the committed v2.11 grids two to four times more closely. The gamma/Thornthwaite comparison remains plausibility only; see "SPEI Plausibility Classification" below. |
 | PET Thornthwaite | Validated | Synthetic-fixture `atol=0.001`; literature worked example `atol=4.0` mm/month | `tests/test_eto.py::test_eto_thornthwaite` covers synthetic regression fixtures; `test_eto_thornthwaite_literature_watson` compares against a Thornthwaite (1948) worked example (Watson & Burnett, 1995) in `tests/fixture/pet_literature/`. See `docs/algorithm_refs/pet.md`. | The source supplies daylight hours, not latitude; coordinate reconstruction is not independently validated. |
 | PET Hargreaves | Validated | Synthetic-input sanity checks; literature worked example `atol=0.05` mm/day | `tests/test_eto.py::test_eto_hargreaves_with_fixtures` checks synthetic daily-input output shape and bounds; `test_eto_hargreaves_literature_mehta` compares against a Hargreaves-Samani (1985) worked example (Mehta, 2006) in `tests/fixture/pet_literature/`. See `docs/algorithm_refs/pet.md`. | The source supplies extraterrestrial radiation, not latitude/day of year; coordinate reconstruction is not independently validated. |
 | PET Penman-Monteith (FAO-56) | Validated | `atol=0.05` mm/day for the final ETo; `0.05`-`0.1` MJ m-2 day-1 for the printed radiation intermediates | `tests/test_pm_eto.py` checks the Chapter 3 radiation, clear-sky, net-radiation, and wind helpers against FAO-56 worked Examples 10-16, and the full derived-input chain (`penman_monteith_eto`) against the daily grass-reference Example 18 (Uccle, ETo = 3.88 mm/day). `tests/test_pm_eto_xarray.py` checks the xarray path against the NumPy path. See `docs/algorithm_refs/pet.md`. | One daily worked example supplies the end-to-end oracle; the monthly Example 17 is not encoded, and the radiation-helper checks reproduce FAO-56's rounded printed intermediates rather than an independent computation. |
@@ -161,32 +161,38 @@ overlap. The dataset survey behind this comparison lives at
 ## SPEI Log-Logistic Like-for-Like Comparison
 
 `tests/test_speibase_like_for_like.py` removes the three confounds above by
-feeding `indices.spei()` the exact inputs SPEIbase v2.11 was computed from:
-CRU TS 4.09 monthly precipitation and FAO-56 Penman-Monteith PET, committed as
+feeding `indices.spei()` the CRU TS 4.09 monthly precipitation and FAO-56
+Penman-Monteith PET that SPEIbase v2.11 was computed from, committed as
 per-cell fixtures in `tests/fixture/speibase_cru_ts/`. It standardizes each
 0.5-degree cell with the log-logistic (generalized logistic) distribution over
 1901-2024 and averages the per-cell series inside the same three climate
-divisions, matching SPEIbase's own
-`R/computeSPEI.R` per-cell-then-mean pipeline. The comparison is a genuine
-independent-implementation check: the fit here is climate_indices' unbiased-PWM
-L-moment code against R `SPEI`'s separate implementation.
+divisions, matching SPEIbase's `R/functions.R` (`spei.nc`) per-cell-then-mean
+pipeline.
+
+This is a cross-implementation check of a port, not of an algorithmically
+independent estimator: `climate_indices.lmoments.fit_glo` is a Python
+translation of the same `lmom` PELGLO routine R `SPEI` calls, using the same
+unbiased-PWM L-moments, so the near-machine-precision agreement is expected.
 
 The agreement is near-exact -- correlation 0.9996-0.99999 and mean absolute
-difference 0.003-0.016 across divisions and timescales -- which is why the
-tests assert tight per-series floors (correlation >= 0.97) instead of the loose
-plausibility floors. That residual is not a climate signal: it is the fit
-implementation, parameter rounding, and any residual preprocessing, and it is
-the only confound the input-matched design leaves in place. Floors are derived
-from `tests/fixture/speibase_cru_ts/provenance.json` and
+difference 0.003-0.016 across divisions and timescales -- and the tests assert
+tight per-series floors (correlation >= 0.97) instead of the loose plausibility
+floors. The residual is small and dominated by a PET day-length convention
+difference, not by the fit: this test multiplies CRU TS PET (mm/day) by the
+leap-aware calendar month lengths, matching SPEIbase's public `R/functions.R`
+(`etp * ndays` with `Hmisc::monthDays`), while a near-uniform month length
+reproduces the committed SPEIbase v2.11 grids two to four times more closely,
+so v2.11's effective generation convention could not be confirmed from public
+code. Floors are derived from
+`tests/fixture/speibase_cru_ts/provenance.json`, and
 `scripts/prepare_speibase_cru_ts_inputs.py` re-measures the agreement from the
 arrays it builds, refusing to publish a refresh that drifts beyond `0.001` of
-the recorded expectations.
+the recorded expectations; `test_floors_keep_documented_slack` pins every floor
+to a documented band below its measurement.
 
-The CRU TS PET is stored in mm/day and is multiplied by the leap-aware days in
-each month before the P - PET difference, matching SPEIbase. The earlier
-gamma/Thornthwaite comparison is retained because it exercises a different
-distribution and PET path against the same reference; it remains a plausibility
-check, not numerical validation.
+The earlier gamma/Thornthwaite comparison is retained because it exercises a
+different distribution and PET path against the same reference; it remains a
+plausibility check, not numerical validation.
 
 ## Palmer Validation Classification
 
