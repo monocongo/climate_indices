@@ -7,10 +7,10 @@ import functools
 import numpy as np
 import xarray as xr
 
+from climate_indices._recurrence import _validate_recurrence_options
+from climate_indices._units import _convert_precipitation_units, _validate_daily_time_coordinate
 from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.compute import Periodicity
-from climate_indices.fire._common import _validate_recurrence_options, _wrap_spatial
-from climate_indices.fire._units import _convert_precipitation_units, _validate_daily_time_coordinate
 from climate_indices.flood._antecedent import APIResult, APIState, _resume_state, _validate_decay
 from climate_indices.flood._antecedent import antecedent_precipitation_index as _numpy_api
 from climate_indices.flood._edi import edi as _numpy_edi
@@ -19,6 +19,7 @@ from climate_indices.flood._pe import effective_precipitation as _numpy_pe
 from climate_indices.validation import validate_dask_chunks, validate_time_dimension, validate_time_monotonicity
 from climate_indices.xarray_adapter import (
     INFER_TIME_PARAMETERS,
+    _wrap_spatial,
     build_output_attrs,
     xarray_adapter,
 )

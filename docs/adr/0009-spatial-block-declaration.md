@@ -49,7 +49,7 @@ loudly at the call rather than misreading its input.
 Two layouts now meet in `compute.py`, distinguished by position in the pipeline rather than by any
 runtime marker: time-major `(time, *cells)` on the way in (`prepare_scaled`, `sum_to_scale`), and
 `(years, periods, *cells)` after folding (`_validate_array`, `gamma_parameters`,
-`transform_fitted_gamma`, `_check_goodness_of_fit_gamma`). `_reshape_time_major` is the only
+`transform_fitted_gamma`, `_check_goodness_of_fit_gamma`). `reshape_time_major` is the only
 translation between them.
 
 Gridded execution changes the memory profile as well as the call count: one block is held whole

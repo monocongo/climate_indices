@@ -7,8 +7,8 @@ import time
 import numpy as np
 import numpy.typing as npt
 
+from climate_indices._recurrence import _as_float_array
 from climate_indices.exceptions import wrap_value_error
-from climate_indices.fire._common import _as_float_array
 from climate_indices.logging_config import get_logger, log_calculation_failure
 from climate_indices.performance import check_large_array_memory
 

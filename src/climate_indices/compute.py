@@ -42,7 +42,10 @@ __all__ = [
     "fit_and_standardize",
     "fit_diagnostics",
     "prepare_scaled",
-    "scale_values",
+    "is_all_missing",
+    "prepare_input_shape",
+    "reshape_time_major",
+    "unfold_time_major",
     "sum_to_scale",
     "transform_fitted_gamma",
     "transform_fitted_loglogistic",
@@ -369,8 +372,18 @@ def _log_and_raise_shape_error(shape: tuple[int, ...]) -> None:
     raise ValueError(message)
 
 
+def is_all_missing(values: np.ndarray) -> bool:
+    """Whether every value in an array is missing, i.e. masked or NaN.
+
+    This is the single owner of all-missing detection for the fitting-based
+    indices, used by ``prepare_scaled`` and the shared standardized-index
+    pipeline so the two cannot drift.
+    """
+    return bool((isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)))
+
+
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-def _reshape_time_major(values: np.ndarray, periodicity: Periodicity) -> np.ndarray:
+def reshape_time_major(values: np.ndarray, periodicity: Periodicity) -> np.ndarray:
     """
     Reshape a time-major spatial array to (years, periods, *cells).
 
@@ -401,6 +414,26 @@ def _reshape_time_major(values: np.ndarray, periodicity: Periodicity) -> np.ndar
         output_shape=str(result.shape),
     )
     return result
+
+
+def unfold_time_major(values: np.ndarray, original_shape: tuple[int, ...]) -> np.ndarray:
+    """
+    Restore the caller's input layout after fitting a time-major block.
+
+    The inverse of :func:`reshape_time_major` for a fitted array: a 3-or-more-
+    dimensional input folds back to (time, ``*cells``) and is trimmed to its original
+    time length, dropping any padded calendar step; a 1-D or 2-D input was one series,
+    so the fitted (years, periods) array is flattened to a single dimension. This is
+    the single owner of the unfold step shared by the standardized-index pipeline.
+
+    :param values: the fitted array, shape (years, periods, ``*cells``) for a
+        time-major block or (years, periods) for a series
+    :param original_shape: the shape of the input the caller handed in
+    :return: the fitted values in the caller's layout
+    """
+    if len(original_shape) > 2:
+        return values.reshape(-1, *values.shape[2:])[: original_shape[0]]
+    return values.flatten()[: int(np.prod(original_shape))]
 
 
 def reshape_values(values: np.ndarray, periodicity: Periodicity) -> np.ndarray:
@@ -961,6 +994,11 @@ def _validate_pearson_parameter_cells(
         if parameter is None:
             continue
         parameter = np.asarray(parameter)
+        if parameter.ndim == 0:
+            raise ValueError(
+                f"Fitting parameter '{name}' has shape {parameter.shape}, which must carry "
+                f"the period length {period_length}"
+            )
         if parameter.ndim == 1:
             if parameter.shape[0] != period_length:
                 raise ValueError(
@@ -1125,22 +1163,19 @@ def transform_fitted_pearson(
 
     # sanity check for the fitting parameters arguments
     pearson_param_args = [probabilities_of_zero, locs, scales, skews]
-    _reject_partial_pearson_parameters((probabilities_of_zero, locs, scales, skews))
+
+    # validate (and possibly reshape) the input array before the all-missing return,
+    # so a partial or mis-shaped parameter set is rejected even when the values carry
+    # no data and the fit is skipped
+    validated_values = _validate_array(values, periodicity)
+    _validate_pearson_fitting_params(validated_values, probabilities_of_zero, locs, scales, skews)
 
     # if we're passed all missing values then we can't compute anything,
-    # and we'll return the same array of missing values
+    # and we'll return the same array of missing values, un-reshaped
     if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
         return values
 
-    # validate (and possibly reshape) the input array
-    values = _validate_array(values, periodicity)
-
-    # reject parameter arrays that do not carry the period (and cell) axes before any
-    # fitting, so an argument error cannot be mistaken for a failed fit
-    _validate_pearson_parameter_cells(
-        values,
-        (("prob_zero", probabilities_of_zero), ("loc", locs), ("scale", scales), ("skew", skews)),
-    )
+    values = validated_values
 
     # broadcast period-only parameters and reject parameter arrays whose cell
     # dimensions do not match a spatial block
@@ -1774,7 +1809,7 @@ def gamma_parameters(
     return alphas, betas
 
 
-def _prepare_input_shape(values: np.ndarray, spatial_time_major: bool) -> np.ndarray:
+def prepare_input_shape(values: np.ndarray, spatial_time_major: bool) -> np.ndarray:
     """
     Flatten a 2-D input, pass a declared time-major spatial block through unchanged,
     and reject any other shape.
@@ -1874,7 +1909,7 @@ def prepare_scaled(
     if periodicity is not Periodicity.monthly and periodicity is not Periodicity.daily:
         raise PeriodicityError(f"Invalid periodicity argument: {periodicity}", periodicity_value=str(periodicity))
 
-    values = _prepare_input_shape(values, spatial_time_major)
+    values = prepare_input_shape(values, spatial_time_major)
 
     # a scale longer than the series cannot produce a single complete sum, and
     # np.convolve's "valid" mode would silently return a longer result than the
@@ -1892,7 +1927,7 @@ def prepare_scaled(
 
     # if we're passed all missing values then we can't compute anything,
     # so we return the same array of missing values
-    if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
+    if is_all_missing(values):
         return values
 
     # a partially masked input must become explicit NaN before sum_to_scale, since its
@@ -1921,36 +1956,13 @@ def prepare_scaled(
     # or to (years, 366) for daily
     if reshape:
         scaled_values = (
-            _reshape_time_major(scaled_values, periodicity)
+            reshape_time_major(scaled_values, periodicity)
             if scaled_values.ndim > 2
             else reshape_values(scaled_values, periodicity)
         )
 
     _logger.debug("scaling_completed", operation="prepare_scaled", output_shape=str(scaled_values.shape))
     return scaled_values
-
-
-def scale_values(
-    values: np.ndarray,
-    scale: int,
-    periodicity: Periodicity,
-) -> np.ndarray:
-    """
-    Scale an array of values by summing each time step over the specified scale,
-    clipping negative values to zero and reshaping to (years, periods).
-
-    Thin wrapper over ``prepare_scaled``, which owns the preparation pipeline for
-    every fitting-based index.
-
-    Args:
-        values: The array of values, either 1-D or 2-D (years, periods).
-        scale: The number of values for which each sliding summation will encompass.
-        periodicity: Specifies whether data is monthly (12 time steps per year) or daily.
-
-    Returns:
-        The scaled values, reshaped to (years, periodicity.period_length).
-    """
-    return prepare_scaled(values, scale, periodicity)
 
 
 def _broadcast_fitting_parameters(
