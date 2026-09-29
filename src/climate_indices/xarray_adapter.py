@@ -38,7 +38,7 @@ import structlog.stdlib
 import xarray as xr
 
 from climate_indices import compute, eto, indices, palmer, pm_eto, utils
-from climate_indices.cf_metadata_registry import CF_METADATA
+from climate_indices.cf_metadata_registry import CF_METADATA, spi_output_attributes
 from climate_indices.compute import MIN_CALIBRATION_YEARS
 from climate_indices.exceptions import (
     CoordinateValidationError,
@@ -1235,6 +1235,7 @@ def _finalize_ufunc_result(
     calculation_metadata_keys: list[str] | tuple[str, ...] | None,
     index_display_name: str | None,
     func_name: str,
+    is_spi: bool = False,
 ) -> xr.DataArray:
     """Rewrap a computation result with the input's coords, dims, attrs, and name.
 
@@ -1253,6 +1254,7 @@ def _finalize_ufunc_result(
         calculation_metadata_keys: Keys to extract from valid_kwargs for metadata
         index_display_name: Display name for the index (or None to use func_name.upper())
         func_name: Name of the wrapped function
+        is_spi: Whether the wrapped function is indices.spi
 
     Returns:
         Finalized DataArray with restored dimensions, metadata, and coordinate attributes
@@ -1277,6 +1279,19 @@ def _finalize_ufunc_result(
     resolved_index_name = index_display_name if index_display_name is not None else func_name.upper()
     resolved_cf_metadata = _resolve_cf_metadata(cf_metadata, cf_metadata_variants, valid_kwargs)
     output_attrs = build_output_attrs(input_da, resolved_cf_metadata, calc_metadata, index_name=resolved_index_name)
+    if is_spi:
+        compute.validate_output_scale(valid_kwargs.get("output_scale", "normal"))
+        output_attrs.pop("valid_range", None)
+        output_attrs.pop("actual_range", None)
+        spi_attrs = spi_output_attributes(
+            valid_kwargs.get("zero_handling", "classic"), valid_kwargs.get("output_scale", "normal")
+        )
+        # preserve a distinct caller-provided reference rather than replacing it
+        caller_references = (resolved_cf_metadata or {}).get("references")
+        spi_references = spi_attrs["references"]
+        if caller_references and isinstance(spi_references, str) and caller_references not in spi_references:
+            spi_attrs["references"] = f"{caller_references}; {spi_references}"
+        output_attrs.update(spi_attrs)
     result_da.attrs = output_attrs
 
     # deep-copy coordinate attrs to prevent mutation bleed-through
@@ -1563,6 +1578,7 @@ def xarray_adapter(
                     calculation_metadata_keys=calculation_metadata_keys,
                     index_display_name=index_display_name,
                     func_name=func.__name__,
+                    is_spi=func is indices.spi,
                 )
 
                 # log completion (NaN metrics omitted for Dask—would trigger compute)
@@ -1650,6 +1666,7 @@ def xarray_adapter(
                     calculation_metadata_keys=calculation_metadata_keys,
                     index_display_name=index_display_name,
                     func_name=func.__name__,
+                    is_spi=func is indices.spi,
                 )
 
                 # log completion
@@ -1736,6 +1753,7 @@ def xarray_adapter(
                 calculation_metadata_keys=calculation_metadata_keys,
                 index_display_name=index_display_name,
                 func_name=func.__name__,
+                is_spi=func is indices.spi,
             )
 
             # log completion with NaN metrics

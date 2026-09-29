@@ -9,11 +9,10 @@ Amended: the NumPy implementation landed in
 `spi()`, and the `compute` gamma and Pearson transforms, and gamma `p0` is
 counted over the calibration period. Decision 4 now records that
 implementation, including the undefined zero mass of a step without calibration
-data, and the Consequences name when classic output stays unchanged. The xarray
-adapter forwards the keyword but does not record it in CF metadata, and the CLI
-has no flag for it, until
-[#1187](https://github.com/monocongo/climate_indices/issues/1187) lands; the
-cross-implementation fixtures and docs follow in
+data, and the Consequences name when classic output stays unchanged. The xarray adapter records the mode and correct output bounds in CF metadata;
+the CLI accepts `--zero_handling` and writes the mode and method citation in
+[#1187](https://github.com/monocongo/climate_indices/issues/1187). The
+cross-implementation fixtures and guidance follow in
 [#1188](https://github.com/monocongo/climate_indices/issues/1188). This record
 is amended as each one lands.
 
@@ -195,7 +194,8 @@ handling on SPEI would get classic output with nothing to say so.
   conditions above and covers the changed gamma `p0` denominator, including
   SPEI and Pearson-to-gamma fallback. Surface wiring, unsupported-mode
   rejection, and the CF attribute/bounds follow in
-  [#1187](https://github.com/monocongo/climate_indices/issues/1187).
+  [#1187](https://github.com/monocongo/climate_indices/issues/1187), including
+  CLI rejection for non-classic SPEI and output metadata for every SPI mode.
   Cross-implementation fixtures against the SEI R package, docs (including
   the gamma parameter-reuse guidance in `choosing-parameters.md`), and the
   `VALIDATION.md` entry follow in

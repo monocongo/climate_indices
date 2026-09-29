@@ -17,6 +17,7 @@ import xarray as xr
 
 from climate_indices import compute, fire, flood, indices, palmer, utils
 from climate_indices._cli import _add_common_spi_arguments, _open_with_default_chunks
+from climate_indices.cf_metadata_registry import spi_output_attributes
 from climate_indices.exceptions import ConvergenceError, InsufficientDataError
 from climate_indices.validation import DatasetLayout, detect_dataset_layout, expected_dimensions
 
@@ -90,6 +91,7 @@ class _IndexRequest:
     # the output convention for the standardized indices; "normal" unless a
     # non-default --output_scale was given
     output_scale: str = "normal"
+    zero_handling: compute.ZeroHandling = "classic"
     calibration_start_year: int | None = None
     calibration_end_year: int | None = None
     # the initial year of the inputs, read from them as the computation starts
@@ -138,6 +140,7 @@ class _IndexRequest:
             scale=scale,
             distribution=distribution,
             output_scale=getattr(arguments, "output_scale", None) or "normal",
+            zero_handling=getattr(arguments, "zero_handling", "classic"),
         )
 
 
@@ -580,6 +583,16 @@ def _validate_output_scale(args: argparse.Namespace, handlers: Sequence[_IndexRe
         )
 
 
+def _validate_cli_zero_handling(args: argparse.Namespace, handlers: Sequence[_IndexRegistration]) -> None:
+    """Validate that the requested zero-handling mode applies to SPI only."""
+    zero_handling = getattr(args, "zero_handling", "classic")
+    compute._validate_zero_handling(zero_handling)
+    if zero_handling != "classic" and any(handler.index == "spei" for handler in handlers):
+        raise ValueError("--zero_handling is not supported for SPEI")
+    if zero_handling != "classic" and not any(handler.index == "spi" for handler in handlers):
+        raise ValueError(f"--zero_handling is not applicable to --index {args.index}")
+
+
 def _validate_args(args: argparse.Namespace) -> DatasetLayout:
     """
     Validate the processing settings to confirm that proper argument
@@ -604,6 +617,8 @@ def _validate_args(args: argparse.Namespace) -> DatasetLayout:
     # only the standardized indices have an output scale to set
     if getattr(args, "output_scale", None) is not None:
         _validate_output_scale(args, handlers)
+
+    _validate_cli_zero_handling(args, handlers)
 
     # the input that determines the input type, and the shape companions must match
     if any(handler.requires_pe for handler in handlers):
@@ -1080,6 +1095,7 @@ def _spi(precips: np.ndarray, parameters: dict[str, Any]) -> np.ndarray:
         calibration_year_final=parameters["calibration_year_final"],
         periodicity=parameters["periodicity"],
         output_scale=parameters["output_scale"],
+        zero_handling=parameters["zero_handling"],
     )
 
 
@@ -1519,6 +1535,7 @@ def _spi_arguments(request: _IndexRequest) -> dict[str, Any]:
         "calibration_year_final": request.calibration_end_year,
         "periodicity": request.periodicity,
         "output_scale": request.output_scale,
+        "zero_handling": request.zero_handling,
     }
 
 
@@ -1588,7 +1605,9 @@ def _standardized_variable_attributes(
 
 
 def _spi_variable_attributes(request: _IndexRequest) -> tuple[str, dict[str, Any]]:
-    return _standardized_variable_attributes(request, "Standardized Precipitation Index", "spi")
+    name, attrs = _standardized_variable_attributes(request, "Standardized Precipitation Index", "spi")
+    attrs.update(spi_output_attributes(request.zero_handling, request.output_scale))
+    return name, attrs
 
 
 def _spei_variable_attributes(request: _IndexRequest) -> tuple[str, dict[str, Any]]:
@@ -2483,6 +2502,12 @@ def main(argv: Sequence[str] | None = None) -> None:
             required=True,
         )
         _add_common_spi_arguments(parser)
+        parser.add_argument(
+            "--zero_handling",
+            choices=list(compute._ZERO_HANDLING_MODES),
+            default="classic",
+            help="SPI zero placement: classic (default), center_of_mass, or mean_zero",
+        )
         parser.add_argument(
             "--netcdf_temp",
             help="Temperature NetCDF file to be used as input for indices computations",
