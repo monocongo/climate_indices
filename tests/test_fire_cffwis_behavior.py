@@ -36,7 +36,7 @@ from climate_indices.exceptions import (
     InvalidArgumentError,
 )
 from climate_indices.fire import _cffwis
-from climate_indices.fire._common import _wrap_spatial
+from climate_indices.xarray_adapter import _wrap_spatial
 
 # the weather series behind every reference vector, with distinct dry, rainy,
 # cold, and wetting days plus a month sequence that exercises all four table
@@ -543,11 +543,11 @@ def test_mixed_type_unknown_output_names_raise_invalid_argument_error() -> None:
 
 def test_subset_outputs_record_only_the_code_histories_they_consume() -> None:
     """A subset request stops allocating the moisture-code histories it never reads."""
-    with mock.patch.object(_cffwis, "_run_cffwis_system", wraps=_cffwis._run_cffwis_system) as runner:
+    with mock.patch.object(_cffwis, "run_daily_recurrences", wraps=_cffwis.run_daily_recurrences) as runner:
         _run_orchestrator(_reference_weather(), outputs=["ffmc"])
     assert runner.call_args is not None
     assert runner.call_args.kwargs["record"] == (True, False, False)
-    with mock.patch.object(_cffwis, "_run_cffwis_system", wraps=_cffwis._run_cffwis_system) as runner:
+    with mock.patch.object(_cffwis, "run_daily_recurrences", wraps=_cffwis.run_daily_recurrences) as runner:
         _run_orchestrator(_reference_weather(), outputs=["bui"])
     assert runner.call_args is not None
     assert runner.call_args.kwargs["record"] == (False, True, True)

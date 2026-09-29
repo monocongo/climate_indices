@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 import warnings
 from dataclasses import dataclass
 from typing import Literal, overload
@@ -11,28 +10,26 @@ import numpy as np
 import numpy.typing as npt
 import xarray as xr
 
-from climate_indices.cf_metadata_registry import CF_METADATA
-from climate_indices.exceptions import (
-    CoordinateValidationError,
-    DataShapeError,
-    InputAlignmentWarning,
-    InvalidArgumentError,
-    wrap_value_error,
-)
-from climate_indices.fire._common import (
-    _apply_gap_policy,
-    _as_float_array,
+from climate_indices._recurrence import (
+    DailyRecurrence,
+    _active_view,
+    _daily_weather_arrays,
     _static_spatial_array,
     _validate_recurrence_options,
-    _wrap_spatial,
+    _validated_trailing_gaps,
+    run_daily_recurrences,
 )
-from climate_indices.fire._units import (
+from climate_indices._units import (
     _convert_precipitation_units,
     _convert_temperature_units,
     _validate_daily_time_coordinate,
 )
-from climate_indices.logging_config import get_logger, log_calculation_failure
-from climate_indices.performance import check_large_array_memory
+from climate_indices.cf_metadata_registry import CF_METADATA
+from climate_indices.exceptions import (
+    CoordinateValidationError,
+    InputAlignmentWarning,
+    InvalidArgumentError,
+)
 from climate_indices.validation import (
     InputType,
     detect_input_type,
@@ -40,11 +37,7 @@ from climate_indices.validation import (
     validate_time_dimension,
     validate_time_monotonicity,
 )
-from climate_indices.xarray_adapter import build_output_attrs
-
-# retrieve structlog logger for this module
-_logger = get_logger(__name__)
-
+from climate_indices.xarray_adapter import _wrap_spatial, build_output_attrs
 
 # Keetch and Byram (1968) Equation 18, corrected by Alexander (1990), is
 # evaluated in metric units. One KBDI point is one hundredth of an inch.
@@ -155,15 +148,9 @@ def _kbdi_state_arrays(
     if state.trailing_gap_days is None:
         trailing_gap_days = np.full(spatial_shape, -1, dtype=np.int64)
     else:
-        trailing = _static_spatial_array(state.trailing_gap_days, spatial_shape, "initial_state.trailing_gap_days")
-        if np.any(~np.isfinite(trailing)) or np.any(trailing < -1) or np.any(trailing != np.floor(trailing)):
-            raise InvalidArgumentError(
-                "initial_state.trailing_gap_days must contain integers greater than or equal to -1.",
-                argument_name="initial_state.trailing_gap_days",
-                argument_value="non-integral or less than -1 value",
-                valid_values="-1 or a non-negative integer",
-            )
-        trailing_gap_days = trailing.astype(np.int64)
+        trailing_gap_days = _validated_trailing_gaps(
+            state.trailing_gap_days, spatial_shape, "initial_state.trailing_gap_days"
+        )
 
     if np.any(np.isnan(kbdi_value) & (trailing_gap_days < 0)):
         raise InvalidArgumentError(
@@ -363,37 +350,17 @@ def kbdi(
             time_dim=time_dim,
         )
 
-    precipitation_array = _as_float_array(precipitation)
-    temperature_array = _as_float_array(maximum_temperature)
-    try:
-        precipitation_array, temperature_array = np.broadcast_arrays(precipitation_array, temperature_array)
-    except ValueError as exc:
-        wrap_value_error(
-            exc,
-            message="precipitation and maximum_temperature must broadcast to a common time-first shape.",
-            argument_name="precipitation/maximum_temperature",
-            argument_value=f"shapes {precipitation_array.shape}, {temperature_array.shape}",
-            valid_values="Arrays broadcastable to a common time-first shape",
-        )
-    if precipitation_array.ndim == 0:
-        raise DataShapeError(
-            "KBDI weather inputs must include a time dimension.",
-            expected_shape="(time, ...)",
-            actual_shape=precipitation_array.shape,
-        )
+    precipitation_array, temperature_array = _daily_weather_arrays(
+        ("precipitation", "maximum_temperature"),
+        precipitation,
+        maximum_temperature,
+    )
     if np.any(np.isfinite(precipitation_array) & (precipitation_array < 0.0)):
         raise InvalidArgumentError(
             "precipitation must be non-negative where finite.",
             argument_name="precipitation",
             argument_value="negative value",
             valid_values="Non-negative daily precipitation",
-        )
-    if np.any(np.isinf(precipitation_array)) or np.any(np.isinf(temperature_array)):
-        raise InvalidArgumentError(
-            "precipitation and maximum_temperature must be finite or NaN: infinity is not a missing observation.",
-            argument_name="precipitation/maximum_temperature",
-            argument_value="infinite value",
-            valid_values="Finite values or NaN",
         )
 
     spatial_shape = precipitation_array.shape[1:]
@@ -464,107 +431,95 @@ def kbdi(
                 valid_values="Finite values that do not overflow the metric conversion",
             )
 
-    log = _logger.bind(
-        index_type="kbdi",
-        input_shape=precipitation_array.shape,
-        input_elements=precipitation_array.size,
+    def step(day: int, active: npt.NDArray[np.bool_] | None = None) -> npt.NDArray[np.float64]:
+        """Advance KBDI one day for the active cells, updating the wet-spell state."""
+        kbdi_state, precipitation_day, temperature_day, mean_annual_day, wet_state = _active_view(
+            active,
+            kbdi_value,
+            precipitation_array[day],
+            temperature_array[day],
+            mean_annual,
+            wet_spell,
+        )
+        wet_state = wet_state.copy()
+
+        rainy = precipitation_day > 0.0
+        event_total = wet_state + precipitation_day
+        crossing_threshold = rainy & (wet_state <= _KBDI_RAIN_THRESHOLD_MM) & (event_total > _KBDI_RAIN_THRESHOLD_MM)
+        continuing_wet_spell = rainy & (wet_state > _KBDI_RAIN_THRESHOLD_MM)
+        net_rain = np.zeros_like(precipitation_day)
+        net_rain[crossing_threshold] = event_total[crossing_threshold] - _KBDI_RAIN_THRESHOLD_MM
+        net_rain[continuing_wet_spell] = precipitation_day[continuing_wet_spell]
+        updated_wet_spell = np.where(rainy, event_total, 0.0)
+
+        after_rain = np.maximum(0.0, kbdi_state - net_rain)
+        drying = np.zeros_like(after_rain)
+        drought_day = (temperature_day >= _KBDI_DRYING_TEMPERATURE_CELSIUS) & (after_rain < _KBDI_MAX_MM)
+        with np.errstate(over="ignore"):
+            drying[drought_day] = (
+                (_KBDI_MAX_MM - after_rain[drought_day])
+                * (0.968 * np.exp(0.0875 * temperature_day[drought_day] + 1.5552) - 8.30)
+                / (1.0 + 10.88 * np.exp(-0.001736 * mean_annual_day[drought_day]))
+                * 1e-3
+            )
+        updated: npt.NDArray[np.float64] = np.minimum(_KBDI_MAX_MM, after_rain + np.maximum(drying, 0.0))
+
+        if active is None:
+            wet_spell[:] = updated_wet_spell
+        else:
+            wet_spell[active] = updated_wet_spell
+        return updated
+
+    weather_valid = np.isfinite(precipitation_array) & np.isfinite(temperature_array)
+    # A cell whose static climatology is unavailable has no recurrence to
+    # gap-manage: the shared ADR-0007 policy never marks it active and leaves
+    # its carried state as it was, so a NaN climatology is never a missing day.
+    static_valid = np.isfinite(mean_annual)
+    component = DailyRecurrence(
+        "kbdi",
+        kbdi_value,
+        step,
+        weather_valid,
+        static_valid,
+        trailing_gap_days,
     )
-    log.info("calculation_started")
-    t0 = time.perf_counter()
-    memory_metrics = check_large_array_memory(precipitation_array, temperature_array, mean_annual)
+    values, gap_days = run_daily_recurrences(
+        (component,),
+        memory_arrays=(precipitation_array, temperature_array, mean_annual),
+        spin_up=spin_up,
+        nan_policy=nan_policy,
+        max_gap_days=max_gap_days,
+        system_name="kbdi",
+        fast_path=False,
+    )
+    values_array = values[0]
+    assert values_array is not None
+    state_gap_array = gap_days[0]
+    state_gap_days: npt.NDArray[np.int64] | None = (
+        None if state_gap_array is None else state_gap_array.reshape(spatial_shape).copy()
+    )
 
-    try:
-        n_days = precipitation_array.shape[0]
-        # Spin-up days are evaluated for the state they leave behind but never
-        # stored, so the output only allocates the days the caller receives.
-        values = np.full((max(n_days - spin_up, 0), *internal_spatial_shape), np.nan, dtype=np.float64)
-        static_valid = np.isfinite(mean_annual)
-        started = trailing_gap_days >= 0
-        poisoned = np.isnan(kbdi_value)
+    if units == "imperial":
+        returned_values = values_array / _KBDI_MM_PER_POINT
+        returned_kbdi = kbdi_value / _KBDI_MM_PER_POINT
+        returned_wet_spell = wet_spell / 25.4
+    else:
+        returned_values = values_array
+        returned_kbdi = kbdi_value
+        returned_wet_spell = wet_spell
 
-        for day in range(n_days):
-            precipitation_day = precipitation_array[day]
-            temperature_day = temperature_array[day]
-            weather_valid = np.isfinite(precipitation_day) & np.isfinite(temperature_day)
-            # A cell whose static climatology is unavailable has no recurrence
-            # to gap-manage: the shared ADR-0007 helper never marks it active
-            # and leaves its carried state as it was, so a NaN climatology is
-            # never an elapsed missing day.
-            active = _apply_gap_policy(
-                kbdi_value,
-                weather_valid,
-                static_valid,
-                started,
-                poisoned,
-                trailing_gap_days,
-                nan_policy=nan_policy,
-                max_gap_days=max_gap_days,
-            )
-
-            rainy = active & (precipitation_day > 0.0)
-            prior_wet_spell = wet_spell.copy()
-            event_total = prior_wet_spell + precipitation_day
-            crossing_threshold = (
-                rainy & (prior_wet_spell <= _KBDI_RAIN_THRESHOLD_MM) & (event_total > _KBDI_RAIN_THRESHOLD_MM)
-            )
-            continuing_wet_spell = rainy & (prior_wet_spell > _KBDI_RAIN_THRESHOLD_MM)
-            net_rain = np.zeros(internal_spatial_shape, dtype=np.float64)
-            net_rain[crossing_threshold] = event_total[crossing_threshold] - _KBDI_RAIN_THRESHOLD_MM
-            net_rain[continuing_wet_spell] = precipitation_day[continuing_wet_spell]
-            wet_spell[rainy] = event_total[rainy]
-            wet_spell[active & ~rainy] = 0.0
-
-            after_rain = kbdi_value.copy()
-            after_rain[active] = np.maximum(0.0, kbdi_value[active] - net_rain[active])
-            drying = np.zeros(internal_spatial_shape, dtype=np.float64)
-            drought_day = active & (temperature_day >= _KBDI_DRYING_TEMPERATURE_CELSIUS) & (after_rain < _KBDI_MAX_MM)
-            with np.errstate(over="ignore"):
-                drying[drought_day] = (
-                    (_KBDI_MAX_MM - after_rain[drought_day])
-                    * (0.968 * np.exp(0.0875 * temperature_day[drought_day] + 1.5552) - 8.30)
-                    / (1.0 + 10.88 * np.exp(-0.001736 * mean_annual[drought_day]))
-                    * 1e-3
-                )
-            kbdi_value[active] = np.minimum(_KBDI_MAX_MM, after_rain[active] + np.maximum(drying[active], 0.0))
-            if day >= spin_up:
-                values[day - spin_up] = np.where(active, kbdi_value, np.nan)
-
-        state_gap_days: npt.NDArray[np.int64] | None
-        if np.any(started | poisoned):
-            state_gap_days = trailing_gap_days.reshape(spatial_shape).copy()
-        else:
-            state_gap_days = None
-        if units == "imperial":
-            returned_values = values / _KBDI_MM_PER_POINT
-            returned_kbdi = kbdi_value / _KBDI_MM_PER_POINT
-            returned_wet_spell = wet_spell / 25.4
-        else:
-            returned_values = values
-            returned_kbdi = kbdi_value
-            returned_wet_spell = wet_spell
-
-        result = returned_values.reshape(-1, *spatial_shape)
-        duration_ms = (time.perf_counter() - t0) * 1000.0
-        log.info(
-            "calculation_completed",
-            duration_ms=round(duration_ms, 2),
-            output_shape=result.shape,
-            **(memory_metrics or {}),
-        )
-        if not return_state:
-            return result
-        return KBDIResult(
-            values=result,
-            state=KBDIState(
-                kbdi=returned_kbdi.reshape(spatial_shape).copy(),
-                wet_spell_precipitation=returned_wet_spell.reshape(spatial_shape).copy(),
-                trailing_gap_days=state_gap_days,
-                units=units,
-            ),
-        )
-    except Exception as exc:
-        log_calculation_failure(log, exc)
-        raise
+    result = returned_values.reshape(-1, *spatial_shape)
+    if not return_state:
+        return result
+    return KBDIResult(
+        values=result,
+        state=KBDIState(
+            kbdi=returned_kbdi.reshape(spatial_shape).copy(),
+            wet_spell_precipitation=returned_wet_spell.reshape(spatial_shape).copy(),
+            trailing_gap_days=state_gap_days,
+            units=units,
+        ),
+    )
 
 
 def _kbdi_xarray(

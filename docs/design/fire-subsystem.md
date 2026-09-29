@@ -12,10 +12,13 @@ src/climate_indices/fire/
     _haines.py    Haines Index
     _hdw.py       Hot-Dry-Windy Index
     _kbdi.py      Keetch-Byram Drought Index
-    _common.py    shared coercion, seed, and gap-policy helpers
-    _units.py     CF units-attribute conversion
 from climate_indices import fire
 ```
+
+The daily-recurrence runtime, time-first input coercion, and gap-policy helpers
+are not fire-private: the flood antecedent precipitation index runs the same
+loop. They live in ``climate_indices/_recurrence.py``, and the CF units-attribute
+handling shared with the flood adapters lives in ``climate_indices/_units.py``.
 
 The package facade is the stable NumPy layer for this family. It is an
 intentional family-level exception to the drought-oriented

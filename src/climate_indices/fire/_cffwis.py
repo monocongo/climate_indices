@@ -5,38 +5,40 @@ from __future__ import annotations
 import time
 import warnings
 from collections.abc import Callable, Collection
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal, cast, overload
 
 import numpy as np
 import numpy.typing as npt
 import xarray as xr
 
-from climate_indices.cf_metadata_registry import CF_METADATA
-from climate_indices.exceptions import (
-    ClimateIndicesWarning,
-    CoordinateValidationError,
-    DataShapeError,
-    InputAlignmentWarning,
-    InvalidArgumentError,
-    wrap_value_error,
-)
-from climate_indices.fire._common import (
-    _apply_gap_policy,
+from climate_indices._recurrence import (
+    DailyRecurrence,
+    _active_view,
     _as_float_array,
+    _daily_weather_arrays,
     _static_spatial_array,
     _validate_recurrence_options,
-    _wrap_spatial,
+    _validated_trailing_gaps,
+    run_daily_recurrences,
 )
-from climate_indices.fire._units import (
+from climate_indices._units import (
     _convert_precipitation_units,
     _convert_temperature_units,
     _validate_daily_time_coordinate,
 )
+from climate_indices.cf_metadata_registry import CF_METADATA
+from climate_indices.exceptions import (
+    ClimateIndicesWarning,
+    CoordinateValidationError,
+    InputAlignmentWarning,
+    InvalidArgumentError,
+    wrap_value_error,
+)
 from climate_indices.logging_config import get_logger, log_calculation_failure
 from climate_indices.performance import check_large_array_memory
 from climate_indices.validation import validate_dask_chunks, validate_time_dimension, validate_time_monotonicity
-from climate_indices.xarray_adapter import build_output_attrs
+from climate_indices.xarray_adapter import _wrap_spatial, build_output_attrs
 
 # retrieve structlog logger for this module
 _logger = get_logger(__name__)
@@ -180,50 +182,6 @@ class DCResult:
 
     values: npt.NDArray[np.float64]
     state: DCState
-
-
-def _daily_weather_arrays(
-    names: tuple[str, ...],
-    *values: npt.ArrayLike,
-) -> tuple[npt.NDArray[np.float64], ...]:
-    """Coerce and broadcast time-first daily weather inputs, rejecting infinity."""
-    arrays = tuple(_as_float_array(value) for value in values)
-    # Time-first arrays are left-aligned: a shorter input is shared across every
-    # trailing axis, so a (time,) series spans the whole spatial grid instead of
-    # NumPy aligning it with the final axis.
-    ndim = max(array.ndim for array in arrays)
-    arrays = tuple(
-        array if array.ndim == ndim else array.reshape(array.shape + (1,) * (ndim - array.ndim)) for array in arrays
-    )
-    try:
-        broadcast = np.broadcast_arrays(*arrays)
-    except ValueError as exc:
-        shapes = ", ".join(f"{name}={array.shape}" for name, array in zip(names, arrays, strict=True))
-        wrap_value_error(
-            exc,
-            message=(
-                f"Incompatible array shapes for daily weather inputs: {shapes}. The inputs must broadcast together."
-            ),
-            argument_name="/".join(names),
-            argument_value=f"shapes {shapes}",
-            valid_values="Arrays broadcastable to a common time-first shape",
-        )
-    if broadcast[0].ndim == 0:
-        raise DataShapeError(
-            "Daily weather inputs must include a time dimension.",
-            expected_shape="(time, ...)",
-            actual_shape=broadcast[0].shape,
-        )
-    infinite = [name for name, array in zip(names, broadcast, strict=True) if np.any(np.isinf(array))]
-    if infinite:
-        raise InvalidArgumentError(
-            f"{'/'.join(infinite)} must be finite or NaN: infinity is not a missing observation.",
-            argument_name="/".join(infinite),
-            argument_value="infinite value",
-            valid_values="Finite values or NaN",
-        )
-    result: tuple[npt.NDArray[np.float64], ...] = tuple(broadcast)
-    return result
 
 
 def _validate_non_negative_precipitation(precipitation: npt.NDArray[np.float64]) -> None:
@@ -374,19 +332,7 @@ def _initialize_single_value_state(
     if trailing is None:
         trailing_gap_days = np.full(spatial_shape, -1, dtype=np.int64)
     else:
-        trailing_array = _static_spatial_array(trailing, spatial_shape, "initial_state.trailing_gap_days")
-        if (
-            np.any(~np.isfinite(trailing_array))
-            or np.any(trailing_array < -1)
-            or np.any(trailing_array != np.floor(trailing_array))
-        ):
-            raise InvalidArgumentError(
-                "initial_state.trailing_gap_days must contain integers greater than or equal to -1.",
-                argument_name="initial_state.trailing_gap_days",
-                argument_value="non-integral or less than -1 value",
-                valid_values="-1 or a non-negative integer",
-            )
-        trailing_gap_days = trailing_array.astype(np.int64)
+        trailing_gap_days = _validated_trailing_gaps(trailing, spatial_shape, "initial_state.trailing_gap_days")
 
     outside = np.any(value < minimum) or (maximum is not None and np.any(value > maximum))
     if np.any(~np.isfinite(value) & ~np.isnan(value)) or outside:
@@ -406,16 +352,6 @@ def _initialize_single_value_state(
     return value, trailing_gap_days
 
 
-def _active_view(
-    active: npt.NDArray[np.bool_] | None,
-    *arrays: npt.NDArray[np.float64],
-) -> tuple[npt.NDArray[np.float64], ...]:
-    """Restrict each array to the active cells, or return them unchanged for all cells."""
-    if active is None:
-        return arrays
-    return tuple(array[active] for array in arrays)
-
-
 def _run_cffwis_recurrence(
     state_value: npt.NDArray[np.float64],
     step: Callable[[int, npt.NDArray[np.bool_] | None], npt.NDArray[np.float64]],
@@ -432,12 +368,12 @@ def _run_cffwis_recurrence(
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.int64] | None]:
     """Run one time-first daily recurrence under the ADR-0007 missing-day policy.
 
-    Thin wrapper over the shared day loop in :func:`_run_cffwis_system`, so the
-    single-code functions and the combined orchestrator cannot drift apart.
+    Thin wrapper over the shared day loop in :func:`run_daily_recurrences`, so
+    the single-code functions and the combined orchestrator cannot drift apart.
     The orchestrator's all-valid fast path stays off here, keeping the
     single-code behaviour and the measured single-pass advantage unchanged.
     """
-    component = _CodeRecurrence(
+    component = DailyRecurrence(
         index_type,
         state_value,
         step,
@@ -446,7 +382,7 @@ def _run_cffwis_recurrence(
         trailing_gap_days,
         in_season,
     )
-    values, state_gap_days = _run_cffwis_system(
+    values, state_gap_days = run_daily_recurrences(
         (component,),
         memory_arrays=memory_arrays,
         spin_up=spin_up,
@@ -1476,163 +1412,6 @@ def daily_severity_rating(cffwis_fwi: npt.ArrayLike) -> npt.NDArray[np.float64]:
     )
 
 
-@dataclass
-class _CodeRecurrence:
-    """One moisture-code recurrence threaded through the CFFWIS day loop."""
-
-    index_type: str
-    value: npt.NDArray[np.float64]
-    step: Callable[[int, npt.NDArray[np.bool_] | None], npt.NDArray[np.float64]]
-    weather_valid: npt.NDArray[np.bool_]
-    static_valid: npt.NDArray[np.bool_]
-    trailing_gap_days: npt.NDArray[np.int64]
-    # optional per-day fire-season mask: off-season days freeze the recurrence
-    # instead of advancing or gap-managing it (ADR-0010)
-    in_season: npt.NDArray[np.bool_] | None = None
-    # derived once by the runner so the day loop has a single grouping of
-    # per-component state instead of parallel index spaces
-    started: npt.NDArray[np.bool_] = field(init=False)
-    poisoned: npt.NDArray[np.bool_] = field(init=False)
-    static_all_valid: bool = field(init=False, default=False)
-
-
-def _run_cffwis_system(
-    components: tuple[_CodeRecurrence, ...],
-    *,
-    memory_arrays: tuple[npt.NDArray[np.float64], ...],
-    spin_up: int,
-    nan_policy: Literal["propagate", "bridge"],
-    max_gap_days: int,
-    system_name: str,
-    fast_path: bool,
-    record: tuple[bool, ...] | None = None,
-) -> tuple[tuple[npt.NDArray[np.float64] | None, ...], tuple[npt.NDArray[np.int64] | None, ...]]:
-    """Run one or more daily recurrences through one shared time loop.
-
-    ``step(day, active)`` returns the next code value for every cell when
-    ``active`` is ``None`` and for the selected cells otherwise. Only cells
-    with a valid observation whose recurrence has started and is not poisoned
-    adopt it. A cell whose static input is unusable never starts: its output
-    stays NaN and its state is untouched.
-
-    Each component carries its own ADR-0007 bookkeeping because a day can be
-    missing for one code and valid for another: negative wind only affects
-    FFMC, humidity outside [0, 100] affects FFMC and DMC, and a NaN latitude
-    only affects DMC and DC. ``fast_path`` enables the all-valid shortcut that
-    the combined orchestrator uses; the single-code wrapper disables it so
-    their behaviour stays identical to the pre-orchestrator engine.
-
-    ``record`` marks the components whose daily history is kept: an unrecorded
-    component still runs and advances its state, but its output slot is
-    ``None`` instead of a full time series, so a subset request allocates only
-    the histories a selected output reads. The default records every
-    component, which is what the single-code wrapper needs.
-    """
-    n_days = components[0].weather_valid.shape[0]
-    log = _logger.bind(
-        index_type=system_name,
-        input_shape=components[0].weather_valid.shape,
-        input_elements=components[0].weather_valid.size,
-    )
-    log.info("calculation_started")
-    t0 = time.perf_counter()
-    try:
-        # the allocation is inside the try so an output-allocation failure
-        # still reports the recurrence lifecycle
-        records = (True,) * len(components) if record is None else record
-        values = tuple(
-            np.full((max(n_days - spin_up, 0), *component.weather_valid.shape[1:]), np.nan, dtype=np.float64)
-            if keep
-            else None
-            for component, keep in zip(components, records, strict=True)
-        )
-        for component in components:
-            component.started = component.trailing_gap_days >= 0
-            component.poisoned = np.isnan(component.value)
-            component.static_all_valid = bool(component.static_valid.all())
-        memory_metrics = check_large_array_memory(*memory_arrays, *(value for value in values if value is not None))
-
-        for day in range(n_days):
-            for index, component in enumerate(components):
-                # off-season days neither advance the recurrence nor count as
-                # missing, so they emit the carried state instead of a gap NaN
-                season_today = None if component.in_season is None else component.in_season[day]
-                carried = None
-                if (
-                    fast_path
-                    and season_today is None
-                    and component.static_all_valid
-                    and component.weather_valid[day].all()
-                ):
-                    # A fully valid day with a usable static input: the gap
-                    # policy reduces to "every unpoisoned cell is active, the
-                    # trailing count resets, and a started recurrence stays
-                    # started", with no partial-mask bookkeeping needed.
-                    component.trailing_gap_days.fill(0)
-                    component.started.fill(True)
-                    active = None if not component.poisoned.any() else ~component.poisoned
-                else:
-                    # A cell whose static input is unusable has no recurrence
-                    # to gap-manage: it never starts, so it is not an elapsed
-                    # missing day.
-                    active = _apply_gap_policy(
-                        component.value,
-                        component.weather_valid[day],
-                        component.static_valid,
-                        component.started,
-                        component.poisoned,
-                        component.trailing_gap_days,
-                        nan_policy=nan_policy,
-                        max_gap_days=max_gap_days,
-                        in_season=season_today,
-                    )
-                    if season_today is not None:
-                        carried = ~season_today & component.static_valid & component.started
-                all_active = active is None or bool(active.all())
-                if active is None or np.any(active):
-                    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
-                        updated = component.step(day, None if all_active else active)
-                    if np.any(~np.isfinite(updated)):
-                        raise InvalidArgumentError(
-                            f"{component.index_type} produced a non-finite value from finite inputs.",
-                            argument_name=component.index_type,
-                            argument_value="non-finite result",
-                            valid_values="Finite inputs whose result stays within float64",
-                        )
-                    if all_active:
-                        component.value[:] = updated
-                    else:
-                        component.value[active] = updated
-                output = values[index]
-                if day >= spin_up and output is not None:
-                    output_day = output[day - spin_up]
-                    if carried is None:
-                        if all_active:
-                            output_day[:] = component.value
-                        else:
-                            assert active is not None
-                            output_day[:] = np.where(active, component.value, np.nan)
-                    else:
-                        emitted = carried if active is None else (carried | active)
-                        output_day[:] = np.where(emitted, component.value, np.nan)
-
-        state_gap_days = tuple(
-            component.trailing_gap_days.copy() if np.any(component.started | component.poisoned) else None
-            for component in components
-        )
-        duration_ms = (time.perf_counter() - t0) * 1000.0
-        log.info(
-            "calculation_completed",
-            duration_ms=round(duration_ms, 2),
-            output_shape=next(value.shape for value in values if value is not None),
-            **(memory_metrics or {}),
-        )
-        return values, state_gap_days
-    except Exception as exc:
-        log_calculation_failure(log, exc)
-        raise
-
-
 @overload
 def cffwis(
     temperature_celsius: xr.DataArray,  # NOSONAR (S107) the public API mirrors the per-code helpers
@@ -2021,7 +1800,7 @@ def cffwis(
         return _dc_next(state_slice, temperature_slice, precipitation_slice, day_length_adjustment)
 
     components = (
-        _CodeRecurrence(
+        DailyRecurrence(
             "ffmc",
             ffmc_value,
             ffmc_step,
@@ -2029,10 +1808,10 @@ def cffwis(
             np.ones(internal_spatial_shape, dtype=np.bool_),
             ffmc_trailing_gap_days,
         ),
-        _CodeRecurrence(
+        DailyRecurrence(
             "duff_moisture_code", dmc_value, dmc_step, dmc_weather_valid, latitude_valid, dmc_trailing_gap_days
         ),
-        _CodeRecurrence("drought_code", dc_value, dc_step, dc_weather_valid, latitude_valid, dc_trailing_gap_days),
+        DailyRecurrence("drought_code", dc_value, dc_step, dc_weather_valid, latitude_valid, dc_trailing_gap_days),
     )
     # a code keeps its daily history only when a selected output reads it: the
     # direct name, or a derived index whose formula consumes the series
@@ -2041,7 +1820,7 @@ def cffwis(
         bool(selected & {"dmc", "bui", "fwi", "dsr"}),
         bool(selected & {"dc", "bui", "fwi", "dsr"}),
     )
-    code_values, code_gap_days = _run_cffwis_system(
+    code_values, code_gap_days = run_daily_recurrences(
         components,
         memory_arrays=(temperature, humidity, wind, precipitation),
         spin_up=spin_up,

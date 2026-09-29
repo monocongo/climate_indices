@@ -9,10 +9,10 @@ import numpy as np
 import numpy.typing as npt
 import xarray as xr
 
+from climate_indices._recurrence import _as_float_array
+from climate_indices._units import _convert_temperature_units
 from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.exceptions import DataShapeError, InputTypeError, InvalidArgumentError, wrap_value_error
-from climate_indices.fire._common import _as_float_array
-from climate_indices.fire._units import _convert_temperature_units
 from climate_indices.logging_config import get_logger, log_calculation_failure
 from climate_indices.performance import check_large_array_memory
 from climate_indices.xarray_adapter import build_output_attrs
