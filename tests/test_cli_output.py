@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 import xarray as xr
@@ -37,7 +39,8 @@ def test_atomic_write_cleans_up_the_temporary_file_on_failure(monkeypatch, tmp_p
     target = tmp_path / "out.nc"
     target.write_text("previous")
 
-    def fail(*args, **kwargs):
+    def fail(self, path, **kwargs):
+        Path(path).write_text("partial")
         raise RuntimeError("write failed")
 
     monkeypatch.setattr(xr.DataArray, "to_netcdf", fail)
@@ -46,3 +49,24 @@ def test_atomic_write_cleans_up_the_temporary_file_on_failure(monkeypatch, tmp_p
 
     assert not (tmp_path / "out.nc.tmp").exists()
     assert target.read_text() == "previous"
+
+
+def test_build_index_attrs_drops_the_inputs_own_valid_range() -> None:
+    source = xr.DataArray(
+        np.array([1.0]),
+        dims=("time",),
+        attrs={
+            "units": "mm",
+            "valid_min": 0.0,
+            "valid_max": 500.0,
+            "valid_range": [0.0, 500.0],
+            "actual_range": [0.0, 10.0],
+        },
+    )
+    attrs = _cli_output.build_index_attrs(
+        source, "spi", index_name="SPI", extra={"valid_min": -3.09, "valid_max": 3.09}
+    )
+    assert attrs["valid_min"] == -3.09
+    assert attrs["valid_max"] == 3.09
+    assert "valid_range" not in attrs
+    assert "actual_range" not in attrs

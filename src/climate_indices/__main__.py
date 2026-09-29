@@ -1019,7 +1019,9 @@ def _compute_write_index(request: _IndexRequest) -> tuple[str, str] | None:
 
     # convert data into the appropriate units, if necessary
     # precipitation and PET should be in millimeters, temperature in Celsius
-    monthly_inputs = request.periodicity == compute.Periodicity.monthly
+    # Palmer takes monthly depths regardless of the declared periodicity, so a
+    # per-day rate is rejected for it on the same path as a monthly index
+    monthly_inputs = request.periodicity == compute.Periodicity.monthly or request.index == "palmers"
     _normalize_precipitation_units(dataset, request.var_name_precip, monthly=monthly_inputs)
     _normalize_temperature_units(dataset, request.var_name_temp)
     _normalize_pet_units(dataset, request.var_name_pet, monthly=monthly_inputs)
@@ -1646,14 +1648,10 @@ def _prepare_palmer_inputs(request: _IndexRequest, dataset: xr.Dataset) -> xr.Da
     :param request: the index request being computed
     :param dataset: the opened inputs, converted in place
     :return: the opened available water capacity dataset
-    :raise ValueError: if an input's units are unsupported
+    :raise ValueError: if the available water capacity units are unsupported
     """
     assert request.var_name_precip is not None, _UNVALIDATED_PRECIP
     assert request.var_name_pet is not None, _UNVALIDATED_PET
-
-    if dataset[request.var_name_precip].units.lower() == "mm/dy":
-        # a daily rate isn't the monthly accumulated depth palmer.pdsi() requires
-        raise ValueError("Unsupported precipitation units for palmers: 'mm/dy' is a daily rate, not a monthly total")
 
     for var_name in (request.var_name_precip, request.var_name_pet):
         # out-of-place so integer-valued variables are promoted rather than rejected

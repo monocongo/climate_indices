@@ -74,7 +74,7 @@ def _convert_precipitation_units(
                 f"{argument_name} is a per-day rate, not a monthly depth: {raw_units!r}.",
                 argument_name=argument_name,
                 argument_value=str(raw_units),
-                valid_values="A monthly depth (mm, inch, mm month-1, inch month-1)",
+                valid_values="A monthly depth (mm, inch, mm month-1)",
             )
         if normalized in _PRECIP_UNITS_FLUX:
             data = data * _SECONDS_PER_DAY
