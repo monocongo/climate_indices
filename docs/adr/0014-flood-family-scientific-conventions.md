@@ -17,6 +17,10 @@ decision 3 now specifies the DataArray calibration-start default, shared by the
 CLI, to exclude the standard PE warm-up year. Explicit calibration years and
 NumPy kernel semantics are unchanged.
 
+Amended for [#1147](https://github.com/monocongo/climate_indices/issues/1147):
+decision 4 now records the interpolated-PE convention for chained xarray calls.
+No kernel or API behavior changed.
+
 The flood oracle survey (#1101, `docs/research/flood-oracle-survey.md`) established
 which external oracles for PE, EDI, I_F, and API are actually reproducible, and
 which are gated behind paywalled or undigitized material. It left several
@@ -130,6 +134,33 @@ unreproducible claim of reproduction.
    `year_start_month != 1` groups maxima across the positional year boundary,
    which is the caller's stated convention rather than a conversion the kernel
    performs.
+
+   **Chained xarray calls use interpolated PE on non-leap February 29
+   ([#1147](https://github.com/monocongo/climate_indices/issues/1147)).**
+   `effective_precipitation` computes on the all-leap layout, with February 29
+   rainfall synthesized in non-leap years, then returns Gregorian dates only.
+   `edi` and `flood_index` re-synthesize that day by averaging adjacent
+   **PE** values, per ADR-0004. A rolling kernel does not commute with the
+   interpolation, so the result differs from running the NumPy kernels on PE
+   computed from interpolated rainfall. This is the accepted convention. The
+   Gregorian PE is identical in both chains, and the chains differ only in the
+   synthetic February 29 PE, which reaches results through EDI's February 29
+   calibration and through I_F when a synthetic February 29 is an annual
+   maximum. Measured on synthetic seasonal daily rain (40 cells, 30 years,
+   365- and 30-day windows), the synthetic-day PE differs by 0.7% on average
+   and 8% at most (365-day window); EDI differs only on real February 29s
+   (mean 0.02–0.04, maximum 0.13–0.34); I_F agrees to within 5e-15. With storms
+   multiplied 25-fold across February 26 to March 3 in every year, EDI differs
+   by up to 0.44 and I_F by up to 0.54 (mean 0.01–0.02); this is a contrived upper
+   bound, and none of these figures is a validation against observed data.
+   Carrying the synthetic PE through the chain would need a new return type or
+   a full-size coordinate on the PE array, which the "PE is a reusable
+   intermediate" front door does not justify for an effect confined to the
+   leap-day slot; recomputing PE from rainfall is excluded by that same front
+   door. A caller who needs the exact all-leap chain runs the NumPy kernels on
+   `DailyCalendarPlan.to_all_leap(precipitation)`.
+   `test_flood_chain_interpolates_february_29_pe_in_non_leap_years` pins both
+   the chain and its gap to the all-leap computation.
 5. **Flood-event helpers are out of scope for the initial implementation.**
    Onset, duration, and severity as runs of `I_F >= 0` — the abstract's flood
    start, with severity the running sum of consecutive positive values and

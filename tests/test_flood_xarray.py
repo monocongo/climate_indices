@@ -101,6 +101,54 @@ def test_edi_default_uses_finite_samples_per_calendar_day() -> None:
     np.testing.assert_allclose(actual, plan.to_gregorian(expected.ravel()), equal_nan=True)
 
 
+def test_flood_chain_interpolates_february_29_pe_in_non_leap_years() -> None:
+    """#1147: xarray PE feeds EDI and I_F as Gregorian PE, so non-leap February 29 PE is interpolated.
+
+    The all-leap NumPy chain computes PE from interpolated rainfall instead. A rolling kernel does not
+    commute with that, so the two chains agree everywhere except where the synthetic slot matters:
+    EDI on real February 29s, and I_F when a synthetic February 29 is an annual maximum.
+    """
+    dates = pd.date_range("2000-01-01", "2004-12-31", freq="D")
+    plan = DailyCalendarPlan.from_year_span(2000, 5, len(dates))
+    # Varied rain: with a constant baseline, EDI's per-day standardization hides the interpolation.
+    values = np.random.default_rng(1147).gamma(0.5, 4.0, len(dates))
+    # A storm ending on February 28 makes the synthetic February 29 the true annual PE maximum.
+    for year in range(2001, 2004):
+        values[dates.get_loc(f"{year}-02-28")] = 100 + 10 * (year - 2000)
+    rain = xr.DataArray(values, dims="time", coords={"time": dates}, attrs={"units": "mm"})
+    duration = 30
+
+    def numpy_chain(pe_all_leap: np.ndarray) -> dict[str, np.ndarray]:
+        block = pe_all_leap[:, None, None]
+        edi = flood.edi(block, 2000, 2000, 2004, duration=duration, spatial_time_major=True)
+        index = flood.flood_index(block, 2000, 2001, 2004, year_start_month=1, spatial_time_major=True)
+        return {"edi": plan.to_gregorian(edi[:, 0, 0]), "flood_index": plan.to_gregorian(index[:, 0, 0])}
+
+    pe = flood.effective_precipitation(rain, duration=duration)
+    chain = {
+        "edi": flood.edi(pe, duration=duration).values,
+        "flood_index": flood.flood_index(pe, calibration_year_initial=2001, year_start_month=1).values,
+    }
+
+    # The defined convention: the chain is NumPy run on PE re-interpolated to the all-leap layout.
+    defined = numpy_chain(plan.to_all_leap(pe.values))
+    # The all-leap computation the chain does not reproduce: PE from interpolated rainfall.
+    all_leap_pe = flood.effective_precipitation(
+        plan.to_all_leap(rain.values)[:, None, None], duration=duration, spatial_time_major=True
+    )
+    true_all_leap = numpy_chain(all_leap_pe[:, 0, 0])
+
+    np.testing.assert_allclose(pe.values, plan.to_gregorian(all_leap_pe[:, 0, 0]), equal_nan=True)
+    for name in chain:
+        np.testing.assert_allclose(chain[name], defined[name], equal_nan=True)
+
+    leap_day = np.asarray((dates.month == 2) & (dates.day == 29))
+    edi_gap = ~np.isclose(chain["edi"], true_all_leap["edi"], equal_nan=True)
+    assert edi_gap[leap_day].all()  # the synthetic samples shift the February 29 calibration
+    assert not edi_gap[~leap_day].any()
+    assert not np.allclose(chain["flood_index"], true_all_leap["flood_index"], equal_nan=True)
+
+
 def test_flood_dask_keeps_spatial_chunks_and_requires_full_time_chunk() -> None:
     rain = _rain_grid().chunk({"time": -1, "lat": 1, "lon": 2})
     pe = flood.effective_precipitation(rain, duration=30)
