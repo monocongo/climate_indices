@@ -304,6 +304,14 @@ change states what a user sees, how to detect it, and what to change in
   series and its own `PdiDurationFactors`, like the scPDSI Wells recursion, instead
   of recomputing the Z-index mid-recursion. Default-factor PDSI and scPDSI results are
   unchanged (#1226).
+- **CLI shared-array route accepts either dimension order**: the shared-memory route
+  (SPI, SPEI, percent of normal, Thornthwaite PET, and the Palmer outputs) canonicalizes
+  every time-carrying input to the time-last order its kernels index, so a CF-typical
+  `(time, lat, lon)` grid or `(time, division)` division variable is accepted alongside
+  the time-last order, and precipitation in one order can be paired with a companion in
+  the other. This supersedes the time-last-only acceptance noted above: a time-major
+  input, or a time-major companion beside a time-last precipitation variable, was
+  previously rejected with `Invalid dimensions ...` (#1224, #932).
 
 ## [2.4.0] - 2026-04-05
 
