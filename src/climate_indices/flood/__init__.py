@@ -109,7 +109,9 @@ def edi(
     """Calculate fixed-window EDI from PE (flood potential, not flooding).
 
     DataArray dispatch is beta; omitted years are inferred from daily coordinates.
-    PE must be computed with the same duration and in millimeters.
+    PE must be computed with the same duration and in millimeters. A DataArray's
+    Gregorian PE is interpolated to the all-leap layout, so non-leap February 29
+    PE is the mean of adjacent PE values, not PE of interpolated rainfall (ADR-0014).
     """
     if isinstance(pe, xr.DataArray):
         kwargs: dict[str, Any] = {"duration": duration}
@@ -177,7 +179,9 @@ def flood_index(
     start for longer warm-up or leading gaps. The omitted calibration end is
     the start year of the last complete annual period; the omitted data start
     is the first coordinate year. ``year_start_month`` defines annual periods.
-    At least two complete calibration periods must remain.
+    At least two complete calibration periods must remain. A DataArray's
+    Gregorian PE is interpolated to the all-leap layout, so non-leap February 29
+    PE is the mean of adjacent PE values, not PE of interpolated rainfall (ADR-0014).
     """
     if isinstance(pe, xr.DataArray):
         kwargs: dict[str, Any] = {"year_start_month": year_start_month}

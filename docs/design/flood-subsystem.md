@@ -28,6 +28,12 @@ where the kernel is the expensive step. The cost is that nothing can verify a
 caller's `pe` was produced with the same `duration` passed to `edi()`; that
 dependency is stated in the signature table below and in the docstring.
 
+Chained xarray calls pass Gregorian PE, so `edi()` and `flood_index()` fill a
+non-leap February 29 by averaging adjacent PE values. That differs slightly from
+the all-leap NumPy chain, which computes PE from interpolated rainfall; the
+convention and its measured size are recorded in
+[ADR-0014](../adr/0014-flood-family-scientific-conventions.md) decision 4.
+
 ## Scope and boundary
 
 In scope: indices computed from meteorological and climatological inputs, plus

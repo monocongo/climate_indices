@@ -15,7 +15,11 @@ and nonzero variance are required per cell. Missing PE remains missing.
 Daily PE begins on January 1 in a 366-day all-leap positional calendar.
 Convert Gregorian precipitation to that layout before computing PE;
 `utils.transform_to_366day` or `DailyCalendarPlan.to_all_leap` fills
-non-leap February 29. No hydrological-year start is inferred.
+non-leap February 29. No hydrological-year start is inferred. The xarray
+`flood_index(pe)` receives Gregorian PE and interpolates non-leap February 29
+from adjacent PE values, which is not the PE of interpolated rainfall; see
+[ADR-0014](../adr/0014-flood-family-scientific-conventions.md) decision 4 for
+the convention and its measured size.
 
 The PE kernel is the harmonic double sum of Byun and Wilhite (1999), Eq. (2),
 selected over their Eq. (3) by [ADR-0014](../adr/0014-flood-family-scientific-conventions.md).
