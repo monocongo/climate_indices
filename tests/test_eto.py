@@ -186,6 +186,24 @@ def test_eto_thornthwaite(temps_celsius, latitude_degrees, data_year_start_month
 
 
 # ------------------------------------------------------------------------------
+@pytest.mark.parametrize("shape,spatial", [((24,), False), ((2, 12), False), ((24, 2, 2), True)])
+@pytest.mark.parametrize("read_only", [False, True])
+def test_eto_thornthwaite_preserves_input(shape, spatial, read_only):
+    temps = np.full(shape, 10.0)
+    temps.reshape(-1)[:2] = [-5.0, np.nan]
+    before = temps.copy()
+    if read_only:
+        temps.flags.writeable = False
+
+    result = eto.eto_thornthwaite(temps, 40.0, 2000, spatial_time_major=spatial)
+
+    np.testing.assert_array_equal(temps, before)
+    expected = eto.eto_thornthwaite(np.maximum(before, 0), 40.0, 2000, spatial_time_major=spatial)
+    np.testing.assert_allclose(result, expected, equal_nan=True)
+    assert np.isfinite(result).any()
+
+
+# ------------------------------------------------------------------------------
 @pytest.mark.validation
 @pytest.mark.usefixtures(
     "thornthwaite_literature_monthly_temps_celsius",

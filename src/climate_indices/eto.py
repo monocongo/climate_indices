@@ -287,7 +287,8 @@ def eto_thornthwaite(
         dataset is assumed to start at January of the initial year, and can have
         any length. Both 1-D (months) and 2-D (years, 12) input datasets
         are supported. A time-major spatial block of shape (time, ``*cells``), as
-        declared with ``spatial_time_major``, is also supported.
+        declared with ``spatial_time_major``, is also supported. The input is
+        not modified; negative temperatures are treated as zero internally.
     :param latitude_degrees: latitude of the location, in degrees north (-90..90),
         as a scalar or as an array of per-cell latitudes broadcastable to the trailing
         cell dimensions of a time-major spatial block
@@ -313,11 +314,6 @@ def eto_thornthwaite(
     # at this point we assume that our dataset array has shape (years, 12, *cells) where
     # each row is a year with 12 columns of monthly values (Jan, Feb, ..., Dec)
 
-    # a (time, *cells) block can be a read-only view of the caller's array, and the
-    # negative-value adjustment below writes in place
-    if spatial_block and not values.flags.writeable:
-        values = values.copy()
-
     # convert the latitude from degrees to radians: the 1-D/2-D path takes a scalar,
     # while a spatial block keeps an array of per-cell latitudes
     if spatial_block and isinstance(latitude_degrees, np.ndarray):
@@ -326,12 +322,8 @@ def eto_thornthwaite(
         # float() keeps a non-numeric latitude raising the TypeError it always has
         latitude_radians = math.radians(float(latitude_degrees))
 
-    # adjust negative temperature values to zero, since negative
-    # values aren't allowed (no evaporation below freezing)
-    # TODO this sometimes throws a RuntimeWarning for invalid value,
-    #  perhaps as a result of a NaN, somehow use masking and/or NaN
-    #  pre-check to eliminate the cause of this warning
-    values[values < 0] = 0.0
+    # clamp into a new array so reshaped views never change the caller's input
+    values = np.maximum(values, 0.0)
 
     # mean the monthly temperature values over the year axis, giving us 12 monthly
     # means for the period of record, one set per cell for a spatial block
