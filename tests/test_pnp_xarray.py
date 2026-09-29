@@ -200,6 +200,24 @@ def test_pnp_legacy_calibration_keywords_warn_and_match() -> None:
     np.testing.assert_array_equal(canonical, legacy)
 
 
+def test_typed_pnp_legacy_keywords_warn_exactly_once() -> None:
+    """The shared alias translation warns once, not once per delegation layer."""
+    rng = np.random.default_rng(9)
+    values = rng.gamma(shape=2.0, scale=50.0, size=480)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        percentage_of_normal(
+            values,
+            scale=6,
+            data_start_year=1980,
+            calibration_start_year=1980,
+            calibration_end_year=2019,
+            periodicity=Periodicity.monthly,
+        )
+    deprecations = [warning for warning in caught if issubclass(warning.category, ClimateIndicesDeprecationWarning)]
+    assert len(deprecations) == 1
+
+
 def test_pnp_canonical_calibration_keywords_do_not_warn() -> None:
     """The canonical keywords emit no deprecation warning."""
     rng = np.random.default_rng(8)

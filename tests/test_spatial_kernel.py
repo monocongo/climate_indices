@@ -22,7 +22,7 @@ from climate_indices.exceptions import (
     GoodnessOfFitWarning,
     InvalidArgumentError,
 )
-from climate_indices.xarray_adapter import xarray_adapter
+from climate_indices.xarray_adapter import INFER_TIME_PARAMETERS, xarray_adapter
 
 _CALIBRATION_START = 1981
 _CALIBRATION_END = 2010
@@ -45,6 +45,8 @@ def gridded_monthly_precip() -> xr.DataArray:
 def spatial_spi():
     """SPI adapter with the spatial kernel path enabled (as typed_public_api wires it)."""
     return xarray_adapter(
+        calendar="periodicity",
+        inferred_parameters=INFER_TIME_PARAMETERS,
         cf_metadata=CF_METADATA["spi"],  # type: ignore[arg-type]
         index_display_name="SPI",
         spatial_kernel=True,
@@ -55,6 +57,8 @@ def spatial_spi():
 def per_cell_spi():
     """SPI adapter without the spatial kernel path, i.e. one call per grid cell."""
     return xarray_adapter(
+        calendar="periodicity",
+        inferred_parameters=INFER_TIME_PARAMETERS,
         cf_metadata=CF_METADATA["spi"],  # type: ignore[arg-type]
         index_display_name="SPI",
     )(indices.spi)
@@ -64,6 +68,8 @@ def per_cell_spi():
 def spatial_spei():
     """SPEI adapter with the spatial kernel path enabled."""
     return xarray_adapter(
+        calendar="periodicity",
+        inferred_parameters=INFER_TIME_PARAMETERS,
         cf_metadata=CF_METADATA["spei"],  # type: ignore[arg-type]
         index_display_name="SPEI",
         additional_input_names=["pet_mm"],
@@ -75,6 +81,8 @@ def spatial_spei():
 def per_cell_spei():
     """SPEI adapter without the spatial kernel path."""
     return xarray_adapter(
+        calendar="periodicity",
+        inferred_parameters=INFER_TIME_PARAMETERS,
         cf_metadata=CF_METADATA["spei"],  # type: ignore[arg-type]
         index_display_name="SPEI",
         additional_input_names=["pet_mm"],
@@ -1342,6 +1350,8 @@ class TestSpatialPETKernels:
 def _spatial_adapter(metadata_key: str, kernel, *, spatial_kernel: bool = True):
     """Build the adapter a typed public API entry point wires for an index."""
     return xarray_adapter(
+        calendar="periodicity",
+        inferred_parameters=INFER_TIME_PARAMETERS,
         cf_metadata=CF_METADATA[metadata_key],  # type: ignore[arg-type]
         index_display_name=metadata_key.upper(),
         spatial_kernel=spatial_kernel,
