@@ -12,8 +12,11 @@ implementation, including the undefined zero mass of a step without calibration
 data, and the Consequences name when classic output stays unchanged. The xarray adapter records the mode and correct output bounds in CF metadata;
 the CLI accepts `--zero_handling` and writes the mode and method citation in
 [#1187](https://github.com/monocongo/climate_indices/issues/1187). The
-cross-implementation fixtures and guidance follow in
-[#1188](https://github.com/monocongo/climate_indices/issues/1188). This record
+closed-form and property tests and the guidance landed in
+[#1188](https://github.com/monocongo/climate_indices/issues/1188); the
+cross-implementation fixtures against the R `SEI`/`SCI` packages remain
+outstanding in
+[#1209](https://github.com/monocongo/climate_indices/issues/1209). This record
 is amended as each one lands.
 
 SPI and `indices.standardized_index()` treat zero accumulations as a point mass
@@ -193,13 +196,16 @@ handling on SPEI would get classic output with nothing to say so.
   blanket "classic output is unchanged" acceptance was narrowed to the
   conditions above and covers the changed gamma `p0` denominator, including
   SPEI and Pearson-to-gamma fallback. Surface wiring, unsupported-mode
-  rejection, and the CF attribute/bounds follow in
+  rejection, and the CF attribute/bounds followed in
   [#1187](https://github.com/monocongo/climate_indices/issues/1187), including
   CLI rejection for non-classic SPEI and output metadata for every SPI mode.
-  Cross-implementation fixtures against the SEI R package, docs (including
-  the gamma parameter-reuse guidance in `choosing-parameters.md`), and the
-  `VALIDATION.md` entry follow in
+  The closed-form and property tests, the docs (including the gamma
+  parameter-reuse guidance in `choosing-parameters.md`), and the
+  `VALIDATION.md` entry landed in
   [#1188](https://github.com/monocongo/climate_indices/issues/1188).
+  Cross-implementation fixtures against the SEI R package remain outstanding
+  in
+  [#1209](https://github.com/monocongo/climate_indices/issues/1209).
 - The Zero Handling term joined `src/climate_indices/CONTEXT.md` with the
   NumPy implementation in #1186.
 

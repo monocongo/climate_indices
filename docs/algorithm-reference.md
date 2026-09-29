@@ -47,7 +47,10 @@ The SPI computation follows these steps:
 4. **Cumulative probability transformation**
 
    - Transform fitted values to cumulative probabilities using the distribution's CDF
-   - Account for zero precipitation values in probability calculations
+   - Account for zero precipitation values in probability calculations. A zero
+     accumulation cannot be transformed by the fitted continuous distribution, so it
+     carries the probability mass `p0` and the fitted value is `p = p0 + (1 − p0)·F(x)`;
+     where within that mass a zero is placed is set by `zero_handling` (see below).
 
 5. **Inverse normal transformation**
 
@@ -63,6 +66,27 @@ The SPI computation follows these steps:
    - Constrain final SPI values to [-3.09, 3.09] on the default
      `output_scale="normal"` only
    - This range represents probabilities from 0.001 to 0.999
+
+### Zero handling
+
+`spi()` and `standardized_index()` take a `zero_handling` argument that decides where
+within the zero mass a zero accumulation scores (ADR-0015). Normal scale:
+
+| Value | A zero scores | Property |
+| --- | --- | --- |
+| `"classic"` (default) | `Φ⁻¹(p0)` | The top of the zero mass; NOAA/NCEI and SPEIbase convention |
+| `"center_of_mass"` | `Φ⁻¹(p0 / 2)` | Ideal probability-scale mean of 1/2 (Stagge et al., 2015) |
+| `"mean_zero"` | `−φ(Φ⁻¹(p0)) / p0` | Ideal normal-scale mean of 0; the conditional mean `E[Z | Z < Φ⁻¹(p0)]` (Allen & Otero, 2024) |
+
+`p0` is the zero fraction of the calibration period's non-missing values. Only the
+zero positions move: a value with a positive accumulation keeps its classic
+transform, and for Pearson Type III a trace value below 0.0005 shares a zero's
+position where `p0 > 0`. On `output_scale="probability"` and `"bounded"` both
+non-classic modes place a zero at the centre of the mass, `p0 / 2`, mapped to the
+requested scale. A mode applies only where `0 < p0 < 1`: where the calibration
+period holds no zero or is entirely zero, every mode keeps the classic result.
+SPEI is excluded, because its `P − PET` series is offset before fitting and has no
+physical zero mass.
 
 ## SPEI computation
 
