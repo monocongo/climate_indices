@@ -652,6 +652,41 @@ def _pearson_parameters_spatial(
     )
 
 
+def _calibration_block(
+    values: np.ndarray,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
+) -> tuple[np.ndarray, int]:
+    """
+    Fold an input into (years, time_steps, ...) and slice out its calibration years.
+
+    A three-or-more-dimensional input is read as an already folded time-major spatial
+    block. The calibration data quality is checked, and warnings are emitted, here.
+
+    :return: the calibration values and the number of time steps per year
+    """
+    if getattr(values, "ndim", 0) > 2:
+        # a folded spatial block carries its periods along axis 1 already
+        values = _validate_array(values, periodicity)
+        time_steps_per_year = int(values.shape[1])
+    else:
+        values = reshape_values(values, periodicity)
+        time_steps_per_year = validate_values_shape(values)
+    data_end_year = data_start_year + values.shape[0]
+    calibration_start_year, calibration_end_year = adjust_calibration_years(
+        data_start_year, data_end_year, calibration_start_year, calibration_end_year
+    )
+    calibration_begin_index = calibration_start_year - data_start_year
+    calibration_end_index = (calibration_end_year - data_start_year) + 1
+    calibration_values = values[calibration_begin_index:calibration_end_index, ...]
+
+    # check calibration data quality and emit warnings if needed
+    _check_calibration_data_quality(calibration_values, calibration_start_year, calibration_end_year)
+    return calibration_values, time_steps_per_year
+
+
 def pearson_parameters(
     values: np.ndarray,
     data_start_year: int,
@@ -695,23 +730,9 @@ def pearson_parameters(
     )
     log.info("distribution_fitting_started")
 
-    if getattr(values, "ndim", 0) > 2:
-        # a folded spatial block carries its periods along axis 1 already
-        values = _validate_array(values, periodicity)
-        time_steps_per_year = int(values.shape[1])
-    else:
-        values = reshape_values(values, periodicity)
-        time_steps_per_year = validate_values_shape(values)
-    data_end_year = data_start_year + values.shape[0]
-    calibration_start_year, calibration_end_year = adjust_calibration_years(
-        data_start_year, data_end_year, calibration_start_year, calibration_end_year
+    calibration_values, time_steps_per_year = _calibration_block(
+        values, data_start_year, calibration_start_year, calibration_end_year, periodicity
     )
-    calibration_begin_index = calibration_start_year - data_start_year
-    calibration_end_index = (calibration_end_year - data_start_year) + 1
-    calibration_values = values[calibration_begin_index:calibration_end_index, ...]
-
-    # check calibration data quality and emit warnings if needed
-    _check_calibration_data_quality(calibration_values, calibration_start_year, calibration_end_year)
 
     if calibration_values.ndim > 2:
         (
@@ -948,29 +969,20 @@ def _validate_pearson_parameter_cells(
             )
 
 
-def _prepare_pearson_spatial_parameters(
-    values: np.ndarray,
-    probabilities_of_zero: np.ndarray | None,
-    locs: np.ndarray | None,
-    scales: np.ndarray | None,
-    skews: np.ndarray | None,
-) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None, np.ndarray | None]:
+def _prepare_spatial_parameters(
+    values: np.ndarray, named_parameters: tuple[tuple[str, np.ndarray | None], ...]
+) -> tuple[np.ndarray | None, ...]:
     """
-    Shape pre-computed Pearson parameters for a spatial block, or reject them.
+    Shape pre-computed fitting parameters for a spatial block, or reject them.
 
     A period-only parameter array is reshaped so that it broadcasts along the
     period axis instead of aligning with the trailing cell axes. A parameter
     array carrying cell dimensions must match the block's own cell axes.
 
     :param values: the folded spatial block, shape (years, time_steps, *cells)
-    :return: the four parameters, each shaped for the block or None
+    :param named_parameters: (name, parameter) pairs, each parameter possibly None
+    :return: the parameters in order, each shaped for the block or None
     """
-    named_parameters = (
-        ("prob_zero", probabilities_of_zero),
-        ("loc", locs),
-        ("scale", scales),
-        ("skew", skews),
-    )
     _validate_pearson_parameter_cells(values, named_parameters)
     cells = values.shape[2:]
     prepared: list[np.ndarray | None] = []
@@ -982,7 +994,21 @@ def _prepare_pearson_spatial_parameters(
         if parameter.ndim == 1:
             parameter = parameter.reshape((1, parameter.shape[0], *([1] * len(cells))))
         prepared.append(parameter)
-    return prepared[0], prepared[1], prepared[2], prepared[3]
+    return tuple(prepared)
+
+
+def _prepare_pearson_spatial_parameters(
+    values: np.ndarray,
+    probabilities_of_zero: np.ndarray | None,
+    locs: np.ndarray | None,
+    scales: np.ndarray | None,
+    skews: np.ndarray | None,
+) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None, np.ndarray | None]:
+    """Shape pre-computed Pearson parameters for a spatial block, or reject them."""
+    prob_zero, loc, scale, skew = _prepare_spatial_parameters(
+        values, (("prob_zero", probabilities_of_zero), ("loc", locs), ("scale", scales), ("skew", skews))
+    )
+    return prob_zero, loc, scale, skew
 
 
 def transform_fitted_pearson(
@@ -2191,22 +2217,9 @@ def loglogistic_parameters(
     )
     log.info("distribution_fitting_started")
 
-    if getattr(values, "ndim", 0) > 2:
-        # a folded spatial block carries its periods along axis 1 already
-        values = _validate_array(values, periodicity)
-        time_steps_per_year = int(values.shape[1])
-    else:
-        values = reshape_values(values, periodicity)
-        time_steps_per_year = validate_values_shape(values)
-    data_end_year = data_start_year + values.shape[0]
-    calibration_start_year, calibration_end_year = adjust_calibration_years(
-        data_start_year, data_end_year, calibration_start_year, calibration_end_year
+    calibration_values, time_steps_per_year = _calibration_block(
+        values, data_start_year, calibration_start_year, calibration_end_year, periodicity
     )
-    calibration_begin_index = calibration_start_year - data_start_year
-    calibration_end_index = (calibration_end_year - data_start_year) + 1
-    calibration_values = values[calibration_begin_index:calibration_end_index, ...]
-
-    _check_calibration_data_quality(calibration_values, calibration_start_year, calibration_end_year)
 
     if calibration_values.ndim > 2:
         locs, scales, shapes, failed_fitting_count = _loglogistic_parameters_spatial(calibration_values)
@@ -2253,33 +2266,6 @@ def _loglogistic_parameters_spatial(
     locs, scales, shapes, valid = lmoments.fit_glo_spatial(calibration_values)
     failed_fitting_count = int(np.count_nonzero(~valid))
     return locs, scales, shapes, failed_fitting_count
-
-
-def _prepare_loglogistic_spatial_parameters(
-    values: np.ndarray,
-    locs: np.ndarray | None,
-    scales: np.ndarray | None,
-    shapes: np.ndarray | None,
-) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None]:
-    """Shape pre-computed GLO parameters for a spatial block, or reject them.
-
-    A period-only parameter array is reshaped so that it broadcasts along the period
-    axis instead of aligning with the trailing cell axes; one carrying cell dimensions
-    must match the block's own cell axes.
-    """
-    named_parameters = (("loc", locs), ("scale", scales), ("shape", shapes))
-    _validate_pearson_parameter_cells(values, named_parameters)
-    cells = values.shape[2:]
-    prepared: list[np.ndarray | None] = []
-    for _, parameter in named_parameters:
-        if parameter is None:
-            prepared.append(None)
-            continue
-        parameter = np.asarray(parameter)
-        if parameter.ndim == 1:
-            parameter = parameter.reshape((1, parameter.shape[0], *([1] * len(cells))))
-        prepared.append(parameter)
-    return prepared[0], prepared[1], prepared[2]
 
 
 def _loglogistic_fit(
@@ -2392,7 +2378,9 @@ def transform_fitted_loglogistic(
     values = _validate_array(values, periodicity)
 
     if values.ndim > 2:
-        locs, scales, shapes = _prepare_loglogistic_spatial_parameters(values, locs, scales, shapes)
+        locs, scales, shapes = _prepare_spatial_parameters(
+            values, (("loc", locs), ("scale", scales), ("shape", shapes))
+        )
 
     # compute the GLO fitting values if none were provided
     if all(parameter is None for parameter in (locs, scales, shapes)):
