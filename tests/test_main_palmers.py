@@ -275,7 +275,10 @@ class TestPalmersWorker:
         """An oversized copied chunk must not reach any of the five output writers."""
         n_time = 24
         shape = (1, n_time)
-        shared_arrays = {key: _make_shared_array(np.zeros(n_time), shape) for key, _, _ in cli_main._PALMER_OUTPUTS}
+        shared_arrays = {
+            key: _make_shared_array(np.zeros(n_time), shape)
+            for key, _var_name, _cf_key, _index_name in cli_main._PALMER_OUTPUTS
+        }
         monkeypatch.setattr(cli_main, "_global_shared_arrays", shared_arrays)
         request = cli_main._IndexRequest(
             index="palmers",
@@ -283,10 +286,11 @@ class TestPalmersWorker:
             input_type=DatasetLayout.DIVISIONS,
             periodicity=compute.Periodicity.monthly,
             chunksizes="input",
+            var_name_precip="precip",
         )
         context = cli_main._ComputeContext(
             request=request,
-            dataset=xr.Dataset(),
+            dataset=xr.Dataset({"precip": (("division",), np.zeros(1))}),
             output_dims=("division", "time"),
             output_shape=shape,
             output_encodings={"chunksizes": (1, 100)},
@@ -297,7 +301,7 @@ class TestPalmersWorker:
         cli_main._write_palmer_outputs(context)
 
         assert caplog.messages.count("Trimming copied input chunksizes (1, 100) to the output shape (1, 24)") == 1
-        for _, var_name, _ in cli_main._PALMER_OUTPUTS:
+        for _key, var_name, _cf_key, _index_name in cli_main._PALMER_OUTPUTS:
             with xr.open_dataset(tmp_path / f"out_{var_name}.nc", engine="h5netcdf") as written:
                 assert written[var_name].encoding["chunksizes"] == shape
 

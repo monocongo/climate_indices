@@ -110,16 +110,21 @@ _ZERO_HANDLING_REFERENCES = {
 }
 
 
-def spi_output_attributes(zero_handling: str, output_scale: str = "normal") -> dict[str, str | float]:
-    """Describe SPI's zero placement and output range across its file surfaces."""
+def standardized_output_bounds(output_scale: str = "normal") -> dict[str, float]:
+    """The valid range a standardized index output carries at ``output_scale``."""
     bounds = {"normal": (-3.09, 3.09), "probability": (0.0, 1.0), "bounded": (-1.0, 1.0)}
     if output_scale not in bounds:
         raise ValueError(f"Invalid output_scale argument: {output_scale!r}. Supported values: {', '.join(bounds)}.")
     valid_min, valid_max = bounds[output_scale]
+    return {"valid_min": valid_min, "valid_max": valid_max}
+
+
+def spi_output_attributes(zero_handling: str, output_scale: str = "normal") -> dict[str, str | float]:
+    """Describe SPI's zero placement and output range across its file surfaces."""
     references = _SPI_REFERENCES
     if zero_handling in _ZERO_HANDLING_REFERENCES:
         references += "; " + _ZERO_HANDLING_REFERENCES[zero_handling]
-    return {"zero_handling": zero_handling, "references": references, "valid_min": valid_min, "valid_max": valid_max}
+    return {"zero_handling": zero_handling, "references": references, **standardized_output_bounds(output_scale)}
 
 
 _SPEI_REFERENCES = (
@@ -287,6 +292,20 @@ CF_METADATA: dict[str, CFAttributes] = {
             "Palmer, W. C. (1965). "
             "Meteorological Drought. Research Paper No. 45. "
             "U.S. Department of Commerce, Weather Bureau, Washington, D.C."
+        ),
+    },
+    "scpdsi": {
+        "long_name": "Self-calibrated Palmer Drought Severity Index",
+        "units": "dimensionless",
+        "description": (
+            "PDSI with duration factors and the K-prime climate characteristic "
+            "fitted per location instead of the fixed national constants."
+        ),
+        "references": (
+            "Wells, N., Goddard, S., & Hayes, M. J. (2004). "
+            "A Self-Calibrating Palmer Drought Severity Index. "
+            "Journal of Climate, 17(12), 2335-2351. "
+            "https://doi.org/10.1175/1520-0442(2004)017<2335:ASPDSI>2.0.CO;2"
         ),
     },
     # Flood-family metadata precedes the NumPy kernels and xarray adapters (#1103).

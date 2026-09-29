@@ -19,6 +19,8 @@ import xarray as xr
 
 from climate_indices import compute, indices, palmer, utils
 from climate_indices.__main__ import _SPI_DISTRIBUTIONS, main
+from climate_indices.cf_metadata_registry import CF_METADATA
+from climate_indices.exceptions import InvalidArgumentError
 
 # the fixture data starts in January of this year (see tests/conftest.py)
 _DATA_START_YEAR = 1895
@@ -433,7 +435,13 @@ def test_spei_with_temperature_input_computes_and_consumes_pet(tmp_path, precips
         periodicity=compute.Periodicity.monthly,
     )
     with xr.open_dataset(tmp_path / "spei_temp_only_spei_gamma_06.nc") as dataset:
-        np.testing.assert_allclose(dataset["spei_gamma_06"].values[0], expected, equal_nan=True)
+        written = dataset["spei_gamma_06"]
+        np.testing.assert_allclose(written.values[0], expected, equal_nan=True)
+        entry = CF_METADATA["spei"]
+        assert written.attrs["long_name"] == entry["long_name"]
+        assert written.attrs["units"] == entry["units"]
+        assert written.attrs["valid_min"] == -3.09
+        assert written.attrs["valid_max"] == 3.09
 
 
 def _length_in(values_inches, units):
@@ -493,6 +501,7 @@ def test_palmers_writes_all_five_outputs_matching_in_process_computation(
         _CALIBRATION_START_YEAR,
         _CALIBRATION_END_YEAR,
     )[0]
+    registry_keys = {"pdsi": "pdsi", "phdi": "phdi", "pmdi": "pmdi", "zindex": "z_index"}
     for variable_name, expected in [
         ("pdsi", expected_pdsi),
         ("phdi", expected_phdi),
@@ -501,12 +510,23 @@ def test_palmers_writes_all_five_outputs_matching_in_process_computation(
         ("scpdsi", expected_scpdsi),
     ]:
         with xr.open_dataset(tmp_path / f"palmers_{variable_name}.nc") as dataset:
-            np.testing.assert_allclose(dataset[variable_name].values[0], expected, equal_nan=True)
+            written = dataset[variable_name]
+            np.testing.assert_allclose(written.values[0], expected, equal_nan=True)
+            if variable_name in registry_keys:
+                entry = CF_METADATA[registry_keys[variable_name]]
+                assert written.attrs["long_name"] == entry["long_name"]
+                assert written.attrs["units"] == entry["units"]
+                assert written.attrs["references"] == entry["references"]
 
     # scPDSI has no hard valid range, so it is written without valid_min/valid_max
     with xr.open_dataset(tmp_path / "palmers_scpdsi.nc") as dataset:
         attrs = dataset["scpdsi"].attrs
-        assert attrs["long_name"] == "Self-calibrated Palmer Drought Severity Index"
+        entry = CF_METADATA["scpdsi"]
+        assert attrs["long_name"] == entry["long_name"]
+        assert attrs["units"] == entry["units"]
+        assert attrs["references"] == entry["references"]
+        assert attrs["climate_indices_version"]
+        assert "scPDSI" in attrs["history"]
         assert "valid_min" not in attrs
         assert "valid_max" not in attrs
 
@@ -551,12 +571,19 @@ def test_palmers_rejects_an_awc_variable_with_unsupported_units(
     assert not list(tmp_path.glob("palmers_*"))
 
 
-def test_palmers_rejects_a_precipitation_rate_label(tmp_path, precips_mm_monthly, pet_thornthwaite_mm, palmer_awcs):
+@pytest.mark.parametrize("rate_units", ["mm/day", "mm day-1", "kg m-2 s-1"])
+@pytest.mark.parametrize("rate_variable", ["precip", "pet"])
+def test_palmers_rejects_a_daily_rate_label(
+    tmp_path, precips_mm_monthly, pet_thornthwaite_mm, palmer_awcs, rate_variable, rate_units
+):
+    """A per-day rate is not the monthly depth Palmer takes, whichever input carries it."""
     precip_path = tmp_path / "precip.nc"
     pet_path = tmp_path / "pet.nc"
     awc_path = tmp_path / "awc.nc"
-    _write_divisions(precip_path, precips_mm_monthly.reshape(-1), units="mm/dy")
-    _write_divisions(pet_path, pet_thornthwaite_mm.reshape(-1), var_name="pet")
+    precip_units = rate_units if rate_variable == "precip" else "mm"
+    pet_units = rate_units if rate_variable == "pet" else "mm"
+    _write_divisions(precip_path, precips_mm_monthly.reshape(-1), units=precip_units)
+    _write_divisions(pet_path, pet_thornthwaite_mm.reshape(-1), var_name="pet", units=pet_units)
     xr.Dataset(
         {"awc": ("division", np.array([palmer_awcs[_DIVISION]]), {"units": "inches"})},
         coords={"division": [_DIVISION]},
@@ -574,7 +601,7 @@ def test_palmers_rejects_a_precipitation_rate_label(tmp_path, precips_mm_monthly
         "awc",
     ]
 
-    with pytest.raises(ValueError, match="mm/dy"):
+    with pytest.raises(InvalidArgumentError, match="per-day rate"):
         main(arguments)
 
     assert not list(tmp_path.glob("palmers_*"))
@@ -607,7 +634,14 @@ def test_output_carries_cf_metadata_and_coordinates(tmp_path, precips_mm_monthly
         variable = dataset["spi_gamma_06"]
         assert list(dataset.data_vars) == ["spi_gamma_06"]
         assert variable.dims == ("division", "time")
-        assert variable.attrs["long_name"] == "Standardized Precipitation Index (Gamma distribution), 6-month"
+        entry = CF_METADATA["spi"]
+        assert variable.attrs["long_name"] == entry["long_name"]
+        assert variable.attrs["units"] == entry["units"]
+        assert variable.attrs["references"].startswith(entry["references"])
+        assert variable.attrs["climate_indices_version"]
+        assert "SPI" in variable.attrs["history"]
+        assert variable.attrs["scale"] == 6
+        assert variable.attrs["distribution"] == "gamma"
         assert variable.attrs["valid_min"] == -3.09
         assert variable.attrs["valid_max"] == 3.09
         assert variable.attrs["zero_handling"] == "classic"
@@ -632,7 +666,10 @@ def test_pnp_matches_in_process_computation(tmp_path, precips_mm_monthly):
         periodicity=compute.Periodicity.monthly,
     )
     with xr.open_dataset(tmp_path / "pnp_timeseries_pnp_06.nc") as dataset:
-        np.testing.assert_allclose(dataset["pnp_06"].values, expected, equal_nan=True)
+        written = dataset["pnp_06"]
+        np.testing.assert_allclose(written.values, expected, equal_nan=True)
+        assert written.attrs["long_name"] == CF_METADATA["pnp"]["long_name"]
+        assert written.attrs["units"] == CF_METADATA["pnp"]["units"]
 
 
 def test_all_runs_each_index_into_its_own_output(tmp_path, precips_mm_monthly, pet_thornthwaite_mm, palmer_awcs):

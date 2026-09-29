@@ -1,4 +1,4 @@
-"""CF units-attribute handling shared by the fire and flood xarray adapters."""
+"""CF units-attribute handling shared by the xarray adapters and the CLI."""
 
 from __future__ import annotations
 
@@ -9,10 +9,12 @@ import xarray as xr
 
 from climate_indices.exceptions import CoordinateValidationError, InvalidArgumentError
 
-# CF units-attribute spellings this module recognizes, matching the precedent
-# list in __main__.py's legacy CLI unit handling, plus the CF flux unit the
-# NetCDF/Zarr ecosystem commonly uses for precipitation rate.
+# CF units-attribute spellings this module recognizes; every consumer accepts
+# the same list, plus the CF flux unit the NetCDF/Zarr ecosystem commonly uses
+# for precipitation rate.
 _PRECIP_UNITS_MM = frozenset({"mm", "millimeters", "millimeter"})
+# a per-month depth is the monthly-periodicity spelling of the millimeter total
+_PRECIP_UNITS_MM_PER_MONTH = frozenset({"mm/month", "mm/mo", "mm month-1", "mm mo-1"})
 _PRECIP_UNITS_MM_PER_DAY = frozenset({"mm/dy", "mm day-1", "mm/day"})
 _PRECIP_UNITS_MM_PER_YEAR = frozenset({"mm/year", "mm/yr", "mm year-1", "mm yr-1"})
 _PRECIP_UNITS_INCH = frozenset({"inch", "inches"})
@@ -34,6 +36,7 @@ def _convert_precipitation_units(
     *,
     argument_name: str = "precipitation.attrs['units']",
     annual: bool = False,
+    monthly: bool = False,
 ) -> xr.DataArray:
     """Convert a precipitation DataArray to ``target`` from its CF ``units`` attribute.
 
@@ -42,8 +45,10 @@ def _convert_precipitation_units(
     unrecognized attribute raises ``InvalidArgumentError`` rather than guessing.
     ``annual=True`` declares a mean annual climatology: per-day and flux rate
     units are rejected, and per-year spellings are accepted in addition to the
-    annual totals (``mm``, ``inch``). Conversion is xarray arithmetic, so
-    Dask-backed input stays lazy.
+    annual totals (``mm``, ``inch``). ``monthly=True`` declares a monthly depth:
+    per-day and flux rate units are rejected (a rate is not a depth) and per-month
+    spellings are accepted. Conversion is xarray arithmetic, so Dask-backed input
+    stays lazy.
     """
     raw_units = data.attrs.get("units")
     if raw_units is not None and not isinstance(raw_units, str):
@@ -64,23 +69,34 @@ def _convert_precipitation_units(
                 argument_value=str(raw_units),
                 valid_values="An annual total (mm, inch) or a per-year rate (mm year-1, inch year-1)",
             )
+        if monthly:
+            raise InvalidArgumentError(
+                f"{argument_name} is a per-day rate, not a monthly depth: {raw_units!r}.",
+                argument_name=argument_name,
+                argument_value=str(raw_units),
+                valid_values="A monthly depth (mm, inch, mm month-1)",
+            )
         if normalized in _PRECIP_UNITS_FLUX:
             data = data * _SECONDS_PER_DAY
         source: Literal["mm", "inch"] = "mm"
     elif normalized in _PRECIP_UNITS_MM or (annual and normalized in _PRECIP_UNITS_MM_PER_YEAR):
         source = "mm"
+    elif monthly and normalized in _PRECIP_UNITS_MM_PER_MONTH:
+        source = "mm"
     elif normalized in _PRECIP_UNITS_INCH or (annual and normalized in _PRECIP_UNITS_INCH_PER_YEAR):
         source = "inch"
     else:
+        if annual:
+            valid_values = "An annual total (mm, inch) or a per-year rate (mm year-1, inch year-1)"
+        elif monthly:
+            valid_values = "mm / mm month-1, inch(es)"
+        else:
+            valid_values = "mm / mm day-1, inch(es), or kg m-2 s-1"
         raise InvalidArgumentError(
             f"Unsupported precipitation units attribute: {raw_units!r}.",
             argument_name=argument_name,
             argument_value=str(raw_units),
-            valid_values=(
-                "An annual total (mm, inch) or a per-year rate (mm year-1, inch year-1)"
-                if annual
-                else "mm / mm day-1, inch(es), or kg m-2 s-1"
-            ),
+            valid_values=valid_values,
         )
     if source == target:
         return data
