@@ -19,7 +19,7 @@ from unittest import mock
 import numpy as np
 import pytest
 
-from climate_indices import compute, indices, palmer
+from climate_indices import _recurrence, compute, fire, indices, palmer
 from climate_indices.eto import eto_hargreaves
 from climate_indices.exceptions import DataShapeError, InvalidArgumentError
 from climate_indices.logging_config import (
@@ -885,3 +885,47 @@ class TestFailureLifecycle:
             assert "values" not in event
             assert "precips_mm" not in event
             assert "temperature_celsius" not in event
+
+
+class TestDailyRecurrenceLifecycle:
+    """The shared daily runtime reports the caller's API shape and guards caller finalization."""
+
+    def test_kbdi_completion_reports_the_returned_shape(self) -> None:
+        """A one-dimensional KBDI series logs (days,), not the internal (days, 1)."""
+        stream = _capture_stream(log_level="INFO")
+        result = fire.kbdi(np.zeros(30), np.full(30, 25.0), 1000.0)
+
+        completed = _events_named(stream, "calculation_completed")
+        assert len(completed) == 1
+        assert result.shape == (30,)
+        assert tuple(completed[0]["output_shape"]) == result.shape
+
+    def test_finalize_failure_emits_failed_not_completed(self) -> None:
+        """A failure in the caller's finalize step cannot leave a success event behind."""
+        stream = _capture_stream(log_level="INFO")
+        component = _recurrence.DailyRecurrence(
+            "probe",
+            np.zeros(1),
+            lambda day, active: np.zeros(1),
+            np.ones((3, 1), dtype=np.bool_),
+            np.ones(1, dtype=np.bool_),
+            np.full(1, -1, dtype=np.int64),
+        )
+
+        def finalize(values: object, gaps: object) -> object:
+            raise RuntimeError("finalize boom")
+
+        with pytest.raises(RuntimeError, match="finalize boom"):
+            _recurrence.run_daily_recurrences(
+                (component,),
+                memory_arrays=(),
+                spin_up=0,
+                nan_policy="propagate",
+                max_gap_days=0,
+                system_name="probe",
+                fast_path=False,
+                finalize=finalize,
+            )
+
+        assert len(_events_named(stream, "calculation_completed")) == 0
+        assert len(_events_named(stream, "calculation_failed")) == 1

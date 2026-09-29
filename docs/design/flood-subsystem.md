@@ -91,7 +91,7 @@ inputs are named for their physical quantity as the fire package does
 `eddi`. The family declares **no** `units=` parameter: none of these indices has
 a unit-dependent constant or threshold, PE and API are millimeters by
 construction, and EDI and I_F are dimensionless and scale-invariant. Xarray
-adapters convert at their boundary, as `fire/_units.py` does. There is no
+adapters convert at their boundary, as `climate_indices/_units.py` does. There is no
 `periodicity=` parameter — these indices are daily only, under the calendar
 contract of [ADR-0004](../adr/0004-xarray-calendar-semantics.md). The
 `duration` arguments default to the 365-day window

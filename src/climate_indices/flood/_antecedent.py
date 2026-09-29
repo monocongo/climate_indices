@@ -9,8 +9,14 @@ import numpy as np
 import numpy.typing as npt
 import xarray as xr
 
+from climate_indices._recurrence import (
+    DailyRecurrence,
+    _static_spatial_array,
+    _validate_recurrence_options,
+    _validated_trailing_gaps,
+    run_daily_recurrences,
+)
 from climate_indices.exceptions import InvalidArgumentError
-from climate_indices.fire._common import _apply_gap_policy, _static_spatial_array, _validate_recurrence_options
 from climate_indices.flood._common import _validated_daily
 
 
@@ -54,20 +60,7 @@ def _validate_decay(k: object) -> None:
 
 def _validated_gaps(trailing_gap_days: npt.NDArray[np.int64], internal_shape: tuple[int, ...]) -> npt.NDArray[np.int64]:
     """Return trailing gap counts as int64 after checking they are integers >= -1."""
-    raw_gaps = _static_spatial_array(trailing_gap_days, internal_shape, "initial_state.trailing_gap_days")
-    # int64 max is rejected on purpose: the gap counter increments each missing day and would wrap negative
-    if (
-        np.any(~np.isfinite(raw_gaps))
-        or np.any(raw_gaps < -1)
-        or np.any(raw_gaps >= float(np.iinfo(np.int64).max))
-        or np.any(raw_gaps != np.floor(raw_gaps))
-    ):
-        raise InvalidArgumentError(
-            "initial_state.trailing_gap_days must be integers >= -1 and below 2**63 "
-            "(float64 precision; values near the int64 maximum are rejected so the day counter cannot overflow).",
-            argument_name="initial_state.trailing_gap_days",
-        )
-    return raw_gaps.astype(np.int64)
+    return _validated_trailing_gaps(trailing_gap_days, internal_shape, "initial_state.trailing_gap_days")
 
 
 def _resume_state(
@@ -148,32 +141,43 @@ def antecedent_precipitation_index(
     internal_shape = spatial_shape or (1,)
     series = series.reshape(series.shape[0], *internal_shape)
     current, gaps = _resume_state(initial_state, internal_shape)
-    started = gaps >= 0
-    poisoned = np.isnan(current)
-    result = np.full((max(series.shape[0] - spin_up, 0), *internal_shape), np.nan, dtype=np.float64)
-    for day, rain in enumerate(series):
-        active = _apply_gap_policy(
-            current,
-            np.isfinite(rain),
-            np.ones(internal_shape, dtype=bool),
-            started,
-            poisoned,
-            gaps,
-            nan_policy=nan_policy,
-            max_gap_days=max_gap_days,
-        )
-        current[active] = k * current[active] + rain[active]
-        if day >= spin_up:
-            result[day - spin_up] = np.where(active, current, np.nan)
+
+    def step(day: int, active: npt.NDArray[np.bool_] | None = None) -> npt.NDArray[np.float64]:
+        """Advance the API one day: decay the carried value and add the day's rain."""
+        rain = series[day] if active is None else series[day][active]
+        state_slice = current if active is None else current[active]
+        updated: npt.NDArray[np.float64] = k * state_slice + rain
+        return updated
+
+    component = DailyRecurrence(
+        "antecedent_precipitation_index",
+        current,
+        step,
+        np.isfinite(series),
+        np.ones(internal_shape, dtype=np.bool_),
+        gaps,
+    )
+    values_array, gap_days = run_daily_recurrences(
+        (component,),
+        memory_arrays=(series,),
+        spin_up=spin_up,
+        nan_policy=nan_policy,
+        max_gap_days=max_gap_days,
+        system_name="antecedent_precipitation_index",
+        fast_path=False,
+    )
+    result = values_array[0]
+    assert result is not None
     output = result.reshape((result.shape[0], *spatial_shape))
     if values.ndim == 2 and spin_up == 0:
         output = output.reshape(values.shape)
     if not return_state:
         return output
+    state_gap_array = gap_days[0]
     return APIResult(
         values=output,
         state=APIState(
             api=current.reshape(spatial_shape).copy(),
-            trailing_gap_days=gaps.reshape(spatial_shape).copy() if np.any(started | poisoned) else None,
+            trailing_gap_days=None if state_gap_array is None else state_gap_array.reshape(spatial_shape).copy(),
         ),
     )

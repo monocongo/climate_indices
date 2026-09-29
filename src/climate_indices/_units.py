@@ -1,4 +1,4 @@
-"""CF units-attribute handling shared by the fire xarray adapters."""
+"""CF units-attribute handling shared by the fire and flood xarray adapters."""
 
 from __future__ import annotations
 

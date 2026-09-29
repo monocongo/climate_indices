@@ -21,7 +21,7 @@ from unittest import mock
 import numpy as np
 import pytest
 
-from climate_indices import fire
+from climate_indices import _recurrence, fire
 from climate_indices.exceptions import DataShapeError, InputTypeError, InvalidArgumentError
 
 # the weather series behind every reference vector, with distinct dry, rainy,
@@ -697,27 +697,6 @@ def test_invalid_trailing_gap_days_raise(runner: object, state_type: type, value
         runner(weather, initial_state=state)
 
 
-@pytest.mark.parametrize("runner", _RUNNERS)
-def test_missing_day_policy_routes_through_the_shared_helper(
-    runner: object,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """ADR-0007: the day policy has one implementation, in fire._common."""
-    calls: list[tuple[object, ...]] = []
-    shared = fire._cffwis._apply_gap_policy
-
-    def recording_helper(*args: object, **kwargs: object) -> object:
-        calls.append(args)
-        return shared(*args, **kwargs)
-
-    monkeypatch.setattr(fire._cffwis, "_apply_gap_policy", recording_helper)
-
-    weather = _with_missing(_series(5), 1, 3)
-    runner(weather)
-
-    assert len(calls) == weather.temperature.shape[0]
-
-
 # ------------------------------------------------------------------------------
 # missing days: propagate
 
@@ -1019,8 +998,8 @@ def test_output_allocation_failure_emits_lifecycle_events(monkeypatch: pytest.Mo
             raise MemoryError("simulated output allocation failure")
         return real_full(*args, **kwargs)  # type: ignore[call-overload]
 
-    monkeypatch.setattr(fire._cffwis.np, "full", fail_output_allocation)
-    with mock.patch.object(fire._cffwis, "_logger") as mocked_logger:
+    monkeypatch.setattr(_recurrence.np, "full", fail_output_allocation)
+    with mock.patch.object(_recurrence, "_logger") as mocked_logger:
         with pytest.raises(MemoryError):
             _run_ffmc(weather)
     bound = mocked_logger.bind.return_value
