@@ -1195,6 +1195,19 @@ def percentage_of_normal(
         # calendar months for monthly data (12 periods), or days for daily data (366)
         period_length = periodicity.period_length
 
+        # a calibration period the record does not cover is an error, not clamped. The
+        # record counts a trailing partial period as a year, since the calibration slice
+        # below pads it with NaN, and a spatial block is measured on its time axis.
+        # Resolve before the missing-input return below, so a reversed or uncovered
+        # window is rejected even when the input carries no values to compute.
+        period = resolve_calibration_period(
+            data_start_year,
+            -(-values.shape[0] // period_length),
+            calibration_start_year,
+            calibration_end_year,
+            policy="reject",
+        )
+
         # bypass processing if all values are masked, or when a spatial block is all
         # missing, in which case it is returned as it arrived -- unless the scale
         # exceeds its time steps, which the preparation seam must reject. This is
@@ -1207,17 +1220,6 @@ def percentage_of_normal(
         ):
             _log_calculation_completed(log, t0, values.shape, memory_metrics)
             return values
-
-        # a calibration period the record does not cover is an error, not clamped. The
-        # record counts a trailing partial period as a year, since the calibration slice
-        # below pads it with NaN, and a spatial block is measured on its time axis.
-        period = resolve_calibration_period(
-            data_start_year,
-            -(-values.shape[0] // period_length),
-            calibration_start_year,
-            calibration_end_year,
-            policy="reject",
-        )
 
         # get an array containing a sliding sum on the specified time step
         # scale -- i.e. if the scale is 3 then the first two elements will be

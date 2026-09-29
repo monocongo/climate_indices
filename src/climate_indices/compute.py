@@ -2643,6 +2643,14 @@ def fit_and_standardize(
     _validate_zero_handling(zero_handling)
     params = _normalize_fitting_params(fitting_params) or {}
 
+    # reject a reversed window here, before the dispatch: a complete supplied
+    # parameter set skips the resolver calls inside the transforms, so without this
+    # an index would transform values for a reversed Calibration Period instead of
+    # rejecting it. A window the record does not cover still clamps, as the fits do.
+    resolve_calibration_period(
+        data_start_year, values.shape[0], calibration_start_year, calibration_end_year, policy="clamp"
+    )
+
     if distribution.value == "gamma":
         return transform_fitted_gamma(
             values,

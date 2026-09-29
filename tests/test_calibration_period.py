@@ -191,6 +191,19 @@ class TestThroughIndices:
                 values, 1981, *window, MONTHLY, alphas=np.full(12, 2.0), betas=np.full(12, 30.0)
             )
 
+    @pytest.mark.parametrize("window", REVERSED_WINDOWS)
+    def test_spi_rejects_a_reversed_window_with_saved_fitting_parameters(self, window):
+        # a complete supplied parameter set skips the transforms' own resolver calls
+        values = _record(29, seed=3)
+        values[::7] = 0.0
+        fitting_params = {
+            "alpha": np.full(12, 2.0),
+            "beta": np.full(12, 30.0),
+            "prob_zero": np.zeros(12),
+        }
+        with pytest.raises(CalibrationPeriodError, match="initial year"):
+            indices.spi(values, 1, indices.Distribution.gamma, 1981, *window, MONTHLY, fitting_params=fitting_params)
+
     @pytest.mark.parametrize("distribution", [indices.Distribution.gamma, indices.Distribution.pearson])
     @pytest.mark.parametrize("window", REVERSED_WINDOWS)
     def test_spei_rejects_a_reversed_window(self, distribution, window):
@@ -225,6 +238,12 @@ class TestPercentageOfNormalWindow:
     )
     def test_monthly_window_the_record_does_not_cover_raises(self, window):
         values = _record(10)
+        with pytest.raises(CalibrationPeriodError):
+            indices.percentage_of_normal(values, 1, 2000, *window, MONTHLY)
+
+    @pytest.mark.parametrize("window", [(2005, 2002), (2010, 2012)])
+    def test_all_missing_input_still_rejects_an_invalid_window(self, window):
+        values = np.ma.masked_all((10, 12))
         with pytest.raises(CalibrationPeriodError):
             indices.percentage_of_normal(values, 1, 2000, *window, MONTHLY)
 
