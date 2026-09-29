@@ -52,6 +52,9 @@ PROJECT_ROOT = Path(__file__).parent.parent
 FIXTURE_DIR = PROJECT_ROOT / "tests" / "fixture" / "zero_handling"
 R_SCRIPT = PROJECT_ROOT / "scripts" / "zero_handling_reference.R"
 
+# R reports SCI 1.0-3 as 1.0.3; the committed provenance and tests assume these
+_PINNED_R_PACKAGES = {"SEI": "0.2.0", "SCI": "1.0.3"}
+
 _DATA_START_YEAR = 1981
 _N_YEARS = 100
 
@@ -130,6 +133,17 @@ def main() -> int:
             env=env,
         )
 
+        # refuse a refresh from other package versions before any fixture is written
+        versions_table = np.genfromtxt(
+            tmp_path / "r_versions.csv", delimiter=",", names=True, dtype=None, encoding="utf-8"
+        )
+        versions = {str(row["name"]): str(row["version"]) for row in np.atleast_1d(versions_table)}
+        mismatched = {
+            name: versions.get(name) for name, pinned in _PINNED_R_PACKAGES.items() if versions.get(name) != pinned
+        }
+        if mismatched:
+            raise SystemExit(f"R packages differ from the pinned {_PINNED_R_PACKAGES}: found {mismatched}")
+
         np.save(FIXTURE_DIR / "input_precipitation_mm.npy", input_values)
         np.save(FIXTURE_DIR / "sei_classic.npy", _read_matrix(tmp_path / "sei_none.csv"))
         np.save(FIXTURE_DIR / "sei_center_of_mass.npy", _read_matrix(tmp_path / "sei_prob.csv"))
@@ -144,11 +158,6 @@ def main() -> int:
             FIXTURE_DIR / "sci_center_of_mass_probability.npy",
             np.asarray(sci["p0_center_mass"], dtype=np.float64),
         )
-
-        versions_table = np.genfromtxt(
-            tmp_path / "r_versions.csv", delimiter=",", names=True, dtype=None, encoding="utf-8"
-        )
-        versions = {str(row["name"]): str(row["version"]) for row in np.atleast_1d(versions_table)}
 
     provenance = {
         "source": "R SEI and SCI packages",
