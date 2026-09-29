@@ -1186,6 +1186,24 @@ def test_fit_and_standardize_does_not_fall_back_when_the_input_is_entirely_missi
     assert np.isnan(computed).all()
 
 
+@pytest.mark.parametrize(
+    "distribution",
+    [indices.Distribution.gamma, indices.Distribution.loglogistic, indices.Distribution.pearson],
+)
+def test_fit_and_standardize_returns_all_missing_without_fitting(distribution):
+    """
+    A direct all-missing call returns the input before any fit, so the calibration
+    quality and fit-failure warnings a fit would raise never fire.
+    """
+    values = np.full((30, 12), np.nan)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        computed = compute.fit_and_standardize(values, distribution, 2000, 2000, 2029, compute.Periodicity.monthly)
+
+    assert np.isnan(computed).all()
+
+
 @pytest.mark.parametrize(("lost", "falls_back"), [(60, False), (61, True)])
 def test_fit_and_standardize_falls_back_only_when_pearson_loses_over_half_of_the_valid_values(lost, falls_back):
     """
@@ -1283,13 +1301,74 @@ def test_fit_diagnostics_supports_spatial_blocks():
     )
 
 
+def test_fit_diagnostics_aligns_supplied_period_only_parameters_to_the_period_axis():
+    """A period-only supplied parameter spreads over cells, not over the period axis (#1248)."""
+    values = np.arange(1.0, (40 * 12 * 4) + 1.0).reshape(40, 12, 4)
+    locs = 1.0 + np.arange(12) * 0.1
+    parameters = {
+        "prob_zero": np.full(12, 0.1),
+        "loc": locs,
+        "scale": np.full(12, 1.0),
+        "skew": np.full(12, 1.0),
+    }
+
+    diagnostics = compute.fit_diagnostics(
+        values,
+        indices.Distribution.pearson,
+        1981,
+        1981,
+        2010,
+        compute.Periodicity.monthly,
+        parameters,
+    )
+
+    assert diagnostics.parameters["loc"].shape == (12, 4)
+    for cell in range(4):
+        np.testing.assert_array_equal(diagnostics.parameters["loc"][:, cell], locs)
+
+
+def test_pearson_lost_valid_fraction_matches_the_transform():
+    """The fall-back estimate counts exactly the values the Pearson transform drops (#1248).
+
+    An invalid scale makes the fitted CDF NaN everywhere, but the transform still pins
+    values past the support boundary to finite sentinels, so the estimate must not
+    count those as lost and report a fall back the index never took.
+    """
+    values = np.arange(1.0, 481.0).reshape(40, 12)
+    parameters = {
+        "prob_zero": np.zeros(12),
+        "loc": np.full(12, 100.0),
+        "scale": np.full(12, -1.0),
+        "skew": np.full(12, 1.0),
+    }
+    standardized = compute.transform_fitted_pearson(
+        values,
+        1981,
+        1981,
+        2010,
+        compute.Periodicity.monthly,
+        parameters["prob_zero"],
+        parameters["loc"],
+        parameters["scale"],
+        parameters["skew"],
+    )
+    valid = ~np.isnan(values)
+    actual_lost = np.count_nonzero(valid & np.isnan(standardized)) / np.count_nonzero(valid)
+
+    assert compute._pearson_lost_valid_fraction(values, parameters) == actual_lost
+
+
 def test_fit_diagnostics_reports_the_gamma_fall_back():
-    """A failed Pearson Type III fit is reported as the gamma fit it actually became."""
+    """A Pearson fit that loses too many valid values is reported as the gamma fit it became (#1216).
+
+    The diagnostics surface decides the fall back from the fit outcome, so it never runs
+    the standardized-value transform to discover the lost values.
+    """
     values = np.arange(1.0, 481.0).reshape(40, 12)
 
-    with mock.patch(
-        "climate_indices.compute.transform_fitted_pearson",
-        side_effect=compute.DistributionFittingError("Pearson failed", distribution_name="pearson3"),
+    with (
+        mock.patch("climate_indices.compute._pearson_lost_valid_fraction", return_value=1.0),
+        mock.patch("climate_indices.compute.transform_fitted_pearson") as pearson_transform,
     ):
         diagnostics = compute.fit_diagnostics(
             values,
@@ -1300,6 +1379,8 @@ def test_fit_diagnostics_reports_the_gamma_fall_back():
             compute.Periodicity.monthly,
             fallback_to_gamma=True,
         )
+
+    pearson_transform.assert_not_called()
 
     assert diagnostics.fell_back_to_gamma
     assert diagnostics.distribution is indices.Distribution.gamma

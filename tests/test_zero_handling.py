@@ -798,11 +798,9 @@ def test_fit_diagnostics_round_trips_a_supplied_gamma_zero_mass() -> None:
         compute.fit_and_standardize(values, indices.Distribution.gamma, *arguments, supplied),
     )
 
-    failed_pearson = mock.patch(
-        "climate_indices.compute.transform_fitted_pearson",
-        side_effect=compute.DistributionFittingError("Pearson failed", distribution_name="pearson3"),
-    )
-    with failed_pearson:
+    # the diagnostics surface decides the fall back from the fit outcome, so a lost
+    # value fraction drives it rather than the transform it no longer runs (#1216)
+    with mock.patch("climate_indices.compute._pearson_lost_valid_fraction", return_value=1.0):
         fallen_back = compute.fit_diagnostics(
             values, indices.Distribution.pearson, *arguments, _PEARSON_PARAMETERS, fallback_to_gamma=True
         )
