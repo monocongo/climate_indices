@@ -58,6 +58,7 @@ from climate_indices.fire._cffwis_codes import (
     _CFFWISComponent,
     _CodeInputs,
     _dc_day_length_band,
+    _dc_moisture_equivalent,
     _dmc_day_length_band,
     _elementwise_result,
     _run_cffwis_recurrence,
@@ -671,7 +672,7 @@ def overwinter_drought_code(
     def evaluate() -> npt.NDArray[np.float64]:
         # Eq. 3: final autumn moisture equivalent, then Eq. 2: overwinter
         # refill, then Eq. 4: the start-up code it implies
-        final_moisture = 800.0 * np.exp(-dc / 400.0)
+        final_moisture = _dc_moisture_equivalent(dc)
         start_moisture = (
             float(carry_over_fraction) * final_moisture
             + float(wetting_efficiency) * _OVERWINTER_WETTING_PER_MM * precipitation
@@ -1088,7 +1089,7 @@ def cffwis(
             value,
             code.build_step(value, inputs),
             code.validity(inputs),
-            np.ones(internal_spatial_shape, dtype=np.bool_) if code.component == "ffmc" else latitude_valid,
+            np.ones(internal_spatial_shape, dtype=np.bool_) if inputs.day_length_band is None else latitude_valid,
             gaps,
         )
         for code, value, gaps, inputs in zip(MOISTURE_CODES, code_values_init, code_gaps_init, code_inputs, strict=True)

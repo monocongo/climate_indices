@@ -377,6 +377,11 @@ def _dmc_next(
     return np.maximum(previous + drying_rate, 0.0)
 
 
+def _dc_moisture_equivalent(dc: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    """DC to its layer moisture equivalent (Van Wagner and Pickett, 1985, Eq. 20)."""
+    return 800.0 * np.exp(-dc / 400.0)
+
+
 def _dc_next(
     dc_previous: npt.NDArray[np.float64],
     temperature_celsius: npt.NDArray[np.float64],
@@ -391,7 +396,7 @@ def _dc_next(
     # Eqs. 18-21: rain above 2.8 mm reduces the drought code
     rained = precipitation_mm > _DC_PRECIPITATION_THRESHOLD_MM
     effective_rain = 0.83 * precipitation_mm - 1.27
-    moisture_before = 800.0 * np.exp(-dc_previous / 400.0)
+    moisture_before = _dc_moisture_equivalent(dc_previous)
     after_rain = np.maximum(dc_previous - 400.0 * np.log(1.0 + 3.937 * effective_rain / moisture_before), 0.0)
 
     previous = np.where(rained, after_rain, dc_previous)

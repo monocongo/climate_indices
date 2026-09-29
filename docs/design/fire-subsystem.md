@@ -37,13 +37,13 @@ codes (#803) crossed that line; #803's record deferred the promotion to the
 remaining CFFWIS work (#804), which landed the package
 above without changing `from climate_indices import fire` or any public
 function name. The architecture-deepening follow-up (#1221) split the CFFWIS
-
 text into its seams: each moisture code's seed, bounds, validity rule and
 daily step is one `_MoistureCode` definition in `_cffwis_codes.py`, shared by
 the single-code functions and the `cffwis()` orchestrator; the behaviour
 indices live in `_cffwis_behavior.py` and the xarray adapter in
-`_cffwis_xarray.py`, again without changing any public name. The implementation modules carry a leading underscore so
-`fire.kbdi` and `fire.cffwis` stay bound to the functions rather than the
+`_cffwis_xarray.py`, again without changing any public name. The
+implementation modules carry a leading underscore so `fire.kbdi` and
+`fire.cffwis` stay bound to the functions rather than the
 modules. No fire CLI is part of this subsystem itself: fire indices are
 surfaced through the existing `climate_indices` CLI only where an xarray
 adapter and a CF registry entry exist (KBDI as `--index kbdi`, #802), so the
