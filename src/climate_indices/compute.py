@@ -972,8 +972,7 @@ def _validate_pearson_parameter_cells(
             continue
         parameter = np.asarray(parameter)
         if parameter.ndim == 1:
-            # a single value broadcasts across the period axis, as the gamma parameters do
-            if parameter.shape[0] not in (1, period_length):
+            if parameter.shape[0] != period_length:
                 raise ValueError(
                     f"Fitting parameter '{name}' has shape {parameter.shape}, which must carry "
                     f"the period length {period_length}"

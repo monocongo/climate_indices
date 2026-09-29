@@ -1345,7 +1345,7 @@ def test_fit_diagnostics_raises_for_a_partial_pearson_parameter_set_with_the_fal
 
 
 @pytest.mark.parametrize("fallback_to_gamma", [False, True])
-@pytest.mark.parametrize("periods", [11, 13])
+@pytest.mark.parametrize("periods", [1, 11, 13])
 def test_fit_diagnostics_raises_for_mis_shaped_pearson_parameters(fallback_to_gamma, periods):
     """A Pearson parameter that does not carry the period axis is an argument error (#1215).
 
