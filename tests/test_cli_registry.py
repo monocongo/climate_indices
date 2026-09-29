@@ -346,3 +346,181 @@ def test_aggregate_output_scale_warns_for_outputs_that_ignore_it(monkeypatch, ca
 
     assert "--output_scale argument does not apply" in caplog.text
     assert "pnp" in caplog.text
+
+
+def test_every_index_specific_argument_is_declared_by_a_registration():
+    """The parser's arguments are checked against the registrations' declarations."""
+    parser = cli_main._build_parser()
+    consumed = set().union(*(registration.consumed_flags for registration in cli_main._INDEX_REGISTRY.values()))
+
+    for action in parser._actions:
+        if action.dest in cli_main._UNIVERSAL_FLAGS or action.dest == "help":
+            continue
+        assert action.dest in consumed, f"--{action.dest} is not declared by any registration"
+
+
+def test_registrations_declare_only_known_arguments():
+    """A registration's consumed flags all name real command line arguments."""
+    known = {action.dest for action in cli_main._build_parser()._actions}
+
+    for registration in cli_main._INDEX_REGISTRY.values():
+        assert registration.consumed_flags <= known, registration.index
+
+
+def test_each_registration_declares_exactly_the_flags_it_consumes():
+    """Over-declaration is a defect too: a flag declared here but not read is silently accepted."""
+    precip = frozenset({"netcdf_precip", "var_name_precip"})
+    temperature = frozenset({"netcdf_temp", "var_name_temp"})
+    pet = frozenset({"netcdf_pet", "var_name_pet"})
+    awc = frozenset({"netcdf_awc", "var_name_awc"})
+    pe = frozenset({"netcdf_pe", "var_name_pe"})
+    calibration = frozenset({"calibration_start_year", "calibration_end_year"})
+    scales = frozenset({"scales"})
+    expected = {
+        "spi": precip | calibration | scales,
+        "spei": precip | temperature | pet | calibration | scales,
+        "pnp": precip | calibration | scales,
+        "pet": temperature,
+        "palmers": precip | temperature | pet | awc | calibration,
+        "kbdi": precip | temperature | frozenset({"kbdi_units", "kbdi_initial"}),
+        "pe": precip,
+        "edi": precip | pe | calibration,
+        "flood_index": precip | pe | calibration | frozenset({"year_start_month"}),
+        "api": precip | frozenset({"api_k"}),
+    }
+
+    assert {name: registration.consumed_flags for name, registration in cli_main._INDEX_REGISTRY.items()} == expected
+
+
+# one argument each --index value does not consume; API owns --api_k, so it gets
+# the unconsumed --scales instead
+_UNCONSUMED_ARGUMENTS = {
+    # --kbdi_units is declared by KBDI only, so its None default is what makes
+    # this detectable
+    "spi": ("--kbdi_units", "imperial"),
+    "spei": ("--api_k", "0.9"),
+    "pnp": ("--api_k", "0.9"),
+    "scaled": ("--api_k", "0.9"),
+    "pet": ("--api_k", "0.9"),
+    "palmers": ("--api_k", "0.9"),
+    "kbdi": ("--api_k", "0.9"),
+    "pe": ("--api_k", "0.9"),
+    "edi": ("--api_k", "0.9"),
+    "flood_index": ("--api_k", "0.9"),
+    "api": ("--scales", "1"),
+    "all": ("--api_k", "0.9"),
+}
+
+
+@pytest.mark.parametrize(("index", "argument"), _UNCONSUMED_ARGUMENTS.items())
+def test_unconsumed_argument_is_rejected_through_main(index, argument):
+    """A flag handed to an index that does not consume it is an error, not a no-op."""
+    flag, value = argument
+    argv = ["--index", index, "--periodicity", "monthly", "--output_file_base", "out", flag, value]
+
+    with pytest.raises(ValueError) as error:
+        cli_main.main(argv)
+
+    assert str(error.value) == f"The {flag} argument is not applicable to --index {index}"
+
+
+def test_an_unconsumed_flag_with_a_falsy_value_is_still_rejected():
+    """A provided zero is a value, not an absent argument."""
+    argv = ["--index", "spi", "--periodicity", "monthly", "--output_file_base", "out", "--kbdi_initial", "0"]
+
+    with pytest.raises(ValueError) as error:
+        cli_main.main(argv)
+
+    assert str(error.value) == "The --kbdi_initial argument is not applicable to --index spi"
+
+
+@pytest.mark.parametrize("spelling", ["--calibration_start_year", "--calibration_year_initial"])
+def test_an_aliased_flag_is_reported_under_every_spelling(spelling):
+    """Both spellings share one dest, so the message names the pair rather than guessing which was typed."""
+    argv = ["--index", "api", "--periodicity", "monthly", "--output_file_base", "out", spelling, "1981"]
+
+    with pytest.raises(ValueError) as error:
+        cli_main.main(argv)
+
+    assert str(error.value) == (
+        "The --calibration_start_year/--calibration_year_initial argument is not applicable to --index api"
+    )
+
+
+@pytest.mark.parametrize(
+    ("extra", "expected"),
+    [
+        (
+            ["--netcdf_temp", "x", "--var_name_temp", "y"],
+            "The --netcdf_temp and --var_name_temp arguments are not applicable to --index api",
+        ),
+        (
+            ["--netcdf_temp", "x", "--var_name_temp", "y", "--netcdf_awc", "z"],
+            "The --netcdf_temp, --var_name_temp, and --netcdf_awc arguments are not applicable to --index api",
+        ),
+    ],
+)
+def test_several_unconsumed_flags_are_reported_together(extra, expected):
+    """The rejection names every unconsumed flag in one message."""
+    argv = ["--index", "api", "--periodicity", "monthly", "--output_file_base", "out", *extra]
+
+    with pytest.raises(ValueError) as error:
+        cli_main.main(argv)
+
+    assert str(error.value) == expected
+
+
+@pytest.mark.parametrize(
+    ("index", "extra"),
+    [
+        # a PE file replaces the precipitation input, so its variable name is unused
+        ("edi", ["--netcdf_pe", "pe.nc", "--var_name_pe", "pe"]),
+        ("flood_index", ["--netcdf_pe", "pe.nc", "--var_name_pe", "pe"]),
+        # a PET file replaces the temperature input, so its variable name is unused
+        ("spei", ["--netcdf_pet", "pet.nc", "--var_name_pet", "pet"]),
+    ],
+)
+def test_variable_name_of_a_replaced_input_is_rejected(index, extra):
+    """The variable name of the input a provided file replaces is not silently ignored."""
+    shadowed = "--var_name_precip" if "--netcdf_pe" in extra else "--var_name_temp"
+    argv = [
+        "--index",
+        index,
+        "--periodicity",
+        "monthly",
+        "--output_file_base",
+        "out",
+        *extra,
+        shadowed,
+        "unused",
+    ]
+
+    with pytest.raises(ValueError) as error:
+        cli_main.main(argv)
+
+    assert str(error.value) == f"The {shadowed} argument is not applicable to --index {index}"
+
+
+def test_a_replaced_inputs_file_keeps_its_mutual_exclusion_message():
+    """A shadowed variable name does not preempt the file-level conflict check."""
+    argv = [
+        "--index",
+        "edi",
+        "--periodicity",
+        "daily",
+        "--output_file_base",
+        "out",
+        "--netcdf_precip",
+        "precip.nc",
+        "--var_name_precip",
+        "prcp",
+        "--netcdf_pe",
+        "pe.nc",
+        "--var_name_pe",
+        "pe",
+    ]
+
+    with pytest.raises(ValueError) as error:
+        cli_main.main(argv)
+
+    assert str(error.value) == "Both precipitation and PE files were specified, only one of these should be provided"

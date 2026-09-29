@@ -135,6 +135,10 @@ def _flood_arguments(index, **overrides):
         "chunksizes": "none",
     }
     arguments.update(overrides)
+    # a precipitation variable name without its file is an unconsumed argument,
+    # which validation now rejects; keep the fixture consistent with the CLI
+    if arguments["netcdf_precip"] is None and "var_name_precip" not in overrides:
+        arguments["var_name_precip"] = None
     # a Flood Index and API run needs the argument that defines them
     if index == "flood_index" and arguments["year_start_month"] is None:
         arguments["year_start_month"] = 1
@@ -156,32 +160,32 @@ class TestFloodValidation:
             (
                 "api",
                 {"netcdf_temp": "temp.nc"},
-                "The --netcdf_temp and --var_name_temp arguments are not applicable to --index api",
+                "The --netcdf_temp argument is not applicable to --index api",
             ),
             (
                 "pe",
                 {"var_name_pet": "pet"},
-                "The --netcdf_pet and --var_name_pet arguments are not applicable to --index pe",
+                "The --var_name_pet argument is not applicable to --index pe",
             ),
             (
                 "flood_index",
                 {"netcdf_awc": "awc.nc"},
-                "The --netcdf_awc and --var_name_awc arguments are not applicable to --index flood_index",
+                "The --netcdf_awc argument is not applicable to --index flood_index",
             ),
             (
                 "pe",
                 {"calibration_start_year": 2016},
-                "The --calibration_start_year and --calibration_end_year arguments are not applicable to --index pe",
+                "The --calibration_start_year/--calibration_year_initial argument is not applicable to --index pe",
             ),
             (
                 "api",
                 {"calibration_end_year": 2019},
-                "The --calibration_start_year and --calibration_end_year arguments are not applicable to --index api",
+                "The --calibration_end_year/--calibration_year_final argument is not applicable to --index api",
             ),
             (
                 "api",
                 {"netcdf_pe": "pe.nc"},
-                "The --netcdf_pe and --var_name_pe arguments are not applicable to --index api",
+                "The --netcdf_pe argument is not applicable to --index api",
             ),
             ("edi", {"year_start_month": 3}, "The --year_start_month argument is not applicable to --index edi"),
             ("flood_index", {"api_k": 0.9}, "The --api_k argument is not applicable to --index flood_index"),
@@ -564,8 +568,6 @@ class TestFloodRegistration:
                 _PE_VARIABLE,
                 "--year_start_month",
                 "10",
-                "--api_k",
-                "0.85",
                 "--output_file_base",
                 "out",
             ]
@@ -574,7 +576,6 @@ class TestFloodRegistration:
         assert captured["netcdf_pe"] == "pe.nc"
         assert captured["var_name_pe"] == _PE_VARIABLE
         assert captured["year_start_month"] == 10
-        assert captured["api_k"] == 0.85
 
     def test_the_cli_rejects_an_out_of_range_year_start_month(self, capsys):
         with pytest.raises(SystemExit) as error:
