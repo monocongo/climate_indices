@@ -1,4 +1,5 @@
 import logging
+import warnings
 from unittest import mock
 
 import numpy as np
@@ -7,7 +8,7 @@ import scipy.special
 import scipy.stats
 
 from climate_indices import compute, indices
-from climate_indices.exceptions import PeriodicityError
+from climate_indices.exceptions import GoodnessOfFitWarning, PeriodicityError
 
 # disable logging messages
 logging.disable(logging.CRITICAL)
@@ -961,6 +962,74 @@ def test_fit_and_standardize_falls_back_to_gamma_only_when_asked():
     )
 
 
+def test_fit_and_standardize_raises_for_a_partial_pearson_parameter_set_with_the_fall_back_enabled():
+    """A partial Pearson set is an argument error, not a failed fit, even with the fall back (#1215)."""
+    values = np.arange(1.0, 481.0).reshape(40, 12)
+
+    with mock.patch("climate_indices.compute.transform_fitted_gamma") as gamma:
+        with pytest.raises(ValueError, match="either none or all"):
+            compute.fit_and_standardize(
+                values,
+                indices.Distribution.pearson,
+                1981,
+                1981,
+                2010,
+                compute.Periodicity.monthly,
+                {"loc": np.ones(12)},
+                fallback_to_gamma=True,
+            )
+
+    gamma.assert_not_called()
+
+
+def test_fit_and_standardize_raises_for_mis_shaped_pearson_parameters_with_the_fall_back_enabled():
+    """A Pearson parameter that does not carry the period axis is an argument error (#1215)."""
+    values = np.arange(1.0, 481.0).reshape(40, 12)
+    parameters = {
+        "prob_zero": np.zeros(11),
+        "loc": np.ones(11),
+        "scale": np.ones(11),
+        "skew": np.ones(11),
+    }
+
+    with pytest.raises(ValueError, match="must carry the period length"):
+        compute.fit_and_standardize(
+            values,
+            indices.Distribution.pearson,
+            1981,
+            1981,
+            2010,
+            compute.Periodicity.monthly,
+            parameters,
+            fallback_to_gamma=True,
+        )
+
+
+def test_a_goodness_of_fit_warning_error_does_not_change_the_fitted_distribution():
+    """Under ``-W error::GoodnessOfFitWarning`` the warning propagates instead of forcing gamma (#1215)."""
+    values = np.arange(1.0, 481.0).reshape(40, 12)
+
+    with mock.patch(
+        "climate_indices.compute._check_goodness_of_fit_pearson",
+        side_effect=lambda *args, **kwargs: warnings.warn(GoodnessOfFitWarning("poor fit"), stacklevel=2),
+    ):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", GoodnessOfFitWarning)
+            with mock.patch("climate_indices.compute.transform_fitted_gamma") as gamma:
+                with pytest.raises(GoodnessOfFitWarning):
+                    compute.fit_and_standardize(
+                        values,
+                        indices.Distribution.pearson,
+                        1981,
+                        1981,
+                        2010,
+                        compute.Periodicity.monthly,
+                        fallback_to_gamma=True,
+                    )
+
+    gamma.assert_not_called()
+
+
 def test_fit_and_standardize_falls_back_when_pearson_leaves_excessive_nans():
     """
     A Pearson Type III result that is mostly missing counts as a fitting failure and
@@ -1173,9 +1242,10 @@ def test_fit_diagnostics_reports_the_gamma_fall_back():
 
 def test_fit_diagnostics_falls_back_when_pearson_parameter_fitting_raises():
     values = np.arange(1.0, 481.0).reshape(40, 12)
+    failure = compute.DistributionFittingError("Pearson fit failed", distribution_name="pearson3")
 
-    with mock.patch("climate_indices.compute.pearson_parameters", side_effect=ValueError("Pearson fit failed")):
-        with pytest.raises(ValueError, match="Pearson fit failed"):
+    with mock.patch("climate_indices.compute.pearson_parameters", side_effect=failure):
+        with pytest.raises(compute.DistributionFittingError, match="Pearson fit failed"):
             compute.fit_diagnostics(values, indices.Distribution.pearson, 1981, 1981, 2010, compute.Periodicity.monthly)
         diagnostics = compute.fit_diagnostics(
             values, indices.Distribution.pearson, 1981, 1981, 2010, compute.Periodicity.monthly, fallback_to_gamma=True
@@ -1254,20 +1324,75 @@ def test_fit_diagnostics_rejects_a_partial_pearson_parameter_set():
         )
 
 
-def test_fit_diagnostics_reports_fallback_for_a_partial_pearson_parameter_set():
-    """With the fall back enabled, a partial Pearson set is reported as the gamma fit it became."""
+def test_fit_diagnostics_raises_for_a_partial_pearson_parameter_set_with_the_fall_back_enabled():
+    """A partial Pearson set is an argument error even when the fall back is enabled (#1215)."""
     values = np.arange(1.0, 481.0).reshape(40, 12)
 
-    diagnostics = compute.fit_diagnostics(
-        values,
-        indices.Distribution.pearson,
-        1981,
-        1981,
-        2010,
-        compute.Periodicity.monthly,
-        {"loc": np.ones(12)},
-        fallback_to_gamma=True,
-    )
+    with mock.patch("climate_indices.compute.transform_fitted_gamma") as gamma:
+        with pytest.raises(ValueError, match="either none or all"):
+            compute.fit_diagnostics(
+                values,
+                indices.Distribution.pearson,
+                1981,
+                1981,
+                2010,
+                compute.Periodicity.monthly,
+                {"loc": np.ones(12)},
+                fallback_to_gamma=True,
+            )
 
-    assert diagnostics.fell_back_to_gamma
-    assert diagnostics.distribution is indices.Distribution.gamma
+    gamma.assert_not_called()
+
+
+@pytest.mark.parametrize("fallback_to_gamma", [False, True])
+@pytest.mark.parametrize("periods", [1, 11, 13])
+def test_fit_diagnostics_raises_for_mis_shaped_pearson_parameters(fallback_to_gamma, periods):
+    """A Pearson parameter that does not carry the period axis is an argument error (#1215).
+
+    Both the short set (an ``IndexError`` from the diagnostics indexing) and the long
+    set (silently misaligned per-step diagnostics) must fail loudly.
+    """
+    values = np.arange(1.0, 481.0).reshape(40, 12)
+    parameters = {
+        "prob_zero": np.zeros(periods),
+        "loc": np.ones(periods),
+        "scale": np.ones(periods),
+        "skew": np.ones(periods),
+    }
+
+    with pytest.raises(ValueError, match="must carry the period length"):
+        compute.fit_diagnostics(
+            values,
+            indices.Distribution.pearson,
+            1981,
+            1981,
+            2010,
+            compute.Periodicity.monthly,
+            parameters,
+            fallback_to_gamma=fallback_to_gamma,
+        )
+
+
+def test_fit_diagnostics_propagates_a_goodness_of_fit_warning_error():
+    """Under ``-W error::GoodnessOfFitWarning`` the diagnostics surface does not fall back (#1215)."""
+    values = np.arange(1.0, 481.0).reshape(40, 12)
+
+    with mock.patch(
+        "climate_indices.compute._check_goodness_of_fit_pearson",
+        side_effect=lambda *args, **kwargs: warnings.warn(GoodnessOfFitWarning("poor fit"), stacklevel=2),
+    ):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", GoodnessOfFitWarning)
+            with mock.patch("climate_indices.compute.transform_fitted_gamma") as gamma:
+                with pytest.raises(GoodnessOfFitWarning):
+                    compute.fit_diagnostics(
+                        values,
+                        indices.Distribution.pearson,
+                        1981,
+                        1981,
+                        2010,
+                        compute.Periodicity.monthly,
+                        fallback_to_gamma=True,
+                    )
+
+    gamma.assert_not_called()

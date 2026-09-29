@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest import mock
+import logging
 
 import numpy as np
 import pytest
@@ -187,12 +187,56 @@ def test_standardized_index_reports_its_own_fallback_context(
     data_year_start_monthly,
     calibration_year_start_monthly,
     calibration_year_end_monthly,
+    caplog,
 ) -> None:
     """A Pearson-to-gamma fallback names the generic index, not SPI, in its warning."""
     values = np.full(np.asarray(precips_mm_monthly).size, 5.0)
 
-    with mock.patch.object(compute._default_fallback_strategy, "log_fallback_warning") as log_fallback_warning:
-        indices.standardized_index(
+    caplog.set_level(logging.WARNING)
+    indices.standardized_index(
+        values,
+        6,
+        indices.Distribution.pearson,
+        data_year_start_monthly,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
+        compute.Periodicity.monthly,
+    )
+
+    fallbacks = [
+        record.msg
+        for record in caplog.records
+        if isinstance(record.msg, dict) and record.msg.get("event") == "distribution_fallback"
+    ]
+    assert len(fallbacks) == 1
+    assert fallbacks[0]["context"] == "standardized index computation"
+    assert fallbacks[0]["from_distribution"] == "pearson"
+    assert fallbacks[0]["to_distribution"] == "gamma"
+
+
+@pytest.mark.parametrize(
+    ("parameters", "match"),
+    [
+        ({"loc": np.ones(12), "scale": np.ones(12), "skew": np.ones(12)}, "either none or all"),
+        (
+            {"prob_zero": np.zeros(11), "loc": np.ones(11), "scale": np.ones(11), "skew": np.ones(11)},
+            "must carry the period length",
+        ),
+    ],
+)
+def test_spi_and_spei_raise_the_same_error_for_a_bad_pearson_parameter_set(
+    precips_mm_monthly,
+    data_year_start_monthly,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+    parameters,
+    match,
+) -> None:
+    """A caller's argument error raises from SPI instead of silently becoming gamma (#1215)."""
+    values = np.asarray(precips_mm_monthly)
+
+    with pytest.raises(ValueError, match=match) as spi_error:
+        indices.spi(
             values,
             6,
             indices.Distribution.pearson,
@@ -200,10 +244,22 @@ def test_standardized_index_reports_its_own_fallback_context(
             calibration_year_start_monthly,
             calibration_year_end_monthly,
             compute.Periodicity.monthly,
+            parameters,
+        )
+    with pytest.raises(ValueError, match=match) as spei_error:
+        indices.spei(
+            values,
+            values * 0.5,
+            6,
+            indices.Distribution.pearson,
+            compute.Periodicity.monthly,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            parameters,
         )
 
-    assert log_fallback_warning.call_count == 1
-    assert log_fallback_warning.call_args.kwargs["context"] == "standardized index computation"
+    assert str(spi_error.value) == str(spei_error.value)
 
 
 def test_standardized_index_is_exported_from_the_indices_module() -> None:

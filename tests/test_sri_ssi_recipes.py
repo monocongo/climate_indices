@@ -8,9 +8,9 @@ pipeline, and the documented Pearson Type III fit actually takes effect.
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
-from unittest import mock
 
 import numpy as np
 
@@ -72,14 +72,19 @@ def test_sri_recipe_standardizes_runoff_with_the_spi_pipeline() -> None:
     assert float(np.nanstd(sri)) > 0.5
 
 
-def test_ssi_recipe_runs_the_documented_pearson_type_iii_fit() -> None:
+def test_ssi_recipe_runs_the_documented_pearson_type_iii_fit(caplog) -> None:
     """The SSI recipe's documented Pearson fit takes effect and does not fall back to gamma."""
     streamflow = _monthly_series(scale=20.0, exponent=0.8)
 
-    with mock.patch.object(compute._default_fallback_strategy, "log_fallback_warning") as log_fallback_warning:
-        ssi = _documented_recipe(1, streamflow, "ssi")
+    caplog.set_level(logging.WARNING)
+    ssi = _documented_recipe(1, streamflow, "ssi")
 
-    assert log_fallback_warning.call_count == 0, "the documented Pearson fit must not fall back to gamma"
+    fallbacks = [
+        record
+        for record in caplog.records
+        if isinstance(record.msg, dict) and record.msg.get("event") == "distribution_fallback"
+    ]
+    assert not fallbacks, "the documented Pearson fit must not fall back to gamma"
     gamma = indices.standardized_index(
         streamflow,
         12,
