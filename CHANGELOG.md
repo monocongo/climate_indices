@@ -171,9 +171,21 @@ change states what a user sees, how to detect it, and what to change in
   `compute.gamma_parameters()` or `compute.pearson_parameters()` and pass them as a
   dict — `{"alpha": ..., "beta": ...}` for gamma — to the `fitting_params` argument of
   `indices.spi()` (#919, #957).
+- **`compute.adjust_calibration_years()`**: removed. It was undocumented and used
+  only inside `compute`; window resolution moved to `climate_indices._calibration_period`
+  (#1214).
 
 ### Fixed
 
+- **xarray PET and PCI provenance and alignment**: `pet_hargreaves` and
+  `pet_penman_monteith` now reject a `tmin`/`tmax` (and other time-series) pair whose
+  non-time coordinates differ with `CoordinateValidationError`, as SPEI already did,
+  instead of silently intersecting them and dropping cells; time steps outside the
+  shared range are still trimmed with an `InputAlignmentWarning`, and an empty time
+  intersection now reports the reason `empty_intersection_after_alignment`. Thornthwaite,
+  Hargreaves, and Penman-Monteith output no longer inherits the input's `standard_name`
+  (for example `air_temperature`), and `pci` output keeps the input's `history` and
+  other attributes, appending its own entry in the shared format (#1218).
 - **Palmer**: duration-factor overrides resolve after input validation, masked fitting
   parameters are treated as missing, fitted coefficients are required to be 12-element
   vectors, mismatched cell grids are rejected, and per-cell available water capacity
@@ -234,6 +246,27 @@ change states what a user sees, how to detect it, and what to change in
   Neither path enforces a per-cell 30-year non-NaN minimum, so sparse cells can
   still produce finite results. The in-memory single-series (1-D) check is
   unchanged (#979, #1156).
+- **Calibration Period past the end of the record**: gamma and Pearson Type III
+  fitting (`spi()`, `standardized_index()`, `fit_diagnostics()` and the `compute`
+  fitting and transform functions) took a record's last year to be one year later than
+  it is. A window running past the data was replaced by that phantom-extended record,
+  and a window ending exactly one year past the data was kept as requested; either way
+  the phantom year counted toward the 30-year minimum, so `ShortCalibrationWarning`
+  never fired for a record shorter than that. Windows now resolve against the true last
+  year, so the warning counts real years and fires. Results are unchanged: a window
+  ending exactly one year past the data still keeps its start and is cut at the last
+  year, and any other window the record does not cover still falls back to the whole
+  record.
+- **Calibration Period resolution has one owner**: `climate_indices._calibration_period`
+  resolves the window for those fits, EDDI and Palmer, and each names whether it clamps
+  or rejects a window the record does not cover. EDDI and Palmer still reject such a
+  window, now with one shared `CalibrationPeriodError` that is both an
+  `InvalidArgumentError` and a `ValueError`, so existing `except` clauses keep working.
+  The message wording is shared, EDDI no longer logs a separate error line before
+  raising, and the `error_type` of the logged `calculation_failed` event is now
+  `CalibrationPeriodError` for both. A reversed window is still accepted by SPI, and
+  percentage of normal keeps its own window handling; making the per-index policies
+  uniform is a separate decision (#1214).
 - **Pearson-to-gamma fall back**: `spi()` and `standardized_index()` treated any
   argument error as a failed Pearson Type III fit and silently returned gamma values.
   A partial or mis-shaped `fitting_params` set is now rejected before the fit, and

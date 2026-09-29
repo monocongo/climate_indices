@@ -14,6 +14,7 @@ import scipy.special
 import scipy.stats
 
 from climate_indices import lmoments, utils
+from climate_indices._calibration_period import resolve_calibration_period
 from climate_indices.exceptions import (
     DistributionFittingError,
     GoodnessOfFitWarning,
@@ -415,14 +416,6 @@ def validate_values_shape(values: np.ndarray) -> int:
     return int(values.shape[1])
 
 
-def adjust_calibration_years(
-    data_start_year: int, data_end_year: int, calibration_start_year: int, calibration_end_year: int
-) -> tuple[int, int]:
-    if (calibration_start_year < data_start_year) or (calibration_end_year > data_end_year):
-        return data_start_year, data_end_year
-    return calibration_start_year, calibration_end_year
-
-
 def _summarize_array(arr: np.ndarray | None, name: str = "array") -> str:
     """Summarize a numpy array for error messages.
 
@@ -683,16 +676,13 @@ def _calibration_block(
     else:
         values = reshape_values(values, periodicity)
         time_steps_per_year = validate_values_shape(values)
-    data_end_year = data_start_year + values.shape[0]
-    calibration_start_year, calibration_end_year = adjust_calibration_years(
-        data_start_year, data_end_year, calibration_start_year, calibration_end_year
+    period = resolve_calibration_period(
+        data_start_year, values.shape[0], calibration_start_year, calibration_end_year, policy="clamp"
     )
-    calibration_begin_index = calibration_start_year - data_start_year
-    calibration_end_index = (calibration_end_year - data_start_year) + 1
-    calibration_values = values[calibration_begin_index:calibration_end_index, ...]
+    calibration_values = values[period.rows, ...]
 
     # check calibration data quality and emit warnings if needed
-    _check_calibration_data_quality(calibration_values, calibration_start_year, calibration_end_year)
+    _check_calibration_data_quality(calibration_values, period.start_year, period.end_year)
     return calibration_values, time_steps_per_year
 
 
@@ -1161,16 +1151,8 @@ def transform_fitted_pearson(
 
     # compute the Pearson Type III fitting values if none were provided
     if any(param_arg is None for param_arg in pearson_param_args):
-        # determine the end year of the values array
-        data_end_year = data_start_year + values.shape[0]
-
-        # make sure that we have data within the full calibration period,
-        # otherwise use the full period of record
-        if (calibration_start_year < data_start_year) or (calibration_end_year > data_end_year):
-            calibration_start_year = data_start_year
-            calibration_end_year = data_end_year
-
-        # compute the values we'll use to fit to the Pearson Type III distribution
+        # compute the values we'll use to fit to the Pearson Type III distribution;
+        # pearson_parameters resolves the calibration period against the record
         probabilities_of_zero, locs, scales, skews = pearson_parameters(
             values,
             data_start_year,
@@ -1762,27 +1744,18 @@ def gamma_parameters(
     # replace zeros with NaNs (zeros are excluded from gamma fitting)
     _, values = _replace_zeros_with_nan(values)
 
-    # determine the end year of the values array
-    data_end_year = data_start_year + values.shape[0]
-
-    # make sure that we have data within the full calibration period,
-    # otherwise use the full period of record
-    if (calibration_start_year < data_start_year) or (calibration_end_year > data_end_year):
-        calibration_start_year = data_start_year
-        calibration_end_year = data_end_year
-
-    # get the year axis indices corresponding to
-    # the calibration start and end years
-    calibration_begin_index = calibration_start_year - data_start_year
-    calibration_end_index = (calibration_end_year - data_start_year) + 1
+    # use the full period of record when the record does not cover the calibration period
+    period = resolve_calibration_period(
+        data_start_year, values.shape[0], calibration_start_year, calibration_end_year, policy="clamp"
+    )
 
     # get the values for the current calendar time step
     # that fall within the calibration years period
-    calibration_values = values[calibration_begin_index:calibration_end_index, :]
-    original_calibration = original_values[calibration_begin_index:calibration_end_index, :]
+    calibration_values = values[period.rows, :]
+    original_calibration = original_values[period.rows, :]
 
     # check calibration data quality and emit warnings if needed
-    _check_calibration_data_quality(original_calibration, calibration_start_year, calibration_end_year)
+    _check_calibration_data_quality(original_calibration, period.start_year, period.end_year)
 
     # compute the gamma distribution's shape and scale parameters, alpha and beta
     # using method of moments estimation
@@ -2120,12 +2093,10 @@ def transform_fitted_gamma(
     # period's non-missing values, unless it was provided; a computed fraction
     # reaches 1 only where every calibration value is zero
     if probabilities_of_zero is None:
-        first_year, last_year = adjust_calibration_years(
-            data_start_year, data_start_year + values.shape[0], calibration_start_year, calibration_end_year
+        period = resolve_calibration_period(
+            data_start_year, values.shape[0], calibration_start_year, calibration_end_year, policy="clamp"
         )
-        probabilities_of_zero = _calibration_probabilities_of_zero(
-            values[first_year - data_start_year : last_year - data_start_year + 1, ...]
-        )
+        probabilities_of_zero = _calibration_probabilities_of_zero(values[period.rows, ...])
         all_zero_steps = np.isclose(probabilities_of_zero, 1.0)
     else:
         # validated to lie in [0, 1], so this selects exactly a supplied mass of 1
@@ -2969,13 +2940,10 @@ def fit_diagnostics(
         values = np.ma.filled(values.astype(float), np.nan)
     values = _validate_array(values, periodicity)
 
-    data_end_year = data_start_year + values.shape[0]
-    calibration_start_year, calibration_end_year = adjust_calibration_years(
-        data_start_year, data_end_year, calibration_start_year, calibration_end_year
+    period = resolve_calibration_period(
+        data_start_year, values.shape[0], calibration_start_year, calibration_end_year, policy="clamp"
     )
-    calibration_values = values[
-        calibration_start_year - data_start_year : calibration_end_year - data_start_year + 1, ...
-    ]
+    calibration_values = values[period.rows, ...]
 
     fell_back_to_gamma = False
     fallback_parameters: dict[str, np.ndarray] | None = None

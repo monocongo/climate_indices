@@ -67,8 +67,10 @@ FAO-56 daily convention; a caller may override it via
 
 **Missing-data behaviour.** NaN inputs propagate to the output. An xarray input
 must be a daily coordinate beginning on January 1, consistent with the other
-daily PET adapter; optional time-series inputs are aligned with an inner join
-and dropped timesteps emit `InputAlignmentWarning`.
+daily PET adapter; optional time-series inputs are trimmed to the shared time
+range and dropped timesteps emit `InputAlignmentWarning`. A shared cell
+dimension with differing coordinates raises `CoordinateValidationError`
+instead of being intersected.
 
 **SPEI use.** SPEI accepts a caller-supplied PET array, so the output of
 `pet_penman_monteith()` can be passed directly to `climate_indices.spei()` as
