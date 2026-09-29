@@ -1,4 +1,4 @@
-"""Shared helpers for the climate_indices command-line interfaces."""
+"""Shared helpers for the climate_indices command-line interface."""
 
 import argparse
 from collections.abc import Callable
@@ -55,7 +55,7 @@ def _add_common_spi_arguments(
     scales_help: str = _DEFAULT_SCALES_HELP,
 ) -> None:
     """
-    Register the command line arguments shared by the climate_indices and SPI CLIs.
+    Register the climate_indices CLI's common arguments.
 
     Args:
         parser: parser to which the arguments are added.

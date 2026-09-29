@@ -57,8 +57,9 @@ def _kbdi_arguments(**overrides):
         "output_file_base": "output",
         "multiprocessing": "single",
         "chunksizes": "none",
-        "kbdi_units": "metric",
-        "kbdi_initial": 0.0,
+        # None means the flag was not provided; _run_kbdi resolves the defaults
+        "kbdi_units": None,
+        "kbdi_initial": None,
     }
     arguments.update(overrides)
     return argparse.Namespace(**arguments)
@@ -84,24 +85,21 @@ class TestKBDIValidation:
                 {"periodicity": compute.Periodicity.monthly},
                 "Invalid periodicity argument for KBDI: 'monthly' -- only 'daily' is supported",
             ),
-            ({"scales": [1, 3]}, "The --scales argument is not applicable to KBDI"),
+            ({"scales": [1, 3]}, "The --scales argument is not applicable to --index kbdi"),
             (
                 {"calibration_start_year": 1990},
-                "The --calibration_start_year and --calibration_end_year arguments are not applicable to KBDI",
+                "The --calibration_start_year/--calibration_year_initial argument is not applicable to --index kbdi",
             ),
             (
                 {"calibration_end_year": 2020},
-                "The --calibration_start_year and --calibration_end_year arguments are not applicable to KBDI",
+                "The --calibration_end_year/--calibration_year_final argument is not applicable to --index kbdi",
             ),
-            ({"netcdf_pet": "pet.nc"}, "The --netcdf_pet and --var_name_pet arguments are not applicable to KBDI"),
-            ({"var_name_pet": "pet"}, "The --netcdf_pet and --var_name_pet arguments are not applicable to KBDI"),
-            ({"netcdf_awc": "awc.nc"}, "The --netcdf_awc and --var_name_awc arguments are not applicable to KBDI"),
-            ({"var_name_awc": "awc"}, "The --netcdf_awc and --var_name_awc arguments are not applicable to KBDI"),
+            ({"netcdf_pet": "pet.nc"}, "The --netcdf_pet argument is not applicable to --index kbdi"),
+            ({"var_name_pet": "pet"}, "The --var_name_pet argument is not applicable to --index kbdi"),
+            ({"netcdf_awc": "awc.nc"}, "The --netcdf_awc argument is not applicable to --index kbdi"),
+            ({"var_name_awc": "awc"}, "The --var_name_awc argument is not applicable to --index kbdi"),
             *(
-                (
-                    {name: value},
-                    "The --netcdf_pe, --var_name_pe, --year_start_month, and --api_k arguments are not applicable to KBDI",
-                )
+                ({name: value}, f"The --{name} argument is not applicable to --index kbdi")
                 for name, value in (
                     ("netcdf_pe", "pe.nc"),
                     ("var_name_pe", "pe"),
@@ -190,6 +188,7 @@ class TestKBDIProcessing:
     @pytest.mark.parametrize(
         ("units", "var_name", "cf_units", "variant"),
         [
+            (None, "kbdi", "mm", "metric"),
             ("metric", "kbdi", "mm", "metric"),
             ("imperial", "kbdi_imperial", "0.01 in", "imperial"),
         ],

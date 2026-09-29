@@ -565,6 +565,85 @@ def _validate_cli_zero_handling(args: argparse.Namespace, handlers: Sequence[_In
         raise ValueError(f"--zero_handling is not applicable to --index {args.index}")
 
 
+# the arguments every --index value accepts: the dispatch, cadence, output and
+# execution settings, plus the two globals their own validators police
+_UNIVERSAL_FLAGS = frozenset(
+    {
+        "index",
+        "periodicity",
+        "output_file_base",
+        "multiprocessing",
+        "chunksizes",
+        "output_scale",
+        "zero_handling",
+    }
+)
+
+
+def _flag_display(parser: argparse.ArgumentParser, dests: set[str]) -> list[str]:
+    """The command line spelling of each provided dest, in parser order.
+
+    A dest with alias spellings (the calibration year aliases share one) is
+    reported once, naming every spelling because the parsed namespace does not
+    record which one was typed.
+    """
+    spellings: dict[str, list[str]] = {}
+    for action in parser._actions:  # noqa: SLF001 -- argparse exposes no ordered public view
+        if action.dest in dests and action.option_strings:
+            spellings.setdefault(action.dest, []).append(action.option_strings[0])
+    return ["/".join(names) for names in spellings.values()]
+
+
+def _join_flag_names(names: Sequence[str]) -> str:
+    """Join flag names as a short English list: ``--a``, ``--a and --b``, ``--a, --b, and --c``."""
+    if len(names) <= 1:
+        return names[0] if names else ""
+    if len(names) == 2:
+        return f"{names[0]} and {names[1]}"
+    return ", ".join(names[:-1]) + f", and {names[-1]}"
+
+
+def _validate_consumed_flags(args: argparse.Namespace, handlers: Sequence[_IndexRegistration]) -> None:
+    """
+    Reject a provided argument that no requested index consumes.
+
+    Every registration declares its consumed argument dests, so a flag handed
+    to the wrong index is a clear error rather than a silent no-op. The
+    arguments every index accepts are exempt, as are ``output_scale`` and
+    ``zero_handling``, which their own validators restrict.
+
+    :param args: an arguments object of the type returned by
+        argparse.ArgumentParser.parse_args()
+    :param handlers: the handlers registered for the requested ``--index`` value
+    :raise ValueError: if a provided argument is consumed by none of them
+    """
+    parser = _build_parser()
+    known = {action.dest for action in parser._actions}  # noqa: SLF001 -- argparse exposes no ordered public view
+    consumed = set().union(*(handler.consumed_flags for handler in handlers))
+
+    # a selected input source shadows the variable name of the input it
+    # replaces; the file flags keep their own mutual-exclusion checks, so only
+    # subtract a name when the replaced file itself is absent
+    if getattr(args, "netcdf_pe", None) is not None and getattr(args, "netcdf_precip", None) is None:
+        consumed.discard("var_name_precip")
+    if getattr(args, "netcdf_pet", None) is not None and getattr(args, "netcdf_temp", None) is None:
+        consumed.discard("var_name_temp")
+    if getattr(args, "netcdf_temp", None) is not None and getattr(args, "netcdf_pet", None) is None:
+        consumed.discard("var_name_pet")
+
+    provided = {
+        dest
+        for dest, value in vars(args).items()
+        if value is not None and dest in known and dest not in _UNIVERSAL_FLAGS and dest not in consumed
+    }
+    if provided:
+        names = _flag_display(parser, provided)
+        verb = "arguments are" if len(names) > 1 else "argument is"
+        msg = f"The {_join_flag_names(names)} {verb} not applicable to --index {args.index}"
+        _logger.error(msg)
+        raise ValueError(msg)
+
+
 def _validate_args(args: argparse.Namespace) -> DatasetLayout:
     """
     Validate the processing settings to confirm that proper argument
@@ -581,6 +660,7 @@ def _validate_args(args: argparse.Namespace) -> DatasetLayout:
     """
 
     handlers = _handlers_for_index(args.index)
+    _validate_consumed_flags(args, handlers)
 
     for handler in handlers:
         if handler.validate_arguments is not None:
@@ -1125,6 +1205,11 @@ class _IndexRegistration:
     requires_pet_or_temp: bool = False
     requires_awc: bool = False
     requires_scales: bool = False
+    # the argparse dest names this index consumes, beyond the universal
+    # arguments (index, periodicity, output, multiprocessing, chunking) and the
+    # globally validated output_scale and zero_handling. A provided flag that no
+    # requested index declares here is rejected.
+    consumed_flags: frozenset[str] = frozenset()
     validate_arguments: Callable[[argparse.Namespace], None] | None = None
     validate_inputs: Callable[[argparse.Namespace, _InputContext], None] | None = None
     build_arguments: Callable[[_IndexRequest], dict[str, Any]] | None = None
@@ -1502,41 +1587,17 @@ def _validate_kbdi_arguments(args: argparse.Namespace) -> None:
     """
     Validate that KBDI was given the arguments it can use.
 
-    KBDI is computed for daily inputs only, through the fire module, and does not
-    use the scale, calibration, PET, or AWC arguments of the other indices.
+    KBDI is computed for daily inputs only, through the fire module. The
+    arguments it cannot use are rejected centrally, from the registration's
+    declared flags (see ``_validate_consumed_flags``).
 
     :param args: an arguments object of the type returned by
         argparse.ArgumentParser.parse_args()
-    :raise ValueError: if an argument KBDI cannot use was provided, or if the
-        temperature input it requires is missing
+    :raise ValueError: if the periodicity is not daily, or the temperature
+        input KBDI requires is missing
     """
     if args.periodicity is not compute.Periodicity.daily:
         msg = "Invalid periodicity argument for KBDI: " + f"'{args.periodicity}' -- only 'daily' is supported"
-        _logger.error(msg)
-        raise ValueError(msg)
-
-    if args.scales is not None:
-        msg = "The --scales argument is not applicable to KBDI"
-        _logger.error(msg)
-        raise ValueError(msg)
-
-    if args.calibration_start_year is not None or args.calibration_end_year is not None:
-        msg = "The --calibration_start_year and --calibration_end_year arguments are not applicable to KBDI"
-        _logger.error(msg)
-        raise ValueError(msg)
-
-    if args.netcdf_pet is not None or args.var_name_pet is not None:
-        msg = "The --netcdf_pet and --var_name_pet arguments are not applicable to KBDI"
-        _logger.error(msg)
-        raise ValueError(msg)
-
-    if args.netcdf_awc is not None or args.var_name_awc is not None:
-        msg = "The --netcdf_awc and --var_name_awc arguments are not applicable to KBDI"
-        _logger.error(msg)
-        raise ValueError(msg)
-
-    if any(getattr(args, name) is not None for name in ("netcdf_pe", "var_name_pe", "year_start_month", "api_k")):
-        msg = "The --netcdf_pe, --var_name_pe, --year_start_month, and --api_k arguments are not applicable to KBDI"
         _logger.error(msg)
         raise ValueError(msg)
 
@@ -1614,24 +1675,19 @@ def _validate_kbdi_inputs(args: argparse.Namespace, context: _InputContext) -> N
                 raise ValueError(msg)
 
 
-# the flood indices that standardize effective precipitation against a calibration period
-_PE_STANDARDIZED_INDICES = ("edi", "flood_index")
-
-
 def _validate_flood_arguments(args: argparse.Namespace) -> None:
     """
     Validate that a flood index was given the arguments it can use.
 
     The flood indices are computed for daily inputs only, through the flood
-    module, and do not use the scale, temperature, PET, or AWC arguments of the
-    other indices. Each also takes only the arguments of its own kind: the PE
-    and calibration arguments belong to EDI and the Flood Index, the year
-    boundary to the Flood Index, and the decay constant to API.
+    module, and each requires its own defining argument. The arguments an index
+    cannot use are rejected centrally, from the registration's declared flags
+    (see ``_validate_consumed_flags``).
 
     :param args: an arguments object of the type returned by
         argparse.ArgumentParser.parse_args()
-    :raise ValueError: if an argument the index cannot use was provided, or if
-        one it requires is missing
+    :raise ValueError: if the periodicity is not daily, or a required argument
+        is missing
     """
     index = args.index
 
@@ -1639,34 +1695,6 @@ def _validate_flood_arguments(args: argparse.Namespace) -> None:
         msg = f"Invalid periodicity argument for {index}: '{args.periodicity}' -- only 'daily' is supported"
         _logger.error(msg)
         raise ValueError(msg)
-
-    # each entry is the flags of one argument group, and the values it holds
-    inapplicable: list[tuple[str, list[Any]]] = [
-        ("--scales", [args.scales]),
-        ("--output_scale", [getattr(args, "output_scale", None)]),
-        ("--netcdf_temp and --var_name_temp", [args.netcdf_temp, args.var_name_temp]),
-        ("--netcdf_pet and --var_name_pet", [args.netcdf_pet, args.var_name_pet]),
-        ("--netcdf_awc and --var_name_awc", [args.netcdf_awc, args.var_name_awc]),
-    ]
-    if index not in _PE_STANDARDIZED_INDICES:
-        inapplicable += [
-            (
-                "--calibration_start_year and --calibration_end_year",
-                [args.calibration_start_year, args.calibration_end_year],
-            ),
-            ("--netcdf_pe and --var_name_pe", [args.netcdf_pe, args.var_name_pe]),
-        ]
-    if index != "flood_index":
-        inapplicable.append(("--year_start_month", [args.year_start_month]))
-    if index != "api":
-        inapplicable.append(("--api_k", [args.api_k]))
-
-    for flags, values in inapplicable:
-        if any(value is not None for value in values):
-            verb = "arguments are" if len(values) > 1 else "argument is"
-            msg = f"The {flags} {verb} not applicable to --index {index}"
-            _logger.error(msg)
-            raise ValueError(msg)
 
     if index == "flood_index" and args.year_start_month is None:
         msg = "Missing the required --year_start_month argument"
@@ -1850,16 +1878,20 @@ def _run_kbdi(arguments: argparse.Namespace, input_type: DatasetLayout, transpor
         _open_with_default_chunks(xr.open_dataset, request.netcdf_precip, chunks=chunks) as dataset_precip,
         _open_with_default_chunks(xr.open_dataset, request.netcdf_temp, chunks=chunks) as dataset_temp,
     ):
+        # these default to None so an unconsumed KBDI flag on another index is
+        # detectable; resolve the documented defaults here
+        units: Literal["metric", "imperial"] = arguments.kbdi_units or "metric"
+        initial_kbdi: float = 0.0 if arguments.kbdi_initial is None else arguments.kbdi_initial
         kbdi_values = fire.kbdi(
             dataset_precip[request.var_name_precip],
             dataset_temp[request.var_name_temp],
-            units=arguments.kbdi_units,
-            initial_kbdi=arguments.kbdi_initial,
+            units=units,
+            initial_kbdi=initial_kbdi,
         )
 
         # the xarray route names the result after its precipitation
         # input; use the CF variable name the `units` argument selected
-        kbdi_values.name = "kbdi_imperial" if arguments.kbdi_units == "imperial" else "kbdi"
+        kbdi_values.name = "kbdi_imperial" if units == "imperial" else "kbdi"
         output_file = f"{request.output_file_base}_{kbdi_values.name}.nc"
         _write_xarray_index(request, kbdi_values, output_file, dataset_precip[request.var_name_precip])
 
@@ -1988,6 +2020,17 @@ def _run_api(arguments: argparse.Namespace, input_type: DatasetLayout, transport
         _write_xarray_index(request, api_values, f"{request.output_file_base}_api.nc", precipitation)
 
 
+# the argparse dest names the registrations consume, grouped by input kind;
+# universal arguments and the globally validated output_scale and zero_handling
+# are not repeated here
+_PRECIP_FLAGS = frozenset({"netcdf_precip", "var_name_precip"})
+_TEMPERATURE_FLAGS = frozenset({"netcdf_temp", "var_name_temp"})
+_PET_FLAGS = frozenset({"netcdf_pet", "var_name_pet"})
+_AWC_FLAGS = frozenset({"netcdf_awc", "var_name_awc"})
+_PE_FLAGS = frozenset({"netcdf_pe", "var_name_pe"})
+_CALIBRATION_FLAGS = frozenset({"calibration_start_year", "calibration_end_year"})
+_SCALE_FLAGS = frozenset({"scales"})
+
 _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
     "spi": _IndexRegistration(
         index="spi",
@@ -1995,6 +2038,7 @@ _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
         input_paths=("netcdf_precip", "var_name_precip"),
         requires_precip=True,
         requires_scales=True,
+        consumed_flags=_PRECIP_FLAGS | _CALIBRATION_FLAGS | _SCALE_FLAGS,
         build_arguments=_spi_arguments,
         variable_attributes=_spi_variable_attributes,
         kernel=_spi,
@@ -2010,6 +2054,7 @@ _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
         requires_precip=True,
         requires_pet_or_temp=True,
         requires_scales=True,
+        consumed_flags=_PRECIP_FLAGS | _TEMPERATURE_FLAGS | _PET_FLAGS | _CALIBRATION_FLAGS | _SCALE_FLAGS,
         build_arguments=_spi_arguments,
         variable_attributes=_spei_variable_attributes,
         kernel=_spei,
@@ -2024,6 +2069,7 @@ _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
         input_paths=("netcdf_precip", "var_name_precip"),
         requires_precip=True,
         requires_scales=True,
+        consumed_flags=_PRECIP_FLAGS | _CALIBRATION_FLAGS | _SCALE_FLAGS,
         build_arguments=_pnp_arguments,
         variable_attributes=_pnp_variable_attributes,
         kernel=_pnp,
@@ -2036,6 +2082,7 @@ _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
         index="pet",
         run=_run_pet,
         input_paths=("netcdf_temp", "var_name_temp"),
+        consumed_flags=_TEMPERATURE_FLAGS,
         build_arguments=_pet_arguments,
         variable_attributes=_pet_variable_attributes,
         prepare_arrays=_prepare_latitude_array,
@@ -2060,6 +2107,7 @@ _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
         requires_precip=True,
         requires_pet_or_temp=True,
         requires_awc=True,
+        consumed_flags=_PRECIP_FLAGS | _TEMPERATURE_FLAGS | _PET_FLAGS | _AWC_FLAGS | _CALIBRATION_FLAGS,
         build_arguments=_palmer_arguments,
         prepare_inputs=_prepare_palmer_inputs,
         kernel=_palmers,
@@ -2074,6 +2122,7 @@ _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
         run=_run_kbdi,
         input_paths=("netcdf_precip", "var_name_precip", "netcdf_temp", "var_name_temp"),
         requires_precip=True,
+        consumed_flags=_PRECIP_FLAGS | _TEMPERATURE_FLAGS | frozenset({"kbdi_units", "kbdi_initial"}),
         validate_arguments=_validate_kbdi_arguments,
         validate_inputs=_validate_kbdi_inputs,
     ),
@@ -2082,6 +2131,7 @@ _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
         run=_run_pe,
         input_paths=("netcdf_precip", "var_name_precip"),
         requires_precip=True,
+        consumed_flags=_PRECIP_FLAGS,
         validate_arguments=_validate_flood_arguments,
     ),
     "edi": _IndexRegistration(
@@ -2089,6 +2139,7 @@ _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
         run=_run_edi,
         input_paths=("netcdf_pe", "var_name_pe"),
         requires_pe=True,
+        consumed_flags=_PRECIP_FLAGS | _PE_FLAGS | _CALIBRATION_FLAGS,
         validate_arguments=_validate_flood_arguments,
     ),
     "flood_index": _IndexRegistration(
@@ -2096,6 +2147,7 @@ _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
         run=_run_flood_index,
         input_paths=("netcdf_pe", "var_name_pe"),
         requires_pe=True,
+        consumed_flags=_PRECIP_FLAGS | _PE_FLAGS | _CALIBRATION_FLAGS | frozenset({"year_start_month"}),
         validate_arguments=_validate_flood_arguments,
     ),
     "api": _IndexRegistration(
@@ -2103,6 +2155,7 @@ _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
         run=_run_api,
         input_paths=("netcdf_precip", "var_name_precip"),
         requires_precip=True,
+        consumed_flags=_PRECIP_FLAGS | frozenset({"api_k"}),
         validate_arguments=_validate_flood_arguments,
     ),
 }
@@ -2159,6 +2212,87 @@ def _handlers_for_index(index: str) -> tuple[_IndexRegistration, ...]:
     return tuple(_INDEX_REGISTRY[name] for name in pipeline)
 
 
+def _build_parser() -> argparse.ArgumentParser:
+    """Build the command line argument parser.
+
+    Every index-specific argument is consumed by at least one registration; the
+    universal arguments are the ones every ``--index`` value accepts.
+    """
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--index",
+        help="Indices to compute",
+        choices=list(_INDEX_PIPELINES),
+        required=True,
+    )
+    _add_common_spi_arguments(parser)
+    parser.add_argument(
+        "--zero_handling",
+        choices=list(compute._ZERO_HANDLING_MODES),
+        default="classic",
+        help="SPI zero placement: classic (default), center_of_mass, or mean_zero",
+    )
+    parser.add_argument(
+        "--netcdf_temp",
+        help="Temperature NetCDF file to be used as input for indices computations",
+    )
+    parser.add_argument(
+        "--var_name_temp",
+        help="Temperature variable name used in the temperature NetCDF file",
+    )
+    parser.add_argument(
+        "--netcdf_pet",
+        help="PET NetCDF file to be used as input for SPEI and/or Palmer computations",
+    )
+    parser.add_argument("--var_name_pet", help="PET variable name used in the PET NetCDF file")
+    parser.add_argument(
+        "--netcdf_awc",
+        help="Available water capacity NetCDF file to be used as input for the Palmer computations",
+    )
+    parser.add_argument(
+        "--var_name_awc",
+        help="Available water capacity variable name used in the AWC NetCDF file",
+    )
+    parser.add_argument(
+        "--netcdf_pe",
+        help="Effective precipitation NetCDF file to be used as input for EDI and Flood Index computations,"
+        " in place of a precipitation file",
+    )
+    parser.add_argument("--var_name_pe", help="Effective precipitation variable name used in the PE NetCDF file")
+    parser.add_argument(
+        "--year_start_month",
+        help="Calendar month (1-12) on which each year of Flood Index annual maxima starts",
+        type=int,
+        choices=range(1, 13),
+        metavar="{1..12}",
+    )
+    parser.add_argument(
+        "--api_k",
+        help="Daily decay constant of the Antecedent Precipitation Index, strictly between 0 and 1",
+        type=float,
+    )
+    parser.add_argument(
+        "--kbdi_units",
+        help="Units of the KBDI input and output values (default: metric)",
+        choices=["metric", "imperial"],
+        required=False,
+    )
+    parser.add_argument(
+        "--kbdi_initial",
+        help="Initial KBDI value (default: 0.0)",
+        type=float,
+        required=False,
+    )
+    parser.add_argument(
+        "--chunksizes",
+        help="Output file chunksizes. Can be 'none' (default), or 'input' to match input chunks",
+        choices=["none", "input"],
+        required=False,
+        default="none",
+    )
+    return parser
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     """
     Perform climate indices processing on NetCDF datasets, which may be
@@ -2183,81 +2317,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         _logger.info("Start time:    %s", start_datetime)
 
         # parse the command line arguments
-        parser = argparse.ArgumentParser()
-        parser.add_argument(
-            "--index",
-            help="Indices to compute",
-            choices=list(_INDEX_PIPELINES),
-            required=True,
-        )
-        _add_common_spi_arguments(parser)
-        parser.add_argument(
-            "--zero_handling",
-            choices=list(compute._ZERO_HANDLING_MODES),
-            default="classic",
-            help="SPI zero placement: classic (default), center_of_mass, or mean_zero",
-        )
-        parser.add_argument(
-            "--netcdf_temp",
-            help="Temperature NetCDF file to be used as input for indices computations",
-        )
-        parser.add_argument(
-            "--var_name_temp",
-            help="Temperature variable name used in the temperature NetCDF file",
-        )
-        parser.add_argument(
-            "--netcdf_pet",
-            help="PET NetCDF file to be used as input for SPEI and/or Palmer computations",
-        )
-        parser.add_argument("--var_name_pet", help="PET variable name used in the PET NetCDF file")
-        parser.add_argument(
-            "--netcdf_awc",
-            help="Available water capacity NetCDF file to be used as input for the Palmer computations",
-        )
-        parser.add_argument(
-            "--var_name_awc",
-            help="Available water capacity variable name used in the AWC NetCDF file",
-        )
-        parser.add_argument(
-            "--netcdf_pe",
-            help="Effective precipitation NetCDF file to be used as input for EDI and Flood Index computations,"
-            " in place of a precipitation file",
-        )
-        parser.add_argument("--var_name_pe", help="Effective precipitation variable name used in the PE NetCDF file")
-        parser.add_argument(
-            "--year_start_month",
-            help="Calendar month (1-12) on which each year of Flood Index annual maxima starts",
-            type=int,
-            choices=range(1, 13),
-            metavar="{1..12}",
-        )
-        parser.add_argument(
-            "--api_k",
-            help="Daily decay constant of the Antecedent Precipitation Index, strictly between 0 and 1",
-            type=float,
-        )
-        parser.add_argument(
-            "--kbdi_units",
-            help="Units of the KBDI input and output values",
-            choices=["metric", "imperial"],
-            required=False,
-            default="metric",
-        )
-        parser.add_argument(
-            "--kbdi_initial",
-            help="Initial KBDI value",
-            type=float,
-            required=False,
-            default=0.0,
-        )
-        parser.add_argument(
-            "--chunksizes",
-            help="Output file chunksizes. Can be 'none' (default), or 'input' to match input chunks",
-            choices=["none", "input"],
-            required=False,
-            default="none",
-        )
-
+        parser = _build_parser()
         arguments = parser.parse_args(argv)
 
         process_climate_indices(arguments=arguments)

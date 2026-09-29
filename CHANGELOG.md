@@ -92,6 +92,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now required for every scaled index (#1002). `"auto"` chunk axes resolve against
   a 100 MB array chunk budget while the input is opened, and a caller-configured
   `array.chunk-size` is honored rather than overwritten (#925).
+- **CLI unconsumed arguments**: each index registration declares the arguments it
+  consumes, and a flag provided to an index that does not consume it is now rejected
+  with an error naming the flag and the index instead of being ignored. KBDI and the
+  flood indices' hand-maintained exclusion lists are replaced by that one declaration,
+  and the parser is checked against the registrations (#1225).
 
 ### Breaking
 
