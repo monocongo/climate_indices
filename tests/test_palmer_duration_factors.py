@@ -177,9 +177,10 @@ def test_pdi_recursion_rejects_infinite_z_values():
     """The pdi.f entry point rejects infinite Z like its Wells sibling."""
     z = np.zeros((1, 12, 1))
     z[0, 0, 0] = np.inf
+    factors = _palmer_pdi.PdiDurationFactors.from_fitted(1.0, 1.0, 1.0, 1.0)
 
     with pytest.raises(ConvergenceError, match="non-finite"):
-        _palmer_pdi.calculate(z, _palmer_pdi.PdiDurationFactors.from_fitted(1.0, 1.0, 1.0, 1.0))
+        _palmer_pdi.calculate(z, factors)
 
 
 def test_calc_cafec_zindex_writes_the_zindex():
