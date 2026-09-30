@@ -1205,6 +1205,29 @@ def _capture_calculation_metadata(
     return calc_metadata
 
 
+def _report_effective_calibration_years(
+    calc_metadata: dict[str, Any],
+    input_da: xr.DataArray,
+    valid_kwargs: dict[str, Any],
+    time_dim: str,
+) -> None:
+    """Rewrite calibration years to those the fit actually used (#1050).
+
+    A ufunc clamps a calibration window the record does not cover, so the
+    requested years can differ from the fitted ones. A complete ``fitting_params``
+    set is not fitted, so its window stays as the caller gave it.
+    """
+    if time_dim not in input_da.coords:
+        return
+    initial = calc_metadata.get("calibration_year_initial")
+    final = calc_metadata.get("calibration_year_final")
+    if initial is None or final is None or _supplies_complete_fit(valid_kwargs):
+        return
+    calc_metadata["calibration_year_initial"], calc_metadata["calibration_year_final"] = _effective_calibration_years(
+        input_da[time_dim], initial, final, valid_kwargs.get("data_start_year")
+    )
+
+
 def _collect_input_dataarrays(
     input_da: xr.DataArray,
     additional_input_names: list[str] | None,
@@ -1317,15 +1340,9 @@ def _finalize_ufunc_result(
     result_da = cast(xr.DataArray, result_da.copy(deep=False))
     # apply metadata using build_output_attrs
     calc_metadata = _capture_calculation_metadata(calculation_metadata_keys, valid_kwargs)
-    if calc_metadata is not None and time_dim in input_da.coords:
-        # report the years the fit used, not the ones requested (#1050); a complete
-        # fitting_params set is not fitted, so its window stays as the caller gave it
-        initial = calc_metadata.get("calibration_year_initial")
-        final = calc_metadata.get("calibration_year_final")
-        if initial is not None and final is not None and not _supplies_complete_fit(valid_kwargs):
-            calc_metadata["calibration_year_initial"], calc_metadata["calibration_year_final"] = (
-                _effective_calibration_years(input_da[time_dim], initial, final, valid_kwargs.get("data_start_year"))
-            )
+    if calc_metadata is not None:
+        # report the years the fit used, not the ones requested (#1050)
+        _report_effective_calibration_years(calc_metadata, input_da, valid_kwargs, time_dim)
     resolved_index_name = index_display_name if index_display_name is not None else func_name.upper()
     resolved_cf_metadata = _resolve_cf_metadata(
         cf_metadata, cf_metadata_variants, valid_kwargs, metadata_variant_parameter
