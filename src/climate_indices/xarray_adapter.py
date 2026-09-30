@@ -441,19 +441,40 @@ def _infer_calibration_period(time_coord: xr.DataArray) -> tuple[int, int]:
     return (first_year, last_year)
 
 
-def _effective_calibration_years(time_coord: xr.DataArray, initial: int, final: int) -> tuple[int, int]:
+def _effective_calibration_years(
+    time_coord: xr.DataArray, initial: int, final: int, data_start_year: int | None = None
+) -> tuple[int, int]:
     """Return the years a fit uses for a requested calibration window (#1050).
 
     A distribution fit clamps a window the record does not cover, so the requested
-    years can differ from the fitted ones. A reversed window is returned as given:
-    the fit rejects it, and rejecting it here would move that error out of the
-    wrapped function.
+    years can differ from the fitted ones. The fit reads the record as starting in
+    ``data_start_year``, which is the time coordinate's first year unless the caller
+    set it otherwise. A reversed window is returned as given: the fit rejects it, and
+    rejecting it here would move that error out of the wrapped function.
     """
     if initial > final:
         return initial, final
     first_year, last_year = _infer_calibration_period(time_coord)
+    if data_start_year is not None:
+        first_year, last_year = data_start_year, data_start_year + last_year - first_year
     period = resolve_calibration_period(first_year, last_year - first_year + 1, initial, final, policy="clamp")
     return period.start_year, period.end_year
+
+
+def _supplies_complete_fit(valid_kwargs: dict[str, Any]) -> bool:
+    """True when ``fitting_params`` carries every parameter of the distribution.
+
+    Nothing is fitted then, so no window of the record produced the parameters.
+    """
+    params = valid_kwargs.get("fitting_params")
+    distribution = valid_kwargs.get("distribution")
+    if not params or distribution is None:
+        return False
+    altnames = dict(compute._FIT_ALTNAMES)
+    return all(
+        params.get(key) is not None or params.get(altnames.get(key, key)) is not None
+        for key in compute._PARAMETER_KEYS[distribution.value]
+    )
 
 
 def _validate_latitude_range(
@@ -1297,12 +1318,13 @@ def _finalize_ufunc_result(
     # apply metadata using build_output_attrs
     calc_metadata = _capture_calculation_metadata(calculation_metadata_keys, valid_kwargs)
     if calc_metadata is not None and time_dim in input_da.coords:
-        # report the years the fit used, not the ones requested (#1050)
+        # report the years the fit used, not the ones requested (#1050); a complete
+        # fitting_params set is not fitted, so its window stays as the caller gave it
         initial = calc_metadata.get("calibration_year_initial")
         final = calc_metadata.get("calibration_year_final")
-        if initial is not None and final is not None:
+        if initial is not None and final is not None and not _supplies_complete_fit(valid_kwargs):
             calc_metadata["calibration_year_initial"], calc_metadata["calibration_year_final"] = (
-                _effective_calibration_years(input_da[time_dim], initial, final)
+                _effective_calibration_years(input_da[time_dim], initial, final, valid_kwargs.get("data_start_year"))
             )
     resolved_index_name = index_display_name if index_display_name is not None else func_name.upper()
     resolved_cf_metadata = _resolve_cf_metadata(

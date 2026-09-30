@@ -351,6 +351,31 @@ class TestReportsTheWindowUsed:
         )
         assert (result.attrs["calibration_year_initial"], result.attrs["calibration_year_final"]) == (1995, 2015)
 
+    def test_xarray_spi_attrs_keep_the_requested_window_for_supplied_parameters(self):
+        # a complete parameter set is never fitted, so no record year was used to fit it
+        alphas, betas = compute.gamma_parameters(_record(31), 1990, 1990, 2020, MONTHLY)
+        result = ci.spi(
+            _monthly_precip(1990, 31),
+            scale=1,
+            distribution=indices.Distribution.gamma,
+            calibration_year_initial=1981,
+            calibration_year_final=2010,
+            fitting_params={"alpha": alphas, "beta": betas, "prob_zero": np.zeros(12)},
+        )
+        assert (result.attrs["calibration_year_initial"], result.attrs["calibration_year_final"]) == (1981, 2010)
+
+    def test_xarray_spi_attrs_clamp_against_an_explicit_data_start_year(self):
+        # the fit reads the record as starting in 1980, so 1981-2010 is covered and not clamped
+        result = ci.spi(
+            _monthly_precip(1990, 31),
+            scale=6,
+            distribution=indices.Distribution.gamma,
+            data_start_year=1980,
+            calibration_year_initial=1981,
+            calibration_year_final=2010,
+        )
+        assert (result.attrs["calibration_year_initial"], result.attrs["calibration_year_final"]) == (1981, 2010)
+
     def test_xarray_sample_size_check_reads_the_window_the_fit_uses(self):
         # 1981-2010 selects only 21 of this record's years, but the fit clamps to all 31 and
         # a single missing month leaves them well above the 30-year minimum
