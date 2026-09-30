@@ -24,6 +24,7 @@ __all__ = [
     "ClimateIndicesWarning",
     "MissingDataWarning",
     "ShortCalibrationWarning",
+    "CalibrationPeriodClampedWarning",
     "GoodnessOfFitWarning",
     "InputAlignmentWarning",
     "BetaFeatureWarning",
@@ -362,6 +363,31 @@ class ShortCalibrationWarning(ClimateIndicesWarning):
         super().__init__(message)
         self.actual_years = actual_years
         self.required_years = required_years
+
+
+class CalibrationPeriodClampedWarning(ClimateIndicesWarning):
+    """Warning issued when a fit uses a different calibration period than requested.
+
+    A distribution fit clamps a requested window the record does not cover: it fits
+    the whole record, or, for a window ending one year past the record, cuts the
+    window at the record's last year. The result is valid, but its parameters come
+    from the years named in ``effective_years``, not the ones asked for.
+
+    Attributes:
+        requested_years: The requested window as an inclusive ``(start, end)`` year pair
+        effective_years: The inclusive ``(start, end)`` year pair the fit used
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        requested_years: tuple[int, int] | None = None,
+        effective_years: tuple[int, int] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.requested_years = requested_years
+        self.effective_years = effective_years
 
 
 class GoodnessOfFitWarning(ClimateIndicesWarning):

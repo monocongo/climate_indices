@@ -980,6 +980,26 @@ result = indices.spi(
 )
 ```
 
+### CalibrationPeriodClampedWarning
+
+**Warning:** `CalibrationPeriodClampedWarning: Calibration period 1981-2010 is not covered by the record, so the fit used 1990-2020 instead.`
+
+**Cause:** The requested calibration years are not all inside the input's years. The gamma, Pearson Type III and log-logistic fits clamp such a window: a window that ends one year past the record keeps its start and is cut at the last year, and any other window the record does not cover is replaced by the whole record.
+
+**Impact:** The result is valid, but its parameters come from the years the warning names, not the years you asked for. The xarray result's `calibration_year_initial` and `calibration_year_final` attributes hold the years the fit used, and the warning's `requested_years` and `effective_years` attributes hold both windows.
+
+**Solution:** Request a window inside the record, or accept the years the warning names:
+
+```python
+result = indices.spi(
+    precip_da,
+    scale=6,
+    distribution=indices.Distribution.gamma,
+    calibration_year_initial=1990,  # the record's first year
+    calibration_year_final=2020,  # the record's last year
+)
+```
+
 ### MissingDataWarning
 
 **Warning:** `MissingDataWarning: Calibration period has 25% missing data (threshold: 20%). Distribution fitting may be less reliable.`

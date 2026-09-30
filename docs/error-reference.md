@@ -65,6 +65,8 @@ error message:
   - [Notebook and Prepared-Input Workflow](troubleshooting.md#notebook-and-prepared-input-workflow)
 * - `ShortCalibrationWarning`
   - [Warnings (Non-Fatal)](troubleshooting.md#warnings-non-fatal)
+* - `CalibrationPeriodClampedWarning`
+  - [Warnings (Non-Fatal)](troubleshooting.md#warnings-non-fatal)
 * - `MissingDataWarning`
   - [Warnings (Non-Fatal)](troubleshooting.md#warnings-non-fatal)
 * - `GoodnessOfFitWarning`
@@ -94,6 +96,7 @@ ClimateIndicesError (base exception)
 ClimateIndicesWarning (base warning)
 ├── MissingDataWarning
 ├── ShortCalibrationWarning
+├── CalibrationPeriodClampedWarning
 ├── GoodnessOfFitWarning
 └── InputAlignmentWarning
 ```

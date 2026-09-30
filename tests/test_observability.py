@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import warnings
 from datetime import datetime, timedelta
 from io import StringIO
 from unittest import mock
@@ -929,3 +930,20 @@ class TestDailyRecurrenceLifecycle:
 
         assert len(_events_named(stream, "calculation_completed")) == 0
         assert len(_events_named(stream, "calculation_failed")) == 1
+
+
+class TestFittingLogReportsTheWindowUsed:
+    """The fit's log lines name the years it fitted, not the years asked for (#1050)."""
+
+    @pytest.mark.parametrize("fit", ["gamma_parameters", "pearson_parameters"])
+    def test_fitting_events_carry_the_clamped_window(self, fit: str) -> None:
+        stream = _capture_stream(log_level="INFO")
+        values = np.random.default_rng(0).gamma(2.0, 30.0, size=31 * 12)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            getattr(compute, fit)(values, 1990, 1981, 2010, compute.Periodicity.monthly)
+
+        (started,) = _events_named(stream, "distribution_fitting_started")
+        (completed,) = _events_named(stream, "distribution_fitting_completed")
+        assert started["calibration_period"] == "1981-2010"
+        assert completed["calibration_period"] == "1990-2020"

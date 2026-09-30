@@ -53,6 +53,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ValueError` rather than an `IndexError` from NumPy. CF metadata and the CLI
   flag landed in #1187, and the zero-placement tests and guidance in #1188
   (ADR-0015, #1186).
+- **`CalibrationPeriodClampedWarning`**: the gamma, Pearson Type III and log-logistic
+  fits (`spi()`, `spei()`, `standardized_index()` and the `compute` fitting and transform
+  functions) warn when the record does not cover the requested Calibration Period and
+  the fit uses other years. The warning carries `requested_years` and `effective_years`.
+  Results are unchanged (#1050).
 
 ### Changed
 
@@ -299,6 +304,16 @@ change states what a user sees, how to detect it, and what to change in
   raising, and the `error_type` of the logged `calculation_failed` event is now
   `CalibrationPeriodError` for both. Reversed windows and percentage of normal's
   windows are settled separately, under Breaking (#1214, #1230, #1231).
+- **Fits report the Calibration Period they used**: when the record does not cover the
+  requested window, the fit clamps it, but the fit's `distribution_fitting_completed`
+  log event and the xarray result's `calibration_year_initial` and
+  `calibration_year_final` attributes kept naming the requested years, so the years
+  behind the fitted parameters could not be told from the output. They now name the
+  years the fit used. The single-series sample-size preflight (`InsufficientDataError`)
+  reads those years too: a window the record only partly covered was counted on its
+  overlap with the record rather than on the whole record the fit uses, and a window
+  with no overlap at all was rejected as containing no data, where the fit clamps it
+  (#1050).
 - **Pearson-to-gamma fall back**: `spi()` and `standardized_index()` treated any
   argument error as a failed Pearson Type III fit and silently returned gamma values.
   A partial or mis-shaped `fitting_params` set is now rejected before the fit, and
