@@ -17,6 +17,7 @@ error-reference
 xarray_compatibility
 research/nclimgrid-acquisition-and-redistribution
 deprecations/index
+release-notes-3.0.0
 ```
 
 ## Scientific validation and vocabulary

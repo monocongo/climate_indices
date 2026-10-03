@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.0.0] - 2026-09-29
+## [3.0.0] - 2026-10-03
 
 ### Added
 
@@ -70,6 +70,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the Flood Index, and API, with CF precipitation-unit conversion to mm, the ADR-0004
   Gregorian daily calendar, Dask spatial-block execution, complete-annual calibration
   inference, and CF output metadata. `edi` is re-exported at the package root.
+  EDI uses effective precipitation and is distinct from the Evaporative Demand Drought
+  Index (EDDI), which measures evaporative demand (#1259).
   `climate_indices --index pe|edi|flood_index|api` runs the family from the CLI, and
   `--netcdf_pe`/`--var_name_pe` let one effective-precipitation file feed both EDI and
   the Flood Index. CF metadata is registered for every index, ADR-0013 and ADR-0014
@@ -162,7 +164,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   end-to-end workflow is documented and smoke-executed: canonical calculation path,
   reproducible inputs, persisted results reopened with complete metadata, maps and
   selectable-location time series, and the xarray/Zarr, Palmer, EDDI, and Zarr/Dask
-  notebooks.
+  notebooks. The project overview, flood-applications guide, and core vocabulary now
+  disambiguate flood-family EDI from drought-family EDDI (#1259).
 - **Test suite**: the pattern-compliance source-grep suite is retired, static-data,
   xarray-metadata, and logging suites are table-driven, the CF-metadata contract and
   notebook execution have single owners, and a real CLI end-to-end QA suite replaces
