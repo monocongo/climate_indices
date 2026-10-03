@@ -47,6 +47,7 @@ _Avoid_: Percent of Normal Precipitation (this wording appears in the CF metadat
 
 **EDDI (Evaporative Demand Drought Index)**:
 A non-parametric drought index (NOAA PSL methodology) built from accumulated PET: values are ranked within each calendar period of the calibration window, ranks become cumulative probabilities, and probabilities become z-scores.
+EDDI is evaporative-demand drought (`climate_indices.eddi`); the distinct Effective Drought Index (EDI) uses effective precipitation in the flood family (`climate_indices.flood.edi`).
 
 ### Palmer family
 
