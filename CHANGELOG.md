@@ -104,8 +104,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   PIT value in `[0, 1]`, deliberately unclipped), or `"bounded"` (`2p - 1` in
   `[-1, 1]`). The xarray surface selects scale-specific CF metadata through
   `cf_metadata_variants`, and the CLI exposes `--output_scale` with per-scale output
-  names and attributes. Non-classic zero placement on the probability scale is
-  deferred to the zero-handling epic (#1189, #1192, #1203).
+  names and attributes. On probability and bounded scales, non-classic zero
+  handling places zero at `p0 / 2` (#1189, #1192, #1203).
 - **Distribution fit diagnostics**: `compute.FitDiagnostics`/`compute.fit_diagnostics()`
   and `indices.fit_diagnostics()` audit a fitted distribution per calendar step and per
   cell, reporting the distribution actually used after the Pearson-to-gamma fall-back,
@@ -119,10 +119,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (#1189, #1190, #1191, #1192, #1202, #1206, #1208).
 - **Run-theory primitive (`climate_indices.runs`)**: `identify_runs()` (1-D NumPy) and
   `identify_runs_xarray()` (per-cell, Dask-aware) identify runs above or below a
-  threshold and return a frozen `RunSet` of parallel `start_index`, `end_index`,
-  `duration`, `magnitude`, `intensity`, `peak_value`, `peak_index`, and `interarrival`
-  arrays. Direction is explicit and never inferred from the threshold's sign, NaN and
-  masked values terminate a run, a value equal to the threshold is not in a run, and
+  threshold. One-dimensional input returns a frozen `RunSet` of parallel
+  `start_index`, `end_index`, `duration`, `magnitude`, `intensity`, `peak_value`,
+  `peak_index`, and `interarrival` arrays; multidimensional input returns an
+  object-dtype `xarray.DataArray` with one `RunSet` per cell. Direction is explicit
+  and never inferred from the threshold's sign, NaN and masked values terminate a run, a value equal to the threshold is not in a run, and
   `min_duration` filters after identification. The module is public but is not
   re-exported at the package root (#1154).
 - **FAO-56 Penman-Monteith PET as a first-class method**: `pet_penman_monteith` is
@@ -475,13 +476,15 @@ change states what a user sees, how to detect it, and what to change in
   `data_start_year`/`periodicity` over a call whose arguments fail to bind (a typo'd
   keyword, for example), so explicit values are not overridden and the binding failure
   reaches the periodicity seam; and a declared `periodicity` that cannot resolve now
-  raises `PeriodicityError` and logs `periodicity_resolution_failed` instead of
-  silently skipping the daily 366-day conversion. A declared default periodicity is
-  honored (#759, #1088, #1090, #1093).
+  raises `PeriodicityError` instead of silently skipping the daily 366-day
+  conversion. Only the separate `_resolve_periodicity` path logs
+  `periodicity_resolution_failed`. A declared default periodicity is honored
+  (#759, #1088, #1090, #1093).
 - **Fire and flood daily recurrences**: the stateful daily xarray adapters share one
-  recurrence runtime, CFFWIS resolves its latitude from the aligned inputs, an
-  already-empty record stays an empty result, and the shared alignment warning is
-  reported at the public call site (#1220, #1222).
+  recurrence runtime, CFFWIS infers latitude from the aligned inputs only when
+  `latitude_degrees_north` is omitted, an already-empty record stays an empty
+  result, and the shared alignment warning is reported at the public call site
+  (#1220, #1222).
 
 ## [2.4.0] - 2026-04-05
 
