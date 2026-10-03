@@ -1228,7 +1228,7 @@ open (issue #780).
 
 ## Executive Summary
 
-**climate_indices** is a production-grade Python library providing reference implementations of climate and hydrologic indices used for drought monitoring, agricultural planning, flood-potential assessment, and fire-weather assessment. The library computes the Standardized Precipitation Index (SPI), Standardized Precipitation Evapotranspiration Index (SPEI), Evaporative Demand Drought Index (EDDI), Percentage of Normal Precipitation (PNP), Precipitation Concentration Index (PCI), Potential Evapotranspiration (PET), the Palmer Drought Indices, a namespaced family of fire-weather indices, and a namespaced family of flood-potential indices (Effective Precipitation, EDI, Flood Index, Antecedent Precipitation Index).
+**climate_indices** is a production-grade Python library providing reference implementations of climate and hydrologic indices used for drought monitoring, agricultural planning, flood-potential assessment, and fire-weather assessment. The library computes the Standardized Precipitation Index (SPI), Standardized Precipitation Evapotranspiration Index (SPEI), Evaporative Demand Drought Index (EDDI), Percentage of Normal Precipitation (PNP), Precipitation Concentration Index (PCI), Potential Evapotranspiration (PET), the Palmer Drought Indices, a namespaced family of fire-weather indices, and a namespaced family of flood-potential indices (Effective Precipitation, Effective Drought Index (EDI), Flood Index, Antecedent Precipitation Index).
 
 ### Project Status
 - **Maturity**: Production/Stable (Development Status 5)
