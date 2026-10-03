@@ -13,7 +13,9 @@ awareness, not as flood forecasts. Every index in this family describes
 wetness conditions relevant to flood potential; the family stops at the
 meteorological and climatological boundary, with one documented exception:
 input-agnostic standardization that can also accept runoff or streamflow
-([flood-family epic #1098][flood-epic]).
+([flood-family epic #1098][flood-epic]). The Effective Drought Index (EDI)
+uses effective precipitation in the flood family; it is distinct from the
+Evaporative Demand Drought Index (EDDI), which measures evaporative demand.
 
 ## From wet anomalies to flood potential
 
