@@ -73,6 +73,7 @@ def test_plot_netcdf_map_selects_time_and_defaults_to_latest(
         ([str(script), str(source), "spi_03", "--output", str(link)], "output must not overwrite input"),
         ([str(script), str(bare), "spi_03", "--output", str(output)], "expected a single (lat, lon) grid"),
         ([str(script), str(dateline), "spi_03", "--output", str(output)], "longitudes must be monotonic"),
+        ([str(script), str(source), "spi_03", "--output", str(source / "map.png")], "cannot save map"),
     ):
         monkeypatch.setattr(sys, "argv", argv)
         with pytest.raises(SystemExit, match="2"):

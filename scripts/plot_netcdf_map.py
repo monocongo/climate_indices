@@ -76,8 +76,8 @@ def main() -> None:
         ax.coastlines(resolution="50m", linewidth=0.6)
         ax.add_feature(cfeature.BORDERS.with_scale("50m"), linewidth=0.6)
         ax.set_title(title)
-        args.output.parent.mkdir(parents=True, exist_ok=True)
         try:  # Boundaries are fetched while drawing, so download failures surface here.
+            args.output.parent.mkdir(parents=True, exist_ok=True)
             fig.savefig(args.output, format="png", dpi=150, bbox_inches="tight")
         except OSError as exc:
             parser.error(f"cannot save map: {exc}")
