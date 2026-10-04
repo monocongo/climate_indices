@@ -11,8 +11,8 @@ Writes go beside the target and replace it only once the whole file is on disk,
 so a failed computation cannot leave a hollow file where an earlier output was.
 
 Experimental, opt-in packing (``--pack_output``): ``choose_netcdf_encoding``
-stores each variable as scaled int16 when its values fit, float32 otherwise,
-compressed either way. Without it the output encoding is xarray's default.
+stores each floating-point data variable as scaled int16 when its values fit,
+float32 otherwise, compressed either way. Without it the output encoding is xarray's default.
 """
 
 from __future__ import annotations
@@ -102,16 +102,20 @@ def choose_netcdf_encoding(
     A variable whose every finite value satisfies ``abs(value) <= 32767 * scale``
     is packed as int16 with ``scale_factor=scale``; anything else, including a
     variable holding +/-inf, is stored as float32. An all-NaN variable packs as
-    int16 (it is only fill values). Every variable gets an explicit encoding,
-    and the encoding keys inherited from an opened file that would conflict with
-    it are cleared from ``dataset`` so none leak into the write. Dask-backed
-    variables are ranged together in one pass.
+    int16 (it is only fill values). Each floating-point data variable gets an
+    explicit encoding, and the encoding keys inherited from an opened file that
+    would conflict with it are cleared from ``dataset`` so none leak into the
+    write. Other data variables and coordinates keep their own encodings.
+    Dask-backed variables are ranged together in one pass.
 
-    :param dataset: the Dataset about to be written; its variables' stale
-        encoding keys are removed in place
-    :param scale: the int16 packing step
-    :param complevel: the zlib compression level
-    :return: the ``encoding`` argument for ``Dataset.to_netcdf``
+    Args:
+        dataset: The Dataset about to be written; its floating-point data
+            variables' stale encoding keys are removed in place.
+        scale: The int16 packing step.
+        complevel: The zlib compression level.
+
+    Returns:
+        The ``encoding`` argument for ``Dataset.to_netcdf``.
     """
     names = [name for name, variable in dataset.data_vars.items() if np.issubdtype(variable.dtype, np.floating)]
     # NaN -> 0 so an all-NaN variable ranges as zero; +/-inf survives and fails the limit.
@@ -157,12 +161,14 @@ def write_netcdf_atomic(
 ) -> None:
     """Write ``obj`` to ``output_file``, replacing it only once fully written.
 
-    :param obj: the Dataset or DataArray to write; a DataArray must be named
-    :param output_file: the NetCDF file to write
-    :param engine: the NetCDF engine, or None to let xarray choose; packing
-        needs an HDF5-backed one (netcdf4 or h5netcdf)
-    :param pack: store the variables compressed, as int16 where they fit and
-        float32 otherwise (see ``choose_netcdf_encoding``); experimental
+    Args:
+        obj: The Dataset or DataArray to write; a DataArray must be named.
+        output_file: The NetCDF file to write.
+        engine: The NetCDF engine, or None to let xarray choose; packing needs
+            an HDF5-backed one (netcdf4 or h5netcdf).
+        pack: Store the floating-point data variables compressed, as int16
+            where they fit and float32 otherwise (see
+            ``choose_netcdf_encoding``); experimental.
     """
     output_path = Path(output_file)
     # A unique temporary per write: two CLI processes writing the same target
