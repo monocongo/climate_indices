@@ -5,7 +5,7 @@ breaking changes that ship without a deprecation period.
 
 ## Deprecations
 
-### PNP `calibration_start_year`/`calibration_end_year` (deprecated in 3.1.0)
+### PNP `calibration_start_year`/`calibration_end_year` (deprecated in 3.0.0)
 
 `percentage_of_normal` used `calibration_start_year`/`calibration_end_year`
 while every other Python index API used

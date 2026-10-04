@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.0.0] - 2026-09-18
+## [3.0.0] - 2026-10-04
 
 ### Added
 
@@ -58,6 +58,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   functions) warn when the record does not cover the requested Calibration Period and
   the fit uses other years. The warning carries `requested_years` and `effective_years`.
   Results are unchanged (#1050).
+- **Flood-potential index family (`climate_indices.flood`)**: a public namespace for
+  daily indices of flood potential, not observed flooding. `effective_precipitation()`
+  computes Byun-Wilhite effective precipitation over a fixed window (365 days by
+  default); `edi()` is the fixed-window Effective Drought Index standardized per
+  calendar day; `flood_index()` standardizes effective precipitation against complete
+  annual maxima with a configurable `year_start_month`; and
+  `antecedent_precipitation_index()` is the stateful Kohler-Linsley recursion with
+  spin-up, missing-day, and resumable-state options, returning `APIResult` and
+  `APIState`. The NumPy API is stable; DataArray dispatch is beta and covers PE, EDI,
+  the Flood Index, and API, with CF precipitation-unit conversion to mm, the ADR-0004
+  Gregorian daily calendar, Dask spatial-block execution, complete-annual calibration
+  inference, and CF output metadata. `edi` is re-exported at the package root.
+  EDI uses effective precipitation and is distinct from the Evaporative Demand Drought
+  Index (EDDI), which measures evaporative demand (#1259).
+  `climate_indices --index pe|edi|flood_index|api` runs the family from the CLI, and
+  `--netcdf_pe`/`--var_name_pe` let one effective-precipitation file feed both EDI and
+  the Flood Index. CF metadata is registered for every index, ADR-0013 and ADR-0014
+  record the naming and scientific conventions, and `VALIDATION.md` classifies all four
+  as regression/specification-level evidence with no adopted external numeric oracle.
+  The chained xarray PE-to-EDI/I_F path interpolates PE on a synthetic non-leap
+  February 29 rather than carrying it through the chain, a measured and documented
+  convention (#1103, #1105, #1106, #1107, #1108, #1109, #1110, #1115, #1116, #1117,
+  #1147, #1151).
+- **Log-logistic SPEI**: the Hosking generalized-logistic (GLO) distribution, fitted
+  with unbiased-PWM L-moments, is available on the SPEI surfaces as
+  `Distribution.loglogistic`, `lmoments.fit_glo()`/`fit_glo_spatial()`,
+  `compute.loglogistic_parameters()`/`transform_fitted_loglogistic()`, and
+  `fit_and_standardize()` dispatch. It is SPEI-only: `spi()`, `standardized_index()`,
+  and `fit_diagnostics()` reject it with `InvalidArgumentError` because a non-negative
+  precipitation or streamflow series has a physical zero mass the GLO path does not
+  place yet. `--index spei` (and `all`) now writes an extra `spei_loglogistic_NN.nc`
+  per scale, and the offset P-PET series leaves scale, shape, and standardized values
+  unchanged (ADR-0016, #106, #1211).
+- **Generic `indices.standardized_index()`**: the distribution-fitting pipeline behind
+  `spi()` is public as an input-agnostic NumPy entry point supporting gamma and Pearson
+  Type III, monthly and daily periodicities, supplied `fitting_params`, and declared
+  time-major spatial blocks, so any non-negative series -- runoff or streamflow for
+  SRI/SSI work -- can be standardized with the same calibration, missing-data, and
+  Pearson-to-gamma fall-back behavior as SPI. It is NumPy-only: it is not re-exported
+  at the package root and has no xarray adapter, and log-logistic is rejected pending a
+  zero-placement mode (#1113, #1124).
+- **Probability-scale index output**: `spi()`, `spei()`, `standardized_index()`, the
+  `compute` transform seam, the xarray adapter, and the CLI accept a keyword-only
+  `output_scale`: `"normal"` (the default, `norm.ppf(p)` clipped to `[-3.09, 3.09]`,
+  byte-identical to before), `"probability"` (the fitted cumulative probability, the
+  PIT value in `[0, 1]`, deliberately unclipped), or `"bounded"` (`2p - 1` in
+  `[-1, 1]`). The xarray surface selects scale-specific CF metadata through
+  `cf_metadata_variants`, and the CLI exposes `--output_scale` with per-scale output
+  names and attributes. On probability and bounded scales, non-classic zero
+  handling places zero at `p0 / 2` (#1189, #1192, #1203).
+- **Distribution fit diagnostics**: `compute.FitDiagnostics`/`compute.fit_diagnostics()`
+  and `indices.fit_diagnostics()` audit a fitted distribution per calendar step and per
+  cell, reporting the distribution actually used after the Pearson-to-gamma fall-back,
+  the parameters in the keys `fitting_params` accepts, `prob_zero`, `n_valid`, and the
+  Kolmogorov-Smirnov statistic with its exact p-value. The xarray surface
+  (`climate_indices.fit_diagnostics()`) returns a CF-annotated Dataset with one
+  variable per parameter plus the diagnostics over a `month`/`dayofyear` dimension and
+  the input's cells, keeps Dask lazy, and uses the shared 366-day daily calendar plan.
+  The exact p-value is the dominant gridded cost, and `docs/performance.md` recommends
+  diagnostics on calibration data or selected cells rather than full production grids
+  (#1189, #1190, #1191, #1192, #1202, #1206, #1208).
+- **Run-theory primitive (`climate_indices.runs`)**: `identify_runs()` (1-D NumPy) and
+  `identify_runs_xarray()` (per-cell, Dask-aware) identify runs above or below a
+  threshold. One-dimensional input returns a frozen `RunSet` of parallel
+  `start_index`, `end_index`, `duration`, `magnitude`, `intensity`, `peak_value`,
+  `peak_index`, and `interarrival` arrays; multidimensional input returns an
+  object-dtype `xarray.DataArray` with one `RunSet` per cell. Direction is explicit
+  and never inferred from the threshold's sign, NaN and masked values terminate a run, a value equal to the threshold is not in a run, and
+  `min_duration` filters after identification. The module is public but is not
+  re-exported at the package root (#1154).
+- **FAO-56 Penman-Monteith PET as a first-class method**: `pet_penman_monteith` is
+  exported from the package root with NumPy and xarray overloads, completing the
+  `pm_eto` module that 2.4.0 added. It exposes the Chapter 3 radiation helpers
+  (`extraterrestrial_radiation`, `clear_sky_solar_radiation`,
+  `net_shortwave_radiation`, `net_longwave_radiation`, `net_radiation`,
+  `solar_radiation_from_sunshine`, `solar_radiation_from_temperature_range`),
+  `wind_speed_2m()`, and the derived-input `penman_monteith_eto()` wrapper (Eq. 6). The
+  xarray path adds CF metadata, provenance history, Dask support, the shared
+  January-start daily calendar contract, and an `apply_ufunc` passthrough, with the
+  humidity-path precedence dewpoint -> RHmin/RHmax -> RHmax -> RHmean -> `e0(Tmin - 2)`
+  and radiation precedence supplied Rs -> sunshine hours -> temperature range (Eq. 50).
+  The radiation and wind helpers are validated against FAO-56 Examples 10-16 and the
+  full chain against Example 18 (#766, #1183).
 
 ### Changed
 
@@ -81,7 +164,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   end-to-end workflow is documented and smoke-executed: canonical calculation path,
   reproducible inputs, persisted results reopened with complete metadata, maps and
   selectable-location time series, and the xarray/Zarr, Palmer, EDDI, and Zarr/Dask
-  notebooks.
+  notebooks. The project overview, flood-applications guide, and core vocabulary now
+  disambiguate flood-family EDI from drought-family EDDI (#1259).
 - **Test suite**: the pattern-compliance source-grep suite is retired, static-data,
   xarray-metadata, and logging suites are table-driven, the CF-metadata contract and
   notebook execution have single owners, and a real CLI end-to-end QA suite replaces
@@ -102,6 +186,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with an error naming the flag and the index instead of being ignored. KBDI and the
   flood indices' hand-maintained exclusion lists are replaced by that one declaration,
   and the parser is checked against the registrations (#1225).
+- **Daily scaled-index range**: scale validation is periodicity-aware rather than
+  applying the monthly `[1, 72]` maximum to every series, so daily SPI, SPEI, EDDI, and
+  percentage of normal accept scales in `[1, 2196]` -- the same six-year horizon
+  expressed in 366-day steps -- and a scale longer than the series raises
+  `InsufficientDataError` instead of returning all-NaN output or a longer-than-input
+  array. Periodicities are validated before scales, error messages list
+  periodicity-appropriate common scales, and the xarray sufficiency check counts only
+  populated calendar steps (#1087, #1091).
+- **Calibration-year parameter names unified**: `percentage_of_normal()` now spells its
+  window boundaries `calibration_year_initial`/`calibration_year_final`, matching
+  SPI/SPEI/EDDI/Palmer and the flood indices. The old
+  `calibration_start_year`/`calibration_end_year` keywords are still accepted and emit
+  `ClimateIndicesDeprecationWarning` until their removal in 4.0.0; the CLI keeps the old
+  flags and adds the canonical aliases. PNP xarray output keeps emitting both attribute
+  spellings, so existing consumers are unaffected (#1197).
 
 ### Breaking
 
@@ -372,6 +471,23 @@ change states what a user sees, how to detect it, and what to change in
   the other. This supersedes the time-last-only acceptance noted above: a time-major
   input, or a time-major companion beside a time-last precipitation variable, was
   previously rejected with `Invalid dimensions ...` (#1224, #932).
+- **Thornthwaite PET input preservation**: negative temperatures are clamped to zero in
+  an owned array, so a caller's temperature input is never modified, including
+  read-only and spatial arrays; the xarray adapter drops its defensive copies
+  accordingly. NaN handling is unchanged (#1239, #1243).
+- **xarray periodicity and temporal inference**: the adapter no longer infers
+  `data_start_year`/`periodicity` over a call whose arguments fail to bind (a typo'd
+  keyword, for example), so explicit values are not overridden and the binding failure
+  reaches the periodicity seam; and a declared `periodicity` that cannot resolve now
+  raises `PeriodicityError` instead of silently skipping the daily 366-day
+  conversion. Only the separate `_resolve_periodicity` path logs
+  `periodicity_resolution_failed`. A declared default periodicity is honored
+  (#759, #1088, #1090, #1093).
+- **Fire and flood daily recurrences**: the stateful daily xarray adapters share one
+  recurrence runtime, CFFWIS infers latitude from the aligned inputs only when
+  `latitude_degrees_north` is omitted, an already-empty record stays an empty
+  result, and the shared alignment warning is reported at the public call site
+  (#1220, #1222).
 
 ## [2.4.0] - 2026-04-05
 

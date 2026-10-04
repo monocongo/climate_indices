@@ -188,7 +188,7 @@ def test_pnp_legacy_calibration_keywords_warn_and_match() -> None:
         calibration_year_final=2019,
         periodicity=Periodicity.monthly,
     )
-    with pytest.warns(ClimateIndicesDeprecationWarning):
+    with pytest.warns(ClimateIndicesDeprecationWarning, match=r"deprecated since version 3\.0\.0"):
         legacy = numpy_pnp(
             values=values,
             scale=6,
