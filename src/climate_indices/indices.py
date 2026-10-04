@@ -1070,7 +1070,7 @@ def _translate_pnp_calibration_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
         emit_deprecation_warning(
             feature="Parameters 'calibration_start_year'/'calibration_end_year'",
             alternative="Use 'calibration_year_initial'/'calibration_year_final'",
-            deprecated_in="3.1.0",
+            deprecated_in="3.0.0",
             removal_version="4.0.0",
         )
         for legacy, canonical in (
