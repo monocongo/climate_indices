@@ -1,6 +1,7 @@
 """Smoke test for the standalone NetCDF map utility."""
 
 import runpy
+import socket
 import sys
 from pathlib import Path
 
@@ -9,6 +10,8 @@ import pytest
 import xarray as xr
 
 GeoAxes = pytest.importorskip("cartopy.mpl.geoaxes").GeoAxes  # Optional dev dependency.
+cartopy = pytest.importorskip("cartopy")
+Downloader = pytest.importorskip("cartopy.io").Downloader
 image = pytest.importorskip("matplotlib.image")
 
 
@@ -35,6 +38,7 @@ def test_plot_netcdf_map_selects_time_and_defaults_to_latest(
     # No Natural Earth downloads in the test; the real-file smoke check covers boundaries.
     monkeypatch.setattr(GeoAxes, "coastlines", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(GeoAxes, "add_feature", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(socket, "setdefaulttimeout", lambda _timeout: None)
     command = [str(script), str(source), "spi_03", "--output", str(output)]
 
     monkeypatch.setattr(sys, "argv", [*command, "--time", "2020-01"])
@@ -74,3 +78,27 @@ def test_plot_netcdf_map_selects_time_and_defaults_to_latest(
         with pytest.raises(SystemExit, match="2"):
             main()
         assert message in capsys.readouterr().err
+
+
+def test_plot_netcdf_map_bounds_boundary_download(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = tmp_path / "grid.nc"
+    xr.Dataset({"spi_03": (("lat", "lon"), np.zeros((2, 2)))}, coords={"lat": [0, 1], "lon": [0, 1]}).to_netcdf(source)
+    script = Path(__file__).resolve().parents[1] / "scripts" / "plot_netcdf_map.py"
+    main = runpy.run_path(str(script))["main"]
+    timeouts: list[float | None] = []
+    monkeypatch.setattr(socket, "setdefaulttimeout", timeouts.append)  # Keep the global timeout out of pytest.
+    for key in ("data_dir", "pre_existing_data_dir"):  # No cached Natural Earth data.
+        monkeypatch.setitem(cartopy.config, key, tmp_path / key)
+
+    def stalled(_downloader: object, _url: str) -> None:
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(Downloader, "_urlopen", stalled)
+    monkeypatch.setattr(sys, "argv", [str(script), str(source), "spi_03", "--output", str(tmp_path / "map.png")])
+
+    with pytest.raises(SystemExit, match="2"):
+        main()
+    assert timeouts == [60]
+    assert "cannot save map: timed out" in capsys.readouterr().err

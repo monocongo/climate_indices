@@ -8,10 +8,11 @@ Example (Cartopy and matplotlib are in the dev dependency group)::
         --time 2020-01 --output spi_2020-01.png
 
 Omit --time to plot the last time step. Supports 1-D lat/lon coordinates;
-Cartopy may download Natural Earth boundaries on first use.
+Cartopy may download Natural Earth boundaries on first use (60 s network timeout).
 """
 
 import argparse
+import socket
 from pathlib import Path
 
 import cartopy.crs as ccrs
@@ -34,6 +35,7 @@ def main() -> None:
 
     if args.output.exists() and args.output.samefile(args.input):
         parser.error("output must not overwrite input")
+    socket.setdefaulttimeout(60)  # Cartopy's Natural Earth download has no timeout of its own.
 
     with xr.open_dataset(args.input) as dataset:
         if args.variable not in dataset.data_vars:
@@ -75,8 +77,12 @@ def main() -> None:
         ax.add_feature(cfeature.BORDERS.with_scale("50m"), linewidth=0.6)
         ax.set_title(title)
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(args.output, format="png", dpi=150, bbox_inches="tight")
-        plt.close(fig)
+        try:  # Boundaries are fetched while drawing, so download failures surface here.
+            fig.savefig(args.output, format="png", dpi=150, bbox_inches="tight")
+        except OSError as exc:
+            parser.error(f"cannot save map: {exc}")
+        finally:
+            plt.close(fig)
 
     print(args.output)
 
