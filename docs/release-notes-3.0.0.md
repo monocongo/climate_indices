@@ -49,7 +49,8 @@ Six behavior or exception changes need review:
 
 1. Daily xarray SPI, SPEI, EDDI, percentage of normal, and Hargreaves PET
    correct the non-leap-year calendar shift; values may change. Unsupported
-   calendars or daily series not beginning January 1 now fail validation.
+   calendars, daily series not beginning January 1, or monthly series not
+   beginning in January now fail validation.
 2. Ambiguous three-or-more-dimensional NumPy grids must declare
    `spatial_time_major=True` or reorder their cell axes. Undeclared gridded
    EDDI and percentage-of-normal inputs now raise `DataShapeError` (a changed
