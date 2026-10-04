@@ -1790,9 +1790,10 @@ def _run_pet(arguments: argparse.Namespace, input_type: DatasetLayout, transport
     if arguments.netcdf_pet is not None and arguments.index != "pet":
         return
 
-    result = _compute_write_index(
-        _IndexRequest.from_arguments(arguments, index="pet", input_type=input_type), transport
-    )
+    request = _IndexRequest.from_arguments(arguments, index="pet", input_type=input_type)
+    # a PET file a later index reads stays unpacked, so --pack_output cannot change that index's values
+    request.pack_output = request.pack_output and arguments.index == "pet"
+    result = _compute_write_index(request, transport)
     assert result is not None, "PET computation should return file and variable name"
     arguments.netcdf_pet, arguments.var_name_pet = result
 
@@ -1913,6 +1914,8 @@ def _run_pe(arguments: argparse.Namespace, input_type: DatasetLayout, transport:
     """
     request = _IndexRequest.from_arguments(arguments, index="pe", input_type=input_type)
     assert request.netcdf_precip is not None and request.var_name_precip is not None
+    # as for PET: a PE file a later index reads stays unpacked
+    request.pack_output = request.pack_output and arguments.index == "pe"
 
     with _open_with_default_chunks(
         xr.open_dataset, request.netcdf_precip, chunks=_time_whole_chunks(input_type)
@@ -2299,7 +2302,8 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "EXPERIMENTAL. Compress the output variables, storing each as int16 with a 1e-4 "
             "scale_factor when all its values fit within +/-3.2767 (max error 5e-5) "
-            "and as float32 otherwise. Off by default, which keeps the default float64 output."
+            "and as float32 otherwise. A PET or PE file that a later index reads is written "
+            "unpacked. Off by default, which keeps the default float64 output."
         ),
         action="store_true",
         default=False,

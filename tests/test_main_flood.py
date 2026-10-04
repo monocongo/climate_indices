@@ -332,6 +332,23 @@ class TestFloodProcessing:
             np.testing.assert_allclose(dataset["pe"].values, _expected("pe", precipitation).values, equal_nan=True)
 
     @pytest.mark.parametrize("index", _FROM_PE)
+    def test_pack_output_leaves_the_pe_file_a_later_index_reads_unpacked(self, tmp_path, precip_file, index):
+        cli_main.process_climate_indices(
+            _flood_arguments(
+                index,
+                netcdf_precip=precip_file,
+                output_file_base=str(tmp_path / "out"),
+                pack_output=True,
+                **_calibration_arguments(index),
+            )
+        )
+
+        with xr.open_dataset(tmp_path / "out_pe.nc") as dataset:
+            assert dataset["pe"].encoding["dtype"] == np.dtype("float64")
+        with xr.open_dataset(tmp_path / f"out_{index}.nc") as dataset:
+            assert dataset[index].encoding["dtype"] != np.dtype("float64")
+
+    @pytest.mark.parametrize("index", _FROM_PE)
     def test_pe_indices_compute_and_write_pe_first(self, tmp_path, precipitation, precip_file, index):
         cli_main.process_climate_indices(
             _flood_arguments(
