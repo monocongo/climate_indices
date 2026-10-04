@@ -320,6 +320,45 @@ class TestKBDIProcessing:
             assert dataset["kbdi"].encoding["chunksizes"] == (2, 3, 1000)
             assert np.isfinite(dataset["kbdi"].values).all()
 
+    def test_pack_output_writes_lazy_values_as_float32_and_keeps_input_chunksizes(self, tmp_path):
+        """KBDI exceeds the int16 range, so a packed lazy write falls back to float32."""
+        periods = _DAILY_PERIODS
+        time = xr.date_range("1990-01-01", periods=periods, freq="D")
+        rng = np.random.default_rng(11)
+        coords = {"lat": [25.0, 26.0], "lon": [-100.0, -99.0, -98.0], "time": time}
+        precip = xr.Dataset(
+            {"precip": (("lat", "lon", "time"), rng.gamma(2.0, 2.0, (2, 3, periods)), {"units": "mm"})},
+            coords=coords,
+        )
+        temperature = xr.Dataset(
+            {"tmax": (("lat", "lon", "time"), 25.0 + 5.0 * rng.random((2, 3, periods)), {"units": "degC"})},
+            coords=coords,
+        )
+        precip_path = tmp_path / "precip.nc"
+        temp_path = tmp_path / "temp.nc"
+        precip.to_netcdf(precip_path, encoding={"precip": {"chunksizes": (2, 3, periods)}}, engine="h5netcdf")
+        temperature.to_netcdf(temp_path, engine="h5netcdf")
+
+        for output_base, pack in (("plain", False), ("packed", True)):
+            cli_main.process_climate_indices(
+                _kbdi_arguments(
+                    netcdf_precip=str(precip_path),
+                    var_name_precip="precip",
+                    netcdf_temp=str(temp_path),
+                    var_name_temp="tmax",
+                    output_file_base=str(tmp_path / output_base),
+                    chunksizes="input",
+                    pack_output=pack,
+                ),
+            )
+
+        with xr.open_dataset(tmp_path / "plain_kbdi.nc", engine="h5netcdf") as plain:
+            plain_values = plain["kbdi"].values
+        with xr.open_dataset(tmp_path / "packed_kbdi.nc", engine="h5netcdf") as packed:
+            assert packed["kbdi"].dtype == np.dtype("float32")
+            assert packed["kbdi"].encoding["chunksizes"] == (2, 3, periods)
+            np.testing.assert_array_equal(packed["kbdi"].values, plain_values.astype("float32"))
+
     def test_oversized_input_chunksizes_are_trimmed(self, tmp_path):
         """An input chunk larger than the written array is trimmed, not dropped."""
         periods = _DAILY_PERIODS

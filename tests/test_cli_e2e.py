@@ -153,6 +153,26 @@ def test_timeseries_spi_matches_in_process_computation(tmp_path, precips_mm_mont
         np.testing.assert_allclose(dataset["spi_gamma_06"].values, expected, equal_nan=True)
 
 
+def test_pack_output_flag_is_opt_in_and_packs_spi_to_int16(tmp_path, precips_mm_monthly):
+    values = precips_mm_monthly.reshape(-1)
+    precip_path = tmp_path / "precip.nc"
+    _write_timeseries(precip_path, values)
+
+    main(_spi_arguments(precip_path, tmp_path / "plain"))
+    main([*_spi_arguments(precip_path, tmp_path / "packed"), "--pack_output"])
+
+    with xr.open_dataset(tmp_path / "plain_spi_gamma_06.nc", mask_and_scale=False) as plain:
+        assert plain["spi_gamma_06"].dtype == np.dtype("float64")
+    with xr.open_dataset(tmp_path / "packed_spi_gamma_06.nc", mask_and_scale=False) as raw:
+        assert raw["spi_gamma_06"].dtype == np.dtype("int16")
+    with (
+        xr.open_dataset(tmp_path / "plain_spi_gamma_06.nc") as plain,
+        xr.open_dataset(tmp_path / "packed_spi_gamma_06.nc") as packed,
+    ):
+        np.testing.assert_allclose(packed["spi_gamma_06"].values, plain["spi_gamma_06"].values, atol=5e-5 + 1e-12)
+        assert packed["spi_gamma_06"].attrs == plain["spi_gamma_06"].attrs
+
+
 @pytest.mark.parametrize("mode", ["classic", "center_of_mass", "mean_zero"])
 def test_spi_zero_handling_flag_writes_values_and_metadata(tmp_path, precips_mm_monthly, mode):
     values = precips_mm_monthly.reshape(-1).copy()
