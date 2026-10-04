@@ -24,6 +24,23 @@ import matplotlib.pyplot as plt
 import xarray as xr
 
 
+def select_time(data: xr.DataArray, time: str | None, parser: argparse.ArgumentParser) -> xr.DataArray:
+    """Reduce ``data`` to the single time step ``time`` names, or the last one."""
+    if "time" not in data.dims:
+        if time:
+            parser.error(f"{data.name!r} has no time dimension")
+        return data
+    try:
+        data = data.sel(time=time) if time else data.isel(time=-1)
+    except (KeyError, ValueError, IndexError) as exc:
+        parser.error(f"cannot select time {time!r}: {exc}")
+    if "time" in data.dims:  # A partial date such as 2020-01 can match several steps.
+        if data.sizes["time"] != 1:
+            parser.error(f"--time {time!r} matches {data.sizes['time']} time steps; give a full date")
+        data = data.isel(time=0)
+    return data
+
+
 def main() -> None:
     """Plot one (lat, lon) slice of a NetCDF variable and print the PNG path."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -40,18 +57,7 @@ def main() -> None:
     with xr.open_dataset(args.input) as dataset:
         if args.variable not in dataset.data_vars:
             parser.error(f"unknown variable {args.variable!r}; available: {', '.join(dataset.data_vars)}")
-        data = dataset[args.variable]
-        if "time" in data.dims:
-            try:
-                data = data.sel(time=args.time) if args.time else data.isel(time=-1)
-            except (KeyError, ValueError, IndexError) as exc:
-                parser.error(f"cannot select time {args.time!r}: {exc}")
-            if "time" in data.dims:  # A partial date such as 2020-01 can match several steps.
-                if data.sizes["time"] != 1:
-                    parser.error(f"--time {args.time!r} matches {data.sizes['time']} time steps; give a full date")
-                data = data.isel(time=0)
-        elif args.time:
-            parser.error(f"{args.variable!r} has no time dimension")
+        data = select_time(dataset[args.variable], args.time, parser)
 
         if set(data.dims) != {"lat", "lon"} or not {"lat", "lon"} <= set(data.indexes):
             parser.error(f"expected a single (lat, lon) grid with lat/lon coordinates; got {data.dims}")
