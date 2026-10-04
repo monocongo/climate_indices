@@ -19,7 +19,11 @@ def test_plot_netcdf_map_selects_time_and_defaults_to_latest(
     output = tmp_path / "map.png"
     values = np.stack((np.full((10, 10), -2.0), np.full((10, 10), 2.0)))
     xr.Dataset(
-        {"spi_03": (("time", "lat", "lon"), values), "rain": (("lat", "lon"), values[0])},
+        {
+            "spi_03": (("time", "lat", "lon"), values),
+            "rain": (("lat", "lon"), values[0]),
+            "spi_lonlat": (("lon", "lat"), values[0].T),
+        },
         coords={
             "time": np.array(["2020-01-01", "2020-02-01"], dtype="datetime64[ns]"),
             "lat": np.linspace(30, 40, 10),
@@ -39,13 +43,34 @@ def test_plot_netcdf_map_selects_time_and_defaults_to_latest(
     monkeypatch.setattr(sys, "argv", command)
     main()
     last = image.imread(output)
+    monkeypatch.setattr(sys, "argv", [str(script), str(source), "spi_lonlat", "--output", str(output)])
+    main()
+    transposed = image.imread(output)
+    nested = tmp_path / "nested" / "map"
+    monkeypatch.setattr(sys, "argv", [str(script), str(source), "rain", "--output", str(nested)])
+    main()
 
     assert first[..., 0].mean() > first[..., 2].mean()  # Negative SPI is red.
     assert last[..., 2].mean() > last[..., 0].mean()  # Positive SPI is blue.
-    monkeypatch.setattr(sys, "argv", [str(script), str(source), "rain", "--output", str(output)])
-    main()
-    assert output.stat().st_size > 0  # Non-index, time-free variables also work.
-    monkeypatch.setattr(sys, "argv", [*command, "--time", "2020"])
-    with pytest.raises(SystemExit, match="2"):
-        main()
-    assert "expected a single (lat, lon) grid" in capsys.readouterr().err
+    assert transposed[..., 0].mean() > transposed[..., 2].mean() + 0.1  # (lon, lat) order still maps lon to x.
+    assert nested.read_bytes().startswith(b"\x89PNG")  # Non-index, time-free variables also work.
+    assert capsys.readouterr().out.splitlines()[-1] == str(nested)
+
+    link = tmp_path / "link.png"
+    link.hardlink_to(source)
+    bare = tmp_path / "bare.nc"
+    xr.Dataset({"spi_03": (("lat", "lon"), values[0])}).to_netcdf(bare)
+    dateline = tmp_path / "dateline.nc"
+    xr.Dataset(
+        {"spi_03": (("lat", "lon"), np.zeros((2, 4)))}, coords={"lat": [0, 1], "lon": [170, 175, -180, -175]}
+    ).to_netcdf(dateline)
+    for argv, message in (
+        ([*command, "--time", "2020"], "matches 2 time steps"),
+        ([str(script), str(source), "spi_03", "--output", str(link)], "output must not overwrite input"),
+        ([str(script), str(bare), "spi_03", "--output", str(output)], "expected a single (lat, lon) grid"),
+        ([str(script), str(dateline), "spi_03", "--output", str(output)], "longitudes must be monotonic"),
+    ):
+        monkeypatch.setattr(sys, "argv", argv)
+        with pytest.raises(SystemExit, match="2"):
+            main()
+        assert message in capsys.readouterr().err

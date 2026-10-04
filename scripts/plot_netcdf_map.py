@@ -24,6 +24,7 @@ import xarray as xr
 
 
 def main() -> None:
+    """Plot one (lat, lon) slice of a NetCDF variable and print the PNG path."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("input", type=Path, help="NetCDF file")
     parser.add_argument("variable", help="data variable to plot")
@@ -31,7 +32,7 @@ def main() -> None:
     parser.add_argument("--output", required=True, type=Path, help="PNG to write")
     args = parser.parse_args()
 
-    if args.input.resolve() == args.output.resolve():
+    if args.output.exists() and args.output.samefile(args.input):
         parser.error("output must not overwrite input")
 
     with xr.open_dataset(args.input) as dataset:
@@ -41,15 +42,20 @@ def main() -> None:
         if "time" in data.dims:
             try:
                 data = data.sel(time=args.time) if args.time else data.isel(time=-1)
-                if "time" in data.dims and data.sizes["time"] == 1:
-                    data = data.isel(time=0)
             except (KeyError, ValueError, IndexError) as exc:
                 parser.error(f"cannot select time {args.time!r}: {exc}")
+            if "time" in data.dims:  # A partial date such as 2020-01 can match several steps.
+                if data.sizes["time"] != 1:
+                    parser.error(f"--time {args.time!r} matches {data.sizes['time']} time steps; give a full date")
+                data = data.isel(time=0)
         elif args.time:
             parser.error(f"{args.variable!r} has no time dimension")
 
-        if set(data.dims) != {"lat", "lon"} or data["lat"].dims != ("lat",) or data["lon"].dims != ("lon",):
-            parser.error(f"expected a single (lat, lon) grid; got {data.dims}")
+        if set(data.dims) != {"lat", "lon"} or not {"lat", "lon"} <= set(data.indexes):
+            parser.error(f"expected a single (lat, lon) grid with lat/lon coordinates; got {data.dims}")
+        lon = data.indexes["lon"]
+        if not (lon.is_monotonic_increasing or lon.is_monotonic_decreasing):
+            parser.error("longitudes must be monotonic; dateline-crossing grids are not supported")
 
         title = data.attrs.get("long_name", args.variable)
         if "time" in data.coords:
@@ -60,7 +66,7 @@ def main() -> None:
         plot_options = {"ax": ax, "transform": projection, "cbar_kwargs": {"label": args.variable, "shrink": 0.7}}
         if args.variable.lower().startswith(("spi", "spei")):
             plot_options.update(cmap="RdBu", vmin=-3, vmax=3)
-        data.plot.pcolormesh(**plot_options)
+        data.plot.pcolormesh(x="lon", y="lat", **plot_options)
         ax.set_extent(
             [float(data.lon.min()), float(data.lon.max()), float(data.lat.min()), float(data.lat.max())],
             crs=projection,
@@ -68,7 +74,8 @@ def main() -> None:
         ax.coastlines(resolution="50m", linewidth=0.6)
         ax.add_feature(cfeature.BORDERS.with_scale("50m"), linewidth=0.6)
         ax.set_title(title)
-        fig.savefig(args.output, dpi=150, bbox_inches="tight")
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(args.output, format="png", dpi=150, bbox_inches="tight")
         plt.close(fig)
 
     print(args.output)
