@@ -115,8 +115,10 @@ def choose_netcdf_encoding(
     :return: the ``encoding`` argument for ``Dataset.to_netcdf``
     """
     names = [name for name, variable in dataset.data_vars.items() if np.issubdtype(variable.dtype, np.floating)]
-    # NaN -> 0 so an all-NaN variable ranges as zero; +/-inf survives and fails the limit
-    largest = abs(dataset[names]).fillna(0.0).max().compute()
+    # NaN -> 0 so an all-NaN variable ranges as zero; +/-inf survives and fails the limit.
+    # An empty variable cannot be reduced, so it is left out and ranges as zero too.
+    sized = [name for name in names if dataset[name].size]
+    largest = abs(dataset[sized]).fillna(0.0).max().compute()
     limit = _INT16_MAX * scale
 
     encoding: dict[Hashable, dict[str, Any]] = {}
@@ -127,7 +129,7 @@ def choose_netcdf_encoding(
         for key in _STALE_ENCODING_KEYS:
             variable.encoding.pop(key, None)
 
-        if float(largest[name]) <= limit:
+        if float(largest.get(name, 0.0)) <= limit:
             packed.append(name)
             chosen: dict[str, Any] = {
                 "dtype": "int16",

@@ -142,6 +142,13 @@ def test_in_range_values_pack_to_int16_within_half_a_step(tmp_path) -> None:
     assert np.isnan(written["empty"].values).all()
 
 
+def test_an_empty_variable_packs_to_int16(tmp_path) -> None:
+    dataset = _grid(np.empty((0, 3, 24)))
+
+    assert _cli_output.choose_netcdf_encoding(dataset)["z"]["dtype"] == "int16"
+    assert _write_packed(dataset, tmp_path / "packed.nc")["z"].shape == (0, 3, 24)
+
+
 def test_a_value_beyond_the_int16_range_falls_back_to_exact_float32(tmp_path) -> None:
     values = np.random.default_rng(1).uniform(-1.0, 1.0, (2, 3, 24))
     values[1, 2, 5] = 3.5
