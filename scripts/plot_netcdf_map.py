@@ -4,7 +4,7 @@
 Example (Cartopy and matplotlib are in the dev dependency group)::
 
     uv run --group dev scripts/plot_netcdf_map.py \
-        /path/to/nclimgrid_spi_spei_gamma_03.nc spi_03 \
+        --input /path/to/nclimgrid_spi_spei_gamma_03.nc --var spi_03 \
         --time 2020-01 --output spi_2020-01.png
 
 Omit --time to plot the last time step. Supports 1-D lat/lon coordinates;
@@ -44,8 +44,8 @@ def select_time(data: xr.DataArray, time: str | None, parser: argparse.ArgumentP
 def main() -> None:
     """Plot one (lat, lon) slice of a NetCDF variable and print the PNG path."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("input", type=Path, help="NetCDF file")
-    parser.add_argument("variable", help="data variable to plot")
+    parser.add_argument("--input", required=True, type=Path, help="NetCDF file")
+    parser.add_argument("--var", dest="variable", required=True, help="data variable to plot")
     parser.add_argument("--time", help="date to select (e.g. 2020-01); defaults to last time step")
     parser.add_argument("--output", required=True, type=Path, help="PNG to write")
     args = parser.parse_args()
