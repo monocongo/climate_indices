@@ -17,7 +17,6 @@ compressed either way. Without it the output encoding is xarray's default.
 
 from __future__ import annotations
 
-import logging
 import os
 import tempfile
 from collections.abc import Hashable
@@ -27,11 +26,11 @@ from typing import Any, Literal, cast
 import numpy as np
 import xarray as xr
 
-from climate_indices import utils
 from climate_indices.cf_metadata_registry import CF_METADATA
+from climate_indices.logging_config import get_logger
 from climate_indices.xarray_adapter import build_output_attrs
 
-_logger = utils.get_logger(__name__, logging.INFO)
+_logger = get_logger(__name__)
 
 # int16 packing: 32767 steps either side of zero, the minimum reserved as fill
 _INT16_MAX = 32767
@@ -145,7 +144,7 @@ def choose_netcdf_encoding(
             chosen["chunksizes"] = chunksizes
         encoding[name] = chosen
 
-    _logger.info("NetCDF packing, int16: %s; float32: %s", packed, unpacked)
+    _logger.info("netcdf_packing", int16=packed, float32=unpacked)
     return encoding
 
 

@@ -264,8 +264,12 @@ def test_packing_is_logged(caplog) -> None:
     dataset["w"] = (("lat", "lon", "time"), np.full((1, 1, 2), 9.0))
     with caplog.at_level("INFO", logger=_cli_output.__name__):
         _cli_output.choose_netcdf_encoding(dataset)
-    assert "int16: ['z']" in caplog.text
-    assert "float32: ['w']" in caplog.text
+    events = [
+        record.msg
+        for record in caplog.records
+        if isinstance(record.msg, dict) and record.msg.get("event") == "netcdf_packing"
+    ]
+    assert [(event["int16"], event["float32"]) for event in events] == [(["z"], ["w"])]
 
 
 def test_writing_without_packing_keeps_the_default_encoding(tmp_path) -> None:
