@@ -68,6 +68,8 @@ def _wwdt_image(variable: str, scale: int, month: str) -> tuple[str, np.ndarray]
             if len(content) > 5_000_000:
                 raise ValueError(f"WWDT image exceeds 5 MB: {url}")
             # PNG width and height follow the signature and IHDR tag; bound them before decoding.
+            if content[:8] != b"\x89PNG\r\n\x1a\n" or content[12:16] != b"IHDR":
+                raise ValueError(f"WWDT image could not be decoded: {url}")
             if max(int.from_bytes(content[16:20], "big"), int.from_bytes(content[20:24], "big")) > 4096:
                 raise ValueError(f"WWDT image exceeds 4096 pixels per side: {url}")
     except HTTPError as exc:
