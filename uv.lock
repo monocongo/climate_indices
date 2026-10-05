@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.10, <3.15"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'win32'",
@@ -746,6 +746,7 @@ dev = [
     { name = "cartopy" },
     { name = "coverage" },
     { name = "distributed" },
+    { name = "fsspec" },
     { name = "h5py" },
     { name = "hypothesis" },
     { name = "jsonschema" },
@@ -811,6 +812,7 @@ dev = [
     { name = "cartopy" },
     { name = "coverage" },
     { name = "distributed" },
+    { name = "fsspec" },
     { name = "h5py" },
     { name = "hypothesis" },
     { name = "jsonschema" },
@@ -867,6 +869,7 @@ requires-dist = [
     { name = "dask", specifier = ">=2025.7.0" },
     { name = "distributed", marker = "extra == 'dev'", specifier = ">=2025.7.0" },
     { name = "distributed", marker = "extra == 'test'", specifier = ">=2025.7.0" },
+    { name = "fsspec", marker = "extra == 'dev'", specifier = ">=2025.7.0" },
     { name = "h5netcdf", specifier = ">=1.6.3" },
     { name = "h5py", marker = "extra == 'dev'", specifier = ">=3.11.0" },
     { name = "h5py", marker = "extra == 'docs'", specifier = ">=3.11.0" },
@@ -905,6 +908,7 @@ dev = [
     { name = "cartopy", specifier = ">=0.24.1" },
     { name = "coverage", specifier = ">=7.10.1" },
     { name = "distributed", specifier = ">=2025.7.0" },
+    { name = "fsspec", specifier = ">=2025.7.0" },
     { name = "h5py", specifier = ">=3.11.0" },
     { name = "hypothesis", specifier = ">=6.100.0" },
     { name = "jsonschema", specifier = ">=4.0.0" },
