@@ -98,13 +98,10 @@ def _select_grid(dataset: xr.Dataset, variable: str, time: str | None, parser: a
     return data
 
 
-def _ncei_comparison(
-    dataset: xr.Dataset, data: xr.DataArray, variable: str, scale: int | None, parser: argparse.ArgumentParser
-) -> tuple[str, str, str, xr.DataArray]:
-    """Check the local grid and return its label, month, NCEI URL, and matching grid."""
-    match = re.fullmatch(r"(spi|spei)(?:_(gamma|pearson|loglogistic))?(?:_(\d+))?", variable, flags=re.IGNORECASE)
-    if not match or "time" not in dataset[variable].dims:
-        parser.error("comparison requires a time-dependent SPI/SPEI variable (e.g. spi_03)")
+def _comparison_scale(
+    match: re.Match[str], data: xr.DataArray, scale: int | None, parser: argparse.ArgumentParser
+) -> int:
+    """Check the requested timescale against the variable name and metadata."""
     inferred_scale = int(match[3]) if match[3] else None
     if scale is None:
         scale = inferred_scale
@@ -117,6 +114,17 @@ def _ncei_comparison(
             consistent = False
         if not consistent:
             parser.error(f"--scale/--var disagrees with variable scale metadata {data.attrs['scale']!r}")
+    return scale
+
+
+def _ncei_comparison(
+    dataset: xr.Dataset, data: xr.DataArray, variable: str, scale: int | None, parser: argparse.ArgumentParser
+) -> tuple[str, str, str, xr.DataArray]:
+    """Check the local grid and return its label, month, NCEI URL, and matching grid."""
+    match = re.fullmatch(r"(spi|spei)(?:_(gamma|pearson|loglogistic))?(?:_(\d+))?", variable, flags=re.IGNORECASE)
+    if not match or "time" not in dataset[variable].dims:
+        parser.error("comparison requires a time-dependent SPI/SPEI variable (e.g. spi_03)")
+    scale = _comparison_scale(match, data, scale, parser)
     try:
         months = dataset[variable].time.dt.strftime("%Y-%m").values
         if len(set(months)) != months.size:
