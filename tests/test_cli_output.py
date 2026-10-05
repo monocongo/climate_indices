@@ -117,6 +117,20 @@ def _write_packed(dataset: xr.Dataset, path: Path) -> xr.Dataset:
         return written.load()
 
 
+def test_packing_without_an_engine_uses_h5netcdf(tmp_path, monkeypatch) -> None:
+    # xarray < 2026 picks scipy when netCDF4 is absent, and scipy rejects zlib/complevel.
+    engines = []
+    to_netcdf = xr.Dataset.to_netcdf
+
+    def spy(self, *args, **kwargs):
+        engines.append(kwargs.get("engine"))
+        return to_netcdf(self, *args, **kwargs)
+
+    monkeypatch.setattr(xr.Dataset, "to_netcdf", spy)
+    _cli_output.write_netcdf_atomic(_grid(np.zeros((2, 3, 24))), str(tmp_path / "o.nc"), pack=True)
+    assert engines == ["h5netcdf"]
+
+
 def test_in_range_values_pack_to_int16_within_half_a_step(tmp_path) -> None:
     rng = np.random.default_rng(0)
     values = rng.uniform(-3.09, 3.09, (2, 3, 24))

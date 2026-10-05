@@ -170,7 +170,10 @@ def test_pack_flag_is_opt_in_and_packs_spi_to_int16(tmp_path, precips_mm_monthly
         xr.open_dataset(tmp_path / "packed_spi_gamma_06.nc") as packed,
     ):
         np.testing.assert_allclose(packed["spi_gamma_06"].values, plain["spi_gamma_06"].values, atol=5e-5 + 1e-12)
-        assert packed["spi_gamma_06"].attrs == plain["spi_gamma_06"].attrs
+        # history is stamped to the second, and the two runs can straddle a second boundary
+        assert {k: v for k, v in packed["spi_gamma_06"].attrs.items() if k != "history"} == {
+            k: v for k, v in plain["spi_gamma_06"].attrs.items() if k != "history"
+        }
 
 
 @pytest.mark.parametrize("mode", ["classic", "center_of_mass", "mean_zero"])

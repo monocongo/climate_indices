@@ -165,7 +165,7 @@ def write_netcdf_atomic(
         obj: The Dataset or DataArray to write; a DataArray must be named.
         output_file: The NetCDF file to write.
         engine: The NetCDF engine, or None to let xarray choose; packing needs
-            an HDF5-backed one (netcdf4 or h5netcdf).
+            an HDF5-backed one (netcdf4 or h5netcdf), defaulting to h5netcdf.
         pack: Store the floating-point data variables compressed, as int16
             where they fit and float32 otherwise (see
             ``choose_netcdf_encoding``); experimental.
@@ -180,7 +180,8 @@ def write_netcdf_atomic(
     try:
         if pack:
             dataset = obj.to_dataset() if isinstance(obj, xr.DataArray) else obj
-            dataset.to_netcdf(temporary_file, engine=engine, encoding=choose_netcdf_encoding(dataset))
+            # xarray's default writer falls back to scipy without netCDF4, which rejects zlib.
+            dataset.to_netcdf(temporary_file, engine=engine or "h5netcdf", encoding=choose_netcdf_encoding(dataset))
         else:
             obj.to_netcdf(temporary_file, engine=engine)
         Path(temporary_file).replace(output_file)
