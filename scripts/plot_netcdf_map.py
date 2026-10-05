@@ -9,14 +9,16 @@ Example (Cartopy and matplotlib are in the dev dependency group)::
 
     uv run --group dev scripts/plot_netcdf_map.py \
         --input /path/to/nclimgrid_spi_spei_gamma_03.nc --var spi_03 \
-        --time 2020-01 --scale 3 --compare wwdt --output comparison.png
+        --time 2020-01 --scale 3 --compare ncei --output comparison.png
 
-Add --compare wwdt to place the matching WestWide Drought Tracker CONUS archive
-image beside a local SPI/SPEI map. --scale confirms the timescale inferred from
---var (e.g. spi_03 or spi_gamma_03) or supplies it for --var spi/spei. An unavailable
-image fails without writing an output. NOAA/NCEI is not supported until an
-SPI/SPEI image endpoint is verified. WWDT uses PRISM data and may use a
-different Calibration Period and methodology; visual comparison is not validation.
+Add --compare ncei to plot the matching NCEI/NIDIS nClimGrid monthly SPI/SPEI
+slice beside the local grid with identical color limits. --scale confirms the
+timescale inferred from --var (e.g. spi_03 or spi_gamma_03) or supplies it for
+--var spi/spei. Unsuffixed variable names use Gamma unless their distribution
+metadata specifies Pearson. NCEI uses the 1895–2014 Calibration Period; different
+inputs or settings can produce different values. This is a visual reproduction
+check, not independent scientific validation. An unavailable month fails without
+writing an output.
 
 Omit --time to plot the last time step. Supports 1-D lat/lon coordinates;
 Cartopy may download Natural Earth boundaries on first use (60 s network timeout).
@@ -25,63 +27,45 @@ Cartopy may download Natural Earth boundaries on first use (60 s network timeout
 import argparse
 import re
 import socket
-from http.client import HTTPException
-from io import BytesIO
 from pathlib import Path
-from urllib.error import HTTPError
-from urllib.request import HTTPRedirectHandler, build_opener
 
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import matplotlib
 
 matplotlib.use("Agg")
+import fsspec
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
 
-WWDT_TIMESCALES = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 18, 24, 30, 36, 48, 60, 72}
+NCEI_TIMESCALES = {1, 2, 3, 6, 9, 12, 24, 36, 48, 60, 72}
+NCEI_BASE = "https://www.ncei.noaa.gov/pub/data/nidis/indices/nclimgrid-monthly"
 
 
-class _RefuseRedirect(HTTPRedirectHandler):
-    """Fail on a redirect so a comparison never requests a host other than the archive."""
-
-    def redirect_request(self, *_args: object) -> None:
-        return None
-
-
-_open_without_redirects = build_opener(_RefuseRedirect).open
-
-
-def _wwdt_image(variable: str, scale: int, month: str) -> tuple[str, np.ndarray]:
-    """Fetch the WWDT CONUS archive PNG for an exact index/timescale/month."""
-    if scale not in WWDT_TIMESCALES:
-        raise ValueError(f"WWDT does not offer a {scale}-month timescale")
+def _ncei_grid(index: str, distribution: str, scale: int, month: str) -> tuple[str, xr.DataArray]:
+    """Read the exact monthly grid via HTTP ranges, without downloading the full archive."""
+    if scale not in NCEI_TIMESCALES:
+        raise ValueError(f"NCEI does not offer a {scale}-month timescale")
     if month < f"{1895 + (scale - 1) // 12:04d}-{(scale - 1) % 12 + 1:02d}":
-        raise ValueError(f"WWDT has no complete {scale}-month accumulation for {month}")
-    url = f"https://wrcc-archive.dri.edu/wwdt/images/ARCHIVE/{variable}{scale}/{month.replace('-', '')}_us_cl.png"
+        raise ValueError(f"NCEI has no complete {scale}-month accumulation for {month}")
+    name = f"{index}_{scale:02d}"
+    url = f"{NCEI_BASE}/{index}-{distribution}/nclimgrid-{index}-{distribution}-{scale:02d}.nc"
     try:
-        with _open_without_redirects(url, timeout=15) as response:
-            if response.headers.get_content_type() != "image/png":
-                raise ValueError(f"WWDT returned non-PNG content for {url}")
-            content = response.read(5_000_001)
-            if len(content) > 5_000_000:
-                raise ValueError(f"WWDT image exceeds 5 MB: {url}")
-            # PNG width and height follow the signature and IHDR tag; bound them before decoding.
-            if content[:8] != b"\x89PNG\r\n\x1a\n" or content[12:16] != b"IHDR":
-                raise ValueError(f"WWDT image could not be decoded: {url}")
-            if max(int.from_bytes(content[16:20], "big"), int.from_bytes(content[20:24], "big")) > 4096:
-                raise ValueError(f"WWDT image exceeds 4096 pixels per side: {url}")
-    except HTTPError as exc:
-        if exc.code in (404, 410):
-            raise ValueError(f"WWDT image unavailable for {variable.upper()}-{scale}, {month}: {url}") from exc
-        raise ValueError(f"WWDT request failed (HTTP {exc.code}): {url}") from exc
-    except (OSError, HTTPException) as exc:
-        raise ValueError(f"WWDT request failed: {url}: {exc}") from exc
-    try:
-        return url, plt.imread(BytesIO(content), format="png")
-    except (OSError, SyntaxError, ValueError) as exc:
-        raise ValueError(f"WWDT image could not be decoded: {url}") from exc
+        with fsspec.open(url, block_size=2**20, timeout=15, allow_redirects=False) as file:
+            if file.size is None or file.size > 4_000_000_000:
+                raise ValueError("NCEI file has no known size or exceeds 4 GB")
+            with xr.open_dataset(file, engine="h5netcdf") as dataset:
+                if name not in dataset or month not in set(dataset.time.dt.strftime("%Y-%m").values):
+                    raise ValueError(f"NCEI has no {index.upper()}-{scale} data for {month}")
+                grid = dataset[name].sel(time=f"{month}-01").load()
+                if set(grid.dims) != {"lat", "lon"}:
+                    raise ValueError(f"NCEI returned unexpected grid dimensions: {grid.dims}")
+                if not np.isfinite(grid.values).any():
+                    raise ValueError(f"NCEI has no valid {index.upper()}-{scale} data for {month}")
+    except (OSError, RuntimeError) as exc:
+        raise ValueError(f"NCEI retrieval failed for {url}: {exc}") from exc
+    return url, grid
 
 
 def select_time(data: xr.DataArray, time: str | None, parser: argparse.ArgumentParser) -> xr.DataArray:
@@ -114,14 +98,14 @@ def _select_grid(dataset: xr.Dataset, variable: str, time: str | None, parser: a
     return data
 
 
-def _wwdt_comparison(
+def _ncei_comparison(
     dataset: xr.Dataset, data: xr.DataArray, variable: str, scale: int | None, parser: argparse.ArgumentParser
-) -> tuple[str, str, str, np.ndarray]:
-    """Check ``data`` is comparable with WWDT; return its index label, month, image URL, and image."""
-    match = re.fullmatch(r"(spi|spei)(?:_(?:gamma|pearson|loglogistic))?(?:_(\d+))?", variable, flags=re.IGNORECASE)
+) -> tuple[str, str, str, xr.DataArray]:
+    """Check the local grid and return its label, month, NCEI URL, and matching grid."""
+    match = re.fullmatch(r"(spi|spei)(?:_(gamma|pearson|loglogistic))?(?:_(\d+))?", variable, flags=re.IGNORECASE)
     if not match or "time" not in dataset[variable].dims:
         parser.error("comparison requires a time-dependent SPI/SPEI variable (e.g. spi_03)")
-    inferred_scale = int(match[2]) if match[2] else None
+    inferred_scale = int(match[3]) if match[3] else None
     if scale is None:
         scale = inferred_scale
     if scale is None or (inferred_scale is not None and scale != inferred_scale):
@@ -136,12 +120,17 @@ def _wwdt_comparison(
     try:
         months = dataset[variable].time.dt.strftime("%Y-%m").values
         if len(set(months)) != months.size:
-            raise ValueError("comparison requires monthly time steps; WWDT timescales are months")
+            raise ValueError("comparison requires monthly time steps; NCEI timescales are months")
         month = data.time.dt.strftime("%Y-%m").item()
-        url, image = _wwdt_image(match[1].lower(), scale, month)
+        distribution = str(match[2] or data.attrs.get("distribution", "gamma")).lower()
+        if match[2] and "distribution" in data.attrs and distribution != str(data.attrs["distribution"]).lower():
+            raise ValueError("--var disagrees with variable distribution metadata")
+        if distribution not in ("gamma", "pearson"):
+            raise ValueError(f"NCEI does not offer the {distribution} distribution")
+        url, grid = _ncei_grid(match[1].lower(), distribution, scale, month)
     except (AttributeError, ValueError) as exc:
         parser.error(str(exc))
-    return f"{match[1].upper()}-{scale}", month, url, image
+    return f"{match[1].upper()}-{scale} ({distribution.title()})", month, url, grid
 
 
 def main() -> None:
@@ -151,12 +140,10 @@ def main() -> None:
     parser.add_argument("--var", dest="variable", required=True, help="data variable to plot")
     parser.add_argument("--time", help="date to select (e.g. 2020-01); defaults to last time step")
     parser.add_argument("--output", required=True, type=Path, help="PNG to write")
-    parser.add_argument("--compare", choices=("wwdt", "noaa"), help="external map to display beside local SPI/SPEI")
+    parser.add_argument("--compare", choices=("ncei",), help="NCEI/NIDIS nClimGrid map beside local SPI/SPEI")
     parser.add_argument("--scale", type=int, help="monthly accumulation timescale (checked against --var)")
     args = parser.parse_args()
 
-    if args.compare == "noaa":
-        parser.error("NOAA/NCEI comparison unavailable: no verified SPI/SPEI image endpoint")
     if args.scale is not None and not args.compare:
         parser.error("--scale requires --compare")
     if args.output.exists() and args.output.samefile(args.input):
@@ -172,28 +159,30 @@ def main() -> None:
 
         projection = ccrs.PlateCarree()
         if args.compare:
-            label, month, url, reference = _wwdt_comparison(dataset, data, args.variable, args.scale, parser)
+            label, month, url, reference = _ncei_comparison(dataset, data, args.variable, args.scale, parser)
             fig = plt.figure(figsize=(18, 7))
             ax = fig.add_subplot(121, projection=projection)
-            reference_ax = fig.add_subplot(122)
-            reference_ax.imshow(reference)
-            reference_ax.axis("off")
-            reference_ax.set_title(f"WWDT CONUS (PRISM) — {label} — {month}")
-            fig.text(0.5, 0.01, url, ha="center", fontsize=8)
+            reference_ax = fig.add_subplot(122, projection=projection)
             title = f"Local {title} ({label})"
+            fig.text(0.5, 0.01, url, ha="center", fontsize=8)
         else:
             fig, ax = plt.subplots(figsize=(11, 6), subplot_kw={"projection": projection})
         plot_options = {"ax": ax, "transform": projection, "cbar_kwargs": {"label": args.variable, "shrink": 0.7}}
         if args.variable.lower().startswith(("spi", "spei")):
             plot_options.update(cmap="RdBu", vmin=-3, vmax=3)
-        data.plot.pcolormesh(x="lon", y="lat", **plot_options)
-        ax.set_extent(
-            [float(data.lon.min()), float(data.lon.max()), float(data.lat.min()), float(data.lat.max())],
-            crs=projection,
-        )
-        ax.coastlines(resolution="50m", linewidth=0.6)
-        ax.add_feature(cfeature.BORDERS.with_scale("50m"), linewidth=0.6)
-        ax.set_title(title)
+        for map_ax, grid, heading in (
+            [(ax, data, title), (reference_ax, reference, f"NCEI/NIDIS nClimGrid — {label} — {month}")]
+            if args.compare
+            else [(ax, data, title)]
+        ):
+            grid.plot.pcolormesh(x="lon", y="lat", **{**plot_options, "ax": map_ax})
+            map_ax.set_extent(
+                [float(data.lon.min()), float(data.lon.max()), float(data.lat.min()), float(data.lat.max())],
+                crs=projection,
+            )
+            map_ax.coastlines(resolution="50m", linewidth=0.6)
+            map_ax.add_feature(cfeature.BORDERS.with_scale("50m"), linewidth=0.6)
+            map_ax.set_title(heading)
         try:  # Boundaries are fetched while drawing, so download failures surface here.
             args.output.parent.mkdir(parents=True, exist_ok=True)
             fig.savefig(args.output, format="png", dpi=150, bbox_inches="tight")
