@@ -13,7 +13,7 @@ Example (Cartopy and matplotlib are in the dev dependency group)::
 
 Add --compare wwdt to place the matching WestWide Drought Tracker CONUS archive
 image beside a local SPI/SPEI map. --scale confirms the timescale inferred from
---var (e.g. spi_03) or supplies it for --var spi/spei. An unavailable
+--var (e.g. spi_03 or spi_gamma_03) or supplies it for --var spi/spei. An unavailable
 image fails without writing an output. NOAA/NCEI is not supported until an
 SPI/SPEI image endpoint is verified. WWDT uses PRISM data and may use a
 different Calibration Period and methodology; visual comparison is not validation.
@@ -25,11 +25,11 @@ Cartopy may download Natural Earth boundaries on first use (60 s network timeout
 import argparse
 import re
 import socket
-from http.client import IncompleteRead
+from http.client import HTTPException
 from io import BytesIO
 from pathlib import Path
 from urllib.error import HTTPError
-from urllib.request import urlopen
+from urllib.request import HTTPRedirectHandler, build_opener
 
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
@@ -43,6 +43,16 @@ import xarray as xr
 WWDT_TIMESCALES = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 18, 24, 30, 36, 48, 60, 72}
 
 
+class _RefuseRedirect(HTTPRedirectHandler):
+    """Fail on a redirect so a comparison never requests a host other than the archive."""
+
+    def redirect_request(self, *_args: object) -> None:
+        return None
+
+
+_open_without_redirects = build_opener(_RefuseRedirect).open
+
+
 def _wwdt_image(variable: str, scale: int, month: str) -> tuple[str, np.ndarray]:
     """Fetch the WWDT CONUS archive PNG for an exact index/timescale/month."""
     if scale not in WWDT_TIMESCALES:
@@ -51,17 +61,20 @@ def _wwdt_image(variable: str, scale: int, month: str) -> tuple[str, np.ndarray]
         raise ValueError(f"WWDT has no complete {scale}-month accumulation for {month}")
     url = f"https://wrcc-archive.dri.edu/wwdt/images/ARCHIVE/{variable}{scale}/{month.replace('-', '')}_us_cl.png"
     try:
-        with urlopen(url, timeout=15) as response:
+        with _open_without_redirects(url, timeout=15) as response:
             if response.headers.get_content_type() != "image/png":
                 raise ValueError(f"WWDT returned non-PNG content for {url}")
             content = response.read(5_000_001)
             if len(content) > 5_000_000:
                 raise ValueError(f"WWDT image exceeds 5 MB: {url}")
+            # PNG width and height follow the signature and IHDR tag; bound them before decoding.
+            if max(int.from_bytes(content[16:20], "big"), int.from_bytes(content[20:24], "big")) > 4096:
+                raise ValueError(f"WWDT image exceeds 4096 pixels per side: {url}")
     except HTTPError as exc:
         if exc.code in (404, 410):
             raise ValueError(f"WWDT image unavailable for {variable.upper()}-{scale}, {month}: {url}") from exc
         raise ValueError(f"WWDT request failed (HTTP {exc.code}): {url}") from exc
-    except (OSError, IncompleteRead) as exc:
+    except (OSError, HTTPException) as exc:
         raise ValueError(f"WWDT request failed: {url}: {exc}") from exc
     try:
         return url, plt.imread(BytesIO(content), format="png")
@@ -122,16 +135,26 @@ def main() -> None:
 
         comparison = None
         if args.compare:
-            match = re.fullmatch(r"(spi|spei)(?:_(\d+))?", args.variable, flags=re.IGNORECASE)
-            if not match or "time" not in data.coords:
+            match = re.fullmatch(
+                r"(spi|spei)(?:_(?:gamma|pearson|loglogistic))?(?:_(\d+))?", args.variable, flags=re.IGNORECASE
+            )
+            if not match or "time" not in dataset[args.variable].dims:
                 parser.error("comparison requires a time-dependent SPI/SPEI variable (e.g. spi_03)")
             inferred_scale = int(match[2]) if match[2] else None
             scale = args.scale if args.scale is not None else inferred_scale
             if scale is None or (inferred_scale is not None and scale != inferred_scale):
                 parser.error("--scale must match the timescale in --var (or be supplied for spi/spei)")
-            if "scale" in data.attrs and str(data.attrs["scale"]) != str(scale):
-                parser.error(f"--scale/--var disagrees with variable scale metadata {data.attrs['scale']!r}")
+            if "scale" in data.attrs:
+                try:
+                    consistent = float(data.attrs["scale"]) == scale
+                except (TypeError, ValueError):
+                    consistent = False
+                if not consistent:
+                    parser.error(f"--scale/--var disagrees with variable scale metadata {data.attrs['scale']!r}")
             try:
+                months = dataset[args.variable].time.dt.strftime("%Y-%m").values
+                if len(set(months)) != months.size:
+                    raise ValueError("comparison requires monthly time steps; WWDT timescales are months")
                 month = data.time.dt.strftime("%Y-%m").item()
                 comparison = _wwdt_image(match[1].lower(), scale, month)
             except (AttributeError, ValueError) as exc:

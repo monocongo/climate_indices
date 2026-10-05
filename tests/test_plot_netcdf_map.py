@@ -4,8 +4,11 @@ import runpy
 import socket
 import sys
 from email.message import Message
+from http.client import BadStatusLine
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
 from pathlib import Path
+from threading import Thread
 from unittest.mock import Mock
 from urllib.error import HTTPError, URLError
 
@@ -149,6 +152,8 @@ def test_plot_netcdf_map_compares_exact_conus_wwdt_image(
             "spi_13": (("time", "lat", "lon"), np.ones((2, 10, 10))),
             "spi_03": (("time", "lat", "lon"), np.ones((2, 10, 10)), {"scale": 3}),
             "spi_06": (("time", "lat", "lon"), np.ones((2, 10, 10)), {"scale": 3}),
+            "spi_gamma_03": (("time", "lat", "lon"), np.ones((2, 10, 10)), {"scale": "03"}),
+            "spei_pearson_03": (("time", "lat", "lon"), np.ones((2, 10, 10)), {"scale": 3.0}),
         },
         coords={
             "time": np.array(["2020-01-01", "2020-02-01"], dtype="datetime64[ns]"),
@@ -156,6 +161,20 @@ def test_plot_netcdf_map_compares_exact_conus_wwdt_image(
             "lon": np.linspace(-120, -100, 10),
         },
     ).to_netcdf(source)
+    static = tmp_path / "static.nc"  # A scalar time coordinate is metadata, not a selected time step.
+    xr.Dataset(
+        {"spi_03": (("lat", "lon"), np.ones((2, 2)))},
+        coords={"time": np.datetime64("2020-01-01", "ns"), "lat": [30, 31], "lon": [-110, -109]},
+    ).to_netcdf(static)
+    daily = tmp_path / "daily.nc"
+    xr.Dataset(
+        {"spi_03": (("time", "lat", "lon"), np.ones((2, 2, 2)), {"scale": 3})},
+        coords={
+            "time": np.array(["2020-01-01", "2020-01-02"], dtype="datetime64[ns]"),
+            "lat": [30, 31],
+            "lon": [-110, -109],
+        },
+    ).to_netcdf(daily)
     script = Path(__file__).resolve().parents[1] / "scripts" / "plot_netcdf_map.py"
     main = runpy.run_path(str(script))["main"]
     monkeypatch.setattr(GeoAxes, "coastlines", lambda *_args, **_kwargs: None)
@@ -174,7 +193,7 @@ def test_plot_netcdf_map_compares_exact_conus_wwdt_image(
         response.headers["Content-Type"] = "image/png"  # type: ignore[attr-defined]
         return response
 
-    monkeypatch.setitem(main.__globals__, "urlopen", fetch)
+    monkeypatch.setitem(main.__globals__, "_open_without_redirects", fetch)
     monkeypatch.setattr(sys, "argv", [*command, "--compare", "wwdt", "--scale", "3", "--time", "2020-01"])
     main()
     assert urls == ["https://wrcc-archive.dri.edu/wwdt/images/ARCHIVE/spei3/202001_us_cl.png"]
@@ -186,8 +205,17 @@ def test_plot_netcdf_map_compares_exact_conus_wwdt_image(
     monkeypatch.setattr(sys, "argv", [*command[:4], "spi_03", *command[5:], "--compare", "wwdt"])
     main()
     assert urls[-1] == "https://wrcc-archive.dri.edu/wwdt/images/ARCHIVE/spi3/202002_us_cl.png"
+    # CLI output names carry the distribution; numeric scale metadata is compared by value.
+    monkeypatch.setattr(sys, "argv", [*command[:4], "spei_pearson_03", *command[5:], "--compare", "wwdt"])
+    main()
+    assert urls[-1] == "https://wrcc-archive.dri.edu/wwdt/images/ARCHIVE/spei3/202002_us_cl.png"
+    monkeypatch.setattr(sys, "argv", [*command[:4], "spi_gamma_03", *command[5:], "--compare", "wwdt"])
+    main()
+    assert urls[-1] == "https://wrcc-archive.dri.edu/wwdt/images/ARCHIVE/spi3/202002_us_cl.png"
     output.unlink()
-    monkeypatch.setitem(main.__globals__, "urlopen", Mock(side_effect=HTTPError(urls[-1], 404, "", {}, None)))
+    monkeypatch.setitem(
+        main.__globals__, "_open_without_redirects", Mock(side_effect=HTTPError(urls[-1], 404, "", {}, None))
+    )
     with pytest.raises(SystemExit, match="2"):
         main()
     assert "WWDT image unavailable for SPI-3, 2020-02" in capsys.readouterr().err
@@ -200,6 +228,11 @@ def test_plot_netcdf_map_compares_exact_conus_wwdt_image(
         ([*command[:4], "spi_13", *command[5:], "--compare", "wwdt"], "does not offer a 13-month timescale"),
         ([*command[:4], "spi_06", *command[5:], "--compare", "wwdt"], "disagrees with variable scale metadata"),
         ([*command, "--scale", "3"], "--scale requires --compare"),
+        (
+            [*command[:2], str(static), "--var", "spi_03", *command[5:], "--compare", "wwdt"],
+            "requires a time-dependent SPI/SPEI",
+        ),
+        ([*command[:2], str(daily), "--var", "spi_03", *command[5:], "--compare", "wwdt"], "monthly time steps"),
     ):
         monkeypatch.setattr(sys, "argv", arguments)
         with pytest.raises(SystemExit, match="2"):
@@ -208,31 +241,63 @@ def test_plot_netcdf_map_compares_exact_conus_wwdt_image(
         assert not output.exists()
 
     monkeypatch.setattr(sys, "argv", [*command, "--compare", "wwdt"])
-    monkeypatch.setitem(main.__globals__, "urlopen", Mock(side_effect=URLError("offline")))
-    with pytest.raises(SystemExit, match="2"):
-        main()
-    assert "WWDT request failed" in capsys.readouterr().err
-    assert not output.exists()
+    for failure in (URLError("offline"), BadStatusLine("garbage")):
+        monkeypatch.setitem(main.__globals__, "_open_without_redirects", Mock(side_effect=failure))
+        with pytest.raises(SystemExit, match="2"):
+            main()
+        assert "WWDT request failed" in capsys.readouterr().err
+        assert not output.exists()
 
     def wrong_type(url: str, timeout: int) -> BytesIO:
         response = fetch(url, timeout)
         response.headers.replace_header("Content-Type", "text/html")  # type: ignore[attr-defined]
         return response
 
-    monkeypatch.setitem(main.__globals__, "urlopen", wrong_type)
+    monkeypatch.setitem(main.__globals__, "_open_without_redirects", wrong_type)
     with pytest.raises(SystemExit, match="2"):
         main()
     assert "non-PNG content" in capsys.readouterr().err
     assert not output.exists()
 
     png = BytesIO(b"not a PNG")
-    monkeypatch.setitem(main.__globals__, "urlopen", fetch)
+    monkeypatch.setitem(main.__globals__, "_open_without_redirects", fetch)
     with pytest.raises(SystemExit, match="2"):
         main()
     assert "could not be decoded" in capsys.readouterr().err
+    assert not output.exists()
+
+    png = BytesIO(b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR" + (5000).to_bytes(4, "big") + (1).to_bytes(4, "big"))
+    with pytest.raises(SystemExit, match="2"):
+        main()
+    assert "exceeds 4096 pixels per side" in capsys.readouterr().err
     assert not output.exists()
 
     # The archive has date-coded PNGs even for timescales with no complete accumulation.
     image_for = main.__globals__["_wwdt_image"]
     with pytest.raises(ValueError, match="no complete 72-month accumulation"):
         image_for("spi", 72, "1895-01")
+
+
+def test_plot_netcdf_map_refuses_wwdt_redirects() -> None:
+    script = Path(__file__).resolve().parents[1] / "scripts" / "plot_netcdf_map.py"
+    open_without_redirects = runpy.run_path(str(script))["_open_without_redirects"]
+    requested: list[str] = []
+
+    class Redirect(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            requested.append(self.path)
+            self.send_response(302)
+            self.send_header("Location", "/elsewhere.png")
+            self.end_headers()
+
+        def log_message(self, *_args: object) -> None:
+            pass
+
+    with ThreadingHTTPServer(("127.0.0.1", 0), Redirect) as server:
+        Thread(target=server.serve_forever, daemon=True).start()
+        with pytest.raises(HTTPError) as error:
+            open_without_redirects(f"http://127.0.0.1:{server.server_port}/image.png", timeout=5)
+        server.shutdown()
+    error.value.close()
+    assert error.value.code == 302
+    assert requested == ["/image.png"]  # The redirect target is never requested.
