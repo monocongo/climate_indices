@@ -101,6 +101,49 @@ def select_time(data: xr.DataArray, time: str | None, parser: argparse.ArgumentP
     return data
 
 
+def _select_grid(dataset: xr.Dataset, variable: str, time: str | None, parser: argparse.ArgumentParser) -> xr.DataArray:
+    """Return the single (lat, lon) slice of ``variable`` at ``time``."""
+    if variable not in dataset.data_vars:
+        parser.error(f"unknown variable {variable!r}; available: {', '.join(dataset.data_vars)}")
+    data = select_time(dataset[variable], time, parser)
+    if set(data.dims) != {"lat", "lon"} or not {"lat", "lon"} <= set(data.indexes):
+        parser.error(f"expected a single (lat, lon) grid with lat/lon coordinates; got {data.dims}")
+    lon = data.indexes["lon"]
+    if not (lon.is_monotonic_increasing or lon.is_monotonic_decreasing):
+        parser.error("longitudes must be monotonic; dateline-crossing grids are not supported")
+    return data
+
+
+def _wwdt_comparison(
+    dataset: xr.Dataset, data: xr.DataArray, variable: str, scale: int | None, parser: argparse.ArgumentParser
+) -> tuple[str, str, str, np.ndarray]:
+    """Check ``data`` is comparable with WWDT; return its index label, month, image URL, and image."""
+    match = re.fullmatch(r"(spi|spei)(?:_(?:gamma|pearson|loglogistic))?(?:_(\d+))?", variable, flags=re.IGNORECASE)
+    if not match or "time" not in dataset[variable].dims:
+        parser.error("comparison requires a time-dependent SPI/SPEI variable (e.g. spi_03)")
+    inferred_scale = int(match[2]) if match[2] else None
+    if scale is None:
+        scale = inferred_scale
+    if scale is None or (inferred_scale is not None and scale != inferred_scale):
+        parser.error("--scale must match the timescale in --var (or be supplied for spi/spei)")
+    if "scale" in data.attrs:
+        try:
+            consistent = float(data.attrs["scale"]) == scale
+        except (TypeError, ValueError):
+            consistent = False
+        if not consistent:
+            parser.error(f"--scale/--var disagrees with variable scale metadata {data.attrs['scale']!r}")
+    try:
+        months = dataset[variable].time.dt.strftime("%Y-%m").values
+        if len(set(months)) != months.size:
+            raise ValueError("comparison requires monthly time steps; WWDT timescales are months")
+        month = data.time.dt.strftime("%Y-%m").item()
+        url, image = _wwdt_image(match[1].lower(), scale, month)
+    except (AttributeError, ValueError) as exc:
+        parser.error(str(exc))
+    return f"{match[1].upper()}-{scale}", month, url, image
+
+
 def main() -> None:
     """Plot one (lat, lon) slice of a NetCDF variable and print the PNG path."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -121,57 +164,23 @@ def main() -> None:
     socket.setdefaulttimeout(60)  # Cartopy's Natural Earth download has no timeout of its own.
 
     with xr.open_dataset(args.input) as dataset:
-        if args.variable not in dataset.data_vars:
-            parser.error(f"unknown variable {args.variable!r}; available: {', '.join(dataset.data_vars)}")
-        data = select_time(dataset[args.variable], args.time, parser)
-
-        if set(data.dims) != {"lat", "lon"} or not {"lat", "lon"} <= set(data.indexes):
-            parser.error(f"expected a single (lat, lon) grid with lat/lon coordinates; got {data.dims}")
-        lon = data.indexes["lon"]
-        if not (lon.is_monotonic_increasing or lon.is_monotonic_decreasing):
-            parser.error("longitudes must be monotonic; dateline-crossing grids are not supported")
+        data = _select_grid(dataset, args.variable, args.time, parser)
 
         title = data.attrs.get("long_name", args.variable)
         if "time" in data.coords:
             title += f" — {str(data.time.values)[:10]}"
 
-        comparison = None
-        if args.compare:
-            match = re.fullmatch(
-                r"(spi|spei)(?:_(?:gamma|pearson|loglogistic))?(?:_(\d+))?", args.variable, flags=re.IGNORECASE
-            )
-            if not match or "time" not in dataset[args.variable].dims:
-                parser.error("comparison requires a time-dependent SPI/SPEI variable (e.g. spi_03)")
-            inferred_scale = int(match[2]) if match[2] else None
-            scale = args.scale if args.scale is not None else inferred_scale
-            if scale is None or (inferred_scale is not None and scale != inferred_scale):
-                parser.error("--scale must match the timescale in --var (or be supplied for spi/spei)")
-            if "scale" in data.attrs:
-                try:
-                    consistent = float(data.attrs["scale"]) == scale
-                except (TypeError, ValueError):
-                    consistent = False
-                if not consistent:
-                    parser.error(f"--scale/--var disagrees with variable scale metadata {data.attrs['scale']!r}")
-            try:
-                months = dataset[args.variable].time.dt.strftime("%Y-%m").values
-                if len(set(months)) != months.size:
-                    raise ValueError("comparison requires monthly time steps; WWDT timescales are months")
-                month = data.time.dt.strftime("%Y-%m").item()
-                comparison = _wwdt_image(match[1].lower(), scale, month)
-            except (AttributeError, ValueError) as exc:
-                parser.error(str(exc))
-
         projection = ccrs.PlateCarree()
-        if comparison:
+        if args.compare:
+            label, month, url, reference = _wwdt_comparison(dataset, data, args.variable, args.scale, parser)
             fig = plt.figure(figsize=(18, 7))
             ax = fig.add_subplot(121, projection=projection)
             reference_ax = fig.add_subplot(122)
-            reference_ax.imshow(comparison[1])
+            reference_ax.imshow(reference)
             reference_ax.axis("off")
-            reference_ax.set_title(f"WWDT CONUS (PRISM) — {match[1].upper()}-{scale} — {month}")
-            fig.text(0.5, 0.01, comparison[0], ha="center", fontsize=8)
-            title = f"Local {title} ({match[1].upper()}-{scale})"
+            reference_ax.set_title(f"WWDT CONUS (PRISM) — {label} — {month}")
+            fig.text(0.5, 0.01, url, ha="center", fontsize=8)
+            title = f"Local {title} ({label})"
         else:
             fig, ax = plt.subplots(figsize=(11, 6), subplot_kw={"projection": projection})
         plot_options = {"ax": ax, "transform": projection, "cbar_kwargs": {"label": args.variable, "shrink": 0.7}}
