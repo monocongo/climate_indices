@@ -11,8 +11,8 @@ Example (Cartopy and matplotlib are in the dev dependency group)::
         --input /path/to/nclimgrid_spi_spei_gamma_03.nc --var spi_03 \
         --time 2020-01 --scale 3 --compare wwdt --output comparison.png
 
-Add --compare wwdt to place the matching WestWide Drought Tracker archive image
-beside a local SPI/SPEI map. --scale confirms the timescale inferred from
+Add --compare wwdt to place the matching WestWide Drought Tracker CONUS archive
+image beside a local SPI/SPEI map. --scale confirms the timescale inferred from
 --var (e.g. spi_03) or supplies it for --var spi/spei. An unavailable
 image fails without writing an output. NOAA/NCEI is not supported until an
 SPI/SPEI image endpoint is verified. WWDT uses PRISM data and may use a
@@ -44,12 +44,12 @@ WWDT_TIMESCALES = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 18, 24, 30, 36, 48
 
 
 def _wwdt_image(variable: str, scale: int, month: str) -> tuple[str, np.ndarray]:
-    """Fetch the WWDT Western US archive PNG for an exact index/timescale/month."""
+    """Fetch the WWDT CONUS archive PNG for an exact index/timescale/month."""
     if scale not in WWDT_TIMESCALES:
         raise ValueError(f"WWDT does not offer a {scale}-month timescale")
     if month < f"{1895 + (scale - 1) // 12:04d}-{(scale - 1) % 12 + 1:02d}":
         raise ValueError(f"WWDT has no complete {scale}-month accumulation for {month}")
-    url = f"https://wrcc-archive.dri.edu/wwdt/images/ARCHIVE/{variable}{scale}/{month.replace('-', '')}_ww_cl.png"
+    url = f"https://wrcc-archive.dri.edu/wwdt/images/ARCHIVE/{variable}{scale}/{month.replace('-', '')}_us_cl.png"
     try:
         with urlopen(url, timeout=15) as response:
             if response.headers.get_content_type() != "image/png":
@@ -144,7 +144,7 @@ def main() -> None:
             reference_ax = fig.add_subplot(122)
             reference_ax.imshow(comparison[1])
             reference_ax.axis("off")
-            reference_ax.set_title(f"WWDT Western US (PRISM) — {match[1].upper()}-{scale} — {month}")
+            reference_ax.set_title(f"WWDT CONUS (PRISM) — {match[1].upper()}-{scale} — {month}")
             fig.text(0.5, 0.01, comparison[0], ha="center", fontsize=8)
             title = f"Local {title} ({match[1].upper()}-{scale})"
         else:

@@ -138,7 +138,7 @@ def test_plot_netcdf_map_bounds_boundary_download(
     assert "cannot save map: timed out" in capsys.readouterr().err
 
 
-def test_plot_netcdf_map_compares_exact_wwdt_image(
+def test_plot_netcdf_map_compares_exact_conus_wwdt_image(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     source = tmp_path / "grid.nc"
@@ -177,15 +177,15 @@ def test_plot_netcdf_map_compares_exact_wwdt_image(
     monkeypatch.setitem(main.__globals__, "urlopen", fetch)
     monkeypatch.setattr(sys, "argv", [*command, "--compare", "wwdt", "--scale", "3", "--time", "2020-01"])
     main()
-    assert urls == ["https://wrcc-archive.dri.edu/wwdt/images/ARCHIVE/spei3/202001_ww_cl.png"]
+    assert urls == ["https://wrcc-archive.dri.edu/wwdt/images/ARCHIVE/spei3/202001_us_cl.png"]
     assert image.imread(output).shape[1] > 1500
 
     monkeypatch.setattr(sys, "argv", [*command, "--compare", "wwdt"])
     main()
-    assert urls[-1] == "https://wrcc-archive.dri.edu/wwdt/images/ARCHIVE/spei3/202002_ww_cl.png"
+    assert urls[-1] == "https://wrcc-archive.dri.edu/wwdt/images/ARCHIVE/spei3/202002_us_cl.png"
     monkeypatch.setattr(sys, "argv", [*command[:4], "spi_03", *command[5:], "--compare", "wwdt"])
     main()
-    assert urls[-1] == "https://wrcc-archive.dri.edu/wwdt/images/ARCHIVE/spi3/202002_ww_cl.png"
+    assert urls[-1] == "https://wrcc-archive.dri.edu/wwdt/images/ARCHIVE/spi3/202002_us_cl.png"
     output.unlink()
     monkeypatch.setitem(main.__globals__, "urlopen", Mock(side_effect=HTTPError(urls[-1], 404, "", {}, None)))
     with pytest.raises(SystemExit, match="2"):
