@@ -153,13 +153,13 @@ def test_timeseries_spi_matches_in_process_computation(tmp_path, precips_mm_mont
         np.testing.assert_allclose(dataset["spi_gamma_06"].values, expected, equal_nan=True)
 
 
-def test_pack_output_flag_is_opt_in_and_packs_spi_to_int16(tmp_path, precips_mm_monthly):
+def test_pack_flag_is_opt_in_and_packs_spi_to_int16(tmp_path, precips_mm_monthly):
     values = precips_mm_monthly.reshape(-1)
     precip_path = tmp_path / "precip.nc"
     _write_timeseries(precip_path, values)
 
     main(_spi_arguments(precip_path, tmp_path / "plain"))
-    main([*_spi_arguments(precip_path, tmp_path / "packed"), "--pack_output"])
+    main([*_spi_arguments(precip_path, tmp_path / "packed"), "--pack"])
 
     with xr.open_dataset(tmp_path / "plain_spi_gamma_06.nc", mask_and_scale=False) as plain:
         assert plain["spi_gamma_06"].dtype == np.dtype("float64")
@@ -436,7 +436,7 @@ def test_spei_with_temperature_input_computes_and_consumes_pet(
 ):
     """A temperature-only SPEI run writes PET as a side effect and consumes it.
 
-    With --pack_output that PET file stays unpacked, so only the SPEI file is quantized.
+    With --pack that PET file stays unpacked, so only the SPEI file is quantized.
     """
     precips = precips_mm_monthly.reshape(-1)
     temps = temps_celsius.reshape(-1)
@@ -455,7 +455,7 @@ def test_spei_with_temperature_input_computes_and_consumes_pet(
             str(temp_path),
             "--var_name_temp",
             "temp",
-            *(["--pack_output"] if pack_output else []),
+            *(["--pack"] if pack_output else []),
         ]
     )
 

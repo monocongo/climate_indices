@@ -89,7 +89,7 @@ class _IndexRequest:
     # non-default --output_scale was given
     output_scale: str = "normal"
     zero_handling: compute.ZeroHandling = "classic"
-    # write the outputs packed (int16 where they fit, else float32), per --pack_output
+    # write the outputs packed (int16 where they fit, else float32), per --pack
     pack_output: bool = False
     calibration_start_year: int | None = None
     calibration_end_year: int | None = None
@@ -1791,7 +1791,7 @@ def _run_pet(arguments: argparse.Namespace, input_type: DatasetLayout, transport
         return
 
     request = _IndexRequest.from_arguments(arguments, index="pet", input_type=input_type)
-    # a PET file a later index reads stays unpacked, so --pack_output cannot change that index's values
+    # a PET file a later index reads stays unpacked, so --pack cannot change that index's values
     request.pack_output = request.pack_output and arguments.index == "pet"
     result = _compute_write_index(request, transport)
     assert result is not None, "PET computation should return file and variable name"
@@ -2298,7 +2298,8 @@ def _build_parser() -> argparse.ArgumentParser:
         default="none",
     )
     parser.add_argument(
-        "--pack_output",
+        "--pack",
+        dest="pack_output",
         help=(
             "EXPERIMENTAL. Compress the output variables, storing each as int16 with a 1e-4 "
             "scale_factor when all its values fit within +/-3.2767 (max error 5e-5) "

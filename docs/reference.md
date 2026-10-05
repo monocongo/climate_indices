@@ -88,7 +88,7 @@ The options are described below:
   - Initial KBDI value. Default value is 0.0. Applicable only when **index** is 'kbdi'.
 * - chunksizes
   - Chunking of the written output file, not of the computation: 'none' (default) lets the writer choose the output layout, and 'input' uses the on-disk chunks of the first input variable that reports chunk sizes without being explicitly contiguous (for KBDI, PE, and API, the precipitation variable's chunks; for EDI and the Flood Index, the PE variable's). The copied chunks are reordered to the output's dimension order and trimmed to its shape, and are ignored, with a warning, when that variable's dimensions don't match the output's.
-* - pack_output
+* - pack
   - EXPERIMENTAL, off by default. Writes each floating-point output variable zlib-compressed: as int16 with a 1e-4 **scale_factor** when every value lies within +/-3.2767, at most 5e-5 from the computed value, and as float32 otherwise, including a variable holding +/-inf. Without it the output keeps its default float64 encoding. A PET or PE file that a later index in the same run reads is written unpacked, so the flag never changes computed values. A Dask-backed output is computed twice, once to range its values and once to write them.
 * - output_file_base
   - Base file name for all output files (required).

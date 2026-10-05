@@ -10,7 +10,7 @@ history entry. (The xarray route already stamped those attrs in its adapter.)
 Writes go beside the target and replace it only once the whole file is on disk,
 so a failed computation cannot leave a hollow file where an earlier output was.
 
-Experimental, opt-in packing (``--pack_output``): ``choose_netcdf_encoding``
+Experimental, opt-in packing (``--pack``): ``choose_netcdf_encoding``
 stores each floating-point data variable as scaled int16 when its values fit,
 float32 otherwise, compressed either way. Without it the output encoding is xarray's default.
 """
