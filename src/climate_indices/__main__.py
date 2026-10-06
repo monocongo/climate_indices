@@ -89,6 +89,8 @@ class _IndexRequest:
     # non-default --output_scale was given
     output_scale: str = "normal"
     zero_handling: compute.ZeroHandling = "classic"
+    # write the outputs packed (int16 where they fit, else float32), per --pack
+    pack_output: bool = False
     calibration_start_year: int | None = None
     calibration_end_year: int | None = None
     # the initial year of the inputs, read from them as the computation starts
@@ -138,6 +140,7 @@ class _IndexRequest:
             distribution=distribution,
             output_scale=getattr(arguments, "output_scale", None) or "normal",
             zero_handling=getattr(arguments, "zero_handling", "classic"),
+            pack_output=getattr(arguments, "pack_output", False),
         )
 
 
@@ -574,6 +577,7 @@ _UNIVERSAL_FLAGS = frozenset(
         "output_file_base",
         "multiprocessing",
         "chunksizes",
+        "pack_output",
         "output_scale",
         "zero_handling",
     }
@@ -1541,7 +1545,7 @@ def _write_single_output(context: _ComputeContext) -> tuple[str, str]:
 
     # write the dataset as NetCDF
     netcdf_file_name = request.output_file_base + "_" + output_var_name + ".nc"
-    write_netcdf_atomic(dataset, netcdf_file_name, engine=context.output_engine)
+    write_netcdf_atomic(dataset, netcdf_file_name, engine=context.output_engine, pack=request.pack_output)
 
     return netcdf_file_name, output_var_name
 
@@ -1580,7 +1584,7 @@ def _write_palmer_outputs(context: _ComputeContext) -> None:
 
         # write the dataset as NetCDF
         netcdf_file_name = context.request.output_file_base + "_" + var_name + ".nc"
-        write_netcdf_atomic(dataset, netcdf_file_name, engine=context.output_engine)
+        write_netcdf_atomic(dataset, netcdf_file_name, engine=context.output_engine, pack=context.request.pack_output)
 
 
 def _validate_kbdi_arguments(args: argparse.Namespace) -> None:
@@ -1786,9 +1790,10 @@ def _run_pet(arguments: argparse.Namespace, input_type: DatasetLayout, transport
     if arguments.netcdf_pet is not None and arguments.index != "pet":
         return
 
-    result = _compute_write_index(
-        _IndexRequest.from_arguments(arguments, index="pet", input_type=input_type), transport
-    )
+    request = _IndexRequest.from_arguments(arguments, index="pet", input_type=input_type)
+    # a PET file a later index reads stays unpacked, so --pack cannot change that index's values
+    request.pack_output = request.pack_output and arguments.index == "pet"
+    result = _compute_write_index(request, transport)
     assert result is not None, "PET computation should return file and variable name"
     arguments.netcdf_pet, arguments.var_name_pet = result
 
@@ -1854,7 +1859,7 @@ def _write_xarray_index(
     # to_netcdf() truncates its target before the lazy computation runs, so a
     # kernel error would leave a hollow file in place of any earlier output:
     # write beside the target and replace it only once the values are written
-    write_netcdf_atomic(values, output_file, engine=output_engine)
+    write_netcdf_atomic(values, output_file, engine=output_engine, pack=request.pack_output)
 
 
 def _run_kbdi(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
@@ -1909,6 +1914,8 @@ def _run_pe(arguments: argparse.Namespace, input_type: DatasetLayout, transport:
     """
     request = _IndexRequest.from_arguments(arguments, index="pe", input_type=input_type)
     assert request.netcdf_precip is not None and request.var_name_precip is not None
+    # as for PET: a PE file a later index reads stays unpacked
+    request.pack_output = request.pack_output and arguments.index == "pe"
 
     with _open_with_default_chunks(
         xr.open_dataset, request.netcdf_precip, chunks=_time_whole_chunks(input_type)
@@ -2289,6 +2296,18 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=["none", "input"],
         required=False,
         default="none",
+    )
+    parser.add_argument(
+        "--pack",
+        dest="pack_output",
+        help=(
+            "EXPERIMENTAL. Compress the output variables, storing each as int16 with a 1e-4 "
+            "scale_factor when all its values fit within +/-3.2767 (max error 5e-5) "
+            "and as float32 otherwise. A PET or PE file that a later index reads is written "
+            "unpacked. Off by default, which keeps the default float64 output."
+        ),
+        action="store_true",
+        default=False,
     )
     return parser
 
