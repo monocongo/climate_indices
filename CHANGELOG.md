@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.0.0] - 2026-10-04
+## [3.0.0] - 2026-10-06
 
 ### Added
 
@@ -141,6 +141,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and radiation precedence supplied Rs -> sunshine hours -> temperature range (Eq. 50).
   The radiation and wind helpers are validated against FAO-56 Examples 10-16 and the
   full chain against Example 18 (#766, #1183).
+- **Experimental NetCDF output packing**: `climate_indices --pack` writes each
+  floating-point output variable zlib-compressed, as int16 with a 1e-4 `scale_factor`
+  when every value lies within +/-3.2767 and at most 5e-5 from the computed value, and
+  as float32 otherwise. It is off by default, which keeps the float64 encoding. A PET or
+  PE file that a later index in the same run reads is written unpacked, so the flag never
+  changes computed values; a Dask-backed output is computed twice, once to range its
+  values and once to write them (#1260).
+- **Quick NetCDF map utility**: `scripts/plot_netcdf_map.py` (development tooling, not
+  shipped in the wheel) plots one time slice of a gridded variable from named `--input`
+  and `--var` arguments, and `--compare ncei` plots the matching NCEI nClimGrid SPI or
+  SPEI monthly slice beside it. This is a visual reproduction check, not independent
+  scientific validation (#1261, #1262).
 
 ### Changed
 
@@ -488,6 +500,13 @@ change states what a user sees, how to detect it, and what to change in
   `latitude_degrees_north` is omitted, an already-empty record stays an empty
   result, and the shared alignment warning is reported at the public call site
   (#1220, #1222).
+
+### Security
+
+- **Locked dependency updates**: `uv.lock` pins `fsspec` 2026.9.0 for CVE-2026-104851
+  (a transitive dependency through dask) and takes the `jupyterlab` 4.5.11, `tornado`
+  6.5.9, and `multidict` 6.9.1 security updates. Published dependency ranges are
+  unchanged (#1263, #1264, #1265).
 
 ## [2.4.0] - 2026-04-05
 
