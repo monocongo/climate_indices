@@ -505,7 +505,7 @@ change states what a user sees, how to detect it, and what to change in
 
 - **Locked dependency updates**: `uv.lock` pins `fsspec` 2026.9.0 for CVE-2026-104851
   (a transitive dependency through dask) and takes the `jupyterlab` 4.5.11, `tornado`
-  6.5.9, and `multidict` 6.9.1 security updates. Published dependency ranges are
+  6.5.10, and `multidict` 6.9.1 security updates. Published dependency ranges are
   unchanged (#1263, #1264, #1265).
 
 ## [2.4.0] - 2026-04-05
