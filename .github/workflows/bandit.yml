@@ -7,7 +7,7 @@
 # This action will run Bandit on your codebase.
 # The results of the scan will be found under the Security tab of your repository.
 
-# https://github.com/marketplace/actions/bandit-scan is ISC licensed, by abirismyname
+# https://github.com/shundor/python-bandit-scan is ISC licensed, copyright Abir Majumdar (abirismyname)
 # https://pypi.org/project/bandit/ is Apache v2.0 licensed, by PyCQA
 
 name: Bandit
