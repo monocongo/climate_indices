@@ -20,6 +20,12 @@ on:
   schedule:
     - cron: '19 5 * * 6'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # Cancelling a main-branch run would discard the only check of the merged
+  # result, so only supersede pull request runs.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   bandit:
     permissions:
