@@ -153,6 +153,29 @@ def test_timeseries_spi_matches_in_process_computation(tmp_path, precips_mm_mont
         np.testing.assert_allclose(dataset["spi_gamma_06"].values, expected, equal_nan=True)
 
 
+def test_pack_flag_is_opt_in_and_packs_spi_to_int16(tmp_path, precips_mm_monthly):
+    values = precips_mm_monthly.reshape(-1)
+    precip_path = tmp_path / "precip.nc"
+    _write_timeseries(precip_path, values)
+
+    main(_spi_arguments(precip_path, tmp_path / "plain"))
+    main([*_spi_arguments(precip_path, tmp_path / "packed"), "--pack"])
+
+    with xr.open_dataset(tmp_path / "plain_spi_gamma_06.nc", mask_and_scale=False) as plain:
+        assert plain["spi_gamma_06"].dtype == np.dtype("float64")
+    with xr.open_dataset(tmp_path / "packed_spi_gamma_06.nc", mask_and_scale=False) as raw:
+        assert raw["spi_gamma_06"].dtype == np.dtype("int16")
+    with (
+        xr.open_dataset(tmp_path / "plain_spi_gamma_06.nc") as plain,
+        xr.open_dataset(tmp_path / "packed_spi_gamma_06.nc") as packed,
+    ):
+        np.testing.assert_allclose(packed["spi_gamma_06"].values, plain["spi_gamma_06"].values, atol=5e-5 + 1e-12)
+        # history is stamped to the second, and the two runs can straddle a second boundary
+        assert {k: v for k, v in packed["spi_gamma_06"].attrs.items() if k != "history"} == {
+            k: v for k, v in plain["spi_gamma_06"].attrs.items() if k != "history"
+        }
+
+
 @pytest.mark.parametrize("mode", ["classic", "center_of_mass", "mean_zero"])
 def test_spi_zero_handling_flag_writes_values_and_metadata(tmp_path, precips_mm_monthly, mode):
     values = precips_mm_monthly.reshape(-1).copy()
@@ -410,8 +433,14 @@ def test_spei_uses_provided_pet_file_and_matches_in_process_computation(
         np.testing.assert_allclose(dataset["spei_gamma_06"].values[0], expected, equal_nan=True)
 
 
-def test_spei_with_temperature_input_computes_and_consumes_pet(tmp_path, precips_mm_monthly, temps_celsius):
-    """A temperature-only SPEI run writes PET as a side effect and consumes it."""
+@pytest.mark.parametrize("pack_output", [False, True])
+def test_spei_with_temperature_input_computes_and_consumes_pet(
+    tmp_path, precips_mm_monthly, temps_celsius, pack_output
+):
+    """A temperature-only SPEI run writes PET as a side effect and consumes it.
+
+    With --pack that PET file stays unpacked, so only the SPEI file is quantized.
+    """
     precips = precips_mm_monthly.reshape(-1)
     temps = temps_celsius.reshape(-1)
     precip_path = tmp_path / "precip.nc"
@@ -429,12 +458,14 @@ def test_spei_with_temperature_input_computes_and_consumes_pet(tmp_path, precips
             str(temp_path),
             "--var_name_temp",
             "temp",
+            *(["--pack"] if pack_output else []),
         ]
     )
 
     pet_path = tmp_path / "spei_temp_only_pet_thornthwaite.nc"
     assert pet_path.exists()
     with xr.open_dataset(pet_path) as dataset:
+        assert dataset["pet_thornthwaite"].encoding["dtype"] == np.dtype("float64")
         pet = dataset["pet_thornthwaite"].values[0]
 
     expected = indices.spei(
@@ -449,7 +480,8 @@ def test_spei_with_temperature_input_computes_and_consumes_pet(tmp_path, precips
     )
     with xr.open_dataset(tmp_path / "spei_temp_only_spei_gamma_06.nc") as dataset:
         written = dataset["spei_gamma_06"]
-        np.testing.assert_allclose(written.values[0], expected, equal_nan=True)
+        assert written.encoding["dtype"] == np.dtype("int16" if pack_output else "float64")
+        np.testing.assert_allclose(written.values[0], expected, atol=5e-5 + 1e-12 if pack_output else 0, equal_nan=True)
         entry = CF_METADATA["spei"]
         assert written.attrs["long_name"] == entry["long_name"]
         assert written.attrs["units"] == entry["units"]
