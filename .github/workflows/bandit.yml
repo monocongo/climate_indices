@@ -1,13 +1,11 @@
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
-
 # Bandit is a security linter designed to find common security issues in Python code.
-# This action will run Bandit on your codebase.
-# The results of the scan will be found under the Security tab of your repository.
+# This workflow runs Bandit on the repository and uploads the results as SARIF,
+# where they appear under the Security tab of the repository.
+#
+# The steps are inline rather than a third-party action because this repository
+# requires every action, including those a composite action calls internally,
+# to be pinned to a full-length commit SHA.
 
-# https://github.com/shundor/python-bandit-scan is ISC licensed, copyright Abir Majumdar (abirismyname)
 # https://pypi.org/project/bandit/ is Apache v2.0 licensed, by PyCQA
 
 name: Bandit
@@ -40,23 +38,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: '3.12'
       - name: Bandit Scan
-        uses: shundor/python-bandit-scan@ab1d87dfccc5a0ffab88be3aaac6ffe35c10d6cd
-        with: # optional arguments
-          # exit with 0, even with results found
-          exit_zero: true # optional, default is DEFAULT
-          # Github token of the repository (automatically created by Github)
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Needed to get PR information.
-          # File or directory to run bandit on
-          # path: # optional, default is .
-          # Report only issues of a given severity level or higher. Can be LOW, MEDIUM or HIGH. Default is UNDEFINED (everything)
-          # level: # optional, default is UNDEFINED
-          # Report only issues of a given confidence level or higher. Can be LOW, MEDIUM or HIGH. Default is UNDEFINED (everything)
-          # confidence: # optional, default is UNDEFINED
-          # comma-separated list of paths (glob patterns supported) to exclude from scan (note that these are in addition to the excluded paths provided in the config file) (default: .svn,CVS,.bzr,.hg,.git,__pycache__,.tox,.eggs,*.egg)
-          # excluded_paths: # optional, default is DEFAULT
-          # comma-separated list of test IDs to skip
-          # skips: # optional, default is DEFAULT
-          # path to a .bandit file that supplies command line arguments
-          # ini_path: # optional, default is DEFAULT
-
+        # --exit-zero: report findings in the Security tab without failing the job
+        # --exclude ./tests: pytest asserts (B101) are 99% of the findings otherwise
+        run: |
+          pip install 'bandit[sarif]==1.9.4'
+          bandit --format sarif --output results.sarif --recursive --exit-zero --exclude ./tests .
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2  # v4.38.2
+        with:
+          sarif_file: results.sarif
