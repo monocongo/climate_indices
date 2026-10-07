@@ -1,0 +1,8 @@
+# Pins the compiler for local builds and CI so a new stable clippy lint cannot
+# break `-D warnings` on an unrelated change. Bump deliberately: change `channel`,
+# run `cargo clippy --workspace --all-targets -- -D warnings`, fix any new lints.
+# The workspace uses edition 2024, so the minimum supported Rust is 1.85.
+[toolchain]
+channel = "1.99.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

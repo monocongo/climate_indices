@@ -1,25 +1,26 @@
 """Smoke tests for the optional Rust extension, ``climate_indices._native``.
 
 The extension is built by ``uv run maturin develop --release`` and is absent from
-pure-Python installs, so every test that needs it skips when it cannot be imported.
+pure-Python installs, so every test that needs it skips when it cannot be imported,
+unless ``CLIMATE_INDICES_REQUIRE_NATIVE=1`` is set (CI's native legs), which makes a
+missing extension a failure.
 """
 
 import re
 import subprocess
 import sys
 
-import pytest
-
 from climate_indices import compute
+from tests import conftest
 
 
 def test_native_extension_reports_crate_version() -> None:
-    native = pytest.importorskip("climate_indices._native")
+    native = conftest.import_native()
     assert re.fullmatch(r"\d+\.\d+\.\d+", native.__version__)
 
 
 def test_compute_dispatches_to_the_built_extension() -> None:
-    native = pytest.importorskip("climate_indices._native")
+    native = conftest.import_native()
     assert compute._native is native
 
 

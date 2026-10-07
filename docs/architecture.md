@@ -309,7 +309,31 @@ cargo test --workspace
 extension into `src/climate_indices/`, where it stays importable after `uv sync`
 reinstalls the project; delete the `_native.*` file to return to pure Python.
 Publishing binary wheels that include `_native`, and the supported install path
-without Rust, are tracked separately (RUST-003, RUST-013).
+without Rust, are tracked separately (RUST-013).
+
+**Rust in CI.** `.github/workflows/unit-tests-workflow.yml` runs three jobs on
+every pull request, push, and merge group, next to the pure-Python legs. Those
+legs install no Rust toolchain, so they keep proving the fallback.
+
+- `rust`: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets
+  -- -D warnings`, and `cargo test --workspace` (`PYO3_PYTHON` points the
+  `climate-py` test binary at the project interpreter).
+- `test-native`: `maturin develop --release`, then the same core pytest command
+  as `test`, on the boundary legs (oldest and newest Python on Linux, newest on
+  macOS). It sets `CLIMATE_INDICES_REQUIRE_NATIVE=1`, which makes the native test
+  modules raise on a missing extension instead of skipping, so the parity suite
+  cannot silently drop out. The only remaining skip is the declared Python 3.14
+  context-aware-warnings test, which runs on the 3.14 legs.
+- `native-wheel`: `maturin build --release` on Linux and macOS at both boundary
+  Pythons, plus a Windows smoke build on the newest. Each wheel is installed
+  into a fresh venv and imported from outside the checkout, and SPI must reach
+  the bundled `gamma_parameters`, `gamma_probabilities`, and `norm_ppf` kernels.
+  This validates wheels; it does not publish them.
+
+`rust-toolchain.toml` pins the compiler so a new stable clippy lint cannot fail
+`-D warnings` on an unrelated change. The workspace uses edition 2024, so the
+minimum supported Rust is 1.85. To bump the pin, change `channel`, run the clippy
+command above, and fix any new lints in the same change.
 
 ## Source Code Organization
 

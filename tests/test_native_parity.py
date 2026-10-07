@@ -6,7 +6,9 @@ once with it set to None, which runs the pure-Python reference. The recorder pro
 the first run reached the Rust kernels, so the comparison is never Python against
 Python. The contract is ``rtol = atol = 1e-10`` with matching NaN positions.
 
-Skipped when the extension is not built (``uv run maturin develop --release``).
+Skipped when the extension is not built (``uv run maturin develop --release``),
+unless ``CLIMATE_INDICES_REQUIRE_NATIVE=1`` is set, as in CI's native legs, where a
+missing extension is a collection error.
 """
 
 import subprocess
@@ -20,8 +22,9 @@ import pytest
 import scipy.stats
 
 from climate_indices import compute, exceptions, indices
+from tests import conftest
 
-native = pytest.importorskip("climate_indices._native")
+native = conftest.import_native()
 
 RTOL = 1e-10
 ATOL = 1e-10
