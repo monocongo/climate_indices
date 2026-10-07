@@ -6,11 +6,13 @@ once with it set to None, which runs the pure-Python reference. The recorder pro
 the first run reached the Rust kernels, so the comparison is never Python against
 Python. The contract is ``rtol = atol = 1e-10`` with matching NaN positions.
 
-Skipped when the extension is not built (``uv run maturin develop --release``).
+Skipped when the extension is not built (``uv run maturin develop --release``),
+unless ``CLIMATE_INDICES_REQUIRE_NATIVE=1`` is set, as in CI's native legs, where a
+missing extension is a collection error. This module deliberately has no other skip
+(the Python 3.14-only context-aware-warnings check lives in test_native_backend.py),
+so a native leg that skips anything here is a bug.
 """
 
-import subprocess
-import sys
 import warnings
 from collections.abc import Callable
 from typing import Any
@@ -20,8 +22,9 @@ import pytest
 import scipy.stats
 
 from climate_indices import compute, exceptions, indices
+from tests import conftest
 
-native = pytest.importorskip("climate_indices._native")
+native = conftest.import_native()
 
 RTOL = 1e-10
 ATOL = 1e-10
@@ -412,43 +415,6 @@ def test_runtime_warnings_promoted_to_exceptions_stay_on_python(monkeypatch):
                 run()
         if backend is not None:
             assert "gamma_parameters" not in backend.calls
-
-
-@pytest.mark.skipif(sys.version_info < (3, 14), reason="context-aware warnings require Python 3.14")
-def test_context_aware_warning_filters_stay_on_python():
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-X",
-            "context_aware_warnings=1",
-            "-c",
-            """
-import sys
-import warnings
-import numpy as np
-from climate_indices import compute, _native
-assert sys.flags.context_aware_warnings
-class NoNativeFit:
-    def gamma_parameters(self, *args):
-        raise AssertionError("native fit called")
-compute._native = NoNativeFit()
-with np.errstate(all="ignore"):
-    assert not compute._native_float64(np.ones((30, 12)))
-with warnings.catch_warnings(), np.errstate(divide="warn"):
-    warnings.simplefilter("error", RuntimeWarning)
-    try:
-        compute.gamma_parameters(np.ones((30, 12)), 1895, 1895, 1924, compute.Periodicity.monthly)
-    except RuntimeWarning as error:
-        assert "divide by zero" in str(error)
-    else:
-        raise AssertionError("RuntimeWarning suppressed")
-""",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_numpy_warning_policy_preserves_fit_warnings(monkeypatch):

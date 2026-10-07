@@ -98,6 +98,19 @@ For packaging, release, or workflow changes, also run:
 uv run pytest tests/test_release_integrity.py
 ```
 
+For changes under `crates/` or to the native dispatch in `src/climate_indices/compute.py`,
+also run the Rust gate that CI's `rust` and `test-native` jobs run (see
+`docs/architecture.md` § *Optional Rust Backend*). With `CLIMATE_INDICES_REQUIRE_NATIVE=1`
+the parity tests fail instead of skipping when the extension is missing:
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+PYO3_PYTHON="$PWD/.venv/bin/python" cargo test --workspace
+uv run maturin develop --release
+CLIMATE_INDICES_REQUIRE_NATIVE=1 uv run pytest tests/test_native_parity.py tests/test_native_backend.py
+```
+
 If you edit any document listed in `SUMMARY_FILES` or `FULL_FILES` in
 `scripts/generate_llms_txt.py` — `README.md` and `VALIDATION.md` among them —
 regenerate the derived bundles and commit them alongside the change:

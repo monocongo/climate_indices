@@ -62,6 +62,14 @@ Single-owner jobs run once per event: `lint` (ruff, mypy), `docs`, `validation`
 (3.12), `meta` (repo checks, 3.10), `test-minimum-deps` (3.10), `notebooks`, and
 `security-audit`.
 
+Three Rust jobs run on every event next to the pure-Python legs: `rust` (cargo
+fmt, clippy, and tests), `test-native` (the core suite with the extension built and
+`CLIMATE_INDICES_REQUIRE_NATIVE=1`, on the boundary legs of `test`), and
+`native-wheel` (maturin wheels at both boundary Pythons on Linux and macOS, plus a
+Windows 3.14 smoke build, each installed and checked outside the checkout). They
+validate wheels but publish nothing. See `docs/architecture.md` § *Optional Rust
+Backend*.
+
 **Steps** (each test leg):
 1. Checkout code
 2. Setup Python and uv

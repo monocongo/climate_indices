@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import importlib
 import json
 import multiprocessing
 import os
 from concurrent.futures import Future, ProcessPoolExecutor
 from pathlib import Path
+from types import ModuleType
 
 import numpy as np
 import pandas as pd
@@ -23,6 +25,18 @@ from climate_indices import compute
 # means the output moved; per-test @settings still override anything they name.
 hypothesis_settings.register_profile("deterministic", derandomize=True)
 hypothesis_settings.load_profile("deterministic")
+
+
+def import_native() -> ModuleType:
+    """Import the Rust extension, skipping the caller when it is not built.
+
+    The native CI legs set ``CLIMATE_INDICES_REQUIRE_NATIVE=1``, which turns the
+    skip into an ImportError so a missing extension fails the run instead of
+    silently dropping every parity test.
+    """
+    if os.environ.get("CLIMATE_INDICES_REQUIRE_NATIVE") == "1":
+        return importlib.import_module("climate_indices._native")
+    return pytest.importorskip("climate_indices._native")
 
 
 @pytest.fixture

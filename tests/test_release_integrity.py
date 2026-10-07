@@ -318,6 +318,107 @@ def test_test_full_job_runs_the_same_core_command_as_the_pull_request_job() -> N
     )
 
 
+def _native_jobs() -> dict[str, str]:
+    """The Rust-backend jobs of the unit-test workflow, keyed by job name."""
+    workflow = (ROOT / UNIT_TESTS_WORKFLOW).read_text(encoding="utf-8")
+    return {name: _workflow_job(workflow, name) for name in ("rust", "test-native", "native-wheel")}
+
+
+def test_rust_toolchain_is_pinned_with_the_cargo_gate_components() -> None:
+    """A floating compiler lets a new stable clippy lint fail `-D warnings` on an unrelated change."""
+    toolchain = _read_toml(Path("rust-toolchain.toml"))["toolchain"]
+
+    assert re.fullmatch(r"\d+\.\d+\.\d+", toolchain["channel"]), "pin an exact release, not 'stable'"
+    assert {"rustfmt", "clippy"} <= set(toolchain["components"])
+
+
+def test_rust_job_runs_the_cargo_gate_against_the_workspace_interpreter() -> None:
+    """Format, lint (warnings are errors), and test the whole workspace; `climate-py` links libpython."""
+    rust_job = _native_jobs()["rust"]
+
+    assert "run: rustup toolchain install --no-self-update" in rust_job
+    assert "run: cargo fmt --all -- --check" in rust_job
+    assert "run: cargo clippy --workspace --all-targets -- -D warnings" in rust_job
+    assert "run: cargo test --workspace" in rust_job
+    assert "PYO3_PYTHON: ${{ github.workspace }}/.venv/bin/python" in rust_job
+
+
+def test_native_jobs_run_on_every_event_and_pure_python_legs_stay_rust_free() -> None:
+    """The Rust gates are ungated and blocking, and the pure-Python legs never build Rust.
+
+    `continue-on-error` would let a red Rust job pass; every native job also installs the
+    pinned toolchain itself rather than relying on whatever the runner ships.
+    """
+    workflow = (ROOT / UNIT_TESTS_WORKFLOW).read_text(encoding="utf-8")
+
+    for name, job in _native_jobs().items():
+        assert not re.search(r"^    if:", job, re.MULTILINE), f"{name} must run on every event"
+        assert "continue-on-error" not in job, f"{name} must block the pull request"
+        assert "run: rustup toolchain install --no-self-update" in job, f"{name} must install the pinned toolchain"
+    for name in ("test", "test-full"):
+        job = _workflow_job(workflow, name)
+        assert "rustup" not in job
+        assert "maturin" not in job
+        assert "CLIMATE_INDICES_REQUIRE_NATIVE" not in job
+
+
+def test_native_pytest_legs_are_the_pull_request_boundary_legs_of_the_core_job() -> None:
+    """`test-native` reuses boundary legs of `test` rather than adding a new Cartesian product."""
+    native_legs = _job_legs(_native_jobs()["test-native"])
+    pull_request_legs, _ = _unit_test_legs()
+    versions = _declared_python_versions()
+
+    assert native_legs == {
+        (versions[0], "ubuntu-latest"),
+        (versions[-1], "ubuntu-latest"),
+        (versions[-1], "macos-latest"),
+    }
+    assert native_legs <= pull_request_legs
+
+
+def test_native_pytest_leg_builds_the_extension_and_cannot_skip_the_parity_suite() -> None:
+    """The extension is built before pytest, and a missing build fails instead of skipping.
+
+    `CLIMATE_INDICES_REQUIRE_NATIVE` makes `tests/conftest.py::import_native` raise rather than
+    skip, so a broken build cannot pass by silently dropping `tests/test_native_parity.py`.
+    `tests/test_native_backend.py` tests that behavior; this pins that the leg sets the variable.
+    """
+    workflow = (ROOT / UNIT_TESTS_WORKFLOW).read_text(encoding="utf-8")
+    native_job = _native_jobs()["test-native"]
+    install = "run: uv sync --locked --dev"
+    build = "run: uv run --no-sync --no-build maturin develop --release"
+    check = 'run: uv run --no-sync --no-build python -c "import climate_indices._native"'
+
+    assert "CLIMATE_INDICES_REQUIRE_NATIVE: '1'" in native_job
+    assert native_job.index(install) < native_job.index(build) < native_job.index(check)
+    assert native_job.index(check) < native_job.index("- name: Run core tests")
+    assert (
+        native_job.split("- name: Run core tests")[1].strip()
+        == _workflow_job(workflow, "test").split("- name: Run core tests")[1].strip()
+    )
+
+
+def test_native_wheel_job_checks_built_wheels_outside_the_checkout() -> None:
+    """Release wheels are built at both boundaries on Linux and macOS, plus a Windows smoke build.
+
+    Each wheel is installed into a fresh venv and imported from outside the checkout, and SPI must
+    reach the bundled kernels. The published matrix and the manylinux floor belong to RUST-013.
+    """
+    wheel_job = _native_jobs()["native-wheel"]
+    versions = _declared_python_versions()
+
+    assert _job_legs(wheel_job) == {
+        (python, system) for python in (versions[0], versions[-1]) for system in ("ubuntu-latest", "macos-latest")
+    } | {(versions[-1], "windows-latest")}
+    assert (
+        "run: uv run --no-sync --no-build maturin build --release --interpreter python --out dist-native" in wheel_job
+    )
+    assert "*manylinux*" in wheel_job
+    assert wheel_job.index("python -m venv") < wheel_job.index('cd "${RUNNER_TEMP}"') < wheel_job.index("<<'PY'")
+    assert "assert not Path(module.__file__).resolve().is_relative_to(workspace), module.__file__" in wheel_job
+    assert 'assert recorder.calls == {"gamma_parameters", "gamma_probabilities", "norm_ppf"}' in wheel_job
+
+
 def test_docker_uses_latest_supported_python() -> None:
     """Every Docker build stage must use the latest classified Python minor."""
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")

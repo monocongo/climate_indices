@@ -177,6 +177,198 @@ jobs:
           --ignore=tests/test_review_scripts.py
           --ignore=tests/test_type_checking.py
 
+  # Rust gate for the optional native backend (crates/, built as
+  # `climate_indices._native`). The compiler comes from rust-toolchain.toml;
+  # `PYO3_PYTHON` points the `climate-py` test binary at the interpreter whose
+  # libpython it links. Pure-Python legs above never install a Rust toolchain,
+  # so they keep proving the fallback.
+  rust:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      PYO3_PYTHON: ${{ github.workspace }}/.venv/bin/python
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+
+      # Any supported interpreter links for `cargo test`; 3.12 is the newest one
+      # whose locked dev group installs from wheels alone, so `--no-build` works.
+      - name: Install dependencies
+        run: uv sync --locked --dev --no-build
+
+      - name: Install Rust toolchain
+        run: rustup toolchain install --no-self-update
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint Rust
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Run Cargo tests
+        run: cargo test --workspace
+
+  # The core suite with the Rust extension built, on the pull-request boundary
+  # legs of `test` (a subset of its matrix, not a new product).
+  # CLIMATE_INDICES_REQUIRE_NATIVE turns the parity tests' skip-when-absent into a
+  # failure, so a broken build can never pass by skipping them.
+  test-native:
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    env:
+      CLIMATE_INDICES_REQUIRE_NATIVE: '1'
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.14']
+        os: [ubuntu-latest]
+        include:
+          - python-version: '3.14'
+            os: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+
+      # `--no-build` is not usable here: Python 3.10 resolves zarr 2.x, whose
+      # asciitree dependency ships as an sdist-only release, and cartopy has no
+      # Python 3.14 wheel.
+      - name: Install dependencies
+        run: uv sync --locked --dev  # NOSONAR: 3.10 needs the sdist-only asciitree and 3.14 the sdist-only cartopy
+
+      - name: Install Rust toolchain
+        run: rustup toolchain install --no-self-update
+
+      - name: Build the Rust extension
+        run: uv run --no-sync --no-build maturin develop --release
+
+      - name: Check the extension imports
+        run: uv run --no-sync --no-build python -c "import climate_indices._native"
+
+      - name: Run core tests
+        run: >
+          uv run --no-sync --no-build pytest -n auto
+          --ignore=tests/test_release_integrity.py
+          --ignore=tests/test_review_scripts.py
+          --ignore=tests/test_type_checking.py
+
+  # Builds a release binary wheel per boundary interpreter and platform, then
+  # installs it outside the checkout and proves SPI dispatches to the bundled
+  # extension. Publishing is not wired here: the published wheel matrix,
+  # manylinux floor, and abi3 policy belong to RUST-013. Windows is a smoke
+  # build on the newest interpreter only.
+  native-wheel:
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.14']
+        os: [ubuntu-latest, macos-latest]
+        include:
+          - python-version: '3.14'
+            os: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+
+      # Only the locked maturin is needed, but the dev group is installed whole to
+      # stay on the locked toolchain. `--no-build` is not usable here: Python 3.10
+      # resolves zarr 2.x, whose asciitree dependency ships as an sdist-only
+      # release, and cartopy has no Python 3.14 wheel.
+      - name: Install dependencies
+        run: uv sync --locked --dev  # NOSONAR: 3.10 needs the sdist-only asciitree and 3.14 the sdist-only cartopy
+
+      - name: Install Rust toolchain
+        run: rustup toolchain install --no-self-update
+
+      - name: Build native wheel
+        run: uv run --no-sync --no-build maturin build --release --interpreter python --out dist-native
+
+      # maturin tags Linux wheels for the runner's glibc via auditwheel; the
+      # check only asserts a manylinux tag was produced, not which floor.
+      - name: Test native wheel installation
+        run: |
+          set -euo pipefail
+          WHEEL="$(find dist-native -maxdepth 1 -type f -name '*.whl' -print -quit)"
+          test -n "${WHEEL}"
+          if [ "${RUNNER_OS}" = "Linux" ]; then
+            case "${WHEEL}" in *manylinux*) ;; *) echo "not a manylinux wheel: ${WHEEL}"; exit 1 ;; esac
+          fi
+          python -m venv "${RUNNER_TEMP}/native-wheel"
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            VENV_PYTHON="${RUNNER_TEMP}/native-wheel/Scripts/python.exe"
+          else
+            VENV_PYTHON="${RUNNER_TEMP}/native-wheel/bin/python"
+          fi
+          "${VENV_PYTHON}" -m pip install --upgrade pip
+          "${VENV_PYTHON}" -m pip install "${WHEEL}"
+          cd "${RUNNER_TEMP}"
+          "${VENV_PYTHON}" - <<'PY'
+          import os
+          from pathlib import Path
+
+          import numpy as np
+
+          import climate_indices
+          from climate_indices import _native, compute, indices
+
+          workspace = Path(os.environ["GITHUB_WORKSPACE"]).resolve()
+          for module in (climate_indices, _native):
+              assert not Path(module.__file__).resolve().is_relative_to(workspace), module.__file__
+
+
+          class Recorder:
+              def __init__(self, module):
+                  self.module = module
+                  self.calls = set()
+
+              def __getattr__(self, name):
+                  self.calls.add(name)
+                  return getattr(self.module, name)
+
+
+          recorder = Recorder(_native)
+          compute._native = recorder
+          values = np.random.default_rng(0).gamma(2.0, 30.0, 360)
+          with np.errstate(all="ignore"):
+              result = indices.spi(values, 3, indices.Distribution.gamma, 1990, 1990, 2019, compute.Periodicity.monthly)
+          assert np.isfinite(result[2:]).all() and np.isnan(result[:2]).all()
+          assert recorder.calls == {"gamma_parameters", "gamma_probabilities", "norm_ppf"}, recorder.calls
+          PY
+
   validation:
     runs-on: ubuntu-latest
     permissions:
