@@ -19,8 +19,10 @@ fn gamma_parameters<'py>(
     py: Python<'py>,
     calibration: PyReadonlyArray2<'py, f64>,
 ) -> (Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>) {
-    let calibration = calibration.as_array();
-    let (alphas, betas) = py.detach(|| climate_core::gamma::gamma_parameters(calibration));
+    // Copy before `detach`: the kernel must not read caller-owned storage once the
+    // GIL is released, or another Python thread could write it mid-read.
+    let calibration = calibration.as_array().to_owned();
+    let (alphas, betas) = py.detach(|| climate_core::gamma::gamma_parameters(calibration.view()));
     (alphas.into_pyarray(py), betas.into_pyarray(py))
 }
 
@@ -33,14 +35,21 @@ fn gamma_probabilities<'py>(
     betas: PyReadonlyArray1<'py, f64>,
     probabilities_of_zero: PyReadonlyArray1<'py, f64>,
 ) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    // Copy before `detach`: the kernel must not read caller-owned storage once the
+    // GIL is released, or another Python thread could write it mid-read.
     let (values, alphas, betas, probabilities_of_zero) = (
-        values.as_array(),
-        alphas.as_array(),
-        betas.as_array(),
-        probabilities_of_zero.as_array(),
+        values.as_array().to_owned(),
+        alphas.as_array().to_owned(),
+        betas.as_array().to_owned(),
+        probabilities_of_zero.as_array().to_owned(),
     );
     py.detach(|| {
-        climate_core::gamma::gamma_probabilities(values, alphas, betas, probabilities_of_zero)
+        climate_core::gamma::gamma_probabilities(
+            values.view(),
+            alphas.view(),
+            betas.view(),
+            probabilities_of_zero.view(),
+        )
     })
     .map(|probabilities| probabilities.into_pyarray(py))
     .map_err(|error| PyValueError::new_err(error.to_string()))
@@ -52,7 +61,9 @@ fn norm_ppf<'py>(
     py: Python<'py>,
     probabilities: PyReadonlyArrayDyn<'py, f64>,
 ) -> Bound<'py, PyArrayDyn<f64>> {
-    let probabilities = probabilities.as_array();
+    // Copy before `detach`: the kernel must not read caller-owned storage once the
+    // GIL is released, or another Python thread could write it mid-read.
+    let probabilities = probabilities.as_array().to_owned();
     py.detach(|| probabilities.mapv(climate_core::special::norm_ppf))
         .into_pyarray(py)
 }
