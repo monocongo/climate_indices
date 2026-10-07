@@ -196,13 +196,15 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
-          python-version: '3.14'
+          python-version: '3.12'
 
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
 
+      # Any supported interpreter links for `cargo test`; 3.12 is the newest one
+      # whose locked dev group installs from wheels alone, so `--no-build` works.
       - name: Install dependencies
-        run: uv sync --locked --dev
+        run: uv sync --locked --dev --no-build
 
       - name: Install Rust toolchain
         run: rustup toolchain install --no-self-update
@@ -248,9 +250,10 @@ jobs:
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
 
       # `--no-build` is not usable here: Python 3.10 resolves zarr 2.x, whose
-      # asciitree dependency ships as an sdist-only release.
+      # asciitree dependency ships as an sdist-only release, and cartopy has no
+      # Python 3.14 wheel.
       - name: Install dependencies
-        run: uv sync --locked --dev
+        run: uv sync --locked --dev  # NOSONAR: 3.10 needs the sdist-only asciitree and 3.14 the sdist-only cartopy
 
       - name: Install Rust toolchain
         run: rustup toolchain install --no-self-update
@@ -301,10 +304,12 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
 
-      # `--no-build` is not usable here: Python 3.10 resolves zarr 2.x, whose
-      # asciitree dependency ships as an sdist-only release.
+      # Only the locked maturin is needed, but the dev group is installed whole to
+      # stay on the locked toolchain. `--no-build` is not usable here: Python 3.10
+      # resolves zarr 2.x, whose asciitree dependency ships as an sdist-only
+      # release, and cartopy has no Python 3.14 wheel.
       - name: Install dependencies
-        run: uv sync --locked --dev
+        run: uv sync --locked --dev  # NOSONAR: 3.10 needs the sdist-only asciitree and 3.14 the sdist-only cartopy
 
       - name: Install Rust toolchain
         run: rustup toolchain install --no-self-update
