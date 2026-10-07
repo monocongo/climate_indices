@@ -94,7 +94,7 @@ for module in climate_indices climate_indices.compute climate_indices.indices \
   PYTHONPATH="$SRC" uv run --no-sync python -c '
 import importlib, os, sys
 m = importlib.import_module(sys.argv[1])
-assert m.__file__.startswith(os.environ["PYTHONPATH"] + os.sep), m.__file__
+assert m.__file__.startswith(os.path.abspath(os.environ["PYTHONPATH"]) + os.sep), m.__file__
 assert not getattr(m.__spec__, "_initializing", False)
 import climate_indices as c
 assert isinstance(c.__version__, str)
