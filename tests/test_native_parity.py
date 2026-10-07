@@ -609,14 +609,10 @@ def test_eddi_matches_the_committed_noaa_fixtures(monkeypatch):
     holds the Python path to.
     """
     fixture_root = Path(__file__).parent / "fixture"
-    available = [
-        (scale, fixture_root / f"noaa-eddi-{scale}month")
-        for scale in (1, 3, 6)
-        if (fixture_root / f"noaa-eddi-{scale}month" / "pet_input.npy").is_file()
-    ]
-    if not available:
-        pytest.skip("NOAA EDDI fixtures are not present; run scripts/prepare_noaa_eddi_fixtures.py")
-    for scale, directory in available:
+    fixtures = [(scale, fixture_root / f"noaa-eddi-{scale}month") for scale in (1, 3, 6)]
+    missing = [directory.name for _, directory in fixtures if not (directory / "pet_input.npy").is_file()]
+    assert not missing, f"Missing NOAA EDDI fixtures: {', '.join(missing)}"
+    for scale, directory in fixtures:
         metadata = json.loads((directory / "metadata.json").read_text())
         run = _eddi(
             np.load(directory / "pet_input.npy"),
