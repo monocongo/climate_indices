@@ -44,6 +44,23 @@ assert np.isfinite(result[2:]).all() and np.isnan(result[:2]).all()
     subprocess.run([sys.executable, "-c", code], check=True)
 
 
+def test_import_native_fails_instead_of_skipping_when_the_extension_is_required(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CLIMATE_INDICES_REQUIRE_NATIVE=1 is what stops a broken native build from skipping the parity suite."""
+    monkeypatch.setitem(sys.modules, "climate_indices._native", None)
+    monkeypatch.setenv("CLIMATE_INDICES_REQUIRE_NATIVE", "1")
+    with pytest.raises(ImportError):
+        conftest.import_native()
+
+
+def test_import_native_skips_when_the_extension_is_not_required(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(sys.modules, "climate_indices._native", None)
+    monkeypatch.delenv("CLIMATE_INDICES_REQUIRE_NATIVE", raising=False)
+    with pytest.raises(pytest.skip.Exception):
+        conftest.import_native()
+
+
 @pytest.mark.skipif(sys.version_info < (3, 14), reason="context-aware warnings require Python 3.14")
 def test_context_aware_warning_filters_stay_on_python():
     """Routing, not parity: with context-aware warnings, dispatch stays on Python.

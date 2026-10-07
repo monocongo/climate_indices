@@ -344,11 +344,17 @@ def test_rust_job_runs_the_cargo_gate_against_the_workspace_interpreter() -> Non
 
 
 def test_native_jobs_run_on_every_event_and_pure_python_legs_stay_rust_free() -> None:
-    """The Rust gates are ungated, and the legs that prove the pure-Python fallback never build Rust."""
+    """The Rust gates are ungated and blocking, and the pure-Python legs never build Rust.
+
+    `continue-on-error` would let a red Rust job pass; every native job also installs the
+    pinned toolchain itself rather than relying on whatever the runner ships.
+    """
     workflow = (ROOT / UNIT_TESTS_WORKFLOW).read_text(encoding="utf-8")
 
     for name, job in _native_jobs().items():
         assert not re.search(r"^    if:", job, re.MULTILINE), f"{name} must run on every event"
+        assert "continue-on-error" not in job, f"{name} must block the pull request"
+        assert "run: rustup toolchain install --no-self-update" in job, f"{name} must install the pinned toolchain"
     for name in ("test", "test-full"):
         job = _workflow_job(workflow, name)
         assert "rustup" not in job
@@ -375,6 +381,7 @@ def test_native_pytest_leg_builds_the_extension_and_cannot_skip_the_parity_suite
 
     `CLIMATE_INDICES_REQUIRE_NATIVE` makes `tests/conftest.py::import_native` raise rather than
     skip, so a broken build cannot pass by silently dropping `tests/test_native_parity.py`.
+    `tests/test_native_backend.py` tests that behavior; this pins that the leg sets the variable.
     """
     workflow = (ROOT / UNIT_TESTS_WORKFLOW).read_text(encoding="utf-8")
     native_job = _native_jobs()["test-native"]
@@ -388,9 +395,6 @@ def test_native_pytest_leg_builds_the_extension_and_cannot_skip_the_parity_suite
     assert (
         native_job.split("- name: Run core tests")[1].strip()
         == _workflow_job(workflow, "test").split("- name: Run core tests")[1].strip()
-    )
-    assert 'os.environ.get("CLIMATE_INDICES_REQUIRE_NATIVE") == "1"' in (ROOT / "tests/conftest.py").read_text(
-        encoding="utf-8"
     )
 
 
