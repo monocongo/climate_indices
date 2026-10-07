@@ -43,8 +43,9 @@ const HASTINGS_D3: f64 = 0.001308;
 ///   fewer than two valid values has no ranking at all and is all NaN.
 /// - Zero semantics: zero is a value like any other and ranks by the same
 ///   strict comparison.
-/// - Ties: the strict `<` comparison is part of the contract, so equal values
-///   rank below each other exactly as the Python path ranks them.
+/// - Ties: the strict `<` comparison is part of the contract, so an equal
+///   climatology value never counts as below; equal values rank exactly as the
+///   Python path ranks them.
 ///
 /// Returns [`ClimateError::ShapeMismatch`] when a block has a different number
 /// of columns, or when `pads` is not one value per column.

@@ -13,8 +13,10 @@ missing extension is a collection error. This module deliberately has no other s
 so a native leg that skips anything here is a bug.
 """
 
+import json
 import warnings
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -533,6 +535,20 @@ def _daily_pet(years: int) -> np.ndarray:
     return seasonal_pattern + rng.uniform(-10.0, 10.0, years * 366)
 
 
+def _spatial_pet_block(pet_thornthwaite_mm: np.ndarray) -> np.ndarray:
+    """A (time, 2, 2) PET block whose cells rank differently from one another.
+
+    Rescalings of one series are not enough: EDDI ranks within each cell, so a
+    positive rescaling leaves every cell's probabilities identical.
+    """
+    series = np.asarray(pet_thornthwaite_mm).reshape(-1)
+    rng = np.random.default_rng(seed=7)
+    cells = series[:, None] * rng.uniform(0.4, 2.0, size=(1, 4))
+    cells = cells + rng.normal(0.0, 25.0, size=cells.shape)
+    cells[rng.random(cells.shape) < 0.02] = np.nan
+    return cells.reshape(series.size, 2, 2)
+
+
 @pytest.mark.parametrize("scale", [1, 3, 6])
 def test_eddi_monthly_reference_series(monkeypatch, pet_thornthwaite_mm, scale):
     rust, python, calls = _rust_and_python(monkeypatch, _eddi(pet_thornthwaite_mm, scale, 1981, 2010))
@@ -569,10 +585,7 @@ def test_eddi_short_calibration_and_missing_climatology(monkeypatch):
 
 
 def test_eddi_spatial_time_major_block(monkeypatch, pet_thornthwaite_mm):
-    columns = np.stack(
-        [pet_thornthwaite_mm, pet_thornthwaite_mm * 0.5, pet_thornthwaite_mm * 1.5, pet_thornthwaite_mm * 2.0]
-    )
-    block = columns.T.reshape(pet_thornthwaite_mm.size, 2, 2)
+    block = _spatial_pet_block(pet_thornthwaite_mm)
     rust, python, calls = _rust_and_python(monkeypatch, _eddi(block, 3, 1981, 2010, spatial_time_major=True))
     _assert_parity(rust, python)
     assert calls == _EDDI_KERNELS
@@ -580,14 +593,44 @@ def test_eddi_spatial_time_major_block(monkeypatch, pet_thornthwaite_mm):
 
 def test_eddi_ranking_matches_the_python_path_chunked_by_cells(monkeypatch, pet_thornthwaite_mm):
     """Rust walks every column at once; the chunked NumPy rank must agree cell for cell."""
-    columns = np.stack(
-        [pet_thornthwaite_mm, pet_thornthwaite_mm * 1.5, pet_thornthwaite_mm * 0.5, pet_thornthwaite_mm * 2.0]
-    )
-    block = columns.T.reshape(pet_thornthwaite_mm.size, 2, 2)
+    block = _spatial_pet_block(pet_thornthwaite_mm)
     monkeypatch.setattr(indices, "_EDDI_RANK_COMPARISON_ELEMENT_BUDGET", 4)
     rust, python, calls = _rust_and_python(monkeypatch, _eddi(block, 3, 1981, 2010, spatial_time_major=True))
     _assert_parity(rust, python)
     assert calls == _EDDI_KERNELS
+
+
+def test_eddi_matches_the_committed_noaa_fixtures(monkeypatch):
+    """The Rust path holds the NOAA PSL agreement, with the leading-scale pads in play.
+
+    The fixtures calibrate from the data's first year, so in scales 1 and 3 the
+    pads fall inside the calibration rows and the Rust kernel receives non-zero
+    pad counts. The tolerance is the one ``tests/test_noaa_eddi_reference.py``
+    holds the Python path to.
+    """
+    fixture_root = Path(__file__).parent / "fixture"
+    available = [
+        (scale, fixture_root / f"noaa-eddi-{scale}month")
+        for scale in (1, 3, 6)
+        if (fixture_root / f"noaa-eddi-{scale}month" / "pet_input.npy").is_file()
+    ]
+    if not available:
+        pytest.skip("NOAA EDDI fixtures are not present; run scripts/prepare_noaa_eddi_fixtures.py")
+    for scale, directory in available:
+        metadata = json.loads((directory / "metadata.json").read_text())
+        run = _eddi(
+            np.load(directory / "pet_input.npy"),
+            scale,
+            metadata["calibration_year_initial"],
+            metadata["calibration_year_final"],
+            data_start=metadata["data_start_year"],
+        )
+        rust, python, calls = _rust_and_python(monkeypatch, run)
+        assert calls == _EDDI_KERNELS
+        _assert_parity(rust, python)
+        reference = np.load(directory / "eddi_reference.npy")
+        valid = ~np.isnan(reference)
+        np.testing.assert_allclose(rust[valid], reference[valid], rtol=1e-5, atol=1e-5)
 
 
 def test_eddi_all_missing_never_reaches_a_kernel(monkeypatch, pet_thornthwaite_mm):
