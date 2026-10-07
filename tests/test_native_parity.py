@@ -664,3 +664,19 @@ def test_pci_mask_or_length_stays_on_the_python_path(monkeypatch):
 
     rust, python, calls = _rust_and_python(monkeypatch, invalid_length)
     assert calls == set() and rust.size == python.size == 0
+
+
+def test_pnp_with_infinite_values(monkeypatch):
+    """inf inside the calibration period makes its normal inf; inf outside it survives the ratio."""
+    rng = np.random.default_rng(11)
+    values = rng.gamma(2.0, 20.0, 12 * 40)
+    values[3] = np.inf  # an April the calibration period also averages
+    values[12 * 20 + 4] = np.inf  # a February after the calibration period
+    rust, python, calls = _rust_and_python(monkeypatch, _pnp(values, 1, 1990, 1999, data_start=1990))
+    assert calls == _PNP_KERNELS
+    _assert_parity(rust, python)
+    # inside the period the normal is inf: inf/inf is missing and every other April is zero
+    assert np.isnan(rust[3::12]).sum() == 1
+    assert (rust[3::12] == 0.0).sum() == 39
+    # outside it the normal is finite, so the ratio keeps the infinity
+    assert np.isposinf(rust[12 * 20 + 4])
