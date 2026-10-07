@@ -3,6 +3,8 @@ Common classes and functions used to compute the various climate indices.
 """
 
 import functools
+import math
+import sys
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -27,6 +29,13 @@ from climate_indices.exceptions import (
     ShortCalibrationWarning,
 )
 from climate_indices.logging_config import get_logger
+
+try:
+    # the optional Rust kernels (docs/architecture.md); without the extension every
+    # computation below runs its pure-Python implementation
+    from climate_indices import _native
+except ImportError:
+    _native = None  # type: ignore[assignment]
 
 if TYPE_CHECKING:
     # only for typing: climate_indices.indices imports this module, so importing
@@ -199,6 +208,10 @@ class Periodicity(Enum):
 # the valid number of time steps per year, i.e. the length of the second axis
 # of a 2-D (years, periods) input array
 _PERIOD_LENGTHS = frozenset(periodicity.period_length for periodicity in Periodicity)
+
+# defensive guard: every native dispatch first checks _native_float64 or
+# _native is not None, so this only fires if the extension disappears in between
+_NATIVE_EXTENSION_MISSING = "the native extension is not installed"
 
 # the output conventions the standardized indices return: the standard-normal
 # z-score ("normal", the default), the fitted cumulative probability
@@ -1673,6 +1686,78 @@ def _replace_zeros_with_nan(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]
     return zero_mask, values_copy
 
 
+def _native_float64(array: np.ndarray) -> bool:
+    """Whether the Rust kernels are installed and take ``array`` as it is.
+
+    They take aligned, plain float64 arrays only, with NumPy floating-point
+    errors ignored. Other policies and context-aware warning filters stay in
+    Python. Routing never retries a failed Rust call.
+    """
+    return (
+        _native is not None
+        and type(array) is np.ndarray
+        and array.dtype == np.float64
+        and array.flags.aligned
+        and array.ctypes.data % array.dtype.alignment == 0
+        and all(policy == "ignore" for policy in np.geterr().values())
+        and not getattr(sys.flags, "context_aware_warnings", False)
+        and not any(
+            action == "error" and issubclass(RuntimeWarning, category) for action, _, category, _, _ in warnings.filters
+        )
+    )
+
+
+def _as_columns(values: np.ndarray) -> np.ndarray:
+    """View a (years, periods, ``*cells``) block as the (years, columns) the Rust kernels take."""
+    return values.reshape(values.shape[0], math.prod(values.shape[1:]))
+
+
+def _per_column(parameter: np.ndarray, values: np.ndarray) -> np.ndarray | None:
+    """A float64 fit parameter as one value per (period, cell) column of ``values``.
+
+    None when the parameter is not aligned float64 or varies along the year axis,
+    which only a caller-supplied parameter can do; Python handles those.
+    """
+    parameter = np.asarray(parameter)
+    if (
+        parameter.dtype != np.float64
+        or not parameter.flags.aligned
+        or parameter.ctypes.data % parameter.dtype.alignment != 0
+    ):
+        return None
+    if parameter.ndim == values.ndim:
+        if parameter.shape[0] != 1:
+            return None
+        parameter = parameter[0]
+    return np.broadcast_to(parameter, values.shape[1:]).reshape(-1)
+
+
+def _native_gamma_parameters(calibration_values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The Rust method-of-moments gamma fit, shaped like the NumPy block it mirrors."""
+    if _native is None:  # every caller dispatches through _native_float64; this narrows the type
+        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
+    alphas, betas = _native.gamma_parameters(_as_columns(calibration_values))
+    step_shape = calibration_values.shape[1:]
+    return alphas.reshape(step_shape), betas.reshape(step_shape)
+
+
+def _native_gamma_probabilities(
+    values: np.ndarray, alphas: np.ndarray, betas: np.ndarray, probabilities_of_zero: np.ndarray
+) -> np.ndarray | None:
+    """The Rust zero-inflated gamma CDF, or None where the Python implementation runs."""
+    if not _native_float64(values):
+        return None
+    if _native is None:  # _native_float64 guarantees it; this narrows the type
+        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
+    alpha_columns = _per_column(alphas, values)
+    beta_columns = _per_column(betas, values)
+    zero_columns = _per_column(probabilities_of_zero, values)
+    if alpha_columns is None or beta_columns is None or zero_columns is None:
+        return None
+    probabilities = _native.gamma_probabilities(_as_columns(values), alpha_columns, beta_columns, zero_columns)
+    return probabilities.reshape(values.shape)
+
+
 def gamma_parameters(
     values: np.ndarray,
     data_start_year: int,
@@ -1753,13 +1838,19 @@ def gamma_parameters(
 
     # compute the gamma distribution's shape and scale parameters, alpha and beta
     # using method of moments estimation
-    means = np.nanmean(calibration_values, axis=0)
-    log_means = np.log(means)
-    logs = np.log(calibration_values)
-    mean_logs = np.nanmean(logs, axis=0)
-    a = log_means - mean_logs
-    alphas = (1 + np.sqrt(1 + 4 * a / 3)) / (4 * a)
-    betas = means / alphas
+    # np.nanmean emits an empty-slice warning even when floating-point errors
+    # are ignored, so a column with no positive value (all missing, zero, or
+    # negative) must keep the Python reductions, whose log mean is then empty.
+    if _native_float64(calibration_values) and np.all(np.any(calibration_values > 0.0, axis=0)):
+        alphas, betas = _native_gamma_parameters(calibration_values)
+    else:
+        means = np.nanmean(calibration_values, axis=0)
+        log_means = np.log(means)
+        logs = np.log(calibration_values)
+        mean_logs = np.nanmean(logs, axis=0)
+        a = log_means - mean_logs
+        alphas = (1 + np.sqrt(1 + 4 * a / 3)) / (4 * a)
+        betas = means / alphas
 
     # check goodness-of-fit and emit warning if poor
     _check_goodness_of_fit_gamma(calibration_values, alphas, betas)
@@ -2056,35 +2147,38 @@ def transform_fitted_gamma(
     # in the historical record is in extreme drought, not extreme wetness.
     probabilities_of_zero = np.where(all_zero_steps | undefined_zero_mass, 0.0, probabilities_of_zero)
 
-    # Replace zeros with NaNs for the CDF (zeros are excluded from the gamma fit)
-    # and get mask of zero positions for later probability calculations
-    zero_mask, values_for_fitting = _replace_zeros_with_nan(values)
+    # the Rust kernel computes the same zero-inflated CDF when it can take the inputs
+    probabilities = _native_gamma_probabilities(values, alphas, betas, probabilities_of_zero)
+    if probabilities is None:
+        # Replace zeros with NaNs for the CDF (zeros are excluded from the gamma fit)
+        # and get mask of zero positions for later probability calculations
+        zero_mask, values_for_fitting = _replace_zeros_with_nan(values)
 
-    # find the gamma probability values using the gamma CDF
-    try:
-        gamma_probabilities = scipy.stats.gamma.cdf(values_for_fitting, a=alphas, scale=betas)
-    except (ValueError, RuntimeError, FloatingPointError) as e:
-        raise DistributionFittingError(
-            f"Gamma distribution CDF computation failed: {e}",
-            distribution_name="gamma",
-            input_shape=values_for_fitting.shape,
-            parameters={
-                "alphas": _summarize_array(alphas, "alphas"),
-                "betas": _summarize_array(betas, "betas"),
-                "values": _summarize_array(values_for_fitting, "values"),
-            },
-            suggestion="Try using pearson3 distribution instead",
-            underlying_error=e,
-        ) from e
+        # find the gamma probability values using the gamma CDF
+        try:
+            gamma_probabilities = scipy.stats.gamma.cdf(values_for_fitting, a=alphas, scale=betas)
+        except (ValueError, RuntimeError, FloatingPointError) as e:
+            raise DistributionFittingError(
+                f"Gamma distribution CDF computation failed: {e}",
+                distribution_name="gamma",
+                input_shape=values_for_fitting.shape,
+                parameters={
+                    "alphas": _summarize_array(alphas, "alphas"),
+                    "betas": _summarize_array(betas, "betas"),
+                    "values": _summarize_array(values_for_fitting, "values"),
+                },
+                suggestion="Try using pearson3 distribution instead",
+                underlying_error=e,
+            ) from e
 
-    # where the input values were zero the CDF will have returned NaN, but since
-    # we're treating zeros as a separate probability mass we should treat the
-    # gamma probability for zeros as 0.0
-    gamma_probabilities[zero_mask] = 0.0
+        # where the input values were zero the CDF will have returned NaN, but since
+        # we're treating zeros as a separate probability mass we should treat the
+        # gamma probability for zeros as 0.0
+        gamma_probabilities[zero_mask] = 0.0
 
-    # TODO explain this better
-    # (normalize including the probability of zero, putting into the range [0..1]?)
-    probabilities: np.ndarray = probabilities_of_zero + ((1 - probabilities_of_zero) * gamma_probabilities)
+        # TODO explain this better
+        # (normalize including the probability of zero, putting into the range [0..1]?)
+        probabilities = probabilities_of_zero + ((1 - probabilities_of_zero) * gamma_probabilities)
 
     # a negative value is below every zero, so it is placed with them
     placement_mask = values <= 0.0
@@ -2102,21 +2196,27 @@ def transform_fitted_gamma(
     # a normal distribution are less than or equal to the computed probabilities,
     # as determined by the normal distribution's quantile (or inverse
     # cumulative distribution) function
-    try:
-        result_values: np.ndarray = scipy.stats.norm.ppf(probabilities)
-    except (ValueError, RuntimeError, FloatingPointError) as e:
-        raise DistributionFittingError(
-            f"Normal distribution inverse CDF (ppf) computation failed during gamma transformation: {e}",
-            distribution_name="gamma",
-            input_shape=probabilities.shape,
-            parameters={
-                "probabilities": _summarize_array(probabilities, "probabilities"),
-                "alphas": _summarize_array(alphas, "alphas"),
-                "betas": _summarize_array(betas, "betas"),
-            },
-            suggestion="Try using pearson3 distribution instead",
-            underlying_error=e,
-        ) from e
+    result_values: np.ndarray
+    if _native_float64(probabilities):
+        if _native is None:  # _native_float64 guarantees it; this narrows the type
+            raise RuntimeError(_NATIVE_EXTENSION_MISSING)
+        result_values = _native.norm_ppf(probabilities)
+    else:
+        try:
+            result_values = scipy.stats.norm.ppf(probabilities)
+        except (ValueError, RuntimeError, FloatingPointError) as e:
+            raise DistributionFittingError(
+                f"Normal distribution inverse CDF (ppf) computation failed during gamma transformation: {e}",
+                distribution_name="gamma",
+                input_shape=probabilities.shape,
+                parameters={
+                    "probabilities": _summarize_array(probabilities, "probabilities"),
+                    "alphas": _summarize_array(alphas, "alphas"),
+                    "betas": _summarize_array(betas, "betas"),
+                },
+                suggestion="Try using pearson3 distribution instead",
+                underlying_error=e,
+            ) from e
 
     result_values = _place_zeros(result_values, placement_mask, probabilities_of_zero, zero_handling)
     result_values = _missing_where_zero_mass_undefined(result_values, placement_mask, undefined_zero_mass)

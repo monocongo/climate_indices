@@ -1,0 +1,11 @@
+[package]
+name = "climate-core"
+description = "Pure-Rust numerical kernels behind climate_indices (no Python knowledge)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+ndarray = "0.17.2"

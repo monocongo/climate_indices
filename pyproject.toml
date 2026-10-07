@@ -60,6 +60,8 @@ dev = [
     "h5py>=3.11.0",
     "jupyter>=1.1.1",
     "matplotlib>=3.10.3",
+    # builds the optional Rust extension: `uv run maturin develop --release`
+    "maturin>=1.9.4",
     "mypy>=1.10.0",
     "pytest-testmon>=2.2.0",
     "ruff>=0.12.7",
@@ -167,6 +169,15 @@ markers = [
 ]
 addopts = "-m 'not benchmark and not validation'"
 
+# Optional Rust backend, climate_indices._native (docs/architecture.md). Hatchling
+# stays the PEP 517 backend, so the published sdist and wheel are pure Python and
+# install without a Rust toolchain; this section only configures `maturin develop`
+# and `maturin build`. Publishing binary wheels is tracked by RUST-003/RUST-013.
+[tool.maturin]
+manifest-path = "crates/climate-py/Cargo.toml"
+python-source = "src"
+module-name = "climate_indices._native"
+
 [tool.pytest-benchmark]
 min_rounds = 5
 warmup = true
@@ -235,6 +246,8 @@ dev = [
     "h5py>=3.11.0",
     "jupyter>=1.1.1",
     "matplotlib>=3.10.3",
+    # builds the optional Rust extension: `uv run maturin develop --release`
+    "maturin>=1.9.4",
     "mypy>=1.10.0",
     "myst-parser>=4.0",
     "pytest-testmon>=2.2.0",

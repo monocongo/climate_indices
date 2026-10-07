@@ -577,6 +577,7 @@ class TestCalculationFailureContext:
     intentionally not asserted here.
     """
 
+    @pytest.mark.usefixtures("python_backend")
     def test_spi_gamma_failure(
         self,
         precips_mm_monthly,
@@ -610,6 +611,7 @@ class TestCalculationFailureContext:
         assert event["calibration_period"] == f"{calibration_year_start_monthly}-{calibration_year_end_monthly}"
         assert "CDF computation failed" in event["exception"]
 
+    @pytest.mark.usefixtures("python_backend")
     def test_spei_gamma_failure(
         self,
         precips_mm_monthly,
@@ -764,6 +766,7 @@ class TestCalculationFailureContext:
 class TestFailureLifecycle:
     """Failure paths still honor the lifecycle contract and never leak data."""
 
+    @pytest.mark.usefixtures("python_backend")
     def test_failure_does_not_emit_completed(
         self,
         precips_mm_monthly,
@@ -849,6 +852,7 @@ class TestFailureLifecycle:
         assert "Gamma fallback failed" in failed[0]["error_message"]
         assert len(_events_named(stream, "calculation_completed")) == 0
 
+    @pytest.mark.usefixtures("python_backend")
     def test_logs_never_contain_input_values(
         self,
         precips_mm_monthly,
