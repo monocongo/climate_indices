@@ -91,7 +91,7 @@ for module in climate_indices climate_indices.compute climate_indices.indices \
   climate_indices.xarray_adapter climate_indices.fire \
   climate_indices.fire._hdw climate_indices.fire._cffwis \
   climate_indices.fire._haines climate_indices.fire._kbdi; do
-  PYTHONPATH="$SRC" uv run --no-sync python -c '
+  PYTHONPATH="$SRC" uv run --no-sync --no-build python -c '
 import importlib, os, sys
 m = importlib.import_module(sys.argv[1])
 assert m.__file__.startswith(os.path.abspath(os.environ["PYTHONPATH"]) + os.sep), m.__file__
@@ -101,7 +101,7 @@ assert isinstance(c.__version__, str)
 assert callable(c.spi) and callable(c.fire.hot_dry_windy)
 ' "$module" || exit 1
 done
-PYTHONPATH="$SRC" uv run --no-sync python -X importtime \
+PYTHONPATH="$SRC" uv run --no-sync --no-build python -X importtime \
   -c 'import climate_indices.compute' 2> importtime.log
 ```
 
@@ -112,11 +112,11 @@ source edges and successful fresh-process imports provide that evidence.
 
 Untouched `198a2404` baseline:
 
-- `uv run --no-sync pytest -n 4`: **3,374 passed**, 166 runtime warnings;
+- `uv run --no-sync --no-build pytest -n 4`: **3,374 passed**, 166 runtime warnings;
   default marker selection excludes benchmark and validation tests.
-- `uv run --no-sync ruff check src/ tests/`: clean.
-- `uv run --no-sync ruff format --check src/ tests/`: 143 files already formatted.
-- `uv run --no-sync mypy src/ tests/test_type_checking.py`: no issues in 46 files.
+- `uv run --no-sync --no-build ruff check src/ tests/`: clean.
+- `uv run --no-sync --no-build ruff format --check src/ tests/`: 143 files already formatted.
+- `uv run --no-sync --no-build mypy src/ tests/test_type_checking.py`: no issues in 46 files.
 
 No imports removed, no numerical behavior changed, and no follow-up refactor
 needed for the reported cycles. Evidence is snapshot-specific, not a guarantee
