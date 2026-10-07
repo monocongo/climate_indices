@@ -12,6 +12,8 @@ import pytest
 import xarray as xr
 from hypothesis import settings as hypothesis_settings
 
+from climate_indices import compute
+
 # The property tests in tests/test_property_based.py assert empirical bounds rather
 # than true invariants - PDSI/PHDI/PMDI in [-30, 30], for instance, on strategies
 # that draw precipitation and PET independently and so can pose physically
@@ -21,6 +23,17 @@ from hypothesis import settings as hypothesis_settings
 # means the output moved; per-test @settings still override anything they name.
 hypothesis_settings.register_profile("deterministic", derandomize=True)
 hypothesis_settings.load_profile("deterministic")
+
+
+@pytest.fixture
+def python_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Run the pure-Python implementations even when the Rust extension is built.
+
+    For tests that target the Python reference itself: parity tests, and tests that
+    inject a failure by patching a SciPy call the Rust kernels never make.
+    """
+    monkeypatch.setattr(compute, "_native", None)
+
 
 # constants
 # start and end year of the monthly precipitation, temperature, and PET datasets

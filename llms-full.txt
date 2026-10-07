@@ -1734,6 +1734,29 @@ src/climate_indices/_native.pyi # type stub for the extension
   directly testable. They are the oracle for Rust parity tests until a separate,
   explicit decision retires them.
 
+**Ported kernels.** The gamma fit and transform behind SPI are the first port.
+They replace the numerical blocks inside two `compute.py` functions, so the
+validation, calibration-period resolution, data-quality and goodness-of-fit
+warnings, logging, zero placement, and output scaling around them still run in
+Python, and every caller of those functions (SPI, SPEI and the standardized
+index fitted to gamma, `fit_diagnostics`, the xarray adapter) uses them:
+
+| Python seam | Rust kernel (`climate-core`) |
+|---|---|
+| method-of-moments block of `compute.gamma_parameters` | `gamma::gamma_parameters` |
+| `scipy.stats.gamma.cdf` and zero-mass mixing in `compute.transform_fitted_gamma` | `gamma::gamma_probabilities` |
+| `scipy.stats.norm.ppf` in `compute.transform_fitted_gamma` | `special::norm_ppf` |
+
+The special functions are line-by-line ports of the Cephes `igam` and `ndtri`
+that SciPy 1.17 evaluates, since a generic implementation would not hold the
+parity contract in the transformed tails. Dispatch takes the Rust path only for a
+plain float64 `ndarray` whose fit parameters are one per calendar step (and
+cell); a masked array, another dtype, or a caller-supplied parameter that varies
+by year runs the Python implementation, which keeps NumPy's semantics for it.
+`tests/test_native_parity.py` compares the two paths at `rtol = atol = 1e-10`
+with matching NaN positions, and the `python_backend` fixture in
+`tests/conftest.py` pins any test to the Python reference.
+
 **Migration policy.** Port expensive numerical kernels, hot loops, and
 algorithms that benefit materially from native execution. Keep in Python:
 xarray orchestration, CF metadata, validation at the public API boundary,
