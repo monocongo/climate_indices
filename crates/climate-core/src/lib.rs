@@ -12,6 +12,8 @@
 use std::fmt;
 
 pub mod gamma;
+pub mod pci;
+pub mod pnp;
 pub mod special;
 
 /// Version of this crate, re-exported by the Python extension as `__version__`.

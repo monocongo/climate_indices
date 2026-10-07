@@ -1305,47 +1305,51 @@ def percentage_of_normal(
         # for each time step in the calibration period, get the average of
         # the scale sum for that calendar time step (i.e. average all January sums,
         # then all February sums, etc.); a spatial block keeps its cell axes and
-        # averages each cell's calibration years for every calendar time step. A
-        # cell that is missing for the whole calibration period (not just the whole
-        # block, which is short-circuited above) is an expected all-NaN slice, not
-        # an error, so it's handled with an explicit count/sum rather than
-        # np.nanmean's "Mean of empty slice" warning: xarray_adapter's Dask kernel
-        # runs one task per spatial block, and warnings.catch_warnings() mutates
-        # process-global filter state, so one block's context can suppress or
-        # restore filters while a concurrent block is still inside np.nanmean.
+        # averages each cell's calibration years for every calendar time step.
         reshaped_sums = calibration_period_sums.reshape(-1, period_length, *calibration_period_sums.shape[1:])
-        valid_counts = np.sum(~np.isnan(reshaped_sums), axis=0)
-        averages = np.nansum(reshaped_sums, axis=0) / np.maximum(valid_counts, 1)
-        averages = np.where(valid_counts > 0, averages, np.nan)
 
-        # for each time step of the scale_sums array find its corresponding percentage
-        # of the time steps scale average for its respective calendar time step, leaving
-        # NaN wherever the calendar time step's average is not a positive value
-        averages = np.where(averages > 0.0, averages, np.nan)
-        percentages_of_normal = np.full(scale_sums.shape, np.nan)
+        # the Rust kernel computes the same normals and ratios when it can take the inputs
+        percentages_of_normal = compute._native_pnp_percentages(scale_sums, reshaped_sums, period_length)
+        if percentages_of_normal is None:
+            # a cell that is missing for the whole calibration period (not just the whole
+            # block, which is short-circuited above) is an expected all-NaN slice, not
+            # an error, so it's handled with an explicit count/sum rather than
+            # np.nanmean's "Mean of empty slice" warning: xarray_adapter's Dask kernel
+            # runs one task per spatial block, and warnings.catch_warnings() mutates
+            # process-global filter state, so one block's context can suppress or
+            # restore filters while a concurrent block is still inside np.nanmean.
+            valid_counts = np.sum(~np.isnan(reshaped_sums), axis=0)
+            averages = np.nansum(reshaped_sums, axis=0) / np.maximum(valid_counts, 1)
+            averages = np.where(valid_counts > 0, averages, np.nan)
 
-        # divide whole calendar periods at a time so that the repeating normals broadcast
-        # from the (small) averages array rather than an input-sized divisor array
-        whole_periods = scale_sums.shape[0] // period_length
-        if whole_periods:
-            np.divide(
-                scale_sums[: whole_periods * period_length].reshape(
-                    whole_periods, period_length, *scale_sums.shape[1:]
-                ),
-                averages,
-                out=percentages_of_normal[: whole_periods * period_length].reshape(
-                    whole_periods, period_length, *scale_sums.shape[1:]
-                ),
-            )
+            # for each time step of the scale_sums array find its corresponding percentage
+            # of the time steps scale average for its respective calendar time step, leaving
+            # NaN wherever the calendar time step's average is not a positive value
+            averages = np.where(averages > 0.0, averages, np.nan)
+            percentages_of_normal = np.full(scale_sums.shape, np.nan)
 
-        # a trailing partial period uses the normals of the calendar time steps it covers
-        remainder_start = whole_periods * period_length
-        if remainder_start < scale_sums.shape[0]:
-            np.divide(
-                scale_sums[remainder_start:],
-                averages[: scale_sums.shape[0] - remainder_start],
-                out=percentages_of_normal[remainder_start:],
-            )
+            # divide whole calendar periods at a time so that the repeating normals broadcast
+            # from the (small) averages array rather than an input-sized divisor array
+            whole_periods = scale_sums.shape[0] // period_length
+            if whole_periods:
+                np.divide(
+                    scale_sums[: whole_periods * period_length].reshape(
+                        whole_periods, period_length, *scale_sums.shape[1:]
+                    ),
+                    averages,
+                    out=percentages_of_normal[: whole_periods * period_length].reshape(
+                        whole_periods, period_length, *scale_sums.shape[1:]
+                    ),
+                )
+
+            # a trailing partial period uses the normals of the calendar time steps it covers
+            remainder_start = whole_periods * period_length
+            if remainder_start < scale_sums.shape[0]:
+                np.divide(
+                    scale_sums[remainder_start:],
+                    averages[: scale_sums.shape[0] - remainder_start],
+                    out=percentages_of_normal[remainder_start:],
+                )
 
         _log_calculation_completed(log, t0, percentages_of_normal.shape, memory_metrics)
         return percentages_of_normal
@@ -1548,9 +1552,11 @@ def pci(
             )
 
             # monthly rainfall totals, one per calendar month, then Oliver (1980) PCI
-            monthly_totals = np.add.reduceat(rainfall, month_starts)
-            pci_value = (np.sum(monthly_totals**2) / (np.sum(monthly_totals) ** 2)) * 100
-            result = np.array([pci_value])
+            result = compute._native_pci(rainfall_mm)
+            if result is None:
+                monthly_totals = np.add.reduceat(rainfall, month_starts)
+                pci_value = (np.sum(monthly_totals**2) / (np.sum(monthly_totals) ** 2)) * 100
+                result = np.array([pci_value])
             duration_ms = (time.perf_counter() - t0) * 1000.0
             log.info(
                 "calculation_completed",

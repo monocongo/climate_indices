@@ -68,6 +68,40 @@ fn gamma_probabilities<'py>(
     .map_err(|error| PyValueError::new_err(error.to_string()))
 }
 
+/// Calibration normals, one per column of a (years, periods*columns) block.
+#[pyfunction]
+fn pnp_normals<'py>(
+    py: Python<'py>,
+    calibration: PyReadonlyArray2<'py, f64>,
+) -> PyResult<Bound<'py, PyArray1<f64>>> {
+    let calibration = checked_copy(&calibration)?;
+    Ok(py
+        .detach(|| climate_core::pnp::pnp_normals(calibration.view()))
+        .into_pyarray(py))
+}
+
+/// Percentage of normal, element-wise or per cell of a (time, columns) block.
+#[pyfunction]
+fn pnp_percentages<'py>(
+    py: Python<'py>,
+    scale_sums: PyReadonlyArray2<'py, f64>,
+    normals: PyReadonlyArray2<'py, f64>,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    let scale_sums = checked_copy(&scale_sums)?;
+    let normals = checked_copy(&normals)?;
+    py.detach(|| climate_core::pnp::pnp_percentages(scale_sums.view(), normals.view()))
+        .map(|percentages| percentages.into_pyarray(py))
+        .map_err(|error| PyValueError::new_err(error.to_string()))
+}
+
+/// Precipitation Concentration Index of one year of daily rainfall.
+#[pyfunction]
+fn pci(rainfall: PyReadonlyArray1<'_, f64>) -> PyResult<f64> {
+    let rainfall = checked_copy(&rainfall)?;
+    climate_core::pci::pci(rainfall.view())
+        .ok_or_else(|| PyValueError::new_err("pci requires a 365- or 366-day year"))
+}
+
 /// `scipy.stats.norm.ppf` applied element-wise to an array of any shape.
 #[pyfunction]
 fn norm_ppf<'py>(
@@ -93,6 +127,9 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", climate_core::VERSION)?;
     m.add_function(wrap_pyfunction!(gamma_parameters, m)?)?;
     m.add_function(wrap_pyfunction!(gamma_probabilities, m)?)?;
+    m.add_function(wrap_pyfunction!(pnp_normals, m)?)?;
+    m.add_function(wrap_pyfunction!(pnp_percentages, m)?)?;
+    m.add_function(wrap_pyfunction!(pci, m)?)?;
     m.add_function(wrap_pyfunction!(norm_ppf, m)?)?;
     Ok(())
 }

@@ -1758,6 +1758,33 @@ def _native_gamma_probabilities(
     return probabilities.reshape(values.shape)
 
 
+def _native_pnp_percentages(
+    scale_sums: np.ndarray, calibration_sums: np.ndarray, period_length: int
+) -> np.ndarray | None:
+    """The Rust PNP normals and their ratios, or None where the Python implementation runs."""
+    if not _native_float64(scale_sums) or not _native_float64(calibration_sums):
+        return None
+    if _native is None:  # _native_float64 guarantees it; this narrows the type
+        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
+    period_sums = _as_columns(calibration_sums)
+    normals = _native.pnp_normals(period_sums).reshape(period_length, -1)
+    percentages = _native.pnp_percentages(_as_columns(scale_sums), normals)
+    return percentages.reshape(scale_sums.shape)
+
+
+def _native_pci(rainfall_mm: np.ndarray) -> np.ndarray | None:
+    """The Rust PCI as the one-element array the Python implementation returns, or None.
+
+    A masked, non-float64, or non-1-D input keeps the Python implementation, which owns
+    the missing-value and year-length validation that precedes it.
+    """
+    if rainfall_mm.ndim != 1 or not _native_float64(rainfall_mm):
+        return None
+    if _native is None:  # _native_float64 guarantees it; this narrows the type
+        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
+    return np.array([_native.pci(rainfall_mm)])
+
+
 def gamma_parameters(
     values: np.ndarray,
     data_start_year: int,
