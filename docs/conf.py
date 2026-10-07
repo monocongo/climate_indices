@@ -108,6 +108,7 @@ exclude_patterns = [
     "research/interactive-climate-explorer-landscape.md",
     "research/dri-wrcc-scpdsi-assessment.md",
     "research/flood-oracle-survey.md",
+    "research/import-cycle-investigation.md",
     "explorer/**",
     "architecture-deepening-review-*.md",
     "ai-assisted-development-report-*.md",
