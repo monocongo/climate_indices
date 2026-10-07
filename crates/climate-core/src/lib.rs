@@ -11,6 +11,7 @@
 
 use std::fmt;
 
+pub mod eddi;
 pub mod gamma;
 pub mod special;
 

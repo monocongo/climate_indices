@@ -259,6 +259,10 @@ def _hastings_inverse_normal(probability: np.ndarray) -> np.ndarray:
     # clip to avoid log(0) or division-by-zero at boundaries
     p = np.clip(probability, 1e-10, 1.0 - 1e-10)
 
+    native = compute._native_hastings_inverse_normal(p)
+    if native is not None:
+        return native
+
     # work in the lower tail; flip if p > 0.5
     sign = np.where(p <= 0.5, -1.0, 1.0)
     p_lower = np.where(p <= 0.5, p, 1.0 - p)
@@ -411,28 +415,30 @@ def eddi(
         for period_index in range(num_periods):
             period_climatology = climatology[:, period_index].reshape(num_climatology_years, cells_per_time_step)
             period_values = pet_values[:, period_index].reshape(num_years, cells_per_time_step)
-            period_valid_counts = np.count_nonzero(~np.isnan(period_climatology), axis=0)
             period_pads = np.count_nonzero(
                 leading_scale_pads[period.rows, period_index].reshape(num_climatology_years, cells_per_time_step),
                 axis=0,
             )
-            for cell_start in range(0, cells_per_time_step, cells_per_chunk):
-                cell_chunk = slice(cell_start, cell_start + cells_per_chunk)
-                below[:, cell_chunk] = np.count_nonzero(
-                    period_climatology[:, None, cell_chunk] < period_values[:, cell_chunk], axis=0
+            probabilities = compute._native_tukey_probabilities(period_climatology, period_values, period_pads)
+            if probabilities is None:
+                period_valid_counts = np.count_nonzero(~np.isnan(period_climatology), axis=0)
+                for cell_start in range(0, cells_per_time_step, cells_per_chunk):
+                    cell_chunk = slice(cell_start, cell_start + cells_per_chunk)
+                    below[:, cell_chunk] = np.count_nonzero(
+                        period_climatology[:, None, cell_chunk] < period_values[:, cell_chunk], axis=0
+                    )
+
+                # NOAA uses zero-based ranks and treats leading scale pads as lower than every
+                # observed value; this is the Tukey plotting position of that rank
+                probabilities = (period_pads + below + 0.66) / (period_valid_counts + period_pads + 0.33)
+
+                # a period whose climatology holds fewer than two valid values has no ranking
+                # at all, and a missing value stays missing
+                probabilities = np.where(
+                    np.isnan(period_values) | (period_valid_counts < 2),
+                    np.nan,
+                    probabilities,
                 )
-
-            # NOAA uses zero-based ranks and treats leading scale pads as lower than every
-            # observed value; this is the Tukey plotting position of that rank
-            probabilities = (period_pads + below + 0.66) / (period_valid_counts + period_pads + 0.33)
-
-            # a period whose climatology holds fewer than two valid values has no ranking
-            # at all, and a missing value stays missing
-            probabilities = np.where(
-                np.isnan(period_values) | (period_valid_counts < 2),
-                np.nan,
-                probabilities,
-            ).reshape(num_years, *cell_shape)
 
             # clip the probability to its valid range to avoid log(0), then apply the
             # Hastings inverse normal approximation. Both are elementwise and are held one
@@ -440,7 +446,7 @@ def eddi(
             # and over a whole wide block they would outweigh the input by an order of
             # magnitude (a daily block would be the worst case, with 366 periods).
             eddi_values[:, period_index] = _hastings_inverse_normal(
-                np.clip(probabilities, 1e-10, 1.0 - 1e-10),
+                np.clip(probabilities.reshape(num_years, *cell_shape), 1e-10, 1.0 - 1e-10),
             )
 
         # clip values to within the valid range, and return an array of the input layout:

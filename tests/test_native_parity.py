@@ -1,4 +1,4 @@
-"""Parity of the Rust gamma kernels with the Python reference implementation.
+"""Parity of the Rust kernels with the Python reference implementation.
 
 Each test computes the same result twice through the public or compute-level API:
 once with ``compute._native`` replaced by a recorder around the Rust extension, and
@@ -31,6 +31,7 @@ ATOL = 1e-10
 
 _DATA_START = 1895
 _KERNELS = {"gamma_parameters", "gamma_probabilities", "norm_ppf"}
+_EDDI_KERNELS = {"tukey_probabilities", "hastings_inverse_normal"}
 
 
 class _Recorder:
@@ -513,3 +514,114 @@ def test_kernels_match_scipy_primitives():
 
     quantiles = np.concatenate([rng.uniform(0.0, 1.0, 5000), 1.0 - 10.0 ** rng.uniform(-16, -1, 2000), [0.0, 1.0]])
     np.testing.assert_allclose(native.norm_ppf(quantiles), scipy.stats.norm.ppf(quantiles), rtol=RTOL, atol=ATOL)
+
+
+# EDDI: the empirical rank count, Tukey plotting position, and Hastings inverse normal
+
+
+def _eddi(values: np.ndarray, scale: int, start: int, end: int, **kwargs: Any) -> Callable[[], np.ndarray]:
+    periodicity = kwargs.pop("periodicity", compute.Periodicity.monthly)
+    data_start = kwargs.pop("data_start", _DATA_START)
+    return lambda: indices.eddi(values, scale, data_start, start, end, periodicity, **kwargs)
+
+
+def _daily_pet(years: int) -> np.ndarray:
+    """A seasonal daily PET series, as ``tests/test_eddi.py`` builds for daily EDDI."""
+    rng = np.random.default_rng(seed=42)
+    day_of_year = np.tile(np.arange(366), years)
+    seasonal_pattern = 100.0 + 50.0 * np.sin(2 * np.pi * day_of_year / 366)
+    return seasonal_pattern + rng.uniform(-10.0, 10.0, years * 366)
+
+
+@pytest.mark.parametrize("scale", [1, 3, 6])
+def test_eddi_monthly_reference_series(monkeypatch, pet_thornthwaite_mm, scale):
+    rust, python, calls = _rust_and_python(monkeypatch, _eddi(pet_thornthwaite_mm, scale, 1981, 2010))
+    _assert_parity(rust, python)
+    assert calls == _EDDI_KERNELS
+
+
+def test_eddi_daily_series(monkeypatch):
+    values = _daily_pet(19)
+    rust, python, calls = _rust_and_python(
+        monkeypatch,
+        _eddi(values, 1, 1998, 2016, data_start=1998, periodicity=compute.Periodicity.daily),
+    )
+    _assert_parity(rust, python)
+    assert calls == _EDDI_KERNELS
+
+
+def test_eddi_missing_values_and_ties(monkeypatch, pet_thornthwaite_mm):
+    values = pet_thornthwaite_mm.copy()
+    values[::37] = np.nan
+    values[100:140] = 42.0
+    rust, python, calls = _rust_and_python(monkeypatch, _eddi(values, 3, 1981, 2010))
+    _assert_parity(rust, python)
+    assert calls == _EDDI_KERNELS
+
+
+def test_eddi_short_calibration_and_missing_climatology(monkeypatch):
+    values = np.random.default_rng(42).uniform(50.0, 150.0, 5 * 12)
+    values[1::12] = np.nan  # every February missing: that calendar period has no ranking
+    for start, end in ((2000, 2004), (2002, 2003)):
+        rust, python, calls = _rust_and_python(monkeypatch, _eddi(values, 1, start, end, data_start=2000))
+        _assert_parity(rust, python)
+        assert calls == _EDDI_KERNELS
+
+
+def test_eddi_spatial_time_major_block(monkeypatch, pet_thornthwaite_mm):
+    columns = np.stack(
+        [pet_thornthwaite_mm, pet_thornthwaite_mm * 0.5, pet_thornthwaite_mm * 1.5, pet_thornthwaite_mm * 2.0]
+    )
+    block = columns.T.reshape(pet_thornthwaite_mm.size, 2, 2)
+    rust, python, calls = _rust_and_python(monkeypatch, _eddi(block, 3, 1981, 2010, spatial_time_major=True))
+    _assert_parity(rust, python)
+    assert calls == _EDDI_KERNELS
+
+
+def test_eddi_ranking_matches_the_python_path_chunked_by_cells(monkeypatch, pet_thornthwaite_mm):
+    """Rust walks every column at once; the chunked NumPy rank must agree cell for cell."""
+    columns = np.stack(
+        [pet_thornthwaite_mm, pet_thornthwaite_mm * 1.5, pet_thornthwaite_mm * 0.5, pet_thornthwaite_mm * 2.0]
+    )
+    block = columns.T.reshape(pet_thornthwaite_mm.size, 2, 2)
+    monkeypatch.setattr(indices, "_EDDI_RANK_COMPARISON_ELEMENT_BUDGET", 4)
+    rust, python, calls = _rust_and_python(monkeypatch, _eddi(block, 3, 1981, 2010, spatial_time_major=True))
+    _assert_parity(rust, python)
+    assert calls == _EDDI_KERNELS
+
+
+def test_eddi_all_missing_never_reaches_a_kernel(monkeypatch, pet_thornthwaite_mm):
+    series = np.full(pet_thornthwaite_mm.size, np.nan)
+    block = np.full((pet_thornthwaite_mm.size, 2, 2), np.nan)
+    for values, spatial in ((series, False), (block, True)):
+        rust, python, calls = _rust_and_python(monkeypatch, _eddi(values, 3, 1981, 2010, spatial_time_major=spatial))
+        _assert_parity(rust, python)
+        assert calls == set()
+        assert np.isnan(rust).all()
+
+
+def test_native_eddi_kernels_reject_mismatched_lengths():
+    with pytest.raises(ValueError, match="climatology"):
+        native.tukey_probabilities(np.ones((2, 3)), np.ones((2, 2)), np.ones(2))
+    with pytest.raises(ValueError, match="pads"):
+        native.tukey_probabilities(np.ones((2, 2)), np.ones((2, 2)), np.ones(3))
+
+
+def test_native_eddi_kernels_handle_empty_negative_stride_blocks():
+    empty = np.ndarray((0,), dtype=np.float64, buffer=np.empty(1), strides=(-1,))
+    result = native.hastings_inverse_normal(empty)
+    assert result.shape == (0,)
+    assert result.dtype == np.float64
+
+
+def test_eddi_hastings_covers_both_tails(monkeypatch):
+    probabilities = np.concatenate(
+        [
+            np.linspace(0.0, 1.0, 257),
+            1.0 - 10.0 ** np.arange(-16.0, -1.0),
+            np.array([np.nan]),
+        ]
+    )
+    rust, python, calls = _rust_and_python(monkeypatch, lambda: indices._hastings_inverse_normal(probabilities))
+    _assert_parity(rust, python)
+    assert calls == {"hastings_inverse_normal"}
