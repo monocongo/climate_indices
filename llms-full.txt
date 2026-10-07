@@ -1734,8 +1734,8 @@ src/climate_indices/_native.pyi # type stub for the extension
   directly testable. They are the oracle for Rust parity tests until a separate,
   explicit decision retires them.
 
-**Ported kernels.** The gamma fit and transform behind SPI are the first port;
-the percentage-of-normal and precipitation-concentration kernels are the second.
+**Ported kernels.** The gamma fit and transform behind SPI, and the PNP and
+PCI numerical blocks, are ported.
 They replace the numerical blocks inside the functions that own them, so the
 validation, calibration-period resolution, data-quality and goodness-of-fit
 warnings, logging, zero placement, and output scaling around them still run in
@@ -1752,11 +1752,13 @@ index fitted to gamma, `fit_diagnostics`, the xarray adapter) uses them:
 
 The special functions are line-by-line ports of the Cephes `igam` and `ndtri`
 that SciPy 1.17 evaluates, since a generic implementation would not hold the
-parity contract in the transformed tails. Dispatch takes the Rust path only for a
-plain, aligned float64 `ndarray` whose fit parameters are aligned and one per
-calendar step (and cell), and `indices.pci` adds a 1-D input requirement: any
-other shape, dtype, or a masked array runs the Python implementation. Unaligned arrays, masked arrays, other dtypes, and
-caller-supplied parameters that vary by year run the Python implementation.
+parity contract in the transformed tails. Dispatch requires prepared arrays to be
+plain, aligned float64 `ndarray`s in a supported layout. Gamma fit parameters
+must also be aligned and one per calendar step (and cell); caller-supplied
+parameters that vary by year keep the Python implementation. PNP preparation
+fills partial masks with NaN before dispatch, so those prepared arrays can use
+Rust. PCI dispatch checks the original input and requires a plain 1-D array;
+masked inputs and other shapes or dtypes keep its Python implementation.
 Native dispatch also requires NumPy floating-point errors to be ignored
 (`np.errstate(all="ignore")`); warnings, exceptions, callbacks, logging, or
 printing keep the Python path. Python 3.14 context-aware warnings conservatively

@@ -10,7 +10,9 @@
 //! validation, the masked-input early return, and logging all stay in Python,
 //! which dispatches only a complete year of float64 values with no missing day.
 
-use ndarray::{ArrayView1, s};
+use ndarray::ArrayView1;
+
+use crate::reduction::pairwise_sum;
 
 /// Day-of-year start of each calendar month, keyed by the number of days in the
 /// year, exactly as `indices._PCI_MONTH_STARTS` holds them.
@@ -27,8 +29,9 @@ const MONTH_STARTS_366: [usize; 12] = [0, 31, 60, 91, 121, 152, 182, 213, 244, 2
 ///   no missing day.
 /// - Outputs: `100 * Σ P_m² / (Σ P_m)²`, the NaN a year without rain gives
 ///   (`0 / 0`, as NumPy computes it).
-/// - Numerics: each month's total is a sequential sum over its days, and the
-///   totals are reduced in calendar order, the order `reduceat` reads them in.
+/// - Numerics: `reduceat` seeds each month's total with its first day and adds
+///   NumPy's pairwise sum of the remaining days. Both annual sums use the same
+///   pairwise grouping as `np.sum`.
 pub fn pci(rainfall: ArrayView1<'_, f64>) -> Option<f64> {
     let month_starts: &[usize; 12] = match rainfall.len() {
         365 => &MONTH_STARTS_365,
@@ -42,22 +45,18 @@ pub fn pci(rainfall: ArrayView1<'_, f64>) -> Option<f64> {
             .get(month + 1)
             .copied()
             .unwrap_or(rainfall.len());
-        monthly_totals[month] = rainfall
-            .slice(s![start..end])
-            .fold(0.0, |sum, &day| sum + day);
+        monthly_totals[month] = rainfall[start] + pairwise_sum(start + 1..end, |day| rainfall[day]);
     }
 
-    let total = monthly_totals.iter().fold(0.0, |sum, &month| sum + month);
-    let squared = monthly_totals
-        .iter()
-        .fold(0.0, |sum, &month| sum + month * month);
+    let total = pairwise_sum(0..12, |month| monthly_totals[month]);
+    let squared = pairwise_sum(0..12, |month| monthly_totals[month] * monthly_totals[month]);
     Some((squared / (total * total)) * 100.0)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::{Array1, array};
+    use ndarray::{Array1, array, s};
 
     #[test]
     fn a_year_of_rain_in_one_month_is_maximally_concentrated() {
@@ -71,8 +70,12 @@ mod tests {
     #[test]
     fn february_29_belongs_to_february_of_a_366_day_year() {
         let mut february_29_only = Array1::<f64>::zeros(366);
+        february_29_only[58] = 1.0;
         february_29_only[59] = 1.0;
         assert_eq!(pci(february_29_only.view()), Some(100.0));
+        february_29_only[58] = 0.0;
+        february_29_only[60] = 1.0;
+        assert_eq!(pci(february_29_only.view()), Some(50.0));
     }
 
     #[test]

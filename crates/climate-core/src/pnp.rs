@@ -12,6 +12,7 @@
 use ndarray::{Array1, Array2, ArrayView2};
 
 use crate::ClimateError;
+use crate::reduction::pairwise_sum;
 
 /// The calibration normal of each column of a (calibration years, columns) block.
 ///
@@ -28,20 +29,30 @@ use crate::ClimateError;
 /// - Zero and negative semantics: a normal that is not a positive value is NaN,
 ///   so its calendar step carries no percentage; the Python `averages > 0.0`
 ///   filter does the same.
-/// - Numerics: sequential sums in the order NumPy reduces axis 0 in, then
-///   `sum / count`. Every expression keeps NumPy's operation order.
+/// - Numerics: NumPy reduces unit-stride year columns with pairwise summation;
+///   other columns are accumulated sequentially. Missing values keep their
+///   zero-valued positions in the pairwise grouping, as `np.nansum` does.
 pub fn pnp_normals(calibration: ArrayView2<'_, f64>) -> Array1<f64> {
     let mut normals = Array1::<f64>::zeros(calibration.ncols());
     for (normal, column) in normals.iter_mut().zip(calibration.columns()) {
-        let (mut sum, mut count) = (0.0, 0.0);
+        let pairwise = column.strides()[0].unsigned_abs() == 1;
+        let (mut sum, mut count) = (0.0, 0.0_f64);
         for &value in column {
             if value.is_nan() {
                 continue;
             }
-            sum += value;
+            if !pairwise {
+                sum += value;
+            }
             count += 1.0;
         }
-        let mean = sum / count;
+        if pairwise {
+            sum = pairwise_sum(0..column.len(), |index| {
+                let value = column[index];
+                if value.is_nan() { 0.0 } else { value }
+            });
+        }
+        let mean = sum / count.max(1.0);
         *normal = if count > 0.0 && mean > 0.0 {
             mean
         } else {
@@ -66,7 +77,8 @@ pub fn pnp_normals(calibration: ArrayView2<'_, f64>) -> Array1<f64> {
 ///   NaN normal is never zero, so no division by zero is reachable here.
 ///
 /// Returns [`ClimateError::ShapeMismatch`] when `normals` does not have one
-/// value per column of `scale_sums`.
+/// value per column of `scale_sums`, or [`ClimateError::EmptyPeriod`] when it
+/// contains no calendar steps.
 pub fn pnp_percentages(
     scale_sums: ArrayView2<'_, f64>,
     normals: ArrayView2<'_, f64>,
@@ -79,7 +91,11 @@ pub fn pnp_percentages(
         });
     }
     let period_length = normals.nrows();
-    debug_assert!(period_length > 0, "a period has at least one calendar step");
+    if period_length == 0 {
+        return Err(ClimateError::EmptyPeriod {
+            argument: "normals",
+        });
+    }
 
     let mut percentages = Array2::<f64>::zeros(scale_sums.raw_dim());
     for (step, (mut out, values)) in percentages
@@ -132,6 +148,21 @@ mod tests {
         assert!(percentages[[0, 0]].is_nan() && percentages[[0, 1]].is_nan());
         assert_eq!(percentages[[1, 0]], 0.5);
         assert!(percentages[[1, 1]].is_nan());
+    }
+
+    #[test]
+    fn percentages_reject_a_period_with_no_calendar_steps() {
+        let error = pnp_percentages(
+            Array2::<f64>::ones((1, 2)).view(),
+            Array2::<f64>::zeros((0, 2)).view(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            error,
+            ClimateError::EmptyPeriod {
+                argument: "normals"
+            }
+        );
     }
 
     #[test]

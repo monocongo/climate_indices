@@ -6,7 +6,7 @@
 //! implementation when the extension is not installed. Inputs must already be
 //! float64 arrays: extraction fails with `TypeError` rather than casting.
 
-use numpy::ndarray::{Array, Dimension};
+use numpy::ndarray::{Array, Dimension, ShapeBuilder};
 use numpy::{
     IntoPyArray, PyArray1, PyArray2, PyArrayDyn, PyArrayMethods, PyReadonlyArray, PyReadonlyArray1,
     PyReadonlyArray2, PyReadonlyArrayDyn, PyUntypedArrayMethods,
@@ -74,7 +74,16 @@ fn pnp_normals<'py>(
     py: Python<'py>,
     calibration: PyReadonlyArray2<'py, f64>,
 ) -> PyResult<Bound<'py, PyArray1<f64>>> {
+    // np.nansum replaces NaNs in a K-order copy. Preserve its unit-stride year
+    // axis even when ndarray's copy of a noncontiguous input is C-ordered.
+    let strides = calibration.strides();
+    let fortran = strides[0] != 0 && strides[0].unsigned_abs() < strides[1].unsigned_abs();
     let calibration = checked_copy(&calibration)?;
+    let calibration = if fortran && calibration.strides()[0] != 1 {
+        Array::from_shape_fn(calibration.raw_dim().f(), |index| calibration[index])
+    } else {
+        calibration
+    };
     Ok(py
         .detach(|| climate_core::pnp::pnp_normals(calibration.view()))
         .into_pyarray(py))
