@@ -393,17 +393,12 @@ def eddi(
 
         num_years = pet_values.shape[0]
 
-        # Rank every calendar period against its own climatology. The rank is a count
-        # of climatology values below the current value, so each period is walked as a
-        # (climatology years, years, cells) comparison: one pass over the periods, not
-        # over the grid cells, and the comparison is chunked across cells so that the
-        # intermediate stays bounded for a wide spatial block, where comparing every
-        # cell in the block at once would grow with the block's width rather than
-        # holding steady at the number of calibration years. The per-period valid- and
-        # pad-counts are computed inside the same loop rather than once for every period
-        # up front, so they scale with one period's climatology instead of the whole
-        # calibration block times the period count (366 for a daily block). Missing
-        # climatology values never compare below a value, so they stay out of the count.
+        # Rank each calendar period by counting climatology values below each value.
+        # Rust counts per column without a comparison intermediate; the NumPy fallback
+        # chunks the (climatology years, years, cells) comparison across cells to bound
+        # that intermediate for wide blocks. Valid- and pad-counts are also held one
+        # period at a time, rather than for the whole calibration block (366 periods
+        # for daily data). Missing climatology values never compare below a value.
         climatology = pet_values[period.rows]
         cell_shape = pet_values.shape[2:]
         cells_per_time_step = int(np.prod(cell_shape, dtype=np.int64)) or 1
