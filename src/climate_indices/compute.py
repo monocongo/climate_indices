@@ -1730,7 +1730,8 @@ def _per_column(parameter: np.ndarray, values: np.ndarray) -> np.ndarray | None:
 
 def _native_gamma_parameters(calibration_values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """The Rust method-of-moments gamma fit, shaped like the NumPy block it mirrors."""
-    assert _native is not None
+    if _native is None:  # every caller dispatches through _native_float64; this narrows the type
+        raise RuntimeError("the native extension is not installed")
     alphas, betas = _native.gamma_parameters(_as_columns(calibration_values))
     step_shape = calibration_values.shape[1:]
     return alphas.reshape(step_shape), betas.reshape(step_shape)
@@ -1742,7 +1743,8 @@ def _native_gamma_probabilities(
     """The Rust zero-inflated gamma CDF, or None where the Python implementation runs."""
     if not _native_float64(values):
         return None
-    assert _native is not None
+    if _native is None:  # _native_float64 guarantees it; this narrows the type
+        raise RuntimeError("the native extension is not installed")
     alpha_columns = _per_column(alphas, values)
     beta_columns = _per_column(betas, values)
     zero_columns = _per_column(probabilities_of_zero, values)
@@ -2192,7 +2194,8 @@ def transform_fitted_gamma(
     # cumulative distribution) function
     result_values: np.ndarray
     if _native_float64(probabilities):
-        assert _native is not None
+        if _native is None:  # _native_float64 guarantees it; this narrows the type
+            raise RuntimeError("the native extension is not installed")
         result_values = _native.norm_ppf(probabilities)
     else:
         try:
