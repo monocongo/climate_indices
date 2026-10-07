@@ -1405,7 +1405,7 @@ def _spatial_poor_fits(
     for candidate in zip(*candidates, strict=True):
         step_index = int(candidate[0])
         valid_count = int(valid_counts[candidate])
-        sorted_column = sorted_values[(slice(0, valid_count), *candidate)]
+        sorted_column = sorted_values[(slice(0, valid_count),) + candidate]
         try:
             p_value = _ks_poor_fit_p_value(sorted_column, candidate_cdf(sorted_column, candidate))
         except Exception:
@@ -1625,7 +1625,7 @@ def _check_goodness_of_fit_pearson_spatial(
         valid_positions,
         cdf_values,
         critical_tolerance,
-        lambda column, candidate: cdf_values[(slice(0, column.size), *candidate)],
+        lambda column, candidate: cdf_values[(slice(0, column.size),) + candidate],
     )
 
     if not poor_fits:
@@ -3022,7 +3022,7 @@ def _ks_fit_diagnostics(
         n_valid[index] = count
         if count == 0 or not parameters_valid[index]:
             continue
-        sample = sorted_values[(slice(0, count), *index)]
+        sample = sorted_values[(slice(0, count),) + index]
         cdf_values = cdf_for_series(sample, index)
         # the same D statistic and exact p-value the goodness-of-fit warnings use
         ks_statistic[index] = _ks_d_statistic(sample, cdf_values)
