@@ -12,11 +12,10 @@
 //! `ndtri` are ported; SciPy's `set_error` reporting is dropped, keeping its
 //! return values.
 //!
-//! Licensing: Cephes Math Library, Copyright 1984-1989 by Stephen L. Moshier,
-//! distributed with SciPy and xsf under the BSD-3-Clause license, Copyright (c)
-//! 2024, SciPy. The Lanczos coefficients come from Boost.Math (`lanczos.hpp`,
-//! (C) Copyright John Maddock 2006), distributed under the Boost Software
-//! License 1.0. Both licenses are compatible with this crate's BSD-3-Clause.
+//! Licensing: the original Cephes notices and the full xsf BSD-3-Clause and
+//! Boost Software License 1.0 texts are retained in the repository's LICENSE.
+//! xsf is Copyright (c) 2024, SciPy. The Lanczos coefficients come from
+//! Boost.Math (`lanczos.hpp`, (C) Copyright John Maddock 2006).
 
 // constants are copied digit for digit from the C headers, beyond f64 precision
 #![allow(clippy::excessive_precision, clippy::approx_constant)]
