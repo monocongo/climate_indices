@@ -11,8 +11,12 @@ core: its public re-exports eagerly load fire, flood, and the xarray adapter.
 
 Evidence snapshots:
 
-- `4b5bde51bf516449d25afde4efe8cfb9911bce03`: the commit recorded in the
-  graphify worktree's `graphify-out/graph.json`; its report lists 20 cycles.
+- `4b5bde51bf516449d25afde4efe8cfb9911bce03`: the commit recorded as
+  `built_at_commit` in the graphify worktree's `graphify-out/graph.json`. The
+  graph was built by the `graphify` CLI (graphifyy 0.9.63) on 2026-09-29, and
+  its `graphify-out/GRAPH_REPORT.md` "Import Cycles" section lists the 20
+  cycles reproduced verbatim below, so no classification depends on that
+  transient worktree remaining available.
 - `198a2404`: `origin/main` when this investigation started. Subsequent module
   splits changed some edges, so both snapshots were checked independently.
 
@@ -33,6 +37,34 @@ All paths below refer to the graph's `4b5bde51` snapshot under
 | `__init__ -> fire/__init__ -> fire/{_cffwis,_haines,_kbdi,_hdw} -> xarray_adapter -> __init__` (4) | Re-exports **(d)** lead to actual runtime `build_output_attrs` imports **(a)** (`_cffwis.py:39`, `_haines.py:18`, `_kbdi.py:43`, `_hdw.py:28`). The adapter's root import of `__version__` is function-local **(c)**, at lines 1153, 2007, 2301, and 2394. Its top-level `from climate_indices import compute, eto, indices, palmer, pm_eto, utils` resolves submodules **(a/d)**, not root re-exported callables. |
 | `__init__ -> fire/__init__ -> fire/{_cffwis,_haines,_kbdi} -> xarray_adapter -> {compute,eto,indices,palmer} -> __init__` (12) | Adapter-to-core imports are real runtime edges **(a)**. The terminal imports are submodule convenience imports **(d)**: `compute.py:16` requests `lmoments, utils`; `eto.py:30` requests `compute, utils`; `indices.py:14` requests `compute, eto`; `palmer.py:11` requests `_palmer_wells, compute, self_calibration, utils`. None requests a late-bound root re-export. Resolving each of these to the root file rather than the named submodules produces the reported cycles. |
 | `__init__ -> fire/__init__ -> fire/_hdw -> xarray_adapter -> {compute,eto} -> __init__` (2) | Same **(a/d)** classification and terminal imports as the preceding row. These are the remaining two five-file variants in the report. |
+
+The graphify report's raw cycle listing, reproduced verbatim from
+`graphify-out/GRAPH_REPORT.md` ("Import Cycles", graphifyy 0.9.63, built
+2026-09-29 over `4b5bde51`), so the table above can be audited against the
+tool's complete output rather than its paraphrase:
+
+```text
+- 3-file cycle: `src/climate_indices/__init__.py -> src/climate_indices/fire/__init__.py -> src/climate_indices/fire/_hdw.py -> src/climate_indices/__init__.py`
+- 3-file cycle: `src/climate_indices/compute.py -> src/climate_indices/indices.py -> src/climate_indices/eto.py -> src/climate_indices/compute.py`
+- 4-file cycle: `src/climate_indices/__init__.py -> src/climate_indices/fire/__init__.py -> src/climate_indices/fire/_cffwis.py -> src/climate_indices/xarray_adapter.py -> src/climate_indices/__init__.py`
+- 4-file cycle: `src/climate_indices/__init__.py -> src/climate_indices/fire/__init__.py -> src/climate_indices/fire/_haines.py -> src/climate_indices/xarray_adapter.py -> src/climate_indices/__init__.py`
+- 4-file cycle: `src/climate_indices/__init__.py -> src/climate_indices/fire/__init__.py -> src/climate_indices/fire/_kbdi.py -> src/climate_indices/xarray_adapter.py -> src/climate_indices/__init__.py`
+- 4-file cycle: `src/climate_indices/__init__.py -> src/climate_indices/fire/__init__.py -> src/climate_indices/fire/_hdw.py -> src/climate_indices/xarray_adapter.py -> src/climate_indices/__init__.py`
+- 5-file cycle: `src/climate_indices/__init__.py -> src/climate_indices/fire/__init__.py -> src/climate_indices/fire/_cffwis.py -> src/climate_indices/xarray_adapter.py -> src/climate_indices/compute.py -> src/climate_indices/__init__.py`
+- 5-file cycle: `src/climate_indices/__init__.py -> src/climate_indices/fire/__init__.py -> src/climate_indices/fire/_cffwis.py -> src/climate_indices/xarray_adapter.py -> src/climate_indices/eto.py -> src/climate_indices/__init__.py`
+- 5-file cycle: `src/climate_indices/__init__.py -> src/climate_indices/fire/__init__.py -> src/climate_indices/fire/_cffwis.py -> src/climate_indices/xarray_adapter.py -> src/climate_indices/indices.py -> src/climate_indices/__init__.py`
+- 5-file cycle: `src/climate_indices/__init__.py -> src/climate_indices/fire/__init__.py -> src/climate_indices/fire/_cffwis.py -> src/climate_indices/xarray_adapter.py -> src/climate_indices/palmer.py -> src/climate_indices/__init__.py`
+- 5-file cycle: `src/climate_indices/__init__.py -> src/climate_indices/fire/__init__.py -> src/climate_indices/fire/_haines.py -> src/climate_indices/xarray_adapter.py -> src/climate_indices/compute.py -> src/climate_indices/__init__.py`
+- 5-file cycle: `src/climate_indices/__init__.py -> src/climate_indices/fire/__init__.py -> src/climate_indices/fire/_haines.py -> src/climate_indices/xarray_adapter.py -> src/climate_indices/eto.py -> src/climate_indices/__init__.py`
+- 5-file cycle: `src/climate_indices/__init__.py -> src/climate_indices/fire/__init__.py -> src/climate_indices/fire/_haines.py -> src/climate_indices/xarray_adapter.py -> src/climate_indices/indices.py -> src/climate_indices/__init__.py`
+- 5-file cycle: `src/climate_indices/__init__.py -> src/climate_indices/fire/__init__.py -> src/climate_indices/fire/_haines.py -> src/climate_indices/xarray_adapter.py -> src/climate_indices/palmer.py -> src/climate_indices/__init__.py`
+- 5-file cycle: `src/climate_indices/__init__.py -> src/climate_indices/fire/__init__.py -> src/climate_indices/fire/_kbdi.py -> src/climate_indices/xarray_adapter.py -> src/climate_indices/compute.py -> src/climate_indices/__init__.py`
+- 5-file cycle: `src/climate_indices/__init__.py -> src/climate_indices/fire/__init__.py -> src/climate_indices/fire/_kbdi.py -> src/climate_indices/xarray_adapter.py -> src/climate_indices/eto.py -> src/climate_indices/__init__.py`
+- 5-file cycle: `src/climate_indices/__init__.py -> src/climate_indices/fire/__init__.py -> src/climate_indices/fire/_kbdi.py -> src/climate_indices/xarray_adapter.py -> src/climate_indices/indices.py -> src/climate_indices/__init__.py`
+- 5-file cycle: `src/climate_indices/__init__.py -> src/climate_indices/fire/__init__.py -> src/climate_indices/fire/_kbdi.py -> src/climate_indices/xarray_adapter.py -> src/climate_indices/palmer.py -> src/climate_indices/__init__.py`
+- 5-file cycle: `src/climate_indices/__init__.py -> src/climate_indices/fire/__init__.py -> src/climate_indices/fire/_hdw.py -> src/climate_indices/xarray_adapter.py -> src/climate_indices/compute.py -> src/climate_indices/__init__.py`
+- 5-file cycle: `src/climate_indices/__init__.py -> src/climate_indices/fire/__init__.py -> src/climate_indices/fire/_hdw.py -> src/climate_indices/xarray_adapter.py -> src/climate_indices/eto.py -> src/climate_indices/__init__.py`
+```
 
 Relevant immutable source links:
 [compute](https://github.com/monocongo/climate_indices/blob/4b5bde51/src/climate_indices/compute.py#L29-L32),
@@ -112,11 +144,13 @@ source edges and successful fresh-process imports provide that evidence.
 
 Untouched `198a2404` baseline:
 
-- `uv run --no-sync --no-build pytest -n 4`: **3,374 passed**, 166 runtime warnings;
-  default marker selection excludes benchmark and validation tests.
+- `uv run --no-sync --no-build pytest -n 4`: **3,374 passed**, 166 runtime
+  warnings; default marker selection excludes benchmark and validation tests.
 - `uv run --no-sync --no-build ruff check src/ tests/`: clean.
-- `uv run --no-sync --no-build ruff format --check src/ tests/`: 143 files already formatted.
-- `uv run --no-sync --no-build mypy src/ tests/test_type_checking.py`: no issues in 46 files.
+- `uv run --no-sync --no-build ruff format --check src/ tests/`: 143 files
+  already formatted.
+- `uv run --no-sync --no-build mypy src/ tests/test_type_checking.py`: no
+  issues in 46 files.
 
 No imports removed, no numerical behavior changed, and no follow-up refactor
 needed for the reported cycles. Evidence is snapshot-specific, not a guarantee
