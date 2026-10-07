@@ -172,7 +172,7 @@ addopts = "-m 'not benchmark and not validation'"
 # Optional Rust backend, climate_indices._native (docs/architecture.md). Hatchling
 # stays the PEP 517 backend, so the published sdist and wheel are pure Python and
 # install without a Rust toolchain; this section only configures `maturin develop`
-# and `maturin build`. Publishing binary wheels is tracked by RUST-003/RUST-013.
+# and `maturin build`. Publishing binary wheels is tracked by RUST-013.
 [tool.maturin]
 manifest-path = "crates/climate-py/Cargo.toml"
 python-source = "src"

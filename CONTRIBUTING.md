@@ -199,6 +199,10 @@ uv run mypy src/ tests/test_type_checking.py
 uv run pytest
 ```
 
+For changes under `crates/` or to the native dispatch in `src/climate_indices/compute.py`,
+also run the Rust gate listed in [`AGENTS.md`](AGENTS.md) (cargo fmt, clippy, and test,
+plus the native parity tests with the extension built).
+
 For documentation changes, run the published-docs gate locally:
 
 ```bash

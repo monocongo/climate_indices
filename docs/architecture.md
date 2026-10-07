@@ -312,8 +312,9 @@ Publishing binary wheels that include `_native`, and the supported install path
 without Rust, are tracked separately (RUST-013).
 
 **Rust in CI.** `.github/workflows/unit-tests-workflow.yml` runs three jobs on
-every pull request, push, and merge group, next to the pure-Python legs. Those
-legs install no Rust toolchain, so they keep proving the fallback.
+every event the workflow handles (pull request, push to `main`, merge group,
+schedule, and manual dispatch), next to the pure-Python legs. Those legs install
+no Rust toolchain, so they keep proving the fallback.
 
 - `rust`: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets
   -- -D warnings`, and `cargo test --workspace` (`PYO3_PYTHON` points the
@@ -321,9 +322,10 @@ legs install no Rust toolchain, so they keep proving the fallback.
 - `test-native`: `maturin develop --release`, then the same core pytest command
   as `test`, on the boundary legs (oldest and newest Python on Linux, newest on
   macOS). It sets `CLIMATE_INDICES_REQUIRE_NATIVE=1`, which makes the native test
-  modules raise on a missing extension instead of skipping, so the parity suite
-  cannot silently drop out. The only remaining skip is the declared Python 3.14
-  context-aware-warnings test, which runs on the 3.14 legs.
+  modules raise on a missing extension instead of skipping, so a broken build
+  cannot silently drop the parity suite. `tests/test_native_parity.py` has no other
+  skip. The Python 3.14-only context-aware-warnings routing check lives in
+  `tests/test_native_backend.py` and skips on the 3.10 leg.
 - `native-wheel`: `maturin build --release` on Linux and macOS at both boundary
   Pythons, plus a Windows smoke build on the newest. Each wheel is installed
   into a fresh venv and imported from outside the checkout, and SPI must reach
@@ -588,6 +590,8 @@ Steps:
   2. Setup Python + uv
   3. uv sync --locked --dev
   4. Run pytest -n auto
+Rust jobs (every event; see "Rust in CI" under Optional Rust Backend):
+  rust, test-native, native-wheel
 ```
 
 #### 2. release.yml
