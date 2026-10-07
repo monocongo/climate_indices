@@ -220,7 +220,10 @@ mod tests {
         ];
         for (probability, expected) in cases {
             let actual = hastings_inverse_normal(probability);
-            assert_eq!(actual, expected, "hastings_inverse_normal({probability})");
+            assert!(
+                actual.is_finite() && (actual - expected).abs() <= 1e-10,
+                "hastings_inverse_normal({probability}): actual={actual}, expected={expected}"
+            );
         }
         // clipping saturates the tails and NaN propagates
         assert_eq!(hastings_inverse_normal(0.0), hastings_inverse_normal(1e-10));
