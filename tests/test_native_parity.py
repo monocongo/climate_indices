@@ -169,10 +169,11 @@ def test_spi_all_missing_series_never_reaches_a_kernel(monkeypatch):
 
 
 def test_spi_series_shorter_than_scale_raises_on_both_paths(monkeypatch):
+    run = _spi(np.ones(5), 6, 1895, 1895)
     for backend in (_Recorder(native), None):
         monkeypatch.setattr(compute, "_native", backend)
         with pytest.raises(exceptions.InsufficientDataError):
-            _spi(np.ones(5), 6, 1895, 1895)()
+            run()
 
 
 @pytest.mark.parametrize(
@@ -329,23 +330,29 @@ def test_native_boundary_rejects_unaligned_arrays(layout, kernel, argument_index
         unaligned[:] = original
         assert not unaligned.flags.aligned
     arguments[argument_index] = unaligned
+    kernel_function = getattr(native, kernel)
     with pytest.raises(ValueError, match="unaligned float64 array"):
-        getattr(native, kernel)(*arguments)
+        kernel_function(*arguments)
 
 
 @pytest.mark.parametrize("stride", [-1, -16])
 @pytest.mark.parametrize("shape", [(0, 12), (2, 0)])
 def test_native_empty_negative_stride_blocks(stride, shape):
     empty = np.ndarray(shape, dtype=np.float64, buffer=np.empty(1), strides=(stride, stride))
-    assert empty.flags.aligned and empty.ctypes.data % 8 == 0
+    assert empty.flags.aligned
+    assert empty.ctypes.data % 8 == 0
     alphas, betas = native.gamma_parameters(empty)
-    assert alphas.shape == betas.shape == (shape[1],)
-    assert np.isnan(alphas).all() and np.isnan(betas).all()
+    assert alphas.shape == (shape[1],)
+    assert betas.shape == (shape[1],)
+    assert np.isnan(alphas).all()
+    assert np.isnan(betas).all()
     parameters = np.ones(shape[1])
     result = native.gamma_probabilities(empty, parameters, parameters, parameters)
-    assert result.shape == shape and result.dtype == np.float64
+    assert result.shape == shape
+    assert result.dtype == np.float64
     quantiles = native.norm_ppf(empty)
-    assert quantiles.shape == shape and quantiles.dtype == np.float64
+    assert quantiles.shape == shape
+    assert quantiles.dtype == np.float64
 
 
 @pytest.mark.parametrize("stride", [-1, -16])
@@ -355,7 +362,8 @@ def test_native_empty_negative_stride_parameters(stride, argument_index):
     arguments = [np.empty((2, 0)), np.empty(0), np.empty(0), np.empty(0)]
     arguments[argument_index] = empty
     result = native.gamma_probabilities(*arguments)
-    assert result.shape == (2, 0) and result.dtype == np.float64
+    assert result.shape == (2, 0)
+    assert result.dtype == np.float64
     arguments = [np.ones((2, 12)), np.ones(12), np.ones(12), np.zeros(12)]
     arguments[argument_index] = empty
     with pytest.raises(ValueError, match="12"):
@@ -480,7 +488,8 @@ def test_no_positive_calibration_column_stays_on_python(monkeypatch):
         alphas, betas = compute.gamma_parameters(values, 1895, 1895, 1924, compute.Periodicity.monthly)
     assert any("Mean of empty slice" in str(warning.message) for warning in caught)
     assert "gamma_parameters" not in recorder.calls
-    assert np.isnan(alphas[0]) and np.isnan(betas[0])
+    assert np.isnan(alphas[0])
+    assert np.isnan(betas[0])
 
 
 def test_runtime_warning_error_filter_disables_native(monkeypatch):
