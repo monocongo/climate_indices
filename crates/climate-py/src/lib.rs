@@ -6,24 +6,39 @@
 //! implementation when the extension is not installed. Inputs must already be
 //! float64 arrays: extraction fails with `TypeError` rather than casting.
 
+use numpy::ndarray::{Array, Dimension};
 use numpy::{
-    IntoPyArray, PyArray1, PyArray2, PyArrayDyn, PyReadonlyArray1, PyReadonlyArray2,
-    PyReadonlyArrayDyn,
+    IntoPyArray, PyArray1, PyArray2, PyArrayDyn, PyArrayMethods, PyReadonlyArray, PyReadonlyArray1,
+    PyReadonlyArray2, PyReadonlyArrayDyn, PyUntypedArrayMethods,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+
+type ParameterArrays<'py> = (Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>);
+
+fn checked_copy<D: Dimension>(array: &PyReadonlyArray<'_, f64, D>) -> PyResult<Array<f64, D>> {
+    if !array.is_aligned() || !array.data().is_aligned() {
+        return Err(PyValueError::new_err("unaligned float64 array"));
+    }
+    // rust-numpy normalizes negative strides by shifting the data pointer, even
+    // on empty axes. Avoid creating a possibly unaligned/out-of-bounds view.
+    if array.is_empty() {
+        return Array::from_shape_vec(array.dims(), Vec::new())
+            .map_err(|error| PyValueError::new_err(error.to_string()));
+    }
+    // Copy before `detach`: another Python thread may mutate caller-owned storage.
+    Ok(array.as_array().to_owned())
+}
 
 /// Gamma shape and scale per column of a (years, columns) calibration block.
 #[pyfunction]
 fn gamma_parameters<'py>(
     py: Python<'py>,
     calibration: PyReadonlyArray2<'py, f64>,
-) -> (Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>) {
-    // Copy before `detach`: the kernel must not read caller-owned storage once the
-    // GIL is released, or another Python thread could write it mid-read.
-    let calibration = calibration.as_array().to_owned();
+) -> PyResult<ParameterArrays<'py>> {
+    let calibration = checked_copy(&calibration)?;
     let (alphas, betas) = py.detach(|| climate_core::gamma::gamma_parameters(calibration.view()));
-    (alphas.into_pyarray(py), betas.into_pyarray(py))
+    Ok((alphas.into_pyarray(py), betas.into_pyarray(py)))
 }
 
 /// Zero-inflated gamma CDF of a (years, columns) block, one parameter per column.
@@ -35,13 +50,11 @@ fn gamma_probabilities<'py>(
     betas: PyReadonlyArray1<'py, f64>,
     probabilities_of_zero: PyReadonlyArray1<'py, f64>,
 ) -> PyResult<Bound<'py, PyArray2<f64>>> {
-    // Copy before `detach`: the kernel must not read caller-owned storage once the
-    // GIL is released, or another Python thread could write it mid-read.
     let (values, alphas, betas, probabilities_of_zero) = (
-        values.as_array().to_owned(),
-        alphas.as_array().to_owned(),
-        betas.as_array().to_owned(),
-        probabilities_of_zero.as_array().to_owned(),
+        checked_copy(&values)?,
+        checked_copy(&alphas)?,
+        checked_copy(&betas)?,
+        checked_copy(&probabilities_of_zero)?,
     );
     py.detach(|| {
         climate_core::gamma::gamma_probabilities(
@@ -60,12 +73,19 @@ fn gamma_probabilities<'py>(
 fn norm_ppf<'py>(
     py: Python<'py>,
     probabilities: PyReadonlyArrayDyn<'py, f64>,
-) -> Bound<'py, PyArrayDyn<f64>> {
-    // Copy before `detach`: the kernel must not read caller-owned storage once the
-    // GIL is released, or another Python thread could write it mid-read.
-    let probabilities = probabilities.as_array().to_owned();
-    py.detach(|| probabilities.mapv(climate_core::special::norm_ppf))
+) -> PyResult<Bound<'py, PyArrayDyn<f64>>> {
+    if !probabilities.is_aligned() || !probabilities.data().is_aligned() {
+        return Err(PyValueError::new_err("unaligned float64 array"));
+    }
+    // Flatten first: rust-numpy's ndarray conversion is limited to 32 dimensions.
+    let shape = probabilities.shape().to_vec();
+    let flat = probabilities
+        .reshape_with_order([probabilities.len()], numpy::npyffi::NPY_ORDER::NPY_CORDER)?
+        .readonly();
+    let flat = checked_copy(&flat)?;
+    py.detach(|| flat.mapv(climate_core::special::norm_ppf))
         .into_pyarray(py)
+        .reshape(shape)
 }
 
 #[pymodule]

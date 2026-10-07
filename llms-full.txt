@@ -1750,10 +1750,18 @@ index fitted to gamma, `fit_diagnostics`, the xarray adapter) uses them:
 The special functions are line-by-line ports of the Cephes `igam` and `ndtri`
 that SciPy 1.17 evaluates, since a generic implementation would not hold the
 parity contract in the transformed tails. Dispatch takes the Rust path only for a
-plain float64 `ndarray` whose fit parameters are one per calendar step (and
-cell); a masked array, another dtype, or a caller-supplied parameter that varies
-by year runs the Python implementation, which keeps NumPy's semantics for it.
-`tests/test_native_parity.py` compares the two paths at `rtol = atol = 1e-10`
+plain, aligned float64 `ndarray` whose fit parameters are aligned and one per
+calendar step (and cell). Unaligned arrays, masked arrays, other dtypes, and
+caller-supplied parameters that vary by year run the Python implementation.
+Native dispatch also requires NumPy floating-point errors to be ignored
+(`np.errstate(all="ignore")`); warnings, exceptions, callbacks, logging, or
+printing keep the Python path. Python 3.14 context-aware warnings conservatively
+keep the Python path, as do fits with a column that has no positive value,
+whose empty-slice warnings are independent of NumPy error policies. Default NumPy error policies
+therefore use Python even when the extension is installed. Direct extension
+calls reject unaligned inputs and copy empty arrays without creating Rust views
+of caller-owned storage. `tests/test_native_parity.py` explicitly ignores
+floating-point errors and compares the two paths at `rtol = atol = 1e-10`
 with matching NaN positions, and the `python_backend` fixture in
 `tests/conftest.py` pins any test to the Python reference.
 

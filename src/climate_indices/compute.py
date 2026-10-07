@@ -4,6 +4,7 @@ Common classes and functions used to compute the various climate indices.
 
 import functools
 import math
+import sys
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -1684,11 +1685,22 @@ def _replace_zeros_with_nan(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]
 def _native_float64(array: np.ndarray) -> bool:
     """Whether the Rust kernels are installed and take ``array`` as it is.
 
-    They take plain float64 arrays only. A masked array or any other dtype runs the
-    Python implementation, which keeps NumPy's own semantics for it; this routes by
-    input, it never retries a failed Rust call in Python.
+    They take aligned, plain float64 arrays only, with NumPy floating-point
+    errors ignored. Other policies and context-aware warning filters stay in
+    Python. Routing never retries a failed Rust call.
     """
-    return _native is not None and type(array) is np.ndarray and array.dtype == np.float64
+    return (
+        _native is not None
+        and type(array) is np.ndarray
+        and array.dtype == np.float64
+        and array.flags.aligned
+        and array.ctypes.data % array.dtype.alignment == 0
+        and all(policy == "ignore" for policy in np.geterr().values())
+        and not getattr(sys.flags, "context_aware_warnings", False)
+        and not any(
+            action == "error" and issubclass(RuntimeWarning, category) for action, _, category, _, _ in warnings.filters
+        )
+    )
 
 
 def _as_columns(values: np.ndarray) -> np.ndarray:
@@ -1699,11 +1711,15 @@ def _as_columns(values: np.ndarray) -> np.ndarray:
 def _per_column(parameter: np.ndarray, values: np.ndarray) -> np.ndarray | None:
     """A float64 fit parameter as one value per (period, cell) column of ``values``.
 
-    None when the parameter is not float64 or varies along the year axis, which only
-    a caller-supplied parameter can do; the Python implementation handles those.
+    None when the parameter is not aligned float64 or varies along the year axis,
+    which only a caller-supplied parameter can do; Python handles those.
     """
     parameter = np.asarray(parameter)
-    if parameter.dtype != np.float64:
+    if (
+        parameter.dtype != np.float64
+        or not parameter.flags.aligned
+        or parameter.ctypes.data % parameter.dtype.alignment != 0
+    ):
         return None
     if parameter.ndim == values.ndim:
         if parameter.shape[0] != 1:
@@ -1714,6 +1730,7 @@ def _per_column(parameter: np.ndarray, values: np.ndarray) -> np.ndarray | None:
 
 def _native_gamma_parameters(calibration_values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """The Rust method-of-moments gamma fit, shaped like the NumPy block it mirrors."""
+    assert _native is not None
     alphas, betas = _native.gamma_parameters(_as_columns(calibration_values))
     step_shape = calibration_values.shape[1:]
     return alphas.reshape(step_shape), betas.reshape(step_shape)
@@ -1725,6 +1742,7 @@ def _native_gamma_probabilities(
     """The Rust zero-inflated gamma CDF, or None where the Python implementation runs."""
     if not _native_float64(values):
         return None
+    assert _native is not None
     alpha_columns = _per_column(alphas, values)
     beta_columns = _per_column(betas, values)
     zero_columns = _per_column(probabilities_of_zero, values)
@@ -1814,7 +1832,10 @@ def gamma_parameters(
 
     # compute the gamma distribution's shape and scale parameters, alpha and beta
     # using method of moments estimation
-    if _native_float64(calibration_values):
+    # np.nanmean emits an empty-slice warning even when floating-point errors
+    # are ignored, so a column with no positive value (all missing, zero, or
+    # negative) must keep the Python reductions, whose log mean is then empty.
+    if _native_float64(calibration_values) and np.all(np.any(calibration_values > 0.0, axis=0)):
         alphas, betas = _native_gamma_parameters(calibration_values)
     else:
         means = np.nanmean(calibration_values, axis=0)
@@ -2171,6 +2192,7 @@ def transform_fitted_gamma(
     # cumulative distribution) function
     result_values: np.ndarray
     if _native_float64(probabilities):
+        assert _native is not None
         result_values = _native.norm_ppf(probabilities)
     else:
         try:
