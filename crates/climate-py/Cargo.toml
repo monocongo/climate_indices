@@ -1,0 +1,17 @@
+[package]
+name = "climate-py"
+description = "PyO3/NumPy bindings exposing climate-core as climate_indices._native"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+name = "_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+climate-core = { path = "../climate-core" }
+numpy = "0.29.0"
+pyo3 = "0.29.3"
