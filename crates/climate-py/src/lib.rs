@@ -15,6 +15,19 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 type ParameterArrays<'py> = (Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>);
+type PearsonArrays<'py> = (
+    Bound<'py, PyArray1<f64>>,
+    Bound<'py, PyArray1<f64>>,
+    Bound<'py, PyArray1<f64>>,
+    Bound<'py, PyArray1<f64>>,
+    Bound<'py, PyArray1<bool>>,
+);
+type LogLogisticArrays<'py> = (
+    Bound<'py, PyArray1<f64>>,
+    Bound<'py, PyArray1<f64>>,
+    Bound<'py, PyArray1<f64>>,
+    Bound<'py, PyArray1<bool>>,
+);
 
 fn checked_copy<D: Dimension>(array: &PyReadonlyArray<'_, f64, D>) -> PyResult<Array<f64, D>> {
     if !array.is_aligned() || !array.data().is_aligned() {
@@ -68,6 +81,95 @@ fn gamma_probabilities<'py>(
     .map_err(|error| PyValueError::new_err(error.to_string()))
 }
 
+/// Pearson Type III probability of zero, loc, scale, and skew per column of a
+/// (years, columns) calibration block, plus which columns could be fitted.
+#[pyfunction]
+fn pearson_parameters<'py>(
+    py: Python<'py>,
+    calibration: PyReadonlyArray2<'py, f64>,
+) -> PyResult<PearsonArrays<'py>> {
+    let calibration = checked_copy(&calibration)?;
+    let fit = py.detach(|| climate_core::pearson::pearson_parameters(calibration.view()));
+    Ok((
+        fit.probabilities_of_zero.into_pyarray(py),
+        fit.locs.into_pyarray(py),
+        fit.scales.into_pyarray(py),
+        fit.skews.into_pyarray(py),
+        fit.valid.into_pyarray(py),
+    ))
+}
+
+/// `scipy.stats.pearson3.cdf` of a (years, columns) block, one parameter set per column.
+#[pyfunction]
+fn pearson_cdf<'py>(
+    py: Python<'py>,
+    values: PyReadonlyArray2<'py, f64>,
+    skews: PyReadonlyArray1<'py, f64>,
+    locs: PyReadonlyArray1<'py, f64>,
+    scales: PyReadonlyArray1<'py, f64>,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    let (values, skews, locs, scales) = (
+        checked_copy(&values)?,
+        checked_copy(&skews)?,
+        checked_copy(&locs)?,
+        checked_copy(&scales)?,
+    );
+    py.detach(|| {
+        climate_core::pearson::pearson_cdf_block(
+            values.view(),
+            skews.view(),
+            locs.view(),
+            scales.view(),
+        )
+    })
+    .map(|cdf| cdf.into_pyarray(py))
+    .map_err(|error| PyValueError::new_err(error.to_string()))
+}
+
+/// Generalized logistic loc, scale, and shape per column of a (years, columns)
+/// calibration block, plus which columns could be fitted.
+#[pyfunction]
+fn loglogistic_parameters<'py>(
+    py: Python<'py>,
+    calibration: PyReadonlyArray2<'py, f64>,
+) -> PyResult<LogLogisticArrays<'py>> {
+    let calibration = checked_copy(&calibration)?;
+    let fit = py.detach(|| climate_core::loglogistic::loglogistic_parameters(calibration.view()));
+    Ok((
+        fit.locs.into_pyarray(py),
+        fit.scales.into_pyarray(py),
+        fit.shapes.into_pyarray(py),
+        fit.valid.into_pyarray(py),
+    ))
+}
+
+/// Generalized logistic CDF of a (years, columns) block, one parameter set per column.
+#[pyfunction]
+fn loglogistic_cdf<'py>(
+    py: Python<'py>,
+    values: PyReadonlyArray2<'py, f64>,
+    locs: PyReadonlyArray1<'py, f64>,
+    scales: PyReadonlyArray1<'py, f64>,
+    shapes: PyReadonlyArray1<'py, f64>,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    let (values, locs, scales, shapes) = (
+        checked_copy(&values)?,
+        checked_copy(&locs)?,
+        checked_copy(&scales)?,
+        checked_copy(&shapes)?,
+    );
+    py.detach(|| {
+        climate_core::loglogistic::loglogistic_cdf_block(
+            values.view(),
+            locs.view(),
+            scales.view(),
+            shapes.view(),
+        )
+    })
+    .map(|cdf| cdf.into_pyarray(py))
+    .map_err(|error| PyValueError::new_err(error.to_string()))
+}
+
 /// `scipy.stats.norm.ppf` applied element-wise to an array of any shape.
 #[pyfunction]
 fn norm_ppf<'py>(
@@ -93,6 +195,10 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", climate_core::VERSION)?;
     m.add_function(wrap_pyfunction!(gamma_parameters, m)?)?;
     m.add_function(wrap_pyfunction!(gamma_probabilities, m)?)?;
+    m.add_function(wrap_pyfunction!(pearson_parameters, m)?)?;
+    m.add_function(wrap_pyfunction!(pearson_cdf, m)?)?;
+    m.add_function(wrap_pyfunction!(loglogistic_parameters, m)?)?;
+    m.add_function(wrap_pyfunction!(loglogistic_cdf, m)?)?;
     m.add_function(wrap_pyfunction!(norm_ppf, m)?)?;
     Ok(())
 }

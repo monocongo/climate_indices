@@ -15,7 +15,7 @@
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2, Zip};
 
 use crate::ClimateError;
-use crate::special::igam;
+use crate::special::{igam, igamc};
 
 /// Method-of-moments gamma shape and scale for each column of a calibration block.
 ///
@@ -80,6 +80,23 @@ pub fn gamma_cdf(x: f64, alpha: f64, beta: f64) -> f64 {
         igam(alpha, scaled)
     } else {
         0.0
+    }
+}
+
+/// `scipy.stats.gamma.sf(x, a=alpha)` at unit scale, including its argument handling.
+///
+/// NaN when alpha is not positive (or NaN) or `x` is NaN; 1 at or below zero; 0 at
+/// `x = +inf`; otherwise Cephes `igamc(alpha, x)`. The negative-skew Pearson Type
+/// III CDF is this survival function.
+pub fn gamma_sf(x: f64, alpha: f64) -> f64 {
+    if alpha.is_nan() || alpha <= 0.0 || x.is_nan() {
+        f64::NAN
+    } else if x <= 0.0 {
+        1.0
+    } else if x == f64::INFINITY {
+        0.0
+    } else {
+        igamc(alpha, x)
     }
 }
 

@@ -1,16 +1,18 @@
 //! Special functions ported from the Cephes library as SciPy 1.17.0 ships it.
 //!
 //! `scipy.stats.gamma.cdf` evaluates `scipy.special.gammainc`, i.e. Cephes
-//! `igam`, and `scipy.stats.norm.ppf` evaluates `scipy.special.ndtri`. A generic
+//! `igam`, `scipy.stats.norm.ppf` evaluates `scipy.special.ndtri`,
+//! `scipy.stats.pearson3.cdf` evaluates `scipy.special.ndtr` for a near-zero
+//! skew, and `scipy.special.gammaln` is Cephes `lgam`. A generic
 //! special-function crate uses different series and continued fractions, and
 //! the transformed tails of a standardized index are ill-conditioned enough
 //! (`ndtri(p)` with `p` within a few ulps of 1) for that to show above the 1e-10
 //! parity contract. These are therefore line-by-line ports of
 //! `subprojects/xsf/include/xsf/cephes/{igam,ndtri,ndtr,gamma,unity,zeta,
 //! lanczos,polevl}.h` from the SciPy 1.17.0 sdist: same branches, constants,
-//! and operation order. Only the branches reachable from `igam`, `igamc`, and
-//! `ndtri` are ported; SciPy's `set_error` reporting is dropped, keeping its
-//! return values.
+//! and operation order. Only the branches reachable from `igam`, `igamc`,
+//! `ndtri`, `ndtr`, and `lgam` are ported; SciPy's `set_error` reporting is
+//! dropped, keeping its return values.
 //!
 //! Licensing: the original Cephes notices and the full xsf BSD-3-Clause and
 //! Boost Software License 1.0 texts are retained in the repository's LICENSE.
@@ -175,7 +177,7 @@ fn lgam_large_x(x: f64) -> f64 {
 ///
 /// Every caller passes a positive argument, so the reflection branch Cephes
 /// takes below -34 is not ported.
-fn lgam(x: f64) -> f64 {
+pub(crate) fn lgam(x: f64) -> f64 {
     debug_assert!(
         x.is_nan() || x >= -34.0,
         "lgam reflection branch is not ported"
@@ -868,6 +870,21 @@ pub fn norm_ppf(q: f64) -> f64 {
         f64::INFINITY
     } else {
         f64::NAN
+    }
+}
+
+/// Standard normal CDF, Cephes `ndtr`, i.e. `scipy.special.ndtr`.
+pub fn ndtr(a: f64) -> f64 {
+    if a.is_nan() {
+        return f64::NAN;
+    }
+    let x = a * FRAC_1_SQRT_2;
+    let z = x.abs();
+    if z < FRAC_1_SQRT_2 {
+        0.5 + 0.5 * erf(x)
+    } else {
+        let y = 0.5 * erfc(z);
+        if x > 0.0 { 1.0 - y } else { y }
     }
 }
 

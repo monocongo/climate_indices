@@ -17,4 +17,33 @@ def gamma_probabilities(
     betas: npt.NDArray[np.float64],
     probabilities_of_zero: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]: ...
+def pearson_parameters(
+    calibration: npt.NDArray[np.float64],
+) -> tuple[
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.bool_],
+]: ...
+def pearson_cdf(
+    values: npt.NDArray[np.float64],
+    skews: npt.NDArray[np.float64],
+    locs: npt.NDArray[np.float64],
+    scales: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]: ...
+def loglogistic_parameters(
+    calibration: npt.NDArray[np.float64],
+) -> tuple[
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.bool_],
+]: ...
+def loglogistic_cdf(
+    values: npt.NDArray[np.float64],
+    locs: npt.NDArray[np.float64],
+    scales: npt.NDArray[np.float64],
+    shapes: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]: ...
 def norm_ppf(probabilities: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]: ...

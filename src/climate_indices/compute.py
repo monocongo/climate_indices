@@ -784,7 +784,12 @@ def pearson_parameters(
     )
     log = log.bind(calibration_period=f"{period.start_year}-{period.end_year}")
 
-    if calibration_values.ndim > 2:
+    if _native_lmoment_input(calibration_values):
+        probabilities_of_zero, locs, scales, skews, failed_fitting_count = _native_pearson_parameters(
+            calibration_values
+        )
+        total_fitting_count = math.prod(calibration_values.shape[1:])
+    elif calibration_values.ndim > 2:
         (
             probabilities_of_zero,
             locs,
@@ -945,23 +950,27 @@ def _pearson_fit(
         zero_mask = np.logical_and((values < 0.0005), (probabilities_of_zero > 0.0))
         trace_mask = np.logical_and((values < 0.0005), (probabilities_of_zero <= 0.0))
 
-        # get the Pearson Type III cumulative density function value
-        try:
-            values = scipy.stats.pearson3.cdf(values, skew, loc, scale)
-        except (ValueError, RuntimeError, FloatingPointError) as e:
-            raise DistributionFittingError(
-                f"Pearson Type III distribution CDF computation failed: {e}",
-                distribution_name="pearson3",
-                input_shape=values.shape,
-                parameters={
-                    "skew": _summarize_array(skew, "skew"),
-                    "loc": _summarize_array(loc, "loc"),
-                    "scale": _summarize_array(scale, "scale"),
-                    "values": _summarize_array(values, "values"),
-                },
-                suggestion="Try using gamma distribution instead",
-                underlying_error=e,
-            ) from e
+        # get the Pearson Type III cumulative density function value, from the Rust
+        # kernel when it can take the inputs
+        cdf_values = _native_pearson_cdf(values, skew, loc, scale)
+        if cdf_values is None:
+            try:
+                cdf_values = scipy.stats.pearson3.cdf(values, skew, loc, scale)
+            except (ValueError, RuntimeError, FloatingPointError) as e:
+                raise DistributionFittingError(
+                    f"Pearson Type III distribution CDF computation failed: {e}",
+                    distribution_name="pearson3",
+                    input_shape=values.shape,
+                    parameters={
+                        "skew": _summarize_array(skew, "skew"),
+                        "loc": _summarize_array(loc, "loc"),
+                        "scale": _summarize_array(scale, "scale"),
+                        "values": _summarize_array(values, "values"),
+                    },
+                    suggestion="Try using gamma distribution instead",
+                    underlying_error=e,
+                ) from e
+        values = cdf_values
 
         # a zero value carries the point mass, in every mode
         values[zero_mask] = 0.0
@@ -1758,6 +1767,93 @@ def _native_gamma_probabilities(
     return probabilities.reshape(values.shape)
 
 
+# The L-moment fits take a block only when every value is NaN or small enough that the
+# weighted sums cannot overflow. An infinity or an overflow makes the L-moments NaN, which
+# the single-series Python fit passes through as NaN parameters but the cell-axis fit (and
+# the Rust fit) mark invalid, so those blocks keep the Python fit.
+_NATIVE_LMOMENT_BOUND = 1e100
+
+
+def _native_lmoment_input(calibration_values: np.ndarray) -> bool:
+    """Whether the Rust L-moment fits take ``calibration_values`` and match the Python fit."""
+    return _native_float64(calibration_values) and bool(
+        np.all((np.abs(calibration_values) <= _NATIVE_LMOMENT_BOUND) | np.isnan(calibration_values))
+    )
+
+
+def _native_pearson_parameters(
+    calibration_values: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]:
+    """The Rust Pearson Type III fit, shaped like the NumPy block it mirrors.
+
+    :return: probability of zero, loc, scale, and skew shaped (time_steps, ``*cells``),
+        and the count of (time step, cell) fits that failed
+    """
+    if _native is None:  # every caller dispatches through _native_float64; this narrows the type
+        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
+    probabilities_of_zero, locs, scales, skews, valid = _native.pearson_parameters(_as_columns(calibration_values))
+    step_shape = calibration_values.shape[1:]
+    return (
+        probabilities_of_zero.reshape(step_shape),
+        locs.reshape(step_shape),
+        scales.reshape(step_shape),
+        skews.reshape(step_shape),
+        int(np.count_nonzero(~valid)),
+    )
+
+
+def _native_pearson_cdf(values: np.ndarray, skew: np.ndarray, loc: np.ndarray, scale: np.ndarray) -> np.ndarray | None:
+    """The Rust ``scipy.stats.pearson3.cdf``, or None where the Python implementation runs."""
+    if not _native_float64(values):
+        return None
+    if _native is None:  # _native_float64 guarantees it; this narrows the type
+        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
+    skew_columns = _per_column(skew, values)
+    loc_columns = _per_column(loc, values)
+    scale_columns = _per_column(scale, values)
+    if skew_columns is None or loc_columns is None or scale_columns is None:
+        return None
+    cdf = _native.pearson_cdf(_as_columns(values), skew_columns, loc_columns, scale_columns)
+    return cdf.reshape(values.shape)
+
+
+def _native_loglogistic_parameters(
+    calibration_values: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
+    """The Rust GLO fit, shaped like the NumPy block it mirrors.
+
+    :return: loc, scale, and shape shaped (time_steps, ``*cells``), and the count of
+        (time step, cell) fits that failed
+    """
+    if _native is None:  # every caller dispatches through _native_float64; this narrows the type
+        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
+    locs, scales, shapes, valid = _native.loglogistic_parameters(_as_columns(calibration_values))
+    step_shape = calibration_values.shape[1:]
+    return (
+        locs.reshape(step_shape),
+        scales.reshape(step_shape),
+        shapes.reshape(step_shape),
+        int(np.count_nonzero(~valid)),
+    )
+
+
+def _native_loglogistic_cdf(
+    values: np.ndarray, locs: np.ndarray, scales: np.ndarray, shapes: np.ndarray
+) -> np.ndarray | None:
+    """The Rust GLO CDF clipped to [0, 1], or None where the Python implementation runs."""
+    if not _native_float64(values):
+        return None
+    if _native is None:  # _native_float64 guarantees it; this narrows the type
+        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
+    loc_columns = _per_column(locs, values)
+    scale_columns = _per_column(scales, values)
+    shape_columns = _per_column(shapes, values)
+    if loc_columns is None or scale_columns is None or shape_columns is None:
+        return None
+    probabilities = _native.loglogistic_cdf(_as_columns(values), loc_columns, scale_columns, shape_columns)
+    return probabilities.reshape(values.shape)
+
+
 def gamma_parameters(
     values: np.ndarray,
     data_start_year: int,
@@ -2272,7 +2368,10 @@ def loglogistic_parameters(
     )
     log = log.bind(calibration_period=f"{period.start_year}-{period.end_year}")
 
-    if calibration_values.ndim > 2:
+    if _native_lmoment_input(calibration_values):
+        locs, scales, shapes, failed_fitting_count = _native_loglogistic_parameters(calibration_values)
+        total_fitting_count = math.prod(calibration_values.shape[1:])
+    elif calibration_values.ndim > 2:
         locs, scales, shapes, failed_fitting_count = _loglogistic_parameters_spatial(calibration_values)
         cell_count = int(np.prod(calibration_values.shape[2:], dtype=np.intp))
         total_fitting_count = time_steps_per_year * cell_count
@@ -2351,12 +2450,14 @@ def _loglogistic_fit(
         return values
 
     valid = np.isfinite(locs) & np.isfinite(scales) & np.isfinite(shapes) & (scales > 0.0) & (np.abs(shapes) < 1.0)
-    negligible_shape = np.abs(shapes) <= _LOGLOGISTIC_SHAPE_TOLERANCE
-    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-        z = (values - locs) / scales
-        y = np.where(negligible_shape, z, -np.log(np.maximum(0.0, 1.0 - (shapes * z))) / shapes)
-        probabilities = 1.0 / (1.0 + np.exp(-y))
-    probabilities = np.clip(probabilities, 0.0, 1.0)
+    probabilities = _native_loglogistic_cdf(values, locs, scales, shapes)
+    if probabilities is None:
+        negligible_shape = np.abs(shapes) <= _LOGLOGISTIC_SHAPE_TOLERANCE
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            z = (values - locs) / scales
+            y = np.where(negligible_shape, z, -np.log(np.maximum(0.0, 1.0 - (shapes * z))) / shapes)
+            probabilities = 1.0 / (1.0 + np.exp(-y))
+        probabilities = np.clip(probabilities, 0.0, 1.0)
 
     scaled = _map_non_normal_scale(probabilities, output_scale)
     if scaled is None:

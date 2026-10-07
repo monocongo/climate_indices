@@ -12,6 +12,9 @@
 use std::fmt;
 
 pub mod gamma;
+pub mod lmoments;
+pub mod loglogistic;
+pub mod pearson;
 pub mod special;
 
 /// Version of this crate, re-exported by the Python extension as `__version__`.

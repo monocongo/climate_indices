@@ -257,22 +257,36 @@ src/climate_indices/_native.pyi # type stub for the extension
   directly testable. They are the oracle for Rust parity tests until a separate,
   explicit decision retires them.
 
-**Ported kernels.** The gamma fit and transform behind SPI are the first port.
-They replace the numerical blocks inside two `compute.py` functions, so the
+**Ported kernels.** The gamma fit and transform behind SPI are the first port;
+the distribution fits SPEI adds, Pearson Type III (also used by SPI and the
+standardized index) and the log-logistic (generalized logistic, GLO), are the
+second. They replace the numerical blocks inside `compute.py` functions, so the
 validation, calibration-period resolution, data-quality and goodness-of-fit
-warnings, logging, zero placement, and output scaling around them still run in
-Python, and every caller of those functions (SPI, SPEI and the standardized
-index fitted to gamma, `fit_diagnostics`, the xarray adapter) uses them:
+warnings, the Pearson-to-gamma fallback, logging, zero placement, support-limit
+masks, and output scaling around them still run in Python, and every caller of
+those functions (SPI, SPEI and the standardized index, `fit_diagnostics`, the
+xarray adapter) uses them:
 
 | Python seam | Rust kernel (`climate-core`) |
 |---|---|
 | method-of-moments block of `compute.gamma_parameters` | `gamma::gamma_parameters` |
 | `scipy.stats.gamma.cdf` and zero-mass mixing in `compute.transform_fitted_gamma` | `gamma::gamma_probabilities` |
 | `scipy.stats.norm.ppf` in `compute.transform_fitted_gamma` | `special::norm_ppf` |
+| sample L-moments and the Pearson Type III fit of `compute.pearson_parameters` (`lmoments.fit`, `fit_spatial`) | `lmoments::sample_lmoments`, `pearson::pearson_parameters` |
+| `scipy.stats.pearson3.cdf` in `compute._pearson_fit` | `pearson::pearson_cdf_block` |
+| GLO fit of `compute.loglogistic_parameters` (`lmoments.fit_glo`, `fit_glo_spatial`) | `loglogistic::loglogistic_parameters` |
+| GLO probability step of `compute._loglogistic_fit` | `loglogistic::loglogistic_cdf_block` |
 
-The special functions are line-by-line ports of the Cephes `igam` and `ndtri`
-that SciPy 1.17 evaluates, since a generic implementation would not hold the
-parity contract in the transformed tails. Dispatch takes the Rust path only for a
+The special functions are line-by-line ports of the Cephes `igam`, `ndtri`,
+`ndtr`, and `lgam` that SciPy 1.17 evaluates, since a generic implementation
+would not hold the parity contract in the transformed tails. The L-moment fits
+route to Rust only for a block whose values are all NaN or at most `1e100` in
+magnitude: an infinity (or an overflowing weighted sum) makes the L-moments NaN,
+which the single-series Python fit returns as NaN parameters but the cell-axis
+fit marks invalid, so those blocks keep the Python fit. The per-step `ERROR` log
+that the single-series `lmoments.fit` writes for an invalid fit is not written by
+the Rust fit, as it is not by the cell-axis fit; the failed-fit count and the
+high-failure-rate warning are unchanged. Dispatch takes the Rust path only for a
 plain, aligned float64 `ndarray` whose fit parameters are aligned and one per
 calendar step (and cell). Unaligned arrays, masked arrays, other dtypes, and
 caller-supplied parameters that vary by year run the Python implementation.
@@ -283,9 +297,10 @@ keep the Python path, as do fits with a column that has no positive value,
 whose empty-slice warnings are independent of NumPy error policies. Default NumPy error policies
 therefore use Python even when the extension is installed. Direct extension
 calls reject unaligned inputs and copy empty arrays without creating Rust views
-of caller-owned storage. `tests/test_native_parity.py` explicitly ignores
-floating-point errors and compares the two paths at `rtol = atol = 1e-10`
-with matching NaN positions, and the `python_backend` fixture in
+of caller-owned storage. `tests/test_native_parity.py` (gamma) and
+`tests/test_native_parity_distributions.py` (Pearson Type III and GLO)
+explicitly ignore floating-point errors and compare the two paths at
+`rtol = atol = 1e-10` with matching NaN positions, and the `python_backend` fixture in
 `tests/conftest.py` pins any test to the Python reference.
 
 **Migration policy.** Port expensive numerical kernels, hot loops, and
@@ -323,8 +338,8 @@ no Rust toolchain, so they keep proving the fallback.
   as `test`, on the boundary legs (oldest and newest Python on Linux, newest on
   macOS). It sets `CLIMATE_INDICES_REQUIRE_NATIVE=1`, which makes the native test
   modules raise on a missing extension instead of skipping, so a broken build
-  cannot silently drop the parity suite. `tests/test_native_parity.py` has no other
-  skip. The Python 3.14-only context-aware-warnings routing check lives in
+  cannot silently drop the parity suite. `tests/test_native_parity.py` and
+  `tests/test_native_parity_distributions.py` have no other skip. The Python 3.14-only context-aware-warnings routing check lives in
   `tests/test_native_backend.py` and skips on the 3.10 leg.
 - `native-wheel`: `maturin build --release` on Linux and macOS at both boundary
   Pythons, plus a Windows smoke build on the newest. Each wheel is installed
