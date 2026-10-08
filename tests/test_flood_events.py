@@ -28,6 +28,16 @@ def test_nan_and_masked_days_end_a_run() -> None:
     np.testing.assert_array_equal(events.duration, [2, 1])
 
 
+def test_infinite_days_end_a_run() -> None:
+    """An event day is finite, so +inf ends a run as NaN does and never sets the peak or severity."""
+    index = np.array([1.0, np.inf, 2.0, -np.inf, 3.0, 4.0])
+    events = flood.flood_events(index, threshold=0.5)
+    np.testing.assert_array_equal(events.onset, [0, 2, 4])
+    np.testing.assert_array_equal(events.duration, [1, 1, 2])
+    np.testing.assert_array_equal(events.peak, [1.0, 2.0, 4.0])
+    np.testing.assert_array_equal(events.severity, [1.0, 2.0, 7.0])
+
+
 def test_min_duration_and_threshold_filter_events() -> None:
     index = np.array([0.0, 1.5, 1.5, 0.0, 2.5, 0.0])
     np.testing.assert_array_equal(flood.flood_events(index, min_duration=2).onset, [1])
