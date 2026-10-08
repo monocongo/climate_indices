@@ -357,22 +357,31 @@ recurrence, and a port would not pay for itself.
 
 Dispatch takes the Rust path only for a
 plain, aligned float64 `ndarray` whose fit parameters are aligned and one per
-calendar step (and cell). Unaligned arrays, masked arrays, other dtypes, and
-caller-supplied parameters that vary by year run the Python implementation.
-PNP preparation fills partial masks with NaN before dispatch, so those prepared
-arrays can use Rust. PCI dispatch checks the original input and requires a plain 1-D
-array; masked inputs and other shapes or dtypes keep its Python implementation. The
-fire recurrences apply the same guard to every weather array and to the seed they
-resume from, and a layout the kernel cannot take unchanged (an empty axis, a
-non-float64 or unaligned array, or a time-first array whose spatial axes cannot
-be viewed as one cell axis without a copy) stays in Python as well. The kernels
-take views of the prepared arrays, so a broadcast month series or season mask
-is copied once, by the binding, rather than first materialized in Python; that
-boundary copy is the native path's own buffer, so it and the history the kernel
-builds are not part of the `array_memory_mb` a recurrence reports. A loaded extension that
-predates a kernel, or a recurrence option wider than the binding's integer
-parameters, also keeps the recurrence on its Python steps rather than failing at
-the boundary.
+calendar step (and cell). Unaligned arrays, other dtypes, and caller-supplied
+parameters that vary by year run the Python implementation. A mask is a
+missing-value marker, so the seams that read it as one replace it with NaN
+before this check, and the prepared plain float64 array may then use Rust: the
+gamma transform (`transform_fitted_gamma` and the parameter resolver it calls),
+the GLO transform (`transform_fitted_loglogistic`, whose fit and CDF may then run
+natively), the sliding sum that prepares a scaled series, and PNP preparation. A
+partially masked SPI/SPEI gamma transform therefore matches the same input
+passed through `np.ma.filled(values, np.nan)`. An all-masked input returns from
+the all-missing short-circuit before that normalization, so SPI and SPEI hand
+back the original `MaskedArray`, not the filled plain NaN array. Seams that do
+not replace a mask keep their Python implementation when handed one: a direct
+`gamma_parameters` or `loglogistic_parameters` call, the Pearson Type III fit
+and transform, PCI, whose dispatch checks the original 1-D input and requires a
+plain 1-D array, and the fire recurrences, which apply the same guard to every
+weather array and to the seed they resume from. A layout the kernel cannot take
+unchanged (an empty axis, a non-float64 or unaligned array, or a time-first
+array whose spatial axes cannot be viewed as one cell axis without a copy) stays
+in Python as well. The kernels take views of the prepared arrays, so a broadcast
+month series or season mask is copied once, by the binding, rather than first
+materialized in Python; that boundary copy is the native path's own buffer, so
+it and the history the kernel builds are not part of the `array_memory_mb` a
+recurrence reports. A loaded extension that predates a kernel, or a recurrence
+option wider than the binding's integer parameters, also keeps the recurrence on
+its Python steps rather than failing at the boundary.
 Native dispatch also requires NumPy floating-point errors to be ignored
 (`np.errstate(all="ignore")`); warnings, exceptions, callbacks, logging, or
 printing keep the Python path. Python 3.14 context-aware warnings conservatively
