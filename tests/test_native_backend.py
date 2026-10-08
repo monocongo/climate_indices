@@ -65,8 +65,9 @@ def test_eddi_propagates_errors_from_present_kernels(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(compute, "_native", SimpleNamespace(**{kernel: fail}))
     values = np.ones((2, 1))
     args = (values, values, np.zeros(1)) if kernel == "tukey_probabilities" else (values,)
+    native_kernel = getattr(compute, f"_native_{kernel}")
     with np.errstate(all="ignore"), pytest.raises(RuntimeError, match="native kernel failed"):
-        getattr(compute, f"_native_{kernel}")(*args)
+        native_kernel(*args)
 
 
 def test_import_native_fails_instead_of_skipping_when_the_extension_is_required(
