@@ -201,7 +201,9 @@ uv run pytest
 
 For changes under `crates/` or to the native dispatch in `src/climate_indices/compute.py`,
 also run the Rust gate listed in [`AGENTS.md`](AGENTS.md) (cargo fmt, clippy, and test,
-plus the native parity tests with the extension built).
+plus the native parity tests with the extension built). The porting checklist in
+[`docs/development-guide.md`](docs/development-guide.md#porting-a-kernel-to-rust)
+walks through adding a kernel.
 
 For documentation changes, run the published-docs gate locally:
 

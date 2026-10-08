@@ -28,5 +28,6 @@ corrected in place), or `Superseded by ADR-NNNN`. The authoring conventions are 
 0014-flood-family-scientific-conventions
 0015-zero-handling-in-standardized-indices
 0016-log-logistic-distribution-for-spei
+0017-rust-core-acceleration-backend
 0018-optional-rust-packaging
 ```
