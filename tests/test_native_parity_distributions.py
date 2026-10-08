@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 import scipy.special
 import scipy.stats
+import xarray as xr
 
 from climate_indices import compute, indices, lmoments
 from tests import conftest
@@ -284,6 +285,63 @@ def test_loglogistic_cdf_beyond_its_support(monkeypatch, shape):
     rust, python, calls = _rust_and_python(monkeypatch, run)
     assert calls == {"loglogistic_cdf"}
     _assert_parity(rust, python)
+
+
+def _supplied_glo_parameters(values: np.ndarray) -> list[np.ndarray]:
+    with np.errstate(all="ignore"):
+        return [np.array(a) for a in compute.loglogistic_parameters(values, _DATA_START, 1981, 2010, _MONTHLY)]
+
+
+@pytest.mark.parametrize(
+    "wrap",
+    [
+        pytest.param(lambda a: np.ma.masked_array(a, mask=np.arange(a.size) == 3), id="masked"),
+        pytest.param(lambda a: xr.DataArray(a, dims=["period"]), id="dataarray"),
+    ],
+)
+def test_array_subclass_parameters_keep_the_python_cdf(monkeypatch, precips_mm_monthly, wrap):
+    """A mask or labels mean something to the NumPy path; a bare buffer would drop them."""
+    parameters = [wrap(a) for a in _supplied_glo_parameters(precips_mm_monthly)]
+
+    def run():
+        try:
+            return compute.transform_fitted_loglogistic(
+                precips_mm_monthly, _DATA_START, 1981, 2010, _MONTHLY, *parameters
+            )
+        except ValueError as error:  # a DataArray fails inside xarray on the Python path
+            return type(error)
+
+    recorder = _Recorder(native)
+    with np.errstate(all="ignore"):
+        monkeypatch.setattr(compute, "_native", recorder)
+        rust = run()
+        monkeypatch.setattr(compute, "_native", None)
+        python = run()
+    assert "loglogistic_cdf" not in recorder.calls
+    if isinstance(python, type):
+        assert rust is python
+    else:
+        _assert_parity(np.asarray(rust), np.asarray(python))
+
+
+def test_zero_dimensional_values_and_oversized_parameters_keep_the_python_cdf(monkeypatch):
+    """Shapes only the private fit takes: both paths must give the same result or error."""
+    cases = {
+        "scalar": (np.array(5.0), np.array(50.0), np.array(20.0), np.array(0.2)),
+        "oversized": (np.ones((20, 12)), np.ones((3, 20, 12)), np.ones((3, 20, 12)), np.full((3, 20, 12), 0.2)),
+        "mismatched": (np.ones((20, 12)), np.ones((1, 24)), np.ones((1, 24)), np.full((1, 24), 0.2)),
+    }
+    for label, arguments in cases.items():
+        outcomes = []
+        for backend in (native, None):
+            monkeypatch.setattr(compute, "_native", backend)
+            with np.errstate(all="ignore"):
+                try:
+                    result = compute._loglogistic_fit(*arguments)
+                    outcomes.append(("ok", result.shape))
+                except ValueError as error:
+                    outcomes.append(("raises", type(error)))
+        assert outcomes[0] == outcomes[1], label
 
 
 # --- spatial blocks ------------------------------------------------------------------

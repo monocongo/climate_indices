@@ -1724,12 +1724,14 @@ def _as_columns(values: np.ndarray) -> np.ndarray:
 def _per_column(parameter: np.ndarray, values: np.ndarray) -> np.ndarray | None:
     """A float64 fit parameter as one value per (period, cell) column of ``values``.
 
-    None when the parameter is not aligned float64 or varies along the year axis,
-    which only a caller-supplied parameter can do; Python handles those.
+    None when the parameter is not a plain aligned float64 ``ndarray``, varies along
+    the year axis, or does not broadcast to the columns, which only a caller-supplied
+    parameter can do; Python handles those. A masked array or ``DataArray`` is not
+    plain: the NumPy path reads its mask or labels, which a bare buffer would drop.
     """
-    parameter = np.asarray(parameter)
     if (
-        parameter.dtype != np.float64
+        type(parameter) is not np.ndarray
+        or parameter.dtype != np.float64
         or not parameter.flags.aligned
         or parameter.ctypes.data % parameter.dtype.alignment != 0
     ):
@@ -1738,6 +1740,12 @@ def _per_column(parameter: np.ndarray, values: np.ndarray) -> np.ndarray | None:
         if parameter.shape[0] != 1:
             return None
         parameter = parameter[0]
+    try:
+        broadcasts = np.broadcast_shapes(parameter.shape, values.shape[1:]) == values.shape[1:]
+    except ValueError:
+        broadcasts = False
+    if not broadcasts:
+        return None
     return np.broadcast_to(parameter, values.shape[1:]).reshape(-1)
 
 
@@ -1776,8 +1784,9 @@ _NATIVE_LMOMENT_BOUND = 1e100
 
 def _native_lmoment_input(calibration_values: np.ndarray) -> bool:
     """Whether the Rust L-moment fits take ``calibration_values`` and match the Python fit."""
-    return _native_float64(calibration_values) and bool(
-        np.all((np.abs(calibration_values) <= _NATIVE_LMOMENT_BOUND) | np.isnan(calibration_values))
+    # NaN compares False both ways, so only a value past the bound (or an infinity) fails
+    return _native_float64(calibration_values) and not (
+        (calibration_values > _NATIVE_LMOMENT_BOUND).any() or (calibration_values < -_NATIVE_LMOMENT_BOUND).any()
     )
 
 
@@ -1804,7 +1813,7 @@ def _native_pearson_parameters(
 
 def _native_pearson_cdf(values: np.ndarray, skew: np.ndarray, loc: np.ndarray, scale: np.ndarray) -> np.ndarray | None:
     """The Rust ``scipy.stats.pearson3.cdf``, or None where the Python implementation runs."""
-    if not _native_float64(values):
+    if values.ndim < 2 or not _native_float64(values):
         return None
     if _native is None:  # _native_float64 guarantees it; this narrows the type
         raise RuntimeError(_NATIVE_EXTENSION_MISSING)
@@ -1841,7 +1850,7 @@ def _native_loglogistic_cdf(
     values: np.ndarray, locs: np.ndarray, scales: np.ndarray, shapes: np.ndarray
 ) -> np.ndarray | None:
     """The Rust GLO CDF clipped to [0, 1], or None where the Python implementation runs."""
-    if not _native_float64(values):
+    if values.ndim < 2 or not _native_float64(values):
         return None
     if _native is None:  # _native_float64 guarantees it; this narrows the type
         raise RuntimeError(_NATIVE_EXTENSION_MISSING)
