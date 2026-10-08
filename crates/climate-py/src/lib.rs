@@ -48,9 +48,16 @@ fn climate_error(error: climate_core::ClimateError) -> PyErr {
     }
 }
 
-fn checked_copy<D: Dimension>(array: &PyReadonlyArray<'_, f64, D>) -> PyResult<Array<f64, D>> {
+/// Copy one input array, rejecting the layouts rust-numpy cannot view safely.
+///
+/// `element` names the dtype in the error, so a rejected float64 kernel input
+/// keeps the message it has always raised.
+fn copy_input<T: numpy::Element + Copy, D: Dimension>(
+    array: &PyReadonlyArray<'_, T, D>,
+    element: &str,
+) -> PyResult<Array<T, D>> {
     if !array.is_aligned() || !array.data().is_aligned() {
-        return Err(PyValueError::new_err("unaligned float64 array"));
+        return Err(PyValueError::new_err(format!("unaligned {element} array")));
     }
     // rust-numpy normalizes negative strides by shifting the data pointer, even
     // on empty axes. Avoid creating a possibly unaligned/out-of-bounds view.
@@ -60,6 +67,25 @@ fn checked_copy<D: Dimension>(array: &PyReadonlyArray<'_, f64, D>) -> PyResult<A
     }
     // Copy before `detach`: another Python thread may mutate caller-owned storage.
     Ok(array.as_array().to_owned())
+}
+
+/// A float64 kernel input: the dtype every `checked_copy` caller used to reach.
+fn checked_copy<D: Dimension>(array: &PyReadonlyArray<'_, f64, D>) -> PyResult<Array<f64, D>> {
+    copy_input(array, "float64")
+}
+
+/// A validity mask.
+fn checked_copy_flags<D: Dimension>(
+    array: &PyReadonlyArray<'_, bool, D>,
+) -> PyResult<Array<bool, D>> {
+    copy_input(array, "bool")
+}
+
+/// A calendar or gap-count array.
+fn checked_copy_counts<D: Dimension>(
+    array: &PyReadonlyArray<'_, i64, D>,
+) -> PyResult<Array<i64, D>> {
+    copy_input(array, "int64")
 }
 
 /// Gamma shape and scale per column of a (years, columns) calibration block.
@@ -278,13 +304,14 @@ struct RecurrenceArrays {
 impl<'py> RecurrenceArgs<'py> {
     fn copy(&self) -> PyResult<RecurrenceArrays> {
         Ok(RecurrenceArrays {
-            weather_valid: self.weather_valid.as_array().to_owned(),
-            static_valid: self.static_valid.as_array().to_owned(),
+            weather_valid: checked_copy_flags(&self.weather_valid)?,
+            static_valid: checked_copy_flags(&self.static_valid)?,
             in_season: self
                 .in_season
                 .as_ref()
-                .map(|season| season.as_array().to_owned()),
-            trailing_gap_days: self.trailing_gap_days.as_array().to_owned(),
+                .map(checked_copy_flags)
+                .transpose()?,
+            trailing_gap_days: checked_copy_counts(&self.trailing_gap_days)?,
             spin_up: self.spin_up,
             nan_policy: self.nan_policy.clone(),
             max_gap_days: self.max_gap_days,
@@ -421,8 +448,8 @@ fn duff_moisture_code<'py>(
     let relative_humidity_percent = checked_copy(&relative_humidity_percent)?;
     let precipitation = checked_copy(&precipitation_mm)?;
     let day_length_table = checked_copy(&day_length_table)?;
-    let months = months.as_array().to_owned();
-    let day_length_band = day_length_band.as_array().to_owned();
+    let months = checked_copy_counts(&months)?;
+    let day_length_band = checked_copy_counts(&day_length_band)?;
     let day_length = DayLength {
         table: day_length_table.view(),
         band: day_length_band.view(),
@@ -481,8 +508,8 @@ fn drought_code<'py>(
     let temperature_celsius = checked_copy(&temperature_celsius)?;
     let precipitation = checked_copy(&precipitation_mm)?;
     let day_length_table = checked_copy(&day_length_table)?;
-    let months = months.as_array().to_owned();
-    let day_length_band = day_length_band.as_array().to_owned();
+    let months = checked_copy_counts(&months)?;
+    let day_length_band = checked_copy_counts(&day_length_band)?;
     let day_length = DayLength {
         table: day_length_table.view(),
         band: day_length_band.view(),

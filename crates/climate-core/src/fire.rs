@@ -250,6 +250,7 @@ fn kbdi_next(
 }
 
 /// The recorded history and final state of one moisture code.
+#[derive(Debug)]
 pub struct CodeRun {
     pub values: Option<Array2<f64>>,
     pub code: Array1<f64>,
@@ -257,6 +258,7 @@ pub struct CodeRun {
 }
 
 /// The recorded history and final state of a KBDI run.
+#[derive(Debug)]
 pub struct KbdiRun {
     pub values: Option<Array2<f64>>,
     pub state: Vec<KbdiCell>,
@@ -505,6 +507,15 @@ pub fn kbdi(
             });
         }
     }
+    // the step indexes one climatology value per cell, so the caller's vector
+    // must be exactly that long
+    if mean_annual_precipitation_mm.len() != cells {
+        return Err(ClimateError::ShapeMismatch {
+            argument: "mean_annual_precipitation_mm",
+            expected: cells,
+            actual: mean_annual_precipitation_mm.len(),
+        });
+    }
     let run = run(
         "kbdi",
         initial_state,
@@ -734,6 +745,45 @@ mod tests {
                 value: 5,
                 minimum: 0,
                 maximum: 4
+            }
+        );
+    }
+
+    #[test]
+    fn a_kbdi_climatology_of_the_wrong_length_is_rejected() {
+        // the step indexes one climatology value per cell, so a shorter vector
+        // must be an error rather than an out-of-bounds read
+        let precipitation = Array2::from_elem((2, 3), 1.0);
+        let temperature = Array2::from_elem((2, 3), 20.0);
+        let weather_valid: Array2<bool> = Array2::from_elem((2, 3), true);
+        let state = [KbdiCell {
+            kbdi: 0.0,
+            wet_spell_precipitation: 0.0,
+        }; 3];
+        let error = kbdi(
+            precipitation.view(),
+            temperature.view(),
+            array![800.0].view(),
+            &state,
+            &recurrence_inputs(
+                weather_valid.view(),
+                array![true, true, true].view(),
+                None,
+                array![-1, -1, -1].view(),
+                0,
+                "propagate",
+                0,
+            )
+            .unwrap(),
+            true,
+        )
+        .unwrap_err();
+        assert_eq!(
+            error,
+            ClimateError::ShapeMismatch {
+                argument: "mean_annual_precipitation_mm",
+                expected: 3,
+                actual: 1
             }
         );
     }
