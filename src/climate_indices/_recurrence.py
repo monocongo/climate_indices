@@ -18,7 +18,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Literal, TypeVar, overload
+from typing import Literal, NoReturn, TypeVar, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -47,6 +47,21 @@ NativeRecurrence = Callable[
     [npt.NDArray[np.float64] | None, int, Literal["propagate", "bridge"], int],
     tuple[npt.NDArray[np.float64] | None, npt.NDArray[np.int64] | None] | None,
 ]
+
+
+def _raise_non_finite(index_type: str, underlying: Exception) -> NoReturn:
+    """Raise the error the Python driver raises for a non-finite step result.
+
+    ``_advance_component`` rejects a daily update that is not finite although
+    its inputs were, and a native kernel reports the same condition; raising the
+    original error type from here keeps the two paths indistinguishable.
+    """
+    raise InvalidArgumentError(
+        f"{index_type} produced a non-finite value from finite inputs.",
+        argument_name=index_type,
+        argument_value="non-finite result",
+        valid_values="Finite inputs whose result stays within float64",
+    ) from underlying
 
 
 def _as_float_array(values: npt.ArrayLike) -> npt.NDArray[np.float64]:

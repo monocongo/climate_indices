@@ -27,9 +27,9 @@ import numpy as np
 import pytest
 
 from climate_indices import fire
+from climate_indices._recurrence import _raise_non_finite
 from climate_indices.exceptions import InvalidArgumentError
 from climate_indices.fire import _native as fire_native
-from climate_indices.fire._native import _raise_non_finite
 from tests import conftest
 
 native = conftest.import_native()

@@ -15,14 +15,13 @@ cannot hand to the extension unchanged stays on the Python path.
 from __future__ import annotations
 
 from types import ModuleType
-from typing import TYPE_CHECKING, NoReturn
+from typing import TYPE_CHECKING
 
 import numpy as np
 import numpy.typing as npt
 
 from climate_indices import compute
-from climate_indices._recurrence import NativeRecurrence
-from climate_indices.exceptions import InvalidArgumentError
+from climate_indices._recurrence import NativeRecurrence, _raise_non_finite
 
 if TYPE_CHECKING:
     from climate_indices.fire._cffwis_codes import _CodeInputs, _MoistureCode
@@ -43,21 +42,6 @@ def _native_module() -> ModuleType | None:
     unreachable to the type checker.
     """
     return _native
-
-
-def _raise_non_finite(index_type: str, underlying: Exception) -> NoReturn:
-    """Raise the error the Python driver raises for a non-finite step result.
-
-    ``_advance_component`` rejects a daily update that is not finite although
-    its inputs were, and the kernel reports the same condition; raising the
-    original error type from here keeps the two paths indistinguishable.
-    """
-    raise InvalidArgumentError(
-        f"{index_type} produced a non-finite value from finite inputs.",
-        argument_name=index_type,
-        argument_value="non-finite result",
-        valid_values="Finite inputs whose result stays within float64",
-    ) from underlying
 
 
 def _cells(shape: tuple[int, ...]) -> int:
