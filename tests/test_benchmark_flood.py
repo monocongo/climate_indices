@@ -23,11 +23,17 @@ integers (CI-friendly defaults in parentheses):
 from __future__ import annotations
 
 import os
+import time
+from collections.abc import Callable
+from types import ModuleType
+from typing import Any
 
 import numpy as np
 import pytest
 
 from climate_indices import flood
+from climate_indices.flood import _native as flood_native
+from tests import conftest
 
 
 def _env_ints(name: str, default: str) -> tuple[int, ...]:
@@ -74,6 +80,35 @@ def _pe(years: int, side: int) -> np.ndarray:
     """Effective precipitation of the synthetic record, the input EDI and the Flood Index read."""
     with np.errstate(all="ignore"):
         return flood.effective_precipitation(_rain(years, side))
+
+
+@pytest.fixture(scope="module")
+def native() -> ModuleType:
+    """The built Rust extension; skips these tests when it is absent (required in the native CI legs)."""
+    return conftest.import_native()
+
+
+def _measure(run: Callable[[], Any], repeats: int = _REPEATS) -> float:
+    """Return the best of ``repeats`` wall-clock timings of ``run``, in seconds."""
+    with np.errstate(all="ignore"):
+        run()  # warmup, excludes first-call allocation costs
+        best = float("inf")
+        for _ in range(repeats):
+            start = time.perf_counter()
+            run()
+            best = min(best, time.perf_counter() - start)
+    return best
+
+
+def _time_both_paths(
+    monkeypatch: pytest.MonkeyPatch, native: ModuleType, run: Callable[[], Any]
+) -> tuple[float, float]:
+    """Return ``run``'s best seconds through the Rust kernels and on the Python path."""
+    monkeypatch.setattr(flood_native, "_native", native)
+    rust = _measure(run)
+    monkeypatch.setattr(flood_native, "_native", None)
+    python = _measure(run)
+    return rust, python
 
 
 @pytest.mark.benchmark
