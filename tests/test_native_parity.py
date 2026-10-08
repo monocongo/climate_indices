@@ -226,6 +226,13 @@ def test_masked_transform_is_normalized_to_nan_before_dispatch(monkeypatch, prec
     assert calls == _KERNELS
     _assert_parity(rust, python)
 
+    # the documented guarantee: a partial mask has the result of the explicitly NaN-filled input
+    filled = np.ma.filled(masked.astype(float), np.nan)
+    _assert_parity(
+        python,
+        compute.transform_fitted_gamma(filled, _DATA_START, 1981, 2010, compute.Periodicity.monthly),
+    )
+
 
 def test_supplied_fitting_params_are_transformed_by_the_kernel(monkeypatch, precips_mm_monthly):
     alphas, betas = compute.gamma_parameters(precips_mm_monthly, _DATA_START, 1981, 2010, compute.Periodicity.monthly)
