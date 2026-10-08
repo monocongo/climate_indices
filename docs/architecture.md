@@ -385,7 +385,10 @@ array AWC only when it is one plain float64 value per cell. An infinite Z value
 and a calibration Z series too short for the longest rolling window keep the
 Python path, which raises its own error; the kernels' abatement and least-squares
 failures raise `_native.NoConvergenceError`, which `palmer.py` re-raises as the
-`ConvergenceError` the Python path raises.
+`ConvergenceError` the Python path raises. The native water balance releases its
+unused Python output placeholders before allocating Rust outputs; its inputs are
+still copied before releasing the GIL. The K-prime and raw Z-index stages borrow
+the CAFEC arrays with the GIL held, avoiding five full-record copies per stage.
 
 Dispatch takes the Rust path only for a
 plain, aligned float64 `ndarray` whose fit parameters are aligned and one per

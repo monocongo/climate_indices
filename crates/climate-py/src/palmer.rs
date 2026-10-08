@@ -4,7 +4,7 @@
 //! kernel documents: monthly arrays `(n_years, 12, n_cells)`, monthly
 //! coefficients `(12, n_cells)`. `palmer.py` reshapes to and from these.
 
-use numpy::ndarray::Array3;
+use numpy::ndarray::{CowArray, Ix2, Ix3};
 use numpy::{
     IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArray3,
 };
@@ -16,7 +16,7 @@ use climate_core::palmer_wells::WellsFactors;
 use climate_core::palmer_zindex::CafecInputs;
 use climate_core::self_calibration::Spell;
 
-use crate::{checked_copy, climate_error};
+use crate::{checked_copy, checked_view, climate_error};
 
 type Monthly<'py> = Bound<'py, PyArray3<f64>>;
 type Sums<'py> = Bound<'py, PyArray2<f64>>;
@@ -101,30 +101,30 @@ fn palmer_water_balance<'py>(
     ))
 }
 
-/// Owned copies of the arrays a month's CAFEC precipitation reads.
-struct CafecArrays {
-    monthly: [Array3<f64>; 5],
-    coefficients: [numpy::ndarray::Array2<f64>; 4],
+/// Borrow the CAFEC arrays with the GIL held, as the PNP percentage binding does.
+struct CafecArrays<'a> {
+    monthly: [CowArray<'a, f64, Ix3>; 5],
+    coefficients: [CowArray<'a, f64, Ix2>; 4],
 }
 
-impl CafecArrays {
-    fn copy(
-        monthly: [&PyReadonlyArray3<'_, f64>; 5],
-        coefficients: [&PyReadonlyArray2<'_, f64>; 4],
+impl<'a> CafecArrays<'a> {
+    fn view(
+        monthly: [&'a PyReadonlyArray3<'_, f64>; 5],
+        coefficients: [&'a PyReadonlyArray2<'_, f64>; 4],
     ) -> PyResult<Self> {
         Ok(Self {
             monthly: [
-                checked_copy(monthly[0])?,
-                checked_copy(monthly[1])?,
-                checked_copy(monthly[2])?,
-                checked_copy(monthly[3])?,
-                checked_copy(monthly[4])?,
+                checked_view(monthly[0])?,
+                checked_view(monthly[1])?,
+                checked_view(monthly[2])?,
+                checked_view(monthly[3])?,
+                checked_view(monthly[4])?,
             ],
             coefficients: [
-                checked_copy(coefficients[0])?,
-                checked_copy(coefficients[1])?,
-                checked_copy(coefficients[2])?,
-                checked_copy(coefficients[3])?,
+                checked_view(coefficients[0])?,
+                checked_view(coefficients[1])?,
+                checked_view(coefficients[2])?,
+                checked_view(coefficients[3])?,
             ],
         })
     }
@@ -164,21 +164,18 @@ fn palmer_k_prime<'py>(
     calibration_year_initial_idx: usize,
     calibration_year_final_idx: usize,
 ) -> PyResult<(Sums<'py>, Sums<'py>)> {
-    let arrays = CafecArrays::copy(
+    let arrays = CafecArrays::view(
         [&precips, &pet, &prdat, &spdat, &pldat],
         [&alpha, &beta, &gamma, &delta],
     )?;
-    let trat = checked_copy(&trat)?;
-    let (dbar, k_prime) = py
-        .detach(|| {
-            climate_core::palmer_zindex::k_prime_and_dbar(
-                &arrays.inputs(),
-                trat.view(),
-                calibration_year_initial_idx,
-                calibration_year_final_idx,
-            )
-        })
-        .map_err(climate_error)?;
+    let trat = checked_view(&trat)?;
+    let (dbar, k_prime) = climate_core::palmer_zindex::k_prime_and_dbar(
+        &arrays.inputs(),
+        trat.view(),
+        calibration_year_initial_idx,
+        calibration_year_final_idx,
+    )
+    .map_err(climate_error)?;
     Ok((dbar.into_pyarray(py), k_prime.into_pyarray(py)))
 }
 
@@ -198,12 +195,12 @@ fn palmer_raw_zindex<'py>(
     delta: PyReadonlyArray2<'py, f64>,
     ak: PyReadonlyArray2<'py, f64>,
 ) -> PyResult<Monthly<'py>> {
-    let arrays = CafecArrays::copy(
+    let arrays = CafecArrays::view(
         [&precips, &pet, &prdat, &spdat, &pldat],
         [&alpha, &beta, &gamma, &delta],
     )?;
-    let ak = checked_copy(&ak)?;
-    py.detach(|| climate_core::palmer_zindex::raw_zindex(&arrays.inputs(), ak.view()))
+    let ak = checked_view(&ak)?;
+    climate_core::palmer_zindex::raw_zindex(&arrays.inputs(), ak.view())
         .map(|z| z.into_pyarray(py))
         .map_err(climate_error)
 }

@@ -180,6 +180,13 @@ pub fn water_balance(
     calibration_year_final_idx: usize,
 ) -> Result<WaterBalance, ClimateError> {
     let (n_years, months, n_cells) = precips.dim();
+    if months != 12 {
+        return Err(ClimateError::ShapeMismatch {
+            argument: "months",
+            expected: 12,
+            actual: months,
+        });
+    }
     if pet.dim() != precips.dim() {
         return Err(ClimateError::ShapeMismatch {
             argument: "pet",
@@ -273,8 +280,8 @@ mod tests {
     #[test]
     fn recharge_case_matches_the_python_branches() {
         // awc 4.0 -> awc_bot 3.0; ss 1.0, su 3.0; p 2.0, pet 0.5
-        let precips = array![[[2.0]]];
-        let pet = array![[[0.5]]];
+        let precips = Array3::from_elem((1, 12, 1), 2.0);
+        let pet = Array3::from_elem((1, 12, 1), 0.5);
         let awc = array![4.0];
         let out = water_balance(precips.view(), pet.view(), awc.view(), 0, 0).unwrap();
 
@@ -296,8 +303,8 @@ mod tests {
     #[test]
     fn evaporation_case_matches_the_python_branches() {
         // awc 4.0 -> awc_bot 3.0; ss 1.0, su 3.0; p 0.5, pet 2.0
-        let precips = array![[[0.5]]];
-        let pet = array![[[2.0]]];
+        let precips = Array3::from_elem((1, 12, 1), 0.5);
+        let pet = Array3::from_elem((1, 12, 1), 2.0);
         let awc = array![4.0];
         let out = water_balance(precips.view(), pet.view(), awc.view(), 0, 0).unwrap();
 
@@ -343,9 +350,26 @@ mod tests {
     }
 
     #[test]
+    fn rejects_non_monthly_shapes() {
+        for months in [0, 1, 11, 13] {
+            let values = Array3::zeros((1, months, 1));
+            let awc = array![4.0];
+            let error = water_balance(values.view(), values.view(), awc.view(), 0, 0).unwrap_err();
+            assert_eq!(
+                error,
+                ClimateError::ShapeMismatch {
+                    argument: "months",
+                    expected: 12,
+                    actual: months,
+                }
+            );
+        }
+    }
+
+    #[test]
     fn rejects_a_mismatched_awc_length() {
-        let precips = array![[[1.0, 1.0]]];
-        let pet = array![[[0.5, 0.5]]];
+        let precips = Array3::from_elem((1, 12, 2), 1.0);
+        let pet = Array3::from_elem((1, 12, 2), 0.5);
         let awc = Array1::from(vec![4.0]);
         let error = water_balance(precips.view(), pet.view(), awc.view(), 0, 0).unwrap_err();
         assert_eq!(

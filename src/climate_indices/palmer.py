@@ -291,6 +291,9 @@ def _native_water_balances(prepared: _PalmerPrepared) -> bool:
     awc = _native_awc(prepared.awc, prepared.n_cells)
     if native is None or awc is None:
         return False
+    # The kernel replaces these buffers; release them before allocating its outputs.
+    for name in _WATER_BALANCE_MONTHLY:
+        setattr(prepared, name, np.empty((0, 12, prepared.n_cells)))
     monthly, sums = native.palmer_water_balance(
         prepared.precips,
         prepared.pet,

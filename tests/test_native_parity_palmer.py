@@ -12,6 +12,7 @@ Skipped when the extension is not built (``uv run maturin develop --release``),
 unless ``CLIMATE_INDICES_REQUIRE_NATIVE=1`` is set, as in CI's native legs.
 """
 
+import weakref
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -111,6 +112,57 @@ def _pdsi(precips: np.ndarray, pet: np.ndarray, awc: Any, **kwargs: Any) -> Call
 
 def _scpdsi(precips: np.ndarray, pet: np.ndarray, awc: Any, **kwargs: Any) -> Callable[[], Any]:
     return lambda: palmer.scpdsi(precips, pet, awc, _START, *_CALIBRATION, **kwargs)
+
+
+@pytest.mark.parametrize("months", [0, 1, 11, 13])
+def test_water_balance_rejects_non_monthly_shapes(months: int) -> None:
+    values = np.zeros((1, months, 1))
+    with pytest.raises(ValueError, match=f"months has length {months}, expected 12"):
+        native.palmer_water_balance(values, values, np.ones(1), 0, 0)
+
+
+def test_native_water_balance_releases_unused_placeholders(monkeypatch: pytest.MonkeyPatch) -> None:
+    prepared = palmer._initialize_prepared(np.zeros(24), np.zeros(24), 4.0, 2000, 2000, 2001)
+    placeholders = [weakref.ref(getattr(prepared, name)) for name in palmer._WATER_BALANCE_MONTHLY]
+    kernel = native.palmer_water_balance
+
+    def water_balance(*args: Any) -> Any:
+        assert all(reference() is None for reference in placeholders)
+        return kernel(*args)
+
+    monkeypatch.setattr(native, "palmer_water_balance", water_balance)
+    monkeypatch.setattr(palmer, "_native", native)
+    with np.errstate(all="ignore"):
+        assert palmer._native_water_balances(prepared)
+    for name in palmer._WATER_BALANCE_MONTHLY:
+        assert getattr(prepared, name).shape == (2, 12, 1)
+
+
+@pytest.mark.parametrize("cells", [0, 3])
+def test_cafec_kernels_accept_borrowed_strided_and_broadcast_arrays(cells: int) -> None:
+    monthly = np.random.default_rng(1316).uniform(1.0, 2.0, (2, 12, cells))[::-1, ::-1, ::-1]
+    coefficients = tuple(np.broadcast_to(value, (12, cells)) for value in (0.5, 0.3, 0.2, 0.1))
+    factors = np.broadcast_to(2.0, (12, cells))
+    operands = (monthly,) * 5 + coefficients
+    alpha, beta, gamma, delta = coefficients
+    cafec = alpha * monthly + beta * monthly + gamma * monthly - delta * monthly
+    expected_dbar = np.abs(monthly - cafec).sum(axis=0) / 2
+    with np.errstate(all="ignore"):
+        expected_k = 1.5 * np.log10((factors + 2.8) / expected_dbar) + 0.5
+        _assert_parity(native.palmer_k_prime(*operands, factors, 0, 1), (expected_dbar, expected_k))
+    _assert_parity(native.palmer_raw_zindex(*operands, factors), factors * (monthly - cafec))
+
+
+@pytest.mark.parametrize("kernel", ["palmer_k_prime", "palmer_raw_zindex"])
+@pytest.mark.parametrize("argument", range(10))
+def test_cafec_kernels_reject_unaligned_operands(kernel: str, argument: int) -> None:
+    operands: list[Any] = [np.ones((2, 12, 1)) for _ in range(5)] + [np.ones((12, 1)) for _ in range(5)]
+    original = operands[argument]
+    operands[argument] = np.ndarray(original.shape, dtype=np.float64, buffer=bytearray(original.nbytes + 1), offset=1)
+    if kernel == "palmer_k_prime":
+        operands.extend((0, 1))
+    with pytest.raises(ValueError, match="unaligned float64 array"):
+        getattr(native, kernel)(*operands)
 
 
 def test_every_division_matches_for_pdsi(monkeypatch, palmer_division_dir: Path, palmer_division_inputs) -> None:

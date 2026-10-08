@@ -320,7 +320,9 @@ registered is never exposed to Python. Add the matching signature to
 `src/climate_indices/_native.pyi`, annotating each array argument with its dtype:
 float64 values, bool validity masks, int64 indices. Existing bindings call
 `checked_copy`, which rejects unaligned arrays, copies empty and caller-owned
-storage before `py.detach`, and wraps the view conversion.
+storage before `py.detach`, and wraps the view conversion. Simple elementwise
+stages such as PNP percentages and Palmer CAFEC use `checked_view` without releasing
+the GIL, avoiding input-sized copies.
 
 ### 5. Add dispatch and routing
 
@@ -373,8 +375,8 @@ cases the doc block promises: all-missing and all-zero columns, a constant colum
 supplied parameters, and masked or unaligned inputs that must fall back.
 
 A test that targets the Python reference itself uses the `python_backend` fixture
-from `tests/conftest.py`, which pins both `compute._native` and `fire._native` to
-`None` for the test. Loosening a tolerance needs a measured justification in the
+from `tests/conftest.py`, which pins `compute._native`, `eto._native`,
+`pm_eto._native`, `fire._native`, and `palmer._native` to `None` for the test. Loosening a tolerance needs a measured justification in the
 ticket (maximum absolute and relative error, where it occurs, which primitive
 diverges, and whether reproducing the Python method closes the gap); never edit a
 fixture or a reference test to match Rust.
