@@ -45,6 +45,20 @@ def _native_module() -> ModuleType | None:
     return _native
 
 
+def _kernel_module(*names: str) -> ModuleType | None:
+    """The extension when it exposes every named attribute, else None.
+
+    A stale installed extension can import successfully yet predate a kernel
+    (``docs/architecture.md``). Dispatching into it would raise
+    ``AttributeError`` instead of leaving the computation on its Python path, so
+    a missing kernel declines the whole call.
+    """
+    native = _native_module()
+    if native is None or not all(hasattr(native, name) for name in names):
+        return None
+    return native
+
+
 def _cells(shape: tuple[int, ...]) -> int:
     """The number of cells in a time-first array's trailing spatial shape."""
     return int(np.prod(shape, dtype=np.intp))
@@ -57,7 +71,7 @@ def _block(array: npt.NDArray[np.float64], rows: int, columns: int) -> npt.NDArr
 
 def _time_first_block(array: npt.NDArray[np.float64]) -> npt.NDArray[np.float64] | None:
     """A ``(time, *cells)`` array as a ``(time, cells)`` block, or None when the kernels cannot take it."""
-    if _native_module() is None or not compute._native_float64(array):
+    if not compute._native_float64(array):
         return None
     rows = array.shape[0]
     columns = _cells(array.shape[1:])
@@ -73,8 +87,8 @@ def effective_precipitation(series: npt.NDArray[np.float64], duration: int) -> n
     leading ``duration - 1`` NaN days, so the result replaces the Python block
     whole.
     """
-    native = _native_module()
-    block = _time_first_block(series)
+    native = _kernel_module("effective_precipitation")
+    block = None if native is None else _time_first_block(series)
     if native is None or block is None:
         return None
     result: npt.NDArray[np.float64] = native.effective_precipitation(block, int(duration))
@@ -87,8 +101,8 @@ def edi(years: npt.NDArray[np.float64], calibration_start: int, calibration_end:
     ``calibration_start`` and ``calibration_end`` are the Calibration Period's
     year rows, end exclusive, as ``_edi.py`` resolved them.
     """
-    native = _native_module()
-    block = _time_first_block(years)
+    native = _kernel_module("edi")
+    block = None if native is None else _time_first_block(years)
     if native is None or block is None:
         return None
     result: npt.NDArray[np.float64] = native.edi(block, int(calibration_start), int(calibration_end))
@@ -105,8 +119,8 @@ def flood_index(
     resolved them. The kernel's calibration sums follow NumPy's axis-0 order for
     the same ``(years, cells)`` sample, which depends on the cell count.
     """
-    native = _native_module()
-    block = _time_first_block(series)
+    native = _kernel_module("flood_index")
+    block = None if native is None else _time_first_block(series)
     if native is None or block is None:
         return None
     result: npt.NDArray[np.float64] = native.flood_index(block, int(first_start), int(calibration_years))
@@ -129,7 +143,7 @@ def api_recurrence(
     whose type would promote the Python step beyond float64 (``np.longdouble``)
     stays on the Python path, as does any array the extension cannot take.
     """
-    native = _native_module()
+    native = _kernel_module("antecedent_precipitation_index", "NonFiniteResultError")
     if native is None or np.result_type(k, np.float64) != np.float64:
         return None
     if not all(compute._native_float64(array) for array in (precipitation, api)):

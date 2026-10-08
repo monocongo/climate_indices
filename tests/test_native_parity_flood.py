@@ -20,6 +20,7 @@ the real-record cases run the Fresno GHCN daily rainfall the KBDI reference uses
 from __future__ import annotations
 
 import csv
+import types
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
@@ -357,6 +358,28 @@ def test_an_api_option_wider_than_the_binding_keeps_the_python_path(monkeypatch,
         python = flood.antecedent_precipitation_index(rain, 0.9, **options)
     assert recorder.calls == set()
     _assert_parity(rust, python)
+
+
+def test_an_extension_that_predates_the_flood_kernels_keeps_the_python_path(monkeypatch) -> None:
+    """A loaded extension without the flood kernels (a stale build) leaves every entry point in Python."""
+    rain = _synthetic_rain((2 * 366,), seed=12)
+
+    def run() -> tuple[Any, ...]:
+        with np.errstate(all="ignore"):
+            pe = flood.effective_precipitation(rain, duration=30)
+            return (
+                pe,
+                flood.edi(pe, 2000, 2000, 2001),
+                flood.flood_index(pe, 2000, 2000, 2001, year_start_month=1),
+                flood.antecedent_precipitation_index(rain, 0.9),
+            )
+
+    monkeypatch.setattr(flood_native, "_native", None)
+    python = run()
+    monkeypatch.setattr(flood_native, "_native", types.ModuleType("climate_indices._native"))
+    stale = run()
+    for stale_item, python_item in zip(stale, python, strict=True):
+        _assert_parity(stale_item, python_item)
 
 
 def test_default_numpy_error_policies_keep_the_python_path(monkeypatch) -> None:
