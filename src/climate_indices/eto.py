@@ -285,6 +285,42 @@ def _validate_latitude_cells(
     return latitude_rank
 
 
+def _native_latitude(latitude_radians: float | np.ndarray, cell_shape: tuple[int, ...]) -> np.ndarray | None:
+    """The one-latitude-per-cell kernel operand, or None to stay on the Python path.
+
+    The Rust PET kernels take one latitude per cell as a flat float64 array. A scalar
+    latitude reaches every cell, so it is handed over as a zero-stride view of itself:
+    the binding copies what it reads, and a block per cell here would allocate in
+    proportion to the request rather than to the scalar. The checks run on the values
+    the Python path checks, so a bad latitude raises the same error before the kernel
+    is reached.
+
+    :param latitude_radians: latitude in radians, as a scalar or an array of per-cell
+        latitudes
+    :param cell_shape: trailing cell dimensions of the time-major spatial block, empty
+        for the 1-D/2-D path
+    :return: a flat view holding one latitude per cell, or None when the kernels cannot
+        take the latitude
+    """
+    cells = int(np.prod(cell_shape, dtype=np.intp))
+    if isinstance(latitude_radians, np.ndarray):
+        if not compute._native_float64(latitude_radians):
+            return None
+        if not cell_shape:
+            # the 1-D/2-D path takes a scalar latitude, as it always has
+            return None
+        _validate_latitude_cells(latitude_radians, cell_shape)
+        # the range check runs on the array the Python path checks, so a bad latitude
+        # raises the very same error before the broadcast copy is made
+        _validate_latitude_radians(latitude_radians)
+        return np.ascontiguousarray(np.broadcast_to(latitude_radians, cell_shape), dtype=np.float64).reshape(cells)
+    # a scalar latitude converts as the Python path converts it, so a non-numeric
+    # latitude keeps raising the TypeError it always raises
+    latitude_scalar = float(latitude_radians)
+    _validate_latitude_radians(latitude_scalar)
+    return np.broadcast_to(np.asarray(latitude_scalar, dtype=np.float64).reshape(1), (cells,))
+
+
 def _native_thornthwaite(
     values: np.ndarray,
     latitude_radians: float | np.ndarray,
@@ -315,24 +351,9 @@ def _native_thornthwaite(
 
     years = values.shape[0]
     cell_shape = values.shape[2:]
-    if isinstance(latitude_radians, np.ndarray):
-        if not compute._native_float64(latitude_radians):
-            return None
-        if not cell_shape:
-            # the 1-D/2-D path takes a scalar latitude, as it always has
-            return None
-        _validate_latitude_cells(latitude_radians, cell_shape)
-        # the range check runs on the array the Python path checks, so a bad latitude
-        # raises the very same error before the broadcast copy is made
-        _validate_latitude_radians(latitude_radians)
-        latitude_cells = np.broadcast_to(latitude_radians, cell_shape)
-    else:
-        # a scalar latitude converts as the Python path converts it, so a
-        # non-numeric latitude keeps raising the TypeError it always raises
-        latitude_scalar = float(latitude_radians)
-        _validate_latitude_radians(latitude_scalar)
-        latitude_cells = np.full(cell_shape, latitude_scalar)
-    _validate_latitude_radians(latitude_cells)
+    latitude_kernel = _native_latitude(latitude_radians, cell_shape)
+    if latitude_kernel is None:
+        return None
 
     # an extension built before the PET kernels keeps the Python path
     if not hasattr(native, "thornthwaite"):
@@ -342,7 +363,7 @@ def _native_thornthwaite(
     leap_years = np.array([calendar.isleap(data_start_year + year) for year in range(years)], dtype=np.bool_)
     pet = native.thornthwaite(
         np.ascontiguousarray(values).reshape(years, 12, cells),
-        np.ascontiguousarray(latitude_cells, dtype=np.float64).reshape(cells),
+        latitude_kernel,
         leap_years,
     )
     return np.asarray(pet).reshape(values.shape)
@@ -384,35 +405,15 @@ def _native_hargreaves(
 
     time = daily_tmean_celsius.shape[0]
     cell_shape = daily_tmean_celsius.shape[1:]
-    cells = int(np.prod(cell_shape, dtype=np.intp))
-    if isinstance(latitude_radians, np.ndarray):
-        if not compute._native_float64(latitude_radians):
-            return None
-        if not cell_shape:
-            # the 1-D/2-D path takes a scalar latitude, as it always has
-            return None
-        _validate_latitude_cells(latitude_radians, cell_shape)
-        # the range check runs on the array the Python path checks, so a bad latitude
-        # raises the very same error before the broadcast copy is made
-        _validate_latitude_radians(latitude_radians)
-        latitude_cells = np.broadcast_to(latitude_radians, cell_shape)
-        latitude_kernel = np.ascontiguousarray(latitude_cells, dtype=np.float64).reshape(cells)
-    else:
-        # a scalar latitude converts as the Python path converts it, so a
-        # non-numeric latitude keeps raising the TypeError it always raises
-        latitude_scalar = float(latitude_radians)
-        _validate_latitude_radians(latitude_scalar)
-        latitude_value = np.asarray(latitude_scalar, dtype=np.float64)
-        latitude_cells = np.broadcast_to(latitude_value, cell_shape)
-        # the kernel reads one latitude per cell and the binding copies what it reads,
-        # so a single value stays a zero-stride view of itself: a block per cell here
-        # would allocate in proportion to the request rather than to the scalar
-        latitude_kernel = np.broadcast_to(latitude_value.reshape(1), (cells,))
-    _validate_latitude_radians(latitude_cells)
+    latitude_kernel = _native_latitude(latitude_radians, cell_shape)
+    if latitude_kernel is None:
+        return None
 
     # an extension built before the PET kernels keeps the Python path
     if not hasattr(native, "hargreaves"):
         return None
+
+    cells = int(np.prod(cell_shape, dtype=np.intp))
 
     # the kernel copies each operand before it releases the GIL, and a block that does
     # not lie contiguously is copied here to flatten it, so the route holds these bytes

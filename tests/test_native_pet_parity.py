@@ -150,6 +150,32 @@ def test_thornthwaite_spatial_block_with_per_cell_latitude(monkeypatch):
     _assert_parity(rust, python)
 
 
+def test_thornthwaite_passes_a_scalar_latitude_as_a_view(monkeypatch):
+    """One latitude per cell, read from a view of the scalar rather than a block of it.
+
+    The kernel copies what it reads, so materializing the scalar into a per-cell block
+    here would allocate in proportion to the request rather than to the scalar.
+    """
+    temps = _temperatures(26, (2, 2))
+    seen: list[tuple[np.ndarray, ...]] = []
+
+    def capture(*arrays: np.ndarray) -> np.ndarray:
+        seen.append(arrays)
+        return native.thornthwaite(*arrays)
+
+    with np.errstate(all="ignore"):
+        monkeypatch.setattr(eto, "_native", SimpleNamespace(thornthwaite=capture))
+        result = eto.eto_thornthwaite(temps, 35.0, 2001, spatial_time_major=True)
+        monkeypatch.setattr(eto, "_native", None)
+        reference = eto.eto_thornthwaite(temps, 35.0, 2001, spatial_time_major=True)
+
+    assert len(seen) == 1
+    latitude = seen[0][1]
+    assert latitude.strides == (0,), "a scalar latitude was materialized into a per-cell block"
+    assert latitude.base is not None and latitude.base.size == 1
+    _assert_parity(result, reference)
+
+
 @pytest.mark.parametrize("latitude", [90.0, -90.0])
 def test_thornthwaite_polar_latitudes(monkeypatch, latitude):
     temps = _temperatures(24, seed=3)
