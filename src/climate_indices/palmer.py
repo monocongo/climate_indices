@@ -3,6 +3,7 @@
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from types import ModuleType
 from typing import Any, NamedTuple
 
 import numpy as np
@@ -17,6 +18,13 @@ from climate_indices.exceptions import ConvergenceError
 from climate_indices.logging_config import get_logger
 
 _logger = get_logger(__name__)
+
+try:
+    # the optional Rust kernels (docs/architecture.md); without the extension every
+    # Palmer stage below runs its Python implementation
+    from climate_indices import _native
+except ImportError:
+    _native = None  # type: ignore[assignment]
 
 # declare the function names that should be included in the public API for this module
 __all__ = ["pdsi", "scpdsi"]
@@ -240,12 +248,90 @@ def _calc_cafec_ratio(
     return np.where(den_nonzero, ratio, np.where(numerator == 0, both_zero, 0.0))  # NOSONAR
 
 
+def _palmer_native(kernel: str, *arrays: np.ndarray) -> ModuleType | None:
+    """The Rust extension when it has ``kernel`` and takes every array as it is, else None.
+
+    Every dispatch guard reads the module through this accessor, so the fallback
+    branch stays visible to the type checker; ``compute._native_float64`` holds the
+    shared plain-aligned-float64 and floating-point-policy rule. An extension built
+    before the Palmer kernels keeps the Python path.
+    """
+    native: ModuleType | None = _native
+    if native is None or not hasattr(native, kernel):
+        return None
+    if not all(compute._native_float64(array) for array in arrays):
+        return None
+    return native
+
+
+def _native_awc(awc: float | np.ndarray, n_cells: int) -> np.ndarray | None:
+    """One AWC per cell for the water-balance kernel, or None to stay in Python.
+
+    A scalar AWC enters the Python arithmetic as float64 only when it is a Python
+    ``int``/``float`` or an ``np.float64`` (a ``bool``, ``np.float32``, or other
+    NumPy scalar keeps its own type promotion), and it is handed over as a
+    zero-stride view. An array AWC must already be one plain float64 value per cell,
+    or a 0-d one; any other shape keeps the broadcasting, and the errors, of the
+    Python path.
+    """
+    if type(awc) in (int, float, np.float64):
+        return np.broadcast_to(np.float64(awc), (n_cells,))
+    if isinstance(awc, np.ndarray) and awc.shape in ((), (n_cells,)) and compute._native_float64(awc):
+        return np.broadcast_to(awc, (n_cells,))
+    return None
+
+
+_WATER_BALANCE_MONTHLY = ("spdat", "pldat", "prdat", "rdat", "tldat", "etdat", "rodat", "sssdat", "ssudat")
+_WATER_BALANCE_SUMS = ("psum", "spsum", "petsum", "plsum", "prsum", "rsum", "tlsum", "etsum", "rosum")
+
+
+def _native_water_balances(prepared: _PalmerPrepared) -> bool:
+    """Run the water balance with the Rust kernel; False when Python must run it."""
+    native = _palmer_native("palmer_water_balance", prepared.precips, prepared.pet)
+    awc = _native_awc(prepared.awc, prepared.n_cells)
+    if native is None or awc is None:
+        return False
+    monthly, sums = native.palmer_water_balance(
+        prepared.precips,
+        prepared.pet,
+        awc,
+        prepared.calibration_year_initial_idx,
+        prepared.calibration_year_final_idx,
+    )
+    for name, values in zip(_WATER_BALANCE_MONTHLY + _WATER_BALANCE_SUMS, monthly + sums, strict=True):
+        setattr(prepared, name, values)
+    return True
+
+
+def _native_cafec_arrays(
+    prepared: _PalmerPrepared, kernel: str, *extra: np.ndarray
+) -> tuple[ModuleType, tuple[np.ndarray, ...]] | None:
+    """The extension and the CAFEC-precipitation operands, or None to stay in Python.
+
+    A complete caller-supplied coefficient set is ``(12,)`` and shared by every
+    cell; it reaches the kernel as a zero-stride ``(12, n_cells)`` view, which is
+    what Python's ``alpha[month] * pet[year, month]`` broadcasting reads.
+    """
+    coefficients = (prepared.alpha, prepared.beta, prepared.gamma, prepared.delta)
+    monthly = (prepared.precips, prepared.pet, prepared.prdat, prepared.spdat, prepared.pldat)
+    native = _palmer_native(kernel, *monthly, *coefficients, *extra)
+    if native is None:
+        return None
+    shape = (12, prepared.n_cells)
+    columns = tuple(np.broadcast_to(c[:, np.newaxis], shape) if c.ndim == 1 else c for c in coefficients)
+    if any(c.shape != shape for c in columns):
+        return None
+    return native, (*monthly, *columns)
+
+
 def _calc_water_balances(prepared: _PalmerPrepared) -> None:
     """
     Perform water balance calculations
 
     :param prepared: the prepared Palmer inputs
     """
+    if _native_water_balances(prepared):
+        return
     ss: float | np.ndarray = AWCTOP
     su = prepared.awc_bot
     for year in range(prepared.n_years):
@@ -321,6 +407,14 @@ def _calc_k_prime_and_dbar(prepared: _PalmerPrepared) -> tuple[np.ndarray, np.nd
 
     :param prepared: the prepared Palmer inputs
     """
+    dispatch = _native_cafec_arrays(prepared, "palmer_k_prime", prepared.trat)
+    if dispatch is not None:
+        native, operands = dispatch
+        dbar, k_prime = native.palmer_k_prime(
+            *operands, prepared.trat, prepared.calibration_year_initial_idx, prepared.calibration_year_final_idx
+        )
+        return dbar, k_prime
+
     sabsd = np.zeros((12, prepared.n_cells))
     for year in range(prepared.calibration_year_initial_idx, prepared.calibration_year_final_idx + 1):
         for month in range(12):
@@ -400,6 +494,12 @@ def _calc_cafec_zindex(prepared: _PalmerPrepared, z: np.ndarray, year: int, mont
 
 def _calc_raw_zindex(prepared: _PalmerPrepared) -> np.ndarray:
     """Calculate the K-factor-weighted Z-index series for the entire record."""
+    dispatch = _native_cafec_arrays(prepared, "palmer_raw_zindex", prepared.ak)
+    if dispatch is not None:
+        native, operands = dispatch
+        native_z: np.ndarray = native.palmer_raw_zindex(*operands, prepared.ak)
+        return native_z
+
     z = np.full((prepared.n_years, 12, prepared.n_cells), np.nan)
     for year in range(prepared.n_years):
         for month in range(12):
@@ -764,12 +864,72 @@ def _palmer_cafec_params(prepared: _PalmerPrepared) -> dict[str, Any]:
     return {"alpha": alpha[:, 0], "beta": beta[:, 0], "gamma": gamma[:, 0], "delta": delta[:, 0]}
 
 
+def _pdi_recursion(z: np.ndarray, factors: PdiDurationFactors) -> _palmer_pdi.PdiResult:
+    """The ``pdi.f`` recursion, on the Rust kernel when it can take the Z series.
+
+    An infinite Z value keeps the Python path, which raises its ConvergenceError.
+    """
+    native = _palmer_native("palmer_pdi", z)
+    if native is None or np.any(np.isinf(z)):
+        return _palmer_pdi.calculate(z, factors)
+    pdsi, phdi, pmdi = native.palmer_pdi(
+        z.reshape(-1, z.shape[-1]), factors.wetm, factors.wetb, factors.drym, factors.dryb
+    )
+    return _palmer_pdi.PdiResult(pdsi=pdsi.reshape(z.shape), phdi=phdi.reshape(z.shape), pmdi=pmdi.reshape(z.shape))
+
+
+def _wells_recursion(z_values: np.ndarray, factors: DurationFactors) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The Wells recursion's (PDSI, PHDI, PMDI), on the Rust kernel when it can take the Z series.
+
+    An infinite Z value keeps the Python path, which raises its ConvergenceError; the
+    kernel's own abatement failure raises the same error the Python path raises.
+    """
+    native = _palmer_native("palmer_wells", z_values)
+    if native is None or z_values.ndim != 1 or np.any(np.isinf(z_values)):
+        result = _palmer_wells.calculate(z_values, factors=factors)
+        return result.pdsi, result.phdi, result.pmdi
+    try:
+        pdsi, phdi, pmdi = native.palmer_wells(
+            z_values,
+            factors.wetm,
+            factors.wetb,
+            factors.drym,
+            factors.dryb,
+            factors.wet_denominator,
+            factors.dry_denominator,
+            factors.wetc,
+            factors.dryc,
+            factors.dry_spell_c,
+        )
+    except native.NoConvergenceError as error:
+        raise ConvergenceError(str(error), algorithm="scPDSI Wells recursion") from None
+    return pdsi, phdi, pmdi
+
+
+def _scpdsi_duration_factors(calibration_z: np.ndarray, sign: int) -> tuple[float, float]:
+    """One spell side's scPDSI duration factors, on the Rust kernel when it can take them.
+
+    A record too short to fill the longest rolling window keeps the Python path,
+    which raises its InsufficientDataError; the kernel's regression failures raise
+    the ConvergenceError the Python path raises.
+    """
+    native = _palmer_native("scpdsi_duration_factors", calibration_z)
+    longest = max(self_calibration.DURATION_FACTOR_WINDOW_LENGTHS)
+    if native is None or calibration_z.ndim != 1 or np.count_nonzero(~np.isnan(calibration_z)) < longest:
+        return self_calibration.duration_factors(calibration_z, sign)
+    try:
+        m, b = native.scpdsi_duration_factors(calibration_z, sign)
+    except native.NoConvergenceError as error:
+        raise ConvergenceError(str(error), algorithm="scPDSI duration-factor least squares") from None
+    return m, b
+
+
 def _calculate_pdsi_prepared(prepared: _PalmerPrepared, original_length: int) -> _PalmerResult:
     """Complete standard PDSI after the shared Palmer preparation stages."""
     _calc_kfactors(prepared)
     z = _calc_raw_zindex(prepared)
     factors = PdiDurationFactors.from_fitted(prepared.wetm, prepared.wetb, prepared.drym, prepared.dryb)
-    recursion = _palmer_pdi.calculate(z, factors)
+    recursion = _pdi_recursion(z, factors)
 
     pdsi_result = _trim_time_major(recursion.pdsi, original_length)
     phdi = _trim_time_major(recursion.phdi, original_length)
@@ -796,27 +956,27 @@ def _calculate_scpdsi_prepared(prepared: _PalmerPrepared, original_length: int) 
     z = _calc_raw_zindex(prepared)
     z_values = z.reshape(-1)
     calibration_z = _calibration_values(prepared, z_values)
-    wetm, wetb = self_calibration.duration_factors(calibration_z, self_calibration.WET_SIGN)
-    drym, dryb = self_calibration.duration_factors(calibration_z, self_calibration.DRY_SIGN)
+    wetm, wetb = _scpdsi_duration_factors(calibration_z, self_calibration.WET_SIGN)
+    drym, dryb = _scpdsi_duration_factors(calibration_z, self_calibration.DRY_SIGN)
     factors = DurationFactors.from_fitted(wetm, wetb, drym, dryb)
 
-    recursion = _palmer_wells.calculate(z_values, factors=factors)
+    pdsi, phdi, pmdi = _wells_recursion(z_values, factors)
     # a fixed three rescaling passes, not an iteration to a fixed point; reported
     # in the result parameters so callers and tests can pin the count
     rescale_passes = 3
     for _ in range(rescale_passes):
-        calibration_pdsi = _calibration_values(prepared, recursion.pdsi)
+        calibration_pdsi = _calibration_values(prepared, pdsi)
         dry_percentile = self_calibration.nan_safe_percentile(calibration_pdsi, 0.02)
         wet_percentile = self_calibration.nan_safe_percentile(calibration_pdsi, 0.98)
         z_values = _rescale_scpdsi_zindex(z_values, dry_percentile, wet_percentile)
-        recursion = _palmer_wells.calculate(z_values, factors=factors)
+        pdsi, phdi, pmdi = _wells_recursion(z_values, factors)
 
     params: dict[str, Any] = _palmer_cafec_params(prepared)
     params.update(wetm=wetm, wetb=wetb, drym=drym, dryb=dryb, rescale_passes=rescale_passes)
     return _PalmerResult(
-        recursion.pdsi[:original_length],
-        recursion.phdi[:original_length],
-        recursion.pmdi[:original_length],
+        pdsi[:original_length],
+        phdi[:original_length],
+        pmdi[:original_length],
         z_values[:original_length],
         params,
     )

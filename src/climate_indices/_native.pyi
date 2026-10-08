@@ -16,6 +16,13 @@ class NonFiniteResultError(ValueError):
     translates it, so a caller never sees this type.
     """
 
+class NoConvergenceError(ValueError):
+    """A Palmer calibration stage could not produce a usable value.
+
+    The message is the Python one; ``palmer`` raises ``ConvergenceError`` for it,
+    so a caller never sees this type.
+    """
+
 def gamma_parameters(
     calibration: npt.NDArray[np.float64],
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]: ...
@@ -190,3 +197,56 @@ def kbdi(
     npt.NDArray[np.float64],
     npt.NDArray[np.int64] | None,
 ]: ...
+
+_F64 = npt.NDArray[np.float64]
+
+def palmer_water_balance(
+    precips: _F64,
+    pet: _F64,
+    awc: _F64,
+    calibration_year_initial_idx: int,
+    calibration_year_final_idx: int,
+) -> tuple[
+    tuple[_F64, _F64, _F64, _F64, _F64, _F64, _F64, _F64, _F64],
+    tuple[_F64, _F64, _F64, _F64, _F64, _F64, _F64, _F64, _F64],
+]: ...
+def palmer_k_prime(
+    precips: _F64,
+    pet: _F64,
+    prdat: _F64,
+    spdat: _F64,
+    pldat: _F64,
+    alpha: _F64,
+    beta: _F64,
+    gamma: _F64,
+    delta: _F64,
+    trat: _F64,
+    calibration_year_initial_idx: int,
+    calibration_year_final_idx: int,
+) -> tuple[_F64, _F64]: ...
+def palmer_raw_zindex(
+    precips: _F64,
+    pet: _F64,
+    prdat: _F64,
+    spdat: _F64,
+    pldat: _F64,
+    alpha: _F64,
+    beta: _F64,
+    gamma: _F64,
+    delta: _F64,
+    ak: _F64,
+) -> _F64: ...
+def palmer_pdi(z: _F64, wetm: float, wetb: float, drym: float, dryb: float) -> tuple[_F64, _F64, _F64]: ...
+def palmer_wells(
+    z: _F64,
+    wetm: float,
+    wetb: float,
+    drym: float,
+    dryb: float,
+    wet_denominator: float,
+    dry_denominator: float,
+    wetc: float,
+    dryc: float,
+    dry_spell_c: float,
+) -> tuple[_F64, _F64, _F64]: ...
+def scpdsi_duration_factors(z: _F64, sign: int) -> tuple[float, float]: ...

@@ -260,8 +260,9 @@ src/climate_indices/_native.pyi # type stub for the extension
 **Ported kernels.** The gamma fit and transform behind SPI were the first port,
 followed by EDDI's empirical ranking and inverse normal, the distribution fits
 SPEI adds, Pearson Type III (also used by SPI and the standardized index), the
-log-logistic (generalized logistic, GLO), the PNP and PCI numerical blocks, and
-the fire-weather recurrences. The gamma and distribution-fit kernels replace the
+log-logistic (generalized logistic, GLO), the PNP and PCI numerical blocks, the
+fire-weather recurrences, and the Palmer family's water balance, Z-index, and
+spell recursions. The gamma and distribution-fit kernels replace the
 numerical blocks inside `compute.py` functions; the EDDI, PNP, and PCI kernels
 replace the blocks inside the `indices.py` functions that own them, so the
 validation, calibration-period resolution, data-quality and goodness-of-fit
@@ -354,6 +355,37 @@ kernels; the components are independent, so running them outside the shared day
 loop cannot change a result. Elementwise fire indices (ISI, BUI, FWI, DSR,
 Fosberg, HDW, Haines) stay in Python: they are single NumPy expressions with no
 recurrence, and a port would not pay for itself.
+
+The Palmer family ports its loops and state machines. Dispatch for every stage
+lives in `palmer.py`, which owns `pdsi()` and `scpdsi()`; the private
+`_palmer_pdi`, `_palmer_wells`, and `self_calibration` functions stay pure
+Python and remain the oracle when called directly:
+
+| Python seam | Rust kernel (`climate-core`) |
+|---|---|
+| `palmer._calc_water_balances` (with `_calc_potential_loss`, `_calc_recharge`) | `palmer::water_balance` |
+| `palmer._calc_k_prime_and_dbar` (PDSI K factors and scPDSI K-prime) | `palmer_zindex::k_prime_and_dbar` |
+| `palmer._calc_raw_zindex` (with `_calc_cafec_zindex`) | `palmer_zindex::raw_zindex` |
+| `_palmer_pdi.calculate`, from `_calculate_pdsi_prepared` | `palmer_pdi::calculate` |
+| `self_calibration.duration_factors`, from `_calculate_scpdsi_prepared` | `self_calibration::duration_factors` |
+| `_palmer_wells.calculate`, from `_calculate_scpdsi_prepared` | `palmer_wells::calculate` |
+
+The CAFEC ratios (`_calc_cafec_coefficients`), the T ratio
+(`_calc_zindex_factors`), the K-factor normalization in `_calc_kfactors`, and the
+scPDSI percentile rescaling (`nan_safe_percentile`, `_rescale_scpdsi_zindex`) stay
+in Python for the fire indices' reason: each is one NumPy expression. So do the
+`DurationFactors`/`PdiDurationFactors` validation, the scPDSI K-prime finiteness
+check, masks, fully-missing-cell NaNs, and logging; the Wells kernel takes the
+recurrence coefficients Python derived. The PDI state machine Python vectorizes
+across cells partitions every cell into exactly one branch each month, so the
+kernel runs it one cell at a time with the same branch order and exact-zero
+comparisons. A scalar AWC goes to Rust only when it is a Python `int`/`float` or
+an `np.float64` (other scalars keep their NumPy type promotion in Python), and an
+array AWC only when it is one plain float64 value per cell. An infinite Z value
+and a calibration Z series too short for the longest rolling window keep the
+Python path, which raises its own error; the kernels' abatement and least-squares
+failures raise `_native.NoConvergenceError`, which `palmer.py` re-raises as the
+`ConvergenceError` the Python path raises.
 
 Dispatch takes the Rust path only for a
 plain, aligned float64 `ndarray` whose fit parameters are aligned and one per
