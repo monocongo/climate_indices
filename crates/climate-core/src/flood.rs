@@ -137,6 +137,32 @@ fn climatology(sample: ArrayView2<'_, f64>) -> Climatology {
     Climatology { mean, variance }
 }
 
+/// Standardize every row of `values` against its column's climatology.
+///
+/// A column whose variance does not exceed the squared rounding guard
+/// `8 * eps * |mean|` (including a NaN mean or variance) is NaN throughout.
+#[allow(dead_code)]
+fn standardize(values: ArrayView2<'_, f64>, climatology: &Climatology) -> Array2<f64> {
+    let mut result = Array2::from_elem(values.raw_dim(), f64::NAN);
+    for (column, (mut output, input)) in result
+        .columns_mut()
+        .into_iter()
+        .zip(values.columns())
+        .enumerate()
+    {
+        let mean = climatology.mean[column];
+        let variance = climatology.variance[column];
+        let rounding = 8.0 * f64::EPSILON * mean.abs();
+        if variance > rounding * rounding {
+            let deviation = variance.sqrt();
+            output.zip_mut_with(&input, |standardized, &value| {
+                *standardized = (value - mean) / deviation;
+            });
+        }
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
