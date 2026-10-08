@@ -22,7 +22,7 @@ import pytest
 from climate_indices import palmer, self_calibration
 from climate_indices._palmer_duration import DurationFactors
 from climate_indices._palmer_pdi import PdiDurationFactors
-from climate_indices.exceptions import ConvergenceError, InsufficientDataError
+from climate_indices.exceptions import ConvergenceError, InsufficientDataError, InvalidArgumentError
 from tests import conftest
 
 native = conftest.import_native()
@@ -100,6 +100,9 @@ def _assert_parity(rust: Any, python: Any) -> None:
     assert rust.shape == python.shape
     assert rust.dtype == python.dtype
     np.testing.assert_allclose(rust, python, rtol=RTOL, atol=ATOL, equal_nan=True)
+    # the backtracking selects a candidate (x1 >= 0, x2 <= 0, or none at exactly 0.0),
+    # and that categorical choice must match exactly, not within tolerance
+    np.testing.assert_array_equal(np.sign(rust), np.sign(python))
 
 
 def _pdsi(precips: np.ndarray, pet: np.ndarray, awc: Any, **kwargs: Any) -> Callable[[], Any]:
@@ -137,6 +140,7 @@ def test_spatial_block_with_fully_missing_cells(monkeypatch, palmer_division_inp
     rust, python, calls = _rust_and_python(monkeypatch, _pdsi(precips, pet, awc, spatial_time_major=True))
     assert calls == _PDSI_KERNELS
     assert np.isnan(python[0][:, 1, 2]).all()
+    assert np.isfinite(python[0][:, 0, 0]).all()
     _assert_parity(rust, python)
 
 
@@ -217,18 +221,22 @@ def test_wells_abatement_failure_raises_like_python(monkeypatch) -> None:
     _assert_parity(rust, python)
 
 
+_INFINITE_Z = np.where(np.arange(12) == 5, np.inf, 0.0)
+_PDI_FACTORS = PdiDurationFactors.from_fitted(0.3, 2.7, 0.3, 2.7)
+
+
 @pytest.mark.parametrize(
-    "run",
+    ("run", "error"),
     [
-        lambda z: palmer._pdi_recursion(z.reshape(1, 12, 1), PdiDurationFactors.from_fitted(0.3, 2.7, 0.3, 2.7)),
-        lambda z: palmer._wells_recursion(z, DurationFactors.from_defaults()),
+        (lambda: palmer._pdi_recursion(_INFINITE_Z.reshape(1, 12, 1), _PDI_FACTORS), ConvergenceError),
+        (lambda: palmer._pdi_recursion(np.zeros((2, 3)), _PDI_FACTORS), ValueError),
+        (lambda: palmer._wells_recursion(_INFINITE_Z, DurationFactors.from_defaults()), ConvergenceError),
+        (lambda: palmer._scpdsi_duration_factors(np.ones(60), 5), InvalidArgumentError),
     ],
-    ids=["pdi", "wells"],
+    ids=["pdi-infinite-z", "pdi-shape", "wells-infinite-z", "duration-factor-sign"],
 )
-def test_infinite_z_keeps_the_python_error(monkeypatch, run) -> None:
-    z = np.zeros(12)
-    z[5] = np.inf
-    rust, python, calls = _rust_and_python(monkeypatch, lambda: run(z))
-    assert python[0] is ConvergenceError
+def test_inputs_python_rejects_keep_the_python_error(monkeypatch, run, error) -> None:
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert python[0] is error
     assert not calls
     _assert_parity(rust, python)

@@ -867,10 +867,11 @@ def _palmer_cafec_params(prepared: _PalmerPrepared) -> dict[str, Any]:
 def _pdi_recursion(z: np.ndarray, factors: PdiDurationFactors) -> _palmer_pdi.PdiResult:
     """The ``pdi.f`` recursion, on the Rust kernel when it can take the Z series.
 
-    An infinite Z value keeps the Python path, which raises its ConvergenceError.
+    A Z series that is not (years, 12, n_cells) or holds an infinite value keeps the
+    Python path, which raises its ValueError or ConvergenceError.
     """
     native = _palmer_native("palmer_pdi", z)
-    if native is None or np.any(np.isinf(z)):
+    if native is None or z.ndim != 3 or z.shape[1] != 12 or np.any(np.isinf(z)):
         return _palmer_pdi.calculate(z, factors)
     pdsi, phdi, pmdi = native.palmer_pdi(
         z.reshape(-1, z.shape[-1]), factors.wetm, factors.wetb, factors.drym, factors.dryb
@@ -909,13 +910,18 @@ def _wells_recursion(z_values: np.ndarray, factors: DurationFactors) -> tuple[np
 def _scpdsi_duration_factors(calibration_z: np.ndarray, sign: int) -> tuple[float, float]:
     """One spell side's scPDSI duration factors, on the Rust kernel when it can take them.
 
-    A record too short to fill the longest rolling window keeps the Python path,
-    which raises its InsufficientDataError; the kernel's regression failures raise
-    the ConvergenceError the Python path raises.
+    An invalid sign and a record too short to fill the longest rolling window keep
+    the Python path, which raises its InvalidArgumentError or InsufficientDataError;
+    the kernel's regression failures raise the ConvergenceError the Python path raises.
     """
     native = _palmer_native("scpdsi_duration_factors", calibration_z)
     longest = max(self_calibration.DURATION_FACTOR_WINDOW_LENGTHS)
-    if native is None or calibration_z.ndim != 1 or np.count_nonzero(~np.isnan(calibration_z)) < longest:
+    if (
+        native is None
+        or sign not in (self_calibration.WET_SIGN, self_calibration.DRY_SIGN)
+        or calibration_z.ndim != 1
+        or np.count_nonzero(~np.isnan(calibration_z)) < longest
+    ):
         return self_calibration.duration_factors(calibration_z, sign)
     try:
         m, b = native.scpdsi_duration_factors(calibration_z, sign)
