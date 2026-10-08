@@ -54,9 +54,10 @@ def _kernel_module(*names: str) -> ModuleType | None:
 def _time_first_block(array: npt.NDArray[np.float64]) -> npt.NDArray[np.float64] | None:
     """A ``(time, *cells)`` array as a ``(time, cells)`` block, or None when the kernels cannot take it.
 
-    The block is a view when the cells merge into one axis, so the binding's
-    copy is the only full-size one. Otherwise the reshape copies it, and the
-    kernel still takes it; only the fire recurrences decline such a layout.
+    The block is a view when the cells merge into one axis, and otherwise the
+    reshape copies it; only the fire recurrences decline such a layout. The
+    public entry points validate their input with ``np.ma.asarray``, which
+    already makes it C-contiguous, so from those the block is always a view.
     """
     if not compute._native_float64(array):
         return None
