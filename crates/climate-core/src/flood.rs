@@ -1,7 +1,7 @@
-//! Flood-family kernels: effective precipitation and EDI.
+//! Flood-family kernels: effective precipitation, EDI, and the Flood Index.
 //!
-//! Ports of `climate_indices.flood._pe` and `_edi`, which stay the parity
-//! oracles. Python keeps the validation, the all-leap calendar layout, and the
+//! Ports of `climate_indices.flood._pe`, `_edi`, and `_if`, which stay the
+//! parity oracles. Python keeps the validation, the all-leap calendar layout, and the
 //! Calibration Period resolution; these kernels take the prepared time-first
 //! float64 blocks and the calibration rows Python resolved.
 //!
@@ -20,6 +20,10 @@ use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 
 use crate::ClimateError;
 use crate::reduction::pairwise_sum;
+
+/// Positional days per year in the all-leap layout EDI and the Flood Index read
+/// (`climate_indices.flood._common._DAYS_PER_YEAR`).
+pub const DAYS_PER_YEAR: usize = 366;
 
 /// The correlation filter of Byun and Wilhite (1999), Eq. 2, oldest day first.
 ///
@@ -193,6 +197,47 @@ pub fn edi(
     Ok(standardize(years, &climatology))
 }
 
+/// The Flood Index of a `(days, cells)` effective-precipitation block.
+///
+/// `first_start` is the first day of the first calibration year's annual period
+/// and `calibration_years` the number of consecutive [`DAYS_PER_YEAR`]-day
+/// periods from there. Each period's maximum over its finite days (minus
+/// infinity when it has none, which the climatology then excludes) forms the
+/// calibration sample, and every day is standardized against it.
+pub fn flood_index(
+    pe: ArrayView2<'_, f64>,
+    first_start: usize,
+    calibration_years: usize,
+) -> Result<Array2<f64>, ClimateError> {
+    let (days, cells) = pe.dim();
+    let end = calibration_years
+        .checked_mul(DAYS_PER_YEAR)
+        .and_then(|span| span.checked_add(first_start))
+        .unwrap_or(usize::MAX);
+    check_rows("calibration", &(first_start..end), days)?;
+    let mut maxima = Array2::from_elem((calibration_years, cells), f64::NEG_INFINITY);
+    for (year, mut row) in maxima.rows_mut().into_iter().enumerate() {
+        let start = first_start + year * DAYS_PER_YEAR;
+        let period = pe.slice(ndarray::s![start..start + DAYS_PER_YEAR, ..]);
+        for (maximum, column) in row.iter_mut().zip(period.columns()) {
+            *maximum = column
+                .iter()
+                .map(|&value| {
+                    if value.is_finite() {
+                        value
+                    } else {
+                        f64::NEG_INFINITY
+                    }
+                })
+                .fold(f64::NEG_INFINITY, |largest, value| {
+                    if largest >= value { largest } else { value }
+                });
+        }
+    }
+    let climatology = climatology(maxima.view());
+    Ok(standardize(pe, &climatology))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -343,6 +388,7 @@ mod tests {
                 length: 3
             }
         );
+        assert!(flood_index(years.view(), 0, 1).is_err());
     }
 
     #[test]
@@ -357,5 +403,45 @@ mod tests {
         assert_eq!(pairwise, pairwise_sum(0..values.len(), |row| values[row]));
         assert!(pairwise > 0.0);
         assert_eq!(column_sum(column.view(), 2), 0.0);
+    }
+
+    fn annual_periods(maxima: &[f64], offset: usize) -> Array2<f64> {
+        // a flat 1 mm/day record with one peak per period and a leading offset
+        let mut pe = Array2::from_elem((offset + maxima.len() * DAYS_PER_YEAR + 10, 1), 1.0);
+        for (year, &maximum) in maxima.iter().enumerate() {
+            pe[[offset + year * DAYS_PER_YEAR + 100, 0]] = maximum;
+        }
+        pe
+    }
+
+    #[test]
+    fn flood_index_standardizes_against_the_annual_maxima() {
+        let pe = annual_periods(&[10.0, 20.0, 30.0], 31);
+        let result = flood_index(pe.view(), 31, 3).unwrap();
+        // maxima 10, 20, 30: mean 20, population SD sqrt(200 / 3)
+        let sd = (200.0_f64 / 3.0).sqrt();
+        assert!(close(result[[0, 0]], (1.0 - 20.0) / sd, 1e-15));
+        assert!(close(result[[31 + 100, 0]], -10.0 / sd, 1e-15));
+        assert!(close(
+            result[[31 + 2 * DAYS_PER_YEAR + 100, 0]],
+            10.0 / sd,
+            1e-15
+        ));
+    }
+
+    #[test]
+    fn a_period_without_finite_days_drops_out_of_the_flood_index_sample() {
+        let mut pe = annual_periods(&[10.0, 20.0, 30.0], 0);
+        pe.slice_mut(ndarray::s![0..DAYS_PER_YEAR, ..])
+            .fill(f64::NAN);
+        let result = flood_index(pe.view(), 0, 3).unwrap();
+        // the sample is {20, 30}: mean 25, SD 5
+        assert!(close(result[[DAYS_PER_YEAR + 100, 0]], -1.0, 1e-15));
+        assert!(result[[0, 0]].is_nan());
+        // one remaining finite maximum is not enough
+        pe.slice_mut(ndarray::s![DAYS_PER_YEAR..2 * DAYS_PER_YEAR, ..])
+            .fill(f64::NAN);
+        let result = flood_index(pe.view(), 0, 3).unwrap();
+        assert!(result.iter().all(|value| value.is_nan()));
     }
 }
