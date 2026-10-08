@@ -16,7 +16,8 @@ from typing import Any
 import numpy as np
 import pytest
 
-from climate_indices import compute, eto, indices, pm_eto
+from climate_indices import compute, eto, fire, indices, pm_eto
+from climate_indices.fire import _native as fire_native
 from tests import conftest
 
 
@@ -88,6 +89,38 @@ def test_pet_uses_python_when_the_extension_predates_pet_kernels(
     np.testing.assert_array_equal(actual, expected)
 
 
+def test_fire_dispatches_to_the_built_extension() -> None:
+    native = conftest.import_native()
+    assert fire_native._native is native
+
+
+def test_fire_python_recurrences_run_when_the_extension_is_absent() -> None:
+    """Blocking the import leaves the fire recurrences on their Python steps."""
+    code = """
+import sys
+sys.modules["climate_indices._native"] = None
+import numpy as np
+from climate_indices import fire
+from climate_indices.fire import _native as fire_native
+assert fire_native._native is None
+days = 40
+precipitation = np.zeros(days)
+temperature = np.full(days, 22.0)
+humidity = np.full(days, 40.0)
+months = np.array([(day % 12) + 1 for day in range(days)])
+assert np.isfinite(fire.kbdi(precipitation, temperature, 800.0)).all()
+assert np.isfinite(fire.ffmc(temperature, humidity, np.full(days, 5.0), precipitation)).all()
+dmc = fire.duff_moisture_code(temperature, humidity, precipitation, 40.0, months)
+assert np.isfinite(dmc).all()
+dc = fire.drought_code(temperature, precipitation, 40.0, months)
+assert np.isfinite(dc).all()
+combined = fire.cffwis(temperature, humidity, np.full(days, 5.0), precipitation, 40.0, months)
+assert np.isfinite(np.asarray(combined.ffmc)).all()
+assert np.isfinite(np.asarray(combined.dc)).all()
+"""
+    subprocess.run([sys.executable, "-c", code], check=True)
+
+
 def test_python_implementation_runs_when_the_extension_is_absent() -> None:
     """Blocking the import leaves compute on its Python kernels, and SPI still runs.
 
@@ -128,6 +161,47 @@ def test_eddi_propagates_errors_from_present_kernels(monkeypatch: pytest.MonkeyP
     native_kernel = getattr(compute, f"_native_{kernel}")
     with np.errstate(all="ignore"), pytest.raises(RuntimeError, match="native kernel failed"):
         native_kernel(*args)
+
+
+def test_fire_uses_python_when_the_extension_predates_fire_kernels(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A loaded extension without the fire kernels must fall back, not raise AttributeError."""
+    days = 40
+    precipitation = np.zeros(days)
+    temperature = np.full(days, 22.0)
+    humidity = np.full(days, 40.0)
+    wind = np.full(days, 5.0)
+    with np.errstate(all="ignore"):
+        monkeypatch.setattr(fire_native, "_native", None)
+        expected_ffmc = fire.ffmc(temperature, humidity, wind, precipitation)
+        expected_kbdi = fire.kbdi(precipitation, temperature, 800.0)
+        monkeypatch.setattr(fire_native, "_native", SimpleNamespace())
+        actual_ffmc = fire.ffmc(temperature, humidity, wind, precipitation)
+        actual_kbdi = fire.kbdi(precipitation, temperature, 800.0)
+    np.testing.assert_array_equal(actual_ffmc, expected_ffmc)
+    np.testing.assert_array_equal(actual_kbdi, expected_kbdi)
+
+
+@pytest.mark.parametrize("oversized", ["initial_kbdi", "initial_wet_spell_precipitation"])
+def test_kbdi_rejects_mismatched_seed_lengths(oversized: str) -> None:
+    """A direct extension call must not silently drop an oversized seed array."""
+    native = conftest.import_native()
+    seeds = {"initial_kbdi": np.zeros(1), "initial_wet_spell_precipitation": np.zeros(1)}
+    seeds[oversized] = np.zeros(2)
+    with pytest.raises(ValueError, match=r"initial_wet_spell_precipitation has \d+ cells, expected \d+"):
+        native.kbdi(
+            precipitation_mm=np.zeros((2, 1)),
+            maximum_temperature_celsius=np.zeros((2, 1)),
+            mean_annual_precipitation_mm=np.full(1, 800.0),
+            weather_valid=np.ones((2, 1), dtype=bool),
+            static_valid=np.ones(1, dtype=bool),
+            in_season=None,
+            trailing_gap_days=np.zeros(1, dtype=np.int64),
+            spin_up=0,
+            nan_policy="propagate",
+            max_gap_days=0,
+            record=False,
+            **seeds,
+        )
 
 
 def test_import_native_fails_instead_of_skipping_when_the_extension_is_required(

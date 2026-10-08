@@ -34,6 +34,7 @@ from climate_indices._recurrence import (
     run_daily_recurrences,
 )
 from climate_indices.exceptions import InvalidArgumentError, wrap_value_error
+from climate_indices.fire._native import moisture_code_recurrence
 from climate_indices.logging_config import get_logger, log_calculation_failure
 from climate_indices.performance import check_large_array_memory
 
@@ -242,11 +243,10 @@ def _initialize_single_value_state(
 
 
 def _run_cffwis_recurrence(
+    code: _MoistureCode,
+    inputs: _CodeInputs,
     state_value: npt.NDArray[np.float64],
-    step: Callable[[int, npt.NDArray[np.bool_] | None], npt.NDArray[np.float64]],
     *,
-    index_type: str,
-    weather_valid: npt.NDArray[np.bool_],
     static_valid: npt.NDArray[np.bool_],
     trailing_gap_days: npt.NDArray[np.int64],
     memory_arrays: tuple[npt.NDArray[np.float64], ...],
@@ -261,15 +261,21 @@ def _run_cffwis_recurrence(
     the single-code functions and the combined orchestrator cannot drift apart.
     The orchestrator's all-valid fast path stays off here, keeping the
     single-code behaviour and the measured single-pass advantage unchanged.
+
+    The code's step and its optional Rust kernel are built here from the same
+    inputs, so the two paths cannot disagree about which arrays a code reads.
     """
+    index_type = code.index_type
+    weather_valid = code.validity(inputs)
     component = DailyRecurrence(
         index_type,
         state_value,
-        step,
+        code.build_step(state_value, inputs),
         weather_valid,
         static_valid,
         trailing_gap_days,
         in_season,
+        moisture_code_recurrence(code, inputs, state_value, weather_valid, static_valid, trailing_gap_days, in_season),
     )
     values, state_gap_days = run_daily_recurrences(
         (component,),
@@ -529,6 +535,9 @@ class _MoistureCode:
     maximum: float | None
     validity: Callable[[_CodeInputs], npt.NDArray[np.bool_]]
     build_step: Callable[[npt.NDArray[np.float64], _CodeInputs], Step]
+    # the latitude/month table this code's step and native kernel index, or None
+    # for a code with no day-length term (FFMC)
+    day_length_table: npt.NDArray[np.float64] | None = None
     minimum: float = 0.0
 
     def initialize_state(
@@ -673,6 +682,7 @@ DMC_CODE = _MoistureCode(
     maximum=None,
     validity=_dmc_validity,
     build_step=_dmc_build_step,
+    day_length_table=_DMC_EFFECTIVE_DAY_LENGTH_HOURS,
 )
 DC_CODE = _MoistureCode(
     index_type="drought_code",
@@ -683,5 +693,6 @@ DC_CODE = _MoistureCode(
     maximum=None,
     validity=_dc_validity,
     build_step=_dc_build_step,
+    day_length_table=_DC_DAY_LENGTH_ADJUSTMENT,
 )
 MOISTURE_CODES: tuple[_MoistureCode, ...] = (FFMC_CODE, DMC_CODE, DC_CODE)

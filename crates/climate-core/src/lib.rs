@@ -13,6 +13,7 @@ use std::fmt;
 
 pub mod eddi;
 pub mod eto;
+pub mod fire;
 pub mod gamma;
 pub mod lmoments;
 pub mod loglogistic;
@@ -20,6 +21,7 @@ pub mod pci;
 pub mod pearson;
 pub mod pm_eto;
 pub mod pnp;
+pub mod recurrence;
 mod reduction;
 pub mod special;
 
@@ -37,6 +39,20 @@ pub enum ClimateError {
     },
     /// A calendar-period parameter with no calendar steps.
     EmptyPeriod { argument: &'static str },
+    /// A recurrence step produced a non-finite value from finite inputs.
+    ///
+    /// The message is the Python one (`_advance_component`), so a caller can
+    /// raise the same error it would have raised on the Python path.
+    NonFinite { index_type: &'static str },
+    /// A per-day or per-cell index outside the table it selects from.
+    IndexOutOfRange {
+        argument: &'static str,
+        value: i64,
+        minimum: i64,
+        maximum: i64,
+    },
+    /// A missing-day policy name a kernel does not implement.
+    UnknownNanPolicy { value: String },
 }
 
 impl fmt::Display for ClimateError {
@@ -49,6 +65,24 @@ impl fmt::Display for ClimateError {
             } => write!(f, "{argument} has length {actual}, expected {expected}"),
             Self::EmptyPeriod { argument } => {
                 write!(f, "{argument} must contain at least one calendar step")
+            }
+            Self::NonFinite { index_type } => {
+                write!(
+                    f,
+                    "{index_type} produced a non-finite value from finite inputs."
+                )
+            }
+            Self::IndexOutOfRange {
+                argument,
+                value,
+                minimum,
+                maximum,
+            } => write!(
+                f,
+                "{argument} value {value} is outside the table rows [{minimum}, {maximum}]"
+            ),
+            Self::UnknownNanPolicy { value } => {
+                write!(f, "unknown missing-day policy {value:?}")
             }
         }
     }

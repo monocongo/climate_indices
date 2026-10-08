@@ -6,13 +6,17 @@
 //! implementation when the extension is not installed. Inputs must already be
 //! float64 arrays: extraction fails with `TypeError` rather than casting.
 
-use numpy::ndarray::{Array, CowArray, Dimension, ShapeBuilder};
+use numpy::ndarray::{Array, Array1, Array2, CowArray, Dimension, ShapeBuilder};
 use numpy::{
     IntoPyArray, PyArray1, PyArray2, PyArrayDyn, PyArrayMethods, PyReadonlyArray, PyReadonlyArray1,
     PyReadonlyArray2, PyReadonlyArrayDyn, PyUntypedArrayMethods,
 };
+use pyo3::create_exception;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+
+use climate_core::fire::{DayLength, KbdiCell};
+use climate_core::recurrence::RecurrenceInputs;
 
 mod pet;
 
@@ -30,6 +34,40 @@ type LogLogisticArrays<'py> = (
     Bound<'py, PyArray1<f64>>,
     Bound<'py, PyArray1<bool>>,
 );
+
+// A recurrence step produced a non-finite value from finite inputs.
+//
+// Distinct from `PyValueError` so the Python dispatch can raise the
+// `InvalidArgumentError` the pure-Python driver raises, without inspecting a
+// message to tell the two apart.
+create_exception!(_native, NonFiniteResultError, PyValueError);
+
+fn climate_error(error: climate_core::ClimateError) -> PyErr {
+    let message = error.to_string();
+    match error {
+        climate_core::ClimateError::NonFinite { .. } => NonFiniteResultError::new_err(message),
+        _ => PyValueError::new_err(message),
+    }
+}
+
+/// Copy a boolean or integer input, rejecting the layouts rust-numpy cannot
+/// view safely: an unaligned or empty array reaches `as_array` as a possibly
+/// shifted pointer, the hazard `checked_view` guards against below.
+///
+/// `element` names the dtype in the error.
+fn copy_indexed<T: numpy::Element + Copy, D: Dimension>(
+    array: &PyReadonlyArray<'_, T, D>,
+    element: &str,
+) -> PyResult<Array<T, D>> {
+    if !array.is_aligned() || !array.data().is_aligned() {
+        return Err(PyValueError::new_err(format!("unaligned {element} array")));
+    }
+    if array.is_empty() {
+        return Array::from_shape_vec(array.dims(), Vec::new())
+            .map_err(|error| PyValueError::new_err(error.to_string()));
+    }
+    Ok(array.as_array().to_owned())
+}
 
 fn checked_view<'a, D: Dimension>(
     array: &'a PyReadonlyArray<'_, f64, D>,
@@ -50,6 +88,20 @@ fn checked_view<'a, D: Dimension>(
 fn checked_copy<D: Dimension>(array: &PyReadonlyArray<'_, f64, D>) -> PyResult<Array<f64, D>> {
     // Copy before `detach`: another Python thread may mutate caller-owned storage.
     Ok(checked_view(array)?.into_owned())
+}
+
+/// A validity mask.
+fn checked_copy_flags<D: Dimension>(
+    array: &PyReadonlyArray<'_, bool, D>,
+) -> PyResult<Array<bool, D>> {
+    copy_indexed(array, "bool")
+}
+
+/// A calendar or gap-count array.
+fn checked_copy_counts<D: Dimension>(
+    array: &PyReadonlyArray<'_, i64, D>,
+) -> PyResult<Array<i64, D>> {
+    copy_indexed(array, "int64")
 }
 
 /// Gamma shape and scale per column of a (years, columns) calibration block.
@@ -286,9 +338,348 @@ fn elementwise<'py>(
         .reshape(shape)
 }
 
+/// The recurrence bookkeeping every fire kernel takes, copied at the boundary.
+struct RecurrenceArgs<'py> {
+    weather_valid: PyReadonlyArray2<'py, bool>,
+    static_valid: PyReadonlyArray1<'py, bool>,
+    in_season: Option<PyReadonlyArray2<'py, bool>>,
+    trailing_gap_days: PyReadonlyArray1<'py, i64>,
+    spin_up: usize,
+    nan_policy: String,
+    max_gap_days: i64,
+    record: bool,
+}
+
+/// The copied, owned form of [`RecurrenceArgs`], borrowed by the kernel call.
+struct RecurrenceArrays {
+    weather_valid: Array2<bool>,
+    static_valid: Array1<bool>,
+    in_season: Option<Array2<bool>>,
+    trailing_gap_days: Array1<i64>,
+    spin_up: usize,
+    nan_policy: String,
+    max_gap_days: i64,
+    record: bool,
+}
+
+impl<'py> RecurrenceArgs<'py> {
+    fn copy(&self) -> PyResult<RecurrenceArrays> {
+        Ok(RecurrenceArrays {
+            weather_valid: checked_copy_flags(&self.weather_valid)?,
+            static_valid: checked_copy_flags(&self.static_valid)?,
+            in_season: self
+                .in_season
+                .as_ref()
+                .map(checked_copy_flags)
+                .transpose()?,
+            trailing_gap_days: checked_copy_counts(&self.trailing_gap_days)?,
+            spin_up: self.spin_up,
+            nan_policy: self.nan_policy.clone(),
+            max_gap_days: self.max_gap_days,
+            record: self.record,
+        })
+    }
+}
+
+impl RecurrenceArrays {
+    fn inputs(&self) -> PyResult<RecurrenceInputs<'_>> {
+        climate_core::fire::recurrence_inputs(
+            self.weather_valid.view(),
+            self.static_valid.view(),
+            self.in_season.as_ref().map(|season| season.view()),
+            self.trailing_gap_days.view(),
+            self.spin_up,
+            &self.nan_policy,
+            self.max_gap_days,
+        )
+        .map_err(climate_error)
+    }
+}
+
+/// One moisture code's run: its recorded history, final value, and gap counts.
+type CodeRunArrays<'py> = (
+    Option<Bound<'py, PyArray2<f64>>>,
+    Bound<'py, PyArray1<f64>>,
+    Option<Bound<'py, PyArray1<i64>>>,
+);
+
+/// A KBDI run: its recorded history, final index and wet spell, and gap counts.
+type KbdiRunArrays<'py> = (
+    Option<Bound<'py, PyArray2<f64>>>,
+    Bound<'py, PyArray1<f64>>,
+    Bound<'py, PyArray1<f64>>,
+    Option<Bound<'py, PyArray1<i64>>>,
+);
+
+fn code_run_arrays<'py>(py: Python<'py>, run: climate_core::fire::CodeRun) -> CodeRunArrays<'py> {
+    (
+        run.values.map(|values| values.into_pyarray(py)),
+        run.code.into_pyarray(py),
+        run.trailing_gap_days.map(|gaps| gaps.into_pyarray(py)),
+    )
+}
+
+/// The Fine Fuel Moisture Code over the whole time axis.
+#[pyfunction]
+#[pyo3(signature = (temperature_celsius, relative_humidity_percent, wind_speed_kilometers_per_hour, precipitation_mm, initial_ffmc, weather_valid, static_valid, in_season, trailing_gap_days, spin_up, nan_policy, max_gap_days, record))]
+#[allow(clippy::too_many_arguments)]
+fn ffmc<'py>(
+    py: Python<'py>,
+    temperature_celsius: PyReadonlyArray2<'py, f64>,
+    relative_humidity_percent: PyReadonlyArray2<'py, f64>,
+    wind_speed_kilometers_per_hour: PyReadonlyArray2<'py, f64>,
+    precipitation_mm: PyReadonlyArray2<'py, f64>,
+    initial_ffmc: PyReadonlyArray1<'py, f64>,
+    weather_valid: PyReadonlyArray2<'py, bool>,
+    static_valid: PyReadonlyArray1<'py, bool>,
+    in_season: Option<PyReadonlyArray2<'py, bool>>,
+    trailing_gap_days: PyReadonlyArray1<'py, i64>,
+    spin_up: usize,
+    nan_policy: String,
+    max_gap_days: i64,
+    record: bool,
+) -> PyResult<CodeRunArrays<'py>> {
+    let recurrence = RecurrenceArgs {
+        weather_valid,
+        static_valid,
+        in_season,
+        trailing_gap_days,
+        spin_up,
+        nan_policy,
+        max_gap_days,
+        record,
+    }
+    .copy()?;
+    let temperature_celsius = checked_copy(&temperature_celsius)?;
+    let relative_humidity_percent = checked_copy(&relative_humidity_percent)?;
+    let wind = checked_copy(&wind_speed_kilometers_per_hour)?;
+    let precipitation = checked_copy(&precipitation_mm)?;
+    let initial_ffmc = checked_copy(&initial_ffmc)?;
+    let inputs = recurrence.inputs()?;
+    let run = py
+        .detach(|| {
+            climate_core::fire::ffmc(
+                temperature_celsius.view(),
+                relative_humidity_percent.view(),
+                wind.view(),
+                precipitation.view(),
+                initial_ffmc.view(),
+                &inputs,
+                recurrence.record,
+            )
+        })
+        .map_err(climate_error)?;
+    Ok(code_run_arrays(py, run))
+}
+
+/// The Duff Moisture Code over the whole time axis.
+#[pyfunction]
+#[pyo3(signature = (temperature_celsius, relative_humidity_percent, precipitation_mm, day_length_table, months, day_length_band, initial_dmc, weather_valid, static_valid, in_season, trailing_gap_days, spin_up, nan_policy, max_gap_days, record))]
+#[allow(clippy::too_many_arguments)]
+fn duff_moisture_code<'py>(
+    py: Python<'py>,
+    temperature_celsius: PyReadonlyArray2<'py, f64>,
+    relative_humidity_percent: PyReadonlyArray2<'py, f64>,
+    precipitation_mm: PyReadonlyArray2<'py, f64>,
+    day_length_table: PyReadonlyArray2<'py, f64>,
+    months: PyReadonlyArray2<'py, i64>,
+    day_length_band: PyReadonlyArray1<'py, i64>,
+    initial_dmc: PyReadonlyArray1<'py, f64>,
+    weather_valid: PyReadonlyArray2<'py, bool>,
+    static_valid: PyReadonlyArray1<'py, bool>,
+    in_season: Option<PyReadonlyArray2<'py, bool>>,
+    trailing_gap_days: PyReadonlyArray1<'py, i64>,
+    spin_up: usize,
+    nan_policy: String,
+    max_gap_days: i64,
+    record: bool,
+) -> PyResult<CodeRunArrays<'py>> {
+    let recurrence = RecurrenceArgs {
+        weather_valid,
+        static_valid,
+        in_season,
+        trailing_gap_days,
+        spin_up,
+        nan_policy,
+        max_gap_days,
+        record,
+    }
+    .copy()?;
+    let temperature_celsius = checked_copy(&temperature_celsius)?;
+    let relative_humidity_percent = checked_copy(&relative_humidity_percent)?;
+    let precipitation = checked_copy(&precipitation_mm)?;
+    let day_length_table = checked_copy(&day_length_table)?;
+    let months = checked_copy_counts(&months)?;
+    let day_length_band = checked_copy_counts(&day_length_band)?;
+    let day_length = DayLength {
+        table: day_length_table.view(),
+        band: day_length_band.view(),
+        months: months.view(),
+    };
+    let initial_dmc = checked_copy(&initial_dmc)?;
+    let inputs = recurrence.inputs()?;
+    let run = py
+        .detach(|| {
+            climate_core::fire::dmc(
+                temperature_celsius.view(),
+                relative_humidity_percent.view(),
+                precipitation.view(),
+                &day_length,
+                initial_dmc.view(),
+                &inputs,
+                recurrence.record,
+            )
+        })
+        .map_err(climate_error)?;
+    Ok(code_run_arrays(py, run))
+}
+
+/// The Drought Code over the whole time axis.
+#[pyfunction]
+#[pyo3(signature = (temperature_celsius, precipitation_mm, day_length_table, months, day_length_band, initial_dc, weather_valid, static_valid, in_season, trailing_gap_days, spin_up, nan_policy, max_gap_days, record))]
+#[allow(clippy::too_many_arguments)]
+fn drought_code<'py>(
+    py: Python<'py>,
+    temperature_celsius: PyReadonlyArray2<'py, f64>,
+    precipitation_mm: PyReadonlyArray2<'py, f64>,
+    day_length_table: PyReadonlyArray2<'py, f64>,
+    months: PyReadonlyArray2<'py, i64>,
+    day_length_band: PyReadonlyArray1<'py, i64>,
+    initial_dc: PyReadonlyArray1<'py, f64>,
+    weather_valid: PyReadonlyArray2<'py, bool>,
+    static_valid: PyReadonlyArray1<'py, bool>,
+    in_season: Option<PyReadonlyArray2<'py, bool>>,
+    trailing_gap_days: PyReadonlyArray1<'py, i64>,
+    spin_up: usize,
+    nan_policy: String,
+    max_gap_days: i64,
+    record: bool,
+) -> PyResult<CodeRunArrays<'py>> {
+    let recurrence = RecurrenceArgs {
+        weather_valid,
+        static_valid,
+        in_season,
+        trailing_gap_days,
+        spin_up,
+        nan_policy,
+        max_gap_days,
+        record,
+    }
+    .copy()?;
+    let temperature_celsius = checked_copy(&temperature_celsius)?;
+    let precipitation = checked_copy(&precipitation_mm)?;
+    let day_length_table = checked_copy(&day_length_table)?;
+    let months = checked_copy_counts(&months)?;
+    let day_length_band = checked_copy_counts(&day_length_band)?;
+    let day_length = DayLength {
+        table: day_length_table.view(),
+        band: day_length_band.view(),
+        months: months.view(),
+    };
+    let initial_dc = checked_copy(&initial_dc)?;
+    let inputs = recurrence.inputs()?;
+    let run = py
+        .detach(|| {
+            climate_core::fire::dc(
+                temperature_celsius.view(),
+                precipitation.view(),
+                &day_length,
+                initial_dc.view(),
+                &inputs,
+                recurrence.record,
+            )
+        })
+        .map_err(climate_error)?;
+    Ok(code_run_arrays(py, run))
+}
+
+/// KBDI over the whole time axis: history, final index and wet spell, gap counts.
+#[pyfunction]
+#[pyo3(signature = (precipitation_mm, maximum_temperature_celsius, mean_annual_precipitation_mm, initial_kbdi, initial_wet_spell_precipitation, weather_valid, static_valid, in_season, trailing_gap_days, spin_up, nan_policy, max_gap_days, record))]
+#[allow(clippy::too_many_arguments)]
+fn kbdi<'py>(
+    py: Python<'py>,
+    precipitation_mm: PyReadonlyArray2<'py, f64>,
+    maximum_temperature_celsius: PyReadonlyArray2<'py, f64>,
+    mean_annual_precipitation_mm: PyReadonlyArray1<'py, f64>,
+    initial_kbdi: PyReadonlyArray1<'py, f64>,
+    initial_wet_spell_precipitation: PyReadonlyArray1<'py, f64>,
+    weather_valid: PyReadonlyArray2<'py, bool>,
+    static_valid: PyReadonlyArray1<'py, bool>,
+    in_season: Option<PyReadonlyArray2<'py, bool>>,
+    trailing_gap_days: PyReadonlyArray1<'py, i64>,
+    spin_up: usize,
+    nan_policy: String,
+    max_gap_days: i64,
+    record: bool,
+) -> PyResult<KbdiRunArrays<'py>> {
+    let recurrence = RecurrenceArgs {
+        weather_valid,
+        static_valid,
+        in_season,
+        trailing_gap_days,
+        spin_up,
+        nan_policy,
+        max_gap_days,
+        record,
+    }
+    .copy()?;
+    let precipitation = checked_copy(&precipitation_mm)?;
+    let temperature = checked_copy(&maximum_temperature_celsius)?;
+    let mean_annual_precipitation = checked_copy(&mean_annual_precipitation_mm)?;
+    let initial_kbdi = checked_copy(&initial_kbdi)?;
+    let initial_wet_spell_precipitation = checked_copy(&initial_wet_spell_precipitation)?;
+    if initial_kbdi.len() != initial_wet_spell_precipitation.len() {
+        return Err(PyValueError::new_err(format!(
+            "initial_wet_spell_precipitation has {} cells, expected {}",
+            initial_wet_spell_precipitation.len(),
+            initial_kbdi.len()
+        )));
+    }
+    let initial_state: Vec<KbdiCell> = initial_kbdi
+        .iter()
+        .zip(&initial_wet_spell_precipitation)
+        .map(|(&kbdi, &wet_spell_precipitation)| KbdiCell {
+            kbdi,
+            wet_spell_precipitation,
+        })
+        .collect();
+    let inputs = recurrence.inputs()?;
+    let run = py
+        .detach(|| {
+            climate_core::fire::kbdi(
+                precipitation.view(),
+                temperature.view(),
+                mean_annual_precipitation.view(),
+                &initial_state,
+                &inputs,
+                recurrence.record,
+            )
+        })
+        .map_err(climate_error)?;
+    Ok((
+        run.values.map(|values| values.into_pyarray(py)),
+        run.state
+            .iter()
+            .map(|cell| cell.kbdi)
+            .collect::<Array1<f64>>()
+            .into_pyarray(py),
+        run.state
+            .iter()
+            .map(|cell| cell.wet_spell_precipitation)
+            .collect::<Array1<f64>>()
+            .into_pyarray(py),
+        run.trailing_gap_days.map(|gaps| gaps.into_pyarray(py)),
+    ))
+}
+
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", climate_core::VERSION)?;
+    m.add(
+        "NonFiniteResultError",
+        m.py().get_type::<NonFiniteResultError>(),
+    )?;
     m.add_function(wrap_pyfunction!(gamma_parameters, m)?)?;
     m.add_function(wrap_pyfunction!(gamma_probabilities, m)?)?;
     m.add_function(wrap_pyfunction!(pnp_normals, m)?)?;
@@ -301,6 +692,10 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(norm_ppf, m)?)?;
     m.add_function(wrap_pyfunction!(tukey_probabilities, m)?)?;
     m.add_function(wrap_pyfunction!(hastings_inverse_normal, m)?)?;
+    m.add_function(wrap_pyfunction!(ffmc, m)?)?;
+    m.add_function(wrap_pyfunction!(duff_moisture_code, m)?)?;
+    m.add_function(wrap_pyfunction!(drought_code, m)?)?;
+    m.add_function(wrap_pyfunction!(kbdi, m)?)?;
     pet::register(m)?;
     Ok(())
 }

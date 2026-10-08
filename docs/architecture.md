@@ -258,12 +258,12 @@ src/climate_indices/_native.pyi # type stub for the extension
   explicit decision retires them.
 
 **Ported kernels.** The gamma fit and transform behind SPI were the first port,
-followed by EDDI's empirical ranking and inverse normal, and then the distribution
-fits SPEI adds, Pearson Type III (also used by SPI and the standardized index) and
-the log-logistic (generalized logistic, GLO), and finally the PNP and PCI numerical
-blocks. The gamma and distribution-fit kernels replace the numerical blocks inside
-`compute.py` functions; the EDDI, PNP, and PCI kernels replace the blocks inside the
-`indices.py` functions that own them, so the
+followed by EDDI's empirical ranking and inverse normal, the distribution fits
+SPEI adds, Pearson Type III (also used by SPI and the standardized index), the
+log-logistic (generalized logistic, GLO), the PNP and PCI numerical blocks, and
+the fire-weather recurrences. The gamma and distribution-fit kernels replace the
+numerical blocks inside `compute.py` functions; the EDDI, PNP, and PCI kernels
+replace the blocks inside the `indices.py` functions that own them, so the
 validation, calibration-period resolution, data-quality and goodness-of-fit
 warnings, the Pearson-to-gamma fallback, logging, zero placement, support-limit
 masks, and output scaling around them still run in Python, and every caller of
@@ -329,13 +329,50 @@ last-bit results depend on whether its build fuses multiply-adds (aarch64 builds
 do, x86-64 wheels do not), and the Pearson fit's `exp(gammaln(a) - gammaln(a + 0.5))`
 amplifies one ulp by up to `1e11` for a near-symmetric sample, so the ported
 `lgam` and polynomial helpers fuse on aarch64 and only there (`special::mul_add`).
+The fire-weather recurrences are the one port that does not replace a block
+inside a Python function: each replaces a recurrence's whole day loop, so the
+Rust side owns the time axis while Python keeps the calendar, the validation,
+and the error surface around it:
+
+| Python seam | Rust kernel (`climate-core`) |
+|---|---|
+| `fire.ffmc` recurrence | `fire::ffmc` over `recurrence::run` |
+| `fire.duff_moisture_code` recurrence | `fire::dmc` over `recurrence::run` |
+| `fire.drought_code` recurrence | `fire::dc` over `recurrence::run` |
+| `fire.kbdi` recurrence | `fire::kbdi` over `recurrence::run` |
+
+`recurrence::run` ports the shared day loop in `climate_indices._recurrence`:
+the ADR-0007 missing-day policy, the ADR-0010 seasonal carry mask, the spin-up
+offset, and the recorded-history NaNs are identical in both.
+`climate_indices.fire._native` builds each code's kernel from the same
+`_CodeInputs` its Python step reads, so the two paths cannot disagree about
+which arrays a code consumes, and the KBDI, FFMC, DMC, and DC daily updates are
+line-by-line ports of the Python expressions, including the
+`np.maximum`/`np.minimum` NaN propagation and NumPy's operation order. The
+combined `cffwis()` orchestrator runs each of its three codes through the same
+kernels; the components are independent, so running them outside the shared day
+loop cannot change a result. Elementwise fire indices (ISI, BUI, FWI, DSR,
+Fosberg, HDW, Haines) stay in Python: they are single NumPy expressions with no
+recurrence, and a port would not pay for itself.
+
 Dispatch takes the Rust path only for a
 plain, aligned float64 `ndarray` whose fit parameters are aligned and one per
 calendar step (and cell). Unaligned arrays, masked arrays, other dtypes, and
 caller-supplied parameters that vary by year run the Python implementation.
 PNP preparation fills partial masks with NaN before dispatch, so those prepared
 arrays can use Rust. PCI dispatch checks the original input and requires a plain 1-D
-array; masked inputs and other shapes or dtypes keep its Python implementation.
+array; masked inputs and other shapes or dtypes keep its Python implementation. The
+fire recurrences apply the same guard to every weather array and to the seed they
+resume from, and a layout the kernel cannot take unchanged (an empty axis, a
+non-float64 or unaligned array, or a time-first array whose spatial axes cannot
+be viewed as one cell axis without a copy) stays in Python as well. The kernels
+take views of the prepared arrays, so a broadcast month series or season mask
+is copied once, by the binding, rather than first materialized in Python; that
+boundary copy is the native path's own buffer, so it and the history the kernel
+builds are not part of the `array_memory_mb` a recurrence reports. A loaded extension that
+predates a kernel, or a recurrence option wider than the binding's integer
+parameters, also keeps the recurrence on its Python steps rather than failing at
+the boundary.
 Native dispatch also requires NumPy floating-point errors to be ignored
 (`np.errstate(all="ignore")`); warnings, exceptions, callbacks, logging, or
 printing keep the Python path. Python 3.14 context-aware warnings conservatively
@@ -343,10 +380,12 @@ keep the Python path, as do fits with a column that has no positive value,
 whose empty-slice warnings are independent of NumPy error policies. Default NumPy error policies
 therefore use Python even when the extension is installed. Direct extension
 calls reject unaligned inputs and copy empty arrays without creating Rust views
-of caller-owned storage. `tests/test_native_parity.py` (gamma) and
-`tests/test_native_parity_distributions.py` (Pearson Type III and GLO)
-explicitly ignore floating-point errors and compare the two paths at
-`rtol = atol = 1e-10` with matching NaN positions, and the `python_backend` fixture in
+of caller-owned storage. `tests/test_native_parity.py` (gamma),
+`tests/test_native_parity_distributions.py` (Pearson Type III and GLO), and
+`tests/test_native_parity_fire.py` (the fire recurrences, which compare the
+returned state as well) explicitly ignore floating-point errors and compare the
+two paths at `rtol = atol = 1e-10` with matching NaN positions, and the
+`python_backend` fixture in
 `tests/conftest.py` pins any test to the Python reference.
 
 **Migration policy.** Port expensive numerical kernels, hot loops, and
@@ -384,8 +423,9 @@ no Rust toolchain, so they keep proving the fallback.
   as `test`, on the boundary legs (oldest and newest Python on Linux, newest on
   macOS). It sets `CLIMATE_INDICES_REQUIRE_NATIVE=1`, which makes the native test
   modules raise on a missing extension instead of skipping, so a broken build
-  cannot silently drop the parity suite. `tests/test_native_parity.py` and
-  `tests/test_native_parity_distributions.py` have no other skip. The Python 3.14-only context-aware-warnings routing check lives in
+  cannot silently drop the parity suite. `tests/test_native_parity.py`,
+  `tests/test_native_parity_distributions.py`, and
+  `tests/test_native_parity_fire.py` have no other skip. The Python 3.14-only context-aware-warnings routing check lives in
   `tests/test_native_backend.py` and skips on the 3.10 leg.
 - `native-wheel`: `maturin build --release` on Linux and macOS at both boundary
   Pythons, plus a Windows smoke build on the newest. Each wheel is installed
