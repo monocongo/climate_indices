@@ -30,6 +30,7 @@ from climate_indices.logging_config import (
     get_logger,
     log_calculation_failure,
 )
+from tests import conftest
 
 # fields every JSON log event must carry as top-level keys
 REQUIRED_JSON_FIELDS = frozenset({"timestamp", "level", "event", "logger"})
@@ -40,17 +41,22 @@ _PALMER_DIVISION_DIR = os.path.join(os.path.dirname(__file__), "fixture", "palme
 
 @pytest.fixture(autouse=True)
 def _clean_logging_state() -> None:
-    """Reset structlog and root-logger state around every test in this module."""
-    _reset_logging_for_testing()
-    root = logging.getLogger()
-    root.handlers.clear()
-    root.setLevel(logging.WARNING)
-    os.environ.pop(ENV_LOG_LEVEL, None)
-    yield
-    _reset_logging_for_testing()
-    root.handlers.clear()
-    root.setLevel(logging.WARNING)
-    os.environ.pop(ENV_LOG_LEVEL, None)
+    """Reset structlog and root-logger state around every test in this module.
+
+    The logging the rest of the run uses is restored afterwards, so a later test on
+    the same worker does not inherit structlog's defaults.
+    """
+    with conftest.preserved_logging_state():
+        _reset_logging_for_testing()
+        root = logging.getLogger()
+        root.handlers.clear()
+        root.setLevel(logging.WARNING)
+        os.environ.pop(ENV_LOG_LEVEL, None)
+        yield
+        _reset_logging_for_testing()
+        root.handlers.clear()
+        root.setLevel(logging.WARNING)
+        os.environ.pop(ENV_LOG_LEVEL, None)
 
 
 @pytest.fixture(scope="module")
