@@ -16,11 +16,13 @@ use crate::ClimateError;
 /// Surface-layer available water capacity, in inches (`palmer.AWCTOP`).
 pub const AWCTOP: f64 = 1.0;
 
-fn py_max(a: f64, b: f64) -> f64 {
+/// Python's builtin `max(a, b)`: `b` only if `b > a`, so NaN order matters.
+pub(crate) fn py_max(a: f64, b: f64) -> f64 {
     if b > a { b } else { a }
 }
 
-fn py_min(a: f64, b: f64) -> f64 {
+/// Python's builtin `min(a, b)`: `b` only if `b < a`.
+pub(crate) fn py_min(a: f64, b: f64) -> f64 {
     if b < a { b } else { a }
 }
 

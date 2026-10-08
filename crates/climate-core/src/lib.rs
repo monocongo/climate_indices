@@ -18,12 +18,16 @@ pub mod gamma;
 pub mod lmoments;
 pub mod loglogistic;
 pub mod palmer;
+pub mod palmer_pdi;
+pub mod palmer_wells;
+pub mod palmer_zindex;
 pub mod pci;
 pub mod pearson;
 pub mod pm_eto;
 pub mod pnp;
 pub mod recurrence;
 mod reduction;
+pub mod self_calibration;
 pub mod special;
 
 /// Version of this crate, re-exported by the Python extension as `__version__`.
@@ -54,6 +58,13 @@ pub enum ClimateError {
     },
     /// A missing-day policy name a kernel does not implement.
     UnknownNanPolicy { value: String },
+    /// A calibration stage that cannot produce a usable value.
+    ///
+    /// The message is the Python one, so a caller can raise the
+    /// `ConvergenceError` the Python path raises.
+    NoConvergence { message: &'static str },
+    /// A series too short (or too sparse) to fill a rolling window.
+    InsufficientData { required: usize, available: usize },
 }
 
 impl fmt::Display for ClimateError {
@@ -85,6 +96,14 @@ impl fmt::Display for ClimateError {
             Self::UnknownNanPolicy { value } => {
                 write!(f, "unknown missing-day policy {value:?}")
             }
+            Self::NoConvergence { message } => f.write_str(message),
+            Self::InsufficientData {
+                required,
+                available,
+            } => write!(
+                f,
+                "no complete {required}-period rolling window: only {available} non-missing periods were available"
+            ),
         }
     }
 }
