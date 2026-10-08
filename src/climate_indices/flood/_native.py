@@ -141,12 +141,7 @@ def api_recurrence(
     if days == 0 or cells == 0:
         return None
 
-    precipitation_mm = _block(precipitation, days, cells)
     decay = float(k)
-    initial_api = _flat(api, cells)
-    valid = _mask(weather_valid, days, cells)
-    static = _flags_flat(static_valid, cells)
-    gap_days = _counts_flat(trailing_gap_days, cells)
 
     def native_run(
         shape: tuple[int, ...] | None,
@@ -158,14 +153,16 @@ def api_recurrence(
         # cannot represent stays on the Python path instead of overflowing
         if spin_up > _MAX_NATIVE_OPTION or max_gap_days > _MAX_NATIVE_OPTION:
             return None
+        # built here, inside the runner's guarded region, so a copy a layout
+        # needs is reported through the recurrence's failure events
         try:
             history, final_api, final_gaps = native.antecedent_precipitation_index(
-                precipitation_mm=precipitation_mm,
+                precipitation_mm=_block(precipitation, days, cells),
                 k=decay,
-                initial_api=initial_api,
-                weather_valid=valid,
-                static_valid=static,
-                trailing_gap_days=gap_days,
+                initial_api=_flat(api, cells),
+                weather_valid=_mask(weather_valid, days, cells),
+                static_valid=_flags_flat(static_valid, cells),
+                trailing_gap_days=_counts_flat(trailing_gap_days, cells),
                 spin_up=spin_up,
                 nan_policy=nan_policy,
                 max_gap_days=max_gap_days,
