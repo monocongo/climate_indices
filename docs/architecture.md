@@ -260,8 +260,8 @@ src/climate_indices/_native.pyi # type stub for the extension
 **Ported kernels.** The gamma fit and transform behind SPI were the first port,
 followed by EDDI's empirical ranking and inverse normal, the distribution fits
 SPEI adds, Pearson Type III (also used by SPI and the standardized index), the
-log-logistic (generalized logistic, GLO), the PNP and PCI numerical blocks, and
-the fire-weather recurrences. The gamma and distribution-fit kernels replace the
+log-logistic (generalized logistic, GLO), the PNP and PCI numerical blocks, the
+fire-weather recurrences, and the flood family. The gamma and distribution-fit kernels replace the
 numerical blocks inside `compute.py` functions; the EDDI, PNP, and PCI kernels
 replace the blocks inside the `indices.py` functions that own them, so the
 validation, calibration-period resolution, data-quality and goodness-of-fit
@@ -335,6 +335,31 @@ loop cannot change a result. Elementwise fire indices (ISI, BUI, FWI, DSR,
 Fosberg, HDW, Haines) stay in Python: they are single NumPy expressions with no
 recurrence, and a port would not pay for itself.
 
+The flood family ports the computation behind each NumPy entry point in
+`climate_indices.flood`, with the Antecedent Precipitation Index running on the
+same `recurrence::run` driver as the fire codes rather than a second recurrence
+interface:
+
+| Python seam | Rust kernel (`climate-core`) |
+|---|---|
+| `scipy.ndimage.correlate1d` window of `flood.effective_precipitation` | `flood::effective_precipitation` |
+| calendar-day standardization of `flood.edi` | `flood::edi` |
+| annual maxima and standardization of `flood.flood_index` | `flood::flood_index` |
+| `flood.antecedent_precipitation_index` recurrence | `flood::antecedent_precipitation_index` over `recurrence::run` |
+
+The effective-precipitation kernel reproduces `correlate1d`'s general loop
+(the newest day's term first, then the window from its oldest day) and its
+NaN propagation, so a window holding a missing day is NaN. The EDI and Flood
+Index calibration sums follow NumPy's axis-0 reduction, which adds the years
+sequentially for a block of several columns and pairwise for a single one (a
+1-D Flood Index sample); both share the population SD and the `8 * eps * |mean|`
+rounding guard. `climate_indices.flood._native` hands each kernel the blocks and
+the Calibration Period rows the Python modules resolved; validation, the
+all-leap layout, and the xarray and CLI paths stay in Python, and the xarray
+adapters reach the kernels through the same NumPy entry points. An API decay
+constant whose type would promote the Python step beyond float64 (an extended
+`np.longdouble`) keeps the Python recurrence.
+
 Dispatch takes the Rust path only for a
 plain, aligned float64 `ndarray` whose fit parameters are aligned and one per
 calendar step (and cell). Unaligned arrays, masked arrays, other dtypes, and
@@ -343,8 +368,9 @@ PNP preparation fills partial masks with NaN before dispatch, so those prepared
 arrays can use Rust. PCI dispatch checks the original input and requires a plain 1-D
 array; masked inputs and other shapes or dtypes keep its Python implementation. The
 fire recurrences apply the same guard to every weather array and to the seed they
-resume from, and a layout the kernel cannot take unchanged (an empty axis, a
-non-float64 or unaligned array) stays in Python as well.
+resume from, as the flood kernels do to their prepared series and the API seed,
+and a layout the kernel cannot take unchanged (an empty axis, a non-float64 or
+unaligned array) stays in Python as well.
 Native dispatch also requires NumPy floating-point errors to be ignored
 (`np.errstate(all="ignore")`); warnings, exceptions, callbacks, logging, or
 printing keep the Python path. Python 3.14 context-aware warnings conservatively
@@ -353,9 +379,11 @@ whose empty-slice warnings are independent of NumPy error policies. Default NumP
 therefore use Python even when the extension is installed. Direct extension
 calls reject unaligned inputs and copy empty arrays without creating Rust views
 of caller-owned storage. `tests/test_native_parity.py` (gamma),
-`tests/test_native_parity_distributions.py` (Pearson Type III and GLO), and
+`tests/test_native_parity_distributions.py` (Pearson Type III and GLO),
 `tests/test_native_parity_fire.py` (the fire recurrences, which compare the
-returned state as well) explicitly ignore floating-point errors and compare the
+returned state as well), and `tests/test_native_parity_flood.py` (the flood
+family, including the returned API state and a resumed run that is bitwise a
+single pass) explicitly ignore floating-point errors and compare the
 two paths at `rtol = atol = 1e-10` with matching NaN positions, and the
 `python_backend` fixture in
 `tests/conftest.py` pins any test to the Python reference.
