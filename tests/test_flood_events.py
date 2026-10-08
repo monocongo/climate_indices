@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from climate_indices import flood
-from climate_indices.exceptions import InvalidArgumentError
+from climate_indices.exceptions import InputTypeError, InvalidArgumentError
 
 
 def test_one_dimensional_events_have_onset_duration_peak_and_severity() -> None:
@@ -110,3 +110,10 @@ def test_all_missing_input_has_no_events() -> None:
 def test_invalid_options_are_rejected(kwargs, error) -> None:
     with pytest.raises(error):
         flood.flood_events(np.ones(4), **kwargs)
+
+
+def test_scalar_and_non_numeric_input_are_rejected() -> None:
+    with pytest.raises(InvalidArgumentError):
+        flood.flood_events(1.0)
+    with pytest.raises(InputTypeError):
+        flood.flood_events(["a", "b"])
