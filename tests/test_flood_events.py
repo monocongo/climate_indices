@@ -24,3 +24,10 @@ def test_nan_and_masked_days_end_a_run() -> None:
     events = flood.flood_events(index)
     np.testing.assert_array_equal(events.onset, [0, 3])
     np.testing.assert_array_equal(events.duration, [2, 1])
+
+
+def test_min_duration_and_threshold_filter_events() -> None:
+    index = np.array([0.0, 1.5, 1.5, 0.0, 2.5, 0.0])
+    np.testing.assert_array_equal(flood.flood_events(index, min_duration=2).onset, [1])
+    np.testing.assert_array_equal(flood.flood_events(index, threshold=2.0).onset, [4])
+    assert len(flood.flood_events(index, threshold=5.0)) == 0
