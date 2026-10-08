@@ -20,6 +20,20 @@ sudo apt-get install libhdf5-dev libnetcdf-dev
 sudo dnf install hdf5-devel netcdf-devel
 ```
 
+### Optional: the native Rust extension
+
+Everything in the library runs in pure Python, and `uv sync` installs it that way.
+The native extension is an optional accelerator: when it is present, the dispatch
+described in [architecture.md](architecture.md#optional-rust-backend) sends prepared
+float64 arrays to Rust kernels instead of the Python reference. You do **not** need
+Rust to install, import, run, or test `climate_indices`; the only checks that need a
+built extension are the parity suites (`tests/test_native_parity.py`,
+`tests/test_native_parity_distributions.py`, `tests/test_native_parity_fire.py`),
+which skip without it. A change to a ported kernel is not actually compared against
+the Rust path until you build the extension, so build it before claiming parity. No
+Rust experience is required: [installing the Rust toolchain](#install-the-rust-toolchain)
+below is a one-time, two-command step.
+
 ## Installation
 
 ### 1. Clone Repository
@@ -167,6 +181,90 @@ already-ported seams, and the dispatch rules are in
 [architecture.md](architecture.md#optional-rust-backend). `crates/climate-core/src/gamma.rs`
 and its dispatch in `src/climate_indices/compute.py` are the reference implementation
 of every step below.
+
+### Install the Rust toolchain
+
+Rust is distributed through `rustup`, a toolchain manager that plays the same role
+for Rust that `uv` plays for Python. You do not need to pick a version: this
+repository's `rust-toolchain.toml` pins the compiler (1.99.0) and the two components
+the checks use (`rustfmt`, `clippy`), and `rustup` installs that exact toolchain
+automatically the first time you run a Rust command inside the checkout. Install
+`rustup` once, then let the checkout pick the version.
+
+```bash
+# macOS/Linux (official installer — recommended)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+
+# macOS with Homebrew (alternative). rustup is keg-only, so it is installed but
+# not put on PATH: add its bin directory, which holds the rustup/cargo/rustc shims.
+brew install rustup
+printf '%s\n' 'export PATH="/opt/homebrew/opt/rustup/bin:$PATH"' >> ~/.zshrc
+
+# Windows (PowerShell)
+winget install --id Rustlang.Rustup
+```
+
+The official installer places the Rust binaries in `~/.cargo/bin` and adds that
+directory to your shell's `PATH`; open a new terminal afterwards (or run
+`source "$HOME/.cargo/env"`) so the commands below resolve. If you used Homebrew,
+the `printf` line does the same for the Homebrew copy, also taking effect in a new
+terminal. This is the step people most often miss: a Homebrew rustup without that
+line leaves `cargo` and `rustup` off `PATH`, so every Rust command reports
+`command not found` even though the toolchain is installed. On Windows, install the
+Microsoft C++ build tools (the Visual Studio installer's "Desktop development with
+C++" workload) before building: the MSVC toolchain links against them, and the build
+fails at the link step without them.
+
+Verify the install:
+
+```bash
+rustup --version
+rustup show    # the toolchain in effect for the current directory (1.99.0)
+cargo --version
+```
+
+`rustup show` lists the toolchains installed and names the one in effect. The first
+Rust command you run inside the checkout also downloads the pinned 1.99.0 toolchain
+if it is missing; to fetch it explicitly, run
+`rustup toolchain install 1.99.0 --component rustfmt --component clippy`.
+
+In this project `cargo` is the Rust build tool and package manager, `rustfmt`
+formats Rust code, and `clippy` lints it; `maturin` is the Python bridge that wraps
+the compiled crates into an importable extension. `maturin` is already a locked dev
+dependency, so `uv sync --group dev` installs it and you run it through `uv`.
+
+Build the extension and confirm it imports, from the repository root:
+
+```bash
+uv run maturin develop --release
+uv run python -c "import climate_indices._native; print(climate_indices._native.__file__)"
+```
+
+`maturin develop` compiles the crates in `crates/`, copies the resulting `_native`
+extension into `src/climate_indices/`, and installs the package in editable mode, so
+the extension stays importable when `uv sync` later reinstalls the project. The first
+build downloads the pinned toolchain and the crates it depends on and can take a few
+minutes; later builds are incremental. To return to the pure-Python install, delete
+the compiled file and start a new interpreter:
+
+```bash
+rm -f src/climate_indices/_native.*.so src/climate_indices/_native.*.pyd
+```
+
+The everyday Rust commands, for reference:
+
+| Command | What it does |
+|---------|--------------|
+| `rustup show` | The toolchain this checkout pins (must be 1.99.0) |
+| `rustup update` | Updates installed toolchains — do **not** use this to move the pin; change `channel` in `rust-toolchain.toml` deliberately instead |
+| `cargo build` / `cargo test --workspace` | Compiles the crates / runs the crate-level Rust tests |
+| `cargo fmt --all -- --check` | Formatting; CI fails on any diff |
+| `cargo clippy --workspace --all-targets -- -D warnings` | Lints; CI fails on any warning |
+
+CI runs the native legs with `CLIMATE_INDICES_REQUIRE_NATIVE=1`, which turns a
+missing extension into a test failure instead of a skip so a broken build cannot
+silently drop the parity suite. Set the same variable locally to confirm a change
+really exercises the Rust path.
 
 ### 1. Trace the Python seam
 
