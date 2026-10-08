@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted. The decision is implemented by the RUST ticket series under the epic
+Amended by [#1288](https://github.com/monocongo/climate_indices/issues/1288),
+which corrected item 6's masked-array claim to match the code; the decision
+itself stands. The decision is implemented by the RUST ticket series under the epic
 [#1270](https://github.com/monocongo/climate_indices/issues/1270): the workspace
 scaffold and SPI gamma port (RUST-001, RUST-002), the CI jobs (RUST-003), and the
 per-kernel ports that followed. Packaging of binary wheels is deferred to RUST-013
@@ -77,16 +79,20 @@ contract more thoroughly than leaving the performance on the table.
    plain float64 array may use Rust. Fully masked SPI/SPEI inputs return a
    `MaskedArray` before fitting or native calls; existing shape and water-balance
    preparation still applies, so input object identity is not a general guarantee.
-   A direct gamma transform returns the fully masked input unchanged. The resolver instead fills
-   a full mask and returns plain NaN parameters without a kernel call. A direct
-   `gamma_parameters` call retains Python's partial-mask semantics and returns
-   plain NaN parameters for an entirely masked input. Other seams that do not
-   normalize masks keep their Python implementation.
+   A direct gamma transform returns the fully masked input unchanged. The resolver
+   instead fills a full mask and, when it has to fit, returns plain NaN
+   parameters without a kernel call; supplied `alpha`/`beta` come back unchanged
+   and only the computed `prob_zero` is NaN. A direct `gamma_parameters` call
+   retains Python's partial-mask semantics and returns plain NaN parameters for
+   an entirely masked input. Other seams that do not normalize masks keep their
+   Python implementation.
 
-   Gamma fits also stay Python if any calibration column has no positive value
-   after zero replacement: the empty log reduction emits `Mean of empty slice`
-   even when NumPy floating-point errors are ignored. Entirely missing inputs
-   retain their warning-free early return. Negative values are neither removed
+   For a plain or NaN-normalized calibration block, gamma fits also stay Python
+   if any calibration column has no positive value after zero replacement: the
+   empty log reduction emits `Mean of empty slice` even when NumPy floating-point
+   errors are ignored. A block passed as a `MaskedArray` is not normalized here:
+   its masked reductions emit no such warning and return masked parameters.
+   Entirely missing inputs retain their warning-free early return. Negative values are neither removed
    nor newly rejected: a mixed-sign block can use Rust under `all="ignore"` if
    every column has a positive value, but `invalid="warn"` and `invalid="raise"`
    keep Python's raw NumPy warning and `FloatingPointError`. Constant and

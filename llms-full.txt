@@ -1866,9 +1866,11 @@ filled plain NaN array. Existing preparation still applies: SPI flattens a 2-D
 series, and SPEI forms its water-balance array, so input object identity is not
 a general guarantee. A direct `transform_fitted_gamma` call returns the fully
 masked input unchanged. The gamma parameter resolver fills even a
-full mask with NaN: it returns plain NaN parameters without calling a kernel.
-A direct `gamma_parameters` call also returns plain NaN parameters for a fully
-masked input, but retains Python's mask semantics for a partial mask. Seams that do
+full mask with NaN, so a fully masked fit returns plain NaN parameters without
+calling a kernel; supplied `alpha`/`beta` come back unchanged, and only the
+computed `prob_zero` is NaN. A direct `gamma_parameters` call also returns plain
+NaN parameters for a fully masked input, but retains Python's mask semantics for
+a partial mask. Seams that do
 not replace a mask keep their Python implementation when handed one: a direct
 `gamma_parameters` or `loglogistic_parameters` call, the Pearson Type III fit
 and transform, PCI, whose dispatch checks the original 1-D input and requires a
@@ -1892,18 +1894,21 @@ policies therefore use Python even when the extension is installed.
 
 For gamma calibration blocks, the contract is:
 
-- If any column has no positive value after zero replacement (only NaN, zero,
-  or negative values), the **whole fit** stays in Python. Its `np.nanmean` emits
+- For a plain (or NaN-normalized) calibration block, if any column has no
+  positive value after zero replacement (only NaN, zero, or negative values),
+  the **whole fit** stays in Python. Its `np.nanmean` emits
   `RuntimeWarning: Mean of empty slice` independently of `np.errstate`, so that
-  warning and its promotion to an exception are preserved. Entirely missing
-  inputs still return NaN parameters before fitting, without this warning.
+  warning and its promotion to an exception are preserved. A block passed as a
+  `MaskedArray` is not normalized here: its masked reductions warn nothing and
+  return masked parameters. Entirely missing inputs still return NaN parameters
+  before fitting, without this warning.
 - Negatives are not removed or newly rejected. A block containing negatives may
   use the native fit only when every column also has a positive value and all
   floating-point errors are ignored. Under `invalid="warn"` or `invalid="raise"`,
   Python preserves `RuntimeWarning: invalid value encountered in log` or
   `FloatingPointError`, respectively.
 - Constant and single-positive-value columns may use Rust under `all="ignore"`;
-  their degenerate parameters and missing transform results match Python.
+  their degenerate parameters and their transform results match Python.
   A Python fit does not prohibit later eligible native CDF/inverse-normal calls.
   Return values and `climate_indices` warnings match on both backends.
 
