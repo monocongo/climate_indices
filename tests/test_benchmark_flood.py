@@ -131,6 +131,10 @@ def _flood_index_run(years: int, side: int) -> Callable[[], Any]:
     )
 
 
+def _api_run(years: int, side: int) -> Callable[[], Any]:
+    return partial(flood.antecedent_precipitation_index, _rain(years, side), _API_DECAY)
+
+
 @pytest.mark.benchmark
 @pytest.mark.parametrize("side", _GRID_SIDES)
 def test_effective_precipitation_rust_against_python(benchmark, monkeypatch, native, side: int) -> None:
@@ -160,6 +164,18 @@ def test_edi_rust_against_python(benchmark, monkeypatch, native, side: int) -> N
 def test_flood_index_rust_against_python(benchmark, monkeypatch, native, side: int) -> None:
     """Time the Flood Index on the Rust kernel and the Python path."""
     run = _flood_index_run(_RECORD_YEARS, side)
+    rust, python = _time_both_paths(monkeypatch, native, run)
+    benchmark.extra_info.update(python_seconds=python, rust_seconds=rust, speedup=python / rust)
+    monkeypatch.setattr(flood_native, "_native", native)
+    with np.errstate(all="ignore"):
+        benchmark(run)
+
+
+@pytest.mark.benchmark
+@pytest.mark.parametrize("side", _GRID_SIDES)
+def test_antecedent_precipitation_index_rust_against_python(benchmark, monkeypatch, native, side: int) -> None:
+    """Time the API on the Rust kernel and the Python path."""
+    run = _api_run(_RECORD_YEARS, side)
     rust, python = _time_both_paths(monkeypatch, native, run)
     benchmark.extra_info.update(python_seconds=python, rust_seconds=rust, speedup=python / rust)
     monkeypatch.setattr(flood_native, "_native", native)
