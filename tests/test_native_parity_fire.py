@@ -27,7 +27,9 @@ import numpy as np
 import pytest
 
 from climate_indices import fire
+from climate_indices.exceptions import InvalidArgumentError
 from climate_indices.fire import _native as fire_native
+from climate_indices.fire._native import _raise_non_finite
 from tests import conftest
 
 native = conftest.import_native()
@@ -224,6 +226,84 @@ def test_moisture_codes_with_missing_days(monkeypatch) -> None:
     _assert_parity(rust, python)
 
 
+def test_moisture_codes_with_propagated_gaps(monkeypatch) -> None:
+    """The default policy poisons a cell at its first missing day, on both paths."""
+    columns = _cffwis_fixture()
+    temperature = _with_gaps(columns["temperature_celsius"], 0.2, seed=5)
+    precipitation = _with_gaps(columns["precipitation_mm"], 0.1, seed=6)
+    kbdi_precipitation, kbdi_temperature, _ = _kbdi_fixture()
+    kbdi_precipitation = _with_gaps(kbdi_precipitation[:500], 0.05, seed=7)
+    kbdi_temperature = _with_gaps(kbdi_temperature[:500], 0.05, seed=8)
+
+    def run() -> tuple[Any, Any, Any]:
+        return (
+            fire.ffmc(
+                temperature,
+                columns["relative_humidity_percent"],
+                columns["wind_speed_kmh"] / 3.6,
+                precipitation,
+                return_state=True,
+            ),
+            fire.drought_code(
+                temperature,
+                precipitation,
+                columns["latitude"][0],
+                columns["month"].astype(int),
+                return_state=True,
+            ),
+            fire.kbdi(kbdi_precipitation, kbdi_temperature, 300.0, return_state=True),
+        )
+
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == {"ffmc", "drought_code", "kbdi"}
+    _assert_parity(rust, python)
+    # a poisoned cell stops advancing, so the runs are NaN from their first gap on
+    assert np.isnan(np.asarray(rust[0].values)).any()
+    assert np.isnan(np.asarray(rust[2].values)).any()
+
+
+def test_multi_season_run_with_overwintering(monkeypatch) -> None:
+    """Two seasons chained through the overwinter equation and non-default seeds."""
+    columns = _cffwis_fixture()
+    days = columns["month"].size
+    temperature = np.repeat(columns["temperature_celsius"][:, None], 2, axis=1)
+    precipitation = np.repeat(columns["precipitation_mm"][:, None], 2, axis=1)
+    latitude = np.array([55.0, 55.0])
+    months = np.repeat(columns["month"][:, None].astype(int), 2, axis=1)
+    first_season = np.zeros(days, dtype=bool)
+    first_season[: days // 2] = True
+    second_season = np.zeros(days, dtype=bool)
+    second_season[days // 2 + 4 :] = True
+
+    def run() -> tuple[Any, Any, Any]:
+        autumn = fire.drought_code(
+            temperature,
+            precipitation,
+            latitude,
+            months,
+            in_season=first_season,
+            return_state=True,
+        )
+        assert autumn.state is not None
+        spring_seed = fire.overwinter_drought_code(np.asarray(autumn.state.dc), np.array([120.0, 400.0]))
+        next_season = fire.drought_code(
+            temperature,
+            precipitation,
+            latitude,
+            months,
+            in_season=second_season,
+            initial_dc=spring_seed,
+            return_state=True,
+        )
+        return autumn, next_season, spring_seed
+
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == {"drought_code"}
+    _assert_parity(rust, python)
+    # the fully recharged cell starts the second season at the published seed
+    assert rust[2][1] == 15.0
+
+
 def test_drought_code_seasonal_carry(monkeypatch) -> None:
     """The ADR-0010 shutdown half: off-season days carry the code instead of a gap NaN."""
     columns = _cffwis_fixture()
@@ -290,6 +370,40 @@ def test_moisture_code_resumes_from_a_returned_state(monkeypatch) -> None:
     _assert_parity(rust, python)
 
 
+def test_moisture_code_resumes_from_a_split_run(monkeypatch) -> None:
+    """Two halves chained through the returned state, the second resumed poisoned."""
+    columns = _cffwis_fixture()
+    half = columns["month"].size // 2
+    temperature = columns["temperature_celsius"].copy()
+    # the last day of the first half is missing, so the resumed state is poisoned
+    temperature[half - 1] = np.nan
+    precipitation = columns["precipitation_mm"]
+    latitude = columns["latitude"][0]
+    months = columns["month"].astype(int)
+
+    def run() -> tuple[Any, Any]:
+        first = fire.duff_moisture_code(
+            temperature[:half], 40.0, precipitation[:half], latitude, months[:half], return_state=True
+        )
+        assert first.state is not None
+        second = fire.duff_moisture_code(
+            temperature[half:],
+            40.0,
+            precipitation[half:],
+            latitude,
+            months[half:],
+            initial_state=first.state,
+            return_state=True,
+        )
+        return first, second
+
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == {"duff_moisture_code"}
+    _assert_parity(rust, python)
+    # a poisoned state stays poisoned, so the second half never recovers
+    assert np.isnan(np.asarray(rust[1].values)).all()
+
+
 def test_moisture_code_spin_up(monkeypatch) -> None:
     columns = _cffwis_fixture()
     run = partial(
@@ -348,6 +462,36 @@ def test_kbdi_with_missing_days_and_spatial_blocks(monkeypatch) -> None:
     rust, python, calls = _rust_and_python(monkeypatch, run)
     assert calls == {"kbdi"}
     _assert_parity(rust, python)
+
+
+def test_kbdi_se38_figure1_with_its_published_initial_value(monkeypatch) -> None:
+    """The published SE-38 example, seeded with its previous-day KBDI in inches."""
+    fixture = Path(__file__).parent / "fixture" / "kbdi_se38_figure1" / "figure1.csv"
+    with fixture.open(newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    precipitation = np.array([float(row["precipitation_in"]) for row in rows])
+    temperature = np.array([float(row["maximum_temperature_f"]) for row in rows])
+    published = np.array([float(row["published_kbdi_hundredths_in"]) for row in rows])
+    run = partial(
+        fire.kbdi,
+        precipitation,
+        temperature,
+        50.0,
+        units="imperial",
+        initial_kbdi=164.0,
+        return_state=True,
+    )
+
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == {"kbdi"}
+    _assert_parity(rust, python)
+    # the same tolerance tests/test_fire_kbdi_reference.py holds the Python path to
+    tolerance = json.loads((fixture.parent / "provenance.json").read_text())["validation_tolerance"]
+    np.testing.assert_allclose(
+        np.asarray(rust.values),
+        published,
+        atol=tolerance["figure1_continuous_equation_atol_hundredths_in"],
+    )
 
 
 def test_kbdi_imperial_units(monkeypatch) -> None:
@@ -412,6 +556,33 @@ def test_cffwis_orchestrator_with_missing_days(monkeypatch) -> None:
     _assert_parity(rust, python)
 
 
+@pytest.mark.usefixtures("python_backend")
+def test_the_python_backend_fixture_pins_the_fire_recurrences() -> None:
+    """The shared fixture turns the dispatch off where it would otherwise engage."""
+    assert fire_native._native is None
+    columns = _cffwis_fixture()
+    with np.errstate(all="ignore"):
+        result = fire.ffmc(
+            columns["temperature_celsius"],
+            columns["relative_humidity_percent"],
+            columns["wind_speed_kmh"] / 3.6,
+            columns["precipitation_mm"],
+            return_state=True,
+        )
+    np.testing.assert_allclose(np.asarray(result.values), columns["ffmc"], atol=1e-9, equal_nan=True)
+
+
+def test_the_non_finite_translation_raises_the_python_error() -> None:
+    """The kernel's non-finite signal becomes the error the Python driver raises.
+
+    No caller-supplied input reaches this today (the Python steps reject the same
+    values with a finite result), so the mapping is checked directly; the kernel
+    side is covered by ``recurrence::tests::a_non_finite_step_result_is_an_error``.
+    """
+    with pytest.raises(InvalidArgumentError, match="kbdi produced a non-finite value from finite inputs"):
+        _raise_non_finite("kbdi", native.NonFiniteResultError("non-finite"))
+
+
 def test_default_error_policies_keep_the_python_path(monkeypatch) -> None:
     """Native dispatch requires NumPy floating-point errors to be ignored.
 
@@ -434,12 +605,8 @@ def test_default_error_policies_keep_the_python_path(monkeypatch) -> None:
     assert np.isfinite(np.asarray(result.values)).all()
 
 
-def test_varying_month_per_cell_stays_on_the_python_path(monkeypatch) -> None:
-    """A month series that differs by cell is not a shared calendar.
-
-    The kernel takes the month of every cell-day, so this run must reach it and
-    agree with the Python path that indexes the same tables per cell.
-    """
+def test_a_varying_month_per_cell_still_indexes_the_tables_per_cell(monkeypatch) -> None:
+    """A month series that differs by cell indexes the day-length tables per cell."""
     columns = _cffwis_fixture()
     latitude = np.array([55.0, -40.0])
     temperature = np.repeat(columns["temperature_celsius"][:, None], latitude.size, axis=1)

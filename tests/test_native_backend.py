@@ -46,10 +46,17 @@ assert fire_native._native is None
 days = 40
 precipitation = np.zeros(days)
 temperature = np.full(days, 22.0)
-kbdi = fire.kbdi(precipitation, temperature, 800.0)
-assert np.isfinite(kbdi).all()
-index = fire.ffmc(temperature, np.full(days, 40.0), np.full(days, 5.0), precipitation)
-assert np.isfinite(index).all()
+humidity = np.full(days, 40.0)
+months = np.array([(day % 12) + 1 for day in range(days)])
+assert np.isfinite(fire.kbdi(precipitation, temperature, 800.0)).all()
+assert np.isfinite(fire.ffmc(temperature, humidity, np.full(days, 5.0), precipitation)).all()
+dmc = fire.duff_moisture_code(temperature, humidity, precipitation, 40.0, months)
+assert np.isfinite(dmc).all()
+dc = fire.drought_code(temperature, precipitation, 40.0, months)
+assert np.isfinite(dc).all()
+combined = fire.cffwis(temperature, humidity, np.full(days, 5.0), precipitation, 40.0, months)
+assert np.isfinite(np.asarray(combined.ffmc)).all()
+assert np.isfinite(np.asarray(combined.dc)).all()
 """
     subprocess.run([sys.executable, "-c", code], check=True)
 
