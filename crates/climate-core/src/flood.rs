@@ -68,22 +68,30 @@ pub fn effective_precipitation(
     let filter = harmonic_filter(duration);
     let (older, newest) = filter.split_at(duration - 1);
     let newest = newest[0];
+    let windows = days - duration + 1;
     let mut line = Vec::with_capacity(days);
+    let mut sums = vec![0.0; windows];
     for cell in 0..cells {
         line.clear();
         line.extend(precipitation.column(cell).iter().copied());
-        let mut output = result.column_mut(cell);
-        for (window, value) in line
-            .windows(duration)
-            .zip(output.iter_mut().skip(duration - 1))
+        // every window adds its terms in correlate1d's order (the newest day,
+        // then the oldest onward); taking one weight across all windows at a
+        // time keeps that order per window while vectorizing over the days
+        for (sum, &rain) in sums.iter_mut().zip(&line[duration - 1..]) {
+            *sum = rain * newest;
+        }
+        for (offset, &weight) in older.iter().enumerate() {
+            for (sum, &rain) in sums.iter_mut().zip(&line[offset..offset + windows]) {
+                *sum += rain * weight;
+            }
+        }
+        for (value, &sum) in result
+            .column_mut(cell)
+            .iter_mut()
+            .skip(duration - 1)
+            .zip(&sums)
         {
-            let (window_older, window_newest) = window.split_at(duration - 1);
-            *value = window_older
-                .iter()
-                .zip(older)
-                .fold(window_newest[0] * newest, |sum, (&rain, &weight)| {
-                    sum + rain * weight
-                });
+            *value = sum;
         }
     }
     Ok(result)
