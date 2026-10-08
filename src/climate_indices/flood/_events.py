@@ -9,9 +9,12 @@ exceedance, not a claim that flooding occurred.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
+
+from climate_indices.exceptions import InputTypeError, InvalidArgumentError
 
 
 @dataclass(frozen=True)
@@ -38,3 +41,13 @@ class FloodEvents:
 
     def __len__(self) -> int:
         return int(self.onset.shape[0])
+
+
+def _validated_index(index: Any) -> npt.NDArray[np.float64]:
+    try:
+        values = np.ma.filled(np.ma.asarray(index, dtype=np.float64), np.nan)
+    except (TypeError, ValueError) as exc:
+        raise InputTypeError("index must be numeric.", expected_type=float, actual_type=type(index)) from exc
+    if values.ndim == 0:
+        raise InvalidArgumentError("index needs a time axis.", argument_name="index")
+    return np.asarray(values, dtype=np.float64)
