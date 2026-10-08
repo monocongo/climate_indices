@@ -215,3 +215,16 @@ def test_edi_years_by_days_layout(monkeypatch) -> None:
     assert calls == {"edi"}
     _assert_parity(rust, python)
     assert rust.shape == pe.shape
+
+
+# Flood Index.
+
+
+@pytest.mark.parametrize("year_start_month", [1, 3, 7, 12])
+def test_flood_index_on_the_fresno_record(monkeypatch, year_start_month: int) -> None:
+    # a single series reduces its annual maxima pairwise, as NumPy does
+    last = 2020 if year_start_month == 1 else 2019
+    run = partial(flood.flood_index, _fresno_pe(), _FRESNO_START, 1992, last, year_start_month=year_start_month)
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == {"flood_index"}
+    _assert_parity(rust, python)
