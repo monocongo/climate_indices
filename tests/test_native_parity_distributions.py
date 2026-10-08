@@ -9,7 +9,10 @@ Skipped when the extension is not built, unless ``CLIMATE_INDICES_REQUIRE_NATIVE
 is set, as in CI's native legs (see ``test_native_parity.py``).
 """
 
+import json
+import logging
 import warnings
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -25,6 +28,7 @@ native = conftest.import_native()
 
 _PEARSON = {"pearson_parameters", "pearson_cdf"}
 _GLO = {"loglogistic_parameters", "loglogistic_cdf"}
+_KERNELS = {indices.Distribution.pearson: _PEARSON, indices.Distribution.loglogistic: _GLO}
 _MONTHLY = compute.Periodicity.monthly
 
 
@@ -99,7 +103,8 @@ def test_spi_pearson_with_missing_values(monkeypatch, precips_mm_monthly):
     gappy = precips_mm_monthly.copy().flatten()
     gappy[np.random.default_rng(13).random(gappy.size) < 0.15] = np.nan
     gappy[:30] = np.nan
-    rust, python, _ = _rust_and_python(monkeypatch, _spi_pearson(gappy, 6, 1981, 2010))
+    rust, python, calls = _rust_and_python(monkeypatch, _spi_pearson(gappy, 6, 1981, 2010))
+    assert calls == _PEARSON
     _assert_parity(rust, python)
 
 
@@ -111,6 +116,55 @@ def test_spi_pearson_fewer_than_four_non_zero_values_in_one_month(monkeypatch, p
     rust, python, calls = _rust_and_python(monkeypatch, _spi_pearson(sparse, 1, 1981, 2010))
     assert calls == _PEARSON
     _assert_parity(rust, python)
+
+
+@pytest.mark.parametrize("scale", [1, 30])
+def test_spi_pearson_daily_series(
+    monkeypatch,
+    precips_mm_daily,
+    data_year_start_daily,
+    calibration_year_start_daily,
+    calibration_year_end_daily,
+    scale,
+):
+    run = _spi_pearson(
+        precips_mm_daily,
+        scale,
+        calibration_year_start_daily,
+        calibration_year_end_daily,
+        periodicity=compute.Periodicity.daily,
+        data_start=data_year_start_daily,
+    )
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == _PEARSON
+    _assert_parity(rust, python)
+
+
+@pytest.mark.parametrize("scale", [1, 6, 12])
+def test_ncei_precipitation_runs_on_the_rust_kernels(monkeypatch, scale):
+    """The NCEI characterization's inputs, which only reach Rust under ``np.errstate(all="ignore")``.
+
+    ``test_ncei_spi_reference.py`` runs under the default NumPy error policy, so it exercises the
+    Python path; this runs real division precipitation through both paths and holds the Rust one
+    to the same ceiling against NOAA's SPI.
+    """
+    fixtures = Path(__file__).parent / "fixture"
+    divisions = json.loads((fixtures / "nclimdiv" / "divisions.json").read_text(encoding="utf-8"))[:8]
+    precips = [np.load(fixtures / "palmer" / division / "precips.npy") for division in divisions]
+    run = lambda: np.stack(  # noqa: E731
+        [indices.spi(p, scale, indices.Distribution.pearson, 1895, 1895, 2022, _MONTHLY) for p in precips]
+    )
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    # a fallback to gamma would add the gamma kernels
+    assert calls == _PEARSON
+    _assert_parity(rust, python)
+
+    reference = np.load(fixtures / "ncei_spi" / f"sp{scale:02d}.npy")[:8].astype(np.float64)
+    provenance = json.loads((fixtures / "ncei_spi" / "provenance.json").read_text(encoding="utf-8"))
+    ceiling = provenance["validation_tolerance"][f"sp{scale:02d}_max"]
+    both = ~np.isnan(reference) & ~np.isnan(rust)
+    assert both.sum() > 0.9 * rust.size
+    assert np.abs(rust[both] - reference[both]).max() < ceiling
 
 
 @pytest.mark.parametrize("fraction", [0.2, 0.6])
@@ -139,33 +193,37 @@ def test_pearson_parameters_daily(monkeypatch, precips_mm_daily, data_year_start
     _assert_parity(rust, python)
 
 
-def test_the_gamma_fallback_fires_on_the_same_inputs(monkeypatch, precips_mm_monthly):
-    """A block whose months mostly fail the Pearson fit is refitted with gamma on both paths."""
-    # nearly dry through the calibration years 1981-2010 (rows 86-115) and wet elsewhere
-    sparse = precips_mm_monthly.copy()
-    sparse[86:116] = _with_zeros(sparse[86:116], 0.97, seed=15)
-    healthy = precips_mm_monthly
+@pytest.mark.parametrize("dry_months", range(13))
+def test_the_gamma_fallback_fires_on_the_same_inputs(monkeypatch, precips_mm_monthly, dry_months):
+    """The Pearson fit is lost, and the block refitted with gamma, for the same blocks on both paths.
 
-    def run(values):
-        def fallback() -> tuple[bool, np.ndarray]:
-            standardized, used, _ = compute._fit_pearson_with_fallback(
-                values.copy(), indices.Distribution.pearson, _DATA_START, 1981, 2010, _MONTHLY, None, "test"
-            )
-            return used, standardized
+    The first ``dry_months`` calendar months are dry through the calibration years 1981-2010 (rows
+    86-115) and wet elsewhere, so their Pearson fit fails and their wet values are lost. Whether the
+    lost fraction crosses the fallback threshold flips between seven and eight such months.
+    """
+    block = precips_mm_monthly.copy()
+    block[86:116, :dry_months] = 0.0
 
-        return fallback
+    def run() -> tuple[bool, np.ndarray]:
+        standardized, used, _ = compute._fit_pearson_with_fallback(
+            block.copy(), indices.Distribution.pearson, _DATA_START, 1981, 2010, _MONTHLY, None, "test"
+        )
+        return used, standardized
 
-    for values, expected in ((sparse, True), (healthy, False)):
-        recorder = _Recorder(native)
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            monkeypatch.setattr(compute, "_native", recorder)
-            rust_used, rust = run(values)()
-            monkeypatch.setattr(compute, "_native", None)
-            python_used, python = run(values)()
-        assert rust_used is python_used is expected
-        assert {"pearson_parameters", "pearson_cdf"} <= recorder.calls
-        _assert_parity(rust, python)
+    recorder = _Recorder(native)
+    with np.errstate(all="ignore"), warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        monkeypatch.setattr(compute, "_native", recorder)
+        rust_used, rust = run()
+        monkeypatch.setattr(compute, "_native", None)
+        python_used, python = run()
+    assert rust_used is python_used
+    assert python_used is (dry_months >= 8)
+    assert {"pearson_parameters", "pearson_cdf"} <= recorder.calls
+    # the gamma refit's transform runs on the Rust kernel (its fit stays Python for a column
+    # with no positive value, as in RUST-002)
+    assert ("gamma_probabilities" in recorder.calls) is python_used
+    _assert_parity(rust, python)
 
 
 # --- SPEI ----------------------------------------------------------------------------
@@ -189,7 +247,7 @@ def test_spei_at_several_scales(monkeypatch, precips_mm_monthly, pet_thornthwait
 def test_spei_output_scales(monkeypatch, precips_mm_monthly, pet_thornthwaite_mm, distribution, output_scale):
     run = _spei(precips_mm_monthly, pet_thornthwaite_mm, 3, distribution, output_scale=output_scale)
     rust, python, calls = _rust_and_python(monkeypatch, run)
-    assert calls
+    assert calls == _KERNELS[distribution]
     _assert_parity(rust, python)
 
 
@@ -360,7 +418,7 @@ def test_spi_pearson_spatial_block(monkeypatch, precips_mm_monthly):
     block = _spatial_block(precips_mm_monthly, 20)
     run = _spi_pearson(block, 6, 1981, 2010, spatial_time_major=True)
     rust, python, calls = _rust_and_python(monkeypatch, run)
-    assert calls >= _PEARSON
+    assert calls == _PEARSON
     _assert_parity(rust, python)
 
 
@@ -372,29 +430,90 @@ def test_spei_spatial_block(monkeypatch, precips_mm_monthly, pet_thornthwaite_mm
         precips, pet, 3, distribution, _MONTHLY, _DATA_START, 1981, 2010, spatial_time_major=True
     )
     rust, python, calls = _rust_and_python(monkeypatch, run)
-    assert calls
+    assert calls == _KERNELS[distribution]
     _assert_parity(rust, python)
 
 
-def test_loglogistic_parameters_spatial_failure_count_matches(monkeypatch, precips_mm_monthly):
-    """The failed-fit count that drives the high-failure-rate warning is the same on both paths."""
-    block = precips_mm_monthly[:, :, None] * np.ones((1, 1, 3))
-    block[:, :, 0] = np.nan
-    block[:, 4, 1] = np.nan
-    run = lambda: np.stack(  # noqa: E731
-        compute.loglogistic_parameters(block, _DATA_START, 1981, 2010, _MONTHLY)
-    )
-    rust, python, calls = _rust_and_python(monkeypatch, run)
-    assert calls == {"loglogistic_parameters"}
+def _failing_pearson_block(precips_mm_monthly: np.ndarray) -> np.ndarray:
+    """Eleven of twelve calendar months fail: ten dry, one constant (lambda_2 = 0), one healthy."""
+    block = precips_mm_monthly.copy()
+    block[:, :10] = 0.0
+    block[:, 10] = 7.0
+    return block
+
+
+def _failing_loglogistic_block(precips_mm_monthly: np.ndarray) -> np.ndarray:
+    """Eleven of twelve calendar months fail: nine missing, one constant, one with two valid values."""
+    block = precips_mm_monthly.copy()
+    block[:, :9] = np.nan
+    block[:, 9] = 7.0
+    block[:, 10] = np.nan
+    block[[90, 91], 10] = [1.0, 2.0]
+    return block
+
+
+@pytest.mark.parametrize("spatial", [False, True], ids=["monthly-series", "spatial-block"])
+@pytest.mark.parametrize(
+    ("fit", "make_block", "kernel"),
+    [
+        (compute.pearson_parameters, _failing_pearson_block, "pearson_parameters"),
+        (compute.loglogistic_parameters, _failing_loglogistic_block, "loglogistic_parameters"),
+    ],
+    ids=["pearson", "loglogistic"],
+)
+def test_failed_fit_counts_and_warning_events_match(
+    monkeypatch, caplog, precips_mm_monthly, fit, make_block, kernel, spatial
+):
+    """The failed-fit count behind the high-failure-rate warning, and the events it emits, agree."""
+    block = make_block(precips_mm_monthly)
+    if spatial:
+        block = block[:, :, None] * np.ones((1, 1, 3))
+    strategy = compute._default_fallback_strategy
+    seen: list[tuple[int, int]] = []
+    original = strategy.should_warn_high_failure_rate
+
+    def spy(failed: int, total: int) -> bool:
+        seen.append((failed, total))
+        return original(failed, total)
+
+    monkeypatch.setattr(strategy, "should_warn_high_failure_rate", spy)
+    caplog.set_level(logging.WARNING)
+
+    def run() -> tuple[np.ndarray, list[tuple[int, int]], list[tuple[str, str]]]:
+        seen.clear()
+        caplog.clear()
+        parameters = np.stack(fit(block, _DATA_START, 1981, 2010, _MONTHLY))
+        events = [
+            (record.levelname, str(record.msg.get("event")))
+            for record in caplog.records
+            if isinstance(record.msg, dict) and record.name != "climate_indices.lmoments"
+        ]
+        return parameters, list(seen), events
+
+    recorder = _Recorder(native)
+    with np.errstate(all="ignore"):
+        monkeypatch.setattr(compute, "_native", recorder)
+        rust, rust_counts, rust_events = run()
+        monkeypatch.setattr(compute, "_native", None)
+        python, python_counts, python_events = run()
+    assert recorder.calls == {kernel}
+    expected_total = block[0].size
+    assert python_counts == [(11 * (expected_total // 12), expected_total)]
+    assert rust_counts == python_counts
+    assert rust_events == python_events
+    assert any("failure" in event.lower() for _, event in python_events), "the case must trigger the warning"
     _assert_parity(rust, python)
 
 
 # --- routing -------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("bad_value", [np.inf, -np.inf, 1e101])
+@pytest.mark.parametrize("bad_value", [np.inf, -np.inf, 1.7e308, 1e101])
 def test_unbounded_calibration_values_keep_the_python_fit(monkeypatch, precips_mm_monthly, bad_value):
-    """An infinity or an overflowing weight makes the L-moments NaN; the Python fits differ on that."""
+    """An infinity or an overflowing weight makes the L-moments NaN, where the Python fits differ.
+
+    The guard is conservative: anything past 1e100 stays on Python, overflowing or not.
+    """
     values = precips_mm_monthly.copy()
     values[90, 3] = bad_value
     for fit in (compute.pearson_parameters, compute.loglogistic_parameters):
@@ -437,11 +556,10 @@ def test_climate_indices_warnings_are_unchanged(monkeypatch, precips_mm_monthly)
             _spi_pearson(gappy, 3, 1990, 2017)()
         categories = sorted(
             {
-                w.category
+                (w.category.__name__, str(w.message))
                 for w in caught
                 if issubclass(w.category, Warning) and "climate_indices" in w.category.__module__
-            },
-            key=lambda category: category.__name__,
+            }
         )
         return categories, (recorder.calls if recorder is not None else set())
 
