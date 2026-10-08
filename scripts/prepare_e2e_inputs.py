@@ -200,7 +200,8 @@ def _cache_source(source_dir: Path, name: str, checksum: str) -> Path:
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
-    # Already verified above; re-reading would race a concurrent caller's replace on Windows.
+    # A concurrent run with a different pin may have replaced path since; never return unverified bytes.
+    _verify_source(path, checksum, retry_missing=True)
     return path
 
 
