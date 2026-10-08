@@ -47,6 +47,7 @@ import hashlib
 import json
 import shutil
 import tempfile
+import time
 import uuid
 from pathlib import Path
 from urllib.request import urlopen
@@ -133,6 +134,24 @@ def _boundary_chunks(size: int, chunk_size: int) -> tuple[int, ...]:
     return (chunk_size,) * full + ((remainder,) if remainder else ())
 
 
+def _published_by_other_caller(path: Path, checksum: str) -> bool:
+    """Return whether a concurrent caller published a checksum-valid file at path.
+
+    Windows also denies access to path for a moment while the other caller's replace completes, so
+    a few short retries cover that window.
+    """
+    for _ in range(20):
+        try:
+            if path.exists() and hashlib.sha256(path.read_bytes()).hexdigest() == checksum:
+                return True
+            if not path.exists():
+                return False
+        except PermissionError:
+            pass
+        time.sleep(0.05)
+    return False
+
+
 def _cache_source(source_dir: Path, name: str, checksum: str) -> Path:
     """Return a checksum-valid source download."""
     path = source_dir / f"nclimgrid_lowres_{name}.nc"
@@ -152,7 +171,7 @@ def _cache_source(source_dir: Path, name: str, checksum: str) -> Path:
                 temporary.replace(path)
             except PermissionError:
                 # Windows refuses to replace an open file; accept a concurrent caller's valid download.
-                if not path.exists() or hashlib.sha256(path.read_bytes()).hexdigest() != checksum:
+                if not _published_by_other_caller(path, checksum):
                     raise
         finally:
             if temporary is not None:
