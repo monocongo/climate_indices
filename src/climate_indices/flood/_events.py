@@ -51,3 +51,16 @@ def _validated_index(index: Any) -> npt.NDArray[np.float64]:
     if values.ndim == 0:
         raise InvalidArgumentError("index needs a time axis.", argument_name="index")
     return np.asarray(values, dtype=np.float64)
+
+
+def _validate_options(threshold: float, min_duration: int) -> None:
+    if isinstance(threshold, (bool, np.bool_)) or not isinstance(threshold, (int, float, np.integer, np.floating)):
+        raise InvalidArgumentError("threshold must be a finite number.", argument_name="threshold")
+    if not np.isfinite(threshold):
+        raise InvalidArgumentError("threshold must be a finite number.", argument_name="threshold")
+    if (
+        isinstance(min_duration, (bool, np.bool_))
+        or not isinstance(min_duration, (int, np.integer))
+        or min_duration < 1
+    ):
+        raise InvalidArgumentError("min_duration must be a positive integer.", argument_name="min_duration")
