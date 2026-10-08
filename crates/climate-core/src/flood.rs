@@ -82,14 +82,12 @@ pub fn effective_precipitation(
 }
 
 /// The per-column mean and population variance of a calibration sample.
-#[allow(dead_code)]
 struct Climatology {
     mean: Array1<f64>,
     variance: Array1<f64>,
 }
 
 /// NumPy's `values.sum(axis=0)` of one column, in the order NumPy reduces it.
-#[allow(dead_code)]
 fn column_sum(column: ArrayView1<'_, f64>, columns: usize) -> f64 {
     if columns == 1 {
         pairwise_sum(0..column.len(), |row| column[row])
@@ -107,7 +105,6 @@ fn column_sum(column: ArrayView1<'_, f64>, columns: usize) -> f64 {
 /// A column without finite values has a NaN mean, and one with fewer than two a
 /// NaN variance. Non-finite entries contribute zero, as in the Python
 /// `np.where(valid, ..., 0)` sums.
-#[allow(dead_code)]
 fn climatology(sample: ArrayView2<'_, f64>) -> Climatology {
     let columns = sample.ncols();
     let mut mean = Array1::from_elem(columns, f64::NAN);
@@ -143,7 +140,6 @@ fn climatology(sample: ArrayView2<'_, f64>) -> Climatology {
 ///
 /// A column whose variance does not exceed the squared rounding guard
 /// `8 * eps * |mean|` (including a NaN mean or variance) is NaN throughout.
-#[allow(dead_code)]
 fn standardize(values: ArrayView2<'_, f64>, climatology: &Climatology) -> Array2<f64> {
     let mut result = Array2::from_elem(values.raw_dim(), f64::NAN);
     for (column, (mut output, input)) in result
@@ -166,7 +162,6 @@ fn standardize(values: ArrayView2<'_, f64>, climatology: &Climatology) -> Array2
 }
 
 /// Check that a calibration window lies inside an axis of `length` rows.
-#[allow(dead_code)]
 fn check_rows(
     argument: &'static str,
     rows: &Range<usize>,
@@ -182,6 +177,20 @@ fn check_rows(
             length,
         })
     }
+}
+
+/// The fixed-window Effective Drought Index of an all-leap `(years, columns)` block.
+///
+/// Each column is one calendar day of one cell; `calibration` selects the years
+/// whose finite values fit that column's climatology. The result is
+/// `(PE - mean) / SD` with the population SD, in the input's layout.
+pub fn edi(
+    years: ArrayView2<'_, f64>,
+    calibration: Range<usize>,
+) -> Result<Array2<f64>, ClimateError> {
+    check_rows("calibration", &calibration, years.nrows())?;
+    let climatology = climatology(years.slice(ndarray::s![calibration, ..]));
+    Ok(standardize(years, &climatology))
 }
 
 #[cfg(test)]
@@ -278,6 +287,60 @@ mod tests {
             effective_precipitation(block.view(), 0).unwrap_err(),
             ClimateError::EmptyPeriod {
                 argument: "duration"
+            }
+        );
+    }
+
+    #[test]
+    fn edi_is_the_population_z_score_of_each_column() {
+        // two columns, three calibration years; the fourth year is standardized only
+        let years = array![[1.0, 4.0], [2.0, 4.0], [3.0, 4.0], [5.0, 8.0]];
+        let result = edi(years.view(), 0..3).unwrap();
+        // column 0: mean 2, population SD sqrt(2/3)
+        let sd = (2.0_f64 / 3.0).sqrt();
+        assert!(close(result[[0, 0]], -1.0 / sd, 1e-15));
+        assert_eq!(result[[1, 0]], 0.0);
+        assert!(close(result[[3, 0]], 3.0 / sd, 1e-15));
+        // column 1 has zero calibration variance, so it is NaN in every year
+        assert!(result.column(1).iter().all(|value| value.is_nan()));
+    }
+
+    #[test]
+    fn edi_needs_two_finite_calibration_values_per_column() {
+        let years = array![
+            [1.0, f64::NAN, f64::NAN],
+            [f64::NAN, 2.0, f64::NAN],
+            [4.0, 6.0, f64::NAN]
+        ];
+        let result = edi(years.view(), 0..2).unwrap();
+        // one finite value per column inside the calibration rows is not enough
+        assert!(result.iter().all(|value| value.is_nan()));
+        let result = edi(years.view(), 0..3).unwrap();
+        assert!(close(result[[2, 0]], 1.0, 1e-15));
+        assert!(result[[1, 0]].is_nan());
+        assert!(close(result[[1, 1]], -1.0, 1e-15));
+        assert!(result.column(2).iter().all(|value| value.is_nan()));
+    }
+
+    #[test]
+    fn the_rounding_guard_rejects_a_variance_of_rounding_error_alone() {
+        // values that differ only in their last bit around a large mean
+        let base = 1.0e6;
+        let years = array![[base], [base + base * f64::EPSILON], [base]];
+        let result = edi(years.view(), 0..3).unwrap();
+        assert!(result.iter().all(|value| value.is_nan()));
+    }
+
+    #[test]
+    fn a_calibration_window_outside_the_rows_is_rejected() {
+        let years = Array2::<f64>::zeros((3, 2));
+        assert_eq!(
+            edi(years.view(), 1..4).unwrap_err(),
+            ClimateError::RowsOutOfRange {
+                argument: "calibration",
+                start: 1,
+                end: 4,
+                length: 3
             }
         );
     }
