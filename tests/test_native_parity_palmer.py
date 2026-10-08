@@ -159,10 +159,11 @@ def test_cafec_kernels_reject_unaligned_operands(kernel: str, argument: int) -> 
     operands: list[Any] = [np.ones((2, 12, 1)) for _ in range(5)] + [np.ones((12, 1)) for _ in range(5)]
     original = operands[argument]
     operands[argument] = np.ndarray(original.shape, dtype=np.float64, buffer=bytearray(original.nbytes + 1), offset=1)
+    kernel_callable = getattr(native, kernel)
     if kernel == "palmer_k_prime":
         operands.extend((0, 1))
     with pytest.raises(ValueError, match="unaligned float64 array"):
-        getattr(native, kernel)(*operands)
+        kernel_callable(*operands)
 
 
 def test_every_division_matches_for_pdsi(monkeypatch, palmer_division_dir: Path, palmer_division_inputs) -> None:
