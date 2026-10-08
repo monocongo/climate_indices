@@ -50,6 +50,13 @@ NativeRecurrence = Callable[
     tuple[npt.NDArray[np.float64] | None, npt.NDArray[np.int64] | None] | None,
 ]
 
+# The widest recurrence option the bindings can represent: ``spin_up`` crosses
+# as a ``usize`` and ``max_gap_days`` as an ``i64``, while public validation
+# accepts any non-negative Python integer. A native callable returns None for a
+# wider value, which keeps the recurrence on the Python path instead of failing
+# argument conversion.
+_MAX_NATIVE_OPTION = int(np.iinfo(np.int64).max)
+
 
 def _raise_non_finite(index_type: str, underlying: Exception) -> NoReturn:
     """Raise the error the Python driver raises for a non-finite step result.

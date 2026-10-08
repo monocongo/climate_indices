@@ -26,7 +26,7 @@ import numpy as np
 import numpy.typing as npt
 
 from climate_indices import compute
-from climate_indices._recurrence import NativeRecurrence, _raise_non_finite
+from climate_indices._recurrence import _MAX_NATIVE_OPTION, NativeRecurrence, _raise_non_finite
 
 if TYPE_CHECKING:
     from climate_indices.fire._cffwis_codes import _CodeInputs, _MoistureCode
@@ -37,12 +37,6 @@ try:
     from climate_indices import _native
 except ImportError:
     _native = None  # type: ignore[assignment]
-
-# The widest recurrence option the bindings can represent: ``spin_up`` crosses
-# as a ``usize`` and ``max_gap_days`` as an ``i64``, while public validation
-# accepts any non-negative Python integer. A wider value stays on the Python
-# path instead of failing argument conversion.
-_MAX_NATIVE_OPTION = int(np.iinfo(np.int64).max)
 
 # The calendar and gap-count arrays a kernel takes: Python's ``intp`` (the day
 # length band) and the ``int64`` months and gap counts.

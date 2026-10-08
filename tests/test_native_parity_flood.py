@@ -339,6 +339,26 @@ def test_a_decay_constant_wider_than_float64_stays_in_python(monkeypatch) -> Non
     _assert_parity(rust, python)
 
 
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"nan_policy": "bridge", "max_gap_days": 2**63},
+        {"spin_up": 2**63},
+    ],
+)
+def test_an_api_option_wider_than_the_binding_keeps_the_python_path(monkeypatch, options) -> None:
+    """Options the Rust integer types cannot represent fall back instead of overflowing."""
+    rain = _synthetic_rain((30,), seed=11, missing=0.1)
+    recorder = conftest.NativeRecorder(native)
+    with np.errstate(all="ignore"):
+        monkeypatch.setattr(flood_native, "_native", recorder)
+        rust = flood.antecedent_precipitation_index(rain, 0.9, **options)
+        monkeypatch.setattr(flood_native, "_native", None)
+        python = flood.antecedent_precipitation_index(rain, 0.9, **options)
+    assert recorder.calls == set()
+    _assert_parity(rust, python)
+
+
 def test_default_numpy_error_policies_keep_the_python_path(monkeypatch) -> None:
     recorder = conftest.NativeRecorder(native)
     monkeypatch.setattr(flood_native, "_native", recorder)

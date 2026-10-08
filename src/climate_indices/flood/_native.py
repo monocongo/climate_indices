@@ -23,7 +23,7 @@ import numpy as np
 import numpy.typing as npt
 
 from climate_indices import compute
-from climate_indices._recurrence import NativeRecurrence, _raise_non_finite
+from climate_indices._recurrence import _MAX_NATIVE_OPTION, NativeRecurrence, _raise_non_finite
 
 try:
     # the optional Rust kernels (docs/architecture.md); without the extension the
@@ -152,6 +152,10 @@ def api_recurrence(
         nan_policy: str,
         max_gap_days: int,
     ) -> tuple[npt.NDArray[np.float64] | None, npt.NDArray[np.int64] | None] | None:
+        # public validation accepts any non-negative integer; one the binding
+        # cannot represent stays on the Python path instead of overflowing
+        if spin_up > _MAX_NATIVE_OPTION or max_gap_days > _MAX_NATIVE_OPTION:
+            return None
         try:
             history, final_api, final_gaps = native.antecedent_precipitation_index(
                 precipitation_mm=precipitation_mm,
