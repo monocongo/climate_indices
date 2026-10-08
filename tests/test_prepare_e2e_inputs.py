@@ -132,6 +132,26 @@ def test_cached_source_read_retries_transient_access_denial(tmp_path, monkeypatc
     assert len(attempts) >= 4
 
 
+def test_source_replaced_after_publish_is_not_returned(tmp_path, monkeypatch):
+    """A rival with a different pin replacing the file after our publish must not be handed back."""
+    module = _prepare_module(monkeypatch)
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    payload = b"source bytes"
+    real_replace = Path.replace
+
+    def replace_then_rival_overwrites(self, target):
+        result = real_replace(self, target)
+        Path(target).write_bytes(b"rival bytes")
+        return result
+
+    monkeypatch.setattr(module, "urlopen", lambda *args, **kwargs: io.BytesIO(payload))
+    monkeypatch.setattr(Path, "replace", replace_then_rival_overwrites)
+
+    with pytest.raises(ValueError, match="SHA-256 mismatch"):
+        module._cache_source(source_dir, "prcp", hashlib.sha256(payload).hexdigest())
+
+
 @pytest.mark.parametrize("published", [None, b"corrupt bytes"])
 def test_source_download_denied_replace_without_valid_file_raises(tmp_path, monkeypatch, published):
     """A denied replace is an error when no valid file was published by another caller."""
