@@ -228,3 +228,13 @@ def test_flood_index_on_the_fresno_record(monkeypatch, year_start_month: int) ->
     rust, python, calls = _rust_and_python(monkeypatch, run)
     assert calls == {"flood_index"}
     _assert_parity(rust, python)
+
+
+@pytest.mark.parametrize("year_start_month", [1, 10])
+def test_flood_index_over_a_spatial_block(monkeypatch, year_start_month: int) -> None:
+    # several cells reduce their annual maxima sequentially, as NumPy does
+    pe = flood.effective_precipitation(_synthetic_rain((12 * 366, 2, 2), seed=4, missing=0.002), duration=30)
+    run = partial(flood.flood_index, pe, 2000, 2001, 2010, year_start_month=year_start_month)
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == {"flood_index"}
+    _assert_parity(rust, python)
