@@ -30,7 +30,11 @@ contract more thoroughly than leaving the performance on the table.
    calling `climate_indices` (`indices.spi`, `indices.spei`, `palmer.pdsi`,
    `climate_indices.fire.*`, the xarray adapter, the CLI) exactly as before. Public
    signatures, return values, raised exceptions, and `climate_indices` warnings do
-   not change, and nothing observable depends on whether the extension is installed.
+   not change, and no public API behavior depends on whether the extension is
+   installed. The one observable difference is that the per-step
+   `climate_indices.lmoments` log records a failed Python single-series fit writes
+   are not written by the Rust fit (the cell-axis fit does not write them either);
+   `docs/architecture.md` records the details.
 
 2. **The Rust code is split into `crates/climate-core` and `crates/climate-py`.**
    `climate-core` is pure numerical Rust (`ndarray`): no PyO3, no NumPy bindings, no
