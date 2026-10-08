@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 
 from climate_indices import compute, indices
+from climate_indices.fire import _native as fire_native
 from tests import conftest
 
 
@@ -26,6 +27,31 @@ def test_native_extension_reports_crate_version() -> None:
 def test_compute_dispatches_to_the_built_extension() -> None:
     native = conftest.import_native()
     assert compute._native is native
+
+
+def test_fire_dispatches_to_the_built_extension() -> None:
+    native = conftest.import_native()
+    assert fire_native._native is native
+
+
+def test_fire_python_recurrences_run_when_the_extension_is_absent() -> None:
+    """Blocking the import leaves the fire recurrences on their Python steps."""
+    code = """
+import sys
+sys.modules["climate_indices._native"] = None
+import numpy as np
+from climate_indices import fire
+from climate_indices.fire import _native as fire_native
+assert fire_native._native is None
+days = 40
+precipitation = np.zeros(days)
+temperature = np.full(days, 22.0)
+kbdi = fire.kbdi(precipitation, temperature, 800.0)
+assert np.isfinite(kbdi).all()
+index = fire.ffmc(temperature, np.full(days, 40.0), np.full(days, 5.0), precipitation)
+assert np.isfinite(index).all()
+"""
+    subprocess.run([sys.executable, "-c", code], check=True)
 
 
 def test_python_implementation_runs_when_the_extension_is_absent() -> None:

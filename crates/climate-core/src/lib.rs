@@ -12,10 +12,12 @@
 use std::fmt;
 
 pub mod eddi;
+pub mod fire;
 pub mod gamma;
 pub mod lmoments;
 pub mod loglogistic;
 pub mod pearson;
+pub mod recurrence;
 pub mod special;
 
 /// Version of this crate, re-exported by the Python extension as `__version__`.
@@ -30,6 +32,20 @@ pub enum ClimateError {
         expected: usize,
         actual: usize,
     },
+    /// A recurrence step produced a non-finite value from finite inputs.
+    ///
+    /// The message is the Python one (`_advance_component`), so a caller can
+    /// raise the same error it would have raised on the Python path.
+    NonFinite { index_type: &'static str },
+    /// A per-day or per-cell index outside the table it selects from.
+    IndexOutOfRange {
+        argument: &'static str,
+        value: i64,
+        minimum: i64,
+        maximum: i64,
+    },
+    /// A missing-day policy name a kernel does not implement.
+    UnknownNanPolicy { value: String },
 }
 
 impl fmt::Display for ClimateError {
@@ -40,6 +56,24 @@ impl fmt::Display for ClimateError {
                 expected,
                 actual,
             } => write!(f, "{argument} has length {actual}, expected {expected}"),
+            Self::NonFinite { index_type } => {
+                write!(
+                    f,
+                    "{index_type} produced a non-finite value from finite inputs."
+                )
+            }
+            Self::IndexOutOfRange {
+                argument,
+                value,
+                minimum,
+                maximum,
+            } => write!(
+                f,
+                "{argument} value {value} is outside the table rows [{minimum}, {maximum}]"
+            ),
+            Self::UnknownNanPolicy { value } => {
+                write!(f, "unknown missing-day policy {value:?}")
+            }
         }
     }
 }

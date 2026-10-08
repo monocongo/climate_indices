@@ -35,6 +35,19 @@ from climate_indices.performance import check_large_array_memory
 # retrieve structlog logger for this module
 _logger = get_logger(__name__)
 
+# A component's optional Rust kernel (docs/architecture.md): it runs that
+# component's whole time axis and returns its recorded history and final gap
+# counts, or None to leave the component to the Python day loop here.
+#
+# Arguments: the pre-allocated history for this component (None when this call
+# records no history for it), the spin-up day count, the missing-day policy, and
+# the bridge allowance. The kernel updates the component's own state and gap
+# arrays in place, so the caller's arrays are correct when the call returns.
+NativeRecurrence = Callable[
+    [npt.NDArray[np.float64] | None, int, Literal["propagate", "bridge"], int],
+    tuple[npt.NDArray[np.float64] | None, npt.NDArray[np.int64] | None] | None,
+]
+
 
 def _as_float_array(values: npt.ArrayLike) -> npt.NDArray[np.float64]:
     """Coerce to float64, turning masked elements into NaN instead of dropping the mask.
@@ -394,6 +407,8 @@ class DailyRecurrence:
     # optional per-day fire-season mask: off-season days freeze the recurrence
     # instead of advancing or gap-managing it (ADR-0010)
     in_season: npt.NDArray[np.bool_] | None = None
+    # optional Rust kernel for this recurrence; None keeps it on the Python path
+    native: NativeRecurrence | None = None
     # derived once by the runner so the day loop has a single grouping of
     # per-component state instead of parallel index spaces
     started: npt.NDArray[np.bool_] = field(init=False)
@@ -467,6 +482,12 @@ def run_daily_recurrences(
     the histories a selected output reads. The default records every
     component, which is what the single-code wrapper needs.
 
+    ``native`` optionally runs one component's whole time axis in the Rust
+    kernel instead of the day loop below: the callable returns that component's
+    recorded history and final gap counts, or None to leave the component here.
+    Components are independent, so a native component's day-by-day interleaving
+    with the others in the loop does not affect any of their results.
+
     ``finalize`` optionally converts the recorded histories and final state
     into the caller's returned object. It runs inside the guarded region, so
     its allocations count as part of the recurrence: a failure there emits
@@ -490,13 +511,29 @@ def run_daily_recurrences(
     try:
         # the allocation is inside the try so an output-allocation failure
         # still reports the recurrence lifecycle
-        values = _allocate_histories(components, record, n_days, spin_up)
+        values = list(_allocate_histories(components, record, n_days, spin_up))
         for component in components:
             _initialize_component(component)
         memory_metrics = check_large_array_memory(*memory_arrays, *(value for value in values if value is not None))
 
+        # a component with a Rust kernel runs its whole time axis in one call, so
+        # the day loop below only carries the components left on the Python path
+        # (their own order is unchanged: they are independent of one another)
+        native_ran = [False] * len(components)
+        native_gaps: list[npt.NDArray[np.int64] | None] = [None] * len(components)
+        for index, component in enumerate(components):
+            if component.native is None:
+                continue
+            native_result = component.native(values[index], spin_up, nan_policy, max_gap_days)
+            if native_result is None:
+                continue
+            values[index], native_gaps[index] = native_result
+            native_ran[index] = True
+
         for day in range(n_days):
             for index, component in enumerate(components):
+                if native_ran[index]:
+                    continue
                 active, carried = _component_day_active(
                     component,
                     day,
@@ -508,12 +545,16 @@ def run_daily_recurrences(
                 _advance_component(component, day, active, all_active)
                 _record_component_day(values[index], component, day, spin_up, active, all_active, carried)
 
-        state_gap_days = _final_state_gaps(components)
+        state_gap_days = tuple(
+            native_gaps[index] if native_ran[index] else default
+            for index, default in enumerate(_final_state_gaps(components))
+        )
+        histories = tuple(values)
         if finalize is None:
-            result: object = (values, state_gap_days)
+            result: object = (histories, state_gap_days)
         else:
-            result = finalize(values, state_gap_days)
-        logged_shape = output_shape if output_shape is not None else _first_output_shape(values)
+            result = finalize(histories, state_gap_days)
+        logged_shape = output_shape if output_shape is not None else _first_output_shape(histories)
         duration_ms = (time.perf_counter() - t0) * 1000.0
         log.info(
             "calculation_completed",
