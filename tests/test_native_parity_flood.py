@@ -31,6 +31,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
+from climate_indices import _recurrence as recurrence_runner
 from climate_indices import flood
 from climate_indices.exceptions import InvalidArgumentError
 from climate_indices.flood import _native as flood_native
@@ -323,6 +324,28 @@ def test_the_api_kernel_returns_the_history_it_builds_in_the_requested_shape() -
     assert history is not None
     assert history.shape == (30, 3)
     assert np.isfinite(history).any()
+
+
+def test_the_runner_leaves_a_native_api_history_to_the_kernel(monkeypatch) -> None:
+    """Through the shared runner, a native component allocates no Python history slot."""
+    rain = _synthetic_rain((40, 3), seed=10)
+    recorder = conftest.NativeRecorder(native)
+    allocations: list[tuple[int, ...]] = []
+    real_allocate = recurrence_runner._allocate_history
+
+    def counting_allocate(component, keep, n_days, spin_up):
+        history = real_allocate(component, keep, n_days, spin_up)
+        if history is not None:
+            allocations.append(history.shape)
+        return history
+
+    monkeypatch.setattr(recurrence_runner, "_allocate_history", counting_allocate)
+    monkeypatch.setattr(flood_native, "_native", recorder)
+    with np.errstate(all="ignore"):
+        result = flood.antecedent_precipitation_index(rain, 0.9)
+    assert "antecedent_precipitation_index" in recorder.calls
+    assert allocations == []
+    assert np.isfinite(result).any()
 
 
 # Dispatch policy.

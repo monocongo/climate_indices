@@ -140,11 +140,19 @@ rain = np.arange(3 * 366.0) % 7 + np.repeat([0.0, 1.0, 2.5], 366)
 with np.errstate(all="ignore"):
     pe = flood.effective_precipitation(rain, duration=30)
     assert np.isfinite(pe[29:]).all()
-    assert np.isfinite(flood.edi(pe, 2000, 2001, 2002)[366:]).all()
-    assert np.isfinite(flood.flood_index(pe, 2000, 2000, 2002, year_start_month=1)).sum() > 0
+    np.testing.assert_allclose(pe[29], 83.34208470449167, rtol=1e-10)
+    np.testing.assert_allclose(pe[-1], 171.2769955967101, rtol=1e-10)
+    index = flood.edi(pe, 2000, 2001, 2002)
+    assert np.isfinite(index[366:]).all()
+    np.testing.assert_allclose(index[366], -0.9999999999999997, rtol=1e-10)
+    np.testing.assert_allclose(index[-1], 0.9999999999999998, rtol=1e-10)
+    fi = flood.flood_index(pe, 2000, 2000, 2002, year_start_month=1)
+    assert np.isfinite(fi).sum() == 1069
+    np.testing.assert_allclose(np.nansum(fi), -548.9394625270631, rtol=1e-10)
     result = flood.antecedent_precipitation_index(rain, 0.9, return_state=True)
-assert np.isfinite(result.values).all()
-assert np.isfinite(result.state.api)
+np.testing.assert_allclose(result.values[:3], [0.0, 1.0, 2.9], rtol=1e-12)
+np.testing.assert_allclose(result.values[-1], 56.30659181438638, rtol=1e-10)
+np.testing.assert_allclose(result.state.api, result.values[-1], rtol=1e-12)
 """
     subprocess.run([sys.executable, "-c", code], check=True)
 
