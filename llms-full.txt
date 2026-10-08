@@ -81,6 +81,24 @@ pip install "climate-indices>=2.3"
 which documents the latest release and uses the xarray API added in 2.3.0; see
 [Supported Python Versions](#supported-python-versions) for interpreter support.
 
+The wheels published for Linux (x86-64 and aarch64, manylinux_2_28, so glibc 2.28 or
+newer), macOS (Apple silicon and Intel), and Windows (x86-64) include the optional Rust
+acceleration backend; every other platform, including a Linux system with older glibc,
+installs the pure-Python wheel. Both carry the same version and the same public
+API, and they return the same results, so nothing in calling code depends on which one
+pip selected. To see which one you have:
+
+```bash
+python -c "import climate_indices._native"   # succeeds when the extension is installed
+```
+
+A missing extension is not an error: `climate_indices` imports, and every computation
+runs the Python implementation. Installing from source needs no Rust toolchain either —
+`pip install --no-binary climate_indices climate_indices` installs from the sdist, which
+builds the pure-Python wheel. Developers who
+want the extension from a checkout build it with `uv run maturin develop --release`; see
+[the Rust backend section of the architecture notes](docs/architecture.md#optional-rust-backend).
+
 ## Developer Workflow
 
 This project uses trunk-based development. `main` is the trunk and should always
@@ -1752,6 +1770,10 @@ xarray adapter) uses them:
 | method-of-moments block of `compute.gamma_parameters` | `gamma::gamma_parameters` |
 | `scipy.stats.gamma.cdf` and zero-mass mixing in `compute.transform_fitted_gamma` | `gamma::gamma_probabilities` |
 | `scipy.stats.norm.ppf` in `compute.transform_fitted_gamma` | `special::norm_ppf` |
+| the year loop of `eto.eto_thornthwaite` | `eto::thornthwaite` |
+| the day loop of `eto.eto_hargreaves` | `eto::hargreaves` |
+| FAO-56 Eq 6 in `pm_eto.pm_eto` | `pm_eto::pm_eto` |
+| the intermediate chain of `pm_eto.penman_monteith_eto` | `pm_eto::penman_monteith_eto` |
 | sample L-moments and the Pearson Type III fit of `compute.pearson_parameters` (`lmoments.fit`, `fit_spatial`) | `lmoments::sample_lmoments`, `pearson::pearson_parameters` |
 | `scipy.stats.pearson3.cdf` in `compute._pearson_fit` | `pearson::pearson_cdf_block` |
 | GLO fit of `compute.loglogistic_parameters` (`lmoments.fit_glo`, `fit_glo_spatial`) | `loglogistic::loglogistic_parameters` |
@@ -1760,6 +1782,22 @@ xarray adapter) uses them:
 | `indices._hastings_inverse_normal` | `eddi::hastings_inverse_normal` |
 | calibration normals and ratios in `indices.percentage_of_normal` | `pnp::pnp_normals`, `pnp::pnp_percentages` |
 | monthly reduction and ratio in `indices.pci` | `pci::pci` |
+
+The PET entry points follow the same dispatch rule as the gamma kernels. The
+public FAO-56 helper functions stay Python callables; `pm_eto.penman_monteith_eto`
+resolves the humidity and radiation pathways, and checks the wind measurement
+height and the `rh_min`-without-`rh_max` case, before the kernel is reached, so
+the Python and Rust paths raise the same error in the same order. `eto` also
+keeps a Thornthwaite block with an all-NaN month column in Python, since only the
+Python path reports `np.nanmean`'s empty-slice warning. Each kernel copies every
+operand it reads before it releases the GIL, so the native route holds the caller's
+arrays, one flattened input per operand, those copies and the kernel's fixed
+intermediates: a bounded multiple of the request. A constant operand reaches the
+kernel as a zero-stride view rather than as a materialized block, and the Hargreaves
+route reports the bytes it copies beside the arrays it is handed, so the logged
+memory model covers the route the dispatch selected. Their measured effect on
+three representative inputs is in `benchmarks/README.md`; RUST-011 owns whether
+each kernel is worth its conversion overhead.
 
 EDDI is non-parametric, so no SciPy special function is ported for it: its
 probabilities are a count of the period's climatology values strictly below each
@@ -1862,8 +1900,8 @@ user-facing behavior. A port reproduces the Python numerics, including their
 NaN, zero, and edge-case semantics; it does not improve or change them.
 
 **Building.** Hatchling remains the PEP 517 backend, so the published sdist and
-wheel are pure Python, install without a Rust toolchain, and run the Python
-implementations. Developers with a Rust toolchain build the extension in place:
+`py3-none-any` wheel are pure Python, install without a Rust toolchain, and run the
+Python implementations. Developers with a Rust toolchain build the extension in place:
 
 ```bash
 uv run maturin develop --release   # builds src/climate_indices/_native.*.so
@@ -1874,8 +1912,20 @@ cargo test --workspace
 `maturin develop` installs the package in editable mode and copies the compiled
 extension into `src/climate_indices/`, where it stays importable after `uv sync`
 reinstalls the project; delete the `_native.*` file to return to pure Python.
-Publishing binary wheels that include `_native`, and the supported install path
-without Rust, are tracked separately (RUST-013).
+
+**Packaging.** maturin also builds the published binary wheels, and they ship in
+the same release as the sdist and the pure wheel. They are abi3 (`abi3-py310`), so
+one wheel per platform validates on every supported Python, and there are five:
+manylinux_2_28 `x86_64` and `aarch64`, macOS arm64 and `x86_64`, and Windows
+`x86_64`. pip prefers a matching platform wheel over `py3-none-any`; a platform
+with neither installs the pure wheel and runs the Python implementations, which is
+the supported install path without Rust — installing from source needs no
+toolchain either, because hatchling never invokes `cargo`. musllinux is not
+published. Which wheel is installed is visible from
+`python -c "import climate_indices._native"`, and any `ImportError` from that
+import falls back to Python rather than failing. The full comparison of the
+options and the failure modes are in
+[ADR-0018](docs/adr/0018-optional-rust-packaging.md).
 
 **Rust in CI.** `.github/workflows/unit-tests-workflow.yml` runs three jobs on
 every event the workflow handles (pull request, push to `main`, merge group,
@@ -1897,7 +1947,9 @@ no Rust toolchain, so they keep proving the fallback.
   Pythons, plus a Windows smoke build on the newest. Each wheel is installed
   into a fresh venv and imported from outside the checkout, and SPI must reach
   the bundled `gamma_parameters`, `gamma_probabilities`, and `norm_ppf` kernels.
-  This validates wheels; it does not publish them.
+  This validates the developer build; the published wheel matrix, its abi3 tag,
+  and the installation checks for each artifact run in `.github/workflows/release.yml`
+  ([ADR-0018](docs/adr/0018-optional-rust-packaging.md)).
 
 `rust-toolchain.toml` pins the compiler so a new stable clippy lint cannot fail
 `-D warnings` on an unrelated change. The workspace uses edition 2024, so the
@@ -2458,9 +2510,15 @@ make html
 # Build wheel and sdist
 uv run python -m build
 
+# Build a local binary wheel for this platform (needs a Rust toolchain). On Linux
+# this is not the published manylinux_2_28 wheel: release.yml builds that inside the
+# container named in its matrix, which is what sets the glibc floor (ADR-0018)
+uv run maturin build --release --out dist
+
 # Output in dist/
 # - climate_indices-X.Y.Z-py3-none-any.whl
 # - climate_indices-X.Y.Z.tar.gz
+# - climate_indices-X.Y.Z-cp310-abi3-<platform>.whl
 ```
 
 ## Project Structure
@@ -2489,6 +2547,141 @@ climate_indices/
 | **Build docs** | `cd docs && make html` |
 | **Build package** | `uv run python -m build` |
 | **Update deps** | `uv lock` |
+
+## Porting a Kernel to Rust
+
+Adding a Rust kernel means adding a second implementation of a numerical block that
+already exists in Python. The Python implementation stays, and it stays the oracle:
+the port is only finished when the two agree at `rtol = atol = 1e-10` with identical
+NaN positions. The architecture is decided in
+[ADR 0017](docs/adr/0017-rust-core-acceleration-backend.md); the crate layout, the
+already-ported seams, and the dispatch rules are in
+[architecture.md](docs/architecture.md#optional-rust-backend). `crates/climate-core/src/gamma.rs`
+and its dispatch in `src/climate_indices/compute.py` are the reference implementation
+of every step below.
+
+### 1. Trace the Python seam
+
+Read the Python function end to end and name the block that becomes the kernel, then
+name everything that stays: validation, calibration-period resolution, data-quality
+and goodness-of-fit warnings, the Pearson-to-gamma fallback, logging, zero placement,
+support-limit masks, and output scaling. The seam goes where the prepared float64
+values are already valid, so the kernel takes no validation decisions and raises no
+`climate_indices` exceptions.
+
+Record the semantics the kernel has to reproduce, because these are what the port is
+reviewed against: operation order, what NaN means, how zeros are treated, and what a
+degenerate column does (all-missing, all-zero, constant, or no positive value).
+
+### 2. Write the kernel documentation block
+
+The `//!` crate/domain header and the `///` block above each public kernel state:
+
+- the Python source it ports, named by function and by the block inside it;
+- inputs and outputs, including the array layout (years by columns) and which
+  argument is per-column;
+- zero semantics, NaN semantics, invalid-input behaviour, short-series and
+  degenerate-column behaviour;
+- the numerics: the expressions, the summation order, and where SciPy is being
+  reproduced.
+
+### 3. Port the kernel
+
+Put the kernel in `crates/climate-core/src/`, in the module that owns the index
+family, and declare that module in `crates/climate-core/src/lib.rs`
+(`pub mod <family>;`) so `climate-py` can reach it by module path. The crate is pure
+Rust: no PyO3, no NumPy bindings, no Python exceptions. Where SciPy evaluates a
+special function, port the routine SciPy evaluates into `special/` (see the Cephes
+ports for `igam`, `ndtri`, `ndtr`, and `lgam`) rather than calling a general crate —
+a generic implementation does not hold parity in the tails. Reproduce the Python
+arithmetic rather than improving it, and do not add a fast-math or fused kernel:
+`[profile.release]` keeps IEEE semantics on purpose.
+
+### 4. Add the binding and the stub
+
+Add the `#[pyfunction]` to `crates/climate-py/src/lib.rs`, converting arrays at the
+boundary and returning only `climate-core` types across it; that crate holds no
+algorithm. Register it in the `#[pymodule]` in that file with
+`m.add_function(wrap_pyfunction!(<kernel>, m)?)?`: a `#[pyfunction]` that is not
+registered is never exposed to Python. Add the matching signature to `src/climate_indices/_native.pyi`, where
+every array argument is documented as float64. Existing bindings call
+`checked_copy`, which rejects unaligned arrays, copies empty and caller-owned
+storage before `py.detach`, and wraps the view conversion.
+
+### 5. Add dispatch and routing
+
+The dispatch helper lives in the Python module that owns the computation, next to
+its Python implementation, and is named `_native_<kernel>`. Two caller patterns are
+in use: a helper returns `None` when a routing condition fails, and its caller runs
+the Python path (as `_native_gamma_probabilities` does), or the helper carries no
+guard of its own and is called only after the caller's `_native_float64` guard has
+passed (as `_native_gamma_parameters` does). Dispatch takes the Rust path only when
+every routing condition holds:
+
+- the extension imported (`_native is not None`);
+- a plain, aligned float64 `ndarray` whose layout the kernel supports — use the
+existing `_native_float64` / `_native_lmoment_input` guards rather than writing new
+ones;
+- prepared arguments the kernel accepts, e.g. parameters that are one per calendar
+step (and cell); caller-supplied parameters that vary by year stay in Python;
+- NumPy floating-point errors ignored (`np.errstate(all="ignore")`): warnings,
+exceptions, callbacks, logging, or printing keep the Python path, because the
+kernels do not implement NumPy's reporting policies.
+
+A kernel is never retried in Python after a Rust runtime error: the exception
+propagates. A missing extension is not an error, it is the pure-Python install.
+
+### 6. Write the parity tests
+
+Extend the suite that covers the index family — `tests/test_native_parity.py` for the
+SPI/EDDI kernels, `tests/test_native_parity_distributions.py` for the distribution
+fits — running the same computation twice through the public or compute-level API:
+once with `compute._native` replaced by the `_Recorder` around the extension, once
+with `_native` set to `None`, comparing at `rtol = atol = 1e-10` with matching NaN
+positions. The recorder asserts the Rust path was actually reached, so the
+comparison is never Python against Python. Cover the edge cases the doc block
+promises: all-missing and all-zero columns, a constant column, supplied parameters,
+and masked or unaligned inputs that must fall back.
+
+A test that targets the Python reference itself uses the `python_backend` fixture
+from `tests/conftest.py`, which pins `compute._native` to `None` for the test.
+Loosening a tolerance needs a measured justification in the ticket (maximum absolute
+and relative error, where it occurs, which primitive diverges, and whether
+reproducing the Python method closes the gap); never edit a fixture or a reference
+test to match Rust.
+
+### 7. Verify
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+PYO3_PYTHON="$(uv run python -c 'import sys; print(sys.executable)')" cargo test --workspace
+uv run maturin develop --release
+uv run python -c "import climate_indices._native"
+uv run ruff check src/ tests/
+uv run ruff format --check src/ tests/
+uv run mypy src/ tests/test_type_checking.py
+uv run pytest -n auto                # with the extension built
+uv run pytest -m validation -n auto  # external reference suites, per the RUST ticket
+rm -f src/climate_indices/_native.*.so src/climate_indices/_native.*.pyd && uv run pytest -n auto   # pure-Python fallback
+uv run --extra docs sphinx-build -E -b html -W --keep-going docs docs/_build/html
+uv run --extra docs sphinx-build -E -b doctest docs docs/_build/doctest
+```
+
+The fallback run matters as much as the native one: nothing user-facing may require
+the extension. CI adds `CLIMATE_INDICES_REQUIRE_NATIVE=1` on its native legs, which
+turns a missing extension into a failure instead of a skip.
+
+### 8. Regenerate the documentation bundles
+
+If the change touched a file listed in `SUMMARY_FILES` or `FULL_FILES` in
+`scripts/generate_llms_txt.py` — this guide and `docs/architecture.md` among them —
+regenerate and commit the bundles alongside it:
+
+```bash
+uv run scripts/generate_llms_txt.py
+uv run pytest tests/test_review_scripts.py
+```
 
 ## Coding Standards
 

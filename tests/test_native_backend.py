@@ -9,12 +9,14 @@ missing extension a failure.
 import re
 import subprocess
 import sys
+from collections.abc import Callable
 from types import SimpleNamespace
+from typing import Any
 
 import numpy as np
 import pytest
 
-from climate_indices import compute, fire, indices
+from climate_indices import compute, eto, fire, indices, pm_eto
 from climate_indices.fire import _native as fire_native
 from tests import conftest
 
@@ -27,6 +29,64 @@ def test_native_extension_reports_crate_version() -> None:
 def test_compute_dispatches_to_the_built_extension() -> None:
     native = conftest.import_native()
     assert compute._native is native
+
+
+def test_pet_dispatches_to_the_built_extension() -> None:
+    native = conftest.import_native()
+    assert eto._native is native
+    assert pm_eto._native is native
+
+
+def test_pet_python_implementation_runs_when_the_extension_is_absent() -> None:
+    """Blocking the import leaves the PET entry points on their Python kernels."""
+    code = """
+import sys
+sys.modules["climate_indices._native"] = None
+import numpy as np
+from climate_indices import eto, pm_eto
+assert eto._native is None and pm_eto._native is None
+pet = eto.eto_thornthwaite(np.full(24, 15.0), 40.0, 2001)
+assert np.isfinite(pet).all()
+daily = np.full(366, 15.0)
+hargreaves = eto.eto_hargreaves(daily - 3.0, daily + 5.0, daily, 35.0)
+assert np.isfinite(hargreaves).all()
+penman = pm_eto.penman_monteith_eto(12.3, 21.5, 50.8, 100.0, 2.78, 187, wind_speed_height_m=10.0)
+assert np.isfinite(penman)
+"""
+    subprocess.run([sys.executable, "-c", code], check=True)
+
+
+_DAILY = np.random.default_rng(0).normal(15.0, 5.0, 366)
+
+
+@pytest.mark.parametrize(
+    "run",
+    [
+        pytest.param(lambda: eto.eto_thornthwaite(_DAILY[:24], 40.0, 2001), id="thornthwaite"),
+        pytest.param(lambda: eto.eto_hargreaves(_DAILY - 4.0, _DAILY + 4.0, _DAILY, 35.0), id="hargreaves"),
+        pytest.param(
+            lambda: pm_eto.pm_eto(*(np.full(3, value) for value in (13.3, 0.1, 16.9, 2.1, 2.0, 1.4, 0.1, 0.07))),
+            id="pm_eto",
+        ),
+        pytest.param(
+            lambda: pm_eto.penman_monteith_eto(_DAILY - 4.0, _DAILY + 4.0, 40.0, 100.0, 2.0, np.arange(1.0, 367.0)),
+            id="fao56_eto",
+        ),
+    ],
+)
+def test_pet_uses_python_when_the_extension_predates_pet_kernels(
+    monkeypatch: pytest.MonkeyPatch, run: Callable[[], Any]
+) -> None:
+    """An extension built before the PET kernels leaves the PET entry points on Python."""
+    with np.errstate(all="ignore"):
+        monkeypatch.setattr(eto, "_native", None)
+        monkeypatch.setattr(pm_eto, "_native", None)
+        expected = run()
+        for module in (compute, eto, pm_eto):
+            monkeypatch.setattr(module, "_native", SimpleNamespace())
+        assert compute._native_float64(_DAILY)
+        actual = run()
+    np.testing.assert_array_equal(actual, expected)
 
 
 def test_fire_dispatches_to_the_built_extension() -> None:

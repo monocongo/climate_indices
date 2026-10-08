@@ -818,3 +818,41 @@ scheduler at CONUS scale, not a reason to revisit the vectorization work
   network serialization and a distributed scheduler replace local
   process-pool overhead entirely -- and is out of scope here; tracked
   separately in #1127.
+
+## Rust PET kernels vs the Python reference (#1276, RUST-006)
+
+The PET kernels #1276 ports (`climate-core`'s `eto::thornthwaite`,
+`eto::hargreaves`, `pm_eto::pm_eto`, and `pm_eto::penman_monteith_eto`) were timed
+against the pure-Python implementations they reproduce exactly (`rtol = atol =
+1e-10`, identical NaN positions). These are ad-hoc measurements rather than a
+committed harness: a call reaches the Rust path only with NumPy's
+floating-point errors ignored and default warning filters (the dispatch guard
+`compute._native_float64`), so the Rust column is the best case for the
+dispatch, not what a caller under default error policies gets. The Python
+column had `eto._native`/`pm_eto._native` set to None.
+
+### Findings (macOS arm64, Python 3.14, 2026-10-08)
+
+Minimum of three runs, after a warm-up call.
+
+| kernel | inputs | Rust | Python | ratio |
+|---|---|---|---|---|
+| Thornthwaite | 480 months x 38 x 87 cells, per-cell latitude | 22.6 ms | 31.6 ms | 1.39x |
+| Hargreaves | 3660 days x 20 x 20 cells, per-cell latitude | 11.5 ms | 11.5 ms | 1.00x |
+| Penman-Monteith (`penman_monteith_eto`, RHmin/RHmax + sunshine) | 3660 days x 400 cells | 79.5 ms | 70.5 ms | 0.89x |
+
+### Interpretation
+
+- The Thornthwaite kernel is the clear gain: its 365-day daylight table is the
+  one part of the three methods that NumPy evaluates with enough scalar work per
+  element for native execution to pay for the boundary crossing (1.39x).
+- Hargreaves is a wash. Its Python body is a handful of vectorized operations
+  per day of the year, and the kernel's copy of the three daily blocks costs
+  roughly what that vectorized arithmetic saves.
+- Penman-Monteith is slower in Rust at this size (0.89x). The kernel copies each
+  input through the PyO3 boundary and then walks the intermediate chain
+  elementwise, while NumPy's vectorized operations over the same arrays are
+  already memory-bandwidth-bound.
+- As RUST-006's acceptance criteria note, these elementwise kernels may gain
+  little: RUST-011 owns whether each is worth its conversion overhead, and this
+  table is the evidence for that decision rather than a decision itself.
