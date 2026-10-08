@@ -878,9 +878,10 @@ uv run pytest tests/test_benchmark_flood.py -m benchmark --benchmark-enable
 |---|---|---|
 | Effective precipitation | 0.21 | 0.25 |
 | EDI | 0.48 | 0.49 |
-| Flood Index | 2.69 | 3.79 |
+| Flood Index | 0.85 | 0.69 |
 | Antecedent Precipitation Index | 0.15 | 0.86 |
 
-A ratio below 1 means Rust is faster. The Flood Index kernel is slower than the
-NumPy path at every size measured; the guard test marks that case as a strict xfail
-so it fails once the kernel is faster and the marker needs removing.
+A ratio below 1 means Rust is faster. The Flood Index kernel first measured 2.69
+and 3.79: it walked the time-first block one column at a time, a strided read for
+every element, while NumPy streams the same block in memory order. Walking it a row
+at a time, with the same arithmetic per element, brought it under the Python path.
