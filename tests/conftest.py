@@ -16,6 +16,7 @@ from hypothesis import settings as hypothesis_settings
 
 from climate_indices import compute
 from climate_indices.fire import _native as fire_native
+from climate_indices.flood import _native as flood_native
 
 # The property tests in tests/test_property_based.py assert empirical bounds rather
 # than true invariants - PDSI/PHDI/PMDI in [-30, 30], for instance, on strategies
@@ -49,6 +50,7 @@ def python_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     monkeypatch.setattr(compute, "_native", None)
     monkeypatch.setattr(fire_native, "_native", None)
+    monkeypatch.setattr(flood_native, "_native", None)
 
 
 # constants
