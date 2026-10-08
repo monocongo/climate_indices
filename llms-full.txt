@@ -1889,11 +1889,11 @@ unaligned array, or a time-first array whose spatial axes cannot be viewed as
 one cell axis without a copy) stays in Python as well. The kernels take views of
 the prepared arrays, so a broadcast month series or season mask is copied once,
 by the binding, rather than first materialized in Python; that boundary copy is
-the native path's own buffer, so it and the history the kernel builds are not
-part of the `array_memory_mb` a recurrence reports. A loaded extension that
-predates a kernel, or a recurrence option wider than the binding's integer
-parameters, also keeps the recurrence on its Python steps rather than failing at
-the boundary.
+the native path's own buffer and is not part of the `array_memory_mb` a
+recurrence reports, which counts the one recorded history the kernel returns.
+A loaded extension that predates a kernel, or a recurrence option wider than the
+binding's integer parameters, also keeps the recurrence on its Python steps
+rather than failing at the boundary.
 Native dispatch also requires NumPy floating-point errors to be ignored
 (`np.errstate(all="ignore")`); warnings, exceptions, callbacks, logging, or
 printing keep the Python path. Python 3.14 context-aware warnings conservatively

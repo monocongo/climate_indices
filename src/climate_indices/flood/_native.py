@@ -147,7 +147,7 @@ def api_recurrence(
     gap_days = np.ascontiguousarray(trailing_gap_days, dtype=np.int64).reshape(cells)
 
     def native_run(
-        values_out: npt.NDArray[np.float64] | None,
+        shape: tuple[int, ...] | None,
         spin_up: int,
         nan_policy: str,
         max_gap_days: int,
@@ -163,7 +163,7 @@ def api_recurrence(
                 spin_up=spin_up,
                 nan_policy=nan_policy,
                 max_gap_days=max_gap_days,
-                record=values_out is not None,
+                record=shape is not None,
             )
         except native.NonFiniteResultError as exc:
             _raise_non_finite(_API_INDEX_TYPE, exc)
@@ -174,9 +174,9 @@ def api_recurrence(
         gap_shape = trailing_gap_days.shape
         if final_gaps is not None:
             trailing_gap_days[...] = final_gaps.reshape(gap_shape)
-        # hand back the kernel's own history: the runner replaces the slot it
-        # pre-allocated, so no second full-size history is filled alongside it
-        recorded = None if values_out is None or history is None else history.reshape(values_out.shape)
+        # the kernel built the one history; return it in the public shape instead
+        # of copying it into a second full-size array
+        recorded = None if history is None or shape is None else history.reshape(shape)
         return recorded, None if final_gaps is None else final_gaps.reshape(gap_shape).copy()
 
     return native_run

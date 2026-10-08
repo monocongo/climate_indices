@@ -39,13 +39,14 @@ _logger = get_logger(__name__)
 # component's whole time axis and returns its recorded history and final gap
 # counts, or None to leave the component to the Python day loop here.
 #
-# Arguments: the pre-allocated history slot for this component (None when this
-# call records no history for it; its shape names the public shape the kernel's
-# history is returned in), the spin-up day count, the missing-day policy, and
-# the bridge allowance. The kernel updates the component's own state and gap
-# arrays in place, so the caller's arrays are correct when the call returns.
+# Arguments: the shape the kernel's recorded history is returned in (None when
+# this call records no history for it; the kernel builds that one history, so
+# the Python side allocates no second full-size array beside it), the spin-up day
+# count, the missing-day policy, and the bridge allowance. The kernel updates the
+# component's own state and gap arrays in place, so the caller's arrays are
+# correct when the call returns.
 NativeRecurrence = Callable[
-    [npt.NDArray[np.float64] | None, int, Literal["propagate", "bridge"], int],
+    [tuple[int, ...] | None, int, Literal["propagate", "bridge"], int],
     tuple[npt.NDArray[np.float64] | None, npt.NDArray[np.int64] | None] | None,
 ]
 
@@ -386,18 +387,32 @@ _RecurrenceGaps = tuple[npt.NDArray[np.int64] | None, ...]
 _FinalizedT = TypeVar("_FinalizedT")
 
 
+def _allocate_history(
+    component: DailyRecurrence,
+    keep: bool,
+    n_days: int,
+    spin_up: int,
+) -> npt.NDArray[np.float64] | None:
+    """One component's daily history, or None when the call records none for it."""
+    if not keep:
+        return None
+    return np.full((max(n_days - spin_up, 0), *component.weather_valid.shape[1:]), np.nan, dtype=np.float64)
+
+
 def _allocate_histories(
     components: tuple[DailyRecurrence, ...],
-    record: tuple[bool, ...] | None,
+    records: tuple[bool, ...],
     n_days: int,
     spin_up: int,
 ) -> _RecurrenceValues:
-    """Allocate one daily history per recorded component; unrecorded slots stay None."""
-    records = (True,) * len(components) if record is None else record
+    """Allocate one daily history per recorded component; unrecorded slots stay None.
+
+    A component with a Rust kernel allocates nothing here: the kernel returns the
+    one history it records, so the two never hold a full history each at the same
+    time. A kernel that declines gets its slot when it declines.
+    """
     return tuple(
-        np.full((max(n_days - spin_up, 0), *component.weather_valid.shape[1:]), np.nan, dtype=np.float64)
-        if keep
-        else None
+        None if component.native is not None else _allocate_history(component, keep, n_days, spin_up)
         for component, keep in zip(components, records, strict=True)
     )
 
@@ -405,22 +420,30 @@ def _allocate_histories(
 def _run_native_components(
     components: tuple[DailyRecurrence, ...],
     values: list[npt.NDArray[np.float64] | None],
+    records: tuple[bool, ...],
+    n_days: int,
     spin_up: int,
     nan_policy: Literal["propagate", "bridge"],
     max_gap_days: int,
 ) -> tuple[list[bool], list[npt.NDArray[np.int64] | None]]:
     """Run each component's optional Rust kernel, in place over ``values``.
 
-    Returns which components ran natively and their final gap counts; a
-    component whose kernel returns None (or has none) stays for the day loop.
+    A kernel is handed the shape its history is returned in, or None when this
+    call records none for the component, so the kernel builds the only full-size
+    history. Returns which components ran natively and their final gap counts; a
+    component whose kernel returns None (or has none) stays for the day loop,
+    which gets its slot allocated here.
     """
     native_ran = [False] * len(components)
     native_gaps: list[npt.NDArray[np.int64] | None] = [None] * len(components)
     for index, component in enumerate(components):
         if component.native is None:
             continue
-        native_result = component.native(values[index], spin_up, nan_policy, max_gap_days)
+        keep = records[index]
+        shape = (max(n_days - spin_up, 0), *component.weather_valid.shape[1:]) if keep else None
+        native_result = component.native(shape, spin_up, nan_policy, max_gap_days)
         if native_result is None:
+            values[index] = _allocate_history(component, keep, n_days, spin_up)
             continue
         values[index], native_gaps[index] = native_result
         native_ran[index] = True
@@ -441,10 +464,9 @@ def _recorded_memory_metrics(
 ) -> dict[str, float] | None:
     """The large-array memory metrics for the caller's arrays and recorded histories.
 
-    A component that runs natively reports the history the kernel returns, whose
-    size matches the slot it replaces, so this sum stays comparable across the
-    two paths. The Rust side's own buffers during the call — its copy of each
-    input across the boundary and the history it builds — are not part of it.
+    A component that runs natively reports the history the kernel returns, so
+    this sum stays comparable across the two paths; the kernel's own boundary
+    copy of each input is a Rust-side buffer and is not part of it.
     """
     return check_large_array_memory(*memory_arrays, *(value for value in values if value is not None))
 
@@ -578,15 +600,19 @@ def run_daily_recurrences(
     try:
         # the allocation is inside the try so an output-allocation failure
         # still reports the recurrence lifecycle
-        values = list(_allocate_histories(components, record, n_days, spin_up))
+        records = (True,) * len(components) if record is None else record
+        values = list(_allocate_histories(components, records, n_days, spin_up))
         for component in components:
             _initialize_component(component)
-        memory_metrics = _recorded_memory_metrics(memory_arrays, values)
 
         # a component with a Rust kernel runs its whole time axis in one call, so
         # the day loop below only carries the components left on the Python path
         # (their own order is unchanged: they are independent of one another)
-        native_ran, native_gaps = _run_native_components(components, values, spin_up, nan_policy, max_gap_days)
+        native_ran, native_gaps = _run_native_components(
+            components, values, records, n_days, spin_up, nan_policy, max_gap_days
+        )
+        # after the kernels so the recorded histories they return are counted
+        memory_metrics = _recorded_memory_metrics(memory_arrays, values)
 
         for day in range(n_days):
             for index, component in enumerate(components):

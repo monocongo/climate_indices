@@ -127,16 +127,16 @@ def _flags_flat(array: npt.NDArray[np.bool_], cells: int) -> npt.NDArray[np.bool
 
 def _recorded_history(
     history: npt.NDArray[np.float64] | None,
-    values_out: npt.NDArray[np.float64] | None,
+    shape: tuple[int, ...] | None,
 ) -> npt.NDArray[np.float64] | None:
     """The kernel's recorded history in the public shape, or None when none was recorded.
 
-    Returning the kernel's own array avoids a second full-size history: the
-    caller's pre-allocated slot is replaced instead of filled by an extra copy.
+    The kernel builds the one history and it is returned here directly, so the
+    Python side never holds a second full-size array beside it.
     """
-    if history is None or values_out is None:
+    if history is None or shape is None:
         return None
-    return history.reshape(values_out.shape)
+    return history.reshape(shape)
 
 
 def _final_gaps(
@@ -187,7 +187,7 @@ class _KbdiArrays:
 def _run_moisture_kernel(
     native: ModuleType,
     arrays: _MoistureArrays,
-    values_out: npt.NDArray[np.float64] | None,
+    shape: tuple[int, ...] | None,
     spin_up: int,
     nan_policy: str,
     max_gap_days: int,
@@ -213,7 +213,7 @@ def _run_moisture_kernel(
         "spin_up": spin_up,
         "nan_policy": nan_policy,
         "max_gap_days": max_gap_days,
-        "record": values_out is not None,
+        "record": shape is not None,
     }
     try:
         if arrays.index_type == "ffmc":
@@ -249,13 +249,13 @@ def _run_moisture_kernel(
     gap_shape = arrays.trailing_gap_days.shape
     if final_gaps is not None:
         arrays.trailing_gap_days[...] = final_gaps.reshape(gap_shape)
-    return _recorded_history(history, values_out), _final_gaps(final_gaps, gap_shape)
+    return _recorded_history(history, shape), _final_gaps(final_gaps, gap_shape)
 
 
 def _run_kbdi_kernel(
     native: ModuleType,
     arrays: _KbdiArrays,
-    values_out: npt.NDArray[np.float64] | None,
+    shape: tuple[int, ...] | None,
     spin_up: int,
     nan_policy: str,
     max_gap_days: int,
@@ -283,7 +283,7 @@ def _run_kbdi_kernel(
             spin_up=spin_up,
             nan_policy=nan_policy,
             max_gap_days=max_gap_days,
-            record=values_out is not None,
+            record=shape is not None,
         )
     except native.NonFiniteResultError as exc:  # pragma: no cover - defensive parity with the Python driver
         _raise_non_finite("kbdi", exc)
@@ -293,7 +293,7 @@ def _run_kbdi_kernel(
     gap_shape = arrays.trailing_gap_days.shape
     if final_gaps is not None:
         arrays.trailing_gap_days[...] = final_gaps.reshape(gap_shape)
-    return _recorded_history(history, values_out), _final_gaps(final_gaps, gap_shape)
+    return _recorded_history(history, shape), _final_gaps(final_gaps, gap_shape)
 
 
 def moisture_code_recurrence(
