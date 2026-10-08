@@ -148,7 +148,12 @@ def _cache_source(source_dir: Path, name: str, checksum: str) -> Path:
                     shutil.copyfileobj(response, target)
             if hashlib.sha256(temporary.read_bytes()).hexdigest() != checksum:
                 raise ValueError(f"SHA-256 mismatch: {url}")
-            temporary.replace(path)
+            try:
+                temporary.replace(path)
+            except PermissionError:
+                # Windows refuses to replace an open file; accept a concurrent caller's valid download.
+                if not path.exists() or hashlib.sha256(path.read_bytes()).hexdigest() != checksum:
+                    raise
         finally:
             if temporary is not None:
                 temporary.unlink(missing_ok=True)
