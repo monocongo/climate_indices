@@ -397,7 +397,7 @@ jobs:
     # The locked environment without the project, so that the artifact installed
     # below is what `climate_indices` resolves to and no dependency is re-resolved.
     - name: Install dependencies without the project
-      run: uv sync --locked --dev --no-install-project
+      run: uv sync --locked --dev --no-install-project  # NOSONAR: 3.10 needs the sdist-only asciitree and 3.14 the sdist-only cartopy
 
     - name: Remove the Rust toolchain from PATH
       run: |
