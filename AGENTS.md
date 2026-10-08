@@ -101,7 +101,11 @@ uv run pytest tests/test_release_integrity.py
 For changes under `crates/` or to the native dispatch in `src/climate_indices/compute.py`,
 also run the Rust gate that CI's `rust` and `test-native` jobs run (see
 `docs/architecture.md` § *Optional Rust Backend*). With `CLIMATE_INDICES_REQUIRE_NATIVE=1`
-the parity tests fail instead of skipping when the extension is missing:
+the parity tests fail instead of skipping when the extension is missing. If the
+`cargo` command is not found, either the Rust toolchain is not installed
+(`rustup --version` also fails) or `rustup` is installed but off `PATH` — a
+Homebrew `rustup` is keg-only: see
+[Install the Rust toolchain](docs/development-guide.md#install-the-rust-toolchain).
 
 ```bash
 cargo fmt --all -- --check
