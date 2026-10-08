@@ -13,6 +13,7 @@ use std::fmt;
 
 pub mod eddi;
 pub mod fire;
+pub mod flood;
 pub mod gamma;
 pub mod lmoments;
 pub mod loglogistic;
