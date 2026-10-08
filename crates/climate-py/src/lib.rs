@@ -14,6 +14,8 @@ use numpy::{
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
+mod pet;
+
 type ParameterArrays<'py> = (Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>);
 
 fn checked_copy<D: Dimension>(array: &PyReadonlyArray<'_, f64, D>) -> PyResult<Array<f64, D>> {
@@ -94,5 +96,6 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(gamma_parameters, m)?)?;
     m.add_function(wrap_pyfunction!(gamma_probabilities, m)?)?;
     m.add_function(wrap_pyfunction!(norm_ppf, m)?)?;
+    pet::register(m)?;
     Ok(())
 }

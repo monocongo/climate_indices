@@ -11,7 +11,9 @@
 
 use std::fmt;
 
+pub mod eto;
 pub mod gamma;
+pub mod pm_eto;
 pub mod special;
 
 /// Version of this crate, re-exported by the Python extension as `__version__`.
