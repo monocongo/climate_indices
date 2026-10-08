@@ -121,3 +121,5 @@ runtime-requirements.txt
 target/
 # compiled Python extension on Windows (*.so is ignored above)
 *.pyd
+# MSVC debug symbols written beside the extension by maturin develop
+*.pdb
