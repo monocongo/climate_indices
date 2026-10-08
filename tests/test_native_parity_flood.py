@@ -154,3 +154,17 @@ def test_effective_precipitation_with_nan_and_masked_days(monkeypatch) -> None:
     _assert_parity(rust, python)
     # every 60-day window holding one of the masked days 400-402 is NaN
     assert np.isnan(rust[400:462]).all()
+
+
+@pytest.mark.parametrize(
+    ("shape", "spatial_time_major"),
+    [((2 * 366, 2, 3), False), ((2 * 366, 12, 1), True), ((4, 366), False)],
+    ids=["spatial-block", "declared-calendar-shaped-block", "years-by-days"],
+)
+def test_effective_precipitation_layouts(monkeypatch, shape: tuple[int, ...], spatial_time_major: bool) -> None:
+    rain = _synthetic_rain(shape, seed=2, missing=0.005)
+    run = partial(flood.effective_precipitation, rain, duration=45, spatial_time_major=spatial_time_major)
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == {"effective_precipitation"}
+    _assert_parity(rust, python)
+    assert rust.shape == shape
