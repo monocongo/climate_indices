@@ -713,7 +713,8 @@ def test_pearson_scale_of_near_symmetric_samples_matches_python():
 
     _, scales, skews, valid = lmoments.fit_spatial(block)
     _, rust_scales, rust_skews, rust_valid = native.pearson_parameters(block)[1:]
-    assert valid.all() and rust_valid.all()
+    assert valid.all()
+    assert rust_valid.all()
     assert np.abs(lmoments._estimate_lmoments_spatial(block)[0][2]).min() < 1e-4, "must reach the small-skew range"
     np.testing.assert_allclose(rust_scales, scales, rtol=RTOL, atol=ATOL)
     np.testing.assert_allclose(rust_skews, skews, rtol=RTOL, atol=ATOL)
@@ -756,8 +757,9 @@ def test_loglogistic_cdf_matches_the_numpy_formula():
 )
 def test_cdf_kernels_reject_a_parameter_of_the_wrong_length(kernel, arguments):
     arguments[2] = np.ones(11)
+    kernel_function = getattr(native, kernel)
     with pytest.raises(ValueError, match="11"):
-        getattr(native, kernel)(*arguments)
+        kernel_function(*arguments)
 
 
 @pytest.mark.parametrize("shape", [(0, 12), (2, 0), (0, 0)])
@@ -765,9 +767,11 @@ def test_kernels_accept_empty_blocks(shape):
     empty = np.empty(shape)
     parameters = np.ones(shape[1])
     *pearson, valid = native.pearson_parameters(empty)
-    assert all(array.shape == (shape[1],) for array in pearson) and valid.shape == (shape[1],)
+    assert all(array.shape == (shape[1],) for array in pearson)
+    assert valid.shape == (shape[1],)
     *glo, valid = native.loglogistic_parameters(empty)
-    assert all(array.shape == (shape[1],) for array in glo) and valid.shape == (shape[1],)
+    assert all(array.shape == (shape[1],) for array in glo)
+    assert valid.shape == (shape[1],)
     assert not valid.any()
     assert native.pearson_cdf(empty, parameters, parameters, parameters).shape == shape
     assert native.loglogistic_cdf(empty, parameters, parameters, parameters).shape == shape
@@ -786,9 +790,10 @@ def test_kernels_reject_unaligned_arrays(layout):
 
     block = np.arange(1.0, 25.0).reshape(2, 12)
     parameters = np.full(12, 0.5)
+    unaligned_block = unaligned_like(block)
     for kernel in (native.pearson_parameters, native.loglogistic_parameters):
         with pytest.raises(ValueError, match="unaligned float64 array"):
-            kernel(unaligned_like(block))
+            kernel(unaligned_block)
     for kernel in (native.pearson_cdf, native.loglogistic_cdf):
         for position in range(4):
             arguments = [block, parameters, parameters, parameters]
