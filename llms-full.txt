@@ -2494,7 +2494,9 @@ arithmetic rather than improving it, and do not add a fast-math or fused kernel:
 
 Add the `#[pyfunction]` to `crates/climate-py/src/lib.rs`, converting arrays at the
 boundary and returning only `climate-core` types across it; that crate holds no
-algorithm. Add the matching signature to `src/climate_indices/_native.pyi`, where
+algorithm. Register it in the `#[pymodule]` in that file with
+`m.add_function(wrap_pyfunction!(<kernel>, m)?)?`: a `#[pyfunction]` that is not
+registered is never exposed to Python. Add the matching signature to `src/climate_indices/_native.pyi`, where
 every array argument is documented as float64. Existing bindings call
 `checked_copy`, which rejects unaligned arrays, copies empty and caller-owned
 storage before `py.detach`, and wraps the view conversion.
@@ -2502,8 +2504,12 @@ storage before `py.detach`, and wraps the view conversion.
 ### 5. Add dispatch and routing
 
 The dispatch helper lives in the Python module that owns the computation, next to
-its Python implementation, and is named `_native_<kernel>`. It returns the Python
-result unless every routing condition holds:
+its Python implementation, and is named `_native_<kernel>`. Two caller patterns are
+in use: a helper returns `None` when a routing condition fails, and its caller runs
+the Python path (as `_native_gamma_probabilities` does), or the helper carries no
+guard of its own and is called only after the caller's `_native_float64` guard has
+passed (as `_native_gamma_parameters` does). Dispatch takes the Rust path only when
+every routing condition holds:
 
 - the extension imported (`_native is not None`);
 - a plain, aligned float64 `ndarray` whose layout the kernel supports — use the
@@ -2542,7 +2548,7 @@ test to match Rust.
 ```bash
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
-PYO3_PYTHON="$PWD/.venv/bin/python" cargo test --workspace
+PYO3_PYTHON="$(uv run python -c 'import sys; print(sys.executable)')" cargo test --workspace
 uv run maturin develop --release
 uv run python -c "import climate_indices._native"
 uv run ruff check src/ tests/
@@ -2550,7 +2556,7 @@ uv run ruff format --check src/ tests/
 uv run mypy src/ tests/test_type_checking.py
 uv run pytest -n auto                # with the extension built
 uv run pytest -m validation -n auto  # external reference suites, per the RUST ticket
-rm src/climate_indices/_native.*.so && uv run pytest -n auto   # pure-Python fallback
+rm -f src/climate_indices/_native.*.so src/climate_indices/_native.*.pyd && uv run pytest -n auto   # pure-Python fallback
 uv run --extra docs sphinx-build -E -b html -W --keep-going docs docs/_build/html
 uv run --extra docs sphinx-build -E -b doctest docs docs/_build/doctest
 ```
