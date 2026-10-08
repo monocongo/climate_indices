@@ -120,6 +120,17 @@ def _edi_run(years: int, side: int) -> Callable[[], Any]:
     return partial(flood.edi, _pe(years, side), _START_YEAR, _START_YEAR + 1, _START_YEAR + years - 1)
 
 
+def _flood_index_run(years: int, side: int) -> Callable[[], Any]:
+    return partial(
+        flood.flood_index,
+        _pe(years, side),
+        _START_YEAR,
+        _START_YEAR + 1,
+        _START_YEAR + years - 1,
+        year_start_month=1,
+    )
+
+
 @pytest.mark.benchmark
 @pytest.mark.parametrize("side", _GRID_SIDES)
 def test_effective_precipitation_rust_against_python(benchmark, monkeypatch, native, side: int) -> None:
@@ -137,6 +148,18 @@ def test_effective_precipitation_rust_against_python(benchmark, monkeypatch, nat
 def test_edi_rust_against_python(benchmark, monkeypatch, native, side: int) -> None:
     """Time the EDI on the Rust kernel and the Python path."""
     run = _edi_run(_RECORD_YEARS, side)
+    rust, python = _time_both_paths(monkeypatch, native, run)
+    benchmark.extra_info.update(python_seconds=python, rust_seconds=rust, speedup=python / rust)
+    monkeypatch.setattr(flood_native, "_native", native)
+    with np.errstate(all="ignore"):
+        benchmark(run)
+
+
+@pytest.mark.benchmark
+@pytest.mark.parametrize("side", _GRID_SIDES)
+def test_flood_index_rust_against_python(benchmark, monkeypatch, native, side: int) -> None:
+    """Time the Flood Index on the Rust kernel and the Python path."""
+    run = _flood_index_run(_RECORD_YEARS, side)
     rust, python = _time_both_paths(monkeypatch, native, run)
     benchmark.extra_info.update(python_seconds=python, rust_seconds=rust, speedup=python / rust)
     monkeypatch.setattr(flood_native, "_native", native)
