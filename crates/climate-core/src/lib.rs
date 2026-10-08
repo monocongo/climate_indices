@@ -52,6 +52,13 @@ pub enum ClimateError {
     },
     /// A missing-day policy name a kernel does not implement.
     UnknownNanPolicy { value: String },
+    /// A row window (a Calibration Period) that does not lie inside its axis.
+    RowsOutOfRange {
+        argument: &'static str,
+        start: usize,
+        end: usize,
+        length: usize,
+    },
 }
 
 impl fmt::Display for ClimateError {
@@ -83,6 +90,15 @@ impl fmt::Display for ClimateError {
             Self::UnknownNanPolicy { value } => {
                 write!(f, "unknown missing-day policy {value:?}")
             }
+            Self::RowsOutOfRange {
+                argument,
+                start,
+                end,
+                length,
+            } => write!(
+                f,
+                "{argument} rows [{start}, {end}) are outside the {length} available rows"
+            ),
         }
     }
 }

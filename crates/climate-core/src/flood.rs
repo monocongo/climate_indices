@@ -14,6 +14,8 @@
 //!   years sequentially when the block has more than one column and pairwise
 //!   when it has exactly one ([`crate::reduction::pairwise_sum`]).
 
+use std::ops::Range;
+
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 
 use crate::ClimateError;
@@ -161,6 +163,25 @@ fn standardize(values: ArrayView2<'_, f64>, climatology: &Climatology) -> Array2
         }
     }
     result
+}
+
+/// Check that a calibration window lies inside an axis of `length` rows.
+#[allow(dead_code)]
+fn check_rows(
+    argument: &'static str,
+    rows: &Range<usize>,
+    length: usize,
+) -> Result<(), ClimateError> {
+    if rows.start <= rows.end && rows.end <= length {
+        Ok(())
+    } else {
+        Err(ClimateError::RowsOutOfRange {
+            argument,
+            start: rows.start,
+            end: rows.end,
+            length,
+        })
+    }
 }
 
 #[cfg(test)]
