@@ -399,13 +399,20 @@ and transform, PCI, whose dispatch checks the original 1-D input and requires a
 plain 1-D array, and the fire recurrences, which apply the same guard to every
 weather array and to the seed they resume from, as the flood kernels do to their
 prepared series and the API seed. A layout the kernel cannot take unchanged (an
-empty axis, a non-float64 or unaligned array, or a time-first array whose
-spatial axes cannot be viewed as one cell axis without a copy) stays in Python
-as well. The kernels take views of the prepared arrays, so a broadcast month
-series or season mask is copied once, by the binding, rather than first
-materialized in Python; that boundary copy is the native path's own buffer and
-is not part of the `array_memory_mb` a recurrence reports, which counts the one
-recorded history the kernel returns. A loaded extension that predates a kernel,
+empty axis, a non-float64 or unaligned array, or, for the fire recurrences, a
+time-first array whose spatial axes cannot be viewed as one cell axis without a
+copy) stays in Python as well. The kernels take views of the prepared arrays, so
+a broadcast month series or season mask is copied once, by the binding, rather
+than first materialized in Python; that boundary copy is the native path's own
+buffer and is not part of the `array_memory_mb` a recurrence reports, which
+counts the one recorded history the kernel returns. The flood kernels differ in
+one respect: a time-last (transposed) array reshapes to a view, and the one
+layout that cannot merge without a copy, a regional slice of a larger grid, is
+copied once in Python and still runs natively, because the Python path is roughly
+three times slower than the kernel plus that copy (365-day PE over 400 cells).
+The public flood entry points already hand the dispatch a C-contiguous array,
+since their validation copies, so the policy matters to direct callers of
+`flood._native`. A loaded extension that predates a kernel,
 or a recurrence option wider than the binding's integer parameters, also keeps
 the recurrence on its Python steps rather than failing at the boundary.
 Native dispatch also requires NumPy floating-point errors to be ignored
