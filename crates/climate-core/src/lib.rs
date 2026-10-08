@@ -13,7 +13,10 @@ use std::fmt;
 
 pub mod eddi;
 pub mod gamma;
+pub mod lmoments;
+pub mod loglogistic;
 pub mod pci;
+pub mod pearson;
 pub mod pnp;
 mod reduction;
 pub mod special;
