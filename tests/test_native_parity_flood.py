@@ -143,3 +143,14 @@ def test_effective_precipitation_shorter_than_its_window_is_all_nan(monkeypatch)
     assert calls == set()
     _assert_parity(rust, python)
     assert np.isnan(rust).all()
+
+
+def test_effective_precipitation_with_nan_and_masked_days(monkeypatch) -> None:
+    rain = _synthetic_rain((3 * 366,), seed=1, missing=0.01)
+    masked = np.ma.masked_array(rain, mask=np.zeros(rain.shape, dtype=bool))
+    masked[400:403] = np.ma.masked
+    rust, python, calls = _rust_and_python(monkeypatch, partial(flood.effective_precipitation, masked, duration=60))
+    assert calls == {"effective_precipitation"}
+    _assert_parity(rust, python)
+    # every 60-day window holding one of the masked days 400-402 is NaN
+    assert np.isnan(rust[400:462]).all()
