@@ -359,3 +359,18 @@ def test_api_overflow_raises_the_python_error_on_both_paths(monkeypatch) -> None
             flood.antecedent_precipitation_index(rain, 0.9)
     # the dispatch also reads the extension's NonFiniteResultError to translate it
     assert "antecedent_precipitation_index" in recorder.calls
+
+
+# Dispatch policy.
+
+
+def test_a_decay_constant_wider_than_float64_stays_in_python(monkeypatch) -> None:
+    """An extended ``np.longdouble`` promotes the Python step beyond float64, which the kernel does not reproduce.
+
+    Where ``long double`` is plain float64 (MSVC), NumPy treats the two as one
+    type and the kernel takes it.
+    """
+    run = partial(flood.antecedent_precipitation_index, _synthetic_rain((50,), seed=7), np.longdouble(0.9))
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == (set() if np.dtype(np.longdouble) != np.float64 else {"antecedent_precipitation_index"})
+    _assert_parity(rust, python)
