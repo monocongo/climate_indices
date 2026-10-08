@@ -4,9 +4,11 @@ import importlib
 import json
 import multiprocessing
 import os
+from collections.abc import Callable
 from concurrent.futures import Future, ProcessPoolExecutor
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -51,6 +53,84 @@ def python_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(compute, "_native", None)
     monkeypatch.setattr(fire_native, "_native", None)
     monkeypatch.setattr(flood_native, "_native", None)
+
+
+NATIVE_PARITY_RTOL = 1e-10
+NATIVE_PARITY_ATOL = 1e-10
+
+
+class NativeRecorder:
+    """Stand-in for the Rust extension that records which kernels a run called."""
+
+    def __init__(self, module: ModuleType) -> None:
+        self._module = module
+        self.calls: set[str] = set()
+
+    def __getattr__(self, name: str) -> Any:
+        self.calls.add(name)
+        return getattr(self._module, name)
+
+
+def rust_and_python(
+    monkeypatch: pytest.MonkeyPatch, dispatch: ModuleType, run: Callable[[], Any]
+) -> tuple[Any, Any, set[str]]:
+    """Run ``run`` once through the Rust kernels behind ``dispatch`` and once on its Python path.
+
+    ``dispatch`` is the module whose ``_native`` attribute gates the kernels
+    (``climate_indices.fire._native``, ``climate_indices.flood._native``). The
+    returned calls prove the first run reached the extension, so a parity check is
+    never Python against Python.
+    """
+    recorder = NativeRecorder(import_native())
+    # the Rust kernels do not implement NumPy's floating-point reporting policies
+    with np.errstate(all="ignore"):
+        monkeypatch.setattr(dispatch, "_native", recorder)
+        rust = run()
+        monkeypatch.setattr(dispatch, "_native", None)
+        python = run()
+    return rust, python, recorder.calls
+
+
+def assert_native_parity(rust: Any, python: Any) -> None:
+    """Compare a Rust run's result with the Python run's at the parity tolerance.
+
+    A dataclass result is compared field by field, so a returned state is covered
+    as well as the values; a tuple is compared element-wise and a DataArray by its
+    dims and values. Arrays compare with ``allclose`` and matching NaN positions,
+    while integer arrays (gap counts) and non-array fields (unit names) compare
+    exactly.
+    """
+    fields = getattr(rust, "__dataclass_fields__", None)
+    if fields is not None:
+        for name in fields:
+            assert_native_parity(getattr(rust, name), getattr(python, name))
+        return
+    if isinstance(rust, tuple):
+        assert len(rust) == len(python)
+        for rust_item, python_item in zip(rust, python, strict=True):
+            assert_native_parity(rust_item, python_item)
+        return
+    if rust is None or python is None:
+        assert rust is None and python is None
+        return
+    if isinstance(rust, xr.DataArray):
+        assert isinstance(python, xr.DataArray)
+        assert rust.dims == python.dims
+        assert_native_parity(rust.values, python.values)
+        return
+    if isinstance(rust, np.ndarray) or isinstance(python, np.ndarray):
+        rust_array = np.asarray(rust)
+        python_array = np.asarray(python)
+        assert rust_array.shape == python_array.shape
+        assert rust_array.dtype == python_array.dtype
+        if np.issubdtype(rust_array.dtype, np.integer):
+            np.testing.assert_array_equal(rust_array, python_array)
+        else:
+            np.testing.assert_allclose(
+                rust_array, python_array, rtol=NATIVE_PARITY_RTOL, atol=NATIVE_PARITY_ATOL, equal_nan=True
+            )
+        return
+    assert rust == python
 
 
 # constants
