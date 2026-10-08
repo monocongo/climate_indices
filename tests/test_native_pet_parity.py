@@ -172,8 +172,21 @@ def test_thornthwaite_passes_a_scalar_latitude_as_a_view(monkeypatch):
     assert len(seen) == 1
     latitude = seen[0][1]
     assert latitude.strides == (0,), "a scalar latitude was materialized into a per-cell block"
-    assert latitude.base is not None and latitude.base.size == 1
+    assert latitude.base is not None
+    assert latitude.base.size == 1
     _assert_parity(result, reference)
+
+
+def test_thornthwaite_empty_negative_stride_leap_years():
+    """An empty bool operand with a negative stride reaches the kernel without a view.
+
+    rust-numpy shifts the data pointer for a negative stride even on an empty
+    axis, so the binding copies this argument without building that view.
+    """
+    leap_years = np.ndarray((0,), dtype=bool, buffer=np.empty(1), strides=(-1,))
+    assert leap_years.strides == (-1,)
+    result = native.thornthwaite(np.empty((0, 12, 0)), np.empty(0), leap_years)
+    assert result.shape == (0, 12, 0)
 
 
 @pytest.mark.parametrize("latitude", [90.0, -90.0])
@@ -202,12 +215,12 @@ def test_thornthwaite_all_nan_month_column_warns_before_an_invalid_latitude(monk
     temps[:, 3] = np.nan
     with np.errstate(all="ignore"):
         monkeypatch.setattr(eto, "_native", _Recorder(native))
-        with pytest.warns(RuntimeWarning, match="Mean of empty slice"):
-            with pytest.raises(InvalidArgumentError) as native_error:
+        with pytest.raises(InvalidArgumentError) as native_error:
+            with pytest.warns(RuntimeWarning, match="Mean of empty slice"):
                 eto.eto_thornthwaite(temps, 91.0, 2001)
         monkeypatch.setattr(eto, "_native", None)
-        with pytest.warns(RuntimeWarning, match="Mean of empty slice"):
-            with pytest.raises(InvalidArgumentError) as python_error:
+        with pytest.raises(InvalidArgumentError) as python_error:
+            with pytest.warns(RuntimeWarning, match="Mean of empty slice"):
                 eto.eto_thornthwaite(temps, 91.0, 2001)
     assert str(native_error.value) == str(python_error.value)
 
@@ -433,7 +446,8 @@ def test_hargreaves_passes_a_scalar_latitude_as_a_view(monkeypatch):
     assert len(seen) == 1
     latitude = seen[0][3]
     assert latitude.strides == (0,), "a scalar latitude was materialized into a per-cell block"
-    assert latitude.base is not None and latitude.base.size == 1
+    assert latitude.base is not None
+    assert latitude.base.size == 1
     _assert_parity(result, reference)
 
 
@@ -559,8 +573,33 @@ def test_pm_eto_passes_a_scalar_operand_as_a_view(monkeypatch):
     assert len(seen) == 1
     for operand in seen[0][1:]:
         assert operand.strides == (0,), "a scalar operand was materialized into a full-size array"
-        assert operand.base is not None and operand.base.size == 1
+        assert operand.base is not None
+        assert operand.base.size == 1
     _assert_parity(result, reference)
+
+
+@pytest.mark.parametrize("scalar_type", [np.uint8, np.int16, np.int64])
+def test_pm_eto_integer_scalars_stay_on_python(monkeypatch, scalar_type):
+    """An integer scalar computes in its own dtype, where the subtraction can wrap.
+
+    ``np.uint8(1) - np.uint8(2)`` is 255, while the float64 the kernel would take
+    gives -1.0, so a call with integer scalar operands keeps the Python path.
+    """
+    rest = (
+        np.array([16.9, 20.0, 5.0]),
+        np.array([2.078, 1.5, 3.0]),
+        np.array([1.997, 2.3, 0.9]),
+        np.array([1.409, 1.1, 0.7]),
+        np.array([0.122, 0.145, 0.06]),
+        np.array([0.0666, 0.067, 0.05]),
+    )
+    rust, python, calls = _rust_and_python(
+        monkeypatch,
+        pm_eto,
+        lambda: pm_eto.pm_eto(scalar_type(1), scalar_type(2), *rest),
+    )
+    assert calls == set()
+    _assert_parity(rust, python)
 
 
 def test_penman_monteith_eto_matches_fao56_example_18(monkeypatch):

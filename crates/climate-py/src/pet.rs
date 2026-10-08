@@ -6,7 +6,8 @@
 
 use numpy::ndarray::{Array1, ArrayView1};
 use numpy::{
-    IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArray3,
+    IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2,
+    PyReadonlyArray3, PyUntypedArrayMethods,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -48,7 +49,13 @@ fn thornthwaite<'py>(
 ) -> PyResult<Bound<'py, PyArray3<f64>>> {
     let monthly_temps_celsius = crate::checked_copy(&monthly_temps_celsius)?;
     let latitude_radians = crate::checked_copy(&latitude_radians)?;
-    let leap_years = leap_years.as_array().to_owned();
+    // `checked_copy`'s empty-array guard: rust-numpy shifts the data pointer for
+    // negative strides even on empty axes, so avoid building that view.
+    let leap_years = if leap_years.is_empty() {
+        Array1::<bool>::from_vec(Vec::new())
+    } else {
+        leap_years.as_array().to_owned()
+    };
     py.detach(|| {
         climate_core::eto::thornthwaite(
             monthly_temps_celsius.view(),

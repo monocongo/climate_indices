@@ -433,13 +433,18 @@ def actual_vapor_pressure_from_tmin(
 def _native_operand(value: Any) -> np.ndarray | None:
     """The operand as the kernels take it, or None when they cannot take it.
 
+    An integer or boolean scalar keeps its own dtype in the Python expression,
+    where it can wrap or reject the subtraction, and a scalar wider than float64
+    would lose precision, so only the float64-representable floating-point
+    scalars reach the kernels.
+
     :param value: one operand of a kernel call
     :return: the value as a float64 array, or None for a dtype, layout, or NumPy
         error policy the kernels do not take
     """
     if isinstance(value, np.ndarray):
         return value if compute._native_float64(value) else None
-    if isinstance(value, (bool, int, float, np.bool_, np.integer, np.floating)):
+    if isinstance(value, (float, np.float16, np.float32, np.float64)):
         return np.asarray(value, dtype=np.float64)
     return None
 
