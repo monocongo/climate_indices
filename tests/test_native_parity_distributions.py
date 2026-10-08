@@ -505,6 +505,51 @@ def test_failed_fit_counts_and_warning_events_match(
     _assert_parity(rust, python)
 
 
+@pytest.mark.parametrize("spatial", [False, True], ids=["monthly-series", "spatial-block"])
+@pytest.mark.parametrize(
+    ("fit", "kernel"),
+    [
+        (compute.pearson_parameters, "pearson_parameters"),
+        (compute.loglogistic_parameters, "loglogistic_parameters"),
+    ],
+    ids=["pearson", "loglogistic"],
+)
+def test_failures_below_the_high_rate_threshold_are_summarized(
+    monkeypatch, caplog, precips_mm_monthly, fit, kernel, spatial
+):
+    """One failed calendar month logs a single summary event on both backends.
+
+    The Rust fit writes none of the per-step ``climate_indices.lmoments`` records,
+    so the summary is the only diagnostic for an isolated failure.
+    """
+    block = precips_mm_monthly.copy()
+    block[:, 3] = np.nan
+    if spatial:
+        block = block[:, :, None] * np.ones((1, 1, 3))
+    caplog.set_level(logging.WARNING)
+
+    def summaries() -> list[dict]:
+        caplog.clear()
+        fit(block, _DATA_START, 1981, 2010, _MONTHLY)
+        return [
+            record.msg
+            for record in caplog.records
+            if isinstance(record.msg, dict) and record.msg.get("event") == "distribution_fitting_failures"
+        ]
+
+    recorder = _Recorder(native)
+    with np.errstate(all="ignore"):
+        monkeypatch.setattr(compute, "_native", recorder)
+        rust = summaries()
+        monkeypatch.setattr(compute, "_native", None)
+        python = summaries()
+    assert recorder.calls == {kernel}
+    cells = block[0].size // 12
+    for events in (rust, python):
+        assert len(events) == 1
+        assert (events[0]["failure_count"], events[0]["total_count"]) == (cells, 12 * cells)
+
+
 # --- routing -------------------------------------------------------------------------
 
 

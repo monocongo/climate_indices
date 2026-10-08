@@ -1764,7 +1764,9 @@ fit marks invalid, so those blocks keep the Python fit. The `climate_indices.lmo
 log records that the single-series fits write per failed step (an `ERROR` for
 invalid L-moments, and a `WARNING` for a step with fewer than four non-NaN
 values) are not written by the Rust fit, as they are not by the cell-axis fit;
-the failed-fit count and the high-failure-rate warning are unchanged. SciPy's
+the failed-fit count and the high-failure-rate warning are unchanged, and a
+failure rate at or below that warning's threshold logs one
+`distribution_fitting_failures` `WARNING` with the counts on every backend. SciPy's
 last-bit results depend on whether its build fuses multiply-adds (aarch64 builds
 do, x86-64 wheels do not), and the Pearson fit's `exp(gammaln(a) - gammaln(a + 0.5))`
 amplifies one ulp by up to `1e11` for a near-symmetric sample, so the ported

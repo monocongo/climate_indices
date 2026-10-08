@@ -831,6 +831,14 @@ def pearson_parameters(
             total_count=total_fitting_count,
             context="pearson_parameters computation",
         )
+    elif failed_fitting_count:
+        # the Rust and cell-axis fits write no per-step record, so without this a
+        # failure below the high-failure-rate threshold would leave no diagnostic
+        log.warning(
+            "distribution_fitting_failures",
+            failure_count=failed_fitting_count,
+            total_count=total_fitting_count,
+        )
 
     # check goodness-of-fit and emit warning if poor
     _check_goodness_of_fit_pearson(calibration_values, probabilities_of_zero, locs, scales, skews)
@@ -2406,6 +2414,13 @@ def loglogistic_parameters(
         # not log_high_failure_rate: its text names Pearson Type III and a Gamma remedy
         log.warning(
             "high_fitting_failure_rate",
+            failure_count=failed_fitting_count,
+            total_count=total_fitting_count,
+        )
+    elif failed_fitting_count:
+        # as in pearson_parameters: the Rust and cell-axis fits log no failed step
+        log.warning(
+            "distribution_fitting_failures",
             failure_count=failed_fitting_count,
             total_count=total_fitting_count,
         )
