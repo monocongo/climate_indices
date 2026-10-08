@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from climate_indices import flood
 
@@ -58,3 +59,32 @@ def test_runs_that_touch_a_neighbouring_cell_do_not_merge() -> None:
     np.testing.assert_array_equal(events.cell[:, 0], [0, 1])
     np.testing.assert_array_equal(events.duration, [3, 3])
     np.testing.assert_allclose(events.severity, [3.0, 3.0])
+
+
+def _reference(series: np.ndarray, threshold: float, min_duration: int) -> list[tuple[int, int, float, float]]:
+    """Plain day-by-day event scan: (onset, end, peak, severity)."""
+    events, start = [], None
+    for day, value in enumerate([*series, np.nan]):
+        hit = bool(np.isfinite(value) and value > threshold)
+        if hit and start is None:
+            start = day
+        if not hit and start is not None:
+            run = series[start:day]
+            if day - start >= min_duration:
+                events.append((start, day, float(run.max()), float(run.sum())))
+            start = None
+    return events
+
+
+@pytest.mark.parametrize("seed", range(5))
+@pytest.mark.parametrize("min_duration", [1, 3])
+def test_matches_a_day_by_day_reference(seed: int, min_duration: int) -> None:
+    rng = np.random.default_rng(seed)
+    index = rng.normal(size=(200, 4))
+    index[rng.random(index.shape) < 0.05] = np.nan
+    events = flood.flood_events(index, threshold=0.3, min_duration=min_duration)
+    got = list(zip(events.cell[:, 0], events.onset, events.end, events.peak, events.severity, strict=True))
+    expected = [(cell, *event) for cell in range(4) for event in _reference(index[:, cell], 0.3, min_duration)]
+    assert len(got) == len(expected)
+    for actual, wanted in zip(got, expected, strict=True):
+        np.testing.assert_allclose(actual, wanted, rtol=1e-12)
