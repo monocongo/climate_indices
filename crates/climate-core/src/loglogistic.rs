@@ -33,8 +33,8 @@ pub struct LogLogisticFit {
 }
 
 /// `(loc, scale, shape)` of one column from its L-moments.
-fn fit_column(column: ArrayView1<'_, f64>) -> Option<[f64; 3]> {
-    let [first, second, skewness] = sample_lmoments(column)?;
+fn fit_column(column: ArrayView1<'_, f64>, sorted: &mut Vec<f64>) -> Option<[f64; 3]> {
+    let [first, second, skewness] = sample_lmoments(column, sorted)?;
     let shape = -skewness;
     // negated so that a NaN L-moment is invalid
     if !(second > 0.0 && shape.abs() < 1.0) {
@@ -70,13 +70,14 @@ pub fn loglogistic_parameters(calibration: ArrayView2<'_, f64>) -> LogLogisticFi
         shapes: Array1::zeros(columns),
         valid: Array1::from_elem(columns, false),
     };
+    let mut sorted = Vec::with_capacity(calibration.nrows());
     Zip::from(&mut fit.locs)
         .and(&mut fit.scales)
         .and(&mut fit.shapes)
         .and(&mut fit.valid)
         .and(calibration.columns())
         .for_each(|loc, scale, shape, valid, column| {
-            if let Some(parameters) = fit_column(column) {
+            if let Some(parameters) = fit_column(column, &mut sorted) {
                 [*loc, *scale, *shape] = parameters;
                 *valid = true;
             }

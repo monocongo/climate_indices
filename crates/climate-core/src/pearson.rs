@@ -50,7 +50,7 @@ pub struct PearsonFit {
 }
 
 /// Probability of zero and L-moment Pearson Type III `(loc, scale, skew)` of one column.
-fn fit_column(column: ArrayView1<'_, f64>) -> Option<[f64; 4]> {
+fn fit_column(column: ArrayView1<'_, f64>, sorted: &mut Vec<f64>) -> Option<[f64; 4]> {
     let mut zeros = 0_usize;
     let mut non_missing = 0_usize;
     for &x in column {
@@ -70,7 +70,7 @@ fn fit_column(column: ArrayView1<'_, f64>) -> Option<[f64; 4]> {
         0.0
     };
 
-    let [loc, second, skewness] = sample_lmoments(column)?;
+    let [loc, second, skewness] = sample_lmoments(column, sorted)?;
     let t3 = skewness.abs();
     // negated so that a NaN L-moment is invalid
     if !(second > 0.0 && t3 < 1.0) {
@@ -125,6 +125,7 @@ pub fn pearson_parameters(calibration: ArrayView2<'_, f64>) -> PearsonFit {
         skews: Array1::zeros(columns),
         valid: Array1::from_elem(columns, false),
     };
+    let mut sorted = Vec::with_capacity(calibration.nrows());
     Zip::from(&mut fit.probabilities_of_zero)
         .and(&mut fit.locs)
         .and(&mut fit.scales)
@@ -132,7 +133,7 @@ pub fn pearson_parameters(calibration: ArrayView2<'_, f64>) -> PearsonFit {
         .and(&mut fit.valid)
         .and(calibration.columns())
         .for_each(|p0, loc, scale, skew, valid, column| {
-            if let Some(parameters) = fit_column(column) {
+            if let Some(parameters) = fit_column(column, &mut sorted) {
                 [*p0, *loc, *scale, *skew] = parameters;
                 *valid = true;
             }

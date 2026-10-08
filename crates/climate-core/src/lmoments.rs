@@ -17,7 +17,9 @@ pub(crate) const MIN_VALUES: usize = 4;
 ///
 /// - Python source: `lmoments._estimate_lmoments_spatial`, the cell-axis form of
 ///   `_estimate_lmoments`.
-/// - Inputs: one calibration column, zeros and negatives included.
+/// - Inputs: one calibration column, zeros and negatives included, and a
+///   scratch buffer the caller reuses across columns, so a block of columns
+///   allocates once.
 /// - Outputs: `[lambda_1, lambda_2, tau_3]`, with `tau_3 = lambda_3 / lambda_2`.
 /// - Zero semantics: zeros are ordinary sample values; the Pearson Type III
 ///   fit's separate zero mass and minimum non-zero count are applied by the caller.
@@ -30,12 +32,12 @@ pub(crate) const MIN_VALUES: usize = 4;
 ///   An infinite value makes the L-moments NaN, which no validity test accepts;
 ///   the single-series Python fit would instead let the NaN through, so Python
 ///   keeps those inputs.
-pub(crate) fn sample_lmoments<'a>(column: impl IntoIterator<Item = &'a f64>) -> Option<[f64; 3]> {
-    let mut sorted: Vec<f64> = column
-        .into_iter()
-        .copied()
-        .filter(|x| !x.is_nan())
-        .collect();
+pub(crate) fn sample_lmoments<'a>(
+    column: impl IntoIterator<Item = &'a f64>,
+    sorted: &mut Vec<f64>,
+) -> Option<[f64; 3]> {
+    sorted.clear();
+    sorted.extend(column.into_iter().copied().filter(|x| !x.is_nan()));
     if sorted.len() < MIN_VALUES {
         return None;
     }
@@ -87,7 +89,7 @@ mod tests {
     #[test]
     fn matches_a_hand_computed_sample() {
         // 1..=5: lambda_1 = 3, lambda_2 = 1, lambda_3 = 0
-        let [l1, l2, t3] = sample_lmoments(&[3.0, 1.0, 5.0, 2.0, 4.0]).unwrap();
+        let [l1, l2, t3] = sample_lmoments(&[3.0, 1.0, 5.0, 2.0, 4.0], &mut Vec::new()).unwrap();
         assert!((l1 - 3.0).abs() < 1e-15);
         assert!((l2 - 1.0).abs() < 1e-15);
         assert!(t3.abs() < 1e-15);
@@ -95,16 +97,18 @@ mod tests {
 
     #[test]
     fn missing_values_are_excluded_and_short_samples_have_none() {
+        // one buffer across samples, as a block fit reuses it across columns
+        let mut sorted = Vec::new();
         let with_gaps = [f64::NAN, 2.0, 1.0, f64::NAN, 3.0, 4.0];
         assert_eq!(
-            sample_lmoments(&with_gaps),
-            sample_lmoments(&[1.0, 2.0, 3.0, 4.0])
+            sample_lmoments(&with_gaps, &mut sorted),
+            sample_lmoments(&[1.0, 2.0, 3.0, 4.0], &mut sorted)
         );
-        assert!(sample_lmoments(&[1.0, 2.0, 3.0, f64::NAN]).is_none());
+        assert!(sample_lmoments(&[1.0, 2.0, 3.0, f64::NAN], &mut sorted).is_none());
     }
 
     #[test]
     fn a_constant_sample_has_none() {
-        assert!(sample_lmoments(&[2.0; 6]).is_none());
+        assert!(sample_lmoments(&[2.0; 6], &mut Vec::new()).is_none());
     }
 }
