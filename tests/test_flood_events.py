@@ -88,3 +88,9 @@ def test_matches_a_day_by_day_reference(seed: int, min_duration: int) -> None:
     assert len(got) == len(expected)
     for actual, wanted in zip(got, expected, strict=True):
         np.testing.assert_allclose(actual, wanted, rtol=1e-12)
+
+
+def test_all_missing_input_has_no_events() -> None:
+    events = flood.flood_events(np.full((5, 2), np.nan))
+    assert len(events) == 0
+    assert events.cell.shape == (0, 1)
