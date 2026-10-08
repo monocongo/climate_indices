@@ -101,6 +101,15 @@ def test_matches_a_day_by_day_reference(seed: int, min_duration: int) -> None:
         np.testing.assert_allclose(actual, wanted, rtol=1e-12)
 
 
+@pytest.mark.parametrize("shape", [(0,), (0, 3), (0, 2, 2)])
+def test_an_empty_time_axis_has_no_events(shape: tuple[int, ...]) -> None:
+    events = flood.flood_events(np.empty(shape))
+    assert len(events) == 0
+    assert events.cell.shape == (0, len(shape) - 1)
+    for field in (events.onset, events.end, events.duration, events.peak, events.severity):
+        assert field.shape == (0,)
+
+
 def test_all_missing_input_has_no_events() -> None:
     events = flood.flood_events(np.full((5, 2), np.nan))
     assert len(events) == 0
