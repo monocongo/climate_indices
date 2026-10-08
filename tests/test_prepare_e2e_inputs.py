@@ -48,6 +48,47 @@ def test_source_downloads_use_private_temporary_files(tmp_path, monkeypatch):
     assert not list(source_dir.glob("*.download"))
 
 
+def _patch_denied_replace(monkeypatch, module, published):
+    """Make publishing a download fail as on Windows, after a rival optionally publishes first."""
+    payload = b"source bytes"
+
+    def denied_replace(self, target):
+        if published is not None:
+            Path(target).write_bytes(published)
+        raise PermissionError(5, "Access is denied")
+
+    monkeypatch.setattr(module, "urlopen", lambda *args, **kwargs: io.BytesIO(payload))
+    monkeypatch.setattr(Path, "replace", denied_replace)
+    return hashlib.sha256(payload).hexdigest()
+
+
+def test_source_download_accepts_valid_file_published_by_another_caller(tmp_path, monkeypatch):
+    """A denied replace is success when a concurrent caller already published the valid file."""
+    module = _prepare_module(monkeypatch)
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    checksum = _patch_denied_replace(monkeypatch, module, b"source bytes")
+
+    path = module._cache_source(source_dir, "prcp", checksum)
+
+    assert path.read_bytes() == b"source bytes"
+    assert not list(source_dir.glob("*.download"))
+
+
+@pytest.mark.parametrize("published", [None, b"corrupt bytes"])
+def test_source_download_denied_replace_without_valid_file_raises(tmp_path, monkeypatch, published):
+    """A denied replace is an error when no valid file was published by another caller."""
+    module = _prepare_module(monkeypatch)
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    checksum = _patch_denied_replace(monkeypatch, module, published)
+
+    with pytest.raises(PermissionError):
+        module._cache_source(source_dir, "prcp", checksum)
+
+    assert not list(source_dir.glob("*.download"))
+
+
 def test_failed_regeneration_preserves_current_generation(tmp_path, monkeypatch):
     """Only a fully validated generation may replace the current inputs."""
     pytest.importorskip("h5py")
