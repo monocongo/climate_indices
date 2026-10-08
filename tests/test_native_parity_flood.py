@@ -238,3 +238,14 @@ def test_flood_index_over_a_spatial_block(monkeypatch, year_start_month: int) ->
     rust, python, calls = _rust_and_python(monkeypatch, run)
     assert calls == {"flood_index"}
     _assert_parity(rust, python)
+
+
+def test_flood_index_zero_variance_and_one_sample_cells_are_nan(monkeypatch) -> None:
+    pe = _degenerate_pe_block(6)
+    run = partial(flood.flood_index, pe, 2000, 2000, 2004, year_start_month=1)
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == {"flood_index"}
+    _assert_parity(rust, python)
+    assert np.isfinite(rust[:, 0]).all()
+    assert np.isnan(rust[:, 1]).all()
+    assert np.isnan(rust[:, 2]).all()
