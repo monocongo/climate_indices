@@ -188,3 +188,22 @@ def test_edi_with_a_partial_final_year(monkeypatch) -> None:
     assert calls == {"edi"}
     _assert_parity(rust, python)
     assert rust.shape == pe.shape
+
+
+def _degenerate_pe_block(years: int) -> np.ndarray:
+    """A three-cell PE block: a regular cell, a constant one, and one with a single calibration year."""
+    # strictly positive values, so the regular cell never has a zero-variance calendar day
+    pe = np.random.default_rng(3).gamma(2.0, 3.0, (years * 366, 3, 1)) + 0.1
+    pe[:, 1] = 5.0
+    pe[366:, 2] = np.nan
+    return pe
+
+
+def test_edi_zero_variance_and_one_sample_cells_are_nan(monkeypatch) -> None:
+    pe = _degenerate_pe_block(6)
+    rust, python, calls = _rust_and_python(monkeypatch, partial(flood.edi, pe, 2000, 2000, 2005))
+    assert calls == {"edi"}
+    _assert_parity(rust, python)
+    assert np.isfinite(rust[:, 0]).all()
+    assert np.isnan(rust[:, 1]).all()
+    assert np.isnan(rust[:, 2]).all()
