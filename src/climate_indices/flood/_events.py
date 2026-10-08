@@ -1,0 +1,40 @@
+"""Flood-potential events: runs of a daily index above a threshold.
+
+The Flood Index and the other flood indices describe flood potential, not
+observed flooding. An event here is a maximal run of consecutive days on which
+the index is finite and strictly above ``threshold``; it is a summary of
+exceedance, not a claim that flooding occurred.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import numpy as np
+import numpy.typing as npt
+
+
+@dataclass(frozen=True)
+class FloodEvents:
+    """Flood-potential events, one entry per event, ordered by cell then onset.
+
+    Attributes:
+        cell: Spatial index of each event, shape ``(events, ndim - 1)``; the
+            second axis is empty for a 1-D series.
+        onset: First day of each event, as a position on the time axis.
+        end: One past the last day of each event (exclusive), so
+            ``end - onset`` is the duration.
+        duration: Length of each event in days.
+        peak: Largest index value within each event.
+        severity: Sum of the index over each event's days.
+    """
+
+    cell: npt.NDArray[np.intp]
+    onset: npt.NDArray[np.intp]
+    end: npt.NDArray[np.intp]
+    duration: npt.NDArray[np.intp]
+    peak: npt.NDArray[np.float64]
+    severity: npt.NDArray[np.float64]
+
+    def __len__(self) -> int:
+        return int(self.onset.shape[0])
