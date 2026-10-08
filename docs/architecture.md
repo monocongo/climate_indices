@@ -275,6 +275,10 @@ xarray adapter) uses them:
 | method-of-moments block of `compute.gamma_parameters` | `gamma::gamma_parameters` |
 | `scipy.stats.gamma.cdf` and zero-mass mixing in `compute.transform_fitted_gamma` | `gamma::gamma_probabilities` |
 | `scipy.stats.norm.ppf` in `compute.transform_fitted_gamma` | `special::norm_ppf` |
+| the year loop of `eto.eto_thornthwaite` | `eto::thornthwaite` |
+| the day loop of `eto.eto_hargreaves` | `eto::hargreaves` |
+| FAO-56 Eq 6 in `pm_eto.pm_eto` | `pm_eto::pm_eto` |
+| the intermediate chain of `pm_eto.penman_monteith_eto` | `pm_eto::penman_monteith_eto` |
 | sample L-moments and the Pearson Type III fit of `compute.pearson_parameters` (`lmoments.fit`, `fit_spatial`) | `lmoments::sample_lmoments`, `pearson::pearson_parameters` |
 | `scipy.stats.pearson3.cdf` in `compute._pearson_fit` | `pearson::pearson_cdf_block` |
 | GLO fit of `compute.loglogistic_parameters` (`lmoments.fit_glo`, `fit_glo_spatial`) | `loglogistic::loglogistic_parameters` |
@@ -283,6 +287,22 @@ xarray adapter) uses them:
 | `indices._hastings_inverse_normal` | `eddi::hastings_inverse_normal` |
 | calibration normals and ratios in `indices.percentage_of_normal` | `pnp::pnp_normals`, `pnp::pnp_percentages` |
 | monthly reduction and ratio in `indices.pci` | `pci::pci` |
+
+The PET entry points follow the same dispatch rule as the gamma kernels. The
+public FAO-56 helper functions stay Python callables; `pm_eto.penman_monteith_eto`
+resolves the humidity and radiation pathways, and checks the wind measurement
+height and the `rh_min`-without-`rh_max` case, before the kernel is reached, so
+the Python and Rust paths raise the same error in the same order. `eto` also
+keeps a Thornthwaite block with an all-NaN month column in Python, since only the
+Python path reports `np.nanmean`'s empty-slice warning. Each kernel copies every
+operand it reads before it releases the GIL, so the native route holds the caller's
+arrays, one flattened input per operand, those copies and the kernel's fixed
+intermediates: a bounded multiple of the request. A constant operand reaches the
+kernel as a zero-stride view rather than as a materialized block, and the Hargreaves
+route reports the bytes it copies beside the arrays it is handed, so the logged
+memory model covers the route the dispatch selected. Their measured effect on
+three representative inputs is in `benchmarks/README.md`; RUST-011 owns whether
+each kernel is worth its conversion overhead.
 
 EDDI is non-parametric, so no SciPy special function is ported for it: its
 probabilities are a count of the period's climatology values strictly below each

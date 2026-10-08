@@ -18,6 +18,8 @@ use pyo3::prelude::*;
 use climate_core::fire::{DayLength, KbdiCell};
 use climate_core::recurrence::RecurrenceInputs;
 
+mod pet;
+
 type ParameterArrays<'py> = (Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>);
 type PearsonArrays<'py> = (
     Bound<'py, PyArray1<f64>>,
@@ -694,5 +696,6 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(duff_moisture_code, m)?)?;
     m.add_function(wrap_pyfunction!(drought_code, m)?)?;
     m.add_function(wrap_pyfunction!(kbdi, m)?)?;
+    pet::register(m)?;
     Ok(())
 }
