@@ -2650,7 +2650,7 @@ The everyday Rust commands, for reference:
 |---------|--------------|
 | `rustup show` | The toolchain this checkout pins (must be 1.99.0) |
 | `rustup update` | Updates installed toolchains — do **not** use this to move the pin; change `channel` in `rust-toolchain.toml` deliberately instead |
-| `cargo build` / `cargo test --workspace` | Compiles the crates / runs the crate-level Rust tests; set `PYO3_PYTHON` to the project interpreter, as in [step 7](#7-verify), so they link the right Python |
+| `cargo build` / `cargo test --workspace` | Compiles the crates / runs the crate-level Rust tests; set `PYO3_PYTHON` to the project interpreter, as in [step 8](#8-verify), so they link the right Python |
 | `cargo fmt --all -- --check` | Formatting; CI fails on any diff |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Lints; CI fails on any warning |
 
