@@ -215,14 +215,18 @@ def test_thornthwaite_all_nan_month_column_warns_before_an_invalid_latitude(monk
     temps[:, 3] = np.nan
     with np.errstate(all="ignore"):
         monkeypatch.setattr(eto, "_native", _Recorder(native))
-        with pytest.raises(InvalidArgumentError) as native_error:
-            with pytest.warns(RuntimeWarning, match="Mean of empty slice"):
+        with warnings.catch_warnings(record=True) as native_warnings:
+            warnings.simplefilter("always")
+            with pytest.raises(InvalidArgumentError) as native_error:
                 eto.eto_thornthwaite(temps, 91.0, 2001)
         monkeypatch.setattr(eto, "_native", None)
-        with pytest.raises(InvalidArgumentError) as python_error:
-            with pytest.warns(RuntimeWarning, match="Mean of empty slice"):
+        with warnings.catch_warnings(record=True) as python_warnings:
+            warnings.simplefilter("always")
+            with pytest.raises(InvalidArgumentError) as python_error:
                 eto.eto_thornthwaite(temps, 91.0, 2001)
     assert str(native_error.value) == str(python_error.value)
+    assert any("Mean of empty slice" in str(warning.message) for warning in native_warnings)
+    assert any("Mean of empty slice" in str(warning.message) for warning in python_warnings)
 
 
 def test_thornthwaite_float32_and_masked_inputs_stay_on_python(monkeypatch):
