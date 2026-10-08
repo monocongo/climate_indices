@@ -63,6 +63,19 @@ _REPEATS = 3
 _API_DECAY = 0.9
 
 
+def _rain(years: int, side: int, seed: int = 0) -> np.ndarray:
+    """Showery daily rain on a square grid in the all-leap layout: about half the days dry."""
+    rng = np.random.default_rng(seed)
+    shape = (years * _DAYS_PER_YEAR, side, side)
+    return rng.gamma(0.5, 8.0, shape) * (rng.random(shape) < 0.5)
+
+
+def _pe(years: int, side: int) -> np.ndarray:
+    """Effective precipitation of the synthetic record, the input EDI and the Flood Index read."""
+    with np.errstate(all="ignore"):
+        return flood.effective_precipitation(_rain(years, side))
+
+
 @pytest.mark.benchmark
 @pytest.mark.parametrize("side", [8, 32])
 def test_flood_events_scan_throughput(benchmark, side: int) -> None:
