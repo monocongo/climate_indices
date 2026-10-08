@@ -9,10 +9,12 @@ missing extension a failure.
 import re
 import subprocess
 import sys
+from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
-from climate_indices import compute
+from climate_indices import compute, indices
 from tests import conftest
 
 
@@ -42,6 +44,30 @@ result = indices.spi(values, 3, indices.Distribution.gamma, 1990, 1990, 2019, co
 assert np.isfinite(result[2:]).all() and np.isnan(result[:2]).all()
 """
     subprocess.run([sys.executable, "-c", code], check=True)
+
+
+def test_eddi_uses_python_when_the_extension_predates_eddi_kernels(monkeypatch: pytest.MonkeyPatch) -> None:
+    values = np.random.default_rng(0).uniform(50.0, 150.0, 360)
+    with np.errstate(all="ignore"):
+        monkeypatch.setattr(compute, "_native", None)
+        expected = indices.eddi(values, 3, 1990, 1990, 2019, compute.Periodicity.monthly)
+        monkeypatch.setattr(compute, "_native", SimpleNamespace())
+        assert compute._native_float64(values)
+        actual = indices.eddi(values, 3, 1990, 1990, 2019, compute.Periodicity.monthly)
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize("kernel", ["tukey_probabilities", "hastings_inverse_normal"])
+def test_eddi_propagates_errors_from_present_kernels(monkeypatch: pytest.MonkeyPatch, kernel: str) -> None:
+    def fail(*args: object) -> None:
+        raise RuntimeError("native kernel failed")
+
+    monkeypatch.setattr(compute, "_native", SimpleNamespace(**{kernel: fail}))
+    values = np.ones((2, 1))
+    args = (values, values, np.zeros(1)) if kernel == "tukey_probabilities" else (values,)
+    native_kernel = getattr(compute, f"_native_{kernel}")
+    with np.errstate(all="ignore"), pytest.raises(RuntimeError, match="native kernel failed"):
+        native_kernel(*args)
 
 
 def test_import_native_fails_instead_of_skipping_when_the_extension_is_required(
