@@ -124,8 +124,9 @@ make html
 # Build wheel and sdist
 uv run python -m build
 
-# Build the binary wheel this platform publishes (needs a Rust toolchain);
-# release.yml builds the same wheel for every platform in ADR-0018
+# Build a local binary wheel for this platform (needs a Rust toolchain). On Linux
+# this is not the published manylinux_2_28 wheel: release.yml builds that inside the
+# container named in its matrix, which is what sets the glibc floor (ADR-0018)
 uv run maturin build --release --out dist
 
 # Output in dist/

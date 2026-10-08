@@ -158,8 +158,9 @@ uv pip install climate_indices
 pip install "climate_indices==X.Y.Z"
 ```
 
-Linux x86-64 and aarch64, macOS arm64 and Intel, and Windows x86-64 have a wheel that
-contains the optional Rust acceleration backend; every other platform installs the
+Linux x86-64 and aarch64 (manylinux_2_28, so glibc 2.28 or newer), macOS arm64 and Intel,
+and Windows x86-64 have a wheel that contains the optional Rust acceleration backend;
+every other platform, including a Linux system with older glibc, installs the
 pure-Python `py3-none-any` wheel, and every computation then runs the Python
 implementation. Both are the same version and the same public API. Force the pure wheel
 on a platform that has a binary wheel, or build it from the sdist:
