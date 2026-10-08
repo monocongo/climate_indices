@@ -180,3 +180,11 @@ def test_edi_on_the_fresno_record(monkeypatch) -> None:
     assert calls == {"edi"}
     _assert_parity(rust, python)
     assert np.isfinite(rust[366:]).mean() > 0.99
+
+
+def test_edi_with_a_partial_final_year(monkeypatch) -> None:
+    pe = _fresno_pe()[:-100]
+    rust, python, calls = _rust_and_python(monkeypatch, partial(flood.edi, pe, _FRESNO_START, 1992, 2019))
+    assert calls == {"edi"}
+    _assert_parity(rust, python)
+    assert rust.shape == pe.shape
