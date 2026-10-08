@@ -101,8 +101,9 @@ def flood_events(
 
     # time runs along the last axis so one flat array holds every cell's series
     series = np.ascontiguousarray(block.T)
+    # an event day is finite as well as above the threshold, so +inf ends a run
     with np.errstate(invalid="ignore"):
-        exceeds = series > threshold
+        exceeds = np.isfinite(series) & (series > threshold)
     padded = np.zeros((cells, days + 2), dtype=np.int8)
     padded[:, 1:-1] = exceeds
     change = np.diff(padded, axis=1)
