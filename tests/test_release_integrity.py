@@ -399,10 +399,11 @@ def test_native_pytest_leg_builds_the_extension_and_cannot_skip_the_parity_suite
 
 
 def test_native_wheel_job_checks_built_wheels_outside_the_checkout() -> None:
-    """Release wheels are built at both boundaries on Linux and macOS, plus a Windows smoke build.
+    """Development wheels are built at both boundaries on Linux and macOS, plus a Windows smoke build.
 
     Each wheel is installed into a fresh venv and imported from outside the checkout, and SPI must
-    reach the bundled kernels. The published matrix and the manylinux floor belong to RUST-013.
+    reach the bundled kernels. This job validates the developer build; the published wheel matrix,
+    its glibc floor, and the abi3 policy live in `release.yml` (ADR-0018).
     """
     wheel_job = _native_jobs()["native-wheel"]
     versions = _declared_python_versions()
@@ -417,6 +418,18 @@ def test_native_wheel_job_checks_built_wheels_outside_the_checkout() -> None:
     assert wheel_job.index("python -m venv") < wheel_job.index('cd "${RUNNER_TEMP}"') < wheel_job.index("<<'PY'")
     assert "assert not Path(module.__file__).resolve().is_relative_to(workspace), module.__file__" in wheel_job
     assert 'assert recorder.calls == {"gamma_parameters", "gamma_probabilities", "norm_ppf"}' in wheel_job
+
+
+def test_climate_py_builds_abi3_wheels() -> None:
+    """abi3 (PyO3 `abi3-py310`) is what lets one wheel per platform cover every supported Python.
+
+    Dropping the feature silently reintroduces an interpreter axis in the release wheel matrix,
+    so it is pinned here rather than only in the workflow.
+    """
+    manifest = _read_toml(Path("crates/climate-py/Cargo.toml"))
+    pyo3 = manifest["dependencies"]["pyo3"]
+
+    assert "abi3-py310" in pyo3["features"], pyo3
 
 
 def test_docker_uses_latest_supported_python() -> None:
@@ -634,38 +647,116 @@ def test_release_workflow_creates_github_release() -> None:
     assert first_command[repo_index + 1 : repo_index + 2] == ["${GITHUB_REPOSITORY}"]
 
 
-def test_release_workflow_smoke_tests_built_wheel() -> None:
-    """The built wheel must install and expose the public API outside the checkout."""
-    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
-    wheel_check = workflow.split("\n  wheel-check:", maxsplit=1)[1].split("\n  publish:", maxsplit=1)[0]
+def test_release_workflow_builds_an_abi3_wheel_for_every_published_platform() -> None:
+    """`_native` ships as one abi3 wheel per platform, built with maturin at the pure wheel's version.
 
-    assert "Test wheel installation" in wheel_check
+    The Linux wheels take their glibc floor from the manylinux container; macOS and Windows build
+    on their own runner. musllinux is deliberately not published: musl users get the pure wheel
+    (ADR-0018). An abi3 wheel has no interpreter axis, so this matrix has no Python matrix.
+    """
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    build_wheels = _workflow_job(workflow, "build-wheels")
+
+    targets = (
+        "x86_64-unknown-linux-gnu",
+        "aarch64-unknown-linux-gnu",
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+        "x86_64-pc-windows-msvc",
+    )
+    for target in targets:
+        assert f"target: {target}" in build_wheels, target
+    assert build_wheels.count("manylinux: '2_28'") == 2, "both Linux wheels share one glibc floor"
+    assert "musllinux" not in build_wheels
+    assert not re.search(r"^\s+python-version:\s*\[", build_wheels, re.MULTILINE), "abi3 needs no Python axis"
+    assert "uses: PyO3/maturin-action@" in build_wheels
+    assert "args: --release --locked --out dist" in build_wheels
+    assert "*-abi3-*" in build_wheels, "a non-abi3 tag must fail the build, not publish"
+    assert "name: dist-native-${{ matrix.target }}" in build_wheels
+
+
+def test_release_workflow_wheel_check_installs_every_published_wheel() -> None:
+    """Every platform wheel is installed outside the checkout, and pip prefers it over the pure wheel.
+
+    The install resolves `climate_indices` by name with only the built artifacts visible, so the
+    assertion that `py3-none-any` was not chosen covers the fallback rule ADR-0018 depends on.
+    SPI must then reach the bundled gamma kernels, which proves the extension dispatches.
+    """
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    wheel_check = _workflow_job(workflow, "wheel-check")
+
+    assert "pattern: dist*" in wheel_check and "merge-multiple: true" in wheel_check
+    for pattern in (
+        "*manylinux*x86_64.whl",
+        "*manylinux*aarch64.whl",
+        "*macosx*arm64.whl",
+        "*macosx*x86_64.whl",
+        "*win_amd64.whl",
+    ):
+        assert f"wheel: '{pattern}'" in wheel_check, pattern
+    assert wheel_check.count("- os: ") == 6, "one leg per platform wheel, with the oldest Python on Linux"
     assert 'python -m venv "${RUNNER_TEMP}/wheel-check"' in wheel_check
     assert 'cd "${RUNNER_TEMP}"' in wheel_check
-    assert (
-        "from climate_indices import eddi, fire, pci, percentage_of_normal, pet_hargreaves, pet_thornthwaite, spei, spi"
-        in wheel_check
-    )
-    assert (
-        "assert all(map(callable, (fire.kbdi, fire.cffwis, fire.fosberg_ffwi, fire.hot_dry_windy, fire.haines_index)))"
-        in wheel_check
-    )
+    assert "--dry-run --no-index --no-deps" in wheel_check
+    assert '--report "${RUNNER_TEMP}/resolution.json"' in wheel_check
+    assert 'assert "py3-none-any" not in resolved, resolved' in wheel_check
+    assert "assert not Path(module.__file__).resolve().is_relative_to(workspace), module.__file__" in wheel_check
+    assert 'assert recorder.calls == {"gamma_parameters", "gamma_probabilities", "norm_ppf"}' in wheel_check
+    declared_scripts = " ".join(_read_toml(Path("pyproject.toml"))["project"]["scripts"])
+    assert f"for entry_point in {declared_scripts}; do" in wheel_check
 
 
 def test_release_workflow_installs_wheel_on_boundary_pythons() -> None:
-    """The wheel must install and expose console scripts on the oldest and newest supported
-    Pythons, and that check must gate publishing.
+    """The abi3 wheel installs on the oldest and newest supported Pythons, and that gates publishing.
+
+    The boundary versions run in `wheel-check` (the platform wheel) and in `no-rust-install` (the
+    pure wheel and the sdist); everything else installs on the newest version only.
     """
     workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
-    wheel_check = workflow.split("\n  wheel-check:", maxsplit=1)[1].split("\n  publish:", maxsplit=1)[0]
+    wheel_check = _workflow_job(workflow, "wheel-check")
+    no_rust = _workflow_job(workflow, "no-rust-install")
     versions = _declared_python_versions()
 
-    assert wheel_check.count("- python-version:") == 2, "wheel checks must stay at the boundary versions"
-    assert f"- python-version: '{versions[0]}'" in wheel_check
-    assert f"- python-version: '{versions[-1]}'" in wheel_check
-    declared_scripts = " ".join(_read_toml(Path("pyproject.toml"))["project"]["scripts"])
-    assert f"for entry_point in {declared_scripts}; do" in wheel_check
-    assert "needs: [build, wheel-check]" in workflow, "publishing must wait for the wheel installation check"
+    assert re.findall(r"- os: (\S+)\n\s+python-version: '(\d+\.\d+)'", wheel_check) == [
+        ("ubuntu-latest", versions[0]),
+        ("ubuntu-latest", versions[-1]),
+        ("ubuntu-24.04-arm", versions[-1]),
+        ("macos-latest", versions[-1]),
+        ("macos-15-intel", versions[-1]),
+        ("windows-latest", versions[-1]),
+    ], "one leg per platform wheel, and both boundaries on Linux"
+    assert re.findall(r"- python-version: '(\d+\.\d+)'", no_rust) == [versions[0], versions[-1]]
+    assert "needs: [build, build-wheels, wheel-check, no-rust-install]" in workflow, (
+        "publishing must wait for every installation check"
+    )
+
+
+def test_release_workflow_tests_the_no_rust_install_path() -> None:
+    """The supported install path without a Rust toolchain is the pure wheel and the sdist.
+
+    The job removes cargo and rustc from PATH before installing, so an sdist build that started
+    depending on the Rust toolchain would fail here instead of on a user's machine.
+    """
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    no_rust = _workflow_job(workflow, "no-rust-install")
+
+    assert "needs: build" in no_rust
+    assert "uv sync --locked --dev --no-install-project" in no_rust, "install the artifact, not the checkout"
+    assert "grep -vE 'cargo|rustup'" in no_rust
+    assert "if command -v cargo" in no_rust and "if command -v rustc" in no_rust
+    assert "-name '*py3-none-any.whl'" in no_rust
+    assert 'importlib.util.find_spec("climate_indices._native") is None' in no_rust
+    assert 'wheel.name.endswith("-py3-none-any.whl")' in no_rust
+    assert 'name.endswith((".so", ".pyd", ".dylib"))' in no_rust
+    assert "uv run --no-sync --no-build pytest -n auto" in no_rust
+    order = (
+        no_rust.index("uv sync --locked --dev --no-install-project"),
+        no_rust.index("- name: Remove the Rust toolchain from PATH"),
+        no_rust.index("- name: Install the pure-Python wheel"),
+        no_rust.index("- name: Build the sdist into the pure-Python wheel"),
+        no_rust.index("- name: Run core tests against the installed package"),
+    )
+    assert order == tuple(sorted(order)), "the toolchain must be gone before anything is installed"
 
 
 def test_minimum_dependency_job_preserves_resolved_environment() -> None:

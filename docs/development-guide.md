@@ -124,9 +124,14 @@ make html
 # Build wheel and sdist
 uv run python -m build
 
+# Build the binary wheel this platform publishes (needs a Rust toolchain);
+# release.yml builds the same wheel for every platform in ADR-0018
+uv run maturin build --release --out dist
+
 # Output in dist/
 # - climate_indices-X.Y.Z-py3-none-any.whl
 # - climate_indices-X.Y.Z.tar.gz
+# - climate_indices-X.Y.Z-cp310-abi3-<platform>.whl
 ```
 
 ## Project Structure

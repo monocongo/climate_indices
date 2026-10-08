@@ -73,6 +73,22 @@ pip install "climate-indices>=2.3"
 which documents the latest release and uses the xarray API added in 2.3.0; see
 [Supported Python Versions](#supported-python-versions) for interpreter support.
 
+The wheels published for Linux (x86-64 and aarch64), macOS (Apple silicon and Intel),
+and Windows (x86-64) include the optional Rust acceleration backend; every other
+platform installs the pure-Python wheel. Both carry the same version and the same public
+API, and they return the same results, so nothing in calling code depends on which one
+pip selected. To see which one you have:
+
+```bash
+python -c "import climate_indices._native"   # succeeds when the extension is installed
+```
+
+A missing extension is not an error: `climate_indices` imports, and every computation
+runs the Python implementation. Installing from source needs no Rust toolchain either —
+from the sdist, `pip install climate_indices` builds the pure-Python wheel. Developers who
+want the extension from a checkout build it with `uv run maturin develop --release`; see
+[the Rust backend section of the architecture notes](docs/architecture.md#optional-rust-backend).
+
 ## Developer Workflow
 
 This project uses trunk-based development. `main` is the trunk and should always
