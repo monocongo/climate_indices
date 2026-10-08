@@ -365,9 +365,15 @@ gamma transform (`transform_fitted_gamma` and the parameter resolver it calls),
 the GLO transform (`transform_fitted_loglogistic`, whose fit and CDF may then run
 natively), the sliding sum that prepares a scaled series, and PNP preparation. A
 partially masked SPI/SPEI gamma transform therefore matches the same input
-passed through `np.ma.filled(values, np.nan)`. An all-masked input returns from
-the all-missing short-circuit before that normalization, so SPI and SPEI hand
-back the original `MaskedArray`, not the filled plain NaN array. Seams that do
+passed through `np.ma.filled(values, np.nan)`. Fully masked SPI/SPEI inputs
+short-circuit before fitting or native calls, returning a `MaskedArray`, not a
+filled plain NaN array. Existing preparation still applies: SPI flattens a 2-D
+series, and SPEI forms its water-balance array, so input object identity is not
+a general guarantee. A direct `transform_fitted_gamma` call returns the fully
+masked input unchanged. The gamma parameter resolver fills even a
+full mask with NaN: it returns plain NaN parameters without calling a kernel.
+A direct `gamma_parameters` call also returns plain NaN parameters for a fully
+masked input, but retains Python's mask semantics for a partial mask. Seams that do
 not replace a mask keep their Python implementation when handed one: a direct
 `gamma_parameters` or `loglogistic_parameters` call, the Pearson Type III fit
 and transform, PCI, whose dispatch checks the original 1-D input and requires a
@@ -383,11 +389,31 @@ recurrence reports. A loaded extension that predates a kernel, or a recurrence
 option wider than the binding's integer parameters, also keeps the recurrence on
 its Python steps rather than failing at the boundary.
 Native dispatch also requires NumPy floating-point errors to be ignored
-(`np.errstate(all="ignore")`); warnings, exceptions, callbacks, logging, or
-printing keep the Python path. Python 3.14 context-aware warnings conservatively
-keep the Python path, as do fits with a column that has no positive value,
-whose empty-slice warnings are independent of NumPy error policies. Default NumPy error policies
-therefore use Python even when the extension is installed. Direct extension
+(`np.errstate(all="ignore")`); policies that warn, raise, call, log, or print keep
+the Python path. A warning filter that promotes `RuntimeWarning` (or a superclass)
+to an exception also keeps Python, even under `all="ignore"`. Python 3.14
+context-aware warnings conservatively keep the Python path. Default NumPy error
+policies therefore use Python even when the extension is installed.
+
+For gamma calibration blocks, the contract is:
+
+- If any column has no positive value after zero replacement (only NaN, zero,
+  or negative values), the **whole fit** stays in Python. Its `np.nanmean` emits
+  `RuntimeWarning: Mean of empty slice` independently of `np.errstate`, so that
+  warning and its promotion to an exception are preserved. Entirely missing
+  inputs still return NaN parameters before fitting, without this warning.
+- Negatives are not removed or newly rejected. A block containing negatives may
+  use the native fit only when every column also has a positive value and all
+  floating-point errors are ignored. Under `invalid="warn"` or `invalid="raise"`,
+  Python preserves `RuntimeWarning: invalid value encountered in log` or
+  `FloatingPointError`, respectively.
+- Constant and single-positive-value columns may use Rust under `all="ignore"`;
+  their degenerate parameters and missing transform results match Python.
+  A Python fit does not prohibit later eligible native CDF/inverse-normal calls.
+  Return values and `climate_indices` warnings match on both backends.
+
+These rules retain existing behavior; [ADR-0017](adr/0017-rust-core-acceleration-backend.md)
+records the decision. Direct extension
 calls reject unaligned inputs and copy empty arrays without creating Rust views
 of caller-owned storage. `tests/test_native_parity.py` (gamma),
 `tests/test_native_parity_distributions.py` (Pearson Type III and GLO), and

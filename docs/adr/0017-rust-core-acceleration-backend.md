@@ -67,9 +67,35 @@ contract more thoroughly than leaving the performance on the table.
 6. **Dispatch routes by input, never by fallback on failure.** The Python module
    that owns a computation imports `_native` inside `try`/`except ImportError` and
    routes to Rust only for a plain, aligned float64 `ndarray` in a supported layout
-   whose prepared arguments the kernel accepts; anything else — unaligned or masked
-   arrays, other dtypes, parameters that vary by year, NumPy floating-point error
-   policies that report, Python 3.14 context-aware warnings — keeps the Python path.
+   whose prepared arguments the kernel accepts; anything else — unaligned arrays,
+   other dtypes, parameters that vary by year, NumPy floating-point error policies
+   that report, warning filters that promote `RuntimeWarning` to an exception,
+   Python 3.14 context-aware warnings — keeps the Python path. Eligibility is
+   checked **after each seam's existing preparation**, not against the original
+   public input. A partial mask in the gamma transform or parameter resolver is
+   a missing-value marker and is filled with NaN before dispatch; the resulting
+   plain float64 array may use Rust. Fully masked SPI/SPEI inputs return a
+   `MaskedArray` before fitting or native calls; existing shape and water-balance
+   preparation still applies, so input object identity is not a general guarantee.
+   A direct gamma transform returns the fully masked input unchanged. The resolver instead fills
+   a full mask and returns plain NaN parameters without a kernel call. A direct
+   `gamma_parameters` call retains Python's partial-mask semantics and returns
+   plain NaN parameters for an entirely masked input. Other seams that do not
+   normalize masks keep their Python implementation.
+
+   Gamma fits also stay Python if any calibration column has no positive value
+   after zero replacement: the empty log reduction emits `Mean of empty slice`
+   even when NumPy floating-point errors are ignored. Entirely missing inputs
+   retain their warning-free early return. Negative values are neither removed
+   nor newly rejected: a mixed-sign block can use Rust under `all="ignore"` if
+   every column has a positive value, but `invalid="warn"` and `invalid="raise"`
+   keep Python's raw NumPy warning and `FloatingPointError`. Constant and
+   single-positive-value columns can use Rust when reporting is ignored. The
+   returned values and `climate_indices` warnings remain identical, and later
+   transform kernels may run natively even when the fit stays Python. This
+   resolves [#1288](https://github.com/monocongo/climate_indices/issues/1288)
+   without changing mask normalization or numerical algorithms.
+
    A runtime error raised by the extension propagates and is never silently retried
    in Python. Dispatch therefore cannot turn "the extension is broken" into "the
    answer changed", and the two paths cannot diverge without a parity test failing.

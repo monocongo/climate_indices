@@ -48,7 +48,7 @@ class _Recorder:
         return getattr(self._module, name)
 
 
-def _rust_and_python(monkeypatch: pytest.MonkeyPatch, run: Callable[[], np.ndarray]) -> tuple[Any, Any, set[str]]:
+def _rust_and_python(monkeypatch: pytest.MonkeyPatch, run: Callable[[], Any]) -> tuple[Any, Any, set[str]]:
     recorder = _Recorder(native)
     # Native kernels do not implement NumPy's floating-point reporting policies.
     with np.errstate(all="ignore"):
@@ -216,14 +216,34 @@ def test_spi_spatial_block_with_masked_ocean(monkeypatch, precips_mm_monthly):
     _assert_parity(rust, python)
 
 
-def test_masked_transform_is_normalized_to_nan_before_dispatch(monkeypatch, precips_mm_monthly):
-    """A mask is a missing marker: the transform reads it as NaN, then may use Rust."""
-    masked = np.ma.masked_less(precips_mm_monthly, 1.0)
+@pytest.mark.parametrize(
+    "mask_slice, expected_calls",
+    [
+        pytest.param(np.s_[:0], _KERNELS, id="empty-mask"),
+        pytest.param(np.s_[1981 - _DATA_START, :], _KERNELS, id="partial-mask"),
+        pytest.param(np.s_[:, 0], {"gamma_probabilities", "norm_ppf"}, id="masked-column"),
+        pytest.param(np.s_[:], set(), id="fully-masked"),
+    ],
+)
+def test_masked_transform_is_normalized_to_nan_before_dispatch(
+    monkeypatch, precips_mm_monthly, mask_slice, expected_calls
+):
+    """A partial mask becomes NaN; a full mask short-circuits before normalization."""
+    mask = np.zeros(precips_mm_monthly.shape, dtype=bool)
+    mask[mask_slice] = True
+    masked = np.ma.array(precips_mm_monthly, mask=mask)
     run = lambda: compute.transform_fitted_gamma(  # noqa: E731
         masked, _DATA_START, 1981, 2010, compute.Periodicity.monthly
     )
     rust, python, calls = _rust_and_python(monkeypatch, run)
-    assert calls == _KERNELS
+    assert calls == expected_calls
+    if mask.all():
+        assert rust is masked
+        assert python is masked
+        return
+    assert type(rust) is np.ndarray
+    assert type(python) is np.ndarray
+    assert np.isnan(rust[mask]).all()
     _assert_parity(rust, python)
 
     # the documented guarantee: a partial mask has the result of the explicitly NaN-filled input
@@ -232,6 +252,74 @@ def test_masked_transform_is_normalized_to_nan_before_dispatch(monkeypatch, prec
         python,
         compute.transform_fitted_gamma(filled, _DATA_START, 1981, 2010, compute.Periodicity.monthly),
     )
+
+
+@pytest.mark.parametrize(
+    "index, extra_args",
+    [
+        pytest.param(indices.spi, (), id="spi"),
+        pytest.param(indices.spei, (np.full(360, 10.0),), id="spei"),
+    ],
+)
+def test_fully_masked_indices_preserve_mask_without_native_calls(monkeypatch, index, extra_args):
+    masked = np.ma.array(np.full(360, -999.0), mask=True)
+
+    def run():
+        return index(
+            masked,
+            *extra_args,
+            scale=3,
+            distribution=indices.Distribution.gamma,
+            data_start_year=1990,
+            calibration_year_initial=1990,
+            calibration_year_final=2019,
+            periodicity=compute.Periodicity.monthly,
+        )
+
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert not calls
+    for result in (rust, python):
+        assert isinstance(result, np.ma.MaskedArray)
+        assert result.shape == masked.shape
+        assert result.dtype == masked.dtype
+        np.testing.assert_array_equal(result.mask, masked.mask)
+        if index is indices.spi:
+            assert result is masked
+
+
+@pytest.mark.parametrize("fully_masked", [False, True])
+def test_masked_gamma_fit_keeps_python_mask_semantics(monkeypatch, precips_mm_monthly, fully_masked):
+    mask = np.full(precips_mm_monthly.shape, fully_masked)
+    mask[1981 - _DATA_START, :] = True
+    masked = np.ma.array(precips_mm_monthly, mask=mask)
+
+    def run():
+        return compute.gamma_parameters(masked, _DATA_START, 1981, 2010, compute.Periodicity.monthly)
+
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert not calls
+    for actual, expected in zip(rust, python, strict=True):
+        np.testing.assert_array_equal(np.ma.getmaskarray(actual), np.ma.getmaskarray(expected))
+        _assert_parity(np.ma.filled(actual, np.nan), np.ma.filled(expected, np.nan))
+
+
+@pytest.mark.parametrize("fully_masked", [False, True])
+def test_masked_gamma_parameter_resolver_normalizes_before_dispatch(monkeypatch, precips_mm_monthly, fully_masked):
+    mask = np.full(precips_mm_monthly.shape, fully_masked)
+    mask[1981 - _DATA_START, :] = True
+    masked = np.ma.array(precips_mm_monthly, mask=mask)
+
+    def run():
+        return compute._resolve_gamma_parameters(masked, {}, _DATA_START, 1981, 2010, compute.Periodicity.monthly)
+
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == (set() if fully_masked else {"gamma_parameters"})
+    for name in ("alpha", "beta", "prob_zero"):
+        assert type(rust[name]) is np.ndarray
+        assert type(python[name]) is np.ndarray
+        _assert_parity(rust[name], python[name])
+    if fully_masked:
+        assert all(np.isnan(parameter).all() for parameter in rust.values())
 
 
 def test_supplied_fitting_params_are_transformed_by_the_kernel(monkeypatch, precips_mm_monthly):
@@ -468,31 +556,78 @@ def test_numpy_warning_policy_preserves_fit_warnings(monkeypatch):
     assert any("divide by zero" in message for _, message in recorded[0])
 
 
-def test_empty_slice_warnings_survive_ignored_floating_point_errors(monkeypatch):
+@pytest.mark.parametrize(
+    "column, native_fit",
+    [
+        pytest.param(np.full(30, np.nan), False, id="missing"),
+        pytest.param(np.zeros(30), False, id="zero"),
+        pytest.param(np.full(30, -1.0), False, id="negative"),
+        pytest.param(np.ones(30), True, id="constant"),
+        pytest.param(np.r_[1.0, np.full(29, np.nan)], True, id="single-value"),
+        pytest.param(np.r_[-1.0, np.arange(13.0, 361.0, 12.0)], True, id="mixed-negative"),
+    ],
+)
+def test_degenerate_gamma_blocks_preserve_values_warnings_and_routing(monkeypatch, column, native_fit):
+    """Empty log reductions stay Python even under ignore; later transform kernels may run."""
     values = np.arange(1.0, 361.0).reshape(30, 12)
-    values[:, 0] = 0.0
+    values[:, 0] = column
     recorder = _Recorder(native)
-    monkeypatch.setattr(compute, "_native", recorder)
-    with warnings.catch_warnings(record=True) as caught, np.errstate(all="ignore"):
-        warnings.simplefilter("always", RuntimeWarning)
-        compute.gamma_parameters(values, 1895, 1895, 1924, compute.Periodicity.monthly)
-    assert any("Mean of empty slice" in str(warning.message) for warning in caught)
-    assert "gamma_parameters" not in recorder.calls
+    results = []
+    recorded = []
+    for backend in (recorder, None):
+        monkeypatch.setattr(compute, "_native", backend)
+        with warnings.catch_warnings(record=True) as caught, np.errstate(all="ignore"):
+            warnings.simplefilter("always")
+            alphas, betas = compute.gamma_parameters(values, 1895, 1895, 1924, compute.Periodicity.monthly)
+            transformed = compute.transform_fitted_gamma(
+                values, 1895, 1895, 1924, compute.Periodicity.monthly, alphas, betas
+            )
+        results.append((alphas, betas, transformed))
+        recorded.append([(warning.category, str(warning.message)) for warning in caught])
+    assert recorder.calls == (_KERNELS if native_fit else {"gamma_probabilities", "norm_ppf"})
+    for rust, python in zip(*results, strict=True):
+        _assert_parity(rust, python)
+    assert recorded[0] == recorded[1]
+    assert any("Mean of empty slice" in message for _, message in recorded[0]) == (not native_fit)
+    if not native_fit:
+        assert np.isnan(results[0][0][0])
+        assert np.isnan(results[0][1][0])
 
 
-def test_no_positive_calibration_column_stays_on_python(monkeypatch):
-    """A column of only negative values logs to all-NaN, warning independently of errstate."""
+@pytest.mark.parametrize("column_value", [np.nan, 0.0, -1.0])
+def test_empty_gamma_column_warning_can_be_promoted_under_ignored_errors(monkeypatch, column_value):
     values = np.arange(1.0, 361.0).reshape(30, 12)
-    values[:, 0] = -1.0
-    recorder = _Recorder(native)
-    monkeypatch.setattr(compute, "_native", recorder)
-    with warnings.catch_warnings(record=True) as caught, np.errstate(all="ignore"):
-        warnings.simplefilter("always", RuntimeWarning)
-        alphas, betas = compute.gamma_parameters(values, 1895, 1895, 1924, compute.Periodicity.monthly)
-    assert any("Mean of empty slice" in str(warning.message) for warning in caught)
-    assert "gamma_parameters" not in recorder.calls
-    assert np.isnan(alphas[0])
-    assert np.isnan(betas[0])
+    values[:, 0] = column_value
+    for backend in (_Recorder(native), None):
+        monkeypatch.setattr(compute, "_native", backend)
+        with warnings.catch_warnings(), np.errstate(all="ignore"):
+            warnings.simplefilter("error", RuntimeWarning)
+            with pytest.raises(RuntimeWarning, match="Mean of empty slice"):
+                compute.gamma_parameters(values, 1895, 1895, 1924, compute.Periodicity.monthly)
+        if backend is not None:
+            assert not backend.calls
+
+
+@pytest.mark.parametrize("policy", ["warn", "raise"])
+def test_negative_gamma_calibration_preserves_numpy_invalid_policy(monkeypatch, policy):
+    values = np.arange(1.0, 361.0).reshape(30, 12)
+    values[0, 0] = -1.0
+    recorded = []
+    for backend in (_Recorder(native), None):
+        monkeypatch.setattr(compute, "_native", backend)
+        with warnings.catch_warnings(record=True) as caught, np.errstate(all="ignore", invalid=policy):
+            warnings.simplefilter("always")
+            if policy == "raise":
+                with pytest.raises(FloatingPointError, match="invalid value encountered in log"):
+                    compute.gamma_parameters(values, 1895, 1895, 1924, compute.Periodicity.monthly)
+            else:
+                compute.gamma_parameters(values, 1895, 1895, 1924, compute.Periodicity.monthly)
+        recorded.append([(warning.category, str(warning.message)) for warning in caught])
+        if backend is not None:
+            assert not backend.calls
+    assert recorded[0] == recorded[1]
+    if policy == "warn":
+        assert (RuntimeWarning, "invalid value encountered in log") in recorded[0]
 
 
 def test_runtime_warning_error_filter_disables_native(monkeypatch):
