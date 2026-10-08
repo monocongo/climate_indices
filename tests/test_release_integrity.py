@@ -685,7 +685,8 @@ def test_release_workflow_wheel_check_installs_every_published_wheel() -> None:
     workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     wheel_check = _workflow_job(workflow, "wheel-check")
 
-    assert "pattern: dist*" in wheel_check and "merge-multiple: true" in wheel_check
+    assert "pattern: dist*" in wheel_check
+    assert "merge-multiple: true" in wheel_check
     for pattern in (
         "*manylinux*x86_64.whl",
         "*manylinux*aarch64.whl",
@@ -743,7 +744,8 @@ def test_release_workflow_tests_the_no_rust_install_path() -> None:
     assert "needs: build" in no_rust
     assert "uv sync --locked --dev --no-install-project" in no_rust, "install the artifact, not the checkout"
     assert "grep -vE 'cargo|rustup'" in no_rust
-    assert "if command -v cargo" in no_rust and "if command -v rustc" in no_rust
+    assert "if command -v cargo" in no_rust
+    assert "if command -v rustc" in no_rust
     assert "-name '*py3-none-any.whl'" in no_rust
     assert 'importlib.util.find_spec("climate_indices._native") is None' in no_rust
     assert 'wheel.name.endswith("-py3-none-any.whl")' in no_rust
