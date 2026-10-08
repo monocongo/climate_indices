@@ -157,6 +157,8 @@ def _cache_source(source_dir: Path, name: str, checksum: str) -> Path:
         finally:
             if temporary is not None:
                 temporary.unlink(missing_ok=True)
+        # Already verified above; re-reading would race a concurrent caller's replace on Windows.
+        return path
     if hashlib.sha256(path.read_bytes()).hexdigest() != checksum:
         raise ValueError(f"SHA-256 mismatch: {path}; remove it and rerun to download again.")
     return path
