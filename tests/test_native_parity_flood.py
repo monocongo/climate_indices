@@ -260,3 +260,11 @@ def test_api_on_the_fresno_record(monkeypatch, k: float) -> None:
     rust, python, calls = _rust_and_python(monkeypatch, run)
     assert calls == {"antecedent_precipitation_index"}
     _assert_parity(rust, python)
+
+
+def test_api_spin_up(monkeypatch) -> None:
+    run = partial(flood.antecedent_precipitation_index, _fresno_rain(), 0.9, spin_up=365, return_state=True)
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == {"antecedent_precipitation_index"}
+    _assert_parity(rust, python)
+    assert rust.values.shape == (_fresno_rain().size - 365,)
