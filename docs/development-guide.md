@@ -26,13 +26,12 @@ Everything in the library runs in pure Python, and `uv sync` installs it that wa
 The native extension is an optional accelerator: when it is present, the dispatch
 described in [architecture.md](architecture.md#optional-rust-backend) sends prepared
 float64 arrays to Rust kernels instead of the Python reference. You do **not** need
-Rust to install, import, run, or test `climate_indices`; the only checks that need a
-built extension are the parity suites (`tests/test_native_parity.py`,
-`tests/test_native_parity_distributions.py`, `tests/test_native_parity_fire.py`),
-which skip without it. A change to a ported kernel is not actually compared against
-the Rust path until you build the extension, so build it before claiming parity. No
-Rust experience is required: [installing the Rust toolchain](#install-the-rust-toolchain)
-below is a one-time, two-command step.
+Rust to install, import, run, or test `climate_indices`; the native suites
+(`tests/test_native_*.py`, covering kernel and PET parity plus the extension smoke
+checks) skip without it. A change to a ported kernel is not actually compared
+against the Rust path until you build the extension, so build it before claiming
+parity. No Rust experience is required: [installing the Rust
+toolchain](#install-the-rust-toolchain) below is a one-time, two-command step.
 
 ## Installation
 
@@ -202,9 +201,11 @@ automatically the first time you run a Rust command inside the checkout. Install
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
 
 # macOS with Homebrew (alternative). rustup is keg-only, so it is installed but
-# not put on PATH: add its bin directory, which holds the rustup/cargo/rustc shims.
+# not put on PATH: resolve the prefix Homebrew actually used (`/opt/homebrew` on
+# Apple Silicon, `/usr/local` on Intel) and add its shim directory to your shell's
+# startup file (`~/.zshrc` for zsh, `~/.bash_profile` for bash).
 brew install rustup
-printf '%s\n' 'export PATH="/opt/homebrew/opt/rustup/bin:$PATH"' >> ~/.zshrc
+echo "export PATH=\"$(brew --prefix rustup)/bin:\$PATH\"" >> ~/.zshrc
 
 # Windows (PowerShell)
 winget install --id Rustlang.Rustup
@@ -213,7 +214,7 @@ winget install --id Rustlang.Rustup
 The official installer places the Rust binaries in `~/.cargo/bin` and adds that
 directory to your shell's `PATH`; open a new terminal afterwards (or run
 `source "$HOME/.cargo/env"`) so the commands below resolve. If you used Homebrew,
-the `printf` line does the same for the Homebrew copy, also taking effect in a new
+the `echo` line does the same for the Homebrew copy, also taking effect in a new
 terminal. This is the step people most often miss: a Homebrew rustup without that
 line leaves `cargo` and `rustup` off `PATH`, so every Rust command reports
 `command not found` even though the toolchain is installed. On Windows, install the
@@ -263,7 +264,7 @@ The everyday Rust commands, for reference:
 |---------|--------------|
 | `rustup show` | The toolchain this checkout pins (must be 1.99.0) |
 | `rustup update` | Updates installed toolchains — do **not** use this to move the pin; change `channel` in `rust-toolchain.toml` deliberately instead |
-| `cargo build` / `cargo test --workspace` | Compiles the crates / runs the crate-level Rust tests |
+| `cargo build` / `cargo test --workspace` | Compiles the crates / runs the crate-level Rust tests; set `PYO3_PYTHON` to the project interpreter, as in [step 7](#7-verify), so they link the right Python |
 | `cargo fmt --all -- --check` | Formatting; CI fails on any diff |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Lints; CI fails on any warning |
 
