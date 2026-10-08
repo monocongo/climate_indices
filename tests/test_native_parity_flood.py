@@ -79,6 +79,11 @@ def _assert_parity(rust: Any, python: Any) -> None:
         for name in fields:
             _assert_parity(getattr(rust, name), getattr(python, name))
         return
+    if isinstance(rust, tuple):
+        assert len(rust) == len(python)
+        for rust_item, python_item in zip(rust, python, strict=True):
+            _assert_parity(rust_item, python_item)
+        return
     if rust is None or python is None:
         assert rust is None and python is None
         return
@@ -303,3 +308,38 @@ def test_api_over_a_spatial_block_with_masked_days(monkeypatch) -> None:
     rust, python, calls = _rust_and_python(monkeypatch, run)
     assert calls == {"antecedent_precipitation_index"}
     _assert_parity(rust, python)
+
+
+@pytest.mark.parametrize(
+    ("nan_policy", "max_gap_days", "split"),
+    [("propagate", 0, 5000), ("bridge", 3, 4003), ("bridge", 3, 4004)],
+    ids=["propagate", "bridge-inside-a-gap", "bridge-past-the-allowance"],
+)
+def test_api_resumed_from_its_state_is_bitwise_a_single_pass(
+    monkeypatch, nan_policy: str, max_gap_days: int, split: int
+) -> None:
+    """A run split at ``split`` and resumed from the returned APIState equals one pass, on both paths.
+
+    The bridge splits land inside a six-day gap, so the resumed state carries a
+    nonzero trailing gap count; the second one resumes once the allowance is
+    already exceeded, so the state it carries is poisoned.
+    """
+    rain = _fresno_rain()
+    rain[4000:4006] = np.nan
+    api = partial(flood.antecedent_precipitation_index, k=0.9, nan_policy=nan_policy, max_gap_days=max_gap_days)
+
+    def single_and_split() -> tuple[Any, Any, Any]:
+        single = api(rain, return_state=True)
+        first = api(rain[:split], return_state=True)
+        second = api(rain[split:], initial_state=first.state, return_state=True)
+        return single, first, second
+
+    (rust_single, rust_first, rust_second), python, calls = _rust_and_python(monkeypatch, single_and_split)
+    assert calls == {"antecedent_precipitation_index"}
+    _assert_parity((rust_single, rust_first, rust_second), python)
+    if max_gap_days:
+        assert rust_first.state.trailing_gap_days is not None
+        assert int(rust_first.state.trailing_gap_days) > 0
+    np.testing.assert_array_equal(np.concatenate([rust_first.values, rust_second.values]), rust_single.values)
+    np.testing.assert_array_equal(rust_second.state.api, rust_single.state.api)
+    np.testing.assert_array_equal(rust_second.state.trailing_gap_days, rust_single.state.trailing_gap_days)
