@@ -424,7 +424,13 @@ def _recorded_memory_metrics(
     memory_arrays: tuple[npt.NDArray[np.float64], ...],
     values: list[npt.NDArray[np.float64] | None],
 ) -> dict[str, float] | None:
-    """The large-array memory metrics for the caller's arrays and recorded histories."""
+    """The large-array memory metrics for the caller's arrays and recorded histories.
+
+    A component that runs natively reports the history the kernel returns, whose
+    size matches the slot it replaces, so this sum stays comparable across the
+    two paths. The Rust side's own buffers during the call — its copy of each
+    input across the boundary and the history it builds — are not part of it.
+    """
     return check_large_array_memory(*memory_arrays, *(value for value in values if value is not None))
 
 

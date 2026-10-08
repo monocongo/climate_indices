@@ -347,7 +347,9 @@ resume from, and a layout the kernel cannot take unchanged (an empty axis, a
 non-float64 or unaligned array, or a time-first array whose spatial axes cannot
 be viewed as one cell axis without a copy) stays in Python as well. The kernels
 take views of the prepared arrays, so a broadcast month series or season mask
-is copied once, by the binding, rather than first materialized in Python. A loaded extension that
+is copied once, by the binding, rather than first materialized in Python; that
+boundary copy is the native path's own buffer, so it and the history the kernel
+builds are not part of the `array_memory_mb` a recurrence reports. A loaded extension that
 predates a kernel, or a recurrence option wider than the binding's integer
 parameters, also keeps the recurrence on its Python steps rather than failing at
 the boundary.
