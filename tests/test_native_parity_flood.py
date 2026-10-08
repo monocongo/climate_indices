@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pandas as pd
 import pytest
 import xarray as xr
 
@@ -386,3 +387,27 @@ def test_default_numpy_error_policies_keep_the_python_path(monkeypatch) -> None:
         flood.flood_index(pe, 2000, 2000, 2001, year_start_month=1)
         flood.antecedent_precipitation_index(rain, 0.9)
     assert recorder.calls == set()
+
+
+def test_the_xarray_adapters_reach_the_kernels(monkeypatch) -> None:
+    dates = pd.date_range("2000-01-01", "2004-12-31", freq="D")
+    rain = xr.DataArray(
+        _synthetic_rain((dates.size, 2, 3), seed=9),
+        dims=("time", "lat", "lon"),
+        coords={"time": dates, "lat": [10, 20], "lon": [0, 1, 2]},
+        attrs={"units": "mm"},
+    )
+
+    def run() -> tuple[Any, ...]:
+        pe = flood.effective_precipitation(rain, duration=30)
+        return (
+            pe,
+            flood.edi(pe),
+            flood.flood_index(pe, year_start_month=1),
+            flood.antecedent_precipitation_index(rain, 0.9),
+        )
+
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == {"effective_precipitation", "edi", "flood_index", "antecedent_precipitation_index"}
+    for rust_item, python_item in zip(rust, python, strict=True):
+        _assert_parity(rust_item, python_item)
