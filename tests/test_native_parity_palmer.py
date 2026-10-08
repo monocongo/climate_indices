@@ -15,6 +15,7 @@ unless ``CLIMATE_INDICES_REQUIRE_NATIVE=1`` is set, as in CI's native legs.
 import weakref
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -293,3 +294,17 @@ def test_inputs_python_rejects_keep_the_python_error(monkeypatch, run, error) ->
     assert python[0] is error
     assert not calls
     _assert_parity(rust, python)
+
+
+@pytest.mark.parametrize(
+    ("native", "shape"),
+    [(None, (1, 12, 1)), (SimpleNamespace(palmer_pdi=None), (2, 3))],
+    ids=["extension-absent", "non-monthly-shape"],
+)
+def test_pdi_dispatch_scans_z_for_infinities_only_when_the_kernel_can_take_it(monkeypatch, native, shape) -> None:
+    """The dispatch guard does not pay for a scan the Python path repeats for its own error."""
+    monkeypatch.setattr(palmer, "_palmer_native", lambda *args: native)
+    monkeypatch.setattr(palmer._palmer_pdi, "calculate", lambda *args: "python path")
+    monkeypatch.setattr(np, "isinf", lambda values: pytest.fail("the dispatch guard scanned z"))
+
+    assert palmer._pdi_recursion(np.zeros(shape), _PDI_FACTORS) == "python path"

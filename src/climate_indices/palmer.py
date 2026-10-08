@@ -871,10 +871,14 @@ def _pdi_recursion(z: np.ndarray, factors: PdiDurationFactors) -> _palmer_pdi.Pd
     """The ``pdi.f`` recursion, on the Rust kernel when it can take the Z series.
 
     A Z series that is not (years, 12, n_cells) or holds an infinite value keeps the
-    Python path, which raises its ValueError or ConvergenceError.
+    Python path, which raises its ValueError or ConvergenceError. The kernel does not
+    reject infinities itself, so the guard scans ``z`` only here, where the kernel is
+    about to take it; the Python path scans for its own error.
     """
     native = _palmer_native("palmer_pdi", z)
-    if native is None or z.ndim != 3 or z.shape[1] != 12 or np.any(np.isinf(z)):
+    if native is None or z.ndim != 3 or z.shape[1] != 12:
+        return _palmer_pdi.calculate(z, factors)
+    if np.any(np.isinf(z)):
         return _palmer_pdi.calculate(z, factors)
     pdsi, phdi, pmdi = native.palmer_pdi(
         z.reshape(-1, z.shape[-1]), factors.wetm, factors.wetb, factors.drym, factors.dryb
