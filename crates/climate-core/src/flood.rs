@@ -14,7 +14,7 @@
 //!   years sequentially when the block has more than one column and pairwise
 //!   when it has exactly one ([`crate::reduction::pairwise_sum`]).
 
-use ndarray::{Array2, ArrayView1, ArrayView2};
+use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 
 use crate::ClimateError;
 use crate::reduction::pairwise_sum;
@@ -79,6 +79,13 @@ pub fn effective_precipitation(
     Ok(result)
 }
 
+/// The per-column mean and population variance of a calibration sample.
+#[allow(dead_code)]
+struct Climatology {
+    mean: Array1<f64>,
+    variance: Array1<f64>,
+}
+
 /// NumPy's `values.sum(axis=0)` of one column, in the order NumPy reduces it.
 #[allow(dead_code)]
 fn column_sum(column: ArrayView1<'_, f64>, columns: usize) -> f64 {
@@ -91,6 +98,43 @@ fn column_sum(column: ArrayView1<'_, f64>, columns: usize) -> f64 {
             .reduce(|sum, value| sum + value)
             .unwrap_or(0.0)
     }
+}
+
+/// The mean and population (`ddof=0`) variance of each column's finite values.
+///
+/// A column without finite values has a NaN mean, and one with fewer than two a
+/// NaN variance. Non-finite entries contribute zero, as in the Python
+/// `np.where(valid, ..., 0)` sums.
+#[allow(dead_code)]
+fn climatology(sample: ArrayView2<'_, f64>) -> Climatology {
+    let columns = sample.ncols();
+    let mut mean = Array1::from_elem(columns, f64::NAN);
+    let mut variance = Array1::from_elem(columns, f64::NAN);
+    let mut terms = Array1::<f64>::zeros(sample.nrows());
+    for (column, values) in sample.columns().into_iter().enumerate() {
+        let count = values.iter().filter(|value| value.is_finite()).count();
+        terms.zip_mut_with(&values, |term, &value| {
+            *term = if value.is_finite() { value } else { 0.0 };
+        });
+        let column_mean = if count > 0 {
+            column_sum(terms.view(), columns) / count as f64
+        } else {
+            f64::NAN
+        };
+        mean[column] = column_mean;
+        terms.zip_mut_with(&values, |term, &value| {
+            let deviation = if value.is_finite() {
+                value - column_mean
+            } else {
+                0.0
+            };
+            *term = deviation * deviation;
+        });
+        if count > 1 {
+            variance[column] = column_sum(terms.view(), columns) / count as f64;
+        }
+    }
+    Climatology { mean, variance }
 }
 
 #[cfg(test)]
