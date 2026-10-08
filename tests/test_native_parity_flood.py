@@ -168,3 +168,15 @@ def test_effective_precipitation_layouts(monkeypatch, shape: tuple[int, ...], sp
     assert calls == {"effective_precipitation"}
     _assert_parity(rust, python)
     assert rust.shape == shape
+
+
+# EDI.
+
+
+def test_edi_on_the_fresno_record(monkeypatch) -> None:
+    # 1991 is the PE warm-up year, so the Calibration Period starts in 1992
+    run = partial(flood.edi, _fresno_pe(), _FRESNO_START, 1992, 2020)
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == {"edi"}
+    _assert_parity(rust, python)
+    assert np.isfinite(rust[366:]).mean() > 0.99
