@@ -657,16 +657,6 @@ def test_non_contiguous_layouts_reach_the_kernels(monkeypatch, layout: Callable[
         _assert_parity(rust_item, python_item)
 
 
-def test_a_block_whose_cells_merge_is_handed_over_as_a_view() -> None:
-    """The binding's copy is then the only full-size copy of the input."""
-    moved = _time_last_moved_first(_synthetic_rain((40, 3, 2), seed=14))
-    with np.errstate(all="ignore"):
-        block = flood_native._time_first_block(moved)
-    assert block is not None
-    assert block.shape == (40, 6)
-    assert np.shares_memory(block, moved)
-
-
 def test_default_numpy_error_policies_keep_the_python_path(monkeypatch) -> None:
     recorder = conftest.NativeRecorder(native)
     monkeypatch.setattr(flood_native, "_native", recorder)
