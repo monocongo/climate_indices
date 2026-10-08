@@ -17,6 +17,7 @@ pub mod fire;
 pub mod gamma;
 pub mod lmoments;
 pub mod loglogistic;
+pub mod palmer;
 pub mod pci;
 pub mod pearson;
 pub mod pm_eto;
