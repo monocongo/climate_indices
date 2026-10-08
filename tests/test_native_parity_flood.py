@@ -291,3 +291,15 @@ def test_api_missing_day_policies(monkeypatch, nan_policy: str, max_gap_days: in
     rust, python, calls = _rust_and_python(monkeypatch, run)
     assert calls == {"antecedent_precipitation_index"}
     _assert_parity(rust, python)
+
+
+def test_api_over_a_spatial_block_with_masked_days(monkeypatch) -> None:
+    rain = _synthetic_rain((900, 3, 2), seed=6, missing=0.01)
+    masked = np.ma.masked_array(rain, mask=np.zeros(rain.shape, dtype=bool))
+    masked[100:105, 0, 1] = np.ma.masked
+    run = partial(
+        flood.antecedent_precipitation_index, masked, 0.88, nan_policy="bridge", max_gap_days=3, return_state=True
+    )
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == {"antecedent_precipitation_index"}
+    _assert_parity(rust, python)
