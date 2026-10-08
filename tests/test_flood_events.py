@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from climate_indices import flood
+from climate_indices.exceptions import InvalidArgumentError
 
 
 def test_one_dimensional_events_have_onset_duration_peak_and_severity() -> None:
@@ -94,3 +95,18 @@ def test_all_missing_input_has_no_events() -> None:
     events = flood.flood_events(np.full((5, 2), np.nan))
     assert len(events) == 0
     assert events.cell.shape == (0, 1)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "error"),
+    [
+        ({"threshold": float("nan")}, InvalidArgumentError),
+        ({"threshold": True}, InvalidArgumentError),
+        ({"threshold": "0"}, InvalidArgumentError),
+        ({"min_duration": 0}, InvalidArgumentError),
+        ({"min_duration": 1.5}, InvalidArgumentError),
+    ],
+)
+def test_invalid_options_are_rejected(kwargs, error) -> None:
+    with pytest.raises(error):
+        flood.flood_events(np.ones(4), **kwargs)
