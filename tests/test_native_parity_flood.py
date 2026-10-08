@@ -133,3 +133,13 @@ def test_effective_precipitation_on_the_fresno_record(monkeypatch, duration: int
     _assert_parity(rust, python)
     assert np.isnan(rust[: duration - 1]).all()
     assert np.isfinite(rust[duration - 1 :]).all()
+
+
+def test_effective_precipitation_shorter_than_its_window_is_all_nan(monkeypatch) -> None:
+    """A series shorter than the window has nothing to compute, so neither path runs a kernel."""
+    rust, python, calls = _rust_and_python(
+        monkeypatch, partial(flood.effective_precipitation, np.ones(20), duration=30)
+    )
+    assert calls == set()
+    _assert_parity(rust, python)
+    assert np.isnan(rust).all()
