@@ -315,13 +315,24 @@ def test_unaligned_supplied_parameters_keep_the_python_cdf(monkeypatch, paramete
 @pytest.mark.parametrize("layout", ["packed", "offset", "empty-offset"])
 @pytest.mark.parametrize(
     ("kernel", "argument_index"),
-    [("gamma_parameters", 0), *[("gamma_probabilities", i) for i in range(4)], ("norm_ppf", 0)],
+    [
+        ("gamma_parameters", 0),
+        *[("gamma_probabilities", i) for i in range(4)],
+        ("norm_ppf", 0),
+        ("pnp_normals", 0),
+        ("pnp_percentages", 0),
+        ("pnp_percentages", 1),
+        ("pci", 0),
+    ],
 )
 def test_native_boundary_rejects_unaligned_arrays(layout, kernel, argument_index):
     arguments = {
         "gamma_parameters": [np.arange(1.0, 25.0).reshape(2, 12)],
         "gamma_probabilities": [np.ones((2, 12)), np.full(12, 2.0), np.ones(12), np.zeros(12)],
         "norm_ppf": [np.full((2, 12), 0.5)],
+        "pnp_normals": [np.ones((2, 12))],
+        "pnp_percentages": [np.ones((2, 12)), np.ones((12, 12))],
+        "pci": [np.ones(366)],
     }[kernel]
     original = arguments[argument_index]
     if layout == "empty-offset":
@@ -359,6 +370,11 @@ def test_native_empty_negative_stride_blocks(stride, shape):
     quantiles = native.norm_ppf(empty)
     assert quantiles.shape == shape
     assert quantiles.dtype == np.float64
+    normals = native.pnp_normals(empty)
+    assert normals.shape == (shape[1],)
+    percentages = native.pnp_percentages(empty, np.ones((1, shape[1])))
+    assert percentages.shape == shape
+    assert percentages.dtype == np.float64
 
 
 @pytest.mark.parametrize("stride", [-1, -16])
@@ -516,6 +532,228 @@ def test_kernels_match_scipy_primitives():
 
     quantiles = np.concatenate([rng.uniform(0.0, 1.0, 5000), 1.0 - 10.0 ** rng.uniform(-16, -1, 2000), [0.0, 1.0]])
     np.testing.assert_allclose(native.norm_ppf(quantiles), scipy.stats.norm.ppf(quantiles), rtol=RTOL, atol=ATOL)
+
+
+# --- PNP and PCI kernels (RUST-007) ---------------------------------------------------
+
+_PNP_KERNELS = {"pnp_normals", "pnp_percentages"}
+
+
+def _pnp(values: np.ndarray, scale: int, start: int, end: int, **kwargs: Any) -> Callable[[], np.ndarray]:
+    periodicity = kwargs.pop("periodicity", compute.Periodicity.monthly)
+    data_start = kwargs.pop("data_start", _DATA_START)
+    return lambda: indices.percentage_of_normal(values, scale, data_start, start, end, periodicity, **kwargs)
+
+
+@pytest.mark.parametrize("scale", [1, 3, 6])
+def test_pnp_monthly_reference_series(monkeypatch, precips_mm_monthly, scale):
+    rust, python, calls = _rust_and_python(monkeypatch, _pnp(precips_mm_monthly.flatten(), scale, 1981, 2010))
+    assert calls == _PNP_KERNELS
+    _assert_parity(rust, python)
+    # the leading scale - 1 months have no complete sum on either path
+    assert np.isnan(rust[: scale - 1]).all()
+
+
+def test_pnp_matches_the_committed_fixture(
+    monkeypatch,
+    precips_mm_monthly,
+    pnp_6month,
+    data_year_start_monthly,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+):
+    run = _pnp(
+        precips_mm_monthly.flatten(),
+        6,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
+        data_start=data_year_start_monthly,
+    )
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == _PNP_KERNELS
+    _assert_parity(rust, python)
+    # the same tolerance tests/test_indices.py holds the Python path to
+    np.testing.assert_allclose(rust, pnp_6month, atol=0.01, equal_nan=True)
+
+
+def test_pnp_spatial_block(
+    monkeypatch, precips_mm_monthly, calibration_year_start_monthly, calibration_year_end_monthly
+):
+    rng = np.random.default_rng(9)
+    block = precips_mm_monthly.flatten()[:, None, None] * rng.uniform(0.5, 1.5, (1, 3, 4))
+    block[::37, 0, 0] = np.nan
+    block[:, 1, 2] = 0.0
+    run = _pnp(
+        block,
+        3,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
+        spatial_time_major=True,
+    )
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == _PNP_KERNELS
+    _assert_parity(rust, python)
+    # a cell whose calibration period has no positive value has no normal at all
+    assert np.isnan(rust[:, 1, 2]).all()
+
+
+def test_pnp_with_zero_and_missing_calendar_steps(monkeypatch):
+    """A step with no positive calibration value has no normal, so it carries no percentage."""
+    rng = np.random.default_rng(8)
+    values = rng.gamma(2.0, 20.0, 12 * 40)
+    values[6::12] = 0.0  # July never rains
+    values[11::12][:5] = np.nan  # the first five Decembers are missing
+    rust, python, calls = _rust_and_python(monkeypatch, _pnp(values, 1, 1990, 2029, data_start=1990))
+    assert calls == _PNP_KERNELS
+    _assert_parity(rust, python)
+    assert np.isnan(rust[6::12]).all()
+    assert np.isnan(rust[11::12][:5]).all()
+    assert np.isfinite(rust[11::12][5:]).all()
+
+
+def test_pnp_calibration_window_ending_in_a_partial_year(monkeypatch):
+    """A trailing partial calibration period is padded with NaN before the kernel averages."""
+    values = np.arange(481, dtype=float)
+    rust, python, calls = _rust_and_python(monkeypatch, _pnp(values, 1, 1930, 1940, data_start=1900))
+    assert calls == _PNP_KERNELS
+    _assert_parity(rust, python)
+
+
+def test_pnp_all_missing_series(monkeypatch):
+    rust, python, calls = _rust_and_python(monkeypatch, _pnp(np.full(120, np.nan), 3, 1895, 1904))
+    assert calls == _PNP_KERNELS
+    _assert_parity(rust, python)
+    assert np.isnan(rust).all()
+
+
+def test_pnp_masked_input_stays_on_the_python_path(monkeypatch):
+    """A fully masked input short-circuits before the kernels, as the Python path does."""
+    rust, python, calls = _rust_and_python(monkeypatch, _pnp(np.ma.masked_all(120), 3, 1895, 1904))
+    assert calls == set()
+    assert np.ma.allequal(rust, python)
+
+
+@pytest.mark.parametrize("days", [365, 366])
+def test_pci_daily_year(monkeypatch, rain_mm_365, rain_mm_366, days):
+    rainfall = (rain_mm_365 if days == 365 else rain_mm_366)[0]
+    rust, python, calls = _rust_and_python(monkeypatch, lambda: indices.pci(rainfall))
+    assert calls == {"pci"}
+    _assert_parity(rust, python)
+    assert np.isfinite(rust).all()
+
+
+def test_pci_all_zero_rainfall(monkeypatch):
+    rust, python, calls = _rust_and_python(monkeypatch, lambda: indices.pci(np.zeros(365)))
+    assert calls == {"pci"}
+    _assert_parity(rust, python)
+    assert np.isnan(rust).all()
+
+
+def test_pci_mask_or_length_stays_on_the_python_path(monkeypatch):
+    all_masked = _rust_and_python(monkeypatch, lambda: indices.pci(np.ma.masked_all(366)))
+    assert all_masked[2] == set()
+    # a masked value is missing, so the year's totals are NaN on either path
+    partially_masked = _rust_and_python(
+        monkeypatch,
+        lambda: indices.pci(np.ma.array(np.ones(366), mask=np.arange(366) < 31)),
+    )
+    assert partially_masked[2] == set()
+    assert np.isnan(partially_masked[0]).all()
+    assert np.isnan(partially_masked[1]).all()
+
+    def invalid_length() -> np.ndarray:
+        with pytest.raises(exceptions.InvalidArgumentError):
+            indices.pci(np.ones(300))
+        return np.empty(0)
+
+    rust, python, calls = _rust_and_python(monkeypatch, invalid_length)
+    assert calls == set()
+    assert rust.size == python.size == 0
+
+
+def test_pnp_with_infinite_values(monkeypatch):
+    """inf inside the calibration period makes its normal inf; inf outside it survives the ratio."""
+    rng = np.random.default_rng(11)
+    values = rng.gamma(2.0, 20.0, 12 * 40)
+    values[3] = np.inf  # an April the calibration period also averages
+    values[12 * 20 + 4] = np.inf  # a May after the calibration period
+    rust, python, calls = _rust_and_python(monkeypatch, _pnp(values, 1, 1990, 1999, data_start=1990))
+    assert calls == _PNP_KERNELS
+    _assert_parity(rust, python)
+    # inside the period the normal is inf: inf/inf is missing and every other April is zero
+    assert np.isnan(rust[3::12]).sum() == 1
+    assert (rust[3::12] == 0.0).sum() == 39
+    # outside it the normal is finite, so the ratio keeps the infinity
+    assert np.isposinf(rust[12 * 20 + 4])
+
+
+@pytest.mark.parametrize("days", [365, 366])
+@pytest.mark.parametrize("case", ["monthly", "monthly-cancel", "monthly-inf", "annual"])
+def test_pci_cancellation_matches_numpy_reduction_order(monkeypatch, days, case):
+    rainfall = np.zeros(days)
+    if case == "monthly":
+        rainfall[:31] = np.r_[1e16, np.ones(28), -1e16, 0.0]
+        rainfall[31] = 1.0
+    elif case in {"monthly-cancel", "monthly-inf"}:
+        rainfall[:3] = [1e16, -1e16, 1.0]
+        rainfall[31] = 1.0 if case == "monthly-cancel" else -1.0
+    else:
+        rainfall[indices._PCI_MONTH_STARTS[days]] = np.r_[1e16, np.ones(10), -1e16]
+    rust, python, calls = _rust_and_python(monkeypatch, lambda: indices.pci(rainfall))
+    assert calls == {"pci"}
+    _assert_parity(rust, python)
+
+
+@pytest.mark.parametrize("layout", ["C", "F", "strided-C", "strided-F"])
+@pytest.mark.parametrize("years", [7, 8, 40, 128, 129, 256])
+@pytest.mark.parametrize("columns", [1, 12])
+def test_pnp_normals_match_numpy_layout_and_cancellation(layout, years, columns):
+    order = layout[-1]
+    calibration = np.ones((years, columns), order=order)
+    calibration[0] = 1e16
+    calibration[-1] = -1e16
+    # NaNs must occupy their zero-valued slots in NumPy's pairwise grouping,
+    # rather than being dropped from the sequence before summation.
+    calibration[2, 0] = np.nan
+    if layout.startswith("strided"):
+        storage = np.empty((years * 2, columns * 2), order=order)
+        storage[::2, ::2] = calibration
+        calibration = storage[::2, ::2]
+    counts = np.sum(~np.isnan(calibration), axis=0)
+    expected = np.nansum(calibration, axis=0) / np.maximum(counts, 1)
+    expected = np.where((counts > 0) & (expected > 0.0), expected, np.nan)
+    _assert_parity(native.pnp_normals(calibration), expected)
+
+
+@pytest.mark.parametrize("columns", [0, 2])
+@pytest.mark.parametrize("rows", [0, 1])
+def test_pnp_percentages_reject_empty_normal_period(rows, columns):
+    with pytest.raises(ValueError, match="normals.*at least one"):
+        native.pnp_percentages(np.ones((rows, columns)), np.empty((0, columns)))
+
+
+@pytest.mark.parametrize("days", [365, 366])
+def test_pci_explicit_nan_days_preserve_python_validation(monkeypatch, days):
+    rainfall = np.ones(days)
+    rainfall[31] = np.nan
+    for backend in (_Recorder(native), None):
+        monkeypatch.setattr(compute, "_native", backend)
+        with np.errstate(all="ignore"), pytest.raises(exceptions.InvalidArgumentError):
+            indices.pci(rainfall)
+        if backend is not None:
+            assert backend.calls == set()
+    missing = np.full(days, np.nan)
+    rust, python, calls = _rust_and_python(monkeypatch, lambda: indices.pci(missing))
+    assert calls == set()
+    assert rust is missing
+    assert python is missing
+
+
+def test_pnp_partial_mask_is_prepared_before_native_dispatch(monkeypatch):
+    values = np.ma.array(np.arange(1.0, 241.0), mask=np.arange(240) % 17 == 0)
+    rust, python, calls = _rust_and_python(monkeypatch, _pnp(values, 1, 1895, 1914))
+    assert calls == _PNP_KERNELS
+    _assert_parity(rust, python)
 
 
 # EDDI: the empirical rank count, Tukey plotting position, and Hastings inverse normal
