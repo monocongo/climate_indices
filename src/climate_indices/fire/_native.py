@@ -99,9 +99,9 @@ def moisture_code_recurrence(
     The kernel takes the code's prepared, time-first arrays and runs the whole
     time axis per cell, including the ADR-0007 gap bookkeeping and the ADR-0010
     seasonal carry. Anything the extension cannot take as it is — an array that
-    is not a plain, aligned float64 ``ndarray``, a masked array, an empty axis,
-    or a state it cannot resume — leaves the recurrence to the Python driver,
-    which is the parity oracle.
+    is not a plain, aligned float64 ``ndarray``, a masked array, or an empty
+    axis — leaves the recurrence to the Python driver, which is the parity
+    oracle.
     """
     native = _native_module()
     if native is None:

@@ -1813,9 +1813,9 @@ Dispatch takes the Rust path only for a
 plain, aligned float64 `ndarray` whose fit parameters are aligned and one per
 calendar step (and cell). Unaligned arrays, masked arrays, other dtypes, and
 caller-supplied parameters that vary by year run the Python implementation. The
-fire recurrences apply the same guard to every weather array and to the state a
-run resumes from, so a layout the kernel cannot take unchanged (an empty axis,
-a state it cannot resume) stays in Python as well.
+fire recurrences apply the same guard to every weather array and to the seed
+they resume from, and a layout the kernel cannot take unchanged (an empty axis,
+a non-float64 or unaligned array) stays in Python as well.
 Native dispatch also requires NumPy floating-point errors to be ignored
 (`np.errstate(all="ignore")`); warnings, exceptions, callbacks, logging, or
 printing keep the Python path. Python 3.14 context-aware warnings conservatively
