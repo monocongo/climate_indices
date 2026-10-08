@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`flood.flood_events`**: extracts events (runs above a threshold) from a daily
   flood index, reporting onset, duration, peak, and severity per event.
+- **Flood benchmarks**: `tests/test_benchmark_flood.py` times each Rust-backed flood index
+  against its Python implementation and guards against a Rust path slower than Python.
 
 ## [3.0.0] - 2026-10-04
 
