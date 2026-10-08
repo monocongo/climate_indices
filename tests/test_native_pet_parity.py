@@ -168,6 +168,23 @@ def test_thornthwaite_all_nan_month_column_stays_on_python(monkeypatch):
     _assert_parity(rust, python)
 
 
+def test_thornthwaite_all_nan_month_column_warns_before_an_invalid_latitude(monkeypatch):
+    # the Python path reports np.nanmean's empty slice before its daylight term
+    # rejects the latitude, so the guard has to fall back before checking it
+    temps = np.full((2, 12), 15.0)
+    temps[:, 3] = np.nan
+    with np.errstate(all="ignore"):
+        monkeypatch.setattr(eto, "_native", _Recorder(native))
+        with pytest.warns(RuntimeWarning, match="Mean of empty slice"):
+            with pytest.raises(InvalidArgumentError) as native_error:
+                eto.eto_thornthwaite(temps, 91.0, 2001)
+        monkeypatch.setattr(eto, "_native", None)
+        with pytest.warns(RuntimeWarning, match="Mean of empty slice"):
+            with pytest.raises(InvalidArgumentError) as python_error:
+                eto.eto_thornthwaite(temps, 91.0, 2001)
+    assert str(native_error.value) == str(python_error.value)
+
+
 def test_thornthwaite_float32_and_masked_inputs_stay_on_python(monkeypatch):
     temps = _temperatures(24, seed=11)
     float32_temps = temps.astype(np.float32)
@@ -323,6 +340,23 @@ def test_hargreaves_float32_inputs_stay_on_python(monkeypatch):
         result = eto.eto_hargreaves(tmin.astype(np.float32), tmax.astype(np.float32), tmean.astype(np.float32), 35.0)
     assert recorder.calls == set()
     np.testing.assert_allclose(result, reference, rtol=1e-6, atol=1e-6, equal_nan=True)
+
+
+def test_hargreaves_mismatched_block_shapes_stay_on_python(monkeypatch):
+    # equal sizes in different layouts: the kernel would pair the flattened cells,
+    # while the Python path fails to assign the broadcast result into its output
+    tmean = np.full((5, 2, 2), 15.0)
+    tmin = np.full((1, 5, 2, 2), 10.0)
+    recorder = _Recorder(native)
+    with np.errstate(all="ignore"):
+        monkeypatch.setattr(eto, "_native", recorder)
+        with pytest.raises(ValueError) as native_error:
+            eto.eto_hargreaves(tmin, tmean + 5.0, tmean, 35.0, spatial_time_major=True)
+        monkeypatch.setattr(eto, "_native", None)
+        with pytest.raises(ValueError) as python_error:
+            eto.eto_hargreaves(tmin, tmean + 5.0, tmean, 35.0, spatial_time_major=True)
+    assert recorder.calls == set()
+    assert str(native_error.value) == str(python_error.value)
 
 
 def test_masked_input_with_a_padded_length_reaches_the_kernel(monkeypatch):
@@ -493,6 +527,31 @@ def test_penman_monteith_eto_errors_match_on_both_paths(monkeypatch, overrides, 
             pm_eto.penman_monteith_eto(**arguments)
         monkeypatch.setattr(pm_eto, "_native", None)
         with pytest.raises(InvalidArgumentError, match=message) as python_error:
+            pm_eto.penman_monteith_eto(**arguments)
+    assert str(native_error.value) == str(python_error.value)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        pytest.param({"latitude_degrees": "north", "wind_speed_height_m": 0.0}, id="latitude_before_wind_height"),
+        pytest.param(
+            {"wind_speed_m_s": "calm", "humidity": pm_eto.HumidityInputs(rh_min=63.0)},
+            id="wind_speed_before_humidity_pathway",
+        ),
+    ],
+)
+def test_penman_monteith_eto_conversion_errors_precede_native_checks(monkeypatch, overrides):
+    # an operand the kernel cannot take keeps the Python path before the native
+    # checks run, so both paths raise the Python path's first error
+    arguments = _example_18_arrays()
+    arguments.update(overrides)
+    with np.errstate(all="ignore"):
+        monkeypatch.setattr(pm_eto, "_native", _Recorder(native))
+        with pytest.raises(TypeError) as native_error:
+            pm_eto.penman_monteith_eto(**arguments)
+        monkeypatch.setattr(pm_eto, "_native", None)
+        with pytest.raises(TypeError) as python_error:
             pm_eto.penman_monteith_eto(**arguments)
     assert str(native_error.value) == str(python_error.value)
 

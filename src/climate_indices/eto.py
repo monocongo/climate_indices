@@ -308,6 +308,11 @@ def _native_thornthwaite(
     if native is None or not compute._native_float64(values):
         return None
 
+    # np.nanmean warns for an all-NaN month column, which only Python can report;
+    # it warns before the Python path checks the latitude, so this check goes first
+    if np.isnan(values).all(axis=0).any():
+        return None
+
     years = values.shape[0]
     cell_shape = values.shape[2:]
     if isinstance(latitude_radians, np.ndarray):
@@ -329,8 +334,8 @@ def _native_thornthwaite(
         latitude_cells = np.full(cell_shape, latitude_scalar)
     _validate_latitude_radians(latitude_cells)
 
-    # np.nanmean warns for an all-NaN month column, which only Python can report
-    if np.isnan(values).all(axis=0).any():
+    # an extension built before the PET kernels keeps the Python path
+    if not hasattr(native, "thornthwaite"):
         return None
 
     cells = int(np.prod(cell_shape, dtype=np.intp))
@@ -372,6 +377,10 @@ def _native_hargreaves(
         compute._native_float64(array) for array in (daily_tmin_celsius, daily_tmax_celsius, daily_tmean_celsius)
     ):
         return None
+    # equal sizes in different layouts fail on the Python path, which the flat
+    # kernel inputs would otherwise pair cell by cell
+    if not (daily_tmin_celsius.shape == daily_tmax_celsius.shape == daily_tmean_celsius.shape):
+        return None
 
     time = daily_tmean_celsius.shape[0]
     cell_shape = daily_tmean_celsius.shape[1:]
@@ -393,6 +402,10 @@ def _native_hargreaves(
         _validate_latitude_radians(latitude_scalar)
         latitude_cells = np.full(cell_shape, latitude_scalar)
     _validate_latitude_radians(latitude_cells)
+
+    # an extension built before the PET kernels keeps the Python path
+    if not hasattr(native, "hargreaves"):
+        return None
 
     cells = int(np.prod(cell_shape, dtype=np.intp))
     pet = native.hargreaves(

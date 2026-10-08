@@ -430,6 +430,20 @@ def actual_vapor_pressure_from_tmin(
 # ---------------------------------------------------------------------------
 
 
+def _native_operand(value: Any) -> np.ndarray | None:
+    """The operand as the kernels take it, or None when they cannot take it.
+
+    :param value: one operand of a kernel call
+    :return: the value as a float64 array, or None for a dtype, layout, or NumPy
+        error policy the kernels do not take
+    """
+    if isinstance(value, np.ndarray):
+        return value if compute._native_float64(value) else None
+    if isinstance(value, (bool, int, float, np.bool_, np.integer, np.floating)):
+        return np.asarray(value, dtype=np.float64)
+    return None
+
+
 def _native_arrays(*values: Any) -> tuple[tuple[int, ...], tuple[np.ndarray, ...]] | None:
     """Flattened float64 kernel inputs and their broadcast shape, or None.
 
@@ -444,14 +458,10 @@ def _native_arrays(*values: Any) -> tuple[tuple[int, ...], tuple[np.ndarray, ...
     """
     arrays: list[np.ndarray] = []
     for value in values:
-        if isinstance(value, np.ndarray):
-            if not compute._native_float64(value):
-                return None
-            arrays.append(value)
-        elif isinstance(value, (bool, int, float, np.bool_, np.integer, np.floating)):
-            arrays.append(np.asarray(value, dtype=np.float64))
-        else:
+        array = _native_operand(value)
+        if array is None:
             return None
+        arrays.append(array)
     if all(array.ndim == 0 for array in arrays):
         return None
 
@@ -517,7 +527,7 @@ def pm_eto(
         if extension is not None
         else None
     )
-    if extension is not None and native is not None:
+    if extension is not None and native is not None and hasattr(extension, "pm_eto"):
         shape, arrays = native
         return np.asarray(extension.pm_eto(*arrays)).reshape(shape)
 
@@ -1003,6 +1013,25 @@ def _native_penman_monteith_eto(
     if extension is None:
         return None
 
+    # an operand the kernels cannot take keeps the Python path, so its own
+    # conversions and checks run in their original order rather than after the
+    # native-only validation below
+    if any(
+        _native_operand(value) is None
+        for value in (
+            daily_tmin_celsius,
+            daily_tmax_celsius,
+            latitude_degrees,
+            elevation_m,
+            wind_speed_m_s,
+            wind_speed_height_m,
+            day_of_year,
+            soil_heat_flux_mj_m2_day,
+            albedo,
+        )
+    ):
+        return None
+
     # Eq 47 validates the measurement height before any pathway is chosen
     _validate_wind_measurement_height(wind_speed_height_m)
     humidity_variant, humidity_values = _humidity_pathway(humidity)
@@ -1050,6 +1079,9 @@ def _native_penman_monteith_eto(
         (sunshine_hours,) = arrays[offset : offset + 1]
 
     (daily_tmin, daily_tmax, latitude, elevation, wind_speed, wind_height, day, soil_heat_flux, albedo) = arrays[0:9]
+    # an extension built before the PET kernels keeps the Python path
+    if not hasattr(extension, "fao56_eto"):
+        return None
     eto = extension.fao56_eto(
         daily_tmin,
         daily_tmax,
