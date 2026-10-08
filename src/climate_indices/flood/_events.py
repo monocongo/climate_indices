@@ -96,7 +96,8 @@ def flood_events(
     values = _validated_index(index)
     days = values.shape[0]
     cell_shape = values.shape[1:]
-    block = values.reshape(days, -1)
+    # the cell count, not -1, so an empty time axis still has a shape
+    block = values.reshape(days, int(np.prod(cell_shape, dtype=np.intp)))
     cells = block.shape[1]
 
     # time runs along the last axis so one flat array holds every cell's series
