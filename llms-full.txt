@@ -2602,10 +2602,12 @@ storage before `py.detach`, and wraps the view conversion.
 
 ### 5. Add dispatch and routing
 
-The dispatch helper is named `_native_<kernel>` and lives next to the Python
-implementation it ports: in `compute.py` for the index kernels, whose public callers
-in `indices.py` reach it as `compute._native_<kernel>`, and in `fire/_native.py` for
-the fire recurrences. Two caller patterns are in use: a helper returns `None` when a
+The index dispatch helper is named `_native_<kernel>`, lives next to the Python
+implementation it ports in `compute.py`, and is reached by its public callers in
+`indices.py` as `compute._native_<kernel>`. The fire recurrences use a different
+pattern: `fire/_native.py` defines `moisture_code_recurrence` and `kbdi_recurrence`,
+which return a callable for the shared daily runner rather than a computed result.
+Two caller patterns are in use: a helper returns `None` when a
 routing condition fails and its caller runs the Python path (as
 `_native_gamma_probabilities` does), or the helper carries no guard of its own and is
 called only after the caller's `_native_float64` guard has passed (as
@@ -2636,9 +2638,13 @@ computation twice through the public or compute-level API: once with `_native`
 replaced by the `_Recorder` around the extension, once with `_native` set to `None`,
 comparing at `rtol = atol = 1e-10` with matching NaN positions. The compute suites
 patch `compute._native`; the fire suite patches `climate_indices.fire._native._native`.
-Each test asserts the recorded call set, so a run that never reached Rust fails
-instead of passing Python against Python — rebuild the extension after adding a
-kernel, because the compute recorder also records a `hasattr` probe. Cover the edge
+Tests that establish invocation assert the recorded call set, so a run that never
+reached Rust fails instead of passing Python against Python; result-only comparisons
+discard the call set, and intentional-fallback cases assert an empty one. The EDDI
+guards probe with `hasattr`, which the compute recorder also records, so a stale
+extension that imports but predates an EDDI export records the probe, falls back to
+Python, and still satisfies the expected EDDI call set: the probe is never evidence
+of invocation, and the extension must be rebuilt after adding a kernel. Cover the edge
 cases the doc block promises: all-missing and all-zero columns, a constant column,
 supplied parameters, and masked or unaligned inputs that must fall back.
 
@@ -2649,7 +2655,19 @@ ticket (maximum absolute and relative error, where it occurs, which primitive
 diverges, and whether reproducing the Python method closes the gap); never edit a
 fixture or a reference test to match Rust.
 
-### 7. Verify
+### 7. Regenerate the documentation bundles
+
+If the change touched a file listed in `SUMMARY_FILES` or `FULL_FILES` in
+`scripts/generate_llms_txt.py` — this guide and `docs/architecture.md` among them —
+regenerate and commit the bundles before verifying, because the verification run
+below includes the bundle-sync test:
+
+```bash
+uv run scripts/generate_llms_txt.py
+uv run pytest tests/test_review_scripts.py
+```
+
+### 8. Verify
 
 ```bash
 cargo fmt --all -- --check
@@ -2671,18 +2689,6 @@ The fallback run matters as much as the native one: nothing user-facing may requ
 the extension. The native run above sets `CLIMATE_INDICES_REQUIRE_NATIVE=1`, as CI's
 native legs do, so a missing or stale extension fails instead of silently skipping
 every parity test.
-
-### 8. Regenerate the documentation bundles
-
-If the change touched a file listed in `SUMMARY_FILES` or `FULL_FILES` in
-`scripts/generate_llms_txt.py` — this guide and `docs/architecture.md` among them —
-regenerate and commit the bundles alongside it — before step 7's `uv run pytest -n auto`,
-which runs the bundle-sync test:
-
-```bash
-uv run scripts/generate_llms_txt.py
-uv run pytest tests/test_review_scripts.py
-```
 
 ## Coding Standards
 
