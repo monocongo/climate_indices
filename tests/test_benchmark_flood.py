@@ -183,6 +183,18 @@ def test_antecedent_precipitation_index_rust_against_python(benchmark, monkeypat
         benchmark(run)
 
 
+# Ratio budget for the Rust-versus-Python guard: the permitted Rust/Python time
+# ratio, not a measured one. The kernels exist to be faster, so a ratio of 1.0
+# only fails a Rust path that has become slower than the code it replaces; the
+# measured speedup is the headroom for runner variance.
+_RUST_RATIO_BUDGET = 1.0
+
+
+def _within_budget(rust_seconds: float, python_seconds: float, budget: float = _RUST_RATIO_BUDGET) -> bool:
+    """Whether a Rust path costs at most ``budget`` times the Python path it replaces."""
+    return rust_seconds <= python_seconds * budget
+
+
 @pytest.mark.benchmark
 @pytest.mark.parametrize("side", [8, 32])
 def test_flood_events_scan_throughput(benchmark, side: int) -> None:
