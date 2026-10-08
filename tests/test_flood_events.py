@@ -17,3 +17,10 @@ def test_one_dimensional_events_have_onset_duration_peak_and_severity() -> None:
     np.testing.assert_allclose(events.peak, [2.0, 3.0, 0.25])
     np.testing.assert_allclose(events.severity, [3.5, 3.0, 0.25])
     assert events.cell.shape == (3, 0)
+
+
+def test_nan_and_masked_days_end_a_run() -> None:
+    index = np.ma.masked_array([1.0, 1.0, 9.0, 1.0], mask=[False, False, True, False])
+    events = flood.flood_events(index)
+    np.testing.assert_array_equal(events.onset, [0, 3])
+    np.testing.assert_array_equal(events.duration, [2, 1])
