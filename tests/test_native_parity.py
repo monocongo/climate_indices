@@ -243,7 +243,7 @@ def test_masked_transform_is_normalized_to_nan_before_dispatch(
         return
     assert type(rust) is np.ndarray
     assert type(python) is np.ndarray
-    assert np.isnan(rust[mask]).all()
+    assert np.array_equal(np.isnan(rust), mask | np.isnan(precips_mm_monthly))
     _assert_parity(rust, python)
 
     # the documented guarantee: a partial mask has the result of the explicitly NaN-filled input
@@ -263,6 +263,11 @@ def test_masked_transform_is_normalized_to_nan_before_dispatch(
 )
 def test_fully_masked_indices_preserve_mask_without_native_calls(monkeypatch, index, extra_args):
     masked = np.ma.array(np.full(360, -999.0), mask=True)
+
+    def fail_on_fit(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("a fully masked input reached gamma fitting")
+
+    monkeypatch.setattr(compute, "gamma_parameters", fail_on_fit)
 
     def run():
         return index(
@@ -301,6 +306,10 @@ def test_masked_gamma_fit_keeps_python_mask_semantics(monkeypatch, precips_mm_mo
     for actual, expected in zip(rust, python, strict=True):
         np.testing.assert_array_equal(np.ma.getmaskarray(actual), np.ma.getmaskarray(expected))
         _assert_parity(np.ma.filled(actual, np.nan), np.ma.filled(expected, np.nan))
+    if fully_masked:
+        for parameter in (*rust, *python):
+            assert type(parameter) is np.ndarray
+            assert np.isnan(parameter).all()
 
 
 @pytest.mark.parametrize("fully_masked", [False, True])
@@ -320,6 +329,12 @@ def test_masked_gamma_parameter_resolver_normalizes_before_dispatch(monkeypatch,
         _assert_parity(rust[name], python[name])
     if fully_masked:
         assert all(np.isnan(parameter).all() for parameter in rust.values())
+
+    # the documented guarantee: the resolver normalizes a mask to NaN before dispatch
+    filled = np.ma.filled(masked.astype(float), np.nan)
+    oracle = compute._resolve_gamma_parameters(filled, {}, _DATA_START, 1981, 2010, compute.Periodicity.monthly)
+    for name in ("alpha", "beta", "prob_zero"):
+        _assert_parity(python[name], oracle[name])
 
 
 def test_supplied_fitting_params_are_transformed_by_the_kernel(monkeypatch, precips_mm_monthly):
