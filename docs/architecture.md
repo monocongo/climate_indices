@@ -316,12 +316,15 @@ parameters that vary by year run the Python implementation. A mask is a
 missing-value marker, so the seams that read it as one replace it with NaN
 before this check, and the prepared plain float64 array may then use Rust: the
 gamma transform (`transform_fitted_gamma` and the parameter resolver it calls),
-the sliding sum that prepares a scaled series, and PNP preparation. A masked
-SPI/SPEI gamma transform therefore matches the same input passed through
-`np.ma.filled(values, np.nan)`. Seams that do not replace a mask keep their
-Python implementation when handed one: a direct `gamma_parameters` call, the
-Pearson Type III and GLO fits, and PCI, whose dispatch checks the original 1-D
-input.
+the GLO transform (`transform_fitted_loglogistic`, whose fit and CDF may then run
+natively), the sliding sum that prepares a scaled series, and PNP preparation. A
+partially masked SPI/SPEI gamma transform therefore matches the same input
+passed through `np.ma.filled(values, np.nan)`. An all-masked input returns from
+the all-missing short-circuit before that normalization, so SPI and SPEI hand
+back the original `MaskedArray`, not the filled plain NaN array. Seams that do
+not replace a mask keep their Python implementation when handed one: a direct
+`gamma_parameters` or `loglogistic_parameters` call, the Pearson Type III fit
+and transform, and PCI, whose dispatch checks the original 1-D input.
 Native dispatch also requires NumPy floating-point errors to be ignored
 (`np.errstate(all="ignore")`); warnings, exceptions, callbacks, logging, or
 printing keep the Python path. Python 3.14 context-aware warnings conservatively
