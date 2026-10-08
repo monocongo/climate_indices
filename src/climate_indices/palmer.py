@@ -881,7 +881,7 @@ def _pdi_recursion(z: np.ndarray, factors: PdiDurationFactors) -> _palmer_pdi.Pd
     if np.any(np.isinf(z)):
         return _palmer_pdi.calculate(z, factors)
     pdsi, phdi, pmdi = native.palmer_pdi(
-        z.reshape(-1, z.shape[-1]), factors.wetm, factors.wetb, factors.drym, factors.dryb
+        z.reshape(z.shape[0] * 12, z.shape[-1]), factors.wetm, factors.wetb, factors.drym, factors.dryb
     )
     return _palmer_pdi.PdiResult(pdsi=pdsi.reshape(z.shape), phdi=phdi.reshape(z.shape), pmdi=pmdi.reshape(z.shape))
 

@@ -5,8 +5,8 @@ Each test computes the same result twice through ``palmer.pdsi``/``palmer.scpdsi
 recorder around the Rust extension, and once with it set to None, which runs the
 pure-Python reference. The recorder proves the first run reached the Rust kernels,
 so the comparison is never Python against Python. The contract is
-``rtol = atol = 1e-10`` with matching NaN positions; an error must be the same
-type with the same message.
+``rtol = atol = 1e-10`` with matching NaN positions; only explicitly expected
+errors may pass, with the same type and message.
 
 Skipped when the extension is not built (``uv run maturin develop --release``),
 unless ``CLIMATE_INDICES_REQUIRE_NATIVE=1`` is set, as in CI's native legs.
@@ -81,10 +81,12 @@ def _rust_and_python(monkeypatch: pytest.MonkeyPatch, run: Callable[[], Any]) ->
     return rust, python, recorder.calls
 
 
-def _assert_parity(rust: Any, python: Any) -> None:
+def _assert_parity(rust: Any, python: Any, *, error: type[Exception] | None = None) -> None:
     if isinstance(python, tuple) and python and isinstance(python[0], type):
+        assert python[0] is error, f"unexpected error: {python}"
         assert rust == python
         return
+    assert error is None, f"expected error: {error}"
     if isinstance(python, dict):
         assert rust.keys() == python.keys()
         for key in python:
@@ -167,6 +169,12 @@ def test_cafec_kernels_reject_unaligned_operands(kernel: str, argument: int) -> 
         kernel_callable(*operands)
 
 
+def test_nominal_parity_rejects_matching_unexpected_errors() -> None:
+    outcome = (RuntimeError, "valid fixture unexpectedly failed")
+    with pytest.raises(AssertionError, match="unexpected error"):
+        _assert_parity(outcome, outcome)
+
+
 def test_every_division_matches_for_pdsi(monkeypatch, palmer_division_dir: Path, palmer_division_inputs) -> None:
     precips, pet, awc = palmer_division_inputs[palmer_division_dir.name]
     rust, python, calls = _rust_and_python(monkeypatch, _pdsi(precips, pet, awc))
@@ -231,19 +239,25 @@ def test_awc_without_float64_semantics_keeps_the_python_water_balance(monkeypatc
     precips, pet, _ = palmer_division_inputs["3601"]
     rust, python, calls = _rust_and_python(monkeypatch, _pdsi(precips, pet, awc))
     assert "palmer_water_balance" not in calls
-    _assert_parity(rust, python)
+    _assert_parity(rust, python, error=ValueError if isinstance(awc, np.ndarray) else None)
 
 
 @pytest.mark.parametrize("index", [_pdsi, _scpdsi], ids=["pdsi", "scpdsi"])
-def test_missing_months_match(monkeypatch, palmer_division_inputs, index) -> None:
-    precips, pet, awc = palmer_division_inputs["4002"]
-    precips = precips.copy()
+@pytest.mark.parametrize("missing_in_calibration", [True, False], ids=["calibration-gaps", "outside-calibration"])
+def test_missing_months_match(monkeypatch, palmer_division_inputs, index, missing_in_calibration: bool) -> None:
+    original, pet, awc = palmer_division_inputs["4002"]
+    precips = original.copy()
     rng = np.random.default_rng(1278)
     precips[rng.random(precips.shape) < 0.03] = np.nan
     precips[600:640] = np.nan
+    if not missing_in_calibration:
+        calibration = slice((_CALIBRATION[0] - _START) * 12, (_CALIBRATION[1] - _START + 1) * 12)
+        precips[calibration] = original[calibration]
     rust, python, calls = _rust_and_python(monkeypatch, index(precips, pet, awc))
     assert "palmer_water_balance" in calls
-    _assert_parity(rust, python)
+    # Calibration gaps invalidate scPDSI K-prime; gaps outside it still produce indices.
+    error = ConvergenceError if index is _scpdsi and missing_in_calibration else None
+    _assert_parity(rust, python, error=error)
 
 
 def test_short_calibration_raises_like_python(monkeypatch, palmer_division_inputs) -> None:
@@ -252,7 +266,7 @@ def test_short_calibration_raises_like_python(monkeypatch, palmer_division_input
     rust, python, calls = _rust_and_python(monkeypatch, run)
     assert python[0] is InsufficientDataError
     assert "scpdsi_duration_factors" not in calls
-    _assert_parity(rust, python)
+    _assert_parity(rust, python, error=InsufficientDataError)
 
 
 @pytest.mark.parametrize("sign", [self_calibration.WET_SIGN, self_calibration.DRY_SIGN])
@@ -262,7 +276,7 @@ def test_degenerate_duration_factor_fit_raises_like_python(monkeypatch, sign: in
     rust, python, calls = _rust_and_python(monkeypatch, lambda: palmer._scpdsi_duration_factors(calibration_z, sign))
     assert python[0] is ConvergenceError
     assert calls == {"scpdsi_duration_factors"}
-    _assert_parity(rust, python)
+    _assert_parity(rust, python, error=ConvergenceError)
 
 
 def test_wells_abatement_failure_raises_like_python(monkeypatch) -> None:
@@ -272,11 +286,25 @@ def test_wells_abatement_failure_raises_like_python(monkeypatch) -> None:
     rust, python, calls = _rust_and_python(monkeypatch, lambda: palmer._wells_recursion(z, factors))
     assert python[0] is ConvergenceError
     assert calls == {"palmer_wells"}
-    _assert_parity(rust, python)
+    _assert_parity(rust, python, error=ConvergenceError)
 
 
 _INFINITE_Z = np.where(np.arange(12) == 5, np.inf, 0.0)
 _PDI_FACTORS = PdiDurationFactors.from_fitted(0.3, 2.7, 0.3, 2.7)
+
+
+@pytest.mark.parametrize("shape", [(0, 12, 0), (0, 12, 3), (2, 12, 0)])
+def test_pdi_recursion_preserves_empty_shapes(monkeypatch, shape: tuple[int, int, int]) -> None:
+    z = np.empty(shape)
+
+    def run() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        result = palmer._pdi_recursion(z, _PDI_FACTORS)
+        return result.pdsi, result.phdi, result.pmdi
+
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == {"palmer_pdi"}
+    _assert_parity(rust, python)
+    _assert_parity(rust, (z, z, z))
 
 
 @pytest.mark.parametrize(
@@ -293,7 +321,7 @@ def test_inputs_python_rejects_keep_the_python_error(monkeypatch, run, error) ->
     rust, python, calls = _rust_and_python(monkeypatch, run)
     assert python[0] is error
     assert not calls
-    _assert_parity(rust, python)
+    _assert_parity(rust, python, error=error)
 
 
 @pytest.mark.parametrize(
