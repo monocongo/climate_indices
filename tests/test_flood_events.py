@@ -31,3 +31,9 @@ def test_min_duration_and_threshold_filter_events() -> None:
     np.testing.assert_array_equal(flood.flood_events(index, min_duration=2).onset, [1])
     np.testing.assert_array_equal(flood.flood_events(index, threshold=2.0).onset, [4])
     assert len(flood.flood_events(index, threshold=5.0)) == 0
+
+
+def test_events_ending_on_the_last_day_and_starting_on_the_first_are_kept() -> None:
+    events = flood.flood_events(np.array([1.0, 2.0, 0.0, 3.0]))
+    np.testing.assert_array_equal(events.onset, [0, 3])
+    np.testing.assert_array_equal(events.end, [2, 4])
