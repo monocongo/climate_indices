@@ -355,11 +355,13 @@ propagates. A missing extension is not an error, it is the pure-Python install.
 
 Extend the suite that covers the index family — `tests/test_native_parity.py` for the
 SPI/EDDI kernels, `tests/test_native_parity_distributions.py` for the distribution
-fits, `tests/test_native_parity_fire.py` for the fire recurrences — running the same
+fits, `tests/test_native_parity_fire.py` for the fire recurrences,
+`tests/test_native_parity_palmer.py` for the Palmer family — running the same
 computation twice through the public or compute-level API: once with `_native`
 replaced by the `_Recorder` around the extension, once with `_native` set to `None`,
 comparing at `rtol = atol = 1e-10` with matching NaN positions. The compute suites
-patch `compute._native`; the fire suite patches `climate_indices.fire._native._native`.
+patch `compute._native`; the fire suite patches `climate_indices.fire._native._native`,
+and the Palmer suite patches `palmer._native`.
 Tests that establish invocation assert the recorded call set, so a run that never
 reached Rust fails instead of passing Python against Python; result-only comparisons
 discard the call set, and intentional-fallback cases assert an empty one. The EDDI

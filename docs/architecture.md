@@ -422,9 +422,11 @@ whose empty-slice warnings are independent of NumPy error policies. Default NumP
 therefore use Python even when the extension is installed. Direct extension
 calls reject unaligned inputs and copy empty arrays without creating Rust views
 of caller-owned storage. `tests/test_native_parity.py` (gamma),
-`tests/test_native_parity_distributions.py` (Pearson Type III and GLO), and
+`tests/test_native_parity_distributions.py` (Pearson Type III and GLO),
 `tests/test_native_parity_fire.py` (the fire recurrences, which compare the
-returned state as well) explicitly ignore floating-point errors and compare the
+returned state as well), and `tests/test_native_parity_palmer.py` (the Palmer
+family, which also requires the backtracking's sign pattern to match exactly)
+explicitly ignore floating-point errors and compare the
 two paths at `rtol = atol = 1e-10` with matching NaN positions, and the
 `python_backend` fixture in
 `tests/conftest.py` pins any test to the Python reference.
@@ -477,8 +479,9 @@ no Rust toolchain, so they keep proving the fallback.
   macOS). It sets `CLIMATE_INDICES_REQUIRE_NATIVE=1`, which makes the native test
   modules raise on a missing extension instead of skipping, so a broken build
   cannot silently drop the parity suite. `tests/test_native_parity.py`,
-  `tests/test_native_parity_distributions.py`, and
-  `tests/test_native_parity_fire.py` have no other skip. The Python 3.14-only context-aware-warnings routing check lives in
+  `tests/test_native_parity_distributions.py`,
+  `tests/test_native_parity_fire.py`, and `tests/test_native_parity_palmer.py`
+  have no other skip. The Python 3.14-only context-aware-warnings routing check lives in
   `tests/test_native_backend.py` and skips on the 3.10 leg.
 - `native-wheel`: `maturin build --release` on Linux and macOS at both boundary
   Pythons, plus a Windows smoke build on the newest. Each wheel is installed
