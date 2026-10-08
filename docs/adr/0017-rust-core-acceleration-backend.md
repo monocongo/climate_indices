@@ -71,7 +71,7 @@ contract more thoroughly than leaving the performance on the table.
    answer changed", and the two paths cannot diverge without a parity test failing.
 
 7. **Where SciPy evaluates a special function, port the routine SciPy evaluates.**
-   The Cephes `igam`, `ndtri`, `ndtr`, and `lgam` behind `scipy.special` and
+   The Cephes `igam`, `igamc`, `ndtri`, `ndtr`, and `lgam` behind `scipy.special` and
    `scipy.stats` are ported line by line into `climate-core/src/special/`, not
    replaced with a generic crate implementation, because the generic versions do not
    hold the parity contract in the transformed tails. SciPy's own build-dependent
@@ -141,4 +141,4 @@ contract more thoroughly than leaving the performance on the table.
   seam/Rust kernel table, dispatch rules, and the CI jobs.
 - `docs/development-guide.md`, § *Porting a Kernel to Rust* — the porting checklist.
 - SciPy / Cephes: `scipy.special` and `scipy.stats`; the ported routines are Cephes
-  `igam`, `igamc`, `ndtr`, `ndtri`, and `lgam` (Mosig & Cephes, *Math Library*).
+  `igam`, `igamc`, `ndtr`, `ndtri`, and `lgam` (Moshier, *Cephes Math Library*).
