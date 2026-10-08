@@ -268,3 +268,26 @@ def test_api_spin_up(monkeypatch) -> None:
     assert calls == {"antecedent_precipitation_index"}
     _assert_parity(rust, python)
     assert rust.values.shape == (_fresno_rain().size - 365,)
+
+
+@pytest.mark.parametrize(
+    ("nan_policy", "max_gap_days"),
+    [("propagate", 0), ("bridge", 1), ("bridge", 4)],
+    ids=["propagate", "bridge-1", "bridge-4"],
+)
+def test_api_missing_day_policies(monkeypatch, nan_policy: str, max_gap_days: int) -> None:
+    rain = _fresno_rain()
+    rng = np.random.default_rng(5)
+    rain[rng.random(rain.size) < 0.01] = np.nan
+    rain[4000:4006] = np.nan
+    run = partial(
+        flood.antecedent_precipitation_index,
+        rain,
+        0.9,
+        nan_policy=nan_policy,
+        max_gap_days=max_gap_days,
+        return_state=True,
+    )
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == {"antecedent_precipitation_index"}
+    _assert_parity(rust, python)
