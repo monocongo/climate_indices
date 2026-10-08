@@ -196,7 +196,8 @@ The `//!` crate/domain header and the `///` block above each public kernel state
 ### 3. Port the kernel
 
 Put the kernel in `crates/climate-core/src/`, in the module that owns the index
-family, and re-export it from `crates/climate-core/src/lib.rs`. The crate is pure
+family, and declare that module in `crates/climate-core/src/lib.rs`
+(`pub mod <family>;`) so `climate-py` can reach it by module path. The crate is pure
 Rust: no PyO3, no NumPy bindings, no Python exceptions. Where SciPy evaluates a
 special function, port the routine SciPy evaluates into `special/` (see the Cephes
 ports for `igam`, `ndtri`, `ndtr`, and `lgam`) rather than calling a general crate —
@@ -209,9 +210,9 @@ arithmetic rather than improving it, and do not add a fast-math or fused kernel:
 Add the `#[pyfunction]` to `crates/climate-py/src/lib.rs`, converting arrays at the
 boundary and returning only `climate-core` types across it; that crate holds no
 algorithm. Add the matching signature to `src/climate_indices/_native.pyi`, where
-every array argument is documented as float64. Existing bindings use
-`checked_view`, which rejects unaligned arrays and copies empty ones instead of
-creating views of caller-owned storage.
+every array argument is documented as float64. Existing bindings call
+`checked_copy`, which rejects unaligned arrays, copies empty and caller-owned
+storage before `py.detach`, and wraps the view conversion.
 
 ### 5. Add dispatch and routing
 
@@ -261,9 +262,12 @@ uv run maturin develop --release
 uv run python -c "import climate_indices._native"
 uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
-uv run mypy src/
+uv run mypy src/ tests/test_type_checking.py
 uv run pytest -n auto                # with the extension built
+uv run pytest -m validation -n auto  # external reference suites, per the RUST ticket
 rm src/climate_indices/_native.*.so && uv run pytest -n auto   # pure-Python fallback
+uv run --extra docs sphinx-build -E -b html -W --keep-going docs docs/_build/html
+uv run --extra docs sphinx-build -E -b doctest docs docs/_build/doctest
 ```
 
 The fallback run matters as much as the native one: nothing user-facing may require
