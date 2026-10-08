@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import warnings
+from collections.abc import Iterator
 from datetime import datetime, timedelta
 from io import StringIO
 from unittest import mock
@@ -40,7 +41,7 @@ _PALMER_DIVISION_DIR = os.path.join(os.path.dirname(__file__), "fixture", "palme
 
 
 @pytest.fixture(autouse=True)
-def _clean_logging_state() -> None:
+def _clean_logging_state() -> Iterator[None]:
     """Reset structlog and root-logger state around every test in this module.
 
     The logging the rest of the run uses is restored afterwards, so a later test on
