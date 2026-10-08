@@ -63,6 +63,7 @@ from climate_indices.fire._cffwis_codes import (
     _elementwise_result,
     _run_cffwis_recurrence,
 )
+from climate_indices.fire._native import moisture_code_recurrence
 
 __all__ = [
     "CFFWISResult",
@@ -298,10 +299,9 @@ def ffmc(
         spatial_shape=internal_spatial_shape,
     )
     values, state_gap_days = _run_cffwis_recurrence(
+        FFMC_CODE,
+        code_inputs,
         state_value,
-        FFMC_CODE.build_step(state_value, code_inputs),
-        index_type=FFMC_CODE.index_type,
-        weather_valid=FFMC_CODE.validity(code_inputs),
         static_valid=np.ones(internal_spatial_shape, dtype=np.bool_),
         trailing_gap_days=trailing_gap_days,
         memory_arrays=(temperature, humidity, wind, precipitation),
@@ -424,10 +424,9 @@ def duff_moisture_code(
         spatial_shape=internal_spatial_shape,
     )
     values, state_gap_days = _run_cffwis_recurrence(
+        DMC_CODE,
+        code_inputs,
         state_value,
-        DMC_CODE.build_step(state_value, code_inputs),
-        index_type=DMC_CODE.index_type,
-        weather_valid=DMC_CODE.validity(code_inputs),
         static_valid=static_valid,
         trailing_gap_days=trailing_gap_days,
         memory_arrays=(temperature, humidity, precipitation),
@@ -564,10 +563,9 @@ def drought_code(
         spatial_shape=internal_spatial_shape,
     )
     values, state_gap_days = _run_cffwis_recurrence(
+        DC_CODE,
+        code_inputs,
         state_value,
-        DC_CODE.build_step(state_value, code_inputs),
-        index_type=DC_CODE.index_type,
-        weather_valid=DC_CODE.validity(code_inputs),
         static_valid=static_valid,
         trailing_gap_days=trailing_gap_days,
         memory_arrays=(temperature, precipitation),
@@ -1083,17 +1081,26 @@ def cffwis(
 
     code_values_init = (ffmc_value, dmc_value, dc_value)
     code_gaps_init = (ffmc_trailing_gap_days, dmc_trailing_gap_days, dc_trailing_gap_days)
-    components = tuple(
-        DailyRecurrence(
-            code.index_type,
-            value,
-            code.build_step(value, inputs),
-            code.validity(inputs),
-            np.ones(internal_spatial_shape, dtype=np.bool_) if inputs.day_length_band is None else latitude_valid,
-            gaps,
+    # the FFMC has no latitude input, so every cell is static-valid for it
+    component_list: list[DailyRecurrence] = []
+    for code, value, gaps, inputs in zip(MOISTURE_CODES, code_values_init, code_gaps_init, code_inputs, strict=True):
+        weather_valid = code.validity(inputs)
+        valid_cells = (
+            np.ones(internal_spatial_shape, dtype=np.bool_) if inputs.day_length_band is None else latitude_valid
         )
-        for code, value, gaps, inputs in zip(MOISTURE_CODES, code_values_init, code_gaps_init, code_inputs, strict=True)
-    )
+        component_list.append(
+            DailyRecurrence(
+                code.index_type,
+                value,
+                code.build_step(value, inputs),
+                weather_valid,
+                valid_cells,
+                gaps,
+                None,
+                moisture_code_recurrence(code, inputs, value, weather_valid, valid_cells, gaps, None),
+            )
+        )
+    components = tuple(component_list)
     # a code keeps its daily history only when a selected output reads it: the
     # direct name, or a derived index whose formula consumes the series
     code_consumers = {
