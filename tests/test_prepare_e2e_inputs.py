@@ -59,6 +59,7 @@ def _patch_denied_replace(monkeypatch, module, published):
 
     monkeypatch.setattr(module, "urlopen", lambda *args, **kwargs: io.BytesIO(payload))
     monkeypatch.setattr(Path, "replace", denied_replace)
+    monkeypatch.setattr(module.time, "sleep", lambda seconds: None)
     return hashlib.sha256(payload).hexdigest()
 
 
@@ -72,6 +73,30 @@ def test_source_download_accepts_valid_file_published_by_another_caller(tmp_path
     path = module._cache_source(source_dir, "prcp", checksum)
 
     assert path.read_bytes() == b"source bytes"
+    assert not list(source_dir.glob("*.download"))
+
+
+def test_source_download_retries_while_published_file_is_briefly_denied(tmp_path, monkeypatch):
+    """Windows denies reads of the destination while a concurrent replace completes."""
+    module = _prepare_module(monkeypatch)
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    checksum = _patch_denied_replace(monkeypatch, module, b"source bytes")
+    real_read_bytes = Path.read_bytes
+    denials = []
+
+    def flaky_read_bytes(self):
+        if self.suffix == ".nc" and len(denials) < 2:
+            denials.append(self)
+            raise PermissionError(13, "Permission denied")
+        return real_read_bytes(self)
+
+    monkeypatch.setattr(Path, "read_bytes", flaky_read_bytes)
+
+    path = module._cache_source(source_dir, "prcp", checksum)
+
+    assert len(denials) == 2
+    assert path.name == "nclimgrid_lowres_prcp.nc"
     assert not list(source_dir.glob("*.download"))
 
 
