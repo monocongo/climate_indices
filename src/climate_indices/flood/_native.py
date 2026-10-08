@@ -23,6 +23,7 @@ import numpy as np
 import numpy.typing as npt
 
 from climate_indices import compute
+from climate_indices._native_arrays import _block, _cells, _counts_flat, _flags_flat, _flat, _mask, _with_kernels
 from climate_indices._recurrence import _MAX_NATIVE_OPTION, NativeRecurrence, _raise_non_finite
 
 try:
@@ -46,31 +47,17 @@ def _native_module() -> ModuleType | None:
 
 
 def _kernel_module(*names: str) -> ModuleType | None:
-    """The extension when it exposes every named attribute, else None.
-
-    A stale installed extension can import successfully yet predate a kernel
-    (``docs/architecture.md``). Dispatching into it would raise
-    ``AttributeError`` instead of leaving the computation on its Python path, so
-    a missing kernel declines the whole call.
-    """
-    native = _native_module()
-    if native is None or not all(hasattr(native, name) for name in names):
-        return None
-    return native
-
-
-def _cells(shape: tuple[int, ...]) -> int:
-    """The number of cells in a time-first array's trailing spatial shape."""
-    return int(np.prod(shape, dtype=np.intp))
-
-
-def _block(array: npt.NDArray[np.float64], rows: int, columns: int) -> npt.NDArray[np.float64]:
-    """One time-first float64 array as the contiguous ``(rows, columns)`` block a kernel takes."""
-    return np.ascontiguousarray(array, dtype=np.float64).reshape(rows, columns)
+    """The extension when it exposes every named attribute, else None (see :func:`_with_kernels`)."""
+    return _with_kernels(_native_module(), *names)
 
 
 def _time_first_block(array: npt.NDArray[np.float64]) -> npt.NDArray[np.float64] | None:
-    """A ``(time, *cells)`` array as a ``(time, cells)`` block, or None when the kernels cannot take it."""
+    """A ``(time, *cells)`` array as a ``(time, cells)`` block, or None when the kernels cannot take it.
+
+    The block is a view when the cells merge into one axis, so the binding's
+    copy is the only full-size one. Otherwise the reshape copies it, and the
+    kernel still takes it; only the fire recurrences decline such a layout.
+    """
     if not compute._native_float64(array):
         return None
     rows = array.shape[0]
@@ -155,10 +142,10 @@ def api_recurrence(
 
     precipitation_mm = _block(precipitation, days, cells)
     decay = float(k)
-    initial_api = np.ascontiguousarray(api, dtype=np.float64).reshape(cells)
-    valid = np.ascontiguousarray(weather_valid, dtype=np.bool_).reshape(days, cells)
-    static = np.ascontiguousarray(static_valid, dtype=np.bool_).reshape(cells)
-    gap_days = np.ascontiguousarray(trailing_gap_days, dtype=np.int64).reshape(cells)
+    initial_api = _flat(api, cells)
+    valid = _mask(weather_valid, days, cells)
+    static = _flags_flat(static_valid, cells)
+    gap_days = _counts_flat(trailing_gap_days, cells)
 
     def native_run(
         shape: tuple[int, ...] | None,
