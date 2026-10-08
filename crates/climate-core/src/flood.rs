@@ -230,20 +230,17 @@ pub fn flood_index(
     let mut maxima = Array2::from_elem((calibration_years, cells), f64::NEG_INFINITY);
     for (year, mut row) in maxima.rows_mut().into_iter().enumerate() {
         let start = first_start + year * DAYS_PER_YEAR;
-        let period = pe.slice(ndarray::s![start..start + DAYS_PER_YEAR, ..]);
-        for (maximum, column) in row.iter_mut().zip(period.columns()) {
-            *maximum = column
-                .iter()
-                .map(|&value| {
-                    if value.is_finite() {
-                        value
-                    } else {
-                        f64::NEG_INFINITY
-                    }
-                })
-                .fold(f64::NEG_INFINITY, |largest, value| {
-                    if largest >= value { largest } else { value }
-                });
+        // a running maximum per cell, day by day in memory order; the maximum
+        // of the finite days does not depend on the order they are visited
+        for day in pe
+            .slice(ndarray::s![start..start + DAYS_PER_YEAR, ..])
+            .rows()
+        {
+            row.zip_mut_with(&day, |largest, &value| {
+                if value.is_finite() && value > *largest {
+                    *largest = value;
+                }
+            });
         }
     }
     let climatology = climatology(maxima.view());
