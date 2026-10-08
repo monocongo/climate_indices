@@ -344,7 +344,10 @@ arrays can use Rust. PCI dispatch checks the original input and requires a plain
 array; masked inputs and other shapes or dtypes keep its Python implementation. The
 fire recurrences apply the same guard to every weather array and to the seed they
 resume from, and a layout the kernel cannot take unchanged (an empty axis, a
-non-float64 or unaligned array) stays in Python as well.
+non-float64 or unaligned array) stays in Python as well. A loaded extension that
+predates a kernel, or a recurrence option wider than the binding's integer
+parameters, also keeps the recurrence on its Python steps rather than failing at
+the boundary.
 Native dispatch also requires NumPy floating-point errors to be ignored
 (`np.errstate(all="ignore")`); warnings, exceptions, callbacks, logging, or
 printing keep the Python path. Python 3.14 context-aware warnings conservatively

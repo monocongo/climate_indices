@@ -44,15 +44,27 @@ _KERNEL_BY_COMPONENT = {"ffmc": "ffmc", "dmc": "duff_moisture_code", "dc": "drou
 
 
 class _Recorder:
-    """Stand-in for the extension module that records which kernels were called."""
+    """Stand-in for the extension module that records which kernels were called.
+
+    Reading an attribute (a ``hasattr`` check) is not a call, so the recorded
+    set names the kernels that actually ran, not the ones a dispatch probed.
+    """
 
     def __init__(self, module: Any) -> None:
         self._module = module
         self.calls: set[str] = set()
 
     def __getattr__(self, name: str) -> Any:
-        self.calls.add(name)
-        return getattr(self._module, name)
+        attribute = getattr(self._module, name)
+        if isinstance(attribute, type):
+            # the extension's exception type must stay a class for ``except``
+            return attribute
+
+        def record(*args: Any, **kwargs: Any) -> Any:
+            self.calls.add(name)
+            return attribute(*args, **kwargs)
+
+        return record
 
 
 def _rust_and_python(monkeypatch: pytest.MonkeyPatch, run: Callable[[], Any]) -> tuple[Any, Any, set[str]]:
@@ -85,7 +97,8 @@ def _assert_parity(rust: Any, python: Any) -> None:
             _assert_parity(rust_item, python_item)
         return
     if rust is None or python is None:
-        assert rust is None and python is None
+        assert rust is None
+        assert python is None
         return
     if isinstance(rust, np.ndarray) or isinstance(python, np.ndarray):
         rust_array = np.asarray(rust)
@@ -579,8 +592,9 @@ def test_the_non_finite_translation_raises_the_python_error() -> None:
     values with a finite result), so the mapping is checked directly; the kernel
     side is covered by ``recurrence::tests::a_non_finite_step_result_is_an_error``.
     """
+    underlying = native.NonFiniteResultError("non-finite")
     with pytest.raises(InvalidArgumentError, match="kbdi produced a non-finite value from finite inputs"):
-        _raise_non_finite("kbdi", native.NonFiniteResultError("non-finite"))
+        _raise_non_finite("kbdi", underlying)
 
 
 def test_default_error_policies_keep_the_python_path(monkeypatch) -> None:
@@ -603,6 +617,30 @@ def test_default_error_policies_keep_the_python_path(monkeypatch) -> None:
         )
     assert recorder.calls == set()
     assert np.isfinite(np.asarray(result.values)).all()
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"nan_policy": "bridge", "max_gap_days": 2**63},
+        {"spin_up": 2**63},
+    ],
+)
+def test_an_option_wider_than_the_binding_keeps_the_python_path(monkeypatch, options) -> None:
+    """Options the Rust integer types cannot represent fall back instead of overflowing."""
+    days = 30
+    temperature = np.full(days, 22.0)
+    humidity = np.full(days, 40.0)
+    wind = np.full(days, 5.0)
+    precipitation = np.zeros(days)
+    recorder = _Recorder(native)
+    with np.errstate(all="ignore"):
+        monkeypatch.setattr(fire_native, "_native", recorder)
+        rust = fire.ffmc(temperature, humidity, wind, precipitation, **options)
+        monkeypatch.setattr(fire_native, "_native", None)
+        python = fire.ffmc(temperature, humidity, wind, precipitation, **options)
+    assert recorder.calls == set()
+    np.testing.assert_array_equal(rust, python)
 
 
 def test_a_varying_month_per_cell_still_indexes_the_tables_per_cell(monkeypatch) -> None:
