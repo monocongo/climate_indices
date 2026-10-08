@@ -344,7 +344,10 @@ arrays can use Rust. PCI dispatch checks the original input and requires a plain
 array; masked inputs and other shapes or dtypes keep its Python implementation. The
 fire recurrences apply the same guard to every weather array and to the seed they
 resume from, and a layout the kernel cannot take unchanged (an empty axis, a
-non-float64 or unaligned array) stays in Python as well. A loaded extension that
+non-float64 or unaligned array, or a time-first array whose spatial axes cannot
+be viewed as one cell axis without a copy) stays in Python as well. The kernels
+take views of the prepared arrays, so a broadcast month series or season mask
+is copied once, by the binding, rather than first materialized in Python. A loaded extension that
 predates a kernel, or a recurrence option wider than the binding's integer
 parameters, also keeps the recurrence on its Python steps rather than failing at
 the boundary.
@@ -398,8 +401,9 @@ no Rust toolchain, so they keep proving the fallback.
   as `test`, on the boundary legs (oldest and newest Python on Linux, newest on
   macOS). It sets `CLIMATE_INDICES_REQUIRE_NATIVE=1`, which makes the native test
   modules raise on a missing extension instead of skipping, so a broken build
-  cannot silently drop the parity suite. `tests/test_native_parity.py` and
-  `tests/test_native_parity_distributions.py` have no other skip. The Python 3.14-only context-aware-warnings routing check lives in
+  cannot silently drop the parity suite. `tests/test_native_parity.py`,
+  `tests/test_native_parity_distributions.py`, and
+  `tests/test_native_parity_fire.py` have no other skip. The Python 3.14-only context-aware-warnings routing check lives in
   `tests/test_native_backend.py` and skips on the 3.10 leg.
 - `native-wheel`: `maturin build --release` on Linux and macOS at both boundary
   Pythons, plus a Windows smoke build on the newest. Each wheel is installed

@@ -9,7 +9,10 @@ the extension's errors into the ones the Python driver raises.
 
 Nothing here holds an algorithm. The Python implementations in ``_kbdi.py`` and
 ``_cffwis_codes.py`` stay the parity oracles, and every layout this module
-cannot hand to the extension unchanged stays on the Python path.
+cannot hand to the extension unchanged stays on the Python path. The kernels
+take views of the time-first arrays: the binding's own copy before it releases
+the GIL is the only full-size copy of an input, so a broadcast month series or
+season mask is never materialized here first.
 """
 
 from __future__ import annotations
@@ -92,19 +95,30 @@ def _cells(shape: tuple[int, ...]) -> int:
     return int(np.prod(shape, dtype=np.intp))
 
 
+def _merges_cells(array: npt.NDArray[Any]) -> bool:
+    """Whether a time-first array's spatial axes reshape to one cell axis without a copy.
+
+    A broadcast or transposed view merges; a sliced or otherwise strided one
+    does not, and reshaping it would add a full-size copy the recurrence's
+    memory metrics never see, so such a layout stays on the Python path.
+    """
+    axes = [(length, stride) for length, stride in zip(array.shape[1:], array.strides[1:], strict=True) if length != 1]
+    return all(outer == length * inner for (_, outer), (length, inner) in zip(axes, axes[1:], strict=False))
+
+
 def _block(array: npt.NDArray[np.float64], days: int, cells: int) -> npt.NDArray[np.float64]:
-    """One time-first float64 input as the contiguous ``(days, cells)`` block a kernel takes."""
-    return np.ascontiguousarray(array, dtype=np.float64).reshape(days, cells)
+    """One time-first float64 input as the ``(days, cells)`` view a kernel takes."""
+    return np.asarray(array, dtype=np.float64).reshape(days, cells)
 
 
 def _flat(array: npt.NDArray[np.float64], cells: int) -> npt.NDArray[np.float64]:
-    """One per-cell float64 array as the contiguous ``(cells,)`` vector a kernel takes."""
-    return np.ascontiguousarray(array, dtype=np.float64).reshape(cells)
+    """One per-cell float64 array as the ``(cells,)`` vector a kernel takes."""
+    return np.asarray(array, dtype=np.float64).reshape(cells)
 
 
 def _mask(array: npt.NDArray[np.bool_], days: int, cells: int) -> npt.NDArray[np.bool_]:
-    """One time-first validity mask as the contiguous ``(days, cells)`` block a kernel takes."""
-    return np.ascontiguousarray(array, dtype=np.bool_).reshape(days, cells)
+    """One time-first validity mask as the ``(days, cells)`` view a kernel takes."""
+    return np.asarray(array, dtype=np.bool_).reshape(days, cells)
 
 
 def _optional_mask(array: npt.NDArray[np.bool_] | None, days: int, cells: int) -> npt.NDArray[np.bool_] | None:
@@ -113,18 +127,18 @@ def _optional_mask(array: npt.NDArray[np.bool_] | None, days: int, cells: int) -
 
 
 def _counts(array: _Counts, days: int, cells: int) -> npt.NDArray[np.int64]:
-    """One time-first calendar array as the contiguous ``(days, cells)`` block a kernel takes."""
-    return np.ascontiguousarray(array, dtype=np.int64).reshape(days, cells)
+    """One time-first calendar array as the ``(days, cells)`` view a kernel takes."""
+    return np.asarray(array, dtype=np.int64).reshape(days, cells)
 
 
 def _counts_flat(array: _Counts, cells: int) -> npt.NDArray[np.int64]:
-    """One per-cell calendar or gap-count array as the contiguous ``(cells,)`` vector a kernel takes."""
-    return np.ascontiguousarray(array, dtype=np.int64).reshape(cells)
+    """One per-cell calendar or gap-count array as the ``(cells,)`` vector a kernel takes."""
+    return np.asarray(array, dtype=np.int64).reshape(cells)
 
 
 def _flags_flat(array: npt.NDArray[np.bool_], cells: int) -> npt.NDArray[np.bool_]:
-    """One per-cell boolean array as the contiguous ``(cells,)`` vector a kernel takes."""
-    return np.ascontiguousarray(array, dtype=np.bool_).reshape(cells)
+    """One per-cell boolean array as the ``(cells,)`` vector a kernel takes."""
+    return np.asarray(array, dtype=np.bool_).reshape(cells)
 
 
 def _recorded_history(
@@ -312,10 +326,11 @@ def moisture_code_recurrence(
     The kernel takes the code's prepared, time-first arrays and runs the whole
     time axis per cell, including the ADR-0007 gap bookkeeping and the ADR-0010
     seasonal carry. Anything the extension cannot take as it is — an array that
-    is not a plain, aligned float64 ``ndarray``, a masked array, or an empty
-    axis — leaves the recurrence to the Python driver, which is the parity
-    oracle. The prepared input views are built at call time, inside the shared
-    runner's guarded region.
+    is not a plain, aligned float64 ``ndarray``, a masked array, an empty axis,
+    or a time-first array whose cells cannot be viewed as one axis — leaves the
+    recurrence to the Python driver, which is the parity oracle. The prepared
+    input views are built at call time, inside the shared runner's guarded
+    region.
     """
     native = _kernel_module("ffmc", "duff_moisture_code", "drought_code")
     if native is None:
@@ -341,6 +356,17 @@ def moisture_code_recurrence(
         if inputs.humidity is None or inputs.wind_kilometers_per_hour is None:
             return None
     elif months is None or band is None or table is None:
+        return None
+    blocks = (
+        temperature,
+        precipitation,
+        inputs.humidity,
+        inputs.wind_kilometers_per_hour,
+        weather_valid,
+        in_season,
+        months,
+    )
+    if not all(_merges_cells(array) for array in blocks if array is not None):
         return None
 
     arrays = _MoistureArrays(
@@ -397,6 +423,8 @@ def kbdi_recurrence(
     days = precipitation_mm.shape[0]
     cells = _cells(precipitation_mm.shape[1:])
     if days == 0 or cells == 0:
+        return None
+    if not all(_merges_cells(array) for array in (precipitation_mm, maximum_temperature_celsius, weather_valid)):
         return None
     arrays = _KbdiArrays(
         precipitation=precipitation_mm,
