@@ -1,11 +1,14 @@
-//! Flood-family kernels: effective precipitation, EDI, and the Flood Index.
+//! Flood-family kernels: effective precipitation, EDI, the Flood Index, and the
+//! Antecedent Precipitation Index recurrence.
 //!
-//! Ports of `climate_indices.flood._pe`, `_edi`, and `_if`, which stay the
-//! parity oracles. Python keeps the validation, the all-leap calendar layout, and the
-//! Calibration Period resolution; these kernels take the prepared time-first
-//! float64 blocks and the calibration rows Python resolved.
+//! Ports of `climate_indices.flood._pe`, `_edi`, `_if`, and `_antecedent`, which
+//! stay the parity oracles. Python keeps the validation, the all-leap calendar
+//! layout, and the Calibration Period resolution; these kernels take the
+//! prepared time-first float64 blocks and the calibration rows Python resolved.
 //!
-//! The operation order is the Python one:
+//! The operation order is the Python one, so the recorded paths in
+//! `tests/test_native_parity_flood.py` agree at `rtol = atol = 1e-10` with
+//! identical NaN positions:
 //!
 //! * effective precipitation follows `scipy.ndimage.correlate1d`'s general
 //!   (non-symmetric) loop, which starts from the newest day's term and then adds
@@ -19,6 +22,7 @@ use std::ops::Range;
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 
 use crate::ClimateError;
+use crate::recurrence::{RecurrenceInputs, RecurrenceRun, run};
 use crate::reduction::pairwise_sum;
 
 /// Positional days per year in the all-leap layout EDI and the Flood Index read
@@ -238,9 +242,41 @@ pub fn flood_index(
     Ok(standardize(pe, &climatology))
 }
 
+/// Run the Antecedent Precipitation Index over the whole time axis.
+///
+/// `API_t = k * API_(t-1) + P_t` (Kohler and Linsley, 1951), advanced one cell
+/// at a time by [`crate::recurrence::run`], so the ADR-0007 missing-day policy,
+/// the spin-up, and the recorded-history NaNs are the Python driver's.
+pub fn antecedent_precipitation_index(
+    precipitation_mm: ArrayView2<'_, f64>,
+    k: f64,
+    initial_api: ArrayView1<'_, f64>,
+    inputs: &RecurrenceInputs<'_>,
+    record: bool,
+) -> Result<RecurrenceRun<f64>, ClimateError> {
+    if precipitation_mm.dim() != inputs.weather_valid.dim() {
+        return Err(ClimateError::ShapeMismatch {
+            argument: "precipitation_mm",
+            expected: inputs.weather_valid.len(),
+            actual: precipitation_mm.len(),
+        });
+    }
+    let initial = initial_api.to_vec();
+    run(
+        "antecedent_precipitation_index",
+        &initial,
+        inputs,
+        record,
+        |api| *api,
+        |api| *api = f64::NAN,
+        |previous, day, cell| k * previous + precipitation_mm[[day, cell]],
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::recurrence::MissingDayPolicy;
     use ndarray::{Array, array};
 
     /// Relative closeness for closed-form references, scaled by `tol`.
@@ -443,5 +479,144 @@ mod tests {
             .fill(f64::NAN);
         let result = flood_index(pe.view(), 0, 3).unwrap();
         assert!(result.iter().all(|value| value.is_nan()));
+    }
+
+    fn api_inputs<'a>(
+        weather: &'a Array2<bool>,
+        static_valid: &'a Array1<bool>,
+        gaps: &'a Array1<i64>,
+        spin_up: usize,
+        policy: MissingDayPolicy,
+    ) -> RecurrenceInputs<'a> {
+        RecurrenceInputs {
+            weather_valid: weather.view(),
+            static_valid: static_valid.view(),
+            in_season: None,
+            trailing_gap_days: gaps.view(),
+            spin_up,
+            policy,
+        }
+    }
+
+    #[test]
+    fn constant_rain_follows_the_geometric_closed_form() {
+        let (days, k, rain) = (200, 0.9, 5.0);
+        let precipitation = Array2::from_elem((days, 1), rain);
+        let weather = Array2::from_elem((days, 1), true);
+        let (static_valid, gaps) = (array![true], array![-1]);
+        let run = antecedent_precipitation_index(
+            precipitation.view(),
+            k,
+            array![0.0].view(),
+            &api_inputs(
+                &weather,
+                &static_valid,
+                &gaps,
+                0,
+                MissingDayPolicy::Propagate,
+            ),
+            true,
+        )
+        .unwrap();
+        let values = run.values.unwrap();
+        for day in 0..days {
+            // API_t = P (1 - k^(t+1)) / (1 - k); about one ulp per day of recurrence
+            let expected = rain * (1.0 - k.powi(day as i32 + 1)) / (1.0 - k);
+            assert!(close(values[[day, 0]], expected, 1e-13), "day {day}");
+        }
+        // the state is the last recorded day, within k^days of the P / (1 - k) limit
+        assert_eq!(run.state[0], values[[days - 1, 0]]);
+        let limit = rain / (1.0 - k);
+        assert!((limit - run.state[0]) / limit <= 2.0 * k.powi(days as i32));
+        assert_eq!(run.trailing_gap_days.unwrap(), array![0]);
+    }
+
+    #[test]
+    fn a_bridged_gap_decays_nothing_and_a_long_one_poisons_the_cell() {
+        let precipitation = array![[10.0, 10.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [2.0, 2.0]];
+        let mut weather = Array2::from_elem((5, 2), true);
+        weather[[1, 0]] = false;
+        for day in 1..4 {
+            weather[[day, 1]] = false;
+        }
+        let (static_valid, gaps) = (array![true, true], array![-1, -1]);
+        let run = antecedent_precipitation_index(
+            precipitation.view(),
+            0.5,
+            array![0.0, 0.0].view(),
+            &api_inputs(
+                &weather,
+                &static_valid,
+                &gaps,
+                1,
+                MissingDayPolicy::Bridge { max_gap_days: 2 },
+            ),
+            true,
+        )
+        .unwrap();
+        let values = run.values.unwrap();
+        // spin-up omits day 0; cell 0's missing day holds the API (NaN on the
+        // day), then it decays from 10 on the next valid day
+        assert!(values[[0, 0]].is_nan());
+        assert_eq!(values[[1, 0]], 5.0);
+        assert_eq!(values[[3, 0]], 0.5 * 2.5 + 2.0);
+        // cell 1's three missing days exceed the allowance
+        assert!(values.column(1).iter().all(|value| value.is_nan()));
+        assert!(run.state[1].is_nan());
+    }
+
+    #[test]
+    fn the_precipitation_block_must_match_the_validity_mask() {
+        let weather = Array2::from_elem((3, 1), true);
+        let (static_valid, gaps) = (array![true], array![-1]);
+        let error = antecedent_precipitation_index(
+            Array2::zeros((2, 1)).view(),
+            0.9,
+            array![0.0].view(),
+            &api_inputs(
+                &weather,
+                &static_valid,
+                &gaps,
+                0,
+                MissingDayPolicy::Propagate,
+            ),
+            true,
+        )
+        .unwrap_err();
+        assert_eq!(
+            error,
+            ClimateError::ShapeMismatch {
+                argument: "precipitation_mm",
+                expected: 3,
+                actual: 2
+            }
+        );
+    }
+
+    #[test]
+    fn an_overflowing_step_is_a_non_finite_error() {
+        let precipitation = Array2::from_elem((2, 1), f64::MAX);
+        let weather = Array2::from_elem((2, 1), true);
+        let (static_valid, gaps) = (array![true], array![-1]);
+        let error = antecedent_precipitation_index(
+            precipitation.view(),
+            0.9,
+            array![0.0].view(),
+            &api_inputs(
+                &weather,
+                &static_valid,
+                &gaps,
+                0,
+                MissingDayPolicy::Propagate,
+            ),
+            true,
+        )
+        .unwrap_err();
+        assert_eq!(
+            error,
+            ClimateError::NonFinite {
+                index_type: "antecedent_precipitation_index"
+            }
+        );
     }
 }
