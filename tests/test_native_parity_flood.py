@@ -610,8 +610,9 @@ def test_the_api_arrays_are_converted_inside_the_runners_guarded_region(monkeypa
     monkeypatch.setattr(flood_native, "_native", native)
     monkeypatch.setattr(flood_native, "_block", failing_block)
     caplog.set_level(logging.ERROR)
+    rain = _synthetic_rain((40, 3), seed=16)
     with np.errstate(all="ignore"), pytest.raises(MemoryError) as exc_info:
-        flood.antecedent_precipitation_index(_synthetic_rain((40, 3), seed=16), 0.9)
+        flood.antecedent_precipitation_index(rain, 0.9)
     frames = {frame.name for frame in traceback.extract_tb(exc_info.value.__traceback__)}
     assert "run_daily_recurrences" in frames
     failures = [
