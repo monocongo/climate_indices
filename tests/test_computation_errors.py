@@ -141,6 +141,7 @@ class TestGammaNormPPFErrorHandling:
             assert isinstance(exc.underlying_error, RuntimeError)
 
 
+@pytest.mark.usefixtures("python_backend")
 class TestPearsonCDFErrorHandling:
     """Test error handling for scipy.stats.pearson3.cdf() failures."""
 
@@ -210,6 +211,7 @@ class TestPearsonCDFErrorHandling:
             assert isinstance(exc.underlying_error, RuntimeError)
 
 
+@pytest.mark.usefixtures("python_backend")
 class TestPearsonNormPPFErrorHandling:
     """Test error handling for scipy.stats.norm.ppf() failures in pearson path."""
 
@@ -407,6 +409,7 @@ class TestSummarizeArray:
         assert "shape=(10, 12)" in result
 
 
+@pytest.mark.usefixtures("python_backend")
 class TestCallerSideFallback:
     """Integration test for caller-side fallback from pearson to gamma."""
 

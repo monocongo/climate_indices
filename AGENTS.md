@@ -108,7 +108,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 PYO3_PYTHON="$PWD/.venv/bin/python" cargo test --workspace
 uv run maturin develop --release
-CLIMATE_INDICES_REQUIRE_NATIVE=1 uv run pytest tests/test_native_parity.py tests/test_native_backend.py
+CLIMATE_INDICES_REQUIRE_NATIVE=1 uv run pytest tests/test_native_parity.py tests/test_native_parity_distributions.py tests/test_native_backend.py
 ```
 
 If you edit any document listed in `SUMMARY_FILES` or `FULL_FILES` in
