@@ -25,6 +25,14 @@ def gamma_probabilities(
     betas: npt.NDArray[np.float64],
     probabilities_of_zero: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]: ...
+def pnp_normals(
+    calibration: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]: ...
+def pnp_percentages(
+    scale_sums: npt.NDArray[np.float64],
+    normals: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]: ...
+def pci(rainfall: npt.NDArray[np.float64]) -> float: ...
 def pearson_parameters(
     calibration: npt.NDArray[np.float64],
 ) -> tuple[

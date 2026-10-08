@@ -6,7 +6,7 @@
 //! implementation when the extension is not installed. Inputs must already be
 //! float64 arrays: extraction fails with `TypeError` rather than casting.
 
-use numpy::ndarray::{Array, Array1, Array2, Dimension};
+use numpy::ndarray::{Array, Array1, Array2, CowArray, Dimension, ShapeBuilder};
 use numpy::{
     IntoPyArray, PyArray1, PyArray2, PyArrayDyn, PyArrayMethods, PyReadonlyArray, PyReadonlyArray1,
     PyReadonlyArray2, PyReadonlyArrayDyn, PyUntypedArrayMethods,
@@ -48,44 +48,58 @@ fn climate_error(error: climate_core::ClimateError) -> PyErr {
     }
 }
 
-/// Copy one input array, rejecting the layouts rust-numpy cannot view safely.
+/// Copy a boolean or integer input, rejecting the layouts rust-numpy cannot
+/// view safely: an unaligned or empty array reaches `as_array` as a possibly
+/// shifted pointer, the hazard `checked_view` guards against below.
 ///
-/// `element` names the dtype in the error, so a rejected float64 kernel input
-/// keeps the message it has always raised.
-fn copy_input<T: numpy::Element + Copy, D: Dimension>(
+/// `element` names the dtype in the error.
+fn copy_indexed<T: numpy::Element + Copy, D: Dimension>(
     array: &PyReadonlyArray<'_, T, D>,
     element: &str,
 ) -> PyResult<Array<T, D>> {
     if !array.is_aligned() || !array.data().is_aligned() {
         return Err(PyValueError::new_err(format!("unaligned {element} array")));
     }
-    // rust-numpy normalizes negative strides by shifting the data pointer, even
-    // on empty axes. Avoid creating a possibly unaligned/out-of-bounds view.
     if array.is_empty() {
         return Array::from_shape_vec(array.dims(), Vec::new())
             .map_err(|error| PyValueError::new_err(error.to_string()));
     }
-    // Copy before `detach`: another Python thread may mutate caller-owned storage.
     Ok(array.as_array().to_owned())
 }
 
-/// A float64 kernel input: the dtype every `checked_copy` caller used to reach.
+fn checked_view<'a, D: Dimension>(
+    array: &'a PyReadonlyArray<'_, f64, D>,
+) -> PyResult<CowArray<'a, f64, D>> {
+    if !array.is_aligned() || !array.data().is_aligned() {
+        return Err(PyValueError::new_err("unaligned float64 array"));
+    }
+    // rust-numpy normalizes negative strides by shifting the data pointer, even
+    // on empty axes. Avoid creating a possibly unaligned/out-of-bounds view.
+    if array.is_empty() {
+        return Array::from_shape_vec(array.dims(), Vec::new())
+            .map(CowArray::from)
+            .map_err(|error| PyValueError::new_err(error.to_string()));
+    }
+    Ok(array.as_array().into())
+}
+
 fn checked_copy<D: Dimension>(array: &PyReadonlyArray<'_, f64, D>) -> PyResult<Array<f64, D>> {
-    copy_input(array, "float64")
+    // Copy before `detach`: another Python thread may mutate caller-owned storage.
+    Ok(checked_view(array)?.into_owned())
 }
 
 /// A validity mask.
 fn checked_copy_flags<D: Dimension>(
     array: &PyReadonlyArray<'_, bool, D>,
 ) -> PyResult<Array<bool, D>> {
-    copy_input(array, "bool")
+    copy_indexed(array, "bool")
 }
 
 /// A calendar or gap-count array.
 fn checked_copy_counts<D: Dimension>(
     array: &PyReadonlyArray<'_, i64, D>,
 ) -> PyResult<Array<i64, D>> {
-    copy_input(array, "int64")
+    copy_indexed(array, "int64")
 }
 
 /// Gamma shape and scale per column of a (years, columns) calibration block.
@@ -124,6 +138,51 @@ fn gamma_probabilities<'py>(
     })
     .map(|probabilities| probabilities.into_pyarray(py))
     .map_err(|error| PyValueError::new_err(error.to_string()))
+}
+
+/// Calibration normals, one per column of a (years, periods*columns) block.
+#[pyfunction]
+fn pnp_normals<'py>(
+    py: Python<'py>,
+    calibration: PyReadonlyArray2<'py, f64>,
+) -> PyResult<Bound<'py, PyArray1<f64>>> {
+    // np.nansum replaces NaNs in a K-order copy. Preserve its unit-stride year
+    // axis even when ndarray's copy of a noncontiguous input is C-ordered.
+    let strides = calibration.strides();
+    let fortran = strides[0] != 0 && strides[0].unsigned_abs() < strides[1].unsigned_abs();
+    let calibration = checked_copy(&calibration)?;
+    let calibration = if fortran && calibration.strides()[0] != 1 {
+        Array::from_shape_fn(calibration.raw_dim().f(), |index| calibration[index])
+    } else {
+        calibration
+    };
+    Ok(py
+        .detach(|| climate_core::pnp::pnp_normals(calibration.view()))
+        .into_pyarray(py))
+}
+
+/// Percentage of normal, element-wise or per cell of a (time, columns) block.
+#[pyfunction]
+fn pnp_percentages<'py>(
+    py: Python<'py>,
+    scale_sums: PyReadonlyArray2<'py, f64>,
+    normals: PyReadonlyArray2<'py, f64>,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    // A division per element costs about what copying `scale_sums` to release
+    // the GIL would, and the copy would add an input-sized buffer: keep the GIL.
+    let scale_sums = checked_view(&scale_sums)?;
+    let normals = checked_view(&normals)?;
+    climate_core::pnp::pnp_percentages(scale_sums.view(), normals.view())
+        .map(|percentages| percentages.into_pyarray(py))
+        .map_err(|error| PyValueError::new_err(error.to_string()))
+}
+
+/// Precipitation Concentration Index of one year of daily rainfall.
+#[pyfunction]
+fn pci(rainfall: PyReadonlyArray1<'_, f64>) -> PyResult<f64> {
+    let rainfall = checked_copy(&rainfall)?;
+    climate_core::pci::pci(rainfall.view())
+        .ok_or_else(|| PyValueError::new_err("pci requires a 365- or 366-day year"))
 }
 
 /// Pearson Type III probability of zero, loc, scale, and skew per column of a
@@ -614,6 +673,9 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     )?;
     m.add_function(wrap_pyfunction!(gamma_parameters, m)?)?;
     m.add_function(wrap_pyfunction!(gamma_probabilities, m)?)?;
+    m.add_function(wrap_pyfunction!(pnp_normals, m)?)?;
+    m.add_function(wrap_pyfunction!(pnp_percentages, m)?)?;
+    m.add_function(wrap_pyfunction!(pci, m)?)?;
     m.add_function(wrap_pyfunction!(pearson_parameters, m)?)?;
     m.add_function(wrap_pyfunction!(pearson_cdf, m)?)?;
     m.add_function(wrap_pyfunction!(loglogistic_parameters, m)?)?;

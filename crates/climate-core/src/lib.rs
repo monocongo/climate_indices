@@ -16,8 +16,11 @@ pub mod fire;
 pub mod gamma;
 pub mod lmoments;
 pub mod loglogistic;
+pub mod pci;
 pub mod pearson;
+pub mod pnp;
 pub mod recurrence;
+mod reduction;
 pub mod special;
 
 /// Version of this crate, re-exported by the Python extension as `__version__`.
@@ -32,6 +35,8 @@ pub enum ClimateError {
         expected: usize,
         actual: usize,
     },
+    /// A calendar-period parameter with no calendar steps.
+    EmptyPeriod { argument: &'static str },
     /// A recurrence step produced a non-finite value from finite inputs.
     ///
     /// The message is the Python one (`_advance_component`), so a caller can
@@ -56,6 +61,9 @@ impl fmt::Display for ClimateError {
                 expected,
                 actual,
             } => write!(f, "{argument} has length {actual}, expected {expected}"),
+            Self::EmptyPeriod { argument } => {
+                write!(f, "{argument} must contain at least one calendar step")
+            }
             Self::NonFinite { index_type } => {
                 write!(
                     f,
