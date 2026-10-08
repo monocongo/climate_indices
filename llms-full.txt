@@ -1901,9 +1901,10 @@ a broadcast month series or season mask is copied once, by the binding, rather
 than first materialized in Python; that boundary copy is the native path's own
 buffer and is not part of the `array_memory_mb` a recurrence reports, which
 counts the one recorded history the kernel returns. The flood kernels differ in
-one respect: a time-last (transposed) array reshapes to a view, and the one
-layout that cannot merge without a copy, a regional slice of a larger grid, is
-copied once in Python and still runs natively, because the Python path is roughly
+one respect: a time-last (transposed) array reshapes to a view, and a layout
+that cannot merge without a copy, such as a regional slice of a larger grid or a
+Fortran-ordered array, is copied once in Python and still runs natively, because
+the Python path is roughly
 three times slower than the kernel plus that copy (365-day PE over 400 cells).
 The public flood entry points already hand the dispatch a C-contiguous array,
 since their validation copies, so the policy matters to direct callers of
