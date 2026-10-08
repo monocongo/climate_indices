@@ -307,6 +307,26 @@ def test_api_overflow_raises_the_python_error_on_both_paths(monkeypatch) -> None
     assert "antecedent_precipitation_index" in recorder.calls
 
 
+def test_the_api_kernel_returns_its_history_instead_of_filling_the_preallocated_slot() -> None:
+    """The runner replaces its slot with the kernel's history, so no second full history is filled beside it."""
+    rain = _synthetic_rain((40, 3), seed=10)
+    api = np.zeros(3)
+    slot = np.full((30, 3), np.nan)
+    with np.errstate(all="ignore"):
+        recurrence = flood_native.api_recurrence(
+            rain, 0.9, api, np.isfinite(rain), np.ones(3, dtype=np.bool_), np.zeros(3, dtype=np.int64)
+        )
+        assert recurrence is not None
+        result = recurrence(slot, 10, "propagate", 0)
+    assert result is not None
+    history, _ = result
+    assert history is not None
+    assert history.shape == slot.shape
+    assert not np.shares_memory(history, slot)
+    assert np.isnan(slot).all()
+    assert np.isfinite(history).any()
+
+
 # Dispatch policy.
 
 
