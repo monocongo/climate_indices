@@ -16,8 +16,11 @@ pub mod eto;
 pub mod gamma;
 pub mod lmoments;
 pub mod loglogistic;
+pub mod pci;
 pub mod pearson;
 pub mod pm_eto;
+pub mod pnp;
+mod reduction;
 pub mod special;
 
 /// Version of this crate, re-exported by the Python extension as `__version__`.
@@ -32,6 +35,8 @@ pub enum ClimateError {
         expected: usize,
         actual: usize,
     },
+    /// A calendar-period parameter with no calendar steps.
+    EmptyPeriod { argument: &'static str },
 }
 
 impl fmt::Display for ClimateError {
@@ -42,6 +47,9 @@ impl fmt::Display for ClimateError {
                 expected,
                 actual,
             } => write!(f, "{argument} has length {actual}, expected {expected}"),
+            Self::EmptyPeriod { argument } => {
+                write!(f, "{argument} must contain at least one calendar step")
+            }
         }
     }
 }

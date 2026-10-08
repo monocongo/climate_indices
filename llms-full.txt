@@ -1735,11 +1735,12 @@ src/climate_indices/_native.pyi # type stub for the extension
   explicit decision retires them.
 
 **Ported kernels.** The gamma fit and transform behind SPI were the first port,
-followed by EDDI's empirical ranking and inverse normal, and then the
-distribution fits SPEI adds, Pearson Type III (also used by SPI and the
-standardized index) and the log-logistic (generalized logistic, GLO). The gamma
-and distribution-fit kernels replace the numerical blocks inside `compute.py`
-functions, so the
+followed by EDDI's empirical ranking and inverse normal, and then the distribution
+fits SPEI adds, Pearson Type III (also used by SPI and the standardized index) and
+the log-logistic (generalized logistic, GLO), and finally the PNP and PCI numerical
+blocks. The gamma and distribution-fit kernels replace the numerical blocks inside
+`compute.py` functions; the EDDI, PNP, and PCI kernels replace the blocks inside the
+`indices.py` functions that own them, so the
 validation, calibration-period resolution, data-quality and goodness-of-fit
 warnings, the Pearson-to-gamma fallback, logging, zero placement, support-limit
 masks, and output scaling around them still run in Python, and every caller of
@@ -1761,6 +1762,8 @@ xarray adapter) uses them:
 | GLO probability step of `compute._loglogistic_fit` | `loglogistic::loglogistic_cdf_block` |
 | rank count and Tukey plotting position in the per-period loop of `indices.eddi` | `eddi::tukey_probabilities` |
 | `indices._hastings_inverse_normal` | `eddi::hastings_inverse_normal` |
+| calibration normals and ratios in `indices.percentage_of_normal` | `pnp::pnp_normals`, `pnp::pnp_percentages` |
+| monthly reduction and ratio in `indices.pci` | `pci::pci` |
 
 The PET entry points follow the same dispatch rule as the gamma kernels. The
 public FAO-56 helper functions stay Python callables; `pm_eto.penman_monteith_eto`
@@ -1807,6 +1810,9 @@ Dispatch takes the Rust path only for a
 plain, aligned float64 `ndarray` whose fit parameters are aligned and one per
 calendar step (and cell). Unaligned arrays, masked arrays, other dtypes, and
 caller-supplied parameters that vary by year run the Python implementation.
+PNP preparation fills partial masks with NaN before dispatch, so those prepared
+arrays can use Rust. PCI dispatch checks the original input and requires a plain 1-D
+array; masked inputs and other shapes or dtypes keep its Python implementation.
 Native dispatch also requires NumPy floating-point errors to be ignored
 (`np.errstate(all="ignore")`); warnings, exceptions, callbacks, logging, or
 printing keep the Python path. Python 3.14 context-aware warnings conservatively
