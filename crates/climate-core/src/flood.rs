@@ -157,22 +157,27 @@ fn climatology(sample: ArrayView2<'_, f64>) -> Climatology {
 /// A column whose variance does not exceed the squared rounding guard
 /// `8 * eps * |mean|` (including a NaN mean or variance) is NaN throughout.
 fn standardize(values: ArrayView2<'_, f64>, climatology: &Climatology) -> Array2<f64> {
+    // a rejected column divides by NaN, which keeps it NaN without a branch
+    let deviation = Array1::from_iter(climatology.mean.iter().zip(&climatology.variance).map(
+        |(&mean, &variance)| {
+            let rounding = 8.0 * f64::EPSILON * mean.abs();
+            if variance > rounding * rounding {
+                variance.sqrt()
+            } else {
+                f64::NAN
+            }
+        },
+    ));
     let mut result = Array2::from_elem(values.raw_dim(), f64::NAN);
-    for (column, (mut output, input)) in result
-        .columns_mut()
-        .into_iter()
-        .zip(values.columns())
-        .enumerate()
-    {
-        let mean = climatology.mean[column];
-        let variance = climatology.variance[column];
-        let rounding = 8.0 * f64::EPSILON * mean.abs();
-        if variance > rounding * rounding {
-            let deviation = variance.sqrt();
-            output.zip_mut_with(&input, |standardized, &value| {
+    // walk the time-first block a row at a time, in memory order
+    for (mut output, input) in result.rows_mut().into_iter().zip(values.rows()) {
+        ndarray::Zip::from(&mut output)
+            .and(&input)
+            .and(&climatology.mean)
+            .and(&deviation)
+            .for_each(|standardized, &value, &mean, &deviation| {
                 *standardized = (value - mean) / deviation;
             });
-        }
     }
     result
 }

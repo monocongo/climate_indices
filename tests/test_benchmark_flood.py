@@ -195,24 +195,10 @@ def _within_budget(rust_seconds: float, python_seconds: float, budget: float = _
     return rust_seconds <= python_seconds * budget
 
 
-# The Flood Index kernel is currently slower than the NumPy path it replaces: measured
-# Rust/Python ratios on the development machine were 2.7 at a 16x16 grid and 3.8 at
-# 64x64 over five years. The strict xfail records that known gap and turns into a
-# failure, prompting removal of the marker, once the kernel is faster.
-_KERNEL_SLOWER_THAN_PYTHON = pytest.mark.xfail(
-    strict=True, reason="the Flood Index kernel measures 2.7-3.8x slower than the Python path"
-)
-
-
 @pytest.mark.benchmark
 @pytest.mark.parametrize(
     "make_run",
-    [
-        _pe_run,
-        _edi_run,
-        pytest.param(_flood_index_run, marks=_KERNEL_SLOWER_THAN_PYTHON),
-        _api_run,
-    ],
+    [_pe_run, _edi_run, _flood_index_run, _api_run],
     ids=["effective_precipitation", "edi", "flood_index", "antecedent_precipitation_index"],
 )
 def test_rust_path_is_not_slower_than_python(monkeypatch, native, make_run) -> None:
