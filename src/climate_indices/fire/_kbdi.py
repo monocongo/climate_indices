@@ -27,6 +27,7 @@ from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.exceptions import (
     InvalidArgumentError,
 )
+from climate_indices.fire._native import kbdi_recurrence
 from climate_indices.validation import (
     InputType,
     detect_input_type,
@@ -476,6 +477,16 @@ def kbdi(
         weather_valid,
         static_valid,
         trailing_gap_days,
+        native=kbdi_recurrence(
+            precipitation_array,
+            temperature_array,
+            mean_annual,
+            weather_valid,
+            static_valid,
+            kbdi_value,
+            wet_spell,
+            trailing_gap_days,
+        ),
     )
 
     def finalize(
