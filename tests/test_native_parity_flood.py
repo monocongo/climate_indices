@@ -20,6 +20,7 @@ the real-record cases run the Fresno GHCN daily rainfall the KBDI reference uses
 from __future__ import annotations
 
 import csv
+import traceback
 import types
 from collections.abc import Callable
 from functools import partial
@@ -571,6 +572,20 @@ def test_the_api_kernel_takes_every_layout_inside_the_runner(layout: str) -> Non
     assert (gaps is None) == (expected_gaps is None)
     if gaps is not None:
         np.testing.assert_array_equal(gaps, expected_gaps)
+
+
+def test_the_api_arrays_are_converted_inside_the_runners_guarded_region(monkeypatch) -> None:
+    """A failed conversion (an allocation a layout needs) surfaces through the runner, which reports it."""
+
+    def failing_block(*_: Any) -> np.ndarray:
+        raise MemoryError("no room for the kernel's block")
+
+    monkeypatch.setattr(flood_native, "_native", native)
+    monkeypatch.setattr(flood_native, "_block", failing_block)
+    with np.errstate(all="ignore"), pytest.raises(MemoryError) as exc_info:
+        flood.antecedent_precipitation_index(_synthetic_rain((40, 3), seed=16), 0.9)
+    frames = {frame.name for frame in traceback.extract_tb(exc_info.value.__traceback__)}
+    assert "run_daily_recurrences" in frames
 
 
 def test_a_decay_constant_wider_than_float64_stays_in_python(monkeypatch) -> None:
