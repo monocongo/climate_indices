@@ -443,6 +443,32 @@ def test_the_api_kernel_returns_the_history_it_builds_in_the_requested_shape(mon
     _assert_parity(history, python.reshape(30, 3))
 
 
+@pytest.mark.parametrize("started", [True, False])
+def test_the_api_kernel_returns_independent_gap_counts_without_history(started: bool) -> None:
+    rain = np.ones((4, 2, 3))
+    weather_valid = np.full(rain.shape, started, dtype=np.bool_)
+    weather_valid[-1] = False
+    gaps = np.full((2, 3), -1, dtype=np.int64)
+    with np.errstate(all="ignore"):
+        recurrence = flood_native.api_recurrence(
+            rain, 0.9, np.zeros((2, 3)), weather_valid, np.ones((2, 3), dtype=np.bool_), gaps
+        )
+        assert recurrence is not None
+        result = recurrence(None, 0, "bridge", 2)
+    assert result is not None
+    history, final_gaps = result
+    assert history is None
+    if started:
+        assert final_gaps is not None
+        assert final_gaps.shape == (2, 3)
+        np.testing.assert_array_equal(final_gaps, np.ones((2, 3), dtype=np.int64))
+        np.testing.assert_array_equal(gaps, final_gaps)
+        assert not np.shares_memory(final_gaps, gaps)
+    else:
+        assert final_gaps is None
+        np.testing.assert_array_equal(gaps, np.full((2, 3), -1, dtype=np.int64))
+
+
 def test_the_runner_leaves_a_native_api_history_to_the_kernel(monkeypatch) -> None:
     """Through the shared runner, a native component allocates no Python history slot."""
     rain = _synthetic_rain((40, 3), seed=10)

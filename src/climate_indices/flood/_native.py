@@ -174,12 +174,13 @@ def api_recurrence(
         # the kernel returns whole arrays; the driver and the returned APIState
         # read the component's own state and gap arrays, so write them back there
         api[...] = final_api.reshape(api.shape)
-        gap_shape = trailing_gap_days.shape
         if final_gaps is not None:
-            trailing_gap_days[...] = final_gaps.reshape(gap_shape)
+            final_gaps = final_gaps.reshape(trailing_gap_days.shape)
+            trailing_gap_days[...] = final_gaps
+            final_gaps = final_gaps.copy()
         # the kernel built the one history; return it in the public shape instead
         # of copying it into a second full-size array
         recorded = None if history is None or shape is None else history.reshape(shape)
-        return recorded, None if final_gaps is None else final_gaps.reshape(gap_shape).copy()
+        return recorded, final_gaps
 
     return native_run
