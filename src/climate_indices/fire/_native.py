@@ -26,6 +26,17 @@ import numpy as np
 import numpy.typing as npt
 
 from climate_indices import compute
+from climate_indices._native_arrays import (
+    _block,
+    _cells,
+    _Counts,
+    _counts_flat,
+    _flags_flat,
+    _flat,
+    _mask,
+    _merges_cells,
+    _with_kernels,
+)
 from climate_indices._recurrence import _MAX_NATIVE_OPTION, NativeRecurrence, _raise_non_finite
 
 if TYPE_CHECKING:
@@ -37,10 +48,6 @@ try:
     from climate_indices import _native
 except ImportError:
     _native = None  # type: ignore[assignment]
-
-# The calendar and gap-count arrays a kernel takes: Python's ``intp`` (the day
-# length band) and the ``int64`` months and gap counts.
-_Counts = npt.NDArray[np.int64] | npt.NDArray[np.intp]
 
 
 def _native_module() -> ModuleType | None:
@@ -62,41 +69,7 @@ def _kernel_module(*names: str) -> ModuleType | None:
     a missing kernel or the shared ``NonFiniteResultError`` declines the whole
     call.
     """
-    native = _native_module()
-    if native is None or not all(hasattr(native, name) for name in (*names, "NonFiniteResultError")):
-        return None
-    return native
-
-
-def _cells(shape: tuple[int, ...]) -> int:
-    """The number of cells in a time-first array's trailing spatial shape."""
-    return int(np.prod(shape, dtype=np.intp))
-
-
-def _merges_cells(array: npt.NDArray[Any]) -> bool:
-    """Whether a time-first array's spatial axes reshape to one cell axis without a copy.
-
-    A broadcast or transposed view merges; a sliced or otherwise strided one
-    does not, and reshaping it would add a full-size copy the recurrence's
-    memory metrics never see, so such a layout stays on the Python path.
-    """
-    axes = [(length, stride) for length, stride in zip(array.shape[1:], array.strides[1:], strict=True) if length != 1]
-    return all(outer == length * inner for (_, outer), (length, inner) in zip(axes, axes[1:], strict=False))
-
-
-def _block(array: npt.NDArray[np.float64], days: int, cells: int) -> npt.NDArray[np.float64]:
-    """One time-first float64 input as the ``(days, cells)`` view a kernel takes."""
-    return np.asarray(array, dtype=np.float64).reshape(days, cells)
-
-
-def _flat(array: npt.NDArray[np.float64], cells: int) -> npt.NDArray[np.float64]:
-    """One per-cell float64 array as the ``(cells,)`` vector a kernel takes."""
-    return np.asarray(array, dtype=np.float64).reshape(cells)
-
-
-def _mask(array: npt.NDArray[np.bool_], days: int, cells: int) -> npt.NDArray[np.bool_]:
-    """One time-first validity mask as the ``(days, cells)`` view a kernel takes."""
-    return np.asarray(array, dtype=np.bool_).reshape(days, cells)
+    return _with_kernels(_native_module(), *names, "NonFiniteResultError")
 
 
 def _optional_mask(array: npt.NDArray[np.bool_] | None, days: int, cells: int) -> npt.NDArray[np.bool_] | None:
@@ -107,16 +80,6 @@ def _optional_mask(array: npt.NDArray[np.bool_] | None, days: int, cells: int) -
 def _counts(array: _Counts, days: int, cells: int) -> npt.NDArray[np.int64]:
     """One time-first calendar array as the ``(days, cells)`` view a kernel takes."""
     return np.asarray(array, dtype=np.int64).reshape(days, cells)
-
-
-def _counts_flat(array: _Counts, cells: int) -> npt.NDArray[np.int64]:
-    """One per-cell calendar or gap-count array as the ``(cells,)`` vector a kernel takes."""
-    return np.asarray(array, dtype=np.int64).reshape(cells)
-
-
-def _flags_flat(array: npt.NDArray[np.bool_], cells: int) -> npt.NDArray[np.bool_]:
-    """One per-cell boolean array as the ``(cells,)`` vector a kernel takes."""
-    return np.asarray(array, dtype=np.bool_).reshape(cells)
 
 
 def _recorded_history(
