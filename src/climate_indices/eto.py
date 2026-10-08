@@ -353,7 +353,7 @@ def _native_hargreaves(
     daily_tmax_celsius: np.ndarray,
     daily_tmean_celsius: np.ndarray,
     latitude_radians: float | np.ndarray,
-) -> np.ndarray | None:
+) -> tuple[np.ndarray, int] | None:
     """Compute the daily Hargreaves PET with the Rust kernel, or None to stay in Python.
 
     The kernel takes the three daily blocks as (time, cells) in year-major
@@ -367,8 +367,8 @@ def _native_hargreaves(
     :param daily_tmean_celsius: (time, *cells) daily mean temperatures
     :param latitude_radians: latitude in radians, as a scalar or an array of
         per-cell latitudes
-    :return: the PET block in the shape of the inputs, or None when the kernel
-        cannot take these inputs
+    :return: the PET block in the shape of the inputs and the bytes the route holds
+        besides the caller's arrays, or None when the kernel cannot take these inputs
     """
     native = _native_module()
     if native is None:
@@ -384,6 +384,7 @@ def _native_hargreaves(
 
     time = daily_tmean_celsius.shape[0]
     cell_shape = daily_tmean_celsius.shape[1:]
+    cells = int(np.prod(cell_shape, dtype=np.intp))
     if isinstance(latitude_radians, np.ndarray):
         if not compute._native_float64(latitude_radians):
             return None
@@ -395,26 +396,40 @@ def _native_hargreaves(
         # raises the very same error before the broadcast copy is made
         _validate_latitude_radians(latitude_radians)
         latitude_cells = np.broadcast_to(latitude_radians, cell_shape)
+        latitude_kernel = np.ascontiguousarray(latitude_cells, dtype=np.float64).reshape(cells)
     else:
         # a scalar latitude converts as the Python path converts it, so a
         # non-numeric latitude keeps raising the TypeError it always raises
         latitude_scalar = float(latitude_radians)
         _validate_latitude_radians(latitude_scalar)
-        latitude_cells = np.full(cell_shape, latitude_scalar)
+        latitude_value = np.asarray(latitude_scalar, dtype=np.float64)
+        latitude_cells = np.broadcast_to(latitude_value, cell_shape)
+        # the kernel reads one latitude per cell and the binding copies what it reads,
+        # so a single value stays a zero-stride view of itself: a block per cell here
+        # would allocate in proportion to the request rather than to the scalar
+        latitude_kernel = np.broadcast_to(latitude_value.reshape(1), (cells,))
     _validate_latitude_radians(latitude_cells)
 
     # an extension built before the PET kernels keeps the Python path
     if not hasattr(native, "hargreaves"):
         return None
 
-    cells = int(np.prod(cell_shape, dtype=np.intp))
+    # the kernel copies each operand before it releases the GIL, and a block that does
+    # not lie contiguously is copied here to flatten it, so the route holds these bytes
+    # besides the caller's arrays and the result it returns: a bounded multiple of the
+    # request, and what the caller reports alongside the arrays it can see
+    copies_bytes = (3 * time * cells + cells) * daily_tmean_celsius.itemsize + sum(
+        block.nbytes
+        for block in (daily_tmin_celsius, daily_tmax_celsius, daily_tmean_celsius)
+        if not block.flags.c_contiguous
+    )
     pet = native.hargreaves(
         np.ascontiguousarray(daily_tmin_celsius).reshape(time, cells),
         np.ascontiguousarray(daily_tmax_celsius).reshape(time, cells),
         np.ascontiguousarray(daily_tmean_celsius).reshape(time, cells),
-        np.ascontiguousarray(latitude_cells, dtype=np.float64).reshape(cells),
+        latitude_kernel,
     )
-    return np.asarray(pet).reshape(time, *cell_shape)
+    return np.asarray(pet).reshape(time, *cell_shape), copies_bytes
 
 
 def eto_thornthwaite(
@@ -653,18 +668,26 @@ def eto_hargreaves(
             # float() keeps a non-numeric latitude raising the TypeError it always has
             latitude = math.radians(float(latitude_degrees))
 
-        # allocate the PET array we'll fill, and account for it alongside the input
-        # arrays: nothing above is padded, so these four arrays are the peak footprint
-        pet = np.full(daily_tmean_celsius.shape, np.nan)
-        memory_metrics = check_large_array_memory(daily_tmin_celsius, daily_tmax_celsius, daily_tmean_celsius, pet)
-
         # the Rust kernel runs the whole day loop when the three daily blocks and the
         # latitude are plain float64; the loop below stays the reference and the
-        # fallback, and the memory accounting above covers either path
+        # fallback. The route is resolved before the result is allocated, so a native
+        # call holds the kernel's result rather than an array it allocates and drops
         native_pet = _native_hargreaves(daily_tmin_celsius, daily_tmax_celsius, daily_tmean_celsius, latitude)
-        if native_pet is not None:
-            pet = native_pet
-        else:
+        pet, native_bytes = (np.full(daily_tmean_celsius.shape, np.nan), 0) if native_pet is None else native_pet
+
+        # account for the arrays this path holds, which are the three inputs and the
+        # result; a native call also copies each operand it reads and flattens a block
+        # that does not lie contiguously, and those bytes are reported with them rather
+        # than left out of the model the log records
+        memory_metrics = check_large_array_memory(
+            daily_tmin_celsius,
+            daily_tmax_celsius,
+            daily_tmean_celsius,
+            pet,
+            extra_bytes=native_bytes,
+        )
+
+        if native_pet is None:
             for day_of_year in range(1, 367):
                 # calculate the angle of solar declination and sunset hour angle
                 solar_declination = _solar_declination(day_of_year)

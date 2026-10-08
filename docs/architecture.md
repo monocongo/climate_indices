@@ -291,7 +291,13 @@ resolves the humidity and radiation pathways, and checks the wind measurement
 height and the `rh_min`-without-`rh_max` case, before the kernel is reached, so
 the Python and Rust paths raise the same error in the same order. `eto` also
 keeps a Thornthwaite block with an all-NaN month column in Python, since only the
-Python path reports `np.nanmean`'s empty-slice warning. Their measured effect on
+Python path reports `np.nanmean`'s empty-slice warning. Each kernel copies every
+operand it reads before it releases the GIL, so the native route holds the caller's
+arrays, one flattened input per operand, those copies and the kernel's fixed
+intermediates: a bounded multiple of the request. A constant operand reaches the
+kernel as a zero-stride view rather than as a materialized block, and the Hargreaves
+route reports the bytes it copies beside the arrays it is handed, so the logged
+memory model covers the route the dispatch selected. Their measured effect on
 three representative inputs is in `benchmarks/README.md`; RUST-011 owns whether
 each kernel is worth its conversion overhead.
 

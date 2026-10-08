@@ -452,6 +452,14 @@ def _native_arrays(*values: Any) -> tuple[tuple[int, ...], tuple[np.ndarray, ...
     non-default error or warning policies stay on the Python path. An all-scalar
     call stays there too, since its result is a NumPy scalar rather than an array.
 
+    The kernel reads one element per broadcast position and copies each operand before
+    it releases the GIL, so the route's peak is the caller's arrays, one flattened
+    input per operand, a copy of each operand inside the call, and the kernel's fixed
+    intermediates: a bounded multiple of the request. An operand that reaches every
+    position as a single value is passed as a zero-stride view of it, which is the one
+    expansion that would otherwise allocate in proportion to the request rather than
+    to the operand.
+
     :param values: the operands of the operation, in kernel argument order
     :return: the broadcast shape and one contiguous 1-D array per operand, or
         None when the kernels cannot take these operands
@@ -470,7 +478,18 @@ def _native_arrays(*values: Any) -> tuple[tuple[int, ...], tuple[np.ndarray, ...
     except ValueError:
         # let the Python expression raise the broadcasting error it always has
         return None
-    return broadcast[0].shape, tuple(np.ascontiguousarray(array).reshape(-1) for array in broadcast)
+    elements = broadcast[0].size
+    return (
+        broadcast[0].shape,
+        tuple(
+            # a single value reaches every position: hand the kernel a view of it rather
+            # than a full-size array, which it would copy element by element anyway
+            np.broadcast_to(operand.reshape(1), (elements,))
+            if operand.size == 1 and elements > 1
+            else np.ascontiguousarray(expanded).reshape(-1)
+            for operand, expanded in zip(arrays, broadcast, strict=True)
+        ),
+    )
 
 
 def pm_eto(

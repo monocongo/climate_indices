@@ -14,6 +14,7 @@ missing extension is a collection error.
 
 import warnings
 from collections.abc import Callable
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -381,6 +382,77 @@ def test_masked_input_with_a_padded_length_reaches_the_kernel(monkeypatch):
     np.testing.assert_array_equal(python, eto.eto_hargreaves(np.asarray(masked), tmax, tmean, 35.0))
 
 
+def test_hargreaves_passes_a_scalar_latitude_as_a_view(monkeypatch):
+    """One latitude per cell, read from a view of the scalar rather than a block of it.
+
+    The kernel copies what it reads, so materializing the scalar into a per-cell block
+    here would allocate in proportion to the request rather than to the scalar.
+    """
+    rng = np.random.default_rng(43)
+    tmin = rng.normal(8.0, 5.0, size=(732, 2, 2))
+    tmax = tmin + 9.0
+    tmean = (tmin + tmax) / 2.0
+    seen: list[tuple[np.ndarray, ...]] = []
+
+    def capture(*arrays: np.ndarray) -> np.ndarray:
+        seen.append(arrays)
+        return native.hargreaves(*arrays)
+
+    with np.errstate(all="ignore"):
+        monkeypatch.setattr(eto, "_native", SimpleNamespace(hargreaves=capture))
+        result = eto.eto_hargreaves(tmin, tmax, tmean, 35.0, spatial_time_major=True)
+        monkeypatch.setattr(eto, "_native", None)
+        reference = eto.eto_hargreaves(tmin, tmax, tmean, 35.0, spatial_time_major=True)
+
+    assert len(seen) == 1
+    latitude = seen[0][3]
+    assert latitude.strides == (0,), "a scalar latitude was materialized into a per-cell block"
+    assert latitude.base is not None and latitude.base.size == 1
+    _assert_parity(result, reference)
+
+
+@pytest.mark.parametrize("strided", [False, True], ids=["contiguous", "strided_blocks"])
+def test_hargreaves_reports_the_bytes_the_native_route_holds(monkeypatch, strided):
+    """The recorded footprint covers the copies the kernel route makes.
+
+    The kernel copies each block and the latitude it reads before it releases the GIL,
+    and a block that does not lie contiguously is flattened here as well, so the route's
+    own bytes are reported beside the arrays the caller holds rather than left out.
+    """
+    days = 3
+    rng = np.random.default_rng(47)
+    # (days, cells, 3) so every block is a strided view of the array that holds them
+    values = rng.normal(8.0, 5.0, size=(days, 2, 3, 3))
+    values[..., 1] = values[..., 0] + 9.0
+    values[..., 2] = (values[..., 0] + values[..., 1]) / 2.0
+    if strided:
+        tmin, tmax, tmean = (values[..., index] for index in range(3))
+    else:
+        tmin, tmax, tmean = (values[..., index].copy() for index in range(3))
+
+    block_bytes = days * 2 * 3 * np.dtype(np.float64).itemsize
+    copies = 3 * block_bytes + 2 * 3 * np.dtype(np.float64).itemsize
+    expected = copies + (3 * block_bytes if strided else 0)
+    recorded: list[int] = []
+
+    def capture(*arrays: np.ndarray, extra_bytes: int = 0) -> None:
+        recorded.append(extra_bytes)
+        return None
+
+    monkeypatch.setattr(eto, "check_large_array_memory", capture)
+    with np.errstate(all="ignore"):
+        result = eto.eto_hargreaves(tmin, tmax, tmean, 35.0, spatial_time_major=True)
+    assert recorded == [expected]
+    assert result.shape == (days, 2, 3)
+
+    # the Python path holds no native copies to report
+    monkeypatch.setattr(eto, "_native", None)
+    with np.errstate(all="ignore"):
+        fallback = eto.eto_hargreaves(tmin, tmax, tmean, 35.0, spatial_time_major=True)
+    assert recorded == [expected, 0]
+    _assert_parity(result, fallback)
+
+
 def test_hargreaves_invalid_latitude_raises_on_both_paths(monkeypatch):
     tmin = np.full(366, 10.0)
     tmax = np.full(366, 25.0)
@@ -435,6 +507,34 @@ def test_pm_eto_float32_inputs_stay_on_python(monkeypatch):
         result = pm_eto.pm_eto(*arguments)
     assert recorder.calls == set()
     np.testing.assert_allclose(result, reference, rtol=1e-6, atol=1e-6)
+
+
+def test_pm_eto_passes_a_scalar_operand_as_a_view(monkeypatch):
+    """A scalar operand reaches the kernel as a zero-stride view, not a full array.
+
+    The kernel reads one element per broadcast position and the binding copies what it
+    reads, so materializing the scalar here would allocate a full-size array, and copy
+    it, for a value that occupies one element.
+    """
+    net_radiation = np.array([13.28, 12.5, 14.0])
+    scalars = (0.14, 16.9, 2.078, 1.997, 1.409, 0.122, 0.0666)
+    seen: list[tuple[np.ndarray, ...]] = []
+
+    def capture(*arrays: np.ndarray) -> np.ndarray:
+        seen.append(arrays)
+        return native.pm_eto(*arrays)
+
+    with np.errstate(all="ignore"):
+        monkeypatch.setattr(pm_eto, "_native", SimpleNamespace(pm_eto=capture))
+        result = pm_eto.pm_eto(net_radiation, *scalars)
+        monkeypatch.setattr(pm_eto, "_native", None)
+        reference = pm_eto.pm_eto(net_radiation, *scalars)
+
+    assert len(seen) == 1
+    for operand in seen[0][1:]:
+        assert operand.strides == (0,), "a scalar operand was materialized into a full-size array"
+        assert operand.base is not None and operand.base.size == 1
+    _assert_parity(result, reference)
 
 
 def test_penman_monteith_eto_matches_fao56_example_18(monkeypatch):

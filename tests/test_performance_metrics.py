@@ -124,6 +124,17 @@ class TestCheckLargeArrayMemory:
         # should be over 1GB
         assert result["array_memory_mb"] > 1024.0
 
+    def test_extra_bytes_count_toward_the_threshold(self):
+        """A route's own buffers, such as a native kernel's operand copies, are counted."""
+        # exactly at the threshold on its own, so only the extra bytes push it over
+        array = np.zeros(LARGE_ARRAY_THRESHOLD_BYTES // 8, dtype=np.float64)
+
+        assert check_large_array_memory(array) is None
+        result = check_large_array_memory(array, extra_bytes=array.nbytes)
+
+        assert result is not None
+        assert result["array_memory_mb"] > 1500.0
+
     def test_boundary_exactly_threshold_returns_none(self):
         """check_large_array_memory returns None when exactly at threshold."""
         # create array exactly at 1GB (boundary condition)
