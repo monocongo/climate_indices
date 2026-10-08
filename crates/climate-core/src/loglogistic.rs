@@ -7,7 +7,7 @@
 //!
 //! The Python implementations in `climate_indices.compute` and
 //! `climate_indices.lmoments` stay the reference oracle;
-//! `tests/test_native_parity.py` checks these kernels against them at
+//! `tests/test_native_parity_distributions.py` checks these kernels against them at
 //! `rtol = atol = 1e-10`. Calibration-period selection, validity masking of the
 //! fitted parameters, output scales, warnings, and logging stay in Python.
 
@@ -114,6 +114,11 @@ pub fn loglogistic_cdf(x: f64, loc: f64, scale: f64, shape: f64) -> f64 {
 ///   with one value per column.
 /// - Outputs: probabilities shaped like `values`, before Python masks the
 ///   positions whose parameters are invalid and maps to the output scale.
+/// - Zero semantics: a zero is an ordinary value; the GLO has no zero mass.
+/// - NaN semantics: a NaN value or parameter gives NaN. A finite value beyond
+///   the fitted support gives exactly 0 or 1.
+/// - Invalid input: parameters are not validated here (a non-positive scale or
+///   `|shape| >= 1` still evaluates the formula); Python masks those positions.
 ///
 /// Returns [`ClimateError::ShapeMismatch`] when a parameter's length is not the
 /// number of columns.

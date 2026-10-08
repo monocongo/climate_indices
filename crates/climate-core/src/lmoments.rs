@@ -6,7 +6,7 @@
 //! Report RC20525 (1996), cut down to the first three L-moments.
 //!
 //! The Python implementation in `climate_indices.lmoments` stays the reference
-//! oracle; `tests/test_native_parity.py` checks these kernels against it at
+//! oracle; `tests/test_native_parity_distributions.py` checks these kernels against it at
 //! `rtol = atol = 1e-10`.
 
 /// Fewest non-missing values a sample needs for L-moments, `MIN_VALUES_FOR_LMOMENTS`.
@@ -19,9 +19,12 @@ pub(crate) const MIN_VALUES: usize = 4;
 ///   `_estimate_lmoments`.
 /// - Inputs: one calibration column, zeros and negatives included.
 /// - Outputs: `[lambda_1, lambda_2, tau_3]`, with `tau_3 = lambda_3 / lambda_2`.
-/// - NaN semantics: NaN is missing and excluded. Fewer than [`MIN_VALUES`]
-///   non-missing values, or a zero second sum, gives `None`; Python marks those
-///   cells invalid and zeroes their L-moments.
+/// - Zero semantics: zeros are ordinary sample values; the Pearson Type III
+///   fit's separate zero mass and minimum non-zero count are applied by the caller.
+/// - NaN semantics: NaN is missing and excluded.
+/// - Short series / invalid input: fewer than [`MIN_VALUES`] non-missing
+///   values, or a zero second sum (for example a constant sample), gives `None`;
+///   Python marks those cells invalid and zeroes their L-moments.
 /// - Numerics: the values are sorted ascending and the weighted sums
 ///   accumulate in rank order, as NumPy does, with the same operation order.
 ///   An infinite value makes the L-moments NaN, which no validity test accepts;

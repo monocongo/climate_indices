@@ -6,7 +6,7 @@
 //!
 //! The Python implementations in `climate_indices.compute` and
 //! `climate_indices.lmoments` stay the reference oracle;
-//! `tests/test_native_parity.py` checks these kernels against them at
+//! `tests/test_native_parity_distributions.py` checks these kernels against them at
 //! `rtol = atol = 1e-10`. Calibration-period selection, the fallback to gamma,
 //! goodness-of-fit checks, support-limit masks, zero placement, output scales,
 //! warnings, and logging all stay in Python.
@@ -178,6 +178,11 @@ pub fn pearson_cdf(x: f64, skew: f64, loc: f64, scale: f64) -> f64 {
 ///   with one value per column.
 /// - Outputs: the CDF shaped like `values`, before Python applies the zero,
 ///   trace, and support-limit masks and the probability of zero.
+/// - Zero semantics: a zero is an ordinary value here; its zero mass is applied
+///   by Python afterwards.
+/// - NaN semantics: a NaN value, and every value under a parameter set whose
+///   skew is not finite or whose scale is not positive (or NaN), is NaN.
+/// - Invalid input: that is the only handling; nothing is rejected, as in SciPy.
 ///
 /// Returns [`ClimateError::ShapeMismatch`] when a parameter's length is not the
 /// number of columns.

@@ -283,10 +283,16 @@ would not hold the parity contract in the transformed tails. The L-moment fits
 route to Rust only for a block whose values are all NaN or at most `1e100` in
 magnitude: an infinity (or an overflowing weighted sum) makes the L-moments NaN,
 which the single-series Python fit returns as NaN parameters but the cell-axis
-fit marks invalid, so those blocks keep the Python fit. The per-step `ERROR` log
-that the single-series `lmoments.fit` writes for an invalid fit is not written by
-the Rust fit, as it is not by the cell-axis fit; the failed-fit count and the
-high-failure-rate warning are unchanged. Dispatch takes the Rust path only for a
+fit marks invalid, so those blocks keep the Python fit. The `climate_indices.lmoments`
+log records that the single-series fits write per failed step (an `ERROR` for
+invalid L-moments, and a `WARNING` for a step with fewer than four non-NaN
+values) are not written by the Rust fit, as they are not by the cell-axis fit;
+the failed-fit count and the high-failure-rate warning are unchanged. SciPy's
+last-bit results depend on whether its build fuses multiply-adds (aarch64 builds
+do, x86-64 wheels do not), and the Pearson fit's `exp(gammaln(a) - gammaln(a + 0.5))`
+amplifies one ulp by up to `1e11` for a near-symmetric sample, so the ported
+`lgam` and polynomial helpers fuse on aarch64 and only there (`special::mul_add`).
+Dispatch takes the Rust path only for a
 plain, aligned float64 `ndarray` whose fit parameters are aligned and one per
 calendar step (and cell). Unaligned arrays, masked arrays, other dtypes, and
 caller-supplied parameters that vary by year run the Python implementation.
