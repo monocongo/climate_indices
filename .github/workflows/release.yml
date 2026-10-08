@@ -425,20 +425,6 @@ jobs:
         fi
         uv pip install --python .venv/bin/python --no-deps "${WHEEL}"
 
-    - name: Assert the installed package is the pure-Python implementation
-      run: |
-        uv run --no-sync --no-build python - <<'PY'
-        import importlib.util
-        import os
-        from pathlib import Path
-
-        import climate_indices
-
-        workspace = Path(os.environ["GITHUB_WORKSPACE"]).resolve()
-        assert not Path(climate_indices.__file__).resolve().is_relative_to(workspace), climate_indices.__file__
-        assert importlib.util.find_spec("climate_indices._native") is None, "the pure wheel must not carry the extension"
-        PY
-
     - name: Build the sdist into the pure-Python wheel
       run: |
         set -euo pipefail
@@ -454,8 +440,35 @@ jobs:
         assert len(wheels) == 1, wheels
         wheel = wheels[0]
         assert wheel.name.endswith("-py3-none-any.whl"), wheel.name
-        compiled = [name for name in zipfile.ZipFile(wheel).namelist() if name.endswith((".so", ".pyd", ".dylib"))]
-        assert not compiled, compiled
+        # The shipped pure wheel and the wheel rebuilt from the sdist must both be
+        # free of compiled extensions; the installed-environment check below then
+        # proves the rebuilt wheel is the one the suite exercises.
+        shipped = list(Path("dist").glob("*py3-none-any.whl"))
+        assert len(shipped) == 1, shipped
+        for candidate in (wheel, shipped[0]):
+            compiled = [name for name in zipfile.ZipFile(candidate).namelist() if name.endswith((".so", ".pyd", ".dylib"))]
+            assert not compiled, candidate.name
+        PY
+
+    # The suite below must exercise the wheel the sdist builds, not the shipped
+    # wheel installed above, so reinstall the rebuilt wheel over it.
+    - name: Install the wheel rebuilt from the sdist
+      run: uv pip install --python .venv/bin/python --no-deps --force-reinstall "${RUNNER_TEMP}/from-sdist/"*.whl
+
+    - name: Assert the installed package is the pure-Python implementation
+      run: |
+        uv run --no-sync --no-build python - <<'PY'
+        import importlib.util
+        import sys
+        from pathlib import Path
+
+        import climate_indices
+
+        # The virtualenv sits inside GITHUB_WORKSPACE, so the import must come from
+        # the environment (sys.prefix), not merely from outside the workspace.
+        prefix = Path(sys.prefix).resolve()
+        assert Path(climate_indices.__file__).resolve().is_relative_to(prefix), climate_indices.__file__
+        assert importlib.util.find_spec("climate_indices._native") is None, "the pure wheel must not carry the extension"
         PY
 
     - name: Run core tests against the installed package

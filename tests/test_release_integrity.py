@@ -754,12 +754,18 @@ def test_release_workflow_tests_the_no_rust_install_path() -> None:
     assert 'importlib.util.find_spec("climate_indices._native") is None' in no_rust
     assert 'wheel.name.endswith("-py3-none-any.whl")' in no_rust
     assert 'name.endswith((".so", ".pyd", ".dylib"))' in no_rust
+    assert "uv pip install --python .venv/bin/python --no-deps --force-reinstall" in no_rust, (
+        "the suite must run against the wheel the sdist builds, not the shipped wheel"
+    )
+    assert "is_relative_to(prefix)" in no_rust, "the installed-environment check must use sys.prefix"
     assert "uv run --no-sync --no-build pytest -n auto" in no_rust
     order = (
         no_rust.index("uv sync --locked --dev --no-install-project"),
         no_rust.index("- name: Remove the Rust toolchain from PATH"),
         no_rust.index("- name: Install the pure-Python wheel"),
         no_rust.index("- name: Build the sdist into the pure-Python wheel"),
+        no_rust.index("- name: Install the wheel rebuilt from the sdist"),
+        no_rust.index("- name: Assert the installed package is the pure-Python implementation"),
         no_rust.index("- name: Run core tests against the installed package"),
     )
     assert order == tuple(sorted(order)), "the toolchain must be gone before anything is installed"
