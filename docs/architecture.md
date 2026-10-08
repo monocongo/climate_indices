@@ -311,11 +311,17 @@ amplifies one ulp by up to `1e11` for a near-symmetric sample, so the ported
 `lgam` and polynomial helpers fuse on aarch64 and only there (`special::mul_add`).
 Dispatch takes the Rust path only for a
 plain, aligned float64 `ndarray` whose fit parameters are aligned and one per
-calendar step (and cell). Unaligned arrays, masked arrays, other dtypes, and
-caller-supplied parameters that vary by year run the Python implementation.
-PNP preparation fills partial masks with NaN before dispatch, so those prepared
-arrays can use Rust. PCI dispatch checks the original input and requires a plain 1-D
-array; masked inputs and other shapes or dtypes keep its Python implementation.
+calendar step (and cell). Unaligned arrays, other dtypes, and caller-supplied
+parameters that vary by year run the Python implementation. A mask is a
+missing-value marker, so the seams that read it as one replace it with NaN
+before this check, and the prepared plain float64 array may then use Rust: the
+gamma transform (`transform_fitted_gamma` and the parameter resolver it calls),
+the sliding sum that prepares a scaled series, and PNP preparation. A masked
+SPI/SPEI gamma transform therefore matches the same input passed through
+`np.ma.filled(values, np.nan)`. Seams that do not replace a mask keep their
+Python implementation when handed one: a direct `gamma_parameters` call, the
+Pearson Type III and GLO fits, and PCI, whose dispatch checks the original 1-D
+input.
 Native dispatch also requires NumPy floating-point errors to be ignored
 (`np.errstate(all="ignore")`); warnings, exceptions, callbacks, logging, or
 printing keep the Python path. Python 3.14 context-aware warnings conservatively
