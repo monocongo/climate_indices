@@ -50,3 +50,11 @@ def test_spatial_block_orders_events_by_cell_then_onset() -> None:
     np.testing.assert_array_equal(events.end, [2, 5, 6])
     np.testing.assert_allclose(events.severity, [2.0, 2.0, 5.0])
     np.testing.assert_allclose(events.peak, [1.0, 2.0, 1.0])
+
+
+def test_runs_that_touch_a_neighbouring_cell_do_not_merge() -> None:
+    index = np.ones((3, 2))
+    events = flood.flood_events(index)
+    np.testing.assert_array_equal(events.cell[:, 0], [0, 1])
+    np.testing.assert_array_equal(events.duration, [3, 3])
+    np.testing.assert_allclose(events.severity, [3.0, 3.0])
