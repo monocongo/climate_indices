@@ -138,9 +138,15 @@ make html
 # Build wheel and sdist
 uv run python -m build
 
+# Build a local binary wheel for this platform (needs a Rust toolchain). On Linux
+# this is not the published manylinux_2_28 wheel: release.yml builds that inside the
+# container named in its matrix, which is what sets the glibc floor (ADR-0018)
+uv run maturin build --release --out dist
+
 # Output in dist/
 # - climate_indices-X.Y.Z-py3-none-any.whl
 # - climate_indices-X.Y.Z.tar.gz
+# - climate_indices-X.Y.Z-cp310-abi3-<platform>.whl
 ```
 
 ## Project Structure

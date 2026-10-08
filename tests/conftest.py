@@ -14,7 +14,7 @@ import pytest
 import xarray as xr
 from hypothesis import settings as hypothesis_settings
 
-from climate_indices import compute
+from climate_indices import compute, eto, pm_eto
 from climate_indices.fire import _native as fire_native
 
 # The property tests in tests/test_property_based.py assert empirical bounds rather
@@ -48,6 +48,8 @@ def python_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     inject a failure by patching a SciPy call the Rust kernels never make.
     """
     monkeypatch.setattr(compute, "_native", None)
+    monkeypatch.setattr(eto, "_native", None)
+    monkeypatch.setattr(pm_eto, "_native", None)
     monkeypatch.setattr(fire_native, "_native", None)
 
 

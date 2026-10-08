@@ -12,12 +12,14 @@
 use std::fmt;
 
 pub mod eddi;
+pub mod eto;
 pub mod fire;
 pub mod gamma;
 pub mod lmoments;
 pub mod loglogistic;
 pub mod pci;
 pub mod pearson;
+pub mod pm_eto;
 pub mod pnp;
 pub mod recurrence;
 mod reduction;
