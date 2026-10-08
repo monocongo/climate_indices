@@ -374,3 +374,15 @@ def test_a_decay_constant_wider_than_float64_stays_in_python(monkeypatch) -> Non
     rust, python, calls = _rust_and_python(monkeypatch, run)
     assert calls == (set() if np.dtype(np.longdouble) != np.float64 else {"antecedent_precipitation_index"})
     _assert_parity(rust, python)
+
+
+def test_default_numpy_error_policies_keep_the_python_path(monkeypatch) -> None:
+    recorder = _Recorder(native)
+    monkeypatch.setattr(flood_native, "_native", recorder)
+    rain = _synthetic_rain((2 * 366,), seed=8)
+    with np.errstate(all="warn"):
+        pe = flood.effective_precipitation(rain, duration=30)
+        flood.edi(pe, 2000, 2000, 2001)
+        flood.flood_index(pe, 2000, 2000, 2001, year_start_month=1)
+        flood.antecedent_precipitation_index(rain, 0.9)
+    assert recorder.calls == set()
