@@ -25,6 +25,7 @@ from __future__ import annotations
 import os
 import time
 from collections.abc import Callable
+from functools import partial
 from types import ModuleType
 from typing import Any
 
@@ -109,6 +110,22 @@ def _time_both_paths(
     monkeypatch.setattr(flood_native, "_native", None)
     python = _measure(run)
     return rust, python
+
+
+def _pe_run(years: int, side: int) -> Callable[[], Any]:
+    return partial(flood.effective_precipitation, _rain(years, side))
+
+
+@pytest.mark.benchmark
+@pytest.mark.parametrize("side", _GRID_SIDES)
+def test_effective_precipitation_rust_against_python(benchmark, monkeypatch, native, side: int) -> None:
+    """Time effective precipitation on the Rust kernel and the Python path."""
+    run = _pe_run(_RECORD_YEARS, side)
+    rust, python = _time_both_paths(monkeypatch, native, run)
+    benchmark.extra_info.update(python_seconds=python, rust_seconds=rust, speedup=python / rust)
+    monkeypatch.setattr(flood_native, "_native", native)
+    with np.errstate(all="ignore"):
+        benchmark(run)
 
 
 @pytest.mark.benchmark
