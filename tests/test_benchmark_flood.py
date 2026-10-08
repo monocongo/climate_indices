@@ -196,6 +196,25 @@ def _within_budget(rust_seconds: float, python_seconds: float, budget: float = _
 
 
 @pytest.mark.benchmark
+@pytest.mark.parametrize(
+    "make_run",
+    [_pe_run, _edi_run, _flood_index_run, _api_run],
+    ids=["effective_precipitation", "edi", "flood_index", "antecedent_precipitation_index"],
+)
+def test_rust_path_is_not_slower_than_python(monkeypatch, native, make_run) -> None:
+    rust, python = _time_both_paths(monkeypatch, native, make_run(_RECORD_YEARS, _GUARD_GRID_SIDE))
+    assert _within_budget(rust, python), f"Rust {rust:.4f}s against Python {python:.4f}s"
+
+
+def test_budget_policy_accepts_a_faster_and_rejects_a_slower_rust_path() -> None:
+    """The guard's failure path, without depending on wall-clock measurements."""
+    assert _within_budget(0.5, 1.0)
+    assert _within_budget(1.0, 1.0)
+    assert not _within_budget(1.5, 1.0)
+    assert _within_budget(1.5, 1.0, budget=2.0)
+
+
+@pytest.mark.benchmark
 @pytest.mark.parametrize("side", [8, 32])
 def test_flood_events_scan_throughput(benchmark, side: int) -> None:
     rng = np.random.default_rng(0)
