@@ -338,7 +338,8 @@ fn elementwise<'py>(
         .reshape(shape)
 }
 
-/// The recurrence bookkeeping every fire kernel takes, copied at the boundary.
+/// The recurrence bookkeeping every recurrence kernel (fire and flood) takes,
+/// copied at the boundary.
 struct RecurrenceArgs<'py> {
     weather_valid: PyReadonlyArray2<'py, bool>,
     static_valid: PyReadonlyArray1<'py, bool>,
@@ -383,7 +384,7 @@ impl<'py> RecurrenceArgs<'py> {
 
 impl RecurrenceArrays {
     fn inputs(&self) -> PyResult<RecurrenceInputs<'_>> {
-        climate_core::fire::recurrence_inputs(
+        climate_core::recurrence::recurrence_inputs(
             self.weather_valid.view(),
             self.static_valid.view(),
             self.in_season.as_ref().map(|season| season.view()),
