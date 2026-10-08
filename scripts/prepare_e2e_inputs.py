@@ -154,24 +154,6 @@ def _verify_source(path: Path, checksum: str, *, retry_missing: bool) -> None:
         raise ValueError(f"SHA-256 mismatch: {path}; remove it and rerun to download again.")
 
 
-def _published_by_other_caller(path: Path, checksum: str) -> bool:
-    """Return whether a concurrent caller published a checksum-valid file at path.
-
-    Windows also denies access to path for a moment while the other caller's replace completes, so
-    a few short retries cover that window.
-    """
-    for _ in range(20):
-        try:
-            if path.exists() and hashlib.sha256(path.read_bytes()).hexdigest() == checksum:
-                return True
-            if not path.exists():
-                return False
-        except PermissionError:
-            pass
-        time.sleep(0.05)
-    return False
-
-
 def _cache_source(source_dir: Path, name: str, checksum: str) -> Path:
     """Return a checksum-valid source download."""
     path = source_dir / f"nclimgrid_lowres_{name}.nc"
@@ -182,6 +164,7 @@ def _cache_source(source_dir: Path, name: str, checksum: str) -> Path:
     except FileNotFoundError:
         pass
     temporary = None
+    replace_error = None
     try:
         with tempfile.NamedTemporaryFile(
             mode="wb", dir=source_dir, prefix=f".{path.name}.", suffix=".download", delete=False
@@ -193,15 +176,19 @@ def _cache_source(source_dir: Path, name: str, checksum: str) -> Path:
             raise ValueError(f"SHA-256 mismatch: {url}")
         try:
             temporary.replace(path)
-        except PermissionError:
-            # Windows refuses to replace an open file; accept a concurrent caller's valid download.
-            if not _published_by_other_caller(path, checksum):
-                raise
+        except PermissionError as error:
+            # Windows refuses to replace an open file; a concurrent caller may have published it.
+            replace_error = error
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
     # A concurrent run with a different pin may have replaced path since; never return unverified bytes.
-    _verify_source(path, checksum, retry_missing=True)
+    try:
+        _verify_source(path, checksum, retry_missing=True)
+    except OSError:
+        if replace_error is not None:
+            raise replace_error from None
+        raise
     return path
 
 

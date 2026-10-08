@@ -152,17 +152,42 @@ def test_source_replaced_after_publish_is_not_returned(tmp_path, monkeypatch):
         module._cache_source(source_dir, "prcp", hashlib.sha256(payload).hexdigest())
 
 
-@pytest.mark.parametrize("published", [None, b"corrupt bytes"])
-def test_source_download_denied_replace_without_valid_file_raises(tmp_path, monkeypatch, published):
+@pytest.mark.parametrize(
+    ("published", "error", "match"),
+    [(None, PermissionError, "Access is denied"), (b"corrupt bytes", ValueError, "SHA-256 mismatch")],
+)
+def test_source_download_denied_replace_without_valid_file_raises(tmp_path, monkeypatch, published, error, match):
     """A denied replace is an error when no valid file was published by another caller."""
     module = _prepare_module(monkeypatch)
     source_dir = tmp_path / "source"
     source_dir.mkdir()
     checksum = _patch_denied_replace(monkeypatch, module, published)
 
-    with pytest.raises(PermissionError):
+    with pytest.raises(error, match=match):
         module._cache_source(source_dir, "prcp", checksum)
 
+    assert not list(source_dir.glob("*.download"))
+
+
+def test_source_download_waits_for_file_that_appears_after_denied_replace(tmp_path, monkeypatch):
+    """The winner's publication may not be visible yet when the losing replace is denied."""
+    module = _prepare_module(monkeypatch)
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    checksum = _patch_denied_replace(monkeypatch, module, None)
+    attempts = _deny_reads(monkeypatch, module, denials=3, error_factory=lambda: FileNotFoundError(2, "missing"))
+    real_read_bytes = Path.read_bytes
+
+    def publishing_read_bytes(self):
+        if self.suffix == ".nc" and len(attempts) == 3:
+            self.write_bytes(b"source bytes")
+        return real_read_bytes(self)
+
+    monkeypatch.setattr(Path, "read_bytes", publishing_read_bytes)
+
+    path = module._cache_source(source_dir, "prcp", checksum)
+
+    assert path.name == "nclimgrid_lowres_prcp.nc"
     assert not list(source_dir.glob("*.download"))
 
 
