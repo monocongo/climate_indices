@@ -14,4 +14,6 @@ crate-type = ["cdylib"]
 [dependencies]
 climate-core = { path = "../climate-core" }
 numpy = "0.29.0"
-pyo3 = "0.29.3"
+# abi3: one wheel per platform validates on every supported CPython (3.10-3.14), so
+# the published wheel matrix has no interpreter axis (docs/adr/0018)
+pyo3 = { version = "0.29.3", features = ["abi3-py310"] }

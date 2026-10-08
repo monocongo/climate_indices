@@ -81,6 +81,24 @@ pip install "climate-indices>=2.3"
 which documents the latest release and uses the xarray API added in 2.3.0; see
 [Supported Python Versions](#supported-python-versions) for interpreter support.
 
+The wheels published for Linux (x86-64 and aarch64, manylinux_2_28, so glibc 2.28 or
+newer), macOS (Apple silicon and Intel), and Windows (x86-64) include the optional Rust
+acceleration backend; every other platform, including a Linux system with older glibc,
+installs the pure-Python wheel. Both carry the same version and the same public
+API, and they return the same results, so nothing in calling code depends on which one
+pip selected. To see which one you have:
+
+```bash
+python -c "import climate_indices._native"   # succeeds when the extension is installed
+```
+
+A missing extension is not an error: `climate_indices` imports, and every computation
+runs the Python implementation. Installing from source needs no Rust toolchain either —
+`pip install --no-binary climate_indices climate_indices` installs from the sdist, which
+builds the pure-Python wheel. Developers who
+want the extension from a checkout build it with `uv run maturin develop --release`; see
+[the Rust backend section of the architecture notes](docs/architecture.md#optional-rust-backend).
+
 ## Developer Workflow
 
 This project uses trunk-based development. `main` is the trunk and should always
@@ -1873,8 +1891,8 @@ user-facing behavior. A port reproduces the Python numerics, including their
 NaN, zero, and edge-case semantics; it does not improve or change them.
 
 **Building.** Hatchling remains the PEP 517 backend, so the published sdist and
-wheel are pure Python, install without a Rust toolchain, and run the Python
-implementations. Developers with a Rust toolchain build the extension in place:
+`py3-none-any` wheel are pure Python, install without a Rust toolchain, and run the
+Python implementations. Developers with a Rust toolchain build the extension in place:
 
 ```bash
 uv run maturin develop --release   # builds src/climate_indices/_native.*.so
@@ -1885,8 +1903,20 @@ cargo test --workspace
 `maturin develop` installs the package in editable mode and copies the compiled
 extension into `src/climate_indices/`, where it stays importable after `uv sync`
 reinstalls the project; delete the `_native.*` file to return to pure Python.
-Publishing binary wheels that include `_native`, and the supported install path
-without Rust, are tracked separately (RUST-013).
+
+**Packaging.** maturin also builds the published binary wheels, and they ship in
+the same release as the sdist and the pure wheel. They are abi3 (`abi3-py310`), so
+one wheel per platform validates on every supported Python, and there are five:
+manylinux_2_28 `x86_64` and `aarch64`, macOS arm64 and `x86_64`, and Windows
+`x86_64`. pip prefers a matching platform wheel over `py3-none-any`; a platform
+with neither installs the pure wheel and runs the Python implementations, which is
+the supported install path without Rust — installing from source needs no
+toolchain either, because hatchling never invokes `cargo`. musllinux is not
+published. Which wheel is installed is visible from
+`python -c "import climate_indices._native"`, and any `ImportError` from that
+import falls back to Python rather than failing. The full comparison of the
+options and the failure modes are in
+[ADR-0018](docs/adr/0018-optional-rust-packaging.md).
 
 **Rust in CI.** `.github/workflows/unit-tests-workflow.yml` runs three jobs on
 every event the workflow handles (pull request, push to `main`, merge group,
@@ -1908,7 +1938,9 @@ no Rust toolchain, so they keep proving the fallback.
   Pythons, plus a Windows smoke build on the newest. Each wheel is installed
   into a fresh venv and imported from outside the checkout, and SPI must reach
   the bundled `gamma_parameters`, `gamma_probabilities`, and `norm_ppf` kernels.
-  This validates wheels; it does not publish them.
+  This validates the developer build; the published wheel matrix, its abi3 tag,
+  and the installation checks for each artifact run in `.github/workflows/release.yml`
+  ([ADR-0018](docs/adr/0018-optional-rust-packaging.md)).
 
 `rust-toolchain.toml` pins the compiler so a new stable clippy lint cannot fail
 `-D warnings` on an unrelated change. The workspace uses edition 2024, so the
@@ -2469,9 +2501,15 @@ make html
 # Build wheel and sdist
 uv run python -m build
 
+# Build a local binary wheel for this platform (needs a Rust toolchain). On Linux
+# this is not the published manylinux_2_28 wheel: release.yml builds that inside the
+# container named in its matrix, which is what sets the glibc floor (ADR-0018)
+uv run maturin build --release --out dist
+
 # Output in dist/
 # - climate_indices-X.Y.Z-py3-none-any.whl
 # - climate_indices-X.Y.Z.tar.gz
+# - climate_indices-X.Y.Z-cp310-abi3-<platform>.whl
 ```
 
 ## Project Structure
