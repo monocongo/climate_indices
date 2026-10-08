@@ -182,6 +182,99 @@ mod tests {
         assert_eq!((fit.locs[1], fit.scales[1], fit.shapes[1]), (0.0, 0.0, 0.0));
     }
 
+    // Reference values from climate_indices.lmoments.fit_glo (the Python oracle) on
+    // the samples pearson.rs uses: tau_3 < 1/3, tau_3 >= 1/3, and a negative skew.
+    #[test]
+    fn fit_matches_the_python_oracle_on_each_branch() {
+        let sample = array![
+            [12.0, 1.0, 99.0],
+            [15.5, 1.0, 99.0],
+            [9.1, 1.0, 99.0],
+            [30.2, 2.0, 98.0],
+            [22.4, 2.0, 98.0],
+            [18.8, 3.0, 97.0],
+            [11.3, 4.0, 96.0],
+            [40.7, 8.0, 92.0],
+            [25.0, 20.0, 80.0],
+            [14.2, 60.0, 40.0],
+        ];
+        let expected = [
+            // (loc, scale, shape)
+            (
+                17.346_295_894_276_206,
+                4.921_322_708_270_736,
+                -0.287_872_841_444_269,
+            ),
+            (
+                2.809_361_769_423_021_3,
+                2.175_845_858_244_121_4,
+                -0.766_997_167_138_809_2,
+            ),
+            (
+                97.190_638_230_577,
+                2.175_845_858_244_097_4,
+                0.766_997_167_138_811_5,
+            ),
+        ];
+        let fit = loglogistic_parameters(sample.view());
+        for (column, (loc, scale, shape)) in expected.into_iter().enumerate() {
+            assert!(fit.valid[column]);
+            for (name, actual, wanted) in [
+                ("loc", fit.locs[column], loc),
+                ("scale", fit.scales[column], scale),
+                ("shape", fit.shapes[column], shape),
+            ] {
+                assert!(
+                    (actual - wanted).abs() <= 1e-13 * wanted.abs(),
+                    "column {column} {name} = {actual:e}, expected {wanted:e}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn cdf_matches_the_numpy_formula() {
+        // (x, loc, scale, shape, compute._loglogistic_fit's probability)
+        let cases = [
+            (
+                1.0,
+                2.809_361_769_423_021_3,
+                2.175_845_858_244_121_4,
+                -0.766_997_167_138_809_2,
+                0.210_136_047_689_925_94,
+            ),
+            (
+                10.0,
+                2.809_361_769_423_021_3,
+                2.175_845_858_244_121_4,
+                -0.766_997_167_138_809_2,
+                0.838_378_299_114_486_9,
+            ),
+            (
+                95.0,
+                97.190_638_230_577,
+                2.175_845_858_244_097_4,
+                0.766_997_167_138_811_5,
+                0.321_679_750_448_014_45,
+            ),
+            (
+                17.0,
+                17.346_295_894_276_206,
+                4.921_322_708_270_736,
+                -0.287_872_841_444_269,
+                0.482_235_257_835_268_7,
+            ),
+            (5.0, 0.0, 2.0, 0.0, 0.924_141_819_978_756_6),
+        ];
+        for (x, loc, scale, shape, expected) in cases {
+            let actual = loglogistic_cdf(x, loc, scale, shape);
+            assert!(
+                (actual - expected).abs() <= 1e-14 * expected,
+                "loglogistic_cdf({x}, {loc}, {scale}, {shape}) = {actual:e}, expected {expected:e}"
+            );
+        }
+    }
+
     #[test]
     fn cdf_is_the_logistic_at_zero_shape_and_clips_beyond_the_support() {
         assert_eq!(loglogistic_cdf(2.0, 2.0, 3.0, 0.0), 0.5);

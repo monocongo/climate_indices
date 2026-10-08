@@ -256,6 +256,83 @@ mod tests {
         assert!(!pearson_parameters(sample.view()).valid[0]);
     }
 
+    // Reference values from climate_indices.lmoments.fit (the Python oracle) and
+    // scipy.stats.pearson3.cdf 1.17.0, on samples chosen to take each branch of the
+    // estimate: tau_3 < 1/3, tau_3 >= 1/3, and a negative skew.
+    #[test]
+    fn fit_matches_the_python_oracle_on_each_branch() {
+        let sample = array![
+            [12.0, 1.0, 99.0],
+            [15.5, 1.0, 99.0],
+            [9.1, 1.0, 99.0],
+            [30.2, 2.0, 98.0],
+            [22.4, 2.0, 98.0],
+            [18.8, 3.0, 97.0],
+            [11.3, 4.0, 96.0],
+            [40.7, 8.0, 92.0],
+            [25.0, 20.0, 80.0],
+            [14.2, 60.0, 40.0],
+        ];
+        let expected = [
+            // (loc, scale, skew)
+            (19.92, 10.997_734_974_299_528, 1.728_920_122_795_316),
+            (10.2, 26.672_309_243_115_933, 5.910_576_578_609_104),
+            (89.8, 26.672_309_243_116_08, -5.910_576_578_609_143_5),
+        ];
+        let fit = pearson_parameters(sample.view());
+        for (column, (loc, scale, skew)) in expected.into_iter().enumerate() {
+            assert!(fit.valid[column]);
+            assert_eq!(fit.probabilities_of_zero[column], 0.0);
+            for (name, actual, wanted) in [
+                ("loc", fit.locs[column], loc),
+                ("scale", fit.scales[column], scale),
+                ("skew", fit.skews[column], skew),
+            ] {
+                assert!(
+                    (actual - wanted).abs() <= 1e-13 * wanted.abs(),
+                    "column {column} {name} = {actual:e}, expected {wanted:e}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn fit_keeps_a_tiny_but_non_zero_skew() {
+        // tau_3 is about 1.6e-4: above the 1e-6 zero-skew cut-off, where alpha is
+        // large and `scale` is only reproducible to the conditioning of gammaln, so
+        // only loosely compared; tests/test_native_parity_distributions.py checks it exactly
+        let fit = pearson_parameters(array![[1.0], [2.0], [3.0], [4.001]].view());
+        assert!(fit.valid[0]);
+        assert!(fit.skews[0] > 0.0, "skew = {}", fit.skews[0]);
+        assert!((fit.scales[0] - 1.477_488_148).abs() < 1e-6);
+    }
+
+    #[test]
+    fn cdf_matches_scipy_for_both_skew_signs() {
+        // (x, skew, loc, scale, scipy.stats.pearson3.cdf)
+        let cases = [
+            (1.0, 0.8, 3.0, 2.0, 0.149_591_916_675_002_43),
+            (4.0, 0.8, 3.0, 2.0, 0.726_357_546_160_562_9),
+            (9.0, 0.8, 3.0, 2.0, 0.991_621_686_655_470_5),
+            (-3.0, -0.8, 3.0, 2.0, 0.008_378_313_344_529_589),
+            (4.0, -0.8, 3.0, 2.0, 0.656_058_361_824_302_2),
+            (1.0, 1.5, 3.0, 2.0, 0.108_815_120_615_328_28),
+            (9.0, 1.5, 3.0, 2.0, 0.985_210_904_298_800_1),
+            (-3.0, -1.5, 3.0, 2.0, 0.014_789_095_701_199_942),
+            (4.0, -1.5, 3.0, 2.0, 0.625_760_220_566_874_7),
+            // at and beyond the support limit
+            (-3.0, 0.8, 3.0, 2.0, 0.0),
+            (9.0, -0.8, 3.0, 2.0, 1.0),
+        ];
+        for (x, skew, loc, scale, expected) in cases {
+            let actual = pearson_cdf(x, skew, loc, scale);
+            assert!(
+                (actual - expected).abs() <= 1e-14 * expected,
+                "pearson_cdf({x}, {skew}, {loc}, {scale}) = {actual:e}, expected {expected:e}"
+            );
+        }
+    }
+
     #[test]
     fn cdf_mirrors_scipy_argument_handling() {
         assert!(pearson_cdf(1.0, f64::NAN, 0.0, 1.0).is_nan());

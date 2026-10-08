@@ -468,6 +468,20 @@ def test_pearson_cdf_matches_scipy_across_parameters():
     )
 
 
+@pytest.mark.parametrize("skew", [-1.5, -0.4, 0.4, 1.5, 3e-6])
+def test_pearson_cdf_tails_keep_their_precision(skew):
+    """Tail probabilities to a relative tolerance, and near-1 ones through the index's transform.
+
+    The comparison above uses ``atol=1e-10``, which hides a tail computed as ``1 - igam``;
+    the Cephes ports exist because the transformed tails are ill-conditioned.
+    """
+    z = np.linspace(-14.0, 14.0, 561)
+    ours = native.pearson_cdf(z[None, :], np.full(z.size, skew), np.zeros(z.size), np.ones(z.size))[0]
+    expected = scipy.stats.pearson3.cdf(z, skew)
+    np.testing.assert_allclose(ours, expected, rtol=1e-10, atol=0.0)
+    np.testing.assert_allclose(scipy.stats.norm.ppf(ours), scipy.stats.norm.ppf(expected), rtol=1e-10, atol=1e-10)
+
+
 def test_pearson_cdf_edge_arguments_match_scipy():
     values = np.array([0.0, 1.0, np.inf, -np.inf, np.nan, 5.0, 5.0, 5.0, 5.0, 5.0])
     skews = np.array([1.0, 1.0, 1.0, -1.0, 1.0, np.nan, np.inf, 1.0, 1e300, 1e-300])

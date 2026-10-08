@@ -224,6 +224,36 @@ mod tests {
     }
 
     #[test]
+    fn survival_function_matches_scipy_including_a_deep_tail() {
+        // reference values from scipy.stats.gamma.sf(x, a) 1.17.0
+        let cases = [
+            (0.5, 2.0, 0.909_795_989_568_950_1),
+            (3.0, 0.5, 0.014_305_878_435_429_645),
+            (10.0, 4.0, 0.010_336_050_675_925_726),
+            (30.0, 5.0, 3.624_300_952_061_492_4e-9),
+            (1e-3, 0.5, 0.964_329_408_270_320_1),
+        ];
+        for (x, alpha, expected) in cases {
+            let actual = gamma_sf(x, alpha);
+            // 1 - igam would lose the deep tail's digits, so the check is relative
+            assert!(
+                (actual - expected).abs() <= 1e-14 * expected,
+                "gamma_sf({x}, {alpha}) = {actual:e}, expected {expected:e}"
+            );
+        }
+    }
+
+    #[test]
+    fn survival_function_mirrors_scipy_argument_handling() {
+        assert!(gamma_sf(1.0, 0.0).is_nan());
+        assert!(gamma_sf(1.0, f64::NAN).is_nan());
+        assert!(gamma_sf(f64::NAN, 1.0).is_nan());
+        assert_eq!(gamma_sf(0.0, 1.0), 1.0);
+        assert_eq!(gamma_sf(-3.0, 1.0), 1.0);
+        assert_eq!(gamma_sf(f64::INFINITY, 1.0), 0.0);
+    }
+
+    #[test]
     fn cdf_mirrors_scipy_argument_handling() {
         assert!(gamma_cdf(1.0, 0.0, 1.0).is_nan());
         assert!(gamma_cdf(1.0, 1.0, -1.0).is_nan());

@@ -969,6 +969,28 @@ mod tests {
     }
 
     #[test]
+    fn ndtr_matches_scipy_in_both_tails_and_the_centre() {
+        let cases = [
+            (-40.0, 0.0),
+            (-8.0, 6.220_960_574_271_74e-16),
+            (-1.0, 0.158_655_253_931_457_07),
+            (0.1, 0.539_827_837_277_029),
+            (8.0, 0.999_999_999_999_999_3),
+        ];
+        for (z, expected) in cases {
+            let actual = ndtr(z);
+            assert!(
+                (actual - expected).abs() <= 4e-16 * expected.abs(),
+                "ndtr({z}) = {actual:e}, expected {expected:e}"
+            );
+        }
+        assert!(ndtr(f64::NAN).is_nan());
+        assert_eq!(ndtr(f64::INFINITY), 1.0);
+        assert_eq!(ndtr(f64::NEG_INFINITY), 0.0);
+        assert_eq!(ndtr(0.0), 0.5);
+    }
+
+    #[test]
     fn ndtri_matches_scipy() {
         let cases = [
             (0.5, 0.0),
