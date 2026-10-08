@@ -405,6 +405,46 @@ def test_an_extension_that_predates_the_flood_kernels_keeps_the_python_path(monk
         _assert_parity(stale_item, python_item)
 
 
+def _time_last_moved_first(block: np.ndarray) -> np.ndarray:
+    """A time-first view of a time-last array, as from ``np.moveaxis`` on an xarray block: not contiguous."""
+    return np.moveaxis(np.ascontiguousarray(np.moveaxis(block, 0, -1)), -1, 0)
+
+
+@pytest.mark.parametrize(
+    "layout",
+    [_time_last_moved_first, lambda block: np.concatenate([block, block], axis=2)[:, :, ::2], np.asfortranarray],
+    ids=["time-last-moved-first", "every-other-cell", "fortran-order"],
+)
+def test_non_contiguous_layouts_reach_the_kernels(monkeypatch, layout: Callable[[np.ndarray], np.ndarray]) -> None:
+    """A non-contiguous block still reaches the kernels, viewed when its cells merge and copied when not."""
+    rain = layout(_synthetic_rain((6 * 366, 3, 2), seed=13, missing=0.002))
+    assert not rain.flags.c_contiguous
+
+    def run() -> tuple[Any, ...]:
+        pe = layout(flood.effective_precipitation(rain, duration=30))
+        return (
+            pe,
+            flood.edi(pe, 2000, 2001, 2005),
+            flood.flood_index(pe, 2000, 2001, 2005, year_start_month=1),
+            flood.antecedent_precipitation_index(rain, 0.9),
+        )
+
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == {"effective_precipitation", "edi", "flood_index", "antecedent_precipitation_index"}
+    for rust_item, python_item in zip(rust, python, strict=True):
+        _assert_parity(rust_item, python_item)
+
+
+def test_a_block_whose_cells_merge_is_handed_over_as_a_view() -> None:
+    """The binding's copy is then the only full-size copy of the input."""
+    moved = _time_last_moved_first(_synthetic_rain((40, 3, 2), seed=14))
+    with np.errstate(all="ignore"):
+        block = flood_native._time_first_block(moved)
+    assert block is not None
+    assert block.shape == (40, 6)
+    assert np.shares_memory(block, moved)
+
+
 def test_default_numpy_error_policies_keep_the_python_path(monkeypatch) -> None:
     recorder = conftest.NativeRecorder(native)
     monkeypatch.setattr(flood_native, "_native", recorder)
