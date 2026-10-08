@@ -582,12 +582,13 @@ def test_pm_eto_passes_a_scalar_operand_as_a_view(monkeypatch):
     _assert_parity(result, reference)
 
 
-@pytest.mark.parametrize("scalar_type", [np.uint8, np.int16, np.int64])
-def test_pm_eto_integer_scalars_stay_on_python(monkeypatch, scalar_type):
-    """An integer scalar computes in its own dtype, where the subtraction can wrap.
+@pytest.mark.parametrize("scalar_type", [np.uint8, np.int16, np.int64, np.float16, np.float32])
+def test_pm_eto_non_float64_scalars_stay_on_python(monkeypatch, scalar_type):
+    """A scalar narrower than float64 keeps its own dtype in the Python expression.
 
-    ``np.uint8(1) - np.uint8(2)`` is 255, while the float64 the kernel would take
-    gives -1.0, so a call with integer scalar operands keeps the Python path.
+    An integer scalar can wrap or reject the subtraction, and a float16/float32
+    scalar rounds the subtraction to that dtype, so the float64 kernel would
+    return a different ETo; each keeps the Python path.
     """
     rest = (
         np.array([16.9, 20.0, 5.0]),
