@@ -5,15 +5,6 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Added
-
-- **`flood.flood_events`**: extracts events (runs above a threshold) from a daily
-  flood index, reporting onset, duration, peak, and severity per event.
-- **Flood benchmarks**: `tests/test_benchmark_flood.py` times each Rust-backed flood index
-  against its Python implementation and guards against a Rust path slower than Python.
-
 ## [3.0.0] - 2026-10-04
 
 ### Added
@@ -90,6 +81,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   February 29 rather than carrying it through the chain, a measured and documented
   convention (#1103, #1105, #1106, #1107, #1108, #1109, #1110, #1115, #1116, #1117,
   #1147, #1151).
+- **`flood.flood_events`**: extracts events (runs above a threshold) from a daily
+  flood index, reporting onset, duration, peak, and severity per event.
+- **Flood benchmarks**: `tests/test_benchmark_flood.py` times each Rust-backed flood index
+  against its Python implementation and guards against a Rust path slower than Python.
 - **Log-logistic SPEI**: the Hosking generalized-logistic (GLO) distribution, fitted
   with unbiased-PWM L-moments, is available on the SPEI surfaces as
   `Distribution.loglogistic`, `lmoments.fit_glo()`/`fit_glo_spatial()`,
