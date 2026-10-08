@@ -1,16 +1,23 @@
-//! Flood-family kernels, starting with effective precipitation.
+//! Flood-family kernels: effective precipitation and EDI.
 //!
-//! Ports of `climate_indices.flood._pe`, which stays the parity oracle. Python
-//! keeps the validation and the layout; the kernel takes the prepared
-//! time-first float64 block.
+//! Ports of `climate_indices.flood._pe` and `_edi`, which stay the parity
+//! oracles. Python keeps the validation, the all-leap calendar layout, and the
+//! Calibration Period resolution; these kernels take the prepared time-first
+//! float64 blocks and the calibration rows Python resolved.
 //!
-//! The operation order is the Python one: effective precipitation follows
-//! `scipy.ndimage.correlate1d`'s general (non-symmetric) loop, which starts from
-//! the newest day's term and then adds the window from its oldest day.
+//! The operation order is the Python one:
+//!
+//! * effective precipitation follows `scipy.ndimage.correlate1d`'s general
+//!   (non-symmetric) loop, which starts from the newest day's term and then adds
+//!   the window from its oldest day;
+//! * the calibration sums follow NumPy's axis-0 reduction, which accumulates the
+//!   years sequentially when the block has more than one column and pairwise
+//!   when it has exactly one ([`crate::reduction::pairwise_sum`]).
 
-use ndarray::{Array2, ArrayView2};
+use ndarray::{Array2, ArrayView1, ArrayView2};
 
 use crate::ClimateError;
+use crate::reduction::pairwise_sum;
 
 /// The correlation filter of Byun and Wilhite (1999), Eq. 2, oldest day first.
 ///
@@ -70,6 +77,20 @@ pub fn effective_precipitation(
         }
     }
     Ok(result)
+}
+
+/// NumPy's `values.sum(axis=0)` of one column, in the order NumPy reduces it.
+#[allow(dead_code)]
+fn column_sum(column: ArrayView1<'_, f64>, columns: usize) -> f64 {
+    if columns == 1 {
+        pairwise_sum(0..column.len(), |row| column[row])
+    } else {
+        column
+            .iter()
+            .copied()
+            .reduce(|sum, value| sum + value)
+            .unwrap_or(0.0)
+    }
 }
 
 #[cfg(test)]
@@ -168,5 +189,19 @@ mod tests {
                 argument: "duration"
             }
         );
+    }
+
+    #[test]
+    fn a_single_column_sums_pairwise_and_several_sequentially() {
+        // 1e16 swamps every one a sequential sum adds to it, but NumPy's
+        // eight-lane pairwise grouping of a single column adds the ones together
+        let mut values = vec![1.0e16];
+        values.extend([1.0; 8]);
+        values.push(-1.0e16);
+        let column = Array::from(values.clone());
+        let pairwise = column_sum(column.view(), 1);
+        assert_eq!(pairwise, pairwise_sum(0..values.len(), |row| values[row]));
+        assert!(pairwise > 0.0);
+        assert_eq!(column_sum(column.view(), 2), 0.0);
     }
 }
