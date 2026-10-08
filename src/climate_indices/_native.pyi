@@ -149,3 +149,30 @@ def kbdi(
     npt.NDArray[np.float64],
     npt.NDArray[np.int64] | None,
 ]: ...
+def effective_precipitation(precipitation_mm: npt.NDArray[np.float64], duration: int) -> npt.NDArray[np.float64]: ...
+def edi(
+    years: npt.NDArray[np.float64],
+    calibration_start: int,
+    calibration_end: int,
+) -> npt.NDArray[np.float64]: ...
+def flood_index(
+    pe: npt.NDArray[np.float64],
+    first_start: int,
+    calibration_years: int,
+) -> npt.NDArray[np.float64]: ...
+def antecedent_precipitation_index(
+    precipitation_mm: npt.NDArray[np.float64],
+    k: float,
+    initial_api: npt.NDArray[np.float64],
+    weather_valid: npt.NDArray[np.bool_],
+    static_valid: npt.NDArray[np.bool_],
+    trailing_gap_days: npt.NDArray[np.int64],
+    spin_up: int,
+    nan_policy: str,
+    max_gap_days: int,
+    record: bool,
+) -> tuple[
+    npt.NDArray[np.float64] | None,
+    npt.NDArray[np.float64],
+    npt.NDArray[np.int64] | None,
+]: ...
