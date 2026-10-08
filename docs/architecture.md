@@ -257,10 +257,12 @@ src/climate_indices/_native.pyi # type stub for the extension
   directly testable. They are the oracle for Rust parity tests until a separate,
   explicit decision retires them.
 
-**Ported kernels.** The gamma fit and transform behind SPI are the first port;
-the distribution fits SPEI adds, Pearson Type III (also used by SPI and the
-standardized index) and the log-logistic (generalized logistic, GLO), are the
-second. They replace the numerical blocks inside `compute.py` functions, so the
+**Ported kernels.** The gamma fit and transform behind SPI were the first port,
+followed by EDDI's empirical ranking and inverse normal, and then the
+distribution fits SPEI adds, Pearson Type III (also used by SPI and the
+standardized index) and the log-logistic (generalized logistic, GLO). The gamma
+and distribution-fit kernels replace the numerical blocks inside `compute.py`
+functions, so the
 validation, calibration-period resolution, data-quality and goodness-of-fit
 warnings, the Pearson-to-gamma fallback, logging, zero placement, support-limit
 masks, and output scaling around them still run in Python, and every caller of
@@ -276,6 +278,16 @@ xarray adapter) uses them:
 | `scipy.stats.pearson3.cdf` in `compute._pearson_fit` | `pearson::pearson_cdf_block` |
 | GLO fit of `compute.loglogistic_parameters` (`lmoments.fit_glo`, `fit_glo_spatial`) | `loglogistic::loglogistic_parameters` |
 | GLO probability step of `compute._loglogistic_fit` | `loglogistic::loglogistic_cdf_block` |
+| rank count and Tukey plotting position in the per-period loop of `indices.eddi` | `eddi::tukey_probabilities` |
+| `indices._hastings_inverse_normal` | `eddi::hastings_inverse_normal` |
+
+EDDI is non-parametric, so no SciPy special function is ported for it: its
+probabilities are a count of the period's climatology values strictly below each
+value, converted by the Tukey plotting position. The chunking Python applies
+across cells (`_EDDI_RANK_COMPARISON_ELEMENT_BUDGET`) only bounds an intermediate
+under the Python path; the Rust kernel walks every column in one pass, which
+cannot change a count. The calibration-period resolution, the leading-scale-pad
+mask, and the unfolding to the caller's layout stay in Python, as they did.
 
 The special functions are line-by-line ports of the Cephes `igam`, `ndtri`,
 `ndtr`, and `lgam` that SciPy 1.17 evaluates, since a generic implementation

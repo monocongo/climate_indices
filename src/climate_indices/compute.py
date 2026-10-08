@@ -1871,6 +1871,25 @@ def _native_loglogistic_cdf(
     return probabilities.reshape(values.shape)
 
 
+def _native_tukey_probabilities(climatology: np.ndarray, values: np.ndarray, pads: np.ndarray) -> np.ndarray | None:
+    """The Rust rank count and Tukey plotting position, or None where the Python implementation runs."""
+    if not _native_float64(climatology) or not _native_float64(values) or not hasattr(_native, "tukey_probabilities"):
+        return None
+    if _native is None:  # _native_float64 guarantees it; this narrows the type
+        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
+    # the per-column pad counts arrive as NumPy integers; the kernel takes float64
+    return _native.tukey_probabilities(climatology, values, np.asarray(pads, dtype=np.float64))
+
+
+def _native_hastings_inverse_normal(probabilities: np.ndarray) -> np.ndarray | None:
+    """The Rust Hastings inverse normal, or None where the Python implementation runs."""
+    if not _native_float64(probabilities) or not hasattr(_native, "hastings_inverse_normal"):
+        return None
+    if _native is None:  # _native_float64 guarantees it; this narrows the type
+        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
+    return _native.hastings_inverse_normal(probabilities)
+
+
 def gamma_parameters(
     values: np.ndarray,
     data_start_year: int,

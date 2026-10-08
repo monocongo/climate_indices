@@ -176,16 +176,58 @@ fn norm_ppf<'py>(
     py: Python<'py>,
     probabilities: PyReadonlyArrayDyn<'py, f64>,
 ) -> PyResult<Bound<'py, PyArrayDyn<f64>>> {
-    if !probabilities.is_aligned() || !probabilities.data().is_aligned() {
+    elementwise(py, probabilities, climate_core::special::norm_ppf)
+}
+
+/// The Hastings inverse-normal approximation applied element-wise to an array of any shape.
+#[pyfunction]
+fn hastings_inverse_normal<'py>(
+    py: Python<'py>,
+    probabilities: PyReadonlyArrayDyn<'py, f64>,
+) -> PyResult<Bound<'py, PyArrayDyn<f64>>> {
+    elementwise(
+        py,
+        probabilities,
+        climate_core::eddi::hastings_inverse_normal,
+    )
+}
+
+/// Empirical rank count and Tukey plotting position for one calendar period.
+#[pyfunction]
+fn tukey_probabilities<'py>(
+    py: Python<'py>,
+    climatology: PyReadonlyArray2<'py, f64>,
+    values: PyReadonlyArray2<'py, f64>,
+    pads: PyReadonlyArray1<'py, f64>,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    let (climatology, values, pads) = (
+        checked_copy(&climatology)?,
+        checked_copy(&values)?,
+        checked_copy(&pads)?,
+    );
+    py.detach(|| {
+        climate_core::eddi::tukey_probabilities(climatology.view(), values.view(), pads.view())
+    })
+    .map(|probabilities| probabilities.into_pyarray(py))
+    .map_err(|error| PyValueError::new_err(error.to_string()))
+}
+
+/// Apply a scalar kernel element-wise, preserving the input's shape.
+fn elementwise<'py>(
+    py: Python<'py>,
+    values: PyReadonlyArrayDyn<'py, f64>,
+    kernel: fn(f64) -> f64,
+) -> PyResult<Bound<'py, PyArrayDyn<f64>>> {
+    if !values.is_aligned() || !values.data().is_aligned() {
         return Err(PyValueError::new_err("unaligned float64 array"));
     }
     // Flatten first: rust-numpy's ndarray conversion is limited to 32 dimensions.
-    let shape = probabilities.shape().to_vec();
-    let flat = probabilities
-        .reshape_with_order([probabilities.len()], numpy::npyffi::NPY_ORDER::NPY_CORDER)?
+    let shape = values.shape().to_vec();
+    let flat = values
+        .reshape_with_order([values.len()], numpy::npyffi::NPY_ORDER::NPY_CORDER)?
         .readonly();
     let flat = checked_copy(&flat)?;
-    py.detach(|| flat.mapv(climate_core::special::norm_ppf))
+    py.detach(|| flat.mapv(kernel))
         .into_pyarray(py)
         .reshape(shape)
 }
@@ -200,5 +242,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(loglogistic_parameters, m)?)?;
     m.add_function(wrap_pyfunction!(loglogistic_cdf, m)?)?;
     m.add_function(wrap_pyfunction!(norm_ppf, m)?)?;
+    m.add_function(wrap_pyfunction!(tukey_probabilities, m)?)?;
+    m.add_function(wrap_pyfunction!(hastings_inverse_normal, m)?)?;
     Ok(())
 }
