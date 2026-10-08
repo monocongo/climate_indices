@@ -416,7 +416,7 @@ def _time_last_moved_first(block: np.ndarray) -> np.ndarray:
     ids=["time-last-moved-first", "every-other-cell", "fortran-order"],
 )
 def test_non_contiguous_layouts_reach_the_kernels(monkeypatch, layout: Callable[[np.ndarray], np.ndarray]) -> None:
-    """A non-contiguous block still reaches the kernels, viewed when its cells merge and copied when not."""
+    """Non-contiguous input reaches all four kernels and matches Python; validation makes it C-contiguous first."""
     rain = layout(_synthetic_rain((6 * 366, 3, 2), seed=13, missing=0.002))
     assert not rain.flags.c_contiguous
 
