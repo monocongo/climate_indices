@@ -6,7 +6,7 @@
 //! implementation when the extension is not installed. Inputs must already be
 //! float64 arrays: extraction fails with `TypeError` rather than casting.
 
-use numpy::ndarray::{Array, Dimension, ShapeBuilder};
+use numpy::ndarray::{Array, CowArray, Dimension, ShapeBuilder};
 use numpy::{
     IntoPyArray, PyArray1, PyArray2, PyArrayDyn, PyArrayMethods, PyReadonlyArray, PyReadonlyArray1,
     PyReadonlyArray2, PyReadonlyArrayDyn, PyUntypedArrayMethods,
@@ -16,7 +16,9 @@ use pyo3::prelude::*;
 
 type ParameterArrays<'py> = (Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>);
 
-fn checked_copy<D: Dimension>(array: &PyReadonlyArray<'_, f64, D>) -> PyResult<Array<f64, D>> {
+fn checked_view<'a, D: Dimension>(
+    array: &'a PyReadonlyArray<'_, f64, D>,
+) -> PyResult<CowArray<'a, f64, D>> {
     if !array.is_aligned() || !array.data().is_aligned() {
         return Err(PyValueError::new_err("unaligned float64 array"));
     }
@@ -24,10 +26,15 @@ fn checked_copy<D: Dimension>(array: &PyReadonlyArray<'_, f64, D>) -> PyResult<A
     // on empty axes. Avoid creating a possibly unaligned/out-of-bounds view.
     if array.is_empty() {
         return Array::from_shape_vec(array.dims(), Vec::new())
+            .map(CowArray::from)
             .map_err(|error| PyValueError::new_err(error.to_string()));
     }
+    Ok(array.as_array().into())
+}
+
+fn checked_copy<D: Dimension>(array: &PyReadonlyArray<'_, f64, D>) -> PyResult<Array<f64, D>> {
     // Copy before `detach`: another Python thread may mutate caller-owned storage.
-    Ok(array.as_array().to_owned())
+    Ok(checked_view(array)?.into_owned())
 }
 
 /// Gamma shape and scale per column of a (years, columns) calibration block.
@@ -96,9 +103,11 @@ fn pnp_percentages<'py>(
     scale_sums: PyReadonlyArray2<'py, f64>,
     normals: PyReadonlyArray2<'py, f64>,
 ) -> PyResult<Bound<'py, PyArray2<f64>>> {
-    let scale_sums = checked_copy(&scale_sums)?;
-    let normals = checked_copy(&normals)?;
-    py.detach(|| climate_core::pnp::pnp_percentages(scale_sums.view(), normals.view()))
+    // A division per element costs about what copying `scale_sums` to release
+    // the GIL would, and the copy would add an input-sized buffer: keep the GIL.
+    let scale_sums = checked_view(&scale_sums)?;
+    let normals = checked_view(&normals)?;
+    climate_core::pnp::pnp_percentages(scale_sums.view(), normals.view())
         .map(|percentages| percentages.into_pyarray(py))
         .map_err(|error| PyValueError::new_err(error.to_string()))
 }
