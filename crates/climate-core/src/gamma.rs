@@ -15,7 +15,7 @@
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2, Zip};
 
 use crate::ClimateError;
-use crate::special::igam;
+use crate::special::{igam, igamc};
 
 /// Method-of-moments gamma shape and scale for each column of a calibration block.
 ///
@@ -80,6 +80,23 @@ pub fn gamma_cdf(x: f64, alpha: f64, beta: f64) -> f64 {
         igam(alpha, scaled)
     } else {
         0.0
+    }
+}
+
+/// `scipy.stats.gamma.sf(x, a=alpha)` at unit scale, including its argument handling.
+///
+/// NaN when alpha is not positive (or NaN) or `x` is NaN; 1 at or below zero; 0 at
+/// `x = +inf`; otherwise Cephes `igamc(alpha, x)`. The negative-skew Pearson Type
+/// III CDF is this survival function.
+pub fn gamma_sf(x: f64, alpha: f64) -> f64 {
+    if alpha.is_nan() || alpha <= 0.0 || x.is_nan() {
+        f64::NAN
+    } else if x <= 0.0 {
+        1.0
+    } else if x == f64::INFINITY {
+        0.0
+    } else {
+        igamc(alpha, x)
     }
 }
 
@@ -204,6 +221,36 @@ mod tests {
                 actual: 1
             }
         );
+    }
+
+    #[test]
+    fn survival_function_matches_scipy_including_a_deep_tail() {
+        // reference values from scipy.stats.gamma.sf(x, a) 1.17.0
+        let cases = [
+            (0.5, 2.0, 0.909_795_989_568_950_1),
+            (3.0, 0.5, 0.014_305_878_435_429_645),
+            (10.0, 4.0, 0.010_336_050_675_925_726),
+            (30.0, 5.0, 3.624_300_952_061_492_4e-9),
+            (1e-3, 0.5, 0.964_329_408_270_320_1),
+        ];
+        for (x, alpha, expected) in cases {
+            let actual = gamma_sf(x, alpha);
+            // 1 - igam would lose the deep tail's digits, so the check is relative
+            assert!(
+                (actual - expected).abs() <= 1e-14 * expected,
+                "gamma_sf({x}, {alpha}) = {actual:e}, expected {expected:e}"
+            );
+        }
+    }
+
+    #[test]
+    fn survival_function_mirrors_scipy_argument_handling() {
+        assert!(gamma_sf(1.0, 0.0).is_nan());
+        assert!(gamma_sf(1.0, f64::NAN).is_nan());
+        assert!(gamma_sf(f64::NAN, 1.0).is_nan());
+        assert_eq!(gamma_sf(0.0, 1.0), 1.0);
+        assert_eq!(gamma_sf(-3.0, 1.0), 1.0);
+        assert_eq!(gamma_sf(f64::INFINITY, 1.0), 0.0);
     }
 
     #[test]
