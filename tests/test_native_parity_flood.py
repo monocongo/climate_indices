@@ -207,3 +207,11 @@ def test_edi_zero_variance_and_one_sample_cells_are_nan(monkeypatch) -> None:
     assert np.isfinite(rust[:, 0]).all()
     assert np.isnan(rust[:, 1]).all()
     assert np.isnan(rust[:, 2]).all()
+
+
+def test_edi_years_by_days_layout(monkeypatch) -> None:
+    pe = _fresno_pe().reshape(_FRESNO_YEARS, 366)
+    rust, python, calls = _rust_and_python(monkeypatch, partial(flood.edi, pe, _FRESNO_START, 1992, 2020))
+    assert calls == {"edi"}
+    _assert_parity(rust, python)
+    assert rust.shape == pe.shape
