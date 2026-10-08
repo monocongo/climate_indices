@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import importlib
 import json
+import logging
 import multiprocessing
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from concurrent.futures import Future, ProcessPoolExecutor
+from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -13,10 +15,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pytest
+import structlog
 import xarray as xr
 from hypothesis import settings as hypothesis_settings
 
-from climate_indices import compute, eto, pm_eto
+from climate_indices import compute, eto, logging_config, pm_eto
 from climate_indices.fire import _native as fire_native
 from climate_indices.flood import _native as flood_native
 
@@ -41,6 +44,29 @@ def import_native() -> ModuleType:
     if os.environ.get("CLIMATE_INDICES_REQUIRE_NATIVE") == "1":
         return importlib.import_module("climate_indices._native")
     return pytest.importorskip("climate_indices._native")
+
+
+@contextmanager
+def preserved_logging_state() -> Iterator[None]:
+    """Restore structlog's configuration and the root logger after a test reconfigures them.
+
+    A fixture that resets logging (``_reset_logging_for_testing``) leaves structlog on
+    its defaults, which print instead of reaching stdlib logging. A module-level
+    logger first used after that, in a later test on the same worker, then never
+    reaches ``caplog``.
+    """
+    root = logging.getLogger()
+    config = structlog.get_config()
+    configured = logging_config._LOGGING_CONFIGURED
+    handlers = root.handlers[:]
+    level = root.level
+    try:
+        yield
+    finally:
+        structlog.configure(**config)
+        logging_config._LOGGING_CONFIGURED = configured
+        root.handlers = handlers
+        root.setLevel(level)
 
 
 @pytest.fixture
