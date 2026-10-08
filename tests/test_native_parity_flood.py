@@ -249,3 +249,14 @@ def test_flood_index_zero_variance_and_one_sample_cells_are_nan(monkeypatch) -> 
     assert np.isfinite(rust[:, 0]).all()
     assert np.isnan(rust[:, 1]).all()
     assert np.isnan(rust[:, 2]).all()
+
+
+# Antecedent Precipitation Index.
+
+
+@pytest.mark.parametrize("k", [0.85, 0.9, np.float32(0.95)])
+def test_api_on_the_fresno_record(monkeypatch, k: float) -> None:
+    run = partial(flood.antecedent_precipitation_index, _fresno_rain(), k, return_state=True)
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == {"antecedent_precipitation_index"}
+    _assert_parity(rust, python)
