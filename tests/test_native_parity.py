@@ -655,7 +655,8 @@ def test_pci_mask_or_length_stays_on_the_python_path(monkeypatch):
         lambda: indices.pci(np.ma.array(np.ones(366), mask=np.arange(366) < 31)),
     )
     assert partially_masked[2] == set()
-    assert np.isnan(partially_masked[0]).all() and np.isnan(partially_masked[1]).all()
+    assert np.isnan(partially_masked[0]).all()
+    assert np.isnan(partially_masked[1]).all()
 
     def invalid_length() -> np.ndarray:
         with pytest.raises(exceptions.InvalidArgumentError):
@@ -663,7 +664,8 @@ def test_pci_mask_or_length_stays_on_the_python_path(monkeypatch):
         return np.empty(0)
 
     rust, python, calls = _rust_and_python(monkeypatch, invalid_length)
-    assert calls == set() and rust.size == python.size == 0
+    assert calls == set()
+    assert rust.size == python.size == 0
 
 
 def test_pnp_with_infinite_values(monkeypatch):
@@ -740,7 +742,8 @@ def test_pci_explicit_nan_days_preserve_python_validation(monkeypatch, days):
     missing = np.full(days, np.nan)
     rust, python, calls = _rust_and_python(monkeypatch, lambda: indices.pci(missing))
     assert calls == set()
-    assert rust is missing and python is missing
+    assert rust is missing
+    assert python is missing
 
 
 def test_pnp_partial_mask_is_prepared_before_native_dispatch(monkeypatch):
