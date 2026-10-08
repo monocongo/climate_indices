@@ -30,6 +30,7 @@ import pytest
 import xarray as xr
 
 from climate_indices import flood
+from climate_indices.exceptions import InvalidArgumentError
 from climate_indices.flood import _native as flood_native
 from climate_indices.utils import transform_to_366day
 from tests import conftest
@@ -343,3 +344,18 @@ def test_api_resumed_from_its_state_is_bitwise_a_single_pass(
     np.testing.assert_array_equal(np.concatenate([rust_first.values, rust_second.values]), rust_single.values)
     np.testing.assert_array_equal(rust_second.state.api, rust_single.state.api)
     np.testing.assert_array_equal(rust_second.state.trailing_gap_days, rust_single.state.trailing_gap_days)
+
+
+def test_api_overflow_raises_the_python_error_on_both_paths(monkeypatch) -> None:
+    rain = np.full(3, np.finfo(np.float64).max)
+    message = "antecedent_precipitation_index produced a non-finite value from finite inputs"
+    recorder = _Recorder(native)
+    with np.errstate(all="ignore"):
+        monkeypatch.setattr(flood_native, "_native", recorder)
+        with pytest.raises(InvalidArgumentError, match=message):
+            flood.antecedent_precipitation_index(rain, 0.9)
+        monkeypatch.setattr(flood_native, "_native", None)
+        with pytest.raises(InvalidArgumentError, match=message):
+            flood.antecedent_precipitation_index(rain, 0.9)
+    # the dispatch also reads the extension's NonFiniteResultError to translate it
+    assert "antecedent_precipitation_index" in recorder.calls
