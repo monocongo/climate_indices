@@ -948,7 +948,8 @@ mod tests {
     }
 
     // reference values from scipy.special.gammaln 1.17.0; a fused and an unfused build
-    // differ by an ulp, so the tolerance is a few ulps rather than bit equality
+    // differ by an ulp, and the x < 3 branch's `ln(z) + p` cancellation amplifies that
+    // (~6e-16 relative at x = 0.75), so the tolerance is a few ulps rather than bit equality
     #[test]
     fn lgam_matches_scipy_on_each_branch() {
         let cases = [
@@ -962,7 +963,7 @@ mod tests {
         for (x, expected) in cases {
             let actual = lgam(x);
             assert!(
-                (actual - expected).abs() <= 4e-16 * expected.abs(),
+                (actual - expected).abs() <= 1e-15 * expected.abs(),
                 "lgam({x}) = {actual:e}, expected {expected:e}"
             );
         }

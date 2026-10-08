@@ -60,15 +60,30 @@ NATIVE_PARITY_ATOL = 1e-10
 
 
 class NativeRecorder:
-    """Stand-in for the Rust extension that records which kernels a run called."""
+    """Stand-in for the Rust extension that records which kernels a run called.
+
+    Reading an attribute (a ``hasattr`` check) is not a call, so the recorded set
+    names the kernels that actually ran, not the ones a dispatch probed; the
+    recorded keyword arguments let a test assert how an input reached a kernel.
+    """
 
     def __init__(self, module: ModuleType) -> None:
         self._module = module
         self.calls: set[str] = set()
+        self.arguments: dict[str, dict[str, Any]] = {}
 
     def __getattr__(self, name: str) -> Any:
-        self.calls.add(name)
-        return getattr(self._module, name)
+        attribute = getattr(self._module, name)
+        if isinstance(attribute, type):
+            # the extension's exception type must stay a class for ``except``
+            return attribute
+
+        def record(*args: Any, **kwargs: Any) -> Any:
+            self.calls.add(name)
+            self.arguments[name] = kwargs
+            return attribute(*args, **kwargs)
+
+        return record
 
 
 def rust_and_python(

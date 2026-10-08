@@ -296,6 +296,52 @@ def test_moisture_code_is_run_with_a_seasonal_mask_kept_by_the_kernel(monkeypatc
     assert values[10] == values[9]
 
 
+def _spatial_drought_code_run(columns: dict[str, np.ndarray], in_season: np.ndarray) -> Callable[[], Any]:
+    """A drought-code run over a (time, 2, 3) block with one shared month series."""
+    latitude = np.array([[55.0, 20.0, 0.0], [-10.0, -25.0, -40.0]])
+    spatial = (columns["month"].size, *latitude.shape)
+    return partial(
+        fire.drought_code,
+        np.broadcast_to(columns["temperature_celsius"][:, None, None], spatial).copy(),
+        np.broadcast_to(columns["precipitation_mm"][:, None, None], spatial).copy(),
+        latitude,
+        columns["month"].astype(int),
+        in_season=in_season,
+        return_state=True,
+    )
+
+
+def test_broadcast_calendar_inputs_reach_the_kernel_as_views(monkeypatch) -> None:
+    """A shared month series and season mask cross as broadcast views, not full-size copies."""
+    columns = _cffwis_fixture()
+    in_season = np.ones(columns["month"].size, dtype=bool)
+    in_season[10:20] = False
+    recorder = conftest.NativeRecorder(native)
+    run = _spatial_drought_code_run(columns, in_season)
+    with np.errstate(all="ignore"):
+        monkeypatch.setattr(fire_native, "_native", recorder)
+        rust = run()
+        monkeypatch.setattr(fire_native, "_native", None)
+        python = run()
+    assert recorder.calls == {"drought_code"}
+    _assert_parity(rust, python)
+    arguments = recorder.arguments["drought_code"]
+    assert arguments["months"].strides[1] == 0
+    assert arguments["in_season"].strides[1] == 0
+
+
+def test_a_layout_whose_cells_cannot_be_viewed_as_one_axis_keeps_the_python_path(monkeypatch) -> None:
+    """Reshaping a sliced season mask would copy it, so the recurrence stays in Python."""
+    columns = _cffwis_fixture()
+    wide = np.ones((columns["month"].size, 2, 5), dtype=bool)
+    wide[10:20] = False
+    run = _spatial_drought_code_run(columns, wide[:, :, :3])
+
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == set()
+    _assert_parity(rust, python)
+
+
 def test_moisture_code_resumes_from_a_returned_state(monkeypatch) -> None:
     """A state returned by one run seeds the next, on both paths."""
     columns = _cffwis_fixture()
@@ -526,8 +572,9 @@ def test_the_non_finite_translation_raises_the_python_error() -> None:
     values with a finite result), so the mapping is checked directly; the kernel
     side is covered by ``recurrence::tests::a_non_finite_step_result_is_an_error``.
     """
+    underlying = native.NonFiniteResultError("non-finite")
     with pytest.raises(InvalidArgumentError, match="kbdi produced a non-finite value from finite inputs"):
-        _raise_non_finite("kbdi", native.NonFiniteResultError("non-finite"))
+        _raise_non_finite("kbdi", underlying)
 
 
 def test_default_error_policies_keep_the_python_path(monkeypatch) -> None:
@@ -550,6 +597,30 @@ def test_default_error_policies_keep_the_python_path(monkeypatch) -> None:
         )
     assert recorder.calls == set()
     assert np.isfinite(np.asarray(result.values)).all()
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"nan_policy": "bridge", "max_gap_days": 2**63},
+        {"spin_up": 2**63},
+    ],
+)
+def test_an_option_wider_than_the_binding_keeps_the_python_path(monkeypatch, options) -> None:
+    """Options the Rust integer types cannot represent fall back instead of overflowing."""
+    days = 30
+    temperature = np.full(days, 22.0)
+    humidity = np.full(days, 40.0)
+    wind = np.full(days, 5.0)
+    precipitation = np.zeros(days)
+    recorder = conftest.NativeRecorder(native)
+    with np.errstate(all="ignore"):
+        monkeypatch.setattr(fire_native, "_native", recorder)
+        rust = fire.ffmc(temperature, humidity, wind, precipitation, **options)
+        monkeypatch.setattr(fire_native, "_native", None)
+        python = fire.ffmc(temperature, humidity, wind, precipitation, **options)
+    assert recorder.calls == set()
+    np.testing.assert_array_equal(rust, python)
 
 
 def test_a_varying_month_per_cell_still_indexes_the_tables_per_cell(monkeypatch) -> None:

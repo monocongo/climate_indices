@@ -627,6 +627,13 @@ fn kbdi<'py>(
     let mean_annual_precipitation = checked_copy(&mean_annual_precipitation_mm)?;
     let initial_kbdi = checked_copy(&initial_kbdi)?;
     let initial_wet_spell_precipitation = checked_copy(&initial_wet_spell_precipitation)?;
+    if initial_kbdi.len() != initial_wet_spell_precipitation.len() {
+        return Err(PyValueError::new_err(format!(
+            "initial_wet_spell_precipitation has {} cells, expected {}",
+            initial_wet_spell_precipitation.len(),
+            initial_kbdi.len()
+        )));
+    }
     let initial_state: Vec<KbdiCell> = initial_kbdi
         .iter()
         .zip(&initial_wet_spell_precipitation)

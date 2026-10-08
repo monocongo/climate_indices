@@ -1847,7 +1847,15 @@ array; masked inputs and other shapes or dtypes keep its Python implementation. 
 fire recurrences apply the same guard to every weather array and to the seed they
 resume from, as the flood kernels do to their prepared series and the API seed,
 and a layout the kernel cannot take unchanged (an empty axis, a non-float64 or
-unaligned array) stays in Python as well.
+unaligned array, or a time-first array whose spatial axes cannot be viewed as
+one cell axis without a copy) stays in Python as well. The kernels take views of
+the prepared arrays, so a broadcast month series or season mask is copied once,
+by the binding, rather than first materialized in Python; that boundary copy is
+the native path's own buffer, so it and the history the kernel builds are not
+part of the `array_memory_mb` a recurrence reports. A loaded extension that
+predates a kernel, or a recurrence option wider than the binding's integer
+parameters, also keeps the recurrence on its Python steps rather than failing at
+the boundary.
 Native dispatch also requires NumPy floating-point errors to be ignored
 (`np.errstate(all="ignore")`); warnings, exceptions, callbacks, logging, or
 printing keep the Python path. Python 3.14 context-aware warnings conservatively
@@ -1900,8 +1908,9 @@ no Rust toolchain, so they keep proving the fallback.
   as `test`, on the boundary legs (oldest and newest Python on Linux, newest on
   macOS). It sets `CLIMATE_INDICES_REQUIRE_NATIVE=1`, which makes the native test
   modules raise on a missing extension instead of skipping, so a broken build
-  cannot silently drop the parity suite. `tests/test_native_parity.py` and
-  `tests/test_native_parity_distributions.py` have no other skip. The Python 3.14-only context-aware-warnings routing check lives in
+  cannot silently drop the parity suite. `tests/test_native_parity.py`,
+  `tests/test_native_parity_distributions.py`, and
+  `tests/test_native_parity_fire.py` have no other skip. The Python 3.14-only context-aware-warnings routing check lives in
   `tests/test_native_backend.py` and skips on the 3.10 leg.
 - `native-wheel`: `maturin build --release` on Linux and macOS at both boundary
   Pythons, plus a Windows smoke build on the newest. Each wheel is installed
