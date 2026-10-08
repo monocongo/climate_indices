@@ -18,6 +18,8 @@ use pyo3::prelude::*;
 use climate_core::fire::{DayLength, KbdiCell};
 use climate_core::recurrence::RecurrenceInputs;
 
+mod pet;
+
 type ParameterArrays<'py> = (Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>);
 type PearsonArrays<'py> = (
     Bound<'py, PyArray1<f64>>,
@@ -788,5 +790,6 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(edi, m)?)?;
     m.add_function(wrap_pyfunction!(flood_index, m)?)?;
     m.add_function(wrap_pyfunction!(antecedent_precipitation_index, m)?)?;
+    pet::register(m)?;
     Ok(())
 }

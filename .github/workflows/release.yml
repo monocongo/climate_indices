@@ -32,6 +32,8 @@ jobs:
             exit 1
           fi
 
+  # Every job checks out the immutable event SHA the tag validation approved, not
+  # the mutable tag name, so a tag moved mid-run cannot build unvalidated commits.
   # Run tests before releasing
   test:
     needs: validate-release-tag
@@ -45,7 +47,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       with:
-        ref: ${{ github.ref }}
+        ref: ${{ github.sha }}
 
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
@@ -102,7 +104,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
@@ -132,7 +134,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       with:
-        ref: ${{ github.ref }}
+        ref: ${{ github.sha }}
 
     - name: Validate version consistency
       run: |
@@ -160,20 +162,8 @@ jobs:
     - name: Check package
       run: twine check dist/*
 
-    - name: Test wheel installation
-      run: |
-        WHEEL="$(find "${GITHUB_WORKSPACE}/dist" -maxdepth 1 -type f -name '*.whl' -print -quit)"
-        if [ -z "${WHEEL}" ]; then
-          echo "::error::No wheel found in dist/"
-          exit 1
-        fi
-        python -m venv "${RUNNER_TEMP}/wheel-check"
-        "${RUNNER_TEMP}/wheel-check/bin/python" -m pip install "${WHEEL}"
-        cd "${RUNNER_TEMP}"
-        "${RUNNER_TEMP}/wheel-check/bin/python" -c \
-          "from climate_indices import eddi, pci, percentage_of_normal, pet_hargreaves, pet_thornthwaite, spei, spi; \
-          assert all(map(callable, (eddi, pci, percentage_of_normal, pet_hargreaves, pet_thornthwaite, spei, spi)))"
-
+    # Neither artifact is installed here: `wheel-check` and `no-rust-install`
+    # below install every wheel and the sdist outside this checkout.
     - name: Upload build artifacts
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
       with:
@@ -181,12 +171,200 @@ jobs:
         path: dist/
         retention-days: 30
 
-  # The `test` matrix above proves behavior from source on every supported
-  # Python. This job proves the artifact users download installs from PyPI and
-  # exposes its console scripts, on the oldest and newest supported versions.
-  # It is deliberately not a full Python matrix: the wheel is pure Python and
-  # re-running the whole suite here would duplicate `test`.
+  # Binary wheels that carry the optional Rust backend (`climate_indices._native`).
+  # abi3 (PyO3 `abi3-py310`, `crates/climate-py/Cargo.toml`) validates one wheel
+  # per platform on every supported Python, so this matrix has no interpreter
+  # axis. Linux wheels build inside the `manylinux` container named in the matrix,
+  # which is what sets their glibc floor; macOS and Windows build on their own
+  # runner, so no published wheel is cross-compiled. musllinux is deliberately not
+  # published: musl users install the pure-Python wheel (ADR-0018).
+  build-wheels:
+    needs: [test, security-audit]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            manylinux: '2_28'
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            manylinux: '2_28'
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        ref: ${{ github.sha }}
+
+    # The compiler pin comes from rust-toolchain.toml, which maturin-action reads
+    # before building; the manylinux container is used only for Linux targets.
+    - name: Build binary wheel
+      uses: PyO3/maturin-action@423a6347767a8b16e65c2a7a7042e4a921528da8  # v1
+      with:
+        target: ${{ matrix.target }}
+        manylinux: ${{ matrix.manylinux }}
+        args: --release --locked --out dist
+
+    # An abi3 wheel's tag carries only the platform (cp310-abi3-...). An
+    # interpreter-specific tag here means the abi3 feature stopped applying and
+    # this matrix would need a Python axis.
+    - name: Check the wheel tag is abi3
+      shell: bash
+      run: |
+        set -euo pipefail
+        WHEEL="$(find dist -maxdepth 1 -type f -name '*.whl' -print -quit)"
+        test -n "${WHEEL}"
+        case "$(basename "${WHEEL}")" in
+          *-abi3-*) ;;
+          *) echo "::error::not an abi3 wheel: ${WHEEL}"; exit 1 ;;
+        esac
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      with:
+        name: dist-native-${{ matrix.target }}
+        path: dist/
+        retention-days: 30
+
+  # The `test` matrix above proves behavior from source on every supported Python.
+  # This job proves the artifacts users download install, that pip picks the
+  # platform wheel over the pure-Python one when both are published (ADR-0018),
+  # and that the installed extension dispatches SPI to its Rust kernels. The
+  # oldest and newest supported versions share one abi3 wheel, so the other
+  # platforms need a single leg each.
   wheel-check:
+    needs: [build, build-wheels]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python-version: '3.10'
+            wheel: '*manylinux*x86_64.whl'
+          - os: ubuntu-latest
+            python-version: '3.14'
+            wheel: '*manylinux*x86_64.whl'
+          - os: ubuntu-24.04-arm
+            python-version: '3.14'
+            wheel: '*manylinux*aarch64.whl'
+          - os: macos-latest
+            python-version: '3.14'
+            wheel: '*macosx*arm64.whl'
+          - os: macos-15-intel
+            python-version: '3.14'
+            wheel: '*macosx*x86_64.whl'
+          - os: windows-latest
+            python-version: '3.14'
+            wheel: '*win_amd64.whl'
+
+    steps:
+    - name: Download build artifacts
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      with:
+        pattern: dist*
+        merge-multiple: true
+        path: dist/
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Test wheel installation
+      run: |
+        set -euo pipefail
+        WHEEL="$(find dist -maxdepth 1 -type f -name '${{ matrix.wheel }}' -print -quit)"
+        if [ -z "${WHEEL}" ]; then
+          echo "::error::No wheel matching ${{ matrix.wheel }} in dist/"
+          ls -l dist
+          exit 1
+        fi
+        python -m venv "${RUNNER_TEMP}/wheel-check"
+        if [ "${RUNNER_OS}" = "Windows" ]; then
+          VENV_PYTHON="${RUNNER_TEMP}/wheel-check/Scripts/python.exe"
+          VENV_BIN="${RUNNER_TEMP}/wheel-check/Scripts"
+          SCRIPT_SUFFIX=".exe"
+        else
+          VENV_PYTHON="${RUNNER_TEMP}/wheel-check/bin/python"
+          VENV_BIN="${RUNNER_TEMP}/wheel-check/bin"
+          SCRIPT_SUFFIX=""
+        fi
+        "${VENV_PYTHON}" -m pip install --upgrade pip
+        # Resolve by name with only the built artifacts visible, without
+        # installing: this is the choice pip makes on PyPI between the platform
+        # wheel and the `py3-none-any` fallback.
+        "${VENV_PYTHON}" -m pip install --dry-run --no-index --no-deps \
+          --find-links dist --report "${RUNNER_TEMP}/resolution.json" climate_indices
+        "${VENV_PYTHON}" - "${WHEEL}" <<'PY'
+        import json
+        import os
+        import sys
+        from pathlib import Path
+
+        report = json.loads(Path(os.environ["RUNNER_TEMP"], "resolution.json").read_text())
+        resolved = report["install"][0]["download_info"]["url"]
+        assert resolved.endswith(Path(sys.argv[1]).name), resolved
+        assert "py3-none-any" not in resolved, resolved
+        print(f"resolved {resolved} for {sys.argv[1]}")
+        PY
+        "${VENV_PYTHON}" -m pip install "${WHEEL}"
+        cd "${RUNNER_TEMP}"
+        "${VENV_PYTHON}" - <<'PY'
+        import os
+        from pathlib import Path
+
+        import numpy as np
+
+        import climate_indices
+        from climate_indices import _native, compute, indices
+
+        workspace = Path(os.environ["GITHUB_WORKSPACE"]).resolve()
+        for module in (climate_indices, _native):
+            assert not Path(module.__file__).resolve().is_relative_to(workspace), module.__file__
+
+        class Recorder:
+            def __init__(self, module):
+                self.module = module
+                self.calls = set()
+
+            def __getattr__(self, name):
+                self.calls.add(name)
+                return getattr(self.module, name)
+
+        recorder = Recorder(_native)
+        compute._native = recorder
+        values = np.random.default_rng(0).gamma(2.0, 30.0, 360)
+        with np.errstate(all="ignore"):
+            result = indices.spi(values, 3, indices.Distribution.gamma, 1990, 1990, 2019, compute.Periodicity.monthly)
+        assert np.isfinite(result[2:]).all() and np.isnan(result[:2]).all()
+        assert recorder.calls == {"gamma_parameters", "gamma_probabilities", "norm_ppf"}, recorder.calls
+        PY
+        for entry_point in climate_indices process_climate_indices; do
+          "${VENV_BIN}/${entry_point}${SCRIPT_SUFFIX}" --help > /dev/null
+        done
+
+  # The supported install path without a Rust toolchain: a platform without a
+  # binary wheel installs the pure-Python wheel, and installing from source uses
+  # the sdist, which hatchling builds into the same pure wheel. This job strips
+  # the runner's Rust toolchain from PATH, installs the shipped wheel, rebuilds the
+  # shipped sdist, and runs the core suite against the installed package.
+  no-rust-install:
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -199,6 +377,11 @@ jobs:
           - python-version: '3.14'
 
     steps:
+    - name: Checkout code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        ref: ${{ github.sha }}
+
     - name: Download build artifacts
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
       with:
@@ -210,28 +393,94 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Test wheel installation
+    - name: Install uv
+      uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+
+    # The locked environment without the project, so that the artifact installed
+    # below is what `climate_indices` resolves to and no dependency is re-resolved.
+    - name: Install dependencies without the project
+      run: uv sync --locked --dev --no-install-project  # NOSONAR: 3.10 needs the sdist-only asciitree and 3.14 the sdist-only cartopy
+
+    - name: Remove the Rust toolchain from PATH
       run: |
-        WHEEL="$(find "${GITHUB_WORKSPACE}/dist" -maxdepth 1 -type f -name '*.whl' -print -quit)"
-        if [ -z "${WHEEL}" ]; then
-          echo "::error::No wheel found in dist/"
+        set -euo pipefail
+        export PATH="$(echo "$PATH" | tr ':' '\n' | grep -vE 'cargo|rustup' | tr '\n' ':' | sed 's/:$//')"
+        if command -v cargo >/dev/null; then
+          echo "::error::cargo is still on PATH: $(command -v cargo)"
           exit 1
         fi
-        python -m venv "${RUNNER_TEMP}/wheel-check"
-        "${RUNNER_TEMP}/wheel-check/bin/python" -m pip install --upgrade pip
-        "${RUNNER_TEMP}/wheel-check/bin/python" -m pip install "${WHEEL}"
-        cd "${RUNNER_TEMP}"
-        "${RUNNER_TEMP}/wheel-check/bin/python" -c \
-          "from climate_indices import eddi, fire, pci, percentage_of_normal, pet_hargreaves, pet_thornthwaite, spei, spi; \
-          assert all(map(callable, (eddi, pci, percentage_of_normal, pet_hargreaves, pet_thornthwaite, spei, spi))); \
-          assert all(map(callable, (fire.kbdi, fire.cffwis, fire.fosberg_ffwi, fire.hot_dry_windy, fire.haines_index)))"
-        for entry_point in climate_indices process_climate_indices; do
-          "${RUNNER_TEMP}/wheel-check/bin/${entry_point}" --help > /dev/null
-        done
+        if command -v rustc >/dev/null; then
+          echo "::error::rustc is still on PATH: $(command -v rustc)"
+          exit 1
+        fi
+        echo "PATH=${PATH}" >> "$GITHUB_ENV"
+
+    - name: Install the pure-Python wheel
+      run: |
+        set -euo pipefail
+        WHEEL="$(find dist -maxdepth 1 -type f -name '*py3-none-any.whl' -print -quit)"
+        if [ -z "${WHEEL}" ]; then
+          echo "::error::No pure-Python wheel in dist/"
+          exit 1
+        fi
+        uv pip install --python .venv/bin/python --no-deps "${WHEEL}"
+
+    - name: Build the sdist into the pure-Python wheel
+      run: |
+        set -euo pipefail
+        tar xzf dist/climate_indices-*.tar.gz -C "${RUNNER_TEMP}"
+        SDIST="$(find "${RUNNER_TEMP}" -maxdepth 1 -type d -name 'climate_indices-*' -print -quit)"
+        uv run --no-sync --no-build python -m build --wheel --outdir "${RUNNER_TEMP}/from-sdist" "${SDIST}"
+        uv run --no-sync --no-build python - "${RUNNER_TEMP}/from-sdist" <<'PY'
+        import sys
+        import zipfile
+        from pathlib import Path
+
+        wheels = list(Path(sys.argv[1]).glob("*.whl"))
+        assert len(wheels) == 1, wheels
+        wheel = wheels[0]
+        assert wheel.name.endswith("-py3-none-any.whl"), wheel.name
+        # The shipped pure wheel and the wheel rebuilt from the sdist must both be
+        # free of compiled extensions; the installed-environment check below then
+        # proves the rebuilt wheel is the one the suite exercises.
+        shipped = list(Path("dist").glob("*py3-none-any.whl"))
+        assert len(shipped) == 1, shipped
+        for candidate in (wheel, shipped[0]):
+            compiled = [name for name in zipfile.ZipFile(candidate).namelist() if name.endswith((".so", ".pyd", ".dylib"))]
+            assert not compiled, candidate.name
+        PY
+
+    # The suite below must exercise the wheel the sdist builds, not the shipped
+    # wheel installed above, so reinstall the rebuilt wheel over it.
+    - name: Install the wheel rebuilt from the sdist
+      run: uv pip install --python .venv/bin/python --no-deps --force-reinstall "${RUNNER_TEMP}/from-sdist/"*.whl
+
+    - name: Assert the installed package is the pure-Python implementation
+      run: |
+        uv run --no-sync --no-build python - <<'PY'
+        import importlib.util
+        import sys
+        from pathlib import Path
+
+        import climate_indices
+
+        # The virtualenv sits inside GITHUB_WORKSPACE, so the import must come from
+        # the environment (sys.prefix), not merely from outside the workspace.
+        prefix = Path(sys.prefix).resolve()
+        assert Path(climate_indices.__file__).resolve().is_relative_to(prefix), climate_indices.__file__
+        assert importlib.util.find_spec("climate_indices._native") is None, "the pure wheel must not carry the extension"
+        PY
+
+    - name: Run core tests against the installed package
+      run: >
+        uv run --no-sync --no-build pytest -n auto
+        --ignore=tests/test_release_integrity.py
+        --ignore=tests/test_review_scripts.py
+        --ignore=tests/test_type_checking.py
 
   # Keep the environment-gated OIDC token limited to the publish-only job
   publish:
-    needs: [build, wheel-check]
+    needs: [build, build-wheels, wheel-check, no-rust-install]
     runs-on: ubuntu-latest
     environment: release  # Requires manual approval
     permissions:
@@ -242,7 +491,8 @@ jobs:
     - name: Download build artifacts
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
       with:
-        name: dist
+        pattern: dist*
+        merge-multiple: true
         path: dist/
 
     - name: Upload to PyPI
@@ -259,7 +509,8 @@ jobs:
     - name: Download build artifacts
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
       with:
-        name: dist
+        pattern: dist*
+        merge-multiple: true
         path: dist/
 
     - name: Create GitHub Release

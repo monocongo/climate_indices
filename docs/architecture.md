@@ -275,6 +275,10 @@ xarray adapter) uses them:
 | method-of-moments block of `compute.gamma_parameters` | `gamma::gamma_parameters` |
 | `scipy.stats.gamma.cdf` and zero-mass mixing in `compute.transform_fitted_gamma` | `gamma::gamma_probabilities` |
 | `scipy.stats.norm.ppf` in `compute.transform_fitted_gamma` | `special::norm_ppf` |
+| the year loop of `eto.eto_thornthwaite` | `eto::thornthwaite` |
+| the day loop of `eto.eto_hargreaves` | `eto::hargreaves` |
+| FAO-56 Eq 6 in `pm_eto.pm_eto` | `pm_eto::pm_eto` |
+| the intermediate chain of `pm_eto.penman_monteith_eto` | `pm_eto::penman_monteith_eto` |
 | sample L-moments and the Pearson Type III fit of `compute.pearson_parameters` (`lmoments.fit`, `fit_spatial`) | `lmoments::sample_lmoments`, `pearson::pearson_parameters` |
 | `scipy.stats.pearson3.cdf` in `compute._pearson_fit` | `pearson::pearson_cdf_block` |
 | GLO fit of `compute.loglogistic_parameters` (`lmoments.fit_glo`, `fit_glo_spatial`) | `loglogistic::loglogistic_parameters` |
@@ -283,6 +287,22 @@ xarray adapter) uses them:
 | `indices._hastings_inverse_normal` | `eddi::hastings_inverse_normal` |
 | calibration normals and ratios in `indices.percentage_of_normal` | `pnp::pnp_normals`, `pnp::pnp_percentages` |
 | monthly reduction and ratio in `indices.pci` | `pci::pci` |
+
+The PET entry points follow the same dispatch rule as the gamma kernels. The
+public FAO-56 helper functions stay Python callables; `pm_eto.penman_monteith_eto`
+resolves the humidity and radiation pathways, and checks the wind measurement
+height and the `rh_min`-without-`rh_max` case, before the kernel is reached, so
+the Python and Rust paths raise the same error in the same order. `eto` also
+keeps a Thornthwaite block with an all-NaN month column in Python, since only the
+Python path reports `np.nanmean`'s empty-slice warning. Each kernel copies every
+operand it reads before it releases the GIL, so the native route holds the caller's
+arrays, one flattened input per operand, those copies and the kernel's fixed
+intermediates: a bounded multiple of the request. A constant operand reaches the
+kernel as a zero-stride view rather than as a materialized block, and the Hargreaves
+route reports the bytes it copies beside the arrays it is handed, so the logged
+memory model covers the route the dispatch selected. Their measured effect on
+three representative inputs is in `benchmarks/README.md`; RUST-011 owns whether
+each kernel is worth its conversion overhead.
 
 EDDI is non-parametric, so no SciPy special function is ported for it: its
 probabilities are a count of the period's climatology values strictly below each
@@ -404,8 +424,8 @@ user-facing behavior. A port reproduces the Python numerics, including their
 NaN, zero, and edge-case semantics; it does not improve or change them.
 
 **Building.** Hatchling remains the PEP 517 backend, so the published sdist and
-wheel are pure Python, install without a Rust toolchain, and run the Python
-implementations. Developers with a Rust toolchain build the extension in place:
+`py3-none-any` wheel are pure Python, install without a Rust toolchain, and run the
+Python implementations. Developers with a Rust toolchain build the extension in place:
 
 ```bash
 uv run maturin develop --release   # builds src/climate_indices/_native.*.so
@@ -416,8 +436,20 @@ cargo test --workspace
 `maturin develop` installs the package in editable mode and copies the compiled
 extension into `src/climate_indices/`, where it stays importable after `uv sync`
 reinstalls the project; delete the `_native.*` file to return to pure Python.
-Publishing binary wheels that include `_native`, and the supported install path
-without Rust, are tracked separately (RUST-013).
+
+**Packaging.** maturin also builds the published binary wheels, and they ship in
+the same release as the sdist and the pure wheel. They are abi3 (`abi3-py310`), so
+one wheel per platform validates on every supported Python, and there are five:
+manylinux_2_28 `x86_64` and `aarch64`, macOS arm64 and `x86_64`, and Windows
+`x86_64`. pip prefers a matching platform wheel over `py3-none-any`; a platform
+with neither installs the pure wheel and runs the Python implementations, which is
+the supported install path without Rust — installing from source needs no
+toolchain either, because hatchling never invokes `cargo`. musllinux is not
+published. Which wheel is installed is visible from
+`python -c "import climate_indices._native"`, and any `ImportError` from that
+import falls back to Python rather than failing. The full comparison of the
+options and the failure modes are in
+[ADR-0018](adr/0018-optional-rust-packaging.md).
 
 **Rust in CI.** `.github/workflows/unit-tests-workflow.yml` runs three jobs on
 every event the workflow handles (pull request, push to `main`, merge group,
@@ -439,7 +471,9 @@ no Rust toolchain, so they keep proving the fallback.
   Pythons, plus a Windows smoke build on the newest. Each wheel is installed
   into a fresh venv and imported from outside the checkout, and SPI must reach
   the bundled `gamma_parameters`, `gamma_probabilities`, and `norm_ppf` kernels.
-  This validates wheels; it does not publish them.
+  This validates the developer build; the published wheel matrix, its abi3 tag,
+  and the installation checks for each artifact run in `.github/workflows/release.yml`
+  ([ADR-0018](adr/0018-optional-rust-packaging.md)).
 
 `rust-toolchain.toml` pins the compiler so a new stable clippy lint cannot fail
 `-D warnings` on an unrelated change. The workspace uses edition 2024, so the

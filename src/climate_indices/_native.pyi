@@ -63,6 +63,47 @@ def loglogistic_cdf(
     shapes: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]: ...
 def norm_ppf(probabilities: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]: ...
+def thornthwaite(
+    monthly_temps_celsius: npt.NDArray[np.float64],
+    latitude_radians: npt.NDArray[np.float64],
+    leap_years: npt.NDArray[np.bool_],
+) -> npt.NDArray[np.float64]: ...
+def hargreaves(
+    daily_tmin_celsius: npt.NDArray[np.float64],
+    daily_tmax_celsius: npt.NDArray[np.float64],
+    daily_tmean_celsius: npt.NDArray[np.float64],
+    latitude_radians: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]: ...
+def pm_eto(
+    net_radiation: npt.NDArray[np.float64],
+    soil_heat_flux: npt.NDArray[np.float64],
+    temperature_celsius: npt.NDArray[np.float64],
+    wind_speed_2m: npt.NDArray[np.float64],
+    saturation_vp: npt.NDArray[np.float64],
+    actual_vp: npt.NDArray[np.float64],
+    delta: npt.NDArray[np.float64],
+    gamma: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]: ...
+def fao56_eto(
+    daily_tmin_celsius: npt.NDArray[np.float64],
+    daily_tmax_celsius: npt.NDArray[np.float64],
+    latitude_degrees: npt.NDArray[np.float64],
+    elevation_m: npt.NDArray[np.float64],
+    wind_speed_m_s: npt.NDArray[np.float64],
+    wind_speed_height_m: npt.NDArray[np.float64],
+    day_of_year: npt.NDArray[np.float64],
+    soil_heat_flux_mj_m2_day: npt.NDArray[np.float64],
+    albedo: npt.NDArray[np.float64],
+    humidity_variant: int,
+    tdew_celsius: npt.NDArray[np.float64] | None,
+    rh_min: npt.NDArray[np.float64] | None,
+    rh_max: npt.NDArray[np.float64] | None,
+    rh_mean: npt.NDArray[np.float64] | None,
+    radiation_variant: int,
+    solar_radiation_mj_m2_day: npt.NDArray[np.float64] | None,
+    sunshine_hours: npt.NDArray[np.float64] | None,
+    coastal: bool,
+) -> npt.NDArray[np.float64]: ...
 def tukey_probabilities(
     climatology: npt.NDArray[np.float64],
     values: npt.NDArray[np.float64],
