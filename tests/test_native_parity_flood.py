@@ -5,7 +5,7 @@ API: once with ``climate_indices.flood._native._native`` replaced by a recorder
 around the Rust extension, and once with it set to None, which runs the
 pure-Python implementations. The recorder proves the first run reached the Rust
 kernels, so the comparison is never Python against Python. The contract is
-``rtol = atol = 1e-10`` with matching NaN positions, and â€” for the API â€” an
+``rtol = atol = 1e-10`` with matching NaN positions, and, for the API, an
 identical returned state.
 
 Native dispatch also requires NumPy floating-point errors to be ignored, as in
@@ -205,6 +205,101 @@ def test_flood_index_zero_variance_and_one_sample_cells_are_nan(monkeypatch) -> 
     assert np.isnan(rust[:, 2]).all()
 
 
+# Summation order and the rounding guard.
+#
+# The 1e-10 parity tolerance cannot see which order a kernel sums a calibration
+# sample in: reordering a few dozen rainfall values moves the mean by about 1e-16
+# relative. These cases use a sample whose sum depends on the order, so the
+# results compare exactly.
+
+_ABSORBING_YEARS = 16
+
+
+def _absorbing_annual_maxima() -> np.ndarray:
+    """Sixteen annual maxima, one 1e16 among ones.
+
+    ``1e16`` absorbs a ``1`` added to it (the spacing there is 2), so a left-to-right
+    sum loses all fifteen ones while NumPy's pairwise sum keeps fourteen of them.
+    """
+    maxima = np.ones(_ABSORBING_YEARS)
+    maxima[0] = 1e16
+    return maxima
+
+
+def _constant_years(maxima: np.ndarray, cells: tuple[int, ...] | None) -> np.ndarray:
+    """A PE series whose every day of year ``y`` holds ``maxima[y]``, one series or a ``(time, *cells)`` block."""
+    series = np.repeat(maxima, 366)
+    return series if cells is None else series.reshape(-1, *([1] * len(cells))) * np.ones((1, *cells))
+
+
+def test_the_absorbing_sample_separates_numpys_two_axis_zero_sums() -> None:
+    """The premise of the sum-order tests below, so they cannot pass vacuously.
+
+    NumPy sums a 1-D sample, and a one-column block, pairwise; it sums a block of
+    several columns left to right over the rows.
+    """
+    maxima = _absorbing_annual_maxima()
+    assert maxima.sum() - 1e16 == 14.0
+    assert maxima.reshape(-1, 1).sum(axis=0)[0] - 1e16 == 14.0
+    assert np.tile(maxima[:, None], (1, 2)).sum(axis=0)[0] - 1e16 == 0.0
+
+
+@pytest.mark.parametrize("cells", [None, (1, 1), (2, 1)], ids=["one-series", "one-cell-block", "two-cell-block"])
+def test_flood_index_sums_its_annual_maxima_in_numpys_order(monkeypatch, cells) -> None:
+    """One column sums pairwise and several sum sequentially; either branch swapped changes the bits."""
+    pe = _constant_years(_absorbing_annual_maxima(), cells)
+    run = partial(flood.flood_index, pe, 2000, 2000, 2015, year_start_month=1)
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == {"flood_index"}
+    assert np.isfinite(rust).all()
+    np.testing.assert_array_equal(rust, python)
+
+
+@pytest.mark.parametrize("cells", [None, (2, 1)], ids=["years-by-days", "two-cell-block"])
+def test_edi_sums_each_calendar_day_in_numpys_order(monkeypatch, cells) -> None:
+    """EDI's samples always have 366 or more columns, so they sum left to right over the years."""
+    pe = _constant_years(_absorbing_annual_maxima(), cells)
+    rust, python, calls = _rust_and_python(monkeypatch, partial(flood.edi, pe, 2000, 2000, 2015))
+    assert calls == {"edi"}
+    assert np.isfinite(rust).all()
+    np.testing.assert_array_equal(rust, python)
+
+
+def _guard_block() -> np.ndarray:
+    """A two-cell PE block of ten years around 1e6: cell 0 varies by one ulp steps, cell 1 by 1e-6 steps."""
+    mean = 1e6
+    steps = np.random.default_rng(13).integers(0, 4, 10)
+    spacing = np.array([np.spacing(mean), 1e-6])
+    annual = mean + steps[:, None] * spacing
+    return np.repeat(annual, 366, axis=0).reshape(-1, 2, 1)
+
+
+def test_the_rounding_guard_premise() -> None:
+    """Cell 0 has variance, but its spread is under ``8 * eps * |mean|``; cell 1's is far over it."""
+    annual = _guard_block()[::366, :, 0]
+    guard = 8 * np.finfo(np.float64).eps * np.abs(annual.mean(axis=0))
+    assert (annual.std(axis=0) > 0).all()
+    assert annual.std(axis=0)[0] < guard[0]
+    assert annual.std(axis=0)[1] > guard[1]
+
+
+def test_edi_rounding_guard_leaves_a_sample_of_last_bit_noise_nan(monkeypatch) -> None:
+    rust, python, calls = _rust_and_python(monkeypatch, partial(flood.edi, _guard_block(), 2000, 2000, 2009))
+    assert calls == {"edi"}
+    _assert_parity(rust, python)
+    assert np.isnan(rust[:, 0]).all()
+    assert np.isfinite(rust[:, 1]).all()
+
+
+def test_flood_index_rounding_guard_leaves_a_sample_of_last_bit_noise_nan(monkeypatch) -> None:
+    run = partial(flood.flood_index, _guard_block(), 2000, 2000, 2009, year_start_month=1)
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == {"flood_index"}
+    _assert_parity(rust, python)
+    assert np.isnan(rust[:, 0]).all()
+    assert np.isfinite(rust[:, 1]).all()
+
+
 # Antecedent Precipitation Index.
 
 
@@ -260,18 +355,26 @@ def test_api_over_a_spatial_block_with_masked_days(monkeypatch) -> None:
 
 
 @pytest.mark.parametrize(
-    ("nan_policy", "max_gap_days", "split"),
-    [("propagate", 0, 5000), ("bridge", 3, 4003), ("bridge", 3, 4004)],
-    ids=["propagate", "bridge-inside-a-gap", "bridge-past-the-allowance"],
+    ("nan_policy", "max_gap_days", "split", "live_state"),
+    [
+        ("propagate", 0, 3000, True),
+        ("propagate", 0, 5000, False),
+        ("bridge", 3, 4003, True),
+        ("bridge", 3, 4004, False),
+    ],
+    ids=["propagate-live-state", "propagate-poisoned-state", "bridge-inside-a-gap", "bridge-past-the-allowance"],
 )
 def test_api_resumed_from_its_state_is_bitwise_a_single_pass(
-    monkeypatch, nan_policy: str, max_gap_days: int, split: int
+    monkeypatch, nan_policy: str, max_gap_days: int, split: int, live_state: bool
 ) -> None:
     """A run split at ``split`` and resumed from the returned APIState equals one pass, on both paths.
 
-    The bridge splits land inside a six-day gap, so the resumed state carries a
-    nonzero trailing gap count; the second one resumes once the allowance is
-    already exceeded, so the state it carries is poisoned.
+    The six-day gap starts on day 4000. The propagate split at 3000 resumes a live
+    state, so the second run computes real values until it reaches the gap; the one
+    at 5000 resumes a state the gap already poisoned. The bridge splits land
+    inside the gap, so the resumed state carries a nonzero trailing gap count; the
+    second one resumes once the allowance is already exceeded, so its state is
+    poisoned.
     """
     rain = _fresno_rain()
     rain[4000:4006] = np.nan
@@ -286,6 +389,11 @@ def test_api_resumed_from_its_state_is_bitwise_a_single_pass(
     (rust_single, rust_first, rust_second), python, calls = _rust_and_python(monkeypatch, single_and_split)
     assert calls == {"antecedent_precipitation_index"}
     _assert_parity((rust_single, rust_first, rust_second), python)
+    assert bool(np.all(np.isfinite(rust_first.state.api))) == live_state
+    if nan_policy == "propagate" and live_state:
+        # the resumed run starts from real values and computes them until the gap
+        assert np.isfinite(rust_second.values[: 4000 - split]).all()
+        assert np.isnan(rust_second.values[4000 - split :]).all()
     if max_gap_days:
         assert rust_first.state.trailing_gap_days is not None
         assert int(rust_first.state.trailing_gap_days) > 0
@@ -309,7 +417,7 @@ def test_api_overflow_raises_the_python_error_on_both_paths(monkeypatch) -> None
     assert "antecedent_precipitation_index" in recorder.calls
 
 
-def test_the_api_kernel_returns_the_history_it_builds_in_the_requested_shape() -> None:
+def test_the_api_kernel_returns_the_history_it_builds_in_the_requested_shape(monkeypatch) -> None:
     """The kernel builds the one history and returns it in the shape the runner asks for."""
     rain = _synthetic_rain((40, 3), seed=10)
     api = np.zeros(3)
@@ -323,7 +431,14 @@ def test_the_api_kernel_returns_the_history_it_builds_in_the_requested_shape() -
     history, _ = result
     assert history is not None
     assert history.shape == (30, 3)
-    assert np.isfinite(history).any()
+    # the values are the Python recurrence's, not merely the right shape: the
+    # first ten days are spin-up, which the history leaves out; the public API reads
+    # a 2-D array as one flattened series, so the three cells go in as (40, 3, 1)
+    monkeypatch.setattr(flood_native, "_native", None)
+    with np.errstate(all="ignore"):
+        python = flood.antecedent_precipitation_index(rain.reshape(40, 3, 1), 0.9, spin_up=10)
+    assert np.isfinite(history).all()
+    _assert_parity(history, python.reshape(30, 3))
 
 
 def test_the_runner_leaves_a_native_api_history_to_the_kernel(monkeypatch) -> None:
@@ -349,6 +464,113 @@ def test_the_runner_leaves_a_native_api_history_to_the_kernel(monkeypatch) -> No
 
 
 # Dispatch policy.
+
+
+def _unaligned(values: np.ndarray) -> np.ndarray:
+    """``values`` copied into a float64 array that starts one byte off an 8-byte boundary."""
+    raw = np.zeros(values.size * 8 + 1, dtype=np.uint8)
+    unaligned = raw[1:].view(np.float64)
+    unaligned[:] = values
+    assert not unaligned.flags.aligned
+    return unaligned
+
+
+def _api_recurrence(precipitation: np.ndarray, cells: tuple[int, ...] = ()) -> Any:
+    """``flood_native.api_recurrence`` over ``precipitation`` with every cell valid and unstarted."""
+    return flood_native.api_recurrence(
+        precipitation,
+        0.9,
+        np.zeros(cells),
+        np.isfinite(precipitation),
+        np.ones(cells, dtype=np.bool_),
+        np.zeros(cells, dtype=np.int64),
+    )
+
+
+def test_the_dispatch_declines_unaligned_and_empty_arrays() -> None:
+    """The public entry points copy these into aligned arrays first, so the guard is checked on the dispatch itself."""
+    series = _synthetic_rain((2 * 366,), seed=14)
+    unaligned = _unaligned(series)
+    no_days = np.empty((0,))
+    no_cells = np.empty((2 * 366, 0))
+    with np.errstate(all="ignore"):
+        assert flood_native.effective_precipitation(unaligned, 30) is None
+        assert flood_native.edi(unaligned, 0, 1) is None
+        assert flood_native.flood_index(unaligned, 0, 2) is None
+        assert _api_recurrence(unaligned) is None
+        for empty in (no_days, no_cells):
+            assert flood_native.effective_precipitation(empty, 30) is None
+            assert flood_native.edi(empty, 0, 1) is None
+            assert flood_native.flood_index(empty, 0, 2) is None
+        assert _api_recurrence(no_days) is None
+        assert _api_recurrence(no_cells, cells=(0,)) is None
+        # control: the same series, aligned, reaches the kernels
+        assert flood_native.effective_precipitation(np.array(unaligned), 30) is not None
+        assert _api_recurrence(np.array(unaligned)) is not None
+
+
+def _layouts() -> dict[str, np.ndarray]:
+    """One ``(time, 3, 4)`` rain block stored four ways; every layout holds the same values."""
+    rain = _synthetic_rain((2 * 366, 3, 4), seed=15, missing=0.005)
+    time_last = np.ascontiguousarray(np.moveaxis(rain, 0, -1))
+    wider_grid = np.zeros((2 * 366, 3, 9))
+    wider_grid[:, :, :4] = rain
+    return {
+        "C-order": rain,
+        "time-last": np.moveaxis(time_last, -1, 0),
+        "regional-slice": wider_grid[:, :, :4],
+        "Fortran-order": np.asfortranarray(rain),
+    }
+
+
+def test_a_time_last_block_is_viewed_and_a_layout_that_cannot_merge_is_copied_once() -> None:
+    """The kernel's block adds no Python copy where NumPy can reshape to a view, and one where it cannot."""
+    layouts = _layouts()
+    time_last = layouts["time-last"]
+    viewed = flood_native._block(time_last, 2 * 366, 12)
+    assert np.shares_memory(viewed, time_last)
+    for name in ("regional-slice", "Fortran-order"):
+        copied = flood_native._block(layouts[name], 2 * 366, 12)
+        assert not np.shares_memory(copied, layouts[name])
+        assert copied.flags.c_contiguous
+        np.testing.assert_array_equal(copied, layouts["C-order"].reshape(2 * 366, 12))
+
+
+@pytest.mark.parametrize("layout", ["C-order", "time-last", "regional-slice", "Fortran-order"])
+def test_effective_precipitation_reads_every_layout_the_same_way(monkeypatch, layout: str) -> None:
+    layouts = _layouts()
+    with np.errstate(all="ignore"):
+        # the dispatch itself, which a direct caller of flood._native can hand any layout
+        got = flood_native.effective_precipitation(layouts[layout], 30)
+        expected = flood_native.effective_precipitation(layouts["C-order"], 30)
+    assert got is not None
+    np.testing.assert_array_equal(got, expected)
+    run = partial(flood.effective_precipitation, layouts[layout], duration=30, spatial_time_major=True)
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == {"effective_precipitation"}
+    _assert_parity(rust, python)
+
+
+@pytest.mark.parametrize("layout", ["time-last", "regional-slice", "Fortran-order"])
+def test_the_api_kernel_takes_every_layout_inside_the_runner(layout: str) -> None:
+    """The kernel's arrays are built when the runner calls it, from whatever layout the component holds."""
+    layouts = _layouts()
+
+    def run(block: np.ndarray) -> tuple[Any, Any]:
+        recurrence = _api_recurrence(block, cells=(3, 4))
+        assert recurrence is not None
+        result = recurrence((2 * 366, 3, 4), 0, "bridge", 2)
+        assert result is not None
+        return result
+
+    with np.errstate(all="ignore"):
+        history, gaps = run(layouts[layout])
+        expected_history, expected_gaps = run(layouts["C-order"])
+    assert history is not None
+    np.testing.assert_array_equal(history, expected_history)
+    assert (gaps is None) == (expected_gaps is None)
+    if gaps is not None:
+        np.testing.assert_array_equal(gaps, expected_gaps)
 
 
 def test_a_decay_constant_wider_than_float64_stays_in_python(monkeypatch) -> None:
