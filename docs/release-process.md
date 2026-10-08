@@ -149,24 +149,26 @@ gh run watch "$RUN" -R "$TARGET" --exit-status   # exits non-zero; expected
 gh run view "$RUN" -R "$TARGET" --json jobs --jq '.jobs[] | "\(.conclusion)\t\(.name)"'
 ```
 
-Expected: `validate-release-tag`, every `test` leg, `security-audit`, `build`,
-and both `wheel-check` legs succeed; `publish` fails; `create-release` is
-skipped. The `publish` failure must be PyPI rejecting the OIDC exchange because
-the rehearsal repository is not a trusted publisher. A network error, an
-approval wait, or an action-resolution failure is a different defect to diagnose
-and not a pass, and that rejection must not be remedied by configuring the
-rehearsal repository:
+Expected: `validate-release-tag`, every `test` leg, `security-audit`, `build`, every
+`build-wheels` leg, every `wheel-check` leg, and both `no-rust-install` legs succeed;
+`publish` fails; `create-release` is skipped. The `publish` failure must be PyPI rejecting
+the OIDC exchange because the rehearsal repository is not a trusted publisher. A network
+error, an approval wait, or an action-resolution failure is a different defect to diagnose
+and not a pass, and that rejection must not be remedied by configuring the rehearsal
+repository:
 
 ```bash
 gh run view "$RUN" -R "$TARGET" --log-failed \
   | grep -i -B2 -A6 "server refused the request\|invalid-publisher"
 ```
 
-3. Collect the artifacts, checksums, and timing:
+3. Collect the artifacts, checksums, and timing. Each artifact is downloaded into a
+   directory of its own (`dist` for the sdist and pure wheel, `dist-native-<target>` per
+   binary wheel), so `gh run download` is called without `-n`:
 
 ```bash
-gh run download "$RUN" -R "$TARGET" -n dist -D /tmp/rehearsal-dist
-ls -l /tmp/rehearsal-dist && shasum -a 256 /tmp/rehearsal-dist/*
+gh run download "$RUN" -R "$TARGET" -D /tmp/rehearsal-dist
+ls -lR /tmp/rehearsal-dist && shasum -a 256 /tmp/rehearsal-dist/*/*
 gh run view "$RUN" -R "$TARGET" --json createdAt,updatedAt,attempt
 ```
 
@@ -238,15 +240,20 @@ exact format `vX.Y.Z`. The workflow:
    tests against the checked lockfile.
 4. Runs the runtime-only security audit against the checked lockfile.
 5. Verifies the tag version equals `pyproject.toml` version.
-6. Builds source and wheel artifacts with `python -m build` in an unprivileged
-   job.
-7. Runs `twine check`, installs the wheel in a clean temporary environment, and
-   imports the public API from outside the source checkout.
-8. Uploads the tested build artifacts to the workflow run.
-9. After environment approval, downloads and publishes those artifacts to PyPI
-   through Trusted Publishing/OIDC from a publish-only job.
-10. Creates a GitHub Release for the tag with generated release notes and
-    attached artifacts.
+6. Builds the sdist and the `py3-none-any` wheel with `python -m build`, and the five
+   abi3 binary wheels that carry `climate_indices._native` with maturin, in unprivileged
+   jobs.
+7. Runs `twine check`, installs each platform wheel outside the source checkout on the
+   platform it was built for, checks that pip prefers it over the pure wheel, imports the
+   public API, and asserts that SPI reaches its Rust kernels.
+8. Installs the pure wheel and rebuilds the sdist with `cargo` and `rustc` removed from
+   `PATH`, and runs the core suite against the installed package on the oldest and newest
+   supported Pythons.
+9. Uploads the tested build artifacts to the workflow run.
+10. After environment approval, downloads and publishes those artifacts to PyPI through
+    Trusted Publishing/OIDC from a publish-only job.
+11. Creates a GitHub Release for the tag with generated release notes and attached
+    artifacts.
 
 Only the publish job uses the `release` environment and receives
 `id-token: write`, so GitHub environment approval is required before PyPI
