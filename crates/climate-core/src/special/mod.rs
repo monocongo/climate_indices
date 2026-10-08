@@ -37,13 +37,31 @@ const EULER: f64 = 0.577_215_664_901_532_860_606_512_090_082_402_431;
 /// Iteration cap of `log1pmx`, Cephes `MAXITER`.
 const MAXITER: u64 = 500;
 
+/// `a * b + c`, fused on aarch64.
+///
+/// SciPy's aarch64 builds compile the Cephes `a * b + c` patterns to fused
+/// multiply-adds (the C compilers contract them by default there), and its
+/// x86-64 wheels do not. A 1-ulp difference in `lgam` is amplified by the
+/// Pearson Type III fit's `exp(lgam(a) - lgam(a + 0.5))` for near-symmetric
+/// samples, so this ports the contraction `lgam` and the polynomial helpers
+/// get on each target; Rust never contracts on its own. Other expressions in
+/// these ports stay unfused, which their well-conditioned callers tolerate.
+#[inline(always)]
+fn mul_add(a: f64, b: f64, c: f64) -> f64 {
+    if cfg!(target_arch = "aarch64") {
+        a.mul_add(b, c)
+    } else {
+        a * b + c
+    }
+}
+
 // polevl.h
 
 /// Evaluate the polynomial `coef[0] x^n + ... + coef[n]`.
 fn polevl(x: f64, coef: &[f64], n: usize) -> f64 {
     let mut ans = coef[0];
-    for c in &coef[1..=n] {
-        ans = ans * x + c;
+    for &c in &coef[1..=n] {
+        ans = mul_add(ans, x, c);
     }
     ans
 }
@@ -51,8 +69,8 @@ fn polevl(x: f64, coef: &[f64], n: usize) -> f64 {
 /// Evaluate `x^n + coef[0] x^(n-1) + ... + coef[n-1]`, the leading coefficient 1 implied.
 fn p1evl(x: f64, coef: &[f64], n: usize) -> f64 {
     let mut ans = x + coef[0];
-    for c in &coef[1..n] {
-        ans = ans * x + c;
+    for &c in &coef[1..n] {
+        ans = mul_add(ans, x, c);
     }
     ans
 }
@@ -162,14 +180,20 @@ const LS2PI: f64 = 0.918_938_533_204_672_741_78;
 const MAXLGM: f64 = 2.556_348e305;
 
 fn lgam_large_x(x: f64) -> f64 {
-    let q = (x - 0.5) * x.ln() - x + LS2PI;
+    let q = mul_add(x - 0.5, x.ln(), -x) + LS2PI;
     if x > 1.0e8 {
         return q;
     }
     let p = 1.0 / (x * x);
-    let p = ((7.936_507_936_507_936_507_936_5e-4 * p - 2.777_777_777_777_777_777_777_8e-3) * p
-        + 0.083_333_333_333_333_333_333_3)
-        / x;
+    let p = mul_add(
+        mul_add(
+            7.936_507_936_507_936_507_936_5e-4,
+            p,
+            -2.777_777_777_777_777_777_777_8e-3,
+        ),
+        p,
+        0.083_333_333_333_333_333_333_3,
+    ) / x;
     q + p
 }
 
@@ -219,7 +243,7 @@ pub(crate) fn lgam(x: f64) -> f64 {
     if x >= 1000.0 {
         return lgam_large_x(x);
     }
-    let q = (x - 0.5) * x.ln() - x + LS2PI;
+    let q = mul_add(x - 0.5, x.ln(), -x) + LS2PI;
     let p = 1.0 / (x * x);
     q + polevl(p, &GAMMA_A, 4) / x
 }
@@ -921,6 +945,27 @@ mod tests {
         assert_eq!(igam(0.0, 1.0), 1.0);
         assert_eq!(igam(f64::INFINITY, 1.0), 0.0);
         assert_eq!(igam(1.0, f64::INFINITY), 1.0);
+    }
+
+    // reference values from scipy.special.gammaln 1.17.0; a fused and an unfused build
+    // differ by an ulp, so the tolerance is a few ulps rather than bit equality
+    #[test]
+    fn lgam_matches_scipy_on_each_branch() {
+        let cases = [
+            (0.75, 0.203_280_951_431_295_26), // rational approximation, x < 3
+            (4.5, 2.453_736_570_842_442_3),   // rational approximation, 3 <= x < 13
+            (14.5, 23.862_765_841_689_086),   // Stirling with polevl, 13 <= x < 1000
+            (1234.5, 7_550.550_901_077_895),  // lgam_large_x with the correction
+            (250_000.5, 2_857_304.968_149_462_7), // lgam_large_x with the correction
+            (3.5e9, 73_416_100_808.977_16),   // lgam_large_x, x > 1e8
+        ];
+        for (x, expected) in cases {
+            let actual = lgam(x);
+            assert!(
+                (actual - expected).abs() <= 4e-16 * expected.abs(),
+                "lgam({x}) = {actual:e}, expected {expected:e}"
+            );
+        }
     }
 
     #[test]

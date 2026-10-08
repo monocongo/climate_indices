@@ -18,7 +18,7 @@ import scipy.stats
 
 from climate_indices import compute, indices, lmoments
 from tests import conftest
-from tests.test_native_parity import _DATA_START, _assert_parity, _Recorder, _rust_and_python, _with_zeros
+from tests.test_native_parity import _DATA_START, ATOL, RTOL, _assert_parity, _Recorder, _rust_and_python, _with_zeros
 
 native = conftest.import_native()
 
@@ -459,6 +459,32 @@ def test_fits_match_the_python_lmoments_modules(sample_size):
         except ValueError:
             assert not glo_valid[index]
     assert (p0 == 0.0).all()
+
+
+def test_pearson_scale_of_near_symmetric_samples_matches_python():
+    """``exp(gammaln(a) - gammaln(a + 0.5))`` cancels ~12 digits for a near-zero L-skewness.
+
+    SciPy's ``gammaln`` rounds to a different last bit with and without fused multiply-adds,
+    so the Rust ``lgam`` mirrors the build's contraction (``special::mul_add``); without
+    that, ``scale`` differed from the oracle by up to 5e-4 for |tau_3| below about 1.6e-3.
+    """
+    base = np.arange(1.0, 61.0)
+    columns = []
+    for bump in np.logspace(-4, 1, 200):
+        column = base.copy()
+        column[0] += bump
+        columns.append(column)
+    block = np.stack(columns, axis=1)
+
+    _, scales, skews, valid = lmoments.fit_spatial(block)
+    _, rust_scales, rust_skews, rust_valid = native.pearson_parameters(block)[1:]
+    assert valid.all() and rust_valid.all()
+    assert np.abs(lmoments._estimate_lmoments_spatial(block)[0][2]).min() < 1e-4, "must reach the small-skew range"
+    np.testing.assert_allclose(rust_scales, scales, rtol=RTOL, atol=ATOL)
+    np.testing.assert_allclose(rust_skews, skews, rtol=RTOL, atol=ATOL)
+    # the single-series fit agrees on a few columns too
+    for index in (0, 50, 100, 199):
+        np.testing.assert_allclose(rust_scales[index], lmoments.fit(columns[index])["scale"], rtol=RTOL, atol=ATOL)
 
 
 def test_small_skew_cdf_is_the_normal_cdf_in_both_tails():
