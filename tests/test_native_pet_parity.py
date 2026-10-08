@@ -325,6 +325,28 @@ def test_hargreaves_float32_inputs_stay_on_python(monkeypatch):
     np.testing.assert_allclose(result, reference, rtol=1e-6, atol=1e-6, equal_nan=True)
 
 
+def test_masked_input_with_a_padded_length_reaches_the_kernel(monkeypatch):
+    """A padded masked input is de-masked before either path computes.
+
+    The 1-D/2-D path pads through ``utils.reshape_to_2d``, whose ``np.pad`` drops the
+    MaskedArray subclass, so both paths operate on the same plain data: the kernel
+    is dispatched, and the Python path ignores the mask in exactly the same way.
+    Only a whole-year masked input, which padding never touches, keeps its mask and
+    therefore stays on the Python path.
+    """
+    days = 900  # not a whole number of 366-day years, so the input is padded
+    rng = np.random.default_rng(41)
+    tmin = rng.normal(8.0, 5.0, size=days)
+    tmax = tmin + 10.0
+    tmean = (tmin + tmax) / 2.0
+    masked = np.ma.masked_array(tmin, mask=np.zeros(days, dtype=bool))
+    masked.mask[:60] = True
+    rust, python, calls = _rust_and_python(monkeypatch, eto, lambda: eto.eto_hargreaves(masked, tmax, tmean, 35.0))
+    assert calls == {"hargreaves"}
+    _assert_parity(rust, python)
+    np.testing.assert_array_equal(python, eto.eto_hargreaves(np.asarray(masked), tmax, tmean, 35.0))
+
+
 def test_hargreaves_invalid_latitude_raises_on_both_paths(monkeypatch):
     tmin = np.full(366, 10.0)
     tmax = np.full(366, 25.0)
