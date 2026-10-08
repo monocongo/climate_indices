@@ -622,6 +622,10 @@ def test_release_workflow_requires_tag_commit_on_main() -> None:
 
     assert "fetch-depth: 0" in workflow
     assert 'git merge-base --is-ancestor "${GITHUB_SHA}" "origin/main"' in workflow
+    assert "ref: ${{ github.sha }}" in workflow
+    assert "ref: ${{ github.ref }}" not in workflow, (
+        "checking out the mutable tag name lets a moved tag build commits the validation never approved"
+    )
 
 
 def test_release_workflow_creates_github_release() -> None:
