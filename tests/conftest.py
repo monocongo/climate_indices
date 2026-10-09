@@ -144,12 +144,15 @@ def assert_native_parity(rust: Any, python: Any) -> None:
     """Compare a Rust run's result with the Python run's at the parity tolerance.
 
     A dataclass result is compared field by field, so a returned state is covered
-    as well as the values; a tuple is compared element-wise, a Dataset by its data
-    variables, and a DataArray by its dims and values. Arrays and float scalars
+    as well as the values; a tuple is compared element-wise, and xarray Dataset
+    and DataArray coordinates, dimensions, and values are compared. Arrays and float scalars
     compare with ``allclose`` and matching NaN positions, while integer arrays
     (gap counts) and other fields (unit names)
     compare exactly.
     """
+    if isinstance(rust, (xr.Dataset, xr.DataArray)) or isinstance(python, (xr.Dataset, xr.DataArray)):
+        assert type(rust) is type(python)
+        xr.testing.assert_equal(rust.coords.to_dataset(), python.coords.to_dataset())
     fields = getattr(rust, "__dataclass_fields__", None)
     if fields is not None:
         for name in fields:
@@ -171,13 +174,11 @@ def assert_native_parity(rust: Any, python: Any) -> None:
         assert rust is None and python is None
         return
     if isinstance(rust, xr.Dataset):
-        assert isinstance(python, xr.Dataset)
         assert rust.data_vars.keys() == python.data_vars.keys()
         for name in rust.data_vars:
             assert_native_parity(rust[name], python[name])
         return
     if isinstance(rust, xr.DataArray):
-        assert isinstance(python, xr.DataArray)
         assert rust.dims == python.dims
         assert_native_parity(rust.values, python.values)
         return
