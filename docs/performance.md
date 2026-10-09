@@ -274,3 +274,61 @@ uv run benchmarks/parallel_scaling.py --indices spi,spei,pet,eddi --repeat 3
 attributing a slow SPI pass, and
 [`benchmarks/README.md`](https://github.com/monocongo/climate_indices/blob/main/benchmarks/README.md)
 documents both harnesses and the committed raw output.
+
+## Rust backend
+
+The optional Rust backend (`climate_indices._native`, built from `crates/`) is
+transparent to this page: the xarray adapters call the same Python entry points, and
+dispatch happens inside those modules, so the adapter's chunking and scheduler choices
+are unchanged. Native kernels can copy inputs across the PyO3 boundary, adding per-block
+allocations and peak worker memory; account for those copies when sizing chunks.
+
+RUST-011 measured every ported kernel against the Python implementation it replaces,
+from one registry rather than one family at a time. Two results bear on the guidance
+above:
+
+- The per-cell kernels are 34x to 219x faster (Thornthwaite, the Palmer recursions, the
+  fire recurrences, Hargreaves, the Antecedent Precipitation Index), and the fitting-based
+  indices gain 1.1x to 1.8x: their fit and transform are ported and dispatch natively on
+  the Rust path, but the Python path they replace already calls SciPy's compiled
+  routines, so little time moves. Importing the package costs about 0.7 seconds in this
+  fresh-interpreter measurement, the extension included.
+- The dispatched kernels release the GIL, so four threads across four 1024-cell SPI blocks finish
+  in 0.096 s against 0.278 s single-threaded with no Rust-side parallelism. Rayon is
+  therefore not adopted; an outer pool already parallelizes cell blocks.
+- At CONUS scale (an opt-in run of the same harness on nClimGrid-Monthly, 469,758
+  land cells x 528 months), one eager call is 1.33x to 1.70x faster through Rust for
+  SPI, SPEI, and EDDI and 2.8x for PDSI, but most of the SPI and SPEI gain is the
+  Python path's cost on whole-grid arrays: in blocks of about 58,700 cells on one
+  thread they are at parity (0.98 to 1.07), and Thornthwaite is at parity to a slight Rust
+  lead for eager, one, and two threads (1.03 to 1.12) and 1.17-1.68x ahead at four and
+  eight, because its spatial Python path is already vectorized. PDSI (6.2x to 9.4x in
+  blocks), EDDI (1.7x to 2.0x), and SPI Pearson (1.1x to 2.0x) keep or gain, and the
+  fitting-based indices pull ahead at eight threads (1.5x to 2.0x). Time inside the
+  extension -- binding, copy-in, and kernel, not kernel alone -- is most of only the
+  Thornthwaite (97%), EDDI (80%), and SPI gamma/PDSI (58%) calls, and an outer pool splits
+  those, so the Rayon decision stands. Either backend computes a full grid faster in
+  chunks than in one call, except Rust EDDI, where eager and chunked tie (3.93 s against
+  4.00 s).
+
+The dispatch guard requires NumPy's floating-point errors ignored and no warning-as-error
+filters; NumPy's error state is thread-local. The harness explicitly initializes thread
+workers with each requested policy: only its all-ignore row reaches Rust. Process rows
+set the caller's policy only and report native reachability as `n/a`, because the recorder
+cannot observe another process. A separate default spawned-worker probe reports a mixed
+policy, consistent with Python dispatch in that configuration, not every process pool.
+A caller-provided pool initializer can change worker policies. The process-versus-thread
+ignore timing gap therefore combines backend and scheduler/serialization effects, not
+scheduler overhead alone; the probe does not verify routing in the timed process workers.
+The guidance above and in [Operational Guidance](xarray_compatibility.md#operational-guidance)
+stands.
+
+The full tables -- every entry, the fixed and per-cell fit, thread scaling, and the
+Dask policy rows -- are in
+[`benchmarks/README.md`](https://github.com/monocongo/climate_indices/blob/main/benchmarks/README.md#rust-kernels-vs-the-python-reference-across-the-parity-registry-rust-011),
+and the harness that produced them is `benchmarks/rust_vs_python.py` (the full-grid
+run is its `--netcdf` mode):
+
+```bash
+uv run benchmarks/rust_vs_python.py --repeat 5 --write
+```
