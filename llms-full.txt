@@ -31,37 +31,42 @@ energy family is in development.
 - [SPI](https://climatedataguide.ucar.edu/climate-data/standardized-precipitation-index-spi),
   Standardized Precipitation Index, utilizing gamma and Pearson Type III distributions, with
   selectable placement of zero accumulations (`zero_handling`)
-- [SPEI](https://www.researchgate.net/publication/252361460_The_Standardized_Precipitation-Evapotranspiration_Index_SPEI_a_multiscalar_drought_index),
+- [SPEI](https://climatedataguide.ucar.edu/climate-data/standardized-precipitation-evapotranspiration-index-spei),
   Standardized Precipitation Evapotranspiration Index, utilizing gamma, Pearson Type III, and generalized-logistic (log-logistic) distributions
 - Standardized index (`indices.standardized_index()`), the SPI fitting pipeline for any
   non-negative series, such as runoff or streamflow for
   [SRI/SSI work](docs/standardized-hydrologic-indices.md)
-- [PNP](http://www.droughtmanagement.info/percent-of-normal-precipitation/),
+- [PNP](https://www.droughtmanagement.info/percent-of-normal-precipitation/),
   Percentage of Normal Precipitation
-- [PCI](https://www.tandfonline.com/doi/abs/10.1111/J.0033-0124.1980.00300.X), Precipitation Concentration Index
+- [PCI](https://doi.org/10.1111/j.0033-0124.1980.00300.x), Precipitation Concentration Index
 - [EDDI](https://psl.noaa.gov/eddi/), Evaporative Demand Drought Index
 - [Palmer indices](https://www.droughtmanagement.info/literature/USWB_Meteorological_Drought_1965.pdf),
   including PDSI, PHDI, PMDI, Z-Index, and [scPDSI](https://doi.org/10.1175/1520-0442(2004)017%3C2335:ASPDSI%3E2.0.CO;2)
 
 **Evapotranspiration**
 
-- [PET](https://www.ncdc.noaa.gov/monitoring-references/dyk/potential-evapotranspiration), Potential Evapotranspiration, utilizing the [Thornthwaite](http://dx.doi.org/10.2307/21073),
-  [Hargreaves](http://dx.doi.org/10.13031/2013.26773), or [FAO-56 Penman-Monteith](https://www.fao.org/4/x0490e/x0490e00.htm) equations
+- [PET](https://www.ncei.noaa.gov/access/monitoring/dyk/potential-evapotranspiration),
+  Potential Evapotranspiration, utilizing the [Thornthwaite](https://doi.org/10.2307/210739),
+  [Hargreaves](https://doi.org/10.13031/2013.26773), or
+  [FAO-56 Penman-Monteith](https://www.fao.org/4/x0490e/x0490e00.htm) equations
 
 **[Wildfire](https://climate-indices.readthedocs.io/en/latest/wildfire_applications.html)** (`climate_indices.fire`)
 
-- KBDI, the Keetch-Byram Drought Index
-- CFFWIS, the Canadian Forest Fire Weather Index System: the FFMC, DMC, and DC moisture
+- [KBDI](https://www.drought.gov/data-maps-tools/keetch-byram-drought-index), the Keetch-Byram Drought Index
+- [CFFWIS](https://natural-resources.canada.ca/forests-forestry/wildland-fires/canada-fire-weather-index-system),
+  the Canadian Forest Fire Weather Index System: the FFMC, DMC, and DC moisture
   codes (with Drought Code overwintering) and the ISI, BUI, FWI, and DSR behavior indices
-- Fosberg Fire Weather Index
-- Hot-Dry-Windy Index
-- Haines Index
+- [Fosberg Fire Weather Index (FFWI)](https://wikifire.wsl.ch/tiki-indexe575.html?page=Fosberg+fire+weather+index)
+- [Hot-Dry-Windy Index (HDW)](https://research.fs.usda.gov/treesearch/56562)
+- [Haines Index](https://forecast.weather.gov/glossary.php?word=haines+index)
 
 **[Flood potential](https://climate-indices.readthedocs.io/en/latest/flood_applications.html)** (`climate_indices.flood`)
 
-- Effective Precipitation (PE), the Effective Drought Index (EDI, distinct from EDDI), the
-  Flood Index (I_F), and the Antecedent Precipitation Index (API): daily accumulated-wetness
-  measures that indicate flood potential, not flooding
+- [Effective Precipitation (PE)](https://digitalcommons.unl.edu/droughtfacpub/32/) and its derived
+  Effective Drought Index (EDI, distinct from EDDI), the
+  [Flood Index (I_F)](docs/algorithm_refs/flood_index.md), and the
+  [Antecedent Precipitation Index (API)](https://forecast.weather.gov/glossary.php?word=Antedecent+Precipitation+Index):
+  daily accumulated-wetness measures that indicate flood potential, not flooding
 - `flood_events()`, which extracts events with onset, duration, peak, and severity from a
   daily flood index
 
@@ -268,13 +273,7 @@ git push origin vX.Y.Z
 
 ## Supported Python Versions
 
-| Python Version | Status | Notes |
-|:--------------:|:------:|:------|
-| 3.10 | Supported | Minimum supported version |
-| 3.11 | Supported | |
-| 3.12 | Supported | |
-| 3.13 | Supported | |
-| 3.14 | Supported | Latest supported version |
+Supports Python **3.10–3.14**.
 
 All supported versions are tested on Linux (ubuntu-latest) for every pull request and push
 to `main`. Python 3.14 is additionally tested on macOS on every event, and 3.10 on macOS on
