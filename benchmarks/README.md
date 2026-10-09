@@ -964,9 +964,11 @@ extension); first-call timings exclude that import but include first-use initial
 
 ### Fixed and per-cell cost of a spatial block
 
-The two block entries swept over 1 to 32 cells. A linear fit of seconds against
-cell count gives the fixed per-call cost -- Python orchestration, validation, the
-binding crossing, and the copy in -- and the per-cell kernel cost.
+The two block entries swept over 1 to 32 cells. A least-squares fit of seconds
+against cell count gives two whole-call empirical coefficients: a fixed term --
+Python orchestration, validation, the binding crossing, and the copy in -- and a
+per-cell term, which is not kernel time alone, because binding and Python-side work
+that grows with cell count is inside the same slope.
 
 | entry | Rust fixed | Python fixed | Rust per cell | Python per cell |
 |---|---|---|---|---|
