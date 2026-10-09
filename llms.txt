@@ -149,7 +149,11 @@ See [drought.gov](https://www.drought.gov/drought/python-climate-indices).
 
 ## Installation
 
-Install the released package from PyPI:
+This README describes 3.0.0, which is not yet published on PyPI. The released 2.x
+package does not include the `fire`, `flood`, or `runs` modules or the Rust backend.
+For 3.0.0 features, install from a [development checkout](docs/development-guide.md#installation).
+
+Install the released 2.x package from PyPI:
 
 ```bash
 pip install "climate-indices>=2.3"
@@ -157,10 +161,10 @@ pip install "climate-indices>=2.3"
 
 `uv` users can run `uv pip install "climate-indices>=2.3"`. The 2.3.0 floor matches the
 [quickstart](https://github.com/monocongo/climate_indices/blob/main/docs/quickstart.md),
-which documents the latest release and uses the xarray API added in 2.3.0; see
+which uses the xarray API added in 2.3.0; see
 [Supported Python Versions](#supported-python-versions) for interpreter support.
 
-The wheels published for Linux (x86-64 and aarch64, manylinux_2_28, so glibc 2.28 or
+Starting with 3.0.0, wheels for Linux (x86-64 and aarch64, manylinux_2_28, so glibc 2.28 or
 newer), macOS (Apple silicon and Intel), and Windows (x86-64) include the optional Rust
 acceleration backend; every other platform, including a Linux system with older glibc,
 installs the pure-Python wheel. Both carry the same version and the same public
@@ -306,7 +310,9 @@ the measured speedups behind the chunk and scheduler guidance.
 [`VALIDATION.md`](VALIDATION.md) classifies the evidence for the indices in its per-index
 inventory, separating independent external validation from regression coverage and recording
 their known gaps. Fosberg Fire Weather Index and Haines Index are not yet classified there.
-`uv run pytest -m validation` runs the external checks against committed reference fixtures:
+`uv run pytest -m validation` runs the marked reference-fixture and specification checks.
+FAO-56 worked-example checks run in the core suite via `uv run pytest tests/test_pm_eto.py`.
+The evidence includes:
 
 - **EDDI**: NOAA PSL monthly reference ET/EDDI for 1-, 3-, and 6-month timescales
   (1979–2023); maximum observed error `2.43e-6`.
@@ -318,9 +324,11 @@ their known gaps. Fosberg Fire Weather Index and Haines Index are not yet classi
   NOAA NCEI nClimDiv for all 344 divisions, 1895–2022 (median absolute difference 0.0127).
 - **scPDSI**: cross-validated against Wells-lineage reference fixtures (`atol=5e-5`).
 - **CFFWIS**: all seven components match the NRCan `cffdrs` reference within `1e-9`.
-- **KBDI and HDW**: reproduce the Keetch & Byram (1968) worked example and the
-  Srock et al. (2018) Cedar Fire case.
-- **PET**: FAO-56 worked Examples 10–18 and Thornthwaite and Hargreaves literature examples.
+- **KBDI**: reproduces the Keetch & Byram (1968) worked example.
+- **HDW**: reproduces event timing and tracks the daily series in the Srock et al. (2018)
+  Cedar Fire case; published magnitudes are characterization only, not numerical validation.
+- **PET**: selected FAO-56 helper examples and the daily end-to-end Example 18, plus
+  Thornthwaite and Hargreaves literature examples; monthly Example 17 is not encoded.
 - **Flood family**: specification-level and regression coverage only; no external numeric
   oracle has been adopted yet.
 
