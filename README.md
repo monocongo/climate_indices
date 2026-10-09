@@ -1,4 +1,4 @@
-![Banner Image](https://raw.githubusercontent.com/monocongo/climate_indices/main/assets/Global_Monthly_SPI.jpg)
+![Banner Image](https://raw.githubusercontent.com/monocongo/climate_indices/main/assets/multi-index-compare.png)
 
 # climate_indices
 
