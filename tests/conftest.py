@@ -19,7 +19,7 @@ import structlog
 import xarray as xr
 from hypothesis import settings as hypothesis_settings
 
-from climate_indices import compute, eto, logging_config, pm_eto
+from climate_indices import compute, eto, logging_config, palmer, pm_eto
 from climate_indices.fire import _native as fire_native
 from climate_indices.flood import _native as flood_native
 
@@ -81,6 +81,7 @@ def python_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(pm_eto, "_native", None)
     monkeypatch.setattr(fire_native, "_native", None)
     monkeypatch.setattr(flood_native, "_native", None)
+    monkeypatch.setattr(palmer, "_native", None)
 
 
 NATIVE_PARITY_RTOL = 1e-10

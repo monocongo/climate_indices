@@ -1756,7 +1756,9 @@ src/climate_indices/_native.pyi # type stub for the extension
 followed by EDDI's empirical ranking and inverse normal, the distribution fits
 SPEI adds, Pearson Type III (also used by SPI and the standardized index), the
 log-logistic (generalized logistic, GLO), the PNP and PCI numerical blocks, the
-fire-weather recurrences, and the flood family. The gamma and distribution-fit kernels replace the
+fire-weather recurrences, the flood family, and the Palmer family's water
+balance, Z-index, and spell recursions. The gamma and distribution-fit kernels
+replace the
 numerical blocks inside `compute.py` functions; the EDDI, PNP, and PCI kernels
 replace the blocks inside the `indices.py` functions that own them, so the
 validation, calibration-period resolution, data-quality and goodness-of-fit
@@ -1849,6 +1851,40 @@ kernels; the components are independent, so running them outside the shared day
 loop cannot change a result. Elementwise fire indices (ISI, BUI, FWI, DSR,
 Fosberg, HDW, Haines) stay in Python: they are single NumPy expressions with no
 recurrence, and a port would not pay for itself.
+
+The Palmer family ports its loops and state machines. Dispatch for every stage
+lives in `palmer.py`, which owns `pdsi()` and `scpdsi()`; the private
+`_palmer_pdi`, `_palmer_wells`, and `self_calibration` functions stay pure
+Python and remain the oracle when called directly:
+
+| Python seam | Rust kernel (`climate-core`) |
+|---|---|
+| `palmer._calc_water_balances` (with `_calc_potential_loss`, `_calc_recharge`) | `palmer::water_balance` |
+| `palmer._calc_k_prime_and_dbar` (PDSI K factors and scPDSI K-prime) | `palmer_zindex::k_prime_and_dbar` |
+| `palmer._calc_raw_zindex` (with `_calc_cafec_zindex`) | `palmer_zindex::raw_zindex` |
+| `_palmer_pdi.calculate`, from `_calculate_pdsi_prepared` | `palmer_pdi::calculate` |
+| `self_calibration.duration_factors`, from `_calculate_scpdsi_prepared` | `self_calibration::duration_factors` |
+| `_palmer_wells.calculate`, from `_calculate_scpdsi_prepared` | `palmer_wells::calculate` |
+
+The CAFEC ratios (`_calc_cafec_coefficients`), the T ratio
+(`_calc_zindex_factors`), the K-factor normalization in `_calc_kfactors`, and the
+scPDSI percentile rescaling (`nan_safe_percentile`, `_rescale_scpdsi_zindex`) stay
+in Python for the fire indices' reason: each is one NumPy expression. So do the
+`DurationFactors`/`PdiDurationFactors` validation, the scPDSI K-prime finiteness
+check, masks, fully-missing-cell NaNs, and logging; the Wells kernel takes the
+recurrence coefficients Python derived. The PDI state machine Python vectorizes
+across cells partitions every cell into exactly one branch each month, so the
+kernel runs it one cell at a time with the same branch order and exact-zero
+comparisons. A scalar AWC goes to Rust only when it is a Python `int`/`float` or
+an `np.float64` (other scalars keep their NumPy type promotion in Python), and an
+array AWC only when it is one plain float64 value per cell. An infinite Z value
+and a calibration Z series too short for the longest rolling window keep the
+Python path, which raises its own error; the kernels' abatement and least-squares
+failures raise `_native.NoConvergenceError`, which `palmer.py` re-raises as the
+`ConvergenceError` the Python path raises. The native water balance releases its
+unused Python output placeholders before allocating Rust outputs; its inputs are
+still copied before releasing the GIL. The K-prime and raw Z-index stages borrow
+the CAFEC arrays with the GIL held, avoiding five full-record copies per stage.
 
 The flood family ports the computation behind each NumPy entry point in
 `climate_indices.flood`, with the Antecedent Precipitation Index running on the
@@ -1952,9 +1988,11 @@ calls reject unaligned inputs and copy empty arrays without creating Rust views
 of caller-owned storage. `tests/test_native_parity.py` (gamma),
 `tests/test_native_parity_distributions.py` (Pearson Type III and GLO),
 `tests/test_native_parity_fire.py` (the fire recurrences, which compare the
-returned state as well), and `tests/test_native_parity_flood.py` (the flood
-family, including the returned API state and a resumed run that is bitwise a
-single pass) explicitly ignore floating-point errors and compare the
+returned state as well), `tests/test_native_parity_palmer.py` (the Palmer
+family, which also requires the backtracking's sign pattern to match exactly),
+and `tests/test_native_parity_flood.py` (the flood family, including the
+returned API state and a resumed run that is bitwise a single pass) explicitly
+ignore floating-point errors and compare the
 two paths at `rtol = atol = 1e-10` with matching NaN positions, and the
 `python_backend` fixture in
 `tests/conftest.py` pins any test to the Python reference.
@@ -2007,8 +2045,9 @@ no Rust toolchain, so they keep proving the fallback.
   macOS). It sets `CLIMATE_INDICES_REQUIRE_NATIVE=1`, which makes the native test
   modules raise on a missing extension instead of skipping, so a broken build
   cannot silently drop the parity suite. `tests/test_native_parity.py`,
-  `tests/test_native_parity_distributions.py`, and
-  `tests/test_native_parity_fire.py` have no other skip. The Python 3.14-only context-aware-warnings routing check lives in
+  `tests/test_native_parity_distributions.py`,
+  `tests/test_native_parity_fire.py`, and `tests/test_native_parity_palmer.py`
+  have no other skip. The Python 3.14-only context-aware-warnings routing check lives in
   `tests/test_native_backend.py` and skips on the 3.10 leg.
 - `native-wheel`: `maturin build --release` on Linux and macOS at both boundary
   Pythons, plus a Windows smoke build on the newest. Each wheel is installed
@@ -2773,7 +2812,9 @@ registered is never exposed to Python. Add the matching signature to
 `src/climate_indices/_native.pyi`, annotating each array argument with its dtype:
 float64 values, bool validity masks, int64 indices. Existing bindings call
 `checked_copy`, which rejects unaligned arrays, copies empty and caller-owned
-storage before `py.detach`, and wraps the view conversion.
+storage before `py.detach`, and wraps the view conversion. Simple elementwise
+stages such as PNP percentages and Palmer CAFEC use `checked_view` without releasing
+the GIL, avoiding input-sized copies.
 
 ### 5. Add dispatch and routing
 
@@ -2808,11 +2849,13 @@ propagates. A missing extension is not an error, it is the pure-Python install.
 
 Extend the suite that covers the index family — `tests/test_native_parity.py` for the
 SPI/EDDI kernels, `tests/test_native_parity_distributions.py` for the distribution
-fits, `tests/test_native_parity_fire.py` for the fire recurrences — running the same
+fits, `tests/test_native_parity_fire.py` for the fire recurrences,
+`tests/test_native_parity_palmer.py` for the Palmer family — running the same
 computation twice through the public or compute-level API: once with `_native`
 replaced by the `_Recorder` around the extension, once with `_native` set to `None`,
 comparing at `rtol = atol = 1e-10` with matching NaN positions. The compute suites
-patch `compute._native`; the fire suite patches `climate_indices.fire._native._native`.
+patch `compute._native`; the fire suite patches `climate_indices.fire._native._native`,
+and the Palmer suite patches `palmer._native`.
 Tests that establish invocation assert the recorded call set, so a run that never
 reached Rust fails instead of passing Python against Python; result-only comparisons
 discard the call set, and intentional-fallback cases assert an empty one. The EDDI
@@ -2825,7 +2868,7 @@ supplied parameters, and masked or unaligned inputs that must fall back.
 
 A test that targets the Python reference itself uses the `python_backend` fixture
 from `tests/conftest.py`, which sets the `_native` attribute of every dispatch module
-(`compute`, `eto`, `pm_eto`, `fire`, and `flood`) to `None` for the test; a new
+(`compute`, `eto`, `pm_eto`, `fire`, `flood`, and `palmer`) to `None` for the test; a new
 dispatch module is added to that fixture in the same change. Loosening a tolerance needs a measured justification in the
 ticket (maximum absolute and relative error, where it occurs, which primitive
 diverges, and whether reproducing the Python method closes the gap); never edit a

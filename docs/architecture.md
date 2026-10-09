@@ -261,7 +261,9 @@ src/climate_indices/_native.pyi # type stub for the extension
 followed by EDDI's empirical ranking and inverse normal, the distribution fits
 SPEI adds, Pearson Type III (also used by SPI and the standardized index), the
 log-logistic (generalized logistic, GLO), the PNP and PCI numerical blocks, the
-fire-weather recurrences, and the flood family. The gamma and distribution-fit kernels replace the
+fire-weather recurrences, the flood family, and the Palmer family's water
+balance, Z-index, and spell recursions. The gamma and distribution-fit kernels
+replace the
 numerical blocks inside `compute.py` functions; the EDDI, PNP, and PCI kernels
 replace the blocks inside the `indices.py` functions that own them, so the
 validation, calibration-period resolution, data-quality and goodness-of-fit
@@ -354,6 +356,40 @@ kernels; the components are independent, so running them outside the shared day
 loop cannot change a result. Elementwise fire indices (ISI, BUI, FWI, DSR,
 Fosberg, HDW, Haines) stay in Python: they are single NumPy expressions with no
 recurrence, and a port would not pay for itself.
+
+The Palmer family ports its loops and state machines. Dispatch for every stage
+lives in `palmer.py`, which owns `pdsi()` and `scpdsi()`; the private
+`_palmer_pdi`, `_palmer_wells`, and `self_calibration` functions stay pure
+Python and remain the oracle when called directly:
+
+| Python seam | Rust kernel (`climate-core`) |
+|---|---|
+| `palmer._calc_water_balances` (with `_calc_potential_loss`, `_calc_recharge`) | `palmer::water_balance` |
+| `palmer._calc_k_prime_and_dbar` (PDSI K factors and scPDSI K-prime) | `palmer_zindex::k_prime_and_dbar` |
+| `palmer._calc_raw_zindex` (with `_calc_cafec_zindex`) | `palmer_zindex::raw_zindex` |
+| `_palmer_pdi.calculate`, from `_calculate_pdsi_prepared` | `palmer_pdi::calculate` |
+| `self_calibration.duration_factors`, from `_calculate_scpdsi_prepared` | `self_calibration::duration_factors` |
+| `_palmer_wells.calculate`, from `_calculate_scpdsi_prepared` | `palmer_wells::calculate` |
+
+The CAFEC ratios (`_calc_cafec_coefficients`), the T ratio
+(`_calc_zindex_factors`), the K-factor normalization in `_calc_kfactors`, and the
+scPDSI percentile rescaling (`nan_safe_percentile`, `_rescale_scpdsi_zindex`) stay
+in Python for the fire indices' reason: each is one NumPy expression. So do the
+`DurationFactors`/`PdiDurationFactors` validation, the scPDSI K-prime finiteness
+check, masks, fully-missing-cell NaNs, and logging; the Wells kernel takes the
+recurrence coefficients Python derived. The PDI state machine Python vectorizes
+across cells partitions every cell into exactly one branch each month, so the
+kernel runs it one cell at a time with the same branch order and exact-zero
+comparisons. A scalar AWC goes to Rust only when it is a Python `int`/`float` or
+an `np.float64` (other scalars keep their NumPy type promotion in Python), and an
+array AWC only when it is one plain float64 value per cell. An infinite Z value
+and a calibration Z series too short for the longest rolling window keep the
+Python path, which raises its own error; the kernels' abatement and least-squares
+failures raise `_native.NoConvergenceError`, which `palmer.py` re-raises as the
+`ConvergenceError` the Python path raises. The native water balance releases its
+unused Python output placeholders before allocating Rust outputs; its inputs are
+still copied before releasing the GIL. The K-prime and raw Z-index stages borrow
+the CAFEC arrays with the GIL held, avoiding five full-record copies per stage.
 
 The flood family ports the computation behind each NumPy entry point in
 `climate_indices.flood`, with the Antecedent Precipitation Index running on the
@@ -457,9 +493,11 @@ calls reject unaligned inputs and copy empty arrays without creating Rust views
 of caller-owned storage. `tests/test_native_parity.py` (gamma),
 `tests/test_native_parity_distributions.py` (Pearson Type III and GLO),
 `tests/test_native_parity_fire.py` (the fire recurrences, which compare the
-returned state as well), and `tests/test_native_parity_flood.py` (the flood
-family, including the returned API state and a resumed run that is bitwise a
-single pass) explicitly ignore floating-point errors and compare the
+returned state as well), `tests/test_native_parity_palmer.py` (the Palmer
+family, which also requires the backtracking's sign pattern to match exactly),
+and `tests/test_native_parity_flood.py` (the flood family, including the
+returned API state and a resumed run that is bitwise a single pass) explicitly
+ignore floating-point errors and compare the
 two paths at `rtol = atol = 1e-10` with matching NaN positions, and the
 `python_backend` fixture in
 `tests/conftest.py` pins any test to the Python reference.
@@ -512,8 +550,9 @@ no Rust toolchain, so they keep proving the fallback.
   macOS). It sets `CLIMATE_INDICES_REQUIRE_NATIVE=1`, which makes the native test
   modules raise on a missing extension instead of skipping, so a broken build
   cannot silently drop the parity suite. `tests/test_native_parity.py`,
-  `tests/test_native_parity_distributions.py`, and
-  `tests/test_native_parity_fire.py` have no other skip. The Python 3.14-only context-aware-warnings routing check lives in
+  `tests/test_native_parity_distributions.py`,
+  `tests/test_native_parity_fire.py`, and `tests/test_native_parity_palmer.py`
+  have no other skip. The Python 3.14-only context-aware-warnings routing check lives in
   `tests/test_native_backend.py` and skips on the 3.10 leg.
 - `native-wheel`: `maturin build --release` on Linux and macOS at both boundary
   Pythons, plus a Windows smoke build on the newest. Each wheel is installed

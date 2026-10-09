@@ -320,7 +320,9 @@ registered is never exposed to Python. Add the matching signature to
 `src/climate_indices/_native.pyi`, annotating each array argument with its dtype:
 float64 values, bool validity masks, int64 indices. Existing bindings call
 `checked_copy`, which rejects unaligned arrays, copies empty and caller-owned
-storage before `py.detach`, and wraps the view conversion.
+storage before `py.detach`, and wraps the view conversion. Simple elementwise
+stages such as PNP percentages and Palmer CAFEC use `checked_view` without releasing
+the GIL, avoiding input-sized copies.
 
 ### 5. Add dispatch and routing
 
@@ -355,11 +357,13 @@ propagates. A missing extension is not an error, it is the pure-Python install.
 
 Extend the suite that covers the index family — `tests/test_native_parity.py` for the
 SPI/EDDI kernels, `tests/test_native_parity_distributions.py` for the distribution
-fits, `tests/test_native_parity_fire.py` for the fire recurrences — running the same
+fits, `tests/test_native_parity_fire.py` for the fire recurrences,
+`tests/test_native_parity_palmer.py` for the Palmer family — running the same
 computation twice through the public or compute-level API: once with `_native`
 replaced by the `_Recorder` around the extension, once with `_native` set to `None`,
 comparing at `rtol = atol = 1e-10` with matching NaN positions. The compute suites
-patch `compute._native`; the fire suite patches `climate_indices.fire._native._native`.
+patch `compute._native`; the fire suite patches `climate_indices.fire._native._native`,
+and the Palmer suite patches `palmer._native`.
 Tests that establish invocation assert the recorded call set, so a run that never
 reached Rust fails instead of passing Python against Python; result-only comparisons
 discard the call set, and intentional-fallback cases assert an empty one. The EDDI
@@ -372,7 +376,7 @@ supplied parameters, and masked or unaligned inputs that must fall back.
 
 A test that targets the Python reference itself uses the `python_backend` fixture
 from `tests/conftest.py`, which sets the `_native` attribute of every dispatch module
-(`compute`, `eto`, `pm_eto`, `fire`, and `flood`) to `None` for the test; a new
+(`compute`, `eto`, `pm_eto`, `fire`, `flood`, and `palmer`) to `None` for the test; a new
 dispatch module is added to that fixture in the same change. Loosening a tolerance needs a measured justification in the
 ticket (maximum absolute and relative error, where it occurs, which primitive
 diverges, and whether reproducing the Python method closes the gap); never edit a

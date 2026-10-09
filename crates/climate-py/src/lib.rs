@@ -18,6 +18,7 @@ use pyo3::prelude::*;
 use climate_core::fire::{DayLength, KbdiCell};
 use climate_core::recurrence::RecurrenceInputs;
 
+mod palmer;
 mod pet;
 
 type ParameterArrays<'py> = (Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>);
@@ -42,10 +43,17 @@ type LogLogisticArrays<'py> = (
 // message to tell the two apart.
 create_exception!(_native, NonFiniteResultError, PyValueError);
 
+// A calibration stage could not produce a usable value.
+//
+// The message is the Python one; the Palmer dispatch raises the
+// `ConvergenceError` the pure-Python path raises.
+create_exception!(_native, NoConvergenceError, PyValueError);
+
 fn climate_error(error: climate_core::ClimateError) -> PyErr {
     let message = error.to_string();
     match error {
         climate_core::ClimateError::NonFinite { .. } => NonFiniteResultError::new_err(message),
+        climate_core::ClimateError::NoConvergence { .. } => NoConvergenceError::new_err(message),
         _ => PyValueError::new_err(message),
     }
 }
@@ -771,6 +779,10 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
         "NonFiniteResultError",
         m.py().get_type::<NonFiniteResultError>(),
     )?;
+    m.add(
+        "NoConvergenceError",
+        m.py().get_type::<NoConvergenceError>(),
+    )?;
     m.add_function(wrap_pyfunction!(gamma_parameters, m)?)?;
     m.add_function(wrap_pyfunction!(gamma_probabilities, m)?)?;
     m.add_function(wrap_pyfunction!(pnp_normals, m)?)?;
@@ -792,5 +804,6 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(flood_index, m)?)?;
     m.add_function(wrap_pyfunction!(antecedent_precipitation_index, m)?)?;
     pet::register(m)?;
+    palmer::register(m)?;
     Ok(())
 }
