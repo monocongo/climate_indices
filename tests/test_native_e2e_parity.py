@@ -91,21 +91,21 @@ def test_threaded_dask_parity(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_distributed_dask_parity(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A distributed scheduler with real workers computes the same result as the Python reference.
+    """A distributed scheduler with in-process workers computes the same result on both backends.
 
-    The recorder cannot witness this one: a distributed client serializes the task
-    graph before the workers run it, so the in-process dispatch patch never reaches
-    a task. The native run is therefore the installed extension dispatching as
-    usual, and it is compared against the pure-Python path computed in-process.
+    Workers run each task in a copy of the context the cluster started in, so the
+    client is created inside the run: a client started outside ``np.errstate``
+    leaves every task on the Python path.
     """
     distributed = pytest.importorskip("distributed")
-    assert compute._native is not None, "the distributed run has to dispatch to the extension"
     chunked = _series(cells=3).chunk({"time": -1, "cell": 1})
-    with distributed.Client(n_workers=2, threads_per_worker=1, processes=False, dashboard_address=None):
-        rust = _spi(chunked).compute()
-    with np.errstate(all="ignore"), monkeypatch.context() as patch:
-        conftest.disable_native(patch)
-        python = _spi(chunked).compute()
+
+    def run() -> Any:
+        with distributed.Client(n_workers=2, threads_per_worker=1, processes=False, dashboard_address=None):
+            return _spi(chunked).compute()
+
+    rust, python, calls = _run_both(monkeypatch, run)
+    assert calls == {"gamma_parameters", "gamma_probabilities", "norm_ppf"}
     conftest.assert_native_parity(rust, python)
 
 
@@ -158,14 +158,26 @@ def test_cli_parity(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
             "single",
         ]
 
+    def written(base: str, distribution: str) -> np.ndarray:
+        with xr.open_dataset(tmp_path / f"{base}_spi_{distribution}_06.nc", mask_and_scale=False) as dataset:
+            return dataset[f"spi_{distribution}_06"].values
+
+    recorder = conftest.NativeRecorder(conftest.import_native())
     with np.errstate(all="ignore"), monkeypatch.context() as patch:
+        patch.setattr(compute, "_native", recorder)
         main(arguments(str(tmp_path / "native")))
-        with xr.open_dataset(tmp_path / "native_spi_gamma_06.nc", mask_and_scale=False) as dataset:
-            rust = dataset["spi_gamma_06"].values
         conftest.disable_native(patch)
         main(arguments(str(tmp_path / "python")))
-        with xr.open_dataset(tmp_path / "python_spi_gamma_06.nc", mask_and_scale=False) as dataset:
-            python = dataset["spi_gamma_06"].values
 
-    assert np.isnan(rust).sum() < rust.size, "the CLI run produced nothing to compare"
-    conftest.assert_native_parity(rust, python)
+    # the CLI computes SPI with both distributions
+    assert recorder.calls == {
+        "gamma_parameters",
+        "gamma_probabilities",
+        "norm_ppf",
+        "pearson_cdf",
+        "pearson_parameters",
+    }
+    for distribution in ("gamma", "pearson"):
+        rust = written("native", distribution)
+        assert np.isnan(rust).sum() < rust.size, f"the CLI {distribution} run produced nothing to compare"
+        conftest.assert_native_parity(rust, written("python", distribution))
