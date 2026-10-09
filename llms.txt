@@ -65,12 +65,19 @@ energy family is in development.
 - `flood_events()`, which extracts events with onset, duration, peak, and severity from a
   daily flood index
 
-**Energy (in development)**
+**Energy (in development, [#1157](https://github.com/monocongo/climate_indices/issues/1157))**
 
-- Degree days, standardized energy production and demand indices, and related
-  energy-meteorology indices are planned under
-  [#1157](https://github.com/monocongo/climate_indices/issues/1157); none ships in the
-  package yet.
+Planned, none shipped yet in the package:
+
+- Heating, cooling, and energy degree days (HDD / CDD / EDD)
+- Hub-height wind-speed profile, and wind and temperature-derated PV capacity factors
+- Standardized energy production and demand indices: SREPI and a standardized demand index,
+  plus SRLI for signed residual-load series, following
+  [Allen and Otero (2023)](https://doi.org/10.1016/j.renene.2023.119206)
+- Run-theory energy-drought events (onset, duration, severity), and a capacity-weighted
+  precipitation proxy for hydropower
+- These indices describe the climate-driven component of energy supply and demand, not
+  actual generation or load
 
 **Supporting tools**
 
