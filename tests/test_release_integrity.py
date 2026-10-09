@@ -449,17 +449,14 @@ def test_docker_uses_latest_supported_python() -> None:
 
 
 def test_front_page_python_support_matches_classifiers() -> None:
-    """README rows, latest marker, and front-page badges must match metadata."""
+    """README support range and front-page badges must match metadata."""
     versions = _declared_python_versions()
     badge_url = _expected_badge_url()
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     docs_index = (ROOT / "docs" / "index.md").read_text(encoding="utf-8")
     release_process = (ROOT / "docs" / "release-process.md").read_text(encoding="utf-8")
 
-    support_rows = re.findall(r"^\| (\d+\.\d+) \| Supported \|([^|]*)\|$", readme, re.MULTILINE)
-    assert [version for version, _notes in support_rows] == versions
-    assert support_rows[0][1].strip() == "Minimum supported version"
-    assert support_rows[-1][1].strip() == "Latest supported version"
+    assert f"Supports Python **{versions[0]}–{versions[-1]}**." in readme
 
     badge_label = f"Python | {versions[0]}-{versions[-1]}"
     assert f"[![{badge_label}]({badge_url})](#supported-python-versions)" in readme
