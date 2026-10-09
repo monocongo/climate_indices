@@ -77,13 +77,13 @@ fi
 commands="$(python3 -c '
 import json, sys
 ref, stage, repeats, cpus, rows, cols, entries, threads, url = sys.argv[1:10]
-print(json.dumps([
+print(json.dumps({"commands": [
     "set -euxo pipefail",
     "export HOME=/root",
     f"curl -sSfL {url} -o /tmp/bootstrap.sh",
     f"STAGE={stage} GIT_REF={ref} REPEATS={repeats} CPUS={cpus} GRID_ROWS={rows} GRID_COLS={cols}"
     f" GRID_ENTRIES={entries} GRID_THREADS={threads} bash /tmp/bootstrap.sh",
-]))
+]}))
 ' "${git_ref}" "${stage}" "${repeats}" "${cpus}" "${grid_rows}" "${grid_cols}" "${grid_entries}" "${grid_threads}" "${raw_base}")"
 
 command_id="$(aws ssm send-command --region "${region}" \
