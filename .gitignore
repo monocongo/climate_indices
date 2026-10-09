@@ -123,3 +123,11 @@ target/
 *.pyd
 # MSVC debug symbols written beside the extension by maturin develop
 *.pdb
+
+# benchmarks/aws: Terraform state and run output are machine-local, never committed
+benchmarks/aws/terraform/.terraform/
+benchmarks/aws/terraform/*.tfstate
+benchmarks/aws/terraform/*.tfstate.*
+benchmarks/aws/terraform/crash.log
+benchmarks/aws/results/
+benchmarks/aws/spread.json
