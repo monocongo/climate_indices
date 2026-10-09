@@ -76,6 +76,11 @@ def python_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     For tests that target the Python reference itself: parity tests, and tests that
     inject a failure by patching a SciPy call the Rust kernels never make.
     """
+    disable_native(monkeypatch)
+
+
+def disable_native(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point every dispatch module at the Python implementations."""
     monkeypatch.setattr(compute, "_native", None)
     monkeypatch.setattr(eto, "_native", None)
     monkeypatch.setattr(pm_eto, "_native", None)
@@ -139,10 +144,11 @@ def assert_native_parity(rust: Any, python: Any) -> None:
     """Compare a Rust run's result with the Python run's at the parity tolerance.
 
     A dataclass result is compared field by field, so a returned state is covered
-    as well as the values; a tuple is compared element-wise and a DataArray by its
-    dims and values. Arrays compare with ``allclose`` and matching NaN positions,
-    while integer arrays (gap counts) and non-array fields (unit names) compare
-    exactly.
+    as well as the values; a tuple is compared element-wise, a Dataset by its data
+    variables, and a DataArray by its dims and values. Arrays and float scalars
+    compare with ``allclose`` and matching NaN positions, while integer arrays
+    (gap counts) and other fields (unit names)
+    compare exactly.
     """
     fields = getattr(rust, "__dataclass_fields__", None)
     if fields is not None:
@@ -154,20 +160,34 @@ def assert_native_parity(rust: Any, python: Any) -> None:
         for rust_item, python_item in zip(rust, python, strict=True):
             assert_native_parity(rust_item, python_item)
         return
+    if isinstance(rust, dict):
+        # a returned fitting-parameter dict holds arrays per calendar step
+        assert isinstance(python, dict)
+        assert rust.keys() == python.keys()
+        for key in rust:
+            assert_native_parity(rust[key], python[key])
+        return
     if rust is None or python is None:
         assert rust is None and python is None
+        return
+    if isinstance(rust, xr.Dataset):
+        assert isinstance(python, xr.Dataset)
+        assert rust.data_vars.keys() == python.data_vars.keys()
+        for name in rust.data_vars:
+            assert_native_parity(rust[name], python[name])
         return
     if isinstance(rust, xr.DataArray):
         assert isinstance(python, xr.DataArray)
         assert rust.dims == python.dims
         assert_native_parity(rust.values, python.values)
         return
-    if isinstance(rust, np.ndarray) or isinstance(python, np.ndarray):
+    # a float scalar holds to the same tolerance as an array
+    if isinstance(rust, (np.ndarray, float, np.floating)) or isinstance(python, (np.ndarray, float, np.floating)):
         rust_array = np.asarray(rust)
         python_array = np.asarray(python)
         assert rust_array.shape == python_array.shape
         assert rust_array.dtype == python_array.dtype
-        if np.issubdtype(rust_array.dtype, np.integer):
+        if not np.issubdtype(rust_array.dtype, np.inexact):
             np.testing.assert_array_equal(rust_array, python_array)
         else:
             np.testing.assert_allclose(
