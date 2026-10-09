@@ -1755,8 +1755,8 @@ src/climate_indices/_native.pyi # type stub for the extension
 **Ported kernels.** The gamma fit and transform behind SPI were the first port,
 followed by EDDI's empirical ranking and inverse normal, the distribution fits
 SPEI adds, Pearson Type III (also used by SPI and the standardized index), the
-log-logistic (generalized logistic, GLO), the PNP and PCI numerical blocks, and
-the fire-weather recurrences. The gamma and distribution-fit kernels replace the
+log-logistic (generalized logistic, GLO), the PNP and PCI numerical blocks, the
+fire-weather recurrences, and the flood family. The gamma and distribution-fit kernels replace the
 numerical blocks inside `compute.py` functions; the EDDI, PNP, and PCI kernels
 replace the blocks inside the `indices.py` functions that own them, so the
 validation, calibration-period resolution, data-quality and goodness-of-fit
@@ -1850,6 +1850,31 @@ loop cannot change a result. Elementwise fire indices (ISI, BUI, FWI, DSR,
 Fosberg, HDW, Haines) stay in Python: they are single NumPy expressions with no
 recurrence, and a port would not pay for itself.
 
+The flood family ports the computation behind each NumPy entry point in
+`climate_indices.flood`, with the Antecedent Precipitation Index running on the
+same `recurrence::run` driver as the fire codes rather than a second recurrence
+interface:
+
+| Python seam | Rust kernel (`climate-core`) |
+|---|---|
+| `scipy.ndimage.correlate1d` window of `flood.effective_precipitation` | `flood::effective_precipitation` |
+| calendar-day standardization of `flood.edi` | `flood::edi` |
+| annual maxima and standardization of `flood.flood_index` | `flood::flood_index` |
+| `flood.antecedent_precipitation_index` recurrence | `flood::antecedent_precipitation_index` over `recurrence::run` |
+
+The effective-precipitation kernel reproduces `correlate1d`'s general loop
+(the newest day's term first, then the window from its oldest day) and its
+NaN propagation, so a window holding a missing day is NaN. The EDI and Flood
+Index calibration sums follow NumPy's axis-0 reduction, which adds the years
+sequentially for a block of several columns and pairwise for a single one (a
+1-D Flood Index sample); both share the population SD and the `8 * eps * |mean|`
+rounding guard. `climate_indices.flood._native` hands each kernel the blocks and
+the Calibration Period rows the Python modules resolved; validation, the
+all-leap layout, and the xarray and CLI paths stay in Python, and the xarray
+adapters reach the kernels through the same NumPy entry points. An API decay
+constant whose type would promote the Python step beyond float64 (an extended
+`np.longdouble`) keeps the Python recurrence.
+
 Dispatch takes the Rust path only for a
 plain, aligned float64 `ndarray` whose fit parameters are aligned and one per
 calendar step (and cell). Unaligned arrays, other dtypes, and caller-supplied
@@ -1860,34 +1885,76 @@ gamma transform (`transform_fitted_gamma` and the parameter resolver it calls),
 the GLO transform (`transform_fitted_loglogistic`, whose fit and CDF may then run
 natively), the sliding sum that prepares a scaled series, and PNP preparation. A
 partially masked SPI/SPEI gamma transform therefore matches the same input
-passed through `np.ma.filled(values, np.nan)`. An all-masked input returns from
-the all-missing short-circuit before that normalization, so SPI and SPEI hand
-back the original `MaskedArray`, not the filled plain NaN array. Seams that do
+passed through `np.ma.filled(values, np.nan)`. Fully masked SPI/SPEI inputs
+short-circuit before fitting or native calls, returning a `MaskedArray`, not a
+filled plain NaN array. Existing preparation still applies: SPI flattens a 2-D
+series, and SPEI forms its water-balance array, so input object identity is not
+a general guarantee. A direct `transform_fitted_gamma` call returns the fully
+masked input unchanged. The gamma parameter resolver fills even a
+full mask with NaN, so a fully masked fit returns plain NaN parameters without
+calling a kernel; supplied `alpha`/`beta` come back unchanged, and only the
+computed `prob_zero` is NaN. A direct `gamma_parameters` call also returns plain
+NaN parameters for a fully masked input, but retains Python's mask semantics for
+a partial mask. Seams that do
 not replace a mask keep their Python implementation when handed one: a direct
 `gamma_parameters` or `loglogistic_parameters` call, the Pearson Type III fit
 and transform, PCI, whose dispatch checks the original 1-D input and requires a
 plain 1-D array, and the fire recurrences, which apply the same guard to every
-weather array and to the seed they resume from. A layout the kernel cannot take
-unchanged (an empty axis, a non-float64 or unaligned array, or a time-first
-array whose spatial axes cannot be viewed as one cell axis without a copy) stays
-in Python as well. The kernels take views of the prepared arrays, so a broadcast
-month series or season mask is copied once, by the binding, rather than first
-materialized in Python; that boundary copy is the native path's own buffer, so
-it and the history the kernel builds are not part of the `array_memory_mb` a
-recurrence reports. A loaded extension that predates a kernel, or a recurrence
-option wider than the binding's integer parameters, also keeps the recurrence on
-its Python steps rather than failing at the boundary.
+weather array and to the seed they resume from, as the flood kernels do to their
+prepared series and the API seed. A layout the kernel cannot take unchanged (an
+empty axis, a non-float64 or unaligned array, or, for the fire recurrences, a
+time-first array whose spatial axes cannot be viewed as one cell axis without a
+copy) stays in Python as well. The kernels take views of the prepared arrays, so
+a broadcast month series or season mask is copied once, by the binding, rather
+than first materialized in Python; that boundary copy is the native path's own
+buffer and is not part of the `array_memory_mb` a recurrence reports, which
+counts the one recorded history the kernel returns. The flood kernels differ in
+one respect: a time-last (transposed) array reshapes to a view, and a layout
+that cannot merge without a copy, such as a regional slice of a larger grid or a
+Fortran-ordered array, is copied once in Python and still runs natively, because
+the Python path is roughly
+three times slower than the kernel plus that copy (365-day PE over 400 cells).
+The public flood entry points already hand the dispatch a C-contiguous array,
+since their validation copies, so the policy matters to direct callers of
+`flood._native`. A loaded extension that predates a kernel,
+or a recurrence option wider than the binding's integer parameters, also keeps
+the recurrence on its Python steps rather than failing at the boundary.
 Native dispatch also requires NumPy floating-point errors to be ignored
-(`np.errstate(all="ignore")`); warnings, exceptions, callbacks, logging, or
-printing keep the Python path. Python 3.14 context-aware warnings conservatively
-keep the Python path, as do fits with a column that has no positive value,
-whose empty-slice warnings are independent of NumPy error policies. Default NumPy error policies
-therefore use Python even when the extension is installed. Direct extension
+(`np.errstate(all="ignore")`); policies that warn, raise, call, log, or print keep
+the Python path. A warning filter that promotes `RuntimeWarning` (or a superclass)
+to an exception also keeps Python, even under `all="ignore"`. Python 3.14
+context-aware warnings conservatively keep the Python path. Default NumPy error
+policies therefore use Python even when the extension is installed.
+
+For gamma calibration blocks, the contract is:
+
+- For a plain (or NaN-normalized) calibration block, if any column has no
+  positive value after zero replacement (only NaN, zero, or negative values),
+  the **whole fit** stays in Python. Its `np.nanmean` emits
+  `RuntimeWarning: Mean of empty slice` independently of `np.errstate`, so that
+  warning and its promotion to an exception are preserved. A block passed as a
+  `MaskedArray` is not normalized here: its masked reductions warn nothing and
+  return masked parameters. Entirely missing inputs still return NaN parameters
+  before fitting, without this warning.
+- Negatives are not removed or newly rejected. A block containing negatives may
+  use the native fit only when every column also has a positive value and all
+  floating-point errors are ignored. Under `invalid="warn"` or `invalid="raise"`,
+  Python preserves `RuntimeWarning: invalid value encountered in log` or
+  `FloatingPointError`, respectively.
+- Constant and single-positive-value columns may use Rust under `all="ignore"`;
+  their degenerate parameters and their transform results match Python.
+  A Python fit does not prohibit later eligible native CDF/inverse-normal calls.
+  Return values and `climate_indices` warnings match on both backends.
+
+These rules retain existing behavior; [ADR-0017](docs/adr/0017-rust-core-acceleration-backend.md)
+records the decision. Direct extension
 calls reject unaligned inputs and copy empty arrays without creating Rust views
 of caller-owned storage. `tests/test_native_parity.py` (gamma),
-`tests/test_native_parity_distributions.py` (Pearson Type III and GLO), and
+`tests/test_native_parity_distributions.py` (Pearson Type III and GLO),
 `tests/test_native_parity_fire.py` (the fire recurrences, which compare the
-returned state as well) explicitly ignore floating-point errors and compare the
+returned state as well), and `tests/test_native_parity_flood.py` (the flood
+family, including the returned API state and a resumed run that is bitwise a
+single pass) explicitly ignore floating-point errors and compare the
 two paths at `rtol = atol = 1e-10` with matching NaN positions, and the
 `python_backend` fixture in
 `tests/conftest.py` pins any test to the Python reference.
@@ -2757,8 +2824,9 @@ cases the doc block promises: all-missing and all-zero columns, a constant colum
 supplied parameters, and masked or unaligned inputs that must fall back.
 
 A test that targets the Python reference itself uses the `python_backend` fixture
-from `tests/conftest.py`, which pins both `compute._native` and `fire._native` to
-`None` for the test. Loosening a tolerance needs a measured justification in the
+from `tests/conftest.py`, which sets the `_native` attribute of every dispatch module
+(`compute`, `eto`, `pm_eto`, `fire`, and `flood`) to `None` for the test; a new
+dispatch module is added to that fixture in the same change. Loosening a tolerance needs a measured justification in the
 ticket (maximum absolute and relative error, where it occurs, which primitive
 diverges, and whether reproducing the Python method closes the gap); never edit a
 fixture or a reference test to match Rust.

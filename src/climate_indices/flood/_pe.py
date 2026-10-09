@@ -7,6 +7,7 @@ import numpy.typing as npt
 from scipy.ndimage import correlate1d
 
 from climate_indices.exceptions import DataShapeError, InputTypeError, InvalidArgumentError
+from climate_indices.flood import _native as flood_native
 
 
 def effective_precipitation(
@@ -74,6 +75,11 @@ def effective_precipitation(
             "array; declare it with spatial_time_major=True"
         )
     series = values.reshape(-1) if values.ndim == 2 else values
+    native_result = (
+        flood_native.effective_precipitation(series, duration) if series.size and series.shape[0] >= duration else None
+    )
+    if native_result is not None:
+        return native_result.reshape(values.shape)
     result = np.full(series.shape, np.nan, dtype=np.float64)
     if series.size and series.shape[0] >= duration:
         # w_m = sum(n=m..D, 1/n); correlate1d takes oldest-first weights.

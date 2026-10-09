@@ -17,6 +17,7 @@ from climate_indices._recurrence import (
     run_daily_recurrences,
 )
 from climate_indices.exceptions import InvalidArgumentError
+from climate_indices.flood import _native as flood_native
 from climate_indices.flood._common import _validated_daily
 
 
@@ -149,13 +150,16 @@ def antecedent_precipitation_index(
         updated: npt.NDArray[np.float64] = k * state_slice + rain
         return updated
 
+    weather_valid = np.isfinite(series)
+    static_valid = np.ones(internal_shape, dtype=np.bool_)
     component = DailyRecurrence(
         "antecedent_precipitation_index",
         current,
         step,
-        np.isfinite(series),
-        np.ones(internal_shape, dtype=np.bool_),
+        weather_valid,
+        static_valid,
         gaps,
+        native=flood_native.api_recurrence(series, k, current, weather_valid, static_valid, gaps),
     )
     values_array, gap_days = run_daily_recurrences(
         (component,),

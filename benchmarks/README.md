@@ -856,3 +856,32 @@ Minimum of three runs, after a warm-up call.
 - As RUST-006's acceptance criteria note, these elementwise kernels may gain
   little: RUST-011 owns whether each is worth its conversion overhead, and this
   table is the evidence for that decision rather than a decision itself.
+
+## Rust against Python for the flood family (RUST-016)
+
+`tests/test_benchmark_flood.py` times each Rust-backed flood index against the Python
+implementation it replaces, on the same synthetic gridded record, by switching
+`climate_indices.flood._native._native` between the built extension and `None`.
+It also times the `flood_events` scan, which is NumPy only. Run it with:
+
+```bash
+uv run pytest tests/test_benchmark_flood.py -m benchmark --benchmark-enable
+```
+
+`BENCHMARK_FLOOD_GRID_SIDES` (default `8,16,32`) and `BENCHMARK_FLOOD_RECORD_YEARS`
+(default `5`) set the scale. Each throughput test records `python_seconds`,
+`rust_seconds`, and `speedup` in the benchmark's `extra_info`.
+
+### Findings (Windows x86-64, five-year record, best of three)
+
+| Index | 16x16 Rust/Python | 64x64 Rust/Python |
+|---|---|---|
+| Effective precipitation | 0.21 | 0.25 |
+| EDI | 0.48 | 0.49 |
+| Flood Index | 0.85 | 0.69 |
+| Antecedent Precipitation Index | 0.15 | 0.86 |
+
+A ratio below 1 means Rust is faster. The Flood Index kernel first measured 2.69
+and 3.79: it walked the time-first block one column at a time, a strided read for
+every element, while NumPy streams the same block in memory order. Walking it a row
+at a time, with the same arithmetic per element, brought it under the Python path.

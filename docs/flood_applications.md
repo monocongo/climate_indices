@@ -165,6 +165,14 @@ and is executed locally by `scripts/smoke_flood_demo_notebook.sh`; no CI job
 runs it because it needs the network. Read the notebook's "How to read this"
 section for what the indices do and do not show about the event.
 
+## Summarizing exceedances as events
+
+`flood.flood_events(flood_index_values)` turns a daily index into events (runs of
+days above a threshold, by default `I_F > 0`) with onset, duration, peak, and
+severity per event, for one series or a `(time, *cells)` block. Pass `threshold`
+to raise the bar and `min_duration` to drop short runs. Events inherit the
+caveat below: they are runs of high flood potential, not recorded floods.
+
 ## What these indices cannot tell you
 
 - **Flood potential is not flooding.** Terrain, soils, land cover, and river

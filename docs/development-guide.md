@@ -371,8 +371,9 @@ cases the doc block promises: all-missing and all-zero columns, a constant colum
 supplied parameters, and masked or unaligned inputs that must fall back.
 
 A test that targets the Python reference itself uses the `python_backend` fixture
-from `tests/conftest.py`, which pins both `compute._native` and `fire._native` to
-`None` for the test. Loosening a tolerance needs a measured justification in the
+from `tests/conftest.py`, which sets the `_native` attribute of every dispatch module
+(`compute`, `eto`, `pm_eto`, `fire`, and `flood`) to `None` for the test; a new
+dispatch module is added to that fixture in the same change. Loosening a tolerance needs a measured justification in the
 ticket (maximum absolute and relative error, where it occurs, which primitive
 diverges, and whether reproducing the Python method closes the gap); never edit a
 fixture or a reference test to match Rust.

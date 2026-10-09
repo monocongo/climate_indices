@@ -14,6 +14,7 @@ from climate_indices import compute, indices
 from climate_indices.eto import eto_hargreaves
 from climate_indices.logging_config import _reset_logging_for_testing, configure_logging
 from climate_indices.performance import LARGE_ARRAY_THRESHOLD_BYTES, check_large_array_memory, get_process_memory_mb
+from tests import conftest
 
 
 @pytest.fixture(autouse=False)
@@ -23,29 +24,31 @@ def log_capture():
     This fixture must be explicitly requested by tests that need it.
     It configures structlog for JSON output and captures log events.
     """
-    # ensure clean state
-    _reset_logging_for_testing()
+    # restore the logging the rest of the run uses once this test is done
+    with conftest.preserved_logging_state():
+        # ensure clean state
+        _reset_logging_for_testing()
 
-    # configure logging for JSON output
-    configure_logging(log_format="json", log_level="INFO")
+        # configure logging for JSON output
+        configure_logging(log_format="json", log_level="INFO")
 
-    # set up capture stream
-    stream = StringIO()
-    handler = logging.StreamHandler(stream)
-    root = logging.getLogger()
+        # set up capture stream
+        stream = StringIO()
+        handler = logging.StreamHandler(stream)
+        root = logging.getLogger()
 
-    # copy formatter from the configured handler
-    if root.handlers:
-        original_handler = root.handlers[0]
-        handler.setFormatter(original_handler.formatter)
-        root.handlers = [handler]
+        # copy formatter from the configured handler
+        if root.handlers:
+            original_handler = root.handlers[0]
+            handler.setFormatter(original_handler.formatter)
+            root.handlers = [handler]
 
-    yield stream
+        yield stream
 
-    # cleanup
-    _reset_logging_for_testing()
-    root.handlers.clear()
-    root.setLevel(logging.WARNING)
+        # cleanup
+        _reset_logging_for_testing()
+        root.handlers.clear()
+        root.setLevel(logging.WARNING)
 
 
 def parse_log_events(stream: StringIO) -> list[dict]:

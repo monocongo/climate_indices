@@ -20,14 +20,24 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import partial
 from types import ModuleType
-from typing import TYPE_CHECKING, Any, NoReturn, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import numpy.typing as npt
 
 from climate_indices import compute
-from climate_indices._recurrence import NativeRecurrence
-from climate_indices.exceptions import InvalidArgumentError
+from climate_indices._native_arrays import (
+    _block,
+    _cells,
+    _Counts,
+    _counts_flat,
+    _flags_flat,
+    _flat,
+    _mask,
+    _merges_cells,
+    _with_kernels,
+)
+from climate_indices._recurrence import _MAX_NATIVE_OPTION, NativeRecurrence, _raise_non_finite
 
 if TYPE_CHECKING:
     from climate_indices.fire._cffwis_codes import _CodeInputs, _MoistureCode
@@ -38,16 +48,6 @@ try:
     from climate_indices import _native
 except ImportError:
     _native = None  # type: ignore[assignment]
-
-# The widest recurrence option the bindings can represent: ``spin_up`` crosses
-# as a ``usize`` and ``max_gap_days`` as an ``i64``, while public validation
-# accepts any non-negative Python integer. A wider value stays on the Python
-# path instead of failing argument conversion.
-_MAX_NATIVE_OPTION = int(np.iinfo(np.int64).max)
-
-# The calendar and gap-count arrays a kernel takes: Python's ``intp`` (the day
-# length band) and the ``int64`` months and gap counts.
-_Counts = npt.NDArray[np.int64] | npt.NDArray[np.intp]
 
 
 def _native_module() -> ModuleType | None:
@@ -69,56 +69,7 @@ def _kernel_module(*names: str) -> ModuleType | None:
     a missing kernel or the shared ``NonFiniteResultError`` declines the whole
     call.
     """
-    native = _native_module()
-    if native is None or not all(hasattr(native, name) for name in (*names, "NonFiniteResultError")):
-        return None
-    return native
-
-
-def _raise_non_finite(index_type: str, underlying: Exception) -> NoReturn:
-    """Raise the error the Python driver raises for a non-finite step result.
-
-    ``_advance_component`` rejects a daily update that is not finite although
-    its inputs were, and the kernel reports the same condition; raising the
-    original error type from here keeps the two paths indistinguishable.
-    """
-    raise InvalidArgumentError(
-        f"{index_type} produced a non-finite value from finite inputs.",
-        argument_name=index_type,
-        argument_value="non-finite result",
-        valid_values="Finite inputs whose result stays within float64",
-    ) from underlying
-
-
-def _cells(shape: tuple[int, ...]) -> int:
-    """The number of cells in a time-first array's trailing spatial shape."""
-    return int(np.prod(shape, dtype=np.intp))
-
-
-def _merges_cells(array: npt.NDArray[Any]) -> bool:
-    """Whether a time-first array's spatial axes reshape to one cell axis without a copy.
-
-    A broadcast or transposed view merges; a sliced or otherwise strided one
-    does not, and reshaping it would add a full-size copy the recurrence's
-    memory metrics never see, so such a layout stays on the Python path.
-    """
-    axes = [(length, stride) for length, stride in zip(array.shape[1:], array.strides[1:], strict=True) if length != 1]
-    return all(outer == length * inner for (_, outer), (length, inner) in zip(axes, axes[1:], strict=False))
-
-
-def _block(array: npt.NDArray[np.float64], days: int, cells: int) -> npt.NDArray[np.float64]:
-    """One time-first float64 input as the ``(days, cells)`` view a kernel takes."""
-    return np.asarray(array, dtype=np.float64).reshape(days, cells)
-
-
-def _flat(array: npt.NDArray[np.float64], cells: int) -> npt.NDArray[np.float64]:
-    """One per-cell float64 array as the ``(cells,)`` vector a kernel takes."""
-    return np.asarray(array, dtype=np.float64).reshape(cells)
-
-
-def _mask(array: npt.NDArray[np.bool_], days: int, cells: int) -> npt.NDArray[np.bool_]:
-    """One time-first validity mask as the ``(days, cells)`` view a kernel takes."""
-    return np.asarray(array, dtype=np.bool_).reshape(days, cells)
+    return _with_kernels(_native_module(), *names, "NonFiniteResultError")
 
 
 def _optional_mask(array: npt.NDArray[np.bool_] | None, days: int, cells: int) -> npt.NDArray[np.bool_] | None:
@@ -131,28 +82,18 @@ def _counts(array: _Counts, days: int, cells: int) -> npt.NDArray[np.int64]:
     return np.asarray(array, dtype=np.int64).reshape(days, cells)
 
 
-def _counts_flat(array: _Counts, cells: int) -> npt.NDArray[np.int64]:
-    """One per-cell calendar or gap-count array as the ``(cells,)`` vector a kernel takes."""
-    return np.asarray(array, dtype=np.int64).reshape(cells)
-
-
-def _flags_flat(array: npt.NDArray[np.bool_], cells: int) -> npt.NDArray[np.bool_]:
-    """One per-cell boolean array as the ``(cells,)`` vector a kernel takes."""
-    return np.asarray(array, dtype=np.bool_).reshape(cells)
-
-
 def _recorded_history(
     history: npt.NDArray[np.float64] | None,
-    values_out: npt.NDArray[np.float64] | None,
+    shape: tuple[int, ...] | None,
 ) -> npt.NDArray[np.float64] | None:
     """The kernel's recorded history in the public shape, or None when none was recorded.
 
-    Returning the kernel's own array avoids a second full-size history: the
-    caller's pre-allocated slot is replaced instead of filled by an extra copy.
+    The kernel builds the one history and it is returned here directly, so the
+    Python side never holds a second full-size array beside it.
     """
-    if history is None or values_out is None:
+    if history is None or shape is None:
         return None
-    return history.reshape(values_out.shape)
+    return history.reshape(shape)
 
 
 def _final_gaps(
@@ -203,7 +144,7 @@ class _KbdiArrays:
 def _run_moisture_kernel(
     native: ModuleType,
     arrays: _MoistureArrays,
-    values_out: npt.NDArray[np.float64] | None,
+    shape: tuple[int, ...] | None,
     spin_up: int,
     nan_policy: str,
     max_gap_days: int,
@@ -229,7 +170,7 @@ def _run_moisture_kernel(
         "spin_up": spin_up,
         "nan_policy": nan_policy,
         "max_gap_days": max_gap_days,
-        "record": values_out is not None,
+        "record": shape is not None,
     }
     try:
         if arrays.index_type == "ffmc":
@@ -265,13 +206,13 @@ def _run_moisture_kernel(
     gap_shape = arrays.trailing_gap_days.shape
     if final_gaps is not None:
         arrays.trailing_gap_days[...] = final_gaps.reshape(gap_shape)
-    return _recorded_history(history, values_out), _final_gaps(final_gaps, gap_shape)
+    return _recorded_history(history, shape), _final_gaps(final_gaps, gap_shape)
 
 
 def _run_kbdi_kernel(
     native: ModuleType,
     arrays: _KbdiArrays,
-    values_out: npt.NDArray[np.float64] | None,
+    shape: tuple[int, ...] | None,
     spin_up: int,
     nan_policy: str,
     max_gap_days: int,
@@ -299,7 +240,7 @@ def _run_kbdi_kernel(
             spin_up=spin_up,
             nan_policy=nan_policy,
             max_gap_days=max_gap_days,
-            record=values_out is not None,
+            record=shape is not None,
         )
     except native.NonFiniteResultError as exc:  # pragma: no cover - defensive parity with the Python driver
         _raise_non_finite("kbdi", exc)
@@ -309,7 +250,7 @@ def _run_kbdi_kernel(
     gap_shape = arrays.trailing_gap_days.shape
     if final_gaps is not None:
         arrays.trailing_gap_days[...] = final_gaps.reshape(gap_shape)
-    return _recorded_history(history, values_out), _final_gaps(final_gaps, gap_shape)
+    return _recorded_history(history, shape), _final_gaps(final_gaps, gap_shape)
 
 
 def moisture_code_recurrence(
