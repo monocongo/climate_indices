@@ -12,6 +12,12 @@
 #   git-ref  branch or commit to benchmark (default: main)
 #   repeats  repetitions per backend (default: 15)
 #
+# Environment:
+#   TASK_CPU, TASK_MEMORY  override the task size, in Fargate units (1024 = 1 vCPU) and MiB.
+#                          The percell and grid stages load the whole real grid and need
+#                          far more memory than a routine run: 8 vCPU allows 16-60 GiB.
+#   KEEP=1                 do not tear the task definition down after the run
+#
 # Results are written to benchmarks/aws/results/<stage>-<timestamp>.log
 set -euo pipefail
 
@@ -23,10 +29,16 @@ region="${AWS_REGION:-us-east-2}"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 tf="${here}/terraform"
 
+# Fargate caps a task at 8 vCPU under this account's quota, and its memory ceiling at
+# that size is 60 GiB, which is what the real-grid stages need to hold the loaded grid.
+size_args=()
+[[ -n "${TASK_CPU:-}" ]] && size_args+=(-var "task_cpu=${TASK_CPU}")
+[[ -n "${TASK_MEMORY:-}" ]] && size_args+=(-var "task_memory=${TASK_MEMORY}")
+
 cd "${tf}"
 terraform init -input=false >/dev/null
 terraform apply -input=false -auto-approve \
-  -var "stage=${stage}" -var "git_ref=${git_ref}" -var "repeats=${repeats}"
+  -var "stage=${stage}" -var "git_ref=${git_ref}" -var "repeats=${repeats}" "${size_args[@]}"
 
 cluster="$(terraform output -raw cluster_name)"
 task_definition="$(terraform output -raw task_definition_arn)"
