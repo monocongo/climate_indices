@@ -12,6 +12,7 @@
 #   CPUS      taskset CPU set for the measured process (default: 0-7)
 #   NETCDF    prepared precipitation grid, grid stage only
 #   TAVG      matching mean-temperature grid, grid stage only
+#   GRID_ROWS, GRID_COLS  synthetic grid dimensions, grid_synthetic stage only
 set -euxo pipefail
 export HOME=/root
 
@@ -52,6 +53,19 @@ case "$STAGE" in
   spread)
     taskset -c "$CPUS" uv run --no-sync python benchmarks/aws/spread.py "$REPEATS"
     cat spread.json
+    ;;
+  grid_synthetic)
+    rows="${GRID_ROWS:-596}"
+    cols="${GRID_COLS:-1385}"
+    # Optional narrowing so a first run can verify the path before paying for all six
+    # entries at every thread count. Deliberately unquoted: these are flag fragments.
+    extra=""
+    [ -n "${GRID_ENTRIES:-}" ] && extra="${extra} --grid-entries ${GRID_ENTRIES}"
+    [ -n "${GRID_THREADS:-}" ] && extra="${extra} --threads ${GRID_THREADS}"
+    uv run --no-sync python benchmarks/aws/make_synthetic_grid.py "$rows" "$cols" /tmp/synth
+    PYTHONWARNINGS=error taskset -c "$CPUS" uv run --no-sync python benchmarks/rust_vs_python.py \
+      --netcdf /tmp/synth/prcp.nc --tavg /tmp/synth/tavg.nc --repeat "$REPEATS" $extra --output /tmp/grid.txt
+    cat /tmp/grid.txt
     ;;
   grid)
     if [ -z "${NETCDF:-}" ] || [ -z "${TAVG:-}" ]; then

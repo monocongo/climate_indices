@@ -27,3 +27,8 @@ output "account_id" {
   description = "Account the benchmark resources live in."
   value       = data.aws_caller_identity.current.account_id
 }
+
+output "instance_id" {
+  description = "Benchmark EC2 instance, or empty when none is provisioned."
+  value       = length(aws_instance.bench) > 0 ? aws_instance.bench[0].id : ""
+}

@@ -140,3 +140,43 @@ The first attempts at this work created resources with ad-hoc `aws` CLI calls
 (security group, key pair, cluster, log group, IAM roles, a probe task
 definition). Those exist only to be superseded by this Terraform configuration,
 which becomes the single source of truth for the account's benchmark resources.
+
+## Grid-scale runs on EC2
+
+Fargate is capped at 8 vCPU by its own quota and cannot hold a CONUS-scale grid,
+so the large-memory stages run on an EC2 instance instead:
+
+```bash
+# verify the path cheaply: two entries, two thread counts, one sample
+GRID_ROWS=300 GRID_COLS=700 GRID_ENTRIES=spi_gamma,palmer_pdsi GRID_THREADS=1,4 \
+  ./benchmarks/aws/run_ec2.sh grid_synthetic ci/1324-benchmark-aws-terraform 1
+
+# the full grid measurement at CONUS-like scale
+./benchmarks/aws/run_ec2.sh grid_synthetic <ref> 2
+```
+
+The instance is `r7i.4xlarge` by default: 16 vCPU / 128 GiB at $1.0584/hr, which
+is the largest shape the account's 16-vCPU standard quota allows. Terraform owns
+it, and the stage runs through SSM Run Command, so there is no key pair and the
+instance's security group has **no ingress rule at all** — Run Command and
+Session Manager are outbound connections from the instance. `run_ec2.sh`
+destroys the instance when the stage finishes unless `KEEP=1` is set.
+
+Two things to know about this path:
+
+- **The task fetches `bootstrap.sh` from the ref being benchmarked**, over
+  `raw.githubusercontent.com`, so the ref supplies its own runner. That requires
+  the repository to stay public; a private fork would need the script staged in S3.
+- **The synthetic grid exists to make grid scale reproducible.** The real
+  fixtures (CHIRPS, nClimGrid) are not in the repository, so `make_synthetic_grid.py`
+  writes a prepared grid of the same shape and contract: January-first consecutive
+  months covering the calibration window, `time`/`lat`/`lon` dims, and both inputs'
+  SHA-256 recorded, as the real full-grid artifact does. Values are synthetic, so a
+  result describes the gridded code path at that size, not any particular dataset.
+  Swap in real prepared files with the `grid` stage and `NETCDF`/`TAVG` when the
+  actual CONUS numbers are wanted.
+
+For real data, the precedent is the nClimGrid preparation recipe in
+`benchmarks/README.md` (NOAA's public NODD bucket: download, then
+`cli_multiprocessing.py prepare`). That step belongs here as another stage; it has
+not been written yet.

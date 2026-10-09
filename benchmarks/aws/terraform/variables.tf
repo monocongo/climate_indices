@@ -90,3 +90,26 @@ variable "tavg" {
   type        = string
   default     = ""
 }
+
+variable "ec2_instance_type" {
+  description = <<-EOT
+    Provision an EC2 instance of this type for grid-scale runs, or null to provision none.
+    Fargate is limited to 8 vCPU by its own quota and cannot hold a CONUS-scale grid, so the
+    large-memory shapes live here. The standard vCPU quota is 16, which makes r7i.4xlarge
+    (16 vCPU / 128 GiB) the largest single instance available without a quota increase.
+  EOT
+  type        = string
+  default     = null
+}
+
+variable "ec2_root_gib" {
+  description = "Root volume for the EC2 instance. Grid fixtures and a cargo target directory need room."
+  type        = number
+  default     = 200
+}
+
+variable "ec2_ami_ssm_parameter" {
+  description = "SSM parameter holding the latest Amazon Linux 2023 x86_64 AMI id."
+  type        = string
+  default     = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64"
+}

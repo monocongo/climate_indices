@@ -202,3 +202,91 @@ resource "aws_scheduler_schedule" "bench" {
     }
   }
 }
+
+# ---------------------------------------------------------------------------
+# Optional EC2 instance for grid-scale runs.
+#
+# Fargate caps a single task at 8 vCPU under this account's quota and is not the
+# right shape for a grid that needs tens of gigabytes, so the large-memory work
+# runs here instead. Access is SSM-only: there is no key pair and the security
+# group has no ingress rule, because Run Command and Session Manager are
+# outbound connections from the instance.
+# ---------------------------------------------------------------------------
+
+data "aws_ssm_parameter" "al2023" {
+  name = var.ec2_ami_ssm_parameter
+}
+
+data "aws_iam_policy_document" "ec2_assume" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["ec2.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "instance" {
+  count = var.ec2_instance_type == null ? 0 : 1
+
+  name               = "${var.name}-instance"
+  assume_role_policy = data.aws_iam_policy_document.ec2_assume.json
+}
+
+resource "aws_iam_role_policy_attachment" "instance_ssm" {
+  count = var.ec2_instance_type == null ? 0 : 1
+
+  role       = aws_iam_role.instance[0].name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+resource "aws_iam_instance_profile" "instance" {
+  count = var.ec2_instance_type == null ? 0 : 1
+
+  name = "${var.name}-instance"
+  role = aws_iam_role.instance[0].name
+}
+
+resource "aws_security_group" "instance" {
+  count = var.ec2_instance_type == null ? 0 : 1
+
+  name        = "${var.name}-instance"
+  description = "Egress-only group for the benchmark instance; SSM needs no ingress"
+  vpc_id      = data.aws_vpc.default.id
+
+  egress {
+    description = "toolchain, repository and fixture downloads"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_instance" "bench" {
+  count = var.ec2_instance_type == null ? 0 : 1
+
+  ami                         = data.aws_ssm_parameter.al2023.value
+  instance_type               = var.ec2_instance_type
+  iam_instance_profile        = aws_iam_instance_profile.instance[0].name
+  subnet_id                   = tolist(data.aws_subnets.default.ids)[0]
+  vpc_security_group_ids      = [aws_security_group.instance[0].id]
+  associate_public_ip_address = true
+
+  metadata_options {
+    http_tokens = "required"
+  }
+
+  root_block_device {
+    volume_size           = var.ec2_root_gib
+    volume_type           = "gp3"
+    delete_on_termination = true
+  }
+
+  tags = {
+    Name = "${var.name}-instance"
+  }
+}
