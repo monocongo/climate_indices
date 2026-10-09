@@ -660,7 +660,8 @@ def load_grid(
     """
     grid = parallel_scaling.load_netcdf_grid(str(precipitation_path), precipitation_var)
     precip, land = grid.precip, grid.valid_cells
-    assert land is not None
+    if land is None:
+        raise SystemExit(f"{precipitation_path}: precipitation grid has no land mask")
     months, lat, lon = precip.shape
     years = precip["time"].dt.year.values
     month_numbers = precip["time"].dt.month.values

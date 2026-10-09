@@ -142,6 +142,18 @@ def test_full_grid_run_reports_every_configuration(tmp_path: Path) -> None:
         assert sum(line.startswith(f"| `{name}` |") and line.endswith(" True |") for line in report.splitlines()) == 3
 
 
+def test_grid_rejects_missing_land_mask(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A missing land mask must be rejected even when Python assertions are disabled."""
+    monkeypatch.setattr(
+        harness.parallel_scaling,
+        "load_netcdf_grid",
+        lambda *_: SimpleNamespace(precip=None, valid_cells=None),
+    )
+
+    with pytest.raises(SystemExit, match="precipitation grid has no land mask"):
+        harness.load_grid(Path("prcp.nc"), "prcp", Path("tavg.nc"), "tavg")
+
+
 @pytest.mark.parametrize("start_month", range(2, 13))
 def test_grid_rejects_non_january_start(tmp_path: Path, start_month: int) -> None:
     """Whole-year counts and calibration coverage do not guarantee January-aligned monthly data."""
