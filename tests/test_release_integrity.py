@@ -394,12 +394,16 @@ def test_native_pytest_leg_builds_the_extension_and_cannot_skip_the_parity_suite
     assert "CLIMATE_INDICES_REQUIRE_NATIVE: '1'" in native_job
     assert native_job.index(install) < native_job.index(build) < native_job.index(check)
     assert native_job.index(check) < native_job.index("- name: Run core tests")
-    core_tests = "- name: Run core tests"
-    assert native_job.split(core_tests)[1].split("      # The core run above")[0].strip() == (
-        _workflow_job(workflow, "test").split(core_tests)[1].strip()
-    )
-    assert "- name: Run the consolidated parity suite" in native_job
-    assert "scripts/native_parity_maxima.py" in native_job
+
+    def step(job: str, name: str) -> str:
+        # a step runs until the blank line that separates it from the next
+        return job.split(f"- name: {name}\n")[1].split("\n\n")[0].strip()
+
+    assert step(native_job, "Run core tests") == step(_workflow_job(workflow, "test"), "Run core tests")
+    suite = step(native_job, "Run the consolidated parity suite")
+    assert "tests/test_native_parity_registry.py tests/test_native_e2e_parity.py" in suite
+    maxima = step(native_job, "Record cross-backend parity maxima")
+    assert 'scripts/native_parity_maxima.py >> "$GITHUB_STEP_SUMMARY"' in maxima
 
 
 def test_native_wheel_job_checks_built_wheels_outside_the_checkout() -> None:
