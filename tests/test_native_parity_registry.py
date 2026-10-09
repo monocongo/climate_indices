@@ -47,6 +47,13 @@ def test_entry_parity(monkeypatch: pytest.MonkeyPatch, entry: Entry) -> None:
     parity_registry.run_parity(monkeypatch, entry)
 
 
+def test_spatial_block_entries_return_a_block(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A Spatial Block entry keeps its cells, so it runs the spatial path rather than a flattened series."""
+    block = parity_registry.SAMPLES[parity_registry.BLOCK]
+    for entry in (entry for entry in ENTRIES if entry.family == parity_registry.BLOCK):
+        assert parity_registry.run_parity(monkeypatch, entry).rust.shape == block.shape, entry.name
+
+
 @pytest.mark.parametrize("entry", ENTRIES, ids=_ENTRY_IDS)
 def test_entry_parity_under_property_draws(monkeypatch: pytest.MonkeyPatch, entry: Entry) -> None:
     """Each entry holds parity across drawn lengths, NaN patterns, zeros, and extremes."""

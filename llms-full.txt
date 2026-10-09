@@ -2024,9 +2024,11 @@ Which path an input takes, and why. Every row is asserted by
 
 The contract is `rtol = atol = 1e-10` with matching NaN positions, per kernel,
 and `scripts/native_parity_maxima.py` measures what each entry actually deviates
-by. Its table is recorded in the `test-native` job summary on every CI run, so
-the Linux x86-64 leg and a developer's machine both report their own numbers;
-the values below are measured on macOS arm64
+by on its family's fixed sample; the Hypothesis draws in the suite are held to
+the same tolerance but are not part of the table. The `test-native` job records
+the table in its summary once the consolidated suite passes, so the Linux x86-64
+leg and a developer's machine both report their own numbers; the values below
+are measured on macOS arm64
 (`uv run python scripts/native_parity_maxima.py`, extension built):
 
 | Entry | Kernels | Max absolute | Max relative |
@@ -2039,8 +2041,8 @@ the values below are measured on macOS arm64
 | `fire_kbdi` | `kbdi` | 0.000e+00 | 0.000e+00 |
 | `fit_diagnostics` | `gamma_parameters` | 0.000e+00 | 0.000e+00 |
 | `flood_api` | `antecedent_precipitation_index` | 0.000e+00 | 0.000e+00 |
-| `flood_edi` | `edi`, `effective_precipitation` | 1.208e-13 | 6.405e-15 |
-| `flood_flood_index` | `effective_precipitation`, `flood_index` | 9.948e-14 | 2.683e-13 |
+| `flood_edi` | `edi`, `effective_precipitation` | 8.527e-14 | 7.883e-15 |
+| `flood_flood_index` | `effective_precipitation`, `flood_index` | 2.220e-16 | 1.096e-15 |
 | `flood_pe` | `effective_precipitation` | 4.547e-13 | 2.781e-16 |
 | `hargreaves` | `hargreaves` | 4.441e-16 | 1.975e-16 |
 | `palmer_pdsi` | `palmer_k_prime`, `palmer_pdi`, `palmer_raw_zindex`, `palmer_water_balance` | 0.000e+00 | 0.000e+00 |
@@ -2053,12 +2055,12 @@ the values below are measured on macOS arm64
 | `spei_loglogistic` | `loglogistic_cdf`, `loglogistic_parameters` | 0.000e+00 | 0.000e+00 |
 | `spi_gamma` | `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 1.998e-15 | 4.765e-14 |
 | `spi_gamma_mean_zero` | `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 1.998e-15 | 4.765e-14 |
-| `spi_gamma_spatial_block` | `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 1.554e-14 | 2.354e-13 |
+| `spi_gamma_spatial_block` | `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 7.105e-15 | 1.868e-13 |
 | `spi_pearson` | `pearson_cdf`, `pearson_parameters` | 8.604e-15 | 6.822e-14 |
 | `thornthwaite` | `thornthwaite` | 2.842e-14 | 2.208e-16 |
 
-The largest measured absolute deviation is 4.547e-13 (`flood_pe`), six orders of
-magnitude inside the contract. The arm64 FMA behavior described above is why the
+The largest measured absolute deviation is 4.547e-13 (`flood_pe`), more than two
+orders of magnitude inside `atol`. The arm64 FMA behavior described above is why the
 same entry can report a smaller deviation on an x86-64 leg, and why a deviation
 recorded in CI is the evidence for the platform it ran on rather than a new
 tolerance.

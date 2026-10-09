@@ -145,9 +145,9 @@ def assert_native_parity(rust: Any, python: Any) -> None:
 
     A dataclass result is compared field by field, so a returned state is covered
     as well as the values; a tuple is compared element-wise and a DataArray by its
-    dims and values. Arrays compare with ``allclose`` and matching NaN positions,
-    while integer arrays (gap counts) and non-array fields (unit names) compare
-    exactly.
+    dims and values. Arrays and float scalars compare with ``allclose`` and matching
+    NaN positions, while integer arrays (gap counts) and other fields (unit names)
+    compare exactly.
     """
     fields = getattr(rust, "__dataclass_fields__", None)
     if fields is not None:
@@ -174,7 +174,8 @@ def assert_native_parity(rust: Any, python: Any) -> None:
         assert rust.dims == python.dims
         assert_native_parity(rust.values, python.values)
         return
-    if isinstance(rust, np.ndarray) or isinstance(python, np.ndarray):
+    # a float scalar holds to the same tolerance as an array
+    if isinstance(rust, (np.ndarray, float, np.floating)) or isinstance(python, (np.ndarray, float, np.floating)):
         rust_array = np.asarray(rust)
         python_array = np.asarray(python)
         assert rust_array.shape == python_array.shape

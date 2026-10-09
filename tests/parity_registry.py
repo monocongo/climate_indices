@@ -38,8 +38,8 @@ from climate_indices.fire import _native as fire_native
 from climate_indices.flood import _native as flood_native
 from tests import conftest
 
-RTOL = 1e-10
-ATOL = 1e-10
+RTOL = conftest.NATIVE_PARITY_RTOL
+ATOL = conftest.NATIVE_PARITY_ATOL
 
 # The record every fitting entry is calibrated from: a series that starts in this
 # year, a window two years in so the fit has a warm-up, and one that ends a year
@@ -127,7 +127,8 @@ def _daily_values(years: int, seed: int, zero_fraction: float, missing_fraction:
 
 def _block_values(years: int, cells: int, seed: int, zero_fraction: float, missing_fraction: float) -> np.ndarray:
     rng = np.random.default_rng(seed)
-    values = _precipitation(rng, _monthly_years(years) * cells, zero_fraction).reshape(_monthly_years(years), cells)
+    # a Spatial Block has to be at least 3-D: a 2-D array is read as a flattened series
+    values = _precipitation(rng, _monthly_years(years) * cells, zero_fraction).reshape(_monthly_years(years), cells, 1)
     values[rng.random(values.shape) < missing_fraction] = np.nan
     return values
 
@@ -158,7 +159,7 @@ def daily(draw: st.DrawFn) -> np.ndarray:
 
 @st.composite
 def block(draw: st.DrawFn) -> np.ndarray:
-    """A time-major Spatial Block: monthly time on the first axis, three cells on the second."""
+    """A time-major Spatial Block: monthly time on the first axis, a column of cells after it."""
     return _block_values(
         years=draw(st.integers(min_value=34, max_value=38)),
         cells=draw(st.integers(min_value=2, max_value=4)),
@@ -189,11 +190,7 @@ def _window(length: int, period_length: int = 12) -> tuple[int, int, int]:
 
 
 def _monthly_window(values: np.ndarray) -> tuple[int, int, int]:
-    return _window(values.size, 12)
-
-
-def _daily_window(values: np.ndarray) -> tuple[int, int, int]:
-    return _window(values.size, 365)
+    return _window(values.shape[0], 12)
 
 
 def _pet(values: np.ndarray) -> np.ndarray:
@@ -361,18 +358,26 @@ def _flood_precipitation(values: np.ndarray) -> Callable[[], Any]:
     return lambda: flood.effective_precipitation(values, duration=60)
 
 
+def _all_leap(values: np.ndarray) -> np.ndarray:
+    """365-day years in the flood entry points' 366 positional days, Feb 29 the mean of its neighbors."""
+    years = values.reshape(-1, 365)
+    return np.insert(years, 59, (years[:, 58] + years[:, 59]) / 2.0, axis=1).reshape(-1)
+
+
 def _flood_runs(values: np.ndarray) -> dict[str, Callable[[], Any]]:
     years = values.size // 365
+    # EDI and the flood index read 366 positional days a year, so their PE starts from that layout
+    leap = _all_leap(values)
     # the calibration window has to sit inside the record, span at least two complete
     # annual periods, and leave the first year to the PE warm-up
-    start, calibration_start, calibration_end = DATA_START_YEAR, DATA_START_YEAR + 2, DATA_START_YEAR + years - 2
+    start, calibration_start, calibration_end = DATA_START_YEAR, DATA_START_YEAR + 2, DATA_START_YEAR + years - 1
     return {
         "pe": _flood_precipitation(values),
         "edi": lambda: flood.edi(
-            flood.effective_precipitation(values, duration=60), start, calibration_start, calibration_end, duration=60
+            flood.effective_precipitation(leap, duration=60), start, calibration_start, calibration_end, duration=60
         ),
         "flood_index": lambda: flood.flood_index(
-            flood.effective_precipitation(values, duration=60),
+            flood.effective_precipitation(leap, duration=60),
             start,
             calibration_start,
             calibration_end,
@@ -505,8 +510,6 @@ def _routing_cases() -> tuple[RoutingCase, ...]:
     start, calibration_start, calibration_end = _monthly_window(values)
     daily_values = SAMPLES[DAILY].copy()
     fitted = np.nan_to_num(values, nan=0.0)
-    stride = np.full(values.size * 2, np.nan)
-    stride[::2] = fitted
     overflowing = fitted.reshape(-1, 12).copy()
     # the guard reads the calibration window, so the infinity has to land inside it
     overflowing[2, 3] = np.inf
@@ -629,8 +632,13 @@ def parity_errors(rust: Any, python: Any) -> tuple[float, float]:
     max_absolute = 0.0
     max_relative = 0.0
     for left, right in _numeric_pairs(rust, python):
+        if np.isnan(left) or np.isnan(right):
+            if np.isnan(left) != np.isnan(right):
+                max_absolute = max_relative = np.inf
+            continue
         difference = abs(left - right)
         if np.isnan(difference):
+            # two infinities of the same sign
             continue
         max_absolute = max(max_absolute, difference)
         if right != 0.0:
@@ -663,6 +671,9 @@ def run_parity(monkeypatch: pytest.MonkeyPatch, entry: Entry, values: np.ndarray
         patch.setattr(entry.dispatch, "_native", None)
         python = _outcome(entry.run(drawn))
     calls = frozenset(recorder.calls)
+    if values is None:
+        # a fixed sample that raises would compare only the error, never a value
+        assert not isinstance(rust, _Error), f"{entry.name}'s fixed sample raised {rust!r}"
     assert entry.kernels <= calls, f"{entry.name} did not reach {sorted(entry.kernels - calls)}"
     assert calls <= REGISTERED_KERNELS | entry.kernels, f"{entry.name} reached an unregistered kernel: {calls}"
     assert_outcomes_parity(entry, rust, python)
