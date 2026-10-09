@@ -144,9 +144,10 @@ def assert_native_parity(rust: Any, python: Any) -> None:
     """Compare a Rust run's result with the Python run's at the parity tolerance.
 
     A dataclass result is compared field by field, so a returned state is covered
-    as well as the values; a tuple is compared element-wise and a DataArray by its
-    dims and values. Arrays and float scalars compare with ``allclose`` and matching
-    NaN positions, while integer arrays (gap counts) and other fields (unit names)
+    as well as the values; a tuple is compared element-wise, a Dataset by its data
+    variables, and a DataArray by its dims and values. Arrays and float scalars
+    compare with ``allclose`` and matching NaN positions, while integer arrays
+    (gap counts) and other fields (unit names)
     compare exactly.
     """
     fields = getattr(rust, "__dataclass_fields__", None)
@@ -169,6 +170,12 @@ def assert_native_parity(rust: Any, python: Any) -> None:
     if rust is None or python is None:
         assert rust is None and python is None
         return
+    if isinstance(rust, xr.Dataset):
+        assert isinstance(python, xr.Dataset)
+        assert rust.data_vars.keys() == python.data_vars.keys()
+        for name in rust.data_vars:
+            assert_native_parity(rust[name], python[name])
+        return
     if isinstance(rust, xr.DataArray):
         assert isinstance(python, xr.DataArray)
         assert rust.dims == python.dims
@@ -180,7 +187,7 @@ def assert_native_parity(rust: Any, python: Any) -> None:
         python_array = np.asarray(python)
         assert rust_array.shape == python_array.shape
         assert rust_array.dtype == python_array.dtype
-        if np.issubdtype(rust_array.dtype, np.integer):
+        if not np.issubdtype(rust_array.dtype, np.inexact):
             np.testing.assert_array_equal(rust_array, python_array)
         else:
             np.testing.assert_allclose(
