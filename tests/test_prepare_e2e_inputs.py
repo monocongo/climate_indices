@@ -148,8 +148,9 @@ def test_source_replaced_after_publish_is_not_returned(tmp_path, monkeypatch):
     monkeypatch.setattr(module, "urlopen", lambda *args, **kwargs: io.BytesIO(payload))
     monkeypatch.setattr(Path, "replace", replace_then_rival_overwrites)
 
+    checksum = hashlib.sha256(payload).hexdigest()
     with pytest.raises(ValueError, match="SHA-256 mismatch"):
-        module._cache_source(source_dir, "prcp", hashlib.sha256(payload).hexdigest())
+        module._cache_source(source_dir, "prcp", checksum)
 
 
 @pytest.mark.parametrize(
