@@ -34,3 +34,31 @@ def test_dataset_parity_rejects_mismatches(mismatch: str) -> None:
         rust["distribution"] = "other"
     with pytest.raises(AssertionError):
         conftest.assert_native_parity(rust, python)
+
+
+@pytest.mark.parametrize("as_dataarray", [False, True], ids=["dataset", "dataarray"])
+@pytest.mark.parametrize("mismatch", ["value", "label", "name", "dimension", "missing", "extra"])
+def test_xarray_parity_rejects_coordinate_mismatches(as_dataarray: bool, mismatch: str) -> None:
+    python = xr.DataArray(
+        [[1.0, np.nan], [2.0, 3.0]],
+        dims=("month", "site"),
+        coords={"month": [1, 2], "label": ("month", ["a", "b"])},
+    )
+    if not as_dataarray:
+        python = python.to_dataset(name="fit")
+    rust = python.copy(deep=True)
+    conftest.assert_native_parity(rust, python)
+    if mismatch == "value":
+        rust = rust.assign_coords(month=[1, 3])
+    elif mismatch == "label":
+        rust = rust.assign_coords(label=("month", ["a", "c"]))
+    elif mismatch == "name":
+        rust = rust.rename({"label": "other"})
+    elif mismatch == "dimension":
+        rust = rust.assign_coords(label=("site", ["a", "b"]))
+    elif mismatch == "missing":
+        rust = rust.drop_vars("label")
+    else:
+        rust = rust.assign_coords(station="A")
+    with pytest.raises(AssertionError):
+        conftest.assert_native_parity(rust, python)
