@@ -120,23 +120,43 @@ def cell_calls(inputs: Any, cells: int, seed: int = 20261009) -> list[tuple[str,
 
 def main(prcp_path: Path, tavg_path: Path, cells: int, repeats: int) -> None:
     """Measure per-cell PDSI and scPDSI cost for both backends over a cell sample."""
+    from climate_indices.exceptions import ClimateIndicesError
+
     harness = load_harness()
     inputs = harness.load_grid(prcp_path, "prcp", tavg_path, "tavg")
     print(inputs.description, flush=True)
 
     samples: dict[str, dict[str, list[float]]] = {}
+    failures: dict[str, list[str]] = {}
     for name, call in cell_calls(inputs, cells):
         bucket = samples.setdefault(name, {"rust": [], "python": []})
-        for backend, seconds in harness.backend_events(call, call, repeats, warm_up=False):
+        try:
+            # Materialised before recording, so a failure part-way through a cell cannot
+            # leave that cell's samples half-counted for one backend only.
+            events = list(harness.backend_events(call, call, repeats, warm_up=False))
+        except ClimateIndicesError as error:
+            # A cell the index cannot be computed for is a result, not a reason to stop:
+            # scPDSI refuses real cells whose calibration anchors do not converge.
+            failures.setdefault(name, []).append(f"{type(error).__name__}: {error}")
+            continue
+        for backend, seconds in events:
             bucket[backend].append(seconds)
 
     results: dict[str, Any] = {}
+    if failures:
+        print("\ncells the index could not be computed for (library error, not timed):", flush=True)
+        for name, messages in failures.items():
+            print(f"  {name:<15} {len(messages)} cell(s)", flush=True)
+            print(f"    first: {messages[0][:200]}", flush=True)
+
     print("\nper-cell cost, sampled cells, both backends interleaved:", flush=True)
     for name, bucket in samples.items():
         rust_stats, python_stats = stats(bucket["rust"]), stats(bucket["python"])
         rust_full = extrapolate(rust_stats["median"], CONUS_LAND_CELLS) / 60.0
         python_full = extrapolate(python_stats["median"], CONUS_LAND_CELLS) / 60.0
         results[name] = {
+            "cells_failed": len(failures.get(name, [])),
+            "failure_examples": failures.get(name, [])[:3],
             "cells": len(bucket["rust"]) // repeats,
             "repeats": repeats,
             "rust": rust_stats,
