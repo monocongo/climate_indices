@@ -3,15 +3,16 @@
 //! `scipy.stats.gamma.cdf` evaluates `scipy.special.gammainc`, i.e. Cephes
 //! `igam`, `scipy.stats.norm.ppf` evaluates `scipy.special.ndtri`,
 //! `scipy.stats.pearson3.cdf` evaluates `scipy.special.ndtr` for a near-zero
-//! skew, and `scipy.special.gammaln` is Cephes `lgam`. A generic
+//! skew, `scipy.special.gammaln` is Cephes `lgam`, and `scipy.special.poch` is
+//! Cephes `poch`. A generic
 //! special-function crate uses different series and continued fractions, and
 //! the transformed tails of a standardized index are ill-conditioned enough
 //! (`ndtri(p)` with `p` within a few ulps of 1) for that to show above the 1e-10
 //! parity contract. These are therefore line-by-line ports of
-//! `subprojects/xsf/include/xsf/cephes/{igam,ndtri,ndtr,gamma,unity,zeta,
+//! `subprojects/xsf/include/xsf/cephes/{igam,ndtri,ndtr,gamma,poch,unity,zeta,
 //! lanczos,polevl}.h` from the SciPy 1.17.0 sdist: same branches, constants,
 //! and operation order. Only the branches reachable from `igam`, `igamc`,
-//! `ndtri`, `ndtr`, and `lgam` are ported; SciPy's `set_error` reporting is
+//! `ndtri`, `ndtr`, `lgam`, and `poch` are ported; SciPy's `set_error` reporting is
 //! dropped, keeping its return values.
 //!
 //! Licensing: the original Cephes notices and the full xsf BSD-3-Clause and
@@ -41,10 +42,9 @@ const MAXITER: u64 = 500;
 ///
 /// SciPy's aarch64 builds compile the Cephes `a * b + c` patterns to fused
 /// multiply-adds (the C compilers contract them by default there), and its
-/// x86-64 wheels do not. A 1-ulp difference in `lgam` is amplified by the
-/// Pearson Type III fit's `exp(lgam(a) - lgam(a + 0.5))` for near-symmetric
-/// samples, so this ports the contraction `lgam` and the polynomial helpers
-/// get on each target; Rust never contracts on its own. Other expressions in
+/// x86-64 wheels do not. This ports the contraction `lgam` and the polynomial
+/// helpers get on each target, so `lgam` matches SciPy to the ulp there; Rust
+/// never contracts on its own. Other expressions in
 /// these ports stay unfused, which their well-conditioned callers tolerate.
 #[inline(always)]
 fn mul_add(a: f64, b: f64, c: f64) -> f64 {
@@ -246,6 +246,32 @@ pub(crate) fn lgam(x: f64) -> f64 {
     let q = mul_add(x - 0.5, x.ln(), -x) + LS2PI;
     let p = 1.0 / (x * x);
     q + polevl(p, &GAMMA_A, 4) / x
+}
+
+// poch.h
+
+/// Pochhammer symbol `gamma(a + m) / gamma(a)`, Cephes `poch`.
+///
+/// Every caller passes a positive `a` and `|m| < 1`, so the recurrences that
+/// reduce `|m|`, the non-positive-integer poles, and `gammasgn` (one for a
+/// positive argument) are not ported.
+pub(crate) fn poch(a: f64, m: f64) -> f64 {
+    debug_assert!(
+        a.is_nan() || (a > 0.0 && m.abs() < 1.0),
+        "poch recurrence and pole branches are not ported"
+    );
+    if m == 0.0 {
+        return 1.0;
+    }
+    if a > 1e4 {
+        // avoid the cancellation of lgam(a + m) - lgam(a)
+        return a.powf(m)
+            * (1.0
+                + m * (m - 1.0) / (2.0 * a)
+                + m * (m - 1.0) * (m - 2.0) * (3.0 * m - 1.0) / (24.0 * a * a)
+                + m * m * (m - 1.0) * (m - 1.0) * (m - 2.0) * (m - 3.0) / (48.0 * a * a * a));
+    }
+    (lgam(a + m) - lgam(a)).exp()
 }
 
 // zeta.h: Hurwitz zeta, only needed at q = 1 by lgam1p_taylor
@@ -967,6 +993,29 @@ mod tests {
                 "lgam({x}) = {actual:e}, expected {expected:e}"
             );
         }
+    }
+
+    // reference values from scipy.special.poch 1.17.0; below a = 1e4 poch is the
+    // lgam difference, so an ulp of fused/unfused lgam spread shows there (about
+    // 1e-13 relative at a = 150, growing with lgam(a)), hence the tolerance
+    #[test]
+    fn poch_matches_scipy_on_each_branch() {
+        let cases = [
+            (0.25, 0.337_989_120_033_642_34),   // lgam difference
+            (3.7, 1.859_826_698_054_411_4),     // lgam difference
+            (150.0, 12.237_246_776_942_438),    // lgam difference
+            (10_000.5, 100.001_250_007_812_02), // asymptotic series, a > 1e4
+            (4.0e6, 1_999.999_937_500_001),     // asymptotic series
+            (2.6e10, 161_245.154_965_195_78),   // asymptotic series
+        ];
+        for (a, expected) in cases {
+            let actual = poch(a, 0.5);
+            assert!(
+                (actual - expected).abs() <= 1e-12 * expected.abs(),
+                "poch({a}, 0.5) = {actual:e}, expected {expected:e}"
+            );
+        }
+        assert_eq!(poch(3.7, 0.0), 1.0);
     }
 
     #[test]

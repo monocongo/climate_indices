@@ -18,7 +18,7 @@ use ndarray::{Array1, Array2, ArrayView1, ArrayView2, Zip};
 use crate::ClimateError;
 use crate::gamma::{gamma_cdf, gamma_sf};
 use crate::lmoments::sample_lmoments;
-use crate::special::{lgam, ndtr};
+use crate::special::{ndtr, poch};
 
 /// Hosking `pearson3` coefficients (c1, c2, c3, d1, d2, d3, d4, d5, d6).
 const C1: f64 = 0.2906;
@@ -89,7 +89,7 @@ fn fit_column(column: ArrayView1<'_, f64>, sorted: &mut Vec<f64>) -> Option<[f64
             t * (D1 + (t * (D2 + (t * D3)))) / (1.0 + (t * (D4 + (t * (D5 + (t * D6))))))
         };
         let alpha_root = alpha.sqrt();
-        let beta = PI.sqrt() * second * (lgam(alpha) - lgam(alpha + 0.5)).exp();
+        let beta = PI.sqrt() * second / poch(alpha, 0.5);
         let skew = if skewness < 0.0 {
             -2.0 / alpha_root
         } else {
@@ -114,7 +114,8 @@ fn fit_column(column: ArrayView1<'_, f64>, sorted: &mut Vec<f64>) -> Option<[f64
 ///   values, fewer than four non-missing values, a non-positive second
 ///   L-moment, or `|tau_3| >= 1` (or a NaN there) is invalid.
 /// - Numerics: `scale` and `skew` follow Hosking's `pearson3`, with
-///   `gammaln` as Cephes `lgam`. A near-zero `tau_3` (at most 1e-6) is a zero
+///   `gamma(alpha) / gamma(alpha + 0.5)` as the reciprocal of Cephes `poch`, which
+///   keeps a large `alpha` accurate. A near-zero `tau_3` (at most 1e-6) is a zero
 ///   skew and `scale = lambda_2 * sqrt(pi)`.
 pub fn pearson_parameters(calibration: ArrayView2<'_, f64>) -> PearsonFit {
     let columns = calibration.ncols();
@@ -305,12 +306,12 @@ mod tests {
     #[test]
     fn fit_keeps_a_tiny_but_non_zero_skew() {
         // tau_3 is about 1.6e-4: above the 1e-6 zero-skew cut-off, where alpha is
-        // large and `scale` is only reproducible to the conditioning of gammaln, so
-        // only loosely compared; tests/test_native_parity_distributions.py checks it exactly
+        // about 1.2e6 and poch takes its asymptotic branch; reference from
+        // climate_indices.lmoments.fit
         let fit = pearson_parameters(array![[1.0], [2.0], [3.0], [4.001]].view());
         assert!(fit.valid[0]);
         assert!(fit.skews[0] > 0.0, "skew = {}", fit.skews[0]);
-        assert!((fit.scales[0] - 1.477_488_148).abs() < 1e-6);
+        assert!((fit.scales[0] - 1.477_488_145_779_573).abs() <= 1e-13 * 1.477_488_145_779_573);
     }
 
     #[test]
