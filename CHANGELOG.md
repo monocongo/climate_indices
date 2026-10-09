@@ -318,6 +318,13 @@ change states what a user sees, how to detect it, and what to change in
 
 ### Fixed
 
+- **Pearson Type III fit accuracy at near-zero skew**: the L-moment fit evaluated
+  `gamma(alpha) / gamma(alpha + 0.5)` as `exp(gammaln(alpha) - gammaln(alpha + 0.5))`,
+  which cancels for the large `alpha` of a small L-skewness and lost up to 1.6e-4
+  relative accuracy in the fitted scale. The fit now uses `scipy.special.poch`, and the
+  native kernel a port of Cephes `poch`. Pearson-fitted SPI changes by up to about 2e-5
+  (measured across the 344 nClimDiv divisions at scales 1, 3, and 12), and Pearson-fitted
+  SPEI shares the fit; gamma-fitted output is unchanged.
 - **xarray PET and PCI provenance and alignment**: `pet_hargreaves` and
   `pet_penman_monteith` now reject a `tmin`/`tmax` (and other time-series) pair whose
   non-time coordinates differ with `CoordinateValidationError`, as SPEI already did,

@@ -1,7 +1,7 @@
 """Computation of L-moments used for Pearson Type-III distribution fitting"""
 
 import logging
-from math import exp, pi, sin, sqrt
+from math import pi, sin, sqrt
 
 import numpy as np
 from scipy import special
@@ -105,7 +105,8 @@ def _estimate_pearson3_parameters(lmoments: np.ndarray) -> dict[str, float]:
             alpha = t * (d1 + (t * (d2 + (t * d3)))) / (1.0 + (t * (d4 + (t * (d5 + (t * d6))))))
 
         alpha_root = sqrt(alpha)
-        beta = sqrt(pi) * lmoments[1] * exp(special.gammaln(alpha) - special.gammaln(alpha + 0.5))
+        # gamma(alpha) / gamma(alpha + 0.5) via poch: the gammaln difference cancels for large alpha
+        beta = sqrt(pi) * lmoments[1] / special.poch(alpha, 0.5)
         scale = beta * alpha_root
 
         # the sign of the third L-moment determines
@@ -171,7 +172,7 @@ def _estimate_pearson3_parameters_spatial(
         )
         alpha = np.where(zero_skew, 0.0, np.where(low_skew, alpha_low, alpha_high))
         alpha_root = np.sqrt(alpha)
-        beta = np.sqrt(pi) * second_lmoment * np.exp(special.gammaln(alpha) - special.gammaln(alpha + 0.5))
+        beta = np.sqrt(pi) * second_lmoment / special.poch(alpha, 0.5)
         scales = np.where(zero_skew, second_lmoment * sqrt(pi), beta * alpha_root)
         skews = np.where(zero_skew, 0.0, np.where(lmoments[2] < 0, -2.0 / alpha_root, 2.0 / alpha_root))
 
