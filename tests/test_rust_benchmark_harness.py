@@ -11,7 +11,9 @@ from types import ModuleType, SimpleNamespace
 from typing import Any
 
 import numpy as np
+import pandas as pd
 import pytest
+import xarray as xr
 
 from tests import conftest, parity_registry
 
@@ -28,6 +30,9 @@ def _load_script(name: str, relative_path: str) -> ModuleType:
     return module
 
 
+# the harness imports its sibling benchmark scripts by module name, as it does when run as a script;
+# appended, not prepended, so a benchmarks/ module can never shadow a site-packages import
+sys.path.append(str(ROOT / "benchmarks"))
 harness = _load_script("rust_vs_python", "benchmarks/rust_vs_python.py")
 
 
@@ -78,6 +83,52 @@ def test_python_backend_disables_every_dispatch_module() -> None:
         assert all(module._native is None for module in modules)
 
     assert all(module._native is not None for module in modules)
+
+
+def test_full_grid_run_reports_every_configuration(tmp_path: Path) -> None:
+    """The --netcdf run times each entry eagerly and per thread count, on the grid's land cells only."""
+    rng = np.random.default_rng(1)
+    shape = (360, 3, 4)  # 1991-2020, the calibration period
+    coords = {
+        "time": pd.date_range("1991-01-01", periods=shape[0], freq="MS"),
+        "lat": [30.0, 31.0, 32.0],
+        "lon": [-100.0, -99.0, -98.0, -97.0],
+    }
+    precipitation = rng.gamma(2.0, 15.0, size=shape)
+    precipitation[:, 0, :] = np.nan  # an ocean row the land mask must drop
+    temperature = 15.0 + 10.0 * np.sin(np.arange(shape[0]) * np.pi / 6.0)[:, None, None] + rng.normal(size=shape)
+    paths = {name: tmp_path / f"{name}.nc" for name in ("prcp", "tavg")}
+    for name, values in (("prcp", precipitation), ("tavg", temperature)):
+        xr.Dataset({name: (("time", "lat", "lon"), values)}, coords=coords).to_netcdf(paths[name], engine="h5netcdf")
+    output = tmp_path / "report.txt"
+
+    harness.main(
+        ["--netcdf", str(paths["prcp"]), "--tavg", str(paths["tavg"]), "--repeat", "1", "--threads", "1,2"]
+        + ["--output", str(output)]
+    )
+    report = output.read_text(encoding="utf-8")
+
+    assert "8 land cells of 12" in report
+    for name in harness.GRID_ENTRIES:
+        assert sum(line.startswith(f"| `{name}` |") and line.endswith(" True |") for line in report.splitlines()) == 3
+
+
+def test_netcdf_needs_the_temperature_grid() -> None:
+    """The PET-based entries compute from the grid's own temperature, so --tavg is required with --netcdf."""
+    with pytest.raises(SystemExit) as error:
+        harness.main(["--netcdf", "prcp.nc"])
+
+    assert error.value.code == 2
+
+
+@pytest.mark.parametrize("artifact", ["rust_vs_python.txt", "rust_vs_python_nclimgrid.txt"])
+def test_readme_mirrors_every_committed_table_row(artifact: str) -> None:
+    """Each data row of a committed run appears verbatim in benchmarks/README.md, so the two cannot drift."""
+    readme = (ROOT / "benchmarks" / "README.md").read_text(encoding="utf-8")
+    rows = (ROOT / "benchmarks" / "results" / artifact).read_text(encoding="utf-8").splitlines()
+
+    missing = [row for row in rows if row.startswith("| ") and row not in readme]
+    assert missing == []
 
 
 def test_cold_call_runs_in_a_fresh_interpreter() -> None:

@@ -973,7 +973,27 @@ binding crossing, and the copy in -- and the per-cell kernel cost.
 | `spi_gamma_spatial_block` | 0.273 ms | 0.335 ms | 53.948 µs | 55.916 µs |
 | `eddi_spatial_block` | 0.198 ms | 0.340 ms | 7.682 µs | 15.672 µs |
 
-The per-count rows for both sweeps are in `benchmarks/results/rust_vs_python.txt`.
+`spi_gamma_spatial_block`, every swept count:
+
+| cells | Rust | Python | Python/Rust |
+|---|---|---|---|
+| 1 | 324.5 µs | 388.4 µs | 1.20 |
+| 2 | 392.3 µs | 458.1 µs | 1.17 |
+| 4 | 509.3 µs | 578.2 µs | 1.14 |
+| 8 | 668.4 µs | 749.3 µs | 1.12 |
+| 16 | 1136.1 µs | 1227.0 µs | 1.08 |
+| 32 | 2004.8 µs | 2130.4 µs | 1.06 |
+
+`eddi_spatial_block`, every swept count:
+
+| cells | Rust | Python | Python/Rust |
+|---|---|---|---|
+| 1 | 190.7 µs | 290.8 µs | 1.52 |
+| 2 | 218.6 µs | 390.1 µs | 1.78 |
+| 4 | 235.7 µs | 450.4 µs | 1.91 |
+| 8 | 261.8 µs | 469.3 µs | 1.79 |
+| 16 | 328.0 µs | 589.5 µs | 1.80 |
+| 32 | 439.9 µs | 835.5 µs | 1.90 |
 
 At one cell the two backends differ by 1.20x (SPI gamma) and 1.52x (EDDI): most
 of a small call is the fixed cost both paths pay.
