@@ -150,6 +150,9 @@ def assert_native_parity(rust: Any, python: Any) -> None:
     (gap counts) and other fields (unit names)
     compare exactly.
     """
+    if isinstance(rust, (xr.Dataset, xr.DataArray)) or isinstance(python, (xr.Dataset, xr.DataArray)):
+        assert type(rust) is type(python)
+        xr.testing.assert_equal(rust.coords.to_dataset(), python.coords.to_dataset())
     fields = getattr(rust, "__dataclass_fields__", None)
     if fields is not None:
         for name in fields:
@@ -170,9 +173,6 @@ def assert_native_parity(rust: Any, python: Any) -> None:
     if rust is None or python is None:
         assert rust is None and python is None
         return
-    if isinstance(rust, (xr.Dataset, xr.DataArray)):
-        assert type(rust) is type(python)
-        xr.testing.assert_equal(rust.coords.to_dataset(), python.coords.to_dataset())
     if isinstance(rust, xr.Dataset):
         assert rust.data_vars.keys() == python.data_vars.keys()
         for name in rust.data_vars:
