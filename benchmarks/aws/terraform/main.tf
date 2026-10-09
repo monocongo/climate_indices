@@ -276,6 +276,10 @@ resource "aws_instance" "bench" {
   vpc_security_group_ids      = [aws_security_group.instance[0].id]
   associate_public_ip_address = true
 
+  # The watchdog in run_ec2.sh powers the instance off; this makes that final.
+  # Without it an abandoned instance only stops and keeps billing its volumes.
+  instance_initiated_shutdown_behavior = "terminate"
+
   metadata_options {
     http_tokens = "required"
   }

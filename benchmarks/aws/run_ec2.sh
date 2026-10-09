@@ -16,7 +16,11 @@
 #
 # Environment:
 #   GRID_ROWS, GRID_COLS  synthetic grid size for grid_synthetic (default 596 x 1385, CONUS-like)
+#   GRID_ENTRIES          narrow the entries the grid run times (default: all six)
+#   GRID_THREADS          narrow the thread counts (default: the harness default)
 #   CPUS                  taskset CPU set (default 0-15)
+#   SHUTDOWN_MINUTES      instance watchdog, in minutes (default 240); the instance powers off at
+#                         the deadline and terminates itself, so an abandoned run cannot bill forever
 #   KEEP=1                leave the instance running instead of destroying it
 set -euo pipefail
 
@@ -30,6 +34,7 @@ grid_cols="${GRID_COLS:-1385}"
 grid_entries="${GRID_ENTRIES:-}"
 grid_threads="${GRID_THREADS:-}"
 cpus="${CPUS:-0-15}"
+shutdown_minutes="${SHUTDOWN_MINUTES:-240}"
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 tf="${here}/terraform"
@@ -68,49 +73,88 @@ if [[ "${status}" != "Online" ]]; then
   exit 1
 fi
 
+# The stage runs detached, under nohup, writing a completion marker.
+#
+# Run Command kills a command when the AWS-RunShellScript document's own
+# executionTimeout expires, which defaults to one hour and overrides
+# --timeout-seconds. A CONUS-scale grid run does not finish in an hour, and a
+# killed command loses the whole run, so the launcher returns immediately and the
+# harness outlives it. The launcher also starts a shutdown watchdog, because an
+# abandoned instance otherwise bills until someone notices.
+#
 # The bootstrap script is fetched from the ref under test rather than from this
 # working tree, so the ref being benchmarked supplies its own runner. That needs
 # the repository to stay public; a private fork would need the script staged in S3.
-#
-# executionTimeout is raised well above the one-hour default: the toolchain
-# build plus a CONUS-scale grid run does not finish inside an hour.
 commands="$(python3 -c '
 import json, sys
-ref, stage, repeats, cpus, rows, cols, entries, threads, url = sys.argv[1:10]
-print(json.dumps({"commands": [
-    "set -euxo pipefail",
-    "export HOME=/root",
-    f"curl -sSfL {url} -o /tmp/bootstrap.sh",
-    f"STAGE={stage} GIT_REF={ref} REPEATS={repeats} CPUS={cpus} GRID_ROWS={rows} GRID_COLS={cols}"
-    f" GRID_ENTRIES={entries} GRID_THREADS={threads} bash /tmp/bootstrap.sh",
-]}))
-' "${git_ref}" "${stage}" "${repeats}" "${cpus}" "${grid_rows}" "${grid_cols}" "${grid_entries}" "${grid_threads}" "${raw_base}")"
+ref, stage, repeats, cpus, rows, cols, entries, threads, url, shutdown = sys.argv[1:11]
+env = (
+    f"STAGE={stage} GIT_REF={ref} REPEATS={repeats} CPUS={cpus} GRID_ROWS={rows}"
+    f" GRID_COLS={cols} GRID_ENTRIES={entries} GRID_THREADS={threads}"
+)
+inner = (
+    "export HOME=/root; curl -sSfL " + url + " -o /tmp/bootstrap.sh && "
+    + env + " bash /tmp/bootstrap.sh > /tmp/stage.log 2>&1; echo $? > /tmp/EXIT"
+)
+print(json.dumps({
+    "commands": [
+        "set -x",
+        "rm -f /tmp/EXIT /tmp/stage.log",
+        f"nohup bash -c {json.dumps(inner)} > /dev/null 2>&1 &",
+        f"shutdown -h +{shutdown} 2>/dev/null || true",
+        "sleep 5; echo launched",
+    ],
+    "executionTimeout": ["120"],
+}))
+' "${git_ref}" "${stage}" "${repeats}" "${cpus}" "${grid_rows}" "${grid_cols}" \
+  "${grid_entries}" "${grid_threads}" "${raw_base}" "${shutdown_minutes}")"
 
 command_id="$(aws ssm send-command --region "${region}" \
   --instance-ids "${instance_id}" \
   --document-name AWS-RunShellScript \
   --comment "climate_indices ${stage} benchmark on ${git_ref}" \
-  --timeout-seconds 10800 \
+  --timeout-seconds 300 \
   --parameters "${commands}" \
   --query 'Command.CommandId' --output text)"
-echo "command ${command_id}"
+echo "launcher ${command_id}; stage is detached, so it survives Run Command timeouts"
+echo "watchdog: instance powers off in ${shutdown_minutes} minutes if this script is abandoned"
 
-for _ in $(seq 1 1080); do
-  status="$(aws ssm get-command-invocation --region "${region}" \
-    --command-id "${command_id}" --instance-id "${instance_id}" \
-    --query 'Status' --output text 2>/dev/null || echo Pending)"
-  case "${status}" in
-    Success | Failed | Cancelled | TimedOut) break ;;
-  esac
-  sleep 10
+# Poll for the marker, then read the report the stage produced.
+poll_seconds=$(( (shutdown_minutes + 15) * 60 ))
+deadline=$(( SECONDS + poll_seconds ))
+exit_code=""
+while (( SECONDS < deadline )); do
+  probe="$(aws ssm send-command --region "${region}" \
+    --instance-ids "${instance_id}" --document-name AWS-RunShellScript --timeout-seconds 60 \
+    --parameters '{"commands":["cat /tmp/EXIT 2>/dev/null || echo RUNNING"],"executionTimeout":["45"]}' \
+    --query 'Command.CommandId' --output text)"
+  sleep 15
+  answer="$(aws ssm get-command-invocation --region "${region}" \
+    --command-id "${probe}" --instance-id "${instance_id}" \
+    --query 'StandardOutputContent' --output text 2>/dev/null | tr -d '\t\n' || echo RUNNING)"
+  if [[ "${answer}" =~ ^[0-9]+$ ]]; then
+    exit_code="${answer}"
+    break
+  fi
+  printf '.'
+  sleep 30
 done
+
+if [[ -z "${exit_code}" ]]; then
+  echo "stage did not finish within the watchdog window" >&2
+  exit 1
+fi
 
 mkdir -p "${here}/results"
 out="${here}/results/${stage}-ec2-$(date -u +%Y%m%dT%H%M%SZ).log"
-aws ssm get-command-invocation --region "${region}" \
-  --command-id "${command_id}" --instance-id "${instance_id}" \
-  --query '[StandardOutputContent, StandardErrorContent]' --output text | tr '\t' '\n' > "${out}"
+fetch="$(aws ssm send-command --region "${region}" \
+  --instance-ids "${instance_id}" --document-name AWS-RunShellScript --timeout-seconds 120 \
+  --parameters '{"commands":["cat /tmp/stage.log"],"executionTimeout":["90"]}' \
+  --query 'Command.CommandId' --output text)"
+sleep 20
+aws ssm get-command-invocation --region "${region}" --command-id "${fetch}" --instance-id "${instance_id}" \
+  --query 'StandardOutputContent' --output text 2>/dev/null | tr '\t' '\n' > "${out}"
 
-echo "status ${status}; log ${out}"
+echo "stage exit ${exit_code}; log ${out}"
 tail -40 "${out}"
-[[ "${status}" == "Success" ]] || { echo "stage failed: ${status}" >&2; exit 1; }
+[[ "${exit_code}" == "0" ]] || { echo "stage failed with exit ${exit_code}" >&2; exit 1; }

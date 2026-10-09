@@ -180,3 +180,27 @@ For real data, the precedent is the nClimGrid preparation recipe in
 `benchmarks/README.md` (NOAA's public NODD bucket: download, then
 `cli_multiprocessing.py prepare`). That step belongs here as another stage; it has
 not been written yet.
+
+### Two ways a grid run fails, and how the runner handles them
+
+- **`AWS-RunShellScript` has its own `executionTimeout`, defaulting to one hour**, and
+  it overrides the `--timeout-seconds` passed to `send-command`. A CONUS-scale grid run
+  does not finish in an hour, and a killed command loses the entire run (the harness
+  writes its report only at the end, so nothing is salvageable). `run_ec2.sh` therefore
+  runs the stage **detached under `nohup`**, returns from the launcher immediately, and
+  polls for a completion marker file; the launcher also sets an explicit
+  `executionTimeout` well below the practical ceiling.
+- **An abandoned instance bills until someone notices.** The launcher starts a shutdown
+  watchdog (`SHUTDOWN_MINUTES`, default 240), and the instance's
+  `instance_initiated_shutdown_behavior` is `terminate`, so the watchdog deletes the
+  instance rather than leaving a stopped one paying for its volumes. Killing the local
+  script does not stop the remote stage, which is deliberate: the run survives the
+  operator, and the watchdog bounds the cost either way.
+
+Consequence worth knowing: because the stage is detached, a lost local session leaves the
+benchmark running. Reattach with SSM rather than relaunching:
+
+```bash
+aws ssm send-command --region us-east-2 --instance-ids <id> --document-name AWS-RunShellScript \
+  --parameters '{"commands":["cat /tmp/EXIT 2>/dev/null || echo RUNNING"],"executionTimeout":["45"]}'
+```
