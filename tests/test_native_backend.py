@@ -18,6 +18,7 @@ import pytest
 
 from climate_indices import compute, eto, fire, indices, pm_eto
 from climate_indices.fire import _native as fire_native
+from climate_indices.flood import _native as flood_native
 from tests import conftest
 
 
@@ -117,6 +118,41 @@ assert np.isfinite(dc).all()
 combined = fire.cffwis(temperature, humidity, np.full(days, 5.0), precipitation, 40.0, months)
 assert np.isfinite(np.asarray(combined.ffmc)).all()
 assert np.isfinite(np.asarray(combined.dc)).all()
+"""
+    subprocess.run([sys.executable, "-c", code], check=True)
+
+
+def test_flood_dispatches_to_the_built_extension() -> None:
+    native = conftest.import_native()
+    assert flood_native._native is native
+
+
+def test_flood_python_implementations_run_when_the_extension_is_absent() -> None:
+    """Blocking the import leaves every flood index on its Python implementation."""
+    code = """
+import sys
+sys.modules["climate_indices._native"] = None
+import numpy as np
+from climate_indices import flood
+from climate_indices.flood import _native as flood_native
+assert flood_native._native is None
+rain = np.arange(3 * 366.0) % 7 + np.repeat([0.0, 1.0, 2.5], 366)
+with np.errstate(all="ignore"):
+    pe = flood.effective_precipitation(rain, duration=30)
+    assert np.isfinite(pe[29:]).all()
+    np.testing.assert_allclose(pe[29], 83.34208470449167, rtol=1e-10)
+    np.testing.assert_allclose(pe[-1], 171.2769955967101, rtol=1e-10)
+    index = flood.edi(pe, 2000, 2001, 2002)
+    assert np.isfinite(index[366:]).all()
+    np.testing.assert_allclose(index[366], -0.9999999999999997, rtol=1e-10)
+    np.testing.assert_allclose(index[-1], 0.9999999999999998, rtol=1e-10)
+    fi = flood.flood_index(pe, 2000, 2000, 2002, year_start_month=1)
+    assert np.isfinite(fi).sum() == 1069
+    np.testing.assert_allclose(np.nansum(fi), -548.9394625270631, rtol=1e-10)
+    result = flood.antecedent_precipitation_index(rain, 0.9, return_state=True)
+np.testing.assert_allclose(result.values[:3], [0.0, 1.0, 2.9], rtol=1e-12)
+np.testing.assert_allclose(result.values[-1], 56.30659181438638, rtol=1e-10)
+np.testing.assert_allclose(result.state.api, result.values[-1], rtol=1e-12)
 """
     subprocess.run([sys.executable, "-c", code], check=True)
 

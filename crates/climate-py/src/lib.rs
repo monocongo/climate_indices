@@ -346,7 +346,8 @@ fn elementwise<'py>(
         .reshape(shape)
 }
 
-/// The recurrence bookkeeping every fire kernel takes, copied at the boundary.
+/// The recurrence bookkeeping every recurrence kernel (fire and flood) takes,
+/// copied at the boundary.
 struct RecurrenceArgs<'py> {
     weather_valid: PyReadonlyArray2<'py, bool>,
     static_valid: PyReadonlyArray1<'py, bool>,
@@ -391,7 +392,7 @@ impl<'py> RecurrenceArgs<'py> {
 
 impl RecurrenceArrays {
     fn inputs(&self) -> PyResult<RecurrenceInputs<'_>> {
-        climate_core::fire::recurrence_inputs(
+        climate_core::recurrence::recurrence_inputs(
             self.weather_valid.view(),
             self.static_valid.view(),
             self.in_season.as_ref().map(|season| season.view()),
@@ -681,6 +682,96 @@ fn kbdi<'py>(
     ))
 }
 
+/// Daily effective precipitation of a (days, cells) block (Byun and Wilhite, 1999, Eq. 2).
+#[pyfunction]
+fn effective_precipitation<'py>(
+    py: Python<'py>,
+    precipitation_mm: PyReadonlyArray2<'py, f64>,
+    duration: usize,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    let precipitation = checked_copy(&precipitation_mm)?;
+    py.detach(|| climate_core::flood::effective_precipitation(precipitation.view(), duration))
+        .map(|pe| pe.into_pyarray(py))
+        .map_err(climate_error)
+}
+
+/// Fixed-window EDI of an all-leap (years, columns) block over its calibration rows.
+#[pyfunction]
+fn edi<'py>(
+    py: Python<'py>,
+    years: PyReadonlyArray2<'py, f64>,
+    calibration_start: usize,
+    calibration_end: usize,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    let years = checked_copy(&years)?;
+    py.detach(|| climate_core::flood::edi(years.view(), calibration_start..calibration_end))
+        .map(|index| index.into_pyarray(py))
+        .map_err(climate_error)
+}
+
+/// The Flood Index of a (days, cells) PE block against its calibration-year maxima.
+#[pyfunction]
+fn flood_index<'py>(
+    py: Python<'py>,
+    pe: PyReadonlyArray2<'py, f64>,
+    first_start: usize,
+    calibration_years: usize,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    let pe = checked_copy(&pe)?;
+    py.detach(|| climate_core::flood::flood_index(pe.view(), first_start, calibration_years))
+        .map(|index| index.into_pyarray(py))
+        .map_err(climate_error)
+}
+
+/// The Antecedent Precipitation Index over the whole time axis: history, final API, gap counts.
+#[pyfunction]
+#[pyo3(signature = (precipitation_mm, k, initial_api, weather_valid, static_valid, trailing_gap_days, spin_up, nan_policy, max_gap_days, record))]
+#[allow(clippy::too_many_arguments)]
+fn antecedent_precipitation_index<'py>(
+    py: Python<'py>,
+    precipitation_mm: PyReadonlyArray2<'py, f64>,
+    k: f64,
+    initial_api: PyReadonlyArray1<'py, f64>,
+    weather_valid: PyReadonlyArray2<'py, bool>,
+    static_valid: PyReadonlyArray1<'py, bool>,
+    trailing_gap_days: PyReadonlyArray1<'py, i64>,
+    spin_up: usize,
+    nan_policy: String,
+    max_gap_days: i64,
+    record: bool,
+) -> PyResult<CodeRunArrays<'py>> {
+    let recurrence = RecurrenceArgs {
+        weather_valid,
+        static_valid,
+        in_season: None,
+        trailing_gap_days,
+        spin_up,
+        nan_policy,
+        max_gap_days,
+        record,
+    }
+    .copy()?;
+    let precipitation = checked_copy(&precipitation_mm)?;
+    let initial_api = checked_copy(&initial_api)?;
+    let inputs = recurrence.inputs()?;
+    let run = py
+        .detach(|| {
+            climate_core::flood::antecedent_precipitation_index(
+                precipitation.view(),
+                k,
+                initial_api.view(),
+                &inputs,
+                recurrence.record,
+            )
+        })
+        .map_err(climate_error)?;
+    Ok((
+        run.values.map(|values| values.into_pyarray(py)),
+        Array1::from(run.state).into_pyarray(py),
+        run.trailing_gap_days.map(|gaps| gaps.into_pyarray(py)),
+    ))
+}
+
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", climate_core::VERSION)?;
@@ -708,6 +799,10 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(duff_moisture_code, m)?)?;
     m.add_function(wrap_pyfunction!(drought_code, m)?)?;
     m.add_function(wrap_pyfunction!(kbdi, m)?)?;
+    m.add_function(wrap_pyfunction!(effective_precipitation, m)?)?;
+    m.add_function(wrap_pyfunction!(edi, m)?)?;
+    m.add_function(wrap_pyfunction!(flood_index, m)?)?;
+    m.add_function(wrap_pyfunction!(antecedent_precipitation_index, m)?)?;
     pet::register(m)?;
     palmer::register(m)?;
     Ok(())

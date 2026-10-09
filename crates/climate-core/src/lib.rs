@@ -14,6 +14,7 @@ use std::fmt;
 pub mod eddi;
 pub mod eto;
 pub mod fire;
+pub mod flood;
 pub mod gamma;
 pub mod lmoments;
 pub mod loglogistic;
@@ -58,6 +59,13 @@ pub enum ClimateError {
     },
     /// A missing-day policy name a kernel does not implement.
     UnknownNanPolicy { value: String },
+    /// A row window (a Calibration Period) that does not lie inside its axis.
+    RowsOutOfRange {
+        argument: &'static str,
+        start: usize,
+        end: usize,
+        length: usize,
+    },
     /// A calibration stage that cannot produce a usable value.
     ///
     /// The message is the Python one, so a caller can raise the
@@ -96,6 +104,15 @@ impl fmt::Display for ClimateError {
             Self::UnknownNanPolicy { value } => {
                 write!(f, "unknown missing-day policy {value:?}")
             }
+            Self::RowsOutOfRange {
+                argument,
+                start,
+                end,
+                length,
+            } => write!(
+                f,
+                "{argument} rows [{start}, {end}) are outside the {length} available rows"
+            ),
             Self::NoConvergence { message } => f.write_str(message),
             Self::InsufficientData {
                 required,

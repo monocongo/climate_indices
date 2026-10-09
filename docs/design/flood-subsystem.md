@@ -131,6 +131,16 @@ initial value as converging "within several weeks", which is the `spin_up`
 convention. The lagged variant `k · (API_{t−1} + P_{t−1})` that some sources use
 is documented in the docstring as the alternative and is not implemented.
 
+## Flood events
+
+`flood.flood_events` summarizes a daily index as events: maximal runs of finite
+days strictly above a threshold (default `0`, the I_F reading of an annual
+maximum above its calibration mean). Each event reports onset, exclusive end,
+duration, peak, and severity (the index summed over the run); NaN and masked
+days end a run. It is a NumPy-level helper with no Rust kernel, because the
+scan is vectorized and linear in the record. Events describe exceedance of a
+flood-potential index, not observed flooding.
+
 ## Deferred
 
 - **Variable-duration EDI** (the Byun & Wilhite extension) and reproduction of
@@ -145,4 +155,3 @@ is documented in the docstring as the alternative and is not implemented.
   specification-level until then, and the exponential kernel its abstracts
   describe is not implemented (ADR-0014).
 - **A numeric API oracle**, blocked on Kohler & Linsley (1951).
-- **Flood-event helpers** (onset, duration, severity as runs of `I_F > 0`).
