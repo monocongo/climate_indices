@@ -14,6 +14,7 @@
 #   TAVG      matching mean-temperature grid, grid stage only
 #   GRID_ROWS, GRID_COLS  synthetic grid dimensions, grid_synthetic stage only
 #   GRID_ENTRIES, GRID_THREADS  narrow the grid entries or thread counts
+#   PERCELL_CELLS, PERCELL_REPEATS  sample size and repetitions for the percell stage
 set -euxo pipefail
 export HOME=/root
 
@@ -84,6 +85,19 @@ case "$STAGE" in
       --output /tmp/grid.txt > /tmp/harness.log 2>&1 || { tail -30 /tmp/harness.log; exit 1; }
     cat /tmp/grid.txt
     ;;
+  percell)
+    # scPDSI has no spatial-block path (ADR-0011), so it is measured per cell over a
+    # sample. NETCDF and TAVG are the real prepared grid and its raw temperature.
+    if [ -z "${NETCDF:-}" ] || [ -z "${TAVG:-}" ]; then
+      echo "percell stage needs NETCDF and TAVG" >&2
+      exit 2
+    fi
+    taskset -c "$CPUS" uv run --no-sync python benchmarks/aws/percell.py \
+      "$NETCDF" "$TAVG" "${PERCELL_CELLS:-1000}" "${PERCELL_REPEATS:-2}" > /tmp/percell.log 2>&1 \
+      || { tail -30 /tmp/percell.log; exit 1; }
+    cat /tmp/percell.log
+    cat percell.json
+    ;;
   grid_real)
     # The real CONUS grid, straight from NOAA's public bucket. These period-of-record
     # objects are appended and reprocessed, so the committed fingerprint from an earlier
@@ -113,7 +127,7 @@ case "$STAGE" in
     cat /tmp/grid.txt
     ;;
   *)
-    echo "unknown STAGE=$STAGE (routine|spread|grid|grid_synthetic|grid_real)" >&2
+    echo "unknown STAGE=$STAGE (routine|spread|grid|grid_synthetic|grid_real|percell)" >&2
     exit 2
     ;;
 esac
