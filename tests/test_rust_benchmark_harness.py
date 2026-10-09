@@ -75,6 +75,35 @@ def test_backends_alternate_which_runs_first() -> None:
     assert python_seconds > 0.0
 
 
+def test_measure_takes_the_best_sample_after_one_untimed_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The reported value is the minimum timed sample, and the warm-up call is timed out of the result."""
+    clock = iter([0.0, 99.0, 10.0, 10.5])  # a slow first sample, then a fast one
+    calls: list[int] = []
+
+    def run() -> None:
+        calls.append(1)
+
+    monkeypatch.setattr(harness.time, "perf_counter", lambda: next(clock))
+
+    assert harness.measure(run, repeats=2) == pytest.approx(0.5)
+    assert len(calls) == 3  # the warm-up plus the two timed samples; only the two are timed
+
+
+def test_backend_events_times_only_the_repetitions() -> None:
+    """Without warm_up every call is yielded; with it, one untimed pair runs before the repetitions."""
+    calls: list[int] = []
+
+    def run() -> None:
+        calls.append(1)
+
+    assert len(list(harness.backend_events(run, run, repeats=2, warm_up=False))) == 4
+    assert len(calls) == 4
+
+    calls.clear()
+    assert len(list(harness.backend_events(run, run, repeats=2, warm_up=True))) == 4
+    assert len(calls) == 6
+
+
 def test_python_backend_disables_every_dispatch_module() -> None:
     """The Python column is the pure-Python path, not Python orchestration over Rust kernels."""
     modules = {entry.dispatch for entry in parity_registry.ENTRIES}
@@ -165,6 +194,18 @@ def test_grid_accepts_consecutive_months(tmp_path: Path, calendar: str, frequenc
     np.testing.assert_array_equal(inputs.temperature, inputs.precipitation)
 
 
+def test_grid_accepts_a_january_start_outside_the_calibration_window(tmp_path: Path) -> None:
+    """The documented 1981-2024 input starts in January before the calibration period and must load."""
+    time = pd.date_range("1981-01-01", periods=44 * 12, freq="MS")
+    path = tmp_path / "grid.nc"
+    xr.Dataset(
+        {"prcp": (("time", "lat", "lon"), np.full((time.size, 1, 1), 10.0))},
+        coords={"time": time, "lat": [30.0], "lon": [-100.0]},
+    ).to_netcdf(path, engine="h5netcdf")
+
+    assert harness.load_grid(path, "prcp", path, "prcp").data_start_year == 1981
+
+
 def test_netcdf_needs_the_temperature_grid() -> None:
     """The PET-based entries compute from the grid's own temperature, so --tavg is required with --netcdf."""
     with pytest.raises(SystemExit) as error:
@@ -186,6 +227,23 @@ def test_readme_mirrors_every_committed_table_row(artifact: str) -> None:
 def test_cold_call_runs_in_a_fresh_interpreter() -> None:
     """A cold measurement is a first call, in its own process, and is reported in seconds."""
     assert harness.measure_cold("percentage_of_normal") > 0.0
+
+
+def test_cold_call_asks_a_fresh_interpreter_for_the_named_entry(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The child is this interpreter running this harness for the requested entry, and nothing else."""
+    commands: list[list[str]] = []
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, '{"seconds": 0.5}', "")
+
+    monkeypatch.setattr(harness.subprocess, "run", run)
+
+    assert harness.measure_cold("thornthwaite") == pytest.approx(0.5)
+    assert len(commands) == 1
+    assert commands[0][0] == sys.executable
+    assert commands[0][1].endswith("benchmarks/rust_vs_python.py")
+    assert commands[0][2:] == ["--cold-entry", "thornthwaite"]
 
 
 def test_render_entries_lists_every_measurement() -> None:
