@@ -885,3 +885,171 @@ A ratio below 1 means Rust is faster. The Flood Index kernel first measured 2.69
 and 3.79: it walked the time-first block one column at a time, a strided read for
 every element, while NumPy streams the same block in memory order. Walking it a row
 at a time, with the same arithmetic per element, brought it under the Python path.
+
+## Rust kernels vs the Python reference across the parity registry (RUST-011)
+
+The ported kernels were previously measured one family at a time: the PET kernels
+in the section above, the flood family in `tests/test_benchmark_flood.py`. This
+harness measures every one of them at once. It walks `tests/parity_registry.py` --
+the registry the parity tests are generated from -- and times each entry twice on
+the same input, once through the extension and once with every dispatch module
+switched to the pure-Python path, so a kernel cannot enter the registry without
+appearing here. It also measures the extension's import and first-call cost, the
+fixed and per-cell cost of the two spatial-block entries, thread scaling of one
+gridded block, and one gridded Dask call per scheduler and NumPy error policy.
+
+```bash
+uv run benchmarks/rust_vs_python.py --repeat 5 --write
+```
+
+The Rust column is the dispatch-enabled case: a call reaches the extension only
+with NumPy's floating-point errors ignored and no `RuntimeWarning` filter set to
+error (`compute._native_float64`), which is the guard RUST-015 defines, so the
+harness runs every measurement under `np.errstate(all="ignore")`. Raw output, with
+the machine and version header, is committed at
+`benchmarks/results/rust_vs_python.txt`.
+
+### Steady state, best of five after a warm-up call
+
+A single station series per entry: 35 years of monthly values (420 values) or 5
+years of daily values (1825), the registry's fixed samples. `Python/Rust` above
+1.00 means the Rust path is faster.
+
+| entry | family | Rust | Python | Python/Rust |
+|---|---|---|---|---|
+| `spi_gamma` | monthly | 0.310 ms | 0.358 ms | 1.15 |
+| `spi_gamma_mean_zero` | monthly | 0.356 ms | 0.382 ms | 1.07 |
+| `spi_pearson` | monthly | 0.896 ms | 1.058 ms | 1.18 |
+| `spei_loglogistic` | monthly | 0.224 ms | 0.329 ms | 1.47 |
+| `spi_gamma_spatial_block` | block | 0.385 ms | 0.448 ms | 1.16 |
+| `spei_gamma` | monthly | 0.321 ms | 0.341 ms | 1.06 |
+| `percentage_of_normal` | monthly | 0.050 ms | 0.053 ms | 1.06 |
+| `eddi` | monthly | 0.178 ms | 0.265 ms | 1.49 |
+| `eddi_spatial_block` | block | 0.223 ms | 0.397 ms | 1.78 |
+| `pci` | daily | 0.049 ms | 0.045 ms | 0.92 |
+| `fit_diagnostics` | monthly | 1.989 ms | 1.974 ms | 0.99 |
+| `thornthwaite` | monthly | 0.027 ms | 6.747 ms | 249.50 |
+| `hargreaves` | daily | 0.110 ms | 3.751 ms | 34.23 |
+| `penman_monteith` | daily | 0.144 ms | 0.124 ms | 0.86 |
+| `pm_eto_intermediates` | daily | 0.021 ms | 0.008 ms | 0.41 |
+| `fire_ffmc` | daily | 0.231 ms | 10.139 ms | 43.89 |
+| `fire_duff_moisture_code` | daily | 0.245 ms | 9.102 ms | 37.10 |
+| `fire_drought_code` | daily | 0.223 ms | 8.641 ms | 38.66 |
+| `fire_kbdi` | daily | 0.196 ms | 8.850 ms | 45.10 |
+| `flood_pe` | daily | 0.023 ms | 0.052 ms | 2.30 |
+| `flood_edi` | daily | 0.035 ms | 0.071 ms | 2.06 |
+| `flood_flood_index` | daily | 0.036 ms | 0.075 ms | 2.07 |
+| `flood_api` | daily | 0.160 ms | 7.620 ms | 47.63 |
+| `palmer_pdsi` | monthly | 0.163 ms | 36.133 ms | 221.79 |
+| `palmer_scpdsi` | monthly | 0.251 ms | 16.049 ms | 63.93 |
+
+Rust is faster in 21 of the 25 entries.
+
+### Cold: extension import and first call
+
+| measurement | seconds |
+|---|---|
+| `import climate_indices`, fresh interpreter (interpreter start-up removed) | 0.498 |
+| first call `spi_gamma`, fresh interpreter | 0.006095 |
+| first call `thornthwaite`, fresh interpreter | 0.000136 |
+| first call `fire_kbdi`, fresh interpreter | 0.000446 |
+| first call `flood_api`, fresh interpreter | 0.000435 |
+
+The import is the package's own import graph (NumPy, pandas, xarray, and the
+extension); a first call on an already-imported package costs the warm-up call's
+order of magnitude, not the import's.
+
+### Fixed and per-cell cost of a spatial block
+
+The two block entries swept over 1 to 32 cells. A linear fit of seconds against
+cell count gives the fixed per-call cost -- Python orchestration, validation, the
+binding crossing, and the copy in -- and the per-cell kernel cost.
+
+| entry | Rust fixed | Python fixed | Rust per cell | Python per cell |
+|---|---|---|---|---|
+| `spi_gamma_spatial_block` | 0.236 ms | 0.267 ms | 52.117 µs | 55.863 µs |
+| `eddi_spatial_block` | 0.194 ms | 0.325 ms | 7.395 µs | 15.230 µs |
+
+At one cell the two backends differ by 1.17x (SPI gamma) and 1.49x (EDDI): most
+of a small call is the fixed cost both paths pay.
+
+### Thread scaling
+
+4096 cells in four blocks of 1024, every row the same work, best of five.
+
+| threads | Rust | Python | Python/Rust |
+|---|---|---|---|
+| 1 | 0.277 s | 0.279 s | 1.01 |
+| 2 | 0.153 s | 0.150 s | 0.98 |
+| 4 | 0.086 s | 0.091 s | 1.05 |
+
+### Gridded Dask: which scheduler reaches the kernels
+
+40 years x 25 x 25 cells, chunked spatially, best of five. The recorder sees the
+kernels the `threads` scheduler runs in this process; a spawned worker is a
+different process, and the probe reports what it finds there.
+
+| scheduler | NumPy error policy | seconds | Rust kernels reached (recorder, this process) |
+|---|---|---|---|
+| threads | default | 0.018 | False |
+| threads | ignore | 0.017 | True |
+| processes | default | 0.861 | False |
+| processes | ignore | 0.858 | False |
+
+spawned worker probe: `{"extension_imported": true, "float_error_policy": ["ignore", "warn"]}`
+
+NumPy's error state is thread-local and a new thread starts from the default
+policy, so `threads` reaches the extension only when the caller has errors
+ignored, and a spawned worker never does: its own probe reports
+`divide`/`over`/`invalid` at `warn`, and the guard needs every policy at `ignore`.
+The `processes` rows are therefore the pure-Python path in the workers, and their
+seconds include one process-pool start-up per `dask.compute` call.
+
+### Interpretation
+
+- The recursions and the per-cell fits are where the port pays: Thornthwaite
+  (250x), the Palmer recursions (222x, 64x), the fire recurrences (37-46x),
+  Hargreaves (34x), and the Antecedent Precipitation Index (48x) all replace a
+  Python-level loop over time steps with a loop over cells in Rust, which is
+  ADR-0007's whole argument, now measured across the registry rather than per
+  family.
+- The fitting-based indices gain least: SPI, SPEI, and EDDI sit at 1.06-1.78x,
+  because most of their cost is the calibration-period fit and the transform,
+  which stay Python on both paths.
+- Entries within about 10% of parity are ties at this size: `pci` (0.92),
+  `fit_diagnostics` (0.99), `spei_gamma` (1.06), `percentage_of_normal` (1.06),
+  `spi_gamma_mean_zero` (1.07).
+- `pm_eto_intermediates` (0.41) and `penman_monteith` (0.86) are slower in Rust,
+  matching RUST-006's block-scale finding for the same equation: the kernel
+  copies each input across the boundary and then walks an elementwise chain
+  NumPy already evaluates at memory bandwidth. Recommendation: keep the dispatch.
+  The routing contract is input-based (`docs/architecture.md`, RUST-015), and a
+  kernel-based exemption would make Rust availability depend on which index is
+  called rather than on its arguments; the measured cost is bounded at a few
+  tenths of a millisecond. Callers for whom Penman-Monteith dominates a grid
+  should read this table as "no gain", not as a regression to be investigated.
+- Thread scaling confirms the GIL is released (3.2x on four threads), and the
+  Python path scales the same way on this workload because its own NumPy calls
+  release the GIL too. Rayon is therefore **not adopted**: the kernels are
+  single-threaded, and an outer pool (Dask threads, a library caller's pool)
+  already parallelizes cell blocks, so a Rust-side pool would add a second
+  parallelism layer over Dask's and the CLI's process pools with no measured
+  single-call gain to offset the oversubscription risk. Revisit if a workload
+  appears where kernel time dominates a call that no outer parallelism can
+  split -- a long single-cell record, say -- and then only with a measured
+  per-call gain at that shape.
+- A Dask `processes` user gets the Python path. That is the guard working as
+  documented rather than a defect, but it means the Rust backend's measured
+  advantage is not currently reachable from the Dask `processes` scheduler.
+
+### Limits
+
+- One machine (macOS arm64, Python 3.14.7), best of five after a warm-up; the
+  artifact names the machine and the command.
+- The real-grid CHIRPS and nClimGrid cases in the sections above need their
+  external fixtures, which are not in the repository, so this harness measures a
+  single station series, a synthetic cell block, and a synthetic 25 x 25 grid.
+  Their published numbers cover the same kernels at CONUS scale.
+- The registry's fixed samples are small relative to a production grid, which is
+  why the fixed/per-cell fit and the thread-scaling table are reported alongside
+  the steady-state table rather than instead of it.

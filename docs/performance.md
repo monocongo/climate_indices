@@ -274,3 +274,40 @@ uv run benchmarks/parallel_scaling.py --indices spi,spei,pet,eddi --repeat 3
 attributing a slow SPI pass, and
 [`benchmarks/README.md`](https://github.com/monocongo/climate_indices/blob/main/benchmarks/README.md)
 documents both harnesses and the committed raw output.
+
+## Rust backend
+
+The optional Rust backend (`climate_indices._native`, built from `crates/`) is
+transparent to this page: the xarray adapters call the same Python entry points, and
+dispatch happens inside those modules, so chunking, schedulers, and memory behavior
+are unchanged. What changes is the kernel each spatial block runs.
+
+RUST-011 measured every ported kernel against the Python implementation it replaces,
+from one registry rather than one family at a time. Two results bear on the guidance
+above:
+
+- The per-cell kernels are 30x to 250x faster (Thornthwaite, the Palmer recursions, the
+  fire recurrences, the Antecedent Precipitation Index), and the fitting-based indices
+  gain 1.1x to 1.8x, because their calibration fit and transform stay Python on both
+  paths. The extension's import costs about half a second in a fresh interpreter.
+- The kernels release the GIL, so four threads on one 4096-cell SPI block finish in
+  0.086 s against 0.277 s single-threaded with no Rust-side parallelism. Rayon is
+  therefore not adopted; an outer pool already parallelizes cell blocks.
+
+One caveat matters for a Dask `processes` run: the dispatch guard requires NumPy's
+floating-point errors ignored, and NumPy's error state is thread-local, so a spawned
+worker starts from the default policy and keeps the Python path. The `threads`
+scheduler reaches the kernels only when the caller ignores those errors; the
+`processes` scheduler never does. The benchmark's own numbers should not be read as a
+scheduler comparison: each `dask.compute` call with the `processes` scheduler starts and
+stops its pool, which dominates a grid this size, so the scheduler guidance above and in
+[Operational Guidance](xarray_compatibility.md#operational-guidance) stands.
+
+The full tables -- every entry, the fixed and per-cell fit, thread scaling, and the
+Dask policy rows -- are in
+[`benchmarks/README.md`](https://github.com/monocongo/climate_indices/blob/main/benchmarks/README.md#rust-kernels-vs-the-python-reference-across-the-parity-registry-rust-011),
+and the harness that produced them is `benchmarks/rust_vs_python.py`:
+
+```bash
+uv run benchmarks/rust_vs_python.py --repeat 5 --write
+```

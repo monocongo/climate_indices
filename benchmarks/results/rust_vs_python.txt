@@ -1,0 +1,85 @@
+python 3.14.7; macOS-27.0.1-arm64-arm-64bit-Mach-O; arm
+repetitions: 5; best of the repetitions, after a warm-up call
+
+| entry | family | Rust | Python | Python/Rust |
+|---|---|---|---|---|
+| `spi_gamma` | monthly | 0.310 ms | 0.358 ms | 1.15 |
+| `spi_gamma_mean_zero` | monthly | 0.356 ms | 0.382 ms | 1.07 |
+| `spi_pearson` | monthly | 0.896 ms | 1.058 ms | 1.18 |
+| `spei_loglogistic` | monthly | 0.224 ms | 0.329 ms | 1.47 |
+| `spi_gamma_spatial_block` | block | 0.385 ms | 0.448 ms | 1.16 |
+| `spei_gamma` | monthly | 0.321 ms | 0.341 ms | 1.06 |
+| `percentage_of_normal` | monthly | 0.050 ms | 0.053 ms | 1.06 |
+| `eddi` | monthly | 0.178 ms | 0.265 ms | 1.49 |
+| `eddi_spatial_block` | block | 0.223 ms | 0.397 ms | 1.78 |
+| `pci` | daily | 0.049 ms | 0.045 ms | 0.92 |
+| `fit_diagnostics` | monthly | 1.989 ms | 1.974 ms | 0.99 |
+| `thornthwaite` | monthly | 0.027 ms | 6.747 ms | 249.50 |
+| `hargreaves` | daily | 0.110 ms | 3.751 ms | 34.23 |
+| `penman_monteith` | daily | 0.144 ms | 0.124 ms | 0.86 |
+| `pm_eto_intermediates` | daily | 0.021 ms | 0.008 ms | 0.41 |
+| `fire_ffmc` | daily | 0.231 ms | 10.139 ms | 43.89 |
+| `fire_duff_moisture_code` | daily | 0.245 ms | 9.102 ms | 37.10 |
+| `fire_drought_code` | daily | 0.223 ms | 8.641 ms | 38.66 |
+| `fire_kbdi` | daily | 0.196 ms | 8.850 ms | 45.10 |
+| `flood_pe` | daily | 0.023 ms | 0.052 ms | 2.30 |
+| `flood_edi` | daily | 0.035 ms | 0.071 ms | 2.06 |
+| `flood_flood_index` | daily | 0.036 ms | 0.075 ms | 2.07 |
+| `flood_api` | daily | 0.160 ms | 7.620 ms | 47.63 |
+| `palmer_pdsi` | monthly | 0.163 ms | 36.133 ms | 221.79 |
+| `palmer_scpdsi` | monthly | 0.251 ms | 16.049 ms | 63.93 |
+
+Rust faster in 21 of 25 entries.
+
+| measurement | seconds |
+|---|---|
+| `import climate_indices`, fresh interpreter (interpreter start-up removed) | 0.498 |
+| first call `spi_gamma`, fresh interpreter | 0.006095 |
+| first call `thornthwaite`, fresh interpreter | 0.000136 |
+| first call `fire_kbdi`, fresh interpreter | 0.000446 |
+| first call `flood_api`, fresh interpreter | 0.000435 |
+
+cell sweep, `spi_gamma_spatial_block`
+
+| cells | Rust | Python | Python/Rust |
+|---|---|---|---|
+| 1 | 277.0 µs | 322.8 µs | 1.17 |
+| 2 | 340.9 µs | 389.4 µs | 1.14 |
+| 4 | 445.8 µs | 501.0 µs | 1.12 |
+| 8 | 640.2 µs | 694.7 µs | 1.09 |
+| 16 | 1109.7 µs | 1154.8 µs | 1.04 |
+| 32 | 1887.8 µs | 2061.3 µs | 1.09 |
+
+fixed per call: `0.236` ms Rust, `0.267` ms Python; per cell: `52.117` µs Rust, `55.863` µs Python
+
+cell sweep, `eddi_spatial_block`
+
+| cells | Rust | Python | Python/Rust |
+|---|---|---|---|
+| 1 | 187.8 µs | 280.2 µs | 1.49 |
+| 2 | 214.3 µs | 372.1 µs | 1.74 |
+| 4 | 233.6 µs | 427.9 µs | 1.83 |
+| 8 | 254.3 µs | 456.8 µs | 1.80 |
+| 16 | 307.0 µs | 563.9 µs | 1.84 |
+| 32 | 431.3 µs | 807.5 µs | 1.87 |
+
+fixed per call: `0.194` ms Rust, `0.325` ms Python; per cell: `7.395` µs Rust, `15.230` µs Python
+
+thread scaling, 4 blocks of 1024 cells, every row the same work
+
+| threads | Rust | Python | Python/Rust |
+|---|---|---|---|
+| 1 | 0.277 s | 0.279 s | 1.01 |
+| 2 | 0.153 s | 0.150 s | 0.98 |
+| 4 | 0.086 s | 0.091 s | 1.05 |
+
+gridded Dask, 40 years x 25 x 25 cells, chunked spatially
+
+| scheduler | NumPy error policy | seconds | Rust kernels reached (recorder, this process) |
+|---|---|---|---|
+| threads | default | 0.018 | False |
+| threads | ignore | 0.017 | True |
+| processes | default | 0.861 | False |
+| processes | ignore | 0.858 | False |
+
+spawned worker probe: `{"extension_imported": true, "float_error_policy": ["ignore", "warn"]}`
