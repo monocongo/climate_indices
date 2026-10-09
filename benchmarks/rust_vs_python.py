@@ -472,7 +472,7 @@ def _worker_dispatch_probe() -> dict[str, Any]:
     """What a spawned Dask worker reports about its own dispatch guard inputs."""
     return {
         "extension_imported": compute_module()._native is not None,
-        "float_error_policy": sorted(set(np.geterr().values())),
+        "float_error_policy": sorted({str(policy) for policy in np.geterr().values()}),
     }
 
 
@@ -504,9 +504,10 @@ def dask_timings(side: int = DASK_SIDE, repeats: int = 3) -> tuple[list[Schedule
     Returns:
         the timed combinations, and the spawned worker probe's report
     """
-    import dask
     import pandas as pd
     import xarray as xr
+    from dask.base import compute
+    from dask.delayed import delayed
 
     from climate_indices import spi
 
@@ -547,7 +548,7 @@ def dask_timings(side: int = DASK_SIDE, repeats: int = 3) -> tuple[list[Schedule
                     warnings.resetwarnings()
                     warnings.simplefilter("ignore")
                     seconds = measure(
-                        lambda scheduler=scheduler: dask.compute(lazy, scheduler=scheduler, pool=pool),
+                        lambda scheduler=scheduler: compute(lazy, scheduler=scheduler, pool=pool),
                         repeats,
                         error_policy=policy,
                     )
@@ -555,7 +556,7 @@ def dask_timings(side: int = DASK_SIDE, repeats: int = 3) -> tuple[list[Schedule
                 patch.undo()
             reached = bool(recorder.calls) if recorder is not None else None
             timings.append(SchedulerTiming(scheduler, policy, seconds, reached))
-    probe = dask.compute(dask.delayed(_worker_dispatch_probe)(), scheduler="processes")[0]
+    probe = compute(delayed(_worker_dispatch_probe)(), scheduler="processes")[0]
     return timings, probe
 
 
@@ -659,6 +660,7 @@ def load_grid(
     """
     grid = parallel_scaling.load_netcdf_grid(str(precipitation_path), precipitation_var)
     precip, land = grid.precip, grid.valid_cells
+    assert land is not None
     months, lat, lon = precip.shape
     years = precip["time"].dt.year.values
     month_numbers = precip["time"].dt.month.values
