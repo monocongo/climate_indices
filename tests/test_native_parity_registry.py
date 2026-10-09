@@ -7,7 +7,8 @@ values come from. These tests then cover, for the whole registry at once:
 - value parity at ``rtol = atol = 1e-10`` with matching NaN positions, on a fixed
   sample per family;
 - the same parity on Hypothesis draws that vary series length, NaN patterns,
-  zero runs, extreme magnitudes, and the number of spatial cells;
+  zero runs, extreme magnitudes, and the number of spatial cells, after each
+  entry's input derivation (Palmer precipitation is gap-free and clipped to [5, 300]);
 - the documented dispatch decision for the input kinds that stay on one path or
   the other;
 - that the registry covers every kernel the extension exposes, and that
@@ -56,7 +57,7 @@ def test_spatial_block_entries_return_a_block(monkeypatch: pytest.MonkeyPatch) -
 
 @pytest.mark.parametrize("entry", ENTRIES, ids=_ENTRY_IDS)
 def test_entry_parity_under_property_draws(monkeypatch: pytest.MonkeyPatch, entry: Entry) -> None:
-    """Each entry holds parity across drawn lengths, NaN patterns, zeros, and extremes."""
+    """Each entry holds parity on its derived inputs from the family draws."""
 
     @hypothesis_settings(max_examples=15, deadline=None)
     @given(values=parity_registry.STRATEGIES[entry.family])
@@ -74,6 +75,19 @@ def test_routing_is_documented(monkeypatch: pytest.MonkeyPatch, case: RoutingCas
     assert not (case.forbidden & calls), f"{case.name}: {sorted(case.forbidden & calls)} ran anyway"
 
 
+def test_strided_routing_keeps_input_noncontiguous(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The public strided input reaches the PCI dispatch guard without being copied."""
+    original = parity_registry.compute._native_pci
+
+    def checked(values):
+        assert not values.flags.c_contiguous
+        return original(values)
+
+    monkeypatch.setattr(parity_registry.compute, "_native_pci", checked)
+    case = next(case for case in ROUTING if case.name == "strided")
+    assert parity_registry.routing_calls(monkeypatch, case) == {"pci"}
+
+
 def test_registry_covers_every_kernel() -> None:
     """The registry is the whole kernel surface: every function the extension exposes has an entry."""
     exposed = frozenset(name for name in dir(native) if not name.startswith("_")) - parity_registry.NON_KERNELS
@@ -88,7 +102,10 @@ def test_tolerance_table_publishes_every_entry() -> None:
 
 
 def test_routing_table_publishes_every_case() -> None:
-    """The published dispatch table names every asserted routing case."""
+    """The published dispatch table and asserted routing cases agree in both directions."""
     table = _ARCHITECTURE.read_text(encoding="utf-8").split("### Dispatch routing")[-1].split("\n### ")[0]
     rows = {match.group(1) for match in re.finditer(r"^\| `?([a-z0-9_]+)`? \|", table, re.MULTILINE)}
-    assert set(_ROUTING_IDS) <= rows, f"missing routing rows: {sorted(set(_ROUTING_IDS) - rows)}"
+    assert set(_ROUTING_IDS) == rows, (
+        f"missing routing rows: {sorted(set(_ROUTING_IDS) - rows)}; "
+        f"unregistered routing rows: {sorted(rows - set(_ROUTING_IDS))}"
+    )

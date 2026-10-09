@@ -12,7 +12,9 @@ varies the series length, the NaN pattern, the zero runs, an injected extreme
 magnitude, and the number of spatial cells. ``SAMPLES`` holds one fixed array per
 family for the deterministic case and for ``scripts/native_parity_maxima.py``,
 which reports each entry's largest deviation for the tolerance table in
-``docs/architecture.md``.
+``docs/architecture.md``. Entries derive inputs from these draws: Palmer replaces
+gaps and clips precipitation to [5, 300], so its property cases cover lengths and
+bounded precipitation variation, not gaps, zero runs, or extreme magnitudes.
 
 The expected kernels are asserted as a subset, not an equality: an entry may
 reach another ported kernel on its way (a flood entry that prepares its input
@@ -513,6 +515,9 @@ def _routing_cases() -> tuple[RoutingCase, ...]:
     overflowing = fitted.reshape(-1, 12).copy()
     # the guard reads the calibration window, so the infinity has to land inside it
     overflowing[2, 3] = np.inf
+    oversized = fitted.reshape(-1, 12).copy()
+    oversized[2, 3] = 1e101
+    strided_rainfall = np.nan_to_num(daily_values[:365])[::-1]
     temperatures = _temperatures(values)
     monthly = values.reshape(-1, 12)
     return (
@@ -534,10 +539,10 @@ def _routing_cases() -> tuple[RoutingCase, ...]:
         ),
         RoutingCase(
             "strided",
-            "a non-contiguous float64 series reaches Rust",
-            eto,
-            lambda: eto.eto_thornthwaite(temperatures[::-1], 40.0, start),
-            expected=frozenset({"thornthwaite"}),
+            "a non-contiguous float64 rainfall series reaches Rust without a pre-dispatch copy",
+            compute,
+            lambda: indices.pci(strided_rainfall),
+            expected=frozenset({"pci"}),
         ),
         RoutingCase(
             "year_varying_parameters",
@@ -560,6 +565,15 @@ def _routing_cases() -> tuple[RoutingCase, ...]:
             compute,
             lambda: compute.pearson_parameters(
                 overflowing, start, calibration_start, calibration_end, compute.Periodicity.monthly
+            ),
+            forbidden=frozenset({"pearson_parameters"}),
+        ),
+        RoutingCase(
+            "oversized_lmoment_block",
+            "a finite value above 1e100 in an L-moment block keeps the Python fit",
+            compute,
+            lambda: compute.pearson_parameters(
+                oversized, start, calibration_start, calibration_end, compute.Periodicity.monthly
             ),
             forbidden=frozenset({"pearson_parameters"}),
         ),
