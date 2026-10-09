@@ -4577,30 +4577,34 @@ documents both harnesses and the committed raw output.
 
 The optional Rust backend (`climate_indices._native`, built from `crates/`) is
 transparent to this page: the xarray adapters call the same Python entry points, and
-dispatch happens inside those modules, so chunking, schedulers, and memory behavior
-are unchanged. What changes is the kernel each spatial block runs.
+dispatch happens inside those modules, so the adapter's chunking and scheduler choices
+are unchanged. Native kernels can copy inputs across the PyO3 boundary, adding per-block
+allocations and peak worker memory; account for those copies when sizing chunks.
 
 RUST-011 measured every ported kernel against the Python implementation it replaces,
 from one registry rather than one family at a time. Two results bear on the guidance
 above:
 
-- The per-cell kernels are 30x to 250x faster (Thornthwaite, the Palmer recursions, the
+- The per-cell kernels are 18x to 263x faster (Thornthwaite, the Palmer recursions, the
   fire recurrences, Hargreaves, the Antecedent Precipitation Index), and the fitting-based
   indices gain 1.1x to 1.8x, because their calibration fit and transform stay Python on
-  both paths. Importing the package costs about half a second in a fresh interpreter,
-  the extension included.
-- The kernels release the GIL, so four threads on one 4096-cell SPI block finish in
-  0.086 s against 0.277 s single-threaded with no Rust-side parallelism. Rayon is
+  both paths. Importing the package costs about 1.2 seconds in this fresh-interpreter
+  measurement, the extension included.
+- The kernels release the GIL, so four threads across four 1024-cell SPI blocks finish
+  in 0.081 s against 0.275 s single-threaded with no Rust-side parallelism. Rayon is
   therefore not adopted; an outer pool already parallelizes cell blocks.
 
-One caveat matters for a Dask `processes` run: the dispatch guard requires NumPy's
-floating-point errors ignored, and NumPy's error state is thread-local, so a spawned
-worker starts from the default policy and keeps the Python path. The `threads`
-scheduler reaches the kernels only when the caller ignores those errors; the
-`processes` scheduler never does. The benchmark's own numbers should not be read as a
-scheduler comparison: on a grid this size the process rows measure process scheduling
-and serialization overhead rather than kernel time, so the scheduler guidance above and
-in [Operational Guidance](docs/xarray_compatibility.md#operational-guidance) stands.
+The dispatch guard requires NumPy's floating-point errors ignored and no warning-as-error
+filters; NumPy's error state is thread-local. The harness explicitly initializes thread
+workers with each requested policy: only its all-ignore row reaches Rust. Process rows
+set the caller's policy only and report native reachability as `n/a`, because the recorder
+cannot observe another process. A separate default spawned-worker probe reports a mixed
+policy, consistent with Python dispatch in that configuration, not every process pool.
+A caller-provided pool initializer can change worker policies. The process-versus-thread
+ignore timing gap therefore combines backend and scheduler/serialization effects, not
+scheduler overhead alone; the probe does not verify routing in the timed process workers.
+The guidance above and in [Operational Guidance](docs/xarray_compatibility.md#operational-guidance)
+stands.
 
 The full tables -- every entry, the fixed and per-cell fit, thread scaling, and the
 Dask policy rows -- are in

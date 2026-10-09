@@ -895,19 +895,21 @@ the registry the parity tests are generated from -- and times each entry twice o
 the same input, once through the extension and once with every dispatch module
 switched to the pure-Python path, so a kernel cannot enter the registry without
 appearing here. It also measures the extension's import and first-call cost, the
-fixed and per-cell cost of the two spatial-block entries, thread scaling of one
-gridded block, and one gridded Dask call per scheduler and NumPy error policy.
+fixed and per-cell cost of the two spatial-block entries, thread scaling across four
+1024-cell blocks, and one gridded Dask call per scheduler and NumPy error policy.
 
 ```bash
-uv run benchmarks/rust_vs_python.py --repeat 5 --write
+PYTHONWARNINGS=error uv run benchmarks/rust_vs_python.py --repeat 5 --write
 ```
 
 The Rust column is the dispatch-enabled case: a call reaches the extension only
 with NumPy's floating-point errors ignored and no `RuntimeWarning` filter set to
 error (`compute._native_float64`), the guard `docs/architecture.md` records and
-RUST-015 settled the routing around, so the harness runs every measurement under
-`np.errstate(all="ignore")`. Raw output, with
-the machine and version header, is committed at
+RUST-015 settled the routing around. Rust-labeled measurements run under
+`np.errstate(all="ignore")` with warning filters cleared locally, including when
+`PYTHONWARNINGS=error` is set. Context-aware warnings disable native dispatch, so
+these measurements reject that configuration. Thread workers explicitly receive
+the requested NumPy policy. Raw output, with the machine and version header, is committed at
 `benchmarks/results/rust_vs_python.txt`.
 
 ### Steady state, best of five after a warm-up call
@@ -918,31 +920,31 @@ years of daily values (1825), the registry's fixed samples. `Python/Rust` above
 
 | entry | family | Rust | Python | Python/Rust |
 |---|---|---|---|---|
-| `spi_gamma` | monthly | 0.310 ms | 0.358 ms | 1.15 |
-| `spi_gamma_mean_zero` | monthly | 0.356 ms | 0.382 ms | 1.07 |
-| `spi_pearson` | monthly | 0.896 ms | 1.058 ms | 1.18 |
-| `spei_loglogistic` | monthly | 0.224 ms | 0.329 ms | 1.47 |
-| `spi_gamma_spatial_block` | block | 0.385 ms | 0.448 ms | 1.16 |
-| `spei_gamma` | monthly | 0.321 ms | 0.341 ms | 1.06 |
-| `percentage_of_normal` | monthly | 0.050 ms | 0.053 ms | 1.06 |
-| `eddi` | monthly | 0.178 ms | 0.265 ms | 1.49 |
-| `eddi_spatial_block` | block | 0.223 ms | 0.397 ms | 1.78 |
-| `pci` | daily | 0.049 ms | 0.045 ms | 0.92 |
-| `fit_diagnostics` | monthly | 1.989 ms | 1.974 ms | 0.99 |
-| `thornthwaite` | monthly | 0.027 ms | 6.747 ms | 249.50 |
-| `hargreaves` | daily | 0.110 ms | 3.751 ms | 34.23 |
-| `penman_monteith` | daily | 0.144 ms | 0.124 ms | 0.86 |
-| `pm_eto_intermediates` | daily | 0.021 ms | 0.008 ms | 0.41 |
-| `fire_ffmc` | daily | 0.231 ms | 10.139 ms | 43.89 |
-| `fire_duff_moisture_code` | daily | 0.245 ms | 9.102 ms | 37.10 |
-| `fire_drought_code` | daily | 0.223 ms | 8.641 ms | 38.66 |
-| `fire_kbdi` | daily | 0.196 ms | 8.850 ms | 45.10 |
-| `flood_pe` | daily | 0.023 ms | 0.052 ms | 2.30 |
-| `flood_edi` | daily | 0.035 ms | 0.071 ms | 2.06 |
-| `flood_flood_index` | daily | 0.036 ms | 0.075 ms | 2.07 |
-| `flood_api` | daily | 0.160 ms | 7.620 ms | 47.63 |
-| `palmer_pdsi` | monthly | 0.163 ms | 36.133 ms | 221.79 |
-| `palmer_scpdsi` | monthly | 0.251 ms | 16.049 ms | 63.93 |
+| `spi_gamma` | monthly | 0.369 ms | 0.412 ms | 1.12 |
+| `spi_gamma_mean_zero` | monthly | 0.409 ms | 0.457 ms | 1.12 |
+| `spi_pearson` | monthly | 1.010 ms | 1.193 ms | 1.18 |
+| `spei_loglogistic` | monthly | 0.261 ms | 0.399 ms | 1.53 |
+| `spi_gamma_spatial_block` | block | 1.018 ms | 1.211 ms | 1.19 |
+| `spei_gamma` | monthly | 0.389 ms | 0.420 ms | 1.08 |
+| `percentage_of_normal` | monthly | 0.062 ms | 0.063 ms | 1.02 |
+| `eddi` | monthly | 0.196 ms | 0.303 ms | 1.54 |
+| `eddi_spatial_block` | block | 0.248 ms | 0.454 ms | 1.83 |
+| `pci` | daily | 0.061 ms | 0.058 ms | 0.96 |
+| `fit_diagnostics` | monthly | 2.220 ms | 2.190 ms | 0.99 |
+| `thornthwaite` | monthly | 0.029 ms | 7.713 ms | 262.95 |
+| `hargreaves` | daily | 0.130 ms | 4.162 ms | 32.04 |
+| `penman_monteith` | daily | 0.166 ms | 0.128 ms | 0.77 |
+| `pm_eto_intermediates` | daily | 0.020 ms | 0.009 ms | 0.43 |
+| `fire_ffmc` | daily | 0.240 ms | 11.396 ms | 47.57 |
+| `fire_duff_moisture_code` | daily | 0.265 ms | 9.871 ms | 37.30 |
+| `fire_drought_code` | daily | 0.630 ms | 11.062 ms | 17.56 |
+| `fire_kbdi` | daily | 0.230 ms | 9.769 ms | 42.40 |
+| `flood_pe` | daily | 0.061 ms | 0.117 ms | 1.93 |
+| `flood_edi` | daily | 0.096 ms | 0.172 ms | 1.80 |
+| `flood_flood_index` | daily | 0.046 ms | 0.083 ms | 1.82 |
+| `flood_api` | daily | 0.176 ms | 8.500 ms | 48.26 |
+| `palmer_pdsi` | monthly | 0.215 ms | 45.974 ms | 214.04 |
+| `palmer_scpdsi` | monthly | 0.317 ms | 18.531 ms | 58.44 |
 
 Rust is faster in 21 of the 25 entries.
 
@@ -950,15 +952,14 @@ Rust is faster in 21 of the 25 entries.
 
 | measurement | seconds |
 |---|---|
-| `import climate_indices`, fresh interpreter (interpreter start-up removed) | 0.498 |
-| first call `spi_gamma`, fresh interpreter | 0.006095 |
-| first call `thornthwaite`, fresh interpreter | 0.000136 |
-| first call `fire_kbdi`, fresh interpreter | 0.000446 |
-| first call `flood_api`, fresh interpreter | 0.000435 |
+| `import climate_indices`, fresh interpreter (interpreter start-up removed) | 1.195 |
+| first call `spi_gamma`, fresh interpreter | 0.046279 |
+| first call `thornthwaite`, fresh interpreter | 0.000314 |
+| first call `fire_kbdi`, fresh interpreter | 0.000753 |
+| first call `flood_api`, fresh interpreter | 0.000445 |
 
 The import is the package's own import graph (NumPy, pandas, xarray, and the
-extension); a first call on an already-imported package costs the warm-up call's
-order of magnitude, not the import's.
+extension); first-call timings exclude that import but include first-use initialization.
 
 ### Fixed and per-cell cost of a spatial block
 
@@ -968,12 +969,12 @@ binding crossing, and the copy in -- and the per-cell kernel cost.
 
 | entry | Rust fixed | Python fixed | Rust per cell | Python per cell |
 |---|---|---|---|---|
-| `spi_gamma_spatial_block` | 0.236 ms | 0.267 ms | 52.117 µs | 55.863 µs |
-| `eddi_spatial_block` | 0.194 ms | 0.325 ms | 7.395 µs | 15.230 µs |
+| `spi_gamma_spatial_block` | 0.252 ms | 0.413 ms | 55.997 µs | 71.829 µs |
+| `eddi_spatial_block` | 0.198 ms | 0.340 ms | 7.699 µs | 15.756 µs |
 
 The per-count rows for both sweeps are in `benchmarks/results/rust_vs_python.txt`.
 
-At one cell the two backends differ by 1.17x (SPI gamma) and 1.49x (EDDI): most
+At one cell the two backends differ by 1.15x (SPI gamma) and 1.53x (EDDI): most
 of a small call is the fixed cost both paths pay.
 
 ### Thread scaling
@@ -982,50 +983,50 @@ of a small call is the fixed cost both paths pay.
 
 | threads | Rust | Python | Python/Rust |
 |---|---|---|---|
-| 1 | 0.277 s | 0.279 s | 1.01 |
-| 2 | 0.153 s | 0.150 s | 0.98 |
-| 4 | 0.086 s | 0.091 s | 1.05 |
+| 1 | 0.275 s | 0.280 s | 1.02 |
+| 2 | 0.145 s | 0.147 s | 1.02 |
+| 4 | 0.081 s | 0.085 s | 1.05 |
 
 ### Gridded Dask: which scheduler reaches the kernels
 
-40 years x 25 x 25 cells, chunked spatially, best of five. The recorder sees the
-kernels the `threads` scheduler runs in this process; a spawned worker is a
-different process, and the probe reports what it finds there.
+40 years x 25 x 25 cells, chunked spatially, best of five. Thread pools explicitly
+initialize each worker with the requested NumPy policy. Process rows set only the
+caller's policy and use default workers. The recorder observes only this process;
+the separate spawned-worker probe does not observe the timed workers.
 
-| scheduler | NumPy error policy | seconds | Rust kernels reached (recorder, this process) |
+| scheduler | NumPy error policy (threads: worker; processes: caller) | seconds | Rust kernels reached (recorder, this process) |
 |---|---|---|---|
-| threads | default | 0.018 | False |
-| threads | ignore | 0.017 | True |
-| processes | default | 0.861 | False |
-| processes | ignore | 0.858 | False |
+| threads | default | 0.017 | False |
+| threads | ignore | 0.015 | True |
+| processes | default | 0.783 | n/a |
+| processes | ignore | 0.806 | n/a |
 
 spawned worker probe: `{"extension_imported": true, "float_error_policy": ["ignore", "warn"]}`
 
-NumPy's error state is thread-local and a new thread starts from the default
-policy, so `threads` reaches the extension only when the caller has errors
-ignored, and a spawned worker never does: its own probe reports a mix of `ignore`
-and `warn` policies, not the all-`ignore` the guard requires. The `processes` rows
-are therefore the pure-Python path in the workers; their 0.86 s against the
-`threads` row's 0.017 s on the same graph is process scheduling and serialization
-overhead this grid size does not amortize, not kernel time -- the kernel work is
-the same in both rows -- so this table says which path each scheduler reaches,
-not which scheduler is faster.
+NumPy's error state is thread-local, so setting the caller's policy alone does
+not establish the policy in task threads. Explicit all-ignore thread workers
+reach Rust here. The separate default spawned-worker probe reports mixed `ignore`
+and `warn` policies, consistent with Python dispatch in that configuration, not
+all process pools: a caller-provided pool initializer can set all-ignore.
+Native reachability in the timed process workers is unobserved (`n/a`). Their
+0.78-0.81 s against the threads/ignore row's 0.015 s is not an isolated scheduler
+comparison: the expected Python process path versus the observed Rust thread path
+combines backend and scheduler/serialization effects.
 
 ### Interpretation
 
 - The recursions and the per-cell fits are where the port pays: Thornthwaite
-  (250x), the Palmer recursions (222x, 64x), the fire recurrences (37-46x),
-  Hargreaves (34x), and the Antecedent Precipitation Index (48x) all replace a
+  (263x), the Palmer recursions (214x, 58x), the fire recurrences (18-48x),
+  Hargreaves (32x), and the Antecedent Precipitation Index (48x) all replace a
   Python-level loop over time steps with a loop over cells in Rust, which is
   ADR-0007's whole argument, now measured across the registry rather than per
   family.
-- The fitting-based indices gain least: SPI, SPEI, and EDDI sit at 1.06-1.78x,
+- The fitting-based indices gain least: SPI, SPEI, and EDDI sit at 1.08-1.83x,
   because most of their cost is the calibration-period fit and the transform,
   which stay Python on both paths.
-- Entries within about 10% of parity are ties at this size: `pci` (0.92),
-  `fit_diagnostics` (0.99), `spei_gamma` (1.06), `percentage_of_normal` (1.06),
-  `spi_gamma_mean_zero` (1.07).
-- `pm_eto_intermediates` (0.41) and `penman_monteith` (0.86) are slower in Rust,
+- Entries within about 10% of parity are ties at this size: `pci` (0.96),
+  `fit_diagnostics` (0.99), `spei_gamma` (1.08), `percentage_of_normal` (1.02).
+- `pm_eto_intermediates` (0.43) and `penman_monteith` (0.77) are slower in Rust,
   matching RUST-006's block-scale finding for the same equation: the kernel
   copies each input across the boundary and then walks an elementwise chain
   NumPy already evaluates at memory bandwidth. Recommendation: keep the dispatch.
@@ -1034,7 +1035,7 @@ not which scheduler is faster.
   called rather than on its arguments; the measured cost is bounded at a few
   tenths of a millisecond. Callers for whom Penman-Monteith dominates a grid
   should read this table as "no gain", not as a regression to be investigated.
-- Thread scaling confirms the GIL is released (3.2x on four threads), and the
+- Thread scaling confirms the GIL is released (3.4x on four threads), and the
   Python path scales the same way on this workload because its own NumPy calls
   release the GIL too. Rayon is therefore **not adopted**: the kernels are
   single-threaded, and an outer pool (Dask threads, a library caller's pool)
@@ -1044,9 +1045,9 @@ not which scheduler is faster.
   appears where kernel time dominates a call that no outer parallelism can
   split -- a long single-cell record, say -- and then only with a measured
   per-call gain at that shape.
-- A Dask `processes` user gets the Python path. That is the guard working as
-  documented rather than a defect, but it means the Rust backend's measured
-  advantage is not currently reachable from the Dask `processes` scheduler.
+- Default spawned workers in the separate Dask probe retain a mixed NumPy error
+  policy, consistent with Python dispatch. Caller-provided process pools with
+  all-ignore worker policies can differ; the local recorder cannot verify them.
 
 ### Limits
 

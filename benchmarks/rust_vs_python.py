@@ -15,18 +15,15 @@ Four measurements beyond that steady-state table:
   is the fixed per-call cost (Python orchestration, validation, the binding
   crossing, and the copy in) and whose slope is the per-cell kernel cost -- the
   small-input case where the boundary dominates;
-- thread scaling of one block of cells, with the backend on and off, for the
+- thread scaling of four disjoint cell blocks, with the backend on and off, for the
   question RUST-011's Rayon decision rests on: the kernels release the GIL, so an
   outer thread pool already parallelizes them;
-- one gridded Dask SPI call per scheduler and caller error policy, plus a probe of
-  what a spawned worker itself reports about the dispatch guard
-  (``compute._native_float64`` requires NumPy's errors ignored, and NumPy's error
-  state is thread-local, so the caller's policy decides whether a Dask task
-  reaches Rust at all).
+- one gridded Dask SPI call per scheduler and error policy, plus a separate probe
+  of a default spawned worker's dispatch guard inputs. Thread workers receive the
+  requested policy explicitly; process rows set only the caller's policy.
 
-A call reaches the Rust path only with NumPy's floating-point errors ignored and
-no RuntimeWarning filter set to error, so every measurement runs under
-``np.errstate(all="ignore")``.
+Rust-labeled measurements ignore NumPy floating-point errors and clear warning
+filters locally. Context-aware warnings disable native dispatch and are rejected.
 
 Run from the repository root, with the extension built (``uv run maturin develop
 --release``)::
@@ -124,7 +121,18 @@ class SchedulerTiming:
     scheduler: str
     error_policy: str
     seconds: float
-    rust_kernels_reached: bool
+    rust_kernels_reached: bool | None
+
+
+@contextmanager
+def native_policy() -> Iterator[None]:
+    """Establish the native guard's reporting policy without changing caller settings."""
+    if getattr(sys.flags, "context_aware_warnings", False):
+        raise RuntimeError("Rust measurements require -X context_aware_warnings=0")
+    with warnings.catch_warnings(), np.errstate(all="ignore"):
+        warnings.resetwarnings()  # the guard rejects any error filter, even one overridden by ignore
+        warnings.simplefilter("ignore", RuntimeWarning)
+        yield
 
 
 def measure(run: Callable[[], Any], repeats: int, error_policy: str = "ignore") -> float:
@@ -133,13 +141,15 @@ def measure(run: Callable[[], Any], repeats: int, error_policy: str = "ignore") 
     Args:
         run: the call to time
         repeats: number of timed repetitions, the minimum of which is returned
-        error_policy: ``ignore`` runs under ``np.errstate(all="ignore")``, which is what the Rust
-            dispatch guard needs; ``default`` leaves the caller's policy alone
+        error_policy: ``ignore`` establishes the native NumPy and warning policy;
+            ``default`` leaves the caller's policy alone
 
     Returns:
         the best wall-clock duration in seconds
     """
-    context = np.errstate(all="ignore") if error_policy == "ignore" else nullcontext()
+    if repeats <= 0:
+        raise ValueError("repeats must be positive")
+    context = native_policy() if error_policy == "ignore" else nullcontext()
     with context:
         run()  # warm-up: first-call allocation and import costs are the cold measurement's subject
         best = float("inf")
@@ -190,7 +200,7 @@ def cold_call_seconds(entry_name: str) -> float:
     """Time one entry's first call, in the fresh interpreter that ``--cold-entry`` runs in."""
     entry = parity_registry.ENTRIES_BY_NAME[entry_name]
     run = entry.run(SAMPLES[entry.family])
-    with np.errstate(all="ignore"):
+    with native_policy():
         start = time.perf_counter()
         run()
         return time.perf_counter() - start
@@ -198,13 +208,21 @@ def cold_call_seconds(entry_name: str) -> float:
 
 def measure_cold(entry_name: str) -> float:
     """Run :func:`cold_call_seconds` in a fresh interpreter and return its reported seconds."""
-    completed = subprocess.run(
-        [sys.executable, str(Path(__file__).resolve()), "--cold-entry", entry_name],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return float(json.loads(completed.stdout.strip().splitlines()[-1])["seconds"])
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(Path(__file__).resolve()), "--cold-entry", entry_name],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError as error:
+        raise RuntimeError(f"cold entry {entry_name} failed: {error.stderr}") from error
+    for line in reversed(completed.stdout.splitlines()):
+        try:
+            return float(json.loads(line)["seconds"])
+        except (ValueError, KeyError, TypeError):
+            continue
+    raise RuntimeError(f"cold entry {entry_name} returned no timing: {completed.stdout}\n{completed.stderr}")
 
 
 def measure_import_seconds() -> float:
@@ -218,27 +236,32 @@ def measure_import_seconds() -> float:
     return interpreter("import climate_indices") - interpreter("pass")
 
 
-def sweep_entry(entry: Entry, cells: Sequence[int] = SWEEP_CELLS, repeats: int = 3) -> list[Timings]:
-    """Time one spatial-block entry at each cell count in ``cells``."""
+def sweep_entry(entry: Entry, cells: Sequence[int] = SWEEP_CELLS, repeats: int = 3) -> list[tuple[int, Timings]]:
+    """Time one spatial-block entry at each cell count, retaining its measured count."""
     years = SAMPLES[entry.family].shape[0] // 12
     return [
-        time_entry(entry, values=parity_registry._block_values(years, count, 20261012, 0.15, 0.02), repeats=repeats)
+        (
+            count,
+            time_entry(
+                entry, values=parity_registry._block_values(years, count, 20261012, 0.15, 0.02), repeats=repeats
+            ),
+        )
         for count in cells
     ]
 
 
-def fit_fixed_and_per_cell(sweep: Sequence[Timings], backend: str) -> tuple[float, float]:
+def fit_fixed_and_per_cell(sweep: Sequence[tuple[int, Timings]], backend: str) -> tuple[float, float]:
     """Least-squares intercept and slope of one sweep's time against cell count, in seconds.
 
     Args:
-        sweep: the cell-count sweep of one entry, in the order of :data:`SWEEP_CELLS`
+        sweep: measured cell counts paired with their timings
         backend: ``rust`` or ``python``
 
     Returns:
         the fixed per-call seconds and the seconds added per cell
     """
-    cells = np.array(SWEEP_CELLS[: len(sweep)], dtype=float)
-    seconds = np.array([getattr(timing, f"{backend}_seconds") for timing in sweep], dtype=float)
+    cells = np.array([count for count, _ in sweep], dtype=float)
+    seconds = np.array([getattr(timing, f"{backend}_seconds") for _, timing in sweep], dtype=float)
     slope, intercept = np.polyfit(cells, seconds, 1)
     return float(intercept), float(slope)
 
@@ -266,7 +289,7 @@ def thread_scaling(
     def compute(thread_count: int) -> Callable[[], Any]:
         def run() -> Any:
             # every thread count computes the same blocks, so a row's seconds cover the same work
-            with ThreadPoolExecutor(max_workers=thread_count) as pool:
+            with ThreadPoolExecutor(max_workers=thread_count, initializer=np.seterr, initargs=("ignore",)) as pool:
                 return list(pool.map(lambda block: parity_registry._spi(block, indices.Distribution.gamma)(), blocks))
 
         return run
@@ -303,12 +326,11 @@ def compute_module() -> Any:
 
 
 def dask_timings(side: int = DASK_SIDE, repeats: int = 3) -> tuple[list[SchedulerTiming], dict[str, Any]]:
-    """Time one gridded SPI call per scheduler and caller error policy, with a worker's own report.
+    """Time gridded SPI with explicit thread-worker policies and default process workers.
 
-    The dispatch guard needs NumPy's floating-point errors ignored, and NumPy's
-    error state is thread-local, so the caller's policy is what decides whether a
-    Dask task reaches Rust at all. Each combination is measured with the recorder
-    in place, which sees the kernels the threads scheduler runs in this process.
+    NumPy error state is thread-local: thread pools initialize the requested policy.
+    Process rows change only the caller's policy, with no worker routing observation.
+    The separate probe describes only its own default spawned worker.
 
     Args:
         side: latitude and longitude cell count of the synthetic grid
@@ -342,22 +364,32 @@ def dask_timings(side: int = DASK_SIDE, repeats: int = 3) -> tuple[list[Schedule
     timings = []
     for scheduler in ("threads", "processes"):
         for policy in ("default", "ignore"):
-            recorder = conftest.NativeRecorder(require_native())
+            recorder = conftest.NativeRecorder(require_native()) if scheduler == "threads" else None
+            pool_context = (
+                ThreadPoolExecutor(
+                    initializer=lambda policy=policy: np.seterr(
+                        all="ignore" if policy == "ignore" else "warn", under="ignore"
+                    )
+                )
+                if scheduler == "threads"
+                else nullcontext(None)
+            )
             patch = pytest.MonkeyPatch()
-            patch.setattr(compute_module(), "_native", recorder)
-            context = nullcontext()  # measure() owns the error policy, so the guard's condition is the row's
+            if recorder is not None:
+                patch.setattr(compute_module(), "_native", recorder)
             try:
-                with context, warnings.catch_warnings():
+                with pool_context as pool, warnings.catch_warnings():
+                    warnings.resetwarnings()
                     warnings.simplefilter("ignore")
                     seconds = measure(
-                        lambda scheduler=scheduler: dask.compute(lazy, scheduler=scheduler),
+                        lambda scheduler=scheduler: dask.compute(lazy, scheduler=scheduler, pool=pool),
                         repeats,
                         error_policy=policy,
                     )
             finally:
-                patch.undo()  # the threads scheduler runs the kernels in this process, where the recorder sees them; a
-            # spawned worker is a different process with its own module state, which the probe reports
-            timings.append(SchedulerTiming(scheduler, policy, seconds, bool(recorder.calls)))
+                patch.undo()
+            reached = bool(recorder.calls) if recorder is not None else None
+            timings.append(SchedulerTiming(scheduler, policy, seconds, reached))
     probe = dask.compute(dask.delayed(_worker_dispatch_probe)(), scheduler="processes")[0]
     return timings, probe
 
@@ -385,7 +417,7 @@ def render_cold(import_seconds: float, cold: dict[str, float]) -> str:
     return "\n".join(lines)
 
 
-def render_sweep(name: str, sweep: Sequence[Timings]) -> str:
+def render_sweep(name: str, sweep: Sequence[tuple[int, Timings]]) -> str:
     """Render one entry's cell-count sweep and its fixed/per-cell fit as Markdown."""
     fixed_rust, per_cell_rust = fit_fixed_and_per_cell(sweep, "rust")
     fixed_python, per_cell_python = fit_fixed_and_per_cell(sweep, "python")
@@ -397,7 +429,7 @@ def render_sweep(name: str, sweep: Sequence[Timings]) -> str:
     ]
     lines += [
         f"| {count} | {timing.rust_seconds * 1e6:.1f} µs | {timing.python_seconds * 1e6:.1f} µs | {timing.ratio:.2f} |"
-        for count, timing in zip(SWEEP_CELLS, sweep, strict=True)
+        for count, timing in sweep
     ]
     lines += [
         "",
@@ -430,11 +462,13 @@ def render_dask(timings: Sequence[SchedulerTiming], probe: dict[str, Any], side:
     lines = [
         f"gridded Dask, {DASK_YEARS} years x {side} x {side} cells, chunked spatially",
         "",
-        "| scheduler | NumPy error policy | seconds | Rust kernels reached (recorder, this process) |",
+        "| scheduler | NumPy error policy (threads: worker; processes: caller) | seconds | "
+        "Rust kernels reached (recorder, this process) |",
         "|---|---|---|---|",
     ]
     lines += [
-        f"| {timing.scheduler} | {timing.error_policy} | {timing.seconds:.3f} | {timing.rust_kernels_reached} |"
+        f"| {timing.scheduler} | {timing.error_policy} | {timing.seconds:.3f} | "
+        f"{timing.rust_kernels_reached if timing.rust_kernels_reached is not None else 'n/a'} |"
         for timing in timings
     ]
     lines += ["", f"spawned worker probe: `{json.dumps(probe, sort_keys=True)}`"]
@@ -453,6 +487,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--skip-dask", action="store_true", help="skip the gridded Dask measurement")
     parser.add_argument("--cold-entry", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+    if args.repeat <= 0:
+        parser.error("--repeat must be positive")
 
     if args.cold_entry:
         print(json.dumps({"seconds": cold_call_seconds(args.cold_entry)}))
