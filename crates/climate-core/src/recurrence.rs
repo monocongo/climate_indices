@@ -1,4 +1,4 @@
-//! The daily-recurrence engine behind the fire kernels.
+//! The daily-recurrence engine behind the fire and flood kernels.
 //!
 //! A port of the shared day loop in `climate_indices._recurrence`
 //! (`run_daily_recurrences` and `_apply_gap_policy`), which is the reference for
@@ -38,6 +38,39 @@ pub struct RecurrenceInputs<'a> {
     /// Leading days to compute but omit from the recorded history.
     pub spin_up: usize,
     pub policy: MissingDayPolicy,
+}
+
+/// Build the recurrence inputs a kernel reads from its prepared arrays.
+///
+/// A convenience for the bindings, which receive the pieces separately. Every
+/// recurrence kernel, fire and flood alike, builds its inputs here, so the
+/// ADR-0007 policy names are parsed in one place.
+pub fn recurrence_inputs<'a>(
+    weather_valid: ArrayView2<'a, bool>,
+    static_valid: ArrayView1<'a, bool>,
+    in_season: Option<ArrayView2<'a, bool>>,
+    trailing_gap_days: ArrayView1<'a, i64>,
+    spin_up: usize,
+    nan_policy: &str,
+    max_gap_days: i64,
+) -> Result<RecurrenceInputs<'a>, ClimateError> {
+    let policy = match nan_policy {
+        "propagate" => MissingDayPolicy::Propagate,
+        "bridge" => MissingDayPolicy::Bridge { max_gap_days },
+        _ => {
+            return Err(ClimateError::UnknownNanPolicy {
+                value: nan_policy.to_owned(),
+            });
+        }
+    };
+    Ok(RecurrenceInputs {
+        weather_valid,
+        static_valid,
+        in_season,
+        trailing_gap_days,
+        spin_up,
+        policy,
+    })
 }
 
 /// One recurrence's recorded history and final per-cell bookkeeping.
@@ -492,6 +525,49 @@ mod tests {
                 argument: "in_season",
                 expected: 6,
                 actual: 9
+            }
+        );
+    }
+
+    #[test]
+    fn the_two_missing_day_policy_names_are_parsed() {
+        let weather = Array2::from_elem((1, 1), true);
+        let build = |nan_policy: &str| {
+            recurrence_inputs(
+                weather.view(),
+                array![true].view(),
+                None,
+                array![-1].view(),
+                0,
+                nan_policy,
+                4,
+            )
+            .map(|inputs| inputs.policy)
+        };
+        assert_eq!(build("propagate"), Ok(MissingDayPolicy::Propagate));
+        assert_eq!(
+            build("bridge"),
+            Ok(MissingDayPolicy::Bridge { max_gap_days: 4 })
+        );
+    }
+
+    #[test]
+    fn an_unknown_missing_day_policy_is_rejected() {
+        let weather = Array2::from_elem((1, 1), true);
+        let error = recurrence_inputs(
+            weather.view(),
+            array![true].view(),
+            None,
+            array![-1].view(),
+            0,
+            "skipped",
+            0,
+        )
+        .unwrap_err();
+        assert_eq!(
+            error,
+            ClimateError::UnknownNanPolicy {
+                value: "skipped".to_owned()
             }
         );
     }

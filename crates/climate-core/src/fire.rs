@@ -18,7 +18,7 @@
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 
 use crate::ClimateError;
-use crate::recurrence::{MissingDayPolicy, RecurrenceInputs, run};
+use crate::recurrence::{RecurrenceInputs, run};
 
 // The CFFWIS constants of `fire/_cffwis_codes.py`. The published FFMC equations
 // print 147.2 for the moisture-content conversion; the reference code uses the
@@ -539,40 +539,10 @@ pub fn kbdi(
     })
 }
 
-/// Build the recurrence inputs a kernel reads from its prepared arrays.
-///
-/// A convenience for the bindings, which receive the pieces separately.
-pub fn recurrence_inputs<'a>(
-    weather_valid: ArrayView2<'a, bool>,
-    static_valid: ArrayView1<'a, bool>,
-    in_season: Option<ArrayView2<'a, bool>>,
-    trailing_gap_days: ArrayView1<'a, i64>,
-    spin_up: usize,
-    nan_policy: &str,
-    max_gap_days: i64,
-) -> Result<RecurrenceInputs<'a>, ClimateError> {
-    let policy = match nan_policy {
-        "propagate" => MissingDayPolicy::Propagate,
-        "bridge" => MissingDayPolicy::Bridge { max_gap_days },
-        _ => {
-            return Err(ClimateError::UnknownNanPolicy {
-                value: nan_policy.to_owned(),
-            });
-        }
-    };
-    Ok(RecurrenceInputs {
-        weather_valid,
-        static_valid,
-        in_season,
-        trailing_gap_days,
-        spin_up,
-        policy,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::recurrence::recurrence_inputs;
     use ndarray::{Array2, array};
 
     #[test]
@@ -784,27 +754,6 @@ mod tests {
                 argument: "mean_annual_precipitation_mm",
                 expected: 3,
                 actual: 1
-            }
-        );
-    }
-
-    #[test]
-    fn an_unknown_missing_day_policy_is_rejected() {
-        let weather_valid = Array2::from_elem((1, 1), true);
-        let error = recurrence_inputs(
-            weather_valid.view(),
-            array![true].view(),
-            None,
-            array![-1].view(),
-            0,
-            "skipped",
-            0,
-        )
-        .unwrap_err();
-        assert_eq!(
-            error,
-            ClimateError::UnknownNanPolicy {
-                value: "skipped".to_owned()
             }
         );
     }

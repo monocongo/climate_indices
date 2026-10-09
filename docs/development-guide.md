@@ -264,7 +264,7 @@ The everyday Rust commands, for reference:
 |---------|--------------|
 | `rustup show` | The toolchain this checkout pins (must be 1.99.0) |
 | `rustup update` | Updates installed toolchains — do **not** use this to move the pin; change `channel` in `rust-toolchain.toml` deliberately instead |
-| `cargo build` / `cargo test --workspace` | Compiles the crates / runs the crate-level Rust tests; set `PYO3_PYTHON` to the project interpreter, as in [step 7](#7-verify), so they link the right Python |
+| `cargo build` / `cargo test --workspace` | Compiles the crates / runs the crate-level Rust tests; set `PYO3_PYTHON` to the project interpreter, as in [step 8](#8-verify), so they link the right Python |
 | `cargo fmt --all -- --check` | Formatting; CI fails on any diff |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Lints; CI fails on any warning |
 
@@ -371,8 +371,9 @@ cases the doc block promises: all-missing and all-zero columns, a constant colum
 supplied parameters, and masked or unaligned inputs that must fall back.
 
 A test that targets the Python reference itself uses the `python_backend` fixture
-from `tests/conftest.py`, which pins both `compute._native` and `fire._native` to
-`None` for the test. Loosening a tolerance needs a measured justification in the
+from `tests/conftest.py`, which sets the `_native` attribute of every dispatch module
+(`compute`, `eto`, `pm_eto`, `fire`, and `flood`) to `None` for the test; a new
+dispatch module is added to that fixture in the same change. Loosening a tolerance needs a measured justification in the
 ticket (maximum absolute and relative error, where it occurs, which primitive
 diverges, and whether reproducing the Python method closes the gap); never edit a
 fixture or a reference test to match Rust.
