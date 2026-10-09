@@ -39,6 +39,8 @@ Run from the repository root, with the extension built (``uv run maturin develop
 from __future__ import annotations
 
 import argparse
+import importlib
+import importlib.util
 import json
 import platform
 import subprocess
@@ -50,6 +52,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 import numpy as np
@@ -285,6 +288,13 @@ def _worker_dispatch_probe() -> dict[str, Any]:
     }
 
 
+def require_native() -> ModuleType:
+    """Return the extension, or exit with the build command when it is not installed."""
+    if importlib.util.find_spec("climate_indices._native") is None:
+        raise SystemExit("climate_indices._native is not built; build it with `uv run maturin develop --release`")
+    return importlib.import_module("climate_indices._native")
+
+
 def compute_module() -> Any:
     """The dispatch module behind the standardized indices, imported in whichever process calls this."""
     from climate_indices import compute
@@ -332,7 +342,7 @@ def dask_timings(side: int = DASK_SIDE, repeats: int = 3) -> tuple[list[Schedule
     timings = []
     for scheduler in ("threads", "processes"):
         for policy in ("default", "ignore"):
-            recorder = conftest.NativeRecorder(conftest.import_native())
+            recorder = conftest.NativeRecorder(require_native())
             patch = pytest.MonkeyPatch()
             patch.setattr(compute_module(), "_native", recorder)
             context = nullcontext()  # measure() owns the error policy, so the guard's condition is the row's
@@ -448,7 +458,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps({"seconds": cold_call_seconds(args.cold_entry)}))
         return 0
 
-    conftest.import_native()  # every measurement needs the built extension
+    require_native()  # every measurement needs the built extension
     cold = {name: measure_cold(name) for name in filter(None, args.cold_entries.split(","))}
     report = [
         f"python {platform.python_version()}; {platform.platform()}; {platform.processor() or platform.machine()}",

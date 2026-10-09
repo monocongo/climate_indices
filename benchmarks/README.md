@@ -904,8 +904,9 @@ uv run benchmarks/rust_vs_python.py --repeat 5 --write
 
 The Rust column is the dispatch-enabled case: a call reaches the extension only
 with NumPy's floating-point errors ignored and no `RuntimeWarning` filter set to
-error (`compute._native_float64`), which is the guard RUST-015 defines, so the
-harness runs every measurement under `np.errstate(all="ignore")`. Raw output, with
+error (`compute._native_float64`), the guard `docs/architecture.md` records and
+RUST-015 settled the routing around, so the harness runs every measurement under
+`np.errstate(all="ignore")`. Raw output, with
 the machine and version header, is committed at
 `benchmarks/results/rust_vs_python.txt`.
 
@@ -970,6 +971,8 @@ binding crossing, and the copy in -- and the per-cell kernel cost.
 | `spi_gamma_spatial_block` | 0.236 ms | 0.267 ms | 52.117 µs | 55.863 µs |
 | `eddi_spatial_block` | 0.194 ms | 0.325 ms | 7.395 µs | 15.230 µs |
 
+The per-count rows for both sweeps are in `benchmarks/results/rust_vs_python.txt`.
+
 At one cell the two backends differ by 1.17x (SPI gamma) and 1.49x (EDDI): most
 of a small call is the fixed cost both paths pay.
 
@@ -1000,10 +1003,13 @@ spawned worker probe: `{"extension_imported": true, "float_error_policy": ["igno
 
 NumPy's error state is thread-local and a new thread starts from the default
 policy, so `threads` reaches the extension only when the caller has errors
-ignored, and a spawned worker never does: its own probe reports
-`divide`/`over`/`invalid` at `warn`, and the guard needs every policy at `ignore`.
-The `processes` rows are therefore the pure-Python path in the workers, and their
-seconds include one process-pool start-up per `dask.compute` call.
+ignored, and a spawned worker never does: its own probe reports a mix of `ignore`
+and `warn` policies, not the all-`ignore` the guard requires. The `processes` rows
+are therefore the pure-Python path in the workers; their 0.86 s against the
+`threads` row's 0.017 s on the same graph is process scheduling and serialization
+overhead this grid size does not amortize, not kernel time -- the kernel work is
+the same in both rows -- so this table says which path each scheduler reaches,
+not which scheduler is faster.
 
 ### Interpretation
 
