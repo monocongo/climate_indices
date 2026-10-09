@@ -40,7 +40,7 @@ import importlib
 import importlib.util
 import json
 import platform
-import subprocess
+import subprocess  # nosec B404 # only re-runs this interpreter with fixed arguments
 import sys
 import time
 import warnings
@@ -171,6 +171,36 @@ def python_backend() -> Iterator[None]:
         patch.undo()
 
 
+def measure_backends(rust_run: Callable[[], Any], python_run: Callable[[], Any], repeats: int) -> tuple[float, float]:
+    """Return the best Rust and Python seconds of ``repeats`` interleaved repetitions, after a warm-up of each.
+
+    Timing one backend's repetitions before the other's lets clock, cache, and thermal drift
+    favour one side, so each repetition swaps which backend runs first.
+
+    Args:
+        rust_run: the call to time through the Rust kernels
+        python_run: the call to time on the pure-Python path
+        repeats: number of timed repetitions per backend
+
+    Returns:
+        the best Rust seconds and the best Python seconds
+    """
+    if repeats <= 0:
+        raise ValueError("repeats must be positive")
+    best = {"rust": float("inf"), "python": float("inf")}
+    with native_policy():
+        for repetition in range(repeats + 1):  # repetition 0 is each backend's untimed warm-up
+            for backend in ("rust", "python") if repetition % 2 else ("python", "rust"):
+                with python_backend() if backend == "python" else nullcontext():
+                    run = python_run if backend == "python" else rust_run
+                    start = time.perf_counter()
+                    run()
+                    elapsed = time.perf_counter() - start
+                if repetition:
+                    best[backend] = min(best[backend], elapsed)
+    return best["rust"], best["python"]
+
+
 def time_entry(entry: Entry, values: np.ndarray | None = None, repeats: int = 3) -> Timings:
     """Time one registry entry through the Rust kernels and on the Python path.
 
@@ -183,11 +213,7 @@ def time_entry(entry: Entry, values: np.ndarray | None = None, repeats: int = 3)
         the entry's best-of-``repeats`` seconds per backend
     """
     drawn = SAMPLES[entry.family] if values is None else values
-    rust_run = entry.run(drawn)
-    python_run = entry.run(drawn)
-    rust_seconds = measure(rust_run, repeats)
-    with python_backend():
-        python_seconds = measure(python_run, repeats)
+    rust_seconds, python_seconds = measure_backends(entry.run(drawn), entry.run(drawn), repeats)
     return Timings(entry.name, entry.family, rust_seconds, python_seconds)
 
 
@@ -209,7 +235,7 @@ def cold_call_seconds(entry_name: str) -> float:
 def measure_cold(entry_name: str) -> float:
     """Run :func:`cold_call_seconds` in a fresh interpreter and return its reported seconds."""
     try:
-        completed = subprocess.run(
+        completed = subprocess.run(  # nosec B603 # this interpreter and this file; no shell
             [sys.executable, str(Path(__file__).resolve()), "--cold-entry", entry_name],
             capture_output=True,
             text=True,
@@ -230,7 +256,7 @@ def measure_import_seconds() -> float:
 
     def interpreter(statement: str) -> float:
         start = time.perf_counter()
-        subprocess.run([sys.executable, "-c", statement], check=True, capture_output=True)
+        subprocess.run([sys.executable, "-c", statement], check=True, capture_output=True)  # nosec B603 # literal statements
         return time.perf_counter() - start
 
     return interpreter("import climate_indices") - interpreter("pass")
@@ -294,13 +320,7 @@ def thread_scaling(
 
         return run
 
-    timings = []
-    for count in workers:
-        rust_seconds = measure(compute(count), repeats)
-        with python_backend():
-            python_seconds = measure(compute(count), repeats)
-        timings.append(ThreadTiming(count, rust_seconds, python_seconds))
-    return timings
+    return [ThreadTiming(count, *measure_backends(compute(count), compute(count), repeats)) for count in workers]
 
 
 def _worker_dispatch_probe() -> dict[str, Any]:
@@ -498,7 +518,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     cold = {name: measure_cold(name) for name in filter(None, args.cold_entries.split(","))}
     report = [
         f"python {platform.python_version()}; {platform.platform()}; {platform.processor() or platform.machine()}",
-        f"repetitions: {args.repeat}; best of the repetitions, after a warm-up call",
+        f"repetitions: {args.repeat}; best of the repetitions, after a warm-up call; "
+        "Rust and Python alternate which runs first each repetition",
         "",
         render_entries(time_entries(repeats=args.repeat)),
         "",
