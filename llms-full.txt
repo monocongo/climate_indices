@@ -86,26 +86,31 @@ energy family is in development.
 - **Rust backend.** An optional compiled extension (`climate_indices._native`)
   runs Rust ports of the numerical kernels behind SPI, SPEI, the standardized index, EDDI,
   PET, PNP, PCI, the Palmer family, the KBDI and CFFWIS moisture-code recurrences, and the
-  flood family. It changes neither the public API nor the results: a cross-backend parity
-  registry checks every ported kernel against the Python implementation, which stays the
-  reference. Speedups vary by kernel: the flood family
+  flood family. It preserves the public API; a cross-backend parity registry checks every
+  ported kernel against the Python reference at `rtol = atol = 1e-10` with matching NaN
+  positions, not bit-for-bit equality; see the [parity contract](docs/architecture.md#parity-tolerance).
+  Speedups vary by kernel: the flood family
   measured 1.2x to 6.7x faster than its Python path and Thornthwaite PET 1.4x, while
   Hargreaves measured at parity and Penman-Monteith slightly slower (0.89x) at the benchmark
   size; see [the measurements](benchmarks/README.md).
 - **Vectorized gridded computation.** SPI, SPEI, EDDI, PNP, PET, and PDSI fit or rank a
   whole `(time, *cells)` block in one call instead of looping over cells. On a 38x87-cell,
   40-year reference grid that is 4.4x faster for SPI, 3.6x for SPEI, 53x for Thornthwaite
-  PET, 342x for EDDI, and 111x for gridded PDSI, with results bit-identical to (or within
-  `1e-12` of) the per-cell computation.
-- **xarray, Dask, and Zarr.** Index functions accept `xarray.DataArray` input, infer the
-  periodicity, calendar, and calibration years from coordinates, preserve coordinates, attach
-  CF metadata, and stay lazy on Dask-backed arrays, so a gridded result streams to Zarr chunk
-  by chunk. See the [compatibility matrix](docs/xarray_compatibility.md),
+  PET, 342x for EDDI, and 111x for gridded PDSI. On fully populated monthly grids, gamma
+  SPI/SPEI, EDDI, and PNP are bit-identical to per-cell computation; Thornthwaite PET and
+  successful Pearson fits agree within `1e-12`. Pearson SPI's block-wide gamma fallback is
+  not per-cell equivalent and can depend on chunk layout; daily and missing-data bounds
+  are [documented separately](docs/performance.md#numerical-equivalence).
+- **xarray, Dask, and Zarr.** Supported xarray entry points accept `xarray.DataArray` input,
+  preserve coordinates, attach CF metadata, and stay lazy on Dask-backed arrays for
+  chunk-by-chunk Zarr output. Temporal inference and core-dimension chunk requirements
+  vary by function; `indices.standardized_index()` and scPDSI remain NumPy-only.
+  See the [compatibility matrix](docs/xarray_compatibility.md),
   [writing NetCDF and Zarr outputs](docs/writing-outputs.md), the
   [Zarr/Dask notebook](notebooks/zarr_dask_spi_spei.ipynb), and
   [chunking and scheduler guidance](docs/performance.md).
-- **Validation.** Every index carries a documented evidence classification, and external
-  checks run against NOAA, NRCan, SPEIbase, and literature reference data; see
+- **Validation.** Documented evidence distinguishes external checks against NOAA, NRCan,
+  SPEIbase, and literature reference data from regression-only coverage; see
   [Validation](#validation).
 - **Command-line interface.** `climate_indices --index
   {spi,spei,pnp,scaled,pet,palmers,kbdi,pe,edi,flood_index,api,all}` computes indices from
@@ -159,8 +164,9 @@ The wheels published for Linux (x86-64 and aarch64, manylinux_2_28, so glibc 2.2
 newer), macOS (Apple silicon and Intel), and Windows (x86-64) include the optional Rust
 acceleration backend; every other platform, including a Linux system with older glibc,
 installs the pure-Python wheel. Both carry the same version and the same public
-API, and they return the same results, so nothing in calling code depends on which one
-pip selected. To see which one you have:
+API; results agree within the [cross-backend parity tolerance](docs/architecture.md#parity-tolerance),
+not necessarily bit for bit. Calling code need not depend on which one pip selected.
+To see which one you have:
 
 ```bash
 python -c "import climate_indices._native"   # succeeds when the extension is installed
@@ -282,8 +288,9 @@ Python 3.9 support was dropped in v2.2.0 (August 2025) due to `scipy>=1.15.3` re
 **Stable API**: The NumPy-based computation functions follow strict semantic versioning.
 
 **Beta API**: The xarray adapter layer provides automatic parameter inference, coordinate
-preservation, CF metadata, and Dask support. While beta, computation results are **identical**
-to the stable NumPy API — only the interface surface (parameter names, metadata attributes,
+preservation, CF metadata, and Dask support. While beta, computation results follow the
+stable NumPy API's documented [numerical-equivalence bounds](docs/performance.md#numerical-equivalence)
+— only the interface surface (parameter names, metadata attributes,
 coordinate handling) may evolve. Beta features are marked in docstrings, with
 ``BetaFeatureWarning`` as their public warning category. The adapter stays Beta in 3.0.0
 and is promoted no earlier than 3.1.0, once the 3.0.0 calendar alignment has a release
@@ -296,8 +303,9 @@ the measured speedups behind the chunk and scheduler guidance.
 
 ## Validation
 
-[`VALIDATION.md`](VALIDATION.md) classifies the evidence behind every index, separating
-independent external validation from regression coverage and recording each known gap.
+[`VALIDATION.md`](VALIDATION.md) classifies the evidence for the indices in its per-index
+inventory, separating independent external validation from regression coverage and recording
+their known gaps. Fosberg Fire Weather Index and Haines Index are not yet classified there.
 `uv run pytest -m validation` runs the external checks against committed reference fixtures:
 
 - **EDDI**: NOAA PSL monthly reference ET/EDDI for 1-, 3-, and 6-month timescales
