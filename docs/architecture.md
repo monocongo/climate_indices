@@ -505,8 +505,11 @@ consolidated suite in `tests/test_native_parity_registry.py` drives the same
 comparison from one registry
 (`tests/parity_registry.py`: Python entry point, dispatch module, expected
 kernels, input family, tolerance), adds Hypothesis draws over lengths, NaN
-patterns, zero runs, extreme magnitudes, and spatial shapes, and asserts the
-documented dispatch decision for the input kinds below.
+patterns, zero runs, extreme magnitudes, and spatial shapes, after each entry's
+input derivation. Palmer entries replace gaps and clip precipitation to [5, 300],
+so their property cases cover lengths and bounded precipitation variation, not
+gaps, zero runs, or extreme magnitudes. The suite also asserts the documented
+dispatch decision for the input kinds below.
 `tests/test_native_e2e_parity.py` extends the same comparison to the surfaces
 that orchestrate the kernels: the xarray adapter, threaded and distributed Dask,
 the CLI, and `fit_diagnostics`.
@@ -519,11 +522,12 @@ Which path an input takes, and why. Every row is asserted by
 | Case | Path | Why |
 |---|---|---|
 | `plain_daily_series` | Rust | a plain, contiguous float64 ndarray is the kernel's own input|
-| `strided` | Rust | a non-contiguous float64 series is copied before the GIL is released |
+| `strided` | Rust | a non-contiguous float64 rainfall series reaches the PCI dispatch guard unchanged, then is copied before the GIL is released |
 | `float32` | Python | NumPy fits a float32 series in float32, so the fit stays where it was |
 | `masked` | Python | a masked array is not a plain float64 ndarray |
 | `year_varying_parameters` | Python CDF | only a caller can pass per-step parameters; the kernel takes one per calendar step |
-| `overflowing_lmoment_block` | Python fit | an infinity (or a value past `1e100`) makes the L-moments NaN, which the two fits report differently |
+| `overflowing_lmoment_block` | Python fit | an infinity makes the L-moments NaN, which the two fits report differently |
+| `oversized_lmoment_block` | Python fit | a finite value above `1e100` exceeds the native L-moment safety bound |
 
 ### Parity tolerance
 
