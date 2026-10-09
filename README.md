@@ -75,14 +75,15 @@ energy family is in development.
 
 ### Highlights
 
-- **Rust acceleration backend.** An optional compiled extension (`climate_indices._native`)
+- **Rust backend.** An optional compiled extension (`climate_indices._native`)
   runs Rust ports of the numerical kernels behind SPI, SPEI, the standardized index, EDDI,
   PET, PNP, PCI, the Palmer family, the KBDI and CFFWIS moisture-code recurrences, and the
   flood family. It changes neither the public API nor the results: a cross-backend parity
   registry checks every ported kernel against the Python implementation, which stays the
-  reference. Gains depend on the kernel: the flood family runs 1.2x to 6.7x faster than its
-  Python path and Thornthwaite PET 1.4x, while the elementwise Hargreaves and
-  Penman-Monteith kernels sit near parity; see [the measurements](benchmarks/README.md).
+  reference. Speedups vary by kernel: the flood family
+  measured 1.2x to 6.7x faster than its Python path and Thornthwaite PET 1.4x, while
+  Hargreaves measured at parity and Penman-Monteith slightly slower (0.89x) at the benchmark
+  size; see [the measurements](benchmarks/README.md).
 - **Vectorized gridded computation.** SPI, SPEI, EDDI, PNP, PET, and PDSI fit or rank a
   whole `(time, *cells)` block in one call instead of looping over cells. On a 38x87-cell,
   40-year reference grid that is 4.4x faster for SPI, 3.6x for SPEI, 53x for Thornthwaite
