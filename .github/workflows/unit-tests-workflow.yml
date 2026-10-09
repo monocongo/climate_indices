@@ -271,6 +271,18 @@ jobs:
           --ignore=tests/test_review_scripts.py
           --ignore=tests/test_type_checking.py
 
+      # The core run above already covers both of these; naming them here means a
+      # native leg that collected nothing from the consolidated suite is a visible
+      # failure rather than a silent pass (CLIMATE_INDICES_REQUIRE_NATIVE=1 is set
+      # for the job, so neither module may skip).
+      - name: Run the consolidated parity suite
+        run: >
+          uv run --no-sync --no-build pytest -q
+          tests/test_native_parity_registry.py tests/test_native_e2e_parity.py
+
+      - name: Record cross-backend parity maxima
+        run: uv run --no-sync --no-build python scripts/native_parity_maxima.py >> "$GITHUB_STEP_SUMMARY"
+
   # Builds a release binary wheel per boundary interpreter and platform, then
   # installs it outside the checkout and proves SPI dispatches to the bundled
   # extension. Publishing is not wired here: the published wheel matrix,

@@ -382,6 +382,8 @@ def test_native_pytest_leg_builds_the_extension_and_cannot_skip_the_parity_suite
     `CLIMATE_INDICES_REQUIRE_NATIVE` makes `tests/conftest.py::import_native` raise rather than
     skip, so a broken build cannot pass by silently dropping `tests/test_native_parity.py`.
     `tests/test_native_backend.py` tests that behavior; this pins that the leg sets the variable.
+    The core suite runs exactly as the `test` leg runs it; the consolidated parity suite and the
+    recorded parity maxima are steps only the native leg can run.
     """
     workflow = (ROOT / UNIT_TESTS_WORKFLOW).read_text(encoding="utf-8")
     native_job = _native_jobs()["test-native"]
@@ -392,10 +394,12 @@ def test_native_pytest_leg_builds_the_extension_and_cannot_skip_the_parity_suite
     assert "CLIMATE_INDICES_REQUIRE_NATIVE: '1'" in native_job
     assert native_job.index(install) < native_job.index(build) < native_job.index(check)
     assert native_job.index(check) < native_job.index("- name: Run core tests")
-    assert (
-        native_job.split("- name: Run core tests")[1].strip()
-        == _workflow_job(workflow, "test").split("- name: Run core tests")[1].strip()
+    core_tests = "- name: Run core tests"
+    assert native_job.split(core_tests)[1].split("      # The core run above")[0].strip() == (
+        _workflow_job(workflow, "test").split(core_tests)[1].strip()
     )
+    assert "- name: Run the consolidated parity suite" in native_job
+    assert "scripts/native_parity_maxima.py" in native_job
 
 
 def test_native_wheel_job_checks_built_wheels_outside_the_checkout() -> None:

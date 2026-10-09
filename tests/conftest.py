@@ -76,6 +76,11 @@ def python_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     For tests that target the Python reference itself: parity tests, and tests that
     inject a failure by patching a SciPy call the Rust kernels never make.
     """
+    disable_native(monkeypatch)
+
+
+def disable_native(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point every dispatch module at the Python implementations."""
     monkeypatch.setattr(compute, "_native", None)
     monkeypatch.setattr(eto, "_native", None)
     monkeypatch.setattr(pm_eto, "_native", None)
@@ -153,6 +158,13 @@ def assert_native_parity(rust: Any, python: Any) -> None:
         assert len(rust) == len(python)
         for rust_item, python_item in zip(rust, python, strict=True):
             assert_native_parity(rust_item, python_item)
+        return
+    if isinstance(rust, dict):
+        # a returned fitting-parameter dict holds arrays per calendar step
+        assert isinstance(python, dict)
+        assert rust.keys() == python.keys()
+        for key in rust:
+            assert_native_parity(rust[key], python[key])
         return
     if rust is None or python is None:
         assert rust is None and python is None
