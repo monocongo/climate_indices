@@ -1042,11 +1042,15 @@ combines backend and scheduler/serialization effects.
   Python-level loop over time steps with a loop over cells in Rust, which is
   ADR-0007's whole argument, now measured across the registry rather than per
   family.
-- The fitting-based indices gain least: SPI, SPEI, and EDDI sit at 1.10-1.83x,
-  because most of their cost is the calibration-period fit and the transform,
-  which stay Python on both paths.
-- Entries within 5% of parity are ties at this size and swap sides between runs:
-  `pci` (0.97) and `fit_diagnostics` (1.01).
+- The fitting-based indices gain least: SPI, SPEI, and EDDI sit at 1.10-1.83x.
+  Their fit and transform are ported and dispatch natively on the Rust path
+  (`compute.py`'s `_native_gamma_parameters`, `_native_gamma_probabilities`,
+  `_native_pearson_parameters`, `_native_loglogistic_*`); the Python path those
+  replace already calls SciPy's compiled routines, so porting them moves little
+  time next to replacing a Python loop over time steps.
+- Entries within 5% of parity are ties at this size: `pci` (0.97) and
+  `fit_diagnostics` (1.01). One run is retained per entry and only its best
+  sample, so read these as ties rather than as a measured direction.
 - `pm_eto_intermediates` (0.45) and `penman_monteith` (0.88) are slower in Rust,
   matching RUST-006's block-scale finding for the same equation: the kernel
   copies each input across the boundary and then walks an elementwise chain
@@ -1056,9 +1060,11 @@ combines backend and scheduler/serialization effects.
   called rather than on its arguments; the measured cost is bounded at a few
   tenths of a millisecond. Callers for whom Penman-Monteith dominates a grid
   should read this table as "no gain", not as a regression to be investigated.
-- Thread scaling confirms the GIL is released (2.9x on four threads), and the
-  Python path scales the same way on this workload because its own NumPy calls
-  release the GIL too. Rayon is therefore **not adopted**: the kernels are
+- Thread scaling confirms the GIL is released for the dispatched kernels (2.9x on
+  four threads), and the Python path scales the same way on this workload because
+  its own NumPy calls release the GIL too. Two entries keep the GIL deliberately:
+  `pnp_percentages` (a division per element costs about what the copy to release
+  it would) and `pci` (one small year of daily values). Rayon is therefore **not adopted**: the kernels are
   single-threaded, and an outer pool (Dask threads, a library caller's pool)
   already parallelizes cell blocks, so a Rust-side pool would add a second
   parallelism layer over Dask's and the CLI's process pools with no measured
@@ -1073,10 +1079,14 @@ combines backend and scheduler/serialization effects.
 
 ### Limits
 
-- One machine (macOS arm64, Python 3.14.7), best of five after a warm-up; the
-  artifact names the machine and the command. The run shared the machine with
-  other work (load average about 6.6), so read differences under 5% and the
-  thread-scaling ratio as noisy.
+- One machine (macOS arm64, Python 3.14.7), best of five after a warm-up. The
+  routine artifact records the interpreter, platform, architecture, and the
+  repetition count -- not the command, the CPU model, or dependency versions --
+  and keeps only each entry's best sample, so the spread behind a ratio cannot be
+  audited from it. The full-grid artifact does record the CPU, the revision, and
+  both inputs' SHA-256. The routine run shared the machine with other work (load
+  average about 6.6), so read differences under 5% and the thread-scaling ratio
+  as noisy.
 - The real-grid CHIRPS and nClimGrid cases in the sections above need their
   external fixtures, which are not in the repository, so the routine run measures
   a single station series, a synthetic cell block, and a synthetic 25 x 25 grid;
@@ -1110,9 +1120,16 @@ uv run benchmarks/rust_vs_python.py --netcdf nclimgrid_prcp_1981_2024.nc --tavg 
 ```
 
 One eager call on every land cell. `inside extension calls` is the share of the
-Rust call's wall clock spent inside the extension's functions (the binding
-crossing, the copy in, and the kernel); the rest is Python orchestration both
-paths share.
+Rust samples' combined wall clock spent inside the extension's functions (the
+binding crossing, the copy in, and the kernel), divided by the sum of both Rust
+samples; the duration column beside it is the best sample instead, so the percentage
+and the duration are different aggregates. It is not kernel-only time -- binding and
+copy-in are inside it too -- and the per-sample numerators are not retained, so the
+percentage cannot be recomputed from the artifact. The rest of each call is Python
+orchestration both paths share. Loading, land-cell packing, and Thornthwaite PET are
+built before timing starts, and the loader replaces zero precipitation with 0.01 mm,
+so these are index-only figures on prepared inputs rather than raw-grid pipeline
+timings.
 
 | entry | Rust | Python | Python/Rust | inside extension calls | Rust kernels reached |
 |---|---|---|---|---|---|
@@ -1154,23 +1171,27 @@ Eight blocks across a thread pool, every row the same work.
 
 Reading the full grid:
 
-- Kernel time is most of a call only for Thornthwaite (97%), EDDI (80%), and SPI
-  gamma and PDSI (58%); SPI Pearson and SPEI spend 35-49% of a Rust call inside
-  the extension.
-- The Rayon trigger does not fire. Where kernel time dominates, an outer pool
+- Extension time -- binding, copy-in, and kernel together, not kernel alone -- is
+  most of a call only for Thornthwaite (97%), EDDI (80%), and SPI gamma and PDSI
+  (58%); SPI Pearson and SPEI spend 35-49% of a Rust call inside the extension.
+- The Rayon trigger does not fire. Where extension time dominates, an outer pool
   already splits the grid: Rust PDSI goes from 14.90 s on one thread to 6.34 s on
   four, SPI gamma from 32.39 s to 6.86 s on eight. Rayon stays out.
 - Block size matters more than the backend for one call: the same cells as eight
   blocks run back to back on one thread beat the single eager call on both paths
-  (Rust PDSI 14.90 s against 48.98 s, Python SPI gamma 31.78 s against 46.86 s).
+  (Rust PDSI 14.90 s against 48.98 s, Python SPI gamma 31.78 s against 46.86 s),
+  with one exception: Rust EDDI is 3.93 s eager against 4.00 s as eight blocks, a
+  tie within this run's own spread.
   The eager SPI and SPEI ratios (1.33-1.57) are therefore mostly the Python
   path's cost on whole-grid arrays, not kernel speed: at block size the fit
   family is at parity on one thread (SPI gamma 0.98, Pearson 1.07, SPEI 1.06).
   Chunk a full grid rather than computing it in one call, on either backend.
-- Where Rust is not faster at full scale: Thornthwaite (1.12 eager, 1.03-1.04 on
-  one or two threads), because the spatial Python path is already vectorized
-  across cells -- the steady-state table's 219x is the per-series Python loop,
-  not a grid result -- and SPI gamma and SPEI on one or two threads (0.98-1.09).
+- Where Rust is not faster at full scale: SPI gamma and SPEI on one or two
+  threads (0.98-1.09). Thornthwaite is at parity to a slight Rust lead for eager,
+  one, and two threads (1.03-1.12) because the spatial Python path is already
+  vectorized across cells -- the steady-state table's 219x is the per-series
+  Python loop, not a grid result -- and it gains at four and eight threads (1.17,
+  1.68).
 - Where it is: PDSI in every configuration (2.77 eager, 6.18-9.38 pooled), whose
   Python recursion stops scaling at two threads; EDDI (1.66-2.00); SPI Pearson in
   every configuration (1.07-2.04); and the fitting-based indices at eight threads
