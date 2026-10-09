@@ -204,3 +204,43 @@ benchmark running. Reattach with SSM rather than relaunching:
 aws ssm send-command --region us-east-2 --instance-ids <id> --document-name AWS-RunShellScript \
   --parameters '{"commands":["cat /tmp/EXIT 2>/dev/null || echo RUNNING"],"executionTimeout":["45"]}'
 ```
+
+## Real climate data (`grid_real`)
+
+The synthetic grid exists so scale is testable from a clone with no download. It is
+not a substitute for real inputs, and `grid_real` uses the real thing: the CONUS
+nClimGrid-Monthly period-of-record objects from NOAA's public NODD bucket.
+
+```bash
+./benchmarks/aws/run_ec2.sh grid_real ci/1324-benchmark-aws-terraform 1
+```
+
+What the stage does, following the recipe the repository already documents:
+
+1. `https://noaa-nclimgrid-monthly-pds.s3.amazonaws.com/nclimgrid_prcp.nc` (~1.80 GB)
+   and `nclimgrid_tavg.nc` (~1.53 GB), anonymously readable, no credentials.
+2. Records the retrieval's own `ETag`, `Last-Modified`, `Content-Length` and SHA-256
+   before measuring, because **these are mutable period-of-record objects**: NCEI
+   appends the latest month and reprocesses preliminary files after two years. The
+   fingerprint committed with the earlier run
+   (`benchmarks/results/nclimgrid_fixture_provenance.txt`, ETag `2ad66993…`,
+   SHA-256 `85118392…`, 1,796,927,222 bytes) no longer describes the object: on
+   2026-10-09 the bucket served ETag `aaa51d87…`, 1,798,084,265 bytes. Never treat a
+   previously recorded digest as a check on a fresh download.
+3. Trims to 1981-2024 and applies the documented land-mask and zero-to-0.01 mm
+   treatment with `cli_multiprocessing.py prepare`, so the input is byte-identical
+   to what every other harness prepares from the same object.
+4. Runs the six monthly grid entries against it. The raw temperature object is passed
+   as `--tavg`, because the harness label-selects temperature onto the prepared
+   precipitation coordinates.
+
+Nothing downloaded here is committed: the objects are fetched at run time, which is
+also what NOAA's terms accommodate (public, usable as desired, attribution requested,
+modified data must not be presented as unaltered). See
+`docs/research/nclimgrid-acquisition-and-redistribution.md`.
+
+**CHIRPS is a known gap.** The CHC endpoint (`data.chc.ucsb.edu`) is unreachable from
+this network, and the AWS Open Data CHIRPS entry is Digital Earth Africa's
+Africa-extent product. CHIRPS also needs the harness to support daily entries at grid
+scale, which it does not have yet: the grid builders are monthly-only. That is a
+harness change on #1324, not a download.

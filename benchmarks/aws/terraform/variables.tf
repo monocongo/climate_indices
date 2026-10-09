@@ -45,13 +45,13 @@ variable "ephemeral_gib" {
 }
 
 variable "stage" {
-  description = "Benchmark stage the task runs: routine, spread, grid, or grid_synthetic."
+  description = "Benchmark stage the task runs: routine, spread, grid, grid_synthetic, or grid_real."
   type        = string
   default     = "routine"
 
   validation {
-    condition     = contains(["routine", "spread", "grid", "grid_synthetic"], var.stage)
-    error_message = "stage must be one of: routine, spread, grid, grid_synthetic."
+    condition     = contains(["routine", "spread", "grid", "grid_synthetic", "grid_real"], var.stage)
+    error_message = "stage must be one of: routine, spread, grid, grid_synthetic, grid_real."
   }
 }
 
