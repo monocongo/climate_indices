@@ -64,7 +64,8 @@ case "$STAGE" in
     [ -n "${GRID_THREADS:-}" ] && extra="${extra} --threads ${GRID_THREADS}"
     uv run --no-sync python benchmarks/aws/make_synthetic_grid.py "$rows" "$cols" /tmp/synth
     PYTHONWARNINGS=error taskset -c "$CPUS" uv run --no-sync python benchmarks/rust_vs_python.py \
-      --netcdf /tmp/synth/prcp.nc --tavg /tmp/synth/tavg.nc --repeat "$REPEATS" $extra --output /tmp/grid.txt
+      --netcdf /tmp/synth/prcp.nc --tavg /tmp/synth/tavg.nc --repeat "$REPEATS" $extra \
+      --output /tmp/grid.txt > /tmp/harness.log 2>&1 || { tail -30 /tmp/harness.log; exit 1; }
     cat /tmp/grid.txt
     ;;
   grid)
@@ -73,7 +74,8 @@ case "$STAGE" in
       exit 2
     fi
     PYTHONWARNINGS=error taskset -c "$CPUS" uv run --no-sync python benchmarks/rust_vs_python.py \
-      --netcdf "$NETCDF" --tavg "$TAVG" --repeat "$REPEATS" --output /tmp/grid.txt
+      --netcdf "$NETCDF" --tavg "$TAVG" --repeat "$REPEATS" \
+      --output /tmp/grid.txt > /tmp/harness.log 2>&1 || { tail -30 /tmp/harness.log; exit 1; }
     cat /tmp/grid.txt
     ;;
   *)
