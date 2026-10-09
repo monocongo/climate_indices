@@ -86,7 +86,7 @@ def test_source_download_retries_while_published_file_is_briefly_denied(tmp_path
     denials = []
 
     def flaky_read_bytes(self):
-        if self.suffix == ".nc" and len(denials) < 2:
+        if self.suffix == ".nc" and self.exists() and len(denials) < 2:
             denials.append(self)
             raise PermissionError(13, "Permission denied")
         return real_read_bytes(self)
