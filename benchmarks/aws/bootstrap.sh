@@ -47,6 +47,28 @@ grep -m1 'model name' /proc/cpuinfo || true
 echo "cpus: $(nproc)"
 grep -E 'MemTotal|MemAvailable' /proc/meminfo || true
 
+# NOAA's public bucket serves the CONUS nClimGrid-Monthly period-of-record objects
+# anonymously. They are appended and reprocessed, so a fingerprint recorded by an
+# earlier run does not describe what the bucket serves today: record this retrieval's
+# own headers and digests, as benchmarks/results/nclimgrid_fixture_provenance.txt does.
+fetch_real_grid() {
+  local base="https://noaa-nclimgrid-monthly-pds.s3.amazonaws.com"
+  echo "=== retrieval, $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
+  for obj in nclimgrid_prcp.nc nclimgrid_tavg.nc; do
+    curl -sI "$base/$obj" | tr -d '\r' | grep -iE '^(etag|last-modified|content-length)' | sed "s#^#${obj}: #"
+    curl -sSL -o "/tmp/$obj" "$base/$obj"
+  done
+  echo "=== downloaded bytes ==="
+  ls -l /tmp/nclimgrid_prcp.nc /tmp/nclimgrid_tavg.nc
+  sha256sum /tmp/nclimgrid_prcp.nc /tmp/nclimgrid_tavg.nc
+  # Trim to the calibration-relevant span and apply the documented land-mask and
+  # zero-to-0.01mm treatment, so this is byte-identical to what every other benchmark
+  # harness prepares from the same object.
+  uv run --no-sync python benchmarks/cli_multiprocessing.py prepare \
+    /tmp/nclimgrid_prcp.nc /tmp/nclimgrid_prcp_1981_2024.nc --start 1981 --end 2024
+  sha256sum /tmp/nclimgrid_prcp_1981_2024.nc
+}
+
 echo "=== build ==="
 cd /tmp
 git clone --quiet --branch "$GIT_REF" --single-branch https://github.com/monocongo/climate_indices.git ci
@@ -87,38 +109,18 @@ case "$STAGE" in
     ;;
   percell)
     # scPDSI has no spatial-block path (ADR-0011), so it is measured per cell over a
-    # sample. NETCDF and TAVG are the real prepared grid and its raw temperature.
-    if [ -z "${NETCDF:-}" ] || [ -z "${TAVG:-}" ]; then
-      echo "percell stage needs NETCDF and TAVG" >&2
-      exit 2
-    fi
+    # sample of the real grid. The harness's loader needs the whole grid in memory, so
+    # this stage wants a large-memory instance even though only a sample is timed.
+    fetch_real_grid
     taskset -c "$CPUS" uv run --no-sync python benchmarks/aws/percell.py \
-      "$NETCDF" "$TAVG" "${PERCELL_CELLS:-1000}" "${PERCELL_REPEATS:-2}" > /tmp/percell.log 2>&1 \
+      /tmp/nclimgrid_prcp_1981_2024.nc /tmp/nclimgrid_tavg.nc \
+      "${PERCELL_CELLS:-1000}" "${PERCELL_REPEATS:-2}" > /tmp/percell.log 2>&1 \
       || { tail -30 /tmp/percell.log; exit 1; }
     cat /tmp/percell.log
     cat percell.json
     ;;
   grid_real)
-    # The real CONUS grid, straight from NOAA's public bucket. These period-of-record
-    # objects are appended and reprocessed, so the committed fingerprint from an earlier
-    # run does not describe what the bucket serves today: record this retrieval's own
-    # headers and digests, as benchmarks/results/nclimgrid_fixture_provenance.txt does.
-    base="https://noaa-nclimgrid-monthly-pds.s3.amazonaws.com"
-    echo "=== retrieval, $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
-    for obj in nclimgrid_prcp.nc nclimgrid_tavg.nc; do
-      curl -sI "$base/$obj" | tr -d '\r' | grep -iE '^(etag|last-modified|content-length)' | sed "s#^#${obj}: #"
-      curl -sSL -o "/tmp/$obj" "$base/$obj"
-    done
-    echo "=== downloaded bytes ==="
-    ls -l /tmp/nclimgrid_prcp.nc /tmp/nclimgrid_tavg.nc
-    sha256sum /tmp/nclimgrid_prcp.nc /tmp/nclimgrid_tavg.nc
-
-    # Trim to the calibration-relevant span and apply the documented land-mask and
-    # zero-to-0.01mm treatment, so this is byte-identical to what every other
-    # benchmark harness prepares for the same object.
-    uv run --no-sync python benchmarks/cli_multiprocessing.py prepare \
-      /tmp/nclimgrid_prcp.nc /tmp/nclimgrid_prcp_1981_2024.nc --start 1981 --end 2024
-    sha256sum /tmp/nclimgrid_prcp_1981_2024.nc
+    fetch_real_grid
 
     PYTHONWARNINGS=error taskset -c "$CPUS" uv run --no-sync python benchmarks/rust_vs_python.py \
       --netcdf /tmp/nclimgrid_prcp_1981_2024.nc --tavg /tmp/nclimgrid_tavg.nc \

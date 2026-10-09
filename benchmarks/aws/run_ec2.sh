@@ -33,6 +33,8 @@ grid_rows="${GRID_ROWS:-596}"
 grid_cols="${GRID_COLS:-1385}"
 grid_entries="${GRID_ENTRIES:-}"
 grid_threads="${GRID_THREADS:-}"
+percell_cells="${PERCELL_CELLS:-1000}"
+percell_repeats="${PERCELL_REPEATS:-2}"
 cpus="${CPUS:-0-15}"
 shutdown_minutes="${SHUTDOWN_MINUTES:-240}"
 
@@ -87,10 +89,11 @@ fi
 # the repository to stay public; a private fork would need the script staged in S3.
 commands="$(python3 -c '
 import json, sys
-ref, stage, repeats, cpus, rows, cols, entries, threads, url, shutdown = sys.argv[1:11]
+ref, stage, repeats, cpus, rows, cols, entries, threads, pcells, prepeats, url, shutdown = sys.argv[1:13]
 env = (
     f"STAGE={stage} GIT_REF={ref} REPEATS={repeats} CPUS={cpus} GRID_ROWS={rows}"
     f" GRID_COLS={cols} GRID_ENTRIES={entries} GRID_THREADS={threads}"
+    f" PERCELL_CELLS={pcells} PERCELL_REPEATS={prepeats}"
 )
 inner = (
     "export HOME=/root; curl -sSfL " + url + " -o /tmp/bootstrap.sh && "
@@ -107,7 +110,7 @@ print(json.dumps({
     "executionTimeout": ["120"],
 }))
 ' "${git_ref}" "${stage}" "${repeats}" "${cpus}" "${grid_rows}" "${grid_cols}" \
-  "${grid_entries}" "${grid_threads}" "${raw_base}" "${shutdown_minutes}")"
+  "${grid_entries}" "${grid_threads}" "${percell_cells}" "${percell_repeats}" "${raw_base}" "${shutdown_minutes}")"
 
 command_id="$(aws ssm send-command --region "${region}" \
   --instance-ids "${instance_id}" \
