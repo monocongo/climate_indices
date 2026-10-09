@@ -113,6 +113,20 @@ def test_full_grid_run_reports_every_configuration(tmp_path: Path) -> None:
         assert sum(line.startswith(f"| `{name}` |") and line.endswith(" True |") for line in report.splitlines()) == 3
 
 
+@pytest.mark.parametrize("start_month", range(2, 13))
+def test_grid_rejects_non_january_start(tmp_path: Path, start_month: int) -> None:
+    """Whole-year counts and calibration coverage do not guarantee January-aligned monthly data."""
+    time = pd.date_range(pd.Timestamp(1990, start_month, 1), periods=31 * 12, freq="MS")
+    path = tmp_path / "grid.nc"
+    xr.Dataset(
+        {"prcp": (("time", "lat", "lon"), np.full((time.size, 1, 1), 10.0))},
+        coords={"time": time, "lat": [30.0], "lon": [-100.0]},
+    ).to_netcdf(path, engine="h5netcdf")
+
+    with pytest.raises(SystemExit, match="starting in January"):
+        harness.load_grid(path, "prcp", path, "prcp")
+
+
 def test_netcdf_needs_the_temperature_grid() -> None:
     """The PET-based entries compute from the grid's own temperature, so --tavg is required with --netcdf."""
     with pytest.raises(SystemExit) as error:

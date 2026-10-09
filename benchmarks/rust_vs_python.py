@@ -661,9 +661,11 @@ def load_grid(
     precip, land = grid.precip, grid.valid_cells
     months, lat, lon = precip.shape
     years = precip["time"].dt.year.values
-    if months % 12 or years[0] > GRID_CALIBRATION[0] or years[-1] < GRID_CALIBRATION[1]:
+    first_month = int(precip["time"].dt.month.values[0])
+    if months % 12 or first_month != 1 or years[0] > GRID_CALIBRATION[0] or years[-1] < GRID_CALIBRATION[1]:
         raise SystemExit(
-            f"{precipitation_path}: need whole years of monthly values covering {GRID_CALIBRATION[0]}-"
+            f"{precipitation_path}: need whole years of monthly values starting in January and covering "
+            f"{GRID_CALIBRATION[0]}-"
             f"{GRID_CALIBRATION[1]}, the calibration period; got {months} months from {years[0]} to {years[-1]}"
         )
     with xr.open_dataset(temperature_path) as dataset:
