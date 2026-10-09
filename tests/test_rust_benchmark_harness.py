@@ -127,6 +127,44 @@ def test_grid_rejects_non_january_start(tmp_path: Path, start_month: int) -> Non
         harness.load_grid(path, "prcp", path, "prcp")
 
 
+@pytest.mark.parametrize("defect", ["skipped", "duplicated", "out_of_order"])
+def test_grid_rejects_irregular_months(tmp_path: Path, defect: str) -> None:
+    """January-first, whole-year coordinates must still advance exactly one month at a time."""
+    time = pd.date_range("1991-01-01", periods=30 * 12, freq="MS")
+    if defect == "skipped":
+        time = time.delete(1).append(pd.DatetimeIndex(["2021-01-01"]))
+    elif defect == "duplicated":
+        time = time.delete(2).insert(2, time[1])
+    else:
+        time = time.take([0, 2, 1, *range(3, time.size)])
+    path = tmp_path / "grid.nc"
+    xr.Dataset(
+        {"prcp": (("time", "lat", "lon"), np.full((time.size, 1, 1), 10.0))},
+        coords={"time": time, "lat": [30.0], "lon": [-100.0]},
+    ).to_netcdf(path, engine="h5netcdf")
+
+    with pytest.raises(SystemExit, match="consecutive monthly values"):
+        harness.load_grid(path, "prcp", path, "prcp")
+
+
+@pytest.mark.parametrize("calendar", ["standard", "noleap", "360_day"])
+@pytest.mark.parametrize("frequency", ["MS", "ME"])
+def test_grid_accepts_consecutive_months(tmp_path: Path, calendar: str, frequency: str) -> None:
+    """Monthly progression accepts month-start/end timestamps and non-Gregorian calendars."""
+    time = xr.date_range("1991-01-01", periods=30 * 12, freq=frequency, calendar=calendar)
+    path = tmp_path / "grid.nc"
+    xr.Dataset(
+        {"prcp": (("time", "lat", "lon"), np.full((time.size, 1, 1), 10.0))},
+        coords={"time": time, "lat": [30.0], "lon": [-100.0]},
+    ).to_netcdf(path, engine="h5netcdf")
+
+    inputs = harness.load_grid(path, "prcp", path, "prcp")
+
+    assert inputs.data_start_year == 1991
+    np.testing.assert_array_equal(inputs.precipitation, np.full((time.size, 1, 1), 10.0))
+    np.testing.assert_array_equal(inputs.temperature, inputs.precipitation)
+
+
 def test_netcdf_needs_the_temperature_grid() -> None:
     """The PET-based entries compute from the grid's own temperature, so --tavg is required with --netcdf."""
     with pytest.raises(SystemExit) as error:

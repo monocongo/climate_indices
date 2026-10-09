@@ -649,7 +649,7 @@ def load_grid(
     up cell for cell. Only land cells are kept, so every cell is a series both backends compute.
 
     Args:
-        precipitation_path: prepared grid with ``time``, ``lat`` and ``lon`` dims, whole years of monthly mm
+        precipitation_path: grid with ``time``, ``lat`` and ``lon`` dims, whole years of consecutive monthly mm
         precipitation_var: precipitation variable of ``precipitation_path``
         temperature_path: grid of monthly mean temperature in degrees Celsius on the same coordinates
         temperature_var: temperature variable of ``temperature_path``
@@ -661,10 +661,16 @@ def load_grid(
     precip, land = grid.precip, grid.valid_cells
     months, lat, lon = precip.shape
     years = precip["time"].dt.year.values
-    first_month = int(precip["time"].dt.month.values[0])
-    if months % 12 or first_month != 1 or years[0] > GRID_CALIBRATION[0] or years[-1] < GRID_CALIBRATION[1]:
+    month_numbers = precip["time"].dt.month.values
+    if (
+        months % 12
+        or month_numbers[0] != 1
+        or np.any(np.diff(years * 12 + month_numbers) != 1)
+        or years[0] > GRID_CALIBRATION[0]
+        or years[-1] < GRID_CALIBRATION[1]
+    ):
         raise SystemExit(
-            f"{precipitation_path}: need whole years of monthly values starting in January and covering "
+            f"{precipitation_path}: need whole years of consecutive monthly values starting in January and covering "
             f"{GRID_CALIBRATION[0]}-"
             f"{GRID_CALIBRATION[1]}, the calibration period; got {months} months from {years[0]} to {years[-1]}"
         )
