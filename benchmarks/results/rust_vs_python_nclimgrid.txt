@@ -1,0 +1,80 @@
+environment: python 3.14.7; macOS-27.0.1-arm64-arm-64bit-Mach-O; numpy 2.4.2; scipy 1.17.0; xarray 2026.1.0; dask 2026.8.0; cpu Apple M5; 10 CPUs
+revision: 3027a9a4c8d07efc918e1568a2921bf8ac3c1e2f
+grid: nclimgrid_prcp_1981_2024.nc (prcp), nclimgrid_tavg.nc (tavg); time=528 (1981-2024), lat=596, lon=1385; 469,758 land cells of 825,460; 248,032,224 finite precipitation values
+precipitation sha256: e88478c201fce89994e03937db1a13e34cd0c9c929578c5fe925d5a69a7c3cb2
+temperature sha256: 2a737e46bc08967912a320a0bcdd7a4c7fcb9d1ac1371e7fb321d9f0aa8b4d00
+calibration 1991-2020; scale 6; PET Thornthwaite from the temperature; PDSI available water capacity 6.0 in at every cell
+repetitions: 2 per backend and configuration, no warm-up call; best sample reported
+
+eager, one call on the whole block
+
+| entry | Rust | Python | Python/Rust | inside extension calls | Rust kernels reached |
+|---|---|---|---|---|---|
+| `spi_gamma` | 35.36 s | 46.86 s | 1.33 | 58% | True |
+| `spi_pearson` | 69.00 s | 97.25 s | 1.41 | 35% | True |
+| `spei_gamma` | 26.51 s | 41.54 s | 1.57 | 49% | True |
+| `eddi` | 3.93 s | 6.68 s | 1.70 | 80% | True |
+| `thornthwaite` | 3.34 s | 3.73 s | 1.12 | 97% | True |
+| `palmer_pdsi` | 48.98 s | 135.77 s | 2.77 | 58% | True |
+
+thread pool, 8 blocks of cells, every row the same work
+
+| entry | threads | Rust | Python | Python/Rust | Rust kernels reached |
+|---|---|---|---|---|---|
+| `spi_gamma` | 1 | 32.39 s | 31.78 s | 0.98 | True |
+| `spi_gamma` | 2 | 16.56 s | 16.36 s | 0.99 | True |
+| `spi_gamma` | 4 | 9.60 s | 10.24 s | 1.07 | True |
+| `spi_gamma` | 8 | 6.86 s | 10.10 s | 1.47 | True |
+| `spi_pearson` | 1 | 40.36 s | 43.00 s | 1.07 | True |
+| `spi_pearson` | 2 | 20.91 s | 23.37 s | 1.12 | True |
+| `spi_pearson` | 4 | 13.22 s | 19.88 s | 1.50 | True |
+| `spi_pearson` | 8 | 15.53 s | 31.70 s | 2.04 | True |
+| `spei_gamma` | 1 | 25.43 s | 26.96 s | 1.06 | True |
+| `spei_gamma` | 2 | 13.04 s | 14.15 s | 1.09 | True |
+| `spei_gamma` | 4 | 8.12 s | 9.38 s | 1.16 | True |
+| `spei_gamma` | 8 | 6.37 s | 11.52 s | 1.81 | True |
+| `eddi` | 1 | 4.00 s | 6.66 s | 1.66 | True |
+| `eddi` | 2 | 2.05 s | 3.72 s | 1.81 | True |
+| `eddi` | 4 | 1.22 s | 2.44 s | 2.00 | True |
+| `eddi` | 8 | 0.96 s | 1.91 s | 2.00 | True |
+| `thornthwaite` | 1 | 3.30 s | 3.41 s | 1.03 | True |
+| `thornthwaite` | 2 | 1.80 s | 1.87 s | 1.04 | True |
+| `thornthwaite` | 4 | 1.08 s | 1.26 s | 1.17 | True |
+| `thornthwaite` | 8 | 0.85 s | 1.43 s | 1.68 | True |
+| `palmer_pdsi` | 1 | 14.90 s | 92.07 s | 6.18 | True |
+| `palmer_pdsi` | 2 | 8.78 s | 59.85 s | 6.82 | True |
+| `palmer_pdsi` | 4 | 6.34 s | 59.42 s | 9.38 | True |
+| `palmer_pdsi` | 8 | 13.28 s | 99.10 s | 7.46 | True |
+
+samples, seconds in call order
+
+- `spi_gamma`, eager: Rust 36.50, 35.36; Python 54.53, 46.86
+- `spi_gamma`, threads 1: Rust 33.06, 32.39; Python 33.87, 31.78
+- `spi_gamma`, threads 2: Rust 16.57, 16.56; Python 16.48, 16.36
+- `spi_gamma`, threads 4: Rust 9.60, 9.60; Python 10.52, 10.24
+- `spi_gamma`, threads 8: Rust 6.91, 6.86; Python 12.34, 10.10
+- `spi_pearson`, eager: Rust 73.02, 69.00; Python 97.25, 113.62
+- `spi_pearson`, threads 1: Rust 40.48, 40.36; Python 46.10, 43.00
+- `spi_pearson`, threads 2: Rust 21.14, 20.91; Python 23.59, 23.37
+- `spi_pearson`, threads 4: Rust 13.22, 13.36; Python 20.86, 19.88
+- `spi_pearson`, threads 8: Rust 16.82, 15.53; Python 35.73, 31.70
+- `spei_gamma`, eager: Rust 37.13, 26.51; Python 52.40, 41.54
+- `spei_gamma`, threads 1: Rust 25.49, 25.43; Python 27.08, 26.96
+- `spei_gamma`, threads 2: Rust 13.04, 13.37; Python 14.15, 14.34
+- `spei_gamma`, threads 4: Rust 8.45, 8.12; Python 11.63, 9.38
+- `spei_gamma`, threads 8: Rust 6.48, 6.37; Python 16.50, 11.52
+- `eddi`, eager: Rust 4.36, 3.93; Python 9.58, 6.68
+- `eddi`, threads 1: Rust 4.02, 4.00; Python 6.94, 6.66
+- `eddi`, threads 2: Rust 2.05, 2.05; Python 3.72, 3.75
+- `eddi`, threads 4: Rust 1.22, 1.24; Python 2.44, 2.48
+- `eddi`, threads 8: Rust 1.01, 0.96; Python 1.91, 1.95
+- `thornthwaite`, eager: Rust 3.49, 3.34; Python 3.78, 3.73
+- `thornthwaite`, threads 1: Rust 3.42, 3.30; Python 3.51, 3.41
+- `thornthwaite`, threads 2: Rust 1.80, 1.80; Python 1.89, 1.87
+- `thornthwaite`, threads 4: Rust 1.14, 1.08; Python 1.26, 1.27
+- `thornthwaite`, threads 8: Rust 0.89, 0.85; Python 1.43, 1.50
+- `palmer_pdsi`, eager: Rust 53.65, 48.98; Python 135.77, 146.07
+- `palmer_pdsi`, threads 1: Rust 16.26, 14.90; Python 96.21, 92.07
+- `palmer_pdsi`, threads 2: Rust 8.78, 9.09; Python 59.85, 60.28
+- `palmer_pdsi`, threads 4: Rust 8.46, 6.34; Python 61.39, 59.42
+- `palmer_pdsi`, threads 8: Rust 15.58, 13.28; Python 100.59, 99.10

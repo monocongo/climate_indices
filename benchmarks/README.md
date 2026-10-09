@@ -1065,7 +1065,8 @@ combines backend and scheduler/serialization effects.
   single-call gain to offset the oversubscription risk. Revisit if a workload
   appears where kernel time dominates a call that no outer parallelism can
   split -- a long single-cell record, say -- and then only with a measured
-  per-call gain at that shape.
+  per-call gain at that shape. The full-grid run below tests that condition at
+  CONUS scale; it does not fire there.
 - Default spawned workers in the separate Dask probe retain a mixed NumPy error
   policy, consistent with Python dispatch. Caller-provided process pools with
   all-ignore worker policies can differ; the local recorder cannot verify them.
@@ -1077,9 +1078,107 @@ combines backend and scheduler/serialization effects.
   other work (load average about 6.6), so read differences under 5% and the
   thread-scaling ratio as noisy.
 - The real-grid CHIRPS and nClimGrid cases in the sections above need their
-  external fixtures, which are not in the repository, so this harness measures a
-  single station series, a synthetic cell block, and a synthetic 25 x 25 grid.
-  Their published numbers cover the same kernels at CONUS scale.
+  external fixtures, which are not in the repository, so the routine run measures
+  a single station series, a synthetic cell block, and a synthetic 25 x 25 grid;
+  the opt-in full-grid run below covers CONUS scale.
 - The registry's fixed samples are small relative to a production grid, which is
   why the fixed/per-cell fit and the thread-scaling table are reported alongside
   the steady-state table rather than instead of it.
+
+### Full grid: nClimGrid-Monthly CONUS (opt-in)
+
+The tables above use the registry's small samples, which cannot say whether
+kernel time comes to dominate a CONUS-scale call -- the condition the Rayon
+decision names. `--netcdf` times six entries on every land cell of a real grid
+instead: nClimGrid-Monthly precipitation for 1981-2024, prepared with the
+`cli_multiprocessing.py prepare` recipe from the retrieval #1121 recorded (the
+prepared file is byte-identical to #1121's, SHA-256 `e88478c2...`), and nClimGrid
+mean temperature on the same grid: 469,758 land cells x 528 months. Each entry
+computes from the grid's own inputs -- Thornthwaite PET from the temperature at
+each cell's latitude, a 1991-2020 calibration, scale 6, PDSI in inches with a
+constant 6-inch available water capacity, because nClimGrid's soil constants are
+not published at 5 km -- once as a single eager call and once as eight blocks of
+about 58,720 cells across a thread pool. Best of two samples with no warm-up call;
+every sample and both inputs' SHA-256 are in
+`benchmarks/results/rust_vs_python_nclimgrid.txt`. The run takes about 70 minutes
+and about 19 GB of memory here (Apple M5, 4 performance and 6 efficiency cores,
+32 GB), so it is never part of the routine run.
+
+```bash
+uv run benchmarks/cli_multiprocessing.py prepare nclimgrid_prcp.nc nclimgrid_prcp_1981_2024.nc --start 1981 --end 2024
+uv run benchmarks/rust_vs_python.py --netcdf nclimgrid_prcp_1981_2024.nc --tavg nclimgrid_tavg.nc --repeat 2 --write
+```
+
+One eager call on every land cell. `inside extension calls` is the share of the
+Rust call's wall clock spent inside the extension's functions (the binding
+crossing, the copy in, and the kernel); the rest is Python orchestration both
+paths share.
+
+| entry | Rust | Python | Python/Rust | inside extension calls | Rust kernels reached |
+|---|---|---|---|---|---|
+| `spi_gamma` | 35.36 s | 46.86 s | 1.33 | 58% | True |
+| `spi_pearson` | 69.00 s | 97.25 s | 1.41 | 35% | True |
+| `spei_gamma` | 26.51 s | 41.54 s | 1.57 | 49% | True |
+| `eddi` | 3.93 s | 6.68 s | 1.70 | 80% | True |
+| `thornthwaite` | 3.34 s | 3.73 s | 1.12 | 97% | True |
+| `palmer_pdsi` | 48.98 s | 135.77 s | 2.77 | 58% | True |
+
+Eight blocks across a thread pool, every row the same work.
+
+| entry | threads | Rust | Python | Python/Rust | Rust kernels reached |
+|---|---|---|---|---|---|
+| `spi_gamma` | 1 | 32.39 s | 31.78 s | 0.98 | True |
+| `spi_gamma` | 2 | 16.56 s | 16.36 s | 0.99 | True |
+| `spi_gamma` | 4 | 9.60 s | 10.24 s | 1.07 | True |
+| `spi_gamma` | 8 | 6.86 s | 10.10 s | 1.47 | True |
+| `spi_pearson` | 1 | 40.36 s | 43.00 s | 1.07 | True |
+| `spi_pearson` | 2 | 20.91 s | 23.37 s | 1.12 | True |
+| `spi_pearson` | 4 | 13.22 s | 19.88 s | 1.50 | True |
+| `spi_pearson` | 8 | 15.53 s | 31.70 s | 2.04 | True |
+| `spei_gamma` | 1 | 25.43 s | 26.96 s | 1.06 | True |
+| `spei_gamma` | 2 | 13.04 s | 14.15 s | 1.09 | True |
+| `spei_gamma` | 4 | 8.12 s | 9.38 s | 1.16 | True |
+| `spei_gamma` | 8 | 6.37 s | 11.52 s | 1.81 | True |
+| `eddi` | 1 | 4.00 s | 6.66 s | 1.66 | True |
+| `eddi` | 2 | 2.05 s | 3.72 s | 1.81 | True |
+| `eddi` | 4 | 1.22 s | 2.44 s | 2.00 | True |
+| `eddi` | 8 | 0.96 s | 1.91 s | 2.00 | True |
+| `thornthwaite` | 1 | 3.30 s | 3.41 s | 1.03 | True |
+| `thornthwaite` | 2 | 1.80 s | 1.87 s | 1.04 | True |
+| `thornthwaite` | 4 | 1.08 s | 1.26 s | 1.17 | True |
+| `thornthwaite` | 8 | 0.85 s | 1.43 s | 1.68 | True |
+| `palmer_pdsi` | 1 | 14.90 s | 92.07 s | 6.18 | True |
+| `palmer_pdsi` | 2 | 8.78 s | 59.85 s | 6.82 | True |
+| `palmer_pdsi` | 4 | 6.34 s | 59.42 s | 9.38 | True |
+| `palmer_pdsi` | 8 | 13.28 s | 99.10 s | 7.46 | True |
+
+Reading the full grid:
+
+- Kernel time is most of a call only for Thornthwaite (97%), EDDI (80%), and SPI
+  gamma and PDSI (58%); SPI Pearson and SPEI spend 35-49% of a Rust call inside
+  the extension.
+- The Rayon trigger does not fire. Where kernel time dominates, an outer pool
+  already splits the grid: Rust PDSI goes from 14.90 s on one thread to 6.34 s on
+  four, SPI gamma from 32.39 s to 6.86 s on eight. Rayon stays out.
+- Block size matters more than the backend for one call: the same cells as eight
+  blocks run back to back on one thread beat the single eager call on both paths
+  (Rust PDSI 14.90 s against 48.98 s, Python SPI gamma 31.78 s against 46.86 s).
+  The eager SPI and SPEI ratios (1.33-1.57) are therefore mostly the Python
+  path's cost on whole-grid arrays, not kernel speed: at block size the fit
+  family is at parity on one thread (SPI gamma 0.98, Pearson 1.07, SPEI 1.06).
+  Chunk a full grid rather than computing it in one call, on either backend.
+- Where Rust is not faster at full scale: Thornthwaite (1.12 eager, 1.03-1.04 on
+  one or two threads), because the spatial Python path is already vectorized
+  across cells -- the steady-state table's 219x is the per-series Python loop,
+  not a grid result -- and SPI gamma and SPEI on one or two threads (0.98-1.09).
+- Where it is: PDSI in every configuration (2.77 eager, 6.18-9.38 pooled), whose
+  Python recursion stops scaling at two threads; EDDI (1.66-2.00); SPI Pearson in
+  every configuration (1.07-2.04); and the fitting-based indices at eight threads
+  (1.47-2.04), where the Python path's scaling flattens first.
+- Eight threads are slower than four for PDSI and SPI Pearson on both paths,
+  consistent with four of the eight blocks running on efficiency cores while the
+  pool waits for the slowest; SPI gamma, SPEI, and Thornthwaite improve at eight.
+  On this machine a pool sized to the performance cores is the safer choice.
+- The two samples of a configuration differ by up to 1.4x in a few rows (Python
+  EDDI eager 9.58 s and 6.68 s, Rust SPEI eager 37.13 s and 26.51 s); the best
+  sample is reported and both are in the artifact.
