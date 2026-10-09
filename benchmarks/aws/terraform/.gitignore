@@ -1,0 +1,11 @@
+# Terraform state holds the account id and resource ARNs, so it is machine-local
+# and must never be committed. Kept here as well as in the repository-root
+# .gitignore so the guarantee does not depend on that file staying intact.
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Plan output can contain rendered resource attributes, including ARNs.
+*.tfplan
