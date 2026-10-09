@@ -916,47 +916,48 @@ the requested NumPy policy. Raw output, with the machine and version header, is 
 
 A single station series per entry: 35 years of monthly values (420 values) or 5
 years of daily values (1825), the registry's fixed samples. `Python/Rust` above
-1.00 means the Rust path is faster.
+1.00 means the Rust path is faster. Each repetition alternates which backend runs
+first, so drift over the run (clock, cache, thermal) does not favour either side.
 
 | entry | family | Rust | Python | Python/Rust |
 |---|---|---|---|---|
-| `spi_gamma` | monthly | 0.369 ms | 0.412 ms | 1.12 |
-| `spi_gamma_mean_zero` | monthly | 0.409 ms | 0.457 ms | 1.12 |
-| `spi_pearson` | monthly | 1.010 ms | 1.193 ms | 1.18 |
-| `spei_loglogistic` | monthly | 0.261 ms | 0.399 ms | 1.53 |
-| `spi_gamma_spatial_block` | block | 1.018 ms | 1.211 ms | 1.19 |
-| `spei_gamma` | monthly | 0.389 ms | 0.420 ms | 1.08 |
-| `percentage_of_normal` | monthly | 0.062 ms | 0.063 ms | 1.02 |
-| `eddi` | monthly | 0.196 ms | 0.303 ms | 1.54 |
-| `eddi_spatial_block` | block | 0.248 ms | 0.454 ms | 1.83 |
-| `pci` | daily | 0.061 ms | 0.058 ms | 0.96 |
-| `fit_diagnostics` | monthly | 2.220 ms | 2.190 ms | 0.99 |
-| `thornthwaite` | monthly | 0.029 ms | 7.713 ms | 262.95 |
-| `hargreaves` | daily | 0.130 ms | 4.162 ms | 32.04 |
-| `penman_monteith` | daily | 0.166 ms | 0.128 ms | 0.77 |
-| `pm_eto_intermediates` | daily | 0.020 ms | 0.009 ms | 0.43 |
-| `fire_ffmc` | daily | 0.240 ms | 11.396 ms | 47.57 |
-| `fire_duff_moisture_code` | daily | 0.265 ms | 9.871 ms | 37.30 |
-| `fire_drought_code` | daily | 0.630 ms | 11.062 ms | 17.56 |
-| `fire_kbdi` | daily | 0.230 ms | 9.769 ms | 42.40 |
-| `flood_pe` | daily | 0.061 ms | 0.117 ms | 1.93 |
-| `flood_edi` | daily | 0.096 ms | 0.172 ms | 1.80 |
-| `flood_flood_index` | daily | 0.046 ms | 0.083 ms | 1.82 |
-| `flood_api` | daily | 0.176 ms | 8.500 ms | 48.26 |
-| `palmer_pdsi` | monthly | 0.215 ms | 45.974 ms | 214.04 |
-| `palmer_scpdsi` | monthly | 0.317 ms | 18.531 ms | 58.44 |
+| `spi_gamma` | monthly | 0.335 ms | 0.381 ms | 1.14 |
+| `spi_gamma_mean_zero` | monthly | 0.381 ms | 0.423 ms | 1.11 |
+| `spi_pearson` | monthly | 0.937 ms | 1.113 ms | 1.19 |
+| `spei_loglogistic` | monthly | 0.233 ms | 0.363 ms | 1.56 |
+| `spi_gamma_spatial_block` | block | 0.432 ms | 0.477 ms | 1.10 |
+| `spei_gamma` | monthly | 0.334 ms | 0.387 ms | 1.16 |
+| `percentage_of_normal` | monthly | 0.055 ms | 0.062 ms | 1.13 |
+| `eddi` | monthly | 0.181 ms | 0.284 ms | 1.57 |
+| `eddi_spatial_block` | block | 0.225 ms | 0.412 ms | 1.83 |
+| `pci` | daily | 0.056 ms | 0.054 ms | 0.97 |
+| `fit_diagnostics` | monthly | 2.002 ms | 2.030 ms | 1.01 |
+| `thornthwaite` | monthly | 0.030 ms | 6.581 ms | 219.07 |
+| `hargreaves` | daily | 0.106 ms | 3.804 ms | 35.84 |
+| `penman_monteith` | daily | 0.142 ms | 0.125 ms | 0.88 |
+| `pm_eto_intermediates` | daily | 0.019 ms | 0.009 ms | 0.45 |
+| `fire_ffmc` | daily | 0.234 ms | 10.259 ms | 43.83 |
+| `fire_duff_moisture_code` | daily | 0.272 ms | 9.170 ms | 33.67 |
+| `fire_drought_code` | daily | 0.261 ms | 9.343 ms | 35.75 |
+| `fire_kbdi` | daily | 0.226 ms | 9.666 ms | 42.77 |
+| `flood_pe` | daily | 0.024 ms | 0.057 ms | 2.37 |
+| `flood_edi` | daily | 0.039 ms | 0.082 ms | 2.10 |
+| `flood_flood_index` | daily | 0.038 ms | 0.083 ms | 2.17 |
+| `flood_api` | daily | 0.173 ms | 8.015 ms | 46.26 |
+| `palmer_pdsi` | monthly | 0.189 ms | 36.774 ms | 194.06 |
+| `palmer_scpdsi` | monthly | 0.273 ms | 17.066 ms | 62.45 |
 
-Rust is faster in 21 of the 25 entries.
+Rust is faster in 22 of the 25 entries.
 
 ### Cold: extension import and first call
 
 | measurement | seconds |
 |---|---|
-| `import climate_indices`, fresh interpreter (interpreter start-up removed) | 1.195 |
-| first call `spi_gamma`, fresh interpreter | 0.046279 |
-| first call `thornthwaite`, fresh interpreter | 0.000314 |
-| first call `fire_kbdi`, fresh interpreter | 0.000753 |
-| first call `flood_api`, fresh interpreter | 0.000445 |
+| `import climate_indices`, fresh interpreter (interpreter start-up removed) | 0.661 |
+| first call `spi_gamma`, fresh interpreter | 0.006982 |
+| first call `thornthwaite`, fresh interpreter | 0.000227 |
+| first call `fire_kbdi`, fresh interpreter | 0.000917 |
+| first call `flood_api`, fresh interpreter | 0.000513 |
 
 The import is the package's own import graph (NumPy, pandas, xarray, and the
 extension); first-call timings exclude that import but include first-use initialization.
@@ -969,12 +970,12 @@ binding crossing, and the copy in -- and the per-cell kernel cost.
 
 | entry | Rust fixed | Python fixed | Rust per cell | Python per cell |
 |---|---|---|---|---|
-| `spi_gamma_spatial_block` | 0.252 ms | 0.413 ms | 55.997 µs | 71.829 µs |
-| `eddi_spatial_block` | 0.198 ms | 0.340 ms | 7.699 µs | 15.756 µs |
+| `spi_gamma_spatial_block` | 0.273 ms | 0.335 ms | 53.948 µs | 55.916 µs |
+| `eddi_spatial_block` | 0.198 ms | 0.340 ms | 7.682 µs | 15.672 µs |
 
 The per-count rows for both sweeps are in `benchmarks/results/rust_vs_python.txt`.
 
-At one cell the two backends differ by 1.15x (SPI gamma) and 1.53x (EDDI): most
+At one cell the two backends differ by 1.20x (SPI gamma) and 1.52x (EDDI): most
 of a small call is the fixed cost both paths pay.
 
 ### Thread scaling
@@ -983,9 +984,9 @@ of a small call is the fixed cost both paths pay.
 
 | threads | Rust | Python | Python/Rust |
 |---|---|---|---|
-| 1 | 0.275 s | 0.280 s | 1.02 |
-| 2 | 0.145 s | 0.147 s | 1.02 |
-| 4 | 0.081 s | 0.085 s | 1.05 |
+| 1 | 0.278 s | 0.291 s | 1.04 |
+| 2 | 0.150 s | 0.159 s | 1.05 |
+| 4 | 0.096 s | 0.100 s | 1.04 |
 
 ### Gridded Dask: which scheduler reaches the kernels
 
@@ -996,10 +997,10 @@ the separate spawned-worker probe does not observe the timed workers.
 
 | scheduler | NumPy error policy (threads: worker; processes: caller) | seconds | Rust kernels reached (recorder, this process) |
 |---|---|---|---|
-| threads | default | 0.017 | False |
-| threads | ignore | 0.015 | True |
-| processes | default | 0.783 | n/a |
-| processes | ignore | 0.806 | n/a |
+| threads | default | 0.021 | False |
+| threads | ignore | 0.020 | True |
+| processes | default | 1.022 | n/a |
+| processes | ignore | 1.007 | n/a |
 
 spawned worker probe: `{"extension_imported": true, "float_error_policy": ["ignore", "warn"]}`
 
@@ -1009,24 +1010,24 @@ reach Rust here. The separate default spawned-worker probe reports mixed `ignore
 and `warn` policies, consistent with Python dispatch in that configuration, not
 all process pools: a caller-provided pool initializer can set all-ignore.
 Native reachability in the timed process workers is unobserved (`n/a`). Their
-0.78-0.81 s against the threads/ignore row's 0.015 s is not an isolated scheduler
+1.01-1.02 s against the threads/ignore row's 0.020 s is not an isolated scheduler
 comparison: the expected Python process path versus the observed Rust thread path
 combines backend and scheduler/serialization effects.
 
 ### Interpretation
 
 - The recursions and the per-cell fits are where the port pays: Thornthwaite
-  (263x), the Palmer recursions (214x, 58x), the fire recurrences (18-48x),
-  Hargreaves (32x), and the Antecedent Precipitation Index (48x) all replace a
+  (219x), the Palmer recursions (194x, 62x), the fire recurrences (34-44x),
+  Hargreaves (36x), and the Antecedent Precipitation Index (46x) all replace a
   Python-level loop over time steps with a loop over cells in Rust, which is
   ADR-0007's whole argument, now measured across the registry rather than per
   family.
-- The fitting-based indices gain least: SPI, SPEI, and EDDI sit at 1.08-1.83x,
+- The fitting-based indices gain least: SPI, SPEI, and EDDI sit at 1.10-1.83x,
   because most of their cost is the calibration-period fit and the transform,
   which stay Python on both paths.
-- Entries within about 10% of parity are ties at this size: `pci` (0.96),
-  `fit_diagnostics` (0.99), `spei_gamma` (1.08), `percentage_of_normal` (1.02).
-- `pm_eto_intermediates` (0.43) and `penman_monteith` (0.77) are slower in Rust,
+- Entries within 5% of parity are ties at this size and swap sides between runs:
+  `pci` (0.97) and `fit_diagnostics` (1.01).
+- `pm_eto_intermediates` (0.45) and `penman_monteith` (0.88) are slower in Rust,
   matching RUST-006's block-scale finding for the same equation: the kernel
   copies each input across the boundary and then walks an elementwise chain
   NumPy already evaluates at memory bandwidth. Recommendation: keep the dispatch.
@@ -1035,7 +1036,7 @@ combines backend and scheduler/serialization effects.
   called rather than on its arguments; the measured cost is bounded at a few
   tenths of a millisecond. Callers for whom Penman-Monteith dominates a grid
   should read this table as "no gain", not as a regression to be investigated.
-- Thread scaling confirms the GIL is released (3.4x on four threads), and the
+- Thread scaling confirms the GIL is released (2.9x on four threads), and the
   Python path scales the same way on this workload because its own NumPy calls
   release the GIL too. Rayon is therefore **not adopted**: the kernels are
   single-threaded, and an outer pool (Dask threads, a library caller's pool)
@@ -1052,7 +1053,9 @@ combines backend and scheduler/serialization effects.
 ### Limits
 
 - One machine (macOS arm64, Python 3.14.7), best of five after a warm-up; the
-  artifact names the machine and the command.
+  artifact names the machine and the command. The run shared the machine with
+  other work (load average about 6.6), so read differences under 5% and the
+  thread-scaling ratio as noisy.
 - The real-grid CHIRPS and nClimGrid cases in the sections above need their
   external fixtures, which are not in the repository, so this harness measures a
   single station series, a synthetic cell block, and a synthetic 25 x 25 grid.

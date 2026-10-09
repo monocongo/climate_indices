@@ -56,6 +56,20 @@ def test_time_entry_reports_both_backends() -> None:
     assert timings.ratio == pytest.approx(timings.python_seconds / timings.rust_seconds)
 
 
+def test_backends_alternate_which_runs_first() -> None:
+    """A fixed order lets drift favour one backend, so each repetition swaps which runs first."""
+    order: list[str] = []
+    rust_seconds, python_seconds = harness.measure_backends(
+        lambda: order.append("python" if harness.compute_module()._native is None else "rust"),
+        lambda: order.append("python" if harness.compute_module()._native is None else "rust"),
+        repeats=3,
+    )
+
+    assert order == ["python", "rust", "rust", "python", "python", "rust", "rust", "python"]
+    assert rust_seconds > 0.0
+    assert python_seconds > 0.0
+
+
 def test_python_backend_disables_every_dispatch_module() -> None:
     """The Python column is the pure-Python path, not Python orchestration over Rust kernels."""
     modules = {entry.dispatch for entry in parity_registry.ENTRIES}

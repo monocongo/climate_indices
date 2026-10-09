@@ -287,13 +287,13 @@ RUST-011 measured every ported kernel against the Python implementation it repla
 from one registry rather than one family at a time. Two results bear on the guidance
 above:
 
-- The per-cell kernels are 18x to 263x faster (Thornthwaite, the Palmer recursions, the
+- The per-cell kernels are 34x to 219x faster (Thornthwaite, the Palmer recursions, the
   fire recurrences, Hargreaves, the Antecedent Precipitation Index), and the fitting-based
   indices gain 1.1x to 1.8x, because their calibration fit and transform stay Python on
-  both paths. Importing the package costs about 1.2 seconds in this fresh-interpreter
+  both paths. Importing the package costs about 0.7 seconds in this fresh-interpreter
   measurement, the extension included.
 - The kernels release the GIL, so four threads across four 1024-cell SPI blocks finish
-  in 0.081 s against 0.275 s single-threaded with no Rust-side parallelism. Rayon is
+  in 0.096 s against 0.278 s single-threaded with no Rust-side parallelism. Rayon is
   therefore not adopted; an outer pool already parallelizes cell blocks.
 
 The dispatch guard requires NumPy's floating-point errors ignored and no warning-as-error
