@@ -179,7 +179,10 @@ def _fetch_tile(url: str, path: Path) -> str:
     partial = path.with_suffix(path.suffix + ".part")
     for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
         have = partial.stat().st_size if partial.exists() else 0
-        if expected is not None and have > expected:
+        if expected is not None and have >= expected:
+            if have == expected and _tail_readable(partial):
+                partial.replace(path)
+                return "downloaded"
             partial.unlink()
             have = 0
         try:
