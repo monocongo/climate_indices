@@ -167,9 +167,13 @@ python -c "import climate_indices._native"
 An `ImportError` here means this diagnostic cannot import the optional
 extension; ordinary `climate_indices` calls still use Python. Developers who
 want it from a checkout run `uv run maturin develop --release` with a Rust
-toolchain; ordinary editable installs remain pure Python. See
-[ADR-0018](adr/0018-optional-rust-packaging.md) for artifact selection and CI
-checks, and the [development guide](development-guide.md#installation) for setup.
+toolchain. Ordinary editable installs are pure Python in a clean checkout, but
+`maturin develop` leaves `_native` importable after a later `uv sync`. To return
+to Python-only execution, remove the compiled extension and start a new
+interpreter; see the
+[development guide](development-guide.md#porting-a-kernel-to-rust).
+[ADR-0018](adr/0018-optional-rust-packaging.md) covers artifact selection and CI
+checks.
 
 ## Upgrade considerations
 
