@@ -50,6 +50,21 @@ def test_main_requires_extension_file(monkeypatch: pytest.MonkeyPatch) -> None:
         harness.main()
 
 
+def test_supplemental_spei_pearson_requires_the_ks_seam() -> None:
+    # the series SPEI Pearson path reaches pearson_ks_statistics; the shared
+    # _PEARSON_KERNELS set cannot require it because the spatial spi_pearson grid
+    # entry does not reach that flat seam
+    assert "pearson_ks_statistics" in harness.SUPPLEMENTAL.kernels
+
+
+@pytest.mark.parametrize("label", ["/tmp/report", "../../escape", "nested/report"])
+def test_report_label_must_be_a_plain_name(monkeypatch: pytest.MonkeyPatch, label: str) -> None:
+    monkeypatch.setattr(sys, "argv", ["profile_dispatch_overhead.py", "--sizes", "--rss-size", "0", "--label", label])
+    with pytest.raises(SystemExit) as exit_info:
+        harness.main()
+    assert exit_info.value.code == 2
+
+
 def test_summary_reports_median_and_iqr() -> None:
     assert harness.summary([1.0, 2.0, 3.0, 4.0, 5.0]) == {"median": 3.0, "q1": 2.0, "q3": 4.0, "iqr": 2.0}
 

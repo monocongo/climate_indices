@@ -44,7 +44,7 @@ SUPPLEMENTAL = parity_registry.Entry(
     parity_registry.MONTHLY,
     conftest.compute,
     lambda values: parity_registry._spei(values, indices.Distribution.pearson),
-    frozenset({"pearson_parameters", "pearson_cdf"}),
+    frozenset({"pearson_parameters", "pearson_ks_statistics", "pearson_cdf"}),
 )
 DISPATCHES = (
     conftest.compute,
@@ -242,6 +242,8 @@ def main() -> None:
         return
     if args.repeat < 30 or any(size <= 0 for size in args.sizes):
         parser.error("require >=30 repetitions and positive sizes")
+    if Path(args.label).parts != (args.label,) or "\\" in args.label:
+        parser.error("--label must be a plain name without path separators")
     available = {**parity_registry.ENTRIES_BY_NAME, SUPPLEMENTAL.name: SUPPLEMENTAL}
     entries = list(available.values()) if args.entries is None else [available[name] for name in args.entries]
     logging_config.configure_logging(log_format="console", log_level="INFO")
