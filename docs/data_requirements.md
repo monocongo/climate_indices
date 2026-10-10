@@ -80,12 +80,15 @@ rejects unrecognized declarations.
   each insufficient calendar period or cell; a failed period alone does not
   guarantee fallback. SPEI does not enable that fallback. Use gamma for
   strongly zero-inflated precipitation, and inspect output and fit diagnostics.
-- Every index rejects a reversed Calibration Period with
+- SPI, SPEI, `standardized_index()`, EDDI, Palmer, and
+  `percentage_of_normal()` reject a reversed Calibration Period with
   `CalibrationPeriodError`. Gamma, Pearson Type III, and log-logistic fits
   clamp a non-reversed window the record does not cover; EDDI, Palmer, and
   `percentage_of_normal()` reject uncovered windows with
   `CalibrationPeriodError`. Supplied fitting parameters do not bypass the
-  reversed-window check. See the [migration guide](deprecations/api-changes.md)
+  reversed-window check. The flood-family EDI and Flood Index instead raise
+  `InvalidArgumentError` for reversed or uncovered windows and require at least
+  two complete calibration years. See the [migration guide](deprecations/api-changes.md)
   for changes from 2.4.0.
 
 ## Missing values and zeros
@@ -132,9 +135,8 @@ rejects unrecognized declarations.
 - When the inputs must match exactly, align them before calculation with
   `xr.align(..., join="exact")`, which raises instead of intersecting. The
   end-to-end sample does this in `scripts/prepare_e2e_inputs.py`.
-- Regridding, reprojection, resampling, and unit conversion happen outside the
-  library. Inputs on different grids, calendars, or periods are not reconciled
-  for you.
+- Regridding, reprojection, and resampling happen outside the library. Inputs
+  on different grids, calendars, or periods are not reconciled for you.
 
 ## What is validated where
 
@@ -152,7 +154,8 @@ rejects unrecognized declarations.
 
 The coverage checks are index-specific: EDDI, Palmer, and percentage of normal
 reject uncovered windows. SPI and SPEI fits clamp them and emit
-`CalibrationPeriodClampedWarning`. Reversed windows are rejected everywhere.
+`CalibrationPeriodClampedWarning`. Indices that accept a Calibration Period
+reject reversed windows; exception classes differ as described above.
 
 ## See also
 
