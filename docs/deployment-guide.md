@@ -62,6 +62,14 @@ Single-owner jobs run once per event: `lint` (ruff, mypy), `docs`, `validation`
 (3.12), `meta` (repo checks, 3.10), `test-minimum-deps` (3.10), `notebooks`, and
 `security-audit`.
 
+Three Rust jobs run on every event next to the pure-Python legs: `rust` (cargo
+fmt, clippy, and tests), `test-native` (the core suite with the extension built and
+`CLIMATE_INDICES_REQUIRE_NATIVE=1`, on the boundary legs of `test`), and
+`native-wheel` (maturin wheels at both boundary Pythons on Linux and macOS, plus a
+Windows 3.14 smoke build, each installed and checked outside the checkout). They
+validate wheels but publish nothing. See `docs/architecture.md` § *Optional Rust
+Backend*.
+
 **Steps** (each test leg):
 1. Checkout code
 2. Setup Python and uv
@@ -79,13 +87,22 @@ Single-owner jobs run once per event: `lint` (ruff, mypy), `docs`, `validation`
 3. Run linting, formatting checks, type checking, tests, release integrity
    tests, and security audit
 4. Validate the tag version matches `pyproject.toml`
-5. Build distribution: `python -m build`
+5. Build the pure-Python distribution with `python -m build`
    - Wheel: `climate_indices-X.Y.Z-py3-none-any.whl`
    - Source dist: `climate_indices-X.Y.Z.tar.gz`
-6. Validate package metadata: `twine check dist/*`
-7. Publish to PyPI using trusted publishing (OIDC, no `PYPI_API_TOKEN`)
-8. Create the GitHub Release
-9. `release` environment requires manual approval before publish
+6. Build the five binary wheels that carry `climate_indices._native` with maturin:
+   manylinux\_2\_28 x86-64 and aarch64, macOS arm64 and x86-64, and Windows x86-64.
+   They are abi3 (`cp310-abi3-*`), so each one installs on every supported Python
+   (3.10 through 3.14); musllinux is not published
+7. Validate package metadata: `twine check dist/*`
+8. Install the artifacts outside the checkout: `wheel-check` installs each platform
+   wheel on the platform it was built for, asserts pip prefers it over the pure wheel,
+   and asserts SPI dispatches to the Rust kernels; `no-rust-install` installs the pure
+   wheel with `cargo` and `rustc` removed from `PATH`, rebuilds the sdist, and runs the
+   core suite against the installed package on Python 3.10 and 3.14
+9. Publish every artifact to PyPI using trusted publishing (OIDC, no `PYPI_API_TOKEN`)
+10. Create the GitHub Release
+11. `release` environment requires manual approval before publish
 
 **Release Process**:
 ```bash
@@ -131,7 +148,7 @@ git push origin vX.Y.Z
 
 ### Installation
 ```bash
-# From PyPI
+# From PyPI, with the optional Rust backend where a platform wheel is published
 pip install climate_indices
 
 # With uv
@@ -141,11 +158,28 @@ uv pip install climate_indices
 pip install "climate_indices==X.Y.Z"
 ```
 
+Linux x86-64 and aarch64 (manylinux_2_28, so glibc 2.28 or newer), macOS arm64 and Intel,
+and Windows x86-64 have a wheel that contains the optional Rust acceleration backend;
+every other platform, including a Linux system with older glibc, installs the
+pure-Python `py3-none-any` wheel, and every computation then runs the Python
+implementation. Both are the same version and the same public API. Force the pure wheel
+on a platform that has a binary wheel, or build it from the sdist:
+```bash
+pip install --no-binary climate_indices climate_indices
+```
+Check which backend is installed with `python -c "import climate_indices._native"`: the
+import fails only when the extension is absent, which is not an error
+(ADR-0018 in `docs/adr/`).
+
 ### Package Contents
 **Included**:
 - `src/climate_indices/` - All source code
 - `LICENSE` - BSD 3-Clause license
 - `README.md` - Package description
+
+The binary wheels add the compiled extension (`climate_indices/_native.abi3.so`, or
+`_native.pyd` on Windows); the `py3-none-any` wheel and the sdist contain only the
+`_native.pyi` type stub, so both install and run without a Rust toolchain.
 
 **Excluded** (defined in `pyproject.toml`):
 - `tests/` - Test suite
@@ -163,6 +197,12 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 exclude = ["tests/", "docs/", "notebooks/"]
+
+# Builds the published platform wheels and, for developers, `maturin develop`
+[tool.maturin]
+manifest-path = "crates/climate-py/Cargo.toml"
+python-source = "src"
+module-name = "climate_indices._native"
 ```
 
 ## ReadTheDocs Deployment

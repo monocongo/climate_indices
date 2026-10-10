@@ -1,0 +1,18 @@
+# Rust acceleration backend for climate_indices; see docs/architecture.md.
+# The Python package in src/climate_indices/ remains the public API.
+[workspace]
+resolver = "3"
+members = ["crates/climate-core", "crates/climate-py"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "BSD-3-Clause"
+repository = "https://github.com/monocongo/climate_indices"
+publish = false
+
+[profile.release]
+# keep IEEE semantics; never enable fast-math style flags here, the parity
+# contract with the Python reference depends on exact operation order
+lto = "thin"
+codegen-units = 1

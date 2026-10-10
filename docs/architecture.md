@@ -43,7 +43,7 @@ The **climate_indices** library implements a **layered library architecture** op
 | **sphinx** | Documentation generation |
 
 ### Build and Deployment
-- **Build Backend**: Hatchling (PEP 517 compliant)
+- **Build Backend**: Hatchling (PEP 517 compliant); the optional Rust extension is built with maturin (see [Optional Rust Backend](#optional-rust-backend))
 - **Package Manager**: uv (modern resolver, lockfile support)
 - **CI/CD**: GitHub Actions (3 workflows: unit tests, releases, benchmarks)
 - **Container**: Docker with Python 3.14-slim base image
@@ -228,6 +228,419 @@ process_climate_indices = "climate_indices.__main__:main"
 - **`performance.py`**: Memory metrics
   - `get_process_memory_mb()`: current process memory usage
   - `check_large_array_memory()`: returns memory metrics when arrays exceed the 1 GB threshold
+
+## Optional Rust Backend
+
+Numerical kernels are being migrated to Rust as an internal acceleration
+backend. The public Python API is the compatibility and citation contract:
+users import and call `climate_indices` exactly as before, and nothing in the
+public signatures or results depends on whether the backend is installed.
+
+```
+Cargo.toml                      # Cargo workspace
+crates/climate-core/            # pure Rust numerical kernels
+crates/climate-py/              # PyO3/NumPy bindings -> climate_indices._native
+src/climate_indices/_native.pyi # type stub for the extension
+```
+
+- **`climate-core`** is pure numerical Rust. It has no PyO3, NumPy bindings,
+  Python exceptions, or CPython assumptions, receives already-validated
+  numbers, and returns numbers. It could later serve other Rust consumers, but
+  it is not published to crates.io.
+- **`climate-py`** is the only crate that knows about Python. It converts
+  arrays and errors at the boundary and holds no climate algorithm.
+- **Dispatch** lives in the Python module that owns each computation. It
+  imports `climate_indices._native` inside `try`/`except ImportError`; without
+  the extension every computation runs in pure Python. A runtime error raised
+  by the extension propagates and is never silently retried in Python.
+- **Reference implementation**: the Python implementations stay alive and
+  directly testable. They are the oracle for Rust parity tests until a separate,
+  explicit decision retires them.
+
+**Ported kernels.** The gamma fit and transform behind SPI were the first port,
+followed by EDDI's empirical ranking and inverse normal, the distribution fits
+SPEI adds, Pearson Type III (also used by SPI and the standardized index), the
+log-logistic (generalized logistic, GLO), the PNP and PCI numerical blocks, the
+fire-weather recurrences, the flood family, and the Palmer family's water
+balance, Z-index, and spell recursions. The gamma and distribution-fit kernels
+replace the
+numerical blocks inside `compute.py` functions; the EDDI, PNP, and PCI kernels
+replace the blocks inside the `indices.py` functions that own them, so the
+validation, calibration-period resolution, data-quality and goodness-of-fit
+warnings, the Pearson-to-gamma fallback, logging, zero placement, support-limit
+masks, and output scaling around them still run in Python, and every caller of
+those functions (SPI, SPEI and the standardized index, `fit_diagnostics`, the
+xarray adapter) uses them:
+
+| Python seam | Rust kernel (`climate-core`) |
+|---|---|
+| method-of-moments block of `compute.gamma_parameters` | `gamma::gamma_parameters` |
+| `scipy.stats.gamma.cdf` and zero-mass mixing in `compute.transform_fitted_gamma` | `gamma::gamma_probabilities` |
+| `scipy.stats.norm.ppf` in `compute.transform_fitted_gamma` | `special::norm_ppf` |
+| the year loop of `eto.eto_thornthwaite` | `eto::thornthwaite` |
+| the day loop of `eto.eto_hargreaves` | `eto::hargreaves` |
+| FAO-56 Eq 6 in `pm_eto.pm_eto` | `pm_eto::pm_eto` |
+| the intermediate chain of `pm_eto.penman_monteith_eto` | `pm_eto::penman_monteith_eto` |
+| sample L-moments and the Pearson Type III fit of `compute.pearson_parameters` (`lmoments.fit`, `fit_spatial`) | `lmoments::sample_lmoments`, `pearson::pearson_parameters` |
+| `scipy.stats.pearson3.cdf` in `compute._pearson_fit` | `pearson::pearson_cdf_block` |
+| GLO fit of `compute.loglogistic_parameters` (`lmoments.fit_glo`, `fit_glo_spatial`) | `loglogistic::loglogistic_parameters` |
+| GLO probability step of `compute._loglogistic_fit` | `loglogistic::loglogistic_cdf_block` |
+| rank count and Tukey plotting position in the per-period loop of `indices.eddi` | `eddi::tukey_probabilities` |
+| `indices._hastings_inverse_normal` | `eddi::hastings_inverse_normal` |
+| calibration normals and ratios in `indices.percentage_of_normal` | `pnp::pnp_normals`, `pnp::pnp_percentages` |
+| monthly reduction and ratio in `indices.pci` | `pci::pci` |
+
+The PET entry points follow the same dispatch rule as the gamma kernels. The
+public FAO-56 helper functions stay Python callables; `pm_eto.penman_monteith_eto`
+resolves the humidity and radiation pathways, and checks the wind measurement
+height and the `rh_min`-without-`rh_max` case, before the kernel is reached, so
+the Python and Rust paths raise the same error in the same order. `eto` also
+keeps a Thornthwaite block with an all-NaN month column in Python, since only the
+Python path reports `np.nanmean`'s empty-slice warning. Each kernel copies every
+operand it reads before it releases the GIL, so the native route holds the caller's
+arrays, one flattened input per operand, those copies and the kernel's fixed
+intermediates: a bounded multiple of the request. A constant operand reaches the
+kernel as a zero-stride view rather than as a materialized block, and the Hargreaves
+route reports the bytes it copies beside the arrays it is handed, so the logged
+memory model covers the route the dispatch selected. Their measured effect on
+three representative inputs is in `benchmarks/README.md`; RUST-011 owns whether
+each kernel is worth its conversion overhead.
+
+EDDI is non-parametric, so no SciPy special function is ported for it: its
+probabilities are a count of the period's climatology values strictly below each
+value, converted by the Tukey plotting position. The chunking Python applies
+across cells (`_EDDI_RANK_COMPARISON_ELEMENT_BUDGET`) only bounds an intermediate
+under the Python path; the Rust kernel walks every column in one pass, which
+cannot change a count. The calibration-period resolution, the leading-scale-pad
+mask, and the unfolding to the caller's layout stay in Python, as they did.
+
+The special functions are line-by-line ports of the Cephes `igam`, `ndtri`,
+`ndtr`, and `lgam` that SciPy 1.17 evaluates, since a generic implementation
+would not hold the parity contract in the transformed tails. The L-moment fits
+route to Rust only for a block whose values are all NaN or at most `1e100` in
+magnitude: an infinity (or an overflowing weighted sum) makes the L-moments NaN,
+which the single-series Python fit returns as NaN parameters but the cell-axis
+fit marks invalid, so those blocks keep the Python fit. The `climate_indices.lmoments`
+log records that the single-series fits write per failed step (an `ERROR` for
+invalid L-moments, and a `WARNING` for a step with fewer than four non-NaN
+values) are not written by the Rust fit, as they are not by the cell-axis fit;
+the failed-fit count and the high-failure-rate warning are unchanged, and a
+failure rate at or below that warning's threshold logs one
+`distribution_fitting_failures` `WARNING` with the counts on every backend. SciPy's
+last-bit results depend on whether its build fuses multiply-adds (aarch64 builds
+do, x86-64 wheels do not), and the Pearson fit's `exp(gammaln(a) - gammaln(a + 0.5))`
+amplifies one ulp by up to `1e11` for a near-symmetric sample, so the ported
+`lgam` and polynomial helpers fuse on aarch64 and only there (`special::mul_add`).
+The fire-weather recurrences are the one port that does not replace a block
+inside a Python function: each replaces a recurrence's whole day loop, so the
+Rust side owns the time axis while Python keeps the calendar, the validation,
+and the error surface around it:
+
+| Python seam | Rust kernel (`climate-core`) |
+|---|---|
+| `fire.ffmc` recurrence | `fire::ffmc` over `recurrence::run` |
+| `fire.duff_moisture_code` recurrence | `fire::dmc` over `recurrence::run` |
+| `fire.drought_code` recurrence | `fire::dc` over `recurrence::run` |
+| `fire.kbdi` recurrence | `fire::kbdi` over `recurrence::run` |
+
+`recurrence::run` ports the shared day loop in `climate_indices._recurrence`:
+the ADR-0007 missing-day policy, the ADR-0010 seasonal carry mask, the spin-up
+offset, and the recorded-history NaNs are identical in both.
+`climate_indices.fire._native` builds each code's kernel from the same
+`_CodeInputs` its Python step reads, so the two paths cannot disagree about
+which arrays a code consumes, and the KBDI, FFMC, DMC, and DC daily updates are
+line-by-line ports of the Python expressions, including the
+`np.maximum`/`np.minimum` NaN propagation and NumPy's operation order. The
+combined `cffwis()` orchestrator runs each of its three codes through the same
+kernels; the components are independent, so running them outside the shared day
+loop cannot change a result. Elementwise fire indices (ISI, BUI, FWI, DSR,
+Fosberg, HDW, Haines) stay in Python: they are single NumPy expressions with no
+recurrence, and a port would not pay for itself.
+
+The Palmer family ports its loops and state machines. Dispatch for every stage
+lives in `palmer.py`, which owns `pdsi()` and `scpdsi()`; the private
+`_palmer_pdi`, `_palmer_wells`, and `self_calibration` functions stay pure
+Python and remain the oracle when called directly:
+
+| Python seam | Rust kernel (`climate-core`) |
+|---|---|
+| `palmer._calc_water_balances` (with `_calc_potential_loss`, `_calc_recharge`) | `palmer::water_balance` |
+| `palmer._calc_k_prime_and_dbar` (PDSI K factors and scPDSI K-prime) | `palmer_zindex::k_prime_and_dbar` |
+| `palmer._calc_raw_zindex` (with `_calc_cafec_zindex`) | `palmer_zindex::raw_zindex` |
+| `_palmer_pdi.calculate`, from `_calculate_pdsi_prepared` | `palmer_pdi::calculate` |
+| `self_calibration.duration_factors`, from `_calculate_scpdsi_prepared` | `self_calibration::duration_factors` |
+| `_palmer_wells.calculate`, from `_calculate_scpdsi_prepared` | `palmer_wells::calculate` |
+
+The CAFEC ratios (`_calc_cafec_coefficients`), the T ratio
+(`_calc_zindex_factors`), the K-factor normalization in `_calc_kfactors`, and the
+scPDSI percentile rescaling (`nan_safe_percentile`, `_rescale_scpdsi_zindex`) stay
+in Python for the fire indices' reason: each is one NumPy expression. So do the
+`DurationFactors`/`PdiDurationFactors` validation, the scPDSI K-prime finiteness
+check, masks, fully-missing-cell NaNs, and logging; the Wells kernel takes the
+recurrence coefficients Python derived. The PDI state machine Python vectorizes
+across cells partitions every cell into exactly one branch each month, so the
+kernel runs it one cell at a time with the same branch order and exact-zero
+comparisons. A scalar AWC goes to Rust only when it is a Python `int`/`float` or
+an `np.float64` (other scalars keep their NumPy type promotion in Python), and an
+array AWC only when it is one plain float64 value per cell. An infinite Z value
+and a calibration Z series too short for the longest rolling window keep the
+Python path, which raises its own error; the kernels' abatement and least-squares
+failures raise `_native.NoConvergenceError`, which `palmer.py` re-raises as the
+`ConvergenceError` the Python path raises. The native water balance releases its
+unused Python output placeholders before allocating Rust outputs; its inputs are
+still copied before releasing the GIL. The K-prime and raw Z-index stages borrow
+the CAFEC arrays with the GIL held, avoiding five full-record copies per stage.
+
+The flood family ports the computation behind each NumPy entry point in
+`climate_indices.flood`, with the Antecedent Precipitation Index running on the
+same `recurrence::run` driver as the fire codes rather than a second recurrence
+interface:
+
+| Python seam | Rust kernel (`climate-core`) |
+|---|---|
+| `scipy.ndimage.correlate1d` window of `flood.effective_precipitation` | `flood::effective_precipitation` |
+| calendar-day standardization of `flood.edi` | `flood::edi` |
+| annual maxima and standardization of `flood.flood_index` | `flood::flood_index` |
+| `flood.antecedent_precipitation_index` recurrence | `flood::antecedent_precipitation_index` over `recurrence::run` |
+
+The effective-precipitation kernel reproduces `correlate1d`'s general loop
+(the newest day's term first, then the window from its oldest day) and its
+NaN propagation, so a window holding a missing day is NaN. The EDI and Flood
+Index calibration sums follow NumPy's axis-0 reduction, which adds the years
+sequentially for a block of several columns and pairwise for a single one (a
+1-D Flood Index sample); both share the population SD and the `8 * eps * |mean|`
+rounding guard. `climate_indices.flood._native` hands each kernel the blocks and
+the Calibration Period rows the Python modules resolved; validation, the
+all-leap layout, and the xarray and CLI paths stay in Python, and the xarray
+adapters reach the kernels through the same NumPy entry points. An API decay
+constant whose type would promote the Python step beyond float64 (an extended
+`np.longdouble`) keeps the Python recurrence.
+
+Dispatch takes the Rust path only for a
+plain, aligned float64 `ndarray` whose fit parameters are aligned and one per
+calendar step (and cell). Unaligned arrays, other dtypes, and caller-supplied
+parameters that vary by year run the Python implementation. A mask is a
+missing-value marker, so the seams that read it as one replace it with NaN
+before this check, and the prepared plain float64 array may then use Rust: the
+gamma transform (`transform_fitted_gamma` and the parameter resolver it calls),
+the GLO transform (`transform_fitted_loglogistic`, whose fit and CDF may then run
+natively), the sliding sum that prepares a scaled series, and PNP preparation. A
+partially masked SPI/SPEI gamma transform therefore matches the same input
+passed through `np.ma.filled(values, np.nan)`. Fully masked SPI/SPEI inputs
+short-circuit before fitting or native calls, returning a `MaskedArray`, not a
+filled plain NaN array. Existing preparation still applies: SPI flattens a 2-D
+series, and SPEI forms its water-balance array, so input object identity is not
+a general guarantee. A direct `transform_fitted_gamma` call returns the fully
+masked input unchanged. The gamma parameter resolver fills even a
+full mask with NaN, so a fully masked fit returns plain NaN parameters without
+calling a kernel; supplied `alpha`/`beta` come back unchanged, and only the
+computed `prob_zero` is NaN. A direct `gamma_parameters` call also returns plain
+NaN parameters for a fully masked input, but retains Python's mask semantics for
+a partial mask. Seams that do
+not replace a mask keep their Python implementation when handed one: a direct
+`gamma_parameters` or `loglogistic_parameters` call, the Pearson Type III fit
+and transform, PCI, whose dispatch checks the original 1-D input and requires a
+plain 1-D array, and the fire recurrences, which apply the same guard to every
+weather array and to the seed they resume from, as the flood kernels do to their
+prepared series and the API seed. A layout the kernel cannot take unchanged (an
+empty axis, a non-float64 or unaligned array, or, for the fire recurrences, a
+time-first array whose spatial axes cannot be viewed as one cell axis without a
+copy) stays in Python as well. The kernels take views of the prepared arrays, so
+a broadcast month series or season mask is copied once, by the binding, rather
+than first materialized in Python; that boundary copy is the native path's own
+buffer and is not part of the `array_memory_mb` a recurrence reports, which
+counts the one recorded history the kernel returns. The flood kernels differ in
+one respect: a time-last (transposed) array reshapes to a view, and a layout
+that cannot merge without a copy, such as a regional slice of a larger grid or a
+Fortran-ordered array, is copied once in Python and still runs natively, because
+the Python path is roughly
+three times slower than the kernel plus that copy (365-day PE over 400 cells).
+The public flood entry points already hand the dispatch a C-contiguous array,
+since their validation copies, so the policy matters to direct callers of
+`flood._native`. A loaded extension that predates a kernel,
+or a recurrence option wider than the binding's integer parameters, also keeps
+the recurrence on its Python steps rather than failing at the boundary.
+Native dispatch also requires NumPy floating-point errors to be ignored
+(`np.errstate(all="ignore")`); policies that warn, raise, call, log, or print keep
+the Python path. A warning filter that promotes `RuntimeWarning` (or a superclass)
+to an exception also keeps Python, even under `all="ignore"`. Python 3.14
+context-aware warnings conservatively keep the Python path. Default NumPy error
+policies therefore use Python even when the extension is installed.
+
+For gamma calibration blocks, the contract is:
+
+- For a plain (or NaN-normalized) calibration block, if any column has no
+  positive value after zero replacement (only NaN, zero, or negative values),
+  the **whole fit** stays in Python. Its `np.nanmean` emits
+  `RuntimeWarning: Mean of empty slice` independently of `np.errstate`, so that
+  warning and its promotion to an exception are preserved. A block passed as a
+  `MaskedArray` is not normalized here: its masked reductions warn nothing and
+  return masked parameters. Entirely missing inputs still return NaN parameters
+  before fitting, without this warning.
+- Negatives are not removed or newly rejected. A block containing negatives may
+  use the native fit only when every column also has a positive value and all
+  floating-point errors are ignored. Under `invalid="warn"` or `invalid="raise"`,
+  Python preserves `RuntimeWarning: invalid value encountered in log` or
+  `FloatingPointError`, respectively.
+- Constant and single-positive-value columns may use Rust under `all="ignore"`;
+  their degenerate parameters and their transform results match Python.
+  A Python fit does not prohibit later eligible native CDF/inverse-normal calls.
+  Return values and `climate_indices` warnings match on both backends.
+
+These rules retain existing behavior; [ADR-0017](adr/0017-rust-core-acceleration-backend.md)
+records the decision. Direct extension
+calls reject unaligned inputs and copy empty arrays without creating Rust views
+of caller-owned storage. `tests/test_native_parity.py` (gamma),
+`tests/test_native_parity_distributions.py` (Pearson Type III and GLO),
+`tests/test_native_parity_fire.py` (the fire recurrences, which compare the
+returned state as well), `tests/test_native_parity_palmer.py` (the Palmer
+family, which also requires the backtracking's sign pattern to match exactly),
+and `tests/test_native_parity_flood.py` (the flood family, including the
+returned API state and a resumed run that is bitwise a single pass) explicitly
+ignore floating-point errors and compare the
+two paths at `rtol = atol = 1e-10` with matching NaN positions, and the
+`python_backend` fixture in
+`tests/conftest.py` pins any test to the Python reference. The
+consolidated suite in `tests/test_native_parity_registry.py` drives the same
+comparison from one registry
+(`tests/parity_registry.py`: Python entry point, dispatch module, expected
+kernels, input family, tolerance), adds Hypothesis draws over lengths, NaN
+patterns, zero runs, extreme magnitudes, and spatial shapes, after each entry's
+input derivation. Palmer entries replace gaps and clip precipitation to [5, 300],
+so their property cases cover lengths and bounded precipitation variation, not
+gaps, zero runs, or extreme magnitudes. The suite also asserts the documented
+dispatch decision for the input kinds below.
+`tests/test_native_e2e_parity.py` extends the same comparison to the surfaces
+that orchestrate the kernels: the xarray adapter, threaded and distributed Dask,
+the CLI, and `fit_diagnostics`.
+
+### Dispatch routing
+
+Which path an input takes, and why. Every row is asserted by
+`tests/test_native_parity_registry.py` against the documented behavior:
+
+| Case | Path | Why |
+|---|---|---|
+| `plain_daily_series` | Rust | a plain, contiguous float64 ndarray is the kernel's own input|
+| `strided` | Rust | a non-contiguous float64 rainfall series reaches the PCI dispatch guard unchanged, then is copied before the GIL is released |
+| `float32` | Python | NumPy fits a float32 series in float32, so the fit stays where it was |
+| `masked` | Python | a masked array is not a plain float64 ndarray |
+| `year_varying_parameters` | Python CDF | only a caller can pass per-step parameters; the kernel takes one per calendar step |
+| `overflowing_lmoment_block` | Python fit | an infinity makes the L-moments NaN, which the two fits report differently |
+| `oversized_lmoment_block` | Python fit | a finite value above `1e100` exceeds the native L-moment safety bound |
+
+### Parity tolerance
+
+The contract is `rtol = atol = 1e-10` with matching NaN positions, per kernel,
+and `scripts/native_parity_maxima.py` measures what each entry actually deviates
+by on its family's fixed sample; the Hypothesis draws in the suite are held to
+the same tolerance but are not part of the table. The `test-native` job records
+the table in its summary once the consolidated suite passes, so the Linux x86-64
+leg and a developer's machine both report their own numbers; the values below
+are measured on macOS arm64
+(`uv run python scripts/native_parity_maxima.py`, extension built):
+
+| Entry | Kernels | Max absolute | Max relative |
+| --- | --- | --- | --- |
+| `eddi` | `hastings_inverse_normal`, `tukey_probabilities` | 0.000e+00 | 0.000e+00 |
+| `eddi_spatial_block` | `hastings_inverse_normal`, `tukey_probabilities` | 0.000e+00 | 0.000e+00 |
+| `fire_drought_code` | `drought_code` | 0.000e+00 | 0.000e+00 |
+| `fire_duff_moisture_code` | `duff_moisture_code` | 0.000e+00 | 0.000e+00 |
+| `fire_ffmc` | `ffmc` | 0.000e+00 | 0.000e+00 |
+| `fire_kbdi` | `kbdi` | 0.000e+00 | 0.000e+00 |
+| `fit_diagnostics` | `gamma_parameters` | 0.000e+00 | 0.000e+00 |
+| `flood_api` | `antecedent_precipitation_index` | 0.000e+00 | 0.000e+00 |
+| `flood_edi` | `edi`, `effective_precipitation` | 8.527e-14 | 7.883e-15 |
+| `flood_flood_index` | `effective_precipitation`, `flood_index` | 2.220e-16 | 1.096e-15 |
+| `flood_pe` | `effective_precipitation` | 4.547e-13 | 2.781e-16 |
+| `hargreaves` | `hargreaves` | 4.441e-16 | 1.975e-16 |
+| `palmer_pdsi` | `palmer_k_prime`, `palmer_pdi`, `palmer_raw_zindex`, `palmer_water_balance` | 0.000e+00 | 0.000e+00 |
+| `palmer_scpdsi` | `palmer_k_prime`, `palmer_raw_zindex`, `palmer_water_balance`, `palmer_wells`, `scpdsi_duration_factors` | 0.000e+00 | 0.000e+00 |
+| `pci` | `pci` | 0.000e+00 | 0.000e+00 |
+| `penman_monteith` | `fao56_eto` | 8.882e-16 | 4.337e-16 |
+| `percentage_of_normal` | `pnp_normals`, `pnp_percentages` | 0.000e+00 | 0.000e+00 |
+| `pm_eto_intermediates` | `pm_eto` | 0.000e+00 | 0.000e+00 |
+| `spei_gamma` | `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 2.220e-16 | 3.457e-16 |
+| `spei_loglogistic` | `loglogistic_cdf`, `loglogistic_parameters` | 0.000e+00 | 0.000e+00 |
+| `spi_gamma` | `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 1.998e-15 | 4.765e-14 |
+| `spi_gamma_mean_zero` | `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 1.998e-15 | 4.765e-14 |
+| `spi_gamma_spatial_block` | `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 7.105e-15 | 1.868e-13 |
+| `spi_pearson` | `pearson_cdf`, `pearson_parameters` | 8.604e-15 | 6.822e-14 |
+| `thornthwaite` | `thornthwaite` | 2.842e-14 | 2.208e-16 |
+
+The largest measured absolute deviation is 4.547e-13 (`flood_pe`), more than two
+orders of magnitude inside `atol`. The arm64 FMA behavior described above is why the
+same entry can report a smaller deviation on an x86-64 leg, and why a deviation
+recorded in CI is the evidence for the platform it ran on rather than a new
+tolerance.
+
+**Migration policy.** Port expensive numerical kernels, hot loops, and
+algorithms that benefit materially from native execution. Keep in Python:
+xarray orchestration, CF metadata, validation at the public API boundary,
+provenance, the CLI, logging and warnings, file and network I/O, and all other
+user-facing behavior. A port reproduces the Python numerics, including their
+NaN, zero, and edge-case semantics; it does not improve or change them.
+
+**Building.** Hatchling remains the PEP 517 backend, so the published sdist and
+`py3-none-any` wheel are pure Python, install without a Rust toolchain, and run the
+Python implementations. Developers with a Rust toolchain build the extension in place:
+
+```bash
+uv run maturin develop --release   # builds src/climate_indices/_native.*.so
+uv run python -c "import climate_indices._native"
+cargo test --workspace
+```
+
+`maturin develop` installs the package in editable mode and copies the compiled
+extension into `src/climate_indices/`, where it stays importable after `uv sync`
+reinstalls the project; delete the `_native.*` file to return to pure Python.
+
+**Packaging.** maturin also builds the published binary wheels, and they ship in
+the same release as the sdist and the pure wheel. They are abi3 (`abi3-py310`), so
+one wheel per platform validates on every supported Python, and there are five:
+manylinux_2_28 `x86_64` and `aarch64`, macOS arm64 and `x86_64`, and Windows
+`x86_64`. pip prefers a matching platform wheel over `py3-none-any`; a platform
+with neither installs the pure wheel and runs the Python implementations, which is
+the supported install path without Rust — installing from source needs no
+toolchain either, because hatchling never invokes `cargo`. musllinux is not
+published. Which wheel is installed is visible from
+`python -c "import climate_indices._native"`, and any `ImportError` from that
+import falls back to Python rather than failing. The full comparison of the
+options and the failure modes are in
+[ADR-0018](adr/0018-optional-rust-packaging.md).
+
+**Rust in CI.** `.github/workflows/unit-tests-workflow.yml` runs three jobs on
+every event the workflow handles (pull request, push to `main`, merge group,
+schedule, and manual dispatch), next to the pure-Python legs. Those legs install
+no Rust toolchain, so they keep proving the fallback.
+
+- `rust`: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets
+  -- -D warnings`, and `cargo test --workspace` (`PYO3_PYTHON` points the
+  `climate-py` test binary at the project interpreter).
+- `test-native`: `maturin develop --release`, then the same core pytest command
+  as `test`, on the boundary legs (oldest and newest Python on Linux, newest on
+  macOS). It sets `CLIMATE_INDICES_REQUIRE_NATIVE=1`, which makes the native test
+  modules raise on a missing extension instead of skipping, so a broken build
+  cannot silently drop the parity suite. `tests/test_native_parity.py`,
+  `tests/test_native_parity_distributions.py`,
+  `tests/test_native_parity_fire.py`, and `tests/test_native_parity_palmer.py`
+  have no other skip. The Python 3.14-only context-aware-warnings routing check lives in
+  `tests/test_native_backend.py` and skips on the 3.10 leg. It then runs the consolidated
+  parity suite as a named step, so a leg that collected nothing from it fails visibly
+  rather than passing silently, and writes the measured parity maxima
+  (`scripts/native_parity_maxima.py`, the table above) into the job summary.
+- `native-wheel`: `maturin build --release` on Linux and macOS at both boundary
+  Pythons, plus a Windows smoke build on the newest. Each wheel is installed
+  into a fresh venv and imported from outside the checkout, and SPI must reach
+  the bundled `gamma_parameters`, `gamma_probabilities`, and `norm_ppf` kernels.
+  This validates the developer build; the published wheel matrix, its abi3 tag,
+  and the installation checks for each artifact run in `.github/workflows/release.yml`
+  ([ADR-0018](adr/0018-optional-rust-packaging.md)).
+
+`rust-toolchain.toml` pins the compiler so a new stable clippy lint cannot fail
+`-D warnings` on an unrelated change. The workspace uses edition 2024, so the
+minimum supported Rust is 1.85. To bump the pin, change `channel`, run the clippy
+command above, and fix any new lints in the same change.
 
 ## Source Code Organization
 
@@ -482,6 +895,8 @@ Steps:
   2. Setup Python + uv
   3. uv sync --locked --dev
   4. Run pytest -n auto
+Rust jobs (every event; see "Rust in CI" under Optional Rust Backend):
+  rust, test-native, native-wheel
 ```
 
 #### 2. release.yml

@@ -6,6 +6,7 @@ import numpy as np
 import numpy.typing as npt
 
 from climate_indices.exceptions import InvalidArgumentError
+from climate_indices.flood import _native as flood_native
 from climate_indices.flood._common import _DAYS_PER_YEAR, _validated_pe
 
 
@@ -92,7 +93,12 @@ def edi(
         )
         padded[: series.shape[0]] = series
     years = padded.reshape(padded.shape[0] // _DAYS_PER_YEAR, _DAYS_PER_YEAR, *series.shape[1:])
-    calibration = years[calibration_year_initial - data_start_year : calibration_year_final - data_start_year + 1]
+    calibration_start = calibration_year_initial - data_start_year
+    calibration_end = calibration_year_final - data_start_year + 1
+    native_result = flood_native.edi(years, calibration_start, calibration_end)
+    if native_result is not None:
+        return native_result.reshape(padded.shape[0], *series.shape[1:])[: series.shape[0]].reshape(values.shape)
+    calibration = years[calibration_start:calibration_end]
     valid = np.isfinite(calibration)
     counts = valid.sum(axis=0)
     mean = np.divide(

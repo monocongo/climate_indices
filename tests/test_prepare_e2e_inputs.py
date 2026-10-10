@@ -48,6 +48,150 @@ def test_source_downloads_use_private_temporary_files(tmp_path, monkeypatch):
     assert not list(source_dir.glob("*.download"))
 
 
+def _patch_denied_replace(monkeypatch, module, published):
+    """Make publishing a download fail as on Windows, after a rival optionally publishes first."""
+    payload = b"source bytes"
+
+    def denied_replace(self, target):
+        if published is not None:
+            Path(target).write_bytes(published)
+        raise PermissionError(5, "Access is denied")
+
+    monkeypatch.setattr(module, "urlopen", lambda *args, **kwargs: io.BytesIO(payload))
+    monkeypatch.setattr(Path, "replace", denied_replace)
+    monkeypatch.setattr(module.time, "sleep", lambda seconds: None)
+    return hashlib.sha256(payload).hexdigest()
+
+
+def test_source_download_accepts_valid_file_published_by_another_caller(tmp_path, monkeypatch):
+    """A denied replace is success when a concurrent caller already published the valid file."""
+    module = _prepare_module(monkeypatch)
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    checksum = _patch_denied_replace(monkeypatch, module, b"source bytes")
+
+    path = module._cache_source(source_dir, "prcp", checksum)
+
+    assert path.read_bytes() == b"source bytes"
+    assert not list(source_dir.glob("*.download"))
+
+
+def test_source_download_retries_while_published_file_is_briefly_denied(tmp_path, monkeypatch):
+    """Windows denies reads of the destination while a concurrent replace completes."""
+    module = _prepare_module(monkeypatch)
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    checksum = _patch_denied_replace(monkeypatch, module, b"source bytes")
+    real_read_bytes = Path.read_bytes
+    denials = []
+
+    def flaky_read_bytes(self):
+        if self.suffix == ".nc" and self.exists() and len(denials) < 2:
+            denials.append(self)
+            raise PermissionError(13, "Permission denied")
+        return real_read_bytes(self)
+
+    monkeypatch.setattr(Path, "read_bytes", flaky_read_bytes)
+
+    path = module._cache_source(source_dir, "prcp", checksum)
+
+    assert len(denials) == 2
+    assert path.name == "nclimgrid_lowres_prcp.nc"
+    assert not list(source_dir.glob("*.download"))
+
+
+def _deny_reads(monkeypatch, module, denials, error_factory=lambda: PermissionError(13, "Permission denied")):
+    """Make the first `denials` reads of the published .nc file fail, then read normally."""
+    monkeypatch.setattr(module.time, "sleep", lambda seconds: None)
+    real_read_bytes = Path.read_bytes
+    attempts = []
+
+    def flaky_read_bytes(self):
+        if self.suffix == ".nc":
+            attempts.append(self)
+            if len(attempts) <= denials:
+                raise error_factory()
+        return real_read_bytes(self)
+
+    monkeypatch.setattr(Path, "read_bytes", flaky_read_bytes)
+    return attempts
+
+
+def test_cached_source_read_retries_transient_access_denial(tmp_path, monkeypatch):
+    """An already-published file is still usable when Windows briefly denies the checksum read."""
+    module = _prepare_module(monkeypatch)
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    payload = b"source bytes"
+    (source_dir / "nclimgrid_lowres_prcp.nc").write_bytes(payload)
+    attempts = _deny_reads(monkeypatch, module, denials=3)
+
+    path = module._cache_source(source_dir, "prcp", hashlib.sha256(payload).hexdigest())
+
+    assert path.read_bytes() == payload
+    assert len(attempts) >= 4
+
+
+def test_source_replaced_after_publish_is_not_returned(tmp_path, monkeypatch):
+    """A rival with a different pin replacing the file after our publish must not be handed back."""
+    module = _prepare_module(monkeypatch)
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    payload = b"source bytes"
+    real_replace = Path.replace
+
+    def replace_then_rival_overwrites(self, target):
+        result = real_replace(self, target)
+        Path(target).write_bytes(b"rival bytes")
+        return result
+
+    monkeypatch.setattr(module, "urlopen", lambda *args, **kwargs: io.BytesIO(payload))
+    monkeypatch.setattr(Path, "replace", replace_then_rival_overwrites)
+
+    checksum = hashlib.sha256(payload).hexdigest()
+    with pytest.raises(ValueError, match="SHA-256 mismatch"):
+        module._cache_source(source_dir, "prcp", checksum)
+
+
+@pytest.mark.parametrize(
+    ("published", "error", "match"),
+    [(None, PermissionError, "Access is denied"), (b"corrupt bytes", ValueError, "SHA-256 mismatch")],
+)
+def test_source_download_denied_replace_without_valid_file_raises(tmp_path, monkeypatch, published, error, match):
+    """A denied replace is an error when no valid file was published by another caller."""
+    module = _prepare_module(monkeypatch)
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    checksum = _patch_denied_replace(monkeypatch, module, published)
+
+    with pytest.raises(error, match=match):
+        module._cache_source(source_dir, "prcp", checksum)
+
+    assert not list(source_dir.glob("*.download"))
+
+
+def test_source_download_waits_for_file_that_appears_after_denied_replace(tmp_path, monkeypatch):
+    """The winner's publication may not be visible yet when the losing replace is denied."""
+    module = _prepare_module(monkeypatch)
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    checksum = _patch_denied_replace(monkeypatch, module, None)
+    attempts = _deny_reads(monkeypatch, module, denials=3, error_factory=lambda: FileNotFoundError(2, "missing"))
+    real_read_bytes = Path.read_bytes
+
+    def publishing_read_bytes(self):
+        if self.suffix == ".nc" and len(attempts) == 3:
+            self.write_bytes(b"source bytes")
+        return real_read_bytes(self)
+
+    monkeypatch.setattr(Path, "read_bytes", publishing_read_bytes)
+
+    path = module._cache_source(source_dir, "prcp", checksum)
+
+    assert path.name == "nclimgrid_lowres_prcp.nc"
+    assert not list(source_dir.glob("*.download"))
+
+
 def test_failed_regeneration_preserves_current_generation(tmp_path, monkeypatch):
     """Only a fully validated generation may replace the current inputs."""
     pytest.importorskip("h5py")

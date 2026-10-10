@@ -259,6 +259,10 @@ def _hastings_inverse_normal(probability: np.ndarray) -> np.ndarray:
     # clip to avoid log(0) or division-by-zero at boundaries
     p = np.clip(probability, 1e-10, 1.0 - 1e-10)
 
+    native = compute._native_hastings_inverse_normal(p)
+    if native is not None:
+        return native
+
     # work in the lower tail; flip if p > 0.5
     sign = np.where(p <= 0.5, -1.0, 1.0)
     p_lower = np.where(p <= 0.5, p, 1.0 - p)
@@ -389,17 +393,12 @@ def eddi(
 
         num_years = pet_values.shape[0]
 
-        # Rank every calendar period against its own climatology. The rank is a count
-        # of climatology values below the current value, so each period is walked as a
-        # (climatology years, years, cells) comparison: one pass over the periods, not
-        # over the grid cells, and the comparison is chunked across cells so that the
-        # intermediate stays bounded for a wide spatial block, where comparing every
-        # cell in the block at once would grow with the block's width rather than
-        # holding steady at the number of calibration years. The per-period valid- and
-        # pad-counts are computed inside the same loop rather than once for every period
-        # up front, so they scale with one period's climatology instead of the whole
-        # calibration block times the period count (366 for a daily block). Missing
-        # climatology values never compare below a value, so they stay out of the count.
+        # Rank each calendar period by counting climatology values below each value.
+        # Rust counts per column without a comparison intermediate; the NumPy fallback
+        # chunks the (climatology years, years, cells) comparison across cells to bound
+        # that intermediate for wide blocks. Valid- and pad-counts are also held one
+        # period at a time, rather than for the whole calibration block (366 periods
+        # for daily data). Missing climatology values never compare below a value.
         climatology = pet_values[period.rows]
         cell_shape = pet_values.shape[2:]
         cells_per_time_step = int(np.prod(cell_shape, dtype=np.int64)) or 1
@@ -411,28 +410,30 @@ def eddi(
         for period_index in range(num_periods):
             period_climatology = climatology[:, period_index].reshape(num_climatology_years, cells_per_time_step)
             period_values = pet_values[:, period_index].reshape(num_years, cells_per_time_step)
-            period_valid_counts = np.count_nonzero(~np.isnan(period_climatology), axis=0)
             period_pads = np.count_nonzero(
                 leading_scale_pads[period.rows, period_index].reshape(num_climatology_years, cells_per_time_step),
                 axis=0,
             )
-            for cell_start in range(0, cells_per_time_step, cells_per_chunk):
-                cell_chunk = slice(cell_start, cell_start + cells_per_chunk)
-                below[:, cell_chunk] = np.count_nonzero(
-                    period_climatology[:, None, cell_chunk] < period_values[:, cell_chunk], axis=0
+            probabilities = compute._native_tukey_probabilities(period_climatology, period_values, period_pads)
+            if probabilities is None:
+                period_valid_counts = np.count_nonzero(~np.isnan(period_climatology), axis=0)
+                for cell_start in range(0, cells_per_time_step, cells_per_chunk):
+                    cell_chunk = slice(cell_start, cell_start + cells_per_chunk)
+                    below[:, cell_chunk] = np.count_nonzero(
+                        period_climatology[:, None, cell_chunk] < period_values[:, cell_chunk], axis=0
+                    )
+
+                # NOAA uses zero-based ranks and treats leading scale pads as lower than every
+                # observed value; this is the Tukey plotting position of that rank
+                probabilities = (period_pads + below + 0.66) / (period_valid_counts + period_pads + 0.33)
+
+                # a period whose climatology holds fewer than two valid values has no ranking
+                # at all, and a missing value stays missing
+                probabilities = np.where(
+                    np.isnan(period_values) | (period_valid_counts < 2),
+                    np.nan,
+                    probabilities,
                 )
-
-            # NOAA uses zero-based ranks and treats leading scale pads as lower than every
-            # observed value; this is the Tukey plotting position of that rank
-            probabilities = (period_pads + below + 0.66) / (period_valid_counts + period_pads + 0.33)
-
-            # a period whose climatology holds fewer than two valid values has no ranking
-            # at all, and a missing value stays missing
-            probabilities = np.where(
-                np.isnan(period_values) | (period_valid_counts < 2),
-                np.nan,
-                probabilities,
-            ).reshape(num_years, *cell_shape)
 
             # clip the probability to its valid range to avoid log(0), then apply the
             # Hastings inverse normal approximation. Both are elementwise and are held one
@@ -440,7 +441,7 @@ def eddi(
             # and over a whole wide block they would outweigh the input by an order of
             # magnitude (a daily block would be the worst case, with 366 periods).
             eddi_values[:, period_index] = _hastings_inverse_normal(
-                np.clip(probabilities, 1e-10, 1.0 - 1e-10),
+                np.clip(probabilities.reshape(num_years, *cell_shape), 1e-10, 1.0 - 1e-10),
             )
 
         # clip values to within the valid range, and return an array of the input layout:
@@ -1305,47 +1306,51 @@ def percentage_of_normal(
         # for each time step in the calibration period, get the average of
         # the scale sum for that calendar time step (i.e. average all January sums,
         # then all February sums, etc.); a spatial block keeps its cell axes and
-        # averages each cell's calibration years for every calendar time step. A
-        # cell that is missing for the whole calibration period (not just the whole
-        # block, which is short-circuited above) is an expected all-NaN slice, not
-        # an error, so it's handled with an explicit count/sum rather than
-        # np.nanmean's "Mean of empty slice" warning: xarray_adapter's Dask kernel
-        # runs one task per spatial block, and warnings.catch_warnings() mutates
-        # process-global filter state, so one block's context can suppress or
-        # restore filters while a concurrent block is still inside np.nanmean.
+        # averages each cell's calibration years for every calendar time step.
         reshaped_sums = calibration_period_sums.reshape(-1, period_length, *calibration_period_sums.shape[1:])
-        valid_counts = np.sum(~np.isnan(reshaped_sums), axis=0)
-        averages = np.nansum(reshaped_sums, axis=0) / np.maximum(valid_counts, 1)
-        averages = np.where(valid_counts > 0, averages, np.nan)
 
-        # for each time step of the scale_sums array find its corresponding percentage
-        # of the time steps scale average for its respective calendar time step, leaving
-        # NaN wherever the calendar time step's average is not a positive value
-        averages = np.where(averages > 0.0, averages, np.nan)
-        percentages_of_normal = np.full(scale_sums.shape, np.nan)
+        # the Rust kernel computes the same normals and ratios when it can take the inputs
+        percentages_of_normal = compute._native_pnp_percentages(scale_sums, reshaped_sums, period_length)
+        if percentages_of_normal is None:
+            # a cell that is missing for the whole calibration period (not just the whole
+            # block, which is short-circuited above) is an expected all-NaN slice, not
+            # an error, so it's handled with an explicit count/sum rather than
+            # np.nanmean's "Mean of empty slice" warning: xarray_adapter's Dask kernel
+            # runs one task per spatial block, and warnings.catch_warnings() mutates
+            # process-global filter state, so one block's context can suppress or
+            # restore filters while a concurrent block is still inside np.nanmean.
+            valid_counts = np.sum(~np.isnan(reshaped_sums), axis=0)
+            averages = np.nansum(reshaped_sums, axis=0) / np.maximum(valid_counts, 1)
+            averages = np.where(valid_counts > 0, averages, np.nan)
 
-        # divide whole calendar periods at a time so that the repeating normals broadcast
-        # from the (small) averages array rather than an input-sized divisor array
-        whole_periods = scale_sums.shape[0] // period_length
-        if whole_periods:
-            np.divide(
-                scale_sums[: whole_periods * period_length].reshape(
-                    whole_periods, period_length, *scale_sums.shape[1:]
-                ),
-                averages,
-                out=percentages_of_normal[: whole_periods * period_length].reshape(
-                    whole_periods, period_length, *scale_sums.shape[1:]
-                ),
-            )
+            # for each time step of the scale_sums array find its corresponding percentage
+            # of the time steps scale average for its respective calendar time step, leaving
+            # NaN wherever the calendar time step's average is not a positive value
+            averages = np.where(averages > 0.0, averages, np.nan)
+            percentages_of_normal = np.full(scale_sums.shape, np.nan)
 
-        # a trailing partial period uses the normals of the calendar time steps it covers
-        remainder_start = whole_periods * period_length
-        if remainder_start < scale_sums.shape[0]:
-            np.divide(
-                scale_sums[remainder_start:],
-                averages[: scale_sums.shape[0] - remainder_start],
-                out=percentages_of_normal[remainder_start:],
-            )
+            # divide whole calendar periods at a time so that the repeating normals broadcast
+            # from the (small) averages array rather than an input-sized divisor array
+            whole_periods = scale_sums.shape[0] // period_length
+            if whole_periods:
+                np.divide(
+                    scale_sums[: whole_periods * period_length].reshape(
+                        whole_periods, period_length, *scale_sums.shape[1:]
+                    ),
+                    averages,
+                    out=percentages_of_normal[: whole_periods * period_length].reshape(
+                        whole_periods, period_length, *scale_sums.shape[1:]
+                    ),
+                )
+
+            # a trailing partial period uses the normals of the calendar time steps it covers
+            remainder_start = whole_periods * period_length
+            if remainder_start < scale_sums.shape[0]:
+                np.divide(
+                    scale_sums[remainder_start:],
+                    averages[: scale_sums.shape[0] - remainder_start],
+                    out=percentages_of_normal[remainder_start:],
+                )
 
         _log_calculation_completed(log, t0, percentages_of_normal.shape, memory_metrics)
         return percentages_of_normal
@@ -1548,9 +1553,11 @@ def pci(
             )
 
             # monthly rainfall totals, one per calendar month, then Oliver (1980) PCI
-            monthly_totals = np.add.reduceat(rainfall, month_starts)
-            pci_value = (np.sum(monthly_totals**2) / (np.sum(monthly_totals) ** 2)) * 100
-            result = np.array([pci_value])
+            result = compute._native_pci(rainfall_mm)
+            if result is None:
+                monthly_totals = np.add.reduceat(rainfall, month_starts)
+                pci_value = (np.sum(monthly_totals**2) / (np.sum(monthly_totals) ** 2)) * 100
+                result = np.array([pci_value])
             duration_ms = (time.perf_counter() - t0) * 1000.0
             log.info(
                 "calculation_completed",

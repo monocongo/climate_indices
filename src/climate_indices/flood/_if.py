@@ -8,6 +8,7 @@ import numpy as np
 import numpy.typing as npt
 
 from climate_indices.exceptions import InvalidArgumentError
+from climate_indices.flood import _native as flood_native
 from climate_indices.flood._common import _DAYS_PER_YEAR, _validated_pe
 
 
@@ -90,6 +91,13 @@ def flood_index(
             "Calibration Period must span at least two complete annual periods.",
             argument_name="calibration_year_initial/calibration_year_final",
         )
+    native_result = flood_native.flood_index(
+        series,
+        (calibration_year_initial - data_start_year) * _DAYS_PER_YEAR + offset,
+        calibration_year_final - calibration_year_initial + 1,
+    )
+    if native_result is not None:
+        return native_result.reshape(values.shape)
     maxima = []
     for year in range(calibration_year_initial, calibration_year_final + 1):
         start = (year - data_start_year) * _DAYS_PER_YEAR + offset

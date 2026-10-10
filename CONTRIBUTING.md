@@ -128,6 +128,7 @@ vocabulary at `src/climate_indices/CONTEXT.md`):
   `docs/research/interactive-climate-explorer-landscape.md`,
   `docs/research/dri-wrcc-scpdsi-assessment.md`,
   `docs/research/flood-oracle-survey.md`,
+  `docs/research/import-cycle-investigation.md`,
   `docs/explorer/`, `docs/architecture-deepening-review-*.md`,
   `docs/ai-assisted-development-report-*.md`,
   `docs/test_fixture_management.md`, `CONTEXT-MAP.md`
@@ -197,6 +198,19 @@ uv run ruff format --check src/ tests/
 uv run mypy src/ tests/test_type_checking.py
 uv run pytest
 ```
+
+For changes under `crates/` or to the native dispatch in `src/climate_indices/compute.py`,
+also run the Rust gate listed in [`AGENTS.md`](AGENTS.md) (cargo fmt, clippy, and test,
+plus the native parity tests with the extension built). The porting checklist in
+[`docs/development-guide.md`](docs/development-guide.md#porting-a-kernel-to-rust)
+walks through adding a kernel.
+
+Everything else is pure Python: `uv sync --group dev` and the four checks above need
+no Rust toolchain, and without one the native parity suites skip rather than fail.
+That skip is a false green for a change to a ported kernel, so install the toolchain
+and build the extension before relying on those tests. Both are a one-time,
+two-command step for someone who has never used Rust:
+[Install the Rust toolchain](docs/development-guide.md#install-the-rust-toolchain).
 
 For documentation changes, run the published-docs gate locally:
 

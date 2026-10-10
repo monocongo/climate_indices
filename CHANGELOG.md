@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Optional Rust acceleration backend** (`climate_indices._native`): numerical
+  kernels behind SPI, SPEI, the standardized index, EDDI, PNP, PCI, Thornthwaite,
+  Hargreaves and Penman-Monteith PET, Palmer/scPDSI, the fire moisture-code and KBDI
+  recurrences, and the flood family. Python retains validation, warnings, xarray/Dask,
+  metadata, the CLI, and I/O; the backend introduces no public signature, return-type,
+  or exception change. Retained
+  Python implementations are parity oracles at `rtol = atol = 1e-10` with matching
+  NaN positions. Measured deviations, workload-dependent gains, and cases where Rust
+  is not faster are summarized in the [release notes](docs/release-notes-3.0.0.md#optional-rust-backend)
+  (#1271–#1283, #1288, #1298).
 - **Wildfire index family (`climate_indices.fire`)**: a public namespace with the
   Keetch-Byram Drought Index (KBDI), the CFFWIS moisture codes (FFMC, DMC, DC) and
   behavior indices (ISI, BUI, `cffwis_fwi`, DSR) including Drought Code overwintering
@@ -81,6 +91,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   February 29 rather than carrying it through the chain, a measured and documented
   convention (#1103, #1105, #1106, #1107, #1108, #1109, #1110, #1115, #1116, #1117,
   #1147, #1151).
+- **`flood.flood_events`**: extracts events (runs above a threshold) from a daily
+  flood index, reporting onset, duration, peak, and severity per event.
+- **Flood benchmarks**: `tests/test_benchmark_flood.py` times each Rust-backed flood index
+  against its Python implementation and guards against a Rust path slower than Python.
 - **Log-logistic SPEI**: the Hosking generalized-logistic (GLO) distribution, fitted
   with unbiased-PWM L-moments, is available on the SPEI surfaces as
   `Distribution.loglogistic`, `lmoments.fit_glo()`/`fit_glo_spatial()`,
@@ -156,6 +170,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Release artifacts include optional Rust wheels**: five `cp310-abi3` platform
+  wheels cover Linux (manylinux_2_28 x86-64/aarch64), macOS (arm64/x86-64), and
+  Windows x86-64 on Python 3.10–3.14. A matching platform wheel takes precedence;
+  other platforms use the pure-Python wheel. Hatchling source installs remain
+  pure Python and need no Rust toolchain (ADR-0018, #1283).
 - **The xarray DataArray API stays Beta through 3.0.0** and is promoted no earlier
   than 3.1.0, so the interface may still change in a minor release (ADR-0012).
   Computation results remain identical to the stable NumPy API.
@@ -326,6 +345,13 @@ change states what a user sees, how to detect it, and what to change in
 
 ### Fixed
 
+- **Pearson Type III fit accuracy at near-zero skew**: the L-moment fit evaluated
+  `gamma(alpha) / gamma(alpha + 0.5)` as `exp(gammaln(alpha) - gammaln(alpha + 0.5))`,
+  which cancels for the large `alpha` of a small L-skewness and lost up to 1.6e-4
+  relative accuracy in the fitted scale. The fit now uses `scipy.special.poch`, and the
+  native kernel a port of Cephes `poch`. Pearson-fitted SPI changes by up to about 2e-5
+  (measured across the 344 nClimDiv divisions at scales 1, 3, and 12), and Pearson-fitted
+  SPEI shares the fit; gamma-fitted output is unchanged.
 - **xarray PET and PCI provenance and alignment**: `pet_hargreaves` and
   `pet_penman_monteith` now reject a `tmin`/`tmax` (and other time-series) pair whose
   non-time coordinates differ with `CoordinateValidationError`, as SPEI already did,

@@ -24,6 +24,7 @@ from __future__ import annotations
 import calendar
 import math
 import time
+from types import ModuleType
 
 import numpy as np
 
@@ -34,6 +35,24 @@ from climate_indices.performance import check_large_array_memory
 
 # retrieve structlog logger for this module
 _logger = get_logger(__name__)
+
+try:
+    # the optional Rust kernels (docs/architecture.md); without the extension both
+    # PET implementations below run the Python expressions they always have
+    from climate_indices import _native
+except ImportError:
+    _native = None  # type: ignore[assignment]
+
+
+def _native_module() -> ModuleType | None:
+    """The optional Rust extension, or None when this install is pure Python.
+
+    Every dispatch guard reads the module through this accessor: a successful
+    import is typed as always present, which would make the fallback branch look
+    unreachable to the type checker.
+    """
+    return _native
+
 
 # declare the function names that should be included in the public API for this module
 __all__ = ["eto_hargreaves", "eto_thornthwaite"]
@@ -57,6 +76,29 @@ _SOLAR_DECLINATION_RADIANS_MIN = np.deg2rad(-23.45)
 _SOLAR_DECLINATION_RADIANS_MAX = np.deg2rad(23.45)
 
 
+def _validate_latitude_radians(latitude_radians: float | np.ndarray) -> None:
+    """Reject a latitude outside [-90, 90] degrees, or one that is NaN.
+
+    The Python PET loops reach this check only from inside the day loop, so the
+    native dispatch guards call it up front: the same error, and the same error
+    ordering, whichever path computes the result.
+
+    :param latitude_radians: latitude in radians, as a scalar or an array of
+        per-cell latitudes
+    :raise InvalidArgumentError: if the latitude is NaN or out of range
+    """
+    if np.any(np.isnan(latitude_radians)) or not np.all(
+        (_LATITUDE_RADIANS_MIN <= latitude_radians) & (latitude_radians <= _LATITUDE_RADIANS_MAX)
+    ):
+        raise InvalidArgumentError(
+            f"Latitude outside valid range [{_LATITUDE_RADIANS_MIN!r} to {_LATITUDE_RADIANS_MAX!r}]. "
+            f"Received: {latitude_radians!r}",
+            argument_name="latitude_radians",
+            argument_value=str(latitude_radians),
+            valid_values=f"[{_LATITUDE_RADIANS_MIN!r}, {_LATITUDE_RADIANS_MAX!r}]",
+        )
+
+
 def _sunset_hour_angle(
     latitude_radians: float | np.ndarray,
     solar_declination_radians: float | np.ndarray,
@@ -75,16 +117,7 @@ def _sunset_hour_angle(
     """
 
     # validate the latitude argument, element-wise when given per-cell latitudes
-    if np.any(np.isnan(latitude_radians)) or not np.all(
-        (_LATITUDE_RADIANS_MIN <= latitude_radians) & (latitude_radians <= _LATITUDE_RADIANS_MAX)
-    ):
-        raise InvalidArgumentError(
-            f"Latitude outside valid range [{_LATITUDE_RADIANS_MIN!r} to {_LATITUDE_RADIANS_MAX!r}]. "
-            f"Received: {latitude_radians!r}",
-            argument_name="latitude_radians",
-            argument_value=str(latitude_radians),
-            valid_values=f"[{_LATITUDE_RADIANS_MIN!r}, {_LATITUDE_RADIANS_MAX!r}]",
-        )
+    _validate_latitude_radians(latitude_radians)
 
     # validate the solar declination angle argument, which can vary between
     # -23.45 and +23.45 degrees see Goswami (2015) p.40, and
@@ -252,6 +285,154 @@ def _validate_latitude_cells(
     return latitude_rank
 
 
+def _native_latitude(latitude_radians: float | np.ndarray, cell_shape: tuple[int, ...]) -> np.ndarray | None:
+    """The one-latitude-per-cell kernel operand, or None to stay on the Python path.
+
+    The Rust PET kernels take one latitude per cell as a flat float64 array. A scalar
+    latitude reaches every cell, so it is handed over as a zero-stride view of itself:
+    the binding copies what it reads, and a block per cell here would allocate in
+    proportion to the request rather than to the scalar. The checks run on the values
+    the Python path checks, so a bad latitude raises the same error before the kernel
+    is reached.
+
+    :param latitude_radians: latitude in radians, as a scalar or an array of per-cell
+        latitudes
+    :param cell_shape: trailing cell dimensions of the time-major spatial block, empty
+        for the 1-D/2-D path
+    :return: a flat view holding one latitude per cell, or None when the kernels cannot
+        take the latitude
+    """
+    cells = int(np.prod(cell_shape, dtype=np.intp))
+    if isinstance(latitude_radians, np.ndarray):
+        if not compute._native_float64(latitude_radians):
+            return None
+        if not cell_shape:
+            # the 1-D/2-D path takes a scalar latitude, as it always has
+            return None
+        _validate_latitude_cells(latitude_radians, cell_shape)
+        # the range check runs on the array the Python path checks, so a bad latitude
+        # raises the very same error before the broadcast copy is made
+        _validate_latitude_radians(latitude_radians)
+        return np.ascontiguousarray(np.broadcast_to(latitude_radians, cell_shape), dtype=np.float64).reshape(cells)
+    # a scalar latitude converts as the Python path converts it, so a non-numeric
+    # latitude keeps raising the TypeError it always raises
+    latitude_scalar = float(latitude_radians)
+    _validate_latitude_radians(latitude_scalar)
+    return np.broadcast_to(np.asarray(latitude_scalar, dtype=np.float64).reshape(1), (cells,))
+
+
+def _native_thornthwaite(
+    values: np.ndarray,
+    latitude_radians: float | np.ndarray,
+    data_start_year: int,
+) -> np.ndarray | None:
+    """Compute the Thornthwaite PET with the Rust kernel, or None to stay in Python.
+
+    The kernel takes the clamped block as (years, 12, cells), one latitude per
+    cell, and one leap-year flag per year. Scalars, every other layout, and a
+    block with an all-NaN month column stay on the Python path, which is the only
+    one that reports np.nanmean's all-NaN warning.
+
+    :param values: the clamped (years, 12, *cells) monthly temperatures
+    :param latitude_radians: latitude in radians, as a scalar or an array of
+        per-cell latitudes
+    :param data_start_year: year corresponding to the start of the dataset
+    :return: the PET block in the shape of ``values``, or None when the kernel
+        cannot take these inputs
+    """
+    native = _native_module()
+    if native is None or not compute._native_float64(values):
+        return None
+
+    # np.nanmean warns for an all-NaN month column, which only Python can report;
+    # it warns before the Python path checks the latitude, so this check goes first
+    if np.isnan(values).all(axis=0).any():
+        return None
+
+    years = values.shape[0]
+    cell_shape = values.shape[2:]
+    latitude_kernel = _native_latitude(latitude_radians, cell_shape)
+    if latitude_kernel is None:
+        return None
+
+    # an extension built before the PET kernels keeps the Python path
+    if not hasattr(native, "thornthwaite"):
+        return None
+
+    cells = int(np.prod(cell_shape, dtype=np.intp))
+    leap_years = np.array([calendar.isleap(data_start_year + year) for year in range(years)], dtype=np.bool_)
+    pet = native.thornthwaite(
+        np.ascontiguousarray(values).reshape(years, 12, cells),
+        latitude_kernel,
+        leap_years,
+    )
+    return np.asarray(pet).reshape(values.shape)
+
+
+def _native_hargreaves(
+    daily_tmin_celsius: np.ndarray,
+    daily_tmax_celsius: np.ndarray,
+    daily_tmean_celsius: np.ndarray,
+    latitude_radians: float | np.ndarray,
+) -> tuple[np.ndarray, int] | None:
+    """Compute the daily Hargreaves PET with the Rust kernel, or None to stay in Python.
+
+    The kernel takes the three daily blocks as (time, cells) in year-major
+    366-day order, the layout the Python path reads after folding a 1-D/2-D input
+    onto whole years, and one latitude per cell. Scalars, every other layout, and
+    masked or otherwise unaligned arrays stay on the Python path, whose day loop
+    is the parity oracle.
+
+    :param daily_tmin_celsius: (time, *cells) daily minimum temperatures
+    :param daily_tmax_celsius: (time, *cells) daily maximum temperatures
+    :param daily_tmean_celsius: (time, *cells) daily mean temperatures
+    :param latitude_radians: latitude in radians, as a scalar or an array of
+        per-cell latitudes
+    :return: the PET block in the shape of the inputs and the bytes the route holds
+        besides the caller's arrays, or None when the kernel cannot take these inputs
+    """
+    native = _native_module()
+    if native is None:
+        return None
+    if not all(
+        compute._native_float64(array) for array in (daily_tmin_celsius, daily_tmax_celsius, daily_tmean_celsius)
+    ):
+        return None
+    # equal sizes in different layouts fail on the Python path, which the flat
+    # kernel inputs would otherwise pair cell by cell
+    if not (daily_tmin_celsius.shape == daily_tmax_celsius.shape == daily_tmean_celsius.shape):
+        return None
+
+    time = daily_tmean_celsius.shape[0]
+    cell_shape = daily_tmean_celsius.shape[1:]
+    latitude_kernel = _native_latitude(latitude_radians, cell_shape)
+    if latitude_kernel is None:
+        return None
+
+    # an extension built before the PET kernels keeps the Python path
+    if not hasattr(native, "hargreaves"):
+        return None
+
+    cells = int(np.prod(cell_shape, dtype=np.intp))
+
+    # the kernel copies each operand before it releases the GIL, and a block that does
+    # not lie contiguously is copied here to flatten it, so the route holds these bytes
+    # besides the caller's arrays and the result it returns: a bounded multiple of the
+    # request, and what the caller reports alongside the arrays it can see
+    copies_bytes = (3 * time * cells + cells) * daily_tmean_celsius.itemsize + sum(
+        block.nbytes
+        for block in (daily_tmin_celsius, daily_tmax_celsius, daily_tmean_celsius)
+        if not block.flags.c_contiguous
+    )
+    pet = native.hargreaves(
+        np.ascontiguousarray(daily_tmin_celsius).reshape(time, cells),
+        np.ascontiguousarray(daily_tmax_celsius).reshape(time, cells),
+        np.ascontiguousarray(daily_tmean_celsius).reshape(time, cells),
+        latitude_kernel,
+    )
+    return np.asarray(pet).reshape(time, *cell_shape), copies_bytes
+
+
 def eto_thornthwaite(
     monthly_temps_celsius: np.ndarray,
     latitude_degrees: float | np.ndarray,
@@ -324,6 +505,15 @@ def eto_thornthwaite(
 
     # clamp into a new array so reshaped views never change the caller's input
     values = np.maximum(values, 0.0)
+
+    # the Rust kernel runs the heat index, the daylight correction, and the equation
+    # in one pass when the block and latitude are plain float64; the Python body
+    # below stays the reference implementation and the fallback
+    native_pet = _native_thornthwaite(values, latitude_radians, data_start_year)
+    if native_pet is not None:
+        if spatial_block:
+            return native_pet.reshape(-1, *values.shape[2:])[0:original_time_length]
+        return native_pet.reshape(-1)[0:original_size]
 
     # mean the monthly temperature values over the year axis, giving us 12 monthly
     # means for the period of record, one set per cell for a spatial block
@@ -479,38 +669,54 @@ def eto_hargreaves(
             # float() keeps a non-numeric latitude raising the TypeError it always has
             latitude = math.radians(float(latitude_degrees))
 
-        # allocate the PET array we'll fill, and account for it alongside the input
-        # arrays: nothing above is padded, so these four arrays are the peak footprint
-        pet = np.full(daily_tmean_celsius.shape, np.nan)
-        memory_metrics = check_large_array_memory(daily_tmin_celsius, daily_tmax_celsius, daily_tmean_celsius, pet)
-        for day_of_year in range(1, 367):
-            # calculate the angle of solar declination and sunset hour angle
-            solar_declination = _solar_declination(day_of_year)
-            sunset_hour_angle = _sunset_hour_angle(latitude, solar_declination)
+        # the Rust kernel runs the whole day loop when the three daily blocks and the
+        # latitude are plain float64; the loop below stays the reference and the
+        # fallback. The route is resolved before the result is allocated, so a native
+        # call holds the kernel's result rather than an array it allocates and drops
+        native_pet = _native_hargreaves(daily_tmin_celsius, daily_tmax_celsius, daily_tmean_celsius, latitude)
+        pet, native_bytes = (np.full(daily_tmean_celsius.shape, np.nan), 0) if native_pet is None else native_pet
 
-            # calculate the inverse relative distance between earth and sun
-            # from the day of the year, based on FAO equation 23 in
-            # Allen et al (1998).
-            inv_rel_distance = 1 + (0.033 * np.cos((2.0 * np.pi / 365.0) * day_of_year))
+        # account for the arrays this path holds, which are the three inputs and the
+        # result; a native call also copies each operand it reads and flattens a block
+        # that does not lie contiguously, and those bytes are reported with them rather
+        # than left out of the model the log records
+        memory_metrics = check_large_array_memory(
+            daily_tmin_celsius,
+            daily_tmax_celsius,
+            daily_tmean_celsius,
+            pet,
+            extra_bytes=native_bytes,
+        )
 
-            # extraterrestrial radiation
-            tmp1 = (24.0 * 60.0) / np.pi
-            tmp2 = sunset_hour_angle * np.sin(latitude) * np.sin(solar_declination)
-            tmp3 = np.cos(latitude) * np.cos(solar_declination) * np.sin(sunset_hour_angle)
-            et_radiation = tmp1 * _SOLAR_CONSTANT * inv_rel_distance * (tmp2 + tmp3)
+        if native_pet is None:
+            for day_of_year in range(1, 367):
+                # calculate the angle of solar declination and sunset hour angle
+                solar_declination = _solar_declination(day_of_year)
+                sunset_hour_angle = _sunset_hour_angle(latitude, solar_declination)
 
-            # the rows holding this day of the year: one per whole year, plus the
-            # trailing partial year's row once it reaches this day
-            positions = np.arange(day_of_year - 1, daily_tmean_celsius.shape[0], 366)
+                # calculate the inverse relative distance between earth and sun
+                # from the day of the year, based on FAO equation 23 in
+                # Allen et al (1998).
+                inv_rel_distance = 1 + (0.033 * np.cos((2.0 * np.pi / 365.0) * day_of_year))
 
-            # calculate the Hargreaves equation for every year and cell of this day
-            pet[positions] = (
-                0.0023
-                * (daily_tmean_celsius[positions] + 17.8)
-                * (daily_tmax_celsius[positions] - daily_tmin_celsius[positions]) ** 0.5
-                * 0.408
-                * et_radiation
-            )
+                # extraterrestrial radiation
+                tmp1 = (24.0 * 60.0) / np.pi
+                tmp2 = sunset_hour_angle * np.sin(latitude) * np.sin(solar_declination)
+                tmp3 = np.cos(latitude) * np.cos(solar_declination) * np.sin(sunset_hour_angle)
+                et_radiation = tmp1 * _SOLAR_CONSTANT * inv_rel_distance * (tmp2 + tmp3)
+
+                # the rows holding this day of the year: one per whole year, plus the
+                # trailing partial year's row once it reaches this day
+                positions = np.arange(day_of_year - 1, daily_tmean_celsius.shape[0], 366)
+
+                # calculate the Hargreaves equation for every year and cell of this day
+                pet[positions] = (
+                    0.0023
+                    * (daily_tmean_celsius[positions] + 17.8)
+                    * (daily_tmax_celsius[positions] - daily_tmin_celsius[positions]) ** 0.5
+                    * 0.408
+                    * et_radiation
+                )
 
         # a spatial block is returned in its input layout, while a 1-D/2-D input is
         # read flat and is truncated to its original length, dropping any padding

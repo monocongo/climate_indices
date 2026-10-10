@@ -47,6 +47,7 @@ import hashlib
 import json
 import shutil
 import tempfile
+import time
 import uuid
 from pathlib import Path
 from urllib.request import urlopen
@@ -133,27 +134,61 @@ def _boundary_chunks(size: int, chunk_size: int) -> tuple[int, ...]:
     return (chunk_size,) * full + ((remainder,) if remainder else ())
 
 
+def _verify_source(path: Path, checksum: str, *, retry_missing: bool) -> None:
+    """Raise unless path holds the expected checksum, riding out a concurrent caller's publication.
+
+    Windows briefly denies access to a file while another caller's replace completes (and the file may
+    not be visible yet), so PermissionError, and FileNotFoundError when retry_missing, are retried for
+    about one second before being raised. The decision rests on an actual read, not on Path.exists().
+    """
+    attempts = 20
+    for attempt in range(attempts):
+        try:
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            break
+        except (PermissionError, FileNotFoundError) as error:
+            if attempt == attempts - 1 or (isinstance(error, FileNotFoundError) and not retry_missing):
+                raise
+            time.sleep(0.05)
+    if digest != checksum:
+        raise ValueError(f"SHA-256 mismatch: {path}; remove it and rerun to download again.")
+
+
 def _cache_source(source_dir: Path, name: str, checksum: str) -> Path:
     """Return a checksum-valid source download."""
     path = source_dir / f"nclimgrid_lowres_{name}.nc"
     url = f"{SOURCE_URL}/{path.name}"
-    if not path.exists():
-        temporary = None
+    try:
+        _verify_source(path, checksum, retry_missing=False)
+        return path
+    except FileNotFoundError:
+        pass
+    temporary = None
+    replace_error = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb", dir=source_dir, prefix=f".{path.name}.", suffix=".download", delete=False
+        ) as target:
+            temporary = Path(target.name)
+            with urlopen(url, timeout=120) as response:
+                shutil.copyfileobj(response, target)
+        if hashlib.sha256(temporary.read_bytes()).hexdigest() != checksum:
+            raise ValueError(f"SHA-256 mismatch: {url}")
         try:
-            with tempfile.NamedTemporaryFile(
-                mode="wb", dir=source_dir, prefix=f".{path.name}.", suffix=".download", delete=False
-            ) as target:
-                temporary = Path(target.name)
-                with urlopen(url, timeout=120) as response:
-                    shutil.copyfileobj(response, target)
-            if hashlib.sha256(temporary.read_bytes()).hexdigest() != checksum:
-                raise ValueError(f"SHA-256 mismatch: {url}")
             temporary.replace(path)
-        finally:
-            if temporary is not None:
-                temporary.unlink(missing_ok=True)
-    if hashlib.sha256(path.read_bytes()).hexdigest() != checksum:
-        raise ValueError(f"SHA-256 mismatch: {path}; remove it and rerun to download again.")
+        except PermissionError as error:
+            # Windows refuses to replace an open file; a concurrent caller may have published it.
+            replace_error = error
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+    # A concurrent run with a different pin may have replaced path since; never return unverified bytes.
+    try:
+        _verify_source(path, checksum, retry_missing=True)
+    except OSError:
+        if replace_error is not None:
+            raise replace_error from None
+        raise
     return path
 
 

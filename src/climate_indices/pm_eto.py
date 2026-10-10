@@ -23,15 +23,46 @@ Allen, R.G., Pereira, L.S., Raes, D. and Smith, M. (1998)
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import ModuleType
 from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 
+from climate_indices import compute
 from climate_indices.exceptions import InvalidArgumentError
+
+try:
+    # the optional Rust kernels (docs/architecture.md); without the extension the
+    # Penman-Monteith entry points below run their pure-Python implementations
+    from climate_indices import _native
+except ImportError:
+    _native = None  # type: ignore[assignment]
+
+
+def _native_module() -> ModuleType | None:
+    """The optional Rust extension, or None when this install is pure Python.
+
+    Every dispatch guard reads the module through this accessor: a successful
+    import is typed as always present, which would make the fallback branch look
+    unreachable to the type checker.
+    """
+    return _native
+
 
 # union type for function signatures
 FloatOrArray = float | npt.NDArray[np.floating[Any]]
+
+# native pathway selectors: these codes must match climate-py's mapping, which
+# evaluates the same FAO-56 equation that each constant names
+_HUMIDITY_DEWPOINT = 0
+_HUMIDITY_RH_MIN_MAX = 1
+_HUMIDITY_RH_MAX = 2
+_HUMIDITY_RH_MEAN = 3
+_HUMIDITY_TMIN = 4
+_RADIATION_SUPPLIED = 0
+_RADIATION_SUNSHINE = 1
+_RADIATION_TEMPERATURE_RANGE = 2
 
 
 @dataclass(frozen=True)
@@ -399,6 +430,73 @@ def actual_vapor_pressure_from_tmin(
 # ---------------------------------------------------------------------------
 
 
+def _native_operand(value: Any) -> np.ndarray | None:
+    """The operand as the kernels take it, or None when they cannot take it.
+
+    A scalar narrower than float64 keeps its own dtype through the Python
+    expressions, and an integer or boolean scalar keeps its own dtype where the
+    subtraction can wrap or reject it, so only float64-precision scalars reach
+    the kernels.
+
+    :param value: one operand of a kernel call
+    :return: the value as a float64 array, or None for a dtype, layout, or NumPy
+        error policy the kernels do not take
+    """
+    if isinstance(value, np.ndarray):
+        return value if compute._native_float64(value) else None
+    if isinstance(value, float):
+        return np.asarray(value, dtype=np.float64)
+    return None
+
+
+def _native_arrays(*values: Any) -> tuple[tuple[int, ...], tuple[np.ndarray, ...]] | None:
+    """Flattened float64 kernel inputs and their broadcast shape, or None.
+
+    The Rust kernels take plain, aligned float64 arrays with NumPy floating-point
+    errors ignored, so scalars, every other dtype or layout, masked arrays, and
+    non-default error or warning policies stay on the Python path. An all-scalar
+    call stays there too, since its result is a NumPy scalar rather than an array.
+
+    The kernel reads one element per broadcast position and copies each operand before
+    it releases the GIL, so the route's peak is the caller's arrays, one flattened
+    input per operand, a copy of each operand inside the call, and the kernel's fixed
+    intermediates: a bounded multiple of the request. An operand that reaches every
+    position as a single value is passed as a zero-stride view of it, which is the one
+    expansion that would otherwise allocate in proportion to the request rather than
+    to the operand.
+
+    :param values: the operands of the operation, in kernel argument order
+    :return: the broadcast shape and one contiguous 1-D array per operand, or
+        None when the kernels cannot take these operands
+    """
+    arrays: list[np.ndarray] = []
+    for value in values:
+        array = _native_operand(value)
+        if array is None:
+            return None
+        arrays.append(array)
+    if all(array.ndim == 0 for array in arrays):
+        return None
+
+    try:
+        broadcast = np.broadcast_arrays(*arrays)
+    except ValueError:
+        # let the Python expression raise the broadcasting error it always has
+        return None
+    elements = broadcast[0].size
+    return (
+        broadcast[0].shape,
+        tuple(
+            # a single value reaches every position: hand the kernel a view of it rather
+            # than a full-size array, which it would copy element by element anyway
+            np.broadcast_to(operand.reshape(1), (elements,))
+            if operand.size == 1 and elements > 1
+            else np.ascontiguousarray(expanded).reshape(-1)
+            for operand, expanded in zip(arrays, broadcast, strict=True)
+        ),
+    )
+
+
 def pm_eto(
     net_radiation: FloatOrArray,
     soil_heat_flux: FloatOrArray,
@@ -438,6 +536,25 @@ def pm_eto(
         Reference evapotranspiration ETo in mm/day, same shape as inputs.
 
     """
+    extension = _native_module()
+    native = (
+        _native_arrays(
+            net_radiation,
+            soil_heat_flux,
+            temperature_celsius,
+            wind_speed_2m,
+            saturation_vp,
+            actual_vp,
+            delta,
+            gamma,
+        )
+        if extension is not None
+        else None
+    )
+    if extension is not None and native is not None and hasattr(extension, "pm_eto"):
+        shape, arrays = native
+        return np.asarray(extension.pm_eto(*arrays)).reshape(shape)
+
     rn = np.asarray(net_radiation)
     g = np.asarray(soil_heat_flux)
     t = np.asarray(temperature_celsius)
@@ -724,6 +841,28 @@ def solar_radiation_from_temperature_range(
     )
 
 
+def _validate_wind_measurement_height(measurement_height_m: FloatOrArray) -> np.ndarray:
+    """Reject a non-positive wind measurement height, as FAO-56 Eq 47 requires.
+
+    The native dispatch guard calls this too, so an invalid height raises the
+    same error whichever path computes the result.
+
+    :param measurement_height_m: height above the ground at which the wind
+        speed was measured [m]
+    :return: the height as an array
+    :raise InvalidArgumentError: if any height is not positive
+    """
+    height = np.asarray(measurement_height_m)
+    if np.any(height <= 0.0):
+        raise InvalidArgumentError(
+            f"Wind measurement height must be positive. Received: {measurement_height_m!r}",
+            argument_name="measurement_height_m",
+            argument_value=str(measurement_height_m),
+            valid_values="> 0 m",
+        )
+    return height
+
+
 def wind_speed_2m(
     wind_speed: FloatOrArray,
     measurement_height_m: FloatOrArray = 2.0,
@@ -746,14 +885,7 @@ def wind_speed_2m(
         Wind speed at 2 m above the ground in m s-1.
 
     """
-    height = np.asarray(measurement_height_m)
-    if np.any(height <= 0.0):
-        raise InvalidArgumentError(
-            f"Wind measurement height must be positive. Received: {measurement_height_m!r}",
-            argument_name="measurement_height_m",
-            argument_value=str(measurement_height_m),
-            valid_values="> 0 m",
-        )
+    height = _validate_wind_measurement_height(measurement_height_m)
     conversion = 4.87 / np.log(67.8 * height - 5.42)
     # at the standard height Eq 47 reduces to unity; return the input exactly
     return np.where(height == 2.0, np.asarray(wind_speed), np.asarray(wind_speed) * conversion)  # NOSONAR
@@ -764,23 +896,24 @@ def wind_speed_2m(
 # ---------------------------------------------------------------------------
 
 
-def _select_actual_vapor_pressure(
-    tmin_celsius: FloatOrArray,
-    tmax_celsius: FloatOrArray,
-    e_s: FloatOrArray,
-    humidity: HumidityInputs | None,
-) -> FloatOrArray:
-    """Select the best available FAO-56 actual-vapour-pressure pathway."""
+def _humidity_pathway(humidity: HumidityInputs | None) -> tuple[int, tuple[FloatOrArray, ...]]:
+    """Resolve the FAO-56 actual-vapour-pressure pathway and the inputs it needs.
+
+    The precedence is dewpoint, then ``rh_min``/``rh_max``, then ``rh_max`` alone,
+    then ``rh_mean``, and finally the arid-region ``e0(Tmin - 2)`` estimate. The
+    native dispatch and the Python selection both resolve the pathway here, so
+    the two paths cannot disagree about which one applies.
+
+    :param humidity: the optional actual-vapour-pressure inputs, in precedence order
+    :return: the pathway's selector code and its input values, in the order the
+        kernel takes them
+    :raise InvalidArgumentError: if ``rh_min`` is given without ``rh_max``
+    """
     humidity = humidity or HumidityInputs()
     if humidity.tdew_celsius is not None:
-        return actual_vapor_pressure_from_dewpoint(humidity.tdew_celsius)
+        return _HUMIDITY_DEWPOINT, (humidity.tdew_celsius,)
     if humidity.rh_min is not None and humidity.rh_max is not None:
-        return actual_vapor_pressure_from_rhmin_rhmax(
-            saturation_vapor_pressure(tmin_celsius),
-            saturation_vapor_pressure(tmax_celsius),
-            humidity.rh_min,
-            humidity.rh_max,
-        )
+        return _HUMIDITY_RH_MIN_MAX, (humidity.rh_min, humidity.rh_max)
     if humidity.rh_min is not None:
         raise InvalidArgumentError(
             "rh_min was provided without rh_max; both are required for Eq 17.",
@@ -789,10 +922,53 @@ def _select_actual_vapor_pressure(
             valid_values="provide both rh_min and rh_max, or neither",
         )
     if humidity.rh_max is not None:
-        return actual_vapor_pressure_from_rhmax(saturation_vapor_pressure(tmin_celsius), humidity.rh_max)
+        return _HUMIDITY_RH_MAX, (humidity.rh_max,)
     if humidity.rh_mean is not None:
-        return actual_vapor_pressure_from_rhmean(e_s, humidity.rh_mean)
+        return _HUMIDITY_RH_MEAN, (humidity.rh_mean,)
+    return _HUMIDITY_TMIN, ()
+
+
+def _select_actual_vapor_pressure(
+    tmin_celsius: FloatOrArray,
+    tmax_celsius: FloatOrArray,
+    e_s: FloatOrArray,
+    humidity: HumidityInputs | None,
+) -> FloatOrArray:
+    """Select the best available FAO-56 actual-vapour-pressure pathway."""
+    pathway, values = _humidity_pathway(humidity)
+    if pathway == _HUMIDITY_DEWPOINT:
+        return actual_vapor_pressure_from_dewpoint(values[0])
+    if pathway == _HUMIDITY_RH_MIN_MAX:
+        return actual_vapor_pressure_from_rhmin_rhmax(
+            saturation_vapor_pressure(tmin_celsius),
+            saturation_vapor_pressure(tmax_celsius),
+            values[0],
+            values[1],
+        )
+    if pathway == _HUMIDITY_RH_MAX:
+        return actual_vapor_pressure_from_rhmax(saturation_vapor_pressure(tmin_celsius), values[0])
+    if pathway == _HUMIDITY_RH_MEAN:
+        return actual_vapor_pressure_from_rhmean(e_s, values[0])
     return actual_vapor_pressure_from_tmin(tmin_celsius)
+
+
+def _radiation_pathway(radiation: RadiationInputs | None) -> tuple[int, tuple[FloatOrArray, ...], bool]:
+    """Resolve the FAO-56 solar-radiation pathway and the inputs it needs.
+
+    The precedence is supplied solar radiation, then sunshine hours, and finally
+    the temperature-range estimate, which uses the ``coastal`` coefficient and is
+    limited to the clear-sky radiation by the caller.
+
+    :param radiation: the optional solar-radiation inputs, in precedence order
+    :return: the pathway's selector code, its input values, and whether the
+        location is coastal
+    """
+    radiation = radiation or RadiationInputs()
+    if radiation.solar_radiation_mj_m2_day is not None:
+        return _RADIATION_SUPPLIED, (radiation.solar_radiation_mj_m2_day,), radiation.coastal
+    if radiation.sunshine_hours is not None:
+        return _RADIATION_SUNSHINE, (radiation.sunshine_hours,), radiation.coastal
+    return _RADIATION_TEMPERATURE_RANGE, (), radiation.coastal
 
 
 def _select_solar_radiation(
@@ -809,19 +985,148 @@ def _select_solar_radiation(
         range (and so must be limited to the clear-sky radiation).
 
     """
-    radiation = radiation or RadiationInputs()
-    if radiation.solar_radiation_mj_m2_day is not None:
-        return radiation.solar_radiation_mj_m2_day, False
-    if radiation.sunshine_hours is not None:
-        return solar_radiation_from_sunshine(
-            radiation.sunshine_hours, daylength_hours, extraterrestrial_radiation_mj_m2_day
-        ), False
+    pathway, values, coastal = _radiation_pathway(radiation)
+    if pathway == _RADIATION_SUPPLIED:
+        return values[0], False
+    if pathway == _RADIATION_SUNSHINE:
+        return (
+            solar_radiation_from_sunshine(
+                values[0],
+                daylength_hours,
+                extraterrestrial_radiation_mj_m2_day,
+            ),
+            False,
+        )
     return (
         solar_radiation_from_temperature_range(
-            tmin_celsius, tmax_celsius, extraterrestrial_radiation_mj_m2_day, radiation.coastal
+            tmin_celsius,
+            tmax_celsius,
+            extraterrestrial_radiation_mj_m2_day,
+            coastal,
         ),
         True,
     )
+
+
+def _native_penman_monteith_eto(
+    daily_tmin_celsius: Any,
+    daily_tmax_celsius: Any,
+    latitude_degrees: Any,
+    elevation_m: Any,
+    wind_speed_m_s: Any,
+    day_of_year: Any,
+    wind_speed_height_m: Any,
+    humidity: HumidityInputs | None,
+    radiation: RadiationInputs | None,
+    soil_heat_flux_mj_m2_day: Any,
+    albedo: Any,
+) -> npt.NDArray[np.float64] | None:
+    """Derive the FAO-56 intermediates and ETo with the Rust kernel, or None.
+
+    The kernel evaluates the same intermediate chain the Python body below does,
+    for the one humidity and one radiation pathway that precedence selects. The
+    wind-height check and the pathway precedence happen here, before the kernel
+    is reached, so a bad call raises the same error, in the same order, whichever
+    path computes the result. The public helper functions stay Python callables:
+    only these two entry points dispatch.
+
+    :return: the ETo array in the broadcast shape of the inputs, or None when the
+        kernel cannot take these inputs
+    """
+    extension = _native_module()
+    if extension is None:
+        return None
+
+    # an operand the kernels cannot take keeps the Python path, so its own
+    # conversions and checks run in their original order rather than after the
+    # native-only validation below
+    if any(
+        _native_operand(value) is None
+        for value in (
+            daily_tmin_celsius,
+            daily_tmax_celsius,
+            latitude_degrees,
+            elevation_m,
+            wind_speed_m_s,
+            wind_speed_height_m,
+            day_of_year,
+            soil_heat_flux_mj_m2_day,
+            albedo,
+        )
+    ):
+        return None
+
+    # Eq 47 validates the measurement height before any pathway is chosen
+    _validate_wind_measurement_height(wind_speed_height_m)
+    humidity_variant, humidity_values = _humidity_pathway(humidity)
+    radiation_variant, radiation_values, coastal = _radiation_pathway(radiation)
+
+    # the nine meteorological inputs come first, then the selected pathway's own
+    # inputs, in the order the kernel takes them
+    prepared = _native_arrays(
+        daily_tmin_celsius,
+        daily_tmax_celsius,
+        latitude_degrees,
+        elevation_m,
+        wind_speed_m_s,
+        wind_speed_height_m,
+        day_of_year,
+        soil_heat_flux_mj_m2_day,
+        albedo,
+        *humidity_values,
+        *radiation_values,
+    )
+    if prepared is None:
+        return None
+    shape, arrays = prepared
+
+    offset = 9
+    tdew_celsius: np.ndarray | None = None
+    rh_min: np.ndarray | None = None
+    rh_max: np.ndarray | None = None
+    rh_mean: np.ndarray | None = None
+    if humidity_variant == _HUMIDITY_DEWPOINT:
+        (tdew_celsius,) = arrays[offset : offset + 1]
+    elif humidity_variant == _HUMIDITY_RH_MIN_MAX:
+        rh_min, rh_max = arrays[offset : offset + 2]
+    elif humidity_variant == _HUMIDITY_RH_MAX:
+        (rh_max,) = arrays[offset : offset + 1]
+    elif humidity_variant == _HUMIDITY_RH_MEAN:
+        (rh_mean,) = arrays[offset : offset + 1]
+    offset += len(humidity_values)
+
+    solar_radiation: np.ndarray | None = None
+    sunshine_hours: np.ndarray | None = None
+    if radiation_variant == _RADIATION_SUPPLIED:
+        (solar_radiation,) = arrays[offset : offset + 1]
+    elif radiation_variant == _RADIATION_SUNSHINE:
+        (sunshine_hours,) = arrays[offset : offset + 1]
+
+    (daily_tmin, daily_tmax, latitude, elevation, wind_speed, wind_height, day, soil_heat_flux, albedo) = arrays[0:9]
+    # an extension built before the PET kernels keeps the Python path
+    if not hasattr(extension, "fao56_eto"):
+        return None
+    eto = extension.fao56_eto(
+        daily_tmin,
+        daily_tmax,
+        latitude,
+        elevation,
+        wind_speed,
+        wind_height,
+        day,
+        soil_heat_flux,
+        albedo,
+        humidity_variant,
+        tdew_celsius,
+        rh_min,
+        rh_max,
+        rh_mean,
+        radiation_variant,
+        solar_radiation,
+        sunshine_hours,
+        coastal,
+    )
+    return np.asarray(eto).reshape(shape)
 
 
 def penman_monteith_eto(
@@ -880,6 +1185,25 @@ def penman_monteith_eto(
     tmin = np.asarray(daily_tmin_celsius)
     tmax = np.asarray(daily_tmax_celsius)
     tmean = (tmin + tmax) / 2.0
+
+    # the Rust kernel derives the same intermediates for the selected pathways and
+    # evaluates the same equation in one pass; the Python body below stays the
+    # reference implementation and the fallback
+    native_eto = _native_penman_monteith_eto(
+        daily_tmin_celsius,
+        daily_tmax_celsius,
+        latitude_degrees,
+        elevation_m,
+        wind_speed_m_s,
+        day_of_year,
+        wind_speed_height_m,
+        humidity,
+        radiation,
+        soil_heat_flux_mj_m2_day,
+        albedo,
+    )
+    if native_eto is not None:
+        return native_eto
 
     latitude_radians = np.radians(np.asarray(latitude_degrees))
     day = np.asarray(day_of_year)
