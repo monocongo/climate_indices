@@ -22,6 +22,7 @@ Two tiers of tests:
 from __future__ import annotations
 
 import fnmatch
+import os
 import re
 import shlex
 import subprocess
@@ -885,6 +886,33 @@ def test_v300_public_api_importable() -> None:
         assert callable(getattr(fire, name)), f"fire.{name} is not callable"
 
 
+@pytest.mark.parametrize(
+    ("github_ref", "release_date", "accepted"),
+    [
+        ("", "unreleased", True),
+        ("refs/heads/main", "unreleased", True),
+        ("refs/tags/v3.0.0", "2026-10-10", True),
+        ("refs/tags/v3.0.0", "unreleased", False),
+        ("refs/tags/v3.0.0", "", False),
+        ("refs/tags/v3.0.0", "Oct 10, 2026", False),
+    ],
+)
+def test_changelog_date_guard(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, github_ref: str, release_date: str, accepted: bool
+) -> None:
+    """Tag builds require a dated top entry; ordinary development can stay unreleased."""
+    (tmp_path / "pyproject.toml").write_text('version = "3.0.0"\n', encoding="utf-8")
+    suffix = f" - {release_date}" if release_date else ""
+    (tmp_path / "CHANGELOG.md").write_text(f"## [3.0.0]{suffix}\n\n## [2.4.0] - 2026-04-05\n", encoding="utf-8")
+    monkeypatch.setattr(sys.modules[__name__], "ROOT", tmp_path)
+    monkeypatch.setenv("GITHUB_REF", github_ref)
+    if accepted:
+        test_changelog_top_entry_matches_pyproject_version()
+    else:
+        with pytest.raises(AssertionError, match="release date"):
+            test_changelog_top_entry_matches_pyproject_version()
+
+
 # ---------------------------------------------------------------------------
 # Release-time guardrails
 # Run before pushing a release tag:
@@ -919,19 +947,23 @@ def test_changelog_has_no_unreleased_block() -> None:
 
 @pytest.mark.release
 def test_changelog_top_entry_matches_pyproject_version() -> None:
-    """CHANGELOG.md top release block must match pyproject.toml version.
+    """CHANGELOG.md top release block must match the version and be dated on tag builds.
 
     Addresses: F8 — catches version bump in one file without the other.
     """
     pyproject_version = _read_pyproject_version()
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    match = re.search(r"^## \[(\d+\.\d+\.\d+)\]", changelog, re.MULTILINE)
+    match = re.search(r"^## \[(\d+\.\d+\.\d+)\](.*)$", changelog, re.MULTILINE)
     assert match is not None, "No versioned release block (## [X.Y.Z]) found in CHANGELOG.md"
     changelog_version = match.group(1)
     assert changelog_version == pyproject_version, (
         f"CHANGELOG.md top entry [{changelog_version}] does not match "
         f"pyproject.toml version [{pyproject_version}] — update one to match the other"
     )
+    if os.environ.get("GITHUB_REF", "").startswith("refs/tags/"):
+        assert re.fullmatch(r" - \d{4}-\d{2}-\d{2}", match.group(2)), (
+            "CHANGELOG.md top entry must have a release date (YYYY-MM-DD) before tagging"
+        )
 
 
 @pytest.mark.release
