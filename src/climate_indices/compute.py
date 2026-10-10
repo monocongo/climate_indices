@@ -1703,25 +1703,30 @@ def _replace_zeros_with_nan(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]
     return zero_mask, values_copy
 
 
-def _native_float64(array: np.ndarray) -> bool:
-    """Whether the Rust kernels are installed and take ``array`` as it is.
+def _plain_float64(array: np.ndarray) -> bool:
+    """Whether an operand is a plain, aligned float64 array."""
+    return type(array) is np.ndarray and array.dtype == np.float64 and array.flags.aligned
 
-    They take aligned, plain float64 arrays only, with NumPy floating-point
-    errors ignored. Other policies and context-aware warning filters stay in
-    Python. Routing never retries a failed Rust call.
-    """
+
+def _native_policy_allows() -> bool:
+    """Whether Rust can preserve the caller's floating-point reporting policy."""
     return (
-        _native is not None
-        and type(array) is np.ndarray
-        and array.dtype == np.float64
-        and array.flags.aligned
-        and array.ctypes.data % array.dtype.alignment == 0
-        and all(policy == "ignore" for policy in np.geterr().values())
+        all(policy == "ignore" for policy in np.geterr().values())
         and not getattr(sys.flags, "context_aware_warnings", False)
         and not any(
             action == "error" and issubclass(RuntimeWarning, category) for action, _, category, _, _ in warnings.filters
         )
     )
+
+
+def _native_float64(array: np.ndarray) -> bool:
+    """Whether the extension can take an operand without changing reporting."""
+    return _native is not None and _plain_float64(array) and _native_policy_allows()
+
+
+def _native_float64s(*arrays: np.ndarray) -> bool:
+    """Check operand layouts and the shared reporting policy once per call."""
+    return _native is not None and all(_plain_float64(array) for array in arrays) and _native_policy_allows()
 
 
 def _as_columns(values: np.ndarray) -> np.ndarray:
@@ -1787,7 +1792,7 @@ def _native_pnp_percentages(
     scale_sums: np.ndarray, calibration_sums: np.ndarray, period_length: int
 ) -> np.ndarray | None:
     """The Rust PNP normals and their ratios, or None where the Python implementation runs."""
-    if not _native_float64(scale_sums) or not _native_float64(calibration_sums):
+    if not _native_float64s(scale_sums, calibration_sums):
         return None
     if _native is None:  # _native_float64 guarantees it; this narrows the type
         raise RuntimeError(_NATIVE_EXTENSION_MISSING)
@@ -1900,7 +1905,7 @@ def _native_loglogistic_cdf(
 
 def _native_tukey_probabilities(climatology: np.ndarray, values: np.ndarray, pads: np.ndarray) -> np.ndarray | None:
     """The Rust rank count and Tukey plotting position, or None where the Python implementation runs."""
-    if not _native_float64(climatology) or not _native_float64(values) or not hasattr(_native, "tukey_probabilities"):
+    if not _native_float64s(climatology, values) or not hasattr(_native, "tukey_probabilities"):
         return None
     if _native is None:  # _native_float64 guarantees it; this narrows the type
         raise RuntimeError(_NATIVE_EXTENSION_MISSING)

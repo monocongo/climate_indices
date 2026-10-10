@@ -134,7 +134,7 @@ def api_recurrence(
     native = _kernel_module("antecedent_precipitation_index", "NonFiniteResultError")
     if native is None or np.result_type(k, np.float64) != np.float64:
         return None
-    if not all(compute._native_float64(array) for array in (precipitation, api)):
+    if not compute._native_float64s(precipitation, api):
         return None
     days = precipitation.shape[0]
     cells = _cells(precipitation.shape[1:])

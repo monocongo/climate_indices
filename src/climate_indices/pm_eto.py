@@ -430,7 +430,7 @@ def actual_vapor_pressure_from_tmin(
 # ---------------------------------------------------------------------------
 
 
-def _native_operand(value: Any) -> np.ndarray | None:
+def _native_operand(value: Any) -> float | np.ndarray | None:
     """The operand as the kernels take it, or None when they cannot take it.
 
     A scalar narrower than float64 keeps its own dtype through the Python
@@ -443,57 +443,48 @@ def _native_operand(value: Any) -> np.ndarray | None:
         error policy the kernels do not take
     """
     if isinstance(value, np.ndarray):
-        return value if compute._native_float64(value) else None
+        return value if compute._plain_float64(value) else None
     if isinstance(value, float):
-        return np.asarray(value, dtype=np.float64)
+        return value
     return None
 
 
-def _native_arrays(*values: Any) -> tuple[tuple[int, ...], tuple[np.ndarray, ...]] | None:
-    """Flattened float64 kernel inputs and their broadcast shape, or None.
+def _native_arrays(
+    *values: Any, policy_checked: bool = False
+) -> tuple[tuple[int, ...], tuple[float | np.ndarray, ...]] | None:
+    """Resolve broadcasting, flatten real arrays, and leave constants unexpanded.
 
-    The Rust kernels take plain, aligned float64 arrays with NumPy floating-point
-    errors ignored, so scalars, every other dtype or layout, masked arrays, and
-    non-default error or warning policies stay on the Python path. An all-scalar
-    call stays there too, since its result is a NumPy scalar rather than an array.
-
-    The kernel reads one element per broadcast position and copies each operand before
-    it releases the GIL, so the route's peak is the caller's arrays, one flattened
-    input per operand, a copy of each operand inside the call, and the kernel's fixed
-    intermediates: a bounded multiple of the request. An operand that reaches every
-    position as a single value is passed as a zero-stride view of it, which is the one
-    expansion that would otherwise allocate in proportion to the request rather than
-    to the operand.
-
-    :param values: the operands of the operation, in kernel argument order
-    :return: the broadcast shape and one contiguous 1-D array per operand, or
-        None when the kernels cannot take these operands
+    All-scalar and all-0-D calls retain Python's scalar return type. Copies of
+    real arrays happen before detach; float operands allocate no element buffer.
     """
-    arrays: list[np.ndarray] = []
+    operands: list[float | np.ndarray] = []
     for value in values:
-        array = _native_operand(value)
-        if array is None:
+        operand = _native_operand(value)
+        if operand is None:
             return None
-        arrays.append(array)
-    if all(array.ndim == 0 for array in arrays):
+        operands.append(operand)
+    arrays = [operand for operand in operands if isinstance(operand, np.ndarray)]
+    if not any(array.ndim != 0 for array in arrays):
         return None
-
-    try:
-        broadcast = np.broadcast_arrays(*arrays)
-    except ValueError:
-        # let the Python expression raise the broadcasting error it always has
+    if not policy_checked and not compute._native_policy_allows():
         return None
-    elements = broadcast[0].size
-    return (
-        broadcast[0].shape,
-        tuple(
-            # a single value reaches every position: hand the kernel a view of it rather
-            # than a full-size array, which it would copy element by element anyway
-            np.broadcast_to(operand.reshape(1), (elements,))
-            if operand.size == 1 and elements > 1
-            else np.ascontiguousarray(expanded).reshape(-1)
-            for operand, expanded in zip(arrays, broadcast, strict=True)
-        ),
+    shape = next(array.shape for array in arrays if array.ndim != 0)
+    if not all(array.ndim == 0 or (array.shape == shape and array.flags.c_contiguous) for array in arrays):
+        try:
+            shape = np.broadcast_shapes(*(array.shape for array in arrays))
+        except ValueError:
+            return None  # Python raises its original broadcasting error
+    return shape, tuple(
+        (
+            float(operand.reshape(-1)[0])
+            if operand.size == 1
+            else np.ascontiguousarray(operand if operand.shape == shape else np.broadcast_to(operand, shape)).reshape(
+                -1
+            )
+        )
+        if isinstance(operand, np.ndarray)
+        else operand
+        for operand in operands
     )
 
 
@@ -1056,6 +1047,23 @@ def _native_penman_monteith_eto(
     ):
         return None
 
+    policy_checked = any(
+        isinstance(value, np.ndarray)
+        for value in (
+            daily_tmin_celsius,
+            daily_tmax_celsius,
+            latitude_degrees,
+            elevation_m,
+            wind_speed_m_s,
+            wind_speed_height_m,
+            day_of_year,
+            soil_heat_flux_mj_m2_day,
+            albedo,
+        )
+    )
+    if policy_checked and not compute._native_policy_allows():
+        return None
+
     # Eq 47 validates the measurement height before any pathway is chosen
     _validate_wind_measurement_height(wind_speed_height_m)
     humidity_variant, humidity_values = _humidity_pathway(humidity)
@@ -1075,16 +1083,17 @@ def _native_penman_monteith_eto(
         albedo,
         *humidity_values,
         *radiation_values,
+        policy_checked=policy_checked,
     )
     if prepared is None:
         return None
     shape, arrays = prepared
 
     offset = 9
-    tdew_celsius: np.ndarray | None = None
-    rh_min: np.ndarray | None = None
-    rh_max: np.ndarray | None = None
-    rh_mean: np.ndarray | None = None
+    tdew_celsius: float | np.ndarray | None = None
+    rh_min: float | np.ndarray | None = None
+    rh_max: float | np.ndarray | None = None
+    rh_mean: float | np.ndarray | None = None
     if humidity_variant == _HUMIDITY_DEWPOINT:
         (tdew_celsius,) = arrays[offset : offset + 1]
     elif humidity_variant == _HUMIDITY_RH_MIN_MAX:
@@ -1095,8 +1104,8 @@ def _native_penman_monteith_eto(
         (rh_mean,) = arrays[offset : offset + 1]
     offset += len(humidity_values)
 
-    solar_radiation: np.ndarray | None = None
-    sunshine_hours: np.ndarray | None = None
+    solar_radiation: float | np.ndarray | None = None
+    sunshine_hours: float | np.ndarray | None = None
     if radiation_variant == _RADIATION_SUPPLIED:
         (solar_radiation,) = arrays[offset : offset + 1]
     elif radiation_variant == _RADIATION_SUNSHINE:
