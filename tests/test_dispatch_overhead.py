@@ -30,6 +30,26 @@ def test_invalid_rss_worker_output_fails(monkeypatch: pytest.MonkeyPatch, tmp_pa
         harness.main()
 
 
+def test_rss_probe_requires_native_preparation(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(pm_eto, "_native_arrays", lambda *args: None)
+    with pytest.raises(RuntimeError, match="RSS probe could not prepare native operands"):
+        harness.rss_probe(2)
+
+
+@pytest.mark.parametrize("result", [None, np.zeros(3), np.zeros((2, 1))])
+def test_rss_probe_rejects_invalid_result(monkeypatch: pytest.MonkeyPatch, result: object) -> None:
+    monkeypatch.setattr(pm_eto, "penman_monteith_eto", lambda *args: result)
+    with pytest.raises(RuntimeError, match="RSS probe returned an unexpected result type or shape"):
+        harness.rss_probe(2)
+
+
+def test_main_requires_extension_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(harness.importlib, "import_module", lambda name: SimpleNamespace(__file__=None))
+    monkeypatch.setattr(sys, "argv", ["profile_dispatch_overhead.py", "--entries", "--sizes", "--rss-size", "0"])
+    with conftest.preserved_logging_state(), pytest.raises(RuntimeError, match="Native extension has no file path"):
+        harness.main()
+
+
 def test_summary_reports_median_and_iqr() -> None:
     assert harness.summary([1.0, 2.0, 3.0, 4.0, 5.0]) == {"median": 3.0, "q1": 2.0, "q3": 4.0, "iqr": 2.0}
 

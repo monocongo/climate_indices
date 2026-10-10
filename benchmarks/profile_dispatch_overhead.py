@@ -19,7 +19,7 @@ import json
 import platform
 import pstats
 import resource
-import subprocess
+import subprocess  # nosec B404 # fixed metadata commands and interpreter argv; no shell
 import sys
 import time
 from collections.abc import Callable
@@ -158,10 +158,12 @@ def rss_probe(size: int) -> dict[str, Any]:
     before = peak()
     with native_policy():
         prepared = pm_eto._native_arrays(low, high, 45.0, 100.0, 2.0, 2.0, day, 0.0, 0.23)
-        assert prepared is not None
+        if prepared is None:
+            raise RuntimeError("RSS probe could not prepare native operands")
         after_prep = peak()
         result = pm_eto.penman_monteith_eto(low, high, 45.0, 100.0, 2.0, day)
-        assert isinstance(result, np.ndarray) and result.shape == (size,)
+        if not isinstance(result, np.ndarray) or result.shape != (size,):
+            raise RuntimeError("RSS probe returned an unexpected result type or shape")
     return {
         "elements": size,
         "rss_before_bytes": before,
@@ -244,7 +246,8 @@ def main() -> None:
     entries = list(available.values()) if args.entries is None else [available[name] for name in args.entries]
     logging_config.configure_logging(log_format="console", log_level="INFO")
     extension_file = importlib.import_module("climate_indices._native").__file__
-    assert extension_file is not None
+    if extension_file is None:
+        raise RuntimeError("Native extension has no file path")
     metadata = {
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "label": args.label,
