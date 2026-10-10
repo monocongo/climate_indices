@@ -68,7 +68,7 @@ Sources: [benchmark methodology and committed artifacts](https://github.com/mono
 | CFFWIS (Canadian FWI) | NRCan reference | within 1e-9 |
 | SPEI | SPEIbase v2.11 / R SPEI | input-matched cross-implementation checks; separate gamma/Thornthwaite plausibility floors |
 | KBDI | Keetch & Byram (1968), Figure 1 | reproduces the published record |
-| Hot-Dry-Windy | Srock et al. (2018) case study | reproduces the case study |
+| Hot-Dry-Windy | Srock et al. (2018) case study | reproduces fire-day peak timing; magnitudes characterization only |
 | Penman-Monteith PET | FAO-56 Examples 10–16 and 18 | matches worked examples |
 
 The flood family has no external numeric oracle yet; the release notes call this out as a validation gap. Anyone can rerun the external checks with `pytest -m validation`.
