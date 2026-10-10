@@ -7,18 +7,17 @@ what each one is and which of its facts are verified), the self-calibrating
 Palmer index is computed from each, and the runs are compared.
 
 Default test region
-    ``--region -100,-99,38,39`` -- a 1 degree by 1 degree box in the Colorado /
+    ``--region=-100,-99,38,39`` -- a 1 degree by 1 degree box in the Colorado /
     Kansas border country (west, east, south, north in degrees), snapped to the
     climate grid's cells. It is small enough to run on a laptop and spans a
     precipitation gradient with real soil variability. ``--region`` and
     ``--max-cells`` override it.
 
 What is measured
-    Ingest+harmonization and the scPDSI run are timed and their peak resident
-    memory measured **separately**, each in its own subprocess (``ru_maxrss`` of
-    that child), because once both sources are on the same grid the PDSI cost is
-    nearly identical and the real difference is in ingest. Every source is run
-    with the same period, calibration window, grid, and depth.
+    Ingest+harmonization and the end-to-end ingest+scPDSI+output run are timed
+    in separate subprocesses (``ru_maxrss`` of each child). The latter includes
+    another ingest and NetCDF output I/O; it is not isolated scPDSI cost.
+    Every source is run with the same period, calibration window, grid, and depth.
 
 What is compared
     Per source: AWS field mean, range, and percent of cells filled. Per pair of
@@ -41,7 +40,7 @@ Usage::
 
     uv run benchmarks/benchmark_pdsi_soils.py \\
         --precip /path/nclimgrid_lowres_prcp.nc --pet /path/nclimgrid_lowres_pet.nc \\
-        --region -100,-99,38,39 --depths native,1000,1500 \\
+        --region=-100,-99,38,39 --depths native,1000,1500 \\
         --out /tmp/aws-benchmark
 
 Reading remote POLARIS tiles needs the optional geospatial dependencies
@@ -165,8 +164,9 @@ def _open_climate(path: str, variable: str | None, *, period: tuple[str, str] | 
         field.attrs["units"] = "mm"
     elif units not in {"mm", "millimeter", "millimeters", "millimetre", "millimetres"}:
         raise SystemExit(f"{path}[{variable}]: unsupported units {units!r}; expected mm or inches")
-    # the Palmer recursion indexes calendar months from January and needs a
-    # continuous monthly record
+    months = pd.DatetimeIndex(field["time"].values).to_period("M")
+    if months.empty or pd.Timestamp(field["time"].values[0]).month != 1 or not np.all(np.diff(months.asi8) == 1):
+        raise SystemExit(f"{path}[{variable}]: expected a nonempty, contiguous monthly record beginning in January")
     return field.transpose("time", "lat", "lon")
 
 
@@ -189,6 +189,10 @@ def _scpdsi_field(
     from climate_indices import palmer
     from climate_indices.exceptions import ConvergenceError, InsufficientDataError
 
+    try:
+        precip, pet, aws = xr.align(precip, pet, aws, join="exact")
+    except ValueError as error:
+        raise SystemExit("precipitation, PET and AWS must share exact time and spatial coordinates") from error
     latitudes = aws["lat"].values
     longitudes = aws["lon"].values
     if latitudes.size * longitudes.size > max_cells:
@@ -321,7 +325,7 @@ def _ingest(args: argparse.Namespace, source: str, depth: str) -> HarmonizedAws:
 
 
 def _run_pdsi_phase(args: argparse.Namespace, source: str, depth: str) -> PhaseResult:
-    """Compute scPDSI from one harmonized AWS field and report cost."""
+    """Measure end-to-end ingestion, scPDSI computation, and output I/O."""
     result = PhaseResult(source=source, depth_mm=depth, phase="pdsi")
     started = time.perf_counter()
     try:
@@ -355,7 +359,10 @@ def _run_pdsi_phase(args: argparse.Namespace, source: str, depth: str) -> PhaseR
 
 def _scpdsi_cache_path(args: argparse.Namespace, source: str, depth: str) -> Path:
     """Location of one run's scPDSI field, used by the comparison phase."""
-    return Path(args.out) / "scpdsi" / f"scpdsi_{source}_{depth}.nc"
+    if source not in aws_ingest.AWS_SOURCES or Path(source).name != source:
+        raise AwsIngestError(f"invalid soil source {source!r}")
+    depth_label = "native" if depth == "native" else f"{float(depth):g}"
+    return Path(args.out) / "scpdsi" / f"scpdsi_{source}_{depth_label}.nc"
 
 
 def _save_scpdsi(args: argparse.Namespace, source: str, depth: str, values: xr.DataArray) -> None:
@@ -380,12 +387,11 @@ def _child_command(args: argparse.Namespace, phase: str, source: str, depth: str
         str(args.precip),
         "--pet",
         str(args.pet),
-        "--region",
-        ",".join(str(value) for value in args.region),
+        "--region=" + ",".join(str(value) for value in args.region),
         "--calibration",
         ",".join(str(year) for year in args.calibration),
         "--period",
-        f"{args.calibration[0]}-01-01,{args.calibration[1]}-12-01",
+        ",".join(args.period),
         "--max-cells",
         str(args.max_cells),
         "--out",
@@ -436,7 +442,7 @@ def _load_scpdsi(args: argparse.Namespace, source: str, depth: str) -> xr.DataAr
 
 
 def _pairwise_rows(args: argparse.Namespace, available: list[tuple[str, str]]) -> list[dict[str, Any]]:
-    """Compare every pair of successfully ingested sources for each depth."""
+    """Compare sources with successful scPDSI outputs from this run."""
     rows: list[dict[str, Any]] = []
     depths = sorted({depth for _, depth in available}, key=lambda depth: (depth != "native", depth))
     for depth in depths:
@@ -467,10 +473,10 @@ def _summary(ingest_rows: list[PhaseResult], pdsi_rows: list[PhaseResult], pairw
         )
     for row in pdsi_rows:
         if row.note.startswith("unavailable") or row.note.startswith("phase failed"):
-            lines.append(f"scPDSI {row.source} ({row.depth_mm}): {row.note}")
+            lines.append(f"ingest+scPDSI+output {row.source} ({row.depth_mm}): {row.note}")
             continue
         lines.append(
-            f"scPDSI {row.source} ({row.depth_mm}): {row.elapsed_s:.1f}s / {row.peak_rss_mb:.0f} MiB "
+            f"ingest+scPDSI+output {row.source} ({row.depth_mm}): {row.elapsed_s:.1f}s / {row.peak_rss_mb:.0f} MiB "
             f"over {row.cells} cells x {row.months} months"
         )
     if pairwise:
@@ -572,14 +578,16 @@ def main() -> int:
         for depth in depths:
             ingest = _run_child(args, "ingest", source, depth)
             ingest_rows.append(ingest)
-            if not ingest.note.startswith(("unavailable", "phase failed")):
+            _scpdsi_cache_path(args, source, depth).unlink(missing_ok=True)
+            pdsi = _run_child(args, "pdsi", source, depth)
+            pdsi_rows.append(pdsi)
+            if not pdsi.note.startswith(("unavailable", "phase failed")):
                 available.append((source, depth))
-            pdsi_rows.append(_run_child(args, "pdsi", source, depth))
 
     ingest_table = pd.DataFrame([row.__dict__ for row in ingest_rows])
     ingest_table.insert(0, "kind", "ingest+harmonization")
     pdsi_table = pd.DataFrame([row.__dict__ for row in pdsi_rows])
-    pdsi_table.insert(0, "kind", "scPDSI run")
+    pdsi_table.insert(0, "kind", "ingest+scPDSI+output")
     combined = pd.concat([ingest_table, pdsi_table], ignore_index=True)
     combined_path = Path(args.out) / "aws_sources.csv"
     combined.drop(columns=["extra"]).to_csv(combined_path, index=False)
