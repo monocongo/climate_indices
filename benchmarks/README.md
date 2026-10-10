@@ -1205,3 +1205,158 @@ Reading the full grid:
 - The two samples of a configuration differ by up to 1.4x in a few rows (Python
   EDDI eager 9.58 s and 6.68 s, Rust SPEI eager 37.13 s and 26.51 s); the best
   sample is reported and both are in the artifact.
+
+## Dispatch and PM optimization (#1281 / #1324)
+
+Measured 2026-10-10 on Apple M5, macOS arm64, CPython 3.14.7, NumPy 2.4.2,
+SciPy 1.17.0, pinned Rust 1.99.0 (`b940084d7`). Baseline: `origin/main`
+`74fef017`, with only the new harness added. No Xeon or AVX-512 measurements
+are claimed. Thirty timed calls per backend after warm-up, alternating public
+backend order; library-default console INFO logging, output redirected to files.
+No checks from this session ran concurrently with the retained comparison;
+other host load was uncontrolled. IQR is Q3−Q1, not a confidence interval. Changes in untouched rows and Python timings show host/run
+variation; ratios compare backends within each run.
+
+```bash
+uv sync && uv run maturin develop --release
+uv run python benchmarks/profile_dispatch_overhead.py --label before-full
+# after the implementation and release rebuild:
+uv run python benchmarks/profile_dispatch_overhead.py --label after-final --profile
+```
+
+Raw samples and metadata are in
+[`before-full-20261010T004923Z.json`](results/before-full-20261010T004923Z.json),
+[`phase0-isolated-20261010T005447Z.json`](results/phase0-isolated-20261010T005447Z.json),
+and [`after-final-20261010T011635Z.json`](results/after-final-20261010T011635Z.json).
+The final artifact includes source/extension SHA-256 digests because the measured
+implementation was uncommitted, and carries the same kernels as the committed
+tree; the shipped harness differs from the measured one only in metadata and
+completion-flag code that runs outside the timed calls. Prep is paired public-minus-prepared-extension
+replay time; it includes validation, orchestration, logging, and any remaining
+Python computation. It is an estimate, not an independently isolated timer.
+Raw replay sums every captured extension call and includes binding copies and
+allocation, not only Rust arithmetic. Every required registry kernel must run.
+
+### All original registry entries
+
+Times: median microseconds (IQR microseconds). Ratios: Python/native; above 1
+favors native. Original registry inputs, fixtures, and numerical assertions are
+unchanged. The new KS entry is reported separately below.
+
+| Entry | Native before µs (IQR) | Native after µs (IQR) | Python before→after µs (IQR) | Python/native before→after |
+| --- | ---: | ---: | ---: | ---: |
+| `spi_gamma` | 303.21 (11.81) | 318.77 (15.70) | 346.79 (10.78) → 368.77 (12.60) | 1.14 → 1.16 |
+| `spi_gamma_mean_zero` | 349.19 (16.51) | 367.98 (17.46) | 386.79 (8.23) → 413.96 (11.56) | 1.11 → 1.12 |
+| `spi_pearson` | 848.31 (24.55) | 329.50 (11.39) | 1040.85 (26.42) → 1100.25 (34.07) | 1.23 → 3.34 |
+| `spei_loglogistic` | 216.75 (6.68) | 227.71 (6.43) | 340.02 (10.66) → 355.77 (6.97) | 1.57 → 1.56 |
+| `spi_gamma_spatial_block` | 377.31 (13.90) | 394.42 (20.36) | 438.69 (11.86) → 463.67 (18.47) | 1.16 → 1.18 |
+| `spei_gamma` | 306.23 (10.05) | 321.58 (7.51) | 356.85 (9.98) → 377.06 (6.34) | 1.17 → 1.17 |
+| `percentage_of_normal` | 51.31 (2.89) | 53.54 (3.39) | 55.67 (2.46) → 60.17 (2.93) | 1.08 → 1.12 |
+| `eddi` | 168.27 (4.80) | 153.31 (6.86) | 262.79 (7.13) → 276.77 (6.63) | 1.56 → 1.81 |
+| `eddi_spatial_block` | 211.52 (5.56) | 197.29 (4.73) | 388.08 (10.48) → 401.40 (7.91) | 1.83 → 2.03 |
+| `pci` | 51.48 (2.73) | 51.96 (2.41) | 51.77 (3.54) → 53.96 (2.23) | 1.01 → 1.04 |
+| `fit_diagnostics` | 1893.42 (73.11) | 1976.29 (27.54) | 1891.60 (49.15) → 1990.35 (34.15) | 1.00 → 1.01 |
+| `thornthwaite` | 29.71 (4.69) | 30.33 (5.53) | 6536.35 (123.30) → 6772.40 (78.01) | 220.02 → 223.27 |
+| `hargreaves` | 105.06 (7.03) | 107.19 (9.15) | 3632.58 (56.07) → 3792.62 (94.54) | 34.58 → 35.38 |
+| `penman_monteith` | 133.12 (4.43) | 100.65 (3.47) | 114.98 (5.77) → 120.17 (6.05) | 0.86 → 1.19 |
+| `pm_eto_intermediates` | 17.60 (0.55) | 10.08 (0.38) | 7.96 (0.23) → 8.48 (0.28) | 0.45 → 0.84 |
+| `fire_ffmc` | 217.02 (15.73) | 225.12 (11.57) | 9770.50 (150.56) → 10197.67 (113.66) | 45.02 → 45.30 |
+| `fire_duff_moisture_code` | 234.90 (9.81) | 243.75 (11.79) | 8686.75 (122.00) → 9101.88 (101.70) | 36.98 → 37.34 |
+| `fire_drought_code` | 221.29 (12.71) | 229.62 (8.28) | 8300.00 (152.05) → 8675.85 (112.26) | 37.51 → 37.78 |
+| `fire_kbdi` | 200.00 (13.94) | 204.25 (11.85) | 8619.79 (231.19) → 8991.94 (134.29) | 43.10 → 44.02 |
+| `flood_pe` | 21.00 (1.12) | 20.85 (0.61) | 48.94 (3.08) → 51.67 (1.91) | 2.33 → 2.48 |
+| `flood_edi` | 33.90 (3.75) | 35.44 (1.98) | 71.21 (46.93) → 75.73 (3.81) | 2.10 → 2.14 |
+| `flood_flood_index` | 34.10 (2.15) | 34.69 (1.83) | 75.40 (45.76) → 76.58 (2.52) | 2.21 → 2.21 |
+| `flood_api` | 167.08 (8.99) | 177.25 (21.19) | 7511.06 (143.03) → 7985.54 (175.38) | 44.95 → 45.05 |
+| `palmer_pdsi` | 170.67 (23.08) | 190.19 (72.61) | 34559.33 (287.23) → 37120.29 (411.45) | 202.50 → 195.18 |
+| `palmer_scpdsi` | 244.44 (13.15) | 250.75 (38.44) | 15805.54 (273.59) → 16473.56 (245.41) | 64.66 → 65.70 |
+
+Supplemental SPEI Pearson (not a registry-input change): native 847.31 (38.08)
+→ 333.31 (9.61) µs; Python 1033.10 (41.47) → 1094.67 (25.59) µs;
+ratio 1.22→3.28. Its baseline and pre-port profiles are in
+[`phase2-before-20261010T010958Z.json`](results/phase2-before-20261010T010958Z.json).
+The new `pearson_ks_statistics` primitive is 23.40 (1.54) µs native versus
+584.73 (10.36) µs through the SciPy oracle (24.99×), with no pre-port native row.
+
+### PM attribution and realistic astronomy
+
+Station terms use exact-bit single-entry caches; astronomy uses a verified-key
+1024-slot direct-mapped cache. Eq 6 shares one scalar expression and no longer
+requires seven intermediate arrays. Squaring follows NumPy's `np.square` fast
+path (`x*x`); fourth powers retain `powf(4.0)`. Constants cross PyO3 as floats;
+real arrays are copied before detach. Multi-operand guards check reporting once.
+`_recurrence.py` delegates to the audited fire/flood closures and has no additional
+`_native_float64` call to change.
+
+PM prep: 39.29 (3.47)→12.71 (2.57) µs; Eq 6 prep: 13.58 (0.32)→5.67 (0.56) µs.
+Prepared PM extension time: 92.69 (2.58)→87.98 (1.05) µs for the registry's
+monotonic-day case. Its remaining astronomy cost cannot be cached across unique
+keys. Eq 6's all-array fast path avoids an operand-variant branch per element;
+without it, the phase-1 probe regressed the registry's raw call from 4.33 to
+7.67 µs. The final raw call is 4.46 (0.28) µs, versus baseline 4.08 (0.17) µs.
+Eq 6 remains slower than NumPy on this host; the task's ≈1.1× target is not met.
+No hardware-specific routing threshold was introduced from one laptop run.
+
+Separate sweep cases cycle days 1–365 or use monotonic days. They do not alter
+`parity_registry.py`'s Penman-Monteith input. These cases use the temperature-range
+radiation/minimum-temperature humidity paths; the registry uses RHmin/RHmax and
+sunshine, so absolute times are not interchangeable.
+
+| n | Cycling native µs (IQR) | Cycling Python µs (IQR) | Cycling ratio | Monotonic native µs (IQR) | Monotonic Python µs (IQR) | Monotonic ratio |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 365 | 28.75 (0.57) | 47.40 (0.90) | 1.65 | 28.62 (0.34) | 47.17 (0.49) | 1.65 |
+| 1826 | 64.81 (0.77) | 110.44 (2.05) | 1.70 | 98.12 (2.82) | 111.42 (3.28) | 1.14 |
+| 18262 | 456.67 (5.35) | 841.44 (14.25) | 1.84 | 834.12 (15.02) | 855.21 (17.57) | 1.03 |
+| 146000 | 3512.44 (22.28) | 6476.33 (53.08) | 1.84 | 6564.73 (66.32) | 6531.06 (49.34) | 1.00 |
+| 1000000 | 24022.02 (86.47) | 45210.92 (253.80) | 1.88 | 44873.40 (224.73) | 45557.85 (202.80) | 1.02 |
+
+At 10⁶, prepared extension costs are 23.64 ns/element cycling and 44.45 monotonic.
+The artifacts also contain all requested sizes for Eq 6, Thornthwaite, and
+Hargreaves. A fresh-process 10⁷-element PM RSS probe hands over three real arrays
+(240 MB) and six scalar operands. Prep peak RSS increases by 0 bytes; whole-call
+peak rises from 426,983,424 to 827,523,072 bytes. This does not mean the entire
+call is allocation-free: real-array copies and the returned array remain O(n).
+
+### Profile gates, parity, and follow-ups
+
+Thirty production-logging calls under `cProfile`, before the Pearson port:
+
+| Entry | Existing Rust seams at zero time | Existing seams + KS D at zero | Entire GoF + existing seams at zero (upper bound) |
+| --- | ---: | ---: | ---: |
+| `spi_gamma` | 1.04 | 1.11 | 1.28 |
+| `spei_gamma` | 1.03 | 1.11 | 1.28 |
+| `spi_pearson` | 1.02 | 1.05 | 2.76 |
+| `spei_pearson` | 1.02 | 1.05 | 2.78 |
+| `spei_loglogistic` | 1.01 | 1.01 | 1.01 |
+| `percentage_of_normal` | 1.01 | 1.01 | 1.01 |
+
+Profiling attribution is not unprofiled latency. The last column deliberately
+includes work that cannot all move (warning decisions, exact p-values): even
+that optimistic bound is below ≈1.3× for Gamma/SPEI/PNP → no further porting.
+Pearson's CDF-heavy GoF path justified batching calibration CDF→D in Rust.
+Python still filters warning candidates, computes critical values and exact
+p-values, and emits the original warning text. Near-boundary statistics use
+SciPy rather than changing the decision at a last-bit difference. Full
+fit→transform fusion and spatial GoF porting were not needed for the measured
+station improvement and remain separate proposals, not silently added scope.
+
+`rtol = atol = 1e-10` is unchanged. The cached PM kernel is bit-identical to an
+independent uncached Rust evaluation across changing station inputs, NaNs,
+cycling/monotonic days, and collisions. Registry maxima on this host: new KS
+D max abs 3.331e-16, max rel 1.830e-15; PM max abs 8.882e-16, max rel 4.337e-16;
+Eq 6 is exact. Warning text/metadata and near-threshold routing have regression
+tests. Existing parity-test changes only update strict kernel-call expectations
+for the new seam (and scalar-boundary assertions), not oracle values/tolerances.
+
+- SIMD investigation deferred: realistic cycling PM already exceeds 1.5× at
+  n≥10⁵ here. Monotonic PM still ties; no vector-libm or parity relaxation was
+  attempted. #1281 follow-up: repeat on Xeon/AVX-512 before deciding whether a
+  separate default-off experiment is justified.
+- PCI and `fit_diagnostics` remain expected ≈1.0×: validation dominates PCI;
+  unported SciPy KS testing dominates diagnostics. Keep both existing dispatches
+  for consistent routing and reuse by other callers; these data do not justify
+  further porting or claim a useful standalone speedup.
+- #1281: Eq 6 still loses on M5; assess measured crossover/routing on additional
+  hosts. No registry input change or numerical improvement masks that result.
+- #1324: raw samples, revision/runtime metadata, final source/extension digests,
+  profiles and RSS are now durable. Remote/isolated-host repeat runs remain open.
