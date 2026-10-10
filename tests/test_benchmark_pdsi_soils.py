@@ -17,7 +17,8 @@ from climate_indices.aws_ingest import AwsIngestError
 def soil_benchmark(monkeypatch):
     path = Path(__file__).resolve().parents[1] / "benchmarks" / "benchmark_pdsi_soils.py"
     spec = importlib.util.spec_from_file_location("benchmark_pdsi_soils_test", path)
-    assert spec and spec.loader
+    assert spec is not None
+    assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     monkeypatch.setitem(sys.modules, spec.name, module)
     spec.loader.exec_module(module)

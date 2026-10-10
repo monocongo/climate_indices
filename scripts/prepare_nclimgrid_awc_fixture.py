@@ -51,7 +51,6 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import cast
-from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 import numpy as np
@@ -151,7 +150,7 @@ def _remote_size(url: str) -> int | None:
         with urlopen(Request(url, method="HEAD"), timeout=60) as response:  # noqa: S310 - publisher tiles
             length = response.headers.get("Content-Length")
         return int(length) if length is not None else None
-    except (URLError, OSError, ValueError):
+    except (OSError, ValueError):
         return None
 
 
@@ -170,34 +169,46 @@ def _tail_readable(path: Path) -> bool:
         return False
 
 
+def _tile_complete(path: Path, expected: int | None) -> bool:
+    """Whether a tile has its declared length and a readable last row."""
+    return path.exists() and (expected is None or path.stat().st_size == expected) and _tail_readable(path)
+
+
+def _prepare_partial(partial: Path, path: Path, expected: int | None) -> int | None:
+    """Return the resume offset, or publish an already complete partial tile."""
+    have = partial.stat().st_size if partial.exists() else 0
+    if expected is not None and have >= expected:
+        if _tile_complete(partial, expected):
+            partial.replace(path)
+            return None
+        partial.unlink()
+        return 0
+    return have
+
+
 def _fetch_tile(url: str, path: Path) -> str:
     """Download one tile resumably, verifying its declared length and last row."""
     expected = _remote_size(url)
-    if path.exists() and (expected is None or path.stat().st_size == expected) and _tail_readable(path):
+    if _tile_complete(path, expected):
         return "cached"
     path.parent.mkdir(parents=True, exist_ok=True)
     partial = path.with_suffix(path.suffix + ".part")
     for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
-        have = partial.stat().st_size if partial.exists() else 0
-        if expected is not None and have >= expected:
-            if have == expected and _tail_readable(partial):
-                partial.replace(path)
-                return "downloaded"
-            partial.unlink()
-            have = 0
+        have = _prepare_partial(partial, path, expected)
+        if have is None:
+            return "downloaded"
         try:
             request = Request(url)
             if have:
                 request.add_header("Range", f"bytes={have}-")
             with urlopen(request, timeout=120) as response, partial.open("ab") as target:  # noqa: S310 - publisher tiles
                 shutil.copyfileobj(response, target)
-        except (URLError, OSError) as error:
+        except OSError as error:
             if attempt == DOWNLOAD_ATTEMPTS:
                 raise SystemExit(f"could not download {url} after {attempt} attempts: {error}") from error
             time.sleep(2.0 * attempt)
             continue
-        size = partial.stat().st_size if partial.exists() else 0
-        if (expected is None or size == expected) and _tail_readable(partial):
+        if _tile_complete(partial, expected):
             partial.replace(path)
             return "downloaded"
         time.sleep(2.0 * attempt)
@@ -266,15 +277,13 @@ def main() -> int:
     tiles_dir = cache_dir / "tiles"
     targets = _tile_targets(climate, tiles_dir)
     print(_describe(climate, targets))
-    if arguments.dry_run:
-        return 0
-
-    _ensure_tiles(targets)
-    path = _build_fixture(climate, tiles_dir, cache_dir / "harmonized")
-    digest = _sha256(path)
-    print(f"wrote {path.relative_to(_ROOT)}")
-    print(f"checksum_sha256: {digest}")
-    print("update tests/fixture/nclimgrid_awc/provenance.json with this digest")
+    if not arguments.dry_run:
+        _ensure_tiles(targets)
+        path = _build_fixture(climate, tiles_dir, cache_dir / "harmonized")
+        digest = _sha256(path)
+        print(f"wrote {path.relative_to(_ROOT)}")
+        print(f"checksum_sha256: {digest}")
+        print("update tests/fixture/nclimgrid_awc/provenance.json with this digest")
     return 0
 
 

@@ -265,7 +265,8 @@ def test_fill_land_holes_fills_inside_land_and_leaves_water_missing():
 
     assert filled[0, 0] == pytest.approx(20.0)
     assert not flag[0, 1]
-    assert flag[0, 0] and flag[1, 1]
+    assert flag[0, 0]
+    assert flag[1, 1]
     assert not flag[1, 0]  # not land: stays missing
     assert bool(np.isnan(filled[1, 0]))
 
@@ -648,7 +649,7 @@ def test_polaris_tile_read_retries_a_transient_transport_failure(monkeypatch, tm
         return xr.DataArray([[1.0]], coords={"lat": [38.5], "lon": [-99.5]}, dims=["lat", "lon"])
 
     monkeypatch.setattr(aws_ingest, "_open_raster_window", flaky)
-    field = aws_ingest._polaris_parameter("alpha", "30_60", tmp_path, bounds, lat_dim="lat", lon_dim="lon")
+    field = aws_ingest._polaris_parameter("alpha", "30_60", tmp_path, bounds)
 
     assert len(calls) == 3, "a retryable failure must be retried until it succeeds"
     assert field.name == "alpha"
@@ -658,7 +659,7 @@ def test_polaris_tile_read_retries_a_transient_transport_failure(monkeypatch, tm
 
     monkeypatch.setattr(aws_ingest, "_open_raster_window", always_failing)
     with pytest.raises(SourceUnavailableError, match="after 3 attempts"):
-        aws_ingest._polaris_parameter("n", "30_60", tmp_path, bounds, lat_dim="lat", lon_dim="lon")
+        aws_ingest._polaris_parameter("n", "30_60", tmp_path, bounds)
 
 
 def test_raster_window_keeps_pixels_intersecting_bounds(tmp_path):

@@ -76,6 +76,8 @@ DEFAULT_REGION = (-100.0, -99.0, 38.0, 39.0)
 #: Default soil depths: each source's own column, then a shared shallower column.
 DEFAULT_DEPTHS = ("native", "1000")
 
+_PHASE_FAILED = "phase failed"
+
 #: Drought categories as (label, lower bound inclusive, upper bound exclusive),
 #: most severe first, over the CPC Palmer severity ladder carrying USDM labels.
 _PALMER_CATEGORIES: tuple[tuple[str, float, float], ...] = (
@@ -288,7 +290,7 @@ def _run_ingest_phase(args: argparse.Namespace, source: str, depth: str) -> Phas
     started = time.perf_counter()
     try:
         harmonized = _ingest(args, source, depth)
-    except (AwsIngestError, ClimateIndicesError, OSError) as error:
+    except (ClimateIndicesError, OSError) as error:
         result.elapsed_s = time.perf_counter() - started
         result.note = f"unavailable: {type(error).__name__}: {error}"
         _logger.warning("aws_source_unavailable", source=source, depth_mm=depth, error=str(error))
@@ -346,7 +348,7 @@ def _run_pdsi_phase(args: argparse.Namespace, source: str, depth: str) -> PhaseR
         result.cells = int(np.isfinite(values).any(axis=0).sum())
         result.months = int(precip.sizes["time"])
         _save_scpdsi(args, source, depth, scpdsi)
-    except (AwsIngestError, ClimateIndicesError, OSError) as error:
+    except (ClimateIndicesError, OSError) as error:
         result.elapsed_s = time.perf_counter() - started
         result.note = f"unavailable: {type(error).__name__}: {error}"
         _logger.warning("scpdsi_phase_unavailable", source=source, depth_mm=depth, error=str(error))
@@ -411,7 +413,7 @@ def _child_command(args: argparse.Namespace, phase: str, source: str, depth: str
 
 def _run_child(args: argparse.Namespace, phase: str, source: str, depth: str) -> PhaseResult:
     """Run one phase in a subprocess so its peak memory is that phase's alone."""
-    completed = subprocess.run(  # noqa: S603 - argv is built here, not from user text
+    completed = subprocess.run(  # noqa: S603  # argv is built here, not from user text
         _child_command(args, phase, source, depth),
         capture_output=True,
         text=True,
@@ -422,7 +424,7 @@ def _run_child(args: argparse.Namespace, phase: str, source: str, depth: str) ->
             source=source,
             depth_mm=depth,
             phase=phase,
-            note=f"phase failed (exit {completed.returncode}): {completed.stderr.strip().splitlines()[-1:]}",
+            note=f"{_PHASE_FAILED} (exit {completed.returncode}): {completed.stderr.strip().splitlines()[-1:]}",
         )
     payload = json.loads(completed.stdout.strip().splitlines()[-1])
     payload.setdefault("extra", {})
@@ -463,7 +465,7 @@ def _summary(ingest_rows: list[PhaseResult], pdsi_rows: list[PhaseResult], pairw
     """A short human-readable summary of the run."""
     lines = ["AWC/AWS source comparison (scPDSI)", ""]
     for row in ingest_rows:
-        if row.note.startswith("unavailable") or row.note.startswith("phase failed"):
+        if row.note.startswith(("unavailable", _PHASE_FAILED)):
             lines.append(f"{row.source} ({row.depth_mm}): {row.note}")
             continue
         lines.append(
@@ -472,7 +474,7 @@ def _summary(ingest_rows: list[PhaseResult], pdsi_rows: list[PhaseResult], pairw
             f"filled {row.filled_percent:.2f}%"
         )
     for row in pdsi_rows:
-        if row.note.startswith("unavailable") or row.note.startswith("phase failed"):
+        if row.note.startswith(("unavailable", _PHASE_FAILED)):
             lines.append(f"ingest+scPDSI+output {row.source} ({row.depth_mm}): {row.note}")
             continue
         lines.append(
@@ -581,7 +583,7 @@ def main() -> int:
             _scpdsi_cache_path(args, source, depth).unlink(missing_ok=True)
             pdsi = _run_child(args, "pdsi", source, depth)
             pdsi_rows.append(pdsi)
-            if not pdsi.note.startswith(("unavailable", "phase failed")):
+            if not pdsi.note.startswith(("unavailable", _PHASE_FAILED)):
                 available.append((source, depth))
 
     ingest_table = pd.DataFrame([row.__dict__ for row in ingest_rows])

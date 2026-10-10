@@ -203,6 +203,8 @@ POLARIS_READ_BACKOFF_S = 2.0
 #: Absolute tolerance, in millimetres, for "this depth is within the native column".
 _DEPTH_TOLERANCE_MM = 1e-6
 
+_TOTAL_WATER_LONG_NAME = "Total plant-available water"
+
 Bounds = tuple[float, float, float, float]  # (west, south, east, north) in degrees
 
 
@@ -409,7 +411,7 @@ def integrate_depth(
     total = (storage_mm * included).sum(dim=layer_dim, skipna=False)
     return cast(
         xr.DataArray,
-        total.assign_attrs(units="mm", long_name="Total plant-available water", aws_depth_mm=float(depth_mm)),
+        total.assign_attrs(units="mm", long_name=_TOTAL_WATER_LONG_NAME, aws_depth_mm=float(depth_mm)),
     )
 
 
@@ -930,8 +932,8 @@ def _open_raster_window(path_or_url: str, bounds: Bounds | None, *, eager: bool 
         if nodata is not None and np.isfinite(nodata):
             field = field.where(field != nodata)
         for dim in ("lat", "lon"):
-            if dim in field.dims and field[dim].size > 1 and float(field[dim][0]) > float(field[dim][-1]):
-                field = field.isel({dim: slice(None, None, -1)})
+            if dim in field.dims:
+                field = field.sortby(dim)
         if bounds is not None:
             west, south, east, north = bounds
             # Keep intersecting pixels; area weights trim their partial overlaps.
@@ -1121,7 +1123,7 @@ def _usgs_aws(
     # published units are mm of available water per metre of soil over a 100 cm
     # column, so one metre makes the value numerically the column total in mm
     storage = values.expand_dims(layer=[spec.layers_mm[0][0]])
-    storage = storage.astype(float).assign_attrs(units="mm", long_name="Total plant-available water")
+    storage = storage.astype(float).assign_attrs(units="mm", long_name=_TOTAL_WATER_LONG_NAME)
     return harmonize_aws(
         storage,
         climate,
@@ -1173,7 +1175,7 @@ def _polaris_aws(
             if included_fraction <= 0.0:
                 continue
             parameters = {
-                parameter: _polaris_parameter(parameter, name, raw_dir, bounds, lat_dim=lat_dim, lon_dim=lon_dim)
+                parameter: _polaris_parameter(parameter, name, raw_dir, bounds)
                 for parameter in ("alpha", "n", "theta_r", "theta_s")
             }
             fraction = xr.apply_ufunc(
@@ -1203,7 +1205,7 @@ def _polaris_aws(
     total_mm = xr.concat(strips, dim=lat_dim).sel({lat_dim: latitudes})
     total_mm = total_mm.assign_attrs(
         units="mm",
-        long_name="Total plant-available water",
+        long_name=_TOTAL_WATER_LONG_NAME,
         aws_layers_used=json.dumps([name for name, _, _ in needed_layers]),
     )
     return finalize_aws(
@@ -1280,9 +1282,6 @@ def _polaris_parameter(
     layer: str,
     raw_dir: Path | None,
     bounds: Bounds,
-    *,
-    lat_dim: str,
-    lon_dim: str,
 ) -> xr.DataArray:
     """Read one POLARIS parameter for one layer over ``bounds``, mosaicking tiles.
 
