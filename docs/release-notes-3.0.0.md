@@ -1,5 +1,8 @@
 # climate_indices 3.0.0 release notes
 
+Release-preparation draft: 3.0.0 is not yet tagged or published. The final date and
+candidate SHA are selected through the [release runbook](release-process.md).
+
 Version 3.0.0 expands the index families, gridded workflows, and scientific
 validation. Review the [full changelog](https://github.com/monocongo/climate_indices/blob/main/CHANGELOG.md) and
 [API migration guide](deprecations/api-changes.md) before upgrading from 2.4.0.
@@ -174,6 +177,17 @@ interpreter; see the
 [development guide](development-guide.md#porting-a-kernel-to-rust).
 [ADR-0018](adr/0018-optional-rust-packaging.md) covers artifact selection and CI
 checks.
+
+## CLI and development tooling
+
+The opt-in, experimental `--pack` flag compresses NetCDF output as int16 where
+its range and precision checks permit, otherwise as float32. It is off by default;
+PET and effective-precipitation intermediates reused by the same run stay unpacked.
+The development-only `scripts/plot_netcdf_map.py` plots a selected time slice and
+can compare SPI/SPEI visually with NCEI nClimGrid (`--compare ncei`). It is not
+shipped in the wheel, and the comparison is not independent scientific validation.
+See the [changelog](https://github.com/monocongo/climate_indices/blob/main/CHANGELOG.md)
+for precision rules and locked dependency security updates (#1260–#1265, #1286).
 
 ## Upgrade considerations
 
