@@ -506,7 +506,8 @@ def test_polaris_loader_end_to_end_on_local_tiles(tmp_path, depth_mm, expected_m
 
 @pytest.mark.parametrize("strip_rows", [1, 4, 10])
 @pytest.mark.parametrize("descending", [False, True])
-def test_polaris_strips_match_whole_field_aggregation(monkeypatch, strip_rows, descending):
+@pytest.mark.parametrize("irregular", [False, True])
+def test_polaris_strips_match_whole_field_aggregation(monkeypatch, strip_rows, descending, irregular):
     """Strip size and climate-axis order must not change cell areas or placement."""
     source_lat = np.linspace(37.75625, 39.24375, 120)
     source_lon = np.linspace(-100.24375, -98.75625, 120)
@@ -530,6 +531,8 @@ def test_polaris_strips_match_whole_field_aggregation(monkeypatch, strip_rows, d
     monkeypatch.setattr(aws_ingest, "_polaris_parameter", read_parameter)
     monkeypatch.setattr(aws_ingest, "POLARIS_STRIP_ROWS", strip_rows)
     latitudes = [38.0, 38.25, 38.5, 38.75, 39.0]
+    if irregular:
+        latitudes = [38.0, 38.2, 38.5, 38.7, 39.0]
     longitudes = [-100.0, -99.75, -99.5, -99.25, -99.0]
     if descending:
         latitudes.reverse()
@@ -541,6 +544,13 @@ def test_polaris_strips_match_whole_field_aggregation(monkeypatch, strip_rows, d
     storage = (theta_s - 0.05) * ((1 + 0.66**2) ** -0.5 - (1 + 30.0**2) ** -0.5) * 1000.0
     expected = aws_ingest.area_weighted_mean(storage, latitudes, longitudes).where(land)
 
+    aggregate = aws_ingest.area_weighted_mean
+
+    def bounded_aggregate(source, target_lat, target_lon, **kwargs):
+        assert len(target_lat) <= strip_rows + 2
+        return aggregate(source, target_lat, target_lon, **kwargs)
+
+    monkeypatch.setattr(aws_ingest, "area_weighted_mean", bounded_aggregate)
     result = aws_ingest.load_aws("polaris", climate, depth_mm=1000.0)
 
     np.testing.assert_allclose(result.aws.values, expected.values, rtol=1e-6, equal_nan=True)
@@ -558,7 +568,15 @@ def test_geotiff_cache_round_trip_preserves_field_mask_and_metadata(tmp_path):
         values,
         coords={"lat": [38.75, 38.25], "lon": [-99.75, -99.25]},
         dims=["lat", "lon"],
-        attrs={"aws_source": "polaris", "aws_depth_mm": 1000.0, "units": "mm"},
+        attrs={
+            "aws_source": "polaris",
+            "aws_depth_mm": 1000.0,
+            "aws_native_depth_mm": 2000.0,
+            "aws_filled_cells": 1,
+            "aws_layers_mm": "[]",
+            "aws_unverified": '["example"]',
+            "units": "mm",
+        },
     )
     filled = xr.DataArray(
         np.array([[False, True], [False, False]]),
@@ -576,6 +594,11 @@ def test_geotiff_cache_round_trip_preserves_field_mask_and_metadata(tmp_path):
     assert cached.filled.values.dtype == bool
     np.testing.assert_array_equal(cached.filled.values, filled.values)
     assert cached.aws.attrs["aws_source"] == "polaris"
+    assert isinstance(cached.aws.attrs["aws_depth_mm"], float)
+    assert isinstance(cached.aws.attrs["aws_native_depth_mm"], float)
+    assert isinstance(cached.aws.attrs["aws_filled_cells"], int)
+    assert cached.aws.attrs["aws_layers_mm"] == "[]"
+    assert cached.aws.attrs["aws_unverified"] == '["example"]'
     assert cached.depth_mm == pytest.approx(1000.0)
     assert aws_ingest._read_cache(tmp_path, "missing_key", lat_dim="lat", lon_dim="lon") is None
 
@@ -678,3 +701,145 @@ def test_harmonized_result_exposes_its_source_and_depth():
 
     assert result.source == "polaris"
     assert result.depth_mm == pytest.approx(1500.0)
+
+
+@pytest.mark.parametrize("dimension", ["lat", "lon", "target latitude", "target longitude"])
+def test_aggregation_rejects_non_monotonic_axes(dimension):
+    source = xr.DataArray(np.ones((3, 3)), coords={"lat": [0, 1, 2], "lon": [0, 1, 2]}, dims=["lat", "lon"])
+    latitudes = longitudes = [0, 1, 2]
+    if dimension in source.dims:
+        source = source.assign_coords({dimension: [0, 2, 1]})
+    elif dimension == "target latitude":
+        latitudes = [0, 2, 1]
+    else:
+        longitudes = [0, 2, 1]
+    with pytest.raises(AwsIngestError, match="strictly monotonic"):
+        aws_ingest.area_weighted_mean(source, latitudes, longitudes)
+
+
+@pytest.mark.parametrize("source", ["gridmet", "usgs"])
+def test_single_layer_sources_harmonize_supplied_rasters(tmp_path, monkeypatch, source):
+    rasterio = pytest.importorskip("rasterio")
+    pytest.importorskip("rioxarray")
+    monkeypatch.delenv(f"{source.upper()}_AWC_RASTER", raising=False)
+    with rasterio.open(
+        tmp_path / f"{source}_awc.tif",
+        "w",
+        driver="GTiff",
+        height=2,
+        width=2,
+        count=1,
+        dtype="float32",
+        crs="EPSG:4326",
+        transform=rasterio.transform.from_bounds(-100, 38, -99, 39, 2, 2),
+    ) as dataset:
+        dataset.write(np.full((2, 2), 150, dtype="float32"), 1)
+    climate = _climate(np.ones((2, 2), dtype=bool), latitudes=[38.75, 38.25], longitudes=[-99.75, -99.25])
+    result = aws_ingest.load_aws(source, climate, raw_dir=tmp_path)
+    np.testing.assert_allclose(result.aws.values, 150)
+    assert result.depth_mm == AWS_SOURCES[source].native_depth_mm
+
+
+def test_cache_invalidates_land_mask_depth_and_local_raster(tmp_path, monkeypatch):
+    pytest.importorskip("rioxarray")
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    raster = raw / "usgs_awc.tif"
+    raster.write_text("150")
+    monkeypatch.delenv("USGS_AWC_RASTER", raising=False)
+    calls = []
+
+    def load(climate, depth, raw_dir, **kwargs):
+        calls.append(depth)
+        values = xr.full_like(climate.isel(time=0, drop=True), float(raster.read_text()))
+        return aws_ingest.finalize_aws(
+            values,
+            climate,
+            source="usgs",
+            layers_mm=AWS_SOURCES["usgs"].layers_mm,
+            native_depth_mm=1000,
+            depth_mm=1000,
+        )
+
+    from dataclasses import replace
+
+    monkeypatch.setitem(AWS_SOURCES, "usgs", replace(AWS_SOURCES["usgs"], load=load))
+    climate = _climate(np.ones((2, 2), dtype=bool), latitudes=[38.75, 38.25], longitudes=[-99.75, -99.25])
+    kwargs = {"raw_dir": raw, "cache_dir": tmp_path / "cache"}
+    aws_ingest.load_aws("usgs", climate, **kwargs)
+    aws_ingest.load_aws("usgs", climate, **kwargs)
+    assert len(calls) == 1
+    masked = climate.copy()
+    masked.values[0, 0, 1] = np.nan
+    result = aws_ingest.load_aws("usgs", masked, **kwargs)
+    assert np.isnan(result.aws.values[0, 1])
+    assert not result.filled.values[0, 1]
+    assert len(calls) == 2
+    raster.write_text("175")
+    result = aws_ingest.load_aws("usgs", masked, **kwargs)
+    assert result.aws.values[0, 0] == 175
+    assert len(calls) == 3
+    aws_ingest.load_aws("usgs", masked, depth_mm=1000.0, **kwargs)
+    assert len(calls) == 4
+
+
+def test_cache_publication_is_atomic_and_keys_cannot_escape(tmp_path, monkeypatch):
+    pytest.importorskip("rioxarray")
+    from rioxarray.raster_array import RasterArray
+
+    climate = _climate(np.ones((2, 2), dtype=bool), latitudes=[38.75, 38.25], longitudes=[-99.75, -99.25])
+    old = HarmonizedAws(aws=climate.isel(time=0, drop=True), filled=xr.zeros_like(climate.isel(time=0, drop=True)))
+    new = HarmonizedAws(aws=old.aws * 2, filled=xr.ones_like(old.filled))
+    key = "../escaped"
+    kwargs = {"lat_dim": "lat", "lon_dim": "lon"}
+    aws_ingest._write_cache(tmp_path, key, old, **kwargs)
+    original = RasterArray.to_raster
+
+    def interrupted_write(self, *args, **options):
+        original(self, *args, **options)
+        cached = aws_ingest._read_cache(tmp_path, key, **kwargs)
+        assert cached is not None
+        np.testing.assert_array_equal(cached.aws.values, old.aws.values)
+        assert not cached.filled.values.any()
+        raise OSError("interrupted before publication")
+
+    monkeypatch.setattr(RasterArray, "to_raster", interrupted_write)
+    with pytest.raises(OSError, match="interrupted"):
+        aws_ingest._write_cache(tmp_path, key, new, **kwargs)
+    assert len(list(tmp_path.iterdir())) == 1
+    assert not (tmp_path.parent / "escaped.tif").exists()
+    monkeypatch.setattr(RasterArray, "to_raster", original)
+    aws_ingest._write_cache(tmp_path, key, new, **kwargs)
+    cached = aws_ingest._read_cache(tmp_path, key, **kwargs)
+    assert cached is not None
+    np.testing.assert_array_equal(cached.aws.values, new.aws.values)
+    assert cached.filled.values.all()
+
+
+def test_raster_reads_apply_transport_limits_through_eager_compute(monkeypatch):
+    rasterio = pytest.importorskip("rasterio")
+    rioxarray = pytest.importorskip("rioxarray")
+    field = xr.DataArray(
+        np.ones((1, 2, 2)), coords={"band": [1], "y": [38.75, 38.25], "x": [-99.75, -99.25]}, dims=["band", "y", "x"]
+    ).rio.write_crs("EPSG:4326")
+
+    def check_limits():
+        options = rasterio.env.getenv()
+        assert options["GDAL_HTTP_CONNECTTIMEOUT"] == 10
+        assert options["GDAL_HTTP_TIMEOUT"] == 120
+        assert options["GDAL_HTTP_LOW_SPEED_TIME"] == 30
+
+    def open_raster(*args, **kwargs):
+        check_limits()
+        return field
+
+    compute = xr.DataArray.compute
+
+    def checked_compute(self, **kwargs):
+        check_limits()
+        assert kwargs["scheduler"] == "synchronous"
+        return compute(self, **kwargs)
+
+    monkeypatch.setattr(rioxarray, "open_rasterio", open_raster)
+    monkeypatch.setattr(xr.DataArray, "compute", checked_compute)
+    aws_ingest._open_raster_window("http://example.invalid/tile.tif", None)

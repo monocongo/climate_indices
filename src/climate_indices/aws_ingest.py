@@ -90,8 +90,8 @@ column totals are never extrapolated.
 
 Caching
 -------
-Harmonized output is cached as two GeoTIFFs per (source, depth, climate grid) so
-that remote reads happen once. Reading rasters and writing the cache need the
+Harmonized output and its fill mask are published atomically in one two-band
+GeoTIFF per source, depth, climate grid, land footprint, and local raster identity. Reading rasters and writing the cache need the
 optional ``rioxarray``/``rasterio`` dependencies (``pip install
 'climate-indices[aws]'``); the arithmetic in this module needs only
 numpy/scipy/xarray.
@@ -102,6 +102,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import tempfile
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -163,9 +164,6 @@ MAX_AWS_MM = 2000.0
 
 #: Sentinel selecting each dataset's own soil column.
 NATIVE_DEPTH = "native"
-
-#: Layer coordinate name used by the single-layer (column-total) sources.
-_SINGLE_LAYER = "column"
 
 #: POLARIS v1.0 depth layers: (name, top_mm, bottom_mm), verified against the
 #: publisher README.
@@ -499,8 +497,8 @@ def area_weighted_mean(
     Args:
         source: Fine field with ``lat_dim`` and ``lon_dim`` dimensions; its
             coordinates may run in either direction.
-        lat_values: Target latitude cell centres (any order).
-        lon_values: Target longitude cell centres (any order).
+        lat_values: Monotonic target latitude cell centres (either direction).
+        lon_values: Monotonic target longitude cell centres (either direction).
         lat_dim: Latitude dimension name.
         lon_dim: Longitude dimension name.
 
@@ -799,8 +797,12 @@ def _validated_axis(values: npt.NDArray[np.float64], name: str) -> npt.NDArray[n
         raise AwsIngestError(f"{name} must be one-dimensional, got shape {values.shape!r}")
     if not np.isfinite(values).all():
         raise AwsIngestError(f"{name} contains non-finite cell centres")
-    if values.size > 1 and np.unique(values).size != values.size:
-        raise AwsIngestError(f"{name} contains duplicate cell centres")
+    if values.size > 1:
+        differences = np.diff(values)
+        if np.any(differences == 0):
+            raise AwsIngestError(f"{name} contains duplicate cell centres")
+        if not (np.all(differences > 0) or np.all(differences < 0)):
+            raise AwsIngestError(f"{name} must be strictly monotonic")
     return values
 
 
@@ -903,38 +905,45 @@ def _open_raster_window(path_or_url: str, bounds: Bounds | None, *, eager: bool 
     dataset handle instead of leaving a dask graph holding it open.
     """
     rioxarray = _require_rio()
-    field = rioxarray.open_rasterio(
-        path_or_url,
-        chunks={"x": 2048, "y": 2048},
-        lock=False,
-    )
-    field = field.squeeze("band", drop=True)
-    if "x" in field.dims and "y" in field.dims:
-        field = field.rename({"x": "lon", "y": "lat"})
-    if field.rio.crs is None:
-        raise SourceUnavailableError(f"raster {path_or_url!r} has no CRS; cannot place it on the climate grid")
-    if str(field.rio.crs).upper() not in ("EPSG:4326", "OGC:CRS84"):
-        field = field.rio.reproject(_CRS, resampling=_average_resampling())
-    # a declared nodata sentinel (POLARIS tiles declare -9999) must never be read as
-    # a soil value; missing data is better tracked than silently averaged in
-    nodata = field.rio.nodata
-    if nodata is not None and np.isfinite(nodata):
-        field = field.where(field != nodata)
-    # a raster's axes are usually north-to-south and west-to-east; slices below
-    # assume ascending order, so flip the descending case
-    for dim in ("lat", "lon"):
-        if dim in field.dims and field[dim].size > 1 and float(field[dim][0]) > float(field[dim][-1]):
-            field = field.isel({dim: slice(None, None, -1)})
-    if bounds is not None:
-        west, south, east, north = bounds
-        # Keep intersecting pixels; area weights trim their partial overlaps.
-        half_lat = float(field.lat[1] - field.lat[0]) / 2 if field.sizes["lat"] > 1 else 0.0
-        half_lon = float(field.lon[1] - field.lon[0]) / 2 if field.sizes["lon"] > 1 else 0.0
-        field = field.sel(lat=slice(south - half_lat, north + half_lat), lon=slice(west - half_lon, east + half_lon))
-    field = cast(xr.DataArray, field.rename("values"))
-    if eager:
-        return cast(xr.DataArray, field.compute())
-    return field
+    import rasterio
+
+    with rasterio.Env(
+        GDAL_HTTP_CONNECTTIMEOUT=10,
+        GDAL_HTTP_TIMEOUT=120,
+        GDAL_HTTP_LOW_SPEED_TIME=30,
+        GDAL_HTTP_LOW_SPEED_LIMIT=1024,
+    ):
+        field = rioxarray.open_rasterio(
+            path_or_url,
+            chunks={"x": 2048, "y": 2048},
+            lock=False,
+        )
+        field = field.squeeze("band", drop=True)
+        if "x" in field.dims and "y" in field.dims:
+            field = field.rename({"x": "lon", "y": "lat"})
+        if field.rio.crs is None:
+            raise SourceUnavailableError(f"raster {path_or_url!r} has no CRS; cannot place it on the climate grid")
+        if str(field.rio.crs).upper() not in ("EPSG:4326", "OGC:CRS84"):
+            field = field.rio.reproject(_CRS, resampling=_average_resampling())
+        # A declared nodata sentinel must never be averaged as a soil value.
+        nodata = field.rio.nodata
+        if nodata is not None and np.isfinite(nodata):
+            field = field.where(field != nodata)
+        for dim in ("lat", "lon"):
+            if dim in field.dims and field[dim].size > 1 and float(field[dim][0]) > float(field[dim][-1]):
+                field = field.isel({dim: slice(None, None, -1)})
+        if bounds is not None:
+            west, south, east, north = bounds
+            # Keep intersecting pixels; area weights trim their partial overlaps.
+            half_lat = float(field.lat[1] - field.lat[0]) / 2 if field.sizes["lat"] > 1 else 0.0
+            half_lon = float(field.lon[1] - field.lon[0]) / 2 if field.sizes["lon"] > 1 else 0.0
+            field = field.sel(
+                lat=slice(south - half_lat, north + half_lat), lon=slice(west - half_lon, east + half_lon)
+            )
+        field = cast(xr.DataArray, field.rename("values"))
+        if eager:
+            return cast(xr.DataArray, field.compute(scheduler="synchronous"))
+        return field
 
 
 def _open_tile_with_retry(tile: Path | str, bounds: Bounds, *, attempts: int = POLARIS_READ_ATTEMPTS) -> xr.DataArray:
@@ -978,28 +987,36 @@ def _average_resampling() -> Any:
 
 
 def _write_cache(cache_dir: Path, key: str, result: HarmonizedAws, *, lat_dim: str, lon_dim: str) -> None:
-    """Write a harmonized field and its fill mask as two GeoTIFFs."""
+    """Atomically publish the field and mask together in a two-band GeoTIFF."""
     _require_rio()
-
     cache_dir.mkdir(parents=True, exist_ok=True)
-    aws = result.aws.rename({lat_dim: "y", lon_dim: "x"}).rename("aws")
-    aws.rio.write_crs(_CRS).rio.to_raster(cache_dir / f"{key}_aws.tif", driver="GTiff")
-    filled = result.filled.rename({lat_dim: "y", lon_dim: "x"}).rename("filled")
-    filled.astype("uint8").rio.write_crs(_CRS).rio.to_raster(cache_dir / f"{key}_filled.tif", driver="GTiff")
+    path = cache_dir / f"{hashlib.sha256(key.encode()).hexdigest()}.tif"
+    bands = xr.concat([result.aws, result.filled.astype(float)], dim="band")
+    bands = bands.rename({lat_dim: "y", lon_dim: "x"}).assign_coords(band=[1, 2])
+    with tempfile.TemporaryDirectory(dir=cache_dir) as temporary_dir:
+        temporary = Path(temporary_dir) / "entry.tif"
+        bands.rio.write_crs(_CRS).rio.to_raster(temporary, driver="GTiff")
+        os.replace(temporary, path)
 
 
 def _read_cache(cache_dir: Path, key: str, *, lat_dim: str, lon_dim: str) -> HarmonizedAws | None:
-    """Read a cached harmonized field, or None when it is absent."""
-    aws_path = cache_dir / f"{key}_aws.tif"
-    filled_path = cache_dir / f"{key}_filled.tif"
-    if not (aws_path.exists() and filled_path.exists()):
+    """Read a complete cached field/mask pair, or None when it is absent."""
+    path = cache_dir / f"{hashlib.sha256(key.encode()).hexdigest()}.tif"
+    if not path.exists():
         return None
     rioxarray = _require_rio()
-    aws = rioxarray.open_rasterio(aws_path, lock=False).squeeze("band", drop=True)
-    filled = rioxarray.open_rasterio(filled_path, lock=False).squeeze("band", drop=True)
-    aws = aws.rename({"x": lon_dim, "y": lat_dim}).compute()
-    filled = filled.rename({"x": lon_dim, "y": lat_dim}).compute()
-    return HarmonizedAws(aws=aws, filled=filled.astype(bool))
+    with rioxarray.open_rasterio(path, lock=False) as raster:
+        bands = raster.rename({"x": lon_dim, "y": lat_dim}).load()
+    aws = bands.sel(band=1, drop=True)
+    filled = bands.sel(band=2, drop=True).astype(bool)
+    for name in ("aws_depth_mm", "aws_native_depth_mm", "aws_min_before_clip_mm", "aws_max_before_clip_mm"):
+        if name in aws.attrs:
+            aws.attrs[name] = float(aws.attrs[name])
+    for name in ("aws_filled_cells", "aws_clipped_low", "aws_clipped_high", "aws_cells_at_surface_capacity"):
+        if name in aws.attrs:
+            aws.attrs[name] = int(aws.attrs[name])
+    filled.attrs = {"long_name": "Cell filled from neighbours inside land", "units": "1"}
+    return HarmonizedAws(aws=aws, filled=filled)
 
 
 def grid_signature(lat_values: npt.ArrayLike, lon_values: npt.ArrayLike, *, lat_dim: str, lon_dim: str) -> str:
@@ -1071,7 +1088,7 @@ def _gridmet_aws(
         )
     storage = _open_raster_window(str(raster), None)
     return harmonize_aws(
-        storage.assign_coords(layer=[_SINGLE_LAYER]).expand_dims(layer=[_SINGLE_LAYER]),
+        storage.expand_dims(layer=[spec.layers_mm[0][0]]),
         climate,
         source=spec.name,
         layers_mm=spec.layers_mm,
@@ -1103,7 +1120,7 @@ def _usgs_aws(
     values = _open_raster_window(str(raster), None)
     # published units are mm of available water per metre of soil over a 100 cm
     # column, so one metre makes the value numerically the column total in mm
-    storage = values.assign_coords(layer=[_SINGLE_LAYER]).expand_dims(layer=[_SINGLE_LAYER])
+    storage = values.expand_dims(layer=[spec.layers_mm[0][0]])
     storage = storage.astype(float).assign_attrs(units="mm", long_name="Total plant-available water")
     return harmonize_aws(
         storage,
@@ -1177,8 +1194,10 @@ def _polaris_aws(
             del storage_mm
         if strip_total is None:  # pragma: no cover - depth validation prevents this
             raise AwsIngestError(f"no POLARIS layer contributes to a {resolved_depth_mm:.1f} mm column")
-        # Full-grid centres preserve cell edges, even for a singleton final strip.
-        averaged = area_weighted_mean(strip_total, latitudes, longitudes, lat_dim=lat_dim, lon_dim=lon_dim)
+        # One neighbouring row on each side preserves strip cell edges, including singleton strips.
+        indices = np.flatnonzero(np.isin(latitudes, strip_latitudes))
+        target_latitudes = latitudes[max(0, int(indices.min()) - 1) : int(indices.max()) + 2]
+        averaged = area_weighted_mean(strip_total, target_latitudes, longitudes, lat_dim=lat_dim, lon_dim=lon_dim)
         strips.append(averaged.sel({lat_dim: strip_latitudes}))
 
     total_mm = xr.concat(strips, dim=lat_dim).sel({lat_dim: latitudes})
@@ -1218,6 +1237,8 @@ def _latitude_strips(
             "at least two latitude cell centres are needed to derive cell edges and therefore "
             f"cell areas; got a single centre at {latitudes[0]!r}"
         )
+    _validated_axis(latitudes, "latitude")
+    _validated_axis(longitudes, "longitude")
     ordered = latitudes if latitudes[0] <= latitudes[-1] else latitudes[::-1]
     edges = _cell_edges(ordered)
     lon_edges = _cell_edges(longitudes if longitudes[0] <= longitudes[-1] else longitudes[::-1])
@@ -1375,9 +1396,9 @@ def load_aws(
 ) -> HarmonizedAws:
     """Load one source as total available water capacity on the climate grid.
 
-    With ``cache_dir`` set, a harmonized field is read back from GeoTIFFs when the
-    (source, depth, climate grid) combination is already cached, so a remote read
-    happens once per configuration.
+    With ``cache_dir`` set, a harmonized field is read back from an atomic
+    GeoTIFF cache keyed by source, requested depth, grid, land footprint, and
+    local raster paths, sizes, and modification/change timestamps.
 
     Args:
         source: Registered source name, one of ``AWS_SOURCES``.
@@ -1408,7 +1429,22 @@ def load_aws(
     resolved_depth_mm = _resolve_depth(depth_mm, spec.native_depth_mm)
     cache_path = None if cache_dir is None else Path(cache_dir)
     signature = grid_signature(climate[lat_dim].values, climate[lon_dim].values, lat_dim=lat_dim, lon_dim=lon_dim)
-    key = f"{source}_{resolved_depth_mm:.1f}mm_{signature}"
+    digest = hashlib.sha256(f"{source}:{depth_mm}:{resolved_depth_mm!r}:{signature}".encode())
+    land = _climate_land_mask(climate, lat_dim=lat_dim, lon_dim=lon_dim).transpose(lat_dim, lon_dim)
+    digest.update(np.asarray(land.values, dtype=bool).tobytes())
+    raw_path = None if raw_dir is None else Path(raw_dir)
+    rasters: list[Path] = []
+    if source in _RAW_RASTER_NAMES:
+        raster = _source_raster_path(source, raw_path, env_var=f"{source.upper()}_AWC_RASTER")
+        if raster is not None:
+            rasters.append(raster)
+    elif raw_path is not None:
+        digest.update(str(raw_path.resolve()).encode())
+        rasters = sorted(raw_path.rglob("*.tif"))
+    for raster in rasters:
+        stat = raster.stat()
+        digest.update(f"{raster.resolve()}:{stat.st_size}:{stat.st_mtime_ns}:{stat.st_ctime_ns}".encode())
+    key = digest.hexdigest()
     if cache_path is not None:
         cached = _read_cache(cache_path, key, lat_dim=lat_dim, lon_dim=lon_dim)
         if cached is not None:
@@ -1419,7 +1455,7 @@ def load_aws(
     result = spec.load(
         climate,
         depth_mm,
-        None if raw_dir is None else Path(raw_dir),
+        raw_path,
         lat_dim=lat_dim,
         lon_dim=lon_dim,
     )
