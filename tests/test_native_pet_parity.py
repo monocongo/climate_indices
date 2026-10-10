@@ -553,18 +553,13 @@ def test_pm_eto_float32_inputs_stay_on_python(monkeypatch):
     np.testing.assert_allclose(result, reference, rtol=1e-6, atol=1e-6)
 
 
-def test_pm_eto_passes_a_scalar_operand_as_a_view(monkeypatch):
-    """A scalar operand reaches the kernel as a zero-stride view, not a full array.
-
-    The kernel reads one element per broadcast position and the binding copies what it
-    reads, so materializing the scalar here would allocate a full-size array, and copy
-    it, for a value that occupies one element.
-    """
+def test_pm_eto_passes_scalar_operands_without_array_buffers(monkeypatch):
+    """Scalar operands cross the binding unchanged, without element-sized buffers."""
     net_radiation = np.array([13.28, 12.5, 14.0])
     scalars = (0.14, 16.9, 2.078, 1.997, 1.409, 0.122, 0.0666)
-    seen: list[tuple[np.ndarray, ...]] = []
+    seen: list[tuple[float | np.ndarray, ...]] = []
 
-    def capture(*arrays: np.ndarray) -> np.ndarray:
+    def capture(*arrays: float | np.ndarray) -> np.ndarray:
         seen.append(arrays)
         return native.pm_eto(*arrays)
 
@@ -575,10 +570,8 @@ def test_pm_eto_passes_a_scalar_operand_as_a_view(monkeypatch):
         reference = pm_eto.pm_eto(net_radiation, *scalars)
 
     assert len(seen) == 1
-    for operand in seen[0][1:]:
-        assert operand.strides == (0,), "a scalar operand was materialized into a full-size array"
-        assert operand.base is not None
-        assert operand.base.size == 1
+    assert seen[0][1:] == scalars
+    assert all(isinstance(operand, float) for operand in seen[0][1:])
     _assert_parity(result, reference)
 
 

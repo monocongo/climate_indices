@@ -1519,6 +1519,39 @@ def _check_goodness_of_fit_gamma_spatial(
     warnings.warn(warning, stacklevel=3)
 
 
+def _native_pearson_ks_statistics(
+    values: np.ndarray, locs: np.ndarray, scales: np.ndarray, skews: np.ndarray
+) -> np.ndarray | None:
+    """Batched CDF and D statistics, or None where Python keeps the check."""
+    if (
+        values.ndim != 2
+        or not _native_float64s(values, locs, scales, skews)
+        or any(parameter.shape != (values.shape[1],) for parameter in (locs, scales, skews))
+        or np.any(np.abs(values) > 1e100)
+        or _native is None
+        or not hasattr(_native, "pearson_ks_statistics")
+    ):
+        return None
+    return _native.pearson_ks_statistics(values, skews, locs, scales)
+
+
+def _pearson_ks_statistics(values: np.ndarray, locs: np.ndarray, scales: np.ndarray, skews: np.ndarray) -> np.ndarray:
+    """Native statistics and retained SciPy oracle, shared with parity checks."""
+    native = _native_pearson_ks_statistics(values, locs, scales, skews)
+    if native is not None:
+        return native
+    result = np.full(values.shape[1], np.nan)
+    for column in range(values.shape[1]):
+        loc, scale, skew = locs[column], scales[column], skews[column]
+        if not (np.isfinite(loc) and np.isfinite(scale) and np.isfinite(skew) and scale > 0):
+            continue
+        sample = values[:, column]
+        sample = np.sort(sample[~np.isnan(sample) & (sample != 0)])
+        if sample.size:
+            result[column] = _ks_d_statistic(sample, scipy.stats.pearson3.cdf(sample, skew, loc=loc, scale=scale))
+    return result
+
+
 def _check_goodness_of_fit_pearson(
     calibration_values: np.ndarray,
     probabilities_of_zero: np.ndarray,
@@ -1543,6 +1576,7 @@ def _check_goodness_of_fit_pearson(
         _check_goodness_of_fit_pearson_spatial(calibration_values, probabilities_of_zero, locs, scales, skews)
         return
 
+    native_statistics = _native_pearson_ks_statistics(calibration_values, locs, scales, skews)
     time_steps = calibration_values.shape[1]
     poor_fit_steps = []
 
@@ -1563,6 +1597,14 @@ def _check_goodness_of_fit_pearson(
             # skip if parameters are invalid
             if not (np.isfinite(loc) and np.isfinite(scale) and np.isfinite(skew) and scale > 0):
                 continue
+
+            if native_statistics is not None:
+                critical = _ks_critical_value(len(valid_values))
+                # Only clearly acceptable fits skip SciPy; candidates and near-boundary
+                # statistics keep the oracle's exact decision and warning text.
+                parity_margin = 1e-10 * (1.0 + abs(critical)) + np.finfo(valid_values.dtype).eps
+                if native_statistics[time_step_index] < critical - parity_margin:
+                    continue
 
             # perform Kolmogorov-Smirnov test
             try:
@@ -1703,25 +1745,30 @@ def _replace_zeros_with_nan(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]
     return zero_mask, values_copy
 
 
-def _native_float64(array: np.ndarray) -> bool:
-    """Whether the Rust kernels are installed and take ``array`` as it is.
+def _plain_float64(array: np.ndarray) -> bool:
+    """Whether an operand is a plain, aligned float64 array."""
+    return type(array) is np.ndarray and array.dtype == np.float64 and array.flags.aligned
 
-    They take aligned, plain float64 arrays only, with NumPy floating-point
-    errors ignored. Other policies and context-aware warning filters stay in
-    Python. Routing never retries a failed Rust call.
-    """
+
+def _native_policy_allows() -> bool:
+    """Whether Rust can preserve the caller's floating-point reporting policy."""
     return (
-        _native is not None
-        and type(array) is np.ndarray
-        and array.dtype == np.float64
-        and array.flags.aligned
-        and array.ctypes.data % array.dtype.alignment == 0
-        and all(policy == "ignore" for policy in np.geterr().values())
+        all(policy == "ignore" for policy in np.geterr().values())
         and not getattr(sys.flags, "context_aware_warnings", False)
         and not any(
             action == "error" and issubclass(RuntimeWarning, category) for action, _, category, _, _ in warnings.filters
         )
     )
+
+
+def _native_float64(array: np.ndarray) -> bool:
+    """Whether the extension can take an operand without changing reporting."""
+    return _native is not None and _plain_float64(array) and _native_policy_allows()
+
+
+def _native_float64s(*arrays: np.ndarray) -> bool:
+    """Check operand layouts and the shared reporting policy once per call."""
+    return _native is not None and all(_plain_float64(array) for array in arrays) and _native_policy_allows()
 
 
 def _as_columns(values: np.ndarray) -> np.ndarray:
@@ -1787,7 +1834,7 @@ def _native_pnp_percentages(
     scale_sums: np.ndarray, calibration_sums: np.ndarray, period_length: int
 ) -> np.ndarray | None:
     """The Rust PNP normals and their ratios, or None where the Python implementation runs."""
-    if not _native_float64(scale_sums) or not _native_float64(calibration_sums):
+    if not _native_float64s(scale_sums, calibration_sums):
         return None
     if _native is None:  # _native_float64 guarantees it; this narrows the type
         raise RuntimeError(_NATIVE_EXTENSION_MISSING)
@@ -1900,7 +1947,7 @@ def _native_loglogistic_cdf(
 
 def _native_tukey_probabilities(climatology: np.ndarray, values: np.ndarray, pads: np.ndarray) -> np.ndarray | None:
     """The Rust rank count and Tukey plotting position, or None where the Python implementation runs."""
-    if not _native_float64(climatology) or not _native_float64(values) or not hasattr(_native, "tukey_probabilities"):
+    if not _native_float64s(climatology, values) or not hasattr(_native, "tukey_probabilities"):
         return None
     if _native is None:  # _native_float64 guarantees it; this narrows the type
         raise RuntimeError(_NATIVE_EXTENSION_MISSING)

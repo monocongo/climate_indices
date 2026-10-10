@@ -234,6 +234,14 @@ _GLO_KERNELS = frozenset({"loglogistic_parameters", "loglogistic_cdf"})
 _PALMER_WATER_BALANCE = frozenset({"palmer_water_balance", "palmer_k_prime", "palmer_raw_zindex"})
 
 
+def _pearson_ks(values: np.ndarray) -> Callable[[], Any]:
+    calibration = values.reshape(-1, 12)
+    locs = np.full(12, 60.0)
+    scales = np.full(12, 30.0)
+    skews = np.linspace(-2.0, 2.0, 12)
+    return lambda: compute._pearson_ks_statistics(calibration, locs, scales, skews)
+
+
 def _spi(values: np.ndarray, distribution: indices.Distribution, **kwargs: Any) -> Callable[[], Any]:
     start, calibration_start, calibration_end = _monthly_window(values)
     spatial = values.ndim > 1
@@ -450,6 +458,7 @@ ENTRIES: tuple[Entry, ...] = (
         _GAMMA_KERNELS,
     ),
     Entry("spi_pearson", MONTHLY, compute, lambda values: _spi(values, indices.Distribution.pearson), _PEARSON_KERNELS),
+    Entry("pearson_ks_statistics", MONTHLY, compute, _pearson_ks, frozenset({"pearson_ks_statistics"})),
     Entry(
         "spei_loglogistic",
         MONTHLY,

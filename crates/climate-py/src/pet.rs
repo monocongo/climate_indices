@@ -4,7 +4,7 @@
 //! kernel documents. The kernels receive one element per broadcast position, so
 //! the caller flattens the broadcast inputs and reshapes the result.
 
-use numpy::ndarray::{Array1, ArrayView1};
+use numpy::ndarray::Array1;
 use numpy::{
     IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2,
     PyReadonlyArray3, PyUntypedArrayMethods,
@@ -12,7 +12,7 @@ use numpy::{
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
-use climate_core::pm_eto::{HumidityPathway, MetInputs, PmEtoInputs, RadiationPathway};
+use climate_core::pm_eto::{HumidityPathway, MetInputs, Operand, PmEtoInputs, RadiationPathway};
 
 // selectors of the FAO-56 actual-vapour-pressure pathway (Eq 14-19); the Python
 // dispatch passes these codes and must match `pm_eto.py`'s constants
@@ -27,14 +27,42 @@ const RADIATION_SUPPLIED: u8 = 0;
 const RADIATION_SUNSHINE: u8 = 1;
 const RADIATION_TEMPERATURE_RANGE: u8 = 2;
 
-/// Copy an optional float64 array, rejecting an unaligned one as `checked_copy` does.
-fn checked_optional(array: Option<PyReadonlyArray1<'_, f64>>) -> PyResult<Option<Array1<f64>>> {
-    array.map(|array| crate::checked_copy(&array)).transpose()
+#[derive(FromPyObject)]
+enum PyOperand<'py> {
+    Array(PyReadonlyArray1<'py, f64>),
+    Scalar(f64),
 }
 
-/// The array an optional input must hold when its pathway is selected.
-fn required<'a>(argument: &str, array: &'a Option<Array1<f64>>) -> PyResult<ArrayView1<'a, f64>> {
-    array.as_ref().map(|array| array.view()).ok_or_else(|| {
+// Only actual arrays are copied; no caller-owned storage survives detach.
+enum OwnedOperand {
+    Array(Array1<f64>),
+    Scalar(f64),
+}
+
+impl PyOperand<'_> {
+    fn owned(self) -> PyResult<OwnedOperand> {
+        match self {
+            Self::Array(array) => crate::checked_copy(&array).map(OwnedOperand::Array),
+            Self::Scalar(value) => Ok(OwnedOperand::Scalar(value)),
+        }
+    }
+}
+
+impl OwnedOperand {
+    fn view(&self) -> Operand<'_> {
+        match self {
+            Self::Array(array) => Operand::Array(array.view()),
+            Self::Scalar(value) => Operand::Scalar(*value),
+        }
+    }
+}
+
+fn checked_optional(value: Option<PyOperand<'_>>) -> PyResult<Option<OwnedOperand>> {
+    value.map(PyOperand::owned).transpose()
+}
+
+fn required<'a>(argument: &str, value: &'a Option<OwnedOperand>) -> PyResult<Operand<'a>> {
+    value.as_ref().map(OwnedOperand::view).ok_or_else(|| {
         PyValueError::new_err(format!("{argument} is required for the selected pathway"))
     })
 }
@@ -97,23 +125,23 @@ fn hargreaves<'py>(
 #[allow(clippy::too_many_arguments)]
 fn pm_eto<'py>(
     py: Python<'py>,
-    net_radiation: PyReadonlyArray1<'py, f64>,
-    soil_heat_flux: PyReadonlyArray1<'py, f64>,
-    temperature_celsius: PyReadonlyArray1<'py, f64>,
-    wind_speed_2m: PyReadonlyArray1<'py, f64>,
-    saturation_vp: PyReadonlyArray1<'py, f64>,
-    actual_vp: PyReadonlyArray1<'py, f64>,
-    delta: PyReadonlyArray1<'py, f64>,
-    gamma: PyReadonlyArray1<'py, f64>,
+    net_radiation: PyOperand<'py>,
+    soil_heat_flux: PyOperand<'py>,
+    temperature_celsius: PyOperand<'py>,
+    wind_speed_2m: PyOperand<'py>,
+    saturation_vp: PyOperand<'py>,
+    actual_vp: PyOperand<'py>,
+    delta: PyOperand<'py>,
+    gamma: PyOperand<'py>,
 ) -> PyResult<Bound<'py, PyArray1<f64>>> {
-    let net_radiation = crate::checked_copy(&net_radiation)?;
-    let soil_heat_flux = crate::checked_copy(&soil_heat_flux)?;
-    let temperature_celsius = crate::checked_copy(&temperature_celsius)?;
-    let wind_speed_2m = crate::checked_copy(&wind_speed_2m)?;
-    let saturation_vp = crate::checked_copy(&saturation_vp)?;
-    let actual_vp = crate::checked_copy(&actual_vp)?;
-    let delta = crate::checked_copy(&delta)?;
-    let gamma = crate::checked_copy(&gamma)?;
+    let net_radiation = net_radiation.owned()?;
+    let soil_heat_flux = soil_heat_flux.owned()?;
+    let temperature_celsius = temperature_celsius.owned()?;
+    let wind_speed_2m = wind_speed_2m.owned()?;
+    let saturation_vp = saturation_vp.owned()?;
+    let actual_vp = actual_vp.owned()?;
+    let delta = delta.owned()?;
+    let gamma = gamma.owned()?;
     let inputs = PmEtoInputs {
         net_radiation: net_radiation.view(),
         soil_heat_flux: soil_heat_flux.view(),
@@ -135,34 +163,34 @@ fn pm_eto<'py>(
 #[allow(clippy::too_many_arguments)]
 fn fao56_eto<'py>(
     py: Python<'py>,
-    daily_tmin_celsius: PyReadonlyArray1<'py, f64>,
-    daily_tmax_celsius: PyReadonlyArray1<'py, f64>,
-    latitude_degrees: PyReadonlyArray1<'py, f64>,
-    elevation_m: PyReadonlyArray1<'py, f64>,
-    wind_speed_m_s: PyReadonlyArray1<'py, f64>,
-    wind_speed_height_m: PyReadonlyArray1<'py, f64>,
-    day_of_year: PyReadonlyArray1<'py, f64>,
-    soil_heat_flux_mj_m2_day: PyReadonlyArray1<'py, f64>,
-    albedo: PyReadonlyArray1<'py, f64>,
+    daily_tmin_celsius: PyOperand<'py>,
+    daily_tmax_celsius: PyOperand<'py>,
+    latitude_degrees: PyOperand<'py>,
+    elevation_m: PyOperand<'py>,
+    wind_speed_m_s: PyOperand<'py>,
+    wind_speed_height_m: PyOperand<'py>,
+    day_of_year: PyOperand<'py>,
+    soil_heat_flux_mj_m2_day: PyOperand<'py>,
+    albedo: PyOperand<'py>,
     humidity_variant: u8,
-    tdew_celsius: Option<PyReadonlyArray1<'py, f64>>,
-    rh_min: Option<PyReadonlyArray1<'py, f64>>,
-    rh_max: Option<PyReadonlyArray1<'py, f64>>,
-    rh_mean: Option<PyReadonlyArray1<'py, f64>>,
+    tdew_celsius: Option<PyOperand<'py>>,
+    rh_min: Option<PyOperand<'py>>,
+    rh_max: Option<PyOperand<'py>>,
+    rh_mean: Option<PyOperand<'py>>,
     radiation_variant: u8,
-    solar_radiation_mj_m2_day: Option<PyReadonlyArray1<'py, f64>>,
-    sunshine_hours: Option<PyReadonlyArray1<'py, f64>>,
+    solar_radiation_mj_m2_day: Option<PyOperand<'py>>,
+    sunshine_hours: Option<PyOperand<'py>>,
     coastal: bool,
 ) -> PyResult<Bound<'py, PyArray1<f64>>> {
-    let daily_tmin_celsius = crate::checked_copy(&daily_tmin_celsius)?;
-    let daily_tmax_celsius = crate::checked_copy(&daily_tmax_celsius)?;
-    let latitude_degrees = crate::checked_copy(&latitude_degrees)?;
-    let elevation_m = crate::checked_copy(&elevation_m)?;
-    let wind_speed_m_s = crate::checked_copy(&wind_speed_m_s)?;
-    let wind_speed_height_m = crate::checked_copy(&wind_speed_height_m)?;
-    let day_of_year = crate::checked_copy(&day_of_year)?;
-    let soil_heat_flux_mj_m2_day = crate::checked_copy(&soil_heat_flux_mj_m2_day)?;
-    let albedo = crate::checked_copy(&albedo)?;
+    let daily_tmin_celsius = daily_tmin_celsius.owned()?;
+    let daily_tmax_celsius = daily_tmax_celsius.owned()?;
+    let latitude_degrees = latitude_degrees.owned()?;
+    let elevation_m = elevation_m.owned()?;
+    let wind_speed_m_s = wind_speed_m_s.owned()?;
+    let wind_speed_height_m = wind_speed_height_m.owned()?;
+    let day_of_year = day_of_year.owned()?;
+    let soil_heat_flux_mj_m2_day = soil_heat_flux_mj_m2_day.owned()?;
+    let albedo = albedo.owned()?;
     let (tdew_celsius, rh_min, rh_max, rh_mean) = (
         checked_optional(tdew_celsius)?,
         checked_optional(rh_min)?,

@@ -332,3 +332,77 @@ run is its `--netcdf` mode):
 ```bash
 uv run benchmarks/rust_vs_python.py --repeat 5 --write
 ```
+
+### Dispatch optimization measurements (#1281)
+
+2026-10-10, Apple M5/macOS arm64, Python 3.14.7, NumPy 2.4.2, SciPy 1.17.0,
+Rust 1.99.0. Baseline `origin/main` revision `74fef017`; release builds on both
+sides, 30 alternating timed calls after warm-up, default console INFO logging.
+These are station/small-block measurements, not grid or Xeon results. IQR is
+Q3−Q1; it is not a confidence interval. Untouched rows vary with host/run noise.
+
+```bash
+uv sync && uv run maturin develop --release
+uv run python benchmarks/profile_dispatch_overhead.py --label before-full
+# rebuild after source changes:
+uv run maturin develop --release
+uv run python benchmarks/profile_dispatch_overhead.py --label after-final --profile
+```
+
+Native public medians in microseconds (IQR); ratios are Python/native. The
+[full table](https://github.com/monocongo/climate_indices/blob/main/benchmarks/README.md#dispatch-and-pm-optimization-1281--1324)
+includes both Python timing distributions, raw/prep accounting, realistic and
+monotonic day sweeps, profiling ceilings, and source/extension hashes.
+Raw samples: `benchmarks/results/before-full-20261010T004923Z.json` and
+`benchmarks/results/after-final-20261010T011635Z.json`.
+
+| Entry | Native before µs (IQR) | Native after µs (IQR) | Python/native before→after |
+| --- | ---: | ---: | ---: |
+| `spi_gamma` | 303.21 (11.81) | 318.77 (15.70) | 1.14 → 1.16 |
+| `spi_gamma_mean_zero` | 349.19 (16.51) | 367.98 (17.46) | 1.11 → 1.12 |
+| `spi_pearson` | 848.31 (24.55) | 329.50 (11.39) | 1.23 → 3.34 |
+| `spei_loglogistic` | 216.75 (6.68) | 227.71 (6.43) | 1.57 → 1.56 |
+| `spi_gamma_spatial_block` | 377.31 (13.90) | 394.42 (20.36) | 1.16 → 1.18 |
+| `spei_gamma` | 306.23 (10.05) | 321.58 (7.51) | 1.17 → 1.17 |
+| `percentage_of_normal` | 51.31 (2.89) | 53.54 (3.39) | 1.08 → 1.12 |
+| `eddi` | 168.27 (4.80) | 153.31 (6.86) | 1.56 → 1.81 |
+| `eddi_spatial_block` | 211.52 (5.56) | 197.29 (4.73) | 1.83 → 2.03 |
+| `pci` | 51.48 (2.73) | 51.96 (2.41) | 1.01 → 1.04 |
+| `fit_diagnostics` | 1893.42 (73.11) | 1976.29 (27.54) | 1.00 → 1.01 |
+| `thornthwaite` | 29.71 (4.69) | 30.33 (5.53) | 220.02 → 223.27 |
+| `hargreaves` | 105.06 (7.03) | 107.19 (9.15) | 34.58 → 35.38 |
+| `penman_monteith` | 133.12 (4.43) | 100.65 (3.47) | 0.86 → 1.19 |
+| `pm_eto_intermediates` | 17.60 (0.55) | 10.08 (0.38) | 0.45 → 0.84 |
+| `fire_ffmc` | 217.02 (15.73) | 225.12 (11.57) | 45.02 → 45.30 |
+| `fire_duff_moisture_code` | 234.90 (9.81) | 243.75 (11.79) | 36.98 → 37.34 |
+| `fire_drought_code` | 221.29 (12.71) | 229.62 (8.28) | 37.51 → 37.78 |
+| `fire_kbdi` | 200.00 (13.94) | 204.25 (11.85) | 43.10 → 44.02 |
+| `flood_pe` | 21.00 (1.12) | 20.85 (0.61) | 2.33 → 2.48 |
+| `flood_edi` | 33.90 (3.75) | 35.44 (1.98) | 2.10 → 2.14 |
+| `flood_flood_index` | 34.10 (2.15) | 34.69 (1.83) | 2.21 → 2.21 |
+| `flood_api` | 167.08 (8.99) | 177.25 (21.19) | 44.95 → 45.05 |
+| `palmer_pdsi` | 170.67 (23.08) | 190.19 (72.61) | 202.50 → 195.18 |
+| `palmer_scpdsi` | 244.44 (13.15) | 250.75 (38.44) | 64.66 → 65.70 |
+
+PM prep drops from 39.29 (3.47) to 12.71 (2.57) µs. Scalar operands allocate
+no element buffer: at 10⁷ elements the fresh-process prep RSS delta is zero;
+whole-call peak is 827.5 MB, including real-array copies and output. The separate
+cycling-day PM case reaches 1.84× at 146,000 and 1.88× at 10⁶ elements; the
+unchanged monotonic-day case remains ≈1.0×. Eq 6 still loses to NumPy on M5.
+No performance threshold or backend exception was inferred from one host.
+
+Before the Pearson port, even an optimistic zero-time entire-GoF ceiling was
+1.28× for SPI/SPEI Gamma, 1.01× for log-logistic/PNP, but 2.76–2.78× for Pearson.
+Only Pearson calibration CDF→KS D was batched. Python still computes candidate
+exact p-values and emits unchanged warnings; near-threshold D values keep the
+SciPy oracle. Supplemental SPEI Pearson improves from 847.31 (38.08) to
+333.31 (9.61) µs native, with Python/native 1.22→3.28. Spatial GoF and further
+fit/transform fusion remain unported. Parity remains `rtol = atol = 1e-10`;
+new KS maxima are 3.331e-16 absolute and 1.830e-15 relative.
+
+PCI and `fit_diagnostics` are expected ≈1.0×: validation-bound and SciPy-KS-bound,
+respectively. Keep their existing dispatch for consistency; do not promise a
+standalone gain or port more trivial work. SIMD was deferred because realistic
+cycling PM already exceeds 1.5× at n≥10⁵ here; monotonic PM remains an unfavorable
+case. #1281 needs a Xeon repeat and an Eq 6 routing/crossover investigation;
+#1324 needs isolated-host repeats of the now-persisted raw-sample harness.

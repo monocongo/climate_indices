@@ -1849,11 +1849,12 @@ the Python and Rust paths raise the same error in the same order. `eto` also
 keeps a Thornthwaite block with an all-NaN month column in Python, since only the
 Python path reports `np.nanmean`'s empty-slice warning. Each kernel copies every
 operand it reads before it releases the GIL, so the native route holds the caller's
-arrays, one flattened input per operand, those copies and the kernel's fixed
-intermediates: a bounded multiple of the request. A constant operand reaches the
-kernel as a zero-stride view rather than as a materialized block, and the Hargreaves
-route reports the bytes it copies beside the arrays it is handed, so the logged
-memory model covers the route the dispatch selected. Their measured effect on
+arrays, flattened real-array inputs, and those copies: a bounded multiple of the
+request. Penman-Monteith passes constants as scalars, caches station/astronomy
+terms on exact input bits, and evaluates Eq 6 without intermediate arrays.
+Thornthwaite/Hargreaves still pass constant latitudes as zero-stride views, and
+Hargreaves reports the bytes it copies beside the arrays it is handed, so the
+logged memory model covers the route the dispatch selected. Their measured effect on
 three representative inputs is in `benchmarks/README.md`; RUST-011 owns whether
 each kernel is worth its conversion overhead.
 
@@ -2080,6 +2081,15 @@ Which path an input takes, and why. Every row is asserted by
 | `overflowing_lmoment_block` | Python fit | an infinity makes the L-moments NaN, which the two fits report differently |
 | `oversized_lmoment_block` | Python fit | a finite value above `1e100` exceeds the native L-moment safety bound |
 
+Pearson's single-series goodness-of-fit check also batches sorted calibration
+CDFs and KS D statistics in `pearson::pearson_ks_statistics`. Python keeps the
+validation, critical values, candidate exact p-values, warnings, and logging.
+Only a D statistic below the critical value by the full parity envelope
+(`1e-10 * (1 + abs(critical))`, plus dtype epsilon) skips the SciPy check;
+candidates and near-boundary statistics use the original oracle decision.
+Spatial goodness-of-fit remains Python. Extension errors propagate before the
+reference check's exception handler and are never retried.
+
 ### Parity tolerance
 
 The contract is `rtol = atol = 1e-10` with matching NaN positions, per kernel,
@@ -2108,6 +2118,7 @@ are measured on macOS arm64
 | `palmer_pdsi` | `palmer_k_prime`, `palmer_pdi`, `palmer_raw_zindex`, `palmer_water_balance` | 0.000e+00 | 0.000e+00 |
 | `palmer_scpdsi` | `palmer_k_prime`, `palmer_raw_zindex`, `palmer_water_balance`, `palmer_wells`, `scpdsi_duration_factors` | 0.000e+00 | 0.000e+00 |
 | `pci` | `pci` | 0.000e+00 | 0.000e+00 |
+| `pearson_ks_statistics` | `pearson_ks_statistics` | 3.331e-16 | 1.830e-15 |
 | `penman_monteith` | `fao56_eto` | 8.882e-16 | 4.337e-16 |
 | `percentage_of_normal` | `pnp_normals`, `pnp_percentages` | 0.000e+00 | 0.000e+00 |
 | `pm_eto_intermediates` | `pm_eto` | 0.000e+00 | 0.000e+00 |
@@ -2116,7 +2127,7 @@ are measured on macOS arm64
 | `spi_gamma` | `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 1.998e-15 | 4.765e-14 |
 | `spi_gamma_mean_zero` | `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 1.998e-15 | 4.765e-14 |
 | `spi_gamma_spatial_block` | `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 7.105e-15 | 1.868e-13 |
-| `spi_pearson` | `pearson_cdf`, `pearson_parameters` | 8.604e-15 | 6.822e-14 |
+| `spi_pearson` | `pearson_cdf`, `pearson_ks_statistics`, `pearson_parameters` | 8.604e-15 | 6.822e-14 |
 | `thornthwaite` | `thornthwaite` | 2.842e-14 | 2.208e-16 |
 
 The largest measured absolute deviation is 4.547e-13 (`flood_pe`), more than two
@@ -4686,6 +4697,80 @@ run is its `--netcdf` mode):
 ```bash
 uv run benchmarks/rust_vs_python.py --repeat 5 --write
 ```
+
+### Dispatch optimization measurements (#1281)
+
+2026-10-10, Apple M5/macOS arm64, Python 3.14.7, NumPy 2.4.2, SciPy 1.17.0,
+Rust 1.99.0. Baseline `origin/main` revision `74fef017`; release builds on both
+sides, 30 alternating timed calls after warm-up, default console INFO logging.
+These are station/small-block measurements, not grid or Xeon results. IQR is
+Q3−Q1; it is not a confidence interval. Untouched rows vary with host/run noise.
+
+```bash
+uv sync && uv run maturin develop --release
+uv run python benchmarks/profile_dispatch_overhead.py --label before-full
+# rebuild after source changes:
+uv run maturin develop --release
+uv run python benchmarks/profile_dispatch_overhead.py --label after-final --profile
+```
+
+Native public medians in microseconds (IQR); ratios are Python/native. The
+[full table](https://github.com/monocongo/climate_indices/blob/main/benchmarks/README.md#dispatch-and-pm-optimization-1281--1324)
+includes both Python timing distributions, raw/prep accounting, realistic and
+monotonic day sweeps, profiling ceilings, and source/extension hashes.
+Raw samples: `benchmarks/results/before-full-20261010T004923Z.json` and
+`benchmarks/results/after-final-20261010T011635Z.json`.
+
+| Entry | Native before µs (IQR) | Native after µs (IQR) | Python/native before→after |
+| --- | ---: | ---: | ---: |
+| `spi_gamma` | 303.21 (11.81) | 318.77 (15.70) | 1.14 → 1.16 |
+| `spi_gamma_mean_zero` | 349.19 (16.51) | 367.98 (17.46) | 1.11 → 1.12 |
+| `spi_pearson` | 848.31 (24.55) | 329.50 (11.39) | 1.23 → 3.34 |
+| `spei_loglogistic` | 216.75 (6.68) | 227.71 (6.43) | 1.57 → 1.56 |
+| `spi_gamma_spatial_block` | 377.31 (13.90) | 394.42 (20.36) | 1.16 → 1.18 |
+| `spei_gamma` | 306.23 (10.05) | 321.58 (7.51) | 1.17 → 1.17 |
+| `percentage_of_normal` | 51.31 (2.89) | 53.54 (3.39) | 1.08 → 1.12 |
+| `eddi` | 168.27 (4.80) | 153.31 (6.86) | 1.56 → 1.81 |
+| `eddi_spatial_block` | 211.52 (5.56) | 197.29 (4.73) | 1.83 → 2.03 |
+| `pci` | 51.48 (2.73) | 51.96 (2.41) | 1.01 → 1.04 |
+| `fit_diagnostics` | 1893.42 (73.11) | 1976.29 (27.54) | 1.00 → 1.01 |
+| `thornthwaite` | 29.71 (4.69) | 30.33 (5.53) | 220.02 → 223.27 |
+| `hargreaves` | 105.06 (7.03) | 107.19 (9.15) | 34.58 → 35.38 |
+| `penman_monteith` | 133.12 (4.43) | 100.65 (3.47) | 0.86 → 1.19 |
+| `pm_eto_intermediates` | 17.60 (0.55) | 10.08 (0.38) | 0.45 → 0.84 |
+| `fire_ffmc` | 217.02 (15.73) | 225.12 (11.57) | 45.02 → 45.30 |
+| `fire_duff_moisture_code` | 234.90 (9.81) | 243.75 (11.79) | 36.98 → 37.34 |
+| `fire_drought_code` | 221.29 (12.71) | 229.62 (8.28) | 37.51 → 37.78 |
+| `fire_kbdi` | 200.00 (13.94) | 204.25 (11.85) | 43.10 → 44.02 |
+| `flood_pe` | 21.00 (1.12) | 20.85 (0.61) | 2.33 → 2.48 |
+| `flood_edi` | 33.90 (3.75) | 35.44 (1.98) | 2.10 → 2.14 |
+| `flood_flood_index` | 34.10 (2.15) | 34.69 (1.83) | 2.21 → 2.21 |
+| `flood_api` | 167.08 (8.99) | 177.25 (21.19) | 44.95 → 45.05 |
+| `palmer_pdsi` | 170.67 (23.08) | 190.19 (72.61) | 202.50 → 195.18 |
+| `palmer_scpdsi` | 244.44 (13.15) | 250.75 (38.44) | 64.66 → 65.70 |
+
+PM prep drops from 39.29 (3.47) to 12.71 (2.57) µs. Scalar operands allocate
+no element buffer: at 10⁷ elements the fresh-process prep RSS delta is zero;
+whole-call peak is 827.5 MB, including real-array copies and output. The separate
+cycling-day PM case reaches 1.84× at 146,000 and 1.88× at 10⁶ elements; the
+unchanged monotonic-day case remains ≈1.0×. Eq 6 still loses to NumPy on M5.
+No performance threshold or backend exception was inferred from one host.
+
+Before the Pearson port, even an optimistic zero-time entire-GoF ceiling was
+1.28× for SPI/SPEI Gamma, 1.01× for log-logistic/PNP, but 2.76–2.78× for Pearson.
+Only Pearson calibration CDF→KS D was batched. Python still computes candidate
+exact p-values and emits unchanged warnings; near-threshold D values keep the
+SciPy oracle. Supplemental SPEI Pearson improves from 847.31 (38.08) to
+333.31 (9.61) µs native, with Python/native 1.22→3.28. Spatial GoF and further
+fit/transform fusion remain unported. Parity remains `rtol = atol = 1e-10`;
+new KS maxima are 3.331e-16 absolute and 1.830e-15 relative.
+
+PCI and `fit_diagnostics` are expected ≈1.0×: validation-bound and SciPy-KS-bound,
+respectively. Keep their existing dispatch for consistency; do not promise a
+standalone gain or port more trivial work. SIMD was deferred because realistic
+cycling PM already exceeds 1.5× at n≥10⁵ here; monotonic PM remains an unfavorable
+case. #1281 needs a Xeon repeat and an Eq 6 routing/crossover investigation;
+#1324 needs isolated-host repeats of the now-persisted raw-sample harness.
 
 ## docs/algorithms.md
 

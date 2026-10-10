@@ -259,7 +259,7 @@ def _palmer_native(kernel: str, *arrays: np.ndarray) -> ModuleType | None:
     native: ModuleType | None = _native
     if native is None or not hasattr(native, kernel):
         return None
-    if not all(compute._native_float64(array) for array in arrays):
+    if not compute._native_float64s(*arrays):
         return None
     return native
 
@@ -276,7 +276,7 @@ def _native_awc(awc: float | np.ndarray, n_cells: int) -> np.ndarray | None:
     """
     if type(awc) in (int, float, np.float64):
         return np.broadcast_to(np.float64(awc), (n_cells,))
-    if isinstance(awc, np.ndarray) and awc.shape in ((), (n_cells,)) and compute._native_float64(awc):
+    if isinstance(awc, np.ndarray) and awc.shape in ((), (n_cells,)) and compute._plain_float64(awc):
         return np.broadcast_to(awc, (n_cells,))
     return None
 
