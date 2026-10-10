@@ -1519,6 +1519,39 @@ def _check_goodness_of_fit_gamma_spatial(
     warnings.warn(warning, stacklevel=3)
 
 
+def _native_pearson_ks_statistics(
+    values: np.ndarray, locs: np.ndarray, scales: np.ndarray, skews: np.ndarray
+) -> np.ndarray | None:
+    """Batched CDF and D statistics, or None where Python keeps the check."""
+    if (
+        values.ndim != 2
+        or not _native_float64s(values, locs, scales, skews)
+        or any(parameter.shape != (values.shape[1],) for parameter in (locs, scales, skews))
+        or np.any(np.abs(values) > 1e100)
+        or _native is None
+        or not hasattr(_native, "pearson_ks_statistics")
+    ):
+        return None
+    return _native.pearson_ks_statistics(values, skews, locs, scales)
+
+
+def _pearson_ks_statistics(values: np.ndarray, locs: np.ndarray, scales: np.ndarray, skews: np.ndarray) -> np.ndarray:
+    """Native statistics and retained SciPy oracle, shared with parity checks."""
+    native = _native_pearson_ks_statistics(values, locs, scales, skews)
+    if native is not None:
+        return native
+    result = np.full(values.shape[1], np.nan)
+    for column in range(values.shape[1]):
+        loc, scale, skew = locs[column], scales[column], skews[column]
+        if not (np.isfinite(loc) and np.isfinite(scale) and np.isfinite(skew) and scale > 0):
+            continue
+        sample = values[:, column]
+        sample = np.sort(sample[~np.isnan(sample) & (sample != 0)])
+        if sample.size:
+            result[column] = _ks_d_statistic(sample, scipy.stats.pearson3.cdf(sample, skew, loc=loc, scale=scale))
+    return result
+
+
 def _check_goodness_of_fit_pearson(
     calibration_values: np.ndarray,
     probabilities_of_zero: np.ndarray,
@@ -1543,6 +1576,7 @@ def _check_goodness_of_fit_pearson(
         _check_goodness_of_fit_pearson_spatial(calibration_values, probabilities_of_zero, locs, scales, skews)
         return
 
+    native_statistics = _native_pearson_ks_statistics(calibration_values, locs, scales, skews)
     time_steps = calibration_values.shape[1]
     poor_fit_steps = []
 
@@ -1563,6 +1597,14 @@ def _check_goodness_of_fit_pearson(
             # skip if parameters are invalid
             if not (np.isfinite(loc) and np.isfinite(scale) and np.isfinite(skew) and scale > 0):
                 continue
+
+            if native_statistics is not None:
+                critical = _ks_critical_value(len(valid_values))
+                # Only clearly acceptable fits skip SciPy; candidates and near-boundary
+                # statistics keep the oracle's exact decision and warning text.
+                parity_margin = 1e-10 * (1.0 + abs(critical)) + np.finfo(valid_values.dtype).eps
+                if native_statistics[time_step_index] < critical - parity_margin:
+                    continue
 
             # perform Kolmogorov-Smirnov test
             try:

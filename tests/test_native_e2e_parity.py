@@ -176,6 +176,7 @@ def test_cli_parity(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
         "norm_ppf",
         "pearson_cdf",
         "pearson_parameters",
+        "pearson_ks_statistics",
     }
     for distribution in ("gamma", "pearson"):
         rust = written("native", distribution)

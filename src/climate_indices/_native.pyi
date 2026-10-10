@@ -55,6 +55,12 @@ def pearson_cdf(
     locs: npt.NDArray[np.float64],
     scales: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]: ...
+def pearson_ks_statistics(
+    values: npt.NDArray[np.float64],
+    skews: npt.NDArray[np.float64],
+    locs: npt.NDArray[np.float64],
+    scales: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]: ...
 def loglogistic_parameters(
     calibration: npt.NDArray[np.float64],
 ) -> tuple[

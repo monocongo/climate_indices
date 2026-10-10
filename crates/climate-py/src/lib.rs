@@ -240,6 +240,33 @@ fn pearson_cdf<'py>(
     .map_err(|error| PyValueError::new_err(error.to_string()))
 }
 
+/// Pearson KS statistics from copied calibration arrays; warning policy stays in Python.
+#[pyfunction]
+fn pearson_ks_statistics<'py>(
+    py: Python<'py>,
+    values: PyReadonlyArray2<'py, f64>,
+    skews: PyReadonlyArray1<'py, f64>,
+    locs: PyReadonlyArray1<'py, f64>,
+    scales: PyReadonlyArray1<'py, f64>,
+) -> PyResult<Bound<'py, PyArray1<f64>>> {
+    let (values, skews, locs, scales) = (
+        checked_copy(&values)?,
+        checked_copy(&skews)?,
+        checked_copy(&locs)?,
+        checked_copy(&scales)?,
+    );
+    py.detach(|| {
+        climate_core::pearson::pearson_ks_statistics(
+            values.view(),
+            skews.view(),
+            locs.view(),
+            scales.view(),
+        )
+    })
+    .map(|statistics| statistics.into_pyarray(py))
+    .map_err(|error| PyValueError::new_err(error.to_string()))
+}
+
 /// Generalized logistic loc, scale, and shape per column of a (years, columns)
 /// calibration block, plus which columns could be fitted.
 #[pyfunction]
@@ -790,6 +817,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(pci, m)?)?;
     m.add_function(wrap_pyfunction!(pearson_parameters, m)?)?;
     m.add_function(wrap_pyfunction!(pearson_cdf, m)?)?;
+    m.add_function(wrap_pyfunction!(pearson_ks_statistics, m)?)?;
     m.add_function(wrap_pyfunction!(loglogistic_parameters, m)?)?;
     m.add_function(wrap_pyfunction!(loglogistic_cdf, m)?)?;
     m.add_function(wrap_pyfunction!(norm_ppf, m)?)?;
