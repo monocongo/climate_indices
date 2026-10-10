@@ -38,7 +38,7 @@ validation. Review the [full changelog](https://github.com/monocongo/climate_ind
   53x Thornthwaite PET, 342x EDDI, and 111.3x PDSI. The xarray DataArray API
   remains **Beta** through 3.0.0; the NumPy API is the stable integration
   surface.
-- **Optional Rust backend:** Compiled numerical kernels accelerate eligible
+- **Optional Rust backend:** Compiled numerical kernels can accelerate eligible
   calls without changing the public Python API. The retained Python path needs
   no Rust toolchain; gains depend on the workload, and some kernels are slower
   in Rust. See [backend evidence and installation](#optional-rust-backend) below.
@@ -78,7 +78,7 @@ describe the individual seams and eligibility conditions.
 ### Numerical evidence
 
 The cross-backend contract is `rtol = atol = 1e-10` with matching NaN positions.
-The consolidated registry covers all exposed numerical kernels, with fixed
+The consolidated registry covers every kernel the extension exposes, with fixed
 samples, property-based cases, routing checks, and end-to-end xarray, Dask,
 CLI, and diagnostics comparisons. On the committed macOS arm64 fixed-sample
 measurement, the largest absolute deviation is **4.547e-13**

@@ -13,7 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   kernels behind SPI, SPEI, the standardized index, EDDI, PNP, PCI, Thornthwaite,
   Hargreaves and Penman-Monteith PET, Palmer/scPDSI, the fire moisture-code and KBDI
   recurrences, and the flood family. Python retains validation, warnings, xarray/Dask,
-  metadata, the CLI, and I/O; the backend introduces no public API change. Retained
+  metadata, the CLI, and I/O; the backend introduces no public signature, return-type,
+  or exception change. Retained
   Python implementations are parity oracles at `rtol = atol = 1e-10` with matching
   NaN positions. Measured deviations, workload-dependent gains, and cases where Rust
   is not faster are summarized in the [release notes](docs/release-notes-3.0.0.md#optional-rust-backend)
