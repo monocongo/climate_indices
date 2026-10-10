@@ -166,9 +166,15 @@ def _open_climate(path: str, variable: str | None, *, period: tuple[str, str] | 
         field.attrs["units"] = "mm"
     elif units not in {"mm", "millimeter", "millimeters", "millimetre", "millimetres"}:
         raise SystemExit(f"{path}[{variable}]: unsupported units {units!r}; expected mm or inches")
-    months = pd.DatetimeIndex(field["time"].values).to_period("M")
-    if months.empty or pd.Timestamp(field["time"].values[0]).month != 1 or not np.all(np.diff(months.asi8) == 1):
+    time = field["time"]
+    months = time.dt.year.values * 12 + time.dt.month.values if time.size else np.array([])
+    if months.size == 0 or time.dt.month.values[0] != 1 or not np.all(np.diff(months) == 1):
         raise SystemExit(f"{path}[{variable}]: expected a nonempty, contiguous monthly record beginning in January")
+    if period is not None:
+        start = pd.Period(period[0][:7], freq="M")
+        end = pd.Period(period[1] + "-12" if len(period[1]) == 4 else period[1][:7], freq="M")
+        if months[0] != start.year * 12 + start.month or months[-1] != end.year * 12 + end.month:
+            raise SystemExit(f"{path}[{variable}]: monthly record does not cover requested period {period}")
     return field.transpose("time", "lat", "lon")
 
 
@@ -340,7 +346,7 @@ def _run_pdsi_phase(args: argparse.Namespace, source: str, depth: str) -> PhaseR
             precip,
             pet,
             harmonized.aws,
-            data_start_year=int(pd.Timestamp(precip["time"].values[0]).year),
+            data_start_year=int(precip["time"].dt.year.values[0]),
             calibration_period=args.calibration,
             max_cells=args.max_cells,
         )

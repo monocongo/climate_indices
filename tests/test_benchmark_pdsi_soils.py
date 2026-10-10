@@ -72,20 +72,75 @@ def test_climate_selection_requires_january_first_contiguous_months(soil_benchma
         soil_benchmark._open_climate(str(path), "precip")
 
 
-def test_monthly_validation_applies_after_period_selection(soil_benchmark, tmp_path):
+@pytest.mark.parametrize("calendar", ["standard", "noleap", "360_day"])
+def test_monthly_validation_applies_after_period_selection(soil_benchmark, tmp_path, calendar):
     field = xr.DataArray(
         np.ones((12, 2, 2)),
         dims=["time", "lat", "lon"],
-        coords={"time": pd.date_range("2000-01-01", periods=12, freq="MS"), "lat": [38, 39], "lon": [-100, -99]},
+        coords={
+            "time": xr.date_range("2000-01-01", periods=12, freq="MS", calendar=calendar),
+            "lat": [38, 39],
+            "lon": [-100, -99],
+        },
         attrs={"units": "mm"},
         name="precip",
     )
     path = tmp_path / "climate.nc"
     field.to_netcdf(path)
     assert soil_benchmark._open_climate(str(path), "precip").sizes["time"] == 12
+    for period in [("2000-01-01", "2000-12-01"), ("2000-01", "2000-12"), ("2000", "2000")]:
+        selected = soil_benchmark._open_climate(str(path), "precip", period=period)
+        xr.testing.assert_equal(selected, field)
+    for period in [
+        ("1999-01-01", "2000-12-01"),
+        ("2000-01-01", "2001-12-01"),
+        ("1999-01-01", "2001-12-01"),
+    ]:
+        with pytest.raises(SystemExit, match="cover requested period"):
+            soil_benchmark._open_climate(str(path), "precip", period=period)
     for period in [("2000-02-01", "2000-12-01"), ("2001-01-01", "2001-12-01")]:
         with pytest.raises(SystemExit, match="contiguous monthly"):
             soil_benchmark._open_climate(str(path), "precip", period=period)
+
+
+@pytest.mark.parametrize("calendar", ["noleap", "360_day"])
+def test_pdsi_phase_preserves_cf_calendar_and_start_year(soil_benchmark, tmp_path, monkeypatch, calendar):
+    from climate_indices import palmer
+    from climate_indices.aws_ingest import HarmonizedAws
+
+    field = xr.DataArray(
+        np.ones((12, 2, 2)),
+        dims=["time", "lat", "lon"],
+        coords={
+            "time": xr.date_range("2000-01-01", periods=12, freq="MS", calendar=calendar),
+            "lat": [38, 39],
+            "lon": [-100, -99],
+        },
+        attrs={"units": "mm"},
+        name="precip",
+    )
+    path = tmp_path / "climate.nc"
+    field.to_netcdf(path)
+    args = _args(tmp_path)
+    args.precip = args.pet = str(path)
+    args.period = ("2000-01-01", "2000-12-01")
+    aws = field.isel(time=0, drop=True) * 150
+    monkeypatch.setattr(
+        soil_benchmark.aws_ingest, "load_aws", lambda *args, **kwargs: HarmonizedAws(aws, xr.zeros_like(aws))
+    )
+    start_years = []
+
+    def scpdsi(*values):
+        start_years.append(values[3])
+        return (np.zeros_like(values[0]),)
+
+    monkeypatch.setattr(palmer, "scpdsi", scpdsi)
+    result = soil_benchmark._run_pdsi_phase(args, "usgs", "native")
+    assert result.note == ""
+    assert result.months == 12
+    assert start_years == [2000] * 4
+    with xr.open_dataarray(soil_benchmark._scpdsi_cache_path(args, "usgs", "native")) as output:
+        xr.testing.assert_equal(output["time"], field["time"])
 
 
 @pytest.mark.parametrize("dimension", ["time", "lat", "lon", "aws"])
