@@ -474,18 +474,18 @@ def _native_arrays(
             shape = np.broadcast_shapes(*(array.shape for array in arrays))
         except ValueError:
             return None  # Python raises its original broadcasting error
-    return shape, tuple(
-        (
-            float(operand.reshape(-1)[0])
-            if operand.size == 1
-            else np.ascontiguousarray(operand if operand.shape == shape else np.broadcast_to(operand, shape)).reshape(
-                -1
-            )
-        )
-        if isinstance(operand, np.ndarray)
-        else operand
-        for operand in operands
-    )
+    return shape, tuple(_flat_operand(operand, shape) for operand in operands)
+
+
+def _flat_operand(operand: float | np.ndarray, shape: tuple[int, ...]) -> float | np.ndarray:
+    """A constant as a float, or a real array as a contiguous flat buffer of shape."""
+    if not isinstance(operand, np.ndarray):
+        return operand
+    if operand.size == 1:
+        return float(operand.reshape(-1)[0])
+    if operand.shape != shape:
+        operand = np.broadcast_to(operand, shape)
+    return np.ascontiguousarray(operand).reshape(-1)
 
 
 def pm_eto(
