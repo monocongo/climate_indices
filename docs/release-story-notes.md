@@ -6,7 +6,7 @@ Draft communications notes, not a publication record. As of this snapshot, 3.0.0
 
 ## The headline
 
-In six months, climate\_indices grew from a drought-index library into a multi-hazard climate index toolkit, with an optional Rust backend that accelerates eligible numerical calls. Palmer PDSI measured about 194x faster on a station series and 2.77x on a full-grid eager call on the documented macOS host; neither is a portable speed guarantee.
+In six months, climate\_indices grew from a drought-index library into a multi-hazard climate index toolkit, with an optional Rust backend that accelerates eligible numerical calls. Palmer PDSI measured about 195x faster on a station series and 2.77x on a full-grid eager call on the documented macOS host; neither is a portable speed guarantee.
 
 Version 3.0 adds wildfire and flood index families beside the drought indices the package is known for. It adds a self-calibrated Palmer index, a public validation layer backed by external reference datasets, and gridded xarray paths that replace per-cell loops. The Rust kernels are optional: Python stays the public API, and the retained Python implementations remain as parity oracles at `rtol = atol = 1e-10` with matching NaN positions.
 
@@ -43,7 +43,7 @@ Two phrasing notes for posts: the flood indices measure flood *potential*, not o
 
 ## Rust backend
 
-Use the committed measurements merged in [PR #1322](https://github.com/monocongo/climate_indices/pull/1322), not unmerged AWS follow-up results. The macOS arm64 station-series benchmark measured PDSI at 194.06x and scPDSI at 62.45x, best of five after warm-up. Ratios are Python wall time / Rust-enabled wall time for whole calls, including Python orchestration and binding costs.
+Use the committed measurements merged in [PR #1322](https://github.com/monocongo/climate_indices/pull/1322) and the dispatch rework in [PR #1328](https://github.com/monocongo/climate_indices/pull/1328), not unmerged AWS follow-up results. The macOS arm64 station-series benchmark measures PDSI at 195.18x and scPDSI at 65.70x (medians of thirty timed calls after warm-up, alternating backend order); the earlier best-of-five run measured 194.06x and 62.45x. Ratios are Python wall time / Rust-enabled wall time for whole calls, including Python orchestration and binding costs.
 
 The separate Apple M5 CONUS measurement covers 469,758 land cells × 528 months. Its single eager-call PDSI ratio is 2.77x; SPI gamma is 1.33x and SPEI gamma 1.57x. Eight spatial blocks on one thread bring SPI gamma to 0.98x: effectively parity. Station-series gains must not be extrapolated to full-grid runtimes or costs. These prepared-input timings exclude loading and land-cell packing.
 
@@ -51,9 +51,9 @@ The separate Apple M5 CONUS measurement covers 469,758 land cells × 528 months.
 - **Parity contract:** `rtol = atol = 1e-10`, with NaNs in the same positions. Backend parity is regression evidence, not external scientific validation.
 - **API compatibility:** adding the backend does not change public signatures, return types or exceptions. Version 3.0.0 itself does have breaking changes; read the [upgrade considerations](release-notes-3.0.0.md#upgrade-considerations).
 - **Installation:** five planned `cp310-abi3` wheels cover manylinux_2_28 Linux x86-64/aarch64, macOS arm64/x86-64, and Windows x86-64 on Python 3.10–3.14. Other platforms and source installs use pure Python without a Rust toolchain.
-- **Limits:** some inputs and NumPy/warning configurations keep the Python path even when the extension is installed. Penman-Monteith is slower in Rust on the committed station samples; PCI and diagnostics are near parity. Native runtime errors propagate rather than silently retrying Python.
+- **Limits:** some inputs and NumPy/warning configurations keep the Python path even when the extension is installed. The dispatch rework moved Penman-Monteith ahead of Python (1.19x, from 0.88x) and Pearson-fitted SPI to 3.34x; Penman-Monteith intermediate preparation stays below parity at 0.84x, and PCI and diagnostics remain near parity. Native runtime errors propagate rather than silently retrying Python.
 
-Sources: [benchmark methodology and committed artifacts](https://github.com/monocongo/climate_indices/blob/main/benchmarks/README.md#rust-kernels-vs-the-python-reference-across-the-parity-registry-rust-011), [release notes](release-notes-3.0.0.md#optional-rust-backend). AWS timing evidence remains follow-up work under [issue #1324](https://github.com/monocongo/climate_indices/issues/1324).
+Sources: [benchmark methodology and committed artifacts](https://github.com/monocongo/climate_indices/blob/main/benchmarks/README.md#rust-kernels-vs-the-python-reference-across-the-parity-registry-rust-011) and the [dispatch and Penman-Monteith measurements](https://github.com/monocongo/climate_indices/blob/main/benchmarks/README.md#dispatch-and-pm-optimization-1281--1324), [release notes](release-notes-3.0.0.md#optional-rust-backend). AWS timing evidence remains follow-up work under [issue #1324](https://github.com/monocongo/climate_indices/issues/1324).
 
 ## Trust and validation
 

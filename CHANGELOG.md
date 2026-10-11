@@ -32,6 +32,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fitting, exposed from the Palmer CLI dispatch (#721).
 - **Palmer xarray adapter**: `pdsi()` accepts xarray DataArrays and returns the
   PDSI-family outputs as a Dataset; `scpdsi()` remains NumPy-only (#1016).
+- **Soil available-water-capacity ingest for Palmer workflows**
+  (`climate_indices.aws_ingest`): loads a registered AWC source, converts it to
+  millimetres of plant-available water over a requested soil column, and harmonizes it
+  onto the climate grid so the result can be passed as the `awc` argument of `pdsi()`
+  or `palmer.scpdsi()`. Three sources are registered: the USGS gNATSGO depth-weighted
+  raster in mm per metre, POLARIS v1.0 van Genuchten parameters integrated over the
+  requested depth, and a user-supplied STATSGO raster; an unavailable source is
+  reported, never silently substituted. Harmonization area-weights source cells with
+  `cos(latitude)` and never nearest-neighbour samples, remote reads are windowed per
+  latitude strip with retries on transport failure, and `rasterio`/`rioxarray` are
+  declared as the `aws` extra. Palmer itself is unchanged; the AWC field remains an
+  input. `benchmarks/benchmark_pdsi_soils.py` times ingest separately from the scPDSI
+  run, and a provenance-tracked POLARIS AWC fixture covers nine cells of the pinned
+  nClimGrid example grid (#1327).
 - **Validation infrastructure**: `VALIDATION.md` records per-index evidence and known
   gaps, backed by committed external fixtures: NOAA PSL EDDI reference series (maximum
   observed error `2.43e-6`), SPEIbase v2.11 SPEI plausibility floors (#779), NOAA NCEI
@@ -175,6 +189,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Windows x86-64 on Python 3.10–3.14. A matching platform wheel takes precedence;
   other platforms use the pure-Python wheel. Hatchling source installs remain
   pure Python and need no Rust toolchain (ADR-0018, #1283).
+- **Native dispatch and kernel boundary**: the extension accepts a scalar or an array
+  per argument, so scalar constants no longer materialize element buffers, and
+  Penman-Monteith caches station terms and its astronomy terms while the Pearson CDF
+  and K-S statistic are evaluated for all columns in one call. On the committed
+  dispatch harness (medians of 30 timed calls after warm-up), native Penman-Monteith
+  fell from 0.133 to 0.101 ms and Pearson-fitted SPI from 0.848 to 0.330 ms, so
+  Penman-Monteith no longer trails the Python path (Python/native 0.86 to 1.19;
+  Pearson-fitted SPI 1.23 to 3.34). Public signatures, exceptions, warnings, and the
+  `rtol = atol = 1e-10` parity contract are unchanged, and the operand policy is now
+  checked once per call rather than per operand (#1281).
 - **The xarray DataArray API stays Beta through 3.0.0** and is promoted no earlier
   than 3.1.0, so the interface may still change in a minor release (ADR-0012).
   Computation results remain identical to the stable NumPy API.
