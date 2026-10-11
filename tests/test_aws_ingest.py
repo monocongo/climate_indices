@@ -292,6 +292,47 @@ def test_area_weighted_mean_rejects_duplicate_or_non_finite_coordinates():
 # ---------------------------------------------------------------------------
 
 
+def test_area_weighted_mean_aligns_a_transposed_source_by_name():
+    """A (lon, lat) source must not have its cells swapped or rejected."""
+    source = xr.DataArray(
+        [[100.0, 200.0, 300.0], [400.0, 500.0, 600.0]],
+        coords={"lat": [38.0, 39.0], "lon": [-100.0, -99.0, -98.0]},
+        dims=["lat", "lon"],
+    )
+    latitudes, longitudes = [38.0, 39.0], [-100.0, -99.0, -98.0]
+
+    transposed = aws_ingest.area_weighted_mean(source.transpose("lon", "lat"), latitudes, longitudes)
+
+    np.testing.assert_allclose(transposed.values, source.values)
+    assert transposed.dims == ("lat", "lon")
+
+
+@pytest.mark.parametrize("transpose_totals", [False, True])
+def test_finalize_aws_aligns_a_transposed_climate_mask_by_name(transpose_totals):
+    """A (lon, lat) climate field must mask and fill the same cells as a (lat, lon) one."""
+    latitudes, longitudes = [38.0, 38.5, 39.0], [-100.0, -99.5]
+    land = np.array([[True, True], [False, True], [True, True]])
+    totals = xr.DataArray(
+        [[100.0, 200.0], [300.0, 400.0], [np.nan, 600.0]],
+        coords={"lat": latitudes, "lon": longitudes},
+        dims=["lat", "lon"],
+    )
+    climate = _climate(land, latitudes=latitudes, longitudes=longitudes)
+
+    def finalize(total: xr.DataArray, field: xr.DataArray) -> HarmonizedAws:
+        return aws_ingest.finalize_aws(
+            total, field, source="s", layers_mm=_ONE_METRE_LAYER, native_depth_mm=1000.0, depth_mm=1000.0
+        )
+
+    expected = finalize(totals, climate)
+    result = finalize(totals.T if transpose_totals else totals, climate.transpose("time", "lon", "lat"))
+
+    xr.testing.assert_equal(result.aws, expected.aws)
+    xr.testing.assert_equal(result.filled, expected.filled)
+    assert bool(np.isnan(result.aws.sel(lat=38.5, lon=-100.0)))  # water stays missing
+    assert bool(result.filled.sel(lat=39.0, lon=-100.0))  # the land hole is filled
+
+
 def test_fill_land_holes_fills_inside_land_and_leaves_water_missing():
     values = np.array([[np.nan, 20.0], [np.nan, np.nan]])
     land = np.array([[True, True], [False, True]])

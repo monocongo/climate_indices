@@ -236,8 +236,9 @@ class HarmonizedAws:
 
     Attributes:
         aws: Total plant-available water in millimetres over the requested depth;
-            dimensions are the climate grid's cell dimensions, in the climate
-            grid's order, and non-land cells are missing.
+            dimensions are the climate grid's ``(lat_dim, lon_dim)``, in that
+            order whatever the climate field's own order, and non-land cells are
+            missing.
         filled: Boolean field, aligned with ``aws``, that is True exactly where
             ``aws`` was missing inside land and was filled from neighbours.
     """
@@ -526,9 +527,10 @@ def area_weighted_mean(
             duplicate values, non-finite values, or is not monotonic in one of the
             two directions.
     """
-    values = np.asarray(source.values, dtype=float)
-    if values.ndim != 2:
-        raise AwsIngestError(f"area-weighted averaging needs a 2-D field, got shape {values.shape!r}")
+    if source.ndim != 2:
+        raise AwsIngestError(f"area-weighted averaging needs a 2-D field, got shape {source.shape!r}")
+    # the matrix products below are positional, so take (lat, lon) order by name
+    values = np.asarray(source.transpose(lat_dim, lon_dim).values, dtype=float)
     source_lat = _validated_axis(np.asarray(source[lat_dim].values, dtype=float), lat_dim)
     source_lon = _validated_axis(np.asarray(source[lon_dim].values, dtype=float), lon_dim)
     target_lat = _validated_axis(np.asarray(lat_values, dtype=float), "target latitude")
@@ -733,7 +735,7 @@ def finalize_aws(
     """
     resolved_depth_mm = float(depth_mm)
     land_mask = _climate_land_mask(climate, lat_dim=lat_dim, lon_dim=lon_dim)
-    averaged = total_mm.where(land_mask)
+    averaged = total_mm.transpose(lat_dim, lon_dim).where(land_mask)
     target_lat = climate[lat_dim].values
     target_lon = climate[lon_dim].values
     clipped, report = clip_aws_bounds(averaged.values)
@@ -795,7 +797,7 @@ def finalize_aws(
 
 
 def _climate_land_mask(climate: xr.DataArray, *, lat_dim: str, lon_dim: str) -> xr.DataArray:
-    """Boolean field that is True where the climate grid carries data."""
+    """Boolean ``(lat_dim, lon_dim)`` field that is True where the climate grid carries data."""
     missing_dims = [dim for dim in (lat_dim, lon_dim) if dim not in climate.dims]
     if missing_dims:
         raise AwsIngestError(f"climate field is missing dimension(s) {missing_dims!r}; it has {climate.dims!r}")
@@ -803,7 +805,7 @@ def _climate_land_mask(climate: xr.DataArray, *, lat_dim: str, lon_dim: str) -> 
     mask = climate.notnull()
     if other_dims:
         mask = mask.any(dim=other_dims)
-    return cast(xr.DataArray, mask)
+    return cast(xr.DataArray, mask.transpose(lat_dim, lon_dim))
 
 
 def _validated_axis(values: npt.NDArray[np.float64], name: str) -> npt.NDArray[np.float64]:
@@ -1504,7 +1506,7 @@ def load_aws(
     cache_path = None if cache_dir is None else Path(cache_dir)
     signature = grid_signature(climate[lat_dim].values, climate[lon_dim].values, lat_dim=lat_dim, lon_dim=lon_dim)
     digest = hashlib.sha256(f"{source}:{depth_mm}:{resolved_depth_mm!r}:{signature}".encode())
-    land = _climate_land_mask(climate, lat_dim=lat_dim, lon_dim=lon_dim).transpose(lat_dim, lon_dim)
+    land = _climate_land_mask(climate, lat_dim=lat_dim, lon_dim=lon_dim)
     digest.update(np.asarray(land.values, dtype=bool).tobytes())
     raw_path = None if raw_dir is None else Path(raw_dir)
     rasters: list[Path] = []
