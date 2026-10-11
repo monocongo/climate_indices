@@ -200,6 +200,14 @@ def test_ingest_keeps_neighbouring_cells_for_a_one_cell_region(soil_benchmark, t
     assert result.filled.sizes == {"lat": 1, "lon": 1}
 
 
+def test_category_boundaries_belong_to_the_more_severe_class(soil_benchmark):
+    values = np.array([-4.5, -4.0, -3.5, -3.0, -2.0, -1.0, -0.5, -0.49, 2.0, np.nan])
+
+    labels = soil_benchmark._category(values)
+
+    assert labels.tolist() == ["D4", "D4", "D3", "D3", "D2", "D1", "D0", "normal", "normal", "missing"]
+
+
 @pytest.mark.parametrize("dimension", ["time", "lat", "lon", "aws"])
 def test_scpdsi_rejects_equal_shapes_with_different_coordinates(soil_benchmark, dimension):
     precip = xr.DataArray(

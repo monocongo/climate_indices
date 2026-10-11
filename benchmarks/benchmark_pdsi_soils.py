@@ -78,8 +78,9 @@ DEFAULT_DEPTHS = ("native", "1000")
 
 _PHASE_FAILED = "phase failed"
 
-#: Drought categories as (label, lower bound inclusive, upper bound exclusive),
-#: most severe first, over the CPC Palmer severity ladder carrying USDM labels.
+#: Drought categories as (label, lower bound exclusive, upper bound inclusive),
+#: most severe first, over the CPC Palmer severity ladder carrying USDM labels;
+#: a value on a boundary, such as -4.0, belongs to the more severe class.
 _PALMER_CATEGORIES: tuple[tuple[str, float, float], ...] = (
     ("D4", -np.inf, -4.0),
     ("D3", -4.0, -3.0),
@@ -273,7 +274,7 @@ def _category(values: np.ndarray) -> np.ndarray:
     labels = np.full(values.shape, "missing", dtype=object)
     finite = np.isfinite(values)
     for label, lower, upper in _PALMER_CATEGORIES:
-        selected = finite & (values >= lower) & (values < upper)
+        selected = finite & (values > lower) & (values <= upper)
         labels[selected] = label
     return labels
 
