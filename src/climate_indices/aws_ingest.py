@@ -409,7 +409,8 @@ def integrate_depth(
         coords={layer_dim: storage_mm[layer_dim].values},
         dims=[layer_dim],
     )
-    total = (storage_mm * included).sum(dim=layer_dim, skipna=False)
+    # A layer below the column contributes nothing, even where it is missing; 0 * NaN would not.
+    total = (storage_mm.where(included > 0.0, 0.0) * included).sum(dim=layer_dim, skipna=False)
     return cast(
         xr.DataArray,
         total.assign_attrs(units="mm", long_name=_TOTAL_WATER_LONG_NAME, aws_depth_mm=float(depth_mm)),
