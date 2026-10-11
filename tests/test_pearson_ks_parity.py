@@ -53,6 +53,32 @@ def test_warning_text_categories_and_metadata_match(monkeypatch, poor):
         assert outcomes[0]
 
 
+@pytest.mark.parametrize("policy", ["warn", "raise"])
+def test_special_reporting_policy_keeps_scipy(monkeypatch, policy):
+    size = 2000
+    values = scipy.stats.norm.ppf((np.arange(size) + 0.5) / size)
+    values[[0, -1]] = [-50.0, 50.0]
+    l2 = np.sum((2 * np.arange(1, size + 1) - size - 1) * values) / (size * (size - 1))
+    scales = np.array([l2 * np.sqrt(np.pi)])
+    outcomes = []
+    for backend in (native, None):
+        recorder = conftest.NativeRecorder(backend) if backend is not None else None
+        monkeypatch.setattr(compute, "_native", recorder)
+        with (
+            warnings.catch_warnings(record=True) as caught,
+            np.errstate(all="ignore"),
+            scipy.special.errstate(underflow=policy),
+        ):
+            warnings.simplefilter("always")
+            compute._check_goodness_of_fit_pearson(values[:, None], np.zeros(1), np.zeros(1), scales, np.zeros(1))
+        if recorder is not None:
+            assert "pearson_ks_statistics" not in recorder.calls
+        outcomes.append([(item.category, str(item.message)) for item in caught])
+    assert outcomes[0] == outcomes[1]
+    if policy == "warn":
+        assert any(category is scipy.special.SpecialFunctionWarning for category, _ in outcomes[0])
+
+
 def test_near_threshold_keeps_oracle_cdf(monkeypatch):
     values = np.linspace(1.0, 100.0, 35).reshape(-1, 1)
     critical = compute._ks_critical_value(35)

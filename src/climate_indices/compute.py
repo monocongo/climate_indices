@@ -1530,6 +1530,8 @@ def _native_pearson_ks_statistics(
         or np.any(np.abs(values) > 1e100)
         or _native is None
         or not hasattr(_native, "pearson_ks_statistics")
+        # Rust cannot emit SciPy's caller-requested special-function diagnostics.
+        or any(policy != "ignore" for name, policy in scipy.special.geterr().items() if name != "memory")
     ):
         return None
     return _native.pearson_ks_statistics(values, skews, locs, scales)
