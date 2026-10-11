@@ -1047,14 +1047,34 @@ def _write_cache(cache_dir: Path, key: str, result: HarmonizedAws, *, lat_dim: s
         os.replace(temporary, path)  # NOSONAR (S8707)
 
 
-def _read_cache(cache_dir: Path, key: str, *, lat_dim: str, lon_dim: str) -> HarmonizedAws | None:
-    """Read a complete cached field/mask pair, or None when it is absent."""
+def _read_cache(
+    cache_dir: Path,
+    key: str,
+    *,
+    lat_dim: str,
+    lon_dim: str,
+    latitudes: npt.ArrayLike,
+    longitudes: npt.ArrayLike,
+) -> HarmonizedAws | None:
+    """Read a complete cached field/mask pair on the requested grid, or None when it is absent.
+
+    GeoTIFF stores an affine transform rather than coordinate arrays, so an
+    irregular grid reads back regularized. The key already pins the exact grid,
+    so the requested cell centres are restored once the cached extent and
+    orientation match them; anything else is treated as a miss.
+    """
     path = cache_dir / f"{hashlib.sha256(key.encode()).hexdigest()}.tif"
     if not path.exists():
         return None
     rioxarray = _require_rio()
     with rioxarray.open_rasterio(path, lock=False) as raster:
         bands = raster.rename({"x": lon_dim, "y": lat_dim}).load()
+    requested = {lat_dim: np.asarray(latitudes, dtype=float), lon_dim: np.asarray(longitudes, dtype=float)}
+    for dim, centres in requested.items():
+        stored = np.asarray(bands[dim].values, dtype=float)
+        if stored.size != centres.size or not np.allclose(stored[[0, -1]], centres[[0, -1]], rtol=0.0, atol=1e-6):
+            return None
+    bands = bands.assign_coords(requested)
     aws = bands.sel(band=1, drop=True)
     filled = bands.sel(band=2, drop=True).astype(bool)
     for name in ("aws_depth_mm", "aws_native_depth_mm", "aws_min_before_clip_mm", "aws_max_before_clip_mm"):
@@ -1531,7 +1551,14 @@ def load_aws(
         digest.update(f"{raster.resolve()}:{stat.st_size}:{stat.st_mtime_ns}:{stat.st_ctime_ns}".encode())
     key = digest.hexdigest()
     if cache_path is not None:
-        cached = _read_cache(cache_path, key, lat_dim=lat_dim, lon_dim=lon_dim)
+        cached = _read_cache(
+            cache_path,
+            key,
+            lat_dim=lat_dim,
+            lon_dim=lon_dim,
+            latitudes=climate[lat_dim].values,
+            longitudes=climate[lon_dim].values,
+        )
         if cached is not None:
             _logger.info("aws_cache_hit", source=source, depth_mm=resolved_depth_mm, key=key)
             return cached

@@ -667,7 +667,13 @@ def test_geotiff_cache_round_trip_preserves_field_mask_and_metadata(tmp_path):
     aws_ingest._write_cache(
         tmp_path, "polaris_1000.0mm_deadbeef", HarmonizedAws(aws=aws, filled=filled), lat_dim="lat", lon_dim="lon"
     )
-    cached = aws_ingest._read_cache(tmp_path, "polaris_1000.0mm_deadbeef", lat_dim="lat", lon_dim="lon")
+
+    def read(key: str) -> HarmonizedAws | None:
+        return aws_ingest._read_cache(
+            tmp_path, key, lat_dim="lat", lon_dim="lon", latitudes=[38.75, 38.25], longitudes=[-99.75, -99.25]
+        )
+
+    cached = read("polaris_1000.0mm_deadbeef")
 
     assert cached is not None
     np.testing.assert_allclose(cached.aws.values, values, equal_nan=True)
@@ -680,7 +686,39 @@ def test_geotiff_cache_round_trip_preserves_field_mask_and_metadata(tmp_path):
     assert cached.aws.attrs["aws_layers_mm"] == "[]"
     assert cached.aws.attrs["aws_unverified"] == '["example"]'
     assert cached.depth_mm == pytest.approx(1000.0)
-    assert aws_ingest._read_cache(tmp_path, "missing_key", lat_dim="lat", lon_dim="lon") is None
+    assert read("missing_key") is None
+
+
+def test_cache_hit_restores_irregular_climate_coordinates(tmp_path, monkeypatch):
+    """GeoTIFF regularizes an irregular grid; a cache hit must return the requested centres."""
+    pytest.importorskip("rioxarray", reason="the GeoTIFF cache needs the optional aws extra")
+    latitudes, longitudes = [38.0, 38.2, 38.5, 38.7, 39.0], [-100.0, -99.7, -99.1]
+    climate = _climate(np.ones((5, 3), dtype=bool), latitudes=latitudes, longitudes=longitudes)
+    calls: list[int] = []
+
+    def load(climate, depth, raw_dir, **kwargs):
+        calls.append(1)
+        totals = xr.DataArray(
+            np.linspace(100.0, 240.0, 15).reshape(5, 3),
+            coords={"lat": latitudes, "lon": longitudes},
+            dims=["lat", "lon"],
+        )
+        return aws_ingest.finalize_aws(
+            totals, climate, source="usgs", layers_mm=_ONE_METRE_LAYER, native_depth_mm=1000.0, depth_mm=1000.0
+        )
+
+    from dataclasses import replace
+
+    monkeypatch.setitem(AWS_SOURCES, "usgs", replace(AWS_SOURCES["usgs"], load=load))
+    monkeypatch.delenv("USGS_AWC_RASTER", raising=False)
+    fresh = aws_ingest.load_aws("usgs", climate, cache_dir=tmp_path)
+    cached = aws_ingest.load_aws("usgs", climate, cache_dir=tmp_path)
+
+    assert len(calls) == 1, "the second load must be a cache hit"
+    np.testing.assert_array_equal(cached.aws.lat.values, latitudes)
+    np.testing.assert_array_equal(cached.aws.lon.values, longitudes)
+    np.testing.assert_allclose(cached.aws.values, fresh.aws.values)
+    np.testing.assert_array_equal(cached.filled.values, fresh.filled.values)
 
 
 def test_declared_raster_nodata_is_masked_not_read_as_soil(tmp_path):
@@ -985,12 +1023,18 @@ def test_cache_publication_is_atomic_and_keys_cannot_escape(tmp_path, monkeypatc
     new = HarmonizedAws(aws=old.aws * 2, filled=xr.ones_like(old.filled))
     key = "../escaped"
     kwargs = {"lat_dim": "lat", "lon_dim": "lon"}
+
+    def read() -> HarmonizedAws | None:
+        return aws_ingest._read_cache(
+            tmp_path, key, lat_dim="lat", lon_dim="lon", latitudes=[38.75, 38.25], longitudes=[-99.75, -99.25]
+        )
+
     aws_ingest._write_cache(tmp_path, key, old, **kwargs)
     original = RasterArray.to_raster
 
     def interrupted_write(self, *args, **options):
         original(self, *args, **options)
-        cached = aws_ingest._read_cache(tmp_path, key, **kwargs)
+        cached = read()
         assert cached is not None
         np.testing.assert_array_equal(cached.aws.values, old.aws.values)
         assert not cached.filled.values.any()
@@ -1003,7 +1047,7 @@ def test_cache_publication_is_atomic_and_keys_cannot_escape(tmp_path, monkeypatc
     assert not (tmp_path.parent / "escaped.tif").exists()
     monkeypatch.setattr(RasterArray, "to_raster", original)
     aws_ingest._write_cache(tmp_path, key, new, **kwargs)
-    cached = aws_ingest._read_cache(tmp_path, key, **kwargs)
+    cached = read()
     assert cached is not None
     np.testing.assert_array_equal(cached.aws.values, new.aws.values)
     assert cached.filled.values.all()
