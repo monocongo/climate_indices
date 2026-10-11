@@ -36,8 +36,10 @@ Why tiles are downloaded first
     The 180 tiles covering this subset are therefore downloaded once, resumably
     and with a tail read verified, into ``--cache-dir/tiles``; the ingest that
     follows reads them locally through :mod:`climate_indices.aws_ingest`'s
-    ``raw_dir`` path. A rerun reuses both the tiles and, with ``--cache-dir``,
-    the harmonized GeoTIFF cache, so it costs nothing.
+    ``raw_dir`` path. A rerun reuses both the tiles and the harmonized GeoTIFF
+    cache, so it costs nothing. The default ``--cache-dir`` is
+    ``~/.cache/climate_indices/awc-fixture``, inside the user's own home rather
+    than a shared temporary directory another local user could pre-populate.
 
 Tile trust boundary
     The publisher serves these tiles over plain HTTP with no published digests,
@@ -57,7 +59,6 @@ import argparse
 import hashlib
 import shutil
 import sys
-import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -289,14 +290,24 @@ def _build_fixture(climate: xr.DataArray, tiles_dir: Path, cache_dir: Path | Non
     return path
 
 
+def _default_cache_dir() -> Path:
+    """The per-user cache directory used when ``--cache-dir`` is not given."""
+    return Path.home() / ".cache" / "climate_indices" / "awc-fixture"
+
+
 def main() -> int:
     """Entry point."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--cache-dir", default=None, help="directory for the climate sample, tiles, and GeoTIFF cache")
+    parser.add_argument(
+        "--cache-dir",
+        default=None,
+        help="directory for the climate sample, tiles, and GeoTIFF cache (default ~/.cache/climate_indices/awc-fixture)",
+    )
     parser.add_argument("--dry-run", action="store_true", help="print the target grid and exit without reading tiles")
     arguments = parser.parse_args()
 
-    cache_dir = Path(arguments.cache_dir) if arguments.cache_dir else Path(tempfile.gettempdir()) / "awc-fixture-cache"
+    # A predictable path in a shared temporary directory lets another user pre-place symlinks the downloads follow.
+    cache_dir = Path(arguments.cache_dir) if arguments.cache_dir else _default_cache_dir()
     climate = _subset_climate(cache_dir / "climate")
     tiles_dir = cache_dir / "tiles"
     targets = _tile_targets(climate, tiles_dir)

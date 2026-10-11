@@ -146,6 +146,20 @@ def test_complete_tile_is_reused(fixture_generator, tmp_path, monkeypatch):
     assert module._fetch_tile("http://example.invalid/tile.tif", target) == "cached"
 
 
+def test_default_cache_is_private_to_the_user(fixture_generator, tmp_path, monkeypatch):
+    """Without --cache-dir, downloads land under the user's home, not a shared temporary path."""
+    module = fixture_generator
+    monkeypatch.setattr(sys, "argv", [module.__file__, "--dry-run"])
+    monkeypatch.setattr(module.Path, "home", lambda: tmp_path)
+    seen = []
+    monkeypatch.setattr(module, "_subset_climate", seen.append)
+    monkeypatch.setattr(module, "_tile_targets", lambda climate, tiles: [])
+    monkeypatch.setattr(module, "_describe", lambda climate, targets: "test grid")
+
+    assert module.main() == 0
+    assert seen == [tmp_path / ".cache" / "climate_indices" / "awc-fixture" / "climate"]
+
+
 @pytest.mark.parametrize("dry_run", [False, True])
 def test_fixture_main_returns_success_without_building_in_dry_run(fixture_generator, tmp_path, monkeypatch, dry_run):
     module = fixture_generator
