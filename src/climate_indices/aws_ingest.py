@@ -910,14 +910,27 @@ def _require_rio() -> Any:
     return rioxarray
 
 
-def _open_raster_window(path_or_url: str, bounds: Bounds | None, *, eager: bool = True) -> xr.DataArray:
+def _open_raster_window(
+    path_or_url: str,
+    bounds: Bounds | None,
+    *,
+    eager: bool = True,
+    halo_pixels: int = 0,
+) -> xr.DataArray:
     """Open one raster (optionally windowed) as a lat/lon field.
 
     Reads run through GDAL, so a remote COG/GeoTIFF may be opened over HTTP and
     only the requested window is read instead of downloading the file whole; a
-    30 m CONUS mosaic is never materialized in memory. ``eager`` computes the
-    window immediately, which bounds memory by that window and releases the
-    dataset handle instead of leaving a dask graph holding it open.
+    30 m CONUS mosaic is never materialized in memory. A projected raster is
+    cropped to the window in its own CRS before it is reprojected, so only the
+    window is ever reprojected. ``eager`` computes the window immediately, which
+    bounds memory by that window and releases the dataset handle instead of
+    leaving a dask graph holding it open. The window keeps every pixel the bounds
+    intersect plus ``halo_pixels`` more on each side; one more keeps two centres
+    per axis even when the bounds fall inside a single pixel.
+
+    Raises:
+        SourceUnavailableError: If the raster has no CRS, or no pixel inside ``bounds``.
     """
     rioxarray = _require_rio()
     import rasterio
@@ -934,31 +947,47 @@ def _open_raster_window(path_or_url: str, bounds: Bounds | None, *, eager: bool 
             lock=False,
         )
         field = field.squeeze("band", drop=True)
-        if "x" in field.dims and "y" in field.dims:
-            field = field.rename({"x": "lon", "y": "lat"})
         if field.rio.crs is None:
             raise SourceUnavailableError(f"raster {path_or_url!r} has no CRS; cannot place it on the climate grid")
         if str(field.rio.crs).upper() not in ("EPSG:4326", "OGC:CRS84"):
+            if bounds is not None:
+                from rasterio.warp import transform_bounds
+
+                projected = transform_bounds(_CRS, field.rio.crs, *bounds, densify_pts=21)
+                # A whole pixel more than the envelope, so the reprojected window still covers the bounds.
+                field = _pixel_window(field, projected, halo_pixels + 1, path_or_url)
             field = field.rio.reproject(_CRS, resampling=_average_resampling())
         # A declared nodata sentinel must never be averaged as a soil value.
         nodata = field.rio.nodata
         if nodata is not None and np.isfinite(nodata):
             field = field.where(field != nodata)
-        for dim in ("lat", "lon"):
-            if dim in field.dims:
-                field = field.sortby(dim)
         if bounds is not None:
-            west, south, east, north = bounds
             # Keep intersecting pixels; area weights trim their partial overlaps.
-            half_lat = float(field.lat[1] - field.lat[0]) / 2 if field.sizes["lat"] > 1 else 0.0
-            half_lon = float(field.lon[1] - field.lon[0]) / 2 if field.sizes["lon"] > 1 else 0.0
-            field = field.sel(
-                lat=slice(south - half_lat, north + half_lat), lon=slice(west - half_lon, east + half_lon)
-            )
+            field = _pixel_window(field, bounds, halo_pixels, path_or_url)
+        field = field.rename({"x": "lon", "y": "lat"})
+        for dim in ("lat", "lon"):
+            field = field.sortby(dim)
         field = cast(xr.DataArray, field.rename("values"))
         if eager:
             return cast(xr.DataArray, field.compute(scheduler="synchronous"))
         return field
+
+
+def _pixel_window(field: xr.DataArray, bounds: Bounds, halo_pixels: int, path_or_url: str) -> xr.DataArray:
+    """The contiguous ``x``/``y`` pixels intersecting ``bounds``, plus ``halo_pixels`` more per side."""
+    west, south, east, north = bounds
+    windows: dict[str, slice] = {}
+    for dim, low, high in (("x", west, east), ("y", south, north)):
+        centres = np.asarray(field[dim].values, dtype=float)
+        pad = (halo_pixels + 0.5) * abs(float(centres[1] - centres[0])) if centres.size > 1 else 0.0
+        inside = np.flatnonzero((centres >= low - pad) & (centres <= high + pad))
+        if inside.size == 0:
+            raise SourceUnavailableError(
+                f"raster {path_or_url!r} has no pixels inside {bounds!r}; check that it covers the "
+                "climate grid and that both use the same longitude convention (-180..180)"
+            )
+        windows[dim] = slice(int(inside[0]), int(inside[-1]) + 1)
+    return cast(xr.DataArray, field.isel(windows))
 
 
 def _open_tile_with_retry(tile: Path | str, bounds: Bounds, *, attempts: int = POLARIS_READ_ATTEMPTS) -> xr.DataArray:
@@ -1103,7 +1132,7 @@ def _gridmet_aws(
             "GRIDMET/DROUGHT exposes only drought indices. Supply the raster (GeoTIFF) with "
             "raw_dir=<dir> named 'gridmet_awc.tif', or set GRIDMET_AWC_RASTER=<path>."
         )
-    storage = _open_raster_window(str(raster), None)
+    storage = _open_raster_window(str(raster), _grid_bounds(climate, lat_dim=lat_dim, lon_dim=lon_dim), halo_pixels=1)
     return harmonize_aws(
         storage.expand_dims(layer=[spec.layers_mm[0][0]]),
         climate,
@@ -1134,7 +1163,7 @@ def _usgs_aws(
             "https://doi.org/10.5066/P9TI3IS8, then supply it with raw_dir=<dir> named "
             "'usgs_awc.tif', or set USGS_AWC_RASTER=<path>."
         )
-    values = _open_raster_window(str(raster), None)
+    values = _open_raster_window(str(raster), _grid_bounds(climate, lat_dim=lat_dim, lon_dim=lon_dim), halo_pixels=1)
     # published units are mm of available water per metre of soil over a 100 cm
     # column, so one metre makes the value numerically the column total in mm
     storage = values.expand_dims(layer=[spec.layers_mm[0][0]])
@@ -1283,6 +1312,19 @@ def _read_blocks(
             )
             blocks.append((lat_ordered[row:row_stop], lon_ordered[column:column_stop], bounds))
     return blocks
+
+
+def _grid_bounds(climate: xr.DataArray, *, lat_dim: str, lon_dim: str) -> Bounds:
+    """``(west, south, east, north)`` of the climate grid's outer cell edges.
+
+    Single-layer sources read this window, plus a pixel of halo, instead of the
+    whole raster, so a regional grid never loads a CONUS mosaic.
+    """
+    lat_edges, lon_edges = (
+        _cell_edges(_ascending(_validated_axis(np.asarray(climate[dim].values, dtype=float), dim))[0])
+        for dim in (lat_dim, lon_dim)
+    )
+    return (float(lon_edges[0]), float(lat_edges[0]), float(lon_edges[-1]), float(lat_edges[-1]))
 
 
 #: Environment variables naming a local raster for the single-layer sources.

@@ -54,6 +54,26 @@ def _layered(layer_values: npt.ArrayLike, *, latitudes: list[float], longitudes:
     )
 
 
+def _write_geotiff(
+    path, values: npt.ArrayLike, *, bounds: tuple[float, float, float, float], crs: str = "EPSG:4326"
+) -> None:
+    """Write a one-band float32 GeoTIFF spanning ``bounds`` (west, south, east, north)."""
+    rasterio = pytest.importorskip("rasterio", reason="writing a raster needs the optional aws extra")
+    data = np.asarray(values, dtype="float32")
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=data.shape[0],
+        width=data.shape[1],
+        count=1,
+        dtype="float32",
+        crs=crs,
+        transform=rasterio.transform.from_bounds(*bounds, data.shape[1], data.shape[0]),
+    ) as dataset:
+        dataset.write(data, 1)
+
+
 # ---------------------------------------------------------------------------
 # unit conversions
 # ---------------------------------------------------------------------------
@@ -757,6 +777,87 @@ def test_single_layer_sources_harmonize_supplied_rasters(tmp_path, monkeypatch, 
     result = aws_ingest.load_aws(source, climate, raw_dir=tmp_path)
     np.testing.assert_allclose(result.aws.values, 150)
     assert result.depth_mm == AWS_SOURCES[source].native_depth_mm
+
+
+def test_single_layer_sources_read_only_the_climate_window(tmp_path, monkeypatch):
+    """A regional grid reads its own cells' window, and matches a whole-raster average."""
+    pytest.importorskip("rioxarray", reason="reading a raster needs the optional aws extra")
+    monkeypatch.delenv("USGS_AWC_RASTER", raising=False)
+    raster = tmp_path / "usgs_awc.tif"
+    _write_geotiff(raster, 100.0 + np.arange(1600.0).reshape(40, 40) / 10, bounds=(-100.0, 37.0, -98.0, 39.0))
+    latitudes, longitudes = [38.3, 38.4], [-99.3, -99.2]
+    climate = _climate(np.ones((2, 2), dtype=bool), latitudes=latitudes, longitudes=longitudes)
+    opened = aws_ingest._open_raster_window
+    sizes: list[int] = []
+
+    def recording(path, bounds, **kwargs):
+        assert bounds is not None, "a single-layer read must be windowed to the climate grid"
+        field = opened(path, bounds, **kwargs)
+        sizes.append(field.size)
+        return field
+
+    monkeypatch.setattr(aws_ingest, "_open_raster_window", recording)
+    result = aws_ingest.load_aws("usgs", climate, raw_dir=tmp_path)
+
+    expected = aws_ingest.area_weighted_mean(opened(str(raster), None), latitudes, longitudes)
+    np.testing.assert_allclose(result.aws.values, expected.values, rtol=1e-6)
+    # four 0.05 degree pixels per 0.2 degree axis, plus touching and halo pixels, of the 1600
+    assert len(sizes) == 1
+    assert sizes[0] <= 64
+
+
+def test_single_layer_grid_inside_one_pixel_keeps_that_pixel(tmp_path, monkeypatch):
+    """The halo keeps two centres per axis, so a grid finer than the raster still aggregates."""
+    pytest.importorskip("rioxarray", reason="reading a raster needs the optional aws extra")
+    monkeypatch.delenv("USGS_AWC_RASTER", raising=False)
+    _write_geotiff(tmp_path / "usgs_awc.tif", [[100.0, 200.0], [300.0, 400.0]], bounds=(-100.0, 38.0, -99.0, 39.0))
+    climate = _climate(np.ones((2, 2), dtype=bool), latitudes=[38.70, 38.71], longitudes=[-99.80, -99.79])
+
+    result = aws_ingest.load_aws("usgs", climate, raw_dir=tmp_path)
+
+    np.testing.assert_allclose(result.aws.values, 100.0)
+
+
+def test_single_layer_raster_outside_the_climate_grid_fails_clearly(tmp_path, monkeypatch):
+    """A 0..360 climate grid against a -180..180 raster must not yield an all-missing field."""
+    pytest.importorskip("rioxarray", reason="reading a raster needs the optional aws extra")
+    monkeypatch.delenv("USGS_AWC_RASTER", raising=False)
+    _write_geotiff(tmp_path / "usgs_awc.tif", np.full((2, 2), 150.0), bounds=(-100.0, 38.0, -99.0, 39.0))
+    climate = _climate(np.ones((2, 2), dtype=bool), latitudes=[38.25, 38.75], longitudes=[260.25, 260.75])
+
+    with pytest.raises(SourceUnavailableError, match="longitude convention"):
+        aws_ingest.load_aws("usgs", climate, raw_dir=tmp_path)
+
+
+def test_projected_raster_is_cropped_before_it_is_reprojected(tmp_path, monkeypatch):
+    """A projected raster reprojects only the climate window, and lands on the right cells."""
+    pytest.importorskip("rioxarray", reason="reading a raster needs the optional aws extra")
+    from rasterio.warp import transform
+    from rioxarray.raster_array import RasterArray
+
+    monkeypatch.delenv("GRIDMET_AWC_RASTER", raising=False)
+    corners = transform("EPSG:4326", "EPSG:5070", [-101.0, -98.0, -101.0, -98.0], [37.0, 37.0, 40.0, 40.0])
+    xs, ys = corners[0], corners[1]
+    west, south, east, north = min(xs), min(ys), max(xs), max(ys)
+    shape = (int((north - south) // 1000), int((east - west) // 1000))
+    _write_geotiff(
+        tmp_path / "gridmet_awc.tif", np.full(shape, 150.0), bounds=(west, south, east, north), crs="EPSG:5070"
+    )
+    reprojected: list[int] = []
+    original = RasterArray.reproject
+
+    def recording(self, *args, **kwargs):
+        reprojected.append(self._obj.size)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(RasterArray, "reproject", recording)
+    climate = _climate(np.ones((2, 2), dtype=bool), latitudes=[38.45, 38.55], longitudes=[-99.55, -99.45])
+
+    result = aws_ingest.load_aws("gridmet", climate, raw_dir=tmp_path)
+
+    np.testing.assert_allclose(result.aws.values, 150.0, rtol=1e-6)
+    assert len(reprojected) == 1
+    assert reprojected[0] < shape[0] * shape[1] / 100
 
 
 def test_cache_invalidates_land_mask_depth_and_local_raster(tmp_path, monkeypatch):
