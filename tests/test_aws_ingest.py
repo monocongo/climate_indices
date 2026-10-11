@@ -533,6 +533,20 @@ def test_polaris_tile_names_follow_the_publisher_convention():
     ]
 
 
+def test_polaris_tiles_ignore_float_noise_on_whole_degree_edges():
+    """Edges a hair past a whole degree, from float midpoints, must not add a tile row or column."""
+    tiles = aws_ingest._polaris_tile_paths("alpha", "0_5", (-125.0, 34.0, -123.00000000000001, 36.00000000000001), None)
+
+    assert sorted(str(tile).rsplit("/", 1)[-1] for tile in tiles) == [
+        "lat3435_lon-124-123.tif",
+        "lat3435_lon-125-124.tif",
+        "lat3536_lon-124-123.tif",
+        "lat3536_lon-125-124.tif",
+    ]
+    # a whole cell past the boundary still reaches the next tile
+    assert len(aws_ingest._polaris_tile_paths("alpha", "0_5", (-125.0, 34.0, -123.0, 36.01), None)) == 6
+
+
 def test_grid_signature_distinguishes_grids_and_is_stable():
     first = aws_ingest.grid_signature([40.0, 41.0], [-100.0], lat_dim="lat", lon_dim="lon")
 

@@ -209,6 +209,9 @@ POLARIS_READ_BACKOFF_S = 2.0
 #: Absolute tolerance, in millimetres, for "this depth is within the native column".
 _DEPTH_TOLERANCE_MM = 1e-6
 
+#: Absolute tolerance, in degrees, for "this read edge is on a whole-degree tile boundary".
+_TILE_EDGE_TOLERANCE_DEG = 1e-9
+
 _TOTAL_WATER_LONG_NAME = "Total plant-available water"
 
 Bounds = tuple[float, float, float, float]  # (west, south, east, north) in degrees
@@ -1433,9 +1436,11 @@ def _polaris_tile_paths(parameter: str, layer: str, bounds: Bounds, raw_dir: Pat
     tiles are read over HTTP.
     """
     west, south, east, north = bounds
+    # Edges are midpoints of float centres, so one meant to sit on a whole degree can land a hair past it.
+    snap = _TILE_EDGE_TOLERANCE_DEG
     tiles: list[Path | str] = []
-    for tile_south in range(int(np.floor(south)), int(np.ceil(north))):
-        for tile_west in range(int(np.floor(west)), int(np.ceil(east))):
+    for tile_south in range(int(np.floor(south + snap)), int(np.ceil(north - snap))):
+        for tile_west in range(int(np.floor(west + snap)), int(np.ceil(east - snap))):
             name = f"lat{tile_south}{tile_south + 1}_lon{tile_west}{tile_west + 1}.tif"
             if raw_dir is not None:
                 local = Path(raw_dir) / parameter / layer / name
