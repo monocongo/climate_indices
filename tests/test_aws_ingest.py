@@ -183,7 +183,8 @@ def test_integrate_depth_ignores_missing_layers_below_the_column():
     # 0-50 mm whole, then half of the 50-150 mm layer
     assert float(total.sel(lat=40.0, lon=-100.0)) == pytest.approx(10.0 + 0.5 * 20.0)
     included_missing = _layered([10.0, np.nan, 0.0, 0.0, 0.0, 0.0], latitudes=[40.0], longitudes=[-100.0])
-    assert np.isnan(float(aws_ingest.integrate_depth(included_missing, POLARIS_LAYERS_MM, 100.0)))
+    total = aws_ingest.integrate_depth(included_missing, POLARIS_LAYERS_MM, 100.0)
+    assert np.isnan(float(total.sel(lat=40.0, lon=-100.0)))  # a missing layer inside the column still counts
 
 
 def test_integrate_depth_beyond_the_native_column_raises():
