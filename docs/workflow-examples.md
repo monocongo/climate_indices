@@ -181,7 +181,7 @@ Parallelization will occur utilizing all CPUs.
 process_climate_indices --index palmers --periodicity monthly --netcdf_precip \
 /data/nclimgrid_lowres_prcp.nc --var_name_precip prcp --netcdf_pet \
 /data/nclimgrid_lowres_pet.nc --var_name_pet pet --netcdf_awc \
-/data/nclimgrid_lowres_soil.nc  --var_name_awc awc --output_file_base \
+/data/nclimgrid_awc.nc  --var_name_awc awc --output_file_base \
 <out_dir>/nclimgrid_lowres --calibration_start_year 1951 --calibration_end_year 2010 \
 --multiprocessing all
 ```
@@ -190,8 +190,9 @@ The above command will compute the Palmer drought indices: PDSI (original Palmer
 PHDI (Palmer Hydrological Drought Index), PMDI (Palmer Modified Drought Index), Z-Index (Palmer
 Z-Index), and scPDSI (Self-calibrated Palmer Drought Severity Index) from input precipitation,
 potential evapotranspiration, and available water capacity datasets
-(in this case, the reduced resolution nClimGrid precipitation, PET, and AWC datasets provided in the
-example inputs directory). The input datasets are monthly data and the calibration period used will be
+(in this case, the reduced resolution nClimGrid precipitation and PET datasets provided in the
+example inputs directory, plus an available water capacity dataset covering the same grid cells --
+see the note on AWC files below). The input datasets are monthly data and the calibration period used will be
 Jan. 1951 through Dec. 2010. The output files will be
 `<out_dir>/nclimgrid_lowres_pdsi.nc`, `<out_dir>/nclimgrid_lowres_phdi.nc`,
 `<out_dir>/nclimgrid_lowres_pmdi.nc`, `<out_dir>/nclimgrid_lowres_zindex.nc`,
@@ -214,6 +215,30 @@ Self-calibrated PDSI (scPDSI) is available through the NumPy API as
 {func}`climate_indices.palmer.scpdsi` and through
 `process_climate_indices --index palmers`, which writes it as
 `<output_file_base>_scpdsi.nc` alongside PDSI, PHDI, PMDI, and Z-Index.
+:::
+
+:::{note}
+Available water capacity is an external soil input, and the example inputs
+directory ships precipitation and PET only. The one reduced AWC file this
+repository provides is `tests/fixture/nclimgrid_awc/polaris_awc_1000mm.nc`: a
+nine-cell subset of the same reduced nClimGrid grid, holding total
+plant-available water in millimetres over a 0-1000 mm soil column, derived from
+POLARIS v1.0 van Genuchten parameters. It can be used with a Palmers run whose
+precipitation and PET inputs are subset to the same nine cells (latitude
+37.895832-39.229168, longitude -100.6875 to -99.354164); select them by grid
+index rather than by value, since the reduction stores float32 coordinates and
+the command line matches coordinates to within a tenth of the grid spacing.
+
+Treat that file as a development example, not as an authoritative AWC product:
+it is one candidate source at one column depth, and which source and depth are
+best for nClimGrid-based PDSI processing is still open. It is licensed
+CC BY-NC 4.0 and derives its grid from an NCEI nClimGrid reduction, so it must
+not be redistributed commercially and must be attributed to Chaney et al.
+(2019) and to NCEI. `tests/fixture/nclimgrid_awc/provenance.json` records the
+full retrieval, license, and limitations, and
+`scripts/prepare_nclimgrid_awc_fixture.py` rebuilds the file -- and can be
+pointed at a wider subset -- from the same source. For any other soil source,
+{mod}`climate_indices.aws_ingest` loads and harmonizes it onto a climate grid.
 :::
 
 Parallelization will occur utilizing all CPUs.

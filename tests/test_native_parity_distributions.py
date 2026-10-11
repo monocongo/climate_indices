@@ -26,7 +26,8 @@ from tests.test_native_parity import _DATA_START, ATOL, RTOL, _assert_parity, _R
 
 native = conftest.import_native()
 
-_PEARSON = {"pearson_parameters", "pearson_cdf"}
+_PEARSON_SPATIAL = {"pearson_parameters", "pearson_cdf"}
+_PEARSON = _PEARSON_SPATIAL | {"pearson_ks_statistics"}
 _GLO = {"loglogistic_parameters", "loglogistic_cdf"}
 _KERNELS = {indices.Distribution.pearson: _PEARSON, indices.Distribution.loglogistic: _GLO}
 _MONTHLY = compute.Periodicity.monthly
@@ -174,7 +175,7 @@ def test_pearson_parameters_match_the_python_fit(monkeypatch, precips_mm_monthly
         compute.pearson_parameters(dry, _DATA_START, 1981, 2010, _MONTHLY)
     )
     rust, python, calls = _rust_and_python(monkeypatch, run)
-    assert calls == {"pearson_parameters"}
+    assert calls == {"pearson_parameters", "pearson_ks_statistics"}
     _assert_parity(rust, python)
 
 
@@ -189,7 +190,7 @@ def test_pearson_parameters_daily(monkeypatch, precips_mm_daily, data_year_start
         )
     )
     rust, python, calls = _rust_and_python(monkeypatch, run)
-    assert calls == {"pearson_parameters"}
+    assert calls == {"pearson_parameters", "pearson_ks_statistics"}
     _assert_parity(rust, python)
 
 
@@ -418,7 +419,7 @@ def test_spi_pearson_spatial_block(monkeypatch, precips_mm_monthly):
     block = _spatial_block(precips_mm_monthly, 20)
     run = _spi_pearson(block, 6, 1981, 2010, spatial_time_major=True)
     rust, python, calls = _rust_and_python(monkeypatch, run)
-    assert calls == _PEARSON
+    assert calls == _PEARSON_SPATIAL
     _assert_parity(rust, python)
 
 
@@ -430,7 +431,7 @@ def test_spei_spatial_block(monkeypatch, precips_mm_monthly, pet_thornthwaite_mm
         precips, pet, 3, distribution, _MONTHLY, _DATA_START, 1981, 2010, spatial_time_major=True
     )
     rust, python, calls = _rust_and_python(monkeypatch, run)
-    assert calls == _KERNELS[distribution]
+    assert calls == (_PEARSON_SPATIAL if distribution == indices.Distribution.pearson else _GLO)
     _assert_parity(rust, python)
 
 
@@ -496,7 +497,8 @@ def test_failed_fit_counts_and_warning_events_match(
         rust, rust_counts, rust_events = run()
         monkeypatch.setattr(compute, "_native", None)
         python, python_counts, python_events = run()
-    assert recorder.calls == {kernel}
+    expected = {kernel} | ({"pearson_ks_statistics"} if kernel == "pearson_parameters" and not spatial else set())
+    assert recorder.calls == expected
     expected_total = block[0].size
     assert python_counts == [(11 * (expected_total // 12), expected_total)]
     assert rust_counts == python_counts
@@ -543,7 +545,8 @@ def test_failures_below_the_high_rate_threshold_are_summarized(
         rust = summaries()
         monkeypatch.setattr(compute, "_native", None)
         python = summaries()
-    assert recorder.calls == {kernel}
+    expected = {kernel} | ({"pearson_ks_statistics"} if kernel == "pearson_parameters" and not spatial else set())
+    assert recorder.calls == expected
     cells = block[0].size // 12
     for events in (rust, python):
         assert len(events) == 1

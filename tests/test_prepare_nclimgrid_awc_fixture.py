@@ -1,0 +1,206 @@
+"""Offline regressions for resumable POLARIS fixture downloads."""
+
+import importlib.util
+import io
+import sys
+from email.message import Message
+from pathlib import Path
+from urllib.error import HTTPError, URLError
+
+import pytest
+
+
+class _Response(io.BytesIO):
+    """A urlopen stand-in that carries the HTTP status a real response exposes."""
+
+    def __init__(self, body: bytes, status: int) -> None:
+        super().__init__(body)
+        self.status = status
+
+
+@pytest.fixture
+def fixture_generator():
+    path = Path(__file__).resolve().parents[1] / "scripts" / "prepare_nclimgrid_awc_fixture.py"
+    spec = importlib.util.spec_from_file_location("prepare_nclimgrid_awc_fixture_test", path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize("readable", [False, True])
+def test_full_partial_tile_is_validated_before_request(fixture_generator, tmp_path, monkeypatch, readable):
+    module = fixture_generator
+    target = tmp_path / "tile.tif"
+    partial = target.with_suffix(".tif.part")
+    partial.write_bytes(b"bad!")
+    monkeypatch.setattr(module, "_remote_size", lambda url: 4)
+    monkeypatch.setattr(module, "_tail_readable", lambda path: readable or path.read_bytes() == b"good")
+    requests = []
+
+    def urlopen(request, **kwargs):
+        assert request.get_header("Range") is None
+        requests.append(request)
+        return io.BytesIO(b"good")
+
+    monkeypatch.setattr(module, "urlopen", urlopen)
+    assert module._fetch_tile("http://example.invalid/tile.tif", target) == "downloaded"
+    assert target.read_bytes() == (b"bad!" if readable else b"good")
+    assert len(requests) == (0 if readable else 1)
+    assert not partial.exists()
+
+
+def test_complete_partial_tile_is_published_when_size_unknown(fixture_generator, tmp_path, monkeypatch):
+    module = fixture_generator
+    target = tmp_path / "tile.tif"
+    target.with_suffix(".tif.part").write_bytes(b"good")
+    monkeypatch.setattr(module, "_remote_size", lambda url: None)
+    monkeypatch.setattr(module, "_tail_readable", lambda path: path.read_bytes() == b"good")
+    monkeypatch.setattr(
+        module, "urlopen", lambda *args, **kwargs: pytest.fail("complete partial must not be re-requested")
+    )
+    assert module._fetch_tile("http://example.invalid/tile.tif", target) == "downloaded"
+    assert target.read_bytes() == b"good"
+    assert not target.with_suffix(".tif.part").exists()
+
+
+@pytest.mark.parametrize(
+    ("partial_bytes", "expected", "range_header", "status"),
+    [(b"go", 4, "bytes=2-", 206), (b"oversized", 4, None, 200), (b"", None, None, 200)],
+)
+def test_tile_download_resumes_or_restarts_partial(
+    fixture_generator, tmp_path, monkeypatch, partial_bytes, expected, range_header, status
+):
+    module = fixture_generator
+    target = tmp_path / "tile.tif"
+    partial = target.with_suffix(".tif.part")
+    partial.write_bytes(partial_bytes)
+    monkeypatch.setattr(module, "_remote_size", lambda url: expected)
+    monkeypatch.setattr(module, "_tail_readable", lambda path: path.read_bytes() == b"good")
+
+    def urlopen(request, **kwargs):
+        assert request.get_header("Range") == range_header
+        return _Response(b"od" if range_header else b"good", status)
+
+    monkeypatch.setattr(module, "urlopen", urlopen)
+    assert module._fetch_tile("http://example.invalid/tile.tif", target) == "downloaded"
+    assert target.read_bytes() == b"good"
+    assert not partial.exists()
+
+
+def test_tile_download_restarts_when_server_ignores_range(fixture_generator, tmp_path, monkeypatch):
+    """A 200 answer to a range request must restart the tile, not append a second copy to the partial."""
+    module = fixture_generator
+    target = tmp_path / "tile.tif"
+    partial = target.with_suffix(".tif.part")
+    partial.write_bytes(b"ABC")
+    monkeypatch.setattr(module, "_remote_size", lambda url: None)
+    # the truncated prefix fails the tail read, while the spliced file would have passed it
+    monkeypatch.setattr(module, "_tail_readable", lambda path: path.stat().st_size >= 8)
+    monkeypatch.setattr(module.time, "sleep", lambda seconds: None)
+
+    def urlopen(request, **kwargs):
+        assert request.get_header("Range") == "bytes=3-"
+        return _Response(b"ABCDEFGH", 200)
+
+    monkeypatch.setattr(module, "urlopen", urlopen)
+    assert module._fetch_tile("http://example.invalid/tile.tif", target) == "downloaded"
+    assert target.read_bytes() == b"ABCDEFGH"
+    assert not partial.exists()
+
+
+def test_range_not_satisfiable_restarts_a_stale_partial(fixture_generator, tmp_path, monkeypatch):
+    """An unreadable partial of unknown size that is already full length must restart, not retry the range."""
+    module = fixture_generator
+    target = tmp_path / "tile.tif"
+    target.with_suffix(".tif.part").write_bytes(b"bad!")
+    monkeypatch.setattr(module, "_remote_size", lambda url: None)
+    monkeypatch.setattr(module, "_tail_readable", lambda path: path.read_bytes() == b"good")
+    monkeypatch.setattr(module.time, "sleep", lambda seconds: None)
+    ranges = []
+
+    def urlopen(request, **kwargs):
+        ranges.append(request.get_header("Range"))
+        if request.get_header("Range"):
+            raise HTTPError(request.full_url, 416, "Requested Range Not Satisfiable", Message(), None)
+        return _Response(b"good", 200)
+
+    monkeypatch.setattr(module, "urlopen", urlopen)
+    assert module._fetch_tile("http://example.invalid/tile.tif", target) == "downloaded"
+    assert target.read_bytes() == b"good"
+    assert ranges == ["bytes=4-", None]
+
+
+@pytest.mark.parametrize("permanent", [False, True])
+def test_tile_download_retries_url_errors(fixture_generator, tmp_path, monkeypatch, permanent):
+    module = fixture_generator
+    target = tmp_path / "tile.tif"
+    monkeypatch.setattr(module, "DOWNLOAD_ATTEMPTS", 2)
+    monkeypatch.setattr(module, "_remote_size", lambda url: 4)
+    monkeypatch.setattr(module, "_tail_readable", lambda path: True)
+    monkeypatch.setattr(module.time, "sleep", lambda seconds: None)
+    requests = []
+
+    def urlopen(request, **kwargs):
+        requests.append(request)
+        if permanent or len(requests) == 1:
+            raise URLError("connection reset")
+        return io.BytesIO(b"good")
+
+    monkeypatch.setattr(module, "urlopen", urlopen)
+    if permanent:
+        with pytest.raises(SystemExit, match="after 2 attempts"):
+            module._fetch_tile("http://example.invalid/tile.tif", target)
+        assert not target.exists()
+    else:
+        assert module._fetch_tile("http://example.invalid/tile.tif", target) == "downloaded"
+        assert target.read_bytes() == b"good"
+    assert len(requests) == 2
+
+
+def test_complete_tile_is_reused(fixture_generator, tmp_path, monkeypatch):
+    module = fixture_generator
+    target = tmp_path / "tile.tif"
+    target.write_bytes(b"good")
+    monkeypatch.setattr(module, "_remote_size", lambda url: 4)
+    monkeypatch.setattr(module, "_tail_readable", lambda path: True)
+    monkeypatch.setattr(module, "urlopen", lambda *args, **kwargs: pytest.fail("cached tile must not be downloaded"))
+    assert module._fetch_tile("http://example.invalid/tile.tif", target) == "cached"
+
+
+def test_default_cache_is_private_to_the_user(fixture_generator, tmp_path, monkeypatch):
+    """Without --cache-dir, downloads land under the user's home, not a shared temporary path."""
+    module = fixture_generator
+    monkeypatch.setattr(sys, "argv", [module.__file__, "--dry-run"])
+    monkeypatch.setattr(module.Path, "home", lambda: tmp_path)
+    seen = []
+    monkeypatch.setattr(module, "_subset_climate", seen.append)
+    monkeypatch.setattr(module, "_tile_targets", lambda climate, tiles: [])
+    monkeypatch.setattr(module, "_describe", lambda climate, targets: "test grid")
+
+    assert module.main() == 0
+    assert seen == [tmp_path / ".cache" / "climate_indices" / "awc-fixture" / "climate"]
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_fixture_main_returns_success_without_building_in_dry_run(fixture_generator, tmp_path, monkeypatch, dry_run):
+    module = fixture_generator
+    monkeypatch.setattr(
+        sys, "argv", [module.__file__, "--cache-dir", str(tmp_path)] + (["--dry-run"] if dry_run else [])
+    )
+    monkeypatch.setattr(module, "_ROOT", tmp_path)
+    monkeypatch.setattr(module, "_subset_climate", lambda cache: None)
+    monkeypatch.setattr(module, "_tile_targets", lambda climate, tiles: [])
+    monkeypatch.setattr(module, "_describe", lambda climate, targets: "test grid")
+    monkeypatch.setattr(module, "_sha256", lambda path: "test digest")
+    calls = []
+    monkeypatch.setattr(module, "_ensure_tiles", lambda targets: calls.append("tiles"))
+
+    def build(*args):
+        calls.append("fixture")
+        return tmp_path / "fixture.nc"
+
+    monkeypatch.setattr(module, "_build_fixture", build)
+    assert module.main() == 0
+    assert calls == ([] if dry_run else ["tiles", "fixture"])
