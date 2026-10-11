@@ -52,7 +52,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
+import subprocess  # nosec B404 # only re-runs this script with this interpreter; no shell
 import sys
 import time
 from dataclasses import dataclass, field
@@ -420,7 +420,7 @@ def _child_command(args: argparse.Namespace, phase: str, source: str, depth: str
 
 def _run_child(args: argparse.Namespace, phase: str, source: str, depth: str) -> PhaseResult:
     """Run one phase in a subprocess so its peak memory is that phase's alone."""
-    completed = subprocess.run(  # noqa: S603  # argv is built here, not from user text
+    completed = subprocess.run(  # noqa: S603  # nosec B603 # argv is built here, not from user text; no shell
         _child_command(args, phase, source, depth),
         capture_output=True,
         text=True,
@@ -539,7 +539,8 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = _parse_args()
-    Path(args.out).mkdir(parents=True, exist_ok=True)
+    # S8707: developer-run benchmark writing to the operator's own --out; only fixed CSV/NetCDF names are joined.
+    Path(args.out).mkdir(parents=True, exist_ok=True)  # NOSONAR (S8707)
     if args.period is None:
         args.period = (f"{args.calibration[0]}-01-01", f"{args.calibration[1]}-12-01")
 

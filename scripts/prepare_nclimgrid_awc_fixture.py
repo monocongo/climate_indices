@@ -103,10 +103,11 @@ def _climate_sample(cache_dir: Path) -> Path:
     path = cache_dir / CLIMATE_FILE
     if path.exists() and _sha256(path) == CLIMATE_SHA256:
         return path
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    # S8707: developer-run script writing to the operator's own --cache-dir; only the fixed CLIMATE_FILE is joined.
+    cache_dir.mkdir(parents=True, exist_ok=True)  # NOSONAR (S8707)
     url = f"{SOURCE_URL}/{CLIMATE_FILE}"
     temporary = path.with_name(f".{path.name}.download")
-    with urlopen(url, timeout=120) as response, temporary.open("wb") as target:  # noqa: S310 - pinned https source
+    with urlopen(url, timeout=120) as response, temporary.open("wb") as target:  # noqa: S310  # nosec B310 # pinned https URL, digest checked
         shutil.copyfileobj(response, target)
     digest = _sha256(temporary)
     if digest != CLIMATE_SHA256:
@@ -147,7 +148,7 @@ def _tile_targets(climate: xr.DataArray, tiles_dir: Path) -> list[tuple[str, Pat
 def _remote_size(url: str) -> int | None:
     """Declared length of a remote tile, or None when the server will not say."""
     try:
-        with urlopen(Request(url, method="HEAD"), timeout=60) as response:  # noqa: S310 - publisher tiles
+        with urlopen(Request(url, method="HEAD"), timeout=60) as response:  # noqa: S310  # nosec B310 # module-built http tile URL
             length = response.headers.get("Content-Length")
         return int(length) if length is not None else None
     except (OSError, ValueError):
@@ -204,7 +205,7 @@ def _fetch_tile(url: str, path: Path) -> str:
             request = Request(url)
             if have:
                 request.add_header("Range", f"bytes={have}-")
-            with urlopen(request, timeout=120) as response, partial.open("ab") as target:  # noqa: S310 - publisher tiles
+            with urlopen(request, timeout=120) as response, partial.open("ab") as target:  # noqa: S310  # nosec B310 # module-built http tile URL
                 shutil.copyfileobj(response, target)
         except OSError as error:
             if attempt == DOWNLOAD_ATTEMPTS:

@@ -998,7 +998,8 @@ def _write_cache(cache_dir: Path, key: str, result: HarmonizedAws, *, lat_dim: s
     with tempfile.TemporaryDirectory(dir=cache_dir) as temporary_dir:
         temporary = Path(temporary_dir) / "entry.tif"
         bands.rio.write_crs(_CRS).rio.to_raster(temporary, driver="GTiff")
-        os.replace(temporary, path)
+        # S8707: cache_dir is the caller's own cache directory; the joined name is a SHA-256 hex digest.
+        os.replace(temporary, path)  # NOSONAR (S8707)
 
 
 def _read_cache(cache_dir: Path, key: str, *, lat_dim: str, lon_dim: str) -> HarmonizedAws | None:
