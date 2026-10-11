@@ -21,12 +21,14 @@ Two tiers of tests:
 
 from __future__ import annotations
 
+import contextlib
 import fnmatch
 import os
 import re
 import shlex
 import subprocess
 import sys
+from datetime import date
 from importlib.metadata import version as get_pkg_version
 from pathlib import Path
 from typing import Any
@@ -895,6 +897,8 @@ def test_v300_public_api_importable() -> None:
         ("refs/tags/v3.0.0", "unreleased", False),
         ("refs/tags/v3.0.0", "", False),
         ("refs/tags/v3.0.0", "Oct 10, 2026", False),
+        ("refs/tags/v3.0.0", "2026-02-30", False),
+        ("refs/tags/v3.0.0", "2026-13-01", False),
     ],
 )
 def test_changelog_date_guard(
@@ -961,8 +965,13 @@ def test_changelog_top_entry_matches_pyproject_version() -> None:
         f"pyproject.toml version [{pyproject_version}] — update one to match the other"
     )
     if os.environ.get("GITHUB_REF", "").startswith("refs/tags/"):
-        assert re.fullmatch(r" - \d{4}-\d{2}-\d{2}", match.group(2)), (
-            "CHANGELOG.md top entry must have a release date (YYYY-MM-DD) before tagging"
+        date_match = re.fullmatch(r" - (\d{4}-\d{2}-\d{2})", match.group(2))
+        release_date = None
+        if date_match:
+            with contextlib.suppress(ValueError):
+                release_date = date.fromisoformat(date_match.group(1))
+        assert release_date is not None, (
+            "CHANGELOG.md top entry must have a valid calendar release date (YYYY-MM-DD) before tagging"
         )
 
 
