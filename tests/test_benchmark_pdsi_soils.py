@@ -144,6 +144,62 @@ def test_pdsi_phase_preserves_cf_calendar_and_start_year(soil_benchmark, tmp_pat
         xr.testing.assert_equal(output["time"], field["time"])
 
 
+@pytest.mark.parametrize("descending_lat", [False, True])
+@pytest.mark.parametrize("descending_lon", [False, True])
+def test_region_selection_works_in_either_axis_direction(soil_benchmark, descending_lat, descending_lon):
+    latitudes, longitudes = [37.5, 38.0, 38.5, 39.0, 39.5], [-100.5, -100.0, -99.5, -99.0, -98.5]
+    field = xr.DataArray(
+        np.arange(25.0).reshape(5, 5),
+        coords={"lat": latitudes[::-1] if descending_lat else latitudes, "lon": longitudes},
+        dims=["lat", "lon"],
+    )
+    if descending_lon:
+        field = field.isel(lon=slice(None, None, -1))
+
+    region = soil_benchmark._subset_region(field, (-100.0, -99.0, 38.0, 39.0))
+    padded = soil_benchmark._subset_region(field, (-100.0, -99.0, 38.0, 39.0), halo=1)
+
+    assert sorted(region["lat"].values) == [38.0, 38.5, 39.0]
+    assert sorted(region["lon"].values) == [-100.0, -99.5, -99.0]
+    assert padded.sizes == {"lat": 5, "lon": 5}
+
+
+def test_ingest_keeps_neighbouring_cells_for_a_one_cell_region(soil_benchmark, tmp_path, monkeypatch):
+    """A one-cell region has no cell edges on its own, so the ingest sees its neighbours too."""
+    from climate_indices.aws_ingest import HarmonizedAws
+
+    field = xr.DataArray(
+        np.ones((12, 3, 3)),
+        dims=["time", "lat", "lon"],
+        coords={
+            "time": pd.date_range("2000-01-01", periods=12, freq="MS"),
+            "lat": [37.9, 38.5, 39.2],
+            "lon": [-100.4, -99.5, -98.8],
+        },
+        attrs={"units": "mm"},
+        name="precip",
+    )
+    path = tmp_path / "climate.nc"
+    field.to_netcdf(path)
+    args = _args(tmp_path)
+    args.precip = str(path)
+    args.period = ("2000-01-01", "2000-12-01")
+    seen = []
+
+    def load_aws(source, climate, **kwargs):
+        seen.append(climate.sizes)
+        aws = (climate.isel(time=0, drop=True) * 0 + climate["lat"] * 10 + climate["lon"]).rename(None)
+        return HarmonizedAws(aws=aws, filled=xr.zeros_like(aws, dtype=bool))
+
+    monkeypatch.setattr(soil_benchmark.aws_ingest, "load_aws", load_aws)
+    result = soil_benchmark._ingest(args, "usgs", "native")
+
+    assert seen == [{"time": 12, "lat": 3, "lon": 3}]
+    assert result.aws.sizes == {"lat": 1, "lon": 1}
+    assert float(result.aws.squeeze()) == pytest.approx(38.5 * 10 - 99.5)
+    assert result.filled.sizes == {"lat": 1, "lon": 1}
+
+
 @pytest.mark.parametrize("dimension", ["time", "lat", "lon", "aws"])
 def test_scpdsi_rejects_equal_shapes_with_different_coordinates(soil_benchmark, dimension):
     precip = xr.DataArray(

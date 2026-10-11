@@ -134,19 +134,35 @@ def _parse_region(text: str) -> tuple[float, float, float, float]:
     return west, east, south, north
 
 
+def _region_indices(centres: np.ndarray, low: float, high: float, *, halo: int) -> np.ndarray:
+    """Indices of the cells whose centres lie in ``[low, high]``, plus ``halo`` cells per side."""
+    inside = np.flatnonzero((centres >= low) & (centres <= high))
+    if inside.size == 0:
+        return inside
+    return np.arange(max(0, int(inside[0]) - halo), min(centres.size, int(inside[-1]) + 1 + halo))
+
+
 def _subset_region(
     field: xr.DataArray,
     region: tuple[float, float, float, float],
     *,
+    halo: int = 0,
     lat_dim: str = "lat",
     lon_dim: str = "lon",
 ) -> xr.DataArray:
-    """Clip a field to a region, taking the climate cells whose centres fall inside."""
+    """Clip a field to a region, taking the climate cells whose centres fall inside.
+
+    Either axis may run in either direction. ``halo`` keeps that many neighbouring
+    cells on each side, which an ingest needs: a cell's area comes from the
+    midpoints to its neighbours, so a region one cell wide has none of its own.
+    """
     west, east, south, north = region
-    latitudes = field[lat_dim].values
-    ascending_lat = latitudes[0] <= latitudes[-1]
-    lat_slice = slice(south, north) if ascending_lat else slice(north, south)
-    return field.sel({lat_dim: lat_slice, lon_dim: slice(west, east)})
+    return field.isel(
+        {
+            lat_dim: _region_indices(field[lat_dim].values, south, north, halo=halo),
+            lon_dim: _region_indices(field[lon_dim].values, west, east, halo=halo),
+        }
+    )
 
 
 def _open_climate(path: str, variable: str | None, *, period: tuple[str, str] | None = None) -> xr.DataArray:
@@ -322,15 +338,23 @@ def _run_ingest_phase(args: argparse.Namespace, source: str, depth: str) -> Phas
 
 
 def _ingest(args: argparse.Namespace, source: str, depth: str) -> HarmonizedAws:
-    """Harmonize one source onto the climate region grid (region cells only)."""
-    precip = _subset_region(_open_climate(args.precip, args.precip_var, period=args.period), args.region)
-    return aws_ingest.load_aws(
+    """Harmonize one source onto the climate region grid (region cells only).
+
+    The ingest runs on the region plus one neighbouring cell on each side and is
+    then cropped, so even a one-cell region keeps its true cell edges instead of
+    averaging the whole source raster.
+    """
+    precip = _open_climate(args.precip, args.precip_var, period=args.period)
+    region = _subset_region(precip, args.region)
+    harmonized = aws_ingest.load_aws(
         source,
-        precip,
+        _subset_region(precip, args.region, halo=1),
         depth_mm=aws_ingest.NATIVE_DEPTH if depth == "native" else float(depth),
         raw_dir=args.raw_dir,
         cache_dir=args.cache_dir,
     )
+    cells = {"lat": region["lat"].values, "lon": region["lon"].values}
+    return HarmonizedAws(aws=harmonized.aws.sel(cells), filled=harmonized.filled.sel(cells))
 
 
 def _run_pdsi_phase(args: argparse.Namespace, source: str, depth: str) -> PhaseResult:
