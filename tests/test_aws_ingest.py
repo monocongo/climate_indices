@@ -180,6 +180,21 @@ def test_resolve_depth_accepts_the_native_sentinel_and_rejects_other_strings():
         aws_ingest._resolve_depth("deep", 1000.0)
 
 
+def test_polaris_rejects_a_depth_beyond_its_column_before_reading(monkeypatch):
+    """POLARIS skips integrate_depth, so its loader must enforce the same depth contract."""
+    monkeypatch.delenv(aws_ingest.POLARIS_EE_ASSET_ENV, raising=False)
+    monkeypatch.setattr(aws_ingest, "_polaris_parameter", lambda *args: pytest.fail("no tile may be read"))
+    climate = _climate(np.ones((2, 2), dtype=bool), latitudes=[38.25, 38.75], longitudes=[-99.75, -99.25])
+
+    with pytest.raises(DepthUnavailableError, match="exceeds the source column"):
+        aws_ingest.load_aws("polaris", climate, depth_mm=2500.0)
+    with pytest.raises(DepthUnavailableError, match="exceeds the source column"):
+        AWS_SOURCES["polaris"].load(climate, 2500.0, None)
+    for depth_mm in (float("inf"), float("nan"), 0.0, -10.0):
+        with pytest.raises(AwsIngestError, match="positive number of millimetres"):
+            aws_ingest.load_aws("polaris", climate, depth_mm=depth_mm)
+
+
 # ---------------------------------------------------------------------------
 # area-weighted aggregation
 # ---------------------------------------------------------------------------

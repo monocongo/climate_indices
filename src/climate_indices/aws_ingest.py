@@ -399,14 +399,8 @@ def integrate_depth(
         AwsIngestError: If ``depth_mm`` is not positive.
         DepthUnavailableError: If ``depth_mm`` exceeds the native column.
     """
-    if not np.isfinite(depth_mm) or depth_mm <= 0.0:
-        raise AwsIngestError(f"soil depth must be a positive number of millimetres, got {depth_mm!r}")
     source_depth_mm = layers_mm[-1][2] if native_depth_mm is None else native_depth_mm
-    if depth_mm > source_depth_mm + _DEPTH_TOLERANCE_MM:
-        raise DepthUnavailableError(
-            f"requested soil depth of {depth_mm:.1f} mm exceeds the source column of "
-            f"{source_depth_mm:.1f} mm; column totals are not extrapolated to deeper soil"
-        )
+    depth_mm = _resolve_depth(depth_mm, source_depth_mm)
     names = [str(name) for name in storage_mm[layer_dim].values]
     included = xr.DataArray(
         [_included_fraction(name, layers_mm, depth_mm) for name in names],
@@ -444,12 +438,25 @@ def aws_mm_to_inches(aws_mm: xr.DataArray | npt.ArrayLike) -> xr.DataArray | npt
 
 
 def _resolve_depth(depth_mm: float | str, native_depth_mm: float) -> float:
-    """Resolve a requested depth, rejecting an unknown string sentinel."""
+    """Resolve a requested depth, rejecting an unknown sentinel or a depth the source cannot supply.
+
+    Raises:
+        AwsIngestError: If ``depth_mm`` is an unknown string or not a positive number.
+        DepthUnavailableError: If ``depth_mm`` exceeds ``native_depth_mm``.
+    """
     if isinstance(depth_mm, str):
         if depth_mm != NATIVE_DEPTH:
             raise AwsIngestError(f"unknown soil depth {depth_mm!r}; expected {NATIVE_DEPTH!r} or millimetres")
         return native_depth_mm
-    return float(depth_mm)
+    resolved_mm = float(depth_mm)
+    if not np.isfinite(resolved_mm) or resolved_mm <= 0.0:
+        raise AwsIngestError(f"soil depth must be a positive number of millimetres, got {depth_mm!r}")
+    if resolved_mm > native_depth_mm + _DEPTH_TOLERANCE_MM:
+        raise DepthUnavailableError(
+            f"requested soil depth of {resolved_mm:.1f} mm exceeds the source column of "
+            f"{native_depth_mm:.1f} mm; column totals are not extrapolated to deeper soil"
+        )
+    return resolved_mm
 
 
 def _layer_bounds(
