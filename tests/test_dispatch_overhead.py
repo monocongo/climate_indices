@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 import sys
 import warnings
@@ -19,6 +20,12 @@ sys.path.append(str(Path(__file__).resolve().parents[1] / "benchmarks"))
 from benchmarks import profile_dispatch_overhead as harness  # noqa: E402
 
 
+def test_harness_import_does_not_require_resource(monkeypatch: pytest.MonkeyPatch) -> None:
+    with monkeypatch.context() as context:
+        context.setitem(sys.modules, "resource", None)
+        importlib.reload(harness)
+
+
 def test_invalid_rss_worker_output_fails(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     conftest.import_native()
     monkeypatch.setattr(harness, "ROOT", tmp_path)
@@ -32,6 +39,7 @@ def test_invalid_rss_worker_output_fails(monkeypatch: pytest.MonkeyPatch, tmp_pa
 
 
 def test_rss_probe_requires_native_preparation(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("resource")
     monkeypatch.setattr(pm_eto, "_native_arrays", lambda *args: None)
     with pytest.raises(RuntimeError, match="RSS probe could not prepare native operands"):
         harness.rss_probe(2)
@@ -39,6 +47,7 @@ def test_rss_probe_requires_native_preparation(monkeypatch: pytest.MonkeyPatch) 
 
 @pytest.mark.parametrize("result", [None, np.zeros(3), np.zeros((2, 1))])
 def test_rss_probe_rejects_invalid_result(monkeypatch: pytest.MonkeyPatch, result: object) -> None:
+    pytest.importorskip("resource")
     monkeypatch.setattr(pm_eto, "penman_monteith_eto", lambda *args: result)
     with pytest.raises(RuntimeError, match="RSS probe returned an unexpected result type or shape"):
         harness.rss_probe(2)

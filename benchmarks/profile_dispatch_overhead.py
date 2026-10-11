@@ -18,7 +18,6 @@ import importlib
 import json
 import platform
 import pstats
-import resource
 import subprocess  # nosec B404 # fixed metadata commands and interpreter argv; no shell
 import sys
 import time
@@ -145,6 +144,8 @@ def pet_cases(size: int) -> dict[str, tuple[Callable[[], Any], str]]:
 
 def rss_probe(size: int) -> dict[str, Any]:
     """Fresh-process RSS: three real arrays; every other PM operand is scalar."""
+    import resource  # POSIX-only; timings and dispatch tests do not require it.
+
     low = np.full(size, 12.0)
     high = np.full(size, 24.0)
     day = np.arange(size, dtype=np.float64)
