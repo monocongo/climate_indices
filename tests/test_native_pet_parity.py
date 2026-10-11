@@ -12,6 +12,9 @@ unless ``CLIMATE_INDICES_REQUIRE_NATIVE=1`` is set, as in CI's native legs, wher
 missing extension is a collection error.
 """
 
+import subprocess
+import sys
+import textwrap
 import warnings
 from collections.abc import Callable
 from types import SimpleNamespace
@@ -514,6 +517,40 @@ def test_hargreaves_invalid_latitude_raises_on_both_paths(monkeypatch):
 # ---------------------------------------------------------------------------
 # Penman-Monteith
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(sys.platform not in ("darwin", "linux"), reason="POSIX small-stack regression")
+def test_native_pm_runs_on_small_thread_stack(tmp_path):
+    program = textwrap.dedent("""\
+        import resource
+        import threading
+        import numpy as np
+        from climate_indices import _native
+
+        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+        try:
+            threading.stack_size(32768)
+        except ValueError:
+            raise SystemExit(77)
+        args = (np.array([12.0]), np.array([24.0]), 45.0, 100.0, 2.0, 2.0,
+                np.array([187.0]), 0.0, 0.23, 4, None, None, None, None, 2,
+                None, None, False)
+        expected = _native.fao56_eto(*args)
+        errors = []
+        def run():
+            try:
+                assert np.array_equal(_native.fao56_eto(*args), expected)
+            except BaseException as error:
+                errors.append(error)
+        worker = threading.Thread(target=run)
+        worker.start()
+        worker.join()
+        assert not errors, errors
+        """)
+    result = subprocess.run([sys.executable, "-c", program], cwd=tmp_path, capture_output=True, text=True, timeout=30)
+    if result.returncode == 77:
+        pytest.skip("interpreter requires a thread stack larger than 32 KiB")
+    assert result.returncode == 0, result.stderr
 
 
 def test_pm_eto_core_parity(monkeypatch):

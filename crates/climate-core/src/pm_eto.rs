@@ -420,7 +420,8 @@ pub fn penman_monteith_eto(inputs: &MetInputs<'_>) -> Result<Array1<f64>, Climat
     let mut latitude_cache = None;
     let mut elevation_cache = None;
     let mut height_cache = None;
-    let mut astronomy_cache = [None; 1024];
+    // Keep the 40 KiB cache off callers' small worker-thread stacks.
+    let mut astronomy_cache = vec![None; 1024];
 
     for index in 0..length {
         let tmin_celsius = inputs.daily_tmin_celsius[index];
