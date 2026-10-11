@@ -42,6 +42,20 @@ def test_full_partial_tile_is_validated_before_request(fixture_generator, tmp_pa
     assert not partial.exists()
 
 
+def test_complete_partial_tile_is_published_when_size_unknown(fixture_generator, tmp_path, monkeypatch):
+    module = fixture_generator
+    target = tmp_path / "tile.tif"
+    target.with_suffix(".tif.part").write_bytes(b"good")
+    monkeypatch.setattr(module, "_remote_size", lambda url: None)
+    monkeypatch.setattr(module, "_tail_readable", lambda path: path.read_bytes() == b"good")
+    monkeypatch.setattr(
+        module, "urlopen", lambda *args, **kwargs: pytest.fail("complete partial must not be re-requested")
+    )
+    assert module._fetch_tile("http://example.invalid/tile.tif", target) == "downloaded"
+    assert target.read_bytes() == b"good"
+    assert not target.with_suffix(".tif.part").exists()
+
+
 @pytest.mark.parametrize(
     ("partial_bytes", "expected", "range_header"),
     [(b"go", 4, "bytes=2-"), (b"oversized", 4, None), (b"", None, None)],

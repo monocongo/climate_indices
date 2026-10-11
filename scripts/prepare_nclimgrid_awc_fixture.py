@@ -177,6 +177,9 @@ def _tile_complete(path: Path, expected: int | None) -> bool:
 def _prepare_partial(partial: Path, path: Path, expected: int | None) -> int | None:
     """Return the resume offset, or publish an already complete partial tile."""
     have = partial.stat().st_size if partial.exists() else 0
+    if expected is None and have and _tile_complete(partial, None):
+        partial.replace(path)
+        return None
     if expected is not None and have >= expected:
         if _tile_complete(partial, expected):
             partial.replace(path)
