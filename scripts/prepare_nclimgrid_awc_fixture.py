@@ -216,8 +216,12 @@ def _fetch_tile(url: str, path: Path) -> str:
             request = Request(url)
             if have:
                 request.add_header("Range", f"bytes={have}-")
-            with urlopen(request, timeout=120) as response, partial.open("ab") as target:  # noqa: S310  # nosec B310 # module-built http tile URL
-                shutil.copyfileobj(response, target)
+            with urlopen(request, timeout=120) as response:  # noqa: S310  # nosec B310 # module-built http tile URL
+                # Only a 206 is a continuation. A 200 means the server ignored the range and sent the whole
+                # tile, which appending would splice onto the partial as a second copy of its start.
+                resumed = bool(have) and response.status == 206
+                with partial.open("ab" if resumed else "wb") as target:
+                    shutil.copyfileobj(response, target)
         except OSError as error:
             if attempt == DOWNLOAD_ATTEMPTS:
                 raise SystemExit(f"could not download {url} after {attempt} attempts: {error}") from error

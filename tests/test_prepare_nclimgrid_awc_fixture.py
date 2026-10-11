@@ -9,6 +9,14 @@ from urllib.error import URLError
 import pytest
 
 
+class _Response(io.BytesIO):
+    """A urlopen stand-in that carries the HTTP status a real response exposes."""
+
+    def __init__(self, body: bytes, status: int) -> None:
+        super().__init__(body)
+        self.status = status
+
+
 @pytest.fixture
 def fixture_generator():
     path = Path(__file__).resolve().parents[1] / "scripts" / "prepare_nclimgrid_awc_fixture.py"
@@ -57,11 +65,11 @@ def test_complete_partial_tile_is_published_when_size_unknown(fixture_generator,
 
 
 @pytest.mark.parametrize(
-    ("partial_bytes", "expected", "range_header"),
-    [(b"go", 4, "bytes=2-"), (b"oversized", 4, None), (b"", None, None)],
+    ("partial_bytes", "expected", "range_header", "status"),
+    [(b"go", 4, "bytes=2-", 206), (b"oversized", 4, None, 200), (b"", None, None, 200)],
 )
 def test_tile_download_resumes_or_restarts_partial(
-    fixture_generator, tmp_path, monkeypatch, partial_bytes, expected, range_header
+    fixture_generator, tmp_path, monkeypatch, partial_bytes, expected, range_header, status
 ):
     module = fixture_generator
     target = tmp_path / "tile.tif"
@@ -72,11 +80,32 @@ def test_tile_download_resumes_or_restarts_partial(
 
     def urlopen(request, **kwargs):
         assert request.get_header("Range") == range_header
-        return io.BytesIO(b"od" if range_header else b"good")
+        return _Response(b"od" if range_header else b"good", status)
 
     monkeypatch.setattr(module, "urlopen", urlopen)
     assert module._fetch_tile("http://example.invalid/tile.tif", target) == "downloaded"
     assert target.read_bytes() == b"good"
+    assert not partial.exists()
+
+
+def test_tile_download_restarts_when_server_ignores_range(fixture_generator, tmp_path, monkeypatch):
+    """A 200 answer to a range request must restart the tile, not append a second copy to the partial."""
+    module = fixture_generator
+    target = tmp_path / "tile.tif"
+    partial = target.with_suffix(".tif.part")
+    partial.write_bytes(b"ABC")
+    monkeypatch.setattr(module, "_remote_size", lambda url: None)
+    # the truncated prefix fails the tail read, while the spliced file would have passed it
+    monkeypatch.setattr(module, "_tail_readable", lambda path: path.stat().st_size >= 8)
+    monkeypatch.setattr(module.time, "sleep", lambda seconds: None)
+
+    def urlopen(request, **kwargs):
+        assert request.get_header("Range") == "bytes=3-"
+        return _Response(b"ABCDEFGH", 200)
+
+    monkeypatch.setattr(module, "urlopen", urlopen)
+    assert module._fetch_tile("http://example.invalid/tile.tif", target) == "downloaded"
+    assert target.read_bytes() == b"ABCDEFGH"
     assert not partial.exists()
 
 
