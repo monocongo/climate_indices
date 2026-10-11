@@ -1096,6 +1096,8 @@ def grid_signature(lat_values: npt.ArrayLike, lon_values: npt.ArrayLike, *, lat_
     digest.update(f"{lat_dim}:{lon_dim}:".encode())
     for values in (lat_values, lon_values):
         axis = np.asarray(values, dtype=np.float64)
+        # the length marks where one axis ends, or [1, 2] + [3] would hash as [1] + [2, 3]
+        digest.update(f"{axis.size}:".encode())
         digest.update(np.round(axis, 9).tobytes())
     return digest.hexdigest()[:16]
 

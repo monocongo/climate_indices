@@ -538,6 +538,10 @@ def test_grid_signature_distinguishes_grids_and_is_stable():
 
     assert first == aws_ingest.grid_signature([40.0, 41.0], [-100.0], lat_dim="lat", lon_dim="lon")
     assert first != aws_ingest.grid_signature([41.0, 40.0], [-100.0], lat_dim="lat", lon_dim="lon")
+    # the same centres split differently between the axes are different grids
+    assert aws_ingest.grid_signature([1.0, 2.0], [3.0, 4.0, 5.0], lat_dim="lat", lon_dim="lon") != (
+        aws_ingest.grid_signature([1.0, 2.0, 3.0], [4.0, 5.0], lat_dim="lat", lon_dim="lon")
+    )
 
 
 def test_layer_included_fraction_splits_a_partly_covered_layer():
