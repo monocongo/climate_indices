@@ -258,6 +258,21 @@ def test_failed_pdsi_cannot_admit_stale_pairwise_output(soil_benchmark, tmp_path
     assert "ingest+scPDSI+output" in set(table["kind"])
 
 
+def test_run_exits_nonzero_when_no_source_completes(soil_benchmark, tmp_path, monkeypatch):
+    args = _args(tmp_path)
+    monkeypatch.setattr(soil_benchmark, "_parse_args", lambda: args)
+    monkeypatch.setattr(
+        soil_benchmark,
+        "_run_child",
+        lambda args, phase, source, depth: soil_benchmark.PhaseResult(
+            source, depth, phase, note="unavailable: SourceUnavailableError: no raster"
+        ),
+    )
+
+    assert soil_benchmark.main() == 1
+    assert (tmp_path / "aws_sources.csv").exists()  # the failure reasons are still written
+
+
 def test_scpdsi_output_labels_cannot_traverse_directories(soil_benchmark, tmp_path):
     args = _args(tmp_path)
     with pytest.raises(AwsIngestError):

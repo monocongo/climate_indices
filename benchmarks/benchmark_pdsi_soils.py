@@ -34,7 +34,8 @@ Outputs
     statistics, cache provenance) and ``<out>/aws_pairwise_scpdsi.csv`` (one row
     per source pair and depth: the scPDSI comparisons above). A short summary is
     printed. A source whose data cannot be read is never silently substituted:
-    its row records the failure and the run continues with the others.
+    its row records the failure and the run continues with the others. The run
+    exits nonzero only when no source completed.
 
 Usage::
 
@@ -640,6 +641,7 @@ def main() -> int:
             f"{combined_path} for the exact reason (missing rasters, missing rioxarray/rasterio, "
             "or unreachable tile server)."
         )
+        return 1
     return 0
 
 
