@@ -283,7 +283,8 @@ def layer_storage_mm(
         layer_dim: Name of the layer dimension in ``fractions``.
 
     Returns:
-        Stored water depth in millimetres, with ``layer_dim`` summed away.
+        Stored water depth in millimetres per layer, with ``layer_dim`` kept;
+        :func:`integrate_depth` sums the layers over a column depth.
 
     Raises:
         AwsIngestError: If a named layer has non-positive thickness or a layer in

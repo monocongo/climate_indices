@@ -91,6 +91,7 @@ def test_volumetric_fraction_times_thickness_is_millimetres():
 
     assert float(storage.sel(time=0, lat=40.0, lon=-100.0).item()) == pytest.approx(150.0)
     assert storage.attrs["units"] == "mm"
+    assert "layer" in storage.dims  # per layer; integrate_depth does the summing
 
 
 def test_layer_storage_rejects_unknown_or_empty_layers():
