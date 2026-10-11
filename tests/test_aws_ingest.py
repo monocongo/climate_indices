@@ -847,6 +847,38 @@ def test_single_layer_sources_read_only_the_climate_window(tmp_path, monkeypatch
     assert sizes[0] <= 64
 
 
+def test_built_in_sources_honour_custom_dimension_names(tmp_path, monkeypatch):
+    """lat_dim/lon_dim are advertised for every source, so raster axes must follow them."""
+    pytest.importorskip("rioxarray", reason="reading a raster needs the optional aws extra")
+    monkeypatch.delenv("USGS_AWC_RASTER", raising=False)
+    monkeypatch.delenv(aws_ingest.POLARIS_EE_ASSET_ENV, raising=False)
+    _write_geotiff(tmp_path / "usgs_awc.tif", np.full((2, 2), 150.0), bounds=(-100.0, 38.0, -99.0, 39.0))
+    climate = _climate(np.ones((2, 2), dtype=bool), latitudes=[38.25, 38.75], longitudes=[-99.75, -99.25])
+    climate = climate.rename(lat="latitude", lon="longitude")
+    names = {"lat_dim": "latitude", "lon_dim": "longitude"}
+
+    usgs = aws_ingest.load_aws("usgs", climate, raw_dir=tmp_path, **names)
+
+    np.testing.assert_allclose(usgs.aws.values, 150.0)
+    assert usgs.aws.dims == ("latitude", "longitude")
+
+    constants = {"alpha": np.log10(0.02), "n": 2.0, "theta_r": 0.05, "theta_s": 0.45}
+
+    def read_parameter(parameter, layer, raw_dir, bounds):
+        return xr.DataArray(
+            np.full((4, 4), constants[parameter]),
+            coords={"lat": np.linspace(38.125, 38.875, 4), "lon": np.linspace(-99.875, -99.125, 4)},
+            dims=["lat", "lon"],
+        )
+
+    monkeypatch.setattr(aws_ingest, "_polaris_parameter", read_parameter)
+    polaris = aws_ingest.load_aws("polaris", climate, depth_mm=1000.0, **names)
+
+    # the closed form for these constants over 1000 mm, as in the end-to-end tile test
+    np.testing.assert_allclose(polaris.aws.values, 320.51783053163463, rtol=1e-6)
+    assert polaris.aws.dims == ("latitude", "longitude")
+
+
 def test_single_layer_grid_inside_one_pixel_keeps_that_pixel(tmp_path, monkeypatch):
     """The halo keeps two centres per axis, so a grid finer than the raster still aggregates."""
     pytest.importorskip("rioxarray", reason="reading a raster needs the optional aws extra")

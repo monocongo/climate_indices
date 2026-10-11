@@ -1134,7 +1134,9 @@ def _gridmet_aws(
             "GRIDMET/DROUGHT exposes only drought indices. Supply the raster (GeoTIFF) with "
             "raw_dir=<dir> named 'gridmet_awc.tif', or set GRIDMET_AWC_RASTER=<path>."
         )
-    storage = _open_raster_window(str(raster), _grid_bounds(climate, lat_dim=lat_dim, lon_dim=lon_dim), halo_pixels=1)
+    storage = _open_raster_window(
+        str(raster), _grid_bounds(climate, lat_dim=lat_dim, lon_dim=lon_dim), halo_pixels=1
+    ).rename({"lat": lat_dim, "lon": lon_dim})
     return harmonize_aws(
         storage.expand_dims(layer=[spec.layers_mm[0][0]]),
         climate,
@@ -1165,7 +1167,9 @@ def _usgs_aws(
             "https://doi.org/10.5066/P9TI3IS8, then supply it with raw_dir=<dir> named "
             "'usgs_awc.tif', or set USGS_AWC_RASTER=<path>."
         )
-    values = _open_raster_window(str(raster), _grid_bounds(climate, lat_dim=lat_dim, lon_dim=lon_dim), halo_pixels=1)
+    values = _open_raster_window(
+        str(raster), _grid_bounds(climate, lat_dim=lat_dim, lon_dim=lon_dim), halo_pixels=1
+    ).rename({"lat": lat_dim, "lon": lon_dim})
     # published units are mm of available water per metre of soil over a 100 cm
     # column, so one metre makes the value numerically the column total in mm
     storage = values.expand_dims(layer=[spec.layers_mm[0][0]])
@@ -1249,7 +1253,12 @@ def _polaris_aws(
         target_latitudes = latitudes[max(0, int(rows.min()) - 1) : int(rows.max()) + 2]
         target_longitudes = longitudes[max(0, int(columns.min()) - 1) : int(columns.max()) + 2]
         averaged = area_weighted_mean(
-            block_total, target_latitudes, target_longitudes, lat_dim=lat_dim, lon_dim=lon_dim
+            # tiles are read as lat/lon; the climate grid may name its axes otherwise
+            block_total.rename({"lat": lat_dim, "lon": lon_dim}),
+            target_latitudes,
+            target_longitudes,
+            lat_dim=lat_dim,
+            lon_dim=lon_dim,
         )
         total[np.ix_(rows, columns)] = averaged.sel({lat_dim: latitudes[rows], lon_dim: longitudes[columns]}).values
 
