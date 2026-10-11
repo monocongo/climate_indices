@@ -519,6 +519,17 @@ def test_hargreaves_invalid_latitude_raises_on_both_paths(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
+def test_pm_eto_empty_unaligned_buffer_keeps_python(monkeypatch):
+    values = np.ndarray((0,), dtype=np.float64, buffer=bytearray(1), offset=1)
+    assert values.flags.aligned
+    assert values.ctypes.data % values.dtype.alignment != 0
+    rust, python, calls = _rust_and_python(
+        monkeypatch, pm_eto, lambda: pm_eto.pm_eto(values, 0.0, 20.0, 2.0, 2.0, 1.0, 0.2, 0.066)
+    )
+    assert not calls
+    _assert_parity(rust, python)
+
+
 @pytest.mark.skipif(sys.platform not in ("darwin", "linux"), reason="POSIX small-stack regression")
 def test_native_pm_runs_on_small_thread_stack(tmp_path):
     program = textwrap.dedent("""\

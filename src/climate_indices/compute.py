@@ -1747,7 +1747,12 @@ def _replace_zeros_with_nan(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]
 
 def _plain_float64(array: np.ndarray) -> bool:
     """Whether an operand is a plain, aligned float64 array."""
-    return type(array) is np.ndarray and array.dtype == np.float64 and array.flags.aligned
+    return (
+        type(array) is np.ndarray
+        and array.dtype == np.float64
+        and array.flags.aligned
+        and array.ctypes.data % array.dtype.alignment == 0
+    )
 
 
 def _native_policy_allows() -> bool:
