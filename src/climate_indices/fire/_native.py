@@ -283,7 +283,7 @@ def moisture_code_recurrence(
         float64_inputs.append(inputs.humidity)
     if inputs.wind_kilometers_per_hour is not None:
         float64_inputs.append(inputs.wind_kilometers_per_hour)
-    if not all(compute._native_float64(array) for array in float64_inputs):
+    if not compute._native_float64s(*float64_inputs):
         return None
 
     days = temperature.shape[0]
@@ -349,15 +349,12 @@ def kbdi_recurrence(
     native = _kernel_module("kbdi")
     if native is None:
         return None
-    if not all(
-        compute._native_float64(array)
-        for array in (
-            kbdi_value,
-            wet_spell_precipitation,
-            precipitation_mm,
-            maximum_temperature_celsius,
-            mean_annual_precipitation_mm,
-        )
+    if not compute._native_float64s(
+        kbdi_value,
+        wet_spell_precipitation,
+        precipitation_mm,
+        maximum_temperature_celsius,
+        mean_annual_precipitation_mm,
     ):
         return None
 

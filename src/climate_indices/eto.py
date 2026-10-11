@@ -304,7 +304,7 @@ def _native_latitude(latitude_radians: float | np.ndarray, cell_shape: tuple[int
     """
     cells = int(np.prod(cell_shape, dtype=np.intp))
     if isinstance(latitude_radians, np.ndarray):
-        if not compute._native_float64(latitude_radians):
+        if not compute._plain_float64(latitude_radians):
             return None
         if not cell_shape:
             # the 1-D/2-D path takes a scalar latitude, as it always has
@@ -394,9 +394,7 @@ def _native_hargreaves(
     native = _native_module()
     if native is None:
         return None
-    if not all(
-        compute._native_float64(array) for array in (daily_tmin_celsius, daily_tmax_celsius, daily_tmean_celsius)
-    ):
+    if not compute._native_float64s(daily_tmin_celsius, daily_tmax_celsius, daily_tmean_celsius):
         return None
     # equal sizes in different layouts fail on the Python path, which the flat
     # kernel inputs would otherwise pair cell by cell

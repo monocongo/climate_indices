@@ -219,9 +219,84 @@ pub fn pearson_cdf_block(
     Ok(cdf)
 }
 
+/// KS D per calibration column, excluding zeros and NaNs as Python's Pearson
+/// goodness-of-fit check does. Warning thresholds and exact p-values stay in Python.
+pub fn pearson_ks_statistics(
+    values: ArrayView2<'_, f64>,
+    skews: ArrayView1<'_, f64>,
+    locs: ArrayView1<'_, f64>,
+    scales: ArrayView1<'_, f64>,
+) -> Result<Array1<f64>, ClimateError> {
+    let columns = values.ncols();
+    for (argument, parameter) in [("skews", &skews), ("locs", &locs), ("scales", &scales)] {
+        if parameter.len() != columns {
+            return Err(ClimateError::ShapeMismatch {
+                argument,
+                expected: columns,
+                actual: parameter.len(),
+            });
+        }
+    }
+    let mut result = Array1::from_elem(columns, f64::NAN);
+    let mut sorted = Vec::with_capacity(values.nrows());
+    for column in 0..columns {
+        let (skew, loc, scale) = (skews[column], locs[column], scales[column]);
+        if !(skew.is_finite() && loc.is_finite() && scale.is_finite() && scale > 0.0) {
+            continue;
+        }
+        sorted.clear();
+        sorted.extend(
+            values
+                .column(column)
+                .iter()
+                .copied()
+                .filter(|x| !x.is_nan() && *x != 0.0),
+        );
+        if sorted.is_empty() {
+            continue;
+        }
+        sorted.sort_by(f64::total_cmp);
+        let size = sorted.len() as f64;
+        let mut upper = f64::NEG_INFINITY;
+        let mut lower = f64::NEG_INFINITY;
+        for (index, &value) in sorted.iter().enumerate() {
+            let cdf = pearson_cdf(value, skew, loc, scale);
+            if cdf.is_nan() {
+                upper = f64::NAN;
+                break;
+            }
+            let rank = (index + 1) as f64;
+            upper = upper.max(rank / size - cdf);
+            lower = lower.max(cdf - (rank - 1.0) / size);
+        }
+        result[column] = if upper.is_nan() {
+            f64::NAN
+        } else {
+            upper.max(lower)
+        };
+    }
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ks_filters_missing_and_zero_values_and_validates_shapes() {
+        let values = ndarray::array![[1.0, 0.0], [f64::NAN, 0.0], [0.0, f64::NAN]];
+        let skews = ndarray::array![0.0, 0.0];
+        let locs = ndarray::array![1.0, 1.0];
+        let scales = ndarray::array![1.0, 1.0];
+        let d =
+            pearson_ks_statistics(values.view(), skews.view(), locs.view(), scales.view()).unwrap();
+        assert_eq!(d[0], 0.5);
+        assert!(d[1].is_nan());
+        let short = ndarray::array![0.0];
+        assert!(
+            pearson_ks_statistics(values.view(), short.view(), locs.view(), scales.view()).is_err()
+        );
+    }
     use ndarray::array;
 
     #[test]

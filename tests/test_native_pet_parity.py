@@ -12,6 +12,9 @@ unless ``CLIMATE_INDICES_REQUIRE_NATIVE=1`` is set, as in CI's native legs, wher
 missing extension is a collection error.
 """
 
+import subprocess
+import sys
+import textwrap
 import warnings
 from collections.abc import Callable
 from types import SimpleNamespace
@@ -516,6 +519,64 @@ def test_hargreaves_invalid_latitude_raises_on_both_paths(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
+def test_pm_eto_empty_unaligned_buffer_keeps_python(monkeypatch):
+    values = np.ndarray((0,), dtype=np.float64, buffer=bytearray(1), offset=1)
+    assert values.flags.aligned
+    assert values.ctypes.data % values.dtype.alignment != 0
+    rust, python, calls = _rust_and_python(
+        monkeypatch, pm_eto, lambda: pm_eto.pm_eto(values, 0.0, 20.0, 2.0, 2.0, 1.0, 0.2, 0.066)
+    )
+    assert not calls
+    _assert_parity(rust, python)
+
+
+@pytest.mark.parametrize("dtype", [np.float64, np.float32, np.uint8, "U2"])
+@pytest.mark.parametrize("kernel", ["pm_eto", "fao56_eto"])
+def test_native_pm_rejects_ndarrays_as_scalars(dtype, kernel):
+    value = np.array(8, dtype=dtype)
+    if kernel == "pm_eto":
+        func, args = native.pm_eto, (value, 0.0, 20.0, 2.0, 2.0, 1.0, 0.2, 0.066)
+    else:
+        func = native.fao56_eto
+        args = (value, 24.0, 45.0, 100.0, 2.0, 2.0, 187.0, 0.0, 0.23, 4, None, None, None, None, 2, None, None, False)
+    with pytest.raises(TypeError):
+        func(*args)
+
+
+@pytest.mark.skipif(sys.platform not in ("darwin", "linux"), reason="POSIX small-stack regression")
+def test_native_pm_runs_on_small_thread_stack(tmp_path):
+    program = textwrap.dedent("""\
+        import resource
+        import threading
+        import numpy as np
+        from climate_indices import _native
+
+        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+        try:
+            threading.stack_size(32768)
+        except ValueError:
+            raise SystemExit(77)
+        args = (np.array([12.0]), np.array([24.0]), 45.0, 100.0, 2.0, 2.0,
+                np.array([187.0]), 0.0, 0.23, 4, None, None, None, None, 2,
+                None, None, False)
+        expected = _native.fao56_eto(*args)
+        errors = []
+        def run():
+            try:
+                assert np.array_equal(_native.fao56_eto(*args), expected)
+            except BaseException as error:
+                errors.append(error)
+        worker = threading.Thread(target=run)
+        worker.start()
+        worker.join()
+        assert not errors, errors
+        """)
+    result = subprocess.run([sys.executable, "-c", program], cwd=tmp_path, capture_output=True, text=True, timeout=30)
+    if result.returncode == 77:
+        pytest.skip("interpreter requires a thread stack larger than 32 KiB")
+    assert result.returncode == 0, result.stderr
+
+
 def test_pm_eto_core_parity(monkeypatch):
     arguments = (
         np.array([13.28, 12.5, 14.0]),
@@ -553,18 +614,13 @@ def test_pm_eto_float32_inputs_stay_on_python(monkeypatch):
     np.testing.assert_allclose(result, reference, rtol=1e-6, atol=1e-6)
 
 
-def test_pm_eto_passes_a_scalar_operand_as_a_view(monkeypatch):
-    """A scalar operand reaches the kernel as a zero-stride view, not a full array.
-
-    The kernel reads one element per broadcast position and the binding copies what it
-    reads, so materializing the scalar here would allocate a full-size array, and copy
-    it, for a value that occupies one element.
-    """
+def test_pm_eto_passes_scalar_operands_without_array_buffers(monkeypatch):
+    """Scalar operands cross the binding unchanged, without element-sized buffers."""
     net_radiation = np.array([13.28, 12.5, 14.0])
     scalars = (0.14, 16.9, 2.078, 1.997, 1.409, 0.122, 0.0666)
-    seen: list[tuple[np.ndarray, ...]] = []
+    seen: list[tuple[float | np.ndarray, ...]] = []
 
-    def capture(*arrays: np.ndarray) -> np.ndarray:
+    def capture(*arrays: float | np.ndarray) -> np.ndarray:
         seen.append(arrays)
         return native.pm_eto(*arrays)
 
@@ -575,10 +631,8 @@ def test_pm_eto_passes_a_scalar_operand_as_a_view(monkeypatch):
         reference = pm_eto.pm_eto(net_radiation, *scalars)
 
     assert len(seen) == 1
-    for operand in seen[0][1:]:
-        assert operand.strides == (0,), "a scalar operand was materialized into a full-size array"
-        assert operand.base is not None
-        assert operand.base.size == 1
+    assert seen[0][1:] == scalars
+    assert all(isinstance(operand, float) for operand in seen[0][1:])
     _assert_parity(result, reference)
 
 

@@ -298,11 +298,12 @@ the Python and Rust paths raise the same error in the same order. `eto` also
 keeps a Thornthwaite block with an all-NaN month column in Python, since only the
 Python path reports `np.nanmean`'s empty-slice warning. Each kernel copies every
 operand it reads before it releases the GIL, so the native route holds the caller's
-arrays, one flattened input per operand, those copies and the kernel's fixed
-intermediates: a bounded multiple of the request. A constant operand reaches the
-kernel as a zero-stride view rather than as a materialized block, and the Hargreaves
-route reports the bytes it copies beside the arrays it is handed, so the logged
-memory model covers the route the dispatch selected. Their measured effect on
+arrays, flattened real-array inputs, and those copies: a bounded multiple of the
+request. Penman-Monteith passes constants as scalars, caches station/astronomy
+terms on exact input bits, and evaluates Eq 6 without intermediate arrays.
+Thornthwaite/Hargreaves still pass constant latitudes as zero-stride views, and
+Hargreaves reports the bytes it copies beside the arrays it is handed, so the
+logged memory model covers the route the dispatch selected. Their measured effect on
 three representative inputs is in `benchmarks/README.md`; RUST-011 owns whether
 each kernel is worth its conversion overhead.
 
@@ -529,6 +530,15 @@ Which path an input takes, and why. Every row is asserted by
 | `overflowing_lmoment_block` | Python fit | an infinity makes the L-moments NaN, which the two fits report differently |
 | `oversized_lmoment_block` | Python fit | a finite value above `1e100` exceeds the native L-moment safety bound |
 
+Pearson's single-series goodness-of-fit check also batches sorted calibration
+CDFs and KS D statistics in `pearson::pearson_ks_statistics`. Python keeps the
+validation, critical values, candidate exact p-values, warnings, and logging.
+Only a D statistic below the critical value by the full parity envelope
+(`1e-10 * (1 + abs(critical))`, plus dtype epsilon) skips the SciPy check;
+candidates and near-boundary statistics use the original oracle decision.
+Spatial goodness-of-fit remains Python. Extension errors propagate before the
+reference check's exception handler and are never retried.
+
 ### Parity tolerance
 
 The contract is `rtol = atol = 1e-10` with matching NaN positions, per kernel,
@@ -557,6 +567,7 @@ are measured on macOS arm64
 | `palmer_pdsi` | `palmer_k_prime`, `palmer_pdi`, `palmer_raw_zindex`, `palmer_water_balance` | 0.000e+00 | 0.000e+00 |
 | `palmer_scpdsi` | `palmer_k_prime`, `palmer_raw_zindex`, `palmer_water_balance`, `palmer_wells`, `scpdsi_duration_factors` | 0.000e+00 | 0.000e+00 |
 | `pci` | `pci` | 0.000e+00 | 0.000e+00 |
+| `pearson_ks_statistics` | `pearson_ks_statistics` | 3.331e-16 | 1.830e-15 |
 | `penman_monteith` | `fao56_eto` | 8.882e-16 | 4.337e-16 |
 | `percentage_of_normal` | `pnp_normals`, `pnp_percentages` | 0.000e+00 | 0.000e+00 |
 | `pm_eto_intermediates` | `pm_eto` | 0.000e+00 | 0.000e+00 |
@@ -565,7 +576,7 @@ are measured on macOS arm64
 | `spi_gamma` | `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 1.998e-15 | 4.765e-14 |
 | `spi_gamma_mean_zero` | `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 1.998e-15 | 4.765e-14 |
 | `spi_gamma_spatial_block` | `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 7.105e-15 | 1.868e-13 |
-| `spi_pearson` | `pearson_cdf`, `pearson_parameters` | 8.604e-15 | 6.822e-14 |
+| `spi_pearson` | `pearson_cdf`, `pearson_ks_statistics`, `pearson_parameters` | 8.604e-15 | 6.822e-14 |
 | `thornthwaite` | `thornthwaite` | 2.842e-14 | 2.208e-16 |
 
 The largest measured absolute deviation is 4.547e-13 (`flood_pe`), more than two
