@@ -544,6 +544,13 @@ def test_polaris_tiles_ignore_float_noise_on_whole_degree_edges():
         "lat3536_lon-124-123.tif",
         "lat3536_lon-125-124.tif",
     ]
+    # the same noise just below the west and south boundaries
+    assert (
+        len(
+            aws_ingest._polaris_tile_paths("alpha", "0_5", (-125.00000000000001, 33.99999999999999, -123.0, 36.0), None)
+        )
+        == 4
+    )
     # a whole cell past the boundary still reaches the next tile
     assert len(aws_ingest._polaris_tile_paths("alpha", "0_5", (-125.0, 34.0, -123.0, 36.01), None)) == 6
 
@@ -1005,8 +1012,15 @@ def test_projected_raster_is_cropped_before_it_is_reprojected(tmp_path, monkeypa
     xs, ys = corners[0], corners[1]
     west, south, east, north = min(xs), min(ys), max(xs), max(ys)
     shape = (int((north - south) // 1000), int((east - west) // 1000))
+    # 100 mm plus 1 mm per km east and 2 mm per km north of the raster's south-west corner,
+    # so a window misplaced on either axis shows
+    columns_km = (np.arange(shape[1]) + 0.5) * (east - west) / shape[1] / 1000.0
+    rows_km = (north - south) / 1000.0 - (np.arange(shape[0]) + 0.5) * (north - south) / shape[0] / 1000.0
     _write_geotiff(
-        tmp_path / "gridmet_awc.tif", np.full(shape, 150.0), bounds=(west, south, east, north), crs="EPSG:5070"
+        tmp_path / "gridmet_awc.tif",
+        100.0 + columns_km[np.newaxis, :] + 2.0 * rows_km[:, np.newaxis],
+        bounds=(west, south, east, north),
+        crs="EPSG:5070",
     )
     reprojected: list[int] = []
     original = RasterArray.reproject
@@ -1016,11 +1030,17 @@ def test_projected_raster_is_cropped_before_it_is_reprojected(tmp_path, monkeypa
         return original(self, *args, **kwargs)
 
     monkeypatch.setattr(RasterArray, "reproject", recording)
-    climate = _climate(np.ones((2, 2), dtype=bool), latitudes=[38.45, 38.55], longitudes=[-99.55, -99.45])
+    latitudes, longitudes = [38.45, 38.55], [-99.55, -99.45]
+    climate = _climate(np.ones((2, 2), dtype=bool), latitudes=latitudes, longitudes=longitudes)
 
     result = aws_ingest.load_aws("gridmet", climate, raw_dir=tmp_path)
 
-    np.testing.assert_allclose(result.aws.values, 150.0, rtol=1e-6)
+    lon_grid, lat_grid = np.meshgrid(longitudes, latitudes)
+    centres = transform("EPSG:4326", "EPSG:5070", lon_grid.ravel().tolist(), lat_grid.ravel().tolist())
+    centres_x, centres_y = (np.asarray(centres[axis]).reshape(2, 2) for axis in (0, 1))
+    expected = 100.0 + (centres_x - west) / 1000.0 + 2.0 * (centres_y - south) / 1000.0
+    # within about a 1 km pixel of the field at each cell centre; neighbouring cells differ by ~9-22 mm
+    np.testing.assert_allclose(result.aws.values, expected, atol=1.5)
     assert len(reprojected) == 1
     assert reprojected[0] < shape[0] * shape[1] / 100
 
