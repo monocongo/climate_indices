@@ -63,6 +63,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import cast
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import numpy as np
@@ -229,6 +230,9 @@ def _fetch_tile(url: str, path: Path) -> str:
         try:
             _download_into(url, partial, have)
         except OSError as error:
+            if isinstance(error, HTTPError) and error.code == 416:
+                # the partial already reaches past the remote end yet is unreadable, so only a restart can help
+                partial.unlink(missing_ok=True)
             if attempt == DOWNLOAD_ATTEMPTS:
                 raise SystemExit(f"could not download {url} after {attempt} attempts: {error}") from error
             time.sleep(2.0 * attempt)

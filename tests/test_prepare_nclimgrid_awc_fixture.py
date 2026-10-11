@@ -3,8 +3,9 @@
 import importlib.util
 import io
 import sys
+from email.message import Message
 from pathlib import Path
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 import pytest
 
@@ -107,6 +108,28 @@ def test_tile_download_restarts_when_server_ignores_range(fixture_generator, tmp
     assert module._fetch_tile("http://example.invalid/tile.tif", target) == "downloaded"
     assert target.read_bytes() == b"ABCDEFGH"
     assert not partial.exists()
+
+
+def test_range_not_satisfiable_restarts_a_stale_partial(fixture_generator, tmp_path, monkeypatch):
+    """An unreadable partial of unknown size that is already full length must restart, not retry the range."""
+    module = fixture_generator
+    target = tmp_path / "tile.tif"
+    target.with_suffix(".tif.part").write_bytes(b"bad!")
+    monkeypatch.setattr(module, "_remote_size", lambda url: None)
+    monkeypatch.setattr(module, "_tail_readable", lambda path: path.read_bytes() == b"good")
+    monkeypatch.setattr(module.time, "sleep", lambda seconds: None)
+    ranges = []
+
+    def urlopen(request, **kwargs):
+        ranges.append(request.get_header("Range"))
+        if request.get_header("Range"):
+            raise HTTPError(request.full_url, 416, "Requested Range Not Satisfiable", Message(), None)
+        return _Response(b"good", 200)
+
+    monkeypatch.setattr(module, "urlopen", urlopen)
+    assert module._fetch_tile("http://example.invalid/tile.tif", target) == "downloaded"
+    assert target.read_bytes() == b"good"
+    assert ranges == ["bytes=4-", None]
 
 
 @pytest.mark.parametrize("permanent", [False, True])
