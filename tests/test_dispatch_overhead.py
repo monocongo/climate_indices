@@ -95,7 +95,8 @@ def test_result_metadata_omits_local_paths_and_working_tree(
     assert "working_tree" not in metadata
     assert str(tmp_path) not in text
     assert "climate_indices-1281-dispatch-local" not in text
-    assert "local.py" not in text and "notes.md" not in text
+    assert "local.py" not in text
+    assert "notes.md" not in text
 
 
 def test_display_path_omits_local_prefixes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
