@@ -201,6 +201,19 @@ def _prepare_partial(partial: Path, path: Path, expected: int | None) -> int | N
     return have
 
 
+def _download_into(url: str, partial: Path, have: int) -> None:
+    """Continue the partial tile from byte ``have``, or rewrite it when the server sends the whole tile."""
+    request = Request(url)
+    if have:
+        request.add_header("Range", f"bytes={have}-")
+    with urlopen(request, timeout=120) as response:  # noqa: S310  # nosec B310 # module-built http tile URL
+        # Only a 206 is a continuation. A 200 means the server ignored the range and sent the whole
+        # tile, which appending would splice onto the partial as a second copy of its start.
+        resumed = bool(have) and response.status == 206
+        with partial.open("ab" if resumed else "wb") as target:
+            shutil.copyfileobj(response, target)
+
+
 def _fetch_tile(url: str, path: Path) -> str:
     """Download one tile resumably, verifying its declared length and last row."""
     expected = _remote_size(url)
@@ -213,15 +226,7 @@ def _fetch_tile(url: str, path: Path) -> str:
         if have is None:
             return "downloaded"
         try:
-            request = Request(url)
-            if have:
-                request.add_header("Range", f"bytes={have}-")
-            with urlopen(request, timeout=120) as response:  # noqa: S310  # nosec B310 # module-built http tile URL
-                # Only a 206 is a continuation. A 200 means the server ignored the range and sent the whole
-                # tile, which appending would splice onto the partial as a second copy of its start.
-                resumed = bool(have) and response.status == 206
-                with partial.open("ab" if resumed else "wb") as target:
-                    shutil.copyfileobj(response, target)
+            _download_into(url, partial, have)
         except OSError as error:
             if attempt == DOWNLOAD_ATTEMPTS:
                 raise SystemExit(f"could not download {url} after {attempt} attempts: {error}") from error
