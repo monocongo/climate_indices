@@ -996,7 +996,8 @@ def _average_resampling() -> Any:
 def _write_cache(cache_dir: Path, key: str, result: HarmonizedAws, *, lat_dim: str, lon_dim: str) -> None:
     """Atomically publish the field and mask together in a two-band GeoTIFF."""
     _require_rio()
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    # S8707: cache_dir is the caller's own cache directory, created as given; nothing from the key is joined here.
+    cache_dir.mkdir(parents=True, exist_ok=True)  # NOSONAR (S8707)
     path = cache_dir / f"{hashlib.sha256(key.encode()).hexdigest()}.tif"
     bands = xr.concat([result.aws, result.filled.astype(float)], dim="band")
     bands = bands.rename({lat_dim: "y", lon_dim: "x"}).assign_coords(band=[1, 2])
@@ -1340,8 +1341,8 @@ def _polaris_tile_paths(parameter: str, layer: str, bounds: Bounds, raw_dir: Pat
                 # S5332: the publisher has no HTTPS endpoint (self-signed, expired cert verified
                 # 2026-10-11) and publishes no digests, so plain HTTP is the only transport; see the
                 # module docstring, and the polaris source's aws_unverified entry.
-                tiles.append(  # NOSONAR (S5332)
-                    f"http://hydrology.cee.duke.edu/POLARIS/PROPERTIES/v1.0/{parameter}/"
+                tiles.append(
+                    f"http://hydrology.cee.duke.edu/POLARIS/PROPERTIES/v1.0/{parameter}/"  # NOSONAR (S5332)
                     f"{POLARIS_STATISTIC}/{layer}/{name}"
                 )
     return tiles
