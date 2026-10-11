@@ -321,8 +321,10 @@ def van_genuchten_available_water(
             linear (not log-scaled).
         theta_r: Residual volumetric water content, m3/m3.
         theta_s: Saturated volumetric water content, m3/m3.
-        field_capacity_kpa: Suction defining field capacity, in kPa.
-        wilting_point_kpa: Suction defining the wilting point, in kPa.
+        field_capacity_kpa: Suction defining field capacity, in kPa; only its
+            magnitude is used, so ``33`` and ``-33`` are the same potential.
+        wilting_point_kpa: Suction defining the wilting point, in kPa; only its
+            magnitude is used.
 
     Returns:
         Available water fraction (m3/m3), dimensionless, as a float array.
@@ -362,7 +364,7 @@ def _theta_into(
 ) -> None:
     """Write ``theta(suction)`` into ``out``, using ``work`` and ``delta`` as scratch."""
     np.power(10.0, alpha_log10_kpa, out=work)
-    np.multiply(work, suction_kpa, out=work)
+    np.multiply(work, abs(suction_kpa), out=work)
     np.power(work, n, out=work)
     np.add(work, 1.0, out=work)
     np.power(work, -exponent, out=work)

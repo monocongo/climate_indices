@@ -138,6 +138,16 @@ def test_van_genuchten_available_water_matches_second_hand_computed_value():
     assert float(np.asarray(fraction)) * 200.0 == pytest.approx(43.80063941245417, rel=0, abs=1e-12)
 
 
+def test_van_genuchten_uses_the_suction_magnitude():
+    """Matric potentials are often written negative; the |h| formula must give the same answer."""
+    positive = aws_ingest.van_genuchten_available_water(np.log10(0.036), 1.5, 0.078, 0.43)
+    negative = aws_ingest.van_genuchten_available_water(
+        np.log10(0.036), 1.5, 0.078, 0.43, field_capacity_kpa=-33.0, wilting_point_kpa=-1500.0
+    )
+
+    assert float(negative) == pytest.approx(float(positive))
+
+
 def test_van_genuchten_rejects_a_shape_parameter_at_or_below_one():
     with pytest.raises(AwsIngestError, match="must be greater than 1"):
         aws_ingest.van_genuchten_available_water(np.log10(0.02), 1.0, 0.05, 0.45)
