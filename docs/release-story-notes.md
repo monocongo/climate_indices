@@ -49,7 +49,7 @@ The separate Apple M5 CONUS measurement covers 469,758 land cells × 528 months.
 
 - **What moved to Rust:** numerical kernels for SPI, SPEI, the standardized index, EDDI, PNP, PCI, Thornthwaite, Hargreaves and Penman-Monteith PET, Palmer and scPDSI, the fire moisture codes and KBDI, and the flood family. Validation, xarray/Dask, metadata, the CLI and I/O stay in Python.
 - **Parity contract:** `rtol = atol = 1e-10`, with NaNs in the same positions. Backend parity is regression evidence, not external scientific validation.
-- **API compatibility:** adding the backend does not change public signatures, return types or exceptions. Version 3.0.0 itself does have breaking changes; read the [upgrade considerations](release-notes-3.0.0.md#upgrade-considerations).
+- **API compatibility:** adding the backend does not change public signatures or return types. Read the [upgrade considerations](release-notes-3.0.0.md#upgrade-considerations) for exception behavior and other breaking changes in version 3.0.0.
 - **Installation:** five planned `cp310-abi3` wheels cover manylinux_2_28 Linux x86-64/aarch64, macOS arm64/x86-64, and Windows x86-64 on Python 3.10–3.14. Other platforms and source installs use pure Python without a Rust toolchain.
 - **Limits:** some inputs and NumPy/warning configurations keep the Python path even when the extension is installed. The dispatch rework moved Penman-Monteith ahead of Python (1.19x, from 0.88x) and Pearson-fitted SPI to 3.34x; Penman-Monteith intermediate preparation stays below parity at 0.84x, and PCI and diagnostics remain near parity. Native runtime errors propagate rather than silently retrying Python.
 
