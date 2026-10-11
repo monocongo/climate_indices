@@ -4707,10 +4707,13 @@ These are station/small-block measurements, not grid or Xeon results. IQR is
 Q3−Q1; it is not a confidence interval. Untouched rows vary with host/run noise.
 
 ```bash
+# In a baseline worktree at 74fef017, copy the harness and select its original registry:
+git show 846fa230:benchmarks/profile_dispatch_overhead.py > benchmarks/profile_dispatch_overhead.py
 uv sync && uv run maturin develop --release
-uv run python benchmarks/profile_dispatch_overhead.py --label before-full
-# rebuild after source changes:
-uv run maturin develop --release
+uv run python benchmarks/profile_dispatch_overhead.py --label before-full \
+  --entries $(uv run python -c 'from tests.parity_registry import ENTRIES_BY_NAME; print(*ENTRIES_BY_NAME)')
+# In the optimized worktree, use its shipped harness and rebuild:
+uv sync && uv run maturin develop --release
 uv run python benchmarks/profile_dispatch_overhead.py --label after-final --profile
 ```
 
@@ -4720,6 +4723,10 @@ includes both Python timing distributions, raw/prep accounting, realistic and
 monotonic day sweeps, profiling ceilings, and source/extension hashes.
 Raw samples: `benchmarks/results/before-full-20261010T004923Z.json` and
 `benchmarks/results/after-final-20261010T011635Z.json`.
+The baseline command excludes supplemental SPEI Pearson, which requires the new KS
+seam. These retained measurements predate review fixes to PM cache allocation,
+operand validation, alignment, and SciPy warning routing; they have not been rerun
+against the final reviewed tree.
 
 | Entry | Native before µs (IQR) | Native after µs (IQR) | Python/native before→after |
 | --- | ---: | ---: | ---: |

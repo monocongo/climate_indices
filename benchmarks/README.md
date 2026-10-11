@@ -1218,9 +1218,13 @@ other host load was uncontrolled. IQR is Q3−Q1, not a confidence interval. Cha
 variation; ratios compare backends within each run.
 
 ```bash
+# In a baseline worktree at 74fef017, copy the harness and select its original registry:
+git show 846fa230:benchmarks/profile_dispatch_overhead.py > benchmarks/profile_dispatch_overhead.py
 uv sync && uv run maturin develop --release
-uv run python benchmarks/profile_dispatch_overhead.py --label before-full
-# after the implementation and release rebuild:
+uv run python benchmarks/profile_dispatch_overhead.py --label before-full \
+  --entries $(uv run python -c 'from tests.parity_registry import ENTRIES_BY_NAME; print(*ENTRIES_BY_NAME)')
+# In the optimized worktree, use its shipped harness and rebuild:
+uv sync && uv run maturin develop --release
 uv run python benchmarks/profile_dispatch_overhead.py --label after-final --profile
 ```
 
@@ -1228,10 +1232,12 @@ Raw samples and metadata are in
 [`before-full-20261010T004923Z.json`](results/before-full-20261010T004923Z.json),
 [`phase0-isolated-20261010T005447Z.json`](results/phase0-isolated-20261010T005447Z.json),
 and [`after-final-20261010T011635Z.json`](results/after-final-20261010T011635Z.json).
+The baseline command excludes supplemental SPEI Pearson, whose shipped kernel
+requirements include the new KS seam; the baseline registry has no such requirement.
 The final artifact includes source/extension SHA-256 digests because the measured
-implementation was uncommitted, and carries the same kernels as the committed
-tree; the shipped harness differs from the measured one only in metadata and
-completion-flag code that runs outside the timed calls. Prep is paired public-minus-prepared-extension
+implementation was uncommitted. Measurements predate review fixes to PM cache
+allocation, operand validation, alignment, and SciPy warning routing; they have not
+been rerun against the final reviewed tree. Prep is paired public-minus-prepared-extension
 replay time; it includes validation, orchestration, logging, and any remaining
 Python computation. It is an estimate, not an independently isolated timer.
 Raw replay sums every captured extension call and includes binding copies and
