@@ -3,7 +3,7 @@
     "timestamp_utc": "2026-10-10T00:49:23.816468+00:00",
     "label": "before-full",
     "revision": "74fef017f10913b135b194ee1ce8cd294ef04184",
-    "working_tree": "?? benchmarks/profile_dispatch_overhead.py\n?? benchmarks/results/before-20261010T004847Z.json",
+    "dirty": true,
     "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
     "machine": "arm64",
     "processor": "arm",
@@ -12,9 +12,9 @@
     "rust": "rustc 1.99.0 (b940084d7 2026-09-28)",
     "numpy": "2.4.2",
     "scipy": "1.17.0",
-    "extension": "/Users/jadams/git/climate_indices-1281-dispatch-local/src/climate_indices/_native.abi3.so",
+    "extension": "_native.abi3.so",
     "argv": [
-      "benchmarks/profile_dispatch_overhead.py",
+      "profile_dispatch_overhead.py",
       "--label",
       "before-full"
     ],

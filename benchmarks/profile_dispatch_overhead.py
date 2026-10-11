@@ -189,7 +189,7 @@ def profile_pipeline(entry: parity_registry.Entry, repeats: int) -> dict[str, An
     stats: Any = pstats.Stats(profiler)  # pstats exposes its precise counters without typed attributes
     rows = [
         {
-            "file": filename,
+            "file": display_path(filename),
             "line": line,
             "function": function,
             "calls": values[1],
@@ -227,6 +227,12 @@ def command_output(*args: str) -> str:
     return subprocess.check_output(args, cwd=ROOT, text=True).strip()  # nosec B603
 
 
+def display_path(filename: str) -> str:
+    """Tree-relative path for repo files; trailing package/file pair otherwise."""
+    path = Path(filename)
+    return str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else "/".join(path.parts[-2:])
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repeat", type=int, default=30)
@@ -260,7 +266,7 @@ def main() -> None:
             for path in sorted((ROOT / directory).rglob(f"*{suffix}"))
         },
         "extension_sha256": hashlib.sha256(Path(extension_file).read_bytes()).hexdigest(),
-        "working_tree": command_output("git", "status", "--short"),
+        "dirty": bool(command_output("git", "status", "--porcelain")),
         "platform": platform.platform(),
         "machine": platform.machine(),
         "processor": platform.processor(),
@@ -271,8 +277,8 @@ def main() -> None:
         "rust": command_output("rustc", "--version"),
         "numpy": np.__version__,
         "scipy": importlib.import_module("scipy").__version__,
-        "extension": extension_file,
-        "argv": sys.argv,
+        "extension": Path(extension_file).name,
+        "argv": [Path(sys.argv[0]).name, *sys.argv[1:]],
         "repetitions": args.repeat,
         "warmups_per_backend": 1,
         "error_policy": "all=ignore",

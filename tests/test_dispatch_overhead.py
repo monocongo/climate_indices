@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 import warnings
 from pathlib import Path
@@ -48,6 +49,60 @@ def test_main_requires_extension_file(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "argv", ["profile_dispatch_overhead.py", "--entries", "--sizes", "--rss-size", "0"])
     with conftest.preserved_logging_state(), pytest.raises(RuntimeError, match="Native extension has no file path"):
         harness.main()
+
+
+@pytest.mark.parametrize(("status", "dirty"), [(" M src/local.py\n?? notes.md\n", True), ("", False)])
+def test_result_metadata_omits_local_paths_and_working_tree(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, status: str, dirty: bool
+) -> None:
+    conftest.import_native()
+    extension = tmp_path / "git" / "climate_indices-1281-dispatch-local" / "src" / "climate_indices" / "_native.abi3.so"
+    extension.parent.mkdir(parents=True)
+    extension.write_bytes(b"native")
+    real_import_module = harness.importlib.import_module
+    monkeypatch.setattr(
+        harness.importlib,
+        "import_module",
+        lambda name: (
+            SimpleNamespace(__file__=str(extension)) if name == "climate_indices._native" else real_import_module(name)
+        ),
+    )
+    monkeypatch.setattr(
+        harness, "command_output", lambda *args: status if args[1:] == ("status", "--porcelain") else "test"
+    )
+    monkeypatch.setattr(harness, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(tmp_path / "run" / "profile_dispatch_overhead.py"),
+            "--label",
+            "meta",
+            "--entries",
+            "--sizes",
+            "--rss-size",
+            "0",
+        ],
+    )
+    with conftest.preserved_logging_state():
+        harness.main()
+    output = next((tmp_path / "benchmarks" / "results").glob("meta-*.json"))
+    text = output.read_text()
+    metadata = json.loads(text)["metadata"]
+    assert metadata["extension"] == "_native.abi3.so"
+    assert metadata["argv"][0] == "profile_dispatch_overhead.py"
+    assert metadata["dirty"] is dirty
+    assert "working_tree" not in metadata
+    assert str(tmp_path) not in text
+    assert "climate_indices-1281-dispatch-local" not in text
+    assert "local.py" not in text and "notes.md" not in text
+
+
+def test_display_path_omits_local_prefixes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(harness, "ROOT", tmp_path)
+    repo_file = tmp_path / "src" / "climate_indices" / "indices.py"
+    assert harness.display_path(str(repo_file)) == "src/climate_indices/indices.py"
+    assert harness.display_path("/Users/someone/.venv/lib/site-packages/structlog/stdlib.py") == "structlog/stdlib.py"
 
 
 def test_supplemental_spei_pearson_requires_the_ks_seam() -> None:
