@@ -46,6 +46,11 @@ not the median of available water. The publisher's own client code
 (``chaneyn/polaris_api_client``) confirms the same units and layers. License:
 CC BY-NC 4.0 (non-commercial), though the plain HTTP tile listing does not repeat
 the license text; do not redistribute a derived fixture without checking terms.
+Transport: the publisher serves these tiles over plain HTTP only, and the host's
+TLS certificate is self-signed and expired (verified 2026-10-11), so HTTPS is not
+available. Remote tiles are therefore unauthenticated and must be treated as
+untrusted input: pass a ``raw_dir`` of independently verified tiles when the
+values' provenance matters. This fact is reported per source in ``aws_unverified``.
 
 ``gridmet`` -- The gridMET-derived CONUS PDSI product uses "a static soil water
 holding capacity layer (top 1500mm) from STATSGO" as an input
@@ -1332,7 +1337,10 @@ def _polaris_tile_paths(parameter: str, layer: str, bounds: Bounds, raw_dir: Pat
                     )
                 tiles.append(local)
             else:
-                tiles.append(
+                # S5332: the publisher has no HTTPS endpoint (self-signed, expired cert verified
+                # 2026-10-11) and publishes no digests, so plain HTTP is the only transport; see the
+                # module docstring, and the polaris source's aws_unverified entry.
+                tiles.append(  # NOSONAR (S5332)
                     f"http://hydrology.cee.duke.edu/POLARIS/PROPERTIES/v1.0/{parameter}/"
                     f"{POLARIS_STATISTIC}/{layer}/{name}"
                 )
@@ -1379,6 +1387,9 @@ register_source(
             "the derivation uses median marginal parameters (p50) rather than the median of available "
             "water; tile metadata and coverage have not been verified across the full database",
             "the server-side Earth Engine reduceResolution path is not implemented",
+            "the publisher serves tiles over plain HTTP with no published digests and no usable TLS "
+            "endpoint, so remote tile content is not authenticated and is only as trustworthy as the "
+            "network; pass a raw_dir of independently verified tiles when provenance matters",
         ),
     )
 )

@@ -38,6 +38,17 @@ Why tiles are downloaded first
     follows reads them locally through :mod:`climate_indices.aws_ingest`'s
     ``raw_dir`` path. A rerun reuses both the tiles and, with ``--cache-dir``,
     the harmonized GeoTIFF cache, so it costs nothing.
+
+Tile trust boundary
+    The publisher serves these tiles over plain HTTP with no published digests,
+    and its TLS certificate is self-signed and expired (verified 2026-10-11), so
+    there is no authenticated transport to use instead. The download checks only
+    the declared length and a readable last row, neither of which binds the bytes
+    to the publisher, and the fixture digest printed at the end records whatever
+    was retrieved rather than proving where it came from. Treat a regenerated
+    fixture as trusted only as far as the retrieval channel was: verify tiles
+    independently (for example against digests you obtained out of band) before
+    regenerating a committed fixture from a network you do not control.
 """
 
 from __future__ import annotations
