@@ -530,6 +530,19 @@ def test_pm_eto_empty_unaligned_buffer_keeps_python(monkeypatch):
     _assert_parity(rust, python)
 
 
+@pytest.mark.parametrize("dtype", [np.float64, np.float32, np.uint8, "U2"])
+@pytest.mark.parametrize("kernel", ["pm_eto", "fao56_eto"])
+def test_native_pm_rejects_ndarrays_as_scalars(dtype, kernel):
+    value = np.array(8, dtype=dtype)
+    with pytest.raises(TypeError):
+        if kernel == "pm_eto":
+            native.pm_eto(value, 0.0, 20.0, 2.0, 2.0, 1.0, 0.2, 0.066)
+        else:
+            native.fao56_eto(
+                value, 24.0, 45.0, 100.0, 2.0, 2.0, 187.0, 0.0, 0.23, 4, None, None, None, None, 2, None, None, False
+            )
+
+
 @pytest.mark.skipif(sys.platform not in ("darwin", "linux"), reason="POSIX small-stack regression")
 def test_native_pm_runs_on_small_thread_stack(tmp_path):
     program = textwrap.dedent("""\

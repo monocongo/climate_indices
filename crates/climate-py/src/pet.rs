@@ -7,9 +7,9 @@
 use numpy::ndarray::Array1;
 use numpy::{
     IntoPyArray, PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2,
-    PyReadonlyArray3, PyUntypedArrayMethods,
+    PyReadonlyArray3, PyUntypedArray, PyUntypedArrayMethods,
 };
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 
 use climate_core::pm_eto::{HumidityPathway, MetInputs, Operand, PmEtoInputs, RadiationPathway};
@@ -30,7 +30,7 @@ const RADIATION_TEMPERATURE_RANGE: u8 = 2;
 #[derive(FromPyObject)]
 enum PyOperand<'py> {
     Array(PyReadonlyArray1<'py, f64>),
-    Scalar(f64),
+    Scalar(Bound<'py, PyAny>),
 }
 
 // Only actual arrays are copied; no caller-owned storage survives detach.
@@ -43,7 +43,14 @@ impl PyOperand<'_> {
     fn owned(self) -> PyResult<OwnedOperand> {
         match self {
             Self::Array(array) => crate::checked_copy(&array).map(OwnedOperand::Array),
-            Self::Scalar(value) => Ok(OwnedOperand::Scalar(value)),
+            Self::Scalar(value) => {
+                if value.is_instance_of::<PyUntypedArray>() {
+                    return Err(PyTypeError::new_err(
+                        "expected a 1-D float64 ndarray or a scalar",
+                    ));
+                }
+                value.extract().map(OwnedOperand::Scalar)
+            }
         }
     }
 }
