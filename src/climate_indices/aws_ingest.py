@@ -1159,9 +1159,7 @@ def _gridmet_aws(
             "GRIDMET/DROUGHT exposes only drought indices. Supply the raster (GeoTIFF) with "
             "raw_dir=<dir> named 'gridmet_awc.tif', or set GRIDMET_AWC_RASTER=<path>."
         )
-    storage = _open_raster_window(
-        str(raster), _grid_bounds(climate, lat_dim=lat_dim, lon_dim=lon_dim), halo_pixels=1
-    ).rename({"lat": lat_dim, "lon": lon_dim})
+    storage = _read_single_layer(raster, climate, lat_dim=lat_dim, lon_dim=lon_dim)
     return harmonize_aws(
         storage.expand_dims(layer=[spec.layers_mm[0][0]]),
         climate,
@@ -1192,9 +1190,7 @@ def _usgs_aws(
             "https://doi.org/10.5066/P9TI3IS8, then supply it with raw_dir=<dir> named "
             "'usgs_awc.tif', or set USGS_AWC_RASTER=<path>."
         )
-    values = _open_raster_window(
-        str(raster), _grid_bounds(climate, lat_dim=lat_dim, lon_dim=lon_dim), halo_pixels=1
-    ).rename({"lat": lat_dim, "lon": lon_dim})
+    values = _read_single_layer(raster, climate, lat_dim=lat_dim, lon_dim=lon_dim)
     # published units are mm of available water per metre of soil over a 100 cm
     # column, so one metre makes the value numerically the column total in mm
     storage = values.expand_dims(layer=[spec.layers_mm[0][0]])
@@ -1348,6 +1344,20 @@ def _read_blocks(
             )
             blocks.append((lat_ordered[row:row_stop], lon_ordered[column:column_stop], bounds))
     return blocks
+
+
+def _read_single_layer(raster: Path, climate: xr.DataArray, *, lat_dim: str, lon_dim: str) -> xr.DataArray:
+    """Read a single-layer raster over the climate grid's window, on the climate's axis names.
+
+    Raises:
+        SourceUnavailableError: If the raster cannot be read or does not cover the grid.
+    """
+    bounds = _grid_bounds(climate, lat_dim=lat_dim, lon_dim=lon_dim)
+    try:
+        field = _open_raster_window(str(raster), bounds, halo_pixels=1)
+    except OSError as error:
+        raise SourceUnavailableError(f"could not read soil raster {raster}: {error}") from error
+    return cast(xr.DataArray, field.rename({"lat": lat_dim, "lon": lon_dim}))
 
 
 def _grid_bounds(climate: xr.DataArray, *, lat_dim: str, lon_dim: str) -> Bounds:

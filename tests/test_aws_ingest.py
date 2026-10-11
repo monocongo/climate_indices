@@ -944,6 +944,18 @@ def test_built_in_sources_honour_custom_dimension_names(tmp_path, monkeypatch):
     assert polaris.aws.dims == ("latitude", "longitude")
 
 
+@pytest.mark.parametrize("source", ["gridmet", "usgs"])
+def test_unreadable_single_layer_raster_is_reported_as_unavailable(tmp_path, monkeypatch, source):
+    """A corrupt raster is a source that cannot be read, inside the documented hierarchy."""
+    pytest.importorskip("rioxarray", reason="reading a raster needs the optional aws extra")
+    monkeypatch.delenv(f"{source.upper()}_AWC_RASTER", raising=False)
+    (tmp_path / f"{source}_awc.tif").write_bytes(b"not a geotiff")
+    climate = _climate(np.ones((2, 2), dtype=bool), latitudes=[38.25, 38.75], longitudes=[-99.75, -99.25])
+
+    with pytest.raises(SourceUnavailableError, match="could not read soil raster"):
+        aws_ingest.load_aws(source, climate, raw_dir=tmp_path)
+
+
 def test_single_layer_grid_inside_one_pixel_keeps_that_pixel(tmp_path, monkeypatch):
     """The halo keeps two centres per axis, so a grid finer than the raster still aggregates."""
     pytest.importorskip("rioxarray", reason="reading a raster needs the optional aws extra")
