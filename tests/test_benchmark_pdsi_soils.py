@@ -72,13 +72,14 @@ def test_climate_selection_requires_january_first_contiguous_months(soil_benchma
         soil_benchmark._open_climate(str(path), "precip")
 
 
+@pytest.mark.parametrize("freq", ["MS", "ME"])
 @pytest.mark.parametrize("calendar", ["standard", "noleap", "360_day"])
-def test_monthly_validation_applies_after_period_selection(soil_benchmark, tmp_path, calendar):
+def test_monthly_validation_applies_after_period_selection(soil_benchmark, tmp_path, calendar, freq):
     field = xr.DataArray(
         np.ones((12, 2, 2)),
         dims=["time", "lat", "lon"],
         coords={
-            "time": xr.date_range("2000-01-01", periods=12, freq="MS", calendar=calendar),
+            "time": xr.date_range("2000-01-01", periods=12, freq=freq, calendar=calendar),
             "lat": [38, 39],
             "lon": [-100, -99],
         },

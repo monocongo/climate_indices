@@ -159,7 +159,8 @@ def _open_climate(path: str, variable: str | None, *, period: tuple[str, str] | 
         variable = candidates[0]
     field = dataset[variable]
     if period is not None:
-        field = field.sel(time=slice(period[0], period[1]))
+        # Month strings: an end of "YYYY-12-01" must still keep a mid- or month-end December stamp.
+        field = field.sel(time=slice(period[0][:7], period[1][:7]))
     units = str(field.attrs.get("units", "")).strip().lower()
     if units in {"inches", "inch"}:
         field = field * 25.4
