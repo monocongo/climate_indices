@@ -145,8 +145,8 @@ def _tile_targets(climate: xr.DataArray, tiles_dir: Path) -> list[tuple[str, Pat
     latitudes = np.asarray(climate["lat"].values, dtype=float)
     longitudes = np.asarray(climate["lon"].values, dtype=float)
     targets: dict[Path, str] = {}
-    for _strip_latitudes, bounds in aws_ingest._latitude_strips(
-        latitudes, longitudes, rows=aws_ingest.POLARIS_STRIP_ROWS
+    for _block_latitudes, _block_longitudes, bounds in aws_ingest._read_blocks(
+        latitudes, longitudes, cells=aws_ingest.POLARIS_BLOCK_CELLS
     ):
         for name, _top, _bottom in _layers_within_depth():
             for parameter in PARAMETERS:

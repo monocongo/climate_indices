@@ -188,9 +188,10 @@ WILTING_POINT_KPA = 1500.0
 #: POLARIS statistic directory to read; "p50" is the median.
 POLARIS_STATISTIC = "p50"
 
-#: Target-grid latitude rows per POLARIS read. Read bounds come from these rows'
-#: cell edges, so each strip is a bounded GDAL window over the 30 m tiles.
-POLARIS_STRIP_ROWS = 4
+#: Target-grid cells per side of one POLARIS read block. Read bounds come from
+#: these cells' edges, so each block is a bounded GDAL window over the 30 m tiles
+#: whatever the size of the region.
+POLARIS_BLOCK_CELLS = 4
 
 #: Environment variable naming an Earth Engine asset to read POLARIS from. The
 #: server-side ``reduceResolution`` path is not implemented; setting this raises
@@ -1159,13 +1160,14 @@ def _polaris_aws(
     lat_dim: str = "lat",
     lon_dim: str = "lon",
 ) -> HarmonizedAws:
-    """Derive AWC from POLARIS van Genuchten parameters, layer by layer, in strips.
+    """Derive AWC from POLARIS van Genuchten parameters, layer by layer, in blocks.
 
-    The 30 m database is never materialized: each latitude strip of the target
-    grid is read from the publisher's tiles as a GDAL window, converted to
-    available water one layer at a time, aggregated onto that strip's cells, and
-    then discarded. Peak memory is therefore a function of one strip and one
-    layer, not of the region or the source raster.
+    The 30 m database is never materialized: each block of target cells, at most
+    :data:`POLARIS_BLOCK_CELLS` on a side, is read from the publisher's tiles as a
+    GDAL window, converted to available water one layer at a time, aggregated onto
+    that block's cells, and then discarded. Peak memory is therefore a function of
+    one block and one layer, not of the region or the source raster; one target
+    cell is the smallest window, so a very coarse grid still reads one cell's tiles.
     """
     spec = AWS_SOURCES["polaris"]
     if os.environ.get(POLARIS_EE_ASSET_ENV):
@@ -1180,9 +1182,9 @@ def _polaris_aws(
     latitudes = np.asarray(climate[lat_dim].values, dtype=float)
     longitudes = np.asarray(climate[lon_dim].values, dtype=float)
 
-    strips: list[xr.DataArray] = []
-    for strip_latitudes, bounds in _latitude_strips(latitudes, longitudes, rows=POLARIS_STRIP_ROWS):
-        strip_total = None
+    total = np.full((latitudes.size, longitudes.size), np.nan)
+    for block_latitudes, block_longitudes, bounds in _read_blocks(latitudes, longitudes, cells=POLARIS_BLOCK_CELLS):
+        block_total = None
         for name, top_mm, bottom_mm in needed_layers:
             thickness_mm = bottom_mm - top_mm
             included_fraction = _included_fraction(name, spec.layers_mm, resolved_depth_mm)
@@ -1206,21 +1208,29 @@ def _polaris_aws(
             # millimetres, and float64 only multiplies the resident size
             storage_mm = fraction.astype("float32") * np.float32(thickness_mm * included_fraction)
             del parameters
-            strip_total = storage_mm if strip_total is None else strip_total + storage_mm
+            block_total = storage_mm if block_total is None else block_total + storage_mm
             del storage_mm
-        if strip_total is None:  # pragma: no cover - depth validation prevents this
+        if block_total is None:  # pragma: no cover - depth validation prevents this
             raise AwsIngestError(f"no POLARIS layer contributes to a {resolved_depth_mm:.1f} mm column")
-        # One neighbouring row on each side preserves strip cell edges, including singleton strips.
-        indices = np.flatnonzero(np.isin(latitudes, strip_latitudes))
-        target_latitudes = latitudes[max(0, int(indices.min()) - 1) : int(indices.max()) + 2]
-        averaged = area_weighted_mean(strip_total, target_latitudes, longitudes, lat_dim=lat_dim, lon_dim=lon_dim)
-        strips.append(averaged.sel({lat_dim: strip_latitudes}))
+        # One neighbouring cell on each side of each axis preserves the block's cell edges.
+        rows = np.flatnonzero(np.isin(latitudes, block_latitudes))
+        columns = np.flatnonzero(np.isin(longitudes, block_longitudes))
+        target_latitudes = latitudes[max(0, int(rows.min()) - 1) : int(rows.max()) + 2]
+        target_longitudes = longitudes[max(0, int(columns.min()) - 1) : int(columns.max()) + 2]
+        averaged = area_weighted_mean(
+            block_total, target_latitudes, target_longitudes, lat_dim=lat_dim, lon_dim=lon_dim
+        )
+        total[np.ix_(rows, columns)] = averaged.sel({lat_dim: latitudes[rows], lon_dim: longitudes[columns]}).values
 
-    total_mm = xr.concat(strips, dim=lat_dim).sel({lat_dim: latitudes})
-    total_mm = total_mm.assign_attrs(
-        units="mm",
-        long_name=_TOTAL_WATER_LONG_NAME,
-        aws_layers_used=json.dumps([name for name, _, _ in needed_layers]),
+    total_mm = xr.DataArray(
+        total,
+        coords={lat_dim: latitudes, lon_dim: longitudes},
+        dims=[lat_dim, lon_dim],
+        attrs={
+            "units": "mm",
+            "long_name": _TOTAL_WATER_LONG_NAME,
+            "aws_layers_used": json.dumps([name for name, _, _ in needed_layers]),
+        },
     )
     return finalize_aws(
         total_mm,
@@ -1235,41 +1245,44 @@ def _polaris_aws(
     )
 
 
-def _latitude_strips(
+def _read_blocks(
     latitudes: npt.NDArray[np.float64],
     longitudes: npt.NDArray[np.float64],
     *,
-    rows: int,
-) -> list[tuple[npt.NDArray[np.float64], Bounds]]:
-    """Split the target latitudes into strips of whole rows, with read bounds.
+    cells: int,
+) -> list[tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], Bounds]]:
+    """Split the target grid into blocks of whole cells, with read bounds.
 
-    Each strip carries the target latitudes it contains plus the geographic
-    ``(west, south, east, north)`` box to read for them, so a strip's bounds are
-    derived from the same cell edges the area-weighted average uses and no target
-    cell is split.
+    Each block carries the target latitudes and longitudes it contains, at most
+    ``cells`` of each, plus the geographic ``(west, south, east, north)`` box to
+    read for them. A block's bounds are derived from the same cell edges the
+    area-weighted average uses, so no target cell is split, and its size does not
+    grow with the region.
     """
-    if latitudes.size < 2:
-        raise AwsIngestError(
-            "at least two latitude cell centres are needed to derive cell edges and therefore "
-            f"cell areas; got a single centre at {latitudes[0]!r}"
-        )
-    _validated_axis(latitudes, "latitude")
-    _validated_axis(longitudes, "longitude")
-    ordered = latitudes if latitudes[0] <= latitudes[-1] else latitudes[::-1]
-    edges = _cell_edges(ordered)
-    lon_edges = _cell_edges(longitudes if longitudes[0] <= longitudes[-1] else longitudes[::-1])
-    strips: list[tuple[npt.NDArray[np.float64], Bounds]] = []
-    for start in range(0, ordered.size, rows):
-        stop = min(start + rows, ordered.size)
-        bounds: Bounds = (
-            float(lon_edges[0]),
-            float(edges[start]),
-            float(lon_edges[-1]),
-            float(edges[stop]),
-        )
-        strip_latitudes = ordered[start:stop] if latitudes[0] <= latitudes[-1] else ordered[start:stop][::-1]
-        strips.append((strip_latitudes, bounds))
-    return strips
+    ordered: list[npt.NDArray[np.float64]] = []
+    for values, name in ((latitudes, "latitude"), (longitudes, "longitude")):
+        if values.size < 2:
+            raise AwsIngestError(
+                f"at least two {name} cell centres are needed to derive cell edges and therefore "
+                f"cell areas; got {values.size}"
+            )
+        ordered.append(_ascending(_validated_axis(values, name))[0])
+    lat_ordered, lon_ordered = ordered
+    lat_edges = _cell_edges(lat_ordered)
+    lon_edges = _cell_edges(lon_ordered)
+    blocks: list[tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], Bounds]] = []
+    for row in range(0, lat_ordered.size, cells):
+        row_stop = min(row + cells, lat_ordered.size)
+        for column in range(0, lon_ordered.size, cells):
+            column_stop = min(column + cells, lon_ordered.size)
+            bounds: Bounds = (
+                float(lon_edges[column]),
+                float(lat_edges[row]),
+                float(lon_edges[column_stop]),
+                float(lat_edges[row_stop]),
+            )
+            blocks.append((lat_ordered[row:row_stop], lon_ordered[column:column_stop], bounds))
+    return blocks
 
 
 #: Environment variables naming a local raster for the single-layer sources.

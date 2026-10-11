@@ -520,11 +520,11 @@ def test_polaris_loader_end_to_end_on_local_tiles(tmp_path, depth_mm, expected_m
     assert result.filled.sum() == 0
 
 
-@pytest.mark.parametrize("strip_rows", [1, 4, 10])
+@pytest.mark.parametrize("block_cells", [1, 2, 4, 10])
 @pytest.mark.parametrize("descending", [False, True])
 @pytest.mark.parametrize("irregular", [False, True])
-def test_polaris_strips_match_whole_field_aggregation(monkeypatch, strip_rows, descending, irregular):
-    """Strip size and climate-axis order must not change cell areas or placement."""
+def test_polaris_blocks_match_whole_field_aggregation(monkeypatch, block_cells, descending, irregular):
+    """Block size and climate-axis order must not change cell areas or placement."""
     source_lat = np.linspace(37.75625, 39.24375, 120)
     source_lon = np.linspace(-100.24375, -98.75625, 120)
     theta_s = xr.DataArray(
@@ -541,11 +541,13 @@ def test_polaris_strips_match_whole_field_aggregation(monkeypatch, strip_rows, d
 
     def read_parameter(parameter, layer, raw_dir, bounds, **kwargs):
         west, south, east, north = bounds
+        # a read window is bounded by the block on both axes, never by the region
+        assert east - west <= block_cells * 0.25 + 1e-9
         return fields[parameter].sel(lat=slice(south, north), lon=slice(west, east))
 
     monkeypatch.delenv(aws_ingest.POLARIS_EE_ASSET_ENV, raising=False)
     monkeypatch.setattr(aws_ingest, "_polaris_parameter", read_parameter)
-    monkeypatch.setattr(aws_ingest, "POLARIS_STRIP_ROWS", strip_rows)
+    monkeypatch.setattr(aws_ingest, "POLARIS_BLOCK_CELLS", block_cells)
     latitudes = [38.0, 38.25, 38.5, 38.75, 39.0]
     if irregular:
         latitudes = [38.0, 38.2, 38.5, 38.7, 39.0]
@@ -563,7 +565,8 @@ def test_polaris_strips_match_whole_field_aggregation(monkeypatch, strip_rows, d
     aggregate = aws_ingest.area_weighted_mean
 
     def bounded_aggregate(source, target_lat, target_lon, **kwargs):
-        assert len(target_lat) <= strip_rows + 2
+        assert len(target_lat) <= block_cells + 2
+        assert len(target_lon) <= block_cells + 2
         return aggregate(source, target_lat, target_lon, **kwargs)
 
     monkeypatch.setattr(aws_ingest, "area_weighted_mean", bounded_aggregate)
