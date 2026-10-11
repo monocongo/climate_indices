@@ -22,7 +22,7 @@ def test_compute_days():
     np.testing.assert_allclose(
         days_array,
         results,
-        err_msg="Fahrenheit to Celsius conversion failed",
+        err_msg="compute_days month-start day offsets are incorrect",
         atol=0.01,
         equal_nan=True,
     )
@@ -55,7 +55,7 @@ def test_compute_days():
     np.testing.assert_allclose(
         days_array,
         results,
-        err_msg="Fahrenheit to Celsius conversion failed",
+        err_msg="compute_days month-start day offsets are incorrect",
         atol=0.01,
         equal_nan=True,
     )
@@ -116,7 +116,7 @@ def test_is_data_valid():
 
 # ------------------------------------------------------------------------------
 def test_gregorian_length_as_366day():
-    # Test for the utils.sign_change() function
+    # Test for the utils.gregorian_length_as_366day() function
 
     assert utils.gregorian_length_as_366day(365, 1980) == 365
     assert utils.gregorian_length_as_366day(366, 1980) == 366
