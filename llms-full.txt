@@ -2746,7 +2746,7 @@ mypy src/
 # Check specific module
 mypy src/climate_indices/typed_public_api.py
 
-# Strict mode (enforced on typed_public_api.py)
+# Strict mode (the package-wide setting in pyproject.toml)
 mypy --strict src/climate_indices/typed_public_api.py
 ```
 
