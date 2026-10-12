@@ -156,8 +156,8 @@ uv run pytest
 # Run tests with coverage
 uv run pytest --cov=src --cov-report=term
 
-# Type checking
-uv run mypy src/
+# Type checking (Python 3.12, the stack CI's lint job uses)
+uv run --python 3.12 mypy src/ tests/test_type_checking.py
 
 # Linting and formatting
 uv run ruff check src/ tests/

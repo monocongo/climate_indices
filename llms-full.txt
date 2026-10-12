@@ -1456,8 +1456,8 @@ uv run pytest
 # Run tests with coverage
 uv run pytest --cov=src --cov-report=term
 
-# Type checking
-uv run mypy src/
+# Type checking (Python 3.12, the stack CI's lint job uses)
+uv run --python 3.12 mypy src/ tests/test_type_checking.py
 
 # Linting and formatting
 uv run ruff check src/ tests/
@@ -2739,18 +2739,20 @@ ruff format src/ tests/
 ```
 
 #### Type Checking with Mypy
+
+Run mypy on Python 3.12, the stack CI's lint job uses. The package-wide `strict`
+setting in `pyproject.toml` applies automatically, so no `--strict` flag is
+needed.
+
 ```bash
-# Check all source files
-mypy src/
+# Check the package and the type assertions pytest cannot see
+uv run --python 3.12 mypy src/ tests/test_type_checking.py
 
-# Check specific module
-mypy src/climate_indices/typed_public_api.py
-
-# Strict mode (the package-wide setting in pyproject.toml)
-mypy --strict src/climate_indices/typed_public_api.py
+# Check a specific module
+uv run --python 3.12 mypy src/climate_indices/typed_public_api.py
 ```
 
-The `mypy` commands require the Python 3.11+ dependency stack. The Python 3.10
+The `mypy` commands require a Python 3.11+ dependency stack. The Python 3.10
 stack pins numpy to 2.2.x, whose stubs raise findings that no single source tree
 can satisfy on both stacks, so the release workflow skips its mypy leg on 3.10.
 
@@ -2808,7 +2810,7 @@ climate_indices/
 | **Coverage report** | `uv run pytest --cov=src --cov-report=html` |
 | **Lint code** | `ruff check --fix src/ tests/` |
 | **Format code** | `ruff format src/ tests/` |
-| **Type check** | `mypy src/` |
+| **Type check** | `uv run --python 3.12 mypy src/ tests/test_type_checking.py` |
 | **Build docs** | `cd docs && make html` |
 | **Build package** | `uv run python -m build` |
 | **Update deps** | `uv lock` |
@@ -3042,7 +3044,7 @@ uv run maturin develop --release
 uv run python -c "import climate_indices._native"
 uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
-uv run mypy src/ tests/test_type_checking.py
+uv run --python 3.12 mypy src/ tests/test_type_checking.py
 CLIMATE_INDICES_REQUIRE_NATIVE=1 uv run pytest -n auto   # with the extension built
 uv run pytest -m validation -n auto  # external reference suites, per the RUST ticket
 rm -f src/climate_indices/_native.*.so src/climate_indices/_native.*.pyd && uv run pytest -n auto   # pure-Python fallback
