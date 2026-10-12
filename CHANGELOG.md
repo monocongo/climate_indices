@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.0.0] - unreleased
+## [3.0.0] - 2026-10-12
 
 ### Added
 
@@ -753,7 +753,7 @@ change states what a user sees, how to detect it, and what to change in
 - requirements.txt (dependencies now specified solely in pyproject.toml)
 - setup.py (now using poetry as the build tool)
 
-[unreleased]: https://github.com/monocongo/climate_indices/compare/v2.2.0...HEAD
+[3.0.0]: https://github.com/monocongo/climate_indices/compare/v2.4.0...v3.0.0
 [2.2.0]: https://github.com/monocongo/climate_indices/compare/v2.1.1...v2.2.0
 [2.1.1]: https://github.com/monocongo/climate_indices/compare/v2.0.0...v2.1.1
 [2.0.0]: https://github.com/monocongo/climate_indices/releases/tag/v2.0.0

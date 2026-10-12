@@ -1,7 +1,7 @@
 # climate_indices 3.0.0 release notes
 
-Release-preparation draft: 3.0.0 is not yet tagged or published. The final date and
-candidate SHA are selected through the [release runbook](release-process.md).
+Released 2026-10-12 from `main`; the [release runbook](release-process.md) records the
+candidate and tag mechanics.
 
 Version 3.0.0 expands the index families, gridded workflows, and scientific
 validation. Review the [full changelog](https://github.com/monocongo/climate_indices/blob/main/CHANGELOG.md) and
