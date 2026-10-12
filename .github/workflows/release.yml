@@ -63,10 +63,11 @@ jobs:
     - name: Install dependencies
       run: uv sync --locked --dev
 
-    # Unlike the pull-request workflow, every check below runs on every Python:
-    # this is the last gate before publishing, and the pull-request `lint` and
-    # `validation` jobs only see the 3.12 dependency stack, so mypy and the
-    # numerical validation on the 3.10 and 3.11 stacks are checked only here.
+    # Unlike the pull-request workflow, every check below runs on every Python
+    # (mypy is the one exception, see its step): this is the last gate before
+    # publishing, and the pull-request `lint` and `validation` jobs only see the
+    # 3.12 dependency stack, so the numerical validation on the 3.10 and 3.11
+    # stacks is checked only here.
     # Core tests run under xdist (`-n auto`); the others stay serial.
     - name: Run ruff linter
       run: uv run --no-sync --no-build ruff check src/ tests/
@@ -74,7 +75,17 @@ jobs:
     - name: Check ruff formatting
       run: uv run --no-sync --no-build ruff format --check src/ tests/
 
+    # numpy 2.2.x is the last release supporting Python 3.10, and its stubs
+    # declare the ndarray type parameters without PEP 696 defaults and leave
+    # `np.ma.isMaskedArray`, `np.ma.filled`, and `np.asarray` untyped. The 3.10
+    # stack therefore reports several hundred stub-vintage findings that no
+    # single source tree can satisfy on both stacks: a `cast` the 2.2.x stubs
+    # require is `redundant-cast` under 2.4.x, and an ignore needed on 2.4.x is
+    # an unused ignore on 2.2.x. `python_version` in pyproject.toml is pinned to
+    # "3.10", so the 3.11-3.14 legs still check 3.10 language semantics.
+    # Revisit when Python 3.10 support is dropped.
     - name: Run mypy type checker
+      if: matrix.python-version != '3.10'
       run: uv run --no-sync --no-build mypy src/
 
     - name: Run core tests

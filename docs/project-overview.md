@@ -156,8 +156,8 @@ uv run pytest
 # Run tests with coverage
 uv run pytest --cov=src --cov-report=term
 
-# Type checking
-uv run mypy src/
+# Type checking (Python 3.12, the stack CI's lint job uses)
+uv run --python 3.12 mypy src/ tests/test_type_checking.py
 
 # Linting and formatting
 uv run ruff check src/ tests/
@@ -209,7 +209,7 @@ uv run pytest -m benchmark
 - **Flood namespace**: Flood-potential indices are exposed only under `climate_indices.flood` (see ADR-0013); `edi` (flood) and `eddi` (drought) are distinct indices
 
 ### Code Patterns to Follow
-1. **Type annotations**: All public functions require full type hints (enforced by mypy --strict on `typed_public_api.py`)
+1. **Type annotations**: All public functions require full type hints (package-wide strict mypy checking configured in `pyproject.toml`)
 2. **Docstrings**: Google-style docstrings with parameter descriptions, return types, raises, examples
 3. **Error handling**: Use specific exception types from `exceptions.py` with context attributes
 4. **Logging**: Use structlog with structured key-value pairs; avoid string interpolation in log messages
