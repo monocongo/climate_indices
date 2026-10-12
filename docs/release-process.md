@@ -29,7 +29,11 @@ release workflow and publishes to PyPI through Trusted Publishing.
    ```
 4. Update `pyproject.toml` to `X.Y.Z` and refresh `uv.lock` if the version changes.
 5. Keep the versioned `CHANGELOG.md` entry marked `unreleased` while the date is
-   undecided; replace it with `## [X.Y.Z] - YYYY-MM-DD` before freezing the candidate.
+   undecided; replace it with `## [X.Y.Z] - YYYY-MM-DD` before freezing the
+   candidate. On a tag build `tests/test_release_integrity.py` requires that day to
+   be the annotated tag's own tagger date, and any versioned release-notes document
+   present to repeat it in its opening paragraph; if the tag slips past the recorded
+   day, re-date the record, freeze the candidate again, and rehearse it.
 6. Reconcile the changelog, curated release notes, and migration guide with all
    changes selected for this release. Remove pre-publication draft notices from the
    release notes before freezing; refresh story-note metrics only against a named SHA.
@@ -106,11 +110,17 @@ at, with the release-prep PR already merged.
 ### Rehearsal target
 
 Rehearsals run in a **rehearsal repository**: a repository that is not
-`monocongo/climate_indices`. The default is one private copy,
+`monocongo/climate_indices`. The default is one copy,
 `<owner>/climate_indices-rehearsal`, created once and reused for every release:
 push each candidate as its `main`, then push the release tag. A fork under a
 different owner is equivalent — upstream cannot be forked into its own owner,
-and a fork costs an account switch without proving anything more.
+and a fork costs an account switch without proving anything more. Repository
+visibility does not change what the rehearsal proves: PyPI matches a trusted
+publisher by owner, repository, workflow, and environment, not by visibility, and
+the target is not a publisher either way. Keep the copy public where possible —
+standard runners are free in public repositories, while a private copy spends the
+account's included minutes and bills macOS legs at a 10x multiplier. Make it
+private only if the run logs or artifacts must stay non-public.
 
 Whichever target is used, it must have Actions enabled, must not be a PyPI
 trusted publisher, and must not define a `release` environment protection rule:
@@ -119,8 +129,8 @@ expected outcome and evidences nothing. Never add publishing credentials to the
 rehearsal repository.
 
 ```bash
-# the default private copy; a fork under another owner is equivalent
-gh repo create <owner>/climate_indices-rehearsal --private \
+# the default public copy; a fork under another owner is equivalent
+gh repo create <owner>/climate_indices-rehearsal --public \
   --description "Release-workflow rehearsal; not a PyPI publisher"
 ```
 
@@ -145,7 +155,10 @@ git status --short                # must be empty
    `validate-release-tag` job requires the tagged commit to be reachable from
    the repository's `origin/main`, so `main` lands first. The tag push starts the
    unchanged workflow. The rehearsal repository holds no unique state, so these
-   pushes force it to the new candidate when a rehearsal is repeated:
+   pushes force it to the new candidate when a rehearsal is repeated. Pushing a SHA
+   to a tag ref creates a lightweight tag, which has no tagger date: the changelog
+   date guard therefore checks only that the record is dated here, and the tag-date
+   equality is exercised by the annotated tag production uses:
 
 ```bash
 : "${SHA:?run the rehearsal setup block in this shell first}"
@@ -239,7 +252,9 @@ git remote get-url --push origin   # must be monocongo/climate_indices, not the 
 ```
 
 Confirm `vX.Y.Z` does not already exist locally or upstream and `X.Y.Z` is not
-already published on PyPI. Then create and inspect the annotated tag:
+already published on PyPI. The tag build checks the dated changelog entry against
+the annotated tag's own tagger date, so tag on the recorded release day. Then
+create and inspect the annotated tag:
 
 ```bash
 git tag -a vX.Y.Z "$CANDIDATE" -m "Release vX.Y.Z"
