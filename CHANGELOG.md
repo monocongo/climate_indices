@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.0.0] - 2026-10-04
+## [3.0.0] - unreleased
 
 ### Added
 
@@ -32,6 +32,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fitting, exposed from the Palmer CLI dispatch (#721).
 - **Palmer xarray adapter**: `pdsi()` accepts xarray DataArrays and returns the
   PDSI-family outputs as a Dataset; `scpdsi()` remains NumPy-only (#1016).
+- **Soil available-water-capacity ingest for Palmer workflows**
+  (`climate_indices.aws_ingest`): loads a registered AWC source, converts it to
+  millimetres of plant-available water over a requested soil column, and harmonizes it
+  onto the climate grid. `aws_mm_to_inches()` converts that millimetre field to the
+  inches the Palmer entry points expect, so the result can be passed as the `awc`
+  argument of `pdsi()` or `palmer.scpdsi()`. Three sources are registered: the USGS
+  gNATSGO depth-weighted raster in mm per metre, POLARIS v1.0 van Genuchten parameters integrated over the
+  requested depth, and a user-supplied STATSGO raster; an unavailable source is
+  reported, never silently substituted. Harmonization area-weights source cells with
+  `cos(latitude)` and never nearest-neighbour samples, remote reads are windowed per
+  latitude strip with retries on transport failure, and `rasterio`/`rioxarray` are
+  declared as the `aws` extra. Palmer itself is unchanged; the AWC field remains an
+  input. `benchmarks/benchmark_pdsi_soils.py` times ingest separately from the scPDSI
+  run, and a provenance-tracked POLARIS AWC fixture covers nine cells of the pinned
+  nClimGrid example grid (#1327).
 - **Validation infrastructure**: `VALIDATION.md` records per-index evidence and known
   gaps, backed by committed external fixtures: NOAA PSL EDDI reference series (maximum
   observed error `2.43e-6`), SPEIbase v2.11 SPEI plausibility floors (#779), NOAA NCEI
@@ -155,6 +170,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and radiation precedence supplied Rs -> sunshine hours -> temperature range (Eq. 50).
   The radiation and wind helpers are validated against FAO-56 Examples 10-16 and the
   full chain against Example 18 (#766, #1183).
+- **Experimental NetCDF output packing**: `climate_indices --pack` writes each
+  floating-point output variable zlib-compressed, as int16 with a 1e-4 `scale_factor`
+  when every value lies within +/-3.2767 and at most 5e-5 from the computed value, and
+  as float32 otherwise. It is off by default, which keeps the float64 encoding. A PET or
+  PE file that a later index in the same run reads is written unpacked, so the flag never
+  changes computed values; a Dask-backed output is computed twice, once to range its
+  values and once to write them (#1260).
+- **Quick NetCDF map utility**: `scripts/plot_netcdf_map.py` (development tooling, not
+  shipped in the wheel) plots one time slice of a gridded variable from named `--input`
+  and `--var` arguments, and `--compare ncei` plots the matching NCEI nClimGrid SPI or
+  SPEI monthly slice beside it. This is a visual reproduction check, not independent
+  scientific validation (#1261, #1262).
 
 ### Changed
 
@@ -163,6 +190,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Windows x86-64 on Python 3.10–3.14. A matching platform wheel takes precedence;
   other platforms use the pure-Python wheel. Hatchling source installs remain
   pure Python and need no Rust toolchain (ADR-0018, #1283).
+- **Native dispatch and kernel boundary**: the extension accepts a scalar or an array
+  per argument, so scalar constants no longer materialize element buffers, and
+  Penman-Monteith caches station terms and its astronomy terms while the Pearson CDF
+  and K-S statistic are evaluated for all columns in one call. On the committed
+  dispatch harness (medians of 30 timed calls after warm-up), native Penman-Monteith
+  fell from 0.133 to 0.101 ms and Pearson-fitted SPI from 0.848 to 0.330 ms, so
+  Penman-Monteith no longer trails the Python path (Python/native 0.86 to 1.19;
+  Pearson-fitted SPI 1.23 to 3.34). Those measurements predate the review fixes to the
+  cache, operand validation, alignment, and warning routing, and were not rerun against
+  the final reviewed tree. Public signatures, exceptions, warnings, and the
+  `rtol = atol = 1e-10` parity contract are unchanged, and the operand policy is now
+  checked once per call rather than per operand (#1281).
 - **The xarray DataArray API stays Beta through 3.0.0** and is promoted no earlier
   than 3.1.0, so the interface may still change in a minor release (ADR-0012).
   Computation results remain identical to the stable NumPy API.
@@ -514,6 +553,14 @@ change states what a user sees, how to detect it, and what to change in
   `latitude_degrees_north` is omitted, an already-empty record stays an empty
   result, and the shared alignment warning is reported at the public call site
   (#1220, #1222).
+
+### Security
+
+- **Locked dependency updates**: `uv.lock` pins `fsspec` 2026.9.0 for CVE-2026-104851
+  (a transitive dependency through dask) and includes the `jupyterlab`, `tornado`, and
+  `multidict` security updates (#1263, #1264, #1265). Later notebook hardening updates
+  bring the candidate pins to `notebook` 7.6.3 and `jupyterlab` 4.6.4; `tornado` is
+  6.5.10 and `multidict` 6.9.1. Published dependency ranges are unchanged (#1286).
 
 ## [2.4.0] - 2026-04-05
 

@@ -112,6 +112,7 @@ exclude_patterns = [
     "explorer/**",
     "architecture-deepening-review-*.md",
     "ai-assisted-development-report-*.md",
+    "release-story-notes.md",
     "test_fixture_management.md",
 ]
 

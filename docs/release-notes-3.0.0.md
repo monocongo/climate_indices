@@ -1,5 +1,8 @@
 # climate_indices 3.0.0 release notes
 
+Release-preparation draft: 3.0.0 is not yet tagged or published. The final date and
+candidate SHA are selected through the [release runbook](release-process.md).
+
 Version 3.0.0 expands the index families, gridded workflows, and scientific
 validation. Review the [full changelog](https://github.com/monocongo/climate_indices/blob/main/CHANGELOG.md) and
 [API migration guide](deprecations/api-changes.md) before upgrading from 2.4.0.
@@ -23,6 +26,14 @@ validation. Review the [full changelog](https://github.com/monocongo/climate_ind
 - **Self-calibrated Palmer:** `scpdsi()` adds Wells-style self-calibration and a
   CLI path. Standard `pdsi()` also has a gridded xarray adapter; `scpdsi()` is
   NumPy-only.
+- **Soil water capacity for Palmer:** `climate_indices.aws_ingest` loads a soil
+  available-water-capacity source, converts it to millimetres of plant-available
+  water over a requested soil column, and harmonizes it onto the climate grid.
+  `aws_mm_to_inches()` converts that field to the inches `pdsi()` and `scpdsi()`
+  expect for their `awc` argument. USGS gNATSGO, POLARIS, and a user-supplied
+  STATSGO raster are registered, and an unavailable
+  source is reported rather than substituted. The optional raster dependencies ship
+  as the `aws` extra (#1327).
 - **More statistical options:** SPEI accepts the log-logistic distribution;
   `indices.standardized_index()` generalizes the non-negative series fitting
   pipeline to inputs such as runoff or streamflow. SPI can choose how zeros are
@@ -100,26 +111,31 @@ isolated Rust kernel timings. The native-enabled measurements ignore NumPy
 floating-point errors and clear warning filters locally to satisfy the dispatch
 guard; they do not describe every caller's default configuration.
 
-Selected fixed-registry results on macOS arm64, Python 3.14.7, best of five
-after a warm-up per backend:
+Selected fixed-registry results on macOS arm64, Python 3.14.7, medians of 30 timed
+calls per backend after a warm-up, alternating which backend runs first
+([#1281 harness](https://github.com/monocongo/climate_indices/blob/main/benchmarks/README.md#dispatch-and-pm-optimization-1281--1324)).
+The dispatch numbers were measured before the review fixes to the cache, operand
+validation, alignment, and warning routing, and were not rerun against the final
+reviewed tree:
 
 | Entry | Python/Rust |
 |---|---:|
-| Thornthwaite PET (station series) | 219.07 |
-| Hargreaves PET | 35.84 |
-| Palmer PDSI (station series) | 194.06 |
-| scPDSI | 62.45 |
-| KBDI | 42.77 |
-| Antecedent Precipitation Index | 46.26 |
-| Penman-Monteith | 0.88 |
-| Penman-Monteith intermediates | 0.45 |
-| PCI | 0.97 |
+| Thornthwaite PET (station series) | 223.27 |
+| Hargreaves PET | 35.38 |
+| Palmer PDSI (station series) | 195.18 |
+| scPDSI | 65.70 |
+| KBDI | 44.02 |
+| Antecedent Precipitation Index | 45.05 |
+| Penman-Monteith | 1.19 |
+| Penman-Monteith intermediates | 0.84 |
+| PCI | 1.04 |
 | Fit diagnostics | 1.01 |
 
-Penman-Monteith is slower in Rust on these inputs. PCI and diagnostics are
-within 5% of parity; the routine artifact retains only best samples, so those
-small differences do not establish a direction. Large station gains are not
-grid speedups: the Python spatial paths already vectorize across cells.
+Penman-Monteith moved ahead of the Python path (1.19) while its intermediate
+preparation stays below parity (0.84). PCI and diagnostics are within 5% of
+parity, so those small differences do not establish a direction. Large station
+gains are not grid speedups: the Python spatial paths already vectorize across
+cells.
 
 The separate Apple M5 CONUS run covers **469,758 land cells × 528 months**
 (1981–2024), Python 3.14.7, best of two without warm-up. Single eager-call
@@ -133,8 +149,8 @@ These are prepared-input compute timings, not raw-grid pipeline timings.
 
 Outer thread pools can help, but eight threads are slower than four for PDSI
 and SPI Pearson Type III on that host. Rust kernels remain single-threaded;
-Rayon was not adopted. The measurements come from one macOS host per artifact,
-with limited repetitions and scheduling noise, not portable speed guarantees.
+Rayon was not adopted. The measurements come from one macOS host per artifact
+and carry scheduling noise, not portable speed guarantees.
 They are distinct from the earlier NumPy vectorization results in Highlights.
 [The benchmark methodology and full tables](https://github.com/monocongo/climate_indices/blob/main/benchmarks/README.md#rust-kernels-vs-the-python-reference-across-the-parity-registry-rust-011)
 link the committed routine and CONUS artifacts and reproduction commands.
@@ -174,6 +190,17 @@ interpreter; see the
 [development guide](development-guide.md#porting-a-kernel-to-rust).
 [ADR-0018](adr/0018-optional-rust-packaging.md) covers artifact selection and CI
 checks.
+
+## CLI and development tooling
+
+The opt-in, experimental `--pack` flag compresses NetCDF output as int16 where
+its range and precision checks permit, otherwise as float32. It is off by default;
+PET and effective-precipitation intermediates reused by the same run stay unpacked.
+The development-only `scripts/plot_netcdf_map.py` plots a selected time slice and
+can compare SPI/SPEI visually with NCEI nClimGrid (`--compare ncei`). It is not
+shipped in the wheel, and the comparison is not independent scientific validation.
+See the [changelog](https://github.com/monocongo/climate_indices/blob/main/CHANGELOG.md)
+for precision rules and locked dependency security updates (#1260–#1265, #1286).
 
 ## Upgrade considerations
 

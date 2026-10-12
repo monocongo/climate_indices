@@ -11,28 +11,50 @@ release workflow and publishes to PyPI through Trusted Publishing.
 - A release tag's commit must be reachable from `origin/main`.
 - Package versions omit the leading `v`: `X.Y.Z`.
 - The Git tag, `pyproject.toml`, GitHub Release, and PyPI version must match.
-- Tag creation and tag pushes require maintainer approval.
+- The maintainer creates and pushes release tags; agents never perform these actions.
 - Long-lived `release/*` branches are avoided except for approved maintenance
   work on older supported versions.
 
 ## Pre-release checklist
 
 1. Confirm the release scope and version number.
-2. Start from current `main`:
+2. Fetch current `main`:
    ```bash
-   git switch main
-   git pull --ff-only origin main
+   git fetch origin
    ```
-3. Create a release-prep branch:
+3. Create a release-prep branch in its own worktree:
    ```bash
-   git switch -c chore/release-X.Y.Z
+   git worktree add ../climate_indices-release-X.Y.Z -b chore/release-X.Y.Z origin/main
+   cd ../climate_indices-release-X.Y.Z
    ```
-4. Update `pyproject.toml` to `X.Y.Z`.
-5. Update `CHANGELOG.md` with `## [X.Y.Z] - YYYY-MM-DD`.
-6. Update related docs when needed.
+4. Update `pyproject.toml` to `X.Y.Z` and refresh `uv.lock` if the version changes.
+5. Keep the versioned `CHANGELOG.md` entry marked `unreleased` while the date is
+   undecided; replace it with `## [X.Y.Z] - YYYY-MM-DD` before freezing the candidate.
+6. Reconcile the changelog, curated release notes, and migration guide with all
+   changes selected for this release. Remove pre-publication draft notices from the
+   release notes before freezing; refresh story-note metrics only against a named SHA.
 7. Run validation locally.
 8. Open a PR into `main`.
 9. The maintainer merges after review and passing CI; agents never merge.
+
+## Freeze the candidate before tagging
+
+1. Resolve the maintainer-selected correctness and hardening scope, then merge the
+   release-prep PR after review and green CI. An old PR's proposed date or candidate
+   SHA is historical, not a release instruction. For 3.0.0, reconcile the still-open
+   [PR #1266](https://github.com/monocongo/climate_indices/pull/1266) with the final
+   release record instead of retaining its October 6 target date.
+2. Record the full 40-character SHA of the merged `main` tip and the intended release
+   date on the release ticket. Confirm the changelog no longer says `unreleased` and
+   the release notes no longer say draft. Hold unrelated merges through the tag push.
+3. Validate and rehearse that exact SHA, including every native-wheel and no-Rust
+   install leg. Any change to the candidate requires another freeze and rehearsal;
+   do not reuse a previous green run for a different commit.
+4. The maintainer verifies the upstream `release` environment's required reviewers
+   and PyPI Trusted Publishing settings before approving publication. Merely naming
+   `environment: release` in YAML does not enforce approval. For 3.0.0, record these
+   checks under [#1015](https://github.com/monocongo/climate_indices/issues/1015) and
+   rehearsal evidence under [#1014](https://github.com/monocongo/climate_indices/issues/1014).
 
 ## Validation commands
 
@@ -51,6 +73,7 @@ uv run --no-sync --no-build ruff check src/ tests/
 uv run --no-sync --no-build ruff format --check src/ tests/
 uv run --no-sync --no-build mypy src/
 uv run --no-sync --no-build pytest
+uv run --no-sync --no-build pytest -m validation
 ```
 
 Run release integrity checks before pushing a tag:
@@ -202,22 +225,30 @@ curl -s https://pypi.org/pypi/climate-indices/json \
 ## Tag creation
 
 After the release PR is merged and `main` is green, create the annotated tag
-from `main` only after maintainer approval:
+from a clean maintainer worktree only after approval. First confirm that local and
+remote `main` still equal the SHA that passed the rehearsal:
 
 ```bash
 git switch main
 git pull --ff-only origin main
-git tag -a vX.Y.Z -m "Release vX.Y.Z"
+CANDIDATE=<full 40-character SHA recorded on the release ticket>
+test -z "$(git status --porcelain)" || { echo "working tree is not clean"; exit 1; }
+test "$(git rev-parse HEAD)" = "$CANDIDATE" || { echo "local candidate changed"; exit 1; }
+test "$(git rev-parse origin/main)" = "$CANDIDATE" || { echo "remote candidate changed"; exit 1; }
+git remote get-url --push origin   # must be monocongo/climate_indices, not the rehearsal repo
 ```
 
-Verify the tag points at the intended commit:
+Confirm `vX.Y.Z` does not already exist locally or upstream and `X.Y.Z` is not
+already published on PyPI. Then create and inspect the annotated tag:
 
 ```bash
+git tag -a vX.Y.Z "$CANDIDATE" -m "Release vX.Y.Z"
 git show --stat vX.Y.Z
-git status --short
+git rev-parse 'vX.Y.Z^{commit}'     # must equal $CANDIDATE
 ```
 
-Push the tag only after approval:
+**Pushing the tag starts the publishing workflow.** Push only this tag after
+maintainer approval; do not use `git push --tags`:
 
 ```bash
 git push origin vX.Y.Z
@@ -272,6 +303,13 @@ Expected PyPI project configuration:
 - Workflow: `release.yml`
 - Environment: `release`
 
+This follows the [PyPA publishing guide](https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/):
+separate build and publish jobs, short-lived OIDC credentials, and explicit
+production-environment approval. TestPyPI can be useful for future workflow
+changes, but it is not configured here and is not a substitute for this
+repository's frozen-candidate rehearsal. The current exact-tag guard rejects
+`v3.0.0rc1`; do not try an RC tag as a production dry run.
+
 If publishing fails at the OIDC step, verify the PyPI trusted publisher settings
 and the GitHub environment name before changing workflow credentials.
 
@@ -286,13 +324,32 @@ After the workflow completes:
 4. Confirm the Python support badge renders the same minimum and maximum versions
    listed in the release's classifiers:
    `https://img.shields.io/badge/Python-3.10--3.14-blue?logo=python`.
-5. Install from PyPI in a clean environment if extra verification is needed:
+5. Install from PyPI in a fresh environment outside the checkout:
    ```bash
-   uv venv /tmp/climate-indices-release-check
-   /tmp/climate-indices-release-check/bin/python -m pip install climate-indices==X.Y.Z
-   /tmp/climate-indices-release-check/bin/python -c "import climate_indices; print(climate_indices.__version__)"
+   CHECK_DIR="$(mktemp -d)"
+   uv venv "$CHECK_DIR/venv"
+   uv pip install --python "$CHECK_DIR/venv/bin/python" climate-indices==X.Y.Z
+   (cd "$CHECK_DIR" && venv/bin/python -c "import climate_indices; print(climate_indices.__version__)")
    ```
-6. Open a follow-up PR for any next-cycle changelog preparation if needed.
+   On a supported native-wheel platform, also confirm `climate_indices._native`
+   imports; other platforms should retain the documented pure-Python path.
+6. The workflow generates GitHub Release notes from merged PRs, not from
+   `docs/release-notes-3.0.0.md`. The maintainer should add the curated highlights,
+   migration warnings, and a permalink to the tagged release-notes document;
+   convert relative documentation links to absolute URLs when copying text.
+7. Open a follow-up PR for any next-cycle changelog preparation if needed.
+
+## If publication fails
+
+A failed workflow is not proof that nothing reached PyPI: an upload can partially
+succeed. Inspect the publish log and PyPI file list before retrying. If no artifacts
+were published, repair external setup and retry the unchanged run. If a fix changes
+the candidate, use a new version and tag after freezing and rehearsing it; never
+retarget the failed tag. If any artifacts were published, never replace their
+contents or retarget that tag; assess whether the
+unchanged run can finish uploading missing artifacts, otherwise prepare a patch
+version from `main`. If only GitHub Release creation failed, recover that step
+using the already-published run's artifacts, not a rebuilt package.
 
 ## Hotfix flow
 

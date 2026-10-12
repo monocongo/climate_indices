@@ -17,13 +17,14 @@ how much of the contract is inferred and validated for you.
 | EDDI (`eddi`) | PET | Any consistent units (values are ranked); millimeters conventional | Monthly or daily |
 | PNP (`percentage_of_normal`) | Precipitation | Same units throughout (the index is a ratio) | Monthly or daily |
 | PCI (`pci`) | Rainfall for one calendar year | Millimeters | Daily, single year |
-| Palmer (`palmer.pdsi` and related) | Precipitation, PET, available water capacity | Inches | Monthly, 12 values per year; CLI and NumPy API, no direct xarray API |
+| Palmer (`palmer.pdsi` and related) | Precipitation, PET, available water capacity | Inches in the NumPy API | Monthly, 12 values per year; PDSI has an xarray adapter, scPDSI remains NumPy/CLI |
 
-The value array matters, not the `units` attribute. The NumPy and xarray APIs
-never convert units, and editing an attribute is not conversion. The command
-line converts recognized unit declarations to millimeters (precipitation, PET)
-and degrees Celsius (temperature) before calculation, and rejects unrecognized
-ones.
+The NumPy API consumes the supplied values without converting units. Some
+xarray adapters convert recognized CF unit declarations; follow the individual
+index guides rather than assuming all adapters do so. Editing an attribute is
+not itself a conversion. The command line normalizes recognized precipitation,
+PET, and temperature units, including conversion to inches for Palmer, and
+rejects unrecognized declarations.
 
 ## Time axis
 
@@ -67,25 +68,35 @@ ones.
   neither path enforces a per-cell 30-year non-NaN minimum, and a grid whose
   cells are sparse inside the calibration window may proceed into fitting
   without raising `InsufficientDataError`.
+- Daily single-series sufficiency is measured on Gregorian observations with
+  a 365-day divisor, while fitting uses 366-slot years with synthetic February
+  29 values. This is not a per-calendar-slot minimum of observed samples;
+  [issue #760](https://github.com/monocongo/climate_indices/issues/760) tracks
+  the unresolved observed-versus-synthetic sufficiency policy.
 - Pearson fitting requires enough non-zero values per calendar period. SPI
-  falls back to gamma fitting when the Pearson data is insufficient, while
-  SPEI raises `InsufficientDataError`; use the gamma distribution for strongly
-  zero-inflated precipitation.
-- SPI and SPEI do not reject out-of-range calibration requests: when either
-  bound falls outside the input's year coverage, the implementation replaces
-  both bounds with the full available record before fitting. Matching the
-  calibration years to the actual data coverage is therefore the caller's
-  responsibility. `eddi` validates both bounds and raises
-  `InvalidArgumentError` when they fall outside the data.
-  `percentage_of_normal` raises for a start year before the data and for a
-  calibration span larger than the input, but not for an end year beyond the
-  data's final year.
+  and the default `standardized_index()` enable gamma fallback when a Pearson
+  fit raises a fitting error or its transform loses more than half of the
+  input's valid values. The decision applies to the whole input block, not
+  each insufficient calendar period or cell; a failed period alone does not
+  guarantee fallback. SPEI does not enable that fallback. Use gamma for
+  strongly zero-inflated precipitation, and inspect output and fit diagnostics.
+- SPI, SPEI, `standardized_index()`, EDDI, Palmer, and
+  `percentage_of_normal()` reject a reversed Calibration Period with
+  `CalibrationPeriodError`. Gamma, Pearson Type III, and log-logistic fits
+  clamp a non-reversed window the record does not cover; EDDI, Palmer, and
+  `percentage_of_normal()` reject uncovered windows with
+  `CalibrationPeriodError`. Supplied fitting parameters do not bypass the
+  reversed-window check. The flood-family EDI and Flood Index instead raise
+  `InvalidArgumentError` for reversed or uncovered windows and require at least
+  two complete calibration years. See the [migration guide](deprecations/api-changes.md)
+  for changes from 2.4.0.
 
 ## Missing values and zeros
 
-- NaN marks missing data and propagates per cell: an input NaN produces a NaN
-  output. Nothing is interpolated or filled. Calibration estimation omits NaNs
-  rather than consuming them — `percentage_of_normal` averages each calendar
+- NaN marks missing data and propagates through affected timescale windows.
+  Daily xarray calendar conversion does synthesize a non-leap February 29
+  by interpolation; these are calendar slots, not new observed samples.
+  Calibration estimation omits NaNs rather than consuming them — `percentage_of_normal` averages each calendar
   step with `np.nanmean`, so a NaN inside the calibration period does not block
   the normal, non-NaN cells can still receive finite percentages from the
   remaining values, and the NaN cell's own output stays NaN.
@@ -124,9 +135,8 @@ ones.
 - When the inputs must match exactly, align them before calculation with
   `xr.align(..., join="exact")`, which raises instead of intersecting. The
   end-to-end sample does this in `scripts/prepare_e2e_inputs.py`.
-- Regridding, reprojection, resampling, and unit conversion happen outside the
-  library. Inputs on different grids, calendars, or periods are not reconciled
-  for you.
+- Regridding, reprojection, and resampling happen outside the library. Inputs
+  on different grids, calendars, or periods are not reconciled for you.
 
 ## What is validated where
 
@@ -138,14 +148,14 @@ ones.
 | Calibration non-NaN sample size | Caller | Enforced when NaNs are present (in-memory 1-D fitting-based input) | Caller |
 | Calibration years inside data coverage | Partial (see note) | Partial (see note) | Partial (see note) |
 | Multi-variable alignment | Caller, by array size | Inner join with warning | Caller |
-| Units | Caller | Caller | Converted and validated |
+| Units | Caller | Index-specific CF conversion | Converted and validated |
 | Latitude range | Enforced | Enforced | Enforced |
 | Dask `time` chunk | Not applicable | Enforced, except the PET adapters and `pci` | Not applicable |
 
-The coverage checks are index-specific: `eddi` validates both calibration
-bounds, `percentage_of_normal` validates the start year and the calibration
-span only, and SPI and SPEI silently replace an out-of-range calibration
-request with the full available record.
+The coverage checks are index-specific: EDDI, Palmer, and percentage of normal
+reject uncovered windows. SPI and SPEI fits clamp them and emit
+`CalibrationPeriodClampedWarning`. Indices that accept a Calibration Period
+reject reversed windows; exception classes differ as described above.
 
 ## See also
 
