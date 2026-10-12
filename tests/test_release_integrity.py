@@ -117,6 +117,27 @@ def _read_pyproject_version() -> str:
     return match.group(1)
 
 
+def _tag_date(tag: str, repo: Path | None = None) -> date | None:
+    """Return an annotated tag's own tagger date, or None when the tag carries none.
+
+    The date is recorded in the tag object, so it stays fixed across workflow
+    reruns. Lightweight tags (what the release rehearsal pushes) carry no tagger
+    date, and a missing tag ref is an error rather than a silently skipped check.
+    """
+    result = subprocess.run(
+        ["git", "for-each-ref", f"refs/tags/{tag}", "--format=%(objecttype) %(taggerdate:short)"],
+        cwd=repo or ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    object_type, _, tagger_date = result.stdout.strip().partition(" ")
+    assert object_type, f"tag ref refs/tags/{tag} is missing from the checkout; fetch tags before this check"
+    if object_type != "tag" or not tagger_date:
+        return None
+    return date.fromisoformat(tagger_date)
+
+
 # ---------------------------------------------------------------------------
 # Always-on guardrails
 # ---------------------------------------------------------------------------
@@ -888,27 +909,92 @@ def test_v300_public_api_importable() -> None:
         assert callable(getattr(fire, name)), f"fire.{name} is not callable"
 
 
+def test_tag_date_reads_the_annotated_tag_and_ignores_lightweight_tags(tmp_path: Path) -> None:
+    """The tag-date guard compares against the tag's own date; a missing ref is an error."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "release",
+        "GIT_AUTHOR_EMAIL": "release@example.invalid",
+        "GIT_COMMITTER_NAME": "release",
+        "GIT_COMMITTER_EMAIL": "release@example.invalid",
+        "GIT_AUTHOR_DATE": "2026-10-12T12:00:00-04:00",
+        "GIT_COMMITTER_DATE": "2026-10-12T12:00:00-04:00",
+    }
+
+    def git(*args: str) -> None:
+        subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True, env=env)
+
+    git("init", "--quiet")
+    (repo / "release-record.md").write_text("record\n", encoding="utf-8")
+    git("add", "release-record.md")
+    git("-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "record")
+    git("-c", "tag.gpgsign=false", "tag", "--annotate", "v1.2.3", "-m", "release")
+    git("tag", "v1.2.4")
+
+    assert _tag_date("v1.2.3", repo) == date(2026, 10, 12)
+    assert _tag_date("v1.2.4", repo) is None
+    with pytest.raises(AssertionError, match="missing from the checkout"):
+        _tag_date("v9.9.9", repo)
+
+
+def test_release_notes_must_carry_the_tag_date(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The versioned release-notes document must state the date the tag build verifies."""
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "pyproject.toml").write_text('version = "3.0.0"\n', encoding="utf-8")
+    (tmp_path / "CHANGELOG.md").write_text("## [3.0.0] - 2026-10-12\n", encoding="utf-8")
+    release_notes = tmp_path / "docs" / "release-notes-3.0.0.md"
+
+    def stubbed_tag_date(tag: str, repo: Path | None = None) -> date | None:
+        return date(2026, 10, 12)
+
+    monkeypatch.setattr(sys.modules[__name__], "ROOT", tmp_path)
+    monkeypatch.setattr(sys.modules[__name__], "_tag_date", stubbed_tag_date)
+    monkeypatch.setenv("GITHUB_REF", "refs/tags/v3.0.0")
+
+    release_notes.write_text("# notes\n\nReleased 2026-10-12.\n", encoding="utf-8")
+    test_changelog_top_entry_matches_pyproject_version()
+
+    release_notes.write_text("# notes\n\nReleased 2026-10-05.\n", encoding="utf-8")
+    with pytest.raises(AssertionError, match="release date"):
+        test_changelog_top_entry_matches_pyproject_version()
+
+
 @pytest.mark.parametrize(
-    ("github_ref", "release_date", "accepted"),
+    ("github_ref", "release_date", "tag_date", "accepted"),
     [
-        ("", "unreleased", True),
-        ("refs/heads/main", "unreleased", True),
-        ("refs/tags/v3.0.0", "2026-10-10", True),
-        ("refs/tags/v3.0.0", "unreleased", False),
-        ("refs/tags/v3.0.0", "", False),
-        ("refs/tags/v3.0.0", "Oct 10, 2026", False),
-        ("refs/tags/v3.0.0", "2026-02-30", False),
-        ("refs/tags/v3.0.0", "2026-13-01", False),
+        ("", "unreleased", None, True),
+        ("refs/heads/main", "unreleased", None, True),
+        ("refs/tags/v3.0.0", "2026-10-10", "2026-10-10", True),
+        # A lightweight tag carries no date, so only calendar validity is checked.
+        ("refs/tags/v3.0.0", "2026-10-10", None, True),
+        ("refs/tags/v3.0.0", "2026-10-10", "2026-10-11", False),
+        ("refs/tags/v3.0.0", "unreleased", None, False),
+        ("refs/tags/v3.0.0", "", None, False),
+        ("refs/tags/v3.0.0", "Oct 10, 2026", None, False),
+        ("refs/tags/v3.0.0", "2026-02-30", None, False),
+        ("refs/tags/v3.0.0", "2026-13-01", None, False),
     ],
 )
 def test_changelog_date_guard(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, github_ref: str, release_date: str, accepted: bool
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    github_ref: str,
+    release_date: str,
+    tag_date: str | None,
+    accepted: bool,
 ) -> None:
-    """Tag builds require a dated top entry; ordinary development can stay unreleased."""
+    """Tag builds require a top entry dated on the tag's own day; development can stay unreleased."""
     (tmp_path / "pyproject.toml").write_text('version = "3.0.0"\n', encoding="utf-8")
     suffix = f" - {release_date}" if release_date else ""
     (tmp_path / "CHANGELOG.md").write_text(f"## [3.0.0]{suffix}\n\n## [2.4.0] - 2026-04-05\n", encoding="utf-8")
+
+    def stubbed_tag_date(tag: str, repo: Path | None = None) -> date | None:  # noqa: ARG001 - matches _tag_date
+        return date.fromisoformat(tag_date) if tag_date else None
+
     monkeypatch.setattr(sys.modules[__name__], "ROOT", tmp_path)
+    monkeypatch.setattr(sys.modules[__name__], "_tag_date", stubbed_tag_date)
     monkeypatch.setenv("GITHUB_REF", github_ref)
     if accepted:
         test_changelog_top_entry_matches_pyproject_version()
@@ -953,7 +1039,8 @@ def test_changelog_has_no_unreleased_block() -> None:
 def test_changelog_top_entry_matches_pyproject_version() -> None:
     """CHANGELOG.md top release block must match the version and be dated on tag builds.
 
-    Addresses: F8 — catches version bump in one file without the other.
+    Addresses: F8 — catches version bump in one file without the other; on a tag
+    build the date must also be the annotated tag's own tagger date.
     """
     pyproject_version = _read_pyproject_version()
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
@@ -965,6 +1052,7 @@ def test_changelog_top_entry_matches_pyproject_version() -> None:
         f"pyproject.toml version [{pyproject_version}] — update one to match the other"
     )
     if os.environ.get("GITHUB_REF", "").startswith("refs/tags/"):
+        tag = os.environ["GITHUB_REF"].removeprefix("refs/tags/")
         date_match = re.fullmatch(r" - (\d{4}-\d{2}-\d{2})", match.group(2))
         release_date = None
         if date_match:
@@ -973,6 +1061,20 @@ def test_changelog_top_entry_matches_pyproject_version() -> None:
         assert release_date is not None, (
             "CHANGELOG.md top entry must have a valid calendar release date (YYYY-MM-DD) before tagging"
         )
+        tag_date = _tag_date(tag)
+        if tag_date is not None:
+            assert release_date == tag_date, (
+                f"CHANGELOG.md top entry release date {release_date} does not match the annotated tag "
+                f"{tag} release date {tag_date} — re-date the release record, freeze the candidate again, "
+                "and rehearse it"
+            )
+        release_notes = ROOT / f"docs/release-notes-{pyproject_version}.md"
+        if release_notes.exists():
+            opening = "\n".join(release_notes.read_text(encoding="utf-8").splitlines()[:6])
+            assert release_date.isoformat() in opening, (
+                f"{release_notes.relative_to(ROOT)} must state the release date {release_date.isoformat()} "
+                "in its opening paragraph"
+            )
 
 
 @pytest.mark.release
