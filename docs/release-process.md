@@ -110,11 +110,17 @@ at, with the release-prep PR already merged.
 ### Rehearsal target
 
 Rehearsals run in a **rehearsal repository**: a repository that is not
-`monocongo/climate_indices`. The default is one private copy,
+`monocongo/climate_indices`. The default is one copy,
 `<owner>/climate_indices-rehearsal`, created once and reused for every release:
 push each candidate as its `main`, then push the release tag. A fork under a
 different owner is equivalent — upstream cannot be forked into its own owner,
-and a fork costs an account switch without proving anything more.
+and a fork costs an account switch without proving anything more. Repository
+visibility does not change what the rehearsal proves: PyPI matches a trusted
+publisher by owner, repository, workflow, and environment, not by visibility, and
+the target is not a publisher either way. Keep the copy public where possible —
+standard runners are free in public repositories, while a private copy spends the
+account's included minutes and bills macOS legs at a 10x multiplier. Make it
+private only if the run logs or artifacts must stay non-public.
 
 Whichever target is used, it must have Actions enabled, must not be a PyPI
 trusted publisher, and must not define a `release` environment protection rule:
@@ -123,8 +129,8 @@ expected outcome and evidences nothing. Never add publishing credentials to the
 rehearsal repository.
 
 ```bash
-# the default private copy; a fork under another owner is equivalent
-gh repo create <owner>/climate_indices-rehearsal --private \
+# the default public copy; a fork under another owner is equivalent
+gh repo create <owner>/climate_indices-rehearsal --public \
   --description "Release-workflow rehearsal; not a PyPI publisher"
 ```
 
