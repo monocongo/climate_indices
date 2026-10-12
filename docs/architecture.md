@@ -15,7 +15,7 @@ The **climate_indices** library implements a **layered library architecture** op
 1. **Scientific Correctness**: Implementations strictly follow peer-reviewed methodologies
 2. **Backward Compatibility**: Legacy numpy API remains stable across minor versions
 3. **Performance**: Optimized for gridded datasets with 10⁶+ cells
-4. **Type Safety**: Strict mypy compliance on new code (`typed_public_api.py`)
+4. **Type Safety**: Package-wide strict mypy checking configured in `pyproject.toml`
 5. **Observability**: Structured logging with performance metrics
 
 ## Technology Stack
