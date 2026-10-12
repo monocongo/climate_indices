@@ -35,9 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Soil available-water-capacity ingest for Palmer workflows**
   (`climate_indices.aws_ingest`): loads a registered AWC source, converts it to
   millimetres of plant-available water over a requested soil column, and harmonizes it
-  onto the climate grid so the result can be passed as the `awc` argument of `pdsi()`
-  or `palmer.scpdsi()`. Three sources are registered: the USGS gNATSGO depth-weighted
-  raster in mm per metre, POLARIS v1.0 van Genuchten parameters integrated over the
+  onto the climate grid. `aws_mm_to_inches()` converts that millimetre field to the
+  inches the Palmer entry points expect, so the result can be passed as the `awc`
+  argument of `pdsi()` or `palmer.scpdsi()`. Three sources are registered: the USGS
+  gNATSGO depth-weighted raster in mm per metre, POLARIS v1.0 van Genuchten parameters integrated over the
   requested depth, and a user-supplied STATSGO raster; an unavailable source is
   reported, never silently substituted. Harmonization area-weights source cells with
   `cos(latitude)` and never nearest-neighbour samples, remote reads are windowed per
@@ -196,7 +197,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dispatch harness (medians of 30 timed calls after warm-up), native Penman-Monteith
   fell from 0.133 to 0.101 ms and Pearson-fitted SPI from 0.848 to 0.330 ms, so
   Penman-Monteith no longer trails the Python path (Python/native 0.86 to 1.19;
-  Pearson-fitted SPI 1.23 to 3.34). Public signatures, exceptions, warnings, and the
+  Pearson-fitted SPI 1.23 to 3.34). Those measurements predate the review fixes to the
+  cache, operand validation, alignment, and warning routing, and were not rerun against
+  the final reviewed tree. Public signatures, exceptions, warnings, and the
   `rtol = atol = 1e-10` parity contract are unchanged, and the operand policy is now
   checked once per call rather than per operand (#1281).
 - **The xarray DataArray API stays Beta through 3.0.0** and is promoted no earlier

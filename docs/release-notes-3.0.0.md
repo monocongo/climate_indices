@@ -28,9 +28,10 @@ validation. Review the [full changelog](https://github.com/monocongo/climate_ind
   NumPy-only.
 - **Soil water capacity for Palmer:** `climate_indices.aws_ingest` loads a soil
   available-water-capacity source, converts it to millimetres of plant-available
-  water over a requested soil column, and harmonizes it onto the climate grid so it
-  can be passed to `pdsi()` or `scpdsi()` as the `awc` argument. USGS gNATSGO,
-  POLARIS, and a user-supplied STATSGO raster are registered, and an unavailable
+  water over a requested soil column, and harmonizes it onto the climate grid.
+  `aws_mm_to_inches()` converts that field to the inches `pdsi()` and `scpdsi()`
+  expect for their `awc` argument. USGS gNATSGO, POLARIS, and a user-supplied
+  STATSGO raster are registered, and an unavailable
   source is reported rather than substituted. The optional raster dependencies ship
   as the `aws` extra (#1327).
 - **More statistical options:** SPEI accepts the log-logistic distribution;
@@ -112,7 +113,10 @@ guard; they do not describe every caller's default configuration.
 
 Selected fixed-registry results on macOS arm64, Python 3.14.7, medians of 30 timed
 calls per backend after a warm-up, alternating which backend runs first
-([#1281 harness](https://github.com/monocongo/climate_indices/blob/main/benchmarks/README.md#dispatch-and-pm-optimization-1281--1324)):
+([#1281 harness](https://github.com/monocongo/climate_indices/blob/main/benchmarks/README.md#dispatch-and-pm-optimization-1281--1324)).
+The dispatch numbers were measured before the review fixes to the cache, operand
+validation, alignment, and warning routing, and were not rerun against the final
+reviewed tree:
 
 | Entry | Python/Rust |
 |---|---:|
