@@ -1,7 +1,9 @@
 # climate_indices 3.0.0 release notes
 
-Released 2026-10-12 from `main`; the [release runbook](release-process.md) records the
-candidate and tag mechanics.
+Release preparation for the planned date 2026-10-12. Confirm publication via the
+[`v3.0.0` GitHub Release](https://github.com/monocongo/climate_indices/releases/tag/v3.0.0)
+and [PyPI artifacts](https://pypi.org/project/climate-indices/3.0.0/). The
+[release runbook](release-process.md) records the candidate and tag mechanics.
 
 Version 3.0.0 expands the index families, gridded workflows, and scientific
 validation. Review the [full changelog](https://github.com/monocongo/climate_indices/blob/main/CHANGELOG.md) and

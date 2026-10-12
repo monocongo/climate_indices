@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.0.0] - 2026-10-12
 
+Release preparation for the planned date above; confirm publication and tagged
+artifacts via the [release notes](docs/release-notes-3.0.0.md).
+
 ### Added
 
 - **Optional Rust acceleration backend** (`climate_indices._native`): numerical
