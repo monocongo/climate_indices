@@ -105,15 +105,18 @@ ruff format src/ tests/
 ```
 
 #### Type Checking with Mypy
+
+Use Python 3.12 for type checking, matching CI's lint environment. Mypy still
+checks Python 3.10 compatibility via `python_version` in `pyproject.toml`, but
+installed dependency typings vary by environment. Package-wide checks and the
+`strict = true` override for `typed_public_api.py` apply automatically.
+
 ```bash
-# Check all source files
-mypy src/
+# Check all source files and type assertions in the CI environment
+uv run --python 3.12 mypy src/ tests/test_type_checking.py
 
-# Check specific module
-mypy src/climate_indices/typed_public_api.py
-
-# Strict mode (enforced on typed_public_api.py)
-mypy --strict src/climate_indices/typed_public_api.py
+# Check a specific module with its configured strict settings
+uv run --python 3.12 mypy src/climate_indices/typed_public_api.py
 ```
 
 ### Building Documentation
@@ -170,7 +173,7 @@ climate_indices/
 | **Coverage report** | `uv run pytest --cov=src --cov-report=html` |
 | **Lint code** | `ruff check --fix src/ tests/` |
 | **Format code** | `ruff format src/ tests/` |
-| **Type check** | `mypy src/` |
+| **Type check** | `uv run --python 3.12 mypy src/ tests/test_type_checking.py` |
 | **Build docs** | `cd docs && make html` |
 | **Build package** | `uv run python -m build` |
 | **Update deps** | `uv lock` |
@@ -404,7 +407,7 @@ uv run maturin develop --release
 uv run python -c "import climate_indices._native"
 uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
-uv run mypy src/ tests/test_type_checking.py
+uv run --python 3.12 mypy src/ tests/test_type_checking.py
 CLIMATE_INDICES_REQUIRE_NATIVE=1 uv run pytest -n auto   # with the extension built
 uv run pytest -m validation -n auto  # external reference suites, per the RUST ticket
 rm -f src/climate_indices/_native.*.so src/climate_indices/_native.*.pyd && uv run pytest -n auto   # pure-Python fallback
