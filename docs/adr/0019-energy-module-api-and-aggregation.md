@@ -22,10 +22,15 @@ together gets a namespaced package rather than the drought-oriented `indices.py`
 `compute.py`, whose top-level names it would crowd.
 
 `indices.standardized_index()` cannot carry the standardized energy indices as it
-stood. It *summed* the series over `scale`, which is right for accumulated
-precipitation and wrong for a capacity factor: a week's mean stays in [0, 1], a week's
-sum does not. And it clipped negatives to zero, which is wrong for a signed series such
-as residual load.
+stood. It *summed* the series over `scale`, which is right for accumulated precipitation
+but not for a capacity factor. A mean keeps the accumulated value in the series' own
+range — a week's mean stays in [0, 1] where a week's sum does not — which both preserves
+what the number means (a fraction of capacity) and keeps a support-constrained family
+such as beta fittable to it. A rank-based standardization is indifferent to the choice,
+since a sum is its mean multiplied by `scale` and the ranks are identical; the
+aggregation matters for the value's interpretation and for the families whose support is
+the series' range. And the seam clipped negatives to zero, which is wrong for a signed
+series such as residual load.
 
 ## Decision
 
@@ -42,9 +47,11 @@ as residual load.
    `"sum"`. A mean is the same windowed sum divided by `scale`, so the leading
    `scale - 1` pad and any window holding a missing value stay NaN exactly as they do
    for a sum, and a `scale` of 1 is the identity under either. Every other caller passes
-   nothing and gets the sum it always got, so SPI, SPEI, PNP, EDDI, and the CLI are
-   bit-identical; `tests/test_standardized_index.py` pins that against `spi()` and the
-   golden fixtures. Aggregation and distribution are independent: an accumulated
+   nothing and gets the sum it always got. The pinned-golden parity tests in
+   `tests/test_standardized_index.py` pin `standardized_index()` against `spi()` and the
+   reference fixtures; every other surface (SPEI, PNP, EDDI, the xarray adapter, and the
+   CLI) rests on the unchanged default, and no call site supplies `aggregation`.
+   Aggregation and distribution are independent: an accumulated
    non-negative series is `sum` with gamma, a capacity factor is `mean` with beta or
    empirical, and residual load is either with empirical.
 
@@ -90,11 +97,13 @@ capacity factors) is the scope question of
 `xclim`, `pvlib`, and `windpowerlib`. Nothing here depends on its answer: the package
 boundary, the aggregation seam, the support rules, the calendar, and the units hold
 whether or not those transforms are kept, so #1159 can only decide implement-versus-defer
-and never a name. The function names, argument conventions, and degree-day contract
-that *would* change with that answer are recorded as provisional in the internal energy
-subsystem design note (`docs/design/energy-subsystem.md`), which stays in the repository
-rather than this site because it also plans unimplemented indices, the arrangement
-[ADR-0005](./0005-fire-module-api.md) chose for fire.
+and never a name. The function names, argument conventions, and degree-day contract for
+those transforms are fixed in the internal energy subsystem design note
+(`docs/design/energy-subsystem.md`); only whether they are implemented is provisional on
+#1159, and the default constant values are confirmed by the oracle survey
+([#1160](https://github.com/monocongo/climate_indices/issues/1160)). That note stays in
+the repository rather than this site because it also plans unimplemented indices, the
+arrangement [ADR-0005](./0005-fire-module-api.md) chose for fire.
 
 ## Consequences
 

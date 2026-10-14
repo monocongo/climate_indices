@@ -50,7 +50,12 @@ period and not a statistics choice:
 | `energy.srli()` | demand minus renewable production, signed | `sum` or `mean` | empirical only |
 
 The empirical path is the default because Allen & Otero (2023) recommend it above
-roughly 100 observations, and because it is the only family valid for a signed series.
+roughly 100 observations, and because it is the family the energy API admits a signed
+series on: a rank-based standardization has no support to violate and no point mass to
+place. That is an API restriction, not a mathematical necessity — the parametric
+transforms will transform a signed series when given fitting parameters whose support
+covers it, but their support-limit and zero-mass handling is not designed for one, and
+clipping the negatives instead would score a different series.
 The plotting position, tie handling, and minimum-observation rule are fixed by
 [#1168](https://github.com/monocongo/climate_indices/issues/1168) against the convention
 the oracle survey confirms.
