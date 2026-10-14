@@ -41,7 +41,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -336,7 +336,7 @@ def create_example_netcdf(fixtures_dir: Path, output_path: Path) -> None:
     print(f"Created {output_path} ({size_kb:.1f} KB)")
     print(f"  Dimensions: lat={len(lat)}, lon={len(lon)}, time={n_months}")
     print(f"  Period: {DEFAULT_CALIB_START}-01 to {DEFAULT_CALIB_END}-12")
-    print(f"  CLI usage:")
+    print("  CLI usage:")
     print(
         f"    uv run process_climate_indices --index spi --periodicity monthly"
         f" --scales 6 --netcdf_precip {output_path}"
