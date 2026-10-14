@@ -153,19 +153,16 @@ See [drought.gov](https://www.drought.gov/drought/python-climate-indices).
 
 ## Installation
 
-This README describes 3.0.0, which is not yet published on PyPI. The released 2.x
-package does not include the `fire`, `flood`, or `runs` modules or the Rust backend.
-For 3.0.0 features, install from a [development checkout](docs/development-guide.md#installation).
+This README describes 3.0.0, published on PyPI on 2026-10-12. Relative to 2.x it
+adds the `fire`, `flood`, and `runs` modules and the optional Rust backend.
 
-Install the released 2.x package from PyPI:
+Install the current release from PyPI:
 
 ```bash
-pip install "climate-indices>=2.3"
+pip install "climate-indices>=3.0"
 ```
 
-`uv` users can run `uv pip install "climate-indices>=2.3"`. The 2.3.0 floor matches the
-[quickstart](https://github.com/monocongo/climate_indices/blob/main/docs/quickstart.md),
-which uses the xarray API added in 2.3.0; see
+`uv` users can run `uv pip install "climate-indices>=3.0"`. See
 [Supported Python Versions](#supported-python-versions) for interpreter support.
 
 Starting with 3.0.0, wheels for Linux (x86-64 and aarch64, manylinux_2_28, so glibc 2.28 or
