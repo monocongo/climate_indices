@@ -505,6 +505,7 @@ def _standardized_index_pipeline(
     clip_negatives: bool = True,
     fallback_to_gamma: bool = True,
     preprocess: Callable[[np.ndarray], np.ndarray] | None = None,
+    aggregation: compute.Aggregation = "sum",
 ) -> np.ndarray:
     """Scale, fit, and transform a series in the pipeline shared by the index wrappers.
 
@@ -540,6 +541,8 @@ def _standardized_index_pipeline(
             the traced section before preparation. :func:`spei` uses it to form the
             P - PET + offset water balance, so an error it raises is logged with
             this pipeline's full failure context.
+        aggregation: Whether each ``scale`` window is summed or averaged; only
+            :func:`standardized_index` exposes it, every other index sums.
 
     Returns:
         Standardized values in the input's size and layout.
@@ -591,6 +594,7 @@ def _standardized_index_pipeline(
             periodicity,
             clip_negatives=clip_negatives,
             spatial_time_major=spatial_time_major,
+            aggregation=aggregation,
         )
 
         # all-missing input comes back un-reshaped -- flattened for a 1-D/2-D series,
@@ -654,12 +658,14 @@ def standardized_index(
     spatial_time_major: bool = False,
     output_scale: compute.OutputScale = "normal",
     zero_handling: compute.ZeroHandling = "classic",
+    aggregation: compute.Aggregation = "sum",
 ) -> np.ndarray:
     """Standardize a non-negative monthly or daily series against a fitted distribution.
 
     This is the generic form of :func:`spi`: it accumulates the series over ``scale``
-    time steps, fits the specified distribution over the calibration period, and
-    transforms every accumulated value to a normalized sigma (z-score-like) value.
+    time steps (or averages it, see ``aggregation``), fits the specified distribution
+    over the calibration period, and transforms every accumulated value to a normalized
+    sigma (z-score-like) value.
     It is input-agnostic, so a runoff or streamflow series can be standardized the
     same way; the package does not model those quantities.
 
@@ -706,6 +712,11 @@ def standardized_index(
             without clipping, and "bounded" returns ``2p - 1`` in [-1, 1].
         zero_handling: Where a zero accumulation is placed within the zero mass;
             see :func:`spi`.
+        aggregation: How each ``scale`` window is combined before the fit: "sum"
+            (the default, and what :func:`spi` does) accumulates it, "mean" averages
+            it, which keeps a bounded series such as a capacity factor in its own
+            range. A window holding a missing value is missing under either. The
+            default leaves every existing result unchanged (ADR-0019).
 
     Returns:
         1-D array of standardized values, unitless and of the same length as the
@@ -713,8 +724,9 @@ def standardized_index(
         returned in its input shape.
 
     Raises:
-        ValueError: If ``zero_handling`` is not one of the three modes, or a Pearson
-            ``fitting_params`` set is partial or does not carry the period (and cell) axes.
+        ValueError: If ``zero_handling`` is not one of the three modes, if
+            ``aggregation`` is not "sum" or "mean", or a Pearson ``fitting_params``
+            set is partial or does not carry the period (and cell) axes.
     """
     return _standardized_index_pipeline(
         values,
@@ -730,6 +742,7 @@ def standardized_index(
         spatial_time_major=spatial_time_major,
         output_scale=output_scale,
         zero_handling=zero_handling,
+        aggregation=aggregation,
     )
 
 

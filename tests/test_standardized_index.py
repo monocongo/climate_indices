@@ -262,6 +262,92 @@ def test_spi_and_spei_raise_the_same_error_for_a_bad_pearson_parameter_set(
     assert str(spi_error.value) == str(spei_error.value)
 
 
+@pytest.mark.usefixtures(
+    "precips_mm_monthly",
+    "data_year_start_monthly",
+    "calibration_year_start_monthly",
+    "calibration_year_end_monthly",
+)
+def test_standardized_index_aggregation_defaults_to_the_sum_spi_uses(
+    precips_mm_monthly,
+    data_year_start_monthly,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+) -> None:
+    """Naming the sum changes nothing: the default is the SPI accumulation, bit for bit (ADR-0019)."""
+    values = np.asarray(precips_mm_monthly).flatten()
+    arguments = (
+        values,
+        6,
+        indices.Distribution.gamma,
+        data_year_start_monthly,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
+        compute.Periodicity.monthly,
+    )
+
+    np.testing.assert_array_equal(
+        indices.standardized_index(*arguments, aggregation="sum"),
+        indices.standardized_index(*arguments),
+    )
+    np.testing.assert_array_equal(indices.standardized_index(*arguments), indices.spi(*arguments))
+
+
+@pytest.mark.usefixtures(
+    "precips_mm_monthly",
+    "data_year_start_monthly",
+    "calibration_year_start_monthly",
+    "calibration_year_end_monthly",
+)
+def test_standardized_index_mean_aggregation_reaches_the_seam(
+    precips_mm_monthly,
+    data_year_start_monthly,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+) -> None:
+    """A mean over the scale is the sum of the series divided by the scale, scored on a fixed fit.
+
+    A fitted gamma is scale-equivariant, so only a fit held fixed through ``fitting_params``
+    can tell a mean from a sum.
+    """
+    values = np.asarray(precips_mm_monthly).flatten()
+    fitting_params = {"alpha": np.full(12, 4.0), "beta": np.full(12, 8.0)}
+    tail = (
+        indices.Distribution.gamma,
+        data_year_start_monthly,
+        calibration_year_start_monthly,
+        calibration_year_end_monthly,
+        compute.Periodicity.monthly,
+        fitting_params,
+    )
+
+    averaged = indices.standardized_index(values, 6, *tail, aggregation="mean")
+    summed = indices.standardized_index(values, 6, *tail)
+
+    np.testing.assert_allclose(averaged, indices.standardized_index(values / 6, 6, *tail), atol=1e-9)
+    assert not np.allclose(averaged, summed, equal_nan=True)
+
+
+def test_standardized_index_rejects_an_unknown_aggregation(
+    precips_mm_monthly,
+    data_year_start_monthly,
+    calibration_year_start_monthly,
+    calibration_year_end_monthly,
+) -> None:
+    """An aggregation other than sum or mean fails loudly instead of silently summing."""
+    with pytest.raises(ValueError, match="Invalid aggregation argument"):
+        indices.standardized_index(
+            np.asarray(precips_mm_monthly).flatten(),
+            6,
+            indices.Distribution.gamma,
+            data_year_start_monthly,
+            calibration_year_start_monthly,
+            calibration_year_end_monthly,
+            compute.Periodicity.monthly,
+            aggregation="median",  # type: ignore[arg-type]
+        )
+
+
 def test_standardized_index_is_exported_from_the_indices_module() -> None:
     """The generic NumPy API is public through the module that carries the stable NumPy API."""
     assert "standardized_index" in indices.__all__
