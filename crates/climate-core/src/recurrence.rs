@@ -84,6 +84,15 @@ pub struct RecurrenceRun<S> {
     pub trailing_gap_days: Option<Array1<i64>>,
 }
 
+/// One cell's recurrence state and its ADR-0007 bookkeeping.
+#[derive(Debug, Clone, Copy)]
+struct Cell<S> {
+    state: S,
+    gap_days: i64,
+    started: bool,
+    poisoned: bool,
+}
+
 /// Run one daily recurrence over the whole time axis.
 ///
 /// * `initial_state` - one state per cell; a state whose value is NaN is a
@@ -132,10 +141,16 @@ pub fn run<S: Copy>(
         });
     }
 
-    let mut state = initial_state.to_vec();
-    let mut gaps: Vec<i64> = inputs.trailing_gap_days.iter().copied().collect();
-    let mut started: Vec<bool> = gaps.iter().map(|&gap| gap >= 0).collect();
-    let mut poisoned: Vec<bool> = state.iter().map(|cell| value_of(cell).is_nan()).collect();
+    let mut run: Vec<Cell<S>> = initial_state
+        .iter()
+        .zip(&inputs.trailing_gap_days)
+        .map(|(&state, &gap_days)| Cell {
+            state,
+            gap_days,
+            started: gap_days >= 0,
+            poisoned: value_of(&state).is_nan(),
+        })
+        .collect();
     let mut values = if record {
         Some(Array2::<f64>::from_elem(
             (days.saturating_sub(inputs.spin_up), cells),
@@ -158,31 +173,34 @@ pub fn run<S: Copy>(
             if observed {
                 // a valid day is the return point's last day, so any run of gaps
                 // closes here, whether or not a missing day poisoned the cell
-                gaps[cell] = 0;
-                active[cell] = !poisoned[cell];
+                run[cell].gap_days = 0;
+                active[cell] = !run[cell].poisoned;
                 if active[cell] {
-                    started[cell] = true;
+                    run[cell].started = true;
                 }
                 continue;
             }
             active[cell] = false;
             // a cell whose static input is unusable has no recurrence to
             // gap-manage: it never starts, so it is not an elapsed missing day
-            if !inputs.static_valid[cell] || !in_season || !(started[cell] || poisoned[cell]) {
+            if !inputs.static_valid[cell]
+                || !in_season
+                || !(run[cell].started || run[cell].poisoned)
+            {
                 continue;
             }
             match inputs.policy {
                 MissingDayPolicy::Propagate => {
-                    poison(&mut state[cell]);
-                    poisoned[cell] = true;
-                    gaps[cell] = gaps[cell].max(0) + 1;
+                    poison(&mut run[cell].state);
+                    run[cell].poisoned = true;
+                    run[cell].gap_days = run[cell].gap_days.max(0) + 1;
                 }
                 MissingDayPolicy::Bridge { max_gap_days } => {
-                    let next_gap_days = gaps[cell].max(0) + 1;
-                    gaps[cell] = next_gap_days;
+                    let next_gap_days = run[cell].gap_days.max(0) + 1;
+                    run[cell].gap_days = next_gap_days;
                     if next_gap_days > max_gap_days {
-                        poison(&mut state[cell]);
-                        poisoned[cell] = true;
+                        poison(&mut run[cell].state);
+                        run[cell].poisoned = true;
                     }
                 }
             }
@@ -193,14 +211,14 @@ pub fn run<S: Copy>(
             if !active[cell] {
                 continue;
             }
-            let updated = step(state[cell], day, cell);
+            let updated = step(run[cell].state, day, cell);
             if !value_of(&updated).is_finite() {
                 return Err(ClimateError::NonFinite { index_type });
             }
             updates.push((cell, updated));
         }
         for &(cell, updated) in &updates {
-            state[cell] = updated;
+            run[cell].state = updated;
         }
 
         if let Some(values) = values.as_mut()
@@ -211,9 +229,9 @@ pub fn run<S: Copy>(
                 // an off-season cell emits the carried state instead of a gap NaN
                 let carried = season_day.is_some_and(|season| !season[cell])
                     && inputs.static_valid[cell]
-                    && started[cell];
+                    && run[cell].started;
                 values[[row, cell]] = if active[cell] || carried {
-                    value_of(&state[cell])
+                    value_of(&run[cell].state)
                 } else {
                     f64::NAN
                 };
@@ -221,14 +239,13 @@ pub fn run<S: Copy>(
         }
     }
 
-    let trailing_gap_days = started
+    let trailing_gap_days = run
         .iter()
-        .zip(&poisoned)
-        .any(|(&started, &poisoned)| started || poisoned)
-        .then(|| Array1::from(gaps));
+        .any(|cell| cell.started || cell.poisoned)
+        .then(|| run.iter().map(|cell| cell.gap_days).collect());
     Ok(RecurrenceRun {
         values,
-        state,
+        state: run.iter().map(|cell| cell.state).collect(),
         trailing_gap_days,
     })
 }
