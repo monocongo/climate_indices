@@ -322,6 +322,7 @@ pub fn ffmc(
         initial_ffmc,
         inputs,
         record,
+        #[inline(always)]
         |previous, day, cell| {
             ffmc_next(
                 previous,
@@ -374,6 +375,7 @@ pub fn dmc(
         initial_dmc,
         inputs,
         record,
+        #[inline(always)]
         |previous, day, cell| {
             dmc_next(
                 previous,
@@ -414,6 +416,7 @@ pub fn dc(
         initial_dc,
         inputs,
         record,
+        #[inline(always)]
         |previous, day, cell| {
             dc_next(
                 previous,
@@ -523,6 +526,7 @@ pub fn kbdi(
         record,
         |cell| cell.kbdi,
         |cell| cell.kbdi = f64::NAN,
+        #[inline(always)]
         |previous, day, cell| {
             kbdi_next(
                 previous,
