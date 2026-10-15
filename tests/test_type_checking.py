@@ -21,8 +21,8 @@ else:
     from typing_extensions import assert_type
 import xarray as xr
 
-from climate_indices import fire, percentage_of_normal, spei, spi
-from climate_indices.compute import Periodicity
+from climate_indices import fire, fit_diagnostics, percentage_of_normal, spei, spi
+from climate_indices.compute import FitDiagnostics, Periodicity
 from climate_indices.indices import Distribution
 from climate_indices.indices import percentage_of_normal as numpy_pnp
 
@@ -42,6 +42,13 @@ def test_spi_numpy_return_type() -> None:
         periodicity=Periodicity.monthly,
     )
     assert_type(result, npt.NDArray[np.float64])
+
+
+def test_fit_diagnostics_numpy_aggregation_type() -> None:
+    """The NumPy diagnostics overload accepts mean aggregation and retains its return type."""
+    values = np.random.default_rng(42).gamma(shape=2.0, scale=50.0, size=480)
+    result = fit_diagnostics(values, 3, Distribution.gamma, 1980, 1980, 2019, Periodicity.monthly, aggregation="mean")
+    assert_type(result, FitDiagnostics)
 
 
 def test_spi_xarray_return_type() -> None:

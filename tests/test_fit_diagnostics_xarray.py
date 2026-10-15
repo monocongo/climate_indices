@@ -56,31 +56,42 @@ def _expected_array(diagnostics: FitDiagnostics, name: str) -> np.ndarray:
     return getattr(diagnostics, name)
 
 
-def test_numpy_input_returns_fit_diagnostics() -> None:
-    """The NumPy passthrough returns what ``indices.fit_diagnostics`` returns."""
+@pytest.mark.parametrize("aggregation", ["sum", "mean"])
+def test_numpy_input_returns_fit_diagnostics(aggregation: compute.Aggregation) -> None:
+    """The NumPy passthrough preserves aggregation and returns the core diagnostics."""
     result = fit_diagnostics(
         _MONTHLY_SERIES,
-        1,
+        3,
         Distribution.gamma,
         _CALIBRATION_START_YEAR,
         _CALIBRATION_START_YEAR,
         _CALIBRATION_END_YEAR,
         Periodicity.monthly,
+        aggregation=aggregation,
     )
     expected = indices.fit_diagnostics(
         _MONTHLY_SERIES,
-        1,
+        3,
         Distribution.gamma,
         _CALIBRATION_START_YEAR,
         _CALIBRATION_START_YEAR,
         _CALIBRATION_END_YEAR,
         Periodicity.monthly,
+        aggregation=aggregation,
     )
 
     assert isinstance(result, FitDiagnostics)
     assert set(result.parameters) == {"alpha", "beta", "prob_zero"}
     np.testing.assert_array_equal(result.parameters["alpha"], expected.parameters["alpha"])
+    np.testing.assert_array_equal(result.parameters["beta"], expected.parameters["beta"])
     np.testing.assert_array_equal(result.ks_p_value, expected.ks_p_value)
+
+
+def test_xarray_mean_aggregation_is_not_supported() -> None:
+    """The untyped adapter must not silently ignore a NumPy-only aggregation mode."""
+    values = _monthly_series_da()
+    with pytest.raises(ValueError, match="aggregation.*only supported for NumPy inputs"):
+        fit_diagnostics(values, 3, Distribution.gamma, aggregation="mean")  # type: ignore[call-overload]
 
 
 @pytest.mark.parametrize("scale", [1, 3])

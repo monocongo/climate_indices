@@ -178,7 +178,7 @@ _EXPECTED_OVERLOADS: dict[Callable[..., Any], tuple[str, ...]] = {
         "(precips: 'xr.DataArray', pet: 'xr.DataArray', awc: 'float | npt.NDArray[np.float64] | xr.DataArray', data_start_year: 'int | None' = None, calibration_year_initial: 'int | None' = None, calibration_year_final: 'int | None' = None, fitting_params: 'dict[str, Any] | None' = None, spatial_time_major: 'bool' = False, time_dim: 'str' = 'time') -> 'xr.Dataset'",
     ),
     fit_diagnostics: (
-        "(values: 'npt.NDArray[np.float64]', scale: 'int', distribution: 'Distribution', data_start_year: 'int', calibration_year_initial: 'int', calibration_year_final: 'int', periodicity: 'Periodicity', fitting_params: 'dict[str, Any] | None' = None, spatial_time_major: 'bool' = False, time_dim: 'str' = 'time') -> 'compute.FitDiagnostics'",
+        "(values: 'npt.NDArray[np.float64]', scale: 'int', distribution: 'Distribution', data_start_year: 'int', calibration_year_initial: 'int', calibration_year_final: 'int', periodicity: 'Periodicity', fitting_params: 'dict[str, Any] | None' = None, spatial_time_major: 'bool' = False, time_dim: 'str' = 'time', *, aggregation: 'compute.Aggregation' = 'sum') -> 'compute.FitDiagnostics'",
         "(values: 'xr.DataArray', scale: 'int', distribution: 'Distribution', data_start_year: 'int | None' = None, calibration_year_initial: 'int | None' = None, calibration_year_final: 'int | None' = None, periodicity: 'Periodicity | None' = None, fitting_params: 'dict[str, Any] | None' = None, spatial_time_major: 'bool' = False, time_dim: 'str' = 'time') -> 'xr.Dataset'",
     ),
 }
@@ -216,8 +216,9 @@ def test_overloads_mirror_implementations() -> None:
             f"{numpy_params} != {implementation_params}"
         )
 
-        # both stubs expose every non-internal parameter of the implementation they
-        # mirror; required-ness and input types are the overloads' own contract
+        # xarray exposes the same parameters except the NumPy-only aggregation seam.
+        if public is fit_diagnostics:
+            implementation_params.remove("aggregation")
         xarray_overload = next(stub for stub in overloads if stub is not numpy_overload)
         xarray_params = list(inspect.signature(xarray_overload).parameters)
         assert xarray_params == implementation_params, (
