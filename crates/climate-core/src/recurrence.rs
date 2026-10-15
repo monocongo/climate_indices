@@ -174,7 +174,9 @@ fn advance<S: Copy>(
 ///   the finiteness check reads.
 /// * `poison` - turn a state into the poisoned one (value NaN); the Python
 ///   driver assigns `np.nan` to the code value and leaves the rest of the state.
-/// * `step` - advance one active cell by one day.
+/// * `step` - advance one active cell by one day. The driver calls it from more
+///   than one loop, so mark a costly step `#[inline(always)]`: an outlined step
+///   costs the fire codes up to a fifth of their run time.
 ///
 /// A step that returns a non-finite value from finite inputs is an error, as in
 /// `_advance_component`; the run then returns no state or history at all.
