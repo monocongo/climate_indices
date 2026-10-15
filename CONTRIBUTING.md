@@ -72,6 +72,20 @@ repository, and the WAP/SWAP and snowmelt exclusions are in
 Point an out-of-scope proposal there rather than dismissing it: until the
 criteria are met, it is a candidate for that sibling, not a rejection on merit.
 
+## Energy scope
+
+`climate_indices` accepts the climate-driven component of energy supply and
+demand — degree days, hub-height wind, capacity factors, and standardized energy
+indices — not calibrated demand or generation models, wind bias adjustment, or
+spatial aggregation to administrative units. The exact boundary, the five
+criteria for a future sibling repository, and the no-new-dependency rule are in
+[the energy subsystem design](docs/design/energy-subsystem.md#scope-and-boundary).
+The physical transforms duplicate `xclim`, `pvlib`, and `windpowerlib`
+deliberately: each is a short reference-grade formula with no dependency, and
+those libraries remain documented alternatives rather than requirements. Point an
+out-of-scope proposal there rather than dismissing it: it is a candidate for that
+sibling, not a rejection on merit.
+
 ## Documentation audience
 
 Everything on the published site is for users and contributors of the shipped
