@@ -553,6 +553,66 @@ mod tests {
     }
 
     #[test]
+    fn a_single_cell_run_matches_its_column_of_a_wider_run() {
+        // a single cell runs in its own loop, so every rule must match the one
+        // the wider run applies: missing days inside and past a one-day bridge,
+        // an off-season stretch, spin-up, an unusable cell, a poisoned start, and
+        // resumed gap counts
+        let (days, cells) = (12, 6);
+        let weather = Array2::from_shape_fn((days, cells), |(day, cell)| {
+            (day + cell) % 4 != 0 && !(cell == 4 && (5..8).contains(&day))
+        });
+        let in_season = Array2::from_shape_fn((days, cells), |(day, cell)| {
+            cell % 2 == 1 || !(3..6).contains(&day)
+        });
+        let static_valid = array![true, true, true, false, true, true];
+        let gaps = array![-1, -1, 2, -1, -1, 0];
+        let initial = [0.0, f64::NAN, 0.0, 0.0, 0.0, 0.0];
+        let run_cells = |cells: std::ops::Range<usize>| {
+            let columns = ndarray::s![.., cells.clone()];
+            run(
+                "test",
+                &initial[cells.clone()],
+                &RecurrenceInputs {
+                    weather_valid: weather.slice(columns),
+                    static_valid: static_valid.slice(ndarray::s![cells.clone()]),
+                    in_season: Some(in_season.slice(columns)),
+                    trailing_gap_days: gaps.slice(ndarray::s![cells]),
+                    spin_up: 2,
+                    policy: MissingDayPolicy::Bridge { max_gap_days: 1 },
+                },
+                true,
+                |state| *state,
+                |state| *state = f64::NAN,
+                increment,
+            )
+            .unwrap()
+        };
+        let wide = run_cells(0..cells);
+        let wide_values = wide.values.unwrap();
+        let wide_gaps = wide.trailing_gap_days.unwrap();
+        for cell in 0..cells {
+            let single = run_cells(cell..cell + 1);
+            let single_values = single.values.unwrap();
+            assert_eq!(column(&single_values, 0), column(&wide_values, cell));
+            assert_eq!(
+                single.state[0].to_bits(),
+                wide.state[cell].to_bits(),
+                "cell {cell}"
+            );
+            // a cell that never starts reports no gap counts of its own
+            let single_gap = single.trailing_gap_days.map_or(gaps[cell], |gaps| gaps[0]);
+            assert_eq!(single_gap, wide_gaps[cell], "cell {cell}");
+        }
+        // the scenario reaches every outcome: cell 0 advances to 2 by day 2 and
+        // carries it through off-season days 3 to 5, a missing day records a gap
+        // NaN, and cell 4's two in-season missing days exceed the allowance
+        assert_eq!(column(&wide_values, 0)[..4], [Some(2.0); 4]);
+        assert!(wide_values.iter().any(|value| value.is_nan()));
+        assert!(wide.state[4].is_nan());
+    }
+
+    #[test]
     fn a_parameter_of_the_wrong_length_is_rejected() {
         let weather = Array2::from_elem((2, 3), true);
         let error = run(
