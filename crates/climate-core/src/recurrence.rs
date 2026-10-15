@@ -222,34 +222,45 @@ pub fn run<S: Copy>(
             poisoned: value_of(&state).is_nan(),
         })
         .collect();
-    let mut values = if record {
-        Some(Array2::<f64>::from_elem(
-            (days.saturating_sub(inputs.spin_up), cells),
-            f64::NAN,
-        ))
-    } else {
-        None
-    };
+    let static_valid: Vec<bool> = inputs.static_valid.to_vec();
+    // the time-first masks as `[day * cells + cell]` slices; a view that is
+    // already in standard layout, as NumPy's C-order arrays are, is not copied
+    let weather_valid = inputs.weather_valid.as_standard_layout();
+    let weather_valid = weather_valid.as_slice().expect("standard layout");
+    let in_season = inputs
+        .in_season
+        .as_ref()
+        .map(|mask| mask.as_standard_layout());
+    let in_season = in_season
+        .as_ref()
+        .map(|mask| mask.as_slice().expect("standard layout"));
+    let recorded_days = days.saturating_sub(inputs.spin_up);
+    let mut values = record.then(|| Array2::<f64>::from_elem((recorded_days, cells), f64::NAN));
+    let mut history = values
+        .as_mut()
+        .map(|values| values.as_slice_mut().expect("standard layout"));
 
     // the history starts all NaN, so only a day that records the state writes
     // to it
     for day in 0..days {
-        let season_day = inputs.in_season.as_ref().map(|mask| mask.row(day));
+        let row = day * cells..(day + 1) * cells;
+        let weather_row = &weather_valid[row.clone()];
+        let season_row = in_season.map(|mask| &mask[row]);
+        let mut history_row = (day >= inputs.spin_up)
+            .then(|| (day - inputs.spin_up) * cells)
+            .and_then(|row| Some(&mut history.as_deref_mut()?[row..row + cells]));
         for (index, cell) in run.iter_mut().enumerate() {
             let today = Day {
-                static_valid: inputs.static_valid[index],
-                in_season: season_day.is_none_or(|season| season[index]),
-                weather_valid: inputs.weather_valid[[day, index]],
+                static_valid: static_valid[index],
+                in_season: season_row.is_none_or(|season| season[index]),
+                weather_valid: weather_row[index],
             };
             let records = advance(inputs.policy, cell, today, &value_of, &poison, |state| {
                 step(state, day, index)
             })
             .map_err(|NonFiniteStep| ClimateError::NonFinite { index_type })?;
-            if records
-                && day >= inputs.spin_up
-                && let Some(values) = values.as_mut()
-            {
-                values[[day - inputs.spin_up, index]] = value_of(&cell.state);
+            if records && let Some(history_row) = history_row.as_deref_mut() {
+                history_row[index] = value_of(&cell.state);
             }
         }
     }
