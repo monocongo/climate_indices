@@ -186,6 +186,18 @@ CF_METADATA: dict[str, CFAttributes] = {
         "climate_indices_variant": "bounded",
         "references": _SPEI_REFERENCES,
     },
+    # the generic seam standardizes whatever series it is handed, so it has no
+    # discipline-specific name or citation; the named recipes (SRI, SSI) supply
+    # their own and rename the result (ADR-0020)
+    "standardized_index": {
+        "long_name": "Standardized index",
+        "units": "1",
+        "description": (
+            "Generic standardization of the caller's series, unitless and clipped to [-3.09, 3.09] as SPI values are. "
+            "Input-agnostic, so it carries no discipline-specific name."
+        ),
+        "references": _SPI_REFERENCES,
+    },
     "pet_thornthwaite": {
         "long_name": "Potential Evapotranspiration (Thornthwaite method)",
         "units": "mm/month",
