@@ -93,6 +93,63 @@ struct Cell<S> {
     poisoned: bool,
 }
 
+/// What one cell sees on one day.
+#[derive(Debug, Clone, Copy)]
+struct Day {
+    static_valid: bool,
+    in_season: bool,
+    weather_valid: bool,
+}
+
+/// Apply one day's missing-day and season rules to a cell; returns whether the
+/// cell advances today.
+#[inline(always)]
+fn advance<S>(
+    policy: MissingDayPolicy,
+    cell: &mut Cell<S>,
+    today: Day,
+    poison: &impl Fn(&mut S),
+) -> bool {
+    let Day {
+        static_valid,
+        in_season,
+        weather_valid,
+    } = today;
+    if static_valid && in_season && weather_valid {
+        // a valid day is the return point's last day, so any run of gaps closes
+        // here, whether or not a missing day poisoned the cell
+        cell.gap_days = 0;
+        if cell.poisoned {
+            return false;
+        }
+        cell.started = true;
+        return true;
+    }
+    // a cell whose static input is unusable has no recurrence to gap-manage: it
+    // never starts, so it is not an elapsed missing day
+    if !static_valid {
+        return false;
+    }
+    if !in_season {
+        // an off-season day is neither an observation nor a missing day: it
+        // never advances the recurrence and never counts against the allowance
+        return false;
+    }
+    if cell.started || cell.poisoned {
+        let gap_days = cell.gap_days.max(0) + 1;
+        cell.gap_days = gap_days;
+        let poisons = match policy {
+            MissingDayPolicy::Propagate => true,
+            MissingDayPolicy::Bridge { max_gap_days } => gap_days > max_gap_days,
+        };
+        if poisons {
+            poison(&mut cell.state);
+            cell.poisoned = true;
+        }
+    }
+    false
+}
+
 /// Run one daily recurrence over the whole time axis.
 ///
 /// * `initial_state` - one state per cell; a state whose value is NaN is a
@@ -164,46 +221,13 @@ pub fn run<S: Copy>(
     let mut updates: Vec<(usize, S)> = Vec::with_capacity(cells);
     for day in 0..days {
         let season_day = inputs.in_season.as_ref().map(|mask| mask.row(day));
-        for cell in 0..cells {
-            // an off-season day is neither an observation nor a missing day: it
-            // never advances the recurrence and never counts against the allowance
-            let in_season = season_day.is_none_or(|season| season[cell]);
-            let observed =
-                inputs.static_valid[cell] && in_season && inputs.weather_valid[[day, cell]];
-            if observed {
-                // a valid day is the return point's last day, so any run of gaps
-                // closes here, whether or not a missing day poisoned the cell
-                run[cell].gap_days = 0;
-                active[cell] = !run[cell].poisoned;
-                if active[cell] {
-                    run[cell].started = true;
-                }
-                continue;
-            }
-            active[cell] = false;
-            // a cell whose static input is unusable has no recurrence to
-            // gap-manage: it never starts, so it is not an elapsed missing day
-            if !inputs.static_valid[cell]
-                || !in_season
-                || !(run[cell].started || run[cell].poisoned)
-            {
-                continue;
-            }
-            match inputs.policy {
-                MissingDayPolicy::Propagate => {
-                    poison(&mut run[cell].state);
-                    run[cell].poisoned = true;
-                    run[cell].gap_days = run[cell].gap_days.max(0) + 1;
-                }
-                MissingDayPolicy::Bridge { max_gap_days } => {
-                    let next_gap_days = run[cell].gap_days.max(0) + 1;
-                    run[cell].gap_days = next_gap_days;
-                    if next_gap_days > max_gap_days {
-                        poison(&mut run[cell].state);
-                        run[cell].poisoned = true;
-                    }
-                }
-            }
+        for (index, cell) in run.iter_mut().enumerate() {
+            let today = Day {
+                static_valid: inputs.static_valid[index],
+                in_season: season_day.is_none_or(|season| season[index]),
+                weather_valid: inputs.weather_valid[[day, index]],
+            };
+            active[index] = advance(inputs.policy, cell, today, &poison);
         }
 
         updates.clear();
