@@ -2,21 +2,24 @@
 
 ## Status
 
-Accepted. Only decision 2 describes code that exists: the `aggregation` keyword
+Amended: decision 2 also exposes matching aggregation on `indices.fit_diagnostics()`
+so its fitting parameters can be reused by the standardized index.
+
+Only decision 2 describes code that exists: the `aggregation` keyword
 landed with this record ([#1158](https://github.com/monocongo/climate_indices/issues/1158)).
 The `climate_indices.energy` package does not exist yet. Decisions 1 and 3 through 6
 are the contract that the remaining energy tickets
 ([#1157](https://github.com/monocongo/climate_indices/issues/1157)) implement, so a
 reader who greps `climate_indices.energy` today finds this record and no module. Each
 decision is amended as its implementation lands, as
-[ADR-0013](./0013-flood-module-api-and-naming.md) was for flood.
+{doc}`0013-flood-module-api-and-naming` was for flood.
 
 The energy-meteorology family
 ([#1157](https://github.com/monocongo/climate_indices/issues/1157)) adds demand
 proxies (degree days), resource transforms (hub-height wind, capacity factors), and
 standardized energy indices (SREPI, a standardized demand index, SRLI) with
-run-theory energy-drought events. [ADR-0005](./0005-fire-module-api.md) and
-[ADR-0013](./0013-flood-module-api-and-naming.md) settled the same question for fire
+run-theory energy-drought events. {doc}`0005-fire-module-api` and
+{doc}`0013-flood-module-api-and-naming` settled the same question for fire
 and flood, and apply here: a family of indices that share a physical basis and evolve
 together gets a namespaced package rather than the drought-oriented `indices.py` and
 `compute.py`, whose top-level names it would crowd.
@@ -39,15 +42,16 @@ series such as residual load.
    `flood`, and are imported as `from climate_indices import energy`. No energy function
    is re-exported from the package root or added to `typed_public_api.py`. Beta xarray
    paths keep the `energy.<name>` route under
-   [ADR-0012](./0012-xarray-api-stays-beta-through-3.0.0.md). The package lands with
+   {doc}`0012-xarray-api-stays-beta-through-3.0.0`. The package lands with
    its first real function, not as an empty scaffold.
 
-2. **Aggregation is a keyword of the seam.** `indices.standardized_index()` and
-   `compute.prepare_scaled()` take `aggregation`, `"sum"` or `"mean"`, default
-   `"sum"`. A mean is the same windowed sum divided by `scale`, so the leading
+2. **Aggregation is a keyword of the seam.** `indices.standardized_index()`,
+   `indices.fit_diagnostics()`, and `compute.prepare_scaled()` take `aggregation`,
+   `"sum"` or `"mean"`, default `"sum"`. Reused fitting parameters must come from
+   diagnostics with the same aggregation. A mean is the same windowed sum divided by `scale`, so the leading
    `scale - 1` pad and any window holding a missing value stay NaN exactly as they do
-   for a sum, and a `scale` of 1 is the identity under either. Every other caller passes
-   nothing and gets the sum it always got. The pinned-golden parity tests in
+   for a sum, and a `scale` of 1 is the identity under either. The other index surfaces
+   pass nothing and get the sum they always got. The pinned-golden parity tests in
    `tests/test_standardized_index.py` pin `standardized_index()` against `spi()` and the
    reference fixtures; every other surface (SPEI, PNP, EDDI, the xarray adapter, and the
    CLI) rests on the unchanged default, and no call site supplies `aggregation`.
@@ -103,11 +107,11 @@ those transforms are fixed in the internal energy subsystem design note
 #1159, and the default constant values are confirmed by the oracle survey
 ([#1160](https://github.com/monocongo/climate_indices/issues/1160)). That note stays in
 the repository rather than this site because it also plans unimplemented indices, the
-arrangement [ADR-0005](./0005-fire-module-api.md) chose for fire.
+arrangement {doc}`0005-fire-module-api` chose for fire.
 
 ## Consequences
 
-This amends [ADR-0001](./0001-dual-numpy-xarray-api.md) only for the energy family, as
+This amends {doc}`0001-dual-numpy-xarray-api` only for the energy family, as
 ADR-0005 did for fire and ADR-0013 for flood. `standardized_index()` gains one keyword
 whose default reproduces its existing output, which is why this record can land the seam
 change without touching SPI or SPEI behavior.
