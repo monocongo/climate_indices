@@ -102,8 +102,6 @@ pub mod fire;
 pub mod flood;
 pub mod gamma;
 mod kbdi_exp_table;
-// used by `fire::kbdi` once it routes complete input here
-#[allow(dead_code)]
 mod kbdi_fast;
 mod ks;
 pub mod lmoments;

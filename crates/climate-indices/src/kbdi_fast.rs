@@ -1,6 +1,7 @@
 //! KBDI over complete input: every day valid, every cell usable, no season.
 //!
-//! Under that contract the general recurrence driver's
+//! [`crate::fire::kbdi`] hands a run here when its inputs meet that contract
+//! and keeps the general recurrence driver for everything else. Under it the
 //! driver's missing-day bookkeeping never fires, so a run is the step applied
 //! to every cell on every day, recorded after the spin-up. This module computes
 //! that faster, within the `rtol = atol = 1e-10` parity tolerance rather than
