@@ -207,6 +207,11 @@ pub struct KbdiCell {
     pub wet_spell_precipitation: f64,
 }
 
+/// The drought factor's climatology denominator, `1 + 10.88 exp(-0.001736 R)`.
+fn kbdi_climatology_denominator(mean_annual_precipitation_mm: f64) -> f64 {
+    1.0 + 10.88 * (-0.001736 * mean_annual_precipitation_mm).exp()
+}
+
 /// Advance KBDI one day (corrected continuous Eq. 18 of Keetch and Byram, 1968).
 ///
 /// Consecutive positive-rain days form one wet spell: only rain above its first
@@ -238,7 +243,7 @@ fn kbdi_next(
     let drying = if drought_day {
         (KBDI_MAX_MM - after_rain)
             * (0.968 * (0.0875 * maximum_temperature_celsius + 1.5552).exp() - 8.30)
-            / (1.0 + 10.88 * (-0.001736 * mean_annual_precipitation_mm).exp())
+            / kbdi_climatology_denominator(mean_annual_precipitation_mm)
             * 1e-3
     } else {
         0.0
