@@ -101,15 +101,24 @@ struct Day {
     weather_valid: bool,
 }
 
-/// Apply one day's missing-day and season rules to a cell; returns whether the
-/// cell advances today.
+/// A step result that is not finite; the run reports it as
+/// [`ClimateError::NonFinite`], kept apart so the per-day result stays small.
+#[derive(Debug)]
+struct NonFiniteStep;
+
+/// Advance one cell by one day; returns whether the day records the state.
+///
+/// A day records the state when the cell advanced, or when it is off season
+/// and carries a started recurrence (ADR-0010); every other day records NaN.
 #[inline(always)]
-fn advance<S>(
+fn advance<S: Copy>(
     policy: MissingDayPolicy,
     cell: &mut Cell<S>,
     today: Day,
+    value_of: &impl Fn(&S) -> f64,
     poison: &impl Fn(&mut S),
-) -> bool {
+    step: impl FnOnce(S) -> S,
+) -> Result<bool, NonFiniteStep> {
     let Day {
         static_valid,
         in_season,
@@ -120,20 +129,26 @@ fn advance<S>(
         // here, whether or not a missing day poisoned the cell
         cell.gap_days = 0;
         if cell.poisoned {
-            return false;
+            return Ok(false);
         }
         cell.started = true;
-        return true;
+        let updated = step(cell.state);
+        if !value_of(&updated).is_finite() {
+            return Err(NonFiniteStep);
+        }
+        cell.state = updated;
+        return Ok(true);
     }
     // a cell whose static input is unusable has no recurrence to gap-manage: it
     // never starts, so it is not an elapsed missing day
     if !static_valid {
-        return false;
+        return Ok(false);
     }
     if !in_season {
         // an off-season day is neither an observation nor a missing day: it
-        // never advances the recurrence and never counts against the allowance
-        return false;
+        // never advances the recurrence and never counts against the allowance,
+        // and it emits the carried state instead of a gap NaN
+        return Ok(cell.started);
     }
     if cell.started || cell.poisoned {
         let gap_days = cell.gap_days.max(0) + 1;
@@ -147,7 +162,7 @@ fn advance<S>(
             cell.poisoned = true;
         }
     }
-    false
+    Ok(false)
 }
 
 /// Run one daily recurrence over the whole time axis.
@@ -162,8 +177,7 @@ fn advance<S>(
 /// * `step` - advance one active cell by one day.
 ///
 /// A step that returns a non-finite value from finite inputs is an error, as in
-/// `_advance_component`; the driver returns before assigning any of that day's
-/// results, so the caller's state is whatever the previous days left.
+/// `_advance_component`; the run then returns no state or history at all.
 pub fn run<S: Copy>(
     index_type: &'static str,
     initial_state: &[S],
@@ -217,8 +231,8 @@ pub fn run<S: Copy>(
         None
     };
 
-    let mut active = vec![false; cells];
-    let mut updates: Vec<(usize, S)> = Vec::with_capacity(cells);
+    // the history starts all NaN, so only a day that records the state writes
+    // to it
     for day in 0..days {
         let season_day = inputs.in_season.as_ref().map(|mask| mask.row(day));
         for (index, cell) in run.iter_mut().enumerate() {
@@ -227,38 +241,15 @@ pub fn run<S: Copy>(
                 in_season: season_day.is_none_or(|season| season[index]),
                 weather_valid: inputs.weather_valid[[day, index]],
             };
-            active[index] = advance(inputs.policy, cell, today, &poison);
-        }
-
-        updates.clear();
-        for cell in 0..cells {
-            if !active[cell] {
-                continue;
-            }
-            let updated = step(run[cell].state, day, cell);
-            if !value_of(&updated).is_finite() {
-                return Err(ClimateError::NonFinite { index_type });
-            }
-            updates.push((cell, updated));
-        }
-        for &(cell, updated) in &updates {
-            run[cell].state = updated;
-        }
-
-        if let Some(values) = values.as_mut()
-            && day >= inputs.spin_up
-        {
-            let row = day - inputs.spin_up;
-            for cell in 0..cells {
-                // an off-season cell emits the carried state instead of a gap NaN
-                let carried = season_day.is_some_and(|season| !season[cell])
-                    && inputs.static_valid[cell]
-                    && run[cell].started;
-                values[[row, cell]] = if active[cell] || carried {
-                    value_of(&run[cell].state)
-                } else {
-                    f64::NAN
-                };
+            let records = advance(inputs.policy, cell, today, &value_of, &poison, |state| {
+                step(state, day, index)
+            })
+            .map_err(|NonFiniteStep| ClimateError::NonFinite { index_type })?;
+            if records
+                && day >= inputs.spin_up
+                && let Some(values) = values.as_mut()
+            {
+                values[[day - inputs.spin_up, index]] = value_of(&cell.state);
             }
         }
     }
