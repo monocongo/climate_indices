@@ -85,8 +85,14 @@ Provisional on [#1159](https://github.com/monocongo/climate_indices/issues/1159)
 
 Degree-day conventions:
 
-- **Mean-based only.** A caller holding Tmin/Tmax computes the mean first; no derived-mean
-  or min/max keyword.
+- **Mean-based is the surface that ships first.** A caller holding Tmin/Tmax computes the
+  mean first; there is no derived-mean keyword.
+- **The convention itself is still the oracle's to reopen,** not just the default values.
+  A min/max-based convention would be a *separate function taking both*, not a keyword on
+  this one, because a mean-temperature argument cannot recover it: a day with Tmin 10 °C
+  and Tmax 25 °C contributes 5 heating degree days from Tmin against a 15 °C base, and
+  none at all from its mean of 17.5 °C. That function is additive and leaves the
+  mean-based one valid, which is what makes deferring it not a one-way door.
 - **Defaults are the oracle's.** The C3S and Eurostat schemes (15/18, 24/21) are not
   separate APIs — they are non-default base temperatures, so the argument set already
   covers them. The default values are confirmed by the oracle survey
