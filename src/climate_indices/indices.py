@@ -505,6 +505,7 @@ def _standardized_index_pipeline(
     clip_negatives: bool = True,
     fallback_to_gamma: bool = True,
     preprocess: Callable[[np.ndarray], np.ndarray] | None = None,
+    aggregation: compute.Aggregation = "sum",
 ) -> np.ndarray:
     """Scale, fit, and transform a series in the pipeline shared by the index wrappers.
 
@@ -540,6 +541,8 @@ def _standardized_index_pipeline(
             the traced section before preparation. :func:`spei` uses it to form the
             P - PET + offset water balance, so an error it raises is logged with
             this pipeline's full failure context.
+        aggregation: Whether each ``scale`` window is summed or averaged; only
+            :func:`standardized_index` exposes it, every other index sums.
 
     Returns:
         Standardized values in the input's size and layout.
@@ -591,6 +594,7 @@ def _standardized_index_pipeline(
             periodicity,
             clip_negatives=clip_negatives,
             spatial_time_major=spatial_time_major,
+            aggregation=aggregation,
         )
 
         # all-missing input comes back un-reshaped -- flattened for a 1-D/2-D series,
@@ -654,12 +658,14 @@ def standardized_index(
     spatial_time_major: bool = False,
     output_scale: compute.OutputScale = "normal",
     zero_handling: compute.ZeroHandling = "classic",
+    aggregation: compute.Aggregation = "sum",
 ) -> np.ndarray:
     """Standardize a non-negative monthly or daily series against a fitted distribution.
 
     This is the generic form of :func:`spi`: it accumulates the series over ``scale``
-    time steps, fits the specified distribution over the calibration period, and
-    transforms every accumulated value to a normalized sigma (z-score-like) value.
+    time steps (or averages it, see ``aggregation``), fits the specified distribution
+    over the calibration period, and transforms every accumulated value to a normalized
+    sigma (z-score-like) value.
     It is input-agnostic, so a runoff or streamflow series can be standardized the
     same way; the package does not model those quantities.
 
@@ -706,6 +712,11 @@ def standardized_index(
             without clipping, and "bounded" returns ``2p - 1`` in [-1, 1].
         zero_handling: Where a zero accumulation is placed within the zero mass;
             see :func:`spi`.
+        aggregation: How each ``scale`` window is combined before the fit: "sum"
+            (the default, and what :func:`spi` does) accumulates it, "mean" averages
+            it, which keeps a bounded series such as a capacity factor in its own
+            range. A window holding a missing value is missing under either. The
+            default leaves every existing result unchanged (ADR-0019).
 
     Returns:
         1-D array of standardized values, unitless and of the same length as the
@@ -713,8 +724,9 @@ def standardized_index(
         returned in its input shape.
 
     Raises:
-        ValueError: If ``zero_handling`` is not one of the three modes, or a Pearson
-            ``fitting_params`` set is partial or does not carry the period (and cell) axes.
+        ValueError: If ``zero_handling`` is not one of the three modes, if
+            ``aggregation`` is not "sum" or "mean", or a Pearson ``fitting_params``
+            set is partial or does not carry the period (and cell) axes.
     """
     return _standardized_index_pipeline(
         values,
@@ -730,6 +742,7 @@ def standardized_index(
         spatial_time_major=spatial_time_major,
         output_scale=output_scale,
         zero_handling=zero_handling,
+        aggregation=aggregation,
     )
 
 
@@ -744,11 +757,12 @@ def fit_diagnostics(
     fitting_params: dict[str, Any] | None = None,
     *,
     spatial_time_major: bool = False,
+    aggregation: compute.Aggregation = "sum",
 ) -> compute.FitDiagnostics:
     """Scale a series, fit a distribution, and return per-calendar-step fit diagnostics.
 
     This is :func:`standardized_index` with the audit surface instead of the index
-    values: it accumulates the series over ``scale`` time steps, fits ``distribution``
+    values: it sums or averages the series over ``scale`` time steps, fits ``distribution``
     over the calibration period, and returns the fitted parameters, the probability of
     zero, the number of valid calibration values, and the Kolmogorov-Smirnov D
     statistic and exact p-value for every calendar step. A Pearson Type III fit falls
@@ -757,7 +771,8 @@ def fit_diagnostics(
 
     Only the NumPy path is supported; the xarray and Dask surface is tracked
     separately. A fitted parameter set returned here can be passed back as
-    ``fitting_params`` to ``spi`` or ``standardized_index`` to reproduce a fit.
+    ``fitting_params`` to ``standardized_index`` with the same ``aggregation`` to
+    reproduce a fit, or to ``spi`` when using the default sum.
 
     Args:
         values: 1-D array of non-negative values, or a time-major spatial block;
@@ -773,6 +788,8 @@ def fit_diagnostics(
             aliases are normalized here. A parameter left as None is fitted from
             the data.
         spatial_time_major: Read a time-major spatial block as independent series.
+        aggregation: How each window is combined, "sum" (default) or "mean";
+            must match the aggregation used when reusing the fitted parameters.
 
     Returns:
         A :class:`climate_indices.compute.FitDiagnostics` whose arrays carry the
@@ -802,7 +819,9 @@ def fit_diagnostics(
         # so fold it before fitting so the diagnostic arrays carry (time_steps, *cells)
         # rather than the time axis
         input_all_missing = values.ndim > 2 and compute.is_all_missing(values)
-        scaled_values = compute.prepare_scaled(values, scale, periodicity, spatial_time_major=spatial_time_major)
+        scaled_values = compute.prepare_scaled(
+            values, scale, periodicity, spatial_time_major=spatial_time_major, aggregation=aggregation
+        )
         if input_all_missing:
             scaled_values = compute.reshape_time_major(scaled_values, periodicity)
 

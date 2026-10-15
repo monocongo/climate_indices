@@ -46,6 +46,7 @@ if TYPE_CHECKING:
 __all__ = [
     "FitDiagnostics",
     "Periodicity",
+    "Aggregation",
     "OutputScale",
     "OUTPUT_SCALES",
     "validate_output_scale",
@@ -94,6 +95,14 @@ GOODNESS_OF_FIT_P_VALUE_THRESHOLD = 0.05
 ZeroHandling = Literal["classic", "center_of_mass", "mean_zero"]
 
 _ZERO_HANDLING_MODES: tuple[str, ...] = get_args(ZeroHandling)
+
+#: How each time step's ``scale`` values are combined before the fit, see ADR-0019.
+#: "sum" accumulates them, the SPI/SPEI convention; "mean" averages them, which keeps a
+#: bounded series such as a capacity factor in its own range. It is chosen independently
+#: of the distribution, since the two answer different questions about the same window.
+Aggregation = Literal["sum", "mean"]
+
+_AGGREGATIONS: tuple[str, ...] = get_args(Aggregation)
 
 
 class _PearsonFitLost(Exception):
@@ -502,6 +511,12 @@ def _validate_zero_handling(zero_handling: str) -> None:
             f"Invalid zero_handling argument: {zero_handling!r} -- "
             "must be one of 'classic', 'center_of_mass', or 'mean_zero'"
         )
+
+
+def _validate_aggregation(aggregation: str) -> None:
+    """Reject an aggregation other than the two ADR-0019 operations."""
+    if not isinstance(aggregation, str) or aggregation not in _AGGREGATIONS:
+        raise ValueError(f"Invalid aggregation argument: {aggregation!r} -- must be one of 'sum' or 'mean'")
 
 
 def _calibration_probabilities_of_zero(calibration_values: np.ndarray) -> np.ndarray:
@@ -2125,10 +2140,12 @@ def prepare_scaled(
     clip_negatives: bool = True,
     reshape: bool = True,
     spatial_time_major: bool = False,
+    aggregation: Aggregation = "sum",
 ) -> np.ndarray:
     """
     Prepare an array of values for distribution fitting by flattening, clipping,
-    summing each time step over the specified scale, and reshaping.
+    combining each time step over the specified scale (summing it, or averaging it
+    with ``aggregation="mean"``), and reshaping.
 
     This is the single owner of the preparation pipeline shared by the fitting-based
     indices (SPI, SPEI, EDDI, PNP) and the specialized CLI, so a policy change lands
@@ -2157,6 +2174,11 @@ def prepare_scaled(
             period length (12 or 366), which makes the shape equally readable as a
             (years, periods, ``*cells``) array; there the caller has to say which it means.
             ``xarray_adapter`` sets this for every block it packs.
+        aggregation: Whether each window is summed ("sum", the SPI/SPEI accumulation and
+            the default) or averaged ("mean") over ``scale``. A mean is the window sum
+            divided by ``scale``, so the leading (scale - 1) pad and any window holding a
+            missing value stay NaN exactly as they do for a sum; a ``scale`` of 1 is the
+            identity under either operation.
 
     Returns:
         The scaled values, either 2-D with shape (years, periodicity.period_length),
@@ -2171,6 +2193,7 @@ def prepare_scaled(
     # skipped entirely when reshape=False
     if periodicity is not Periodicity.monthly and periodicity is not Periodicity.daily:
         raise PeriodicityError(f"Invalid periodicity argument: {periodicity}", periodicity_value=str(periodicity))
+    _validate_aggregation(aggregation)
 
     values = prepare_input_shape(values, spatial_time_major)
 
@@ -2214,6 +2237,11 @@ def prepare_scaled(
     # a masked sum stands for the missing value it represents, so make it an explicit NaN
     if np.ma.isMaskedArray(scaled_values):
         scaled_values = np.ma.filled(scaled_values.astype(float), np.nan)
+
+    # a mean is the windowed sum over the window's own length, so the NaN pad and any
+    # window holding a missing value carry through unchanged; scale 1 needs no divide
+    if aggregation == "mean" and scale > 1:
+        scaled_values /= scale
 
     # reshape precipitation values to (years, 12) for monthly,
     # or to (years, 366) for daily

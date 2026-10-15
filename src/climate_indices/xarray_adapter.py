@@ -3238,6 +3238,7 @@ def _numpy_fit_diagnostics(
     periodicity: compute.Periodicity | None,
     fitting_params: dict[str, Any] | None,
     spatial_time_major: bool,
+    aggregation: compute.Aggregation,
 ) -> compute.FitDiagnostics:
     """Preserve the NumPy core's required temporal parameters and layout."""
     if (
@@ -3260,6 +3261,7 @@ def _numpy_fit_diagnostics(
         periodicity,
         fitting_params,
         spatial_time_major=spatial_time_major,
+        aggregation=aggregation,
     )
 
 
@@ -3274,6 +3276,8 @@ def fit_diagnostics(
     fitting_params: dict[str, Any] | None = None,
     spatial_time_major: bool = False,
     time_dim: str = "time",
+    *,
+    aggregation: compute.Aggregation = "sum",
 ) -> compute.FitDiagnostics | xr.Dataset:
     """Fit a distribution and return per-calendar-step diagnostics, with xarray/Dask support.
 
@@ -3313,6 +3317,8 @@ def fit_diagnostics(
             inputs; the xarray path reads its dimensions from the coordinate labels.
         time_dim: Name of the time dimension in the input DataArray (default:
             ``"time"``). Only used for xarray inputs.
+        aggregation: How each window is combined, "sum" (default) or "mean".
+            Only supported for NumPy inputs.
 
     Returns:
         For NumPy input, the :class:`climate_indices.compute.FitDiagnostics` that
@@ -3330,8 +3336,9 @@ def fit_diagnostics(
         chunking can change it.
 
     Raises:
-        ValueError: If a NumPy call omits a required temporal parameter, or
-            ``fitting_params`` carries cell-shaped arrays for a 1-D or 2-D input or
+        ValueError: If a NumPy call omits a required temporal parameter, an xarray
+            call requests non-default aggregation, or ``fitting_params`` carries
+            cell-shaped arrays for a 1-D or 2-D input or
             for a Dask-backed input with a cell dimension split across chunks.
         CoordinateValidationError: If the xarray time dimension is missing,
             non-monotonic, unsupported (cftime), does not begin in January, or its
@@ -3350,7 +3357,11 @@ def fit_diagnostics(
             periodicity,
             fitting_params,
             spatial_time_major,
+            aggregation,
         )
+
+    if aggregation != "sum":
+        raise ValueError("Non-default aggregation is only supported for NumPy inputs")
 
     # xarray path: validate → infer → compute per block → rewrap as a Dataset
     assert isinstance(values, xr.DataArray)

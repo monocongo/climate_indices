@@ -80,6 +80,28 @@ Both non-classic modes move the zero mass only. For Pearson Type III a positive
 trace value below 0.0005 shares a zero's position where `0 < p0 < 1`, so it moves
 too. The formulas and their edge cases are in {doc}`algorithm-reference`.
 
+## Choose an aggregation
+
+`standardized_index()` takes a keyword-only `aggregation` that decides whether each
+window of `scale` time steps is accumulated before the fit — the default, and what
+`spi()` and `spei()` always do — or averaged over it (ADR-0019). A mean is the window
+sum divided by `scale`, so a window holding a missing value is missing either way, and
+the default leaves every existing result unchanged.
+
+- `"sum"` (the default) accumulates the window. It is what SPI and SPEI mean, and it is
+  the right choice for a series whose accumulated value is what carries the information.
+- Use `"mean"` when the series is bounded and a value means something other than an
+  accumulation: a capacity factor averaged over a week stays in [0, 1], where its sum
+  does not. Keeping the value in the series' own range also keeps it fittable by a
+  distribution whose support is that range, such as beta.
+
+Where standardization is rank-based, the choice does not change the result at all: a sum
+is its mean multiplied by `scale`, so the ranked probabilities are identical. Choose on
+what the accumulated value is meant to represent. `standardized_index()` and
+`indices.fit_diagnostics()` expose the argument on the NumPy path; the xarray adapter and
+the CLI carry the default. Diagnostics taken with one aggregation describe a fit for that
+aggregation, so reuse the same one when passing the parameters back.
+
 ## Choose the calibration period
 
 - 30 years is the documented minimum. On the NumPy path a shorter period emits

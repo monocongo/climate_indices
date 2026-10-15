@@ -913,6 +913,8 @@ def fit_diagnostics(
     fitting_params: dict[str, Any] | None = None,
     spatial_time_major: bool = False,
     time_dim: str = "time",
+    *,
+    aggregation: compute.Aggregation = "sum",
 ) -> compute.FitDiagnostics: ...
 
 
@@ -977,6 +979,8 @@ def fit_diagnostics(
             time-major ``(time, *cells)`` block (per ADR-0009). Only used for NumPy
             inputs.
         time_dim: Name of the time dimension for xarray inputs (default: ``"time"``).
+        aggregation: How each window is combined, "sum" (default) or "mean".
+            Only supported for NumPy inputs.
 
     Returns:
         A :class:`climate_indices.compute.FitDiagnostics` for numpy.ndarray input,

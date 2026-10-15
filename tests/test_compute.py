@@ -750,6 +750,81 @@ def test_prepare_scaled_sums_over_the_scale():
     assert reshaped.shape == (2, 12)
 
 
+def test_prepare_scaled_mean_divides_each_window_by_the_scale():
+    """
+    A mean is the windowed sum over the scale, so the NaN pad and any window holding a
+    missing value stay missing exactly as they do for a sum, and sum remains the default.
+    """
+    values = np.arange(1.0, 25.0)
+    values[5] = np.nan
+
+    summed = compute.prepare_scaled(values, 3, compute.Periodicity.monthly, reshape=False)
+    averaged = compute.prepare_scaled(values, 3, compute.Periodicity.monthly, reshape=False, aggregation="mean")
+
+    np.testing.assert_array_equal(summed, compute.sum_to_scale(values, 3))
+    np.testing.assert_array_equal(averaged, summed / 3)
+    # the pad (two steps) and the three windows that contain the missing value
+    assert np.flatnonzero(np.isnan(averaged)).tolist() == [0, 1, 5, 6, 7]
+
+    # a scale of 1 is the identity under either operation
+    np.testing.assert_array_equal(
+        compute.prepare_scaled(values, 1, compute.Periodicity.monthly, reshape=False, aggregation="mean"),
+        compute.prepare_scaled(values, 1, compute.Periodicity.monthly, reshape=False),
+    )
+
+
+@pytest.mark.parametrize("shape", [(24,), (2, 12), (24, 2, 3)])
+@pytest.mark.parametrize("dtype", [np.int64, np.float32, np.float64])
+def test_prepare_scaled_mean_reuses_the_sum_buffer(shape, dtype):
+    """A mean divides the owned sum buffer, never allocating another full output."""
+    values = np.arange(1, np.prod(shape) + 1, dtype=dtype).reshape(shape)
+    original = values.copy()
+    values.flags.writeable = False
+    summed = compute.sum_to_scale(compute.prepare_input_shape(values, spatial_time_major=True), 3)
+    expected = summed / 3
+
+    with mock.patch.object(compute, "sum_to_scale", return_value=summed):
+        averaged = compute.prepare_scaled(
+            values, 3, compute.Periodicity.monthly, reshape=False, spatial_time_major=True, aggregation="mean"
+        )
+
+    assert averaged is summed
+    np.testing.assert_array_equal(averaged, expected)
+    np.testing.assert_array_equal(values, original)
+
+
+def test_prepare_scaled_mean_keeps_a_bounded_series_in_range():
+    """
+    A capacity factor averaged over a window stays in [0, 1], where its sum does not;
+    the time-major spatial branch and a masked input take the same mean.
+    """
+    capacity_factor = np.full((24, 2, 3), 0.8)
+
+    summed = compute.prepare_scaled(capacity_factor, 4, compute.Periodicity.monthly, spatial_time_major=True)
+    averaged = compute.prepare_scaled(
+        capacity_factor, 4, compute.Periodicity.monthly, spatial_time_major=True, aggregation="mean"
+    )
+
+    assert np.nanmax(summed) == pytest.approx(3.2)
+    assert averaged.shape == summed.shape == (2, 12, 2, 3)
+    assert np.nanmax(averaged) == pytest.approx(0.8)
+    assert np.nanmin(averaged) == pytest.approx(0.8)
+
+    masked = np.ma.array(np.full(24, 0.5), mask=False)
+    masked.mask[10] = True
+    averaged_masked = compute.prepare_scaled(masked, 2, compute.Periodicity.monthly, reshape=False, aggregation="mean")
+    assert np.flatnonzero(np.isnan(averaged_masked)).tolist() == [0, 10, 11]
+    assert np.nanmax(averaged_masked) == pytest.approx(0.5)
+
+
+def test_prepare_scaled_rejects_an_unknown_aggregation():
+    """
+    Only the two ADR-0019 operations are accepted, whatever the periodicity or input.
+    """
+    with pytest.raises(ValueError, match="Invalid aggregation argument"):
+        compute.prepare_scaled(np.arange(24.0), 3, compute.Periodicity.monthly, aggregation="median")  # type: ignore[arg-type]
+
+
 def test_prepare_scaled_fills_masked_values_with_nan():
     """
     Masked values are missing values, so they come back as NaN rather than as raw data.
