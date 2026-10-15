@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Faster native KBDI**: the Rust kernel computes the drought factor's
+  climatology denominator once per cell instead of on every drought day.
+  Results are bit-identical; single-threaded kernel time drops about 8% on
+  station series and 13-17% on gridded workloads.
+
 ## [3.0.0] - 2026-10-12
 
 Published on PyPI on 2026-10-12; see the [release notes](docs/release-notes-3.0.0.md)
