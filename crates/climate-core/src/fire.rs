@@ -208,6 +208,9 @@ pub struct KbdiCell {
 }
 
 /// The drought factor's climatology denominator, `1 + 10.88 exp(-0.001736 R)`.
+///
+/// It depends only on a cell's mean annual precipitation, so a run computes it
+/// once per cell instead of on every drought day.
 fn kbdi_climatology_denominator(mean_annual_precipitation_mm: f64) -> f64 {
     1.0 + 10.88 * (-0.001736 * mean_annual_precipitation_mm).exp()
 }
@@ -216,11 +219,12 @@ fn kbdi_climatology_denominator(mean_annual_precipitation_mm: f64) -> f64 {
 ///
 /// Consecutive positive-rain days form one wet spell: only rain above its first
 /// 5.08 mm reduces KBDI. Days below 10 C add no drought factor.
+/// `climatology_denominator` is [`kbdi_climatology_denominator`] of the cell.
 fn kbdi_next(
     previous: KbdiCell,
     precipitation_mm: f64,
     maximum_temperature_celsius: f64,
-    mean_annual_precipitation_mm: f64,
+    climatology_denominator: f64,
 ) -> KbdiCell {
     let rained = precipitation_mm > 0.0;
     let event_total = previous.wet_spell_precipitation + precipitation_mm;
@@ -243,7 +247,7 @@ fn kbdi_next(
     let drying = if drought_day {
         (KBDI_MAX_MM - after_rain)
             * (0.968 * (0.0875 * maximum_temperature_celsius + 1.5552).exp() - 8.30)
-            / kbdi_climatology_denominator(mean_annual_precipitation_mm)
+            / climatology_denominator
             * 1e-3
     } else {
         0.0
@@ -521,6 +525,10 @@ pub fn kbdi(
             actual: mean_annual_precipitation_mm.len(),
         });
     }
+    let denominators: Vec<f64> = mean_annual_precipitation_mm
+        .iter()
+        .map(|&mean_annual| kbdi_climatology_denominator(mean_annual))
+        .collect();
     let run = run(
         "kbdi",
         initial_state,
@@ -533,7 +541,7 @@ pub fn kbdi(
                 previous,
                 precipitation_mm[[day, cell]],
                 maximum_temperature_celsius[[day, cell]],
-                mean_annual_precipitation_mm[cell],
+                denominators[cell],
             )
         },
     )?;
@@ -585,17 +593,17 @@ mod tests {
             kbdi: 100.0,
             wet_spell_precipitation: 0.0,
         };
-        let no_rain = kbdi_next(dry, 0.0, 25.0, 800.0);
+        let no_rain = kbdi_next(dry, 0.0, 25.0, kbdi_climatology_denominator(800.0));
         // 3 mm is inside the first 5.08 mm of the wet spell, so the index holds
         // and only the spell total moves
-        let light_rain = kbdi_next(dry, 3.0, 25.0, 800.0);
+        let light_rain = kbdi_next(dry, 3.0, 25.0, kbdi_climatology_denominator(800.0));
         assert_eq!(light_rain.kbdi, no_rain.kbdi);
         assert_eq!(light_rain.wet_spell_precipitation, 3.0);
         // rain above that opening 5.08 mm reduces the index
-        let more_rain = kbdi_next(light_rain, 10.0, 25.0, 800.0);
+        let more_rain = kbdi_next(light_rain, 10.0, 25.0, kbdi_climatology_denominator(800.0));
         assert!(more_rain.kbdi < light_rain.kbdi);
         // a freezing day adds no drought factor
-        let freezing = kbdi_next(dry, 0.0, 5.0, 800.0);
+        let freezing = kbdi_next(dry, 0.0, 5.0, kbdi_climatology_denominator(800.0));
         assert_eq!(freezing.kbdi, 100.0);
         assert_eq!(freezing.wet_spell_precipitation, 0.0);
     }
@@ -608,7 +616,7 @@ mod tests {
         };
         // a freezing day isolates the rain term: the first 5.08 mm only opens
         // the spell, so the 2.92 mm above it reduces the index
-        let crossing = kbdi_next(dry, 8.0, 5.0, 800.0);
+        let crossing = kbdi_next(dry, 8.0, 5.0, kbdi_climatology_denominator(800.0));
         assert_eq!(crossing.kbdi, 150.0 - (8.0 - KBDI_RAIN_THRESHOLD_MM));
         assert_eq!(crossing.wet_spell_precipitation, 8.0);
     }
@@ -656,7 +664,7 @@ mod tests {
                     replayed[cell],
                     precipitation[[day, cell]],
                     temperature[[day, cell]],
-                    if cell == 0 { 800.0 } else { 900.0 },
+                    kbdi_climatology_denominator(if cell == 0 { 800.0 } else { 900.0 }),
                 );
                 assert_eq!(values[[day, cell]], replayed[cell].kbdi);
             }
