@@ -778,7 +778,7 @@ pub fn kbdi(
 mod tests {
     use super::*;
     use crate::recurrence::recurrence_inputs;
-    use ndarray::{Array2, array};
+    use ndarray::{Array1, Array2, array};
 
     #[test]
     fn ffmc_rain_below_the_threshold_moistens_by_the_wetting_side() {
@@ -1021,5 +1021,181 @@ mod tests {
                 actual: 1
             }
         );
+    }
+
+    /// SplitMix64, for deterministic test weather without a dependency.
+    struct SplitMix(u64);
+
+    impl SplitMix {
+        /// A uniform draw from [0, 1).
+        fn unit(&mut self) -> f64 {
+            self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+            let mut z = self.0;
+            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            ((z ^ (z >> 31)) >> 11) as f64 / (1_u64 << 53) as f64
+        }
+    }
+
+    /// Complete KBDI weather: rain on about 40 % of days, a seasonal cycle that
+    /// crosses the 10 C drying threshold, climatologies from arid to wet, and
+    /// carried states anywhere in the index range.
+    struct Weather {
+        precipitation: Array2<f64>,
+        temperature: Array2<f64>,
+        mean_annual: Array1<f64>,
+        initial: Vec<KbdiCell>,
+    }
+
+    fn weather(days: usize, cells: usize, seed: u64) -> Weather {
+        let mut draw = SplitMix(seed);
+        let precipitation = Array2::from_shape_fn((days, cells), |_| {
+            if draw.unit() < 0.4 {
+                -12.0 * (1.0 - draw.unit()).ln()
+            } else {
+                0.0
+            }
+        });
+        let temperature = Array2::from_shape_fn((days, cells), |(day, _)| {
+            15.0 + 20.0 * (day as f64 * std::f64::consts::TAU / 365.25).sin()
+                + 20.0 * (draw.unit() - 0.5)
+        });
+        let mean_annual = Array1::from_shape_fn(cells, |_| 50.0 + 3950.0 * draw.unit());
+        let initial = (0..cells)
+            .map(|_| KbdiCell {
+                kbdi: KBDI_MAX_MM * draw.unit(),
+                wet_spell_precipitation: 10.0 * draw.unit(),
+            })
+            .collect();
+        Weather {
+            precipitation,
+            temperature,
+            mean_annual,
+            initial,
+        }
+    }
+
+    /// `kbdi` with every cell usable, observed on the days `weather_valid` marks.
+    fn run_with(
+        weather: &Weather,
+        weather_valid: &Array2<bool>,
+        spin_up: usize,
+        record: bool,
+    ) -> KbdiRun {
+        let cells = weather.mean_annual.len();
+        let static_valid = Array1::from_elem(cells, true);
+        let gaps = Array1::from_elem(cells, -1_i64);
+        kbdi(
+            weather.precipitation.view(),
+            weather.temperature.view(),
+            weather.mean_annual.view(),
+            &weather.initial,
+            &recurrence_inputs(
+                weather_valid.view(),
+                static_valid.view(),
+                None,
+                gaps.view(),
+                spin_up,
+                "propagate",
+                0,
+            )
+            .unwrap(),
+            record,
+        )
+        .unwrap()
+    }
+
+    fn complete_run(weather: &Weather, spin_up: usize, record: bool) -> KbdiRun {
+        let weather_valid = Array2::from_elem(weather.precipitation.dim(), true);
+        run_with(weather, &weather_valid, spin_up, record)
+    }
+
+    /// What the general driver does with complete input: `kbdi_next` on every
+    /// cell every day, recorded after the spin-up.
+    fn replay(weather: &Weather, spin_up: usize) -> (Array2<f64>, Vec<KbdiCell>) {
+        let (days, cells) = weather.precipitation.dim();
+        let spin_up = spin_up.min(days);
+        let mut state = weather.initial.clone();
+        let mut history = Array2::from_elem((days - spin_up, cells), f64::NAN);
+        for day in 0..days {
+            for cell in 0..cells {
+                state[cell] = kbdi_next(
+                    state[cell],
+                    weather.precipitation[[day, cell]],
+                    weather.temperature[[day, cell]],
+                    kbdi_climatology_denominator(weather.mean_annual[cell]),
+                );
+                if day >= spin_up {
+                    history[[day - spin_up, cell]] = state[cell].kbdi;
+                }
+            }
+        }
+        (history, state)
+    }
+
+    fn assert_matches_replay(weather: &Weather, spin_up: usize) {
+        let (history, state) = replay(weather, spin_up);
+        for record in [true, false] {
+            let run = complete_run(weather, spin_up, record);
+            match run.values {
+                Some(values) => {
+                    assert_eq!(values.dim(), history.dim());
+                    for (got, want) in values.iter().zip(&history) {
+                        assert!(within_parity(*got, *want), "{got} vs {want}");
+                    }
+                }
+                None => assert!(!record),
+            }
+            for (got, want) in run.state.iter().zip(&state) {
+                assert!(
+                    within_parity(got.kbdi, want.kbdi),
+                    "{} vs {}",
+                    got.kbdi,
+                    want.kbdi
+                );
+                assert_eq!(got.wet_spell_precipitation, want.wet_spell_precipitation);
+            }
+            assert_eq!(run.trailing_gap_days.unwrap(), Array1::zeros(state.len()));
+        }
+    }
+
+    #[test]
+    fn complete_input_matches_the_day_loop_at_every_shape() {
+        // one cell; fewer cells than a lane group; exactly one group; a group
+        // and a leftover; several tiles with a partial one; day counts that
+        // split a tile's day block; spin-ups shorter and longer than the run
+        for (seed, (days, cells, spin_up)) in [
+            (1, 1, 0),
+            (400, 1, 0),
+            (400, 1, 30),
+            (90, 3, 0),
+            (70, 8, 5),
+            (70, 9, 0),
+            (33, 17, 40),
+            (100, 600, 7),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            assert_matches_replay(&weather(days, cells, seed as u64), spin_up);
+        }
+    }
+
+    #[test]
+    fn complete_input_with_extreme_values_matches_the_day_loop() {
+        let mut weather = weather(60, 9, 99);
+        for cell in 0..9 {
+            weather.temperature[[3, cell]] = 1e4;
+            weather.temperature[[4, cell]] = -1e4;
+            weather.temperature[[5, cell]] = 70.0;
+            weather.precipitation[[6, cell]] = 1e6;
+            weather.precipitation[[7, cell]] = KBDI_RAIN_THRESHOLD_MM;
+        }
+        weather.mean_annual[0] = -1e4;
+        weather.mean_annual[1] = 1e6;
+        weather.initial[2].kbdi = -50.0;
+        weather.initial[3].kbdi = KBDI_MAX_MM;
+        weather.initial[4].wet_spell_precipitation = KBDI_RAIN_THRESHOLD_MM;
+        assert_matches_replay(&weather, 0);
     }
 }
