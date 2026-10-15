@@ -757,11 +757,12 @@ def fit_diagnostics(
     fitting_params: dict[str, Any] | None = None,
     *,
     spatial_time_major: bool = False,
+    aggregation: compute.Aggregation = "sum",
 ) -> compute.FitDiagnostics:
     """Scale a series, fit a distribution, and return per-calendar-step fit diagnostics.
 
     This is :func:`standardized_index` with the audit surface instead of the index
-    values: it accumulates the series over ``scale`` time steps, fits ``distribution``
+    values: it sums or averages the series over ``scale`` time steps, fits ``distribution``
     over the calibration period, and returns the fitted parameters, the probability of
     zero, the number of valid calibration values, and the Kolmogorov-Smirnov D
     statistic and exact p-value for every calendar step. A Pearson Type III fit falls
@@ -770,7 +771,8 @@ def fit_diagnostics(
 
     Only the NumPy path is supported; the xarray and Dask surface is tracked
     separately. A fitted parameter set returned here can be passed back as
-    ``fitting_params`` to ``spi`` or ``standardized_index`` to reproduce a fit.
+    ``fitting_params`` to ``standardized_index`` with the same ``aggregation`` to
+    reproduce a fit, or to ``spi`` when using the default sum.
 
     Args:
         values: 1-D array of non-negative values, or a time-major spatial block;
@@ -786,6 +788,8 @@ def fit_diagnostics(
             aliases are normalized here. A parameter left as None is fitted from
             the data.
         spatial_time_major: Read a time-major spatial block as independent series.
+        aggregation: How each window is combined, "sum" (default) or "mean";
+            must match the aggregation used when reusing the fitted parameters.
 
     Returns:
         A :class:`climate_indices.compute.FitDiagnostics` whose arrays carry the
@@ -815,7 +819,9 @@ def fit_diagnostics(
         # so fold it before fitting so the diagnostic arrays carry (time_steps, *cells)
         # rather than the time axis
         input_all_missing = values.ndim > 2 and compute.is_all_missing(values)
-        scaled_values = compute.prepare_scaled(values, scale, periodicity, spatial_time_major=spatial_time_major)
+        scaled_values = compute.prepare_scaled(
+            values, scale, periodicity, spatial_time_major=spatial_time_major, aggregation=aggregation
+        )
         if input_all_missing:
             scaled_values = compute.reshape_time_major(scaled_values, periodicity)
 

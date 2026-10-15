@@ -1235,6 +1235,41 @@ def test_fit_diagnostics_scales_before_fitting():
     np.testing.assert_array_equal(diagnostics.parameters["alpha"], expected.parameters["alpha"])
 
 
+@pytest.mark.parametrize("distribution", [indices.Distribution.gamma, indices.Distribution.pearson])
+@pytest.mark.parametrize("spatial", [False, True])
+def test_fit_diagnostics_mean_parameters_reproduce_inline_fit(distribution, spatial):
+    """Mean-window parameters reproduce the inline fit without being fitted again."""
+    values = np.random.default_rng(7).gamma(2.0, 2.0, (480, 2, 3) if spatial else 480)
+    args = (3, distribution, 1980, 1981, 2010, compute.Periodicity.monthly)
+    kwargs = {"aggregation": "mean", "spatial_time_major": spatial}
+    diagnostics = indices.fit_diagnostics(values, *args, **kwargs)
+    summed = indices.fit_diagnostics(values, *args, spatial_time_major=spatial)
+    parameter = "beta" if distribution is indices.Distribution.gamma else "scale"
+    np.testing.assert_allclose(diagnostics.parameters[parameter], summed.parameters[parameter] / 3)
+    inline = indices.standardized_index(values, *args, **kwargs)
+
+    fitter = "gamma_parameters" if distribution is indices.Distribution.gamma else "pearson_parameters"
+    with mock.patch.object(compute, fitter, side_effect=AssertionError(f"unexpected {fitter} call")):
+        supplied = indices.standardized_index(values, *args, fitting_params=diagnostics.parameters, **kwargs)
+
+    np.testing.assert_allclose(supplied, inline, equal_nan=True)
+
+
+@pytest.mark.parametrize("values", [np.arange(24.0), np.full(24, np.nan)])
+def test_fit_diagnostics_rejects_an_unknown_aggregation(values: np.ndarray) -> None:
+    with pytest.raises(ValueError, match="Invalid aggregation argument"):
+        indices.fit_diagnostics(
+            values,
+            3,
+            indices.Distribution.gamma,
+            1980,
+            1980,
+            1981,
+            compute.Periodicity.monthly,
+            aggregation="median",  # type: ignore[arg-type]
+        )
+
+
 def test_fit_diagnostics_rejects_an_undeclared_ambiguous_block():
     """The same ambiguous (time, cells) shape that ``spi`` rejects is rejected here."""
     values = np.arange(1.0, (40 * 12 * 12 * 3) + 1.0).reshape(40 * 12, 12, 3)
