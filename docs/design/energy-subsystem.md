@@ -39,15 +39,20 @@ dispatch, market, or capacity-expansion modelling.
 
 `energy.srepi()`, `energy.standardized_demand_index()`, and `energy.srli()` wrap the
 standardization seam of [ADR-0019](../adr/0019-energy-module-api-and-aggregation.md).
-Each takes the `indices.standardized_index()` argument shape and fixes its own
+Each takes the `indices.standardized_index()` argument shape with its own
 `aggregation` and distribution defaults, so a caller supplies a series and a calibration
-period and not a statistics choice:
+period and not a statistics choice, except where the input representation requires an
+explicit aggregation:
 
 | Function | Series | Aggregation | Distribution |
 | --- | --- | --- | --- |
-| `energy.srepi()` | renewable production or a capacity factor | `mean` for a capacity factor, `sum` for accumulated production | empirical ([#1168](https://github.com/monocongo/climate_indices/issues/1168)), beta for a bounded series with too few observations ([#1169](https://github.com/monocongo/climate_indices/issues/1169)) |
+| `energy.srepi()` | renewable production or a capacity factor | keyword-only `aggregation="mean"` (default) for a capacity factor, `aggregation="sum"` for accumulated production | empirical ([#1168](https://github.com/monocongo/climate_indices/issues/1168)), beta for a bounded series with too few observations ([#1169](https://github.com/monocongo/climate_indices/issues/1169)) |
 | `energy.standardized_demand_index()` | energy demand or EDD | `sum` over the accumulation window | empirical, beta for a bounded series |
 | `energy.srli()` | demand minus renewable production, signed | `sum` or `mean` | empirical only |
+
+SREPI callers supplying accumulated production must select `aggregation="sum"`;
+input meaning is never inferred from magnitudes. Beta is available only for bounded
+[0, 1] capacity factors with `aggregation="mean"`, not accumulated production.
 
 The empirical path is the default because Allen & Otero (2023) recommend it above
 roughly 100 observations, and because it is the family the energy API admits a signed
