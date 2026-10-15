@@ -773,6 +773,26 @@ def test_prepare_scaled_mean_divides_each_window_by_the_scale():
     )
 
 
+@pytest.mark.parametrize("shape", [(24,), (2, 12), (24, 2, 3)])
+@pytest.mark.parametrize("dtype", [np.int64, np.float32, np.float64])
+def test_prepare_scaled_mean_reuses_the_sum_buffer(shape, dtype):
+    """A mean divides the owned sum buffer, never allocating another full output."""
+    values = np.arange(1, np.prod(shape) + 1, dtype=dtype).reshape(shape)
+    original = values.copy()
+    values.flags.writeable = False
+    summed = compute.sum_to_scale(compute.prepare_input_shape(values, spatial_time_major=True), 3)
+    expected = summed / 3
+
+    with mock.patch.object(compute, "sum_to_scale", return_value=summed):
+        averaged = compute.prepare_scaled(
+            values, 3, compute.Periodicity.monthly, reshape=False, spatial_time_major=True, aggregation="mean"
+        )
+
+    assert averaged is summed
+    np.testing.assert_array_equal(averaged, expected)
+    np.testing.assert_array_equal(values, original)
+
+
 def test_prepare_scaled_mean_keeps_a_bounded_series_in_range():
     """
     A capacity factor averaged over a window stays in [0, 1], where its sum does not;

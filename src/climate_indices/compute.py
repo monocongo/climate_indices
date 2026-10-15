@@ -2241,7 +2241,7 @@ def prepare_scaled(
     # a mean is the windowed sum over the window's own length, so the NaN pad and any
     # window holding a missing value carry through unchanged; scale 1 needs no divide
     if aggregation == "mean" and scale > 1:
-        scaled_values = scaled_values / scale
+        scaled_values /= scale
 
     # reshape precipitation values to (years, 12) for monthly,
     # or to (years, 366) for daily
