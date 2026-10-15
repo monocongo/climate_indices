@@ -553,6 +553,25 @@ mod tests {
     }
 
     #[test]
+    fn a_non_finite_step_result_is_an_error_in_a_single_cell_run() {
+        let weather = Array2::from_elem((2, 1), true);
+        let error = run(
+            "kbdi",
+            &[0.0],
+            &RecurrenceInputs {
+                static_valid: array![true].view(),
+                ..inputs(&weather, &array![-1])
+            },
+            true,
+            |state| *state,
+            |state| *state = f64::NAN,
+            |_state, _day, _cell| f64::NAN,
+        )
+        .unwrap_err();
+        assert_eq!(error, ClimateError::NonFinite { index_type: "kbdi" });
+    }
+
+    #[test]
     fn a_single_cell_run_matches_its_column_of_a_wider_run() {
         // a single cell runs in its own loop, so every rule must match the one
         // the wider run applies: missing days inside and past a one-day bridge,
