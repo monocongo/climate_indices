@@ -36,9 +36,9 @@ const DC_PRECIPITATION_THRESHOLD_MM: f64 = 2.8;
 const DC_TEMPERATURE_FLOOR_CELSIUS: f64 = -2.8;
 
 // The KBDI constants of `fire/_kbdi.py`.
-const KBDI_MAX_MM: f64 = 203.2;
-const KBDI_RAIN_THRESHOLD_MM: f64 = 5.08;
-const KBDI_DRYING_TEMPERATURE_CELSIUS: f64 = 10.0;
+pub(crate) const KBDI_MAX_MM: f64 = 203.2;
+pub(crate) const KBDI_RAIN_THRESHOLD_MM: f64 = 5.08;
+pub(crate) const KBDI_DRYING_TEMPERATURE_CELSIUS: f64 = 10.0;
 
 /// `np.maximum`, which propagates NaN instead of dropping it.
 fn maximum(left: f64, right: f64) -> f64 {
