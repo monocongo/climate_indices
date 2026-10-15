@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Faster native daily recurrences**: the Rust driver behind KBDI, the CFFWIS
+  moisture codes, and the Antecedent Precipitation Index advances each cell in
+  one pass per day and runs a single station's series with its state in
+  registers. Results are bit-identical. Single-threaded kernel time drops about
+  40% for KBDI on station series and 20-27% on gridded workloads, 15-20% for
+  DMC and DC, and 35-70% for the API; FFMC, whose own step dominates, is
+  unchanged.
+
 ## [3.0.0] - 2026-10-12
 
 Published on PyPI on 2026-10-12; see the [release notes](docs/release-notes-3.0.0.md)
