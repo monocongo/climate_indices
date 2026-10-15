@@ -240,27 +240,57 @@ pub fn run<S: Copy>(
         .as_mut()
         .map(|values| values.as_slice_mut().expect("standard layout"));
 
-    // the history starts all NaN, so only a day that records the state writes
-    // to it
-    for day in 0..days {
-        let row = day * cells..(day + 1) * cells;
-        let weather_row = &weather_valid[row.clone()];
-        let season_row = in_season.map(|mask| &mask[row]);
-        let mut history_row = (day >= inputs.spin_up)
-            .then(|| (day - inputs.spin_up) * cells)
-            .and_then(|row| Some(&mut history.as_deref_mut()?[row..row + cells]));
-        for (index, cell) in run.iter_mut().enumerate() {
+    // both loops apply the same per-day rules; the history starts all NaN, so
+    // only a day that records the state writes to it
+    if let [slot] = run.as_mut_slice() {
+        // a single series is one dependency chain, so its state stays in
+        // registers; wider runs sweep each day across the cells instead, whose
+        // independent chains overlap, reading the time-first inputs by row
+        let mut cell = *slot;
+        for day in 0..days {
             let today = Day {
-                static_valid: static_valid[index],
-                in_season: season_row.is_none_or(|season| season[index]),
-                weather_valid: weather_row[index],
+                static_valid: static_valid[0],
+                in_season: in_season.is_none_or(|mask| mask[day]),
+                weather_valid: weather_valid[day],
             };
-            let records = advance(inputs.policy, cell, today, &value_of, &poison, |state| {
-                step(state, day, index)
-            })
+            let records = advance(
+                inputs.policy,
+                &mut cell,
+                today,
+                &value_of,
+                &poison,
+                |state| step(state, day, 0),
+            )
             .map_err(|NonFiniteStep| ClimateError::NonFinite { index_type })?;
-            if records && let Some(history_row) = history_row.as_deref_mut() {
-                history_row[index] = value_of(&cell.state);
+            if records
+                && day >= inputs.spin_up
+                && let Some(history) = history.as_deref_mut()
+            {
+                history[day - inputs.spin_up] = value_of(&cell.state);
+            }
+        }
+        *slot = cell;
+    } else {
+        for day in 0..days {
+            let row = day * cells..(day + 1) * cells;
+            let weather_row = &weather_valid[row.clone()];
+            let season_row = in_season.map(|mask| &mask[row]);
+            let mut history_row = (day >= inputs.spin_up)
+                .then(|| (day - inputs.spin_up) * cells)
+                .and_then(|row| Some(&mut history.as_deref_mut()?[row..row + cells]));
+            for (index, cell) in run.iter_mut().enumerate() {
+                let today = Day {
+                    static_valid: static_valid[index],
+                    in_season: season_row.is_none_or(|season| season[index]),
+                    weather_valid: weather_row[index],
+                };
+                let records = advance(inputs.policy, cell, today, &value_of, &poison, |state| {
+                    step(state, day, index)
+                })
+                .map_err(|NonFiniteStep| ClimateError::NonFinite { index_type })?;
+                if records && let Some(history_row) = history_row.as_deref_mut() {
+                    history_row[index] = value_of(&cell.state);
+                }
             }
         }
     }
