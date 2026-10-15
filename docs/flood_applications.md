@@ -134,10 +134,11 @@ The [flood-family epic #1098][flood-epic] tracks the implementation order.
   [#1113][flood-1113])*. `indices.standardized_index()` exposes the existing
   distribution-fitting machinery for any non-negative monthly or daily series,
   and {doc}`standardized-hydrologic-indices` shows the SRI and SSI recipes
-  (FLOOD-17 [#1114][flood-1114]). Named wrappers are still an open decision
-  ([#1132](https://github.com/monocongo/climate_indices/issues/1132)), and the
-  xarray entry point also needs the CF metadata registry entries
-  ([#1132][flood-1132]).
+  (FLOOD-17 [#1114][flood-1114]). Named wrappers are not provided: SRI and SSI
+  stay recipes over the generic seam
+  ([ADR-0020](adr/0020-standardized-index-public-surface.md)). The xarray entry
+  point is decided — one neutral CF metadata entry over the shared adapter path —
+  and lands with [#1174][flood-1174].
 
 PE, EDI, I_F, and API are also exposed through the existing command line as
 `process_climate_indices --index pe`, `edi`, `flood_index`, and `api`, from daily
@@ -217,3 +218,4 @@ caveat below: they are runs of high flood potential, not recorded floods.
 [flood-1113]: https://github.com/monocongo/climate_indices/issues/1113
 [flood-1114]: https://github.com/monocongo/climate_indices/issues/1114
 [flood-1132]: https://github.com/monocongo/climate_indices/issues/1132
+[flood-1174]: https://github.com/monocongo/climate_indices/issues/1174

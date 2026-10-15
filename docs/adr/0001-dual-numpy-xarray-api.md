@@ -8,15 +8,18 @@ is a single scalar (`a024f408`), and the adapter's 1-D in-memory path calls the
 NumPy function without `xr.apply_ufunc`. The decision — the NumPy functions are
 the one source of truth for the computation — is unchanged.
 
-Amended again: `indices.standardized_index()` (#1113) is a NumPy-only generic
-wrapper over the SPI scale/fit/transform pipeline, added beside the index it
-generalizes. It has no CF metadata of its own, so its xarray entry point stays
-deferred rather than wired through the adapter now: the flood family's design
-decision landed without covering this path (ADRs 0013 and 0014), leaving it with
-the metadata decision (#1103) and the named-wrapper decision
-([#1132](https://github.com/monocongo/climate_indices/issues/1132)), and it is
-not re-exported from the package root, where every index function carries the
-dual NumPy/xarray contract.
+Amended again: `indices.standardized_index()` (#1113) is a generic wrapper over
+the SPI scale/fit/transform pipeline, added beside the index it generalizes. It
+has no CF metadata of its own, so its xarray entry point was deferred: the flood
+family's design decision landed without covering this path (ADRs 0013 and 0014),
+leaving it with the metadata and named-wrapper decisions.
+{doc}`0020-standardized-index-public-surface` settles all three — no named
+wrappers, one neutral CF entry, a wired Beta xarray entry re-exported at the
+package root — and that surface lands with
+[#1174](https://github.com/monocongo/climate_indices/issues/1174). Until then it
+stays NumPy-only at `climate_indices.indices.standardized_index` and is not
+re-exported from the package root, where every index function carries the dual
+NumPy/xarray contract.
 
 `climate_indices` ships two parallel public APIs: a legacy numpy-array API (`indices.py`, stable, do-not-modify per architecture rules) and a modern xarray API (`typed_public_api.py` / `xarray_adapter.py`) with CF metadata and Dask support. We decided to keep both rather than deprecating the numpy API, because existing users depend on plain numpy arrays and migrating them is not our call to force. The xarray API is implemented as a wrapper that calls the numpy functions internally (through `xr.apply_ufunc` on the adapter paths, directly on the adapter's 1-D in-memory path and in PCI's hand-written wrapper), so there is one source of truth for the actual computation — the duplication risk is confined to the interface layer, not the math.
 

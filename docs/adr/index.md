@@ -31,4 +31,5 @@ corrected in place), or `Superseded by ADR-NNNN`. The authoring conventions are 
 0017-rust-core-acceleration-backend
 0018-optional-rust-packaging
 0019-energy-module-api-and-aggregation
+0020-standardized-index-public-surface
 ```
