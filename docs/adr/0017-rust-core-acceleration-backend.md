@@ -16,6 +16,10 @@ by [ADR-0021](0021-climate-indices-crate-identity.md), which selects
 `climate-core` remains unpublished; the `0.0.0` release only reserves the name
 and contains no algorithms.
 
+Amended again: [ADR-0025](0025-kbdi-complete-input-fast-path.md) records a measured
+exception to item 4's operation-order rule for KBDI's complete-input path, which
+reorders the drying term within the `1e-10` contract; item 4 now names it.
+
 ## Context
 
 The per-index computations behind `climate_indices` — distribution fits, inverse
@@ -66,7 +70,9 @@ contract more thoroughly than leaving the performance on the table.
    the Python path with the `python_backend` fixture in `tests/conftest.py`. Parity
    is asserted at `rtol = atol = 1e-10` with identical NaN positions, and a port
    reproduces the Python numerics — operation order, and the NaN, zero, and
-   edge-case semantics — rather than improving them.
+   edge-case semantics — rather than improving them. The one exception, KBDI over
+   complete input, is recorded with its measurements in
+   [ADR-0025](0025-kbdi-complete-input-fast-path.md).
 
 5. **A tolerance exception has to be measured, not asserted.** Loosening the
    `1e-10` contract for a kernel requires a written justification in its ticket:
