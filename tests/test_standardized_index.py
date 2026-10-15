@@ -335,9 +335,10 @@ def test_standardized_index_rejects_an_unknown_aggregation(
     calibration_year_end_monthly,
 ) -> None:
     """An aggregation other than sum or mean fails loudly instead of silently summing."""
+    values = np.asarray(precips_mm_monthly).flatten()
     with pytest.raises(ValueError, match="Invalid aggregation argument"):
         indices.standardized_index(
-            np.asarray(precips_mm_monthly).flatten(),
+            values,
             6,
             indices.Distribution.gamma,
             data_year_start_monthly,
