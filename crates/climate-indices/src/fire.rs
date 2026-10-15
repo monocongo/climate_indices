@@ -1198,4 +1198,94 @@ mod tests {
         weather.initial[4].wet_spell_precipitation = KBDI_RAIN_THRESHOLD_MM;
         assert_matches_replay(&weather, 0);
     }
+
+    #[test]
+    fn an_overflowing_climatology_keeps_the_driver_non_finite_error() {
+        // the denominator overflows, so a 1e4 C day dries by inf / inf
+        let mut weather = weather(20, 9, 5);
+        weather.mean_annual[6] = -1e6;
+        weather.temperature[[12, 6]] = 1e4;
+        let weather_valid = Array2::from_elem(weather.precipitation.dim(), true);
+        let static_valid = Array1::from_elem(9, true);
+        let gaps = Array1::from_elem(9, -1_i64);
+        let result = kbdi(
+            weather.precipitation.view(),
+            weather.temperature.view(),
+            weather.mean_annual.view(),
+            &weather.initial,
+            &recurrence_inputs(
+                weather_valid.view(),
+                static_valid.view(),
+                None,
+                gaps.view(),
+                0,
+                "propagate",
+                0,
+            )
+            .unwrap(),
+            true,
+        );
+        assert_eq!(
+            result.unwrap_err(),
+            ClimateError::NonFinite { index_type: "kbdi" }
+        );
+    }
+
+    #[test]
+    fn input_outside_the_complete_contract_keeps_the_general_driver_bit_for_bit() {
+        let weather = weather(400, 9, 7);
+        let (history, _) = replay(&weather, 0);
+        let (days, cells) = weather.precipitation.dim();
+        // the fast path is not bit-identical on this run, so the comparison
+        // below tells the two paths apart
+        let fast = complete_run(&weather, 0, true).values.unwrap();
+        assert!(
+            fast.iter()
+                .zip(&history)
+                .any(|(a, b)| a.to_bits() != b.to_bits())
+        );
+        // one missing day, the last day of the last cell
+        let mut weather_valid = Array2::from_elem((days, cells), true);
+        weather_valid[[days - 1, cells - 1]] = false;
+        let values = run_with(&weather, &weather_valid, 0, true).values.unwrap();
+        for day in 0..days {
+            for cell in 0..cells {
+                if (day, cell) != (days - 1, cells - 1) {
+                    assert_eq!(
+                        values[[day, cell]].to_bits(),
+                        history[[day, cell]].to_bits()
+                    );
+                }
+            }
+        }
+        assert!(values[[days - 1, cells - 1]].is_nan());
+    }
+
+    #[test]
+    fn a_carried_index_above_the_cap_keeps_the_general_driver() {
+        // above 203.2 the driver skips drying on a 1e4 C day, where the fast
+        // step would subtract an enormous drying term
+        let mut weather = weather(20, 9, 11);
+        weather.initial[5].kbdi = 1e300;
+        weather.temperature[[0, 5]] = 1e4;
+        let (history, state) = replay(&weather, 0);
+        let run = complete_run(&weather, 0, true);
+        for (got, want) in run.values.unwrap().iter().zip(&history) {
+            assert_eq!(got.to_bits(), want.to_bits());
+        }
+        assert_eq!(run.state, state);
+    }
+
+    #[test]
+    fn non_finite_weather_on_an_observed_day_keeps_the_general_driver() {
+        let mut weather = weather(50, 9, 3);
+        weather.temperature[[10, 4]] = f64::NAN;
+        weather.precipitation[[20, 8]] = f64::INFINITY;
+        let (history, state) = replay(&weather, 0);
+        let run = complete_run(&weather, 0, true);
+        for (got, want) in run.values.unwrap().iter().zip(&history) {
+            assert_eq!(got.to_bits(), want.to_bits());
+        }
+        assert_eq!(run.state, state);
+    }
 }
