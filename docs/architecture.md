@@ -245,8 +245,10 @@ src/climate_indices/_native.pyi # type stub for the extension
 
 - **`climate-core`** is pure numerical Rust. It has no PyO3, NumPy bindings,
   Python exceptions, or CPython assumptions, receives already-validated
-  numbers, and returns numbers. It could later serve other Rust consumers, but
-  it is not published to crates.io.
+  numbers, and returns numbers. The local crate is not published to crates.io.
+  [ADR-0021](adr/0021-climate-indices-crate-identity.md) selects `climate-indices`
+  as its future published name. The current `0.0.0` release only reserves that
+  name and contains no algorithms.
 - **`climate-py`** is the only crate that knows about Python. It converts
   arrays and errors at the boundary and holds no climate algorithm.
 - **Dispatch** lives in the Python module that owns each computation. It
