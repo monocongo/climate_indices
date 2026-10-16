@@ -9,7 +9,10 @@ itself stands. The decision is implemented by the RUST ticket series under the e
 scaffold and SPI gamma port (RUST-001, RUST-002), the CI jobs (RUST-003), and the
 per-kernel ports that followed. Packaging of binary wheels is deferred to RUST-013
 ([#1283](https://github.com/monocongo/climate_indices/issues/1283)) and may amend
-the packaging parts of this record.
+the packaging parts of this record. Decision 2's publication clause is superseded
+by [ADR-0021](0021-climate-indices-crate-identity.md): the crate publishes to
+crates.io as `climate-indices` (CRATE-02,
+[#1306](https://github.com/monocongo/climate_indices/issues/1306)).
 
 ## Context
 
@@ -41,7 +44,8 @@ contract more thoroughly than leaving the performance on the table.
 2. **The Rust code is split into `crates/climate-core` and `crates/climate-py`.**
    `climate-core` is pure numerical Rust (`ndarray`): no PyO3, no NumPy bindings, no
    Python exceptions or CPython assumptions. It receives already-validated numbers
-   and returns numbers, and is not published to crates.io. `climate-py` is the only
+   and returns numbers, and publishes to crates.io as `climate-indices`
+   ([ADR-0021](0021-climate-indices-crate-identity.md)). `climate-py` is the only
    crate that knows about Python; it builds the `cdylib` imported as
    `climate_indices._native` and holds conversion and binding code only, no
    algorithm. `src/climate_indices/_native.pyi` is the extension's type stub.
