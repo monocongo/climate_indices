@@ -11,11 +11,12 @@ flood.
 **None of the indices described here measures or forecasts actual generation,
 demand, or residual load.** Use them for monitoring and risk diagnostics of
 the weather and climate conditions that drive the energy system, not as
-generation or load estimates. Every index planned for this family is computed
-from standard meteorological inputs — 2 m temperature, near-surface and
-hub-height wind, surface solar radiation, precipitation — or standardizes an
-energy series the caller supplies; the one exception is the wind capacity
-factor, which also takes a power curve
+generation or load estimates. The planned physical transforms use standard
+meteorological inputs: 2 m temperature, near-surface and hub-height wind,
+surface solar radiation, and precipitation. The standardized indices use
+climate-derived energy proxies that the caller supplies. Wind capacity factors
+also require a power curve; the hydropower proxy requires installed-capacity
+weights
 ([energy-family epic #1157][energy-epic]).
 
 ## From meteorological drivers to energy droughts
@@ -54,16 +55,23 @@ Python implementation of those indices is planned as the family's main
 contribution; the physical transforms will make it usable end to end from raw
 reanalysis.
 
-As planned, three indices standardize an energy series the caller supplies:
+As planned, three indices standardize climate-derived energy proxies that the
+caller supplies:
 
-- **SREPI** standardizes renewable production or a capacity factor, so low
-  values mark weaker-than-usual renewable resource.
+- **SREPI** standardizes a climate-derived renewable production proxy or a
+  capacity factor, so low values mark weaker-than-usual renewable resource.
 - **The standardized demand index** standardizes an energy demand proxy, such
   as energy degree days, so high values mark higher-than-usual
   weather-driven demand.
-- **SRLI** standardizes residual load — demand minus renewable production — so
-  high values mark periods when weather-driven demand outpaces weather-driven
-  supply. Residual load is signed, which is why SRLI admits negative inputs.
+- **SRLI** standardizes a residual-load proxy — a demand proxy minus a
+  renewable production proxy — so high values mark periods when weather-driven
+  demand outpaces weather-driven supply. Residual load is signed, which is why
+  SRLI admits negative inputs.
+
+Standardization cannot separate climate effects from other influences.
+If callers supply observed generation or load, the scores also reflect capacity
+changes, curtailment, outages, markets, and behaviour. Such scores are not
+weather-only diagnostics.
 
 Standardization is unit-agnostic: it ranks or fits whatever series it is
 handed, so capacity factors, degree days, and demand proxies from any source
@@ -72,6 +80,10 @@ are acceptable inputs
 the empirical (rank-based) distribution, which Allen & Otero (2023) recommend
 above roughly 100 observations, with beta available for bounded [0, 1]
 capacity factors averaged with `aggregation="mean"` when there are too few.
+The beta option is not for demand proxies or accumulated production.
+[#1169][energy-1169] requires separate probability masses at exact 0 and 1;
+the continuous beta fit applies only between those endpoints. This endpoint
+handling remains planned, not implemented.
 SRLI uses the empirical distribution only. That is an API restriction rather
 than a mathematical necessity: a rank-based standardization has no support
 for a signed series to violate, the parametric families' support-limit and
@@ -85,6 +97,15 @@ does for SPI and SPEI, with one addition. The family is daily first: a weekly
 index is daily input with a Timescale of 7, and a 30-day index is daily input
 with a Timescale of 30; calendar months use monthly input. Sub-daily (hourly)
 input is planned separately ([#1177][energy-1177]).
+
+Daily NumPy inputs to `indices.standardized_index()` must start on January 1
+and use the internal 366-slot year layout. The planned energy NumPy wrappers
+inherit this layout. Convert Gregorian arrays with
+{func}`climate_indices.utils.transform_to_366day` before standardizing them;
+see {doc}`data_requirements` for the conversion requirements. Do not pass an
+ordinary Gregorian array directly: seasonal fitting would use the wrong day
+slots. Existing xarray index adapters handle Gregorian time coordinates
+separately; the planned energy xarray adapters are not available today.
 
 Precipitation is *summed* over its window, but a capacity factor is
 *averaged*: a week's mean capacity factor stays a fraction of capacity in
@@ -133,8 +154,9 @@ order.
   for hydro resource, not a hydropower generation model.
 - **SREPI and the standardized demand index** — *planned
   ([#1171][energy-1171])*, on the empirical distribution option
-  ([#1168][energy-1168]), with beta ([#1169][energy-1169]) for bounded
-  [0, 1] series averaged with `aggregation="mean"`.
+  ([#1168][energy-1168]), with beta ([#1169][energy-1169]) only for SREPI
+  capacity factors in [0, 1] averaged with `aggregation="mean"`, including the
+  planned endpoint-mass handling described above, not for demand proxies.
 - **SRLI** — *planned ([#1172][energy-1172])*.
 - **Energy-drought event statistics** — *planned ([#1173][energy-1173])*.
 - **Wind capacity factor** — *planned ([#1175][energy-1175])*. Hub-height
@@ -155,8 +177,14 @@ dependencies
 
 ## Preparing inputs
 
-The indices take point series or gridded fields that are already in the
+The planned energy interfaces will take point series or gridded fields in the
 units, location, and spatial support the caller wants to analyse.
+
+The existing `indices.standardized_index()` is NumPy-only, with no xarray or
+Dask dispatch. Its input block and full-size working arrays must fit in memory.
+For large grids, aggregate spatially first or process smaller spatial blocks
+with the full time series in each block. The planned energy xarray interfaces
+do not provide a lazy execution path today.
 
 - **Units.** Temperature is °C, the library's internal convention; K and °F
   are normalized at the boundary, and because a degree day is a temperature
@@ -190,7 +218,8 @@ gridded demonstration on these data is planned ([#1179][energy-1179]).
 
 - **The climate-driven component is not generation or load.** Installed
   capacity, technology, curtailment, markets, and behaviour determine actual
-  output and demand; these indices carry none of that information.
+  output and demand. Use climate-derived proxies to interpret the scores as
+  weather-only diagnostics.
 - **Calibrated energy-system models are out of scope.** Electricity-demand
   models calibrated on measured load, hydropower generation or reservoir-inflow
   models calibrated on observed generation, and grid, dispatch, market, or
