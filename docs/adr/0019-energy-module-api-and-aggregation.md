@@ -104,20 +104,25 @@ series such as residual load.
    ([#1165](https://github.com/monocongo/climate_indices/issues/1165)), the wind
    capacity factor ([#1175](https://github.com/monocongo/climate_indices/issues/1175)),
    and the temperature-derated PV capacity factor
-   ([#1176](https://github.com/monocongo/climate_indices/issues/1176)). The duplication
-   of `xclim`'s degree days and `wind_profile` and of `pvlib`'s PVWatts model is
-   accepted deliberately: each transform is a short, published, reference-grade formula,
-   none needs a dependency, and the standardized demand index
-   ([#1171](https://github.com/monocongo/climate_indices/issues/1171)) takes degree days
-   as a direct input, so deferring them would leave the family's own indices unreachable
-   from raw reanalysis without an external step. `xclim`, `pvlib`, and `windpowerlib`
-   are documented alternatives and validation references, never dependencies. Out of
-   scope, as the epic states: electricity-demand models calibrated on measured load,
-   hydropower generation models calibrated on observed generation, bias adjustment of
-   wind speed, and aggregation to administrative units. No sibling repository is
-   justified, because none of the five criteria recorded in the energy subsystem design
-   note holds for a family whose transforms are arithmetic over standard meteorological
-   fields and whose calibrated quantities stay out of scope.
+   ([#1176](https://github.com/monocongo/climate_indices/issues/1176)). This reverses
+   the earlier position that the transforms would be left to external recipes; the
+   duplication of `xclim`'s degree days and `wind_profile`, and the overlap with
+   `pvlib`'s prior art for the temperature-derated PV model, is accepted deliberately.
+   Each is a published formula — the degree days and the wind profile are closed-form
+   arithmetic over standard meteorological fields, and the PV model is the simple
+   reference configuration [#1176](https://github.com/monocongo/climate_indices/issues/1176)
+   specifies against Jerez et al. (2015); none needs a dependency. The standardized
+   demand index ([#1171](https://github.com/monocongo/climate_indices/issues/1171)) takes
+   degree days as a direct input, so deferring them would leave the family's own indices
+   unreachable from raw reanalysis without an external step. `xclim`, `pvlib`, and
+   `windpowerlib` are documented alternatives and validation references, never
+   dependencies. Out of scope, as the epic states: electricity-demand models calibrated
+   on measured load, hydropower generation models calibrated on observed generation,
+   bias adjustment of wind speed, and aggregation to administrative units. No sibling
+   repository is justified, because none of the five criteria recorded in the energy
+   subsystem design note holds for a family that ships inside this package, whose
+   transforms are arithmetic over standard meteorological fields, and whose calibrated
+   quantities stay out of scope.
 
 The family adds no dependency. A transform that needs one would go behind a
 `climate-indices[energy]` extra, so the core install is unchanged, as the epic's

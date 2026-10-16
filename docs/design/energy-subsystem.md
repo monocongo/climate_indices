@@ -44,8 +44,7 @@ A separate repository becomes justified when two or more of these are true:
 None holds today, so no sibling repository
 ([#1159](https://github.com/monocongo/climate_indices/issues/1159)). Until two do, an
 out-of-scope energy proposal is a candidate for that split, not a rejection on merit.
-[CONTRIBUTING.md](https://github.com/monocongo/climate_indices/blob/main/CONTRIBUTING.md#energy-scope)
-records the triage response.
+[CONTRIBUTING.md](../../CONTRIBUTING.md#energy-scope) records the triage response.
 
 Out of scope by the epic's definition: electricity-demand models calibrated on measured
 load data, hydropower generation models calibrated on observed generation, bias

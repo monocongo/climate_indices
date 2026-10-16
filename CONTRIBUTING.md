@@ -81,8 +81,9 @@ spatial aggregation to administrative units. The exact boundary, the five
 criteria for a future sibling repository, and the no-new-dependency rule are in
 [the energy subsystem design](docs/design/energy-subsystem.md#scope-and-boundary).
 The physical transforms duplicate `xclim`, `pvlib`, and `windpowerlib`
-deliberately: each is a short reference-grade formula with no dependency, and
-those libraries remain documented alternatives rather than requirements. Point an
+deliberately: each is a published reference formula implementable without a
+dependency, and those libraries remain documented alternatives rather than
+requirements. Point an
 out-of-scope proposal there rather than dismissing it: it is a candidate for that
 sibling, not a rejection on merit.
 
