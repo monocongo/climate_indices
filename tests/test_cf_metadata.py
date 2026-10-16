@@ -50,6 +50,15 @@ EXPECTED_KEYS = {
     "haines_low",
     "haines_mid",
     "haines_high",
+    "heating_degree_days",
+    "cooling_degree_days",
+    "energy_degree_days",
+    "hub_height_wind_speed",
+    "wind_capacity_factor",
+    "pv_capacity_factor",
+    "srepi",
+    "standardized_demand_index",
+    "srli",
 }
 
 REQUIRED_FIELDS = {"long_name", "units", "references"}
@@ -77,6 +86,28 @@ FIRE_KEYS = (
     "haines_mid",
     "haines_high",
 )
+
+ENERGY_KEYS = (
+    "heating_degree_days",
+    "cooling_degree_days",
+    "energy_degree_days",
+    "hub_height_wind_speed",
+    "wind_capacity_factor",
+    "pv_capacity_factor",
+    "srepi",
+    "standardized_demand_index",
+    "srli",
+)
+
+DEGREE_DAY_KEYS = ("heating_degree_days", "cooling_degree_days", "energy_degree_days")
+
+# the only entries with an official CF standard name (CF standard name table v95);
+# every other entry must omit the field rather than invent one
+STANDARD_NAMES = {
+    "heating_degree_days": "integral_wrt_time_of_air_temperature_deficit",
+    "cooling_degree_days": "integral_wrt_time_of_air_temperature_excess",
+    "hub_height_wind_speed": "wind_speed",
+}
 
 # (entry, field, expected value) rows: one row per literal registry assertion.
 ENTRY_VALUE_ROWS = [
@@ -170,6 +201,27 @@ ENTRY_VALUE_ROWS = [
     ("haines_high", "long_name", "Haines Index"),
     ("haines_high", "units", "dimensionless"),
     ("haines_high", "climate_indices_variant", "high"),
+    ("heating_degree_days", "long_name", "Heating Degree Days"),
+    ("heating_degree_days", "units", "K d"),
+    ("heating_degree_days", "units_metadata", "temperature: difference"),
+    ("cooling_degree_days", "long_name", "Cooling Degree Days"),
+    ("cooling_degree_days", "units", "K d"),
+    ("cooling_degree_days", "units_metadata", "temperature: difference"),
+    ("energy_degree_days", "long_name", "Energy Degree Days"),
+    ("energy_degree_days", "units", "K d"),
+    ("energy_degree_days", "units_metadata", "temperature: difference"),
+    ("hub_height_wind_speed", "long_name", "Hub-Height Wind Speed"),
+    ("hub_height_wind_speed", "units", "m s-1"),
+    ("wind_capacity_factor", "long_name", "Wind Capacity Factor"),
+    ("wind_capacity_factor", "units", "1"),
+    ("pv_capacity_factor", "long_name", "Photovoltaic Capacity Factor"),
+    ("pv_capacity_factor", "units", "1"),
+    ("srepi", "long_name", "Standardized Renewable Energy Production Index"),
+    ("srepi", "units", "1"),
+    ("standardized_demand_index", "long_name", "Standardized Demand Index"),
+    ("standardized_demand_index", "units", "1"),
+    ("srli", "long_name", "Standardized Residual Load Index"),
+    ("srli", "units", "1"),
 ]
 
 ENTRY_VALUES = [
@@ -216,6 +268,15 @@ REFERENCE_ROWS = [
     ("haines_low", ("Haines", "1988")),
     ("haines_mid", ("Haines", "1988")),
     ("haines_high", ("Haines", "1988")),
+    ("heating_degree_days", ("C3S", "10.24381/3bb607bd")),
+    ("cooling_degree_days", ("C3S", "10.24381/3bb607bd")),
+    ("energy_degree_days", ("C3S", "10.24381/3bb607bd")),
+    ("hub_height_wind_speed", ("C3S", "10.24381/3bb607bd")),
+    ("wind_capacity_factor", ("C3S", "10.24381/3bb607bd")),
+    ("pv_capacity_factor", ("Jerez", "2015")),
+    ("srepi", ("Allen", "Otero", "2023")),
+    ("standardized_demand_index", ("Allen", "Otero", "2023")),
+    ("srli", ("Allen", "Otero", "2023")),
 ]
 
 REFERENCE_CASES = [pytest.param(entry, fragments, id=entry) for entry, fragments in REFERENCE_ROWS]
@@ -288,8 +349,28 @@ def test_fire_entries_describe_themselves_without_inventing_standard_names(index
 
 @pytest.mark.parametrize("index_name", sorted(EXPECTED_KEYS))
 def test_entries_claim_no_invented_standard_names(index_name: str) -> None:
-    """No entry invents a CF standard_name; the field is optional and only for officially defined names."""
-    assert "standard_name" not in CF_METADATA[index_name]
+    """Only officially defined CF standard names appear; every other entry omits the field."""
+    assert CF_METADATA[index_name].get("standard_name") == STANDARD_NAMES.get(index_name)
+
+
+@pytest.mark.parametrize("index_name", ENERGY_KEYS)
+def test_energy_entries_describe_themselves(index_name: str) -> None:
+    """Energy adapters take their description from the registry."""
+    assert CF_METADATA[index_name].get("description", "").strip()
+
+
+@pytest.mark.parametrize("index_name", sorted(set(ENERGY_KEYS) - {"hub_height_wind_speed"}))
+def test_energy_entries_disclaim_actual_generation_and_load(index_name: str) -> None:
+    """ADR-0019 decision 4: energy indices describe the climate-driven component, not actual generation or load."""
+    description = CF_METADATA[index_name].get("description", "")
+    assert "climate-driven component" in description
+    assert "not actual generation" in description or "not actual load" in description
+
+
+@pytest.mark.parametrize("index_name", DEGREE_DAY_KEYS)
+def test_degree_days_are_labelled_celsius_day(index_name: str) -> None:
+    """ADR-0019 decision 6 labels a degree day °C day; K d is the same temperature difference."""
+    assert "°C day" in CF_METADATA[index_name].get("description", "")
 
 
 def test_registry_aliases_and_variants_stay_consistent() -> None:
