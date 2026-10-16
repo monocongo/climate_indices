@@ -11,6 +11,19 @@ import pytest
 
 from climate_indices.cf_metadata_registry import CF_METADATA
 
+# These rows also supply the energy keys in the exact registry-key check.
+ENERGY_DISCLAIMERS = {
+    "heating_degree_days": "not actual load",
+    "cooling_degree_days": "not actual load",
+    "energy_degree_days": "not actual load",
+    "hub_height_wind_speed": None,
+    "wind_capacity_factor": "not actual generation",
+    "pv_capacity_factor": "not actual generation",
+    "srepi": "not actual generation",
+    "standardized_demand_index": "not actual load",
+    "srli": "not actual load",
+}
+
 # expected registry keys
 EXPECTED_KEYS = {
     "spi",
@@ -50,15 +63,7 @@ EXPECTED_KEYS = {
     "haines_low",
     "haines_mid",
     "haines_high",
-    "heating_degree_days",
-    "cooling_degree_days",
-    "energy_degree_days",
-    "hub_height_wind_speed",
-    "wind_capacity_factor",
-    "pv_capacity_factor",
-    "srepi",
-    "standardized_demand_index",
-    "srli",
+    *ENERGY_DISCLAIMERS,
 }
 
 REQUIRED_FIELDS = {"long_name", "units", "references"}
@@ -85,18 +90,6 @@ FIRE_KEYS = (
     "haines_low",
     "haines_mid",
     "haines_high",
-)
-
-ENERGY_KEYS = (
-    "heating_degree_days",
-    "cooling_degree_days",
-    "energy_degree_days",
-    "hub_height_wind_speed",
-    "wind_capacity_factor",
-    "pv_capacity_factor",
-    "srepi",
-    "standardized_demand_index",
-    "srli",
 )
 
 DEGREE_DAY_KEYS = ("heating_degree_days", "cooling_degree_days", "energy_degree_days")
@@ -361,18 +354,21 @@ def test_entries_qualify_only_temperature_differences(index_name: str) -> None:
     assert CF_METADATA[index_name].get("units_metadata") == UNITS_METADATA.get(index_name)
 
 
-@pytest.mark.parametrize("index_name", ENERGY_KEYS)
+@pytest.mark.parametrize("index_name", sorted(ENERGY_DISCLAIMERS))
 def test_energy_entries_describe_themselves(index_name: str) -> None:
     """Energy adapters take their description from the registry."""
     assert CF_METADATA[index_name].get("description", "").strip()
 
 
-@pytest.mark.parametrize("index_name", sorted(set(ENERGY_KEYS) - {"hub_height_wind_speed"}))
-def test_energy_entries_disclaim_actual_generation_and_load(index_name: str) -> None:
-    """ADR-0019 decision 4: energy indices describe the climate-driven component, not actual generation or load."""
+@pytest.mark.parametrize(
+    ("index_name", "disclaimer"),
+    [(name, disclaimer) for name, disclaimer in ENERGY_DISCLAIMERS.items() if disclaimer is not None],
+)
+def test_energy_entries_disclaim_actual_generation_and_load(index_name: str, disclaimer: str) -> None:
+    """ADR-0019 decision 4 requires the disclaimer for each entry's supply or demand role."""
     description = CF_METADATA[index_name].get("description", "")
     assert "climate-driven component" in description
-    assert "not actual generation" in description or "not actual load" in description
+    assert disclaimer in description
 
 
 @pytest.mark.parametrize("index_name", DEGREE_DAY_KEYS)
