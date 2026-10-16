@@ -21,8 +21,9 @@ reopens that: the crate becomes first-order, so a Rust user can `cargo add` it a
 with no knowledge of the Python package, without changing the Python contract.
 
 The name had to be settled first, because crates.io has no reservation. A name is claimed
-only by publishing, and a published version cannot be deleted through normal publisher
-operations. The maintainer therefore decided the name on #1306 and published a `0.0.0`
+only by publishing, and a published crate is not freely removable: crate owners can delete
+a crate, but only under narrow conditions, so a name cannot be relinquished at will. The
+maintainer therefore decided the name on #1306 and published a `0.0.0`
 placeholder on 2026-10-08: single version, owner `monocongo`, not yanked, carrying a
 `VERSION` constant, a README, and the BSD-3-Clause license, and no algorithms. That
 placeholder is the bridge; the first real release supersedes it.
@@ -96,10 +97,12 @@ ownership and cadence.
 ## Consequences
 
 - CRATE-05 renames the directory, the package, the default library path, every
-  `use climate_core::` in `crates/climate-py`, the benchmarks, `tests/parity_registry.py`,
-  `docs/architecture.md`, the `LICENSE`, the `[tool.maturin]` development path, and the
-  generated `llms-full.txt`. It runs the Rust gate, because the workspace members and CI
-  paths change.
+  `use climate_core::` in `crates/climate-py`, the `climate-core` path dependency in
+  `crates/climate-py/Cargo.toml`, `benchmarks/README.md`, `tests/parity_registry.py`,
+  `docs/architecture.md`, `docs/development-guide.md`, the docstrings in
+  `src/climate_indices/flood/_native.py` and `src/climate_indices/fire/_native.py`, the
+  `LICENSE`, the `[tool.maturin]` development path, and the generated `llms-full.txt`.
+  It runs the Rust gate, because the workspace members and CI paths change.
 - The Python contract does not change. The extension module stays
   `climate_indices._native`, and the Rust library name is a Rust path, not a Python import,
   so `climate_indices` names both without a collision.
