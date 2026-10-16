@@ -88,9 +88,8 @@ base temperatures. Its one-base-per-transform signature cannot reproduce them.
 Before #1163/#1164 fix defaults, explicitly reconcile that statement: either admit
 separate activation/reference temperatures and equality rules, or retain a single-base
 transform and use a matching single-base reference. The survey does not amend ADRs,
-signatures, or implementation tickets, and it does **not** confirm the degree-day
-defaults that ADR-0019 and the energy design attribute to it: no default is
-established until this gap is resolved. If C3S remains the intended convention, the
+signatures, or implementation tickets, and it does **not** confirm degree-day
+defaults: no default is established until this gap is resolved. If C3S remains the intended convention, the
 recommended pairs are heating `(threshold=15, reference=18)` and cooling `(24,21)`,
 subject to resolving the documented equality disagreement.
 

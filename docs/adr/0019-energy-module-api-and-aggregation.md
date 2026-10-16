@@ -135,11 +135,16 @@ Which physical transforms the package implements at all was the scope question o
 scope; the package boundary, the aggregation seam, the support rules, the calendar, and
 the units never depended on the answer and do not change. The function names, argument
 conventions, and degree-day contract for those transforms are fixed in the internal
-energy subsystem design note (`docs/design/energy-subsystem.md`), and the default
-constant values are confirmed by the oracle survey
-([#1160](https://github.com/monocongo/climate_indices/issues/1160)). That note stays in
+energy subsystem design note (`docs/design/energy-subsystem.md`). That note stays in
 the repository rather than this site because it also plans unimplemented indices, the
-arrangement {doc}`0005-fire-module-api` chose for fire.
+arrangement {doc}`0005-fire-module-api` chose for fire. The oracle survey
+([#1160](https://github.com/monocongo/climate_indices/issues/1160)) does not confirm
+the default constant values: the C3S degree-day schemes pair an activation threshold
+with a separate reference temperature, which one base per transform cannot reproduce.
+No default is established until
+[#1163](https://github.com/monocongo/climate_indices/issues/1163) and
+[#1164](https://github.com/monocongo/climate_indices/issues/1164) reconcile that
+contract.
 
 ## Consequences
 
