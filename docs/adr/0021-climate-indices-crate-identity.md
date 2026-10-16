@@ -111,8 +111,9 @@ ownership and cadence.
   workspace to split, in CRATE-05; `climate-py` keeps `publish = false`.
 - Crate releases and PyPI releases are independent in both directions, and neither tag
   namespace can start the other workflow.
-- {doc}`0017-rust-core-acceleration-backend` and `docs/architecture.md` stop claiming the
-  crate is unpublished.
+- {doc}`0017-rust-core-acceleration-backend` and `docs/architecture.md` distinguish
+  the current unpublished `climate-core` from the planned `climate-indices` release.
+  The published `0.0.0` placeholder contains no algorithms.
 - The numerics become reachable under a public name before CRATE-04
   ([#1308](https://github.com/monocongo/climate_indices/issues/1308)) states the numerical
   contract and CRATE-06 ([#1310](https://github.com/monocongo/climate_indices/issues/1310))
