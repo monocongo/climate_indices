@@ -11,10 +11,11 @@ flood.
 **None of the indices described here measures or forecasts actual generation,
 demand, or residual load.** Use them for monitoring and risk diagnostics of
 the weather and climate conditions that drive the energy system, not as
-generation or load estimates. Every index in this family, implemented or
-planned, is computed from standard meteorological inputs — 2 m temperature,
-near-surface and hub-height wind, surface solar radiation, precipitation — or
-standardizes an energy series the caller supplies
+generation or load estimates. Every index planned for this family is computed
+from standard meteorological inputs — 2 m temperature, near-surface and
+hub-height wind, surface solar radiation, precipitation — or standardizes an
+energy series the caller supplies; the one exception is the wind capacity
+factor, which also takes a power curve
 ([energy-family epic #1157][energy-epic]).
 
 ## From meteorological drivers to energy droughts
@@ -30,7 +31,7 @@ Hydro proxy                      capacity-weighted n-month precip           (pla
               ↓
 Standardized energy indices      SREPI, standardized demand, SRLI           (planned)
               ↓
-Energy-drought events            run-theory onset / duration / severity     (planned)
+Energy-drought events            run-theory onset / duration / magnitude    (planned)
               ↓
 Calibrated generation & load     hydro generation, electricity demand (MWh) (out of scope)
 ```
@@ -49,8 +50,9 @@ droughts*: sustained periods of low renewable production or high residual
 load. [Allen & Otero (2023)][allen-otero-2023] define a Standardised Renewable
 Energy Production Index (SREPI) and a Standardised Residual Load Index (SRLI),
 with a reference implementation in the [`SEI` R package][sei]. A validated
-Python implementation of those indices is the family's main contribution; the
-physical transforms make it usable end to end from raw reanalysis.
+Python implementation of those indices is planned as the family's main
+contribution; the physical transforms will make it usable end to end from raw
+reanalysis.
 
 As planned, three indices standardize an energy series the caller supplies:
 
@@ -69,9 +71,12 @@ are acceptable inputs
 ([ADR-0019](adr/0019-energy-module-api-and-aggregation.md)). The default is
 the empirical (rank-based) distribution, which Allen & Otero (2023) recommend
 above roughly 100 observations, with beta available for bounded [0, 1]
-capacity factors when there are too few. SRLI uses the empirical distribution
-only, because a rank-based standardization has no support for a signed series
-to violate.
+capacity factors averaged with `aggregation="mean"` when there are too few.
+SRLI uses the empirical distribution only. That is an API restriction rather
+than a mathematical necessity: a rank-based standardization has no support
+for a signed series to violate, the parametric families' support-limit and
+zero-mass handling is not designed for one, and clipping negatives to zero
+would score a different series.
 
 ### Timescale and aggregation
 
@@ -95,10 +100,10 @@ accumulated value means and for a bounded family such as beta.
 Run-theory event statistics summarize a standardized index as discrete
 energy-drought events: runs beyond a threshold — below it for SREPI, above it
 for SRLI or demand — each with an onset, duration, and magnitude (the
-cumulative deficit or excess), as `flood.flood_events()` does for flood
-potential ([#1173][energy-1173]). Allen & Otero (2023) define energy droughts
-this way. Events
-inherit the caveat at the top of this page: they are runs of unfavourable
+cumulative deviation from the threshold). The planned energy function builds
+on `runs.identify_runs()`, the run-theory primitive available today, which
+takes an explicit `"below"` or `"above"` direction ([#1173][energy-1173]).
+Allen & Otero (2023) define energy droughts this way. Events inherit the caveat at the top of this page: they are runs of unfavourable
 weather for the energy system, not recorded supply shortfalls.
 
 ## Planned energy indices
@@ -131,15 +136,16 @@ order.
 - **SRLI** — *planned ([#1172][energy-1172])*.
 - **Energy-drought event statistics** — *planned ([#1173][energy-1173])*.
 - **Wind capacity factor** — *planned ([#1175][energy-1175])*. Hub-height
-  wind passed through a power curve the caller supplies; a generic, documented
-  reference curve, not plant engineering.
+  wind passed through a required power curve: a generic parametric reference
+  curve (cut-in, rated, and cut-out speeds) or a tabulated curve the caller
+  supplies, not plant engineering.
 - **PV capacity factor, temperature-derated** — *planned
   ([#1176][energy-1176])*. Capacity factor from surface solar radiation,
   reduced as cell temperature — estimated from air temperature, irradiance,
   and wind — rises, after the reference configuration of Jerez et al. (2015).
 
-The degree days, wind profile, and capacity factors are implemented in this
-package with no new dependency, deliberately overlapping `xclim`'s degree-day
+The degree days, wind profile, and capacity factors will be implemented in
+this package with no new dependency, deliberately overlapping `xclim`'s degree-day
 indicators and `wind_profile`, `pvlib`, and `windpowerlib`; those libraries
 remain documented alternatives and validation references, never dependencies
 ([ADR-0019](adr/0019-energy-module-api-and-aggregation.md) decision 7).
