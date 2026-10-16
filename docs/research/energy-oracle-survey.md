@@ -88,7 +88,9 @@ base temperatures. Its one-base-per-transform signature cannot reproduce them.
 Before #1163/#1164 fix defaults, explicitly reconcile that statement: either admit
 separate activation/reference temperatures and equality rules, or retain a single-base
 transform and use a matching single-base reference. The survey does not amend ADRs,
-signatures, or implementation tickets. If C3S remains the intended convention, the
+signatures, or implementation tickets, and it does **not** confirm the degree-day
+defaults that ADR-0019 and the energy design attribute to it: no default is
+established until this gap is resolved. If C3S remains the intended convention, the
 recommended pairs are heating `(threshold=15, reference=18)` and cooling `(24,21)`,
 subject to resolving the documented equality disagreement.
 
@@ -350,10 +352,12 @@ chosen standardization distribution.
 | xclim / windpowerlib / pvlib | Prospective offline independent implementations, not new dependencies. Current repository licenses are Apache-2.0 / MIT / BSD-3-Clause respectively [xclim-license], [wpl-license], [pvlib-license]. Pin release, commit and dependency versions before fixture generation; review selected numerical power-curve/data rights separately from software licenses. |
 | Jerez article | [Article][jerez] declares CC BY 4.0, with third-party exceptions. Cite equation numbers and coefficients; figures and EURO-CORDEX inputs are not a bundled matched numerical oracle. |
 
-For #1163 and #1170, fixture provenance must follow
-[`tests/fixture/provenance_schema.json`](../../tests/fixture/provenance_schema.json):
-source/URL, download date, exact subset, checksum, fixture version, numeric tolerances,
-license/citation and rationale. Preserve full original-file and extracted-array checksums,
+For #1163 and #1170, fixture provenance must validate against
+[`tests/fixture/provenance_schema.json`](../../tests/fixture/provenance_schema.json),
+which requires source, URL, download date, subset description, SHA-256 checksum,
+fixture version and validation tolerance. Also fill the optional `license`,
+`citation` and `doi` fields that the rights findings above depend on; the schema has
+no rationale field, so put each source's rationale in `notes`. Preserve full original-file and extracted-array checksums,
 request/extraction script, units, calendar, missing masks, calibration dates, aggregation
 and transformation order. Record packing/rounding and all source variants. The schema
 rejects unknown top-level keys; put source commits, R `sessionInfo()`, generator
