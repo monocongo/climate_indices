@@ -174,4 +174,6 @@ A version string and CF-style `history` attribute stamped onto computed index ou
 _Avoid_: Provenance (ambiguous alone — see also Fixture Provenance)
 
 **CF Standard Name Omission**:
-Policy: the CF Conventions' `standard_name` attribute is set on a computed output only when the CF standard name table defines one for that quantity — today only the heating and cooling degree days and the hub-height wind speed — and is otherwise left unset (SPI, SPEI, PDSI, etc.). An adapter never invents one and never inherits the input's. This is intentional, not a gap to fill in.
+Policy: library adapters that use `CF_METADATA` set `standard_name` only when the CF standard name table defines that quantity. Today, only heating degree days, cooling degree days, and hub-height wind speed have registered standard names. Other registered outputs (SPI, SPEI, PDSI, etc.) omit `standard_name`; these adapters never inherit the input's name.
+
+`build_output_attrs()` and the public `xarray_adapter` extension interface accept caller-supplied metadata without validating standard names. When `cf_metadata=None`, they preserve an input `standard_name`. These extension paths are outside the registry policy.
