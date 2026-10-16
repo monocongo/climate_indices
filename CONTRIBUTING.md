@@ -72,6 +72,21 @@ repository, and the WAP/SWAP and snowmelt exclusions are in
 Point an out-of-scope proposal there rather than dismissing it: until the
 criteria are met, it is a candidate for that sibling, not a rejection on merit.
 
+## Energy scope
+
+`climate_indices` accepts the climate-driven component of energy supply and
+demand — degree days, hub-height wind, capacity factors, and standardized energy
+indices — not calibrated demand or generation models, wind bias adjustment, or
+spatial aggregation to administrative units. The exact boundary, the five
+criteria for a future sibling repository, and the no-new-dependency rule are in
+[the energy subsystem design](docs/design/energy-subsystem.md#scope-and-boundary).
+The degree-day and wind-profile formulas deliberately overlap with `xclim`.
+The PV transform uses the reference configuration in
+[#1176](https://github.com/monocongo/climate_indices/issues/1176).
+`xclim`, `pvlib`, and `windpowerlib` remain documented alternatives and validation
+references, not dependencies. Point an out-of-scope proposal there rather than
+dismissing it: it is a candidate for that sibling, not a rejection on merit.
+
 ## Documentation audience
 
 Everything on the published site is for users and contributors of the shipped

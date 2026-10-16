@@ -26,9 +26,27 @@ The API has two tiers, as flood does:
 These indices describe the **climate-driven component** of energy supply and demand,
 not actual generation or load, which also depend on installed capacity, technology,
 curtailment, markets, and behaviour. Every docstring and doc page says so. The scope
-decision itself is [#1159](https://github.com/monocongo/climate_indices/issues/1159),
-which reconciles the overlap with `xclim`, `pvlib`, and `windpowerlib`; its outcome can
-defer a physical transform but cannot change a name recorded here.
+decision is [#1159](https://github.com/monocongo/climate_indices/issues/1159), recorded in
+[ADR-0019](../adr/0019-energy-module-api-and-aggregation.md) decision 7.
+The physical transforms are implemented here without new dependencies.
+The degree-day and wind-profile formulas deliberately overlap with `xclim`; `pvlib`
+provides PV prior art. The standardized demand index takes degree days as a direct
+input. No name recorded here changes with that outcome.
+
+A separate repository becomes justified when two or more of these are true:
+
+1. An implementation requires a calibrated demand or generation model
+2. An implementation requires data beyond standard meteorological and reanalysis fields
+3. The energy code exceeds roughly 30 percent of the package's source volume
+4. Energy-specific dependencies would be forced on all `climate_indices` users
+5. The release cadence needs to diverge
+
+Criterion 2 holds because `energy.wind_capacity_factor()` requires a `power_curve`,
+not a meteorological or reanalysis field. The other four criteria do not hold, so
+no sibling repository is justified
+([#1159](https://github.com/monocongo/climate_indices/issues/1159)). Until two do, an
+out-of-scope energy proposal is a candidate for that split, not a rejection on merit.
+[CONTRIBUTING.md](../../CONTRIBUTING.md#energy-scope) records the triage response.
 
 Out of scope by the epic's definition: electricity-demand models calibrated on measured
 load data, hydropower generation models calibrated on observed generation, bias
@@ -72,7 +90,9 @@ distinct from an energy one.
 
 ## Physical transforms
 
-Provisional on [#1159](https://github.com/monocongo/climate_indices/issues/1159).
+In scope by [ADR-0019](../adr/0019-energy-module-api-and-aggregation.md) decision 7
+([#1159](https://github.com/monocongo/climate_indices/issues/1159)): all four implement
+in-house, dependency-free.
 
 | Function | Inputs | Units | Notes |
 | --- | --- | --- | --- |
@@ -100,7 +120,8 @@ Degree-day conventions:
   fixtures ([#1163](https://github.com/monocongo/climate_indices/issues/1163)); this note
   deliberately does not invent them.
 - **No degree day without a fixture.** [#1164](https://github.com/monocongo/climate_indices/issues/1164)
-  proceeds only if #1159 keeps the transforms in scope.
+  has the transforms in scope (decision 7) and still lands only against the
+  [#1163](https://github.com/monocongo/climate_indices/issues/1163) fixtures.
 
 Units: temperature is °C, the library's internal convention, and `_units.py` normalizes
 K and °F at its boundary. A degree day is a temperature difference, so K and °C are

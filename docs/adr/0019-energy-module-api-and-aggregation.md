@@ -5,9 +5,16 @@
 Amended: decision 2 also exposes matching aggregation on `indices.fit_diagnostics()`
 so its fitting parameters can be reused by the standardized index.
 
+Amended again by the energy scope decision
+([#1159](https://github.com/monocongo/climate_indices/issues/1159)): decision 7 fixes the
+family's scope boundary. The physical transforms stay in this package, implemented
+in-house with no new dependency, and calibrated models and preprocessing stay out of
+scope. No name or signature recorded here changes. The required wind `power_curve`
+meets one split criterion, below the two-criterion threshold.
+
 Only decision 2 describes code that exists: the `aggregation` keyword
 landed with this record ([#1158](https://github.com/monocongo/climate_indices/issues/1158)).
-The `climate_indices.energy` package does not exist yet. Decisions 1 and 3 through 6
+The `climate_indices.energy` package does not exist yet. Decisions 1 and 3 through 7
 are the contract that the remaining energy tickets
 ([#1157](https://github.com/monocongo/climate_indices/issues/1157)) implement, so a
 reader who greps `climate_indices.energy` today finds this record and no module. Each
@@ -91,20 +98,45 @@ series such as residual load.
    ([#1162](https://github.com/monocongo/climate_indices/issues/1162)). Wind is
    m s⁻¹ and radiation is a mean flux in W m⁻².
 
-The family adds no dependency. A Phase 3 transform that needs one puts it behind a
-`climate-indices[energy]` extra, so the core install is unchanged, as the epic's
-definition of done requires.
+7. **Scope boundary.** The physical transforms are implemented in this package rather
+   than deferred to `xclim`, `pvlib`, or `windpowerlib`: heating, cooling, and energy
+   degree days ([#1164](https://github.com/monocongo/climate_indices/issues/1164)), the
+   hub-height wind-speed profile
+   ([#1165](https://github.com/monocongo/climate_indices/issues/1165)), the wind
+   capacity factor ([#1175](https://github.com/monocongo/climate_indices/issues/1175)),
+   and the temperature-derated PV capacity factor
+   ([#1176](https://github.com/monocongo/climate_indices/issues/1176)). This reverses
+   the earlier position that the transforms would be left to external recipes; the
+   duplication of `xclim`'s degree days and `wind_profile`, and the overlap with
+   `pvlib`'s prior art for the temperature-derated PV model, is accepted deliberately.
+   Each is a published formula — the degree days and the wind profile are closed-form
+   arithmetic over standard meteorological fields, and the PV model is the simple
+   reference configuration [#1176](https://github.com/monocongo/climate_indices/issues/1176)
+   specifies against Jerez et al. (2015); none needs a dependency. The standardized
+   demand index ([#1171](https://github.com/monocongo/climate_indices/issues/1171)) takes
+   degree days as a direct input, so deferring them would leave the family's own indices
+   unreachable from raw reanalysis without an external step. `xclim`, `pvlib`, and
+   `windpowerlib` are documented alternatives and validation references, never
+   dependencies. Out of scope, as the epic states: electricity-demand models calibrated
+   on measured load, hydropower generation models calibrated on observed generation,
+   bias adjustment of wind speed, and aggregation to administrative units. The required
+   wind `power_curve` meets criterion 2 in the energy subsystem design note.
+   The other four criteria do not hold. The two-criterion threshold is not met, so no
+   sibling repository is justified.
 
-Which physical transforms the package implements at all (degree days, wind profile,
-capacity factors) is the scope question of
+The family adds no dependency. A transform that needs one would go behind a
+`climate-indices[energy]` extra, so the core install is unchanged, as the epic's
+definition of done requires; decision 7 keeps every transform in scope dependency-free,
+so the extra stays unused.
+
+Which physical transforms the package implements at all was the scope question of
 [#1159](https://github.com/monocongo/climate_indices/issues/1159), which overlaps
-`xclim`, `pvlib`, and `windpowerlib`. Nothing here depends on its answer: the package
-boundary, the aggregation seam, the support rules, the calendar, and the units hold
-whether or not those transforms are kept, so #1159 can only decide implement-versus-defer
-and never a name. The function names, argument conventions, and degree-day contract for
-those transforms are fixed in the internal energy subsystem design note
-(`docs/design/energy-subsystem.md`); only whether they are implemented is provisional on
-#1159, and the default constant values are confirmed by the oracle survey
+`xclim`, `pvlib`, and `windpowerlib`. Decision 7 resolves it by keeping all of them in
+scope; the package boundary, the aggregation seam, the support rules, the calendar, and
+the units never depended on the answer and do not change. The function names, argument
+conventions, and degree-day contract for those transforms are fixed in the internal
+energy subsystem design note (`docs/design/energy-subsystem.md`), and the default
+constant values are confirmed by the oracle survey
 ([#1160](https://github.com/monocongo/climate_indices/issues/1160)). That note stays in
 the repository rather than this site because it also plans unimplemented indices, the
 arrangement {doc}`0005-fire-module-api` chose for fire.
@@ -121,5 +153,6 @@ is a NumPy entry point only. The energy xarray adapters
 ([#1174](https://github.com/monocongo/climate_indices/issues/1174)) carry it for the
 indices that need it.
 
-A reader who finds decisions 1 and 3 through 6 not yet in code is looking at a contract
-awaiting its implementation, not at drift.
+A reader who finds decisions 1 and 3 through 7 not yet in code is looking at a contract
+awaiting its implementation, not at drift. Decision 7 records scope, not code, and does
+not change as the transforms land.
