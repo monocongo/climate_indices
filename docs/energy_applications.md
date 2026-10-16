@@ -1,0 +1,224 @@
+# Climate Indices for Energy Applications
+
+Climate indices describe the climate-driven component of energy supply and
+demand, not actual generation or load. Generation and load also depend on
+installed capacity, technology, curtailment, markets, and behaviour, so a
+low-wind week or a cold spell does not establish how much electricity was
+produced or consumed. This page is a companion to {doc}`wildfire_applications`
+and {doc}`flood_applications`, which make the same distinction for fire and
+flood.
+
+**None of the indices described here measures or forecasts actual generation,
+demand, or residual load.** Use them for monitoring and risk diagnostics of
+the weather and climate conditions that drive the energy system, not as
+generation or load estimates. Every index in this family, implemented or
+planned, is computed from standard meteorological inputs — 2 m temperature,
+near-surface and hub-height wind, surface solar radiation, precipitation — or
+standardizes an energy series the caller supplies
+([energy-family epic #1157][energy-epic]).
+
+## From meteorological drivers to energy droughts
+
+A useful conceptual chain is:
+
+```text
+Meteorological drivers           T2m, wind 10/100 m, SSRD, precip           (inputs)
+              ↓
+Demand proxies                   HDD / CDD / EDD                            (planned)
+Resource transforms              hub-height wind; wind & PV capacity factor (planned)
+Hydro proxy                      capacity-weighted n-month precip           (planned recipe)
+              ↓
+Standardized energy indices      SREPI, standardized demand, SRLI           (planned)
+              ↓
+Energy-drought events            run-theory onset / duration / severity     (planned)
+              ↓
+Calibrated generation & load     hydro generation, electricity demand (MWh) (out of scope)
+```
+
+Read each arrow as a transformation of climate information, never as a model
+of the energy system. Degree days and capacity factors express how favourable
+the weather was for demand or for renewable production; turning them into
+megawatt-hours needs installed capacity, plant characteristics, and observed
+load, which this family does not carry ([energy-family epic #1157][energy-epic]).
+
+## Energy droughts, SREPI, and SRLI
+
+The energy-meteorology literature has adopted the construction behind SPI and
+SPEI — a standardized anomaly over an accumulation window — for *energy
+droughts*: sustained periods of low renewable production or high residual
+load. [Allen & Otero (2023)][allen-otero-2023] define a Standardised Renewable
+Energy Production Index (SREPI) and a Standardised Residual Load Index (SRLI),
+with a reference implementation in the [`SEI` R package][sei]. A validated
+Python implementation of those indices is the family's main contribution; the
+physical transforms make it usable end to end from raw reanalysis.
+
+As planned, three indices standardize an energy series the caller supplies:
+
+- **SREPI** standardizes renewable production or a capacity factor, so low
+  values mark weaker-than-usual renewable resource.
+- **The standardized demand index** standardizes an energy demand proxy, such
+  as energy degree days, so high values mark higher-than-usual
+  weather-driven demand.
+- **SRLI** standardizes residual load — demand minus renewable production — so
+  high values mark periods when weather-driven demand outpaces weather-driven
+  supply. Residual load is signed, which is why SRLI admits negative inputs.
+
+Standardization is unit-agnostic: it ranks or fits whatever series it is
+handed, so capacity factors, degree days, and demand proxies from any source
+are acceptable inputs
+([ADR-0019](adr/0019-energy-module-api-and-aggregation.md)). The default is
+the empirical (rank-based) distribution, which Allen & Otero (2023) recommend
+above roughly 100 observations, with beta available for bounded [0, 1]
+capacity factors when there are too few. SRLI uses the empirical distribution
+only, because a rank-based standardization has no support for a signed series
+to violate.
+
+### Timescale and aggregation
+
+The accumulation window ("Timescale" in prose; `scale` in code) works as it
+does for SPI and SPEI, with one addition. The family is daily first: a weekly
+index is daily input with a Timescale of 7, and a 30-day index is daily input
+with a Timescale of 30; calendar months use monthly input. Sub-daily (hourly)
+input is planned separately ([#1177][energy-1177]).
+
+Precipitation is *summed* over its window, but a capacity factor is
+*averaged*: a week's mean capacity factor stays a fraction of capacity in
+[0, 1], where a week's sum does not. `indices.standardized_index()` therefore
+takes a keyword-only `aggregation`, `"sum"` (the default) or `"mean"`, which
+is available today ([ADR-0019](adr/0019-energy-module-api-and-aggregation.md)).
+For rank-based standardization the choice does not change the result, since a
+window's sum is its mean multiplied by the Timescale; it matters for what the
+accumulated value means and for a bounded family such as beta.
+
+### Events
+
+Run-theory event statistics summarize a standardized index as discrete
+energy-drought events: runs beyond a threshold — below it for SREPI, above it
+for SRLI or demand — each with an onset, duration, and magnitude (the
+cumulative deficit or excess), as `flood.flood_events()` does for flood
+potential ([#1173][energy-1173]). Allen & Otero (2023) define energy droughts
+this way. Events
+inherit the caveat at the top of this page: they are runs of unfavourable
+weather for the energy system, not recorded supply shortfalls.
+
+## Planned energy indices
+
+The energy family below is planned, not implemented: the
+`climate_indices.energy` package does not exist yet, and nothing on this page
+documents a callable energy API. The package, its NumPy and beta xarray tiers,
+and the scope boundary are fixed by
+[ADR-0019](adr/0019-energy-module-api-and-aggregation.md), with function names,
+units, and argument contracts recorded in the internal energy subsystem design
+note. The [energy-family epic #1157][energy-epic] tracks the implementation
+order.
+
+- **Heating, cooling, and energy degree days (HDD, CDD, EDD)** — *planned
+  ([#1164][energy-1164])*. Mean-based degree days from daily mean 2 m
+  temperature against a base temperature, in °C day; EDD is HDD plus CDD with
+  separate heating and cooling bases, per the C3S definition. A caller holding
+  Tmin and Tmax computes the daily mean first.
+- **Hub-height wind speed** — *planned ([#1165][energy-1165])*. Wind
+  extrapolated from a reference height (10 m or 100 m) to a turbine hub
+  height by a power-law or logarithmic profile, in m s⁻¹.
+- **Hydropower precipitation proxy** — *planned recipe
+  ([#1167][energy-1167])*. A capacity-weighted, n-month precipitation series
+  standardized with the existing `indices.standardized_index()`, the way
+  {doc}`standardized-hydrologic-indices` standardizes runoff. It is a proxy
+  for hydro resource, not a hydropower generation model.
+- **SREPI and the standardized demand index** — *planned
+  ([#1171][energy-1171])*, on the empirical ([#1168][energy-1168]) and beta
+  ([#1169][energy-1169]) distribution options.
+- **SRLI** — *planned ([#1172][energy-1172])*.
+- **Energy-drought event statistics** — *planned ([#1173][energy-1173])*.
+- **Wind capacity factor** — *planned ([#1175][energy-1175])*. Hub-height
+  wind passed through a power curve the caller supplies; a generic, documented
+  reference curve, not plant engineering.
+- **PV capacity factor, temperature-derated** — *planned
+  ([#1176][energy-1176])*. Capacity factor from surface solar radiation,
+  reduced as cell temperature — estimated from air temperature, irradiance,
+  and wind — rises, after the reference configuration of Jerez et al. (2015).
+
+The degree days, wind profile, and capacity factors are implemented in this
+package with no new dependency, deliberately overlapping `xclim`'s degree-day
+indicators and `wind_profile`, `pvlib`, and `windpowerlib`; those libraries
+remain documented alternatives and validation references, never dependencies
+([ADR-0019](adr/0019-energy-module-api-and-aggregation.md) decision 7).
+
+## Preparing inputs
+
+The indices take point series or gridded fields that are already in the
+units, location, and spatial support the caller wants to analyse.
+
+- **Units.** Temperature is °C, the library's internal convention; K and °F
+  are normalized at the boundary, and because a degree day is a temperature
+  difference, K and °C give the same degree days. Wind speed is m s⁻¹ and
+  radiation is a *mean* flux in W m⁻². ERA5 `ssrd` is an *accumulated*
+  energy in J m⁻², so it must become a mean flux before a PV capacity factor;
+  whether that conversion is a caller's step or an argument is decided by
+  [#1176][energy-1176].
+- **Bias adjustment** of reanalysis or model wind speed is a user-side step.
+  Apply a dedicated tool before computing hub-height wind or capacity factors.
+- **Spatial aggregation** to countries, bidding zones, or other
+  administrative units is a user-side step. Use a tool such as
+  [`xagg`][xagg] or [`regionmask`][regionmask] to build the regional series
+  first, then standardize it. Weighting by installed capacity, as the
+  hydropower proxy does, is part of this step.
+
+### Data sources
+
+The Copernicus Climate Change Service publishes ERA5-derived
+[global climate and energy indicators from 1950 to present][c3s-energy] — wind
+and PV capacity factors, hydropower proxies, electricity demand, and heating,
+cooling, and energy degree days, gridded at 0.25° and aggregated to national
+and sub-national units ([DOI 10.24381/3bb607bd][c3s-doi]). Its capacity factors, degree
+days, and demand series are ready inputs to the planned standardized indices.
+ERA5 itself, or CMIP model output, supplies the raw temperature, wind,
+radiation, and precipitation for the physical transforms. An end-to-end
+gridded demonstration on these data is planned ([#1179][energy-1179]).
+
+## What these indices cannot tell you
+
+- **The climate-driven component is not generation or load.** Installed
+  capacity, technology, curtailment, markets, and behaviour determine actual
+  output and demand; these indices carry none of that information.
+- **Calibrated energy-system models are out of scope.** Electricity-demand
+  models calibrated on measured load, hydropower generation or reservoir-inflow
+  models calibrated on observed generation, and grid, dispatch, market, or
+  capacity-expansion modelling are outside the family
+  ([energy-family epic #1157][energy-epic]). So is plant-level PV or wind
+  engineering beyond the generic reference configurations; use `pvlib` or
+  `windpowerlib` for that.
+- **They are not yet validated.** No energy index is implemented yet, so
+  [VALIDATION.md][validation] has no energy section at present; [#1180][energy-1180]
+  adds one as implementations land, with validation against the `SEI`
+  package and published C3S outputs where those serve as oracles. Until then,
+  treat this page as orientation, not as evidence of validated skill.
+
+## Sources
+
+- [Allen & Otero (2023), *Standardised indices to monitor energy droughts*][allen-otero-2023]
+- [Copernicus C3S, *Global climate and energy indicators from 1950 to present derived from reanalysis*][c3s-doi]
+- Jerez et al. (2015), the temperature-derated PV reference configuration specified by [#1176][energy-1176]
+- [`SEI` R package][sei]
+
+[allen-otero-2023]: https://doi.org/10.1016/j.renene.2023.119206
+[sei]: https://github.com/noeliaof/SEI
+[c3s-energy]: https://cds.climate.copernicus.eu/datasets/sis-energy-global-reanalysis?tab=overview
+[c3s-doi]: https://doi.org/10.24381/3bb607bd
+[xagg]: https://github.com/ks905383/xagg
+[regionmask]: https://regionmask.readthedocs.io/
+[validation]: https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md
+[energy-epic]: https://github.com/monocongo/climate_indices/issues/1157
+[energy-1164]: https://github.com/monocongo/climate_indices/issues/1164
+[energy-1165]: https://github.com/monocongo/climate_indices/issues/1165
+[energy-1167]: https://github.com/monocongo/climate_indices/issues/1167
+[energy-1168]: https://github.com/monocongo/climate_indices/issues/1168
+[energy-1169]: https://github.com/monocongo/climate_indices/issues/1169
+[energy-1171]: https://github.com/monocongo/climate_indices/issues/1171
+[energy-1172]: https://github.com/monocongo/climate_indices/issues/1172
+[energy-1173]: https://github.com/monocongo/climate_indices/issues/1173
+[energy-1175]: https://github.com/monocongo/climate_indices/issues/1175
+[energy-1176]: https://github.com/monocongo/climate_indices/issues/1176
+[energy-1177]: https://github.com/monocongo/climate_indices/issues/1177
+[energy-1179]: https://github.com/monocongo/climate_indices/issues/1179
+[energy-1180]: https://github.com/monocongo/climate_indices/issues/1180
