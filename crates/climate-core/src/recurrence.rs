@@ -101,24 +101,14 @@ struct Day {
     weather_valid: bool,
 }
 
-/// A step result that is not finite; the run reports it as
-/// [`ClimateError::NonFinite`], kept apart so the per-day result stays small.
-#[derive(Debug)]
-struct NonFiniteStep;
-
-/// Advance one cell by one day; returns whether the day records the state.
-///
-/// A day records the state when the cell advanced, or when it is off season
-/// and carries a started recurrence (ADR-0010); every other day records NaN.
+/// Apply the missing-day rules; return whether the cell can advance.
 #[inline(always)]
-fn advance<S: Copy>(
+fn prepare<S>(
     policy: MissingDayPolicy,
     cell: &mut Cell<S>,
     today: Day,
-    value_of: &impl Fn(&S) -> f64,
     poison: &impl Fn(&mut S),
-    step: impl FnOnce(S) -> S,
-) -> Result<bool, NonFiniteStep> {
+) -> bool {
     let Day {
         static_valid,
         in_season,
@@ -129,26 +119,16 @@ fn advance<S: Copy>(
         // here, whether or not a missing day poisoned the cell
         cell.gap_days = 0;
         if cell.poisoned {
-            return Ok(false);
+            return false;
         }
         cell.started = true;
-        let updated = step(cell.state);
-        if !value_of(&updated).is_finite() {
-            return Err(NonFiniteStep);
-        }
-        cell.state = updated;
-        return Ok(true);
+        return true;
     }
     // a cell whose static input is unusable has no recurrence to gap-manage: it
     // never starts, so it is not an elapsed missing day
-    if !static_valid {
-        return Ok(false);
-    }
-    if !in_season {
-        // an off-season day is neither an observation nor a missing day: it
-        // never advances the recurrence and never counts against the allowance,
-        // and it emits the carried state instead of a gap NaN
-        return Ok(cell.started);
+    if !static_valid || !in_season {
+        // an off-season day neither advances the recurrence nor counts as a gap
+        return false;
     }
     if cell.started || cell.poisoned {
         let gap_days = cell.gap_days.max(0) + 1;
@@ -162,7 +142,7 @@ fn advance<S: Copy>(
             cell.poisoned = true;
         }
     }
-    Ok(false)
+    false
 }
 
 /// Run one daily recurrence over the whole time axis.
@@ -178,6 +158,8 @@ fn advance<S: Copy>(
 ///   than one loop, so mark a costly step `#[inline(always)]`: an outlined step
 ///   costs the fire codes up to a fifth of their run time.
 ///
+/// Each day calls all missing-day `poison` callbacks before any `step` callback.
+/// All step finiteness checks precede the history's `value_of` calls.
 /// A step that returns a non-finite value from finite inputs is an error, as in
 /// `_advance_component`; the run then returns no state or history at all.
 pub fn run<S: Copy>(
@@ -225,17 +207,6 @@ pub fn run<S: Copy>(
         })
         .collect();
     let static_valid: Vec<bool> = inputs.static_valid.to_vec();
-    // the time-first masks as `[day * cells + cell]` slices; a view that is
-    // already in standard layout, as NumPy's C-order arrays are, is not copied
-    let weather_valid = inputs.weather_valid.as_standard_layout();
-    let weather_valid = weather_valid.as_slice().expect("standard layout");
-    let in_season = inputs
-        .in_season
-        .as_ref()
-        .map(|mask| mask.as_standard_layout());
-    let in_season = in_season
-        .as_ref()
-        .map(|mask| mask.as_slice().expect("standard layout"));
     let recorded_days = days.saturating_sub(inputs.spin_up);
     let mut values = record.then(|| Array2::<f64>::from_elem((recorded_days, cells), f64::NAN));
     let mut history = values
@@ -252,19 +223,19 @@ pub fn run<S: Copy>(
         for day in 0..days {
             let today = Day {
                 static_valid: static_valid[0],
-                in_season: in_season.is_none_or(|mask| mask[day]),
-                weather_valid: weather_valid[day],
+                in_season: inputs.in_season.as_ref().is_none_or(|mask| mask[[day, 0]]),
+                weather_valid: inputs.weather_valid[[day, 0]],
             };
-            let records = advance(
-                inputs.policy,
-                &mut cell,
-                today,
-                &value_of,
-                &poison,
-                |state| step(state, day, 0),
-            )
-            .map_err(|NonFiniteStep| ClimateError::NonFinite { index_type })?;
-            if records
+            let active = prepare(inputs.policy, &mut cell, today, &poison);
+            if active {
+                let updated = step(cell.state, day, 0);
+                if !value_of(&updated).is_finite() {
+                    return Err(ClimateError::NonFinite { index_type });
+                }
+                cell.state = updated;
+            }
+            let carried = today.static_valid && !today.in_season && cell.started;
+            if (active || carried)
                 && day >= inputs.spin_up
                 && let Some(history) = history.as_deref_mut()
             {
@@ -273,25 +244,41 @@ pub fn run<S: Copy>(
         }
         *slot = cell;
     } else {
+        let mut active = vec![false; cells];
         for day in 0..days {
-            let row = day * cells..(day + 1) * cells;
-            let weather_row = &weather_valid[row.clone()];
-            let season_row = in_season.map(|mask| &mask[row]);
-            let mut history_row = (day >= inputs.spin_up)
-                .then(|| (day - inputs.spin_up) * cells)
-                .and_then(|row| Some(&mut history.as_deref_mut()?[row..row + cells]));
+            // Row views also accept strided masks without allocating a copy.
+            let weather_row = inputs.weather_valid.row(day);
+            let season_row = inputs.in_season.as_ref().map(|mask| mask.row(day));
             for (index, cell) in run.iter_mut().enumerate() {
                 let today = Day {
                     static_valid: static_valid[index],
                     in_season: season_row.is_none_or(|season| season[index]),
                     weather_valid: weather_row[index],
                 };
-                let records = advance(inputs.policy, cell, today, &value_of, &poison, |state| {
-                    step(state, day, index)
-                })
-                .map_err(|NonFiniteStep| ClimateError::NonFinite { index_type })?;
-                if records && let Some(history_row) = history_row.as_deref_mut() {
-                    history_row[index] = value_of(&cell.state);
+                active[index] = prepare(inputs.policy, cell, today, &poison);
+            }
+            // Callbacks can share state, so preserve their per-day phases.
+            for (index, cell) in run.iter_mut().enumerate() {
+                if active[index] {
+                    let updated = step(cell.state, day, index);
+                    if !value_of(&updated).is_finite() {
+                        return Err(ClimateError::NonFinite { index_type });
+                    }
+                    cell.state = updated;
+                }
+            }
+            if day >= inputs.spin_up
+                && let Some(history) = history.as_deref_mut()
+            {
+                let row = (day - inputs.spin_up) * cells;
+                let history_row = &mut history[row..row + cells];
+                for (index, cell) in run.iter().enumerate() {
+                    let carried = season_row.is_some_and(|season| !season[index])
+                        && static_valid[index]
+                        && cell.started;
+                    if active[index] || carried {
+                        history_row[index] = value_of(&cell.state);
+                    }
                 }
             }
         }
@@ -574,6 +561,123 @@ mod tests {
     }
 
     #[test]
+    fn callbacks_keep_missing_step_and_history_phase_order() {
+        for policy in [
+            MissingDayPolicy::Propagate,
+            MissingDayPolicy::Bridge { max_gap_days: 0 },
+        ] {
+            for record in [false, true] {
+                let events = std::cell::RefCell::new(Vec::new());
+                let weather = array![[true, false, true]];
+                let result = run(
+                    "test",
+                    &[(0, 0.0), (1, 1.0), (2, 2.0)],
+                    &RecurrenceInputs {
+                        policy,
+                        ..inputs(&weather, &array![0, 0, 0])
+                    },
+                    record,
+                    |&(cell, value)| {
+                        events.borrow_mut().push(("value", cell));
+                        value
+                    },
+                    |(cell, value)| {
+                        events.borrow_mut().push(("poison", *cell));
+                        *value = f64::NAN;
+                    },
+                    |(cell, value), day, index| {
+                        assert_eq!((day, index), (0, cell));
+                        events.borrow_mut().push(("step", cell));
+                        let poisoned = events
+                            .borrow()
+                            .iter()
+                            .filter(|&&(event, _)| event == "poison")
+                            .count();
+                        (cell, value + poisoned as f64)
+                    },
+                )
+                .unwrap();
+                assert_eq!(result.state[0].1, 1.0);
+                assert!(result.state[1].1.is_nan());
+                assert_eq!(result.state[2].1, 3.0);
+                let mut expected = vec![
+                    ("value", 0),
+                    ("value", 1),
+                    ("value", 2),
+                    ("poison", 1),
+                    ("step", 0),
+                    ("value", 0),
+                    ("step", 2),
+                    ("value", 2),
+                ];
+                if record {
+                    expected.extend([("value", 0), ("value", 2)]);
+                    let values = result.values.unwrap();
+                    assert_eq!(column(&values, 0), vec![Some(1.0)]);
+                    assert_eq!(column(&values, 2), vec![Some(3.0)]);
+                } else {
+                    assert!(result.values.is_none());
+                }
+                assert_eq!(*events.borrow(), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn strided_masks_match_contiguous_masks() {
+        let weather = Array2::from_shape_fn((12, 6), |(day, cell)| (day + cell) % 4 != 0);
+        let season = Array2::from_shape_fn((12, 6), |(day, cell)| (day + cell) % 5 != 0);
+        for columns in [ndarray::s![..;-1, ..;2], ndarray::s![..;-1, 2..3]] {
+            let weather_view = weather.slice(columns);
+            let season_view = season.slice(columns);
+            assert!(!weather_view.is_standard_layout());
+            assert!(!season_view.is_standard_layout());
+            let contiguous_weather = weather_view.to_owned();
+            let contiguous_season = season_view.to_owned();
+            let cells = weather_view.ncols();
+            let initial = vec![0.0; cells];
+            let static_valid = Array1::from_elem(cells, true);
+            let gaps = Array1::from_elem(cells, 0);
+            for record in [false, true] {
+                let run_masks = |weather_valid, in_season| {
+                    run(
+                        "test",
+                        &initial,
+                        &RecurrenceInputs {
+                            weather_valid,
+                            static_valid: static_valid.view(),
+                            in_season: Some(in_season),
+                            trailing_gap_days: gaps.view(),
+                            spin_up: 2,
+                            policy: MissingDayPolicy::Bridge { max_gap_days: 1 },
+                        },
+                        record,
+                        |state| *state,
+                        |state| *state = f64::NAN,
+                        |state, day, cell| state + (day * cells + cell + 1) as f64,
+                    )
+                    .unwrap()
+                };
+                let strided = run_masks(weather_view, season_view);
+                let contiguous = run_masks(contiguous_weather.view(), contiguous_season.view());
+                assert_eq!(strided.trailing_gap_days, contiguous.trailing_gap_days);
+                for cell in 0..cells {
+                    assert_eq!(
+                        strided.state[cell].to_bits(),
+                        contiguous.state[cell].to_bits()
+                    );
+                    if record {
+                        assert_eq!(
+                            column(strided.values.as_ref().unwrap(), cell),
+                            column(contiguous.values.as_ref().unwrap(), cell)
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn a_single_cell_run_matches_its_column_of_a_wider_run() {
         // a single cell runs in its own loop, so every rule must match the one
         // the wider run applies: missing days inside and past a one-day bridge,
@@ -598,14 +702,21 @@ mod tests {
                     weather_valid: weather.slice(columns),
                     static_valid: static_valid.slice(ndarray::s![cells.clone()]),
                     in_season: Some(in_season.slice(columns)),
-                    trailing_gap_days: gaps.slice(ndarray::s![cells]),
+                    trailing_gap_days: gaps.slice(ndarray::s![cells.clone()]),
                     spin_up: 2,
                     policy: MissingDayPolicy::Bridge { max_gap_days: 1 },
                 },
                 true,
                 |state| *state,
                 |state| *state = f64::NAN,
-                increment,
+                |state, day, cell| {
+                    assert!(day < days);
+                    assert!(cell < cells.len());
+                    if cells.len() == 1 {
+                        assert_eq!(cell, 0);
+                    }
+                    state + (day * 10 + cells.start + cell + 1) as f64
+                },
             )
             .unwrap()
         };
@@ -625,10 +736,10 @@ mod tests {
             let single_gap = single.trailing_gap_days.map_or(gaps[cell], |gaps| gaps[0]);
             assert_eq!(single_gap, wide_gaps[cell], "cell {cell}");
         }
-        // the scenario reaches every outcome: cell 0 advances to 2 by day 2 and
+        // the scenario reaches every outcome: cell 0 advances to 32 by day 2 and
         // carries it through off-season days 3 to 5, a missing day records a gap
         // NaN, and cell 4's two in-season missing days exceed the allowance
-        assert_eq!(column(&wide_values, 0)[..4], [Some(2.0); 4]);
+        assert_eq!(column(&wide_values, 0)[..4], [Some(32.0); 4]);
         assert!(wide_values.iter().any(|value| value.is_nan()));
         assert!(wide.state[4].is_nan());
     }
