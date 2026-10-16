@@ -1154,8 +1154,12 @@ def build_output_attrs(
         if "standard_name" not in cf_metadata:
             # CF Standard Name Omission: an index with no registered standard
             # name must not inherit the input's (e.g. air_temperature), which
-            # would misdescribe the computed result.
+            # would misdescribe the computed result. The same applies to the
+            # units_metadata qualifier, which only a temperature difference
+            # sets (e.g. a mm/month PET output must not stay "on_scale").
             output_attrs.pop("standard_name", None)
+        if "units_metadata" not in cf_metadata:
+            output_attrs.pop("units_metadata", None)
 
     # cell_methods describes how the input was aggregated (e.g. a time sum),
     # which no longer holds for a computed index; do not inherit it unless a

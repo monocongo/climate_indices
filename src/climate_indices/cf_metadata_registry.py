@@ -545,9 +545,12 @@ CF_METADATA: dict[str, CFAttributes] = {
     },
     # Energy-family metadata precedes the NumPy kernels and xarray adapters (#1162).
     # Names and units follow ADR-0019 and docs/design/energy-subsystem.md. Only HDD,
-    # CDD, and hub-height wind speed have CF standard names (table v95); the
-    # adapters must attach the air_temperature_threshold or height coordinate the
-    # names require. A degree day is labelled °C day; K d is the same difference.
+    # CDD, and hub-height wind speed have CF standard names (table v95); their
+    # adapters must attach the air_temperature_threshold or height coordinate, and
+    # time bounds, that the names require. The degree-day names describe the
+    # single-base form only: the C3S scheme pairs an activation threshold with a
+    # separate reference temperature, which one base does not reproduce (#1163,
+    # #1164). A degree day is labelled °C day; K d is the same temperature difference.
     "heating_degree_days": {
         "long_name": "Heating Degree Days",
         "standard_name": "integral_wrt_time_of_air_temperature_deficit",
@@ -555,7 +558,8 @@ CF_METADATA: dict[str, CFAttributes] = {
         "units_metadata": _TEMPERATURE_DIFFERENCE,
         "description": (
             "Base temperature minus daily mean temperature where positive, in °C day; "
-            "the climate-driven component of heating demand, not actual load."
+            "the climate-driven component of heating demand, not actual load. The C3S "
+            "scheme pairs an activation threshold with a separate reference temperature."
         ),
         "references": _C3S_ENERGY_INDICATORS,
     },
@@ -566,7 +570,8 @@ CF_METADATA: dict[str, CFAttributes] = {
         "units_metadata": _TEMPERATURE_DIFFERENCE,
         "description": (
             "Daily mean temperature minus base temperature where positive, in °C day; "
-            "the climate-driven component of cooling demand, not actual load."
+            "the climate-driven component of cooling demand, not actual load. The C3S "
+            "scheme pairs an activation threshold with a separate reference temperature."
         ),
         "references": _C3S_ENERGY_INDICATORS,
     },
@@ -576,7 +581,8 @@ CF_METADATA: dict[str, CFAttributes] = {
         "units_metadata": _TEMPERATURE_DIFFERENCE,
         "description": (
             "Heating plus cooling degree days with separate base temperatures, in °C day; "
-            "the climate-driven component of energy demand, not actual load."
+            "the climate-driven component of energy demand, not actual load. The C3S scheme "
+            "pairs each activation threshold with a separate reference temperature."
         ),
         "references": _C3S_ENERGY_INDICATORS,
     },

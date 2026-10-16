@@ -174,4 +174,4 @@ A version string and CF-style `history` attribute stamped onto computed index ou
 _Avoid_: Provenance (ambiguous alone — see also Fixture Provenance)
 
 **CF Standard Name Omission**:
-Policy: the CF Conventions' `standard_name` attribute is deliberately left unset on computed outputs (SPI, SPEI, PDSI, etc.) because none of these indices has an officially CF-registered standard name. This is intentional, not a gap to fill in.
+Policy: the CF Conventions' `standard_name` attribute is set on a computed output only when the CF standard name table defines one for that quantity — today only the heating and cooling degree days and the hub-height wind speed — and is otherwise left unset (SPI, SPEI, PDSI, etc.). An adapter never invents one and never inherits the input's. This is intentional, not a gap to fill in.

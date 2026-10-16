@@ -109,6 +109,9 @@ STANDARD_NAMES = {
     "hub_height_wind_speed": "wind_speed",
 }
 
+# the only entries carrying the CF 1.11 temperature-difference qualifier
+UNITS_METADATA: dict[str, str] = dict.fromkeys(list(DEGREE_DAY_KEYS), "temperature: difference")
+
 # (entry, field, expected value) rows: one row per literal registry assertion.
 ENTRY_VALUE_ROWS = [
     ("spi", "long_name", "Standardized Precipitation Index"),
@@ -203,13 +206,10 @@ ENTRY_VALUE_ROWS = [
     ("haines_high", "climate_indices_variant", "high"),
     ("heating_degree_days", "long_name", "Heating Degree Days"),
     ("heating_degree_days", "units", "K d"),
-    ("heating_degree_days", "units_metadata", "temperature: difference"),
     ("cooling_degree_days", "long_name", "Cooling Degree Days"),
     ("cooling_degree_days", "units", "K d"),
-    ("cooling_degree_days", "units_metadata", "temperature: difference"),
     ("energy_degree_days", "long_name", "Energy Degree Days"),
     ("energy_degree_days", "units", "K d"),
-    ("energy_degree_days", "units_metadata", "temperature: difference"),
     ("hub_height_wind_speed", "long_name", "Hub-Height Wind Speed"),
     ("hub_height_wind_speed", "units", "m s-1"),
     ("wind_capacity_factor", "long_name", "Wind Capacity Factor"),
@@ -285,6 +285,8 @@ REFERENCE_CASES = [pytest.param(entry, fragments, id=entry) for entry, fragments
 def test_registry_has_exactly_the_expected_keys() -> None:
     """An added, renamed, or removed index fails here rather than in twenty value tests."""
     assert set(CF_METADATA) == EXPECTED_KEYS
+    assert set(STANDARD_NAMES) <= EXPECTED_KEYS, "a stale standard-name allowlist key survives here"
+    assert set(UNITS_METADATA) <= EXPECTED_KEYS, "a stale units-metadata allowlist key survives here"
     documented = {(entry, field) for entry, field, _ in ENTRY_VALUE_ROWS}
     referenced = {entry for entry, _ in REFERENCE_ROWS}
     for index_name in EXPECTED_KEYS:
@@ -351,6 +353,12 @@ def test_fire_entries_describe_themselves_without_inventing_standard_names(index
 def test_entries_claim_no_invented_standard_names(index_name: str) -> None:
     """Only officially defined CF standard names appear; every other entry omits the field."""
     assert CF_METADATA[index_name].get("standard_name") == STANDARD_NAMES.get(index_name)
+
+
+@pytest.mark.parametrize("index_name", sorted(EXPECTED_KEYS))
+def test_entries_qualify_only_temperature_differences(index_name: str) -> None:
+    """Only a degree day is a temperature difference, so only it carries the CF 1.11 qualifier."""
+    assert CF_METADATA[index_name].get("units_metadata") == UNITS_METADATA.get(index_name)
 
 
 @pytest.mark.parametrize("index_name", ENERGY_KEYS)
