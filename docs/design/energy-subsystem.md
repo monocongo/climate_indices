@@ -114,11 +114,13 @@ Degree-day conventions:
   none at all from its mean of 17.5 °C. That function is additive and leaves the
   mean-based one valid, which is what makes deferring it not a one-way door.
 - **Defaults are the oracle's.** The C3S and Eurostat schemes (15/18, 24/21) are not
-  separate APIs — they are non-default base temperatures, so the argument set already
-  covers them. The default values are confirmed by the oracle survey
-  ([#1160](https://github.com/monocongo/climate_indices/issues/1160)) and pinned by the
-  fixtures ([#1163](https://github.com/monocongo/climate_indices/issues/1163)); this note
-  deliberately does not invent them.
+  separate APIs. The oracle survey
+  ([#1160](https://github.com/monocongo/climate_indices/issues/1160)) does not confirm
+  default values: each scheme pairs an activation threshold with a separate reference
+  temperature, which one base per transform cannot reproduce. No default is established
+  until [#1163](https://github.com/monocongo/climate_indices/issues/1163) and
+  [#1164](https://github.com/monocongo/climate_indices/issues/1164) reconcile that
+  contract and the fixtures pin the values; this note deliberately does not invent them.
 - **No degree day without a fixture.** [#1164](https://github.com/monocongo/climate_indices/issues/1164)
   has the transforms in scope (decision 7) and still lands only against the
   [#1163](https://github.com/monocongo/climate_indices/issues/1163) fixtures.

@@ -144,6 +144,7 @@ vocabulary at `src/climate_indices/CONTEXT.md`):
   `docs/research/interactive-climate-explorer-landscape.md`,
   `docs/research/dri-wrcc-scpdsi-assessment.md`,
   `docs/research/flood-oracle-survey.md`,
+  `docs/research/energy-oracle-survey.md`,
   `docs/research/import-cycle-investigation.md`,
   `docs/explorer/`, `docs/architecture-deepening-review-*.md`,
   `docs/ai-assisted-development-report-*.md`, `docs/release-story-notes.md`,
