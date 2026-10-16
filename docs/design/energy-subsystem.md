@@ -27,11 +27,11 @@ These indices describe the **climate-driven component** of energy supply and dem
 not actual generation or load, which also depend on installed capacity, technology,
 curtailment, markets, and behaviour. Every docstring and doc page says so. The scope
 decision is [#1159](https://github.com/monocongo/climate_indices/issues/1159), recorded in
-[ADR-0019](../adr/0019-energy-module-api-and-aggregation.md) decision 7: the physical
-transforms are implemented here, in-house, duplicating `xclim`'s degree days and wind
-profile and `pvlib`'s PVWatts model deliberately, because none needs a dependency and the
-standardized demand index takes degree days as a direct input. No name recorded here
-changes with that outcome.
+[ADR-0019](../adr/0019-energy-module-api-and-aggregation.md) decision 7.
+The physical transforms are implemented here without new dependencies.
+The degree-day and wind-profile formulas deliberately overlap with `xclim`; `pvlib`
+provides PV prior art. The standardized demand index takes degree days as a direct
+input. No name recorded here changes with that outcome.
 
 A separate repository becomes justified when two or more of these are true:
 
@@ -41,7 +41,9 @@ A separate repository becomes justified when two or more of these are true:
 4. Energy-specific dependencies would be forced on all `climate_indices` users
 5. The release cadence needs to diverge
 
-None holds today, so no sibling repository
+Criterion 2 holds because `energy.wind_capacity_factor()` requires a `power_curve`,
+not a meteorological or reanalysis field. The other four criteria do not hold, so
+no sibling repository is justified
 ([#1159](https://github.com/monocongo/climate_indices/issues/1159)). Until two do, an
 out-of-scope energy proposal is a candidate for that split, not a rejection on merit.
 [CONTRIBUTING.md](../../CONTRIBUTING.md#energy-scope) records the triage response.

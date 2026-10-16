@@ -80,12 +80,12 @@ indices — not calibrated demand or generation models, wind bias adjustment, or
 spatial aggregation to administrative units. The exact boundary, the five
 criteria for a future sibling repository, and the no-new-dependency rule are in
 [the energy subsystem design](docs/design/energy-subsystem.md#scope-and-boundary).
-The physical transforms duplicate `xclim`, `pvlib`, and `windpowerlib`
-deliberately: each is a published reference formula implementable without a
-dependency, and those libraries remain documented alternatives rather than
-requirements. Point an
-out-of-scope proposal there rather than dismissing it: it is a candidate for that
-sibling, not a rejection on merit.
+The degree-day and wind-profile formulas deliberately overlap with `xclim`.
+The PV transform uses the reference configuration in
+[#1176](https://github.com/monocongo/climate_indices/issues/1176).
+`xclim`, `pvlib`, and `windpowerlib` remain documented alternatives and validation
+references, not dependencies. Point an out-of-scope proposal there rather than
+dismissing it: it is a candidate for that sibling, not a rejection on merit.
 
 ## Documentation audience
 

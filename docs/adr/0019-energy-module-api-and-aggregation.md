@@ -9,7 +9,8 @@ Amended again by the energy scope decision
 ([#1159](https://github.com/monocongo/climate_indices/issues/1159)): decision 7 fixes the
 family's scope boundary. The physical transforms stay in this package, implemented
 in-house with no new dependency, and calibrated models and preprocessing stay out of
-scope. No name or signature recorded here changes.
+scope. No name or signature recorded here changes. The required wind `power_curve`
+meets one split criterion, below the two-criterion threshold.
 
 Only decision 2 describes code that exists: the `aggregation` keyword
 landed with this record ([#1158](https://github.com/monocongo/climate_indices/issues/1158)).
@@ -118,11 +119,10 @@ series such as residual load.
    `windpowerlib` are documented alternatives and validation references, never
    dependencies. Out of scope, as the epic states: electricity-demand models calibrated
    on measured load, hydropower generation models calibrated on observed generation,
-   bias adjustment of wind speed, and aggregation to administrative units. No sibling
-   repository is justified, because none of the five criteria recorded in the energy
-   subsystem design note holds for a family that ships inside this package, whose
-   transforms are arithmetic over standard meteorological fields, and whose calibrated
-   quantities stay out of scope.
+   bias adjustment of wind speed, and aggregation to administrative units. The required
+   wind `power_curve` meets criterion 2 in the energy subsystem design note.
+   The other four criteria do not hold. The two-criterion threshold is not met, so no
+   sibling repository is justified.
 
 The family adds no dependency. A transform that needs one would go behind a
 `climate-indices[energy]` extra, so the core install is unchanged, as the epic's
