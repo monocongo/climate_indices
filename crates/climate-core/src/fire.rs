@@ -622,6 +622,25 @@ mod tests {
     }
 
     #[test]
+    fn the_climatology_denominator_follows_mean_annual_precipitation() {
+        // expected values come from `1 + 10.88 exp(-0.001736 R)` evaluated
+        // outside the helper, so the day-by-day replay below cannot hide a
+        // helper that ignores R
+        for (mean_annual, expected) in [
+            (0.0, 11.88),
+            (800.0, 3.7131931935068243),
+            (900.0, 3.2807999607964047),
+            (2000.0, 1.337876863660566),
+        ] {
+            let denominator = kbdi_climatology_denominator(mean_annual);
+            assert!(
+                (denominator - expected).abs() < 1e-12,
+                "R = {mean_annual}: {denominator} != {expected}"
+            );
+        }
+    }
+
+    #[test]
     fn a_run_over_the_time_axis_matches_a_day_by_day_loop() {
         let precipitation = array![[0.0, 30.0], [5.0, 0.0], [12.0, 0.0], [0.0, 10.0]];
         let temperature = array![[25.0, 25.0], [22.0, 30.0], [18.0, 28.0], [26.0, 24.0]];
