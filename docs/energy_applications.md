@@ -103,8 +103,9 @@ for SRLI or demand — each with an onset, duration, and magnitude (the
 cumulative deviation from the threshold). The planned energy function builds
 on `runs.identify_runs()`, the run-theory primitive available today, which
 takes an explicit `"below"` or `"above"` direction ([#1173][energy-1173]).
-Allen & Otero (2023) define energy droughts this way. Events inherit the caveat at the top of this page: they are runs of unfavourable
-weather for the energy system, not recorded supply shortfalls.
+Allen & Otero (2023) define energy droughts this way. Events inherit the
+caveat at the top of this page: they are runs of unfavourable weather for the
+energy system, not recorded supply shortfalls.
 
 ## Planned energy indices
 
@@ -131,8 +132,9 @@ order.
   {doc}`standardized-hydrologic-indices` standardizes runoff. It is a proxy
   for hydro resource, not a hydropower generation model.
 - **SREPI and the standardized demand index** — *planned
-  ([#1171][energy-1171])*, on the empirical ([#1168][energy-1168]) and beta
-  ([#1169][energy-1169]) distribution options.
+  ([#1171][energy-1171])*, on the empirical distribution option
+  ([#1168][energy-1168]), with beta ([#1169][energy-1169]) for bounded
+  [0, 1] series averaged with `aggregation="mean"`.
 - **SRLI** — *planned ([#1172][energy-1172])*.
 - **Energy-drought event statistics** — *planned ([#1173][energy-1173])*.
 - **Wind capacity factor** — *planned ([#1175][energy-1175])*. Hub-height
@@ -145,9 +147,10 @@ order.
   and wind — rises, after the reference configuration of Jerez et al. (2015).
 
 The degree days, wind profile, and capacity factors will be implemented in
-this package with no new dependency, deliberately overlapping `xclim`'s degree-day
-indicators and `wind_profile`, `pvlib`, and `windpowerlib`; those libraries
-remain documented alternatives and validation references, never dependencies
+this package with no new dependency, deliberately overlapping `xclim`'s
+degree-day indicators and `wind_profile`, `pvlib`, and `windpowerlib`; those
+libraries remain documented alternatives and validation references, never
+dependencies
 ([ADR-0019](adr/0019-energy-module-api-and-aggregation.md) decision 7).
 
 ## Preparing inputs
@@ -176,8 +179,9 @@ The Copernicus Climate Change Service publishes ERA5-derived
 [global climate and energy indicators from 1950 to present][c3s-energy] — wind
 and PV capacity factors, hydropower proxies, electricity demand, and heating,
 cooling, and energy degree days, gridded at 0.25° and aggregated to national
-and sub-national units ([DOI 10.24381/3bb607bd][c3s-doi]). Its capacity factors, degree
-days, and demand series are ready inputs to the planned standardized indices.
+and sub-national units ([DOI 10.24381/3bb607bd][c3s-doi]). Its capacity
+factors, degree days, and demand series are ready inputs to the planned
+standardized indices.
 ERA5 itself, or CMIP model output, supplies the raw temperature, wind,
 radiation, and precipitation for the physical transforms. An end-to-end
 gridded demonstration on these data is planned ([#1179][energy-1179]).
@@ -195,8 +199,8 @@ gridded demonstration on these data is planned ([#1179][energy-1179]).
   engineering beyond the generic reference configurations; use `pvlib` or
   `windpowerlib` for that.
 - **They are not yet validated.** No energy index is implemented yet, so
-  [VALIDATION.md][validation] has no energy section at present; [#1180][energy-1180]
-  adds one as implementations land, with validation against the `SEI`
+  [VALIDATION.md][validation] has no energy section at present;
+  [#1180][energy-1180] adds one as implementations land, with validation against the `SEI`
   package and published C3S outputs where those serve as oracles. Until then,
   treat this page as orientation, not as evidence of validated skill.
 
