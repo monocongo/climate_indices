@@ -18,6 +18,7 @@ algorithm_refs/palmer
 algorithm_refs/pet
 wildfire_applications
 flood_applications
+energy_applications
 floating_point_best_practices
 ai-assisted-development
 adr/index
