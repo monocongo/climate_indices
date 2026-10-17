@@ -40,6 +40,7 @@ import hashlib
 import json
 import os
 import platform
+import shutil
 from importlib.metadata import version
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -113,7 +114,10 @@ def author_counts(hwi: np.ndarray, spei: np.ndarray) -> dict[str, int | float | 
 
 def prepare(source_dir: Path, output_dir: Path, download_date: str) -> None:
     """Verify the pinned files, extract three cells, and publish an offline fixture."""
-    dt.date.fromisoformat(download_date)
+    retrieved = dt.date.fromisoformat(download_date)
+    if retrieved > dt.date.today():
+        raise ValueError("Download date cannot be in the future.")
+    download_date = retrieved.isoformat()
     resolved_output = output_dir.resolve()
     if resolved_output == OUTPUT_ROOT or not resolved_output.is_relative_to(OUTPUT_ROOT):
         raise ValueError(f"Output directory must be below {OUTPUT_ROOT}.")
@@ -227,7 +231,15 @@ def prepare(source_dir: Path, output_dir: Path, download_date: str) -> None:
             "notes": "reference.json is canonical and pins inputs.npz. This is an author-method fixture, not validation of a compound API or the complete Figure 8 map. Public source hashes, file IDs, cell-selection targets, source NaNs, original variable names, processing choices, and generation versions are in reference.json. The author returns NaN for zero joint counts; JSON uses null. No scientific bootstrap result is supplied. Normal tests are offline and import no compound module.",
         }
         (staging / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
-        os.replace(staging, output_dir)
+        # Claiming with mkdir is atomic, so a directory created after the early check
+        # is refused instead of replaced. A failed move rolls our own claim back.
+        os.mkdir(output_dir)
+        try:
+            for staged in staging.iterdir():
+                os.replace(staged, output_dir / staged.name)
+        except BaseException:
+            shutil.rmtree(output_dir, ignore_errors=True)
+            raise
         print(f"Wrote {len(cases)} author-method cases to {output_dir}")
 
 

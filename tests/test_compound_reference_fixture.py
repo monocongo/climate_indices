@@ -5,7 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 import runpy
+import sys
 from collections import Counter
+from datetime import date, timedelta
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -163,6 +165,24 @@ def test_padding_precedes_gap_interpolation(preparation: dict[str, Any]) -> None
     assert daily.sel(time="2021-03-30").item() == pytest.approx(-0.0625, rel=0, abs=1e-15)
 
 
+@pytest.mark.parametrize("download_date", ["not-a-date", "2026-02-30"])
+def test_preparation_rejects_invalid_download_dates(
+    preparation: dict[str, Any], tmp_path: Path, download_date: str
+) -> None:
+    output = tmp_path / "fixture"
+    with pytest.raises(ValueError):
+        preparation["prepare"](tmp_path / "missing-source", output, download_date)
+    assert not output.exists()
+
+
+def test_preparation_rejects_future_download_dates(preparation: dict[str, Any], tmp_path: Path) -> None:
+    output = tmp_path / "fixture"
+    tomorrow = (date.today() + timedelta(days=1)).isoformat()
+    with pytest.raises(ValueError, match="Download date cannot be in the future"):
+        preparation["prepare"](tmp_path / "missing-source", output, tomorrow)
+    assert not output.exists()
+
+
 def test_preparation_refuses_unpinned_sources(preparation: dict[str, Any], tmp_path: Path) -> None:
     source = tmp_path / "sources"
     source.mkdir()
@@ -260,15 +280,40 @@ def synthetic_sources(preparation: dict[str, Any], tmp_path: Path, monkeypatch: 
     return source
 
 
+@pytest.mark.parametrize("compact_date", [False, True])
 def test_preparation_publishes_a_complete_fixture_without_leftovers(
-    preparation: dict[str, Any], synthetic_sources: Path, tmp_path: Path
+    preparation: dict[str, Any], synthetic_sources: Path, tmp_path: Path, compact_date: bool
 ) -> None:
+    if compact_date and sys.version_info < (3, 11):
+        pytest.skip("Python 3.10 does not accept compact ISO dates.")
     output = tmp_path / "fixture"
-    preparation["prepare"](synthetic_sources, output, "2026-10-17")
+    today = date.today()
+    download_date = today.strftime("%Y%m%d") if compact_date else today.isoformat()
+    preparation["prepare"](synthetic_sources, output, download_date)
     assert sorted(path.name for path in output.iterdir()) == ["inputs.npz", "provenance.json", "reference.json"]
     provenance = json.loads((output / "provenance.json").read_text())
+    assert provenance["download_date"] == today.isoformat()
     assert hashlib.sha256((output / "reference.json").read_bytes()).hexdigest() == provenance["checksum_sha256"]
     assert len(json.loads((output / "reference.json").read_text())["cases"]) == 9
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["fixture", "sources"]
+
+
+def test_publication_refuses_a_destination_created_during_preparation(
+    preparation: dict[str, Any], synthetic_sources: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A destination created after the early check must not be replaced."""
+    output = tmp_path / "fixture"
+    real_savez = np.savez_compressed
+
+    def late_destination(*args: Any, **kwargs: Any) -> None:
+        output.mkdir()
+        (output / "keep.txt").write_text("another operator")
+        real_savez(*args, **kwargs)
+
+    monkeypatch.setattr(np, "savez_compressed", late_destination)
+    with pytest.raises(FileExistsError):
+        preparation["prepare"](synthetic_sources, output, date.today().isoformat())
+    assert sorted(path.name for path in output.iterdir()) == ["keep.txt"]
     assert sorted(path.name for path in tmp_path.iterdir()) == ["fixture", "sources"]
 
 
