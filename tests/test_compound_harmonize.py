@@ -236,7 +236,8 @@ def test_sources_keep_input_order_and_are_independent_of_permutation() -> None:
     a, b = np.array([0.1, 0.9, 0.1, 0.9, 0.1]), np.array([0.9, 0.9, 0.1, 0.1, 0.1])
     ab = run({"a": a, "b": b}, time)
     ba = run({"b": b, "a": a}, time)
-    assert ab.names == ("a", "b") and ba.names == ("b", "a")
+    assert ab.names == ("a", "b")
+    assert ba.names == ("b", "a")
     assert np.array_equal(ab.exceedance, ba.exceedance[::-1])
 
 
@@ -325,10 +326,12 @@ def test_non_datetime64_dates_are_rejected(time: Any) -> None:
 
 def test_dates_must_match_the_time_axis() -> None:
     """Require one date per time step, in one dimension."""
+    short_inputs, short_time = {"p": np.full(3, 0.1)}, months("2000-01", "2000-03")
     with pytest.raises(DataShapeError):
-        run({"p": np.full(3, 0.1)}, months("2000-01", "2000-03"))
+        run(short_inputs, short_time)
+    grid_inputs, grid_time = {"p": np.full(4, 0.1)}, months("2000-01", "2000-05").reshape(2, 2)
     with pytest.raises(DataShapeError):
-        run({"p": np.full(4, 0.1)}, months("2000-01", "2000-05").reshape(2, 2))
+        run(grid_inputs, grid_time)
 
 
 # --- daily-to-monthly reduction ---------------------------------------------------------------
@@ -381,7 +384,10 @@ def test_daily_reduction_matches_a_brute_force_calendar_loop(aggregation: str) -
     assert result.exceedance[0].tolist() == hazard
     assert result.valid[0].tolist() == valid
     # the sample exercises every branch: valid and invalid months, true and false reductions
-    assert any(valid) and not all(valid) and any(hazard) and not all(hazard)
+    assert any(valid)
+    assert not all(valid)
+    assert any(hazard)
+    assert not all(hazard)
 
 
 def test_hand_counted_monthly_reduction_with_leap_february() -> None:
@@ -394,8 +400,10 @@ def test_hand_counted_monthly_reduction_with_leap_february() -> None:
     values[40] = 0.05  # one dry February day
     any_result = run({"p": values}, time, cadence="daily", aggregation={"p": "any"})
     all_result = run({"p": values}, time, cadence="daily", aggregation={"p": "all"})
-    assert ints(any_result.exceedance[0]) == [1, 1] and ints(any_result.valid[0]) == [1, 1]
-    assert ints(all_result.exceedance[0]) == [0, 0] and ints(all_result.valid[0]) == [1, 1]
+    assert ints(any_result.exceedance[0]) == [1, 1]
+    assert ints(any_result.valid[0]) == [1, 1]
+    assert ints(all_result.exceedance[0]) == [0, 0]
+    assert ints(all_result.valid[0]) == [1, 1]
 
     short_feb = np.delete(np.arange(60), 31 + 28)  # drop 29 February
     result = run({"p": values[short_feb]}, time[short_feb], cadence="daily", aggregation={"p": "any"})
@@ -403,7 +411,8 @@ def test_hand_counted_monthly_reduction_with_leap_february() -> None:
     assert ints(result.exceedance[0]) == [1, 0]  # the observed dry day does not rescue an incomplete month
 
     common = run({"p": np.full(28, 0.05)}, days("2001-02-01", "2001-03-01"), cadence="daily", aggregation={"p": "all"})
-    assert ints(common.valid[0]) == [1] and ints(common.exceedance[0]) == [1]
+    assert ints(common.valid[0]) == [1]
+    assert ints(common.exceedance[0]) == [1]
 
 
 def test_partial_first_and_last_months_are_invalid_but_stay_on_the_grid() -> None:
@@ -448,7 +457,8 @@ def test_daily_indicator_reduction_uses_its_validity() -> None:
         aggregation={"h": "any"},
         validity={"h": observed},
     )
-    assert ints(result.exceedance[0]) == [1, 0] and ints(result.valid[0]) == [1, 0]
+    assert ints(result.exceedance[0]) == [1, 0]
+    assert ints(result.valid[0]) == [1, 0]
 
 
 def test_daily_cadence_is_kept_when_all_sources_are_daily() -> None:
@@ -469,22 +479,20 @@ def test_daily_cadence_is_kept_when_all_sources_are_daily() -> None:
 
 def test_exact_join_rejects_mismatched_coverage() -> None:
     """Require identical normalized coverage by default and point to ``join='inner'``."""
+    inputs = {"a": np.full(4, 0.1), "b": np.full(4, 0.1)}
+    time = {"a": months("2000-01", "2000-05"), "b": months("2000-02", "2000-06")}
     with pytest.raises(CoordinateValidationError, match="inner"):
-        run(
-            {"a": np.full(4, 0.1), "b": np.full(4, 0.1)},
-            {"a": months("2000-01", "2000-05"), "b": months("2000-02", "2000-06")},
-        )
+        run(inputs, time)
 
 
 def test_inner_join_restricts_to_the_overlap_and_warns_about_dropped_boundaries() -> None:
     """Keep the common range, warn once, and record each source's dropped steps."""
+    inputs = {"a": np.array([0.1, 0.9, 0.1, 0.9, 0.1, 0.9]), "b": np.array([0.1, 0.1, 0.1, 0.9, 0.9, 0.9])}
+    time = {"a": months("2000-01", "2000-07"), "b": months("2000-03", "2000-09")}
     with pytest.warns(InputAlignmentWarning) as caught:
-        result = run(
-            {"a": np.array([0.1, 0.9, 0.1, 0.9, 0.1, 0.9]), "b": np.array([0.1, 0.1, 0.1, 0.9, 0.9, 0.9])},
-            {"a": months("2000-01", "2000-07"), "b": months("2000-03", "2000-09")},
-            join="inner",
-        )
+        result = run(inputs, time, join="inner")
     assert len(caught) == 1
+    assert caught[0].filename == __file__  # attributed to the caller, not to the library
     warning = caught[0].message
     assert isinstance(warning, InputAlignmentWarning)
     assert (warning.original_size, warning.aligned_size, warning.dropped_count) == (6, 4, 4)
@@ -505,10 +513,12 @@ def test_inner_join_with_identical_coverage_does_not_warn() -> None:
 
 def test_inner_join_with_no_overlap_is_an_error() -> None:
     """Fail rather than return an empty axis."""
+    inputs = {"a": np.full(2, 0.1), "b": np.full(2, 0.1)}
+    time = {"a": months("2000-01", "2000-03"), "b": months("2001-01", "2001-03")}
     with pytest.raises(CoordinateValidationError, match="no time range"):
         run(
-            {"a": np.full(2, 0.1), "b": np.full(2, 0.1)},
-            {"a": months("2000-01", "2000-03"), "b": months("2001-01", "2001-03")},
+            inputs,
+            time,
             join="inner",
         )
 
@@ -608,38 +618,44 @@ def test_invalid_declarations_are_rejected(mutate: Any, error: type[Exception], 
 def test_indicator_declaration_is_exactly_half_and_above(kwargs: dict[str, Any], match: str) -> None:
     """Allow no other public declaration for a Boolean indicator."""
     declared = {"scale": "indicator", "threshold": 0.5, "direction": "above", **kwargs}
+    inputs, time = {"h": np.array([True, False, True])}, months("2000-01", "2000-04")
     with pytest.raises(InvalidArgumentError, match=match):
-        run({"h": np.array([True, False, True])}, months("2000-01", "2000-04"), **declared)
+        run(inputs, time, **declared)
 
 
 @pytest.mark.parametrize("values", [np.array([1, 0, 1]), np.array([1.0, 0.0, 1.0])], ids=["int", "float"])
 def test_indicator_must_have_boolean_dtype(values: np.ndarray) -> None:
     """Never coerce numbers to an indicator."""
+    time = months("2000-01", "2000-04")
     with pytest.raises(InputTypeError, match="Boolean"):
-        run({"h": values}, months("2000-01", "2000-04"), scale="indicator", threshold=0.5, direction="above")
+        run({"h": values}, time, scale="indicator", threshold=0.5, direction="above")
 
 
 def test_monthly_source_cannot_be_expanded_to_a_daily_target() -> None:
     """Reject monthly-to-daily targets rather than interpolating scores."""
+    inputs, time = {"m": np.full(3, 0.1)}, months("2000-01", "2000-04")
     with pytest.raises(InvalidArgumentError, match="expanded"):
-        run({"m": np.full(3, 0.1)}, months("2000-01", "2000-04"), target="daily")
+        run(inputs, time, target="daily")
 
 
 @pytest.mark.parametrize("aggregation", [None, {}, {"d": "mean"}, {"d": "sum"}, {"d": None}])
 def test_daily_source_of_a_monthly_target_needs_any_or_all(aggregation: Any) -> None:
     """Require an explicit ``any`` or ``all`` reducer; mean, sum, and fraction are out of scope."""
+    inputs, time = {"d": np.full(31, 0.1)}, days("2000-01-01", "2000-02-01")
     with pytest.raises(InvalidArgumentError, match="aggregation"):
-        run({"d": np.full(31, 0.1)}, days("2000-01-01", "2000-02-01"), cadence="daily", aggregation=aggregation)
+        run(inputs, time, cadence="daily", aggregation=aggregation)
 
 
 def test_reducers_for_monthly_sources_or_daily_targets_are_irrelevant() -> None:
     """Reject a reducer where nothing is reduced."""
+    monthly_inputs, monthly_time = {"m": np.full(3, 0.1)}, months("2000-01", "2000-04")
     with pytest.raises(InvalidArgumentError, match="irrelevant reducer"):
-        run({"m": np.full(3, 0.1)}, months("2000-01", "2000-04"), aggregation={"m": "any"})
+        run(monthly_inputs, monthly_time, aggregation={"m": "any"})
+    daily_inputs, daily_time = {"d": np.full(3, 0.1)}, days("2000-01-01", "2000-01-04")
     with pytest.raises(InvalidArgumentError, match="irrelevant reducer"):
         run(
-            {"d": np.full(3, 0.1)},
-            days("2000-01-01", "2000-01-04"),
+            daily_inputs,
+            daily_time,
             cadence="daily",
             target="daily",
             aggregation={"d": "any"},
@@ -648,14 +664,13 @@ def test_reducers_for_monthly_sources_or_daily_targets_are_irrelevant() -> None:
 
 def test_gridded_sources_need_matching_cells() -> None:
     """Never broadcast a point across a grid."""
+    time = months("2000-01", "2000-04")
+    mismatched = {"a": np.full((3, 2), 0.1), "b": np.full((3, 4), 0.1)}
     with pytest.raises(DataShapeError, match="cell shape"):
-        run(
-            {"a": np.full((3, 2), 0.1), "b": np.full((3, 4), 0.1)},
-            months("2000-01", "2000-04"),
-            spatial_time_major=True,
-        )
+        run(mismatched, time, spatial_time_major=True)
+    point_and_grid = {"a": np.full((3, 2), 0.1), "b": np.full(3, 0.1)}
     with pytest.raises(DataShapeError, match="cell shape"):
-        run({"a": np.full((3, 2), 0.1), "b": np.full(3, 0.1)}, months("2000-01", "2000-04"), spatial_time_major=True)
+        run(point_and_grid, time, spatial_time_major=True)
 
 
 # --- calibration metadata and the manifest ----------------------------------------------------
@@ -667,8 +682,9 @@ def test_conflicting_known_calibration_periods_are_rejected() -> None:
         "a": {"calibration_year_initial": 1981, "calibration_year_final": 2010},
         "b": {"calibration_year_initial": 1991, "calibration_year_final": 2020},
     }
+    inputs, time = {"a": np.full(3, 0.1), "b": np.full(3, 0.1)}, months("2000-01", "2000-04")
     with pytest.raises(InvalidArgumentError, match="conflicting"):
-        run({"a": np.full(3, 0.1), "b": np.full(3, 0.1)}, months("2000-01", "2000-04"), source_metadata=metadata)
+        run(inputs, time, source_metadata=metadata)
 
 
 def test_matching_calibration_periods_and_different_timescales_are_recorded_silently() -> None:
@@ -688,10 +704,13 @@ def test_matching_calibration_periods_and_different_timescales_are_recorded_sile
 
 def test_missing_probability_calibration_warns_once_and_records_unknown() -> None:
     """Never claim compatibility for a source without fit metadata."""
+    inputs, time = {"a": np.full(3, 0.1), "b": np.full(3, 0.1)}, months("2000-01", "2000-04")
     with pytest.warns(ClimateIndicesWarning, match="Calibration Period") as caught:
-        result = run({"a": np.full(3, 0.1), "b": np.full(3, 0.1)}, months("2000-01", "2000-04"), calibrated=False)
+        result = run(inputs, time, calibrated=False)
     assert len(caught) == 1
-    assert "'a'" in str(caught[0].message) and "'b'" in str(caught[0].message)
+    assert caught[0].filename == __file__  # attributed to the caller, not to the library
+    assert "'a'" in str(caught[0].message)
+    assert "'b'" in str(caught[0].message)
     for source in ("a", "b"):
         assert result.metadata["sources"][source]["calibration_period"] == "unknown"
         assert result.metadata["sources"][source]["scale"] == "unknown"
@@ -745,14 +764,16 @@ def test_unknown_indicator_physical_declaration_is_recorded_as_unknown() -> None
 )
 def test_malformed_source_metadata_is_rejected(metadata: dict[str, Any]) -> None:
     """Require JSON-compatible metadata and well-formed calibration years."""
+    inputs, time = {"a": np.full(3, 0.1)}, months("2000-01", "2000-04")
     with pytest.raises(InvalidArgumentError, match="source_metadata"):
-        run({"a": np.full(3, 0.1)}, months("2000-01", "2000-04"), source_metadata={"a": metadata})
+        run(inputs, time, source_metadata={"a": metadata})
 
 
 def test_source_metadata_must_be_a_mapping() -> None:
     """Reject a metadata value that is not a mapping."""
+    inputs, time = {"a": np.full(3, 0.1)}, months("2000-01", "2000-04")
     with pytest.raises(InvalidArgumentError, match="source_metadata"):
-        run({"a": np.full(3, 0.1)}, months("2000-01", "2000-04"), source_metadata={"a": 5})
+        run(inputs, time, source_metadata={"a": 5})
 
 
 def test_manifest_schema_serializes_and_labels_no_pit_or_cf_metadata() -> None:
@@ -816,7 +837,8 @@ def test_manifest_schema_serializes_and_labels_no_pit_or_cf_metadata() -> None:
         "source_metadata",
     }
     assert "standard_name" not in text
-    assert result.cadence == "monthly" and result.names == ("d", "h")
+    assert result.cadence == "monthly"
+    assert result.names == ("d", "h")
 
 
 # --- immutability ------------------------------------------------------------------------------
@@ -842,9 +864,12 @@ def test_caller_data_is_not_mutated() -> None:
     metadata = {"a": {"calibration_year_initial": 1991, "calibration_year_final": 2020, "tags": ["x", "y"]}}
     before = (values.data.copy(), values.mask.copy(), validity.copy(), copy.deepcopy(metadata))
     result = run({"a": values}, months("2000-01", "2000-05"), validity={"a": validity}, source_metadata=metadata)
-    assert np.array_equal(values.data, before[0], equal_nan=True) and np.array_equal(values.mask, before[1])
-    assert np.array_equal(validity, before[2]) and metadata == before[3]
-    assert values.data.flags.writeable and validity.flags.writeable
+    assert np.array_equal(values.data, before[0], equal_nan=True)
+    assert np.array_equal(values.mask, before[1])
+    assert np.array_equal(validity, before[2])
+    assert metadata == before[3]
+    assert values.data.flags.writeable
+    assert validity.flags.writeable
     metadata["a"]["tags"].append("z")  # a later caller edit must not reach the manifest
     assert result.metadata["sources"]["a"]["source_metadata"]["tags"] == ("x", "y")
 
@@ -871,13 +896,15 @@ def test_lifecycle_events_are_emitted_on_success() -> None:
     with mock.patch.object(harmonize_module, "_logger", mock_logger):
         run({"a": np.full(3, 0.1), "b": np.full(3, 0.9)}, months("2000-01", "2000-04"))
     bound = mock_logger.bind.call_args.kwargs
-    assert bound["index_type"] == "compound_harmonize" and bound["sources"] == ("a", "b")
+    assert bound["index_type"] == "compound_harmonize"
+    assert bound["sources"] == ("a", "b")
     assert [call.args[0] for call in mock_logger.info.call_args_list] == [
         "calculation_started",
         "calculation_completed",
     ]
     completed = mock_logger.info.call_args_list[1].kwargs
-    assert completed["output_shape"] == (2, 3) and completed["duration_ms"] >= 0
+    assert completed["output_shape"] == (2, 3)
+    assert completed["duration_ms"] >= 0
     mock_logger.error.assert_not_called()
 
 
@@ -885,11 +912,12 @@ def test_failure_is_logged_and_propagates() -> None:
     """Emit ``calculation_failed`` for a rejected declaration and re-raise it unchanged."""
     mock_logger = mock.MagicMock()
     mock_logger.bind.return_value = mock_logger
+    inputs, time = {"a": np.full(3, 0.1)}, months("2000-01", "2000-04")
     with (
         mock.patch.object(harmonize_module, "_logger", mock_logger),
         pytest.raises(InvalidArgumentError, match="z-score"),
     ):
-        run({"a": np.full(3, 0.1)}, months("2000-01", "2000-04"), scale="normal")
+        run(inputs, time, scale="normal")
     mock_logger.info.assert_called_once_with("calculation_started")
     failed = [call for call in mock_logger.error.call_args_list if call.args[0] == "calculation_failed"]
     assert len(failed) == 1
