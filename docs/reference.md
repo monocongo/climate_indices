@@ -122,6 +122,17 @@ Copy-and-adapt invocations are in {doc}`workflow-examples`.
    :members:
 ```
 
+### climate_indices.energy
+
+NumPy wind-resource proxies, not actual energy generation. xarray/Dask adapters
+remain planned; see {doc}`energy_applications` for scope and validation limits.
+
+```{eval-rst}
+.. automodule:: climate_indices.energy
+   :members:
+   :imported-members:
+```
+
 ## xarray Integration
 
 :::{warning} **Beta Feature** — The xarray adapter layer is beta. See {doc}`xarray_migration` for stability guarantees.
