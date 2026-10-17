@@ -24,8 +24,10 @@ def _inputs() -> dict[str, np.ndarray]:
 
 
 @pytest.fixture
-def preparation() -> dict[str, Any]:
-    return runpy.run_path(str(SCRIPT))
+def preparation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    script = runpy.run_path(str(SCRIPT))
+    monkeypatch.setitem(script["prepare"].__globals__, "OUTPUT_ROOT", tmp_path.resolve())
+    return script
 
 
 def test_reference_checksum_pins_committed_inputs() -> None:
@@ -179,6 +181,57 @@ def test_preparation_never_overwrites_existing_output(preparation: dict[str, Any
     with pytest.raises(FileExistsError, match="Refusing to overwrite"):
         preparation["prepare"](tmp_path / "missing-source", output, "2026-10-17")
     assert marker.read_text() == "existing fixture"
+
+
+@pytest.mark.parametrize("destination", ["../outside", "../allowed-sibling/fixture", "."])
+def test_preparation_rejects_output_outside_root(
+    preparation: dict[str, Any], tmp_path: Path, destination: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "allowed"
+    monkeypatch.setitem(preparation["prepare"].__globals__, "OUTPUT_ROOT", root)
+    with pytest.raises(ValueError, match="Output directory must be below"):
+        preparation["prepare"](tmp_path / "missing-source", root / destination, "2026-10-17")
+    assert not root.exists()
+
+
+def test_preparation_rejects_absolute_output_outside_root(
+    preparation: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "allowed"
+    monkeypatch.setitem(preparation["prepare"].__globals__, "OUTPUT_ROOT", root)
+    with pytest.raises(ValueError, match="Output directory must be below"):
+        preparation["prepare"](tmp_path / "missing-source", tmp_path / "outside", "2026-10-17")
+    assert not root.exists()
+    assert not (tmp_path / "outside").exists()
+
+
+@pytest.mark.parametrize("symlink_at_root", [False, True])
+def test_preparation_rejects_symlink_escape(
+    preparation: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, symlink_at_root: bool
+) -> None:
+    root = tmp_path / "allowed"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    if symlink_at_root:
+        link = root
+    else:
+        root.mkdir()
+        link = root / "link"
+    link.symlink_to(outside, target_is_directory=True)
+    monkeypatch.setitem(preparation["prepare"].__globals__, "OUTPUT_ROOT", root)
+    with pytest.raises(ValueError, match="Output directory must be below"):
+        preparation["prepare"](tmp_path / "missing-source", link / "fixture", "2026-10-17")
+    assert list(outside.iterdir()) == []
+
+
+def test_preparation_refuses_dangling_output_symlink(preparation: dict[str, Any], tmp_path: Path) -> None:
+    target = tmp_path / "missing"
+    output = tmp_path / "fixture"
+    output.symlink_to(target, target_is_directory=True)
+    with pytest.raises(FileExistsError, match="Refusing to overwrite"):
+        preparation["prepare"](tmp_path / "missing-source", output, "2026-10-17")
+    assert output.is_symlink()
+    assert not target.exists()
 
 
 @pytest.fixture

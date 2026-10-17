@@ -5,6 +5,7 @@
 ``author_counts`` adapts the deterministic arithmetic of cell 93ef7024 (LMF) from
 https://github.com/m-passos/hydroclimatic-hazards-hotspots at commit
 6c88f255ee3034279dcebe2a2fc40c954dbe9575. No downloaded code or significance loop runs.
+Output must be a new directory below tmp/compound-reference/ in this checkout.
 Existing output directories are refused; regenerate into a new directory for comparison.
 
 The adapted code is MIT-licensed; the notice travels with this file because the
@@ -49,6 +50,7 @@ import xarray as xr
 
 AUTHOR_COMMIT = "6c88f255ee3034279dcebe2a2fc40c954dbe9575"
 DATASET_DOI = "10.6084/m9.figshare.25189118.v2"
+OUTPUT_ROOT = Path(__file__).resolve().parents[1] / "tmp" / "compound-reference"
 SOURCES: dict[str, dict[str, int | str]] = {
     "SPEI12.nc": {
         "file_id": 44481290,
@@ -112,8 +114,12 @@ def author_counts(hwi: np.ndarray, spei: np.ndarray) -> dict[str, int | float | 
 def prepare(source_dir: Path, output_dir: Path, download_date: str) -> None:
     """Verify the pinned files, extract three cells, and publish an offline fixture."""
     dt.date.fromisoformat(download_date)
-    if output_dir.exists():
+    resolved_output = output_dir.resolve()
+    if resolved_output == OUTPUT_ROOT or not resolved_output.is_relative_to(OUTPUT_ROOT):
+        raise ValueError(f"Output directory must be below {OUTPUT_ROOT}.")
+    if output_dir.exists() or output_dir.is_symlink():
         raise FileExistsError(f"Refusing to overwrite {output_dir}; use a new output directory.")
+    output_dir = resolved_output
     for name, source in SOURCES.items():
         if checksum(source_dir / name) != source["sha256"]:
             raise ValueError(f"Unexpected source checksum: {name}")
@@ -228,7 +234,7 @@ def prepare(source_dir: Path, output_dir: Path, download_date: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-dir", required=True, type=Path)
-    parser.add_argument("--output-dir", required=True, type=Path, help="New directory; existing ones are refused.")
+    parser.add_argument("--output-dir", required=True, type=Path, help=f"New directory below {OUTPUT_ROOT}.")
     parser.add_argument("--download-date", required=True, help="Actual source retrieval date, YYYY-MM-DD.")
     args = parser.parse_args()
     prepare(args.source_dir, args.output_dir, args.download_date)

@@ -96,13 +96,15 @@ curl --fail --location --output Compound_patterns.ipynb https://raw.githubuserco
 ```
 
 Record the actual retrieval date in `--download-date`.
-`--output-dir` is required and must not exist, so regeneration cannot overwrite committed evidence:
+`--output-dir` is required and must name a new directory below this checkout's `tmp/compound-reference/`.
+The script resolves the path and rejects traversal or symlinks that escape that directory.
+It also refuses existing outputs, including dangling symlinks, so regeneration cannot overwrite committed evidence:
 
 ```bash
-uv run python scripts/prepare_compound_reference_fixture.py --source-dir /path/to/sources --download-date YYYY-MM-DD --output-dir /path/to/new-fixture
+uv run python scripts/prepare_compound_reference_fixture.py --source-dir /path/to/sources --download-date YYYY-MM-DD --output-dir tmp/compound-reference/regenerated
 uv run python -c "
 import json, numpy as np
-old, new = 'tests/fixture/compound', '/path/to/new-fixture'
+old, new = 'tests/fixture/compound', 'tmp/compound-reference/regenerated'
 a, b = (json.load(open(f'{d}/reference.json')) for d in (old, new))
 assert a['cells'] == b['cells'] and a['cases'] == b['cases']
 with np.load(f'{old}/inputs.npz') as x, np.load(f'{new}/inputs.npz') as y:
