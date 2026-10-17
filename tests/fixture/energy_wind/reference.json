@@ -1,0 +1,166 @@
+{
+  "sources": {
+    "xclim": {
+      "version": "0.62.0",
+      "commit": "6328035cce3661409acae5a11d7f00d45a1bc82f",
+      "source_sha256": "f76c786c19b142438a227ebe84dce3dbad7273f8515bcc07bedeca33afb19a89"
+    },
+    "windpowerlib": {
+      "version": "0.2.2",
+      "commit": "255be722e0300326389b80f84d62e3992dcabfe0",
+      "source_sha256": "7fa8ea74036038ba78d4b21d32202fa951525e26d3ca98fde28815e93b1607b5"
+    }
+  },
+  "environment": {
+    "python": "3.12.13",
+    "numpy": "2.5.4",
+    "xarray": "2026.9.0",
+    "pandas": "3.0.6",
+    "pint": "0.26.1",
+    "cf-xarray": "0.11.3"
+  },
+  "wind_speed_m_s": [
+    0.0,
+    1.0,
+    3.5,
+    12.0,
+    null
+  ],
+  "cases": [
+    {
+      "kwargs": {
+        "reference_height": 10.0,
+        "hub_height": 100.0,
+        "method": "power",
+        "alpha": 0.14285714285714285
+      },
+      "expected_m_s": [
+        0.0,
+        1.3894954943731377,
+        4.863234230305982,
+        16.67394593247765,
+        null
+      ]
+    },
+    {
+      "kwargs": {
+        "reference_height": 10.0,
+        "hub_height": 150.0,
+        "method": "power",
+        "alpha": 0.2
+      },
+      "expected_m_s": [
+        0.0,
+        1.7187719275874789,
+        6.015701746556176,
+        20.625263131049746,
+        null
+      ]
+    },
+    {
+      "kwargs": {
+        "reference_height": 100.0,
+        "hub_height": 10.0,
+        "method": "power",
+        "alpha": 0.3
+      },
+      "expected_m_s": [
+        0.0,
+        0.5011872336272724,
+        1.7541553176954532,
+        6.014246803527268,
+        null
+      ]
+    },
+    {
+      "kwargs": {
+        "reference_height": 10.0,
+        "hub_height": 100.0,
+        "method": "power",
+        "alpha": 0.0
+      },
+      "expected_m_s": [
+        0.0,
+        1.0,
+        3.5,
+        12.0,
+        null
+      ]
+    },
+    {
+      "kwargs": {
+        "reference_height": 10.0,
+        "hub_height": 10.0,
+        "method": "power",
+        "alpha": 0.2
+      },
+      "expected_m_s": [
+        0.0,
+        1.0,
+        3.5,
+        12.0,
+        null
+      ]
+    },
+    {
+      "kwargs": {
+        "reference_height": 10.0,
+        "hub_height": 100.0,
+        "method": "log",
+        "roughness_length": 0.03
+      },
+      "expected_m_s": [
+        0.0,
+        1.3963725969275156,
+        4.887304089246305,
+        16.756471163130186,
+        null
+      ]
+    },
+    {
+      "kwargs": {
+        "reference_height": 10.0,
+        "hub_height": 150.0,
+        "method": "log",
+        "roughness_length": 0.1
+      },
+      "expected_m_s": [
+        0.0,
+        1.5880456295278405,
+        5.5581597033474415,
+        19.056547554334088,
+        null
+      ]
+    },
+    {
+      "kwargs": {
+        "reference_height": 100.0,
+        "hub_height": 10.0,
+        "method": "log",
+        "roughness_length": 1.0
+      },
+      "expected_m_s": [
+        0.0,
+        0.5,
+        1.75,
+        6.0,
+        null
+      ]
+    },
+    {
+      "kwargs": {
+        "reference_height": 10.0,
+        "hub_height": 10.0,
+        "method": "log",
+        "roughness_length": 0.1
+      },
+      "expected_m_s": [
+        0.0,
+        1.0,
+        3.5,
+        12.0,
+        null
+      ]
+    }
+  ]
+}

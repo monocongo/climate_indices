@@ -1,0 +1,40 @@
+{
+  "source_page_sha256": "7a891c4fec0fa3e246e2256632ccf06d6204d5dc5d3d6c3e6b35063edb9c5be6",
+  "source_excerpt": "A mean daily temperature (average of the daily maximum and minimum temperatures) of 65°F is the base for both heating and cooling degree day computations. Heating degree days are summations of negative differences between the mean daily temperature and the 65°F base; cooling degree days are summations of positive differences from the same base. For example, cooling degree days for a station with daily mean temperatures during a seven-day period of 67,65,70,74,78,65 and 68, are 2,0,5,9,13,0,and 3, for a total for the week of 32 cooling degree days.",
+  "published_cdd": {
+    "evidence": "authoritative worked example",
+    "temperature_f": [67, 65, 70, 74, 78, 65, 68],
+    "base_f": 65,
+    "cdd_f_day": [2, 0, 5, 9, 13, 0, 3],
+    "total_f_day": 32
+  },
+  "specification_cases": [
+    {
+      "name": "cpc_single_base_with_missing",
+      "temperature_f": [32, 64, 65, 66, 95, null],
+      "heating_base_f": 65,
+      "cooling_base_f": 65,
+      "hdd_f_day": [33, 1, 0, 0, 0, null],
+      "cdd_f_day": [0, 0, 0, 1, 30, null],
+      "edd_f_day": [33, 1, 0, 1, 30, null]
+    },
+    {
+      "name": "distinct_bases_project_contract_not_cpc_product",
+      "temperature_f": [32, 59, 60, 65, 75, 76, 95, null],
+      "heating_base_f": 60,
+      "cooling_base_f": 75,
+      "hdd_f_day": [28, 1, 0, 0, 0, 0, 0, null],
+      "cdd_f_day": [0, 0, 0, 0, 0, 1, 20, null],
+      "edd_f_day": [28, 1, 0, 0, 0, 1, 20, null]
+    },
+    {
+      "name": "overlapping_bases_additive_contract_not_cpc_product",
+      "temperature_f": [55, 60, 65, 70, 75, null],
+      "heating_base_f": 70,
+      "cooling_base_f": 60,
+      "hdd_f_day": [15, 10, 5, 0, 0, null],
+      "cdd_f_day": [0, 0, 5, 10, 15, null],
+      "edd_f_day": [15, 10, 10, 10, 15, null]
+    }
+  ]
+}
