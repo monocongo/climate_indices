@@ -4,9 +4,11 @@ The decisions that shape `climate_indices` architecture, recorded in the order
 they were made. Each record states the decision and the consequences the code
 has to live with.
 
-Each record opens with a `## Status` line naming its standing against the
-current code: `Accepted`, `Amended` (the decision stands; the record's text was
-corrected in place), or `Superseded by ADR-NNNN`. The authoring conventions are in
+Each record opens with a `## Status` line naming its standing:
+`Approved for implementation` (the maintainer approved the design; implementation
+is pending), `Accepted` (the record describes current code), `Amended` (the
+decision stands; the record's text was corrected in place), or
+`Superseded by ADR-NNNN`. The authoring conventions are in
 [CONTRIBUTING.md](https://github.com/monocongo/climate_indices/blob/main/CONTRIBUTING.md).
 
 ```{toctree}
@@ -33,4 +35,5 @@ corrected in place), or `Superseded by ADR-NNNN`. The authoring conventions are 
 0019-energy-module-api-and-aggregation
 0020-standardized-index-public-surface
 0021-climate-indices-crate-identity
+0022-compound-analysis-contracts
 ```
