@@ -1,10 +1,10 @@
 # Energy reference fixtures (#1163)
 
 These describe the **climate-driven component** of energy supply and demand,
-not actual generation or load. The wind-profile implementation (#1165) is compared
-with the independent outputs below. Degree-day reference tests still xfail when
-their function is absent (#1164); numerical, shape, missing-mask and unrelated
-import failures are never suppressed.
+not actual generation or load. The degree-day implementation (#1164) and the
+wind-profile implementation (#1165) are available. The reference tests compare
+both implementations with the outputs below. Numerical, shape, missing-mask and
+unrelated import failures are never suppressed.
 
 ## CPC first: explicit single-base degree days
 
@@ -32,7 +32,7 @@ external oracle. JSON `null` means NaN; zeros and missing masks
 must match exactly. No real timestamps, calendar, spatial weighting, Calibration
 Period or accumulation apply: each row is an independent daily mean.
 
-Pending calls use `base_temperature` for HDD/CDD and `heating_base_temperature` /
+Degree-day calls use `base_temperature` for HDD/CDD and `heating_base_temperature` /
 `cooling_base_temperature` for EDD, always explicitly in °C. These fixtures choose
 **no public default**. C3S's threshold/reference pairs cannot be represented by a
 single base. C3S boundary rules, population-weighted extraction, and monthly
@@ -86,7 +86,7 @@ comparisons; that agreement does not establish predictive skill.
 Each directory's schema-valid `provenance.json` hashes that directory's canonical
 `reference.json` bytes directly. `tests/test_energy_reference.py` checks hashes in
 the default suite; the existing provenance protocol checks both schema records.
-To run the wind comparisons and pending degree-day contracts explicitly:
+To run the wind comparisons and degree-day contracts explicitly:
 
 ```bash
 uv run pytest tests/test_energy_reference.py -m validation -rx
