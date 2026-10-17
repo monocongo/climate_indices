@@ -50,6 +50,9 @@ _AGGREGATIONS = ("any", "all")
 _JOINS = ("exact", "inner")
 _UNKNOWN = "unknown"
 _MANIFEST_SCHEMA_VERSION = 1
+_DAY_UNIT = "datetime64[D]"
+_MONTH_UNIT = "datetime64[M]"
+_UNITS = {"daily": _DAY_UNIT, "monthly": _MONTH_UNIT}
 
 # an indicator source's public declaration; its physical threshold and comparator live in the manifest
 _INDICATOR_THRESHOLD = 0.5
@@ -235,21 +238,26 @@ def _hazard_and_validity(
         hazard = data > threshold if direction == "above" else data < threshold
 
     if validity is not None:
-        mask = np.asarray(validity)
-        if mask.dtype.kind != "b":
-            raise InputTypeError(
-                f"validity[{name!r}] must have Boolean dtype, not {mask.dtype}.",
-                expected_type=np.bool_,
-                actual_type=mask.dtype.type,
-            )
-        if mask.shape != array.shape:
-            raise DataShapeError(
-                f"validity[{name!r}] must match the shape of inputs[{name!r}].",
-                expected_shape=str(array.shape),
-                actual_shape=mask.shape,
-            )
-        valid &= mask
+        valid &= _validity_mask(name, validity, array.shape)
     return hazard & valid, valid
+
+
+def _validity_mask(name: str, validity: object, shape: tuple[int, ...]) -> npt.NDArray[np.bool_]:
+    """Require one source's explicit validity mask to be Boolean and shaped like its input."""
+    mask = np.asarray(validity)
+    if mask.dtype.kind != "b":
+        raise InputTypeError(
+            f"validity[{name!r}] must have Boolean dtype, not {mask.dtype}.",
+            expected_type=np.bool_,
+            actual_type=mask.dtype.type,
+        )
+    if mask.shape != shape:
+        raise DataShapeError(
+            f"validity[{name!r}] must match the shape of inputs[{name!r}].",
+            expected_shape=str(shape),
+            actual_shape=mask.shape,
+        )
+    return mask
 
 
 def _observed_index(name: str, raw: object, cadence: str, steps: int) -> npt.NDArray[np.int64]:
@@ -271,7 +279,7 @@ def _observed_index(name: str, raw: object, cadence: str, steps: int) -> npt.NDA
         )
     if np.isnat(dates).any():
         raise CoordinateValidationError(f"{label} contains NaT.", coordinate_name=label, reason="NaT")
-    index = dates.astype("datetime64[D]" if cadence == "daily" else "datetime64[M]").astype(np.int64)
+    index = dates.astype(_UNITS[cadence]).astype(np.int64)
     step = np.diff(index)
     if np.any(step < 0):
         raise CoordinateValidationError(f"{label} must be increasing.", coordinate_name=label, reason="unordered")
@@ -302,12 +310,12 @@ def _days_to_months(
     aggregation: str,
 ) -> tuple[int, npt.NDArray[np.bool_], npt.NDArray[np.bool_]]:
     """Reduce daily hazard occurrence to calendar months; a month is valid only when every civil day is."""
-    days = day_index.astype("datetime64[D]")
-    first_month = days[0].astype("datetime64[M]")
-    last_month = days[-1].astype("datetime64[M]")
-    month_starts = np.arange(first_month, last_month + 1).astype("datetime64[D]")
+    days = day_index.astype(_DAY_UNIT)
+    first_month = days[0].astype(_MONTH_UNIT)
+    last_month = days[-1].astype(_MONTH_UNIT)
+    month_starts = np.arange(first_month, last_month + 1).astype(_DAY_UNIT)
     grid_start = month_starts[0]
-    steps = int((last_month + 1).astype("datetime64[D]").astype(np.int64) - grid_start.astype(np.int64))
+    steps = int((last_month + 1).astype(_DAY_UNIT).astype(np.int64) - grid_start.astype(np.int64))
     grid_hazard, grid_valid = _on_grid(day_index - grid_start.astype(np.int64), steps, hazard, valid)
     # every month has at least 28 days, so no reduceat segment is empty
     offsets = (month_starts - grid_start).astype(np.int64)
@@ -382,7 +390,7 @@ def _prepare_source(
         first = int(index[0])
         grid_hazard, grid_valid = _on_grid(index - first, int(index[-1]) - first + 1, hazard, valid)
 
-    label_unit = "datetime64[D]" if cadence == "daily" else "datetime64[M]"
+    label_unit = _UNITS[cadence]
     entry: dict[str, Any] = {
         "input_scale": scale,
         "threshold": threshold_value,
@@ -450,6 +458,34 @@ def _align(prepared: list[_Prepared], target_cadence: str, join: str) -> tuple[i
         source.entry["dropped_trailing"] = trailing
         dropped += leading + trailing
     return first, last, dropped
+
+
+def _warn_unknowns(prepared: list[_Prepared], dropped: int, aligned_size: int) -> None:
+    """Warn about probability sources without a Calibration Period and about dropped boundary steps."""
+    undeclared = [
+        source.name
+        for source in prepared
+        if source.entry["input_scale"] == "probability" and source.calibration is None
+    ]
+    # stacklevel 4 skips this helper, _harmonize, and harmonize to reach the caller
+    if undeclared:
+        warnings.warn(
+            ClimateIndicesWarning(
+                f"Calibration Period metadata is missing for probability sources {undeclared}; it is recorded as "
+                f"{_UNKNOWN!r} and calibration compatibility is not checked."
+            ),
+            stacklevel=4,
+        )
+    if dropped:
+        warnings.warn(
+            InputAlignmentWarning(
+                f'join="inner" dropped {dropped} boundary time steps in total to keep the common overlap.',
+                original_size=max(source.hazard.shape[0] for source in prepared),
+                aligned_size=aligned_size,
+                dropped_count=dropped,
+            ),
+            stacklevel=4,
+        )
 
 
 def _harmonize(
@@ -543,45 +579,19 @@ def _harmonize(
     exceedance = np.stack([source.hazard[first - source.first : last - source.first + 1] for source in prepared])
     valid = np.stack([source.valid[first - source.first : last - source.first + 1] for source in prepared])
     steps = np.arange(first, last + 1, dtype=np.int64)
-    time_labels = (
-        steps.astype("datetime64[D]")
-        if target_cadence == "daily"
-        else steps.astype("datetime64[M]").astype("datetime64[D]")
-    )
+    label_unit = _UNITS[target_cadence]
+    time_labels = steps.astype(label_unit).astype(_DAY_UNIT)
     for array in (exceedance, valid, time_labels):
         array.setflags(write=False)
-
-    undeclared = [
-        source.name
-        for source in prepared
-        if source.entry["input_scale"] == "probability" and source.calibration is None
-    ]
-    if undeclared:
-        warnings.warn(
-            ClimateIndicesWarning(
-                f"Calibration Period metadata is missing for probability sources {undeclared}; it is recorded as "
-                f"{_UNKNOWN!r} and calibration compatibility is not checked."
-            ),
-            stacklevel=3,
-        )
-    if dropped:
-        warnings.warn(
-            InputAlignmentWarning(
-                f'join="inner" dropped {dropped} boundary time steps in total to keep the common overlap.',
-                original_size=max(source.hazard.shape[0] for source in prepared),
-                aligned_size=last - first + 1,
-                dropped_count=dropped,
-            ),
-            stacklevel=3,
-        )
+    _warn_unknowns(prepared, dropped, last - first + 1)
 
     manifest = {
         "schema_version": _MANIFEST_SCHEMA_VERSION,
         "calendar": "proleptic_gregorian",
         "cadence": target_cadence,
         "join": join,
-        "time_start": str(time_labels[0]) if target_cadence == "daily" else str(time_labels[0].astype("datetime64[M]")),
-        "time_end": str(time_labels[-1]) if target_cadence == "daily" else str(time_labels[-1].astype("datetime64[M]")),
+        "time_start": str(time_labels[0].astype(label_unit)),
+        "time_end": str(time_labels[-1].astype(label_unit)),
         "n_steps": int(steps.shape[0]),
         "missingness": (
             "An absent date, NaN, or masked value is invalid, not False, and interior gaps stay in place. A reduced "
