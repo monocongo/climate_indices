@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted. This record implements
+Amended to distinguish ndarray block interfaces from the existing scalar and slice APIs.
+This record implements
 [CRATE-03 — Design the public Rust API surface](https://github.com/monocongo/climate_indices/issues/1307).
 The maintainer approved retaining borrowed ndarray views in the public Rust API.
 {doc}`0021-climate-indices-crate-identity` defines the planned package identity.
@@ -10,7 +11,8 @@ The current package remains `climate-core`; CRATE-05 owns its rename.
 
 ## Context
 
-The kernels already accept borrowed arrays and return owned numerical results.
+The block kernels already accept borrowed arrays and return owned numerical results.
+Other public kernels use scalars or slices.
 Their public modules include distribution fitting, PET, Palmer, fire, flood,
 and the shared daily recurrence engine.
 Python supplies calendar preparation, physical-range validation, and index orchestration through `climate-py`.
@@ -23,7 +25,8 @@ The approved choice accepts that compatibility cost and preserves the existing k
 ## Decision
 
 1. **Retain the existing public kernel modules and signatures.**
-   Inputs use borrowed ndarray views; outputs use owned arrays and existing result structs.
+   Block-kernel inputs use borrowed ndarray views; outputs use owned arrays and existing result structs.
+   Existing scalar and slice-based APIs retain their signatures, including scalar and `Option<f64>` results.
    The crate does not re-export ndarray or add array wrapper types.
    Callers depend on a compatible ndarray version, currently `0.17.2`.
    An incompatible ndarray upgrade requires a breaking crate release.

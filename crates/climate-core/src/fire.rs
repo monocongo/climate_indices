@@ -263,22 +263,24 @@ fn kbdi_next(
 /// The recorded history and final state of one moisture code.
 #[derive(Debug)]
 pub struct CodeRun {
-    /// Daily code history shaped `(days - spin_up, cells)`, or `None` when not recorded.
+    /// Daily code history shaped `(days.saturating_sub(spin_up), cells)`, or `None` when not recorded.
+    /// The history has zero rows when `spin_up >= days`.
     pub values: Option<Array2<f64>>,
     /// Final dimensionless code value per cell.
     pub code: Array1<f64>,
-    /// Final gap count per cell, or `None` when no cell started.
+    /// Final gap count per cell, or `None` when no cell started and no cell was poisoned.
     pub trailing_gap_days: Option<Array1<i64>>,
 }
 
 /// The recorded history and final state of a KBDI run.
 #[derive(Debug)]
 pub struct KbdiRun {
-    /// Daily KBDI history in mm, shaped `(days - spin_up, cells)`, or `None` when not recorded.
+    /// Daily KBDI history in mm, shaped `(days.saturating_sub(spin_up), cells)`,
+    /// or `None` when not recorded. The history has zero rows when `spin_up >= days`.
     pub values: Option<Array2<f64>>,
     /// Final KBDI and wet-spell state per cell.
     pub state: Vec<KbdiCell>,
-    /// Final gap count per cell, or `None` when no cell started.
+    /// Final gap count per cell, or `None` when no cell started and no cell was poisoned.
     pub trailing_gap_days: Option<Array1<i64>>,
 }
 

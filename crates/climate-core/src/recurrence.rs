@@ -96,11 +96,12 @@ pub fn recurrence_inputs<'a>(
 /// One recurrence's recorded history and final per-cell bookkeeping.
 #[derive(Debug)]
 pub struct RecurrenceRun<S> {
-    /// `(days - spin_up, cells)`, or `None` when the caller records no history.
+    /// `(days.saturating_sub(spin_up), cells)`, or `None` when the caller records no history.
+    /// The history has zero rows when `spin_up >= days`.
     pub values: Option<Array2<f64>>,
     /// Final per-cell state.
     pub state: Vec<S>,
-    /// Final per-cell gap counts, or `None` when no cell ever started.
+    /// Final per-cell gap counts, or `None` when no cell started and no cell was poisoned.
     pub trailing_gap_days: Option<Array1<i64>>,
 }
 

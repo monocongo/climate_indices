@@ -8,9 +8,11 @@
 //!
 //! # Arrays and compatibility
 //!
-//! Inputs borrow `ndarray` views; outputs own their arrays. Strided views are
-//! supported unless a function documents a restriction. `ndarray` is a public
-//! dependency, not a re-export: callers use a compatible `ndarray` dependency.
+//! Array inputs borrow `ndarray` views; array outputs own their data.
+//! Other kernels accept scalars or slices and return their documented result types.
+//! Strided views are supported unless a function documents a restriction.
+//! `ndarray` is a public dependency, not a re-export: callers use a compatible
+//! `ndarray` dependency.
 //! An incompatible `ndarray` upgrade requires a breaking crate release.
 //! The crate has no feature flags and no optional runtime dependency.
 //!
