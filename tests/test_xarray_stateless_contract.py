@@ -116,6 +116,13 @@ def test_output_does_not_inherit_input_standard_name(call: Callable[..., xr.Data
 
 
 @pytest.mark.parametrize("call", STATELESS.values(), ids=STATELESS.keys())
+def test_output_does_not_inherit_input_units_metadata(call: Callable[..., xr.DataArray]) -> None:
+    result = call({"units_metadata": "temperature: on_scale", "units": "degC"})
+
+    assert "units_metadata" not in result.attrs
+
+
+@pytest.mark.parametrize("call", STATELESS.values(), ids=STATELESS.keys())
 def test_history_is_appended_not_replaced(call: Callable[..., xr.DataArray]) -> None:
     result = call({"history": "2026-01-01T00:00:00Z: prior step"})
 

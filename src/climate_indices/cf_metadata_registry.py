@@ -31,7 +31,9 @@ class CFAttributes(_CFAttributesRequired, total=False):
 
     Required keys: long_name, units, references.
     Optional keys: standard_name (only when officially defined in CF
-    conventions), description (free-text detail such as value range or a
+    conventions), units_metadata (the CF 1.11 temperature-units qualifier,
+    e.g. ``temperature: difference`` for a degree day), description
+    (free-text detail such as value range or a
     resolved-ambiguity note), climate_indices_variant (distinguishes entries
     for one index that has more than one output convention, e.g. KBDI's
     metric and imperial unit scales, or reserves an entry against a future
@@ -42,6 +44,7 @@ class CFAttributes(_CFAttributesRequired, total=False):
     """
 
     standard_name: str
+    units_metadata: str
     description: str
     climate_indices_variant: str
 
@@ -134,6 +137,22 @@ _SPEI_REFERENCES = (
     "Journal of Climate, 23(7), 1696-1718. "
     "https://doi.org/10.1175/2009JCLI2909.1"
 )
+
+# The energy entries share their source publications (ADR-0019, #1162); keep the
+# rendered `references` text identical across the entries that cite each.
+_C3S_ENERGY_INDICATORS = (
+    "Copernicus Climate Change Service (C3S). "
+    "Global climate and energy indicators from 1950 to present derived from reanalysis. "
+    "https://doi.org/10.24381/3bb607bd"
+)
+_ALLEN_OTERO_2023 = (
+    "Allen, S., & Otero, N. (2023). "
+    "Standardised indices to monitor energy droughts. "
+    "Renewable Energy, 217, 119206. "
+    "https://doi.org/10.1016/j.renene.2023.119206"
+)
+# a degree day is a temperature difference, so CF 1.11 asks for this qualifier
+_TEMPERATURE_DIFFERENCE = "temperature: difference"
 
 CF_METADATA: dict[str, CFAttributes] = {
     "spi": {
@@ -523,5 +542,108 @@ CF_METADATA: dict[str, CFAttributes] = {
         ),
         "climate_indices_variant": "high",
         "references": _HAINES_1988,
+    },
+    # Energy-family metadata precedes the NumPy kernels and xarray adapters (#1162).
+    # Names and units follow ADR-0019 and docs/design/energy-subsystem.md. Only HDD,
+    # CDD, and hub-height wind speed have CF standard names (table v95); their
+    # adapters must attach the air_temperature_threshold or height coordinate, and
+    # time bounds, that the names require. The degree-day names describe the
+    # single-base form only: the C3S scheme pairs an activation threshold with a
+    # separate reference temperature, which one base does not reproduce (#1163,
+    # #1164). A degree day is labelled °C day; K d is the same temperature difference.
+    "heating_degree_days": {
+        "long_name": "Heating Degree Days",
+        "standard_name": "integral_wrt_time_of_air_temperature_deficit",
+        "units": "K d",
+        "units_metadata": _TEMPERATURE_DIFFERENCE,
+        "description": (
+            "Base temperature minus daily mean temperature where positive, in °C day; "
+            "the climate-driven component of heating demand, not actual load. The C3S "
+            "scheme pairs an activation threshold with a separate reference temperature."
+        ),
+        "references": _C3S_ENERGY_INDICATORS,
+    },
+    "cooling_degree_days": {
+        "long_name": "Cooling Degree Days",
+        "standard_name": "integral_wrt_time_of_air_temperature_excess",
+        "units": "K d",
+        "units_metadata": _TEMPERATURE_DIFFERENCE,
+        "description": (
+            "Daily mean temperature minus base temperature where positive, in °C day; "
+            "the climate-driven component of cooling demand, not actual load. The C3S "
+            "scheme pairs an activation threshold with a separate reference temperature."
+        ),
+        "references": _C3S_ENERGY_INDICATORS,
+    },
+    "energy_degree_days": {
+        "long_name": "Energy Degree Days",
+        "units": "K d",
+        "units_metadata": _TEMPERATURE_DIFFERENCE,
+        "description": (
+            "Heating plus cooling degree days with separate base temperatures, in °C day; "
+            "the climate-driven component of energy demand, not actual load. The C3S scheme "
+            "pairs each activation threshold with a separate reference temperature."
+        ),
+        "references": _C3S_ENERGY_INDICATORS,
+    },
+    "hub_height_wind_speed": {
+        "long_name": "Hub-Height Wind Speed",
+        "standard_name": "wind_speed",
+        "units": "m s-1",
+        "description": (
+            "Wind speed extrapolated from a reference height to turbine hub height "
+            "by a power-law or logarithmic profile."
+        ),
+        "references": _C3S_ENERGY_INDICATORS,
+    },
+    "wind_capacity_factor": {
+        "long_name": "Wind Capacity Factor",
+        "units": "1",
+        "description": (
+            "Turbine output as a fraction of rated power in [0, 1], from hub-height wind "
+            "speed and a power curve; the climate-driven component of supply, not actual generation."
+        ),
+        "references": _C3S_ENERGY_INDICATORS,
+    },
+    "pv_capacity_factor": {
+        "long_name": "Photovoltaic Capacity Factor",
+        "units": "1",
+        "description": (
+            "Temperature-derated photovoltaic potential as a fraction of nominal capacity, "
+            "from surface solar radiation, air temperature, and wind speed; "
+            "the climate-driven component of supply, not actual generation."
+        ),
+        "references": (
+            "Jerez, S., et al. (2015). "
+            "The impact of climate change on photovoltaic power generation in Europe. "
+            "Nature Communications, 6, 10014. https://doi.org/10.1038/ncomms10014"
+        ),
+    },
+    "srepi": {
+        "long_name": "Standardized Renewable Energy Production Index",
+        "units": "1",
+        "description": (
+            "Standardized renewable production or capacity factor; low values mark "
+            "weaker-than-usual supply. The climate-driven component of supply, not actual generation."
+        ),
+        "references": _ALLEN_OTERO_2023,
+    },
+    "standardized_demand_index": {
+        "long_name": "Standardized Demand Index",
+        "units": "1",
+        "description": (
+            "Standardized energy demand proxy such as energy degree days; high values mark "
+            "higher-than-usual demand. The climate-driven component of demand, not actual load."
+        ),
+        "references": _ALLEN_OTERO_2023,
+    },
+    "srli": {
+        "long_name": "Standardized Residual Load Index",
+        "units": "1",
+        "description": (
+            "Standardized signed residual load, demand minus renewable production; high values "
+            "mark energy-drought conditions. The climate-driven component of load, not actual load."
+        ),
+        "references": _ALLEN_OTERO_2023,
     },
 }

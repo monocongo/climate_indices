@@ -11,6 +11,19 @@ import pytest
 
 from climate_indices.cf_metadata_registry import CF_METADATA
 
+# These rows also supply the energy keys in the exact registry-key check.
+ENERGY_DISCLAIMERS = {
+    "heating_degree_days": "not actual load",
+    "cooling_degree_days": "not actual load",
+    "energy_degree_days": "not actual load",
+    "hub_height_wind_speed": None,
+    "wind_capacity_factor": "not actual generation",
+    "pv_capacity_factor": "not actual generation",
+    "srepi": "not actual generation",
+    "standardized_demand_index": "not actual load",
+    "srli": "not actual load",
+}
+
 # expected registry keys
 EXPECTED_KEYS = {
     "spi",
@@ -50,6 +63,7 @@ EXPECTED_KEYS = {
     "haines_low",
     "haines_mid",
     "haines_high",
+    *ENERGY_DISCLAIMERS,
 }
 
 REQUIRED_FIELDS = {"long_name", "units", "references"}
@@ -77,6 +91,19 @@ FIRE_KEYS = (
     "haines_mid",
     "haines_high",
 )
+
+DEGREE_DAY_KEYS = ("heating_degree_days", "cooling_degree_days", "energy_degree_days")
+
+# the only entries with an official CF standard name (CF standard name table v95);
+# every other entry must omit the field rather than invent one
+STANDARD_NAMES = {
+    "heating_degree_days": "integral_wrt_time_of_air_temperature_deficit",
+    "cooling_degree_days": "integral_wrt_time_of_air_temperature_excess",
+    "hub_height_wind_speed": "wind_speed",
+}
+
+# the only entries carrying the CF 1.11 temperature-difference qualifier
+UNITS_METADATA: dict[str, str] = dict.fromkeys(list(DEGREE_DAY_KEYS), "temperature: difference")
 
 # (entry, field, expected value) rows: one row per literal registry assertion.
 ENTRY_VALUE_ROWS = [
@@ -170,6 +197,24 @@ ENTRY_VALUE_ROWS = [
     ("haines_high", "long_name", "Haines Index"),
     ("haines_high", "units", "dimensionless"),
     ("haines_high", "climate_indices_variant", "high"),
+    ("heating_degree_days", "long_name", "Heating Degree Days"),
+    ("heating_degree_days", "units", "K d"),
+    ("cooling_degree_days", "long_name", "Cooling Degree Days"),
+    ("cooling_degree_days", "units", "K d"),
+    ("energy_degree_days", "long_name", "Energy Degree Days"),
+    ("energy_degree_days", "units", "K d"),
+    ("hub_height_wind_speed", "long_name", "Hub-Height Wind Speed"),
+    ("hub_height_wind_speed", "units", "m s-1"),
+    ("wind_capacity_factor", "long_name", "Wind Capacity Factor"),
+    ("wind_capacity_factor", "units", "1"),
+    ("pv_capacity_factor", "long_name", "Photovoltaic Capacity Factor"),
+    ("pv_capacity_factor", "units", "1"),
+    ("srepi", "long_name", "Standardized Renewable Energy Production Index"),
+    ("srepi", "units", "1"),
+    ("standardized_demand_index", "long_name", "Standardized Demand Index"),
+    ("standardized_demand_index", "units", "1"),
+    ("srli", "long_name", "Standardized Residual Load Index"),
+    ("srli", "units", "1"),
 ]
 
 ENTRY_VALUES = [
@@ -216,6 +261,15 @@ REFERENCE_ROWS = [
     ("haines_low", ("Haines", "1988")),
     ("haines_mid", ("Haines", "1988")),
     ("haines_high", ("Haines", "1988")),
+    ("heating_degree_days", ("C3S", "10.24381/3bb607bd")),
+    ("cooling_degree_days", ("C3S", "10.24381/3bb607bd")),
+    ("energy_degree_days", ("C3S", "10.24381/3bb607bd")),
+    ("hub_height_wind_speed", ("C3S", "10.24381/3bb607bd")),
+    ("wind_capacity_factor", ("C3S", "10.24381/3bb607bd")),
+    ("pv_capacity_factor", ("Jerez", "2015")),
+    ("srepi", ("Allen", "Otero", "2023")),
+    ("standardized_demand_index", ("Allen", "Otero", "2023")),
+    ("srli", ("Allen", "Otero", "2023")),
 ]
 
 REFERENCE_CASES = [pytest.param(entry, fragments, id=entry) for entry, fragments in REFERENCE_ROWS]
@@ -224,6 +278,8 @@ REFERENCE_CASES = [pytest.param(entry, fragments, id=entry) for entry, fragments
 def test_registry_has_exactly_the_expected_keys() -> None:
     """An added, renamed, or removed index fails here rather than in twenty value tests."""
     assert set(CF_METADATA) == EXPECTED_KEYS
+    assert set(STANDARD_NAMES) <= EXPECTED_KEYS, "a stale standard-name allowlist key survives here"
+    assert set(UNITS_METADATA) <= EXPECTED_KEYS, "a stale units-metadata allowlist key survives here"
     documented = {(entry, field) for entry, field, _ in ENTRY_VALUE_ROWS}
     referenced = {entry for entry, _ in REFERENCE_ROWS}
     for index_name in EXPECTED_KEYS:
@@ -288,8 +344,37 @@ def test_fire_entries_describe_themselves_without_inventing_standard_names(index
 
 @pytest.mark.parametrize("index_name", sorted(EXPECTED_KEYS))
 def test_entries_claim_no_invented_standard_names(index_name: str) -> None:
-    """No entry invents a CF standard_name; the field is optional and only for officially defined names."""
-    assert "standard_name" not in CF_METADATA[index_name]
+    """Only officially defined CF standard names appear; every other entry omits the field."""
+    assert CF_METADATA[index_name].get("standard_name") == STANDARD_NAMES.get(index_name)
+
+
+@pytest.mark.parametrize("index_name", sorted(EXPECTED_KEYS))
+def test_entries_qualify_only_temperature_differences(index_name: str) -> None:
+    """Only a degree day is a temperature difference, so only it carries the CF 1.11 qualifier."""
+    assert CF_METADATA[index_name].get("units_metadata") == UNITS_METADATA.get(index_name)
+
+
+@pytest.mark.parametrize("index_name", sorted(ENERGY_DISCLAIMERS))
+def test_energy_entries_describe_themselves(index_name: str) -> None:
+    """Energy adapters take their description from the registry."""
+    assert CF_METADATA[index_name].get("description", "").strip()
+
+
+@pytest.mark.parametrize(
+    ("index_name", "disclaimer"),
+    [(name, disclaimer) for name, disclaimer in ENERGY_DISCLAIMERS.items() if disclaimer is not None],
+)
+def test_energy_entries_disclaim_actual_generation_and_load(index_name: str, disclaimer: str) -> None:
+    """ADR-0019 decision 4 requires the disclaimer for each entry's supply or demand role."""
+    description = CF_METADATA[index_name].get("description", "")
+    assert "climate-driven component" in description
+    assert disclaimer in description
+
+
+@pytest.mark.parametrize("index_name", DEGREE_DAY_KEYS)
+def test_degree_days_are_labelled_celsius_day(index_name: str) -> None:
+    """ADR-0019 decision 6 labels a degree day °C day; K d is the same temperature difference."""
+    assert "°C day" in CF_METADATA[index_name].get("description", "")
 
 
 def test_registry_aliases_and_variants_stay_consistent() -> None:
