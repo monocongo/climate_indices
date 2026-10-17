@@ -26,9 +26,13 @@ const SHAPE_TOLERANCE: f64 = 1e-6;
 /// A column that cannot be fitted has `valid == false` and zero parameters.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LogLogisticFit {
+    /// Location per calibration column, in the input's units.
     pub locs: Array1<f64>,
+    /// Scale per calibration column, in the input's units.
     pub scales: Array1<f64>,
+    /// Dimensionless generalized-logistic shape per calibration column.
     pub shapes: Array1<f64>,
+    /// Whether each column has a usable fit.
     pub valid: Array1<bool>,
 }
 

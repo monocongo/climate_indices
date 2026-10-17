@@ -71,8 +71,11 @@ fn vapor_pressure_slope(temperature_celsius: f64) -> f64 {
 
 /// A borrowed array or an unexpanded constant operand.
 #[derive(Clone, Copy)]
+#[non_exhaustive]
 pub enum Operand<'a> {
+    /// One constant used at every position.
     Scalar(f64),
+    /// One value per position, with no implicit array broadcasting.
     Array(ArrayView1<'a, f64>),
 }
 
@@ -84,6 +87,10 @@ impl Operand<'_> {
         }
     }
 
+    /// Return the scalar or the array value at the zero-based position.
+    ///
+    /// # Panics
+    /// Panics when an array operand has no value at `index`.
     #[inline]
     pub fn at(&self, index: usize) -> f64 {
         self[index]
@@ -103,60 +110,99 @@ impl std::ops::Index<usize> for Operand<'_> {
 }
 
 /// The FAO-56 actual-vapour-pressure pathway the caller selected (Eq 14-19).
+#[non_exhaustive]
 pub enum HumidityPathway<'a> {
     /// Eq 14: from dewpoint temperature.
-    Dewpoint { tdew_celsius: Operand<'a> },
+    Dewpoint {
+        /// Dewpoint temperature in degrees C.
+        tdew_celsius: Operand<'a>,
+    },
     /// Eq 17: from minimum and maximum relative humidity.
     MinimumAndMaximumRelativeHumidity {
+        /// Daily minimum relative humidity in percent.
         rh_min: Operand<'a>,
+        /// Daily maximum relative humidity in percent.
         rh_max: Operand<'a>,
     },
     /// Eq 18: from maximum relative humidity alone.
-    MaximumRelativeHumidity { rh_max: Operand<'a> },
+    MaximumRelativeHumidity {
+        /// Daily maximum relative humidity in percent.
+        rh_max: Operand<'a>,
+    },
     /// Eq 19: from mean relative humidity.
-    MeanRelativeHumidity { rh_mean: Operand<'a> },
+    MeanRelativeHumidity {
+        /// Daily mean relative humidity in percent.
+        rh_mean: Operand<'a>,
+    },
     /// The arid-region estimate, `e0(Tmin - 2)`.
     MinimumTemperature,
 }
 
 /// The FAO-56 solar-radiation pathway the caller selected (Eq 35, 50).
+#[non_exhaustive]
 pub enum RadiationPathway<'a> {
     /// Measured solar radiation.
     Supplied {
+        /// Daily solar radiation in MJ m⁻² day⁻¹.
         solar_radiation_mj_m2_day: Operand<'a>,
     },
     /// Eq 35: from sunshine duration.
-    SunshineHours { sunshine_hours: Operand<'a> },
+    SunshineHours {
+        /// Daily sunshine duration in hours.
+        sunshine_hours: Operand<'a>,
+    },
     /// Eq 50: from the daily temperature range, with `kRs = 0.16` (interior) or
     /// `0.19` (coastal). The estimate is limited to the clear-sky radiation.
-    TemperatureRange { coastal: bool },
+    TemperatureRange {
+        /// Whether to use the coastal coefficient instead of the interior coefficient.
+        coastal: bool,
+    },
 }
 
 /// FAO-56 Eq 6: the eight already-broadcast inputs of the Penman-Monteith equation.
 pub struct PmEtoInputs<'a> {
+    /// Daily net radiation in MJ m⁻² day⁻¹.
     pub net_radiation: Operand<'a>,
+    /// Daily soil heat flux in MJ m⁻² day⁻¹.
     pub soil_heat_flux: Operand<'a>,
+    /// Daily mean air temperature in degrees C.
     pub temperature_celsius: Operand<'a>,
+    /// Wind speed at 2 m above ground, in m s⁻¹.
     pub wind_speed_2m: Operand<'a>,
+    /// Saturation vapour pressure in kPa.
     pub saturation_vp: Operand<'a>,
+    /// Actual vapour pressure in kPa.
     pub actual_vp: Operand<'a>,
+    /// Saturation-vapour-pressure curve slope in kPa per degree C.
     pub delta: Operand<'a>,
+    /// Psychrometric constant in kPa per degree C.
     pub gamma: Operand<'a>,
 }
 
 /// The meteorological inputs of `pm_eto.penman_monteith_eto`, already broadcast to
 /// one element per position, with the humidity and radiation pathways resolved.
 pub struct MetInputs<'a> {
+    /// Daily minimum air temperature in degrees C.
     pub daily_tmin_celsius: Operand<'a>,
+    /// Daily maximum air temperature in degrees C.
     pub daily_tmax_celsius: Operand<'a>,
+    /// Latitude in degrees north.
     pub latitude_degrees: Operand<'a>,
+    /// Elevation above sea level in m.
     pub elevation_m: Operand<'a>,
+    /// Wind speed at the supplied measurement height, in m s⁻¹.
     pub wind_speed_m_s: Operand<'a>,
+    /// Wind measurement height above ground in m.
     pub wind_speed_height_m: Operand<'a>,
+    /// One-based day of year, from 1 through 366.
     pub day_of_year: Operand<'a>,
+    /// Daily soil heat flux in MJ m⁻² day⁻¹.
     pub soil_heat_flux_mj_m2_day: Operand<'a>,
+    /// Dimensionless surface albedo.
     pub albedo: Operand<'a>,
+    /// The caller-selected actual-vapour-pressure calculation.
     pub humidity: HumidityPathway<'a>,
+    /// The caller-selected solar-radiation calculation.
     pub radiation: RadiationPathway<'a>,
 }
 

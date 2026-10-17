@@ -21,14 +21,23 @@ use crate::ClimateError;
 /// The monthly arrays are shaped `(n_years, 12, n_cells)`; the coefficients
 /// `(12, n_cells)`, one row per calendar month.
 pub struct CafecInputs<'a> {
+    /// Monthly precipitation in inches.
     pub precips: ArrayView3<'a, f64>,
+    /// Monthly PET in inches.
     pub pet: ArrayView3<'a, f64>,
+    /// Monthly potential recharge in inches.
     pub prdat: ArrayView3<'a, f64>,
+    /// Monthly potential runoff (starting soil moisture) in inches.
     pub spdat: ArrayView3<'a, f64>,
+    /// Monthly potential soil moisture loss in inches.
     pub pldat: ArrayView3<'a, f64>,
+    /// Dimensionless CAFEC evapotranspiration coefficient per month and cell.
     pub alpha: ArrayView2<'a, f64>,
+    /// Dimensionless CAFEC recharge coefficient per month and cell.
     pub beta: ArrayView2<'a, f64>,
+    /// Dimensionless CAFEC runoff coefficient per month and cell.
     pub gamma: ArrayView2<'a, f64>,
+    /// Dimensionless CAFEC soil moisture loss coefficient per month and cell.
     pub delta: ArrayView2<'a, f64>,
 }
 
