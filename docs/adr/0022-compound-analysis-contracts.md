@@ -6,8 +6,9 @@ Approved for implementation. The maintainer approved these contracts and the bou
 [CMP-01 (#1365)](https://github.com/monocongo/climate_indices/issues/1365) records this decision under
 [parent issue #1364](https://github.com/monocongo/climate_indices/issues/1364).
 
-**No compound API is implemented yet.** This record documents approved contracts, not completed code or scientific validation.
-Do not start implementation until the maintainer merges the PR containing this record.
+**Only the NumPy `harmonize()` route is implemented ([#1367](https://github.com/monocongo/climate_indices/issues/1367));
+the remaining APIs and the beta xarray route are not.** This record documents approved contracts,
+not completed code or scientific validation.
 The implementation responsibilities are explicit:
 
 | Proposed public function | NumPy implementation | Beta xarray implementation | Current state |
