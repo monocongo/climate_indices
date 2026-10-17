@@ -2,7 +2,7 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
-from climate_indices import fire, flood
+from climate_indices import energy, fire, flood
 from climate_indices.cf_metadata_registry import CF_METADATA, CFAttributes
 from climate_indices.exceptions import (
     BetaFeatureWarning,
@@ -57,6 +57,7 @@ __all__ = [
     "eddi",
     "edi",
     "emit_deprecation_warning",
+    "energy",
     "fire",
     "fit_diagnostics",
     "flood",

@@ -12,13 +12,16 @@ in-house with no new dependency, and calibrated models and preprocessing stay ou
 scope. No name or signature recorded here changes. The required wind `power_curve`
 meets one split criterion, below the two-criterion threshold.
 
-Only decision 2 describes code that exists: the `aggregation` keyword
-landed with this record ([#1158](https://github.com/monocongo/climate_indices/issues/1158)).
-The `climate_indices.energy` package does not exist yet. Decisions 1 and 3 through 7
-are the contract that the remaining energy tickets
-([#1157](https://github.com/monocongo/climate_indices/issues/1157)) implement, so a
-reader who greps `climate_indices.energy` today finds this record and no module. Each
-decision is amended as its implementation lands, as
+Amended by the wind-profile implementation
+([#1165](https://github.com/monocongo/climate_indices/issues/1165)): decision 1's
+`climate_indices.energy` package now exists, exposing `hub_height_wind_speed()`
+and `wind_shear_exponent()` with decision 6's m s⁻¹/metre wind contract.
+Positive inverted profiles retain negative shear; calm-pair shear is NaN.
+Decision 2's `aggregation` keyword landed with this record
+([#1158](https://github.com/monocongo/climate_indices/issues/1158)). The remaining
+energy APIs are still contracts for the tickets under
+[#1157](https://github.com/monocongo/climate_indices/issues/1157), not shipped code.
+Each decision is amended as its implementation lands, as
 {doc}`0013-flood-module-api-and-naming` was for flood.
 
 The energy-meteorology family
@@ -159,6 +162,6 @@ is a NumPy entry point only. The energy xarray adapters
 ([#1174](https://github.com/monocongo/climate_indices/issues/1174)) carry it for the
 indices that need it.
 
-A reader who finds decisions 1 and 3 through 7 not yet in code is looking at a contract
-awaiting its implementation, not at drift. Decision 7 records scope, not code, and does
-not change as the transforms land.
+The unimplemented portions of decisions 3 through 6 remain contracts awaiting
+implementation, not drift. Decision 7 records scope, not code, and does not
+change as the transforms land.

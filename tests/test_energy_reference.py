@@ -18,6 +18,8 @@ from typing import Any, cast
 import numpy as np
 import pytest
 
+from climate_indices import energy
+
 FIXTURE_DIR = Path(__file__).parent / "fixture"
 
 
@@ -124,9 +126,8 @@ def test_degree_day_specification_cases(kind: str, case: dict[str, Any]) -> None
 @pytest.mark.validation
 @pytest.mark.parametrize("case", _load("energy_wind")["cases"])
 def test_hub_height_wind_against_independent_implementations(case: dict[str, Any]) -> None:
-    function = _require_function("hub_height_wind_speed", 1165)
     speed = np.asarray(_load("energy_wind")["wind_speed_m_s"], dtype=np.float64)
-    actual = function(speed, **case["kwargs"])
+    actual = energy.hub_height_wind_speed(speed, **case["kwargs"])
     _assert_reference(actual, case["expected_m_s"])
     if case["kwargs"]["reference_height"] == case["kwargs"]["hub_height"] or case["kwargs"].get("alpha") == 0:
         np.testing.assert_array_equal(actual, speed)
@@ -134,8 +135,7 @@ def test_hub_height_wind_against_independent_implementations(case: dict[str, Any
 
 @pytest.mark.validation
 def test_default_power_profile_uses_one_seventh_exponent() -> None:
-    function = _require_function("hub_height_wind_speed", 1165)
     data = _load("energy_wind")
     speed = np.asarray(data["wind_speed_m_s"], dtype=np.float64)
-    actual = function(speed, reference_height=10.0, hub_height=100.0)
+    actual = energy.hub_height_wind_speed(speed, reference_height=10.0, hub_height=100.0)
     _assert_reference(actual, data["cases"][0]["expected_m_s"])

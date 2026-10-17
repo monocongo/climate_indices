@@ -1,6 +1,6 @@
 # climate_indices (core library)
 
-A Python scientific computing library that turns raw climate observations (precipitation, temperature) into standardized drought and moisture indices — SPI, SPEI, PNP, EDDI, and the Palmer family — via distribution fitting and statistical transformation. It also computes fire-weather indices, namespaced under the `fire` module.
+A Python scientific computing library that turns raw climate observations (precipitation, temperature) into standardized drought and moisture indices — SPI, SPEI, PNP, EDDI, and the Palmer family — via distribution fitting and statistical transformation. It also computes fire-weather indices, namespaced under the `fire` module, and wind-resource proxies under `energy`.
 
 ## Language
 
