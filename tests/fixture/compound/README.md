@@ -86,22 +86,26 @@ They check counts exactly and ratios with `rtol=0`, `atol=1e-12` for floating-po
 
 ## Regeneration
 
-Keep the large source files outside the repository.
+Run these commands from the repository root.
+Use an external directory for the large source files.
 Download only the two pinned data files and the pinned notebook:
 
 ```bash
-curl --fail --location --output SPEI12.nc https://ndownloader.figshare.com/files/44481290
-curl --fail --location --output heatwave_SMHI.nc https://ndownloader.figshare.com/files/44481308
-curl --fail --location --output Compound_patterns.ipynb https://raw.githubusercontent.com/m-passos/hydroclimatic-hazards-hotspots/6c88f255ee3034279dcebe2a2fc40c954dbe9575/Compound/Compound_patterns.ipynb
+SOURCE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/compound-sources.XXXXXX")"
+curl --fail --location --output "$SOURCE_DIR/SPEI12.nc" https://ndownloader.figshare.com/files/44481290
+curl --fail --location --output "$SOURCE_DIR/heatwave_SMHI.nc" https://ndownloader.figshare.com/files/44481308
+curl --fail --location --output "$SOURCE_DIR/Compound_patterns.ipynb" https://raw.githubusercontent.com/m-passos/hydroclimatic-hazards-hotspots/6c88f255ee3034279dcebe2a2fc40c954dbe9575/Compound/Compound_patterns.ipynb
 ```
 
+Use the same shell for the preparation command to retain `SOURCE_DIR`.
 Record the actual retrieval date in `--download-date`.
+The script rejects future dates and writes accepted dates as `YYYY-MM-DD`.
 `--output-dir` is required and must name a new directory below this checkout's `tmp/compound-reference/`.
 The script resolves the path and rejects traversal or symlinks that escape that directory.
 It also refuses existing outputs, including dangling symlinks, so regeneration cannot overwrite committed evidence:
 
 ```bash
-uv run python scripts/prepare_compound_reference_fixture.py --source-dir /path/to/sources --download-date YYYY-MM-DD --output-dir tmp/compound-reference/regenerated
+uv run python scripts/prepare_compound_reference_fixture.py --source-dir "$SOURCE_DIR" --download-date YYYY-MM-DD --output-dir tmp/compound-reference/regenerated
 uv run python -c "
 import json, numpy as np
 old, new = 'tests/fixture/compound', 'tmp/compound-reference/regenerated'
