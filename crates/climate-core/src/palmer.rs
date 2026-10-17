@@ -139,23 +139,41 @@ fn recharge(p: f64, pet: f64, ss: f64, su: f64, awc: f64) -> Recharge {
 /// `(12, n_cells)`, one row per calendar month.
 #[derive(Debug)]
 pub struct WaterBalance {
+    /// Soil moisture at the start of each month (potential runoff), in inches.
     pub spdat: Array3<f64>,
+    /// Monthly potential soil moisture loss in inches.
     pub pldat: Array3<f64>,
+    /// Monthly potential recharge in inches.
     pub prdat: Array3<f64>,
+    /// Monthly actual recharge in inches.
     pub rdat: Array3<f64>,
+    /// Monthly actual soil moisture loss in inches.
     pub tldat: Array3<f64>,
+    /// Monthly actual evapotranspiration in inches.
     pub etdat: Array3<f64>,
+    /// Monthly actual runoff in inches.
     pub rodat: Array3<f64>,
+    /// Surface-layer soil moisture at the end of each month, in inches.
     pub sssdat: Array3<f64>,
+    /// Underlying-layer soil moisture at the end of each month, in inches.
     pub ssudat: Array3<f64>,
+    /// Calibration Period precipitation sums per calendar month and cell, in inches.
     pub psum: Array2<f64>,
+    /// Calibration Period potential runoff sums per calendar month and cell, in inches.
     pub spsum: Array2<f64>,
+    /// Calibration Period PET sums per calendar month and cell, in inches.
     pub petsum: Array2<f64>,
+    /// Calibration Period potential loss sums per calendar month and cell, in inches.
     pub plsum: Array2<f64>,
+    /// Calibration Period potential recharge sums per calendar month and cell, in inches.
     pub prsum: Array2<f64>,
+    /// Calibration Period actual recharge sums per calendar month and cell, in inches.
     pub rsum: Array2<f64>,
+    /// Calibration Period actual loss sums per calendar month and cell, in inches.
     pub tlsum: Array2<f64>,
+    /// Calibration Period actual evapotranspiration sums per calendar month and cell, in inches.
     pub etsum: Array2<f64>,
+    /// Calibration Period actual runoff sums per calendar month and cell, in inches.
     pub rosum: Array2<f64>,
 }
 

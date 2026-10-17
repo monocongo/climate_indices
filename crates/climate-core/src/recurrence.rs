@@ -14,12 +14,31 @@ use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use crate::ClimateError;
 
 /// How a started recurrence treats a missing observation (ADR-0007).
+///
+/// Rust callers construct [`RecurrenceInputs`] with this typed policy directly.
+/// [`recurrence_inputs`] also accepts policy names for language bindings.
+///
+/// ```
+/// use climate_core::recurrence::MissingDayPolicy;
+///
+/// let policy = MissingDayPolicy::Bridge { max_gap_days: 2 };
+/// let gap_limit = match policy {
+///     MissingDayPolicy::Propagate => 0,
+///     MissingDayPolicy::Bridge { max_gap_days } => max_gap_days,
+///     _ => panic!("unsupported missing-day policy"),
+/// };
+/// assert_eq!(gap_limit, 2);
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum MissingDayPolicy {
     /// One missing observation poisons the cell for the rest of the run.
     Propagate,
     /// Up to `max_gap_days` consecutive missing days are bridged.
-    Bridge { max_gap_days: i64 },
+    Bridge {
+        /// Maximum consecutive missing days before the cell is poisoned.
+        max_gap_days: i64,
+    },
 }
 
 /// The prepared, time-first inputs one recurrence reads.
@@ -37,6 +56,7 @@ pub struct RecurrenceInputs<'a> {
     pub trailing_gap_days: ArrayView1<'a, i64>,
     /// Leading days to compute but omit from the recorded history.
     pub spin_up: usize,
+    /// The missing-observation rule for each started cell.
     pub policy: MissingDayPolicy,
 }
 
@@ -76,11 +96,12 @@ pub fn recurrence_inputs<'a>(
 /// One recurrence's recorded history and final per-cell bookkeeping.
 #[derive(Debug)]
 pub struct RecurrenceRun<S> {
-    /// `(days - spin_up, cells)`, or `None` when the caller records no history.
+    /// `(days.saturating_sub(spin_up), cells)`, or `None` when the caller records no history.
+    /// The history has zero rows when `spin_up >= days`.
     pub values: Option<Array2<f64>>,
     /// Final per-cell state.
     pub state: Vec<S>,
-    /// Final per-cell gap counts, or `None` when no cell ever started.
+    /// Final per-cell gap counts, or `None` when no cell started and no cell was poisoned.
     pub trailing_gap_days: Option<Array1<i64>>,
 }
 
@@ -298,7 +319,7 @@ pub fn run<S: Copy>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::{Array2, array};
+    use ndarray::{Array2, Axis, Slice, array};
 
     /// The three cells' static validity, which outlives every test input.
     const STATIC_VALID: [bool; 3] = [true, true, true];
@@ -627,9 +648,11 @@ mod tests {
     fn strided_masks_match_contiguous_masks() {
         let weather = Array2::from_shape_fn((12, 6), |(day, cell)| (day + cell) % 4 != 0);
         let season = Array2::from_shape_fn((12, 6), |(day, cell)| (day + cell) % 5 != 0);
-        for columns in [ndarray::s![..;-1, ..;2], ndarray::s![..;-1, 2..3]] {
-            let weather_view = weather.slice(columns);
-            let season_view = season.slice(columns);
+        for columns in [Slice::new(0, None, 2), Slice::from(2..3)] {
+            let mut weather_view = weather.slice_axis(Axis(1), columns);
+            let mut season_view = season.slice_axis(Axis(1), columns);
+            weather_view.invert_axis(Axis(0));
+            season_view.invert_axis(Axis(0));
             assert!(!weather_view.is_standard_layout());
             assert!(!season_view.is_standard_layout());
             let contiguous_weather = weather_view.to_owned();
@@ -694,15 +717,15 @@ mod tests {
         let gaps = array![-1, -1, 2, -1, -1, 0];
         let initial = [0.0, f64::NAN, 0.0, 0.0, 0.0, 0.0];
         let run_cells = |cells: std::ops::Range<usize>| {
-            let columns = ndarray::s![.., cells.clone()];
+            let columns = Slice::from(cells.clone());
             run(
                 "test",
                 &initial[cells.clone()],
                 &RecurrenceInputs {
-                    weather_valid: weather.slice(columns),
-                    static_valid: static_valid.slice(ndarray::s![cells.clone()]),
-                    in_season: Some(in_season.slice(columns)),
-                    trailing_gap_days: gaps.slice(ndarray::s![cells.clone()]),
+                    weather_valid: weather.slice_axis(Axis(1), columns),
+                    static_valid: static_valid.slice_axis(Axis(0), columns),
+                    in_season: Some(in_season.slice_axis(Axis(1), columns)),
+                    trailing_gap_days: gaps.slice_axis(Axis(0), columns),
                     spin_up: 2,
                     policy: MissingDayPolicy::Bridge { max_gap_days: 1 },
                 },

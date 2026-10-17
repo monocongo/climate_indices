@@ -1,9 +1,25 @@
-"""Climate-driven energy resource proxies, not actual generation or load.
+"""Climate-driven energy indices: demand proxies and resource transforms.
 
-The NumPy wind-profile API is stable. xarray/Dask adapters and other energy
-transforms are tracked separately by the energy-family roadmap (#1157).
+Degree days describe climate-driven heating and cooling demand, not actual load.
+Wind profiles describe climate-driven resources, not actual generation. The NumPy
+reference functions are stable; xarray/Dask adapters land separately (#1166,
+#1174). Import this package as ``from climate_indices import energy``; no energy
+function is re-exported from the package root (ADR-0019).
 """
 
+from __future__ import annotations
+
+from climate_indices.energy._degree_days import (
+    cooling_degree_days,
+    energy_degree_days,
+    heating_degree_days,
+)
 from climate_indices.energy._wind import hub_height_wind_speed, wind_shear_exponent
 
-__all__ = ["hub_height_wind_speed", "wind_shear_exponent"]
+__all__ = [
+    "cooling_degree_days",
+    "energy_degree_days",
+    "heating_degree_days",
+    "hub_height_wind_speed",
+    "wind_shear_exponent",
+]

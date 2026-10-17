@@ -26,7 +26,7 @@ A useful conceptual chain is:
 ```text
 Meteorological drivers           T2m, wind 10/100 m, SSRD, precip           (inputs)
               ↓
-Demand proxies                   HDD / CDD / EDD                            (planned)
+Demand proxies                   HDD / CDD / EDD                            (available)
 Resource transforms              hub-height wind (available); wind & PV capacity factor (planned)
 Hydro proxy                      capacity-weighted n-month precip           (planned recipe)
               ↓
@@ -130,19 +130,19 @@ energy system, not recorded supply shortfalls.
 
 ## Energy indices
 
-The NumPy wind-profile functions in `climate_indices.energy` are available;
-the other energy indices below remain planned. The package, its NumPy and
-beta xarray tiers, and the scope boundary are fixed by
+The NumPy degree-day and wind-profile functions in `climate_indices.energy`
+are available; the other energy indices below remain planned. The package, its
+NumPy and beta xarray tiers, and the scope boundary are fixed by
 [ADR-0019](adr/0019-energy-module-api-and-aggregation.md), with function names,
 units, and argument contracts recorded in the internal energy subsystem design
 note. The [energy-family epic #1157][energy-epic] tracks the implementation
 order.
 
-- **Heating, cooling, and energy degree days (HDD, CDD, EDD)** — *planned
-  ([#1164][energy-1164])*. Mean-based degree days from daily mean 2 m
+- **Heating, cooling, and energy degree days (HDD, CDD, EDD)** — *NumPy API
+  available ([#1164][energy-1164])*. Mean-based degree days from daily mean 2 m
   temperature against a base temperature, in °C day; EDD is HDD plus CDD with
-  separate heating and cooling bases. CPC's single-base convention ships first;
-  C3S threshold/reference pairs remain unresolved in [#1164][energy-1164]. A caller
+  separate heating and cooling bases. CPC's single-base convention ships;
+  C3S threshold/reference pairs need a separate contract and are deferred. A caller
   holding Tmin and Tmax computes the daily mean first.
 - **Hub-height wind speed** — available as
   {func}`climate_indices.energy.hub_height_wind_speed`. Wind extrapolated
@@ -174,11 +174,11 @@ order.
   reduced as cell temperature — estimated from air temperature, irradiance,
   and wind — rises, after the reference configuration of Jerez et al. (2015).
 
-The wind profile is implemented without new dependencies; degree days and
-capacity factors will follow in this package, deliberately overlapping `xclim`'s
-degree-day indicators and `wind_profile`, `pvlib`, and `windpowerlib`; those
-libraries remain documented alternatives and validation references, never
-dependencies
+The degree-day and wind-profile functions are implemented without new
+dependencies. The planned capacity factors will also need no new dependencies.
+These implementations deliberately overlap `xclim`'s degree-day indicators and
+`wind_profile`, `pvlib`, and `windpowerlib`. Those libraries remain documented
+alternatives and validation references, never dependencies
 ([ADR-0019](adr/0019-energy-module-api-and-aggregation.md) decision 7).
 
 ## Preparing inputs

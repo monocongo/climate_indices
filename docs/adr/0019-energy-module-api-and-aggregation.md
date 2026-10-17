@@ -17,11 +17,18 @@ Amended by the wind-profile implementation
 `climate_indices.energy` package now exists, exposing `hub_height_wind_speed()`
 and `wind_shear_exponent()` with decision 6's m s⁻¹/metre wind contract.
 Positive inverted profiles retain negative shear; calm-pair shear is NaN.
+
+Amended again by the degree-day implementation
+([#1164](https://github.com/monocongo/climate_indices/issues/1164)): the package also
+exposes `heating_degree_days()`, `cooling_degree_days()`, and
+`energy_degree_days()`, in-house and dependency-free, with decision 6's degree-day
+units.
+
 Decision 2's `aggregation` keyword landed with this record
-([#1158](https://github.com/monocongo/climate_indices/issues/1158)). The remaining
-energy APIs are still contracts for the tickets under
-[#1157](https://github.com/monocongo/climate_indices/issues/1157), not shipped code.
-Each decision is amended as its implementation lands, as
+([#1158](https://github.com/monocongo/climate_indices/issues/1158)). Decisions 3
+through 5 and the radiation units of decision 6 remain contracts for the tickets
+under [#1157](https://github.com/monocongo/climate_indices/issues/1157), not shipped
+code. Each decision is amended as its implementation lands, as
 {doc}`0013-flood-module-api-and-naming` was for flood.
 
 The energy-meteorology family
