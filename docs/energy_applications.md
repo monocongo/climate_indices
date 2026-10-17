@@ -169,11 +169,11 @@ order.
   reduced as cell temperature — estimated from air temperature, irradiance,
   and wind — rises, after the reference configuration of Jerez et al. (2015).
 
-The degree days, wind profile, and capacity factors will be implemented in
-this package with no new dependency, deliberately overlapping `xclim`'s
-degree-day indicators and `wind_profile`, `pvlib`, and `windpowerlib`; those
-libraries remain documented alternatives and validation references, never
-dependencies
+The degree-day functions are implemented without new dependencies. The planned
+wind profile and capacity factors will also need no new dependencies. These
+implementations deliberately overlap `xclim`'s degree-day indicators and
+`wind_profile`, `pvlib`, and `windpowerlib`; those libraries remain documented
+alternatives and validation references, never dependencies
 ([ADR-0019](adr/0019-energy-module-api-and-aggregation.md) decision 7).
 
 ## Preparing inputs
