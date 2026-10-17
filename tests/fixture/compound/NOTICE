@@ -1,0 +1,37 @@
+Input data attribution
+
+Vieira Passos, Marlon (2024). Climate Indices for heat waves, droughts and floods
+in Sweden (1922-2021), version 2. Figshare.
+https://doi.org/10.6084/m9.figshare.25189118.v2
+License: Creative Commons Attribution 4.0 International (CC BY 4.0).
+https://creativecommons.org/licenses/by/4.0/
+The committed subset selects three cells without changing the raw source values.
+The deterministic reference preparation is documented in README.md.
+
+Adapted deterministic LMF code
+
+Source: Compound/Compound_patterns.ipynb, commit
+6c88f255ee3034279dcebe2a2fc40c954dbe9575, at
+https://github.com/m-passos/hydroclimatic-hazards-hotspots
+
+The MIT License (MIT)
+
+Copyright (c) 2023 Marlon Vieira Passos
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
