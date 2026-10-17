@@ -19,10 +19,44 @@ SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "prepare_energy_wind_
 @pytest.fixture
 def generator() -> ModuleType:
     spec = importlib.util.spec_from_file_location("prepare_energy_wind_fixtures", SCRIPT)
-    assert spec is not None and spec.loader is not None
+    assert spec is not None
+    assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+@pytest.mark.parametrize(
+    ("source_available", "package_version", "payload", "error"),
+    [
+        (True, "1.0", b"source", None),
+        (False, "1.0", b"source", "Expected pinned oracle source/version"),
+        (True, "2.0", b"source", "Expected pinned oracle source/version"),
+        (True, "1.0", b"changed", "Unexpected oracle source checksum"),
+    ],
+    ids=["pinned", "missing-source", "wrong-version", "wrong-checksum"],
+)
+def test_verify_pinned_source(
+    generator: ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_available: bool,
+    package_version: str,
+    payload: bytes,
+    error: str | None,
+) -> None:
+    source = tmp_path / "oracle.py"
+    source.write_bytes(payload)
+    monkeypatch.setattr(generator, "version", lambda package: package_version)
+    monkeypatch.setattr(
+        generator, "SOURCES", {"oracle": {"version": "1.0", "source_sha256": hashlib.sha256(b"source").hexdigest()}}
+    )
+    path = str(source) if source_available else None
+    if error is None:
+        generator._verify_source("oracle", path)
+    else:
+        with pytest.raises(RuntimeError, match=error):
+            generator._verify_source("oracle", path)
 
 
 @pytest.mark.parametrize(

@@ -71,6 +71,14 @@ def _publish(staging: Path) -> None:
     shutil.rmtree(backup, ignore_errors=True)
 
 
+def _verify_source(package: str, source: str | None) -> None:
+    """Verify the pinned package version and source-file checksum."""
+    if source is None or version(package) != SOURCES[package]["version"]:
+        raise RuntimeError(f"Expected pinned {package} source/version")
+    if hashlib.sha256(Path(source).read_bytes()).hexdigest() != SOURCES[package]["source_sha256"]:
+        raise RuntimeError(f"Unexpected {package} source checksum")
+
+
 def main() -> None:
     """Verify pinned sources, generate vectors, then checksum the canonical JSON."""
     from windpowerlib.wind_speed import logarithmic_profile
@@ -78,10 +86,7 @@ def main() -> None:
 
     for package, function in (("xclim", wind_profile), ("windpowerlib", logarithmic_profile)):
         source = inspect.getsourcefile(inspect.unwrap(function))
-        if source is None or version(package) != SOURCES[package]["version"]:
-            raise RuntimeError(f"Expected pinned {package} source/version")
-        if hashlib.sha256(Path(source).read_bytes()).hexdigest() != SOURCES[package]["source_sha256"]:
-            raise RuntimeError(f"Unexpected {package} source checksum")
+        _verify_source(package, source)
 
     speed = np.array([0.0, 1.0, 3.5, 12.0, np.nan])
     cases = []
