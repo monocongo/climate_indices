@@ -1,13 +1,16 @@
 """Wind-profile contracts; external numerical evidence lives in test_energy_reference."""
 
+from math import log, log1p
 from typing import Any, Literal
+from unittest import mock
 
 import numpy as np
 import numpy.typing as npt
 import pytest
 
 import climate_indices
-from climate_indices import energy
+from climate_indices import energy, performance
+from climate_indices.energy import _wind
 from climate_indices.exceptions import InputTypeError, InvalidArgumentError
 
 
@@ -123,10 +126,22 @@ def test_shear_invalid_pairs_and_masks_are_missing() -> None:
     assert np.isnan(result).all()
 
 
-def test_shear_avoids_speed_ratio_overflow() -> None:
+@pytest.mark.parametrize("lower", [1e-300, 1.0, 2.0, 1e300])
+def test_shear_preserves_adjacent_wind_differences(lower: float) -> None:
+    upper = np.array([np.nextafter(lower, np.inf), np.nextafter(lower, 0)])
+    expected = [log1p((float(speed) - lower) / lower) / log(10) for speed in upper]
     with np.errstate(all="raise"):
-        result = energy.wind_shear_exponent([1e-300], [1e300])
-    np.testing.assert_allclose(result, [600], rtol=0, atol=1e-12)
+        result = energy.wind_shear_exponent(lower, upper)
+    np.testing.assert_allclose(result, expected, rtol=1e-15, atol=0)
+    assert result[0] > 0
+    assert result[1] < 0
+
+
+@pytest.mark.parametrize("lower,upper,expected", [(1e-300, 1e300, 600), (1e300, 1e-300, -600)])
+def test_shear_avoids_speed_ratio_overflow(lower: float, upper: float, expected: float) -> None:
+    with np.errstate(all="raise"):
+        result = energy.wind_shear_exponent([lower], [upper])
+    np.testing.assert_allclose(result, [expected], rtol=0, atol=1e-12)
 
 
 @pytest.mark.parametrize("lower,upper", [(0, 100), (10, 10), (100, 10), (10, np.inf), (np.nan, 100)])
@@ -145,3 +160,71 @@ def test_scalar_empty_and_custom_height_inputs() -> None:
     assert shear == pytest.approx(0.5)
     assert energy.hub_height_wind_speed([], 10, 100).shape == (0,)
     assert energy.wind_shear_exponent([], []).shape == (0,)
+
+
+@pytest.mark.parametrize("method", ["power", "log", "shear"])
+@pytest.mark.parametrize("large_array", [False, True])
+def test_wind_calculation_logs_and_allocation_accounting(
+    method: Literal["power", "log", "shear"], large_array: bool
+) -> None:
+    wind = np.ones((2, 1))
+    companion = np.full((1, 3), 0.2)
+    logger = mock.MagicMock()
+    logger.bind.return_value = logger
+    with (
+        mock.patch.object(_wind, "_logger", logger),
+        mock.patch.object(performance, "LARGE_ARRAY_THRESHOLD_BYTES", 1 if large_array else 1024**3),
+        mock.patch.object(performance, "get_process_memory_mb", return_value=12.5),
+        mock.patch.object(_wind, "check_large_array_memory", wraps=performance.check_large_array_memory) as memory,
+    ):
+        if method == "shear":
+            result = energy.wind_shear_exponent(wind, companion)
+            index_type = "wind_shear_exponent"
+            float_buffers = 5
+        else:
+            result = energy.hub_height_wind_speed(wind, 10, 100, method=method, alpha=companion, roughness_length=0.03)
+            index_type = "hub_height_wind_speed"
+            float_buffers = 3 if method == "power" else 2
+
+    context = logger.bind.call_args.kwargs
+    assert context["index_type"] == index_type
+    assert context["input_shape"] == result.shape
+    assert context["input_elements"] == result.size
+    assert [call.args[0] for call in logger.info.call_args_list] == [
+        "calculation_started",
+        "calculation_completed",
+    ]
+    completed = logger.info.call_args_list[-1].kwargs
+    assert completed["output_shape"] == result.shape
+    assert completed["duration_ms"] >= 0
+    extra_bytes = result.size * (float_buffers * result.itemsize + 3)
+    assert memory.call_args.kwargs == {"extra_bytes": extra_bytes}
+    if large_array:
+        total_bytes = sum(array.nbytes for array in memory.call_args.args) + extra_bytes
+        assert completed["array_memory_mb"] == round(total_bytes / 1024**2, 2)
+        assert completed["process_memory_mb"] == 12.5
+    else:
+        assert "array_memory_mb" not in completed
+        assert "process_memory_mb" not in completed
+    logger.error.assert_not_called()
+
+
+@pytest.mark.parametrize("method", ["power", "log", "shear"])
+def test_wind_calculation_failure_logs_and_propagates(method: Literal["power", "log", "shear"]) -> None:
+    logger = mock.MagicMock()
+    logger.bind.return_value = logger
+    operation = "power" if method == "power" else "log"
+    with (
+        mock.patch.object(_wind, "_logger", logger),
+        mock.patch.object(np, operation, side_effect=MemoryError("synthetic failure")),
+        pytest.raises(MemoryError, match="synthetic failure"),
+    ):
+        if method == "shear":
+            energy.wind_shear_exponent([1], [2])
+        else:
+            energy.hub_height_wind_speed([1], 10, 100, method=method, roughness_length=0.03)
+    logger.info.assert_called_once_with("calculation_started")
+    logger.error.assert_called_once()
+    assert logger.error.call_args.args == ("calculation_failed",)
+    assert logger.error.call_args.kwargs["error_type"] == "MemoryError"
+    assert logger.error.call_args.kwargs["error_message"] == "synthetic failure"

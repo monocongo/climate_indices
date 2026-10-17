@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any, Literal, TypeAlias
 
 import numpy as np
@@ -9,6 +10,10 @@ import numpy.typing as npt
 
 from climate_indices._recurrence import _as_float_array
 from climate_indices.exceptions import InvalidArgumentError
+from climate_indices.logging_config import get_logger, log_calculation_failure
+from climate_indices.performance import check_large_array_memory
+
+_logger = get_logger(__name__)
 
 _Height: TypeAlias = float | np.integer[Any] | np.floating[Any]
 
@@ -89,26 +94,52 @@ def hub_height_wind_speed(
     reference_height = _positive_height(reference_height, "reference_height")
     hub_height = _positive_height(hub_height, "hub_height")
     wind = _as_float_array(wind_speed)
-    if method == "power":
-        exponent = _as_float_array(alpha)
+    exponent = _as_float_array(alpha) if method == "power" else None
+    if exponent is not None:
         try:
             wind, exponent = np.broadcast_arrays(wind, exponent)
         except ValueError as exc:
             raise InvalidArgumentError("wind_speed and alpha must broadcast together.", argument_name="alpha") from exc
-        valid = np.isfinite(wind) & (wind >= 0) & np.isfinite(exponent)
-        with np.errstate(over="ignore", invalid="ignore", divide="ignore", under="ignore"):
-            factor = np.power(hub_height / reference_height, exponent)
-    else:
-        if roughness_length is None:
-            raise InvalidArgumentError("The log profile requires roughness_length.", argument_name="roughness_length")
-        roughness_length = _positive_height(roughness_length, "roughness_length")
-        if reference_height <= roughness_length or hub_height <= roughness_length:
-            raise InvalidArgumentError("Both heights must exceed roughness_length.", argument_name="roughness_length")
-        factor = np.log(hub_height / roughness_length) / np.log(reference_height / roughness_length)
-        valid = np.isfinite(wind) & (wind >= 0)
-    with np.errstate(over="ignore", invalid="ignore", under="ignore"):
-        result = np.where(wind == 0, 0.0, wind * factor)
-    return np.asarray(np.where(valid & np.isfinite(result), result, np.nan), dtype=np.float64)
+    log = _logger.bind(
+        index_type="hub_height_wind_speed", method=method, input_shape=wind.shape, input_elements=wind.size
+    )
+    log.info("calculation_started")
+    t0 = time.perf_counter()
+    try:
+        inputs = (wind,) if exponent is None else (wind, exponent)
+        # Budget for the factor, output buffers, and temporary masks.
+        memory_metrics = check_large_array_memory(
+            *inputs, extra_bytes=wind.size * ((3 if exponent is not None else 2) * wind.itemsize + 3)
+        )
+        if exponent is not None:
+            valid = np.isfinite(wind) & (wind >= 0) & np.isfinite(exponent)
+            with np.errstate(over="ignore", invalid="ignore", divide="ignore", under="ignore"):
+                factor = np.power(hub_height / reference_height, exponent)
+        else:
+            if roughness_length is None:
+                raise InvalidArgumentError(
+                    "The log profile requires roughness_length.", argument_name="roughness_length"
+                )
+            roughness_length = _positive_height(roughness_length, "roughness_length")
+            if reference_height <= roughness_length or hub_height <= roughness_length:
+                raise InvalidArgumentError(
+                    "Both heights must exceed roughness_length.", argument_name="roughness_length"
+                )
+            factor = np.log(hub_height / roughness_length) / np.log(reference_height / roughness_length)
+            valid = np.isfinite(wind) & (wind >= 0)
+        with np.errstate(over="ignore", invalid="ignore", under="ignore"):
+            result = np.where(wind == 0, 0.0, wind * factor)
+        result = np.asarray(np.where(valid & np.isfinite(result), result, np.nan), dtype=np.float64)
+        log.info(
+            "calculation_completed",
+            duration_ms=round((time.perf_counter() - t0) * 1000.0, 2),
+            output_shape=result.shape,
+            **(memory_metrics or {}),
+        )
+        return result
+    except Exception as exc:
+        log_calculation_failure(log, exc)
+        raise
 
 
 def wind_shear_exponent(
@@ -153,8 +184,28 @@ def wind_shear_exponent(
         lower, upper = np.broadcast_arrays(lower, upper)
     except ValueError as exc:
         raise InvalidArgumentError("Wind speeds must broadcast together.", argument_name="wind_speed_upper") from exc
-    valid = np.isfinite(lower) & np.isfinite(upper) & (lower > 0) & (upper > 0)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        # Log differences avoid overflowing a speed ratio for finite positive winds.
-        result = (np.log(upper) - np.log(lower)) / np.log(upper_height / lower_height)
-    return np.asarray(np.where(valid & np.isfinite(result), result, np.nan), dtype=np.float64)
+    log = _logger.bind(index_type="wind_shear_exponent", input_shape=lower.shape, input_elements=lower.size)
+    log.info("calculation_started")
+    t0 = time.perf_counter()
+    try:
+        # Budget for the difference, logarithms, output buffers, and temporary masks.
+        memory_metrics = check_large_array_memory(lower, upper, extra_bytes=lower.size * (5 * lower.itemsize + 3))
+        valid = np.isfinite(lower) & np.isfinite(upper) & (lower > 0) & (upper > 0)
+        with np.errstate(over="ignore", divide="ignore", invalid="ignore", under="ignore"):
+            # Use log1p near equality; log differences avoid ratios at extreme speeds.
+            difference = np.asarray(upper - lower)
+            near = np.abs(difference) <= 0.5 * lower
+            np.divide(difference, lower, out=difference, where=near)
+            result = np.where(near, np.log1p(difference), np.log(upper) - np.log(lower))
+            result = result / np.log(upper_height / lower_height)
+        result = np.asarray(np.where(valid & np.isfinite(result), result, np.nan), dtype=np.float64)
+        log.info(
+            "calculation_completed",
+            duration_ms=round((time.perf_counter() - t0) * 1000.0, 2),
+            output_shape=result.shape,
+            **(memory_metrics or {}),
+        )
+        return result
+    except Exception as exc:
+        log_calculation_failure(log, exc)
+        raise
