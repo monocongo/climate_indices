@@ -13,6 +13,7 @@ import dataclasses
 import datetime as dt
 import json
 import logging
+import pickle
 import warnings
 from typing import Any
 from unittest import mock
@@ -913,6 +914,8 @@ def test_result_arrays_are_read_only_and_new() -> None:
         assert not array.flags.writeable
         with pytest.raises(ValueError, match="read-only"):
             array[0] = array[0]
+        with pytest.raises(ValueError, match="WRITEABLE"):
+            array.setflags(write=True)
     assert not np.shares_memory(result.exceedance, indicator)
     with pytest.raises(dataclasses.FrozenInstanceError):
         result.cadence = "daily"  # type: ignore[misc]
@@ -946,6 +949,12 @@ def test_metadata_is_immutable_at_every_depth() -> None:
         result.metadata["sources"]["a"]["source_metadata"]["x"] = 1
     with pytest.raises(TypeError):
         result.metadata.update({"new": 1})  # type: ignore[attr-defined]
+    manifest: Any = result.metadata
+    with pytest.raises(TypeError):
+        manifest |= {"new": 1}
+    copied = copy.deepcopy(result.metadata)
+    assert copied == result.metadata
+    assert pickle.loads(pickle.dumps(result.metadata)) == result.metadata
     assert isinstance(result.metadata["sources"]["a"]["calibration_period"], tuple)
 
 

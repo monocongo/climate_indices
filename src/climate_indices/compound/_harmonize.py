@@ -154,6 +154,19 @@ class _FrozenDict(dict[str, Any]):
         """Reject merging entries into the manifest."""
         self._read_only()
 
+    def __ior__(self, other: Any) -> NoReturn:  # type: ignore[misc]
+        """Reject in-place merging with ``|=``, which bypasses the overridden ``update``."""
+        self._read_only()
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        """Rebuild through the constructor so copy and pickle never call ``__setitem__``."""
+        return (type(self), (dict(self),))
+
+
+def _immutable(array: npt.NDArray[Any]) -> npt.NDArray[Any]:
+    """Return a read-only view over an immutable copy, so ``writeable`` cannot be restored."""
+    return np.frombuffer(array.tobytes(), dtype=array.dtype).reshape(array.shape)
+
 
 def _freeze(value: Any) -> Any:
     """Return ``value`` with every nested dict read-only and every list a tuple."""
@@ -655,9 +668,9 @@ def _harmonize(
     valid = np.stack([grid_valid for _, grid_valid in retained])
     steps = np.arange(first, last + 1, dtype=np.int64)
     label_unit = _UNITS[target_cadence]
-    time_labels = steps.astype(label_unit).astype(_DAY_UNIT)
-    for array in (exceedance, valid, time_labels):
-        array.setflags(write=False)
+    time_labels = _immutable(steps.astype(label_unit).astype(_DAY_UNIT))
+    exceedance = _immutable(exceedance)
+    valid = _immutable(valid)
     _warn_unknowns(
         validated,
         dropped,
