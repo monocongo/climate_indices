@@ -186,11 +186,16 @@ follow to build:
 
 ### Architecture decision records
 
-`docs/adr/` is published, so a reader treats a record as a description of
-current code: someone who trusts one greps a symbol and expects to find it.
-Every record therefore opens with a `## Status` line naming its standing:
+`docs/adr/` is published, so each record must distinguish implemented code from
+approved designs. Readers must be able to tell whether named symbols exist in
+the library. Every record therefore opens with a `## Status` line naming its standing:
 
-- `Accepted` — the record describes the code as it is. A new record gets this.
+- `Approved for implementation` — the maintainer approved the design, but some
+  or all of its implementation is pending. Identify unimplemented APIs and link
+  their tracking issues. Update the implementation status as those issues land.
+  Promote the record to `Accepted` when the described implementation exists.
+- `Accepted` — the record describes the code as it is. Use this for implemented
+  decisions, not approval of future APIs.
 - `Amended` — the decision stands, but the record's text needed correcting: a
   symbol was renamed, a module became a package, a deferral completed, or a claim
   the code contradicts. Correct the detail in place and name what moved it — the

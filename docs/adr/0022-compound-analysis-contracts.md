@@ -2,11 +2,11 @@
 
 ## Status
 
-Accepted. The maintainer approved these contracts and the bounded milestone scope.
+Approved for implementation. The maintainer approved these contracts and the bounded milestone scope.
 [CMP-01 (#1365)](https://github.com/monocongo/climate_indices/issues/1365) records this decision under
 [parent issue #1364](https://github.com/monocongo/climate_indices/issues/1364).
 
-**No compound API is implemented yet.** This record accepts contracts, not completed code or scientific validation.
+**No compound API is implemented yet.** This record documents approved contracts, not completed code or scientific validation.
 Do not start implementation until the maintainer merges the PR containing this record.
 The implementation responsibilities are explicit:
 
@@ -21,7 +21,8 @@ The implementation responsibilities are explicit:
 
 The reference fixture is [#1366](https://github.com/monocongo/climate_indices/issues/1366).
 Final reproduction, user documentation, and evidence classification are [#1374](https://github.com/monocongo/climate_indices/issues/1374).
-Amend this status and implementation table as those issues land, following the energy-family precedent in ADR-0019.
+Update the implementation table as those issues land.
+Keep this status until all described implementations exist; then promote the record to `Accepted`.
 
 ## Context
 

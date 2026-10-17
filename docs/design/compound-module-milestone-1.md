@@ -9,18 +9,17 @@ Implementation remains blocked until the maintainer merges CMP-01's ADR PR.
 
 The source review used fetched `main` at `a074b1fc5593c5761abd0c49b361654b241cc479`
 and the 3.0.0 API contracts. The checkout supplied with the request was older.
-The fetched branch contains ADRs through 0021. The accepted contract uses number 0022,
+The fetched branch contains ADRs through 0021. The approved contract uses number 0022,
 which remained available when CMP-01 preparation started.
 
 **Repository conventions take precedence in two places.**
 
 - This plan lives under `docs/design/`, not a new `docs/plans/` directory.
   `CONTRIBUTING.md` classifies design notes as internal, and `docs/conf.py` excludes this directory.
-- Published ADRs currently permit `Accepted`, `Amended`, and `Superseded`, but not `Proposed`.
-  The proposal stayed internal during the initial review.
-  After approval, CMP-01 promoted it to [ADR-0022](../adr/0022-compound-analysis-contracts.md) with status `Accepted`.
-  That record distinguishes accepted contracts from unimplemented functions, as ADR-0019 does.
-  No authoring-convention change is required.
+- Unapproved proposals remain internal; `Proposed` is not a published ADR status.
+  The maintainer approved the addition of `Approved for implementation` to the authoring conventions.
+  [ADR-0022](../adr/0022-compound-analysis-contracts.md) uses that status and identifies the unimplemented APIs and tracking issues.
+  Promote it to `Accepted` only when the described implementation exists.
 
 No `_bmad-output/` or repository `.claude/skills/` directory was present.
 The planning handoffs describe an epic, dependency-ordered child issues, human decision gates,
@@ -86,7 +85,7 @@ Use a `climate_indices.compound` package with a public facade and private implem
 Import it explicitly with `import climate_indices.compound as compound`.
 Do not add functions or the module to root `__all__`, following `runs` rather than the fire root-module export.
 Do not add entries to `typed_public_api.py` or algorithms to drought-oriented `compute.py`.
-The accepted ADR will grant this family-level placement exception to ADR-0001.
+The approved ADR will grant this family-level placement exception to ADR-0001.
 
 Start the package with its first working function, not an empty scaffold.
 Use `_harmonize.py`, `_statistics.py`, `_events.py`, `_bootstrap.py`, and `_xarray.py`
@@ -579,7 +578,7 @@ Use only existing labels; no `compound` or `epic:compound` label currently exist
 | ID | One-PR slice | Depends on |
 | --- | --- | --- |
 | [CMP-00 (#1364)](https://github.com/monocongo/climate_indices/issues/1364) | Track the milestone as a parent epic. | All children must complete before closure. |
-| [CMP-01 (#1365)](https://github.com/monocongo/climate_indices/issues/1365) | Publish the approved plan and accepted contracts ADR. | The documentation PR requires review and merge. |
+| [CMP-01 (#1365)](https://github.com/monocongo/climate_indices/issues/1365) | Publish the approved plan and contracts ADR. | The documentation PR requires review and merge. |
 | [CMP-02 (#1366)](https://github.com/monocongo/climate_indices/issues/1366) | Prepare the published LMF reference subset and convention audit. | CMP-01. |
 | [CMP-03 (#1367)](https://github.com/monocongo/climate_indices/issues/1367) | Implement declared-input harmonization and `AlignedHazards`. | CMP-01. |
 | [CMP-04 (#1368)](https://github.com/monocongo/climate_indices/issues/1368) | Implement joint counts, frequencies, LMF, and registry entries. | CMP-03. |
@@ -623,7 +622,7 @@ A daily-inference-first release adds unresolved calendar resampling to the first
 **Acceptance criteria:**
 - [ ] The maintainer merges the ADR before any implementation issue starts.
 - [ ] Every child merges with its required tests and documentation.
-- [ ] The public API, CF metadata, serialized results, and beta limitations match the accepted contracts.
+- [ ] The public API, CF metadata, serialized results, and beta limitations match the approved contracts.
 - [ ] `VALIDATION.md` records actual evidence, including a scoped published-method reproduction and its known gaps.
 - [ ] Daily significance, field significance, and operational prediction are explicitly excluded.
 
@@ -641,15 +640,16 @@ Implementation cannot safely choose calendar, denominator, lag, or inference sem
 
 **Describe the solution you'd like.**
 Review this plan and the proposed ADR. Resolve the approval questions below.
-After approval, publish the accepted ADR under the next free number and add it to `docs/adr/index.md`.
+After approval, publish the ADR with status `Approved for implementation` under the next free number.
+Add it to `docs/adr/index.md`.
 Keep this detailed plan internal and link it from the ADR through an absolute repository URL.
 
 **Describe alternatives you've considered.**
-A published `Proposed` ADR conflicts with current authoring conventions. Keeping the proposal internal avoids an unrelated policy migration.
+Keep unapproved proposals internal. A published `Approved for implementation` ADR records maintainer approval without claiming that the APIs exist.
 
 **Acceptance criteria:**
 - [ ] The plan and ADR agree on every public contract and named scope exclusion.
-- [ ] The accepted ADR clearly identifies unimplemented APIs and the follow-up issues.
+- [ ] The ADR uses `Approved for implementation` and clearly identifies unimplemented APIs and the follow-up issues.
 - [ ] The ADR records the scoped ADR-0001 placement and ADR-0004 analysis-calendar exceptions without changing existing code.
 - [ ] Published navigation and links pass both Sphinx gates.
 - [ ] No implementation, fixture, dependency, CF entry, or unsupported validation claim enters this PR.
@@ -921,7 +921,7 @@ No Rust gate is needed unless later work touches native code or native dispatch.
 ## Approved recommendations and remaining gates
 
 1. **Scope:** Monthly-only inference and eager-only gridded catalogs are approved for milestone 1. Daily inference requires a later design.
-2. **ADR publication:** Promotion of the internal `Proposed` draft to an `Accepted` contracts record is approved for CMP-01.
+2. **ADR publication:** Promotion of the internal draft to an `Approved for implementation` contracts record is approved for CMP-01.
 3. **Input declaration:** The explicit Boolean path for physical thresholds is approved. It avoids an unjustified fit for existing fire and heat indicators.
 4. **Conservative support:** The minimum counts, complete-month aggregation, and complete-year inference segment policy are approved. They can exclude sparse real records.
 5. **Bootstrap evidence:** The year-block heuristic is approved as the proposed default, conditional on CMP-07's characterization gate. It is not a universal persistence correction.
@@ -939,7 +939,7 @@ The plan received a source-contract and scientific-consistency self-review befor
 It did not receive an independent external scientific review.
 The review corrected these design risks:
 
-- Published `Proposed` ADR status conflicted with repository conventions; the draft stayed internal until the maintainer approved its promotion.
+- `Accepted` would incorrectly describe unimplemented APIs as current code. The maintainer approved the distinct `Approved for implementation` status.
 - Aggregated CDF values would have been mislabeled as probabilities; reduction now acts on declared hazard indicators.
 - Negative LMF and threshold-implied marginals would be false; the plan uses observed counts and nonnegative ratios.
 - Confidence intervals would not test independence; paired and null resampling now have distinct contracts.
