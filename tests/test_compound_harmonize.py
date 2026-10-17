@@ -154,6 +154,19 @@ def test_float32_is_widened_exactly_not_rounded_to_the_threshold() -> None:
     assert ints(run({"p": np.array([0.1], dtype=np.float64)}, time, **declared).exceedance[0]) == [0]
 
 
+@pytest.mark.skipif(
+    np.dtype(np.longdouble).itemsize == np.dtype(np.float64).itemsize,
+    reason="this platform's longdouble is float64, so no wider value exists to narrow",
+)
+def test_extended_precision_probability_is_rejected_rather_than_narrowed() -> None:
+    """Refuse a dtype float64 cannot hold exactly instead of validating a rounded copy of it."""
+    time = months("2000-01", "2000-02")
+    above_one = np.nextafter(np.longdouble(1.0), np.longdouble(2.0))
+    assert above_one > 1  # float64 rounds this to exactly 1.0, which the range gate would accept
+    with pytest.raises(InputTypeError, match="float64"):
+        run({"p": np.array([above_one], dtype=np.longdouble)}, time)
+
+
 def test_nan_and_masked_values_are_invalid_not_false() -> None:
     """Keep unknown observations unknown, and ignore whatever hides under a mask."""
     values = np.ma.array([0.1, np.nan, 0.9, 5.0, 0.05], mask=[False, False, False, True, False])
@@ -495,12 +508,59 @@ def test_inner_join_restricts_to_the_overlap_and_warns_about_dropped_boundaries(
     assert caught[0].filename == __file__  # attributed to the caller, not to the library
     warning = caught[0].message
     assert isinstance(warning, InputAlignmentWarning)
-    assert (warning.original_size, warning.aligned_size, warning.dropped_count) == (6, 4, 4)
+    # every field shares one basis: source time steps summed over all sources
+    assert (warning.original_size, warning.aligned_size, warning.dropped_count) == (12, 8, 4)
     assert result.time.tolist() == [dt.date(2000, m, 1) for m in (3, 4, 5, 6)]
     assert ints(result.exceedance) == [[1, 0, 1, 0], [1, 1, 1, 0]]
     sources = result.metadata["sources"]
     assert (sources["a"]["dropped_leading"], sources["a"]["dropped_trailing"]) == (2, 0)
     assert (sources["b"]["dropped_leading"], sources["b"]["dropped_trailing"]) == (0, 2)
+
+
+def test_inner_join_materializes_only_the_retained_range(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bound allocation by the retained overlap, never by the span between distant observations."""
+    requested: list[int] = []
+    densify = harmonize_module._on_grid
+
+    def record(positions: Any, steps: int, hazard: Any, valid: Any) -> Any:
+        requested.append(int(steps))
+        return densify(positions, steps, hazard, valid)
+
+    monkeypatch.setattr(harmonize_module, "_on_grid", record)
+    # 14 months against 1 shared month: densifying each source's own span would request 14 steps
+    inputs = {"a": np.full(14, 0.1), "b": np.full(1, 0.1)}
+    time = {"a": months("2000-01", "2001-03"), "b": months("2000-02", "2000-03")}
+    with pytest.warns(InputAlignmentWarning) as caught:
+        result = run(inputs, time, join="inner")
+    assert requested == [1, 1]
+    assert result.exceedance.shape == (2, 1)
+    warning = caught[0].message
+    assert isinstance(warning, InputAlignmentWarning)
+    assert (warning.original_size, warning.aligned_size, warning.dropped_count) == (15, 2, 13)
+
+
+def test_source_whose_observations_skip_the_retained_window_stays_invalid() -> None:
+    """A source with nothing inside the overlap contributes no valid step instead of failing."""
+    inputs = {"a": np.array([0.05, 0.05]), "b": np.full(11, 0.05)}
+    time = {"a": np.array(["2000-01", "2002-01"], dtype="datetime64[M]"), "b": months("2000-02", "2001-01")}
+    with pytest.warns(InputAlignmentWarning):
+        result = run(inputs, time, join="inner")
+    assert result.time.tolist() == [dt.date(2000, m, 1) for m in range(2, 13)]
+    assert ints(result.valid) == [[0] * 11, [1] * 11]
+    assert ints(result.exceedance) == [[0] * 11, [1] * 11]
+
+
+def test_daily_reduction_does_not_materialize_a_per_day_grid(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Reduce daily input to months by counting, so no per-day grid is built at all."""
+
+    def forbidden(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("the monthly reduction must not allocate a per-day grid")
+
+    monkeypatch.setattr(harmonize_module, "_on_grid", forbidden)
+    time = days("2000-01-01", "2000-03-01")
+    result = run({"p": np.full(time.shape[0], 0.05)}, time, cadence="daily", aggregation={"p": "any"})
+    assert ints(result.valid[0]) == [1, 1]
+    assert ints(result.exceedance[0]) == [1, 1]
 
 
 def test_inner_join_with_identical_coverage_does_not_warn() -> None:
@@ -753,6 +813,7 @@ def test_unknown_indicator_physical_declaration_is_recorded_as_unknown() -> None
     [
         {"calibration_year_initial": 1991},
         {"calibration_year_final": 2020},
+        {"calibration_year_initial": None, "calibration_year_final": None},
         {"calibration_year_initial": 2020, "calibration_year_final": 1991},
         {"calibration_year_initial": 1991.0, "calibration_year_final": 2020},
         {"calibration_year_initial": True, "calibration_year_final": 2020},
@@ -760,7 +821,7 @@ def test_unknown_indicator_physical_declaration_is_recorded_as_unknown() -> None
         {"scale": float("nan")},
         {"scale": object()},
     ],
-    ids=["only-initial", "only-final", "reversed", "float-year", "bool-year", "set", "nan", "object"],
+    ids=["only-initial", "only-final", "null-years", "reversed", "float-year", "bool-year", "set", "nan", "object"],
 )
 def test_malformed_source_metadata_is_rejected(metadata: dict[str, Any]) -> None:
     """Require JSON-compatible metadata and well-formed calibration years."""
@@ -791,7 +852,7 @@ def test_manifest_schema_serializes_and_labels_no_pit_or_cf_metadata() -> None:
             "h": {"physical_threshold": 35, "comparator": ">="},
         },
     )
-    text = json.dumps(result.metadata, default=dict, allow_nan=False)
+    text = json.dumps(result.metadata, allow_nan=False)  # the ordinary encoder, with no default= hook
     manifest = json.loads(text)
     assert set(manifest) == {
         "schema_version",
@@ -883,6 +944,8 @@ def test_metadata_is_immutable_at_every_depth() -> None:
         result.metadata["sources"]["a"]["threshold"] = 1.0
     with pytest.raises(TypeError):
         result.metadata["sources"]["a"]["source_metadata"]["x"] = 1
+    with pytest.raises(TypeError):
+        result.metadata.update({"new": 1})  # type: ignore[attr-defined]
     assert isinstance(result.metadata["sources"]["a"]["calibration_period"], tuple)
 
 
@@ -897,7 +960,8 @@ def test_lifecycle_events_are_emitted_on_success() -> None:
         run({"a": np.full(3, 0.1), "b": np.full(3, 0.9)}, months("2000-01", "2000-04"))
     bound = mock_logger.bind.call_args.kwargs
     assert bound["index_type"] == "compound_harmonize"
-    assert bound["sources"] == ("a", "b")
+    assert bound["n_sources"] == 2  # the names are caller identifiers and stay out of the log
+    assert "sources" not in bound
     assert [call.args[0] for call in mock_logger.info.call_args_list] == [
         "calculation_started",
         "calculation_completed",

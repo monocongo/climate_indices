@@ -20,8 +20,7 @@ import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
 from time import perf_counter
-from types import MappingProxyType
-from typing import Any, Literal, TypeAlias
+from typing import Any, Literal, NoReturn, TypeAlias
 
 import numpy as np
 import numpy.typing as npt
@@ -88,26 +87,78 @@ class AlignedHazards:
 
 
 @dataclass(frozen=True)
-class _Prepared:
-    """One source on its own complete grid at the target cadence."""
+class _Validated:
+    """One source validated and thresholded, before placement on the retained grid.
+
+    Nothing is densified here: ``index`` and ``positions`` hold one entry per *observed*
+    step, so a source spanning a long unobserved range costs no memory for the gap.
+    """
 
     name: str
-    hazard: npt.NDArray[np.bool_]  # (steps, *cells); False wherever invalid
+    hazard: npt.NDArray[np.bool_]  # (observed, *cells); False wherever invalid
     valid: npt.NDArray[np.bool_]
-    first: int  # target-unit index (days or months since 1970-01) of step 0
+    index: npt.NDArray[np.int64]  # source-cadence index: days or months since 1970-01-01
+    positions: npt.NDArray[np.int64]  # the same steps in target-cadence units
+    cadence: str
     entry: dict[str, Any]  # manifest entry, extended with the dropped boundaries on alignment
     calibration: tuple[int, int] | None
 
     @property
+    def first(self) -> int:
+        """Return the inclusive target-unit index of the first observed step."""
+        return int(self.positions[0])
+
+    @property
     def last(self) -> int:
-        """Return the inclusive target-unit index of the final step."""
-        return self.first + int(self.hazard.shape[0]) - 1
+        """Return the inclusive target-unit index of the final observed step."""
+        return int(self.positions[-1])
+
+    @property
+    def steps(self) -> int:
+        """Return how many target-cadence steps this source spans, observed or not."""
+        return self.last - self.first + 1
+
+
+class _FrozenDict(dict[str, Any]):
+    """A read-only mapping that ``json.dumps`` still accepts as an ordinary dict."""
+
+    def _read_only(self) -> NoReturn:
+        """Reject any mutation of the harmonization manifest."""
+        raise TypeError("The harmonization manifest is read-only.")
+
+    def __setitem__(self, key: str, value: Any) -> NoReturn:
+        """Reject inserting or replacing a manifest entry."""
+        self._read_only()
+
+    def __delitem__(self, key: str) -> NoReturn:
+        """Reject deleting a manifest entry."""
+        self._read_only()
+
+    def clear(self) -> NoReturn:
+        """Reject clearing the manifest."""
+        self._read_only()
+
+    def pop(self, key: str, default: Any = None) -> NoReturn:
+        """Reject removing a manifest entry."""
+        self._read_only()
+
+    def popitem(self) -> NoReturn:
+        """Reject removing a manifest entry."""
+        self._read_only()
+
+    def setdefault(self, key: str, default: Any = None) -> NoReturn:
+        """Reject inserting a default manifest entry."""
+        self._read_only()
+
+    def update(self, *args: Any, **kwargs: Any) -> NoReturn:
+        """Reject merging entries into the manifest."""
+        self._read_only()
 
 
 def _freeze(value: Any) -> Any:
-    """Return ``value`` with every nested dict as a read-only mapping and list as a tuple."""
+    """Return ``value`` with every nested dict read-only and every list a tuple."""
     if isinstance(value, dict):
-        return MappingProxyType({key: _freeze(item) for key, item in value.items()})
+        return _FrozenDict({key: _freeze(item) for key, item in value.items()})
     if isinstance(value, list):
         return tuple(_freeze(item) for item in value)
     return value
@@ -226,6 +277,13 @@ def _hazard_and_validity(
                 expected_type=float,
                 actual_type=array.dtype.type,
             )
+        if array.dtype.kind == "f" and array.dtype.itemsize > np.dtype(np.float64).itemsize:
+            raise InputTypeError(
+                f"inputs[{name!r}] is declared a probability with the extended-precision dtype {array.dtype}; "
+                "validation and comparison happen in float64, which cannot hold every value this dtype stores.",
+                expected_type=np.float64,
+                actual_type=array.dtype.type,
+            )
         # float64 holds every int and float32 value exactly, so the strict comparison tests the stored value
         data = array.astype(np.float64)
         valid &= ~np.isnan(data)
@@ -303,26 +361,43 @@ def _on_grid(
     return grid_hazard, grid_valid
 
 
-def _days_to_months(
-    day_index: npt.NDArray[np.int64],
-    hazard: npt.NDArray[np.bool_],
-    valid: npt.NDArray[np.bool_],
-    aggregation: str,
-) -> tuple[int, npt.NDArray[np.bool_], npt.NDArray[np.bool_]]:
-    """Reduce daily hazard occurrence to calendar months; a month is valid only when every civil day is."""
-    days = day_index.astype(_DAY_UNIT)
-    first_month = days[0].astype(_MONTH_UNIT)
-    last_month = days[-1].astype(_MONTH_UNIT)
-    month_starts = np.arange(first_month, last_month + 1).astype(_DAY_UNIT)
-    grid_start = month_starts[0]
-    steps = int((last_month + 1).astype(_DAY_UNIT).astype(np.int64) - grid_start.astype(np.int64))
-    grid_hazard, grid_valid = _on_grid(day_index - grid_start.astype(np.int64), steps, hazard, valid)
-    # every month has at least 28 days, so no reduceat segment is empty
-    offsets = (month_starts - grid_start).astype(np.int64)
-    month_valid = np.logical_and.reduceat(grid_valid, offsets, axis=0)
-    reducer = np.logical_or if aggregation == "any" else np.logical_and
-    month_hazard = reducer.reduceat(grid_hazard, offsets, axis=0) & month_valid
-    return int(first_month.astype(np.int64)), month_hazard, month_valid
+def _daily_to_months(
+    source: _Validated, first_month: int, last_month: int, aggregation: str
+) -> tuple[npt.NDArray[np.bool_], npt.NDArray[np.bool_]]:
+    """Reduce the retained daily observations to calendar months, without a per-day grid.
+
+    A month is valid only when every civil day in it was observed and valid, so an absent
+    or unknown civil day leaves the whole month invalid.
+    """
+    keep = (source.positions >= first_month) & (source.positions <= last_month)
+    slots = int(last_month - first_month + 1)
+    cells = source.hazard.shape[1:]
+    observed_valid = np.zeros((slots, *cells), dtype=np.int64)
+    observed_hazard = np.zeros((slots, *cells), dtype=np.int64)
+    months = source.positions[keep] - first_month
+    np.add.at(observed_valid, months, source.valid[keep].astype(np.int64))
+    np.add.at(observed_hazard, months, source.hazard[keep].astype(np.int64))
+    month_starts = np.arange(first_month, last_month + 1)
+    civil_days = (
+        (month_starts + 1).astype(_MONTH_UNIT).astype(_DAY_UNIT) - month_starts.astype(_MONTH_UNIT).astype(_DAY_UNIT)
+    ).astype(np.int64)
+    required = civil_days.reshape((slots,) + (1,) * len(cells))
+    month_valid = observed_valid == required
+    if aggregation == "any":
+        month_hazard = (observed_hazard > 0) & month_valid
+    else:
+        month_hazard = (observed_hazard == required) & month_valid
+    return month_hazard, month_valid
+
+
+def _densify(
+    source: _Validated, first: int, last: int, target_cadence: str
+) -> tuple[npt.NDArray[np.bool_], npt.NDArray[np.bool_]]:
+    """Place one source on the retained ``[first, last]`` target grid; every absent step is invalid."""
+    if source.cadence == "daily" and target_cadence == "monthly":
+        return _daily_to_months(source, first, last, str(source.entry["aggregation"]))
+    keep = (source.positions >= first) & (source.positions <= last)
+    return _on_grid(source.positions[keep] - first, last - first + 1, source.hazard[keep], source.valid[keep])
 
 
 def _source_metadata(name: str, metadata: object) -> tuple[dict[str, Any], tuple[int, int] | None]:
@@ -335,10 +410,11 @@ def _source_metadata(name: str, metadata: object) -> tuple[dict[str, Any], tuple
             argument_name="source_metadata",
             valid_values="a mapping of JSON strings, numbers, booleans, null, lists, and mappings",
         ) from exc
+    # a key present with a null value is a malformed declaration, not an omitted one
+    if "calibration_year_initial" not in copied and "calibration_year_final" not in copied:
+        return copied, None
     initial = copied.get("calibration_year_initial")
     final = copied.get("calibration_year_final")
-    if initial is None and final is None:
-        return copied, None
     if type(initial) is not int or type(final) is not int or initial > final:
         raise InvalidArgumentError(
             f"source_metadata[{name!r}] must give calibration_year_initial and calibration_year_final together "
@@ -350,7 +426,7 @@ def _source_metadata(name: str, metadata: object) -> tuple[dict[str, Any], tuple
     return copied, (initial, final)
 
 
-def _prepare_source(
+def _validate_source(
     name: str,
     values: npt.ArrayLike,
     *,
@@ -364,8 +440,8 @@ def _prepare_source(
     validity: object,
     metadata: object,
     spatial_time_major: bool,
-) -> _Prepared:
-    """Validate one source and place it on its own complete grid at the target cadence."""
+) -> _Validated:
+    """Validate one source and threshold it, without placing it on a grid yet."""
     _check_choice(f"cadence[{name!r}]", cadence, _CADENCES)
     _check_scale(name, scale)
     threshold_value = _declared_threshold(name, scale, threshold, direction)
@@ -383,12 +459,8 @@ def _prepare_source(
         )
     index = _observed_index(name, time, cadence, hazard.shape[0])
     copied, calibration = _source_metadata(name, metadata)
-
-    if cadence == "daily" and target_cadence == "monthly":
-        first, grid_hazard, grid_valid = _days_to_months(index, hazard, valid, str(aggregation))
-    else:
-        first = int(index[0])
-        grid_hazard, grid_valid = _on_grid(index - first, int(index[-1]) - first + 1, hazard, valid)
+    # the index is an int count in its own unit, so it round-trips through that unit before conversion
+    positions = index.astype(_UNITS[cadence]).astype(_UNITS[target_cadence]).astype(np.int64)
 
     label_unit = _UNITS[cadence]
     entry: dict[str, Any] = {
@@ -407,7 +479,7 @@ def _prepare_source(
         entry["physical_threshold"] = copied.get("physical_threshold", _UNKNOWN)
         entry["comparator"] = copied.get("comparator", _UNKNOWN)
     entry["source_metadata"] = copied
-    return _Prepared(name, grid_hazard, grid_valid, first, entry, calibration)
+    return _Validated(name, hazard, valid, index, positions, cadence, entry, calibration)
 
 
 def _check_aggregation(
@@ -430,13 +502,13 @@ def _check_aggregation(
     return reducers
 
 
-def _align(prepared: list[_Prepared], target_cadence: str, join: str) -> tuple[int, int, int]:
+def _align(validated: list[_Validated], target_cadence: str, join: str) -> tuple[int, int, int]:
     """Return the retained inclusive ``(first, last)`` target-unit range and the total dropped step count."""
-    firsts = [source.first for source in prepared]
-    lasts = [source.last for source in prepared]
+    firsts = [source.first for source in validated]
+    lasts = [source.last for source in validated]
     if join == "exact":
         if len(set(firsts)) != 1 or len(set(lasts)) != 1:
-            ranges = {source.name: (source.entry["time_start"], source.entry["time_end"]) for source in prepared}
+            ranges = {source.name: (source.entry["time_start"], source.entry["time_end"]) for source in validated}
             raise CoordinateValidationError(
                 f'join="exact" requires identical normalized coverage at the {target_cadence} cadence; '
                 f'sources span {ranges}. Pass join="inner" to restrict to the common overlap.',
@@ -452,7 +524,7 @@ def _align(prepared: list[_Prepared], target_cadence: str, join: str) -> tuple[i
             reason="empty overlap",
         )
     dropped = 0
-    for source in prepared:
+    for source in validated:
         leading, trailing = first - source.first, source.last - last
         source.entry["dropped_leading"] = leading
         source.entry["dropped_trailing"] = trailing
@@ -460,12 +532,13 @@ def _align(prepared: list[_Prepared], target_cadence: str, join: str) -> tuple[i
     return first, last, dropped
 
 
-def _warn_unknowns(prepared: list[_Prepared], dropped: int, aligned_size: int) -> None:
-    """Warn about probability sources without a Calibration Period and about dropped boundary steps."""
+def _warn_unknowns(sources: list[_Validated], dropped: int, original: int, aligned: int) -> None:
+    """Warn about probability sources without a Calibration Period and about dropped boundary steps.
+
+    The alignment counts share one basis: source time steps summed over every source.
+    """
     undeclared = [
-        source.name
-        for source in prepared
-        if source.entry["input_scale"] == "probability" and source.calibration is None
+        source.name for source in sources if source.entry["input_scale"] == "probability" and source.calibration is None
     ]
     # stacklevel 4 skips this helper, _harmonize, and harmonize to reach the caller
     if undeclared:
@@ -479,9 +552,9 @@ def _warn_unknowns(prepared: list[_Prepared], dropped: int, aligned_size: int) -
     if dropped:
         warnings.warn(
             InputAlignmentWarning(
-                f'join="inner" dropped {dropped} boundary time steps in total to keep the common overlap.',
-                original_size=max(source.hazard.shape[0] for source in prepared),
-                aligned_size=aligned_size,
+                f'join="inner" dropped {dropped} of {original} source time steps in total to keep the common overlap.',
+                original_size=original,
+                aligned_size=aligned,
                 dropped_count=dropped,
             ),
             stacklevel=4,
@@ -542,8 +615,8 @@ def _harmonize(
         )
     reducers = _check_aggregation(aggregation, names, cadence, target_cadence)
 
-    prepared = [
-        _prepare_source(
+    validated = [
+        _validate_source(
             name,
             inputs[name],
             time=time[name],
@@ -559,7 +632,7 @@ def _harmonize(
         )
         for name in names
     ]
-    cells = {source.hazard.shape[1:] for source in prepared}
+    cells = {source.hazard.shape[1:] for source in validated}
     if len(cells) != 1:
         raise DataShapeError(
             "Every source must have the same cell shape; broadcasting a point across a grid is never implicit.",
@@ -567,7 +640,7 @@ def _harmonize(
             actual_shape=None,
         )
 
-    known = {source.name: source.calibration for source in prepared if source.calibration is not None}
+    known = {source.name: source.calibration for source in validated if source.calibration is not None}
     if len(set(known.values())) > 1:
         raise InvalidArgumentError(
             f"Sources were calibrated on conflicting periods {known}; compound statistics need one Calibration Period.",
@@ -575,15 +648,22 @@ def _harmonize(
             valid_values="identical calibration_year_initial/final across sources, or none",
         )
 
-    first, last, dropped = _align(prepared, target_cadence, join)
-    exceedance = np.stack([source.hazard[first - source.first : last - source.first + 1] for source in prepared])
-    valid = np.stack([source.valid[first - source.first : last - source.first + 1] for source in prepared])
+    first, last, dropped = _align(validated, target_cadence, join)
+    # densify inside the retained range only: nothing outside it is ever materialized
+    retained = [_densify(source, first, last, target_cadence) for source in validated]
+    exceedance = np.stack([grid_hazard for grid_hazard, _ in retained])
+    valid = np.stack([grid_valid for _, grid_valid in retained])
     steps = np.arange(first, last + 1, dtype=np.int64)
     label_unit = _UNITS[target_cadence]
     time_labels = steps.astype(label_unit).astype(_DAY_UNIT)
     for array in (exceedance, valid, time_labels):
         array.setflags(write=False)
-    _warn_unknowns(prepared, dropped, last - first + 1)
+    _warn_unknowns(
+        validated,
+        dropped,
+        original=sum(source.steps for source in validated),
+        aligned=len(validated) * steps.shape[0],
+    )
 
     manifest = {
         "schema_version": _MANIFEST_SCHEMA_VERSION,
@@ -597,7 +677,7 @@ def _harmonize(
             "An absent date, NaN, or masked value is invalid, not False, and interior gaps stay in place. A reduced "
             "month is valid only when every civil day is valid."
         ),
-        "sources": {source.name: source.entry for source in prepared},
+        "sources": {source.name: source.entry for source in validated},
     }
     return AlignedHazards(names, time_labels, target_cadence, exceedance, valid, _freeze(manifest))
 
@@ -625,7 +705,9 @@ def harmonize(
     probability is a trust boundary: a z-score that happens to lie in ``[0, 1]``
     cannot be detected, and nothing here proves the values are uniform PIT values
     or a good fit. Probabilities are compared in float64 after exact widening, so
-    a float32 value that prints as the threshold is not equal to it.
+    a float32 value that prints as the threshold is not equal to it. A
+    probability dtype wider than float64 is rejected, because float64 cannot hold
+    every value it stores and therefore cannot validate it faithfully.
 
     Daily sources are thresholded first. With ``target_cadence="monthly"`` each
     is then reduced per calendar month with ``aggregation[name]``: ``"any"`` asks
@@ -671,8 +753,8 @@ def harmonize(
             probability outside ``[0, 1]``, a reducer that does not apply, a monthly
             source with a daily target, or sources with conflicting known Calibration
             Periods.
-        InputTypeError: For a dtype that does not match the declared scale, or dates
-            that are not ``datetime64``.
+        InputTypeError: For a dtype that does not match the declared scale, a
+            probability dtype wider than float64, or dates that are not ``datetime64``.
         DataShapeError: For an undeclared gridded layout, mismatched cell shapes, or
             dates or validity that do not match an input.
         CoordinateValidationError: For NaT, duplicate, or unordered dates, mismatched
@@ -702,9 +784,10 @@ def harmonize(
         >>> aligned.valid.astype(int).tolist()
         [[1, 1, 1, 0], [1, 1, 1, 1]]
     """
+    # source names are caller-supplied identifiers, so only their count reaches the log
     log = _logger.bind(
         index_type="compound_harmonize",
-        sources=tuple(inputs) if isinstance(inputs, Mapping) else (),
+        n_sources=len(inputs) if isinstance(inputs, Mapping) else 0,
         target_cadence=target_cadence,
         join=join,
     )
