@@ -12,7 +12,7 @@ The implementation responsibilities are explicit:
 
 | Proposed public function | NumPy implementation | Beta xarray implementation | Current state |
 | --- | --- | --- | --- |
-| `harmonize()` | [#1367](https://github.com/monocongo/climate_indices/issues/1367) | [#1372](https://github.com/monocongo/climate_indices/issues/1372) | Not implemented. |
+| `harmonize()` | [#1367](https://github.com/monocongo/climate_indices/issues/1367) | [#1372](https://github.com/monocongo/climate_indices/issues/1372) | NumPy implemented (#1367); xarray route not implemented. |
 | `joint_statistics()` | [#1368](https://github.com/monocongo/climate_indices/issues/1368) | [#1372](https://github.com/monocongo/climate_indices/issues/1372) | Not implemented. |
 | `conditional_probability()` | [#1369](https://github.com/monocongo/climate_indices/issues/1369) | [#1372](https://github.com/monocongo/climate_indices/issues/1372) | Not implemented. |
 | `compound_events()` | [#1370](https://github.com/monocongo/climate_indices/issues/1370) | The separate catalog route below uses this computation. | Not implemented. |

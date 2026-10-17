@@ -133,6 +133,21 @@ remain planned; see {doc}`energy_applications` for scope and validation limits.
    :imported-members:
 ```
 
+### climate_indices.compound
+
+Declared-input harmonization for compound-hazard analysis: Boolean exceedance and
+validity on observed dates, never interpolated or averaged. Import it explicitly with
+`import climate_indices.compound as compound`; it is not re-exported from the package
+root. Joint and conditional statistics, event matching, inference, and the beta xarray
+route are still pending; see
+[ADR-0022](adr/0022-compound-analysis-contracts.md) for the approved contracts.
+
+```{eval-rst}
+.. automodule:: climate_indices.compound
+   :members:
+   :imported-members:
+```
+
 ## xarray Integration
 
 :::{warning} **Beta Feature** — The xarray adapter layer is beta. See {doc}`xarray_migration` for stability guarantees.
