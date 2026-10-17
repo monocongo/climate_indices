@@ -36,7 +36,7 @@ def _validated_temperature(temperature: npt.ArrayLike) -> npt.NDArray[np.float64
 def _validated_base(base_temperature: float, name: str) -> float:
     """Return a base temperature as a finite float, or raise."""
     raw = np.asarray(base_temperature)
-    if raw.dtype.kind not in "iuf" or raw.ndim != 0:
+    if np.ma.is_masked(base_temperature) or raw.dtype.kind not in "iuf" or raw.ndim != 0:
         raise InvalidArgumentError(
             f"{name} must be a single finite number.",
             argument_name=name,
@@ -69,10 +69,9 @@ def heating_degree_days(
     index describes climate-driven heating demand, not actual load.
 
     Args:
-        temperature: Daily mean temperature in °C, or a Temperature Difference
-            equivalent in K. Missing values may be NaN or masked.
-        base_temperature: Base temperature in °C (or K, numerically identical
-            for a difference). No default is chosen.
+        temperature: Daily mean temperature in °C. Missing values may be NaN or
+            masked. Convert K or °F to °C before calling.
+        base_temperature: Base temperature in °C. No default is chosen.
 
     Returns:
         Heating degree days in °C day, in the input shape, with NaN where the
@@ -81,8 +80,8 @@ def heating_degree_days(
 
     Raises:
         InputTypeError: If temperature is non-numeric.
-        InvalidArgumentError: If temperature or the base is infinite or NaN, or
-            the base is not a single number.
+        InvalidArgumentError: If temperature is infinite, or the base is
+            non-finite, masked, or not a single number.
     """
     values = _validated_temperature(temperature)
     base = _validated_base(base_temperature, "base_temperature")
@@ -104,10 +103,9 @@ def cooling_degree_days(
     index describes climate-driven cooling demand, not actual load.
 
     Args:
-        temperature: Daily mean temperature in °C, or a Temperature Difference
-            equivalent in K. Missing values may be NaN or masked.
-        base_temperature: Base temperature in °C (or K, numerically identical
-            for a difference). No default is chosen.
+        temperature: Daily mean temperature in °C. Missing values may be NaN or
+            masked. Convert K or °F to °C before calling.
+        base_temperature: Base temperature in °C. No default is chosen.
 
     Returns:
         Cooling degree days in °C day, in the input shape, with NaN where the
@@ -116,8 +114,8 @@ def cooling_degree_days(
 
     Raises:
         InputTypeError: If temperature is non-numeric.
-        InvalidArgumentError: If temperature or the base is infinite or NaN, or
-            the base is not a single number.
+        InvalidArgumentError: If temperature is infinite, or the base is
+            non-finite, masked, or not a single number.
     """
     values = _validated_temperature(temperature)
     base = _validated_base(base_temperature, "base_temperature")
@@ -132,18 +130,17 @@ def energy_degree_days(
 ) -> npt.NDArray[np.float64]:
     """Calculate energy degree days as heating plus cooling degree days.
 
-    ``EDD = HDD + CDD`` with separate bases, following the C3S definition. The
-    bases may be equal, distinct, or overlapping; the sum is an algebraic
-    identity and not an independent oracle. This index describes climate-driven
+    ``EDD = HDD + CDD`` sums NOAA CPC's single-base transforms with separate
+    heating and cooling bases. This does not implement C3S activation thresholds.
+    The bases may be equal, distinct, or overlapping. The sum is an algebraic
+    identity, not an independent oracle. This index describes climate-driven
     energy demand, not actual load.
 
     Args:
-        temperature: Daily mean temperature in °C, or a Temperature Difference
-            equivalent in K. Missing values may be NaN or masked.
-        heating_base_temperature: Base temperature for heating degree days, in
-            °C (or K, numerically identical for a difference).
-        cooling_base_temperature: Base temperature for cooling degree days, in
-            °C (or K, numerically identical for a difference).
+        temperature: Daily mean temperature in °C. Missing values may be NaN or
+            masked. Convert K or °F to °C before calling.
+        heating_base_temperature: Base temperature for heating degree days, in °C.
+        cooling_base_temperature: Base temperature for cooling degree days, in °C.
 
     Returns:
         Energy degree days in °C day, in the input shape, with NaN where the
@@ -152,12 +149,15 @@ def energy_degree_days(
 
     Raises:
         InputTypeError: If temperature is non-numeric.
-        InvalidArgumentError: If temperature or a base is infinite or NaN, or a
-            base is not a single number.
+        InvalidArgumentError: If temperature is infinite, or a base is
+            non-finite, masked, or not a single number.
     """
-    heating = heating_degree_days(temperature, base_temperature=heating_base_temperature)
-    cooling = cooling_degree_days(temperature, base_temperature=cooling_base_temperature)
-    return np.asarray(heating + cooling)
+    values = _validated_temperature(temperature)
+    heating_base = _validated_base(heating_base_temperature, "heating_base_temperature")
+    cooling_base = _validated_base(cooling_base_temperature, "cooling_base_temperature")
+    heating = np.asarray(np.maximum(heating_base - values, 0.0))
+    heating += np.maximum(values - cooling_base, 0.0)
+    return heating
 
 
 __all__ = [
