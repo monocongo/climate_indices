@@ -89,6 +89,13 @@ impl Operand<'_> {
 
     /// Return the scalar or the array value at the zero-based position.
     ///
+    /// # Numerical contract
+    ///
+    /// This copies the stored scalar for any index, or the array element at
+    /// the zero-based index, without arithmetic, conversion, or broadcasting.
+    /// Units and NaNs are unchanged. This indexing helper has no independent
+    /// numerical error guarantee.
+    ///
     /// # Panics
     /// Panics when an array operand has no value at `index`.
     #[inline]
@@ -278,6 +285,30 @@ fn astronomy_slot(day_bits: u64, latitude_bits: u64) -> usize {
 }
 
 /// FAO-56 Eq 6: Penman-Monteith reference evapotranspiration.
+///
+/// # Numerical contract
+///
+/// This evaluates Allen et al. (1998), FAO-56 equation 6, directly from the
+/// supplied intermediates, returning reference evapotranspiration in mm/day.
+/// Radiation and soil heat flux use MJ m^-2 day^-1; temperature uses degrees C;
+/// wind at 2 m uses m/s; vapour pressures use kPa; `delta` and `gamma` use
+/// kPa per degree C. Each output position is independent, without a calendar
+/// or Calibration Period.
+///
+/// All array operands must have the same length; scalars supply every position.
+/// The first array sets the output length; all scalars produce one element,
+/// and an empty array produces an empty output. Length mismatches return
+/// `ClimateError::ShapeMismatch`. NaNs propagate through the equation.
+/// Zero wind removes the aerodynamic term for finite inputs; zero net
+/// available energy does not remove that term. A zero denominator yields
+/// NaN or infinity under floating-point division. Negative ETo is not clipped,
+/// and physical ranges and non-finite results are not checked.
+///
+/// See the Measured accuracy section of [`crate`], registry entry
+/// `pm_eto_intermediates` in `tests/parity_registry.py`, and
+/// `tests/test_native_pet_parity.py::test_pm_eto_core_parity`.
+/// Registry measurements compare full entry-point workflow outputs, not
+/// isolated equation errors or an independent scientific reference.
 pub fn pm_eto(inputs: &PmEtoInputs<'_>) -> Result<Array1<f64>, ClimateError> {
     let length = [
         inputs.temperature_celsius,
@@ -381,6 +412,38 @@ fn actual_vapor_pressure(
 
 /// Derive the FAO-56 intermediates and evaluate Eq 6, the port of
 /// `pm_eto.penman_monteith_eto`.
+///
+/// # Numerical contract
+///
+/// This derives the Allen et al. (1998) FAO-56 intermediates and evaluates
+/// equation 6, returning reference evapotranspiration in mm/day. Inputs use
+/// degrees C, latitude in degrees north, elevation and wind height in metres,
+/// wind in m/s, humidity in percent or dewpoint in degrees C, radiation and
+/// soil heat flux in MJ m^-2 day^-1, sunshine in hours, and dimensionless albedo.
+/// The caller selects one humidity and one radiation pathway; there is no
+/// pathway precedence inside this kernel. The fallback humidity estimate is
+/// `e0(Tmin - 2)`; temperature-range radiation uses `kRs = 0.16` inland or
+/// `0.19` coastal and cannot exceed clear-sky radiation.
+///
+/// Each position is independent. Supplied one-based days of year (1-366)
+/// drive astronomy with a 365-day denominator; the kernel inserts no dates
+/// or missing days. Array operands must have equal lengths; scalars repeat.
+/// The first array determines output length, including zero; all scalars
+/// produce one element. Mismatches return `ClimateError::ShapeMismatch`.
+///
+/// NaNs in the selected inputs propagate. The sunset cosine is clipped to
+/// `[-1, 1]`; a negative temperature range is floored at zero only for the
+/// radiation estimate. Zero daylight or clear-sky radiation can cause NaN
+/// or infinity through division, including during polar night. Equation 6
+/// also leaves zero-denominator results non-finite and negative ETo unclipped.
+/// Physical ranges and non-finite results are not checked.
+///
+/// See the Measured accuracy section of [`crate`], registry entry
+/// `penman_monteith` in `tests/parity_registry.py`, and
+/// `tests/test_native_pet_parity.py::test_penman_monteith_eto_humidity_pathways`
+/// and `test_penman_monteith_eto_radiation_pathways` in that file.
+/// Registry measurements compare full workflow outputs, not isolated kernel
+/// errors or an independent scientific reference.
 pub fn penman_monteith_eto(inputs: &MetInputs<'_>) -> Result<Array1<f64>, ClimateError> {
     let humidity_length = match &inputs.humidity {
         HumidityPathway::Dewpoint { tdew_celsius } => tdew_celsius.len(),

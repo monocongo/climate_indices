@@ -16,6 +16,8 @@ use crate::reduction::pairwise_sum;
 
 /// The calibration normal of each column of a (calibration years, columns) block.
 ///
+/// # Numerical contract
+///
 /// - Python source: the `valid_counts`, `averages`, and `averages > 0.0` lines
 ///   of `indices.percentage_of_normal`.
 /// - Inputs: `calibration`, shaped (calibration years, columns), each column one
@@ -32,6 +34,15 @@ use crate::reduction::pairwise_sum;
 /// - Numerics: NumPy reduces unit-stride year columns with pairwise summation;
 ///   other columns are accumulated sequentially. Missing values keep their
 ///   zero-valued positions in the pairwise grouping, as `np.nansum` does.
+///
+/// The PNP normal is the arithmetic mean of non-missing Timescale totals,
+/// as defined in `docs/algorithms.md`. Inputs and outputs share units, usually mm.
+/// Calendar columns follow [`crate`]; the caller selects the Calibration Period.
+/// Zeros remain in the sample. Empty, all-missing, and non-positive-mean columns
+/// return NaN; a constant positive column returns that constant.
+/// No physical-range or finiteness check occurs; positive infinity can be a normal.
+/// See the `Measured accuracy` section in [`crate`], entry `percentage_of_normal`
+/// in `tests/parity_registry.py`. It measures a complete workflow, not isolated normals.
 pub fn pnp_normals(calibration: ArrayView2<'_, f64>) -> Array1<f64> {
     let mut normals = Array1::<f64>::zeros(calibration.ncols());
     for (normal, column) in normals.iter_mut().zip(calibration.columns()) {
@@ -64,6 +75,8 @@ pub fn pnp_normals(calibration: ArrayView2<'_, f64>) -> Array1<f64> {
 
 /// Each value's percentage of its calendar step's normal.
 ///
+/// # Numerical contract
+///
 /// - Python source: the `whole_periods` and remainder `np.divide` calls of
 ///   `indices.percentage_of_normal`, which leave a value NaN wherever its
 ///   normal is NaN.
@@ -79,6 +92,18 @@ pub fn pnp_normals(calibration: ArrayView2<'_, f64>) -> Array1<f64> {
 /// Returns [`ClimateError::ShapeMismatch`] when `normals` does not have one
 /// value per column of `scale_sums`, or [`ClimateError::EmptyPeriod`] when it
 /// contains no calendar steps.
+///
+/// The PNP calculation returns `value / normal`, a dimensionless ratio:
+/// 1 means normal. Despite the name, this kernel does not multiply by 100.
+/// Both inputs must use the same units, usually mm of Timescale precipitation.
+/// Columns are independent cells; row zero matches the first normal row.
+/// The normal rows repeat every period, including for a trailing partial period.
+/// A monthly period has 12 rows; a prepared all-leap daily period has 366.
+/// These lengths are conventions, not enforced restrictions.
+/// Zero divided by a positive normal is zero. Supplied normals are not validated:
+/// zero normals give IEEE infinities or NaN, and negative normals give signed ratios.
+/// See the `Measured accuracy` section in [`crate`], entry `percentage_of_normal`
+/// in `tests/parity_registry.py`. It measures a complete workflow, not isolated division.
 pub fn pnp_percentages(
     scale_sums: ArrayView2<'_, f64>,
     normals: ArrayView2<'_, f64>,

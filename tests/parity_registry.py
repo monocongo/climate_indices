@@ -669,6 +669,15 @@ def parity_errors(rust: Any, python: Any) -> tuple[float, float]:
     return max_absolute, max_relative
 
 
+def compared_pairs(rust: Any, python: Any) -> int:
+    """The number of numeric leaf pairs with a finite value on at least one side.
+
+    A pair that is NaN on both sides carries no comparison, so a result that is
+    entirely NaN everywhere would otherwise report a vacuous zero deviation.
+    """
+    return sum(1 for left, right in _numeric_pairs(rust, python) if not (np.isnan(left) and np.isnan(right)))
+
+
 def assert_outcomes_parity(entry: Entry, rust: Any, python: Any) -> None:
     """Assert two outcomes of one entry agree: values at its tolerance, errors exactly."""
     if isinstance(python, _Error) or isinstance(rust, _Error):

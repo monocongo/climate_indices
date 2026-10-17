@@ -340,6 +340,26 @@ fn assign_period(
 ///   [`ClimateError::NoConvergence`] with Python's message.
 /// - Numerics: every expression keeps the Python operation order, including
 ///   the `1e-5` tolerance adjustments.
+///
+/// # Numerical contract
+///
+/// Wells, Goddard, and Hayes (2004) spell selection and backtracking produce
+/// the self-calibrating Palmer indices from supplied recurrence coefficients.
+/// Z-index and output indices use the dimensionless Palmer convention; factors
+/// must use compatible units. The input is one chronological monthly series
+/// for one location, and each output has the same length. No calendar padding
+/// or year-boundary reset occurs; an empty input produces empty outputs.
+///
+/// A NaN month remains NaN in every output and leaves the state unchanged.
+/// Zero Z is an observation, while exact zero candidates control selection
+/// and backtracking. Spells establish at severity +0.5 or -0.5; abatement uses
+/// half the fitted slope and the `1e-5` probability/carry adjustments.
+/// The kernel uses the supplied coefficients without deriving or validating them.
+/// The caller supplies valid finite factors and excludes infinite Z values.
+///
+/// See the Measured accuracy section in [`crate`] for `palmer_scpdsi` in
+/// `tests/parity_registry.py`. These are pathway measurements, not isolated
+/// helper error guarantees.
 pub fn calculate(
     z: ArrayView1<'_, f64>,
     factors: &WellsFactors,

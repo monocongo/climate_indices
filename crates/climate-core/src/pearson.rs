@@ -107,6 +107,8 @@ fn fit_column(column: ArrayView1<'_, f64>, sorted: &mut Vec<f64>) -> Option<[f64
 
 /// L-moment Pearson Type III parameters and probability of zero for each column.
 ///
+/// # Numerical contract
+///
 /// - Python source: `compute._pearson_parameters_spatial` with
 ///   `lmoments.fit_spatial`, which `compute.calculate_time_step_params` mirrors
 ///   one time step at a time.
@@ -122,6 +124,14 @@ fn fit_column(column: ArrayView1<'_, f64>, sorted: &mut Vec<f64>) -> Option<[f64
 ///   `gamma(alpha) / gamma(alpha + 0.5)` as the reciprocal of Cephes `poch`, which
 ///   keeps a large `alpha` accurate. A near-zero `tau_3` (at most 1e-6) is a zero
 ///   skew and `scale = lambda_2 * sqrt(pi)`.
+///
+/// The fit uses Hosking's (1990, 1996) sample L-moments and `pearson3` estimate.
+/// Values, locations, and scales share units, usually mm; skews and zero masses are dimensionless.
+/// Calendar columns follow [`crate`]; the caller selects the Calibration Period.
+/// Invalid columns, including empty and constant columns, retain zero parameters
+/// and zero probability of zero, with `valid == false`. No gamma fallback occurs here.
+/// See the `Measured accuracy` section in [`crate`], entry `spi_pearson` in
+/// `tests/parity_registry.py`. It measures a complete workflow, not isolated fits.
 pub fn pearson_parameters(calibration: ArrayView2<'_, f64>) -> PearsonFit {
     let columns = calibration.ncols();
     let mut fit = PearsonFit {
@@ -149,10 +159,18 @@ pub fn pearson_parameters(calibration: ArrayView2<'_, f64>) -> PearsonFit {
 
 /// `scipy.stats.pearson3.cdf(x, skew, loc=loc, scale=scale)`, including its argument handling.
 ///
+/// # Numerical contract
+///
 /// NaN when the skew is not finite, the scale is not positive, or the
 /// standardized value is NaN; 1 at +inf and 0 at -inf; the normal CDF when
 /// `|skew| < 1.6e-5`; otherwise the gamma CDF (positive skew) or survival
 /// function (negative skew) of `beta * (z - zeta)` with shape `alpha = beta^2`.
+/// This is the Vogel and McMartin (1991) parameterization used by SciPy 1.17.0.
+/// `x`, `loc`, and `scale` share units; `skew` and the probability are dimensionless.
+/// This scalar function has no calendar interpretation or discrete zero mass.
+/// Zero is an ordinary value. The gamma support limits return 0 or 1.
+/// See the `Measured accuracy` section in [`crate`], entry `spi_pearson` in
+/// `tests/parity_registry.py`. It measures a complete workflow, not this isolated CDF.
 pub fn pearson_cdf(x: f64, skew: f64, loc: f64, scale: f64) -> f64 {
     let z = (x - loc) / scale;
     if !(skew.is_finite() && scale > 0.0) || z.is_nan() {
@@ -180,6 +198,8 @@ pub fn pearson_cdf(x: f64, skew: f64, loc: f64, scale: f64) -> f64 {
 
 /// Pearson Type III CDF of each value, one `(skew, loc, scale)` per column.
 ///
+/// # Numerical contract
+///
 /// - Python source: the `scipy.stats.pearson3.cdf` call in `compute._pearson_fit`.
 /// - Inputs: `values` shaped (years, columns); `skews`, `locs`, and `scales`
 ///   with one value per column.
@@ -193,6 +213,12 @@ pub fn pearson_cdf(x: f64, skew: f64, loc: f64, scale: f64) -> f64 {
 ///
 /// Returns [`ClimateError::ShapeMismatch`] when a parameter's length is not the
 /// number of columns.
+///
+/// Each element uses [`pearson_cdf`], including its normal limit and gamma support limits.
+/// Values, locations, and scales share units; skews and outputs are dimensionless.
+/// Calendar columns follow [`crate`]; no calendar selection or zero-mass mixing occurs here.
+/// See the `Measured accuracy` section in [`crate`], entry `spi_pearson` in
+/// `tests/parity_registry.py`. It measures a complete workflow, not this isolated block CDF.
 pub fn pearson_cdf_block(
     values: ArrayView2<'_, f64>,
     skews: ArrayView1<'_, f64>,
@@ -226,6 +252,22 @@ pub fn pearson_cdf_block(
 
 /// KS D per calibration column, excluding zeros and NaNs as Python's Pearson
 /// goodness-of-fit check does. Warning thresholds and exact p-values stay in Python.
+///
+/// # Numerical contract
+///
+/// The two-sided, one-sample Kolmogorov-Smirnov statistic is
+/// `max_i(i/n - F(x_i), F(x_i) - (i-1)/n)` for sorted retained values.
+/// `F` is [`pearson_cdf`]. Inputs have shape `(years, columns)`, with one
+/// skew, location, and scale per column; the output has one dimensionless D per column.
+/// Values, locations, and scales share units; skews are dimensionless.
+/// Calendar columns follow [`crate`]; the caller selects the Calibration Period.
+/// Zeros and NaNs are excluded. An empty retained sample returns NaN.
+/// Non-finite parameters, a non-positive scale, or a NaN CDF also return NaN.
+/// Constant non-zero samples still produce D; no fit or p-value is computed.
+/// Parameter-length mismatches return [`ClimateError::ShapeMismatch`].
+/// See the `Measured accuracy` section in [`crate`], entry `pearson_ks_statistics`
+/// in `tests/parity_registry.py`. This measures the diagnostic pathway with
+/// supplied parameters, not parameter fitting or the full SPI workflow.
 pub fn pearson_ks_statistics(
     values: ArrayView2<'_, f64>,
     skews: ArrayView1<'_, f64>,
