@@ -115,8 +115,9 @@ def test_non_scalar_non_finite_or_masked_base_is_rejected(kind: str, base_name: 
         {"heating_base_temperature": 18.0, "cooling_base_temperature": 24.0} if kind == "energy" else {}
     )
     kwargs[base_name] = base
+    func = getattr(energy, f"{kind}_degree_days")
     with pytest.raises(InvalidArgumentError, match=base_name):
-        getattr(energy, f"{kind}_degree_days")([10.0], **kwargs)
+        func([10.0], **kwargs)
 
 
 def test_unmasked_scalar_base_is_accepted() -> None:
