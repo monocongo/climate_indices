@@ -96,14 +96,30 @@ curl --fail --location --output Compound_patterns.ipynb https://raw.githubuserco
 ```
 
 Record the actual retrieval date in `--download-date`.
-Use a new output directory so regeneration cannot overwrite committed evidence:
+`--output-dir` is required and must not exist, so regeneration cannot overwrite committed evidence:
 
 ```bash
 uv run python scripts/prepare_compound_reference_fixture.py --source-dir /path/to/sources --download-date YYYY-MM-DD --output-dir /path/to/new-fixture
-uv run pytest tests/test_compound_reference_fixture.py tests/test_provenance_protocol.py
+uv run python -c "
+import json, numpy as np
+old, new = 'tests/fixture/compound', '/path/to/new-fixture'
+a, b = (json.load(open(f'{d}/reference.json')) for d in (old, new))
+assert a['cells'] == b['cells'] and a['cases'] == b['cases']
+with np.load(f'{old}/inputs.npz') as x, np.load(f'{new}/inputs.npz') as y:
+    assert x.files == y.files
+    [np.testing.assert_array_equal(x[k], y[k]) for k in x.files]
+print('regenerated content matches the committed fixture')"
 ```
 
+The repository tests read only the committed directory, so they cannot check a regenerated one.
+The comparison above checks the meaningful content instead.
+The `environment` block, `inputs_sha256`, and the provenance checksum can differ between platforms,
+because compressed-archive bytes depend on the zlib build and `reference.json` records library versions.
+Those differences are not evidence of changed data.
+Replacing the committed files needs a deliberate review of the resulting diff.
+
 The script verifies the full SHA-256 of each source before reading data or creating output.
+It stages the three numeric/JSON files beside the target and publishes them together, so a failed run leaves nothing behind.
 The source pair totals about 3.02 GB, but extraction loads only three spatial series.
-It creates only the three numeric/JSON files; retain this README and the notices when publishing the fixture.
+Retain this README and the notices when publishing the fixture.
 A changed source hash is a retrieval blocker, not permission to update expected values.
