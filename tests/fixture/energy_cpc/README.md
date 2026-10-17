@@ -61,8 +61,11 @@ Regenerate manually in an isolated script environment (not a project dependency)
 uv run --python 3.12 scripts/prepare_energy_wind_fixtures.py
 ```
 
-The script rejects mismatched provider versions/source hashes and asserts calm,
-identity, shape and missing-value checks before writing. It imports neither
+The script rejects mismatched provider versions/source hashes and validates calm,
+identity, shape and missing values, including under optimized Python. It stages both
+JSON files before publishing their directory and restores the previous pair if the
+swap fails. An uncatchable interruption between directory moves can leave
+`.energy_wind-backup`; the next publication recovers it. It imports neither
 `climate_indices` nor its future implementation. CI consumes committed JSON and
 requires neither provider. xclim's optional matplotlib-setup warning does not affect
 the numerical calls. Synthetic inputs and numerical outputs contain no copied
