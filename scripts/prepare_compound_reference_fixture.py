@@ -37,15 +37,16 @@ import argparse
 import datetime as dt
 import hashlib
 import json
+import os
 import platform
 from importlib.metadata import version
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, cast
 
 import numpy as np
 import xarray as xr
 
-FIXTURE_DIR = Path(__file__).resolve().parents[1] / "tests" / "fixture" / "compound"
 AUTHOR_COMMIT = "6c88f255ee3034279dcebe2a2fc40c954dbe9575"
 DATASET_DOI = "10.6084/m9.figshare.25189118.v2"
 SOURCES: dict[str, dict[str, int | str]] = {
@@ -169,60 +170,65 @@ def prepare(source_dir: Path, output_dir: Path, download_date: str) -> None:
                 {"cell": cell, "month": month, **author_counts(heat[selected, cell], prepared.values[selected, cell])}
             )
 
-    output_dir.mkdir(parents=True)
-    np.savez_compressed(
-        output_dir / "inputs.npz",
-        monthly_time=monthly_time,
-        daily_time=daily_time,
-        monthly_spei=monthly_values,
-        daily_hwi=daily_values,
-    )
-    reference: dict[str, Any] = {
-        "dataset_doi": DATASET_DOI,
-        "paper_doi": "10.1007/s00477-024-02783-3",
-        "author_commit": AUTHOR_COMMIT,
-        "sources": SOURCES,
-        "environment": {
-            "python": platform.python_version(),
-            **{name: version(name) for name in ("numpy", "xarray", "pandas")},
-        },
-        "inputs_sha256": checksum(output_dir / "inputs.npz"),
-        "cells": cells,
-        "preparation": {
-            "variables": {"SPEI12.nc": "SPEI", "heatwave_SMHI.nc": "heatwave index"},
-            "monthly_to_daily": "resample(time='D').ffill().interpolate_na(dim='time', method='linear')",
-            "start": "1922-01-31",
-            "end": "2021-12-31",
-            "heat_comparator": "HWI >= 0",
-            "drought_comparator": "SPEI <= -1",
-            "source_calibration_period": "not recorded in the supplied NetCDF attributes",
-            "significance": "not reproduced; the author's IID resampling and random tie noise are excluded",
-        },
-        "cases": cases,
-    }
-    payload = (json.dumps(reference, indent=2, allow_nan=False) + "\n").encode()
-    (output_dir / "reference.json").write_bytes(payload)
-    provenance = {
-        "source": "Marlon Vieira Passos; public study inputs and same-author deterministic LMF calculation",
-        "url": "https://doi.org/" + DATASET_DOI,
-        "download_date": download_date,
-        "subset_description": "Three Swedish grid cells; monthly SPEI12 and daily HWI, 1922-2021; nine June-August LMF cases.",
-        "checksum_sha256": hashlib.sha256(payload).hexdigest(),
-        "fixture_version": "1.0.0",
-        "validation_tolerance": {"count_atol": 0, "lmf_atol": 1e-12, "rtol": 0},
-        "citation": "Vieira Passos, M., Kan, J.-C., Destouni, G., Barquet, K., and Kalantari, Z. (2024). Identifying regional hotspots of heatwaves, droughts, floods, and their co-occurrences. Stochastic Environmental Research and Risk Assessment 38, 3875-3893. https://doi.org/10.1007/s00477-024-02783-3",
-        "doi": DATASET_DOI,
-        "license": "Input data: CC BY 4.0. Adapted deterministic reference code: MIT; see NOTICE.",
-        "notes": "reference.json is canonical and pins inputs.npz. This is an author-method fixture, not validation of a compound API or the complete Figure 8 map. Public source hashes, file IDs, cell-selection targets, source NaNs, original variable names, processing choices, and generation versions are in reference.json. The author returns NaN for zero joint counts; JSON uses null. No scientific bootstrap result is supplied. Normal tests are offline and import no compound module.",
-    }
-    (output_dir / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
-    print(f"Wrote {len(cases)} author-method cases to {output_dir}")
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    # Stage beside the target so a failed write leaves no partial directory to block the next run.
+    with TemporaryDirectory(dir=output_dir.parent, prefix=f".{output_dir.name}-") as temporary:
+        staging = Path(temporary) / output_dir.name
+        staging.mkdir()
+        np.savez_compressed(
+            staging / "inputs.npz",
+            monthly_time=monthly_time,
+            daily_time=daily_time,
+            monthly_spei=monthly_values,
+            daily_hwi=daily_values,
+        )
+        reference: dict[str, Any] = {
+            "dataset_doi": DATASET_DOI,
+            "paper_doi": "10.1007/s00477-024-02783-3",
+            "author_commit": AUTHOR_COMMIT,
+            "sources": SOURCES,
+            "environment": {
+                "python": platform.python_version(),
+                **{name: version(name) for name in ("numpy", "xarray", "pandas")},
+            },
+            "inputs_sha256": checksum(staging / "inputs.npz"),
+            "cells": cells,
+            "preparation": {
+                "variables": {"SPEI12.nc": "SPEI", "heatwave_SMHI.nc": "heatwave index"},
+                "monthly_to_daily": "resample(time='D').ffill().interpolate_na(dim='time', method='linear')",
+                "start": "1922-01-31",
+                "end": "2021-12-31",
+                "heat_comparator": "HWI >= 0",
+                "drought_comparator": "SPEI <= -1",
+                "source_calibration_period": "not recorded in the supplied NetCDF attributes",
+                "significance": "not reproduced; the author's IID resampling and random tie noise are excluded",
+            },
+            "cases": cases,
+        }
+        payload = (json.dumps(reference, indent=2, allow_nan=False) + "\n").encode()
+        (staging / "reference.json").write_bytes(payload)
+        provenance = {
+            "source": "Marlon Vieira Passos; public study inputs and same-author deterministic LMF calculation",
+            "url": "https://doi.org/" + DATASET_DOI,
+            "download_date": download_date,
+            "subset_description": "Three Swedish grid cells; monthly SPEI12 and daily HWI, 1922-2021; nine June-August LMF cases.",
+            "checksum_sha256": hashlib.sha256(payload).hexdigest(),
+            "fixture_version": "1.0.0",
+            "validation_tolerance": {"count_atol": 0, "lmf_atol": 1e-12, "rtol": 0},
+            "citation": "Vieira Passos, M., Kan, J.-C., Destouni, G., Barquet, K., and Kalantari, Z. (2024). Identifying regional hotspots of heatwaves, droughts, floods, and their co-occurrences. Stochastic Environmental Research and Risk Assessment 38, 3875-3893. https://doi.org/10.1007/s00477-024-02783-3",
+            "doi": DATASET_DOI,
+            "license": "Input data: CC BY 4.0. Adapted deterministic reference code: MIT; see NOTICE.",
+            "notes": "reference.json is canonical and pins inputs.npz. This is an author-method fixture, not validation of a compound API or the complete Figure 8 map. Public source hashes, file IDs, cell-selection targets, source NaNs, original variable names, processing choices, and generation versions are in reference.json. The author returns NaN for zero joint counts; JSON uses null. No scientific bootstrap result is supplied. Normal tests are offline and import no compound module.",
+        }
+        (staging / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
+        os.replace(staging, output_dir)
+        print(f"Wrote {len(cases)} author-method cases to {output_dir}")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-dir", required=True, type=Path)
-    parser.add_argument("--output-dir", type=Path, default=FIXTURE_DIR)
+    parser.add_argument("--output-dir", required=True, type=Path, help="New directory; existing ones are refused.")
     parser.add_argument("--download-date", required=True, help="Actual source retrieval date, YYYY-MM-DD.")
     args = parser.parse_args()
     prepare(args.source_dir, args.output_dir, args.download_date)

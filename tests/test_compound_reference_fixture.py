@@ -179,3 +179,59 @@ def test_preparation_never_overwrites_existing_output(preparation: dict[str, Any
     with pytest.raises(FileExistsError, match="Refusing to overwrite"):
         preparation["prepare"](tmp_path / "missing-source", output, "2026-10-17")
     assert marker.read_text() == "existing fixture"
+
+
+@pytest.fixture
+def synthetic_sources(preparation: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Small stand-ins for the 3 GB public files, with the hash guard satisfied by name."""
+    import pandas as pd
+    import xarray as xr
+
+    source = tmp_path / "sources"
+    source.mkdir()
+    rng = np.random.default_rng(0)
+    grid = {"lat": [56.0, 62.0, 67.0], "lon": [14.0, 15.0, 20.0]}
+    monthly = pd.date_range("1922-01-31", periods=1200, freq="ME")
+    daily = pd.date_range("1922-01-01", "2021-12-31", freq="D")
+    for name, variable, time in (("SPEI12.nc", "SPEI", monthly), ("heatwave_SMHI.nc", "heatwave index", daily)):
+        values = rng.normal(size=(len(time), 3, 3))
+        dataset = xr.Dataset({variable: (("time", "lat", "lon"), values)}, coords={"time": time, **grid})
+        dataset.to_netcdf(source / name, engine="h5netcdf")
+    pinned = preparation["SOURCES"]
+    real_checksum = preparation["checksum"]
+
+    def checksum(path: Path) -> str:
+        return str(pinned[path.name]["sha256"]) if path.name in pinned else str(real_checksum(path))
+
+    monkeypatch.setitem(preparation["prepare"].__globals__, "checksum", checksum)
+    return source
+
+
+def test_preparation_publishes_a_complete_fixture_without_leftovers(
+    preparation: dict[str, Any], synthetic_sources: Path, tmp_path: Path
+) -> None:
+    output = tmp_path / "fixture"
+    preparation["prepare"](synthetic_sources, output, "2026-10-17")
+    assert sorted(path.name for path in output.iterdir()) == ["inputs.npz", "provenance.json", "reference.json"]
+    provenance = json.loads((output / "provenance.json").read_text())
+    assert hashlib.sha256((output / "reference.json").read_bytes()).hexdigest() == provenance["checksum_sha256"]
+    assert len(json.loads((output / "reference.json").read_text())["cases"]) == 9
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["fixture", "sources"]
+
+
+def test_failed_write_leaves_neither_output_nor_staging(
+    preparation: dict[str, Any], synthetic_sources: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def disk_full(*args: Any, **kwargs: Any) -> None:
+        raise OSError("disk full")
+
+    real_savez = np.savez_compressed
+    monkeypatch.setattr(np, "savez_compressed", disk_full)
+    output = tmp_path / "fixture"
+    with pytest.raises(OSError, match="disk full"):
+        preparation["prepare"](synthetic_sources, output, "2026-10-17")
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["sources"]
+    # the next attempt is not blocked by the failed one
+    monkeypatch.setattr(np, "savez_compressed", real_savez)
+    preparation["prepare"](synthetic_sources, output, "2026-10-17")
+    assert output.is_dir()
