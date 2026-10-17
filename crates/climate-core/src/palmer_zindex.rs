@@ -112,6 +112,28 @@ fn check_coefficients(
 /// - Numerics: departures accumulate sequentially over the calibration years;
 ///   `dbar = sum / n_calibration_years` and
 ///   `k_prime = 1.5 * log10((trat + 2.8) / dbar) + 0.5`.
+///
+/// # Numerical contract
+///
+/// Palmer (1965) CAFEC precipitation is
+/// `alpha * pet + beta * prdat + gamma * spdat - delta * pldat`.
+/// Sequential calibration-year sums of absolute precipitation departures give
+/// `dbar` in inches. K-prime is a dimensionless empirical weight from the
+/// inch-based logarithmic formula above; CAFEC coefficients and `trat` are
+/// dimensionless. Monthly fields have shape `(years, months, cells)`;
+/// coefficients, `trat`, and both outputs have shape `(months, cells)`.
+/// Calendar use has 12 months ordered January through December, but other
+/// matching month counts are accepted. Calibration bounds are inclusive,
+/// zero-based year rows; no calendar padding occurs.
+///
+/// NaN departures contaminate that month and cell's mean and K-prime; the
+/// denominator still counts every calibration year. Zero departures remain
+/// observations. A zero `dbar` or invalid logarithm argument produces infinity
+/// or NaN through IEEE arithmetic; the kernel does not substitute finite weights.
+///
+/// See the Measured accuracy section in [`crate`] for `palmer_pdsi` and
+/// `palmer_scpdsi` in `tests/parity_registry.py`. These are pathway measurements,
+/// not isolated helper error guarantees.
 pub fn k_prime_and_dbar(
     inputs: &CafecInputs<'_>,
     trat: ArrayView2<'_, f64>,
@@ -162,6 +184,29 @@ pub fn k_prime_and_dbar(
 /// - Zero and NaN semantics: none of its own; NaN inputs propagate.
 /// - Numerics: `z = ak * (precips - cafec)`, with the CAFEC sum evaluated
 ///   left to right.
+///
+/// # Numerical contract
+///
+/// Palmer (1965) computes `ak * (precips - cafec)`, where CAFEC precipitation is
+/// `alpha * pet + beta * prdat + gamma * spdat - delta * pldat`.
+/// Water-balance fields and CAFEC precipitation use inches; CAFEC coefficients
+/// are dimensionless. The output has the units of `ak` times inches; standard
+/// normalized K factors yield dimensionless Z-index values. Raw K-prime gives
+/// the unnormalized series used for self-calibration; no normalization occurs here.
+///
+/// Monthly fields and the output have shape `(years, months, cells)`;
+/// coefficients and `ak` have shape `(months, cells)`. Calendar use orders
+/// 12 months from January through December, but other matching counts are
+/// accepted. Every year is transformed independently with the same monthly
+/// coefficients; no calendar padding or calibration slicing occurs.
+///
+/// NaNs propagate through the products and sums without omission or replacement.
+/// A zero weight or zero departure gives zero only when the other operand is
+/// finite; zero times NaN or infinity gives NaN.
+///
+/// See the Measured accuracy section in [`crate`] for `palmer_pdsi` and
+/// `palmer_scpdsi` in `tests/parity_registry.py`. These are pathway measurements,
+/// not isolated helper error guarantees.
 pub fn raw_zindex(
     inputs: &CafecInputs<'_>,
     ak: ArrayView2<'_, f64>,

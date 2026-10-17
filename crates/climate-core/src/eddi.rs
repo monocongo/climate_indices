@@ -27,6 +27,8 @@ const HASTINGS_D3: f64 = 0.001308;
 /// Probability of each value in one calendar period, from its rank against the
 /// period's calibration climatology (the Tukey plotting position).
 ///
+/// # Numerical contract
+///
 /// - Python source: the rank count and `probabilities = ...` lines of the
 ///   per-period loop in `indices.eddi`. Rust has no equivalent of Python's
 ///   `_EDDI_RANK_COMPARISON_ELEMENT_BUDGET` chunking: the result is the same
@@ -49,6 +51,19 @@ const HASTINGS_D3: f64 = 0.001308;
 ///
 /// Returns [`ClimateError::ShapeMismatch`] when a block has a different number
 /// of columns, or when `pads` is not one value per column.
+///
+/// The Hobbins et al. (2016) EDDI plotting position is
+/// `(pad + below + 0.66) / (valid + pad + 0.33)`.
+/// Both blocks must describe the same calendar step, with one column per cell;
+/// only `climatology` must contain calibration rows. The caller prepares the calendar.
+/// Values and climatology share PET units, usually mm accumulated over the Timescale;
+/// pads are counts and outputs are dimensionless. No units are converted.
+/// Constant columns rank all equal values identically; ties do not receive average ranks.
+/// Pads are not validated. A NaN pad propagates, and probabilities can exceed one;
+/// this function does not clip them or compute z-scores.
+/// See the `Measured accuracy` section in [`crate`], entries `eddi` and
+/// `eddi_spatial_block` in `tests/parity_registry.py`. These measure complete
+/// workflows, not isolated ranking kernels.
 pub fn tukey_probabilities(
     climatology: ArrayView2<'_, f64>,
     values: ArrayView2<'_, f64>,
@@ -95,11 +110,21 @@ pub fn tukey_probabilities(
 /// Abramowitz & Stegun (1965) 26.2.23, the inverse normal approximation EDDI
 /// uses, matching `indices._hastings_inverse_normal` and the NOAA PSL Fortran.
 ///
+/// # Numerical contract
+///
 /// - Inputs: a cumulative probability. It is clipped to `[1e-10, 1 - 1e-10]`
 ///   first, so a value at or outside that range saturates rather than raising.
 /// - Numerics: the lower tail is used and the sign flipped above 0.5, keeping
 ///   the Python expression's operation order and every constant exact.
 /// - NaN semantics: NaN propagates to NaN.
+///
+/// The scalar input and output are dimensionless, with no calendar interpretation.
+/// Zero, one, and infinite inputs saturate at the finite clipping limits.
+/// Higher probability gives a higher EDDI z-score. The approximation need not
+/// return exactly zero at probability 0.5; it is not Cephes [`crate::special::ndtri`].
+/// See the `Measured accuracy` section in [`crate`], entries `eddi` and
+/// `eddi_spatial_block` in `tests/parity_registry.py`. These measure complete
+/// workflows against the same approximation, not isolated errors against an exact normal quantile.
 pub fn hastings_inverse_normal(probability: f64) -> f64 {
     let probability = probability.clamp(1e-10, 1.0 - 1e-10);
 
