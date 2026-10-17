@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Literal, TypeAlias
+from typing import Any, Literal, TypeAlias, overload
 
 import numpy as np
 import numpy.typing as npt
+import xarray as xr
 
 from climate_indices._recurrence import _as_float_array
-from climate_indices.exceptions import InvalidArgumentError
+from climate_indices.energy._xarray import apply_elementwise, scalar_coordinate, wind_input
+from climate_indices.exceptions import InputTypeError, InvalidArgumentError
 from climate_indices.logging_config import get_logger, log_calculation_failure
 from climate_indices.performance import check_large_array_memory
 
@@ -32,6 +34,19 @@ def _positive_height(value: _Height, name: str) -> float:
     return height
 
 
+@overload
+def hub_height_wind_speed(  # pyright: ignore[reportOverlappingOverload]
+    wind_speed: xr.DataArray,
+    reference_height: _Height,
+    hub_height: _Height,
+    *,
+    method: Literal["power", "log"] = "power",
+    alpha: npt.ArrayLike | xr.DataArray = 1 / 7,
+    roughness_length: _Height | None = None,
+) -> xr.DataArray: ...
+
+
+@overload
 def hub_height_wind_speed(
     wind_speed: npt.ArrayLike,
     reference_height: _Height,
@@ -40,7 +55,18 @@ def hub_height_wind_speed(
     method: Literal["power", "log"] = "power",
     alpha: npt.ArrayLike = 1 / 7,
     roughness_length: _Height | None = None,
-) -> npt.NDArray[np.float64]:
+) -> npt.NDArray[np.float64]: ...
+
+
+def hub_height_wind_speed(
+    wind_speed: npt.ArrayLike | xr.DataArray,
+    reference_height: _Height,
+    hub_height: _Height,
+    *,
+    method: Literal["power", "log"] = "power",
+    alpha: npt.ArrayLike | xr.DataArray = 1 / 7,
+    roughness_length: _Height | None = None,
+) -> npt.NDArray[np.float64] | xr.DataArray:
     """Extrapolate wind speed, a climate-driven resource proxy, not generation.
 
     The power law is ``v(h) = v_ref * (h / h_ref)**alpha`` (C3S wind-profile
@@ -53,6 +79,12 @@ def hub_height_wind_speed(
     height, as in ``windpowerlib.wind_speed.logarithmic_profile`` with
     ``obstacle_height=0``. Neither profile models terrain, obstacles, bias
     adjustment, or non-neutral atmospheric stability.
+
+    DataArray input uses the beta adapter, preserving coordinates and adding
+    registry CF metadata and a scalar ``height`` coordinate in metres. Wind
+    units must be m s⁻¹ or absent. For the power law, ``alpha`` must be a
+    scalar or DataArray with exactly matching shared coordinate labels.
+    Dask arrays remain lazy; all dimensions may have multiple chunks.
 
     Args:
         wind_speed: Reference wind speed in m s⁻¹; scalar or array. NaN and
@@ -93,6 +125,36 @@ def hub_height_wind_speed(
         )
     reference_height = _positive_height(reference_height, "reference_height")
     hub_height = _positive_height(hub_height, "hub_height")
+    if isinstance(wind_speed, xr.DataArray):
+        if method == "power" and isinstance(alpha, xr.DataArray):
+            units = alpha.attrs.get("units")
+            if units is not None and (
+                not isinstance(units, str) or units.strip().lower() not in {"1", "dimensionless"}
+            ):
+                raise InvalidArgumentError(
+                    "alpha must be dimensionless (units '1' or absent).", argument_name="alpha.attrs['units']"
+                )
+
+        def kernel(speed: npt.ArrayLike, exponent: npt.ArrayLike = 1 / 7) -> npt.NDArray[np.float64]:
+            return hub_height_wind_speed(
+                speed, reference_height, hub_height, method=method, alpha=exponent, roughness_length=roughness_length
+            )
+
+        xarray_inputs = (alpha,) if method == "power" else ()
+        xarray_result = apply_elementwise(
+            kernel,
+            "hub_height_wind_speed",
+            wind_input(wind_speed, "wind_speed"),
+            *xarray_inputs,
+            calculation_metadata={"reference_height": reference_height, "hub_height": hub_height, "method": method},
+        )
+        return scalar_coordinate(xarray_result, "height", hub_height, standard_name="height", units="m", positive="up")
+    if method == "power" and isinstance(alpha, xr.DataArray):
+        raise InputTypeError(
+            "wind_speed must be an xr.DataArray when alpha is an xr.DataArray.",
+            expected_type=xr.DataArray,
+            actual_type=type(wind_speed),
+        )
     wind = _as_float_array(wind_speed)
     exponent = _as_float_array(alpha) if method == "power" else None
     if exponent is not None:
@@ -142,13 +204,33 @@ def hub_height_wind_speed(
         raise
 
 
+@overload
+def wind_shear_exponent(  # pyright: ignore[reportOverlappingOverload]
+    wind_speed_lower: xr.DataArray,
+    wind_speed_upper: xr.DataArray,
+    *,
+    lower_height: _Height = 10.0,
+    upper_height: _Height = 100.0,
+) -> xr.DataArray: ...
+
+
+@overload
 def wind_shear_exponent(
     wind_speed_lower: npt.ArrayLike,
     wind_speed_upper: npt.ArrayLike,
     *,
     lower_height: _Height = 10.0,
     upper_height: _Height = 100.0,
-) -> npt.NDArray[np.float64]:
+) -> npt.NDArray[np.float64]: ...
+
+
+def wind_shear_exponent(
+    wind_speed_lower: npt.ArrayLike | xr.DataArray,
+    wind_speed_upper: npt.ArrayLike | xr.DataArray,
+    *,
+    lower_height: _Height = 10.0,
+    upper_height: _Height = 100.0,
+) -> npt.NDArray[np.float64] | xr.DataArray:
     """Derive power-law shear from two levels, not actual energy generation.
 
     Compute ``alpha = log(v_upper / v_lower) / log(h_upper / h_lower)``
@@ -156,6 +238,11 @@ def wind_shear_exponent(
     (https://doi.org/10.24381/3bb607bd). Unlike C3S's climatological exponent,
     this is a per-sample diagnostic; recovering the upper wind from the same
     pair is an algebraic consistency check, not independent validation.
+
+    When either wind input is a DataArray, both must be DataArrays with
+    exactly matching shared coordinate labels and m s⁻¹ or absent units.
+    This beta path returns a dimensionless DataArray with output provenance.
+    Dask arrays remain lazy; all dimensions may have multiple chunks.
 
     Args:
         wind_speed_lower: Lower-level speed in m s⁻¹; scalar or array.
@@ -178,6 +265,16 @@ def wind_shear_exponent(
     upper_height = _positive_height(upper_height, "upper_height")
     if upper_height <= lower_height:
         raise InvalidArgumentError("upper_height must exceed lower_height.", argument_name="upper_height")
+    if isinstance(wind_speed_lower, xr.DataArray) or isinstance(wind_speed_upper, xr.DataArray):
+        return apply_elementwise(
+            wind_shear_exponent,
+            "wind_shear_exponent",
+            wind_input(wind_speed_lower, "wind_speed_lower"),
+            wind_input(wind_speed_upper, "wind_speed_upper"),
+            lower_height=lower_height,
+            upper_height=upper_height,
+            calculation_metadata={"lower_height": lower_height, "upper_height": upper_height},
+        )
     lower = _as_float_array(wind_speed_lower)
     upper = _as_float_array(wind_speed_upper)
     try:

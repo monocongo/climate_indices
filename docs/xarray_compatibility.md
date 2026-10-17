@@ -13,6 +13,7 @@ and coordinate behavior may change with a minor version, never in a patch releas
 | `DataArray` inputs for SPEI | Yes | `tests/test_xarray_equivalence.py` compares xarray precipitation/PET inputs to NumPy. |
 | `DataArray` inputs for EDDI | Yes | EDDI wrapper and metadata tests cover the typed public API. |
 | `DataArray` inputs for flood PE, EDI, I_F, and API | Yes | `flood.effective_precipitation()`, `flood.edi()` (also `climate_indices.edi()`), `flood.flood_index()`, and `flood.antecedent_precipitation_index()` accept daily precipitation/PE with CF units converted to mm. For PE, EDI, and I_F, Gregorian dates are converted to all-leap days before each NumPy computation and restored afterward; API consumes the daily series as given. PE must be computed before EDI/I_F and use the same duration. EDI and I_F infer calendar and Calibration Period years when omitted; I_F still requires `year_start_month`. API keeps its recursive-state contract (`initial_state`/`return_state`, `spin_up`, `nan_policy`/`max_gap_days`), and the returned state stays NumPy. A complete `time` Dask chunk is mandatory; spatial chunks run independently. `tests/test_flood_xarray.py` compares NumPy, eager xarray, and Dask outputs. These indices describe flood potential, not observed flooding. When chaining xarray PE into EDI/I_F, the second adapter reconstructs non-leap February 29 by interpolating **PE**, not the rainfall that produced it; the chained result can differ from applying both NumPy kernels to a single all-leap rainfall array ([#1147](https://github.com/monocongo/climate_indices/issues/1147)). |
+| `DataArray` inputs for energy degree days and wind profiles | Yes | `energy.heating_degree_days()`, `energy.cooling_degree_days()`, `energy.energy_degree_days()`, `energy.hub_height_wind_speed()`, and the auxiliary `energy.wind_shear_exponent()` preserve labels and match the NumPy functions exactly. Temperature units are inferred from CF attributes (K, °C, °F); bases remain explicit °C values. Wind units must be m s⁻¹ or absent. HDD/CDD attach `air_temperature_threshold`, EDD attaches both bases, and hub-height wind attaches `height`. Shared wind/alpha coordinates must match exactly; unlabeled non-scalar companions are rejected. Every dimension may have multiple Dask chunks. Each DataArray call emits `BetaFeatureWarning`. See `tests/test_energy_xarray.py`. These transforms describe climate-driven demand/resources, not actual load or generation. |
 | `DataArray` inputs for PET Thornthwaite | Yes | xarray adapter tests cover scalar and spatial latitude handling. |
 | `DataArray` inputs for PET Hargreaves | Yes | xarray adapter tests cover aligned daily temperature inputs. |
 | `DataArray` inputs for PNP | Yes | PNP wrapper tests cover scale handling and metadata. |
@@ -25,11 +26,42 @@ and coordinate behavior may change with a minor version, never in a patch releas
 | `DataArray` inputs for fit diagnostics | Yes | `climate_indices.fit_diagnostics()` returns an `xr.Dataset` of the fitted parameters, `prob_zero`, `n_valid`, `ks_statistic`, and `ks_p_value` over a `month`/`dayofyear` dimension plus the input's cell dimensions, with `distribution_used` per cell only (no calendar-step dimension). A Pearson Type III request keeps both parameter families, NaN where a block-level fall back makes one inapplicable; the fall back is decided per fitted block, so a Dask chunk layout can change it, as in the index adapters. See `tests/test_fit_diagnostics_xarray.py`. |
 | Coordinate preservation | Yes | Adapter tests verify time and spatial coordinates are preserved. |
 | CF-style metadata | Yes | `CF_METADATA` registry and adapter tests verify `long_name`, `units`, `references`, version, and history attributes. |
-| Dask-backed arrays | Yes, constrained | The time dimension must be a single chunk, except for the PET adapters, which rechunk a split `time` internally. Adapter tests verify detection and validation. Chunk axes the CLI leaves to Dask (`"auto"`, the KBDI and flood-index grid and division inputs) resolve against a 100 MB array chunk budget rather than Dask's own default; axes pinned with `-1` are unaffected. See [Chunking guidance for gridded indices](#chunking-guidance-for-gridded-indices) for block sizes. |
+| Dask-backed arrays | Yes, constrained | Fitting and stateful indices require one time chunk. PET adapters rechunk a split `time` internally. Elementwise Haines and energy transforms accept multiple chunks on every dimension; HDW requires only a single vertical core chunk. Adapter tests verify detection and validation. Chunk axes the CLI leaves to Dask (`"auto"`, the KBDI and flood-index grid and division inputs) resolve against a 100 MB array chunk budget rather than Dask's own default; axes pinned with `-1` are unaffected. See [Chunking guidance for gridded indices](#chunking-guidance-for-gridded-indices) for block sizes. |
 | Spatial (gridded) kernels | Yes, for SPI, SPEI, PET, EDDI, percentage of normal, PDSI, and flood PE/EDI/I_F/API | `spi`/`spei` receive a time-major `(time, *cells)` block and fit every cell in one pass, so a gridded gamma run costs one kernel call per Dask block instead of one call per cell ([ADR-0009](adr/0009-spatial-block-declaration.md)). The PET entry points (`pet_thornthwaite`, `pet_hargreaves`) hand `indices.pet` and `eto.eto_hargreaves` the same block layout with the per-cell latitude array, so a gridded PET run costs one call per block ([#941](https://github.com/monocongo/climate_indices/issues/941)). `indices.eddi` and `indices.percentage_of_normal` rank, and divide by the normals of, every cell of the block in one pass ([#942](https://github.com/monocongo/climate_indices/issues/942)). `palmer.pdsi` receives the block with AWC broadcast per cell, so a gridded PDSI run costs one recursion per block ([#1016](https://github.com/monocongo/climate_indices/issues/1016)). The NumPy API keeps 2-D input on the legacy `(years, periods)` reading; a 3-D or higher input is a block for `spi`/`spei`/`pet`/`pdsi` unless its first cell axis is the one shape that is ambiguous with that reading (12 or 366, i.e. a `(years, periods, *cells)` array), which must be declared, and for EDDI and percentage of normal every 3-D input must be declared with `spatial_time_major=True`. Inputs with a single non-core dimension keep the per-cell path. See `tests/test_spatial_kernel.py`. |
 | Calendar semantics | Yes, constrained | Standard/gregorian/proleptic_gregorian `datetime64` only; monthly input must begin in January and daily input on January 1. Daily values are converted to the 366-day calendar (February 29 synthesized from February 28 and March 1) and restored afterward. A partial final year is supported; `cftime` calendars are rejected. See [ADR-0004](adr/0004-xarray-calendar-semantics.md). |
 | Automatic temporal inference | Yes | Monthly and daily time-coordinate inference is covered by adapter tests. |
 | Multi-input alignment | Yes | SPEI, Hargreaves, and Penman-Monteith align their inputs with an inner join on the time dimension and emit a warning when timesteps are dropped. Shared cell dimensions must carry matching coordinates: intersecting them would silently drop grid cells, so a mismatch raises `CoordinateValidationError` instead. |
+
+## Energy transforms
+
+The energy adapters use elementwise `xr.apply_ufunc` calls with no core dimension.
+They do not fit a distribution or carry state, so ADR-0003's single-time-chunk
+requirement does not apply. They neither import Dask nor choose a scheduler.
+The `wind_shear_exponent()` output is an auxiliary diagnostic, not a registry
+index; it has dimensionless units and output provenance.
+
+Degree-day inputs represent daily mean temperature. An attached `time`
+coordinate must contain consecutive Gregorian `datetime64` daily samples.
+There is no January-start requirement or all-leap conversion, and the adapters
+never synthesize February 29. Inputs without a time coordinate are accepted as
+already-daily observations. Wind profiles have no calendar requirement.
+
+Wind inputs must agree on shared geographic coordinates, including auxiliary
+latitude/longitude coordinates, not only dimension indexes. To keep validation
+lazy, shared Dask-backed coordinates must share one graph (the same array or an
+unmodified copy); otherwise load and reconcile the coordinates before calling.
+A labeled power-law `alpha` must have dimensionless units (`1`,
+`dimensionless`, or no units attribute). Hub-height outputs replace scalar CF
+height aliases rather than retaining the reference height as a contradictory
+output coordinate. A varying coordinate named `height` or `hub_height`, or
+tagged `standard_name="height"`, cannot describe a single target hub height
+and is rejected.
+
+The outputs are DataArrays, not Datasets. They preserve existing coordinate
+attributes but do not invent time bounds from a timestamp whose interval
+position is unknown. When writing CF datasets with degree-day time integrals,
+retain the source daily time bounds in the enclosing Dataset. The scalar
+threshold and height coordinates carry their own physical units.
 
 ## Stateful fire indices
 

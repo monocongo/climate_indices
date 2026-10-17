@@ -33,6 +33,27 @@ def test_energy_wind_numpy_return_types() -> None:
     assert_type(energy.wind_shear_exponent(2.0, 5.0, upper_height=np.int64(100)), npt.NDArray[np.float64])
 
 
+def test_energy_degree_day_numpy_return_types() -> None:
+    assert_type(energy.heating_degree_days([10.0], base_temperature=18.0), npt.NDArray[np.float64])
+    assert_type(energy.cooling_degree_days([25.0], base_temperature=18.0), npt.NDArray[np.float64])
+    assert_type(
+        energy.energy_degree_days([10.0], heating_base_temperature=18.0, cooling_base_temperature=24.0),
+        npt.NDArray[np.float64],
+    )
+
+
+def test_energy_xarray_return_types() -> None:
+    data = xr.DataArray([10.0, 20.0], dims="site")
+    assert_type(energy.heating_degree_days(data, base_temperature=18.0), xr.DataArray)
+    assert_type(energy.cooling_degree_days(data, base_temperature=18.0), xr.DataArray)
+    assert_type(
+        energy.energy_degree_days(data, heating_base_temperature=18.0, cooling_base_temperature=24.0), xr.DataArray
+    )
+    assert_type(energy.hub_height_wind_speed(data, 10.0, 100.0), xr.DataArray)
+    upper: xr.DataArray = data * 1.5
+    assert_type(energy.wind_shear_exponent(data, upper), xr.DataArray)
+
+
 def test_spi_numpy_return_type() -> None:
     """Verify mypy infers np.ndarray for NumPy input."""
     # 40 years * 12 months = 480 values
