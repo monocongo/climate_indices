@@ -96,10 +96,10 @@ in-house, dependency-free.
 
 | Function | Inputs | Units | Notes |
 | --- | --- | --- | --- |
-| `energy.heating_degree_days()` | `temperature` | °C in, °C day out | mean-based; base temperature is a keyword |
-| `energy.cooling_degree_days()` | `temperature` | °C in, °C day out | mean-based; base temperature is a keyword |
-| `energy.energy_degree_days()` | `temperature` | °C in, °C day out | HDD + CDD, separate heating and cooling base temperatures, per the C3S definition |
-| `energy.hub_height_wind_speed()` | `wind_speed`, `reference_height`, `hub_height` | m s⁻¹ | `method="power"` (default) or `"log"`, the latter taking `roughness_length` |
+| `energy.heating_degree_days()` | `temperature` | °C in, °C day out | mean-based; keyword `base_temperature` |
+| `energy.cooling_degree_days()` | `temperature` | °C in, °C day out | mean-based; keyword `base_temperature` |
+| `energy.energy_degree_days()` | `temperature` | °C in, °C day out | HDD + CDD; keywords `heating_base_temperature`, `cooling_base_temperature` |
+| `energy.hub_height_wind_speed()` | `wind_speed`, `reference_height`, `hub_height` | m s⁻¹ | `method="power"` (default), with `alpha`, or `"log"`, with `roughness_length` |
 | `energy.wind_capacity_factor()` | `hub_wind_speed`, `power_curve` | dimensionless [0, 1] | generic documented reference curve; not plant engineering |
 | `energy.pv_capacity_factor()` | `ssrd`, `temperature`, wind | dimensionless [0, 1] | temperature-derated; mean flux W m⁻² in |
 
@@ -113,8 +113,15 @@ Degree-day conventions:
   and Tmax 25 °C contributes 5 heating degree days from Tmin against a 15 °C base, and
   none at all from its mean of 17.5 °C. That function is additive and leaves the
   mean-based one valid, which is what makes deferring it not a one-way door.
-- **Defaults are the oracle's.** The C3S and Eurostat schemes (15/18, 24/21) are not
-  separate APIs. The oracle survey
+- **CPC first, with explicit bases.** The maintainer selected NOAA CPC's single-base
+  convention for [#1163](https://github.com/monocongo/climate_indices/issues/1163):
+  `HDD = max(base_temperature - T, 0)` and `CDD = max(T - base_temperature, 0)`.
+  The published seven-day CDD example uses 65 °F, exactly `(65 - 32) * 5/9` °C.
+  The fixture tests always supply bases; no public default is chosen here.
+  Heating and EDD examples are separately labelled specification checks, not
+  external numerical validation. See `tests/fixture/energy_cpc/README.md`.
+- **C3S remains unresolved.** The C3S and Eurostat schemes (15/18, 24/21) are not
+  representable as non-default single bases. The oracle survey
   ([#1160](https://github.com/monocongo/climate_indices/issues/1160)) does not confirm
   default values: each scheme pairs an activation threshold with a separate reference
   temperature, which one base per transform cannot reproduce. No default is established
