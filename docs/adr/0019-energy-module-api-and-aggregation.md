@@ -12,22 +12,23 @@ in-house with no new dependency, and calibrated models and preprocessing stay ou
 scope. No name or signature recorded here changes. The required wind `power_curve`
 meets one split criterion, below the two-criterion threshold.
 
-Amended again by the degree-day implementation
-([#1164](https://github.com/monocongo/climate_indices/issues/1164)): decision 1's
-package and the degree-day half of decision 6 landed as
-`climate_indices.energy.heating_degree_days()`, `cooling_degree_days()`, and
-`energy_degree_days()`, in-house and dependency-free. The wind and radiation units of
-decision 6 are still a contract.
+Amended by the wind-profile implementation
+([#1165](https://github.com/monocongo/climate_indices/issues/1165)): decision 1's
+`climate_indices.energy` package now exists, exposing `hub_height_wind_speed()`
+and `wind_shear_exponent()` with decision 6's m s⁻¹/metre wind contract.
+Positive inverted profiles retain negative shear; calm-pair shear is NaN.
 
-Decisions 1, 2, and the degree-day half of decision 6 describe code that exists: the
-`aggregation` keyword landed with this record
-([#1158](https://github.com/monocongo/climate_indices/issues/1158)), and the
-`climate_indices.energy` package landed with
-[#1164](https://github.com/monocongo/climate_indices/issues/1164). Decisions 3 through
-5 and 7, and the wind and radiation units of decision 6, are the contract that the
-remaining energy tickets
-([#1157](https://github.com/monocongo/climate_indices/issues/1157)) implement. Each
-decision is amended as its implementation lands, as
+Amended again by the degree-day implementation
+([#1164](https://github.com/monocongo/climate_indices/issues/1164)): the package also
+exposes `heating_degree_days()`, `cooling_degree_days()`, and
+`energy_degree_days()`, in-house and dependency-free, with decision 6's degree-day
+units.
+
+Decision 2's `aggregation` keyword landed with this record
+([#1158](https://github.com/monocongo/climate_indices/issues/1158)). Decisions 3
+through 5 and the radiation units of decision 6 remain contracts for the tickets
+under [#1157](https://github.com/monocongo/climate_indices/issues/1157), not shipped
+code. Each decision is amended as its implementation lands, as
 {doc}`0013-flood-module-api-and-naming` was for flood.
 
 The energy-meteorology family
@@ -168,6 +169,6 @@ is a NumPy entry point only. The energy xarray adapters
 ([#1174](https://github.com/monocongo/climate_indices/issues/1174)) carry it for the
 indices that need it.
 
-A reader who finds decisions 3 through 5 and 7, and the wind and radiation units of
-decision 6, not yet in code is looking at a contract awaiting its implementation, not at
-drift. Decision 7 records scope, not code, and does not change as the transforms land.
+The unimplemented portions of decisions 3 through 6 remain contracts awaiting
+implementation, not drift. Decision 7 records scope, not code, and does not
+change as the transforms land.

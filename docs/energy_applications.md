@@ -26,8 +26,8 @@ A useful conceptual chain is:
 ```text
 Meteorological drivers           T2m, wind 10/100 m, SSRD, precip           (inputs)
               ↓
-Demand proxies                   HDD / CDD / EDD                            (planned)
-Resource transforms              hub-height wind; wind & PV capacity factor (planned)
+Demand proxies                   HDD / CDD / EDD                            (available)
+Resource transforms              hub-height wind (available); wind & PV capacity factor (planned)
 Hydro proxy                      capacity-weighted n-month precip           (planned recipe)
               ↓
 Standardized energy indices      SREPI, standardized demand, SRLI           (planned)
@@ -128,12 +128,11 @@ Allen & Otero (2023) define energy droughts this way. Events inherit the
 caveat at the top of this page: they are runs of unfavourable weather for the
 energy system, not recorded supply shortfalls.
 
-## Planned energy indices
+## Energy indices
 
-Most of the energy family below is planned. The degree-day NumPy functions are
-implemented in the `climate_indices.energy` package; the rest has no callable
-API yet. The package, its NumPy and beta xarray tiers, and the scope boundary are
-fixed by
+The NumPy degree-day and wind-profile functions in `climate_indices.energy`
+are available; the other energy indices below remain planned. The package, its
+NumPy and beta xarray tiers, and the scope boundary are fixed by
 [ADR-0019](adr/0019-energy-module-api-and-aggregation.md), with function names,
 units, and argument contracts recorded in the internal energy subsystem design
 note. The [energy-family epic #1157][energy-epic] tracks the implementation
@@ -145,9 +144,15 @@ order.
   separate heating and cooling bases. CPC's single-base convention ships;
   C3S threshold/reference pairs need a separate contract and are deferred. A caller
   holding Tmin and Tmax computes the daily mean first.
-- **Hub-height wind speed** — *planned ([#1165][energy-1165])*. Wind
-  extrapolated from a reference height (10 m or 100 m) to a turbine hub
-  height by a power-law or logarithmic profile, in m s⁻¹.
+- **Hub-height wind speed** — available as
+  {func}`climate_indices.energy.hub_height_wind_speed`. Wind extrapolated
+  from a finite positive reference height (commonly 10 m or 100 m) to a turbine hub height by a
+  power-law or neutral-stability logarithmic profile, in m s⁻¹.
+  {func}`climate_indices.energy.wind_shear_exponent` derives per-sample
+  shear from two levels: calm pairs yield NaN; positive inverted profiles
+  retain negative shear. The default power exponent, 1/7, is a generic
+  approximation, not a site-calibrated value. xarray/Dask dispatch is not
+  available yet.
 - **Hydropower precipitation proxy** — *planned recipe
   ([#1167][energy-1167])*. A capacity-weighted, n-month precipitation series
   standardized with the existing `indices.standardized_index()`, the way
@@ -169,10 +174,10 @@ order.
   reduced as cell temperature — estimated from air temperature, irradiance,
   and wind — rises, after the reference configuration of Jerez et al. (2015).
 
-The degree-day functions are implemented without new dependencies. The planned
-wind profile and capacity factors will also need no new dependencies. These
-implementations deliberately overlap `xclim`'s degree-day indicators and
-`wind_profile`, `pvlib`, and `windpowerlib`; those libraries remain documented
+The degree-day and wind-profile functions are implemented without new
+dependencies. The planned capacity factors will also need no new dependencies.
+These implementations deliberately overlap `xclim`'s degree-day indicators and
+`wind_profile`, `pvlib`, and `windpowerlib`. Those libraries remain documented
 alternatives and validation references, never dependencies
 ([ADR-0019](adr/0019-energy-module-api-and-aggregation.md) decision 7).
 
@@ -228,11 +233,13 @@ gridded demonstration on these data is planned ([#1179][energy-1179]).
   ([energy-family epic #1157][energy-epic]). So is plant-level PV or wind
   engineering beyond the generic reference configurations; use `pvlib` or
   `windpowerlib` for that.
-- **They are not yet validated.** No energy index is implemented yet, so
-  [VALIDATION.md][validation] has no energy section at present;
-  [#1180][energy-1180] adds one as implementations land, with validation against the `SEI`
-  package and published C3S outputs where those serve as oracles. Until then,
-  treat this page as orientation, not as evidence of validated skill.
+- **Validation is limited.** Wind profiles match pinned independent
+  implementations (`xclim` power law and `windpowerlib` log law) at
+  `atol=1e-12` m s⁻¹ on synthetic inputs. Shear recovery is algebraic
+  consistency only. Neither establishes skill against observed hub-height
+  wind. [#1180][energy-1180] owns the family's full
+  [validation inventory][validation], including future `SEI` and C3S comparisons
+  where those serve as oracles.
 
 ## Sources
 

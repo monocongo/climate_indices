@@ -1,10 +1,10 @@
 # Energy reference fixtures (#1163)
 
 These describe the **climate-driven component** of energy supply and demand,
-not actual generation or load. The degree-day implementation landed in #1164; the
-wind-profile one is pending (#1165). The reference
-tests xfail only when their module/function is absent (#1164, #1165); numerical,
-shape, missing-mask and unrelated import failures are never suppressed.
+not actual generation or load. The degree-day implementation (#1164) and the
+wind-profile implementation (#1165) are available. The reference tests compare
+both implementations with the outputs below. Numerical, shape, missing-mask and
+unrelated import failures are never suppressed.
 
 ## CPC first: explicit single-base degree days
 
@@ -32,7 +32,7 @@ external oracle. JSON `null` means NaN; zeros and missing masks
 must match exactly. No real timestamps, calendar, spatial weighting, Calibration
 Period or accumulation apply: each row is an independent daily mean.
 
-Pending calls use `base_temperature` for HDD/CDD and `heating_base_temperature` /
+Degree-day calls use `base_temperature` for HDD/CDD and `heating_base_temperature` /
 `cooling_base_temperature` for EDD, always explicitly in °C. These fixtures choose
 **no public default**. C3S's threshold/reference pairs cannot be represented by a
 single base. C3S boundary rules, population-weighted extraction, and monthly
@@ -67,7 +67,7 @@ identity, shape and missing values, including under optimized Python. It stages 
 JSON files before publishing their directory and restores the previous pair if the
 swap fails. An uncatchable interruption between directory moves can leave
 `.energy_wind-backup`; the next publication recovers it. It imports neither
-`climate_indices` nor its future implementation. CI consumes committed JSON and
+`climate_indices` nor its wind-profile implementation. CI consumes committed JSON and
 requires neither provider. xclim's optional matplotlib-setup warning does not affect
 the numerical calls. Synthetic inputs and numerical outputs contain no copied
 implementation code; the reference software is Apache-2.0 (xclim) and MIT
@@ -78,15 +78,15 @@ observed hub-height wind. Tolerance is `rtol=0`, `atol=1e-12` m s⁻¹ for ordin
 float64 arithmetic, with exact calm, identity-height and NaN behavior. Recovering
 alpha from the generated 10/100 m pair is separately labelled consistency evidence;
 it does not turn a round trip into independent validation. Calm pairs are excluded
-from the log-ratio calculation. No measured library agreement is claimed until
-#1165 exists.
+from the log-ratio calculation. The #1165 implementation passes these profile
+comparisons; that agreement does not establish predictive skill.
 
 ## Integrity and scientific gate
 
 Each directory's schema-valid `provenance.json` hashes that directory's canonical
 `reference.json` bytes directly. `tests/test_energy_reference.py` checks hashes in
 the default suite; the existing provenance protocol checks both schema records.
-To run the pending contracts explicitly:
+To run the wind comparisons and degree-day contracts explicitly:
 
 ```bash
 uv run pytest tests/test_energy_reference.py -m validation -rx
