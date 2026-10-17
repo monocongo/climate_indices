@@ -29,8 +29,8 @@ from climate_indices.indices import percentage_of_normal as numpy_pnp
 
 def test_energy_wind_numpy_return_types() -> None:
     """The namespaced wind transforms return float64 arrays, including scalar input."""
-    assert_type(energy.hub_height_wind_speed([2.0, 5.0], 10.0, 100.0), npt.NDArray[np.float64])
-    assert_type(energy.wind_shear_exponent(2.0, 5.0), npt.NDArray[np.float64])
+    assert_type(energy.hub_height_wind_speed([2.0, 5.0], np.int64(10), np.float64(100)), npt.NDArray[np.float64])
+    assert_type(energy.wind_shear_exponent(2.0, 5.0, upper_height=np.int64(100)), npt.NDArray[np.float64])
 
 
 def test_spi_numpy_return_type() -> None:

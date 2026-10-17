@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal, TypeAlias
 
 import numpy as np
 import numpy.typing as npt
@@ -10,27 +10,31 @@ import numpy.typing as npt
 from climate_indices._recurrence import _as_float_array
 from climate_indices.exceptions import InvalidArgumentError
 
+_Height: TypeAlias = float | np.integer[Any] | np.floating[Any]
 
-def _positive_height(value: float, name: str) -> float:
+
+def _positive_height(value: _Height, name: str) -> float:
     """Require a finite positive scalar height in metres."""
-    if (
-        isinstance(value, (bool, np.bool_))
-        or not isinstance(value, (int, float, np.integer, np.floating))
-        or not np.isfinite(value)
-        or value <= 0
-    ):
-        raise InvalidArgumentError(f"{name} must be a finite positive scalar in metres.", argument_name=name)
-    return float(value)
+    message = f"{name} must be a finite positive scalar in metres."
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, float, np.integer, np.floating)):
+        raise InvalidArgumentError(message, argument_name=name)
+    try:
+        height = float(value)
+    except OverflowError as exc:
+        raise InvalidArgumentError(message, argument_name=name) from exc
+    if not np.isfinite(height) or height <= 0:
+        raise InvalidArgumentError(message, argument_name=name)
+    return height
 
 
 def hub_height_wind_speed(
     wind_speed: npt.ArrayLike,
-    reference_height: float,
-    hub_height: float,
+    reference_height: _Height,
+    hub_height: _Height,
     *,
     method: Literal["power", "log"] = "power",
     alpha: npt.ArrayLike = 1 / 7,
-    roughness_length: float | None = None,
+    roughness_length: _Height | None = None,
 ) -> npt.NDArray[np.float64]:
     """Extrapolate wind speed, a climate-driven resource proxy, not generation.
 
@@ -61,7 +65,7 @@ def hub_height_wind_speed(
     Returns:
         Float64 array with the broadcast shape (0-D for scalar inputs), in
         m s⁻¹. Calm winds remain zero for valid parameters. Missing inputs or
-        non-finite results yield NaN.
+        non-finite results yield NaN; underflow rounds to zero.
 
     Raises:
         InvalidArgumentError: If method, heights, roughness, or shapes are invalid.
@@ -78,6 +82,10 @@ def hub_height_wind_speed(
         >>> energy.hub_height_wind_speed([0.0, 5.0], 10.0, 100.0).round(3)
         array([0.   , 6.947])
     """
+    if not isinstance(method, str) or method not in ("power", "log"):
+        raise InvalidArgumentError(
+            "method must be 'power' or 'log'.", argument_name="method", argument_value=str(method)
+        )
     reference_height = _positive_height(reference_height, "reference_height")
     hub_height = _positive_height(hub_height, "hub_height")
     wind = _as_float_array(wind_speed)
@@ -88,9 +96,9 @@ def hub_height_wind_speed(
         except ValueError as exc:
             raise InvalidArgumentError("wind_speed and alpha must broadcast together.", argument_name="alpha") from exc
         valid = np.isfinite(wind) & (wind >= 0) & np.isfinite(exponent)
-        with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+        with np.errstate(over="ignore", invalid="ignore", divide="ignore", under="ignore"):
             factor = np.power(hub_height / reference_height, exponent)
-    elif method == "log":
+    else:
         if roughness_length is None:
             raise InvalidArgumentError("The log profile requires roughness_length.", argument_name="roughness_length")
         roughness_length = _positive_height(roughness_length, "roughness_length")
@@ -98,11 +106,7 @@ def hub_height_wind_speed(
             raise InvalidArgumentError("Both heights must exceed roughness_length.", argument_name="roughness_length")
         factor = np.log(hub_height / roughness_length) / np.log(reference_height / roughness_length)
         valid = np.isfinite(wind) & (wind >= 0)
-    else:
-        raise InvalidArgumentError(
-            "method must be 'power' or 'log'.", argument_name="method", argument_value=str(method)
-        )
-    with np.errstate(over="ignore", invalid="ignore"):
+    with np.errstate(over="ignore", invalid="ignore", under="ignore"):
         result = np.where(wind == 0, 0.0, wind * factor)
     return np.asarray(np.where(valid & np.isfinite(result), result, np.nan), dtype=np.float64)
 
@@ -111,8 +115,8 @@ def wind_shear_exponent(
     wind_speed_lower: npt.ArrayLike,
     wind_speed_upper: npt.ArrayLike,
     *,
-    lower_height: float = 10.0,
-    upper_height: float = 100.0,
+    lower_height: _Height = 10.0,
+    upper_height: _Height = 100.0,
 ) -> npt.NDArray[np.float64]:
     """Derive power-law shear from two levels, not actual energy generation.
 

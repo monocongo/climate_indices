@@ -1,9 +1,10 @@
 # Energy reference fixtures (#1163)
 
 These describe the **climate-driven component** of energy supply and demand,
-not actual generation or load. No energy implementation exists yet. The reference
-tests xfail only when their module/function is absent (#1164, #1165); numerical,
-shape, missing-mask and unrelated import failures are never suppressed.
+not actual generation or load. The wind-profile implementation (#1165) is compared
+with the independent outputs below. Degree-day reference tests still xfail when
+their function is absent (#1164); numerical, shape, missing-mask and unrelated
+import failures are never suppressed.
 
 ## CPC first: explicit single-base degree days
 
@@ -66,7 +67,7 @@ identity, shape and missing values, including under optimized Python. It stages 
 JSON files before publishing their directory and restores the previous pair if the
 swap fails. An uncatchable interruption between directory moves can leave
 `.energy_wind-backup`; the next publication recovers it. It imports neither
-`climate_indices` nor its future implementation. CI consumes committed JSON and
+`climate_indices` nor its wind-profile implementation. CI consumes committed JSON and
 requires neither provider. xclim's optional matplotlib-setup warning does not affect
 the numerical calls. Synthetic inputs and numerical outputs contain no copied
 implementation code; the reference software is Apache-2.0 (xclim) and MIT
@@ -77,15 +78,15 @@ observed hub-height wind. Tolerance is `rtol=0`, `atol=1e-12` m s⁻¹ for ordin
 float64 arithmetic, with exact calm, identity-height and NaN behavior. Recovering
 alpha from the generated 10/100 m pair is separately labelled consistency evidence;
 it does not turn a round trip into independent validation. Calm pairs are excluded
-from the log-ratio calculation. No measured library agreement is claimed until
-#1165 exists.
+from the log-ratio calculation. The #1165 implementation passes these profile
+comparisons; that agreement does not establish predictive skill.
 
 ## Integrity and scientific gate
 
 Each directory's schema-valid `provenance.json` hashes that directory's canonical
 `reference.json` bytes directly. `tests/test_energy_reference.py` checks hashes in
 the default suite; the existing provenance protocol checks both schema records.
-To run the pending contracts explicitly:
+To run the wind comparisons and pending degree-day contracts explicitly:
 
 ```bash
 uv run pytest tests/test_energy_reference.py -m validation -rx

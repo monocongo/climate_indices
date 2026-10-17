@@ -1,6 +1,6 @@
 """Wind-profile contracts; external numerical evidence lives in test_energy_reference."""
 
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -57,8 +57,23 @@ def test_overflow_is_missing_but_calm_stays_zero() -> None:
     np.testing.assert_allclose(result, [0, np.nan])
 
 
+@pytest.mark.parametrize("wind,reference,hub,alpha", [(1.0, 100.0, 10.0, 1000), (1e-300, 1e100, 1.0, 1)])
+def test_underflow_rounds_to_zero_without_runtime_warnings(
+    wind: float, reference: float, hub: float, alpha: float
+) -> None:
+    with np.errstate(all="raise"):
+        result = energy.hub_height_wind_speed([wind], reference, hub, alpha=alpha)
+    np.testing.assert_array_equal(result, [0.0])
+
+
+@pytest.mark.parametrize("invalid_method", ["unknown", None, 1, np.array(["power", "log"])])
+def test_invalid_method_raises_argument_error(invalid_method: Any) -> None:
+    with pytest.raises(InvalidArgumentError, match="method"):
+        energy.hub_height_wind_speed([1], 10, 100, method=invalid_method)
+
+
 @pytest.mark.parametrize("name", ["reference_height", "hub_height"])
-@pytest.mark.parametrize("value", [0, -1, np.nan, np.inf, True, np.bool_(True), "10", [10]])
+@pytest.mark.parametrize("value", [0, -1, np.nan, np.inf, True, np.bool_(True), "10", [10], 10**400])
 def test_profile_rejects_invalid_heights(name: str, value: Any) -> None:
     kwargs: dict[str, Any] = {"reference_height": 10, "hub_height": 100, name: value}
     with pytest.raises(InvalidArgumentError, match=name):
@@ -73,9 +88,7 @@ def test_log_profile_requires_positive_roughness_below_both_heights(roughness: f
         energy.hub_height_wind_speed([1], 100, 10, method="log", roughness_length=10)
 
 
-def test_invalid_method_and_shapes_raise() -> None:
-    with pytest.raises(InvalidArgumentError, match="method"):
-        energy.hub_height_wind_speed([1], 10, 100, method=cast(Any, "unknown"))
+def test_invalid_shapes_raise() -> None:
     with pytest.raises(InvalidArgumentError, match="broadcast"):
         energy.hub_height_wind_speed([1, 2], 10, 100, alpha=[0, 0, 0])
     with pytest.raises(InvalidArgumentError, match="broadcast"):
@@ -123,9 +136,10 @@ def test_shear_requires_ordered_positive_heights(lower: float, upper: float) -> 
 
 
 def test_scalar_empty_and_custom_height_inputs() -> None:
-    result = energy.hub_height_wind_speed(5, np.float64(20), cast(Any, np.int64(80)), alpha=0.5)
+    result = energy.hub_height_wind_speed(5, np.float64(20), np.int64(80), alpha=0.5)
     assert isinstance(result, np.ndarray) and result.shape == () and result.dtype == np.float64
     assert result == 10
+    np.testing.assert_array_equal(energy.hub_height_wind_speed([2], 2**70, 2**70), [2])
     shear = energy.wind_shear_exponent(5, 10, lower_height=20, upper_height=80)
     assert isinstance(shear, np.ndarray) and shear.shape == () and shear.dtype == np.float64
     assert shear == pytest.approx(0.5)

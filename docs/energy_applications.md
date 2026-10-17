@@ -146,7 +146,7 @@ order.
   holding Tmin and Tmax computes the daily mean first.
 - **Hub-height wind speed** — available as
   {func}`climate_indices.energy.hub_height_wind_speed`. Wind extrapolated
-  from a reference height (10 m or 100 m) to a turbine hub height by a
+  from a finite positive reference height (commonly 10 m or 100 m) to a turbine hub height by a
   power-law or neutral-stability logarithmic profile, in m s⁻¹.
   {func}`climate_indices.energy.wind_shear_exponent` derives per-sample
   shear from two levels: calm pairs yield NaN; positive inverted profiles
