@@ -142,8 +142,9 @@ order.
 - **Heating, cooling, and energy degree days (HDD, CDD, EDD)** — *planned
   ([#1164][energy-1164])*. Mean-based degree days from daily mean 2 m
   temperature against a base temperature, in °C day; EDD is HDD plus CDD with
-  separate heating and cooling bases, per the C3S definition. A caller holding
-  Tmin and Tmax computes the daily mean first.
+  separate heating and cooling bases. CPC's single-base convention ships first;
+  C3S threshold/reference pairs remain unresolved in [#1164][energy-1164]. A caller
+  holding Tmin and Tmax computes the daily mean first.
 - **Hub-height wind speed** — *planned ([#1165][energy-1165])*. Wind
   extrapolated from a reference height (10 m or 100 m) to a turbine hub
   height by a power-law or logarithmic profile, in m s⁻¹.

@@ -26,6 +26,15 @@
       "hdd_f_day": [28, 1, 0, 0, 0, 0, 0, null],
       "cdd_f_day": [0, 0, 0, 0, 0, 1, 20, null],
       "edd_f_day": [28, 1, 0, 0, 0, 1, 20, null]
+    },
+    {
+      "name": "overlapping_bases_additive_contract_not_cpc_product",
+      "temperature_f": [55, 60, 65, 70, 75, null],
+      "heating_base_f": 70,
+      "cooling_base_f": 60,
+      "hdd_f_day": [15, 10, 5, 0, 0, null],
+      "cdd_f_day": [0, 0, 5, 10, 15, null],
+      "edd_f_day": [15, 10, 10, 10, 15, null]
     }
   ]
 }

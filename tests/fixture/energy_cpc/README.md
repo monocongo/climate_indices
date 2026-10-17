@@ -13,8 +13,8 @@ retrieved 2026-10-17: mean daily temperature is `(Tmax + Tmin) / 2`, with a
 65 °F base for heating and cooling. The published CDD inputs are
 `[67,65,70,74,78,65,68]` °F, outputs `[2,0,5,9,13,0,3]` °F day, total **32 °F day**.
 This seven-day worked example is authoritative reference evidence, not observed
-station data. The source excerpt normalizes HTML entities; the raw fetched page's
-SHA-256 is retained for audit. Refresh by retrieving that page, comparing section 1,
+station data. The source excerpt normalizes HTML entities and whitespace; the raw
+page is not committed, but its SHA-256 is retained for audit. Refresh by retrieving that page, comparing section 1,
 and explicitly updating the transcription, retrieval date and checksum.
 
 Tests convert temperatures as `(F - 32) * 5/9`, including the exact base
@@ -24,8 +24,10 @@ No rounded 18 °C base is substituted. Original integer values are exact;
 
 The separate `specification_cases` are hand-calculated synthetic examples, **not
 published CPC numbers**. They cover heating/cooling activation, equality, a missing
-day, and EDD = HDD + CDD with equal and distinct bases. EDD is an algebraic identity,
-not an independent external oracle. JSON `null` means NaN; zeros and missing masks
+day, and EDD = HDD + CDD with equal, distinct and overlapping bases. The synthetic
+overlap case makes both terms positive to distinguish their sum from their maximum;
+it is not a CPC product convention. EDD is an algebraic identity, not an independent
+external oracle. JSON `null` means NaN; zeros and missing masks
 must match exactly. No real timestamps, calendar, spatial weighting, Calibration
 Period or accumulation apply: each row is an independent daily mean.
 

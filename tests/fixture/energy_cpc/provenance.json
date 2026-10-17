@@ -3,7 +3,7 @@
   "url": "https://www.cpc.ncep.noaa.gov/products/analysis_monitoring/cdus/degree_days/ddayexp.shtml",
   "download_date": "2026-10-17",
   "subset_description": "Published seven-day station CDD worked example, plus separately labelled synthetic HDD/CDD/EDD specification cases. Not station observations or a national energy-demand product.",
-  "checksum_sha256": "6d51b8a77f9b3051ad6065f09bd0ca002ff6db47123d826a91beb5998f232943",
+  "checksum_sha256": "9ec4f45d519a4408fa8edca8ced117898d6750235a788830bf50061f05904a35",
   "fixture_version": "1.0.0",
   "validation_tolerance": {
     "rtol": 0.0,
@@ -12,5 +12,5 @@
   },
   "citation": "NOAA CPC, Explanation of the weekly and monthly degree day data summaries, section 1 (Station data), retrieved 2026-10-17.",
   "license": "NOAA/NWS public-domain information unless otherwise noted; no exception is marked for the section-1 numbers. Attribute NOAA/NWS/CPC; no endorsement implied. https://www.weather.gov/disclaimer",
-  "notes": "Manually transcribed the seven daily mean Fahrenheit temperatures, seven CDD values, base 65 F, total 32 F day and section-1 excerpt from the live CPC page. HTML character entities normalized to Unicode in the excerpt; raw retrieved page SHA-256 is in reference.json. Inputs convert as (F-32)*5/9; degree-day differences convert as F_day*5/9 without offset. No temperature rounding. Integer source values are exact; atol=1e-12 C day permits conversion roundoff only. Heating and EDD synthetic cases, distinct bases, and NaN propagation are specification evidence, not published numerical oracles. EDD=HDD+CDD describes climate-driven demand, not actual load. No implementation-generated outputs or C3S values; no measured implementation agreement until #1164. Maintainer confirmation of transcription/extraction is required in the fixture PR. NWS terms page retrieved 2026-10-17, raw SHA-256 c08c1597ebd52b31e3ba749f76d2217c290dcd16dc894cb4c109655566ecbbd1."
+  "notes": "Manually transcribed the seven daily mean Fahrenheit temperatures, seven CDD values, base 65 F, total 32 F day and section-1 excerpt from the live CPC page. HTML character entities and whitespace normalized in the excerpt; raw page not committed, SHA-256 is in reference.json. Inputs convert as (F-32)*5/9; degree-day differences convert as F_day*5/9 without offset. No temperature rounding. Integer source values are exact; atol=1e-12 C day permits conversion roundoff only. Heating and EDD synthetic cases, distinct and overlapping bases, and NaN propagation are specification evidence, not published numerical oracles. The overlap case distinguishes HDD+CDD from max(HDD,CDD), not a CPC product convention. EDD=HDD+CDD describes climate-driven demand, not actual load. No implementation-generated outputs or C3S values; no measured implementation agreement until #1164. Maintainer confirmation of transcription/extraction is required in the fixture PR. NWS terms page retrieved 2026-10-17, raw SHA-256 c08c1597ebd52b31e3ba749f76d2217c290dcd16dc894cb4c109655566ecbbd1."
 }

@@ -99,7 +99,7 @@ in-house, dependency-free.
 | `energy.heating_degree_days()` | `temperature` | °C in, °C day out | mean-based; keyword `base_temperature` |
 | `energy.cooling_degree_days()` | `temperature` | °C in, °C day out | mean-based; keyword `base_temperature` |
 | `energy.energy_degree_days()` | `temperature` | °C in, °C day out | HDD + CDD; keywords `heating_base_temperature`, `cooling_base_temperature` |
-| `energy.hub_height_wind_speed()` | `wind_speed`, `reference_height`, `hub_height` | m s⁻¹ | `method="power"` (default), with `alpha`, or `"log"`, with `roughness_length` |
+| `energy.hub_height_wind_speed()` | `wind_speed`, `reference_height`, `hub_height` | m s⁻¹ | `method="power"` (default), with `alpha=1/7` by default per #1165, or `"log"`, with `roughness_length` |
 | `energy.wind_capacity_factor()` | `hub_wind_speed`, `power_curve` | dimensionless [0, 1] | generic documented reference curve; not plant engineering |
 | `energy.pv_capacity_factor()` | `ssrd`, `temperature`, wind | dimensionless [0, 1] | temperature-derated; mean flux W m⁻² in |
 
