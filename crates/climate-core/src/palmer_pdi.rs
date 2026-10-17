@@ -20,9 +20,13 @@ use crate::palmer::{py_max, py_min};
 /// `PdiDurationFactors.from_fitted`.
 #[derive(Debug, Clone, Copy)]
 pub struct PdiDurationFactors {
+    /// Wet-spell duration-factor slope `m`.
     pub wetm: f64,
+    /// Wet-spell duration-factor intercept `b`.
     pub wetb: f64,
+    /// Dry-spell duration-factor slope `m`.
     pub drym: f64,
+    /// Dry-spell duration-factor intercept `b`.
     pub dryb: f64,
 }
 
@@ -48,8 +52,11 @@ fn carry(m: f64, b: f64, previous: f64, z: f64) -> f64 {
 /// The final PDSI, PHDI, and PMDI series.
 #[derive(Debug)]
 pub struct PdiResult {
+    /// Dimensionless PDSI, shaped `(months, cells)`.
     pub pdsi: Array2<f64>,
+    /// Dimensionless PHDI, shaped `(months, cells)`.
     pub phdi: Array2<f64>,
+    /// Dimensionless PMDI, shaped `(months, cells)`.
     pub pmdi: Array2<f64>,
 }
 
@@ -485,7 +492,10 @@ mod tests {
         let z = ndarray::array![[4.0, -4.0], [0.5, -0.5], [f64::NAN, 2.0]];
         let block = calculate(z.view(), factors);
         for cell in 0..2 {
-            let single = calculate(z.slice(ndarray::s![.., cell..cell + 1]), factors);
+            let single = calculate(
+                z.slice_axis(ndarray::Axis(1), ndarray::Slice::from(cell..cell + 1)),
+                factors,
+            );
             for t in 0..3 {
                 for (a, b) in [
                     (block.pdsi[[t, cell]], single.pdsi[[t, 0]]),

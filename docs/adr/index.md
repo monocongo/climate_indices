@@ -33,4 +33,5 @@ corrected in place), or `Superseded by ADR-NNNN`. The authoring conventions are 
 0019-energy-module-api-and-aggregation
 0020-standardized-index-public-surface
 0021-climate-indices-crate-identity
+0022-rust-public-api
 ```
