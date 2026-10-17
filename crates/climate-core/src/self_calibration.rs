@@ -17,8 +17,11 @@ use crate::ClimateError;
 
 /// The spell side a duration factor is fitted for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Spell {
+    /// A wet spell, with positive Z-Index sums.
     Wet,
+    /// A dry spell, with negative Z-Index sums.
     Dry,
 }
 

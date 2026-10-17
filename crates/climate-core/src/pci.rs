@@ -56,12 +56,12 @@ pub fn pci(rainfall: ArrayView1<'_, f64>) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::{Array1, array, s};
+    use ndarray::{Array1, Axis, Slice, array};
 
     #[test]
     fn a_year_of_rain_in_one_month_is_maximally_concentrated() {
         let mut january_only = Array1::<f64>::zeros(365);
-        for day in &mut january_only.slice_mut(s![..31]) {
+        for day in &mut january_only.slice_axis_mut(Axis(0), Slice::from(..31)) {
             *day = 1.0;
         }
         assert_eq!(pci(january_only.view()), Some(100.0));

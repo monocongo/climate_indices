@@ -42,10 +42,15 @@ const NORMAL_TRANSITION_SKEW: f64 = 0.000_016;
 /// A column that cannot be fitted has `valid == false` and zero parameters.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PearsonFit {
+    /// Probability of Zero per calibration column.
     pub probabilities_of_zero: Array1<f64>,
+    /// Location per column, in the input's units.
     pub locs: Array1<f64>,
+    /// Scale per column, in the input's units.
     pub scales: Array1<f64>,
+    /// Dimensionless skewness per column.
     pub skews: Array1<f64>,
+    /// Whether each column has a usable fit.
     pub valid: Array1<bool>,
 }
 

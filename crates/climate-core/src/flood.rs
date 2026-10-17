@@ -19,7 +19,7 @@
 
 use std::ops::Range;
 
-use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
+use ndarray::{Array1, Array2, ArrayView1, ArrayView2, Axis, Slice};
 
 use crate::ClimateError;
 use crate::recurrence::{RecurrenceInputs, RecurrenceRun, run};
@@ -210,7 +210,7 @@ pub fn edi(
     calibration: Range<usize>,
 ) -> Result<Array2<f64>, ClimateError> {
     check_rows("calibration", &calibration, years.nrows())?;
-    let climatology = climatology(years.slice(ndarray::s![calibration, ..]));
+    let climatology = climatology(years.slice_axis(Axis(0), Slice::from(calibration)));
     Ok(standardize(years, &climatology))
 }
 
@@ -238,7 +238,7 @@ pub fn flood_index(
         // a running maximum per cell, day by day in memory order; the maximum
         // of the finite days does not depend on the order they are visited
         for day in pe
-            .slice(ndarray::s![start..start + DAYS_PER_YEAR, ..])
+            .slice_axis(Axis(0), Slice::from(start..start + DAYS_PER_YEAR))
             .rows()
         {
             row.zip_mut_with(&day, |largest, &value| {
@@ -478,14 +478,14 @@ mod tests {
     #[test]
     fn a_period_without_finite_days_drops_out_of_the_flood_index_sample() {
         let mut pe = annual_periods(&[10.0, 20.0, 30.0], 0);
-        pe.slice_mut(ndarray::s![0..DAYS_PER_YEAR, ..])
+        pe.slice_axis_mut(Axis(0), Slice::from(0..DAYS_PER_YEAR))
             .fill(f64::NAN);
         let result = flood_index(pe.view(), 0, 3).unwrap();
         // the sample is {20, 30}: mean 25, SD 5
         assert!(close(result[[DAYS_PER_YEAR + 100, 0]], -1.0, 1e-15));
         assert!(result[[0, 0]].is_nan());
         // one remaining finite maximum is not enough
-        pe.slice_mut(ndarray::s![DAYS_PER_YEAR..2 * DAYS_PER_YEAR, ..])
+        pe.slice_axis_mut(Axis(0), Slice::from(DAYS_PER_YEAR..2 * DAYS_PER_YEAR))
             .fill(f64::NAN);
         let result = flood_index(pe.view(), 0, 3).unwrap();
         assert!(result.iter().all(|value| value.is_nan()));

@@ -203,7 +203,9 @@ fn dc_next(
 /// The KBDI state of one cell: the index and the wet spell it carries.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct KbdiCell {
+    /// Moisture deficiency in mm, from 0 through 203.2.
     pub kbdi: f64,
+    /// Accumulated precipitation in the current wet spell, in mm.
     pub wet_spell_precipitation: f64,
 }
 
@@ -261,16 +263,24 @@ fn kbdi_next(
 /// The recorded history and final state of one moisture code.
 #[derive(Debug)]
 pub struct CodeRun {
+    /// Daily code history shaped `(days.saturating_sub(spin_up), cells)`, or `None` when not recorded.
+    /// The history has zero rows when `spin_up >= days`.
     pub values: Option<Array2<f64>>,
+    /// Final dimensionless code value per cell.
     pub code: Array1<f64>,
+    /// Final gap count per cell, or `None` when no cell started and no cell was poisoned.
     pub trailing_gap_days: Option<Array1<i64>>,
 }
 
 /// The recorded history and final state of a KBDI run.
 #[derive(Debug)]
 pub struct KbdiRun {
+    /// Daily KBDI history in mm, shaped `(days.saturating_sub(spin_up), cells)`,
+    /// or `None` when not recorded. The history has zero rows when `spin_up >= days`.
     pub values: Option<Array2<f64>>,
+    /// Final KBDI and wet-spell state per cell.
     pub state: Vec<KbdiCell>,
+    /// Final gap count per cell, or `None` when no cell started and no cell was poisoned.
     pub trailing_gap_days: Option<Array1<i64>>,
 }
 
@@ -349,8 +359,11 @@ pub fn ffmc(
 /// A port of the Python lookup `TABLE[band, month - 1]`: the latitude/month
 /// table, the band each cell selects, and the calendar month of every day.
 pub struct DayLength<'a> {
+    /// The code-specific day-length factors, shaped `(latitude_bands, 12)`.
     pub table: ArrayView2<'a, f64>,
+    /// The zero-based latitude-band row per cell.
     pub band: ArrayView1<'a, i64>,
+    /// One-based calendar months, shaped `(days, cells)`.
     pub months: ArrayView2<'a, i64>,
 }
 

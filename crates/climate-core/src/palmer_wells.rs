@@ -23,22 +23,34 @@ const SPELL_THRESHOLD: f64 = 0.5;
 /// Python: `_palmer_duration.DurationFactors`.
 #[derive(Debug, Clone, Copy)]
 pub struct WellsFactors {
+    /// Wet-spell duration-factor slope `m`.
     pub wetm: f64,
+    /// Wet-spell duration-factor intercept `b`.
     pub wetb: f64,
+    /// Dry-spell duration-factor slope `m`.
     pub drym: f64,
+    /// Dry-spell duration-factor intercept `b`.
     pub dryb: f64,
+    /// Wet recurrence denominator, `wetm + wetb`.
     pub wet_denominator: f64,
+    /// Dry recurrence denominator, `drym + dryb`.
     pub dry_denominator: f64,
+    /// Wet carry coefficient, `1 - wetm / wet_denominator`.
     pub wetc: f64,
+    /// Incipient dry carry coefficient, `1 - drym / (drym + wetb)`.
     pub dryc: f64,
+    /// Established dry carry coefficient, `1 - drym / dry_denominator`.
     pub dry_spell_c: f64,
 }
 
 /// The final scPDSI, scPHDI, and scPMDI series.
 #[derive(Debug)]
 pub struct WellsResult {
+    /// Dimensionless scPDSI, with one value per input month.
     pub pdsi: Array1<f64>,
+    /// Dimensionless scPHDI, with one value per input month.
     pub phdi: Array1<f64>,
+    /// Dimensionless scPMDI, with one value per input month.
     pub pmdi: Array1<f64>,
 }
 
