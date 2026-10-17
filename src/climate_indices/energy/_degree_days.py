@@ -81,12 +81,12 @@ def heating_degree_days(
 
     Raises:
         InputTypeError: If temperature is non-numeric.
-        InvalidArgumentError: If temperature or the base is infinite, or the
-            base is not a single number.
+        InvalidArgumentError: If temperature or the base is infinite or NaN, or
+            the base is not a single number.
     """
     values = _validated_temperature(temperature)
     base = _validated_base(base_temperature, "base_temperature")
-    return np.maximum(base - values, 0.0)
+    return np.asarray(np.maximum(base - values, 0.0))
 
 
 def cooling_degree_days(
@@ -116,12 +116,12 @@ def cooling_degree_days(
 
     Raises:
         InputTypeError: If temperature is non-numeric.
-        InvalidArgumentError: If temperature or the base is infinite, or the
-            base is not a single number.
+        InvalidArgumentError: If temperature or the base is infinite or NaN, or
+            the base is not a single number.
     """
     values = _validated_temperature(temperature)
     base = _validated_base(base_temperature, "base_temperature")
-    return np.maximum(values - base, 0.0)
+    return np.asarray(np.maximum(values - base, 0.0))
 
 
 def energy_degree_days(
@@ -152,12 +152,12 @@ def energy_degree_days(
 
     Raises:
         InputTypeError: If temperature is non-numeric.
-        InvalidArgumentError: If temperature or a base is infinite, or a base is
-            not a single number.
+        InvalidArgumentError: If temperature or a base is infinite or NaN, or a
+            base is not a single number.
     """
     heating = heating_degree_days(temperature, base_temperature=heating_base_temperature)
     cooling = cooling_degree_days(temperature, base_temperature=cooling_base_temperature)
-    return heating + cooling
+    return np.asarray(heating + cooling)
 
 
 __all__ = [

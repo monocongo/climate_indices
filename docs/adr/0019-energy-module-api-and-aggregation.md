@@ -168,6 +168,6 @@ is a NumPy entry point only. The energy xarray adapters
 ([#1174](https://github.com/monocongo/climate_indices/issues/1174)) carry it for the
 indices that need it.
 
-A reader who finds decisions 1 and 3 through 7 not yet in code is looking at a contract
-awaiting its implementation, not at drift. Decision 7 records scope, not code, and does
-not change as the transforms land.
+A reader who finds decisions 3 through 5 and 7, and the wind and radiation units of
+decision 6, not yet in code is looking at a contract awaiting its implementation, not at
+drift. Decision 7 records scope, not code, and does not change as the transforms land.

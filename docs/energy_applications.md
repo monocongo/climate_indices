@@ -130,20 +130,20 @@ energy system, not recorded supply shortfalls.
 
 ## Planned energy indices
 
-The energy family below is planned, not implemented: the
-`climate_indices.energy` package does not exist yet, and nothing on this page
-documents a callable energy API. The package, its NumPy and beta xarray tiers,
-and the scope boundary are fixed by
+Most of the energy family below is planned. The degree-day NumPy functions are
+implemented in the `climate_indices.energy` package; the rest has no callable
+API yet. The package, its NumPy and beta xarray tiers, and the scope boundary are
+fixed by
 [ADR-0019](adr/0019-energy-module-api-and-aggregation.md), with function names,
 units, and argument contracts recorded in the internal energy subsystem design
 note. The [energy-family epic #1157][energy-epic] tracks the implementation
 order.
 
-- **Heating, cooling, and energy degree days (HDD, CDD, EDD)** — *planned
-  ([#1164][energy-1164])*. Mean-based degree days from daily mean 2 m
+- **Heating, cooling, and energy degree days (HDD, CDD, EDD)** — *NumPy API
+  available ([#1164][energy-1164])*. Mean-based degree days from daily mean 2 m
   temperature against a base temperature, in °C day; EDD is HDD plus CDD with
-  separate heating and cooling bases. CPC's single-base convention ships first;
-  C3S threshold/reference pairs remain unresolved in [#1164][energy-1164]. A caller
+  separate heating and cooling bases. CPC's single-base convention ships;
+  C3S threshold/reference pairs need a separate contract and are deferred. A caller
   holding Tmin and Tmax computes the daily mean first.
 - **Hub-height wind speed** — *planned ([#1165][energy-1165])*. Wind
   extrapolated from a reference height (10 m or 100 m) to a turbine hub
