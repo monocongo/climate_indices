@@ -2,7 +2,7 @@
 
 ## Status
 
-Amended to distinguish ndarray block interfaces from the existing scalar and slice APIs.
+Accepted.
 This record implements
 [CRATE-03 — Design the public Rust API surface](https://github.com/monocongo/climate_indices/issues/1307).
 The maintainer approved retaining borrowed ndarray views in the public Rust API.
