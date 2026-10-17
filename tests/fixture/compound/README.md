@@ -20,7 +20,8 @@ its only data reduction selects three spatial cells.
 The author calculation is `Compound/Compound_patterns.ipynb` at commit
 `6c88f255ee3034279dcebe2a2fc40c954dbe9575` in
 <https://github.com/m-passos/hydroclimatic-hazards-hotspots>.
-The preparation script adapts only its deterministic LMF arithmetic, not its random significance test.
+The preparation script adapts only the monthly-to-daily preparation (cell `63ae9174`) and the deterministic
+LMF arithmetic (cell `93ef7024`), not the random significance test.
 The notebook is checksum-verified as a source artifact and is never executed.
 The adapted code's MIT notice is in `NOTICE`.
 

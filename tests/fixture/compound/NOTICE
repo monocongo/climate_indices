@@ -8,7 +8,8 @@ https://creativecommons.org/licenses/by/4.0/
 The committed subset selects three cells without changing the raw source values.
 The deterministic reference preparation is documented in README.md.
 
-Adapted deterministic LMF code
+Adapted monthly-to-daily preparation (cell 63ae9174) and deterministic LMF code (cell 93ef7024)
+The notice is also embedded in scripts/prepare_compound_reference_fixture.py, which the sdist includes.
 
 Source: Compound/Compound_patterns.ipynb, commit
 6c88f255ee3034279dcebe2a2fc40c954dbe9575, at
