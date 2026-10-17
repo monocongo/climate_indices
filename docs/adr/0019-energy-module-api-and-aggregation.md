@@ -12,12 +12,21 @@ in-house with no new dependency, and calibrated models and preprocessing stay ou
 scope. No name or signature recorded here changes. The required wind `power_curve`
 meets one split criterion, below the two-criterion threshold.
 
-Only decision 2 describes code that exists: the `aggregation` keyword
-landed with this record ([#1158](https://github.com/monocongo/climate_indices/issues/1158)).
-The `climate_indices.energy` package does not exist yet. Decisions 1 and 3 through 7
-are the contract that the remaining energy tickets
-([#1157](https://github.com/monocongo/climate_indices/issues/1157)) implement, so a
-reader who greps `climate_indices.energy` today finds this record and no module. Each
+Amended again by the degree-day implementation
+([#1164](https://github.com/monocongo/climate_indices/issues/1164)): decision 1's
+package and the degree-day half of decision 6 landed as
+`climate_indices.energy.heating_degree_days()`, `cooling_degree_days()`, and
+`energy_degree_days()`, in-house and dependency-free. The wind and radiation units of
+decision 6 are still a contract.
+
+Decisions 1, 2, and the degree-day half of decision 6 describe code that exists: the
+`aggregation` keyword landed with this record
+([#1158](https://github.com/monocongo/climate_indices/issues/1158)), and the
+`climate_indices.energy` package landed with
+[#1164](https://github.com/monocongo/climate_indices/issues/1164). Decisions 3 through
+5 and 7, and the wind and radiation units of decision 6, are the contract that the
+remaining energy tickets
+([#1157](https://github.com/monocongo/climate_indices/issues/1157)) implement. Each
 decision is amended as its implementation lands, as
 {doc}`0013-flood-module-api-and-naming` was for flood.
 

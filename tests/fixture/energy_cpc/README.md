@@ -1,7 +1,8 @@
 # Energy reference fixtures (#1163)
 
 These describe the **climate-driven component** of energy supply and demand,
-not actual generation or load. No energy implementation exists yet. The reference
+not actual generation or load. The degree-day implementation landed in #1164; the
+wind-profile one is pending (#1165). The reference
 tests xfail only when their module/function is absent (#1164, #1165); numerical,
 shape, missing-mask and unrelated import failures are never suppressed.
 
