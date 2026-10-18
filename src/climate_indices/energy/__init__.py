@@ -2,8 +2,10 @@
 
 Degree days describe climate-driven heating and cooling demand, not actual load.
 Wind profiles describe climate-driven resources, not actual generation. The NumPy
-reference functions are stable; xarray/Dask adapters land separately (#1166,
-#1174). Import this package as ``from climate_indices import energy``; no energy
+reference functions are stable; degree-day and wind-profile DataArray dispatch
+is beta, preserves CF metadata, and supports lazy Dask chunks on every dimension.
+Standardized energy adapters remain deferred to #1174.
+Import this package as ``from climate_indices import energy``; no energy
 function is re-exported from the package root (ADR-0019).
 """
 
