@@ -122,7 +122,8 @@ vocabulary at `src/climate_indices/CONTEXT.md`):
 - Tutorial: `docs/tutorials.md`, `docs/quickstart.md`
 - How-to guide: `docs/how-to.md`, `docs/workflow-examples.md`,
   `docs/choosing-parameters.md`, `docs/writing-outputs.md`,
-  `docs/standardized-hydrologic-indices.md`, `docs/troubleshooting.md`,
+  `docs/standardized-hydrologic-indices.md`,
+  `docs/hydropower-precipitation-proxy.md`, `docs/troubleshooting.md`,
   `docs/xarray_migration.md`, `docs/performance.md`,
   `docs/development-guide.md`, `docs/contribution-guide.md`,
   `docs/deployment-guide.md`, `docs/release-process.md`
