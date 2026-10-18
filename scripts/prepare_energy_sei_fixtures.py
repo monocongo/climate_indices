@@ -250,8 +250,8 @@ def main() -> None:
         )
         _write_oracle_input(work / "input.csv", cases, inputs)
         subprocess.run(  # nosec B603 # resolved Rscript path; fixed arguments and temporary files
-            [rscript, str(R_SCRIPT), str(library), str(work / "input.csv"), str(work)],
-            env=env,
+            [rscript, str(R_SCRIPT), str(work / "input.csv"), str(work)],
+            env={**env, "R_LIBS": str(library)},
             check=True,
             timeout=R_TIMEOUT,
         )

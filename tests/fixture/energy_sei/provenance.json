@@ -3,7 +3,7 @@
   "url": "https://github.com/noeliaof/SEI/tree/4d4a6d02d0fbfefdb48da63580c6be1bca3d5f14",
   "download_date": "2026-10-18",
   "subset_description": "Synthetic monthly capacity factors, production, demand and signed residual load; DE monthly means from Reading ERA5-derived wind capacity factors, 1950-2020. SEI empirical probabilities/normal indices and a gamma MLE control.",
-  "checksum_sha256": "6a92395812a5785749e724a2ebabb56cfbd5dfc4fbecc75d552e145629fa27a6",
+  "checksum_sha256": "9304a13be30083d50638901b543a206e3147dba16356ee4490e5987c6e4193ec",
   "fixture_version": "1.0.0",
   "measured_stats": {
     "capacity_mean_1": {

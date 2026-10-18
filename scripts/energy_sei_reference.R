@@ -1,15 +1,15 @@
 #!/usr/bin/env Rscript
 # Run the pinned SEI implementation, not a translation of its statistical code.
-# Usage: energy_sei_reference.R <temporary-library> <input.csv> <output-directory>
+# Usage: R_LIBS=<temporary-library> energy_sei_reference.R <input.csv> <output-directory>
+suppressPackageStartupMessages(library(SEI))
 args <- commandArgs(trailingOnly = TRUE)
-if (length(args) != 3) stop("Expected library, input.csv and output directory", call. = FALSE)
-suppressPackageStartupMessages(library(SEI, lib.loc = args[[1]]))
+if (length(args) != 2) stop("Expected input.csv and output directory", call. = FALSE)
 stopifnot(
   as.character(packageVersion("SEI")) == "0.2.0",
   as.character(packageVersion("fitdistrplus")) == "1.2.6"
 )
-d <- read.csv(args[[2]], na.strings = c("nan", "NA"))
-out <- args[[3]]
+d <- read.csv(args[[1]], na.strings = c("nan", "NA"))
+out <- args[[2]]
 # write.csv otherwise limits numeric output to 15 significant digits.
 write_reference <- function(data, path) {
   data[] <- lapply(data, function(x) formatC(x, digits = 17, format = "g"))
