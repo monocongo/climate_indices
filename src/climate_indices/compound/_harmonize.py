@@ -67,8 +67,10 @@ class AlignedHazards:
 
     Args:
         names: Source names in input order; the leading axis of the arrays.
-        time: Observed time labels, shape ``(time,)``, as ``datetime64[D]``. A
-            monthly label is the first day of its calendar month.
+        time: Observed time labels, shape ``(time,)``, as ``datetime64[D]``, holding
+            every step of one complete cadence grid. A monthly label is the first day
+            of its calendar month. A missing date is not a step, and the forward-window
+            routes reject a gapped vector rather than treating the gap as a lag.
         cadence: ``"daily"`` or ``"monthly"``; the step of ``time``.
         exceedance: ``True`` where a valid observation meets the hazard condition,
             shape ``(hazard, time, *cells)``. It is ``False`` wherever ``valid`` is.

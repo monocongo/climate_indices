@@ -73,6 +73,19 @@ _HAINES_1988 = (
     "National Weather Digest, 13(2), 23-27."
 )
 
+# The six compound statistics name one source publication because the milestone's
+# published reproduction targets its co-occurrence frequency and likelihood
+# multiplication factor (LMF) method (#1366, #1374). Keep the rendered `references`
+# text identical across the entries that cite it. The paper does not define the
+# conditional or response-window frequencies, and it does not validate the module's
+# monthly inference, so no reproduction is committed yet.
+_VIEIRA_PASSOS_2024 = (
+    "Vieira Passos, M., Kan, J.-C., Destouni, G., Barquet, K., & Kalantari, Z. (2024). "
+    "Identifying regional hotspots of heatwaves, droughts, floods, and their co-occurrences. "
+    "Stochastic Environmental Research and Risk Assessment, 38, 3875-3893. "
+    "https://doi.org/10.1007/s00477-024-02783-3"
+)
+
 
 _BYUN_PE_EDI_REFERENCES = (
     "Byun, H.-R., & Wilhite, D. A. (1999). "
@@ -645,5 +658,73 @@ CF_METADATA: dict[str, CFAttributes] = {
             "mark energy-drought conditions. The climate-driven component of load, not actual load."
         ),
         "references": _ALLEN_OTERO_2023,
+    },
+    # Compound-family metadata precedes the NumPy statistics (#1368, #1369) and
+    # their beta xarray adapters (#1372). Names, units, and bounds
+    # follow ADR-0022 decision 4 and docs/design/compound-module-milestone-1.md.
+    # Every entry is a frequency on one observed, complete-case support, so units
+    # are "1" and no entry has a CF standard name. Counts and quality flags are
+    # defined beside the adapter.
+    "compound_marginal_probability": {
+        "long_name": "Compound Hazard Marginal Frequency",
+        "units": "1",
+        "description": (
+            "Fraction of eligible observed time steps where one selected hazard occurs, in [0, 1]; "
+            "the observed marginal frequency of that hazard, never the declared threshold and never "
+            "1 minus the threshold. Eligible steps are where every selected source was observed."
+        ),
+        "references": _VIEIRA_PASSOS_2024,
+    },
+    "compound_joint_probability": {
+        "long_name": "Compound Hazard Joint Frequency",
+        "units": "1",
+        "description": (
+            "Fraction of eligible observed time steps where every selected hazard occurs, in [0, 1]. "
+            "It counts occupied steps, not independent events per year, so it is a frequency, not a "
+            "return period."
+        ),
+        "references": _VIEIRA_PASSOS_2024,
+    },
+    "compound_independent_probability": {
+        "long_name": "Compound Hazard Independent Frequency Product",
+        "units": "1",
+        "description": (
+            "Product of the observed marginal frequencies of the selected hazards, in [0, 1]. It assumes "
+            "mutual independence for three sources, which is a reference product and not a fitted "
+            "dependence model."
+        ),
+        "references": _VIEIRA_PASSOS_2024,
+    },
+    "compound_likelihood_multiplication_factor": {
+        "long_name": "Compound Hazard Likelihood Multiplication Factor",
+        "units": "1",
+        "description": (
+            "Joint frequency divided by the product of the observed marginal frequencies; nonnegative, "
+            "with valid_min 0 and no universal maximum, so values above 1 are amplification and values "
+            "below 1 are suppression. A zero marginal count makes it undefined (NaN) rather than infinite. "
+            "A value of 1 means the threshold frequencies match the independence product; it does not "
+            "establish independence."
+        ),
+        "references": _VIEIRA_PASSOS_2024,
+    },
+    "compound_conditional_probability": {
+        "long_name": "Compound Hazard Conditional Frequency",
+        "units": "1",
+        "description": (
+            "Fraction of eligible occurrences of the given hazard whose inclusive forward target window "
+            "holds a target-hazard occurrence, in [0, 1]. It counts time steps rather than events or event "
+            "onsets, and it is a lagged association, not a causal cascade or an event-onset probability."
+        ),
+        "references": _VIEIRA_PASSOS_2024,
+    },
+    "compound_response_window_probability": {
+        "long_name": "Compound Hazard Response-Window Frequency",
+        "units": "1",
+        "description": (
+            "Fraction of eligible anchors whose inclusive forward target window holds a target-hazard "
+            "occurrence, in [0, 1]. It is the unconditional comparison on the same anchors as the "
+            "conditional frequency, not a single-step marginal frequency."
+        ),
+        "references": _VIEIRA_PASSOS_2024,
     },
 }

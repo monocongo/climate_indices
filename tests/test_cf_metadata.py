@@ -24,6 +24,15 @@ ENERGY_DISCLAIMERS = {
     "srli": "not actual load",
 }
 
+COMPOUND_KEYS = (
+    "compound_marginal_probability",
+    "compound_joint_probability",
+    "compound_independent_probability",
+    "compound_likelihood_multiplication_factor",
+    "compound_conditional_probability",
+    "compound_response_window_probability",
+)
+
 # expected registry keys
 EXPECTED_KEYS = {
     "spi",
@@ -63,6 +72,7 @@ EXPECTED_KEYS = {
     "haines_low",
     "haines_mid",
     "haines_high",
+    *COMPOUND_KEYS,
     *ENERGY_DISCLAIMERS,
 }
 
@@ -215,6 +225,18 @@ ENTRY_VALUE_ROWS = [
     ("standardized_demand_index", "units", "1"),
     ("srli", "long_name", "Standardized Residual Load Index"),
     ("srli", "units", "1"),
+    ("compound_marginal_probability", "long_name", "Compound Hazard Marginal Frequency"),
+    ("compound_marginal_probability", "units", "1"),
+    ("compound_joint_probability", "long_name", "Compound Hazard Joint Frequency"),
+    ("compound_joint_probability", "units", "1"),
+    ("compound_independent_probability", "long_name", "Compound Hazard Independent Frequency Product"),
+    ("compound_independent_probability", "units", "1"),
+    ("compound_likelihood_multiplication_factor", "long_name", "Compound Hazard Likelihood Multiplication Factor"),
+    ("compound_likelihood_multiplication_factor", "units", "1"),
+    ("compound_conditional_probability", "long_name", "Compound Hazard Conditional Frequency"),
+    ("compound_conditional_probability", "units", "1"),
+    ("compound_response_window_probability", "long_name", "Compound Hazard Response-Window Frequency"),
+    ("compound_response_window_probability", "units", "1"),
 ]
 
 ENTRY_VALUES = [
@@ -270,6 +292,12 @@ REFERENCE_ROWS = [
     ("srepi", ("Allen", "Otero", "2023")),
     ("standardized_demand_index", ("Allen", "Otero", "2023")),
     ("srli", ("Allen", "Otero", "2023")),
+    ("compound_marginal_probability", ("Vieira Passos", "2024", "10.1007/s00477-024-02783-3")),
+    ("compound_joint_probability", ("Vieira Passos", "2024", "10.1007/s00477-024-02783-3")),
+    ("compound_independent_probability", ("Vieira Passos", "2024", "10.1007/s00477-024-02783-3")),
+    ("compound_likelihood_multiplication_factor", ("Vieira Passos", "2024", "10.1007/s00477-024-02783-3")),
+    ("compound_conditional_probability", ("Vieira Passos", "2024", "10.1007/s00477-024-02783-3")),
+    ("compound_response_window_probability", ("Vieira Passos", "2024", "10.1007/s00477-024-02783-3")),
 ]
 
 REFERENCE_CASES = [pytest.param(entry, fragments, id=entry) for entry, fragments in REFERENCE_ROWS]
@@ -333,6 +361,37 @@ def test_flood_descriptions_disclose_scientific_conventions(index_name: str, phr
     """Describe EDI's sign and the flood index's unverified kernel lineage."""
     for phrase in phrases:
         assert phrase in CF_METADATA[index_name]["description"]
+
+
+@pytest.mark.parametrize("index_name", COMPOUND_KEYS)
+def test_compound_entries_state_frequencies_and_bounds(index_name: str) -> None:
+    """A compound entry is a frequency on one eligible support, and says so with its bounds."""
+    entry = CF_METADATA[index_name]
+    assert entry["units"] == "1", "a compound statistic is a frequency, so units are '1'"
+    assert "[0, 1]" in entry["description"] or "valid_min 0" in entry["description"]
+    assert "standard_name" not in entry
+
+
+def test_lmf_entry_states_its_undefined_case_and_independence_caveat() -> None:
+    """LMF is nonnegative, undefined rather than infinite at a zero marginal, and not a test of independence."""
+    description = CF_METADATA["compound_likelihood_multiplication_factor"]["description"]
+    for phrase in ("nonnegative", "valid_min 0", "undefined", "does not"):
+        assert phrase in description
+
+
+def test_independent_probability_entry_disclaims_fitted_dependence() -> None:
+    """The independence product is a reference product, not a dependence model."""
+    description = CF_METADATA["compound_independent_probability"]["description"]
+    assert "mutual independence" in description
+    assert "not a fitted dependence model" in description
+
+
+def test_conditional_entries_disclaim_onset_and_causation() -> None:
+    """The conditional entries count time steps and never claim an onset conversion or a cascade."""
+    description = CF_METADATA["compound_conditional_probability"]["description"]
+    for phrase in ("time steps", "event-onset", "not a causal cascade"):
+        assert phrase in description
+    assert "not a single-step marginal frequency" in CF_METADATA["compound_response_window_probability"]["description"]
 
 
 @pytest.mark.parametrize("index_name", FIRE_KEYS)

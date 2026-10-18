@@ -13,6 +13,8 @@ from types import ModuleType
 import numpy as np
 import pytest
 
+from tests import conftest
+
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "prepare_energy_wind_fixtures.py"
 
 
@@ -141,19 +143,7 @@ def test_publish_restores_previous_pair(
     target, staging = tmp_path / "fixtures", tmp_path / "staging"
     _write_pair(target, b"old")
     _write_pair(staging, b"new")
-    previous = {path.name: path.read_bytes() for path in target.iterdir()}
-    monkeypatch.setattr(generator, "FIXTURE_DIR", target)
-    replace = generator.os.replace
-
-    def interrupted_replace(source: Path, destination: Path) -> None:
-        if source == staging:
-            raise error("interrupted publication")
-        replace(source, destination)
-
-    monkeypatch.setattr(generator.os, "replace", interrupted_replace)
-    with pytest.raises(error, match="interrupted publication"):
-        generator._publish(staging)
-    assert {path.name: path.read_bytes() for path in target.iterdir()} == previous
+    conftest.assert_publish_restores_previous_set(generator, staging, target, monkeypatch, error)
 
 
 def test_publish_recovers_backup_before_failed_retry(

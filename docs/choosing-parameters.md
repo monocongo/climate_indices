@@ -37,6 +37,27 @@ option and writes both for every requested scale.
   the log-logistic path does not place, so those surfaces reject it
   ([ADR-0016](adr/0016-log-logistic-distribution-for-spei.md)). SPEI's `P - PET`
   series is offset and has no physical zero mass, so it accepts the fit directly.
+- Use `indices.Distribution.empirical` on `standardized_index()` when the record is
+  long enough to rank against, or the series is signed. It fits nothing: a value's
+  probability is its plotting position `(1 + k) / (n + 2)` among the `n` valid
+  calibration values at its calendar step, `k` of them at or below it, the convention
+  of the SEI R package. Allen & Otero (2023) recommend it above roughly 100
+  observations. A step with fewer than ten valid calibration values is missing. For
+  daily data with NaN at 29 February of non-leap years, that includes 29 February
+  unless the calibration period spans ten leap years; `utils.transform_to_366day`
+  fills the day instead. No value scores beyond the calibration range. It has no zero mass, so
+  `zero_handling` does not apply, and no `fitting_params`. Pass `clip_negatives=False`
+  to keep a signed series such as residual load; gamma and Pearson Type III reject
+  negatives under that setting rather than clip them (ADR-0019).
+- Use `indices.Distribution.beta` on `standardized_index()` for a series bounded by
+  `[0, 1]`, such as a wind or PV capacity factor, with
+  `aggregation="mean"` so a window stays inside the support. It fits the interior
+  values by the method of moments and treats the exact 0s and 1s as point masses at
+  the boundaries, so a value outside `[0, 1]` is an error rather than something to
+  clip ([ADR-0024](adr/0024-beta-distribution-for-bounded-series.md)). Only
+  `standardized_index()` accepts it, and no independent beta implementation is
+  available to validate the fit against, so treat its evidence as specification and
+  regression until one is matched.
 
 The fallout of an unstable Pearson fit differs by index: SPI falls back to gamma
 for that fit, while SPEI does not fall back at all, so check the Pearson fit
@@ -50,7 +71,8 @@ calibrated test on independently held-out data.
 
 To standardize new data against a fit computed once — a projection run, or a rerun
 that must not refit — compute the parameters and pass them as `fitting_params`
-(gamma: `alpha` and `beta`; Pearson: `prob_zero`, `loc`, `scale`, `skew`).
+(gamma: `alpha` and `beta`; Pearson: `prob_zero`, `loc`, `scale`, `skew`; beta:
+`alpha`, `beta`, `prob_zero`, `prob_one`).
 {doc}`workflow-examples` has the fit-and-reuse example and the scale-matching
 caveat. Two limits apply. A reused gamma fit fixes the continuous part of the
 distribution only; the zero mass is counted from the values each call receives
@@ -78,7 +100,10 @@ does not, because its `P − PET` series has no physical zero mass (ADR-0015).
 
 Both non-classic modes move the zero mass only. For Pearson Type III a positive
 trace value below 0.0005 shares a zero's position where `0 < p0 < 1`, so it moves
-too. The formulas and their edge cases are in {doc}`algorithm-reference`.
+too. The beta distribution applies the mode to both of its boundary masses, placing
+a one at the mirror of a zero's position about 1/2; its own point-mass contract is in
+[ADR-0024](adr/0024-beta-distribution-for-bounded-series.md). The formulas and their
+edge cases are in {doc}`algorithm-reference`.
 
 ## Choose an aggregation
 

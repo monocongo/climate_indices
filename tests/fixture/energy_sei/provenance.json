@@ -1,0 +1,80 @@
+{
+  "source": "R SEI 0.2.0 (Allen and Otero); University of Reading (Bloomfield and Brayshaw)",
+  "url": "https://github.com/noeliaof/SEI/tree/4d4a6d02d0fbfefdb48da63580c6be1bca3d5f14",
+  "download_date": "2026-10-18",
+  "subset_description": "Synthetic monthly capacity factors, production, demand and signed residual load; DE monthly means from Reading ERA5-derived wind capacity factors, 1950-2020. SEI empirical probabilities/normal indices and a gamma MLE control.",
+  "checksum_sha256": "9304a13be30083d50638901b543a206e3147dba16356ee4490e5987c6e4193ec",
+  "fixture_version": "1.0.0",
+  "measured_stats": {
+    "capacity_mean_1": {
+      "probability_max_abs_error": 1.1102230246251565e-16,
+      "normal_max_abs_error": 6.661338147750939e-16,
+      "scaled_max_abs_error": 0.0
+    },
+    "capacity_mean_3": {
+      "probability_max_abs_error": 1.1102230246251565e-16,
+      "normal_max_abs_error": 6.661338147750939e-16,
+      "scaled_max_abs_error": 0.0
+    },
+    "production_sum_1": {
+      "probability_max_abs_error": 1.1102230246251565e-16,
+      "normal_max_abs_error": 6.661338147750939e-16,
+      "scaled_max_abs_error": 5.684341886080802e-14
+    },
+    "production_sum_3": {
+      "probability_max_abs_error": 1.1102230246251565e-16,
+      "normal_max_abs_error": 6.661338147750939e-16,
+      "scaled_max_abs_error": 2.2737367544323206e-13
+    },
+    "demand_sum_1": {
+      "probability_max_abs_error": 1.1102230246251565e-16,
+      "normal_max_abs_error": 6.661338147750939e-16,
+      "scaled_max_abs_error": 5.684341886080802e-14
+    },
+    "demand_sum_3": {
+      "probability_max_abs_error": 1.1102230246251565e-16,
+      "normal_max_abs_error": 6.661338147750939e-16,
+      "scaled_max_abs_error": 2.2737367544323206e-13
+    },
+    "residual_sum_1": {
+      "probability_max_abs_error": 1.1102230246251565e-16,
+      "normal_max_abs_error": 6.661338147750939e-16,
+      "scaled_max_abs_error": 5.684341886080802e-14
+    },
+    "residual_sum_3": {
+      "probability_max_abs_error": 1.1102230246251565e-16,
+      "normal_max_abs_error": 6.661338147750939e-16,
+      "scaled_max_abs_error": 2.2737367544323206e-13
+    },
+    "residual_mean_1": {
+      "probability_max_abs_error": 1.1102230246251565e-16,
+      "normal_max_abs_error": 6.661338147750939e-16,
+      "scaled_max_abs_error": 5.684341886080802e-14
+    },
+    "residual_mean_3": {
+      "probability_max_abs_error": 1.1102230246251565e-16,
+      "normal_max_abs_error": 6.661338147750939e-16,
+      "scaled_max_abs_error": 8.526512829121202e-14
+    },
+    "reading_mean_1": {
+      "probability_max_abs_error": 0.0,
+      "normal_max_abs_error": 4.440892098500626e-16,
+      "scaled_max_abs_error": 5.551115123125783e-17
+    },
+    "reading_mean_3": {
+      "probability_max_abs_error": 0.0,
+      "normal_max_abs_error": 4.440892098500626e-16,
+      "scaled_max_abs_error": 5.551115123125783e-17
+    }
+  },
+  "validation_tolerance": {
+    "rtol": 0.0,
+    "scaled_atol": 1e-12,
+    "probability_atol": 1e-15,
+    "normal_atol": 1e-12
+  },
+  "citation": "Allen and Otero (2023), Standardised indices to monitor energy droughts, Renewable Energy 217, 119206; Allen and Otero (2024), Calculating Standardised Indices Using SEI, The R Journal 16(4), 102-122; Bloomfield and Brayshaw (2021), ERA5 derived time series of European aggregated surface weather variables, wind power, and solar power capacity factors, University of Reading.",
+  "doi": "10.1016/j.renene.2023.119206; 10.32614/RJ-2024-038; 10.17864/1947.000321",
+  "license": "SEI software: GPL (>= 2); no implementation copied. Reading input: CC-BY-4.0, Copyright 2021 University of Reading. Synthetic inputs and generated numerical outputs are fixture data, not SEI source.",
+  "notes": "Independent-implementation statistical comparison, not validation of physical power/demand models or actual generation/load. Source checksums, exact conventions and calendar windows are in metadata.json; R versions and dependencies are in sessionInfo.txt. The checksum covers PAYLOADS in scripts/prepare_energy_sei_fixtures.py order. SEI runs once per calendar month after complete-window aggregation. Finite-bound controls document SEI behavior only. Gamma uses SEI MLE, not the library's gamma estimator; it is not beta validation (#1169). Planned energy wrappers remain in #1171/#1172. Maintainer confirmation of extraction, generation and redistribution is required before acceptance."
+}
