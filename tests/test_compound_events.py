@@ -14,7 +14,7 @@ import doctest
 import json
 import logging
 import pickle
-from typing import Any
+from typing import Any, cast
 from unittest import mock
 
 import numpy as np
@@ -116,6 +116,12 @@ def brute_force(
     return rows
 
 
+def censored(boundary: int, offset: int, valid: np.ndarray) -> bool:
+    """Return whether a run boundary touches the record edge or an unknown neighbouring step."""
+    neighbour = boundary + offset
+    return bool(neighbour < 0 or neighbour >= valid.size or not valid[neighbour])
+
+
 # --- the public surface ------------------------------------------------------------------------
 
 
@@ -127,7 +133,7 @@ def test_namespace_exports_the_event_api_but_not_from_the_root() -> None:
 
 
 def test_docstring_example_runs() -> None:
-    """Keep the published example executable: the docs doctest gate does not collect module docstrings."""
+    """Keep the published example executable as a fast regression on the documented numbers."""
     outcome = doctest.testmod(events_module)
     assert outcome.failed == 0
     assert outcome.attempted > 0
@@ -156,6 +162,11 @@ def test_repeated_matches_are_not_merged_or_discarded() -> None:
     assert result.start_index.tolist() == [0, 3, 9]
     assert result.end_index.tolist() == [2, 4, 10]
     assert result.overlap_duration.tolist() == [3, 2, 2]
+    # runs and pairs are counted separately, so a one-to-three match is visible as such
+    assert result.metadata["n_runs"] == {"first": 1, "second": 3}
+    assert result.metadata["n_pairs"] == 3
+    assert result.metadata["cadence"] == "monthly"
+    assert result.metadata["mode"] == "concurrent"
 
 
 def test_several_first_runs_may_share_one_second_run() -> None:
@@ -249,6 +260,17 @@ def test_sequential_pair_is_not_matched_across_an_unknown_bridge() -> None:
     assert result.metadata["n_unknown_bridges"] == 1
 
 
+def test_unknown_bridge_count_excludes_the_matched_pairs() -> None:
+    """Count only the rejected candidates: a matched pair in the same window is not a bridge."""
+    valid = np.ones(6, dtype=bool)
+    valid[3] = False
+    result = match(manual([0], [1]), manual([2, 4], [2, 5]), steps=6, valid=valid, mode="sequential")
+    assert result.second_run_id.tolist() == [0]  # lag 1, bridge [1, 2] observed
+    assert result.lag.tolist() == [1.0]
+    assert result.metadata["n_pairs"] == 1
+    assert result.metadata["n_unknown_bridges"] == 1  # only the lag-3 pair, bridge [1, 4]
+
+
 def test_unknown_bridge_count_covers_only_pairs_inside_the_window() -> None:
     """Count the window's rejected bridges, not every ineligible pair."""
     valid = np.ones(10, dtype=bool)
@@ -272,6 +294,10 @@ def test_unknown_steps_outside_the_bridge_do_not_block_a_pair() -> None:
     assert result.first_left_censored.tolist() == [False]
     assert result.second_right_censored.tolist() == [True]
     assert result.first_right_censored.tolist() == [False]
+    grid = result.metadata["grid"]
+    assert (grid["n_steps"], grid["n_valid"], grid["n_unknown"]) == (9, 7, 2)
+    assert (grid["time_start"], grid["time_end"]) == ("2000-01", "2000-09")
+    assert grid["step"] == "monthly"
 
 
 def test_runs_at_the_record_edges_are_censored_on_that_side() -> None:
@@ -300,6 +326,20 @@ def test_runs_next_to_an_unknown_step_are_censored_without_being_rejected() -> N
 # --- empty catalogs ---------------------------------------------------------------------------
 
 
+DTYPES: dict[str, type[np.generic]] = {
+    "first_run_id": np.int64,
+    "second_run_id": np.int64,
+    "start_index": np.int64,
+    "end_index": np.int64,
+    "overlap_duration": np.int64,
+    "lag": np.float64,
+    "first_left_censored": np.bool_,
+    "first_right_censored": np.bool_,
+    "second_left_censored": np.bool_,
+    "second_right_censored": np.bool_,
+}
+
+
 @pytest.mark.parametrize(
     ("mode", "lag_window"),
     [("concurrent", None), ("sequential", (4, 9)), ("sequential", (3, 3))],
@@ -308,19 +348,7 @@ def test_empty_catalog_has_stable_dtypes_and_zero_counts(mode: str, lag_window: 
     """Return no rows with fixed dtypes, so a later adapter can allocate an empty catalog."""
     result = match(manual([0], [1]), manual([3], [4]), steps=6, mode=mode, lag_window=lag_window)
     assert len(result) == 0
-    expected = {
-        "first_run_id": np.int64,
-        "second_run_id": np.int64,
-        "start_index": np.int64,
-        "end_index": np.int64,
-        "overlap_duration": np.int64,
-        "lag": np.float64,
-        "first_left_censored": np.bool_,
-        "first_right_censored": np.bool_,
-        "second_left_censored": np.bool_,
-        "second_right_censored": np.bool_,
-    }
-    for field, dtype in expected.items():
+    for field, dtype in DTYPES.items():
         values = getattr(result, field)
         assert values.shape == (0,)
         assert values.dtype == dtype
@@ -348,12 +376,39 @@ def test_empty_run_sets_produce_an_empty_catalog() -> None:
         (lambda: manual([3, 0], [4, 1]), InvalidArgumentError, "sorted and nonoverlapping"),
         (lambda: manual([0], [1], start_index=np.array([0.5])), InputTypeError, "must hold integers"),
         (lambda: manual([0], [1], end_index=np.array([[1]])), DataShapeError, "one-dimensional"),
+        (
+            lambda: manual([0], [1], magnitude=np.array([1.0, 2.0])),
+            DataShapeError,
+            r"magnitude \(2\) disagree",
+        ),
+        (
+            lambda: manual([0], [1], start_index=np.ma.array([0], mask=[True])),
+            InputTypeError,
+            "masked run index is ambiguous",
+        ),
+        (
+            lambda: manual(
+                [0],
+                [1],
+                start_index=np.array([2**63 - 1], np.uint64),
+                end_index=np.array([2**63], np.uint64),
+                duration=np.array([2], np.uint64),
+            ),
+            InputTypeError,
+            "above the int64 range",
+        ),
     ],
 )
 def test_manually_constructed_runs_are_validated(build: Any, error: type[Exception], match_text: str) -> None:
     """A dataclass is not proof of validity: check the run structure before matching."""
     with pytest.raises(error, match=match_text):
         match(build(), manual([0], [1]))
+
+
+def test_the_second_source_is_validated_too() -> None:
+    """Validate both sources: an invalid second run set must be rejected as well."""
+    with pytest.raises(InvalidArgumentError, match="sorted and nonoverlapping"):
+        match(manual([0], [1]), manual([0, 2], [3, 4]))
 
 
 def test_a_run_crossing_an_unknown_observation_is_rejected() -> None:
@@ -389,8 +444,10 @@ def test_identified_runs_are_accepted_as_given() -> None:
     assert result.start_index.tolist() == [1, 4]
     assert result.end_index.tolist() == [1, 5]
     assert result.overlap_duration.tolist() == [1, 2]
-    # the source-run convention is the RunSet's own: first_run_id indexes into it directly
-    assert drought.start_index[result.first_run_id[0]] == result.first_run_id[0] + 1
+    # the source-run convention is the RunSet's own: each id indexes into the input directly
+    assert drought.start_index[result.first_run_id].tolist() == [1, 4]
+    assert heat.start_index[result.second_run_id].tolist() == [1, 3]
+    assert drought.end_index[result.first_run_id].tolist() == [2, 5]
 
 
 # --- time axis and validity mask ---------------------------------------------------------------
@@ -510,6 +567,19 @@ def test_malformed_lag_window_is_rejected(lag_window: Any) -> None:
         match(manual([], []), manual([], []), steps=5, mode="sequential", lag_window=lag_window)
 
 
+def test_numpy_integer_lag_bounds_are_accepted() -> None:
+    """Accept numpy integers as bounds, like the run and threshold options do."""
+    result = match(
+        manual([0], [1]),
+        manual([2], [3]),
+        steps=5,
+        mode="sequential",
+        lag_window=cast(Any, (np.int64(1), np.int32(2))),
+    )
+    assert result.lag.tolist() == [1.0]
+    assert result.metadata["lag_window"] == (1, 2)
+
+
 def test_explicit_window_is_recorded_in_the_metadata() -> None:
     """Record the effective window and the matching rule that produced the rows."""
     unbounded = match(manual([], []), manual([], []), steps=5, mode="sequential")
@@ -586,17 +656,10 @@ def test_result_arrays_are_read_only_and_new() -> None:
     first = manual([0], [1])
     second = manual([0], [1])
     result = match(first, second)
-    for field in (
-        "first_run_id",
-        "second_run_id",
-        "start_index",
-        "end_index",
-        "overlap_duration",
-        "lag",
-        "first_left_censored",
-        "second_right_censored",
-    ):
-        array = getattr(result, field)
+    for field in dataclasses.fields(result):
+        if field.name in ("mode", "metadata"):
+            continue
+        array = getattr(result, field.name)
         assert not array.flags.writeable
         with pytest.raises(ValueError, match="read-only"):
             array[0] = array[0]
@@ -643,14 +706,13 @@ def test_metadata_is_immutable_and_serializable() -> None:
 
 
 def test_every_result_field_is_a_numeric_array_or_the_manifest() -> None:
-    """Keep the catalog numeric: no RunSet objects, Python objects, or CF claims in the arrays."""
+    """Pin the field set and dtype: no added severity metric, RunSet object, or CF claim."""
     result = match(manual([0], [1]), manual([0], [1]), steps=5)
-    for field in dataclasses.fields(result):
-        if field.name in ("mode", "metadata"):
-            continue
-        values = getattr(result, field.name)
+    assert {field.name for field in dataclasses.fields(result)} == {*DTYPES, "mode", "metadata"}
+    for field, dtype in DTYPES.items():
+        values = getattr(result, field)
         assert isinstance(values, np.ndarray)
-        assert values.dtype.kind in "iufb"
+        assert values.dtype == dtype
     assert result.mode in ("concurrent", "sequential")
 
 
@@ -690,7 +752,7 @@ def test_failure_is_logged_and_propagates() -> None:
 
 
 def random_runs(generator: np.random.Generator, steps: int, count: int) -> list[tuple[int, int]]:
-    """Return ``count`` sorted nonoverlapping runs inside ``steps``, separated by at least one gap."""
+    """Return ``count`` sorted nonoverlapping runs inside ``steps``, some of them adjacent."""
     runs: list[tuple[int, int]] = []
     position = 0
     while len(runs) < count and position < steps:
@@ -706,7 +768,7 @@ def random_runs(generator: np.random.Generator, steps: int, count: int) -> list[
 @pytest.mark.parametrize("mode", ["concurrent", "sequential"])
 @pytest.mark.parametrize("lag_window", [None, (1, 2), (2, 5)])
 def test_matching_agrees_with_a_brute_force_enumeration(mode: str, lag_window: tuple[int, int] | None) -> None:
-    """Check the enumeration against an independent interval scan over seeded random runs."""
+    """Check the enumeration, the censor flags, and the bridge count against an independent scan."""
     generator = np.random.default_rng(20260618)
     steps = 60
     first_pairs = random_runs(generator, steps, 12)
@@ -727,13 +789,26 @@ def test_matching_agrees_with_a_brute_force_enumeration(mode: str, lag_window: t
         mode=mode,
         lag_window=lag_window,
     )
-    expected = brute_force(first_pairs, second_pairs, valid, mode, (1, None) if lag_window is None else lag_window)
+    window = (1, None) if lag_window is None else lag_window
+    expected = brute_force(first_pairs, second_pairs, valid, mode, window)
     assert result.first_run_id.tolist() == [row[0] for row in expected]
     assert result.second_run_id.tolist() == [row[1] for row in expected]
     assert result.start_index.tolist() == [row[2] for row in expected]
     assert result.end_index.tolist() == [row[3] for row in expected]
+    assert result.first_left_censored.tolist() == [censored(first_pairs[i][0], -1, valid) for i, _, _, _ in expected]
+    assert result.second_right_censored.tolist() == [censored(second_pairs[j][1], 1, valid) for _, j, _, _ in expected]
     if mode == "concurrent":
         assert result.overlap_duration.tolist() == [row[3] - row[2] + 1 for row in expected]
     else:
         assert result.lag.tolist() == [second_pairs[j][0] - first_pairs[i][1] for i, j, _, _ in expected]
         assert result.overlap_duration.tolist() == [0] * len(expected)
+        rejected = [
+            (i, j)
+            for i, (_, first_end) in enumerate(first_pairs)
+            for j, (second_start, _) in enumerate(second_pairs)
+            if second_start - first_end >= window[0]
+            and (window[1] is None or second_start - first_end <= window[1])
+            and not np.all(valid[first_end : second_start + 1])
+        ]
+        assert rejected, "the seeded case must exercise the bridge rule"
+        assert result.metadata["n_unknown_bridges"] == len(rejected)
