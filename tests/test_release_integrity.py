@@ -368,7 +368,12 @@ def test_rust_job_runs_the_cargo_gate_against_the_workspace_interpreter() -> Non
 
 
 def test_standalone_rust_job_checks_the_crate_without_python() -> None:
-    """A Rust-only container must prove that Cargo needs no Python build tools."""
+    """A Rust-only container must prove that Cargo needs no Python build tools.
+
+    Image and Cargo fetches run against external registries, so the job also needs a
+    bounded failure window, and interpreter aliases (for example `python3.12`)
+    must fail the absence check rather than slip past it.
+    """
     workflow = (ROOT / UNIT_TESTS_WORKFLOW).read_text(encoding="utf-8")
     job = _workflow_job(workflow, "rust-standalone")
     assert "if:" not in job
@@ -376,12 +381,13 @@ def test_standalone_rust_job_checks_the_crate_without_python() -> None:
     assert "persist-credentials: false" in job
     assert "continue-on-error" not in job
     assert "rust-toolchain.toml" in job
+    assert "timeout-minutes: 30" in job
     assert """toolchain=$(awk -F '"' '/^channel = / { print $2 }' rust-toolchain.toml)""" in job
     assert '"rust:${toolchain}-slim"' in job
     assert '--volume "$PWD:/source:ro"' in job
     assert "CARGO_TARGET_DIR=/tmp/target" in job
-    assert "for tool in python python3 uv maturin; do" in job
-    assert 'if command -v "$tool"; then' in job
+    assert "for name in python python2 python3 python2.* python3.* uv maturin; do" in job
+    assert '[ -x "$tool" ] || continue' in job
     assert "exit 1" in job
     assert "cargo test --locked -p climate-core" in job
     assert "setup-python" not in job
