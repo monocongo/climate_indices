@@ -529,11 +529,11 @@ def _standardized_index_pipeline(
     """Scale, fit, and transform a series in the pipeline shared by the index wrappers.
 
     Args:
-        values: 1-D array of non-negative values, or a time-major spatial block;
-            see :func:`spi` for the accepted layouts.
+        values: 1-D array of values, or a time-major spatial block; see
+            :func:`spi` for the accepted layouts. Negatives are clipped unless
+            ``clip_negatives`` is False.
         scale: Number of time steps accumulated before fitting.
-        distribution: Distribution to fit, gamma or Pearson Type III; the
-            log-logistic (generalized logistic) fit is rejected on this surface.
+        distribution: Distribution to fit, one of ``allowed_distributions``.
         data_start_year: Initial year of the input values.
         calibration_year_initial: Initial year of the calibration period.
         calibration_year_final: Final year of the calibration period.

@@ -10,7 +10,9 @@ computation — both recipes below are thin calls into the generic API, so
 nothing in the fitting or standardization is duplicated.
 
 `indices.standardized_index()` is input-agnostic, so it also accepts any other
-non-negative monthly or daily series. See {doc}`flood_applications` for what
+non-negative monthly or daily series, and a signed one with
+`indices.Distribution.empirical` and `clip_negatives=False` (see
+{doc}`choosing-parameters`). See {doc}`flood_applications` for what
 standardized wetness can and cannot say about flood potential, and
 {doc}`algorithm-reference` for the fitting and standardization steps these
 recipes reuse.

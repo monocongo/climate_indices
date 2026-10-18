@@ -3284,7 +3284,9 @@ def fit_and_standardize(
             months, or 366 days per column as if all years were leap years; a
             time-major spatial block with more than two dimensions is also accepted.
         distribution: The distribution to fit the values to: gamma, Pearson Type III,
-            or the generalized logistic ("loglogistic") that SPEI standardizes with.
+            the generalized logistic ("loglogistic") that SPEI standardizes with, or
+            the empirical (rank-based) distribution, which fits nothing; see
+            :func:`transform_fitted_empirical`.
         data_start_year: The initial year of the input values array.
         calibration_start_year: The initial year to use for the calibration period.
         calibration_end_year: The final year to use for the calibration period.
@@ -3308,17 +3310,19 @@ def fit_and_standardize(
             cumulative probability in [0, 1], and "bounded" ``2p - 1`` in [-1, 1].
         zero_handling: Where a zero accumulation is placed within the zero mass,
             one of "classic" (the default), "center_of_mass", or "mean_zero"; see
-            ADR-0015. A gamma fall back applies the same mode. The log-logistic fit
-            has no zero mass, so the mode does not apply to it.
+            ADR-0015. A gamma fall back applies the same mode. The log-logistic and
+            empirical distributions have no zero mass, so the mode does not apply to
+            them.
 
     Returns:
         2-D array of transformed/fitted values, corresponding in size and shape to
         the input array.
 
     Raises:
-        InvalidArgumentError: If ``output_scale`` is not one of ``compute.OUTPUT_SCALES``.
-        ValueError: If the distribution is none of gamma, Pearson Type III, or
-            log-logistic, ``zero_handling`` is not one of the three modes, or a Pearson
+        InvalidArgumentError: If ``output_scale`` is not one of ``compute.OUTPUT_SCALES``,
+            or ``fitting_params`` is given with the empirical distribution.
+        ValueError: If the distribution is none of gamma, Pearson Type III,
+            log-logistic, or empirical, ``zero_handling`` is not one of the three modes, or a Pearson
             ``fitting_params`` set is partial or does not carry the period (and cell) axes.
     """
     validate_output_scale(output_scale)
