@@ -76,7 +76,8 @@ _HAINES_1988 = (
 # The four compound statistics share one source publication; keep the rendered
 # `references` text identical across the entries that cite it. It supplies the
 # co-occurrence frequency and likelihood multiplication factor (LMF) method the
-# milestone reproduces; it does not validate the module's monthly inference.
+# milestone's published reproduction targets (#1366, #1374); it does not validate
+# the module's monthly inference, and no reproduction is committed yet.
 _VIEIRA_PASSOS_2024 = (
     "Vieira Passos, M., Kan, J.-C., Destouni, G., Barquet, K., & Kalantari, Z. (2024). "
     "Identifying regional hotspots of heatwaves, droughts, floods, and their co-occurrences. "
