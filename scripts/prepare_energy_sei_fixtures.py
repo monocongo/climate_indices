@@ -189,8 +189,8 @@ def main() -> None:
 
     with tempfile.TemporaryDirectory() as directory:
         work = Path(directory)
-        # verify a private copy so R installs the bytes that passed the checksum
-        archive = work / args.sei_archive.name
+        # verify a private, fixed-name copy so R installs the bytes that passed the checksum
+        archive = work / "SEI.tar.gz"
         shutil.copyfile(args.sei_archive, archive)
         _verify_file(archive, SEI_SHA256)
         inputs = _synthetic_inputs()
