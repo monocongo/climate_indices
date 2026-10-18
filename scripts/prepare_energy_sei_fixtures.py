@@ -33,6 +33,7 @@ SEI_SHA256 = "49d1f1ee1c68bb0ec758b7b1cff2d29d48daae5dd508fdec7ce5eaabd97501d4"
 READING_SHA256 = "3f3726492fa52c0e8d5e1025e3047b09d3ab75a180701f89d4ea78161c6db7e8"
 R_TIMEOUT = 3600  # seconds allowed per R command
 PAYLOADS = ("inputs.npz", "metadata.json", "reference.npz", "sessionInfo.txt", "warnings.txt")
+PYTHON_PACKAGES = {"numpy": "2.4.2", "xarray": "2026.1.0"}  # pinned: metadata.json records them and is checksummed
 
 
 def _verify_file(path: Path, expected: str) -> None:
@@ -43,6 +44,13 @@ def _verify_file(path: Path, expected: str) -> None:
             digest.update(chunk)
     if digest.hexdigest() != expected:
         raise ValueError(f"Unexpected source checksum: {path}")
+
+
+def _verify_runtime() -> None:
+    """Refuse versions other than the pins, so a supported rerun cannot change the checksummed metadata."""
+    running = {"numpy": np.__version__, "xarray": xr.__version__}
+    if running != PYTHON_PACKAGES:
+        raise RuntimeError(f"Regeneration requires Python packages {PYTHON_PACKAGES}; found {running}")
 
 
 def _save_arrays(path: Path, arrays: dict[str, np.ndarray]) -> None:
@@ -183,6 +191,7 @@ def main() -> None:
     r, rscript = shutil.which("R"), shutil.which("Rscript")
     if r is None or rscript is None:
         raise FileNotFoundError("R and Rscript are required to regenerate the SEI references")
+    _verify_runtime()
     cases = _cases()
     env = dict(os.environ)
     if "R_LIBS_USER" not in env and (Path.home() / ".R" / "library").is_dir():
@@ -238,7 +247,7 @@ def main() -> None:
         "sei_archive_sha256": SEI_SHA256,
         "r_script_sha256": hashlib.sha256(R_SCRIPT.read_bytes()).hexdigest(),
         "seed": 1170,
-        "python_packages": {"numpy": np.__version__, "xarray": xr.__version__},
+        "python_packages": PYTHON_PACKAGES,
         "cases": cases,
         "conventions": {
             "distribution": "empirical",

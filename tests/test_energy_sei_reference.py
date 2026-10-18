@@ -154,6 +154,14 @@ def test_generator_rejects_changed_sources_and_pins_synthetic_inputs(generator: 
     assert generator.PAYLOADS == PAYLOADS
 
 
+def test_generator_pins_the_serialization_runtime(generator: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    assert generator.PYTHON_PACKAGES == METADATA["python_packages"]
+    generator._verify_runtime()
+    monkeypatch.setattr(generator.np, "__version__", "0.0.0")
+    with pytest.raises(RuntimeError, match="Regeneration requires Python packages"):
+        generator._verify_runtime()
+
+
 def test_verify_file_accepts_matching_digest_across_chunks(generator: Any, tmp_path: Path) -> None:
     source = tmp_path / "large.bin"
     payload = b"x" * (3 << 20)

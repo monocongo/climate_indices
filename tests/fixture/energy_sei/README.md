@@ -84,7 +84,7 @@ This records reference behavior; it does not establish an energy endpoint policy
 
 - `inputs.npz` contains the five input series.
 - `reference.npz` contains separate scaled inputs, probabilities, normal indices, calibration counts, and control outputs.
-- `metadata.json` records cases and conventions, source pins, and Python package versions.
+- `metadata.json` records cases and conventions, source pins, and the pinned NumPy and xarray versions.
 - `sessionInfo.txt` records R 4.6.1 and its loaded dependencies, including SEI 0.2.0 and fitdistrplus 1.2-6.
 - `provenance.json` follows `tests/fixture/provenance_schema.json` and records measured statistical agreement.
 
@@ -138,5 +138,7 @@ A present but incorrect implementation fails normally.
 
 The generator does not download sources or install R dependencies.
 It checks SEI and fitdistrplus versions before calculation.
+It also refuses NumPy or xarray versions other than the pins in `metadata.json`,
+because that file is one of the checksummed payloads.
 It wrote the committed payloads with NumPy 2.4.2; it avoids an `allow_pickle` keyword that NumPy before 2.2 would store as an extra archive member.
 CI loads committed outputs without R or network access.
