@@ -37,6 +37,17 @@ option and writes both for every requested scale.
   the log-logistic path does not place, so those surfaces reject it
   ([ADR-0016](adr/0016-log-logistic-distribution-for-spei.md)). SPEI's `P - PET`
   series is offset and has no physical zero mass, so it accepts the fit directly.
+- Use `indices.Distribution.empirical` on `standardized_index()` when the record is
+  long enough to rank against, or the series is signed. It fits nothing: a value's
+  probability is its plotting position `(1 + k) / (n + 2)` among the `n` valid
+  calibration values at its calendar step, `k` of them at or below it, the convention
+  of the SEI R package. Allen & Otero (2023) recommend it above roughly 100
+  observations. A step with fewer than ten valid calibration values is missing, which
+  for daily data includes 29 February unless the calibration period spans ten leap
+  years, and no value scores beyond the calibration range. It has no zero mass, so
+  `zero_handling` does not apply, and no `fitting_params`. Pass `clip_negatives=False`
+  to keep a signed series such as residual load; gamma and Pearson Type III reject
+  negatives under that setting rather than clip them (ADR-0019).
 
 The fallout of an unstable Pearson fit differs by index: SPI falls back to gamma
 for that fit, while SPEI does not fall back at all, so check the Pearson fit

@@ -18,7 +18,7 @@ The fixed span of years whose data defines "normal" — the distribution paramet
 _Avoid_: Baseline period, reference period
 
 **Distribution / Distribution Fitting**:
-The statistical model — Gamma or Pearson Type III — chosen to represent a scaled variable's underlying distribution, so a raw value can be converted to a cumulative probability and then a standardized (z-score-like) index value.
+The statistical model — Gamma or Pearson Type III — chosen to represent a scaled variable's underlying distribution, so a raw value can be converted to a cumulative probability and then a standardized (z-score-like) index value. `standardized_index()` also takes the empirical (rank-based) distribution, which fits nothing: a value's probability is its plotting position `(1 + k) / (n + 2)` among the `n` valid Calibration Period values at its calendar step, `k` of them at or below it, and a step with fewer than ten is missing (#1168). It is the only distribution that accepts a signed series, with `clip_negatives=False` ([ADR-0019](../../docs/adr/0019-energy-module-api-and-aggregation.md)).
 _Avoid_: pearson3 (this spelling only appears in test-fixture filenames, not in API/domain language)
 
 **Probability of Zero**:
