@@ -86,9 +86,11 @@
 //! are non-exhaustive, so downstream matches need a wildcard arm. Display text
 //! and diagnostic strings are not stable API and carry no Python-message promise.
 //! `climate-py` owns Python exception translation. The Python implementations
-//! remain the numerical parity oracles; per-kernel accuracy contracts are separate
-//! from this API sketch. No kernel's operation order changes with this surface.
+//! remain the numerical parity oracles. Each public kernel documents its numerical
+//! contract; the measured evidence below distinguishes workflow and scalar errors.
+//! No kernel's operation order changes with this surface.
 
+#![doc = include_str!("../NUMERICS.md")]
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 

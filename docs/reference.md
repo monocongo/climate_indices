@@ -12,6 +12,7 @@ indices themselves, see {doc}`explanation`.
 :maxdepth: 1
 
 algorithm-reference
+rust-numerical-contract
 data_requirements
 error-reference
 xarray_compatibility

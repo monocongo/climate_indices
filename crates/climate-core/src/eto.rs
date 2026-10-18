@@ -78,6 +78,31 @@ fn monthly_mean_daylight_hours(latitude_radians: ArrayView1<'_, f64>, leap: bool
 /// `monthly_temps_celsius` is (years, 12, cells) with negative temperatures
 /// already clamped to zero, `latitude_radians` carries one latitude per cell,
 /// and `leap_years` one flag per year. The result has the input shape.
+///
+/// # Numerical contract
+///
+/// This evaluates Thornthwaite's (1948) temperature and daylight formula in
+/// mm/month. Each cell's heat index sums the powers of its 12 monthly
+/// temperatures, averaged over all input years with NaNs excluded. There is
+/// no separate Calibration Period. Months run from January through December;
+/// the supplied leap flags select month lengths and daily daylight averages.
+/// Solar geometry uses FAO-56 equations 24-25 with a 365-day denominator,
+/// including in leap years, and clips the sunset cosine to `[-1, 1]`.
+///
+/// The caller must supply non-negative temperatures in degrees C and valid
+/// latitudes in radians; this kernel does not clamp temperatures or validate
+/// physical ranges. A missing temperature remains NaN at that position.
+/// A month with no non-NaN temperature makes the cell's heat index and all
+/// its outputs NaN. A zero heat index also yields NaN, not zero PET.
+/// Zero temperature yields zero PET when the other terms are finite and the
+/// heat index is positive. Shape mismatches return `ClimateError::ShapeMismatch`;
+/// empty year or cell axes return the corresponding empty output.
+///
+/// See the Measured accuracy section of [`crate`], registry entry
+/// `thornthwaite` in `tests/parity_registry.py`, and
+/// `tests/test_native_pet_parity.py::test_thornthwaite_all_zero_temperatures`.
+/// Registry measurements compare full workflow outputs, not isolated kernel
+/// errors or an independent scientific reference.
 pub fn thornthwaite(
     monthly_temps_celsius: ArrayView3<'_, f64>,
     latitude_radians: ArrayView1<'_, f64>,
@@ -157,6 +182,29 @@ pub fn thornthwaite(
 /// The three daily blocks are (time, cells) in year-major 366-day order and
 /// `latitude_radians` carries one latitude per cell. Rows that no day of the
 /// year reaches stay NaN, the way the Python result's padded rows do.
+///
+/// # Numerical contract
+///
+/// This evaluates Hargreaves (1985), FAO-56 equation 52, as
+/// `0.0023 * (Tmean + 17.8) * sqrt(Tmax - Tmin) * 0.408 * Ra`, in mm/day.
+/// Temperatures use degrees C; latitudes use radians. Equal-shaped
+/// `(time, cells)` blocks start on January 1 and repeat every 366 positions;
+/// a trailing partial year is evaluated without padding. FAO-56 equations
+/// 21, 23-25 compute extraterrestrial radiation `Ra` with a 365-day
+/// astronomical denominator, even for position 366. No dates are inferred.
+///
+/// NaN temperatures or latitude yield NaN at affected positions. An inverted
+/// temperature range yields NaN; an equal range yields zero for finite
+/// remaining terms. Results are not floored at zero, so a sufficiently low
+/// mean temperature can give negative PET. The caller validates physical
+/// ranges and inserts any missing calendar positions. Shape mismatches return
+/// `ClimateError::ShapeMismatch`; empty time or cell axes return empty arrays.
+///
+/// See the Measured accuracy section of [`crate`], registry entry
+/// `hargreaves` in `tests/parity_registry.py`, and
+/// `tests/test_native_pet_parity.py::test_hargreaves_inverted_and_equal_temperatures`.
+/// Registry measurements compare full workflow outputs, not isolated kernel
+/// errors or an independent scientific reference.
 pub fn hargreaves(
     daily_tmin_celsius: ArrayView2<'_, f64>,
     daily_tmax_celsius: ArrayView2<'_, f64>,

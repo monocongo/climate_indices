@@ -65,6 +65,15 @@ pub struct RecurrenceInputs<'a> {
 /// A convenience for the bindings, which receive the pieces separately. Every
 /// recurrence kernel, fire and flood alike, builds its inputs here, so the
 /// ADR-0007 policy names are parsed in one place.
+///
+/// # Numerical contract
+///
+/// This forwards borrowed masks, gap counts, and the spin-up count unchanged.
+/// It maps `"propagate"` and `"bridge"` to [`MissingDayPolicy`], forwarding
+/// `max_gap_days` only for `"bridge"`; other names return
+/// `ClimateError::UnknownNanPolicy`. It validates neither shapes nor gap-count
+/// ranges and performs no weather arithmetic or calendar conversion.
+/// This state-plumbing helper has no independent numerical error guarantee.
 pub fn recurrence_inputs<'a>(
     weather_valid: ArrayView2<'a, bool>,
     static_valid: ArrayView1<'a, bool>,
@@ -183,6 +192,20 @@ fn prepare<S>(
 /// All step finiteness checks precede the history's `value_of` calls.
 /// A step that returns a non-finite value from finite inputs is an error, as in
 /// `_advance_component`; the run then returns no state or history at all.
+///
+/// # Numerical contract
+///
+/// This forwards copied per-cell state and zero-based `(day, cell)` indices
+/// to `step`, and records `value_of` without numerical conversion. Units and
+/// the algorithm belong to the callbacks; this driver has no independent
+/// numerical error guarantee. Supplied masks and [`MissingDayPolicy`] control
+/// advancement, poisoning, and seasonal carry; NaN initial values stay poisoned.
+/// It does not infer dates or weather validity. Shape mismatches return
+/// `ClimateError::ShapeMismatch`. Non-finite active `value_of` results return
+/// `ClimateError::NonFinite` without partial results; other state fields and
+/// gap-count ranges are not validated. Spin-up computes but omits leading days
+/// from optional `(days.saturating_sub(spin_up), cells)` history. Skipped
+/// missing days record NaN; empty input preserves state.
 pub fn run<S: Copy>(
     index_type: &'static str,
     initial_state: &[S],
