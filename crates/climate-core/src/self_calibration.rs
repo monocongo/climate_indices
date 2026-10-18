@@ -60,6 +60,22 @@ fn kth_smallest(values: &mut [f64], k: usize) -> f64 {
 ///
 /// Python: `self_calibration.nan_safe_percentile`, for a `fraction` Python has
 /// already checked lies in `[0, 1]`.
+///
+/// # Numerical contract
+///
+/// The Wells et al. (2004) reference `safe_percentile()` selects the ascending,
+/// one-based rank `floor(fraction * count)` after removing NaNs, without
+/// interpolation. The caller supplies `fraction` in `[0, 1]`; it is dimensionless.
+/// The input is an unordered slice, with no calendar or shape requirement beyond
+/// its length, and the scalar result retains the input units.
+///
+/// Zero observations and infinities participate in ranking. Empty or all-NaN
+/// inputs, fraction zero, and any truncated rank of zero produce NaN.
+/// Fraction one selects the maximum. Equal signed zeros can return either sign.
+///
+/// See the Measured accuracy section in [`crate`] for `palmer_scpdsi` in
+/// `tests/parity_registry.py`. This pathway uses the statistic within the duration
+/// fit; its measurements are not isolated helper error guarantees.
 pub fn nan_safe_percentile(values: &[f64], fraction: f64) -> f64 {
     let mut present: Vec<f64> = values.iter().copied().filter(|v| !v.is_nan()).collect();
     let k = (fraction * present.len() as f64) as usize;
@@ -219,6 +235,35 @@ fn least_squares_fit(x: &[f64], y: &[f64], spell: Spell) -> Result<(f64, f64), C
 ///   [`ClimateError::NoConvergence`] with Python's message.
 /// - Numerics: rolling sums subtract the leaving value before adding the
 ///   entering one, and every regression sum runs sequentially, as in Python.
+///
+/// # Numerical contract
+///
+/// Wells et al. (2004) `CalcDurFact()` fits extreme rolling Z-index sums at
+/// durations `[3, 6, 9, 12, 18, 24, 30, 36, 42, 48]` months.
+/// Dry sums are unfiltered minima; wet sums use the 98th-percentile anomaly
+/// filter with a strict ratio below 1.25. Adaptive least squares drops trailing
+/// durations until sign-weighted correlation reaches 0.85 or four points remain,
+/// then anchors the intercept on the most extreme sign-weighted residual.
+/// If no residual improves on zero, the reference anchor `(3, 0)` remains.
+/// Division by +4 for wet spells or -4 for dry spells gives `(m, b)`.
+///
+/// The input slice is one location's chronological monthly Calibration Period;
+/// the caller selects that period. Z-index values use the dimensionless Palmer
+/// convention. The slope `m` measures Z-index sum per month per PDSI unit;
+/// the intercept `b` measures Z-index sum per PDSI unit.
+///
+/// NaNs do not enter windows or consume slots, so windows can span calendar gaps.
+/// Zero Z values consume slots. A zero wet percentile threshold rejects every
+/// candidate. If no wet sum survives, that duration contributes zero to the fit,
+/// not missing data. A missing percentile threshold disables that filter.
+///
+/// Sums update by subtracting before adding; regression sums accumulate
+/// sequentially. The result need not have positive `m + b`, and this kernel does
+/// not enforce that condition.
+///
+/// See the Measured accuracy section in [`crate`] for `palmer_scpdsi` in
+/// `tests/parity_registry.py`. These are pathway measurements, not isolated
+/// helper error guarantees.
 pub fn duration_factors(z: &[f64], spell: Spell) -> Result<(f64, f64), ClimateError> {
     let mut sums = [0.0; DURATION_FACTOR_WINDOW_LENGTHS.len()];
     for (sum, &length) in sums.iter_mut().zip(&DURATION_FACTOR_WINDOW_LENGTHS) {

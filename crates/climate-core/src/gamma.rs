@@ -17,7 +17,9 @@ use ndarray::{Array1, Array2, ArrayView1, ArrayView2, Zip};
 use crate::ClimateError;
 use crate::special::{igam, igamc};
 
-/// Method-of-moments gamma shape and scale for each column of a calibration block.
+/// Approximate maximum-likelihood gamma shape and scale per calibration column.
+///
+/// # Numerical contract
 ///
 /// - Python source: the `means` ... `betas` block of `compute.gamma_parameters`.
 /// - Inputs: `calibration`, shaped (years, columns), one column per calendar
@@ -36,6 +38,14 @@ use crate::special::{igam, igamc};
 ///   `alpha = (1 + sqrt(1 + 4A/3)) / (4A)`, `beta = mean / alpha`. Sums run
 ///   sequentially over years, the order NumPy reduces axis 0 in, and every
 ///   expression keeps NumPy's operation order.
+///
+/// The formula is Thom's (1958) approximate maximum-likelihood shape estimate.
+/// Input values and `betas` share units, usually mm; `alphas` are dimensionless.
+/// Calendar columns follow [`crate`]; the caller selects the Calibration Period.
+/// Empty columns return NaN parameters. No physical-range validation occurs.
+/// See the `Measured accuracy` section in [`crate`], entries `spi_gamma`,
+/// `spi_gamma_spatial_block`, `spei_gamma`, and `fit_diagnostics` from
+/// `tests/parity_registry.py`. These measure complete workflows, not isolated fits.
 pub fn gamma_parameters(calibration: ArrayView2<'_, f64>) -> (Array1<f64>, Array1<f64>) {
     let columns = calibration.ncols();
     let mut alphas = Array1::<f64>::zeros(columns);
@@ -68,8 +78,16 @@ pub fn gamma_parameters(calibration: ArrayView2<'_, f64>) -> (Array1<f64>, Array
 
 /// `scipy.stats.gamma.cdf(x, a=alpha, scale=beta)`, including its argument handling.
 ///
+/// # Numerical contract
+///
 /// NaN when alpha or beta is not positive (or NaN) or `x / beta` is NaN; 1 at
 /// `x / beta = +inf`; 0 at or below zero; otherwise Cephes `igam(alpha, x / beta)`.
+/// This scalar CDF uses the Cephes port from SciPy 1.17.0.
+/// `x` and `beta` share units; `alpha` and the probability are dimensionless.
+/// Zero has no discrete mass here. There is no calendar interpretation.
+/// See the `Measured accuracy` section in [`crate`], entries `spi_gamma` and
+/// `spei_gamma` in `tests/parity_registry.py`. These measure complete workflows,
+/// not this isolated CDF.
 pub fn gamma_cdf(x: f64, alpha: f64, beta: f64) -> f64 {
     let scaled = x / beta;
     if !(alpha > 0.0 && beta > 0.0) || scaled.is_nan() {
@@ -85,9 +103,18 @@ pub fn gamma_cdf(x: f64, alpha: f64, beta: f64) -> f64 {
 
 /// `scipy.stats.gamma.sf(x, a=alpha)` at unit scale, including its argument handling.
 ///
+/// # Numerical contract
+///
 /// NaN when alpha is not positive (or NaN) or `x` is NaN; 1 at or below zero; 0 at
 /// `x = +inf`; otherwise Cephes `igamc(alpha, x)`. The negative-skew Pearson Type
 /// III CDF is this survival function.
+/// This scalar upper-tail probability uses the Cephes port from SciPy 1.17.0,
+/// rather than subtracting the lower-tail probability from one.
+/// Both inputs and the output are dimensionless, with no calendar interpretation.
+/// See the `Measured accuracy` section in [`crate`], entry `spi_pearson` in
+/// `tests/parity_registry.py`. It measures a complete workflow, not this isolated
+/// tail. The unit test `survival_function_matches_scipy_including_a_deep_tail`
+/// checks selected direct SciPy values separately.
 pub fn gamma_sf(x: f64, alpha: f64) -> f64 {
     if alpha.is_nan() || alpha <= 0.0 || x.is_nan() {
         f64::NAN
@@ -101,6 +128,8 @@ pub fn gamma_sf(x: f64, alpha: f64) -> f64 {
 }
 
 /// Cumulative probability of each value under a gamma fit with a zero mass.
+///
+/// # Numerical contract
 ///
 /// - Python source: the gamma CDF and mixing step of
 ///   `compute.transform_fitted_gamma`: `p0 + (1 - p0) * gamma.cdf(x)`, where a
@@ -118,6 +147,15 @@ pub fn gamma_sf(x: f64, alpha: f64) -> f64 {
 ///
 /// Returns [`ClimateError::ShapeMismatch`] when a parameter's length is not the
 /// number of columns.
+///
+/// This is the mixed discrete-zero and Thom/McKee gamma model described above.
+/// `values` and `betas` share units; `alphas`, zero masses, and outputs are dimensionless.
+/// Calendar columns follow [`crate`]. The caller supplies the zero masses;
+/// this function does not estimate, reset, or validate them.
+/// For finite `p0`, zero returns `p0` even with an invalid fit; NaN `p0` propagates.
+/// See the `Measured accuracy` section in [`crate`], entries `spi_gamma`,
+/// `spi_gamma_mean_zero`, `spi_gamma_spatial_block`, and `spei_gamma` in
+/// `tests/parity_registry.py`. These measure complete workflows, not isolated probabilities.
 pub fn gamma_probabilities(
     values: ArrayView2<'_, f64>,
     alphas: ArrayView1<'_, f64>,

@@ -22,6 +22,8 @@ const MONTH_STARTS_366: [usize; 12] = [0, 31, 60, 91, 121, 152, 182, 213, 244, 2
 /// The precipitation concentration index of one year of daily rainfall, or
 /// `None` when the year is neither 365 nor 366 days long.
 ///
+/// # Numerical contract
+///
 /// - Python source: the `np.add.reduceat(rainfall, month_starts)` and
 ///   `(np.sum(monthly_totals**2) / (np.sum(monthly_totals) ** 2)) * 100` lines of
 ///   `indices.pci`.
@@ -32,6 +34,18 @@ const MONTH_STARTS_366: [usize; 12] = [0, 31, 60, 91, 121, 152, 182, 213, 244, 2
 /// - Numerics: `reduceat` seeds each month's total with its first day and adds
 ///   NumPy's pairwise sum of the remaining days. Both annual sums use the same
 ///   pairwise grouping as `np.sum`.
+///
+/// This is Oliver's (1980) annual concentration ratio, not a standardized index.
+/// Daily inputs use one consistent depth unit, usually mm; the scalar output is dimensionless.
+/// Day zero is January 1. The 366-day layout includes February 29 in February;
+/// this function does not infer dates or insert a missing day.
+/// A NaN day propagates to `Some(NaN)`; it is not skipped.
+/// An all-zero year gives `Some(NaN)`. Constant positive daily rainfall retains
+/// the unequal month lengths, rather than giving equal monthly totals.
+/// Negative and infinite values are not rejected; they follow the ratio arithmetic.
+/// See the `Measured accuracy` section in [`crate`], entry `pci` in
+/// `tests/parity_registry.py`. It measures the complete PCI workflow, including
+/// caller preparation, not an isolated monthly-summation error.
 pub fn pci(rainfall: ArrayView1<'_, f64>) -> Option<f64> {
     let month_starts: &[usize; 12] = match rainfall.len() {
         365 => &MONTH_STARTS_365,

@@ -310,6 +310,39 @@ fn code_run(
 }
 
 /// Run the Fine Fuel Moisture Code over the whole time axis.
+///
+/// # Numerical contract
+///
+/// This evaluates Van Wagner and Pickett (1985), equations 1-10, using the
+/// NRCan moisture conversion coefficient `250 * 59.5 / 101` in both directions.
+/// Weather uses noon temperature in degrees C, relative humidity in percent,
+/// 10 m wind in km/h, and 24-hour rain in mm. Rain moistens fuel only when
+/// strictly above 0.5 mm; zero rain still permits drying or wetting toward
+/// equilibrium. Successful updates from physically valid inputs are
+/// dimensionless FFMC in `[0, 101]` after clipping.
+///
+/// Weather blocks have shape `(days, cells)`, and initial FFMC has one value
+/// per cell. [`run`] advances consecutive supplied daily positions without
+/// calendar conversion or a Calibration Period. The caller validates physical
+/// ranges and marks missing weather in `inputs.weather_valid`; this kernel
+/// does not derive that mask from NaNs. Leading gaps leave a cell unstarted.
+/// `Propagate` poisons a started cell at the first gap; `Bridge` holds state
+/// for its allowed gap count, then poisons it. Missing-day history is NaN.
+/// Off-season days carry started states without advancement or gap counting;
+/// statically invalid cells never advance. NaN initial codes remain poisoned.
+///
+/// Spin-up days update state but are omitted from history; when recorded,
+/// its shape is `(days.saturating_sub(spin_up), cells)`. Empty input preserves
+/// state. Shape mismatches return `ClimateError::ShapeMismatch`; an active
+/// update with a non-finite code returns `ClimateError::NonFinite`, without
+/// partial results. This check does not validate all weather or intermediates.
+///
+/// See the Measured accuracy section of [`crate`], registry entry `fire_ffmc`
+/// in `tests/parity_registry.py`, and
+/// `tests/test_fire_cffwis_moisture.py::test_ffmc_rain_threshold_is_exclusive`.
+/// `tests/test_native_parity_fire.py` checks recurrence and reference-fixture parity.
+/// Registry measurements compare full workflow outputs, not isolated daily
+/// step errors or an independent scientific reference.
 pub fn ffmc(
     temperature_celsius: ArrayView2<'_, f64>,
     relative_humidity_percent: ArrayView2<'_, f64>,
@@ -368,6 +401,40 @@ pub struct DayLength<'a> {
 }
 
 /// Run the Duff Moisture Code over the whole time axis.
+///
+/// # Numerical contract
+///
+/// This evaluates Van Wagner and Pickett (1985), equations 11-16, with the
+/// NRCan post-rain form `43.43 * (5.6348 - ln(moisture_after - 20))`.
+/// Noon temperature uses degrees C, humidity uses percent, and 24-hour rain
+/// uses mm. The supplied latitude-band/month table gives effective day length
+/// in hours. Temperature is floored at -1.1 C; rain rewets duff only above
+/// 1.5 mm. Zero rain permits drying; at the temperature floor, drying is zero
+/// for finite remaining terms. Successful physical-input updates give
+/// dimensionless DMC floored at zero, with no upper bound.
+///
+/// Weather and one-based months have shape `(days, cells)`; initial DMC and
+/// zero-based latitude bands have one value per cell. The table has shape
+/// `(bands, 12)`. The caller selects the latitude bands and supplies months;
+/// the kernel infers no dates or Calibration Period. Invalid shapes return
+/// `ClimateError::ShapeMismatch`; invalid bands or months return
+/// `ClimateError::IndexOutOfRange`, even on inactive days.
+///
+/// [`run`] trusts the supplied validity masks, not NaN weather detection.
+/// Leading gaps do not start cells. `Propagate` poisons started cells at the
+/// first gap; `Bridge` holds state up to its allowance, then poisons it.
+/// Gap history is NaN; off-season days carry started states without advancing
+/// or counting gaps. Statically invalid cells never advance, and NaN initial
+/// codes remain poisoned. Spin-up omits computed days from optional history,
+/// shaped `(days.saturating_sub(spin_up), cells)`; empty input preserves state.
+/// The caller validates physical ranges and table values. A non-finite active
+/// code returns `ClimateError::NonFinite`, with no partial result.
+///
+/// See the Measured accuracy section of [`crate`], registry entry
+/// `fire_duff_moisture_code` in `tests/parity_registry.py`, and
+/// `tests/test_native_parity_fire.py::test_moisture_codes_over_a_spatial_block`.
+/// Registry measurements compare full workflow outputs, not isolated daily
+/// step errors or an independent scientific reference.
 pub fn dmc(
     temperature_celsius: ArrayView2<'_, f64>,
     relative_humidity_percent: ArrayView2<'_, f64>,
@@ -411,6 +478,40 @@ pub fn dmc(
 }
 
 /// Run the Drought Code over the whole time axis.
+///
+/// # Numerical contract
+///
+/// This evaluates Van Wagner and Pickett (1985), equations 18-23, following
+/// the NRCan recurrence. Noon temperature uses degrees C and 24-hour rain
+/// uses mm. The supplied latitude-band/month table contains the empirical
+/// DC day-length adjustments, not DMC effective daylight hours. Temperature
+/// is floored at -2.8 C and potential evapotranspiration at zero. Rain reduces
+/// DC only above 2.8 mm; zero rain permits drying. Successful physical-input
+/// updates give dimensionless DC floored at zero, with no upper bound.
+/// This kernel does not implement the overwinter recharge equation.
+///
+/// Weather and one-based months have shape `(days, cells)`; initial DC and
+/// zero-based latitude bands have one value per cell. The table has shape
+/// `(bands, 12)`. The caller supplies months and band selection; the kernel
+/// infers no dates or Calibration Period. Invalid shapes return
+/// `ClimateError::ShapeMismatch`; invalid bands or months return
+/// `ClimateError::IndexOutOfRange`, even on inactive days.
+///
+/// [`run`] trusts supplied validity masks rather than detecting NaN weather.
+/// Leading gaps do not start cells. `Propagate` poisons started cells at the
+/// first gap; `Bridge` holds state up to its allowance, then poisons it.
+/// Gap history is NaN; off-season days carry started states without advancing
+/// or counting gaps. Statically invalid cells never advance, and NaN initial
+/// codes remain poisoned. Spin-up omits computed days from optional history,
+/// shaped `(days.saturating_sub(spin_up), cells)`; empty input preserves state.
+/// The caller validates physical ranges and table values. A non-finite active
+/// code returns `ClimateError::NonFinite`, with no partial result.
+///
+/// See the Measured accuracy section of [`crate`], registry entry
+/// `fire_drought_code` in `tests/parity_registry.py`, and
+/// `tests/test_native_parity_fire.py::test_drought_code_seasonal_carry`.
+/// Registry measurements compare full workflow outputs, not isolated daily
+/// step errors or an independent scientific reference.
 pub fn dc(
     temperature_celsius: ArrayView2<'_, f64>,
     precipitation_mm: ArrayView2<'_, f64>,
@@ -511,6 +612,42 @@ fn check_day_length(
 }
 
 /// Run KBDI over the whole time axis.
+///
+/// # Numerical contract
+///
+/// This evaluates the corrected continuous Keetch and Byram (1968) equation
+/// 18 with Alexander's (1990) corrected 8.30 constant. Rain, mean annual rain,
+/// initial and final moisture deficiency, and wet-spell rain use mm;
+/// maximum temperature uses degrees C. The caller supplies mean annual rain
+/// rather than a Calibration Period. Consecutive positive-rain days form a
+/// wet spell; only rain beyond its first 5.08 mm reduces deficiency. A zero-rain
+/// active day resets wet-spell rain and can dry the cell. Temperatures below
+/// 10 C add no drying. Successful physical-input updates stay in `[0, 203.2]`
+/// mm; this kernel does not return imperial KBDI points.
+///
+/// Weather blocks have shape `(days, cells)`; mean annual rain and initial
+/// `KbdiCell` state have one value per cell. [`run`] advances supplied daily
+/// positions without calendar conversion. The caller validates physical
+/// ranges and supplies weather/static validity masks; the kernel does not
+/// infer missing values from NaNs or reject zero mean annual rain.
+/// Leading gaps do not start cells. `Propagate` poisons started cells at the
+/// first gap; `Bridge` holds both state fields up to its allowance, then
+/// poisons only the KBDI value. Missing-day history is NaN. Off-season days
+/// carry started states without advancement or gap counting; statically
+/// invalid cells never advance. NaN initial KBDI remains poisoned.
+///
+/// Spin-up omits computed days from optional history, shaped
+/// `(days.saturating_sub(spin_up), cells)`; empty input preserves state.
+/// Shape mismatches return `ClimateError::ShapeMismatch`. A non-finite active
+/// KBDI returns `ClimateError::NonFinite`, with no partial result. This checks
+/// the KBDI value, not finiteness of the auxiliary wet-spell accumulator.
+///
+/// See the Measured accuracy section of [`crate`], registry entry `fire_kbdi`
+/// in `tests/parity_registry.py`, and Rust test
+/// `kbdi_ignores_rain_inside_the_first_wet_spell`.
+/// `tests/test_native_parity_fire.py` checks workflow and resumed-state parity.
+/// Registry measurements compare full workflow outputs, not isolated daily
+/// step errors or an independent scientific reference.
 pub fn kbdi(
     precipitation_mm: ArrayView2<'_, f64>,
     maximum_temperature_celsius: ArrayView2<'_, f64>,

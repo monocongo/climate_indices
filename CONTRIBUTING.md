@@ -122,12 +122,13 @@ vocabulary at `src/climate_indices/CONTEXT.md`):
 - Tutorial: `docs/tutorials.md`, `docs/quickstart.md`
 - How-to guide: `docs/how-to.md`, `docs/workflow-examples.md`,
   `docs/choosing-parameters.md`, `docs/writing-outputs.md`,
-  `docs/standardized-hydrologic-indices.md`, `docs/troubleshooting.md`,
+  `docs/standardized-hydrologic-indices.md`,
+  `docs/hydropower-precipitation-proxy.md`, `docs/troubleshooting.md`,
   `docs/xarray_migration.md`, `docs/performance.md`,
   `docs/development-guide.md`, `docs/contribution-guide.md`,
   `docs/deployment-guide.md`, `docs/release-process.md`
 - Reference: `docs/reference.md`, `docs/algorithm-reference.md`,
-  `docs/data_requirements.md`, `docs/error-reference.md`, `docs/deprecations/`,
+  `docs/rust-numerical-contract.md`, `docs/data_requirements.md`, `docs/error-reference.md`, `docs/deprecations/`,
   `docs/xarray_compatibility.md`,
   `docs/research/nclimgrid-acquisition-and-redistribution.md` (the
   troubleshooting guide sends readers there for source provenance and

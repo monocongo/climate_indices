@@ -54,6 +54,8 @@ fn fit_column(column: ArrayView1<'_, f64>, sorted: &mut Vec<f64>) -> Option<[f64
 
 /// L-moment GLO location, scale, and shape for each column.
 ///
+/// # Numerical contract
+///
 /// - Python source: `lmoments.fit_glo_spatial`, which `lmoments.fit_glo` mirrors
 ///   one time step at a time, via `compute._loglogistic_parameters_spatial`.
 /// - Inputs: `calibration`, shaped (years, columns), one column per calendar step
@@ -66,6 +68,14 @@ fn fit_column(column: ArrayView1<'_, f64>, sorted: &mut Vec<f64>) -> Option<[f64
 ///   there) is invalid.
 /// - Numerics: `shape = -tau_3`; a shape of at most 1e-6 in magnitude is
 ///   exactly zero (the ordinary logistic), otherwise `PELGLO`'s `gg`.
+///
+/// The fit uses Hosking's (1990, 1996) sample L-moments and `PELGLO` estimate.
+/// Values, locations, and scales share units, usually mm; shapes are dimensionless.
+/// Calendar columns follow [`crate`]; the caller selects the Calibration Period.
+/// Invalid columns, including empty and constant columns, retain zero parameters
+/// and `valid == false`. Negative values are ordinary sample values.
+/// See the `Measured accuracy` section in [`crate`], entry `spei_loglogistic`
+/// in `tests/parity_registry.py`. It measures a complete workflow, not isolated fits.
 pub fn loglogistic_parameters(calibration: ArrayView2<'_, f64>) -> LogLogisticFit {
     let columns = calibration.ncols();
     let mut fit = LogLogisticFit {
@@ -91,10 +101,21 @@ pub fn loglogistic_parameters(calibration: ArrayView2<'_, f64>) -> LogLogisticFi
 
 /// Generalized logistic CDF, `cdfglo`, clipped to [0, 1].
 ///
+/// # Numerical contract
+///
 /// With `z = (x - loc) / scale`: `F = 1 / (1 + exp(-y))`, where `y = z` for a
 /// shape of at most 1e-6 in magnitude, else `y = -ln(max(0, 1 - shape * z)) / shape`.
 /// A NaN input gives NaN. This is the bare formula: the caller decides which
 /// parameter sets are valid, as `compute._loglogistic_fit` does.
+/// This is Hosking's (1996) `CDFGLO` formula with the `PELGLO` small-shape limit.
+/// `x`, `loc`, and `scale` share units; `shape` and the probability are dimensionless.
+/// This scalar function has no calendar interpretation or discrete zero mass.
+/// Zero is an ordinary value. For positive scale and `|shape| > 1e-6`, crossing
+/// the finite support gives 1 for positive shape and 0 for negative shape.
+/// Non-positive scales are not rejected; zero scale follows IEEE division,
+/// including NaN when `x == loc`. NaN values or parameters propagate.
+/// See the `Measured accuracy` section in [`crate`], entry `spei_loglogistic`
+/// in `tests/parity_registry.py`. It measures a complete workflow, not this isolated CDF.
 pub fn loglogistic_cdf(x: f64, loc: f64, scale: f64, shape: f64) -> f64 {
     let z = (x - loc) / scale;
     let y = if shape.abs() <= SHAPE_TOLERANCE {
@@ -114,6 +135,8 @@ pub fn loglogistic_cdf(x: f64, loc: f64, scale: f64, shape: f64) -> f64 {
 
 /// GLO CDF of each value, one `(loc, scale, shape)` per column.
 ///
+/// # Numerical contract
+///
 /// - Python source: the probability step of `compute._loglogistic_fit`.
 /// - Inputs: `values` shaped (years, columns); `locs`, `scales`, and `shapes`
 ///   with one value per column.
@@ -127,6 +150,13 @@ pub fn loglogistic_cdf(x: f64, loc: f64, scale: f64, shape: f64) -> f64 {
 ///
 /// Returns [`ClimateError::ShapeMismatch`] when a parameter's length is not the
 /// number of columns.
+///
+/// Each element uses Hosking's [`loglogistic_cdf`], including its small-shape
+/// limit and unvalidated scale arithmetic. No fit-validity mask is applied.
+/// Values, locations, and scales share units; shapes and outputs are dimensionless.
+/// Calendar columns follow [`crate`]; no calendar selection occurs here.
+/// See the `Measured accuracy` section in [`crate`], entry `spei_loglogistic`
+/// in `tests/parity_registry.py`. It measures a complete workflow, not this isolated block CDF.
 pub fn loglogistic_cdf_block(
     values: ArrayView2<'_, f64>,
     locs: ArrayView1<'_, f64>,
