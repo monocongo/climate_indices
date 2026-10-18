@@ -86,6 +86,10 @@ MISSING_DATA_THRESHOLD = 0.20  # 20%
 # Minimum recommended calibration period length in years
 MIN_CALIBRATION_YEARS = 30
 
+# Minimum number of valid Calibration Period values a calendar step needs before the
+# empirical transform ranks against it, the n_thres default of the SEI oracle (#1160)
+MIN_CALIBRATION_VALUES_FOR_EMPIRICAL = 10
+
 # Kolmogorov-Smirnov test p-value threshold for goodness-of-fit warnings
 GOODNESS_OF_FIT_P_VALUE_THRESHOLD = 0.05
 
@@ -2704,6 +2708,90 @@ def transform_fitted_loglogistic(
     return values
 
 
+def transform_fitted_empirical(
+    values: np.ndarray,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
+    output_scale: OutputScale = "normal",
+) -> np.ndarray:
+    """
+    Transform values to normalized sigmas through their empirical (rank-based) probability.
+
+    Each value is ranked against the same calendar step's Calibration Period values
+    with the plotting position of the SEI R package, the oracle pinned by #1160::
+
+        p = (1 + k) / (n + 2),  k = count(calibration values <= value)
+
+    where n is the number of valid calibration values at that step. Ties take their
+    maximum rank, and nothing is extrapolated beyond the calibration range: a value
+    below the calibration minimum scores ``1 / (n + 2)`` and one at or above its
+    maximum ``(n + 1) / (n + 2)``, so p never reaches 0 or 1. Zeros and negatives are
+    ordinary values, with no zero mass and no support to violate, which is what lets
+    a signed series be standardized (ADR-0019). There is nothing to fit, so there are
+    no fitting parameters to supply or reuse.
+
+    A calendar step with fewer than ``MIN_CALIBRATION_VALUES_FOR_EMPIRICAL`` valid
+    calibration values is missing. For daily data whose non-leap years carry NaN at
+    29 February, that includes 29 February unless the Calibration Period holds at least
+    that many leap years; ``utils.transform_to_366day`` synthesizes a value there
+    instead, so the step ranks against every calibration year.
+
+    :param values: 2-D array of values, with each row representing a year containing
+        twelve columns representing the respective calendar months, or 366 columns
+        representing days as if all years were leap years. A time-major spatial block
+        already folded to (years, time_steps, ``*cells``) is also accepted.
+    :param data_start_year: the initial year of the input values array
+    :param calibration_start_year: the initial year to use for the calibration period
+    :param calibration_end_year: the final year to use for the calibration period
+    :param periodicity: the periodicity of the time series represented by the input data
+    :param output_scale: one of ``compute.OUTPUT_SCALES``; "probability" returns the
+        plotting-position probability, "bounded" returns ``2p - 1``, and "normal"
+        (the default) returns the standard-normal z-score, unclipped
+    :return: array of transformed values, corresponding in size and shape to the
+        input array
+    :rtype: numpy.ndarray of floats
+    """
+    validate_output_scale(output_scale)
+
+    log = _logger.bind(
+        operation="transform_fitted_empirical",
+        output_scale=output_scale,
+        distribution="empirical",
+        periodicity=str(periodicity),
+        input_shape=str(values.shape),
+    )
+    log.info("distribution_transform_started")
+
+    if np.ma.isMaskedArray(values):
+        values = np.ma.filled(values.astype(float), np.nan)
+
+    values = _validate_array(values, periodicity)
+    calibration_values, _, _ = _calibration_block(
+        values, data_start_year, calibration_start_year, calibration_end_year, periodicity
+    )
+
+    # count the calibration values at or below each value one calibration year at a
+    # time, so memory stays at one input-sized array whatever the record length; a
+    # missing calibration value compares False and is not counted
+    counts = np.zeros(values.shape)
+    for calibration_year in calibration_values:
+        counts += calibration_year <= values
+    valid_counts = np.count_nonzero(~np.isnan(calibration_values), axis=0)
+
+    probabilities = np.where(
+        np.isnan(values) | (valid_counts < MIN_CALIBRATION_VALUES_FOR_EMPIRICAL),
+        np.nan,
+        (1.0 + counts) / (valid_counts + 2.0),
+    )
+    mapped = _map_non_normal_scale(probabilities, output_scale)
+    result: np.ndarray = scipy.stats.norm.ppf(probabilities) if mapped is None else mapped
+
+    log.info("distribution_transform_completed", output_shape=str(result.shape))
+    return result
+
+
 # normalized fitting-parameter keys, paired with the deprecated alias accepted for each
 _FIT_ALTNAMES = (
     ("alpha", "alphas"),
@@ -2745,12 +2833,36 @@ def _normalize_fitting_params(params: dict[str, Any] | None) -> dict[str, Any] |
     return normed
 
 
+def _validate_empirical_fitting_params(
+    distribution: "Distribution",
+    fitting_params: dict[str, Any] | None,
+) -> None:
+    """
+    Reject a supplied parameter mapping for the rank-based empirical distribution.
+
+    Callers must run this before :func:`_normalize_fitting_params`, which drops
+    unrecognized keys, so a typo in a parameter key would otherwise reach the
+    empirical transform as an empty mapping and read as a valid parameter-free call.
+
+    :raises InvalidArgumentError: if the distribution is empirical and the mapping is not empty
+    """
+    if distribution.value == "empirical" and fitting_params:
+        raise InvalidArgumentError(
+            "The empirical distribution has no fitting parameters; pass fitting_params=None.",
+            argument_name="fitting_params",
+            argument_value=str(sorted(fitting_params)),
+        )
+
+
 # canonical fitting-parameter keys every surface resolves through
 _PARAMETER_KEYS: dict[str, tuple[str, ...]] = {
     "gamma": ("alpha", "beta", "prob_zero"),
     "pearson": ("prob_zero", "loc", "scale", "skew"),
     "loglogistic": ("loc", "scale", "shape"),
 }
+
+# the distributions fit_and_standardize() accepts: every keyed fit plus the empirical rank-based transform
+_SUPPORTED_DISTRIBUTIONS: tuple[str, ...] = (*_PARAMETER_KEYS, "empirical")
 
 
 def _broadcast_parameters(
@@ -3196,7 +3308,9 @@ def fit_and_standardize(
             months, or 366 days per column as if all years were leap years; a
             time-major spatial block with more than two dimensions is also accepted.
         distribution: The distribution to fit the values to: gamma, Pearson Type III,
-            or the generalized logistic ("loglogistic") that SPEI standardizes with.
+            the generalized logistic ("loglogistic") that SPEI standardizes with, or
+            the empirical (rank-based) distribution, which fits nothing; see
+            :func:`transform_fitted_empirical`.
         data_start_year: The initial year of the input values array.
         calibration_start_year: The initial year to use for the calibration period.
         calibration_end_year: The final year to use for the calibration period.
@@ -3220,21 +3334,29 @@ def fit_and_standardize(
             cumulative probability in [0, 1], and "bounded" ``2p - 1`` in [-1, 1].
         zero_handling: Where a zero accumulation is placed within the zero mass,
             one of "classic" (the default), "center_of_mass", or "mean_zero"; see
-            ADR-0015. A gamma fall back applies the same mode. The log-logistic fit
-            has no zero mass, so the mode does not apply to it.
+            ADR-0015. A gamma fall back applies the same mode. The log-logistic and
+            empirical distributions have no zero mass, so the mode does not apply to
+            them.
 
     Returns:
         2-D array of transformed/fitted values, corresponding in size and shape to
         the input array.
 
     Raises:
-        InvalidArgumentError: If ``output_scale`` is not one of ``compute.OUTPUT_SCALES``.
-        ValueError: If the distribution is none of gamma, Pearson Type III, or
-            log-logistic, ``zero_handling`` is not one of the three modes, or a Pearson
+        InvalidArgumentError: If ``output_scale`` is not one of ``compute.OUTPUT_SCALES``,
+            or ``fitting_params`` is given with the empirical distribution.
+        ValueError: If the distribution is none of gamma, Pearson Type III,
+            log-logistic, or empirical, ``zero_handling`` is not one of the three modes, or a Pearson
             ``fitting_params`` set is partial or does not carry the period (and cell) axes.
     """
     validate_output_scale(output_scale)
     _validate_zero_handling(zero_handling)
+
+    # validate the distribution before any .value dereference, so a malformed or
+    # unsupported input gets the ValueError documented above rather than an
+    # AttributeError; the branches below need no further distribution check
+    if getattr(distribution, "value", None) not in _SUPPORTED_DISTRIBUTIONS:
+        raise ValueError(f"Unsupported distribution: {distribution}")
 
     # reject a reversed window here, before the dispatch: a complete supplied
     # parameter set skips the resolver calls inside the transforms, so without this
@@ -3243,6 +3365,17 @@ def fit_and_standardize(
     resolve_calibration_period(
         data_start_year, values.shape[0], calibration_start_year, calibration_end_year, policy="clamp"
     )
+
+    _validate_empirical_fitting_params(distribution, fitting_params)
+
+    # rank-based: the calibration sample is the fit, so there is no parameter set to
+    # reuse, and zeros are ordinary values with no zero mass for zero_handling to place
+    if distribution.value == "empirical":
+        if is_all_missing(values):
+            return values
+        return transform_fitted_empirical(
+            values, data_start_year, calibration_start_year, calibration_end_year, periodicity, output_scale
+        )
 
     # an all-missing input has nothing to fit, so return it before any fit: a direct
     # caller must not see a MissingDataWarning or a fit-failure event from it. Validate
@@ -3267,9 +3400,6 @@ def fit_and_standardize(
             fitting_params,
         )
         return fitted.transform(values, output_scale, zero_handling=zero_handling)
-
-    if distribution.value != "pearson":
-        raise ValueError(f"Unsupported distribution: {distribution}")
 
     if not fallback_to_gamma:
         fitted = FittedDistribution.resolve(

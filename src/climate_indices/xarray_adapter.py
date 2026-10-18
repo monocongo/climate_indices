@@ -468,7 +468,8 @@ def _supplies_complete_fit(valid_kwargs: dict[str, Any]) -> bool:
     """
     params = valid_kwargs.get("fitting_params")
     distribution = valid_kwargs.get("distribution")
-    if not params or distribution is None:
+    # an empirical (rank-based) distribution has no parameter keys; the index rejects it
+    if not params or distribution is None or distribution.value not in compute._PARAMETER_KEYS:
         return False
     altnames = dict(compute._FIT_ALTNAMES)
     return all(
