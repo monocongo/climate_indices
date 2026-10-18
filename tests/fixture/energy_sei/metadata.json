@@ -1,7 +1,7 @@
 {
   "sei_commit": "4d4a6d02d0fbfefdb48da63580c6be1bca3d5f14",
   "sei_archive_sha256": "49d1f1ee1c68bb0ec758b7b1cff2d29d48daae5dd508fdec7ce5eaabd97501d4",
-  "r_script_sha256": "bb547d4a56917cbffd7c55501af9ee847798be1642b79ecf7598a82fbe5c1432",
+  "r_script_sha256": "6990f967b7f53df39972837f0fed877504ac667888031c1d148a97ad4701414e",
   "seed": 1170,
   "python_packages": {
     "numpy": "2.4.2",
