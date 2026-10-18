@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import warnings
 from typing import Any
+from unittest import mock
 
 import dask.array as da
 import numpy as np
@@ -14,6 +15,7 @@ from dask.callbacks import Callback
 
 from climate_indices import energy
 from climate_indices.cf_metadata_registry import CF_METADATA
+from climate_indices.energy import _wind
 from climate_indices.exceptions import (
     BetaFeatureWarning,
     CoordinateValidationError,
@@ -155,11 +157,14 @@ def test_mismatched_shared_coordinates_are_rejected(companion: str, dimension: s
     other = wind.isel({dimension: slice(None, None, -1)})
     if companion == "alpha":
         other = other.assign_attrs(units="1")
+    function = getattr(energy, "hub_height_wind_speed" if companion == "alpha" else "wind_shear_exponent")
+    kwargs = (
+        {"reference_height": 10, "hub_height": 100, "alpha": other}
+        if companion == "alpha"
+        else {"wind_speed_upper": other}
+    )
     with pytest.raises(CoordinateValidationError, match="must match exactly"):
-        if companion == "alpha":
-            energy.hub_height_wind_speed(wind, 10, 100, alpha=other)
-        else:
-            energy.wind_shear_exponent(wind, other)
+        function(wind, **kwargs)
 
 
 @pytest.mark.parametrize("units", ["km/h", "knots", 42, ""])
@@ -177,6 +182,87 @@ def test_native_wind_unit_aliases(units: str | None) -> None:
         wind.attrs["units"] = units
     actual = energy.hub_height_wind_speed(wind, 10, 100)
     np.testing.assert_array_equal(actual.values, energy.hub_height_wind_speed(wind.values, 10, 100))
+
+
+@pytest.mark.parametrize("companion", ["alpha", "upper_wind"])
+@pytest.mark.parametrize("unlabeled", ["primary", "secondary", "both"])
+@pytest.mark.parametrize("lazy", [False, True])
+def test_shared_dimensions_require_labels(companion: str, unlabeled: str, lazy: bool) -> None:
+    wind = xr.DataArray([2.0, 4.0], dims="site", coords={"site": ["a", "b"]})
+    other = wind.copy()
+    if unlabeled in {"primary", "both"}:
+        wind = wind.drop_vars("site")
+    if unlabeled in {"secondary", "both"}:
+        other = other.drop_vars("site")
+    if lazy:
+        wind, other = wind.chunk(site=1), other.chunk(site=1)
+    function = getattr(energy, "hub_height_wind_speed" if companion == "alpha" else "wind_shear_exponent")
+    kwargs = (
+        {"reference_height": 10, "hub_height": 100, "alpha": other}
+        if companion == "alpha"
+        else {"wind_speed_upper": other}
+    )
+    with pytest.raises(CoordinateValidationError, match="site"):
+        function(wind, **kwargs)
+
+
+@pytest.mark.parametrize("name,kwargs", CASES[:3])
+def test_lazy_auxiliary_time_is_rejected_without_computation(name: str, kwargs: dict[str, Any]) -> None:
+    data = _data(name).rename(time="sample").drop_vars("sample")
+    time = xr.DataArray(pd.date_range("2001-01-01", periods=4).values, dims="sample").chunk(sample=2).data
+    data = data.assign_coords(time=("sample", time)).chunk(sample=2)
+    assert data.time.chunks is not None
+
+    def reject_task(*args: Any) -> None:
+        pytest.fail("Daily time validation evaluated a Dask task.")
+
+    with Callback(pretask=reject_task), pytest.raises(CoordinateValidationError, match="lazy"):  # type: ignore[no-untyped-call]
+        _call(name, data, kwargs)
+
+
+@pytest.mark.parametrize("name,kwargs", CASES[3:])
+def test_wind_blocks_do_not_repeat_operational_side_effects(name: str, kwargs: dict[str, Any]) -> None:
+    data = _data(name)
+    expected = _call(name, data.values, kwargs)
+    with mock.patch.object(_wind, "_logger") as logger, mock.patch.object(_wind, "check_large_array_memory") as memory:
+        result = _call(name, data.chunk(time=1, lat=1), kwargs)
+        np.testing.assert_array_equal(result.compute(scheduler="synchronous").values, expected)
+    logger.bind.assert_not_called()
+    memory.assert_not_called()
+
+
+@pytest.mark.parametrize("roughness", [None, 0.0, -1.0, np.nan, np.inf, 10.0, 100.0])
+@pytest.mark.parametrize("reference,hub", [(10.0, 100.0), (100.0, 10.0)])
+def test_lazy_log_profile_rejects_invalid_roughness_before_dispatch(
+    roughness: float | None, reference: float, hub: float
+) -> None:
+    wind = _data("hub_height_wind_speed").chunk(time=1, lat=1)
+
+    def reject_task(*args: Any) -> None:
+        pytest.fail("Roughness validation evaluated a Dask task.")
+
+    with Callback(pretask=reject_task), pytest.raises(InvalidArgumentError, match="roughness_length"):  # type: ignore[no-untyped-call]
+        energy.hub_height_wind_speed(wind, reference, hub, method="log", roughness_length=roughness)
+
+
+@pytest.mark.parametrize("name,kwargs", CASES[:3])
+def test_degree_day_output_replaces_scalar_base_coordinate_metadata(name: str, kwargs: dict[str, Any]) -> None:
+    coordinates = (
+        {"air_temperature_threshold": 18.0}
+        if name != "energy_degree_days"
+        else {
+            "heating_base_temperature": 18.0,
+            "cooling_base_temperature": 24.0,
+        }
+    )
+    data = _data(name).assign_coords({key: xr.DataArray(-99.0, attrs={"source": "input"}) for key in coordinates})
+    original = data.copy(deep=True)
+    result = _call(name, data, kwargs)
+    for key, value in coordinates.items():
+        assert result.coords[key].item() == value
+        assert result.coords[key].attrs["units"] == "degC"
+        assert "source" not in result.coords[key].attrs
+    xr.testing.assert_identical(data, original)
 
 
 def test_unlabeled_non_scalar_companions_and_mixed_winds_are_rejected() -> None:
@@ -251,11 +337,16 @@ def test_auxiliary_geographic_coordinates_must_match(companion: str, scalar: boo
     latitude: Any = 10.0 if scalar else ("x", [10.0, 20.0, 30.0])
     wind = wind.assign_coords(latitude=latitude)
     other = wind.assign_coords(latitude=wind.latitude + 1)
+    if companion == "alpha":
+        other = other.assign_attrs(units="1")
+    function = getattr(energy, "hub_height_wind_speed" if companion == "alpha" else "wind_shear_exponent")
+    kwargs = (
+        {"reference_height": 10, "hub_height": 100, "alpha": other}
+        if companion == "alpha"
+        else {"wind_speed_upper": other}
+    )
     with pytest.raises(CoordinateValidationError, match="latitude"):
-        if companion == "alpha":
-            energy.hub_height_wind_speed(wind, 10, 100, alpha=other.assign_attrs(units="1"))
-        else:
-            energy.wind_shear_exponent(wind, other)
+        function(wind, **kwargs)
 
 
 def test_curvilinear_coordinates_are_checked_without_dask_computation() -> None:
@@ -263,7 +354,7 @@ def test_curvilinear_coordinates_are_checked_without_dask_computation() -> None:
     wind = xr.DataArray(
         np.full((2, 2, 3), 2.0),
         dims=("time", "y", "x"),
-        coords={"latitude": (("y", "x"), latitude)},
+        coords={"time": [0, 1], "y": [0, 1], "x": [0, 1, 2], "latitude": (("y", "x"), latitude)},
     ).chunk({"time": 1, "y": 1, "x": 2})
 
     def reject_task(*args: Any) -> None:
@@ -272,8 +363,9 @@ def test_curvilinear_coordinates_are_checked_without_dask_computation() -> None:
     with Callback(pretask=reject_task):  # type: ignore[no-untyped-call]
         alpha = wind.assign_attrs(units="1")
         actual = energy.hub_height_wind_speed(wind, 10, 100, alpha=alpha)
+        mismatched = wind.assign_coords(latitude=(("y", "x"), latitude + 1))
         with pytest.raises(CoordinateValidationError, match="latitude"):
-            energy.wind_shear_exponent(wind, wind.assign_coords(latitude=(("y", "x"), latitude + 1)))
+            energy.wind_shear_exponent(wind, mismatched)
     assert actual.chunks == wind.chunks
     np.testing.assert_array_equal(
         actual.compute().values, energy.hub_height_wind_speed(wind.values, 10, 100, alpha=2.0)
@@ -339,7 +431,7 @@ def test_canonical_varying_height_is_rejected() -> None:
 
 
 def test_lazy_scalar_height_does_not_trigger_coordinate_computation() -> None:
-    lower = xr.DataArray(da.ones(2, chunks=1), dims="site").assign_coords(
+    lower = xr.DataArray(da.ones(2, chunks=1), dims="site", coords={"site": ["a", "b"]}).assign_coords(
         height=xr.DataArray(da.zeros(()), attrs={"standard_name": "height"})
     )
     upper = lower.assign_coords(height=xr.DataArray(da.ones(()) * 100, attrs={"standard_name": "height"}))
@@ -356,7 +448,9 @@ def test_lazy_scalar_height_does_not_trigger_coordinate_computation() -> None:
 
 def test_lazy_shared_coordinate_requires_matching_dimensions() -> None:
     latitude = xr.DataArray([[1.0, 2.0], [3.0, 4.0]], dims=("y", "x")).chunk({"y": 1, "x": 1}).data
-    lower = xr.DataArray(np.ones((2, 2)), dims=("y", "x")).assign_coords(latitude=(("y", "x"), latitude))
+    lower = xr.DataArray(np.ones((2, 2)), dims=("y", "x"), coords={"y": [0, 1], "x": [0, 1]}).assign_coords(
+        latitude=(("y", "x"), latitude)
+    )
     upper = lower.assign_coords(latitude=(("x", "y"), latitude))
     assert lower.latitude.data is upper.latitude.data
     with pytest.raises(CoordinateValidationError, match="latitude"):
@@ -364,7 +458,7 @@ def test_lazy_shared_coordinate_requires_matching_dimensions() -> None:
 
 
 def test_equal_lazy_coordinate_graphs_are_accepted_without_computation() -> None:
-    wind = xr.DataArray(da.ones((2, 2), chunks=1), dims=("y", "x")).assign_coords(
+    wind = xr.DataArray(da.ones((2, 2), chunks=1), dims=("y", "x"), coords={"y": [0, 1], "x": [0, 1]}).assign_coords(
         latitude=(("y", "x"), xr.DataArray([[1.0, 2.0], [3.0, 4.0]], dims=("y", "x")).chunk({"y": 1, "x": 1}).data)
     )
 
@@ -385,9 +479,11 @@ def test_varying_hub_height_coordinate_is_rejected() -> None:
 @pytest.mark.parametrize("tagged_first", [True, False])
 def test_scalar_height_exemption_does_not_depend_on_argument_order(tagged_first: bool) -> None:
     tagged = xr.DataArray(
-        [2.0, 4.0], dims="site", coords={"height": xr.DataArray(10.0, attrs={"standard_name": "height"})}
+        [2.0, 4.0],
+        dims="site",
+        coords={"site": ["a", "b"], "height": xr.DataArray(10.0, attrs={"standard_name": "height"})},
     )
-    plain = xr.DataArray([3.0, 6.0], dims="site", coords={"height": xr.DataArray(100.0)})
+    plain = xr.DataArray([3.0, 6.0], dims="site", coords={"site": ["a", "b"], "height": xr.DataArray(100.0)})
     first, second = (tagged, plain) if tagged_first else (plain, tagged)
     result = energy.wind_shear_exponent(first, second)
     np.testing.assert_array_equal(result.values, energy.wind_shear_exponent(first.values, second.values))

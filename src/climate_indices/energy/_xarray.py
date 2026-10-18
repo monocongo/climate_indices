@@ -26,6 +26,12 @@ def temperature_input(data: xr.DataArray) -> xr.DataArray:
         raise InputTypeError("temperature must be numeric.", expected_type=float, actual_type=data.dtype.type)
     if "time" in data.coords:
         time = data.coords["time"]
+        if time.chunks is not None:
+            raise CoordinateValidationError(
+                "Degree days cannot validate a lazy time coordinate; load the time coordinate before calling.",
+                coordinate_name="time",
+                reason="lazy_time_coordinate",
+            )
         if not np.issubdtype(time.dtype, np.datetime64) or np.any(np.isnat(time.values)):
             raise CoordinateValidationError(
                 "Degree days require a Gregorian datetime64 time coordinate without NaT.",
@@ -58,6 +64,43 @@ def wind_input(data: object, name: str) -> xr.DataArray:
     return data
 
 
+def _coordinates_match(left: xr.DataArray, right: xr.DataArray) -> bool:
+    """Compare coordinate labels without evaluating lazy backing arrays."""
+    left_lazy = left.chunks is not None
+    right_lazy = right.chunks is not None
+    if (
+        not left_lazy
+        and not right_lazy
+        and left.ndim == right.ndim == 0
+        and "height" in (left.attrs.get("standard_name"), right.attrs.get("standard_name"))
+    ):
+        return True
+    if left_lazy and right_lazy:
+        # An unmodified copy has the same graph token without computing values.
+        return bool(left.dims == right.dims and (left.data is right.data or left.data.name == right.data.name))
+    if left_lazy or right_lazy:
+        return False
+    return bool(left.dims == right.dims and left.variable.equals(right.variable))  # type: ignore[no-untyped-call]
+
+
+def _validate_shared_coordinates(primary: xr.DataArray, companion: xr.DataArray) -> None:
+    """Require labels on shared dimensions and exact shared coordinate matches."""
+    for dimension in set(primary.dims) & set(companion.dims):
+        if dimension not in primary.coords or dimension not in companion.coords:
+            raise CoordinateValidationError(
+                f"Shared dimension {dimension!r} requires coordinate labels on both inputs.",
+                coordinate_name=str(dimension),
+                reason="missing_coordinate_labels",
+            )
+    for name in primary.coords.keys() & companion.coords.keys():
+        if not _coordinates_match(primary.coords[name], companion.coords[name]):
+            raise CoordinateValidationError(
+                f"Shared coordinate {name!r} must match exactly; lazy coordinates must share their backing array.",
+                coordinate_name=str(name),
+                reason="mismatched_coordinates",
+            )
+
+
 def apply_elementwise(
     function: Callable[..., Any],
     index: str,
@@ -79,34 +122,9 @@ def apply_elementwise(
             dtype = np.asarray(data).dtype
         if dtype.kind not in "biuf":
             raise InputTypeError("Energy inputs must be numeric.", expected_type=float, actual_type=dtype.type)
-        if not isinstance(data, xr.DataArray):
-            continue
-        for name in primary.coords.keys() & data.coords.keys():
-            left, right = primary.coords[name], data.coords[name]
-            left_lazy = left.chunks is not None
-            right_lazy = right.chunks is not None
-            if (
-                not left_lazy
-                and not right_lazy
-                and left.ndim == right.ndim == 0
-                and "height" in (left.attrs.get("standard_name"), right.attrs.get("standard_name"))
-            ):
-                continue
-            if left_lazy and right_lazy:
-                # Compare graph tokens, never values: a copy of the same Dask
-                # coordinate is equal without computing it.
-                matches = left.dims == right.dims and (left.data is right.data or left.data.name == right.data.name)
-            elif left_lazy or right_lazy:
-                # One side is lazy: no shared graph, and comparing values would compute it.
-                matches = False
-            else:
-                matches = left.dims == right.dims and left.variable.equals(right.variable)
-            if not matches:
-                raise CoordinateValidationError(
-                    f"Shared coordinate {name!r} must match exactly; lazy coordinates must share their backing array.",
-                    coordinate_name=str(name),
-                    reason="mismatched_coordinates",
-                )
+    for data in secondary:
+        if isinstance(data, xr.DataArray):
+            _validate_shared_coordinates(primary, data)
     warnings.warn(
         "The energy xarray adapter is beta; the NumPy API is stable (ADR-0012).",
         BetaFeatureWarning,

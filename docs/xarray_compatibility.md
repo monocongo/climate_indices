@@ -42,14 +42,18 @@ index; it has dimensionless units and output provenance.
 
 Degree-day inputs represent daily mean temperature. An attached `time`
 coordinate must contain consecutive Gregorian `datetime64` daily samples.
+A Dask-backed `time` coordinate is rejected without computation; load the
+coordinate before calling. The temperature data can remain lazy.
 There is no January-start requirement or all-leap conversion, and the adapters
 never synthesize February 29. Inputs without a time coordinate are accepted as
 already-daily observations. Wind profiles have no calendar requirement.
 
 Wind inputs must agree on shared geographic coordinates, including auxiliary
-latitude/longitude coordinates, not only dimension indexes. To keep validation
-lazy, shared Dask-backed coordinates must share one graph (the same array or an
-unmodified copy); otherwise load and reconcile the coordinates before calling.
+latitude/longitude coordinates, not only dimension indexes. Each shared
+dimension requires coordinate labels on both inputs. Independent dimensions
+still broadcast. To keep validation lazy, shared Dask-backed coordinates must
+share one graph (the same array or an unmodified copy). Otherwise, load and
+reconcile the coordinates before calling.
 A labeled power-law `alpha` must have dimensionless units (`1`,
 `dimensionless`, or no units attribute). Hub-height outputs replace scalar CF
 height aliases rather than retaining the reference height as a contradictory
@@ -57,8 +61,12 @@ output coordinate. A varying coordinate named `height` or `hub_height`, or
 tagged `standard_name="height"`, cannot describe a single target hub height
 and is rejected.
 
-The outputs are DataArrays, not Datasets. They preserve existing coordinate
-attributes but do not invent time bounds from a timestamp whose interval
+The outputs are DataArrays, not Datasets. They preserve existing coordinates
+and their attributes except for physical output coordinates. HDD/CDD replace
+`air_temperature_threshold`; EDD replaces `heating_base_temperature` and
+`cooling_base_temperature`. Each replacement sets the output value and attributes.
+Hub-height wind replaces scalar height coordinates as described above.
+The adapters do not invent time bounds from a timestamp whose interval
 position is unknown. When writing CF datasets with degree-day time integrals,
 retain the source daily time bounds in the enclosing Dataset. The scalar
 threshold and height coordinates carry their own physical units.

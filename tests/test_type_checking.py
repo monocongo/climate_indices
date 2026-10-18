@@ -43,7 +43,7 @@ def test_energy_degree_day_numpy_return_types() -> None:
 
 
 def test_energy_xarray_return_types() -> None:
-    data = xr.DataArray([10.0, 20.0], dims="site")
+    data = xr.DataArray([10.0, 20.0], dims="site", coords={"site": ["a", "b"]})
     assert_type(energy.heating_degree_days(data, base_temperature=18.0), xr.DataArray)
     assert_type(energy.cooling_degree_days(data, base_temperature=18.0), xr.DataArray)
     assert_type(

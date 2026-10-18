@@ -34,6 +34,50 @@ def _positive_height(value: _Height, name: str) -> float:
     return height
 
 
+def _hub_height_kernel(
+    wind: npt.ArrayLike,
+    exponent: npt.ArrayLike | None,
+    reference_height: float,
+    hub_height: float,
+    roughness_length: _Height | None,
+) -> npt.NDArray[np.float64]:
+    """Evaluate a validated profile without operational side effects."""
+    wind = _as_float_array(wind)
+    if exponent is not None:
+        exponent = _as_float_array(exponent)
+        valid = np.isfinite(wind) & (wind >= 0) & np.isfinite(exponent)
+        with np.errstate(over="ignore", invalid="ignore", divide="ignore", under="ignore"):
+            factor = np.power(hub_height / reference_height, exponent)
+    else:
+        assert roughness_length is not None
+        factor = np.log(hub_height / roughness_length) / np.log(reference_height / roughness_length)
+        valid = np.isfinite(wind) & (wind >= 0)
+    with np.errstate(over="ignore", invalid="ignore", under="ignore"):
+        result = np.where(wind == 0, 0.0, wind * factor)
+    return np.asarray(np.where(valid & np.isfinite(result), result, np.nan), dtype=np.float64)
+
+
+def _wind_shear_kernel(
+    lower: npt.ArrayLike,
+    upper: npt.ArrayLike,
+    *,
+    lower_height: float,
+    upper_height: float,
+) -> npt.NDArray[np.float64]:
+    """Evaluate shear without per-block logging or memory instrumentation."""
+    lower = _as_float_array(lower)
+    upper = _as_float_array(upper)
+    valid = np.isfinite(lower) & np.isfinite(upper) & (lower > 0) & (upper > 0)
+    with np.errstate(over="ignore", divide="ignore", invalid="ignore", under="ignore"):
+        # Use log1p near equality; log differences avoid ratios at extreme speeds.
+        difference = np.asarray(upper - lower)
+        near = np.abs(difference) <= 0.5 * lower
+        np.divide(difference, lower, out=difference, where=near)
+        result = np.where(near, np.log1p(difference), np.log(upper) - np.log(lower))
+        result = result / np.log(upper_height / lower_height)
+    return np.asarray(np.where(valid & np.isfinite(result), result, np.nan), dtype=np.float64)
+
+
 @overload
 def hub_height_wind_speed(  # pyright: ignore[reportOverlappingOverload]
     wind_speed: xr.DataArray,
@@ -125,6 +169,12 @@ def hub_height_wind_speed(
         )
     reference_height = _positive_height(reference_height, "reference_height")
     hub_height = _positive_height(hub_height, "hub_height")
+    if method == "log":
+        if roughness_length is None:
+            raise InvalidArgumentError("The log profile requires roughness_length.", argument_name="roughness_length")
+        roughness_length = _positive_height(roughness_length, "roughness_length")
+        if reference_height <= roughness_length or hub_height <= roughness_length:
+            raise InvalidArgumentError("Both heights must exceed roughness_length.", argument_name="roughness_length")
     if isinstance(wind_speed, xr.DataArray):
         if method == "power" and isinstance(alpha, xr.DataArray):
             units = alpha.attrs.get("units")
@@ -136,8 +186,8 @@ def hub_height_wind_speed(
                 )
 
         def kernel(speed: npt.ArrayLike, exponent: npt.ArrayLike = 1 / 7) -> npt.NDArray[np.float64]:
-            return hub_height_wind_speed(
-                speed, reference_height, hub_height, method=method, alpha=exponent, roughness_length=roughness_length
+            return _hub_height_kernel(
+                speed, exponent if method == "power" else None, reference_height, hub_height, roughness_length
             )
 
         xarray_inputs = (alpha,) if method == "power" else ()
@@ -173,25 +223,7 @@ def hub_height_wind_speed(
         memory_metrics = check_large_array_memory(
             *inputs, extra_bytes=wind.size * ((3 if exponent is not None else 2) * wind.itemsize + 3)
         )
-        if exponent is not None:
-            valid = np.isfinite(wind) & (wind >= 0) & np.isfinite(exponent)
-            with np.errstate(over="ignore", invalid="ignore", divide="ignore", under="ignore"):
-                factor = np.power(hub_height / reference_height, exponent)
-        else:
-            if roughness_length is None:
-                raise InvalidArgumentError(
-                    "The log profile requires roughness_length.", argument_name="roughness_length"
-                )
-            roughness_length = _positive_height(roughness_length, "roughness_length")
-            if reference_height <= roughness_length or hub_height <= roughness_length:
-                raise InvalidArgumentError(
-                    "Both heights must exceed roughness_length.", argument_name="roughness_length"
-                )
-            factor = np.log(hub_height / roughness_length) / np.log(reference_height / roughness_length)
-            valid = np.isfinite(wind) & (wind >= 0)
-        with np.errstate(over="ignore", invalid="ignore", under="ignore"):
-            result = np.where(wind == 0, 0.0, wind * factor)
-        result = np.asarray(np.where(valid & np.isfinite(result), result, np.nan), dtype=np.float64)
+        result = _hub_height_kernel(wind, exponent, reference_height, hub_height, roughness_length)
         log.info(
             "calculation_completed",
             duration_ms=round((time.perf_counter() - t0) * 1000.0, 2),
@@ -267,7 +299,7 @@ def wind_shear_exponent(
         raise InvalidArgumentError("upper_height must exceed lower_height.", argument_name="upper_height")
     if isinstance(wind_speed_lower, xr.DataArray) or isinstance(wind_speed_upper, xr.DataArray):
         return apply_elementwise(
-            wind_shear_exponent,
+            _wind_shear_kernel,
             "wind_shear_exponent",
             wind_input(wind_speed_lower, "wind_speed_lower"),
             wind_input(wind_speed_upper, "wind_speed_upper"),
@@ -287,15 +319,7 @@ def wind_shear_exponent(
     try:
         # Budget for the difference, logarithms, output buffers, and temporary masks.
         memory_metrics = check_large_array_memory(lower, upper, extra_bytes=lower.size * (5 * lower.itemsize + 3))
-        valid = np.isfinite(lower) & np.isfinite(upper) & (lower > 0) & (upper > 0)
-        with np.errstate(over="ignore", divide="ignore", invalid="ignore", under="ignore"):
-            # Use log1p near equality; log differences avoid ratios at extreme speeds.
-            difference = np.asarray(upper - lower)
-            near = np.abs(difference) <= 0.5 * lower
-            np.divide(difference, lower, out=difference, where=near)
-            result = np.where(near, np.log1p(difference), np.log(upper) - np.log(lower))
-            result = result / np.log(upper_height / lower_height)
-        result = np.asarray(np.where(valid & np.isfinite(result), result, np.nan), dtype=np.float64)
+        result = _wind_shear_kernel(lower, upper, lower_height=lower_height, upper_height=upper_height)
         log.info(
             "calculation_completed",
             duration_ms=round((time.perf_counter() - t0) * 1000.0, 2),
