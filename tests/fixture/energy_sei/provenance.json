@@ -8,51 +8,63 @@
   "measured_stats": {
     "capacity_mean_1": {
       "probability_max_abs_error": 1.1102230246251565e-16,
-      "normal_max_abs_error": 6.661338147750939e-16
+      "normal_max_abs_error": 6.661338147750939e-16,
+      "scaled_max_abs_error": 0.0
     },
     "capacity_mean_3": {
       "probability_max_abs_error": 1.1102230246251565e-16,
-      "normal_max_abs_error": 6.661338147750939e-16
+      "normal_max_abs_error": 6.661338147750939e-16,
+      "scaled_max_abs_error": 0.0
     },
     "production_sum_1": {
       "probability_max_abs_error": 1.1102230246251565e-16,
-      "normal_max_abs_error": 6.661338147750939e-16
+      "normal_max_abs_error": 6.661338147750939e-16,
+      "scaled_max_abs_error": 5.684341886080802e-14
     },
     "production_sum_3": {
       "probability_max_abs_error": 1.1102230246251565e-16,
-      "normal_max_abs_error": 6.661338147750939e-16
+      "normal_max_abs_error": 6.661338147750939e-16,
+      "scaled_max_abs_error": 2.2737367544323206e-13
     },
     "demand_sum_1": {
       "probability_max_abs_error": 1.1102230246251565e-16,
-      "normal_max_abs_error": 6.661338147750939e-16
+      "normal_max_abs_error": 6.661338147750939e-16,
+      "scaled_max_abs_error": 5.684341886080802e-14
     },
     "demand_sum_3": {
       "probability_max_abs_error": 1.1102230246251565e-16,
-      "normal_max_abs_error": 6.661338147750939e-16
+      "normal_max_abs_error": 6.661338147750939e-16,
+      "scaled_max_abs_error": 2.2737367544323206e-13
     },
     "residual_sum_1": {
       "probability_max_abs_error": 1.1102230246251565e-16,
-      "normal_max_abs_error": 6.661338147750939e-16
+      "normal_max_abs_error": 6.661338147750939e-16,
+      "scaled_max_abs_error": 5.684341886080802e-14
     },
     "residual_sum_3": {
       "probability_max_abs_error": 1.1102230246251565e-16,
-      "normal_max_abs_error": 6.661338147750939e-16
+      "normal_max_abs_error": 6.661338147750939e-16,
+      "scaled_max_abs_error": 2.2737367544323206e-13
     },
     "residual_mean_1": {
       "probability_max_abs_error": 1.1102230246251565e-16,
-      "normal_max_abs_error": 6.661338147750939e-16
+      "normal_max_abs_error": 6.661338147750939e-16,
+      "scaled_max_abs_error": 5.684341886080802e-14
     },
     "residual_mean_3": {
       "probability_max_abs_error": 1.1102230246251565e-16,
-      "normal_max_abs_error": 6.661338147750939e-16
+      "normal_max_abs_error": 6.661338147750939e-16,
+      "scaled_max_abs_error": 8.526512829121202e-14
     },
     "reading_mean_1": {
       "probability_max_abs_error": 0.0,
-      "normal_max_abs_error": 4.440892098500626e-16
+      "normal_max_abs_error": 4.440892098500626e-16,
+      "scaled_max_abs_error": 5.551115123125783e-17
     },
     "reading_mean_3": {
       "probability_max_abs_error": 0.0,
-      "normal_max_abs_error": 4.440892098500626e-16
+      "normal_max_abs_error": 4.440892098500626e-16,
+      "scaled_max_abs_error": 5.551115123125783e-17
     }
   },
   "validation_tolerance": {

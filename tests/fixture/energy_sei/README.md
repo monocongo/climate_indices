@@ -17,8 +17,9 @@ The real input comes from Bloomfield and Brayshaw (2021),
 *ERA5 derived time series of European aggregated surface weather variables, wind power, and solar power capacity factors: hourly data from 1950-2020*.
 The University of Reading publishes it at
 [DOI 10.17864/1947.000321](https://doi.org/10.17864/1947.000321).
-Its landing page and archive README specify **CC-BY-4.0**, Copyright 2021 University of Reading.
+Its landing page and archive README specify [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/), Copyright 2021 University of Reading.
 The underlying meteorological source is Copernicus Climate Change Service ERA5.
+Attribution identifies the creators, DOI, publisher, licence, and the monthly subset derived here.
 
 The selected archive member is
 `ERA5_data_1950-2020/wp_onshore/NUTS_0_wp_ons_sim_1_historical_loc_weighted.nc`.
@@ -93,7 +94,9 @@ R writes 17 significant digits; its default CSV conversion would retain only 15.
 Missing masks and calibration counts must match exactly.
 The absolute tolerances are `1e-12` for scaled values/normal indices and `1e-15` for empirical probabilities, with `rtol=0`.
 The measured maximum errors are `6.67e-16` for normal indices and `1.12e-16` for probabilities, rounded upwards.
-The generator refuses statistical comparisons outside these tolerances before it writes fixtures.
+The generator compares scaled values, probabilities, and normal indices against SEI and refuses comparisons outside these tolerances.
+It then stages the complete set and swaps it in as one directory, restoring the previous set if the swap fails.
+A failed write therefore cannot leave truncated payloads beside the old provenance.
 The library supplies measurements only; it never supplies reference values.
 
 The offline tests exercise the shipped standardization function now.
@@ -135,4 +138,5 @@ A present but incorrect implementation fails normally.
 
 The generator does not download sources or install R dependencies.
 It checks SEI and fitdistrplus versions before calculation.
+It wrote the committed payloads with NumPy 2.5.4; it avoids an `allow_pickle` keyword that NumPy before 2.2 would store as an extra archive member.
 CI loads committed outputs without R or network access.

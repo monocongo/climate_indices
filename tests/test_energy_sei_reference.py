@@ -1,7 +1,7 @@
 """SEI statistical references for climate-driven energy supply/demand, not actual load.
 
 Missing energy wrappers xfail under #1171/#1172; a present but broken wrapper fails.
-Integrity and oracle controls run without R, network access, or those wrappers.
+Integrity, generator, and oracle controls run without R, network access, or those wrappers.
 """
 
 from __future__ import annotations
@@ -23,6 +23,18 @@ FIXTURE_DIR = Path(__file__).parent / "fixture" / "energy_sei"
 METADATA = json.loads((FIXTURE_DIR / "metadata.json").read_text(encoding="utf-8"))
 CASES = METADATA["cases"]
 PAYLOADS = ("inputs.npz", "metadata.json", "reference.npz", "sessionInfo.txt", "warnings.txt")
+
+
+@pytest.fixture
+def generator() -> Any:
+    """The fixture generator, loaded without its optional R and network providers."""
+    spec = importlib.util.spec_from_file_location(
+        "prepare_energy_sei_fixtures", ROOT / "scripts" / "prepare_energy_sei_fixtures.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _load(filename: str, key: str) -> np.ndarray:
@@ -129,13 +141,7 @@ def test_broken_present_wrapper_does_not_xfail(monkeypatch: pytest.MonkeyPatch) 
         _require_function("srepi", 1171)
 
 
-def test_generator_rejects_changed_sources_and_pins_synthetic_inputs(tmp_path: Path) -> None:
-    spec = importlib.util.spec_from_file_location(
-        "prepare_energy_sei_fixtures", ROOT / "scripts" / "prepare_energy_sei_fixtures.py"
-    )
-    assert spec is not None and spec.loader is not None
-    generator = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(generator)
+def test_generator_rejects_changed_sources_and_pins_synthetic_inputs(generator: Any, tmp_path: Path) -> None:
     source = tmp_path / "changed.tar.gz"
     source.write_bytes(b"not the pinned source")
     with pytest.raises(ValueError, match="Unexpected source checksum"):
@@ -144,6 +150,71 @@ def test_generator_rejects_changed_sources_and_pins_synthetic_inputs(tmp_path: P
         np.testing.assert_array_equal(values, _load("inputs.npz", name))
     assert generator._cases() == CASES
     assert generator.PAYLOADS == PAYLOADS
+
+
+def _write_set(directory: Path, payload: bytes) -> None:
+    directory.mkdir()
+    (directory / "inputs.npz").write_bytes(payload)
+    (directory / "provenance.json").write_text(json.dumps({"fixture_version": "1.0.0"}), encoding="utf-8")
+
+
+def test_save_arrays_writes_only_the_named_members(generator: Any, tmp_path: Path) -> None:
+    """NumPy before 2.2 turns an allow_pickle keyword into a member of that name."""
+    path = tmp_path / "arrays.npz"
+    generator._save_arrays(path, {"alpha": np.arange(3.0), "beta": np.arange(2.0)})
+    with np.load(path, allow_pickle=False) as arrays:
+        assert arrays.files == ["alpha", "beta"]
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_publish_installs_complete_set(
+    generator: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, existing: bool
+) -> None:
+    target, staging = tmp_path / "fixtures", tmp_path / "staging"
+    if existing:
+        _write_set(target, b"old")
+    _write_set(staging, b"new")
+    monkeypatch.setattr(generator, "FIXTURE_DIR", target)
+    generator._publish(staging)
+    assert (target / "inputs.npz").read_bytes() == b"new"
+    assert not staging.exists()
+    assert not target.with_name(".fixtures-backup").exists()
+
+
+@pytest.mark.parametrize("error", [OSError, KeyboardInterrupt])
+def test_publish_restores_previous_set(
+    generator: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: type[BaseException]
+) -> None:
+    target, staging = tmp_path / "fixtures", tmp_path / "staging"
+    _write_set(target, b"old")
+    _write_set(staging, b"new")
+    previous = {path.name: path.read_bytes() for path in target.iterdir()}
+    monkeypatch.setattr(generator, "FIXTURE_DIR", target)
+    replace = generator.os.replace
+
+    def interrupted_replace(source: Path, destination: Path) -> None:
+        if source == staging:
+            raise error("interrupted publication")
+        replace(source, destination)
+
+    monkeypatch.setattr(generator.os, "replace", interrupted_replace)
+    with pytest.raises(error, match="interrupted publication"):
+        generator._publish(staging)
+    assert {path.name: path.read_bytes() for path in target.iterdir()} == previous
+
+
+def test_publish_recovers_backup_before_failed_retry(
+    generator: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "fixtures"
+    backup = tmp_path / ".fixtures-backup"
+    _write_set(backup, b"old")
+    previous = {path.name: path.read_bytes() for path in backup.iterdir()}
+    monkeypatch.setattr(generator, "FIXTURE_DIR", target)
+    with pytest.raises(FileNotFoundError):
+        generator._publish(tmp_path / "missing-staging")
+    assert {path.name: path.read_bytes() for path in target.iterdir()} == previous
+    assert not backup.exists()
 
 
 @pytest.mark.validation

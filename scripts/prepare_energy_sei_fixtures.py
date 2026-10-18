@@ -16,10 +16,11 @@ import datetime as dt
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import xarray as xr
@@ -36,6 +37,28 @@ PAYLOADS = ("inputs.npz", "metadata.json", "reference.npz", "sessionInfo.txt", "
 def _verify_file(path: Path, expected: str) -> None:
     if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
         raise ValueError(f"Unexpected source checksum: {path}")
+
+
+def _save_arrays(path: Path, arrays: dict[str, np.ndarray]) -> None:
+    """Write named numeric arrays; NumPy before 2.2 reads an allow_pickle keyword as an array."""
+    np.savez_compressed(path, **cast("dict[str, Any]", arrays))
+
+
+def _publish(staging: Path) -> None:
+    """Swap in a complete fixture set; restore the previous set if the swap fails."""
+    backup = FIXTURE_DIR.with_name(f".{FIXTURE_DIR.name}-backup")
+    if backup.exists() and not FIXTURE_DIR.exists():
+        os.replace(backup, FIXTURE_DIR)
+    try:
+        if FIXTURE_DIR.exists():
+            shutil.rmtree(backup, ignore_errors=True)
+            os.replace(FIXTURE_DIR, backup)
+        os.replace(staging, FIXTURE_DIR)
+    except BaseException:
+        if backup.exists():
+            os.replace(backup, FIXTURE_DIR)
+        raise
+    shutil.rmtree(backup, ignore_errors=True)
 
 
 def _reading_monthly(path: Path) -> np.ndarray:
@@ -131,6 +154,18 @@ def _measure_agreement(
             np.testing.assert_array_equal(np.isnan(actual), np.isnan(expected))
             np.testing.assert_allclose(actual, expected, rtol=0, atol=tolerance)
             measurements[case["id"]][f"{output_scale}_max_abs_error"] = float(np.nanmax(np.abs(actual - expected)))
+        # a sum and its mean share empirical ranks, so the scaled values need their own check
+        scaled = compute.prepare_scaled(
+            inputs[case["input"]].copy(),
+            case["scale"],
+            compute.Periodicity.monthly,
+            aggregation=case["aggregation"],
+            clip_negatives=False,
+        ).ravel()
+        expected_scaled = references[f"{case['id']}_scaled"]
+        np.testing.assert_array_equal(np.isnan(scaled), np.isnan(expected_scaled))
+        np.testing.assert_allclose(scaled, expected_scaled, rtol=0, atol=1e-12)
+        measurements[case["id"]]["scaled_max_abs_error"] = float(np.nanmax(np.abs(scaled - expected_scaled)))
     return measurements
 
 
@@ -180,12 +215,7 @@ def main() -> None:
             for field in table.dtype.names or ():
                 references[f"{name}_{field}"] = table[field]
         measurements = _measure_agreement(inputs, cases, references)
-        # Publish only after source checks, R execution and comparison succeed.
-        FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
-        np.savez_compressed(FIXTURE_DIR / "inputs.npz", allow_pickle=False, **inputs)
-        np.savez_compressed(FIXTURE_DIR / "reference.npz", allow_pickle=False, **references)
-        for filename in ("sessionInfo.txt", "warnings.txt"):
-            (FIXTURE_DIR / filename).write_bytes((work / filename).read_bytes())
+        oracle_files = {name: (work / name).read_bytes() for name in ("sessionInfo.txt", "warnings.txt")}
 
     metadata = {
         "sei_commit": SEI_COMMIT,
@@ -219,23 +249,40 @@ def main() -> None:
             "license": "CC-BY-4.0; Copyright 2021 University of Reading; monthly subset derived here",
         },
     }
-    (FIXTURE_DIR / "metadata.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
-    checksum = hashlib.sha256(b"".join((FIXTURE_DIR / name).read_bytes() for name in PAYLOADS)).hexdigest()
-    provenance = {
-        "source": "R SEI 0.2.0 (Allen and Otero); University of Reading (Bloomfield and Brayshaw)",
-        "url": f"https://github.com/noeliaof/SEI/tree/{SEI_COMMIT}",
-        "download_date": dt.date.today().isoformat(),
-        "subset_description": "Synthetic monthly capacity factors, production, demand and signed residual load; DE monthly means from Reading ERA5-derived wind capacity factors, 1950-2020. SEI empirical probabilities/normal indices and a gamma MLE control.",
-        "checksum_sha256": checksum,
-        "fixture_version": "1.0.0",
-        "measured_stats": measurements,
-        "validation_tolerance": {"rtol": 0.0, "scaled_atol": 1e-12, "probability_atol": 1e-15, "normal_atol": 1e-12},
-        "citation": "Allen and Otero (2023), Standardised indices to monitor energy droughts, Renewable Energy 217, 119206; Allen and Otero (2024), Calculating Standardised Indices Using SEI, The R Journal 16(4), 102-122; Bloomfield and Brayshaw (2021), ERA5 derived time series of European aggregated surface weather variables, wind power, and solar power capacity factors, University of Reading.",
-        "doi": "10.1016/j.renene.2023.119206; 10.32614/RJ-2024-038; 10.17864/1947.000321",
-        "license": "SEI software: GPL (>= 2); no implementation copied. Reading input: CC-BY-4.0, Copyright 2021 University of Reading. Synthetic inputs and generated numerical outputs are fixture data, not SEI source.",
-        "notes": "Independent-implementation statistical comparison, not validation of physical power/demand models or actual generation/load. Source checksums, exact conventions and calendar windows are in metadata.json; R versions and dependencies are in sessionInfo.txt. The checksum covers PAYLOADS in scripts/prepare_energy_sei_fixtures.py order. SEI runs once per calendar month after complete-window aggregation. Finite-bound controls document SEI behavior only. Gamma uses SEI MLE, not the library's gamma estimator; it is not beta validation (#1169). Planned energy wrappers remain in #1171/#1172. Maintainer confirmation of extraction, generation and redistribution is required before acceptance.",
-    }
-    (FIXTURE_DIR / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
+    # stage the whole set, then publish, so a failed write cannot damage the committed fixtures
+    with tempfile.TemporaryDirectory(dir=FIXTURE_DIR.parent, prefix=f".{FIXTURE_DIR.name}-") as temporary:
+        staging = Path(temporary) / FIXTURE_DIR.name
+        if FIXTURE_DIR.exists():
+            shutil.copytree(FIXTURE_DIR, staging)
+        else:
+            staging.mkdir()
+        _save_arrays(staging / "inputs.npz", inputs)
+        _save_arrays(staging / "reference.npz", references)
+        for name, payload in oracle_files.items():
+            (staging / name).write_bytes(payload)
+        (staging / "metadata.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+        checksum = hashlib.sha256(b"".join((staging / name).read_bytes() for name in PAYLOADS)).hexdigest()
+        provenance = {
+            "source": "R SEI 0.2.0 (Allen and Otero); University of Reading (Bloomfield and Brayshaw)",
+            "url": f"https://github.com/noeliaof/SEI/tree/{SEI_COMMIT}",
+            "download_date": dt.date.today().isoformat(),
+            "subset_description": "Synthetic monthly capacity factors, production, demand and signed residual load; DE monthly means from Reading ERA5-derived wind capacity factors, 1950-2020. SEI empirical probabilities/normal indices and a gamma MLE control.",
+            "checksum_sha256": checksum,
+            "fixture_version": "1.0.0",
+            "measured_stats": measurements,
+            "validation_tolerance": {
+                "rtol": 0.0,
+                "scaled_atol": 1e-12,
+                "probability_atol": 1e-15,
+                "normal_atol": 1e-12,
+            },
+            "citation": "Allen and Otero (2023), Standardised indices to monitor energy droughts, Renewable Energy 217, 119206; Allen and Otero (2024), Calculating Standardised Indices Using SEI, The R Journal 16(4), 102-122; Bloomfield and Brayshaw (2021), ERA5 derived time series of European aggregated surface weather variables, wind power, and solar power capacity factors, University of Reading.",
+            "doi": "10.1016/j.renene.2023.119206; 10.32614/RJ-2024-038; 10.17864/1947.000321",
+            "license": "SEI software: GPL (>= 2); no implementation copied. Reading input: CC-BY-4.0, Copyright 2021 University of Reading. Synthetic inputs and generated numerical outputs are fixture data, not SEI source.",
+            "notes": "Independent-implementation statistical comparison, not validation of physical power/demand models or actual generation/load. Source checksums, exact conventions and calendar windows are in metadata.json; R versions and dependencies are in sessionInfo.txt. The checksum covers PAYLOADS in scripts/prepare_energy_sei_fixtures.py order. SEI runs once per calendar month after complete-window aggregation. Finite-bound controls document SEI behavior only. Gamma uses SEI MLE, not the library's gamma estimator; it is not beta validation (#1169). Planned energy wrappers remain in #1171/#1172. Maintainer confirmation of extraction, generation and redistribution is required before acceptance.",
+        }
+        (staging / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
+        _publish(staging)
     print(f"Wrote {len(cases)} SEI cases to {FIXTURE_DIR}")
 
 
