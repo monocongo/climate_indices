@@ -67,17 +67,20 @@ classification instead of borrowing gamma's tolerance.
    `(0, 1)` is not moved, exactly as ADR-0015 decision 5 requires.
 
 4. **The support is enforced, not clipped.** A value outside [0, 1] raises
-   `InvalidArgumentError`, and so do supplied masses whose sum exceeds 1, which
-   would leave the interior a negative probability; a mass pair summing above 1
-   raises `ValueError`, the existing fitting-parameter type. On
-   `standardized_index()` the beta branch therefore passes `clip_negatives=False`
-   to the shared pipeline: clipping a negative to a zero would count it in the
-   zero mass and standardize a different series (ADR-0019 decision 3). A
-   tolerance of `1e-12` decides only whether a value is accepted, which absorbs
-   the rounding of a windowed mean over bounded values that can land a few ulps
-   outside the range. It does not move a value into a boundary mass: the masses
-   count exact 0s and 1s, and a value a few ulps inside a boundary is an interior
-   observation standardized through the fitted CDF.
+   `InvalidArgumentError`, and a mass pair summing above 1 raises `ValueError`,
+   the existing fitting-parameter type, because it would leave the interior a
+   negative probability. On `standardized_index()` the beta branch therefore
+   passes `clip_negatives=False` to the shared pipeline: clipping a negative to
+   a zero would count it in the zero mass and standardize a different series
+   (ADR-0019 decision 3). A tolerance of `1e-12` decides only whether a value is
+   accepted, which absorbs the rounding of a windowed mean over bounded values
+   that can land a few ulps outside the range. It does not move an interior
+   value into a boundary mass: the masses count exact 0s and 1s, and a value a
+   few ulps inside a boundary is an interior observation standardized through
+   the fitted CDF. A value accepted in the band outside a boundary is the
+   rounding of that boundary value, so it is placed with that boundary's mass,
+   and is missing where the mass is undefined, exactly as gamma places a
+   negative with its zeros.
 
 5. **Coverage is `standardized_index()` only.** `spi()`, `spei()`, and
    `fit_diagnostics()` reject `Distribution.beta`; the CLI's SPI and SPEI loops

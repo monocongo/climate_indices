@@ -88,6 +88,10 @@ MISSING_DATA_THRESHOLD = 0.20  # 20%
 # Minimum recommended calibration period length in years
 MIN_CALIBRATION_YEARS = 30
 
+# Minimum number of valid Calibration Period values a calendar step needs before the
+# empirical transform ranks against it, the n_thres default of the SEI oracle (#1160)
+MIN_CALIBRATION_VALUES_FOR_EMPIRICAL = 10
+
 # Kolmogorov-Smirnov test p-value threshold for goodness-of-fit warnings
 GOODNESS_OF_FIT_P_VALUE_THRESHOLD = 0.05
 
@@ -2702,10 +2706,11 @@ def transform_fitted_beta(
     :return: 2-D array of transformed/fitted values, corresponding in size and shape
         to the input array
     :raises InvalidArgumentError: if a value lies outside [0, 1] beyond the rounding
-        tolerance of a windowed mean, or the resolved boundary masses sum above 1
+        tolerance of a windowed mean
     :raises ValueError: if ``zero_handling`` is not one of the three modes, a supplied
-        shape parameter does not broadcast to the values, or a supplied boundary mass
-        has cell dimensions that do not match the values or a value outside [0, 1]
+        shape parameter does not broadcast to the values, a supplied boundary mass has
+        cell dimensions that do not match the values or a value outside [0, 1], or the
+        resolved boundary masses sum above 1
     """
     validate_output_scale(output_scale)
     _validate_zero_handling(zero_handling)
@@ -2781,11 +2786,12 @@ def transform_fitted_beta(
             underlying_error=e,
         ) from e
 
-    # a boundary position carries its own mass, not the interior CDF there; the masks are
-    # exact, matching the calibrated masses, so a value a few ulps inside a boundary is an
-    # interior value and takes the CDF (ADR-0024, decision 2)
-    zero_mask = values == 0.0
-    one_mask = values == 1.0
+    # a boundary position carries its own mass, not the interior CDF there. The masks name
+    # the exact boundaries and the tolerated band outside them, which an accepted value in
+    # that band is the rounding of, so it is placed with that boundary's mass exactly as
+    # gamma places a negative with its zeros (ADR-0024, decisions 2 and 4)
+    zero_mask = values <= 0.0
+    one_mask = values >= 1.0
     interior_probabilities = np.where(zero_mask, 0.0, interior_probabilities)
     interior_probabilities = np.where(one_mask, 1.0, interior_probabilities)
 
@@ -3075,6 +3081,90 @@ def transform_fitted_loglogistic(
     return values
 
 
+def transform_fitted_empirical(
+    values: np.ndarray,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
+    output_scale: OutputScale = "normal",
+) -> np.ndarray:
+    """
+    Transform values to normalized sigmas through their empirical (rank-based) probability.
+
+    Each value is ranked against the same calendar step's Calibration Period values
+    with the plotting position of the SEI R package, the oracle pinned by #1160::
+
+        p = (1 + k) / (n + 2),  k = count(calibration values <= value)
+
+    where n is the number of valid calibration values at that step. Ties take their
+    maximum rank, and nothing is extrapolated beyond the calibration range: a value
+    below the calibration minimum scores ``1 / (n + 2)`` and one at or above its
+    maximum ``(n + 1) / (n + 2)``, so p never reaches 0 or 1. Zeros and negatives are
+    ordinary values, with no zero mass and no support to violate, which is what lets
+    a signed series be standardized (ADR-0019). There is nothing to fit, so there are
+    no fitting parameters to supply or reuse.
+
+    A calendar step with fewer than ``MIN_CALIBRATION_VALUES_FOR_EMPIRICAL`` valid
+    calibration values is missing. For daily data whose non-leap years carry NaN at
+    29 February, that includes 29 February unless the Calibration Period holds at least
+    that many leap years; ``utils.transform_to_366day`` synthesizes a value there
+    instead, so the step ranks against every calibration year.
+
+    :param values: 2-D array of values, with each row representing a year containing
+        twelve columns representing the respective calendar months, or 366 columns
+        representing days as if all years were leap years. A time-major spatial block
+        already folded to (years, time_steps, ``*cells``) is also accepted.
+    :param data_start_year: the initial year of the input values array
+    :param calibration_start_year: the initial year to use for the calibration period
+    :param calibration_end_year: the final year to use for the calibration period
+    :param periodicity: the periodicity of the time series represented by the input data
+    :param output_scale: one of ``compute.OUTPUT_SCALES``; "probability" returns the
+        plotting-position probability, "bounded" returns ``2p - 1``, and "normal"
+        (the default) returns the standard-normal z-score, unclipped
+    :return: array of transformed values, corresponding in size and shape to the
+        input array
+    :rtype: numpy.ndarray of floats
+    """
+    validate_output_scale(output_scale)
+
+    log = _logger.bind(
+        operation="transform_fitted_empirical",
+        output_scale=output_scale,
+        distribution="empirical",
+        periodicity=str(periodicity),
+        input_shape=str(values.shape),
+    )
+    log.info("distribution_transform_started")
+
+    if np.ma.isMaskedArray(values):
+        values = np.ma.filled(values.astype(float), np.nan)
+
+    values = _validate_array(values, periodicity)
+    calibration_values, _, _ = _calibration_block(
+        values, data_start_year, calibration_start_year, calibration_end_year, periodicity
+    )
+
+    # count the calibration values at or below each value one calibration year at a
+    # time, so memory stays at one input-sized array whatever the record length; a
+    # missing calibration value compares False and is not counted
+    counts = np.zeros(values.shape)
+    for calibration_year in calibration_values:
+        counts += calibration_year <= values
+    valid_counts = np.count_nonzero(~np.isnan(calibration_values), axis=0)
+
+    probabilities = np.where(
+        np.isnan(values) | (valid_counts < MIN_CALIBRATION_VALUES_FOR_EMPIRICAL),
+        np.nan,
+        (1.0 + counts) / (valid_counts + 2.0),
+    )
+    mapped = _map_non_normal_scale(probabilities, output_scale)
+    result: np.ndarray = scipy.stats.norm.ppf(probabilities) if mapped is None else mapped
+
+    log.info("distribution_transform_completed", output_shape=str(result.shape))
+    return result
+
+
 # normalized fitting-parameter keys, paired with the deprecated alias accepted for each
 _FIT_ALTNAMES = (
     ("alpha", "alphas"),
@@ -3119,6 +3209,27 @@ def _normalize_fitting_params(params: dict[str, Any] | None) -> dict[str, Any] |
     return normed
 
 
+def _validate_empirical_fitting_params(
+    distribution: "Distribution",
+    fitting_params: dict[str, Any] | None,
+) -> None:
+    """
+    Reject a supplied parameter mapping for the rank-based empirical distribution.
+
+    Callers must run this before :func:`_normalize_fitting_params`, which drops
+    unrecognized keys, so a typo in a parameter key would otherwise reach the
+    empirical transform as an empty mapping and read as a valid parameter-free call.
+
+    :raises InvalidArgumentError: if the distribution is empirical and the mapping is not empty
+    """
+    if distribution.value == "empirical" and fitting_params:
+        raise InvalidArgumentError(
+            "The empirical distribution has no fitting parameters; pass fitting_params=None.",
+            argument_name="fitting_params",
+            argument_value=str(sorted(fitting_params)),
+        )
+
+
 # canonical fitting-parameter keys every surface resolves through
 _PARAMETER_KEYS: dict[str, tuple[str, ...]] = {
     "gamma": ("alpha", "beta", "prob_zero"),
@@ -3126,6 +3237,9 @@ _PARAMETER_KEYS: dict[str, tuple[str, ...]] = {
     "loglogistic": ("loc", "scale", "shape"),
     "beta": ("alpha", "beta", "prob_zero", "prob_one"),
 }
+
+# the distributions fit_and_standardize() accepts: every keyed fit plus the empirical rank-based transform
+_SUPPORTED_DISTRIBUTIONS: tuple[str, ...] = (*_PARAMETER_KEYS, "empirical")
 
 
 def _broadcast_parameters(
@@ -3226,19 +3340,27 @@ def _resolve_beta_parameters(
     probabilities = params.get("prob_zero")
     probabilities_of_one = params.get("prob_one")
 
-    # one fit fills every parameter the caller left out, including the masses it also
-    # reports: counting them again here would be a second site that can drift from the
-    # first, and the caller may have supplied the shapes, the masses, or neither
-    if alphas is None or betas is None or probabilities is None or probabilities_of_one is None:
-        fitted_alphas, fitted_betas, fitted_zero, fitted_one = beta_parameters(
+    # a missing shape parameter needs the fit, which reports both masses as well, so one
+    # fit fills every parameter the caller left out. A missing mass alone is counted
+    # directly: a fit for the shapes the caller already supplied would be discarded, and
+    # it would emit calibration-quality warnings for a fit nobody asked for.
+    if alphas is None or betas is None:
+        alphas, betas, fitted_zero, fitted_one = beta_parameters(
             values, data_start_year, calibration_start_year, calibration_end_year, periodicity
         )
-        if alphas is None or betas is None:
-            alphas, betas = fitted_alphas, fitted_betas
         if probabilities is None:
             probabilities = fitted_zero
         if probabilities_of_one is None:
             probabilities_of_one = fitted_one
+    elif probabilities is None or probabilities_of_one is None:
+        period = resolve_calibration_period(
+            data_start_year, values.shape[0], calibration_start_year, calibration_end_year, policy="clamp"
+        )
+        calibration_values = values[period.rows, ...]
+        if probabilities is None:
+            probabilities = _calibration_probability_of(calibration_values, 0.0)
+        if probabilities_of_one is None:
+            probabilities_of_one = _calibration_probability_of(calibration_values, 1.0)
 
     # the interior values carry the rest of the probability, so a resolved mass pair
     # summing above 1 inverts the transform. A caller supplying only one mass reaches
@@ -3651,9 +3773,10 @@ def fit_and_standardize(
             months, or 366 days per column as if all years were leap years; a
             time-major spatial block with more than two dimensions is also accepted.
         distribution: The distribution to fit the values to: gamma, beta, Pearson Type III,
-            or the generalized logistic ("loglogistic") that SPEI standardizes with.
-            Beta is the bounded [0, 1] family, fitted over the interior values with a
-            point mass at each boundary.
+            the generalized logistic ("loglogistic") that SPEI standardizes with, or
+            the empirical (rank-based) distribution, which fits nothing; see
+            :func:`transform_fitted_empirical`. Beta is the bounded [0, 1] family,
+            fitted over the interior values with a point mass at each boundary.
         data_start_year: The initial year of the input values array.
         calibration_start_year: The initial year to use for the calibration period.
         calibration_end_year: The final year to use for the calibration period.
@@ -3678,9 +3801,10 @@ def fit_and_standardize(
             cumulative probability in [0, 1], and "bounded" ``2p - 1`` in [-1, 1].
         zero_handling: Where a zero accumulation is placed within the zero mass,
             one of "classic" (the default), "center_of_mass", or "mean_zero"; see
-            ADR-0015. A gamma fall back applies the same mode. The log-logistic fit
-            has no zero mass, so the mode does not apply to it, and beta applies the
-            mode to both of its boundary masses, mirroring the mass at 1 about 1/2.
+            ADR-0015. A gamma fall back applies the same mode. The log-logistic and
+            empirical distributions have no zero mass, so the mode does not apply to
+            them, and beta applies the mode to both of its boundary masses,
+            mirroring the mass at 1 about 1/2.
 
     Returns:
         2-D array of transformed/fitted values, corresponding in size and shape to
@@ -3688,14 +3812,22 @@ def fit_and_standardize(
 
     Raises:
         InvalidArgumentError: If ``output_scale`` is not one of ``compute.OUTPUT_SCALES``,
-            or a beta fit is given a value outside [0, 1] beyond the rounding tolerance
-            of a windowed mean.
-        ValueError: If the distribution is none of gamma, beta, Pearson Type III, or
-            log-logistic, ``zero_handling`` is not one of the three modes, or a
+            if ``fitting_params`` is given with the empirical distribution, or a beta
+            fit is given a value outside [0, 1] beyond the rounding tolerance of a
+            windowed mean.
+        ValueError: If the distribution is none of gamma, beta, Pearson Type III,
+            log-logistic, or empirical, ``zero_handling`` is not one of the three modes, a beta
+            mass pair sums above 1, or a Pearson
             ``fitting_params`` set is partial or does not carry the period (and cell) axes.
     """
     validate_output_scale(output_scale)
     _validate_zero_handling(zero_handling)
+
+    # validate the distribution before any .value dereference, so a malformed or
+    # unsupported input gets the ValueError documented above rather than an
+    # AttributeError; the branches below need no further distribution check
+    if getattr(distribution, "value", None) not in _SUPPORTED_DISTRIBUTIONS:
+        raise ValueError(f"Unsupported distribution: {distribution}")
 
     # reject a reversed window here, before the dispatch: a complete supplied
     # parameter set skips the resolver calls inside the transforms, so without this
@@ -3704,6 +3836,17 @@ def fit_and_standardize(
     resolve_calibration_period(
         data_start_year, values.shape[0], calibration_start_year, calibration_end_year, policy="clamp"
     )
+
+    _validate_empirical_fitting_params(distribution, fitting_params)
+
+    # rank-based: the calibration sample is the fit, so there is no parameter set to
+    # reuse, and zeros are ordinary values with no zero mass for zero_handling to place
+    if distribution.value == "empirical":
+        if is_all_missing(values):
+            return values
+        return transform_fitted_empirical(
+            values, data_start_year, calibration_start_year, calibration_end_year, periodicity, output_scale
+        )
 
     # an all-missing input has nothing to fit, so return it before any fit: a direct
     # caller must not see a MissingDataWarning or a fit-failure event from it. Validate
@@ -3729,9 +3872,6 @@ def fit_and_standardize(
             fitting_params,
         )
         return fitted.transform(values, output_scale, zero_handling=zero_handling)
-
-    if distribution.value != "pearson":
-        raise ValueError(f"Unsupported distribution: {distribution}")
 
     if not fallback_to_gamma:
         fitted = FittedDistribution.resolve(

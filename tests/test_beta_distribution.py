@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pytest
 import scipy.stats
 
 from climate_indices import compute, indices
-from climate_indices.exceptions import InvalidArgumentError
+from climate_indices.exceptions import InvalidArgumentError, ShortCalibrationWarning
 
 _MONTHLY = compute.Periodicity.monthly
 _DAILY = compute.Periodicity.daily
@@ -352,6 +354,40 @@ def test_only_the_exact_boundary_values_belong_to_a_mass() -> None:
     assert np.all(near[1, :] > 3.0)
     assert np.all(np.isneginf(at_boundary[0, :]))
     assert np.all(np.isposinf(at_boundary[1, :]))
+
+
+def test_a_value_the_support_band_accepts_is_treated_as_its_boundary() -> None:
+    """A tolerated out-of-range value is a rounded boundary value, so its mass applies."""
+    values = np.array([[0.0, 1.0, -1e-13, 1.0 + 1e-13] * 3])
+    ones = np.ones(12)
+    masses = (ones * 0.2, ones * 0.3)
+
+    standardized = compute.transform_fitted_beta(
+        values, 1900, 1900, 1900, _MONTHLY, ones * 0.5, ones * 0.5, *masses, zero_handling="center_of_mass"
+    )
+    # each band value shares the placement its exact boundary receives
+    np.testing.assert_allclose(standardized[0, 2], standardized[0, 0], rtol=0, atol=1e-12)
+    np.testing.assert_allclose(standardized[0, 3], standardized[0, 1], rtol=0, atol=1e-12)
+
+    # an undefined mass makes every boundary value missing, the band values included
+    undefined = compute.transform_fitted_beta(
+        values, 1900, 1900, 1900, _MONTHLY, ones * 0.5, ones * 0.5, np.full(12, np.nan), np.full(12, np.nan)
+    )
+    assert np.all(np.isnan(undefined))
+
+
+def test_supplying_the_shapes_alone_counts_only_the_masses() -> None:
+    """The masses are counted without a fit, so no calibration warning is emitted."""
+    values = _bounded_monthly(years=20)
+    ones = np.ones(12)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        standardized = compute.transform_fitted_beta(values, 1900, 1900, 1919, _MONTHLY, ones * 2.0, ones * 5.0)
+
+    assert np.all(np.isfinite(standardized[5:, 2]))
+    # a fit over the 20-year record would warn that the calibration period is short
+    assert not [warning for warning in caught if issubclass(warning.category, ShortCalibrationWarning)]
 
 
 def test_the_pipeline_rejects_a_negative_beta_value_rather_than_clipping_it() -> None:
