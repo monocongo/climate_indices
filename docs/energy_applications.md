@@ -51,12 +51,12 @@ droughts*: sustained periods of low renewable production or high residual
 load. [Allen & Otero (2023)][allen-otero-2023] define a Standardised Renewable
 Energy Production Index (SREPI) and a Standardised Residual Load Index (SRLI),
 with a reference implementation in the [`SEI` R package][sei]. A validated
-Python implementation of those indices is planned as the family's main
-contribution; the physical transforms will make it usable end to end from raw
+Python implementation of SREPI and a standardized demand index is available;
+SRLI is planned. The physical transforms make the family usable end to end from raw
 reanalysis.
 
-As planned, three indices standardize climate-derived energy proxies that the
-caller supplies:
+Three indices standardize climate-derived energy proxies that the
+caller supplies (SRLI is planned):
 
 - **SREPI** standardizes a climate-derived renewable production proxy or a
   capacity factor, so low values mark weaker-than-usual renewable resource.
@@ -134,7 +134,8 @@ energy system, not recorded supply shortfalls.
 ## Energy indices
 
 The NumPy degree-day and wind-profile functions in `climate_indices.energy`
-are available; the other energy indices below remain planned. The package, its
+are available, as are SREPI and the standardized demand index; the other energy
+indices below remain planned. The package, its
 NumPy and beta xarray tiers, and the scope boundary are fixed by
 [ADR-0019](adr/0019-energy-module-api-and-aggregation.md), with function names,
 units, and argument contracts recorded in the internal energy subsystem design

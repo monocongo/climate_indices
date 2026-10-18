@@ -106,21 +106,27 @@ def srepi(
         calibration_year_initial: Initial year of the Calibration Period.
         calibration_year_final: Final year of the Calibration Period.
         periodicity: ``compute.Periodicity.monthly`` or ``compute.Periodicity.daily``.
+            Daily input must start on 1 January in the 366-slot year layout; convert a
+            Gregorian array with :func:`climate_indices.utils.transform_to_366day`.
         fitting_params: Pre-computed beta fitting parameters; the empirical
             distribution has none.
         distribution: ``Distribution.empirical`` (the default) or ``Distribution.beta``.
         aggregation: How each window is combined, "mean" (the default) or "sum".
         spatial_time_major: Read a time-major block of independent series.
         output_scale: "normal" (the default), "probability", or "bounded".
-        zero_handling: Placement of a zero value within the boundary mass (beta only).
+        zero_handling: Placement of a zero value within the boundary mass (beta only),
+            one of ``compute.ZeroHandling``: "classic", "center_of_mass", or "mean_zero".
 
     Returns:
         Unitless standardized values, shaped as
-        :func:`climate_indices.indices.standardized_index` returns them.
+        :func:`climate_indices.indices.standardized_index` returns them. With the
+        empirical distribution, a calendar step with fewer than ten valid calibration
+        values is NaN.
 
     Raises:
         InvalidArgumentError: If ``distribution`` is neither empirical nor beta, or
             the seam rejects the arguments.
+        ValueError: If ``aggregation`` or ``zero_handling`` is not a supported mode.
 
     References:
         Allen, S., & Otero, N. (2023). Standardised indices to monitor energy droughts.
@@ -175,21 +181,27 @@ def standardized_demand_index(
         calibration_year_initial: Initial year of the Calibration Period.
         calibration_year_final: Final year of the Calibration Period.
         periodicity: ``compute.Periodicity.monthly`` or ``compute.Periodicity.daily``.
+            Daily input must start on 1 January in the 366-slot year layout; convert a
+            Gregorian array with :func:`climate_indices.utils.transform_to_366day`.
         fitting_params: Pre-computed beta fitting parameters; the empirical
             distribution has none.
         distribution: ``Distribution.empirical`` (the default) or ``Distribution.beta``.
         aggregation: How each window is combined, "sum" (the default) or "mean".
         spatial_time_major: Read a time-major block of independent series.
         output_scale: "normal" (the default), "probability", or "bounded".
-        zero_handling: Placement of a zero value within the boundary mass (beta only).
+        zero_handling: Placement of a zero value within the boundary mass (beta only),
+            one of ``compute.ZeroHandling``: "classic", "center_of_mass", or "mean_zero".
 
     Returns:
         Unitless standardized values, shaped as
-        :func:`climate_indices.indices.standardized_index` returns them.
+        :func:`climate_indices.indices.standardized_index` returns them. With the
+        empirical distribution, a calendar step with fewer than ten valid calibration
+        values is NaN.
 
     Raises:
         InvalidArgumentError: If ``distribution`` is neither empirical nor beta, or
             the seam rejects the arguments.
+        ValueError: If ``aggregation`` or ``zero_handling`` is not a supported mode.
 
     References:
         Allen, S., & Otero, N. (2023). Standardised indices to monitor energy droughts.
