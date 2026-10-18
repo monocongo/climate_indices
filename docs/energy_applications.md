@@ -28,7 +28,7 @@ Meteorological drivers           T2m, wind 10/100 m, SSRD, precip           (inp
               ↓
 Demand proxies                   HDD / CDD / EDD                            (available)
 Resource transforms              hub-height wind (available); wind & PV capacity factor (planned)
-Hydro proxy                      capacity-weighted n-month precip           (planned recipe)
+Hydro proxy                      capacity-weighted n-month precip           (available recipe)
               ↓
 Standardized energy indices      SREPI, standardized demand, SRLI           (planned)
               ↓
@@ -153,10 +153,10 @@ order.
   retain negative shear. The default power exponent, 1/7, is a generic
   approximation, not a site-calibrated value. xarray/Dask dispatch is not
   available yet.
-- **Hydropower precipitation proxy** — *planned recipe
-  ([#1167][energy-1167])*. A capacity-weighted, n-month precipitation series
-  standardized with the existing `indices.standardized_index()`, the way
-  {doc}`standardized-hydrologic-indices` standardizes runoff. It is a proxy
+- **Hydropower precipitation proxy** — available as the
+  {doc}`hydropower-precipitation-proxy` recipe ([#1167][energy-1167]). It uses
+  the existing `indices.standardized_index()` to standardize capacity-weighted
+  monthly precipitation at Timescales of 1, 3, 6, and 12 months. It is a proxy
   for hydro resource, not a hydropower generation model.
 - **SREPI and the standardized demand index** — *planned
   ([#1171][energy-1171])*, on the empirical distribution option
