@@ -17,6 +17,17 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "src/climate_indices"
 assert str(ROOT / "src") in sys.path, "Set PYTHONPATH=$PWD/src from the repository root."
 
+SOURCE_REVISION = "f4cb938eb622a3ddf8b96c129337e0ebecd4121e"
+
+
+def _require_pinned_source() -> None:
+    """Refuse changed reference sources before an import can execute them."""
+    subprocess.run(["git", "diff", "--quiet", SOURCE_REVISION, "--", "src/climate_indices"], cwd=ROOT, check=True)
+
+
+# A changed checkout executes on import, so the guard precedes the climate_indices imports.
+_require_pinned_source()
+
 import numpy as np  # noqa: E402
 import scipy  # noqa: E402
 from scipy import special, stats  # noqa: E402
@@ -29,7 +40,6 @@ for module in (compute, indices, lmoments):
 assert compute._native is None
 assert sys.modules.get("climate_indices._native") is None
 
-SOURCE_REVISION = "f4cb938eb622a3ddf8b96c129337e0ebecd4121e"
 DESTINATION = ROOT / "crates/climate-core/tests/fixtures"
 COMMAND = "PYTHONPATH=src uv run python scripts/prepare_rust_distribution_fixtures.py"
 
@@ -389,8 +399,7 @@ def simple_indices() -> None:
 
 
 def main() -> None:
-    """Refuse changed source code and generate without native dispatch."""
-    subprocess.run(["git", "diff", "--quiet", SOURCE_REVISION, "--", "src/climate_indices"], cwd=ROOT, check=True)
+    """Generate without native dispatch, from sources already checked at import."""
     with warnings.catch_warnings(), np.errstate(all="ignore"):
         warnings.simplefilter("ignore", RuntimeWarning)
         fitting()

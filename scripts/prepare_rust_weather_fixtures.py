@@ -15,6 +15,18 @@ from typing import Literal
 # Block extension imports before importing any package module, even if it is installed.
 sys.modules["climate_indices._native"] = None  # type: ignore[assignment]
 
+SOURCE_REVISION = "f4cb938eb622a3ddf8b96c129337e0ebecd4121e"
+ROOT = Path(__file__).resolve().parents[1]
+GUARDED_PATHS = (
+    "src/climate_indices",
+    "tests/fixture/pet_literature",
+    "tests/fixture/cffwis_vwp1985",
+    "tests/test_pm_eto.py",
+)
+
+# The guard must precede the imports: a changed checkout executes them on import.
+subprocess.run(["git", "diff", "--quiet", SOURCE_REVISION, "--", *GUARDED_PATHS], cwd=ROOT, check=True)
+
 import numpy as np  # noqa: E402
 
 from climate_indices import eto, fire, flood, pm_eto  # noqa: E402
@@ -22,9 +34,7 @@ from climate_indices.fire import _cffwis_codes as codes  # noqa: E402
 from climate_indices.fire import _native as fire_native  # noqa: E402
 from climate_indices.flood import _native as flood_native  # noqa: E402
 
-SOURCE_REVISION = "f4cb938eb622a3ddf8b96c129337e0ebecd4121e"
 POLICIES: tuple[tuple[Literal["propagate", "bridge"], int], ...] = (("propagate", 0), ("bridge", 2))
-ROOT = Path(__file__).resolve().parents[1]
 DESTINATION = ROOT / "crates/climate-core/tests/fixtures"
 COMMAND = "PYTHONPATH=src uv run python scripts/prepare_rust_weather_fixtures.py"
 
@@ -336,21 +346,6 @@ def external_references() -> None:
 
 def main() -> None:
     """Generate all weather fixtures with extension dispatch explicitly disabled."""
-    subprocess.run(
-        [
-            "git",
-            "diff",
-            "--quiet",
-            SOURCE_REVISION,
-            "--",
-            "src/climate_indices",
-            "tests/fixture/pet_literature",
-            "tests/fixture/cffwis_vwp1985",
-            "tests/test_pm_eto.py",
-        ],
-        cwd=ROOT,
-        check=True,
-    )
     # Expected values must come from this checkout, not an installed copy.
     assert all(
         Path(module.__file__).resolve().is_relative_to(ROOT / "src")

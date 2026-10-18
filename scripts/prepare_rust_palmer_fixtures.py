@@ -40,16 +40,18 @@ SOURCE_REVISION = "f4cb938eb622a3ddf8b96c129337e0ebecd4121e"
 @patch.dict(sys.modules, {"climate_indices._native": None})
 def generate() -> None:
     """Write deterministic golden values without importing the native extension."""
+    # The guard must precede the imports: a changed checkout executes them on import.
+    paths = [f"src/climate_indices/{name}" for name in SOURCES]
+    subprocess.run(
+        ["git", "diff", "--exit-code", SOURCE_REVISION, "--", *paths], cwd=ROOT, check=True, capture_output=True
+    )
+
     from climate_indices import compute, palmer, self_calibration
     from climate_indices._palmer_duration import DurationFactors
     from climate_indices._palmer_pdi import PdiDurationFactors
 
     assert palmer._native is None and compute._native is None
     assert Path(palmer.__file__).resolve() == ROOT / "src/climate_indices/palmer.py"
-    paths = [f"src/climate_indices/{name}" for name in SOURCES]
-    subprocess.run(
-        ["git", "diff", "--exit-code", SOURCE_REVISION, "--", *paths], cwd=ROOT, check=True, capture_output=True
-    )
     revision = SOURCE_REVISION
     sections: list[str] = []
 
