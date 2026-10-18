@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from time import perf_counter
 from typing import Any, Literal, TypeAlias, cast
 
@@ -200,14 +200,18 @@ def _lag_window(mode: str, lag_window: object) -> tuple[int, int | None]:
         return 1, None
     if lag_window is None:
         return 1, None
-    if not isinstance(lag_window, tuple) or len(lag_window) != 2 or any(type(bound) is not int for bound in lag_window):
+    if (
+        not isinstance(lag_window, tuple)
+        or len(lag_window) != 2
+        or any(isinstance(bound, bool) or not isinstance(bound, (int, np.integer)) for bound in lag_window)
+    ):
         raise InvalidArgumentError(
             "lag_window must be a (low, high) tuple of integers.",
             argument_name="lag_window",
             argument_value=repr(lag_window),
             valid_values="(low, high) with 1 <= low <= high, or None",
         )
-    low, high = lag_window
+    low, high = int(lag_window[0]), int(lag_window[1])
     if low < 1 or high < low:
         raise InvalidArgumentError(
             "lag_window must satisfy 1 <= low <= high; sequential runs are separated by at least one step.",
@@ -219,8 +223,15 @@ def _lag_window(mode: str, lag_window: object) -> tuple[int, int | None]:
 
 
 def _integer_field(name: str, runs: RunSet, field: str) -> npt.NDArray[np.int64]:
-    """Return one run-index field as int64, rejecting a non-integer or non-vector field."""
-    values = np.asarray(getattr(runs, field))
+    """Return one run-index field as int64, rejecting a masked, wrapped, or non-vector field."""
+    raw = getattr(runs, field)
+    if np.ma.isMaskedArray(raw):
+        raise InputTypeError(
+            f"{name}.{field} must be a plain integer array; a masked run index is ambiguous.",
+            expected_type=np.int64,
+            actual_type=type(raw),
+        )
+    values = np.asarray(raw)
     if values.ndim != 1:
         raise DataShapeError(
             f"{name}.{field} must be one-dimensional with one entry per run.",
@@ -233,16 +244,30 @@ def _integer_field(name: str, runs: RunSet, field: str) -> npt.NDArray[np.int64]
             expected_type=np.int64,
             actual_type=values.dtype.type,
         )
+    if values.dtype.kind == "u" and values.size and int(values.max()) > np.iinfo(np.int64).max:
+        # a wrapped value would otherwise pass the duration and bounds checks as a negative index
+        raise InputTypeError(
+            f"{name}.{field} holds values above the int64 range.",
+            expected_type=np.int64,
+            actual_type=values.dtype.type,
+        )
     return values.astype(np.int64)
 
 
-def _validated_runs(name: str, runs: object, valid: npt.NDArray[np.bool_], steps: int) -> _SourceRuns:
+def _validated_runs(
+    name: str,
+    runs: object,
+    valid: npt.NDArray[np.bool_],
+    valid_prefix: npt.NDArray[np.int64],
+    steps: int,
+) -> _SourceRuns:
     """Validate one source's runs against the grid and compute their boundary censoring.
 
     A dataclass is not proof of validity, so a manually constructed ``RunSet`` is checked
-    as strictly as one returned by :func:`climate_indices.runs.identify_runs`: the run
-    arrays must agree in length and each run must be a contiguous observed spell inside
-    the record. Source-run IDs are the caller's indices and are never renumbered.
+    as strictly as one returned by :func:`climate_indices.runs.identify_runs`: every field
+    must hold one entry per run, each run must be a contiguous observed spell inside the
+    record, and the mask pads the record edges for censoring. Source-run IDs are the
+    caller's indices and are never renumbered.
     """
     if not isinstance(runs, RunSet):
         raise InputTypeError(
@@ -253,11 +278,18 @@ def _validated_runs(name: str, runs: object, valid: npt.NDArray[np.bool_], steps
     start = _integer_field(name, runs, "start_index")
     end = _integer_field(name, runs, "end_index")
     duration = _integer_field(name, runs, "duration")
-    if not start.size == end.size == duration.size:
+    mismatched = {
+        field.name: np.asarray(getattr(runs, field.name)).size
+        for field in fields(RunSet)
+        if np.asarray(getattr(runs, field.name)).size != start.size
+    }
+    if mismatched:
+        reported = ", ".join(f"{field} ({size})" for field, size in mismatched.items())
         raise DataShapeError(
-            f"{name} must hold one entry per run in start_index, end_index, and duration.",
+            f"{name} must hold one entry per run in every field; start_index has {start.size} "
+            f"and {reported} disagree with it.",
             expected_shape=f"({start.size},)",
-            actual_shape=duration.shape,
+            actual_shape=tuple(int(size) for size in mismatched.values()),
         )
     if start.size == 0:
         empty = np.zeros(0, dtype=np.bool_)
@@ -283,8 +315,8 @@ def _validated_runs(name: str, runs: object, valid: npt.NDArray[np.bool_], steps
             argument_value=f"start={start.tolist()}, end={end.tolist()}",
             valid_values="strictly increasing, nonoverlapping runs",
         )
-    unknown_prefix = np.concatenate(([0], np.cumsum(~valid, dtype=np.int64)))
-    crossing = np.flatnonzero(unknown_prefix[end + 1] - unknown_prefix[start] > 0)
+    unknown_steps = duration - (valid_prefix[end + 1] - valid_prefix[start])
+    crossing = np.flatnonzero(unknown_steps > 0)
     if crossing.size:
         raise InvalidArgumentError(
             f"{name} run {int(crossing[0])} crosses an unknown observation; a run is a contiguous observed spell.",
@@ -319,7 +351,15 @@ def _source_entry(name: str, metadata: object) -> dict[str, Any]:
     if entry["direction"] != _UNKNOWN:
         _check_choice(f"source_metadata[{name!r}]['direction']", entry["direction"], _VALID_DIRECTIONS)
     if entry["threshold"] != _UNKNOWN:
-        _as_finite_threshold(entry["threshold"])
+        try:
+            _as_finite_threshold(entry["threshold"])
+        except InvalidArgumentError as exc:
+            raise InvalidArgumentError(
+                f"source_metadata[{name!r}]['threshold'] must be a finite number.",
+                argument_name="source_metadata",
+                argument_value=repr(entry["threshold"]),
+                valid_values="a finite int or float",
+            ) from exc
     if entry["min_duration"] != _UNKNOWN and (type(entry["min_duration"]) is not int or entry["min_duration"] < 1):
         raise InvalidArgumentError(
             f"source_metadata[{name!r}]['min_duration'] must be a positive integer.",
@@ -335,13 +375,21 @@ def _match(
     first: _SourceRuns,
     second: _SourceRuns,
     *,
-    valid: npt.NDArray[np.bool_],
+    valid_prefix: npt.NDArray[np.int64],
     mode: str,
     window: tuple[int, int | None],
 ) -> _Matched:
-    """Enumerate the matched pairs and count the sequential bridges rejected as unknown."""
+    """Enumerate the matched pairs and count the sequential bridges rejected as unknown.
+
+    Both sources are validated sorted and nonoverlapping, so one first run's candidates are
+    a contiguous range of second runs. Concurrent candidates run from the first second-run
+    end at or after the onset to the last second-run start at or before the first run's end;
+    sequential candidates run from the first start at or after ``first.end + low`` to the
+    last start at or before ``first.end + high``. Searching those bounds keeps the
+    per-first-run work proportional to its candidates, not to every second run.
+    """
     low, high = window
-    valid_prefix = np.concatenate(([0], np.cumsum(valid, dtype=np.int64)))
+    steps = int(valid_prefix.size) - 1
     columns: dict[str, list[npt.NDArray[Any]]] = {
         key: [] for key in ("first_run_id", "second_run_id", "start_index", "end_index", "overlap_duration", "lag")
     }
@@ -349,47 +397,60 @@ def _match(
     for position in range(first.start.size):
         onset, ending = int(first.start[position]), int(first.end[position])
         if mode == "concurrent":
-            matched = np.flatnonzero((second.start <= ending) & (second.end >= onset))
-            if matched.size == 0:
+            lower = int(np.searchsorted(second.end, onset, side="left"))
+            upper = int(np.searchsorted(second.start, ending, side="right"))
+            if lower >= upper:
                 continue
-            starts = np.maximum(onset, second.start[matched])
-            ends = np.minimum(ending, second.end[matched])
+            starts = np.maximum(onset, second.start[lower:upper])
+            ends = np.minimum(ending, second.end[lower:upper])
             overlaps = ends - starts + 1
-            lags = np.full(matched.size, np.nan, dtype=np.float64)
+            lags = np.full(starts.size, np.nan, dtype=np.float64)
+            matched = np.arange(lower, upper, dtype=np.int64)
         else:
-            lag_steps = second.start - ending
-            inside = lag_steps >= low if high is None else (lag_steps >= low) & (lag_steps <= high)
-            candidates = np.flatnonzero(inside)
-            if candidates.size == 0:
+            # a window bound at or past the record makes every later run eligible, and
+            # clamping the key to the record length keeps a huge bound from overflowing
+            lower = int(np.searchsorted(second.start, steps if low >= steps else ending + low, side="left"))
+            if lower >= second.start.size:
                 continue
-            bridge = second.start[candidates]
+            upper = int(
+                np.searchsorted(
+                    second.start,
+                    steps if high is None or high >= steps else ending + high,
+                    side="right",
+                )
+            )
+            if lower >= upper:
+                continue
+            bridge = second.start[lower:upper]
             observed = valid_prefix[bridge + 1] - valid_prefix[ending] == bridge - ending + 1
-            matched = candidates[observed]
-            unknown_bridges += int(candidates.size - matched.size)
+            unknown_bridges += int(observed.size - np.count_nonzero(observed))
+            matched = lower + np.flatnonzero(observed)
             if matched.size == 0:
                 continue
             starts = np.full(matched.size, onset, dtype=np.int64)
             ends = second.end[matched]
             overlaps = np.zeros(matched.size, dtype=np.int64)
-            lags = second.start[matched] - ending
-        if matched.size:
-            columns["first_run_id"].append(np.full(matched.size, position, dtype=np.int64))
-            columns["second_run_id"].append(np.asarray(matched, dtype=np.int64))
-            columns["start_index"].append(starts)
-            columns["end_index"].append(ends)
-            columns["overlap_duration"].append(overlaps)
-            columns["lag"].append(lags)
+            lags = np.subtract(second.start[matched], ending, dtype=np.float64)
+        columns["first_run_id"].append(np.full(matched.size, position, dtype=np.int64))
+        columns["second_run_id"].append(matched)
+        columns["start_index"].append(starts)
+        columns["end_index"].append(ends)
+        columns["overlap_duration"].append(overlaps)
+        columns["lag"].append(lags)
+    # pop each column as it is stacked so its parts are released before the result is built
+    first_run_ids = _stack(columns.pop("first_run_id"), np.int64)
+    second_run_ids = _stack(columns.pop("second_run_id"), np.int64)
     return _Matched(
-        first_run_id=_stack(columns["first_run_id"], np.int64),
-        second_run_id=_stack(columns["second_run_id"], np.int64),
+        first_run_id=first_run_ids,
+        second_run_id=second_run_ids,
         start_index=_stack(columns["start_index"], np.int64),
         end_index=_stack(columns["end_index"], np.int64),
         overlap_duration=_stack(columns["overlap_duration"], np.int64),
         lag=_stack(columns["lag"], np.float64),
-        first_left_censored=_flags(first.left_censored, columns["first_run_id"]),
-        first_right_censored=_flags(first.right_censored, columns["first_run_id"]),
-        second_left_censored=_flags(second.left_censored, columns["second_run_id"]),
-        second_right_censored=_flags(second.right_censored, columns["second_run_id"]),
+        first_left_censored=_flags(first.left_censored, first_run_ids),
+        first_right_censored=_flags(first.right_censored, first_run_ids),
+        second_left_censored=_flags(second.left_censored, second_run_ids),
+        second_right_censored=_flags(second.right_censored, second_run_ids),
         unknown_bridges=unknown_bridges,
     )
 
@@ -401,11 +462,11 @@ def _stack(parts: list[npt.NDArray[Any]], dtype: npt.DTypeLike) -> npt.NDArray[A
     return _immutable(np.concatenate(parts).astype(dtype, copy=False))
 
 
-def _flags(per_run: npt.NDArray[np.bool_], run_ids: list[npt.NDArray[Any]]) -> npt.NDArray[np.bool_]:
+def _flags(per_run: npt.NDArray[np.bool_], run_ids: npt.NDArray[np.int64]) -> npt.NDArray[np.bool_]:
     """Repeat each source run's boundary flag once per row."""
-    if not run_ids:
+    if run_ids.size == 0:
         return _immutable(np.zeros(0, dtype=np.bool_))
-    return _immutable(per_run[np.concatenate(run_ids)])
+    return _immutable(per_run[run_ids])
 
 
 def _compound_events(
@@ -438,6 +499,8 @@ def _compound_events(
             coordinate_name="time['shared']",
             reason="empty",
         )
+    # the explicit one-dimensional check above keeps _observed_index's shape branch unreachable,
+    # so its inputs['shared'] wording is never shown; the remaining checks name the real argument
     index = _observed_index("shared", labels, cadence, steps)
     if np.any(np.diff(index) != 1):
         raise CoordinateValidationError(
@@ -447,6 +510,7 @@ def _compound_events(
             reason="incomplete_grid",
         )
     mask = _observation_mask(valid, steps)
+    valid_prefix = np.concatenate(([0], np.cumsum(mask, dtype=np.int64)))
 
     if source_metadata is not None and not isinstance(source_metadata, Mapping):
         raise InvalidArgumentError(
@@ -465,11 +529,12 @@ def _compound_events(
             valid_values=f"keys from {list(_SOURCE_NAMES)}",
         )
 
-    first_runs = _validated_runs("first", first, mask, steps)
-    second_runs = _validated_runs("second", second, mask, steps)
-    rows = _match(first_runs, second_runs, valid=mask, mode=mode, window=window)
+    first_runs = _validated_runs("first", first, mask, valid_prefix, steps)
+    second_runs = _validated_runs("second", second, mask, valid_prefix, steps)
+    rows = _match(first_runs, second_runs, valid_prefix=valid_prefix, mode=mode, window=window)
 
     unit = _UNITS[cadence]
+    n_valid = int(valid_prefix[-1])
     metadata = {
         "schema_version": _MANIFEST_SCHEMA_VERSION,
         "mode": mode,
@@ -479,8 +544,8 @@ def _compound_events(
         "grid": {
             "step": cadence,
             "n_steps": steps,
-            "n_valid": int(mask.sum()),
-            "n_unknown": int((~mask).sum()),
+            "n_valid": n_valid,
+            "n_unknown": steps - n_valid,
             "time_start": str(labels[0].astype(unit)),
             "time_end": str(labels[-1].astype(unit)),
         },
@@ -566,9 +631,9 @@ def compound_events(
     Raises:
         InvalidArgumentError: For an unsupported ``cadence`` or ``mode``, a
             ``lag_window`` that is out of range or given for concurrent matching, an
-            inconsistent ``RunSet`` (mismatched field lengths, non-positive or
-            inconsistent durations, out-of-bounds or overlapping runs), a run crossing an
-            unknown observation, or malformed ``source_metadata``.
+            inconsistent ``RunSet`` (non-positive or inconsistent durations, out-of-bounds
+            or overlapping runs), a run crossing an unknown observation, or malformed
+            ``source_metadata``.
         InputTypeError: If a source is not a ``RunSet``, a run index is not an integer
             array, ``valid`` is not a plain Boolean array, or the dates are not
             ``datetime64``.
