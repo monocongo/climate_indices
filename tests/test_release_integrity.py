@@ -367,6 +367,25 @@ def test_rust_job_runs_the_cargo_gate_against_the_workspace_interpreter() -> Non
     assert "PYO3_PYTHON: ${{ github.workspace }}/.venv/bin/python" in rust_job
 
 
+def test_standalone_rust_job_checks_the_crate_without_python() -> None:
+    """A Rust-only container must prove that Cargo needs no Python build tools."""
+    workflow = (ROOT / UNIT_TESTS_WORKFLOW).read_text(encoding="utf-8")
+    job = _workflow_job(workflow, "rust-standalone")
+    assert "if:" not in job and "needs:" not in job
+    assert "persist-credentials: false" in job
+    assert "continue-on-error" not in job
+    assert "rust-toolchain.toml" in job
+    assert """toolchain=$(awk -F '"' '/^channel = / { print $2 }' rust-toolchain.toml)""" in job
+    assert '"rust:${toolchain}-slim"' in job
+    assert '--volume "$PWD:/source:ro"' in job
+    assert "CARGO_TARGET_DIR=/tmp/target" in job
+    assert "for tool in python python3 uv maturin; do" in job
+    assert 'if command -v "$tool"; then' in job
+    assert "exit 1" in job
+    assert "cargo test --locked -p climate-core" in job
+    assert "setup-python" not in job and "setup-uv" not in job
+
+
 def test_native_jobs_run_on_every_event_and_pure_python_legs_stay_rust_free() -> None:
     """The Rust gates are ungated and blocking, and the pure-Python legs never build Rust.
 
