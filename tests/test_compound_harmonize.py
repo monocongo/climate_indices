@@ -104,7 +104,15 @@ def test_namespace_is_not_re_exported_from_the_root() -> None:
     assert "compound" not in climate_indices.__all__
     assert not hasattr(climate_indices, "harmonize")
     assert not hasattr(climate_indices, "joint_statistics")
-    assert sorted(compound.__all__) == ["AlignedHazards", "JointResult", "harmonize", "joint_statistics"]
+    assert not hasattr(climate_indices, "conditional_probability")
+    assert sorted(compound.__all__) == [
+        "AlignedHazards",
+        "ConditionalResult",
+        "JointResult",
+        "conditional_probability",
+        "harmonize",
+        "joint_statistics",
+    ]
 
 
 # --- thresholds, dtypes, and unknown values --------------------------------------------------

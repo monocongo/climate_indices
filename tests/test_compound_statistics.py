@@ -675,3 +675,544 @@ def test_record_length_counts_observed_years_not_month_arithmetic() -> None:
         compound.joint_statistics(align(four_months, start="2000-11"), groupby="pooled", min_samples=1)
     messages = [str(item.message) for item in caught]
     assert any("2 observed calendar year" in message for message in messages)
+
+
+# --- conditional_probability() (CMP-05) -----------------------------------------------------
+
+
+def conditional(aligned: compound.AlignedHazards, **kwargs: Any) -> compound.ConditionalResult:
+    """Call ``conditional_probability()`` with the two default source names and the given options."""
+    options: dict[str, Any] = {"given": "source_0", "target": "source_1", "groupby": "pooled", "min_samples": 1}
+    options.update(kwargs)
+    return compound.conditional_probability(aligned, **options)
+
+
+def test_zero_lag_identity_matches_the_joint_and_marginal_ratio() -> None:
+    """At (0, 0) the conditional frequency is the joint count over the given marginal count."""
+    hazard = np.array(
+        [
+            [True, False, True, True, False, True],
+            [True, True, False, True, False, False],
+        ]
+    )
+    aligned = align(hazard)
+    with pytest.warns(ClimateIndicesWarning):
+        joint = compound.joint_statistics(aligned, groupby="pooled", min_samples=1)
+    with pytest.warns(ClimateIndicesWarning):
+        lagged = conditional(aligned)
+    # rows (T,T) (F,T) (T,F) (T,T) (F,F) (T,F): 6 eligible, 4 given positives, 2 joint
+    assert int(lagged.n_anchors) == int(joint.n_valid) == 6
+    assert int(lagged.n_positive) == int(joint.n_marginal[0]) == 4
+    assert int(lagged.n_success) == int(joint.n_joint) == 2
+    assert float(lagged.conditional_probability) == exact(2 / 4)
+    # the contemporaneous baseline is the target marginal on the same support, not a second estimand
+    assert float(lagged.response_window_frequency) == float(joint.marginal_frequency[1]) == exact(3 / 6)
+
+
+def test_forward_window_counts_each_given_positive_anchor_once() -> None:
+    """A three-step window is hand-counted per anchor, including the incomplete trailing anchors."""
+    hazard = np.array(
+        [
+            [True, False, True, False, True, False],
+            [True, False, False, False, False, False],
+        ]
+    )
+    aligned = align(hazard)
+    with pytest.warns(ClimateIndicesWarning):
+        result = conditional(aligned, lag_window=(0, 2))
+    # anchors 0-3 have a complete window; anchors 4 and 5 do not
+    assert int(result.n_anchors) == 4
+    assert int(result.n_positive) == 2
+    assert int(result.n_success) == 1
+    assert int(result.n_response) == 1
+    assert float(result.conditional_probability) == exact(0.5)
+    assert float(result.response_window_frequency) == exact(0.25)
+    assert result.lag_window == (0, 2)
+
+
+def test_multiple_target_occurrences_in_one_window_count_the_anchor_once() -> None:
+    """The numerator counts anchors, so a second target step in the window changes nothing."""
+    hazard = np.array(
+        [
+            [True, False, False, False],
+            [True, False, True, False],
+        ]
+    )
+    aligned = align(hazard)
+    with pytest.warns(ClimateIndicesWarning):
+        result = conditional(aligned, lag_window=(0, 2))
+    # anchor 0 sees the target at step 0 and again at step 2, but counts as one success
+    assert int(result.n_anchors) == 2
+    assert int(result.n_positive) == 1
+    assert int(result.n_success) == 1
+    assert int(result.n_response) == 2
+    assert float(result.conditional_probability) == 1.0
+
+
+def test_incomplete_horizon_is_discarded_even_when_it_holds_a_response() -> None:
+    """The trailing anchor's window leaves the record, so the anchor is not eligible at all."""
+    hazard = np.array([[True, True], [False, True]])
+    aligned = align(hazard)
+    with pytest.warns(ClimateIndicesWarning):
+        result = conditional(aligned, lag_window=(0, 1))
+    assert int(result.n_anchors) == 1
+    assert int(result.n_positive) == 1
+    assert int(result.n_success) == 1
+
+
+def test_unknown_response_step_discards_the_anchor() -> None:
+    """An unknown target step in the window makes the anchor ineligible rather than a non-response."""
+    hazard = np.array(
+        [
+            [True, False, True, False, False],
+            [True, False, False, True, False],
+        ]
+    )
+    valid = np.ones(hazard.shape, dtype=bool)
+    valid[1, 2] = False  # the window of anchors 0 and 1 holds this unknown step
+    aligned = align(hazard, valid)
+    with pytest.warns(ClimateIndicesWarning):
+        result = conditional(aligned, lag_window=(1, 2))
+    # treating the unknown step as a non-response would keep anchors 0 and 1 and report 0.5
+    assert int(result.n_anchors) == 1
+    assert int(result.n_positive) == 1
+    assert int(result.n_success) == 1
+    assert float(result.conditional_probability) == 1.0
+
+
+def test_conditioning_is_not_symmetric() -> None:
+    """Swapping the source roles changes the denominator while the baseline stays on the same anchors."""
+    hazard = np.array([[True, True, True, False], [True, False, False, False]])
+    aligned = align(hazard)
+    with pytest.warns(ClimateIndicesWarning):
+        forward = conditional(aligned, lag_window=(0, 1))
+    with pytest.warns(ClimateIndicesWarning):
+        backward = conditional(aligned, given="source_1", target="source_0", lag_window=(0, 1))
+    assert float(forward.conditional_probability) == exact(1 / 3)
+    assert float(backward.conditional_probability) == exact(1 / 1)
+    # both share one eligible-anchor set, but each baseline describes its own target source
+    assert int(forward.n_anchors) == int(backward.n_anchors) == 3
+    assert float(forward.response_window_frequency) == exact(1 / 3)
+    assert float(backward.response_window_frequency) == exact(3 / 3)
+
+
+def test_baseline_is_the_response_window_rate_not_the_single_step_marginal() -> None:
+    """The comparison is P(R) over the eligible anchors, not the one-step target frequency."""
+    hazard = np.array(
+        [
+            [True, False, True, False, True, False],
+            [True, False, False, True, False, False],
+        ]
+    )
+    aligned = align(hazard)
+    with pytest.warns(ClimateIndicesWarning):
+        result = conditional(aligned, lag_window=(0, 1))
+    with pytest.warns(ClimateIndicesWarning):
+        joint = compound.joint_statistics(aligned, groupby="pooled", min_samples=1)
+    assert int(result.n_positive) == 3
+    assert int(result.n_success) == 2
+    assert float(result.conditional_probability) == exact(2 / 3)
+    assert int(result.n_response) == 3
+    assert float(result.response_window_frequency) == exact(3 / 5)
+    assert float(result.response_window_frequency) != float(joint.marginal_frequency[1])
+    assert float(result.response_window_frequency) != float(joint.joint_probability)
+
+
+def test_anchor_month_groups_a_window_that_crosses_into_the_next_year() -> None:
+    """A December anchor keeps its December group even though the response lies in January."""
+    given = np.zeros(13, dtype=bool)
+    given[11] = True  # December 2000
+    target = np.zeros(13, dtype=bool)
+    target[12] = True  # January 2001
+    aligned = align(np.array([given, target]))
+    with pytest.warns(ClimateIndicesWarning):
+        result = conditional(aligned, lag_window=(1, 1), groupby="month")
+    assert result.n_anchors.tolist() == [1] * 12
+    assert int(result.n_positive[11]) == 1
+    assert int(result.n_success[11]) == 1
+    assert float(result.conditional_probability[11]) == 1.0
+    assert int(result.n_positive[0]) == 0
+    assert math.isnan(float(result.conditional_probability[0]))
+    assert result.metadata["lag_units"] == "calendar months"
+
+
+def test_daily_window_steps_are_civil_days_across_a_leap_day() -> None:
+    """One step from 29 February is 1 March; no 30 February step is invented."""
+    given = np.array([False, True, False, False])
+    target = np.array([False, False, True, False])
+    hazard = np.array([given, target])
+    aligned = align(hazard, cadence="daily", start="2000-02-28")
+    with pytest.warns(ClimateIndicesWarning):
+        result = conditional(aligned, lag_window=(1, 1), groupby="month")
+    assert int(result.n_anchors.sum()) == 3
+    assert result.n_anchors.tolist() == [0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    assert int(result.n_positive[1]) == 1
+    assert int(result.n_success[1]) == 1
+    assert float(result.conditional_probability[1]) == 1.0
+    assert int(result.n_positive[2]) == 0
+    assert result.metadata["lag_units"] == "civil days"
+
+
+def test_conditional_short_support_keeps_counts_and_nans_the_estimates() -> None:
+    """Below min_samples the counts survive and every estimate becomes NaN."""
+    hazard = np.array([[True, True, False], [True, False, True]])
+    aligned = align(hazard)
+    with pytest.warns(ClimateIndicesWarning, match="min_samples=30"):
+        strict = conditional(aligned, lag_window=(0, 1), min_samples=30)
+    assert int(strict.n_anchors) == 2
+    assert int(strict.n_positive) == 2
+    assert int(strict.n_success) == 2
+    assert math.isnan(float(strict.conditional_probability))
+    assert math.isnan(float(strict.response_window_frequency))
+    assert int(strict.quality_flags) == 1
+
+    relaxed = conditional(align(hazard), lag_window=(0, 1), min_samples=2)
+    assert int(relaxed.quality_flags) == 0
+    assert float(relaxed.conditional_probability) == 1.0
+    assert float(relaxed.response_window_frequency) == exact(2 / 2)
+
+
+def test_zero_conditioning_count_is_undefined_with_its_flag() -> None:
+    """A given hazard that never occurs leaves the conditional probability undefined, not zero."""
+    hazard = np.array([[False, False], [True, True]])
+    aligned = align(hazard)
+    with pytest.warns(ClimateIndicesWarning, match="no conditioning occurrence"):
+        result = conditional(aligned)
+    assert int(result.n_anchors) == 2
+    assert int(result.n_positive) == 0
+    assert int(result.n_success) == 0
+    assert math.isnan(float(result.conditional_probability))
+    assert float(result.response_window_frequency) == 1.0
+    assert int(result.quality_flags) == 2
+
+
+def test_conditional_all_missing_cell_returns_zero_counts_without_failing_its_neighbor() -> None:
+    """An all-missing grid cell yields zero counts and flags while the observed cell is unaffected."""
+    hazard = np.array(
+        [
+            [[True, False], [False, False], [True, False], [False, False], [True, False]],
+            [[False, False], [True, False], [False, False], [True, False], [False, False]],
+        ]
+    )
+    valid = np.ones(hazard.shape, dtype=bool)
+    valid[:, :, 1] = False
+    aligned = align(hazard, valid)
+    with pytest.warns(ClimateIndicesWarning, match="observed calendar year"):
+        result = conditional(aligned, lag_window=(0, 1))
+    assert result.n_anchors.tolist() == [4, 0]
+    assert result.n_positive.tolist() == [2, 0]
+    assert result.n_success.tolist() == [2, 0]
+    assert float(result.conditional_probability[0]) == 1.0
+    assert math.isnan(float(result.conditional_probability[1]))
+    assert result.quality_flags.tolist() == [0, 3]
+
+
+def test_only_the_two_declared_sources_enter_eligibility() -> None:
+    """A third source's validity does not gate the selected pair; joint_statistics would gate on it."""
+    hazard = np.array(
+        [
+            [True, False, True, False],
+            [True, True, False, False],
+            [True, True, True, True],
+        ]
+    )
+    valid = np.ones(hazard.shape, dtype=bool)
+    valid[2] = False  # the third source is entirely unknown
+    aligned = align(hazard, valid)
+    with pytest.warns(ClimateIndicesWarning):
+        result = conditional(aligned)
+    with pytest.warns(ClimateIndicesWarning):
+        joint = compound.joint_statistics(aligned, groupby="pooled", min_samples=1)
+    assert int(result.n_anchors) == 4
+    assert int(result.n_positive) == 2
+    assert int(result.n_success) == 1
+    assert int(joint.n_valid) == 0
+
+
+def test_lag_window_at_or_past_the_record_end_returns_no_eligible_anchor() -> None:
+    """An out-of-range window is empty, not an unbounded scan or an overflowed index."""
+    hazard = np.array([[True, False, True, False], [True, True, False, False]])
+    for lag_window in ((0, 4), (0, 10**9), (2**63 - 1, 2**63 - 1), (5, 9)):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            result = conditional(align(hazard), lag_window=lag_window)
+        assert int(result.n_anchors) == 0
+        assert int(result.n_positive) == 0
+        assert int(result.quality_flags) == 3
+        assert math.isnan(float(result.conditional_probability))
+        assert math.isnan(float(result.response_window_frequency))
+
+
+def test_rejects_a_time_vector_with_a_missing_cadence_step() -> None:
+    """A gap would turn one lag step into a longer interval, so a gapped vector is rejected."""
+    hazard = np.array([[True, False, True], [False, True, True]])
+    daily = align(hazard, cadence="daily", start="2000-01-01")
+    daily_gap = dataclasses.replace(
+        daily, time=np.array(["2000-01-01", "2000-01-03", "2000-01-04"], dtype="datetime64[D]")
+    )
+    with pytest.raises(CoordinateValidationError, match="complete cadence grid"):
+        conditional(daily_gap)
+    monthly_gap = dataclasses.replace(
+        align(hazard), time=np.array(["2000-01-01", "2000-03-01", "2000-04-01"], dtype="datetime64[D]")
+    )
+    with pytest.raises(CoordinateValidationError, match="complete cadence grid"):
+        conditional(monthly_gap)
+
+
+def test_joint_statistics_accepts_a_gapped_time_vector() -> None:
+    """Pointwise joint counts never read adjacent dates as lag steps, so a gap is not an error."""
+    hazard = np.array([[True, False, True], [False, True, True]])
+    gapped = dataclasses.replace(
+        align(hazard), time=np.array(["2000-01-01", "2000-03-01", "2000-04-01"], dtype="datetime64[D]")
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", ClimateIndicesWarning)
+        result = compound.joint_statistics(gapped, groupby="pooled", min_samples=1)
+    assert int(result.n_valid) == 3
+    assert int(result.n_joint) == 1
+
+
+@pytest.mark.parametrize("window", [(0, 0), (1, 3), (0, 7), (2, 9), (0, 10**9)])
+def test_forward_windows_match_a_per_anchor_scan(window: tuple[int, int]) -> None:
+    """The rolling-window count equals a direct scan of [t+low, t+high], and an incomplete horizon is invalid."""
+    rng = np.random.default_rng(1388)
+    valid = rng.random((9, 2, 3)) > 0.2
+    occurrence = (rng.random((9, 2, 3)) > 0.6) & valid
+    low, high = window
+    window_valid, response = statistics_module._forward_windows(valid, occurrence, low, high)
+
+    expected_valid = np.zeros(valid.shape, dtype=bool)
+    expected_response = np.zeros(valid.shape, dtype=bool)
+    for anchor in range(valid.shape[0]):
+        if anchor + high < valid.shape[0]:
+            expected_valid[anchor] = valid[anchor + low : anchor + high + 1].all(axis=0)
+            expected_response[anchor] = occurrence[anchor + low : anchor + high + 1].any(axis=0)
+    np.testing.assert_array_equal(window_valid, expected_valid)
+    np.testing.assert_array_equal(response, expected_response)
+
+
+def test_production_defaults_group_by_month_and_require_thirty_anchors() -> None:
+    """The documented defaults are calendar-month grouping and min_samples=30."""
+    hazard = np.ones((2, 6), dtype=bool)
+    aligned = align(hazard)
+    with pytest.warns(ClimateIndicesWarning, match="min_samples=30"):
+        result = compound.conditional_probability(aligned, given="source_0", target="source_1")
+    assert result.groupby == "month"
+    assert result.lag_window == (0, 0)
+    assert result.n_anchors.shape == (12,)
+    assert int(result.n_anchors.sum()) == 6
+    assert int(result.n_positive[0]) == 1
+    assert math.isnan(float(result.conditional_probability[0]))
+    assert int(result.quality_flags[0]) == 1
+
+
+def test_conditional_warns_about_sparse_conditioning() -> None:
+    """Fewer than ten conditioning occurrences warns on that count, once per group."""
+    hazard = np.array([[True, False, True, False], [True, True, False, False]])
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        conditional(align(hazard))
+    sparse = [str(item.message) for item in caught if "conditioning occurrences" in str(item.message)]
+    assert len(sparse) == 1
+    assert all(issubclass(item.category, ClimateIndicesWarning) for item in caught)
+
+
+@given(rows=two_source_rows())
+def test_conditional_counts_nest_and_probabilities_stay_within_their_bounds(
+    rows: tuple[list[bool], list[bool], list[bool], list[bool]],
+) -> None:
+    """Counts nest on one eligible support and every frequency lies in [0, 1]."""
+    first, second, first_valid, second_valid = rows
+    hazard = np.array([first, second], dtype=bool)
+    valid = np.array([first_valid, second_valid], dtype=bool)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        result = conditional(align(hazard, valid), lag_window=(0, 1))
+    n_anchors = int(result.n_anchors)
+    n_positive = int(result.n_positive)
+    n_response = int(result.n_response)
+    n_success = int(result.n_success)
+    assert 0 <= n_success <= min(n_positive, n_response) <= n_anchors
+    for probability in (float(result.conditional_probability), float(result.response_window_frequency)):
+        assert math.isnan(probability) or 0.0 <= probability <= 1.0
+    # the denominators are the anchor counts, not the eligible support
+    if n_positive:
+        assert float(result.conditional_probability) == exact(n_success / n_positive)
+    else:
+        assert math.isnan(float(result.conditional_probability))
+    if n_anchors:
+        assert float(result.response_window_frequency) == exact(n_response / n_anchors)
+    else:
+        assert math.isnan(float(result.response_window_frequency))
+
+
+def test_conditional_result_arrays_are_read_only_copied_and_frozen() -> None:
+    """Freeze the arrays and the instance; an incomplete or a shared record is not a result."""
+    hazard = np.array([[True, False, True], [False, True, True]])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        result = conditional(align(hazard))
+    for array in (
+        result.n_anchors,
+        result.n_positive,
+        result.n_response,
+        result.n_success,
+        result.conditional_probability,
+        result.response_window_frequency,
+        result.quality_flags,
+    ):
+        assert not array.flags.writeable
+        with pytest.raises(ValueError, match="read-only"):
+            array.flat[0] = array.flat[0]
+    assert result.n_anchors.dtype == np.int64
+    assert result.n_positive.dtype == np.int64
+    assert result.n_response.dtype == np.int64
+    assert result.n_success.dtype == np.int64
+    assert result.quality_flags.dtype == np.int64
+    assert result.conditional_probability.dtype == np.float64
+    assert result.response_window_frequency.dtype == np.float64
+    assert not np.shares_memory(result.n_success, hazard)
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        result.given = "source_1"  # type: ignore[misc]
+
+
+def test_manifest_serializes_with_the_pairing_window_and_harmonization_record() -> None:
+    """Round-trip the manifest through JSON and keep the pairing and window reachable."""
+    hazard = np.array([[True, False, True, False], [True, True, False, False]])
+    aligned = align(hazard, metadata={"calendar": "proleptic_gregorian", "cadence": "monthly"})
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        result = conditional(aligned, given="source_1", target="source_0", lag_window=(0, 1), min_samples=2)
+    manifest = json.loads(json.dumps(result.metadata, allow_nan=False))
+    assert manifest["schema_version"] == 1
+    assert manifest["function"] == "conditional_probability"
+    assert manifest["given"] == "source_1"
+    assert manifest["target"] == "source_0"
+    assert manifest["lag_window"] == [0, 1]
+    assert manifest["groupby"] == "pooled"
+    assert manifest["min_samples"] == 2
+    assert manifest["calendar"] == "proleptic_gregorian"
+    assert manifest["n_steps"] == 4
+    assert manifest["quality_flags"]["undefined_denominator"] == 2
+    assert "every target step in the inclusive forward window is valid" in manifest["eligibility"]
+    assert "not an event-onset probability" in manifest["estimands"]
+    assert "calendar month groups a lagged statistic" in manifest["lag_rule"]
+    assert manifest["harmonization"]["cadence"] == "monthly"
+    assert result.metadata["grouped_by"] == "pooled over every eligible anchor"
+
+
+def test_month_groups_follow_the_anchor_step() -> None:
+    """Monthly grouping reports one value per anchor month, not per response month."""
+    given = np.zeros(12, dtype=bool)
+    given[0] = True
+    target = np.zeros(12, dtype=bool)
+    target[1] = True
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        result = conditional(align(np.array([given, target])), lag_window=(1, 1), groupby="month")
+    assert result.n_anchors.shape == (12,)
+    assert result.n_anchors.tolist() == [1] * 11 + [0]
+    assert int(result.n_success[0]) == 1
+    assert float(result.conditional_probability[0]) == 1.0
+    assert int(result.n_positive[1]) == 0
+    assert result.metadata["grouped_by"] == "month"
+
+
+@pytest.mark.parametrize(
+    ("given", "target", "message"),
+    [
+        ("source_0", "source_0", "different sources"),
+        ("source_2", "source_1", "must name one source"),
+        ("", "source_1", "must name one source"),
+        (None, "source_1", "must name one source"),
+        ("source_0", 1, "must name one source"),
+    ],
+)
+def test_rejects_ambiguous_or_missing_source_roles(given: Any, target: Any, message: str) -> None:
+    """Require two distinct existing names instead of guessing at the roles."""
+    aligned = align(np.array([[True, False, True], [False, True, True]]))
+    with pytest.raises(InvalidArgumentError, match=message):
+        compound.conditional_probability(aligned, given=given, target=target)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("lag_window", "message"),
+    [
+        ((0, -1), "ordered from low to high"),
+        ((-1, 0), "cannot be negative"),
+        ((2, 1), "ordered from low to high"),
+        ((0, 1, 2), "tuple of cadence-step offsets"),
+        (0, "tuple of cadence-step offsets"),
+        (["0", "1"], "tuple of cadence-step offsets"),
+        ((0, 1.5), "must be integers"),
+        ((True, 1), "must be integers"),
+    ],
+)
+def test_rejects_invalid_lag_windows(lag_window: Any, message: str) -> None:
+    """The window is forward and ordered, so a negative or reversed request is rejected."""
+    aligned = align(np.array([[True, False, True], [False, True, True]]))
+    with pytest.raises(InvalidArgumentError, match=message):
+        compound.conditional_probability(aligned, given="source_0", target="source_1", lag_window=lag_window)
+
+
+@pytest.mark.parametrize(
+    ("argument", "value", "message"),
+    [
+        ("groupby", "seasonal", "groupby must be one of"),
+        ("min_samples", 0, "positive integer"),
+        ("min_samples", True, "positive integer"),
+    ],
+)
+def test_conditional_rejects_invalid_options(argument: str, value: Any, message: str) -> None:
+    """Validate the shared options before resolving the window."""
+    aligned = align(np.array([[True, False, True], [False, True, True]]))
+    with pytest.raises(InvalidArgumentError, match=message):
+        compound.conditional_probability(aligned, given="source_0", target="source_1", **{argument: value})
+
+
+def test_conditional_lifecycle_events_are_emitted_on_success() -> None:
+    """Emit ``calculation_started`` then ``calculation_completed`` with the group shape."""
+    mock_logger = mock.MagicMock()
+    mock_logger.bind.return_value = mock_logger
+    aligned = align(np.array([[True, False, True, True], [False, True, True, False]]))
+    with (
+        mock.patch.object(statistics_module, "_logger", mock_logger),
+        warnings.catch_warnings(),
+    ):
+        warnings.simplefilter("ignore")
+        conditional(aligned, groupby="month")
+    bound = mock_logger.bind.call_args.kwargs
+    assert bound["index_type"] == "compound_conditional_probability"
+    assert bound["n_sources"] == 2  # names are caller identifiers and stay out of the log
+    assert bound["lag_window"] == (0, 0)
+    assert "given" not in bound
+    assert "target" not in bound
+    assert [call.args[0] for call in mock_logger.info.call_args_list] == [
+        "calculation_started",
+        "calculation_completed",
+    ]
+    assert mock_logger.info.call_args_list[1].kwargs["output_shape"] == (12,)
+    mock_logger.error.assert_not_called()
+
+
+def test_conditional_failure_is_logged_and_propagates() -> None:
+    """Emit ``calculation_failed`` for a rejected window and re-raise it unchanged."""
+    mock_logger = mock.MagicMock()
+    mock_logger.bind.return_value = mock_logger
+    aligned = align(np.array([[True, False, True], [False, True, True]]))
+    with (
+        mock.patch.object(statistics_module, "_logger", mock_logger),
+        pytest.raises(InvalidArgumentError, match="ordered from low to high"),
+    ):
+        conditional(aligned, lag_window=(1, 0))
+    mock_logger.info.assert_called_once_with("calculation_started")
+    failed = [call for call in mock_logger.error.call_args_list if call.args[0] == "calculation_failed"]
+    assert len(failed) == 1
+    assert failed[0].kwargs["error_type"] == "InvalidArgumentError"
+
+
+def test_conditional_public_surface_is_explicit() -> None:
+    """Expose the function and its result type, and never from the package root."""
+    assert "conditional_probability" in compound.__all__
+    assert "ConditionalResult" in compound.__all__
+    assert not hasattr(climate_indices, "conditional_probability")

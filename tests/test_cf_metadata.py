@@ -29,6 +29,8 @@ COMPOUND_KEYS = (
     "compound_joint_probability",
     "compound_independent_probability",
     "compound_likelihood_multiplication_factor",
+    "compound_conditional_probability",
+    "compound_response_window_probability",
 )
 
 # expected registry keys
@@ -231,6 +233,10 @@ ENTRY_VALUE_ROWS = [
     ("compound_independent_probability", "units", "1"),
     ("compound_likelihood_multiplication_factor", "long_name", "Compound Hazard Likelihood Multiplication Factor"),
     ("compound_likelihood_multiplication_factor", "units", "1"),
+    ("compound_conditional_probability", "long_name", "Compound Hazard Conditional Frequency"),
+    ("compound_conditional_probability", "units", "1"),
+    ("compound_response_window_probability", "long_name", "Compound Hazard Response-Window Frequency"),
+    ("compound_response_window_probability", "units", "1"),
 ]
 
 ENTRY_VALUES = [
@@ -290,6 +296,8 @@ REFERENCE_ROWS = [
     ("compound_joint_probability", ("Vieira Passos", "2024", "10.1007/s00477-024-02783-3")),
     ("compound_independent_probability", ("Vieira Passos", "2024", "10.1007/s00477-024-02783-3")),
     ("compound_likelihood_multiplication_factor", ("Vieira Passos", "2024", "10.1007/s00477-024-02783-3")),
+    ("compound_conditional_probability", ("Vieira Passos", "2024", "10.1007/s00477-024-02783-3")),
+    ("compound_response_window_probability", ("Vieira Passos", "2024", "10.1007/s00477-024-02783-3")),
 ]
 
 REFERENCE_CASES = [pytest.param(entry, fragments, id=entry) for entry, fragments in REFERENCE_ROWS]
@@ -376,6 +384,14 @@ def test_independent_probability_entry_disclaims_fitted_dependence() -> None:
     description = CF_METADATA["compound_independent_probability"]["description"]
     assert "mutual independence" in description
     assert "not a fitted dependence model" in description
+
+
+def test_conditional_entries_disclaim_onset_and_causation() -> None:
+    """The conditional entries count time steps and never claim an onset conversion or a cascade."""
+    description = CF_METADATA["compound_conditional_probability"]["description"]
+    for phrase in ("time steps", "event-onset", "not a causal cascade"):
+        assert phrase in description
+    assert "not a single-step marginal frequency" in CF_METADATA["compound_response_window_probability"]["description"]
 
 
 @pytest.mark.parametrize("index_name", FIRE_KEYS)
