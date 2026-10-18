@@ -97,6 +97,11 @@ def test_log_profile_requires_positive_roughness_below_both_heights(roughness: f
         energy.hub_height_wind_speed([1], 100, 10, method="log", roughness_length=10)
 
 
+def test_log_kernel_rejects_missing_roughness_without_assert() -> None:
+    with pytest.raises(InvalidArgumentError, match="roughness_length"):
+        _wind._hub_height_kernel([1.0], None, 10.0, 100.0, None)
+
+
 def test_invalid_shapes_raise() -> None:
     with pytest.raises(InvalidArgumentError, match="broadcast"):
         energy.hub_height_wind_speed([1, 2], 10, 100, alpha=[0, 0, 0])
