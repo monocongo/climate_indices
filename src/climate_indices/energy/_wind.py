@@ -48,8 +48,9 @@ def _hub_height_kernel(
         valid = np.isfinite(wind) & (wind >= 0) & np.isfinite(exponent)
         with np.errstate(over="ignore", invalid="ignore", divide="ignore", under="ignore"):
             factor = np.power(hub_height / reference_height, exponent)
+    elif roughness_length is None:
+        raise InvalidArgumentError("The log profile requires roughness_length.", argument_name="roughness_length")
     else:
-        assert roughness_length is not None
         factor = np.log(hub_height / roughness_length) / np.log(reference_height / roughness_length)
         valid = np.isfinite(wind) & (wind >= 0)
     with np.errstate(over="ignore", invalid="ignore", under="ignore"):
