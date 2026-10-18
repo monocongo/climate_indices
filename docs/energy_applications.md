@@ -30,7 +30,7 @@ Demand proxies                   HDD / CDD / EDD                            (ava
 Resource transforms              hub-height wind (available); wind & PV capacity factor (planned)
 Hydro proxy                      capacity-weighted n-month precip           (available recipe)
               ↓
-Standardized energy indices      SREPI, standardized demand, SRLI           (planned)
+Standardized energy indices      SREPI, standardized demand (available); SRLI (planned)
               ↓
 Energy-drought events            run-theory onset / duration / magnitude    (planned)
               ↓
@@ -84,8 +84,9 @@ The beta option is not for demand proxies or accumulated production.
 [#1169][energy-1169] added separate probability masses at exact 0 and 1 to the
 standardization seam ([ADR-0024](adr/0024-beta-distribution-for-bounded-series.md)):
 the continuous beta fit applies only between those endpoints, and a boundary value
-scores from its own mass. The energy wrappers that expose it are what
-[#1171][energy-1171] still plans.
+scores from its own mass. {func}`climate_indices.energy.srepi` and
+{func}`climate_indices.energy.standardized_demand_index` expose it
+([#1171][energy-1171]).
 SRLI uses the empirical distribution only. That is an API restriction rather
 than a mathematical necessity: a rank-based standardization has no support
 for a signed series to violate, the parametric families' support-limit and
@@ -101,7 +102,7 @@ with a Timescale of 30; calendar months use monthly input. Sub-daily (hourly)
 input is planned separately ([#1177][energy-1177]).
 
 Daily NumPy inputs to `indices.standardized_index()` must start on January 1
-and use the internal 366-slot year layout. The planned energy NumPy wrappers
+and use the internal 366-slot year layout. The energy NumPy wrappers
 inherit this layout. Convert Gregorian arrays with
 {func}`climate_indices.utils.transform_to_366day` before standardizing them;
 see {doc}`data_requirements` for the conversion requirements. Do not pass an
@@ -160,11 +161,17 @@ order.
   the existing `indices.standardized_index()` to standardize capacity-weighted
   monthly precipitation at Timescales of 1, 3, 6, and 12 months. It is a proxy
   for hydro resource, not a hydropower generation model.
-- **SREPI and the standardized demand index** — *planned
-  ([#1171][energy-1171])*, on the empirical distribution option
-  ([#1168][energy-1168]), with beta ([#1169][energy-1169]) only for SREPI
+- **SREPI and the standardized demand index** — available as
+  {func}`climate_indices.energy.srepi` and
+  {func}`climate_indices.energy.standardized_demand_index`
+  ([#1171][energy-1171]), on the empirical distribution option
+  ([#1168][energy-1168]) by default, with beta ([#1169][energy-1169]) only for
   capacity factors in [0, 1] averaged with `aggregation="mean"`, including the
-  endpoint-mass handling described above, not for demand proxies.
+  endpoint-mass handling described above, not for demand proxies. SREPI averages
+  each window by default, so accumulated production needs `aggregation="sum"`;
+  the demand index sums by default. `energy.SREPI_DROUGHT_THRESHOLDS` holds
+  Allen & Otero's moderate, severe, and extreme cut-offs (−1.28, −1.64, −1.96).
+  NumPy only: xarray adapters are planned ([#1174][energy-1174]).
 - **SRLI** — *planned ([#1172][energy-1172])*.
 - **Energy-drought event statistics** — *planned ([#1173][energy-1173])*.
 - **Wind capacity factor** — *planned ([#1175][energy-1175])*. Hub-height
@@ -264,6 +271,7 @@ gridded demonstration on these data is planned ([#1179][energy-1179]).
 [energy-1168]: https://github.com/monocongo/climate_indices/issues/1168
 [energy-1169]: https://github.com/monocongo/climate_indices/issues/1169
 [energy-1171]: https://github.com/monocongo/climate_indices/issues/1171
+[energy-1174]: https://github.com/monocongo/climate_indices/issues/1174
 [energy-1172]: https://github.com/monocongo/climate_indices/issues/1172
 [energy-1173]: https://github.com/monocongo/climate_indices/issues/1173
 [energy-1175]: https://github.com/monocongo/climate_indices/issues/1175
