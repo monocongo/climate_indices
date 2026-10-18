@@ -15,6 +15,7 @@ import json
 import logging
 import math
 import warnings
+from collections import UserDict
 from typing import Any, Literal
 from unittest import mock
 
@@ -438,6 +439,23 @@ def test_manifest_serializes_with_the_audit_choices_and_the_harmonization_record
     assert "does not establish independence" in manifest["lmf_rule"]
     assert manifest["harmonization"]["cadence"] == "monthly"
     assert result.metadata["grouped_by"] == "pooled over every eligible step"
+
+
+def test_custom_mapping_metadata_is_detached_and_frozen() -> None:
+    """A non-dict Mapping is copied by value; a value JSON cannot represent is rejected."""
+    hazard = np.array([[True, False], [False, True]])
+    aligned = align(hazard, metadata=UserDict({"calendar": "proleptic_gregorian"}))  # type: ignore[arg-type]
+    result = compound.joint_statistics(aligned, groupby="pooled", min_samples=1)
+    record = result.metadata["harmonization"]
+    assert record["calendar"] == "proleptic_gregorian"
+    assert not isinstance(record, UserDict)
+    assert json.loads(json.dumps(result.metadata))["harmonization"]["calendar"] == "proleptic_gregorian"
+    with pytest.raises(TypeError):
+        record["calendar"] = "later"
+
+    unserializable = align(hazard, metadata={"bad": {1, 2}})
+    with pytest.raises(InvalidArgumentError, match="JSON-compatible"):
+        compound.joint_statistics(unserializable, groupby="pooled", min_samples=1)
 
 
 def test_daily_cadence_is_grouped_by_civil_month() -> None:

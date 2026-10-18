@@ -23,11 +23,12 @@ events per year.
 
 from __future__ import annotations
 
+import json
 import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
 from time import perf_counter
-from typing import Any, Literal, TypeAlias
+from typing import Any, Literal, TypeAlias, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -237,6 +238,19 @@ def _validate_hazards(hazards: object) -> AlignedHazards:
     return hazards
 
 
+def _harmonization_record(metadata: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Detach and freeze the embedded harmonization manifest; reject values JSON cannot represent."""
+    try:
+        copied = json.loads(json.dumps(dict(metadata), allow_nan=False))
+    except (TypeError, ValueError) as exc:
+        raise InvalidArgumentError(
+            "hazards.metadata must be a JSON-compatible mapping.",
+            argument_name="hazards",
+            valid_values="a mapping of JSON strings, numbers, booleans, null, lists, and mappings",
+        ) from exc
+    return cast(Mapping[str, Any], _freeze(copied))
+
+
 def _month_index(time: npt.NDArray[np.datetime64]) -> npt.NDArray[np.int64]:
     """Return each step's calendar month as index 0-11, from the observed dates alone."""
     return (time.astype("datetime64[M]").astype(np.int64) % _MONTHS).astype(np.int64)
@@ -377,7 +391,7 @@ def _joint_statistics(hazards: AlignedHazards, *, groupby: GroupBy, min_samples:
             "match the independence product; it does not establish independence."
         ),
         "quality_flags": dict(_FLAG_MEANINGS),
-        "harmonization": hazards.metadata,
+        "harmonization": _harmonization_record(hazards.metadata),
     }
     return JointResult(
         names=hazards.names,
