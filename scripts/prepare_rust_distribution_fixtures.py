@@ -214,7 +214,9 @@ def cdfs() -> None:
     with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
         bare_z = (bare_values - bare_locs) / bare_scales
         bare_y = np.where(
-            bare_shapes == 0.0, bare_z, -np.log(np.maximum(0.0, 1.0 - bare_shapes * bare_z)) / bare_shapes
+            np.isclose(bare_shapes, 0.0),
+            bare_z,
+            -np.log(np.maximum(0.0, 1.0 - bare_shapes * bare_z)) / bare_shapes,
         )
         bare = np.clip(1.0 / (1.0 + np.exp(-bare_y)), 0.0, 1.0)
     arrays.update(
