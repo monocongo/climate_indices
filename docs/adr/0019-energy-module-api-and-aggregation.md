@@ -24,6 +24,13 @@ exposes `heating_degree_days()`, `cooling_degree_days()`, and
 `energy_degree_days()`, in-house and dependency-free, with decision 6's degree-day
 units.
 
+Amended by the physical-transform adapters
+([#1166](https://github.com/monocongo/climate_indices/issues/1166)): degree days,
+hub-height wind, and the auxiliary shear diagnostic accept DataArrays through
+the beta xarray layer. Their elementwise Dask execution accepts multiple chunks
+on every dimension; temperature units are inferred while bases remain in °C.
+Standardized energy adapters remain deferred to #1174.
+
 Decision 2's `aggregation` keyword landed with this record
 ([#1158](https://github.com/monocongo/climate_indices/issues/1158)). Decisions 3
 through 5 and the radiation units of decision 6 remain contracts for the tickets
