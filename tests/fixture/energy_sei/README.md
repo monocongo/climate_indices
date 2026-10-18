@@ -100,10 +100,10 @@ A failed write therefore cannot leave truncated payloads beside the old provenan
 The library supplies measurements only; it never supplies reference values.
 
 The offline tests exercise the shipped standardization function now.
-Absent energy wrappers fail, naming
+Only absent energy wrappers xfail, with specific references to
 [SREPI and standardized demand](https://github.com/monocongo/climate_indices/issues/1171)
-and [SRLI](https://github.com/monocongo/climate_indices/issues/1172),
-as does a present but incorrect implementation.
+and [SRLI](https://github.com/monocongo/climate_indices/issues/1172).
+A present but incorrect implementation fails normally.
 [ENERGY-24](https://github.com/monocongo/climate_indices/issues/1180) owns the family-wide validation tables and published API documentation.
 
 ## Reproduction
