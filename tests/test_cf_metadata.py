@@ -386,6 +386,14 @@ def test_independent_probability_entry_disclaims_fitted_dependence() -> None:
     assert "not a fitted dependence model" in description
 
 
+def test_conditional_entries_disclaim_onset_and_causation() -> None:
+    """The conditional entries count time steps and never claim an onset conversion or a cascade."""
+    description = CF_METADATA["compound_conditional_probability"]["description"]
+    for phrase in ("time steps", "event-onset", "not a causal cascade"):
+        assert phrase in description
+    assert "not a single-step marginal frequency" in CF_METADATA["compound_response_window_probability"]["description"]
+
+
 @pytest.mark.parametrize("index_name", FIRE_KEYS)
 def test_fire_entries_describe_themselves_without_inventing_standard_names(index_name: str) -> None:
     """Fire adapters take their description from the registry; no fire entry claims a CF standard_name."""

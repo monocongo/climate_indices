@@ -1,4 +1,4 @@
-"""Joint frequencies and likelihood multiplication factor on one eligible support.
+"""Compound statistics on one eligible support: joint frequency, LMF, and conditional windows.
 
 ``joint_statistics()`` counts two or three declared hazards on the **complete-case
 support** of an :class:`~climate_indices.compound.AlignedHazards`: the observed
@@ -210,7 +210,7 @@ def _validate_hazards(hazards: object) -> AlignedHazards:
         )
     if not _MIN_SOURCES <= len(names) <= _MAX_SOURCES:
         raise InvalidArgumentError(
-            f"joint_statistics() needs two or three sources; got {len(names)}.",
+            f"These statistics need two or three sources; got {len(names)}.",
             argument_name="hazards",
             argument_value=f"{len(names)} names",
             valid_values="two or three source names",
@@ -262,6 +262,12 @@ def _validate_hazards(hazards: object) -> AlignedHazards:
             "two labels in one month would count that month twice.",
             coordinate_name="time",
             reason="monthly step not normalized to its first civil day",
+        )
+    if np.any(np.diff(time.astype(_UNITS[hazards.cadence]).astype(np.int64)) != 1):
+        raise CoordinateValidationError(
+            "hazards.time must hold one complete cadence grid; a missing date is not a lag step.",
+            coordinate_name="time",
+            reason="a missing cadence step",
         )
 
     for label, array in (("exceedance", hazards.exceedance), ("valid", hazards.valid)):
@@ -455,19 +461,22 @@ def _forward_windows(
 ) -> tuple[npt.NDArray[np.bool_], npt.NDArray[np.bool_]]:
     """Return per-anchor window validity and target occurrence for ``[t+low, t+high]``.
 
-    An anchor within ``high`` steps of the record end has an incomplete horizon and
-    is never valid. Positions past the end are clamped and masked by that flag, so
-    an incomplete window cannot contribute a response.
+    An anchor within ``high`` steps of the record end has an incomplete horizon and is
+    never valid. The returned response of such an anchor is not meaningful on its own:
+    a caller must gate it with the returned validity mask, as the count path does.
     """
     steps = target_valid.shape[0]
+    # an offset at or past the record end leaves every anchor incomplete, so the scan stops
+    # there rather than walking offsets that cannot change the result
+    high = min(high, steps)
     tail = (1,) * (target_valid.ndim - 1)
     reachable = ((np.arange(steps) + high) < steps).reshape((-1, *tail))
     window_valid = np.broadcast_to(reachable, target_valid.shape).copy()
     response = np.zeros(target_occurrence.shape, dtype=bool)
     for offset in range(low, high + 1):
-        position = np.minimum(np.arange(steps) + offset, steps - 1)
-        window_valid &= np.take(target_valid, position, axis=0)
-        response |= np.take(target_occurrence, position, axis=0)
+        within = steps - offset
+        window_valid[:within] &= target_valid[offset:]
+        response[:within] |= target_occurrence[offset:]
     return window_valid, response
 
 
@@ -525,13 +534,15 @@ def _conditional_probability(
     hazards = _validate_hazards(hazards)
     low, high = lag_window
     given_index, target_index = _pair_indices(hazards.names, given, target)
-    occurrence = hazards.exceedance & hazards.valid
+    # only the two selected rows are needed, so no full (source, time, *cells) temporary is built
+    given_occurrence = hazards.exceedance[given_index] & hazards.valid[given_index]
+    target_occurrence = hazards.exceedance[target_index] & hazards.valid[target_index]
 
     # an anchor is eligible when the given source is observed there and every target step in
     # the window is observed; an incomplete horizon is discarded rather than counted as a non-response
-    window_valid, response = _forward_windows(hazards.valid[target_index], occurrence[target_index], low, high)
+    window_valid, response = _forward_windows(hazards.valid[target_index], target_occurrence, low, high)
     eligible = hazards.valid[given_index] & window_valid
-    positive = eligible & occurrence[given_index]
+    positive = eligible & given_occurrence
     success = positive & response
 
     months = _month_index(hazards.time)
@@ -727,7 +738,7 @@ def joint_statistics(
         InputTypeError: For a non-Boolean array or a non-``datetime64`` time vector.
         DataShapeError: For mismatched array shapes or a date vector that does not
             match the time axis.
-        CoordinateValidationError: For NaT, duplicate, unordered, or empty dates, or
+        CoordinateValidationError: For NaT, duplicate, unordered, or gapped dates, or
             a monthly label that is not the first civil day of its month.
 
     Warns:
@@ -841,7 +852,7 @@ def conditional_probability(
         InputTypeError: For a non-Boolean array or a non-``datetime64`` time vector.
         DataShapeError: For mismatched array shapes or a date vector that does not
             match the time axis.
-        CoordinateValidationError: For NaT, duplicate, unordered, or empty dates, or
+        CoordinateValidationError: For NaT, duplicate, unordered, or gapped dates, or
             a monthly label that is not the first civil day of its month.
 
     Warns:

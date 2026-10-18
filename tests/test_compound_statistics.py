@@ -915,6 +915,61 @@ def test_only_the_two_declared_sources_enter_eligibility() -> None:
     assert int(joint.n_valid) == 0
 
 
+def test_lag_window_at_or_past_the_record_end_returns_no_eligible_anchor() -> None:
+    """An out-of-range window is empty, not an unbounded scan or an overflowed index."""
+    hazard = np.array([[True, False, True, False], [True, True, False, False]])
+    for lag_window in ((0, 4), (0, 10**9), (2**63 - 1, 2**63 - 1), (5, 9)):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            result = conditional(align(hazard), lag_window=lag_window)
+        assert int(result.n_anchors) == 0
+        assert int(result.n_positive) == 0
+        assert int(result.quality_flags) == 3
+        assert math.isnan(float(result.conditional_probability))
+        assert math.isnan(float(result.response_window_frequency))
+
+
+def test_rejects_a_time_vector_with_a_missing_cadence_step() -> None:
+    """A gap would turn one lag step into a longer interval, so a gapped vector is rejected."""
+    hazard = np.array([[True, False, True], [False, True, True]])
+    daily = align(hazard, cadence="daily", start="2000-01-01")
+    daily_gap = dataclasses.replace(
+        daily, time=np.array(["2000-01-01", "2000-01-03", "2000-01-04"], dtype="datetime64[D]")
+    )
+    with pytest.raises(CoordinateValidationError, match="complete cadence grid"):
+        conditional(daily_gap)
+    monthly_gap = dataclasses.replace(
+        align(hazard), time=np.array(["2000-01-01", "2000-03-01", "2000-04-01"], dtype="datetime64[D]")
+    )
+    with pytest.raises(CoordinateValidationError, match="complete cadence grid"):
+        conditional(monthly_gap)
+
+
+def test_production_defaults_group_by_month_and_require_thirty_anchors() -> None:
+    """The documented defaults are calendar-month grouping and min_samples=30."""
+    hazard = np.ones((2, 6), dtype=bool)
+    with pytest.warns(ClimateIndicesWarning, match="min_samples=30"):
+        result = compound.conditional_probability(align(hazard), given="source_0", target="source_1")
+    assert result.groupby == "month"
+    assert result.lag_window == (0, 0)
+    assert result.n_anchors.shape == (12,)
+    assert int(result.n_anchors.sum()) == 6
+    assert int(result.n_positive[0]) == 1
+    assert math.isnan(float(result.conditional_probability[0]))
+    assert int(result.quality_flags[0]) == 1
+
+
+def test_conditional_warns_about_sparse_conditioning() -> None:
+    """Fewer than ten conditioning occurrences warns on that count, once per group."""
+    hazard = np.array([[True, False, True, False], [True, True, False, False]])
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        conditional(align(hazard))
+    sparse = [str(item.message) for item in caught if "conditioning occurrences" in str(item.message)]
+    assert len(sparse) == 1
+    assert all(issubclass(item.category, ClimateIndicesWarning) for item in caught)
+
+
 @given(rows=two_source_rows())
 def test_conditional_counts_nest_and_probabilities_stay_within_their_bounds(
     rows: tuple[list[bool], list[bool], list[bool], list[bool]],
@@ -933,6 +988,15 @@ def test_conditional_counts_nest_and_probabilities_stay_within_their_bounds(
     assert 0 <= n_success <= min(n_positive, n_response) <= n_anchors
     for probability in (float(result.conditional_probability), float(result.response_window_frequency)):
         assert math.isnan(probability) or 0.0 <= probability <= 1.0
+    # the denominators are the anchor counts, not the eligible support
+    if n_positive:
+        assert float(result.conditional_probability) == exact(n_success / n_positive)
+    else:
+        assert math.isnan(float(result.conditional_probability))
+    if n_anchors:
+        assert float(result.response_window_frequency) == exact(n_response / n_anchors)
+    else:
+        assert math.isnan(float(result.response_window_frequency))
 
 
 def test_conditional_result_arrays_are_read_only_copied_and_frozen() -> None:
@@ -953,6 +1017,13 @@ def test_conditional_result_arrays_are_read_only_copied_and_frozen() -> None:
         assert not array.flags.writeable
         with pytest.raises(ValueError, match="read-only"):
             array.flat[0] = array.flat[0]
+    assert result.n_anchors.dtype == np.int64
+    assert result.n_positive.dtype == np.int64
+    assert result.n_response.dtype == np.int64
+    assert result.n_success.dtype == np.int64
+    assert result.quality_flags.dtype == np.int64
+    assert result.conditional_probability.dtype == np.float64
+    assert result.response_window_frequency.dtype == np.float64
     assert not np.shares_memory(result.n_success, hazard)
     with pytest.raises(dataclasses.FrozenInstanceError):
         result.given = "source_1"  # type: ignore[misc]

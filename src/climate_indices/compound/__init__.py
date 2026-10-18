@@ -1,7 +1,8 @@
 """Compound-hazard analysis on declared, observed hazard occurrence.
 
 Prepare two or three index-defined hazards on one observed time axis, without
-inventing observations, then count their joint occurrences: :func:`harmonize`
+inventing observations, then count their joint and conditional occurrences:
+:func:`harmonize`
 returns :class:`AlignedHazards`, :func:`joint_statistics` returns a
 :class:`JointResult` of marginal and joint frequencies, the independence product,
 and the likelihood multiplication factor, and :func:`conditional_probability`

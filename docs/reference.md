@@ -136,11 +136,10 @@ remain planned; see {doc}`energy_applications` for scope and validation limits.
 
 ### climate_indices.compound
 
-Declared-input harmonization and conditional frequency statistics for compound-hazard
-analysis: Boolean exceedance and validity on observed dates, never interpolated or
-averaged, then marginal and joint counts, marginal and joint frequencies, the
-independence product, and the likelihood multiplication factor (LMF) on one
-complete-case support. Marginals are observed frequencies, so a zero marginal makes LMF
+Declared-input harmonization and frequency statistics for compound-hazard analysis:
+Boolean exceedance and validity on observed dates, never interpolated or averaged, then
+marginal and joint counts, marginal and joint frequencies, the independence product, and
+the likelihood multiplication factor (LMF) on one complete-case support. Marginals are observed frequencies, so a zero marginal makes LMF
 undefined (`NaN`) rather than infinite, and `LMF = 1` does not establish independence.
 `conditional_probability()` conditions one named hazard on another over an inclusive
 forward window and reports the conditional time-step frequency beside the

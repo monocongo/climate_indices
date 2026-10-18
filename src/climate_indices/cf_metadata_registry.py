@@ -73,11 +73,12 @@ _HAINES_1988 = (
     "National Weather Digest, 13(2), 23-27."
 )
 
-# The four compound statistics share one source publication; keep the rendered
-# `references` text identical across the entries that cite it. It supplies the
-# co-occurrence frequency and likelihood multiplication factor (LMF) method the
-# milestone's published reproduction targets (#1366, #1374); it does not validate
-# the module's monthly inference, and no reproduction is committed yet.
+# The six compound statistics name one source publication because the milestone's
+# published reproduction targets its co-occurrence frequency and likelihood
+# multiplication factor (LMF) method (#1366, #1374). Keep the rendered `references`
+# text identical across the entries that cite it. The paper does not define the
+# conditional or response-window frequencies, and it does not validate the module's
+# monthly inference, so no reproduction is committed yet.
 _VIEIRA_PASSOS_2024 = (
     "Vieira Passos, M., Kan, J.-C., Destouni, G., Barquet, K., & Kalantari, Z. (2024). "
     "Identifying regional hotspots of heatwaves, droughts, floods, and their co-occurrences. "
@@ -658,8 +659,8 @@ CF_METADATA: dict[str, CFAttributes] = {
         ),
         "references": _ALLEN_OTERO_2023,
     },
-    # Compound-family metadata precedes the NumPy statistics (#1368 conditional on
-    # #1369) and their beta xarray adapters (#1372). Names, units, and bounds
+    # Compound-family metadata precedes the NumPy statistics (#1368, #1369) and
+    # their beta xarray adapters (#1372). Names, units, and bounds
     # follow ADR-0022 decision 4 and docs/design/compound-module-milestone-1.md.
     # Every entry is a frequency on one observed, complete-case support, so units
     # are "1" and no entry has a CF standard name. Counts and quality flags are
