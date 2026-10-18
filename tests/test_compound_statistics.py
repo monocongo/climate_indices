@@ -173,7 +173,7 @@ def test_gaussian_copula_joint_probability_matches_the_closed_form(rho: float) -
     analytic = 0.25 + math.asin(rho) / (2.0 * math.pi)
     assert analytic == exact(0.25 if rho == 0.0 else 1 / 3)
     joint_band = 5.0 * math.sqrt(analytic * (1.0 - analytic) / n)
-    marginal_band = 5.0 * math.sqrt(0.25 * 0.75 / n)
+    marginal_band = 5.0 * math.sqrt(0.5 * 0.5 / n)
     lmf = 1.0 if rho == 0.0 else 4 / 3
     lmf_band = 5.0 * lmf * math.sqrt((1.0 - analytic) / (n * analytic) + 2.0 * (1.0 - 0.5) / (n * 0.5))
     assert int(result.n_valid) == n
