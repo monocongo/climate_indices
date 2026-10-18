@@ -263,13 +263,6 @@ def _validate_hazards(hazards: object) -> AlignedHazards:
             coordinate_name="time",
             reason="monthly step not normalized to its first civil day",
         )
-    if np.any(np.diff(time.astype(_UNITS[hazards.cadence]).astype(np.int64)) != 1):
-        raise CoordinateValidationError(
-            "hazards.time must hold one complete cadence grid; a missing date is not a lag step.",
-            coordinate_name="time",
-            reason="a missing cadence step",
-        )
-
     for label, array in (("exceedance", hazards.exceedance), ("valid", hazards.valid)):
         if not isinstance(array, np.ndarray) or array.dtype != np.bool_ or np.ma.isMaskedArray(array):
             raise InputTypeError(
@@ -304,6 +297,19 @@ def _validate_hazards(hazards: object) -> AlignedHazards:
             actual_shape=hazards.valid.shape,
         )
     return hazards
+
+
+def _require_complete_cadence(hazards: AlignedHazards) -> None:
+    """Reject a gapped time vector; a forward window counts cadence steps, so a gap would stretch a lag.
+
+    Pointwise joint counts never read adjacent dates as lag steps, so they skip this check.
+    """
+    if np.any(np.diff(hazards.time.astype(_UNITS[hazards.cadence]).astype(np.int64)) != 1):
+        raise CoordinateValidationError(
+            "hazards.time must hold one complete cadence grid; a missing date is not a lag step.",
+            coordinate_name="time",
+            reason="a missing cadence step",
+        )
 
 
 def _harmonization_record(metadata: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -462,21 +468,24 @@ def _forward_windows(
     """Return per-anchor window validity and target occurrence for ``[t+low, t+high]``.
 
     An anchor within ``high`` steps of the record end has an incomplete horizon and is
-    never valid. The returned response of such an anchor is not meaningful on its own:
-    a caller must gate it with the returned validity mask, as the count path does.
+    never valid; its response is ``False``. Window sums come from one prefix sum along the
+    time axis per mask, so the cost does not grow with the window width.
     """
     steps = target_valid.shape[0]
-    # an offset at or past the record end leaves every anchor incomplete, so the scan stops
-    # there rather than walking offsets that cannot change the result
-    high = min(high, steps)
-    tail = (1,) * (target_valid.ndim - 1)
-    reachable = ((np.arange(steps) + high) < steps).reshape((-1, *tail))
-    window_valid = np.broadcast_to(reachable, target_valid.shape).copy()
+    window_valid = np.zeros(target_valid.shape, dtype=bool)
     response = np.zeros(target_occurrence.shape, dtype=bool)
-    for offset in range(low, high + 1):
-        within = steps - offset
-        window_valid[:within] &= target_valid[offset:]
-        response[:within] |= target_occurrence[offset:]
+    # anchors 0..complete-1 have t + high inside the record; the rest stay invalid
+    complete = steps - high
+    if complete <= 0:
+        return window_valid, response
+    prefixes = []
+    for mask in (~target_valid, target_occurrence):
+        prefix = np.zeros((steps + 1, *mask.shape[1:]), dtype=np.int32)
+        np.cumsum(mask, axis=0, dtype=np.int32, out=prefix[1:])
+        # steps in [t + low, t + high] = prefix[t + high + 1] - prefix[t + low]
+        prefixes.append(prefix[high + 1 : high + 1 + complete] - prefix[low : low + complete])
+    window_valid[:complete] = prefixes[0] == 0
+    response[:complete] = prefixes[1] > 0
     return window_valid, response
 
 
@@ -532,6 +541,7 @@ def _conditional_probability(
 ) -> ConditionalResult:
     """Validate, resolve the forward window, count, and estimate; see :func:`conditional_probability`."""
     hazards = _validate_hazards(hazards)
+    _require_complete_cadence(hazards)
     low, high = lag_window
     given_index, target_index = _pair_indices(hazards.names, given, target)
     # only the two selected rows are needed, so no full (source, time, *cells) temporary is built
@@ -738,7 +748,7 @@ def joint_statistics(
         InputTypeError: For a non-Boolean array or a non-``datetime64`` time vector.
         DataShapeError: For mismatched array shapes or a date vector that does not
             match the time axis.
-        CoordinateValidationError: For NaT, duplicate, unordered, or gapped dates, or
+        CoordinateValidationError: For NaT, duplicate, or unordered dates, or
             a monthly label that is not the first civil day of its month.
 
     Warns:

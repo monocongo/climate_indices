@@ -945,6 +945,38 @@ def test_rejects_a_time_vector_with_a_missing_cadence_step() -> None:
         conditional(monthly_gap)
 
 
+def test_joint_statistics_accepts_a_gapped_time_vector() -> None:
+    """Pointwise joint counts never read adjacent dates as lag steps, so a gap is not an error."""
+    hazard = np.array([[True, False, True], [False, True, True]])
+    gapped = dataclasses.replace(
+        align(hazard), time=np.array(["2000-01-01", "2000-03-01", "2000-04-01"], dtype="datetime64[D]")
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", ClimateIndicesWarning)
+        result = compound.joint_statistics(gapped, groupby="pooled", min_samples=1)
+    assert int(result.n_valid) == 3
+    assert int(result.n_joint) == 1
+
+
+@pytest.mark.parametrize("window", [(0, 0), (1, 3), (0, 7), (2, 9), (0, 10**9)])
+def test_forward_windows_match_a_per_anchor_scan(window: tuple[int, int]) -> None:
+    """The prefix-sum window equals a direct scan of [t+low, t+high], and an incomplete horizon is invalid."""
+    rng = np.random.default_rng(1388)
+    valid = rng.random((9, 2, 3)) > 0.2
+    occurrence = (rng.random((9, 2, 3)) > 0.6) & valid
+    low, high = window
+    window_valid, response = statistics_module._forward_windows(valid, occurrence, low, high)
+
+    expected_valid = np.zeros(valid.shape, dtype=bool)
+    expected_response = np.zeros(valid.shape, dtype=bool)
+    for anchor in range(valid.shape[0]):
+        if anchor + high < valid.shape[0]:
+            expected_valid[anchor] = valid[anchor + low : anchor + high + 1].all(axis=0)
+            expected_response[anchor] = occurrence[anchor + low : anchor + high + 1].any(axis=0)
+    np.testing.assert_array_equal(window_valid, expected_valid)
+    np.testing.assert_array_equal(response, expected_response)
+
+
 def test_production_defaults_group_by_month_and_require_thirty_anchors() -> None:
     """The documented defaults are calendar-month grouping and min_samples=30."""
     hazard = np.ones((2, 6), dtype=bool)
