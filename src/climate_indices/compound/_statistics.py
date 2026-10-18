@@ -58,6 +58,7 @@ _MIN_SOURCES = 2
 _MAX_SOURCES = 3
 _MONTHS = 12
 _SHORT_RECORD_YEARS = 30
+_SPARSE_OCCURRENCES = 10
 _MANIFEST_SCHEMA_VERSION = 1
 
 # numeric quality flags, decoded by name in the result manifest
@@ -75,7 +76,8 @@ class JointResult:
 
     Each field is shaped ``(month, *cells)`` when ``groupby="month"`` and
     ``(*cells)`` when ``groupby="pooled"``, except the per-source fields, whose
-    leading axis is the source. A point series has no ``*cells`` axis.
+    leading axis is the source. The month axis is index 0-11, where 0 is January.
+    A point series has no ``*cells`` axis.
 
     Args:
         names: Source names in input order; the leading axis of ``n_marginal``.
@@ -166,9 +168,10 @@ def _validate_hazards(hazards: object) -> AlignedHazards:
         )
 
     time = hazards.time
-    if not isinstance(time, np.ndarray) or time.dtype.kind != "M":
+    if not isinstance(time, np.ndarray) or time.dtype != np.dtype("datetime64[D]"):
         raise InputTypeError(
-            f"hazards.time must be a datetime64 array of observed dates, not {type(time).__name__}.",
+            f"hazards.time must be a datetime64[D] array of observed civil days, not {type(time).__name__} "
+            f"with dtype {getattr(time, 'dtype', None)}.",
             expected_type=np.datetime64,
             actual_type=type(time),
         )
@@ -192,9 +195,9 @@ def _validate_hazards(hazards: object) -> AlignedHazards:
         )
 
     for label, array in (("exceedance", hazards.exceedance), ("valid", hazards.valid)):
-        if not isinstance(array, np.ndarray) or array.dtype != np.bool_:
+        if not isinstance(array, np.ndarray) or array.dtype != np.bool_ or np.ma.isMaskedArray(array):
             raise InputTypeError(
-                f"hazards.{label} must be a Boolean numpy array, not {type(array).__name__}.",
+                f"hazards.{label} must be a plain Boolean numpy array, not {type(array).__name__}.",
                 expected_type=np.ndarray,
                 actual_type=type(array),
             )
@@ -256,35 +259,51 @@ def _undefined(estimate: npt.NDArray[np.float64], sufficient: npt.NDArray[np.boo
     return np.where(np.broadcast_to(sufficient, estimate.shape), estimate, np.nan)
 
 
+def _observed_years(time: npt.NDArray[np.datetime64], eligible: npt.NDArray[np.bool_]) -> int:
+    """Return how many calendar years hold at least one eligible step anywhere in the record."""
+    observed = np.any(eligible, axis=tuple(range(1, eligible.ndim))) if eligible.ndim > 1 else eligible
+    return int(np.unique(time[observed].astype("datetime64[Y]")).shape[0])
+
+
 def _warn_support(
+    time: npt.NDArray[np.datetime64],
+    eligible: npt.NDArray[np.bool_],
     n_valid: npt.NDArray[np.int64],
     n_marginal: npt.NDArray[np.int64],
-    months_spanned: int,
     min_samples: int,
 ) -> None:
-    """Warn once about a short record, short support, or a marginal that never occurs."""
-    if months_spanned < _SHORT_RECORD_YEARS * _MONTHS:
+    """Warn once about a short record, short support, sparse occurrences, or a marginal that never occurs."""
+    observed_years = _observed_years(time, eligible)
+    if observed_years < _SHORT_RECORD_YEARS:
         warnings.warn(
-            f"The record spans about {months_spanned / _MONTHS:.1f} observed years; "
-            f"{_SHORT_RECORD_YEARS} are expected before a compound statistic is read as a rate.",
+            f"The record holds {observed_years} observed calendar year(s); {_SHORT_RECORD_YEARS} are expected "
+            "before a compound statistic is read as a rate.",
             ClimateIndicesWarning,
-            stacklevel=3,
+            stacklevel=4,
         )
-    sparse = int(np.count_nonzero((n_valid > 0) & (n_valid < min_samples)))
+    sparse = int(np.count_nonzero((n_valid > 0) & (n_marginal.min(axis=0) < _SPARSE_OCCURRENCES)))
     if sparse:
         warnings.warn(
-            f"{sparse} group(s) have fewer than min_samples={min_samples} eligible observations; "
+            f"{sparse} group(s) have fewer than {_SPARSE_OCCURRENCES} occurrences in a marginal; such sparse "
+            "frequencies are unstable. This is a product guardrail, not an adequacy threshold.",
+            ClimateIndicesWarning,
+            stacklevel=4,
+        )
+    short_support = int(np.count_nonzero((n_valid > 0) & (n_valid < min_samples)))
+    if short_support:
+        warnings.warn(
+            f"{short_support} group(s) have fewer than min_samples={min_samples} eligible observations; "
             "their estimates are NaN. This is a product guardrail, not an adequacy threshold.",
             ClimateIndicesWarning,
-            stacklevel=3,
+            stacklevel=4,
         )
     undefined = int(np.count_nonzero((n_valid > 0) & (n_marginal.min(axis=0) == 0)))
     if undefined:
         warnings.warn(
-            f"{undefined} group(s) have a zero marginal count, so the independence product and LMF are "
+            f"{undefined} group(s) have a zero marginal count, so the likelihood multiplication factor is "
             "undefined there; no pseudocount is added.",
             ClimateIndicesWarning,
-            stacklevel=3,
+            stacklevel=4,
         )
 
 
@@ -293,10 +312,11 @@ def _joint_statistics(hazards: AlignedHazards, *, groupby: GroupBy, min_samples:
     hazards = _validate_hazards(hazards)
     months = _month_index(hazards.time)
 
-    # validity is authoritative: an unobserved step is never a non-exceedance
+    # one complete-case support for every numerator: a step where any source is unknown is
+    # eligible for none of them, so no marginal can exceed n_valid
     valid = hazards.valid
-    occurrence = hazards.exceedance & valid
     eligible = np.all(valid, axis=0)
+    occurrence = hazards.exceedance & eligible
     joint = np.all(occurrence, axis=0)
 
     n_valid = _counts(eligible, months, groupby)
@@ -320,10 +340,7 @@ def _joint_statistics(hazards: AlignedHazards, *, groupby: GroupBy, min_samples:
     )
     quality_flags = np.asarray(flagged, dtype=np.int64)
 
-    months_spanned = int(months[-1] - months[0] + 1) + _MONTHS * int(
-        (hazards.time[-1].astype("datetime64[M]") - hazards.time[0].astype("datetime64[M]")).astype(np.int64) // _MONTHS
-    )
-    _warn_support(n_valid, n_marginal, months_spanned, min_samples)
+    _warn_support(hazards.time, eligible, n_valid, n_marginal, min_samples)
 
     unit = "month" if groupby == "month" else None
     manifest = {
@@ -418,27 +435,28 @@ def joint_statistics(
             dates.
 
     Warns:
-        ClimateIndicesWarning: For a record shorter than 30 observed years, a group
-            below ``min_samples``, or a group whose marginal count is zero.
+        ClimateIndicesWarning: For a record holding fewer than 30 observed calendar
+            years, a group below ``min_samples``, a group with fewer than ten
+            occurrences in a marginal, or a group whose marginal count is zero.
 
     Example:
         >>> import numpy as np
         >>> from climate_indices import compound
-    >>> months = np.arange("2000-01", "2000-05", dtype="datetime64[M]")
-    >>> aligned = compound.harmonize(
-    ...     {"drought": np.array([0.04, 0.50, 0.03, 0.50]), "heat": np.array([True, False, True, True])},
-    ...     time={"drought": months, "heat": months},
-    ...     cadence={"drought": "monthly", "heat": "monthly"},
-    ...     input_scale={"drought": "probability", "heat": "indicator"},
-    ...     thresholds={"drought": 0.1, "heat": 0.5},
-    ...     directions={"drought": "below", "heat": "above"},
-    ...     target_cadence="monthly",
-    ... )
-    >>> counts = compound.joint_statistics(aligned, groupby="pooled", min_samples=3)
-    >>> int(counts.n_valid), int(counts.n_joint), int(counts.n_marginal[0]), int(counts.n_marginal[1])
-    (4, 2, 2, 3)
-    >>> print(round(float(counts.marginal_frequency[0]), 6), round(float(counts.likelihood_multiplication_factor), 6))
-    0.5 1.333333
+        >>> months = np.arange("2000-01", "2000-05", dtype="datetime64[M]")
+        >>> aligned = compound.harmonize(
+        ...     {"drought": np.array([0.04, 0.50, 0.03, 0.50]), "heat": np.array([True, False, True, True])},
+        ...     time={"drought": months, "heat": months},
+        ...     cadence={"drought": "monthly", "heat": "monthly"},
+        ...     input_scale={"drought": "probability", "heat": "indicator"},
+        ...     thresholds={"drought": 0.1, "heat": 0.5},
+        ...     directions={"drought": "below", "heat": "above"},
+        ...     target_cadence="monthly",
+        ... )
+        >>> counts = compound.joint_statistics(aligned, groupby="pooled", min_samples=3)
+        >>> int(counts.n_valid), int(counts.n_joint), int(counts.n_marginal[0]), int(counts.n_marginal[1])
+        (4, 2, 2, 3)
+        >>> print(round(float(counts.marginal_frequency[0]), 6), round(float(counts.likelihood_multiplication_factor), 6))
+        0.5 1.333333
     """
     log = _logger.bind(
         index_type="compound_joint_statistics",

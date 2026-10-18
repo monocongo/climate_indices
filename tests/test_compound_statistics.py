@@ -15,7 +15,7 @@ import json
 import logging
 import math
 import warnings
-from typing import Any
+from typing import Any, Literal
 from unittest import mock
 
 import numpy as np
@@ -43,12 +43,22 @@ def disable_logging():
     logging.disable(logging.NOTSET)
 
 
+def exact(value: float) -> Any:
+    """Match a closed-form value at ``atol=1e-12`` with ``rtol=0``, the tolerance VALIDATION.md states."""
+    return pytest.approx(value, rel=0, abs=1e-12)
+
+
+def same_number(left: float, right: float) -> bool:
+    """Report whether two floats agree, treating two NaNs as equal for an invariance check."""
+    return (math.isnan(left) and math.isnan(right)) or left == exact(right)
+
+
 def align(
     hazard: Any,
     valid: Any = None,
     *,
     names: tuple[str, ...] | None = None,
-    cadence: str = "monthly",
+    cadence: Literal["daily", "monthly"] = "monthly",
     start: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> compound.AlignedHazards:
@@ -63,7 +73,8 @@ def align(
         start = "2000-01-01" if cadence == "daily" else "2000-01"
     steps = hazard.shape[1]
     unit = "D" if cadence == "daily" else "M"
-    time = np.datetime64(start, unit) + np.arange(steps)
+    # harmonize() labels a monthly step by the first civil day of its calendar month
+    time = (np.datetime64(start, unit) + np.arange(steps)).astype("datetime64[D]")
     return compound.AlignedHazards(
         names,
         time,
@@ -102,10 +113,10 @@ def test_pooled_counts_match_a_hand_counted_contingency_table() -> None:
     assert int(result.n_valid) == n_valid
     assert int(result.n_joint) == n_joint
     assert result.n_marginal.tolist() == [n_first, n_second]
-    assert result.marginal_frequency.tolist() == pytest.approx([4 / 6, 3 / 6])
-    assert float(result.joint_probability) == pytest.approx(2 / 6)
-    assert float(result.independent_probability) == pytest.approx((4 / 6) * (3 / 6))
-    assert float(result.likelihood_multiplication_factor) == pytest.approx((2 / 6) / ((4 / 6) * (3 / 6)))
+    assert result.marginal_frequency.tolist() == [exact(4 / 6), exact(3 / 6)]
+    assert float(result.joint_probability) == exact(2 / 6)
+    assert float(result.independent_probability) == exact((4 / 6) * (3 / 6))
+    assert float(result.likelihood_multiplication_factor) == exact((2 / 6) / ((4 / 6) * (3 / 6)))
     assert int(result.quality_flags) == 0
     assert result.groupby == "pooled"
 
@@ -134,20 +145,22 @@ def test_three_source_mutual_independence_is_exact() -> None:
     assert result.n_marginal.tolist() == [48, 48, 48]
     assert int(result.n_valid) == 96
     assert int(result.n_joint) == 12
-    assert float(result.joint_probability) == pytest.approx(1 / 8)
-    assert float(result.independent_probability) == pytest.approx(1 / 8)
-    assert float(result.likelihood_multiplication_factor) == pytest.approx(1.0)
+    # 12/96 and 1.0 are exact in binary floating point, so these are equalities, not tolerances
+    assert float(result.joint_probability) == 0.125
+    assert float(result.independent_probability) == 0.125
+    assert float(result.likelihood_multiplication_factor) == 1.0
 
 
-def test_gaussian_copula_joint_probability_matches_the_closed_form() -> None:
-    """Check ``P(Z1 > 0, Z2 > 0) = 1/4 + asin(rho)/(2*pi)`` within a predeclared 5-sigma band.
+@pytest.mark.parametrize("rho", [0.0, 0.5])
+def test_gaussian_copula_joint_probability_matches_the_closed_form(rho: float) -> None:
+    """Check ``P(Z1 > 0, Z2 > 0) = 1/4 + asin(rho)/(2*pi)`` against a predeclared 5-sigma band.
 
-    At ``rho=0.5`` the exact value is ``1/3`` on balanced halves. The band is
-    ``5 * sqrt(p*(1-p)/n)`` on the joint frequency and ``0.05`` on LMF, which admits the
-    measured marginal fluctuation (``sigma_LMF ~ 4 * sigma_joint ~ 0.006``), not a fitted
-    tolerance.
+    ``rho=0`` gives the exactly independent ``1/4``; ``rho=0.5`` gives ``1/3``, which is
+    ``LMF=4/3`` on balanced halves. Each band is five standard errors of the sampled
+    quantity: ``sqrt(p*(1-p)/n)`` for the joint frequency and, by the delta method,
+    ``LMF * sqrt((1-p_joint)/(n*p_joint) + 2*(1-p_i)/(n*p_i))`` for the ratio. These are
+    predeclared bands from a fixed seed, not fitted tolerances.
     """
-    rho = 0.5
     n = 200_000
     generator = np.random.default_rng(20241018)
     values = generator.multivariate_normal([0.0, 0.0], [[1.0, rho], [rho, 1.0]], size=n)
@@ -156,13 +169,16 @@ def test_gaussian_copula_joint_probability_matches_the_closed_form() -> None:
         align(hazard, cadence="daily", start="2000-01-01"), groupby="pooled", min_samples=1
     )
 
-    exact = 0.25 + math.asin(rho) / (2.0 * math.pi)
-    assert exact == pytest.approx(1 / 3)
-    band = 5.0 * math.sqrt(exact * (1.0 - exact) / n)
+    analytic = 0.25 + math.asin(rho) / (2.0 * math.pi)
+    assert analytic == exact(0.25 if rho == 0.0 else 1 / 3)
+    joint_band = 5.0 * math.sqrt(analytic * (1.0 - analytic) / n)
+    marginal_band = 5.0 * math.sqrt(0.25 * 0.75 / n)
+    lmf = 1.0 if rho == 0.0 else 4 / 3
+    lmf_band = 5.0 * lmf * math.sqrt((1.0 - analytic) / (n * analytic) + 2.0 * (1.0 - 0.5) / (n * 0.5))
     assert int(result.n_valid) == n
-    assert float(result.joint_probability) == pytest.approx(exact, abs=band)
-    assert result.marginal_frequency.tolist() == pytest.approx([0.5, 0.5], abs=band)
-    assert float(result.likelihood_multiplication_factor) == pytest.approx(4 / 3, abs=0.05)
+    assert float(result.joint_probability) == pytest.approx(analytic, abs=joint_band)
+    assert result.marginal_frequency.tolist() == pytest.approx([0.5, 0.5], abs=marginal_band)
+    assert float(result.likelihood_multiplication_factor) == pytest.approx(lmf, abs=lmf_band)
 
 
 def test_zero_joint_count_with_positive_marginals_is_zero_not_nan() -> None:
@@ -171,7 +187,7 @@ def test_zero_joint_count_with_positive_marginals_is_zero_not_nan() -> None:
     result = compound.joint_statistics(align(hazard), groupby="pooled", min_samples=1)
     assert int(result.n_joint) == 0
     assert float(result.joint_probability) == 0.0
-    assert float(result.independent_probability) == pytest.approx((2 / 4) * (2 / 4))
+    assert float(result.independent_probability) == exact((2 / 4) * (2 / 4))
     assert float(result.likelihood_multiplication_factor) == 0.0
     assert int(result.quality_flags) == 0
 
@@ -205,7 +221,7 @@ def test_short_support_keeps_counts_and_nans_the_estimates() -> None:
 
     relaxed = compound.joint_statistics(align(hazard), groupby="pooled", min_samples=2)
     assert int(relaxed.quality_flags) == 0
-    assert float(relaxed.likelihood_multiplication_factor) == pytest.approx((1 / 3) / ((2 / 3) * (2 / 3)))
+    assert float(relaxed.likelihood_multiplication_factor) == exact((1 / 3) / ((2 / 3) * (2 / 3)))
 
 
 def test_invalid_steps_are_never_a_non_exceedance() -> None:
@@ -220,6 +236,50 @@ def test_invalid_steps_are_never_a_non_exceedance() -> None:
     assert float(result.marginal_frequency[0]) == 1.0
 
 
+def test_every_marginal_uses_the_complete_case_support() -> None:
+    """A step where any selected source is unknown is eligible for none of them.
+
+    Per-source validity would count a step for one source while dividing by a smaller
+    complete-case denominator, which can push a marginal frequency above 1.
+    """
+    hazard = np.array([[True, True, False, True], [False, False, True, True]])
+    valid = np.array([[True, True, True, True], [True, False, True, True]])
+    result = compound.joint_statistics(align(hazard, valid), groupby="pooled", min_samples=1)
+    # step 1 is unknown for the second source, so no source counts it
+    assert int(result.n_valid) == 3
+    assert result.n_marginal.tolist() == [2, 2]
+    assert int(result.n_joint) == 1
+    assert result.marginal_frequency.tolist() == [exact(2 / 3), exact(2 / 3)]
+    assert float(result.joint_probability) == exact(1 / 3)
+
+
+@pytest.mark.parametrize(
+    ("exceedance", "valid", "expected"),
+    [
+        # two sources: step 1 is unknown for `b`, so no source counts it
+        (
+            [[True, True, False, True], [False, False, True, True]],
+            [[True, True, True, True], [True, False, True, True]],
+            (3, 1, 2, 2),
+        ),
+        # three sources: only steps 0 and 2 have all three observed, and they share no joint occurrence
+        (
+            [[True, True, False, True], [False, False, True, True], [True, True, True, True]],
+            [[True, True, True, True], [True, False, True, True], [True, True, True, False]],
+            (2, 0, 1, 1, 2),
+        ),
+    ],
+)
+def test_marginals_never_exceed_the_shared_support(
+    exceedance: list[list[bool]], valid: list[list[bool]], expected: tuple[int, ...]
+) -> None:
+    """``n_valid``, ``n_joint``, and every marginal come from one complete-case support."""
+    result = compound.joint_statistics(align(np.array(exceedance), np.array(valid)), groupby="pooled", min_samples=1)
+    assert (int(result.n_valid), int(result.n_joint), *result.n_marginal.tolist()) == expected
+    assert all(int(count) <= int(result.n_valid) for count in result.n_marginal)
+    assert all(float(value) <= 1.0 for value in result.marginal_frequency)
+
+
 def test_all_missing_cell_returns_zero_counts_without_failing_its_neighbor() -> None:
     """An all-missing grid cell yields zero counts and flags while the observed cell is unaffected."""
     hazard = np.array(
@@ -230,7 +290,7 @@ def test_all_missing_cell_returns_zero_counts_without_failing_its_neighbor() -> 
     )
     valid = np.ones(hazard.shape, dtype=bool)
     valid[:, :, 1] = False
-    with pytest.warns(ClimateIndicesWarning):
+    with pytest.warns(ClimateIndicesWarning, match="fewer than 10 occurrences"):
         result = compound.joint_statistics(align(hazard, valid), groupby="pooled", min_samples=1)
     assert result.n_valid.tolist() == [4, 0]
     assert result.n_joint.tolist() == [1, 0]
@@ -239,7 +299,7 @@ def test_all_missing_cell_returns_zero_counts_without_failing_its_neighbor() -> 
     assert result.marginal_frequency[0][0] == 0.75
     assert result.marginal_frequency[1][0] == 0.5
     assert result.quality_flags.tolist() == [0, 3]
-    assert float(result.likelihood_multiplication_factor[0]) == pytest.approx((1 / 4) / ((3 / 4) * (2 / 4)))
+    assert float(result.likelihood_multiplication_factor[0]) == exact((1 / 4) / ((3 / 4) * (2 / 4)))
     assert math.isnan(float(result.likelihood_multiplication_factor[1]))
 
 
@@ -255,7 +315,7 @@ def test_monthly_groups_recount_pooled_support_instead_of_averaging_lmf() -> Non
         second[year * 12 + 7] = True  # August
     hazard = np.array([first, second])
 
-    with pytest.warns(ClimateIndicesWarning):
+    with pytest.warns(ClimateIndicesWarning, match="fewer than 10 occurrences"):
         monthly_result = compound.joint_statistics(align(hazard), groupby="month", min_samples=1)
     strict = compound.joint_statistics(align(hazard), groupby="month")
     pooled = compound.joint_statistics(align(hazard), groupby="pooled", min_samples=1)
@@ -285,39 +345,43 @@ def test_monthly_groups_recount_pooled_support_instead_of_averaging_lmf() -> Non
     assert float(pooled.likelihood_multiplication_factor) != pytest.approx(float(np.nanmean(monthly_lmfs)))
 
 
-@given(
-    values=st.lists(st.booleans(), min_size=2, max_size=12).flatmap(
-        lambda first: st.tuples(st.just(first), st.lists(st.booleans(), min_size=len(first), max_size=len(first)))
-    )
-)
-def test_source_permutation_is_symmetric(values: tuple[list[bool], list[bool]]) -> None:
+@st.composite
+def two_source_rows(draw: st.DrawFn) -> tuple[list[bool], list[bool], list[bool], list[bool]]:
+    """Draw two equal-length hazard rows and one validity mask per row.
+
+    Separate masks matter: the marginal counts must use the shared complete-case support,
+    and equal masks would hide a per-source-support defect.
+    """
+    length = draw(st.integers(min_value=2, max_value=10))
+    row = st.lists(st.booleans(), min_size=length, max_size=length)
+    return draw(st.tuples(row, row, row, row))
+
+
+@given(rows=two_source_rows())
+def test_source_permutation_is_symmetric(rows: tuple[list[bool], list[bool], list[bool], list[bool]]) -> None:
     """Swapping the two sources permutes the marginals and leaves joint values unchanged."""
-    first, second = values
+    first, second, first_valid, second_valid = rows
     hazard = np.array([first, second], dtype=bool)
-    forward = compound.joint_statistics(align(hazard), groupby="pooled", min_samples=1)
-    backward = compound.joint_statistics(align(hazard[::-1]), groupby="pooled", min_samples=1)
+    valid = np.array([first_valid, second_valid], dtype=bool)
+    forward = compound.joint_statistics(align(hazard, valid), groupby="pooled", min_samples=1)
+    backward = compound.joint_statistics(align(hazard[::-1], valid[::-1]), groupby="pooled", min_samples=1)
     assert forward.n_marginal.tolist() == backward.n_marginal[::-1].tolist()
     assert int(forward.n_valid) == int(backward.n_valid)
     assert int(forward.n_joint) == int(backward.n_joint)
-    assert float(forward.joint_probability) == float(backward.joint_probability)
-    assert float(forward.independent_probability) == pytest.approx(float(backward.independent_probability))
-    forward_lmf, backward_lmf = (
-        float(forward.likelihood_multiplication_factor),
-        float(backward.likelihood_multiplication_factor),
-    )
-    assert (math.isnan(forward_lmf) and math.isnan(backward_lmf)) or forward_lmf == pytest.approx(backward_lmf)
+    # an all-missing draw reports NaN on both sides, so compare with NaN == NaN
+    for field in ("joint_probability", "independent_probability", "likelihood_multiplication_factor"):
+        assert same_number(float(getattr(forward, field)), float(getattr(backward, field)))
 
 
-@given(
-    values=st.lists(st.booleans(), min_size=2, max_size=12).flatmap(
-        lambda first: st.tuples(st.just(first), st.lists(st.booleans(), min_size=len(first), max_size=len(first)))
-    )
-)
-def test_counts_and_probabilities_stay_within_their_bounds(values: tuple[list[bool], list[bool]]) -> None:
-    """Counts nest and every reported probability lies in [0, 1]; a defined LMF is nonnegative."""
-    first, second = values
+@given(rows=two_source_rows())
+def test_counts_and_probabilities_stay_within_their_bounds(
+    rows: tuple[list[bool], list[bool], list[bool], list[bool]],
+) -> None:
+    """Counts nest on one complete-case support and every probability lies in [0, 1]."""
+    first, second, first_valid, second_valid = rows
     hazard = np.array([first, second], dtype=bool)
-    result = compound.joint_statistics(align(hazard), groupby="pooled", min_samples=1)
+    valid = np.array([first_valid, second_valid], dtype=bool)
+    result = compound.joint_statistics(align(hazard, valid), groupby="pooled", min_samples=1)
     n_valid = int(result.n_valid)
     marginals = [int(count) for count in result.n_marginal]
     assert all(0 <= count <= n_valid for count in marginals)
@@ -327,7 +391,7 @@ def test_counts_and_probabilities_stay_within_their_bounds(values: tuple[list[bo
         float(result.independent_probability),
         *(float(value) for value in result.marginal_frequency),
     ):
-        assert 0.0 <= probability <= 1.0
+        assert math.isnan(probability) or 0.0 <= probability <= 1.0
     lmf = float(result.likelihood_multiplication_factor)
     assert math.isnan(lmf) or lmf >= 0.0
 
@@ -448,13 +512,18 @@ def test_rejects_a_manually_constructed_result_with_bad_arrays() -> None:
     with pytest.raises(CoordinateValidationError, match="strictly increasing"):
         compound.joint_statistics(unordered)
 
-    duplicated = dataclasses.replace(aligned, time=np.array([aligned.time[0]] * 3, dtype="datetime64[M]"))
+    duplicated = dataclasses.replace(aligned, time=np.array([aligned.time[0]] * 3, dtype="datetime64[D]"))
     with pytest.raises(CoordinateValidationError, match="strictly increasing"):
         compound.joint_statistics(duplicated)
 
-    nat = dataclasses.replace(aligned, time=np.array(["2000-01", "NaT", "2000-03"], dtype="datetime64[M]"))
+    nat = dataclasses.replace(aligned, time=np.array(["2000-01-01", "NaT", "2000-03-01"], dtype="datetime64[D]"))
     with pytest.raises(CoordinateValidationError, match="NaT"):
         compound.joint_statistics(nat)
+
+    # harmonize() emits civil days; a coarser unit would group every step into the wrong month
+    month_unit = dataclasses.replace(aligned, time=aligned.time.astype("datetime64[M]"))
+    with pytest.raises(InputTypeError, match=r"datetime64\[D\]"):
+        compound.joint_statistics(month_unit)
 
     numeric = dataclasses.replace(aligned, time=np.arange(3))
     with pytest.raises(InputTypeError, match="datetime64"):
@@ -541,7 +610,6 @@ def test_failure_logging_survives_a_non_aligned_argument() -> None:
 
 def test_public_surface_is_explicit() -> None:
     """Expose the function and its result type from the compound namespace, not the package root."""
-    assert climate_indices.compound.joint_statistics is compound.joint_statistics
     assert "joint_statistics" in compound.__all__
     assert "JointResult" in compound.__all__
     assert not hasattr(climate_indices, "joint_statistics")
@@ -553,6 +621,22 @@ def test_short_record_warning_fires_once_for_the_whole_record() -> None:
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         compound.joint_statistics(align(hazard), groupby="pooled", min_samples=1)
-    short = [item for item in caught if "observed years" in str(item.message)]
+    short = [item for item in caught if "observed calendar year" in str(item.message)]
     assert len(short) == 1
     assert issubclass(short[0].category, ClimateIndicesWarning)
+
+
+def test_record_length_counts_observed_years_not_month_arithmetic() -> None:
+    """Count years with an observed step: a July-to-June 30-year record is not short."""
+    thirty_years = np.ones((2, 360), dtype=bool)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        compound.joint_statistics(align(thirty_years, start="1990-07"), groupby="pooled", min_samples=1)
+    assert not [item for item in caught if "observed calendar year" in str(item.message)]
+
+    four_months = np.ones((2, 4), dtype=bool)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        compound.joint_statistics(align(four_months, start="2000-11"), groupby="pooled", min_samples=1)
+    messages = [str(item.message) for item in caught]
+    assert any("2 observed calendar year" in message for message in messages)
