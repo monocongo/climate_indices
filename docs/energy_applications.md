@@ -78,9 +78,10 @@ handed, so capacity factors, degree days, and demand proxies from any source
 are acceptable inputs
 ([ADR-0019](adr/0019-energy-module-api-and-aggregation.md)). The default is
 the empirical (rank-based) distribution, which Allen & Otero (2023) recommend
-above roughly 100 observations, with beta available for bounded [0, 1]
-capacity factors averaged with `aggregation="mean"` when there are too few.
-The beta option is not for demand proxies or accumulated production.
+above roughly 100 observations, with beta available for a bounded [0, 1] series
+averaged with `aggregation="mean"` when there are too few. Capacity factors are
+the common case; a bounded demand proxy qualifies when its source and windowed
+values stay within [0, 1]. The beta option is not for accumulated production.
 [#1169][energy-1169] added separate probability masses at exact 0 and 1 to the
 standardization seam ([ADR-0024](adr/0024-beta-distribution-for-bounded-series.md)):
 the continuous beta fit applies only between those endpoints, and a boundary value
@@ -166,10 +167,11 @@ order.
   {func}`climate_indices.energy.srepi` and
   {func}`climate_indices.energy.standardized_demand_index`
   ([#1171][energy-1171]), on the empirical distribution option
-  ([#1168][energy-1168]) by default, with beta ([#1169][energy-1169]) only for
-  capacity factors in [0, 1] averaged with `aggregation="mean"`, including the
-  endpoint-mass handling described above, not for demand proxies. SREPI averages
-  each window by default, so accumulated production needs `aggregation="sum"`;
+  ([#1168][energy-1168]) by default, with beta ([#1169][energy-1169]) only for a
+  bounded [0, 1] series averaged with `aggregation="mean"`, including the
+  endpoint-mass handling described above. Capacity factors are the common case,
+  and a bounded demand proxy qualifies on the same terms. SREPI averages each
+  window by default, so accumulated production needs `aggregation="sum"`;
   the demand index sums by default. `energy.SREPI_DROUGHT_THRESHOLDS` holds
   Allen & Otero's moderate, severe, and extreme cut-offs (−1.28, −1.64, −1.96).
   NumPy only: xarray adapters are planned ([#1174][energy-1174]).
