@@ -81,9 +81,13 @@ place. That is an API restriction, not a mathematical necessity — the parametr
 transforms will transform a signed series when given fitting parameters whose support
 covers it, but their support-limit and zero-mass handling is not designed for one, and
 clipping the negatives instead would score a different series.
-The plotting position, tie handling, and minimum-observation rule are fixed by
-[#1168](https://github.com/monocongo/climate_indices/issues/1168) against the convention
-the oracle survey confirms.
+[#1168](https://github.com/monocongo/climate_indices/issues/1168) fixed the plotting
+position, tie handling, and minimum-observation rule to the SEI convention the oracle
+survey confirms: `p = (1 + k) / (n + 2)` with `k` the count of calibration values at or
+below the value (ties at their maximum rank), no extrapolation beyond the calibration
+range, and at least ten valid calibration values per calendar step, else missing. The
+seam does not fall back to a parametric fit below Allen & Otero's roughly 100
+observations; that choice belongs to the wrappers.
 
 `energy.energy_drought_events()` produces run-theory onset, duration, magnitude, and
 peak statistics on any standardized energy index, built on `runs.identify_runs()`.
@@ -152,11 +156,6 @@ registry entries ([#1162](https://github.com/monocongo/climate_indices/issues/11
 
 - **Sub-daily (hourly) periodicity.** [#1177](https://github.com/monocongo/climate_indices/issues/1177).
   Forward-compatible as an additive `Periodicity` member; no signature changes.
-- **`clip_negatives` on the public seam, and the parametric rejection of a signed series.**
-  Land with [#1168](https://github.com/monocongo/climate_indices/issues/1168) and
-  [#1172](https://github.com/monocongo/climate_indices/issues/1172), the first consumers
-  that make a signed series meaningful. Exposing it earlier would let a signed series
-  reach a gamma fit.
 - **Accumulated radiation.** ERA5 `ssrd` is accumulated J m⁻² and has to be converted to
   a mean flux before `energy.pv_capacity_factor()`. [#1176](https://github.com/monocongo/climate_indices/issues/1176)
   decides whether the conversion is a caller's step or an argument.

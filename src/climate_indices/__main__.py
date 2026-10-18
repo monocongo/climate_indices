@@ -1712,10 +1712,10 @@ def _validate_flood_arguments(args: argparse.Namespace) -> None:
 
 
 # the distributions `--index spi` computes; log-logistic is the SPEI reference
-# distribution and `indices.spi()` rejects it (#106)
-_SPI_DISTRIBUTIONS = tuple(
-    distribution for distribution in indices.Distribution if distribution is not indices.Distribution.loglogistic
-)
+# distribution and `indices.spi()` rejects it (#106), and empirical is reserved for
+# `indices.standardized_index()` (#1168)
+_SPI_DISTRIBUTIONS = (indices.Distribution.gamma, indices.Distribution.pearson)
+_SPEI_DISTRIBUTIONS = (*_SPI_DISTRIBUTIONS, indices.Distribution.loglogistic)
 
 
 def _run_spi(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
@@ -1747,7 +1747,7 @@ def _run_spei(arguments: argparse.Namespace, input_type: DatasetLayout, transpor
     :param input_type: the input type determined by argument validation
     """
     for scale in arguments.scales:
-        for distribution in indices.Distribution:
+        for distribution in _SPEI_DISTRIBUTIONS:
             _compute_write_index(
                 _IndexRequest.from_arguments(
                     arguments,
