@@ -265,7 +265,7 @@ def synthetic_sources(preparation: dict[str, Any], tmp_path: Path, monkeypatch: 
     source.mkdir()
     rng = np.random.default_rng(0)
     grid = {"lat": [56.0, 62.0, 67.0], "lon": [14.0, 15.0, 20.0]}
-    monthly = pd.date_range("1922-01-31", periods=1200, freq="ME")
+    monthly = pd.date_range("1922-01-31", periods=1200, freq=pd.offsets.MonthEnd())
     daily = pd.date_range("1922-01-01", "2021-12-31", freq="D")
     for name, variable, time in (("SPEI12.nc", "SPEI", monthly), ("heatwave_SMHI.nc", "heatwave index", daily)):
         values = rng.normal(size=(len(time), 3, 3))
