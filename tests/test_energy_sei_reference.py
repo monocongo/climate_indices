@@ -1,6 +1,6 @@
 """SEI statistical references for climate-driven energy supply/demand, not actual load.
 
-Missing energy wrappers xfail under #1171/#1172; a present but broken wrapper fails.
+Missing energy wrappers fail until #1171/#1172; so does a present but broken wrapper.
 Integrity, generator, and oracle controls run without R, network access, or those wrappers.
 """
 
@@ -54,7 +54,7 @@ def _assert_reference(actual: Any, expected: np.ndarray, tolerance: float) -> No
 def _require_function(name: str, issue: int) -> Callable[..., Any]:
     function = getattr(energy, name, None)
     if function is None:
-        pytest.xfail(f"energy.{name}() is not implemented; tracked by #{issue}")
+        raise AssertionError(f"energy.{name}() is not implemented; tracked by #{issue}")
     assert callable(function)
     return cast(Callable[..., Any], function)
 
