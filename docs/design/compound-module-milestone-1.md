@@ -4,8 +4,8 @@
 
 The maintainer approved this internal plan and its recommendations.
 [Parent issue #1364](https://github.com/monocongo/climate_indices/issues/1364) tracks the milestone.
-CMP-01 through CMP-03 are complete, and CMP-04 is under review, so the NumPy `harmonize()`
-and `joint_statistics()` routes are implemented.
+CMP-01 through CMP-04 are complete, and CMP-05 is under review, so the NumPy `harmonize()`,
+`joint_statistics()`, and `conditional_probability()` routes are implemented.
 Every other API, the beta xarray route, and scientific validation do not exist yet.
 
 The source review used fetched `main` at `a074b1fc5593c5761abd0c49b361654b241cc479`
@@ -599,7 +599,7 @@ The sections below retain the approved issue specifications.
 The published bodies also contain scoped contract excerpts, real issue references, and the validation commands.
 Each child begins `Part of #1364`, with readable `Blocked by:` lines where applicable.
 GitHub records native parent and dependency links, and the parent contains a child checklist.
-Issues CMP-05 through CMP-10 carry `status:blocked`; CMP-01 through CMP-03 are complete, and CMP-04 is in review.
+Issues CMP-06 through CMP-10 carry `status:blocked`; CMP-01 through CMP-04 are complete, and CMP-05 is in review.
 The acceptance criteria are the issue-to-PR completion contract, not permission to expand scope.
 
 ### CMP-00 — [EPIC] Initial compound-hazard analysis milestone

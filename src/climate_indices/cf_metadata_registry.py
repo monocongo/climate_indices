@@ -658,11 +658,12 @@ CF_METADATA: dict[str, CFAttributes] = {
         ),
         "references": _ALLEN_OTERO_2023,
     },
-    # Compound-family metadata precedes the NumPy statistics (#1368) and their beta
-    # xarray adapters (#1372). Names, units, and bounds follow ADR-0022 decision 4
-    # and docs/design/compound-module-milestone-1.md. Every entry is a frequency on
-    # one observed, complete-case support, so units are "1" and no entry has a CF
-    # standard name. Counts and quality flags are defined beside the adapter.
+    # Compound-family metadata precedes the NumPy statistics (#1368 conditional on
+    # #1369) and their beta xarray adapters (#1372). Names, units, and bounds
+    # follow ADR-0022 decision 4 and docs/design/compound-module-milestone-1.md.
+    # Every entry is a frequency on one observed, complete-case support, so units
+    # are "1" and no entry has a CF standard name. Counts and quality flags are
+    # defined beside the adapter.
     "compound_marginal_probability": {
         "long_name": "Compound Hazard Marginal Frequency",
         "units": "1",
@@ -702,6 +703,26 @@ CF_METADATA: dict[str, CFAttributes] = {
             "below 1 are suppression. A zero marginal count makes it undefined (NaN) rather than infinite. "
             "A value of 1 means the threshold frequencies match the independence product; it does not "
             "establish independence."
+        ),
+        "references": _VIEIRA_PASSOS_2024,
+    },
+    "compound_conditional_probability": {
+        "long_name": "Compound Hazard Conditional Frequency",
+        "units": "1",
+        "description": (
+            "Fraction of eligible occurrences of the given hazard whose inclusive forward target window "
+            "holds a target-hazard occurrence, in [0, 1]. It counts time steps rather than events or event "
+            "onsets, and it is a lagged association, not a causal cascade or an event-onset probability."
+        ),
+        "references": _VIEIRA_PASSOS_2024,
+    },
+    "compound_response_window_probability": {
+        "long_name": "Compound Hazard Response-Window Frequency",
+        "units": "1",
+        "description": (
+            "Fraction of eligible anchors whose inclusive forward target window holds a target-hazard "
+            "occurrence, in [0, 1]. It is the unconditional comparison on the same anchors as the "
+            "conditional frequency, not a single-step marginal frequency."
         ),
         "references": _VIEIRA_PASSOS_2024,
     },

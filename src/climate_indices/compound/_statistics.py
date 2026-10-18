@@ -19,6 +19,14 @@ events per year.
   ``undefined_denominator`` quality flag, never infinity and never an estimate.
 - ``LMF = 1`` means the threshold frequencies match the independence product. It
   does **not** establish independence of the underlying variables.
+
+``conditional_probability()`` conditions one target hazard on one anchor hazard and
+counts each eligible anchor once, however many target occurrences its inclusive
+forward window holds. It reports the conditional time-step frequency beside the
+unconditional response-window frequency on the same eligible anchors. An anchor
+whose window leaves the record, or holds an unknown target step, is discarded: an
+incomplete horizon is never a non-response. Conditioning is not symmetric, and the
+result is a lagged association, not an event-onset probability or a causal cascade.
 """
 
 from __future__ import annotations
@@ -113,6 +121,60 @@ class JointResult:
     joint_probability: npt.NDArray[np.float64]
     independent_probability: npt.NDArray[np.float64]
     likelihood_multiplication_factor: npt.NDArray[np.float64]
+    quality_flags: npt.NDArray[np.int64]
+    metadata: Mapping[str, Any]
+
+
+@dataclass(frozen=True, eq=False)
+class ConditionalResult:
+    """Counts and probabilities for one target window given one anchor hazard.
+
+    Instances compare by identity: the fields are arrays. Every array is read-only
+    and was built by :func:`conditional_probability`; mutate neither it nor
+    ``metadata``.
+
+    Each field is shaped ``(month, *cells)`` when ``groupby="month"`` and
+    ``(*cells)`` when ``groupby="pooled"``. The month axis is index 0-11, where 0
+    is January. A point series has no ``*cells`` axis.
+
+    Args:
+        given: Name of the anchor source whose occurrences condition the estimate.
+        target: Name of the target source whose forward occurrences are counted.
+        lag_window: Inclusive forward window ``(low, high)`` in cadence steps.
+        groupby: ``"month"`` for the anchor step's calendar month or ``"pooled"``
+            for one mixture over every eligible anchor.
+        n_anchors: Eligible anchors: steps where the given source is observed and
+            every target step in the requested window is observed.
+        n_positive: Eligible anchors where the given hazard occurs.
+        n_response: Eligible anchors whose window holds a target occurrence, over
+            every eligible anchor rather than only the positive ones.
+        n_success: Eligible anchors where the given hazard occurs and the window
+            holds a target occurrence.
+        conditional_probability: ``n_success / n_positive``, the time-step
+            probability of a target occurrence in the window given an anchor
+            occurrence; ``NaN`` when no anchor carries an occurrence or the group
+            is below ``min_samples``.
+        response_window_frequency: ``n_response / n_anchors``, the unconditional
+            comparison on those same eligible anchors; ``NaN`` when the group is
+            below ``min_samples``.
+        quality_flags: Bitwise OR of ``insufficient_support`` (fewer than
+            ``min_samples`` eligible anchors) and ``undefined_denominator`` (no
+            eligible anchor carries an occurrence). ``metadata["quality_flags"]``
+            names each bit.
+        metadata: Immutable, JSON-compatible manifest of the pairing, window,
+            grouping, and the harmonization manifest the counts rest on.
+    """
+
+    given: str
+    target: str
+    lag_window: tuple[int, int]
+    groupby: GroupBy
+    n_anchors: npt.NDArray[np.int64]
+    n_positive: npt.NDArray[np.int64]
+    n_response: npt.NDArray[np.int64]
+    n_success: npt.NDArray[np.int64]
+    conditional_probability: npt.NDArray[np.float64]
+    response_window_frequency: npt.NDArray[np.float64]
     quality_flags: npt.NDArray[np.int64]
     metadata: Mapping[str, Any]
 
@@ -328,6 +390,219 @@ def _warn_support(
         )
 
 
+def _check_lag_window(lag_window: object) -> tuple[int, int]:
+    """Require an ordered pair of nonnegative integer cadence-step offsets."""
+    if not isinstance(lag_window, tuple) or len(lag_window) != 2:
+        raise InvalidArgumentError(
+            "lag_window must be a (low, high) tuple of cadence-step offsets.",
+            argument_name="lag_window",
+            argument_value=repr(lag_window),
+            valid_values="a tuple of two integers, for example (0, 0) or (1, 3)",
+        )
+    low, high = lag_window
+    for offset in (low, high):
+        if isinstance(offset, bool) or not isinstance(offset, int):
+            raise InvalidArgumentError(
+                "lag_window offsets must be integers.",
+                argument_name="lag_window",
+                argument_value=repr(lag_window),
+                valid_values="a tuple of two integers",
+            )
+    if low < 0:
+        raise InvalidArgumentError(
+            "lag_window offsets cannot be negative; the window runs forward in time.",
+            argument_name="lag_window",
+            argument_value=repr(lag_window),
+            valid_values="0 <= low <= high",
+        )
+    if high < low:
+        raise InvalidArgumentError(
+            "lag_window bounds must be ordered from low to high.",
+            argument_name="lag_window",
+            argument_value=repr(lag_window),
+            valid_values="0 <= low <= high",
+        )
+    return low, high
+
+
+def _pair_indices(names: tuple[str, ...], given: object, target: object) -> tuple[int, int]:
+    """Resolve the two named sources, rejecting a missing name and an ambiguous role."""
+    resolved: dict[str, int] = {}
+    for role, name in (("given", given), ("target", target)):
+        if not isinstance(name, str) or name not in names:
+            raise InvalidArgumentError(
+                f"{role} must name one source in hazards.names: {list(names)}.",
+                argument_name=role,
+                argument_value=repr(name),
+                valid_values=repr(names),
+            )
+        resolved[role] = names.index(name)
+    if resolved["given"] == resolved["target"]:
+        raise InvalidArgumentError(
+            "given and target must name different sources; one source cannot condition on itself.",
+            argument_name="target",
+            argument_value=repr(target),
+            valid_values="a source name other than given",
+        )
+    return resolved["given"], resolved["target"]
+
+
+def _forward_windows(
+    target_valid: npt.NDArray[np.bool_],
+    target_occurrence: npt.NDArray[np.bool_],
+    low: int,
+    high: int,
+) -> tuple[npt.NDArray[np.bool_], npt.NDArray[np.bool_]]:
+    """Return per-anchor window validity and target occurrence for ``[t+low, t+high]``.
+
+    An anchor within ``high`` steps of the record end has an incomplete horizon and
+    is never valid. Positions past the end are clamped and masked by that flag, so
+    an incomplete window cannot contribute a response.
+    """
+    steps = target_valid.shape[0]
+    tail = (1,) * (target_valid.ndim - 1)
+    reachable = ((np.arange(steps) + high) < steps).reshape((-1, *tail))
+    window_valid = np.broadcast_to(reachable, target_valid.shape).copy()
+    response = np.zeros(target_occurrence.shape, dtype=bool)
+    for offset in range(low, high + 1):
+        position = np.minimum(np.arange(steps) + offset, steps - 1)
+        window_valid &= np.take(target_valid, position, axis=0)
+        response |= np.take(target_occurrence, position, axis=0)
+    return window_valid, response
+
+
+def _warn_conditional_support(
+    time: npt.NDArray[np.datetime64],
+    eligible: npt.NDArray[np.bool_],
+    n_anchors: npt.NDArray[np.int64],
+    n_positive: npt.NDArray[np.int64],
+    min_samples: int,
+) -> None:
+    """Warn once about a short record, sparse conditioning, short support, or no conditioning."""
+    observed_years = _observed_years(time, eligible)
+    if observed_years < _SHORT_RECORD_YEARS:
+        warnings.warn(
+            f"The record holds {observed_years} observed calendar year(s); {_SHORT_RECORD_YEARS} are expected "
+            "before a compound statistic is read as a rate.",
+            ClimateIndicesWarning,
+            stacklevel=4,
+        )
+    sparse = int(np.count_nonzero((n_anchors > 0) & (n_positive < _SPARSE_OCCURRENCES)))
+    if sparse:
+        warnings.warn(
+            f"{sparse} group(s) have fewer than {_SPARSE_OCCURRENCES} conditioning occurrences; such sparse "
+            "frequencies are unstable. This is a product guardrail, not an adequacy threshold.",
+            ClimateIndicesWarning,
+            stacklevel=4,
+        )
+    short_support = int(np.count_nonzero((n_anchors > 0) & (n_anchors < min_samples)))
+    if short_support:
+        warnings.warn(
+            f"{short_support} group(s) have fewer than min_samples={min_samples} eligible anchors; "
+            "their estimates are NaN. This is a product guardrail, not an adequacy threshold.",
+            ClimateIndicesWarning,
+            stacklevel=4,
+        )
+    undefined = int(np.count_nonzero((n_anchors > 0) & (n_positive == 0)))
+    if undefined:
+        warnings.warn(
+            f"{undefined} group(s) have no conditioning occurrence, so the conditional probability is undefined there.",
+            ClimateIndicesWarning,
+            stacklevel=4,
+        )
+
+
+def _conditional_probability(
+    hazards: AlignedHazards,
+    *,
+    given: str,
+    target: str,
+    lag_window: tuple[int, int],
+    groupby: GroupBy,
+    min_samples: int,
+) -> ConditionalResult:
+    """Validate, resolve the forward window, count, and estimate; see :func:`conditional_probability`."""
+    hazards = _validate_hazards(hazards)
+    low, high = lag_window
+    given_index, target_index = _pair_indices(hazards.names, given, target)
+    occurrence = hazards.exceedance & hazards.valid
+
+    # an anchor is eligible when the given source is observed there and every target step in
+    # the window is observed; an incomplete horizon is discarded rather than counted as a non-response
+    window_valid, response = _forward_windows(hazards.valid[target_index], occurrence[target_index], low, high)
+    eligible = hazards.valid[given_index] & window_valid
+    positive = eligible & occurrence[given_index]
+    success = positive & response
+
+    months = _month_index(hazards.time)
+    n_anchors = _counts(eligible, months, groupby)
+    n_positive = _counts(positive, months, groupby)
+    n_response = _counts(eligible & response, months, groupby)
+    n_success = _counts(success, months, groupby)
+    # below min_samples the counts stand but every estimate is undefined
+    sufficient = np.asarray(n_anchors >= min_samples)
+    conditional_probability = _undefined(_safe_rate(n_success, n_positive), sufficient)
+    response_window_frequency = _undefined(_safe_rate(n_response, n_anchors), sufficient)
+    flagged = np.where(n_anchors < min_samples, _INSUFFICIENT_SUPPORT, 0) | np.where(
+        n_positive == 0, _UNDEFINED_DENOMINATOR, 0
+    )
+    quality_flags = np.asarray(flagged, dtype=np.int64)
+
+    _warn_conditional_support(hazards.time, eligible, n_anchors, n_positive, min_samples)
+
+    unit = "month" if groupby == "month" else None
+    manifest = {
+        "schema_version": _MANIFEST_SCHEMA_VERSION,
+        "function": "conditional_probability",
+        "given": given,
+        "target": target,
+        "lag_window": (low, high),
+        "lag_units": "civil days" if hazards.cadence == "daily" else "calendar months",
+        "groupby": groupby,
+        "min_samples": min_samples,
+        "calendar": hazards.metadata.get("calendar", "unknown"),
+        "cadence": hazards.cadence,
+        "time_start": np.datetime_as_string(hazards.time[0].astype(_UNITS[hazards.cadence]), unit="D"),
+        "time_end": np.datetime_as_string(hazards.time[-1].astype(_UNITS[hazards.cadence]), unit="D"),
+        "n_steps": int(hazards.time.shape[0]),
+        "grouped_by": unit or "pooled over every eligible anchor",
+        "eligibility": (
+            "An anchor is eligible when the given source is valid there and every target step in the "
+            "inclusive forward window is valid. An anchor whose window leaves the record is discarded, "
+            "even when the window already holds a target occurrence."
+        ),
+        "estimands": (
+            f"conditional_probability is n_success divided by n_positive: the fraction of eligible "
+            f"{given}-positive anchors whose window holds a {target} occurrence. response_window_frequency "
+            "is n_response divided by n_anchors on those same eligible anchors. Each positive anchor counts "
+            "once however many target occurrences its window holds. This is a time-step conditional "
+            "probability, not an event-onset probability and not a causal claim."
+        ),
+        "lag_rule": (
+            "The window is [anchor + low, anchor + high] in cadence steps: daily steps are civil days and "
+            "monthly steps are calendar months. Negative offsets and unordered bounds are rejected. The "
+            "anchor step's calendar month groups a lagged statistic, even when the window crosses a month "
+            "or year boundary."
+        ),
+        "quality_flags": dict(_FLAG_MEANINGS),
+        "harmonization": _harmonization_record(hazards.metadata),
+    }
+    return ConditionalResult(
+        given=given,
+        target=target,
+        lag_window=lag_window,
+        groupby=groupby,
+        n_anchors=_immutable(n_anchors),
+        n_positive=_immutable(n_positive),
+        n_response=_immutable(n_response),
+        n_success=_immutable(n_success),
+        conditional_probability=_immutable(conditional_probability),
+        response_window_frequency=_immutable(response_window_frequency),
+        quality_flags=_immutable(quality_flags),
+        metadata=_freeze(manifest),
+    )
+
+
 def _joint_statistics(hazards: AlignedHazards, *, groupby: GroupBy, min_samples: int) -> JointResult:
     """Validate, count, and estimate; see :func:`joint_statistics`."""
     hazards = _validate_hazards(hazards)
@@ -497,5 +772,134 @@ def joint_statistics(
         "calculation_completed",
         duration_ms=round((perf_counter() - t0) * 1000.0, 2),
         output_shape=result.n_valid.shape,
+    )
+    return result
+
+
+def conditional_probability(
+    hazards: AlignedHazards,
+    *,
+    given: str,
+    target: str,
+    lag_window: tuple[int, int] = (0, 0),
+    groupby: GroupBy = "month",
+    min_samples: int = 30,
+) -> ConditionalResult:
+    """Estimate a target-hazard window frequency given one anchor hazard.
+
+    Pair one named source with another on the :class:`AlignedHazards` support. For
+    an anchor step ``t``, the response ``R(t)`` is any target occurrence in the
+    inclusive forward window ``[t + low, t + high]``; ``(0, 0)`` is contemporaneous
+    conditioning and ``(1, 3)`` is the next one through three cadence steps. Daily
+    offsets are civil days and monthly offsets are calendar months.
+
+    An anchor is eligible only when the given source is observed there and **every**
+    target step in the window is observed. An anchor whose window leaves the record
+    is discarded, even when the window already holds a target occurrence. Each
+    eligible anchor that carries a given occurrence counts once, however many target
+    occurrences its window holds. The result reports the conditional time-step
+    frequency ``n_success / n_positive`` beside the unconditional response-window
+    frequency ``n_response / n_anchors`` on the same eligible anchors. Conditioning
+    is not symmetric: the estimate for ``given=A, target=B`` generally differs from
+    the one with the roles swapped.
+
+    Month groups follow the **anchor** step's calendar month, even when the window
+    crosses a month or year boundary. NaNs and masked values stay unknown; they are
+    never a non-response, and they never fail a neighboring series.
+
+    This is a time-step conditional probability, not an event-onset conversion
+    probability, and a lagged association is not a causal cascade.
+
+    Args:
+        hazards: An :class:`AlignedHazards` with two or three sources, built by
+            :func:`~climate_indices.compound.harmonize`. It is revalidated here:
+            one row per name, one column per date, strictly increasing non-NaT
+            dates, Boolean arrays, and a mapping manifest. Only the two selected
+            sources enter eligibility.
+        given: Name of the anchor source ``A`` in ``hazards.names``.
+        target: Name of the target source ``B`` in ``hazards.names``; it must
+            differ from ``given``.
+        lag_window: Inclusive forward window ``(low, high)`` in cadence steps, both
+            nonnegative and ordered. The default ``(0, 0)`` counts the same step.
+        groupby: ``"month"`` for the anchor's calendar-month groups or ``"pooled"``
+            for one group over every eligible anchor.
+        min_samples: Positive integer minimum eligible anchors per reported group.
+            The default 30 is a conservative product guardrail, not a scientific
+            adequacy threshold.
+
+    Returns:
+        A :class:`ConditionalResult` whose arrays are new and read-only. Counts are
+        ``int64``, estimates are ``float64`` with ``NaN`` where undefined, and
+        ``quality_flags`` is an ``int64`` bit field.
+
+    Raises:
+        InvalidArgumentError: For a non-``AlignedHazards`` argument, a source count
+            other than two or three, duplicate names, a name that does not select a
+            source, ``given`` equal to ``target``, a malformed, negative, or
+            unordered ``lag_window``, an unsupported ``groupby``, or a non-positive
+            ``min_samples``.
+        InputTypeError: For a non-Boolean array or a non-``datetime64`` time vector.
+        DataShapeError: For mismatched array shapes or a date vector that does not
+            match the time axis.
+        CoordinateValidationError: For NaT, duplicate, unordered, or empty dates, or
+            a monthly label that is not the first civil day of its month.
+
+    Warns:
+        ClimateIndicesWarning: For a record holding fewer than 30 observed calendar
+            years, a group below ``min_samples`` eligible anchors, a group with
+            fewer than ten conditioning occurrences, or a group whose conditioning
+            count is zero.
+
+    Example:
+        >>> import numpy as np
+        >>> from climate_indices import compound
+        >>> months = np.arange("2000-01", "2000-07", dtype="datetime64[M]")
+        >>> aligned = compound.harmonize(
+        ...     {
+        ...         "drought": np.array([0.04, 0.50, 0.03, 0.50, 0.02, 0.60]),
+        ...         "heat": np.array([True, False, False, True, False, False]),
+        ...     },
+        ...     time={"drought": months, "heat": months},
+        ...     cadence={"drought": "monthly", "heat": "monthly"},
+        ...     input_scale={"drought": "probability", "heat": "indicator"},
+        ...     thresholds={"drought": 0.1, "heat": 0.5},
+        ...     directions={"drought": "below", "heat": "above"},
+        ...     target_cadence="monthly",
+        ... )
+        >>> lagged = compound.conditional_probability(
+        ...     aligned, given="drought", target="heat", lag_window=(0, 1), groupby="pooled", min_samples=1
+        ... )
+        >>> int(lagged.n_anchors), int(lagged.n_positive), int(lagged.n_success)
+        (5, 3, 2)
+        >>> print(round(float(lagged.conditional_probability), 6), round(float(lagged.response_window_frequency), 6))
+        0.666667 0.6
+    """
+    log = _logger.bind(
+        index_type="compound_conditional_probability",
+        n_sources=len(hazards.names) if isinstance(hazards, AlignedHazards) else 0,
+        groupby=groupby,
+        lag_window=lag_window,
+        min_samples=min_samples,
+    )
+    log.info("calculation_started")
+    t0 = perf_counter()
+    try:
+        _check_choice("groupby", groupby, _GROUPINGS)
+        window = _check_lag_window(lag_window)
+        result = _conditional_probability(
+            hazards,
+            given=given,
+            target=target,
+            lag_window=window,
+            groupby=groupby,
+            min_samples=_check_min_samples(min_samples),
+        )
+    except Exception as exc:
+        log_calculation_failure(log, exc)
+        raise
+    log.info(
+        "calculation_completed",
+        duration_ms=round((perf_counter() - t0) * 1000.0, 2),
+        output_shape=result.n_anchors.shape,
     )
     return result
