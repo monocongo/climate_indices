@@ -1389,3 +1389,31 @@ def bench_gridded_precip_da() -> xr.DataArray:
         dims=["time", "lat", "lon"],
         attrs={"units": "mm"},
     )
+
+
+def assert_publish_restores_previous_set(
+    generator: ModuleType,
+    staging: Path,
+    target: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error: type[BaseException],
+) -> None:
+    """Interrupt a fixture generator's staging swap and check the published set survives unchanged.
+
+    The energy generators publish a complete fixture set by swapping directories, so an
+    interrupted swap must leave the committed files exactly as they were rather than a
+    mixture of the two generations.
+    """
+    previous = {path.name: path.read_bytes() for path in target.iterdir()}
+    monkeypatch.setattr(generator, "FIXTURE_DIR", target)
+    replace = generator.os.replace
+
+    def interrupted_replace(source: Path, destination: Path) -> None:
+        if source == staging:
+            raise error("interrupted publication")
+        replace(source, destination)
+
+    monkeypatch.setattr(generator.os, "replace", interrupted_replace)
+    with pytest.raises(error, match="interrupted publication"):
+        generator._publish(staging)
+    assert {path.name: path.read_bytes() for path in target.iterdir()} == previous

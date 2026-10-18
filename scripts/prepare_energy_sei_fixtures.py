@@ -114,15 +114,19 @@ def _synthetic_inputs() -> dict[str, np.ndarray]:
     }
 
 
+# input name, wrapper, tracking issue, aggregations, data start year, calibration window
+CASE_INPUTS = (
+    ("capacity", "srepi", 1171, ("mean",), 1900, 1902, 2001),
+    ("production", "srepi", 1171, ("sum",), 1900, 1902, 2001),
+    ("demand", "standardized_demand_index", 1171, ("sum",), 1900, 1902, 2001),
+    ("residual", "srli", 1172, ("sum", "mean"), 1900, 1902, 2001),
+    ("reading", "srepi", 1171, ("mean",), 1950, 1981, 2010),
+)
+
+
 def _cases() -> list[dict[str, Any]]:
     cases = []
-    for name, function, aggregations in (
-        ("capacity", "srepi", ("mean",)),
-        ("production", "srepi", ("sum",)),
-        ("demand", "standardized_demand_index", ("sum",)),
-        ("residual", "srli", ("sum", "mean")),
-        ("reading", "srepi", ("mean",)),
-    ):
+    for name, function, issue, aggregations, start, calibration_first, calibration_last in CASE_INPUTS:
         for aggregation in aggregations:
             for scale in (1, 3):
                 cases.append(
@@ -130,12 +134,12 @@ def _cases() -> list[dict[str, Any]]:
                         "id": f"{name}_{aggregation}_{scale}",
                         "input": name,
                         "function": function,
-                        "issue": 1172 if function == "srli" else 1171,
+                        "issue": issue,
                         "scale": scale,
                         "aggregation": aggregation,
-                        "data_start_year": 1950 if name == "reading" else 1900,
-                        "calibration_year_initial": 1981 if name == "reading" else 1902,
-                        "calibration_year_final": 2010 if name == "reading" else 2001,
+                        "data_start_year": start,
+                        "calibration_year_initial": calibration_first,
+                        "calibration_year_final": calibration_last,
                     }
                 )
     return cases
@@ -183,6 +187,37 @@ def _measure_agreement(
     return measurements
 
 
+def _write_oracle_input(path: Path, cases: list[dict[str, Any]], inputs: dict[str, np.ndarray]) -> None:
+    """Write one row per case value, at full double precision, for the R oracle to read."""
+    rows = ["case,year,month,value,scale,aggregation,calibration_start,calibration_end"]
+    for case in cases:
+        for i, value in enumerate(inputs[case["input"]]):
+            rows.append(
+                f"{case['id']},{case['data_start_year'] + i // 12},{i % 12 + 1},"
+                f"{value:.17g},{case['scale']},{case['aggregation']},"
+                f"{case['calibration_year_initial']},{case['calibration_year_final']}"
+            )
+    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+
+def _collect_references(
+    work: Path, cases: list[dict[str, Any]], inputs: dict[str, np.ndarray]
+) -> dict[str, np.ndarray]:
+    """Read the oracle tables, refusing a case the oracle did not emit a value for."""
+    references: dict[str, np.ndarray] = {}
+    for case in cases:
+        table = np.genfromtxt(work / f"{case['id']}.csv", delimiter=",", names=True)
+        if table.size != inputs[case["input"]].size:
+            raise ValueError(f"Incomplete oracle output for {case['id']}")
+        for field in ("scaled", "probability", "normal", "count"):
+            references[f"{case['id']}_{field}"] = table[field]
+    for name in ("gamma_control", "finite_bounds"):
+        table = np.genfromtxt(work / f"{name}.csv", delimiter=",", names=True)
+        for field in table.dtype.names or ():
+            references[f"{name}_{field}"] = table[field]
+    return references
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("sei_archive", type=Path)
@@ -213,32 +248,14 @@ def main() -> None:
             check=True,
             timeout=R_TIMEOUT,
         )
-        rows = ["case,year,month,value,scale,aggregation,calibration_start,calibration_end"]
-        for case in cases:
-            for i, value in enumerate(inputs[case["input"]]):
-                rows.append(
-                    f"{case['id']},{case['data_start_year'] + i // 12},{i % 12 + 1},"
-                    f"{value:.17g},{case['scale']},{case['aggregation']},"
-                    f"{case['calibration_year_initial']},{case['calibration_year_final']}"
-                )
-        (work / "input.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+        _write_oracle_input(work / "input.csv", cases, inputs)
         subprocess.run(  # nosec B603 # resolved Rscript path; fixed arguments and temporary files
             [rscript, str(R_SCRIPT), str(library), str(work / "input.csv"), str(work)],
             env=env,
             check=True,
             timeout=R_TIMEOUT,
         )
-        references = {}
-        for case in cases:
-            table = np.genfromtxt(work / f"{case['id']}.csv", delimiter=",", names=True)
-            if table.size != inputs[case["input"]].size:
-                raise ValueError(f"Incomplete oracle output for {case['id']}")
-            for field in ("scaled", "probability", "normal", "count"):
-                references[f"{case['id']}_{field}"] = table[field]
-        for name in ("gamma_control", "finite_bounds"):
-            table = np.genfromtxt(work / f"{name}.csv", delimiter=",", names=True)
-            for field in table.dtype.names or ():
-                references[f"{name}_{field}"] = table[field]
+        references = _collect_references(work, cases, inputs)
         measurements = _measure_agreement(inputs, cases, references)
         oracle_files = {name: (work / name).read_bytes() for name in ("sessionInfo.txt", "warnings.txt")}
 

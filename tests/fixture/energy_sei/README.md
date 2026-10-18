@@ -138,6 +138,9 @@ A present but incorrect implementation fails normally.
 
 The generator does not download sources or install R dependencies.
 It checks SEI and fitdistrplus versions before calculation.
+NumPy scales the synthetic ranges in compiled code that contracts differently on x86-64 and arm64,
+so a regeneration on another architecture reproduces the committed inputs to within an ulp rather than
+bit for bit, and changes the checksums; the offline input check allows `rtol=1e-12` for that reason.
 It also refuses NumPy or xarray versions other than the pins in `metadata.json`,
 because that file is one of the checksummed payloads.
 It wrote the committed payloads with NumPy 2.4.2; it avoids an `allow_pickle` keyword that NumPy before 2.2 would store as an extra archive member.
