@@ -468,8 +468,9 @@ def _forward_windows(
     """Return per-anchor window validity and target occurrence for ``[t+low, t+high]``.
 
     An anchor within ``high`` steps of the record end has an incomplete horizon and is
-    never valid; its response is ``False``. Window sums come from one prefix sum along the
-    time axis per mask, so the cost does not grow with the window width.
+    never valid; its response is ``False``. One cell-wide rolling count per mask carries the
+    window forward, so no full-grid prefix or difference array is built and the cost does
+    not grow with the window width.
     """
     steps = target_valid.shape[0]
     window_valid = np.zeros(target_valid.shape, dtype=bool)
@@ -478,14 +479,18 @@ def _forward_windows(
     complete = steps - high
     if complete <= 0:
         return window_valid, response
-    prefixes = []
-    for mask in (~target_valid, target_occurrence):
-        prefix = np.zeros((steps + 1, *mask.shape[1:]), dtype=np.int32)
-        np.cumsum(mask, axis=0, dtype=np.int32, out=prefix[1:])
-        # steps in [t + low, t + high] = prefix[t + high + 1] - prefix[t + low]
-        prefixes.append(prefix[high + 1 : high + 1 + complete] - prefix[low : low + complete])
-    window_valid[:complete] = prefixes[0] == 0
-    response[:complete] = prefixes[1] > 0
+    width = high - low + 1
+    valid_count = np.asarray(target_valid[low : high + 1].sum(axis=0, dtype=np.int32))
+    occurrence_count = np.asarray(target_occurrence[low : high + 1].sum(axis=0, dtype=np.int32))
+    for anchor in range(complete):
+        window_valid[anchor] = valid_count == width
+        response[anchor] = occurrence_count > 0
+        # advance to the next anchor: t + low leaves the window and t + high + 1 enters it
+        if anchor + 1 < complete:
+            valid_count += target_valid[anchor + high + 1]
+            valid_count -= target_valid[anchor + low]
+            occurrence_count += target_occurrence[anchor + high + 1]
+            occurrence_count -= target_occurrence[anchor + low]
     return window_valid, response
 
 

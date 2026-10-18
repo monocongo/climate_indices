@@ -960,7 +960,7 @@ def test_joint_statistics_accepts_a_gapped_time_vector() -> None:
 
 @pytest.mark.parametrize("window", [(0, 0), (1, 3), (0, 7), (2, 9), (0, 10**9)])
 def test_forward_windows_match_a_per_anchor_scan(window: tuple[int, int]) -> None:
-    """The prefix-sum window equals a direct scan of [t+low, t+high], and an incomplete horizon is invalid."""
+    """The rolling-window count equals a direct scan of [t+low, t+high], and an incomplete horizon is invalid."""
     rng = np.random.default_rng(1388)
     valid = rng.random((9, 2, 3)) > 0.2
     occurrence = (rng.random((9, 2, 3)) > 0.6) & valid
