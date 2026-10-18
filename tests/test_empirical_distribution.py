@@ -158,8 +158,9 @@ def test_seam_rejects_a_malformed_distribution_with_value_error() -> None:
     values = np.random.default_rng(31).gamma(2.0, size=40 * 12)
 
     for distribution in ("gamma", object()):
+        malformed = cast("indices.Distribution", distribution)
         with pytest.raises(ValueError, match="Unsupported distribution"):
-            compute.fit_and_standardize(values, cast("indices.Distribution", distribution), 1981, 1981, 1990, _MONTHLY)
+            compute.fit_and_standardize(values, malformed, 1981, 1981, 1990, _MONTHLY)
 
 
 def test_other_surfaces_reject_empirical() -> None:
