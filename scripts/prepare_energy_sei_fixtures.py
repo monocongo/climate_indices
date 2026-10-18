@@ -37,7 +37,8 @@ PAYLOADS = ("inputs.npz", "metadata.json", "reference.npz", "sessionInfo.txt", "
 
 def _verify_file(path: Path, expected: str) -> None:
     digest = hashlib.sha256()
-    with path.open("rb") as stream:
+    # S8707: the operator's own source paths, read only to hash; any digest mismatch rejects the file.
+    with path.open("rb") as stream:  # NOSONAR (S8707)
         while chunk := stream.read(1 << 20):
             digest.update(chunk)
     if digest.hexdigest() != expected:
