@@ -69,6 +69,7 @@ def test_fixture_integrity_and_source_pin() -> None:
     checksum = hashlib.sha256(b"".join((FIXTURE_DIR / name).read_bytes() for name in PAYLOADS)).hexdigest()
     assert checksum == provenance["checksum_sha256"]
     assert METADATA["sei_commit"] == "4d4a6d02d0fbfefdb48da63580c6be1bca3d5f14"
+    assert METADATA["sei_archive_sha256"] == "49d1f1ee1c68bb0ec758b7b1cff2d29d48daae5dd508fdec7ce5eaabd97501d4"
     script = ROOT / "scripts" / "energy_sei_reference.R"
     assert hashlib.sha256(script.read_bytes()).hexdigest() == METADATA["r_script_sha256"]
     assert provenance["validation_tolerance"] == {
@@ -149,7 +150,15 @@ def test_generator_rejects_changed_sources_and_pins_synthetic_inputs(generator: 
     for name, values in generator._synthetic_inputs().items():
         np.testing.assert_array_equal(values, _load("inputs.npz", name))
     assert generator._cases() == CASES
+    assert generator.SEI_SHA256 == METADATA["sei_archive_sha256"]
     assert generator.PAYLOADS == PAYLOADS
+
+
+def test_verify_file_accepts_matching_digest_across_chunks(generator: Any, tmp_path: Path) -> None:
+    source = tmp_path / "large.bin"
+    payload = b"x" * (3 << 20)
+    source.write_bytes(payload)
+    generator._verify_file(source, hashlib.sha256(payload).hexdigest())
 
 
 def _write_set(directory: Path, payload: bytes) -> None:

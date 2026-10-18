@@ -17,7 +17,7 @@ import hashlib
 import json
 import os
 import shutil
-import subprocess
+import subprocess  # nosec B404 # fixed R commands on local files; no shell
 import tempfile
 from pathlib import Path
 from typing import Any, cast
@@ -31,11 +31,16 @@ R_SCRIPT = ROOT / "scripts" / "energy_sei_reference.R"
 SEI_COMMIT = "4d4a6d02d0fbfefdb48da63580c6be1bca3d5f14"
 SEI_SHA256 = "49d1f1ee1c68bb0ec758b7b1cff2d29d48daae5dd508fdec7ce5eaabd97501d4"
 READING_SHA256 = "3f3726492fa52c0e8d5e1025e3047b09d3ab75a180701f89d4ea78161c6db7e8"
+R_TIMEOUT = 3600  # seconds allowed per R command
 PAYLOADS = ("inputs.npz", "metadata.json", "reference.npz", "sessionInfo.txt", "warnings.txt")
 
 
 def _verify_file(path: Path, expected: str) -> None:
-    if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(1 << 20):
+            digest.update(chunk)
+    if digest.hexdigest() != expected:
         raise ValueError(f"Unexpected source checksum: {path}")
 
 
@@ -174,9 +179,9 @@ def main() -> None:
     parser.add_argument("sei_archive", type=Path)
     parser.add_argument("reading_netcdf", type=Path)
     args = parser.parse_args()
-    _verify_file(args.sei_archive, SEI_SHA256)
-    inputs = _synthetic_inputs()
-    inputs["reading"] = _reading_monthly(args.reading_netcdf)
+    r, rscript = shutil.which("R"), shutil.which("Rscript")
+    if r is None or rscript is None:
+        raise FileNotFoundError("R and Rscript are required to regenerate the SEI references")
     cases = _cases()
     env = dict(os.environ)
     if "R_LIBS_USER" not in env and (Path.home() / ".R" / "library").is_dir():
@@ -184,12 +189,19 @@ def main() -> None:
 
     with tempfile.TemporaryDirectory() as directory:
         work = Path(directory)
+        # verify a private copy so R installs the bytes that passed the checksum
+        archive = work / args.sei_archive.name
+        shutil.copyfile(args.sei_archive, archive)
+        _verify_file(archive, SEI_SHA256)
+        inputs = _synthetic_inputs()
+        inputs["reading"] = _reading_monthly(args.reading_netcdf)
         library = work / "library"
         library.mkdir()
-        subprocess.run(
-            ["R", "CMD", "INSTALL", f"--library={library}", str(args.sei_archive.resolve())],
+        subprocess.run(  # nosec B603 # resolved R path; fixed arguments and the verified archive copy
+            [r, "CMD", "INSTALL", f"--library={library}", str(archive)],
             env=env,
             check=True,
+            timeout=R_TIMEOUT,
         )
         rows = ["case,year,month,value,scale,aggregation,calibration_start,calibration_end"]
         for case in cases:
@@ -200,8 +212,11 @@ def main() -> None:
                     f"{case['calibration_year_initial']},{case['calibration_year_final']}"
                 )
         (work / "input.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
-        subprocess.run(
-            ["Rscript", str(R_SCRIPT), str(library), str(work / "input.csv"), str(work)], env=env, check=True
+        subprocess.run(  # nosec B603 # resolved Rscript path; fixed arguments and temporary files
+            [rscript, str(R_SCRIPT), str(library), str(work / "input.csv"), str(work)],
+            env=env,
+            check=True,
+            timeout=R_TIMEOUT,
         )
         references = {}
         for case in cases:
