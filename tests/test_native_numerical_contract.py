@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
@@ -63,12 +64,30 @@ _SCALAR_PROBES = "\n".join(
 )
 
 # One probe per name, so a focused case does not have to carry the full corpus.
-_CORPUS: dict[str, tuple[int, int]] = dict.fromkeys(native_parity_maxima.SPECIAL_NAMES, (1, 1))
-
-# Two probes for `special_ndtr`, one elsewhere: a case that appends one more ndtr line.
-_CORPUS_NDTR_TWO: dict[str, tuple[int, int]] = {
-    name: (2 if name == "special_ndtr" else 1, 1) for name in native_parity_maxima.SPECIAL_NAMES
+_CORPUS = {
+    name: frozenset({(float(a).hex(), float(x).hex())})
+    for name, a, x, _ in (line.split(",") for line in _SCALAR_PROBES.splitlines())
 }
+
+
+def _scalar_probe(name: str, a: float, x: float) -> str:
+    reference = {
+        "special_igam": lambda: native_parity_maxima.special.gammainc(a, x),
+        "special_igamc": lambda: native_parity_maxima.special.gammaincc(a, x),
+        "special_ndtri": lambda: native_parity_maxima.special.ndtri(a),
+        "special_norm_ppf": lambda: native_parity_maxima.special.ndtri(a),
+        "special_ndtr": lambda: native_parity_maxima.special.ndtr(a),
+    }[name]()
+    return f"{name},{a},{x},{reference}"
+
+
+@pytest.fixture
+def scalar_probes() -> str:
+    return "\n".join(
+        _scalar_probe(name, float.fromhex(a), float.fromhex(x))
+        for name, coordinates in native_parity_maxima.PROBE_CORPUS.items()
+        for a, x in sorted(coordinates)
+    )
 
 
 def test_special_errors_measures_instead_of_reporting_the_tolerance() -> None:
@@ -85,17 +104,20 @@ def test_special_errors_measures_instead_of_reporting_the_tolerance() -> None:
     ["special_ndtr,0.25,0,0.6", "special_ndtr,NaN,0,0", "special_ndtr,inf,0,-inf"],
 )
 def test_special_errors_rejects_value_and_nonfinite_mismatches(bad_probe: str) -> None:
+    _, a, x, _ = bad_probe.split(",")
+    corpus = _CORPUS | {"special_ndtr": _CORPUS["special_ndtr"] | {(float(a).hex(), float(x).hex())}}
     with pytest.raises(AssertionError):
-        native_parity_maxima.special_errors(_SCALAR_PROBES + "\n" + bad_probe, corpus=_CORPUS_NDTR_TWO)
+        native_parity_maxima.special_errors(_SCALAR_PROBES + "\n" + bad_probe, corpus=corpus)
 
 
 @pytest.mark.parametrize(
     ("output", "message"),
     [
         ("", "Missing scalar probes"),
-        (_SCALAR_PROBES.replace("special_ndtri,0.5,0,0", "special_ndtri,NaN,0,NaN"), "Too few finite scalar probes"),
+        (_SCALAR_PROBES.replace("special_ndtri,0.5,0,0", "special_ndtri,NaN,0,NaN"), "Wrong scalar probe coordinates"),
         (_SCALAR_PROBES + "\nunknown,0,0,0", "Unknown scalar probe"),
         (_SCALAR_PROBES + "\nspecial_ndtr,0,0,0.5", "Duplicate scalar probe"),
+        (_SCALAR_PROBES + "\nspecial_ndtr,0e0,0.0,0.5", "Duplicate scalar probe"),
         (_SCALAR_PROBES + "\nspecial_ndtr,0.25,0,0.5987", "Wrong scalar probe count"),
     ],
 )
@@ -110,17 +132,51 @@ def test_default_corpus_rejects_a_truncated_probe_set() -> None:
         native_parity_maxima.special_errors(_SCALAR_PROBES)
 
 
-def test_compared_pairs_ignores_double_nan_pairs() -> None:
-    assert parity_registry.compared_pairs(np.array([1.0, np.nan, np.inf]), np.array([1.0, np.nan, 2.0])) == 2
-    assert parity_registry.compared_pairs(np.array([np.nan]), np.array([np.nan])) == 0
+def test_default_corpus_accepts_exact_coordinates(scalar_probes: str) -> None:
+    assert all(errors == (0.0, 0.0) for errors in native_parity_maxima.special_errors(scalar_probes).values())
 
 
-def test_all_nan_result_is_not_reported_as_zero_error() -> None:
+@pytest.mark.parametrize(
+    ("name", "a", "x"),
+    [
+        ("special_igam", 1e6, 1e6),
+        ("special_igamc", 0.0, 0.0),
+        ("special_ndtri", 0.0, 0.0),
+        ("special_norm_ppf", 1e-300, 0.0),
+        ("special_ndtr", -40.0, 0.0),
+        ("special_ndtr", np.inf, 0.0),
+        ("special_ndtri", np.nan, 0.0),
+    ],
+)
+def test_default_corpus_rejects_replaced_coordinates(scalar_probes: str, name: str, a: float, x: float) -> None:
+    output = scalar_probes.replace(_scalar_probe(name, a, x), _scalar_probe(name, 0.2, x))
+    assert output != scalar_probes
+    with pytest.raises(ValueError, match=f"Wrong scalar probe coordinates: {name}"):
+        native_parity_maxima.special_errors(output)
+
+
+@pytest.mark.parametrize("value", [np.nan, np.inf, -np.inf])
+def test_compared_pairs_ignores_matching_nonfinite_pairs(value: float) -> None:
+    assert parity_registry.compared_pairs(np.array([1.0, value]), np.array([1.0, value])) == 1
+    assert parity_registry.compared_pairs(np.array([value]), np.array([value])) == 0
+
+
+@pytest.mark.parametrize(("left", "right"), [(np.inf, -np.inf), (np.inf, 2.0), (np.nan, np.inf)])
+def test_nonfinite_mismatches_remain_failures(left: float, right: float) -> None:
+    rust, python = np.array([left]), np.array([right])
+    assert parity_registry.compared_pairs(rust, python) == 1
+    assert parity_registry.parity_errors(rust, python)[0] == np.inf
+    with pytest.raises(AssertionError):
+        parity_registry.assert_outcomes_parity(parity_registry.ENTRIES[0], rust, python)
+
+
+@pytest.mark.parametrize("value", [np.nan, np.inf, -np.inf])
+def test_nonfinite_result_is_not_reported_as_zero_error(value: float) -> None:
     """A vacuous workflow row states that no comparison exists instead of printing zeros."""
     run = parity_registry.ParityRun(
         parity_registry.ENTRIES_BY_NAME["flood_api"],
-        np.array([np.nan]),
-        np.array([np.nan]),
+        np.array([value]),
+        np.array([value]),
         frozenset({"antecedent_precipitation_index"}),
         0.0,
         0.0,
@@ -138,3 +194,37 @@ def test_report_renders_measured_maxima() -> None:
     assert "| `spi_gamma` | `gamma_parameters` | 2.000000e-14 | 4.000000e-14 |" in report
     assert "| `special_ndtr` | 1.000000e-16 | 2.000000e-16 |" in report
     assert "not an isolated error bound" in report
+    assert "Calibration Period includes 1983 through the final record year, 2015" in report
+    assert "Only `flood_edi` and `flood_flood_index` prepare an all-leap calendar" in report
+    assert "`flood_pe` and `flood_api` retain the 365-day inputs" in report
+
+
+@pytest.mark.parametrize("cargo", [None, "/trusted/bin/cargo"])
+def test_contract_generation_resolves_cargo(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, cargo: str | None) -> None:
+    run = parity_registry.ParityRun(
+        parity_registry.ENTRIES[0], np.array([1.0]), np.array([1.0]), frozenset({"gamma_parameters"}), 0.0, 0.0
+    )
+    monkeypatch.setattr(native_parity_maxima.sys, "argv", ["native_parity_maxima.py", "--write-contract"])
+    monkeypatch.setattr(native_parity_maxima.parity_registry, "measure", lambda _: [run])
+    which = Mock(return_value=cargo)
+    monkeypatch.setattr(native_parity_maxima.shutil, "which", which)
+    execute = Mock(return_value=Mock(stdout=_SCALAR_PROBES))
+    monkeypatch.setattr(native_parity_maxima.subprocess, "run", execute)
+    monkeypatch.setattr(native_parity_maxima, "ROOT", tmp_path)
+    monkeypatch.setattr(native_parity_maxima, "special_errors", lambda _: {})
+    (tmp_path / "crates/climate-core").mkdir(parents=True)
+    if cargo is None:
+        with pytest.raises(FileNotFoundError, match="cargo is required"):
+            native_parity_maxima.main()
+        execute.assert_not_called()
+    else:
+        assert native_parity_maxima.main() == 0
+        execute.assert_called_once_with(
+            [cargo, "run", "-p", "climate-core", "--example", "special_accuracy", "--quiet"],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert (tmp_path / "crates/climate-core/NUMERICS.md").is_file()
+    which.assert_called_once_with("cargo")

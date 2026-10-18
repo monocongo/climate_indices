@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import argparse
 import platform
-import subprocess
+import shutil
+import subprocess  # nosec B404 - Only the local Cargo example runs, with fixed arguments and no shell.
 import sys
 from collections.abc import Mapping
 from pathlib import Path
@@ -39,55 +40,60 @@ def measured_platform() -> str:
 
 SPECIAL_NAMES = frozenset({"special_igam", "special_igamc", "special_ndtri", "special_norm_ppf", "special_ndtr"})
 
-# The documented corpus of `crates/climate-core/examples/special_accuracy.rs`: each
-# name maps to its total probe count and the number of probes whose SciPy reference
-# is finite. Changing that example must update this table (and the report text), so
-# a truncated, duplicated, or swapped probe set cannot pass as measured evidence.
+# Keep these coordinates aligned with special_accuracy.rs and the report text.
+_GAMMA_POINTS = (0.0, 1e-12, 0.1, 0.75, 1.0, 2.5, 10.0, 30.0, 200.0, 1000.0, 1e4, 1e6, np.inf, np.nan)
+_QUANTILE_POINTS = (-1.0, 0.0, 1e-300, 1e-10, 0.025, 0.5, 0.975, 1.0 - 1e-10, 1.0, 2.0, np.inf, np.nan)
+_NORMAL_POINTS = (-np.inf, -40.0, -8.0, -1.0, 0.0, 0.1, 1.0, 8.0, 40.0, np.inf, np.nan)
 PROBE_CORPUS = {
-    "special_igam": (196, 167),
-    "special_igamc": (196, 167),
-    "special_ndtri": (12, 6),
-    "special_norm_ppf": (12, 6),
-    "special_ndtr": (11, 10),
+    name: frozenset((a.hex(), x.hex()) for a, x in points)
+    for name, points in {
+        "special_igam": [(a, x) for a in _GAMMA_POINTS for x in _GAMMA_POINTS],
+        "special_igamc": [(a, x) for a in _GAMMA_POINTS for x in _GAMMA_POINTS],
+        "special_ndtri": [(p, 0.0) for p in _QUANTILE_POINTS],
+        "special_norm_ppf": [(p, 0.0) for p in _QUANTILE_POINTS],
+        "special_ndtr": [(x, 0.0) for x in _NORMAL_POINTS],
+    }.items()
 }
 
 
-def special_errors(output: str, corpus: Mapping[str, tuple[int, int]] | None = None) -> dict[str, tuple[float, float]]:
+def special_errors(
+    output: str, corpus: Mapping[str, frozenset[tuple[str, str]]] | None = None
+) -> dict[str, tuple[float, float]]:
     """Compare the Rust scalar probes with SciPy, rejecting missing or invalid evidence."""
     corpus = PROBE_CORPUS if corpus is None else corpus
     pairs: dict[str, list[tuple[float, float]]] = {name: [] for name in SPECIAL_NAMES}
-    seen: set[tuple[str, str, str]] = set()
+    seen: dict[str, set[tuple[str, str]]] = {name: set() for name in SPECIAL_NAMES}
     for line in output.splitlines():
         name, a_text, x_text, actual_text = line.split(",")
-        if (name, a_text, x_text) in seen:
-            raise ValueError(f"Duplicate scalar probe: {name} at {a_text}, {x_text}")
-        seen.add((name, a_text, x_text))
+        if name not in SPECIAL_NAMES:
+            raise ValueError(f"Unknown scalar probe: {name}")
         a, x, actual = float(a_text), float(x_text), float(actual_text)
+        coordinates = (a.hex(), x.hex())
+        if coordinates in seen[name]:
+            raise ValueError(f"Duplicate scalar probe: {name} at {a_text}, {x_text}")
+        seen[name].add(coordinates)
         if name == "special_igam":
             expected = special.gammainc(a, x)
         elif name == "special_igamc":
             expected = special.gammaincc(a, x)
         elif name in {"special_ndtri", "special_norm_ppf"}:
             expected = special.ndtri(a)
-        elif name == "special_ndtr":
-            expected = special.ndtr(a)
         else:
-            raise ValueError(f"Unknown scalar probe: {name}")
+            expected = special.ndtr(a)
         pairs[name].append((actual, float(expected)))
     errors = {}
     for name, values in sorted(pairs.items()):
         if not values:
             raise ValueError(f"Missing scalar probes: {name}")
-        total_probes, finite_floor = corpus[name]
+        total_probes = len(corpus[name])
         if len(values) != total_probes:
             raise ValueError(f"Wrong scalar probe count: {name} has {len(values)}, needs {total_probes}")
+        if seen[name] != corpus[name]:
+            raise ValueError(f"Wrong scalar probe coordinates: {name}")
         actual, expected = np.asarray(values).T
         np.testing.assert_allclose(
             actual, expected, rtol=parity_registry.RTOL, atol=parity_registry.ATOL, equal_nan=True
         )
-        finite = int(np.count_nonzero(np.isfinite(expected)))
-        if finite < finite_floor:
-            raise ValueError(f"Too few finite scalar probes: {name} has {finite}, needs {finite_floor}")
         errors[name] = parity_registry.parity_errors(actual, expected)
     return errors
 
@@ -114,7 +120,8 @@ def contract_report(runs: list[parity_registry.ParityRun], scalar_errors: dict[s
         "It contains 35 monthly years, five 365-day daily years, and a 35-year monthly Spatial Block with three cells.",
         "The samples include zeros, NaNs, and extreme precipitation; entry-specific derivations prepare each kernel's inputs.",
         "Palmer replaces gaps and clips precipitation to [5, 300] in the inch-based water-balance inputs.",
-        "Monthly fitting starts in 1981 and uses the interior Calibration Period; daily flood entries prepare an all-leap calendar.",
+        "The monthly record starts in 1981; its Calibration Period includes 1983 through the final record year, 2015.",
+        "Only `flood_edi` and `flood_flood_index` prepare an all-leap calendar; `flood_pe` and `flood_api` retain the 365-day inputs.",
         "The registry records the exact derivations and parameters.",
         "",
         "| Entry | Rust kernels reached | Max absolute | Max relative |",
@@ -134,7 +141,7 @@ def contract_report(runs: list[parity_registry.ParityRun], scalar_errors: dict[s
             [
                 "",
                 f"These entries have no finite comparison on this corpus: {names}.",
-                "Their samples poison every recorded value, so those rows record NaN-position parity only, not a numeric error.",
+                "Those rows record only matching NaN positions or signed infinities, not a numeric error.",
             ]
         )
     lines.extend(
@@ -148,7 +155,7 @@ def contract_report(runs: list[parity_registry.ParityRun], scalar_errors: dict[s
             "Normal-CDF probes include both tails through +/-40, zero, infinities, and NaN.",
             "These rows measure the named scalar function, without an index workflow.",
             "The corpus has 427 probes: 196 per gamma function, 12 per quantile function, and 11 normal-CDF probes.",
-            "The generator rejects a truncated, duplicated, or count-mismatched probe set.",
+            "The generator rejects missing, duplicated, or changed probe coordinates, including non-finite inputs.",
             "",
             "| Entry | Max absolute | Max relative |",
             "| --- | --- | --- |",
@@ -198,8 +205,11 @@ def main() -> int:
         monkeypatch.undo()
 
     if args.write_contract:
-        probes = subprocess.run(
-            ["cargo", "run", "-p", "climate-core", "--example", "special_accuracy", "--quiet"],
+        cargo = shutil.which("cargo")
+        if cargo is None:
+            raise FileNotFoundError("cargo is required to regenerate the numerical contract")
+        probes = subprocess.run(  # nosec B603 - The resolved Cargo path and arguments are trusted local inputs.
+            [cargo, "run", "-p", "climate-core", "--example", "special_accuracy", "--quiet"],
             cwd=ROOT,
             check=True,
             capture_output=True,

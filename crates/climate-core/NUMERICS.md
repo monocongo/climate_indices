@@ -17,7 +17,8 @@ The corpus comes from `tests/parity_registry.py::SAMPLES`, with fixed seeds 2026
 It contains 35 monthly years, five 365-day daily years, and a 35-year monthly Spatial Block with three cells.
 The samples include zeros, NaNs, and extreme precipitation; entry-specific derivations prepare each kernel's inputs.
 Palmer replaces gaps and clips precipitation to [5, 300] in the inch-based water-balance inputs.
-Monthly fitting starts in 1981 and uses the interior Calibration Period; daily flood entries prepare an all-leap calendar.
+The monthly record starts in 1981; its Calibration Period includes 1983 through the final record year, 2015.
+Only `flood_edi` and `flood_flood_index` prepare an all-leap calendar; `flood_pe` and `flood_api` retain the 365-day inputs.
 The registry records the exact derivations and parameters.
 
 | Entry | Rust kernels reached | Max absolute | Max relative |
@@ -50,7 +51,7 @@ The registry records the exact derivations and parameters.
 | `thornthwaite` | `thornthwaite` | 2.842171e-14 | 2.207812e-16 |
 
 These entries have no finite comparison on this corpus: `flood_api`.
-Their samples poison every recorded value, so those rows record NaN-position parity only, not a numeric error.
+Those rows record only matching NaN positions or signed infinities, not a numeric error.
 
 ## Direct special-function measurements
 
@@ -60,7 +61,7 @@ Quantile probes include 1e-300, central probabilities, both endpoints, and inval
 Normal-CDF probes include both tails through +/-40, zero, infinities, and NaN.
 These rows measure the named scalar function, without an index workflow.
 The corpus has 427 probes: 196 per gamma function, 12 per quantile function, and 11 normal-CDF probes.
-The generator rejects a truncated, duplicated, or count-mismatched probe set.
+The generator rejects missing, duplicated, or changed probe coordinates, including non-finite inputs.
 
 | Entry | Max absolute | Max relative |
 | --- | --- | --- |
