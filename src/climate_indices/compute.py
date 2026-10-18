@@ -58,6 +58,8 @@ __all__ = [
     "reshape_time_major",
     "unfold_time_major",
     "sum_to_scale",
+    "beta_parameters",
+    "transform_fitted_beta",
     "transform_fitted_gamma",
     "transform_fitted_loglogistic",
     "transform_fitted_pearson",
@@ -95,6 +97,11 @@ GOODNESS_OF_FIT_P_VALUE_THRESHOLD = 0.05
 ZeroHandling = Literal["classic", "center_of_mass", "mean_zero"]
 
 _ZERO_HANDLING_MODES: tuple[str, ...] = get_args(ZeroHandling)
+
+#: How far outside [0, 1] a value may sit before the beta path rejects it. The
+#: tolerance absorbs the rounding of a windowed mean over bounded values, which can
+#: land a few ulps outside the range, and no real out-of-support observation.
+_BETA_SUPPORT_TOLERANCE = 1e-12
 
 #: How each time step's ``scale`` values are combined before the fit, see ADR-0019.
 #: "sum" accumulates them, the SPI/SPEI convention; "mean" averages them, which keeps a
@@ -519,56 +526,62 @@ def _validate_aggregation(aggregation: str) -> None:
         raise ValueError(f"Invalid aggregation argument: {aggregation!r} -- must be one of 'sum' or 'mean'")
 
 
-def _calibration_probabilities_of_zero(calibration_values: np.ndarray) -> np.ndarray:
+def _calibration_probability_of(calibration_values: np.ndarray, boundary: float) -> np.ndarray:
     """
-    The zero fraction of each calendar step's non-missing calibration values.
+    The fraction of each calendar step's non-missing calibration values at ``boundary``.
 
-    A step (or cell) with no non-missing calibration value has no defined zero mass,
-    which is reported as NaN.
+    A step (or cell) with no non-missing calibration value has no defined mass at the
+    boundary, which is reported as NaN.
 
     :param calibration_values: calibration data, shape (years, time_steps) or
         (years, time_steps, ``*cells``)
-    :return: probabilities of zero, shape (time_steps,) or (time_steps, ``*cells``)
+    :param boundary: the value whose mass is counted, 0.0 or 1.0 for the beta
+        distribution's two boundary point masses
+    :return: probabilities at the boundary, shape (time_steps,) or (time_steps, ``*cells``)
     """
     if np.ma.isMaskedArray(calibration_values):
         # a mask is a missing marker, so it must not count as a non-missing value
         calibration_values = np.ma.filled(calibration_values.astype(float), np.nan)
-    number_of_zeros = np.count_nonzero(calibration_values == 0, axis=0)
+    number_at_boundary = np.count_nonzero(calibration_values == boundary, axis=0)
     number_of_non_missing = np.count_nonzero(~np.isnan(calibration_values), axis=0)
     with np.errstate(divide="ignore", invalid="ignore"):
-        probabilities_of_zero: np.ndarray = np.where(
-            number_of_non_missing > 0, number_of_zeros / number_of_non_missing, np.nan
+        probabilities: np.ndarray = np.where(
+            number_of_non_missing > 0, number_at_boundary / number_of_non_missing, np.nan
         )
-    return probabilities_of_zero
+    return probabilities
 
 
-def _validate_gamma_probabilities_of_zero(values: np.ndarray, probabilities_of_zero: np.ndarray) -> np.ndarray:
+def _calibration_probabilities_of_zero(calibration_values: np.ndarray) -> np.ndarray:
+    """The zero fraction of each calendar step's non-missing calibration values (ADR-0015)."""
+    return _calibration_probability_of(calibration_values, 0.0)
+
+
+def _validate_probability_mass(values: np.ndarray, probabilities: np.ndarray, name: str) -> np.ndarray:
     """
-    Reject a supplied gamma probability of zero that does not fit the values.
+    Reject a supplied boundary point mass that does not fit the values.
 
     Its cell dimensions follow the rule for Pearson Type III parameters, and every
-    value must lie in [0, 1]; NaN marks a step whose zero mass is undefined, as a
-    step without calibration data reports it.
+    value must lie in [0, 1]; NaN marks a step whose mass is undefined, as a step
+    without calibration data reports it.
 
     :param values: the validated values, shape (years, time_steps) or
         (years, time_steps, ``*cells``)
-    :param probabilities_of_zero: the supplied probability of zero
-    :return: the probability of zero as a float array
+    :param probabilities: the supplied mass
+    :param name: the ``fitting_params`` key the mass was supplied under
+    :return: the mass as a float array
     :raises ValueError: if the shape or a value does not fit
     """
-    probabilities_of_zero = np.asarray(probabilities_of_zero, dtype=float)
+    probabilities = np.asarray(probabilities, dtype=float)
     period_length = values.shape[1]
-    if probabilities_of_zero.ndim == 1 and probabilities_of_zero.shape[0] != period_length:
+    if probabilities.ndim == 1 and probabilities.shape[0] != period_length:
         raise ValueError(
-            f"Fitting parameter 'prob_zero' has shape {probabilities_of_zero.shape}, which must carry "
+            f"Fitting parameter '{name}' has shape {probabilities.shape}, which must carry "
             f"the period length {period_length}"
         )
-    _validate_pearson_parameter_cells(values, (("prob_zero", probabilities_of_zero),))
-    if np.any((probabilities_of_zero < 0.0) | (probabilities_of_zero > 1.0)):
-        raise ValueError(
-            "Fitting parameter 'prob_zero' must lie in [0, 1], or be NaN where a step's zero mass is undefined"
-        )
-    return probabilities_of_zero
+    _validate_pearson_parameter_cells(values, ((name, probabilities),))
+    if np.any((probabilities < 0.0) | (probabilities > 1.0)):
+        raise ValueError(f"Fitting parameter '{name}' must lie in [0, 1], or be NaN where a step's mass is undefined")
+    return probabilities
 
 
 def _validate_broadcastable_parameters(
@@ -606,6 +619,8 @@ def _place_zeros(
     probabilities_of_zero: np.ndarray,
     zero_handling: ZeroHandling,
     output_scale: OutputScale = "normal",
+    *,
+    upper: bool = False,
 ) -> np.ndarray:
     """
     Give the zero positions the score a zero-handling mode assigns.
@@ -621,28 +636,43 @@ def _place_zeros(
     ``0 < p0 < 1`` are moved; at ``p0 == 0`` or ``p0 == 1`` every mode keeps the
     classic result (ADR-0015, decision 5).
 
+    ``upper=True`` places the beta distribution's mass at 1 instead of the mass at 0:
+    it mirrors every position about 1/2, because the mass sits at the top of the
+    support, so its centre of mass is ``1 − p1 / 2`` and the normal-scale mean of the
+    upper tail is ``+φ(Φ⁻¹(p1)) / p1``. The classic score needs no placement, as the
+    transform already leaves a one at ``1 − p1`` (ADR-0015 applied to the other
+    boundary; #1169).
+
     :param fitted_values: transformed values on ``output_scale``, shape
         (years, time_steps) or (years, time_steps, ``*cells``)
     :param zero_mask: positions holding a zero (or, for Pearson Type III, a trace
-        value), broadcastable to ``fitted_values``
-    :param probabilities_of_zero: probability of zero per step, broadcastable to
-        ``fitted_values`` along its trailing axes
+        value, or for beta a one when ``upper``), broadcastable to ``fitted_values``
+    :param probabilities_of_zero: probability of the boundary value per step,
+        broadcastable to ``fitted_values`` along its trailing axes
     :param zero_handling: the zero-handling mode
     :param output_scale: the scale ``fitted_values`` is on, one of ``OUTPUT_SCALES``
-    :return: the values with their zero positions moved
+    :param upper: place the mass at 1 rather than the mass at 0
+    :return: the values with their boundary positions moved
     """
     if zero_handling == "classic":
         return fitted_values
 
     probabilities_of_zero = np.asarray(probabilities_of_zero, dtype=float)
     movable = (probabilities_of_zero > 0.0) & (probabilities_of_zero < 1.0)
-    # a placeholder inside (0, 1) keeps the closed forms finite where no zero moves
+    # a placeholder inside (0, 1) keeps the closed forms finite where no mass moves
     safe_probabilities = np.where(movable, probabilities_of_zero, 0.5)
-    zero_scores = _map_non_normal_scale(safe_probabilities / 2.0, output_scale)
+    # the probability each mode places the value at: the centre of the mass, mirrored
+    # into the top mass's half of the support for an upper placement
+    if upper:
+        position = 1.0 - safe_probabilities / 2.0
+    else:
+        position = safe_probabilities / 2.0
+    zero_scores = _map_non_normal_scale(position, output_scale)
     if zero_scores is None and zero_handling == "center_of_mass":
-        zero_scores = scipy.stats.norm.ppf(safe_probabilities / 2.0)
+        zero_scores = scipy.stats.norm.ppf(position)
     elif zero_scores is None:
-        zero_scores = -scipy.stats.norm.pdf(scipy.stats.norm.ppf(safe_probabilities)) / safe_probabilities
+        tail_scores = -scipy.stats.norm.pdf(scipy.stats.norm.ppf(safe_probabilities)) / safe_probabilities
+        zero_scores = -tail_scores if upper else tail_scores
 
     placed: np.ndarray = np.where(zero_mask & movable, zero_scores, fitted_values)
     return placed
@@ -2087,6 +2117,155 @@ def gamma_parameters(
     return alphas, betas
 
 
+def _validate_beta_support(values: np.ndarray) -> None:
+    """
+    Reject a value outside the beta distribution's [0, 1] support.
+
+    A bounded series stays bounded through the mean aggregation ADR-0019 pairs with
+    this family, but floating-point rounding can land a windowed mean a few ulps
+    outside the range, which ``_BETA_SUPPORT_TOLERANCE`` absorbs. A real excursion is a
+    data error the caller must resolve: clipping it would standardize a different
+    series, the reason the parametric families reject a signed series rather than clip
+    it (ADR-0019, decision 3).
+
+    :param values: the validated values
+    :raises InvalidArgumentError: if a value lies outside the tolerated support
+    """
+    valid_mask = ~np.isnan(values)
+    if not np.any(valid_mask):
+        return
+    minimum = float(np.min(values[valid_mask]))
+    maximum = float(np.max(values[valid_mask]))
+    if minimum < -_BETA_SUPPORT_TOLERANCE or maximum > 1.0 + _BETA_SUPPORT_TOLERANCE:
+        raise InvalidArgumentError(
+            "The beta distribution supports only values in [0, 1], and these span "
+            f"[{minimum:.6g}, {maximum:.6g}]; use aggregation='mean' so a window stays in the range, "
+            "or rescale the series into the support.",
+            argument_name="values",
+            argument_value=f"[{minimum:.6g}, {maximum:.6g}]",
+            valid_values="[0, 1]",
+        )
+
+
+def beta_parameters(
+    values: np.ndarray,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Computes the beta distribution's shape parameters and its two boundary masses.
+
+    The shape parameters come from the method of moments over each calendar step's
+    interior calibration values, those strictly between 0 and 1: an exact 0 or 1 is a
+    boundary point mass, not an observation of the interior shape, exactly as a zero
+    is excluded from a gamma fit. A step needs at least two interior values for the
+    sample variance the method needs, and a step without them reports NaN parameters.
+
+    The boundary masses are the fraction of each step's non-missing calibration values
+    equal to 0 and to 1, so a step without calibration data reports NaN masses.
+
+    No independent implementation of this estimator is available to check against (the
+    R ``SEI`` package has no beta fit), so the evidence for this fit is specification
+    and regression only; see ADR-0024.
+
+    :param values: 2-D array of values within [0, 1], with each row typically
+                   representing a year containing twelve columns representing the
+                   respective calendar months, or 366 days per column as if all years
+                   were leap years
+    :param data_start_year: the initial year of the input values array
+    :param calibration_start_year: the initial year to use for the calibration period
+    :param calibration_end_year: the final year to use for the calibration period
+    :param periodicity: the type of time series represented by the input data,
+        either monthly (12 time steps per year) or daily (366 time steps per year)
+    :return: four 1-D or 2-D arrays of fitting parameter values, shaped
+        (time_steps,) for a single series or (time_steps, ``*cells``) for a spatial
+        block: the two shape parameters, the probability of zero, and the
+        probability of one
+    :raises InvalidArgumentError: if a value lies outside [0, 1] beyond the rounding
+        tolerance of a windowed mean
+    """
+    log = _logger.bind(
+        operation="beta_parameters",
+        distribution="beta",
+        periodicity=str(periodicity),
+        calibration_period=f"{calibration_start_year}-{calibration_end_year}",
+    )
+    log.info("distribution_fitting_started")
+
+    # if we're passed all missing values then we can't compute anything,
+    # then we return arrays of missing values
+    if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
+        if periodicity is Periodicity.monthly:
+            shape: tuple[int, ...] = (12,)
+        elif periodicity is Periodicity.daily:
+            shape = (366,)
+        else:
+            raise PeriodicityError(f"Unsupported periodicity: {periodicity}", periodicity_value=str(periodicity))
+        if values.ndim > 2:
+            # validated spatial arrays carry the periods along axis 1: (periods, *cells)
+            shape = values.shape[1:]
+        missing = np.full(shape=shape, fill_value=np.nan)
+        return missing, missing.copy(), missing.copy(), missing.copy()
+
+    # validate (and possibly reshape) the input array
+    values = _validate_array(values, periodicity)
+    _validate_beta_support(values)
+
+    # use the full period of record when the record does not cover the calibration period
+    period = resolve_calibration_period(
+        data_start_year, values.shape[0], calibration_start_year, calibration_end_year, policy="clamp"
+    )
+
+    # get the values for the current calendar time step
+    # that fall within the calibration years period
+    calibration_values = values[period.rows, :]
+
+    # check calibration data quality and emit warnings if needed
+    _check_calibration_data_quality(
+        calibration_values, period.start_year, period.end_year, (calibration_start_year, calibration_end_year)
+    )
+    log = log.bind(calibration_period=f"{period.start_year}-{period.end_year}")
+
+    probabilities_of_zero = _calibration_probability_of(calibration_values, 0.0)
+    probabilities_of_one = _calibration_probability_of(calibration_values, 1.0)
+
+    # a value within the support tolerance of a boundary belongs to that boundary's
+    # mass, so only the strict interior carries the shape parameters
+    interior = np.where(
+        (calibration_values > _BETA_SUPPORT_TOLERANCE) & (calibration_values < 1.0 - _BETA_SUPPORT_TOLERANCE),
+        calibration_values,
+        np.nan,
+    )
+    # an interior column with fewer than two values has no sample variance, and it is
+    # reduced with explicit counts rather than np.nanmean/np.nanvar: those warn on an
+    # empty slice, and the only way to silence the warning is warnings.catch_warnings(),
+    # which mutates process-global filter state and so cannot be used where concurrent
+    # spatial blocks may be inside the reduction (see the percentage_of_normal note in
+    # indices.py). A column with no value has a zero mean and a NaN variance, which the
+    # validity mask below discards.
+    interior_valid = ~np.isnan(interior)
+    interior_counts = np.count_nonzero(interior_valid, axis=0)
+    means = np.nansum(interior, axis=0) / np.maximum(interior_counts, 1)
+    deviations = np.where(interior_valid, interior, means) - means
+    sum_of_squares = np.sum(deviations * deviations, axis=0)
+    variances = np.where(interior_counts > 1, sum_of_squares / np.maximum(interior_counts - 1, 1), np.nan)
+
+    # method of moments: the two shapes from the interior mean and sample variance
+    with np.errstate(divide="ignore", invalid="ignore"):
+        common = means * (1.0 - means) / variances - 1.0
+        alphas = means * common
+        betas = (1.0 - means) * common
+
+    valid = np.isfinite(alphas) & np.isfinite(betas) & (alphas > 0.0) & (betas > 0.0)
+    alphas = np.where(valid, alphas, np.nan)
+    betas = np.where(valid, betas, np.nan)
+
+    log.info("distribution_fitting_completed", output_shape=str(alphas.shape))
+    return alphas, betas, probabilities_of_zero, probabilities_of_one
+
+
 def prepare_input_shape(values: np.ndarray, spatial_time_major: bool) -> np.ndarray:
     """
     Flatten a 2-D input, pass a declared time-major spatial block through unchanged,
@@ -2465,6 +2644,193 @@ def transform_fitted_gamma(
     return result_values
 
 
+def transform_fitted_beta(
+    values: np.ndarray,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
+    alphas: np.ndarray | None = None,
+    betas: np.ndarray | None = None,
+    probabilities_of_zero: np.ndarray | None = None,
+    probabilities_of_one: np.ndarray | None = None,
+    output_scale: OutputScale = "normal",
+    *,
+    zero_handling: ZeroHandling = "classic",
+) -> np.ndarray:
+    """
+    Fit values to a beta distribution and transform the values to corresponding
+    normalized sigmas.
+
+    The fitted distribution is the interior one: an exact 0 or 1 is a boundary point
+    mass rather than an interior observation, and the transform maps a value to
+    ``p0 + (1 − p0 − p1)·F(x)``, where ``p0`` and ``p1`` are the two masses and ``F``
+    is the fitted beta CDF over the open interval. A boundary value never needs the
+    shape parameters, so it always scores from its own mass. A step with fewer than two
+    interior calibration values has none, and any interior value evaluated at that step
+    is missing.
+
+    :param values: 2-D array of values within [0, 1], with each row typically
+                   representing a year containing twelve columns representing the
+                   respective calendar months, or 366 days per column as if all years
+                   were leap years
+    :param data_start_year: the initial year of the input values array
+    :param calibration_start_year: the initial year to use for the calibration period
+    :param calibration_end_year: the final year to use for the calibration period
+    :param periodicity: the type of time series represented by the input data,
+        either monthly (12 time steps per year) or daily (366 time steps per year)
+    :param alphas: pre-computed beta shape parameters
+    :param betas: pre-computed beta shape parameters
+    :param probabilities_of_zero: pre-computed probability mass at 0 for each month or
+        day of the year, in [0, 1], shaped like ``alphas``; when omitted it is the
+        zero fraction of each step's non-missing calibration-period values. A step with
+        no calibration data, or a NaN supplied here, has no defined mass at 0, and its
+        zeros are NaN.
+    :param probabilities_of_one: the matching probability mass at 1
+    :param output_scale: one of ``compute.OUTPUT_SCALES``; "probability" returns the
+        fitted cumulative probability, "bounded" returns ``2p - 1``, and "normal"
+        (the default) returns the standard-normal z-score
+    :param zero_handling: where a boundary value is placed within its point mass:
+        ``"classic"`` (the default) scores a zero ``Φ⁻¹(p0)`` and a one
+        ``Φ⁻¹(1 − p1)``, ``"center_of_mass"`` the centre of each mass, and
+        ``"mean_zero"`` the normal-scale mean of each mass. Only steps whose effective
+        mass satisfies ``0 < p < 1`` are moved. ADR-0015 covers the mass at 0; the
+        mass at 1 mirrors it (#1169).
+    :return: 2-D array of transformed/fitted values, corresponding in size and shape
+        to the input array
+    :raises InvalidArgumentError: if a value lies outside [0, 1] beyond the rounding
+        tolerance of a windowed mean
+    :raises ValueError: if ``zero_handling`` is not one of the three modes, a supplied
+        shape parameter does not broadcast to the values, or a supplied boundary mass
+        has cell dimensions that do not match the values or a value outside [0, 1]
+    """
+    validate_output_scale(output_scale)
+    _validate_zero_handling(zero_handling)
+
+    log = _logger.bind(
+        operation="transform_fitted_beta",
+        output_scale=output_scale,
+        distribution="beta",
+        periodicity=str(periodicity),
+        input_shape=str(values.shape),
+    )
+    log.info("distribution_transform_started")
+
+    # if we're passed all missing values then we can't compute anything,
+    # then we return the same array of missing values
+    if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
+        return values
+
+    # a mask is a missing marker, so make it the explicit NaN the transform reads
+    if np.ma.isMaskedArray(values):
+        values = np.ma.filled(values.astype(float), np.nan)
+
+    # validate (and possibly reshape) the input array
+    values = _validate_array(values, periodicity)
+    _validate_beta_support(values)
+
+    from climate_indices.indices import Distribution
+
+    params = {"alpha": alphas, "beta": betas, "prob_zero": probabilities_of_zero, "prob_one": probabilities_of_one}
+    FittedDistribution.validate_supplied(values, Distribution.beta, params)
+    fitted = FittedDistribution.resolve(
+        values,
+        Distribution.beta,
+        data_start_year,
+        calibration_start_year,
+        calibration_end_year,
+        periodicity,
+        params,
+    )
+    parameters = _broadcast_parameters(values, fitted.parameters)
+    alphas = parameters["alpha"]
+    betas = parameters["beta"]
+    probabilities_of_zero = parameters["prob_zero"]
+    probabilities_of_one = parameters["prob_one"]
+
+    # a step whose whole calibration mass sits at one boundary has no interior fit, and
+    # reports it as the extreme end it is: gamma reads an all-zero step as the extreme
+    # dry end rather than the wet one, and beta reads an all-zero step as the low end
+    # and an all-one step as the high end, the same convention mirrored. A step without
+    # calibration data (or a supplied NaN) has no defined mass at all: its boundary
+    # values are NaN below, and its interior values transform as with no mass
+    # (ADR-0015, decision 4)
+    undefined_zero_mass = np.isnan(probabilities_of_zero)
+    undefined_one_mass = np.isnan(probabilities_of_one)
+    effective_zero = np.where((probabilities_of_zero >= 1.0) | undefined_zero_mass, 0.0, probabilities_of_zero)
+    effective_one = np.where((probabilities_of_one >= 1.0) | undefined_one_mass, 0.0, probabilities_of_one)
+
+    # the CDF is defined at both boundaries, so one call over the clipped values covers
+    # the interior and the boundary positions alike
+    try:
+        interior_probabilities = scipy.stats.beta.cdf(np.clip(values, 0.0, 1.0), a=alphas, b=betas)
+    except (ValueError, RuntimeError, FloatingPointError) as e:
+        raise DistributionFittingError(
+            f"Beta distribution CDF computation failed: {e}",
+            distribution_name="beta",
+            input_shape=values.shape,
+            parameters={
+                "alphas": _summarize_array(alphas, "alphas"),
+                "betas": _summarize_array(betas, "betas"),
+                "values": _summarize_array(values, "values"),
+            },
+            suggestion="Check that the series lies within [0, 1] and that the shape parameters are positive",
+            underlying_error=e,
+        ) from e
+
+    # a boundary position carries its own mass, not the interior CDF there
+    zero_mask = values <= _BETA_SUPPORT_TOLERANCE
+    one_mask = values >= 1.0 - _BETA_SUPPORT_TOLERANCE
+    interior_probabilities = np.where(zero_mask, 0.0, interior_probabilities)
+    interior_probabilities = np.where(one_mask, 1.0, interior_probabilities)
+
+    probabilities = effective_zero + (1.0 - effective_zero - effective_one) * interior_probabilities
+
+    # on the probability and bounded scales the fitted cumulative probability is
+    # the result, so the inverse-normal transform is skipped
+    scaled = _map_non_normal_scale(probabilities, output_scale)
+    if scaled is not None:
+        scaled = _place_zeros(scaled, zero_mask, effective_zero, zero_handling, output_scale)
+        scaled = _place_zeros(scaled, one_mask, effective_one, zero_handling, output_scale, upper=True)
+        scaled = _missing_where_zero_mass_undefined(scaled, zero_mask, undefined_zero_mass)
+        scaled = _missing_where_zero_mass_undefined(scaled, one_mask, undefined_one_mass)
+        log.info("distribution_transform_completed", output_shape=str(scaled.shape))
+        return scaled
+
+    # the values we'll return are the values at which the probabilities of
+    # a normal distribution are less than or equal to the computed probabilities,
+    # as determined by the normal distribution's quantile (or inverse
+    # cumulative distribution) function
+    result_values: np.ndarray
+    if _native_float64(probabilities):
+        if _native is None:  # _native_float64 guarantees it; this narrows the type
+            raise RuntimeError(_NATIVE_EXTENSION_MISSING)
+        result_values = _native.norm_ppf(probabilities)
+    else:
+        try:
+            result_values = scipy.stats.norm.ppf(probabilities)
+        except (ValueError, RuntimeError, FloatingPointError) as e:
+            raise DistributionFittingError(
+                f"Normal distribution inverse CDF (ppf) computation failed during beta transformation: {e}",
+                distribution_name="beta",
+                input_shape=probabilities.shape,
+                parameters={
+                    "probabilities": _summarize_array(probabilities, "probabilities"),
+                    "alphas": _summarize_array(alphas, "alphas"),
+                    "betas": _summarize_array(betas, "betas"),
+                },
+                suggestion="Check that the series lies within [0, 1] and that the shape parameters are positive",
+                underlying_error=e,
+            ) from e
+
+    result_values = _place_zeros(result_values, zero_mask, effective_zero, zero_handling)
+    result_values = _place_zeros(result_values, one_mask, effective_one, zero_handling, upper=True)
+    result_values = _missing_where_zero_mass_undefined(result_values, zero_mask, undefined_zero_mass)
+    result_values = _missing_where_zero_mass_undefined(result_values, one_mask, undefined_one_mass)
+    log.info("distribution_transform_completed", output_shape=str(result_values.shape))
+    return result_values
+
+
 # |shape| below this is treated as a zero-shape (ordinary logistic) GLO fit, matching
 # PELGLO's SMALL constant in the R lmom package
 _LOGLOGISTIC_SHAPE_TOLERANCE = 1e-6
@@ -2713,6 +3079,7 @@ _FIT_ALTNAMES = (
     ("shape", "shapes"),
     ("loc", "locs"),
     ("prob_zero", "probabilities_of_zero"),
+    ("prob_one", "probabilities_of_one"),
 )
 
 
@@ -2750,6 +3117,7 @@ _PARAMETER_KEYS: dict[str, tuple[str, ...]] = {
     "gamma": ("alpha", "beta", "prob_zero"),
     "pearson": ("prob_zero", "loc", "scale", "skew"),
     "loglogistic": ("loc", "scale", "shape"),
+    "beta": ("alpha", "beta", "prob_zero", "prob_one"),
 }
 
 
@@ -2834,6 +3202,40 @@ def _resolve_pearson_parameters(
     return {"prob_zero": probabilities_of_zero, "loc": locs, "scale": scales, "skew": skews}
 
 
+def _resolve_beta_parameters(
+    values: np.ndarray,
+    params: dict[str, Any],
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
+) -> dict[str, np.ndarray]:
+    """Fit or take the beta shape parameters, resolving both boundary masses."""
+    # a mask is a missing marker, as the beta transform treats it
+    if np.ma.isMaskedArray(values):
+        values = np.ma.filled(values.astype(float), np.nan)
+    alphas = params.get("alpha")
+    betas = params.get("beta")
+    if alphas is None or betas is None:
+        alphas, betas, _, _ = beta_parameters(
+            values, data_start_year, calibration_start_year, calibration_end_year, periodicity
+        )
+
+    probabilities = params.get("prob_zero")
+    probabilities_of_one = params.get("prob_one")
+    if probabilities is None or probabilities_of_one is None:
+        period = resolve_calibration_period(
+            data_start_year, values.shape[0], calibration_start_year, calibration_end_year, policy="clamp"
+        )
+        calibration_values = values[period.rows, ...]
+        if probabilities is None:
+            probabilities = _calibration_probability_of(calibration_values, 0.0)
+        if probabilities_of_one is None:
+            probabilities_of_one = _calibration_probability_of(calibration_values, 1.0)
+
+    return {"alpha": alphas, "beta": betas, "prob_zero": probabilities, "prob_one": probabilities_of_one}
+
+
 def _resolve_loglogistic_parameters(
     values: np.ndarray,
     params: dict[str, Any],
@@ -2863,12 +3265,13 @@ class FittedDistribution:
     One module owns everything a fit knows: which parameters the distribution has, how
     caller-supplied ``fitting_params`` are normalized and validated, how a period-only
     parameter array is broadcast across a spatial block's cells, and how the fit is
-    transformed and diagnosed. The gamma, Pearson Type III and log-logistic transforms
-    and the diagnostics surface are compositions over it; the public
+    transformed and diagnosed. The gamma, beta, Pearson Type III and log-logistic
+    transforms and the diagnostics surface are compositions over it; the public
     ``transform_fitted_*`` functions remain compatibility adapters.
 
     ``parameters`` is keyed as the ``fitting_params`` argument accepts the fit:
-    ``alpha``/``beta``/``prob_zero`` for gamma, ``prob_zero``/``loc``/``scale``/``skew``
+    ``alpha``/``beta``/``prob_zero`` for gamma, ``alpha``/``beta``/
+    ``prob_zero``/``prob_one`` for beta, ``prob_zero``/``loc``/``scale``/``skew``
     for Pearson Type III, and ``loc``/``scale``/``shape`` for the log-logistic
     (generalized logistic).
     """
@@ -2886,10 +3289,13 @@ class FittedDistribution:
         values carry any data.
         """
         kind = distribution.value
-        if kind == "gamma":
-            supplied_prob_zero = params.get("prob_zero")
-            if supplied_prob_zero is not None:
-                _validate_gamma_probabilities_of_zero(values, supplied_prob_zero)
+        if kind in ("gamma", "beta"):
+            # both families take the shapes as one broadcast pair, and beta adds the
+            # second boundary mass beside the probability of zero
+            for name in ("prob_zero", "prob_one"):
+                mass = params.get(name)
+                if mass is not None:
+                    _validate_probability_mass(values, mass, name)
             alphas, betas = params.get("alpha"), params.get("beta")
             if alphas is not None or betas is not None:
                 present = {
@@ -2899,6 +3305,16 @@ class FittedDistribution:
                 _validate_broadcastable_parameters(
                     values.shape, (("alpha", prepared.get("alpha")), ("beta", prepared.get("beta")))
                 )
+            supplied_zero, supplied_one = params.get("prob_zero"), params.get("prob_one")
+            if supplied_zero is not None and supplied_one is not None:
+                # the interior values carry the rest of the probability, so masses that
+                # sum above 1 leave it negative and invert the transform
+                total = np.asarray(supplied_zero, dtype=float) + np.asarray(supplied_one, dtype=float)
+                if np.any(total > 1.0):
+                    raise ValueError(
+                        "Fitting parameters 'prob_zero' and 'prob_one' must not sum above 1, because the "
+                        "interior values carry the remaining probability"
+                    )
             return
 
         keys = _PARAMETER_KEYS[kind]
@@ -2941,6 +3357,10 @@ class FittedDistribution:
         kind = distribution.value
         if kind == "gamma":
             parameters = _resolve_gamma_parameters(
+                values, params, data_start_year, calibration_start_year, calibration_end_year, periodicity
+            )
+        elif kind == "beta":
+            parameters = _resolve_beta_parameters(
                 values, params, data_start_year, calibration_start_year, calibration_end_year, periodicity
             )
         elif kind == "pearson":
@@ -2991,6 +3411,21 @@ class FittedDistribution:
                 parameters["loc"],
                 parameters["scale"],
                 parameters["skew"],
+                output_scale,
+                zero_handling=zero_handling,
+            )
+        if kind == "beta":
+            parameters = self.parameters
+            return transform_fitted_beta(
+                values,
+                0,
+                0,
+                0,
+                self.periodicity,
+                parameters["alpha"],
+                parameters["beta"],
+                parameters["prob_zero"],
+                parameters["prob_one"],
                 output_scale,
                 zero_handling=zero_handling,
             )
@@ -3195,8 +3630,10 @@ def fit_and_standardize(
             year containing twelve columns representing the respective calendar
             months, or 366 days per column as if all years were leap years; a
             time-major spatial block with more than two dimensions is also accepted.
-        distribution: The distribution to fit the values to: gamma, Pearson Type III,
+        distribution: The distribution to fit the values to: gamma, beta, Pearson Type III,
             or the generalized logistic ("loglogistic") that SPEI standardizes with.
+            Beta is the bounded [0, 1] family, fitted over the interior values with a
+            point mass at each boundary.
         data_start_year: The initial year of the input values array.
         calibration_start_year: The initial year to use for the calibration period.
         calibration_end_year: The final year to use for the calibration period.
@@ -3204,7 +3641,8 @@ def fit_and_standardize(
             monthly (12 time steps per year) or daily (366 time steps per year).
         fitting_params: Optional dictionary of pre-computed distribution fitting
             parameters, with the keys "alpha" and "beta" (and optionally
-            "prob_zero") when fitting to gamma and "prob_zero", "loc", "scale", and
+            "prob_zero") when fitting to gamma or beta, "prob_one" as well when
+            fitting to beta, and "prob_zero", "loc", "scale", and
             "skew" when fitting to Pearson Type III. Deprecated aliases such as
             "alphas" and "probabilities_of_zero" are accepted, and an explicit None
             means "fit this parameter from the data". A gamma fit without
@@ -3253,10 +3691,11 @@ def fit_and_standardize(
         FittedDistribution.validate_supplied(_validate_array(values, periodicity), distribution, params)
         return values
 
-    if distribution.value in ("gamma", "loglogistic"):
+    if distribution.value in ("gamma", "loglogistic", "beta"):
         # the GLO is the SPEI reference distribution: P−PET is offset and has no
         # physical zero mass, so it has no zero-placement mode and zero_handling is
-        # not applied on that branch (the transform ignores it)
+        # not applied on that branch (the transform ignores it). Gamma and beta each
+        # place their own boundary mass; beta's second mass at 1 mirrors the one at 0.
         fitted = FittedDistribution.resolve(
             values,
             distribution,

@@ -45,6 +45,10 @@ class Distribution(Enum):
     #: Generalized logistic (Hosking's GLO), the "log-Logistic" distribution R's
     #: SPEI package and SPEIbase fit; see ADR-0016. Supported by ``spei()`` only.
     loglogistic = "loglogistic"
+    #: The beta distribution, the bounded [0, 1] family a capacity factor or another
+    #: bounded series is standardized with; see ADR-0024. Supported by
+    #: ``standardized_index()`` only.
+    beta = "beta"
 
     @property
     def display_name(self) -> str:
@@ -57,6 +61,7 @@ _DISTRIBUTION_DISPLAY_NAMES = {
     Distribution.pearson: "pearson",
     Distribution.gamma: "gamma",
     Distribution.loglogistic: "log-logistic",
+    Distribution.beta: "beta",
 }
 
 
@@ -675,6 +680,13 @@ def standardized_index(
     rejected here: a non-negative series has a physical zero mass that the GLO path
     does not yet place.
 
+    The beta distribution is the bounded [0, 1] family. Its shape parameters come from
+    the method of moments over each calendar step's interior values, and the exact 0
+    and 1 values are point masses at the boundaries, so a capacity factor or another
+    bounded series standardizes without leaving its own range (ADR-0024). Pair it with
+    ``aggregation="mean"``, which is what keeps a windowed value inside the support.
+    A value outside [0, 1] is rejected rather than clipped.
+
     This is a NumPy-array entry point only; xarray and Dask dispatch are not wired
     for it.
 
@@ -687,7 +699,7 @@ def standardized_index(
         scale: Number of time steps over which the values are accumulated before
             the index is computed.
         distribution: Distribution type used for the internal fitting/transform
-            computation.
+            computation: gamma, Pearson Type III, or beta.
         data_start_year: Initial year of the input series.
         calibration_year_initial: Initial year of the Calibration Period.
         calibration_year_final: Final year of the Calibration Period.
@@ -695,8 +707,9 @@ def standardized_index(
             monthly data (12 values/year) or ``compute.Periodicity.daily`` for daily
             data (366 values/year).
         fitting_params: Optional dictionary of pre-computed distribution fitting
-            parameters, with keys "alpha" and "beta" (and optionally "prob_zero")
-            for gamma and "prob_zero", "loc", "scale", and "skew" for Pearson Type
+            parameters, with keys "alpha" and "beta" (and optionally "prob_zero",
+            plus "prob_one" when fitting to beta) for gamma and beta, and
+            "prob_zero", "loc", "scale", and "skew" for Pearson Type
             III. A gamma set without "prob_zero" computes it over the calibration
             period of the values given. Older keys such as "alphas" and
             "probabilities_of_zero" are deprecated.
@@ -711,7 +724,9 @@ def standardized_index(
             "probability" returns the fitted cumulative probability in [0, 1]
             without clipping, and "bounded" returns ``2p - 1`` in [-1, 1].
         zero_handling: Where a zero accumulation is placed within the zero mass;
-            see :func:`spi`.
+            see :func:`spi`. The beta distribution applies the mode to both of its
+            boundary masses, placing a one at the mirror of a zero's position
+            (ADR-0015, ADR-0024).
         aggregation: How each ``scale`` window is combined before the fit: "sum"
             (the default, and what :func:`spi` does) accumulates it, "mean" averages
             it, which keeps a bounded series such as a capacity factor in its own
@@ -727,6 +742,8 @@ def standardized_index(
         ValueError: If ``zero_handling`` is not one of the three modes, if
             ``aggregation`` is not "sum" or "mean", or a Pearson ``fitting_params``
             set is partial or does not carry the period (and cell) axes.
+        InvalidArgumentError: If ``distribution`` is a member this surface does not
+            accept, or a beta fit is given a value outside [0, 1].
     """
     return _standardized_index_pipeline(
         values,
@@ -743,6 +760,7 @@ def standardized_index(
         output_scale=output_scale,
         zero_handling=zero_handling,
         aggregation=aggregation,
+        allowed_distributions=(Distribution.gamma, Distribution.pearson, Distribution.beta),
     )
 
 
