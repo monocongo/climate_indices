@@ -572,6 +572,35 @@ def test_partially_supplied_fitting_parameters_reproduce_the_fit() -> None:
     assert not np.allclose(shifted, fitted)
 
 
+@pytest.mark.parametrize("supplied_shapes", [(False, False), (True, False), (False, True), (True, True)])
+@pytest.mark.parametrize("supplied_masses", [(False, False), (True, False), (False, True), (True, True)])
+def test_resolver_preserves_every_supplied_parameter_combination(
+    supplied_shapes: tuple[bool, bool], supplied_masses: tuple[bool, bool]
+) -> None:
+    """Resolve omitted parameters without replacing supplied values or modifying the caller's dictionary."""
+    values = _bounded_monthly(years=40)
+    fitted: dict[str, np.ndarray] = dict(
+        zip(
+            ("alpha", "beta", "prob_zero", "prob_one"),
+            compute.beta_parameters(values, 1900, 1900, 1939, _MONTHLY),
+            strict=True,
+        )
+    )
+    overrides = {name: np.full(12, value) for name, value in zip(fitted, (7.0, 9.0, 0.1, 0.2), strict=True)}
+    params = {
+        name: overrides[name] if supplied else None
+        for name, supplied in zip(fitted, (*supplied_shapes, *supplied_masses), strict=True)
+    }
+    original = params.copy()
+
+    resolved = compute.FittedDistribution.resolve(values, indices.Distribution.beta, 1900, 1900, 1939, _MONTHLY, params)
+
+    for name, parameter in original.items():
+        expected = fitted[name] if parameter is None else parameter
+        np.testing.assert_array_equal(resolved.parameters[name], expected)
+        assert params[name] is parameter
+
+
 @pytest.mark.parametrize("shape", ["alpha", "beta"])
 def test_a_single_supplied_shape_is_not_overwritten(shape: str) -> None:
     """Fit only the omitted shape, even when the supplied shape differs from the fit."""

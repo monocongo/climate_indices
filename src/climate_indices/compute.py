@@ -3336,47 +3336,37 @@ def _resolve_beta_parameters(
     # a mask is a missing marker, as the beta transform treats it
     if np.ma.isMaskedArray(values):
         values = np.ma.filled(values.astype(float), np.nan)
-    alphas = params.get("alpha")
-    betas = params.get("beta")
-    probabilities = params.get("prob_zero")
-    probabilities_of_one = params.get("prob_one")
+    parameters: dict[str, Any] = {key: params.get(key) for key in _PARAMETER_KEYS["beta"]}
 
     # a missing shape parameter needs the fit, which reports both masses as well, so one
     # fit fills every parameter the caller left out. A missing mass alone is counted
     # directly: a fit for the shapes the caller already supplied would be discarded, and
     # it would emit calibration-quality warnings for a fit nobody asked for.
-    if alphas is None or betas is None:
-        fitted_alphas, fitted_betas, fitted_zero, fitted_one = beta_parameters(
-            values, data_start_year, calibration_start_year, calibration_end_year, periodicity
-        )
-        if alphas is None:
-            alphas = fitted_alphas
-        if betas is None:
-            betas = fitted_betas
-        if probabilities is None:
-            probabilities = fitted_zero
-        if probabilities_of_one is None:
-            probabilities_of_one = fitted_one
-    elif probabilities is None or probabilities_of_one is None:
+    if parameters["alpha"] is None or parameters["beta"] is None:
+        fitted = beta_parameters(values, data_start_year, calibration_start_year, calibration_end_year, periodicity)
+        for name, parameter in zip(_PARAMETER_KEYS["beta"], fitted, strict=True):
+            if parameters[name] is None:
+                parameters[name] = parameter
+    elif parameters["prob_zero"] is None or parameters["prob_one"] is None:
         period = resolve_calibration_period(
             data_start_year, values.shape[0], calibration_start_year, calibration_end_year, policy="clamp"
         )
         calibration_values = values[period.rows, ...]
-        if probabilities is None:
-            probabilities = _calibration_probability_of(calibration_values, 0.0)
-        if probabilities_of_one is None:
-            probabilities_of_one = _calibration_probability_of(calibration_values, 1.0)
+        if parameters["prob_zero"] is None:
+            parameters["prob_zero"] = _calibration_probability_of(calibration_values, 0.0)
+        if parameters["prob_one"] is None:
+            parameters["prob_one"] = _calibration_probability_of(calibration_values, 1.0)
 
     # the interior values carry the rest of the probability, so a resolved mass pair
     # summing above 1 inverts the transform. A caller supplying only one mass reaches
     # this check here rather than in validate_supplied, which sees the pair unresolved.
-    if np.any(np.asarray(probabilities, dtype=float) + np.asarray(probabilities_of_one, dtype=float) > 1.0):
+    if np.any(np.asarray(parameters["prob_zero"], dtype=float) + np.asarray(parameters["prob_one"], dtype=float) > 1.0):
         raise ValueError(
             "Fitting parameters 'prob_zero' and 'prob_one' must not sum above 1, because the "
             "interior values carry the remaining probability"
         )
 
-    return {"alpha": alphas, "beta": betas, "prob_zero": probabilities, "prob_one": probabilities_of_one}
+    return parameters
 
 
 def _resolve_loglogistic_parameters(
@@ -3399,6 +3389,28 @@ def _resolve_loglogistic_parameters(
     else:
         locs, scales, shapes = cast("tuple[np.ndarray, np.ndarray, np.ndarray]", tuple(supplied))
     return {"loc": locs, "scale": scales, "shape": shapes}
+
+
+def _validate_beta_parameters(values: np.ndarray, params: dict[str, Any]) -> None:
+    """Reject invalid beta shape values, upper boundary masses, or total boundary mass."""
+    for name in ("alpha", "beta"):
+        parameter = params.get(name)
+        if parameter is not None:
+            shape = np.asarray(parameter, dtype=float)
+            if np.any(~np.isnan(shape) & (~np.isfinite(shape) | (shape <= 0.0))):
+                raise ValueError(f"Beta fitting parameter '{name}' must be finite and positive, or NaN")
+    supplied_one = params.get("prob_one")
+    if supplied_one is not None:
+        _validate_probability_mass(values, supplied_one, "prob_one")
+    supplied_prob_zero = params.get("prob_zero")
+    if supplied_prob_zero is not None and supplied_one is not None:
+        # A partially supplied pair is checked after the resolver fits the other mass.
+        total = np.asarray(supplied_prob_zero, dtype=float) + np.asarray(supplied_one, dtype=float)
+        if np.any(total > 1.0):
+            raise ValueError(
+                "Fitting parameters 'prob_zero' and 'prob_one' must not sum above 1, because the "
+                "interior values carry the remaining probability"
+            )
 
 
 @dataclass(frozen=True, eq=False)
@@ -3449,24 +3461,7 @@ class FittedDistribution:
                     values.shape, (("alpha", prepared.get("alpha")), ("beta", prepared.get("beta")))
                 )
             if kind == "beta":
-                for name, parameter in (("alpha", alphas), ("beta", betas)):
-                    if parameter is not None:
-                        shape = np.asarray(parameter, dtype=float)
-                        if np.any(~np.isnan(shape) & (~np.isfinite(shape) | (shape <= 0.0))):
-                            raise ValueError(f"Beta fitting parameter '{name}' must be finite and positive, or NaN")
-                supplied_one = params.get("prob_one")
-                if supplied_one is not None:
-                    _validate_probability_mass(values, supplied_one, "prob_one")
-                if supplied_prob_zero is not None and supplied_one is not None:
-                    # the interior values carry the rest of the probability, so masses that
-                    # sum above 1 leave it negative and invert the transform. A partially
-                    # supplied pair is checked once the resolver has fitted the other mass.
-                    total = np.asarray(supplied_prob_zero, dtype=float) + np.asarray(supplied_one, dtype=float)
-                    if np.any(total > 1.0):
-                        raise ValueError(
-                            "Fitting parameters 'prob_zero' and 'prob_one' must not sum above 1, because the "
-                            "interior values carry the remaining probability"
-                        )
+                _validate_beta_parameters(values, params)
             return
 
         keys = _PARAMETER_KEYS[kind]
