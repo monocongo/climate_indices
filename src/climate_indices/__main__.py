@@ -1712,8 +1712,8 @@ def _validate_flood_arguments(args: argparse.Namespace) -> None:
 
 
 # the distributions `--index spi` computes; log-logistic is the SPEI reference
-# distribution and `indices.spi()` rejects it (#106), and empirical is reserved for
-# `indices.standardized_index()` (#1168)
+# distribution and `indices.spi()` rejects it (#106), and empirical (#1168) and beta
+# (#1169) are reserved for `indices.standardized_index()`
 _SPI_DISTRIBUTIONS = (indices.Distribution.gamma, indices.Distribution.pearson)
 _SPEI_DISTRIBUTIONS = (*_SPI_DISTRIBUTIONS, indices.Distribution.loglogistic)
 

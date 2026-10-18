@@ -195,7 +195,8 @@ def test_temperature_only_spei_computes_and_consumes_pet(monkeypatch):
 
     cli_main.process_climate_indices(arguments)
 
-    # every SPEI distribution but empirical, which only standardized_index() takes (#1168)
+    # every SPEI distribution but empirical and beta, which only standardized_index()
+    # takes (#1168, #1169)
     assert [request.index for request in requests] == ["pet"] + ["spei"] * 3
     assert [request.distribution for request in requests[1:]] == [
         indices.Distribution.gamma,

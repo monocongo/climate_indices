@@ -81,9 +81,11 @@ the empirical (rank-based) distribution, which Allen & Otero (2023) recommend
 above roughly 100 observations, with beta available for bounded [0, 1]
 capacity factors averaged with `aggregation="mean"` when there are too few.
 The beta option is not for demand proxies or accumulated production.
-[#1169][energy-1169] requires separate probability masses at exact 0 and 1;
-the continuous beta fit applies only between those endpoints. This endpoint
-handling remains planned, not implemented.
+[#1169][energy-1169] added separate probability masses at exact 0 and 1 to the
+standardization seam ([ADR-0024](adr/0024-beta-distribution-for-bounded-series.md)):
+the continuous beta fit applies only between those endpoints, and a boundary value
+scores from its own mass. The energy wrappers that expose it are what
+[#1171][energy-1171] still plans.
 SRLI uses the empirical distribution only. That is an API restriction rather
 than a mathematical necessity: a rank-based standardization has no support
 for a signed series to violate, the parametric families' support-limit and
@@ -162,7 +164,7 @@ order.
   ([#1171][energy-1171])*, on the empirical distribution option
   ([#1168][energy-1168]), with beta ([#1169][energy-1169]) only for SREPI
   capacity factors in [0, 1] averaged with `aggregation="mean"`, including the
-  planned endpoint-mass handling described above, not for demand proxies.
+  endpoint-mass handling described above, not for demand proxies.
 - **SRLI** — *planned ([#1172][energy-1172])*.
 - **Energy-drought event statistics** — *planned ([#1173][energy-1173])*.
 - **Wind capacity factor** — *planned ([#1175][energy-1175])*. Hub-height

@@ -37,4 +37,5 @@ decision stands; the record's text was corrected in place), or
 0021-climate-indices-crate-identity
 0022-compound-analysis-contracts
 0023-rust-public-api
+0024-beta-distribution-for-bounded-series
 ```
