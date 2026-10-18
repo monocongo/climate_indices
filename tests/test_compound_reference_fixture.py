@@ -111,7 +111,8 @@ def test_author_reference_matches_independent_contingency_counts(case: dict[str,
     monthly_positions = np.searchsorted(inputs["monthly_time"], dates, side="right") - 1
     drought_values = inputs["monthly_spei"][monthly_positions, column].copy()
     valid = np.isfinite(drought_values)
-    assert valid[0] and valid[-1]
+    assert valid[0]
+    assert valid[-1]
     # Only missing padded values interpolate; the finite month-end values stay constant until the next label.
     offsets = np.arange(len(dates))
     drought_values[~valid] = np.interp(offsets[~valid], offsets[valid], drought_values[valid])
@@ -311,8 +312,9 @@ def test_publication_refuses_a_destination_created_during_preparation(
         real_savez(*args, **kwargs)
 
     monkeypatch.setattr(np, "savez_compressed", late_destination)
+    download_date = date.today().isoformat()
     with pytest.raises(FileExistsError):
-        preparation["prepare"](synthetic_sources, output, date.today().isoformat())
+        preparation["prepare"](synthetic_sources, output, download_date)
     assert sorted(path.name for path in output.iterdir()) == ["keep.txt"]
     assert sorted(path.name for path in tmp_path.iterdir()) == ["fixture", "sources"]
 

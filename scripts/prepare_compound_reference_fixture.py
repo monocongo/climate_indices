@@ -52,12 +52,15 @@ import xarray as xr
 AUTHOR_COMMIT = "6c88f255ee3034279dcebe2a2fc40c954dbe9575"
 DATASET_DOI = "10.6084/m9.figshare.25189118.v2"
 OUTPUT_ROOT = Path(__file__).resolve().parents[1] / "tmp" / "compound-reference"
+SPEI_FILE = "SPEI12.nc"
+HEATWAVE_FILE = "heatwave_SMHI.nc"
+DAY_DTYPE = "datetime64[D]"
 SOURCES: dict[str, dict[str, int | str]] = {
-    "SPEI12.nc": {
+    SPEI_FILE: {
         "file_id": 44481290,
         "sha256": "bb2b32bc5c6d76ce3257a0b211696128ad6da13ae737650a1376524788e88dce",
     },
-    "heatwave_SMHI.nc": {
+    HEATWAVE_FILE: {
         "file_id": 44481308,
         "sha256": "c0428087c22cd6586f77af83592185ca513d2f52a809b7173a85960a3497701b",
     },
@@ -129,8 +132,8 @@ def prepare(source_dir: Path, output_dir: Path, download_date: str) -> None:
             raise ValueError(f"Unexpected source checksum: {name}")
 
     with (
-        xr.open_dataset(source_dir / "SPEI12.nc", engine="h5netcdf") as spei,
-        xr.open_dataset(source_dir / "heatwave_SMHI.nc", engine="h5netcdf") as hwi,
+        xr.open_dataset(source_dir / SPEI_FILE, engine="h5netcdf") as spei,
+        xr.open_dataset(source_dir / HEATWAVE_FILE, engine="h5netcdf") as hwi,
     ):
         np.testing.assert_array_equal(spei.lat, hwi.lat)
         np.testing.assert_array_equal(spei.lon, hwi.lon)
@@ -149,10 +152,7 @@ def prepare(source_dir: Path, output_dir: Path, download_date: str) -> None:
                     "lon_index": column,
                     "latitude": float(spei.lat[row]),
                     "longitude": float(spei.lon[column]),
-                    "monthly_missing_dates": spei.time.values[np.isnan(monthly)]
-                    .astype("datetime64[D]")
-                    .astype(str)
-                    .tolist(),
+                    "monthly_missing_dates": spei.time.values[np.isnan(monthly)].astype(DAY_DTYPE).astype(str).tolist(),
                 }
             )
             monthly_columns.append(monthly)
@@ -163,9 +163,9 @@ def prepare(source_dir: Path, output_dir: Path, download_date: str) -> None:
         daily_values = np.stack(daily_columns, axis=1)
 
     np.testing.assert_array_equal(
-        monthly_time[[0, -1]].astype("datetime64[D]"), [np.datetime64("1922-01-31"), np.datetime64("2021-12-31")]
+        monthly_time[[0, -1]].astype(DAY_DTYPE), [np.datetime64("1922-01-31"), np.datetime64("2021-12-31")]
     )
-    np.testing.assert_array_equal(daily_time, np.arange("1922-01-01", "2022-01-01", dtype="datetime64[D]"))
+    np.testing.assert_array_equal(daily_time, np.arange("1922-01-01", "2022-01-01", dtype=DAY_DTYPE))
     np.testing.assert_equal(monthly_values.shape, (1200, 3))
     np.testing.assert_equal(daily_values.shape, (36525, 3))
     prepared = daily_spei(monthly_time, monthly_values)
@@ -204,7 +204,7 @@ def prepare(source_dir: Path, output_dir: Path, download_date: str) -> None:
             "inputs_sha256": checksum(staging / "inputs.npz"),
             "cells": cells,
             "preparation": {
-                "variables": {"SPEI12.nc": "SPEI", "heatwave_SMHI.nc": "heatwave index"},
+                "variables": {SPEI_FILE: "SPEI", HEATWAVE_FILE: "heatwave index"},
                 "monthly_to_daily": "resample(time='D').ffill().interpolate_na(dim='time', method='linear')",
                 "start": "1922-01-31",
                 "end": "2021-12-31",
