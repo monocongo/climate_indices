@@ -2708,7 +2708,8 @@ def transform_fitted_beta(
     :raises InvalidArgumentError: if a value lies outside [0, 1] beyond the rounding
         tolerance of a windowed mean
     :raises ValueError: if ``zero_handling`` is not one of the three modes, a supplied
-        shape parameter does not broadcast to the values, a supplied boundary mass has
+        shape parameter is not finite and positive (unless NaN) or does not broadcast
+        to the values, a supplied boundary mass has
         cell dimensions that do not match the values or a value outside [0, 1], or the
         resolved boundary masses sum above 1
     """
@@ -3345,9 +3346,13 @@ def _resolve_beta_parameters(
     # directly: a fit for the shapes the caller already supplied would be discarded, and
     # it would emit calibration-quality warnings for a fit nobody asked for.
     if alphas is None or betas is None:
-        alphas, betas, fitted_zero, fitted_one = beta_parameters(
+        fitted_alphas, fitted_betas, fitted_zero, fitted_one = beta_parameters(
             values, data_start_year, calibration_start_year, calibration_end_year, periodicity
         )
+        if alphas is None:
+            alphas = fitted_alphas
+        if betas is None:
+            betas = fitted_betas
         if probabilities is None:
             probabilities = fitted_zero
         if probabilities_of_one is None:
@@ -3444,6 +3449,11 @@ class FittedDistribution:
                     values.shape, (("alpha", prepared.get("alpha")), ("beta", prepared.get("beta")))
                 )
             if kind == "beta":
+                for name, parameter in (("alpha", alphas), ("beta", betas)):
+                    if parameter is not None:
+                        shape = np.asarray(parameter, dtype=float)
+                        if np.any(~np.isnan(shape) & (~np.isfinite(shape) | (shape <= 0.0))):
+                            raise ValueError(f"Beta fitting parameter '{name}' must be finite and positive, or NaN")
                 supplied_one = params.get("prob_one")
                 if supplied_one is not None:
                     _validate_probability_mass(values, supplied_one, "prob_one")

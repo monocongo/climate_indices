@@ -610,6 +610,9 @@ def _standardized_index_pipeline(
         if preprocess is not None:
             values = preprocess(values)
 
+        if distribution is Distribution.beta:
+            compute._validate_beta_support(values)
+
         # prepare_scaled owns flatten/fold, the ambiguous-shape guard, the
         # insufficient-data check, negative clipping, scaling, and the all-missing
         # return. Shape errors raise the plain ValueError from prepare_scaled --
@@ -723,8 +726,8 @@ def standardized_index(
     and 1 values are point masses at the boundaries, so a capacity factor or another
     bounded series standardizes without leaving its own range (ADR-0024). Pair it with
     ``aggregation="mean"``, which is what keeps a windowed value inside the support.
-    A value outside [0, 1] is rejected rather than clipped, whatever ``clip_negatives``
-    asks for.
+    A source observation or windowed value outside [0, 1] is rejected rather than
+    clipped, whatever ``clip_negatives`` asks for.
 
     This is a NumPy-array entry point only; xarray and Dask dispatch are not wired
     for it.
@@ -796,7 +799,8 @@ def standardized_index(
         ValueError: If ``zero_handling`` is not one of the three modes, if
             ``aggregation`` is not "sum" or "mean", a Pearson ``fitting_params``
             set is partial or does not carry the period (and cell) axes, or a beta
-            mass pair sums above 1.
+            mass pair sums above 1 or a supplied beta shape is not finite and positive
+            (unless NaN).
     """
     # the pipeline validates the distribution before it runs this check. Beta is not
     # among the families this pre-reject covers: its own support check reports the

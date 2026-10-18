@@ -57,13 +57,14 @@ def test_beta_standardizes_a_bounded_series_to_a_standard_normal() -> None:
         assert scipy.stats.kstest(column, "norm").pvalue > 0.01
 
 
+@pytest.mark.filterwarnings("error::climate_indices.exceptions.CalibrationPeriodClampedWarning")
 def test_beta_recovers_the_shape_parameters_of_a_synthetic_sample() -> None:
     """The method of moments recovers known shape parameters from a large sample."""
     alphas, betas = 2.0, 5.0
     values = np.random.default_rng(23).beta(alphas, betas, size=(20000, 12))
 
     fitted_alphas, fitted_betas, probabilities_of_zero, probabilities_of_one = compute.beta_parameters(
-        values, 1900, 1900, 21900 + 1900 - 1, _MONTHLY
+        values, 1900, 1900, 1900 + 20000 - 1, _MONTHLY
     )
 
     # a sample of 20000 per step leaves the method of moments within about 3 percent
@@ -569,6 +570,107 @@ def test_partially_supplied_fitting_parameters_reproduce_the_fit() -> None:
         **arguments,
     )
     assert not np.allclose(shifted, fitted)
+
+
+@pytest.mark.parametrize("shape", ["alpha", "beta"])
+def test_a_single_supplied_shape_is_not_overwritten(shape: str) -> None:
+    """Fit only the omitted shape, even when the supplied shape differs from the fit."""
+    values = _bounded_monthly(years=40)
+    alphas, betas, probabilities_of_zero, probabilities_of_one = compute.beta_parameters(
+        values, 1900, 1900, 1939, _MONTHLY
+    )
+    supplied = np.full(12, 7.0)
+    expected = compute.transform_fitted_beta(
+        values,
+        1900,
+        1900,
+        1939,
+        _MONTHLY,
+        supplied if shape == "alpha" else alphas,
+        supplied if shape == "beta" else betas,
+        probabilities_of_zero,
+        probabilities_of_one,
+    )
+    actual = indices.standardized_index(
+        values.ravel(),
+        scale=1,
+        distribution=indices.Distribution.beta,
+        data_start_year=1900,
+        calibration_year_initial=1900,
+        calibration_year_final=1939,
+        periodicity=_MONTHLY,
+        fitting_params={shape: supplied},
+        aggregation="mean",
+    )
+    expected = np.clip(expected.ravel(), indices._FITTED_INDEX_VALID_MIN, indices._FITTED_INDEX_VALID_MAX)
+    np.testing.assert_allclose(actual, expected, rtol=0, atol=1e-12)
+
+
+@pytest.mark.parametrize("shape", ["alpha", "beta"])
+@pytest.mark.parametrize("invalid", [0.0, -1.0, np.inf, -np.inf])
+def test_invalid_supplied_shapes_raise(shape: str, invalid: float) -> None:
+    """A supplied shape must be positive and finite, or NaN for a missing fit."""
+    params = {"alpha": np.full(12, 2.0), "beta": np.full(12, 5.0)}
+    params[shape][0] = invalid
+    with pytest.raises(ValueError, match=rf"{shape}.*finite and positive"):
+        compute.transform_fitted_beta(
+            np.full((40, 12), 0.5), 1900, 1900, 1939, _MONTHLY, params["alpha"], params["beta"]
+        )
+    with pytest.raises(ValueError, match=rf"{shape}.*finite and positive"):
+        indices.standardized_index(
+            np.full(480, 0.5),
+            scale=1,
+            distribution=indices.Distribution.beta,
+            data_start_year=1900,
+            calibration_year_initial=1900,
+            calibration_year_final=1939,
+            periodicity=_MONTHLY,
+            fitting_params=params,
+        )
+
+
+def test_nan_supplied_shapes_preserve_missing_interior_and_boundary_scores() -> None:
+    """A NaN shape marks an unavailable fit, but the boundary masses still score."""
+    values = np.full((3, 12), 0.5)
+    values[0, :] = 0.0
+    values[1, :] = 1.0
+    result = compute.transform_fitted_beta(
+        values,
+        1900,
+        1900,
+        1902,
+        _MONTHLY,
+        np.full(12, np.nan),
+        np.full(12, np.nan),
+        np.full(12, 0.25),
+        np.full(12, 0.25),
+        output_scale="probability",
+    )
+    np.testing.assert_array_equal(result[0], 0.25)
+    np.testing.assert_array_equal(result[1], 0.75)
+    assert np.all(np.isnan(result[2]))
+
+
+@pytest.mark.parametrize("invalid", [-0.1, 1.1])
+@pytest.mark.parametrize("spatial", [False, True])
+def test_mean_aggregation_does_not_hide_out_of_support_source_values(invalid: float, spatial: bool) -> None:
+    """Reject a bad source value even when every windowed mean is within [0, 1]."""
+    values = np.full(480, 0.5)
+    values[10] = invalid
+    if spatial:
+        values = values[:, np.newaxis, np.newaxis]
+    with pytest.raises(InvalidArgumentError, match="only values in"):
+        indices.standardized_index(
+            values,
+            scale=2,
+            distribution=indices.Distribution.beta,
+            data_start_year=1900,
+            calibration_year_initial=1900,
+            calibration_year_final=1939,
+            periodicity=_MONTHLY,
+            aggregation="mean",
+            spatial_time_major=spatial,
+        )
 
 
 def test_a_time_major_block_matches_the_separate_series() -> None:

@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted. The implementation lands in
+Amended. Decision 2 now states the unit-mass exception implemented by
+`transform_fitted_beta()`. Decision 4 now states that the support check applies
+before aggregation as well as after it (PR #1389).
+
+The implementation lands in
 [#1169](https://github.com/monocongo/climate_indices/issues/1169), the first
 distribution option of the energy family's Phase 2
 ([#1157](https://github.com/monocongo/climate_indices/issues/1157)). The
@@ -50,7 +54,9 @@ classification instead of borrowing gamma's tolerance.
 2. **Both boundaries are point masses, and probability is
    `p0 + (1 − p0 − p1)·F(x)`.** `p0` and `p1` are the fraction of each step's
    non-missing calibration values equal to 0 and to 1, counted exactly as
-   ADR-0015 counts a zero. `F` is the fitted beta CDF over the open interval.
+   ADR-0015 counts a zero. The formula uses effective masses: a mass equal to 1
+   becomes 0 for the transform, while the reported fitted mass remains 1.
+   `F` is the fitted beta CDF over the open interval.
    A boundary value never consults the shape parameters, so exact 0s and 1s
    standardize even when the interior fit fails. A step whose whole
    calibration mass sits at one boundary has no interior fit and scores that
@@ -66,8 +72,10 @@ classification instead of borrowing gamma's tolerance.
    `+φ(Φ⁻¹(p1))/p1`, the normal-scale mean of the upper tail. A mass outside
    `(0, 1)` is not moved, exactly as ADR-0015 decision 5 requires.
 
-4. **The support is enforced, not clipped.** A value outside [0, 1] raises
-   `InvalidArgumentError`, and a mass pair summing above 1 raises `ValueError`,
+4. **The support is enforced, not clipped.** A source observation or windowed
+   value outside [0, 1] raises `InvalidArgumentError`. The source check prevents
+   a windowed mean from hiding an invalid observation.
+   A mass pair summing above 1 raises `ValueError`,
    the existing fitting-parameter type, because it would leave the interior a
    negative probability. On `standardized_index()` the beta branch therefore
    passes `clip_negatives=False` to the shared pipeline: clipping a negative to
