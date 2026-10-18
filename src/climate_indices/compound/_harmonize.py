@@ -283,20 +283,20 @@ def _hazard_and_validity(
                 actual_type=array.dtype.type,
             )
         hazard = array.copy()
+    elif array.dtype.kind not in "iuf":
+        raise InputTypeError(
+            f"inputs[{name!r}] is declared a probability and must be a real numeric array, not {array.dtype}.",
+            expected_type=float,
+            actual_type=array.dtype.type,
+        )
+    elif array.dtype.kind == "f" and array.dtype.itemsize > np.dtype(np.float64).itemsize:
+        raise InputTypeError(
+            f"inputs[{name!r}] is declared a probability with the extended-precision dtype {array.dtype}; "
+            "validation and comparison happen in float64, which cannot hold every value this dtype stores.",
+            expected_type=np.float64,
+            actual_type=array.dtype.type,
+        )
     else:
-        if array.dtype.kind not in "iuf":
-            raise InputTypeError(
-                f"inputs[{name!r}] is declared a probability and must be a real numeric array, not {array.dtype}.",
-                expected_type=float,
-                actual_type=array.dtype.type,
-            )
-        if array.dtype.kind == "f" and array.dtype.itemsize > np.dtype(np.float64).itemsize:
-            raise InputTypeError(
-                f"inputs[{name!r}] is declared a probability with the extended-precision dtype {array.dtype}; "
-                "validation and comparison happen in float64, which cannot hold every value this dtype stores.",
-                expected_type=np.float64,
-                actual_type=array.dtype.type,
-            )
         # float64 holds every int and float32 value exactly, so the strict comparison tests the stored value
         data = array.astype(np.float64)
         valid &= ~np.isnan(data)
