@@ -1,0 +1,5 @@
+ties should not be present for the one-sample Kolmogorov-Smirnov test
+using the empirical distribution is only recommended when at least
+              100 values are available when fitting the distribution
+10 values are required to fit the distribution - distribution has not been fit
+NaNs produced

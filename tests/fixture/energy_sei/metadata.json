@@ -1,0 +1,176 @@
+{
+  "sei_commit": "4d4a6d02d0fbfefdb48da63580c6be1bca3d5f14",
+  "sei_archive_sha256": "49d1f1ee1c68bb0ec758b7b1cff2d29d48daae5dd508fdec7ce5eaabd97501d4",
+  "r_script_sha256": "bb547d4a56917cbffd7c55501af9ee847798be1642b79ecf7598a82fbe5c1432",
+  "seed": 1170,
+  "python_packages": {
+    "numpy": "2.4.2",
+    "xarray": "2026.1.0"
+  },
+  "cases": [
+    {
+      "id": "capacity_mean_1",
+      "input": "capacity",
+      "function": "srepi",
+      "issue": 1171,
+      "scale": 1,
+      "aggregation": "mean",
+      "data_start_year": 1900,
+      "calibration_year_initial": 1902,
+      "calibration_year_final": 2001
+    },
+    {
+      "id": "capacity_mean_3",
+      "input": "capacity",
+      "function": "srepi",
+      "issue": 1171,
+      "scale": 3,
+      "aggregation": "mean",
+      "data_start_year": 1900,
+      "calibration_year_initial": 1902,
+      "calibration_year_final": 2001
+    },
+    {
+      "id": "production_sum_1",
+      "input": "production",
+      "function": "srepi",
+      "issue": 1171,
+      "scale": 1,
+      "aggregation": "sum",
+      "data_start_year": 1900,
+      "calibration_year_initial": 1902,
+      "calibration_year_final": 2001
+    },
+    {
+      "id": "production_sum_3",
+      "input": "production",
+      "function": "srepi",
+      "issue": 1171,
+      "scale": 3,
+      "aggregation": "sum",
+      "data_start_year": 1900,
+      "calibration_year_initial": 1902,
+      "calibration_year_final": 2001
+    },
+    {
+      "id": "demand_sum_1",
+      "input": "demand",
+      "function": "standardized_demand_index",
+      "issue": 1171,
+      "scale": 1,
+      "aggregation": "sum",
+      "data_start_year": 1900,
+      "calibration_year_initial": 1902,
+      "calibration_year_final": 2001
+    },
+    {
+      "id": "demand_sum_3",
+      "input": "demand",
+      "function": "standardized_demand_index",
+      "issue": 1171,
+      "scale": 3,
+      "aggregation": "sum",
+      "data_start_year": 1900,
+      "calibration_year_initial": 1902,
+      "calibration_year_final": 2001
+    },
+    {
+      "id": "residual_sum_1",
+      "input": "residual",
+      "function": "srli",
+      "issue": 1172,
+      "scale": 1,
+      "aggregation": "sum",
+      "data_start_year": 1900,
+      "calibration_year_initial": 1902,
+      "calibration_year_final": 2001
+    },
+    {
+      "id": "residual_sum_3",
+      "input": "residual",
+      "function": "srli",
+      "issue": 1172,
+      "scale": 3,
+      "aggregation": "sum",
+      "data_start_year": 1900,
+      "calibration_year_initial": 1902,
+      "calibration_year_final": 2001
+    },
+    {
+      "id": "residual_mean_1",
+      "input": "residual",
+      "function": "srli",
+      "issue": 1172,
+      "scale": 1,
+      "aggregation": "mean",
+      "data_start_year": 1900,
+      "calibration_year_initial": 1902,
+      "calibration_year_final": 2001
+    },
+    {
+      "id": "residual_mean_3",
+      "input": "residual",
+      "function": "srli",
+      "issue": 1172,
+      "scale": 3,
+      "aggregation": "mean",
+      "data_start_year": 1900,
+      "calibration_year_initial": 1902,
+      "calibration_year_final": 2001
+    },
+    {
+      "id": "reading_mean_1",
+      "input": "reading",
+      "function": "srepi",
+      "issue": 1171,
+      "scale": 1,
+      "aggregation": "mean",
+      "data_start_year": 1950,
+      "calibration_year_initial": 1981,
+      "calibration_year_final": 2010
+    },
+    {
+      "id": "reading_mean_3",
+      "input": "reading",
+      "function": "srepi",
+      "issue": 1171,
+      "scale": 3,
+      "aggregation": "mean",
+      "data_start_year": 1950,
+      "calibration_year_initial": 1981,
+      "calibration_year_final": 2010
+    }
+  ],
+  "conventions": {
+    "distribution": "empirical",
+    "method": "mle",
+    "lower": "-Inf",
+    "upper": "Inf",
+    "cens": "none",
+    "n_thres": 10,
+    "index_types": [
+      "prob01",
+      "normal"
+    ],
+    "calendar": "monthly; aggregate complete windows before calendar-month grouping",
+    "synthetic_units": {
+      "capacity": "1",
+      "production": "MWh",
+      "demand": "MWh",
+      "residual": "MWh"
+    },
+    "residual": "demand - production, without negative clipping"
+  },
+  "reading": {
+    "doi": "10.17864/1947.000321",
+    "url": "https://researchdata.reading.ac.uk/321/4/ERA5_data_1950-2020.zip",
+    "member": "ERA5_data_1950-2020/wp_onshore/NUTS_0_wp_ons_sim_1_historical_loc_weighted.nc",
+    "member_sha256": "3f3726492fa52c0e8d5e1025e3047b09d3ab75a180701f89d4ea78161c6db7e8",
+    "archive_etag": "106c707cabf37e373e28e80bd0769a4c",
+    "readme_sha256": "65d4d91746aafea980655652d228f1eb6c7740d2ebbd25dc910780e71cc9efdb",
+    "selection": "NUTS_keys == DE; timeseries_data cast to float64 before complete monthly means",
+    "time": "622392 consecutive source hours from 1950-01-01; 852 months through 2020-12; no timezone attribute or timezone conversion",
+    "units": "dimensionless capacity factor; units interpreted from the provider README",
+    "license": "CC-BY-4.0; Copyright 2021 University of Reading; monthly subset derived here"
+  }
+}
