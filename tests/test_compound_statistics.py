@@ -698,6 +698,7 @@ def test_zero_lag_identity_matches_the_joint_and_marginal_ratio() -> None:
     aligned = align(hazard)
     with pytest.warns(ClimateIndicesWarning):
         joint = compound.joint_statistics(aligned, groupby="pooled", min_samples=1)
+    with pytest.warns(ClimateIndicesWarning):
         lagged = conditional(aligned)
     # rows (T,T) (F,T) (T,F) (T,T) (F,F) (T,F): 6 eligible, 4 given positives, 2 joint
     assert int(lagged.n_anchors) == int(joint.n_valid) == 6
@@ -716,8 +717,9 @@ def test_forward_window_counts_each_given_positive_anchor_once() -> None:
             [True, False, False, False, False, False],
         ]
     )
+    aligned = align(hazard)
     with pytest.warns(ClimateIndicesWarning):
-        result = conditional(align(hazard), lag_window=(0, 2))
+        result = conditional(aligned, lag_window=(0, 2))
     # anchors 0-3 have a complete window; anchors 4 and 5 do not
     assert int(result.n_anchors) == 4
     assert int(result.n_positive) == 2
@@ -736,8 +738,9 @@ def test_multiple_target_occurrences_in_one_window_count_the_anchor_once() -> No
             [True, False, True, False],
         ]
     )
+    aligned = align(hazard)
     with pytest.warns(ClimateIndicesWarning):
-        result = conditional(align(hazard), lag_window=(0, 2))
+        result = conditional(aligned, lag_window=(0, 2))
     # anchor 0 sees the target at step 0 and again at step 2, but counts as one success
     assert int(result.n_anchors) == 2
     assert int(result.n_positive) == 1
@@ -749,8 +752,9 @@ def test_multiple_target_occurrences_in_one_window_count_the_anchor_once() -> No
 def test_incomplete_horizon_is_discarded_even_when_it_holds_a_response() -> None:
     """The trailing anchor's window leaves the record, so the anchor is not eligible at all."""
     hazard = np.array([[True, True], [False, True]])
+    aligned = align(hazard)
     with pytest.warns(ClimateIndicesWarning):
-        result = conditional(align(hazard), lag_window=(0, 1))
+        result = conditional(aligned, lag_window=(0, 1))
     assert int(result.n_anchors) == 1
     assert int(result.n_positive) == 1
     assert int(result.n_success) == 1
@@ -766,8 +770,9 @@ def test_unknown_response_step_discards_the_anchor() -> None:
     )
     valid = np.ones(hazard.shape, dtype=bool)
     valid[1, 2] = False  # the window of anchors 0 and 1 holds this unknown step
+    aligned = align(hazard, valid)
     with pytest.warns(ClimateIndicesWarning):
-        result = conditional(align(hazard, valid), lag_window=(1, 2))
+        result = conditional(aligned, lag_window=(1, 2))
     # treating the unknown step as a non-response would keep anchors 0 and 1 and report 0.5
     assert int(result.n_anchors) == 1
     assert int(result.n_positive) == 1
@@ -778,9 +783,11 @@ def test_unknown_response_step_discards_the_anchor() -> None:
 def test_conditioning_is_not_symmetric() -> None:
     """Swapping the source roles changes the denominator while the baseline stays on the same anchors."""
     hazard = np.array([[True, True, True, False], [True, False, False, False]])
+    aligned = align(hazard)
     with pytest.warns(ClimateIndicesWarning):
-        forward = conditional(align(hazard), lag_window=(0, 1))
-        backward = conditional(align(hazard), given="source_1", target="source_0", lag_window=(0, 1))
+        forward = conditional(aligned, lag_window=(0, 1))
+    with pytest.warns(ClimateIndicesWarning):
+        backward = conditional(aligned, given="source_1", target="source_0", lag_window=(0, 1))
     assert float(forward.conditional_probability) == exact(1 / 3)
     assert float(backward.conditional_probability) == exact(1 / 1)
     # both share one eligible-anchor set, but each baseline describes its own target source
@@ -800,6 +807,7 @@ def test_baseline_is_the_response_window_rate_not_the_single_step_marginal() -> 
     aligned = align(hazard)
     with pytest.warns(ClimateIndicesWarning):
         result = conditional(aligned, lag_window=(0, 1))
+    with pytest.warns(ClimateIndicesWarning):
         joint = compound.joint_statistics(aligned, groupby="pooled", min_samples=1)
     assert int(result.n_positive) == 3
     assert int(result.n_success) == 2
@@ -816,8 +824,9 @@ def test_anchor_month_groups_a_window_that_crosses_into_the_next_year() -> None:
     given[11] = True  # December 2000
     target = np.zeros(13, dtype=bool)
     target[12] = True  # January 2001
+    aligned = align(np.array([given, target]))
     with pytest.warns(ClimateIndicesWarning):
-        result = conditional(align(np.array([given, target])), lag_window=(1, 1), groupby="month")
+        result = conditional(aligned, lag_window=(1, 1), groupby="month")
     assert result.n_anchors.tolist() == [1] * 12
     assert int(result.n_positive[11]) == 1
     assert int(result.n_success[11]) == 1
@@ -832,8 +841,9 @@ def test_daily_window_steps_are_civil_days_across_a_leap_day() -> None:
     given = np.array([False, True, False, False])
     target = np.array([False, False, True, False])
     hazard = np.array([given, target])
+    aligned = align(hazard, cadence="daily", start="2000-02-28")
     with pytest.warns(ClimateIndicesWarning):
-        result = conditional(align(hazard, cadence="daily", start="2000-02-28"), lag_window=(1, 1), groupby="month")
+        result = conditional(aligned, lag_window=(1, 1), groupby="month")
     assert int(result.n_anchors.sum()) == 3
     assert result.n_anchors.tolist() == [0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     assert int(result.n_positive[1]) == 1
@@ -846,8 +856,9 @@ def test_daily_window_steps_are_civil_days_across_a_leap_day() -> None:
 def test_conditional_short_support_keeps_counts_and_nans_the_estimates() -> None:
     """Below min_samples the counts survive and every estimate becomes NaN."""
     hazard = np.array([[True, True, False], [True, False, True]])
+    aligned = align(hazard)
     with pytest.warns(ClimateIndicesWarning, match="min_samples=30"):
-        strict = conditional(align(hazard), lag_window=(0, 1), min_samples=30)
+        strict = conditional(aligned, lag_window=(0, 1), min_samples=30)
     assert int(strict.n_anchors) == 2
     assert int(strict.n_positive) == 2
     assert int(strict.n_success) == 2
@@ -864,8 +875,9 @@ def test_conditional_short_support_keeps_counts_and_nans_the_estimates() -> None
 def test_zero_conditioning_count_is_undefined_with_its_flag() -> None:
     """A given hazard that never occurs leaves the conditional probability undefined, not zero."""
     hazard = np.array([[False, False], [True, True]])
+    aligned = align(hazard)
     with pytest.warns(ClimateIndicesWarning, match="no conditioning occurrence"):
-        result = conditional(align(hazard))
+        result = conditional(aligned)
     assert int(result.n_anchors) == 2
     assert int(result.n_positive) == 0
     assert int(result.n_success) == 0
@@ -884,8 +896,9 @@ def test_conditional_all_missing_cell_returns_zero_counts_without_failing_its_ne
     )
     valid = np.ones(hazard.shape, dtype=bool)
     valid[:, :, 1] = False
+    aligned = align(hazard, valid)
     with pytest.warns(ClimateIndicesWarning, match="observed calendar year"):
-        result = conditional(align(hazard, valid), lag_window=(0, 1))
+        result = conditional(aligned, lag_window=(0, 1))
     assert result.n_anchors.tolist() == [4, 0]
     assert result.n_positive.tolist() == [2, 0]
     assert result.n_success.tolist() == [2, 0]
@@ -908,6 +921,7 @@ def test_only_the_two_declared_sources_enter_eligibility() -> None:
     aligned = align(hazard, valid)
     with pytest.warns(ClimateIndicesWarning):
         result = conditional(aligned)
+    with pytest.warns(ClimateIndicesWarning):
         joint = compound.joint_statistics(aligned, groupby="pooled", min_samples=1)
     assert int(result.n_anchors) == 4
     assert int(result.n_positive) == 2
@@ -980,8 +994,9 @@ def test_forward_windows_match_a_per_anchor_scan(window: tuple[int, int]) -> Non
 def test_production_defaults_group_by_month_and_require_thirty_anchors() -> None:
     """The documented defaults are calendar-month grouping and min_samples=30."""
     hazard = np.ones((2, 6), dtype=bool)
+    aligned = align(hazard)
     with pytest.warns(ClimateIndicesWarning, match="min_samples=30"):
-        result = compound.conditional_probability(align(hazard), given="source_0", target="source_1")
+        result = compound.conditional_probability(aligned, given="source_0", target="source_1")
     assert result.groupby == "month"
     assert result.lag_window == (0, 0)
     assert result.n_anchors.shape == (12,)
