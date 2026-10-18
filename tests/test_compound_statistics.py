@@ -533,6 +533,23 @@ def test_rejects_a_manually_constructed_result_with_bad_arrays() -> None:
     with pytest.raises(DataShapeError, match="one-dimensional"):
         compound.joint_statistics(two_dimensional)
 
+    # two labels inside one calendar month would count that month twice
+    mid_month = dataclasses.replace(
+        aligned, time=np.array(["2000-01-01", "2000-01-02", "2000-03-01"], dtype="datetime64[D]")
+    )
+    with pytest.raises(CoordinateValidationError, match="first civil day"):
+        compound.joint_statistics(mid_month)
+
+
+def test_single_step_harmonization_is_accepted_not_rejected() -> None:
+    """harmonize() can emit one shared step; the statistics boundary keeps its counts and flags."""
+    with pytest.warns(ClimateIndicesWarning):
+        result = compound.joint_statistics(align(np.array([[True], [False]])), groupby="pooled", min_samples=1)
+    assert int(result.n_valid) == 1
+    assert int(result.n_joint) == 0
+    assert result.n_marginal.tolist() == [1, 0]
+    assert int(result.quality_flags) == 2
+
 
 @pytest.mark.parametrize(
     ("argument", "value", "message"),

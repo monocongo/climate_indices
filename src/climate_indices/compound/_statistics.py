@@ -181,17 +181,24 @@ def _validate_hazards(hazards: object) -> AlignedHazards:
             expected_shape="(time,)",
             actual_shape=time.shape,
         )
-    if time.shape[0] < _MIN_SOURCES or np.isnat(time).any():
+    if time.shape[0] < 1 or np.isnat(time).any():
         raise CoordinateValidationError(
-            "hazards.time must hold at least two non-NaT dates; a manual AlignedHazards is validated, not trusted.",
+            "hazards.time must hold at least one non-NaT date; a manual AlignedHazards is validated, not trusted.",
             coordinate_name="time",
-            reason="NaT or fewer than two dates",
+            reason="NaT or no dates",
         )
     if np.any(np.diff(time.astype("datetime64[D]").astype(np.int64)) <= 0):
         raise CoordinateValidationError(
             "hazards.time must be strictly increasing; duplicate or unordered dates would double-count a step.",
             coordinate_name="time",
             reason="unordered or duplicate dates",
+        )
+    if hazards.cadence == "monthly" and np.any(time != time.astype("datetime64[M]")):
+        raise CoordinateValidationError(
+            "hazards.time must label each monthly step by the first civil day of its calendar month; "
+            "two labels in one month would count that month twice.",
+            coordinate_name="time",
+            reason="monthly step not normalized to its first civil day",
         )
 
     for label, array in (("exceedance", hazards.exceedance), ("valid", hazards.valid)):
@@ -431,8 +438,8 @@ def joint_statistics(
         InputTypeError: For a non-Boolean array or a non-``datetime64`` time vector.
         DataShapeError: For mismatched array shapes or a date vector that does not
             match the time axis.
-        CoordinateValidationError: For NaT, duplicate, unordered, or fewer than two
-            dates.
+        CoordinateValidationError: For NaT, duplicate, unordered, or empty dates, or
+            a monthly label that is not the first civil day of its month.
 
     Warns:
         ClimateIndicesWarning: For a record holding fewer than 30 observed calendar
