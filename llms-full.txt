@@ -5333,7 +5333,9 @@ non-classic modes place a zero at the centre of the mass, `p0 / 2`, mapped to th
 requested scale. A mode applies only where `0 < p0 < 1`: where the calibration
 period holds no zero or is entirely zero, every mode keeps the classic result.
 SPEI is excluded, because its `P − PET` series is offset before fitting and has no
-physical zero mass.
+physical zero mass. `standardized_index()` with `Distribution.beta` applies the mode
+to both of its boundary masses, placing the mass at 1 at the mirror of the mass at
+0 ([ADR-0024](docs/adr/0024-beta-distribution-for-bounded-series.md)).
 
 ## SPEI computation
 

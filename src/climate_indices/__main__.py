@@ -1713,8 +1713,10 @@ def _validate_flood_arguments(args: argparse.Namespace) -> None:
 
 # the distributions `--index spi` computes; log-logistic is the SPEI reference
 # distribution and `indices.spi()` rejects it (#106), and beta is reserved for
-# `indices.standardized_index()`, which the CLI does not expose (#1169)
-_SPI_DISTRIBUTIONS = (indices.Distribution.gamma, indices.Distribution.pearson)
+# `indices.standardized_index()`, which the CLI does not expose (#1169). The order
+# is the enum's, which the CLI iterated before the enum grew a member, so the
+# request, write, and log order is unchanged.
+_SPI_DISTRIBUTIONS = (indices.Distribution.pearson, indices.Distribution.gamma)
 _SPEI_DISTRIBUTIONS = (*_SPI_DISTRIBUTIONS, indices.Distribution.loglogistic)
 
 

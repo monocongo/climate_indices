@@ -163,6 +163,11 @@ def _validate_distribution(
             "zero mass; use gamma or Pearson Type III here. SPEI is the supported "
             "log-logistic surface."
         )
+    elif distribution is Distribution.beta:
+        message += (
+            " Beta fits a series bounded by [0, 1], with aggregation='mean'; "
+            "standardized_index() is the supported beta surface."
+        )
     raise InvalidArgumentError(
         message,
         argument_name="distribution",
@@ -518,8 +523,9 @@ def _standardized_index_pipeline(
         values: 1-D array of non-negative values, or a time-major spatial block;
             see :func:`spi` for the accepted layouts.
         scale: Number of time steps accumulated before fitting.
-        distribution: Distribution to fit, gamma or Pearson Type III; the
-            log-logistic (generalized logistic) fit is rejected on this surface.
+        distribution: Distribution to fit, one of ``allowed_distributions``; the
+            default accepts gamma and Pearson Type III, and :func:`standardized_index`
+            adds beta.
         data_start_year: Initial year of the input values.
         calibration_year_initial: Initial year of the calibration period.
         calibration_year_final: Final year of the calibration period.
@@ -761,6 +767,10 @@ def standardized_index(
         zero_handling=zero_handling,
         aggregation=aggregation,
         allowed_distributions=(Distribution.gamma, Distribution.pearson, Distribution.beta),
+        # beta must see the raw values: clipping a negative to a zero would count it in
+        # the zero mass and standardize a different series, so the beta fit's support
+        # check raises instead (ADR-0019, decision 3; ADR-0024, decision 4)
+        clip_negatives=distribution is not Distribution.beta,
     )
 
 
@@ -797,7 +807,8 @@ def fit_diagnostics(
             see :func:`spi` for the accepted layouts.
         scale: Number of time steps accumulated before fitting.
         distribution: Distribution to fit, gamma or Pearson Type III; the
-            log-logistic (generalized logistic) fit is rejected on this surface.
+            log-logistic (generalized logistic) and beta fits are rejected on this
+            surface.
         data_start_year: Initial year of the input values.
         calibration_year_initial: Initial year of the calibration period.
         calibration_year_final: Final year of the calibration period.

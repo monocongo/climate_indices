@@ -68,11 +68,16 @@ classification instead of borrowing gamma's tolerance.
 
 4. **The support is enforced, not clipped.** A value outside [0, 1] raises
    `InvalidArgumentError`, and so do supplied masses whose sum exceeds 1, which
-   would leave the interior a negative probability. A tolerance of `1e-12`
-   absorbs the rounding of a windowed mean over bounded values, which can land
-   a few ulps outside the range; the tolerance is not a licence to clip real
-   data, because clipping would standardize a different series (ADR-0019
-   decision 3, the same reason the parametric families reject a signed series).
+   would leave the interior a negative probability; a mass pair summing above 1
+   raises `ValueError`, the existing fitting-parameter type. On
+   `standardized_index()` the beta branch therefore passes `clip_negatives=False`
+   to the shared pipeline: clipping a negative to a zero would count it in the
+   zero mass and standardize a different series (ADR-0019 decision 3). A
+   tolerance of `1e-12` decides only whether a value is accepted, which absorbs
+   the rounding of a windowed mean over bounded values that can land a few ulps
+   outside the range. It does not move a value into a boundary mass: the masses
+   count exact 0s and 1s, and a value a few ulps inside a boundary is an interior
+   observation standardized through the fitted CDF.
 
 5. **Coverage is `standardized_index()` only.** `spi()`, `spei()`, and
    `fit_diagnostics()` reject `Distribution.beta`; the CLI's SPI and SPEI loops
@@ -94,8 +99,9 @@ classification instead of borrowing gamma's tolerance.
 ## Consequences
 
 - `standardized_index()` accepts one more distribution; SPI and SPEI output is
-  untouched, because neither surface admits beta and the parity fixtures pin
-  their existing results.
+  untouched, because neither surface admits beta, the parity fixtures pin their
+  existing results, and the CLI's distribution order is the one it iterated
+  before the enum grew.
 - `beta_parameters()` and `transform_fitted_beta()` join the public `compute`
   surface as the NumPy reference functions for this family, mirroring
   `gamma_parameters()` and `transform_fitted_gamma()`.

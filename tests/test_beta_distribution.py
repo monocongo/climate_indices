@@ -144,6 +144,25 @@ def test_boundary_values_score_their_own_mass_at_both_ends() -> None:
     np.testing.assert_allclose(probability_scale[0, :], 0.5, rtol=0, atol=1e-12)
     np.testing.assert_allclose(probability_scale[1, :], 0.5, rtol=0, atol=1e-12)
 
+    # distinct masses separate the two boundaries on the non-normal scales too
+    scales: tuple[tuple[compute.OutputScale, float, float], ...] = (("probability", 0.15, 0.9), ("bounded", -0.7, 0.8))
+    for output_scale, lower, upper in scales:
+        scaled = compute.transform_fitted_beta(
+            values,
+            1900,
+            1900,
+            1902,
+            _MONTHLY,
+            ones * 2.0,
+            ones * 5.0,
+            ones * 0.3,
+            ones * 0.2,
+            output_scale=output_scale,
+            zero_handling="center_of_mass",
+        )
+        np.testing.assert_allclose(scaled[0, :], lower, rtol=0, atol=1e-12)
+        np.testing.assert_allclose(scaled[1, :], upper, rtol=0, atol=1e-12)
+
     center = compute.transform_fitted_beta(
         values, 1900, 1900, 1902, _MONTHLY, ones * 2.0, ones * 5.0, equal, equal, zero_handling="center_of_mass"
     )
@@ -193,6 +212,10 @@ def test_out_of_support_values_are_rejected_rather_than_clipped() -> None:
     for value in (1.5, -0.2, 1.0 + 1e-9):
         with pytest.raises(InvalidArgumentError, match="only values in"):
             compute.transform_fitted_beta(np.full((2, 12), value), 1900, 1900, 1901, _MONTHLY)
+
+    # the message carries the offending span at full precision
+    with pytest.raises(InvalidArgumentError, match=r"span \[1\.5, 1\.5\]"):
+        compute.transform_fitted_beta(np.full((2, 12), 1.5), 1900, 1900, 1901, _MONTHLY)
 
     # a windowed mean over bounded values can round a few ulps outside, which is a one
     standardized = compute.transform_fitted_beta(
@@ -291,8 +314,9 @@ def test_beta_is_rejected_where_the_surface_does_not_support_it() -> None:
         "periodicity": _MONTHLY,
     }
 
-    with pytest.raises(InvalidArgumentError, match="Unsupported distribution"):
+    with pytest.raises(InvalidArgumentError, match="standardized_index") as rejected:
         indices.spi(values.ravel() * 100.0, distribution=indices.Distribution.beta, **arguments)
+    assert "Unsupported distribution" in str(rejected.value)
     with pytest.raises(InvalidArgumentError, match="Unsupported distribution"):
         indices.spei(
             values.ravel() * 100.0,
@@ -302,3 +326,272 @@ def test_beta_is_rejected_where_the_surface_does_not_support_it() -> None:
         )
     with pytest.raises(InvalidArgumentError, match="Unsupported distribution"):
         indices.fit_diagnostics(values.ravel(), distribution=indices.Distribution.beta, **arguments)
+
+
+def test_only_the_exact_boundary_values_belong_to_a_mass() -> None:
+    """A value a few ulps inside a boundary is an interior observation, not a mass."""
+    ones = np.ones(12)
+    values = np.empty((2, 12))
+    values[0, :] = 1e-13
+    values[1, :] = 1.0 - 1e-13
+    exact = np.empty((2, 12))
+    exact[0, :] = 0.0
+    exact[1, :] = 1.0
+    # no calibrated mass at either boundary, so an exact boundary value scores its end;
+    # U-shaped shapes keep both tails away from the float64 saturation that a steep
+    # interior CDF reaches, so a near-boundary value still has a finite score
+    masses = np.zeros(12)
+    arguments = (1900, 1900, 1902, _MONTHLY, ones * 0.5, ones * 0.5, masses, masses)
+
+    near = compute.transform_fitted_beta(values, *arguments)
+    at_boundary = compute.transform_fitted_beta(exact, *arguments)
+
+    # the interior CDF decides a near-boundary value: finite, large, and not the extreme
+    assert np.all(np.isfinite(near))
+    assert np.all(near[0, :] < -3.0)
+    assert np.all(near[1, :] > 3.0)
+    assert np.all(np.isneginf(at_boundary[0, :]))
+    assert np.all(np.isposinf(at_boundary[1, :]))
+
+
+def test_the_pipeline_rejects_a_negative_beta_value_rather_than_clipping_it() -> None:
+    """The beta branch of standardized_index() sees the raw values, so a negative raises."""
+    values = _bounded_monthly(years=40)
+    values[0, 2] = -0.001
+
+    with pytest.raises(InvalidArgumentError, match="only values in"):
+        indices.standardized_index(
+            values.ravel(),
+            scale=1,
+            distribution=indices.Distribution.beta,
+            data_start_year=1900,
+            calibration_year_initial=1900,
+            calibration_year_final=1939,
+            periodicity=_MONTHLY,
+            aggregation="mean",
+        )
+
+
+def test_a_masked_value_is_missing_for_the_beta_fit_and_transform() -> None:
+    """A mask is a missing marker, as the other distributions treat it."""
+    data = np.full((20, 12), 0.5)
+    mask = np.zeros_like(data, dtype=bool)
+    mask[:10, 0] = True
+    masked = np.ma.masked_array(data, mask=mask)
+    masked.data[:10, 0] = 0.999999
+
+    alphas, betas, probabilities_of_zero, probabilities_of_one = compute.beta_parameters(
+        masked, 1900, 1900, 1919, _MONTHLY
+    )
+
+    # the ten unmasked 0.5 values have no sample variance, so the step has no shape
+    assert np.isnan(alphas[0])
+    assert np.isnan(betas[0])
+    standardized = compute.transform_fitted_beta(masked, 1900, 1900, 1919, _MONTHLY)
+    assert np.all(np.isnan(standardized[:10, 0]))
+
+
+def test_a_single_supplied_mass_that_overflows_the_pair_is_rejected() -> None:
+    """The resolver rejects a supplied mass that the fitted other mass pushes above 1."""
+    values = _bounded_monthly(years=40)
+    ones = np.ones(12)
+
+    for probabilities_of_zero, probabilities_of_one in ((ones * 0.9, None), (None, ones * 0.9)):
+        with pytest.raises(ValueError, match="must not sum above 1"):
+            compute.transform_fitted_beta(
+                values,
+                1900,
+                1900,
+                1939,
+                _MONTHLY,
+                ones * 2.0,
+                ones * 5.0,
+                probabilities_of_zero,
+                probabilities_of_one,
+            )
+
+
+def test_a_stray_prob_one_on_a_gamma_fit_stays_ignored() -> None:
+    """Gamma still ignores the mass at 1, so an existing caller's key changes nothing."""
+    values = np.random.default_rng(11).gamma(2.0, 30.0, size=(40, 12)) + 1.0
+    arguments = {
+        "scale": 1,
+        "distribution": indices.Distribution.gamma,
+        "data_start_year": 1900,
+        "calibration_year_initial": 1900,
+        "calibration_year_final": 1939,
+        "periodicity": _MONTHLY,
+    }
+    probabilities_of_zero = np.full(12, 0.8)
+
+    with_stray = indices.spi(
+        values.ravel(), fitting_params={"prob_zero": probabilities_of_zero, "prob_one": np.full(12, 0.5)}, **arguments
+    )
+    without = indices.spi(values.ravel(), fitting_params={"prob_zero": probabilities_of_zero}, **arguments)
+
+    np.testing.assert_array_equal(with_stray, without)
+
+
+def test_the_shape_parameters_come_from_the_interior_sample_variance() -> None:
+    """The moment fit uses the strict interior and the sample variance, ddof=1."""
+    values = np.full((4, 12), 0.5)
+    values[:, 0] = [0.25, 0.75, 0.0, 1.0]
+
+    alphas, betas, probabilities_of_zero, probabilities_of_one = compute.beta_parameters(
+        values, 1900, 1900, 1903, _MONTHLY
+    )
+
+    # the interior 0.25 and 0.75 have mean 0.5 and sample variance 0.125, so c is 1
+    assert alphas[0] == pytest.approx(0.5)
+    assert betas[0] == pytest.approx(0.5)
+    assert probabilities_of_zero[0] == 0.25
+    assert probabilities_of_one[0] == 0.25
+
+
+def test_the_masses_and_shapes_come_from_the_calibration_window_only() -> None:
+    """A boundary value outside the calibration period does not enter either mass."""
+    values = np.full((60, 12), 0.5)
+    values[40:, 4] = 0.0
+    values[40:, 5] = 1.0
+
+    _, _, probabilities_of_zero, probabilities_of_one = compute.beta_parameters(values, 1900, 1900, 1939, _MONTHLY)
+
+    assert probabilities_of_zero[4] == 0.0
+    assert probabilities_of_one[5] == 0.0
+
+
+def test_a_calendar_step_with_no_calibration_value_has_no_mass() -> None:
+    """A step the calibration period never covers reports NaN masses and NaN values."""
+    values = _bounded_monthly(years=60)
+    values[:40, 6] = np.nan
+
+    alphas, _, probabilities_of_zero, probabilities_of_one = compute.beta_parameters(values, 1900, 1900, 1939, _MONTHLY)
+    assert np.isnan(probabilities_of_zero[6])
+    assert np.isnan(probabilities_of_one[6])
+    assert np.isnan(alphas[6])
+
+    standardized = compute.transform_fitted_beta(values, 1900, 1900, 1939, _MONTHLY)
+    assert np.all(np.isnan(standardized[40:, 6]))
+
+
+def test_invalid_supplied_masses_are_rejected() -> None:
+    """A supplied boundary mass is validated for shape and range, prob_one included."""
+    values = _bounded_monthly(years=40)
+    arguments = {
+        "scale": 1,
+        "distribution": indices.Distribution.beta,
+        "data_start_year": 1900,
+        "calibration_year_initial": 1900,
+        "calibration_year_final": 1939,
+        "periodicity": _MONTHLY,
+        "aggregation": "mean",
+    }
+    for fitting_params in (
+        {"prob_one": np.full(11, 0.25)},
+        {"prob_one": np.full(12, 1.5)},
+        {"prob_one": np.full(12, -0.2)},
+        {"prob_zero": np.full(12, -0.1)},
+    ):
+        with pytest.raises(ValueError, match="prob_(one|zero)"):
+            indices.standardized_index(values.ravel(), fitting_params=fitting_params, **arguments)
+
+
+def test_partially_supplied_fitting_parameters_reproduce_the_fit() -> None:
+    """A parameter left out is fitted, and the rest are used as given."""
+    values = _bounded_monthly(years=40)
+    arguments = {
+        "scale": 1,
+        "distribution": indices.Distribution.beta,
+        "data_start_year": 1900,
+        "calibration_year_initial": 1900,
+        "calibration_year_final": 1939,
+        "periodicity": _MONTHLY,
+        "aggregation": "mean",
+    }
+    fitted = indices.standardized_index(values.ravel(), **arguments)
+    alphas, betas, probabilities_of_zero, probabilities_of_one = compute.beta_parameters(
+        values, 1900, 1900, 1939, _MONTHLY
+    )
+
+    for fitting_params in (
+        {"alpha": alphas, "beta": betas},
+        {"prob_zero": probabilities_of_zero, "prob_one": probabilities_of_one},
+    ):
+        reused = indices.standardized_index(values.ravel(), fitting_params=fitting_params, **arguments)
+        np.testing.assert_allclose(reused, fitted, rtol=0, atol=1e-12)
+
+    # a supplied mass that differs from the fit must change the result, so a discarded
+    # parameter cannot pass unnoticed
+    shifted = indices.standardized_index(
+        values.ravel(),
+        fitting_params={
+            "alpha": alphas,
+            "beta": betas,
+            "prob_zero": probabilities_of_zero,
+            "prob_one": probabilities_of_one + 0.05,
+        },
+        **arguments,
+    )
+    assert not np.allclose(shifted, fitted)
+
+
+def test_a_time_major_block_matches_the_separate_series() -> None:
+    """Cell axes broadcast through the beta fit and transform."""
+    first = _bounded_monthly(years=40, seed=1)
+    second = _bounded_monthly(years=40, seed=2)
+    # a time-major block is (time, *cells), so the two series are the cell axis
+    block = np.stack([first.ravel(), second.ravel()], axis=1)[:, :, np.newaxis]
+    arguments = {
+        "scale": 1,
+        "distribution": indices.Distribution.beta,
+        "data_start_year": 1900,
+        "calibration_year_initial": 1900,
+        "calibration_year_final": 1939,
+        "periodicity": _MONTHLY,
+        "aggregation": "mean",
+    }
+
+    standardized = indices.standardized_index(block, spatial_time_major=True, **arguments)
+    assert standardized.shape == block.shape
+    for cell, series in enumerate((first, second)):
+        np.testing.assert_allclose(
+            standardized[:, cell, 0],
+            indices.standardized_index(series.ravel(), **arguments),
+            rtol=0,
+            atol=1e-12,
+        )
+
+
+def test_the_display_name_and_a_daily_scale_of_one() -> None:
+    """The enum name and the unscaled daily layout are both wired."""
+    assert indices.Distribution.beta.display_name == "beta"
+
+    values = np.random.default_rng(6).beta(2.0, 5.0, size=(10, 366))
+    standardized = indices.standardized_index(
+        values.ravel(),
+        scale=1,
+        distribution=indices.Distribution.beta,
+        data_start_year=1900,
+        calibration_year_initial=1900,
+        calibration_year_final=1909,
+        periodicity=_DAILY,
+        aggregation="mean",
+    ).reshape(values.shape)
+
+    assert standardized.shape == values.shape
+    assert not np.any(np.isnan(standardized))
+
+
+def test_the_mixture_matches_an_independently_computed_probability() -> None:
+    """One expected score comes from the closed-form Beta(2, 5) CDF, not from the code."""
+    values = np.full((2, 12), 0.5)
+    ones = np.ones(12)
+
+    standardized = compute.transform_fitted_beta(
+        values, 1900, 1900, 1901, _MONTHLY, ones * 2.0, ones * 5.0, ones * 0.5, ones * 0.25
+    )
+
+    # F(0.5) for Beta(2, 5) is 1 - (1 - 0.5)^5 * (1 + 5 * 0.5) = 0.890625, so
+    # p = 0.5 + (1 - 0.5 - 0.25) * 0.890625 = 0.72265625 and the standard normal
+    # quantile of that probability is 0.5907506580628188
+    assert standardized[0, 0] == pytest.approx(0.5907506580628188, rel=0, abs=1e-15)

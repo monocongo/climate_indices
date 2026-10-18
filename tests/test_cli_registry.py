@@ -195,11 +195,12 @@ def test_temperature_only_spei_computes_and_consumes_pet(monkeypatch):
 
     cli_main.process_climate_indices(arguments)
 
-    # every SPEI distribution but beta, which only standardized_index() takes (#1169)
+    # every SPEI distribution but beta, which only standardized_index() takes (#1169),
+    # in the enum's order, which the CLI iterated before beta joined the enum
     assert [request.index for request in requests] == ["pet"] + ["spei"] * 3
     assert [request.distribution for request in requests[1:]] == [
-        indices.Distribution.gamma,
         indices.Distribution.pearson,
+        indices.Distribution.gamma,
         indices.Distribution.loglogistic,
     ]
     assert requests[0].var_name_precip is None

@@ -2139,10 +2139,10 @@ def _validate_beta_support(values: np.ndarray) -> None:
     if minimum < -_BETA_SUPPORT_TOLERANCE or maximum > 1.0 + _BETA_SUPPORT_TOLERANCE:
         raise InvalidArgumentError(
             "The beta distribution supports only values in [0, 1], and these span "
-            f"[{minimum:.6g}, {maximum:.6g}]; use aggregation='mean' so a window stays in the range, "
+            f"[{minimum!r}, {maximum!r}]; use aggregation='mean' so a window stays in the range, "
             "or rescale the series into the support.",
             argument_name="values",
-            argument_value=f"[{minimum:.6g}, {maximum:.6g}]",
+            argument_value=f"[{minimum!r}, {maximum!r}]",
             valid_values="[0, 1]",
         )
 
@@ -2209,6 +2209,10 @@ def beta_parameters(
         missing = np.full(shape=shape, fill_value=np.nan)
         return missing, missing.copy(), missing.copy(), missing.copy()
 
+    # a mask is a missing marker, so make it the explicit NaN the reductions read
+    if np.ma.isMaskedArray(values):
+        values = np.ma.filled(values.astype(float), np.nan)
+
     # validate (and possibly reshape) the input array
     values = _validate_array(values, periodicity)
     _validate_beta_support(values)
@@ -2231,13 +2235,10 @@ def beta_parameters(
     probabilities_of_zero = _calibration_probability_of(calibration_values, 0.0)
     probabilities_of_one = _calibration_probability_of(calibration_values, 1.0)
 
-    # a value within the support tolerance of a boundary belongs to that boundary's
-    # mass, so only the strict interior carries the shape parameters
-    interior = np.where(
-        (calibration_values > _BETA_SUPPORT_TOLERANCE) & (calibration_values < 1.0 - _BETA_SUPPORT_TOLERANCE),
-        calibration_values,
-        np.nan,
-    )
+    # the masses count the exact boundary values, so only the strict interior carries the
+    # shape parameters: a value a few ulps inside a boundary is an interior observation
+    # and is standardized through the fitted CDF, not placed with the boundary mass
+    interior = np.where((calibration_values > 0.0) & (calibration_values < 1.0), calibration_values, np.nan)
     # an interior column with fewer than two values has no sample variance, and it is
     # reduced with explicit counts rather than np.nanmean/np.nanvar: those warn on an
     # empty slice, and the only way to silence the warning is warnings.catch_warnings(),
@@ -2686,7 +2687,9 @@ def transform_fitted_beta(
         zero fraction of each step's non-missing calibration-period values. A step with
         no calibration data, or a NaN supplied here, has no defined mass at 0, and its
         zeros are NaN.
-    :param probabilities_of_one: the matching probability mass at 1
+    :param probabilities_of_one: the matching probability mass at 1; the same shape,
+        NaN, and omitted-value rules apply, and a step without calibration data has no
+        defined mass at either boundary
     :param output_scale: one of ``compute.OUTPUT_SCALES``; "probability" returns the
         fitted cumulative probability, "bounded" returns ``2p - 1``, and "normal"
         (the default) returns the standard-normal z-score
@@ -2699,7 +2702,7 @@ def transform_fitted_beta(
     :return: 2-D array of transformed/fitted values, corresponding in size and shape
         to the input array
     :raises InvalidArgumentError: if a value lies outside [0, 1] beyond the rounding
-        tolerance of a windowed mean
+        tolerance of a windowed mean, or the resolved boundary masses sum above 1
     :raises ValueError: if ``zero_handling`` is not one of the three modes, a supplied
         shape parameter does not broadcast to the values, or a supplied boundary mass
         has cell dimensions that do not match the values or a value outside [0, 1]
@@ -2778,9 +2781,11 @@ def transform_fitted_beta(
             underlying_error=e,
         ) from e
 
-    # a boundary position carries its own mass, not the interior CDF there
-    zero_mask = values <= _BETA_SUPPORT_TOLERANCE
-    one_mask = values >= 1.0 - _BETA_SUPPORT_TOLERANCE
+    # a boundary position carries its own mass, not the interior CDF there; the masks are
+    # exact, matching the calibrated masses, so a value a few ulps inside a boundary is an
+    # interior value and takes the CDF (ADR-0024, decision 2)
+    zero_mask = values == 0.0
+    one_mask = values == 1.0
     interior_probabilities = np.where(zero_mask, 0.0, interior_probabilities)
     interior_probabilities = np.where(one_mask, 1.0, interior_probabilities)
 
@@ -3079,7 +3084,9 @@ _FIT_ALTNAMES = (
     ("shape", "shapes"),
     ("loc", "locs"),
     ("prob_zero", "probabilities_of_zero"),
-    ("prob_one", "probabilities_of_one"),
+    # no alias: prob_one is new in this change, and normalization keeps a key only when
+    # the table lists it, so the entry with a None alias carries it through unchanged
+    ("prob_one", None),
 )
 
 
@@ -3216,22 +3223,31 @@ def _resolve_beta_parameters(
         values = np.ma.filled(values.astype(float), np.nan)
     alphas = params.get("alpha")
     betas = params.get("beta")
-    if alphas is None or betas is None:
-        alphas, betas, _, _ = beta_parameters(
-            values, data_start_year, calibration_start_year, calibration_end_year, periodicity
-        )
-
     probabilities = params.get("prob_zero")
     probabilities_of_one = params.get("prob_one")
-    if probabilities is None or probabilities_of_one is None:
-        period = resolve_calibration_period(
-            data_start_year, values.shape[0], calibration_start_year, calibration_end_year, policy="clamp"
+
+    # one fit fills every parameter the caller left out, including the masses it also
+    # reports: counting them again here would be a second site that can drift from the
+    # first, and the caller may have supplied the shapes, the masses, or neither
+    if alphas is None or betas is None or probabilities is None or probabilities_of_one is None:
+        fitted_alphas, fitted_betas, fitted_zero, fitted_one = beta_parameters(
+            values, data_start_year, calibration_start_year, calibration_end_year, periodicity
         )
-        calibration_values = values[period.rows, ...]
+        if alphas is None or betas is None:
+            alphas, betas = fitted_alphas, fitted_betas
         if probabilities is None:
-            probabilities = _calibration_probability_of(calibration_values, 0.0)
+            probabilities = fitted_zero
         if probabilities_of_one is None:
-            probabilities_of_one = _calibration_probability_of(calibration_values, 1.0)
+            probabilities_of_one = fitted_one
+
+    # the interior values carry the rest of the probability, so a resolved mass pair
+    # summing above 1 inverts the transform. A caller supplying only one mass reaches
+    # this check here rather than in validate_supplied, which sees the pair unresolved.
+    if np.any(np.asarray(probabilities, dtype=float) + np.asarray(probabilities_of_one, dtype=float) > 1.0):
+        raise ValueError(
+            "Fitting parameters 'prob_zero' and 'prob_one' must not sum above 1, because the "
+            "interior values carry the remaining probability"
+        )
 
     return {"alpha": alphas, "beta": betas, "prob_zero": probabilities, "prob_one": probabilities_of_one}
 
@@ -3290,12 +3306,12 @@ class FittedDistribution:
         """
         kind = distribution.value
         if kind in ("gamma", "beta"):
-            # both families take the shapes as one broadcast pair, and beta adds the
-            # second boundary mass beside the probability of zero
-            for name in ("prob_zero", "prob_one"):
-                mass = params.get(name)
-                if mass is not None:
-                    _validate_probability_mass(values, mass, name)
+            # gamma takes the probability of zero alone; beta takes both boundary masses
+            # and the shapes as one broadcast pair. A stray prob_one on a gamma fit stays
+            # ignored rather than newly rejected, as it has been (see api-changes.md).
+            supplied_prob_zero = params.get("prob_zero")
+            if supplied_prob_zero is not None:
+                _validate_probability_mass(values, supplied_prob_zero, "prob_zero")
             alphas, betas = params.get("alpha"), params.get("beta")
             if alphas is not None or betas is not None:
                 present = {
@@ -3305,16 +3321,20 @@ class FittedDistribution:
                 _validate_broadcastable_parameters(
                     values.shape, (("alpha", prepared.get("alpha")), ("beta", prepared.get("beta")))
                 )
-            supplied_zero, supplied_one = params.get("prob_zero"), params.get("prob_one")
-            if supplied_zero is not None and supplied_one is not None:
-                # the interior values carry the rest of the probability, so masses that
-                # sum above 1 leave it negative and invert the transform
-                total = np.asarray(supplied_zero, dtype=float) + np.asarray(supplied_one, dtype=float)
-                if np.any(total > 1.0):
-                    raise ValueError(
-                        "Fitting parameters 'prob_zero' and 'prob_one' must not sum above 1, because the "
-                        "interior values carry the remaining probability"
-                    )
+            if kind == "beta":
+                supplied_one = params.get("prob_one")
+                if supplied_one is not None:
+                    _validate_probability_mass(values, supplied_one, "prob_one")
+                if supplied_prob_zero is not None and supplied_one is not None:
+                    # the interior values carry the rest of the probability, so masses that
+                    # sum above 1 leave it negative and invert the transform. A partially
+                    # supplied pair is checked once the resolver has fitted the other mass.
+                    total = np.asarray(supplied_prob_zero, dtype=float) + np.asarray(supplied_one, dtype=float)
+                    if np.any(total > 1.0):
+                        raise ValueError(
+                            "Fitting parameters 'prob_zero' and 'prob_one' must not sum above 1, because the "
+                            "interior values carry the remaining probability"
+                        )
             return
 
         keys = _PARAMETER_KEYS[kind]
@@ -3659,16 +3679,19 @@ def fit_and_standardize(
         zero_handling: Where a zero accumulation is placed within the zero mass,
             one of "classic" (the default), "center_of_mass", or "mean_zero"; see
             ADR-0015. A gamma fall back applies the same mode. The log-logistic fit
-            has no zero mass, so the mode does not apply to it.
+            has no zero mass, so the mode does not apply to it, and beta applies the
+            mode to both of its boundary masses, mirroring the mass at 1 about 1/2.
 
     Returns:
         2-D array of transformed/fitted values, corresponding in size and shape to
         the input array.
 
     Raises:
-        InvalidArgumentError: If ``output_scale`` is not one of ``compute.OUTPUT_SCALES``.
-        ValueError: If the distribution is none of gamma, Pearson Type III, or
-            log-logistic, ``zero_handling`` is not one of the three modes, or a Pearson
+        InvalidArgumentError: If ``output_scale`` is not one of ``compute.OUTPUT_SCALES``,
+            or a beta fit is given a value outside [0, 1] beyond the rounding tolerance
+            of a windowed mean.
+        ValueError: If the distribution is none of gamma, beta, Pearson Type III, or
+            log-logistic, ``zero_handling`` is not one of the three modes, or a
             ``fitting_params`` set is partial or does not carry the period (and cell) axes.
     """
     validate_output_scale(output_scale)
