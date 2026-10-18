@@ -138,5 +138,5 @@ A present but incorrect implementation fails normally.
 
 The generator does not download sources or install R dependencies.
 It checks SEI and fitdistrplus versions before calculation.
-It wrote the committed payloads with NumPy 2.5.4; it avoids an `allow_pickle` keyword that NumPy before 2.2 would store as an extra archive member.
+It wrote the committed payloads with NumPy 2.4.2; it avoids an `allow_pickle` keyword that NumPy before 2.2 would store as an extra archive member.
 CI loads committed outputs without R or network access.
