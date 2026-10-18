@@ -49,6 +49,10 @@ class Distribution(Enum):
     #: the Calibration Period, with no fitted parameters (#1168). Supported by
     #: ``standardized_index()`` only.
     empirical = "empirical"
+    #: The beta distribution, the bounded [0, 1] family a capacity factor or another
+    #: bounded series is standardized with; see ADR-0024. Supported by
+    #: ``standardized_index()`` only.
+    beta = "beta"
 
     @property
     def display_name(self) -> str:
@@ -62,6 +66,7 @@ _DISTRIBUTION_DISPLAY_NAMES = {
     Distribution.gamma: "gamma",
     Distribution.loglogistic: "log-logistic",
     Distribution.empirical: "empirical",
+    Distribution.beta: "beta",
 }
 
 
@@ -162,6 +167,11 @@ def _validate_distribution(
             " Log-logistic has no zero-placement treatment for a series with a physical "
             "zero mass; use gamma or Pearson Type III here. SPEI is the supported "
             "log-logistic surface."
+        )
+    elif distribution is Distribution.beta:
+        message += (
+            " Beta fits a series bounded by [0, 1], with aggregation='mean'; "
+            "standardized_index() is the supported beta surface."
         )
     raise InvalidArgumentError(
         message,
@@ -534,7 +544,6 @@ def _standardized_index_pipeline(
             ``clip_negatives`` is False.
         scale: Number of time steps accumulated before fitting.
         distribution: Distribution to fit, one of ``allowed_distributions``.
-        data_start_year: Initial year of the input values.
         calibration_year_initial: Initial year of the calibration period.
         calibration_year_final: Final year of the calibration period.
         periodicity: Monthly or daily time steps.
@@ -600,6 +609,9 @@ def _standardized_index_pipeline(
         # the traced section, so validation and the failure log stay in one place
         if preprocess is not None:
             values = preprocess(values)
+
+        if distribution is Distribution.beta:
+            compute._validate_beta_support(values)
 
         # prepare_scaled owns flatten/fold, the ambiguous-shape guard, the
         # insufficient-data check, negative clipping, scaling, and the all-missing
@@ -709,6 +721,14 @@ def standardized_index(
     accepts a signed series, with
     ``clip_negatives=False`` (ADR-0019).
 
+    The beta distribution is the bounded [0, 1] family. Its shape parameters come from
+    the method of moments over each calendar step's interior values, and the exact 0
+    and 1 values are point masses at the boundaries, so a capacity factor or another
+    bounded series standardizes without leaving its own range (ADR-0024). Pair it with
+    ``aggregation="mean"``, which is what keeps a windowed value inside the support.
+    A source observation or windowed value outside [0, 1] is rejected rather than
+    clipped, whatever ``clip_negatives`` asks for.
+
     This is a NumPy-array entry point only; xarray and Dask dispatch are not wired
     for it.
 
@@ -722,7 +742,7 @@ def standardized_index(
         scale: Number of time steps over which the values are accumulated before
             the index is computed.
         distribution: Distribution type used for the internal fitting/transform
-            computation: gamma, Pearson Type III, or empirical.
+            computation: gamma, Pearson Type III, empirical, or beta.
         data_start_year: Initial year of the input series.
         calibration_year_initial: Initial year of the Calibration Period.
         calibration_year_final: Final year of the Calibration Period.
@@ -730,8 +750,9 @@ def standardized_index(
             monthly data (12 values/year) or ``compute.Periodicity.daily`` for daily
             data (366 values/year).
         fitting_params: Optional dictionary of pre-computed distribution fitting
-            parameters, with keys "alpha" and "beta" (and optionally "prob_zero")
-            for gamma and "prob_zero", "loc", "scale", and "skew" for Pearson Type
+            parameters, with keys "alpha" and "beta" (and optionally "prob_zero",
+            plus "prob_one" when fitting to beta) for gamma and beta, and
+            "prob_zero", "loc", "scale", and "skew" for Pearson Type
             III. A gamma set without "prob_zero" computes it over the calibration
             period of the values given. Older keys such as "alphas" and
             "probabilities_of_zero" are deprecated. The empirical distribution has
@@ -748,7 +769,9 @@ def standardized_index(
             without clipping, and "bounded" returns ``2p - 1`` in [-1, 1].
         zero_handling: Where a zero accumulation is placed within the zero mass;
             see :func:`spi`. The empirical distribution has no zero mass, so it
-            ignores the mode.
+            ignores the mode, and the beta distribution applies the mode to both of
+            its boundary masses, placing a one at the mirror of a zero's position
+            (ADR-0015, ADR-0024).
         aggregation: How each ``scale`` window is combined before the fit: "sum"
             (the default, and what :func:`spi` does) accumulates it, "mean" averages
             it, which keeps a bounded series such as a capacity factor in its own
@@ -758,7 +781,9 @@ def standardized_index(
             scaling, the default and what :func:`spi` does. Pass False to keep a
             signed series, such as residual load, with ``Distribution.empirical``;
             gamma and Pearson Type III reject a series with negatives then rather
-            than clip it (ADR-0019).
+            than clip it (ADR-0019). The beta distribution never clips: its support
+            check rejects a negative, because clipping would count it in the zero
+            mass and standardize a different series (ADR-0024).
 
     Returns:
         1-D array of standardized values, unitless and of the same length as the
@@ -767,14 +792,20 @@ def standardized_index(
 
     Raises:
         InvalidArgumentError: If ``clip_negatives`` is False and a gamma or Pearson
-            Type III fit is given negative values, or if ``fitting_params`` is
-            given with the empirical distribution.
+            Type III fit is given negative values, if ``fitting_params`` is given
+            with the empirical distribution, if ``distribution`` is a member this
+            surface does not accept, or if a beta fit is given a value outside
+            [0, 1].
         ValueError: If ``zero_handling`` is not one of the three modes, if
-            ``aggregation`` is not "sum" or "mean", or a Pearson ``fitting_params``
-            set is partial or does not carry the period (and cell) axes.
+            ``aggregation`` is not "sum" or "mean", a Pearson ``fitting_params``
+            set is partial or does not carry the period (and cell) axes, or a beta
+            mass pair sums above 1 or a supplied beta shape is not finite and positive
+            (unless NaN).
     """
-    # the pipeline validates the distribution before it runs this check
-    reject_negatives = not clip_negatives and distribution is not Distribution.empirical
+    # the pipeline validates the distribution before it runs this check. Beta is not
+    # among the families this pre-reject covers: its own support check reports the
+    # [0, 1] bound, and it never clips, so a negative always raises there.
+    reject_negatives = not clip_negatives and distribution in (Distribution.gamma, Distribution.pearson)
     return _standardized_index_pipeline(
         values,
         scale,
@@ -789,10 +820,13 @@ def standardized_index(
         spatial_time_major=spatial_time_major,
         output_scale=output_scale,
         zero_handling=zero_handling,
-        allowed_distributions=(Distribution.gamma, Distribution.pearson, Distribution.empirical),
-        clip_negatives=clip_negatives,
-        preprocess=(lambda series: _reject_negative_values(series, distribution)) if reject_negatives else None,
         aggregation=aggregation,
+        allowed_distributions=(Distribution.gamma, Distribution.pearson, Distribution.empirical, Distribution.beta),
+        # beta must see the raw values: clipping a negative to a zero would count it in
+        # the zero mass and standardize a different series, so the beta fit's support
+        # check raises instead (ADR-0019, decision 3; ADR-0024, decision 4)
+        clip_negatives=clip_negatives and distribution is not Distribution.beta,
+        preprocess=(lambda series: _reject_negative_values(series, distribution)) if reject_negatives else None,
     )
 
 
@@ -829,7 +863,8 @@ def fit_diagnostics(
             see :func:`spi` for the accepted layouts.
         scale: Number of time steps accumulated before fitting.
         distribution: Distribution to fit, gamma or Pearson Type III; the
-            log-logistic (generalized logistic) fit is rejected on this surface.
+            log-logistic (generalized logistic) and beta fits are rejected on this
+            surface.
         data_start_year: Initial year of the input values.
         calibration_year_initial: Initial year of the calibration period.
         calibration_year_final: Final year of the calibration period.
