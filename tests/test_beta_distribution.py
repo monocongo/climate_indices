@@ -762,3 +762,15 @@ def test_the_mixture_matches_an_independently_computed_probability() -> None:
     # p = 0.5 + (1 - 0.5 - 0.25) * 0.890625 = 0.72265625 and the standard normal
     # quantile of that probability is 0.5907506580628188
     assert standardized[0, 0] == pytest.approx(0.5907506580628188, rel=0, abs=1e-15)
+
+
+def test_supplied_parameters_are_validated_for_all_missing_values() -> None:
+    """A mis-shaped or invalid supplied set is rejected even when no value carries data (#1389)."""
+    all_nans = np.full((40, 12), np.nan)
+    ones = np.ones(12)
+
+    with pytest.raises(ValueError, match="does not broadcast"):
+        compute.transform_fitted_beta(all_nans, 1981, 1981, 2010, _MONTHLY, np.ones(11) * 2.0, np.ones(11) * 5.0)
+
+    with pytest.raises(ValueError, match="must be finite and positive"):
+        compute.transform_fitted_beta(all_nans, 1981, 1981, 2010, _MONTHLY, ones * -1.0, ones * 5.0)

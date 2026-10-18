@@ -2725,6 +2725,15 @@ def transform_fitted_beta(
     )
     log.info("distribution_transform_started")
 
+    # the distribution object is imported lazily: indices imports this module
+    from climate_indices.indices import Distribution
+
+    params = {"alpha": alphas, "beta": betas, "prob_zero": probabilities_of_zero, "prob_one": probabilities_of_one}
+
+    # validate a partial or mis-shaped supplied set before the all-missing return, as
+    # transform_fitted_pearson does
+    FittedDistribution.validate_supplied(_validate_array(values, periodicity), Distribution.beta, params)
+
     # if we're passed all missing values then we can't compute anything,
     # then we return the same array of missing values
     if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
@@ -2738,10 +2747,6 @@ def transform_fitted_beta(
     values = _validate_array(values, periodicity)
     _validate_beta_support(values)
 
-    from climate_indices.indices import Distribution
-
-    params = {"alpha": alphas, "beta": betas, "prob_zero": probabilities_of_zero, "prob_one": probabilities_of_one}
-    FittedDistribution.validate_supplied(values, Distribution.beta, params)
     fitted = FittedDistribution.resolve(
         values,
         Distribution.beta,
