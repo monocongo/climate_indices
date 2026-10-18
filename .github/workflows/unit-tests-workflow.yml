@@ -218,6 +218,39 @@ jobs:
       - name: Run Cargo tests
         run: cargo test --workspace
 
+  # Verify the crate in a container with no Python interpreter or binding tools.
+  rust-standalone:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # Pulls a container image and Cargo dependencies from external registries,
+    # so the required gate fails inside a known window instead of hanging.
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Test the crate without Python
+        run: |
+          toolchain=$(awk -F '"' '/^channel = / { print $2 }' rust-toolchain.toml)
+          docker run --rm --volume "$PWD:/source:ro" --workdir /source \
+            --env CARGO_TARGET_DIR=/tmp/target "rust:${toolchain}-slim" \
+            sh -eu -c '
+              for dir in $(printf "%s" "$PATH" | tr ":" " "); do
+                [ -d "$dir" ] || continue
+                for name in python python2 python3 python2.* python3.* uv maturin; do
+                  for tool in "$dir"/$name; do
+                    [ -x "$tool" ] || continue
+                    echo "Unexpected tool in standalone container: $tool" >&2
+                    exit 1
+                  done
+                done
+              done
+              cargo test --locked -p climate-core
+            '
+
   # The core suite with the Rust extension built, on the pull-request boundary
   # legs of `test` (a subset of its matrix, not a new product).
   # CLIMATE_INDICES_REQUIRE_NATIVE turns the parity tests' skip-when-absent into a
