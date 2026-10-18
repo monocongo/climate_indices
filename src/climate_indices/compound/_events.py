@@ -278,11 +278,17 @@ def _validated_runs(
     start = _integer_field(name, runs, "start_index")
     end = _integer_field(name, runs, "end_index")
     duration = _integer_field(name, runs, "duration")
-    mismatched = {
-        field.name: np.asarray(getattr(runs, field.name)).size
-        for field in fields(RunSet)
-        if np.asarray(getattr(runs, field.name)).size != start.size
-    }
+    mismatched: dict[str, int] = {}
+    for field in fields(RunSet):
+        try:
+            size = int(np.asarray(getattr(runs, field.name)).size)
+        except (TypeError, ValueError) as exc:
+            raise DataShapeError(
+                f"{name}.{field.name} must be one array with one entry per run; it is ragged.",
+                expected_shape=f"({start.size},)",
+            ) from exc
+        if size != start.size:
+            mismatched[field.name] = size
     if mismatched:
         reported = ", ".join(f"{field} ({size})" for field, size in mismatched.items())
         raise DataShapeError(
@@ -443,10 +449,10 @@ def _match(
     return _Matched(
         first_run_id=first_run_ids,
         second_run_id=second_run_ids,
-        start_index=_stack(columns["start_index"], np.int64),
-        end_index=_stack(columns["end_index"], np.int64),
-        overlap_duration=_stack(columns["overlap_duration"], np.int64),
-        lag=_stack(columns["lag"], np.float64),
+        start_index=_stack(columns.pop("start_index"), np.int64),
+        end_index=_stack(columns.pop("end_index"), np.int64),
+        overlap_duration=_stack(columns.pop("overlap_duration"), np.int64),
+        lag=_stack(columns.pop("lag"), np.float64),
         first_left_censored=_flags(first.left_censored, first_run_ids),
         first_right_censored=_flags(first.right_censored, first_run_ids),
         second_left_censored=_flags(second.left_censored, second_run_ids),
@@ -601,7 +607,8 @@ def compound_events(
     Args:
         first: Runs of the first hazard, from
             :func:`climate_indices.runs.identify_runs`. Its ``start_index``, ``end_index``,
-            and ``duration`` fields are validated; the metric fields are not inspected.
+            and ``duration`` fields are validated, and every other field must hold one
+            entry per run; the metric values themselves are not inspected.
         second: Runs of the second hazard, validated the same way.
         time: The shared time axis: one-dimensional ``datetime64`` labels, strictly
             increasing, and a complete cadence grid with one step per cadence unit.

@@ -352,6 +352,7 @@ def test_empty_catalog_has_stable_dtypes_and_zero_counts(mode: str, lag_window: 
         values = getattr(result, field)
         assert values.shape == (0,)
         assert values.dtype == dtype
+        assert not values.flags.writeable
     assert result.metadata["n_pairs"] == 0
 
 
@@ -395,7 +396,12 @@ def test_empty_run_sets_produce_an_empty_catalog() -> None:
                 duration=np.array([2], np.uint64),
             ),
             InputTypeError,
-            "above the int64 range",
+            r"first\.end_index holds values above the int64 range",
+        ),
+        (
+            lambda: manual([0], [1], magnitude=[[1.0], [2.0, 3.0]]),
+            DataShapeError,
+            "is ragged",
         ),
     ],
 )
@@ -403,6 +409,20 @@ def test_manually_constructed_runs_are_validated(build: Any, error: type[Excepti
     """A dataclass is not proof of validity: check the run structure before matching."""
     with pytest.raises(error, match=match_text):
         match(build(), manual([0], [1]))
+
+
+def test_unsigned_index_fields_within_int64_are_accepted() -> None:
+    """Accept unsigned index fields that fit int64 instead of rejecting the dtype."""
+    first = manual(
+        [0],
+        [1],
+        start_index=np.array([0], np.uint64),
+        end_index=np.array([1], np.uint32),
+        duration=np.array([2], np.uint8),
+    )
+    result = match(first, manual([0], [1]))
+    assert result.first_run_id.tolist() == [0]
+    assert result.start_index.tolist() == [0]
 
 
 def test_the_second_source_is_validated_too() -> None:
@@ -638,7 +658,7 @@ def test_declared_source_choices_and_extra_keys_are_copied_verbatim() -> None:
         ({"first": {"min_duration": 0}}, "min_duration"),
         ({"first": {"min_duration": True}}, "min_duration"),
         ({"first": {"threshold": float("inf")}}, "JSON-compatible mapping"),
-        ({"first": {"threshold": "0.1"}}, "finite"),
+        ({"first": {"threshold": "0.1"}}, r"source_metadata\['first'\]\['threshold'\] must be a finite number"),
         ({"first": {"tags": {1, 2}}}, "JSON-compatible mapping"),
     ],
 )
@@ -796,9 +816,12 @@ def test_matching_agrees_with_a_brute_force_enumeration(mode: str, lag_window: t
     assert result.start_index.tolist() == [row[2] for row in expected]
     assert result.end_index.tolist() == [row[3] for row in expected]
     assert result.first_left_censored.tolist() == [censored(first_pairs[i][0], -1, valid) for i, _, _, _ in expected]
+    assert result.first_right_censored.tolist() == [censored(first_pairs[i][1], 1, valid) for i, _, _, _ in expected]
+    assert result.second_left_censored.tolist() == [censored(second_pairs[j][0], -1, valid) for _, j, _, _ in expected]
     assert result.second_right_censored.tolist() == [censored(second_pairs[j][1], 1, valid) for _, j, _, _ in expected]
     if mode == "concurrent":
         assert result.overlap_duration.tolist() == [row[3] - row[2] + 1 for row in expected]
+        assert result.metadata["n_unknown_bridges"] == 0
     else:
         assert result.lag.tolist() == [second_pairs[j][0] - first_pairs[i][1] for i, j, _, _ in expected]
         assert result.overlap_duration.tolist() == [0] * len(expected)
