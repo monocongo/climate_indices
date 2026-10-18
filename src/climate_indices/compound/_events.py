@@ -1,0 +1,626 @@
+"""Concurrent and sequential matching of two hazard ``RunSet``s on one observed grid.
+
+``compound_events()`` enumerates source-run pairs without combining their severity
+measures. Two sources of runs are matched on one shared, complete cadence grid and one
+observation-validity mask:
+
+- *concurrent* matching keeps every pair whose inclusive intervals intersect and reports
+  each pair's intersection and its ``overlap_duration`` in cadence steps;
+- *sequential* matching keeps every pair with ``second.start > first.end``, reports the
+  interval from the first run's onset through the second run's end, and reports the
+  separating ``lag`` (``second.start - first.end``, so adjacent runs have lag one).
+
+Runs are never filtered into a one-to-one assignment: an interval that intersects three
+others produces three rows, and a sequential pair inside the lag window is kept even when
+an earlier pair already matched. A pair whose separating interval contains an unknown
+observation is not reported, because a cascade is never inferred across an unknown gap;
+the count of those rejected bridges is recorded in the result metadata.
+
+Every run boundary that touches the record boundary or an unknown neighbouring step is
+*censored*: the run's observed duration may be shorter than the physical event, so the
+four boundary flags are recorded per row and the pair's observed length is never
+presented as a complete event duration.
+
+Contracts (ADR-0022): result arrays are new, read-only, and stable when empty; ``RunSet``
+is validated but never modified, and its fields other than the run indices are not
+inspected. Pair counts are not independent observations and must not feed a binomial
+significance test.
+"""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Mapping
+from dataclasses import dataclass
+from time import perf_counter
+from typing import Any, Literal, TypeAlias, cast
+
+import numpy as np
+import numpy.typing as npt
+
+from climate_indices.compound._harmonize import (
+    _CADENCES,
+    _MANIFEST_SCHEMA_VERSION,
+    _UNITS,
+    _UNKNOWN,
+    Cadence,
+    _check_choice,
+    _freeze,
+    _immutable,
+    _observed_index,
+)
+from climate_indices.exceptions import (
+    CoordinateValidationError,
+    DataShapeError,
+    InputTypeError,
+    InvalidArgumentError,
+)
+from climate_indices.logging_config import get_logger, log_calculation_failure
+from climate_indices.runs import _VALID_DIRECTIONS, RunSet, _as_finite_threshold
+
+_logger = get_logger(__name__)
+
+__all__ = ["CompoundEventSet", "compound_events"]
+
+EventMode: TypeAlias = Literal["concurrent", "sequential"]
+
+_MODES: tuple[str, ...] = ("concurrent", "sequential")
+_SOURCE_NAMES = ("first", "second")
+# the declarations a RunSet does not retain; an absent one is recorded as unknown, never inferred
+_SOURCE_CHOICES = ("threshold", "direction", "min_duration")
+_MATCHING_RULES = {
+    "concurrent": (
+        "Every pair whose inclusive intervals intersect; start_index/end_index hold the intersection, "
+        "overlap_duration counts its steps, and lag is NaN."
+    ),
+    "sequential": (
+        "Every pair with second.start > first.end inside the lag window; start_index/end_index hold the first "
+        "onset through the second end, lag is second.start - first.end, and overlap_duration is 0."
+    ),
+}
+
+
+@dataclass(frozen=True, eq=False)
+class CompoundEventSet:
+    """Matched source-run pairs on one shared cadence grid.
+
+    Rows appear in first source-run order and then in second source-run order. Every
+    array is read-only, has one entry per row, and has a stable dtype when there are no
+    rows.
+
+    Instances compare by identity: the fields are arrays.
+
+    Args:
+        mode: ``"concurrent"`` or ``"sequential"``, the matching rule that produced the
+            rows.
+        first_run_id: Zero-based position of each row's first-source run in ``first``,
+            so ``first.start_index[first_run_id]`` recovers the source run.
+        second_run_id: Zero-based position of each row's second-source run in
+            ``second``.
+        start_index: Index of each row's first reported step in the shared time axis.
+            The intersection of the two runs for ``mode="concurrent"``; the first run's
+            onset through the second run's end for ``mode="sequential"``.
+        end_index: Index of each row's last reported step, inclusive.
+        overlap_duration: Number of steps the two runs share. Zero in sequential mode,
+            where the runs are disjoint by definition; the reported interval is not an
+            invented joint duration.
+        lag: ``second.start - first.end`` in cadence steps, so adjacent sequential runs
+            have lag one. NaN in concurrent mode.
+        first_left_censored: ``True`` when the first run's onset touches the record start
+            or an unknown neighbouring step, so the physical onset is unknown.
+        first_right_censored: ``True`` when the first run's end touches the record end or
+            an unknown neighbouring step.
+        second_left_censored: As ``first_left_censored``, for the second run.
+        second_right_censored: As ``first_right_censored``, for the second run.
+        metadata: Immutable, JSON-compatible manifest of the matching rule, the
+            effective lag window, the observed and unknown step counts, the run and pair
+            counts, the rejected unknown-bridge count, and each source's declared
+            choices with unavailable ones recorded as ``"unknown"``.
+    """
+
+    mode: EventMode
+    first_run_id: npt.NDArray[np.int64]
+    second_run_id: npt.NDArray[np.int64]
+    start_index: npt.NDArray[np.int64]
+    end_index: npt.NDArray[np.int64]
+    overlap_duration: npt.NDArray[np.int64]
+    lag: npt.NDArray[np.float64]
+    first_left_censored: npt.NDArray[np.bool_]
+    first_right_censored: npt.NDArray[np.bool_]
+    second_left_censored: npt.NDArray[np.bool_]
+    second_right_censored: npt.NDArray[np.bool_]
+    metadata: Mapping[str, Any]
+
+    def __len__(self) -> int:
+        """Return the number of matched pairs."""
+        return int(self.first_run_id.size)
+
+
+@dataclass(frozen=True)
+class _SourceRuns:
+    """One validated source's runs, with the boundary censoring computed once per run."""
+
+    start: npt.NDArray[np.int64]
+    end: npt.NDArray[np.int64]
+    left_censored: npt.NDArray[np.bool_]
+    right_censored: npt.NDArray[np.bool_]
+
+
+@dataclass(frozen=True)
+class _Matched:
+    """The matched rows, still as loose arrays, before the result object freezes them."""
+
+    first_run_id: npt.NDArray[np.int64]
+    second_run_id: npt.NDArray[np.int64]
+    start_index: npt.NDArray[np.int64]
+    end_index: npt.NDArray[np.int64]
+    overlap_duration: npt.NDArray[np.int64]
+    lag: npt.NDArray[np.float64]
+    first_left_censored: npt.NDArray[np.bool_]
+    first_right_censored: npt.NDArray[np.bool_]
+    second_left_censored: npt.NDArray[np.bool_]
+    second_right_censored: npt.NDArray[np.bool_]
+    unknown_bridges: int
+
+
+def _observation_mask(valid: object, steps: int) -> npt.NDArray[np.bool_]:
+    """Require the shared observation-validity mask to be plain Boolean and one per step."""
+    if np.ma.isMaskedArray(valid):
+        raise InputTypeError(
+            "valid must be a plain Boolean array; a masked validity mask is ambiguous, so mark unknown steps False.",
+            expected_type=np.bool_,
+            actual_type=type(valid),
+        )
+    mask = np.asarray(valid)
+    if mask.dtype.kind != "b":
+        raise InputTypeError(
+            f"valid must have Boolean dtype, not {mask.dtype}; unknown observations are False, not 0 or NaN.",
+            expected_type=np.bool_,
+            actual_type=mask.dtype.type,
+        )
+    if mask.shape != (steps,):
+        raise DataShapeError(
+            "valid must hold one Boolean per step of time.",
+            expected_shape=f"({steps},)",
+            actual_shape=mask.shape,
+        )
+    return mask
+
+
+def _lag_window(mode: str, lag_window: object) -> tuple[int, int | None]:
+    """Resolve the inclusive lag window; ``None`` means every lag at or above one."""
+    if mode == "concurrent":
+        if lag_window is not None:
+            raise InvalidArgumentError(
+                "lag_window applies to sequential matching only.",
+                argument_name="lag_window",
+                argument_value=repr(lag_window),
+                valid_values="None when mode='concurrent'",
+            )
+        return 1, None
+    if lag_window is None:
+        return 1, None
+    if not isinstance(lag_window, tuple) or len(lag_window) != 2 or any(type(bound) is not int for bound in lag_window):
+        raise InvalidArgumentError(
+            "lag_window must be a (low, high) tuple of integers.",
+            argument_name="lag_window",
+            argument_value=repr(lag_window),
+            valid_values="(low, high) with 1 <= low <= high, or None",
+        )
+    low, high = lag_window
+    if low < 1 or high < low:
+        raise InvalidArgumentError(
+            "lag_window must satisfy 1 <= low <= high; sequential runs are separated by at least one step.",
+            argument_name="lag_window",
+            argument_value=f"({low}, {high})",
+            valid_values="(low, high) with 1 <= low <= high",
+        )
+    return low, high
+
+
+def _integer_field(name: str, runs: RunSet, field: str) -> npt.NDArray[np.int64]:
+    """Return one run-index field as int64, rejecting a non-integer or non-vector field."""
+    values = np.asarray(getattr(runs, field))
+    if values.ndim != 1:
+        raise DataShapeError(
+            f"{name}.{field} must be one-dimensional with one entry per run.",
+            expected_shape="(run,)",
+            actual_shape=values.shape,
+        )
+    if values.dtype.kind not in "iu":
+        raise InputTypeError(
+            f"{name}.{field} must hold integers, not {values.dtype}.",
+            expected_type=np.int64,
+            actual_type=values.dtype.type,
+        )
+    return values.astype(np.int64)
+
+
+def _validated_runs(name: str, runs: object, valid: npt.NDArray[np.bool_], steps: int) -> _SourceRuns:
+    """Validate one source's runs against the grid and compute their boundary censoring.
+
+    A dataclass is not proof of validity, so a manually constructed ``RunSet`` is checked
+    as strictly as one returned by :func:`climate_indices.runs.identify_runs`: the run
+    arrays must agree in length and each run must be a contiguous observed spell inside
+    the record. Source-run IDs are the caller's indices and are never renumbered.
+    """
+    if not isinstance(runs, RunSet):
+        raise InputTypeError(
+            f"{name} must be a RunSet.",
+            expected_type=RunSet,
+            actual_type=type(runs),
+        )
+    start = _integer_field(name, runs, "start_index")
+    end = _integer_field(name, runs, "end_index")
+    duration = _integer_field(name, runs, "duration")
+    if not start.size == end.size == duration.size:
+        raise DataShapeError(
+            f"{name} must hold one entry per run in start_index, end_index, and duration.",
+            expected_shape=f"({start.size},)",
+            actual_shape=duration.shape,
+        )
+    if start.size == 0:
+        empty = np.zeros(0, dtype=np.bool_)
+        return _SourceRuns(start, end, empty, empty)
+    if np.any(duration < 1) or np.any(end - start + 1 != duration):
+        raise InvalidArgumentError(
+            f"{name} must assert positive durations equal to end_index - start_index + 1.",
+            argument_name=name,
+            argument_value=f"start={start.tolist()}, end={end.tolist()}, duration={duration.tolist()}",
+            valid_values="duration == end_index - start_index + 1 >= 1",
+        )
+    if start[0] < 0 or end[-1] >= steps:
+        raise InvalidArgumentError(
+            f"{name} runs must lie inside the {steps}-step time axis.",
+            argument_name=name,
+            argument_value=f"start_index min={int(start.min())}, end_index max={int(end.max())}",
+            valid_values=f"0 <= start_index <= end_index <= {steps - 1}",
+        )
+    if np.any(start[1:] <= end[:-1]):
+        raise InvalidArgumentError(
+            f"{name} runs must be sorted and nonoverlapping.",
+            argument_name=name,
+            argument_value=f"start={start.tolist()}, end={end.tolist()}",
+            valid_values="strictly increasing, nonoverlapping runs",
+        )
+    unknown_prefix = np.concatenate(([0], np.cumsum(~valid, dtype=np.int64)))
+    crossing = np.flatnonzero(unknown_prefix[end + 1] - unknown_prefix[start] > 0)
+    if crossing.size:
+        raise InvalidArgumentError(
+            f"{name} run {int(crossing[0])} crosses an unknown observation; a run is a contiguous observed spell.",
+            argument_name=name,
+            argument_value=f"run {int(crossing[0])} spans [{int(start[crossing[0]])}, {int(end[crossing[0]])}]",
+            valid_values="every step of a run is observed",
+        )
+    # the padding turns both record edges into unknown neighbours, so one shift covers both cases
+    padded = np.concatenate(([False], valid, [False]))
+    return _SourceRuns(start, end, ~padded[start], ~padded[end + 2])
+
+
+def _source_entry(name: str, metadata: object) -> dict[str, Any]:
+    """Return one source's JSON-compatible choices, with unavailable ones recorded as unknown."""
+    if metadata is not None and not isinstance(metadata, Mapping):
+        raise InvalidArgumentError(
+            f"source_metadata[{name!r}] must be a JSON-compatible mapping.",
+            argument_name="source_metadata",
+            argument_value=type(metadata).__name__,
+            valid_values="Mapping[str, object]",
+        )
+    declared: Mapping[str, Any] = metadata if isinstance(metadata, Mapping) else {}
+    try:
+        copied: dict[str, Any] = json.loads(json.dumps(dict(declared), allow_nan=False))
+    except (TypeError, ValueError) as exc:
+        raise InvalidArgumentError(
+            f"source_metadata[{name!r}] must be a JSON-compatible mapping.",
+            argument_name="source_metadata",
+            valid_values="a mapping of JSON strings, numbers, booleans, null, lists, and mappings",
+        ) from exc
+    entry = {choice: copied.pop(choice, _UNKNOWN) for choice in _SOURCE_CHOICES}
+    if entry["direction"] != _UNKNOWN:
+        _check_choice(f"source_metadata[{name!r}]['direction']", entry["direction"], _VALID_DIRECTIONS)
+    if entry["threshold"] != _UNKNOWN:
+        _as_finite_threshold(entry["threshold"])
+    if entry["min_duration"] != _UNKNOWN and (type(entry["min_duration"]) is not int or entry["min_duration"] < 1):
+        raise InvalidArgumentError(
+            f"source_metadata[{name!r}]['min_duration'] must be a positive integer.",
+            argument_name="source_metadata",
+            argument_value=repr(entry["min_duration"]),
+            valid_values="integer >= 1",
+        )
+    entry.update(copied)
+    return entry
+
+
+def _match(
+    first: _SourceRuns,
+    second: _SourceRuns,
+    *,
+    valid: npt.NDArray[np.bool_],
+    mode: str,
+    window: tuple[int, int | None],
+) -> _Matched:
+    """Enumerate the matched pairs and count the sequential bridges rejected as unknown."""
+    low, high = window
+    valid_prefix = np.concatenate(([0], np.cumsum(valid, dtype=np.int64)))
+    columns: dict[str, list[npt.NDArray[Any]]] = {
+        key: [] for key in ("first_run_id", "second_run_id", "start_index", "end_index", "overlap_duration", "lag")
+    }
+    unknown_bridges = 0
+    for position in range(first.start.size):
+        onset, ending = int(first.start[position]), int(first.end[position])
+        if mode == "concurrent":
+            matched = np.flatnonzero((second.start <= ending) & (second.end >= onset))
+            if matched.size == 0:
+                continue
+            starts = np.maximum(onset, second.start[matched])
+            ends = np.minimum(ending, second.end[matched])
+            overlaps = ends - starts + 1
+            lags = np.full(matched.size, np.nan, dtype=np.float64)
+        else:
+            lag_steps = second.start - ending
+            inside = lag_steps >= low if high is None else (lag_steps >= low) & (lag_steps <= high)
+            candidates = np.flatnonzero(inside)
+            if candidates.size == 0:
+                continue
+            bridge = second.start[candidates]
+            observed = valid_prefix[bridge + 1] - valid_prefix[ending] == bridge - ending + 1
+            matched = candidates[observed]
+            unknown_bridges += int(candidates.size - matched.size)
+            if matched.size == 0:
+                continue
+            starts = np.full(matched.size, onset, dtype=np.int64)
+            ends = second.end[matched]
+            overlaps = np.zeros(matched.size, dtype=np.int64)
+            lags = second.start[matched] - ending
+        if matched.size:
+            columns["first_run_id"].append(np.full(matched.size, position, dtype=np.int64))
+            columns["second_run_id"].append(np.asarray(matched, dtype=np.int64))
+            columns["start_index"].append(starts)
+            columns["end_index"].append(ends)
+            columns["overlap_duration"].append(overlaps)
+            columns["lag"].append(lags)
+    return _Matched(
+        first_run_id=_stack(columns["first_run_id"], np.int64),
+        second_run_id=_stack(columns["second_run_id"], np.int64),
+        start_index=_stack(columns["start_index"], np.int64),
+        end_index=_stack(columns["end_index"], np.int64),
+        overlap_duration=_stack(columns["overlap_duration"], np.int64),
+        lag=_stack(columns["lag"], np.float64),
+        first_left_censored=_flags(first.left_censored, columns["first_run_id"]),
+        first_right_censored=_flags(first.right_censored, columns["first_run_id"]),
+        second_left_censored=_flags(second.left_censored, columns["second_run_id"]),
+        second_right_censored=_flags(second.right_censored, columns["second_run_id"]),
+        unknown_bridges=unknown_bridges,
+    )
+
+
+def _stack(parts: list[npt.NDArray[Any]], dtype: npt.DTypeLike) -> npt.NDArray[Any]:
+    """Concatenate per-run row blocks into one read-only array with a stable empty dtype."""
+    if not parts:
+        return _immutable(np.empty(0, dtype=dtype))
+    return _immutable(np.concatenate(parts).astype(dtype, copy=False))
+
+
+def _flags(per_run: npt.NDArray[np.bool_], run_ids: list[npt.NDArray[Any]]) -> npt.NDArray[np.bool_]:
+    """Repeat each source run's boundary flag once per row."""
+    if not run_ids:
+        return _immutable(np.zeros(0, dtype=np.bool_))
+    return _immutable(per_run[np.concatenate(run_ids)])
+
+
+def _compound_events(
+    first: RunSet,
+    second: RunSet,
+    *,
+    time: npt.ArrayLike,
+    valid: npt.ArrayLike,
+    cadence: str,
+    mode: str,
+    lag_window: object,
+    source_metadata: object,
+) -> CompoundEventSet:
+    """Validate the shared grid and both run sets, then match and freeze the pairs."""
+    _check_choice("cadence", cadence, _CADENCES)
+    _check_choice("mode", mode, _MODES)
+    window = _lag_window(mode, lag_window)
+
+    labels = np.asarray(time)
+    if labels.ndim != 1:
+        raise DataShapeError(
+            "time must be a one-dimensional cadence grid; match one grid cell at a time.",
+            expected_shape="(time,)",
+            actual_shape=labels.shape,
+        )
+    steps = int(labels.shape[0])
+    if steps == 0:
+        raise CoordinateValidationError(
+            "time must hold at least one step.",
+            coordinate_name="time['shared']",
+            reason="empty",
+        )
+    index = _observed_index("shared", labels, cadence, steps)
+    if np.any(np.diff(index) != 1):
+        raise CoordinateValidationError(
+            "time must be a complete cadence grid with one step per cadence unit; interior gaps and repeated steps "
+            "are rejected because an absent date is an unknown observation, not a step to close.",
+            coordinate_name="time['shared']",
+            reason="incomplete_grid",
+        )
+    mask = _observation_mask(valid, steps)
+
+    if source_metadata is not None and not isinstance(source_metadata, Mapping):
+        raise InvalidArgumentError(
+            "source_metadata must be a mapping keyed by 'first' and 'second'.",
+            argument_name="source_metadata",
+            argument_value=type(source_metadata).__name__,
+            valid_values="Mapping[str, Mapping[str, object]]",
+        )
+    sources: Mapping[str, Any] = source_metadata if isinstance(source_metadata, Mapping) else {}
+    unexpected = [repr(key) for key in sources if key not in _SOURCE_NAMES]
+    if unexpected:
+        raise InvalidArgumentError(
+            f"source_metadata keys must be a subset of {list(_SOURCE_NAMES)}; unexpected: {unexpected}.",
+            argument_name="source_metadata",
+            argument_value=str(unexpected),
+            valid_values=f"keys from {list(_SOURCE_NAMES)}",
+        )
+
+    first_runs = _validated_runs("first", first, mask, steps)
+    second_runs = _validated_runs("second", second, mask, steps)
+    rows = _match(first_runs, second_runs, valid=mask, mode=mode, window=window)
+
+    unit = _UNITS[cadence]
+    metadata = {
+        "schema_version": _MANIFEST_SCHEMA_VERSION,
+        "mode": mode,
+        "cadence": cadence,
+        "matching_rule": _MATCHING_RULES[mode],
+        "lag_window": [window[0], window[1]] if mode == "sequential" else None,
+        "grid": {
+            "step": cadence,
+            "n_steps": steps,
+            "n_valid": int(mask.sum()),
+            "n_unknown": int((~mask).sum()),
+            "time_start": str(labels[0].astype(unit)),
+            "time_end": str(labels[-1].astype(unit)),
+        },
+        "n_runs": {"first": int(first_runs.start.size), "second": int(second_runs.start.size)},
+        "n_pairs": int(rows.first_run_id.size),
+        "n_unknown_bridges": rows.unknown_bridges,
+        "sources": {name: _source_entry(name, sources.get(name)) for name in _SOURCE_NAMES},
+    }
+    return CompoundEventSet(
+        mode=cast(EventMode, mode),
+        first_run_id=rows.first_run_id,
+        second_run_id=rows.second_run_id,
+        start_index=rows.start_index,
+        end_index=rows.end_index,
+        overlap_duration=rows.overlap_duration,
+        lag=rows.lag,
+        first_left_censored=rows.first_left_censored,
+        first_right_censored=rows.first_right_censored,
+        second_left_censored=rows.second_left_censored,
+        second_right_censored=rows.second_right_censored,
+        metadata=_freeze(metadata),
+    )
+
+
+def compound_events(
+    first: RunSet,
+    second: RunSet,
+    *,
+    time: npt.ArrayLike,
+    valid: npt.ArrayLike,
+    cadence: Cadence,
+    mode: EventMode,
+    lag_window: tuple[int, int] | None = None,
+    source_metadata: Mapping[str, Mapping[str, Any]] | None = None,
+) -> CompoundEventSet:
+    """Match two hazard run sets on one shared, complete cadence grid.
+
+    Both run sets come from the same time axis and the same observations, but from
+    different hazard series (for example a drought run set and a heat run set), so a row
+    states which source runs coincided or followed one another. Severity measures are
+    never combined: the result holds indices, durations, lags, and censoring only.
+
+    ``valid`` is the single observation-validity mask for that axis. A run that contains
+    an unknown step is rejected, because a run asserts a contiguous observed spell; a run
+    that merely touches an unknown step or a record edge is kept and flagged censored.
+
+    In sequential mode every pair with ``second.start > first.end`` is matched when its
+    lag falls inside the inclusive window **and** every step from ``first.end`` through
+    ``second.start`` is observed. A pair separated by an unknown step is not reported, so
+    a cascade is never inferred across a gap; the rejected-pair count is recorded as
+    ``n_unknown_bridges`` in the result metadata.
+
+    Args:
+        first: Runs of the first hazard, from
+            :func:`climate_indices.runs.identify_runs`. Its ``start_index``, ``end_index``,
+            and ``duration`` fields are validated; the metric fields are not inspected.
+        second: Runs of the second hazard, validated the same way.
+        time: The shared time axis: one-dimensional ``datetime64`` labels, strictly
+            increasing, and a complete cadence grid with one step per cadence unit.
+            Interior gaps are rejected rather than closed, because a missing date is an
+            unknown observation.
+        valid: Boolean array shaped like ``time``, ``True`` where the hazard was observed.
+            Unknown observations are ``False``, not 0 or NaN.
+        cadence: ``"daily"`` or ``"monthly"``, the step of ``time`` and of the reported
+            indices and lags.
+        mode: ``"concurrent"`` for intersecting pairs or ``"sequential"`` for
+            follow-on pairs.
+        lag_window: Inclusive ``(low, high)`` lag window for sequential matching, where
+            the lag is ``second.start - first.end`` and adjacent runs have lag one.
+            ``None`` matches every lag at or above one. It must be ``None`` for
+            concurrent matching.
+        source_metadata: Optional mapping keyed by ``"first"`` and ``"second"``. Each
+            entry is a JSON-compatible mapping that may declare ``threshold``,
+            ``direction``, and ``min_duration`` — the choices a
+            :class:`~climate_indices.runs.RunSet` does not retain — and is copied into the
+            manifest; a choice left out is recorded as ``"unknown"`` and is never
+            reconstructed from the run metrics.
+
+    Returns:
+        A :class:`CompoundEventSet` with one row per matched pair, ordered by first
+        source-run ID and then by second source-run ID, holding new read-only arrays.
+
+    Raises:
+        InvalidArgumentError: For an unsupported ``cadence`` or ``mode``, a
+            ``lag_window`` that is out of range or given for concurrent matching, an
+            inconsistent ``RunSet`` (mismatched field lengths, non-positive or
+            inconsistent durations, out-of-bounds or overlapping runs), a run crossing an
+            unknown observation, or malformed ``source_metadata``.
+        InputTypeError: If a source is not a ``RunSet``, a run index is not an integer
+            array, ``valid`` is not a plain Boolean array, or the dates are not
+            ``datetime64``.
+        DataShapeError: If ``time`` or ``valid`` has the wrong shape, or a ``RunSet``'s
+            index fields disagree in length.
+        CoordinateValidationError: For an empty axis, NaT, repeated, or unordered dates,
+            or an incomplete cadence grid.
+
+    Example:
+        >>> import numpy as np
+        >>> from climate_indices import compound
+        >>> from climate_indices.runs import identify_runs
+        >>> time = np.arange("2000-01", "2000-07", dtype="datetime64[M]")
+        >>> drought = identify_runs(np.array([0.2, -1.2, -1.4, 0.1, -1.3, -1.1]), threshold=-1.0)
+        >>> heat = identify_runs(np.array([2.0, 2.5, 0.1, 3.0, 3.2, 3.4]), threshold=2.0, direction="above")
+        >>> valid = np.ones(6, dtype=bool)
+        >>> concurrent = compound.compound_events(
+        ...     drought, heat, time=time, valid=valid, cadence="monthly", mode="concurrent"
+        ... )
+        >>> concurrent.start_index.tolist(), concurrent.end_index.tolist()
+        ([1, 4], [1, 5])
+        >>> concurrent.overlap_duration.tolist()
+        [1, 2]
+        >>> sequential = compound.compound_events(
+        ...     drought, heat, time=time, valid=valid, cadence="monthly", mode="sequential"
+        ... )
+        >>> sequential.first_run_id.tolist(), sequential.second_run_id.tolist(), sequential.lag.tolist()
+        ([0], [1], [1.0])
+        >>> sequential.start_index.tolist(), sequential.end_index.tolist()
+        ([1], [5])
+    """
+    # source names are caller-supplied identifiers, so only their count reaches the log
+    log = _logger.bind(index_type="compound_events", cadence=cadence, mode=mode)
+    log.info("calculation_started")
+    t0 = perf_counter()
+    try:
+        result = _compound_events(
+            first,
+            second,
+            time=time,
+            valid=valid,
+            cadence=cadence,
+            mode=mode,
+            lag_window=lag_window,
+            source_metadata=source_metadata,
+        )
+    except Exception as exc:
+        log_calculation_failure(log, exc)
+        raise
+    log.info(
+        "calculation_completed",
+        duration_ms=round((perf_counter() - t0) * 1000.0, 2),
+        n_pairs=len(result),
+    )
+    return result

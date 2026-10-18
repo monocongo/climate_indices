@@ -364,6 +364,86 @@ investigations of continental hydrologic droughts*. Hydrology Papers 23,
 Colorado State University. Drought classes: McKee et al. (1993) and WMO (2012),
 both in the bibliography below.
 
+### Compound Event Matching (Concurrent and Sequential)
+
+`climate_indices.compound.compound_events()` matches two run sets that were
+identified on the same time axis, for example a drought run set and a heat run
+set. Both sources are given as [`RunSet`](#run-theory-event-identification)
+objects from `identify_runs()`, plus the shared time axis, its declared cadence,
+and one Boolean observation-validity mask. A row names one source run from each
+set and never merges or scores them: the result holds indices, durations, lags,
+and censoring flags only, so no drought magnitude, fire severity, or heat
+intensity is combined into an unrequested severity score.
+
+The time axis must be a complete cadence grid. An absent date is an unknown
+observation, not a step to close, so a gap is rejected instead of being
+bridged. Runs are validated before matching: each run must hold positive
+durations equal to `end_index - start_index + 1`, lie inside the record, be
+sorted and nonoverlapping, and contain no unknown observation. A run asserts a
+contiguous observed spell, so a run that crosses an unknown step is rejected
+rather than silently truncated.
+
+**Concurrent matching** keeps every pair whose inclusive intervals intersect
+and reports the intersection, with no one-to-one assignment:
+
+$$
+\text{start} = \max(a_{\text{start}}, b_{\text{start}}), \qquad
+\text{end} = \min(a_{\text{end}}, b_{\text{end}}), \qquad
+\text{overlap\_duration} = \text{end} - \text{start} + 1
+$$
+
+Touching endpoints count, so a pair sharing one time step has overlap duration
+one. Adjacent pair records are never merged, and a pair is never discarded
+because another run already matched, so one long run can match several short
+ones and the reverse.
+
+**Sequential matching** keeps every pair with $b_{\text{start}} >
+a_{\text{end}}$, so an overlapping pair, or one starting exactly on the first
+run's end, is not a follow-on. The lag is the separating distance:
+
+$$
+\text{lag} = b_{\text{start}} - a_{\text{end}}
+$$
+
+Adjacent runs therefore have lag one. A caller-supplied inclusive window
+`lag_window=(low, high)` keeps every pair with `low <= lag <= high`; `None`
+matches every lag at or above one. Every step from $a_{\text{end}}$ through
+$b_{\text{start}}$ must be observed. A pair separated by an unknown step is not
+reported, because a cascade is never inferred across a gap, and the rejected
+count is recorded as `n_unknown_bridges` in the result metadata. The reported
+interval is the first run's onset through the second run's end, and the lag is
+reported separately: the enclosing interval is not an invented joint duration,
+and `overlap_duration` is zero because sequential runs are disjoint by
+definition.
+
+**Censoring.** A run boundary that touches the record boundary or an unknown
+neighbouring step is censored: the physical event may extend beyond the
+observed record or across the unknown step. Every row records four flags —
+`first_left_censored`, `first_right_censored`, `second_left_censored`, and
+`second_right_censored` — so an observed duration is never presented as a
+complete physical event duration. Censoring does not remove a run.
+
+Rows appear in first source-run order and then in second source-run order, and
+`first_run_id` and `second_run_id` are the caller's own positions, so
+`first.start_index[first_run_id]` recovers the source run and its metrics. Every
+result array is read-only, and an empty catalog keeps its integer, float, and
+Boolean dtypes. The manifest records the matching rule, the effective lag
+window, the observed and unknown step counts, the run and pair counts, the
+rejected unknown-bridge count, and each source's declared threshold, direction,
+and `min_duration`. Those three declarations are not retained by `RunSet`, so
+any that the caller leaves out is recorded as `"unknown"` and is never
+reconstructed from run metrics.
+
+**Limits.** Pair counts are not independent observations and must not feed a
+binomial significance test. Matching inherits the run definition of the source
+indices and adds no onset probability or causal claim: a lagged association is
+a descriptive co-occurrence, not a validated cascade. The catalog has no primary
+index CF key, because it is an event catalog and not an index field.
+
+**Reference**: the event contract and its censoring, lag, and all-pairs rules
+are recorded in
+[ADR-0022](https://github.com/monocongo/climate_indices/blob/main/docs/adr/0022-compound-analysis-contracts.md).
+
 ## Complete Bibliography
 
 **SPI and Drought Indices:**

@@ -103,7 +103,7 @@ def test_namespace_is_not_re_exported_from_the_root() -> None:
     """Import explicitly: neither the module nor its functions join the package root."""
     assert "compound" not in climate_indices.__all__
     assert not hasattr(climate_indices, "harmonize")
-    assert sorted(compound.__all__) == ["AlignedHazards", "harmonize"]
+    assert sorted(compound.__all__) == ["AlignedHazards", "CompoundEventSet", "compound_events", "harmonize"]
 
 
 # --- thresholds, dtypes, and unknown values --------------------------------------------------
