@@ -153,7 +153,10 @@ def test_generator_rejects_changed_sources_and_pins_synthetic_inputs(generator: 
     for name, values in generator._synthetic_inputs().items():
         # Generator.uniform scales its range in compiled code that contracts differently per platform
         # (x86-64 against arm64), so the committed inputs reproduce to within an ulp, not bit for bit.
-        np.testing.assert_allclose(values, _load("inputs.npz", name), rtol=1e-12, atol=0.0)
+        # The residual (demand - production) carries that operand ulp into near-zero differences, so the
+        # tolerance is absolute at the series scale rather than relative to each element.
+        expected = _load("inputs.npz", name)
+        np.testing.assert_allclose(values, expected, rtol=1e-12, atol=1e-12 * np.nanmax(np.abs(expected)))
     assert generator._cases() == CASES
     assert generator.SEI_SHA256 == METADATA["sei_archive_sha256"]
     assert generator.PAYLOADS == PAYLOADS
