@@ -669,6 +669,15 @@ def parity_errors(rust: Any, python: Any) -> tuple[float, float]:
     return max_absolute, max_relative
 
 
+def compared_pairs(rust: Any, python: Any) -> int:
+    """Count finite pairs or non-finite mismatches, excluding matching NaNs and infinities."""
+    return sum(
+        1
+        for left, right in _numeric_pairs(rust, python)
+        if not ((np.isnan(left) and np.isnan(right)) or (np.isinf(left) and left == right))
+    )
+
+
 def assert_outcomes_parity(entry: Entry, rust: Any, python: Any) -> None:
     """Assert two outcomes of one entry agree: values at its tolerance, errors exactly."""
     if isinstance(python, _Error) or isinstance(rust, _Error):

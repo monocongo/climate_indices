@@ -12,6 +12,7 @@ indices themselves, see {doc}`explanation`.
 :maxdepth: 1
 
 algorithm-reference
+rust-numerical-contract
 data_requirements
 error-reference
 xarray_compatibility
@@ -129,6 +130,21 @@ remain planned; see {doc}`energy_applications` for scope and validation limits.
 
 ```{eval-rst}
 .. automodule:: climate_indices.energy
+   :members:
+   :imported-members:
+```
+
+### climate_indices.compound
+
+Declared-input harmonization for compound-hazard analysis: Boolean exceedance and
+validity on observed dates, never interpolated or averaged. Import it explicitly with
+`import climate_indices.compound as compound`; it is not re-exported from the package
+root. Joint and conditional statistics, event matching, inference, and the beta xarray
+route are still pending; see
+[ADR-0022](adr/0022-compound-analysis-contracts.md) for the approved contracts.
+
+```{eval-rst}
+.. automodule:: climate_indices.compound
    :members:
    :imported-members:
 ```

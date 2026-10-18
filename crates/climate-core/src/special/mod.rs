@@ -729,6 +729,20 @@ fn asymptotic_series(a: f64, x: f64, tail: Tail) -> f64 {
 
 /// Regularized lower incomplete gamma function P(a, x), Cephes `igam`, i.e.
 /// `scipy.special.gammainc`.
+///
+/// # Numerical contract
+///
+/// For positive `a`, `P(a, x) = integral_0^x t^(a-1) exp(-t) dt / Gamma(a)`.
+/// The SciPy 1.17.0 Cephes algorithm selects power series, complementary-tail
+/// evaluation, or Temme's asymptotic expansion near `a == x`.
+/// Both scalar inputs and the output are dimensionless, with no calendar interpretation.
+/// NaN or negative inputs return NaN. At `a == 0`, positive `x` returns 1;
+/// `(0, 0)` returns NaN. For positive `a`, zero `x` returns 0.
+/// Infinite `a` with finite non-negative `x` returns 0; finite non-negative `a`
+/// with infinite `x` returns 1. Two positive infinities return NaN.
+/// Underflow can return zero; this function does not report convergence errors.
+/// See the `Measured accuracy` section in [`crate`], row `special_igam`, for
+/// separate direct SciPy measurement. Workflow rows do not measure this kernel alone.
 pub fn igam(a: f64, x: f64) -> f64 {
     if a.is_nan() || x.is_nan() {
         return f64::NAN;
@@ -761,6 +775,20 @@ pub fn igam(a: f64, x: f64) -> f64 {
 
 /// Regularized upper incomplete gamma function Q(a, x), Cephes `igamc`, i.e.
 /// `scipy.special.gammaincc`.
+///
+/// # Numerical contract
+///
+/// For positive `a`, `Q(a, x) = integral_x^infinity t^(a-1) exp(-t) dt / Gamma(a)`.
+/// The SciPy 1.17.0 Cephes algorithm selects series, continued fractions, or
+/// Temme's asymptotic expansion. It avoids subtracting nearly equal numbers in the upper tail.
+/// Both scalar inputs and the output are dimensionless, with no calendar interpretation.
+/// NaN or negative inputs return NaN. At `a == 0`, positive `x` returns 0;
+/// `(0, 0)` returns NaN. For positive `a`, zero `x` returns 1.
+/// Infinite `a` with finite non-negative `x` returns 1; finite non-negative `a`
+/// with infinite `x` returns 0. Two positive infinities return NaN.
+/// Underflow can return zero; this function does not report convergence errors.
+/// See the `Measured accuracy` section in [`crate`], row `special_igamc`, for
+/// separate direct SciPy measurement. Workflow rows do not measure this kernel alone.
 pub fn igamc(a: f64, x: f64) -> f64 {
     if a.is_nan() || x.is_nan() {
         return f64::NAN;
@@ -873,6 +901,19 @@ const NDTRI_Q2: [f64; 8] = [
 const EXP_MINUS_2: f64 = 0.135_335_283_236_612_691_89;
 
 /// Inverse of the standard normal CDF, Cephes `ndtri`, i.e. `scipy.special.ndtri`.
+///
+/// # Numerical contract
+///
+/// The SciPy 1.17.0 Cephes algorithm uses rational approximations near the
+/// center and in the logarithmically transformed tails, with upper-tail reflection.
+/// The scalar cumulative probability and returned standard normal quantile are
+/// dimensionless, with no calendar interpretation. There is no clipping.
+/// Zero, including negative zero, returns negative infinity; one returns positive infinity.
+/// NaN and probabilities outside `[0, 1]`, including infinities, return NaN.
+/// Probability 0.5 returns zero. Extreme interior probabilities remain tail quantiles,
+/// not the finite saturated values used by EDDI's Hastings approximation.
+/// See the `Measured accuracy` section in [`crate`], row `special_ndtri`, for
+/// separate direct SciPy measurement. Workflow rows do not measure this kernel alone.
 pub fn ndtri(y0: f64) -> f64 {
     if y0 == 0.0 {
         return f64::NEG_INFINITY;
@@ -911,6 +952,17 @@ pub fn ndtri(y0: f64) -> f64 {
 
 /// `scipy.stats.norm.ppf(q)`: `ndtri` inside (0, 1), -inf at 0, inf at 1, and
 /// NaN for a NaN or a value outside [0, 1].
+///
+/// # Numerical contract
+///
+/// This scalar standard normal quantile uses the SciPy 1.17.0 Cephes [`ndtri`]
+/// algorithm after explicit probability checks. Input and output are dimensionless;
+/// there is no calendar interpretation or clipping.
+/// Negative zero follows zero; probability 0.5 returns zero. Infinite inputs return NaN.
+/// See the `Measured accuracy` section in [`crate`], row `special_norm_ppf`, for
+/// separate direct SciPy measurement. The `spi_gamma`, `spi_gamma_mean_zero`,
+/// `spi_gamma_spatial_block`, and `spei_gamma` entries in `tests/parity_registry.py`
+/// instead measure complete workflows, not this kernel alone.
 pub fn norm_ppf(q: f64) -> f64 {
     if q > 0.0 && q < 1.0 {
         ndtri(q)
@@ -924,6 +976,17 @@ pub fn norm_ppf(q: f64) -> f64 {
 }
 
 /// Standard normal CDF, Cephes `ndtr`, i.e. `scipy.special.ndtr`.
+///
+/// # Numerical contract
+///
+/// The SciPy 1.17.0 Cephes algorithm evaluates `Phi(a)` through rational
+/// approximations to the error function and complementary error function.
+/// The scalar standardized input and output probability are dimensionless,
+/// with no calendar interpretation. Zero, including negative zero, returns 0.5.
+/// NaN returns NaN; negative infinity returns 0 and positive infinity returns 1.
+/// Finite extreme tails can round or underflow to 0 or 1.
+/// See the `Measured accuracy` section in [`crate`], row `special_ndtr`, for
+/// separate direct SciPy measurement. Workflow rows do not measure this kernel alone.
 pub fn ndtr(a: f64) -> f64 {
     if a.is_nan() {
         return f64::NAN;

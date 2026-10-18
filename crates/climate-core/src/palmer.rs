@@ -180,7 +180,7 @@ pub struct WaterBalance {
 /// The Palmer water balance over a `(n_years, 12, n_cells)` record.
 ///
 /// - Python source: `palmer._calc_water_balances`, including its per-month
-///   [`potential_loss`] and [`recharge`] calls and its calibration-period sum
+///   `potential_loss` and `recharge` calls and its calibration-period sum
 ///   accumulation.
 /// - Inputs: `precips` and `pet` shaped `(n_years, 12, n_cells)`, already folded
 ///   to a calendar-year block with a trailing cell axis; `awc` the total
@@ -190,6 +190,28 @@ pub struct WaterBalance {
 ///   NaN precipitation or PET propagates through the same expressions the Python
 ///   path evaluates, and an exact-zero denominator (`awc == 0`) reaches the same
 ///   `inf`/`NaN` arithmetic.
+///
+/// # Numerical contract
+///
+/// Palmer's (1965) two-layer monthly water balance starts each cell with a full
+/// one-inch surface layer and `max(awc - 1, 0)` inches in the underlying layer.
+/// Precipitation, PET, AWC, and all returned water quantities use inches.
+/// Monthly inputs and outputs have shape `(n_years, 12, n_cells)`; `awc` has
+/// shape `(n_cells,)`, and calibration sums have shape `(12, n_cells)`.
+/// Months run from January through December, and soil state continues across
+/// years independently per cell. Calibration bounds select inclusive, zero-based
+/// year rows for ordinary sums; they do not restrict the state updates.
+///
+/// Zero precipitation and PET are observations, not missing values. A zero AWC
+/// is not replaced; divisions use IEEE arithmetic and ordered min/max selection.
+/// NaNs are not skipped, and ordered comparisons with NaN are false. Selections
+/// can retain finite operands, so a missing input need not make every output
+/// missing. State updates continue, and a NaN added to a calibration sum remains.
+/// No calendar padding or missing-value replacement occurs.
+///
+/// See the Measured accuracy section in [`crate`] for `palmer_pdsi` and
+/// `palmer_scpdsi` in `tests/parity_registry.py`. These are pathway measurements,
+/// not isolated helper error guarantees.
 pub fn water_balance(
     precips: ArrayView3<'_, f64>,
     pet: ArrayView3<'_, f64>,

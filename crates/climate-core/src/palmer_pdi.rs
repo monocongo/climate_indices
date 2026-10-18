@@ -415,6 +415,29 @@ impl<'a> Cell<'a> {
 /// - Invalid input: infinite Z values are rejected by Python before dispatch.
 /// - Numerics: every expression keeps the Python operation order; the
 ///   weighting fraction is the division `b / (m + b)`.
+///
+/// # Numerical contract
+///
+/// Palmer's (1965) NCEI `pdi.f` recurrence uses `b / (m + b)` to carry severity
+/// forward, with spell selection and backtracking. Z-index and output indices
+/// use the dimensionless Palmer convention; factors must use compatible units.
+/// Input and output arrays have shape `(n_months, n_cells)`, with consecutive
+/// chronological months and independent cells. No year boundary resets the
+/// state, and no calendar padding occurs. Empty axes retain their shapes.
+///
+/// Zero Z is a valid observation. Exact zero candidates denote absent indices,
+/// and probability endpoints are exactly 0 and 100; these tests use no tolerance.
+/// NaN Z still advances the recursion, rather than preserving a missing period.
+/// Candidate clamps can select zero, while established-state arithmetic can
+/// propagate NaNs into later months. A NaN established index takes wet-spell
+/// abatement.
+///
+/// The kernel does not replace missing values or validate factors.
+/// The caller supplies valid finite factors and excludes infinite Z values.
+///
+/// See the Measured accuracy section in [`crate`] for `palmer_pdsi` in
+/// `tests/parity_registry.py`. These are pathway measurements, not isolated
+/// helper error guarantees.
 pub fn calculate(z: ArrayView2<'_, f64>, factors: PdiDurationFactors) -> PdiResult {
     let (n_months, n_cells) = z.dim();
     let mut result = PdiResult {

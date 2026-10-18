@@ -1,0 +1,17 @@
+{
+  "source": "Marlon Vieira Passos; public study inputs and same-author deterministic LMF calculation",
+  "url": "https://doi.org/10.6084/m9.figshare.25189118.v2",
+  "download_date": "2026-10-17",
+  "subset_description": "Three Swedish grid cells; monthly SPEI12 and daily HWI, 1922-2021; nine June-August LMF cases.",
+  "checksum_sha256": "c79f8ff719b8036dbf560534d1dd30020cd03f6109813c5362ee3d7f65e664ea",
+  "fixture_version": "1.0.0",
+  "validation_tolerance": {
+    "count_atol": 0,
+    "lmf_atol": 1e-12,
+    "rtol": 0
+  },
+  "citation": "Vieira Passos, M., Kan, J.-C., Destouni, G., Barquet, K., and Kalantari, Z. (2024). Identifying regional hotspots of heatwaves, droughts, floods, and their co-occurrences. Stochastic Environmental Research and Risk Assessment 38, 3875-3893. https://doi.org/10.1007/s00477-024-02783-3",
+  "doi": "10.6084/m9.figshare.25189118.v2",
+  "license": "Input data: CC BY 4.0. Adapted deterministic reference code: MIT; see NOTICE.",
+  "notes": "reference.json is canonical and pins inputs.npz. This is an author-method fixture, not validation of a compound API or the complete Figure 8 map. Public source hashes, file IDs, cell-selection targets, source NaNs, original variable names, processing choices, and generation versions are in reference.json. The author returns NaN for zero joint counts; JSON uses null. No scientific bootstrap result is supplied. Normal tests are offline and import no compound module."
+}

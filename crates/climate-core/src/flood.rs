@@ -15,7 +15,7 @@
 //!   the window from its oldest day;
 //! * the calibration sums follow NumPy's axis-0 reduction, which accumulates the
 //!   years sequentially when the block has more than one column and pairwise
-//!   when it has exactly one ([`crate::reduction::pairwise_sum`]).
+//!   when it has exactly one (`crate::reduction::pairwise_sum`).
 
 use std::ops::Range;
 
@@ -51,6 +51,31 @@ fn harmonic_filter(duration: usize) -> Vec<f64> {
 /// `precipitation` is `(days, cells)`. The first `duration - 1` days, and any
 /// day whose window holds a NaN, are NaN; a series shorter than the window is
 /// all NaN.
+///
+/// # Numerical contract
+///
+/// This evaluates Byun and Wilhite (1999), equation 2:
+/// `PE_t = sum(n=1..D, sum(m=1..n, P[t-m+1]) / n)` for fixed `D = duration`.
+/// Input daily precipitation and output effective precipitation use mm.
+/// Harmonic weights run from `1/D` for the oldest day to `H_D` for the newest;
+/// summation adds the newest term first, then the older terms oldest-first.
+/// Each column is independent and output shape is `(days, cells)`.
+/// Days are consecutive supplied positions; the kernel inserts no calendar
+/// days and applies no Calibration Period or variable-duration extension.
+///
+/// A zero duration returns `ClimateError::EmptyPeriod`. The first `D - 1`
+/// outputs and every window containing NaN are NaN. Values recover after
+/// the missing day leaves the window; missing days are not replaced by zero.
+/// A full zero-rain window yields zero. A short series is all NaN;
+/// empty axes stay empty. Negative rain and infinity are not rejected,
+/// and arithmetic overflow can return non-finite values.
+///
+/// See the Measured accuracy section of [`crate`], registry entry `flood_pe`
+/// in `tests/parity_registry.py`, and
+/// `tests/test_native_parity_flood.py::test_effective_precipitation_on_the_fresno_record`.
+/// Registry measurements compare full workflow outputs, not isolated kernel
+/// errors or an independent scientific reference. The Rust test
+/// `effective_precipitation_matches_the_equation_2_double_sum` checks the formula.
 pub fn effective_precipitation(
     precipitation: ArrayView2<'_, f64>,
     duration: usize,
@@ -205,6 +230,33 @@ fn check_rows(
 /// Each column is one calendar day of one cell; `calibration` selects the years
 /// whose finite values fit that column's climatology. The result is
 /// `(PE - mean) / SD` with the population SD, in the input's layout.
+///
+/// # Numerical contract
+///
+/// This is the fixed-window form of Byun and Wilhite (1999), equation 9.
+/// The constant harmonic factor cancels, giving `(PE - mean(PE)) / SD(PE)`.
+/// Input PE uses mm and output EDI is dimensionless. Each independent column
+/// represents one calendar day and cell in an all-leap 366-position year;
+/// the caller folds the daily record into `(years, columns)` before this call.
+/// No PE accumulation, calendar conversion, daily climatology smoothing, or
+/// variable-duration dry-spell extension occurs here.
+///
+/// The half-open, zero-based `calibration` range selects year rows.
+/// Out-of-range or reversed ranges return `ClimateError::RowsOutOfRange`;
+/// empty ranges are accepted but yield no usable climatology. Calibration
+/// excludes all non-finite samples and uses population variance (`ddof=0`).
+/// Fewer than two finite samples, or variance not exceeding
+/// `(8 * f64::EPSILON * abs(mean))^2`, make the whole column NaN.
+/// Thus constant and all-zero calibration columns yield NaN, not zero EDI.
+/// Other NaNs remain local to their positions; no missing days are filled.
+/// Non-finite values outside calibration are not rejected and can remain
+/// infinite when the climatology is usable. Output shape equals input shape.
+///
+/// See the Measured accuracy section of [`crate`], registry entry `flood_edi`
+/// in `tests/parity_registry.py`, and
+/// `tests/test_native_parity_flood.py::test_edi_zero_variance_and_one_sample_cells_are_nan`.
+/// Registry measurements compare full workflow outputs, including upstream
+/// effective precipitation, not isolated EDI errors or external scientific accuracy.
 pub fn edi(
     years: ArrayView2<'_, f64>,
     calibration: Range<usize>,
@@ -221,6 +273,34 @@ pub fn edi(
 /// periods from there. Each period's maximum over its finite days (minus
 /// infinity when it has none, which the climatology then excludes) forms the
 /// calibration sample, and every day is standardized against it.
+///
+/// # Numerical contract
+///
+/// This implements `I_F = (PE - mean(annual_max_PE)) / SD(annual_max_PE)`
+/// with population SD (`ddof=0`). Input PE uses mm and output is dimensionless.
+/// It describes wetness, not a hydrologic flood prediction. The harmonic PE
+/// convention is not verified against Deo et al. (2015)'s full algorithm.
+///
+/// Input and output have shape `(days, cells)`. The caller supplies all-leap
+/// daily positions and a zero-based `first_start`, which can mark a non-January
+/// annual boundary. Exactly `calibration_years` consecutive 366-day periods
+/// form the Calibration Period. The kernel does not select calendar months
+/// or partial periods. Each cell's sample contains the finite maximum of
+/// each period; periods with no finite days do not contribute.
+///
+/// Fewer than two finite maxima, or population variance not exceeding
+/// `(8 * f64::EPSILON * abs(mean))^2`, make the entire cell NaN.
+/// Constant and all-zero maxima therefore yield NaN. A missing daily PE
+/// remains NaN; no gap is filled. Non-finite daily values are excluded from
+/// maxima but not from the final arithmetic. Out-of-range periods, including
+/// checked size overflow, return `ClimateError::RowsOutOfRange`. Zero periods
+/// are accepted when the start is in bounds and yield NaN climatology.
+///
+/// See the Measured accuracy section of [`crate`], registry entry
+/// `flood_flood_index` in `tests/parity_registry.py`, and
+/// `tests/test_native_parity_flood.py::test_flood_index_on_the_fresno_record`.
+/// Registry measurements compare full workflow outputs, including upstream
+/// effective precipitation, not isolated kernel errors or external scientific accuracy.
 pub fn flood_index(
     pe: ArrayView2<'_, f64>,
     first_start: usize,
@@ -257,6 +337,38 @@ pub fn flood_index(
 /// `API_t = k * API_(t-1) + P_t` (Kohler and Linsley, 1951), advanced one cell
 /// at a time by [`crate::recurrence::run`], so the ADR-0007 missing-day policy,
 /// the spin-up, and the recorded-history NaNs are the Python driver's.
+///
+/// # Numerical contract
+///
+/// This evaluates Kohler and Linsley (1951), equation 3 with current-day rain:
+/// `API_t = k * API_(t-1) + P_t`. Rain, initial state, history, and final API
+/// use mm; `k` is dimensionless. The caller supplies non-negative rain and
+/// state and normally `0 < k < 1`; this kernel does not enforce those ranges.
+/// Zero rain decays API by `k` on an active day. No lagged-rain variant,
+/// calendar conversion, or Calibration Period is applied.
+///
+/// Rain has shape `(days, cells)` matching `inputs.weather_valid`; initial
+/// API has one value per cell. Shape mismatches return
+/// `ClimateError::ShapeMismatch`. [`run`] uses supplied masks, not the rain
+/// values, to identify missing days. Leading gaps do not start a cell;
+/// `Propagate` poisons a started cell at its first missing day. `Bridge`
+/// leaves state unchanged, without decay, for at most its gap allowance,
+/// then poisons it. Missing-day history is NaN even for bridged gaps.
+/// Off-season days carry a started state without advancing or counting gaps;
+/// statically invalid cells do not advance. NaN initial API stays poisoned.
+///
+/// Spin-up days update state but are omitted from the optional history,
+/// shaped `(days.saturating_sub(spin_up), cells)`. Empty input preserves state.
+/// Any active update with a non-finite API returns `ClimateError::NonFinite`,
+/// including a NaN rain incorrectly marked valid. The kernel returns no
+/// partial result on error; it does not infer validity or fill missing days.
+///
+/// See the Measured accuracy section of [`crate`], registry entry `flood_api`
+/// in `tests/parity_registry.py`, and Rust tests
+/// `constant_rain_follows_the_geometric_closed_form` and
+/// `a_bridged_gap_decays_nothing_and_a_long_one_poisons_the_cell`.
+/// Registry measurements compare full workflow outputs, not isolated kernel
+/// errors or an independent scientific reference.
 pub fn antecedent_precipitation_index(
     precipitation_mm: ArrayView2<'_, f64>,
     k: f64,
