@@ -1,0 +1,207 @@
+{
+  "dataset_doi": "10.6084/m9.figshare.25189118.v2",
+  "paper_doi": "10.1007/s00477-024-02783-3",
+  "author_commit": "6c88f255ee3034279dcebe2a2fc40c954dbe9575",
+  "sources": {
+    "SPEI12.nc": {
+      "file_id": 44481290,
+      "sha256": "bb2b32bc5c6d76ce3257a0b211696128ad6da13ae737650a1376524788e88dce"
+    },
+    "heatwave_SMHI.nc": {
+      "file_id": 44481308,
+      "sha256": "c0428087c22cd6586f77af83592185ca513d2f52a809b7173a85960a3497701b"
+    },
+    "Compound_patterns.ipynb": {
+      "sha256": "a173677c9884bbadc8fad7c28e382f83adfd5378587042411179da98a6f8436a"
+    }
+  },
+  "environment": {
+    "python": "3.14.7",
+    "numpy": "2.4.2",
+    "xarray": "2026.1.0",
+    "pandas": "3.0.0"
+  },
+  "inputs_sha256": "abf3a4799253db294a6ef0363714b11eeea0c84790596cb790c65999fec811ed",
+  "cells": [
+    {
+      "name": "southern",
+      "target_lat": 56.0,
+      "target_lon": 14.0,
+      "lat_index": 5,
+      "lon_index": 23,
+      "latitude": 56.03652424242424,
+      "longitude": 14.046454545454546,
+      "monthly_missing_dates": [
+        "1942-05-31",
+        "1947-10-31",
+        "1947-11-30",
+        "1947-12-31",
+        "1948-01-31",
+        "1954-02-28",
+        "1954-03-31",
+        "1964-12-31",
+        "1976-04-30",
+        "1976-05-31",
+        "1976-06-30"
+      ]
+    },
+    {
+      "name": "central",
+      "target_lat": 62.0,
+      "target_lon": 15.0,
+      "lat_index": 48,
+      "lon_index": 30,
+      "latitude": 62.04727272727273,
+      "longitude": 14.973636363636365,
+      "monthly_missing_dates": [
+        "1937-09-30",
+        "1940-01-31",
+        "1940-04-30",
+        "1942-04-30",
+        "1942-05-31",
+        "1943-06-30",
+        "1943-07-31",
+        "1943-08-31",
+        "1944-05-31",
+        "1983-07-31",
+        "1990-05-31"
+      ]
+    },
+    {
+      "name": "northern",
+      "target_lat": 67.0,
+      "target_lon": 20.0,
+      "lat_index": 83,
+      "lon_index": 68,
+      "latitude": 66.93974242424243,
+      "longitude": 20.00690909090909,
+      "monthly_missing_dates": [
+        "1923-08-31",
+        "1928-02-29",
+        "1937-09-30",
+        "1941-12-31",
+        "1942-04-30",
+        "1942-05-31",
+        "1983-07-31",
+        "1990-05-31",
+        "2003-04-30",
+        "2003-05-31",
+        "2003-08-31"
+      ]
+    }
+  ],
+  "preparation": {
+    "variables": {
+      "SPEI12.nc": "SPEI",
+      "heatwave_SMHI.nc": "heatwave index"
+    },
+    "monthly_to_daily": "resample(time='D').ffill().interpolate_na(dim='time', method='linear')",
+    "start": "1922-01-31",
+    "end": "2021-12-31",
+    "heat_comparator": "HWI >= 0",
+    "drought_comparator": "SPEI <= -1",
+    "source_calibration_period": "not recorded in the supplied NetCDF attributes",
+    "significance": "not reproduced; the author's IID resampling and random tie noise are excluded"
+  },
+  "cases": [
+    {
+      "cell": 0,
+      "month": 6,
+      "n_days": 3000,
+      "n_heat": 232,
+      "n_drought": 566,
+      "n_joint": 43,
+      "joint_probability": 0.014333333333333333,
+      "independent_probability": 0.014590222222222223,
+      "lmf": 0.9823930790788351
+    },
+    {
+      "cell": 0,
+      "month": 7,
+      "n_days": 3100,
+      "n_heat": 530,
+      "n_drought": 469,
+      "n_joint": 68,
+      "joint_probability": 0.02193548387096774,
+      "independent_probability": 0.025865764828303845,
+      "lmf": 0.8480508508669591
+    },
+    {
+      "cell": 0,
+      "month": 8,
+      "n_days": 3100,
+      "n_heat": 303,
+      "n_drought": 590,
+      "n_joint": 63,
+      "joint_probability": 0.02032258064516129,
+      "independent_probability": 0.018602497398543184,
+      "lmf": 1.0924651787212618
+    },
+    {
+      "cell": 1,
+      "month": 6,
+      "n_days": 3000,
+      "n_heat": 178,
+      "n_drought": 509,
+      "n_joint": 26,
+      "joint_probability": 0.008666666666666666,
+      "independent_probability": 0.010066888888888889,
+      "lmf": 0.8609081477230083
+    },
+    {
+      "cell": 1,
+      "month": 7,
+      "n_days": 3100,
+      "n_heat": 340,
+      "n_drought": 494,
+      "n_joint": 45,
+      "joint_probability": 0.014516129032258065,
+      "independent_probability": 0.017477627471383976,
+      "lmf": 0.8305548940223862
+    },
+    {
+      "cell": 1,
+      "month": 8,
+      "n_days": 3100,
+      "n_heat": 123,
+      "n_drought": 435,
+      "n_joint": 26,
+      "joint_probability": 0.008387096774193548,
+      "independent_probability": 0.005567637877211239,
+      "lmf": 1.5064012709092607
+    },
+    {
+      "cell": 2,
+      "month": 6,
+      "n_days": 3000,
+      "n_heat": 136,
+      "n_drought": 743,
+      "n_joint": 36,
+      "joint_probability": 0.012,
+      "independent_probability": 0.011227555555555557,
+      "lmf": 1.06879898662022
+    },
+    {
+      "cell": 2,
+      "month": 7,
+      "n_days": 3100,
+      "n_heat": 264,
+      "n_drought": 557,
+      "n_joint": 48,
+      "joint_probability": 0.015483870967741935,
+      "independent_probability": 0.01530156087408949,
+      "lmf": 1.0119144769055002
+    },
+    {
+      "cell": 2,
+      "month": 8,
+      "n_days": 3100,
+      "n_heat": 66,
+      "n_drought": 523,
+      "n_joint": 19,
+      "joint_probability": 0.006129032258064516,
+      "independent_probability": 0.003591883454734651,
+      "lmf": 1.7063561040616493
+    }
+  ]
+}

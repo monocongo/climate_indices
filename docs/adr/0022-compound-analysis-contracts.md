@@ -6,13 +6,14 @@ Approved for implementation. The maintainer approved these contracts and the bou
 [CMP-01 (#1365)](https://github.com/monocongo/climate_indices/issues/1365) records this decision under
 [parent issue #1364](https://github.com/monocongo/climate_indices/issues/1364).
 
-**No compound API is implemented yet.** This record documents approved contracts, not completed code or scientific validation.
-Do not start implementation until the maintainer merges the PR containing this record.
+**Only the NumPy `harmonize()` route is implemented ([#1367](https://github.com/monocongo/climate_indices/issues/1367));
+the remaining APIs and the beta xarray route are not.** This record documents approved contracts,
+not completed code or scientific validation.
 The implementation responsibilities are explicit:
 
 | Proposed public function | NumPy implementation | Beta xarray implementation | Current state |
 | --- | --- | --- | --- |
-| `harmonize()` | [#1367](https://github.com/monocongo/climate_indices/issues/1367) | [#1372](https://github.com/monocongo/climate_indices/issues/1372) | Not implemented. |
+| `harmonize()` | [#1367](https://github.com/monocongo/climate_indices/issues/1367) | [#1372](https://github.com/monocongo/climate_indices/issues/1372) | NumPy implemented (#1367); xarray route not implemented. |
 | `joint_statistics()` | [#1368](https://github.com/monocongo/climate_indices/issues/1368) | [#1372](https://github.com/monocongo/climate_indices/issues/1372) | Not implemented. |
 | `conditional_probability()` | [#1369](https://github.com/monocongo/climate_indices/issues/1369) | [#1372](https://github.com/monocongo/climate_indices/issues/1372) | Not implemented. |
 | `compound_events()` | [#1370](https://github.com/monocongo/climate_indices/issues/1370) | The separate catalog route below uses this computation. | Not implemented. |
