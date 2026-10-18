@@ -587,6 +587,11 @@ def _standardized_index_pipeline(
     memory_metrics = check_large_array_memory(values, *memory_arrays)
 
     try:
+        # the empirical check must see the raw mapping, because normalization below
+        # drops unrecognized keys and would turn a parameter typo into a valid
+        # parameter-free call
+        compute._validate_empirical_fitting_params(distribution, fitting_params)
+
         # normalize any deprecated fitting-parameter aliases once, so the diagnostic
         # stays bounded per spatial operation
         fitting_params = compute._normalize_fitting_params(fitting_params)

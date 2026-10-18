@@ -2833,12 +2833,36 @@ def _normalize_fitting_params(params: dict[str, Any] | None) -> dict[str, Any] |
     return normed
 
 
+def _validate_empirical_fitting_params(
+    distribution: "Distribution",
+    fitting_params: dict[str, Any] | None,
+) -> None:
+    """
+    Reject a supplied parameter mapping for the rank-based empirical distribution.
+
+    Callers must run this before :func:`_normalize_fitting_params`, which drops
+    unrecognized keys, so a typo in a parameter key would otherwise reach the
+    empirical transform as an empty mapping and read as a valid parameter-free call.
+
+    :raises InvalidArgumentError: if the distribution is empirical and the mapping is not empty
+    """
+    if distribution.value == "empirical" and fitting_params:
+        raise InvalidArgumentError(
+            "The empirical distribution has no fitting parameters; pass fitting_params=None.",
+            argument_name="fitting_params",
+            argument_value=str(sorted(fitting_params)),
+        )
+
+
 # canonical fitting-parameter keys every surface resolves through
 _PARAMETER_KEYS: dict[str, tuple[str, ...]] = {
     "gamma": ("alpha", "beta", "prob_zero"),
     "pearson": ("prob_zero", "loc", "scale", "skew"),
     "loglogistic": ("loc", "scale", "shape"),
 }
+
+# the distributions fit_and_standardize() accepts: every keyed fit plus the empirical rank-based transform
+_SUPPORTED_DISTRIBUTIONS: tuple[str, ...] = (*_PARAMETER_KEYS, "empirical")
 
 
 def _broadcast_parameters(
@@ -3328,6 +3352,12 @@ def fit_and_standardize(
     validate_output_scale(output_scale)
     _validate_zero_handling(zero_handling)
 
+    # validate the distribution before any .value dereference, so a malformed or
+    # unsupported input gets the ValueError documented above rather than an
+    # AttributeError; the branches below need no further distribution check
+    if getattr(distribution, "value", None) not in _SUPPORTED_DISTRIBUTIONS:
+        raise ValueError(f"Unsupported distribution: {distribution}")
+
     # reject a reversed window here, before the dispatch: a complete supplied
     # parameter set skips the resolver calls inside the transforms, so without this
     # an index would transform values for a reversed Calibration Period instead of
@@ -3336,15 +3366,11 @@ def fit_and_standardize(
         data_start_year, values.shape[0], calibration_start_year, calibration_end_year, policy="clamp"
     )
 
+    _validate_empirical_fitting_params(distribution, fitting_params)
+
     # rank-based: the calibration sample is the fit, so there is no parameter set to
     # reuse, and zeros are ordinary values with no zero mass for zero_handling to place
     if distribution.value == "empirical":
-        if fitting_params:
-            raise InvalidArgumentError(
-                "The empirical distribution has no fitting parameters; pass fitting_params=None.",
-                argument_name="fitting_params",
-                argument_value=str(sorted(fitting_params)),
-            )
         if is_all_missing(values):
             return values
         return transform_fitted_empirical(
@@ -3374,9 +3400,6 @@ def fit_and_standardize(
             fitting_params,
         )
         return fitted.transform(values, output_scale, zero_handling=zero_handling)
-
-    if distribution.value != "pearson":
-        raise ValueError(f"Unsupported distribution: {distribution}")
 
     if not fallback_to_gamma:
         fitted = FittedDistribution.resolve(

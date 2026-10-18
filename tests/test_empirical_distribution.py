@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pytest
@@ -146,6 +146,20 @@ def test_empirical_rejects_fitting_params() -> None:
 
     with pytest.raises(InvalidArgumentError, match="no fitting parameters"):
         _standardize(values, fitting_params={"alpha": np.ones(12), "beta": np.ones(12)})
+
+    # an unrecognized key must still be rejected: alias normalization drops it, which
+    # would otherwise read as a valid parameter-free call
+    with pytest.raises(InvalidArgumentError, match="no fitting parameters"):
+        _standardize(values, fitting_params={"unexpected": 1})
+
+
+def test_seam_rejects_a_malformed_distribution_with_value_error() -> None:
+    """A non-Distribution input gets the documented ValueError, not an AttributeError."""
+    values = np.random.default_rng(31).gamma(2.0, size=40 * 12)
+
+    for distribution in ("gamma", object()):
+        with pytest.raises(ValueError, match="Unsupported distribution"):
+            compute.fit_and_standardize(values, cast("indices.Distribution", distribution), 1981, 1981, 1990, _MONTHLY)
 
 
 def test_other_surfaces_reject_empirical() -> None:
