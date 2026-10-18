@@ -699,8 +699,9 @@ def standardized_index(
     probability is its plotting position, ``(1 + k) / (n + 2)``, among the ``n`` valid
     calibration values at its calendar step, ``k`` of them at or below it (the SEI
     convention). A step with fewer than ten valid calibration values is missing, which
-    for daily data includes 29 February unless the Calibration Period spans ten leap
-    years. It is the only distribution that accepts a signed series, with
+    for daily data with NaN at 29 February of non-leap years includes that day unless
+    the Calibration Period spans ten leap years. It is the only distribution that
+    accepts a signed series, with
     ``clip_negatives=False`` (ADR-0019).
 
     This is a NumPy-array entry point only; xarray and Dask dispatch are not wired

@@ -2733,8 +2733,10 @@ def transform_fitted_empirical(
     no fitting parameters to supply or reuse.
 
     A calendar step with fewer than ``MIN_CALIBRATION_VALUES_FOR_EMPIRICAL`` valid
-    calibration values is missing. For daily data that includes 29 February unless
-    the Calibration Period holds at least that many leap years.
+    calibration values is missing. For daily data whose non-leap years carry NaN at
+    29 February, that includes 29 February unless the Calibration Period holds at least
+    that many leap years; ``utils.transform_to_366day`` synthesizes a value there
+    instead, so the step ranks against every calibration year.
 
     :param values: 2-D array of values, with each row representing a year containing
         twelve columns representing the respective calendar months, or 366 columns

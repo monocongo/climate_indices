@@ -42,9 +42,10 @@ option and writes both for every requested scale.
   probability is its plotting position `(1 + k) / (n + 2)` among the `n` valid
   calibration values at its calendar step, `k` of them at or below it, the convention
   of the SEI R package. Allen & Otero (2023) recommend it above roughly 100
-  observations. A step with fewer than ten valid calibration values is missing, which
-  for daily data includes 29 February unless the calibration period spans ten leap
-  years, and no value scores beyond the calibration range. It has no zero mass, so
+  observations. A step with fewer than ten valid calibration values is missing. For
+  daily data with NaN at 29 February of non-leap years, that includes 29 February
+  unless the calibration period spans ten leap years; `utils.transform_to_366day`
+  fills the day instead. No value scores beyond the calibration range. It has no zero mass, so
   `zero_handling` does not apply, and no `fitting_params`. Pass `clip_negatives=False`
   to keep a signed series such as residual load; gamma and Pearson Type III reject
   negatives under that setting rather than clip them (ADR-0019).
