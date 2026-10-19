@@ -282,6 +282,16 @@ def test_unknown_bridge_count_covers_only_pairs_inside_the_window() -> None:
     assert result.metadata["n_unknown_bridges"] == 1
 
 
+def test_unknown_step_before_the_window_rejects_every_window_candidate() -> None:
+    """Reject every in-window bridge that reaches an unknown step even when it precedes the window."""
+    valid = np.ones(10, dtype=bool)
+    valid[1] = False
+    second = manual([5, 6, 7, 8], [5, 6, 7, 8])
+    result = match(manual([0], [0]), second, steps=10, valid=valid, mode="sequential", lag_window=(5, 7))
+    assert len(result) == 0
+    assert result.metadata["n_unknown_bridges"] == 3  # starts 5, 6, and 7; start 8 is outside the window
+
+
 def test_unknown_steps_outside_the_bridge_do_not_block_a_pair() -> None:
     """Only the interval from the first end through the second start must be observed."""
     valid = np.ones(9, dtype=bool)

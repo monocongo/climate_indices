@@ -457,10 +457,15 @@ def _match(
     end at or after the onset to the last second-run start at or before the first run's end;
     sequential candidates run from the first start at or after ``first.end + low`` to the
     last start at or before ``first.end + high``. Searching those bounds keeps the
-    per-first-run work proportional to its candidates, not to every second run.
+    per-first-run work proportional to its candidates, not to every second run. The accepted
+    candidates are a prefix of the window, so counting the rejected bridges needs one lookup
+    rather than a test per candidate pair.
     """
     low, high = window
     steps = int(valid_prefix.size) - 1
+    # unknown_prefix[i] counts the unknown steps before i; it does not decrease, so the first
+    # candidate beyond every observed bridge is one binary search rather than a scan
+    unknown_prefix = np.arange(valid_prefix.size) - valid_prefix
     columns: dict[str, list[npt.NDArray[Any]]] = {
         key: [] for key in ("first_run_id", "second_run_id", "start_index", "end_index", "overlap_duration", "lag")
     }
@@ -492,12 +497,14 @@ def _match(
             )
             if lower >= upper:
                 continue
-            bridge = second.start[lower:upper]
-            observed = valid_prefix[bridge + 1] - valid_prefix[ending] == bridge - ending + 1
-            unknown_bridges += int(observed.size - np.count_nonzero(observed))
-            matched = lower + np.flatnonzero(observed)
-            if matched.size == 0:
+            # every candidate whose bridge reaches the first unknown step is rejected, so the accepted
+            # candidates are a prefix of the window and the rejected count needs no per-pair test
+            boundary = int(np.searchsorted(unknown_prefix, unknown_prefix[ending] + 1, side="left")) - 1
+            accepted = min(upper, max(lower, int(np.searchsorted(second.start, boundary, side="left"))))
+            unknown_bridges += upper - accepted
+            if lower >= accepted:
                 continue
+            matched = np.arange(lower, accepted, dtype=np.int64)
             starts = np.full(matched.size, onset, dtype=np.int64)
             ends = second.end[matched]
             overlaps = np.zeros(matched.size, dtype=np.int64)
