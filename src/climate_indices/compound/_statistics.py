@@ -74,7 +74,12 @@ _MANIFEST_SCHEMA_VERSION = 1
 # numeric quality flags, decoded by name in the result manifest
 _INSUFFICIENT_SUPPORT = 1
 _UNDEFINED_DENOMINATOR = 2
-_FLAG_MEANINGS = {"insufficient_support": _INSUFFICIENT_SUPPORT, "undefined_denominator": _UNDEFINED_DENOMINATOR}
+_FLAG_MEANINGS = {
+    "insufficient_support": _INSUFFICIENT_SUPPORT,
+    "undefined_denominator": _UNDEFINED_DENOMINATOR,
+    "sparse_occurrences": 4,
+    "short_record": 8,
+}
 
 
 @dataclass(frozen=True, eq=False)
@@ -108,7 +113,9 @@ class JointResult:
             group is below ``min_samples``.
         quality_flags: Bitwise OR of ``insufficient_support`` (fewer than
             ``min_samples`` eligible steps) and ``undefined_denominator`` (a zero
-            marginal count). ``metadata["quality_flags"]`` names each bit.
+            marginal count), ``sparse_occurrences`` (fewer than ten marginal occurrences
+            on nonempty support), and ``short_record`` (fewer than 30 observed years
+            in the cell). ``metadata["quality_flags"]`` names each bit.
         metadata: Immutable, JSON-compatible manifest of the grouping, support
             threshold, estimands, and the harmonization manifest the counts rest on.
     """
@@ -160,7 +167,9 @@ class ConditionalResult:
             below ``min_samples``.
         quality_flags: Bitwise OR of ``insufficient_support`` (fewer than
             ``min_samples`` eligible anchors) and ``undefined_denominator`` (no
-            eligible anchor carries an occurrence). ``metadata["quality_flags"]``
+            eligible anchor carries an occurrence), ``sparse_occurrences`` (fewer than
+            ten conditioning occurrences on nonempty support), and ``short_record``
+            (fewer than 30 observed years in the cell). ``metadata["quality_flags"]``
             names each bit.
         metadata: Immutable, JSON-compatible manifest of the pairing, window,
             grouping, and the harmonization manifest the counts rest on.
@@ -359,6 +368,27 @@ def _observed_years(time: npt.NDArray[np.datetime64], eligible: npt.NDArray[np.b
     """Return how many calendar years hold at least one eligible step anywhere in the record."""
     observed = np.any(eligible, axis=tuple(range(1, eligible.ndim))) if eligible.ndim > 1 else eligible
     return int(np.unique(time[observed].astype("datetime64[Y]")).shape[0])
+
+
+def _support_flags(
+    time: npt.NDArray[np.datetime64],
+    eligible: npt.NDArray[np.bool_],
+    n_eligible: npt.NDArray[np.int64],
+    n_occurrences: npt.NDArray[np.int64],
+    min_samples: int,
+) -> npt.NDArray[np.int64]:
+    """Flag every support guardrail per cell, independently of spatial tile boundaries."""
+    years = time.astype("datetime64[Y]")
+    observed_years = np.zeros(eligible.shape[1:], dtype=np.int64)
+    for year in np.unique(years):
+        observed_years += np.any(eligible[years == year], axis=0)
+    flagged = np.where(n_eligible < min_samples, _INSUFFICIENT_SUPPORT, 0)
+    flagged |= np.where(n_occurrences == 0, _UNDEFINED_DENOMINATOR, 0)
+    flagged |= np.where(
+        (n_eligible > 0) & (n_occurrences < _SPARSE_OCCURRENCES), _FLAG_MEANINGS["sparse_occurrences"], 0
+    )
+    flagged |= np.where(observed_years < _SHORT_RECORD_YEARS, _FLAG_MEANINGS["short_record"], 0)
+    return np.asarray(flagged, dtype=np.int64)
 
 
 def _warn_support(
@@ -577,10 +607,7 @@ def _conditional_probability(
     sufficient = np.asarray(n_anchors >= min_samples)
     conditional_probability = _undefined(_safe_rate(n_success, n_positive), sufficient)
     response_window_frequency = _undefined(_safe_rate(n_response, n_anchors), sufficient)
-    flagged = np.where(n_anchors < min_samples, _INSUFFICIENT_SUPPORT, 0) | np.where(
-        n_positive == 0, _UNDEFINED_DENOMINATOR, 0
-    )
-    quality_flags = np.asarray(flagged, dtype=np.int64)
+    quality_flags = _support_flags(hazards.time, eligible, n_anchors, n_positive, min_samples)
 
     if warn is not None:
         _warn_conditional_support(hazards.time, eligible, n_anchors, n_positive, min_samples, warn)
@@ -672,10 +699,7 @@ def _joint_statistics(
         where=independent_probability > 0,
     )
     likelihood_multiplication_factor = _undefined(likelihood_multiplication_factor, sufficient)
-    flagged = np.where(n_valid < min_samples, _INSUFFICIENT_SUPPORT, 0) | np.where(
-        n_marginal.min(axis=0) == 0, _UNDEFINED_DENOMINATOR, 0
-    )
-    quality_flags = np.asarray(flagged, dtype=np.int64)
+    quality_flags = _support_flags(hazards.time, eligible, n_valid, n_marginal.min(axis=0), min_samples)
 
     if warn is not None:
         _warn_support(hazards.time, eligible, n_valid, n_marginal, min_samples, warn)

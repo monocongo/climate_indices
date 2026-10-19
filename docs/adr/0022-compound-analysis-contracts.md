@@ -217,9 +217,13 @@ The NumPy support warnings (short record, sparse occurrences, a group below `min
 and the bootstrap's limited-support warning)
 are value-dependent, so they follow the same rule: in-memory xarray input warns exactly like the NumPy route,
 while Dask input leaves those conditions to `quality_flags`, because a warning raised inside a task would
-repeat per tile with tile-local counts. Harmonization warnings depend only on dates and declarations, so both
-backends raise them at the call. Lifecycle completion records `evaluation="graph_construction"` for a lazy
-call and `evaluation="eager"` otherwise.
+repeat per tile with tile-local counts. Descriptive flags retain `insufficient_support=1` and
+`undefined_denominator=2`. They also report `sparse_occurrences=4` for fewer than ten marginal or conditioning
+occurrences on nonempty support, and `short_record=8` for fewer than 30 observed calendar years per cell.
+The short-record flag uses each cell's eligible steps across the whole record, not each month's group.
+These additional bits do not change the counts, estimates, or `min_samples` rule.
+Harmonization warnings depend only on dates and declarations, so both backends raise them at the call.
+Lifecycle completion records `evaluation="graph_construction"` for a lazy call and `evaluation="eager"` otherwise.
 Do not allocate resample-by-time-by-cell arrays.
 Measure memory before publishing tile-size guidance.
 

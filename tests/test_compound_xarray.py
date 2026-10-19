@@ -670,7 +670,10 @@ def test_counts_and_flags_are_numeric_with_cf_flag_attributes() -> None:
         flags = result["quality_flags"]
         assert flags.dtype == np.int64
         assert list(flags.attrs["flag_masks"]) and flags.attrs["flag_meanings"].split()
-    assert joint["quality_flags"].attrs["flag_meanings"] == "insufficient_support undefined_denominator"
+    assert (
+        joint["quality_flags"].attrs["flag_meanings"]
+        == "insufficient_support undefined_denominator sparse_occurrences short_record"
+    )
     boot_flags = boot["quality_flags"].attrs
     described = dict(zip(boot_flags["flag_meanings"].split(), boot_flags["flag_masks"].tolist(), strict=True))
     assert described == json.loads(boot.attrs["compound_manifest"])["quality_flags"]
@@ -783,6 +786,42 @@ def test_eager_input_warns_like_numpy_and_dask_input_leaves_support_to_flags() -
     assert [w for w in caught if not issubclass(w.category, BetaFeatureWarning)] == []
     flags = lazy_run()["quality_flags"]
     assert (flags != 0).any(), "the condition the warning would have named must be visible in the flags"
+
+
+@pytest.mark.parametrize("statistic", ["joint_statistics", "conditional_probability"])
+@pytest.mark.parametrize("groupby", ["pooled", "month"])
+@pytest.mark.parametrize("lazy", [False, True], ids=["eager", "dask"])
+def test_support_flags_report_sparse_occurrences_and_short_records(statistic: str, groupby: str, lazy: bool) -> None:
+    """Keep both suppressed warnings visible, independently of tile boundaries and min_samples."""
+    occurrence = np.ones((2, len(MONTHS), 3), dtype=bool)
+    occurrence[:, :, 0] = False
+    occurrence[:, : 5 if groupby == "pooled" else 60, 0] = True
+    valid = np.ones_like(occurrence)
+    valid[:, :-60, 1] = False
+    dataset = xr.Dataset(
+        {"exceedance": (("hazard", "time", "cell"), occurrence), "valid": (("hazard", "time", "cell"), valid)},
+        coords={"hazard": ["drought", "heat"], "time": MONTHS.astype("datetime64[ns]"), "cell": [0, 1, 2]},
+        attrs={"cadence": "monthly"},
+    )
+    if lazy:
+        dataset = dataset.chunk({"hazard": -1, "time": -1, "cell": 1})
+    options = {"given": "drought", "target": "heat"} if statistic == "conditional_probability" else {}
+    result = getattr(compound, statistic)(dataset, groupby=groupby, min_samples=1, **options)
+    manifest = json.loads(result.attrs["compound_manifest"])
+    meanings = dict(
+        zip(
+            result["quality_flags"].attrs["flag_meanings"].split(),
+            result["quality_flags"].attrs["flag_masks"],
+            strict=True,
+        )
+    )
+    assert meanings == manifest["quality_flags"]
+    assert meanings["sparse_occurrences"] == 4
+    assert meanings["short_record"] == 8
+    flags = result["quality_flags"].compute(scheduler="synchronous")
+    assert (flags.sel(cell=0) == 4).all()
+    assert (flags.sel(cell=1) == (8 if groupby == "pooled" else 12)).all()
+    assert (flags.sel(cell=2) == 0).all()
 
 
 def test_missing_calibration_period_warns_at_the_call_for_lazy_input() -> None:
