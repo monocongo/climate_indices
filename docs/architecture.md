@@ -630,7 +630,8 @@ schedule, and manual dispatch), next to the pure-Python legs. Those legs install
 no Rust toolchain, so they keep proving the fallback.
 
 - `rust`: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets
-  -- -D warnings`, and `cargo test --workspace` (`PYO3_PYTHON` points the
+  -- -D warnings`, `RUSTDOCFLAGS="-D warnings" cargo doc -p climate-indices
+  --no-deps`, and `cargo test --workspace` (`PYO3_PYTHON` points the
   `climate-py` test binary at the project interpreter).
 - `test-native`: `maturin develop --release`, then the same core pytest command
   as `test`, on the boundary legs (oldest and newest Python on Linux, newest on

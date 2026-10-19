@@ -36,17 +36,32 @@ fn main() -> Result<(), ClimateError> {
 The crate documentation on docs.rs states the shape, calendar, unit, and error
 conventions for each kernel.
 
+## Examples
+
+The crate ships runnable programs that build an index from plain arrays, with no
+file input and no orchestration crate:
+
+```bash
+cargo run --example spi    # SPI-3 from a monthly precipitation array
+cargo run --example spei   # SPEI-6 from precipitation and PET arrays
+cargo run --example pet    # Thornthwaite PET from monthly temperatures
+```
+
+Each example performs the caller-side steps the kernels document: calendar
+preparation, the Timescale accumulation, the selection of the Calibration Period,
+the estimate of a discrete zero mass where the distribution has one, and the
+standard-normal transform.
+
 ## Numerical reference
 
 The kernels originate in the [`climate_indices`](https://github.com/monocongo/climate_indices)
 project, whose reference implementations are the numerical parity oracle: the project's
-parity suite holds every kernel to `rtol = atol = 1e-10` against them. You do not need
-Python to use this crate.
+parity suite holds every kernel to `rtol = atol = 1e-10` against them.
 
 ## Versioning
 
 The crate follows its own `0.x` version track, independent of the `climate_indices`
-Python distribution. Before 1.0, a minor version can make breaking changes. `ndarray` is
+distribution. Before 1.0, a minor version can make breaking changes. `ndarray` is
 a public dependency, so an incompatible `ndarray` upgrade is a breaking release.
 
 The minimum supported Rust version is 1.85.

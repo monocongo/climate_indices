@@ -2381,7 +2381,8 @@ schedule, and manual dispatch), next to the pure-Python legs. Those legs install
 no Rust toolchain, so they keep proving the fallback.
 
 - `rust`: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets
-  -- -D warnings`, and `cargo test --workspace` (`PYO3_PYTHON` points the
+  -- -D warnings`, `RUSTDOCFLAGS="-D warnings" cargo doc -p climate-indices
+  --no-deps`, and `cargo test --workspace` (`PYO3_PYTHON` points the
   `climate-py` test binary at the project interpreter).
 - `test-native`: `maturin develop --release`, then the same core pytest command
   as `test`, on the boundary legs (oldest and newest Python on Linux, newest on
@@ -3111,6 +3112,7 @@ The everyday Rust commands, for reference:
 | `cargo build` / `cargo test --workspace` | Compiles the crates / runs the crate-level Rust tests; set `PYO3_PYTHON` to the project interpreter, as in [step 8](#8-verify), so they link the right Python |
 | `cargo fmt --all -- --check` | Formatting; CI fails on any diff |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Lints; CI fails on any warning |
+| `RUSTDOCFLAGS="-D warnings" cargo doc -p climate-indices --no-deps` | Crate documentation; CI fails on any rustdoc warning |
 
 CI runs the native legs with `CLIMATE_INDICES_REQUIRE_NATIVE=1`, which turns a
 missing extension into a test failure instead of a skip so a broken build cannot
