@@ -429,10 +429,10 @@ Rows appear in first source-run order and then in second source-run order, and
 `first_run_id` and `second_run_id` are the caller's own positions, so
 `first.start_index[first_run_id]` recovers the source run and its metrics. Every
 result array is read-only, and an empty catalog keeps its integer, float, and
-Boolean dtypes. The manifest records the matching rule, the effective lag
-window, the observed and unknown step counts, the run and pair counts, the
-rejected unknown-bridge count, and each source's declared threshold, direction,
-and `min_duration`. Those three declarations are not retained by `RunSet`, so
+Boolean dtypes. The manifest records the calendar, the matching, censoring, and
+missingness rules, the effective lag window, the observed and unknown step
+counts, the run and pair counts, the rejected unknown-bridge count, and each
+source's declared threshold, direction, and `min_duration`. Those three declarations are not retained by `RunSet`, so
 any that the caller leaves out is recorded as `"unknown"` and is never
 reconstructed from run metrics.
 

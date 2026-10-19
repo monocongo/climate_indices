@@ -74,10 +74,19 @@ _MATCHING_RULES = {
         "overlap_duration counts its steps, and lag is NaN."
     ),
     "sequential": (
-        "Every pair with second.start > first.end inside the lag window; start_index/end_index hold the first "
-        "onset through the second end, lag is second.start - first.end, and overlap_duration is 0."
+        "Every pair with second.start > first.end inside the lag window whose steps from first.end through "
+        "second.start are all observed; start_index/end_index hold the first onset through the second end, lag is "
+        "second.start - first.end, and overlap_duration is 0. A pair bridged by an unknown step is excluded and "
+        "counted in n_unknown_bridges."
     ),
 }
+_CENSORING_RULE = (
+    "A run boundary is censored when the step beyond it lies outside the record or is unknown; the four flags "
+    "give the first source's left and right boundaries, then the second source's. No severity measure is combined."
+)
+_MISSINGNESS = (
+    "An unknown step is never a non-event: a run may not cross one, and a sequential pair is not matched across one."
+)
 
 
 @dataclass(frozen=True, eq=False)
@@ -112,10 +121,11 @@ class CompoundEventSet:
             an unknown neighbouring step.
         second_left_censored: As ``first_left_censored``, for the second run.
         second_right_censored: As ``first_right_censored``, for the second run.
-        metadata: Immutable, JSON-compatible manifest of the matching rule, the
-            effective lag window, the observed and unknown step counts, the run and pair
-            counts, the rejected unknown-bridge count, and each source's declared
-            choices with unavailable ones recorded as ``"unknown"``.
+        metadata: Immutable, JSON-compatible manifest of the calendar, the matching,
+            censoring, and missingness rules, the effective lag window, the observed and
+            unknown step counts, the run and pair counts, the rejected unknown-bridge
+            count, and each source's declared choices with unavailable ones recorded as
+            ``"unknown"``.
     """
 
     mode: EventMode
@@ -507,17 +517,17 @@ def _compound_events(
     if steps == 0:
         raise CoordinateValidationError(
             "time must hold at least one step.",
-            coordinate_name="time['shared']",
+            coordinate_name="time",
             reason="empty",
         )
     # the explicit one-dimensional check above keeps _observed_index's shape branch unreachable,
     # so its inputs['shared'] wording is never shown; the remaining checks name the real argument
-    index = _observed_index("shared", labels, cadence, steps)
+    index = _observed_index("shared", labels, cadence, steps, label="time")
     if np.any(np.diff(index) != 1):
         raise CoordinateValidationError(
             "time must be a complete cadence grid with one step per cadence unit; interior gaps and repeated steps "
             "are rejected because an absent date is an unknown observation, not a step to close.",
-            coordinate_name="time['shared']",
+            coordinate_name="time",
             reason="incomplete_grid",
         )
     mask = _observation_mask(valid, steps)
@@ -540,6 +550,9 @@ def _compound_events(
             valid_values=f"keys from {list(_SOURCE_NAMES)}",
         )
 
+    # source choices are validated before the matching they would otherwise be rejected after
+    source_entries = {name: _source_entry(name, sources.get(name)) for name in _SOURCE_NAMES}
+
     first_runs = _validated_runs("first", first, mask, valid_prefix, steps)
     second_runs = _validated_runs("second", second, mask, valid_prefix, steps)
     rows = _match(first_runs, second_runs, valid_prefix=valid_prefix, mode=mode, window=window)
@@ -549,8 +562,11 @@ def _compound_events(
     metadata = {
         "schema_version": _MANIFEST_SCHEMA_VERSION,
         "mode": mode,
+        "calendar": "proleptic_gregorian",
         "cadence": cadence,
         "matching_rule": _MATCHING_RULES[mode],
+        "censoring_rule": _CENSORING_RULE,
+        "missingness": _MISSINGNESS,
         "lag_window": [window[0], window[1]] if mode == "sequential" else None,
         "grid": {
             "step": cadence,
@@ -563,7 +579,7 @@ def _compound_events(
         "n_runs": {"first": int(first_runs.start.size), "second": int(second_runs.start.size)},
         "n_pairs": int(rows.first_run_id.size),
         "n_unknown_bridges": rows.unknown_bridges,
-        "sources": {name: _source_entry(name, sources.get(name)) for name in _SOURCE_NAMES},
+        "sources": source_entries,
     }
     return CompoundEventSet(
         mode=cast(EventMode, mode),

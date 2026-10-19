@@ -731,8 +731,11 @@ def test_metadata_is_immutable_and_serializable() -> None:
     assert set(json.loads(json.dumps(result.metadata, allow_nan=False))) == {
         "schema_version",
         "mode",
+        "calendar",
         "cadence",
         "matching_rule",
+        "censoring_rule",
+        "missingness",
         "lag_window",
         "grid",
         "n_runs",
@@ -743,6 +746,53 @@ def test_metadata_is_immutable_and_serializable() -> None:
     assert result.metadata["schema_version"] == 1
     assert pickle.loads(pickle.dumps(result.metadata)) == result.metadata
     assert copy.deepcopy(result.metadata) == result.metadata
+
+
+def test_manifest_records_the_calendar_and_the_matching_and_censoring_rules() -> None:
+    """Record every choice needed to interpret the rows, as the sibling manifests do."""
+    sequential = match(manual([0], [1]), manual([3], [4]), steps=6, mode="sequential")
+    assert sequential.metadata["calendar"] == "proleptic_gregorian"
+    assert "all observed" in sequential.metadata["matching_rule"]
+    assert "n_unknown_bridges" in sequential.metadata["matching_rule"]
+    assert "outside the record or is unknown" in sequential.metadata["censoring_rule"]
+    assert "never a non-event" in sequential.metadata["missingness"]
+
+
+def test_manifest_time_bounds_are_normalised_to_the_cadence_unit() -> None:
+    """Label the grid in cadence units even when the caller's labels carry a finer unit."""
+    result = compound.compound_events(
+        manual([0], [1]),
+        manual([0], [1]),
+        time=months(6).astype("datetime64[s]"),
+        valid=np.ones(6, dtype=bool),
+        cadence="monthly",
+        mode="concurrent",
+    )
+    grid = result.metadata["grid"]
+    assert (grid["time_start"], grid["time_end"]) == ("2000-01", "2000-06")
+
+
+def test_source_choices_are_validated_before_matching() -> None:
+    """Reject a malformed per-source declaration without first paying for the matching."""
+    with mock.patch.object(events_module, "_match", side_effect=AssertionError("matched before validating")):
+        with pytest.raises(InvalidArgumentError, match="min_duration"):
+            match(manual([0], [1]), manual([0], [1]), source_metadata={"first": {"min_duration": 0}})
+
+
+def test_time_axis_errors_name_the_time_argument() -> None:
+    """The shared axis is the caller's ``time`` argument, not an entry of a per-source mapping."""
+    runs = manual([0], [0])
+    labels = months(4).copy()
+    labels[2] = np.datetime64("NaT")
+    with pytest.raises(InputTypeError, match=r"^time must be a datetime64 array"):
+        compound.compound_events(
+            runs, runs, time=np.arange(4), valid=np.ones(4, dtype=bool), cadence="monthly", mode="concurrent"
+        )
+    with pytest.raises(CoordinateValidationError, match=r"^time contains NaT") as caught:
+        compound.compound_events(
+            runs, runs, time=labels, valid=np.ones(4, dtype=bool), cadence="monthly", mode="concurrent"
+        )
+    assert caught.value.coordinate_name == "time"
 
 
 def test_every_result_field_is_a_numeric_array_or_the_manifest() -> None:
