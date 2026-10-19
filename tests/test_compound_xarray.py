@@ -979,14 +979,21 @@ def test_no_route_captures_warnings_with_catch_warnings(monkeypatch: pytest.Monk
 
 def test_default_filters_show_each_route_warning_once_per_location() -> None:
     """Keep the once-per-location rule, which a catch_warnings block would reset on every call."""
-    dataset = prepared().isel(time=slice(0, 12))
+    # Isolate route handling: pandas 2.x index construction resets the warning registry.
+    dataset = xr.Dataset({"n_valid": 1})
+    support_message = "Insufficient compound support."
+
+    def build(queue: list[Warning]) -> xr.Dataset:
+        queue.append(ClimateIndicesWarning(support_message))
+        return dataset
+
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("default")
         for _ in range(3):
-            compound.joint_statistics(dataset, min_samples=1)
+            xarray_module._route("compound_joint_statistics", {}, build, "n_valid")
     messages = [str(w.message) for w in caught]
-    assert sum(xarray_module._BETA_MESSAGE == message for message in messages) == 1
-    assert len(messages) == len(set(messages))
+    assert messages.count(xarray_module._BETA_MESSAGE) == 1
+    assert messages.count(support_message) == 1
 
 
 def test_a_warning_raised_as_an_error_still_logs_a_terminal_event() -> None:
