@@ -103,6 +103,25 @@ fn monthly_mean_daylight_hours(latitude_radians: ArrayView1<'_, f64>, leap: bool
 /// `tests/test_native_pet_parity.py::test_thornthwaite_all_zero_temperatures`.
 /// Registry measurements compare full workflow outputs, not isolated kernel
 /// errors or an independent scientific reference.
+///
+/// # Example
+///
+/// ```
+/// use climate_indices::eto::thornthwaite;
+/// use ndarray::{Array1, Array3};
+///
+/// // One year, twelve months, one cell, with temperatures already clamped at
+/// // zero and every missing calendar position already inserted.
+/// let temps = Array3::from_shape_fn((1, 12, 1), |(_, month, _)| {
+///     12.0 + 12.0 * ((month as f64 - 6.0) * std::f64::consts::PI / 6.0).cos()
+/// });
+/// let latitude = Array1::from_elem(1, 33.4_f64.to_radians());
+/// let leap_years = Array1::from_elem(1, false);
+/// let pet_mm = thornthwaite(temps.view(), latitude.view(), leap_years.view())?;
+/// assert_eq!(pet_mm.dim(), (1, 12, 1));
+/// assert!(pet_mm[[0, 6, 0]] > pet_mm[[0, 0, 0]]);
+/// # Ok::<(), climate_indices::ClimateError>(())
+/// ```
 pub fn thornthwaite(
     monthly_temps_celsius: ArrayView3<'_, f64>,
     latitude_radians: ArrayView1<'_, f64>,
@@ -205,6 +224,25 @@ pub fn thornthwaite(
 /// `tests/test_native_pet_parity.py::test_hargreaves_inverted_and_equal_temperatures`.
 /// Registry measurements compare full workflow outputs, not isolated kernel
 /// errors or an independent scientific reference.
+///
+/// # Example
+///
+/// ```
+/// use climate_indices::eto::hargreaves;
+/// use ndarray::{Array1, Array2};
+///
+/// // The daily layout is one year of 366 rows, as if every year were a leap year.
+/// let tmin = Array2::from_shape_fn((366, 1), |(day, _)| {
+///     8.0 + 4.0 * (day as f64 / 366.0 * std::f64::consts::TAU).sin()
+/// });
+/// let tmax = &tmin + 12.0;
+/// let tmean = (&tmin + &tmax) / 2.0;
+/// let latitude = Array1::from_elem(1, 33.4_f64.to_radians());
+/// let pet_mm = hargreaves(tmin.view(), tmax.view(), tmean.view(), latitude.view())?;
+/// assert_eq!(pet_mm.dim(), (366, 1));
+/// assert!(pet_mm.iter().all(|value| *value > 0.0));
+/// # Ok::<(), climate_indices::ClimateError>(())
+/// ```
 pub fn hargreaves(
     daily_tmin_celsius: ArrayView2<'_, f64>,
     daily_tmax_celsius: ArrayView2<'_, f64>,
