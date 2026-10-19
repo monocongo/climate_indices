@@ -1,7 +1,8 @@
 """Climate-driven energy indices: demand proxies and resource transforms.
 
 Degree days describe climate-driven heating and cooling demand, not actual load.
-Wind profiles describe climate-driven resources, not actual generation. The NumPy
+Wind profiles describe climate-driven resources, not actual generation. Event
+statistics describe index runs, not recorded supply shortfalls. The NumPy
 reference functions are stable; degree-day and wind-profile DataArray dispatch
 is beta, preserves CF metadata, and supports lazy Dask chunks on every dimension.
 Standardized energy adapters remain deferred to #1174.
@@ -16,11 +17,13 @@ from climate_indices.energy._degree_days import (
     energy_degree_days,
     heating_degree_days,
 )
+from climate_indices.energy._events import energy_drought_events
 from climate_indices.energy._wind import hub_height_wind_speed, wind_shear_exponent
 
 __all__ = [
     "cooling_degree_days",
     "energy_degree_days",
+    "energy_drought_events",
     "heating_degree_days",
     "hub_height_wind_speed",
     "wind_shear_exponent",

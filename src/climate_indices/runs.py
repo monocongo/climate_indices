@@ -16,14 +16,18 @@ Conventions:
   continue, so a gap splits a run in two.
 - A value exactly equal to ``threshold`` is not in a run (comparisons are
   strict).
-- ``min_duration`` filters runs *after* identification, and ``interarrival`` is
+- ``max_gap`` pools runs across at most that many non-missing time steps.
+  Pooled duration includes the gap; magnitude excludes it. Missing values
+  always separate runs, even when pooling is enabled.
+- ``min_duration`` filters runs *after* pooling, and ``interarrival`` is
   then computed between the surviving runs only.
 - Masked array elements count as missing, like NaN; non-numeric arrays
   (datetime, string, object, or complex) are rejected with
   :class:`~climate_indices.exceptions.InputTypeError`.
 
-The functions here return run metrics only: spatial aggregation, period slicing,
-and DataFrame formatting stay downstream.
+``summarize_runs`` reports events and period summaries, assigning each complete
+event to its onset period. Spatial aggregation and DataFrame formatting stay
+downstream.
 """
 
 from __future__ import annotations
@@ -43,7 +47,7 @@ from climate_indices.exceptions import (
     InvalidArgumentError,
 )
 
-__all__ = ["RunSet", "identify_runs", "identify_runs_xarray"]
+__all__ = ["RunSet", "RunStatistics", "identify_runs", "identify_runs_xarray", "summarize_runs"]
 
 Direction = Literal["below", "above"]
 
@@ -62,8 +66,9 @@ class RunSet:
 
     :param start_index: index of each run's first time step
     :param end_index: index of each run's last time step (inclusive)
-    :param duration: number of time steps in each run
-    :param magnitude: cumulative deviation from the threshold (the sum of
+    :param duration: number of time steps from start to end, including pooled gaps
+    :param magnitude: cumulative deviation from the threshold, excluding pooled
+        gaps (the sum of
         ``threshold - value`` for ``direction="below"``, ``value - threshold``
         for ``direction="above"``), always positive
     :param intensity: mean deviation per time step, ``magnitude / duration``
@@ -96,6 +101,32 @@ class RunSet:
             np.array_equal(getattr(self, field.name), getattr(other, field.name), equal_nan=True)
             for field in fields(self)
         )
+
+
+@dataclass(frozen=True, eq=False)
+class RunStatistics:
+    """Events and summaries grouped by the period of each event's onset.
+
+    Summary arrays have one entry per sorted period label. An event that crosses
+    a period boundary contributes its full duration and magnitude to its onset
+    period, so total duration can exceed that period's length.
+
+    :param events: all retained events, in time order
+    :param period: sorted unique labels, or ``[0]`` for the whole input
+    :param count: number of events starting in each period
+    :param total_duration: sum of their elapsed durations, including pooled gaps
+    :param max_magnitude: largest event magnitude, or zero when no event starts
+    :param valid_count: number of non-NaN, unmasked input steps in each period
+    :param frequency: event count divided by valid_count; NaN with no valid steps
+    """
+
+    events: RunSet
+    period: npt.NDArray[Any]
+    count: npt.NDArray[np.int64]
+    total_duration: npt.NDArray[np.int64]
+    max_magnitude: npt.NDArray[np.float64]
+    valid_count: npt.NDArray[np.int64]
+    frequency: npt.NDArray[np.float64]
 
 
 def _require_numeric(dtype: np.dtype[Any]) -> None:
@@ -150,8 +181,8 @@ def _as_finite_threshold(threshold: object) -> float:
     return value
 
 
-def _resolve_options(threshold: float, direction: str, min_duration: int) -> tuple[float, int]:
-    """Validate the run-selection options and return the threshold and minimum duration."""
+def _resolve_options(threshold: float, direction: str, min_duration: int, max_gap: int) -> tuple[float, int, int]:
+    """Validate and normalize the threshold, duration, and pooling options."""
     if direction not in _VALID_DIRECTIONS:
         raise InvalidArgumentError(
             "direction must be 'below' or 'above'.",
@@ -167,7 +198,14 @@ def _resolve_options(threshold: float, direction: str, min_duration: int) -> tup
             argument_value=str(min_duration),
             valid_values="integer >= 1",
         )
-    return threshold_value, int(min_duration)
+    if isinstance(max_gap, bool) or not isinstance(max_gap, (int, np.integer)) or max_gap < 0:
+        raise InvalidArgumentError(
+            "max_gap must be a non-negative integer.",
+            argument_name="max_gap",
+            argument_value=str(max_gap),
+            valid_values="integer >= 0",
+        )
+    return threshold_value, int(min_duration), int(max_gap)
 
 
 def identify_runs(
@@ -175,6 +213,8 @@ def identify_runs(
     threshold: float = -1.0,
     direction: Direction = "below",
     min_duration: int = 1,
+    *,
+    max_gap: int = 0,
 ) -> RunSet:
     """Identify threshold runs in a one-dimensional index time series.
 
@@ -187,8 +227,12 @@ def identify_runs(
         direction: ``"below"`` to find runs of values below ``threshold``, or
             ``"above"`` for runs above it. Never inferred from the threshold's
             sign.
-        min_duration: Minimum run length in time steps to report. Runs shorter
-            than this are discarded after identification.
+        min_duration: Minimum elapsed run length in time steps to report.
+            Runs shorter than this are discarded after pooling.
+        max_gap: Maximum number of non-missing intervening steps to pool.
+            Zero disables pooling. NaN and masked values always separate runs.
+            Duration includes pooled gaps, magnitude excludes them, and
+            intensity divides magnitude by the full elapsed duration.
 
     Returns:
         The runs found, in time order, with their duration, magnitude,
@@ -207,7 +251,8 @@ def identify_runs(
         InvalidArgumentError: If ``direction`` is not ``"below"`` or
             ``"above"``, ``threshold`` is not a finite number (numeric
             strings and ``Decimal`` values are rejected, not parsed or
-            rounded), or ``min_duration`` is not a positive integer.
+            rounded), ``min_duration`` is not a positive integer, or
+            ``max_gap`` is not a non-negative integer.
         DataShapeError: If ``values`` is not one-dimensional. For gridded data
             use :func:`identify_runs_xarray`.
         InputTypeError: If ``values`` is not numeric (datetime, string, object,
@@ -223,7 +268,7 @@ def identify_runs(
         >>> found.start_index.tolist(), found.duration.tolist()
         ([1, 5], [2, 2])
     """
-    threshold_value, min_duration_value = _resolve_options(threshold, direction, min_duration)
+    threshold_value, min_duration_value, max_gap_value = _resolve_options(threshold, direction, min_duration, max_gap)
 
     series = _as_float_series(values)
     if series.ndim != 1:
@@ -233,7 +278,7 @@ def identify_runs(
             actual_shape=series.shape,
         )
 
-    return _identify_runs(series, threshold_value, direction, min_duration_value)
+    return _identify_runs(series, threshold_value, direction, min_duration_value, max_gap_value)
 
 
 def _identify_runs(
@@ -241,6 +286,7 @@ def _identify_runs(
     threshold: float,
     direction: Direction,
     min_duration: int,
+    max_gap: int,
 ) -> RunSet:
     """Find runs in a validated one-dimensional float64 series (the apply_ufunc kernel)."""
     series = np.asarray(series, dtype=np.float64)
@@ -251,6 +297,13 @@ def _identify_runs(
     transitions = np.diff(np.concatenate(([False], condition, [False])).astype(np.int8))
     starts = np.flatnonzero(transitions == 1)
     ends = np.flatnonzero(transitions == -1) - 1
+
+    if max_gap > 0 and starts.size > 1:
+        missing = np.concatenate(([0], np.cumsum(np.isnan(series))))
+        separate = (starts[1:] - ends[:-1] - 1 > min(max_gap, series.size)) | (
+            missing[starts[1:]] != missing[ends[:-1] + 1]
+        )
+        starts, ends = starts[np.concatenate(([True], separate))], ends[np.concatenate((separate, [True]))]
 
     durations = ends - starts + 1
     long_enough = durations >= min_duration
@@ -264,11 +317,12 @@ def _identify_runs(
 
     for position, (start, end) in enumerate(zip(starts, ends, strict=True)):
         run_values = series[start : end + 1]
+        active_values = run_values[condition[start : end + 1]] if max_gap else run_values
         if direction == "below":
-            deviations = threshold - run_values
+            deviations = threshold - active_values
             peak_offset = int(np.argmin(run_values))
         else:
-            deviations = run_values - threshold
+            deviations = active_values - threshold
             peak_offset = int(np.argmax(run_values))
         total = float(deviations.sum())
         magnitude[position] = total
@@ -292,12 +346,92 @@ def _identify_runs(
     )
 
 
+def summarize_runs(
+    values: npt.ArrayLike,
+    *,
+    periods: npt.ArrayLike | None = None,
+    threshold: float = -1.0,
+    direction: Direction = "below",
+    min_duration: int = 1,
+    max_gap: int = 0,
+) -> RunStatistics:
+    """Identify runs and summarize them by their onset period.
+
+    Args:
+        values: One-dimensional index series, as in :func:`identify_runs`.
+            NaN and masked values separate events and do not count as valid
+            input steps. Infinities retain the comparisons of ``identify_runs``.
+        periods: One label per input step, such as a year or month. Labels must
+            be real numbers, strings, datetime64, or timedelta64, without missing
+            or infinite values. Repeated labels form one group. With ``None``,
+            report one summary labelled zero, even for an empty input. Explicit
+            empty labels produce empty summary arrays.
+        threshold: Run threshold, as in :func:`identify_runs`.
+        direction: Explicit run direction, as in :func:`identify_runs`.
+        min_duration: Minimum elapsed duration after pooling.
+        max_gap: Maximum non-missing gap to pool; zero disables pooling.
+
+    Returns:
+        Events and summaries in a :class:`RunStatistics`. Each complete event
+        belongs to its onset period, even when it extends into later periods.
+        Frequency is events per valid input step, not a time fraction, annual
+        rate, or return period. With no events, count, total duration, and
+        maximum magnitude are zero. Frequency is NaN with no valid input steps.
+        Metrics use float64, as in ``identify_runs``.
+
+    Raises:
+        DataShapeError: If values is not one-dimensional, or periods does not
+            have the same shape as values.
+        InputTypeError: If values or period labels have an unsupported dtype.
+        InvalidArgumentError: If an event option is invalid, or period labels
+            contain masked, missing, or infinite values.
+    """
+    series = _as_float_series(values)
+    events = identify_runs(series, threshold, direction, min_duration, max_gap=max_gap)
+    if periods is None:
+        period = np.array([0], dtype=np.int64)
+        groups = np.zeros(series.size, dtype=np.int64)
+    else:
+        labels = np.asarray(periods)
+        if labels.shape != series.shape:
+            raise DataShapeError(
+                "periods must have the same one-dimensional shape as values.",
+                expected_shape=str(series.shape),
+                actual_shape=labels.shape,
+            )
+        if labels.dtype.kind not in "biufUSmM":
+            raise InputTypeError(
+                "periods must contain real numeric, string, datetime64, or timedelta64 labels.",
+                expected_type=np.ndarray,
+                actual_type=labels.dtype.type,
+            )
+        if (
+            np.ma.is_masked(periods)
+            or (labels.dtype.kind == "f" and not np.isfinite(labels).all())
+            or (labels.dtype.kind in "mM" and np.isnat(labels).any())
+        ):
+            raise InvalidArgumentError("periods must not contain missing or infinite labels.", argument_name="periods")
+        period, groups = np.unique(labels, return_inverse=True)
+
+    event_groups = groups[events.start_index]
+    count = np.bincount(event_groups, minlength=period.size).astype(np.int64)
+    valid_count = np.bincount(groups[~np.isnan(series)], minlength=period.size).astype(np.int64)
+    total_duration = np.zeros(period.size, dtype=np.int64)
+    max_magnitude = np.zeros(period.size, dtype=np.float64)
+    np.add.at(total_duration, event_groups, events.duration)
+    np.maximum.at(max_magnitude, event_groups, events.magnitude)
+    frequency = np.full(period.size, np.nan, dtype=np.float64)
+    np.divide(count, valid_count, out=frequency, where=valid_count > 0)
+    return RunStatistics(events, period, count, total_duration, max_magnitude, valid_count, frequency)
+
+
 def identify_runs_xarray(
     data: xr.DataArray,
     threshold: float = -1.0,
     direction: Direction = "below",
     min_duration: int = 1,
     *,
+    max_gap: int = 0,
     time_dim: str = "time",
 ) -> RunSet | xr.DataArray:
     """Identify threshold runs along the time dimension of a DataArray.
@@ -311,6 +445,7 @@ def identify_runs_xarray(
         direction: Run direction, as in :func:`identify_runs`.
         min_duration: Minimum run length in time steps, as in
             :func:`identify_runs`.
+        max_gap: Maximum non-missing gap to pool, as in :func:`identify_runs`.
         time_dim: Name of the time dimension to run along.
 
     Returns:
@@ -330,7 +465,7 @@ def identify_runs_xarray(
         InputTypeError: If ``data`` is not numeric (datetime, string, object,
             or complex).
         InvalidArgumentError: If ``direction``, ``threshold``, or
-            ``min_duration`` is invalid.
+            ``min_duration``, or ``max_gap`` is invalid.
     """
     if time_dim not in data.dims:
         raise DimensionMismatchError(
@@ -343,12 +478,16 @@ def identify_runs_xarray(
             coordinate_name=time_dim,
             reason="missing_dimension",
         )
-    threshold_value, min_duration_value = _resolve_options(threshold, direction, min_duration)
+    threshold_value, min_duration_value, max_gap_value = _resolve_options(threshold, direction, min_duration, max_gap)
     _require_numeric(data.dtype)
 
     if data.ndim == 1:
         return identify_runs(
-            data.values, threshold=threshold_value, direction=direction, min_duration=min_duration_value
+            data.values,
+            threshold=threshold_value,
+            direction=direction,
+            min_duration=min_duration_value,
+            max_gap=max_gap_value,
         )
 
     if data.chunks is not None:
@@ -365,7 +504,12 @@ def identify_runs_xarray(
         vectorize=True,
         dask="parallelized",
         output_dtypes=[object],
-        kwargs={"threshold": threshold_value, "direction": direction, "min_duration": min_duration_value},
+        kwargs={
+            "threshold": threshold_value,
+            "direction": direction,
+            "min_duration": min_duration_value,
+            "max_gap": max_gap_value,
+        },
         dask_gufunc_kwargs={"allow_rechunk": True},
     )
     assert isinstance(found, xr.DataArray)  # single output, so apply_ufunc cannot return a tuple
@@ -374,6 +518,7 @@ def identify_runs_xarray(
         "threshold": threshold_value,
         "direction": direction,
         "min_duration": min_duration_value,
+        "max_gap": max_gap_value,
         "long_name": "Run theory events per cell (RunSet objects)",
     }
     return found

@@ -125,7 +125,9 @@ Copy-and-adapt invocations are in {doc}`workflow-examples`.
 
 ### climate_indices.energy
 
-NumPy wind-resource proxies, not actual energy generation. xarray/Dask adapters
+Climate-driven demand and wind-resource proxies, not actual load or generation.
+`energy_drought_events()` reports run metrics and period summaries through the
+generic run-theory utility. Standardized energy and event xarray/Dask adapters
 remain planned; see {doc}`energy_applications` for scope and validation limits.
 
 ```{eval-rst}
