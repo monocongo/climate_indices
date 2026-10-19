@@ -20,9 +20,7 @@ from climate_indices.exceptions import (
 )
 from climate_indices.xarray_adapter import build_output_attrs
 
-# The standardized energy indices share the generic adapter's temporal contract; each
-# surface keeps its own distribution check in its NumPy core, where the message names
-# the surface (a signed series, a bounded capacity factor) rather than the seam.
+# Each surface adds its own distribution validator to the shared temporal validators.
 STANDARDIZED_VALIDATORS = (
     lambda args: indices._validate_periodicity(args["periodicity"]),
     lambda args: indices._validate_scale(args["scale"], args["periodicity"]),

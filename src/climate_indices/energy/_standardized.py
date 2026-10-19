@@ -34,6 +34,16 @@ SREPI_DROUGHT_THRESHOLDS: Mapping[str, float] = MappingProxyType({"moderate": -1
 _DISTRIBUTIONS = (indices.Distribution.empirical, indices.Distribution.beta)
 
 
+def _validate_distribution(distribution: indices.Distribution) -> None:
+    if distribution not in _DISTRIBUTIONS:
+        raise InvalidArgumentError(
+            "Energy standardized indices support only the empirical and beta distributions.",
+            argument_name="distribution",
+            argument_value=str(distribution),
+            valid_values="Distribution.empirical, Distribution.beta",
+        )
+
+
 def _standardize(
     values: np.ndarray,
     scale: int,
@@ -49,13 +59,7 @@ def _standardize(
     output_scale: compute.OutputScale,
     zero_handling: compute.ZeroHandling,
 ) -> np.ndarray:
-    if distribution not in _DISTRIBUTIONS:
-        raise InvalidArgumentError(
-            "Energy standardized indices support only the empirical and beta distributions.",
-            argument_name="distribution",
-            argument_value=str(distribution),
-            valid_values="Distribution.empirical, Distribution.beta",
-        )
+    _validate_distribution(distribution)
     # negatives are never clipped to zero: an empirical rank takes them as given and beta rejects them
     return indices.standardized_index(
         values,
@@ -231,7 +235,10 @@ def _standardized_demand_index_numpy(
 _wrapped_srepi: Callable[..., npt.NDArray[np.float64] | xr.DataArray] = xarray_adapter(
     calendar="periodicity",
     inferred_parameters=INFER_TIME_PARAMETERS,
-    argument_validators=STANDARDIZED_INDEX_VALIDATORS,
+    argument_validators=(
+        *STANDARDIZED_INDEX_VALIDATORS,
+        lambda args: _validate_distribution(args["distribution"]),
+    ),
     timescale_parameter="scale",
     cf_metadata=CF_METADATA["srepi"],  # type: ignore[arg-type]
     index_display_name="SREPI",
@@ -247,7 +254,10 @@ _wrapped_srepi: Callable[..., npt.NDArray[np.float64] | xr.DataArray] = xarray_a
 _wrapped_standardized_demand_index: Callable[..., npt.NDArray[np.float64] | xr.DataArray] = xarray_adapter(
     calendar="periodicity",
     inferred_parameters=INFER_TIME_PARAMETERS,
-    argument_validators=STANDARDIZED_INDEX_VALIDATORS,
+    argument_validators=(
+        *STANDARDIZED_INDEX_VALIDATORS,
+        lambda args: _validate_distribution(args["distribution"]),
+    ),
     timescale_parameter="scale",
     cf_metadata=CF_METADATA["standardized_demand_index"],  # type: ignore[arg-type]
     index_display_name="Standardized demand index",
@@ -327,8 +337,8 @@ def srepi(
 
     DataArray input uses the beta adapter: temporal parameters are inferred from the
     time coordinate when omitted, the ``srepi`` registry metadata is stamped, and
-    spatial input is fitted one time-major block per Dask spatial block. Like the
-    seam it wraps, it passes any ``fitting_params`` to every block.
+    each grid cell is fitted independently to match its NumPy series exactly.
+    The adapter passes the same ``fitting_params`` to every cell.
 
     Args:
         values: 1-D array of production or capacity factors, or a DataArray with a
@@ -448,7 +458,7 @@ def standardized_demand_index(
 
     Windows are accumulated by default (``aggregation="sum"``). The beta distribution
     applies only to a bounded [0, 1] series; see :func:`srepi`. DataArray input takes
-    the same adapter path, registry metadata, and ``fitting_params``-per-block caveat.
+    the same per-cell adapter path, registry metadata, and shared ``fitting_params``.
 
     Args:
         values: 1-D array of demand or degree days, or a DataArray with a time

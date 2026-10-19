@@ -214,7 +214,8 @@ order.
   Allen & Otero's moderate, severe, and extreme cut-offs (−1.28, −1.64, −1.96).
   DataArray input is beta ([#1174][energy-1174]): temporal parameters are
   inferred from the time coordinate, the `srepi` or `standardized_demand_index`
-  registry metadata is stamped, and a gridded input is fitted block by block.
+  registry metadata is stamped, and each grid cell is fitted independently to
+  match its NumPy series exactly.
 - **SRLI and the residual-load helper** — available as
   {func}`climate_indices.energy.srli` and
   {func}`climate_indices.energy.residual_load` ([#1172][energy-1172]).

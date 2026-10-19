@@ -196,6 +196,31 @@ def test_srli_rejects_a_parametric_distribution() -> None:
         )
 
 
+@pytest.mark.parametrize("lazy", [False, True])
+@pytest.mark.parametrize(
+    "index_name, distribution, message",
+    [
+        ("srepi", indices.Distribution.gamma, "empirical and beta"),
+        ("srepi", indices.Distribution.pearson, "empirical and beta"),
+        ("standardized_demand_index", indices.Distribution.gamma, "empirical and beta"),
+        ("standardized_demand_index", indices.Distribution.pearson, "empirical and beta"),
+        ("srli", indices.Distribution.gamma, "empirical distribution"),
+        ("srli", indices.Distribution.pearson, "empirical distribution"),
+        ("srli", indices.Distribution.beta, "empirical distribution"),
+    ],
+)
+def test_gridded_distribution_restrictions_apply_at_call_time(
+    index_name: str, distribution: indices.Distribution, message: str, lazy: bool
+) -> None:
+    cube = _gridded()
+    if lazy:
+        cube = cube.chunk({"time": -1, "lat": 1})
+    function = getattr(energy, index_name)
+
+    with pytest.raises(InvalidArgumentError, match=message):
+        function(cube, 3, distribution=distribution)
+
+
 def test_probability_output_scale_is_unclipped() -> None:
     """The output scale reaches the seam through the adapter."""
     result = energy.srepi(

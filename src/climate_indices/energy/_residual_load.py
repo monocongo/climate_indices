@@ -141,6 +141,16 @@ def residual_load(
     return np.asarray(residual)
 
 
+def _validate_distribution(distribution: indices.Distribution) -> None:
+    if distribution is not indices.Distribution.empirical:
+        raise InvalidArgumentError(
+            "SRLI supports only the empirical distribution: a parametric fit does not suit a signed series.",
+            argument_name="distribution",
+            argument_value=str(distribution),
+            valid_values="Distribution.empirical",
+        )
+
+
 def _srli_numpy(
     values: np.ndarray,
     scale: int,
@@ -204,13 +214,7 @@ def _srli_numpy(
         Allen, S., & Otero, N. (2023). Standardised indices to monitor energy droughts.
         Renewable Energy, 217, 119206. https://doi.org/10.1016/j.renene.2023.119206
     """
-    if distribution is not indices.Distribution.empirical:
-        raise InvalidArgumentError(
-            "SRLI supports only the empirical distribution: a parametric fit does not suit a signed series.",
-            argument_name="distribution",
-            argument_value=str(distribution),
-            valid_values="Distribution.empirical",
-        )
+    _validate_distribution(distribution)
     return indices.standardized_index(
         values,
         scale,
@@ -229,7 +233,10 @@ def _srli_numpy(
 _wrapped_srli: Callable[..., npt.NDArray[np.float64] | xr.DataArray] = xarray_adapter(
     calendar="periodicity",
     inferred_parameters=INFER_TIME_PARAMETERS,
-    argument_validators=STANDARDIZED_VALIDATORS,
+    argument_validators=(
+        *STANDARDIZED_VALIDATORS,
+        lambda args: _validate_distribution(args["distribution"]),
+    ),
     timescale_parameter="scale",
     cf_metadata=CF_METADATA["srli"],  # type: ignore[arg-type]
     index_display_name="SRLI",
@@ -310,9 +317,8 @@ def srli(
 
     DataArray input takes the beta adapter path; temporal parameters are inferred from
     the time coordinate when omitted, the ``srli`` registry metadata is stamped, and
-    spatial input is fitted one time-major block per Dask spatial block. The
-    distribution check runs inside each block, so a Dask-backed call reports a
-    non-empirical ``distribution`` when the graph is computed.
+    each grid cell is standardized independently to match its NumPy series exactly.
+    The adapter validates ``distribution`` at call time, before building a Dask graph.
 
     Args:
         values: 1-D array of signed residual load, or a DataArray with a time dimension
