@@ -191,7 +191,10 @@ The defaults are 1,999 realizations per sampling method and a 95% interval using
 `numpy.quantile(method="linear")`. Supply an integer `seed`. The local generator
 uses the seed and support definition, not a cell's position or worker schedule.
 The manifest records NumPy and SciPy versions. Cross-version bitwise identity
-is not promised.
+is not promised. `n_resamples` must be between 1 and 100,000 inclusive.
+Larger requests raise `InvalidArgumentError` before computation. This bounds the
+per-cell realization arrays to 19.2 MB; total work still grows with the cell and
+year counts.
 
 Inference requires 30 complete years, five nonoverlapping blocks, and ten
 occurrences per channel within each reported group. An interval also requires
@@ -205,20 +208,25 @@ Fewer than ten nonoverlapping blocks produces a warning.
 | --- | --- |
 | `estimate`, `full_record_estimate`, `confidence_low`, `confidence_high` | Float64, units `1`. Probability values range from 0 to 1. LMF is nonnegative without a universal maximum. |
 | `p_value` | Float64, units `1`, local and unadjusted, range 0 to 1; finite values are never zero. |
+| `n_valid`, `n_joint` | Int64 eligible-observation and observed-success counts on the inference segment, retained even when inference is suppressed. For conditional statistics these count eligible anchors and successful positive anchors. |
+| `n_marginal` | Int64 per-channel occurrence counts with a leading source axis in `metadata["source_names"]` order. Conditional channels are the given hazard and its target response window. |
+| `expected_null_successes` | Float64 expected successes under independence, exactly as tested by the null eligibility guard; NaN without eligible observations. |
 | `n_interval_resamples`, `n_null_resamples` | Int64 counts of valid realizations; zero when a pre-sampling guard excludes the metric. |
 | `n_years`, `block_length_years` | Int64 calendar-year counts, one per cell. |
 | `inference_start`, `inference_end` | datetime64[D] January and December month labels, one per cell; NaT without a complete year. |
 | `quality_flags` | Int64 bit field. `metadata["quality_flags"]` supplies the masks and meanings. An interval flag does not automatically suppress a null test. |
 
-Estimate, bound, p-value, resample-count, and flag arrays have shape
-`(12, *cells)` for monthly groups or `(*cells)` for pooled groups.
+Estimate, bound, p-value, support-count, expected-success, resample-count, and
+flag arrays have shape `(12, *cells)` for monthly groups or `(*cells)` for pooled
+groups. `n_marginal` adds a leading source axis.
 All result arrays are read-only, and the manifest is immutable.
 Daily inference raises `InvalidArgumentError`.
 
 Each call logs `calculation_started` and then `calculation_completed`, or
 `calculation_failed` for an error, under `index_type="compound_bootstrap_dependence"`.
-The events carry the statistic, grouping, seed, and resample count. They describe the
-call, not scheduling, because the NumPy route runs in the calling process.
+The events carry the source count, statistic, grouping, seed, and resample count,
+not caller-controlled source names. They describe the call, not scheduling, because
+the NumPy route runs in the calling process.
 
 Check sensitivity at `max(1, floor(L/2))`, `L`, and `2L` where support permits.
 Do not choose a length by its smallest p-value. Synthetic characterization and

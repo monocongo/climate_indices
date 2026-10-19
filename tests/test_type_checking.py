@@ -46,6 +46,10 @@ def test_compound_bootstrap_numpy_return_types() -> None:
     assert_type(result, compound.BootstrapResult)
     assert_type(result.estimate, npt.NDArray[np.float64])
     assert_type(result.p_value, npt.NDArray[np.float64])
+    assert_type(result.n_valid, npt.NDArray[np.int64])
+    assert_type(result.n_marginal, npt.NDArray[np.int64])
+    assert_type(result.n_joint, npt.NDArray[np.int64])
+    assert_type(result.expected_null_successes, npt.NDArray[np.float64])
     assert_type(result.n_years, npt.NDArray[np.int64])
     assert_type(result.inference_start, npt.NDArray[np.datetime64])
 

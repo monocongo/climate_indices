@@ -53,6 +53,13 @@ def test_counts_and_point_estimates(statistic: str, truth: float, groupby: str) 
     np.testing.assert_array_equal(result.estimate, np.full((12,) if groupby == "month" else (), truth))
     np.testing.assert_array_equal(result.estimate, result.full_record_estimate)
     assert result.estimate.dtype == np.float64
+    multiplier = 1 if groupby == "month" else 12
+    np.testing.assert_array_equal(result.n_valid, np.full(result.estimate.shape, 60 * multiplier))
+    np.testing.assert_array_equal(result.n_joint, np.full(result.estimate.shape, 15 * multiplier))
+    np.testing.assert_array_equal(result.n_marginal, np.full((2,) + result.estimate.shape, 30 * multiplier))
+    np.testing.assert_array_equal(result.expected_null_successes, result.n_joint)
+    assert result.n_valid.dtype == result.n_joint.dtype == result.n_marginal.dtype == np.int64
+    assert result.expected_null_successes.dtype == np.float64
     assert result.n_years == 60
     assert result.inference_start == np.datetime64("1900-01-01")
     assert result.inference_end == np.datetime64("1959-12-01")
@@ -154,6 +161,8 @@ def test_missing_years_partial_boundaries_and_earliest_tie() -> None:
         result = run(dataclasses.replace(hazards, valid=validity))
     assert result.n_years == 31
     assert result.inference_end == np.datetime64("1930-12-01")
+    np.testing.assert_array_equal(result.n_valid, np.full(12, 31))
+    np.testing.assert_array_equal(result.n_joint, np.full(12, 8))
     assert np.all(result.estimate == pytest.approx(8 / 31, rel=0, abs=1e-12))
     assert result.full_record_estimate[0] == pytest.approx(16 / 63, rel=0, abs=1e-12)
     # A missing coordinate must split the years too, not join distant months.
@@ -191,6 +200,9 @@ def test_forward_responses_precede_sampling_and_ignore_unselected_source() -> No
     assert result.n_years == 60
     assert result.estimate[11] == 1
     assert result.p_value[11] == 1
+    assert result.n_valid[11] == result.n_joint[11] == result.expected_null_successes[11] == 60
+    np.testing.assert_array_equal(result.n_marginal[:, 11], [60, 60])
+    assert result.metadata["source_names"] == ("A", "B")
     assert np.isnan(result.estimate[:11]).all()
     assert result.inference_end == np.datetime64("1959-12-01")
     # Check the derived rows passed into the sampler, not reconstructed joins.
@@ -220,10 +232,23 @@ def test_cell_tile_and_global_rng_invariance() -> None:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", ClimateIndicesWarning)
             separate = run(one)
-        for name in ("estimate", "confidence_low", "confidence_high", "p_value", "quality_flags"):
+        for name in (
+            "estimate",
+            "confidence_low",
+            "confidence_high",
+            "p_value",
+            "quality_flags",
+            "n_valid",
+            "n_joint",
+            "n_marginal",
+            "expected_null_successes",
+        ):
             np.testing.assert_array_equal(getattr(together, name)[..., cell], getattr(separate, name))
     assert np.isnat(together.inference_start[2])
     assert together.n_years[2] == 0
+    assert np.all(together.n_valid[:, 2] == together.n_joint[:, 2])
+    assert not together.n_marginal[..., 2].any()
+    assert np.isnan(together.expected_null_successes[:, 2]).all()
     assert np.isnan(together.p_value[:, 2]).all()
 
 
@@ -279,6 +304,8 @@ def test_default_block_length_and_three_hazard_mutual_null() -> None:
     assert result.block_length_years == 5
     assert np.all(result.estimate == 32 / 125)
     assert result.metadata["source_names"] == ("A", "B", "C")
+    np.testing.assert_array_equal(result.n_marginal, np.repeat([[63], [63], [63]], 12, axis=1))
+    np.testing.assert_array_equal(result.expected_null_successes, np.full(12, 63**3 / 125**2))
 
 
 @pytest.mark.parametrize(
@@ -396,6 +423,8 @@ def test_exact_tiny_enumeration_for_conditional_and_three_hazard_nulls(
         ("seed", 1.2),
         ("n_resamples", 0),
         ("n_resamples", True),
+        ("n_resamples", 100_001),
+        ("n_resamples", 10**30),
         ("block_length_years", 0),
         ("block_length_years", 1.5),
         ("confidence_level", float("nan")),
@@ -412,6 +441,16 @@ def test_exact_tiny_enumeration_for_conditional_and_three_hazard_nulls(
 def test_option_validation(option: str, value: Any) -> None:
     with pytest.raises(InvalidArgumentError):
         run(**{option: value})
+
+
+def test_resample_limit_is_checked_before_computation() -> None:
+    with mock.patch.object(implementation, "_bootstrap") as bootstrap:
+        run(n_resamples=100_000)
+        assert bootstrap.call_args.kwargs["n_resamples"] == 100_000
+        bootstrap.reset_mock()
+        with pytest.raises(InvalidArgumentError, match="n_resamples"):
+            run(n_resamples=100_001)
+        bootstrap.assert_not_called()
 
 
 def test_daily_manual_input_and_conditional_role_validation() -> None:
@@ -442,6 +481,10 @@ def test_sparse_and_expected_count_guards_remain_distinct() -> None:
         result = run(dataclasses.replace(hazards, exceedance=rows))
     assert np.isfinite(result.confidence_low).all()
     assert np.isnan(result.p_value).all()
+    np.testing.assert_array_equal(result.n_valid, np.full(12, 60))
+    np.testing.assert_array_equal(result.n_marginal, np.full((2, 12), 10))
+    np.testing.assert_array_equal(result.n_joint, np.full(12, 10))
+    np.testing.assert_allclose(result.expected_null_successes, np.full(12, 100 / 60), rtol=0, atol=1e-12)
     assert np.all(result.quality_flags & implementation._FLAGS["insufficient_expected_count"])
     assert not np.any(result.quality_flags & implementation._FLAGS["sparse_occurrences"])
     rows[:, 9 * 12 :] = False
@@ -519,8 +562,10 @@ def test_immutable_manifest_arrays_and_lifecycle() -> None:
     hazards = prepared()
     original = hazards.exceedance.copy()
     log = mock.Mock()
-    with mock.patch.object(implementation._logger, "bind", return_value=log):
+    with mock.patch.object(implementation._logger, "bind", return_value=log) as bind:
         result = run(hazards)
+    assert bind.call_args.kwargs["n_sources"] == 2
+    assert "source_names" not in bind.call_args.kwargs
     assert log.info.call_args_list[0].args == ("calculation_started",)
     assert log.info.call_args_list[-1].args == ("calculation_completed",)
     np.testing.assert_array_equal(hazards.exceedance, original)
@@ -535,9 +580,11 @@ def test_immutable_manifest_arrays_and_lifecycle() -> None:
     assert manifest["p_value_scope"].startswith("local, unadjusted")
     assert manifest["numpy_version"] == np.__version__
     with (
-        mock.patch.object(implementation._logger, "bind", return_value=log),
+        mock.patch.object(implementation._logger, "bind", return_value=log) as bind,
         mock.patch.object(implementation, "log_calculation_failure") as failure,
     ):
         with pytest.raises(InvalidArgumentError):
             run(seed=-1)
+        assert bind.call_args.kwargs["n_sources"] == 2
+        assert "source_names" not in bind.call_args.kwargs
         failure.assert_called_once()

@@ -49,15 +49,19 @@ _FLAGS = {
 }
 # Equal count ratios differ by about 1e-17 once rounded; distinct statistics are separated by at least 1/N**k.
 _TIE_TOLERANCE = 1e-12
+# The two monthly float64 realization arrays use at most 19.2 MB per cell.
+_MAX_RESAMPLES = 100_000
 
 
 @dataclass(frozen=True, eq=False)
 class BootstrapResult:
     """Monthly inference arrays and an immutable choice manifest.
 
-    Estimate, interval, p-value, resample-count, and flag arrays have shape
-    ``(12, *cells)`` for month groups, or ``(*cells)`` for pooled groups.
-    The remaining arrays have shape ``(*cells)``. A series has no cell axes.
+    Estimate, interval, p-value, support-count, expected-success, resample-count,
+    and flag arrays have shape ``(12, *cells)`` for month groups, or ``(*cells)``
+    for pooled groups. ``n_marginal`` adds a leading source axis, in the order
+    of ``metadata['source_names']``. The remaining arrays have shape ``(*cells)``.
+    A series has no cell axes.
     All arrays are copied and read-only. Instances compare by identity.
 
     ``estimate`` uses the selected complete-year segment; ``full_record_estimate``
@@ -70,6 +74,15 @@ class BootstrapResult:
     ``quality_flags`` combines the bits named by ``metadata['quality_flags']``.
     A failed interval guard does not itself suppress an eligible null test.
     All p-values are local and unadjusted, not field significance.
+
+    ``n_valid``, ``n_marginal``, and ``n_joint`` retain the exact eligible,
+    per-channel occurrence, and success counts on the inference segment, even
+    when a guard suppresses inference. For conditional statistics, the channels
+    are the given hazard and its target response window; ``n_valid`` counts
+    eligible anchors and ``n_joint`` counts successful positive anchors.
+    ``expected_null_successes`` retains the value tested by the null guard:
+    ``product(n_marginal) / n_valid ** (n_channels - 1)``. No eligible observation
+    gives zero counts and NaN expected successes.
     """
 
     statistic: Statistic
@@ -79,6 +92,10 @@ class BootstrapResult:
     confidence_low: npt.NDArray[np.float64]
     confidence_high: npt.NDArray[np.float64]
     p_value: npt.NDArray[np.float64]
+    n_valid: npt.NDArray[np.int64]
+    n_marginal: npt.NDArray[np.int64]
+    n_joint: npt.NDArray[np.int64]
+    expected_null_successes: npt.NDArray[np.float64]
     n_interval_resamples: npt.NDArray[np.int64]
     n_null_resamples: npt.NDArray[np.int64]
     n_years: npt.NDArray[np.int64]
@@ -215,12 +232,20 @@ def _bootstrap(
     metric_shape = groups + (cell_count,)
     floats = {
         name: np.full(metric_shape, np.nan)
-        for name in ("estimate", "full_record_estimate", "confidence_low", "confidence_high", "p_value")
+        for name in (
+            "estimate",
+            "full_record_estimate",
+            "confidence_low",
+            "confidence_high",
+            "p_value",
+            "expected_null_successes",
+        )
     }
     counts = {
         name: np.zeros(metric_shape, dtype=np.int64)
-        for name in ("n_interval_resamples", "n_null_resamples", "quality_flags")
+        for name in ("n_valid", "n_joint", "n_interval_resamples", "n_null_resamples", "quality_flags")
     }
+    marginal_counts = np.zeros((len(selected),) + metric_shape, dtype=np.int64)
     years_used = np.zeros(cell_count, dtype=np.int64)
     lengths = np.zeros(cell_count, dtype=np.int64)
     starts = np.full(cell_count, np.datetime64("NaT", "D"))
@@ -251,6 +276,9 @@ def _bootstrap(
         segment = rows[:, start:end]
         point, excess, marginal, successes, n = _metrics(segment, np.ones((years, 12), dtype=bool), statistic, groupby)
         floats["estimate"][..., cell] = point
+        counts["n_valid"][..., cell] = n
+        counts["n_joint"][..., cell] = successes
+        marginal_counts[..., cell] = marginal
         flags = np.zeros(groups, dtype=np.int64)
         blocks = years // length
         if years < 30:
@@ -267,6 +295,7 @@ def _bootstrap(
             expected = _safe_rate(marginal[0] * marginal[1], n)
         else:
             expected = _safe_rate(np.prod(marginal, axis=0), n ** (len(selected) - 1))
+        floats["expected_null_successes"][..., cell] = expected
         interval_ok = (successes >= 5) & ~sparse
         null_ok = (expected >= 5) & ~sparse
         flags |= np.where(successes < 5, _FLAGS["insufficient_successes"], 0)
@@ -366,6 +395,7 @@ def _bootstrap(
         groupby=groupby,
         **{name: _immutable(value.reshape(groups + cells)) for name, value in floats.items()},
         **{name: _immutable(value.reshape(groups + cells)) for name, value in counts.items()},
+        n_marginal=_immutable(marginal_counts.reshape((len(selected),) + groups + cells)),
         n_years=_immutable(years_used.reshape(cells)),
         block_length_years=_immutable(lengths.reshape(cells)),
         inference_start=_immutable(starts.reshape(cells)),
@@ -402,7 +432,8 @@ def bootstrap_dependence(
             before resampling. Only conditional inference accepts nonzero offsets.
         groupby: Calendar month (default) or an explicitly pooled mixture.
         block_length_years: Positive integer override for ceil(Y ** (1/3)).
-        n_resamples: Positive integer count, separately for paired and null samples.
+        n_resamples: Integer count from 1 through 100,000, separately for paired
+            and null samples. Reject larger requests before allocating realizations.
         confidence_level: Interval probability strictly between zero and one.
         alternative: Amplification (greater, default) or suppression (less).
         seed: Required nonnegative integer; use a local generator. Equal support
@@ -442,7 +473,7 @@ def bootstrap_dependence(
     log = _logger.bind(
         index_type="compound_bootstrap_dependence",
         statistic=statistic,
-        source_names=hazards.names if isinstance(hazards, AlignedHazards) else (),
+        n_sources=len(hazards.names) if isinstance(hazards, AlignedHazards) else 0,
         cadence=getattr(hazards, "cadence", None),
         groupby=groupby,
         seed=seed,
@@ -461,6 +492,13 @@ def bootstrap_dependence(
         if block_length_years is not None:
             _integer("block_length_years", block_length_years, 1)
         _integer("n_resamples", n_resamples, 1)
+        if n_resamples > _MAX_RESAMPLES:
+            raise InvalidArgumentError(
+                f"n_resamples must be <= {_MAX_RESAMPLES} to bound per-cell resampling memory and work.",
+                argument_name="n_resamples",
+                argument_value=repr(n_resamples),
+                valid_values=f"integer in [1, {_MAX_RESAMPLES}]",
+            )
         _integer("seed", seed, 0)
         if (
             isinstance(confidence_level, bool)
