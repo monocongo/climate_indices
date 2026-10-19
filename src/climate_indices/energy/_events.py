@@ -66,17 +66,16 @@ def _period_values(
     """
     if not isinstance(periods, xr.DataArray):
         return periods
-    if time_coord is not None:
-        if (
-            periods.dims != (time_dim,)
-            or time_dim not in periods.coords
-            or not np.array_equal(periods[time_dim].values, time_coord.values)
-        ):
-            raise CoordinateValidationError(
-                f"periods must carry the input's {time_dim!r} coordinate labels, in the same order.",
-                coordinate_name=time_dim,
-                reason="mismatched_coordinates",
-            )
+    if time_coord is not None and (
+        periods.dims != (time_dim,)
+        or time_dim not in periods.coords
+        or not np.array_equal(periods[time_dim].values, time_coord.values)
+    ):
+        raise CoordinateValidationError(
+            f"periods must carry the input's {time_dim!r} coordinate labels, in the same order.",
+            coordinate_name=time_dim,
+            reason="mismatched_coordinates",
+        )
     return periods.values
 
 

@@ -251,5 +251,7 @@ def test_event_tests_reject_masked_period_labels() -> None:
 
 def test_event_tests_reject_an_empty_time_axis() -> None:
     """A gridded empty series has no steps to run over; the series path reports empty statistics."""
+    da = xr.DataArray(np.empty((0, 2)), dims=("time", "site"))
+
     with pytest.raises(InsufficientDataError):
-        energy.energy_drought_events(xr.DataArray(np.empty((0, 2)), dims=("time", "site")))
+        energy.energy_drought_events(da)

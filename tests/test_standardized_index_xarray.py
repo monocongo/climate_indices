@@ -177,8 +177,10 @@ def test_gridded_input_matches_numpy_with_tied_values() -> None:
 
 def test_split_time_chunk_is_rejected() -> None:
     """A fitting index reads the whole time series at once, so a split chunk cannot be honoured."""
+    da = _monthly().chunk({"time": 120})
+
     with pytest.raises(CoordinateValidationError, match="chunk"):
-        climate_indices.standardized_index(_monthly().chunk({"time": 120}), SCALE, indices.Distribution.empirical)
+        climate_indices.standardized_index(da, SCALE, indices.Distribution.empirical)
 
 
 def test_source_nans_propagate_as_missing() -> None:
@@ -224,9 +226,11 @@ def test_probability_output_scale_is_unclipped() -> None:
 
 def test_invalid_aggregation_is_rejected_before_computing() -> None:
     """An unknown aggregation raises instead of silently behaving as the default."""
+    da = _monthly()
+
     with pytest.raises(ValueError, match="aggregation"):
         climate_indices.standardized_index(
-            _monthly(),
+            da,
             SCALE,
             indices.Distribution.empirical,
             aggregation="median",  # type: ignore[arg-type]
@@ -235,8 +239,10 @@ def test_invalid_aggregation_is_rejected_before_computing() -> None:
 
 def test_unsupported_distribution_is_rejected() -> None:
     """Log-logistic stays a SPEI-only surface, as on the NumPy path."""
+    da = _monthly()
+
     with pytest.raises(InvalidArgumentError, match="Unsupported distribution"):
-        climate_indices.standardized_index(_monthly(), SCALE, indices.Distribution.loglogistic)
+        climate_indices.standardized_index(da, SCALE, indices.Distribution.loglogistic)
 
 
 def test_package_root_reexport_differs_from_the_numpy_core() -> None:

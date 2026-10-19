@@ -115,8 +115,10 @@ def test_xarray_aggregation_matches_numpy(aggregation: compute.Aggregation) -> N
 
 def test_xarray_aggregation_is_validated() -> None:
     """An unknown aggregation is rejected before any block runs."""
+    da = _monthly_series_da()
+
     with pytest.raises(ValueError, match="aggregation"):
-        fit_diagnostics(_monthly_series_da(), 3, Distribution.gamma, aggregation="median")  # type: ignore[arg-type]
+        fit_diagnostics(da, 3, Distribution.gamma, aggregation="median")  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("scale", [1, 3])

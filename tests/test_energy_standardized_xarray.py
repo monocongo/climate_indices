@@ -174,9 +174,11 @@ def test_beta_distribution_standardizes_a_capacity_factor() -> None:
 
 def test_srepi_rejects_a_distribution_the_wrapper_does_not_offer() -> None:
     """Gamma is not an energy-wrapper option, and the seam reports it."""
+    da = _monthly()
+
     with pytest.raises(InvalidArgumentError, match="empirical and beta"):
         energy.srepi(
-            _monthly(),
+            da,
             3,
             calibration_year_initial=_CAL_START,
             calibration_year_final=_CAL_END,
@@ -186,9 +188,11 @@ def test_srepi_rejects_a_distribution_the_wrapper_does_not_offer() -> None:
 
 def test_srli_rejects_a_parametric_distribution() -> None:
     """A signed series keeps the empirical rank path on the xarray arm too."""
+    da = _monthly()
+
     with pytest.raises(InvalidArgumentError, match="empirical distribution"):
         energy.srli(
-            _monthly(),
+            da,
             3,
             calibration_year_initial=_CAL_START,
             calibration_year_final=_CAL_END,
