@@ -154,8 +154,8 @@ def test_missing_years_partial_boundaries_and_earliest_tie() -> None:
         result = run(dataclasses.replace(hazards, valid=validity))
     assert result.n_years == 31
     assert result.inference_end == np.datetime64("1930-12-01")
-    assert np.all(result.estimate == pytest.approx(8 / 31))
-    assert result.full_record_estimate[0] == pytest.approx(16 / 63)
+    assert np.all(result.estimate == pytest.approx(8 / 31, rel=0, abs=1e-12))
+    assert result.full_record_estimate[0] == pytest.approx(16 / 63, rel=0, abs=1e-12)
     # A missing coordinate must split the years too, not join distant months.
     keep = np.arange(len(hazards.time)) != 31 * 12 + 4
     with pytest.warns(ClimateIndicesWarning):
@@ -282,6 +282,113 @@ def test_default_block_length_and_three_hazard_mutual_null() -> None:
 
 
 @pytest.mark.parametrize(
+    ("years", "length", "flag"),
+    [(30, 2, "insufficient_years"), (30, 6, "insufficient_blocks"), (60, 6, "few_blocks")],
+)
+def test_year_and_block_thresholds_include_their_boundary(years: int, length: int, flag: str) -> None:
+    """30 years, 5 blocks, and 10 blocks are the smallest values that do not raise their flag."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", ClimateIndicesWarning)
+        result = run(prepared(years), block_length_years=length)
+    assert not np.any(result.quality_flags & implementation._FLAGS[flag])
+    assert np.isfinite(result.p_value).all()
+
+
+@pytest.mark.parametrize(
+    ("counts", "interval", "null", "flag"),
+    [
+        ((60, 30, 30, 5), True, True, None),
+        ((60, 30, 30, 4), False, True, "insufficient_successes"),
+        ((60, 10, 30, 5), True, True, None),
+        ((60, 10, 29, 5), True, False, "insufficient_expected_count"),
+    ],
+    ids=["five-successes", "four-successes", "expected-five", "expected-below-five"],
+)
+def test_success_and_expected_count_thresholds_include_their_boundary(
+    counts: tuple[int, int, int, int], interval: bool, null: bool, flag: str | None
+) -> None:
+    """Five observed successes pass the interval guard; 10 * 30 / 60 = 5 expected passes the null guard."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", ClimateIndicesWarning)
+        result = run(table(*counts))
+    assert bool(np.isfinite(result.confidence_low).all()) is interval
+    assert bool(np.isfinite(result.p_value).all()) is null
+    if flag is None:
+        assert np.all(result.quality_flags == 0)
+    else:
+        assert np.all(result.quality_flags & implementation._FLAGS[flag])
+
+
+def test_seed_selects_the_resample_stream() -> None:
+    hazards = table(60, 25, 30, 12)  # not periodic, so different block draws give different statistics
+    first, second = run(hazards, seed=1), run(hazards, seed=2)
+    np.testing.assert_array_equal(first.p_value, run(hazards, seed=1).p_value)
+    assert not np.array_equal(first.p_value, second.p_value)
+    assert not np.array_equal(first.confidence_low, second.confidence_low)
+
+
+def test_confidence_level_sets_the_quantile_levels() -> None:
+    values = np.arange(100, dtype=float) / 100
+    for level in (0.95, 0.5):
+        with (
+            mock.patch.object(implementation, "_resample", return_value=(values, values / 10)),
+            warnings.catch_warnings(),
+        ):
+            warnings.simplefilter("ignore", ClimateIndicesWarning)
+            result = run(groupby="pooled", n_resamples=100, confidence_level=level)
+        np.testing.assert_allclose(
+            [result.confidence_low, result.confidence_high],
+            np.quantile(values, [(1 - level) / 2, (1 + level) / 2], method="linear"),
+            rtol=0,
+            atol=1e-12,
+        )
+
+
+@pytest.mark.parametrize(
+    ("statistic", "pattern"),
+    [
+        ("conditional_probability", [[1, 1, 0], [0, 1, 1]]),
+        ("joint_probability", [[1, 1, 0], [0, 1, 1], [1, 0, 1]]),
+    ],
+    ids=["conditional", "three-hazard"],
+)
+def test_exact_tiny_enumeration_for_conditional_and_three_hazard_nulls(
+    statistic: implementation.Statistic, pattern: list[list[int]]
+) -> None:
+    """Enumerate every paired draw and every independent per-channel draw of three years in blocks of two."""
+    blocks = [np.array([s, s + 1, t]) for s, t in itertools.product(range(2), repeat=2)]
+    rows = np.repeat(np.array(pattern, dtype=bool)[..., None], 12, axis=2)
+
+    def point(x: np.ndarray) -> float:
+        return x.all(axis=0).sum() / x[0].sum() if statistic == "conditional_probability" else x.all(axis=0).mean()
+
+    def excess(x: np.ndarray) -> float:
+        if statistic == "conditional_probability":
+            return point(x) - x[1].mean()
+        return x.all(axis=0).mean() - np.prod(x.mean(axis=1))
+
+    draws = list(itertools.product(blocks, repeat=len(rows)))
+    schedule, expected_paired, expected_null = [], [], []
+    for b, channels in enumerate(draws):
+        paired = blocks[b % 4]
+        schedule.extend((paired, *channels))
+        expected_paired.append(point(rows[:, paired, 0]))
+        expected_null.append(excess(np.stack([rows[i, ch, 0] for i, ch in enumerate(channels)])))
+    with mock.patch.object(implementation, "_year_indices", side_effect=schedule):
+        paired, null = implementation._resample(
+            rows,
+            statistic=statistic,
+            groupby="pooled",
+            length=2,
+            n_resamples=len(draws),
+            seed=0,
+            support="tiny enumeration",
+        )
+    np.testing.assert_allclose(paired, expected_paired, rtol=0, atol=1e-15)
+    np.testing.assert_allclose(null, expected_null, rtol=0, atol=1e-15)
+
+
+@pytest.mark.parametrize(
     "option,value",
     [
         ("seed", True),
@@ -342,6 +449,31 @@ def test_sparse_and_expected_count_guards_remain_distinct() -> None:
         sparse = run(dataclasses.replace(hazards, exceedance=rows))
     assert np.isnan(sparse.confidence_low).all()
     assert np.all(sparse.quality_flags & implementation._FLAGS["sparse_occurrences"])
+
+
+def test_sparse_marginal_blocks_the_null_when_the_expected_count_is_met() -> None:
+    """9 * 40 / 60 = 6 expected successes, yet one channel has fewer than ten occurrences."""
+    with pytest.warns(ClimateIndicesWarning):
+        result = run(table(60, 9, 40, 5))
+    assert np.isnan(result.p_value).all()
+    assert np.all(result.quality_flags & implementation._FLAGS["sparse_occurrences"])
+    assert not np.any(result.quality_flags & implementation._FLAGS["insufficient_expected_count"])
+
+
+def test_undefined_point_estimate_is_flagged() -> None:
+    hazards = table(60, 30, 30, 5)
+    rows = hazards.exceedance.copy()
+    rows[1] = False
+    with pytest.warns(ClimateIndicesWarning):
+        result = run(dataclasses.replace(hazards, exceedance=rows), statistic="likelihood_multiplication_factor")
+    assert np.isnan(result.estimate).all()
+    assert np.all(result.quality_flags & implementation._FLAGS["undefined_denominator"])
+
+
+def test_quality_warning_points_at_the_caller() -> None:
+    with pytest.warns(ClimateIndicesWarning) as caught:
+        run(prepared(30))
+    assert caught[0].filename == __file__
 
 
 @pytest.mark.parametrize("statistic", ["likelihood_multiplication_factor", "conditional_probability"])
