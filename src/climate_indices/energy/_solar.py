@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import time
+
 import numpy as np
 import numpy.typing as npt
 
 from climate_indices._recurrence import _as_float_array
 from climate_indices.exceptions import InvalidArgumentError
+from climate_indices.logging_config import get_logger, log_calculation_failure
+from climate_indices.performance import check_large_array_memory
+
+_logger = get_logger(__name__)
 
 
 def pv_capacity_factor(
@@ -58,15 +64,36 @@ def pv_capacity_factor(
         Chenni et al. (2007), Energy 32, 1724–1730.
         https://doi.org/10.1016/j.energy.2006.12.006
     """
+    log = _logger.bind(index_type="pv_capacity_factor")
+    log.info("calculation_started")
+    t0 = time.perf_counter()
+    memory_metrics: dict[str, float] = {}
     try:
-        radiation, air, wind = np.broadcast_arrays(
-            _as_float_array(ssrd), _as_float_array(temperature), _as_float_array(wind_speed)
+        try:
+            radiation, air, wind = np.broadcast_arrays(
+                _as_float_array(ssrd), _as_float_array(temperature), _as_float_array(wind_speed)
+            )
+        except ValueError as exc:
+            raise InvalidArgumentError("ssrd, temperature, and wind_speed must broadcast together.") from exc
+        log = log.bind(input_shape=radiation.shape, input_elements=radiation.size)
+        # Budget for cell temperature, arithmetic and output buffers, and temporary masks.
+        memory_metrics = (
+            check_large_array_memory(radiation, air, wind, extra_bytes=radiation.size * (5 * radiation.itemsize + 3))
+            or {}
         )
-    except ValueError as exc:
-        raise InvalidArgumentError("ssrd, temperature, and wind_speed must broadcast together.") from exc
-    valid = np.isfinite(radiation) & np.isfinite(air) & np.isfinite(wind) & (radiation >= 0) & (wind >= 0)
-    with np.errstate(over="ignore", invalid="ignore", under="ignore"):
-        cell = 4.3 + 0.943 * air + 0.028 * radiation - 1.528 * wind
-        result = (radiation / 1000) * (1 - 0.005 * (cell - 25))
-        result = np.where(radiation == 0, 0.0, result)
-    return np.asarray(np.where(valid & np.isfinite(result), np.clip(result, 0, 1), np.nan), dtype=np.float64)
+        valid = np.isfinite(radiation) & np.isfinite(air) & np.isfinite(wind) & (radiation >= 0) & (wind >= 0)
+        with np.errstate(over="ignore", invalid="ignore", under="ignore"):
+            cell = 4.3 + 0.943 * air + 0.028 * radiation - 1.528 * wind
+            result = (radiation / 1000) * (1 - 0.005 * (cell - 25))
+            result = np.where(radiation == 0, 0.0, result)
+        result = np.asarray(np.where(valid & np.isfinite(result), np.clip(result, 0, 1), np.nan), dtype=np.float64)
+        log.info(
+            "calculation_completed",
+            duration_ms=round((time.perf_counter() - t0) * 1000.0, 2),
+            output_shape=result.shape,
+            **memory_metrics,
+        )
+        return result
+    except Exception as exc:
+        log_calculation_failure(log, exc, duration_ms=round((time.perf_counter() - t0) * 1000.0, 2), **memory_metrics)
+        raise

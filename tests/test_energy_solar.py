@@ -3,12 +3,14 @@
 import hashlib
 import json
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 import numpy.typing as npt
 import pytest
 
-from climate_indices import energy
+from climate_indices import energy, performance
+from climate_indices.energy import _solar
 from climate_indices.exceptions import InputTypeError, InvalidArgumentError
 
 
@@ -106,11 +108,81 @@ def test_extremes_do_not_warn_or_turn_overflow_into_capacity() -> None:
 def test_accumulated_era5_radiation_uses_actual_interval_duration() -> None:
     # Exact unit conversion: J m-2 / seconds = W m-2, including non-hourly intervals.
     seconds = np.array([1800, 3600, 10800])
-    flux = np.array([500, 500, 500])
-    np.testing.assert_array_equal(
-        energy.pv_capacity_factor(flux * seconds / seconds, 20, 2),
-        energy.pv_capacity_factor(flux, 20, 2),
+    accumulated = np.array([900000, 1800000, 2700000])
+    np.testing.assert_allclose(
+        energy.pv_capacity_factor(accumulated / seconds, 20, 2),
+        [0.47724, 0.47724, 0.24737],
+        rtol=0,
+        atol=1e-12,
     )
+
+
+@pytest.mark.parametrize("large_array", [False, True])
+def test_pv_calculation_logs_and_allocation_accounting(large_array: bool) -> None:
+    logger = mock.MagicMock()
+    logger.bind.return_value = logger
+    with (
+        mock.patch.object(_solar, "_logger", logger),
+        mock.patch.object(performance, "LARGE_ARRAY_THRESHOLD_BYTES", 1 if large_array else 1024**3),
+        mock.patch.object(performance, "get_process_memory_mb", return_value=12.5),
+        mock.patch.object(_solar, "check_large_array_memory", wraps=performance.check_large_array_memory) as memory,
+    ):
+        result = energy.pv_capacity_factor(np.array([[500.0], [np.nan]]), np.array([[0.0, 20.0, 40.0]]), 2)
+
+    context = {key: value for call in logger.bind.call_args_list for key, value in call.kwargs.items()}
+    assert context["index_type"] == "pv_capacity_factor"
+    assert context["input_shape"] == result.shape == (2, 3)
+    assert context["input_elements"] == result.size
+    assert np.isnan(result[1]).all()
+    assert [call.args[0] for call in logger.info.call_args_list] == [
+        "calculation_started",
+        "calculation_completed",
+    ]
+    completed = logger.info.call_args_list[-1].kwargs
+    assert completed["output_shape"] == result.shape
+    assert completed["duration_ms"] >= 0
+    assert len(memory.call_args.args) == 3
+    assert all(array.shape == result.shape for array in memory.call_args.args)
+    extra_bytes = result.size * (5 * result.itemsize + 3)
+    assert memory.call_args.kwargs == {"extra_bytes": extra_bytes}
+    if large_array:
+        total_bytes = sum(array.nbytes for array in memory.call_args.args) + extra_bytes
+        assert completed["array_memory_mb"] == round(total_bytes / 1024**2, 2)
+        assert completed["process_memory_mb"] == 12.5
+    else:
+        assert "array_memory_mb" not in completed
+        assert "process_memory_mb" not in completed
+    logger.error.assert_not_called()
+
+
+@pytest.mark.parametrize("operation", ["_as_float_array", "np.broadcast_arrays", "check_large_array_memory", "np.clip"])
+def test_pv_calculation_failure_logs_and_propagates(operation: str) -> None:
+    logger = mock.MagicMock()
+    logger.bind.return_value = logger
+    with (
+        mock.patch.object(_solar, "_logger", logger),
+        mock.patch.object(performance, "LARGE_ARRAY_THRESHOLD_BYTES", 1),
+        mock.patch.object(performance, "get_process_memory_mb", return_value=12.5),
+        mock.patch(f"climate_indices.energy._solar.{operation}", side_effect=MemoryError("synthetic failure")),
+        pytest.raises(MemoryError, match="synthetic failure"),
+    ):
+        energy.pv_capacity_factor(np.full((2, 1), 500.0), np.full((1, 3), 20.0), 2)
+
+    logger.info.assert_called_once_with("calculation_started")
+    logger.error.assert_called_once()
+    assert logger.error.call_args.args == ("calculation_failed",)
+    failed = logger.error.call_args.kwargs
+    assert failed["error_type"] == "MemoryError"
+    assert failed["error_message"] == "synthetic failure"
+    assert failed["duration_ms"] >= 0
+    context = {key: value for call in logger.bind.call_args_list for key, value in call.kwargs.items()}
+    assert context["index_type"] == "pv_capacity_factor"
+    if operation in ("check_large_array_memory", "np.clip"):
+        assert context["input_shape"] == (2, 3)
+        assert context["input_elements"] == 6
+    if operation == "np.clip":
+        assert "array_memory_mb" in failed
+        assert failed["process_memory_mb"] == 12.5
 
 
 def test_matched_pvlib_power_temperature_term() -> None:

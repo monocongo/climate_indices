@@ -125,7 +125,7 @@ Copy-and-adapt invocations are in {doc}`workflow-examples`.
 
 ### climate_indices.energy
 
-NumPy degree-day, wind-resource, PV-resource, standardized-index (SREPI, demand),
+NumPy degree-day, wind-resource, PV-resource, standardized-index (SREPI, demand, SRLI),
 and event-statistics proxies describe climate conditions, not actual generation or load.
 `pv_capacity_factor()` uses the fixed Jerez configuration and accepts mean
 radiation in W m⁻². Callers convert accumulated SSRD by dividing by the interval

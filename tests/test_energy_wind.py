@@ -24,7 +24,9 @@ def test_energy_namespace_is_exported_without_root_functions() -> None:
         "heating_degree_days",
         "hub_height_wind_speed",
         "pv_capacity_factor",
+        "residual_load",
         "srepi",
+        "srli",
         "standardized_demand_index",
         "wind_shear_exponent",
     }

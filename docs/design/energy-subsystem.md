@@ -76,6 +76,12 @@ SREPI callers supplying accumulated production must select `aggregation="sum"`;
 input meaning is never inferred from magnitudes. Beta is available only for bounded
 [0, 1] capacity factors with `aggregation="mean"`, not accumulated production.
 
+`energy.residual_load()` forms the SRLI input: demand minus the sum, over technologies, of
+capacity factor times installed capacity. The caller supplies the capacities in units that
+match the demand series, and the result stays signed. `energy.srli()` takes an explicit
+`distribution` keyword and raises for any member but the empirical one, so the restriction
+is an error message and not a missing argument.
+
 The empirical path is the default because Allen & Otero (2023) recommend it above
 roughly 100 observations, and because it is the family the energy API admits a signed
 series on: a rank-based standardization has no support to violate and no point mass to
