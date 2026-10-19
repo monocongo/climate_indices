@@ -16,8 +16,8 @@ import pytest
 import xarray as xr
 
 from climate_indices import __main__ as cli_main
-from climate_indices import _cli, compute, energy
-from climate_indices.exceptions import CoordinateValidationError
+from climate_indices import _cli, compute, energy, indices
+from climate_indices.exceptions import CoordinateValidationError, InvalidArgumentError
 
 # twelve complete calendar years of daily record, 2015 through 2026: the
 # empirical distribution needs at least ten valid calibration values per
@@ -289,6 +289,32 @@ class TestEnergyValidation:
         assert "missing --scales argument" in str(error.value)
 
     @pytest.mark.parametrize("index", _STANDARDIZED_INDICES)
+    @pytest.mark.parametrize("periodicity", tuple(compute.Periodicity))
+    @pytest.mark.parametrize("invalid_scale", [0, -1, "above_maximum"])
+    def test_invalid_scale_lists_write_no_output(self, tmp_path, index, periodicity, invalid_scale):
+        maximum = indices.SCALE_MAX_DAILY if periodicity is compute.Periodicity.daily else indices.SCALE_MAX
+        if invalid_scale == "above_maximum":
+            invalid_scale = maximum + 1
+        arguments = _arguments_for(index, tmp_path, periodicity=periodicity, scales=[1, invalid_scale])
+        if periodicity is compute.Periodicity.monthly:
+            _INPUTS[index]().resample(time="MS").mean().to_netcdf(arguments.netcdf_values)
+
+        with pytest.raises((ValueError, InvalidArgumentError), match="[Ss]cale"):
+            cli_main.process_climate_indices(arguments)
+
+        assert not list(tmp_path.glob("out_*.nc"))
+
+    @pytest.mark.parametrize("index", _STANDARDIZED_INDICES)
+    @pytest.mark.parametrize("periodicity", tuple(compute.Periodicity))
+    def test_accepts_periodicity_specific_scale_limits(self, index, periodicity):
+        maximum = indices.SCALE_MAX_DAILY if periodicity is compute.Periodicity.daily else indices.SCALE_MAX
+        arguments = _energy_arguments(index, periodicity=periodicity, scales=[1, maximum])
+
+        cli_main._validate_scales(arguments)
+
+        assert arguments.scales == [1, maximum]
+
+    @pytest.mark.parametrize("index", _STANDARDIZED_INDICES)
     def test_rejects_an_input_whose_cadence_contradicts_the_periodicity(self, tmp_path, index):
         """--periodicity is passed to the adapter, so a monthly input cannot pass as daily."""
         source = (
@@ -368,6 +394,32 @@ class TestEnergyValidation:
         assert cli_main._validate_args(arguments) is cli_main.DatasetLayout.GRID
 
 
+class TestEnergyPreconditions:
+    @pytest.mark.parametrize("index", ("hdd", "wind_profile", "srepi"))
+    def test_input_requires_a_variable_name(self, index):
+        arguments = _energy_arguments(index, **{_INPUT_FIELD[index]: "input.nc"})
+        request = cli_main._IndexRequest.from_arguments(arguments, index=index, input_type=cli_main.DatasetLayout.GRID)
+
+        with pytest.raises(ValueError, match="the input variable name was not validated"):
+            cli_main._energy_input(request)
+
+    @pytest.mark.parametrize(
+        ("index", "field"),
+        [
+            ("hdd", "heating_base_temperature"),
+            ("cdd", "cooling_base_temperature"),
+            ("edd", "heating_base_temperature"),
+            ("edd", "cooling_base_temperature"),
+            ("wind_profile", "hub_height"),
+        ],
+    )
+    def test_runner_rejects_an_unvalidated_argument(self, index, field):
+        arguments = _energy_arguments(index, **{field: None})
+
+        with pytest.raises(ValueError, match="not validated"):
+            cli_main._registry_for(index).run(arguments, cli_main.DatasetLayout.GRID, cli_main.Transport(1))
+
+
 class TestEnergyProcessing:
     @pytest.mark.parametrize("index", _INDICES)
     def test_writes_cf_annotated_output(self, tmp_path, index):
@@ -385,13 +437,23 @@ class TestEnergyProcessing:
             np.testing.assert_allclose(dataset[name].values, _expected(index, source).values, equal_nan=True)
 
     @pytest.mark.parametrize("index", _STANDARDIZED_INDICES)
-    def test_each_scale_writes_its_own_file(self, tmp_path, index):
+    @pytest.mark.parametrize("scales", ([1, _SCALE], [_SCALE, 1, _SCALE, 1]))
+    def test_each_scale_writes_its_own_file(self, monkeypatch, tmp_path, index, scales):
         _path, source = _input_file(tmp_path, index)
+        written = []
+        original = cli_main._write_xarray_index
 
-        cli_main.process_climate_indices(_arguments_for(index, tmp_path, scales=[1, _SCALE]))
+        def _capture(request, *args, **kwargs):
+            written.append(request.scale)
+            return original(request, *args, **kwargs)
 
+        monkeypatch.setattr(cli_main, "_write_xarray_index", _capture)
+
+        cli_main.process_climate_indices(_arguments_for(index, tmp_path, scales=scales))
+
+        assert written == list(dict.fromkeys(scales))
         base = _OUTPUT_NAMES[index].rsplit("_", 1)[0]
-        for scale in (1, _SCALE):
+        for scale in written:
             with xr.open_dataset(tmp_path / f"out_{base}_{scale:02d}.nc") as dataset:
                 np.testing.assert_allclose(
                     dataset[f"{base}_{scale:02d}"].values,

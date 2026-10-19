@@ -548,11 +548,15 @@ def _validate_awc_input(args: argparse.Namespace, context: _InputContext) -> Non
 
 def _validate_scales(args: argparse.Namespace) -> None:
     """
-    Validate the time scales of a scaled index.
+    Validate the Timescales of a scaled index.
+
+    Energy indices use the adapter's periodicity-specific bounds and process
+    each requested Timescale once.
 
     param args: an arguments object of the type returned by
         argparse.ArgumentParser.parse_args()
     raise ValueError: if no scales were provided or one is negative
+    raise InvalidArgumentError: if an energy Timescale exceeds its periodicity's limits
     """
 
     if not args.scales:
@@ -567,6 +571,11 @@ def _validate_scales(args: argparse.Namespace) -> None:
         msg = "One or more negative scale specified within --scales argument"
         _logger.error(msg)
         raise ValueError(msg)
+
+    if args.index in _ENERGY_OUTPUT_NAMES:
+        for scale in args.scales:
+            indices._validate_scale(scale, args.periodicity)
+        args.scales = list(dict.fromkeys(args.scales))
 
 
 def _validate_output_scale(args: argparse.Namespace, handlers: Sequence[_IndexRegistration]) -> None:
@@ -2176,7 +2185,8 @@ def _energy_input(request: _IndexRequest) -> tuple[str, str]:
         netcdf_file = getattr(request, netcdf_field)
         if netcdf_file is not None:
             var_name = getattr(request, var_name_field)
-            assert var_name is not None, "the input variable name was not validated"
+            if var_name is None:
+                raise ValueError("the input variable name was not validated")
             return netcdf_file, var_name
 
     msg = f"No input series was validated for {request.index}"
@@ -2234,7 +2244,8 @@ def _run_hdd(arguments: argparse.Namespace, input_type: DatasetLayout, transport
     :param arguments: the parsed command line arguments
     :param input_type: the input type determined by argument validation
     """
-    assert arguments.heating_base_temperature is not None, _UNVALIDATED_BASE
+    if arguments.heating_base_temperature is None:
+        raise ValueError(_UNVALIDATED_BASE)
     _run_energy_index(
         arguments,
         input_type,
@@ -2250,7 +2261,8 @@ def _run_cdd(arguments: argparse.Namespace, input_type: DatasetLayout, transport
     :param arguments: the parsed command line arguments
     :param input_type: the input type determined by argument validation
     """
-    assert arguments.cooling_base_temperature is not None, _UNVALIDATED_BASE
+    if arguments.cooling_base_temperature is None:
+        raise ValueError(_UNVALIDATED_BASE)
     _run_energy_index(
         arguments,
         input_type,
@@ -2266,8 +2278,8 @@ def _run_edd(arguments: argparse.Namespace, input_type: DatasetLayout, transport
     :param arguments: the parsed command line arguments
     :param input_type: the input type determined by argument validation
     """
-    assert arguments.heating_base_temperature is not None, _UNVALIDATED_BASE
-    assert arguments.cooling_base_temperature is not None, _UNVALIDATED_BASE
+    if arguments.heating_base_temperature is None or arguments.cooling_base_temperature is None:
+        raise ValueError(_UNVALIDATED_BASE)
     _run_energy_index(
         arguments,
         input_type,
@@ -2292,7 +2304,8 @@ def _run_wind_profile(arguments: argparse.Namespace, input_type: DatasetLayout, 
     :param arguments: the parsed command line arguments
     :param input_type: the input type determined by argument validation
     """
-    assert arguments.hub_height is not None, _UNVALIDATED_HEIGHT
+    if arguments.hub_height is None:
+        raise ValueError(_UNVALIDATED_HEIGHT)
     reference_height = 10.0 if arguments.reference_height is None else arguments.reference_height
 
     if arguments.wind_profile_method == "log":
