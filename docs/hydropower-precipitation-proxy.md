@@ -77,7 +77,7 @@ for timescale, scores in hydro_proxy.items():
 
 The two-parameter Gamma Distribution follows the precipitation convention,
 as in {doc}`standardized-hydrologic-indices`. It is an explicit recipe
-choice, not the planned empirical standardization for SREPI or SRLI.
+choice, not the empirical standardization of SREPI or SRLI.
 Check whether the chosen Distribution fits your series; see
 {doc}`checking-distribution-fit` and {doc}`choosing-parameters`.
 

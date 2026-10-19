@@ -17,16 +17,19 @@ from climate_indices.exceptions import InputTypeError, InvalidArgumentError
 def test_energy_namespace_is_exported_without_root_functions() -> None:
     assert "energy" in climate_indices.__all__
     assert set(energy.__all__) == {
+        "SREPI_DROUGHT_THRESHOLDS",
         "cooling_degree_days",
         "energy_degree_days",
         "heating_degree_days",
         "hub_height_wind_speed",
         "residual_load",
+        "srepi",
         "srli",
+        "standardized_demand_index",
         "wind_shear_exponent",
     }
     for name in energy.__all__:
-        assert callable(getattr(energy, name))
+        assert callable(getattr(energy, name)) or name == "SREPI_DROUGHT_THRESHOLDS"
         assert not hasattr(climate_indices, name)
 
 

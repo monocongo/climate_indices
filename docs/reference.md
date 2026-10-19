@@ -125,9 +125,9 @@ Copy-and-adapt invocations are in {doc}`workflow-examples`.
 
 ### climate_indices.energy
 
-NumPy degree-day and wind-resource proxies and the SRLI standardization of residual
-load: the climate-driven component of supply and demand, not actual generation or
-load. xarray/Dask adapters for the standardized indices remain planned; see {doc}`energy_applications` for scope and validation limits.
+NumPy degree-day, wind-resource, and standardized-index proxies (SREPI, demand, SRLI),
+not actual energy generation or load. Standardized-index xarray/Dask adapters
+remain planned; see {doc}`energy_applications` for scope and validation limits.
 
 ```{eval-rst}
 .. automodule:: climate_indices.energy
