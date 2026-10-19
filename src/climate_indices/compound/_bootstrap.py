@@ -262,8 +262,11 @@ def _bootstrap(
         sparse = (marginal < 10).any(axis=0)
         flags |= np.where(sparse, _FLAGS["sparse_occurrences"], 0)
         flags |= np.where(~np.isfinite(point), _FLAGS["undefined_denominator"], 0)
-        rates = _safe_rate(marginal, n)
-        expected = marginal[0] * rates[1] if statistic == "conditional_probability" else n * np.prod(rates, axis=0)
+        # Integer products keep an exact count of 5 at 5; n * prod(m / n) can round to 4.999999999999999.
+        if statistic == "conditional_probability":
+            expected = _safe_rate(marginal[0] * marginal[1], n)
+        else:
+            expected = _safe_rate(np.prod(marginal, axis=0), n ** (len(selected) - 1))
         interval_ok = (successes >= 5) & ~sparse
         null_ok = (expected >= 5) & ~sparse
         flags |= np.where(successes < 5, _FLAGS["insufficient_successes"], 0)

@@ -27,6 +27,14 @@ def prepared(years: int = 60, *, cells: int | None = None) -> compound.AlignedHa
     return compound.AlignedHazards(("A", "B"), time.astype("datetime64[D]"), "monthly", rows, np.ones_like(rows), {})
 
 
+def table(years: int, n_a: int, n_b: int, n_joint: int) -> compound.AlignedHazards:
+    """Repeat one ``years``-long contingency table in every month: ``n_a`` and ``n_b`` marginal and ``n_joint`` joint years."""
+    rows = np.zeros((2, years), dtype=bool)
+    rows[0, :n_a] = True
+    rows[1, n_a - n_joint : n_a - n_joint + n_b] = True
+    return dataclasses.replace(prepared(years), exceedance=np.repeat(rows, 12, axis=1))
+
+
 def run(hazards: compound.AlignedHazards | None = None, **options: Any) -> compound.BootstrapResult:
     return compound.bootstrap_dependence(
         prepared() if hazards is None else hazards,
@@ -103,16 +111,10 @@ def test_inclusive_ties_never_produce_zero_p_values() -> None:
 )
 def test_inclusive_ties_survive_float_rounding(alternative: str, n_a: int, n_b: int, n_joint: int) -> None:
     """Each month holds 30 years with ``n_joint * 30 == n_a * n_b``: independence, a mathematical zero."""
-    years = 30
-    rows = np.zeros((2, years), dtype=bool)
-    rows[0, :n_a] = True
-    rows[1, n_a - n_joint : n_a - n_joint + n_b] = True
-    hazards = dataclasses.replace(
-        prepared(years), exceedance=np.repeat(rows, 12, axis=1), valid=np.ones((2, years * 12), dtype=bool)
-    )
+    hazards = table(30, n_a, n_b, n_joint)
     # The observed float excess is +/-2.8e-17 rather than 0; a null of exact zeros must still count as tied.
     observed = implementation._metrics(
-        rows.reshape(2, years, 1).repeat(12, axis=2), np.ones((years, 12), dtype=bool), "joint_probability", "month"
+        hazards.exceedance.reshape(2, 30, 12), np.ones((30, 12), dtype=bool), "joint_probability", "month"
     )[1]
     assert np.all(observed != 0)
     zeros = np.zeros((39, 12))
@@ -315,6 +317,13 @@ def test_daily_manual_input_and_conditional_role_validation() -> None:
         run(statistic="conditional_probability", given="A", target="A")
     with pytest.raises(InvalidArgumentError):
         run(statistic="conditional_probability", given="missing", target="B")
+
+
+def test_expected_count_guard_is_exact_at_its_boundary() -> None:
+    """11 * 15 / 33 is exactly 5, but ``33 * (11/33) * (15/33)`` rounds to 4.999999999999999."""
+    result = run(table(33, 11, 15, 5), block_length_years=3)
+    assert np.all(np.isfinite(result.p_value))
+    assert np.all(result.quality_flags == 0)
 
 
 def test_sparse_and_expected_count_guards_remain_distinct() -> None:
