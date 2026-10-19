@@ -363,7 +363,11 @@ def summarize_runs(
             input steps. Infinities retain the comparisons of ``identify_runs``.
         periods: One label per input step, such as a year or month. Labels must
             be real numbers, strings, datetime64, or timedelta64, without missing
-            or infinite values. Repeated labels form one group. With ``None``,
+            or infinite values. Missing means NaN or infinity in a float array,
+            NaT in a datetime64 or timedelta64 array, or a masked element. A
+            string array holds the text ``"nan"`` as an ordinary label, so
+            mixed string and NaN input is not rejected. Repeated labels form
+            one group. With ``None``,
             report one summary labelled zero, even for an empty input. Explicit
             empty labels produce empty summary arrays.
         threshold: Run threshold, as in :func:`identify_runs`.

@@ -121,6 +121,13 @@ def test_period_labels_cannot_be_missing_or_infinite(periods: np.ndarray) -> Non
         runs.summarize_runs([-2, -3], periods=periods)
 
 
+def test_mixed_string_and_nan_labels_are_an_ordinary_nan_label() -> None:
+    # NumPy turns the NaN into the text "nan" before summarize_runs sees it.
+    result = runs.summarize_runs([-2, -3], periods=np.array(["2020", np.nan]))
+
+    assert result.period.tolist() == ["2020", "nan"]
+
+
 @pytest.mark.parametrize("periods", [[1j, 2j], np.array([None, 1], dtype=object)])
 def test_period_labels_reject_unsupported_dtypes(periods: np.ndarray) -> None:
     with pytest.raises(InputTypeError, match="periods"):

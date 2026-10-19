@@ -5628,7 +5628,10 @@ and count as observations; callers must mask them if they represent missing data
 
 Periods with no events have zero count, duration, and maximum magnitude.
 Frequency is NaN when a period has no valid observations. Missing, masked, or
-infinite period labels are rejected rather than silently dropped.
+infinite period labels are rejected rather than silently dropped. Missing means
+NaN or infinity in a float array, NaT in a datetime64 or timedelta64 array, or
+a masked element. NumPy converts mixed string and NaN labels to a string array
+that holds the text `"nan"`, so such input is an ordinary label, not missing.
 These conventions also apply to
 {func}`climate_indices.energy.energy_drought_events`.
 
