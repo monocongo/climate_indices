@@ -400,8 +400,13 @@ and sub-national units ([DOI 10.24381/3bb607bd][c3s-doi]). Its capacity
 factors, degree days, and demand series are ready inputs to the standardized
 indices.
 ERA5 itself, or CMIP model output, supplies the raw temperature, wind,
-radiation, and precipitation for the physical transforms. An end-to-end
-gridded demonstration on these data is planned ([#1179][energy-1179]).
+radiation, and precipitation for the physical transforms. The
+[ERA5 energy demonstration notebook][energy-demo] computes wind-resource and
+degree-day proxies, SREPI, standardized demand, an explicitly normalized SRLI
+proxy, events, and sampled-cell maps for the January 2017 cold spell. It runs
+without credentials on a committed twelve-cell subset during the documentation
+doctest build. Its wind-only proxy and illustrative demand/capacity assumptions
+are not actual generation or load, or a reproduction of C3S energy indicators.
 
 ## What these indices cannot tell you
 
@@ -457,5 +462,5 @@ gridded demonstration on these data is planned ([#1179][energy-1179]).
 [energy-1175]: https://github.com/monocongo/climate_indices/issues/1175
 [energy-1176]: https://github.com/monocongo/climate_indices/issues/1176
 [energy-1177]: https://github.com/monocongo/climate_indices/issues/1177
-[energy-1179]: https://github.com/monocongo/climate_indices/issues/1179
+[energy-demo]: https://github.com/monocongo/climate_indices/blob/main/notebooks/energy_demo.ipynb
 [energy-1180]: https://github.com/monocongo/climate_indices/issues/1180

@@ -25,6 +25,7 @@ is in the `dev` dependency group.
 | [check_spi_fit] | Compare gamma and Pearson SPI-1/3/12 using PIT histograms, January KS p-value maps, and probability-of-zero maps | Same prepared nClimGrid sample; a central crop is used for speed | Depends on crop and machine | Executed offline on a synthetic prepared store by `tests/test_e2e_with_dask.py` |
 | [fire_weather_demo] | The fire-weather family (KBDI, CFFWIS, Fosberg FFWI, HDW) over a CONUS subset, plus an SPI-3/EDDI-3 baseline for the 2020 fire season | Prepared ERA5 subset; generate it once with `uv run --group dev scripts/prepare_fire_demo_inputs.py` (multi-gigabyte download into the git-ignored `data/fire-demo/`, about half an hour on the first run) | Notebook execution not tracked; preparation is about 30 minutes | Not executed in CI |
 | [flood_event_brisbane_2011] | I_F, API, and the SPI wet tail on gridded daily precipitation around the January 2011 Brisbane and Lockyer Valley flood event, with the flood-potential-not-flooding caveat | NOAA PSL CPC daily precipitation; the notebook downloads the 33 yearly subsets itself on the first run (about 250 KB each) and caches them under the git-ignored `data/flood-demo/` | Seconds with the cache; a few minutes on the first run | Not executed in CI; run `scripts/smoke_flood_demo_notebook.sh` locally |
+| [energy_demo] | ERA5 wind and degree-day transforms, SREPI, standardized demand, an explicitly normalized SRLI proxy, events, and sampled-cell maps for the January 2017 European cold spell | Committed six-hourly ERA5 cache for twelve cells over 1991–2020; no download or credentials | Less than a minute on the development machine | Executed by the documentation doctest build and the offline core regression test |
 
 The three notebooks the `notebooks` CI job executes are verified on every pull
 request targeting `main` by the workflow step `Execute 3.0.0 notebooks`; changes
@@ -32,6 +33,37 @@ that break them fail CI. The Zarr/Dask notebook is verified by the core test
 suite instead, apart from its local-only Dask client cell; the fit-audit notebook
 also runs against an offline test store in that suite. The fire-weather and
 flood-event demos are manual examples that no CI job runs.
+
+### Execute the cached energy notebook
+
+Open [energy_demo] for the tutorial, maps, source attribution, and CDS API
+instructions. The notebook uses illustrative demand and capacity assumptions,
+not actual generation or load. It uses a wind-only production proxy; it does
+not reproduce the C3S energy-indicator product.
+
+The documentation gate executes the notebook below through `nbclient`, using
+only the committed cache. This runs during `sphinx-build -b doctest`, including
+in CI. The HTML build, including Read the Docs, links to the notebook; it does
+not execute it. No notebook parser or duplicate tutorial source is required.
+
+```{testcode} energy-notebook
+:hide:
+
+from pathlib import Path
+import climate_indices
+import nbformat
+from nbclient import NotebookClient
+
+repository = Path(climate_indices.__file__).resolve().parents[2]
+notebook_path = repository / "notebooks" / "energy_demo.ipynb"
+notebook = nbformat.read(notebook_path, as_version=4)
+client = NotebookClient(
+    notebook, timeout=180, kernel_name="python3",
+    resources={"metadata": {"path": str(notebook_path.parent)}},
+)
+executed = client.execute()
+assert all(cell.execution_count is not None for cell in executed.cells if cell.cell_type == "code")
+```
 
 ## Unmaintained notebooks
 
@@ -61,6 +93,7 @@ for the single-time-chunk correctness constraint.
 [check_spi_fit]: https://github.com/monocongo/climate_indices/blob/main/notebooks/check_spi_fit.ipynb
 [fire_weather_demo]: https://github.com/monocongo/climate_indices/blob/main/notebooks/fire_weather_demo.ipynb
 [flood_event_brisbane_2011]: https://github.com/monocongo/climate_indices/blob/main/notebooks/flood_event_brisbane_2011.ipynb
+[energy_demo]: https://github.com/monocongo/climate_indices/blob/main/notebooks/energy_demo.ipynb
 [concurrent_shared_memory_example]: https://github.com/monocongo/climate_indices/blob/main/notebooks/concurrent_shared_memory_example.ipynb
 [generate_fitting_parameters_nclimgrid]: https://github.com/monocongo/climate_indices/blob/main/notebooks/generate_fitting_parameters_nclimgrid.ipynb
 [muitprocess_spi_nclimgrid]: https://github.com/monocongo/climate_indices/blob/main/notebooks/muitprocess_spi_nclimgrid.ipynb
