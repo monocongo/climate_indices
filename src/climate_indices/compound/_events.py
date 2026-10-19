@@ -450,14 +450,33 @@ _Rows = tuple[
     npt.NDArray[np.int64],
     npt.NDArray[np.float64],
 ]
+# remaining rows the caller will accept, and the total limit it chose, so the error can name both
+_Budget = tuple[int, int]
 
 
-def _concurrent_rows(second: _SourceRuns, onset: int, ending: int) -> _Rows | None:
+def _row_limit(limit: int, remaining: int, count: int, *, mode: str) -> InvalidArgumentError:
+    """Build the error for one source run whose candidates would exceed the caller's row budget."""
+    advice = "select a smaller subset or raise min_duration"
+    if mode == "sequential":
+        advice += ", or bound lag_window"
+    return InvalidArgumentError(
+        f"One source run matches {count} {'run' if count == 1 else 'runs'} of the other source, beyond the "
+        f"{limit}-row limit this result allows ({remaining} {'row' if remaining == 1 else 'rows'} remaining). "
+        f"An all-pairs match grows quadratically; to fit the limit, {advice}.",
+        argument_name="hazards",
+        valid_values=f"a subset whose catalog holds at most {limit} rows",
+    )
+
+
+def _concurrent_rows(second: _SourceRuns, onset: int, ending: int, *, budget: _Budget | None = None) -> _Rows | None:
     """Return the second runs that overlap one first run as (matched, starts, ends, overlaps, lags)."""
     lower = int(np.searchsorted(second.end, onset, side="left"))
     upper = int(np.searchsorted(second.start, ending, side="right"))
     if lower >= upper:
         return None
+    # checked before any array is built, so a quadratic fanout fails instead of allocating it
+    if budget is not None and upper - lower > budget[0]:
+        raise _row_limit(budget[1], budget[0], upper - lower, mode="concurrent")
     starts = np.maximum(onset, second.start[lower:upper])
     ends = np.minimum(ending, second.end[lower:upper])
     return (
@@ -476,6 +495,8 @@ def _sequential_rows(
     steps: int,
     window: tuple[int, int | None],
     unknown_prefix: npt.NDArray[np.int64],
+    *,
+    budget: _Budget | None = None,
 ) -> tuple[int, _Rows | None]:
     """Return the bridges rejected as unknown and the accepted second runs after one first run."""
     low, high = window
@@ -500,6 +521,8 @@ def _sequential_rows(
     rejected = upper - accepted
     if lower >= accepted:
         return rejected, None
+    if budget is not None and accepted - lower > budget[0]:
+        raise _row_limit(budget[1], budget[0], accepted - lower, mode="sequential")
     matched = np.arange(lower, accepted, dtype=np.int64)
     return rejected, (
         matched,
@@ -518,6 +541,7 @@ def _match(
     mode: str,
     window: tuple[int, int | None],
     max_pairs: int | None = None,
+    pair_limit: int | None = None,
 ) -> _Matched:
     """Enumerate the matched pairs and count the sequential bridges rejected as unknown.
 
@@ -528,8 +552,9 @@ def _match(
     last start at or before ``first.end + high``. Searching those bounds keeps the
     per-first-run work proportional to its candidates, not to every second run. The accepted
     candidates are a prefix of the window, so counting the rejected bridges needs one lookup
-    rather than a test per candidate pair. ``max_pairs`` bounds the rows held at once, so a
-    caller that assembles a larger result fails instead of allocating it.
+    rather than a test per candidate pair. ``max_pairs`` caps the rows held at once: each source run's
+    candidate count is compared with the remaining budget before its arrays are built, so a
+    quadratic fanout fails instead of being allocated.
     """
     steps = int(valid_prefix.size) - 1
     # unknown_prefix[i] counts the unknown steps before i; it does not decrease, so the first
@@ -542,23 +567,18 @@ def _match(
     matched_rows = 0
     for position in range(first.start.size):
         onset, ending = int(first.start[position]), int(first.end[position])
+        budget: _Budget | None = (
+            None if max_pairs is None else (max_pairs - matched_rows, max_pairs if pair_limit is None else pair_limit)
+        )
         if mode == "concurrent":
-            rows = _concurrent_rows(second, onset, ending)
+            rows = _concurrent_rows(second, onset, ending, budget=budget)
         else:
-            rejected, rows = _sequential_rows(second, onset, ending, steps, window, unknown_prefix)
+            rejected, rows = _sequential_rows(second, onset, ending, steps, window, unknown_prefix, budget=budget)
             unknown_bridges += rejected
         if rows is None:
             continue
         matched, starts, ends, overlaps, lags = rows
         matched_rows += int(matched.size)
-        if max_pairs is not None and matched_rows > max_pairs:
-            raise InvalidArgumentError(
-                f"Matching reached the {max_pairs}-pair limit that bounds this result's memory; select a smaller "
-                "input, raise min_duration, or bound the lag window.",
-                argument_name="max_pairs",
-                argument_value=f"more than {max_pairs} pairs",
-                valid_values=f"at most {max_pairs} matched pairs",
-            )
         columns["first_run_id"].append(np.full(matched.size, position, dtype=np.int64))
         columns["second_run_id"].append(matched)
         columns["start_index"].append(starts)
@@ -608,8 +628,13 @@ def _compound_events(
     lag_window: object,
     source_metadata: object,
     max_pairs: int | None = None,
+    pair_limit: int | None = None,
 ) -> CompoundEventSet:
-    """Validate the shared grid and both run sets, then match and freeze the pairs."""
+    """Validate the shared grid and both run sets, then match and freeze the pairs.
+
+    ``max_pairs`` is the remaining row budget, and ``pair_limit`` is the total limit
+    the error names; it defaults to ``max_pairs`` for a caller that passes one number.
+    """
     _check_choice("cadence", cadence, _CADENCES)
     _check_choice("mode", mode, _MODES)
     window = _lag_window(mode, lag_window)
@@ -665,7 +690,15 @@ def _compound_events(
 
     first_runs = _validated_runs("first", first, mask, valid_prefix, steps)
     second_runs = _validated_runs("second", second, mask, valid_prefix, steps)
-    rows = _match(first_runs, second_runs, valid_prefix=valid_prefix, mode=mode, window=window, max_pairs=max_pairs)
+    rows = _match(
+        first_runs,
+        second_runs,
+        valid_prefix=valid_prefix,
+        mode=mode,
+        window=window,
+        max_pairs=max_pairs,
+        pair_limit=pair_limit,
+    )
 
     unit = _UNITS[cadence]
     n_valid = int(valid_prefix[-1])
@@ -850,8 +883,12 @@ def compound_events_xarray(
     :func:`climate_indices.runs.identify_runs`, using threshold 0.5, direction
     ``"above"``, no gap pooling, and the declared ``min_duration``. The sources
     are already thresholded, including any daily-to-monthly reduction. An unknown
-    observation in either selected source splits both runs. A third hazard does
-    not affect the pair's support. Matching uses :func:`compound_events` unchanged.
+    observation in either selected source splits both runs, and the censor flags
+    use that same shared support. A hazard outside the selected pair does not
+    affect the pair's support. Matching uses :func:`compound_events` unchanged.
+
+    A catalog holds at most 1,000,000 event rows. A match that would exceed the
+    cap raises instead of building the rows that would overflow it.
 
     Args:
         hazards: In-memory prepared ``xarray.Dataset`` with Boolean ``exceedance``
@@ -881,8 +918,10 @@ def compound_events_xarray(
     Raises:
         InputTypeError: For non-Dataset input, non-Boolean hazard arrays, or
             unsupported cell labels (including MultiIndex objects).
-        InvalidArgumentError: For lazy input, missing variables, invalid source
-            names, duration or matching options, or a malformed manifest.
+        InvalidArgumentError: For Dask-backed input, missing variables, invalid
+            source names, duration or matching options, a malformed or non-finite
+            manifest, duplicate hazard labels, or a match that exceeds the
+            1,000,000-row catalog cap.
         CoordinateValidationError: For invalid dates or an incomplete cadence
             grid. Unknown observations must retain positions with validity false.
         DimensionMismatchError: For inconsistent dimensions or spatial names
