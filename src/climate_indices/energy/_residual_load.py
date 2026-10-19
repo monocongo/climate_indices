@@ -22,7 +22,11 @@ from climate_indices.exceptions import InputTypeError, InvalidArgumentError
 
 def _numeric(name: str, value: npt.ArrayLike) -> npt.NDArray[np.float64]:
     """Return a float64 copy with masked values as NaN, or raise for a non-numeric or infinite value."""
-    if np.asarray(value).dtype.kind not in "iuf":
+    try:
+        kind = np.asarray(value).dtype.kind
+    except ValueError as error:  # a ragged sequence has no array form
+        raise InputTypeError(f"{name} must be numeric.", expected_type=float, actual_type=type(value)) from error
+    if kind not in "iuf":
         raise InputTypeError(f"{name} must be numeric.", expected_type=float, actual_type=np.asarray(value).dtype.type)
     values = np.asarray(np.ma.asarray(value, dtype=np.float64).filled(np.nan), dtype=np.float64)
     if np.any(np.isinf(values)):
@@ -70,8 +74,8 @@ def residual_load(
         InputTypeError: If an input is not numeric.
         InvalidArgumentError: If there are no technologies or the two sequences differ in
             length, a capacity factor is outside [0, 1], a capacity is negative or not
-            finite, a value is infinite, or a technology's shape would enlarge the shape of
-            ``demand``.
+            finite, a value is infinite, a technology's shape would enlarge the shape of
+            ``demand``, or the result overflows to infinity.
     """
     if len(capacity_factors) == 0:
         raise InvalidArgumentError(
@@ -117,7 +121,14 @@ def residual_load(
                 valid_values="Shapes broadcastable to the shape of demand",
             )
         residual = residual - factor * capacity
-    return residual
+    if np.any(np.isinf(residual)):
+        raise InvalidArgumentError(
+            "The residual load overflowed to infinity.",
+            argument_name="installed_capacities",
+            argument_value="a product too large for float64",
+            valid_values="Capacities whose products stay within float64",
+        )
+    return np.asarray(residual)
 
 
 def srli(
@@ -148,7 +159,11 @@ def srli(
     position of :func:`climate_indices.indices.standardized_index`), so the choice of
     ``aggregation`` moves the accumulated value but not its rank. Allen & Otero recommend
     this distribution above roughly 100 observations; the index makes no fallback to a
-    parametric fit below that.
+    parametric fit below that. A constant Calibration Period series ties every value at
+    the highest plotting position, so it reads as maximum stress at every step.
+
+    Unlike :func:`srepi` and :func:`standardized_demand_index`, this function takes no
+    ``fitting_params`` or ``zero_handling``: both belong to the parametric families.
 
     Args:
         values: 1-D array of signed residual load, with the layouts that

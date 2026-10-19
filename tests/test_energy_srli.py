@@ -65,10 +65,22 @@ def test_srli_forwards_output_scale(signed: np.ndarray) -> None:
     assert ((finite > 0) & (finite < 1)).all()
 
 
-def test_srli_aggregation_changes_value_not_rank(signed: np.ndarray) -> None:
+def test_srli_aggregation_does_not_change_rank(signed: np.ndarray) -> None:
     summed = energy.srli(signed, *ARGS, aggregation="sum")
     averaged = energy.srli(signed, *ARGS, aggregation="mean")
     np.testing.assert_allclose(summed, averaged, rtol=0, atol=1e-12)
+
+
+def test_srli_rejects_unknown_aggregation(signed: np.ndarray) -> None:
+    with pytest.raises(ValueError, match="aggregation"):
+        energy.srli(signed, *ARGS, aggregation="max")  # type: ignore[arg-type]
+
+
+def test_srli_reads_a_time_major_block(signed: np.ndarray) -> None:
+    block = np.stack([signed, signed[::-1]], axis=-1)[:, np.newaxis, :]
+    result = energy.srli(block, *ARGS, spatial_time_major=True)
+    assert result.shape == block.shape
+    np.testing.assert_allclose(result[:, 0, 0], energy.srli(signed, *ARGS), rtol=0, atol=1e-12)
 
 
 def test_residual_load_subtracts_capacity_weighted_production() -> None:
@@ -135,3 +147,29 @@ def test_residual_load_rejects_non_numeric_input(argument: str) -> None:
     arguments[argument] = ["a", "b"] if argument == "demand" else [np.array(["a", "b"])]
     with pytest.raises(InputTypeError):
         energy.residual_load(**arguments)
+
+
+def test_residual_load_broadcasts_factors_and_capacities_to_demand() -> None:
+    demand = np.full((3, 2), 10.0)
+    result = energy.residual_load(demand, [np.array([[0.5], [0.0], [1.0]])], [np.array([2.0, 4.0])])
+    np.testing.assert_array_equal(result, [[9.0, 8.0], [10.0, 10.0], [8.0, 6.0]])
+
+
+def test_residual_load_gives_nan_for_all_nan_factor_and_returns_an_array_for_scalar_demand() -> None:
+    assert np.isnan(energy.residual_load(np.ones(3), [np.full(3, np.nan)], [1.0])).all()
+    assert isinstance(energy.residual_load(5.0, [0.5], [2.0]), np.ndarray)
+
+
+@pytest.mark.parametrize(
+    "demand",
+    [np.array([1.0, np.inf]), np.array([True, False]), np.array([1, 2], dtype=object), [[1.0], [1.0, 2.0]]],
+)
+def test_residual_load_rejects_infinite_bool_object_and_ragged_demand(demand: Any) -> None:
+    with pytest.raises((InvalidArgumentError, InputTypeError)):
+        energy.residual_load(demand, [np.array([0.5, 0.5])], [1.0])
+
+
+def test_residual_load_rejects_overflow_to_infinity() -> None:
+    with pytest.raises(InvalidArgumentError) as error, np.errstate(over="ignore"):
+        energy.residual_load(np.array([-1e308, 1.0]), [np.ones(2), np.ones(2)], [1e308, 1e308])
+    assert error.value.argument_name == "installed_capacities"
