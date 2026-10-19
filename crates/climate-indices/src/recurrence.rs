@@ -230,8 +230,10 @@ pub fn run<S: Copy>(
     expect("initial_state", initial_state.len())?;
     expect("static_valid", inputs.static_valid.len())?;
     expect("trailing_gap_days", inputs.trailing_gap_days.len())?;
-    if let Some(in_season) = inputs.in_season.as_ref()
-        && in_season.dim() != (days, cells)
+    if let Some(in_season) = inputs
+        .in_season
+        .as_ref()
+        .filter(|in_season| in_season.dim() != (days, cells))
     {
         return Err(ClimateError::ShapeMismatch {
             argument: "in_season",
@@ -279,11 +281,12 @@ pub fn run<S: Copy>(
                 cell.state = updated;
             }
             let carried = today.static_valid && !today.in_season && cell.started;
-            if (active || carried)
-                && day >= inputs.spin_up
-                && let Some(history) = history.as_deref_mut()
-            {
-                history[day - inputs.spin_up] = value_of(&cell.state);
+            if let (Some(record_day), Some(history)) = (
+                day.checked_sub(inputs.spin_up)
+                    .filter(|_| active || carried),
+                history.as_deref_mut(),
+            ) {
+                history[record_day] = value_of(&cell.state);
             }
         }
         *slot = cell;
@@ -311,10 +314,10 @@ pub fn run<S: Copy>(
                     cell.state = updated;
                 }
             }
-            if day >= inputs.spin_up
-                && let Some(history) = history.as_deref_mut()
+            if let (Some(record_day), Some(history)) =
+                (day.checked_sub(inputs.spin_up), history.as_deref_mut())
             {
-                let row = (day - inputs.spin_up) * cells;
+                let row = record_day * cells;
                 let history_row = &mut history[row..row + cells];
                 for (index, cell) in run.iter().enumerate() {
                     let carried = season_row.is_some_and(|season| !season[index])

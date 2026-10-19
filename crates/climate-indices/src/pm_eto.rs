@@ -252,9 +252,7 @@ fn station_term<T: Copy>(
     evaluate: impl FnOnce(f64) -> T,
 ) -> T {
     let bits = value.to_bits();
-    if let Some((key, result)) = *cache
-        && key == bits
-    {
+    if let Some((_, result)) = (*cache).filter(|(key, _)| *key == bits) {
         return result;
     }
     let result = evaluate(value);
