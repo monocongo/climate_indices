@@ -326,10 +326,11 @@ periods on one side of a threshold (Yevjevich, 1967). `climate_indices.runs`
 reports detection, event metrics, and period summaries. Severity classes and
 spatial aggregation stay downstream.
 
-For a run of $d$ values $x_i$ on the chosen side of a threshold $T$:
+For a run of elapsed duration $d$ with values $x_i$, of which the set $A$ lies on
+the chosen side of a threshold $T$ (all $d$ values when `max_gap=0`):
 
 $$
-\text{magnitude} = \sum_{i=1}^{d} |x_i - T|
+\text{magnitude} = \sum_{i \in A} |x_i - T|
 \qquad
 \text{intensity} = \frac{\text{magnitude}}{d}
 $$
