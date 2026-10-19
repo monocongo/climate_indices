@@ -114,6 +114,7 @@ def _measure(
         if prepared:
             arrays = compound.harmonize(data, **_declarations(cadence)).compute()
             arrays = arrays.chunk({"hazard": -1, "time": -1})
+        del data  # Prepared stages no longer need the float payloads retained by the source graphs.
         input_bytes = sum(
             array.nbytes for array in (arrays.values() if isinstance(arrays, dict) else arrays.data_vars.values())
         )

@@ -476,13 +476,15 @@ Monthly inference with `T=1200`, `C=1000`, `B=1999`, and `q=1` budgets about 81 
 CMP-08 measured this budget (`scripts/measure_compound_xarray_memory.py`, report
 `docs/design/compound-xarray-memory.json`; one single-chunk tile per stage on the synchronous scheduler,
 NumPy allocations traced with `tracemalloc` plus the input bytes, so a lower bound on resident memory).
+Prepared-stage measurements release the original float source arrays before tracing; only the prepared
+Boolean input payloads remain live. These figures do not cover workers that also retain the float sources.
 The budget was not uniformly conservative:
 
 | Stage (daily, `k=3`, `T=36,524`; bootstrap monthly, `T=1,200`, `B=1,999`) | Fixed per task | Per cell | Measured / budget per cell | Cells in 1 GiB |
 | --- | --- | --- | --- | --- |
 | `harmonize` | 2.7 MiB | 2.40 MiB | 1.28 | about 420 |
-| `joint_statistics` | 0.9 MiB | 0.60 MiB | 0.32 | about 1,700 |
-| `conditional_probability` (lag `(0, 30)`) | 0.9 MiB | 0.70 MiB | 0.37 | about 1,460 |
+| `joint_statistics` | 1.4 MiB | 0.59 MiB | 0.32 | about 1,700 |
+| `conditional_probability` (lag `(0, 30)`) | 1.1 MiB | 0.70 MiB | 0.37 | about 1,470 |
 | `bootstrap_dependence` | 0.9 MiB | 0.015 MiB | 0.20 | memory is not the limit |
 
 `harmonize` exceeds its budget by about 28%, so the first term understates it. A manual peak-RSS spot

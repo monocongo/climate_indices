@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import importlib.util
 import json
 import logging
 import sys
+import weakref
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 from unittest.mock import Mock
 
+import numpy as np
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -136,6 +140,38 @@ def test_memory_budget_reproduces_the_design_figures() -> None:
     assert round(script._budget(36_524, 1_000) / 1e9, 2) == 1.97
     assert script._budget(1_200, 1_000, resamples=1_999) == 54 * 1_200 * 1_000 + 8 * 1_999 * 1_000
     assert round(script._budget(1_200, 1_000, resamples=1_999) / 1e6) == 81
+
+
+@pytest.mark.parametrize("prepared", [False, True])
+def test_memory_measurement_keeps_only_counted_inputs_live(monkeypatch: pytest.MonkeyPatch, prepared: bool) -> None:
+    """Release the float source payloads before measuring a prepared Boolean Dataset."""
+    script = measure_compound_xarray_memory
+    sources = script._sources
+    payloads: list[weakref.ReferenceType[np.ndarray]] = []
+
+    def tracked_sources(time: np.ndarray, cells: int, seed: int) -> dict[str, Any]:
+        arrays: dict[str, Any] = sources(time, cells, seed)
+        payloads[:] = [weakref.ref(value) for array in arrays.values() for value in array.data.dask.values()]
+        return arrays
+
+    def peak(stage: Any, input_bytes: int) -> int:
+        gc.collect()
+        assert payloads
+        assert all((payload() is None) == prepared for payload in payloads)
+        return input_bytes + 100
+
+    monkeypatch.setattr(script, "_sources", tracked_sources)
+    monkeypatch.setattr(script, "_peak", peak)
+    time = np.arange("2000-01", "2001-01", dtype="datetime64[M]")
+    script._measure(
+        "test",
+        (1, 2),
+        len(time),
+        time,
+        lambda arrays: lambda: arrays,
+        cadence="monthly",
+        prepared=prepared,
+    )
 
 
 def test_memory_measurement_quick_report_is_complete() -> None:
