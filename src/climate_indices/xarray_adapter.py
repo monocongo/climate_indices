@@ -3323,7 +3323,8 @@ def fit_diagnostics(
         time_dim: Name of the time dimension in the input DataArray (default:
             ``"time"``). Only used for xarray inputs.
         aggregation: How each window is combined, "sum" (default) or "mean".
-            Only supported for NumPy inputs.
+            Both inputs support it, and the xarray Dataset records the value
+            behind the fit in each variable's calculation metadata.
 
     Returns:
         For NumPy input, the :class:`climate_indices.compute.FitDiagnostics` that
@@ -3342,8 +3343,8 @@ def fit_diagnostics(
 
     Raises:
         ValueError: If a NumPy call omits a required temporal parameter, an xarray
-            call requests non-default aggregation, or ``fitting_params`` carries
-            cell-shaped arrays for a 1-D or 2-D input or
+            call requests an aggregation other than "sum" or "mean", or
+            ``fitting_params`` carries cell-shaped arrays for a 1-D or 2-D input or
             for a Dask-backed input with a cell dimension split across chunks.
         CoordinateValidationError: If the xarray time dimension is missing,
             non-monotonic, unsupported (cftime), does not begin in January, or its
@@ -3365,11 +3366,9 @@ def fit_diagnostics(
             aggregation,
         )
 
-    if aggregation != "sum":
-        raise ValueError("Non-default aggregation is only supported for NumPy inputs")
-
     # xarray path: validate → infer → compute per block → rewrap as a Dataset
     assert isinstance(values, xr.DataArray)
+    compute._validate_aggregation(aggregation)
     input_da = values
     validate_time_dimension(input_da, time_dim)
     validate_time_monotonicity(input_da[time_dim])
@@ -3386,6 +3385,7 @@ def fit_diagnostics(
             "calibration_year_final": calibration_year_final,
             "periodicity": periodicity,
             "fitting_params": fitting_params,
+            "aggregation": aggregation,
         }.items()
         if value is not None
     }

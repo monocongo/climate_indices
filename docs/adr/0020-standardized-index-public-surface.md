@@ -2,10 +2,11 @@
 
 ## Status
 
-Accepted. The public-surface decision and the CF metadata entry land with this
-record; the xarray wiring and the package-root re-export land with
+Accepted. The public-surface decision and the CF metadata entry landed with this
+record; the xarray wiring, the xarray `fit_diagnostics()` aggregation report, and
+the package-root re-export landed with
 [#1174](https://github.com/monocongo/climate_indices/issues/1174), which this
-record unblocks.
+record unblocked.
 
 `indices.standardized_index()` ([#1113](https://github.com/monocongo/climate_indices/issues/1113))
 generalizes the SPI scale/fit/transform pipeline to whatever series it is handed —

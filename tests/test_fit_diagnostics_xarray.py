@@ -87,11 +87,36 @@ def test_numpy_input_returns_fit_diagnostics(aggregation: compute.Aggregation) -
     np.testing.assert_array_equal(result.ks_p_value, expected.ks_p_value)
 
 
-def test_xarray_mean_aggregation_is_not_supported() -> None:
-    """The untyped adapter must not silently ignore a NumPy-only aggregation mode."""
-    values = _monthly_series_da()
-    with pytest.raises(ValueError, match="aggregation.*only supported for NumPy inputs"):
-        fit_diagnostics(values, 3, Distribution.gamma, aggregation="mean")  # type: ignore[call-overload]
+@pytest.mark.parametrize("aggregation", ["sum", "mean"])
+def test_xarray_aggregation_matches_numpy(aggregation: compute.Aggregation) -> None:
+    """The xarray arm reports the aggregation behind the fit and matches the NumPy one."""
+    result = fit_diagnostics(
+        _monthly_series_da(),
+        3,
+        Distribution.gamma,
+        calibration_year_initial=_CALIBRATION_START_YEAR,
+        calibration_year_final=_CALIBRATION_END_YEAR,
+        aggregation=aggregation,
+    )
+    expected = indices.fit_diagnostics(
+        _MONTHLY_SERIES,
+        3,
+        Distribution.gamma,
+        _CALIBRATION_START_YEAR,
+        _CALIBRATION_START_YEAR,
+        _CALIBRATION_END_YEAR,
+        Periodicity.monthly,
+        aggregation=aggregation,
+    )
+
+    assert result["alpha"].attrs["aggregation"] == aggregation
+    np.testing.assert_array_equal(result["alpha"].values, expected.parameters["alpha"])
+
+
+def test_xarray_aggregation_is_validated() -> None:
+    """An unknown aggregation is rejected before any block runs."""
+    with pytest.raises(ValueError, match="aggregation"):
+        fit_diagnostics(_monthly_series_da(), 3, Distribution.gamma, aggregation="median")  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("scale", [1, 3])

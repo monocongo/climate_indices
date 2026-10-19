@@ -212,7 +212,9 @@ order.
   window by default, so accumulated production needs `aggregation="sum"`;
   the demand index sums by default. `energy.SREPI_DROUGHT_THRESHOLDS` holds
   Allen & Otero's moderate, severe, and extreme cut-offs (−1.28, −1.64, −1.96).
-  NumPy only: xarray adapters are planned ([#1174][energy-1174]).
+  DataArray input is beta ([#1174][energy-1174]): temporal parameters are
+  inferred from the time coordinate, the `srepi` or `standardized_demand_index`
+  registry metadata is stamped, and a gridded input is fitted block by block.
 - **SRLI and the residual-load helper** — available as
   {func}`climate_indices.energy.srli` and
   {func}`climate_indices.energy.residual_load` ([#1172][energy-1172]).
@@ -222,11 +224,14 @@ order.
   empirical distribution ([#1168][energy-1168]) and never clips a negative.
   High values mark stress. On the default `output_scale="normal"`, Allen &
   Otero (2023) class drought at 1.28, 1.64, and 1.96; the `probability` and
-  `bounded` scales need cut-offs of their own. It has NumPy dispatch only until [#1174][energy-1174] lands.
+  `bounded` scales need cut-offs of their own. DataArray input is beta
+  ([#1174][energy-1174]) and keeps the empirical distribution: a parametric fit
+  does not suit a signed series.
 - **Energy-drought event statistics** — available as
   {func}`climate_indices.energy.energy_drought_events` ([#1173][energy-1173]).
-  The NumPy utility reports events and period summaries. Its energy xarray
-  adapter remains planned under [#1174][energy-1174].
+  The NumPy utility reports events and period summaries. A 1-D DataArray returns
+  the same structure, and a gridded DataArray returns a Dataset of period
+  summaries plus one run structure per cell ([#1174][energy-1174]).
 - **Wind capacity factor** — *planned ([#1175][energy-1175])*. Hub-height
   wind passed through a required power curve: a generic parametric reference
   curve (cut-in, rated, and cut-out speeds) or a tabulated curve the caller

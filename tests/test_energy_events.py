@@ -3,9 +3,12 @@
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
+import xarray as xr
 
 from climate_indices import compute, energy, indices
+from climate_indices.exceptions import CoordinateValidationError
 from climate_indices.runs import Direction, RunStatistics
 
 
@@ -55,3 +58,90 @@ def test_events_accept_spi_and_saved_srepi_srli_index_series(source: str, direct
     np.testing.assert_array_equal(result.count, [count])
     np.testing.assert_array_equal(result.valid_count, [np.count_nonzero(~np.isnan(index))])
     np.testing.assert_allclose(result.frequency, [count / result.valid_count[0]], rtol=0, atol=0)
+
+
+def test_dataarray_series_returns_the_same_statistics() -> None:
+    """A 1-D DataArray returns the NumPy RunStatistics unchanged."""
+    values = np.array([2.0, 0.0, 3.0, 0.0, 0.0, 4.0])
+    da = xr.DataArray(values, dims="time", coords={"time": pd.date_range("2020-01-01", periods=values.size)})
+    periods = np.array([2020, 2020, 2021, 2021, 2021, 2021])
+
+    result = energy.energy_drought_events(
+        da, threshold=1.0, direction="above", min_duration=2, max_gap=1, periods=periods
+    )
+    expected = energy.energy_drought_events(
+        values, threshold=1.0, direction="above", min_duration=2, max_gap=1, periods=periods
+    )
+
+    assert isinstance(result, RunStatistics)
+    np.testing.assert_array_equal(result.events.start_index, expected.events.start_index)
+    np.testing.assert_array_equal(result.count, expected.count)
+    np.testing.assert_array_equal(result.total_duration, expected.total_duration)
+
+
+def test_gridded_events_report_summaries_and_a_per_cell_run_set() -> None:
+    """A gridded DataArray yields gridded summaries plus each cell's tidy run structure."""
+    values = np.array(
+        [
+            [-2.0, -2.0, 0.0, -2.0, -2.0, -2.0],
+            [0.0, -2.0, -2.0, -2.0, 0.0, -2.0],
+        ]
+    ).T
+    periods = pd.date_range("2020-01-01", periods=values.shape[0], freq="MS")
+    da = xr.DataArray(values, dims=("time", "site"), coords={"time": periods, "site": ["a", "b"]})
+
+    result = energy.energy_drought_events(da, threshold=-1.0, periods=da.time.dt.year)
+
+    assert set(result.data_vars) == {"count", "total_duration", "max_magnitude", "valid_count", "frequency", "events"}
+    assert result["count"].dims == ("period", "site")
+    np.testing.assert_array_equal(result["period"].values, [2020])
+    for site in ("a", "b"):
+        expected = energy.energy_drought_events(da.sel(site=site), threshold=-1.0, periods=da.time.dt.year.values)
+        np.testing.assert_array_equal(result["count"].sel(site=site).values, expected.count)
+        np.testing.assert_array_equal(result["total_duration"].sel(site=site).values, expected.total_duration)
+        cell_events = result["events"].sel(site=site).item()
+        np.testing.assert_array_equal(cell_events.start_index, expected.events.start_index)
+        np.testing.assert_array_equal(cell_events.duration, expected.events.duration)
+
+
+def test_gridded_events_match_the_numpy_series_without_periods() -> None:
+    """With no period labels every summary sits under the single whole-series period."""
+    values = np.array([[-2.0, 0.0, -2.0, -2.0], [0.0, -2.0, -2.0, 0.0]]).T
+    da = xr.DataArray(values, dims=("time", "site"), coords={"site": ["a", "b"]})
+
+    result = energy.energy_drought_events(da, threshold=-1.0)
+
+    assert result["count"].dims == ("period", "site")
+    np.testing.assert_array_equal(result["period"].values, [0])
+    # site a: two below-threshold runs (lengths 1 and 2); site b: one run of length 2
+    np.testing.assert_array_equal(result["count"].values.ravel(), [2, 1])
+    np.testing.assert_array_equal(result["total_duration"].values.ravel(), [3, 2])
+
+
+def test_gridded_events_keep_lazy_dask_summaries() -> None:
+    """A spatial Dask chunk stays lazy; the time axis must be a single chunk for runs."""
+    values = np.array([[-2.0, 0.0, -2.0, -2.0], [0.0, -2.0, -2.0, 0.0]]).T
+    da = xr.DataArray(values, dims=("time", "site"), coords={"site": ["a", "b"]}).chunk({"time": -1, "site": 1})
+
+    result = energy.energy_drought_events(da, threshold=-1.0)
+
+    assert result["count"].chunks is not None
+    np.testing.assert_array_equal(result["count"].compute().values.ravel(), [2, 1])
+
+
+def test_gridded_events_reject_a_split_time_chunk() -> None:
+    """Runs span the whole series, so a chunked time axis is rejected instead of silently mis-counted."""
+    da = xr.DataArray(
+        np.zeros((4, 2)), dims=("time", "site"), coords={"time": pd.date_range("2020-01-01", periods=4)}
+    ).chunk({"time": 2})
+
+    with pytest.raises(CoordinateValidationError, match="chunk"):
+        energy.energy_drought_events(da)
+
+
+def test_period_label_count_must_match_the_time_axis() -> None:
+    """A short period label sequence is rejected rather than broadcast."""
+    da = xr.DataArray(np.zeros((4, 2)), dims=("time", "site"), coords={"time": pd.date_range("2020-01-01", periods=4)})
+
+    with pytest.raises(ValueError, match="periods"):
+        energy.energy_drought_events(da, periods=[2020, 2021])

@@ -29,6 +29,7 @@ from climate_indices import (
     pet_thornthwaite,
     spei,
     spi,
+    standardized_index,
 )
 from climate_indices.compute import Periodicity
 from climate_indices.exceptions import InvalidArgumentError
@@ -124,6 +125,7 @@ _PUBLIC_IMPLEMENTATIONS: dict[Callable[..., Any], tuple[Callable[..., Any], tupl
     pci: (indices.pci, ()),
     pdsi: (palmer_pdsi_impl, ()),
     fit_diagnostics: (fit_diagnostics_impl, ()),
+    standardized_index: (indices.standardized_index, ("spatial_time_major",)),
     pet_thornthwaite: (pet_thornthwaite_impl, ()),
     pet_hargreaves: (pet_hargreaves_impl, ()),
     pet_penman_monteith: (pet_penman_monteith_impl, ()),
@@ -177,9 +179,13 @@ _EXPECTED_OVERLOADS: dict[Callable[..., Any], tuple[str, ...]] = {
         "(precips: 'npt.NDArray[np.float64]', pet: 'npt.NDArray[np.float64]', awc: 'float | npt.NDArray[np.float64]', data_start_year: 'int', calibration_year_initial: 'int', calibration_year_final: 'int', fitting_params: 'dict[str, Any] | None' = None, spatial_time_major: 'bool' = False, time_dim: 'str' = 'time') -> 'tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], dict[str, Any] | None]'",
         "(precips: 'xr.DataArray', pet: 'xr.DataArray', awc: 'float | npt.NDArray[np.float64] | xr.DataArray', data_start_year: 'int | None' = None, calibration_year_initial: 'int | None' = None, calibration_year_final: 'int | None' = None, fitting_params: 'dict[str, Any] | None' = None, spatial_time_major: 'bool' = False, time_dim: 'str' = 'time') -> 'xr.Dataset'",
     ),
+    standardized_index: (
+        "(values: 'npt.NDArray[np.float64]', scale: 'int', distribution: 'Distribution', data_start_year: 'int', calibration_year_initial: 'int', calibration_year_final: 'int', periodicity: 'Periodicity', fitting_params: 'dict[str, Any] | None' = None, *, output_scale: 'OutputScale' = 'normal', zero_handling: 'ZeroHandling' = 'classic', aggregation: 'compute.Aggregation' = 'sum', clip_negatives: 'bool' = True) -> 'npt.NDArray[np.float64]'",
+        "(values: 'xr.DataArray', scale: 'int', distribution: 'Distribution', data_start_year: 'int | None' = None, calibration_year_initial: 'int | None' = None, calibration_year_final: 'int | None' = None, periodicity: 'Periodicity | None' = None, fitting_params: 'dict[str, Any] | None' = None, *, output_scale: 'OutputScale' = 'normal', zero_handling: 'ZeroHandling' = 'classic', aggregation: 'compute.Aggregation' = 'sum', clip_negatives: 'bool' = True) -> 'xr.DataArray'",
+    ),
     fit_diagnostics: (
         "(values: 'npt.NDArray[np.float64]', scale: 'int', distribution: 'Distribution', data_start_year: 'int', calibration_year_initial: 'int', calibration_year_final: 'int', periodicity: 'Periodicity', fitting_params: 'dict[str, Any] | None' = None, spatial_time_major: 'bool' = False, time_dim: 'str' = 'time', *, aggregation: 'compute.Aggregation' = 'sum') -> 'compute.FitDiagnostics'",
-        "(values: 'xr.DataArray', scale: 'int', distribution: 'Distribution', data_start_year: 'int | None' = None, calibration_year_initial: 'int | None' = None, calibration_year_final: 'int | None' = None, periodicity: 'Periodicity | None' = None, fitting_params: 'dict[str, Any] | None' = None, spatial_time_major: 'bool' = False, time_dim: 'str' = 'time') -> 'xr.Dataset'",
+        "(values: 'xr.DataArray', scale: 'int', distribution: 'Distribution', data_start_year: 'int | None' = None, calibration_year_initial: 'int | None' = None, calibration_year_final: 'int | None' = None, periodicity: 'Periodicity | None' = None, fitting_params: 'dict[str, Any] | None' = None, spatial_time_major: 'bool' = False, time_dim: 'str' = 'time', *, aggregation: 'compute.Aggregation' = 'sum') -> 'xr.Dataset'",
     ),
 }
 
@@ -216,9 +222,6 @@ def test_overloads_mirror_implementations() -> None:
             f"{numpy_params} != {implementation_params}"
         )
 
-        # xarray exposes the same parameters except the NumPy-only aggregation seam.
-        if public is fit_diagnostics:
-            implementation_params.remove("aggregation")
         xarray_overload = next(stub for stub in overloads if stub is not numpy_overload)
         xarray_params = list(inspect.signature(xarray_overload).parameters)
         assert xarray_params == implementation_params, (
