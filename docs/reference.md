@@ -178,7 +178,10 @@ and `bootstrap_dependence()` also take xarray input on a beta route, described i
 [Beta xarray route](#compound-xarray-route). `compound_events_xarray()` builds
 [eager numeric event catalogs](#compound-event-catalog) from prepared subsets.
 See [ADR-0022](adr/0022-compound-analysis-contracts.md) for the contracts.
+Use {doc}`compound-hazards` for runnable input declarations, cadence reduction, lags, monthly inference, and the public-study reproduction.
+The nine summer cases reproduce same-author counts and LMF, not independent validation or daily significance.
 
+(compound-bootstrap-inference)=
 #### Monthly bootstrap inference
 
 :::{warning}
@@ -263,7 +266,8 @@ The reproducible configuration and measured results are
 and
 [`compound-bootstrap-characterization.json`](https://github.com/monocongo/climate_indices/blob/main/docs/design/compound-bootstrap-characterization.json).
 The guards do not detect nonstationarity, long memory, or impact relevance.
-The final worked guide belongs to CMP-10 (#1374).
+The [worked guide](compound-hazards.md#run-a-seeded-monthly-bootstrap-example) includes a seeded example within the measured synthetic conditions.
+Further calibration remains in [#1398](https://github.com/monocongo/climate_indices/issues/1398).
 
 (compound-xarray-route)=
 #### Beta xarray route
@@ -405,8 +409,8 @@ Every call emits `BetaFeatureWarning` and logs the eager lifecycle under
 
 Pair counts are not independent observations and must not feed a binomial
 significance test. The tests establish interface equivalence with the NumPy
-matcher, not external scientific validation. CMP-10 (#1374) owns the final
-worked guide and published-study reproduction.
+matcher, not external scientific validation. The [worked guide](compound-hazards.md)
+keeps the public-study frequency reproduction separate from event matching and inference.
 
 ```{eval-rst}
 .. automodule:: climate_indices.compound
