@@ -1792,44 +1792,67 @@ def _validate_energy_arguments(args: argparse.Namespace) -> None:
         is missing, or an argument the selected profile method cannot use is
         provided
     """
-    index = args.index
+    if args.index in _ENERGY_DEGREE_DAY_INDICES:
+        _validate_degree_day_arguments(args)
+    elif args.index == "wind_profile":
+        _validate_wind_profile_arguments(args)
 
-    if index in _ENERGY_DEGREE_DAY_INDICES:
-        if args.periodicity is not compute.Periodicity.daily:
-            msg = f"Invalid periodicity argument for {index}: '{args.periodicity}' -- only 'daily' is supported"
+
+def _validate_degree_day_arguments(args: argparse.Namespace) -> None:
+    """
+    Validate the arguments a degree-day index can use.
+
+    Each degree day needs the base temperature it is defined against: the
+    heating degree days the heating base, the cooling degree days the cooling
+    base, and the energy degree days both.
+
+    :param args: an arguments object whose index is a degree-day index
+    :raise ValueError: if the periodicity is not daily, or the base temperature
+        the selected index is defined against is missing
+    """
+    if args.periodicity is not compute.Periodicity.daily:
+        msg = f"Invalid periodicity argument for {args.index}: '{args.periodicity}' -- only 'daily' is supported"
+        _logger.error(msg)
+        raise ValueError(msg)
+
+    if args.index != "cdd" and args.heating_base_temperature is None:
+        msg = "Missing the required --heating_base_temperature argument"
+        _logger.error(msg)
+        raise ValueError(msg)
+
+    if args.index != "hdd" and args.cooling_base_temperature is None:
+        msg = "Missing the required --cooling_base_temperature argument"
+        _logger.error(msg)
+        raise ValueError(msg)
+
+
+def _validate_wind_profile_arguments(args: argparse.Namespace) -> None:
+    """
+    Validate the arguments the wind profile can use.
+
+    :param args: an arguments object whose index is the wind profile
+    :raise ValueError: if a required height is missing, or an argument the
+        selected profile method cannot use is provided
+    """
+    if args.hub_height is None:
+        msg = "Missing the required --hub_height argument"
+        _logger.error(msg)
+        raise ValueError(msg)
+
+    if args.wind_profile_method == "log":
+        if args.roughness_length is None:
+            msg = "Missing the required --roughness_length argument for the log wind profile"
             _logger.error(msg)
             raise ValueError(msg)
 
-        if index != "cdd" and args.heating_base_temperature is None:
-            msg = "Missing the required --heating_base_temperature argument"
+        if args.wind_shear_alpha is not None:
+            msg = "The --wind_shear_alpha argument is not applicable to the log wind profile"
             _logger.error(msg)
             raise ValueError(msg)
-
-        if index != "hdd" and args.cooling_base_temperature is None:
-            msg = "Missing the required --cooling_base_temperature argument"
-            _logger.error(msg)
-            raise ValueError(msg)
-
-    if index == "wind_profile":
-        if args.hub_height is None:
-            msg = "Missing the required --hub_height argument"
-            _logger.error(msg)
-            raise ValueError(msg)
-
-        if args.wind_profile_method == "log":
-            if args.roughness_length is None:
-                msg = "Missing the required --roughness_length argument for the log wind profile"
-                _logger.error(msg)
-                raise ValueError(msg)
-
-            if args.wind_shear_alpha is not None:
-                msg = "The --wind_shear_alpha argument is not applicable to the log wind profile"
-                _logger.error(msg)
-                raise ValueError(msg)
-        elif args.roughness_length is not None:
-            msg = "The --roughness_length argument requires --wind_profile_method log"
-            _logger.error(msg)
-            raise ValueError(msg)
+    elif args.roughness_length is not None:
+        msg = "The --roughness_length argument requires --wind_profile_method log"
+        _logger.error(msg)
+        raise ValueError(msg)
 
 
 # the distributions `--index spi` computes; log-logistic is the SPEI reference

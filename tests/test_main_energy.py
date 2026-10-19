@@ -325,15 +325,15 @@ class TestEnergyValidation:
         path = tmp_path / "monthly.nc"
         source.to_netcdf(path)
 
+        arguments = _energy_arguments(
+            index,
+            netcdf_values=str(path),
+            var_name_values=source.name,
+            output_file_base=str(tmp_path / "out"),
+        )
+
         with pytest.raises(CoordinateValidationError) as error:
-            cli_main.process_climate_indices(
-                _energy_arguments(
-                    index,
-                    netcdf_values=str(path),
-                    var_name_values=source.name,
-                    output_file_base=str(tmp_path / "out"),
-                )
-            )
+            cli_main.process_climate_indices(arguments)
 
         assert "does not match the requested daily periodicity" in str(error.value)
 
@@ -362,8 +362,10 @@ class TestEnergyValidation:
         """A daily temperature input is valid for the degree days, which does not relax PET's own rule."""
         path, source = _input_file(tmp_path, "hdd")
 
+        arguments = _energy_arguments("pet", netcdf_temp=path, var_name_temp=source.name)
+
         with pytest.raises(ValueError) as error:
-            cli_main._validate_args(_energy_arguments("pet", netcdf_temp=path, var_name_temp=source.name))
+            cli_main._validate_args(arguments)
 
         assert "only 'monthly' is supported" in str(error.value)
 
@@ -371,17 +373,17 @@ class TestEnergyValidation:
         """The degree days accept a daily input without relaxing the PET that SPEI computes."""
         path, source = _input_file(tmp_path, "hdd")
 
+        arguments = _energy_arguments(
+            "spei",
+            netcdf_precip=path,
+            var_name_precip=source.name,
+            netcdf_temp=path,
+            var_name_temp=source.name,
+            scales=[1],
+        )
+
         with pytest.raises(ValueError) as error:
-            cli_main._validate_args(
-                _energy_arguments(
-                    "spei",
-                    netcdf_precip=path,
-                    var_name_precip=source.name,
-                    netcdf_temp=path,
-                    var_name_temp=source.name,
-                    scales=[1],
-                )
-            )
+            cli_main._validate_args(arguments)
 
         assert "only 'monthly' is supported" in str(error.value)
 
@@ -415,9 +417,11 @@ class TestEnergyPreconditions:
     )
     def test_runner_rejects_an_unvalidated_argument(self, index, field):
         arguments = _energy_arguments(index, **{field: None})
+        runner = cli_main._registry_for(index)
+        transport = cli_main.Transport(1)
 
         with pytest.raises(ValueError, match="not validated"):
-            cli_main._registry_for(index).run(arguments, cli_main.DatasetLayout.GRID, cli_main.Transport(1))
+            runner.run(arguments, cli_main.DatasetLayout.GRID, transport)
 
 
 class TestEnergyProcessing:
