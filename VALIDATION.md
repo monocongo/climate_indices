@@ -63,14 +63,17 @@ concurrent and sequential modes, bounded and unbounded lags, duration filtering,
 transposed spatial dimensions, one series, and an irrelevant third hazard.
 The tests also cover shared missingness, all-invalid cells, no matches, zero-cell
 subsets, rejected malformed inputs, and Dask rejection under a scheduler that fails
-if any task runs. Empty and populated catalogs preserve values, cell labels, flags,
+if any task runs. It also checks the 1,000,000-row cap, a duplicate hazard label, a
+non-finite manifest, and dropped boundary attributes on the cell coordinates. Empty and
+populated catalogs preserve values, cell labels, flags,
 and versioned JSON metadata through h5netcdf and Zarr storage.
 
 These tests do not use the `validation` marker. They establish no new scientific
 validation, external oracle, significance calibration, or causal interpretation.
 Pair counts are not independent observations. The beta catalog is explicitly eager;
-its memory use and runtime have not been characterized. Input size and all-pairs
-matching can exhaust memory, especially with unbounded sequential lags. The final
+its memory use and runtime have not been characterized. A selected input can be large
+enough to exhaust memory. A match that would exceed the 1,000,000-row catalog cap raises
+`InvalidArgumentError` before the rows that would overflow it are allocated. The final
 public-study reproduction remains with CMP-10 (#1374).
 
 ## Compound Bootstrap Characterization
