@@ -147,10 +147,78 @@ frequencies, so a zero marginal makes LMF undefined (`NaN`) rather than infinite
 forward window and reports the conditional time-step frequency beside the
 response-window frequency on the same eligible anchors; an unknown or incomplete
 horizon is never counted as a non-response. `compound_events()` pairs concurrent or
-sequential events and keeps their source runs and censoring. Import the module explicitly
-with `import climate_indices.compound as compound`; it is not re-exported from the package
-root. Inference and the beta xarray route are still pending; see
+sequential events and keeps their source runs and censoring. `bootstrap_dependence()`
+adds monthly uncertainty intervals and local independence tests. Import the module
+explicitly with `import climate_indices.compound as compound`; it is not re-exported
+from the package root. The beta xarray route remains pending; see
 [ADR-0022](adr/0022-compound-analysis-contracts.md) for the approved contracts.
+
+#### Monthly bootstrap inference
+
+:::{warning}
+Synthetic characterization supports these intervals and p-values only for
+serially independent or 6-month-overlap sources, at 200 years. For 36-month
+persistence a coverage check failed and null rejection ran above nominal at every
+block length, so do not read those results as nominal. Records shorter than 200
+years were not characterized. See the
+[validation record](https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md#compound-bootstrap-characterization).
+This is synthetic evidence, not an external validation of the method.
+:::
+
+The inference support is each cell's longest contiguous segment of complete
+calendar years. A tie selects the earliest segment. Missing months split the
+segment. `estimate` uses this segment; `full_record_estimate` uses all eligible
+original observations. Partial boundary years enter only the latter estimate.
+Conditional responses are computed before resampling, on the original calendar.
+They never cross artificial block joins.
+
+Non-circular moving blocks preserve calendar-month positions. The default length
+is `ceil(Y ** (1/3))` years. An explicit `block_length_years` overrides it.
+Paired channels supply percentile confidence intervals. Independent channel
+samples supply the independence null. The default alternative, `"greater"`, tests
+amplification. `"less"` tests suppression. Joint tests use
+`p_joint - product(p_i)`; conditional tests use `P(R|A) - P(R)`.
+Null comparisons include ties, with `p=(1+extreme)/(1+B_valid)`.
+All p-values are local and unadjusted. They do not establish field significance.
+
+The defaults are 1,999 realizations per sampling method and a 95% interval using
+`numpy.quantile(method="linear")`. Supply an integer `seed`. The local generator
+uses the seed and support definition, not a cell's position or worker schedule.
+The manifest records NumPy and SciPy versions. Cross-version bitwise identity
+is not promised.
+
+Inference requires 30 complete years, five nonoverlapping blocks, and ten
+occurrences per channel within each reported group. An interval also requires
+five observed successes. A null test instead requires five expected successes
+under independence. Zero joint counts can support suppression tests, but cannot
+produce a misleading zero-width interval. Each metric requires 95% valid
+realizations. Inspect `quality_flags` when a bound or p-value is NaN.
+Fewer than ten nonoverlapping blocks produces a warning.
+
+| Result fields | Numeric contract for the future adapter |
+| --- | --- |
+| `estimate`, `full_record_estimate`, `confidence_low`, `confidence_high` | Float64, units `1`. Probability values range from 0 to 1. LMF is nonnegative without a universal maximum. |
+| `p_value` | Float64, units `1`, local and unadjusted, range 0 to 1; finite values are never zero. |
+| `n_interval_resamples`, `n_null_resamples` | Int64 counts of valid realizations; zero when a pre-sampling guard excludes the metric. |
+| `n_years`, `block_length_years` | Int64 calendar-year counts, one per cell. |
+| `inference_start`, `inference_end` | datetime64[D] January and December month labels, one per cell; NaT without a complete year. |
+| `quality_flags` | Int64 bit field. `metadata["quality_flags"]` supplies the masks and meanings. An interval flag does not automatically suppress a null test. |
+
+Estimate, bound, p-value, resample-count, and flag arrays have shape
+`(12, *cells)` for monthly groups or `(*cells)` for pooled groups.
+All result arrays are read-only, and the manifest is immutable.
+Daily inference raises `InvalidArgumentError`.
+
+Check sensitivity at `max(1, floor(L/2))`, `L`, and `2L` where support permits.
+Do not choose a length by its smallest p-value. Synthetic characterization and
+regression tests do not establish external scientific validation.
+The reproducible configuration and measured results are
+[`scripts/characterize_compound_bootstrap.py`](https://github.com/monocongo/climate_indices/blob/main/scripts/characterize_compound_bootstrap.py)
+and
+[`compound-bootstrap-characterization.json`](https://github.com/monocongo/climate_indices/blob/main/docs/design/compound-bootstrap-characterization.json).
+The guards do not detect nonstationarity, long memory, or impact relevance.
+The beta adapter belongs to CMP-08 (#1372); the final worked guide belongs to
+CMP-10 (#1374).
 
 ```{eval-rst}
 .. automodule:: climate_indices.compound

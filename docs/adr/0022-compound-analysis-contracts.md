@@ -7,12 +7,18 @@ Approved for implementation. The maintainer approved these contracts and the bou
 [parent issue #1364](https://github.com/monocongo/climate_indices/issues/1364).
 
 **Only the NumPy `harmonize()`, `joint_statistics()`, `conditional_probability()`, and
-`compound_events()` routes are implemented
+`compound_events()`, and `bootstrap_dependence()` routes are implemented
 ([#1367](https://github.com/monocongo/climate_indices/issues/1367),
 [#1368](https://github.com/monocongo/climate_indices/issues/1368),
 [#1369](https://github.com/monocongo/climate_indices/issues/1369),
-[#1370](https://github.com/monocongo/climate_indices/issues/1370)); the remaining APIs and the beta
-xarray route are not.** This record documents approved contracts,
+[#1370](https://github.com/monocongo/climate_indices/issues/1370),
+[#1371](https://github.com/monocongo/climate_indices/issues/1371)); the remaining APIs and the beta
+xarray route are not.** Bootstrap evidence is synthetic characterization and regression only.
+The maintainer narrowed its supported scope (#1371): serially independent or 6-month-overlap
+sources at 200 years passed every predeclared gate, while 36-month persistence did not
+(a twelve-year LMF coverage case failed and null rejection ran above nominal), so the intervals
+and p-values are not claimed for multi-year persistence. See `VALIDATION.md`.
+This record documents approved contracts,
 not completed code or scientific validation.
 The implementation responsibilities are explicit:
 
@@ -22,7 +28,7 @@ The implementation responsibilities are explicit:
 | `joint_statistics()` | [#1368](https://github.com/monocongo/climate_indices/issues/1368) | [#1372](https://github.com/monocongo/climate_indices/issues/1372) | NumPy implemented (#1368); xarray route not implemented. |
 | `conditional_probability()` | [#1369](https://github.com/monocongo/climate_indices/issues/1369) | [#1372](https://github.com/monocongo/climate_indices/issues/1372) | NumPy implemented (#1369); xarray route not implemented. |
 | `compound_events()` | [#1370](https://github.com/monocongo/climate_indices/issues/1370) | The separate catalog route below uses this computation. | NumPy implemented (#1370); the xarray catalog route (#1373) is not implemented. |
-| `bootstrap_dependence()` | [#1371](https://github.com/monocongo/climate_indices/issues/1371) | [#1372](https://github.com/monocongo/climate_indices/issues/1372) | Not implemented. |
+| `bootstrap_dependence()` | [#1371](https://github.com/monocongo/climate_indices/issues/1371) | [#1372](https://github.com/monocongo/climate_indices/issues/1372) | NumPy implemented (#1371); xarray route not implemented. |
 | `compound_events_xarray()` | It reuses the NumPy event matcher. | [#1373](https://github.com/monocongo/climate_indices/issues/1373) | Not implemented. |
 
 The reference fixture is [#1366](https://github.com/monocongo/climate_indices/issues/1366).

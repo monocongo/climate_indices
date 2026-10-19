@@ -21,10 +21,23 @@ else:
     from typing_extensions import assert_type
 import xarray as xr
 
-from climate_indices import energy, fire, fit_diagnostics, percentage_of_normal, spei, spi
+from climate_indices import compound, energy, fire, fit_diagnostics, percentage_of_normal, spei, spi
 from climate_indices.compute import FitDiagnostics, Periodicity
 from climate_indices.indices import Distribution
 from climate_indices.indices import percentage_of_normal as numpy_pnp
+
+
+def test_compound_bootstrap_numpy_return_types() -> None:
+    """The monthly inference route retains typed numeric fields without an adapter."""
+    time = (np.datetime64("1900-01", "M") + np.arange(40 * 12)).astype("datetime64[D]")
+    rows = np.ones((2, len(time)), dtype=bool)
+    hazards = compound.AlignedHazards(("A", "B"), time, "monthly", rows, rows, {})
+    result = compound.bootstrap_dependence(hazards, statistic="joint_probability", seed=1, n_resamples=1)
+    assert_type(result, compound.BootstrapResult)
+    assert_type(result.estimate, npt.NDArray[np.float64])
+    assert_type(result.p_value, npt.NDArray[np.float64])
+    assert_type(result.n_years, npt.NDArray[np.int64])
+    assert_type(result.inference_start, npt.NDArray[np.datetime64])
 
 
 def test_energy_wind_numpy_return_types() -> None:

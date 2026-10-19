@@ -4,9 +4,12 @@
 
 The maintainer approved this internal plan and its recommendations.
 [Parent issue #1364](https://github.com/monocongo/climate_indices/issues/1364) tracks the milestone.
-CMP-01 through CMP-04 are complete, and CMP-05 is under review, so the NumPy `harmonize()`,
-`joint_statistics()`, and `conditional_probability()` routes are implemented.
-Every other API, the beta xarray route, and scientific validation do not exist yet.
+CMP-01 through CMP-05 are complete. CMP-07 implements the NumPy `bootstrap_dependence()`
+route beside `harmonize()`, `joint_statistics()`, and `conditional_probability()`.
+Bootstrap evidence is synthetic characterization and regression only, and its supported
+scope is limited to sources with at most 6 months of persistence (see `VALIDATION.md`).
+Every other API and the beta xarray route remain pending. No external scientific
+validation of the bootstrap is claimed.
 
 The source review used fetched `main` at `a074b1fc5593c5761abd0c49b361654b241cc479`
 and the 3.0.0 API contracts. The checkout supplied with the request was older.
