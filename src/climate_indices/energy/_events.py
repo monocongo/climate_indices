@@ -9,7 +9,7 @@ import numpy.typing as npt
 import xarray as xr
 
 from climate_indices.exceptions import CoordinateValidationError, InsufficientDataError, InvalidArgumentError
-from climate_indices.runs import Direction, RunStatistics, summarize_runs
+from climate_indices.runs import Direction, RunStatistics, _resolve_options, summarize_runs
 from climate_indices.validation import validate_dask_chunks, validate_time_dimension, validate_time_monotonicity
 from climate_indices.xarray_adapter import build_output_attrs
 
@@ -23,16 +23,6 @@ _SUMMARY_METADATA: dict[str, tuple[str, str]] = {
     "valid_count": ("Valid Input Step Count", "1"),
     "frequency": ("Energy Drought Event Frequency", "1"),
 }
-
-
-def _validate_options(threshold: float, min_duration: int, max_gap: int) -> None:
-    """Reject an option the event kernel cannot use, before any block runs."""
-    if not np.isfinite(threshold):
-        raise ValueError("threshold must be a finite number")
-    if isinstance(min_duration, bool) or not isinstance(min_duration, (int, np.integer)) or min_duration < 1:
-        raise ValueError("min_duration must be a positive integer")
-    if isinstance(max_gap, bool) or not isinstance(max_gap, (int, np.integer)) or max_gap < 0:
-        raise ValueError("max_gap must be a non-negative integer")
 
 
 def _events_block(
@@ -76,8 +66,12 @@ def _period_values(
     """
     if not isinstance(periods, xr.DataArray):
         return periods
-    if time_coord is not None and time_dim in periods.dims:
-        if time_dim not in periods.coords or not np.array_equal(periods[time_dim].values, time_coord.values):
+    if time_coord is not None:
+        if (
+            periods.dims != (time_dim,)
+            or time_dim not in periods.coords
+            or not np.array_equal(periods[time_dim].values, time_coord.values)
+        ):
             raise CoordinateValidationError(
                 f"periods must carry the input's {time_dim!r} coordinate labels, in the same order.",
                 coordinate_name=time_dim,
@@ -152,6 +146,19 @@ def _gridded_events(
 
 
 @overload
+def energy_drought_events(  # pyright: ignore[reportOverlappingOverload]
+    index: xr.DataArray,
+    *,
+    threshold: float = -1.0,
+    direction: Direction = "below",
+    min_duration: int = 1,
+    max_gap: int = 0,
+    periods: npt.ArrayLike | xr.DataArray | None = None,
+    time_dim: str = "time",
+) -> RunStatistics | xr.Dataset: ...
+
+
+@overload
 def energy_drought_events(
     index: npt.ArrayLike,
     *,
@@ -162,19 +169,6 @@ def energy_drought_events(
     periods: npt.ArrayLike | None = None,
     time_dim: str = "time",
 ) -> RunStatistics: ...
-
-
-@overload
-def energy_drought_events(
-    index: xr.DataArray,
-    *,
-    threshold: float = -1.0,
-    direction: Direction = "below",
-    min_duration: int = 1,
-    max_gap: int = 0,
-    periods: npt.ArrayLike | xr.DataArray | None = None,
-    time_dim: str = "time",
-) -> RunStatistics | xr.Dataset: ...
 
 
 def energy_drought_events(
@@ -233,9 +227,10 @@ def energy_drought_events(
         instead, carrying the event options in each variable's attributes.
 
     Raises:
-        CoordinateValidationError: If a gridded DataArray has no time dimension or
-            a non-monotonic time coordinate, or its period labels do not carry the
-            input's time labels.
+        CoordinateValidationError: If a DataArray has no declared time dimension,
+            a non-monotonic time coordinate, or period labels without matching
+            time coordinates. Also raised for a gridded Dask input with split
+            time chunks.
         DataShapeError: If the index is not one-dimensional or periods does not
             match its shape.
         InsufficientDataError: If a gridded DataArray has an empty time axis.
@@ -243,10 +238,7 @@ def energy_drought_events(
         InputTypeError: If the index or period labels have an unsupported dtype.
         InvalidArgumentError: If options or period labels are invalid.
         ValueError: If a DataArray period label count does not match its time
-            dimension, or ``threshold``, ``min_duration``, or ``max_gap`` is
-            unusable.
-        CoordinateValidationError: If a gridded DataArray has no time dimension,
-            a non-monotonic time coordinate, or a split Dask time chunk.
+            dimension.
     """
     if not isinstance(index, xr.DataArray):
         return summarize_runs(
@@ -258,24 +250,24 @@ def energy_drought_events(
             max_gap=max_gap,
         )
 
-    _validate_options(threshold, min_duration, max_gap)
+    threshold, min_duration, max_gap = _resolve_options(threshold, direction, min_duration, max_gap)
+    validate_time_dimension(index, time_dim)
+    validate_time_monotonicity(index[time_dim])
+    labels = _period_values(periods, time_coord=index[time_dim], time_dim=time_dim)
     if index.ndim == 1:
         return summarize_runs(
             np.asarray(index.values),
-            periods=_period_values(periods, time_coord=index.coords.get(time_dim), time_dim=time_dim),
+            periods=labels,
             threshold=threshold,
             direction=direction,
             min_duration=min_duration,
             max_gap=max_gap,
         )
 
-    validate_time_dimension(index, time_dim)
-    validate_time_monotonicity(index[time_dim])
     if index.chunks is not None:
         validate_dask_chunks(index, time_dim)
     if index.sizes[time_dim] == 0:
         raise InsufficientDataError("An empty time axis has no steps to run over.")
-    labels = _period_values(periods, time_coord=index[time_dim], time_dim=time_dim)
     return _gridded_events(
         index,
         None if labels is None else _validated_labels(labels, index.sizes[time_dim]),
