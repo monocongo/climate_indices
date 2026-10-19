@@ -141,6 +141,24 @@ def test_shared_mask_splits_runs_and_censors_boundaries() -> None:
     assert "n_valid" not in manifest["grid"]
 
 
+def test_extra_sources_beyond_the_statistics_limit_are_allowed() -> None:
+    """Select two of four prepared sources: the statistics' three-source cap does not apply."""
+    base = prepared(grid=False)
+    spare = base[["exceedance", "valid"]].isel(hazard=[2]).assign_coords(hazard=["spare"])
+    hazards = xr.Dataset(
+        {name: xr.concat([base[name], spare[name]], dim="hazard") for name in ("exceedance", "valid")},
+        attrs=base.attrs,
+    )
+    assert hazards.sizes["hazard"] == 4
+    result = catalog(hazards)
+    expected = catalog(base)
+    for field in EVENT_FIELDS:
+        np.testing.assert_array_equal(result[field], expected[field], err_msg=field)
+    # a source outside the selected pair neither contributes runs nor changes the shared support
+    np.testing.assert_array_equal(result["n_pairs"], expected["n_pairs"])
+    np.testing.assert_array_equal(result["n_valid"], expected["n_valid"])
+
+
 @pytest.mark.parametrize("empty", ["no_pairs", "all_invalid", "zero_cells", "long_duration"])
 def test_empty_catalog_retains_dtypes_and_cells(empty: str) -> None:
     hazards = prepared()

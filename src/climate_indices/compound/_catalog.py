@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import json
 from dataclasses import fields
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import xarray as xr
 
 from climate_indices.compound._events import CompoundEventSet, EventMode, _compound_events
+from climate_indices.compound._harmonize import AlignedHazards, Cadence
 from climate_indices.compound._statistics import _validate_hazards
 from climate_indices.compound._xarray import _MANIFEST, _count, _dataset_attrs, _prepare, _route
 from climate_indices.exceptions import DimensionMismatchError, InputTypeError, InvalidArgumentError
@@ -43,14 +44,27 @@ def _catalog(
             valid_values="an in-memory prepared Dataset",
         )
     prepared = _prepare(hazards)
-    _validate_hazards(prepared.standin())
     for role, name in (("first", first), ("second", second)):
         if not isinstance(name, str) or name not in prepared.names:
             raise InvalidArgumentError(
-                f"{role} must name a prepared hazard.", argument_name=role, valid_values="a hazard coordinate label"
+                f"{role} must name one of the prepared hazards {list(prepared.names)}.",
+                argument_name=role,
+                valid_values="a hazard coordinate label",
             )
     if first == second:
         raise InvalidArgumentError("first and second must name different hazards.", argument_name="second")
+    # validate a two-source stand-in: the statistics' two-or-three-source limit does not apply here,
+    # because the catalog reads only the two selected hazards from a possibly larger prepared Dataset
+    _validate_hazards(
+        AlignedHazards(
+            (first, second),
+            prepared.day,
+            cast(Cadence, prepared.cadence),
+            np.zeros((2, prepared.day.size, 0), dtype=np.bool_),
+            np.zeros((2, prepared.day.size, 0), dtype=np.bool_),
+            prepared.metadata,
+        )
+    )
     _, duration, _ = _resolve_options(0.5, "above", min_duration, 0)
     source_metadata = {
         role: {"name": name, "threshold": 0.5, "direction": "above", "min_duration": duration, "max_gap": 0}

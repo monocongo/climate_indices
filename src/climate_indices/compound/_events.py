@@ -882,6 +882,7 @@ def compound_events_xarray(
         Pair counts are not independent observations or a significance test.
         Interface-equivalence tests do not provide external scientific validation.
     """
+    # deferred: _catalog imports this module for CompoundEventSet and EventMode
     from climate_indices.compound import _catalog
 
     return _catalog.compound_events_xarray(

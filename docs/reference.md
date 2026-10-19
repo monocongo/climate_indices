@@ -361,6 +361,8 @@ one. Concurrent lag is `NaN`; sequential overlap duration is zero. Censor flags
 are `int8`, with values 0 and 1 and CF-style `flag_values`/`flag_meanings`.
 
 The `cell` lookup table retains spatial labels as coordinates over `cell`.
+The prepared Dataset may hold more than two hazards; only the selected pair
+enters the catalog and the shared support.
 Cells follow the input spatial dimension order in C order; a single series has
 one cell. Rows follow cell order, then first-source and second-source run order.
 Run IDs identify retained runs within each cell after minimum-duration filtering.
