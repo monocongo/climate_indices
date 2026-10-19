@@ -141,8 +141,9 @@ def test_zero_joint_suppression_has_no_false_zero_width_interval(statistic: str)
     rows = hazards.exceedance.copy()
     rows[1] = ~rows[0]
     options = {"given": "A", "target": "B"} if statistic == "conditional_probability" else {}
+    hazards = dataclasses.replace(hazards, exceedance=rows)
     with pytest.warns(ClimateIndicesWarning):
-        result = run(dataclasses.replace(hazards, exceedance=rows), statistic=statistic, alternative="less", **options)
+        result = run(hazards, statistic=statistic, alternative="less", **options)
     assert np.all(result.estimate == 0)
     assert np.isnan(result.confidence_low).all()
     assert np.isnan(result.confidence_high).all()
@@ -157,8 +158,9 @@ def test_missing_years_partial_boundaries_and_earliest_tie() -> None:
     hazards = prepared(63)
     validity = hazards.valid.copy()
     validity[:, 31 * 12 + 4] = False
+    incomplete = dataclasses.replace(hazards, valid=validity)
     with pytest.warns(ClimateIndicesWarning):
-        result = run(dataclasses.replace(hazards, valid=validity))
+        result = run(incomplete)
     assert result.n_years == 31
     assert result.inference_end == np.datetime64("1930-12-01")
     np.testing.assert_array_equal(result.n_valid, np.full(12, 31))
@@ -167,12 +169,11 @@ def test_missing_years_partial_boundaries_and_earliest_tie() -> None:
     assert result.full_record_estimate[0] == pytest.approx(16 / 63, rel=0, abs=1e-12)
     # A missing coordinate must split the years too, not join distant months.
     keep = np.arange(len(hazards.time)) != 31 * 12 + 4
+    gapped_hazards = dataclasses.replace(
+        hazards, time=hazards.time[keep], exceedance=hazards.exceedance[:, keep], valid=hazards.valid[:, keep]
+    )
     with pytest.warns(ClimateIndicesWarning):
-        gapped = run(
-            dataclasses.replace(
-                hazards, time=hazards.time[keep], exceedance=hazards.exceedance[:, keep], valid=hazards.valid[:, keep]
-            )
-        )
+        gapped = run(gapped_hazards)
     np.testing.assert_array_equal(gapped.estimate, result.estimate)
     # Partial first/last years do not join an inference segment.
     trimmed = dataclasses.replace(
@@ -223,6 +224,7 @@ def test_cell_tile_and_global_rng_invariance() -> None:
     before = np.random.get_state()
     with pytest.warns(ClimateIndicesWarning):
         together = run(hazards)
+    with pytest.warns(ClimateIndicesWarning):
         repeated = run(hazards)
     np.testing.assert_array_equal(together.p_value, repeated.p_value)
     for a, b in zip(before, np.random.get_state(), strict=True):
@@ -282,8 +284,9 @@ def test_exact_valid_fraction_boundary_and_linear_quantiles(missing: int) -> Non
     "years,length,flag", [(29, 2, "insufficient_years"), (30, 7, "insufficient_blocks"), (60, 7, "few_blocks")]
 )
 def test_year_and_nonoverlapping_block_guards(years: int, length: int, flag: str) -> None:
+    hazards = prepared(years)
     with pytest.warns(ClimateIndicesWarning):
-        result = run(prepared(years), block_length_years=length)
+        result = run(hazards, block_length_years=length)
     assert np.all(result.quality_flags & implementation._FLAGS[flag])
     if flag != "few_blocks":
         assert np.isnan(result.p_value).all()
@@ -455,8 +458,9 @@ def test_resample_limit_is_checked_before_computation() -> None:
 
 def test_daily_manual_input_and_conditional_role_validation() -> None:
     hazards = prepared()
+    daily = dataclasses.replace(hazards, cadence="daily")
     with pytest.raises(InvalidArgumentError, match="monthly"):
-        run(dataclasses.replace(hazards, cadence="daily"))
+        run(daily)
     with pytest.raises(InvalidArgumentError, match="AlignedHazards"):
         run("not prepared")  # type: ignore[arg-type]
     with pytest.raises(InvalidArgumentError):
@@ -477,8 +481,9 @@ def test_sparse_and_expected_count_guards_remain_distinct() -> None:
     rows = np.zeros_like(hazards.exceedance)
     # Ten occurrences per month pass the marginal guard, but 60*(10/60)^2 < 5.
     rows[:, : 10 * 12] = True
+    hazards = dataclasses.replace(hazards, exceedance=rows)
     with pytest.warns(ClimateIndicesWarning):
-        result = run(dataclasses.replace(hazards, exceedance=rows))
+        result = run(hazards)
     assert np.isfinite(result.confidence_low).all()
     assert np.isnan(result.p_value).all()
     np.testing.assert_array_equal(result.n_valid, np.full(12, 60))
@@ -488,16 +493,18 @@ def test_sparse_and_expected_count_guards_remain_distinct() -> None:
     assert np.all(result.quality_flags & implementation._FLAGS["insufficient_expected_count"])
     assert not np.any(result.quality_flags & implementation._FLAGS["sparse_occurrences"])
     rows[:, 9 * 12 :] = False
+    hazards = dataclasses.replace(hazards, exceedance=rows)
     with pytest.warns(ClimateIndicesWarning):
-        sparse = run(dataclasses.replace(hazards, exceedance=rows))
+        sparse = run(hazards)
     assert np.isnan(sparse.confidence_low).all()
     assert np.all(sparse.quality_flags & implementation._FLAGS["sparse_occurrences"])
 
 
 def test_sparse_marginal_blocks_the_null_when_the_expected_count_is_met() -> None:
     """9 * 40 / 60 = 6 expected successes, yet one channel has fewer than ten occurrences."""
+    hazards = table(60, 9, 40, 5)
     with pytest.warns(ClimateIndicesWarning):
-        result = run(table(60, 9, 40, 5))
+        result = run(hazards)
     assert np.isnan(result.p_value).all()
     assert np.all(result.quality_flags & implementation._FLAGS["sparse_occurrences"])
     assert not np.any(result.quality_flags & implementation._FLAGS["insufficient_expected_count"])
@@ -507,15 +514,17 @@ def test_undefined_point_estimate_is_flagged() -> None:
     hazards = table(60, 30, 30, 5)
     rows = hazards.exceedance.copy()
     rows[1] = False
+    hazards = dataclasses.replace(hazards, exceedance=rows)
     with pytest.warns(ClimateIndicesWarning):
-        result = run(dataclasses.replace(hazards, exceedance=rows), statistic="likelihood_multiplication_factor")
+        result = run(hazards, statistic="likelihood_multiplication_factor")
     assert np.isnan(result.estimate).all()
     assert np.all(result.quality_flags & implementation._FLAGS["undefined_denominator"])
 
 
 def test_quality_warning_points_at_the_caller() -> None:
+    hazards = prepared(30)
     with pytest.warns(ClimateIndicesWarning) as caught:
-        run(prepared(30))
+        run(hazards)
     assert caught[0].filename == __file__
 
 
@@ -538,15 +547,17 @@ def test_month_phase_and_unknown_future_response() -> None:
     hazards = prepared()
     rows = np.zeros_like(hazards.exceedance)
     rows[:, ::12] = True
+    seasonal = dataclasses.replace(hazards, exceedance=rows)
     with pytest.warns(ClimateIndicesWarning):
-        phase = run(dataclasses.replace(hazards, exceedance=rows))
+        phase = run(seasonal)
     assert phase.confidence_low[0] == phase.confidence_high[0] == 1
     assert np.isnan(phase.confidence_low[1:]).all()
     validity = hazards.valid.copy()
     validity[1, 30 * 12] = False
+    hazards = dataclasses.replace(hazards, valid=validity)
     with pytest.warns(ClimateIndicesWarning):
         future = run(
-            dataclasses.replace(hazards, valid=validity),
+            hazards,
             statistic="conditional_probability",
             given="A",
             target="B",

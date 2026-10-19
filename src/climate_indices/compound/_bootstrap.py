@@ -194,6 +194,145 @@ def _resample(
     return paired, null
 
 
+def _selected_sources(
+    hazards: AlignedHazards, statistic: Statistic, given: str | None, target: str | None, lag_window: tuple[int, int]
+) -> tuple[int, ...]:
+    if hazards.cadence != "monthly":
+        raise InvalidArgumentError("Bootstrap inference requires monthly inputs.", argument_name="hazards.cadence")
+    if statistic == "conditional_probability":
+        return _pair_indices(hazards.names, given, target)
+    if given is not None or target is not None or lag_window != (0, 0):
+        raise InvalidArgumentError("given, target, and lag_window apply only to conditional inference.")
+    return tuple(range(len(hazards.names)))
+
+
+def _calendar_rows(
+    occurrence: npt.NDArray[np.bool_],
+    valid: npt.NDArray[np.bool_],
+    positions: npt.NDArray[np.int64],
+    selected: tuple[int, ...],
+    calendar_years: int,
+    statistic: Statistic,
+    lag_window: tuple[int, int],
+) -> tuple[npt.NDArray[np.bool_], npt.NDArray[np.bool_]]:
+    """Build response windows on the original calendar before selecting complete years."""
+    rows = np.zeros((len(selected), calendar_years * 12), dtype=bool)
+    observed = np.zeros(rows.shape, dtype=bool)
+    for channel, source in enumerate(selected):
+        observed[channel, positions] = valid[source]
+        rows[channel, positions] = occurrence[source] & valid[source]
+    if statistic == "conditional_probability":
+        response_valid, response = _forward_windows(observed[1], rows[1], *lag_window)
+        rows[1] = response
+        eligible = observed[0] & response_valid
+    else:
+        eligible = observed.all(axis=0)
+    return rows.reshape(len(selected), calendar_years, 12), eligible.reshape(calendar_years, 12)
+
+
+def _summarize_resamples(
+    paired: npt.NDArray[np.float64],
+    null: npt.NDArray[np.float64],
+    excess: npt.NDArray[np.float64],
+    interval_ok: npt.NDArray[np.bool_],
+    null_ok: npt.NDArray[np.bool_],
+    confidence_level: float,
+    alternative: Alternative,
+) -> dict[str, npt.NDArray[Any]]:
+    """Apply the valid-realization gates before computing quantiles and inclusive tails."""
+    n_resamples = len(paired)
+    paired_valid, null_valid = np.isfinite(paired), np.isfinite(null)
+    n_paired, n_null = paired_valid.sum(axis=0), null_valid.sum(axis=0)
+    flags = np.where(interval_ok & (n_paired < 0.95 * n_resamples), _FLAGS["invalid_interval_resamples"], 0)
+    flags |= np.where(null_ok & (n_null < 0.95 * n_resamples), _FLAGS["invalid_null_resamples"], 0)
+    low, high, p_value = (np.full(excess.shape, np.nan) for _ in range(3))
+    for index in np.ndindex(excess.shape):
+        if interval_ok[index] and n_paired[index] >= 0.95 * n_resamples:
+            bounds = np.quantile(
+                paired[(slice(None),) + index][paired_valid[(slice(None),) + index]],
+                [(1 - confidence_level) / 2, (1 + confidence_level) / 2],
+                method="linear",
+            )
+            low[index], high[index] = bounds
+        if null_ok[index] and n_null[index] >= 0.95 * n_resamples:
+            distribution = null[(slice(None),) + index]
+            extreme = (
+                distribution >= excess[index] - _TIE_TOLERANCE
+                if alternative == "greater"
+                else distribution <= excess[index] + _TIE_TOLERANCE
+            )
+            p_value[index] = (1 + np.count_nonzero(extreme & null_valid[(slice(None),) + index])) / (1 + n_null[index])
+    return {
+        "confidence_low": low,
+        "confidence_high": high,
+        "p_value": p_value,
+        "n_interval_resamples": np.where(interval_ok, n_paired, 0),
+        "n_null_resamples": np.where(null_ok, n_null, 0),
+        "quality_flags": flags,
+    }
+
+
+def _infer_segment(
+    segment: npt.NDArray[np.bool_],
+    *,
+    statistic: Statistic,
+    groupby: GroupBy,
+    length: int,
+    n_resamples: int,
+    confidence_level: float,
+    alternative: Alternative,
+    seed: int,
+    support: str,
+) -> dict[str, npt.NDArray[Any]]:
+    """Retain support counts even when a guard prevents interval or null inference."""
+    years = segment.shape[1]
+    point, excess, marginal, successes, n = _metrics(segment, np.ones((years, 12), dtype=bool), statistic, groupby)
+    flags = np.zeros(point.shape, dtype=np.int64)
+    blocks = years // length
+    if years < 30:
+        flags |= _FLAGS["insufficient_years"]
+    if blocks < 5:
+        flags |= _FLAGS["insufficient_blocks"]
+    if blocks < 10:
+        flags |= _FLAGS["few_blocks"]
+    sparse = (marginal < 10).any(axis=0)
+    flags |= np.where(sparse, _FLAGS["sparse_occurrences"], 0)
+    flags |= np.where(~np.isfinite(point), _FLAGS["undefined_denominator"], 0)
+    # Integer products keep an exact count of 5 at 5; n * prod(m / n) can round to 4.999999999999999.
+    expected = _safe_rate(np.prod(marginal, axis=0), n ** (len(segment) - 1))
+    interval_ok = (successes >= 5) & ~sparse
+    null_ok = (expected >= 5) & ~sparse
+    flags |= np.where(successes < 5, _FLAGS["insufficient_successes"], 0)
+    flags |= np.where(~(expected >= 5), _FLAGS["insufficient_expected_count"], 0)
+    result = {
+        "estimate": point,
+        "n_valid": n,
+        "n_joint": successes,
+        "n_marginal": marginal,
+        "expected_null_successes": expected,
+        "confidence_low": np.full(point.shape, np.nan),
+        "confidence_high": np.full(point.shape, np.nan),
+        "p_value": np.full(point.shape, np.nan),
+        "n_interval_resamples": np.zeros(point.shape, dtype=np.int64),
+        "n_null_resamples": np.zeros(point.shape, dtype=np.int64),
+        "quality_flags": flags,
+    }
+    if years >= 30 and blocks >= 5 and (np.any(interval_ok) or np.any(null_ok)):
+        paired, null = _resample(
+            segment,
+            statistic=statistic,
+            groupby=groupby,
+            length=length,
+            n_resamples=n_resamples,
+            seed=seed,
+            support=support,
+        )
+        summary = _summarize_resamples(paired, null, excess, interval_ok, null_ok, confidence_level, alternative)
+        summary["quality_flags"] |= flags
+        result.update(summary)
+    return result
+
+
 def _bootstrap(
     hazards: AlignedHazards,
     *,
@@ -209,15 +348,7 @@ def _bootstrap(
     seed: int,
 ) -> BootstrapResult:
     hazards = _validate_hazards(hazards)
-    if hazards.cadence != "monthly":
-        raise InvalidArgumentError("Bootstrap inference requires monthly inputs.", argument_name="hazards.cadence")
-    selected: tuple[int, ...]
-    if statistic == "conditional_probability":
-        selected = _pair_indices(hazards.names, given, target)
-    else:
-        if given is not None or target is not None or lag_window != (0, 0):
-            raise InvalidArgumentError("given, target, and lag_window apply only to conditional inference.")
-        selected = tuple(range(len(hazards.names)))
+    selected = _selected_sources(hazards, statistic, given, target, lag_window)
 
     month_numbers = hazards.time.astype("datetime64[M]").astype(np.int64)
     first_year = int(month_numbers[0] // 12)
@@ -252,19 +383,9 @@ def _bootstrap(
     ends = starts.copy()
 
     for cell in range(cell_count):
-        rows: npt.NDArray[np.bool_] = np.zeros((len(selected), calendar_years * 12), dtype=bool)
-        observed = np.zeros(rows.shape, dtype=bool)
-        for channel, source in enumerate(selected):
-            observed[channel, positions] = valid[source, :, cell]
-            rows[channel, positions] = occurrence[source, :, cell] & valid[source, :, cell]
-        if statistic == "conditional_probability":
-            response_valid, response = _forward_windows(observed[1], rows[1], *lag_window)
-            rows[1] = response
-            eligible = observed[0] & response_valid
-        else:
-            eligible = observed.all(axis=0)
-        rows = rows.reshape(len(selected), calendar_years, 12)
-        eligible = eligible.reshape(calendar_years, 12)
+        rows, eligible = _calendar_rows(
+            occurrence[..., cell], valid[..., cell], positions, selected, calendar_years, statistic, lag_window
+        )
         floats["full_record_estimate"][..., cell] = _metrics(rows, eligible, statistic, groupby)[0]
         start, end = _longest_segment(np.asarray(eligible.all(axis=1)))
         years = end - start
@@ -273,71 +394,22 @@ def _bootstrap(
         if years:
             starts[cell] = np.datetime64(first_year + start, "Y").astype("datetime64[D]")
             ends[cell] = (np.datetime64(first_year + end, "Y").astype("datetime64[M]") - 1).astype("datetime64[D]")
-        segment = rows[:, start:end]
-        point, excess, marginal, successes, n = _metrics(segment, np.ones((years, 12), dtype=bool), statistic, groupby)
-        floats["estimate"][..., cell] = point
-        counts["n_valid"][..., cell] = n
-        counts["n_joint"][..., cell] = successes
-        marginal_counts[..., cell] = marginal
-        flags = np.zeros(groups, dtype=np.int64)
-        blocks = years // length
-        if years < 30:
-            flags |= _FLAGS["insufficient_years"]
-        if blocks < 5:
-            flags |= _FLAGS["insufficient_blocks"]
-        if blocks < 10:
-            flags |= _FLAGS["few_blocks"]
-        sparse = (marginal < 10).any(axis=0)
-        flags |= np.where(sparse, _FLAGS["sparse_occurrences"], 0)
-        flags |= np.where(~np.isfinite(point), _FLAGS["undefined_denominator"], 0)
-        # Integer products keep an exact count of 5 at 5; n * prod(m / n) can round to 4.999999999999999.
-        if statistic == "conditional_probability":
-            expected = _safe_rate(marginal[0] * marginal[1], n)
-        else:
-            expected = _safe_rate(np.prod(marginal, axis=0), n ** (len(selected) - 1))
-        floats["expected_null_successes"][..., cell] = expected
-        interval_ok = (successes >= 5) & ~sparse
-        null_ok = (expected >= 5) & ~sparse
-        flags |= np.where(successes < 5, _FLAGS["insufficient_successes"], 0)
-        flags |= np.where(~(expected >= 5), _FLAGS["insufficient_expected_count"], 0)
-        if years >= 30 and blocks >= 5 and (np.any(interval_ok) or np.any(null_ok)):
-            support = json.dumps([str(starts[cell]), str(ends[cell]), length, statistic, lag_window, groupby])
-            paired, null = _resample(
-                segment,
-                statistic=statistic,
-                groupby=groupby,
-                length=length,
-                n_resamples=n_resamples,
-                seed=seed,
-                support=support,
-            )
-            paired_valid, null_valid = np.isfinite(paired), np.isfinite(null)
-            n_paired, n_null = paired_valid.sum(axis=0), null_valid.sum(axis=0)
-            counts["n_interval_resamples"][..., cell] = np.where(interval_ok, n_paired, 0)
-            counts["n_null_resamples"][..., cell] = np.where(null_ok, n_null, 0)
-            flags |= np.where(interval_ok & (n_paired < 0.95 * n_resamples), _FLAGS["invalid_interval_resamples"], 0)
-            flags |= np.where(null_ok & (n_null < 0.95 * n_resamples), _FLAGS["invalid_null_resamples"], 0)
-            # Quantiles exclude undefined metrics, but only after the 95% validity gate.
-            for index in np.ndindex(groups):
-                if interval_ok[index] and n_paired[index] >= 0.95 * n_resamples:
-                    bounds = np.quantile(
-                        paired[(slice(None),) + index][paired_valid[(slice(None),) + index]],
-                        [(1 - confidence_level) / 2, (1 + confidence_level) / 2],
-                        method="linear",
-                    )
-                    floats["confidence_low"][index + (cell,)] = bounds[0]
-                    floats["confidence_high"][index + (cell,)] = bounds[1]
-                if null_ok[index] and n_null[index] >= 0.95 * n_resamples:
-                    distribution = null[(slice(None),) + index]
-                    extreme = (
-                        distribution >= excess[index] - _TIE_TOLERANCE
-                        if alternative == "greater"
-                        else distribution <= excess[index] + _TIE_TOLERANCE
-                    )
-                    floats["p_value"][index + (cell,)] = (
-                        1 + np.count_nonzero(extreme & null_valid[(slice(None),) + index])
-                    ) / (1 + n_null[index])
-        counts["quality_flags"][..., cell] = flags
+        inference = _infer_segment(
+            rows[:, start:end],
+            statistic=statistic,
+            groupby=groupby,
+            length=length,
+            n_resamples=n_resamples,
+            confidence_level=confidence_level,
+            alternative=alternative,
+            seed=seed,
+            support=json.dumps([str(starts[cell]), str(ends[cell]), length, statistic, lag_window, groupby]),
+        )
+        for name in ("estimate", "confidence_low", "confidence_high", "p_value", "expected_null_successes"):
+            floats[name][..., cell] = inference[name]
+        for name in counts:
+            counts[name][..., cell] = inference[name]
+        marginal_counts[..., cell] = inference["n_marginal"]
 
     if np.any(counts["quality_flags"]):
         warnings.warn(

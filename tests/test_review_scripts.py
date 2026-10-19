@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
+import logging
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -74,6 +76,53 @@ def test_characterization_output_rejects_symlink_escape(
     monkeypatch.setattr(characterize_compound_bootstrap, "OUTPUT_ROOT", root)
     with pytest.raises(argparse.ArgumentTypeError, match="JSON file below"):
         characterize_compound_bootstrap._output_path(str(link / "report.json" if directory_link else link))
+
+
+def test_characterization_writes_a_validated_json_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(characterize_compound_bootstrap, "OUTPUT_ROOT", tmp_path)
+    output = tmp_path / "nested" / "report.json"
+    report = {"passed": False, "results": []}
+    characterize_compound_bootstrap._write_report(output, report)
+    assert json.loads(output.read_text(encoding="utf-8")) == report
+
+
+@pytest.mark.parametrize("directory_link", [True, False])
+def test_characterization_rechecks_output_before_writing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, directory_link: bool
+) -> None:
+    root = tmp_path / "design"
+    root.mkdir()
+    monkeypatch.setattr(characterize_compound_bootstrap, "OUTPUT_ROOT", root)
+    output = characterize_compound_bootstrap._output_path(root / "nested" / "report.json")
+    outside = tmp_path / ("outside" if directory_link else "outside.json")
+    link = root / "nested" if directory_link else output
+    link.parent.mkdir(parents=True, exist_ok=True)
+    link.symlink_to(outside, target_is_directory=directory_link)
+    with pytest.raises(argparse.ArgumentTypeError, match="JSON file below"):
+        characterize_compound_bootstrap._write_report(output, {})
+    assert not outside.exists()
+
+
+def test_characterization_reduced_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
+    script = characterize_compound_bootstrap
+    monkeypatch.setattr(script, "TRIALS", 2)
+    monkeypatch.setattr(script, "YEARS", 60)
+    monkeypatch.setattr(script, "RESAMPLES", 9)
+    previous_disable = logging.root.manager.disable
+    try:
+        report = script.characterize()
+    finally:
+        logging.disable(previous_disable)
+    assert len(report["results"]) == len(script.SCENARIOS) * len(script.STATISTICS) * len(script.LENGTHS)
+    assert report["configuration"]["trials"] == 2
+    for result in report["results"]:
+        assert len(result["truth"]) == len(result["covered"]) == 12
+        assert all(0 <= count <= 2 for count in result["covered"])
+        assert all(0 <= count <= 2 for count in result["rejected"])
+        assert (result["null_gate_passed"] is None) == (result["rho"] != 0)
+    assert report["passed"] == all(
+        result["coverage_gate_passed"] and result["null_gate_passed"] is not False for result in report["results"]
+    )
 
 
 requires_requests = pytest.mark.skipif(

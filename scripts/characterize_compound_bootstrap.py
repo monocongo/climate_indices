@@ -28,13 +28,16 @@ import logging
 import math
 import warnings
 from pathlib import Path
+from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 import scipy
 from scipy.integrate import quad
 from scipy.stats import binom, binomtest, norm
 
 from climate_indices import compound
+from climate_indices.compound._bootstrap import Statistic
 from climate_indices.exceptions import ClimateIndicesWarning
 
 OUTPUT_ROOT = Path(__file__).resolve().parents[1] / "docs" / "design"
@@ -43,7 +46,7 @@ YEARS = 200
 RESAMPLES = 399
 SEED = 1371
 LENGTHS = (3, 6, 12)
-STATISTICS = ("joint_probability", "likelihood_multiplication_factor", "conditional_probability")
+STATISTICS: tuple[Statistic, ...] = ("joint_probability", "likelihood_multiplication_factor", "conditional_probability")
 SCENARIOS = (
     ("seasonal_independent", 1, 0.0),
     ("overlapping_6_month_independent", 6, 0.0),
@@ -52,7 +55,7 @@ SCENARIOS = (
 )
 
 
-def _output_path(value: str) -> Path:
+def _output_path(value: str | Path) -> Path:
     """Reject output paths that escape the report directory, including symlinks."""
     output = Path(value).resolve()
     if not output.is_relative_to(OUTPUT_ROOT) or output.suffix != ".json":
@@ -60,7 +63,61 @@ def _output_path(value: str) -> Path:
     return output
 
 
-def characterize() -> dict:
+def _write_report(value: Path, report: dict[str, Any]) -> None:
+    # Recheck the path after characterization because directory symlinks can change during the calculation.
+    output = _output_path(value)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+
+
+def _scenario_counts(
+    scenario_index: int,
+    width: int,
+    rho: float,
+    time: npt.NDArray[np.datetime64],
+    thresholds: npt.NDArray[np.float64],
+    truths: tuple[npt.NDArray[np.float64], ...],
+) -> tuple[
+    npt.NDArray[np.int64],
+    npt.NDArray[np.int64],
+    npt.NDArray[np.int64],
+    npt.NDArray[np.int64],
+    npt.NDArray[np.bool_],
+]:
+    covered = np.zeros((3, 3, 12), dtype=int)
+    rejected = np.zeros_like(covered)
+    intervals = np.zeros_like(covered)
+    p_values = np.zeros_like(covered)
+    decisions = np.zeros((TRIALS, 3, 3, 12), dtype=bool)
+    for trial in range(TRIALS):
+        rng = np.random.default_rng(np.random.SeedSequence([SEED, scenario_index, trial]))
+        noise = rng.standard_normal((2, YEARS * 12 + width - 1))
+        noise[1] = rho * noise[0] + math.sqrt(1 - rho * rho) * noise[1]
+        values = np.stack([np.convolve(row, np.ones(width) / math.sqrt(width), mode="valid") for row in noise])
+        rows = values < np.tile(thresholds, YEARS)
+        hazards = compound.AlignedHazards(("A", "B"), time, "monthly", rows, np.ones_like(rows), {})
+        for si, statistic in enumerate(STATISTICS):
+            for li, length in enumerate(LENGTHS):
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", ClimateIndicesWarning)
+                    result = compound.bootstrap_dependence(
+                        hazards,
+                        statistic=statistic,
+                        given="A" if si == 2 else None,
+                        target="B" if si == 2 else None,
+                        block_length_years=length,
+                        n_resamples=RESAMPLES,
+                        seed=trial + SEED,
+                    )
+                intervals[si, li] += np.isfinite(result.confidence_low)
+                p_values[si, li] += np.isfinite(result.p_value)
+                covered[si, li] += (result.confidence_low <= truths[si]) & (truths[si] <= result.confidence_high)
+                decisions[trial, si, li] = result.p_value <= 0.05
+                rejected[si, li] += decisions[trial, si, li]
+    return covered, rejected, intervals, p_values, decisions
+
+
+def characterize() -> dict[str, Any]:
     logging.disable(logging.CRITICAL)
     probabilities = 0.45 + 0.1 * np.cos(2 * np.pi * np.arange(12) / 12)
     thresholds = norm.ppf(probabilities)
@@ -85,36 +142,9 @@ def characterize() -> dict:
             ]
         )
         truths = (truth_joint, truth_joint / probabilities**2, truth_joint / probabilities)
-        covered = np.zeros((3, 3, 12), dtype=int)
-        rejected = np.zeros_like(covered)
-        intervals = np.zeros_like(covered)
-        p_values = np.zeros_like(covered)
-        decisions = np.zeros((TRIALS, 3, 3, 12), dtype=bool)
-        for trial in range(TRIALS):
-            rng = np.random.default_rng(np.random.SeedSequence([SEED, scenario_index, trial]))
-            noise = rng.standard_normal((2, YEARS * 12 + width - 1))
-            noise[1] = rho * noise[0] + math.sqrt(1 - rho * rho) * noise[1]
-            values = np.stack([np.convolve(row, np.ones(width) / math.sqrt(width), mode="valid") for row in noise])
-            rows = values < np.tile(thresholds, YEARS)
-            hazards = compound.AlignedHazards(("A", "B"), time, "monthly", rows, np.ones_like(rows), {})
-            for si, statistic in enumerate(STATISTICS):
-                for li, length in enumerate(LENGTHS):
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore", ClimateIndicesWarning)
-                        result = compound.bootstrap_dependence(
-                            hazards,
-                            statistic=statistic,
-                            given="A" if si == 2 else None,
-                            target="B" if si == 2 else None,
-                            block_length_years=length,
-                            n_resamples=RESAMPLES,
-                            seed=trial + SEED,
-                        )
-                    intervals[si, li] += np.isfinite(result.confidence_low)
-                    p_values[si, li] += np.isfinite(result.p_value)
-                    covered[si, li] += (result.confidence_low <= truths[si]) & (truths[si] <= result.confidence_high)
-                    decisions[trial, si, li] = result.p_value <= 0.05
-                    rejected[si, li] += decisions[trial, si, li]
+        covered, rejected, intervals, p_values, decisions = _scenario_counts(
+            scenario_index, width, rho, time, thresholds, truths
+        )
         for si, statistic in enumerate(STATISTICS):
             for li, length in enumerate(LENGTHS):
                 coverage_ok = bool(np.all(covered[si, li] >= minimum_covered))
@@ -182,7 +212,6 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=_output_path, required=True)
     args = parser.parse_args()
     report = characterize()
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    _write_report(args.output, report)
     print(f"Characterization passed: {report['passed']}. Report: {args.output}")
     raise SystemExit(0 if report["passed"] else 1)
