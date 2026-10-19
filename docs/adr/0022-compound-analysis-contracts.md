@@ -6,14 +6,17 @@ Approved for implementation. The maintainer approved these contracts and the bou
 [CMP-01 (#1365)](https://github.com/monocongo/climate_indices/issues/1365) records this decision under
 [parent issue #1364](https://github.com/monocongo/climate_indices/issues/1364).
 
-**Only the NumPy `harmonize()`, `joint_statistics()`, `conditional_probability()`,
-`compound_events()`, and `bootstrap_dependence()` routes are implemented
+**The NumPy `harmonize()`, `joint_statistics()`, `conditional_probability()`,
+`compound_events()`, and `bootstrap_dependence()` routes
 ([#1367](https://github.com/monocongo/climate_indices/issues/1367),
 [#1368](https://github.com/monocongo/climate_indices/issues/1368),
 [#1369](https://github.com/monocongo/climate_indices/issues/1369),
 [#1370](https://github.com/monocongo/climate_indices/issues/1370),
-[#1371](https://github.com/monocongo/climate_indices/issues/1371)); the remaining APIs and the beta
-xarray route are not.** Bootstrap evidence is synthetic characterization and regression only.
+[#1371](https://github.com/monocongo/climate_indices/issues/1371)) and the beta xarray Dataset routes
+for `harmonize()`, `joint_statistics()`, `conditional_probability()`, and `bootstrap_dependence()`
+([#1372](https://github.com/monocongo/climate_indices/issues/1372)) are implemented; the xarray event
+catalog is not.** The xarray routes are equivalence-tested against the NumPy core, not independently
+validated. Bootstrap evidence is synthetic characterization and regression only.
 The maintainer narrowed its supported scope (#1371) to the synthetic cases that passed every
 predeclared gate: serially independent or 6-month-overlap sources whose hazards are independent
 of each other, at 200 years. A 36-month-persistence case failed a coverage gate and its null
@@ -25,11 +28,11 @@ The implementation responsibilities are explicit:
 
 | Proposed public function | NumPy implementation | Beta xarray implementation | Current state |
 | --- | --- | --- | --- |
-| `harmonize()` | [#1367](https://github.com/monocongo/climate_indices/issues/1367) | [#1372](https://github.com/monocongo/climate_indices/issues/1372) | NumPy implemented (#1367); xarray route not implemented. |
-| `joint_statistics()` | [#1368](https://github.com/monocongo/climate_indices/issues/1368) | [#1372](https://github.com/monocongo/climate_indices/issues/1372) | NumPy implemented (#1368); xarray route not implemented. |
-| `conditional_probability()` | [#1369](https://github.com/monocongo/climate_indices/issues/1369) | [#1372](https://github.com/monocongo/climate_indices/issues/1372) | NumPy implemented (#1369); xarray route not implemented. |
+| `harmonize()` | [#1367](https://github.com/monocongo/climate_indices/issues/1367) | [#1372](https://github.com/monocongo/climate_indices/issues/1372) | NumPy implemented (#1367); beta xarray route implemented (#1372). |
+| `joint_statistics()` | [#1368](https://github.com/monocongo/climate_indices/issues/1368) | [#1372](https://github.com/monocongo/climate_indices/issues/1372) | NumPy implemented (#1368); beta xarray route implemented (#1372). |
+| `conditional_probability()` | [#1369](https://github.com/monocongo/climate_indices/issues/1369) | [#1372](https://github.com/monocongo/climate_indices/issues/1372) | NumPy implemented (#1369); beta xarray route implemented (#1372). |
 | `compound_events()` | [#1370](https://github.com/monocongo/climate_indices/issues/1370) | The separate catalog route below uses this computation. | NumPy implemented (#1370); the xarray catalog route (#1373) is not implemented. |
-| `bootstrap_dependence()` | [#1371](https://github.com/monocongo/climate_indices/issues/1371) | [#1372](https://github.com/monocongo/climate_indices/issues/1372) | NumPy implemented (#1371); xarray route not implemented. |
+| `bootstrap_dependence()` | [#1371](https://github.com/monocongo/climate_indices/issues/1371) | [#1372](https://github.com/monocongo/climate_indices/issues/1372) | NumPy implemented (#1371); beta xarray route implemented (#1372). |
 | `compound_events_xarray()` | It reuses the NumPy event matcher. | [#1373](https://github.com/monocongo/climate_indices/issues/1373) | Not implemented. |
 
 The reference fixture is [#1366](https://github.com/monocongo/climate_indices/issues/1366).
@@ -210,6 +213,17 @@ Spatial chunks must remain compatible across inputs.
 Use a dedicated shape-reducing adapter; the fitting decorator's calendar folding is inappropriate here.
 Validate coordinates and options before graph construction; validate lazy data values inside numerical tasks.
 Value-dependent failures can therefore appear when computation starts.
+The NumPy support warnings (short record, sparse occurrences, a group below `min_samples`, a zero marginal,
+and the bootstrap's limited-support warning)
+are value-dependent, so they follow the same rule: in-memory xarray input warns exactly like the NumPy route,
+while Dask input leaves those conditions to `quality_flags`, because a warning raised inside a task would
+repeat per tile with tile-local counts. Descriptive flags retain `insufficient_support=1` and
+`undefined_denominator=2`. They also report `sparse_occurrences=4` for fewer than ten marginal or conditioning
+occurrences on nonempty support, and `short_record=8` for fewer than 30 observed calendar years per cell.
+The short-record flag uses each cell's eligible steps across the whole record, not each month's group.
+These additional bits do not change the counts, estimates, or `min_samples` rule.
+Harmonization warnings depend only on dates and declarations, so both backends raise them at the call.
+Lifecycle completion records `evaluation="graph_construction"` for a lazy call and `evaluation="eager"` otherwise.
 Do not allocate resample-by-time-by-cell arrays.
 Measure memory before publishing tile-size guidance.
 

@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import importlib.util
 import json
 import logging
 import sys
+import weakref
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 from unittest.mock import Mock
 
+import numpy as np
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,6 +48,10 @@ except ModuleNotFoundError:
 characterize_compound_bootstrap = _load_script(
     "characterize_compound_bootstrap",
     "scripts/characterize_compound_bootstrap.py",
+)
+measure_compound_xarray_memory = _load_script(
+    "measure_compound_xarray_memory",
+    "scripts/measure_compound_xarray_memory.py",
 )
 
 
@@ -123,6 +131,73 @@ def test_characterization_reduced_configuration(monkeypatch: pytest.MonkeyPatch)
     assert report["passed"] == all(
         result["coverage_gate_passed"] and result["null_gate_passed"] is not False for result in report["results"]
     )
+
+
+def test_memory_budget_reproduces_the_design_figures() -> None:
+    """The planning formula gives the ~1.97 GB daily and ~81 MB monthly figures that ADR-0022 quotes."""
+    script = measure_compound_xarray_memory
+    assert script._budget(36_524, 1_000) == 54 * 36_524 * 1_000
+    assert round(script._budget(36_524, 1_000) / 1e9, 2) == 1.97
+    assert script._budget(1_200, 1_000, resamples=1_999) == 54 * 1_200 * 1_000 + 8 * 1_999 * 1_000
+    assert round(script._budget(1_200, 1_000, resamples=1_999) / 1e6) == 81
+
+
+@pytest.mark.parametrize("prepared", [False, True])
+def test_memory_measurement_keeps_only_counted_inputs_live(monkeypatch: pytest.MonkeyPatch, prepared: bool) -> None:
+    """Release the float source payloads before measuring a prepared Boolean Dataset."""
+    script = measure_compound_xarray_memory
+    sources = script._sources
+    payloads: list[weakref.ReferenceType[np.ndarray]] = []
+
+    def tracked_sources(time: np.ndarray, cells: int, seed: int) -> dict[str, Any]:
+        arrays: dict[str, Any] = sources(time, cells, seed)
+        payloads[:] = [weakref.ref(value) for array in arrays.values() for value in array.data.dask.values()]
+        return arrays
+
+    def peak(stage: Any, input_bytes: int) -> int:
+        gc.collect()
+        assert payloads
+        assert all((payload() is None) == prepared for payload in payloads)
+        return input_bytes + 100
+
+    monkeypatch.setattr(script, "_sources", tracked_sources)
+    monkeypatch.setattr(script, "_peak", peak)
+    time = np.arange("2000-01", "2001-01", dtype="datetime64[M]")
+    script._measure(
+        "test",
+        (1, 2),
+        len(time),
+        time,
+        lambda arrays: lambda: arrays,
+        cadence="monthly",
+        prepared=prepared,
+    )
+
+
+def test_memory_measurement_quick_report_is_complete() -> None:
+    previous_disable = logging.root.manager.disable
+    logging.disable(logging.CRITICAL)
+    try:
+        report = measure_compound_xarray_memory.measure(quick=True)
+    finally:
+        logging.disable(previous_disable)
+    assert report["quick"] is True
+    assert [stage["stage"] for stage in report["stages"]] == [
+        "harmonize",
+        "joint_statistics",
+        "conditional_probability",
+        "bootstrap_dependence",
+    ]
+    for stage in report["stages"]:
+        widths = len(stage["cells"])
+        assert len(stage["peak_bytes"]) == len(stage["budget_bytes"]) == len(stage["input_bytes"]) == widths
+        # the traced peak includes the stage's own working memory, so it exceeds the inputs alone
+        assert all(peak > inputs for peak, inputs in zip(stage["peak_bytes"], stage["input_bytes"], strict=True))
+        assert stage["bytes_per_cell"] > 0
+        assert stage["fixed_bytes_per_task"] >= 0
+        assert set(stage["max_cells_per_task"]) == {"256 MiB", "1 GiB"}
+        assert stage["max_cells_per_task"]["1 GiB"] >= stage["max_cells_per_task"]["256 MiB"]
+    assert json.loads(json.dumps(report)) == report
 
 
 requires_requests = pytest.mark.skipif(

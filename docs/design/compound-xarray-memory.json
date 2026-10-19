@@ -1,0 +1,180 @@
+{
+  "report": "CMP-08 compound xarray per-tile peak memory",
+  "quick": false,
+  "budget_formula": "(10*k + 24)*T*C + 8*B*q*C bytes; k sources, T times, C cells, B realizations, q stored metrics",
+  "method": "One single-chunk tile per stage on the synchronous scheduler; tracemalloc peak of all NumPy allocations while the stage computes, plus the bytes of the inputs built beforehand. Excludes interpreter and allocator overhead, so it is a lower bound on resident memory.",
+  "stored_metrics": 1,
+  "conditional_lag_window": [
+    0,
+    30
+  ],
+  "stages": [
+    {
+      "stage": "harmonize",
+      "cadence": "daily",
+      "sources": 3,
+      "steps": 36524,
+      "resamples": 0,
+      "cells": [
+        4,
+        16,
+        64
+      ],
+      "input_bytes": [
+        3506304,
+        14025216,
+        56100864
+      ],
+      "peak_bytes": [
+        12884611,
+        43125350,
+        164090018
+      ],
+      "budget_bytes": [
+        7889184,
+        31556736,
+        126226944
+      ],
+      "peak_over_budget": [
+        1.633,
+        1.367,
+        1.3
+      ],
+      "fixed_bytes_per_task": 2804079,
+      "bytes_per_cell": 2520092,
+      "budget_bytes_per_cell": 1972296,
+      "bytes_per_cell_over_budget": 1.278,
+      "max_cells_per_task": {
+        "256 MiB": 105,
+        "1 GiB": 424
+      }
+    },
+    {
+      "stage": "joint_statistics",
+      "cadence": "daily",
+      "sources": 3,
+      "steps": 36524,
+      "resamples": 0,
+      "cells": [
+        4,
+        16,
+        64
+      ],
+      "input_bytes": [
+        876576,
+        3506304,
+        14025216
+      ],
+      "peak_bytes": [
+        3921393,
+        11423555,
+        41271739
+      ],
+      "budget_bytes": [
+        7889184,
+        31556736,
+        126226944
+      ],
+      "peak_over_budget": [
+        0.497,
+        0.362,
+        0.327
+      ],
+      "fixed_bytes_per_task": 1447416,
+      "bytes_per_cell": 622315,
+      "budget_bytes_per_cell": 1972296,
+      "bytes_per_cell_over_budget": 0.316,
+      "max_cells_per_task": {
+        "256 MiB": 429,
+        "1 GiB": 1723
+      }
+    },
+    {
+      "stage": "conditional_probability",
+      "cadence": "daily",
+      "sources": 3,
+      "steps": 36524,
+      "resamples": 0,
+      "cells": [
+        4,
+        16,
+        64
+      ],
+      "input_bytes": [
+        876576,
+        3506304,
+        14025216
+      ],
+      "peak_bytes": [
+        4209624,
+        12651601,
+        47877342
+      ],
+      "budget_bytes": [
+        7889184,
+        31556736,
+        126226944
+      ],
+      "peak_over_budget": [
+        0.534,
+        0.401,
+        0.379
+      ],
+      "fixed_bytes_per_task": 1152660,
+      "bytes_per_cell": 729531,
+      "budget_bytes_per_cell": 1972296,
+      "bytes_per_cell_over_budget": 0.37,
+      "max_cells_per_task": {
+        "256 MiB": 366,
+        "1 GiB": 1470
+      }
+    },
+    {
+      "stage": "bootstrap_dependence",
+      "cadence": "monthly",
+      "sources": 3,
+      "steps": 1200,
+      "resamples": 1999,
+      "cells": [
+        2,
+        16,
+        64
+      ],
+      "input_bytes": [
+        14400,
+        115200,
+        460800
+      ],
+      "peak_bytes": [
+        1006875,
+        1228505,
+        1988174
+      ],
+      "budget_bytes": [
+        161584,
+        1292672,
+        5170688
+      ],
+      "peak_over_budget": [
+        6.231,
+        0.95,
+        0.385
+      ],
+      "fixed_bytes_per_task": 975242,
+      "bytes_per_cell": 15827,
+      "budget_bytes_per_cell": 80792,
+      "bytes_per_cell_over_budget": 0.196,
+      "max_cells_per_task": {
+        "256 MiB": 16898,
+        "1 GiB": 67780
+      }
+    }
+  ],
+  "environment": {
+    "python": "3.14.7",
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "numpy": "2.4.2",
+    "xarray": "2026.1.0",
+    "dask": "2026.8.0"
+  }
+}

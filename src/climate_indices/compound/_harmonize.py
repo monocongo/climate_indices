@@ -17,10 +17,10 @@ from __future__ import annotations
 
 import json
 import warnings
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from time import perf_counter
-from typing import Any, Literal, NoReturn, TypeAlias
+from typing import Any, Literal, NoReturn, TypeAlias, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -56,6 +56,16 @@ _UNITS = {"daily": _DAY_UNIT, "monthly": _MONTH_UNIT}
 # an indicator source's public declaration; its physical threshold and comparator live in the manifest
 _INDICATOR_THRESHOLD = 0.5
 _INDICATOR_DIRECTION = "above"
+
+
+class _Missing:
+    """Default of ``harmonize``'s ``time``: required for NumPy input, rejected for DataArray input."""
+
+    def __repr__(self) -> str:
+        return "<required for NumPy input>"
+
+
+_MISSING: Any = _Missing()
 
 
 @dataclass(frozen=True, eq=False)
@@ -265,12 +275,6 @@ def _hazard_and_validity(
     validity: object,
 ) -> tuple[npt.NDArray[np.bool_], npt.NDArray[np.bool_]]:
     """Apply the declared threshold to one source, returning ``(hazard, valid)`` with ``hazard`` False where invalid."""
-    if isinstance(values, xr.DataArray):
-        raise InputTypeError(
-            f"inputs[{name!r}] is an xarray.DataArray; harmonize() accepts NumPy arrays and explicit dates only.",
-            expected_type=np.ndarray,
-            actual_type=type(values),
-        )
     masked: np.ma.MaskedArray[Any, Any] = np.ma.asanyarray(values)
     array = np.ma.getdata(masked)
     valid = ~np.ma.getmaskarray(masked)
@@ -317,6 +321,12 @@ def _hazard_and_validity(
 
 def _validity_mask(name: str, validity: object, shape: tuple[int, ...]) -> npt.NDArray[np.bool_]:
     """Require one source's explicit validity mask to be Boolean and shaped like its input."""
+    if isinstance(validity, xr.DataArray):  # np.asarray would match it by position and ignore its labels
+        raise InputTypeError(
+            f"validity[{name!r}] is an xarray.DataArray; pass a NumPy mask on the NumPy route.",
+            expected_type=np.ndarray,
+            actual_type=type(validity),
+        )
     mask = np.asarray(validity)
     if mask.dtype.kind != "b":
         raise InputTypeError(
@@ -552,32 +562,40 @@ def _align(validated: list[_Validated], target_cadence: str, join: str) -> tuple
     return first, last, dropped
 
 
-def _warn_unknowns(sources: list[_Validated], dropped: int, original: int, aligned: int) -> None:
-    """Warn about probability sources without a Calibration Period and about dropped boundary steps.
+def _replay(queued: Iterable[Warning], stacklevel: int) -> None:
+    """Warn each queued warning, ``stacklevel`` frames above the function that calls this helper.
+
+    The private cores append their warnings to a list instead of warning, so the public function that
+    owns the call decides where the warning is attributed. ``stacklevel`` counts like ``warnings.warn``'s:
+    2 attributes the warning to the caller of that function.
+    """
+    for warning in queued:
+        warnings.warn(warning, stacklevel=stacklevel + 1)
+
+
+def _warn_unknowns(sources: list[_Validated], dropped: int, original: int, aligned: int, queue: list[Warning]) -> None:
+    """Queue warnings about probability sources without a Calibration Period and about dropped boundary steps.
 
     The alignment counts share one basis: source time steps summed over every source.
     """
     undeclared = [
         source.name for source in sources if source.entry["input_scale"] == "probability" and source.calibration is None
     ]
-    # stacklevel 4 skips this helper, _harmonize, and harmonize to reach the caller
     if undeclared:
-        warnings.warn(
+        queue.append(
             ClimateIndicesWarning(
                 f"Calibration Period metadata is missing for probability sources {undeclared}; it is recorded as "
                 f"{_UNKNOWN!r} and calibration compatibility is not checked."
-            ),
-            stacklevel=4,
+            )
         )
     if dropped:
-        warnings.warn(
+        queue.append(
             InputAlignmentWarning(
                 f'join="inner" dropped {dropped} of {original} source time steps in total to keep the common overlap.',
                 original_size=original,
                 aligned_size=aligned,
                 dropped_count=dropped,
-            ),
-            stacklevel=4,
+            )
         )
 
 
@@ -595,8 +613,13 @@ def _harmonize(
     join: Join,
     source_metadata: Mapping[str, Mapping[str, Any]] | None,
     spatial_time_major: bool,
+    warn: list[Warning] | None,
 ) -> AlignedHazards:
-    """Validate, threshold, reduce, and align; see :func:`harmonize`."""
+    """Validate, threshold, reduce, and align; see :func:`harmonize`.
+
+    ``warn`` is a list to which the manifest warnings are appended, for the caller to replay, or ``None``
+    to drop them (the xarray route's per-block kernel, whose plan has already queued them once).
+    """
     if not isinstance(inputs, Mapping) or not inputs:
         raise InvalidArgumentError(
             "inputs must be a non-empty mapping of source name to array.", argument_name="inputs"
@@ -678,12 +701,14 @@ def _harmonize(
     time_labels = _immutable(steps.astype(label_unit).astype(_DAY_UNIT))
     exceedance = _immutable(exceedance)
     valid = _immutable(valid)
-    _warn_unknowns(
-        validated,
-        dropped,
-        original=sum(source.steps for source in validated),
-        aligned=len(validated) * steps.shape[0],
-    )
+    if warn is not None:
+        _warn_unknowns(
+            validated,
+            dropped,
+            original=sum(source.steps for source in validated),
+            aligned=len(validated) * steps.shape[0],
+            queue=warn,
+        )
 
     manifest = {
         "schema_version": _MANIFEST_SCHEMA_VERSION,
@@ -702,6 +727,24 @@ def _harmonize(
     return AlignedHazards(names, time_labels, target_cadence, exceedance, valid, _freeze(manifest))
 
 
+@overload
+def harmonize(
+    inputs: Mapping[str, xr.DataArray],
+    *,
+    cadence: Mapping[str, Cadence],
+    input_scale: Mapping[str, InputScale],
+    thresholds: Mapping[str, float],
+    directions: Mapping[str, Direction],
+    target_cadence: Cadence,
+    aggregation: Mapping[str, Aggregation] | None = None,
+    validity: Mapping[str, xr.DataArray] | None = None,
+    join: Join = "exact",
+    source_metadata: Mapping[str, Mapping[str, Any]] | None = None,
+    time_dim: str = "time",
+) -> xr.Dataset: ...
+
+
+@overload
 def harmonize(
     inputs: Mapping[str, npt.ArrayLike],
     *,
@@ -716,8 +759,32 @@ def harmonize(
     join: Join = "exact",
     source_metadata: Mapping[str, Mapping[str, Any]] | None = None,
     spatial_time_major: bool = False,
-) -> AlignedHazards:
+) -> AlignedHazards: ...
+
+
+def harmonize(
+    inputs: Mapping[str, Any],
+    *,
+    time: Any = _MISSING,
+    cadence: Mapping[str, Cadence],
+    input_scale: Mapping[str, InputScale],
+    thresholds: Mapping[str, float],
+    directions: Mapping[str, Direction],
+    target_cadence: Cadence,
+    aggregation: Mapping[str, Aggregation] | None = None,
+    validity: Mapping[str, Any] | None = None,
+    join: Join = "exact",
+    source_metadata: Mapping[str, Mapping[str, Any]] | None = None,
+    spatial_time_major: bool = False,
+    time_dim: str | None = None,
+) -> AlignedHazards | xr.Dataset:
     """Threshold declared inputs and align their observed hazard opportunities.
+
+    A mapping of :class:`xarray.DataArray` takes the beta xarray route: it reads each
+    source's dates from the ``time_dim`` coordinate, so it accepts neither ``time``
+    nor ``spatial_time_major``, and returns a Dataset of ``exceedance`` and ``valid``
+    with the ``hazard`` and ``time`` dimensions; see :ref:`compound-xarray-route`.
+    The NumPy route is described below.
 
     Each source declares how to read its values: ``"probability"`` inputs are
     thresholded with a strict ``>`` or ``<`` in the declared direction, and
@@ -742,6 +809,8 @@ def harmonize(
             ``spatial_time_major=True``. NaN and masked elements are unknown.
         time: Source name to its observation dates (``datetime64``, strictly
             increasing). A monthly label is normalized to the first of its month.
+            Required for NumPy input; DataArray input takes its dates from the
+            ``time_dim`` coordinate and rejects this argument.
         cadence: Source name to ``"daily"`` or ``"monthly"``.
         input_scale: Source name to ``"probability"`` or ``"indicator"``. ``"normal"``
             and ``"bounded"`` are rejected; request probabilities upstream.
@@ -762,6 +831,9 @@ def harmonize(
             and ``comparator`` are recorded in the manifest; everything is copied.
         spatial_time_major: Declare that arrays with more than one dimension are
             ``(time, *cells)`` blocks. Every source must have the same cell shape.
+            NumPy input only; DataArray layouts come from named dimensions.
+        time_dim: DataArray input only: the name of each source's time dimension and
+            coordinate. Defaults to ``"time"``; NumPy input rejects it.
 
     Returns:
         An :class:`AlignedHazards` whose ``exceedance`` and ``valid`` arrays are new
@@ -771,10 +843,13 @@ def harmonize(
     Raises:
         InvalidArgumentError: For an inconsistent or unsupported declaration, a
             probability outside ``[0, 1]``, a reducer that does not apply, a monthly
-            source with a daily target, or sources with conflicting known Calibration
-            Periods.
+            source with a daily target, sources with conflicting known Calibration
+            Periods, ``time_dim`` with NumPy input, or ``time`` or ``spatial_time_major``
+            with DataArray input.
         InputTypeError: For a dtype that does not match the declared scale, a
-            probability dtype wider than float64, or dates that are not ``datetime64``.
+            probability dtype wider than float64, dates that are not ``datetime64``, or a
+            mapping that mixes DataArrays with other types.
+        TypeError: For NumPy input without ``time``.
         DataShapeError: For an undeclared gridded layout, mismatched cell shapes, or
             dates or validity that do not match an input.
         CoordinateValidationError: For NaT, duplicate, or unordered dates, mismatched
@@ -804,6 +879,33 @@ def harmonize(
         >>> aligned.valid.astype(int).tolist()
         [[1, 1, 1, 0], [1, 1, 1, 1]]
     """
+    if isinstance(inputs, Mapping) and any(isinstance(value, xr.DataArray) for value in inputs.values()):
+        # deferred: the xarray route imports this module
+        from climate_indices.compound import _xarray
+
+        return _xarray.harmonize(
+            inputs,
+            time=time,
+            cadence=cadence,
+            input_scale=input_scale,
+            thresholds=thresholds,
+            directions=directions,
+            target_cadence=target_cadence,
+            aggregation=aggregation,
+            validity=validity,
+            join=join,
+            source_metadata=source_metadata,
+            spatial_time_major=spatial_time_major,
+            time_dim="time" if time_dim is None else time_dim,
+        )
+    if time is _MISSING:
+        raise TypeError("harmonize() missing 1 required keyword-only argument: 'time'")
+    if time_dim is not None:
+        raise InvalidArgumentError(
+            "time_dim applies only to xarray.DataArray inputs; NumPy inputs carry their dates in time.",
+            argument_name="time_dim",
+            argument_value=repr(time_dim),
+        )
     # source names are caller-supplied identifiers, so only their count reaches the log
     log = _logger.bind(
         index_type="compound_harmonize",
@@ -813,6 +915,7 @@ def harmonize(
     )
     log.info("calculation_started")
     t0 = perf_counter()
+    queued: list[Warning] = []
     try:
         result = _harmonize(
             inputs,
@@ -827,7 +930,9 @@ def harmonize(
             join=join,
             source_metadata=source_metadata,
             spatial_time_major=spatial_time_major,
+            warn=queued,
         )
+        _replay(queued, 2)
     except Exception as exc:
         log_calculation_failure(log, exc)
         raise

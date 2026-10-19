@@ -118,7 +118,7 @@ def test_pooled_counts_match_a_hand_counted_contingency_table() -> None:
     assert float(result.joint_probability) == exact(2 / 6)
     assert float(result.independent_probability) == exact((4 / 6) * (3 / 6))
     assert float(result.likelihood_multiplication_factor) == exact((2 / 6) / ((4 / 6) * (3 / 6)))
-    assert int(result.quality_flags) == 0
+    assert int(result.quality_flags) == 12
     assert result.groupby == "pooled"
 
 
@@ -190,7 +190,7 @@ def test_zero_joint_count_with_positive_marginals_is_zero_not_nan() -> None:
     assert float(result.joint_probability) == 0.0
     assert float(result.independent_probability) == exact((2 / 4) * (2 / 4))
     assert float(result.likelihood_multiplication_factor) == 0.0
-    assert int(result.quality_flags) == 0
+    assert int(result.quality_flags) == 12
 
 
 def test_zero_marginal_makes_lmf_undefined_with_its_flag() -> None:
@@ -202,8 +202,13 @@ def test_zero_marginal_makes_lmf_undefined_with_its_flag() -> None:
     assert float(result.independent_probability) == 0.0
     assert float(result.joint_probability) == 0.0
     assert math.isnan(float(result.likelihood_multiplication_factor))
-    assert int(result.quality_flags) == 2
-    assert result.metadata["quality_flags"] == {"insufficient_support": 1, "undefined_denominator": 2}
+    assert int(result.quality_flags) == 14
+    assert result.metadata["quality_flags"] == {
+        "insufficient_support": 1,
+        "undefined_denominator": 2,
+        "sparse_occurrences": 4,
+        "short_record": 8,
+    }
 
 
 def test_short_support_keeps_counts_and_nans_the_estimates() -> None:
@@ -218,10 +223,10 @@ def test_short_support_keeps_counts_and_nans_the_estimates() -> None:
     assert math.isnan(float(result.joint_probability))
     assert math.isnan(float(result.independent_probability))
     assert math.isnan(float(result.likelihood_multiplication_factor))
-    assert int(result.quality_flags) == 1
+    assert int(result.quality_flags) == 13
 
     relaxed = compound.joint_statistics(align(hazard), groupby="pooled", min_samples=2)
-    assert int(relaxed.quality_flags) == 0
+    assert int(relaxed.quality_flags) == 12
     assert float(relaxed.likelihood_multiplication_factor) == exact((1 / 3) / ((2 / 3) * (2 / 3)))
 
 
@@ -299,7 +304,7 @@ def test_all_missing_cell_returns_zero_counts_without_failing_its_neighbor() -> 
     assert result.n_marginal.shape == (2, 2)
     assert result.marginal_frequency[0][0] == 0.75
     assert result.marginal_frequency[1][0] == 0.5
-    assert result.quality_flags.tolist() == [0, 3]
+    assert result.quality_flags.tolist() == [12, 11]
     assert float(result.likelihood_multiplication_factor[0]) == exact((1 / 4) / ((3 / 4) * (2 / 4)))
     assert math.isnan(float(result.likelihood_multiplication_factor[1]))
 
@@ -328,15 +333,15 @@ def test_monthly_groups_recount_pooled_support_instead_of_averaging_lmf() -> Non
     assert monthly_result.n_marginal[0].tolist() == [4, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0]
     assert monthly_result.n_marginal[1].tolist() == [4, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0]
     assert float(monthly_result.likelihood_multiplication_factor[0]) == 1.0
-    assert monthly_result.quality_flags[0] == 0  # min_samples=1 admits the four January steps
-    assert monthly_result.quality_flags[6] == 2  # July: zero B marginal
-    assert monthly_result.quality_flags[7] == 2  # August: zero A marginal
+    assert monthly_result.quality_flags[0] == 12  # January has short, sparse support but meets min_samples=1
+    assert monthly_result.quality_flags[6] == 14  # July also has a zero B marginal
+    assert monthly_result.quality_flags[7] == 14  # August also has a zero A marginal
 
     # the default threshold keeps the counts, NaNs the estimates, and flags the short support
     assert strict.n_valid.tolist() == [4] * 12
     assert math.isnan(float(strict.likelihood_multiplication_factor[0]))
-    assert strict.quality_flags[0] == 1
-    assert strict.quality_flags[6] == 3
+    assert strict.quality_flags[0] == 13
+    assert strict.quality_flags[6] == 15
 
     assert int(pooled.n_valid) == steps
     assert pooled.n_marginal.tolist() == [8, 8]
@@ -566,7 +571,7 @@ def test_single_step_harmonization_is_accepted_not_rejected() -> None:
     assert int(result.n_valid) == 1
     assert int(result.n_joint) == 0
     assert result.n_marginal.tolist() == [1, 0]
-    assert int(result.quality_flags) == 2
+    assert int(result.quality_flags) == 14
 
 
 @pytest.mark.parametrize(
@@ -864,10 +869,10 @@ def test_conditional_short_support_keeps_counts_and_nans_the_estimates() -> None
     assert int(strict.n_success) == 2
     assert math.isnan(float(strict.conditional_probability))
     assert math.isnan(float(strict.response_window_frequency))
-    assert int(strict.quality_flags) == 1
+    assert int(strict.quality_flags) == 13
 
     relaxed = conditional(align(hazard), lag_window=(0, 1), min_samples=2)
-    assert int(relaxed.quality_flags) == 0
+    assert int(relaxed.quality_flags) == 12
     assert float(relaxed.conditional_probability) == 1.0
     assert float(relaxed.response_window_frequency) == exact(2 / 2)
 
@@ -883,7 +888,7 @@ def test_zero_conditioning_count_is_undefined_with_its_flag() -> None:
     assert int(result.n_success) == 0
     assert math.isnan(float(result.conditional_probability))
     assert float(result.response_window_frequency) == 1.0
-    assert int(result.quality_flags) == 2
+    assert int(result.quality_flags) == 14
 
 
 def test_conditional_all_missing_cell_returns_zero_counts_without_failing_its_neighbor() -> None:
@@ -904,7 +909,7 @@ def test_conditional_all_missing_cell_returns_zero_counts_without_failing_its_ne
     assert result.n_success.tolist() == [2, 0]
     assert float(result.conditional_probability[0]) == 1.0
     assert math.isnan(float(result.conditional_probability[1]))
-    assert result.quality_flags.tolist() == [0, 3]
+    assert result.quality_flags.tolist() == [12, 11]
 
 
 def test_only_the_two_declared_sources_enter_eligibility() -> None:
@@ -938,7 +943,7 @@ def test_lag_window_at_or_past_the_record_end_returns_no_eligible_anchor() -> No
             result = conditional(align(hazard), lag_window=lag_window)
         assert int(result.n_anchors) == 0
         assert int(result.n_positive) == 0
-        assert int(result.quality_flags) == 3
+        assert int(result.quality_flags) == 11
         assert math.isnan(float(result.conditional_probability))
         assert math.isnan(float(result.response_window_frequency))
 
@@ -1003,7 +1008,7 @@ def test_production_defaults_group_by_month_and_require_thirty_anchors() -> None
     assert int(result.n_anchors.sum()) == 6
     assert int(result.n_positive[0]) == 1
     assert math.isnan(float(result.conditional_probability[0]))
-    assert int(result.quality_flags[0]) == 1
+    assert int(result.quality_flags[0]) == 13
 
 
 def test_conditional_warns_about_sparse_conditioning() -> None:
