@@ -6,7 +6,7 @@ Approved for implementation. The maintainer approved these contracts and the bou
 [CMP-01 (#1365)](https://github.com/monocongo/climate_indices/issues/1365) records this decision under
 [parent issue #1364](https://github.com/monocongo/climate_indices/issues/1364).
 
-**Only the NumPy `harmonize()`, `joint_statistics()`, `conditional_probability()`, and
+**Only the NumPy `harmonize()`, `joint_statistics()`, `conditional_probability()`,
 `compound_events()`, and `bootstrap_dependence()` routes are implemented
 ([#1367](https://github.com/monocongo/climate_indices/issues/1367),
 [#1368](https://github.com/monocongo/climate_indices/issues/1368),
@@ -14,10 +14,11 @@ Approved for implementation. The maintainer approved these contracts and the bou
 [#1370](https://github.com/monocongo/climate_indices/issues/1370),
 [#1371](https://github.com/monocongo/climate_indices/issues/1371)); the remaining APIs and the beta
 xarray route are not.** Bootstrap evidence is synthetic characterization and regression only.
-The maintainer narrowed its supported scope (#1371): serially independent or 6-month-overlap
-sources at 200 years passed every predeclared gate, while 36-month persistence did not
-(a twelve-year LMF coverage case failed and null rejection ran above nominal), so the intervals
-and p-values are not claimed for multi-year persistence. See `VALIDATION.md`.
+The maintainer narrowed its supported scope (#1371) to the synthetic cases that passed every
+predeclared gate: serially independent or 6-month-overlap sources whose hazards are independent
+of each other, at 200 years. A 36-month-persistence case failed a coverage gate and its null
+rejection exceeded nominal, and other conditions were not characterized, so the intervals and
+p-values are not claimed beyond that scope. See `VALIDATION.md`.
 This record documents approved contracts,
 not completed code or scientific validation.
 The implementation responsibilities are explicit:

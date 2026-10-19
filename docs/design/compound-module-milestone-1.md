@@ -7,7 +7,8 @@ The maintainer approved this internal plan and its recommendations.
 CMP-01 through CMP-05 are complete. CMP-07 implements the NumPy `bootstrap_dependence()`
 route beside `harmonize()`, `joint_statistics()`, and `conditional_probability()`.
 Bootstrap evidence is synthetic characterization and regression only, and its supported
-scope is limited to sources with at most 6 months of persistence (see `VALIDATION.md`).
+scope is limited to serially independent or 6-month-overlap sources whose hazards are
+independent of each other, at 200 years (see `VALIDATION.md`).
 Every other API and the beta xarray route remain pending. No external scientific
 validation of the bootstrap is claimed.
 

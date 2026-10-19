@@ -349,9 +349,10 @@ def _bootstrap(
         "p_value_scope": "local, unadjusted; not field significance",
         "quality_flags": dict(_FLAGS),
         "evidence": (
-            "synthetic characterization and regression only; no external validation; "
-            "characterized for serially independent or 6-month-overlap sources at 200 years, "
-            "not for 36-month persistence or shorter records"
+            "synthetic characterization and regression only; no external validation; screening evidence only "
+            "for hazards independent of each other with serially independent or 6-month-overlap persistence "
+            "at 200 years; the 36-month-persistence characterization failed a predeclared gate; shorter records, "
+            "other persistence, other hazard frequencies, and lagged conditioning were not characterized"
         ),
         "numpy_version": np.__version__,
         "scipy_version": scipy.__version__,
@@ -424,11 +425,14 @@ def bootstrap_dependence(
     Notes:
         All p-values are local and unadjusted. These guards do not detect long
         memory, nonstationarity, or impact relevance. Synthetic characterization
-        supports the intervals and p-values only for serially independent or
-        6-month-overlap sources at 200 years; for 36-month persistence coverage
-        and null rejection missed nominal levels at every block length, and
-        shorter records were not characterized (see VALIDATION.md). Inspect block sensitivity
-        at max(1, floor(L/2)), L, and 2L. Seeded bitwise identity across dependency
+        gives screening evidence for the intervals and p-values only for serially
+        independent or 6-month-overlap sources whose hazards are independent of
+        each other, with hazard frequencies of 0.35 to 0.55 and no lag, at 200
+        years and 399 resamples. For 36-month persistence one predeclared coverage
+        gate failed (12-year blocks, LMF) and null rejection exceeded the nominal
+        5% at every block length. Other frequencies, lagged conditioning, and
+        shorter records were not characterized (see VALIDATION.md). Inspect block
+        sensitivity at max(1, floor(L/2)), L, and 2L. Seeded bitwise identity across dependency
         versions is not promised. See ADR-0022 and the synthetic characterization
         configuration in scripts/characterize_compound_bootstrap.py.
     """

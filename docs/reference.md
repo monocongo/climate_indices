@@ -156,11 +156,14 @@ from the package root. The beta xarray route remains pending; see
 #### Monthly bootstrap inference
 
 :::{warning}
-Synthetic characterization supports these intervals and p-values only for
-serially independent or 6-month-overlap sources, at 200 years. For 36-month
-persistence a coverage check failed and null rejection ran above nominal at every
-block length, so do not read those results as nominal. Records shorter than 200
-years were not characterized. See the
+Synthetic characterization gives screening evidence for these intervals and
+p-values only for serially independent or 6-month-overlap sources whose hazards
+are independent of each other, with hazard frequencies of 0.35 to 0.55 and no lag,
+at 200 years and 399 resamples. For 36-month persistence one coverage check
+failed and null rejection exceeded the nominal 5% at every block length, so do not
+read those results as nominal. Hazards that depend on each other were measured
+only with 36-month persistence. Other frequencies, lagged conditioning, and
+shorter records were not characterized. See the
 [validation record](https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md#compound-bootstrap-characterization).
 This is synthetic evidence, not an external validation of the method.
 :::
