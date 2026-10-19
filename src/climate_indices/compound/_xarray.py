@@ -79,6 +79,8 @@ _BETA_MESSAGE = "The compound xarray route is beta; the NumPy API is stable (ADR
 # the prepared Dataset's dimension names are part of its contract, so no spatial dimension may reuse them
 _RESERVED = frozenset({_TIME, _HAZARD, _MONTH, _SOURCE})
 _DAY_UNIT = "datetime64[D]"
+# xarray holds dates in seconds at the finest, so datetime outputs are declared and returned in that unit
+_RESULT_DATE_UNIT = "datetime64[s]"
 
 
 def _route(
@@ -207,6 +209,13 @@ def _time_values(name: str, array: xr.DataArray, time_dim: str) -> npt.NDArray[n
             "cadence or calendar can be read from it.",
             coordinate_name=time_dim,
             reason="missing_coordinate_labels",
+        )
+    if array.coords[time_dim].dtype.kind in "iuf":
+        raise CoordinateValidationError(
+            f"{name!r} has numeric {time_dim!r} values; the compound routes need decoded datetime64 labels. "
+            "Open files with decode_times=True, and note that cftime and non-Gregorian calendars are not supported.",
+            coordinate_name=time_dim,
+            reason="undecoded_time",
         )
     _validate_supported_calendar(array.coords[time_dim])
     return np.asarray(array.indexes[time_dim].values)
@@ -545,11 +554,12 @@ def _statistics_block(
         metadata,
     )
     result = compute(hazards, groupby=groupby, **options)
-    return tuple(
-        # xarray wants the core dimensions last; the NumPy layout has them first
+    # xarray wants the core dimensions last; the NumPy layout has them first
+    arrays = (
         np.array(np.moveaxis(getattr(result, name), tuple(range(lead)), tuple(range(-lead, 0))))
         for name, lead in fields
     )
+    return tuple(array.astype(_RESULT_DATE_UNIT) if array.dtype.kind == "M" else array for array in arrays)
 
 
 def _statistics_dataset(
@@ -682,14 +692,43 @@ def _bootstrap_fields(statistic: str) -> tuple[_Field, ...]:
     )
     estimate = _registry(_ESTIMATE_KEY[statistic], **bounds)
 
-    def variant(suffix: str) -> dict[str, Any]:
-        return {**estimate, "long_name": f"{estimate['long_name']} {suffix}"}
+    def variant(suffix: str, role: str) -> dict[str, Any]:
+        """Describe one output by its role, then by the statistic it is a value or a bound of."""
+        return {
+            **estimate,
+            "long_name": f"{estimate['long_name']} {suffix}",
+            "description": f"{role} {estimate['description']}",
+        }
 
     return (
-        _Field("estimate", variant("on the Inference Segment")),
-        _Field("full_record_estimate", variant("on the Full Record")),
-        _Field("confidence_low", variant("Lower Confidence Bound")),
-        _Field("confidence_high", variant("Upper Confidence Bound")),
+        _Field(
+            "estimate",
+            variant(
+                "on the Inference Segment",
+                "Estimate on the inference segment, each cell's longest run of complete calendar years. The statistic:",
+            ),
+        ),
+        _Field(
+            "full_record_estimate",
+            variant(
+                "on the Full Record",
+                "Estimate on every eligible original observation, including partial years. The statistic:",
+            ),
+        ),
+        _Field(
+            "confidence_low",
+            variant(
+                "Lower Confidence Bound",
+                "Lower bound of the paired-block percentile interval for the statistic:",
+            ),
+        ),
+        _Field(
+            "confidence_high",
+            variant(
+                "Upper Confidence Bound",
+                "Upper bound of the paired-block percentile interval for the statistic:",
+            ),
+        ),
         _Field(
             "p_value",
             _count(
@@ -750,13 +789,13 @@ def _bootstrap_fields(statistic: str) -> tuple[_Field, ...]:
         _Field(
             "inference_start",
             {"long_name": "Compound Inference Start", "description": "First January of the segment; NaT if none."},
-            dtype=np.dtype(_DAY_UNIT),
+            dtype=np.dtype(_RESULT_DATE_UNIT),
             monthly=False,
         ),
         _Field(
             "inference_end",
             {"long_name": "Compound Inference End", "description": "Last December of the segment; NaT if none."},
-            dtype=np.dtype(_DAY_UNIT),
+            dtype=np.dtype(_RESULT_DATE_UNIT),
             monthly=False,
         ),
         _Field("quality_flags", _flags(_BOOTSTRAP_FLAGS), dtype=np.int64),

@@ -1003,3 +1003,46 @@ def test_numpy_route_warnings_point_at_the_caller() -> None:
         caught = _record(call)
         assert caught, "each call is expected to warn"
         assert all(w.filename == __file__ for w in caught), [(w.category.__name__, w.filename) for w in caught]
+
+
+# --- truthful lazy dtypes, descriptions, and time errors -------------------------------------------------
+
+
+def test_bootstrap_datetime_dtype_is_the_same_eager_lazy_and_computed() -> None:
+    """Declare datetime64[s] up front, so a lazy variable's dtype matches what computing it returns."""
+    options = {"statistic": "joint_probability", "seed": 1, "n_resamples": 9, "block_length_years": 3}
+    eager = compound.bootstrap_dependence(prepared(), **options)
+    lazy = compound.bootstrap_dependence(prepared(lazy=True), **options)
+    for name in ("inference_start", "inference_end"):
+        computed = lazy[name].compute()
+        assert eager[name].dtype == lazy[name].dtype == computed.dtype == np.dtype("datetime64[s]"), name
+        np.testing.assert_array_equal(computed.values, eager[name].values)
+
+
+def test_confidence_bounds_and_estimates_are_described_by_their_role() -> None:
+    """Describe a bound as a bound and each estimate by its support, not as the bare point statistic."""
+    result = compound.bootstrap_dependence(
+        prepared(), statistic="joint_probability", seed=1, n_resamples=9, block_length_years=3
+    )
+    registry = CF_METADATA["compound_joint_probability"]["description"]
+    leads = {
+        "estimate": "inference segment",
+        "full_record_estimate": "every eligible",
+        "confidence_low": "Lower bound",
+        "confidence_high": "Upper bound",
+    }
+    descriptions = {name: result[name].attrs["description"] for name in leads}
+    for name, phrase in leads.items():
+        assert phrase in descriptions[name] and registry in descriptions[name], name
+    assert len(set(descriptions.values())) == len(descriptions)
+
+
+def test_an_undecoded_time_coordinate_says_it_needs_decoded_labels() -> None:
+    """Name the real problem, undecoded numeric time, rather than an unsupported calendar."""
+    dataset = prepared()
+    undecoded = dataset.assign_coords(time=np.arange(dataset.sizes["time"]))
+    with pytest.raises(CoordinateValidationError, match="decoded datetime64"):
+        compound.joint_statistics(undecoded, min_samples=1)
+    numeric = {name: array.assign_coords(time=np.arange(len(MONTHS))) for name, array in sources().items()}
+    with pytest.raises(CoordinateValidationError, match="decoded datetime64"):
+        compound.harmonize(numeric, **DECLARATIONS)
