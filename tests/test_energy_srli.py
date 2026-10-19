@@ -137,6 +137,13 @@ def test_residual_load_rejects_unusable_assumptions(factors: list[Any], capaciti
     assert error.value.argument_name == name
 
 
+def test_residual_load_rejects_a_misfit_shape_before_validating_its_values() -> None:
+    with pytest.raises(InvalidArgumentError) as error:
+        energy.residual_load(np.array([1.0, 1.0]), [np.array([0.5, 0.5])], [np.full(3, -1.0)])
+    assert error.value.argument_name == "installed_capacities"
+    assert "shape" in str(error.value.argument_value)
+
+
 @pytest.mark.parametrize("argument", ["demand", "capacity_factors", "installed_capacities"])
 def test_residual_load_rejects_non_numeric_input(argument: str) -> None:
     arguments: dict[str, Any] = {

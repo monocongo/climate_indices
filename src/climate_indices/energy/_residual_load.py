@@ -20,14 +20,29 @@ from climate_indices import compute, indices
 from climate_indices.exceptions import InputTypeError, InvalidArgumentError
 
 
-def _numeric(name: str, value: npt.ArrayLike) -> npt.NDArray[np.float64]:
-    """Return a float64 copy with masked values as NaN, or raise for a non-numeric or infinite value."""
+def _numeric(name: str, value: npt.ArrayLike, fit_shape: tuple[int, ...] | None = None) -> npt.NDArray[np.float64]:
+    """Return a float64 copy with masked values as NaN, or raise for a non-numeric or infinite value.
+
+    With ``fit_shape``, an operand that does not broadcast to it is rejected before the copy.
+    """
     try:
-        kind = np.asarray(value).dtype.kind
+        raw = np.asarray(value)
     except ValueError as error:  # a ragged sequence has no array form
         raise InputTypeError(f"{name} must be numeric.", expected_type=float, actual_type=type(value)) from error
-    if kind not in "iuf":
-        raise InputTypeError(f"{name} must be numeric.", expected_type=float, actual_type=np.asarray(value).dtype.type)
+    if raw.dtype.kind not in "iuf":
+        raise InputTypeError(f"{name} must be numeric.", expected_type=float, actual_type=raw.dtype.type)
+    if fit_shape is not None:
+        try:
+            fits = np.broadcast_shapes(raw.shape, fit_shape) == fit_shape
+        except ValueError:
+            fits = False
+        if not fits:
+            raise InvalidArgumentError(
+                f"{name} must broadcast to the shape of demand.",
+                argument_name=name,
+                argument_value=f"shape {raw.shape} for demand of shape {fit_shape}",
+                valid_values="Shapes broadcastable to the shape of demand",
+            )
     values = np.asarray(np.ma.asarray(value, dtype=np.float64).filled(np.nan), dtype=np.float64)
     if np.any(np.isinf(values)):
         raise InvalidArgumentError(
@@ -93,8 +108,8 @@ def residual_load(
         )
     residual = _numeric("demand", demand)
     for factor_input, capacity_input in zip(capacity_factors, installed_capacities, strict=True):
-        factor = _numeric("capacity_factors", factor_input)
-        capacity = _numeric("installed_capacities", capacity_input)
+        factor = _numeric("capacity_factors", factor_input, residual.shape)
+        capacity = _numeric("installed_capacities", capacity_input, residual.shape)
         if np.any((factor < 0.0) | (factor > 1.0)):
             raise InvalidArgumentError(
                 "capacity_factors must be within [0, 1].",
@@ -108,17 +123,6 @@ def residual_load(
                 argument_name="installed_capacities",
                 argument_value="a negative or non-finite capacity",
                 valid_values="Finite values of at least 0",
-            )
-        try:
-            fits = np.broadcast_shapes(factor.shape, capacity.shape, residual.shape) == residual.shape
-        except ValueError:
-            fits = False
-        if not fits:
-            raise InvalidArgumentError(
-                "A technology's capacity factor and capacity must broadcast to the shape of demand.",
-                argument_name="capacity_factors",
-                argument_value=f"shapes {factor.shape} and {capacity.shape} for demand of shape {residual.shape}",
-                valid_values="Shapes broadcastable to the shape of demand",
             )
         residual = residual - factor * capacity
     if np.any(np.isinf(residual)):

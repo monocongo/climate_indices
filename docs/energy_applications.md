@@ -136,8 +136,8 @@ energy system, not recorded supply shortfalls.
 ## Energy indices
 
 The NumPy degree-day and wind-profile functions in `climate_indices.energy`
-are available, as are SREPI and the standardized demand index; the other energy
-indices below remain planned. The package, its
+are available, as are SREPI, the standardized demand index, and SRLI with its
+residual-load helper; the other energy indices below remain planned. The package, its
 NumPy and beta xarray tiers, and the scope boundary are fixed by
 [ADR-0019](adr/0019-energy-module-api-and-aggregation.md), with function names,
 units, and argument contracts recorded in the internal energy subsystem design
@@ -183,8 +183,9 @@ order.
   installed capacities the caller supplies, in units that match the demand
   series, and leaves the result signed. `srli()` standardizes it on the
   empirical distribution ([#1168][energy-1168]) and never clips a negative.
-  High values mark stress; Allen & Otero (2023) class drought at 1.28, 1.64,
-  and 1.96. It has NumPy dispatch only until [#1174][energy-1174] lands.
+  High values mark stress. On the default `output_scale="normal"`, Allen &
+  Otero (2023) class drought at 1.28, 1.64, and 1.96; the `probability` and
+  `bounded` scales need cut-offs of their own. It has NumPy dispatch only until [#1174][energy-1174] lands.
 - **Energy-drought event statistics** — *planned ([#1173][energy-1173])*.
 - **Wind capacity factor** — *planned ([#1175][energy-1175])*. Hub-height
   wind passed through a required power curve: a generic parametric reference
