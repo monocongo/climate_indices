@@ -52,16 +52,20 @@ not execute it. No notebook parser or duplicate tutorial source is required.
 from pathlib import Path
 import climate_indices
 import nbformat
+from jupyter_client import AsyncKernelManager
+from jupyter_client.kernelspec import KernelSpecManager
 from nbclient import NotebookClient
 
 repository = Path(climate_indices.__file__).resolve().parents[2]
 notebook_path = repository / "notebooks" / "energy_demo.ipynb"
 notebook = nbformat.read(notebook_path, as_version=4)
+# Ignore external kernelspecs; use ipykernel from Sphinx's Python environment.
+manager = AsyncKernelManager(kernel_spec_manager=KernelSpecManager(kernel_dirs=[]))
 client = NotebookClient(
-    notebook, timeout=180, kernel_name="python3",
+    notebook, km=manager, timeout=180, kernel_name="python3",
     resources={"metadata": {"path": str(notebook_path.parent)}},
 )
-executed = client.execute()
+executed = client.execute(cleanup_kc=True)
 assert all(cell.execution_count is not None for cell in executed.cells if cell.cell_type == "code")
 ```
 

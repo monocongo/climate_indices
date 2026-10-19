@@ -19,6 +19,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
+import shutil
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -31,6 +34,7 @@ SOURCE_URL = (
     "1959-2022-6h-240x121_equiangular_with_poles_conservative.zarr"
 )
 VARIABLES = {"2m_temperature": "temperature_k", "10m_wind_speed": "wind_speed_10m"}
+UNITS = {"temperature_k": "K", "wind_speed_10m": "m s-1"}
 LATITUDES = [48.0, 51.0, 54.0]
 LONGITUDES = [3.0, 6.0, 9.0, 12.0]
 FIRST_YEAR, LAST_YEAR = 1991, 2020
@@ -47,6 +51,8 @@ def validate(dataset: xr.Dataset, year: int) -> None:
             raise ValueError(f"{year}: unexpected {coord} coordinates")
     for name in VARIABLES.values():
         field = dataset[name]
+        if field.attrs.get("units") != UNITS[name]:
+            raise ValueError(f"{year}: unexpected {name} units")
         if field.dims != ("time", "latitude", "longitude") or not np.isfinite(field.values).all():
             raise ValueError(f"{year}: invalid {name} dimensions or missing values")
     if (dataset.temperature_k <= 0).any() or (dataset.wind_speed_10m < 0).any():
@@ -60,6 +66,11 @@ def read_year(source: xr.Dataset, year: int, cache_dir: Path) -> xr.Dataset:
         with xr.open_dataset(path) as cached:
             subset: xr.Dataset = cached.load()
     else:
+        if source["2m_temperature"].attrs.get("units") != "K":
+            raise ValueError("source temperature must be in K")
+        # ARCO omits wind units; reject a conflicting declaration if one is present.
+        if source["10m_wind_speed"].attrs.get("units", "m s-1") != "m s-1":
+            raise ValueError("source wind speed must be in m s-1")
         # The store's coordinate floats differ slightly from exact degree values.
         subset = source[list(VARIABLES)].sel(time=slice(f"{year}-01-01", f"{year}-12-31"))
         subset = subset.sel(latitude=LATITUDES, longitude=LONGITUDES, method="nearest", tolerance=0.01)
@@ -68,9 +79,48 @@ def read_year(source: xr.Dataset, year: int, cache_dir: Path) -> xr.Dataset:
         subset.temperature_k.attrs = {"units": "K", "long_name": "Six-hourly 2 m temperature"}
         subset.wind_speed_10m.attrs = {"units": "m s-1", "long_name": "Six-hourly 10 m wind speed"}
         validate(subset, year)
-        subset.to_netcdf(path, engine="h5netcdf")
+        with tempfile.TemporaryDirectory(dir=cache_dir) as temporary:
+            staged = Path(temporary) / path.name
+            subset.to_netcdf(staged, engine="h5netcdf")
+            os.replace(staged, path)
     validate(subset, year)
     return subset
+
+
+def write_outputs(dataset: xr.Dataset, output: Path, provenance: dict[str, object]) -> None:
+    """Stage both files before publication; roll back a failed replacement.
+
+    Each replacement is atomic, but the pair is not a filesystem transaction.
+    After abrupt process termination, the notebook checksum detects a mismatch.
+    """
+    output.parent.mkdir(parents=True, exist_ok=True)
+    manifest = output.with_suffix(".provenance.json")
+    with tempfile.TemporaryDirectory(dir=output.parent) as temporary:
+        directory = Path(temporary)
+        staged_data, staged_manifest = directory / output.name, directory / manifest.name
+        dataset.to_netcdf(
+            staged_data,
+            engine="h5netcdf",
+            encoding={name: {"dtype": "float32", "zlib": True, "complevel": 4} for name in dataset.data_vars},
+        )
+        provenance = {
+            **provenance,
+            "sha256": hashlib.sha256(staged_data.read_bytes()).hexdigest(),
+            "size_bytes": staged_data.stat().st_size,
+        }
+        staged_manifest.write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
+        backup = directory / "previous.nc"
+        if output.exists():
+            shutil.copy2(output, backup)
+        os.replace(staged_data, output)
+        try:
+            os.replace(staged_manifest, manifest)
+        except OSError:
+            if backup.exists():
+                os.replace(backup, output)
+            else:
+                output.unlink()
+            raise
 
 
 def main() -> None:
@@ -79,7 +129,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=OUTPUT)
     args = parser.parse_args()
     args.cache_dir.mkdir(parents=True, exist_ok=True)
-    years = []
+    years: list[xr.Dataset] = []
     with xr.open_zarr(SOURCE_URL, consolidated=True) as source:
         for year in range(FIRST_YEAR, LAST_YEAR + 1):
             print(f"reading {year}", flush=True)
@@ -92,13 +142,7 @@ def main() -> None:
         "license": "CC-BY-4.0; see energy_era5_README.md for attribution and redistribution terms",
         "history": "Spatially subsampled ARCO-ERA5; coordinates rounded to exact degrees; no temporal averaging",
     }
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    dataset.to_netcdf(
-        args.output,
-        engine="h5netcdf",
-        encoding={name: {"dtype": "float32", "zlib": True, "complevel": 4} for name in dataset.data_vars},
-    )
-    provenance = {
+    provenance: dict[str, object] = {
         "source_url": SOURCE_URL,
         "source_variables": VARIABLES,
         "retrieved": datetime.now(timezone.utc).date().isoformat(),
@@ -106,11 +150,9 @@ def main() -> None:
         "latitude": LATITUDES,
         "longitude": LONGITUDES,
         "sampling": "six-hourly; every second 1.5-degree grid point; no new spatial or temporal averaging",
-        "sha256": hashlib.sha256(args.output.read_bytes()).hexdigest(),
-        "size_bytes": args.output.stat().st_size,
         "generator": "scripts/prepare_energy_demo_inputs.py",
     }
-    args.output.with_suffix(".provenance.json").write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
+    write_outputs(dataset, args.output, provenance)
     print(f"wrote {args.output} ({args.output.stat().st_size:,} bytes)")
 
 

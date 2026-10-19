@@ -30,6 +30,9 @@ The underlying product is
   There is no temporal averaging or capacity-factor calculation in this cache.
 
 ARCO supplies wind speed, not the magnitude of daily mean wind components.
+This store omits the wind unit attribute; the source variable is interpreted
+as m s-1. Preparation rejects conflicting source units and requires K and
+m s-1 in annual caches before reuse.
 The notebook applies the wind profile and nonlinear curve at each six-hourly
 sample, then averages capacity factors to daily values. Temperature becomes a
 UTC daily mean before the mean-based degree-day calculation. Six-hour samples
@@ -73,6 +76,11 @@ uv run --group dev scripts/prepare_energy_demo_inputs.py
 The first run reads roughly 2 GB of global time chunks, despite the small
 selected output. The script caches validated annual subsets under the ignored
 `data/energy-demo/arco-cache/` directory. Later runs reuse them. CI does not run
-the preparation script and needs no account or token. To request finer hourly
-ERA5 through CDS, follow the notebook's separate CDS API instructions; those
+the preparation script and needs no account or token. Preparation stages
+complete files before replacement and rolls back a failed provenance replacement.
+The two output files are not one filesystem transaction. After abrupt process
+termination, a mismatched checksum prevents notebook execution; regenerate the
+pair before use.
+
+To request finer hourly ERA5 through CDS, follow the notebook's separate CDS API instructions; those
 requests do not reproduce this coarse ARCO cache byte for byte.

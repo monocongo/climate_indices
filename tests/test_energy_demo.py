@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import socket
+import sys
 import warnings
 from pathlib import Path
 from typing import Any
@@ -28,17 +30,21 @@ def _preparation_module() -> Any:
 def _source_year() -> xr.Dataset:
     times = pd.date_range("2000-01-01", "2000-12-31T18:00", freq="6h")
     shape = (len(times), 3, 4)
-    return xr.Dataset(
+    source = xr.Dataset(
         {
             "2m_temperature": (("time", "latitude", "longitude"), np.full(shape, 280.0, dtype="float32")),
             "10m_wind_speed": (("time", "latitude", "longitude"), np.full(shape, 5.0, dtype="float32")),
         },
         coords={"time": times, "latitude": [48.0, 51.0, 54.0], "longitude": [3.0, 6.0, 9.0, 12.0]},
     )
+    source["2m_temperature"].attrs["units"] = "K"
+    source["10m_wind_speed"].attrs["units"] = "m s-1"
+    return source
 
 
 def test_acquisition_retains_sample_values_and_validates_cache(tmp_path: Path) -> None:
     """Preparation preserves six-hourly values rather than applying a daily transform."""
+    pytest.importorskip("h5py")
     module = _preparation_module()
     source = _source_year()
     source["10m_wind_speed"][0, 0, 0] = 12.0
@@ -79,8 +85,9 @@ def test_acquisition_rejects_invalid_inputs(tmp_path: Path, defect: str) -> None
 
 def test_energy_notebook_executes_without_network(monkeypatch: pytest.MonkeyPatch) -> None:
     """Run the actual cells offline; the docs gate separately proves kernel execution."""
-    import matplotlib
-
+    pytest.importorskip("h5py")
+    pytest.importorskip("IPython")
+    matplotlib = pytest.importorskip("matplotlib")
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
@@ -111,3 +118,99 @@ def test_energy_notebook_executes_without_network(monkeypatch: pytest.MonkeyPatc
     assert namespace["threshold"] == 1.28
     assert (namespace["runs"].duration >= 3).all()
     assert namespace["provenance"]["size_bytes"] < 5_000_000
+
+
+@pytest.mark.parametrize("cached", [False, True])
+@pytest.mark.parametrize("field, units", [("2m_temperature", "degC"), ("10m_wind_speed", "km h-1")])
+def test_acquisition_rejects_incompatible_units(tmp_path: Path, cached: bool, field: str, units: str) -> None:
+    pytest.importorskip("h5py")
+    module = _preparation_module()
+    source = _source_year()
+    source[field].attrs["units"] = units
+    if cached:
+        source.rename(module.VARIABLES).to_netcdf(tmp_path / "arco_era5_2000.nc", engine="h5netcdf")
+        source = xr.Dataset()
+    with pytest.raises(ValueError, match="units|must be in"):
+        module.read_year(source, 2000, tmp_path)
+
+
+@pytest.mark.parametrize("failure", ["data", "metadata", "publication"])
+def test_failed_publication_preserves_existing_pair(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    pytest.importorskip("h5py")
+    module = _preparation_module()
+    output = tmp_path / "inputs.nc"
+    manifest = output.with_suffix(".provenance.json")
+    output.write_bytes(b"previous input")
+    manifest.write_bytes(b"previous provenance")
+    provenance: dict[str, object] = {}
+    if failure == "data":
+
+        def fail_write(self: xr.Dataset, path: Path, **kwargs: object) -> None:
+            path.write_bytes(b"partial NetCDF")
+            raise OSError("simulated data write failure")
+
+        monkeypatch.setattr(xr.Dataset, "to_netcdf", fail_write)
+    elif failure == "metadata":
+        provenance["unserializable"] = object()
+    else:
+        original_replace = module.os.replace
+
+        def fail_replace(source: Path, target: Path) -> None:
+            if target == manifest:
+                raise OSError("simulated manifest replacement failure")
+            original_replace(source, target)
+
+        monkeypatch.setattr(module.os, "replace", fail_replace)
+    with pytest.raises((OSError, TypeError)):
+        module.write_outputs(_source_year().rename(module.VARIABLES), output, provenance)
+    assert output.read_bytes() == b"previous input"
+    assert manifest.read_bytes() == b"previous provenance"
+    assert set(tmp_path.iterdir()) == {output, manifest}
+
+
+def test_successful_publication_records_written_bytes(tmp_path: Path) -> None:
+    pytest.importorskip("h5py")
+    module = _preparation_module()
+    output = tmp_path / "inputs.nc"
+    module.write_outputs(_source_year().rename(module.VARIABLES), output, {"source": module.SOURCE_URL})
+    provenance = json.loads(output.with_suffix(".provenance.json").read_text())
+    assert provenance["sha256"] == hashlib.sha256(output.read_bytes()).hexdigest()
+    assert provenance["size_bytes"] == output.stat().st_size
+    assert provenance["source"] == module.SOURCE_URL
+
+
+def test_docs_use_current_interpreter_despite_external_kernelspec(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for dependency in ("nbformat", "nbclient", "ipykernel"):
+        pytest.importorskip(dependency)
+    external = tmp_path / "kernels/python3"
+    external.mkdir(parents=True)
+    (external / "kernel.json").write_text(
+        json.dumps(
+            {"argv": ["/wrong/python", "-f", "{connection_file}"], "display_name": "Wrong", "language": "python"}
+        )
+    )
+    monkeypatch.setenv("JUPYTER_PATH", str(tmp_path))
+    page = (ROOT / "docs/tutorials.md").read_text()
+    block = page.split("```{testcode} energy-notebook\n:hide:\n", 1)[1].split("```", 1)[0]
+    setup = block.split("executed = client.execute", 1)[0]
+    namespace: dict[str, Any] = {}
+    exec(compile(setup, "docs/tutorials.md", "exec"), namespace)
+    assert Path(namespace["manager"].kernel_spec.argv[0]).resolve() == Path(sys.executable).resolve()
+    assert "client.execute(cleanup_kc=True)" in block
+
+
+def test_interrupted_annual_cache_is_not_published(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _preparation_module()
+
+    def fail_write(self: xr.Dataset, path: Path, **kwargs: object) -> None:
+        path.write_bytes(b"partial NetCDF")
+        raise OSError("simulated annual write failure")
+
+    monkeypatch.setattr(xr.Dataset, "to_netcdf", fail_write)
+    with pytest.raises(OSError, match="annual write"):
+        module.read_year(_source_year(), 2000, tmp_path)
+    assert not list(tmp_path.iterdir())
