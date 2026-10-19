@@ -225,7 +225,8 @@ CF_METADATA: dict[str, CFAttributes] = {
         "long_name": "Standardized index",
         "units": "1",
         "description": (
-            "Generic standardization of the caller's series, unitless and clipped to [-3.09, 3.09] as SPI values are. "
+            "Generic standardization of the caller's series, unitless. On the normal output scale the values are "
+            "clipped to [-3.09, 3.09] as SPI values are; the probability and bounded scales are left as computed. "
             "Input-agnostic, so it carries no discipline-specific name."
         ),
         "references": _SPI_REFERENCES,

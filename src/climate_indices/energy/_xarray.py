@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Callable
-from typing import Any, cast
+from typing import Any, TypeVar, cast
 
 import numpy as np
 import xarray as xr
 
+from climate_indices import compute, indices
 from climate_indices._units import _convert_temperature_units, _validate_daily_time_coordinate
 from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.exceptions import (
@@ -18,6 +19,42 @@ from climate_indices.exceptions import (
     InvalidArgumentError,
 )
 from climate_indices.xarray_adapter import build_output_attrs
+
+# Each surface adds its own distribution validator to the shared temporal validators.
+STANDARDIZED_VALIDATORS = (
+    lambda args: indices._validate_periodicity(args["periodicity"]),
+    lambda args: indices._validate_scale(args["scale"], args["periodicity"]),
+    lambda args: compute.validate_output_scale(args["output_scale"]),
+    lambda args: compute._validate_aggregation(args["aggregation"]),
+)
+STANDARDIZED_INDEX_VALIDATORS = (
+    *STANDARDIZED_VALIDATORS,
+    lambda args: compute._validate_zero_handling(args["zero_handling"]),
+)
+
+
+_StandardizedReturn = TypeVar("_StandardizedReturn")
+
+
+# the temporal parameters the adapter infers from the time coordinate when they are omitted
+_TEMPORAL_PARAMETERS = ("data_start_year", "calibration_year_initial", "calibration_year_final", "periodicity")
+
+
+def apply_standardized(
+    adapter: Callable[..., _StandardizedReturn], values: Any, **parameters: Any
+) -> _StandardizedReturn:
+    """Dispatch a standardized energy index through its beta xarray adapter.
+
+    Every parameter travels as a keyword, because the adapter's gridded path forwards
+    only keywords to its block kernel. A temporal parameter left as ``None`` is omitted
+    so the adapter infers it from the time coordinate; an explicit value still wins.
+    Any other parameter is forwarded as given, so an invalid value still raises.
+    """
+    forwarded = {
+        name: value for name, value in parameters.items() if value is not None or name not in _TEMPORAL_PARAMETERS
+    }
+    data = values if isinstance(values, xr.DataArray) else np.asanyarray(values)
+    return adapter(data, **forwarded)
 
 
 def temperature_input(data: xr.DataArray) -> xr.DataArray:

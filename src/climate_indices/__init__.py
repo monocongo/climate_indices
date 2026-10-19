@@ -26,6 +26,7 @@ from climate_indices.typed_public_api import (
     pet_thornthwaite,
     spei,
     spi,
+    standardized_index,
 )
 from climate_indices.validation import (
     InputType,
@@ -69,6 +70,7 @@ __all__ = [
     "pet_thornthwaite",
     "spei",
     "spi",
+    "standardized_index",
     "validation",
     "xarray_adapter",
 ]
