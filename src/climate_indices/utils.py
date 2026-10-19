@@ -524,13 +524,20 @@ class CalendarPlan:
                     :steps_before_february_29
                 ]
                 if observed_steps > self._synthetic_step_start:
-                    # a linear ramp between the last step before the gap and the first
-                    # after it, which is the plain midpoint when steps_per_day is 1
                     before = source_year[steps_before_february_29 - 1]
                     after = source_year[steps_before_february_29]
-                    weights = (np.arange(1, steps + 1) / (steps + 1)).reshape((steps, *((1,) * (source_year.ndim - 1))))
                     synthetic_start = target_index + self._synthetic_step_start
-                    transformed[synthetic_start : synthetic_start + steps] = (1.0 - weights) * before + weights * after
+                    if steps == 1:
+                        # the daily fill stays the exact midpoint in the input dtype
+                        transformed[synthetic_start] = (before + after) / 2
+                    else:
+                        # a linear ramp between the last step before the gap and the first after it
+                        weights = (np.arange(1, steps + 1) / (steps + 1)).reshape(
+                            (steps, *((1,) * (source_year.ndim - 1)))
+                        )
+                        transformed[synthetic_start : synthetic_start + steps] = (
+                            1.0 - weights
+                        ) * before + weights * after
                     tail_start = synthetic_start + steps
                     transformed[tail_start : tail_start + observed_steps - steps_before_february_29] = source_year[
                         steps_before_february_29:

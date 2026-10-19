@@ -519,6 +519,23 @@ def test_daily_calendar_plan_name_and_field_stay_compatible():
     assert utils.DailyCalendarPlan is utils.CalendarPlan
 
 
+def test_daily_february_29_fill_is_the_exact_midpoint():
+    """The daily fill is (a + b) / 2 in the input dtype, as before the hourly generalization."""
+    plan = utils.CalendarPlan(2001, (365,))
+
+    single = np.zeros(365, dtype=np.float32)
+    single[58], single[59] = 0.1, 0.2
+    assert plan.to_all_leap(single)[59] == (single[58] + single[59]) / 2
+
+    # infinite and overflowing endpoints keep the historical result rather than becoming NaN
+    infinite = np.zeros(365)
+    infinite[58] = infinite[59] = np.inf
+    assert plan.to_all_leap(infinite)[59] == np.inf
+
+    block = np.arange(365 * 2, dtype=float).reshape(365, 2)
+    assert np.array_equal(plan.to_all_leap(block)[59], (block[58] + block[59]) / 2)
+
+
 def test_daily_calendar_plan_populated_length():
     """populated_length counts synthetic February 29 fills but not a partial year's NaN tail."""
     # six complete years fill all 2196 padded positions, four of them synthetic
