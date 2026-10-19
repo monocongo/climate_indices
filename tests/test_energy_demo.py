@@ -21,7 +21,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _preparation_module() -> Any:
     spec = importlib.util.spec_from_file_location("prepare_energy_demo", ROOT / "scripts/prepare_energy_demo_inputs.py")
-    assert spec is not None and spec.loader is not None
+    assert spec is not None
+    assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -60,8 +61,9 @@ def test_acquisition_retains_sample_values_and_validates_cache(tmp_path: Path) -
 
     corrupted = result.isel(time=slice(1, None))
     corrupted.to_netcdf(tmp_path / "arco_era5_2000.nc", engine="h5netcdf")
+    empty_source = xr.Dataset()
     with pytest.raises(ValueError, match="complete six-hourly"):
-        module.read_year(xr.Dataset(), 2000, tmp_path)
+        module.read_year(empty_source, 2000, tmp_path)
 
 
 @pytest.mark.parametrize("defect", ["time", "coordinates", "missing", "wind", "temperature"])
@@ -164,8 +166,9 @@ def test_failed_publication_preserves_existing_pair(
             original_replace(source, target)
 
         monkeypatch.setattr(module.os, "replace", fail_replace)
+    dataset = _source_year().rename(module.VARIABLES)
     with pytest.raises((OSError, TypeError)):
-        module.write_outputs(_source_year().rename(module.VARIABLES), output, provenance)
+        module.write_outputs(dataset, output, provenance)
     assert output.read_bytes() == b"previous input"
     assert manifest.read_bytes() == b"previous provenance"
     assert set(tmp_path.iterdir()) == {output, manifest}
@@ -214,6 +217,7 @@ def test_interrupted_annual_cache_is_not_published(tmp_path: Path, monkeypatch: 
         raise OSError("simulated annual write failure")
 
     monkeypatch.setattr(xr.Dataset, "to_netcdf", fail_write)
+    source = _source_year()
     with pytest.raises(OSError, match="annual write"):
-        module.read_year(_source_year(), 2000, tmp_path)
+        module.read_year(source, 2000, tmp_path)
     assert not list(tmp_path.iterdir())

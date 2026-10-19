@@ -112,14 +112,15 @@ def write_outputs(dataset: xr.Dataset, output: Path, provenance: dict[str, objec
         backup = directory / f"{output.name}.bak"
         if output.exists():
             shutil.copy2(output, backup)
-        os.replace(staged_data, output)
+        # S8707: developer-run script writing to the operator's own --output; no untrusted input is joined.
+        os.replace(staged_data, output)  # NOSONAR (S8707)
         try:
             os.replace(staged_manifest, manifest)
         except OSError:
             if backup.exists():
-                os.replace(backup, output)
+                os.replace(backup, output)  # NOSONAR (S8707)
             else:
-                output.unlink()
+                output.unlink()  # NOSONAR (S8707)
             raise
 
 
