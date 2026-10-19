@@ -85,9 +85,19 @@ class TestHourlyCalendarPlan:
         assert np.all(np.isnan(folded[-100:]))
         assert plan.populated_length == HOURS_PER_YEAR + 100
 
-    def test_steps_per_day_must_be_positive(self) -> None:
+    @pytest.mark.parametrize("steps_per_day", [0, -1, 1.0, 1.5, np.nan, np.inf])
+    def test_steps_per_day_must_be_a_positive_integer(self, steps_per_day) -> None:
         with pytest.raises(ValueError, match="steps per day"):
-            utils.CalendarPlan.from_year_span(2001, 1, 0, steps_per_day=0)
+            utils.CalendarPlan(2001, (0,), steps_per_day=steps_per_day)
+        with pytest.raises(ValueError):
+            utils.CalendarPlan.from_year_span(2001, 1, 0, steps_per_day=steps_per_day)
+
+    @pytest.mark.parametrize("steps_per_day", [1, 24, np.int64(24)])
+    def test_integral_steps_per_day_are_accepted(self, steps_per_day) -> None:
+        plan = utils.CalendarPlan.from_year_span(2001, 1, 1, steps_per_day=steps_per_day)
+        values = np.ones(1)
+
+        np.testing.assert_array_equal(plan.to_gregorian(plan.to_all_leap(values)), values)
 
 
 class TestHourlyEmpiricalTransform:

@@ -390,8 +390,8 @@ class CalendarPlan:
 
     def __post_init__(self) -> None:
         """Reject year counts that cannot describe one contiguous series."""
-        if self.steps_per_day < 1:
-            raise ValueError(f"Invalid steps per day: {self.steps_per_day} is not positive")
+        if not isinstance(self.steps_per_day, (int, np.integer)) or self.steps_per_day < 1:
+            raise ValueError(f"Invalid steps per day: {self.steps_per_day} is not a positive integer")
         for offset, observed_steps in enumerate(self.observed_days_by_year):
             steps_in_year = self.steps_in_year(self.year_start + offset)
             if not 0 <= observed_steps <= steps_in_year:
