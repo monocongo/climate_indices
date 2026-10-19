@@ -223,11 +223,13 @@ restores the Gregorian hour axis, as the daily plan does at day resolution.
 
 ## Deferred
 
-- **Hourly CLI option.** [#1178](https://github.com/monocongo/climate_indices/issues/1178)
-  wired the energy indices into the CLI at monthly and daily steps; an hourly
-  `--periodicity` choice is a separate change to that input pipeline.
-- **Smoothed seasonal-diurnal climatology.** Hour × day-of-year strata are the shipped
-  contract; a smoothed climatology would be a separate standardization option.
+- **Hourly CLI option.** [#1406](https://github.com/monocongo/climate_indices/issues/1406).
+  [#1178](https://github.com/monocongo/climate_indices/issues/1178) wired the energy
+  indices into the CLI at monthly and daily steps; an hourly `--periodicity` choice is a
+  separate change to that input pipeline.
+- **Smoothed seasonal-diurnal climatology.** [#1407](https://github.com/monocongo/climate_indices/issues/1407).
+  Hour × day-of-year strata are the shipped contract; a smoothed climatology would be a
+  separate standardization option.
 
 ## References
 
