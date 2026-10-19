@@ -396,19 +396,42 @@ def test_empty_run_sets_produce_an_empty_catalog() -> None:
                 duration=np.array([2], np.uint64),
             ),
             InputTypeError,
-            r"first\.end_index holds values above the int64 range",
+            r"(first|second)\.end_index holds values above the int64 range",
         ),
         (
             lambda: manual([0], [1], magnitude=[[1.0], [2.0, 3.0]]),
             DataShapeError,
             "is ragged",
         ),
+        (
+            lambda: manual([0, 2], [1, 3], magnitude=np.ones((1, 2))),
+            DataShapeError,
+            r"magnitude \(1, 2\) disagree",
+        ),
+        (lambda: manual([0], [1], magnitude=np.float64(1.0)), DataShapeError, r"magnitude \(\) disagree"),
+        (lambda: manual([0, 3], [3, 4]), InvalidArgumentError, "sorted and nonoverlapping"),
+        (
+            # end - start + 1 wraps to the asserted duration in int64, so the extent must be tested directly
+            lambda: manual(
+                [0],
+                [1],
+                start_index=np.array([2**63 - 1]),
+                end_index=np.array([-(2**63)]),
+                duration=np.array([2]),
+            ),
+            InvalidArgumentError,
+            "positive durations",
+        ),
     ],
 )
-def test_manually_constructed_runs_are_validated(build: Any, error: type[Exception], match_text: str) -> None:
-    """A dataclass is not proof of validity: check the run structure before matching."""
+@pytest.mark.parametrize("position", ["first", "second"])
+def test_manually_constructed_runs_are_validated(
+    build: Any, error: type[Exception], match_text: str, position: str
+) -> None:
+    """A dataclass is not proof of validity: check the run structure of both sources before matching."""
+    runs, other = build(), manual([0], [1])
     with pytest.raises(error, match=match_text):
-        match(build(), manual([0], [1]))
+        match(*((runs, other) if position == "first" else (other, runs)))
 
 
 def test_unsigned_index_fields_within_int64_are_accepted() -> None:
@@ -425,18 +448,15 @@ def test_unsigned_index_fields_within_int64_are_accepted() -> None:
     assert result.start_index.tolist() == [0]
 
 
-def test_the_second_source_is_validated_too() -> None:
-    """Validate both sources: an invalid second run set must be rejected as well."""
-    with pytest.raises(InvalidArgumentError, match="sorted and nonoverlapping"):
-        match(manual([0], [1]), manual([0, 2], [3, 4]))
-
-
-def test_a_run_crossing_an_unknown_observation_is_rejected() -> None:
-    """A run asserts a contiguous observed spell, so an unknown step inside it is invalid."""
+@pytest.mark.parametrize("unknown", [1, 2, 3])
+@pytest.mark.parametrize("position", ["first", "second"])
+def test_a_run_crossing_an_unknown_observation_is_rejected(unknown: int, position: str) -> None:
+    """A run asserts a contiguous observed spell, so an unknown first, inner, or last step is invalid."""
     valid = np.ones(6, dtype=bool)
-    valid[2] = False
+    valid[unknown] = False
+    runs, other = manual([1], [3]), manual([5], [5])
     with pytest.raises(InvalidArgumentError, match="crosses an unknown observation"):
-        match(manual([1], [3]), manual([0], [0]), steps=6, valid=valid)
+        match(*((runs, other) if position == "first" else (other, runs)), steps=6, valid=valid)
 
 
 def test_a_non_runset_argument_is_rejected() -> None:

@@ -278,33 +278,36 @@ def _validated_runs(
     start = _integer_field(name, runs, "start_index")
     end = _integer_field(name, runs, "end_index")
     duration = _integer_field(name, runs, "duration")
-    mismatched: dict[str, int] = {}
+    mismatched: dict[str, tuple[int, ...]] = {}
     for field in fields(RunSet):
         try:
-            size = int(np.asarray(getattr(runs, field.name)).size)
+            shape = np.shape(getattr(runs, field.name))
         except (TypeError, ValueError) as exc:
             raise DataShapeError(
                 f"{name}.{field.name} must be one array with one entry per run; it is ragged.",
                 expected_shape=f"({start.size},)",
             ) from exc
-        if size != start.size:
-            mismatched[field.name] = size
+        if shape != (start.size,):
+            mismatched[field.name] = shape
     if mismatched:
-        reported = ", ".join(f"{field} ({size})" for field, size in mismatched.items())
+        reported = ", ".join(f"{field} ({', '.join(map(str, shape))})" for field, shape in mismatched.items())
         raise DataShapeError(
             f"{name} must hold one entry per run in every field; start_index has {start.size} "
             f"and {reported} disagree with it.",
             expected_shape=f"({start.size},)",
-            actual_shape=tuple(int(size) for size in mismatched.values()),
+            actual_shape=next(iter(mismatched.values())),
         )
     if start.size == 0:
         empty = np.zeros(0, dtype=np.bool_)
         return _SourceRuns(start, end, empty, empty)
-    if np.any(duration < 1) or np.any(end - start + 1 != duration):
+    # start > end is tested directly: end - start + 1 wraps in int64 when the two are about 2**64 apart
+    inconsistent = (duration < 1) | (start > end) | (end - start + 1 != duration)
+    if inconsistent.any():
+        bad = int(np.argmax(inconsistent))
         raise InvalidArgumentError(
             f"{name} must assert positive durations equal to end_index - start_index + 1.",
             argument_name=name,
-            argument_value=f"start={start.tolist()}, end={end.tolist()}, duration={duration.tolist()}",
+            argument_value=f"run {bad}: start={int(start[bad])}, end={int(end[bad])}, duration={int(duration[bad])}",
             valid_values="duration == end_index - start_index + 1 >= 1",
         )
     if start[0] < 0 or end[-1] >= steps:
@@ -314,11 +317,13 @@ def _validated_runs(
             argument_value=f"start_index min={int(start.min())}, end_index max={int(end.max())}",
             valid_values=f"0 <= start_index <= end_index <= {steps - 1}",
         )
-    if np.any(start[1:] <= end[:-1]):
+    unordered = np.flatnonzero(start[1:] <= end[:-1])
+    if unordered.size:
+        bad = int(unordered[0])
         raise InvalidArgumentError(
             f"{name} runs must be sorted and nonoverlapping.",
             argument_name=name,
-            argument_value=f"start={start.tolist()}, end={end.tolist()}",
+            argument_value=f"run {bad + 1} starts at {int(start[bad + 1])}, at or before run {bad} ends at {int(end[bad])}",
             valid_values="strictly increasing, nonoverlapping runs",
         )
     unknown_steps = duration - (valid_prefix[end + 1] - valid_prefix[start])
