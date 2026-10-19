@@ -89,6 +89,7 @@ def test_compound_numpy_and_xarray_routes_select_their_return_types() -> None:
     assert_type(prepared, xr.Dataset)
     assert_type(compound.joint_statistics(prepared, min_samples=1), xr.Dataset)
     assert_type(compound.conditional_probability(prepared, given="a", target="b", min_samples=1), xr.Dataset)
+    assert_type(compound.compound_events_xarray(prepared, first="a", second="b", mode="concurrent"), xr.Dataset)
     assert_type(
         compound.bootstrap_dependence(prepared, statistic="joint_probability", seed=1, n_resamples=1), xr.Dataset
     )

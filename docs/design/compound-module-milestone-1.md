@@ -11,8 +11,9 @@ scope is limited to serially independent or 6-month-overlap sources whose hazard
 independent of each other, at 200 years (see `VALIDATION.md`).
 The beta xarray Dataset routes for `harmonize()`, `joint_statistics()`,
 `conditional_probability()`, and `bootstrap_dependence()` are implemented (#1372) and are
-equivalence-tested against the NumPy core. The xarray event catalog and the published
-reproduction remain pending. No external scientific validation of the bootstrap is claimed.
+equivalence-tested against the NumPy core. The eager numeric xarray event catalog
+is implemented (#1373), with interface-equivalence evidence only. The published
+reproduction remains pending in #1374. No external scientific validation of the bootstrap is claimed.
 
 The source review used fetched `main` at `a074b1fc5593c5761abd0c49b361654b241cc479`
 and the 3.0.0 API contracts. The checkout supplied with the request was older.
