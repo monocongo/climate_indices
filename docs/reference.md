@@ -139,17 +139,19 @@ remain planned; see {doc}`energy_applications` for scope and validation limits.
 
 ### climate_indices.compound
 
-Declared-input harmonization and frequency statistics for compound-hazard analysis:
-Boolean exceedance and validity on observed dates, never interpolated or averaged, then
-marginal and joint counts, marginal and joint frequencies, the independence product, and
-the likelihood multiplication factor (LMF) on one complete-case support. Marginals are observed frequencies, so a zero marginal makes LMF
-undefined (`NaN`) rather than infinite, and `LMF = 1` does not establish independence.
+Declared-input harmonization, frequency statistics, and run matching for compound-hazard
+analysis: Boolean exceedance and validity on observed dates, never interpolated or averaged,
+then marginal and joint counts, marginal and joint frequencies, the independence product, and
+the likelihood multiplication factor (LMF) on one complete-case support. Marginals are observed
+frequencies, so a zero marginal makes LMF undefined (`NaN`) rather than infinite, and
+`LMF = 1` does not establish independence.
 `conditional_probability()` conditions one named hazard on another over an inclusive
 forward window and reports the conditional time-step frequency beside the
 response-window frequency on the same eligible anchors; an unknown or incomplete
-horizon is never counted as a non-response. Import it explicitly with
-`import climate_indices.compound as compound`; it is not re-exported from the package
-root. Event matching, inference, and the beta xarray route are still pending; see
+horizon is never counted as a non-response. `compound_events()` pairs concurrent or
+sequential events and keeps their source runs and censoring. Import the module explicitly
+with `import climate_indices.compound as compound`; it is not re-exported from the package
+root. Inference and the beta xarray route are still pending; see
 [ADR-0022](adr/0022-compound-analysis-contracts.md) for the approved contracts.
 
 ```{eval-rst}

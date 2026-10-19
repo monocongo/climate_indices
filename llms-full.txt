@@ -408,6 +408,7 @@ guarded only by internal fixtures.
 | Compound harmonization (`compound.harmonize`, `AlignedHazards`) | Regression only; specification-level (no external oracle adopted) | Exact Boolean and integer equality; the outputs are masks and counts, so no numeric tolerance applies | `tests/test_compound_harmonize.py` checks hand-counted strict-threshold ties and endpoints, float32 widening, month-label normalization, real leap days and interior absent dates, `exact` and `inner` alignment, and daily `any`/`all` reduction (including the complete-month rule) against an independent calendar loop. It also checks rejection of raw z-scores, out-of-range values, unsupported calendars, and conflicting Calibration Periods without clipping or interpolation, plus read-only results and the serializable manifest. These tests do not use the `validation` marker. | No external oracle or published-method reproduction is committed; the reproduction target is tracked in #1366 and #1374. A declared probability is a trust boundary and is not proven to be a PIT value or a good fit. Agreement with the future xarray route (#1372) will be interface equivalence, not validation. |
 | Compound joint statistics (`compound.joint_statistics`, `JointResult`) | Regression only; specification-level (no external oracle adopted) | Exact integer equality for counts and exact equality for the balanced Cartesian tables; `atol=1e-12` with `rtol=0` for closed-form probabilities; the Gaussian cases are predeclared 5-sigma Monte Carlo bands, not tolerances | `tests/test_compound_statistics.py` checks pooled and monthly counts against hand-counted contingency tables, one complete-case support for every marginal with different per-source validity masks (two and three sources), balanced two- and three-source independence (`LMF=1` exactly), the closed-form Gaussian joint probability `1/4 + asin(rho)/(2*pi)` at `rho=0` and `rho=0.5` within its declared band, disjoint hazards (`LMF=0`), a zero marginal (`NaN` plus the `undefined_denominator` flag), short support, sparse occurrences, all-missing grid cells, invalid steps never counting as non-exceedances, and pooled-versus-monthly recounting. Hypothesis tests cover source-permutation symmetry, count nesting, and probability bounds on generated validity masks. It also checks option and manual-`AlignedHazards` validation, read-only results, the JSON manifest, and lifecycle logging. These tests do not use the `validation` marker. | No external oracle is used: the analytic values come from closed form or hand counting, so this is specification-level evidence, not external validation. Agreement with the future xarray route (#1372) is interface equivalence. `LMF=1` in a balanced design is a property of that design, not evidence of independence in real data, and no inference about significance is made (that is #1371). Known gaps: the plan's nonzero-threshold quadrature and independent-uniform-envelope checks are not implemented, and the published LMF reproduction remains pending in #1366/#1374 (CMP-10), so no reference-reproduced claim is made here. |
 | Compound conditional statistics (`compound.conditional_probability`, `ConditionalResult`) | Regression only; specification-level (no external oracle adopted) | Exact integer equality for counts and exact equality for hand-enumerated windows; `atol=1e-12` with `rtol=0` for closed-form frequencies | `tests/test_compound_statistics.py` checks the `(0, 0)` identity against the joint and marginal counts, hand-enumerated forward windows, one counted success per given-positive anchor despite several target occurrences in its window, discarded incomplete trailing horizons (including a window that already holds a target occurrence), a discarded anchor whose window holds an unknown target step, asymmetry under a role swap, the response-window baseline against the one-step marginal and the joint probability, anchor-month grouping across a year boundary, daily civil-day steps across 29 February, a zero conditioning count (`NaN` plus the `undefined_denominator` flag), short support, all-missing grid cells, and a third source that never enters the selected pair's eligibility. Hypothesis tests cover count nesting and probability bounds on generated validity masks. It also checks option, role, and window validation, read-only results, the JSON manifest, and lifecycle logging. These tests do not use the `validation` marker. | No external oracle is used: the analytic values come from closed form or hand enumeration, so this is specification-level evidence, not external validation. A lagged association is not a validated causal cascade and is not an event-onset conversion probability. Agreement with the future xarray route (#1372) is interface equivalence, and the monthly bootstrap inference that would attach uncertainty is #1371, so no significance or confidence claim is made here. Known gaps: the published LMF reproduction remains pending in #1366/#1374 (CMP-10). |
+| Compound events (`compound.compound_events`, `CompoundEventSet`) | Regression only; specification-level (no external oracle adopted) | Exact index, count, lag, and flag equality; the outputs are indices, counts, lags, and flags (NaN where a lag does not apply), so no numeric tolerance applies | `tests/test_compound_events.py` checks the all-pairs concurrent and sequential enumeration, the four boundary-censor flags, and the rejected-bridge count against an independent brute-force interval scan over 24 seeded random scenarios with random unknown steps, plus hand-counted inclusive-end cases, repeated matches, lag-window boundaries, sequential bridges through an unknown step (rejected and counted), a matched and a rejected candidate in one window, empty catalogs with stable dtypes, validation of manually constructed `RunSet` objects, read-only result arrays, lifecycle logging, and the serializable manifest. These tests do not use the `validation` marker. | No external oracle and no published reference values are committed, and this specification-level status stands until an independent matching oracle exists. The seeded brute-force scan is an internal specification oracle, not external validation. Pair counts are not independent observations, so no significance claim is made or supported here. Agreement with the future xarray catalog (#1373) will be interface equivalence, not validation. |
 
 ## Flood Evidence Classification
 
@@ -5664,6 +5665,86 @@ be counted all the way into the tail.
 investigations of continental hydrologic droughts*. Hydrology Papers 23,
 Colorado State University. Drought classes: McKee et al. (1993) and WMO (2012),
 both in the bibliography below.
+
+### Compound Event Matching (Concurrent and Sequential)
+
+`climate_indices.compound.compound_events()` matches two run sets that were
+identified on the same time axis, for example a drought run set and a heat run
+set. Both sources are given as [`RunSet`](#run-theory-event-identification)
+objects from `identify_runs()`, plus the shared time axis, its declared cadence,
+and one Boolean observation-validity mask. A row names one source run from each
+set and never merges or scores them: the result holds indices, durations, lags,
+and censoring flags only, so no drought magnitude, fire severity, or heat
+intensity is combined into an unrequested severity score.
+
+The time axis must be a complete cadence grid. An absent date is an unknown
+observation, not a step to close, so a gap is rejected instead of being
+bridged. Runs are validated before matching: each run must hold positive
+durations equal to `end_index - start_index + 1`, lie inside the record, be
+sorted and nonoverlapping, and contain no unknown observation. A run asserts a
+contiguous observed spell, so a run that crosses an unknown step is rejected
+rather than silently truncated.
+
+**Concurrent matching** keeps every pair whose inclusive intervals intersect
+and reports the intersection, with no one-to-one assignment:
+
+$$
+\text{start} = \max(a_{\text{start}}, b_{\text{start}}), \qquad
+\text{end} = \min(a_{\text{end}}, b_{\text{end}}), \qquad
+\text{overlap\_duration} = \text{end} - \text{start} + 1
+$$
+
+Touching endpoints count, so a pair sharing one time step has overlap duration
+one. Adjacent pair records are never merged, and a pair is never discarded
+because another run already matched, so one long run can match several short
+ones and the reverse.
+
+**Sequential matching** keeps every pair with $b_{\text{start}} >
+a_{\text{end}}$, so an overlapping pair, or one starting exactly on the first
+run's end, is not a follow-on. The lag is the separating distance:
+
+$$
+\text{lag} = b_{\text{start}} - a_{\text{end}}
+$$
+
+Adjacent runs therefore have lag one. A caller-supplied inclusive window
+`lag_window=(low, high)` keeps every pair with `low <= lag <= high`; `None`
+matches every lag at or above one. Every step from $a_{\text{end}}$ through
+$b_{\text{start}}$ must be observed. A pair separated by an unknown step is not
+reported, because a cascade is never inferred across a gap, and the rejected
+count is recorded as `n_unknown_bridges` in the result metadata. The reported
+interval is the first run's onset through the second run's end, and the lag is
+reported separately: the enclosing interval is not an invented joint duration,
+and `overlap_duration` is zero because sequential runs are disjoint by
+definition.
+
+**Censoring.** A run boundary that touches the record boundary or an unknown
+neighbouring step is censored: the physical event may extend beyond the
+observed record or across the unknown step. Every row records four flags —
+`first_left_censored`, `first_right_censored`, `second_left_censored`, and
+`second_right_censored` — so an observed duration is never presented as a
+complete physical event duration. Censoring does not remove a run.
+
+Rows appear in first source-run order and then in second source-run order, and
+`first_run_id` and `second_run_id` are the caller's own positions, so
+`first.start_index[first_run_id]` recovers the source run and its metrics. Every
+result array is read-only, and an empty catalog keeps its integer, float, and
+Boolean dtypes. The manifest records the calendar, the matching, censoring, and
+missingness rules, the effective lag window, the observed and unknown step
+counts, the run and pair counts, the rejected unknown-bridge count, and each
+source's declared threshold, direction, and `min_duration`. Those three declarations are not retained by `RunSet`, so
+any that the caller leaves out is recorded as `"unknown"` and is never
+reconstructed from run metrics.
+
+**Limits.** Pair counts are not independent observations and must not feed a
+binomial significance test. Matching inherits the run definition of the source
+indices and adds no onset probability or causal claim: a lagged association is
+a descriptive co-occurrence, not a validated cascade. The catalog has no primary
+index CF key, because it is an event catalog and not an index field.
+
+**Reference**: the event contract and its censoring, lag, and all-pairs rules
+are recorded in
+[ADR-0022](https://github.com/monocongo/climate_indices/blob/main/docs/adr/0022-compound-analysis-contracts.md).
 
 ## Complete Bibliography
 

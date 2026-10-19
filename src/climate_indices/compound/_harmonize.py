@@ -333,9 +333,14 @@ def _validity_mask(name: str, validity: object, shape: tuple[int, ...]) -> npt.N
     return mask
 
 
-def _observed_index(name: str, raw: object, cadence: str, steps: int) -> npt.NDArray[np.int64]:
-    """Validate one source's dates and return them as days or months since 1970-01-01, strictly increasing."""
-    label = f"time[{name!r}]"
+def _observed_index(
+    name: str, raw: object, cadence: str, steps: int, *, label: str | None = None
+) -> npt.NDArray[np.int64]:
+    """Validate one source's dates and return them as days or months since 1970-01-01, strictly increasing.
+
+    ``label`` names the argument in errors when the dates are not a per-source ``time`` mapping entry.
+    """
+    label = label or f"time[{name!r}]"
     dates = np.asarray(raw)
     if dates.dtype.kind != "M":
         raise InputTypeError(
