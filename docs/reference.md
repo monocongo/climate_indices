@@ -159,8 +159,9 @@ adds monthly uncertainty intervals and local independence tests. Import the modu
 explicitly with `import climate_indices.compound as compound`; it is not re-exported
 from the package root. `harmonize()`, `joint_statistics()`, `conditional_probability()`,
 and `bootstrap_dependence()` also take xarray input on a beta route, described in
-[Beta xarray route](#compound-xarray-route); see
-[ADR-0022](adr/0022-compound-analysis-contracts.md) for the approved contracts.
+[Beta xarray route](#compound-xarray-route). `compound_events_xarray()` builds
+[eager numeric event catalogs](#compound-event-catalog) from prepared subsets.
+See [ADR-0022](adr/0022-compound-analysis-contracts.md) for the contracts.
 
 #### Monthly bootstrap inference
 
@@ -321,6 +322,67 @@ half the tabulated cells per task, after dividing a worker's memory by its concu
 
 Agreement with the NumPy routes is interface equivalence, not external validation; see
 [VALIDATION.md](https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md).
+
+(compound-event-catalog)=
+#### Eager event catalogs (beta)
+
+`compound_events_xarray(hazards, first=..., second=..., mode=..., min_duration=1)`
+returns numeric event rows from a prepared Dataset. Select a bounded subset first.
+If the subset is Dask-backed, explicitly compute it before calling this function:
+
+```python
+subset = hazards.sel(lat=slice(40, 42), lon=slice(10, 12)).compute()
+catalog = compound.compound_events_xarray(
+    subset, first="drought", second="heat", mode="sequential",
+    lag_window=(1, 3), min_duration=2,
+)
+catalog.to_netcdf("compound-events.nc", engine="h5netcdf")
+```
+
+:::{warning}
+The catalog is eager. It rejects Dask-backed variables and coordinates without
+running tasks. Memory grows with the selected input and all matched pairs.
+Sequential matching without a bounded lag window can produce a quadratic number
+of pairs. The statistics tile-memory measurements above do not cover catalogs.
+:::
+
+Both selected hazards must be observed at each step. An unknown step in either
+source splits both run sequences. The function identifies runs of the prepared
+Boolean indicators with threshold `0.5`, direction `"above"`, no gap pooling,
+and the declared minimum duration. A third source does not affect this pair.
+The existing NumPy matcher supplies all concurrent or sequential pairs and
+boundary-censor flags; see [Compound Event Matching](algorithm-reference.md#compound-event-matching-concurrent-and-sequential).
+
+Each `event` row has `cell_index`, `first_run_id`, `second_run_id`, inclusive
+`start_index`/`end_index`, `start_time`/`end_time`, `overlap_duration`, `lag`,
+and four source-boundary censor flags. Indices and IDs are zero-based. Duration
+and lag count cadence steps (civil days or calendar months); adjacency has lag
+one. Concurrent lag is `NaN`; sequential overlap duration is zero. Censor flags
+are `int8`, with values 0 and 1 and CF-style `flag_values`/`flag_meanings`.
+
+The `cell` lookup table retains spatial labels as coordinates over `cell`.
+Cells follow the input spatial dimension order in C order; a single series has
+one cell. Rows follow cell order, then first-source and second-source run order.
+Run IDs identify retained runs within each cell after minimum-duration filtering.
+Per-cell `n_valid`, `n_first_runs`, `n_second_runs`, `n_pairs`, and
+`n_unknown_bridges` retain support and matching counts, even in cells without pairs.
+Empty catalogs retain the cell table and numeric dtypes. Spatial dimension names
+must not collide with catalog fields; rename conflicting dimensions first.
+Object-valued and MultiIndex cell labels are unsupported; string labels are allowed.
+Auxiliary and scalar coordinates are not retained.
+
+The versioned `compound_manifest` JSON attribute records the complete prepared
+source manifest, the selected names, run choices, matching rules, cadence, and
+cell order. NetCDF and Zarr preserve the rows, labels, flags, and JSON choices.
+The catalog contains no `RunSet` objects, invented `standard_name`, combined
+severity score, or CF discrete-sampling-geometry `featureType` claim.
+Every call emits `BetaFeatureWarning` and logs the eager lifecycle under
+`index_type="compound_events_xarray"`.
+
+Pair counts are not independent observations and must not feed a binomial
+significance test. The tests establish interface equivalence with the NumPy
+matcher, not external scientific validation. CMP-10 (#1374) owns the final
+worked guide and published-study reproduction.
 
 ```{eval-rst}
 .. automodule:: climate_indices.compound

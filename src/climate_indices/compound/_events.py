@@ -37,6 +37,7 @@ from typing import Any, Literal, TypeAlias, cast
 
 import numpy as np
 import numpy.typing as npt
+import xarray as xr
 
 from climate_indices.compound._harmonize import (
     _CADENCES,
@@ -60,7 +61,7 @@ from climate_indices.runs import _VALID_DIRECTIONS, RunSet, _as_finite_threshold
 
 _logger = get_logger(__name__)
 
-__all__ = ["CompoundEventSet", "compound_events"]
+__all__ = ["CompoundEventSet", "compound_events", "compound_events_xarray"]
 
 EventMode: TypeAlias = Literal["concurrent", "sequential"]
 
@@ -813,3 +814,76 @@ def compound_events(
         n_pairs=len(result),
     )
     return result
+
+
+def compound_events_xarray(
+    hazards: xr.Dataset,
+    *,
+    first: str,
+    second: str,
+    mode: EventMode,
+    lag_window: tuple[int, int] | None = None,
+    min_duration: int = 1,
+) -> xr.Dataset:
+    """Build a beta, eager numeric event catalog from prepared hazard subsets.
+
+    Select and explicitly compute a bounded subset of the Dataset returned by
+    :func:`harmonize` before calling this function. Dask-backed variables or
+    coordinates are rejected without evaluation. Memory grows with the input subset and all
+    matched pairs; sequential matching without a bounded lag can produce a
+    quadratic number of pairs. This function never calls ``compute()`` or ``load()``.
+
+    Identify both sources' runs on their shared validity mask with
+    :func:`climate_indices.runs.identify_runs`, using threshold 0.5, direction
+    ``"above"``, no gap pooling, and the declared ``min_duration``. The sources
+    are already thresholded, including any daily-to-monthly reduction. An unknown
+    observation in either selected source splits both runs. A third hazard does
+    not affect the pair's support. Matching uses :func:`compound_events` unchanged.
+
+    Args:
+        hazards: In-memory prepared ``xarray.Dataset`` with Boolean ``exceedance``
+            and ``valid`` arrays and a complete Gregorian cadence grid.
+        first: Name of the first hazard in the ``hazard`` coordinate.
+        second: Name of a different hazard in the ``hazard`` coordinate.
+        mode: ``"concurrent"`` for inclusive intersections or ``"sequential"``
+            for first-onset through second-end intervals.
+        lag_window: Inclusive sequential lag bounds in cadence steps. Adjacency
+            has lag one; ``None`` allows every positive lag. Concurrent mode
+            requires ``None``.
+        min_duration: Positive integer minimum source-run duration in cadence
+            steps, applied separately to both sources before matching.
+
+    Returns:
+        An eager Dataset with one ``event`` row per matched pair. ``cell_index``
+        points into a separate ``cell`` table whose spatial label coordinates
+        retain their names. A single series has one cell. Rows follow spatial
+        dimension order (C order), then first and second source-run order.
+        Run IDs are local to each cell's retained runs after duration filtering.
+        The Dataset includes indices, inclusive ``start_time``/``end_time``,
+        overlap duration, lag, integer censor flags (0 or 1), and per-cell support,
+        run, pair, and rejected-bridge counts. Empty catalogs retain their dtypes
+        and cell table. The versioned JSON manifest retains the prepared source
+        declarations and run choices. No variable contains a ``RunSet`` object.
+
+    Raises:
+        InputTypeError: For non-Dataset input, non-Boolean hazard arrays, or
+            unsupported cell labels (including MultiIndex objects).
+        InvalidArgumentError: For lazy input, missing variables, invalid source
+            names, duration or matching options, or a malformed manifest.
+        CoordinateValidationError: For invalid dates or an incomplete cadence
+            grid. Unknown observations must retain positions with validity false.
+        DimensionMismatchError: For inconsistent dimensions or spatial names
+            that collide with catalog fields; rename those dimensions first.
+
+    Note:
+        Emits :class:`~climate_indices.exceptions.BetaFeatureWarning` (ADR-0012).
+        NetCDF and Zarr serialization preserves numeric rows and JSON metadata.
+        The catalog claims no CF discrete-sampling-geometry feature type.
+        Pair counts are not independent observations or a significance test.
+        Interface-equivalence tests do not provide external scientific validation.
+    """
+    from climate_indices.compound import _catalog
+
+    return _catalog.compound_events_xarray(
+        hazards, first=first, second=second, mode=mode, lag_window=lag_window, min_duration=min_duration
+    )

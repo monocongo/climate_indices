@@ -2,7 +2,8 @@
 
 ## Status
 
-Approved for implementation. The maintainer approved these contracts and the bounded milestone scope.
+Accepted. CMP-09 (#1373) completes the described API implementations.
+The maintainer approved these contracts and the bounded milestone scope.
 [CMP-01 (#1365)](https://github.com/monocongo/climate_indices/issues/1365) records this decision under
 [parent issue #1364](https://github.com/monocongo/climate_indices/issues/1364).
 
@@ -14,16 +15,17 @@ Approved for implementation. The maintainer approved these contracts and the bou
 [#1370](https://github.com/monocongo/climate_indices/issues/1370),
 [#1371](https://github.com/monocongo/climate_indices/issues/1371)) and the beta xarray Dataset routes
 for `harmonize()`, `joint_statistics()`, `conditional_probability()`, and `bootstrap_dependence()`
-([#1372](https://github.com/monocongo/climate_indices/issues/1372)) are implemented; the xarray event
-catalog is not.** The xarray routes are equivalence-tested against the NumPy core, not independently
+([#1372](https://github.com/monocongo/climate_indices/issues/1372)), and the eager xarray event
+catalog ([#1373](https://github.com/monocongo/climate_indices/issues/1373)) are implemented.**
+The xarray routes are equivalence-tested against the NumPy core, not independently
 validated. Bootstrap evidence is synthetic characterization and regression only.
 The maintainer narrowed its supported scope (#1371) to the synthetic cases that passed every
 predeclared gate: serially independent or 6-month-overlap sources whose hazards are independent
 of each other, at 200 years. A 36-month-persistence case failed a coverage gate and its null
 rejection exceeded nominal, and other conditions were not characterized, so the intervals and
 p-values are not claimed beyond that scope. See `VALIDATION.md`.
-This record documents approved contracts,
-not completed code or scientific validation.
+The described APIs exist. This status does not claim completed scientific validation;
+the published-study reproduction and final guide remain in CMP-10 (#1374).
 The implementation responsibilities are explicit:
 
 | Proposed public function | NumPy implementation | Beta xarray implementation | Current state |
@@ -31,14 +33,13 @@ The implementation responsibilities are explicit:
 | `harmonize()` | [#1367](https://github.com/monocongo/climate_indices/issues/1367) | [#1372](https://github.com/monocongo/climate_indices/issues/1372) | NumPy implemented (#1367); beta xarray route implemented (#1372). |
 | `joint_statistics()` | [#1368](https://github.com/monocongo/climate_indices/issues/1368) | [#1372](https://github.com/monocongo/climate_indices/issues/1372) | NumPy implemented (#1368); beta xarray route implemented (#1372). |
 | `conditional_probability()` | [#1369](https://github.com/monocongo/climate_indices/issues/1369) | [#1372](https://github.com/monocongo/climate_indices/issues/1372) | NumPy implemented (#1369); beta xarray route implemented (#1372). |
-| `compound_events()` | [#1370](https://github.com/monocongo/climate_indices/issues/1370) | The separate catalog route below uses this computation. | NumPy implemented (#1370); the xarray catalog route (#1373) is not implemented. |
+| `compound_events()` | [#1370](https://github.com/monocongo/climate_indices/issues/1370) | The separate catalog route below uses this computation. | NumPy implemented (#1370); the eager xarray catalog route is implemented (#1373). |
 | `bootstrap_dependence()` | [#1371](https://github.com/monocongo/climate_indices/issues/1371) | [#1372](https://github.com/monocongo/climate_indices/issues/1372) | NumPy implemented (#1371); beta xarray route implemented (#1372). |
-| `compound_events_xarray()` | It reuses the NumPy event matcher. | [#1373](https://github.com/monocongo/climate_indices/issues/1373) | Not implemented. |
+| `compound_events_xarray()` | It reuses the NumPy event matcher. | [#1373](https://github.com/monocongo/climate_indices/issues/1373) | Eager numeric catalog implemented (#1373). |
 
 The reference fixture is [#1366](https://github.com/monocongo/climate_indices/issues/1366).
 Final reproduction, user documentation, and evidence classification are [#1374](https://github.com/monocongo/climate_indices/issues/1374).
-Update the implementation table as those issues land.
-Keep this status until all described implementations exist; then promote the record to `Accepted`.
+The implementation table records the shipped API scope; evidence classification remains separate.
 
 ## Context
 
@@ -163,7 +164,11 @@ Retain source-run IDs and boundary-censor flags. Do not combine unrelated source
 
 Gridded catalogs use numeric `event` rows and a cell-coordinate lookup table.
 They do not contain Python `RunSet` objects or claim an unsupported CF feature type.
-They are explicitly eager in milestone 1; reject lazy input without computing it.
+They are explicitly eager in milestone 1; reject Dask-backed variables and coordinates without computing them.
+The catalog identifies both sources' runs on their shared validity mask, with threshold 0.5,
+direction `"above"`, no gap pooling, and the declared `min_duration`.
+Source-run IDs are local to each cell's retained runs after duration filtering.
+The manifest retains the prepared source declarations; per-cell variables retain support and matching counts.
 Three-hazard event matching and distributed ragged catalogs are deferred.
 
 ### 6. Monthly inference separates uncertainty from the independence null

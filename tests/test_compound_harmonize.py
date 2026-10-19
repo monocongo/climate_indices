@@ -114,6 +114,7 @@ def test_namespace_is_not_re_exported_from_the_root() -> None:
         "JointResult",
         "bootstrap_dependence",
         "compound_events",
+        "compound_events_xarray",
         "conditional_probability",
         "harmonize",
         "joint_statistics",
