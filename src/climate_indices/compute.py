@@ -3169,13 +3169,23 @@ def transform_fitted_empirical(
         counts += calibration_year <= values
     valid_counts = np.count_nonzero(~np.isnan(calibration_values), axis=0)
 
-    probabilities = np.where(
-        np.isnan(values) | (valid_counts < MIN_CALIBRATION_VALUES_FOR_EMPIRICAL),
-        np.nan,
-        (1.0 + counts) / (valid_counts + 2.0),
-    )
-    mapped = _map_non_normal_scale(probabilities, output_scale)
-    result: np.ndarray = scipy.stats.norm.ppf(probabilities) if mapped is None else mapped
+    # the plotting position replaces the counts in place and the inverse-normal
+    # transform writes into the same array: hourly blocks make this the widest
+    # allocation in the pipeline, and probing for output_scale="normal" via
+    # scipy.stats.norm.ppf peaked at about seven times the input
+    missing = np.isnan(values)
+    missing |= valid_counts < MIN_CALIBRATION_VALUES_FOR_EMPIRICAL
+    counts += 1.0
+    counts /= valid_counts + 2.0
+    counts[missing] = np.nan
+
+    mapped = _map_non_normal_scale(counts, output_scale)
+    result: np.ndarray
+    if mapped is None:
+        counts = scipy.special.ndtri(counts, out=counts)
+        result = counts
+    else:
+        result = mapped
 
     log.info("distribution_transform_completed", output_shape=str(result.shape))
     return result
