@@ -47,6 +47,7 @@ from climate_indices.compound._harmonize import (
     _check_choice,
     _check_keys,
     _harmonize,
+    _replay,
 )
 from climate_indices.compound._statistics import (
     _FLAG_MEANINGS,
@@ -79,32 +80,40 @@ _RESERVED = frozenset({_TIME, _HAZARD, _MONTH, _SOURCE})
 _DAY_UNIT = "datetime64[D]"
 
 
-def _route(index_type: str, fields: Mapping[str, Any], build: Callable[[], xr.Dataset], shape_of: str) -> xr.Dataset:
+def _route(
+    index_type: str,
+    fields: Mapping[str, Any],
+    build: Callable[[list[Warning]], xr.Dataset],
+    shape_of: str,
+) -> xr.Dataset:
     """Run one beta route: lifecycle logs, one ``BetaFeatureWarning``, and the NumPy warnings at the caller.
 
-    xarray adds frames of its own between a NumPy core's ``warnings.warn`` and the caller, so an eager
-    route records the core's warnings and replays them here. Lazy completion means the graph was built,
-    not that any worker has computed; a task-time failure is therefore never a ``calculation_failed`` event.
+    ``build`` receives a list that collects every warning the NumPy cores raise, and each is replayed
+    here, attributed to the caller of the public function. xarray adds frames of its own between a core
+    and the caller, so no fixed stack level could reach the caller from inside the core, and capturing the
+    warnings with ``warnings.catch_warnings`` instead would be unsafe across threads. Lazy completion means
+    the graph was built, not that any worker has computed; a task-time failure is therefore never a
+    ``calculation_failed`` event.
     """
     log = _logger.bind(index_type=index_type, route="xarray", **fields)
     log.info("calculation_started")
     t0 = perf_counter()
-    # the frames to skip are this function, the route function, and the public function
-    warnings.warn(_BETA_MESSAGE, BetaFeatureWarning, stacklevel=4)
+    queued: list[Warning] = []
     try:
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            result = build()
+        # the frames to skip are this function, the route function, and the public function
+        warnings.warn(_BETA_MESSAGE, BetaFeatureWarning, stacklevel=4)
+        result = build(queued)
+        _replay(queued, 4)
     except Exception as exc:
         log_calculation_failure(log, exc)
         raise
-    for item in caught:
-        warnings.warn(item.message, stacklevel=4)
+    shape = result[shape_of]
     log.info(
         "calculation_completed",
         duration_ms=round((perf_counter() - t0) * 1000.0, 2),
-        output_shape=result[shape_of].shape,
-        evaluation="graph_construction" if result.chunks else "eager",
+        output_shape=shape.shape,
+        # Dataset.chunks lists dimensions only, so it is empty when every variable is 0-d
+        evaluation="eager" if shape.chunks is None else "graph_construction",
     )
     return result
 
@@ -241,7 +250,7 @@ def _harmonize_block(
     """Run the NumPy harmonization on one block, with time moved from last to first and back."""
     values = {name: np.moveaxis(block, -1, 0) for name, block in zip(names, blocks[: len(names)], strict=True)}
     masks = {name: np.moveaxis(block, -1, 0) for name, block in zip(mask_names, blocks[len(names) :], strict=True)}
-    aligned = _harmonize(values, time=times, validity=masks or None, spatial_time_major=True, warn=False, **declared)
+    aligned = _harmonize(values, time=times, validity=masks or None, spatial_time_major=True, warn=None, **declared)
     # the NumPy result is read-only; a Dataset variable should be an ordinary writable array
     return (
         np.array(np.moveaxis(aligned.exceedance, (0, 1), (-2, -1))),
@@ -264,6 +273,7 @@ def _harmonize_dataarrays(
     source_metadata: Mapping[str, Mapping[str, Any]] | None,
     spatial_time_major: bool,
     time_dim: str,
+    queue: list[Warning],
 ) -> xr.Dataset:
     """Validate, plan eagerly from labels and dtypes, and build the per-block harmonization."""
     if not isinstance(time_dim, str):
@@ -321,6 +331,7 @@ def _harmonize_dataarrays(
         join=join,
         source_metadata=source_metadata,
         spatial_time_major=False,
+        warn=queue,
     )
     for name, array in inputs.items():
         declared = array.attrs.get("output_scale")
@@ -404,7 +415,7 @@ def harmonize(
     return _route(
         "compound_harmonize",
         {"n_sources": len(inputs), "target_cadence": target_cadence, "join": join},
-        lambda: _harmonize_dataarrays(
+        lambda queue: _harmonize_dataarrays(
             inputs,
             time=time,
             cadence=cadence,
@@ -418,6 +429,7 @@ def harmonize(
             source_metadata=source_metadata,
             spatial_time_major=spatial_time_major,
             time_dim=time_dim,
+            queue=queue,
         ),
         "exceedance",
     )
@@ -549,8 +561,13 @@ def _statistics_dataset(
     hazard_names: tuple[str, ...],
     label: str,
     options: Mapping[str, Any],
+    queue: list[Warning],
 ) -> xr.Dataset:
-    """Apply one NumPy core across the grid and label its results like the NumPy dataclass."""
+    """Apply one NumPy core across the grid and label its results like the NumPy dataclass.
+
+    In-memory input runs the core inline, so its support warnings are appended to ``queue``; a lazy graph runs
+    them on worker threads, where they would repeat per tile, and drops them for ``quality_flags`` to carry.
+    """
     grouped = groupby == "month"
     leads = [(*field.lead, *((_MONTH,) if grouped and field.monthly else ())) for field in fields]
     sizes = {_MONTH: 12, _HAZARD: len(hazard_names)}
@@ -573,7 +590,7 @@ def _statistics_dataset(
             "groupby": groupby,
             "fields": tuple((field.name, len(lead)) for field, lead in zip(fields, leads, strict=True)),
             # the lazy route leaves the value-dependent support conditions to quality_flags
-            "warn": not prepared.lazy,
+            "warn": None if prepared.lazy else queue,
             **options,
         },
     )
@@ -748,11 +765,11 @@ def _bootstrap_fields(statistic: str) -> tuple[_Field, ...]:
 def joint_statistics(hazards: xr.Dataset, *, groupby: GroupBy, min_samples: int) -> xr.Dataset:
     """Count hazards on one eligible support across a prepared Dataset; see :func:`joint_statistics`."""
 
-    def build() -> xr.Dataset:
+    def build(queue: list[Warning]) -> xr.Dataset:
         prepared = _prepare(hazards)
         _check_choice("groupby", groupby, _GROUPINGS)
         minimum = _check_min_samples(min_samples)
-        reference = _joint_statistics(prepared.standin(), groupby=groupby, min_samples=minimum, warn=False)
+        reference = _joint_statistics(prepared.standin(), groupby=groupby, min_samples=minimum, warn=None)
         return _statistics_dataset(
             prepared,
             _joint_statistics,
@@ -762,6 +779,7 @@ def joint_statistics(hazards: xr.Dataset, *, groupby: GroupBy, min_samples: int)
             hazard_names=prepared.names,
             label="Compound joint statistics",
             options={"min_samples": minimum},
+            queue=queue,
         )
 
     return _route(
@@ -777,13 +795,13 @@ def conditional_probability(
 ) -> xr.Dataset:
     """Condition one hazard window on another across a prepared Dataset; see :func:`conditional_probability`."""
 
-    def build() -> xr.Dataset:
+    def build(queue: list[Warning]) -> xr.Dataset:
         prepared = _prepare(hazards)
         _check_choice("groupby", groupby, _GROUPINGS)
         window = _check_lag_window(lag_window)
         minimum = _check_min_samples(min_samples)
         options: dict[str, Any] = {"given": given, "target": target, "lag_window": window, "min_samples": minimum}
-        reference = _conditional_probability(prepared.standin(), groupby=groupby, warn=False, **options)
+        reference = _conditional_probability(prepared.standin(), groupby=groupby, warn=None, **options)
         return _statistics_dataset(
             prepared,
             _conditional_probability,
@@ -793,6 +811,7 @@ def conditional_probability(
             hazard_names=prepared.names,
             label="Compound conditional probability",
             options=options,
+            queue=queue,
         )
 
     return _route(
@@ -824,7 +843,7 @@ def bootstrap_dependence(
 ) -> xr.Dataset:
     """Estimate monthly uncertainty across a prepared Dataset; see :func:`bootstrap_dependence`."""
 
-    def build() -> xr.Dataset:
+    def build(queue: list[Warning]) -> xr.Dataset:
         prepared = _prepare(hazards)
         window, level = _checked_options(
             statistic=statistic,
@@ -847,7 +866,7 @@ def bootstrap_dependence(
             "alternative": alternative,
             "seed": seed,
         }
-        reference = _bootstrap(prepared.standin(), groupby=groupby, warn=False, **options)
+        reference = _bootstrap(prepared.standin(), groupby=groupby, warn=None, **options)
         return _statistics_dataset(
             prepared,
             _bootstrap,
@@ -857,6 +876,7 @@ def bootstrap_dependence(
             hazard_names=tuple(reference.metadata["source_names"]),
             label="Compound bootstrap dependence",
             options=options,
+            queue=queue,
         )
 
     return _route(

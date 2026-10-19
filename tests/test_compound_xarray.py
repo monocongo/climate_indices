@@ -14,6 +14,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+import sys
 import warnings
 from collections.abc import Callable
 from typing import Any
@@ -903,3 +904,98 @@ def test_index_coordinate_attributes_survive_every_route(lazy: bool) -> None:
         assert result["lon"].attrs == {"standard_name": "longitude", "units": "degrees_east", "axis": "X"}
         for name, variable in result.data_vars.items():
             assert "axis" not in variable.attrs and variable.attrs.get("standard_name") is None, name
+
+
+# --- the warning sink -------------------------------------------------------------------------------
+
+
+def _all_routes(dataset: xr.Dataset) -> list[Callable[[], Any]]:
+    return [
+        lambda: compound.harmonize(sources(), **DECLARATIONS),
+        lambda: compound.harmonize(sources(lazy=True), **DECLARATIONS),
+        lambda: compound.joint_statistics(dataset, min_samples=1),
+        lambda: compound.conditional_probability(dataset, given="drought", target="heat", min_samples=1),
+        lambda: compound.bootstrap_dependence(dataset, statistic="joint_probability", seed=1, n_resamples=5),
+    ]
+
+
+def test_no_route_captures_warnings_with_catch_warnings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Never enter the process-global, thread-unsafe catch_warnings from compound code."""
+
+    class Guard(warnings.catch_warnings):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            caller = sys._getframe(1).f_globals.get("__name__", "")
+            assert not caller.startswith("climate_indices.compound"), f"{caller} captured warnings"
+            super().__init__(*args, **kwargs)
+
+    dataset = prepared()
+    monkeypatch.setattr(warnings, "catch_warnings", Guard)
+    for call in _all_routes(dataset):
+        call()
+
+
+def test_default_filters_show_each_route_warning_once_per_location() -> None:
+    """Keep the once-per-location rule, which a catch_warnings block would reset on every call."""
+    dataset = prepared().isel(time=slice(0, 12))
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("default")
+        for _ in range(3):
+            compound.joint_statistics(dataset, min_samples=1)
+    messages = [str(w.message) for w in caught]
+    assert sum(xarray_module._BETA_MESSAGE == message for message in messages) == 1
+    assert len(messages) == len(set(messages))
+
+
+def test_a_warning_raised_as_an_error_still_logs_a_terminal_event() -> None:
+    """Log calculation_failed when a beta or support warning is turned into an exception."""
+    dataset = prepared().isel(time=slice(0, 12))
+    for ignore_beta, error_type in ((False, "BetaFeatureWarning"), (True, "ClimateIndicesWarning")):
+        logger = mock.MagicMock()
+        logger.bind.return_value = logger
+        with warnings.catch_warnings(), mock.patch.object(xarray_module, "_logger", logger):
+            warnings.simplefilter("error", ClimateIndicesWarning)
+            if ignore_beta:
+                warnings.simplefilter("ignore", BetaFeatureWarning)
+            with pytest.raises(ClimateIndicesWarning):
+                compound.joint_statistics(dataset, min_samples=1)
+        assert [call.args[0] for call in logger.info.call_args_list] == ["calculation_started"]
+        failed = [call for call in logger.error.call_args_list if call.args[0] == "calculation_failed"]
+        assert len(failed) == 1 and failed[0].kwargs["error_type"] == error_type
+
+
+def test_a_lazy_result_of_zero_dimensional_variables_is_logged_as_graph_construction() -> None:
+    """Read laziness from the result's own variable, since Dataset.chunks ignores 0-d variables."""
+    logger = mock.MagicMock()
+    logger.bind.return_value = logger
+    point = {name: array.isel(lat=1, lon=1, drop=True).chunk({"time": -1}) for name, array in sources().items()}
+    with mock.patch.object(xarray_module, "_logger", logger):
+        result = compound.conditional_probability(
+            compound.harmonize(point, **DECLARATIONS), given="drought", target="heat", groupby="pooled", min_samples=1
+        )
+    assert result.chunks == {} and result["n_anchors"].chunks is not None
+    completed = [call.kwargs for call in logger.info.call_args_list if call.args[0] == "calculation_completed"]
+    assert [c["evaluation"] for c in completed] == ["graph_construction", "graph_construction"]
+
+
+def test_numpy_route_warnings_point_at_the_caller() -> None:
+    """Keep the NumPy functions' warning attribution on the caller's line."""
+    aligned = numpy_aligned_year()
+    declared = {**DECLARATIONS, "source_metadata": None}
+    drought, heat = _values()
+    calls: list[Callable[[], Any]] = [
+        lambda: compound.harmonize(
+            {"drought": drought, "heat": heat},
+            time={"drought": MONTHS, "heat": MONTHS},
+            spatial_time_major=True,
+            **declared,
+        ),
+        lambda: compound.joint_statistics(aligned, min_samples=1),
+        lambda: compound.conditional_probability(aligned, given="drought", target="heat", min_samples=1),
+        lambda: compound.bootstrap_dependence(
+            numpy_aligned(), statistic="joint_probability", seed=1, n_resamples=5, block_length_years=40
+        ),
+    ]
+    for call in calls:
+        caught = _record(call)
+        assert caught, "each call is expected to warn"
+        assert all(w.filename == __file__ for w in caught), [(w.category.__name__, w.filename) for w in caught]

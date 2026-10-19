@@ -32,7 +32,6 @@ result is a lagged association, not an event-onset probability or a causal casca
 from __future__ import annotations
 
 import json
-import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
 from time import perf_counter
@@ -49,6 +48,7 @@ from climate_indices.compound._harmonize import (
     _check_choice,
     _freeze,
     _immutable,
+    _replay,
 )
 from climate_indices.exceptions import (
     ClimateIndicesWarning,
@@ -367,39 +367,40 @@ def _warn_support(
     n_valid: npt.NDArray[np.int64],
     n_marginal: npt.NDArray[np.int64],
     min_samples: int,
+    queue: list[Warning],
 ) -> None:
-    """Warn once about a short record, short support, sparse occurrences, or a marginal that never occurs."""
+    """Queue warnings about a short record, short support, sparse occurrences, or a marginal that never occurs."""
     observed_years = _observed_years(time, eligible)
     if observed_years < _SHORT_RECORD_YEARS:
-        warnings.warn(
-            f"The record holds {observed_years} observed calendar year(s); {_SHORT_RECORD_YEARS} are expected "
-            "before a compound statistic is read as a rate.",
-            ClimateIndicesWarning,
-            stacklevel=4,
+        queue.append(
+            ClimateIndicesWarning(
+                f"The record holds {observed_years} observed calendar year(s); {_SHORT_RECORD_YEARS} are expected "
+                "before a compound statistic is read as a rate."
+            )
         )
     sparse = int(np.count_nonzero((n_valid > 0) & (n_marginal.min(axis=0) < _SPARSE_OCCURRENCES)))
     if sparse:
-        warnings.warn(
-            f"{sparse} group(s) have fewer than {_SPARSE_OCCURRENCES} occurrences in a marginal; such sparse "
-            "frequencies are unstable. This is a product guardrail, not an adequacy threshold.",
-            ClimateIndicesWarning,
-            stacklevel=4,
+        queue.append(
+            ClimateIndicesWarning(
+                f"{sparse} group(s) have fewer than {_SPARSE_OCCURRENCES} occurrences in a marginal; such sparse "
+                "frequencies are unstable. This is a product guardrail, not an adequacy threshold."
+            )
         )
     short_support = int(np.count_nonzero((n_valid > 0) & (n_valid < min_samples)))
     if short_support:
-        warnings.warn(
-            f"{short_support} group(s) have fewer than min_samples={min_samples} eligible observations; "
-            "their estimates are NaN. This is a product guardrail, not an adequacy threshold.",
-            ClimateIndicesWarning,
-            stacklevel=4,
+        queue.append(
+            ClimateIndicesWarning(
+                f"{short_support} group(s) have fewer than min_samples={min_samples} eligible observations; "
+                "their estimates are NaN. This is a product guardrail, not an adequacy threshold."
+            )
         )
     undefined = int(np.count_nonzero((n_valid > 0) & (n_marginal.min(axis=0) == 0)))
     if undefined:
-        warnings.warn(
-            f"{undefined} group(s) have a zero marginal count, so the likelihood multiplication factor is "
-            "undefined there; no pseudocount is added.",
-            ClimateIndicesWarning,
-            stacklevel=4,
+        queue.append(
+            ClimateIndicesWarning(
+                f"{undefined} group(s) have a zero marginal count, so the likelihood multiplication factor is "
+                "undefined there; no pseudocount is added."
+            )
         )
 
 
@@ -501,38 +502,39 @@ def _warn_conditional_support(
     n_anchors: npt.NDArray[np.int64],
     n_positive: npt.NDArray[np.int64],
     min_samples: int,
+    queue: list[Warning],
 ) -> None:
-    """Warn once about a short record, sparse conditioning, short support, or no conditioning."""
+    """Queue warnings about a short record, sparse conditioning, short support, or no conditioning."""
     observed_years = _observed_years(time, eligible)
     if observed_years < _SHORT_RECORD_YEARS:
-        warnings.warn(
-            f"The record holds {observed_years} observed calendar year(s); {_SHORT_RECORD_YEARS} are expected "
-            "before a compound statistic is read as a rate.",
-            ClimateIndicesWarning,
-            stacklevel=4,
+        queue.append(
+            ClimateIndicesWarning(
+                f"The record holds {observed_years} observed calendar year(s); {_SHORT_RECORD_YEARS} are expected "
+                "before a compound statistic is read as a rate."
+            )
         )
     sparse = int(np.count_nonzero((n_anchors > 0) & (n_positive < _SPARSE_OCCURRENCES)))
     if sparse:
-        warnings.warn(
-            f"{sparse} group(s) have fewer than {_SPARSE_OCCURRENCES} conditioning occurrences; such sparse "
-            "frequencies are unstable. This is a product guardrail, not an adequacy threshold.",
-            ClimateIndicesWarning,
-            stacklevel=4,
+        queue.append(
+            ClimateIndicesWarning(
+                f"{sparse} group(s) have fewer than {_SPARSE_OCCURRENCES} conditioning occurrences; such sparse "
+                "frequencies are unstable. This is a product guardrail, not an adequacy threshold."
+            )
         )
     short_support = int(np.count_nonzero((n_anchors > 0) & (n_anchors < min_samples)))
     if short_support:
-        warnings.warn(
-            f"{short_support} group(s) have fewer than min_samples={min_samples} eligible anchors; "
-            "their estimates are NaN. This is a product guardrail, not an adequacy threshold.",
-            ClimateIndicesWarning,
-            stacklevel=4,
+        queue.append(
+            ClimateIndicesWarning(
+                f"{short_support} group(s) have fewer than min_samples={min_samples} eligible anchors; "
+                "their estimates are NaN. This is a product guardrail, not an adequacy threshold."
+            )
         )
     undefined = int(np.count_nonzero((n_anchors > 0) & (n_positive == 0)))
     if undefined:
-        warnings.warn(
-            f"{undefined} group(s) have no conditioning occurrence, so the conditional probability is undefined there.",
-            ClimateIndicesWarning,
-            stacklevel=4,
+        queue.append(
+            ClimateIndicesWarning(
+                f"{undefined} group(s) have no conditioning occurrence, so the conditional probability is undefined there."
+            )
         )
 
 
@@ -544,11 +546,12 @@ def _conditional_probability(
     lag_window: tuple[int, int],
     groupby: GroupBy,
     min_samples: int,
-    warn: bool = True,
+    warn: list[Warning] | None,
 ) -> ConditionalResult:
     """Validate, resolve the forward window, count, and estimate; see :func:`conditional_probability`.
 
-    ``warn=False`` skips the support warnings; the lazy xarray route leaves those conditions to ``quality_flags``.
+    ``warn`` is a list to which the support warnings are appended, for the caller to replay, or ``None`` to drop
+    them; the lazy xarray route drops them and leaves those conditions to ``quality_flags``.
     """
     hazards = _validate_hazards(hazards)
     _require_complete_cadence(hazards)
@@ -579,8 +582,8 @@ def _conditional_probability(
     )
     quality_flags = np.asarray(flagged, dtype=np.int64)
 
-    if warn:
-        _warn_conditional_support(hazards.time, eligible, n_anchors, n_positive, min_samples)
+    if warn is not None:
+        _warn_conditional_support(hazards.time, eligible, n_anchors, n_positive, min_samples, warn)
 
     unit = "month" if groupby == "month" else None
     manifest = {
@@ -635,10 +638,13 @@ def _conditional_probability(
     )
 
 
-def _joint_statistics(hazards: AlignedHazards, *, groupby: GroupBy, min_samples: int, warn: bool = True) -> JointResult:
+def _joint_statistics(
+    hazards: AlignedHazards, *, groupby: GroupBy, min_samples: int, warn: list[Warning] | None
+) -> JointResult:
     """Validate, count, and estimate; see :func:`joint_statistics`.
 
-    ``warn=False`` skips the support warnings; the lazy xarray route leaves those conditions to ``quality_flags``.
+    ``warn`` is a list to which the support warnings are appended, for the caller to replay, or ``None`` to drop
+    them; the lazy xarray route drops them and leaves those conditions to ``quality_flags``.
     """
     hazards = _validate_hazards(hazards)
     months = _month_index(hazards.time)
@@ -671,8 +677,8 @@ def _joint_statistics(hazards: AlignedHazards, *, groupby: GroupBy, min_samples:
     )
     quality_flags = np.asarray(flagged, dtype=np.int64)
 
-    if warn:
-        _warn_support(hazards.time, eligible, n_valid, n_marginal, min_samples)
+    if warn is not None:
+        _warn_support(hazards.time, eligible, n_valid, n_marginal, min_samples, warn)
 
     unit = "month" if groupby == "month" else None
     manifest = {
@@ -815,9 +821,11 @@ def joint_statistics(
     )
     log.info("calculation_started")
     t0 = perf_counter()
+    queued: list[Warning] = []
     try:
         _check_choice("groupby", groupby, _GROUPINGS)
-        result = _joint_statistics(hazards, groupby=groupby, min_samples=_check_min_samples(min_samples))
+        result = _joint_statistics(hazards, groupby=groupby, min_samples=_check_min_samples(min_samples), warn=queued)
+        _replay(queued, 2)
     except Exception as exc:
         log_calculation_failure(log, exc)
         raise
@@ -971,6 +979,7 @@ def conditional_probability(
     )
     log.info("calculation_started")
     t0 = perf_counter()
+    queued: list[Warning] = []
     try:
         _check_choice("groupby", groupby, _GROUPINGS)
         window = _check_lag_window(lag_window)
@@ -981,7 +990,9 @@ def conditional_probability(
             lag_window=window,
             groupby=groupby,
             min_samples=_check_min_samples(min_samples),
+            warn=queued,
         )
+        _replay(queued, 2)
     except Exception as exc:
         log_calculation_failure(log, exc)
         raise

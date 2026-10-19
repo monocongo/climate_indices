@@ -10,7 +10,6 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
 from time import perf_counter
@@ -21,7 +20,7 @@ import numpy.typing as npt
 import scipy
 import xarray as xr
 
-from climate_indices.compound._harmonize import AlignedHazards, _check_choice, _freeze, _immutable
+from climate_indices.compound._harmonize import AlignedHazards, _check_choice, _freeze, _immutable, _replay
 from climate_indices.compound._statistics import (
     GroupBy,
     _check_lag_window,
@@ -388,9 +387,12 @@ def _bootstrap(
     confidence_level: float,
     alternative: Alternative,
     seed: int,
-    warn: bool = True,
+    warn: list[Warning] | None,
 ) -> BootstrapResult:
-    """Infer per cell; ``warn=False`` leaves the limited-support condition to ``quality_flags`` (lazy xarray route)."""
+    """Infer per cell; ``warn`` collects the limited-support warning for the caller, or ``None`` drops it.
+
+    The lazy xarray route drops it and leaves the condition to ``quality_flags``.
+    """
     hazards = _validate_hazards(hazards)
     selected = _selected_sources(hazards, statistic, given, target, lag_window)
 
@@ -455,12 +457,12 @@ def _bootstrap(
             counts[name][..., cell] = inference[name]
         marginal_counts[..., cell] = inference["n_marginal"]
 
-    if warn and np.any(counts["quality_flags"]):
-        warnings.warn(
-            "Some compound inference outputs have limited support; inspect quality_flags and effective resample counts. "
-            "Fewer than ten nonoverlapping blocks requires particular caution.",
-            ClimateIndicesWarning,
-            stacklevel=3,
+    if warn is not None and np.any(counts["quality_flags"]):
+        warn.append(
+            ClimateIndicesWarning(
+                "Some compound inference outputs have limited support; inspect quality_flags and effective "
+                "resample counts. Fewer than ten nonoverlapping blocks requires particular caution."
+            )
         )
     manifest = {
         "schema_version": 1,
@@ -653,6 +655,7 @@ def bootstrap_dependence(
     )
     log.info("calculation_started")
     t0 = perf_counter()
+    queued: list[Warning] = []
     try:
         window, level = _checked_options(
             statistic=statistic,
@@ -676,7 +679,9 @@ def bootstrap_dependence(
             confidence_level=level,
             alternative=alternative,
             seed=seed,
+            warn=queued,
         )
+        _replay(queued, 2)
     except Exception as exc:
         log_calculation_failure(log, exc)
         raise

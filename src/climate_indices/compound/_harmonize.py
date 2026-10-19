@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 import warnings
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Any, Literal, NoReturn, TypeAlias, overload
@@ -552,32 +552,40 @@ def _align(validated: list[_Validated], target_cadence: str, join: str) -> tuple
     return first, last, dropped
 
 
-def _warn_unknowns(sources: list[_Validated], dropped: int, original: int, aligned: int) -> None:
-    """Warn about probability sources without a Calibration Period and about dropped boundary steps.
+def _replay(queued: Iterable[Warning], stacklevel: int) -> None:
+    """Warn each queued warning, ``stacklevel`` frames above the function that calls this helper.
+
+    The private cores append their warnings to a list instead of warning, so the public function that
+    owns the call decides where the warning is attributed. ``stacklevel`` counts like ``warnings.warn``'s:
+    2 attributes the warning to the caller of that function.
+    """
+    for warning in queued:
+        warnings.warn(warning, stacklevel=stacklevel + 1)
+
+
+def _warn_unknowns(sources: list[_Validated], dropped: int, original: int, aligned: int, queue: list[Warning]) -> None:
+    """Queue warnings about probability sources without a Calibration Period and about dropped boundary steps.
 
     The alignment counts share one basis: source time steps summed over every source.
     """
     undeclared = [
         source.name for source in sources if source.entry["input_scale"] == "probability" and source.calibration is None
     ]
-    # stacklevel 4 skips this helper, _harmonize, and harmonize to reach the caller
     if undeclared:
-        warnings.warn(
+        queue.append(
             ClimateIndicesWarning(
                 f"Calibration Period metadata is missing for probability sources {undeclared}; it is recorded as "
                 f"{_UNKNOWN!r} and calibration compatibility is not checked."
-            ),
-            stacklevel=4,
+            )
         )
     if dropped:
-        warnings.warn(
+        queue.append(
             InputAlignmentWarning(
                 f'join="inner" dropped {dropped} of {original} source time steps in total to keep the common overlap.',
                 original_size=original,
                 aligned_size=aligned,
                 dropped_count=dropped,
-            ),
-            stacklevel=4,
+            )
         )
 
 
@@ -595,11 +603,12 @@ def _harmonize(
     join: Join,
     source_metadata: Mapping[str, Mapping[str, Any]] | None,
     spatial_time_major: bool,
-    warn: bool = True,
+    warn: list[Warning] | None,
 ) -> AlignedHazards:
     """Validate, threshold, reduce, and align; see :func:`harmonize`.
 
-    ``warn=False`` skips the manifest warnings; the lazy xarray route emits them once at graph time.
+    ``warn`` is a list to which the manifest warnings are appended, for the caller to replay, or ``None``
+    to drop them (the xarray route's per-block kernel, whose plan has already queued them once).
     """
     if not isinstance(inputs, Mapping) or not inputs:
         raise InvalidArgumentError(
@@ -682,12 +691,13 @@ def _harmonize(
     time_labels = _immutable(steps.astype(label_unit).astype(_DAY_UNIT))
     exceedance = _immutable(exceedance)
     valid = _immutable(valid)
-    if warn:
+    if warn is not None:
         _warn_unknowns(
             validated,
             dropped,
             original=sum(source.steps for source in validated),
             aligned=len(validated) * steps.shape[0],
+            queue=warn,
         )
 
     manifest = {
@@ -885,6 +895,7 @@ def harmonize(
     )
     log.info("calculation_started")
     t0 = perf_counter()
+    queued: list[Warning] = []
     try:
         result = _harmonize(
             inputs,
@@ -900,7 +911,9 @@ def harmonize(
             join=join,
             source_metadata=source_metadata,
             spatial_time_major=spatial_time_major,
+            warn=queued,
         )
+        _replay(queued, 2)
     except Exception as exc:
         log_calculation_failure(log, exc)
         raise
