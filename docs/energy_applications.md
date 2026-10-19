@@ -181,20 +181,23 @@ note. The [energy-family epic #1157][energy-epic] tracks the implementation
 order.
 
 - **Heating, cooling, and energy degree days (HDD, CDD, EDD)** — *NumPy API
-  available ([#1164][energy-1164])*. Mean-based degree days from daily mean 2 m
+  available ([#1164][energy-1164]); DataArray input is beta
+  ([#1166][energy-1166])*. Mean-based degree days from daily mean 2 m
   temperature against a base temperature, in °C day; EDD is HDD plus CDD with
   separate heating and cooling bases. CPC's single-base convention ships;
   C3S threshold/reference pairs need a separate contract and are deferred. A caller
   holding Tmin and Tmax computes the daily mean first.
 - **Hub-height wind speed** — available as
-  {func}`climate_indices.energy.hub_height_wind_speed`. Wind extrapolated
+  {func}`climate_indices.energy.hub_height_wind_speed`
+  ([#1165][energy-1165]). Wind extrapolated
   from a finite positive reference height (commonly 10 m or 100 m) to a turbine hub height by a
   power-law or neutral-stability logarithmic profile, in m s⁻¹.
   {func}`climate_indices.energy.wind_shear_exponent` derives per-sample
   shear from two levels: calm pairs yield NaN; positive inverted profiles
   retain negative shear. The default power exponent, 1/7, is a generic
-  approximation, not a site-calibrated value. xarray/Dask dispatch is not
-  available yet.
+  approximation, not a site-calibrated value. DataArray input is beta
+  ([#1166][energy-1166]): coordinates are preserved, and every dimension may
+  carry multiple Dask chunks.
 - **Hydropower precipitation proxy** — available as the
   {doc}`hydropower-precipitation-proxy` recipe ([#1167][energy-1167]). It uses
   the existing `indices.standardized_index()` to standardize capacity-weighted
@@ -443,6 +446,7 @@ gridded demonstration on these data is planned ([#1179][energy-1179]).
 [energy-epic]: https://github.com/monocongo/climate_indices/issues/1157
 [energy-1164]: https://github.com/monocongo/climate_indices/issues/1164
 [energy-1165]: https://github.com/monocongo/climate_indices/issues/1165
+[energy-1166]: https://github.com/monocongo/climate_indices/issues/1166
 [energy-1167]: https://github.com/monocongo/climate_indices/issues/1167
 [energy-1168]: https://github.com/monocongo/climate_indices/issues/1168
 [energy-1169]: https://github.com/monocongo/climate_indices/issues/1169

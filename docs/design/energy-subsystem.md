@@ -1,8 +1,8 @@
 # Energy subsystem
 
 Internal working note for the energy-meteorology family
-([#1157](https://github.com/monocongo/climate_indices/issues/1157)). It plans
-unimplemented indices, so it stays in the repository rather than the published site —
+([#1157](https://github.com/monocongo/climate_indices/issues/1157)). It records
+deferred work, so it stays in the repository rather than the published site —
 the arrangement [ADR-0005](../adr/0005-fire-module-api.md) chose for fire and
 [ADR-0013](../adr/0013-flood-module-api-and-naming.md) for flood. The decisions that
 hold regardless of scope live in

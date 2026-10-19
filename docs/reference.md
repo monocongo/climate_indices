@@ -134,7 +134,9 @@ duration in seconds. It has no xarray/Dask adapter, and neither does
 `energy_drought_events()` reports run metrics and period summaries through the
 generic run-theory utility, and returns a Dataset of period summaries plus one run
 structure per cell for a gridded DataArray. The standardized energy indices and
-the event statistics accept DataArrays through the beta xarray layer ([#1174]);
+the event statistics accept DataArrays through the beta xarray layer
+([#1166](https://github.com/monocongo/climate_indices/issues/1166),
+[#1174](https://github.com/monocongo/climate_indices/issues/1174)).
 see {doc}`energy_applications` for scope and validation limits.
 
 ```{eval-rst}
