@@ -401,55 +401,58 @@ def wind_capacity_factor(
         >>> energy.wind_capacity_factor([0, 13, 25], "generic")
         array([0., 1., 0.])
     """
-    table = None
-    if isinstance(power_curve, str):
-        if power_curve != "generic":
-            raise InvalidArgumentError(
-                "power_curve must be 'generic' or a pair of arrays.", argument_name="power_curve"
-            )
-        thresholds = []
-        for value, name in ((cut_in, "cut_in"), (rated, "rated"), (cut_out, "cut_out")):
-            raw = np.asarray(value)
-            if raw.ndim != 0 or raw.dtype.kind not in "iuf" or np.ma.is_masked(value) or not np.isfinite(raw):
-                raise InvalidArgumentError(f"{name} must be a finite numeric scalar.", argument_name=name)
-            thresholds.append(float(raw))
-        cut_in, rated, cut_out = thresholds
-        if not all(np.isfinite(thresholds)) or not 0 <= cut_in < rated < cut_out:
-            raise InvalidArgumentError("Require 0 <= cut_in < rated < cut_out.", argument_name="cut_in,rated,cut_out")
-    else:
-        if not isinstance(power_curve, tuple) or len(power_curve) != 2:
-            raise InvalidArgumentError(
-                "power_curve must be 'generic' or a pair of arrays.", argument_name="power_curve"
-            )
-        knots, factors = (_as_float_array(part) for part in power_curve)
-        if (
-            knots.ndim != 1
-            or knots.size < 2
-            or knots.shape != factors.shape
-            or not np.all(np.isfinite(knots) & (knots >= 0))
-            or not np.all(knots[1:] > knots[:-1])
-            or not np.all(np.isfinite(factors) & (factors >= 0) & (factors <= 1))
-        ):
-            raise InvalidArgumentError(
-                "power_curve requires increasing finite speeds and factors in [0, 1].", argument_name="power_curve"
-            )
-        table = (knots, factors)
-    if isinstance(hub_wind_speed, xr.DataArray) or isinstance(air_density, xr.DataArray):
-        raise InputTypeError(
-            "wind_capacity_factor supports NumPy inputs only.", expected_type=np.ndarray, actual_type=xr.DataArray
-        )
-    wind = _as_float_array(hub_wind_speed)
-    density = _as_float_array(1.225 if air_density is None else air_density)
+    log = _logger.bind(index_type="wind_capacity_factor")
     try:
-        wind, density = np.broadcast_arrays(wind, density)
-    except ValueError as exc:
-        raise InvalidArgumentError(
-            "Wind and air_density must broadcast together.", argument_name="air_density"
-        ) from exc
-    log = _logger.bind(index_type="wind_capacity_factor", input_shape=wind.shape, input_elements=wind.size)
-    log.info("calculation_started")
-    t0 = time.perf_counter()
-    try:
+        table = None
+        if isinstance(power_curve, str):
+            if power_curve != "generic":
+                raise InvalidArgumentError(
+                    "power_curve must be 'generic' or a pair of arrays.", argument_name="power_curve"
+                )
+            thresholds = []
+            for value, name in ((cut_in, "cut_in"), (rated, "rated"), (cut_out, "cut_out")):
+                raw = np.asarray(value)
+                if raw.ndim != 0 or raw.dtype.kind not in "iuf" or np.ma.is_masked(value) or not np.isfinite(raw):
+                    raise InvalidArgumentError(f"{name} must be a finite numeric scalar.", argument_name=name)
+                thresholds.append(float(raw))
+            cut_in, rated, cut_out = thresholds
+            if not all(np.isfinite(thresholds)) or not 0 <= cut_in < rated < cut_out:
+                raise InvalidArgumentError(
+                    "Require 0 <= cut_in < rated < cut_out.", argument_name="cut_in,rated,cut_out"
+                )
+        else:
+            if not isinstance(power_curve, tuple) or len(power_curve) != 2:
+                raise InvalidArgumentError(
+                    "power_curve must be 'generic' or a pair of arrays.", argument_name="power_curve"
+                )
+            knots, factors = (_as_float_array(part) for part in power_curve)
+            if (
+                knots.ndim != 1
+                or knots.size < 2
+                or knots.shape != factors.shape
+                or not np.all(np.isfinite(knots) & (knots >= 0))
+                or not np.all(knots[1:] > knots[:-1])
+                or not np.all(np.isfinite(factors) & (factors >= 0) & (factors <= 1))
+            ):
+                raise InvalidArgumentError(
+                    "power_curve requires increasing finite speeds and factors in [0, 1].", argument_name="power_curve"
+                )
+            table = (knots, factors)
+        if isinstance(hub_wind_speed, xr.DataArray) or isinstance(air_density, xr.DataArray):
+            raise InputTypeError(
+                "wind_capacity_factor supports NumPy inputs only.", expected_type=np.ndarray, actual_type=xr.DataArray
+            )
+        wind = _as_float_array(hub_wind_speed)
+        density = _as_float_array(1.225 if air_density is None else air_density)
+        try:
+            wind, density = np.broadcast_arrays(wind, density)
+        except ValueError as exc:
+            raise InvalidArgumentError(
+                "Wind and air_density must broadcast together.", argument_name="air_density"
+            ) from exc
+        log = log.bind(input_shape=wind.shape, input_elements=wind.size)
+        log.info("calculation_started")
+        t0 = time.perf_counter()
         memory_metrics = check_large_array_memory(wind, density, extra_bytes=wind.size * (7 * wind.itemsize + 3))
         valid = np.isfinite(wind) & (wind >= 0) & np.isfinite(density) & (density > 0)
         with np.errstate(all="ignore"):

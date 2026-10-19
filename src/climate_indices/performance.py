@@ -17,16 +17,21 @@ def get_process_memory_mb() -> float | None:
     Uses psutil if available.
 
     Returns:
-        Current RSS (Resident Set Size) memory in MB, or None if psutil is not installed.
+        Current RSS (Resident Set Size) memory in MB, or None if psutil is unavailable
+        or process inspection fails.
     """
     try:
         import psutil
     except ImportError:
         return None
 
-    process = psutil.Process()
-    memory_bytes = process.memory_info().rss
-    return memory_bytes / (1024 * 1024)
+    try:
+        process = psutil.Process()
+        memory_bytes = process.memory_info().rss
+        return memory_bytes / (1024 * 1024)
+    except Exception:
+        # Optional process inspection must not abort a calculation.
+        return None
 
 
 def check_large_array_memory(*arrays: np.ndarray, extra_bytes: int = 0) -> dict[str, float] | None:
@@ -42,8 +47,8 @@ def check_large_array_memory(*arrays: np.ndarray, extra_bytes: int = 0) -> dict[
         extra_bytes: Bytes the route allocates besides ``arrays``.
 
     Returns:
-        Dictionary with 'array_memory_mb' (always) and 'process_memory_mb' (if psutil
-        available) when total array memory exceeds threshold. Returns None if under
+        Dictionary with 'array_memory_mb' (always) and 'process_memory_mb' (if process
+        inspection succeeds) when total array memory exceeds threshold. Returns None if under
         threshold.
     """
     total_bytes = sum(arr.nbytes for arr in arrays) + extra_bytes

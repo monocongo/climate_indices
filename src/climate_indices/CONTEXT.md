@@ -37,7 +37,13 @@ How each time step's Timescale window is combined before fitting, chosen by the 
 _Avoid_: Accumulation (the sum case only)
 
 **Run (Run Theory)**
-A maximal contiguous sequence of time steps on one side of a threshold, found by `runs.identify_runs()` and returned as a `RunSet`. A run's *duration* is its length in time steps, its *magnitude* the sum of absolute deviations from the threshold, its *intensity* the magnitude per time step, its *peak* the most extreme value on the run's side (minimum for below, maximum for above), and its *interarrival* the steps from one run's start to the next run's start. Direction is explicit (`"below"`/`"above"`), never inferred from the threshold's sign; NaN terminates a run. A drought event, a wet event, and a KBDI drought spell (``direction="above"``, since KBDI rises in drought) are all runs on different series.
+A maximal contiguous sequence of time steps on one side of a threshold, found by `runs.identify_runs()` and returned as a `RunSet`. A run's *duration* is its length in time steps, its *magnitude* the sum of absolute deviations from the threshold, its *intensity* the magnitude per time step, its *peak* the most extreme value on the run's side (minimum for below, maximum for above), and its *interarrival* the steps from one run's start to the next run's start. Direction is explicit (`"below"`/`"above"`), never inferred from the threshold's sign; NaN and masked values terminate a run. A drought event, a wet event, and a KBDI drought spell (``direction="above"``, since KBDI rises in drought) are all runs on different series.
+
+**Pooling**:
+Joining successive runs across at most `max_gap` non-missing steps, disabled by default. Missing values always separate events. Pooled duration includes the gaps, magnitude excludes them, and intensity divides magnitude by elapsed duration. Minimum-duration filtering follows pooling.
+
+**Run Statistics**:
+The events and period summaries that `runs.summarize_runs()` and `energy.energy_drought_events()` return as a `RunStatistics`. Each complete event belongs to its onset period. Summary *frequency* is event count divided by the period's non-NaN, unmasked input count, not a fraction of time in an event or an annual rate. Frequency is NaN without valid observations; count, total duration, and maximum magnitude are zero without events.
 _Avoid_: Spell (the Palmer/KBDI-specific name for a run; keep it in those contexts, not for the generic primitive)
 
 ### Indices

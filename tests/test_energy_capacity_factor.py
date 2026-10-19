@@ -9,7 +9,7 @@ import numpy.typing as npt
 import pytest
 import xarray as xr
 
-from climate_indices import energy
+from climate_indices import energy, performance
 from climate_indices.energy import _wind
 from climate_indices.exceptions import InputTypeError, InvalidArgumentError
 
@@ -171,7 +171,8 @@ def test_calculation_logs_memory_and_failure() -> None:
     ):
         energy.wind_capacity_factor([5], "generic")
         memory.assert_called_once()
-        assert logger.bind.call_args.kwargs["index_type"] == "wind_capacity_factor"
+        assert logger.bind.call_args_list[0].kwargs["index_type"] == "wind_capacity_factor"
+        assert logger.bind.call_args.kwargs == {"input_shape": (1,), "input_elements": 1}
         assert [call.args[0] for call in logger.info.call_args_list] == ["calculation_started", "calculation_completed"]
         with (
             mock.patch.object(np, "searchsorted", side_effect=MemoryError("synthetic failure")),
@@ -179,3 +180,38 @@ def test_calculation_logs_memory_and_failure() -> None:
         ):
             energy.wind_capacity_factor([5], ([0, 10], [0, 1]))
         assert logger.error.call_args.args == ("calculation_failed",)
+
+
+@pytest.mark.parametrize("curve", ["generic", ([0, 10], [0, 1])])
+@pytest.mark.parametrize(
+    "target,prior_calls", [("_as_float_array", 0), ("_as_float_array", 1), ("np.broadcast_arrays", 0)]
+)
+def test_input_preparation_failure_is_logged(curve: Any, target: str, prior_calls: int) -> None:
+    logger = mock.MagicMock()
+    logger.bind.return_value = logger
+    failure = MemoryError("synthetic allocation failure")
+    with (
+        mock.patch.object(_wind, "_logger", logger),
+        mock.patch(f"{_wind.__name__}.{target}", side_effect=[np.array([5.0])] * prior_calls + [failure]),
+        pytest.raises(MemoryError) as caught,
+    ):
+        energy.wind_capacity_factor(
+            np.array([5], dtype=np.float32), curve, air_density=np.array([1.225], dtype=np.float32)
+        )
+    assert caught.value is failure
+    logger.error.assert_called_once()
+    assert logger.error.call_args.args == ("calculation_failed",)
+
+
+def test_optional_memory_inspection_failure_does_not_abort_calculation() -> None:
+    wind = [5, 13, 25]
+    expected = energy.wind_capacity_factor(wind, "generic")
+    psutil = mock.Mock()
+    psutil.Process.return_value.memory_info.side_effect = OSError("RSS unavailable")
+    with (
+        mock.patch.object(performance, "LARGE_ARRAY_THRESHOLD_BYTES", 0),
+        mock.patch.dict("sys.modules", {"psutil": psutil}),
+    ):
+        result = energy.wind_capacity_factor(wind, "generic")
+    np.testing.assert_array_equal(result, expected)
+    psutil.Process.return_value.memory_info.assert_called_once()
