@@ -710,6 +710,33 @@ def test_result_arrays_are_read_only_and_new() -> None:
         result.mode = "sequential"  # type: ignore[misc]
 
 
+def test_direct_construction_enforces_the_row_contract() -> None:
+    """Keep the documented invariants when a caller builds the public type directly."""
+    rows: dict[str, Any] = {
+        "first_run_id": np.array([0]),
+        "second_run_id": np.array([0]),
+        "start_index": np.array([0]),
+        "end_index": np.array([0]),
+        "overlap_duration": np.array([1]),
+        "lag": np.array([np.nan]),
+        "first_left_censored": np.array([False]),
+        "first_right_censored": np.array([False]),
+        "second_left_censored": np.array([False]),
+        "second_right_censored": np.array([False]),
+    }
+    built = compound.CompoundEventSet(mode="concurrent", metadata={"k": {"n": [1]}}, **rows)
+    assert not built.first_run_id.flags.writeable
+    assert built.metadata["k"]["n"] == (1,)
+    with pytest.raises(TypeError):
+        built.metadata["k"]["n"] = (2,)
+    with pytest.raises(InvalidArgumentError, match="mode"):
+        compound.CompoundEventSet(mode="sideways", metadata={}, **rows)  # type: ignore[arg-type]
+    with pytest.raises(DataShapeError, match="one entry per pair"):
+        compound.CompoundEventSet(mode="concurrent", metadata={}, **{**rows, "lag": np.array([np.nan, np.nan])})
+    with pytest.raises(DataShapeError, match="one-dimensional"):
+        compound.CompoundEventSet(mode="concurrent", metadata={}, **{**rows, "lag": np.array([[np.nan]])})
+
+
 def test_inputs_are_not_mutated_and_unrelated_run_fields_survive() -> None:
     """Match without touching either RunSet, including the fields matching never inspects."""
     first = identify_runs(np.array([0.2, -1.2, -1.4, 0.1, -1.3, -1.1]), threshold=-1.0)

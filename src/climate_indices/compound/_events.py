@@ -99,6 +99,10 @@ class CompoundEventSet:
 
     Instances compare by identity: the fields are arrays.
 
+    Construction enforces that contract: ``mode`` must be supported, every array must hold
+    one entry per row, and the arrays and the manifest are frozen even when a caller builds
+    an instance directly instead of calling :func:`compound_events`.
+
     Args:
         mode: ``"concurrent"`` or ``"sequential"``, the matching rule that produced the
             rows.
@@ -140,6 +144,52 @@ class CompoundEventSet:
     second_left_censored: npt.NDArray[np.bool_]
     second_right_censored: npt.NDArray[np.bool_]
     metadata: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        """Enforce the row contract and freeze the arrays and the manifest.
+
+        ``frozen=True`` stops attribute rebinding only, so the generated constructor would
+        otherwise accept an unsupported mode, columns of differing lengths, writable arrays,
+        and a mutable manifest. A directly constructed instance is made to keep the same
+        contract as one returned by :func:`compound_events`.
+        """
+        if self.mode not in _MODES:
+            raise InvalidArgumentError(
+                f"mode must be one of {list(_MODES)}.",
+                argument_name="mode",
+                argument_value=repr(self.mode),
+                valid_values=", ".join(repr(choice) for choice in _MODES),
+            )
+        if not isinstance(self.metadata, Mapping):
+            raise InvalidArgumentError(
+                "metadata must be a mapping.",
+                argument_name="metadata",
+                argument_value=type(self.metadata).__name__,
+                valid_values="Mapping[str, Any]",
+            )
+        rows: int | None = None
+        for field in fields(self):
+            if field.name in ("mode", "metadata"):
+                continue
+            values = np.asarray(getattr(self, field.name))
+            if values.ndim != 1:
+                raise DataShapeError(
+                    f"{field.name} must be one-dimensional with one entry per pair.",
+                    expected_shape="(pair,)",
+                    actual_shape=values.shape,
+                )
+            if rows is None:
+                rows = int(values.shape[0])
+            elif values.shape[0] != rows:
+                raise DataShapeError(
+                    f"every array must hold one entry per pair; {field.name} has {values.shape[0]} and "
+                    f"the first has {rows}.",
+                    expected_shape=f"({rows},)",
+                    actual_shape=values.shape,
+                )
+            if values.flags.writeable:
+                object.__setattr__(self, field.name, _immutable(values))
+        object.__setattr__(self, "metadata", _freeze(dict(self.metadata)))
 
     def __len__(self) -> int:
         """Return the number of matched pairs."""
