@@ -569,9 +569,9 @@ def _match(
     matched_rows = 0
     for position in range(first.start.size):
         onset, ending = int(first.start[position]), int(first.end[position])
-        budget: _Budget | None = (
-            None if max_pairs is None else (max_pairs - matched_rows, max_pairs if pair_limit is None else pair_limit)
-        )
+        budget: _Budget | None = None
+        if max_pairs is not None:
+            budget = (max_pairs - matched_rows, max_pairs if pair_limit is None else pair_limit)
         if mode == "concurrent":
             rows = _concurrent_rows(second, onset, ending, budget=budget)
         else:
