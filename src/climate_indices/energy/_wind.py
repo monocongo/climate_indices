@@ -1,4 +1,4 @@
-"""Power-law and neutral logarithmic wind profiles for climate-driven resources."""
+"""Wind profiles and power curves for climate-driven resources, not generation."""
 
 from __future__ import annotations
 
@@ -321,6 +321,166 @@ def wind_shear_exponent(
         # Budget for the difference, logarithms, output buffers, and temporary masks.
         memory_metrics = check_large_array_memory(lower, upper, extra_bytes=lower.size * (5 * lower.itemsize + 3))
         result = _wind_shear_kernel(lower, upper, lower_height=lower_height, upper_height=upper_height)
+        log.info(
+            "calculation_completed",
+            duration_ms=round((time.perf_counter() - t0) * 1000.0, 2),
+            output_shape=result.shape,
+            **(memory_metrics or {}),
+        )
+        return result
+    except Exception as exc:
+        log_calculation_failure(log, exc)
+        raise
+
+
+def _validated_capacity_factor_thresholds(cut_in: float, rated: float, cut_out: float) -> tuple[float, float, float]:
+    """Return finite, ordered generic-curve thresholds."""
+    thresholds = []
+    for value, name in ((cut_in, "cut_in"), (rated, "rated"), (cut_out, "cut_out")):
+        raw = np.asarray(value)
+        if raw.ndim != 0 or raw.dtype.kind not in "iuf" or np.ma.is_masked(value) or not np.isfinite(raw):
+            raise InvalidArgumentError(f"{name} must be a finite numeric scalar.", argument_name=name)
+        thresholds.append(float(raw))
+    cut_in, rated, cut_out = thresholds
+    if not all(np.isfinite(thresholds)) or not 0 <= cut_in < rated < cut_out:
+        raise InvalidArgumentError("Require 0 <= cut_in < rated < cut_out.", argument_name="cut_in,rated,cut_out")
+    return cut_in, rated, cut_out
+
+
+def _validated_capacity_factor_table(
+    power_curve: tuple[npt.ArrayLike, npt.ArrayLike],
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """Return increasing speed knots and bounded capacity factors."""
+    if not isinstance(power_curve, tuple) or len(power_curve) != 2:
+        raise InvalidArgumentError("power_curve must be 'generic' or a pair of arrays.", argument_name="power_curve")
+    knots, factors = (_as_float_array(part) for part in power_curve)
+    if (
+        knots.ndim != 1
+        or knots.size < 2
+        or knots.shape != factors.shape
+        or not np.all(np.isfinite(knots) & (knots >= 0))
+        or not np.all(knots[1:] > knots[:-1])
+        or not np.all(np.isfinite(factors) & (factors >= 0) & (factors <= 1))
+    ):
+        raise InvalidArgumentError(
+            "power_curve requires increasing finite speeds and factors in [0, 1].", argument_name="power_curve"
+        )
+    return knots, factors
+
+
+def wind_capacity_factor(
+    hub_wind_speed: npt.ArrayLike,
+    power_curve: Literal["generic"] | tuple[npt.ArrayLike, npt.ArrayLike],
+    *,
+    cut_in: float = 3.5,
+    rated: float = 13.0,
+    cut_out: float = 25.0,
+    air_density: npt.ArrayLike | None = None,
+) -> npt.NDArray[np.float64]:
+    """Convert hub-height wind to a climate-driven resource proxy, not generation.
+
+    A capacity factor is a dimensionless fraction of nominal turbine power.
+    This reference transform excludes wakes, availability, curtailment, and
+    other plant losses. It does not estimate actual generation.
+
+    Choose ``power_curve="generic"`` explicitly for the idealized cubic curve
+    documented by ``xclim.indices.wind_power_potential`` (Tobin et al., 2018).
+    For speed v, the factor is zero below cut-in, then
+    ``(v**3 - cut_in**3) / (rated**3 - cut_in**3)`` below rated speed, then
+    one below cut-out. At cut-out and above, it is zero. The default speeds
+    are xclim's generic 3.5, 13, and 25 m s⁻¹, not a specific turbine.
+
+    For a tabulated curve, supply ``(speeds, capacity_factors)``. Interpolation
+    is linear between knots, includes both endpoints, and returns zero
+    outside the table. A decreasing segment is permitted for shutdown.
+    Supply the complete operating range; no additional cut-out is inferred.
+
+    When air density is supplied, evaluate either curve at
+    ``v * (air_density / 1.225)**(1/3)``. Thus density correction also changes
+    cut-in and cut-out region membership, as in xclim. The curve must refer
+    to 1.225 kg m⁻³. Do not correct an already density-adjusted curve again.
+    Apply the curve before time averaging: a curve of mean wind is not the
+    mean capacity factor. This function provides only the NumPy API.
+
+    Args:
+        hub_wind_speed: Scalar or array in m s⁻¹, such as the output of
+            :func:`hub_height_wind_speed`. Negative and non-finite speeds
+            yield NaN. NaN and masked values are missing.
+        power_curve: Required explicit ``"generic"`` choice or a pair of
+            equal-length, finite 1-D arrays with at least two knots. Speeds
+            must be non-negative and strictly increasing; capacity factors
+            must lie in [0, 1]. Normalize power by rated power before calling.
+        cut_in: Non-negative scalar speed in m s⁻¹, for the generic curve only.
+        rated: Finite scalar speed above cut_in, for the generic curve only.
+        cut_out: Finite scalar speed above rated, for the generic curve only.
+        air_density: Optional density in kg m⁻³, broadcasting with wind.
+            Non-positive, non-finite, or masked densities yield NaN.
+            None leaves wind unchanged.
+
+    Returns:
+        Float64 array in [0, 1] with the broadcast shape, or a 0-D array for
+        scalar inputs. Missing or non-finite corrected speeds yield NaN.
+        Inputs remain unchanged, and underflow rounds to zero.
+
+    Raises:
+        InvalidArgumentError: If curve parameters or broadcast shapes are invalid.
+        InputTypeError: If arrays are non-numeric, or wind or density is a DataArray.
+
+    References:
+        https://xclim.readthedocs.io/en/stable/indices.html#xclim.indices.wind_power_potential
+        The C3S turbine curves are not matched numerical references; see
+        ``docs/research/energy-oracle-survey.md``.
+
+    Example:
+        >>> from climate_indices import energy
+        >>> energy.wind_capacity_factor([0, 13, 25], "generic")
+        array([0., 1., 0.])
+    """
+    log = _logger.bind(index_type="wind_capacity_factor")
+    try:
+        table = None
+        if isinstance(power_curve, str):
+            if power_curve != "generic":
+                raise InvalidArgumentError(
+                    "power_curve must be 'generic' or a pair of arrays.", argument_name="power_curve"
+                )
+            cut_in, rated, cut_out = _validated_capacity_factor_thresholds(cut_in, rated, cut_out)
+        else:
+            table = _validated_capacity_factor_table(power_curve)
+        if isinstance(hub_wind_speed, xr.DataArray) or isinstance(air_density, xr.DataArray):
+            raise InputTypeError(
+                "wind_capacity_factor supports NumPy inputs only.", expected_type=np.ndarray, actual_type=xr.DataArray
+            )
+        wind = _as_float_array(hub_wind_speed)
+        density = _as_float_array(1.225 if air_density is None else air_density)
+        try:
+            wind, density = np.broadcast_arrays(wind, density)
+        except ValueError as exc:
+            raise InvalidArgumentError(
+                "Wind and air_density must broadcast together.", argument_name="air_density"
+            ) from exc
+        log = log.bind(input_shape=wind.shape, input_elements=wind.size)
+        log.info("calculation_started")
+        t0 = time.perf_counter()
+        memory_metrics = check_large_array_memory(wind, density, extra_bytes=wind.size * (7 * wind.itemsize + 3))
+        valid = np.isfinite(wind) & (wind >= 0) & np.isfinite(density) & (density > 0)
+        with np.errstate(all="ignore"):
+            # Separate cube roots avoid underflow in the density ratio.
+            speed = wind if air_density is None else wind * (np.cbrt(density) / np.cbrt(1.225))
+            if table is None:
+                bounded = np.clip(speed, cut_in, rated)
+                x, y = bounded / rated, cut_in / rated
+                # Factor the differences of cubes to avoid overflow and cancellation.
+                ramp = ((bounded - cut_in) / (rated - cut_in)) * (x * x + x * y + y * y) / (1 + y + y * y)
+                result = np.where(speed < cut_out, np.clip(ramp, 0, 1), 0.0)
+            else:
+                knots, factors = table
+                upper = np.clip(np.searchsorted(knots, speed, side="right"), 1, knots.size - 1)
+                # Interpolate by a bounded fraction; np.interp's slope can overflow.
+                fraction = (speed - knots[upper - 1]) / (knots[upper] - knots[upper - 1])
+                result = (1 - fraction) * factors[upper - 1] + fraction * factors[upper]
+                result = np.where((speed >= knots[0]) & (speed <= knots[-1]), result, 0.0)
+        result = np.asarray(np.where(valid & np.isfinite(speed), result, np.nan), dtype=np.float64)
         log.info(
             "calculation_completed",
             duration_ms=round((time.perf_counter() - t0) * 1000.0, 2),
