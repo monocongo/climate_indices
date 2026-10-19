@@ -97,6 +97,34 @@ def test_inclusive_ties_never_produce_zero_p_values() -> None:
 
 
 @pytest.mark.parametrize(
+    ("alternative", "n_a", "n_b", "n_joint"),
+    [("greater", 10, 18, 6), ("less", 12, 25, 10)],
+    ids=["float-excess-above-zero", "float-excess-below-zero"],
+)
+def test_inclusive_ties_survive_float_rounding(alternative: str, n_a: int, n_b: int, n_joint: int) -> None:
+    """Each month holds 30 years with ``n_joint * 30 == n_a * n_b``: independence, a mathematical zero."""
+    years = 30
+    rows = np.zeros((2, years), dtype=bool)
+    rows[0, :n_a] = True
+    rows[1, n_a - n_joint : n_a - n_joint + n_b] = True
+    hazards = dataclasses.replace(
+        prepared(years), exceedance=np.repeat(rows, 12, axis=1), valid=np.ones((2, years * 12), dtype=bool)
+    )
+    # The observed float excess is +/-2.8e-17 rather than 0; a null of exact zeros must still count as tied.
+    observed = implementation._metrics(
+        rows.reshape(2, years, 1).repeat(12, axis=2), np.ones((years, 12), dtype=bool), "joint_probability", "month"
+    )[1]
+    assert np.all(observed != 0)
+    zeros = np.zeros((39, 12))
+    with (
+        mock.patch.object(implementation, "_resample", return_value=(zeros, zeros)),
+        pytest.warns(ClimateIndicesWarning),
+    ):
+        result = run(hazards, alternative=alternative)
+    np.testing.assert_array_equal(result.p_value, np.ones(12))
+
+
+@pytest.mark.parametrize(
     "statistic", ["joint_probability", "likelihood_multiplication_factor", "conditional_probability"]
 )
 def test_zero_joint_suppression_has_no_false_zero_width_interval(statistic: str) -> None:

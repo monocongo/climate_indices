@@ -47,6 +47,8 @@ _FLAGS = {
     "undefined_denominator": 128,
     "few_blocks": 256,
 }
+# Equal count ratios differ by about 1e-17 once rounded; distinct statistics are separated by at least 1/N**k.
+_TIE_TOLERANCE = 1e-12
 
 
 @dataclass(frozen=True, eq=False)
@@ -296,7 +298,9 @@ def _bootstrap(
                 if null_ok[index] and n_null[index] >= 0.95 * n_resamples:
                     distribution = null[(slice(None),) + index]
                     extreme = (
-                        distribution >= excess[index] if alternative == "greater" else distribution <= excess[index]
+                        distribution >= excess[index] - _TIE_TOLERANCE
+                        if alternative == "greater"
+                        else distribution <= excess[index] + _TIE_TOLERANCE
                     )
                     floats["p_value"][index + (cell,)] = (
                         1 + np.count_nonzero(extreme & null_valid[(slice(None),) + index])
@@ -332,7 +336,7 @@ def _bootstrap(
         "confidence_level": confidence_level,
         "null_statistic": "P(R|A) - P(R)" if statistic == "conditional_probability" else "p_joint - product(p_i)",
         "alternative": alternative,
-        "null_comparison": "inclusive; (1 + extreme) / (1 + B_valid)",
+        "null_comparison": "inclusive within 1e-12 of the observed statistic; (1 + extreme) / (1 + B_valid)",
         "n_resamples": n_resamples,
         "seed": seed,
         "stream": "SeedSequence with SHA256 of inference support; separate paired/null streams",

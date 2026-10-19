@@ -178,7 +178,8 @@ Paired channels supply percentile confidence intervals. Independent channel
 samples supply the independence null. The default alternative, `"greater"`, tests
 amplification. `"less"` tests suppression. Joint tests use
 `p_joint - product(p_i)`; conditional tests use `P(R|A) - P(R)`.
-Null comparisons include ties, with `p=(1+extreme)/(1+B_valid)`.
+Null comparisons include ties within `1e-12`, so floating-point rounding of equal
+count ratios cannot break a tie, with `p=(1+extreme)/(1+B_valid)`.
 All p-values are local and unadjusted. They do not establish field significance.
 
 The defaults are 1,999 realizations per sampling method and a 95% interval using
