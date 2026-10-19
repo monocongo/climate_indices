@@ -30,7 +30,7 @@ Demand proxies                   HDD / CDD / EDD                            (ava
 Resource transforms              hub-height wind (available); wind & PV capacity factor (planned)
 Hydro proxy                      capacity-weighted n-month precip           (available recipe)
               ↓
-Standardized energy indices      SREPI, standardized demand, SRLI           (planned)
+Standardized energy indices      SREPI, standardized demand (planned); SRLI (available)
               ↓
 Energy-drought events            run-theory onset / duration / magnitude    (planned)
               ↓
@@ -90,7 +90,9 @@ SRLI uses the empirical distribution only. That is an API restriction rather
 than a mathematical necessity: a rank-based standardization has no support
 for a signed series to violate, the parametric families' support-limit and
 zero-mass handling is not designed for one, and clipping negatives to zero
-would score a different series.
+would score a different series. {func}`climate_indices.energy.srli` keeps
+negatives as given and raises for any other distribution
+([#1172][energy-1172]).
 
 ### Timescale and aggregation
 
@@ -101,8 +103,8 @@ with a Timescale of 30; calendar months use monthly input. Sub-daily (hourly)
 input is planned separately ([#1177][energy-1177]).
 
 Daily NumPy inputs to `indices.standardized_index()` must start on January 1
-and use the internal 366-slot year layout. The planned energy NumPy wrappers
-inherit this layout. Convert Gregorian arrays with
+and use the internal 366-slot year layout. The energy NumPy wrappers, SRLI
+today, inherit this layout. Convert Gregorian arrays with
 {func}`climate_indices.utils.transform_to_366day` before standardizing them;
 see {doc}`data_requirements` for the conversion requirements. Do not pass an
 ordinary Gregorian array directly: seasonal fitting would use the wrong day
@@ -165,7 +167,15 @@ order.
   ([#1168][energy-1168]), with beta ([#1169][energy-1169]) only for SREPI
   capacity factors in [0, 1] averaged with `aggregation="mean"`, including the
   endpoint-mass handling described above, not for demand proxies.
-- **SRLI** — *planned ([#1172][energy-1172])*.
+- **SRLI and the residual-load helper** — available as
+  {func}`climate_indices.energy.srli` and
+  {func}`climate_indices.energy.residual_load` ([#1172][energy-1172]).
+  `residual_load()` forms demand minus capacity-factor-weighted production from
+  installed capacities the caller supplies, in units that match the demand
+  series, and leaves the result signed. `srli()` standardizes it on the
+  empirical distribution ([#1168][energy-1168]) and never clips a negative.
+  High values mark stress; Allen & Otero (2023) class drought at 1.28, 1.64,
+  and 1.96. It has NumPy dispatch only until [#1174][energy-1174] lands.
 - **Energy-drought event statistics** — *planned ([#1173][energy-1173])*.
 - **Wind capacity factor** — *planned ([#1175][energy-1175])*. Hub-height
   wind passed through a required power curve: a generic parametric reference
@@ -266,6 +276,7 @@ gridded demonstration on these data is planned ([#1179][energy-1179]).
 [energy-1171]: https://github.com/monocongo/climate_indices/issues/1171
 [energy-1172]: https://github.com/monocongo/climate_indices/issues/1172
 [energy-1173]: https://github.com/monocongo/climate_indices/issues/1173
+[energy-1174]: https://github.com/monocongo/climate_indices/issues/1174
 [energy-1175]: https://github.com/monocongo/climate_indices/issues/1175
 [energy-1176]: https://github.com/monocongo/climate_indices/issues/1176
 [energy-1177]: https://github.com/monocongo/climate_indices/issues/1177

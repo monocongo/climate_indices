@@ -1,6 +1,6 @@
 """SEI statistical references for climate-driven energy supply/demand, not actual load.
 
-Missing energy wrappers xfail under #1171/#1172; a present but broken wrapper fails.
+Missing energy wrappers (SREPI and the standardized demand index, #1171) xfail; a present but broken wrapper fails.
 Integrity, generator, and oracle controls run without R, network access, or those wrappers.
 """
 
