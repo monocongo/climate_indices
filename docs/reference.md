@@ -125,7 +125,7 @@ Copy-and-adapt invocations are in {doc}`workflow-examples`.
 
 ### climate_indices.energy
 
-NumPy degree-day, wind-resource, standardized-index (SREPI, demand), and
+NumPy degree-day, wind-resource, standardized-index (SREPI, demand, SRLI), and
 event-statistics proxies, not actual energy generation or load.
 `energy_drought_events()` reports run metrics and period summaries through the
 generic run-theory utility. Standardized energy and event xarray/Dask adapters
