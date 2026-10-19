@@ -321,6 +321,12 @@ def _hazard_and_validity(
 
 def _validity_mask(name: str, validity: object, shape: tuple[int, ...]) -> npt.NDArray[np.bool_]:
     """Require one source's explicit validity mask to be Boolean and shaped like its input."""
+    if isinstance(validity, xr.DataArray):  # np.asarray would match it by position and ignore its labels
+        raise InputTypeError(
+            f"validity[{name!r}] is an xarray.DataArray; pass a NumPy mask on the NumPy route.",
+            expected_type=np.ndarray,
+            actual_type=type(validity),
+        )
     mask = np.asarray(validity)
     if mask.dtype.kind != "b":
         raise InputTypeError(

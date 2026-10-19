@@ -677,6 +677,11 @@ def _base() -> dict[str, Any]:
         (lambda kw: kw.update(spatial_time_major="yes"), InvalidArgumentError, "bool"),
         (lambda kw: kw.update(validity={"a": np.array([1, 1, 1])}), InputTypeError, "Boolean"),
         (lambda kw: kw.update(validity={"a": np.ones(2, dtype=bool)}), DataShapeError, "shape"),
+        (
+            lambda kw: kw.update(validity={"a": xr.DataArray(np.ones(3, dtype=bool), dims="time")}),
+            InputTypeError,
+            "xarray.DataArray",
+        ),
         (lambda kw: kw.update(aggregation={"a": "any"}), InvalidArgumentError, "irrelevant reducer"),
     ],
 )
