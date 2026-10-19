@@ -30,9 +30,9 @@ Demand proxies                   HDD / CDD / EDD                            (ava
 Resource transforms              hub-height wind (available); wind & PV capacity factor (planned)
 Hydro proxy                      capacity-weighted n-month precip           (available recipe)
               ↓
-Standardized energy indices      SREPI, standardized demand (available); SRLI (planned)
+Standardized energy indices      SREPI, standardized demand, SRLI (available)
               ↓
-Energy-drought events            run-theory onset / duration / magnitude    (planned)
+Energy-drought events            run-theory onset / duration / magnitude    (available)
               ↓
 Calibrated generation & load     hydro generation, electricity demand (MWh) (out of scope)
 ```
@@ -51,12 +51,11 @@ droughts*: sustained periods of low renewable production or high residual
 load. [Allen & Otero (2023)][allen-otero-2023] define a Standardised Renewable
 Energy Production Index (SREPI) and a Standardised Residual Load Index (SRLI),
 with a reference implementation in the [`SEI` R package][sei]. A validated
-Python implementation of SREPI and a standardized demand index is available;
-SRLI is planned. The physical transforms make the family usable end to end from raw
-reanalysis.
+Python implementation of SREPI, a standardized demand index, and SRLI is available.
+The physical transforms make the family usable end to end from raw reanalysis.
 
 Three indices standardize climate-derived energy proxies that the
-caller supplies (SRLI is planned):
+caller supplies:
 
 - **SREPI** standardizes a climate-derived renewable production proxy or a
   capacity factor, so low values mark weaker-than-usual renewable resource.
@@ -92,7 +91,9 @@ SRLI uses the empirical distribution only. That is an API restriction rather
 than a mathematical necessity: a rank-based standardization has no support
 for a signed series to violate, the parametric families' support-limit and
 zero-mass handling is not designed for one, and clipping negatives to zero
-would score a different series.
+would score a different series. {func}`climate_indices.energy.srli` keeps
+negatives as given and raises for any other distribution
+([#1172][energy-1172]).
 
 ### Timescale and aggregation
 
@@ -165,14 +166,15 @@ not SEI's inclusive comparison and sum of absolute index values. Hand-calculated
 tests check the event definitions. The saved SEI SREPI/SRLI series and computed
 SPI output check input compatibility, not external validation of event statistics.
 Events describe unfavourable weather for the energy system, not recorded supply
-shortfalls. The standardized energy wrappers remain planned under #1171 and #1172;
-this utility accepts their index arrays without needing those wrappers.
+shortfalls. This utility accepts standardized arrays, including outputs from
+SREPI, the standardized demand index, and SRLI.
 
 ## Energy indices
 
 The NumPy degree-day, wind-profile, and event-statistics functions in
-`climate_indices.energy` are available, as are SREPI and the standardized demand
-index; the other energy indices below remain planned. The package, its
+`climate_indices.energy` are available, as are SREPI, the standardized demand
+index, and SRLI with its residual-load helper. The other energy indices below
+remain planned. The package, its
 NumPy and beta xarray tiers, and the scope boundary are fixed by
 [ADR-0019](adr/0019-energy-module-api-and-aggregation.md), with function names,
 units, and argument contracts recorded in the internal energy subsystem design
@@ -211,7 +213,16 @@ order.
   the demand index sums by default. `energy.SREPI_DROUGHT_THRESHOLDS` holds
   Allen & Otero's moderate, severe, and extreme cut-offs (−1.28, −1.64, −1.96).
   NumPy only: xarray adapters are planned ([#1174][energy-1174]).
-- **SRLI** — *planned ([#1172][energy-1172])*.
+- **SRLI and the residual-load helper** — available as
+  {func}`climate_indices.energy.srli` and
+  {func}`climate_indices.energy.residual_load` ([#1172][energy-1172]).
+  `residual_load()` forms demand minus capacity-factor-weighted production from
+  installed capacities the caller supplies, in units that match the demand
+  series, and leaves the result signed. `srli()` standardizes it on the
+  empirical distribution ([#1168][energy-1168]) and never clips a negative.
+  High values mark stress. On the default `output_scale="normal"`, Allen &
+  Otero (2023) class drought at 1.28, 1.64, and 1.96; the `probability` and
+  `bounded` scales need cut-offs of their own. It has NumPy dispatch only until [#1174][energy-1174] lands.
 - **Energy-drought event statistics** — available as
   {func}`climate_indices.energy.energy_drought_events` ([#1173][energy-1173]).
   The NumPy utility reports events and period summaries. Its energy xarray
