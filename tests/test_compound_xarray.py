@@ -135,7 +135,8 @@ def test_harmonize_matches_numpy(lazy: bool) -> None:
     np.testing.assert_array_equal(dataset["time"].values.astype("datetime64[D]"), aligned.time)
     np.testing.assert_array_equal(dataset["exceedance"].values, aligned.exceedance)
     np.testing.assert_array_equal(dataset["valid"].values, aligned.valid)
-    assert dataset["exceedance"].dtype == np.bool_ and dataset["valid"].dtype == np.bool_
+    assert dataset["exceedance"].dtype == np.bool_
+    assert dataset["valid"].dtype == np.bool_
     assert json.loads(dataset.attrs["compound_manifest"]) == json.loads(json.dumps(aligned.metadata))
 
 
@@ -304,7 +305,8 @@ def test_bootstrap_inference_is_actually_exercised() -> None:
     expected = compound.bootstrap_dependence(
         numpy_aligned(), statistic="joint_probability", seed=11, n_resamples=29, block_length_years=3
     )
-    assert np.isfinite(expected.p_value).any() and np.isfinite(expected.confidence_low).any()
+    assert np.isfinite(expected.p_value).any()
+    assert np.isfinite(expected.confidence_low).any()
 
 
 def test_conditional_and_lmf_bootstrap_match_numpy_with_selected_hazards() -> None:
@@ -445,8 +447,9 @@ def test_statistics_reject_split_hazard_and_time_chunks() -> None:
     """Require one chunk along every core dimension of a prepared Dataset."""
     dataset = prepared(lazy=True)
     for chunking in ({"hazard": 1}, {"time": 120}):
+        split = dataset.chunk(chunking)
         with pytest.raises(CoordinateValidationError, match="split across"):
-            compound.joint_statistics(dataset.chunk(chunking), min_samples=1)
+            compound.joint_statistics(split, min_samples=1)
 
 
 def test_statistics_reject_variables_chunked_differently() -> None:
@@ -459,19 +462,25 @@ def test_statistics_reject_variables_chunked_differently() -> None:
 
 def test_statistics_reject_unprepared_and_malformed_datasets() -> None:
     """Reject a Dataset that is not harmonize() output, with the NumPy route's own errors."""
+    unprepared = xr.Dataset({"x": ("time", [1.0])})
     with pytest.raises(InvalidArgumentError, match="compound.harmonize"):
-        compound.joint_statistics(xr.Dataset({"x": ("time", [1.0])}))
+        compound.joint_statistics(unprepared)
     dataset = prepared()
+    integer_valid = dataset.assign(valid=dataset["valid"].astype(int))
     with pytest.raises(InputTypeError, match="Boolean"):
-        compound.joint_statistics(dataset.assign(valid=dataset["valid"].astype(int)))
+        compound.joint_statistics(integer_valid)
+    hourly = dataset.assign_attrs(cadence="hourly")
     with pytest.raises(InvalidArgumentError, match="cadence"):
-        compound.joint_statistics(dataset.assign_attrs(cadence="hourly"))
+        compound.joint_statistics(hourly)
+    malformed = dataset.assign_attrs(compound_manifest="{not json")
     with pytest.raises(InvalidArgumentError, match="JSON"):
-        compound.joint_statistics(dataset.assign_attrs(compound_manifest="{not json"))
+        compound.joint_statistics(malformed)
+    one_hazard = dataset.isel(hazard=[0])
     with pytest.raises(InvalidArgumentError, match="two or three"):
-        compound.joint_statistics(dataset.isel(hazard=[0]))
+        compound.joint_statistics(one_hazard)
+    unlabeled = dataset.drop_vars("hazard")
     with pytest.raises(CoordinateValidationError, match="missing_coordinate_labels|labeled"):
-        compound.joint_statistics(dataset.drop_vars("hazard"))
+        compound.joint_statistics(unlabeled)
     sub_daily = dataset.assign_coords(time=dataset["time"] + np.timedelta64(3, "h"))
     with pytest.raises(CoordinateValidationError, match="whole civil days"):
         compound.joint_statistics(sub_daily)
@@ -500,8 +509,9 @@ def test_statistics_reject_unprepared_and_malformed_datasets() -> None:
 )
 def test_statistics_validate_options_before_building_a_graph(call: Callable[[xr.Dataset], Any], match: str) -> None:
     """Raise the NumPy route's option errors at the call, even for a lazy Dataset."""
+    dataset = prepared(lazy=True)
     with dask.config.set(scheduler=_forbid_compute), pytest.raises((InvalidArgumentError, TypeError), match=match):
-        call(prepared(lazy=True))
+        call(dataset)
 
 
 def test_gapped_time_is_rejected_for_a_forward_window() -> None:
@@ -546,8 +556,9 @@ def test_daily_cadence_is_rejected_for_bootstrap() -> None:
 )
 def test_harmonize_rejects_numpy_only_arguments_for_dataarrays(extra: dict[str, Any], match: str) -> None:
     """Take dates from the coordinate and the layout from named dimensions, never from NumPy options."""
+    arrays = sources()
     with pytest.raises(InvalidArgumentError, match=match):
-        compound.harmonize(sources(), **DECLARATIONS, **extra)
+        compound.harmonize(arrays, **DECLARATIONS, **extra)
 
 
 def test_harmonize_rejects_mixed_inputs_and_a_numpy_time_dim() -> None:
@@ -556,8 +567,9 @@ def test_harmonize_rejects_mixed_inputs_and_a_numpy_time_dim() -> None:
     mixed = {"drought": drought, "heat": sources()["heat"]}
     with pytest.raises(InputTypeError, match="all DataArrays or all NumPy"):
         compound.harmonize(mixed, **DECLARATIONS)
+    arrays = sources()
     with pytest.raises(InputTypeError, match="validity"):
-        compound.harmonize(sources(), validity={"drought": np.ones(len(MONTHS), bool)}, **DECLARATIONS)
+        compound.harmonize(arrays, validity={"drought": np.ones(len(MONTHS), bool)}, **DECLARATIONS)
     with pytest.raises(InvalidArgumentError, match="time_dim"):
         compound.harmonize(
             {"drought": drought, "heat": heat},
@@ -604,15 +616,16 @@ def test_harmonize_rejects_cftime_calendars() -> None:
 
 def test_harmonize_reuses_the_numpy_declaration_errors() -> None:
     """Raise the NumPy route's structured errors at the call, from labels and dtypes alone."""
+    arrays = sources()
     with pytest.raises(InvalidArgumentError, match="z-score"):
-        compound.harmonize(sources(), **{**DECLARATIONS, "input_scale": {"drought": "normal", "heat": "indicator"}})
+        compound.harmonize(arrays, **{**DECLARATIONS, "input_scale": {"drought": "normal", "heat": "indicator"}})
     wrong = sources()
     wrong["heat"] = wrong["heat"].astype(float)
     with pytest.raises(InputTypeError, match="Boolean"):
         compound.harmonize(wrong, **DECLARATIONS)
+    short = sources()
+    short["heat"] = short["heat"].isel(time=slice(0, 100))
     with pytest.raises(CoordinateValidationError, match="coverage"):
-        short = sources()
-        short["heat"] = short["heat"].isel(time=slice(0, 100))
         compound.harmonize(short, **DECLARATIONS)
 
 
@@ -630,7 +643,8 @@ def test_results_carry_registry_metadata_and_inherit_nothing_from_a_source() -> 
     boot = compound.bootstrap_dependence(dataset, statistic="likelihood_multiplication_factor", seed=1, n_resamples=9)
     for result in (dataset, joint, cond, boot):
         assert "standard_name" not in result.attrs
-        assert result.attrs["climate_indices_version"] and "history" in result.attrs
+        assert result.attrs["climate_indices_version"]
+        assert "history" in result.attrs
         for name, variable in result.variables.items():
             assert "standard_name" not in variable.attrs, name
             assert variable.attrs.get("units") != "K", name
@@ -640,11 +654,13 @@ def test_results_carry_registry_metadata_and_inherit_nothing_from_a_source() -> 
         ("independent_probability", "compound_independent_probability"),
     ):
         attrs = joint[name].attrs
-        assert attrs["long_name"] == CF_METADATA[key]["long_name"] and attrs["units"] == "1"
+        assert attrs["long_name"] == CF_METADATA[key]["long_name"]
+        assert attrs["units"] == "1"
         assert (attrs["valid_min"], attrs["valid_max"]) == (0.0, 1.0)
         assert attrs["references"] == CF_METADATA[key]["references"]
     lmf = joint["likelihood_multiplication_factor"].attrs
-    assert lmf["valid_min"] == 0.0 and "valid_max" not in lmf
+    assert lmf["valid_min"] == 0.0
+    assert "valid_max" not in lmf
     assert (
         cond["conditional_probability"].attrs["long_name"]
         == CF_METADATA["compound_conditional_probability"]["long_name"]
@@ -669,7 +685,8 @@ def test_counts_and_flags_are_numeric_with_cf_flag_attributes() -> None:
     for result in (joint, boot):
         flags = result["quality_flags"]
         assert flags.dtype == np.int64
-        assert list(flags.attrs["flag_masks"]) and flags.attrs["flag_meanings"].split()
+        assert list(flags.attrs["flag_masks"])
+        assert flags.attrs["flag_meanings"].split()
     assert (
         joint["quality_flags"].attrs["flag_meanings"]
         == "insufficient_support undefined_denominator sparse_occurrences short_record"
@@ -777,7 +794,8 @@ def test_eager_input_warns_like_numpy_and_dask_input_leaves_support_to_flags() -
     numpy_caught = _record(lambda: compound.joint_statistics(numpy_aligned_year(), min_samples=1))
     eager_caught = _record(lambda: compound.joint_statistics(eager, min_samples=1))
     numpy_messages = {str(w.message) for w in numpy_caught}
-    assert numpy_messages and {str(w.message) for w in eager_caught} - {xarray_module._BETA_MESSAGE} == numpy_messages
+    assert numpy_messages
+    assert {str(w.message) for w in eager_caught} - {xarray_module._BETA_MESSAGE} == numpy_messages
 
     def lazy_run() -> Any:
         return compound.joint_statistics(lazy, min_samples=1).compute(scheduler="synchronous")
@@ -827,8 +845,9 @@ def test_support_flags_report_sparse_occurrences_and_short_records(statistic: st
 def test_missing_calibration_period_warns_at_the_call_for_lazy_input() -> None:
     """Emit the harmonization warnings from labels alone, so a lazy call reports them immediately."""
     declared = {**DECLARATIONS, "source_metadata": None}
+    arrays = sources(lazy=True)
     with pytest.warns(ClimateIndicesWarning, match="Calibration Period metadata is missing"):
-        compound.harmonize(sources(lazy=True), **declared)
+        compound.harmonize(arrays, **declared)
 
 
 def test_lifecycle_events_describe_scheduling_honestly() -> None:
@@ -861,7 +880,8 @@ def test_a_rejected_call_logs_failure_and_propagates() -> None:
         compound.joint_statistics(dataset, groupby="seasonal")
     assert [call.args[0] for call in logger.info.call_args_list] == ["calculation_started"]
     failed = [call for call in logger.error.call_args_list if call.args[0] == "calculation_failed"]
-    assert len(failed) == 1 and failed[0].kwargs["error_type"] == "InvalidArgumentError"
+    assert len(failed) == 1
+    assert failed[0].kwargs["error_type"] == "InvalidArgumentError"
 
 
 def test_inputs_are_never_mutated() -> None:
@@ -901,7 +921,8 @@ def test_a_lazy_auxiliary_coordinate_is_never_computed_while_building_a_graph() 
     with dask.config.set(scheduler=_forbid_compute):
         dataset = compound.harmonize(inputs, **DECLARATIONS)
         compound.joint_statistics(dataset, min_samples=1)
-    assert "lat2d" not in dataset.coords and "level" not in dataset.coords
+    assert "lat2d" not in dataset.coords
+    assert "level" not in dataset.coords
 
 
 @pytest.mark.parametrize("reserved", ["hazard", "source", "month", "time_of_day"])
@@ -946,7 +967,8 @@ def test_index_coordinate_attributes_survive_every_route(lazy: bool) -> None:
         assert result["lat"].attrs == {"standard_name": "latitude", "units": "degrees_north", "axis": "Y"}
         assert result["lon"].attrs == {"standard_name": "longitude", "units": "degrees_east", "axis": "X"}
         for name, variable in result.data_vars.items():
-            assert "axis" not in variable.attrs and variable.attrs.get("standard_name") is None, name
+            assert "axis" not in variable.attrs, name
+            assert variable.attrs.get("standard_name") is None, name
 
 
 # --- the warning sink -------------------------------------------------------------------------------
@@ -1010,7 +1032,8 @@ def test_a_warning_raised_as_an_error_still_logs_a_terminal_event() -> None:
                 compound.joint_statistics(dataset, min_samples=1)
         assert [call.args[0] for call in logger.info.call_args_list] == ["calculation_started"]
         failed = [call for call in logger.error.call_args_list if call.args[0] == "calculation_failed"]
-        assert len(failed) == 1 and failed[0].kwargs["error_type"] == error_type
+        assert len(failed) == 1
+        assert failed[0].kwargs["error_type"] == error_type
 
 
 def test_a_lazy_result_of_zero_dimensional_variables_is_logged_as_graph_construction() -> None:
@@ -1022,7 +1045,8 @@ def test_a_lazy_result_of_zero_dimensional_variables_is_logged_as_graph_construc
         result = compound.conditional_probability(
             compound.harmonize(point, **DECLARATIONS), given="drought", target="heat", groupby="pooled", min_samples=1
         )
-    assert result.chunks == {} and result["n_anchors"].chunks is not None
+    assert result.chunks == {}
+    assert result["n_anchors"].chunks is not None
     completed = [call.kwargs for call in logger.info.call_args_list if call.args[0] == "calculation_completed"]
     assert [c["evaluation"] for c in completed] == ["graph_construction", "graph_construction"]
 
@@ -1079,7 +1103,8 @@ def test_confidence_bounds_and_estimates_are_described_by_their_role() -> None:
     }
     descriptions = {name: result[name].attrs["description"] for name in leads}
     for name, phrase in leads.items():
-        assert phrase in descriptions[name] and registry in descriptions[name], name
+        assert phrase in descriptions[name], name
+        assert registry in descriptions[name], name
     assert len(set(descriptions.values())) == len(descriptions)
 
 
@@ -1154,5 +1179,6 @@ def test_every_route_returns_a_dataset_for_a_single_location() -> None:
         ),
         (compound.bootstrap_dependence(point, **boot), compound.bootstrap_dependence(aligned, **boot)),
     ):
-        assert isinstance(result, xr.Dataset) and not set(result.dims) - {"month", "hazard"}
+        assert isinstance(result, xr.Dataset)
+        assert not set(result.dims) - {"month", "hazard"}
         assert_matches_numpy(result, expected)

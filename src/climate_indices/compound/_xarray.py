@@ -153,24 +153,7 @@ def _validate_grid(arrays: Mapping[str, xr.DataArray], *, core: tuple[str, ...],
             reason="reserved_dimension_name",
         )
     for name, array in arrays.items():
-        for dim in core:
-            if dim not in array.dims:
-                raise DimensionMismatchError(
-                    f"{name!r} has no {dim!r} dimension; its dimensions are {list(array.dims)}.",
-                    expected_dims=core,
-                    actual_dims=tuple(array.dims),
-                    coordinate_name=dim,
-                    reason="missing_dimension",
-                )
-        dims = tuple(str(dim) for dim in array.dims if dim not in core)
-        if set(dims) != set(grid):
-            raise DimensionMismatchError(
-                f"{name!r} has spatial dimensions {list(dims)} but the first input has {list(grid)}; "
-                "broadcasting a point across a grid is never implicit.",
-                expected_dims=grid,
-                actual_dims=dims,
-                reason="mismatched_spatial_dimensions",
-            )
+        dims = _spatial_dims(name, array, core=core, grid=grid)
         for dim in dims:
             if dim not in array.indexes:
                 raise CoordinateValidationError(
@@ -187,18 +170,53 @@ def _validate_grid(arrays: Mapping[str, xr.DataArray], *, core: tuple[str, ...],
                     reason="mismatched_coordinates",
                 )
         if lazy:
-            for dim in core:
-                validate_dask_chunks(array, dim)
-            for dim in dims:
-                if array.chunks[array.dims.index(dim)] != reference.chunks[reference.dims.index(dim)]:  # type: ignore[index]
-                    raise CoordinateValidationError(
-                        f"Spatial dimension {dim!r} of {name!r} is chunked differently from the first input; "
-                        f"rechunk explicitly with .chunk({{'{dim}': ...}}) so every input shares one boundary set. "
-                        "Nothing is rechunked automatically.",
-                        coordinate_name=dim,
-                        reason="incompatible_spatial_chunks",
-                    )
+            _validate_chunks(name, array, reference, core=core, dims=dims)
     return grid
+
+
+def _spatial_dims(name: str, array: xr.DataArray, *, core: tuple[str, ...], grid: tuple[str, ...]) -> tuple[str, ...]:
+    """Require every core dimension and the reference grid's dimensions, and return the array's own order."""
+    for dim in core:
+        if dim not in array.dims:
+            raise DimensionMismatchError(
+                f"{name!r} has no {dim!r} dimension; its dimensions are {list(array.dims)}.",
+                expected_dims=core,
+                actual_dims=tuple(array.dims),
+                coordinate_name=dim,
+                reason="missing_dimension",
+            )
+    dims = tuple(str(dim) for dim in array.dims if dim not in core)
+    if set(dims) != set(grid):
+        raise DimensionMismatchError(
+            f"{name!r} has spatial dimensions {list(dims)} but the first input has {list(grid)}; "
+            "broadcasting a point across a grid is never implicit.",
+            expected_dims=grid,
+            actual_dims=dims,
+            reason="mismatched_spatial_dimensions",
+        )
+    return dims
+
+
+def _validate_chunks(
+    name: str,
+    array: xr.DataArray,
+    reference: xr.DataArray,
+    *,
+    core: tuple[str, ...],
+    dims: tuple[str, ...],
+) -> None:
+    """Require one chunk along each core dimension and the reference's chunks along each spatial one."""
+    for dim in core:
+        validate_dask_chunks(array, dim)
+    for dim in dims:
+        if array.chunks[array.dims.index(dim)] != reference.chunks[reference.dims.index(dim)]:  # type: ignore[index]
+            raise CoordinateValidationError(
+                f"Spatial dimension {dim!r} of {name!r} is chunked differently from the first input; "
+                f"rechunk explicitly with .chunk({{'{dim}': ...}}) so every input shares one boundary set. "
+                "Nothing is rechunked automatically.",
+                coordinate_name=dim,
+                reason="incompatible_spatial_chunks",
+            )
 
 
 def _time_values(name: str, array: xr.DataArray, time_dim: str) -> npt.NDArray[np.datetime64]:
@@ -268,24 +286,35 @@ def _harmonize_block(
     )
 
 
+def _check_probability_scales(inputs: Mapping[str, xr.DataArray], input_scale: Mapping[str, InputScale]) -> None:
+    """Reject a declared probability whose own metadata says it holds another scale."""
+    for name, array in inputs.items():
+        declared = array.attrs.get("output_scale")
+        if input_scale[name] == "probability" and declared not in (None, "probability"):
+            raise InvalidArgumentError(
+                f"inputs[{name!r}] declares output_scale={declared!r} but is declared a probability: a z-score "
+                'inside [0, 1] cannot be detected numerically. Request output_scale="probability" upstream.',
+                argument_name="input_scale",
+                argument_value=repr(input_scale[name]),
+                valid_values="probability inputs with output_scale='probability' or no output_scale",
+            )
+
+
 def _harmonize_dataarrays(
     inputs: Mapping[str, Any],
     *,
     time: Any,
-    cadence: Mapping[str, Cadence],
-    input_scale: Mapping[str, InputScale],
-    thresholds: Mapping[str, float],
-    directions: Mapping[str, Direction],
-    target_cadence: Cadence,
-    aggregation: Mapping[str, Aggregation] | None,
     validity: Mapping[str, Any] | None,
-    join: Join,
-    source_metadata: Mapping[str, Mapping[str, Any]] | None,
     spatial_time_major: bool,
     time_dim: str,
     queue: list[Warning],
+    **declared: Any,
 ) -> xr.Dataset:
-    """Validate, plan eagerly from labels and dtypes, and build the per-block harmonization."""
+    """Validate, plan eagerly from labels and dtypes, and build the per-block harmonization.
+
+    ``declared`` holds the per-source and target choices that :func:`harmonize` types: cadence,
+    input_scale, thresholds, directions, target_cadence, aggregation, join, and source_metadata.
+    """
     if not isinstance(time_dim, str):
         raise InvalidArgumentError(
             "time_dim must be a string.", argument_name="time_dim", argument_value=repr(time_dim)
@@ -331,41 +360,14 @@ def _harmonize_dataarrays(
     plan = _harmonize(
         {name: np.zeros(array.sizes[time_dim], dtype=array.dtype) for name, array in inputs.items()},
         time=times,
-        cadence=cadence,
-        input_scale=input_scale,
-        thresholds=thresholds,
-        directions=directions,
-        target_cadence=target_cadence,
-        aggregation=aggregation,
         validity={name: np.zeros(mask.sizes[time_dim], dtype=mask.dtype) for name, mask in masks.items()} or None,
-        join=join,
-        source_metadata=source_metadata,
         spatial_time_major=False,
         warn=queue,
+        **declared,
     )
-    for name, array in inputs.items():
-        declared = array.attrs.get("output_scale")
-        if input_scale[name] == "probability" and declared not in (None, "probability"):
-            raise InvalidArgumentError(
-                f"inputs[{name!r}] declares output_scale={declared!r} but is declared a probability: a z-score "
-                'inside [0, 1] cannot be detected numerically. Request output_scale="probability" upstream.',
-                argument_name="input_scale",
-                argument_value=repr(input_scale[name]),
-                valid_values="probability inputs with output_scale='probability' or no output_scale",
-            )
+    _check_probability_scales(inputs, declared["input_scale"])
 
-    declared_choices = copy.deepcopy(
-        {
-            "cadence": cadence,
-            "input_scale": input_scale,
-            "thresholds": thresholds,
-            "directions": directions,
-            "target_cadence": target_cadence,
-            "aggregation": aggregation,
-            "join": join,
-            "source_metadata": source_metadata,
-        }
-    )
+    declared_choices = copy.deepcopy(declared)
     mask_names = tuple(masks)
     # apply_ufunc merges, and so compares, the coordinates of every input; a Dask-backed auxiliary
     # coordinate would be computed while the graph is built, and conflicting ones would be dropped

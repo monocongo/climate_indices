@@ -193,7 +193,8 @@ def test_memory_measurement_quick_report_is_complete() -> None:
         assert len(stage["peak_bytes"]) == len(stage["budget_bytes"]) == len(stage["input_bytes"]) == widths
         # the traced peak includes the stage's own working memory, so it exceeds the inputs alone
         assert all(peak > inputs for peak, inputs in zip(stage["peak_bytes"], stage["input_bytes"], strict=True))
-        assert stage["bytes_per_cell"] > 0 and stage["fixed_bytes_per_task"] >= 0
+        assert stage["bytes_per_cell"] > 0
+        assert stage["fixed_bytes_per_task"] >= 0
         assert set(stage["max_cells_per_task"]) == {"256 MiB", "1 GiB"}
         assert stage["max_cells_per_task"]["1 GiB"] >= stage["max_cells_per_task"]["256 MiB"]
     assert json.loads(json.dumps(report)) == report
