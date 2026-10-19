@@ -343,9 +343,10 @@ catalog.to_netcdf("compound-events.nc", engine="h5netcdf")
 The catalog is eager. It rejects Dask-backed variables and coordinates without
 running tasks. Memory grows with the selected input and all matched pairs.
 Sequential matching without a bounded lag window can produce a quadratic number
-of pairs. A catalog is capped at 1,000,000 event rows, and a larger match raises
-`InvalidArgumentError` before the rows are allocated. The statistics tile-memory
-measurements above do not cover catalogs.
+of pairs. A catalog is capped at 1,000,000 event rows. A larger match raises
+`InvalidArgumentError`, but the matcher can allocate the current candidate batch
+before checking the limit. The statistics tile-memory measurements above do not
+cover catalogs.
 :::
 
 Both selected hazards must be observed at each step. An unknown step in either
