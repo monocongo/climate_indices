@@ -1,8 +1,8 @@
 # Energy subsystem
 
 Internal working note for the energy-meteorology family
-([#1157](https://github.com/monocongo/climate_indices/issues/1157)). It plans
-unimplemented indices, so it stays in the repository rather than the published site —
+([#1157](https://github.com/monocongo/climate_indices/issues/1157)). It records
+deferred work, so it stays in the repository rather than the published site —
 the arrangement [ADR-0005](../adr/0005-fire-module-api.md) chose for fire and
 [ADR-0013](../adr/0013-flood-module-api-and-naming.md) for flood. The decisions that
 hold regardless of scope live in
@@ -12,7 +12,8 @@ The NumPy wind-profile functions are implemented by #1165, degree days by #1164,
 physical-transform adapters by #1166, event statistics by #1173, and the standardized
 energy xarray tier by #1174.
 The NumPy wind and PV capacity-factor transforms are implemented by #1175 and #1176.
-Their DataArray adapters remain planned. Remaining planned work is listed under *Deferred*.
+They are NumPy-only: neither has a DataArray adapter. Remaining deferred work is listed
+under *Deferred*.
 
 ## Decision
 
@@ -199,8 +200,8 @@ registry entries ([#1162](https://github.com/monocongo/climate_indices/issues/11
 
 - **Sub-daily (hourly) periodicity.** [#1177](https://github.com/monocongo/climate_indices/issues/1177).
   Forward-compatible as an additive `Periodicity` member; no signature changes.
-- **CLI integration.** [#1178](https://github.com/monocongo/climate_indices/issues/1178);
-  the CLI consumes the package rather than being a component of it, as for fire and flood.
+  No calendar-stratification policy is selected yet, so hourly calibration is not
+  implemented.
 
 ## References
 

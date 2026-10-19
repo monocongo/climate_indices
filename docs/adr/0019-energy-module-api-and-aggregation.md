@@ -185,8 +185,8 @@ the units never depended on the answer and do not change. The function names, ar
 conventions, and degree-day contract for those transforms are fixed in the internal
 energy subsystem design note
 ([docs/design/energy-subsystem.md](https://github.com/monocongo/climate_indices/blob/main/docs/design/energy-subsystem.md)).
-That note stays in the repository rather than this site because it also plans unimplemented indices, the
-arrangement {doc}`0005-fire-module-api` chose for fire. The oracle survey
+That note stays in the repository rather than this site because it also records
+deferred work, the arrangement {doc}`0005-fire-module-api` chose for fire. The oracle survey
 ([#1160](https://github.com/monocongo/climate_indices/issues/1160)) does not confirm
 the default constant values: the C3S degree-day schemes pair an activation threshold
 with a separate reference temperature, which one base per transform cannot reproduce.
@@ -202,10 +202,13 @@ ADR-0005 did for fire and ADR-0013 for flood. `standardized_index()` gains one k
 whose default reproduces its existing output, which is why this record can land the seam
 change without touching SPI or SPEI behavior.
 
-`aggregation` is not exposed on the CLI, because the CLI does not run
-`standardized_index()`. The xarray entry and the energy adapters carry it, and
+`aggregation` is not exposed on the CLI. The CLI's energy indices
+(`--index srepi`, `demand_index`, `srli`) use each wrapper's default; the xarray
+entry and the energy adapters carry the keyword, and
 [#1174](https://github.com/monocongo/climate_indices/issues/1174) landed both.
 
-The unimplemented portions of decisions 3 through 6 remain contracts awaiting
-implementation, not drift. Decision 7 records scope, not code, and does not
-change as the transforms land.
+The unimplemented portion of decisions 3 through 6 is the sub-daily `Periodicity`
+member that decision 5 records as additive
+([#1177](https://github.com/monocongo/climate_indices/issues/1177)); the remaining
+contracts landed with their implementations. Decision 7 records scope, not code, and
+does not change as the transforms land.

@@ -64,15 +64,23 @@ climate-driven energy supply and demand.
 
 **[Energy](https://climate-indices.readthedocs.io/en/latest/energy_applications.html)** (`climate_indices.energy`)
 
-Available now, with beta `xarray.DataArray` support for SREPI, the standardized
-demand index, SRLI, and energy-drought events:
+Available now, with beta `xarray.DataArray` support for the degree days, the
+hub-height wind profile, SREPI, the standardized demand index, SRLI, and
+energy-drought events:
 
-- Heating, cooling, and energy degree days (HDD / CDD / EDD)
-- Hub-height wind-speed profile and temperature-derated PV capacity factors (wind capacity factors are planned)
+- Heating, cooling, and energy degree days (HDD / CDD / EDD). Validation: exact reference for
+  the published cooling example; specification-level for heating and energy degree days
+- Hub-height wind-speed profile. Validation: independent-implementation comparison on
+  synthetic inputs, not observed-wind validation
+- Wind capacity factor (NumPy-only). Validation: regression only; specification-level
+- Temperature-derated PV capacity factor (NumPy-only). Validation: independent-implementation
+  comparison for the power/temperature term; specification-level for the thermal model and clipping
 - Standardized energy production and demand indices: SREPI and a standardized demand index,
   plus SRLI for signed residual-load series, following
-  [Allen and Otero (2023)](https://doi.org/10.1016/j.renene.2023.119206)
-- Run-theory energy-drought events (onset, duration, severity)
+  [Allen and Otero (2023)](https://doi.org/10.1016/j.renene.2023.119206). Validation:
+  independent-implementation comparison against R `SEI` 0.2.0
+- Run-theory energy-drought events (onset, duration, severity). Validation: regression only;
+  specification-level
 - A documented recipe for a capacity-weighted precipitation proxy for hydropower
 - These indices describe the climate-driven component of energy supply and demand, not
   actual generation or load
