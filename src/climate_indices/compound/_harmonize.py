@@ -20,7 +20,7 @@ import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
 from time import perf_counter
-from typing import Any, Literal, NoReturn, TypeAlias
+from typing import Any, Literal, NoReturn, TypeAlias, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -595,8 +595,12 @@ def _harmonize(
     join: Join,
     source_metadata: Mapping[str, Mapping[str, Any]] | None,
     spatial_time_major: bool,
+    warn: bool = True,
 ) -> AlignedHazards:
-    """Validate, threshold, reduce, and align; see :func:`harmonize`."""
+    """Validate, threshold, reduce, and align; see :func:`harmonize`.
+
+    ``warn=False`` skips the manifest warnings; the lazy xarray route emits them once at graph time.
+    """
     if not isinstance(inputs, Mapping) or not inputs:
         raise InvalidArgumentError(
             "inputs must be a non-empty mapping of source name to array.", argument_name="inputs"
@@ -678,12 +682,13 @@ def _harmonize(
     time_labels = _immutable(steps.astype(label_unit).astype(_DAY_UNIT))
     exceedance = _immutable(exceedance)
     valid = _immutable(valid)
-    _warn_unknowns(
-        validated,
-        dropped,
-        original=sum(source.steps for source in validated),
-        aligned=len(validated) * steps.shape[0],
-    )
+    if warn:
+        _warn_unknowns(
+            validated,
+            dropped,
+            original=sum(source.steps for source in validated),
+            aligned=len(validated) * steps.shape[0],
+        )
 
     manifest = {
         "schema_version": _MANIFEST_SCHEMA_VERSION,
@@ -702,6 +707,24 @@ def _harmonize(
     return AlignedHazards(names, time_labels, target_cadence, exceedance, valid, _freeze(manifest))
 
 
+@overload
+def harmonize(
+    inputs: Mapping[str, xr.DataArray],
+    *,
+    cadence: Mapping[str, Cadence],
+    input_scale: Mapping[str, InputScale],
+    thresholds: Mapping[str, float],
+    directions: Mapping[str, Direction],
+    target_cadence: Cadence,
+    aggregation: Mapping[str, Aggregation] | None = None,
+    validity: Mapping[str, xr.DataArray] | None = None,
+    join: Join = "exact",
+    source_metadata: Mapping[str, Mapping[str, Any]] | None = None,
+    time_dim: str = "time",
+) -> xr.Dataset: ...
+
+
+@overload
 def harmonize(
     inputs: Mapping[str, npt.ArrayLike],
     *,
@@ -716,8 +739,32 @@ def harmonize(
     join: Join = "exact",
     source_metadata: Mapping[str, Mapping[str, Any]] | None = None,
     spatial_time_major: bool = False,
-) -> AlignedHazards:
+) -> AlignedHazards: ...
+
+
+def harmonize(
+    inputs: Mapping[str, Any],
+    *,
+    time: Mapping[str, npt.ArrayLike] | None = None,
+    cadence: Mapping[str, Cadence],
+    input_scale: Mapping[str, InputScale],
+    thresholds: Mapping[str, float],
+    directions: Mapping[str, Direction],
+    target_cadence: Cadence,
+    aggregation: Mapping[str, Aggregation] | None = None,
+    validity: Mapping[str, Any] | None = None,
+    join: Join = "exact",
+    source_metadata: Mapping[str, Mapping[str, Any]] | None = None,
+    spatial_time_major: bool = False,
+    time_dim: str | None = None,
+) -> AlignedHazards | xr.Dataset:
     """Threshold declared inputs and align their observed hazard opportunities.
+
+    A mapping of :class:`xarray.DataArray` takes the beta xarray route: it reads each
+    source's dates from the ``time_dim`` coordinate, so it accepts neither ``time``
+    nor ``spatial_time_major``, and returns a Dataset of ``exceedance`` and ``valid``
+    with the ``hazard`` and ``time`` dimensions; see :ref:`compound-xarray-route`.
+    The NumPy route is described below.
 
     Each source declares how to read its values: ``"probability"`` inputs are
     thresholded with a strict ``>`` or ``<`` in the declared direction, and
@@ -804,6 +851,31 @@ def harmonize(
         >>> aligned.valid.astype(int).tolist()
         [[1, 1, 1, 0], [1, 1, 1, 1]]
     """
+    if isinstance(inputs, Mapping) and any(isinstance(value, xr.DataArray) for value in inputs.values()):
+        # deferred: the xarray route imports this module
+        from climate_indices.compound import _xarray
+
+        return _xarray.harmonize(
+            inputs,
+            time=time,
+            cadence=cadence,
+            input_scale=input_scale,
+            thresholds=thresholds,
+            directions=directions,
+            target_cadence=target_cadence,
+            aggregation=aggregation,
+            validity=validity,
+            join=join,
+            source_metadata=source_metadata,
+            spatial_time_major=spatial_time_major,
+            time_dim="time" if time_dim is None else time_dim,
+        )
+    if time_dim is not None:
+        raise InvalidArgumentError(
+            "time_dim applies only to xarray.DataArray inputs; NumPy inputs carry their dates in time.",
+            argument_name="time_dim",
+            argument_value=repr(time_dim),
+        )
     # source names are caller-supplied identifiers, so only their count reaches the log
     log = _logger.bind(
         index_type="compound_harmonize",
@@ -816,7 +888,8 @@ def harmonize(
     try:
         result = _harmonize(
             inputs,
-            time=time,
+            # an omitted time reaches the key check, which names the missing sources
+            time={} if time is None else time,
             cadence=cadence,
             input_scale=input_scale,
             thresholds=thresholds,

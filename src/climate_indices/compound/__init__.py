@@ -11,9 +11,11 @@ returns a :class:`ConditionalResult` of anchor-conditioned and response-window
 frequencies, :func:`compound_events` returns a :class:`CompoundEventSet` of
 paired concurrent or sequential events, and :func:`bootstrap_dependence` returns a
 :class:`BootstrapResult` with monthly block-bootstrap intervals and local
-independence tests. The NumPy API is stable; this module is imported explicitly
-(``import climate_indices.compound as compound``) and is not re-exported from the
-package root.
+independence tests. The NumPy API is stable. :func:`harmonize` also takes a mapping of
+``xarray.DataArray``, and the three statistics take its returned ``xarray.Dataset``, on a
+beta xarray route that returns Datasets with explicit whole-time Dask chunks. This module is
+imported explicitly (``import climate_indices.compound as compound``) and is not re-exported
+from the package root.
 """
 
 from climate_indices.compound._bootstrap import BootstrapResult, bootstrap_dependence

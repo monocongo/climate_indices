@@ -644,7 +644,12 @@ def _base() -> dict[str, Any]:
         (lambda kw: kw["inputs"].update(a=np.array([0.1, 1.0000001, 0.3])), InvalidArgumentError, "not clipped"),
         (lambda kw: kw["inputs"].update(a=np.array([0.1, -0.2, 0.3])), InvalidArgumentError, "not clipped"),
         (lambda kw: kw["inputs"].update(a=np.array([0, 2, 1])), InvalidArgumentError, "not clipped"),
-        (lambda kw: kw["inputs"].update(a=xr.DataArray(np.array([0.1, 0.2, 0.3]))), InputTypeError, "NumPy"),
+        # a mapping that mixes NumPy arrays with a DataArray is neither route's input
+        (
+            lambda kw: kw["inputs"].update(b=xr.DataArray(np.array([0.1, 0.2, 0.3]))),
+            InputTypeError,
+            "all DataArrays or all NumPy",
+        ),
         (lambda kw: kw["inputs"].update(a=np.float64(0.1)), DataShapeError, "time axis"),
         (lambda kw: kw["inputs"].update(a=np.ones((3, 2))), DataShapeError, "spatial_time_major"),
         (lambda kw: kw["inputs"].update(a=np.empty(0)), DataShapeError, "no time steps"),

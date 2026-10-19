@@ -14,11 +14,12 @@ import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
 from time import perf_counter
-from typing import Any, Literal, TypeAlias
+from typing import Any, Literal, TypeAlias, overload
 
 import numpy as np
 import numpy.typing as npt
 import scipy
+import xarray as xr
 
 from climate_indices.compound._harmonize import AlignedHazards, _check_choice, _freeze, _immutable
 from climate_indices.compound._statistics import (
@@ -115,6 +116,47 @@ def _integer(name: str, value: object, minimum: int) -> int:
             valid_values=f"integer >= {minimum}",
         )
     return value
+
+
+def _checked_options(
+    *,
+    statistic: object,
+    groupby: object,
+    alternative: object,
+    lag_window: object,
+    block_length_years: object,
+    n_resamples: object,
+    confidence_level: object,
+    seed: object,
+) -> tuple[tuple[int, int], float]:
+    """Validate every scalar option, for the NumPy and xarray routes alike; return the lag window and level."""
+    _check_choice(
+        "statistic", statistic, ("joint_probability", "likelihood_multiplication_factor", "conditional_probability")
+    )
+    _check_choice("groupby", groupby, ("month", "pooled"))
+    _check_choice("alternative", alternative, ("greater", "less"))
+    window = _check_lag_window(lag_window)
+    if block_length_years is not None:
+        _integer("block_length_years", block_length_years, 1)
+    resamples = _integer("n_resamples", n_resamples, 1)
+    if resamples > _MAX_RESAMPLES:
+        raise InvalidArgumentError(
+            f"n_resamples must be <= {_MAX_RESAMPLES} to bound per-cell resampling memory and work.",
+            argument_name="n_resamples",
+            argument_value=repr(n_resamples),
+            valid_values=f"integer in [1, {_MAX_RESAMPLES}]",
+        )
+    _integer("seed", seed, 0)
+    if (
+        isinstance(confidence_level, bool)
+        or not isinstance(confidence_level, (int, float))
+        or not 0 < confidence_level < 1
+    ):
+        raise InvalidArgumentError(
+            "confidence_level must be a finite number strictly between zero and one.",
+            argument_name="confidence_level",
+        )
+    return window, float(confidence_level)
 
 
 def _longest_segment(complete: npt.NDArray[np.bool_]) -> tuple[int, int]:
@@ -346,7 +388,9 @@ def _bootstrap(
     confidence_level: float,
     alternative: Alternative,
     seed: int,
+    warn: bool = True,
 ) -> BootstrapResult:
+    """Infer per cell; ``warn=False`` leaves the limited-support condition to ``quality_flags`` (lazy xarray route)."""
     hazards = _validate_hazards(hazards)
     selected = _selected_sources(hazards, statistic, given, target, lag_window)
 
@@ -411,7 +455,7 @@ def _bootstrap(
             counts[name][..., cell] = inference[name]
         marginal_counts[..., cell] = inference["n_marginal"]
 
-    if np.any(counts["quality_flags"]):
+    if warn and np.any(counts["quality_flags"]):
         warnings.warn(
             "Some compound inference outputs have limited support; inspect quality_flags and effective resample counts. "
             "Fewer than ten nonoverlapping blocks requires particular caution.",
@@ -476,6 +520,24 @@ def _bootstrap(
     )
 
 
+@overload
+def bootstrap_dependence(
+    hazards: xr.Dataset,
+    *,
+    statistic: Statistic,
+    given: str | None = None,
+    target: str | None = None,
+    lag_window: tuple[int, int] = (0, 0),
+    groupby: GroupBy = "month",
+    block_length_years: int | None = None,
+    n_resamples: int = 1999,
+    confidence_level: float = 0.95,
+    alternative: Alternative = "greater",
+    seed: int,
+) -> xr.Dataset: ...
+
+
+@overload
 def bootstrap_dependence(
     hazards: AlignedHazards,
     *,
@@ -489,8 +551,28 @@ def bootstrap_dependence(
     confidence_level: float = 0.95,
     alternative: Alternative = "greater",
     seed: int,
-) -> BootstrapResult:
+) -> BootstrapResult: ...
+
+
+def bootstrap_dependence(
+    hazards: AlignedHazards | xr.Dataset,
+    *,
+    statistic: Statistic,
+    given: str | None = None,
+    target: str | None = None,
+    lag_window: tuple[int, int] = (0, 0),
+    groupby: GroupBy = "month",
+    block_length_years: int | None = None,
+    n_resamples: int = 1999,
+    confidence_level: float = 0.95,
+    alternative: Alternative = "greater",
+    seed: int,
+) -> BootstrapResult | xr.Dataset:
     """Estimate monthly uncertainty and test calendar-conditioned independence.
+
+    A prepared :class:`xarray.Dataset` from :func:`~climate_indices.compound.harmonize`
+    takes the beta xarray route and returns a Dataset with the same fields, options,
+    and results as the NumPy route; see :ref:`compound-xarray-route`.
 
     Args:
         hazards: Two or three declared monthly hazards. Validate manual instances
@@ -542,6 +624,23 @@ def bootstrap_dependence(
         versions is not promised. See ADR-0022 and the synthetic characterization
         configuration in scripts/characterize_compound_bootstrap.py.
     """
+    if isinstance(hazards, xr.Dataset):
+        # deferred: the xarray route imports this module
+        from climate_indices.compound import _xarray
+
+        return _xarray.bootstrap_dependence(
+            hazards,
+            statistic=statistic,
+            given=given,
+            target=target,
+            lag_window=lag_window,
+            groupby=groupby,
+            block_length_years=block_length_years,
+            n_resamples=n_resamples,
+            confidence_level=confidence_level,
+            alternative=alternative,
+            seed=seed,
+        )
     log = _logger.bind(
         index_type="compound_bootstrap_dependence",
         statistic=statistic,
@@ -555,32 +654,16 @@ def bootstrap_dependence(
     log.info("calculation_started")
     t0 = perf_counter()
     try:
-        _check_choice(
-            "statistic", statistic, ("joint_probability", "likelihood_multiplication_factor", "conditional_probability")
+        window, level = _checked_options(
+            statistic=statistic,
+            groupby=groupby,
+            alternative=alternative,
+            lag_window=lag_window,
+            block_length_years=block_length_years,
+            n_resamples=n_resamples,
+            confidence_level=confidence_level,
+            seed=seed,
         )
-        _check_choice("groupby", groupby, ("month", "pooled"))
-        _check_choice("alternative", alternative, ("greater", "less"))
-        window = _check_lag_window(lag_window)
-        if block_length_years is not None:
-            _integer("block_length_years", block_length_years, 1)
-        _integer("n_resamples", n_resamples, 1)
-        if n_resamples > _MAX_RESAMPLES:
-            raise InvalidArgumentError(
-                f"n_resamples must be <= {_MAX_RESAMPLES} to bound per-cell resampling memory and work.",
-                argument_name="n_resamples",
-                argument_value=repr(n_resamples),
-                valid_values=f"integer in [1, {_MAX_RESAMPLES}]",
-            )
-        _integer("seed", seed, 0)
-        if (
-            isinstance(confidence_level, bool)
-            or not isinstance(confidence_level, (int, float))
-            or not 0 < confidence_level < 1
-        ):
-            raise InvalidArgumentError(
-                "confidence_level must be a finite number strictly between zero and one.",
-                argument_name="confidence_level",
-            )
         result = _bootstrap(
             hazards,
             statistic=statistic,
@@ -590,7 +673,7 @@ def bootstrap_dependence(
             groupby=groupby,
             block_length_years=block_length_years,
             n_resamples=n_resamples,
-            confidence_level=float(confidence_level),
+            confidence_level=level,
             alternative=alternative,
             seed=seed,
         )

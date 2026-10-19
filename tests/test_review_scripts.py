@@ -45,6 +45,10 @@ characterize_compound_bootstrap = _load_script(
     "characterize_compound_bootstrap",
     "scripts/characterize_compound_bootstrap.py",
 )
+measure_compound_xarray_memory = _load_script(
+    "measure_compound_xarray_memory",
+    "scripts/measure_compound_xarray_memory.py",
+)
 
 
 def test_characterization_output_accepts_only_json_below_design_root(
@@ -123,6 +127,40 @@ def test_characterization_reduced_configuration(monkeypatch: pytest.MonkeyPatch)
     assert report["passed"] == all(
         result["coverage_gate_passed"] and result["null_gate_passed"] is not False for result in report["results"]
     )
+
+
+def test_memory_budget_reproduces_the_design_figures() -> None:
+    """The planning formula gives the ~1.97 GB daily and ~81 MB monthly figures that ADR-0022 quotes."""
+    script = measure_compound_xarray_memory
+    assert script._budget(36_524, 1_000) == 54 * 36_524 * 1_000
+    assert round(script._budget(36_524, 1_000) / 1e9, 2) == 1.97
+    assert script._budget(1_200, 1_000, resamples=1_999) == 54 * 1_200 * 1_000 + 8 * 1_999 * 1_000
+    assert round(script._budget(1_200, 1_000, resamples=1_999) / 1e6) == 81
+
+
+def test_memory_measurement_quick_report_is_complete() -> None:
+    previous_disable = logging.root.manager.disable
+    logging.disable(logging.CRITICAL)
+    try:
+        report = measure_compound_xarray_memory.measure(quick=True)
+    finally:
+        logging.disable(previous_disable)
+    assert report["quick"] is True
+    assert [stage["stage"] for stage in report["stages"]] == [
+        "harmonize",
+        "joint_statistics",
+        "conditional_probability",
+        "bootstrap_dependence",
+    ]
+    for stage in report["stages"]:
+        widths = len(stage["cells"])
+        assert len(stage["peak_bytes"]) == len(stage["budget_bytes"]) == len(stage["input_bytes"]) == widths
+        # the traced peak includes the stage's own working memory, so it exceeds the inputs alone
+        assert all(peak > inputs for peak, inputs in zip(stage["peak_bytes"], stage["input_bytes"], strict=True))
+        assert stage["bytes_per_cell"] > 0 and stage["fixed_bytes_per_task"] >= 0
+        assert set(stage["max_cells_per_task"]) == {"256 MiB", "1 GiB"}
+        assert stage["max_cells_per_task"]["1 GiB"] >= stage["max_cells_per_task"]["256 MiB"]
+    assert json.loads(json.dumps(report)) == report
 
 
 requires_requests = pytest.mark.skipif(

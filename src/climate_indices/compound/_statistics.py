@@ -36,10 +36,11 @@ import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
 from time import perf_counter
-from typing import Any, Literal, TypeAlias, cast
+from typing import Any, Literal, TypeAlias, cast, overload
 
 import numpy as np
 import numpy.typing as npt
+import xarray as xr
 
 from climate_indices.compound._harmonize import (
     _CADENCES,
@@ -543,8 +544,12 @@ def _conditional_probability(
     lag_window: tuple[int, int],
     groupby: GroupBy,
     min_samples: int,
+    warn: bool = True,
 ) -> ConditionalResult:
-    """Validate, resolve the forward window, count, and estimate; see :func:`conditional_probability`."""
+    """Validate, resolve the forward window, count, and estimate; see :func:`conditional_probability`.
+
+    ``warn=False`` skips the support warnings; the lazy xarray route leaves those conditions to ``quality_flags``.
+    """
     hazards = _validate_hazards(hazards)
     _require_complete_cadence(hazards)
     low, high = lag_window
@@ -574,7 +579,8 @@ def _conditional_probability(
     )
     quality_flags = np.asarray(flagged, dtype=np.int64)
 
-    _warn_conditional_support(hazards.time, eligible, n_anchors, n_positive, min_samples)
+    if warn:
+        _warn_conditional_support(hazards.time, eligible, n_anchors, n_positive, min_samples)
 
     unit = "month" if groupby == "month" else None
     manifest = {
@@ -629,8 +635,11 @@ def _conditional_probability(
     )
 
 
-def _joint_statistics(hazards: AlignedHazards, *, groupby: GroupBy, min_samples: int) -> JointResult:
-    """Validate, count, and estimate; see :func:`joint_statistics`."""
+def _joint_statistics(hazards: AlignedHazards, *, groupby: GroupBy, min_samples: int, warn: bool = True) -> JointResult:
+    """Validate, count, and estimate; see :func:`joint_statistics`.
+
+    ``warn=False`` skips the support warnings; the lazy xarray route leaves those conditions to ``quality_flags``.
+    """
     hazards = _validate_hazards(hazards)
     months = _month_index(hazards.time)
 
@@ -662,7 +671,8 @@ def _joint_statistics(hazards: AlignedHazards, *, groupby: GroupBy, min_samples:
     )
     quality_flags = np.asarray(flagged, dtype=np.int64)
 
-    _warn_support(hazards.time, eligible, n_valid, n_marginal, min_samples)
+    if warn:
+        _warn_support(hazards.time, eligible, n_valid, n_marginal, min_samples)
 
     unit = "month" if groupby == "month" else None
     manifest = {
@@ -709,13 +719,25 @@ def _joint_statistics(hazards: AlignedHazards, *, groupby: GroupBy, min_samples:
     )
 
 
+@overload
+def joint_statistics(hazards: xr.Dataset, *, groupby: GroupBy = "month", min_samples: int = 30) -> xr.Dataset: ...
+
+
+@overload
+def joint_statistics(hazards: AlignedHazards, *, groupby: GroupBy = "month", min_samples: int = 30) -> JointResult: ...
+
+
 def joint_statistics(
-    hazards: AlignedHazards,
+    hazards: AlignedHazards | xr.Dataset,
     *,
     groupby: GroupBy = "month",
     min_samples: int = 30,
-) -> JointResult:
+) -> JointResult | xr.Dataset:
     """Count two or three hazards on one eligible support and return frequencies and LMF.
+
+    A prepared :class:`xarray.Dataset` from :func:`~climate_indices.compound.harmonize`
+    takes the beta xarray route and returns a Dataset with the same counts and
+    estimates; see :ref:`compound-xarray-route`.
 
     The support is the complete-case eligible mask ``V(t) = all selected sources
     are valid at t``. Counts, frequencies, the independence product, and the
@@ -780,6 +802,11 @@ def joint_statistics(
         >>> print(round(float(counts.marginal_frequency[0]), 6), round(float(counts.likelihood_multiplication_factor), 6))
         0.5 1.333333
     """
+    if isinstance(hazards, xr.Dataset):
+        # deferred: the xarray route imports this module
+        from climate_indices.compound import _xarray
+
+        return _xarray.joint_statistics(hazards, groupby=groupby, min_samples=min_samples)
     log = _logger.bind(
         index_type="compound_joint_statistics",
         n_sources=len(hazards.names) if isinstance(hazards, AlignedHazards) else 0,
@@ -802,6 +829,19 @@ def joint_statistics(
     return result
 
 
+@overload
+def conditional_probability(
+    hazards: xr.Dataset,
+    *,
+    given: str,
+    target: str,
+    lag_window: tuple[int, int] = (0, 0),
+    groupby: GroupBy = "month",
+    min_samples: int = 30,
+) -> xr.Dataset: ...
+
+
+@overload
 def conditional_probability(
     hazards: AlignedHazards,
     *,
@@ -810,8 +850,23 @@ def conditional_probability(
     lag_window: tuple[int, int] = (0, 0),
     groupby: GroupBy = "month",
     min_samples: int = 30,
-) -> ConditionalResult:
+) -> ConditionalResult: ...
+
+
+def conditional_probability(
+    hazards: AlignedHazards | xr.Dataset,
+    *,
+    given: str,
+    target: str,
+    lag_window: tuple[int, int] = (0, 0),
+    groupby: GroupBy = "month",
+    min_samples: int = 30,
+) -> ConditionalResult | xr.Dataset:
     """Estimate a target-hazard window frequency given one anchor hazard.
+
+    A prepared :class:`xarray.Dataset` from :func:`~climate_indices.compound.harmonize`
+    takes the beta xarray route and returns a Dataset with the same counts and
+    estimates; see :ref:`compound-xarray-route`.
 
     Pair one named source with another on the :class:`AlignedHazards` support. For
     an anchor step ``t``, the response ``R(t)`` is any target occurrence in the
@@ -900,6 +955,13 @@ def conditional_probability(
         >>> print(round(float(lagged.conditional_probability), 6), round(float(lagged.response_window_frequency), 6))
         0.666667 0.6
     """
+    if isinstance(hazards, xr.Dataset):
+        # deferred: the xarray route imports this module
+        from climate_indices.compound import _xarray
+
+        return _xarray.conditional_probability(
+            hazards, given=given, target=target, lag_window=lag_window, groupby=groupby, min_samples=min_samples
+        )
     log = _logger.bind(
         index_type="compound_conditional_probability",
         n_sources=len(hazards.names) if isinstance(hazards, AlignedHazards) else 0,

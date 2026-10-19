@@ -659,7 +659,7 @@ CF_METADATA: dict[str, CFAttributes] = {
         ),
         "references": _ALLEN_OTERO_2023,
     },
-    # Compound-family metadata precedes the NumPy statistics (#1368, #1369) and
+    # Compound-family metadata serves the NumPy statistics (#1368, #1369) and
     # their beta xarray adapters (#1372). Names, units, and bounds
     # follow ADR-0022 decision 4 and docs/design/compound-module-milestone-1.md.
     # Every entry is a frequency on one observed, complete-case support, so units
