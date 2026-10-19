@@ -38,9 +38,18 @@ summaries through `runs.summarize_runs()`. Pooling, elapsed duration, and freque
 follow the maintainer-approved contract in the energy subsystem design note.
 The energy event xarray adapter remains deferred to #1174.
 
+Amended by the PV implementation
+([#1176](https://github.com/monocongo/climate_indices/issues/1176)):
+`energy.pv_capacity_factor()` implements the Jerez reference configuration on
+NumPy inputs. It accepts mean radiation in W m⁻², air temperature in °C, and
+surface wind in m s⁻¹. Callers convert accumulated SSRD to mean flux using each
+interval's duration in seconds. Clipping to [0, 1] is project policy, not a
+Jerez result. The matched pvlib comparison checks only the power/temperature
+term; the thermal coefficients have specification-level tests.
+
 Decision 2's `aggregation` keyword landed with this record
 ([#1158](https://github.com/monocongo/climate_indices/issues/1158)). Decisions 3
-through 5 and the radiation units of decision 6 remain contracts for the tickets
+through 5 remain contracts for the tickets
 under [#1157](https://github.com/monocongo/climate_indices/issues/1157), not shipped
 code. Each decision is amended as its implementation lands, as
 {doc}`0013-flood-module-api-and-naming` was for flood.
