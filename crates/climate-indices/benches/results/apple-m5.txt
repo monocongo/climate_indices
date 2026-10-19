@@ -1,0 +1,176 @@
+Criterion kernel benchmark reference run
+Date: 2026-10-19
+Hardware: Apple M5, 10 physical/logical cores, 32 GiB RAM
+OS: macOS 27.0.1 (26A434), arm64
+rustc: 1.99.0 (b940084d7 2026-09-28)
+cargo: 1.99.0 (5f94df478 2026-08-27)
+Criterion: 0.7.0
+Workspace base: ba0a1da6 (with the CRATE-08 benchmark additions)
+benches/kernels.rs SHA-256: ffff7d4d03bcf0ad99f92a2b6720c8b2eb49b4c99c8ec7bf5157996f8501e351
+Cargo.lock SHA-256: ba11525daf540851f75cae0649d3febc1ab4d36468ce0a0e4a806ba72f7a1a22
+Command: cargo bench -p climate-indices --bench kernels --locked -- --noplot
+Profile: Cargo bench (optimized), workspace thin LTO, codegen-units=1
+RUSTFLAGS/CARGO_ENCODED_RUSTFLAGS: unset
+Protocol: serial kernels; 3 s warm-up, 5 s measurement target, 100 samples
+Fixture generation and output checks are outside the timed loops.
+Kernel allocation and output destruction are inside the timed loops.
+Throughput counts input time-cell values, including effective-precipitation padding.
+Criterion brackets give the 95% confidence interval around the central estimate.
+
+    Finished `bench` profile [optimized] target(s) in 0.03s
+     Running benches/kernels.rs (target/release/deps/kernels-7be4233bf488309d)
+Benchmarking monthly/gamma_parameters/1
+Benchmarking monthly/gamma_parameters/1: Warming up for 3.0000 s
+Benchmarking monthly/gamma_parameters/1: Collecting 100 samples in estimated 5.0017 s (4.8M iterations)
+Benchmarking monthly/gamma_parameters/1: Analyzing
+monthly/gamma_parameters/1
+                        time:   [1.0393 µs 1.0493 µs 1.0612 µs]
+                        thrpt:  [452.30 Melem/s 457.46 Melem/s 461.85 Melem/s]
+Found 14 outliers among 100 measurements (14.00%)
+  3 (3.00%) high mild
+  11 (11.00%) high severe
+Benchmarking monthly/gamma_probabilities/1
+Benchmarking monthly/gamma_probabilities/1: Warming up for 3.0000 s
+Benchmarking monthly/gamma_probabilities/1: Collecting 100 samples in estimated 5.0430 s (162k iterations)
+Benchmarking monthly/gamma_probabilities/1: Analyzing
+monthly/gamma_probabilities/1
+                        time:   [31.023 µs 31.092 µs 31.185 µs]
+                        thrpt:  [15.392 Melem/s 15.438 Melem/s 15.472 Melem/s]
+Found 8 outliers among 100 measurements (8.00%)
+  2 (2.00%) high mild
+  6 (6.00%) high severe
+Benchmarking monthly/loglogistic_parameters/1
+Benchmarking monthly/loglogistic_parameters/1: Warming up for 3.0000 s
+Benchmarking monthly/loglogistic_parameters/1: Collecting 100 samples in estimated 5.0221 s (783k iterations)
+Benchmarking monthly/loglogistic_parameters/1: Analyzing
+monthly/loglogistic_parameters/1
+                        time:   [3.8352 µs 3.9290 µs 4.0463 µs]
+                        thrpt:  [118.63 Melem/s 122.17 Melem/s 125.16 Melem/s]
+Found 15 outliers among 100 measurements (15.00%)
+  8 (8.00%) high mild
+  7 (7.00%) high severe
+Benchmarking monthly/thornthwaite/1
+Benchmarking monthly/thornthwaite/1: Warming up for 3.0000 s
+Benchmarking monthly/thornthwaite/1: Collecting 100 samples in estimated 5.0460 s (263k iterations)
+Benchmarking monthly/thornthwaite/1: Analyzing
+monthly/thornthwaite/1  time:   [9.7728 µs 9.9115 µs 10.091 µs]
+                        thrpt:  [47.569 Melem/s 48.428 Melem/s 49.116 Melem/s]
+Found 20 outliers among 100 measurements (20.00%)
+  2 (2.00%) high mild
+  18 (18.00%) high severe
+Benchmarking monthly/tukey_probabilities/1
+Benchmarking monthly/tukey_probabilities/1: Warming up for 3.0000 s
+Benchmarking monthly/tukey_probabilities/1: Collecting 100 samples in estimated 5.0008 s (11M iterations)
+Benchmarking monthly/tukey_probabilities/1: Analyzing
+monthly/tukey_probabilities/1
+                        time:   [461.92 ns 463.69 ns 465.76 ns]
+                        thrpt:  [85.880 Melem/s 86.265 Melem/s 86.595 Melem/s]
+Found 9 outliers among 100 measurements (9.00%)
+  2 (2.00%) high mild
+  7 (7.00%) high severe
+Benchmarking monthly/water_balance/1
+Benchmarking monthly/water_balance/1: Warming up for 3.0000 s
+Benchmarking monthly/water_balance/1: Collecting 100 samples in estimated 5.0036 s (1.9M iterations)
+Benchmarking monthly/water_balance/1: Analyzing
+monthly/water_balance/1 time:   [2.5787 µs 2.5877 µs 2.5969 µs]
+                        thrpt:  [184.84 Melem/s 185.49 Melem/s 186.14 Melem/s]
+Found 5 outliers among 100 measurements (5.00%)
+  5 (5.00%) high mild
+Benchmarking monthly/gamma_parameters/32
+Benchmarking monthly/gamma_parameters/32: Warming up for 3.0000 s
+Benchmarking monthly/gamma_parameters/32: Collecting 100 samples in estimated 5.1046 s (141k iterations)
+Benchmarking monthly/gamma_parameters/32: Analyzing
+monthly/gamma_parameters/32
+                        time:   [64.849 µs 76.779 µs 88.848 µs]
+                        thrpt:  [172.88 Melem/s 200.05 Melem/s 236.86 Melem/s]
+Found 18 outliers among 100 measurements (18.00%)
+  13 (13.00%) high mild
+  5 (5.00%) high severe
+Benchmarking monthly/gamma_probabilities/32
+Benchmarking monthly/gamma_probabilities/32: Warming up for 3.0000 s
+Benchmarking monthly/gamma_probabilities/32: Collecting 100 samples in estimated 5.1930 s (2300 iterations)
+Benchmarking monthly/gamma_probabilities/32: Analyzing
+monthly/gamma_probabilities/32
+                        time:   [2.2660 ms 2.4255 ms 2.6198 ms]
+                        thrpt:  [5.8630 Melem/s 6.3327 Melem/s 6.7783 Melem/s]
+Found 5 outliers among 100 measurements (5.00%)
+  2 (2.00%) high mild
+  3 (3.00%) high severe
+Benchmarking monthly/loglogistic_parameters/32
+Benchmarking monthly/loglogistic_parameters/32: Warming up for 3.0000 s
+Benchmarking monthly/loglogistic_parameters/32: Collecting 100 samples in estimated 5.7841 s (25k iterations)
+Benchmarking monthly/loglogistic_parameters/32: Analyzing
+monthly/loglogistic_parameters/32
+                        time:   [148.58 µs 155.45 µs 163.44 µs]
+                        thrpt:  [93.980 Melem/s 98.811 Melem/s 103.38 Melem/s]
+Found 3 outliers among 100 measurements (3.00%)
+  3 (3.00%) high mild
+Benchmarking monthly/thornthwaite/32
+Benchmarking monthly/thornthwaite/32: Warming up for 3.0000 s
+Benchmarking monthly/thornthwaite/32: Collecting 100 samples in estimated 6.1281 s (25k iterations)
+Benchmarking monthly/thornthwaite/32: Analyzing
+monthly/thornthwaite/32 time:   [236.14 µs 238.77 µs 241.50 µs]
+                        thrpt:  [63.601 Melem/s 64.329 Melem/s 65.047 Melem/s]
+Found 7 outliers among 100 measurements (7.00%)
+  7 (7.00%) high severe
+Benchmarking monthly/tukey_probabilities/32
+Benchmarking monthly/tukey_probabilities/32: Warming up for 3.0000 s
+Benchmarking monthly/tukey_probabilities/32: Collecting 100 samples in estimated 5.0243 s (258k iterations)
+Benchmarking monthly/tukey_probabilities/32: Analyzing
+monthly/tukey_probabilities/32
+                        time:   [19.484 µs 19.538 µs 19.606 µs]
+                        thrpt:  [65.287 Melem/s 65.515 Melem/s 65.694 Melem/s]
+Found 10 outliers among 100 measurements (10.00%)
+  2 (2.00%) high mild
+  8 (8.00%) high severe
+Benchmarking monthly/water_balance/32
+Benchmarking monthly/water_balance/32: Warming up for 3.0000 s
+Benchmarking monthly/water_balance/32: Collecting 100 samples in estimated 6.3403 s (15k iterations)
+Benchmarking monthly/water_balance/32: Analyzing
+monthly/water_balance/32
+                        time:   [415.11 µs 417.12 µs 419.54 µs]
+                        thrpt:  [36.611 Melem/s 36.824 Melem/s 37.002 Melem/s]
+Found 15 outliers among 100 measurements (15.00%)
+  6 (6.00%) high mild
+  9 (9.00%) high severe
+
+Benchmarking daily/ffmc/1
+Benchmarking daily/ffmc/1: Warming up for 3.0000 s
+Benchmarking daily/ffmc/1: Collecting 100 samples in estimated 5.1975 s (66k iterations)
+Benchmarking daily/ffmc/1: Analyzing
+daily/ffmc/1            time:   [78.953 µs 79.187 µs 79.477 µs]
+                        thrpt:  [23.026 Melem/s 23.110 Melem/s 23.178 Melem/s]
+Found 12 outliers among 100 measurements (12.00%)
+  4 (4.00%) high mild
+  8 (8.00%) high severe
+Benchmarking daily/effective_precipitation/1
+Benchmarking daily/effective_precipitation/1: Warming up for 3.0000 s
+Benchmarking daily/effective_precipitation/1: Collecting 100 samples in estimated 5.0140 s (768k iterations)
+Benchmarking daily/effective_precipitation/1: Analyzing
+daily/effective_precipitation/1
+                        time:   [6.4867 µs 6.5060 µs 6.5315 µs]
+                        thrpt:  [280.18 Melem/s 281.28 Melem/s 282.12 Melem/s]
+Found 7 outliers among 100 measurements (7.00%)
+  4 (4.00%) high mild
+  3 (3.00%) high severe
+Benchmarking daily/ffmc/32
+Benchmarking daily/ffmc/32: Warming up for 3.0000 s
+Benchmarking daily/ffmc/32: Collecting 100 samples in estimated 5.1590 s (2200 iterations)
+Benchmarking daily/ffmc/32: Analyzing
+daily/ffmc/32           time:   [2.3402 ms 2.3490 ms 2.3601 ms]
+                        thrpt:  [24.813 Melem/s 24.929 Melem/s 25.024 Melem/s]
+Found 11 outliers among 100 measurements (11.00%)
+  6 (6.00%) high mild
+  5 (5.00%) high severe
+Benchmarking daily/effective_precipitation/32
+Benchmarking daily/effective_precipitation/32: Warming up for 3.0000 s
+Benchmarking daily/effective_precipitation/32: Collecting 100 samples in estimated 5.6871 s (20k iterations)
+Benchmarking daily/effective_precipitation/32: Analyzing
+daily/effective_precipitation/32
+                        time:   [281.45 µs 282.19 µs 283.18 µs]
+                        thrpt:  [206.80 Melem/s 207.52 Melem/s 208.06 Melem/s]
+Found 19 outliers among 100 measurements (19.00%)
+  2 (2.00%) low mild
+  5 (5.00%) high mild
+  12 (12.00%) high severe
+
