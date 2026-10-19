@@ -52,7 +52,7 @@ unfilled tail slots stay NaN through the computation and are discarded when the 
 its Gregorian coordinate.
 
 The policy lives in one place — `utils.DailyCalendarPlan.from_year_span()` owns the day
-distribution, and `_build_daily_calendar_plan()` owns the xarray coordinate validation —
+distribution, and `_build_calendar_plan()` owns the xarray coordinate validation —
 and is applied by the `@xarray_adapter` decorator (SPI, SPEI, EDDI, PNP), by the
 hand-written `pet_thornthwaite` and `pet_hargreaves` paths, and by the CLI through
 `__main__._daily_calendar_plan()`.

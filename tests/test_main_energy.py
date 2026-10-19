@@ -289,7 +289,7 @@ class TestEnergyValidation:
         assert "missing --scales argument" in str(error.value)
 
     @pytest.mark.parametrize("index", _STANDARDIZED_INDICES)
-    @pytest.mark.parametrize("periodicity", tuple(compute.Periodicity))
+    @pytest.mark.parametrize("periodicity", _cli.CLI_PERIODICITIES)
     @pytest.mark.parametrize("invalid_scale", [0, -1, "above_maximum"])
     def test_invalid_scale_lists_write_no_output(self, tmp_path, index, periodicity, invalid_scale):
         maximum = indices.SCALE_MAX_DAILY if periodicity is compute.Periodicity.daily else indices.SCALE_MAX
@@ -305,7 +305,7 @@ class TestEnergyValidation:
         assert not list(tmp_path.glob("out_*.nc"))
 
     @pytest.mark.parametrize("index", _STANDARDIZED_INDICES)
-    @pytest.mark.parametrize("periodicity", tuple(compute.Periodicity))
+    @pytest.mark.parametrize("periodicity", _cli.CLI_PERIODICITIES)
     def test_accepts_periodicity_specific_scale_limits(self, index, periodicity):
         maximum = indices.SCALE_MAX_DAILY if periodicity is compute.Periodicity.daily else indices.SCALE_MAX
         arguments = _energy_arguments(index, periodicity=periodicity, scales=[1, maximum])

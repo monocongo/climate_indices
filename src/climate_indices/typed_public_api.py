@@ -84,6 +84,11 @@ _TEMPORAL_VALIDATORS = (
     lambda args: indices._validate_periodicity(args["periodicity"]),
     lambda args: indices._validate_scale(args["scale"], args["periodicity"]),
 )
+# the generic seam also standardizes hourly data, with the empirical distribution only
+_STANDARDIZED_TEMPORAL_VALIDATORS = (
+    lambda args: indices._validate_periodicity(args["periodicity"], allow_hourly=True),
+    lambda args: indices._validate_scale(args["scale"], args["periodicity"]),
+)
 _SPI_VALIDATORS = (
     *_TEMPORAL_VALIDATORS,
     lambda args: indices._validate_distribution(args["distribution"]),
@@ -145,8 +150,9 @@ _STANDARDIZED_INDEX_DISTRIBUTIONS = (
     Distribution.beta,
 )
 _STANDARDIZED_INDEX_VALIDATORS = (
-    *_TEMPORAL_VALIDATORS,
+    *_STANDARDIZED_TEMPORAL_VALIDATORS,
     lambda args: indices._validate_distribution(args["distribution"], _STANDARDIZED_INDEX_DISTRIBUTIONS),
+    lambda args: indices._validate_hourly_distribution(args["periodicity"], args["distribution"]),
     lambda args: compute.validate_output_scale(args["output_scale"]),
     lambda args: compute._validate_zero_handling(args["zero_handling"]),
     lambda args: compute._validate_aggregation(args["aggregation"]),

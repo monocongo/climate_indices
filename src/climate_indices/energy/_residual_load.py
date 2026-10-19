@@ -192,7 +192,9 @@ def _srli_numpy(
         data_start_year: Initial year of the input series.
         calibration_year_initial: Initial year of the Calibration Period.
         calibration_year_final: Final year of the Calibration Period.
-        periodicity: ``compute.Periodicity.monthly`` or ``compute.Periodicity.daily``.
+        periodicity: ``compute.Periodicity.monthly``, ``compute.Periodicity.daily``, or
+            ``compute.Periodicity.hourly``. Hourly input carries 8784 values per year and
+            supports only ``Distribution.empirical``.
             Daily input must start on 1 January in the 366-slot year layout; convert a
             Gregorian array with :func:`climate_indices.utils.transform_to_366day`.
         distribution: ``Distribution.empirical``, the only accepted member.
@@ -331,7 +333,9 @@ def srli(
             for NumPy input; inferred for DataArray input.
         calibration_year_final: Final year of the Calibration Period. Required for
             NumPy input; inferred for DataArray input.
-        periodicity: ``compute.Periodicity.monthly`` or ``compute.Periodicity.daily``.
+        periodicity: ``compute.Periodicity.monthly``, ``compute.Periodicity.daily``, or
+            ``compute.Periodicity.hourly``. Hourly input carries 8784 values per year and
+            supports only ``Distribution.empirical``.
             Required for NumPy input; inferred for DataArray input. Daily NumPy input
             must start on 1 January in the 366-slot year layout; convert a Gregorian
             array with :func:`climate_indices.utils.transform_to_366day`.

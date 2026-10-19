@@ -36,6 +36,11 @@ rejects unrecognized declarations.
   converts Gregorian daily arrays to that layout, requiring every year but the
   last to be complete and padding a partial final year with NaN. The xarray API
   accepts ordinary Gregorian coordinates and also accepts a partial final year.
+- Hourly series must begin at 00:00 on January 1 and step one hour at a time.
+  The NumPy API expects the internal 8784-slot layout, which
+  `utils.CalendarPlan.from_year_span(..., steps_per_day=24).to_all_leap` produces
+  from a Gregorian hourly array. Only the empirical distribution standardizes
+  hourly data; the xarray API infers the cadence and restores the Gregorian axis.
 - Supported calendars are `standard`, `gregorian`, and
   `proleptic_gregorian` `datetime64` coordinates. `cftime` calendars are
   rejected; see `docs/adr/0004-xarray-calendar-semantics.md`.

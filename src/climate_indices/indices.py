@@ -82,6 +82,7 @@ _FITTED_INDEX_VALID_MAX = 3.09
 SCALE_MIN = 1
 SCALE_MAX = 72
 SCALE_MAX_DAILY = 6 * 366
+SCALE_MAX_HOURLY = 6 * 366 * 24
 
 # Hastings inverse normal approximation constants (Abramowitz & Stegun 26.2.23)
 # used by EDDI for converting empirical probabilities to z-scores
@@ -119,6 +120,11 @@ def _validate_scale(scale: int, periodicity: compute.Periodicity) -> None:
     if periodicity is compute.Periodicity.daily:
         scale_max = SCALE_MAX_DAILY
         common_scales = "1 (daily), 7 (weekly), 30 (monthly), 90 (seasonal), 365 (annual)"
+    elif periodicity is compute.Periodicity.hourly:
+        scale_max = SCALE_MAX_HOURLY
+        common_scales = (
+            "24 (daily), 168 (weekly), 720 (monthly), 2160 (seasonal), 8760 (annual, 8784 in the 366-day layout)"
+        )
     else:
         scale_max = SCALE_MAX
         common_scales = "1 (monthly), 3 (seasonal), 6 (half-year), 12 (annual)"
@@ -203,23 +209,57 @@ def _clip_fitted_values(values: np.ndarray, output_scale: compute.OutputScale) -
     return values
 
 
-def _validate_periodicity(periodicity: compute.Periodicity) -> None:
-    """Validate that periodicity is a valid Periodicity enum member.
+def _validate_periodicity(periodicity: compute.Periodicity, *, allow_hourly: bool = False) -> None:
+    """Validate that periodicity is a valid, supported Periodicity enum member.
 
     Args:
         periodicity: The periodicity parameter to validate
+        allow_hourly: Whether the calling surface accepts hourly standardization
 
     Raises:
         PeriodicityError: If periodicity is not a Periodicity enum member
+        InvalidArgumentError: If periodicity is hourly on a surface that does not
+            standardize hourly data
     """
     if not isinstance(periodicity, compute.Periodicity):
         message = (  # type: ignore[unreachable]
             f"Invalid periodicity argument: {periodicity}. "
             f"Periodicity must be a Periodicity enum member. "
-            f"Supported values: monthly, daily. "
-            f"Use compute.Periodicity.monthly or compute.Periodicity.daily."
+            f"Supported values: monthly, daily, hourly. "
+            f"Use compute.Periodicity.monthly, compute.Periodicity.daily, or compute.Periodicity.hourly."
         )
         raise PeriodicityError(message, periodicity_value=str(periodicity))
+
+    if periodicity is compute.Periodicity.hourly and not allow_hourly:
+        raise InvalidArgumentError(
+            "Hourly periodicity is supported only by the standardized indices with the empirical distribution.",
+            argument_name="periodicity",
+            argument_value=str(periodicity),
+            valid_values="Periodicity.monthly, Periodicity.daily",
+        )
+
+
+def _validate_hourly_distribution(periodicity: compute.Periodicity, distribution: Distribution) -> None:
+    """Reject an hourly series outside the rank-based empirical transform.
+
+    An hourly calendar step carries only a few dozen calibration values over a normal
+    record, which is too few for a parametric fit; the empirical rank transform needs
+    no fit and is the only supported hourly standard. See ADR-0019.
+
+    Args:
+        periodicity: The periodicity of the series
+        distribution: The distribution requested for the standard
+
+    Raises:
+        InvalidArgumentError: If the periodicity is hourly and the distribution is not empirical
+    """
+    if periodicity is compute.Periodicity.hourly and distribution is not Distribution.empirical:
+        raise InvalidArgumentError(
+            "Hourly periodicity supports only the empirical distribution.",
+            argument_name="distribution",
+            argument_value=str(distribution),
+            valid_values="Distribution.empirical",
+        )
 
 
 def _raise_if_unsupported_shape(values: np.ndarray, spatial_time_major: bool = False) -> None:
@@ -576,9 +616,11 @@ def _standardized_index_pipeline(
         Standardized values in the input's size and layout.
     """
     # validate arguments
-    _validate_periodicity(periodicity)
+    # only a surface that accepts the empirical distribution can standardize hourly data
+    _validate_periodicity(periodicity, allow_hourly=Distribution.empirical in allowed_distributions)
     _validate_scale(scale, periodicity)
     _validate_distribution(distribution, allowed_distributions)
+    _validate_hourly_distribution(periodicity, distribution)
     compute.validate_output_scale(output_scale)
     compute._validate_zero_handling(zero_handling)
 
@@ -747,8 +789,9 @@ def standardized_index(
         calibration_year_initial: Initial year of the Calibration Period.
         calibration_year_final: Final year of the Calibration Period.
         periodicity: Periodicity of the series; ``compute.Periodicity.monthly`` for
-            monthly data (12 values/year) or ``compute.Periodicity.daily`` for daily
-            data (366 values/year).
+            monthly data (12 values/year), ``compute.Periodicity.daily`` for daily
+            data (366 values/year), or ``compute.Periodicity.hourly`` for hourly data
+            (8784 values/year), which supports only ``Distribution.empirical``.
         fitting_params: Optional dictionary of pre-computed distribution fitting
             parameters, with keys "alpha" and "beta" (and optionally "prob_zero",
             plus "prob_one" when fitting to beta) for gamma and beta, and
