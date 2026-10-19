@@ -616,7 +616,8 @@ def _standardized_index_pipeline(
         Standardized values in the input's size and layout.
     """
     # validate arguments
-    _validate_periodicity(periodicity, allow_hourly=True)
+    # only a surface that accepts the empirical distribution can standardize hourly data
+    _validate_periodicity(periodicity, allow_hourly=Distribution.empirical in allowed_distributions)
     _validate_scale(scale, periodicity)
     _validate_distribution(distribution, allowed_distributions)
     _validate_hourly_distribution(periodicity, distribution)

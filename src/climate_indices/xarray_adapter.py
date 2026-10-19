@@ -340,7 +340,7 @@ def _build_calendar_plan(
         )
 
     steps_per_day = 24 if periodicity == compute.Periodicity.hourly else 1
-    if periodicity == compute.Periodicity.hourly and first_timestamp.hour != 0:
+    if periodicity == compute.Periodicity.hourly and first_timestamp != first_timestamp.normalize():
         raise CoordinateValidationError(
             message="Hourly input must begin at 00:00 on January 1 to preserve calendar-hour semantics.",
             coordinate_name=coordinate_name,
@@ -3423,6 +3423,9 @@ def fit_diagnostics(
     _validate_diagnostics_fitting_params(input_da, fitting_params, time_dim)
     # inference is metadata-only, so it stays safe for Dask-backed input
     provided.update(_infer_temporal_parameters(indices.fit_diagnostics, input_da, [input_da], provided, time_dim))
+    # the diagnostics surface fits parametric families only, so hourly data is rejected
+    # here rather than inside a Dask graph whose result would be read much later
+    indices._validate_periodicity(provided["periodicity"])
     calendar_plan = _resolve_calendar_plan(indices.fit_diagnostics, input_da, [input_da], {}, provided, time_dim)
     _validate_sufficient_data(input_da[time_dim], scale, calendar_plan)
 

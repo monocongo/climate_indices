@@ -9,7 +9,8 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from climate_indices import compute, energy, indices, utils
+from climate_indices import __main__ as cli_main
+from climate_indices import _cli, compute, energy, indices, utils
 from climate_indices.exceptions import CoordinateValidationError, InvalidArgumentError
 
 HOURS_PER_YEAR = 8784
@@ -258,9 +259,158 @@ class TestHourlyXarray:
         with pytest.raises(CoordinateValidationError):
             energy.srepi(data, scale=1)
 
-    def test_hourly_input_must_start_on_the_hour_zero_of_january_first(self) -> None:
-        time = pd.date_range("2001-01-01 06:00", periods=48, freq="h")
+    @pytest.mark.parametrize("start", ["2001-01-01 06:00", "2001-01-01 00:30"])
+    def test_hourly_input_must_start_at_the_hour_zero_of_january_first(self, start: str) -> None:
+        time = pd.date_range(start, periods=48, freq="h")
         data = xr.DataArray(np.arange(48, dtype=float), coords={"time": time}, dims=("time",))
 
         with pytest.raises(CoordinateValidationError, match="calendar-hour"):
             energy.srepi(data, scale=1)
+
+
+class TestHourlyEnergyAdapters:
+    """Every standardized energy adapter runs hourly and rejects the beta family eagerly."""
+
+    @staticmethod
+    def _data(sign: float = 1.0) -> xr.DataArray:
+        time = pd.date_range("2001-01-01", "2012-12-31 23:00", freq="h")
+        values = sign * (np.sin(np.arange(time.size, dtype=float) * 2.0 * np.pi / HOURS_PER_DAY) + 2.0)
+        return xr.DataArray(values, coords={"time": time}, dims=("time",), name="series")
+
+    @pytest.mark.parametrize(
+        ("adapter", "kwargs", "sign"),
+        [
+            (energy.srli, {"aggregation": "sum"}, 1.0),
+            (energy.srli, {"aggregation": "sum"}, -1.0),
+            (energy.standardized_demand_index, {}, 1.0),
+        ],
+        ids=["srli-positive", "srli-signed", "demand-index"],
+    )
+    def test_hourly_result_matches_the_input_axis(self, adapter, kwargs, sign) -> None:
+        data = self._data(sign)
+
+        result = adapter(data, scale=24, **kwargs)
+
+        assert result.dims == data.dims
+        assert np.array_equal(result["time"].values, data["time"].values)
+
+    def test_hourly_beta_is_rejected_before_the_computation_runs(self) -> None:
+        data = self._data().chunk({"time": -1})
+
+        with pytest.raises(InvalidArgumentError, match="Hourly periodicity supports only the empirical distribution"):
+            energy.srepi(data, scale=24, distribution=indices.Distribution.beta)
+
+    def test_hourly_dask_input_standardizes(self) -> None:
+        data = self._data().chunk({"time": -1})
+
+        result = energy.srepi(data, scale=24)
+
+        assert result.chunks is not None
+        assert np.isfinite(result.compute().values[23:]).all()
+
+
+class TestHourlyScaleBounds:
+    """The hourly scale bound is six years expressed in hours."""
+
+    def test_the_bound_is_accepted_and_one_more_is_rejected(self) -> None:
+        indices._validate_scale(indices.SCALE_MAX_HOURLY, compute.Periodicity.hourly)
+
+        with pytest.raises(InvalidArgumentError, match="Scale must be an integer"):
+            indices._validate_scale(indices.SCALE_MAX_HOURLY + 1, compute.Periodicity.hourly)
+
+    def test_the_bound_spans_six_hourly_years(self) -> None:
+        assert indices.SCALE_MAX_HOURLY == 6 * HOURS_PER_YEAR
+
+
+class TestHourlyTimeMajorBlock:
+    """A time-major hourly block keeps its cell dimensions and partial final year."""
+
+    def test_block_is_standardized_cell_by_cell(self) -> None:
+        years = 12
+        values = np.repeat(
+            np.arange(years, dtype=float)[:, np.newaxis, np.newaxis],
+            HOURS_PER_YEAR * 3,
+            axis=1,
+        )
+        # (time, cell, 1): the third axis keeps the shape out of the series reading
+        block = values.reshape(years, HOURS_PER_YEAR, 3, 1)
+        time_major = np.concatenate([block, block], axis=1).reshape(-1, 3, 1)
+
+        result = indices.standardized_index(
+            time_major,
+            1,
+            indices.Distribution.empirical,
+            data_start_year=2000,
+            calibration_year_initial=2000,
+            calibration_year_final=2009,
+            periodicity=compute.Periodicity.hourly,
+            spatial_time_major=True,
+        )
+
+        assert result.shape == (time_major.shape[0], 3, 1)
+        assert np.isfinite(result).all()
+
+    def test_unambiguous_shape_is_accepted_without_declaration(self) -> None:
+        values = np.tile(np.arange(12, dtype=float)[:, np.newaxis], (1, HOURS_PER_YEAR))
+        series = values.ravel()
+
+        result = indices.standardized_index(
+            series,
+            1,
+            indices.Distribution.empirical,
+            data_start_year=2000,
+            calibration_year_initial=2000,
+            calibration_year_final=2009,
+            periodicity=compute.Periodicity.hourly,
+        )
+
+        assert result.size == series.size
+
+
+class TestHourlySurfaceGates:
+    """Surfaces that cannot standardize hourly data reject it eagerly."""
+
+    def test_spi_and_spei_reject_hourly_with_the_surface_message(self) -> None:
+        values = np.ones(2 * HOURS_PER_YEAR)
+        gamma = indices.Distribution.gamma
+        hourly = compute.Periodicity.hourly
+
+        with pytest.raises(InvalidArgumentError, match="supported only by the standardized indices"):
+            indices.spi(values, 1, gamma, 2000, 2000, 2001, hourly)
+        with pytest.raises(InvalidArgumentError, match="supported only by the standardized indices"):
+            indices.spei(values, values, 1, gamma, hourly, 2000, 2000, 2001)
+
+    def test_fit_diagnostics_rejects_hourly(self) -> None:
+        values = np.zeros(2 * HOURS_PER_YEAR)
+
+        with pytest.raises(InvalidArgumentError, match="supported only by the standardized indices"):
+            indices.fit_diagnostics(
+                values,
+                1,
+                indices.Distribution.gamma,
+                data_start_year=2000,
+                calibration_year_initial=2000,
+                calibration_year_final=2001,
+                periodicity=compute.Periodicity.hourly,
+            )
+
+    def test_compute_seam_rejects_a_parametric_hourly_fit(self) -> None:
+        values = np.tile(np.arange(2, dtype=float)[:, np.newaxis], (1, HOURS_PER_YEAR)).ravel()
+
+        with pytest.raises(InvalidArgumentError, match="Hourly periodicity supports only the empirical distribution"):
+            compute.fit_and_standardize(
+                values,
+                indices.Distribution.gamma,
+                data_start_year=2000,
+                calibration_start_year=2000,
+                calibration_end_year=2001,
+                periodicity=compute.Periodicity.hourly,
+            )
+
+    def test_the_cli_does_not_offer_hourly(self) -> None:
+        assert compute.Periodicity.hourly not in _cli.CLI_PERIODICITIES
+
+        parser = cli_main._build_parser()
+
+        with pytest.raises(SystemExit):
+            parser.parse_args(["--periodicity", "hourly", "--index", "srepi"])

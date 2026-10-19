@@ -2364,8 +2364,8 @@ def prepare_scaled(
         spatial_time_major: Declares that a three-or-more-dimensional ``values`` is a
             time-major block of independent time series, shaped (time, ``*cells``). That is
             how a block is read anyway, except when the first cell axis is a calendar
-            period length (12 or 366), which makes the shape equally readable as a
-            (years, periods, ``*cells``) array; there the caller has to say which it means.
+            period length (12, 366, or 8784), which makes the shape equally readable as
+            a (years, periods, ``*cells``) array; there the caller has to say which it means.
             ``xarray_adapter`` sets this for every block it packs.
         aggregation: Whether each window is summed ("sum", the SPI/SPEI accumulation and
             the default) or averaged ("mean") over ``scale``. A mean is the window sum
@@ -3810,8 +3810,9 @@ def fit_and_standardize(
         data_start_year: The initial year of the input values array.
         calibration_start_year: The initial year to use for the calibration period.
         calibration_end_year: The final year to use for the calibration period.
-        periodicity: The type of time series represented by the input data, either
-            monthly (12 time steps per year) or daily (366 time steps per year).
+        periodicity: The type of time series represented by the input data: monthly
+            (12 time steps per year), daily (366), or hourly (8784), where hourly
+            accepts only the empirical distribution.
         fitting_params: Optional dictionary of pre-computed distribution fitting
             parameters, with the keys "alpha" and "beta" (and optionally
             "prob_zero") when fitting to gamma or beta, "prob_one" as well when
@@ -3858,6 +3859,17 @@ def fit_and_standardize(
     # AttributeError; the branches below need no further distribution check
     if getattr(distribution, "value", None) not in _SUPPORTED_DISTRIBUTIONS:
         raise ValueError(f"Unsupported distribution: {distribution}")
+
+    # an hourly calendar step carries too few calibration values to fit, so only the
+    # rank transform standardizes it; this seam is public, so the rule lives here as
+    # well as in indices.standardized_index (ADR-0019, #1177)
+    if periodicity is Periodicity.hourly and distribution.value != "empirical":
+        raise InvalidArgumentError(
+            "Hourly periodicity supports only the empirical distribution.",
+            argument_name="distribution",
+            argument_value=str(distribution),
+            valid_values="Distribution.empirical",
+        )
 
     # reject a reversed window here, before the dispatch: a complete supplied
     # parameter set skips the resolver calls inside the transforms, so without this

@@ -26,6 +26,7 @@ STANDARDIZED_VALIDATORS = (
     lambda args: indices._validate_scale(args["scale"], args["periodicity"]),
     lambda args: compute.validate_output_scale(args["output_scale"]),
     lambda args: compute._validate_aggregation(args["aggregation"]),
+    lambda args: indices._validate_hourly_distribution(args["periodicity"], args["distribution"]),
 )
 STANDARDIZED_INDEX_VALIDATORS = (
     *STANDARDIZED_VALIDATORS,
