@@ -442,6 +442,73 @@ def _source_entry(name: str, metadata: object) -> dict[str, Any]:
     return entry
 
 
+_Rows = tuple[
+    npt.NDArray[np.int64],
+    npt.NDArray[np.int64],
+    npt.NDArray[np.int64],
+    npt.NDArray[np.int64],
+    npt.NDArray[np.float64],
+]
+
+
+def _concurrent_rows(second: _SourceRuns, onset: int, ending: int) -> _Rows | None:
+    """Return the second runs that overlap one first run as (matched, starts, ends, overlaps, lags)."""
+    lower = int(np.searchsorted(second.end, onset, side="left"))
+    upper = int(np.searchsorted(second.start, ending, side="right"))
+    if lower >= upper:
+        return None
+    starts = np.maximum(onset, second.start[lower:upper])
+    ends = np.minimum(ending, second.end[lower:upper])
+    return (
+        np.arange(lower, upper, dtype=np.int64),
+        starts,
+        ends,
+        ends - starts + 1,
+        np.full(starts.size, np.nan, dtype=np.float64),
+    )
+
+
+def _sequential_rows(
+    second: _SourceRuns,
+    onset: int,
+    ending: int,
+    steps: int,
+    window: tuple[int, int | None],
+    unknown_prefix: npt.NDArray[np.int64],
+) -> tuple[int, _Rows | None]:
+    """Return the bridges rejected as unknown and the accepted second runs after one first run."""
+    low, high = window
+    # a window bound at or past the record makes every later run eligible, and
+    # clamping the key to the record length keeps a huge bound from overflowing
+    lower = int(np.searchsorted(second.start, steps if low >= steps else ending + low, side="left"))
+    if lower >= second.start.size:
+        return 0, None
+    upper = int(
+        np.searchsorted(
+            second.start,
+            steps if high is None or high >= steps else ending + high,
+            side="right",
+        )
+    )
+    if lower >= upper:
+        return 0, None
+    # every candidate whose bridge reaches the first unknown step is rejected, so the accepted
+    # candidates are a prefix of the window and the rejected count needs no per-pair test
+    boundary = int(np.searchsorted(unknown_prefix, unknown_prefix[ending] + 1, side="left")) - 1
+    accepted = min(upper, max(lower, int(np.searchsorted(second.start, boundary, side="left"))))
+    rejected = upper - accepted
+    if lower >= accepted:
+        return rejected, None
+    matched = np.arange(lower, accepted, dtype=np.int64)
+    return rejected, (
+        matched,
+        np.full(matched.size, onset, dtype=np.int64),
+        second.end[matched],
+        np.zeros(matched.size, dtype=np.int64),
+        np.subtract(second.start[matched], ending, dtype=np.float64),
+    )
+
+
 def _match(
     first: _SourceRuns,
     second: _SourceRuns,
@@ -461,7 +528,6 @@ def _match(
     candidates are a prefix of the window, so counting the rejected bridges needs one lookup
     rather than a test per candidate pair.
     """
-    low, high = window
     steps = int(valid_prefix.size) - 1
     # unknown_prefix[i] counts the unknown steps before i; it does not decrease, so the first
     # candidate beyond every observed bridge is one binary search rather than a scan
@@ -473,42 +539,13 @@ def _match(
     for position in range(first.start.size):
         onset, ending = int(first.start[position]), int(first.end[position])
         if mode == "concurrent":
-            lower = int(np.searchsorted(second.end, onset, side="left"))
-            upper = int(np.searchsorted(second.start, ending, side="right"))
-            if lower >= upper:
-                continue
-            starts = np.maximum(onset, second.start[lower:upper])
-            ends = np.minimum(ending, second.end[lower:upper])
-            overlaps = ends - starts + 1
-            lags = np.full(starts.size, np.nan, dtype=np.float64)
-            matched = np.arange(lower, upper, dtype=np.int64)
+            rows = _concurrent_rows(second, onset, ending)
         else:
-            # a window bound at or past the record makes every later run eligible, and
-            # clamping the key to the record length keeps a huge bound from overflowing
-            lower = int(np.searchsorted(second.start, steps if low >= steps else ending + low, side="left"))
-            if lower >= second.start.size:
-                continue
-            upper = int(
-                np.searchsorted(
-                    second.start,
-                    steps if high is None or high >= steps else ending + high,
-                    side="right",
-                )
-            )
-            if lower >= upper:
-                continue
-            # every candidate whose bridge reaches the first unknown step is rejected, so the accepted
-            # candidates are a prefix of the window and the rejected count needs no per-pair test
-            boundary = int(np.searchsorted(unknown_prefix, unknown_prefix[ending] + 1, side="left")) - 1
-            accepted = min(upper, max(lower, int(np.searchsorted(second.start, boundary, side="left"))))
-            unknown_bridges += upper - accepted
-            if lower >= accepted:
-                continue
-            matched = np.arange(lower, accepted, dtype=np.int64)
-            starts = np.full(matched.size, onset, dtype=np.int64)
-            ends = second.end[matched]
-            overlaps = np.zeros(matched.size, dtype=np.int64)
-            lags = np.subtract(second.start[matched], ending, dtype=np.float64)
+            rejected, rows = _sequential_rows(second, onset, ending, steps, window, unknown_prefix)
+            unknown_bridges += rejected
+        if rows is None:
+            continue
+        matched, starts, ends, overlaps, lags = rows
         columns["first_run_id"].append(np.full(matched.size, position, dtype=np.int64))
         columns["second_run_id"].append(matched)
         columns["start_index"].append(starts)

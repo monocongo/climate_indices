@@ -68,6 +68,9 @@ def manual(starts: list[int], ends: list[int], **fields: Any) -> RunSet:
     return dataclasses.replace(runs, **fields) if fields else runs
 
 
+EMPTY = manual([], [])
+
+
 def match(
     first: RunSet,
     second: RunSet,
@@ -368,7 +371,7 @@ def test_empty_catalog_has_stable_dtypes_and_zero_counts(mode: str, lag_window: 
 
 def test_empty_run_sets_produce_an_empty_catalog() -> None:
     """Two empty run sets are valid input and yield no matches."""
-    result = match(manual([], []), manual([], []), steps=6)
+    result = match(EMPTY, EMPTY, steps=6)
     assert len(result) == 0
     assert result.metadata["n_runs"] == {"first": 0, "second": 0}
 
@@ -471,12 +474,13 @@ def test_a_run_crossing_an_unknown_observation_is_rejected(unknown: int, positio
 
 def test_a_non_runset_argument_is_rejected() -> None:
     """Reject an invalid representation with its type, not with an attribute error."""
+    runs, axis, valid = manual([0], [0]), months(4), np.ones(4, dtype=bool)
     with pytest.raises(InputTypeError, match="must be a RunSet"):
         compound.compound_events(
             {"start_index": [0]},  # type: ignore[arg-type]
-            manual([0], [0]),
-            time=months(4),
-            valid=np.ones(4, dtype=bool),
+            runs,
+            time=axis,
+            valid=valid,
             cadence="monthly",
             mode="concurrent",
         )
@@ -516,12 +520,13 @@ def test_identified_runs_are_accepted_as_given() -> None:
 )
 def test_time_axis_must_be_a_complete_cadence_grid(axis: np.ndarray, error: type[Exception], reason: str) -> None:
     """Reject gaps, repeats, NaT, non-datetime labels, and a cadence that does not match the labels."""
+    valid = np.ones(axis.shape, dtype=bool)
     with pytest.raises(error, match=reason):
         compound.compound_events(
-            manual([], []),
-            manual([], []),
+            EMPTY,
+            EMPTY,
             time=axis,
-            valid=np.ones(axis.shape, dtype=bool),
+            valid=valid,
             cadence="monthly",
             mode="concurrent",
         )
@@ -530,13 +535,14 @@ def test_time_axis_must_be_a_complete_cadence_grid(axis: np.ndarray, error: type
 def test_empty_and_multidimensional_time_axes_are_rejected() -> None:
     """Reject an axis without steps and an axis that is not one-dimensional."""
     with pytest.raises(CoordinateValidationError, match="at least one step"):
-        match(manual([], []), manual([], []), steps=0)
+        match(EMPTY, EMPTY, steps=0)
+    axis, valid = np.zeros((2, 2), dtype="datetime64[M]"), np.ones((2, 2), dtype=bool)
     with pytest.raises(DataShapeError, match="one-dimensional cadence grid"):
         compound.compound_events(
-            manual([], []),
-            manual([], []),
-            time=np.zeros((2, 2), dtype="datetime64[M]"),
-            valid=np.ones((2, 2), dtype=bool),
+            EMPTY,
+            EMPTY,
+            time=axis,
+            valid=valid,
             cadence="monthly",
             mode="concurrent",
         )
@@ -581,7 +587,7 @@ def test_valid_mask_must_be_plain_boolean_and_shaped(
 ) -> None:
     """Unknown observations are False, so the mask is Boolean, complete, and unmasked."""
     with pytest.raises(error, match=match_text):
-        match(manual([], []), manual([], []), steps=5, valid=valid)
+        match(EMPTY, EMPTY, steps=5, valid=valid)
 
 
 # --- options ---------------------------------------------------------------------------------
@@ -591,20 +597,20 @@ def test_valid_mask_must_be_plain_boolean_and_shaped(
 def test_unsupported_cadence_is_rejected(cadence: str) -> None:
     """Accept only the two declared cadences."""
     with pytest.raises(InvalidArgumentError, match="cadence"):
-        match(manual([], []), manual([], []), steps=5, cadence=cadence)
+        match(EMPTY, EMPTY, steps=5, cadence=cadence)
 
 
 @pytest.mark.parametrize("mode", ["intersecting", "CONCURRENT", ""])
 def test_unsupported_mode_is_rejected(mode: str) -> None:
     """Accept only concurrent and sequential matching."""
     with pytest.raises(InvalidArgumentError, match="mode"):
-        match(manual([], []), manual([], []), steps=5, mode=mode)
+        match(EMPTY, EMPTY, steps=5, mode=mode)
 
 
 def test_lag_window_is_rejected_for_concurrent_matching() -> None:
     """A lag has no meaning for intersecting pairs, so do not accept a window for them."""
     with pytest.raises(InvalidArgumentError, match="lag_window applies to sequential matching only"):
-        match(manual([], []), manual([], []), steps=5, lag_window=(1, 2))
+        match(EMPTY, EMPTY, steps=5, lag_window=(1, 2))
 
 
 @pytest.mark.parametrize(
@@ -614,7 +620,7 @@ def test_lag_window_is_rejected_for_concurrent_matching() -> None:
 def test_malformed_lag_window_is_rejected(lag_window: Any) -> None:
     """Require an integer tuple with 1 <= low <= high."""
     with pytest.raises(InvalidArgumentError, match="lag_window"):
-        match(manual([], []), manual([], []), steps=5, mode="sequential", lag_window=lag_window)
+        match(EMPTY, EMPTY, steps=5, mode="sequential", lag_window=lag_window)
 
 
 def test_numpy_integer_lag_bounds_are_accepted() -> None:
@@ -632,12 +638,12 @@ def test_numpy_integer_lag_bounds_are_accepted() -> None:
 
 def test_explicit_window_is_recorded_in_the_metadata() -> None:
     """Record the effective window and the matching rule that produced the rows."""
-    unbounded = match(manual([], []), manual([], []), steps=5, mode="sequential")
+    unbounded = match(EMPTY, EMPTY, steps=5, mode="sequential")
     assert unbounded.metadata["lag_window"] == (1, None)
     assert "second.start > first.end" in unbounded.metadata["matching_rule"]
-    windowed = match(manual([], []), manual([], []), steps=5, mode="sequential", lag_window=(2, 4))
+    windowed = match(EMPTY, EMPTY, steps=5, mode="sequential", lag_window=(2, 4))
     assert windowed.metadata["lag_window"] == (2, 4)
-    concurrent = match(manual([], []), manual([], []), steps=5)
+    concurrent = match(EMPTY, EMPTY, steps=5)
     assert concurrent.metadata["lag_window"] is None
 
 
@@ -695,13 +701,13 @@ def test_declared_source_choices_and_extra_keys_are_copied_verbatim() -> None:
 def test_malformed_source_metadata_is_rejected(source_metadata: Any, match_text: str) -> None:
     """Reject a declaration that cannot be recorded faithfully."""
     with pytest.raises(InvalidArgumentError, match=match_text):
-        match(manual([], []), manual([], []), steps=5, source_metadata=source_metadata)
+        match(EMPTY, EMPTY, steps=5, source_metadata=source_metadata)
 
 
 def test_unexpected_source_metadata_keys_are_not_echoed() -> None:
     """Name only the count: a caller key must not reach an error that configured log sinks record."""
     with pytest.raises(InvalidArgumentError, match="subset") as caught:
-        match(manual([], []), manual([], []), steps=5, source_metadata={"credential-abc": {}})
+        match(EMPTY, EMPTY, steps=5, source_metadata={"credential-abc": {}})
     assert "credential-abc" not in str(caught.value)
     assert "credential-abc" not in str(caught.value.argument_value)
 
@@ -819,9 +825,10 @@ def test_manifest_time_bounds_are_normalised_to_the_cadence_unit() -> None:
 
 def test_source_choices_are_validated_before_matching() -> None:
     """Reject a malformed per-source declaration without first paying for the matching."""
+    runs = manual([0], [1])
     with mock.patch.object(events_module, "_match", side_effect=AssertionError("matched before validating")):
         with pytest.raises(InvalidArgumentError, match="min_duration"):
-            match(manual([0], [1]), manual([0], [1]), source_metadata={"first": {"min_duration": 0}})
+            match(runs, runs, source_metadata={"first": {"min_duration": 0}})
 
 
 def test_time_axis_errors_name_the_time_argument() -> None:
@@ -872,11 +879,12 @@ def test_failure_is_logged_and_propagates() -> None:
     """Emit ``calculation_failed`` for a rejected option and re-raise it unchanged."""
     mock_logger = mock.MagicMock()
     mock_logger.bind.return_value = mock_logger
+    runs = manual([0], [1])
     with (
         mock.patch.object(events_module, "_logger", mock_logger),
         pytest.raises(InvalidArgumentError, match="lag_window applies to sequential matching only"),
     ):
-        match(manual([0], [1]), manual([0], [1]), steps=5, lag_window=(1, 2))
+        match(runs, runs, steps=5, lag_window=(1, 2))
     mock_logger.info.assert_called_once_with("calculation_started")
     failed = [call for call in mock_logger.error.call_args_list if call.args[0] == "calculation_failed"]
     assert len(failed) == 1
