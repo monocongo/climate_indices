@@ -31,6 +31,13 @@ _EXPECTED_INDEX_CHOICES = (
     "edi",
     "flood_index",
     "api",
+    "hdd",
+    "cdd",
+    "edd",
+    "wind_profile",
+    "srepi",
+    "demand_index",
+    "srli",
     "all",
 )
 
@@ -75,7 +82,28 @@ def test_consumers_of_computed_pet_run_it_first():
     assert cli_main._INDEX_PIPELINES["all"] == ("spi", "pet", "spei", "pnp", "palmers")
 
 
-@pytest.mark.parametrize("index", ("spi", "spei", "pnp", "pet", "palmers", "kbdi", "pe", "edi", "flood_index", "api"))
+@pytest.mark.parametrize(
+    "index",
+    (
+        "spi",
+        "spei",
+        "pnp",
+        "pet",
+        "palmers",
+        "kbdi",
+        "pe",
+        "edi",
+        "flood_index",
+        "api",
+        "hdd",
+        "cdd",
+        "edd",
+        "wind_profile",
+        "srepi",
+        "demand_index",
+        "srli",
+    ),
+)
 def test_each_registration_declares_its_runner(index):
     registration = cli_main._registry_for(index)
 
@@ -383,6 +411,8 @@ def test_each_registration_declares_exactly_the_flags_it_consumes():
     pe = frozenset({"netcdf_pe", "var_name_pe"})
     calibration = frozenset({"calibration_start_year", "calibration_end_year"})
     scales = frozenset({"scales"})
+    wind = frozenset({"netcdf_wind", "var_name_wind"})
+    values = frozenset({"netcdf_values", "var_name_values"})
     expected = {
         "spi": precip | calibration | scales,
         "spei": precip | temperature | pet | calibration | scales,
@@ -394,6 +424,14 @@ def test_each_registration_declares_exactly_the_flags_it_consumes():
         "edi": precip | pe | calibration,
         "flood_index": precip | pe | calibration | frozenset({"year_start_month"}),
         "api": precip | frozenset({"api_k"}),
+        "hdd": temperature | frozenset({"heating_base_temperature"}),
+        "cdd": temperature | frozenset({"cooling_base_temperature"}),
+        "edd": temperature | frozenset({"heating_base_temperature", "cooling_base_temperature"}),
+        "wind_profile": wind
+        | frozenset({"reference_height", "hub_height", "wind_profile_method", "wind_shear_alpha", "roughness_length"}),
+        "srepi": values | calibration | scales,
+        "demand_index": values | calibration | scales,
+        "srli": values | calibration | scales,
     }
 
     assert {name: registration.consumed_flags for name, registration in cli_main._INDEX_REGISTRY.items()} == expected
@@ -415,6 +453,13 @@ _UNCONSUMED_ARGUMENTS = {
     "edi": ("--api_k", "0.9"),
     "flood_index": ("--api_k", "0.9"),
     "api": ("--scales", "1"),
+    "hdd": ("--api_k", "0.9"),
+    "cdd": ("--api_k", "0.9"),
+    "edd": ("--api_k", "0.9"),
+    "wind_profile": ("--api_k", "0.9"),
+    "srepi": ("--api_k", "0.9"),
+    "demand_index": ("--api_k", "0.9"),
+    "srli": ("--api_k", "0.9"),
     "all": ("--api_k", "0.9"),
 }
 

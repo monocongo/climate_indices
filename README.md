@@ -118,8 +118,8 @@ demand index, SRLI, and energy-drought events:
   SPEIbase, and literature reference data from regression-only coverage; see
   [Validation](#validation).
 - **Command-line interface.** `climate_indices --index
-  {spi,spei,pnp,scaled,pet,palmers,kbdi,pe,edi,flood_index,api,all}` computes indices from
-  NetCDF inputs.
+  {spi,spei,pnp,scaled,pet,palmers,kbdi,pe,edi,flood_index,api,hdd,cdd,edd,wind_profile,srepi,demand_index,srli,all}`
+  computes indices from NetCDF inputs.
 
 ### Project goals
 

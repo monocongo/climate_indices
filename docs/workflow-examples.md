@@ -156,6 +156,64 @@ starts, and API requires `--api_k`, its daily decay constant between 0 and 1.
 `<out_dir>/flood_example_flood_index.nc`, and `<out_dir>/flood_example_api.nc`. Like
 KBDI, these indices are not computed by the `--index all` selection.
 
+### Energy indices daily
+
+```bash
+process_climate_indices --index hdd --periodicity daily \
+--netcdf_temp /data/daily_tas.nc --var_name_temp tas --heating_base_temperature 18 \
+--output_file_base <out_dir>/energy_example
+
+process_climate_indices --index edd --periodicity daily \
+--netcdf_temp /data/daily_tas.nc --var_name_temp tas \
+--heating_base_temperature 18 --cooling_base_temperature 24 \
+--output_file_base <out_dir>/energy_example
+
+process_climate_indices --index wind_profile --periodicity daily \
+--netcdf_wind /data/daily_sfcWind.nc --var_name_wind sfcWind --hub_height 100 \
+--output_file_base <out_dir>/energy_example
+
+process_climate_indices --index srepi --periodicity daily \
+--netcdf_values /data/wind_capacity_factor.nc --var_name_values cf \
+--scales 3 12 --calibration_start_year 1991 --calibration_end_year 2020 \
+--output_file_base <out_dir>/energy_example
+```
+
+The above commands compute the energy indices through the `energy` module, all
+with `--periodicity daily`. The degree days (`hdd`, `cdd`, and `edd`) take a
+daily mean temperature input in °C, or K or °F, which the adapter converts. Each
+needs the base temperature it is defined against: `--heating_base_temperature`
+for `hdd` and `edd`, and `--cooling_base_temperature` for `cdd` and `edd`. The
+output files are `<out_dir>/energy_example_heating_degree_days.nc`,
+`<out_dir>/energy_example_cooling_degree_days.nc`, and
+`<out_dir>/energy_example_energy_degree_days.nc`.
+
+The wind profile extrapolates a wind speed from `--reference_height` (10 m by
+default) to `--hub_height`, by the power law with `--wind_shear_alpha` (1/7 by
+default) or, with `--wind_profile_method log`, by the logarithmic law with
+`--roughness_length`. Each method rejects the argument that belongs to the other.
+Its output file is
+`<out_dir>/energy_example_hub_height_wind_speed.nc`, or
+`<out_dir>/energy_example_hub_height_wind_speed_log.nc` for the logarithmic
+profile.
+
+SREPI, the standardized demand index (`demand_index`), and SRLI (`srli`)
+standardize the series given by `--netcdf_values` and `--var_name_values`: a
+capacity factor or production series for `srepi`, an energy degree day or demand
+series for `demand_index`, and a signed residual-load series for `srli`. All
+three take `--scales`, the optional `--calibration_start_year`,
+`--calibration_end_year`, and `--output_scale` arguments, and the empirical
+distribution, which needs at least ten valid calibration values per calendar
+step. `--periodicity` must match the cadence of the input series: the adapter
+rejects a daily request for a monthly series, and the other way round. Their
+output files carry the scale in the name, for example
+`<out_dir>/energy_example_srepi_03.nc` and
+`<out_dir>/energy_example_standardized_demand_index_12.nc`. Like KBDI and the
+flood indices, the energy indices are not computed by the `--index all`
+selection. The capacity-factor transforms and the energy-drought event
+statistics remain available only from Python: the capacity factors need a power
+curve or a radiation-temperature-wind triple, and the event statistics write a
+per-cell run structure rather than one gridded index.
+
 ### SPEI monthly
 
 ```bash
