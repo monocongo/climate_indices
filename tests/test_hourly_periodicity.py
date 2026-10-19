@@ -9,6 +9,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
+import climate_indices
 from climate_indices import __main__ as cli_main
 from climate_indices import _cli, compute, energy, indices, utils
 from climate_indices.exceptions import CoordinateValidationError, InvalidArgumentError
@@ -277,22 +278,44 @@ class TestHourlyEnergyAdapters:
         values = sign * (np.sin(np.arange(time.size, dtype=float) * 2.0 * np.pi / HOURS_PER_DAY) + 2.0)
         return xr.DataArray(values, coords={"time": time}, dims=("time",), name="series")
 
+    @staticmethod
+    def _numpy_reference(adapter, data: xr.DataArray) -> np.ndarray:
+        """Standardize through the NumPy path and the calendar plan the adapter must reproduce."""
+        values = data.values
+        plan = utils.CalendarPlan.from_year_span(2001, 12, values.size, steps_per_day=HOURS_PER_DAY)
+        standardized = adapter(
+            plan.to_all_leap(values),
+            scale=24,
+            data_start_year=2001,
+            calibration_year_initial=2001,
+            calibration_year_final=2012,
+            periodicity=compute.Periodicity.hourly,
+        )
+        reference: np.ndarray = plan.to_gregorian(standardized)
+        return reference
+
     @pytest.mark.parametrize(
-        ("adapter", "kwargs", "sign"),
+        ("adapter", "sign"),
         [
-            (energy.srli, {"aggregation": "sum"}, 1.0),
-            (energy.srli, {"aggregation": "sum"}, -1.0),
-            (energy.standardized_demand_index, {}, 1.0),
+            (energy.srepi, 1.0),
+            (energy.srli, 1.0),
+            (energy.srli, -1.0),
+            (energy.standardized_demand_index, 1.0),
         ],
-        ids=["srli-positive", "srli-signed", "demand-index"],
+        ids=["srepi", "srli-positive", "srli-signed", "demand-index"],
     )
-    def test_hourly_result_matches_the_input_axis(self, adapter, kwargs, sign) -> None:
+    def test_hourly_result_matches_the_numpy_path(self, adapter, sign) -> None:
         data = self._data(sign)
 
-        result = adapter(data, scale=24, **kwargs)
+        result = adapter(data, scale=24)
+        reference = self._numpy_reference(adapter, data)
 
-        assert result.dims == data.dims
         assert np.array_equal(result["time"].values, data["time"].values)
+        # the first 23 windows are incomplete, and nothing after them is missing
+        assert np.isnan(reference[:23]).all()
+        assert np.isfinite(reference[23:]).all()
+        assert np.abs(reference[23:]).max() > 1.0
+        np.testing.assert_allclose(result.values, reference, equal_nan=True)
 
     def test_hourly_beta_is_rejected_before_the_computation_runs(self) -> None:
         data = self._data().chunk({"time": -1})
@@ -306,7 +329,7 @@ class TestHourlyEnergyAdapters:
         result = energy.srepi(data, scale=24)
 
         assert result.chunks is not None
-        assert np.isfinite(result.compute().values[23:]).all()
+        np.testing.assert_allclose(result.compute().values, energy.srepi(self._data(), scale=24).values, equal_nan=True)
 
 
 class TestHourlyScaleBounds:
@@ -323,48 +346,55 @@ class TestHourlyScaleBounds:
 
 
 class TestHourlyTimeMajorBlock:
-    """A time-major hourly block keeps its cell dimensions and partial final year."""
+    """A time-major hourly block is standardized cell by cell, partial final year included."""
 
-    def test_block_is_standardized_cell_by_cell(self) -> None:
-        years = 12
-        values = np.repeat(
-            np.arange(years, dtype=float)[:, np.newaxis, np.newaxis],
-            HOURS_PER_YEAR * 3,
-            axis=1,
-        )
-        # (time, cell, 1): the third axis keeps the shape out of the series reading
-        block = values.reshape(years, HOURS_PER_YEAR, 3, 1)
-        time_major = np.concatenate([block, block], axis=1).reshape(-1, 3, 1)
+    YEARS = 12
+    TAIL_HOURS = 100
+    CELLS = 3
 
-        result = indices.standardized_index(
-            time_major,
+    @classmethod
+    def _series(cls, cell: int) -> np.ndarray:
+        """Return one cell's series, `TAIL_HOURS` short of whole years."""
+        rng = np.random.default_rng(cell)
+        return rng.normal(size=cls.YEARS * HOURS_PER_YEAR - cls.TAIL_HOURS)
+
+    @staticmethod
+    def _standardize(values: np.ndarray, **kwargs) -> np.ndarray:
+        result: np.ndarray = indices.standardized_index(
+            values,
             1,
             indices.Distribution.empirical,
             data_start_year=2000,
             calibration_year_initial=2000,
             calibration_year_final=2009,
             periodicity=compute.Periodicity.hourly,
-            spatial_time_major=True,
+            **kwargs,
         )
+        return result
 
-        assert result.shape == (time_major.shape[0], 3, 1)
-        assert np.isfinite(result).all()
+    def test_block_matches_the_per_cell_series(self) -> None:
+        series = [self._series(cell) for cell in range(self.CELLS)]
+        block = np.stack(series, axis=1)[..., np.newaxis]
 
-    def test_unambiguous_shape_is_accepted_without_declaration(self) -> None:
-        values = np.tile(np.arange(12, dtype=float)[:, np.newaxis], (1, HOURS_PER_YEAR))
-        series = values.ravel()
+        result = self._standardize(block, spatial_time_major=True)
 
-        result = indices.standardized_index(
-            series,
-            1,
-            indices.Distribution.empirical,
-            data_start_year=2000,
-            calibration_year_initial=2000,
-            calibration_year_final=2009,
-            periodicity=compute.Periodicity.hourly,
-        )
+        assert result.shape == block.shape
+        for cell, cell_series in enumerate(series):
+            np.testing.assert_allclose(result[:, cell, 0], self._standardize(cell_series), equal_nan=True)
+        # cells carry different data, so a transform that mixed or ignored them would show here
+        assert not np.allclose(result[:, 0, 0], result[:, 1, 0])
+        assert not np.allclose(result[:, 0, 0], block[:, 0, 0])
 
-        assert result.size == series.size
+    def test_unambiguous_shape_needs_no_declaration(self) -> None:
+        block = np.stack([self._series(cell) for cell in range(self.CELLS)], axis=1)[..., np.newaxis]
+
+        np.testing.assert_array_equal(self._standardize(block), self._standardize(block, spatial_time_major=True))
+
+    def test_a_first_cell_axis_of_the_period_length_must_be_declared(self) -> None:
+        ambiguous = np.zeros((self.YEARS, HOURS_PER_YEAR, 1))
+
+        with pytest.raises(ValueError, match="spatial_time_major"):
+            self._standardize(ambiguous)
 
 
 class TestHourlySurfaceGates:
@@ -393,6 +423,13 @@ class TestHourlySurfaceGates:
                 calibration_year_final=2001,
                 periodicity=compute.Periodicity.hourly,
             )
+
+    def test_fit_diagnostics_adapter_rejects_hourly_before_building_a_graph(self) -> None:
+        time = pd.date_range("2001-01-01", "2012-12-31 23:00", freq="h")
+        data = xr.DataArray(np.ones(time.size), coords={"time": time}, dims=("time",)).chunk({"time": -1})
+
+        with pytest.raises(InvalidArgumentError, match="supported only by the standardized indices"):
+            climate_indices.fit_diagnostics(data, 24, indices.Distribution.gamma)
 
     def test_compute_seam_rejects_a_parametric_hourly_fit(self) -> None:
         values = np.tile(np.arange(2, dtype=float)[:, np.newaxis], (1, HOURS_PER_YEAR)).ravel()
