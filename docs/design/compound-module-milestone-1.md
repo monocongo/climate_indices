@@ -955,7 +955,7 @@ No Rust gate is needed unless later work touches native code or native dispatch.
 4. **Conservative support:** The minimum counts, complete-month aggregation, and complete-year inference segment policy are approved. They can exclude sparse real records.
 5. **Bootstrap evidence:** The year-block heuristic is approved as the proposed default, conditional on CMP-07's characterization gate. It is not a universal persistence correction.
 6. **Reference logistics:** CMP-02 may retrieve the approximately 3 GB drought–heatwave source pair after its blockers resolve. No large download occurred during planning.
-7. **Delivery:** The release target remains unassigned pending the contracts and reference audit. This plan does not assume that 3.1.0 is available.
+7. **Delivery:** Targeted for 3.1.0, in the milestone `v3.1.0 — Compound module and flood foundation`. The release waits on the measured published reproduction in CMP-10 (#1374) and on the bootstrap calibration in #1398. Until both land, the milestone evidence stays regression, analytic, and synthetic.
 
 Main scientific risks are sparse joint events, shared seasonal drivers, upstream fit error,
 nonstationarity, overlapping Timescales, and treating local p-values or observed lags as stronger evidence than they provide.
