@@ -308,8 +308,8 @@ Measured peak memory per task (`scripts/measure_compound_xarray_memory.py`, repo
 | Stage | Fixed per task | Per cell | Measured / design budget, per cell | Cells in 1 GiB |
 | --- | --- | --- | --- | --- |
 | `harmonize`, daily, 3 sources, 100 years | 2.7 MiB | 2.40 MiB | 1.28 | about 420 |
-| `joint_statistics`, same prepared Dataset | 0.9 MiB | 0.60 MiB | 0.32 | about 1,700 |
-| `conditional_probability`, lag `(0, 30)` | 0.9 MiB | 0.70 MiB | 0.37 | about 1,460 |
+| `joint_statistics`, same prepared Dataset | 1.4 MiB | 0.59 MiB | 0.32 | about 1,700 |
+| `conditional_probability`, lag `(0, 30)` | 1.1 MiB | 0.70 MiB | 0.37 | about 1,470 |
 | `bootstrap_dependence`, monthly, 100 years, 1,999 resamples | 0.9 MiB | 0.015 MiB | 0.20 | memory is not the limit |
 
 The ADR-0022 planning budget understates `harmonize` by about 28%. The bootstrap reuses one
