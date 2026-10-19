@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from io import StringIO
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import numpy as np
 import pytest
@@ -84,6 +84,15 @@ class TestGetProcessMemoryMb:
     def test_returns_none_when_psutil_unavailable(self):
         """get_process_memory_mb returns None when psutil is not installed."""
         with patch.dict("sys.modules", {"psutil": None}):
+            assert get_process_memory_mb() is None
+
+    @pytest.mark.parametrize("operation", ["process", "memory_info"])
+    @pytest.mark.parametrize("error_type", [OSError, RuntimeError])
+    def test_returns_none_when_process_inspection_fails(self, operation: str, error_type: type[Exception]) -> None:
+        psutil = Mock()
+        target = psutil.Process if operation == "process" else psutil.Process.return_value.memory_info
+        target.side_effect = error_type("RSS unavailable")
+        with patch.dict("sys.modules", {"psutil": psutil}):
             assert get_process_memory_mb() is None
 
 
@@ -187,6 +196,13 @@ class TestCheckLargeArrayMemory:
             assert result is not None
             assert "array_memory_mb" in result
             assert "process_memory_mb" not in result
+
+    def test_retains_array_metrics_when_process_inspection_fails(self) -> None:
+        psutil = Mock()
+        psutil.Process.side_effect = OSError("RSS unavailable")
+        with patch.dict("sys.modules", {"psutil": psutil}):
+            result = check_large_array_memory(np.zeros(1), extra_bytes=LARGE_ARRAY_THRESHOLD_BYTES)
+        assert result == {"array_memory_mb": 1024.0}
 
 
 class TestInputElementsInLogs:

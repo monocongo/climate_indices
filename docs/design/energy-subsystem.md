@@ -9,9 +9,9 @@ hold regardless of scope live in
 [ADR-0019](../adr/0019-energy-module-api-and-aggregation.md); this note holds the
 per-index naming, units, and argument contracts, plus what is deferred.
 The NumPy wind-profile functions are implemented by #1165, degree days by #1164,
-physical-transform adapters by #1166, event statistics by #1173, and the NumPy
-PV capacity factor by #1176. Other transforms and the standardized energy
-xarray tier remain planned.
+physical-transform adapters by #1166, and event statistics by #1173.
+The NumPy wind and PV capacity-factor transforms are implemented by #1175 and #1176.
+Their DataArray adapters and the standardized energy xarray tier remain planned.
 
 ## Decision
 
@@ -129,7 +129,7 @@ in-house, dependency-free.
 | `energy.energy_degree_days()` | `temperature` | °C in, °C day out | HDD + CDD; keywords `heating_base_temperature`, `cooling_base_temperature` |
 | `energy.hub_height_wind_speed()` | `wind_speed`, `reference_height`, `hub_height` | m s⁻¹ | `method="power"` (default), with `alpha=1/7` by default per #1165, or `"log"`, with `roughness_length` |
 | `energy.wind_shear_exponent()` | `wind_speed_lower`, `wind_speed_upper` | dimensionless | per-sample two-level shear; keyword-only `lower_height=10`, `upper_height=100` in metres |
-| `energy.wind_capacity_factor()` | `hub_wind_speed`, `power_curve` | dimensionless [0, 1] | generic documented reference curve; not plant engineering |
+| `energy.wind_capacity_factor()` | `hub_wind_speed`, required `power_curve` | dimensionless [0, 1] | NumPy; explicit `"generic"` cubic or `(speeds, capacity_factors)` table; optional `air_density`; not plant engineering |
 | `energy.pv_capacity_factor()` | `ssrd`, `temperature`, `wind_speed` | dimensionless [0, 1] | Jerez reference configuration; mean flux W m⁻² in; NumPy only |
 
 Wind profiles use scalar finite positive heights in metres; speeds and power-law
@@ -139,6 +139,14 @@ displacement height. Shear is NaN for calm, negative, or non-finite wind pairs;
 positive inverted profiles retain negative exponents, as confirmed for #1165.
 Independent-implementation comparisons cover the profile arithmetic, not observed-wind
 prediction; shear recovery is only algebraic consistency.
+
+Wind capacity factors use xclim's generic 3.5/13/25 m s⁻¹ thresholds unless overridden.
+The cubic curve assigns zero at cut-in, one at rated, and zero at cut-out.
+Tables use linear interpolation, include both endpoints, and return zero outside their range.
+Optional density correction evaluates either curve at `v * (air_density/1.225)**(1/3)`.
+The [published contract](../energy_applications.md#wind-capacity-factor-contract)
+records units, missing values, averaging order, and evidence limits.
+C3S has no matched numerical curve; the tests provide specification evidence only.
 
 The PV function uses Jerez et al. (2015), Methods equations 1–3, with fixed
 monocrystalline-silicon coefficients. Inputs are mean radiation in W m⁻²,

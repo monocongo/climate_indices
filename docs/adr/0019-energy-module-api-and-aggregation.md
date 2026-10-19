@@ -38,6 +38,13 @@ summaries through `runs.summarize_runs()`. Pooling, elapsed duration, and freque
 follow the maintainer-approved contract in the energy subsystem design note.
 The energy event xarray adapter remains deferred to #1174.
 
+Amended by the wind capacity-factor implementation
+([#1175](https://github.com/monocongo/climate_indices/issues/1175)):
+`energy.wind_capacity_factor()` now implements decision 7's reference transform.
+The required `power_curve` selects a generic cubic curve or a normalized table.
+Optional density correction applies before curve evaluation. This function is NumPy-only;
+its specification checks do not validate actual generation or match a C3S turbine model.
+
 Amended by the PV implementation
 ([#1176](https://github.com/monocongo/climate_indices/issues/1176)):
 `energy.pv_capacity_factor()` implements the Jerez reference configuration on
