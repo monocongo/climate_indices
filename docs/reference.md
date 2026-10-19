@@ -125,7 +125,8 @@ Copy-and-adapt invocations are in {doc}`workflow-examples`.
 
 ### climate_indices.energy
 
-NumPy wind-resource proxies, not actual energy generation. xarray/Dask adapters
+NumPy degree-day, wind-resource, and standardized-index proxies (SREPI, demand),
+not actual energy generation or load. Standardized-index xarray/Dask adapters
 remain planned; see {doc}`energy_applications` for scope and validation limits.
 
 ```{eval-rst}
