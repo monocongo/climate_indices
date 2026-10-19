@@ -30,7 +30,7 @@ HOURS_PER_YEAR = compute.Periodicity.hourly.period_length
 DATA_START_YEAR = 1980
 CALIBRATION_PERIOD = (1981, 2010)
 DEFAULT_YEARS = 41
-DEFAULT_CELLS = 5
+DEFAULT_CELLS = 25
 
 
 @dataclass(frozen=True)
@@ -43,8 +43,12 @@ class Measurement:
     peak_mebibytes: float
 
 
-def _hourly_block(years: int, cells: tuple[int, ...] = ()) -> np.ndarray:
-    """Build a deterministic hourly block shaped (time, ``*cells``)."""
+def _hourly_block(years: int, cells: int = 0) -> np.ndarray:
+    """Build a deterministic hourly series, or a time-major block of ``cells`` cells.
+
+    The block is three-dimensional, (time, cells, 1), because a two-dimensional
+    (time, cells) input is read as one series in the legacy (years, periods) layout.
+    """
     time_steps = years * HOURS_PER_YEAR
     hours_of_year = np.arange(time_steps) % HOURS_PER_YEAR
     diurnal = np.sin(2.0 * np.pi * hours_of_year / 24.0) + 2.0
@@ -52,8 +56,8 @@ def _hourly_block(years: int, cells: tuple[int, ...] = ()) -> np.ndarray:
     series = 1.5 + diurnal + seasonal
     if not cells:
         return series
-    offsets = np.arange(np.prod(cells, dtype=int), dtype=float).reshape(cells) / 10.0
-    return np.asarray(series[..., np.newaxis] + offsets)
+    offsets = (np.arange(cells, dtype=float) / 10.0).reshape(1, cells, 1)
+    return np.asarray(series[:, np.newaxis, np.newaxis] + offsets)
 
 
 def _measure(name: str, values: np.ndarray, call: Callable[[], object]) -> Measurement:
@@ -71,8 +75,8 @@ def _run(years: int, cells: int) -> list[Measurement]:
     """Measure the series and gridded hourly calls for a span and grid width."""
     span = (DATA_START_YEAR, DATA_START_YEAR + years - 1)
     measurements: list[Measurement] = []
-    for name, cell_shape in (("series", ()), ("grid", (cells,))):
-        values = _hourly_block(years, cell_shape)
+    for name, block_cells in (("series", 0), ("grid", cells)):
+        values = _hourly_block(years, block_cells)
         call = lambda values=values: energy.srepi(  # noqa: E731 - keeps the timing window tight
             values,
             scale=24 * 30,
@@ -81,6 +85,7 @@ def _run(years: int, cells: int) -> list[Measurement]:
             calibration_year_final=CALIBRATION_PERIOD[1],
             periodicity=compute.Periodicity.hourly,
             aggregation="mean",
+            spatial_time_major=values.ndim > 1,
         )
         call()  # warm-up
         measurements.append(_measure(name, values, call))

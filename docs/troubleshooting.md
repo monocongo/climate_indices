@@ -359,9 +359,9 @@ result = indices.eddi(
 :::{warning}
 **Error:** `ValueError: Invalid shape of input array: (30, 12, 2) -- a (time, *cells) block whose first cell axis is a calendar period length is ambiguous with a (years, periods, *cells) array; declare it with spatial_time_major=True`
 
-**Cause:** A `(time, *cells)` block whose first cell axis is a calendar period length (12 or 366) is structurally identical to a `(years, periods, *cells)` array. Reading one as the other returns plausible numbers rather than failing, so `indices.spi`, `indices.spei`, and `compute.prepare_scaled` refuse the shape until the caller says which reading is meant.
+**Cause:** A `(time, *cells)` block whose first cell axis is a calendar period length (12, 366, or 8784) is structurally identical to a `(years, periods, *cells)` array. Reading one as the other returns plausible numbers rather than failing, so `indices.spi`, `indices.spei`, and `compute.prepare_scaled` refuse the shape until the caller says which reading is meant.
 
-**Solution:** Reorder the cell axes so the first one is not 12 or 366, or declare the block:
+**Solution:** Reorder the cell axes so the first one is not 12, 366, or 8784, or declare the block:
 
 ```python
 from climate_indices import indices
@@ -657,7 +657,9 @@ ______________________________________________________________________
 
 **Error (daily):** `InvalidArgumentError: Invalid scale argument: 2197. Scale must be an integer in the range [1, 2196]. Common scales: 1 (daily), 7 (weekly), 30 (monthly), 90 (seasonal), 365 (annual).`
 
-**Cause:** The `scale` parameter is outside the valid range (1-72 for monthly data, 1-2196 for daily data) or is not an integer.
+**Error (hourly):** `InvalidArgumentError: Invalid scale argument: 52705. Scale must be an integer in the range [1, 52704]. Common scales: 24 (daily), 168 (weekly), 720 (monthly), 2160 (seasonal), 8760 (annual, 8784 in the 366-day layout).`
+
+**Cause:** The `scale` parameter is outside the valid range (1-72 for monthly data, 1-2196 for daily data, 1-52704 for hourly data) or is not an integer.
 
 **Solution:** Use a valid scale value:
 
