@@ -107,8 +107,10 @@ def test_namespace_is_not_re_exported_from_the_root() -> None:
     assert not hasattr(climate_indices, "conditional_probability")
     assert sorted(compound.__all__) == [
         "AlignedHazards",
+        "CompoundEventSet",
         "ConditionalResult",
         "JointResult",
+        "compound_events",
         "conditional_probability",
         "harmonize",
         "joint_statistics",
