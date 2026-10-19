@@ -821,7 +821,7 @@ scheduler at CONUS scale, not a reason to revisit the vectorization work
 
 ## Rust PET kernels vs the Python reference (#1276, RUST-006)
 
-The PET kernels #1276 ports (`climate-core`'s `eto::thornthwaite`,
+The PET kernels #1276 ports (`climate-indices`'s `eto::thornthwaite`,
 `eto::hargreaves`, `pm_eto::pm_eto`, and `pm_eto::penman_monteith_eto`) were timed
 against the pure-Python implementations they reproduce exactly (`rtol = atol =
 1e-10`, identical NaN positions). These are ad-hoc measurements rather than a

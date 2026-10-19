@@ -218,6 +218,20 @@ jobs:
       - name: Run Cargo tests
         run: cargo test --workspace
 
+      # Packaging readiness: `climate-indices` publishes on its own 0.x track
+      # (docs/adr/0021), while `climate-py` must stay unpublishable by
+      # construction. `--dry-run` packages and verifies the crate without
+      # uploading anything.
+      - name: Check crate packaging
+        run: |
+          cargo package --list -p climate-indices | tee package-files.txt
+          for required in Cargo.toml README.md LICENSE NUMERICS.md src/lib.rs; do
+            grep -qx "$required" package-files.txt
+          done
+          cargo publish --dry-run -p climate-indices
+          cargo metadata --no-deps --format-version 1 \
+            | jq -e '.packages[] | select(.name == "climate-py") | .publish == []'
+
   # Verify the crate in a container with no Python interpreter or binding tools.
   rust-standalone:
     runs-on: ubuntu-latest
@@ -248,7 +262,7 @@ jobs:
                   done
                 done
               done
-              cargo test --locked -p climate-core
+              cargo test --locked -p climate-indices
             '
 
   # The core suite with the Rust extension built, on the pull-request boundary

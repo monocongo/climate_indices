@@ -2,12 +2,14 @@
 
 ## Status
 
-Accepted.
+Amended.
 This record implements
 [CRATE-03 — Design the public Rust API surface](https://github.com/monocongo/climate_indices/issues/1307).
 The maintainer approved retaining borrowed ndarray views in the public Rust API.
-{doc}`0021-climate-indices-crate-identity` defines the planned package identity.
-The current package remains `climate-core`; CRATE-05 owns its rename.
+{doc}`0021-climate-indices-crate-identity` defines the package identity.
+CRATE-05 ([#1309](https://github.com/monocongo/climate_indices/issues/1309)) renamed the
+package from `climate-core` to `climate-indices` and moved it to
+`crates/climate-indices`, so the import path below is `climate_indices`.
 
 ## Context
 
@@ -78,7 +80,7 @@ The approved choice accepts that compatibility cost and preserves the existing k
    Existing public structs retain their fields and remain directly constructible.
 
 6. **Enforce safety and documentation at the crate boundary.**
-   `climate-core` enables `#![forbid(unsafe_code)]` and `#![deny(missing_docs)]`.
+   `climate-indices` enables `#![forbid(unsafe_code)]` and `#![deny(missing_docs)]`.
    The unsafe-code restriction applies to this crate, not its dependencies.
    ndarray's `s!` macro contains an `allow(unsafe_code)` attribute incompatible with `forbid`.
    Equivalent safe axis-slicing methods replace those macro calls, including in tests.
@@ -92,11 +94,11 @@ The approved choice accepts that compatibility cost and preserves the existing k
 
 ## Compiling sketch and validation
 
-The crate-level rustdoc in `crates/climate-core/src/lib.rs` demonstrates a single-series call,
+The crate-level rustdoc in `crates/climate-indices/src/lib.rs` demonstrates a single-series call,
 a grid call, calendar-column fitting, and typed error handling.
 The `MissingDayPolicy` rustdoc demonstrates downstream matching with a wildcard arm.
-These examples use the current `climate_core` import path and a direct ndarray dependency.
-`cargo test -p climate-core --doc` compiles and executes them as downstream callers.
+These examples use the `climate_indices` import path and a direct ndarray dependency.
+`cargo test -p climate-indices --doc` compiles and executes them as downstream callers.
 The synthetic fit sample illustrates shape conventions, not a sufficient scientific Calibration Period.
 
 The workspace build and native Python parity tests verify that `climate-py` still consumes the surface.
@@ -115,10 +117,12 @@ This record makes no new measured accuracy claim.
 
 Adding `non_exhaustive` intentionally requires wildcard arms in downstream exhaustive matches.
 The existing Python bindings already use a wildcard for `ClimateError` and still construct the other enums normally.
-The current package remains unpublished, and this task does not change package versions or release automation.
+The package is now `climate-indices`; CRATE-05 performed the rename and added the
+packaging metadata, and the first real crate release stays with
+[CRATE-11](https://github.com/monocongo/climate_indices/issues/1315).
 
 - [CRATE-04 — Numerical contract](https://github.com/monocongo/climate_indices/issues/1308) owns measured per-kernel accuracy contracts.
-- [CRATE-05 — Packaging](https://github.com/monocongo/climate_indices/issues/1309) owns the package, directory, and import rename to `climate-indices`.
-  It must update the compiling rustdoc imports as part of that rename.
+- [CRATE-05 — Packaging](https://github.com/monocongo/climate_indices/issues/1309) performed the package, directory, and import rename to `climate-indices`,
+  and updated the compiling rustdoc imports with it.
 - [CRATE-06 — Standalone validation](https://github.com/monocongo/climate_indices/issues/1310) owns standalone reference fixtures.
 - [CRATE-07 — Rust-user documentation](https://github.com/monocongo/climate_indices/issues/1311) owns full examples and guides beyond this API sketch.

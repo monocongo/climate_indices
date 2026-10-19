@@ -189,7 +189,7 @@ the port is only finished when the two agree at `rtol = atol = 1e-10` with ident
 NaN positions. The architecture is decided in
 [ADR 0017](adr/0017-rust-core-acceleration-backend.md); the crate layout, the
 already-ported seams, and the dispatch rules are in
-[architecture.md](architecture.md#optional-rust-backend). `crates/climate-core/src/gamma.rs`
+[architecture.md](architecture.md#optional-rust-backend). `crates/climate-indices/src/gamma.rs`
 and its dispatch in `src/climate_indices/compute.py` are the reference implementation
 of every step below.
 
@@ -306,8 +306,8 @@ The `//!` crate/domain header and the `///` block above each public kernel state
 
 ### 3. Port the kernel
 
-Put the kernel in `crates/climate-core/src/`, in the module that owns the index
-family, and declare that module in `crates/climate-core/src/lib.rs`
+Put the kernel in `crates/climate-indices/src/`, in the module that owns the index
+family, and declare that module in `crates/climate-indices/src/lib.rs`
 (`pub mod <family>;`) so `climate-py` can reach it by module path. The crate is pure
 Rust: no PyO3, no NumPy bindings, no Python exceptions. Where SciPy evaluates a
 special function, port the routine SciPy evaluates into `special/` (see the Cephes
@@ -319,7 +319,7 @@ fast-math or fused kernel: `[profile.release]` keeps IEEE semantics on purpose.
 ### 4. Add the binding and the stub
 
 Add the `#[pyfunction]` to `crates/climate-py/src/lib.rs`, converting arrays at the
-boundary and returning only `climate-core` types across it; that crate holds no
+boundary and returning only `climate-indices` types across it; that crate holds no
 algorithm. Register it in the `#[pymodule]` in that file with
 `m.add_function(wrap_pyfunction!(<kernel>, m)?)?`: a `#[pyfunction]` that is not
 registered is never exposed to Python. Add the matching signature to

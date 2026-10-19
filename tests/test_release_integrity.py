@@ -389,9 +389,26 @@ def test_standalone_rust_job_checks_the_crate_without_python() -> None:
     assert "for name in python python2 python3 python2.* python3.* uv maturin; do" in job
     assert '[ -x "$tool" ] || continue' in job
     assert "exit 1" in job
-    assert "cargo test --locked -p climate-core" in job
+    assert "cargo test --locked -p climate-indices" in job
     assert "setup-python" not in job
     assert "setup-uv" not in job
+
+
+def test_rust_job_proves_the_crates_package_correctly() -> None:
+    """`climate-indices` must package with its README and license, and `climate-py` must not.
+
+    `cargo publish --dry-run` resolves the packaged file list and builds it, which fails
+    if a file the crate includes at compile time (`README.md`, `NUMERICS.md`) is missing
+    from the package. `climate-py` inherits `publish = false`, so its metadata entry is
+    an empty publish list; that is what makes it unpublishable by construction.
+    """
+    job = _native_jobs()["rust"]
+
+    assert "cargo package --list -p climate-indices" in job
+    for required in ("Cargo.toml", "README.md", "LICENSE", "NUMERICS.md", "src/lib.rs"):
+        assert 'grep -qx "$required" package-files.txt' in job, required
+    assert "cargo publish --dry-run -p climate-indices" in job
+    assert 'select(.name == "climate-py") | .publish == []' in job
 
 
 def test_native_jobs_run_on_every_event_and_pure_python_legs_stay_rust_free() -> None:

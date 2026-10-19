@@ -19,7 +19,7 @@ use crate::ClimateError;
 /// [`recurrence_inputs`] also accepts policy names for language bindings.
 ///
 /// ```
-/// use climate_core::recurrence::MissingDayPolicy;
+/// use climate_indices::recurrence::MissingDayPolicy;
 ///
 /// let policy = MissingDayPolicy::Bridge { max_gap_days: 2 };
 /// let gap_limit = match policy {

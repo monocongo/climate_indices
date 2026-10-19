@@ -55,7 +55,7 @@ Those rows record only matching NaN positions or signed infinities, not a numeri
 
 ## Direct special-function measurements
 
-`crates/climate-core/examples/special_accuracy.rs` prints scalar results for direct comparison with SciPy.
+`crates/climate-indices/examples/special_accuracy.rs` prints scalar results for direct comparison with SciPy.
 Gamma probes cross 14 shape values with 14 argument values from zero through 1e6, infinity, and NaN.
 Quantile probes include 1e-300, central probabilities, both endpoints, and invalid inputs.
 Normal-CDF probes include both tails through +/-40, zero, infinities, and NaN.
@@ -88,6 +88,6 @@ uv run maturin develop --release
 uv run python scripts/native_parity_maxima.py --write-contract
 ```
 
-The second command also runs `cargo run -p climate-core --example special_accuracy --quiet`.
+The second command also runs `cargo run -p climate-indices --example special_accuracy --quiet`.
 Run `uv run pytest tests/test_native_parity_registry.py` to exercise the same deterministic workflow comparisons and property draws.
 Cross-platform differences can change the maxima. Regenerate the page only after reviewing those differences.

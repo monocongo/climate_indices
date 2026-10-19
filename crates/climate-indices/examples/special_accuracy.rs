@@ -1,7 +1,7 @@
 //! Print deterministic scalar probes for `scripts/native_parity_maxima.py --write-contract`.
 //! The reporting script compares these values directly with SciPy, including non-finite cases.
 
-use climate_core::special::{igam, igamc, ndtr, ndtri, norm_ppf};
+use climate_indices::special::{igam, igamc, ndtr, ndtri, norm_ppf};
 
 fn main() {
     let gamma_points = [

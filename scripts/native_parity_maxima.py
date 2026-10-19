@@ -149,7 +149,7 @@ def contract_report(runs: list[parity_registry.ParityRun], scalar_errors: dict[s
             "",
             "## Direct special-function measurements",
             "",
-            "`crates/climate-core/examples/special_accuracy.rs` prints scalar results for direct comparison with SciPy.",
+            "`crates/climate-indices/examples/special_accuracy.rs` prints scalar results for direct comparison with SciPy.",
             "Gamma probes cross 14 shape values with 14 argument values from zero through 1e6, infinity, and NaN.",
             "Quantile probes include 1e-300, central probabilities, both endpoints, and invalid inputs.",
             "Normal-CDF probes include both tails through +/-40, zero, infinities, and NaN.",
@@ -183,7 +183,7 @@ def contract_report(runs: list[parity_registry.ParityRun], scalar_errors: dict[s
             "uv run python scripts/native_parity_maxima.py --write-contract",
             "```",
             "",
-            "The second command also runs `cargo run -p climate-core --example special_accuracy --quiet`.",
+            "The second command also runs `cargo run -p climate-indices --example special_accuracy --quiet`.",
             "Run `uv run pytest tests/test_native_parity_registry.py` to exercise the same deterministic workflow comparisons and property draws.",
             "Cross-platform differences can change the maxima. Regenerate the page only after reviewing those differences.",
             "",
@@ -209,14 +209,14 @@ def main() -> int:
         if cargo is None:
             raise FileNotFoundError("cargo is required to regenerate the numerical contract")
         probes = subprocess.run(  # nosec B603 - The resolved Cargo path and arguments are trusted local inputs.
-            [cargo, "run", "-p", "climate-core", "--example", "special_accuracy", "--quiet"],
+            [cargo, "run", "-p", "climate-indices", "--example", "special_accuracy", "--quiet"],
             cwd=ROOT,
             check=True,
             capture_output=True,
             text=True,
         )
         report = contract_report(runs, special_errors(probes.stdout))
-        (ROOT / "crates/climate-core/NUMERICS.md").write_text(report, encoding="utf-8")
+        (ROOT / "crates/climate-indices/NUMERICS.md").write_text(report, encoding="utf-8")
 
     print(f"Parity maxima measured on {measured_platform()}.")
     print()
