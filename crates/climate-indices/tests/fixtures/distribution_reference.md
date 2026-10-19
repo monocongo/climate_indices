@@ -145,5 +145,5 @@ These properties supplement the frozen references; they do not replace them.
 Run the standalone suite with:
 
 ```bash
-cargo test -p climate-core --test distribution_reference
+cargo test -p climate-indices --test distribution_reference
 ```

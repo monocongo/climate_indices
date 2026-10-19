@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use climate_core::{palmer, palmer_pdi, palmer_wells, palmer_zindex, self_calibration};
+use climate_indices::{palmer, palmer_pdi, palmer_wells, palmer_zindex, self_calibration};
 use ndarray::{Array1, Array2, Array3};
 
 const ATOL: f64 = 1e-10;

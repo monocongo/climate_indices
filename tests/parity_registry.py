@@ -1,7 +1,7 @@
 """One parity registry and harness shared by every ported Rust kernel.
 
 Each entry names a Python entry point, the extension module its dispatch lives
-behind, the ``climate-core`` kernels that entry must reach, and the input family
+behind, the ``climate-indices`` kernels that entry must reach, and the input family
 its values are drawn from. ``run_parity`` computes the same entry twice -- once
 through the Rust extension behind a recorder, once with the dispatch module's
 ``_native`` set to None -- and compares the outcomes at the entry's tolerance,

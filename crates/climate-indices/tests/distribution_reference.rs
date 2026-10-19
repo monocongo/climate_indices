@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use climate_core::{eddi, gamma, loglogistic, pci, pearson, pnp, recurrence, special};
+use climate_indices::{eddi, gamma, loglogistic, pci, pearson, pnp, recurrence, special};
 use ndarray::{Array2, array, s};
 
 fn fixture(name: &str) -> BTreeMap<String, Array2<f64>> {
@@ -267,7 +267,7 @@ fn recurrence_builder_and_runner_match_explicit_state_and_gap_expectations() {
             "unknown",
             1
         ),
-        Err(climate_core::ClimateError::UnknownNanPolicy { .. })
+        Err(climate_indices::ClimateError::UnknownNanPolicy { .. })
     ));
 }
 

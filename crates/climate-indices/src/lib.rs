@@ -38,7 +38,7 @@
 //! a copy of the input. Its output has the same shape as the input.
 //!
 //! ```
-//! use climate_core::{ClimateError, flood::effective_precipitation};
+//! use climate_indices::{ClimateError, flood::effective_precipitation};
 //! use ndarray::{Axis, array};
 //!
 //! let series_mm = array![1.0, 2.0, 3.0];
@@ -63,7 +63,7 @@
 //! The result below is a probability, not SPI.
 //!
 //! ```
-//! use climate_core::{ClimateError, gamma::{gamma_parameters, gamma_probabilities}};
+//! use climate_indices::{ClimateError, gamma::{gamma_parameters, gamma_probabilities}};
 //! use ndarray::{Array1, Array2};
 //!
 //! let (years, steps, cells) = (3, 12, 2);
@@ -116,6 +116,11 @@ mod reduction;
 pub mod self_calibration;
 pub mod special;
 
+// compiles and runs the README example under `cargo test --doc`
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;
+
 /// Version of this crate, re-exported by the Python extension as `__version__`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -125,7 +130,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// including [`Display`](fmt::Display) output, are not stable identifiers.
 ///
 /// ```
-/// use climate_core::{ClimateError, flood::effective_precipitation};
+/// use climate_indices::{ClimateError, flood::effective_precipitation};
 /// use ndarray::array;
 ///
 /// let rain = array![[1.0]];

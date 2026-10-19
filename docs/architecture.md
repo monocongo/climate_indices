@@ -237,20 +237,22 @@ users import and call `climate_indices` exactly as before, and nothing in the
 public signatures or results depends on whether the backend is installed.
 
 ```
-Cargo.toml                      # Cargo workspace
-crates/climate-core/            # pure Rust numerical kernels
-crates/climate-py/              # PyO3/NumPy bindings -> climate_indices._native
-src/climate_indices/_native.pyi # type stub for the extension
+Cargo.toml                       # Cargo workspace
+crates/climate-indices/          # pure Rust numerical kernels, published as `climate-indices`
+crates/climate-py/               # PyO3/NumPy bindings -> climate_indices._native
+src/climate_indices/_native.pyi  # type stub for the extension
 ```
 
-- **`climate-core`** is pure numerical Rust. It has no PyO3, NumPy bindings,
+- **`climate-indices`** is pure numerical Rust. It has no PyO3, NumPy bindings,
   Python exceptions, or CPython assumptions, receives already-validated
-  numbers, and returns numbers. The local crate is not published to crates.io.
-  [ADR-0021](adr/0021-climate-indices-crate-identity.md) selects `climate-indices`
-  as its future published name. The current `0.0.0` release only reserves that
-  name and contains no algorithms.
+  numbers, and returns numbers. It publishes to crates.io on its own `0.x`
+  track, independent of the Python distribution's version
+  ([ADR-0021](adr/0021-climate-indices-crate-identity.md)). The reserved
+  `0.0.0` release contains no algorithms; the first real release supersedes it.
 - **`climate-py`** is the only crate that knows about Python. It converts
-  arrays and errors at the boundary and holds no climate algorithm.
+  arrays and errors at the boundary and holds no climate algorithm. It stays
+  `publish = false`, inherited from the workspace, and reaches a user only as
+  the wheel `climate_indices._native`.
 - **Dispatch** lives in the Python module that owns each computation. It
   imports `climate_indices._native` inside `try`/`except ImportError`; without
   the extension every computation runs in pure Python. A runtime error raised
@@ -274,7 +276,7 @@ masks, and output scaling around them still run in Python, and every caller of
 those functions (SPI, SPEI and the standardized index, `fit_diagnostics`, the
 xarray adapter) uses them:
 
-| Python seam | Rust kernel (`climate-core`) |
+| Python seam | Rust kernel (`climate-indices`) |
 |---|---|
 | method-of-moments block of `compute.gamma_parameters` | `gamma::gamma_parameters` |
 | `scipy.stats.gamma.cdf` and zero-mass mixing in `compute.transform_fitted_gamma` | `gamma::gamma_probabilities` |
@@ -339,7 +341,7 @@ inside a Python function: each replaces a recurrence's whole day loop, so the
 Rust side owns the time axis while Python keeps the calendar, the validation,
 and the error surface around it:
 
-| Python seam | Rust kernel (`climate-core`) |
+| Python seam | Rust kernel (`climate-indices`) |
 |---|---|
 | `fire.ffmc` recurrence | `fire::ffmc` over `recurrence::run` |
 | `fire.duff_moisture_code` recurrence | `fire::dmc` over `recurrence::run` |
@@ -365,7 +367,7 @@ lives in `palmer.py`, which owns `pdsi()` and `scpdsi()`; the private
 `_palmer_pdi`, `_palmer_wells`, and `self_calibration` functions stay pure
 Python and remain the oracle when called directly:
 
-| Python seam | Rust kernel (`climate-core`) |
+| Python seam | Rust kernel (`climate-indices`) |
 |---|---|
 | `palmer._calc_water_balances` (with `_calc_potential_loss`, `_calc_recharge`) | `palmer::water_balance` |
 | `palmer._calc_k_prime_and_dbar` (PDSI K factors and scPDSI K-prime) | `palmer_zindex::k_prime_and_dbar` |
@@ -399,7 +401,7 @@ The flood family ports the computation behind each NumPy entry point in
 same `recurrence::run` driver as the fire codes rather than a second recurrence
 interface:
 
-| Python seam | Rust kernel (`climate-core`) |
+| Python seam | Rust kernel (`climate-indices`) |
 |---|---|
 | `scipy.ndimage.correlate1d` window of `flood.effective_precipitation` | `flood::effective_precipitation` |
 | calendar-day standardization of `flood.edi` | `flood::edi` |

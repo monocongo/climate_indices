@@ -18,7 +18,7 @@ from unittest.mock import patch
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-DESTINATION = ROOT / "crates/climate-core/tests/fixtures/palmer_reference.txt"
+DESTINATION = ROOT / "crates/climate-indices/tests/fixtures/palmer_reference.txt"
 SOURCES = (
     "palmer.py",
     "_palmer_common.py",

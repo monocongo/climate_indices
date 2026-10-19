@@ -1,4 +1,4 @@
-//! PyO3/NumPy bindings that expose `climate-core` as `climate_indices._native`.
+//! PyO3/NumPy bindings that expose `climate-indices` as `climate_indices._native`.
 //!
 //! This is the only crate that knows about Python. It converts arrays and
 //! errors at the boundary and holds no climate algorithm of its own; the
@@ -15,8 +15,8 @@ use pyo3::create_exception;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
-use climate_core::fire::{DayLength, KbdiCell};
-use climate_core::recurrence::RecurrenceInputs;
+use climate_indices::fire::{DayLength, KbdiCell};
+use climate_indices::recurrence::RecurrenceInputs;
 
 mod palmer;
 mod pet;
@@ -49,11 +49,11 @@ create_exception!(_native, NonFiniteResultError, PyValueError);
 // `ConvergenceError` the pure-Python path raises.
 create_exception!(_native, NoConvergenceError, PyValueError);
 
-fn climate_error(error: climate_core::ClimateError) -> PyErr {
+fn climate_error(error: climate_indices::ClimateError) -> PyErr {
     let message = error.to_string();
     match error {
-        climate_core::ClimateError::NonFinite { .. } => NonFiniteResultError::new_err(message),
-        climate_core::ClimateError::NoConvergence { .. } => NoConvergenceError::new_err(message),
+        climate_indices::ClimateError::NonFinite { .. } => NonFiniteResultError::new_err(message),
+        climate_indices::ClimateError::NoConvergence { .. } => NoConvergenceError::new_err(message),
         _ => PyValueError::new_err(message),
     }
 }
@@ -119,7 +119,8 @@ fn gamma_parameters<'py>(
     calibration: PyReadonlyArray2<'py, f64>,
 ) -> PyResult<ParameterArrays<'py>> {
     let calibration = checked_copy(&calibration)?;
-    let (alphas, betas) = py.detach(|| climate_core::gamma::gamma_parameters(calibration.view()));
+    let (alphas, betas) =
+        py.detach(|| climate_indices::gamma::gamma_parameters(calibration.view()));
     Ok((alphas.into_pyarray(py), betas.into_pyarray(py)))
 }
 
@@ -139,7 +140,7 @@ fn gamma_probabilities<'py>(
         checked_copy(&probabilities_of_zero)?,
     );
     py.detach(|| {
-        climate_core::gamma::gamma_probabilities(
+        climate_indices::gamma::gamma_probabilities(
             values.view(),
             alphas.view(),
             betas.view(),
@@ -167,7 +168,7 @@ fn pnp_normals<'py>(
         calibration
     };
     Ok(py
-        .detach(|| climate_core::pnp::pnp_normals(calibration.view()))
+        .detach(|| climate_indices::pnp::pnp_normals(calibration.view()))
         .into_pyarray(py))
 }
 
@@ -182,7 +183,7 @@ fn pnp_percentages<'py>(
     // the GIL would, and the copy would add an input-sized buffer: keep the GIL.
     let scale_sums = checked_view(&scale_sums)?;
     let normals = checked_view(&normals)?;
-    climate_core::pnp::pnp_percentages(scale_sums.view(), normals.view())
+    climate_indices::pnp::pnp_percentages(scale_sums.view(), normals.view())
         .map(|percentages| percentages.into_pyarray(py))
         .map_err(|error| PyValueError::new_err(error.to_string()))
 }
@@ -191,7 +192,7 @@ fn pnp_percentages<'py>(
 #[pyfunction]
 fn pci(rainfall: PyReadonlyArray1<'_, f64>) -> PyResult<f64> {
     let rainfall = checked_copy(&rainfall)?;
-    climate_core::pci::pci(rainfall.view())
+    climate_indices::pci::pci(rainfall.view())
         .ok_or_else(|| PyValueError::new_err("pci requires a 365- or 366-day year"))
 }
 
@@ -203,7 +204,7 @@ fn pearson_parameters<'py>(
     calibration: PyReadonlyArray2<'py, f64>,
 ) -> PyResult<PearsonArrays<'py>> {
     let calibration = checked_copy(&calibration)?;
-    let fit = py.detach(|| climate_core::pearson::pearson_parameters(calibration.view()));
+    let fit = py.detach(|| climate_indices::pearson::pearson_parameters(calibration.view()));
     Ok((
         fit.probabilities_of_zero.into_pyarray(py),
         fit.locs.into_pyarray(py),
@@ -229,7 +230,7 @@ fn pearson_cdf<'py>(
         checked_copy(&scales)?,
     );
     py.detach(|| {
-        climate_core::pearson::pearson_cdf_block(
+        climate_indices::pearson::pearson_cdf_block(
             values.view(),
             skews.view(),
             locs.view(),
@@ -256,7 +257,7 @@ fn pearson_ks_statistics<'py>(
         checked_copy(&scales)?,
     );
     py.detach(|| {
-        climate_core::pearson::pearson_ks_statistics(
+        climate_indices::pearson::pearson_ks_statistics(
             values.view(),
             skews.view(),
             locs.view(),
@@ -275,7 +276,8 @@ fn loglogistic_parameters<'py>(
     calibration: PyReadonlyArray2<'py, f64>,
 ) -> PyResult<LogLogisticArrays<'py>> {
     let calibration = checked_copy(&calibration)?;
-    let fit = py.detach(|| climate_core::loglogistic::loglogistic_parameters(calibration.view()));
+    let fit =
+        py.detach(|| climate_indices::loglogistic::loglogistic_parameters(calibration.view()));
     Ok((
         fit.locs.into_pyarray(py),
         fit.scales.into_pyarray(py),
@@ -300,7 +302,7 @@ fn loglogistic_cdf<'py>(
         checked_copy(&shapes)?,
     );
     py.detach(|| {
-        climate_core::loglogistic::loglogistic_cdf_block(
+        climate_indices::loglogistic::loglogistic_cdf_block(
             values.view(),
             locs.view(),
             scales.view(),
@@ -317,7 +319,7 @@ fn norm_ppf<'py>(
     py: Python<'py>,
     probabilities: PyReadonlyArrayDyn<'py, f64>,
 ) -> PyResult<Bound<'py, PyArrayDyn<f64>>> {
-    elementwise(py, probabilities, climate_core::special::norm_ppf)
+    elementwise(py, probabilities, climate_indices::special::norm_ppf)
 }
 
 /// The Hastings inverse-normal approximation applied element-wise to an array of any shape.
@@ -329,7 +331,7 @@ fn hastings_inverse_normal<'py>(
     elementwise(
         py,
         probabilities,
-        climate_core::eddi::hastings_inverse_normal,
+        climate_indices::eddi::hastings_inverse_normal,
     )
 }
 
@@ -347,7 +349,7 @@ fn tukey_probabilities<'py>(
         checked_copy(&pads)?,
     );
     py.detach(|| {
-        climate_core::eddi::tukey_probabilities(climatology.view(), values.view(), pads.view())
+        climate_indices::eddi::tukey_probabilities(climatology.view(), values.view(), pads.view())
     })
     .map(|probabilities| probabilities.into_pyarray(py))
     .map_err(|error| PyValueError::new_err(error.to_string()))
@@ -419,7 +421,7 @@ impl<'py> RecurrenceArgs<'py> {
 
 impl RecurrenceArrays {
     fn inputs(&self) -> PyResult<RecurrenceInputs<'_>> {
-        climate_core::recurrence::recurrence_inputs(
+        climate_indices::recurrence::recurrence_inputs(
             self.weather_valid.view(),
             self.static_valid.view(),
             self.in_season.as_ref().map(|season| season.view()),
@@ -447,7 +449,10 @@ type KbdiRunArrays<'py> = (
     Option<Bound<'py, PyArray1<i64>>>,
 );
 
-fn code_run_arrays<'py>(py: Python<'py>, run: climate_core::fire::CodeRun) -> CodeRunArrays<'py> {
+fn code_run_arrays<'py>(
+    py: Python<'py>,
+    run: climate_indices::fire::CodeRun,
+) -> CodeRunArrays<'py> {
     (
         run.values.map(|values| values.into_pyarray(py)),
         run.code.into_pyarray(py),
@@ -494,7 +499,7 @@ fn ffmc<'py>(
     let inputs = recurrence.inputs()?;
     let run = py
         .detach(|| {
-            climate_core::fire::ffmc(
+            climate_indices::fire::ffmc(
                 temperature_celsius.view(),
                 relative_humidity_percent.view(),
                 wind.view(),
@@ -556,7 +561,7 @@ fn duff_moisture_code<'py>(
     let inputs = recurrence.inputs()?;
     let run = py
         .detach(|| {
-            climate_core::fire::dmc(
+            climate_indices::fire::dmc(
                 temperature_celsius.view(),
                 relative_humidity_percent.view(),
                 precipitation.view(),
@@ -616,7 +621,7 @@ fn drought_code<'py>(
     let inputs = recurrence.inputs()?;
     let run = py
         .detach(|| {
-            climate_core::fire::dc(
+            climate_indices::fire::dc(
                 temperature_celsius.view(),
                 precipitation.view(),
                 &day_length,
@@ -683,7 +688,7 @@ fn kbdi<'py>(
     let inputs = recurrence.inputs()?;
     let run = py
         .detach(|| {
-            climate_core::fire::kbdi(
+            climate_indices::fire::kbdi(
                 precipitation.view(),
                 temperature.view(),
                 mean_annual_precipitation.view(),
@@ -717,7 +722,7 @@ fn effective_precipitation<'py>(
     duration: usize,
 ) -> PyResult<Bound<'py, PyArray2<f64>>> {
     let precipitation = checked_copy(&precipitation_mm)?;
-    py.detach(|| climate_core::flood::effective_precipitation(precipitation.view(), duration))
+    py.detach(|| climate_indices::flood::effective_precipitation(precipitation.view(), duration))
         .map(|pe| pe.into_pyarray(py))
         .map_err(climate_error)
 }
@@ -731,7 +736,7 @@ fn edi<'py>(
     calibration_end: usize,
 ) -> PyResult<Bound<'py, PyArray2<f64>>> {
     let years = checked_copy(&years)?;
-    py.detach(|| climate_core::flood::edi(years.view(), calibration_start..calibration_end))
+    py.detach(|| climate_indices::flood::edi(years.view(), calibration_start..calibration_end))
         .map(|index| index.into_pyarray(py))
         .map_err(climate_error)
 }
@@ -745,7 +750,7 @@ fn flood_index<'py>(
     calibration_years: usize,
 ) -> PyResult<Bound<'py, PyArray2<f64>>> {
     let pe = checked_copy(&pe)?;
-    py.detach(|| climate_core::flood::flood_index(pe.view(), first_start, calibration_years))
+    py.detach(|| climate_indices::flood::flood_index(pe.view(), first_start, calibration_years))
         .map(|index| index.into_pyarray(py))
         .map_err(climate_error)
 }
@@ -783,7 +788,7 @@ fn antecedent_precipitation_index<'py>(
     let inputs = recurrence.inputs()?;
     let run = py
         .detach(|| {
-            climate_core::flood::antecedent_precipitation_index(
+            climate_indices::flood::antecedent_precipitation_index(
                 precipitation.view(),
                 k,
                 initial_api.view(),
@@ -801,7 +806,7 @@ fn antecedent_precipitation_index<'py>(
 
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add("__version__", climate_core::VERSION)?;
+    m.add("__version__", climate_indices::VERSION)?;
     m.add(
         "NonFiniteResultError",
         m.py().get_type::<NonFiniteResultError>(),
