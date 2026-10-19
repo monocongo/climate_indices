@@ -260,7 +260,10 @@ cftime, and non-Gregorian calendars are rejected, and no calendar is converted.
 
 Results follow the NumPy layout: `month` (coordinate 1 to 12) is omitted when pooled,
 `hazard` labels marginal and per-channel values (for the bootstrap, the selected channels),
-and spatial dimensions keep their input order and coordinates. Counts are `int64`, undefined
+and spatial dimensions keep their input order and index coordinates, with their attributes.
+Auxiliary and scalar (non-index) coordinates are not carried onto results: merging lazy ones
+would compute them, and conflicting ones cannot be reconciled. Reattach what you need, for
+example `result.assign_coords(lat2d=source.lat2d)`. Counts are `int64`, undefined
 estimates are `NaN`, and `quality_flags` is a numeric bit field with CF `flag_masks` and
 `flag_meanings`. Variables carry the registry's `long_name`, `units="1"`, and references,
 probability bounds `[0, 1]`, and an LMF lower bound of 0 with no maximum. No `standard_name`

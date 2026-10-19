@@ -831,3 +831,75 @@ def test_inputs_are_never_mutated() -> None:
         np.testing.assert_array_equal(array.values, before[name][0])
         assert dict(array.attrs) == before[name][1]
         np.testing.assert_array_equal(array["time"].values, before[name][2])
+
+
+# --- non-index coordinates ---------------------------------------------------------------------------
+
+
+def _with_aux_coords(arrays: dict[str, xr.DataArray], *, lazy_aux: bool = False) -> dict[str, xr.DataArray]:
+    """Give each source a 2-D auxiliary coordinate, a scalar coordinate, and CF attributes on lat and lon."""
+    grid = np.arange(LAT * LON, dtype=float).reshape(LAT, LON)
+    out = {}
+    for name, array in arrays.items():
+        aux = xr.DataArray(grid, dims=SPATIAL)
+        if lazy_aux:
+            aux = aux.chunk({"lat": 1, "lon": 1})  # a distinct Dask graph per source, as when each is opened separately
+        array = array.assign_coords(lat2d=aux, level=500 if name == "drought" else 850)
+        array["lat"].attrs.update(standard_name="latitude", units="degrees_north", axis="Y")
+        array["lon"].attrs.update(standard_name="longitude", units="degrees_east", axis="X")
+        out[name] = array
+    return out
+
+
+def test_a_lazy_auxiliary_coordinate_is_never_computed_while_building_a_graph() -> None:
+    """Drop non-index coordinates before apply_ufunc merges, and so compares, them across inputs."""
+    inputs = _with_aux_coords(sources(lazy=True), lazy_aux=True)
+    with dask.config.set(scheduler=_forbid_compute):
+        dataset = compound.harmonize(inputs, **DECLARATIONS)
+        compound.joint_statistics(dataset, min_samples=1)
+    assert "lat2d" not in dataset.coords and "level" not in dataset.coords
+
+
+@pytest.mark.parametrize("reserved", ["hazard", "source", "month", "time_of_day"])
+def test_scalar_coordinates_never_break_the_harmonize_to_statistics_chain(reserved: str) -> None:
+    """Accept a scalar coordinate named like a result dimension; none is carried onto any result."""
+    inputs = {name: array.assign_coords({reserved: "x"}) for name, array in sources().items()}
+    dataset = compound.harmonize(inputs, **DECLARATIONS)
+    assert reserved not in dataset.coords or reserved == "hazard"
+    for result in (
+        compound.joint_statistics(dataset, min_samples=1),
+        compound.conditional_probability(dataset, given="drought", target="heat", min_samples=1),
+        compound.bootstrap_dependence(dataset, statistic="joint_probability", seed=1, n_resamples=5),
+    ):
+        assert reserved not in result.coords or reserved in ("hazard", "month")
+
+
+def test_prepared_dataset_with_an_auxiliary_coordinate_chunked_differently_still_runs() -> None:
+    """Ignore a prepared Dataset's auxiliary coordinates, whatever their chunking, instead of failing late."""
+    dataset = prepared(lazy=True)
+    dataset = dataset.assign_coords(
+        lat2d=xr.DataArray(np.zeros((LAT, LON)), dims=SPATIAL).chunk({"lat": 1, "lon": 1}), level=500
+    )
+    result = compound.joint_statistics(dataset, min_samples=1)
+    assert_matches_numpy(
+        result.compute(scheduler="synchronous"), compound.joint_statistics(numpy_aligned(), min_samples=1)
+    )
+    assert "lat2d" not in result.coords
+
+
+@pytest.mark.parametrize("lazy", [False, True], ids=["eager", "dask"])
+def test_index_coordinate_attributes_survive_every_route(lazy: bool) -> None:
+    """Keep standard_name, units, and axis on lat and lon so the result grid stays self-describing."""
+    inputs = _with_aux_coords(sources(lazy=lazy))
+    dataset = compound.harmonize(inputs, **DECLARATIONS)
+    results = [
+        dataset,
+        compound.joint_statistics(dataset, min_samples=1),
+        compound.conditional_probability(dataset, given="drought", target="heat", min_samples=1),
+        compound.bootstrap_dependence(dataset, statistic="joint_probability", seed=1, n_resamples=5),
+    ]
+    for result in results:
+        assert result["lat"].attrs == {"standard_name": "latitude", "units": "degrees_north", "axis": "Y"}
+        assert result["lon"].attrs == {"standard_name": "longitude", "units": "degrees_east", "axis": "X"}
+        for name, variable in result.data_vars.items():
+            assert "axis" not in variable.attrs and variable.attrs.get("standard_name") is None, name

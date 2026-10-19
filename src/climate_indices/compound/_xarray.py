@@ -346,10 +346,13 @@ def _harmonize_dataarrays(
         }
     )
     mask_names = tuple(masks)
+    # apply_ufunc merges, and so compares, the coordinates of every input; a Dask-backed auxiliary
+    # coordinate would be computed while the graph is built, and conflicting ones would be dropped
+    # silently. Index coordinates (grid labels and their attributes) are all a result needs.
+    bare = [array.reset_coords(drop=True) for array in (*inputs.values(), *masks.values())]
     exceedance, valid = xr.apply_ufunc(
         _harmonize_block,
-        *inputs.values(),
-        *masks.values(),
+        *bare,
         input_core_dims=[[time_dim]] * (len(names) + len(mask_names)),
         output_core_dims=[[_HAZARD, _TIME], [_HAZARD, _TIME]],
         # sources may cover different dates; the retained range is the plan's, not any input's
@@ -357,8 +360,8 @@ def _harmonize_dataarrays(
         dask="parallelized",
         dask_gufunc_kwargs={"output_sizes": {_HAZARD: len(names), _TIME: int(plan.time.shape[0])}},
         output_dtypes=[np.bool_, np.bool_],
-        # no attribute of a source array may reach a result
-        keep_attrs=False,
+        # keeps the grid coordinates' CF attributes; every variable's attributes are replaced below
+        keep_attrs=True,
         kwargs={"names": names, "mask_names": mask_names, "times": times, **declared_choices},
     )
     result: xr.Dataset = xr.Dataset({"exceedance": exceedance, "valid": valid}).transpose(_HAZARD, _TIME, ...)
@@ -490,7 +493,9 @@ def _prepare(dataset: xr.Dataset) -> _Prepared:
                 f"hazards.attrs[{_MANIFEST!r}] must be a JSON object, as compound.harmonize() writes it.",
                 argument_name="hazards",
             ) from exc
-    return _Prepared(names, day, str(cadence), metadata, arrays["exceedance"], arrays["valid"], lazy)
+    # auxiliary and scalar coordinates are dropped for the same reason as in harmonize()
+    exceedance, valid = (arrays[name].reset_coords(drop=True) for name in ("exceedance", "valid"))
+    return _Prepared(names, day, str(cadence), metadata, exceedance, valid, lazy)
 
 
 @dataclass(frozen=True)
@@ -558,7 +563,7 @@ def _statistics_dataset(
         dask="parallelized",
         dask_gufunc_kwargs={"output_sizes": {dim: sizes[dim] for lead in leads for dim in lead}},
         output_dtypes=[field.dtype for field in fields],
-        keep_attrs=False,
+        keep_attrs=True,
         kwargs={
             "compute": compute,
             "names": prepared.names,
