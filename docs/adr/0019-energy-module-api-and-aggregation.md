@@ -31,6 +31,13 @@ the beta xarray layer. Their elementwise Dask execution accepts multiple chunks
 on every dimension; temperature units are inferred while bases remain in °C.
 Standardized energy adapters remain deferred to #1174.
 
+Amended by the wind capacity-factor implementation
+([#1175](https://github.com/monocongo/climate_indices/issues/1175)):
+`energy.wind_capacity_factor()` now implements decision 7's reference transform.
+The required `power_curve` selects a generic cubic curve or a normalized table.
+Optional density correction applies before curve evaluation. This function is NumPy-only;
+its specification checks do not validate actual generation or match a C3S turbine model.
+
 Decision 2's `aggregation` keyword landed with this record
 ([#1158](https://github.com/monocongo/climate_indices/issues/1158)). Decisions 3
 through 5 and the radiation units of decision 6 remain contracts for the tickets

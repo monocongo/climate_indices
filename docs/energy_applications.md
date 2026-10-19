@@ -27,7 +27,7 @@ A useful conceptual chain is:
 Meteorological drivers           T2m, wind 10/100 m, SSRD, precip           (inputs)
               ↓
 Demand proxies                   HDD / CDD / EDD                            (available)
-Resource transforms              hub-height wind (available); wind & PV capacity factor (planned)
+Resource transforms              hub-height wind, wind capacity factor (available); PV (planned)
 Hydro proxy                      capacity-weighted n-month precip           (available recipe)
               ↓
 Standardized energy indices      SREPI, standardized demand (available); SRLI (planned)
@@ -134,8 +134,8 @@ energy system, not recorded supply shortfalls.
 
 ## Energy indices
 
-The NumPy degree-day and wind-profile functions in `climate_indices.energy`
-are available, as are SREPI and the standardized demand index; the other energy
+The NumPy degree-day, wind-profile, and wind capacity-factor functions in
+`climate_indices.energy` are available, as are SREPI and the standardized demand index; the other energy
 indices below remain planned. The package, its
 NumPy and beta xarray tiers, and the scope boundary are fixed by
 [ADR-0019](adr/0019-energy-module-api-and-aggregation.md), with function names,
@@ -177,21 +177,75 @@ order.
   NumPy only: xarray adapters are planned ([#1174][energy-1174]).
 - **SRLI** — *planned ([#1172][energy-1172])*.
 - **Energy-drought event statistics** — *planned ([#1173][energy-1173])*.
-- **Wind capacity factor** — *planned ([#1175][energy-1175])*. Hub-height
-  wind passed through a required power curve: a generic parametric reference
-  curve (cut-in, rated, and cut-out speeds) or a tabulated curve the caller
-  supplies, not plant engineering.
+- **Wind capacity factor** — available as
+  {func}`climate_indices.energy.wind_capacity_factor` ([#1175][energy-1175]).
+  It converts hub-height wind through an explicitly selected generic cubic
+  curve or a caller-supplied table. It describes the climate-driven resource,
+  not actual generation. The NumPy contract and comparison limits appear below.
 - **PV capacity factor, temperature-derated** — *planned
   ([#1176][energy-1176])*. Capacity factor from surface solar radiation,
   reduced as cell temperature — estimated from air temperature, irradiance,
   and wind — rises, after the reference configuration of Jerez et al. (2015).
 
-The degree-day and wind-profile functions are implemented without new
-dependencies. The planned capacity factors will also need no new dependencies.
+The degree-day, wind-profile, and wind capacity-factor functions need no new
+dependencies. The planned PV capacity factor will also need no new dependencies.
 These implementations deliberately overlap `xclim`'s degree-day indicators and
 `wind_profile`, `pvlib`, and `windpowerlib`. Those libraries remain documented
 alternatives and validation references, never dependencies
 ([ADR-0019](adr/0019-energy-module-api-and-aggregation.md) decision 7).
+
+### Wind capacity-factor contract
+
+Select the generic curve explicitly with `power_curve="generic"`. Its default
+cut-in, rated, and cut-out speeds are 3.5, 13, and 25 m s⁻¹. These defaults and
+the cubic formula follow
+[`xclim.indices.wind_power_potential`](https://xclim.readthedocs.io/en/stable/indices.html#xclim.indices.wind_power_potential),
+which cites Tobin et al. (2018). They do not represent a specific turbine.
+
+The factor is zero below cut-in, `(v**3 - cut_in**3)/(rated**3 - cut_in**3)`
+from cut-in to rated, and one from rated to cut-out. At cut-out and above,
+it is zero. Override the thresholds with `cut_in`, `rated`, and `cut_out`.
+They must satisfy `0 <= cut_in < rated < cut_out`.
+
+For a tabulated curve, supply `(speeds, capacity_factors)` as `power_curve`.
+Both arrays must be finite, one-dimensional, and equally sized, with at least two knots.
+Speeds must be non-negative and strictly increasing. Factors must lie in [0, 1].
+Interpolation is linear, includes the endpoint values, and returns zero outside the table.
+The table controls shutdown; the generic threshold keywords do not apply to it.
+Normalize a manufacturer's power values by rated power before supplying the table.
+
+Optional `air_density` in kg m⁻³ changes the evaluation speed to
+`v * (air_density/1.225)**(1/3)` for either curve, including its cut-in and cut-out decisions.
+Use this option only for curves referenced to 1.225 kg m⁻³.
+Do not apply it to an already density-corrected curve.
+
+Speeds and densities broadcast. Negative or non-finite speeds, non-positive or non-finite
+densities, and masked observations yield NaN. The output uses float64 and retains the broadcast shape.
+This transform is NumPy-only; it does not dispatch DataArrays or preserve their metadata.
+Apply it before time averaging. A curve of mean wind does not equal the mean capacity factor.
+
+```{doctest}
+>>> from climate_indices import energy
+>>> hub = energy.hub_height_wind_speed([0, 5, 13, 25], 100, 100)
+>>> energy.wind_capacity_factor(hub, "generic").round(3)
+array([0.   , 0.038, 1.   , 0.   ])
+>>> energy.wind_capacity_factor([0, 5, 10, 25], ([0, 10, 25], [0, 1, 0]))
+array([0. , 0.5, 1. , 0. ])
+```
+
+**Evidence and tolerances.** `tests/test_energy_capacity_factor.py` compares the
+cubic calculation against exact rational arithmetic at `rtol=0`, `atol=1e-15`.
+That tolerance permits float64 arithmetic error, not model disagreement.
+Region boundaries, table knots, and hand-calculated linear examples use exact checks.
+These are specification checks, not external numerical validation.
+
+For a future input-matched xclim comparison, the oracle survey recommends
+`rtol=0`, `atol=1e-12`, with exact region membership.
+C3S uses turbine-specific curves, hub heights, and processed winds.
+The survey found no usable matched numerical curve, so no C3S comparison runs here.
+No universal model-to-model tolerance is justified. Compare matched-period bias,
+MAE/RMSE, and correlation, and record curve, density, height, input, and averaging differences.
+Do not treat a capacity factor as observed generation.
 
 ## Preparing inputs
 

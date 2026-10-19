@@ -24,6 +24,7 @@ def test_energy_namespace_is_exported_without_root_functions() -> None:
         "hub_height_wind_speed",
         "srepi",
         "standardized_demand_index",
+        "wind_capacity_factor",
         "wind_shear_exponent",
     }
     for name in energy.__all__:
