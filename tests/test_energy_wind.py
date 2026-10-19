@@ -20,6 +20,7 @@ def test_energy_namespace_is_exported_without_root_functions() -> None:
         "SREPI_DROUGHT_THRESHOLDS",
         "cooling_degree_days",
         "energy_degree_days",
+        "energy_drought_events",
         "heating_degree_days",
         "hub_height_wind_speed",
         "residual_load",

@@ -8,8 +8,9 @@ the arrangement [ADR-0005](../adr/0005-fire-module-api.md) chose for fire and
 hold regardless of scope live in
 [ADR-0019](../adr/0019-energy-module-api-and-aggregation.md); this note holds the
 per-index naming, units, and argument contracts, plus what is deferred.
-The NumPy wind-profile functions are implemented by #1165; other transforms
-and the xarray tier remain planned.
+The NumPy wind-profile functions are implemented by #1165, degree days by #1164,
+physical-transform adapters by #1166, and event statistics by #1173. Other
+transforms and the standardized energy xarray tier remain planned.
 
 ## Decision
 
@@ -95,10 +96,24 @@ range, and at least ten valid calibration values per calendar step, else missing
 seam does not fall back to a parametric fit below Allen & Otero's roughly 100
 observations; that choice belongs to the wrappers.
 
-`energy.energy_drought_events()` produces run-theory onset, duration, magnitude, and
-peak statistics on any standardized energy index, built on `runs.identify_runs()`.
-The doubled word matches `flood.flood_events()` and keeps a meteorological drought event
-distinct from an energy one.
+`energy.energy_drought_events()` is implemented by #1173. It returns generic
+`runs.RunStatistics`: a `RunSet` of events and period summaries, built on
+`runs.summarize_runs()` and `runs.identify_runs()`. The NumPy utility accepts any
+one-dimensional index series, including SPI, SREPI, and SRLI. Its energy xarray
+adapter remains deferred to #1174.
+
+The maintainer approved these event conventions for #1173: strict comparisons;
+explicit direction; pooling across at most `max_gap` non-missing steps, never
+across NaN or masked values; duration includes pooled gaps but magnitude excludes
+them; intensity divides magnitude by elapsed duration; minimum-duration filtering
+follows pooling. Each complete event belongs to its onset period. Frequency is
+event count per non-NaN, unmasked input step in that period, or NaN with no valid
+steps. Periods without events have zero count, duration, and maximum magnitude.
+The generic utility retains the existing float64 metrics and infinity comparisons.
+
+The doubled word matches `flood.flood_events()` and keeps a meteorological drought
+event distinct from an energy one. The function summarizes climate-driven energy
+stress, not actual generation, load, or recorded supply shortfalls.
 
 ## Physical transforms
 

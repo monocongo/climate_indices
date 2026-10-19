@@ -32,7 +32,7 @@ Hydro proxy                      capacity-weighted n-month precip           (ava
               ↓
 Standardized energy indices      SREPI, standardized demand, SRLI (available)
               ↓
-Energy-drought events            run-theory onset / duration / magnitude    (planned)
+Energy-drought events            run-theory onset / duration / magnitude    (available)
               ↓
 Calibrated generation & load     hydro generation, electricity demand (MWh) (out of scope)
 ```
@@ -126,18 +126,55 @@ accumulated value means and for a bounded family such as beta.
 Run-theory event statistics summarize a standardized index as discrete
 energy-drought events: runs beyond a threshold — below it for SREPI, above it
 for SRLI or demand — each with an onset, duration, and magnitude (the
-cumulative deviation from the threshold). The planned energy function builds
-on `runs.identify_runs()`, the run-theory primitive available today, which
-takes an explicit `"below"` or `"above"` direction ([#1173][energy-1173]).
-Allen & Otero (2023) define energy droughts this way. Events inherit the
-caveat at the top of this page: they are runs of unfavourable weather for the
-energy system, not recorded supply shortfalls.
+cumulative deviation from the threshold).
+{func}`climate_indices.energy.energy_drought_events` returns these event
+metrics and period summaries ([#1173][energy-1173]). It uses the generic
+`runs.summarize_runs()` utility, so the same function accepts SPI and SPEI.
+Select direction and threshold explicitly. Direction is never inferred from
+an index name or a threshold's sign.
+
+Use `max_gap` to pool events across short observed gaps. Missing and masked
+values always separate events. Duration includes pooled gaps, but magnitude
+excludes them; intensity is magnitude divided by elapsed duration. The
+`min_duration` filter applies after pooling.
+
+Supply one `periods` label per input step for summaries by year, month, or
+another declared group. Each complete event belongs to its onset period,
+including any duration extending into a later period. The result contains
+`events`, `period`, `count`, `total_duration`, `max_magnitude`, `valid_count`,
+and `frequency`. Frequency is event count per non-missing input step, not an
+annual rate. It is NaN when a period has no valid observations. Without labels,
+one summary covers the full input. See {doc}`algorithm-reference` for the full
+run and summary contract.
+
+```{testcode}
+from climate_indices import energy
+
+result = energy.energy_drought_events(
+    [-2, 0, -3], threshold=-1.0, direction="below", max_gap=1,
+    periods=[2020, 2020, 2021],
+)
+assert result.events.duration.tolist() == [3]
+assert result.events.intensity.tolist() == [1.0]
+assert result.count.tolist() == [1, 0]
+assert result.max_magnitude.tolist() == [3.0, 0.0]
+```
+
+Allen & Otero (2023) define energy droughts through run theory. These metrics
+use the library's strict threshold and threshold-relative magnitude conventions,
+not SEI's inclusive comparison and sum of absolute index values. Hand-calculated
+tests check the event definitions. The saved SEI SREPI/SRLI series and computed
+SPI output check input compatibility, not external validation of event statistics.
+Events describe unfavourable weather for the energy system, not recorded supply
+shortfalls. This utility accepts standardized arrays, including outputs from
+SREPI, the standardized demand index, and SRLI.
 
 ## Energy indices
 
-The NumPy degree-day and wind-profile functions in `climate_indices.energy`
-are available, as are SREPI, the standardized demand index, and SRLI with its
-residual-load helper; the other energy indices below remain planned. The package, its
+The NumPy degree-day, wind-profile, and event-statistics functions in
+`climate_indices.energy` are available, as are SREPI, the standardized demand
+index, and SRLI with its residual-load helper. The other energy indices below
+remain planned. The package, its
 NumPy and beta xarray tiers, and the scope boundary are fixed by
 [ADR-0019](adr/0019-energy-module-api-and-aggregation.md), with function names,
 units, and argument contracts recorded in the internal energy subsystem design
@@ -186,7 +223,10 @@ order.
   High values mark stress. On the default `output_scale="normal"`, Allen &
   Otero (2023) class drought at 1.28, 1.64, and 1.96; the `probability` and
   `bounded` scales need cut-offs of their own. It has NumPy dispatch only until [#1174][energy-1174] lands.
-- **Energy-drought event statistics** — *planned ([#1173][energy-1173])*.
+- **Energy-drought event statistics** — available as
+  {func}`climate_indices.energy.energy_drought_events` ([#1173][energy-1173]).
+  The NumPy utility reports events and period summaries. Its energy xarray
+  adapter remains planned under [#1174][energy-1174].
 - **Wind capacity factor** — *planned ([#1175][energy-1175])*. Hub-height
   wind passed through a required power curve: a generic parametric reference
   curve (cut-in, rated, and cut-out speeds) or a tabulated curve the caller
