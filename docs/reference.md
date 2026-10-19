@@ -343,7 +343,9 @@ catalog.to_netcdf("compound-events.nc", engine="h5netcdf")
 The catalog is eager. It rejects Dask-backed variables and coordinates without
 running tasks. Memory grows with the selected input and all matched pairs.
 Sequential matching without a bounded lag window can produce a quadratic number
-of pairs. The statistics tile-memory measurements above do not cover catalogs.
+of pairs. A catalog is capped at 1,000,000 event rows, and a larger match raises
+`InvalidArgumentError` before the rows are allocated. The statistics tile-memory
+measurements above do not cover catalogs.
 :::
 
 Both selected hazards must be observed at each step. An unknown step in either
@@ -362,7 +364,8 @@ are `int8`, with values 0 and 1 and CF-style `flag_values`/`flag_meanings`.
 
 The `cell` lookup table retains spatial labels as coordinates over `cell`.
 The prepared Dataset may hold more than two hazards; only the selected pair
-enters the catalog and the shared support.
+enters the catalog and the shared support. Hazard labels must be unique, so a
+selected name identifies exactly one source.
 Cells follow the input spatial dimension order in C order; a single series has
 one cell. Rows follow cell order, then first-source and second-source run order.
 Run IDs identify retained runs within each cell after minimum-duration filtering.

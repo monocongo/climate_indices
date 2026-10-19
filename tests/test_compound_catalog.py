@@ -284,6 +284,26 @@ def test_malformed_prepared_input_is_rejected(problem: str, error: type[Exceptio
         catalog(hazards)
 
 
+def test_duplicate_hazard_labels_are_rejected() -> None:
+    """A repeated label would let a name select an arbitrary source, so it is rejected."""
+    hazards = prepared().assign_coords(hazard=["dry", "dry", "unused"])
+    with pytest.raises(InvalidArgumentError, match="unique"):
+        catalog(hazards)
+
+
+@pytest.mark.parametrize("limit,grid", [(5, False), (4, False), (10, True), (9, True)])
+def test_event_row_cap_bounds_the_catalog(monkeypatch: pytest.MonkeyPatch, limit: int, grid: bool) -> None:
+    """The cap counts rows exactly, across cells, and fails before the whole catalog is allocated."""
+    monkeypatch.setattr("climate_indices.compound._catalog._MAX_EVENTS", limit)
+    hazards = prepared(grid=grid)
+    total = 15 if grid else 5
+    if limit >= total:
+        assert catalog(hazards, mode="sequential").sizes["event"] == total
+    else:
+        with pytest.raises(InvalidArgumentError, match="pair limit"):
+            catalog(hazards, mode="sequential")
+
+
 def test_beta_warning_and_lifecycle(caplog: Any) -> None:
     """Warn once at the caller and log eager completion or structured failure."""
     hazards = prepared(grid=False)

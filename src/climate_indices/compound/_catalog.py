@@ -19,6 +19,9 @@ from climate_indices.runs import _resolve_options, identify_runs
 _EVENT_FIELDS = tuple(field.name for field in fields(CompoundEventSet) if field.name not in ("mode", "metadata"))
 _CELL_COUNTS = ("n_valid", "n_first_runs", "n_second_runs", "n_pairs", "n_unknown_bridges")
 _RESERVED = frozenset((*_EVENT_FIELDS, *_CELL_COUNTS, "event", "cell", "cell_index", "start_time", "end_time"))
+# The event columns hold about 100 bytes per row and concatenation holds a second copy, so this caps a
+# catalog near 200 MB at peak; a larger match fails instead of allocating until the process is exhausted
+_MAX_EVENTS = 1_000_000
 
 
 def _catalog(
@@ -44,6 +47,13 @@ def _catalog(
             valid_values="an in-memory prepared Dataset",
         )
     prepared = _prepare(hazards)
+    if len(set(prepared.names)) != len(prepared.names):
+        raise InvalidArgumentError(
+            f"hazards['hazard'] labels must be unique so each selected name identifies one source; got "
+            f"{list(prepared.names)}.",
+            argument_name="hazards",
+            valid_values="distinct hazard coordinate labels",
+        )
     for role, name in (("first", first), ("second", second)):
         if not isinstance(name, str) or name not in prepared.names:
             raise InvalidArgumentError(
@@ -113,6 +123,7 @@ def _catalog(
     valid = valid.reshape(2, prepared.day.size, cells)
     columns: dict[str, list[np.ndarray]] = {name: [] for name in (*_EVENT_FIELDS, "cell_index")}
     counts = {name: np.zeros(cells, dtype=np.int64) for name in _CELL_COUNTS}
+    emitted = 0
     for cell in range(cells):
         shared = valid[:, :, cell].all(axis=0)
         runs = [
@@ -132,7 +143,9 @@ def _catalog(
             mode=mode,
             lag_window=lag_window,
             source_metadata=source_metadata,
+            max_pairs=_MAX_EVENTS - emitted,
         )
+        emitted += len(matched)
         for name in _EVENT_FIELDS:
             columns[name].append(getattr(matched, name))
         columns["cell_index"].append(np.full(len(matched), cell, dtype=np.int64))

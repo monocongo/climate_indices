@@ -517,6 +517,7 @@ def _match(
     valid_prefix: npt.NDArray[np.int64],
     mode: str,
     window: tuple[int, int | None],
+    max_pairs: int | None = None,
 ) -> _Matched:
     """Enumerate the matched pairs and count the sequential bridges rejected as unknown.
 
@@ -527,7 +528,8 @@ def _match(
     last start at or before ``first.end + high``. Searching those bounds keeps the
     per-first-run work proportional to its candidates, not to every second run. The accepted
     candidates are a prefix of the window, so counting the rejected bridges needs one lookup
-    rather than a test per candidate pair.
+    rather than a test per candidate pair. ``max_pairs`` bounds the rows held at once, so a
+    caller that assembles a larger result fails instead of allocating it.
     """
     steps = int(valid_prefix.size) - 1
     # unknown_prefix[i] counts the unknown steps before i; it does not decrease, so the first
@@ -537,6 +539,7 @@ def _match(
         key: [] for key in ("first_run_id", "second_run_id", "start_index", "end_index", "overlap_duration", "lag")
     }
     unknown_bridges = 0
+    matched_rows = 0
     for position in range(first.start.size):
         onset, ending = int(first.start[position]), int(first.end[position])
         if mode == "concurrent":
@@ -547,6 +550,15 @@ def _match(
         if rows is None:
             continue
         matched, starts, ends, overlaps, lags = rows
+        matched_rows += int(matched.size)
+        if max_pairs is not None and matched_rows > max_pairs:
+            raise InvalidArgumentError(
+                f"Matching reached the {max_pairs}-pair limit that bounds this result's memory; select a smaller "
+                "input, raise min_duration, or bound the lag window.",
+                argument_name="max_pairs",
+                argument_value=f"more than {max_pairs} pairs",
+                valid_values=f"at most {max_pairs} matched pairs",
+            )
         columns["first_run_id"].append(np.full(matched.size, position, dtype=np.int64))
         columns["second_run_id"].append(matched)
         columns["start_index"].append(starts)
@@ -595,6 +607,7 @@ def _compound_events(
     mode: str,
     lag_window: object,
     source_metadata: object,
+    max_pairs: int | None = None,
 ) -> CompoundEventSet:
     """Validate the shared grid and both run sets, then match and freeze the pairs."""
     _check_choice("cadence", cadence, _CADENCES)
@@ -652,7 +665,7 @@ def _compound_events(
 
     first_runs = _validated_runs("first", first, mask, valid_prefix, steps)
     second_runs = _validated_runs("second", second, mask, valid_prefix, steps)
-    rows = _match(first_runs, second_runs, valid_prefix=valid_prefix, mode=mode, window=window)
+    rows = _match(first_runs, second_runs, valid_prefix=valid_prefix, mode=mode, window=window, max_pairs=max_pairs)
 
     unit = _UNITS[cadence]
     n_valid = int(valid_prefix[-1])
