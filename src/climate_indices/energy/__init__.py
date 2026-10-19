@@ -1,8 +1,9 @@
 """Climate-driven energy indices: demand proxies and resource transforms.
 
 Degree days describe climate-driven heating and cooling demand, not actual load.
-Wind profiles and PV capacity factors describe climate-driven resources, not actual generation. Event
-statistics describe index runs, not recorded supply shortfalls. The NumPy
+Wind profiles and capacity factors describe climate-driven resources, not actual generation.
+Event statistics describe index runs, not recorded supply shortfalls.
+The wind and PV capacity-factor transforms are NumPy-only. The NumPy
 reference functions are stable; degree-day and wind-profile DataArray dispatch
 is beta, preserves CF metadata, and supports lazy Dask chunks on every dimension.
 SREPI, the standardized demand index, and SRLI describe the climate-driven component of
@@ -24,7 +25,7 @@ from climate_indices.energy._events import energy_drought_events
 from climate_indices.energy._residual_load import residual_load, srli
 from climate_indices.energy._solar import pv_capacity_factor
 from climate_indices.energy._standardized import SREPI_DROUGHT_THRESHOLDS, srepi, standardized_demand_index
-from climate_indices.energy._wind import hub_height_wind_speed, wind_shear_exponent
+from climate_indices.energy._wind import hub_height_wind_speed, wind_capacity_factor, wind_shear_exponent
 
 __all__ = [
     "SREPI_DROUGHT_THRESHOLDS",
@@ -38,5 +39,6 @@ __all__ = [
     "srepi",
     "srli",
     "standardized_demand_index",
+    "wind_capacity_factor",
     "wind_shear_exponent",
 ]
