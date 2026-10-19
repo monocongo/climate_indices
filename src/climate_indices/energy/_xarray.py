@@ -38,16 +38,25 @@ STANDARDIZED_INDEX_VALIDATORS = (
 _StandardizedReturn = TypeVar("_StandardizedReturn")
 
 
+# the temporal parameters the adapter infers from the time coordinate when they are omitted
+_TEMPORAL_PARAMETERS = ("data_start_year", "calibration_year_initial", "calibration_year_final", "periodicity")
+
+
 def apply_standardized(
     adapter: Callable[..., _StandardizedReturn], values: Any, **parameters: Any
 ) -> _StandardizedReturn:
     """Dispatch a standardized energy index through its beta xarray adapter.
 
     Every parameter travels as a keyword, because the adapter's gridded path forwards
-    only keywords to its block kernel. A parameter left as ``None`` is omitted so the
-    adapter infers it from the time coordinate; an explicit value still wins.
+    only keywords to its block kernel. A temporal parameter left as ``None`` is omitted
+    so the adapter infers it from the time coordinate; an explicit value still wins.
+    Any other parameter is forwarded as given, so an invalid value still raises.
     """
-    return adapter(values, **{name: value for name, value in parameters.items() if value is not None})
+    forwarded = {
+        name: value for name, value in parameters.items() if value is not None or name not in _TEMPORAL_PARAMETERS
+    }
+    data = values if isinstance(values, xr.DataArray) else np.asanyarray(values)
+    return adapter(data, **forwarded)
 
 
 def temperature_input(data: xr.DataArray) -> xr.DataArray:

@@ -240,7 +240,6 @@ _wrapped_srli: Callable[..., npt.NDArray[np.float64] | xr.DataArray] = xarray_ad
         "calibration_year_final",
         "aggregation",
     ],
-    spatial_kernel=True,
 )(_srli_numpy)
 
 

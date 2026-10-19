@@ -242,7 +242,6 @@ _wrapped_srepi: Callable[..., npt.NDArray[np.float64] | xr.DataArray] = xarray_a
         "calibration_year_final",
         "aggregation",
     ],
-    spatial_kernel=True,
 )(_srepi_numpy)
 
 _wrapped_standardized_demand_index: Callable[..., npt.NDArray[np.float64] | xr.DataArray] = xarray_adapter(
@@ -259,7 +258,6 @@ _wrapped_standardized_demand_index: Callable[..., npt.NDArray[np.float64] | xr.D
         "calibration_year_final",
         "aggregation",
     ],
-    spatial_kernel=True,
 )(_standardized_demand_index_numpy)
 
 

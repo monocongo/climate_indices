@@ -165,7 +165,6 @@ _wrapped_standardized_index = xarray_adapter(
         "calibration_year_final",
         "aggregation",
     ],
-    spatial_kernel=True,
 )(indices.standardized_index)
 
 
@@ -298,8 +297,11 @@ def standardized_index(values: Any, *args: Any, **kwargs: Any) -> npt.NDArray[np
             (the default), "center_of_mass", or "mean_zero".
         aggregation: How each window is combined: "sum" (the default) or "mean",
             which keeps a bounded series such as a capacity factor in its range.
-        clip_negatives: Whether a parametric fit clips negative values to zero
-            before fitting. The empirical and beta distributions never clip.
+        clip_negatives: Whether a negative value is clipped to zero before fitting.
+            The default is True, which suits a non-negative series; a signed series
+            such as residual load needs False. The beta distribution never clips,
+            because a clipped value would join the zero mass and standardize a
+            different series.
 
     Returns:
         Standardized values as numpy.ndarray or xarray.DataArray, matching the

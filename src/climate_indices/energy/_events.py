@@ -8,8 +8,9 @@ import numpy as np
 import numpy.typing as npt
 import xarray as xr
 
+from climate_indices.exceptions import CoordinateValidationError, InsufficientDataError, InvalidArgumentError
 from climate_indices.runs import Direction, RunStatistics, summarize_runs
-from climate_indices.validation import validate_dask_chunks, validate_time_dimension
+from climate_indices.validation import validate_dask_chunks, validate_time_dimension, validate_time_monotonicity
 from climate_indices.xarray_adapter import build_output_attrs
 
 # the gridded summary variables, in the order the apply_ufunc kernel returns them
@@ -62,14 +63,37 @@ def _events_block(
     )
 
 
-def _as_period_values(periods: Any, size: int) -> np.ndarray | None:
-    """Read an optional period label per time step from an array or a DataArray."""
-    if periods is None:
-        return None
-    values = np.asarray(periods.values if isinstance(periods, xr.DataArray) else periods)
-    if values.shape != (size,):
+def _period_values(
+    periods: Any,
+    *,
+    time_coord: xr.DataArray | None = None,
+    time_dim: str = "time",
+) -> Any:
+    """Read period labels, rejecting a DataArray whose time coordinate contradicts the input.
+
+    The labels are attached to steps by position, so a silently dropped or reordered
+    time coordinate would attribute every event to the wrong period.
+    """
+    if not isinstance(periods, xr.DataArray):
+        return periods
+    if time_coord is not None and time_dim in periods.dims:
+        if time_dim not in periods.coords or not np.array_equal(periods[time_dim].values, time_coord.values):
+            raise CoordinateValidationError(
+                f"periods must carry the input's {time_dim!r} coordinate labels, in the same order.",
+                coordinate_name=time_dim,
+                reason="mismatched_coordinates",
+            )
+    return periods.values
+
+
+def _validated_labels(periods: Any, size: int) -> np.ndarray:
+    """Return gridded period labels as an array, rejecting masked or misaligned ones."""
+    if np.ma.is_masked(periods):
+        raise InvalidArgumentError("periods must not contain missing labels.", argument_name="periods")
+    labels = np.asarray(periods)
+    if labels.shape != (size,):
         raise ValueError("periods must hold one label per input time step")
-    return values
+    return labels
 
 
 def _gridded_events(
@@ -171,12 +195,14 @@ def energy_drought_events(
     accepts SPI or SPEI as well as standardized energy indices.
 
     A one-dimensional DataArray returns the same :class:`~climate_indices.runs.RunStatistics`
-    the NumPy path returns. A DataArray with cell dimensions returns an
-    ``xr.Dataset``: the five summary variables over a ``period`` dimension plus
-    the input's cell dimensions, and one ``events`` variable holding each
-    cell's :class:`~climate_indices.runs.RunSet`. Run events are found per cell,
-    so the time dimension must be a single Dask chunk; cell dimensions chunk
-    freely.
+    the NumPy path returns; it is evaluated eagerly, so a Dask-backed series is
+    computed. A DataArray with cell dimensions returns an ``xr.Dataset``: the
+    five summary variables over a ``period`` dimension plus the input's cell
+    dimensions, and one ``events`` variable holding each cell's
+    :class:`~climate_indices.runs.RunSet`. Run events are found per cell, so a
+    Dask-backed input must keep the time dimension in a single chunk; cell
+    dimensions chunk freely. An empty time axis is rejected on the gridded path
+    rather than reported as an empty summary.
 
     Args:
         index: One-dimensional index series in time order, or a DataArray with a
@@ -207,8 +233,13 @@ def energy_drought_events(
         instead, carrying the event options in each variable's attributes.
 
     Raises:
+        CoordinateValidationError: If a gridded DataArray has no time dimension or
+            a non-monotonic time coordinate, or its period labels do not carry the
+            input's time labels.
         DataShapeError: If the index is not one-dimensional or periods does not
             match its shape.
+        InsufficientDataError: If a gridded DataArray has an empty time axis.
+        InvalidArgumentError: If a gridded call receives masked period labels.
         InputTypeError: If the index or period labels have an unsupported dtype.
         InvalidArgumentError: If options or period labels are invalid.
         ValueError: If a DataArray period label count does not match its time
@@ -231,7 +262,7 @@ def energy_drought_events(
     if index.ndim == 1:
         return summarize_runs(
             np.asarray(index.values),
-            periods=periods,
+            periods=_period_values(periods, time_coord=index.coords.get(time_dim), time_dim=time_dim),
             threshold=threshold,
             direction=direction,
             min_duration=min_duration,
@@ -239,11 +270,15 @@ def energy_drought_events(
         )
 
     validate_time_dimension(index, time_dim)
+    validate_time_monotonicity(index[time_dim])
     if index.chunks is not None:
         validate_dask_chunks(index, time_dim)
+    if index.sizes[time_dim] == 0:
+        raise InsufficientDataError("An empty time axis has no steps to run over.")
+    labels = _period_values(periods, time_coord=index[time_dim], time_dim=time_dim)
     return _gridded_events(
         index,
-        _as_period_values(periods, index.sizes[time_dim]),
+        None if labels is None else _validated_labels(labels, index.sizes[time_dim]),
         threshold=threshold,
         direction=direction,
         min_duration=min_duration,
