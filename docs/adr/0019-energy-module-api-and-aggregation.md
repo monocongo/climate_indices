@@ -31,6 +31,13 @@ the beta xarray layer. Their elementwise Dask execution accepts multiple chunks
 on every dimension; temperature units are inferred while bases remain in °C.
 Standardized energy adapters remain deferred to #1174.
 
+Amended by the event-statistics implementation
+([#1173](https://github.com/monocongo/climate_indices/issues/1173)):
+`energy.energy_drought_events()` now returns generic run metrics and onset-period
+summaries through `runs.summarize_runs()`. Pooling, elapsed duration, and frequency
+follow the maintainer-approved contract in the energy subsystem design note.
+The energy event xarray adapter remains deferred to #1174.
+
 Decision 2's `aggregation` keyword landed with this record
 ([#1158](https://github.com/monocongo/climate_indices/issues/1158)). Decisions 3
 through 5 and the radiation units of decision 6 remain contracts for the tickets

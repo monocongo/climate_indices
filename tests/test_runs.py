@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -132,6 +133,98 @@ def test_min_duration_filters_runs_and_recomputes_interarrival() -> None:
 
     # interarrival is computed between surviving runs only
     assert len(long_only) == 1
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_pooling_precedes_duration_filter_and_excludes_gap_magnitude(
+    dtype: type[np.float32] | type[np.float64],
+) -> None:
+    series = np.array([-2, 0, -3, 0, 0, -4], dtype=dtype)
+
+    found = runs.identify_runs(series, threshold=-1.0, max_gap=1, min_duration=2)
+
+    np.testing.assert_array_equal(found.start_index, [0])
+    np.testing.assert_array_equal(found.end_index, [2])
+    np.testing.assert_array_equal(found.duration, [3])
+    # Integer deviations are exact in both widths; the pooled gap contributes zero.
+    np.testing.assert_allclose(found.magnitude, [3.0], rtol=0, atol=0)
+    np.testing.assert_allclose(found.intensity, [1.0], rtol=0, atol=0)
+    np.testing.assert_array_equal(found.peak_index, [2])
+    np.testing.assert_array_equal(found.peak_value, [-3.0])
+    assert np.isnan(found.interarrival[-1])
+
+
+@pytest.mark.parametrize("direction, sign", [("below", 1), ("above", -1)])
+def test_pooling_chains_short_gaps_but_respects_nan_and_long_gaps(direction: runs.Direction, sign: int) -> None:
+    values = np.array([-2, -1, -3, 0, -4, np.nan, -5, 0, 0, -6], dtype=float) * sign
+    original = values.copy()
+    found = runs.identify_runs(values, threshold=-1.0 * sign, direction=direction, max_gap=1)
+
+    np.testing.assert_array_equal(found.start_index, [0, 6, 9])
+    np.testing.assert_array_equal(found.end_index, [4, 6, 9])
+    np.testing.assert_array_equal(found.duration, [5, 1, 1])
+    np.testing.assert_array_equal(found.peak_index, [4, 6, 9])
+    np.testing.assert_array_equal(found.peak_value, np.array([-4, -5, -6]) * sign)
+    # Integer deviations are exact; 6/5 needs only float64 division rounding.
+    np.testing.assert_allclose(found.magnitude, [6, 4, 5], rtol=0, atol=0)
+    np.testing.assert_allclose(found.intensity, [6 / 5, 4, 5], rtol=0, atol=0)
+    np.testing.assert_array_equal(found.interarrival, [6, 3, np.nan])
+    np.testing.assert_array_equal(values, original)
+
+
+def test_pooling_recomputes_interarrival_after_duration_filtering() -> None:
+    found = runs.identify_runs([-2, 0, -3, 0, 0, -4, 0, 0, -5, 0, -6], max_gap=1, min_duration=3)
+    np.testing.assert_array_equal(found.start_index, [0, 8])
+    np.testing.assert_array_equal(found.end_index, [2, 10])
+    np.testing.assert_array_equal(found.interarrival, [8.0, np.nan])
+
+
+def test_pooling_cannot_cross_masked_values_even_with_unlimited_gap() -> None:
+    values = np.ma.array([-2, 0, -3, -4, 0, -5], mask=[False, False, False, True, False, False])
+    found = runs.identify_runs(values, max_gap=10**400)
+    np.testing.assert_array_equal(found.start_index, [0, 5])
+    np.testing.assert_array_equal(found.end_index, [2, 5])
+    np.testing.assert_array_equal(found.duration, [3, 1])
+    np.testing.assert_array_equal(found.magnitude, [3, 4])
+
+
+@pytest.mark.parametrize("max_gap", [0, 1, np.int64(1)])
+def test_pooling_strided_input_and_zero_default(max_gap: int) -> None:
+    values = np.array([-2, 99, 0, 99, -3, 99, np.nan, 99, -4, 99])[::2]
+    assert not values.flags.c_contiguous
+    found = runs.identify_runs(values, max_gap=max_gap)
+    np.testing.assert_array_equal(found.start_index, [0, 2, 4] if max_gap == 0 else [0, 4])
+    np.testing.assert_array_equal(found.duration, [1, 1, 1] if max_gap == 0 else [3, 1])
+
+
+@pytest.mark.parametrize("values", [[], [np.nan], [0], [-1], [-2]])
+def test_pooling_empty_and_single_step_inputs(values: list[float]) -> None:
+    found = runs.identify_runs(values, max_gap=3)
+    assert len(found) == int(values == [-2])
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_pooling_preserves_small_threshold_deviations(dtype: type[np.float32] | type[np.float64]) -> None:
+    value = np.nextafter(dtype(1), dtype(0))
+    found = runs.identify_runs(np.array([value, 2, value], dtype=dtype), threshold=1.0, max_gap=1)
+    expected = 2 * (1.0 - float(value))
+    # Adjacent representable values give an exact, nonzero binary deviation.
+    np.testing.assert_allclose(found.magnitude, [expected], rtol=0, atol=0)
+    assert found.magnitude[0] > 0
+
+
+def test_pooling_preserves_infinite_extremes_without_subtracting_neutral_gaps() -> None:
+    found = runs.identify_runs([-np.inf, 0, -2, np.inf, -3], max_gap=1)
+    np.testing.assert_array_equal(found.duration, [5])
+    np.testing.assert_array_equal(found.magnitude, [np.inf])
+    np.testing.assert_array_equal(found.peak_value, [-np.inf])
+    np.testing.assert_array_equal(found.peak_index, [0])
+
+
+@pytest.mark.parametrize("max_gap", [-1, 1.5, True, np.bool_(False), "1", None, np.array(1)])
+def test_invalid_pooling_gap_is_rejected(max_gap: Any) -> None:
+    with pytest.raises(InvalidArgumentError, match="max_gap"):
+        runs.identify_runs(BELOW_SERIES, max_gap=max_gap)
 
 
 def test_empty_input_returns_empty_run_set() -> None:
@@ -374,6 +467,35 @@ def test_xarray_dask_matches_eager() -> None:
             assert computed.values[i, j] == expected.values[i, j]
 
 
+@pytest.mark.parametrize("lazy", [False, True])
+def test_xarray_pooling_preserves_gaps_across_time_chunks(lazy: bool) -> None:
+    data = xr.DataArray(
+        [[-2, -3], [0, -1], [-3, -3], [0, np.nan], [-4, -5]],
+        dims=["time", "cell"],
+        coords={"cell": ["a", "b"]},
+    )
+    if lazy:
+        data = data.chunk({"time": 1, "cell": 1})
+    found = runs.identify_runs_xarray(data, max_gap=1)
+    assert isinstance(found, xr.DataArray)
+    assert found.attrs["max_gap"] == 1
+    np.testing.assert_array_equal(found.cell, ["a", "b"])
+    computed = found.compute()
+    np.testing.assert_array_equal(computed.values[0].duration, [5])
+    np.testing.assert_array_equal(computed.values[0].magnitude, [6])
+    np.testing.assert_array_equal(computed.values[1].start_index, [0, 4])
+    np.testing.assert_array_equal(computed.values[1].duration, [3, 1])
+    np.testing.assert_array_equal(computed.values[1].magnitude, [4, 4])
+
+
+def test_xarray_one_dimensional_pooling() -> None:
+    data = xr.DataArray([-2, 0, -3], dims="time")
+    found = runs.identify_runs_xarray(data, max_gap=1)
+    assert isinstance(found, runs.RunSet)
+    np.testing.assert_array_equal(found.duration, [3])
+    np.testing.assert_array_equal(found.magnitude, [3])
+
+
 def test_xarray_time_dim_not_leading() -> None:
     values = np.array([[0.5, -1.2, -1.5, -0.8, 0.3, -1.1, -1.3], [0.5, 0.4, 0.2, 0.3, 0.1, 0.0, -0.2]])
     data = xr.DataArray(values, dims=["lat", "time"], coords={"lat": [10.0, 20.0]})
@@ -388,7 +510,7 @@ def test_xarray_time_dim_not_leading() -> None:
 def test_xarray_validation_errors() -> None:
     data = xr.DataArray(np.zeros((6, 2)), dims=["time", "cells"])
 
-    for kwargs in ({"direction": "sideways"}, {"threshold": np.nan}, {"min_duration": 0}):
+    for kwargs in ({"direction": "sideways"}, {"threshold": np.nan}, {"min_duration": 0}, {"max_gap": -1}):
         with pytest.raises(InvalidArgumentError):
             runs.identify_runs_xarray(data, **kwargs)  # type: ignore[arg-type]
 

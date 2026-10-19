@@ -25,6 +25,16 @@ from climate_indices import energy, fire, fit_diagnostics, percentage_of_normal,
 from climate_indices.compute import FitDiagnostics, Periodicity
 from climate_indices.indices import Distribution
 from climate_indices.indices import percentage_of_normal as numpy_pnp
+from climate_indices.runs import RunSet, RunStatistics, summarize_runs
+
+
+def test_energy_event_return_types() -> None:
+    result = energy.energy_drought_events([-2, 0, -3], max_gap=1, periods=[2020, 2020, 2021])
+    assert_type(result, RunStatistics)
+    assert_type(result.events, RunSet)
+    assert_type(result.count, npt.NDArray[np.int64])
+    assert_type(result.frequency, npt.NDArray[np.float64])
+    assert_type(summarize_runs([-2, 0, -3]), RunStatistics)
 
 
 def test_energy_wind_numpy_return_types() -> None:
