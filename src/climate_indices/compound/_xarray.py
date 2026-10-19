@@ -39,6 +39,7 @@ from climate_indices.compound._bootstrap import (
 )
 from climate_indices.compound._harmonize import (
     _CADENCES,
+    _MISSING,
     Aggregation,
     AlignedHazards,
     Cadence,
@@ -261,7 +262,7 @@ def _harmonize_block(
 def _harmonize_dataarrays(
     inputs: Mapping[str, Any],
     *,
-    time: Mapping[str, Any] | None,
+    time: Any,
     cadence: Mapping[str, Cadence],
     input_scale: Mapping[str, InputScale],
     thresholds: Mapping[str, float],
@@ -288,11 +289,11 @@ def _harmonize_dataarrays(
             expected_type=xr.DataArray,
             actual_type=type(inputs[foreign[0]]),
         )
-    if time is not None or spatial_time_major:
+    if time is not _MISSING or spatial_time_major:
         raise InvalidArgumentError(
             "time and spatial_time_major apply only to NumPy inputs; DataArray inputs carry their dates in the "
             f"{time_dim!r} coordinate and their layout in named dimensions.",
-            argument_name="time" if time is not None else "spatial_time_major",
+            argument_name="time" if time is not _MISSING else "spatial_time_major",
         )
     masks = _check_keys("validity", {} if validity is None else validity, names, subset=True)
     foreign_masks = [name for name, mask in masks.items() if not isinstance(mask, xr.DataArray)]
@@ -398,7 +399,7 @@ def _harmonize_dataarrays(
 def harmonize(
     inputs: Mapping[str, Any],
     *,
-    time: Mapping[str, Any] | None,
+    time: Any,
     cadence: Mapping[str, Cadence],
     input_scale: Mapping[str, InputScale],
     thresholds: Mapping[str, float],

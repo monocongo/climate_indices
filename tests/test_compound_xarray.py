@@ -539,6 +539,7 @@ def test_daily_cadence_is_rejected_for_bootstrap() -> None:
     ("extra", "match"),
     [
         ({"time": {"drought": MONTHS, "heat": MONTHS}}, "NumPy inputs"),
+        ({"time": None}, "NumPy inputs"),
         ({"spatial_time_major": True}, "NumPy inputs"),
         ({"time_dim": 3}, "time_dim"),
     ],
@@ -567,11 +568,14 @@ def test_harmonize_rejects_mixed_inputs_and_a_numpy_time_dim() -> None:
         )
 
 
-def test_numpy_route_requires_dates() -> None:
-    """Name the sources that lack dates instead of a bare TypeError, now that time is optional in the signature."""
+def test_numpy_route_keeps_its_contract_for_a_missing_or_none_time() -> None:
+    """Raise TypeError for an omitted time, as when it was a required keyword, and keep the None message."""
     drought, heat = _values()
-    with pytest.raises(InvalidArgumentError, match="time"):
-        compound.harmonize({"drought": drought, "heat": heat}, spatial_time_major=True, **DECLARATIONS)
+    inputs = {"drought": drought, "heat": heat}
+    with pytest.raises(TypeError, match="missing 1 required keyword-only argument: 'time'"):
+        compound.harmonize(inputs, spatial_time_major=True, **DECLARATIONS)
+    with pytest.raises(InvalidArgumentError, match="time must be a mapping keyed by source name"):
+        compound.harmonize(inputs, time=None, spatial_time_major=True, **DECLARATIONS)
 
 
 def test_harmonize_rejects_unsupported_calendars_and_conflicting_scales() -> None:

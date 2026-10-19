@@ -58,6 +58,16 @@ _INDICATOR_THRESHOLD = 0.5
 _INDICATOR_DIRECTION = "above"
 
 
+class _Missing:
+    """Default of ``harmonize``'s ``time``: required for NumPy input, rejected for DataArray input."""
+
+    def __repr__(self) -> str:
+        return "<required for NumPy input>"
+
+
+_MISSING: Any = _Missing()
+
+
 @dataclass(frozen=True, eq=False)
 class AlignedHazards:
     """Boolean hazard occurrence and validity on one observed time axis.
@@ -265,12 +275,6 @@ def _hazard_and_validity(
     validity: object,
 ) -> tuple[npt.NDArray[np.bool_], npt.NDArray[np.bool_]]:
     """Apply the declared threshold to one source, returning ``(hazard, valid)`` with ``hazard`` False where invalid."""
-    if isinstance(values, xr.DataArray):
-        raise InputTypeError(
-            f"inputs[{name!r}] is an xarray.DataArray; harmonize() accepts NumPy arrays and explicit dates only.",
-            expected_type=np.ndarray,
-            actual_type=type(values),
-        )
     masked: np.ma.MaskedArray[Any, Any] = np.ma.asanyarray(values)
     array = np.ma.getdata(masked)
     valid = ~np.ma.getmaskarray(masked)
@@ -755,7 +759,7 @@ def harmonize(
 def harmonize(
     inputs: Mapping[str, Any],
     *,
-    time: Mapping[str, npt.ArrayLike] | None = None,
+    time: Any = _MISSING,
     cadence: Mapping[str, Cadence],
     input_scale: Mapping[str, InputScale],
     thresholds: Mapping[str, float],
@@ -799,6 +803,8 @@ def harmonize(
             ``spatial_time_major=True``. NaN and masked elements are unknown.
         time: Source name to its observation dates (``datetime64``, strictly
             increasing). A monthly label is normalized to the first of its month.
+            Required for NumPy input; DataArray input takes its dates from the
+            ``time_dim`` coordinate and rejects this argument.
         cadence: Source name to ``"daily"`` or ``"monthly"``.
         input_scale: Source name to ``"probability"`` or ``"indicator"``. ``"normal"``
             and ``"bounded"`` are rejected; request probabilities upstream.
@@ -819,6 +825,9 @@ def harmonize(
             and ``comparator`` are recorded in the manifest; everything is copied.
         spatial_time_major: Declare that arrays with more than one dimension are
             ``(time, *cells)`` blocks. Every source must have the same cell shape.
+            NumPy input only; DataArray layouts come from named dimensions.
+        time_dim: DataArray input only: the name of each source's time dimension and
+            coordinate. Defaults to ``"time"``; NumPy input rejects it.
 
     Returns:
         An :class:`AlignedHazards` whose ``exceedance`` and ``valid`` arrays are new
@@ -828,10 +837,13 @@ def harmonize(
     Raises:
         InvalidArgumentError: For an inconsistent or unsupported declaration, a
             probability outside ``[0, 1]``, a reducer that does not apply, a monthly
-            source with a daily target, or sources with conflicting known Calibration
-            Periods.
+            source with a daily target, sources with conflicting known Calibration
+            Periods, ``time_dim`` with NumPy input, or ``time`` or ``spatial_time_major``
+            with DataArray input.
         InputTypeError: For a dtype that does not match the declared scale, a
-            probability dtype wider than float64, or dates that are not ``datetime64``.
+            probability dtype wider than float64, dates that are not ``datetime64``, or a
+            mapping that mixes DataArrays with other types.
+        TypeError: For NumPy input without ``time``.
         DataShapeError: For an undeclared gridded layout, mismatched cell shapes, or
             dates or validity that do not match an input.
         CoordinateValidationError: For NaT, duplicate, or unordered dates, mismatched
@@ -880,6 +892,8 @@ def harmonize(
             spatial_time_major=spatial_time_major,
             time_dim="time" if time_dim is None else time_dim,
         )
+    if time is _MISSING:
+        raise TypeError("harmonize() missing 1 required keyword-only argument: 'time'")
     if time_dim is not None:
         raise InvalidArgumentError(
             "time_dim applies only to xarray.DataArray inputs; NumPy inputs carry their dates in time.",
@@ -899,8 +913,7 @@ def harmonize(
     try:
         result = _harmonize(
             inputs,
-            # an omitted time reaches the key check, which names the missing sources
-            time={} if time is None else time,
+            time=time,
             cadence=cadence,
             input_scale=input_scale,
             thresholds=thresholds,
