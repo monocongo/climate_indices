@@ -176,7 +176,8 @@ def test_residual_load_rejects_infinite_bool_object_and_ragged_demand(demand: An
         energy.residual_load(demand, [np.array([0.5, 0.5])], [1.0])
 
 
+@pytest.mark.filterwarnings("error::RuntimeWarning")
 def test_residual_load_rejects_overflow_to_infinity() -> None:
-    with pytest.raises(InvalidArgumentError) as error, np.errstate(over="ignore"):
+    with pytest.raises(InvalidArgumentError, match="overflowed") as error:
         energy.residual_load(np.array([-1e308, 1.0]), [np.ones(2), np.ones(2)], [1e308, 1e308])
     assert error.value.argument_name == "installed_capacities"

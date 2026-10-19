@@ -124,7 +124,8 @@ def residual_load(
                 argument_value="a negative or non-finite capacity",
                 valid_values="Finite values of at least 0",
             )
-        residual = residual - factor * capacity
+        with np.errstate(over="ignore"):
+            residual = residual - factor * capacity
     if np.any(np.isinf(residual)):
         raise InvalidArgumentError(
             "The residual load overflowed to infinity.",
