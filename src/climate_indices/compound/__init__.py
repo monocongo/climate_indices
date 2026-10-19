@@ -8,12 +8,15 @@ returns :class:`AlignedHazards`, :func:`joint_statistics` returns a
 :class:`JointResult` of marginal and joint frequencies, the independence product,
 and the likelihood multiplication factor, :func:`conditional_probability`
 returns a :class:`ConditionalResult` of anchor-conditioned and response-window
-frequencies, and :func:`compound_events` returns a :class:`CompoundEventSet` of
-paired concurrent or sequential events. The NumPy API is stable; this module is
-imported explicitly (``import climate_indices.compound as compound``) and is not
-re-exported from the package root.
+frequencies, :func:`compound_events` returns a :class:`CompoundEventSet` of
+paired concurrent or sequential events, and :func:`bootstrap_dependence` returns a
+:class:`BootstrapResult` with monthly block-bootstrap intervals and local
+independence tests. The NumPy API is stable; this module is imported explicitly
+(``import climate_indices.compound as compound``) and is not re-exported from the
+package root.
 """
 
+from climate_indices.compound._bootstrap import BootstrapResult, bootstrap_dependence
 from climate_indices.compound._events import CompoundEventSet, compound_events
 from climate_indices.compound._harmonize import AlignedHazards, harmonize
 from climate_indices.compound._statistics import (
@@ -25,9 +28,11 @@ from climate_indices.compound._statistics import (
 
 __all__ = [
     "AlignedHazards",
+    "BootstrapResult",
     "CompoundEventSet",
     "ConditionalResult",
     "JointResult",
+    "bootstrap_dependence",
     "compound_events",
     "conditional_probability",
     "harmonize",
