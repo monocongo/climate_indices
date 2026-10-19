@@ -88,7 +88,9 @@ def test_tabulated_subnormal_interval_does_not_overflow() -> None:
 
 def test_scalar_empty_and_extreme_winds() -> None:
     result = energy.wind_capacity_factor(13, "generic")
-    assert isinstance(result, np.ndarray) and result.shape == () and result == 1
+    assert isinstance(result, np.ndarray)
+    assert result.shape == ()
+    assert result == 1
     assert energy.wind_capacity_factor([], "generic").shape == (0,)
     wind = [0, np.nextafter(0.0, 1.0), 1e308]
     with np.errstate(all="raise"):
@@ -156,10 +158,12 @@ def test_nonnumeric_inputs_raise(invalid: npt.ArrayLike) -> None:
 
 
 def test_numpy_only_and_explicit_curve_contract() -> None:
+    wind = xr.DataArray([5])
+    density = xr.DataArray([1.225])
     with pytest.raises(InputTypeError, match="NumPy"):
-        energy.wind_capacity_factor(xr.DataArray([5]), "generic")
+        energy.wind_capacity_factor(wind, "generic")
     with pytest.raises(InputTypeError, match="NumPy"):
-        energy.wind_capacity_factor([5], "generic", air_density=xr.DataArray([1.225]))
+        energy.wind_capacity_factor([5], "generic", air_density=density)
 
 
 def test_calculation_logs_memory_and_failure() -> None:
