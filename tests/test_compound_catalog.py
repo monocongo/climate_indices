@@ -346,11 +346,20 @@ def test_malformed_prepared_input_is_rejected(problem: str, error: type[Exceptio
         catalog(hazards)
 
 
-def test_duplicate_hazard_labels_are_rejected() -> None:
-    """A repeated label would let a name select an arbitrary source, so it is rejected."""
-    hazards = prepared().assign_coords(hazard=["dry", "dry", "unused"])
-    with pytest.raises(InvalidArgumentError, match="unique"):
+@pytest.mark.parametrize(
+    "labels,repeated",
+    [
+        (["dry", "dry", "unused"], ["dry"]),
+        (["z", "a", "z", "a", "dry", "hot"], ["a", "z"]),
+        (["z", "a"] * 1000 + ["dry", "hot"], ["a", "z"]),
+    ],
+)
+def test_duplicate_hazard_labels_are_rejected(labels: list[str], repeated: list[str]) -> None:
+    """Report each duplicate once in sorted order, including inputs with many repeated labels."""
+    hazards = prepared(grid=False).isel(hazard=[0] * len(labels)).assign_coords(hazard=labels)
+    with pytest.raises(InvalidArgumentError, match="unique") as error:
         catalog(hazards)
+    assert f"{repeated} appears more than once" in str(error.value)
 
 
 def test_row_budget_is_compared_with_the_candidate_count() -> None:

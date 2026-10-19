@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from dataclasses import fields
 from typing import Any, cast
 
@@ -165,7 +166,7 @@ def _validated_request(
             argument_name="hazards",
         ) from exc
     if len(set(prepared.names)) != len(prepared.names):
-        repeated = sorted({name for name in prepared.names if prepared.names.count(name) > 1})
+        repeated = sorted(name for name, count in Counter(prepared.names).items() if count > 1)
         raise InvalidArgumentError(
             f"hazards['hazard'] labels must be unique so each selected name identifies one source; {repeated} "
             "appears more than once.",
