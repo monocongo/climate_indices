@@ -15,7 +15,7 @@ import climate_indices
 from climate_indices import indices
 from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.compute import Periodicity
-from climate_indices.exceptions import InvalidArgumentError
+from climate_indices.exceptions import CoordinateValidationError, InvalidArgumentError
 
 SCALE = 3
 DATA_START_YEAR = 1985
@@ -145,6 +145,51 @@ def test_gridded_input_matches_a_per_cell_numpy_run() -> None:
         for lon_index in range(cube.sizes["lon"]):
             expected = _numpy(cube.isel(lat=lat_index, lon=lon_index).values)
             np.testing.assert_array_equal(result.isel(lat=lat_index, lon=lon_index).values, expected)
+
+
+def test_gridded_input_matches_numpy_with_tied_values() -> None:
+    """Tied values keep the NumPy ranks, so a grid cell cannot drift from its own series."""
+    tied = np.concatenate([np.random.default_rng(7).permutation(np.arange(1, 13) / 13) for _ in range(40)])
+    time = xr.date_range(f"{DATA_START_YEAR}-01-01", periods=tied.size, freq="MS")
+    cube = xr.DataArray(
+        tied[:, None, None], dims=("time", "lat", "lon"), coords={"time": time, "lat": [1.0], "lon": [1.0]}
+    )
+
+    result = climate_indices.standardized_index(
+        cube,
+        12,
+        indices.Distribution.empirical,
+        calibration_year_initial=DATA_START_YEAR,
+        calibration_year_final=DATA_START_YEAR + 39,
+    )
+    expected = indices.standardized_index(
+        tied,
+        12,
+        indices.Distribution.empirical,
+        DATA_START_YEAR,
+        DATA_START_YEAR,
+        DATA_START_YEAR + 39,
+        Periodicity.monthly,
+    )
+
+    np.testing.assert_array_equal(result.values[:, 0, 0], expected)
+
+
+def test_split_time_chunk_is_rejected() -> None:
+    """A fitting index reads the whole time series at once, so a split chunk cannot be honoured."""
+    with pytest.raises(CoordinateValidationError, match="chunk"):
+        climate_indices.standardized_index(_monthly().chunk({"time": 120}), SCALE, indices.Distribution.empirical)
+
+
+def test_source_nans_propagate_as_missing() -> None:
+    """A missing source step stays missing in the output rather than shifting the series."""
+    cube = _gridded()
+    cube[0, 0, 0] = np.nan
+
+    result = climate_indices.standardized_index(cube, SCALE, indices.Distribution.empirical)
+
+    assert np.isnan(result.values[0, 0, 0])
+    np.testing.assert_array_equal(result.values[:, 0, 1], _numpy(cube.values[:, 0, 1]))
 
 
 def test_dask_backed_input_matches_the_eager_result() -> None:

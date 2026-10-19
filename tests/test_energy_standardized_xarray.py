@@ -107,6 +107,31 @@ def test_gridded_input_matches_a_per_cell_numpy_run(index_name: str) -> None:
             np.testing.assert_array_equal(result.isel(lat=lat_index, lon=lon_index).values, expected)
 
 
+def test_gridded_input_matches_numpy_with_tied_values() -> None:
+    """Tied capacity factors keep the NumPy ranks, so a grid cell cannot drift."""
+    tied = np.concatenate([np.random.default_rng(7).permutation(np.arange(1, 13) / 13) for _ in range(35)])
+    time = xr.date_range(f"{DATA_START_YEAR}-01-01", periods=tied.size, freq="MS")
+    cube = xr.DataArray(
+        tied[:, None, None], dims=("time", "lat", "lon"), coords={"time": time, "lat": [1.0], "lon": [1.0]}
+    )
+
+    result = energy.srepi(cube, 12)
+
+    np.testing.assert_array_equal(
+        result.values[:, 0, 0], energy.srepi(tied, 12, DATA_START_YEAR, DATA_START_YEAR, DATA_START_YEAR + 34, MONTHLY)
+    )
+
+
+def test_source_nans_propagate_as_missing() -> None:
+    """A missing source step stays missing in the output."""
+    cube = _gridded()
+    cube[0, 0, 0] = np.nan
+
+    result = energy.srepi(cube, 3, calibration_year_initial=_CAL_START, calibration_year_final=_CAL_END)
+
+    assert np.isnan(result.values[0, 0, 0])
+
+
 @pytest.mark.parametrize("index_name", ["srepi", "srli"])
 def test_dask_backed_input_matches_the_eager_result(index_name: str) -> None:
     """A time-chunked Dask cube stays lazy and produces the same values."""

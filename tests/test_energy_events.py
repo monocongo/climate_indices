@@ -8,7 +8,7 @@ import pytest
 import xarray as xr
 
 from climate_indices import compute, energy, indices
-from climate_indices.exceptions import CoordinateValidationError
+from climate_indices.exceptions import CoordinateValidationError, InsufficientDataError, InvalidArgumentError
 from climate_indices.runs import Direction, RunStatistics
 
 
@@ -145,3 +145,38 @@ def test_period_label_count_must_match_the_time_axis() -> None:
 
     with pytest.raises(ValueError, match="periods"):
         energy.energy_drought_events(da, periods=[2020, 2021])
+
+
+def test_event_tests_reject_a_non_monotonic_time_coordinate() -> None:
+    """Steps are run in array order, so an out-of-order time coordinate is rejected."""
+    da = xr.DataArray(
+        [[-2.0], [-2.0], [0.0]],
+        dims=("time", "site"),
+        coords={"time": np.array(["2020-01-01", "2020-01-03", "2020-01-02"], dtype="datetime64[D]")},
+    )
+
+    with pytest.raises(CoordinateValidationError, match="monotonic"):
+        energy.energy_drought_events(da)
+
+
+def test_event_tests_reject_misaligned_period_labels() -> None:
+    """Labels attached to different time steps would attribute events to the wrong period."""
+    da = xr.DataArray([[-2.0], [0.0]], dims=("time", "site"), coords={"time": [1, 2]})
+    labels = xr.DataArray([2021, 2020], dims="time", coords={"time": [2, 1]})
+
+    with pytest.raises(CoordinateValidationError, match="coordinate"):
+        energy.energy_drought_events(da, periods=labels)
+
+
+def test_event_tests_reject_masked_period_labels() -> None:
+    """A masked label is missing, which the NumPy contract already rejects."""
+    da = xr.DataArray([[-2.0], [0.0]], dims=("time", "site"))
+
+    with pytest.raises(InvalidArgumentError, match="missing labels"):
+        energy.energy_drought_events(da, periods=np.ma.array([2020, 2021], mask=[False, True]))
+
+
+def test_event_tests_reject_an_empty_time_axis() -> None:
+    """A gridded empty series has no steps to run over; the series path reports empty statistics."""
+    with pytest.raises(InsufficientDataError):
+        energy.energy_drought_events(xr.DataArray(np.empty((0, 2)), dims=("time", "site")))
