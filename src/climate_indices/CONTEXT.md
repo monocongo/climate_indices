@@ -7,11 +7,12 @@ A Python scientific computing library that turns raw climate observations (preci
 ### Core concepts
 
 **Timescale**:
-The number of consecutive time steps (months or days) accumulated before an index is computed — e.g. a 6-month accumulation window produces "SPI-6." Public function parameters are spelled `scale` in code (`indices.py`, `compute.py`, `typed_public_api.py`); use "Timescale" in prose and documentation.
+The number of consecutive time steps (months, days, or hours) accumulated before an index is computed — e.g. a 6-month accumulation window produces "SPI-6." Public function parameters are spelled `scale` in code (`indices.py`, `compute.py`, `typed_public_api.py`); use "Timescale" in prose and documentation.
 _Avoid_: Scale (fine as a code identifier, not as prose)
 
 **Periodicity**:
-The calendar granularity of an input time series — `monthly` (12 values/year) or `daily` (366 values/year, every year treated as a leap year). Determines how values are reshaped and grouped by calendar position before fitting.
+The calendar granularity of an input time series — `monthly` (12 values/year), `daily` (366 values/year, every year treated as a leap year), or `hourly` (8784 values/year on that same 366-day calendar, so a non-leap year carries 24 synthesized February 29 hours; only the empirical distribution standardizes it). Determines how values are reshaped and grouped by calendar position before fitting.
+_Avoid_: frequency (that is the pandas/xarray cadence string the adapter infers, not the enum)
 
 **Calibration Period**:
 The fixed span of years whose data defines "normal" — the distribution parameters (or, for PNP, the simple average) are fit only on this window, and all years (including years outside it) are then standardized against it. Enforced minimum is 30 years for a single-series in-memory input that contains NaNs; gridded in-memory and Dask-backed inputs are not preflighted, so sparse cells are fitted from the values that remain. The Python API spells the boundary years `calibration_year_initial`/`calibration_year_final`; `indices.percentage_of_normal` and the typed API also accept the older `calibration_start_year`/`calibration_end_year` keywords as deprecated aliases (removed in 4.0.0), and the `compute.py` internal helpers use that start/end spelling. The CLI's flags are `--calibration_start_year`/`--calibration_end_year` with `--calibration_year_initial`/`--calibration_year_final` aliases.

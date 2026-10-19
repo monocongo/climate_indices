@@ -22,7 +22,7 @@ from climate_indices.xarray_adapter import build_output_attrs
 
 # Each surface adds its own distribution validator to the shared temporal validators.
 STANDARDIZED_VALIDATORS = (
-    lambda args: indices._validate_periodicity(args["periodicity"]),
+    lambda args: indices._validate_periodicity(args["periodicity"], allow_hourly=True),
     lambda args: indices._validate_scale(args["scale"], args["periodicity"]),
     lambda args: compute.validate_output_scale(args["output_scale"]),
     lambda args: compute._validate_aggregation(args["aggregation"]),

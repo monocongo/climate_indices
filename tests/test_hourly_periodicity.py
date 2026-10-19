@@ -1,0 +1,266 @@
+"""Hourly periodicity (#1177): the 8784-slot calendar and hour x day-of-year strata."""
+
+from __future__ import annotations
+
+import calendar
+
+import numpy as np
+import pandas as pd
+import pytest
+import xarray as xr
+
+from climate_indices import compute, energy, indices, utils
+from climate_indices.exceptions import CoordinateValidationError, InvalidArgumentError
+
+HOURS_PER_YEAR = 8784
+HOURS_PER_DAY = 24
+CALENDAR_START = 2001
+CALENDAR_YEARS = 12
+
+
+def _hourly_values(years: range, start_year: int) -> np.ndarray:
+    """Return a Gregorian hourly series starting on January 1 of ``start_year``."""
+    return np.concatenate(
+        [np.arange((366 if calendar.isleap(year) else 365) * HOURS_PER_DAY, dtype=float) for year in years]
+    )
+
+
+def _all_leap(values: np.ndarray, start_year: int, total_years: int) -> np.ndarray:
+    """Fold a Gregorian hourly series into the NumPy core's 8784-slot year layout."""
+    plan = utils.CalendarPlan.from_year_span(start_year, total_years, values.size, steps_per_day=HOURS_PER_DAY)
+    return plan.to_all_leap(values)
+
+
+class TestHourlyPeriodicityMember:
+    """The enum member carries the 8784-step year and the hour unit."""
+
+    def test_period_length_and_unit(self) -> None:
+        assert compute.Periodicity.hourly.period_length == HOURS_PER_YEAR
+        assert compute.Periodicity.hourly.unit() == "hour"
+        assert compute.Periodicity.from_string("hourly") is compute.Periodicity.hourly
+
+
+class TestHourlyCalendarPlan:
+    """The calendar plan inserts 24 synthetic February 29 hours in a non-leap year."""
+
+    def test_synthetic_hours_ramp_between_the_gap_endpoints(self) -> None:
+        values = _hourly_values(range(2001, 2003), 2001)
+        folded = _all_leap(values, 2001, 2)
+
+        assert folded.size == 2 * HOURS_PER_YEAR
+        first_year = folded[:HOURS_PER_YEAR]
+        synthetic_start = 59 * HOURS_PER_DAY
+        synthetic = first_year[synthetic_start : synthetic_start + HOURS_PER_DAY]
+
+        # the gap runs from February 28 23:00 (hour 1415) to March 1 00:00 (hour 1416)
+        assert first_year[synthetic_start - 1] == 1415.0
+        assert first_year[synthetic_start + HOURS_PER_DAY] == 1416.0
+        assert np.all(synthetic > 1415.0)
+        assert np.all(synthetic < 1416.0)
+        assert np.all(np.diff(synthetic) > 0)
+
+    def test_leap_year_is_copied_without_a_synthetic_block(self) -> None:
+        values = _hourly_values(range(2000, 2001), 2000)
+        folded = _all_leap(values, 2000, 1)
+
+        assert folded.size == HOURS_PER_YEAR
+        assert np.array_equal(folded, values)
+
+    def test_round_trip_restores_the_gregorian_series(self) -> None:
+        values = _hourly_values(range(2001, 2004), 2001)
+        plan = utils.CalendarPlan.from_year_span(2001, 3, values.size, steps_per_day=HOURS_PER_DAY)
+
+        restored = plan.to_gregorian(plan.to_all_leap(values))
+
+        assert np.array_equal(restored, values)
+
+    def test_partial_final_year_is_padded(self) -> None:
+        values = _hourly_values(range(2001, 2003), 2001)[: 365 * HOURS_PER_DAY + 100]
+        plan = utils.CalendarPlan.from_year_span(2001, 2, values.size, steps_per_day=HOURS_PER_DAY)
+        folded = plan.to_all_leap(values)
+
+        assert folded.size == 2 * HOURS_PER_YEAR
+        assert np.all(np.isnan(folded[-100:]))
+        assert plan.populated_length == HOURS_PER_YEAR + 100
+
+    def test_steps_per_day_must_be_positive(self) -> None:
+        with pytest.raises(ValueError, match="steps per day"):
+            utils.CalendarPlan.from_year_span(2001, 1, 0, steps_per_day=0)
+
+
+class TestHourlyEmpiricalTransform:
+    """Standardization ranks each hour x day-of-year stratum against itself."""
+
+    # twelve years, with the first ten as the calibration period, so every stratum has
+    # at least the ten valid calibration values the empirical transform requires
+    ROWS = 12
+    CALIBRATION_FIRST = 2000
+    CALIBRATION_LAST = 2009
+
+    @classmethod
+    def _transform(cls, values: np.ndarray, output_scale: compute.OutputScale) -> np.ndarray:
+        result: np.ndarray = indices.standardized_index(
+            values.flatten(),
+            1,
+            indices.Distribution.empirical,
+            data_start_year=cls.CALIBRATION_FIRST,
+            calibration_year_initial=cls.CALIBRATION_FIRST,
+            calibration_year_final=cls.CALIBRATION_LAST,
+            periodicity=compute.Periodicity.hourly,
+            output_scale=output_scale,
+        ).reshape(cls.ROWS, HOURS_PER_YEAR)
+        return result
+
+    def test_probability_matches_the_plotting_position(self) -> None:
+        # every column carries the same values, so each stratum's ranks are known
+        values = np.repeat(np.arange(self.ROWS, dtype=float)[:, np.newaxis], HOURS_PER_YEAR, axis=1)
+
+        probabilities = self._transform(values, "probability")
+
+        # ten calibration values (0..9): p = (1 + count(calibration <= value)) / (10 + 2)
+        assert np.allclose(probabilities[0], 2.0 / 12.0)
+        assert np.allclose(probabilities[5], 7.0 / 12.0)
+        assert np.allclose(probabilities[10], 11.0 / 12.0)
+
+    def test_strata_are_ranked_independently(self) -> None:
+        values = np.repeat(np.arange(self.ROWS, dtype=float)[:, np.newaxis], HOURS_PER_YEAR, axis=1)
+        # keep the evaluation years inside the calibration range, then swap them in the
+        # right half, so both halves carry the same value set with ranks on other rows
+        values[10] = 4.0
+        values[11] = 6.0
+        values[10, HOURS_PER_YEAR // 2 :] = 6.0
+        values[11, HOURS_PER_YEAR // 2 :] = 4.0
+
+        probabilities = self._transform(values, "probability")
+
+        assert np.allclose(np.sort(probabilities[:, 0]), np.sort(probabilities[:, -1]))
+        assert probabilities[10, 0] == probabilities[11, -1]
+        assert probabilities[10, 0] != probabilities[10, -1]
+
+    def test_normal_scale_is_finite_and_ordered(self) -> None:
+        values = np.repeat(np.arange(self.ROWS, dtype=float)[:, np.newaxis], HOURS_PER_YEAR, axis=1)
+
+        result = self._transform(values, "normal")
+
+        assert np.all(np.isfinite(result))
+        # the calibration years are strictly ordered; both later years exceed the
+        # calibration maximum, so they share its top plotting position
+        assert np.all(np.diff(result[:10], axis=0) > 0.0)
+        assert np.allclose(result[10:], result[9])
+
+
+class TestHourlyRejections:
+    """Only the empirical transform accepts hourly data, and scale is bounded in hours."""
+
+    @pytest.mark.parametrize("distribution", [indices.Distribution.gamma, indices.Distribution.pearson])
+    def test_parametric_distributions_are_rejected(self, distribution: indices.Distribution) -> None:
+        values = np.zeros(2 * HOURS_PER_YEAR)
+
+        with pytest.raises(InvalidArgumentError, match="Hourly periodicity supports only the empirical distribution"):
+            indices.standardized_index(
+                values,
+                1,
+                distribution,
+                data_start_year=2000,
+                calibration_year_initial=2000,
+                calibration_year_final=2001,
+                periodicity=compute.Periodicity.hourly,
+            )
+
+    def test_beta_is_rejected_through_an_energy_index(self) -> None:
+        values = np.repeat(np.linspace(0.0, 1.0, HOURS_PER_YEAR)[np.newaxis, :], 2, axis=0).flatten()
+
+        with pytest.raises(InvalidArgumentError, match="Hourly periodicity supports only the empirical distribution"):
+            energy.srepi(
+                values,
+                24,
+                data_start_year=2000,
+                calibration_year_initial=2000,
+                calibration_year_final=2001,
+                periodicity=compute.Periodicity.hourly,
+                distribution=indices.Distribution.beta,
+            )
+
+    def test_scale_is_bounded_in_hours(self) -> None:
+        values = np.zeros(2 * HOURS_PER_YEAR)
+
+        with pytest.raises(InvalidArgumentError, match="Scale must be an integer"):
+            indices.standardized_index(
+                values,
+                6 * HOURS_PER_YEAR + 1,
+                indices.Distribution.empirical,
+                data_start_year=2000,
+                calibration_year_initial=2000,
+                calibration_year_final=2001,
+                periodicity=compute.Periodicity.hourly,
+            )
+
+    def test_non_standardized_surfaces_reject_hourly(self) -> None:
+        values = np.repeat(np.arange(2, dtype=float)[:, np.newaxis], HOURS_PER_YEAR, axis=1).flatten()
+
+        with pytest.raises(InvalidArgumentError, match="supported only by the standardized indices"):
+            indices.percentage_of_normal(
+                values,
+                1,
+                data_start_year=2000,
+                calibration_year_initial=2000,
+                calibration_year_final=2001,
+                periodicity=compute.Periodicity.hourly,
+            )
+
+    def test_annual_scale_is_accepted(self) -> None:
+        values = np.repeat(np.arange(2, dtype=float)[:, np.newaxis], HOURS_PER_YEAR, axis=1).flatten()
+
+        result = indices.standardized_index(
+            values,
+            HOURS_PER_YEAR,
+            indices.Distribution.empirical,
+            data_start_year=2000,
+            calibration_year_initial=2000,
+            calibration_year_final=2001,
+            periodicity=compute.Periodicity.hourly,
+            aggregation="mean",
+        )
+
+        assert result.size == values.size
+
+
+class TestHourlyXarray:
+    """The xarray adapter infers hourly cadence and restores the Gregorian axis."""
+
+    @staticmethod
+    def _hourly_data() -> xr.DataArray:
+        time = pd.date_range("2001-01-01", "2012-12-31 23:00", freq="h")
+        values = np.sin(np.arange(time.size, dtype=float) * 2.0 * np.pi / HOURS_PER_DAY)
+        return xr.DataArray(values, coords={"time": time}, dims=("time",), name="supply")
+
+    def test_srepi_restores_the_gregorian_axis(self) -> None:
+        data = self._hourly_data()
+
+        result = energy.srepi(data, scale=24)
+
+        assert result.dims == data.dims
+        assert np.array_equal(result["time"].values, data["time"].values)
+        # only the leading scale - 1 hours of the rolling window are missing
+        assert np.isfinite(result.values[23:]).all()
+        assert result.attrs["long_name"] == "Standardized Renewable Energy Production Index"
+
+    def test_periodicity_mismatch_is_rejected(self) -> None:
+        data = self._hourly_data().isel(time=slice(0, 2 * HOURS_PER_YEAR))
+
+        with pytest.raises(CoordinateValidationError, match="does not match the requested daily"):
+            energy.srepi(data, scale=1, periodicity=compute.Periodicity.daily)
+
+    def test_sub_hourly_cadence_is_not_read_as_hourly(self) -> None:
+        time = pd.date_range("2001-01-01", periods=48, freq="30min")
+        data = xr.DataArray(np.arange(48, dtype=float), coords={"time": time}, dims=("time",))
+
+        with pytest.raises(CoordinateValidationError):
+            energy.srepi(data, scale=1)
+
+    def test_hourly_input_must_start_on_the_hour_zero_of_january_first(self) -> None:
+        time = pd.date_range("2001-01-01 06:00", periods=48, freq="h")
+        data = xr.DataArray(np.arange(48, dtype=float), coords={"time": time}, dims=("time",))
+
+        with pytest.raises(CoordinateValidationError, match="calendar-hour"):
+            energy.srepi(data, scale=1)

@@ -196,12 +196,38 @@ K and °F at its boundary. A degree day is a temperature difference, so K and °
 numerically interchangeable under it. The exact UDUNITS strings belong to the CF
 registry entries ([#1162](https://github.com/monocongo/climate_indices/issues/1162)).
 
+### Sub-daily (hourly) standardization
+
+[#1177](https://github.com/monocongo/climate_indices/issues/1177) added
+`Periodicity.hourly`, one year of 8784 values on the same 366-day calendar, so a
+non-leap year carries a synthesized February 29 hour block.
+`utils.CalendarPlan.from_year_span(..., steps_per_day=24)` plans that conversion and
+restores the Gregorian hour axis, as the daily plan does at day resolution.
+
+- **Stratification is hour × day-of-year.** One calendar step per hour of the year
+  reuses the existing (years, period_length) layout, so no new grouping or ranking
+  code exists, and it matches the explicit-group comparison the oracle survey allows.
+  The cost is thin groups: a 30-year calibration leaves about 30 values per step,
+  which is above the empirical transform's minimum of 10.
+- **Empirical only.** A parametric fit has too few values per step to fit reliably, so
+  an hourly series with any other distribution raises `InvalidArgumentError`. This is
+  the additivity decision 5 promised: no signature changed.
+- **Clock values, no zone conversion.** Timestamps are read as given; the calendar
+  ignores daylight-saving shifts, so a caller supplies a UTC series.
+- **Hourly is an API surface.** `--periodicity` stays monthly/daily in the CLI; an
+  hourly CLI option is a follow-up, not part of this decision.
+- **No hourly SEI fixture yet.** The survey records that SEI accepts hourly timestamps
+  but does not stratify them, and #1160 landed no hourly fixture, so the hourly contract
+  rests on the unit tests and the plotting-position definition rather than an
+  independent implementation.
+
 ## Deferred
 
-- **Sub-daily (hourly) periodicity.** [#1177](https://github.com/monocongo/climate_indices/issues/1177).
-  Forward-compatible as an additive `Periodicity` member; no signature changes.
-  No calendar-stratification policy is selected yet, so hourly calibration is not
-  implemented.
+- **Hourly CLI option.** [#1178](https://github.com/monocongo/climate_indices/issues/1178)
+  wired the energy indices into the CLI at monthly and daily steps; an hourly
+  `--periodicity` choice is a separate change to that input pipeline.
+- **Smoothed seasonal-diurnal climatology.** Hour × day-of-year strata are the shipped
+  contract; a smoothed climatology would be a separate standardization option.
 
 ## References
 

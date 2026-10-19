@@ -13,6 +13,10 @@ _DEFAULT_SCALES_HELP = (
     "Timestep scales over which the PNP, SPI, SPEI, and standardized energy index values are to be computed"
 )
 
+# the periodicities the CLI accepts; hourly data is a NumPy/xarray API surface only,
+# since the CLI's input pipeline reads calendar plans for daily and monthly steps
+CLI_PERIODICITIES = (compute.Periodicity.monthly, compute.Periodicity.daily)
+
 # Dask array chunk budget the CLI applies when chunk shapes are left to Dask
 # ("auto"); a budget the caller configured is honored rather than overwritten
 DEFAULT_ARRAY_CHUNK_SIZE = "100 MB"
@@ -67,7 +71,7 @@ def _add_common_spi_arguments(
     parser.add_argument(
         "--periodicity",
         help="Process input as either monthly or daily values",
-        choices=[compute.Periodicity.monthly, compute.Periodicity.daily],
+        choices=CLI_PERIODICITIES,
         type=compute.Periodicity.from_string,
         required=True,
     )

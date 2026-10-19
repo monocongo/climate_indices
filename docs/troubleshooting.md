@@ -246,12 +246,12 @@ result_np = indices.spi(
 
 **Cross-reference:** See {doc}`xarray_migration` Pitfall 3.
 
-### Unsupported frequency (weekly/hourly)
+### Unsupported frequency (weekly, twelve-hourly, quarterly)
 
 :::{warning}
-**Error:** `CoordinateValidationError: Unsupported frequency 'W' - only 'MS'/'ME'/'M' (monthly) and 'D' (daily) supported`
+**Error:** `CoordinateValidationError: Unsupported frequency 'W' - only 'MS'/'ME'/'M' (monthly), 'D' (daily), and 'h' (hourly) supported`
 
-**Cause:** Your data has weekly (`W`), hourly (`H`), quarterly (`Q`), or annual (`A`) frequency. The library only supports monthly and daily time series.
+**Cause:** Your data has weekly (`W`), twelve-hourly (`12h`), quarterly (`Q`), or annual (`A`) frequency. An hourly cadence is supported for the empirical standardized energy indices; every other frequency must be resampled first.
 
 **Solution:** Resample to a supported frequency:
 
@@ -260,7 +260,7 @@ result_np = indices.spi(
 da_monthly = da.resample(time="MS").sum()
 result = indices.spi(da_monthly, scale=6, distribution=indices.Distribution.gamma)
 
-# for hourly to daily (e.g., temperature, use mean)
+# for twelve-hourly to daily (e.g., temperature, use mean)
 da_daily = da.resample(time="D").mean()
 ```
 
@@ -714,7 +714,7 @@ pearson_result = indices.spi(precip_da, scale=6, distribution=indices.Distributi
 ### Invalid periodicity
 
 :::{warning}
-**Error:** `PeriodicityError: Invalid periodicity argument: weekly. Periodicity must be a Periodicity enum member. Supported values: monthly, daily. Use compute.Periodicity.monthly or compute.Periodicity.daily.`
+**Error:** `PeriodicityError: Invalid periodicity argument: weekly. Periodicity must be a Periodicity enum member. Supported values: monthly, daily, hourly. Use compute.Periodicity.monthly, compute.Periodicity.daily, or compute.Periodicity.hourly.`
 
 **Cause:** The `periodicity` parameter is not a valid `Periodicity` enum member.
 

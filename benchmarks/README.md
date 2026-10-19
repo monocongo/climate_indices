@@ -1366,3 +1366,18 @@ for the new seam (and scalar-boundary assertions), not oracle values/tolerances.
   hosts. No registry input change or numerical improvement masks that result.
 - #1324: raw samples, revision/runtime metadata, final source/extension digests,
   profiles and RSS are now durable. Remote/isolated-host repeat runs remain open.
+
+## Hourly standardized energy indices (#1177)
+
+```bash
+uv run benchmarks/profile_hourly_srepi.py
+```
+
+The script builds deterministic hourly input in the 8784-slot year layout, runs
+`energy.srepi` at a 720-hour (30-day) mean scale over a 30-year calibration period, and
+reports the wall time and peak traced allocation for one series and one five-cell grid
+block. A warm-up call runs first. `--years` and `--cells` change the span and grid
+width. On a 41-year span (360,144 hourly values) this host reports about 0.04 s for the
+series and 0.17 s for the five-cell block, with 28 MiB and 139 MiB peak respectively.
+Hourly strata each hold about 30 calibration values, so the rank transform dominates
+nothing and the cost is the working set, not the ranking.

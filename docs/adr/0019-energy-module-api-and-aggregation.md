@@ -61,6 +61,24 @@ interval's duration in seconds. Clipping to [0, 1] is project policy, not a
 Jerez result. The matched pvlib comparison checks only the power/temperature
 term; the thermal coefficients have specification-level tests.
 
+Amended by the sub-daily periodicity implementation
+([#1177](https://github.com/monocongo/climate_indices/issues/1177)): decision 5's
+additive member is `Periodicity.hourly`, one year of 8784 values on the same 366-day
+calendar, so a non-leap year carries 24 synthesized February 29 hours
+(`utils.CalendarPlan.from_year_span(..., steps_per_day=24)`). Standardization
+stratifies by hour of day and day of year — 8784 calendar steps per year — which is
+the explicit-group contract the oracle survey requires before an SEI comparison is
+meaningful. Hourly supports only `Distribution.empirical`: a 30-year record leaves
+about 30 calibration values per step, too few for a parametric fit, while the rank
+transform needs no fit, so any other distribution raises `InvalidArgumentError`.
+Timestamps are read as clock values with no daylight-saving shift, so a caller
+supplies a UTC series. The xarray layer infers an hourly cadence, converts to the
+8784-slot layout, and restores the Gregorian hour axis. The CLI keeps its
+monthly/daily `--periodicity` choices; an hourly option is a follow-up. The
+implementation landed with unit tests rather than an independent hourly oracle,
+because the survey records that SEI accepts hourly timestamps without stratifying
+them and #1160 landed no hourly fixture.
+
 Decision 2's `aggregation` keyword landed with this record
 ([#1158](https://github.com/monocongo/climate_indices/issues/1158)) and reached the
 xarray surfaces with
@@ -137,7 +155,8 @@ series such as residual load.
    is daily input with `scale=30`; calendar months use monthly periodicity. Neither adds
    a `Periodicity` member. Sub-daily support
    ([#1177](https://github.com/monocongo/climate_indices/issues/1177)) is an additive
-   `Periodicity` member, so it changes no signature.
+   `Periodicity` member, so it changes no signature; it landed as
+   `Periodicity.hourly`, and the amendment above records its contract.
 
 6. **Units.** Temperature is °C, the library's internal convention (`_units.py`
    normalizes K and °F at its boundary). A degree day is a temperature *difference*, so

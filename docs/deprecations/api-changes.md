@@ -167,7 +167,9 @@ propagates it instead, since `PeriodicityError` derives from
 `Invalid periodicity argument` — imported from `climate_indices.exceptions`.
 Where a `ValueError` handler has to keep working across the upgrade, catch both.
 The exception's `valid_values` attribute now reads
-`"Periodicity.monthly, Periodicity.daily"`; the message text is unchanged.
+`"Periodicity.monthly, Periodicity.daily"`; the message text is unchanged. That
+attribute gained `Periodicity.hourly` when sub-daily standardization landed, so a
+check written against the exact string must accept the third value.
 
 A related but non-breaking change: a missing required named dimension (for
 example a time dimension absent from an xarray input) now raises
