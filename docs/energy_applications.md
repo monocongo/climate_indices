@@ -350,6 +350,16 @@ not an exact numerical reference for this function.
 
 ## Preparing inputs
 
+The energy indices are also exposed through the existing command line as
+`process_climate_indices --index hdd`, `cdd`, `edd`, `wind_profile`, `srepi`,
+`demand_index`, and `srli`, with the same CF metadata and Dask behaviour as the
+Python adapters (see {doc}`workflow-examples`). They are not computed by the
+`--index all` selection. The capacity factors and the energy-drought event
+statistics are not exposed: `energy.wind_capacity_factor()` needs a power curve
+and `energy.pv_capacity_factor()` a radiation-temperature-wind triple, and
+`energy.energy_drought_events()` reports a per-cell run structure rather than one
+gridded index.
+
 The energy interfaces take point series or gridded fields in the units,
 location, and spatial support the caller wants to analyse.
 

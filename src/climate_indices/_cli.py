@@ -9,7 +9,9 @@ import xarray as xr
 
 from climate_indices import compute
 
-_DEFAULT_SCALES_HELP = "Timestep scales over which the PNP, SPI, and SPEI values are to be computed"
+_DEFAULT_SCALES_HELP = (
+    "Timestep scales over which the PNP, SPI, SPEI, and standardized energy index values are to be computed"
+)
 
 # Dask array chunk budget the CLI applies when chunk shapes are left to Dask
 # ("auto"); a budget the caller configured is honored rather than overwritten
