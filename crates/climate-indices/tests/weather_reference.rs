@@ -4,9 +4,9 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use climate_core::pm_eto::{HumidityPathway, MetInputs, Operand, PmEtoInputs, RadiationPathway};
-use climate_core::recurrence::{MissingDayPolicy, RecurrenceInputs};
-use climate_core::{eto, fire, flood, pm_eto};
+use climate_indices::pm_eto::{HumidityPathway, MetInputs, Operand, PmEtoInputs, RadiationPathway};
+use climate_indices::recurrence::{MissingDayPolicy, RecurrenceInputs};
+use climate_indices::{eto, fire, flood, pm_eto};
 use ndarray::{Array1, Array2, Array3, s};
 
 fn fixture(name: &str) -> BTreeMap<String, Array2<f64>> {

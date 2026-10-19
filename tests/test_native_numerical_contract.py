@@ -19,7 +19,7 @@ def test_every_public_function_has_a_numerical_contract() -> None:
     """A new Rust entry point must state its numerical behavior and evidence."""
     functions = 0
     helpers = {("pm_eto.rs", "at"), ("recurrence.rs", "recurrence_inputs"), ("recurrence.rs", "run")}
-    for path in (ROOT / "crates/climate-core/src").rglob("*.rs"):
+    for path in (ROOT / "crates/climate-indices/src").rglob("*.rs"):
         source = path.read_text(encoding="utf-8")
         public = re.findall(r"^\s*pub fn (\w+)", source, re.MULTILINE)
         documented = re.findall(
@@ -43,12 +43,12 @@ def test_every_public_function_has_a_numerical_contract() -> None:
 
 def test_accuracy_page_contains_every_measured_entry() -> None:
     """Both documentation systems consume one table covering the full registry."""
-    report = (ROOT / "crates/climate-core/NUMERICS.md").read_text(encoding="utf-8")
+    report = (ROOT / "crates/climate-indices/NUMERICS.md").read_text(encoding="utf-8")
     rows = re.findall(r"^\| `([a-z0-9_]+)` \|", report, re.MULTILINE)
     assert len(rows) == len(set(rows))
     assert set(rows) == set(parity_registry.ENTRIES_BY_NAME) | native_parity_maxima.SPECIAL_NAMES
-    assert 'include_str!("../NUMERICS.md")' in (ROOT / "crates/climate-core/src/lib.rs").read_text(encoding="utf-8")
-    assert "{include} ../crates/climate-core/NUMERICS.md" in (ROOT / "docs/rust-numerical-contract.md").read_text(
+    assert 'include_str!("../NUMERICS.md")' in (ROOT / "crates/climate-indices/src/lib.rs").read_text(encoding="utf-8")
+    assert "{include} ../crates/climate-indices/NUMERICS.md" in (ROOT / "docs/rust-numerical-contract.md").read_text(
         encoding="utf-8"
     )
 
@@ -212,7 +212,7 @@ def test_contract_generation_resolves_cargo(monkeypatch: pytest.MonkeyPatch, tmp
     monkeypatch.setattr(native_parity_maxima.subprocess, "run", execute)
     monkeypatch.setattr(native_parity_maxima, "ROOT", tmp_path)
     monkeypatch.setattr(native_parity_maxima, "special_errors", lambda _: {})
-    (tmp_path / "crates/climate-core").mkdir(parents=True)
+    (tmp_path / "crates/climate-indices").mkdir(parents=True)
     if cargo is None:
         with pytest.raises(FileNotFoundError, match="cargo is required"):
             native_parity_maxima.main()
@@ -220,11 +220,11 @@ def test_contract_generation_resolves_cargo(monkeypatch: pytest.MonkeyPatch, tmp
     else:
         assert native_parity_maxima.main() == 0
         execute.assert_called_once_with(
-            [cargo, "run", "-p", "climate-core", "--example", "special_accuracy", "--quiet"],
+            [cargo, "run", "-p", "climate-indices", "--example", "special_accuracy", "--quiet"],
             cwd=tmp_path,
             check=True,
             capture_output=True,
             text=True,
         )
-        assert (tmp_path / "crates/climate-core/NUMERICS.md").is_file()
+        assert (tmp_path / "crates/climate-indices/NUMERICS.md").is_file()
     which.assert_called_once_with("cargo")

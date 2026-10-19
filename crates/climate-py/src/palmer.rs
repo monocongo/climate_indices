@@ -1,4 +1,4 @@
-//! Array conversion for the Palmer-family kernels; the algorithms live in `climate-core`.
+//! Array conversion for the Palmer-family kernels; the algorithms live in `climate-indices`.
 //!
 //! Every array argument must be a float64 ndarray in the layout the matching
 //! kernel documents: monthly arrays `(n_years, 12, n_cells)`, monthly
@@ -11,10 +11,10 @@ use numpy::{
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
-use climate_core::palmer_pdi::PdiDurationFactors;
-use climate_core::palmer_wells::WellsFactors;
-use climate_core::palmer_zindex::CafecInputs;
-use climate_core::self_calibration::Spell;
+use climate_indices::palmer_pdi::PdiDurationFactors;
+use climate_indices::palmer_wells::WellsFactors;
+use climate_indices::palmer_zindex::CafecInputs;
+use climate_indices::self_calibration::Spell;
 
 use crate::{checked_copy, checked_view, climate_error};
 
@@ -66,7 +66,7 @@ fn palmer_water_balance<'py>(
     );
     let out = py
         .detach(|| {
-            climate_core::palmer::water_balance(
+            climate_indices::palmer::water_balance(
                 precips.view(),
                 pet.view(),
                 awc.view(),
@@ -169,7 +169,7 @@ fn palmer_k_prime<'py>(
         [&alpha, &beta, &gamma, &delta],
     )?;
     let trat = checked_view(&trat)?;
-    let (dbar, k_prime) = climate_core::palmer_zindex::k_prime_and_dbar(
+    let (dbar, k_prime) = climate_indices::palmer_zindex::k_prime_and_dbar(
         &arrays.inputs(),
         trat.view(),
         calibration_year_initial_idx,
@@ -200,7 +200,7 @@ fn palmer_raw_zindex<'py>(
         [&alpha, &beta, &gamma, &delta],
     )?;
     let ak = checked_view(&ak)?;
-    climate_core::palmer_zindex::raw_zindex(&arrays.inputs(), ak.view())
+    climate_indices::palmer_zindex::raw_zindex(&arrays.inputs(), ak.view())
         .map(|z| z.into_pyarray(py))
         .map_err(climate_error)
 }
@@ -222,7 +222,7 @@ fn palmer_pdi<'py>(
         drym,
         dryb,
     };
-    let result = py.detach(|| climate_core::palmer_pdi::calculate(z.view(), factors));
+    let result = py.detach(|| climate_indices::palmer_pdi::calculate(z.view(), factors));
     Ok((
         result.pdsi.into_pyarray(py),
         result.phdi.into_pyarray(py),
@@ -259,7 +259,7 @@ fn palmer_wells<'py>(
         dry_spell_c,
     };
     let result = py
-        .detach(|| climate_core::palmer_wells::calculate(z.view(), &factors))
+        .detach(|| climate_indices::palmer_wells::calculate(z.view(), &factors))
         .map_err(climate_error)?;
     Ok((
         result.pdsi.into_pyarray(py),
@@ -283,7 +283,7 @@ fn scpdsi_duration_factors(
     };
     let z = checked_copy(&z)?;
     let z = z.to_vec();
-    py.detach(|| climate_core::self_calibration::duration_factors(&z, spell))
+    py.detach(|| climate_indices::self_calibration::duration_factors(&z, spell))
         .map_err(climate_error)
 }
 

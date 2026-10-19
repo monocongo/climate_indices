@@ -1,4 +1,4 @@
-//! Array conversion for the PET kernels; the equations live in `climate-core`.
+//! Array conversion for the PET kernels; the equations live in `climate-indices`.
 //!
 //! Every array argument must be a float64 ndarray in the layout the matching
 //! kernel documents. The kernels receive one element per broadcast position, so
@@ -12,7 +12,7 @@ use numpy::{
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 
-use climate_core::pm_eto::{HumidityPathway, MetInputs, Operand, PmEtoInputs, RadiationPathway};
+use climate_indices::pm_eto::{HumidityPathway, MetInputs, Operand, PmEtoInputs, RadiationPathway};
 
 // selectors of the FAO-56 actual-vapour-pressure pathway (Eq 14-19); the Python
 // dispatch passes these codes and must match `pm_eto.py`'s constants
@@ -92,7 +92,7 @@ fn thornthwaite<'py>(
         leap_years.as_array().to_owned()
     };
     py.detach(|| {
-        climate_core::eto::thornthwaite(
+        climate_indices::eto::thornthwaite(
             monthly_temps_celsius.view(),
             latitude_radians.view(),
             leap_years.view(),
@@ -116,7 +116,7 @@ fn hargreaves<'py>(
     let daily_tmean_celsius = crate::checked_copy(&daily_tmean_celsius)?;
     let latitude_radians = crate::checked_copy(&latitude_radians)?;
     py.detach(|| {
-        climate_core::eto::hargreaves(
+        climate_indices::eto::hargreaves(
             daily_tmin_celsius.view(),
             daily_tmax_celsius.view(),
             daily_tmean_celsius.view(),
@@ -159,7 +159,7 @@ fn pm_eto<'py>(
         delta: delta.view(),
         gamma: gamma.view(),
     };
-    py.detach(|| climate_core::pm_eto::pm_eto(&inputs))
+    py.detach(|| climate_indices::pm_eto::pm_eto(&inputs))
         .map(|eto| eto.into_pyarray(py))
         .map_err(|error| PyValueError::new_err(error.to_string()))
 }
@@ -253,7 +253,7 @@ fn fao56_eto<'py>(
         humidity,
         radiation,
     };
-    py.detach(|| climate_core::pm_eto::penman_monteith_eto(&inputs))
+    py.detach(|| climate_indices::pm_eto::penman_monteith_eto(&inputs))
         .map(|eto| eto.into_pyarray(py))
         .map_err(|error| PyValueError::new_err(error.to_string()))
 }

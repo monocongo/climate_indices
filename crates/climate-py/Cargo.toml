@@ -1,6 +1,6 @@
 [package]
 name = "climate-py"
-description = "PyO3/NumPy bindings exposing climate-core as climate_indices._native"
+description = "PyO3/NumPy bindings exposing climate-indices as climate_indices._native"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -12,7 +12,7 @@ name = "_native"
 crate-type = ["cdylib"]
 
 [dependencies]
-climate-core = { path = "../climate-core" }
+climate-indices = { path = "../climate-indices" }
 numpy = "0.29.0"
 # abi3: one wheel per platform validates on every supported CPython (3.10-3.14), so
 # the published wheel matrix has no interpreter axis (docs/adr/0018)

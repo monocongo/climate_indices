@@ -1,7 +1,7 @@
 """Freeze pure-Python/SciPy distribution regressions for standalone Rust tests.
 
 Run from the repository root with PYTHONPATH=$PWD/src. Cargo never runs this script.
-See crates/climate-core/tests/fixtures/distribution_reference.md for the reference scope.
+See crates/climate-indices/tests/fixtures/distribution_reference.md for the reference scope.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ for module in (compute, indices, lmoments):
 assert compute._native is None
 assert sys.modules.get("climate_indices._native") is None
 
-DESTINATION = ROOT / "crates/climate-core/tests/fixtures"
+DESTINATION = ROOT / "crates/climate-indices/tests/fixtures"
 COMMAND = "PYTHONPATH=src uv run python scripts/prepare_rust_distribution_fixtures.py"
 
 

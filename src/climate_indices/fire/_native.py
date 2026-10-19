@@ -1,6 +1,6 @@
 """The optional Rust kernels behind the fire-weather recurrences.
 
-``crates/climate-core`` runs the KBDI and CFFWIS moisture-code daily recursions
+``crates/climate-indices`` runs the KBDI and CFFWIS moisture-code daily recursions
 over a whole time axis per cell (``docs/architecture.md``). This module is the
 fire package's only native boundary: it decides whether the extension can take
 a recurrence's prepared arrays, builds the callable that

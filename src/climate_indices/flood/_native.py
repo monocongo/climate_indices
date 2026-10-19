@@ -1,6 +1,6 @@
 """The optional Rust kernels behind the flood family.
 
-``crates/climate-core`` computes effective precipitation, the EDI and Flood
+``crates/climate-indices`` computes effective precipitation, the EDI and Flood
 Index standardizations, and the Antecedent Precipitation Index recurrence
 (``docs/architecture.md``). This module is the flood package's only native
 boundary: it decides whether the extension can take an entry point's prepared

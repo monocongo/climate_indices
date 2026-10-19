@@ -42,7 +42,7 @@ THEY ASSUME NO RESPONSIBILITY (1) FOR THE USE OF THE SOFTWARE AND DOCUMENTATION;
 TO USERS.
 
 ========================================================================================================================
-Third-party notices for crates/climate-core/src/special/
+Third-party notices for crates/climate-indices/src/special/
 
 The Cephes/SciPy ports are derived from the xsf revision bundled with SciPy 1.17.0:
 https://github.com/scipy/xsf/tree/0d0a593fd31073af10062d0093144e13ae34f8f3
@@ -181,7 +181,7 @@ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ========================================================================================================================
-Third-party notice for crates/climate-core/src/reduction.rs
+Third-party notice for crates/climate-indices/src/reduction.rs
 
 The float64 pairwise summation routine is ported from NumPy 2.4.2:
 https://github.com/numpy/numpy/blob/v2.4.2/numpy/_core/src/umath/loops_utils.h.src

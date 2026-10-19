@@ -2,14 +2,16 @@
 
 ## Status
 
-Accepted. This record implements [#1306](https://github.com/monocongo/climate_indices/issues/1306)
+Amended. This record implements [#1306](https://github.com/monocongo/climate_indices/issues/1306)
 (CRATE-02), a child of the CRATE-01 epic
 ([#1305](https://github.com/monocongo/climate_indices/issues/1305)). It supersedes
 decision 2 of {doc}`0017-rust-core-acceleration-backend` for the clause that says the
 crate is not published to crates.io, and the RUST-000 non-goal *no crates.io
 publication* recorded on [#1270](https://github.com/monocongo/climate_indices/issues/1270).
-The identity is decided here; the mechanical rename is CRATE-05
-([#1309](https://github.com/monocongo/climate_indices/issues/1309)).
+The identity is decided here; CRATE-05
+([#1309](https://github.com/monocongo/climate_indices/issues/1309)) performed the rename,
+which is why the present tense below describes the crate as `climate-indices` while the
+context and alternatives keep the `climate-core` name they were written with.
 
 ## Context
 
@@ -96,24 +98,28 @@ ownership and cadence.
 
 ## Consequences
 
-- CRATE-05 renames the directory, the package, the default library path, every
-  `use climate_core::` in `crates/climate-py`, the `climate-core` path dependency in
-  `crates/climate-py/Cargo.toml`, `benchmarks/README.md`, `tests/parity_registry.py`,
+- CRATE-05 performed the rename: the directory, the package, the default library path,
+  every `use climate_core::` in `crates/climate-py`, the `climate-core` path dependency
+  in `crates/climate-py/Cargo.toml`, `benchmarks/README.md`, `tests/parity_registry.py`,
   `docs/architecture.md`, `docs/development-guide.md`, the docstrings in
   `src/climate_indices/flood/_native.py` and `src/climate_indices/fire/_native.py`, the
-  `LICENSE`, the `[tool.maturin]` development path, and the generated `llms-full.txt`.
-  It runs the Rust gate, because the workspace members and CI paths change.
+  `LICENSE`, and the generated `llms-full.txt`. It ran the Rust gate, because the
+  workspace members and CI paths changed.
+- Consequently the current crate carries its own version, README, keywords, categories,
+  `rust-version`, and docs.rs metadata, and `cargo publish --dry-run` succeeds from a
+  clean checkout. `climate-py` stays `publish = false` through the workspace.
 - The Python contract does not change. The extension module stays
   `climate_indices._native`, and the Rust library name is a Rust path, not a Python import,
   so `climate_indices` names both without a collision.
-- Both crates currently inherit `version.workspace = true` and `publish = false` from the
-  workspace. An independent crate version needs the crate to carry its own version, or the
-  workspace to split, in CRATE-05; `climate-py` keeps `publish = false`.
+- Before CRATE-05 both crates inherited `version.workspace = true` and
+  `publish = false` from the workspace; that split is what CRATE-05 changed. The crate
+  now carries `version = "0.1.0"` and `publish = true`, and `climate-py` keeps
+  `publish = false` through the workspace.
 - Crate releases and PyPI releases are independent in both directions, and neither tag
   namespace can start the other workflow.
-- {doc}`0017-rust-core-acceleration-backend` and `docs/architecture.md` distinguish
-  the current unpublished `climate-core` from the planned `climate-indices` release.
-  The published `0.0.0` placeholder contains no algorithms.
+- {doc}`0017-rust-core-acceleration-backend` keeps the historical name, and
+  `docs/architecture.md` states the crate as `climate-indices` with its independent
+  version track. The published `0.0.0` placeholder contains no algorithms.
 - The numerics become reachable under a public name before CRATE-04
   ([#1308](https://github.com/monocongo/climate_indices/issues/1308)) states the numerical
   contract and CRATE-06 ([#1310](https://github.com/monocongo/climate_indices/issues/1310))

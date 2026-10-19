@@ -1,7 +1,7 @@
 """Freeze Python weather regressions and copy existing external references for Rust.
 
 Run from the repository root with PYTHONPATH=$PWD/src. No extension is required.
-Cargo never runs this script. See crates/climate-core/tests/fixtures/weather_reference.md.
+Cargo never runs this script. See crates/climate-indices/tests/fixtures/weather_reference.md.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ from climate_indices.fire import _native as fire_native  # noqa: E402
 from climate_indices.flood import _native as flood_native  # noqa: E402
 
 POLICIES: tuple[tuple[Literal["propagate", "bridge"], int], ...] = (("propagate", 0), ("bridge", 2))
-DESTINATION = ROOT / "crates/climate-core/tests/fixtures"
+DESTINATION = ROOT / "crates/climate-indices/tests/fixtures"
 COMMAND = "PYTHONPATH=src uv run python scripts/prepare_rust_weather_fixtures.py"
 
 
