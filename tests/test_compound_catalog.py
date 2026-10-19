@@ -379,8 +379,10 @@ def test_row_budget_is_compared_with_the_candidate_count() -> None:
     assert rejected == 0
     assert rows is not None
     assert rows[0].size == 2
-    with pytest.raises(InvalidArgumentError, match="10-row limit this result allows \\(1 row remaining\\)"):
+    with pytest.raises(InvalidArgumentError, match="10-row limit this result allows \\(1 row remaining\\)") as error:
         events_module._sequential_rows(second, 0, 0, 9, (1, 5), unknown, budget=(1, 10))
+    assert "quadratically" in str(error.value)
+    assert "lag_window" in str(error.value)
 
 
 def test_concurrent_row_budget_matches_the_candidate_count() -> None:
@@ -396,8 +398,11 @@ def test_concurrent_row_budget_matches_the_candidate_count() -> None:
     rows = events_module._concurrent_rows(second, 1, 3, budget=(3, 10))
     assert rows is not None
     assert rows[0].size == 3
-    with pytest.raises(InvalidArgumentError, match="One source run matches 3 runs.*\\(2 rows remaining\\)"):
+    with pytest.raises(InvalidArgumentError, match="One source run matches 3 runs.*\\(2 rows remaining\\)") as error:
         events_module._concurrent_rows(second, 1, 3, budget=(2, 10))
+    assert "linearly" in str(error.value)
+    assert "quadratically" not in str(error.value)
+    assert "lag_window" not in str(error.value)
 
 
 @pytest.mark.parametrize("limit,grid", [(5, False), (4, False), (5, True), (10, True), (15, True), (9, True)])

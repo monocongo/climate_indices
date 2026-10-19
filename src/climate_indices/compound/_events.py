@@ -457,12 +457,14 @@ _Budget = tuple[int, int]
 def _row_limit(limit: int, remaining: int, count: int, *, mode: str) -> InvalidArgumentError:
     """Build the error for one source run whose candidates would exceed the caller's row budget."""
     advice = "select a smaller subset or raise min_duration"
+    growth = "Concurrent overlaps grow linearly in the combined source run counts"
     if mode == "sequential":
         advice += ", or bound lag_window"
+        growth = "A sequential all-pairs match can grow quadratically"
     return InvalidArgumentError(
         f"One source run matches {count} {'run' if count == 1 else 'runs'} of the other source, beyond the "
         f"{limit}-row limit this result allows ({remaining} {'row' if remaining == 1 else 'rows'} remaining). "
-        f"An all-pairs match grows quadratically; to fit the limit, {advice}.",
+        f"{growth}; to fit the limit, {advice}.",
         argument_name="hazards",
         valid_values=f"a subset whose catalog holds at most {limit} rows",
     )
@@ -474,7 +476,7 @@ def _concurrent_rows(second: _SourceRuns, onset: int, ending: int, *, budget: _B
     upper = int(np.searchsorted(second.start, ending, side="right"))
     if lower >= upper:
         return None
-    # checked before any array is built, so a quadratic fanout fails instead of allocating it
+    # checked before any array is built, so an over-budget block fails instead of allocating it
     if budget is not None and upper - lower > budget[0]:
         raise _row_limit(budget[1], budget[0], upper - lower, mode="concurrent")
     starts = np.maximum(onset, second.start[lower:upper])
