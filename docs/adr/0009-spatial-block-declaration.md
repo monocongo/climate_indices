@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted.
+Amended for hourly periodicity in [#1177](https://github.com/monocongo/climate_indices/issues/1177).
+`compute.prepare_input_shape` now rejects an undeclared first cell axis of 8784 as well as 12 or 366.
 
 The fitting-based NumPy kernels (`indices.spi`, `indices.spei`) have always read a flat or
 `(years, periods)` array, and `compute.prepare_scaled` folded a 1-D series onto that layout before
@@ -16,7 +17,7 @@ which is what every existing caller and fixture depends on. Three or more dimens
 time-major block whose trailing axes are preserved.
 
 One shape is not distinguishable. A `(time, *cells)` block whose first cell axis happens to be a
-calendar period length (12 or 366) is structurally identical to a `(years, periods, *cells)` array, the
+calendar period length (12, 366, or 8784) is structurally identical to a `(years, periods, *cells)` array, the
 natural extension of the documented 2-D convention, and nothing inside an `ndarray` says which axis is
 time. Reading one
 as the other returns plausible numbers rather than raising: in a review experiment a `(40, 12, 2)`
@@ -28,15 +29,15 @@ caller declares it with `spatial_time_major=True`; `xarray_adapter` sets that ke
 it packs when an index is registered with `spatial_kernel=True`, and the xarray path is where
 dimension labels make the reading knowable. Rejecting *all* gridded NumPy input instead was
 considered and dropped: the adapter would have had to keep a second entry point for it, and a grid
-whose first cell axis is 12 or 366 — twelve latitudes, say — is legitimate input that worked before
+whose first cell axis is 12, 366, or 8784 — twelve latitudes, say — is legitimate input that worked before
 this change and still has to work.
 
 ## Consequences
 
 Every index with three or more dimensions is time-major input, whether it arrives from the adapter or
-from a direct caller. A direct caller passing a `(time, 12, *cells)` or `(time, 366, *cells)` array gets a `ValueError`
-naming the ambiguity rather than a silently re-read result; reordering the cell axes or declaring
-`spatial_time_major=True` both resolve it. `indices.spi`'s 2-D contract is unchanged, so the
+from a direct caller. A direct caller passing a `(time, 12, *cells)`, `(time, 366, *cells)`, or
+`(time, 8784, *cells)` array gets a `ValueError` naming the ambiguity rather than a silently re-read result.
+Reordering the cell axes or declaring `spatial_time_major=True` both resolve it. `indices.spi`'s 2-D contract is unchanged, so the
 existing `(years, periods)` callers and their fixtures keep working.
 
 The spatial path is opt-in per index: `spatial_kernel=True` is declared at each spatial-kernel

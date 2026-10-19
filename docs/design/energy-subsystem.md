@@ -201,8 +201,9 @@ registry entries ([#1162](https://github.com/monocongo/climate_indices/issues/11
 [#1177](https://github.com/monocongo/climate_indices/issues/1177) added
 `Periodicity.hourly`, one year of 8784 values on the same 366-day calendar, so a
 non-leap year carries a synthesized February 29 hour block.
-`utils.CalendarPlan.from_year_span(..., steps_per_day=24)` plans that conversion and
-restores the Gregorian hour axis, as the daily plan does at day resolution.
+`utils.CalendarPlan.from_year_span(..., steps_per_day=24)` maps hourly NumPy values to
+that layout and restores their Gregorian value positions. The xarray adapter restores
+the original Gregorian time coordinate.
 
 - **Stratification is hour × day-of-year.** One calendar step per hour of the year
   reuses the existing (years, period_length) layout, so no new grouping or ranking
