@@ -4,7 +4,8 @@
 
 The maintainer approved this internal plan and its recommendations.
 [Parent issue #1364](https://github.com/monocongo/climate_indices/issues/1364) tracks the milestone.
-CMP-01 through CMP-06 are complete. CMP-07 implements the NumPy `bootstrap_dependence()`
+CMP-01 through CMP-09 are implemented. CMP-10, the published reproduction and final
+guide, remains. CMP-07 implements the NumPy `bootstrap_dependence()`
 route beside `harmonize()`, `joint_statistics()`, `conditional_probability()`, and `compound_events()`.
 Bootstrap evidence is synthetic characterization and regression only, and its supported
 scope is limited to serially independent or 6-month-overlap sources whose hazards are
@@ -26,8 +27,8 @@ which remained available when CMP-01 preparation started.
   `CONTRIBUTING.md` classifies design notes as internal, and `docs/conf.py` excludes this directory.
 - Unapproved proposals remain internal; `Proposed` is not a published ADR status.
   The maintainer approved the addition of `Approved for implementation` to the authoring conventions.
-  [ADR-0022](../adr/0022-compound-analysis-contracts.md) uses that status and identifies the unimplemented APIs and tracking issues.
-  Promote it to `Accepted` only when the described implementation exists.
+  [ADR-0022](../adr/0022-compound-analysis-contracts.md) used that status while the APIs were unimplemented;
+  #1373 promoted it to `Accepted` once every described implementation existed.
 
 No `_bmad-output/` or repository `.claude/skills/` directory was present.
 The planning handoffs describe an epic, dependency-ordered child issues, human decision gates,
@@ -628,7 +629,7 @@ The sections below retain the approved issue specifications.
 The published bodies also contain scoped contract excerpts, real issue references, and the validation commands.
 Each child begins `Part of #1364`, with readable `Blocked by:` lines where applicable.
 GitHub records native parent and dependency links, and the parent contains a child checklist.
-At publication, issues CMP-06 through CMP-10 carried `status:blocked`. CMP-01 through CMP-06 are now complete, and CMP-07 is in review.
+At publication, issues CMP-06 through CMP-10 carried `status:blocked`. CMP-01 through CMP-09 are now complete, and CMP-10 remains.
 The acceptance criteria are the issue-to-PR completion contract, not permission to expand scope.
 
 ### CMP-00 — [EPIC] Initial compound-hazard analysis milestone
