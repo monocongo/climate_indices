@@ -5,7 +5,9 @@ Wind profiles describe climate-driven resources, not actual generation. Event
 statistics describe index runs, not recorded supply shortfalls. The NumPy
 reference functions are stable; degree-day and wind-profile DataArray dispatch
 is beta, preserves CF metadata, and supports lazy Dask chunks on every dimension.
-Standardized energy adapters remain deferred to #1174.
+SREPI and the standardized demand index describe the climate-driven component of
+supply and demand, not actual generation or load; their NumPy functions are stable
+and their xarray adapters remain deferred to #1174.
 Import this package as ``from climate_indices import energy``; no energy
 function is re-exported from the package root (ADR-0019).
 """
@@ -18,13 +20,17 @@ from climate_indices.energy._degree_days import (
     heating_degree_days,
 )
 from climate_indices.energy._events import energy_drought_events
+from climate_indices.energy._standardized import SREPI_DROUGHT_THRESHOLDS, srepi, standardized_demand_index
 from climate_indices.energy._wind import hub_height_wind_speed, wind_shear_exponent
 
 __all__ = [
+    "SREPI_DROUGHT_THRESHOLDS",
     "cooling_degree_days",
     "energy_degree_days",
     "energy_drought_events",
     "heating_degree_days",
     "hub_height_wind_speed",
+    "srepi",
+    "standardized_demand_index",
     "wind_shear_exponent",
 ]

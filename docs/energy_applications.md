@@ -30,7 +30,7 @@ Demand proxies                   HDD / CDD / EDD                            (ava
 Resource transforms              hub-height wind (available); wind & PV capacity factor (planned)
 Hydro proxy                      capacity-weighted n-month precip           (available recipe)
               ↓
-Standardized energy indices      SREPI, standardized demand, SRLI           (planned)
+Standardized energy indices      SREPI, standardized demand (available); SRLI (planned)
               ↓
 Energy-drought events            run-theory onset / duration / magnitude    (planned)
               ↓
@@ -51,12 +51,12 @@ droughts*: sustained periods of low renewable production or high residual
 load. [Allen & Otero (2023)][allen-otero-2023] define a Standardised Renewable
 Energy Production Index (SREPI) and a Standardised Residual Load Index (SRLI),
 with a reference implementation in the [`SEI` R package][sei]. A validated
-Python implementation of those indices is planned as the family's main
-contribution; the physical transforms will make it usable end to end from raw
+Python implementation of SREPI and a standardized demand index is available;
+SRLI is planned. The physical transforms make the family usable end to end from raw
 reanalysis.
 
-As planned, three indices standardize climate-derived energy proxies that the
-caller supplies:
+Three indices standardize climate-derived energy proxies that the
+caller supplies (SRLI is planned):
 
 - **SREPI** standardizes a climate-derived renewable production proxy or a
   capacity factor, so low values mark weaker-than-usual renewable resource.
@@ -78,14 +78,16 @@ handed, so capacity factors, degree days, and demand proxies from any source
 are acceptable inputs
 ([ADR-0019](adr/0019-energy-module-api-and-aggregation.md)). The default is
 the empirical (rank-based) distribution, which Allen & Otero (2023) recommend
-above roughly 100 observations, with beta available for bounded [0, 1]
-capacity factors averaged with `aggregation="mean"` when there are too few.
-The beta option is not for demand proxies or accumulated production.
+above roughly 100 observations, with beta available for a bounded [0, 1] series
+averaged with `aggregation="mean"` when there are too few. Capacity factors are
+the common case; a bounded demand proxy qualifies when its source and windowed
+values stay within [0, 1]. The beta option is not for accumulated production.
 [#1169][energy-1169] added separate probability masses at exact 0 and 1 to the
 standardization seam ([ADR-0024](adr/0024-beta-distribution-for-bounded-series.md)):
 the continuous beta fit applies only between those endpoints, and a boundary value
-scores from its own mass. The energy wrappers that expose it are what
-[#1171][energy-1171] still plans.
+scores from its own mass. {func}`climate_indices.energy.srepi` and
+{func}`climate_indices.energy.standardized_demand_index` expose it
+([#1171][energy-1171]).
 SRLI uses the empirical distribution only. That is an API restriction rather
 than a mathematical necessity: a rank-based standardization has no support
 for a signed series to violate, the parametric families' support-limit and
@@ -101,7 +103,7 @@ with a Timescale of 30; calendar months use monthly input. Sub-daily (hourly)
 input is planned separately ([#1177][energy-1177]).
 
 Daily NumPy inputs to `indices.standardized_index()` must start on January 1
-and use the internal 366-slot year layout. The planned energy NumPy wrappers
+and use the internal 366-slot year layout. The energy NumPy wrappers
 inherit this layout. Convert Gregorian arrays with
 {func}`climate_indices.utils.transform_to_366day` before standardizing them;
 see {doc}`data_requirements` for the conversion requirements. Do not pass an
@@ -169,7 +171,8 @@ this utility accepts their index arrays without needing those wrappers.
 ## Energy indices
 
 The NumPy degree-day, wind-profile, and event-statistics functions in
-`climate_indices.energy` are available; the other energy indices below remain planned. The package, its
+`climate_indices.energy` are available, as are SREPI and the standardized demand
+index; the other energy indices below remain planned. The package, its
 NumPy and beta xarray tiers, and the scope boundary are fixed by
 [ADR-0019](adr/0019-energy-module-api-and-aggregation.md), with function names,
 units, and argument contracts recorded in the internal energy subsystem design
@@ -196,11 +199,18 @@ order.
   the existing `indices.standardized_index()` to standardize capacity-weighted
   monthly precipitation at Timescales of 1, 3, 6, and 12 months. It is a proxy
   for hydro resource, not a hydropower generation model.
-- **SREPI and the standardized demand index** — *planned
-  ([#1171][energy-1171])*, on the empirical distribution option
-  ([#1168][energy-1168]), with beta ([#1169][energy-1169]) only for SREPI
-  capacity factors in [0, 1] averaged with `aggregation="mean"`, including the
-  endpoint-mass handling described above, not for demand proxies.
+- **SREPI and the standardized demand index** — available as
+  {func}`climate_indices.energy.srepi` and
+  {func}`climate_indices.energy.standardized_demand_index`
+  ([#1171][energy-1171]), on the empirical distribution option
+  ([#1168][energy-1168]) by default, with beta ([#1169][energy-1169]) only for a
+  bounded [0, 1] series averaged with `aggregation="mean"`, including the
+  endpoint-mass handling described above. Capacity factors are the common case,
+  and a bounded demand proxy qualifies on the same terms. SREPI averages each
+  window by default, so accumulated production needs `aggregation="sum"`;
+  the demand index sums by default. `energy.SREPI_DROUGHT_THRESHOLDS` holds
+  Allen & Otero's moderate, severe, and extreme cut-offs (−1.28, −1.64, −1.96).
+  NumPy only: xarray adapters are planned ([#1174][energy-1174]).
 - **SRLI** — *planned ([#1172][energy-1172])*.
 - **Energy-drought event statistics** — available as
   {func}`climate_indices.energy.energy_drought_events` ([#1173][energy-1173]).
@@ -303,9 +313,9 @@ gridded demonstration on these data is planned ([#1179][energy-1179]).
 [energy-1168]: https://github.com/monocongo/climate_indices/issues/1168
 [energy-1169]: https://github.com/monocongo/climate_indices/issues/1169
 [energy-1171]: https://github.com/monocongo/climate_indices/issues/1171
+[energy-1174]: https://github.com/monocongo/climate_indices/issues/1174
 [energy-1172]: https://github.com/monocongo/climate_indices/issues/1172
 [energy-1173]: https://github.com/monocongo/climate_indices/issues/1173
-[energy-1174]: https://github.com/monocongo/climate_indices/issues/1174
 [energy-1175]: https://github.com/monocongo/climate_indices/issues/1175
 [energy-1176]: https://github.com/monocongo/climate_indices/issues/1176
 [energy-1177]: https://github.com/monocongo/climate_indices/issues/1177
