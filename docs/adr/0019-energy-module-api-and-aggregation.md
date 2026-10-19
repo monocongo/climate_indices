@@ -206,6 +206,8 @@ change without touching SPI or SPEI behavior.
 `standardized_index()`. The xarray entry and the energy adapters carry it, and
 [#1174](https://github.com/monocongo/climate_indices/issues/1174) landed both.
 
-The unimplemented portions of decisions 3 through 6 remain contracts awaiting
-implementation, not drift. Decision 7 records scope, not code, and does not
-change as the transforms land.
+The unimplemented portion of decisions 3 through 6 is the sub-daily `Periodicity`
+member reserved in decision 5
+([#1177](https://github.com/monocongo/climate_indices/issues/1177)); the remaining
+contracts landed with their implementations. Decision 7 records scope, not code, and
+does not change as the transforms land.

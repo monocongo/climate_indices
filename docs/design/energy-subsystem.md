@@ -12,7 +12,8 @@ The NumPy wind-profile functions are implemented by #1165, degree days by #1164,
 physical-transform adapters by #1166, event statistics by #1173, and the standardized
 energy xarray tier by #1174.
 The NumPy wind and PV capacity-factor transforms are implemented by #1175 and #1176.
-Their DataArray adapters remain planned. Remaining planned work is listed under *Deferred*.
+They are NumPy-only: neither has a DataArray adapter. Remaining deferred work is listed
+under *Deferred*.
 
 ## Decision
 
@@ -199,8 +200,8 @@ registry entries ([#1162](https://github.com/monocongo/climate_indices/issues/11
 
 - **Sub-daily (hourly) periodicity.** [#1177](https://github.com/monocongo/climate_indices/issues/1177).
   Forward-compatible as an additive `Periodicity` member; no signature changes.
-- **CLI integration.** [#1178](https://github.com/monocongo/climate_indices/issues/1178);
-  the CLI consumes the package rather than being a component of it, as for fire and flood.
+  No calendar-stratification policy is selected yet, so hourly calibration is not
+  implemented.
 
 ## References
 

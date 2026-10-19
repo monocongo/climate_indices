@@ -11,7 +11,7 @@ flood.
 **None of the indices described here measures or forecasts actual generation,
 demand, or residual load.** Use them for monitoring and risk diagnostics of
 the weather and climate conditions that drive the energy system, not as
-generation or load estimates. The planned physical transforms use standard
+generation or load estimates. The physical transforms use standard
 meteorological inputs: 2 m temperature, near-surface and hub-height wind,
 surface solar radiation, and precipitation. The standardized indices use
 climate-derived energy proxies that the caller supplies. Wind capacity factors
@@ -394,8 +394,8 @@ The Copernicus Climate Change Service publishes ERA5-derived
 and PV capacity factors, hydropower proxies, electricity demand, and heating,
 cooling, and energy degree days, gridded at 0.25° and aggregated to national
 and sub-national units ([DOI 10.24381/3bb607bd][c3s-doi]). Its capacity
-factors, degree days, and demand series are ready inputs to the planned
-standardized indices.
+factors, degree days, and demand series are ready inputs to the standardized
+indices.
 ERA5 itself, or CMIP model output, supplies the raw temperature, wind,
 radiation, and precipitation for the physical transforms. An end-to-end
 gridded demonstration on these data is planned ([#1179][energy-1179]).
@@ -417,9 +417,13 @@ gridded demonstration on these data is planned ([#1179][energy-1179]).
   implementations (`xclim` power law and `windpowerlib` log law) at
   `atol=1e-12` m s⁻¹ on synthetic inputs. Shear recovery is algebraic
   consistency only. Neither establishes skill against observed hub-height
-  wind. [#1180][energy-1180] owns the family's full
-  [validation inventory][validation], including future `SEI` and C3S comparisons
-  where those serve as oracles.
+  wind. The empirical standardization matches R `SEI` 0.2.0 on the attributed
+  Bloomfield and Brayshaw (2021) capacity-factor series. [#1180][energy-1180]
+  holds the family's full
+  [validation inventory][validation], which records the NOAA CPC degree-day
+  example, the `SEI`/`xclim`/`windpowerlib`/`pvlib` comparisons, and the
+  specification-only items. No C3S product comparison runs, because no matched
+  C3S degree-day or capacity-factor input is adopted.
 
 ## Sources
 

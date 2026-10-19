@@ -10,7 +10,7 @@ guarded only by internal fixtures.
 | Scope | Command | Expected result |
 | --- | --- | --- |
 | Core suite | `uv run pytest -m "not benchmark and not validation"` | Unit, property, xarray, release guardrail, and regression tests pass. |
-| Validation marker suite | `uv run pytest -m validation` | External validation tests, including committed NOAA EDDI fixtures, the SPEIbase v2.11 SPEI plausibility floors and input-matched log-logistic comparison, the R `SPEI` log-logistic cross-implementation fixtures, the standard-Palmer nClimDiv comparison, the Srock et al. (2018) HDW event-discrimination fixture, and the flood-family source-identity checks (specification-level, not external; see "Flood Evidence Classification"), pass; scPDSI oracle cross-validation passes. |
+| Validation marker suite | `uv run pytest -m validation` | External validation tests, including committed NOAA EDDI fixtures, the SPEIbase v2.11 SPEI plausibility floors and input-matched log-logistic comparison, the R `SPEI` log-logistic cross-implementation fixtures, the standard-Palmer nClimDiv comparison, the Srock et al. (2018) HDW event-discrimination fixture, the NOAA CPC degree-day worked example and the xclim/windpowerlib wind-profile fixtures, the R `SEI` empirical-standardization and energy-wrapper comparison, and the flood-family source-identity checks (specification-level, not external; see "Flood Evidence Classification"), pass; scPDSI oracle cross-validation passes. |
 | Lint | `uv run ruff check src/ tests/` | No lint findings. |
 | Format | `uv run ruff format --check src/ tests/` | No formatting changes needed. |
 | Notebooks | `uv run jupyter nbconvert --execute --to notebook --inplace notebooks/xarray_getting_started.ipynb notebooks/palmer_indices_xarray.ipynb notebooks/eddi_xarray.ipynb` | All 3.0.0 notebooks execute from a clean checkout. |
@@ -45,6 +45,14 @@ guarded only by internal fixtures.
 | Compound events (`compound.compound_events`, `CompoundEventSet`) | Regression only; specification-level (no external oracle adopted) | Exact index, count, lag, and flag equality; the outputs are indices, counts, lags, and flags (NaN where a lag does not apply), so no numeric tolerance applies | `tests/test_compound_events.py` checks the all-pairs concurrent and sequential enumeration, the four boundary-censor flags, and the rejected-bridge count against an independent brute-force interval scan over 24 seeded random scenarios with random unknown steps, plus hand-counted inclusive-end cases, repeated matches, lag-window boundaries, sequential bridges through an unknown step (rejected and counted), a matched and a rejected candidate in one window, empty catalogs with stable dtypes, validation of manually constructed `RunSet` objects, read-only result arrays, lifecycle logging, and the serializable manifest. These tests do not use the `validation` marker. | No external oracle and no published reference values are committed, and this specification-level status stands until an independent matching oracle exists. The seeded brute-force scan is an internal specification oracle, not external validation. Pair counts are not independent observations, so no significance claim is made or supported here. Agreement with the future xarray catalog (#1373) will be interface equivalence, not validation. |
 | Compound monthly bootstrap (`compound.bootstrap_dependence`, `BootstrapResult`) | Synthetic characterization and regression only; screening evidence for serially independent or 6-month-overlap sources, with hazards independent of each other, at 200 years; the 36-month-persistence characterization failed a predeclared gate | Exact counts and seeded repeats; `atol=1e-12`, `rtol=0` for closed-form frequencies and linear quantiles. Characterization uses predeclared exact-binomial acceptance counts, not floating-point tolerances. | `tests/test_compound_bootstrap.py` covers paired versus independent sampling, tiny-block enumeration, month phase, original-chronology lag responses, missing-year segments, earliest ties, separate interval/null guards, zero-joint suppression, inclusive null ties, valid-resample fractions, immutable outputs, lifecycle events, and cell-tile invariance. `scripts/characterize_compound_bootstrap.py` records 128 independent 200-year Gaussian records per scenario, 399 resamples, three statistics, seasonal marginals, overlapping 6- and 36-month windows, and 3/6/12-year block sensitivity. The measured report is `docs/design/compound-bootstrap-characterization.json`. | Supported scope: serially independent or 6-month-overlap sources, with hazards independent of each other, at 200 years, where every predeclared gate passed. The 36-month-persistence scenarios are unsupported: one coverage gate failed (twelve-year LMF) and null rejection exceeded the nominal 5% at every block length. Hazards that depend on each other were measured only with 36-month persistence. Hazard frequencies outside 0.35 to 0.55, lagged conditioning, records shorter than 200 years, and the default 1,999 resamples (399 were used) were not characterized. No external validation, daily inference, field significance, or arbitrary-persistence guarantee is claimed. See the Compound Bootstrap Characterization section below. |
 | Compound beta xarray routes (`compound.harmonize`, `joint_statistics`, `conditional_probability`, `bootstrap_dependence` on `xarray` input) | Regression only; interface equivalence with the NumPy routes (no external oracle adopted) | Exact equality for every count, flag, Boolean, and NaN position; the estimates come from the same NumPy arithmetic on the same counts, so no numeric tolerance applies | `tests/test_compound_xarray.py` compares every result field of each route with its NumPy counterpart, per month and pooled, for in-memory and Dask input over several spatial chunkings; checks bootstrap results are identical across tile boundaries; proves graph construction runs no task under a scheduler that raises; and checks custom and transposed dimensions, NaN versus explicit validity masks, daily-to-monthly reduction, `join="inner"` with its warning, a single location, and the rejected layouts (split time or hazard chunks, mismatched spatial chunks, mixed backends, missing or shifted coordinates, dimension-only or non-Gregorian time, and options that apply only to NumPy input). It also checks registry attributes, bounds, flag masks, no inherited `standard_name` or bounds, the versioned JSON manifest, h5netcdf and Zarr round trips, the `BetaFeatureWarning` and replayed-warning policy, and lifecycle events. `scripts/measure_compound_xarray_memory.py` records per-tile memory in `docs/design/compound-xarray-memory.json`. These tests do not use the `validation` marker. | Equivalence shows the Dataset routes reproduce the NumPy core, not that either is scientifically validated; the NumPy rows above state that evidence. Value-dependent support warnings are not emitted for Dask input, so read `quality_flags`. Memory figures are `tracemalloc` lower bounds from one machine, one platform, and one daily and one monthly configuration, with a manual peak-RSS spot check for `harmonize` only, and bootstrap tile width is set by compute time, which was not characterized. The route is beta (ADR-0012). |
+
+| HDD, CDD, EDD (`energy.heating_degree_days`, `cooling_degree_days`, `energy_degree_days`) | Exact reference for the published cooling example; specification-level for heating and energy degree days | `rtol=0`, `atol=1e-12` °C day after the `(F - 32) * 5/9` conversion | `tests/test_energy_reference.py` (marked `validation`) reproduces NOAA CPC's published seven-day CDD series (`[67, 65, 70, 74, 78, 65, 68]` °F to `[2, 0, 5, 9, 13, 0, 3]` °F day, total 32 °F day) with the exact `(65 - 32) * 5/9` °C base. Heating, EDD, and missing-day cases are hand-calculated specification checks; EDD = HDD + CDD is an algebraic identity, not an independent oracle. `tests/test_energy_degree_days.py` covers validation, units, and broadcasting outside the marker. | No public default base ships: C3S and Eurostat pair an activation threshold with a separate reference temperature, which one base per transform cannot reproduce. Only the mean-of-Tmin-and-Tmax convention is implemented, and no C3S numeric comparison is committed. |
+| Hub-height wind-speed profile (`energy.hub_height_wind_speed`, `energy.wind_shear_exponent`) | Independent-implementation comparison on synthetic inputs; not observed-wind validation | `rtol=0`, `atol=1e-12` m s⁻¹; two-level shear recovery `atol=1e-15` as consistency evidence only | `tests/test_energy_reference.py` (marked `validation`) compares the power-law and log-law profiles against pinned `xclim` 0.62.0 `wind_profile` and `windpowerlib` 0.2.2 `logarithmic_profile` outputs for nine synthetic cases, including calm, identity, and missing masks. `tests/test_energy_wind.py` and `tests/test_energy_xarray.py` cover the contracts outside the marker. | The inputs are synthetic and heights are generic, so neither comparison establishes skill against observed hub-height wind. Calm handling and the default one-seventh exponent are project conventions. |
+| Wind capacity factor (`energy.wind_capacity_factor`) | Regression only; specification-level (no external numeric curve adopted) | Exact rational arithmetic `rtol=0`, `atol=1e-15` for the cubic curve; exact region boundaries, table knots, and hand-calculated linear examples | `tests/test_energy_capacity_factor.py` checks the `generic` and user-supplied curves against `fractions.Fraction` arithmetic, region membership, cut-in and cut-out, air-density scaling, masking, and the averaging-order contract. `docs/research/energy-oracle-survey.md` found no matched numerical C3S curve to adopt. | No turbine-specific curve, observed generation, or model-to-model tolerance is validated. A curve of mean wind is not the mean capacity factor. |
+| PV capacity factor (`energy.pv_capacity_factor`) | Independent-implementation comparison for the power/temperature term; specification-level for the thermal model and clipping | `rtol=0`, `atol=1e-12` in dimensionless capacity factor | `tests/test_energy_solar.py` compares nine synthetic cases against `pvlib` 0.15.0 `pvsystem.pvwatts_dc` (pinned commit and SHA-256 in `tests/fixture/energy_solar/`), with the cell temperature supplied through the inverse Jerez thermal equation. The thermal coefficients have hand-calculated tests. | The Jerez thermal model itself, irradiance transposition, optical and inverter losses, and plant output are not validated. Clipping to `[0, 1]` is project policy because the published potential can exceed one. |
+| SREPI and standardized demand index (`energy.srepi`, `energy.standardized_demand_index`) | Independent-implementation comparison against R `SEI` 0.2.0 on a real attributed capacity-factor series | `scaled_atol=1e-12`, `probability_atol=1e-15`, `normal_atol=1e-12` | `tests/test_energy_sei_reference.py` (marked `validation`) compares the empirical standardization against `SEI` 0.2.0 on the Bloomfield and Brayshaw (2021) German onshore wind capacity-factor series (852 monthly means, 1950-2020, calibration 1981-2010), then compares `srepi()` and `standardized_demand_index()` against `SEI` on the same inputs. A gamma control uses `SEI`'s own MLE parameters. Fixture provenance, checksums, and session information are in `tests/fixture/energy_sei/`. | The comparison is monthly, so no seasonal-diurnal or hourly calibration is validated (`#1177`). No C3S energy-indicator product comparison is committed, beta has no external reference, and maintainer confirmation of fixture extraction and redistribution remains outstanding. |
+| SRLI and residual load (`energy.srli`, `energy.residual_load`) | Independent-implementation comparison against R `SEI` 0.2.0; specification-level for the subtraction | The same `SEI` tolerances as SREPI | `tests/test_energy_sei_reference.py` (marked `validation`) compares `srli()` against `SEI` on the signed series and `tests/test_energy_srli.py` covers the NumPy and xarray contracts, negative retention, and the empirical-only distribution restriction. | Signed residual load is a caller-supplied quantity, so no energy-system demand, capacity, or dispatch model is validated, and no C3S demand comparison is committed. |
+| Energy-drought events (`energy.energy_drought_events`) | Regression only; specification-level (no external event catalogue adopted) | Hand-enumerated windows and exact integer counts; NumPy, eager, and Dask summaries compared exactly | `tests/test_energy_events.py` checks run metrics and period summaries on SPI, SREPI, and SRLI series, threshold-relative magnitude, missing steps, period label counts, and gridded Dask summaries that keep the time axis in one chunk. `docs/research/energy-oracle-survey.md` records that `SEI`'s event loop is not a missing-value-policy oracle. | No observed event catalogue validates onset, duration, or severity, and the `SEI` magnitude identity is a qualification, not parity. |
 
 ## Compound Bootstrap Characterization
 
@@ -148,6 +156,44 @@ independent-implementation cross-validation and external-product validation.
 a numeric oracle can be committed. Flood indices describe flood potential,
 not flooding: they are wetness measures upstream of terrain, soils, and
 routing, so even a validated value would not be a flood prediction.
+
+## Energy Evidence Classification
+
+The energy family — heating, cooling, and energy degree days, the hub-height wind
+profile, the wind and PV capacity factors, SREPI, the standardized demand
+index, SRLI, and the energy-drought event statistics — adopts two external
+anchors and no product-level oracle:
+
+- **Exact reference**: NOAA CPC's published seven-day CDD example is transcribed
+  in `tests/fixture/energy_cpc/` with its retrieval date and source checksum. It
+  is authoritative for that one example, not for the C3S threshold/reference
+  scheme or for a default base.
+- **Independent implementation**: R `SEI` 0.2.0 pins the empirical
+  standardization on a real, attributed ERA5-derived capacity-factor series;
+  `xclim` 0.62.0 and `windpowerlib` 0.2.2 pin the wind profile; `pvlib` 0.15.0
+  pins the PV power/temperature term. These compare implementations on identical
+  inputs, not skill against observations.
+- **Not adopted**: the C3S energy-indicator product. Its degree days are
+  national monthly CSV, not a matched gridded series, and its capacity factors
+  use turbine-specific curves and configurations the library does not reproduce.
+  `docs/research/energy-oracle-survey.md` records the missing matched inputs; no
+  C3S numeric comparison runs.
+- **Not adopted**: beta and the energy-drought event statistics. The beta route
+  has a finite-bound control, not a reference distribution, and `SEI`'s event
+  loop uses different missing-value and magnitude conventions.
+- **Regression only**: the wind capacity factor, the event statistics, and the
+  Jerez thermal model and clipping policy. Their tests encode published algebra
+  and public contracts, so they are specification evidence.
+- **Deferred**: sub-daily (hourly) calibration (`#1177`) has no calendar oracle
+  yet; `SEI` accepts hourly timestamps but does not stratify by hour of day or
+  day of year. The ERA5/C3S gridded demonstration remains pending (`#1179`).
+
+Energy indices describe the climate-driven component of energy supply and
+demand, not actual generation, load, or residual load. Even an exactly
+reproduced standardized index would not be a generation or demand forecast.
+`tests/fixture/energy_sei/` and `tests/fixture/energy_wind/` record that
+maintainer confirmation of fixture extraction and redistribution is still
+outstanding.
 
 ## EDDI Fixture Policy
 
@@ -389,6 +435,23 @@ See "Palmer Validation Classification" above for the latter.
   https://doi.org/10.1175/JHM-D-15-0121.1
 - Palmer, W. C. (1965). Meteorological Drought. U.S. Weather Bureau Research
   Paper No. 45. https://www.droughtmanagement.info/literature/USWB_Meteorological_Drought_1965.pdf
+- Allen, S., and Otero, N. (2023). Standardised indices to monitor energy
+  droughts. *Renewable Energy*, 217, 119206.
+  https://doi.org/10.1016/j.renene.2023.119206
+- Bloomfield, H., and Brayshaw, D. (2021). ERA5 derived time series of European
+  aggregated surface weather variables, wind power, and solar power capacity
+  factors: hourly data from 1950-2020. University of Reading.
+  https://doi.org/10.17864/1947.000321
+- Copernicus Climate Change Service. Global climate and energy indicators from
+  1950 to present derived from reanalysis.
+  https://doi.org/10.24381/3bb607bd
+- Jerez, S., Tobin, I., Vautard, R., Montávez, J. P., López-Romero, J. M.,
+  Thais, F., Bartok, B., Christensen, O. B., Colette, A., Déqué, M., Nikulin,
+  G., Kotlarski, S., van Meijgaard, E., Teichmann, C., and Wild, M. (2015).
+  The impact of climate change on photovoltaic power generation in Europe.
+  *Nature Communications*, 6, 10014. https://doi.org/10.1038/ncomms10014
+- NOAA Climate Prediction Center. Degree days explained.
+  https://www.cpc.ncep.noaa.gov/products/analysis_monitoring/cdus/degree_days/ddayexp.shtml
 - NOAA Physical Sciences Laboratory EDDI archive:
   https://downloads.psl.noaa.gov/Projects/EDDI/
 - van der Schrier, G., Jones, P. D., and Briffa, K. R. (2011). The sensitivity

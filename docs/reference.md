@@ -129,7 +129,8 @@ NumPy degree-day, wind-resource, PV-resource, standardized-index (SREPI, demand,
 and event-statistics proxies describe climate conditions, not actual generation or load.
 `pv_capacity_factor()` uses the fixed Jerez configuration and accepts mean
 radiation in W m⁻². Callers convert accumulated SSRD by dividing by the interval
-duration in seconds. It has no xarray/Dask adapter.
+duration in seconds. It has no xarray/Dask adapter, and neither does
+`wind_capacity_factor()`: both take arrays and return arrays without metadata.
 `energy_drought_events()` reports run metrics and period summaries through the
 generic run-theory utility, and returns a Dataset of period summaries plus one run
 structure per cell for a gridded DataArray. The standardized energy indices and

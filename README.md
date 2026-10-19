@@ -64,11 +64,13 @@ climate-driven energy supply and demand.
 
 **[Energy](https://climate-indices.readthedocs.io/en/latest/energy_applications.html)** (`climate_indices.energy`)
 
-Available now, with beta `xarray.DataArray` support for SREPI, the standardized
-demand index, SRLI, and energy-drought events:
+Available now, with beta `xarray.DataArray` support for the degree days, the
+hub-height wind profile, SREPI, the standardized demand index, SRLI, and
+energy-drought events:
 
 - Heating, cooling, and energy degree days (HDD / CDD / EDD)
-- Hub-height wind-speed profile and temperature-derated PV capacity factors (wind capacity factors are planned)
+- Hub-height wind-speed profile, and wind and temperature-derated PV capacity factors
+  (the two capacity factors are NumPy-only)
 - Standardized energy production and demand indices: SREPI and a standardized demand index,
   plus SRLI for signed residual-load series, following
   [Allen and Otero (2023)](https://doi.org/10.1016/j.renene.2023.119206)
