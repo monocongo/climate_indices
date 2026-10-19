@@ -204,7 +204,8 @@ five observed successes. A null test instead requires five expected successes
 under independence. Zero joint counts can support suppression tests, but cannot
 produce a misleading zero-width interval. Each metric requires 95% valid
 realizations. Inspect `quality_flags` when a bound or p-value is NaN.
-Fewer than ten nonoverlapping blocks produces a warning.
+Fewer than ten nonoverlapping blocks produces a warning on the NumPy route and for in-memory xarray
+input; Dask input leaves it to `quality_flags`.
 
 | Result fields | Numeric contract, shared by the NumPy and xarray routes |
 | --- | --- |
@@ -215,13 +216,14 @@ Fewer than ten nonoverlapping blocks produces a warning.
 | `expected_null_successes` | Float64 expected successes under independence, exactly as tested by the null eligibility guard; NaN without eligible observations. |
 | `n_interval_resamples`, `n_null_resamples` | Int64 counts of valid realizations; zero when a pre-sampling guard excludes the metric. |
 | `n_years`, `block_length_years` | Int64 calendar-year counts, one per cell. |
-| `inference_start`, `inference_end` | datetime64[D] January and December month labels, one per cell; NaT without a complete year. |
+| `inference_start`, `inference_end` | January and December month labels, one per cell, as `datetime64[D]` on the NumPy route and `datetime64[s]` on the xarray route; NaT without a complete year. |
 | `quality_flags` | Int64 bit field. `metadata["quality_flags"]` supplies the masks and meanings. An interval flag does not automatically suppress a null test. |
 
 Estimate, bound, p-value, support-count, expected-success, resample-count, and
 flag arrays have shape `(12, *cells)` for monthly groups or `(*cells)` for pooled
 groups. `n_marginal` adds a leading source axis.
-All result arrays are read-only, and the manifest is immutable.
+All NumPy result arrays are read-only and the manifest is immutable; the xarray route returns writable
+arrays and stores the manifest as a JSON string.
 Daily inference raises `InvalidArgumentError`.
 
 Each call logs `calculation_started` and then `calculation_completed`, or
@@ -282,7 +284,8 @@ explicit `.chunk()` call to make.
 
 Value-dependent errors, such as a probability outside `[0, 1]`, surface when a lazy graph is
 computed. The same rule governs warnings. In-memory input emits the NumPy support warnings
-(a short record, sparse occurrences, a group below `min_samples`, a zero marginal). Dask input
+(a short record, sparse occurrences, a group below `min_samples`, a zero marginal, and the bootstrap's
+limited-support warning). Dask input
 does not, because a warning raised inside a task would repeat per tile with tile-local counts,
 so read `quality_flags`. Warnings that depend only on dates and declarations, such as a missing
 Calibration Period or `join="inner"` dropping boundaries, are raised at the call for both.
@@ -297,7 +300,7 @@ boundaries, and no route allocates a `(resample, time, cell)` array.
 Measured peak memory per task (`scripts/measure_compound_xarray_memory.py`, report
 [`compound-xarray-memory.json`](https://github.com/monocongo/climate_indices/blob/main/docs/design/compound-xarray-memory.json)):
 
-| Stage | Fixed per task | Per cell | Measured / design budget | Cells in 1 GiB |
+| Stage | Fixed per task | Per cell | Measured / design budget, per cell | Cells in 1 GiB |
 | --- | --- | --- | --- | --- |
 | `harmonize`, daily, 3 sources, 100 years | 2.7 MiB | 2.40 MiB | 1.28 | about 420 |
 | `joint_statistics`, same prepared Dataset | 0.9 MiB | 0.60 MiB | 0.32 | about 1,700 |
@@ -305,7 +308,7 @@ Measured peak memory per task (`scripts/measure_compound_xarray_memory.py`, repo
 | `bootstrap_dependence`, monthly, 100 years, 1,999 resamples | 0.9 MiB | 0.015 MiB | 0.20 | memory is not the limit |
 
 The ADR-0022 planning budget understates `harmonize` by about 28%. The bootstrap reuses one
-cell's realization arrays for every cell, so its memory is a fixed cost per task plus a few KiB
+cell's realization arrays for every cell, so its memory is a fixed cost per task plus about 15 KiB
 per cell, and its tile width is set by compute time, which was not characterized. The figures
 are `tracemalloc` lower bounds from one machine; a manual peak-RSS check of `harmonize` gave about
 20% more per cell. They scale linearly with the number of times and sources. Plan for at most

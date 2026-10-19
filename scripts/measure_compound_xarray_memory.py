@@ -39,7 +39,7 @@ from climate_indices import compound  # noqa: E402
 from climate_indices.exceptions import ClimateIndicesWarning  # noqa: E402
 
 SOURCES = 3
-DAILY_DAYS = 36_524  # 100 calendar years, 1920-01-01 through 2019-12-31
+DAILY_DAYS = 36_524  # the mean length of 100 Gregorian years, floored; the series ends 2019-12-30
 DAILY_CELLS = (4, 16, 64)
 MONTHLY_YEARS = 100
 BOOTSTRAP_CELLS = (2, 16, 64)

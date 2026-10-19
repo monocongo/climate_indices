@@ -213,7 +213,8 @@ Spatial chunks must remain compatible across inputs.
 Use a dedicated shape-reducing adapter; the fitting decorator's calendar folding is inappropriate here.
 Validate coordinates and options before graph construction; validate lazy data values inside numerical tasks.
 Value-dependent failures can therefore appear when computation starts.
-The NumPy support warnings (short record, sparse occurrences, a group below `min_samples`, a zero marginal)
+The NumPy support warnings (short record, sparse occurrences, a group below `min_samples`, a zero marginal,
+and the bootstrap's limited-support warning)
 are value-dependent, so they follow the same rule: in-memory xarray input warns exactly like the NumPy route,
 while Dask input leaves those conditions to `quality_flags`, because a warning raised inside a task would
 repeat per tile with tile-local counts. Harmonization warnings depend only on dates and declarations, so both

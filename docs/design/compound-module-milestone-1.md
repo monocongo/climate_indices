@@ -489,11 +489,10 @@ The budget was not uniformly conservative:
 check of `harmonize` at 4 and 64 cells gave a slope of 2.9 MiB per cell, about 20% above the traced figure,
 which is why the traced numbers are a lower bound. The bootstrap budget's `8*B*q*C` term does not describe the
 core: it processes one cell at a time and reuses that cell's two `(B, 12)` realization arrays, so its memory is
-a fixed cost per task (about 0.9 MiB at `B=1,999`, dominated by those arrays) plus about 16 KiB per cell for
+a fixed cost per task (about 0.9 MiB at `B=1,999`, of which about 0.4 MiB scales with `B`) plus about 15 KiB per cell for
 inputs and outputs, and tile width is set by compute time, which was not characterized. Per-cell figures scale
 linearly with `T` and `k`. Plan for at most half the table's cells per task to leave room for allocator and
 interpreter overhead, and divide a worker's memory by its concurrent tasks first.
-Measure peak memory in CMP-08 and publish the measured recommendation before advising tile sizes.
 Catalog memory additionally grows with the number of matching event pairs, potentially `O(r_A*r_B)`.
 
 ## Validation plan and evidence classifications

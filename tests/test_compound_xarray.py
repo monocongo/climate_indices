@@ -1046,3 +1046,67 @@ def test_an_undecoded_time_coordinate_says_it_needs_decoded_labels() -> None:
     numeric = {name: array.assign_coords(time=np.arange(len(MONTHS))) for name, array in sources().items()}
     with pytest.raises(CoordinateValidationError, match="decoded datetime64"):
         compound.harmonize(numeric, **DECLARATIONS)
+
+
+# --- documented guarantees that each route, not just one, must keep ---------------------------------------
+
+
+@pytest.mark.parametrize(
+    "tile", [{"lat": 1, "lon": 1}, {"lat": 2, "lon": 3}, {"lat": -1, "lon": -1}], ids=["1x1", "2x3", "whole-grid"]
+)
+def test_count_statistics_match_numpy_across_spatial_tilings(tile: dict[str, int]) -> None:
+    """Give every cell the NumPy result whatever the Dask tile boundaries, for the joint and conditional routes."""
+    aligned = numpy_aligned()
+    dataset = prepared(lazy=True, chunks={"time": -1, **tile})
+    joint = compound.joint_statistics(dataset, min_samples=1).compute(scheduler="synchronous")
+    assert_matches_numpy(joint, compound.joint_statistics(aligned, min_samples=1))
+    options = {"given": "drought", "target": "heat", "lag_window": (0, 2), "min_samples": 1}
+    conditional = compound.conditional_probability(dataset, **options).compute(scheduler="synchronous")
+    assert_matches_numpy(conditional, compound.conditional_probability(aligned, **options))
+
+
+def _messages(caught: list[warnings.WarningMessage]) -> set[str]:
+    return {str(w.message) for w in caught if not issubclass(w.category, BetaFeatureWarning)}
+
+
+def test_eager_conditional_and_bootstrap_warn_exactly_like_numpy() -> None:
+    """Replay the conditional and bootstrap support warnings, and the same ones, for in-memory input."""
+    year = prepared().isel(time=slice(0, 12))
+    conditional = {"given": "drought", "target": "heat", "min_samples": 1}
+    expected = _messages(_record(lambda: compound.conditional_probability(numpy_aligned_year(), **conditional)))
+    assert expected
+    assert _messages(_record(lambda: compound.conditional_probability(year, **conditional))) == expected
+
+    boot = {"statistic": "joint_probability", "seed": 1, "n_resamples": 5, "block_length_years": 40}
+    expected = _messages(_record(lambda: compound.bootstrap_dependence(numpy_aligned(), **boot)))
+    assert any("limited support" in message for message in expected)
+    assert _messages(_record(lambda: compound.bootstrap_dependence(prepared(), **boot))) == expected
+    lazy = prepared(lazy=True)
+    assert (
+        _messages(_record(lambda: compound.bootstrap_dependence(lazy, **boot).compute(scheduler="synchronous")))
+        == set()
+    )
+
+
+def test_every_route_returns_a_dataset_for_a_single_location() -> None:
+    """Return Datasets with no spatial dimension from all four routes, equal to the NumPy point results."""
+    drought, heat = _values()
+    series = {
+        "drought": xr.DataArray(drought[:, 1, 1], dims="time", coords={"time": MONTHS}),
+        "heat": xr.DataArray(heat[:, 1, 1], dims="time", coords={"time": MONTHS}),
+    }
+    point = compound.harmonize(series, **DECLARATIONS)
+    aligned = compound.harmonize(
+        {"drought": drought[:, 1, 1], "heat": heat[:, 1, 1]}, time={"drought": MONTHS, "heat": MONTHS}, **DECLARATIONS
+    )
+    conditional = {"given": "drought", "target": "heat", "lag_window": (0, 1), "min_samples": 1}
+    boot = {"statistic": "joint_probability", "seed": 1, "n_resamples": 9, "block_length_years": 3}
+    for result, expected in (
+        (
+            compound.conditional_probability(point, **conditional),
+            compound.conditional_probability(aligned, **conditional),
+        ),
+        (compound.bootstrap_dependence(point, **boot), compound.bootstrap_dependence(aligned, **boot)),
+    ):
+        assert isinstance(result, xr.Dataset) and not set(result.dims) - {"month", "hazard"}
+        assert_matches_numpy(result, expected)
