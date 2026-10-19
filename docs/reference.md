@@ -157,7 +157,9 @@ horizon is never counted as a non-response. `compound_events()` pairs concurrent
 sequential events and keeps their source runs and censoring. `bootstrap_dependence()`
 adds monthly uncertainty intervals and local independence tests. Import the module
 explicitly with `import climate_indices.compound as compound`; it is not re-exported
-from the package root. The beta xarray route remains pending; see
+from the package root. `harmonize()`, `joint_statistics()`, `conditional_probability()`,
+and `bootstrap_dependence()` also take xarray input on a beta route, described in
+[Beta xarray route](#compound-xarray-route); see
 [ADR-0022](adr/0022-compound-analysis-contracts.md) for the approved contracts.
 
 #### Monthly bootstrap inference
@@ -207,9 +209,10 @@ five observed successes. A null test instead requires five expected successes
 under independence. Zero joint counts can support suppression tests, but cannot
 produce a misleading zero-width interval. Each metric requires 95% valid
 realizations. Inspect `quality_flags` when a bound or p-value is NaN.
-Fewer than ten nonoverlapping blocks produces a warning.
+Fewer than ten nonoverlapping blocks produces a warning on the NumPy route and for in-memory xarray
+input; Dask input leaves it to `quality_flags`.
 
-| Result fields | Numeric contract for the future adapter |
+| Result fields | Numeric contract, shared by the NumPy and xarray routes |
 | --- | --- |
 | `estimate`, `full_record_estimate`, `confidence_low`, `confidence_high` | Float64, units `1`. Probability values range from 0 to 1. LMF is nonnegative without a universal maximum. |
 | `p_value` | Float64, units `1`, local and unadjusted, range 0 to 1; finite values are never zero. |
@@ -218,20 +221,22 @@ Fewer than ten nonoverlapping blocks produces a warning.
 | `expected_null_successes` | Float64 expected successes under independence, exactly as tested by the null eligibility guard; NaN without eligible observations. |
 | `n_interval_resamples`, `n_null_resamples` | Int64 counts of valid realizations; zero when a pre-sampling guard excludes the metric. |
 | `n_years`, `block_length_years` | Int64 calendar-year counts, one per cell. |
-| `inference_start`, `inference_end` | datetime64[D] January and December month labels, one per cell; NaT without a complete year. |
+| `inference_start`, `inference_end` | January and December month labels, one per cell, as `datetime64[D]` on the NumPy route and `datetime64[s]` on the xarray route; NaT without a complete year. |
 | `quality_flags` | Int64 bit field. `metadata["quality_flags"]` supplies the masks and meanings. An interval flag does not automatically suppress a null test. |
 
 Estimate, bound, p-value, support-count, expected-success, resample-count, and
 flag arrays have shape `(12, *cells)` for monthly groups or `(*cells)` for pooled
 groups. `n_marginal` adds a leading source axis.
-All result arrays are read-only, and the manifest is immutable.
+All NumPy result arrays are read-only and the manifest is immutable; the xarray route returns writable
+arrays and stores the manifest as a JSON string.
 Daily inference raises `InvalidArgumentError`.
 
 Each call logs `calculation_started` and then `calculation_completed`, or
 `calculation_failed` for an error, under `index_type="compound_bootstrap_dependence"`.
 The events carry the source count, statistic, grouping, seed, and resample count,
 not caller-controlled source names. They describe the call, not scheduling, because
-the NumPy route runs in the calling process.
+the NumPy route runs in the calling process; the xarray route's events are described
+under [Beta xarray route](#compound-xarray-route).
 
 Check sensitivity at `max(1, floor(L/2))`, `L`, and `2L` where support permits.
 Do not choose a length by its smallest p-value. Synthetic characterization and
@@ -241,8 +246,81 @@ The reproducible configuration and measured results are
 and
 [`compound-bootstrap-characterization.json`](https://github.com/monocongo/climate_indices/blob/main/docs/design/compound-bootstrap-characterization.json).
 The guards do not detect nonstationarity, long memory, or impact relevance.
-The beta adapter belongs to CMP-08 (#1372); the final worked guide belongs to
-CMP-10 (#1374).
+The final worked guide belongs to CMP-10 (#1374).
+
+(compound-xarray-route)=
+#### Beta xarray route
+
+Pass a mapping of `xarray.DataArray` to `harmonize()` to get a Dataset of `exceedance` and
+`valid` with dimensions `(hazard, time, *spatial)`. Pass that Dataset to
+`joint_statistics()`, `conditional_probability()`, or `bootstrap_dependence()` to get a
+Dataset of the same fields, options, and results as the NumPy dataclass. The route is beta
+under ADR-0012, so every call emits `BetaFeatureWarning`; the NumPy API is stable. It adds
+labels, metadata, and a Dask contract, and runs the NumPy core on each spatial block, so
+there is one scientific implementation. A single location still returns a Dataset.
+
+DataArray `harmonize()` reads each source's dates from its `time_dim` coordinate (default
+`"time"`) and layout from named dimensions, so it rejects the NumPy-only `time` and
+`spatial_time_major` arguments, and a mapping that mixes DataArrays with NumPy arrays. The
+dates must be real `datetime64` labels on a Gregorian calendar; a dimension-only time,
+cftime, and non-Gregorian calendars are rejected, and no calendar is converted.
+
+Results follow the NumPy layout: `month` (coordinate 1 to 12) is omitted when pooled,
+`hazard` labels marginal and per-channel values (for the bootstrap, the selected channels),
+and spatial dimensions keep their input order and index coordinates, with their attributes.
+Auxiliary and scalar (non-index) coordinates are not carried onto results: merging lazy ones
+would compute them, and conflicting ones cannot be reconciled. Reattach what you need, for
+example `result.assign_coords(lat2d=source.lat2d)`. Counts are `int64`, undefined
+estimates are `NaN`, and `quality_flags` is a numeric bit field with CF `flag_masks` and
+`flag_meanings`. Variables carry the registry's `long_name`, `units="1"`, and references,
+probability bounds `[0, 1]`, and an LMF lower bound of 0 with no maximum. No `standard_name`
+is set, and nothing is inherited from a source array's attributes. The Dataset attribute
+`compound_manifest` is the versioned JSON choice manifest, equal to the NumPy result's
+metadata, and the Dataset round-trips through NetCDF and Zarr.
+
+:::{important}
+Chunking contract. A Dask input must hold `time` (and, for the statistics routes, `hazard`)
+in one chunk, every spatial dimension must be chunked identically across inputs, all inputs
+must be Dask-backed or all in memory, and every spatial dimension needs coordinate labels.
+Options, labels, and chunk shapes are validated when the call is made. Nothing is rechunked,
+broadcast, loaded, or computed. A split chunk or a mismatch raises an error that names the
+explicit `.chunk()` call to make.
+:::
+
+Value-dependent errors, such as a probability outside `[0, 1]`, surface when a lazy graph is
+computed. The same rule governs warnings. In-memory input emits the NumPy support warnings
+(a short record, sparse occurrences, a group below `min_samples`, a zero marginal, and the bootstrap's
+limited-support warning). Dask input
+does not, because a warning raised inside a task would repeat per tile with tile-local counts,
+so read `quality_flags`. Warnings that depend only on dates and declarations, such as a missing
+Calibration Period or `join="inner"` dropping boundaries, are raised at the call for both.
+
+Each call logs `calculation_started` and then `calculation_completed`, or `calculation_failed`,
+with `route="xarray"` and the same `index_type` as the NumPy route. `calculation_completed`
+carries `evaluation="graph_construction"` for a lazy call: the graph was built and no worker has
+computed anything, so a failure inside a task is never logged as `calculation_failed`. An
+in-memory call logs `evaluation="eager"`. Bootstrap results do not depend on spatial tile
+boundaries, and no route allocates a `(resample, time, cell)` array.
+
+Measured peak memory per task (`scripts/measure_compound_xarray_memory.py`, report
+[`compound-xarray-memory.json`](https://github.com/monocongo/climate_indices/blob/main/docs/design/compound-xarray-memory.json)):
+
+| Stage | Fixed per task | Per cell | Measured / design budget, per cell | Cells in 1 GiB |
+| --- | --- | --- | --- | --- |
+| `harmonize`, daily, 3 sources, 100 years | 2.7 MiB | 2.40 MiB | 1.28 | about 420 |
+| `joint_statistics`, same prepared Dataset | 1.4 MiB | 0.59 MiB | 0.32 | about 1,700 |
+| `conditional_probability`, lag `(0, 30)` | 1.1 MiB | 0.70 MiB | 0.37 | about 1,470 |
+| `bootstrap_dependence`, monthly, 100 years, 1,999 resamples | 0.9 MiB | 0.015 MiB | 0.20 | memory is not the limit |
+
+The ADR-0022 planning budget understates `harmonize` by about 28%. The bootstrap reuses one
+cell's realization arrays for every cell, so its memory is a fixed cost per task plus about 15 KiB
+per cell, and its tile width is set by compute time, which was not characterized. The figures
+are `tracemalloc` lower bounds from one machine; a manual peak-RSS check of `harmonize` gave about
+20% more per cell. They scale linearly with the number of times and sources. Plan for at most
+half the tabulated cells per task, after dividing a worker's memory by its concurrent tasks.
+
+Agreement with the NumPy routes is interface equivalence, not external validation; see
+[VALIDATION.md](https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md).
 
 ```{eval-rst}
 .. automodule:: climate_indices.compound

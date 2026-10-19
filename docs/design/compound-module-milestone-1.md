@@ -9,8 +9,10 @@ route beside `harmonize()`, `joint_statistics()`, `conditional_probability()`, a
 Bootstrap evidence is synthetic characterization and regression only, and its supported
 scope is limited to serially independent or 6-month-overlap sources whose hazards are
 independent of each other, at 200 years (see `VALIDATION.md`).
-Every other API and the beta xarray route remain pending. No external scientific
-validation of the bootstrap is claimed.
+The beta xarray Dataset routes for `harmonize()`, `joint_statistics()`,
+`conditional_probability()`, and `bootstrap_dependence()` are implemented (#1372) and are
+equivalence-tested against the NumPy core. The xarray event catalog and the published
+reproduction remain pending. No external scientific validation of the bootstrap is claimed.
 
 The source review used fetched `main` at `a074b1fc5593c5761abd0c49b361654b241cc479`
 and the 3.0.0 API contracts. The checkout supplied with the request was older.
@@ -470,7 +472,29 @@ a conservative planning budget is `(10*k + 24)*T*C + 8*B*q*C` bytes, excluding s
 This includes upstream float64 values, Boolean masks, copies, and index workspaces; it is not a measured limit.
 For three daily inputs, 100 years, and 1,000 cells, the first term is about 1.97 GB before overhead.
 Monthly inference with `T=1200`, `C=1000`, `B=1999`, and `q=1` budgets about 81 MB before overhead.
-Measure peak memory in CMP-08 and publish the measured recommendation before advising tile sizes.
+
+CMP-08 measured this budget (`scripts/measure_compound_xarray_memory.py`, report
+`docs/design/compound-xarray-memory.json`; one single-chunk tile per stage on the synchronous scheduler,
+NumPy allocations traced with `tracemalloc` plus the input bytes, so a lower bound on resident memory).
+Prepared-stage measurements release the original float source arrays before tracing; only the prepared
+Boolean input payloads remain live. These figures do not cover workers that also retain the float sources.
+The budget was not uniformly conservative:
+
+| Stage (daily, `k=3`, `T=36,524`; bootstrap monthly, `T=1,200`, `B=1,999`) | Fixed per task | Per cell | Measured / budget per cell | Cells in 1 GiB |
+| --- | --- | --- | --- | --- |
+| `harmonize` | 2.7 MiB | 2.40 MiB | 1.28 | about 420 |
+| `joint_statistics` | 1.4 MiB | 0.59 MiB | 0.32 | about 1,700 |
+| `conditional_probability` (lag `(0, 30)`) | 1.1 MiB | 0.70 MiB | 0.37 | about 1,470 |
+| `bootstrap_dependence` | 0.9 MiB | 0.015 MiB | 0.20 | memory is not the limit |
+
+`harmonize` exceeds its budget by about 28%, so the first term understates it. A manual peak-RSS spot
+check of `harmonize` at 4 and 64 cells gave a slope of 2.9 MiB per cell, about 20% above the traced figure,
+which is why the traced numbers are a lower bound. The bootstrap budget's `8*B*q*C` term does not describe the
+core: it processes one cell at a time and reuses that cell's two `(B, 12)` realization arrays, so its memory is
+a fixed cost per task (about 0.9 MiB at `B=1,999`, of which about 0.4 MiB scales with `B`) plus about 15 KiB per cell for
+inputs and outputs, and tile width is set by compute time, which was not characterized. Per-cell figures scale
+linearly with `T` and `k`. Plan for at most half the table's cells per task to leave room for allocator and
+interpreter overhead, and divide a worker's memory by its concurrent tasks first.
 Catalog memory additionally grows with the number of matching event pairs, potentially `O(r_A*r_B)`.
 
 ## Validation plan and evidence classifications

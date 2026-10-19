@@ -58,6 +58,42 @@ def test_compound_bootstrap_numpy_return_types() -> None:
     assert_type(result.inference_start, npt.NDArray[np.datetime64])
 
 
+def test_compound_numpy_and_xarray_routes_select_their_return_types() -> None:
+    """Each compound function returns its dataclass for NumPy input and a Dataset for xarray input."""
+    months = np.arange("1900-01", "1940-01", dtype="datetime64[M]")
+    flags = np.ones(len(months), dtype=bool)
+    aligned = compound.harmonize(
+        {"a": flags, "b": flags},
+        time={"a": months, "b": months},
+        cadence={"a": "monthly", "b": "monthly"},
+        input_scale={"a": "indicator", "b": "indicator"},
+        thresholds={"a": 0.5, "b": 0.5},
+        directions={"a": "above", "b": "above"},
+        target_cadence="monthly",
+    )
+    assert_type(aligned, compound.AlignedHazards)
+    assert_type(compound.joint_statistics(aligned, min_samples=1), compound.JointResult)
+    assert_type(
+        compound.conditional_probability(aligned, given="a", target="b", min_samples=1), compound.ConditionalResult
+    )
+
+    arrays = {name: xr.DataArray(flags, dims="time", coords={"time": months}) for name in ("a", "b")}
+    prepared = compound.harmonize(
+        arrays,
+        cadence={"a": "monthly", "b": "monthly"},
+        input_scale={"a": "indicator", "b": "indicator"},
+        thresholds={"a": 0.5, "b": 0.5},
+        directions={"a": "above", "b": "above"},
+        target_cadence="monthly",
+    )
+    assert_type(prepared, xr.Dataset)
+    assert_type(compound.joint_statistics(prepared, min_samples=1), xr.Dataset)
+    assert_type(compound.conditional_probability(prepared, given="a", target="b", min_samples=1), xr.Dataset)
+    assert_type(
+        compound.bootstrap_dependence(prepared, statistic="joint_probability", seed=1, n_resamples=1), xr.Dataset
+    )
+
+
 def test_energy_wind_numpy_return_types() -> None:
     """The namespaced wind transforms return float64 arrays, including scalar input."""
     assert_type(energy.hub_height_wind_speed([2.0, 5.0], np.int64(10), np.float64(100)), npt.NDArray[np.float64])
