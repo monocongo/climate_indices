@@ -134,13 +134,14 @@ def test_acquisition_rejects_incompatible_units(tmp_path: Path, cached: bool, fi
         module.read_year(source, 2000, tmp_path)
 
 
+@pytest.mark.parametrize("filename", ["inputs.nc", "previous.nc"])
 @pytest.mark.parametrize("failure", ["data", "metadata", "publication"])
 def test_failed_publication_preserves_existing_pair(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str, filename: str
 ) -> None:
     pytest.importorskip("h5py")
     module = _preparation_module()
-    output = tmp_path / "inputs.nc"
+    output = tmp_path / filename
     manifest = output.with_suffix(".provenance.json")
     output.write_bytes(b"previous input")
     manifest.write_bytes(b"previous provenance")
@@ -170,10 +171,12 @@ def test_failed_publication_preserves_existing_pair(
     assert set(tmp_path.iterdir()) == {output, manifest}
 
 
-def test_successful_publication_records_written_bytes(tmp_path: Path) -> None:
+@pytest.mark.parametrize("filename", ["inputs.nc", "previous.nc"])
+def test_successful_publication_records_written_bytes(tmp_path: Path, filename: str) -> None:
     pytest.importorskip("h5py")
     module = _preparation_module()
-    output = tmp_path / "inputs.nc"
+    output = tmp_path / filename
+    output.write_bytes(b"previous input")
     module.write_outputs(_source_year().rename(module.VARIABLES), output, {"source": module.SOURCE_URL})
     provenance = json.loads(output.with_suffix(".provenance.json").read_text())
     assert provenance["sha256"] == hashlib.sha256(output.read_bytes()).hexdigest()

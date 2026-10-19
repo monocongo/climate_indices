@@ -109,7 +109,7 @@ def write_outputs(dataset: xr.Dataset, output: Path, provenance: dict[str, objec
             "size_bytes": staged_data.stat().st_size,
         }
         staged_manifest.write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
-        backup = directory / "previous.nc"
+        backup = directory / f"{output.name}.bak"
         if output.exists():
             shutil.copy2(output, backup)
         os.replace(staged_data, output)
