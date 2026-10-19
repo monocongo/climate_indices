@@ -49,6 +49,9 @@ fn main() -> Result<(), ClimateError> {
 
     assert_eq!(spi.dim(), (YEARS, MONTHS));
     assert!(finite > (YEARS * MONTHS) / 2);
+    // The synthetic record holds one dry season, whose zero accumulation gives
+    // at least one calendar month a positive zero mass.
+    assert!(probability_of_zero.iter().any(|mass| *mass > 0.0));
     for month in 0..SCALE - 1 {
         assert!(
             spi[(0, month)].is_nan(),
@@ -100,17 +103,15 @@ fn trailing_sum(values: ArrayView2<'_, f64>, scale: usize) -> Array2<f64> {
 /// The empirical fraction of exact zeros in each calendar month.
 ///
 /// This is the discrete mass that [`gamma_probabilities`] expects; it does not
-/// estimate the mass itself. A month with no calibration value has no defined
-/// mass, and a month whose calibration values are all zero carries no separate
-/// mass, so it is set to zero here.
+/// estimate the mass itself. A month whose calibration values are all zero
+/// carries no separate mass, and a month with no value at all has no defined
+/// one: both arrive at the kernel as an effective mass of zero.
 fn zero_mass(calibration: ArrayView2<'_, f64>) -> Array1<f64> {
     let mut masses = Array1::<f64>::zeros(calibration.ncols());
     for (month, column) in calibration.columns().into_iter().enumerate() {
         let valid = column.iter().filter(|value| !value.is_nan()).count();
         let zeros = column.iter().filter(|value| **value == 0.0).count();
-        masses[month] = if valid == 0 {
-            f64::NAN
-        } else if zeros == valid {
+        masses[month] = if zeros == valid {
             0.0
         } else {
             zeros as f64 / valid as f64
@@ -119,10 +120,13 @@ fn zero_mass(calibration: ArrayView2<'_, f64>) -> Array1<f64> {
     masses
 }
 
-/// A deterministic synthetic record: a wet summer season with exact zeros, so
-/// the discrete zero mass takes part.
+/// A deterministic synthetic record: a wet summer season with one dry season,
+/// so a zero accumulation window and a positive zero mass both occur.
 fn monthly_precipitation() -> Array2<f64> {
     Array2::from_shape_fn((YEARS, MONTHS), |(year, month)| {
+        if year == 7 && (4..7).contains(&month) {
+            return 0.0;
+        }
         let season_mm = 70.0 + 40.0 * ((month as f64 - 5.0) * PI / 6.0).cos();
         let noise = scramble(year * MONTHS + month);
         if noise < 0.12 {

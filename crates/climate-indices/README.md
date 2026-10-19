@@ -5,7 +5,8 @@ Precipitation Index (SPI), the Standardized Precipitation Evapotranspiration Ind
 (SPEI), the Evaporative Demand Drought Index (EDDI), potential evapotranspiration (PET),
 the Palmer family, fire-weather indices, and flood indices.
 
-The crate has no Python, I/O, logging, or metadata dependency. It provides kernels, not
+The crate's only dependency is `ndarray`: no I/O, logging, or metadata layer. It
+provides kernels, not
 complete index workflows: the caller prepares calendars, selects the calibration period,
 validates physical ranges, and applies any aggregation and final index transformation.
 
@@ -47,10 +48,11 @@ cargo run --example spei   # SPEI-6 from precipitation and PET arrays
 cargo run --example pet    # Thornthwaite PET from monthly temperatures
 ```
 
-Each example performs the caller-side steps the kernels document: calendar
-preparation, the Timescale accumulation, the selection of the Calibration Period,
-the estimate of a discrete zero mass where the distribution has one, and the
-standard-normal transform.
+Each example performs the caller-side steps the kernels document. SPI and SPEI
+prepare the calendar, accumulate the Timescale window, select the Calibration
+Period, estimate a discrete zero mass where the distribution has one, and apply
+the standard-normal transform; the PET example prepares temperatures, latitudes,
+and leap-year flags for a single kernel call.
 
 ## Numerical reference
 

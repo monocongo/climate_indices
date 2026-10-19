@@ -7,9 +7,11 @@
 //! Calibration Period, and transforms the probabilities to standard-normal
 //! values.
 //!
-//! The generalized logistic fit used here has no discrete zero mass and no
-//! bounded support, so unlike the gamma path there is no probability-of-zero
-//! step. Negative offsets are ordinary values.
+//! The generalized logistic fit used here has no discrete zero mass, so unlike
+//! the gamma path there is no probability-of-zero step. Negative offsets are
+//! ordinary values. A nonzero shape gives the fitted distribution finite support
+//! ends, and a value beyond one of those limits saturates to a probability of 0
+//! or 1.
 //!
 //! Run with `cargo run --example spei`.
 

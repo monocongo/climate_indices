@@ -406,6 +406,7 @@ uv run pytest tests/test_review_scripts.py
 ```bash
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
+RUSTDOCFLAGS="-D warnings" cargo doc -p climate-indices --no-deps
 PYO3_PYTHON="$(uv run python -c 'import sys; print(sys.executable)')" cargo test --workspace
 uv run maturin develop --release
 uv run python -c "import climate_indices._native"
