@@ -855,26 +855,56 @@ def random_runs(generator: np.random.Generator, steps: int, count: int) -> list[
     return runs
 
 
-@pytest.mark.parametrize("mode", ["concurrent", "sequential"])
-@pytest.mark.parametrize("lag_window", [None, (1, 2), (2, 5)])
-def test_matching_agrees_with_a_brute_force_enumeration(mode: str, lag_window: tuple[int, int] | None) -> None:
-    """Check the enumeration, the censor flags, and the bridge count against an independent scan."""
-    generator = np.random.default_rng(20260618)
-    steps = 60
+SEEDS = range(24)
+
+
+def scenario(seed: int) -> tuple[list[tuple[int, int]], list[tuple[int, int]], np.ndarray]:
+    """Draw two run lists and a validity mask whose unknown steps all fall outside every run."""
+    generator = np.random.default_rng(20260618 + seed)
+    steps = 36
     first_pairs = random_runs(generator, steps, 12)
     second_pairs = random_runs(generator, steps, 12)
     covered = {step for start, end in first_pairs + second_pairs for step in range(start, end + 1)}
-    # interior unknowns outside every run exercise the bridge rule and censoring without
-    # contradicting a run's assertion that it is a contiguous observed spell
-    unknown = [step for step in range(steps) if step not in covered][:4]
+    # unknowns outside every run exercise the bridge rule and censoring without contradicting a
+    # run's assertion that it is a contiguous observed spell
     valid = np.ones(steps, dtype=bool)
-    valid[unknown] = False
+    for step in range(steps):
+        if step not in covered and generator.random() < 0.3:
+            valid[step] = False
+    return first_pairs, second_pairs, valid
+
+
+def rejected_bridges(
+    first: list[tuple[int, int]],
+    second: list[tuple[int, int]],
+    valid: np.ndarray,
+    window: tuple[int, int | None],
+) -> list[tuple[int, int]]:
+    """List the in-window pairs that a step of unknown observation separates."""
+    return [
+        (i, j)
+        for i, (_, first_end) in enumerate(first)
+        for j, (second_start, _) in enumerate(second)
+        if second_start - first_end >= window[0]
+        and (window[1] is None or second_start - first_end <= window[1])
+        and not np.all(valid[first_end : second_start + 1])
+    ]
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+@pytest.mark.parametrize("mode", ["concurrent", "sequential"])
+@pytest.mark.parametrize("lag_window", [None, (1, 2), (2, 5)])
+def test_matching_agrees_with_a_brute_force_enumeration(
+    seed: int, mode: str, lag_window: tuple[int, int] | None
+) -> None:
+    """Check the enumeration, the censor flags, and the bridge count against an independent scan."""
+    first_pairs, second_pairs, valid = scenario(seed)
     if mode == "concurrent":
         lag_window = None
     result = match(
         manual([start for start, _ in first_pairs], [end for _, end in first_pairs]),
         manual([start for start, _ in second_pairs], [end for _, end in second_pairs]),
-        steps=steps,
+        steps=valid.size,
         valid=valid,
         mode=mode,
         lag_window=lag_window,
@@ -895,13 +925,37 @@ def test_matching_agrees_with_a_brute_force_enumeration(mode: str, lag_window: t
     else:
         assert result.lag.tolist() == [second_pairs[j][0] - first_pairs[i][1] for i, j, _, _ in expected]
         assert result.overlap_duration.tolist() == [0] * len(expected)
-        rejected = [
-            (i, j)
-            for i, (_, first_end) in enumerate(first_pairs)
-            for j, (second_start, _) in enumerate(second_pairs)
-            if second_start - first_end >= window[0]
-            and (window[1] is None or second_start - first_end <= window[1])
-            and not np.all(valid[first_end : second_start + 1])
-        ]
-        assert rejected, "the seeded case must exercise the bridge rule"
-        assert result.metadata["n_unknown_bridges"] == len(rejected)
+        assert result.metadata["n_unknown_bridges"] == len(rejected_bridges(first_pairs, second_pairs, valid, window))
+
+
+def test_the_seeded_scenarios_exercise_the_record_edges_and_the_bridge_rule() -> None:
+    """Keep the oracle from passing vacuously: some seed must reach each rule it is meant to check."""
+    scenarios = [scenario(seed) for seed in SEEDS]
+    steps = scenarios[0][2].size
+    runs = [pairs for first, second, _ in scenarios for pairs in (first, second) if pairs]
+    assert any(pairs[0][0] == 0 for pairs in runs), "no run starts on the first step"
+    assert any(pairs[-1][1] == steps - 1 for pairs in runs), "no run ends on the last step"
+    assert any(not valid.all() for _, _, valid in scenarios), "no scenario holds an unknown step"
+    assert any(rejected_bridges(first, second, valid, (1, None)) for first, second, valid in scenarios)
+    assert any(rejected_bridges(first, second, valid, (2, 5)) for first, second, valid in scenarios)
+
+
+@pytest.mark.parametrize(
+    ("window", "expected"),
+    [((1, 100), [3.0]), ((1, 2**70), [3.0]), ((8, 9), []), ((100, 200), [])],
+)
+def test_lag_window_bounds_at_or_beyond_the_record_end(window: tuple[int, int], expected: list[float]) -> None:
+    """A bound past the record keeps every later run eligible or none, and a huge bound cannot overflow."""
+    result = match(manual([0], [4]), manual([7], [7]), steps=8, mode="sequential", lag_window=window)
+    assert result.lag.tolist() == expected
+
+
+def test_source_run_ids_index_the_filtered_run_set() -> None:
+    """After ``min_duration`` filtering the IDs are positions in the kept set, not in the raw series."""
+    drought = identify_runs(np.array([-1.5, 0.5, -1.5, -1.5, 0.5, -1.5, -1.5, -1.5]), threshold=-1.0, min_duration=2)
+    heat = identify_runs(np.array([0.0, 0.0, 3.0, 3.0, 0.0, 0.0, 3.0, 3.0]), threshold=2.0, direction="above")
+    assert drought.start_index.tolist() == [2, 5]  # the one-step run at 0 is filtered out
+    result = match(drought, heat, steps=8)
+    assert result.first_run_id.tolist() == [0, 1]
+    assert result.second_run_id.tolist() == [0, 1]
+    assert drought.start_index[result.first_run_id].tolist() == [2, 5]
