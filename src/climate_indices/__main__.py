@@ -8,12 +8,13 @@ import multiprocessing
 from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from functools import partial
 from typing import Any, Literal, cast
 
 import numpy as np
 import xarray as xr
 
-from climate_indices import compute, fire, flood, indices, palmer, utils
+from climate_indices import compute, energy, fire, flood, indices, palmer, utils
 from climate_indices._cli import _add_common_spi_arguments, _open_with_default_chunks
 from climate_indices._cli_output import build_index_attrs, write_netcdf_atomic
 from climate_indices._cli_transport import (
@@ -83,6 +84,10 @@ class _IndexRequest:
     var_name_pe: str | None = None
     netcdf_awc: str | None = None
     var_name_awc: str | None = None
+    netcdf_wind: str | None = None
+    var_name_wind: str | None = None
+    netcdf_values: str | None = None
+    var_name_values: str | None = None
     scale: int | None = None
     distribution: indices.Distribution | None = None
     # the output convention for the standardized indices; "normal" unless a
@@ -134,6 +139,10 @@ class _IndexRequest:
             var_name_pe=inputs.get("var_name_pe"),
             netcdf_awc=inputs.get("netcdf_awc"),
             var_name_awc=inputs.get("var_name_awc"),
+            netcdf_wind=inputs.get("netcdf_wind"),
+            var_name_wind=inputs.get("var_name_wind"),
+            netcdf_values=inputs.get("netcdf_values"),
+            var_name_values=inputs.get("var_name_values"),
             calibration_start_year=arguments.calibration_start_year,
             calibration_end_year=arguments.calibration_end_year,
             scale=scale,
@@ -231,13 +240,43 @@ def _validate_precipitation_input(
     )
 
 
+def _validate_companion_input(
+    args: argparse.Namespace,
+    *,
+    netcdf_file: str | None,
+    var_name: str | None,
+    label: str,
+) -> _InputContext:
+    """
+    Validate an index's own input series and derive the input type from it.
+
+    The wind-profile and standardized-energy inputs carry the same layouts as a
+    precipitation input, so they are validated the same way, under their own
+    names.
+
+    param args: an arguments object of the type returned by
+        argparse.ArgumentParser.parse_args()
+    param netcdf_file: the input file the index reads
+    param var_name: the input's variable name
+    param label: the input's name in the error messages
+    return: the validated input
+    raise ValueError: if the input is missing or invalid
+    """
+    if netcdf_file is None:
+        msg = f"Missing the required {label} file"
+        _logger.error(msg)
+        raise ValueError(msg)
+
+    return _validate_precipitation_input(args, netcdf_file=netcdf_file, var_name=var_name, label=label)
+
+
 def _validate_temperature_input(args: argparse.Namespace) -> _InputContext:
     """
     Validate the temperature input and derive the input type from it.
 
-    Only PET is computed from temperature alone, so this is the input route for
-    ``--index pet``; every other index derives its input type from
-    precipitation.
+    Only the indices computed from temperature alone -- PET and the energy
+    degree days -- take this route; every other index derives its input type
+    from precipitation or from its own series.
 
     param args: an arguments object of the type returned by
         argparse.ArgumentParser.parse_args()
@@ -245,15 +284,17 @@ def _validate_temperature_input(args: argparse.Namespace) -> _InputContext:
     raise ValueError: if the temperature input is missing or invalid
     """
 
-    # PET requires a temperature file
+    # PET and the degree days require a temperature file
     if args.netcdf_temp is None:
         msg = "Missing the required temperature file argument"
         _logger.error(msg)
         raise ValueError(msg)
 
     # don't allow a daily periodicity (yet, this will be
-    # possible once we have Hargreaves or a daily Thornthwaite)
-    if args.periodicity is not compute.Periodicity.monthly:
+    # possible once we have Hargreaves or a daily Thornthwaite). The energy
+    # degree days are computed per daily time step instead, and reject any
+    # other periodicity in their own validator.
+    if args.index == "pet" and args.periodicity is not compute.Periodicity.monthly:
         msg = "Invalid periodicity argument for PET: " + f"'{args.periodicity}' -- only 'monthly' is supported"
         _logger.error(msg)
         raise ValueError(msg)
@@ -681,6 +722,14 @@ def _validate_args(args: argparse.Namespace) -> DatasetLayout:
         context = _validate_pe_or_precipitation_input(args)
     elif any(handler.requires_precip for handler in handlers):
         context = _validate_precipitation_input(args)
+    elif any(handler.requires_wind for handler in handlers):
+        context = _validate_companion_input(
+            args, netcdf_file=args.netcdf_wind, var_name=args.var_name_wind, label="wind speed"
+        )
+    elif any(handler.requires_values for handler in handlers):
+        context = _validate_companion_input(
+            args, netcdf_file=args.netcdf_values, var_name=args.var_name_values, label="values"
+        )
     else:
         context = _validate_temperature_input(args)
 
@@ -701,9 +750,9 @@ def _validate_args(args: argparse.Namespace) -> DatasetLayout:
     return context.input_type
 
 
-# the CLI indices that write a standardized (SPI/SPEI) output, the only ones
-# that accept --output_scale
-_OUTPUT_SCALE_INDICES = ("spi", "spei")
+# the CLI indices that write a standardized output, the only ones that accept
+# --output_scale
+_OUTPUT_SCALE_INDICES = ("spi", "spei", "srepi", "demand_index", "srli")
 
 # the increment each periodicity's log messages are expressed in
 _SCALE_INCREMENTS: dict[compute.Periodicity, str] = {
@@ -1208,6 +1257,11 @@ class _IndexRegistration:
     requires_pe: bool = False
     requires_pet_or_temp: bool = False
     requires_awc: bool = False
+    # reads its own series rather than precipitation, a PE or PET file, or
+    # temperature: the wind profile takes a wind speed, and the standardized
+    # energy indices take the series they standardize
+    requires_wind: bool = False
+    requires_values: bool = False
     requires_scales: bool = False
     # the argparse dest names this index consumes, beyond the universal
     # arguments (index, periodicity, output, multiprocessing, chunking) and the
@@ -1711,6 +1765,51 @@ def _validate_flood_arguments(args: argparse.Namespace) -> None:
         raise ValueError(msg)
 
 
+def _validate_energy_arguments(args: argparse.Namespace) -> None:
+    """
+    Validate that an energy index was given the arguments it can use.
+
+    The degree days are computed per daily time step, through the energy
+    module, and each needs the base temperature it is defined against. The wind
+    profile needs its two heights, and a roughness length with the logarithmic
+    method. The arguments an index cannot use are rejected centrally, from the
+    registration's declared flags (see ``_validate_consumed_flags``).
+
+    :param args: an arguments object of the type returned by
+        argparse.ArgumentParser.parse_args()
+    :raise ValueError: if the periodicity is not daily, or a required argument
+        is missing
+    """
+    index = args.index
+
+    if index in _ENERGY_DEGREE_DAY_INDICES:
+        if args.periodicity is not compute.Periodicity.daily:
+            msg = f"Invalid periodicity argument for {index}: '{args.periodicity}' -- only 'daily' is supported"
+            _logger.error(msg)
+            raise ValueError(msg)
+
+        if index != "cdd" and args.heating_base_temperature is None:
+            msg = "Missing the required --heating_base_temperature argument"
+            _logger.error(msg)
+            raise ValueError(msg)
+
+        if index != "hdd" and args.cooling_base_temperature is None:
+            msg = "Missing the required --cooling_base_temperature argument"
+            _logger.error(msg)
+            raise ValueError(msg)
+
+    if index == "wind_profile":
+        if args.hub_height is None:
+            msg = "Missing the required --hub_height argument"
+            _logger.error(msg)
+            raise ValueError(msg)
+
+        if args.wind_profile_method == "log" and args.roughness_length is None:
+            msg = "Missing the required --roughness_length argument for the log wind profile"
+            _logger.error(msg)
+            raise ValueError(msg)
+
+
 # the distributions `--index spi` computes; log-logistic is the SPEI reference
 # distribution and `indices.spi()` rejects it (#106), and empirical (#1168) and beta
 # (#1169) are reserved for `indices.standardized_index()`
@@ -2027,6 +2126,256 @@ def _run_api(arguments: argparse.Namespace, input_type: DatasetLayout, transport
         _write_xarray_index(request, api_values, f"{request.output_file_base}_api.nc", precipitation)
 
 
+# the CF registry name, and so the output variable name, of each energy index
+_ENERGY_OUTPUT_NAMES: dict[str, str] = {
+    "hdd": "heating_degree_days",
+    "cdd": "cooling_degree_days",
+    "edd": "energy_degree_days",
+    "wind_profile": "hub_height_wind_speed",
+    "srepi": "srepi",
+    "demand_index": "standardized_demand_index",
+    "srli": "srli",
+}
+
+# the energy degree days, which are computed per daily time step
+_ENERGY_DEGREE_DAY_INDICES = ("hdd", "cdd", "edd")
+
+# the request fields naming each energy index's input file and variable
+_ENERGY_INPUT_FIELDS: tuple[tuple[str, str], ...] = (
+    ("netcdf_temp", "var_name_temp"),
+    ("netcdf_wind", "var_name_wind"),
+    ("netcdf_values", "var_name_values"),
+)
+
+_UNVALIDATED_BASE = "the base temperature was not validated"
+_UNVALIDATED_HEIGHT = "the wind-profile heights were not validated"
+
+
+def _energy_input(request: _IndexRequest) -> tuple[str, str]:
+    """
+    Return the file and variable name of the series an energy index transforms.
+
+    :param request: the index's request
+    :return: the input file and its variable name
+    :raise ValueError: if the request names no energy input
+    """
+    for netcdf_field, var_name_field in _ENERGY_INPUT_FIELDS:
+        netcdf_file = getattr(request, netcdf_field)
+        if netcdf_file is not None:
+            var_name = getattr(request, var_name_field)
+            assert var_name is not None, "the input variable name was not validated"
+            return netcdf_file, var_name
+
+    msg = f"No input series was validated for {request.index}"
+    _logger.error(msg)
+    raise ValueError(msg)
+
+
+def _run_energy_index(
+    arguments: argparse.Namespace,
+    input_type: DatasetLayout,
+    index: str,
+    transform: Callable[..., xr.DataArray],
+    *,
+    scale: int | None = None,
+    name_suffix: str = "",
+) -> None:
+    """
+    Compute one energy index through the energy module's xarray API.
+
+    The energy indices compute through xarray only, as the fire and flood
+    indices do: their adapters stamp the CF metadata, keep Dask arrays lazy,
+    and transform each grid cell independently. The output variable is named
+    for its CF registry entry, plus the scale and output scale for the
+    standardized indices, as SPI's output name carries them.
+
+    :param arguments: the parsed command line arguments
+    :param input_type: the input type determined by argument validation
+    :param index: the energy index being computed
+    :param transform: the energy call that computes it from the input series
+    :param scale: the time scale computed, for a scaled index
+    :param name_suffix: appended to the output variable name, for an index whose
+        output name distinguishes the arguments it was computed with
+    """
+    request = _IndexRequest.from_arguments(arguments, index=index, input_type=input_type, scale=scale)
+    netcdf_file, variable = _energy_input(request)
+
+    with _open_with_default_chunks(xr.open_dataset, netcdf_file, chunks=_time_whole_chunks(input_type)) as dataset:
+        source = dataset[variable]
+        index_values = transform(source)
+
+        # name the output for its registry entry rather than its input variable
+        index_values.name = _ENERGY_OUTPUT_NAMES[index] + name_suffix
+        if scale is not None:
+            index_values.name += "_" + str(scale).zfill(2)
+            if request.output_scale != "normal":
+                index_values.name += "_" + request.output_scale
+
+        _write_xarray_index(request, index_values, f"{request.output_file_base}_{index_values.name}.nc", source)
+
+
+def _run_hdd(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
+    """
+    Compute heating degree days through the energy module's xarray API.
+
+    :param arguments: the parsed command line arguments
+    :param input_type: the input type determined by argument validation
+    """
+    assert arguments.heating_base_temperature is not None, _UNVALIDATED_BASE
+    _run_energy_index(
+        arguments,
+        input_type,
+        "hdd",
+        partial(energy.heating_degree_days, base_temperature=arguments.heating_base_temperature),
+    )
+
+
+def _run_cdd(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
+    """
+    Compute cooling degree days through the energy module's xarray API.
+
+    :param arguments: the parsed command line arguments
+    :param input_type: the input type determined by argument validation
+    """
+    assert arguments.cooling_base_temperature is not None, _UNVALIDATED_BASE
+    _run_energy_index(
+        arguments,
+        input_type,
+        "cdd",
+        partial(energy.cooling_degree_days, base_temperature=arguments.cooling_base_temperature),
+    )
+
+
+def _run_edd(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
+    """
+    Compute energy degree days through the energy module's xarray API.
+
+    :param arguments: the parsed command line arguments
+    :param input_type: the input type determined by argument validation
+    """
+    assert arguments.heating_base_temperature is not None, _UNVALIDATED_BASE
+    assert arguments.cooling_base_temperature is not None, _UNVALIDATED_BASE
+    _run_energy_index(
+        arguments,
+        input_type,
+        "edd",
+        partial(
+            energy.energy_degree_days,
+            heating_base_temperature=arguments.heating_base_temperature,
+            cooling_base_temperature=arguments.cooling_base_temperature,
+        ),
+    )
+
+
+def _run_wind_profile(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
+    """
+    Compute hub-height wind speed through the energy module's xarray API.
+
+    The reference height defaults to 10 m, the height of the standard
+    near-surface wind field, and the shear exponent to the power law's 1/7. The
+    logarithmic profile takes the roughness length instead of the exponent, and
+    its output name carries the method so neither profile overwrites the other.
+
+    :param arguments: the parsed command line arguments
+    :param input_type: the input type determined by argument validation
+    """
+    assert arguments.hub_height is not None, _UNVALIDATED_HEIGHT
+    reference_height = 10.0 if arguments.reference_height is None else arguments.reference_height
+
+    if arguments.wind_profile_method == "log":
+        transform = partial(
+            energy.hub_height_wind_speed,
+            reference_height=reference_height,
+            hub_height=arguments.hub_height,
+            method="log",
+            roughness_length=arguments.roughness_length,
+        )
+        _run_energy_index(arguments, input_type, "wind_profile", transform, name_suffix="_log")
+        return
+
+    alpha = 1 / 7 if arguments.wind_shear_alpha is None else arguments.wind_shear_alpha
+    transform = partial(
+        energy.hub_height_wind_speed,
+        reference_height=reference_height,
+        hub_height=arguments.hub_height,
+        method="power",
+        alpha=alpha,
+    )
+
+    _run_energy_index(arguments, input_type, "wind_profile", transform)
+
+
+def _run_srepi(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
+    """
+    Compute SREPI for each requested scale through the energy xarray adapter.
+
+    :param arguments: the parsed command line arguments
+    :param input_type: the input type determined by argument validation
+    """
+    for scale in arguments.scales:
+        _run_energy_index(
+            arguments,
+            input_type,
+            "srepi",
+            partial(
+                energy.srepi,
+                scale=scale,
+                calibration_year_initial=arguments.calibration_start_year,
+                calibration_year_final=arguments.calibration_end_year,
+                output_scale=arguments.output_scale or "normal",
+                zero_handling=arguments.zero_handling,
+            ),
+            scale=scale,
+        )
+
+
+def _run_demand_index(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
+    """
+    Compute the standardized demand index for each requested scale.
+
+    :param arguments: the parsed command line arguments
+    :param input_type: the input type determined by argument validation
+    """
+    for scale in arguments.scales:
+        _run_energy_index(
+            arguments,
+            input_type,
+            "demand_index",
+            partial(
+                energy.standardized_demand_index,
+                scale=scale,
+                calibration_year_initial=arguments.calibration_start_year,
+                calibration_year_final=arguments.calibration_end_year,
+                output_scale=arguments.output_scale or "normal",
+                zero_handling=arguments.zero_handling,
+            ),
+            scale=scale,
+        )
+
+
+def _run_srli(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
+    """
+    Compute SRLI for each requested scale through the energy xarray adapter.
+
+    :param arguments: the parsed command line arguments
+    :param input_type: the input type determined by argument validation
+    """
+    for scale in arguments.scales:
+        _run_energy_index(
+            arguments,
+            input_type,
+            "srli",
+            partial(
+                energy.srli,
+                scale=scale,
+                calibration_year_initial=arguments.calibration_start_year,
+                calibration_year_final=arguments.calibration_end_year,
+                output_scale=arguments.output_scale or "normal",
+            ),
+            scale=scale,
+        )
+
+
 # the argparse dest names the registrations consume, grouped by input kind;
 # universal arguments and the globally validated output_scale and zero_handling
 # are not repeated here
@@ -2035,6 +2384,8 @@ _TEMPERATURE_FLAGS = frozenset({"netcdf_temp", "var_name_temp"})
 _PET_FLAGS = frozenset({"netcdf_pet", "var_name_pet"})
 _AWC_FLAGS = frozenset({"netcdf_awc", "var_name_awc"})
 _PE_FLAGS = frozenset({"netcdf_pe", "var_name_pe"})
+_WIND_FLAGS = frozenset({"netcdf_wind", "var_name_wind"})
+_VALUES_FLAGS = frozenset({"netcdf_values", "var_name_values"})
 _CALIBRATION_FLAGS = frozenset({"calibration_start_year", "calibration_end_year"})
 _SCALE_FLAGS = frozenset({"scales"})
 
@@ -2165,6 +2516,60 @@ _INDEX_REGISTRY: dict[str, _IndexRegistration] = {
         consumed_flags=_PRECIP_FLAGS | frozenset({"api_k"}),
         validate_arguments=_validate_flood_arguments,
     ),
+    "hdd": _IndexRegistration(
+        index="hdd",
+        run=_run_hdd,
+        input_paths=("netcdf_temp", "var_name_temp"),
+        consumed_flags=_TEMPERATURE_FLAGS | frozenset({"heating_base_temperature"}),
+        validate_arguments=_validate_energy_arguments,
+    ),
+    "cdd": _IndexRegistration(
+        index="cdd",
+        run=_run_cdd,
+        input_paths=("netcdf_temp", "var_name_temp"),
+        consumed_flags=_TEMPERATURE_FLAGS | frozenset({"cooling_base_temperature"}),
+        validate_arguments=_validate_energy_arguments,
+    ),
+    "edd": _IndexRegistration(
+        index="edd",
+        run=_run_edd,
+        input_paths=("netcdf_temp", "var_name_temp"),
+        consumed_flags=_TEMPERATURE_FLAGS | frozenset({"heating_base_temperature", "cooling_base_temperature"}),
+        validate_arguments=_validate_energy_arguments,
+    ),
+    "wind_profile": _IndexRegistration(
+        index="wind_profile",
+        run=_run_wind_profile,
+        input_paths=("netcdf_wind", "var_name_wind"),
+        requires_wind=True,
+        consumed_flags=_WIND_FLAGS
+        | frozenset({"reference_height", "hub_height", "wind_profile_method", "wind_shear_alpha", "roughness_length"}),
+        validate_arguments=_validate_energy_arguments,
+    ),
+    "srepi": _IndexRegistration(
+        index="srepi",
+        run=_run_srepi,
+        input_paths=("netcdf_values", "var_name_values"),
+        requires_values=True,
+        requires_scales=True,
+        consumed_flags=_VALUES_FLAGS | _CALIBRATION_FLAGS | _SCALE_FLAGS,
+    ),
+    "demand_index": _IndexRegistration(
+        index="demand_index",
+        run=_run_demand_index,
+        input_paths=("netcdf_values", "var_name_values"),
+        requires_values=True,
+        requires_scales=True,
+        consumed_flags=_VALUES_FLAGS | _CALIBRATION_FLAGS | _SCALE_FLAGS,
+    ),
+    "srli": _IndexRegistration(
+        index="srli",
+        run=_run_srli,
+        input_paths=("netcdf_values", "var_name_values"),
+        requires_values=True,
+        requires_scales=True,
+        consumed_flags=_VALUES_FLAGS | _CALIBRATION_FLAGS | _SCALE_FLAGS,
+    ),
 }
 
 # the indices behind each --index value, in the order they are run: PET runs
@@ -2184,6 +2589,13 @@ _INDEX_PIPELINES: dict[str, tuple[str, ...]] = {
     "edi": ("edi",),
     "flood_index": ("flood_index",),
     "api": ("api",),
+    "hdd": ("hdd",),
+    "cdd": ("cdd",),
+    "edd": ("edd",),
+    "wind_profile": ("wind_profile",),
+    "srepi": ("srepi",),
+    "demand_index": ("demand_index",),
+    "srli": ("srli",),
     "all": ("spi", "pet", "spei", "pnp", "palmers"),
 }
 
@@ -2289,6 +2701,47 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Initial KBDI value (default: 0.0)",
         type=float,
         required=False,
+    )
+    parser.add_argument(
+        "--netcdf_wind",
+        help="Wind speed NetCDF file to be used as input for the wind-profile computation",
+    )
+    parser.add_argument("--var_name_wind", help="Wind speed variable name used in the wind speed NetCDF file")
+    parser.add_argument(
+        "--netcdf_values",
+        help="NetCDF file holding the production, degree-day, or residual-load series to standardize",
+    )
+    parser.add_argument("--var_name_values", help="Variable name of the series to standardize")
+    parser.add_argument(
+        "--heating_base_temperature",
+        help="Heating base temperature in °C, for the heating and energy degree days",
+        type=float,
+    )
+    parser.add_argument(
+        "--cooling_base_temperature",
+        help="Cooling base temperature in °C, for the cooling and energy degree days",
+        type=float,
+    )
+    parser.add_argument(
+        "--reference_height",
+        help="Height in metres of the wind speed input (default: 10)",
+        type=float,
+    )
+    parser.add_argument("--hub_height", help="Turbine hub height in metres", type=float)
+    parser.add_argument(
+        "--wind_profile_method",
+        help="Wind profile extrapolation: power (default) or log",
+        choices=["power", "log"],
+    )
+    parser.add_argument(
+        "--wind_shear_alpha",
+        help="Power-law shear exponent (default: 1/7)",
+        type=float,
+    )
+    parser.add_argument(
+        "--roughness_length",
+        help="Surface roughness length in metres, required by the log profile",
+        type=float,
     )
     parser.add_argument(
         "--chunksizes",
