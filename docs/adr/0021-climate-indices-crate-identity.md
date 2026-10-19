@@ -111,9 +111,10 @@ ownership and cadence.
 - The Python contract does not change. The extension module stays
   `climate_indices._native`, and the Rust library name is a Rust path, not a Python import,
   so `climate_indices` names both without a collision.
-- Both crates currently inherit `version.workspace = true` and `publish = false` from the
-  workspace. An independent crate version needs the crate to carry its own version, or the
-  workspace to split, in CRATE-05; `climate-py` keeps `publish = false`.
+- Before CRATE-05 both crates inherited `version.workspace = true` and
+  `publish = false` from the workspace; that split is what CRATE-05 changed. The crate
+  now carries `version = "0.1.0"` and `publish = true`, and `climate-py` keeps
+  `publish = false` through the workspace.
 - Crate releases and PyPI releases are independent in both directions, and neither tag
   namespace can start the other workflow.
 - {doc}`0017-rust-core-acceleration-backend` keeps the historical name, and
