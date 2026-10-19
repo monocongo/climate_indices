@@ -139,6 +139,25 @@ class TestHourlyEmpiricalTransform:
         assert probabilities[10, 0] == probabilities[11, -1]
         assert probabilities[10, 0] != probabilities[10, -1]
 
+    @pytest.mark.parametrize("output_scale", compute.OUTPUT_SCALES)
+    def test_output_reuses_the_rank_buffer(self, monkeypatch, output_scale) -> None:
+        values = np.repeat(np.arange(self.ROWS, dtype=float)[:, np.newaxis], HOURS_PER_YEAR, axis=1)
+        original = values.copy()
+        buffers = []
+        zeros = np.zeros
+
+        def record_zeros(*args, **kwargs):
+            buffer = zeros(*args, **kwargs)
+            buffers.append(buffer)
+            return buffer
+
+        monkeypatch.setattr(compute.np, "zeros", record_zeros)
+
+        result = compute.transform_fitted_empirical(values, 2000, 2000, 2009, compute.Periodicity.hourly, output_scale)
+
+        assert result is buffers[0]
+        np.testing.assert_array_equal(values, original)
+
     def test_normal_scale_is_finite_and_ordered(self) -> None:
         values = np.repeat(np.arange(self.ROWS, dtype=float)[:, np.newaxis], HOURS_PER_YEAR, axis=1)
 

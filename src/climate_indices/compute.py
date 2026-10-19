@@ -3184,16 +3184,14 @@ def transform_fitted_empirical(
     counts /= valid_counts + 2.0
     counts[missing] = np.nan
 
-    mapped = _map_non_normal_scale(counts, output_scale)
-    result: np.ndarray
-    if mapped is None:
-        counts = scipy.special.ndtri(counts, out=counts)
-        result = counts
-    else:
-        result = mapped
+    if output_scale == "normal":
+        scipy.special.ndtri(counts, out=counts)
+    elif output_scale == "bounded":
+        counts *= 2.0
+        counts -= 1.0
 
-    log.info("distribution_transform_completed", output_shape=str(result.shape))
-    return result
+    log.info("distribution_transform_completed", output_shape=str(counts.shape))
+    return counts
 
 
 # normalized fitting-parameter keys, paired with the deprecated alias accepted for each
