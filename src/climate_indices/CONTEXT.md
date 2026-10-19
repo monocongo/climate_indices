@@ -148,6 +148,46 @@ A dimensionless, state-free CFFWIS behavior index combining ISI and BUI; compute
 **DSR (Daily Severity Rating)**:
 The `0.0272 * FWI ** 1.77` transform of the Canadian FWI that makes seasonal averaging meaningful; computed by `fire.daily_severity_rating()`.
 
+### Compound hazards
+
+**Declared Hazard**:
+A source with an explicit cadence, input scale, threshold, and direction.
+`compound.harmonize()` accepts fitted probability values with strict comparisons or Boolean indicators with separate observation validity.
+For physical indicators, the source manifest records the original threshold and comparator.
+A declaration does not establish a valid distribution fit.
+
+**Aligned Hazards**:
+The `AlignedHazards` result stores Boolean exceedance and validity on a shared Gregorian cadence grid.
+Unknown observations retain their positions and remain invalid, not non-occurrences.
+Daily-to-monthly reduction applies `any` or `all` to indicators and requires every civil day to be observed.
+The library never expands monthly values to days.
+
+**Complete-Case Support**:
+The dates where every source selected for a joint statistic is observed.
+`n_valid`, all marginal counts, and the joint count use this same support.
+The count unit is a cadence step, not a run or an independent event.
+
+**Likelihood Multiplication Factor (LMF)**:
+The observed joint frequency divided by the product of observed marginal frequencies on the same Complete-Case Support.
+It is nonnegative. Positive marginals with no joint occurrence give zero; a zero marginal makes LMF undefined.
+`LMF = 1` does not establish independence, and a pooled LMF is not an average of monthly LMFs.
+
+**Eligible Anchor**:
+An observed conditioning-source step whose complete inclusive target-response window is observed.
+`conditional_probability()` counts at most one response per positive anchor and excludes incomplete or unknown horizons.
+It describes a time-step association, not causality or an event-onset conversion probability.
+
+**Compound Event Pair**:
+Two source runs whose intervals overlap or whose sequential lag meets the declared window.
+Concurrent pairs report the intersection; sequential pairs report `lag = B.start - A.end`, so adjacency has lag one.
+Unknown bridges cannot establish sequential matches. Pair counts are not independent observations.
+
+**Inference Support**:
+Each cell's longest contiguous segment of complete observed calendar years, with the earliest segment selected on a tie.
+`bootstrap_dependence()` reports its `estimate` on this monthly support and `full_record_estimate` on all eligible original observations.
+Synthetic screening evidence has a narrow scope; see [VALIDATION.md](../../VALIDATION.md#compound-bootstrap-characterization).
+Daily inference remains unsupported.
+
 ### Statistics
 
 **L-Moments**:

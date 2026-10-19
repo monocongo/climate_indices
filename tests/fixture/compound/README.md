@@ -1,8 +1,8 @@
 # Public drought–heatwave LMF reference fixture
 
-This fixture supports CMP-02 (#1366). It contains public study inputs and the
-same-author deterministic likelihood multiplication factor (LMF) calculation.
-It does not validate a compound API, which is not implemented yet.
+CMP-02 (#1366) prepared this fixture of public study inputs and the same-author deterministic likelihood multiplication factor (LMF) calculation.
+CMP-10 (#1374) compares the implemented compound API with its nine summer cases.
+The comparison is reference reproduction, not independent validation.
 
 ## Source and evidence scope
 
@@ -25,10 +25,11 @@ LMF arithmetic (cell `93ef7024`), not the random significance test.
 The notebook is checksum-verified as a source artifact and is never executed.
 The adapted code's MIT notice is in `NOTICE`.
 
-Matching this fixture later can establish scoped **reference-reproduced, not independently validated** evidence.
-This ticket supplies no production comparison and makes no new claim in `VALIDATION.md`.
+`tests/test_compound_reference_fixture.py::test_compound_api_reproduces_public_summer_reference` supplies nine offline `validation` cases against the public API.
+Counts match exactly; maximum measured absolute probability and LMF errors are zero, within `rtol=0`, `atol=1e-12`.
+`VALIDATION.md` classifies this scope as **reference-reproduced, not independently validated**.
 The nine cases do not establish a full reproduction of Figure 8, its significance mask, or upstream SPEI correctness.
-CMP-10 (#1374) owns the compound API comparison and final evidence classification.
+The [worked guide](../../../docs/compound-hazards.md) reproduces the comparison from a repository checkout.
 
 ## Files and coordinates
 
@@ -71,7 +72,7 @@ These are the author's published-code conventions, not recommendations for the n
 
 - Monthly-to-daily padding does not create independently observed daily drought resolution.
 - The inclusive source thresholds differ from the strict probability comparisons in ADR-0022.
-  A later compound comparison must use explicitly declared Boolean indicators and preserve these original comparators in its manifest.
+  The compound comparison uses explicitly declared Boolean indicators and preserves these original comparators in its manifest.
 - No additional minimum-duration filter is introduced into the author's daily threshold arrays.
 - Original source NaNs remain auditable even though the author's preparation fills their corresponding daily gaps.
 - The author returns NaN when no joint occurrence exists. JSON represents that value as `null`.
@@ -81,8 +82,9 @@ These are the author's published-code conventions, not recommendations for the n
 - Suppression means `0 <= LMF < 1`. Negative LMF values are impossible for the ratio, despite the paper's prose.
 
 The offline checks use a separate date-index lookup, gap interpolation, contingency table, and rational arithmetic.
-They do not call the fixture generator's LMF routine or import `climate_indices.compound`.
-They check counts exactly and ratios with `rtol=0`, `atol=1e-12` for floating-point arithmetic only.
+The independent contingency-table checks do not call the fixture generator's LMF routine or the production implementation.
+The separate API comparison calls `compound.harmonize()` and `compound.joint_statistics()` on author-prepared Boolean indicators.
+Both checks compare counts exactly and ratios with `rtol=0`, `atol=1e-12` for floating-point arithmetic only.
 
 ## Regeneration
 
