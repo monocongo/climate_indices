@@ -1,0 +1,29 @@
+# cargo-deny policy for the published `climate-indices` crate (CRATE-09, #1313).
+# CI runs `cargo deny --locked check` (the `rust-deny` job); the same command runs
+# locally, see docs/development-guide.md ("Crate quality gates").
+
+[graph]
+# climate-py is the unpublished PyO3 seam: its dependencies reach users inside the
+# wheel, not through crates.io. Dev-dependencies (criterion) never reach a crate user.
+exclude = ["climate-py"]
+exclude-dev = true
+
+[advisories]
+yanked = "deny"
+
+[licenses]
+# Redistributable permissive licenses only. `ndarray` and its numeric dependencies are
+# dual-licensed MIT OR Apache-2.0; the crate itself is BSD-3-Clause. Add a license here
+# only after reading what redistributing it in a crate's source and binaries requires.
+allow = ["MIT", "Apache-2.0", "BSD-3-Clause"]
+
+[bans]
+# Two versions of one dependency double compile time and binary size for every user.
+multiple-versions = "deny"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

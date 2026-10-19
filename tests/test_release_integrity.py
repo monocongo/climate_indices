@@ -413,6 +413,78 @@ def test_rust_job_proves_the_crates_package_correctly() -> None:
     assert 'select(.name == "climate-py") | .publish == []' in job
 
 
+def _crate_quality_jobs() -> dict[str, str]:
+    """The published-crate quality gates of the unit-test workflow, keyed by job name."""
+    workflow = (ROOT / UNIT_TESTS_WORKFLOW).read_text(encoding="utf-8")
+    return {name: _workflow_job(workflow, name) for name in ("rust-crate", "rust-msrv", "rust-semver", "rust-deny")}
+
+
+def test_crate_quality_gates_are_separate_required_checks() -> None:
+    """Each gate is its own job, so each can be a required check, and none may be optional."""
+    for name, job in _crate_quality_jobs().items():
+        assert job.strip(), f"{name} is missing from the workflow"
+        assert not re.search(r"^    if:", job, re.MULTILINE), f"{name} must run on every event"
+        assert "continue-on-error" not in job, f"{name} must block the pull request"
+        assert "persist-credentials: false" in job, f"{name} never pushes, so it takes no token"
+        # The gates resolve against the crates.io registry, so they need a finite bound.
+        assert "timeout-minutes: 30" in job, f"{name} needs a bounded failure window"
+
+
+def test_crate_gate_checks_the_packaged_artifact() -> None:
+    """Lint, test, and document the unpacked `.crate`, not the checkout.
+
+    A test fixture or README the crate needs but does not ship only fails here: the
+    unpacked directory sits outside the checkout, so the workspace and its files cannot
+    mask a packaging omission.
+    """
+    job = _crate_quality_jobs()["rust-crate"]
+
+    assert "run: rustup toolchain install --no-self-update" in job
+    assert "cargo package -p climate-indices --locked" in job
+    assert "tar -xzf target/package/climate-indices-*.crate" in job
+    assert '"$RUNNER_TEMP/published"' in job
+    assert "cp rust-toolchain.toml" in job, "the unpacked crate must use the pinned compiler"
+    assert "working-directory: ${{ runner.temp }}/published" in job
+    assert "run: cargo clippy --all-targets --all-features --locked -- -D warnings" in job
+    assert "run: cargo test --all-features --locked" in job
+    assert 'RUSTDOCFLAGS: "-D warnings"' in job
+    assert "run: cargo doc --all-features --no-deps --locked" in job
+    assert "setup-python" not in job, "the crate gate proves Rust needs no Python"
+
+
+def test_crate_gate_builds_on_the_declared_minimum_rust_version() -> None:
+    """The MSRV job reads `rust-version` from the crate, so the gate cannot drift from the promise."""
+    job = _crate_quality_jobs()["rust-msrv"]
+    crate_manifest = _read_toml(Path("crates/climate-indices/Cargo.toml"))["package"]
+
+    assert re.fullmatch(r"\d+\.\d+", crate_manifest["rust-version"]), "an exact MSRV, not a range"
+    assert 'select(.name == "climate-indices") | .rust_version' in job
+    assert 'rustup toolchain install "$msrv" --profile minimal --no-self-update' in job
+    assert 'cargo "+$msrv" check -p climate-indices --lib --all-features --locked' in job
+
+
+def test_crate_gate_checks_the_public_api_against_the_published_version() -> None:
+    """cargo-semver-checks compares the crate with the latest crates.io release."""
+    job = _crate_quality_jobs()["rust-semver"]
+
+    assert "uses: taiki-e/install-action@" in job, "install the pinned tool, do not build it per run"
+    assert "tool: cargo-semver-checks@" in job, "an unpinned linter can fail an unrelated change"
+    assert "run: cargo semver-checks check-release -p climate-indices" in job
+
+
+def test_crate_gate_enforces_the_dependency_policy() -> None:
+    """`cargo deny` reads deny.toml, which must allow only redistributable licenses."""
+    job = _crate_quality_jobs()["rust-deny"]
+    policy = _read_toml(Path("deny.toml"))
+
+    assert "tool: cargo-deny@" in job, "an unpinned linter can fail an unrelated change"
+    assert "run: cargo deny --locked check" in job
+    assert {"MIT", "Apache-2.0", "BSD-3-Clause"} <= set(policy["licenses"]["allow"])
+    assert policy["bans"]["multiple-versions"] == "deny"
+    assert policy["sources"]["unknown-registry"] == "deny"
+    assert "climate-py" in policy["graph"]["exclude"], "the unpublished PyO3 seam is out of scope"
+
+
 def test_native_jobs_run_on_every_event_and_pure_python_legs_stay_rust_free() -> None:
     """The Rust gates are ungated and blocking, and the pure-Python legs never build Rust.
 
