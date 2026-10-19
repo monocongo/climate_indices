@@ -27,7 +27,7 @@ A useful conceptual chain is:
 Meteorological drivers           T2m, wind 10/100 m, SSRD, precip           (inputs)
               ↓
 Demand proxies                   HDD / CDD / EDD                            (available)
-Resource transforms              hub-height wind, wind capacity factor (available); PV (planned)
+Resource transforms              hub-height wind, wind & PV capacity factors (available)
 Hydro proxy                      capacity-weighted n-month precip           (available recipe)
               ↓
 Standardized energy indices      SREPI, standardized demand, SRLI (available)
@@ -171,7 +171,7 @@ SREPI, the standardized demand index, and SRLI.
 
 ## Energy indices
 
-The NumPy degree-day, wind-profile, wind capacity-factor, and event-statistics
+The NumPy degree-day, wind-profile, wind and PV capacity-factor, and event-statistics
 functions in `climate_indices.energy` are available, as are SREPI, the standardized
 demand index, and SRLI with its residual-load helper. The other energy indices
 below remain planned. The package, its
@@ -232,13 +232,13 @@ order.
   It converts hub-height wind through an explicitly selected generic cubic
   curve or a caller-supplied table. It describes the climate-driven resource,
   not actual generation. The NumPy contract and comparison limits appear below.
-- **PV capacity factor, temperature-derated** — *planned
-  ([#1176][energy-1176])*. Capacity factor from surface solar radiation,
-  reduced as cell temperature — estimated from air temperature, irradiance,
-  and wind — rises, after the reference configuration of Jerez et al. (2015).
+- **PV capacity factor, temperature-derated** — available as
+  {func}`climate_indices.energy.pv_capacity_factor` ([#1176][energy-1176]).
+  The fixed Jerez et al. (2015) reference configuration estimates cell temperature
+  from surface radiation, 2 m air temperature, and surface (10 m) wind.
+  It describes climate-driven solar supply, not actual generation or a plant model.
 
-The degree-day, wind-profile, and wind capacity-factor functions need no new
-dependencies. The planned PV capacity factor will also need no new dependencies.
+The degree-day, wind-profile, and wind and PV capacity-factor functions need no new dependencies.
 These implementations deliberately overlap `xclim`'s degree-day indicators and
 `wind_profile`, `pvlib`, and `windpowerlib`. Those libraries remain documented
 alternatives and validation references, never dependencies
@@ -297,6 +297,52 @@ No universal model-to-model tolerance is justified. Compare matched-period bias,
 MAE/RMSE, and correlation, and record curve, density, height, input, and averaging differences.
 Do not treat a capacity factor as observed generation.
 
+### PV reference configuration
+
+For mean irradiance `G` in W m⁻², air temperature `Ta` in °C, and wind speed
+`v` in m s⁻¹, Jerez et al. (2015), Methods equations 1–3, specify:
+
+```text
+Tcell = 4.3 + 0.943*Ta + 0.028*G - 1.528*v
+PR = 1 - 0.005*(Tcell - 25)
+PVpot = PR * G/1000
+```
+
+The fixed coefficients represent monocrystalline silicon. The reference
+cell temperature is 25 °C; air temperature alone does not set that condition.
+The function clips the result to [0, 1]. This is project policy: Jerez's
+unclipped potential can exceed one. The model excludes panel tilt,
+irradiance transposition, optical losses, and inverter losses. Use `pvlib`
+for configuration-specific modelling.
+
+The NumPy function accepts broadcast-compatible arrays and returns float64.
+Negative radiation or wind, non-finite or masked inputs, and overflowing
+results give NaN. Valid zero radiation gives zero. It has no DataArray adapter.
+
+```{testcode}
+import numpy as np
+from climate_indices import energy
+
+# Convert each ERA5 interval from accumulated energy to mean flux.
+interval_seconds = np.array([1800, 3600])
+ssrd_j_m2 = np.array([900000, 1800000])
+mean_flux = ssrd_j_m2 / interval_seconds
+capacity_factor = energy.pv_capacity_factor(mean_flux, 20.0, 2.0)
+np.testing.assert_allclose(capacity_factor, [0.47724, 0.47724], rtol=0, atol=1e-12)
+```
+
+Align the inputs to the same intervals before calling. Use each accumulation's
+actual duration; do not assume 3600 seconds for every product. Do not divide
+radiation already expressed in W m⁻². Calculate the nonlinear transform at the
+native sampling interval before temporal averaging.
+
+The committed pvlib 0.15.0 fixture checks the matched DC power/temperature
+term with supplied cell temperatures at `rtol=0`, `atol=1e-12`. This tolerance
+permits float64 roundoff, not configuration differences. Separate hand-calculated
+tests check the thermal coefficients. Neither establishes skill against plant
+observations. C3S uses a different thermal and AC-generation model, so it is
+not an exact numerical reference for this function.
+
 ## Preparing inputs
 
 The planned energy interfaces will take point series or gridded fields in the
@@ -313,8 +359,8 @@ do not provide a lazy execution path today.
   difference, K and °C give the same degree days. Wind speed is m s⁻¹ and
   radiation is a *mean* flux in W m⁻². ERA5 `ssrd` is an *accumulated*
   energy in J m⁻², so it must become a mean flux before a PV capacity factor;
-  whether that conversion is a caller's step or an argument is decided by
-  [#1176][energy-1176].
+  callers divide by each interval's duration in seconds before calling
+  `energy.pv_capacity_factor()`.
 - **Bias adjustment** of reanalysis or model wind speed is a user-side step.
   Apply a dedicated tool before computing hub-height wind or capacity factors.
 - **Spatial aggregation** to countries, bidding zones, or other
@@ -361,7 +407,8 @@ gridded demonstration on these data is planned ([#1179][energy-1179]).
 
 - [Allen & Otero (2023), *Standardised indices to monitor energy droughts*][allen-otero-2023]
 - [Copernicus C3S, *Global climate and energy indicators from 1950 to present derived from reanalysis*][c3s-doi]
-- Jerez et al. (2015), the temperature-derated PV reference configuration specified by [#1176][energy-1176]
+- [Jerez et al. (2015), *The impact of climate change on photovoltaic power generation in Europe*](https://doi.org/10.1038/ncomms10014)
+- [pvlib `pvwatts_dc`](https://pvlib-python.readthedocs.io/en/v0.15.0/reference/generated/pvlib.pvsystem.pvwatts_dc.html)
 - [`SEI` R package][sei]
 
 [allen-otero-2023]: https://doi.org/10.1016/j.renene.2023.119206

@@ -62,6 +62,11 @@ def test_energy_wind_numpy_return_types() -> None:
     assert_type(energy.wind_capacity_factor(5.0, ([0, 10], [0, 1])), npt.NDArray[np.float64])
 
 
+def test_energy_solar_numpy_return_types() -> None:
+    assert_type(energy.pv_capacity_factor([500.0], [20.0], [2.0]), npt.NDArray[np.float64])
+    assert_type(energy.pv_capacity_factor(500.0, 20.0, 2.0), npt.NDArray[np.float64])
+
+
 def test_energy_degree_day_numpy_return_types() -> None:
     assert_type(energy.heating_degree_days([10.0], base_temperature=18.0), npt.NDArray[np.float64])
     assert_type(energy.cooling_degree_days([25.0], base_temperature=18.0), npt.NDArray[np.float64])
