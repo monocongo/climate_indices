@@ -131,8 +131,10 @@ and event-statistics proxies describe climate conditions, not actual generation 
 radiation in W m⁻². Callers convert accumulated SSRD by dividing by the interval
 duration in seconds. It has no xarray/Dask adapter.
 `energy_drought_events()` reports run metrics and period summaries through the
-generic run-theory utility. Standardized energy and event xarray/Dask adapters
-remain planned; see {doc}`energy_applications` for scope and validation limits.
+generic run-theory utility, and returns a Dataset of period summaries plus one run
+structure per cell for a gridded DataArray. The standardized energy indices and
+the event statistics accept DataArrays through the beta xarray layer ([#1174]);
+see {doc}`energy_applications` for scope and validation limits.
 
 ```{eval-rst}
 .. automodule:: climate_indices.energy

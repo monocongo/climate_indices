@@ -55,11 +55,12 @@ Jerez result. The matched pvlib comparison checks only the power/temperature
 term; the thermal coefficients have specification-level tests.
 
 Decision 2's `aggregation` keyword landed with this record
-([#1158](https://github.com/monocongo/climate_indices/issues/1158)). Decisions 3
-through 5 remain contracts for the tickets
-under [#1157](https://github.com/monocongo/climate_indices/issues/1157), not shipped
-code. Each decision is amended as its implementation lands, as
-{doc}`0013-flood-module-api-and-naming` was for flood.
+([#1158](https://github.com/monocongo/climate_indices/issues/1158)) and reached the
+xarray surfaces with
+[#1174](https://github.com/monocongo/climate_indices/issues/1174). Decisions 3
+through 6 landed with their implementations, recorded in the amendments above;
+decision 7 records scope, not code. Each decision is amended as its implementation
+lands, as {doc}`0013-flood-module-api-and-naming` was for flood.
 
 The energy-meteorology family
 ([#1157](https://github.com/monocongo/climate_indices/issues/1157)) adds demand

@@ -110,7 +110,7 @@ inherit this layout. Convert Gregorian arrays with
 see {doc}`data_requirements` for the conversion requirements. Do not pass an
 ordinary Gregorian array directly: seasonal fitting would use the wrong day
 slots. Existing xarray index adapters handle Gregorian time coordinates
-separately; the planned energy xarray adapters are not available today.
+separately, including the standardized energy adapters ([#1174][energy-1174]).
 
 Precipitation is *summed* over its window, but a capacity factor is
 *averaged*: a week's mean capacity factor stays a fraction of capacity in
@@ -297,14 +297,17 @@ not an exact numerical reference for this function.
 
 ## Preparing inputs
 
-The planned energy interfaces will take point series or gridded fields in the
-units, location, and spatial support the caller wants to analyse.
+The energy interfaces take point series or gridded fields in the units,
+location, and spatial support the caller wants to analyse.
 
-The existing `indices.standardized_index()` is NumPy-only, with no xarray or
-Dask dispatch. Its input block and full-size working arrays must fit in memory.
-For large grids, aggregate spatially first or process smaller spatial blocks
-with the full time series in each block. The planned energy xarray interfaces
-do not provide a lazy execution path today.
+`indices.standardized_index()` is the NumPy core: its input block and full-size
+working arrays must fit in memory. The adapted
+`climate_indices.standardized_index()`, `energy.srepi()`, the standardized demand
+index, and `energy.srli()` accept a DataArray and run lazily under Dask, but each
+grid cell is standardized in its own call so that every cell matches the NumPy
+result exactly, and the time axis must be a single chunk. For a large grid,
+aggregate spatially first or process smaller spatial blocks with the full time
+series in each block.
 
 - **Units.** Temperature is °C, the library's internal convention; K and °F
   are normalized at the boundary, and because a degree day is a temperature

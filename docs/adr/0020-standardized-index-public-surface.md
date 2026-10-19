@@ -50,32 +50,34 @@ per-block caveat.
    `fitting_params`-per-block caveat and calibration inference every other entry
    carries. It exposes `aggregation` on the xarray arm, and the xarray arm of
    `fit_diagnostics()` reports the same, completing the deferral
-   {doc}`0019-energy-module-api-and-aggregation` recorded. ENERGY-18 (#1174) keeps
-   its generic-path item and implements this surface.
+   {doc}`0019-energy-module-api-and-aggregation` recorded. ENERGY-18 (#1174)
+   implemented this surface. The entry runs per cell rather than as a spatial
+   block, because a block's accumulated sums can differ in the last bits from a
+   single series and the empirical distribution's ranks move when ties flip; the
+   NumPy result is the contract.
 
 4. **Package-root re-export follows the xarray entry.** `standardized_index` joins
    the `climate_indices` root re-exports in the same change that wires its xarray
    entry, because the root re-exports are the `typed_public_api` functions carrying
-   both the NumPy and the xarray contract ({doc}`0001-dual-numpy-xarray-api`). Until
-   then it stays at `climate_indices.indices.standardized_index`, NumPy-only.
+   both the NumPy and the xarray contract ({doc}`0001-dual-numpy-xarray-api`). The
+   NumPy core stays at `climate_indices.indices.standardized_index`.
 
 ## Consequences
 
 {doc}`0001-dual-numpy-xarray-api` is amended: its Status no longer defers this entry
-to a closed or non-covering decision, it points here, and the deferral's remaining
-work is #1174.
+to a closed or non-covering decision, and it points here. The deferral closed with
+[#1174](https://github.com/monocongo/climate_indices/issues/1174).
 
 The two published pages stop deferring. The [SRI and SSI
 recipes](../standardized-hydrologic-indices.md) and the [flood
 applications](../flood_applications.md) state that SRI and SSI are recipes over a generic seam with
-no named wrapper, and that the xarray path lands with #1174.
+no named wrapper, and that the xarray path is the beta `standardized_index` entry.
 
-`CF_METADATA["standardized_index"]` lands ahead of its adapter, which the registry's
-own contract permits (an entry may precede its adapter; no adapter precedes its
-entry). A reader who greps for a `standardized_index` adapter before #1174 finds the
-registry entry and this record instead of an adapter.
+`CF_METADATA["standardized_index"]` landed ahead of its adapter, which the
+registry's own contract permits (an entry may precede its adapter; no adapter
+precedes its entry).
 
-#1174 is blocked by this decision and carries two follow-ons: the xarray
-`standardized_index` entry exposes `aggregation`, and the xarray arm of
-`fit_diagnostics()` reports the aggregation behind a fit instead of rejecting a
-non-default value.
+[#1174](https://github.com/monocongo/climate_indices/issues/1174) carried two
+follow-ons, both landed: the xarray `standardized_index` entry exposes
+`aggregation`, and the xarray arm of `fit_diagnostics()` reports the aggregation
+behind a fit instead of rejecting a non-default value.

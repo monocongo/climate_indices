@@ -9,9 +9,9 @@ hold regardless of scope live in
 [ADR-0019](../adr/0019-energy-module-api-and-aggregation.md); this note holds the
 per-index naming, units, and argument contracts, plus what is deferred.
 The NumPy wind-profile functions are implemented by #1165, degree days by #1164,
-physical-transform adapters by #1166, event statistics by #1173, and the NumPy
-PV capacity factor by #1176. Other transforms and the standardized energy
-xarray tier remain planned.
+physical-transform adapters by #1166, event statistics by #1173, the standardized
+energy xarray tier by #1174, and the NumPy PV capacity factor by #1176. The
+remaining planned transforms are listed under *Deferred*.
 
 ## Decision
 
