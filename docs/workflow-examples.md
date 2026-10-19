@@ -190,7 +190,8 @@ output files are `<out_dir>/energy_example_heating_degree_days.nc`,
 The wind profile extrapolates a wind speed from `--reference_height` (10 m by
 default) to `--hub_height`, by the power law with `--wind_shear_alpha` (1/7 by
 default) or, with `--wind_profile_method log`, by the logarithmic law with
-`--roughness_length`. Its output file is
+`--roughness_length`. Each method rejects the argument that belongs to the other.
+Its output file is
 `<out_dir>/energy_example_hub_height_wind_speed.nc`, or
 `<out_dir>/energy_example_hub_height_wind_speed_log.nc` for the logarithmic
 profile.
@@ -202,7 +203,9 @@ series for `demand_index`, and a signed residual-load series for `srli`. All
 three take `--scales`, the optional `--calibration_start_year`,
 `--calibration_end_year`, and `--output_scale` arguments, and the empirical
 distribution, which needs at least ten valid calibration values per calendar
-step. Their output files carry the scale in the name, for example
+step. `--periodicity` must match the cadence of the input series: the adapter
+rejects a daily request for a monthly series, and the other way round. Their
+output files carry the scale in the name, for example
 `<out_dir>/energy_example_srepi_03.nc` and
 `<out_dir>/energy_example_standardized_demand_index_12.nc`. Like KBDI and the
 flood indices, the energy indices are not computed by the `--index all`

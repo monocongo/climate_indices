@@ -9,6 +9,7 @@ indices take the series they standardize.
 
 import argparse
 from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import pytest
@@ -16,6 +17,7 @@ import xarray as xr
 
 from climate_indices import __main__ as cli_main
 from climate_indices import _cli, compute, energy
+from climate_indices.exceptions import CoordinateValidationError
 
 # twelve complete calendar years of daily record, 2015 through 2026: the
 # empirical distribution needs at least ten valid calibration values per
@@ -107,6 +109,17 @@ _VARIABLE_FIELD = {
 }
 _UNITS = {"hdd": "K d", "cdd": "K d", "edd": "K d", "wind_profile": "m s-1"}
 
+# the energy function each index computes through, for capturing its input
+_CHUNKING_FUNCTIONS = {
+    "hdd": "heating_degree_days",
+    "cdd": "cooling_degree_days",
+    "edd": "energy_degree_days",
+    "wind_profile": "hub_height_wind_speed",
+    "srepi": "srepi",
+    "demand_index": "standardized_demand_index",
+    "srli": "srli",
+}
+
 
 def _defining_arguments(index: str) -> dict[str, object]:
     """The arguments each index requires beyond its input file."""
@@ -182,7 +195,7 @@ def _arguments_for(index: str, tmp_path, **overrides: object) -> argparse.Namesp
     return _energy_arguments(index, **arguments)
 
 
-def _expected(index: str, source: xr.DataArray) -> xr.DataArray:
+def _expected(index: str, source: xr.DataArray, scale: int = _SCALE, **kwargs: Any) -> xr.DataArray:
     """The library's own result for what the CLI writes for an index, on the arguments the tests pass."""
     if index == "hdd":
         return energy.heating_degree_days(source, base_temperature=_HEATING_BASE)
@@ -193,12 +206,12 @@ def _expected(index: str, source: xr.DataArray) -> xr.DataArray:
             source, heating_base_temperature=_HEATING_BASE, cooling_base_temperature=_COOLING_BASE
         )
     if index == "wind_profile":
-        return energy.hub_height_wind_speed(source, 10.0, _HUB_HEIGHT)
+        return energy.hub_height_wind_speed(source, 10.0, _HUB_HEIGHT, **kwargs)
     if index == "srepi":
-        return energy.srepi(source, _SCALE)
+        return energy.srepi(source, scale, **kwargs)
     if index == "demand_index":
-        return energy.standardized_demand_index(source, _SCALE)
-    return energy.srli(source, _SCALE)
+        return energy.standardized_demand_index(source, scale, **kwargs)
+    return energy.srli(source, scale, **kwargs)
 
 
 class TestEnergyValidation:
@@ -230,6 +243,16 @@ class TestEnergyValidation:
                 "wind_profile",
                 {"wind_profile_method": "log"},
                 "Missing the required --roughness_length argument for the log wind profile",
+            ),
+            (
+                "wind_profile",
+                {"wind_profile_method": "log", "roughness_length": _ROUGHNESS, "wind_shear_alpha": 0.2},
+                "The --wind_shear_alpha argument is not applicable to the log wind profile",
+            ),
+            (
+                "wind_profile",
+                {"roughness_length": _ROUGHNESS},
+                "The --roughness_length argument requires --wind_profile_method log",
             ),
             (
                 "wind_profile",
@@ -265,6 +288,29 @@ class TestEnergyValidation:
 
         assert "missing --scales argument" in str(error.value)
 
+    @pytest.mark.parametrize("index", _STANDARDIZED_INDICES)
+    def test_rejects_an_input_whose_cadence_contradicts_the_periodicity(self, tmp_path, index):
+        """--periodicity is passed to the adapter, so a monthly input cannot pass as daily."""
+        source = (
+            _INPUTS[index]()
+            .isel(time=slice(0, 12 * _RECORD_YEARS))
+            .assign_coords(time=xr.date_range("2015-01-01", periods=12 * _RECORD_YEARS, freq="MS"))
+        )
+        path = tmp_path / "monthly.nc"
+        source.to_netcdf(path)
+
+        with pytest.raises(CoordinateValidationError) as error:
+            cli_main.process_climate_indices(
+                _energy_arguments(
+                    index,
+                    netcdf_values=str(path),
+                    var_name_values=source.name,
+                    output_file_base=str(tmp_path / "out"),
+                )
+            )
+
+        assert "does not match the requested daily periodicity" in str(error.value)
+
     @pytest.mark.parametrize("index", _INDICES)
     def test_requires_the_input_series(self, index):
         arguments = _energy_arguments(index)
@@ -285,6 +331,33 @@ class TestEnergyValidation:
             cli_main._validate_args(arguments)
 
         assert "'absent' does not exist" in str(error.value)
+
+    def test_pet_alone_keeps_its_monthly_only_rule(self, tmp_path):
+        """A daily temperature input is valid for the degree days, which does not relax PET's own rule."""
+        path, source = _input_file(tmp_path, "hdd")
+
+        with pytest.raises(ValueError) as error:
+            cli_main._validate_args(_energy_arguments("pet", netcdf_temp=path, var_name_temp=source.name))
+
+        assert "only 'monthly' is supported" in str(error.value)
+
+    def test_a_temperature_driven_spei_keeps_its_monthly_only_rule(self, tmp_path):
+        """The degree days accept a daily input without relaxing the PET that SPEI computes."""
+        path, source = _input_file(tmp_path, "hdd")
+
+        with pytest.raises(ValueError) as error:
+            cli_main._validate_args(
+                _energy_arguments(
+                    "spei",
+                    netcdf_precip=path,
+                    var_name_precip=source.name,
+                    netcdf_temp=path,
+                    var_name_temp=source.name,
+                    scales=[1],
+                )
+            )
+
+        assert "only 'monthly' is supported" in str(error.value)
 
     @pytest.mark.parametrize("index", _STANDARDIZED_INDICES)
     def test_the_output_scale_applies_to_the_standardized_energy_indices(self, tmp_path, index):
@@ -313,26 +386,48 @@ class TestEnergyProcessing:
 
     @pytest.mark.parametrize("index", _STANDARDIZED_INDICES)
     def test_each_scale_writes_its_own_file(self, tmp_path, index):
+        _path, source = _input_file(tmp_path, index)
+
         cli_main.process_climate_indices(_arguments_for(index, tmp_path, scales=[1, _SCALE]))
 
         base = _OUTPUT_NAMES[index].rsplit("_", 1)[0]
-        assert (tmp_path / f"out_{base}_01.nc").exists()
-        assert (tmp_path / f"out_{base}_{_SCALE:02d}.nc").exists()
+        for scale in (1, _SCALE):
+            with xr.open_dataset(tmp_path / f"out_{base}_{scale:02d}.nc") as dataset:
+                np.testing.assert_allclose(
+                    dataset[f"{base}_{scale:02d}"].values,
+                    _expected(index, source, scale=scale).values,
+                    equal_nan=True,
+                )
 
     @pytest.mark.parametrize("index", _STANDARDIZED_INDICES)
     def test_a_non_normal_output_scale_names_the_output(self, tmp_path, index):
+        _path, source = _input_file(tmp_path, index)
+
         cli_main.process_climate_indices(_arguments_for(index, tmp_path, output_scale="probability"))
 
-        assert (tmp_path / f"out_{_OUTPUT_NAMES[index]}_probability.nc").exists()
+        name = f"{_OUTPUT_NAMES[index]}_probability"
+        with xr.open_dataset(tmp_path / f"out_{name}.nc") as dataset:
+            np.testing.assert_allclose(
+                dataset[name].values,
+                _expected(index, source, output_scale="probability").values,
+                equal_nan=True,
+            )
 
     def test_the_log_profile_names_its_output_apart_from_the_power_profile(self, tmp_path):
+        _path, source = _input_file(tmp_path, "wind_profile")
+
         cli_main.process_climate_indices(_arguments_for("wind_profile", tmp_path))
         cli_main.process_climate_indices(
             _arguments_for("wind_profile", tmp_path, wind_profile_method="log", roughness_length=_ROUGHNESS)
         )
 
-        assert (tmp_path / "out_hub_height_wind_speed.nc").exists()
-        assert (tmp_path / "out_hub_height_wind_speed_log.nc").exists()
+        expected = {
+            "hub_height_wind_speed": _expected("wind_profile", source),
+            "hub_height_wind_speed_log": _expected("wind_profile", source, method="log", roughness_length=_ROUGHNESS),
+        }
+        for name, values in expected.items():
+            with xr.open_dataset(tmp_path / f"out_{name}.nc") as dataset:
+                np.testing.assert_allclose(dataset[name].values, values.values, equal_nan=True)
 
     def test_energy_indices_do_not_route_through_the_shared_daily_path(self, monkeypatch, tmp_path):
         def _fail_compute_write_index(request):
@@ -344,29 +439,29 @@ class TestEnergyProcessing:
 
         assert (tmp_path / "out_heating_degree_days.nc").exists()
 
-    @pytest.mark.parametrize("index", _DEGREE_DAY_INDICES)
+    @pytest.mark.parametrize("index", _INDICES)
     def test_spatial_inputs_keep_time_whole_and_chunk_space(self, monkeypatch, tmp_path, index):
         captured: dict[str, xr.DataArray] = {}
+        name = _CHUNKING_FUNCTIONS[index]
+        original = getattr(energy, name)
 
-        for name in ("heating_degree_days", "cooling_degree_days", "energy_degree_days"):
-            original = getattr(energy, name)
+        def _capture(data, *args, _original=original, **kwargs):
+            captured["input"] = data
+            return _original(data, *args, **kwargs)
 
-            def _capture(data, *args, _name=name, _original=original, **kwargs):
-                captured[_name] = data
-                return _original(data, *args, **kwargs)
-
-            monkeypatch.setattr(energy, name, _capture)
+        monkeypatch.setattr(energy, name, _capture)
         # a budget too small to hold one element splits the auto-chunked spatial
         # axes, so the assertions below fail if the CLI stops applying the default
         monkeypatch.setattr(_cli, "DEFAULT_ARRAY_CHUNK_SIZE", "1 B")
 
         cli_main.process_climate_indices(_arguments_for(index, tmp_path))
 
-        assert len(captured) == 1
-        for data in captured.values():
-            assert data.chunks is not None
-            assert len(data.chunks[data.dims.index("time")]) == 1
-            assert len(data.chunks[data.dims.index("lat")]) > 1
+        data = captured["input"]
+        assert data.chunks is not None
+        # the standardized adapters require one time chunk, and the elementwise
+        # adapters are given the same layout
+        assert len(data.chunks[data.dims.index("time")]) == 1
+        assert len(data.chunks[data.dims.index("lat")]) > 1
 
     @pytest.mark.parametrize("index", _INDICES)
     def test_chunksizes_input_copies_the_input_chunks(self, tmp_path, index):

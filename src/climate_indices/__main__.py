@@ -1771,14 +1771,17 @@ def _validate_energy_arguments(args: argparse.Namespace) -> None:
 
     The degree days are computed per daily time step, through the energy
     module, and each needs the base temperature it is defined against. The wind
-    profile needs its two heights, and a roughness length with the logarithmic
-    method. The arguments an index cannot use are rejected centrally, from the
-    registration's declared flags (see ``_validate_consumed_flags``).
+    profile needs its two heights, and each profile method rejects the argument
+    that belongs to the other: a roughness length for the logarithmic law, and
+    the shear exponent for the power law. The arguments an index cannot use are
+    rejected centrally, from the registration's declared flags (see
+    ``_validate_consumed_flags``).
 
     :param args: an arguments object of the type returned by
         argparse.ArgumentParser.parse_args()
     :raise ValueError: if the periodicity is not daily, or a required argument
-        is missing
+        is missing, or an argument the selected profile method cannot use is
+        provided
     """
     index = args.index
 
@@ -1804,8 +1807,18 @@ def _validate_energy_arguments(args: argparse.Namespace) -> None:
             _logger.error(msg)
             raise ValueError(msg)
 
-        if args.wind_profile_method == "log" and args.roughness_length is None:
-            msg = "Missing the required --roughness_length argument for the log wind profile"
+        if args.wind_profile_method == "log":
+            if args.roughness_length is None:
+                msg = "Missing the required --roughness_length argument for the log wind profile"
+                _logger.error(msg)
+                raise ValueError(msg)
+
+            if args.wind_shear_alpha is not None:
+                msg = "The --wind_shear_alpha argument is not applicable to the log wind profile"
+                _logger.error(msg)
+                raise ValueError(msg)
+        elif args.roughness_length is not None:
+            msg = "The --roughness_length argument requires --wind_profile_method log"
             _logger.error(msg)
             raise ValueError(msg)
 
@@ -2320,6 +2333,7 @@ def _run_srepi(arguments: argparse.Namespace, input_type: DatasetLayout, transpo
             partial(
                 energy.srepi,
                 scale=scale,
+                periodicity=arguments.periodicity,
                 calibration_year_initial=arguments.calibration_start_year,
                 calibration_year_final=arguments.calibration_end_year,
                 output_scale=arguments.output_scale or "normal",
@@ -2344,6 +2358,7 @@ def _run_demand_index(arguments: argparse.Namespace, input_type: DatasetLayout, 
             partial(
                 energy.standardized_demand_index,
                 scale=scale,
+                periodicity=arguments.periodicity,
                 calibration_year_initial=arguments.calibration_start_year,
                 calibration_year_final=arguments.calibration_end_year,
                 output_scale=arguments.output_scale or "normal",
@@ -2368,6 +2383,7 @@ def _run_srli(arguments: argparse.Namespace, input_type: DatasetLayout, transpor
             partial(
                 energy.srli,
                 scale=scale,
+                periodicity=arguments.periodicity,
                 calibration_year_initial=arguments.calibration_start_year,
                 calibration_year_final=arguments.calibration_end_year,
                 output_scale=arguments.output_scale or "normal",
