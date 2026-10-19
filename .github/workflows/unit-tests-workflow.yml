@@ -188,6 +188,9 @@ jobs:
       contents: read
     env:
       PYO3_PYTHON: ${{ github.workspace }}/.venv/bin/python
+    # The packaging gate fetches from the crates.io registry, so the required
+    # job fails inside a known window instead of hanging.
+    timeout-minutes: 30
 
     steps:
       - name: Checkout code

@@ -407,6 +407,8 @@ def test_rust_job_proves_the_crates_package_correctly() -> None:
     assert "cargo package --list -p climate-indices" in job
     for required in ("Cargo.toml", "README.md", "LICENSE", "NUMERICS.md", "src/lib.rs"):
         assert 'grep -qx "$required" package-files.txt' in job, required
+    # The gate resolves against the crates.io registry, so it needs a finite bound.
+    assert "timeout-minutes: 30" in job
     assert "cargo publish --dry-run -p climate-indices" in job
     assert 'select(.name == "climate-py") | .publish == []' in job
 
