@@ -139,6 +139,19 @@ the event statistics accept DataArrays through the beta xarray layer
 [#1174](https://github.com/monocongo/climate_indices/issues/1174)).
 see {doc}`energy_applications` for scope and validation limits.
 
+Validation status of each shipped energy index. [VALIDATION.md](https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md)
+records the tolerances, evidence, and known gaps.
+
+| Index | Validation status |
+| --- | --- |
+| `heating_degree_days`, `cooling_degree_days`, `energy_degree_days` | Exact reference for the published cooling example; specification-level for heating and energy degree days |
+| `hub_height_wind_speed`, `wind_shear_exponent` | Independent-implementation comparison on synthetic inputs; not observed-wind validation |
+| `wind_capacity_factor` | Regression only; specification-level (no external numeric curve adopted) |
+| `pv_capacity_factor` | Independent-implementation comparison for the power/temperature term; specification-level for the thermal model and clipping |
+| `srepi`, `standardized_demand_index` | Independent-implementation comparison against R `SEI` 0.2.0 |
+| `srli`, `residual_load` | Independent-implementation comparison against R `SEI` 0.2.0; specification-level for the subtraction |
+| `energy_drought_events` | Regression only; specification-level (no external event catalogue adopted) |
+
 ```{eval-rst}
 .. automodule:: climate_indices.energy
    :members:
