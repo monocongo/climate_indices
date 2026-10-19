@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from dataclasses import fields
 from typing import Any, cast
 
@@ -22,6 +23,26 @@ _RESERVED = frozenset((*_EVENT_FIELDS, *_CELL_COUNTS, "event", "cell", "cell_ind
 # The event columns hold about 100 bytes per row and concatenation holds a second copy, so this caps a
 # catalog near 200 MB at peak; a larger match fails instead of allocating until the process is exhausted
 _MAX_EVENTS = 1_000_000
+_LONG_NAMES = {
+    "cell_index": "Cell Index",
+    "first_run_id": "First Source Run Index",
+    "second_run_id": "Second Source Run Index",
+    "start_index": "Interval Start Step",
+    "end_index": "Interval End Step",
+    "overlap_duration": "Overlap Duration",
+    "lag": "Sequential Lag",
+    "first_left_censored": "First Source Left Censored",
+    "first_right_censored": "First Source Right Censored",
+    "second_left_censored": "Second Source Left Censored",
+    "second_right_censored": "Second Source Right Censored",
+    "n_valid": "Shared Valid Step Count",
+    "n_first_runs": "First Source Retained Run Count",
+    "n_second_runs": "Second Source Retained Run Count",
+    "n_pairs": "Matched Pair Count",
+    "n_unknown_bridges": "Rejected Unknown Bridge Count",
+}
+# a boundary declaration that would dangle once the referenced variable is dropped
+_DROPPED_ATTRS = frozenset({"bounds", "coordinates", "grid_mapping", "axis", "cf_role"})
 
 
 def _catalog(
@@ -66,6 +87,7 @@ def _catalog(
             lag_window=lag_window,
             source_metadata=source_metadata,
             max_pairs=_MAX_EVENTS - emitted,
+            pair_limit=_MAX_EVENTS,
         )
         emitted += len(matched)
         for name in _EVENT_FIELDS:
@@ -79,7 +101,7 @@ def _catalog(
             counts[name][cell] = value
     variables = _event_variables(columns, plan)
     for name, values in counts.items():
-        variables[name] = ("cell", values, _count(name.replace("_", " ").title(), _descriptions(name)))
+        variables[name] = ("cell", values, _count(_LONG_NAMES[name], _descriptions(name)))
     result: xr.Dataset = xr.Dataset(variables, coords=coords)
     result = result.assign_coords(event=np.arange(result.sizes["event"], dtype=np.int64))
     for boundary in ("start", "end"):
@@ -103,7 +125,9 @@ def _catalog(
         spatial_dimensions=list(grid),
         cell_order="C order over spatial_dimensions; source-run IDs are local to each cell after min_duration filtering.",
         observation_support="Both selected hazards must be valid; runs are identified on this shared mask.",
+        censoring_support="Censor flags use the shared support, so a boundary is censored when the neighboring step is unknown in either selected source.",
         counts="Per-cell variables retain support, retained-run, pair, and rejected-bridge counts, including empty cells.",
+        row_limit=f"A catalog holds at most {_MAX_EVENTS} event rows; a larger match raises InvalidArgumentError.",
     )
     result.attrs = _dataset_attrs("Compound event catalog", cadence=prepared.cadence, mode=mode)
     result.attrs[_MANIFEST] = json.dumps(manifest, allow_nan=False)
@@ -128,24 +152,34 @@ def _validated_request(
     if any(variable.chunks is not None for variable in hazards.variables.values()):
         raise InvalidArgumentError(
             "Event catalogs require eager input. Select a bounded subset, then call .compute() explicitly before "
-            "compound_events_xarray(); this function never computes or loads lazy input.",
+            "compound_events_xarray(); this function never computes or loads a Dask-backed variable or coordinate.",
             argument_name="hazards",
             valid_values="an in-memory prepared Dataset",
         )
     prepared = _prepare(hazards)
-    if len(set(prepared.names)) != len(prepared.names):
+    try:
+        json.dumps(prepared.metadata, allow_nan=False)
+    except (TypeError, ValueError) as exc:
         raise InvalidArgumentError(
-            f"hazards['hazard'] labels must be unique so each selected name identifies one source; got "
-            f"{list(prepared.names)}.",
+            "hazards.attrs['compound_manifest'] must be a JSON object of finite numbers, strings, booleans, null, "
+            "lists, and mappings, as compound.harmonize() writes it.",
+            argument_name="hazards",
+        ) from exc
+    if len(set(prepared.names)) != len(prepared.names):
+        repeated = sorted(name for name, count in Counter(prepared.names).items() if count > 1)
+        raise InvalidArgumentError(
+            f"hazards['hazard'] labels must be unique so each selected name identifies one source; {repeated} "
+            "appears more than once.",
             argument_name="hazards",
             valid_values="distinct hazard coordinate labels",
         )
     for role, name in (("first", first), ("second", second)):
         if not isinstance(name, str) or name not in prepared.names:
             raise InvalidArgumentError(
-                f"{role} must name one of the prepared hazards {list(prepared.names)}.",
+                f"{role} must name one prepared hazard in {list(prepared.names)}.",
                 argument_name=role,
-                valid_values="a hazard coordinate label",
+                argument_value=repr(name),
+                valid_values=repr(prepared.names),
             )
     if first == second:
         raise InvalidArgumentError("first and second must name different hazards.", argument_name="second")
@@ -200,13 +234,15 @@ def _cell_coords(hazards: xr.Dataset, prepared: _Prepared) -> tuple[tuple[str, .
         values = np.asarray(hazards.indexes[dim].values)
         if values.dtype.kind == "O" and all(isinstance(value, str) for value in values):
             values = values.astype(str)
-        if values.dtype.kind not in "biufUSmM":
+        if values.dtype.kind not in "biufUSM":
             raise InputTypeError(
-                "Cell labels must be numeric, strings, or datetime64 values; object and MultiIndex labels are unsupported.",
+                "Cell labels must be integer, float, bool, string, bytes, or datetime64 values; object, timedelta, "
+                "and MultiIndex labels are unsupported.",
                 expected_type=np.ndarray,
                 actual_type=values.dtype.type,
             )
-        coords[dim] = ("cell", values[indices], dict(hazards[dim].attrs))
+        attrs = {key: value for key, value in hazards[dim].attrs.items() if key not in _DROPPED_ATTRS}
+        coords[dim] = ("cell", values[indices], attrs)
     return grid, coords, cells
 
 
@@ -216,7 +252,7 @@ def _event_variables(columns: dict[str, list[np.ndarray]], plan: CompoundEventSe
     for name, parts in columns.items():
         empty = np.empty(0, dtype=np.int64) if name == "cell_index" else getattr(plan, name)
         values = np.concatenate(parts) if parts else empty
-        attrs = _count(name.replace("_", " ").title(), _descriptions(name), "1")
+        attrs = _count(_LONG_NAMES[name], _descriptions(name))
         if name.endswith("censored"):
             values = values.astype(np.int8)
             attrs.update(flag_values=np.array([0, 1], dtype=np.int8), flag_meanings="not_censored censored")
@@ -231,7 +267,7 @@ def _descriptions(name: str) -> str:
     if name.endswith("run_id"):
         return "Zero-based source-run position within this cell after min_duration filtering."
     if name.endswith("censored"):
-        return "The source boundary touches the record edge or an unknown neighboring step."
+        return "The source boundary touches the record edge or a step unknown in either selected source."
     if name in ("start_index", "end_index"):
         return "Zero-based inclusive reported boundary on the prepared time axis."
     if name == "overlap_duration":

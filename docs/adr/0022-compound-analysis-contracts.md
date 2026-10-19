@@ -271,8 +271,8 @@ Study-specific review remains necessary.
 
 The [parent issue's children](https://github.com/monocongo/climate_indices/issues/1364)
 separate contract publication, reference fixtures, harmonization, statistics, events, inference, adapters, and final evidence.
-The maintainer approved issue creation, but implementation remains blocked until this ADR's PR merges.
-The milestone cannot close without the public-input reproduction and honest `VALIDATION.md` classifications.
+CMP-01 through CMP-09 are implemented; CMP-10 remains, and it owns the public-input reproduction and final evidence classification.
+The milestone cannot close without that reproduction and honest `VALIDATION.md` classifications.
 Synthetic tests, author-method reproduction, and independent external validation remain distinct evidence tiers.
 
 ## Scientific source boundary
