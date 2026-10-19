@@ -4,8 +4,8 @@
 
 The maintainer approved this internal plan and its recommendations.
 [Parent issue #1364](https://github.com/monocongo/climate_indices/issues/1364) tracks the milestone.
-CMP-01 through CMP-05 are complete. CMP-07 implements the NumPy `bootstrap_dependence()`
-route beside `harmonize()`, `joint_statistics()`, and `conditional_probability()`.
+CMP-01 through CMP-06 are complete. CMP-07 implements the NumPy `bootstrap_dependence()`
+route beside `harmonize()`, `joint_statistics()`, `conditional_probability()`, and `compound_events()`.
 Bootstrap evidence is synthetic characterization and regression only, and its supported
 scope is limited to serially independent or 6-month-overlap sources whose hazards are
 independent of each other, at 200 years (see `VALIDATION.md`).
@@ -603,7 +603,7 @@ The sections below retain the approved issue specifications.
 The published bodies also contain scoped contract excerpts, real issue references, and the validation commands.
 Each child begins `Part of #1364`, with readable `Blocked by:` lines where applicable.
 GitHub records native parent and dependency links, and the parent contains a child checklist.
-Issues CMP-06 through CMP-10 carry `status:blocked`; CMP-01 through CMP-04 are complete, and CMP-05 is in review.
+At publication, issues CMP-06 through CMP-10 carried `status:blocked`. CMP-01 through CMP-06 are now complete, and CMP-07 is in review.
 The acceptance criteria are the issue-to-PR completion contract, not permission to expand scope.
 
 ### CMP-00 — [EPIC] Initial compound-hazard analysis milestone

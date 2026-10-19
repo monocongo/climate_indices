@@ -213,6 +213,11 @@ Estimate, bound, p-value, resample-count, and flag arrays have shape
 All result arrays are read-only, and the manifest is immutable.
 Daily inference raises `InvalidArgumentError`.
 
+Each call logs `calculation_started` and then `calculation_completed`, or
+`calculation_failed` for an error, under `index_type="compound_bootstrap_dependence"`.
+The events carry the statistic, grouping, seed, and resample count. They describe the
+call, not scheduling, because the NumPy route runs in the calling process.
+
 Check sensitivity at `max(1, floor(L/2))`, `L`, and `2L` where support permits.
 Do not choose a length by its smallest p-value. Synthetic characterization and
 regression tests do not establish external scientific validation.
