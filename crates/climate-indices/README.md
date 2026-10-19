@@ -5,7 +5,8 @@ Precipitation Index (SPI), the Standardized Precipitation Evapotranspiration Ind
 (SPEI), the Evaporative Demand Drought Index (EDDI), potential evapotranspiration (PET),
 the Palmer family, fire-weather indices, and flood indices.
 
-The crate has no Python, I/O, logging, or metadata dependency. It provides kernels, not
+The crate's only dependency is `ndarray`: no I/O, logging, or metadata layer. It
+provides kernels, not
 complete index workflows: the caller prepares calendars, selects the calibration period,
 validates physical ranges, and applies any aggregation and final index transformation.
 
@@ -36,17 +37,33 @@ fn main() -> Result<(), ClimateError> {
 The crate documentation on docs.rs states the shape, calendar, unit, and error
 conventions for each kernel.
 
+## Examples
+
+The crate ships runnable programs that build an index from plain arrays, with no
+file input and no orchestration crate:
+
+```bash
+cargo run --example spi    # SPI-3 from a monthly precipitation array
+cargo run --example spei   # SPEI-6 from precipitation and PET arrays
+cargo run --example pet    # Thornthwaite PET from monthly temperatures
+```
+
+Each example performs the caller-side steps the kernels document. SPI and SPEI
+prepare the calendar, accumulate the Timescale window, select the Calibration
+Period, estimate a discrete zero mass where the distribution has one, and apply
+the standard-normal transform; the PET example prepares temperatures, latitudes,
+and leap-year flags for a single kernel call.
+
 ## Numerical reference
 
 The kernels originate in the [`climate_indices`](https://github.com/monocongo/climate_indices)
 project, whose reference implementations are the numerical parity oracle: the project's
-parity suite holds every kernel to `rtol = atol = 1e-10` against them. You do not need
-Python to use this crate.
+parity suite holds every kernel to `rtol = atol = 1e-10` against them.
 
 ## Versioning
 
 The crate follows its own `0.x` version track, independent of the `climate_indices`
-Python distribution. Before 1.0, a minor version can make breaking changes. `ndarray` is
+distribution. Before 1.0, a minor version can make breaking changes. `ndarray` is
 a public dependency, so an incompatible `ndarray` upgrade is a breaking release.
 
 The minimum supported Rust version is 1.85.

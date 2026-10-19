@@ -963,6 +963,16 @@ pub fn ndtri(y0: f64) -> f64 {
 /// separate direct SciPy measurement. The `spi_gamma`, `spi_gamma_mean_zero`,
 /// `spi_gamma_spatial_block`, and `spei_gamma` entries in `tests/parity_registry.py`
 /// instead measure complete workflows, not this kernel alone.
+///
+/// # Example
+///
+/// ```
+/// use climate_indices::special::norm_ppf;
+///
+/// assert!(norm_ppf(0.5).abs() < 1e-15);
+/// assert!((norm_ppf(0.975) - 1.959_963_984_540_054).abs() < 1e-9);
+/// assert_eq!(norm_ppf(0.0), f64::NEG_INFINITY);
+/// ```
 pub fn norm_ppf(q: f64) -> f64 {
     if q > 0.0 && q < 1.0 {
         ndtri(q)
