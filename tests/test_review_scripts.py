@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import importlib.util
 import sys
 from pathlib import Path
@@ -37,6 +38,43 @@ except ModuleNotFoundError:
     # project's `test` dependency group, so it is absent under `uv sync
     # --group test` (e.g. the minimum-dependencies CI job).
     prepare_noaa_eddi_fixtures = None
+
+characterize_compound_bootstrap = _load_script(
+    "characterize_compound_bootstrap",
+    "scripts/characterize_compound_bootstrap.py",
+)
+
+
+def test_characterization_output_accepts_only_json_below_design_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "docs" / "design"
+    monkeypatch.setattr(characterize_compound_bootstrap, "OUTPUT_ROOT", root)
+    monkeypatch.chdir(tmp_path)
+    assert characterize_compound_bootstrap._output_path("docs/design/nested/report.json") == root / "nested/report.json"
+    for path in (
+        tmp_path / "outside.json",
+        root / "../outside.json",
+        root / "nested/../../outside.json",
+        root / "report.txt",
+    ):
+        with pytest.raises(argparse.ArgumentTypeError, match="JSON file below"):
+            characterize_compound_bootstrap._output_path(str(path))
+
+
+@pytest.mark.parametrize("directory_link", [True, False])
+def test_characterization_output_rejects_symlink_escape(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, directory_link: bool
+) -> None:
+    root = tmp_path / "design"
+    root.mkdir()
+    outside = tmp_path / ("outside" if directory_link else "outside.json")
+    link = root / ("link" if directory_link else "link.json")
+    link.symlink_to(outside, target_is_directory=directory_link)
+    monkeypatch.setattr(characterize_compound_bootstrap, "OUTPUT_ROOT", root)
+    with pytest.raises(argparse.ArgumentTypeError, match="JSON file below"):
+        characterize_compound_bootstrap._output_path(str(link / "report.json" if directory_link else link))
+
 
 requires_requests = pytest.mark.skipif(
     prepare_noaa_eddi_fixtures is None,

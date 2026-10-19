@@ -16,7 +16,8 @@ every missing p-value is reported and fails the null gate. Correlated-scenario
 rejection rates describe power, not null calibration. Report Wilson 95% intervals
 for every measured proportion. Do not select a block length by its p-value.
 
-Run: uv run scripts/characterize_compound_bootstrap.py --output <JSON path>
+Run: uv run scripts/characterize_compound_bootstrap.py --output docs/design/<report>.json
+The output must be a JSON file below this repository's docs/design directory.
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ from scipy.stats import binom, binomtest, norm
 from climate_indices import compound
 from climate_indices.exceptions import ClimateIndicesWarning
 
+OUTPUT_ROOT = Path(__file__).resolve().parents[1] / "docs" / "design"
 TRIALS = 128
 YEARS = 200
 RESAMPLES = 399
@@ -48,6 +50,14 @@ SCENARIOS = (
     ("persistent_36_month_independent", 36, 0.0),
     ("persistent_36_month_correlated", 36, 0.5),
 )
+
+
+def _output_path(value: str) -> Path:
+    """Reject output paths that escape the report directory, including symlinks."""
+    output = Path(value).resolve()
+    if not output.is_relative_to(OUTPUT_ROOT) or output.suffix != ".json":
+        raise argparse.ArgumentTypeError(f"Output must be a JSON file below {OUTPUT_ROOT}.")
+    return output
 
 
 def characterize() -> dict:
@@ -169,7 +179,7 @@ def characterize() -> dict:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--output", type=_output_path, required=True)
     args = parser.parse_args()
     report = characterize()
     args.output.parent.mkdir(parents=True, exist_ok=True)
