@@ -698,6 +698,14 @@ def test_malformed_source_metadata_is_rejected(source_metadata: Any, match_text:
         match(manual([], []), manual([], []), steps=5, source_metadata=source_metadata)
 
 
+def test_unexpected_source_metadata_keys_are_not_echoed() -> None:
+    """Name only the count: a caller key must not reach an error that configured log sinks record."""
+    with pytest.raises(InvalidArgumentError, match="subset") as caught:
+        match(manual([], []), manual([], []), steps=5, source_metadata={"credential-abc": {}})
+    assert "credential-abc" not in str(caught.value)
+    assert "credential-abc" not in str(caught.value.argument_value)
+
+
 # --- immutability, inputs, and serialization ---------------------------------------------------
 
 

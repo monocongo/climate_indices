@@ -598,12 +598,14 @@ def _compound_events(
             valid_values="Mapping[str, Mapping[str, object]]",
         )
     sources: Mapping[str, Any] = source_metadata if isinstance(source_metadata, Mapping) else {}
-    unexpected = [repr(key) for key in sources if key not in _SOURCE_NAMES]
+    # a key is caller data, so only its count is named: an accidental credential must never reach a log sink
+    unexpected = sum(1 for key in sources if key not in _SOURCE_NAMES)
     if unexpected:
         raise InvalidArgumentError(
-            f"source_metadata keys must be a subset of {list(_SOURCE_NAMES)}; unexpected: {unexpected}.",
+            f"source_metadata keys must be a subset of {list(_SOURCE_NAMES)}; {unexpected} unexpected key(s) were "
+            "supplied.",
             argument_name="source_metadata",
-            argument_value=str(unexpected),
+            argument_value=f"{unexpected} unexpected key(s)",
             valid_values=f"keys from {list(_SOURCE_NAMES)}",
         )
 
