@@ -813,7 +813,7 @@ def test_daily_gridded_spi_accepts_a_partial_final_year(tmp_path):
 
     # 2010 is a partial final year: 166 observed days padded to 366 for the core
     plan = utils.CalendarPlan.from_year_span(start_year, 2011 - start_year, time.size)
-    assert plan.observed_steps_by_year[-1] == 166
+    assert plan.observed_days_by_year[-1] == 166
 
     with xr.open_dataset(tmp_path / "spi_daily_spi_gamma_30.nc") as dataset:
         written = dataset["spi_gamma_30"].values

@@ -510,6 +510,15 @@ def test_daily_calendar_plan_from_year_span():
         utils.DailyCalendarPlan.from_year_span(2020, 2, -3)
 
 
+def test_daily_calendar_plan_name_and_field_stay_compatible():
+    """The 3.x public name and its keyword field survive the CalendarPlan generalization."""
+    plan = utils.DailyCalendarPlan(year_start=2019, observed_days_by_year=(365,))
+
+    assert plan == utils.CalendarPlan(2019, (365,), 1)
+    assert plan.steps_per_day == 1
+    assert utils.DailyCalendarPlan is utils.CalendarPlan
+
+
 def test_daily_calendar_plan_populated_length():
     """populated_length counts synthetic February 29 fills but not a partial year's NaN tail."""
     # six complete years fill all 2196 padded positions, four of them synthetic
