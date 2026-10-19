@@ -137,6 +137,36 @@ _wrapped_eddi = xarray_adapter(
     spatial_kernel=True,
 )(indices.eddi)
 
+# the four families the generic seam fits, as asserted by indices.standardized_index
+_STANDARDIZED_INDEX_DISTRIBUTIONS = (
+    Distribution.gamma,
+    Distribution.pearson,
+    Distribution.empirical,
+    Distribution.beta,
+)
+_STANDARDIZED_INDEX_VALIDATORS = (
+    *_TEMPORAL_VALIDATORS,
+    lambda args: indices._validate_distribution(args["distribution"], _STANDARDIZED_INDEX_DISTRIBUTIONS),
+    lambda args: compute.validate_output_scale(args["output_scale"]),
+    lambda args: compute._validate_zero_handling(args["zero_handling"]),
+    lambda args: compute._validate_aggregation(args["aggregation"]),
+)
+_wrapped_standardized_index = xarray_adapter(
+    calendar="periodicity",
+    inferred_parameters=INFER_TIME_PARAMETERS,
+    argument_validators=_STANDARDIZED_INDEX_VALIDATORS,
+    timescale_parameter="scale",
+    cf_metadata=CF_METADATA["standardized_index"],  # type: ignore[arg-type]
+    index_display_name="Standardized index",
+    calculation_metadata_keys=[
+        "scale",
+        "distribution",
+        "calibration_year_initial",
+        "calibration_year_final",
+        "aggregation",
+    ],
+)(indices.standardized_index)
+
 
 _DelegateReturn = typing.TypeVar("_DelegateReturn")
 
@@ -181,6 +211,105 @@ def _restore_runtime_signature(func: Callable[..., Any]) -> None:
     overloads = get_overloads(func)
     if overloads:
         cast(Any, func).__signature__ = inspect.signature(overloads[0])
+
+
+# Standardized index overloads
+@overload
+def standardized_index(
+    values: npt.NDArray[np.float64],
+    scale: int,
+    distribution: Distribution,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: Periodicity,
+    fitting_params: dict[str, Any] | None = None,
+    *,
+    output_scale: OutputScale = "normal",
+    zero_handling: ZeroHandling = "classic",
+    aggregation: compute.Aggregation = "sum",
+    clip_negatives: bool = True,
+) -> npt.NDArray[np.float64]: ...
+
+
+@overload
+def standardized_index(
+    values: xr.DataArray,
+    scale: int,
+    distribution: Distribution,
+    data_start_year: int | None = None,
+    calibration_year_initial: int | None = None,
+    calibration_year_final: int | None = None,
+    periodicity: Periodicity | None = None,
+    fitting_params: dict[str, Any] | None = None,
+    *,
+    output_scale: OutputScale = "normal",
+    zero_handling: ZeroHandling = "classic",
+    aggregation: compute.Aggregation = "sum",
+    clip_negatives: bool = True,
+) -> xr.DataArray: ...
+
+
+def standardized_index(values: Any, *args: Any, **kwargs: Any) -> npt.NDArray[np.float64] | xr.DataArray:
+    """Standardize a series against a fitted distribution.
+
+    This function accepts both NumPy arrays and xarray DataArrays. Type checkers
+    will narrow the return type based on the input type.
+
+    For NumPy inputs, all temporal parameters are required. For xarray inputs,
+    temporal parameters are optional and are inferred from the time coordinate.
+
+    The output is input-agnostic, so it carries the neutral
+    ``CF_METADATA["standardized_index"]`` metadata: ``long_name`` "Standardized
+    index", ``units`` "1", and no ``standard_name``. Rename the returned DataArray
+    for a discipline-specific name (ADR-0020).
+
+    .. warning:: **Beta Feature (xarray path only)** — When called with an
+       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
+       The xarray interface (parameter inference, metadata handling, coordinate
+       preservation) may change in future minor releases. The NumPy array interface
+       is stable.
+
+    Args:
+        values: NumPy array or xarray DataArray of the series to standardize.
+        scale: Number of time steps over which values are accumulated (or averaged,
+            see ``aggregation``) before standardization.
+        distribution: Distribution to fit: gamma, Pearson Type III, empirical, or
+            beta. A Pearson Type III fit falls back to gamma when it fails.
+        data_start_year: Initial year of the input series (required for NumPy,
+            optional for xarray).
+        calibration_year_initial: Initial year of the Calibration Period (required
+            for NumPy, optional for xarray).
+        calibration_year_final: Final year of the Calibration Period (required for
+            NumPy, optional for xarray).
+        periodicity: Time series periodicity (required for NumPy, optional for
+            xarray).
+        fitting_params: Optional dict of pre-computed distribution fitting
+            parameters. The xarray path passes the same value to every fitted block
+            or grid cell, so cell-specific parameters are not supported.
+        spatial_time_major: Declares an ambiguous 3+-D NumPy ``values`` as a
+            time-major ``(time, *cells)`` block (per ADR-0009). Only used for NumPy
+            inputs.
+        output_scale: Output convention: "normal" (the default) returns the
+            standard-normal z-score, "probability" the fitted cumulative
+            probability in [0, 1], and "bounded" ``2p - 1``.
+        zero_handling: Where a boundary value is placed within its mass: "classic"
+            (the default), "center_of_mass", or "mean_zero".
+        aggregation: How each window is combined: "sum" (the default) or "mean",
+            which keeps a bounded series such as a capacity factor in its range.
+        clip_negatives: Whether a negative value is clipped to zero before fitting.
+            The default is True, which suits a non-negative series; a signed series
+            such as residual load needs False. The beta distribution never clips,
+            because a clipped value would join the zero mass and standardize a
+            different series.
+
+    Returns:
+        Standardized values as numpy.ndarray or xarray.DataArray, matching the
+        input type.
+    """
+    # the default aggregation is still the one behind the fit, so it is always stamped
+    kwargs.setdefault("aggregation", "sum")
+    return _delegate(_wrapped_standardized_index, values, *args, **kwargs)
 
 
 # SPI overloads
@@ -930,6 +1059,8 @@ def fit_diagnostics(
     fitting_params: dict[str, Any] | None = None,
     spatial_time_major: bool = False,
     time_dim: str = "time",
+    *,
+    aggregation: compute.Aggregation = "sum",
 ) -> xr.Dataset: ...
 
 
@@ -980,7 +1111,8 @@ def fit_diagnostics(
             inputs.
         time_dim: Name of the time dimension for xarray inputs (default: ``"time"``).
         aggregation: How each window is combined, "sum" (default) or "mean".
-            Only supported for NumPy inputs.
+            The xarray Dataset records the value behind the fit in each variable's
+            calculation metadata.
 
     Returns:
         A :class:`climate_indices.compute.FitDiagnostics` for numpy.ndarray input,
@@ -992,6 +1124,7 @@ def fit_diagnostics(
 for _public_function in (
     spi,
     spei,
+    standardized_index,
     percentage_of_normal,
     eddi,
     pdsi,

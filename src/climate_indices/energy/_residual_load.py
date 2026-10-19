@@ -11,13 +11,18 @@ to violate.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from typing import overload
 
 import numpy as np
 import numpy.typing as npt
+import xarray as xr
 
 from climate_indices import compute, indices
+from climate_indices.cf_metadata_registry import CF_METADATA
+from climate_indices.energy._xarray import STANDARDIZED_VALIDATORS, apply_standardized
 from climate_indices.exceptions import InputTypeError, InvalidArgumentError
+from climate_indices.xarray_adapter import INFER_TIME_PARAMETERS, xarray_adapter
 
 
 def _numeric(name: str, value: npt.ArrayLike, fit_shape: tuple[int, ...] | None = None) -> npt.NDArray[np.float64]:
@@ -136,7 +141,17 @@ def residual_load(
     return np.asarray(residual)
 
 
-def srli(
+def _validate_distribution(distribution: indices.Distribution) -> None:
+    if distribution is not indices.Distribution.empirical:
+        raise InvalidArgumentError(
+            "SRLI supports only the empirical distribution: a parametric fit does not suit a signed series.",
+            argument_name="distribution",
+            argument_value=str(distribution),
+            valid_values="Distribution.empirical",
+        )
+
+
+def _srli_numpy(
     values: np.ndarray,
     scale: int,
     data_start_year: int,
@@ -199,13 +214,7 @@ def srli(
         Allen, S., & Otero, N. (2023). Standardised indices to monitor energy droughts.
         Renewable Energy, 217, 119206. https://doi.org/10.1016/j.renene.2023.119206
     """
-    if distribution is not indices.Distribution.empirical:
-        raise InvalidArgumentError(
-            "SRLI supports only the empirical distribution: a parametric fit does not suit a signed series.",
-            argument_name="distribution",
-            argument_value=str(distribution),
-            valid_values="Distribution.empirical",
-        )
+    _validate_distribution(distribution)
     return indices.standardized_index(
         values,
         scale,
@@ -218,4 +227,146 @@ def srli(
         output_scale=output_scale,
         aggregation=aggregation,
         clip_negatives=False,
+    )
+
+
+_wrapped_srli: Callable[..., npt.NDArray[np.float64] | xr.DataArray] = xarray_adapter(
+    calendar="periodicity",
+    inferred_parameters=INFER_TIME_PARAMETERS,
+    argument_validators=(
+        *STANDARDIZED_VALIDATORS,
+        lambda args: _validate_distribution(args["distribution"]),
+    ),
+    timescale_parameter="scale",
+    cf_metadata=CF_METADATA["srli"],  # type: ignore[arg-type]
+    index_display_name="SRLI",
+    calculation_metadata_keys=[
+        "scale",
+        "distribution",
+        "calibration_year_initial",
+        "calibration_year_final",
+        "aggregation",
+    ],
+)(_srli_numpy)
+
+
+@overload
+def srli(
+    values: xr.DataArray,
+    scale: int,
+    data_start_year: int | None = None,
+    calibration_year_initial: int | None = None,
+    calibration_year_final: int | None = None,
+    periodicity: compute.Periodicity | None = None,
+    *,
+    distribution: indices.Distribution = indices.Distribution.empirical,
+    aggregation: compute.Aggregation = "sum",
+    output_scale: compute.OutputScale = "normal",
+) -> xr.DataArray: ...
+
+
+@overload
+def srli(
+    values: npt.ArrayLike,
+    scale: int,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: compute.Periodicity,
+    *,
+    distribution: indices.Distribution = indices.Distribution.empirical,
+    aggregation: compute.Aggregation = "sum",
+    spatial_time_major: bool = False,
+    output_scale: compute.OutputScale = "normal",
+) -> npt.NDArray[np.float64]: ...
+
+
+def srli(
+    values: npt.ArrayLike | xr.DataArray,
+    scale: int,
+    data_start_year: int | None = None,
+    calibration_year_initial: int | None = None,
+    calibration_year_final: int | None = None,
+    periodicity: compute.Periodicity | None = None,
+    *,
+    distribution: indices.Distribution = indices.Distribution.empirical,
+    aggregation: compute.Aggregation = "sum",
+    spatial_time_major: bool = False,
+    output_scale: compute.OutputScale = "normal",
+) -> npt.NDArray[np.float64] | xr.DataArray:
+    """Standardized Residual Load Index (SRLI) of Allen & Otero (2023).
+
+    Standardizes a signed residual-load series, demand minus renewable production (see
+    :func:`residual_load`), against its Calibration Period. High values mean
+    higher-than-usual residual load, which is the stress direction: Allen & Otero class
+    drought at the 90th, 95th, and 97.5th percentiles of the standard normal (1.28, 1.64,
+    1.96). The index is the climate-driven component of residual load, not actual load.
+
+    Negative values are kept as given, never clipped, because clipping residual load to
+    zero would standardize a different series. Only the empirical distribution accepts a
+    signed series, so any other ``distribution`` raises. Each value's probability is its
+    rank among the valid Calibration Period values at its calendar step (the plotting
+    position of :func:`climate_indices.indices.standardized_index`), so the choice of
+    ``aggregation`` moves the accumulated value but not its rank. Allen & Otero recommend
+    this distribution above roughly 100 observations; the index makes no fallback to a
+    parametric fit below that. A constant Calibration Period series ties every value at
+    the highest plotting position, so it reads as maximum stress at every step.
+
+    Unlike :func:`srepi` and :func:`standardized_demand_index`, this function takes no
+    ``fitting_params`` or ``zero_handling``: both belong to the parametric families.
+
+    DataArray input takes the beta adapter path; temporal parameters are inferred from
+    the time coordinate when omitted, the ``srli`` registry metadata is stamped, and
+    each grid cell is standardized independently to match its NumPy series exactly.
+    The adapter validates ``distribution`` at call time, before building a Dask graph.
+
+    Args:
+        values: 1-D array of signed residual load, or a DataArray with a time dimension
+            plus optional cell dimensions, with the layouts that
+            :func:`climate_indices.indices.standardized_index` accepts.
+        scale: Number of time steps in each window before standardization.
+        data_start_year: Initial year of the input series. Required for NumPy input;
+            inferred for DataArray input.
+        calibration_year_initial: Initial year of the Calibration Period. Required
+            for NumPy input; inferred for DataArray input.
+        calibration_year_final: Final year of the Calibration Period. Required for
+            NumPy input; inferred for DataArray input.
+        periodicity: ``compute.Periodicity.monthly`` or ``compute.Periodicity.daily``.
+            Required for NumPy input; inferred for DataArray input. Daily NumPy input
+            must start on 1 January in the 366-slot year layout; convert a Gregorian
+            array with :func:`climate_indices.utils.transform_to_366day`.
+        distribution: ``Distribution.empirical``, the only accepted member.
+        aggregation: How each window is combined, "sum" (the default) or "mean".
+        spatial_time_major: Read a time-major block of independent series. Only used
+            for NumPy input.
+        output_scale: "normal" (the default), "probability", or "bounded".
+
+    Returns:
+        Unitless standardized values: an array for NumPy input, a DataArray carrying
+        the ``srli`` registry metadata and the input's coordinates for DataArray input.
+        A calendar step with fewer than ten valid calibration values is NaN.
+
+    Raises:
+        InvalidArgumentError: If ``distribution`` is not empirical, or the seam rejects
+            the arguments.
+        ValueError: If ``aggregation`` is not "sum" or "mean".
+        CoordinateValidationError: If a DataArray's time dimension is missing,
+            non-monotonic, or its periodicity does not match ``periodicity``.
+
+    References:
+        Allen, S., & Otero, N. (2023). Standardised indices to monitor energy droughts.
+        Renewable Energy, 217, 119206. https://doi.org/10.1016/j.renene.2023.119206
+    """
+    return apply_standardized(
+        _wrapped_srli,
+        values,
+        scale=scale,
+        data_start_year=data_start_year,
+        calibration_year_initial=calibration_year_initial,
+        calibration_year_final=calibration_year_final,
+        periodicity=periodicity,
+        distribution=distribution,
+        aggregation=aggregation,
+        spatial_time_major=spatial_time_major,
+        output_scale=output_scale,
     )

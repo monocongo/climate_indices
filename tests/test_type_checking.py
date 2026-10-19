@@ -35,6 +35,10 @@ def test_energy_event_return_types() -> None:
     assert_type(result.count, npt.NDArray[np.int64])
     assert_type(result.frequency, npt.NDArray[np.float64])
     assert_type(summarize_runs([-2, 0, -3]), RunStatistics)
+    series = xr.DataArray([-2.0, 0.0, -3.0], dims="time")
+    assert_type(energy.energy_drought_events(series), RunStatistics | xr.Dataset)
+    grid: xr.DataArray = series.expand_dims(site=[0])
+    assert_type(energy.energy_drought_events(grid), RunStatistics | xr.Dataset)
 
 
 def test_compound_bootstrap_numpy_return_types() -> None:

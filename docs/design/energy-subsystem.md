@@ -9,9 +9,10 @@ hold regardless of scope live in
 [ADR-0019](../adr/0019-energy-module-api-and-aggregation.md); this note holds the
 per-index naming, units, and argument contracts, plus what is deferred.
 The NumPy wind-profile functions are implemented by #1165, degree days by #1164,
-physical-transform adapters by #1166, and event statistics by #1173.
+physical-transform adapters by #1166, event statistics by #1173, and the standardized
+energy xarray tier by #1174.
 The NumPy wind and PV capacity-factor transforms are implemented by #1175 and #1176.
-Their DataArray adapters and the standardized energy xarray tier remain planned.
+Their DataArray adapters remain planned. Remaining planned work is listed under *Deferred*.
 
 ## Decision
 
@@ -100,8 +101,10 @@ observations; that choice belongs to the wrappers.
 `energy.energy_drought_events()` is implemented by #1173. It returns generic
 `runs.RunStatistics`: a `RunSet` of events and period summaries, built on
 `runs.summarize_runs()` and `runs.identify_runs()`. The NumPy utility accepts any
-one-dimensional index series, including SPI, SREPI, and SRLI. Its energy xarray
-adapter remains deferred to #1174.
+one-dimensional index series, including SPI, SREPI, and SRLI. Its xarray adapter
+landed with [#1174](https://github.com/monocongo/climate_indices/issues/1174): a
+one-dimensional DataArray returns the same `RunStatistics`, and a gridded one
+returns a Dataset of period summaries plus one run structure per cell.
 
 The maintainer approved these event conventions for #1173: strict comparisons;
 explicit direction; pooling across at most `max_gap` non-missing steps, never

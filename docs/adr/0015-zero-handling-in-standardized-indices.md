@@ -65,8 +65,9 @@ asked by [#1185](https://github.com/monocongo/climate_indices/issues/1185).
    retain their classic transform.
 
 3. **Coverage.** Gamma and Pearson Type III SPI across its NumPy, spatial-block,
-   xarray, and CLI surfaces, and the NumPy-only `standardized_index()` (see
-   [ADR-0001](./0001-dual-numpy-xarray-api.md)). When a Pearson fit falls back
+   xarray, and CLI surfaces, and `standardized_index()` on both its NumPy and
+   xarray surfaces ([#1174](https://github.com/monocongo/climate_indices/issues/1174);
+   see [ADR-0001](./0001-dual-numpy-xarray-api.md)). When a Pearson fit falls back
    to gamma, the gamma transform applies the same mode. SPEI is excluded: its
    P − PET series is offset before fitting and has no physical zero mass.
    EDDI is excluded: it is non-parametric and has no `p0`. `spei()` and

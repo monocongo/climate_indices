@@ -114,9 +114,8 @@ SRI and SSI are recipes over the generic seam; the library ships no `sri()` or
 `ssi()` function, and `indices.standardized_index()` takes the input and the
 distribution the recipe names
 ([ADR-0020](adr/0020-standardized-index-public-surface.md)). Its xarray entry
-point is decided — one neutral CF metadata entry over the shared adapter path —
-and lands with [#1174](https://github.com/monocongo/climate_indices/issues/1174);
-until then it is NumPy-only.
+point is the Beta adapter path re-exported as `climate_indices.standardized_index`,
+with one neutral CF metadata entry ([#1174](https://github.com/monocongo/climate_indices/issues/1174)).
 
 ## Sources
 

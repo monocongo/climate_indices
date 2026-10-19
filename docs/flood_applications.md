@@ -136,9 +136,9 @@ The [flood-family epic #1098][flood-epic] tracks the implementation order.
   and {doc}`standardized-hydrologic-indices` shows the SRI and SSI recipes
   (FLOOD-17 [#1114][flood-1114]). Named wrappers are not provided: SRI and SSI
   stay recipes over the generic seam
-  ([ADR-0020](adr/0020-standardized-index-public-surface.md)). The xarray entry
-  point is decided — one neutral CF metadata entry over the shared adapter path —
-  and lands with [#1174][flood-1174].
+  ([ADR-0020](adr/0020-standardized-index-public-surface.md)). Its xarray entry
+  point is the Beta adapter path re-exported as `climate_indices.standardized_index`,
+  with one neutral CF metadata entry ([#1174][flood-1174]).
 
 PE, EDI, I_F, and API are also exposed through the existing command line as
 `process_climate_indices --index pe`, `edi`, `flood_index`, and `api`, from daily

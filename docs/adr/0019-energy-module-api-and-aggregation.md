@@ -29,14 +29,21 @@ Amended by the physical-transform adapters
 hub-height wind, and the auxiliary shear diagnostic accept DataArrays through
 the beta xarray layer. Their elementwise Dask execution accepts multiple chunks
 on every dimension; temperature units are inferred while bases remain in °C.
-Standardized energy adapters remain deferred to #1174.
+Standardized energy adapters landed with
+[#1174](https://github.com/monocongo/climate_indices/issues/1174): `srepi()`,
+`standardized_demand_index()`, and `srli()` accept DataArrays, and `aggregation`
+reaches the generic xarray `standardized_index()` entry and the xarray
+`fit_diagnostics()` report.
 
 Amended by the event-statistics implementation
 ([#1173](https://github.com/monocongo/climate_indices/issues/1173)):
 `energy.energy_drought_events()` now returns generic run metrics and onset-period
 summaries through `runs.summarize_runs()`. Pooling, elapsed duration, and frequency
 follow the maintainer-approved contract in the energy subsystem design note.
-The energy event xarray adapter remains deferred to #1174.
+The energy event xarray adapter landed with
+[#1174](https://github.com/monocongo/climate_indices/issues/1174): a 1-D DataArray
+returns the same `RunStatistics`, and a gridded one returns a Dataset of period
+summaries with one run structure per cell.
 
 Amended by the wind capacity-factor implementation
 ([#1175](https://github.com/monocongo/climate_indices/issues/1175)):
@@ -55,11 +62,12 @@ Jerez result. The matched pvlib comparison checks only the power/temperature
 term; the thermal coefficients have specification-level tests.
 
 Decision 2's `aggregation` keyword landed with this record
-([#1158](https://github.com/monocongo/climate_indices/issues/1158)). Decisions 3
-through 5 remain contracts for the tickets
-under [#1157](https://github.com/monocongo/climate_indices/issues/1157), not shipped
-code. Each decision is amended as its implementation lands, as
-{doc}`0013-flood-module-api-and-naming` was for flood.
+([#1158](https://github.com/monocongo/climate_indices/issues/1158)) and reached the
+xarray surfaces with
+[#1174](https://github.com/monocongo/climate_indices/issues/1174). Decisions 3
+through 6 landed with their implementations, recorded in the amendments above;
+decision 7 records scope, not code. Each decision is amended as its implementation
+lands, as {doc}`0013-flood-module-api-and-naming` was for flood.
 
 The energy-meteorology family
 ([#1157](https://github.com/monocongo/climate_indices/issues/1157)) adds demand
@@ -194,10 +202,9 @@ ADR-0005 did for fire and ADR-0013 for flood. `standardized_index()` gains one k
 whose default reproduces its existing output, which is why this record can land the seam
 change without touching SPI or SPEI behavior.
 
-`aggregation` is not exposed on the xarray or CLI surfaces, because `standardized_index()`
-is a NumPy entry point only. The energy xarray adapters
-([#1174](https://github.com/monocongo/climate_indices/issues/1174)) carry it for the
-indices that need it.
+`aggregation` is not exposed on the CLI, because the CLI does not run
+`standardized_index()`. The xarray entry and the energy adapters carry it, and
+[#1174](https://github.com/monocongo/climate_indices/issues/1174) landed both.
 
 The unimplemented portions of decisions 3 through 6 remain contracts awaiting
 implementation, not drift. Decision 7 records scope, not code, and does not

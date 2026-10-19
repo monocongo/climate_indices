@@ -110,7 +110,7 @@ inherit this layout. Convert Gregorian arrays with
 see {doc}`data_requirements` for the conversion requirements. Do not pass an
 ordinary Gregorian array directly: seasonal fitting would use the wrong day
 slots. Existing xarray index adapters handle Gregorian time coordinates
-separately; the planned energy xarray adapters are not available today.
+separately, including the standardized energy adapters ([#1174][energy-1174]).
 
 Precipitation is *summed* over its window, but a capacity factor is
 *averaged*: a week's mean capacity factor stays a fraction of capacity in
@@ -173,8 +173,7 @@ SREPI, the standardized demand index, and SRLI.
 
 The NumPy degree-day, wind-profile, wind and PV capacity-factor, and event-statistics
 functions in `climate_indices.energy` are available, as are SREPI, the standardized
-demand index, and SRLI with its residual-load helper. The other energy indices
-below remain planned. The package, its
+demand index, and SRLI with its residual-load helper. The package, its
 NumPy and beta xarray tiers, and the scope boundary are fixed by
 [ADR-0019](adr/0019-energy-module-api-and-aggregation.md), with function names,
 units, and argument contracts recorded in the internal energy subsystem design
@@ -212,7 +211,10 @@ order.
   window by default, so accumulated production needs `aggregation="sum"`;
   the demand index sums by default. `energy.SREPI_DROUGHT_THRESHOLDS` holds
   Allen & Otero's moderate, severe, and extreme cut-offs (−1.28, −1.64, −1.96).
-  NumPy only: xarray adapters are planned ([#1174][energy-1174]).
+  DataArray input is beta ([#1174][energy-1174]): temporal parameters are
+  inferred from the time coordinate, the `srepi` or `standardized_demand_index`
+  registry metadata is stamped, and each grid cell is fitted independently to
+  match its NumPy series exactly.
 - **SRLI and the residual-load helper** — available as
   {func}`climate_indices.energy.srli` and
   {func}`climate_indices.energy.residual_load` ([#1172][energy-1172]).
@@ -222,11 +224,14 @@ order.
   empirical distribution ([#1168][energy-1168]) and never clips a negative.
   High values mark stress. On the default `output_scale="normal"`, Allen &
   Otero (2023) class drought at 1.28, 1.64, and 1.96; the `probability` and
-  `bounded` scales need cut-offs of their own. It has NumPy dispatch only until [#1174][energy-1174] lands.
+  `bounded` scales need cut-offs of their own. DataArray input is beta
+  ([#1174][energy-1174]) and keeps the empirical distribution: a parametric fit
+  does not suit a signed series.
 - **Energy-drought event statistics** — available as
   {func}`climate_indices.energy.energy_drought_events` ([#1173][energy-1173]).
-  The NumPy utility reports events and period summaries. Its energy xarray
-  adapter remains planned under [#1174][energy-1174].
+  The NumPy utility reports events and period summaries. A 1-D DataArray returns
+  the same structure, and a gridded DataArray returns a Dataset of period
+  summaries plus one run structure per cell ([#1174][energy-1174]).
 - **Wind capacity factor** — available as
   {func}`climate_indices.energy.wind_capacity_factor` ([#1175][energy-1175]).
   It converts hub-height wind through an explicitly selected generic cubic
@@ -345,14 +350,17 @@ not an exact numerical reference for this function.
 
 ## Preparing inputs
 
-The planned energy interfaces will take point series or gridded fields in the
-units, location, and spatial support the caller wants to analyse.
+The energy interfaces take point series or gridded fields in the units,
+location, and spatial support the caller wants to analyse.
 
-The existing `indices.standardized_index()` is NumPy-only, with no xarray or
-Dask dispatch. Its input block and full-size working arrays must fit in memory.
-For large grids, aggregate spatially first or process smaller spatial blocks
-with the full time series in each block. The planned energy xarray interfaces
-do not provide a lazy execution path today.
+`indices.standardized_index()` is the NumPy core: its input block and full-size
+working arrays must fit in memory. The adapted
+`climate_indices.standardized_index()`, `energy.srepi()`, the standardized demand
+index, and `energy.srli()` accept a DataArray and run lazily under Dask, but each
+grid cell is standardized in its own call so that every cell matches the NumPy
+result exactly, and the time axis must be a single chunk. For a large grid,
+aggregate spatially first or process smaller spatial blocks with the full time
+series in each block.
 
 - **Units.** Temperature is °C, the library's internal convention; K and °F
   are normalized at the boundary, and because a degree day is a temperature

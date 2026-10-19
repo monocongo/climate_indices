@@ -15,11 +15,11 @@ family's design decision landed without covering this path (ADRs 0013 and 0014),
 leaving it with the metadata and named-wrapper decisions.
 {doc}`0020-standardized-index-public-surface` settles all three — no named
 wrappers, one neutral CF entry, a wired Beta xarray entry re-exported at the
-package root — and that surface lands with
-[#1174](https://github.com/monocongo/climate_indices/issues/1174). Until then it
-stays NumPy-only at `climate_indices.indices.standardized_index` and is not
-re-exported from the package root, where every index function carries the dual
-NumPy/xarray contract.
+package root — and that surface landed with
+[#1174](https://github.com/monocongo/climate_indices/issues/1174). The NumPy core
+stays at `climate_indices.indices.standardized_index`, and the adapted
+`climate_indices.standardized_index` carries the same dual NumPy/xarray contract
+as the other index functions.
 
 `climate_indices` ships two parallel public APIs: a legacy numpy-array API (`indices.py`, stable, do-not-modify per architecture rules) and a modern xarray API (`typed_public_api.py` / `xarray_adapter.py`) with CF metadata and Dask support. We decided to keep both rather than deprecating the numpy API, because existing users depend on plain numpy arrays and migrating them is not our call to force. The xarray API is implemented as a wrapper that calls the numpy functions internally (through `xr.apply_ufunc` on the adapter paths, directly on the adapter's 1-D in-memory path and in PCI's hand-written wrapper), so there is one source of truth for the actual computation — the duplication risk is confined to the interface layer, not the math.
 

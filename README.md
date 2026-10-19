@@ -13,8 +13,8 @@
 `climate_indices` provides reference implementations of climate index algorithms that give a
 geographical and temporal picture of the severity and duration of precipitation, temperature,
 evaporative-demand, fire-weather, and wet-extreme anomalies for climate monitoring and research.
-It began as a drought library; it now covers drought, wildfire, and flood potential, and an
-energy family is in development.
+It began as a drought library; it now covers drought, wildfire, flood potential, and
+climate-driven energy supply and demand.
 
 ### Indices
 
@@ -62,17 +62,18 @@ energy family is in development.
 - `flood_events()`, which extracts events with onset, duration, peak, and severity from a
   daily flood index
 
-**Energy (in development, [#1157](https://github.com/monocongo/climate_indices/issues/1157))**
+**[Energy](https://climate-indices.readthedocs.io/en/latest/energy_applications.html)** (`climate_indices.energy`)
 
-Planned, none shipped yet in the package:
+Available now, with beta `xarray.DataArray` support for SREPI, the standardized
+demand index, SRLI, and energy-drought events:
 
 - Heating, cooling, and energy degree days (HDD / CDD / EDD)
-- Hub-height wind-speed profile, and wind and temperature-derated PV capacity factors
+- Hub-height wind-speed profile and temperature-derated PV capacity factors (wind capacity factors are planned)
 - Standardized energy production and demand indices: SREPI and a standardized demand index,
   plus SRLI for signed residual-load series, following
   [Allen and Otero (2023)](https://doi.org/10.1016/j.renene.2023.119206)
-- Run-theory energy-drought events (onset, duration, severity), and a capacity-weighted
-  precipitation proxy for hydropower
+- Run-theory energy-drought events (onset, duration, severity)
+- A documented recipe for a capacity-weighted precipitation proxy for hydropower
 - These indices describe the climate-driven component of energy supply and demand, not
   actual generation or load
 
