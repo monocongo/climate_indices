@@ -1,0 +1,15 @@
+{
+  "source": "pvlib 0.15.0 pvwatts_dc, synthetic irradiance and cell temperatures",
+  "url": "https://github.com/pvlib/pvlib-python/tree/v0.15.0",
+  "download_date": "2026-10-18",
+  "subset_description": "Nine matched DC power/temperature cases. Supplied cell temperatures, irradiance 0\u20131200 W m-2, pdc0=1, gamma_pdc=-0.005, temp_ref=25.",
+  "checksum_sha256": "0ed6718978e74ba9f1a6ad2442288cd052e05a56768a511a93249119b2a60d21",
+  "fixture_version": "1.0.0",
+  "validation_tolerance": {
+    "rtol": 0.0,
+    "atol": 1e-12
+  },
+  "citation": "pvlib.pvsystem.pvwatts_dc at commit 247b31f71fc609e20e72ae6c1da186f9b5b45df4; Jerez et al. (2015), Methods equations 1\u20133, doi:10.1038/ncomms10014.",
+  "license": "Synthetic inputs and generated numerical outputs; pvlib software BSD-3-Clause. No implementation source or observational data copied.",
+  "notes": "reference.json records unmodified pvlib outputs, including 1.47 above rated capacity. The test clips separately under project policy. This independently checks only the power/temperature term, not the Chenni/Jerez thermal model. Thermal coefficients have separate hand-calculated specification tests. atol=1e-12 allows float64 roundoff only; C3S uses a different model and is not an exact oracle. Regeneration instructions are in README.md."
+}

@@ -9,8 +9,9 @@ hold regardless of scope live in
 [ADR-0019](../adr/0019-energy-module-api-and-aggregation.md); this note holds the
 per-index naming, units, and argument contracts, plus what is deferred.
 The NumPy wind-profile functions are implemented by #1165, degree days by #1164,
-physical-transform adapters by #1166, and event statistics by #1173. Other
-transforms and the standardized energy xarray tier remain planned.
+physical-transform adapters by #1166, event statistics by #1173, and the NumPy
+PV capacity factor by #1176. Other transforms and the standardized energy
+xarray tier remain planned.
 
 ## Decision
 
@@ -129,7 +130,7 @@ in-house, dependency-free.
 | `energy.hub_height_wind_speed()` | `wind_speed`, `reference_height`, `hub_height` | m s⁻¹ | `method="power"` (default), with `alpha=1/7` by default per #1165, or `"log"`, with `roughness_length` |
 | `energy.wind_shear_exponent()` | `wind_speed_lower`, `wind_speed_upper` | dimensionless | per-sample two-level shear; keyword-only `lower_height=10`, `upper_height=100` in metres |
 | `energy.wind_capacity_factor()` | `hub_wind_speed`, `power_curve` | dimensionless [0, 1] | generic documented reference curve; not plant engineering |
-| `energy.pv_capacity_factor()` | `ssrd`, `temperature`, wind | dimensionless [0, 1] | temperature-derated; mean flux W m⁻² in |
+| `energy.pv_capacity_factor()` | `ssrd`, `temperature`, `wind_speed` | dimensionless [0, 1] | Jerez reference configuration; mean flux W m⁻² in; NumPy only |
 
 Wind profiles use scalar finite positive heights in metres; speeds and power-law
 exponents broadcast as NumPy arrays. The log law requires a supplied positive
@@ -138,6 +139,16 @@ displacement height. Shear is NaN for calm, negative, or non-finite wind pairs;
 positive inverted profiles retain negative exponents, as confirmed for #1165.
 Independent-implementation comparisons cover the profile arithmetic, not observed-wind
 prediction; shear recovery is only algebraic consistency.
+
+The PV function uses Jerez et al. (2015), Methods equations 1–3, with fixed
+monocrystalline-silicon coefficients. Inputs are mean radiation in W m⁻²,
+2 m air temperature in °C, and surface (10 m) wind in m s⁻¹. Callers divide
+accumulated SSRD in J m⁻² by each interval's actual duration in seconds.
+They align the inputs and apply the nonlinear transform before temporal averaging.
+Clipping to [0, 1] is project policy. Negative radiation or wind, non-finite or
+masked inputs, and overflowing results give NaN. Valid night inputs give zero.
+The matched pvlib fixture checks only the power/temperature term, not the
+thermal model or plant output. Thermal coefficients have hand-calculated tests.
 
 Degree-day conventions:
 
@@ -177,9 +188,6 @@ registry entries ([#1162](https://github.com/monocongo/climate_indices/issues/11
 
 - **Sub-daily (hourly) periodicity.** [#1177](https://github.com/monocongo/climate_indices/issues/1177).
   Forward-compatible as an additive `Periodicity` member; no signature changes.
-- **Accumulated radiation.** ERA5 `ssrd` is accumulated J m⁻² and has to be converted to
-  a mean flux before `energy.pv_capacity_factor()`. [#1176](https://github.com/monocongo/climate_indices/issues/1176)
-  decides whether the conversion is a caller's step or an argument.
 - **CLI integration.** [#1178](https://github.com/monocongo/climate_indices/issues/1178);
   the CLI consumes the package rather than being a component of it, as for fire and flood.
 
