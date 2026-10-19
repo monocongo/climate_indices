@@ -430,6 +430,12 @@ not discarded and the acceptance band was not widened.
 Block-length changes also changed individual test decisions. The report retains
 those counts and every failed case.
 
+The reported run follows a fix to p-value tie handling: the first run compared
+nulls to the observed statistic exactly, so floating-point rounding dropped some
+ties. The rerun used the same seeds and configuration. Interval coverage is
+identical, null rejection counts changed by one in 4 of 36 cases, and no gate
+outcome changed.
+
 ### Supported scope (maintainer decision, 2026-10-18)
 
 The maintainer kept the method unchanged and narrowed the claim to what the
@@ -444,7 +450,7 @@ measurements support:
   coverage gate failed as above, and mean coverage across the nine independent
   and nine correlated cases was 89.3% to 92.3%. The per-month null gates passed
   (at most 14 rejections against the limit of 19), but the pooled rejection rate
-  across the nine independent cases was 7.5% (6.8% to 8.2% per case) against a
+  across the nine independent cases was 7.5% (6.7% to 8.2% per case) against a
   nominal 5%. The pooled rate is a descriptive summary, not a predeclared gate.
   Block lengths of 3, 6, and 12 years did not restore calibration. Do not read
   an interval or p-value from such sources as nominal.
