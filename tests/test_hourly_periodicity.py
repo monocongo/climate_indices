@@ -444,6 +444,24 @@ class TestHourlySurfaceGates:
                 periodicity=compute.Periodicity.hourly,
             )
 
+    @pytest.mark.parametrize(
+        ("transform", "parameter_names"),
+        [
+            (compute.transform_fitted_gamma, ("alphas", "betas", "probabilities_of_zero")),
+            (compute.transform_fitted_beta, ("alphas", "betas", "probabilities_of_zero", "probabilities_of_one")),
+            (compute.transform_fitted_pearson, ("probabilities_of_zero", "locs", "scales", "skews")),
+            (compute.transform_fitted_loglogistic, ("locs", "scales", "shapes")),
+        ],
+    )
+    @pytest.mark.parametrize("value", [0.5, np.nan])
+    @pytest.mark.parametrize("supplied", [False, True])
+    def test_public_parametric_transforms_reject_hourly(self, transform, parameter_names, value, supplied) -> None:
+        values = np.full((10, HOURS_PER_YEAR), value)
+        parameters = {name: np.full(HOURS_PER_YEAR, 0.1) for name in parameter_names} if supplied else {}
+
+        with pytest.raises(InvalidArgumentError, match="Hourly periodicity supports only the empirical distribution"):
+            transform(values, 2000, 2000, 2009, compute.Periodicity.hourly, **parameters)
+
     def test_the_cli_does_not_offer_hourly(self) -> None:
         assert compute.Periodicity.hourly not in _cli.CLI_PERIODICITIES
 

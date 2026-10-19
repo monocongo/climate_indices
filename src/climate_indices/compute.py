@@ -1182,8 +1182,9 @@ def transform_fitted_pearson(
     log.info("distribution_transform_started")
 
     # the distribution object is imported lazily: indices imports this module
-    from climate_indices.indices import Distribution
+    from climate_indices.indices import Distribution, _validate_hourly_distribution
 
+    _validate_hourly_distribution(periodicity, Distribution.pearson)
     params = {"prob_zero": probabilities_of_zero, "loc": locs, "scale": scales, "skew": skews}
 
     # validate (and possibly reshape) the input array before the all-missing return,
@@ -2523,6 +2524,10 @@ def transform_fitted_gamma(
     validate_output_scale(output_scale)
     _validate_zero_handling(zero_handling)
 
+    from climate_indices.indices import Distribution, _validate_hourly_distribution
+
+    _validate_hourly_distribution(periodicity, Distribution.gamma)
+
     log = _logger.bind(
         operation="transform_fitted_gamma",
         output_scale=output_scale,
@@ -2543,8 +2548,6 @@ def transform_fitted_gamma(
 
     # validate (and possibly reshape) the input array
     values = _validate_array(values, periodicity)
-
-    from climate_indices.indices import Distribution
 
     params = {"alpha": alphas, "beta": betas, "prob_zero": probabilities_of_zero}
     FittedDistribution.validate_supplied(values, Distribution.gamma, params)
@@ -2735,8 +2738,9 @@ def transform_fitted_beta(
     log.info("distribution_transform_started")
 
     # the distribution object is imported lazily: indices imports this module
-    from climate_indices.indices import Distribution
+    from climate_indices.indices import Distribution, _validate_hourly_distribution
 
+    _validate_hourly_distribution(periodicity, Distribution.beta)
     params = {"alpha": alphas, "beta": betas, "prob_zero": probabilities_of_zero, "prob_one": probabilities_of_one}
 
     # validate a partial or mis-shaped supplied set before the all-missing return, as
@@ -3056,8 +3060,9 @@ def transform_fitted_loglogistic(
     log.info("distribution_transform_started")
 
     # the distribution object is imported lazily: indices imports this module
-    from climate_indices.indices import Distribution
+    from climate_indices.indices import Distribution, _validate_hourly_distribution
 
+    _validate_hourly_distribution(periodicity, Distribution.loglogistic)
     params = {"loc": locs, "scale": scales, "shape": shapes}
 
     # validate a partial or mis-shaped supplied set before the all-missing return, as
