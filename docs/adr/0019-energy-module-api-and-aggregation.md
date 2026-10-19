@@ -226,8 +226,7 @@ change without touching SPI or SPEI behavior.
 entry and the energy adapters carry the keyword, and
 [#1174](https://github.com/monocongo/climate_indices/issues/1174) landed both.
 
-The unimplemented portion of decisions 3 through 6 is the sub-daily `Periodicity`
-member that decision 5 records as additive
-([#1177](https://github.com/monocongo/climate_indices/issues/1177)); the remaining
-contracts landed with their implementations. Decision 7 records scope, not code, and
-does not change as the transforms land.
+Every contract in decisions 3 through 6 has landed with its implementation, the
+sub-daily `Periodicity` member that decision 5 records as additive
+([#1177](https://github.com/monocongo/climate_indices/issues/1177)) among them.
+Decision 7 records scope, not code, and does not change as the transforms land.
