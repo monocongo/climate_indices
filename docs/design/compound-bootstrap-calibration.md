@@ -198,10 +198,11 @@ which the test suite checks.
 The failures concentrate in the lowest months of the `low` profile, where the monthly
 probability is 0.20: the library suppresses the p-value on 1 to 7 of 128 records, with 2
 to 3 of those at `w = 1`, and at 36-month persistence the LMF interval for month 7
-covers 104 of 128 records. The `wide` profile also
-reaches 0.30, and it passes everywhere. The measured supported range is therefore about
-0.30 to 0.80, not the 0.35 to 0.55 range of the original seasonal profile alone; below
-that, the library becomes unable to form a null statistic on enough resamples.
+covers 104 of 128 records. Every frequency case ran at 399 resamples. The `wide` profile
+also reaches 0.30, and it passes everywhere it ran. The measured supported ranges are
+therefore 0.30 to 0.60 and 0.70 to 0.80, not the 0.35 to 0.55 range of the original
+seasonal profile alone; 0.60 to 0.70 was not measured. Below 0.30, the library becomes
+unable to form a null statistic on enough resamples.
 
 At 30 years with the `low` profile the guards remove 8688 of 13824 month-records (63%)
 and the answered records cover the truth on 33.5% of 528 checks, so records that short
@@ -209,10 +210,11 @@ are unsupported at any measured frequency.
 
 ### Dependent hazards (AC5)
 
-All 9 cases pass: same-time correlation 0.5 at 1, 6, and 12 months of persistence, at
-6-year blocks. Coverage is 92.6% to 93.9%. Together with `replication`, coverage for
-correlated hazards is now measured at 1, 6, 12, and 36 months of persistence, and the
-36-month cases remain the only ones that fail.
+All 9 cases pass at 399 resamples: same-time correlation 0.5 at 1, 6, and 12 months of
+persistence, at 6-year blocks. Coverage is 92.6% to 93.9%. `replication` adds a
+correlated 36-month case at 399 resamples, which passes coverage, and
+`default_resamples` adds it at 1,999 resamples, where it fails one coverage gate. No
+correlated case was measured with the wider frequency profiles or the lagged windows.
 
 ### Guard separation (decision rule 3)
 
@@ -250,11 +252,16 @@ non-circular blocks, and it is the same limit the `few_blocks` flag already repo
 shows. The library keeps returning results with flags and effective resample counts,
 and users read the scope below.
 3. **Widen the documented supported scope only where every predeclared gate passed.**
-Now supported, beyond #1371: 200-year records with source persistence up to 30 months;
-conditional lag windows `(0, 1)`, `(0, 3)`, and `(1, 3)`; monthly exceedance
-probabilities of about 0.30 to 0.80; interval coverage for hazards whose same-time
-correlation is 0.5 at 1, 6, and 12 months of persistence; 100-year records; and the
-default 1,999 resamples.
+Now supported, beyond #1371, grouped by the resample count that measured each condition
+because the plan crossed no two of them. At 399 resamples: 200-year records with source
+persistence of 12 to 30 months; conditional lag windows `(0, 1)`, `(0, 3)`, and `(1, 3)`
+at `w = 1` and `w = 6`; monthly exceedance probabilities of 0.30 to 0.60 at `w = 1` and
+`w = 6` and 0.70 to 0.80 at `w = 1`, `w = 6`, and `w = 36`; interval coverage for hazards whose
+same-time correlation is 0.5 at 1, 6, and 12 months of persistence; and 100-year records
+with the seasonal profile at `w = 1` and `w = 6`. At the default 1,999 resamples:
+200-year records with the seasonal profile (monthly exceedance probabilities 0.35 to
+0.55) and source persistence of 1, 6, or 36 months, hazards independent. Profile `wide`
+at `w = 36` was not run.
 4. **Keep the unsupported list, with measured reasons.** 36-month persistence (one
 correlated coverage failure at the default resamples, and the February coverage failure
 at 399 resamples); monthly frequencies near 0.20 (suppressed null p-values, and coverage

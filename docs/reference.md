@@ -186,13 +186,18 @@ The nine summer cases reproduce same-author counts and LMF, not independent vali
 
 :::{warning}
 Synthetic characterization gives screening evidence for these intervals and p-values
-only inside a measured scope: 100- and 200-year records at the default 1,999
-resamples, serially independent sources or sources that overlap across 1 to 30 months,
-hazards that are independent of each other or correlate 0.5 at the same time, monthly
-exceedance probabilities of 0.30 to 0.60 or 0.70 to 0.80, and conditional lag windows
-of `(0, 0)`, `(0, 1)`, `(0, 3)`, or `(1, 3)`. 36-month persistence, monthly
-probabilities near 0.20, 60-year and 30-year records, and the 399-resample
-configuration each failed a predeclared gate, so do not read those results as nominal.
+only inside a measured scope, condition by condition rather than as one configuration.
+At the default 1,999 resamples: 200-year records with the seasonal monthly
+probabilities (0.35 to 0.55), source overlap of 1, 6, or 36 months, and independent
+hazards. At 399 resamples: 200-year records with 1 to 30 months of overlap, conditional
+lag windows of `(0, 0)`, `(0, 1)`, `(0, 3)`, and `(1, 3)` at 1- and 6-month overlap,
+monthly probabilities of 0.30 to 0.60 (1- and 6-month overlap) or 0.70 to 0.80 (1-, 6-,
+and 36-month overlap), hazards that correlate 0.5 at the same time with 1, 6, or 12
+months of overlap, and 100-year records with the seasonal probabilities. The plan
+crossed no two of those conditions. 36-month persistence at 399 resamples with
+independent hazards, correlated 36-month persistence at the default resamples, monthly
+probabilities near 0.20, and 60-year and 30-year records each failed a predeclared gate,
+so do not read those results as nominal.
 No independent-hazard case exceeded its per-month rejection band; the failures are
 interval under-coverage and suppressed p-values where few effective blocks or
 occurrences remain. See the

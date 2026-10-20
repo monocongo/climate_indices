@@ -23,13 +23,16 @@ catalog ([#1373](https://github.com/monocongo/climate_indices/issues/1373)) are 
 The xarray routes are equivalence-tested against the NumPy core, not independently
 validated. Bootstrap evidence is synthetic characterization and regression only.
 The maintainer narrowed its supported scope (#1371) to the synthetic cases that passed every
-predeclared gate, and then measured further conditions in #1398. The supported scope now covers
-100- and 200-year records at the default 1,999 resamples, 1 to 30 months of source persistence,
-monthly exceedance probabilities of 0.30 to 0.60 or 0.70 to 0.80, conditional lag windows to
-`(1, 3)`, and hazards that are independent of each other or correlate 0.5 at the same time.
-36-month
-persistence, monthly probabilities near 0.20, 60-year and 30-year records, and the 399-resample
-configuration failed predeclared gates, so the intervals and p-values are not claimed there.
+predeclared gate, and then measured further conditions in #1398. The supported scope now covers,
+grouped by the resample count that measured each condition because the plan crossed no two of
+them: at the default 1,999 resamples, 200-year records with the seasonal monthly probabilities
+(0.35 to 0.55), source persistence of 1, 6, or 36 months, and hazards independent of each other;
+at 399 resamples, 200-year records with 1 to 30 months of source persistence, conditional lag
+windows to `(1, 3)`, monthly probabilities of 0.30 to 0.60 or 0.70 to 0.80, hazards correlating
+0.5 at the same time with 1, 6, or 12 months of source persistence, and 100-year records.
+36-month persistence at 399 resamples for independent hazards, correlated 36-month persistence at
+the default resamples, monthly probabilities near 0.20, and 60-year and 30-year records failed
+predeclared gates, so the intervals and p-values are not claimed there.
 See `VALIDATION.md` and the amendment below.
 The described APIs exist. This status does not claim completed scientific validation;
 the [guide](../compound-hazards.md) and nine summer cases in CMP-10 (#1374) establish scoped same-author reference reproduction only.
@@ -280,10 +283,12 @@ The decision leaves the design of section 6 unchanged. The evidence:
   sits 0.011 below a failing one on within-month lag-1 autocorrelation, and the failing
   60-year cases show no persistence to detect. A fitted multi-variable rule would need
   its own predeclared characterization.
-- The supported scope widened only where every predeclared gate passed: 100-year
-  records, persistence to 30 months, lagged conditioning, monthly probabilities of 0.30
-  to 0.60 or 0.70 to 0.80, correlated hazards at 1, 6, and 12 months of persistence, and
-  the 1,999-resample default.
+- The supported scope widened only where every predeclared gate passed, group by group
+  rather than as one configuration. At 399 resamples: 100-year records, persistence to
+  30 months, lagged conditioning, monthly probabilities of 0.30 to 0.60 or 0.70 to 0.80,
+  and correlated hazards at 1, 6, and 12 months of persistence. At the default 1,999
+  resamples: 200-year records with the seasonal probabilities and 1, 6, or 36 months of
+  persistence, hazards independent. The plan crossed no two of those conditions.
 
 The guards of section 6, the default of 1,999 realizations, and the requirement to
 validate defaults through synthetic characterization stand. A later method change for

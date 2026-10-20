@@ -500,12 +500,14 @@ def _bootstrap(
         "quality_flags": dict(_FLAGS),
         "evidence": (
             "synthetic characterization and regression only; no external validation; screening evidence for "
-            "200-year monthly records at 1,999 resamples when the sources are serially independent or overlap "
-            "across 1 to 30 months, the hazards are independent of each other or correlate 0.5 at the same time, "
-            "monthly exceedance probabilities are 0.30 to 0.60 or 0.70 to 0.80, and the conditional lag window "
-            "is (0, 0), (0, 1), (0, 3), or (1, 3); 100-year records pass every predeclared gate while 60-year and "
-            "30-year records fail several; 36-month persistence, monthly probabilities near 0.20, and the "
-            "399-resample configuration are not covered"
+            "200-year monthly records at 1,999 resamples with the seasonal frequencies (0.35 to 0.55), overlap "
+            "of 1, 6, or 36 months, and independent hazards; at 399 resamples for 200-year records with overlap "
+            "of 1 to 30 months, lag windows (0, 0), (0, 1), (0, 3), and (1, 3), monthly exceedance probabilities "
+            "of 0.30 to 0.60 or 0.70 to 0.80, hazards that correlate 0.5 at the same time with 1, 6, or 12 months "
+            "of overlap, and 100-year records with the seasonal frequencies; the plan crossed no two of those "
+            "conditions; 36-month persistence at 399 resamples with independent hazards, correlated 36-month "
+            "persistence at the default resamples, monthly probabilities near 0.20, and 60-year and 30-year "
+            "records are not covered"
         ),
         "numpy_version": np.__version__,
         "scipy_version": scipy.__version__,
@@ -619,16 +621,19 @@ def bootstrap_dependence(
         All p-values are local and unadjusted. These guards do not detect long
         memory, nonstationarity, or impact relevance. Synthetic characterization
         gives screening evidence for the intervals and p-values of 200-year monthly
-        records at the default 1,999 resamples when the sources are serially
-        independent or overlap across 1 to 30 months, the hazards are independent
-        of each other or correlate 0.5 at the same time, monthly exceedance
-        probabilities are 0.30 to 0.60 or 0.70 to 0.80, and the conditional lag
-        window is (0, 0), (0, 1), (0, 3), or (1, 3). A 100-year record passes every
-        predeclared gate; 60-year and 30-year records fail several, and the guards
-        also refuse much of a 30-year record. 36-month persistence, monthly
-        probabilities near 0.20, and the 399-resample configuration are not covered
-        by that scope. Inspect block sensitivity at max(1, floor(L/2)), L, and 2L;
-        do not choose a block length by its p-value. Seeded bitwise identity across
+        records at the default 1,999 resamples with the seasonal probabilities (0.35
+        to 0.55), source overlap of 1, 6, or 36 months, and independent hazards, and
+        at 399 resamples for 200-year records with overlap of 1 to 30 months, lag
+        windows (0, 0), (0, 1), (0, 3), and (1, 3), monthly exceedance probabilities
+        of 0.30 to 0.60 or 0.70 to 0.80, hazards correlating 0.5 at the same time
+        with 1, 6, or 12 months of overlap, and 100-year records with the seasonal
+        probabilities. The plan crossed no two of those conditions. 60-year and
+        30-year records fail several gates, and the guards also refuse much of a
+        30-year record. 36-month persistence at 399 resamples with independent
+        hazards, correlated 36-month persistence at the default resamples, and
+        monthly probabilities near 0.20 are not covered by that scope. Inspect block
+        sensitivity at max(1, floor(L/2)), L, and 2L; do not choose a block length by
+        its p-value. Seeded bitwise identity across
         dependency versions is not promised. VALIDATION.md reports every measured
         case. See ADR-0022 and the synthetic characterization configuration in
         scripts/characterize_compound_bootstrap.py.
