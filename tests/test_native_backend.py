@@ -24,7 +24,9 @@ from tests import conftest
 
 def test_native_extension_reports_crate_version() -> None:
     native = conftest.import_native()
-    assert re.fullmatch(r"\d+\.\d+\.\d+", native.__version__)
+    # the crate's own version, which is a pre-release while the rehearsal lane is
+    # on main (docs/release-process.md) and a stable version otherwise
+    assert re.fullmatch(r"\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?", native.__version__)
 
 
 def test_compute_dispatches_to_the_built_extension() -> None:
