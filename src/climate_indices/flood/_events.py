@@ -27,7 +27,9 @@ from climate_indices.exceptions import (
 from climate_indices.runs import (
     RunSet,
     RunStatistics,
+    _as_float_series,
     _exceedance,
+    _require_numeric,
     _scan_runs,
     summarize_runs,
 )
@@ -100,7 +102,7 @@ class FloodStatistics:
         raw index values, and with a non-zero threshold it is the largest sum of
         deviations above that threshold
     :param max_peak: largest event peak in each period, or zero when no event starts
-    :param valid_count: number of non-NaN, unmasked input steps in each period
+    :param valid_count: number of finite, unmasked input steps in each period
     :param frequency: event count divided by valid_count; NaN with no valid steps
     """
 
@@ -231,13 +233,15 @@ def _period_max_peak(statistics: RunStatistics, labels: npt.NDArray[Any]) -> npt
 
 
 def _flood_statistics(
-    series: npt.NDArray[np.float64],
+    series: npt.ArrayLike,
     periods: npt.ArrayLike | None,
     *,
     threshold: float,
     min_duration: int,
 ) -> FloodStatistics:
-    """Summarize one validated one-dimensional series over optional period labels."""
+    """Summarize one numeric series, treating non-finite days as missing."""
+    values = _as_float_series(series)
+    series = np.where(np.isfinite(values), values, np.nan)
     statistics = summarize_runs(
         series, periods=periods, threshold=threshold, direction="above", min_duration=min_duration
     )
@@ -290,18 +294,12 @@ def _summary_block(
     min_duration: int,
 ) -> tuple[Any, ...]:
     """Summarize one cell's series, returning the summary fields then its run set."""
-    statistics = summarize_runs(
-        series,
-        periods=period_values,
-        threshold=threshold,
-        direction="above",
-        min_duration=min_duration,
-    )
+    statistics = _flood_statistics(series, period_values, threshold=threshold, min_duration=min_duration)
     return (
         statistics.count,
         statistics.total_duration,
-        statistics.max_magnitude,
-        _period_max_peak(statistics, np.asarray(period_values)),
+        statistics.max_severity,
+        statistics.max_peak,
         statistics.valid_count,
         statistics.frequency,
         statistics.events,
@@ -317,6 +315,8 @@ def _gridded_flood_summary(
     time_dim: str,
 ) -> xr.Dataset:
     """Report per-cell summaries over an onset-period axis plus each cell's events."""
+    if "period" in index.dims:
+        raise InvalidArgumentError("The dimension name 'period' is reserved for summary output.", argument_name="index")
     period_labels = np.unique(period_values)
     period_dim = "period"
     kernel_outputs = (*_SUMMARY_FIELDS, "events")
@@ -387,7 +387,8 @@ def flood_event_summary(
     the period it starts in. The summary describes flood potential, not
     observed flooding.
 
-    The NumPy path accepts a 1-D series and explicit ``periods``. The DataArray
+    The NumPy path accepts a 1-D series with optional ``periods`` labels.
+    With ``periods=None``, it reports one whole-series summary. The DataArray
     path derives hydrological-year labels from the ``year_start_month`` annual
     boundary, matching :func:`flood_index`, and requires a datetime time
     coordinate. A one-dimensional DataArray returns a :class:`FloodStatistics`;
@@ -395,7 +396,8 @@ def flood_event_summary(
     summary variables over a ``period`` dimension plus the input's cell
     dimensions, and one ``events`` variable holding each cell's
     :class:`~climate_indices.runs.RunSet`. The time dimension must be a single
-    Dask chunk; an empty time axis is rejected on the gridded path.
+    Dask chunk. Gridded input must not use the reserved dimension name
+    ``period`` and must not have an empty time axis.
 
     A return period ``T`` is not computed. The Deo et al. (2015) estimator is
     not recoverable, so ``frequency`` is the event rate per valid input step,
@@ -403,8 +405,8 @@ def flood_event_summary(
 
     Args:
         index: One-dimensional index series, or a DataArray with a time
-            dimension plus optional cell dimensions. NaN and masked days
-            separate events and do not count toward frequency's denominator.
+            dimension plus optional cell dimensions. Non-finite and masked
+            days separate events and do not count toward frequency's denominator.
         periods: NumPy only: one label per input step, such as a year or month.
             Missing labels are rejected. With ``None``, report one whole-series
             summary. See :func:`~climate_indices.runs.summarize_runs`.
@@ -429,7 +431,8 @@ def flood_event_summary(
             does not match its shape.
         InsufficientDataError: If a gridded DataArray has an empty time axis.
         InvalidArgumentError: If options, ``year_start_month``, or period labels
-            are invalid, or a NumPy call passes ``year_start_month``.
+            are invalid, a NumPy call passes ``year_start_month``, or gridded
+            input uses the reserved dimension name ``period``.
         InputTypeError: If the index or period labels have an unsupported dtype.
     """
     _validate_options(threshold, min_duration)
@@ -439,7 +442,7 @@ def flood_event_summary(
                 "year_start_month applies only to DataArray input; pass periods for a NumPy series.",
                 argument_name="year_start_month",
             )
-        return _flood_statistics(_validated_index(index), periods, threshold=threshold, min_duration=min_duration)
+        return _flood_statistics(index, periods, threshold=threshold, min_duration=min_duration)
 
     if periods is not None:
         raise InvalidArgumentError(
@@ -451,11 +454,12 @@ def flood_event_summary(
             "year_start_month is required for DataArray input.", argument_name="year_start_month"
         )
     _validate_year_start_month(year_start_month)
+    _require_numeric(index.dtype)
     validate_time_dimension(index, time_dim)
     labels = _hydrological_year_labels(index, time_dim, year_start_month)
     validate_time_monotonicity(index[time_dim])
     if index.ndim == 1:
-        return _flood_statistics(_validated_index(index.values), labels, threshold=threshold, min_duration=min_duration)
+        return _flood_statistics(index.values, labels, threshold=threshold, min_duration=min_duration)
     if index.chunks is not None:
         validate_dask_chunks(index, time_dim)
     if index.sizes[time_dim] == 0:

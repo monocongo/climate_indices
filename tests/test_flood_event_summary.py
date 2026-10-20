@@ -10,7 +10,12 @@ import pytest
 import xarray as xr
 
 from climate_indices import flood
-from climate_indices.exceptions import CoordinateValidationError, InsufficientDataError, InvalidArgumentError
+from climate_indices.exceptions import (
+    CoordinateValidationError,
+    InputTypeError,
+    InsufficientDataError,
+    InvalidArgumentError,
+)
 from climate_indices.flood import FloodStatistics
 from climate_indices.runs import RunSet
 
@@ -49,6 +54,61 @@ def test_summary_reports_per_period_count_duration_severity_peak_and_valid_days(
     np.testing.assert_allclose(stats.max_peak, [2.0, 5.0], rtol=0, atol=0)
     np.testing.assert_array_equal(stats.valid_count, [4, 4])
     np.testing.assert_allclose(stats.frequency, [0.25, 0.5], rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("backend", ["numpy", "series", "grid", "dask"])
+@pytest.mark.parametrize(
+    ("values", "expected"),
+    [
+        ([1.0, np.inf, 2.0, -np.inf, 3.0, 4.0], [3, 4, 7.0, 4.0, 4, 0.75]),
+        ([np.inf, -np.inf, np.nan], [0, 0, 0.0, 0.0, 0, np.nan]),
+    ],
+)
+def test_nonfinite_days_separate_events_and_do_not_count_as_valid(
+    backend: str, values: list[float], expected: list[float]
+) -> None:
+    index = np.array(values)
+    data = _daily_dataarray(index)
+    if backend in ("grid", "dask"):
+        data = data.expand_dims(site=[0])
+    if backend == "dask":
+        data = data.chunk({"time": -1, "site": 1})
+    stats = _summary(index) if backend == "numpy" else _summary(data, year_start_month=1)
+    if isinstance(stats, xr.Dataset):
+        stats = stats.compute()
+    fields = ("count", "total_duration", "max_severity", "max_peak", "valid_count", "frequency")
+    for field, value in zip(fields, expected, strict=True):
+        actual = stats[field].values if isinstance(stats, xr.Dataset) else getattr(stats, field)
+        np.testing.assert_allclose(actual, value, rtol=0, atol=0)
+    count = stats["count"].values if isinstance(stats, xr.Dataset) else stats.count
+    np.testing.assert_array_equal(count, len(flood.flood_events(index)))
+
+
+@pytest.mark.parametrize("backend", ["numpy", "series", "grid", "dask"])
+@pytest.mark.parametrize("dtype", ["U", "O", "complex128", "datetime64[D]", "timedelta64[D]"])
+def test_unsupported_index_dtypes_are_rejected(backend: str, dtype: str) -> None:
+    values = np.array([1, 2], dtype=dtype)
+    data = _daily_dataarray(values)
+    if backend in ("grid", "dask"):
+        data = data.expand_dims(site=[0])
+    if backend == "dask":
+        data = data.chunk({"time": -1, "site": 1})
+    with pytest.raises(InputTypeError):
+        if backend == "numpy":
+            _summary(values)
+        else:
+            result = _summary(data, year_start_month=1)
+            if isinstance(result, xr.Dataset):
+                result.compute()
+
+
+@pytest.mark.parametrize("lazy", [False, True])
+def test_period_cell_dimension_is_rejected_before_calculation(lazy: bool) -> None:
+    data = _daily_dataarray(np.ones((3, 2)), period=[0, 1])
+    if lazy:
+        data = data.chunk({"time": -1, "period": 1})
+    with pytest.raises(InvalidArgumentError, match="period.*reserved"):
+        flood.flood_event_summary(data, year_start_month=1)
 
 
 def test_an_event_belongs_to_its_onset_period() -> None:
