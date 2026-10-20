@@ -697,7 +697,7 @@ def test_crate_release_validates_the_tag_version_and_changelog() -> None:
     assert 'git merge-base --is-ancestor "${GITHUB_SHA}" "origin/main"' in job
     assert 'TAG_VERSION="${GITHUB_REF#refs/tags/climate-indices-v}"' in job
     assert 'select(.name == "climate-indices") | .version' in job
-    assert "if grep -qxF '## Unreleased' \"$changelog\"; then" in job, (
+    assert "if grep -qE '^## Unreleased[[:space:]]*$' \"$changelog\"; then" in job, (
         "an '## Unreleased' heading would be published as a released version"
     )
     assert 'if ! grep -qE "^## ${CRATE_VERSION//./\\\\.} - [0-9]{4}-[0-9]{2}-[0-9]{2}$" "$changelog"; then' in job

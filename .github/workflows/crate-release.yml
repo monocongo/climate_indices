@@ -69,7 +69,7 @@ jobs:
           # The crate changelog keeps an `## Unreleased` section between releases.
           # A version is published once, so the section has to be retitled first.
           changelog=crates/climate-indices/CHANGELOG.md
-          if grep -qxF '## Unreleased' "$changelog"; then
+          if grep -qE '^## Unreleased[[:space:]]*$' "$changelog"; then
             echo "::error::$changelog still has an '## Unreleased' section; retitle it '## $CRATE_VERSION - YYYY-MM-DD' before tagging"
             exit 1
           fi
