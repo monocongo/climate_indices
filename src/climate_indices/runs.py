@@ -281,6 +281,57 @@ def identify_runs(
     return _identify_runs(series, threshold_value, direction, min_duration_value, max_gap_value)
 
 
+def _exceedance(values: npt.NDArray[np.float64], threshold: float, direction: Direction) -> npt.NDArray[np.bool_]:
+    """Return the steps on the requested side of the threshold, excluding NaN.
+
+    This is the run layer's only comparison, so a caller that shares the block
+    scan below cannot drift from :func:`identify_runs`.
+    """
+    condition = values < threshold if direction == "below" else values > threshold
+    return condition & ~np.isnan(values)
+
+
+def _scan_runs(
+    condition: npt.NDArray[np.bool_],
+    missing: npt.NDArray[np.bool_],
+    *,
+    max_gap: int,
+    min_duration: int,
+) -> tuple[npt.NDArray[np.intp], npt.NDArray[np.intp], npt.NDArray[np.intp]]:
+    """Scan a ``(cells, time)`` exceedance mask for pooled, filtered runs.
+
+    ``missing`` marks the steps that pooling must not cross. Returns each run's
+    cell index, onset, and inclusive end, ordered by cell and then onset. This
+    is the one run scan behind :func:`identify_runs` and
+    :func:`~climate_indices.flood.flood_events`.
+    """
+    cells, days = condition.shape
+    # pad so runs touching either end of a series produce a start and an end
+    padded = np.zeros((cells, days + 2), dtype=np.int8)
+    padded[:, 1:-1] = condition
+    transitions = np.diff(padded, axis=1)
+    cell_index, starts = np.nonzero(transitions == 1)
+    _, ends = np.nonzero(transitions == -1)
+    ends = ends - 1
+
+    if max_gap > 0 and starts.size > 1:
+        nan_counts = np.concatenate(
+            (np.zeros((cells, 1), dtype=np.int64), np.cumsum(missing, axis=1, dtype=np.int64)), axis=1
+        )
+        separate = (
+            (cell_index[1:] != cell_index[:-1])
+            | (starts[1:] - ends[:-1] - 1 > min(max_gap, days))
+            | (nan_counts[cell_index[1:], starts[1:]] != nan_counts[cell_index[:-1], ends[:-1] + 1])
+        )
+        starts = starts[np.concatenate(([True], separate))]
+        ends = ends[np.concatenate((separate, [True]))]
+        cell_index = cell_index[np.concatenate(([True], separate))]
+
+    durations = ends - starts + 1
+    keep = durations >= min_duration
+    return cell_index[keep], starts[keep], ends[keep]
+
+
 def _identify_runs(
     series: npt.NDArray[np.float64],
     threshold: float,
@@ -290,24 +341,11 @@ def _identify_runs(
 ) -> RunSet:
     """Find runs in a validated one-dimensional float64 series (the apply_ufunc kernel)."""
     series = np.asarray(series, dtype=np.float64)
-    condition = series < threshold if direction == "below" else series > threshold
-    condition &= ~np.isnan(series)
-
-    # pad so runs touching either end of the series produce a start and an end
-    transitions = np.diff(np.concatenate(([False], condition, [False])).astype(np.int8))
-    starts = np.flatnonzero(transitions == 1)
-    ends = np.flatnonzero(transitions == -1) - 1
-
-    if max_gap > 0 and starts.size > 1:
-        missing = np.concatenate(([0], np.cumsum(np.isnan(series))))
-        separate = (starts[1:] - ends[:-1] - 1 > min(max_gap, series.size)) | (
-            missing[starts[1:]] != missing[ends[:-1] + 1]
-        )
-        starts, ends = starts[np.concatenate(([True], separate))], ends[np.concatenate((separate, [True]))]
-
+    condition = _exceedance(series, threshold, direction)
+    _, starts, ends = _scan_runs(
+        condition[None, :], np.isnan(series)[None, :], max_gap=max_gap, min_duration=min_duration
+    )
     durations = ends - starts + 1
-    long_enough = durations >= min_duration
-    starts, ends, durations = starts[long_enough], ends[long_enough], durations[long_enough]
 
     count = starts.size
     magnitude = np.empty(count, dtype=np.float64)

@@ -21,6 +21,11 @@ Amended for [#1147](https://github.com/monocongo/climate_indices/issues/1147):
 decision 4 now records the interpolated-PE convention for chained xarray calls.
 No kernel or API behavior changed.
 
+Amended for [#1258](https://github.com/monocongo/climate_indices/issues/1258):
+decision 5 now records the flood-event helper conventions — the strict
+comparison, raw-sum severity, caller-supplied hydrological-year periods, and the
+decision not to implement a return period. No index kernel changed.
+
 The flood oracle survey (#1101, `docs/research/flood-oracle-survey.md`) established
 which external oracles for PE, EDI, I_F, and API are actually reproducible, and
 which are gated behind paywalled or undigitized material. It left several
@@ -164,14 +169,39 @@ unreproducible claim of reproduction.
    the chain and its gap to the all-leap computation on a five-year,
    single-cell series; the probe, which documents its rain generator and
    calibration windows, supplies the magnitudes above.
-5. **Flood-event helpers are out of scope for the initial implementation.**
-   Onset, duration, and severity as runs of `I_F >= 0` — the abstract's flood
-   start, with severity the running sum of consecutive positive values and
-   duration their count — are the paper's `I_acc_F`/`I_max_F`/`D_F`/`T` event
-   statistics, which need the Brisbane and Lockyer Valley rainfall record and
-   therefore have no reproducible oracle. (The surveyed same-lineage code uses
-   `I_F > 0`.) Unvalidatable code does not belong in a validation-gated
-   milestone.
+5. **Flood-event helpers landed with documented, unvalidated conventions
+   ([#1258](https://github.com/monocongo/climate_indices/issues/1258)).**
+   Onset, duration, and severity as runs of the index above its zero — the
+   2015 abstract's `I_acc_F`/`I_max_F`/`D_F`/`T` event statistics — were out of
+   scope for the initial implementation because they need the Brisbane and
+   Lockyer Valley rainfall record and therefore had no reproducible oracle.
+   Unvalidatable code did not belong in a validation-gated milestone. The
+   helper layer (`flood.flood_events`, `flood.flood_event_summary`) now exists
+   as a **specification-level** addition, with its conventions fixed here rather
+   than chosen silently:
+
+   - **The comparison is strict.** A day counts when the index is finite and
+     strictly greater than the threshold (`I_F > 0` by default). The 2015
+     abstract's onset phrase is `I_F >= 0`, while its duration counts positive
+     days; the library keeps the strict form the surveyed same-lineage code
+     uses, and `tests/test_flood_events.py` freezes the exact-zero boundary.
+     Changing it would be a deliberate major-release change.
+   - **Severity is the raw run sum.** `flood_events.severity` sums the index
+     values on an event's days, not their deviations from the threshold, so it
+     is the abstract's `I_acc_F` at the default threshold. Its `peak` is
+     `I_max_F`, and its `duration` is `D_F`.
+   - **Periods are caller-supplied.** The NumPy `flood_event_summary` takes
+     explicit `periods` labels; the DataArray path labels each step with the
+     start year of its `year_start_month` annual period, the same boundary
+     `flood_index()` takes, and assigns an event to its onset period.
+   - **`T` is not implemented.** The 2015 estimator is not recoverable from the
+     accessible material, and no plotting position is invented. The summary
+     reports `frequency`, an event rate per valid input step, and
+     `docs/flood_applications.md` gives a caller-side ranked-severity recipe
+     explicitly not offered as flood-frequency analysis of discharge. The
+     paper's published values (`I_F_acc = 118`, `I_F_max = 4.4`, `D_F = 104`
+     days, `T = 106.2` years, Brisbane January 1974) are **not** claimed as
+     reproduced: no reproducible input record or estimator is available.
 6. **Scope boundary.** Rx1day, Rx5day, and R95pTOT are **out of scope**: the
    `xclim` package already implements the ETCCDI precipitation-extreme
    calculations — `max_1day_precipitation_amount` and

@@ -131,6 +131,15 @@ def test_invalid_options_are_rejected(kwargs, error) -> None:
         flood.flood_events(np.ones(4), **kwargs)
 
 
+def test_a_day_equal_to_the_threshold_is_not_an_event_day() -> None:
+    """The comparison is strict (``index > threshold``), the convention the events layer documents."""
+    index = np.array([0.0, 0.5, 1.0, 0.5, 0.0])
+    events = flood.flood_events(index, threshold=0.5)
+    np.testing.assert_array_equal(events.onset, [2])
+    np.testing.assert_array_equal(events.end, [3])
+    assert len(flood.flood_events(np.full(4, 0.5), threshold=0.5)) == 0
+
+
 def test_scalar_and_non_numeric_input_are_rejected() -> None:
     with pytest.raises(InvalidArgumentError):
         flood.flood_events(1.0)
