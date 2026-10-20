@@ -428,6 +428,16 @@ def _band(tail: float, records: int, probability: float) -> int:
     return int(binom.ppf(1 - tail, records, probability))
 
 
+def _wilson(counts: npt.NDArray[np.int64], eligible: npt.NDArray[np.int64]) -> list[list[float] | None]:
+    """Return each month's Wilson 95% interval over the records that carry an inference."""
+    return [
+        [float(bound) for bound in binomtest(int(count), int(records)).proportion_ci(method="wilson")]
+        if records > 0
+        else None
+        for count, records in zip(counts, eligible, strict=True)
+    ]
+
+
 def _case_result(
     scenario: Scenario,
     statistic: Statistic,
@@ -475,25 +485,28 @@ def _case_result(
         "few_blocks_months": case.few_blocks.tolist(),
         "coverage_failed_months": coverage_failed.tolist(),
         "null_failed_months": null_failed.tolist(),
-        "coverage_wilson_95": [
-            [float(bound) for bound in binomtest(int(n), TRIALS).proportion_ci(method="wilson")] for n in covered
-        ],
-        "rejection_wilson_95": [
-            [float(bound) for bound in binomtest(int(n), TRIALS).proportion_ci(method="wilson")] for n in rejected
-        ],
+        "coverage_wilson_95": _wilson(covered, eligible),
+        "rejection_wilson_95": _wilson(rejected, eligible),
         "coverage_gate_passed": bool(coverage_failed.size == 0 and np.any(inferable)),
         "null_gate_passed": None if scenario.rho != 0 else bool(null_failed.size == 0 and np.any(inferable)),
     }
 
 
 def characterize(groups: Sequence[str] | None = None) -> dict[str, Any]:
-    """Run the predeclared plan and return the report; `groups` selects a subset."""
+    """Run the predeclared plan and return the report; `groups` selects a subset.
+
+    A subset run records its requested and executed groups, and reports
+    `complete_plan: false`. An empty selection passes no case, so it is not a passing
+    characterization.
+    """
     logging.disable(logging.CRITICAL)
     plan = _plan()
-    unknown = sorted(set(groups or ()) - {scenario.group for scenario in plan})
+    plan_groups = sorted({scenario.group for scenario in plan})
+    requested = plan_groups if groups is None else sorted(set(groups))
+    unknown = sorted(set(requested) - set(plan_groups))
     if unknown:
         raise ValueError(f"Unknown characterization group(s): {', '.join(unknown)}.")
-    selected = tuple(scenario for scenario in plan if groups is None or scenario.group in groups)
+    selected = tuple(scenario for scenario in plan if scenario.group in requested)
     comparisons = len(SCENARIOS) * len(STATISTICS) * len(LENGTHS) * 12 * 2
     tail = _FAMILY_WISE_ALPHA / comparisons
     results: list[dict[str, Any]] = []
@@ -523,9 +536,12 @@ def characterize(groups: Sequence[str] | None = None) -> dict[str, Any]:
             }
         )
         print(f"Completed {scenario.name}.", flush=True)
-    passed = all(result["coverage_gate_passed"] and result["null_gate_passed"] is not False for result in results)
+    # An empty selection must not report success through `all([])`.
+    passed = bool(results) and all(
+        result["coverage_gate_passed"] and result["null_gate_passed"] is not False for result in results
+    )
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "classification": "synthetic characterization only; no external validation",
         "configuration": {
             "trials": TRIALS,
@@ -550,9 +566,12 @@ def characterize(groups: Sequence[str] | None = None) -> dict[str, Any]:
             ),
             "null_alpha": _TIE_ALPHA,
             "confidence_level": 0.95,
-            "groups": sorted({scenario.group for scenario in plan}),
+            "groups": plan_groups,
+            "requested_groups": requested,
+            "executed_groups": sorted({scenario.group for scenario in selected}),
         },
         "versions": {"numpy": np.__version__, "scipy": scipy.__version__},
+        "complete_plan": requested == plan_groups,
         "passed": passed,
         "scenarios": summaries,
         "results": results,

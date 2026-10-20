@@ -132,6 +132,25 @@ def test_characterization_reduced_configuration(monkeypatch: pytest.MonkeyPatch)
     assert report["passed"] == all(
         result["coverage_gate_passed"] and result["null_gate_passed"] is not False for result in report["results"]
     )
+    # A subset run names the groups it requested and executed.
+    assert report["complete_plan"] is False
+    assert report["configuration"]["requested_groups"] == ["replication"]
+    assert report["configuration"]["executed_groups"] == ["replication"]
+
+
+def test_characterization_never_passes_without_measured_cases() -> None:
+    script = characterize_compound_bootstrap
+    previous_disable = logging.root.manager.disable
+    try:
+        report = script.characterize(groups=())
+    finally:
+        logging.disable(previous_disable)
+    # An empty selection must not pass through `all([])`.
+    assert report["results"] == []
+    assert report["passed"] is False
+    assert report["complete_plan"] is False
+    assert report["configuration"]["requested_groups"] == []
+    assert report["configuration"]["executed_groups"] == []
 
 
 def test_characterization_plan_is_predeclared_and_streams_are_unique() -> None:
@@ -217,6 +236,13 @@ def test_structural_guard_months_are_excluded_from_the_gates() -> None:
     assert result["minimum_covered_records"][1] < 61
     assert result["coverage_gate_passed"] is True
     assert result["null_gate_passed"] is True
+    # Each Wilson interval uses the same eligible denominator as its count.
+    interval = result["coverage_wilson_95"][1]
+    assert interval is not None
+    assert interval[0] < 61 / 64 < interval[1]
+    # A month with no inferable record has no interval to report.
+    assert result["coverage_wilson_95"][0] is None
+    assert result["rejection_wilson_95"][0] is None
     # A missing p-value fails the null gate unless the month carries a structural guard.
     case.p_values[2] = script.TRIALS - 1
     assert script._case_result(scenario, "joint_probability", 6, case, truth, tail)["null_gate_passed"] is False
