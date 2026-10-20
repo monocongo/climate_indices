@@ -177,9 +177,12 @@ index values on the event's days. Events inherit the caveat below: they are runs
 of high flood potential, not recorded floods.
 
 `flood.flood_event_summary(...)` groups those events by their onset period and
-reports, per period, the event count, total duration, maximum severity, maximum
-peak, and valid-day count, plus the frequency (events per valid day). For a
-NumPy series, pass `periods` labels. For a DataArray, pass `year_start_month` to
+reports the event count, total duration, `max_severity`, maximum peak, and
+valid-day count per period, plus the frequency (events per valid day).
+`max_severity` is the largest event magnitude: the sum of deviations above
+`threshold`, not the raw sum in `flood_events.severity`. The two sums agree
+only when `threshold=0`. For a NumPy series, pass `periods` labels or omit
+`periods` for a whole-series summary. For a DataArray, pass `year_start_month` to
 label each step with the start year of its annual period, matching
 `flood_index()`; a one-dimensional DataArray returns a `FloodStatistics`, and a
 gridded DataArray returns an `xr.Dataset` with the summary variables over a
@@ -193,9 +196,11 @@ instead and does not invent a plotting position. For a rough recurrence
 interval, rank each year's maximum severity and apply a caller-side
 plotting-position convention such as the Weibull `T = (n + 1) / rank`; state
 that it describes the index record, not a flood-frequency analysis of discharge.
-`climate_indices.runs.RunSet.interarrival` and the summary `frequency` already
-supply the event rate. Flood-frequency analysis of discharge records stays out
-of scope.
+The summary `frequency` is the event rate: event count divided by valid input
+steps. `climate_indices.runs.RunSet.interarrival` is the start-to-start spacing
+to the next retained event, in input steps; the final event has NaN spacing.
+It is an interval, not a rate. Flood-frequency analysis of discharge records
+stays out of scope.
 
 The same helpers apply to positive runs of EDI, which shares the PE kernel with
 `I_F`; pass the EDI series in place of the Flood Index.

@@ -140,7 +140,8 @@ duration, peak, and severity (the index summed over the run); NaN and masked
 days end a run. `flood.flood_event_summary` groups those events by their onset
 period and reports per period the count, total duration, maximum severity,
 maximum peak, and valid-day count, plus the event rate. A NumPy series takes
-explicit `periods`; a DataArray takes `year_start_month` and derives
+optional `periods` labels; `periods=None` produces a whole-series summary.
+Explicit labels group steps by period. A DataArray takes `year_start_month` and derives
 hydrological-year labels, returning an `xr.Dataset` per cell for gridded input.
 Both share the run scan in `runs._scan_runs`, so the strict comparison lives in
 one place; the scan is NumPy only, because it is vectorized and linear in the
