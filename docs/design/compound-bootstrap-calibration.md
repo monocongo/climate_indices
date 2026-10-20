@@ -102,4 +102,167 @@ recording machine (Apple M-series, 10 cores, CPython 3.14).
 
 ## Results
 
-_Pending: this section is written after the run._
+The plan ran on 2026-10-19 with CPython 3.14.7, NumPy 2.4.2, and SciPy 1.17.0. It
+produced 183 cases. The measured report is
+`docs/design/compound-bootstrap-characterization.json`. Runtime was 17 minutes on an
+idle machine. The gates are the predeclared bands: at 128 answered records, coverage
+passes at 109 or more and null rejection at 19 or fewer per month. **47 cases fail a
+predeclared gate.** Every outcome is in the report; this section states the pattern.
+
+| Group | Cases | Passing | Coverage failure | Null failure | Not inferable |
+| --- | --- | --- | --- | --- | --- |
+| `replication` | 36 | 35 | 1 | 0 | 0 |
+| `record_length` | 42 | 12 | 26 | 4 | 0 |
+| `persistence` | 12 | 12 | 0 | 0 | 0 |
+| `lagged_conditioning` | 18 | 18 | 0 | 0 | 0 |
+| `hazard_frequency` | 30 | 15 | 9 | 6 | 0 |
+| `dependent_hazards` | 9 | 9 | 0 | 0 | 0 |
+| `default_resamples` | 36 | 35 | 1 | 0 | 0 |
+
+### Three failure mechanisms, and only one is miscalibration
+
+The gate flags alone mislead, so the report is read with three questions per month.
+
+1. **Coverage misses: 37 cases.** The interval missed the truth on more records than
+   the band allows. This is the calibration signal.
+2. **Suppressed p-values: 45 cases.** The library returned NaN instead of a p-value on
+   some records, because fewer than 95% of the resamples produced a valid null statistic
+   (`invalid_null_resamples`), which a resampled month with a zero denominator causes.
+   The predeclared missing-value rule fails the null gate here. This is a support
+   condition, not an excess rejection rate. 35 cases show both this and a coverage miss.
+3. **Excess rejections: no case.** No independent-hazard (`rho = 0`) case exceeded its
+   per-month rejection band anywhere in the plan. Pooled rejection rates over the 24
+   independent-hazard 200-year scenarios range from 3.5% to 7.5%, and every per-month
+   null gate that failed did so through a suppressed p-value. The #1371 concern about
+   null rejection does not reproduce as a per-month gate failure.
+
+### Replication and the 1,999-resample default (AC3)
+
+The `replication` group reproduces the previous report field by field: all 36 cases
+match on truth, counts, Wilson intervals, gate flags, and block-length decision
+differences. The same single case fails: `likelihood_multiplication_factor` with
+12-year blocks in the 36-month independent scenario, February, 106 of 128 covered
+against the minimum of 109 (82.8%, Wilson 75.3% to 88.4%).
+
+The 36-month independent scenario keeps its pooled rejection of 7.5% [7.0, 7.9] at 399
+resamples. At the default 1,999 resamples the same scenario passes all 9 gate
+checks, its pooled rejection falls to 3.5% [3.2, 3.8], and the previously failing
+February interval rises above the band. Most of the 399-resample excess is therefore a
+resample-count artifact, not a defect of the null test. The 36-month correlated
+scenario still fails one coverage check at the default resamples: conditional
+probability with 3-year blocks, month 4, 107 of 128 covered.
+
+### Record length (AC4)
+
+| Record | Scenario | Coverage | Pooled rejection | Structural exclusions | Gate outcome |
+| --- | --- | --- | --- | --- | --- |
+| 30 years | `w = 1` | 78.0% (10584) | 4.8% [4.4, 5.2] | 3240 of 13824 month-records | 9 coverage failures |
+| 30 years | `w = 6` | 75.1% (10647) | 3.8% [3.4, 4.1] | 3177 of 13824 | 9 coverage failures |
+| 60 years | `w = 1` | 90.1% (9216) | 5.7% [5.3, 6.2] | 0 | 2 coverage, 4 null failures |
+| 60 years | `w = 6` | 89.0% (9216) | 5.8% [5.4, 6.3] | 0 | 6 coverage failures |
+| 100 years | `w = 1` | 92.3% (9216) | 4.8% [4.4, 5.3] | 0 | pass |
+| 100 years | `w = 6` | 92.6% (9216) | 4.1% [3.7, 4.5] | 0 | pass |
+
+Both 100-year scenarios pass all 12 gate checks, at the library default block length
+(5 years) and at 6-year blocks. Both 60-year scenarios fail: coverage in months 6 to 8
+falls as low as 94 of 128 at `w = 6`, and the low months suppress p-values on up to 10
+of 128 records at `w = 1`. The 30-year floor is worse: guards remove 23% of month-records
+at `w = 1` and 63% in the low-frequency scenario, and the answered records fail both
+gates: months 7 and 8 cover about half of the records that answered, for example 24 of
+50 at 6-year blocks, where the gate needs 95%. The five-block edge (30
+years, 6-year blocks) and the ten-block edge (30 years at 3-year blocks, 60 years at
+6-year blocks) behave the same as the other block lengths at their record length, so
+block count from 5 to 20 does not separate passing from failing records.
+
+### Persistence between 6 and 36 months (AC5)
+
+12, 18, 24, and 30 months of persistence all pass every gate at 200 years and 6-year
+blocks: coverage 92.4% to 94.3%, pooled rejection 3.5% to 5.6%. The break is therefore
+between 30 and 36 months, and 36 months fails on coverage, not on rejection.
+
+### Lagged conditioning (AC5)
+
+All 18 cases pass: windows `(0, 1)`, `(0, 3)`, and `(1, 3)` at `w = 1` and `w = 6`, at
+all three block lengths. Coverage ranges from 91.5% to 93.4% and pooled rejection from
+4.4% to 6.1%. The 40,000-year simulation reference agrees with quadrature at zero lag,
+which the test suite checks.
+
+### Hazard frequency (AC5)
+
+| Profile | Monthly range | `w = 1` | `w = 6` | `w = 36` |
+| --- | --- | --- | --- | --- |
+| `low` | 0.20 to 0.30 | 3 null failures | 3 null failures | 3 coverage failures |
+| `wide` | 0.30 to 0.60 | pass | pass | not run |
+| `high` | 0.70 to 0.80 | pass | pass | pass |
+
+The failures concentrate in the lowest months of the `low` profile, where the monthly
+probability is 0.20: the library suppresses the p-value on 1 to 7 of 128 records, with 2
+to 3 of those at `w = 1`, and at 36-month persistence the LMF interval for month 7
+covers 104 of 128 records. The `wide` profile also
+reaches 0.30, and it passes everywhere. The measured supported range is therefore about
+0.30 to 0.80, not the 0.35 to 0.55 range of the original seasonal profile alone; below
+that, the library becomes unable to form a null statistic on enough resamples.
+
+At 30 years with the `low` profile the guards remove 8688 of 13824 month-records (63%)
+and the answered records cover the truth on 33.5% of 528 checks, so records that short
+are unsupported at any measured frequency.
+
+### Dependent hazards (AC5)
+
+All 9 cases pass: same-time correlation 0.5 at 1, 6, and 12 months of persistence, at
+6-year blocks. Coverage is 92.6% to 93.9%. Together with `replication`, coverage for
+correlated hazards is now measured at 1, 6, 12, and 36 months of persistence, and the
+36-month cases remain the only ones that fail.
+
+### Guard separation (decision rule 3)
+
+The predeclared rule allowed a new support guard only if an observable separated the
+passing from the failing persistent cases without refusing a supported case. No such
+quantity exists in this evidence:
+
+| Scenario | Years | Width | Mean within-month lag-1 autocorrelation | Occurrence fraction | Gate outcome |
+| --- | --- | --- | --- | --- | --- |
+| `persistence_30_month_independent` | 200 | 30 | 0.398 | 0.452 | pass |
+| `frequency_high_36_month_persistence` | 200 | 36 | 0.419 | 0.747 | pass |
+| `frequency_low_36_month_persistence` | 200 | 36 | 0.430 | 0.246 | coverage failure |
+| `persistent_36_month_independent` | 200 | 36 | 0.453 | 0.440 | coverage failure |
+| `record_length_60_years_6_month_overlap` | 60 | 6 | -0.017 | 0.450 | coverage failure |
+| `record_length_100_years_independent` | 100 | 1 | -0.012 | 0.451 | pass |
+
+A passing 36-month case sits 0.011 below a failing 36-month case on autocorrelation, and
+the two 60-year cases differ from the passing 100-year case on record length only.
+Record length alone cannot help either, because the 200-year low-frequency scenario
+fails. A fitted rule over persistence, frequency, and record length would be a new
+decision surface with its own false refusals, and this evidence cannot predeclare it.
+No guard was added.
+
+## Decision (maintainer decision, 2026-10-19)
+
+Recorded for review in this change; the merge confirms it.
+
+1. **Keep the method unchanged.** No rescaling, no new resampling scheme, no new
+dependency or kernel. The null test is not implicated: no independent case exceeded a
+rejection band, and the 399-resample excess disappears at the default 1,999 resamples.
+The remaining failures are interval under-coverage where few effective blocks or few
+effective occurrences remain. That is a resolution limit of percentile intervals from
+non-circular blocks, and it is the same limit the `few_blocks` flag already reports.
+2. **Add no support guard.** The predeclared separation check fails, as the table above
+shows. The library keeps returning results with flags and effective resample counts,
+and users read the scope below.
+3. **Widen the documented supported scope only where every predeclared gate passed.**
+Now supported, beyond #1371: 200-year records with source persistence up to 30 months;
+conditional lag windows `(0, 1)`, `(0, 3)`, and `(1, 3)`; monthly exceedance
+probabilities of about 0.30 to 0.80; interval coverage for hazards whose same-time
+correlation is 0.5 at 1, 6, and 12 months of persistence; 100-year records; and the
+default 1,999 resamples.
+4. **Keep the unsupported list, with measured reasons.** 36-month persistence (one
+correlated coverage failure at the default resamples, and the February coverage failure
+at 399 resamples); monthly frequencies near 0.20 (suppressed null p-values, and coverage
+misses when persistence is 36 months); 60-year records (coverage misses to 94 of 128 and
+suppressed p-values in months 6 to 9); 30-year records (guards remove most records, and
+the answered records fail both gates). Daily inference, field significance,
+nonstationarity, and long memory remain outside every claim, as before.
+
+`VALIDATION.md`, the API reference, the `bootstrap_dependence` docstring, and its
+manifest `evidence` string carry this scope. Reopen the method question only with a
+predeclared replacement characterization, as #1398 permits.
