@@ -4,6 +4,10 @@ This is the maintainer runbook for releasing `climate_indices`. Releases are
 tag-based from `main`; pushing a valid release tag starts the GitHub Actions
 release workflow and publishes to PyPI through Trusted Publishing.
 
+The Rust crate `climate-indices` has its own release track, described under
+*Rust crate release* below. It publishes to crates.io from a separate tag
+namespace and never publishes to PyPI.
+
 ## Release invariants
 
 - `main` is trunk and must be releasable.
@@ -12,6 +16,8 @@ release workflow and publishes to PyPI through Trusted Publishing.
 - Package versions omit the leading `v`: `X.Y.Z`.
 - The Git tag, `pyproject.toml`, GitHub Release, and PyPI version must match.
 - The maintainer creates and pushes release tags; agents never perform these actions.
+- Crate tags use their own namespace, `climate-indices-vX.Y.Z`, so neither release
+  workflow can start the other.
 - Long-lived `release/*` branches are avoided except for approved maintenance
   work on older supported versions.
 
@@ -380,3 +386,235 @@ Use the normal trunk flow for hotfixes whenever possible:
 For an older supported version, a maintainer may approve a maintenance branch.
 Keep it narrow, document the target version, and merge forward to `main` when
 applicable.
+
+## Rust crate release
+
+The crate `climate-indices` (`crates/climate-indices`) publishes to crates.io on
+its own `0.x` track, independently of the Python release above. See
+[ADR-0021](adr/0021-climate-indices-crate-identity.md) for the identity, the
+version scheme, and the tag namespace. Publishing runs from
+`.github/workflows/crate-release.yml` through crates.io Trusted Publishing/OIDC,
+so this repository stores no crates.io API token.
+
+Only the maintainer releases the crate. Agents never create a crate tag, push
+one, or approve the `release` environment.
+
+### Crate release invariants
+
+- Crate tags are annotated tags named `climate-indices-vX.Y.Z`, with an exact
+  version and no suffix. A pre-release version cannot be used in this workspace:
+  `crates/climate-py` requires `climate-indices = "0"`, and a caret requirement
+  does not match a pre-release (see *Crate rehearsal* below).
+- The tag version, the `version` in `crates/climate-indices/Cargo.toml`, and the
+  crate changelog heading must all name the same version. The workflow checks all
+  three before it publishes anything.
+- The crate version and the crate changelog are the crate's own.
+  `crates/climate-indices/CHANGELOG.md` holds the crate history, and it does not
+  follow `pyproject.toml` or the root `CHANGELOG.md`.
+- A published crates.io version cannot be replaced or edited. A version is used
+  once, and the remedy for a bad release is `cargo yank`, not a new upload of the
+  same version.
+- `climate-py` stays `publish = false`. Only the crate is published.
+
+### Crate one-time setup
+
+Confirm all five items before the first crate release:
+
+1. On crates.io, the `climate-indices` crate has a trusted publisher with owner
+   `monocongo`, repository `climate_indices`, workflow `crate-release.yml`, and
+   environment `release`. The crate exists on crates.io already (the `0.0.0`
+   placeholder), so no bootstrap token is needed to register the publisher.
+2. The crates.io owner list is the intended one. Only `monocongo` is an owner
+   today. ADR-0021 decision 5 leaves the second owner to the maintainer, and
+   adding one is a crates.io account action rather than a repository change.
+3. The GitHub tag ruleset covers the new namespace. The *Protect release tags*
+   ruleset matches `refs/tags/v*.*.*` only, so add `refs/tags/climate-indices-v*`
+   to it. Without that, a crate tag can be moved or deleted, and the
+   "never move a pushed tag" invariant has no enforcement.
+4. The GitHub `release` environment still requires a reviewer. The crate publish
+   job uses that same environment, so a crate release needs the same approval as
+   the PyPI release.
+5. This repository has no `CARGO_REGISTRY_TOKEN` secret. The publish job exchanges
+   the workflow's OIDC identity for a short-lived token, and
+   `crates-io-auth-action` revokes that token when the job ends.
+
+### Crate release steps
+
+1. Bump `version` in `crates/climate-indices/Cargo.toml`, then refresh the member
+   version recorded in `Cargo.lock`. Every crate gate runs with `--locked`, and a
+   stale lock fails them:
+   ```bash
+   cargo update --workspace
+   ```
+2. Retitle the `## Unreleased` heading in
+   `crates/climate-indices/CHANGELOG.md` to `## X.Y.Z - YYYY-MM-DD`, using the
+   intended tag day. The workflow refuses to publish while the section is present.
+3. Open a PR into `main`, then let the maintainer merge it after review and
+   passing CI.
+4. Record the full 40-character SHA of the merged `main` tip.
+5. Rehearse that SHA as described in *Crate rehearsal* below.
+6. From a clean maintainer worktree, confirm that the candidate has not moved and
+   that the tag is free. The PyPI checks in *Tag creation* above do not apply to
+   the crate: this project publishes no crate to PyPI, and no crate job reads a
+   tagger date.
+   ```bash
+   git switch main
+   git pull --ff-only origin main
+   CANDIDATE=<full 40-character SHA recorded on the release ticket>
+   test -z "$(git status --porcelain)" || { echo "working tree is not clean"; exit 1; }
+   test "$(git rev-parse HEAD)" = "$CANDIDATE" || { echo "local candidate changed"; exit 1; }
+   test "$(git rev-parse origin/main)" = "$CANDIDATE" || { echo "remote candidate changed"; exit 1; }
+   git remote get-url --push origin   # must be monocongo/climate_indices, not the rehearsal repo
+   git tag -l climate-indices-vX.Y.Z  # must print nothing
+   ```
+7. Create and inspect the annotated tag:
+   ```bash
+   git tag -a climate-indices-vX.Y.Z "$CANDIDATE" -m "Release climate-indices vX.Y.Z"
+   git show --stat climate-indices-vX.Y.Z
+   git rev-parse 'climate-indices-vX.Y.Z^{commit}'   # must equal $CANDIDATE
+   ```
+8. Confirm the version is absent from crates.io, then push only that tag. The
+   crates.io API refuses a request without a `User-Agent`, so the read needs one:
+   ```bash
+   curl -s -H 'User-Agent: climate-indices-release (https://github.com/monocongo/climate_indices)' \
+     https://crates.io/api/v1/crates/climate-indices/versions \
+     | python3 -c "import json,sys; print([v['num'] for v in json.load(sys.stdin)['versions']])"
+   git push origin climate-indices-vX.Y.Z
+   ```
+9. Approve the `release` environment when the run waits at `publish-crate`.
+10. Read every job's conclusion and run the crate post-release checks below.
+
+### The crate release workflow
+
+`.github/workflows/crate-release.yml` runs on crate tags only, and it:
+
+1. validates the tag format, the reachability of the tagged commit from
+   `origin/main`, the tag version against the crate manifest, and the dated crate
+   changelog heading;
+2. runs the four crate quality gates on the tagged commit: `crate-gate`,
+   `crate-msrv`, `crate-semver`, and `crate-deny`;
+3. after environment approval, exchanges the OIDC identity for a short-lived
+   crates.io token in the publish-only job and runs
+   `cargo publish -p climate-indices --locked`.
+
+It creates no GitHub Release and it does not touch PyPI. Only the publish job
+receives `id-token: write`, and every job checks out the immutable event SHA, so
+a tag moved during a run cannot publish unvalidated commits.
+
+### Crate rehearsal
+
+The release path is rehearsed in a **rehearsal repository**, exactly as the PyPI
+release is: a repository that is not `monocongo/climate_indices`. The crates.io
+trusted publisher names this repository, so the rehearsal run is rejected at the
+token exchange, after every guard and gate has run. Nothing is published and no
+version is spent. The target rules in *Release rehearsal* above apply: the copy
+must have Actions enabled and must **not** be registered as a crates.io trusted
+publisher, and it must hold no crates.io token.
+
+A pre-release version is not an option for this rehearsal. `crates/climate-py`
+requires `climate-indices = "0"`, and a caret requirement does not match a
+pre-release, so `cargo package` cannot resolve the workspace for a version such
+as `0.1.0-rc.1`:
+
+```text
+error: failed to select a version for the requirement `climate-indices = "^0"`
+candidate versions found which didn't match: 0.1.0-rc.1
+```
+
+Publishing a pre-release would therefore require widening the bindings
+requirement for the rehearsal, which is the release coupling that ADR-0021
+decision 3 exists to avoid. Deciding whether to accept that coupling belongs to
+CRATE-11 (#1315), not to this runbook.
+
+Rehearse the packaging and verification steps locally first, at the candidate SHA
+rather than at whatever the current worktree holds:
+
+```bash
+set -u
+CANDIDATE=<full 40-character SHA recorded on the release ticket>
+git fetch -q origin || { echo "cannot fetch origin"; exit 1; }
+git checkout --detach "$CANDIDATE"
+test "$(git rev-parse HEAD)" = "$CANDIDATE" || { echo "not at the candidate SHA: $(git rev-parse HEAD)"; exit 1; }
+cargo publish --dry-run --locked -p climate-indices
+```
+
+Then rehearse the tagged path:
+
+1. Take the candidate SHA from *Crate release steps* above, and pick the version
+   the release will use. Confirm crates.io does not list that version (the command
+   in *Crate release steps* above).
+2. Push the candidate as the rehearsal repository's `main`, then push the same
+   commit as the crate tag. The tag-reachability check reads the rehearsal
+   repository's `main`, so `main` lands first. Both pushes force the rehearsal copy
+   to this candidate; it holds no unique state:
+   ```bash
+   set -u
+   SHA=<candidate SHA>
+   TAG=climate-indices-vX.Y.Z
+   TARGET=<owner>/climate_indices-rehearsal
+   git push --force "https://github.com/$TARGET.git" "${SHA}:refs/heads/main"
+   git push --force "https://github.com/$TARGET.git" "${SHA}:refs/tags/$TAG"
+   ```
+   Never push a rehearsal tag to this repository.
+3. Watch the run and read every job's conclusion:
+   ```bash
+   gh run list -R "$TARGET" --workflow=crate-release.yml --limit 3
+   RUN=<run id>
+   gh run watch "$RUN" -R "$TARGET" --exit-status   # exits non-zero; expected
+   gh run view "$RUN" -R "$TARGET" --json jobs --jq '.jobs[] | "\(.conclusion)\t\(.name)"'
+   ```
+   Expected: `validate-crate-tag`, `crate-gate`, `crate-msrv`, `crate-semver`, and
+   `crate-deny` succeed, and `publish-crate` fails at the crates.io token exchange
+   because the rehearsal repository is not a trusted publisher. A network error or
+   an action-resolution failure is a different defect and not a pass.
+4. Confirm that crates.io still does not list the version, then record the
+   evidence on the release ticket: candidate SHA, rehearsal repository, run URL,
+   every job conclusion, the verbatim crates.io rejection, and the timing.
+
+What a rehearsal does not prove: crates.io accepting the upload, and the trusted
+publisher and `release` environment configuration itself, since the rejection is
+the expected outcome in the rehearsal copy. Confirm those before the real tag.
+
+### If a crate publication fails
+
+- **crates.io rejects the OIDC exchange.** The trusted publisher on crates.io does
+  not match this repository, the workflow file name, or the environment name.
+  Correct the crates.io configuration. Do not add an API token to the repository.
+- **`cargo publish` reports that the version is already uploaded.** A crates.io
+  version cannot be replaced. Do not retag: prepare the next version from `main`.
+- **A gate job fails.** Fix `main`, then tag a new version. Never move a pushed
+  tag.
+- **The publish state is unknown.** `cargo publish` creates a version or fails; it
+  does not leave a partial upload. Check crates.io with the version-list command
+  in *Crate release steps* above. If the version is listed, the publish succeeded
+  and the post-release checks apply. If it is not listed, fix the cause and tag a
+  new version.
+- **A published version must be withdrawn.** Yank it. The command needs a
+  crates.io API token, which Trusted Publishing does not supply, so the maintainer
+  runs it from their own machine and not from this workflow:
+   ```bash
+   cargo yank --version X.Y.Z climate-indices
+   ```
+   A yank is the only available remedy for a single version. Deleting the crate
+  itself is possible only under narrow crates.io policy conditions, and it would
+  also remove the `0.0.0` name reservation.
+- **The run waits at `publish-crate`.** The `release` environment requires a
+  reviewer, so a maintainer must approve the deployment.
+
+### Crate post-release checks
+
+1. Confirm that crates.io lists the version and that the crate page shows the
+   README and the license.
+2. Confirm that docs.rs built the version without warnings. The build starts a few
+   minutes after the publish, and a warning there is a defect to fix in the next
+   version.
+3. Install the release in a scratch crate outside this checkout:
+   ```bash
+   cargo new /tmp/crate-check
+   cd /tmp/crate-check
+   cargo add climate-indices@X.Y.Z
+   cargo build
+   ```
+4. Confirm that the crate changelog heading carries the release day.
+5. Add the crates.io link to the next release notes or the README when the
+   maintainer asks for it.
