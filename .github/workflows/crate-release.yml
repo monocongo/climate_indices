@@ -36,12 +36,14 @@ jobs:
 
       - name: Validate crate tag format
         run: |
-          # The optional suffix is the rehearsal's pre-release lane
-          # (`climate-indices-v0.1.0-rc.1`). Build metadata (`+`) is rejected:
-          # cargo normalizes it, so the tag and the published version would
-          # disagree.
-          if [[ ! "${GITHUB_REF}" =~ ^refs/tags/climate-indices-v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
-            echo "::error::Crate tags must match climate-indices-vX.Y.Z or climate-indices-vX.Y.Z-<pre>; got ${GITHUB_REF#refs/tags/}"
+          # Exact versions only. A pre-release suffix is refused because
+          # `crates/climate-py` requires `climate-indices = "0"`, and a caret
+          # requirement does not match a pre-release: `cargo package` cannot
+          # resolve the workspace for one. Rehearsing a pre-release would need
+          # that requirement widened, which is the release coupling ADR-0021
+          # decision 3 exists to avoid.
+          if [[ ! "${GITHUB_REF}" =~ ^refs/tags/climate-indices-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Crate tags must match climate-indices-vX.Y.Z exactly; got ${GITHUB_REF#refs/tags/}"
             exit 1
           fi
 
