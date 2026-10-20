@@ -183,6 +183,7 @@ def test_lagged_truth_matches_the_closed_form_at_zero_lag() -> None:
 def test_structural_guard_months_are_excluded_from_the_gates() -> None:
     script = characterize_compound_bootstrap
     scenario = script._plan()[0]
+    tail = 0.01 / 864
     case = script.Case(
         covered=np.full(12, script.TRIALS, dtype=np.int64),
         rejected=np.zeros(12, dtype=np.int64),
@@ -194,18 +195,31 @@ def test_structural_guard_months_are_excluded_from_the_gates() -> None:
         decisions=np.zeros((script.TRIALS, 12), dtype=bool),
     )
     truth = np.full(12, 0.5)
-    result = script._case_result(scenario, "joint_probability", 6, case, truth, 109, 19)
+    result = script._case_result(scenario, "joint_probability", 6, case, truth, tail)
     assert result["coverage_gate_passed"] is True
     assert result["null_gate_passed"] is True
+    assert result["minimum_covered_records"] == [109] * 12
+    assert result["maximum_null_rejections"] == [19] * 12
     case.covered[0] = 100
-    assert script._case_result(scenario, "joint_probability", 6, case, truth, 109, 19)["coverage_gate_passed"] is False
-    case.structural[0] = 1
-    result = script._case_result(scenario, "joint_probability", 6, case, truth, 109, 19)
+    assert script._case_result(scenario, "joint_probability", 6, case, truth, tail)["coverage_gate_passed"] is False
+    # A month the library refused on every record is not inferable, so it leaves the gate.
+    case.structural[0] = script.TRIALS
+    result = script._case_result(scenario, "joint_probability", 6, case, truth, tail)
     assert result["coverage_gate_passed"] is True
-    assert result["not_inferable_months"][0] == 1
+    assert result["structural_exclusions"][0] == script.TRIALS
+    assert result["inferable_records"][0] == 0
+    # A partial exclusion judges the month on the records that carry an inference.
+    case.covered[0] = script.TRIALS
+    case.structural[1] = 64
+    case.covered[1] = 61
+    result = script._case_result(scenario, "joint_probability", 6, case, truth, tail)
+    assert result["inferable_records"][1] == 64
+    assert result["minimum_covered_records"][1] < 61
+    assert result["coverage_gate_passed"] is True
+    assert result["null_gate_passed"] is True
     # A missing p-value fails the null gate unless the month carries a structural guard.
-    case.p_values[1] = 0
-    assert script._case_result(scenario, "joint_probability", 6, case, truth, 109, 19)["null_gate_passed"] is False
+    case.p_values[2] = script.TRIALS - 1
+    assert script._case_result(scenario, "joint_probability", 6, case, truth, tail)["null_gate_passed"] is False
 
 
 def test_memory_budget_reproduces_the_design_figures() -> None:

@@ -12,11 +12,13 @@ records cover the truth; an independent-null case passes when at most 19 of 128 
 reject at nominal 0.05. Both bands are the exact binomial with the per-comparison tail
 0.01 / 864 that #1371 predeclared, so no case is judged by a wider band. Every missing
 interval counts as uncovered and every missing p-value fails the null gate, except that
-a month carrying a structural guard (`insufficient_years`, `insufficient_blocks`, or
-`sparse_occurrences`) is not inferable by design, is excluded from the gate, and is
-reported with the excluded-month count. Wilson 95% intervals accompany every measured
-proportion. Correlated scenarios test interval coverage only; their rejection rate
-describes power, not null calibration. Do not select a block length by its p-value.
+a structural guard (`insufficient_years`, `insufficient_blocks`, or
+`sparse_occurrences`) removes that record from the band instead. A guard can fire on some
+records and not others, so each month applies the same exact-binomial tail to the records
+that carry an inference and reports the excluded count. With nothing excluded the band is
+109 and 19 of 128, which is the predeclared case. Wilson 95% intervals accompany every
+measured proportion. Correlated scenarios test interval coverage only; their rejection
+rate describes power, not null calibration. Do not select a block length by its p-value.
 
 Truths. Analytic bivariate-normal quadrature supplies each month's truth for lag window
 (0, 0). Lagged conditioning has no closed form under the moving-average model, so its
@@ -417,21 +419,37 @@ def _scenario_counts(
     }
 
 
+def _band(tail: float, records: int, probability: float) -> int:
+    """Return the lower quantile at `probability` or the upper quantile at `1 - probability`."""
+    if records <= 0:
+        return 0
+    if probability >= 0.5:
+        return int(binom.ppf(tail, records, probability))
+    return int(binom.ppf(1 - tail, records, probability))
+
+
 def _case_result(
     scenario: Scenario,
     statistic: Statistic,
     length: int | None,
     case: Case,
     truth: npt.NDArray[np.float64],
-    minimum_covered: int,
-    maximum_rejected: int,
+    tail: float,
 ) -> dict[str, Any]:
-    """Apply the predeclared gates to one case and report every measured count."""
+    """Apply the predeclared gates to one case and report every measured count.
+
+    A structural guard can fire on some records and not others, so the band applies to the
+    records that carry an inference. With nothing excluded this is the predeclared 109 and 19
+    of 128.
+    """
     covered = case.covered
     rejected = case.rejected
-    inferable = ~case.structural.astype(bool)
+    eligible = TRIALS - case.structural
+    inferable = eligible > 0
+    minimum_covered = np.array([_band(tail, int(n), 0.95) for n in eligible])
+    maximum_rejected = np.array([_band(tail, int(n), 0.05) for n in eligible])
     coverage_failed = np.flatnonzero((covered < minimum_covered) & inferable) + 1
-    null_failed = np.flatnonzero(inferable & ((rejected > maximum_rejected) | (case.p_values < TRIALS))) + 1
+    null_failed = np.flatnonzero(inferable & ((rejected > maximum_rejected) | (case.p_values < eligible))) + 1
     return {
         "group": scenario.group,
         "scenario": scenario.name,
@@ -450,7 +468,10 @@ def _case_result(
         "rejected": rejected.tolist(),
         "finite_intervals": case.intervals.tolist(),
         "finite_p_values": case.p_values.tolist(),
-        "not_inferable_months": case.structural.tolist(),
+        "structural_exclusions": case.structural.tolist(),
+        "inferable_records": eligible.tolist(),
+        "minimum_covered_records": minimum_covered.tolist(),
+        "maximum_null_rejections": maximum_rejected.tolist(),
         "few_blocks_months": case.few_blocks.tolist(),
         "coverage_failed_months": coverage_failed.tolist(),
         "null_failed_months": null_failed.tolist(),
@@ -475,17 +496,13 @@ def characterize(groups: Sequence[str] | None = None) -> dict[str, Any]:
     selected = tuple(scenario for scenario in plan if groups is None or scenario.group in groups)
     comparisons = len(SCENARIOS) * len(STATISTICS) * len(LENGTHS) * 12 * 2
     tail = _FAMILY_WISE_ALPHA / comparisons
-    minimum_covered = int(binom.ppf(tail, TRIALS, 0.95))
-    maximum_rejected = int(binom.ppf(1 - tail, TRIALS, 0.05))
     results: list[dict[str, Any]] = []
     summaries: list[dict[str, Any]] = []
     for scenario in selected:
         truths = _truths(scenario)
         counts, diagnostics = _scenario_counts(scenario, truths)
         for (statistic, length), case in counts.items():
-            result = _case_result(
-                scenario, statistic, length, case, truths[statistic], minimum_covered, maximum_rejected
-            )
+            result = _case_result(scenario, statistic, length, case, truths[statistic], tail)
             default = counts.get((statistic, 6))
             result["decisions_differ_from_default"] = (
                 np.count_nonzero(case.decisions != default.decisions, axis=0).tolist() if default is not None else None
@@ -525,8 +542,12 @@ def characterize(groups: Sequence[str] | None = None) -> dict[str, Any]:
             "structural_guards": list(_STRUCTURAL_GUARDS),
             "familywise_alpha": _FAMILY_WISE_ALPHA,
             "binomial_comparisons": comparisons,
-            "minimum_covered": minimum_covered,
-            "maximum_null_rejections": maximum_rejected,
+            "minimum_covered": int(binom.ppf(tail, TRIALS, 0.95)),
+            "maximum_null_rejections": int(binom.ppf(1 - tail, TRIALS, 0.05)),
+            "band_rule": (
+                "exact binomial at familywise_alpha / binomial_comparisons, applied to the records where the "
+                "structural guards allowed inference"
+            ),
             "null_alpha": _TIE_ALPHA,
             "confidence_level": 0.95,
             "groups": sorted({scenario.group for scenario in plan}),

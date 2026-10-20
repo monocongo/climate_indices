@@ -39,15 +39,23 @@ probability follows `c + a * cos(2 * pi * month / 12)`. A same-time correlation
   responses, in code separate from the library. The Monte-Carlo standard error is
   below 0.7% per month, far inside the gate band.
 - **Missing values.** A missing interval counts as uncovered and a missing p-value
-  fails the null gate. The single exception is predeclared here: a month whose
+  fails the null gate. The single exception is declared here: a record whose
   `quality_flags` carry a structural guard (`insufficient_years` 1,
-  `insufficient_blocks` 2, or `sparse_occurrences` 4) is *not inferable* by design,
-  and it is excluded from the gate and reported separately. `insufficient_successes`
-  8 and `insufficient_expected_count` 16 are not structural exclusions; such a month
-  counts as a failure. A case with fewer than twelve inferable months still reports
-  its gate outcome together with the excluded-month count. Structural guards never
-  fire at 200 years with marginal probabilities of 0.35 or more, so the replication
-  gates and their outcome are unaffected by this rule.
+  `insufficient_blocks` 2, or `sparse_occurrences` 4) carries no inference by design,
+  so it leaves the band and is reported as `structural_exclusions`.
+  `insufficient_successes` 8 and `insufficient_expected_count` 16 are not structural
+  exclusions; such a month counts as a failure.
+- **Band refinement, recorded before the documented run.** The first run of this plan
+  showed that a structural guard can fire on a subset of a month's records, which the
+  original wording did not anticipate: it treated a month as measurable only when no
+  record was excluded, so such months could not be judged at all. The rule now applies
+  the *same* exact-binomial tail to the number of records that carry an inference, and
+  it reports that count per month as `inferable_records`. With nothing excluded the band
+  is unchanged at 109 covered and 19 rejected of 128. Every 200-year case has nothing
+  excluded, so the replication group is unaffected. The refinement does not widen an
+  allowance: the tail is unchanged, and fewer answered records give a proportionally
+  smaller allowance. The Results section states which gate outcomes the refinement
+  changes.
 
 ### Predeclared decision rules
 
