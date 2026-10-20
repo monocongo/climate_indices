@@ -262,9 +262,11 @@ with the seasonal profile at `w = 1` and `w = 6`. At the default 1,999 resamples
 200-year records with the seasonal profile (monthly exceedance probabilities 0.35 to
 0.55) and source persistence of 1, 6, or 36 months, hazards independent. Profile `wide`
 at `w = 36` was not run.
-4. **Keep the unsupported list, with measured reasons.** 36-month persistence (one
-correlated coverage failure at the default resamples, and the February coverage failure
-at 399 resamples); monthly frequencies near 0.20 (suppressed null p-values, and coverage
+4. **Keep the unsupported list, with measured reasons.** For 36-month persistence,
+independent hazards at 399 resamples remain unsupported because the February coverage
+check fails. Correlated hazards at 1,999 resamples remain unsupported because one
+coverage check fails. Independent hazards at 1,999 resamples remain supported.
+Other unsupported cases include monthly frequencies near 0.20 (suppressed null p-values, and coverage
 misses when persistence is 36 months); 60-year records (coverage misses to 94 of 128 and
 suppressed p-values in months 6 to 9); 30-year records (guards remove most records, and
 the answered records fail both gates). Daily inference, field significance,
