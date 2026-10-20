@@ -526,9 +526,15 @@ requirement for the rehearsal, which is the release coupling that ADR-0021
 decision 3 exists to avoid. Deciding whether to accept that coupling belongs to
 CRATE-11 (#1315), not to this runbook.
 
-Rehearse the packaging and verification steps locally first:
+Rehearse the packaging and verification steps locally first, at the candidate SHA
+rather than at whatever the current worktree holds:
 
 ```bash
+set -u
+CANDIDATE=<full 40-character SHA recorded on the release ticket>
+git fetch -q origin || { echo "cannot fetch origin"; exit 1; }
+git checkout --detach "$CANDIDATE"
+test "$(git rev-parse HEAD)" = "$CANDIDATE" || { echo "not at the candidate SHA: $(git rev-parse HEAD)"; exit 1; }
 cargo publish --dry-run --locked -p climate-indices
 ```
 
