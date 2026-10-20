@@ -3182,7 +3182,7 @@ each is a required check on the pull request. Run them locally with
 | `cargo package -p climate-indices --locked`, unpack into a directory **outside** this checkout, then `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test --all-features`, and `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps` | The crate that a user receives lints, tests, and documents cleanly. Running it from the unpacked `.crate` is what catches a file the crate needs but does not ship. |
 | `cargo "+{msrv}" check -p climate-indices --lib --all-features --locked`, where `{msrv}` is the crate's `rust-version` | The library builds on its declared minimum supported Rust version (1.85). `--lib` leaves out `criterion`, which only the benchmarks use. |
 | `cargo semver-checks check-release -p climate-indices` | The public API is compatible with the latest version on crates.io. A deliberate break fails here, cited to the offending item. |
-| `cargo deny --locked check` | The licenses, advisories, duplicate versions, and sources permitted by `deny.toml` cover everything the crate ships. |
+| `cargo deny --locked check` | The licenses, advisories, duplicate versions, and sources permitted by `deny.toml` cover everything that reaches a user — the published crate and the `climate-py` bindings the wheel compiles. |
 
 The gates read the crate's own `rust-version` and version, so moving either needs no
 workflow change. `cargo semver-checks` compares against the published baseline: while

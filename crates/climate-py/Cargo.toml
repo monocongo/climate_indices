@@ -12,7 +12,9 @@ name = "_native"
 crate-type = ["cdylib"]
 
 [dependencies]
-climate-indices = { path = "../climate-indices" }
+# the version is what cargo-deny's wildcard ban requires; the path keeps local builds
+# on the workspace crate (docs/adr/0021 decision 3)
+climate-indices = { version = "0.1.0", path = "../climate-indices" }
 numpy = "0.29.0"
 # abi3: one wheel per platform validates on every supported CPython (3.10-3.14), so
 # the published wheel matrix has no interpreter axis (docs/adr/0018)

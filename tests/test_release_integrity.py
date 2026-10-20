@@ -473,16 +473,34 @@ def test_crate_gate_checks_the_public_api_against_the_published_version() -> Non
 
 
 def test_crate_gate_enforces_the_dependency_policy() -> None:
-    """`cargo deny` reads deny.toml, which must allow only redistributable licenses."""
+    """`cargo deny` reads deny.toml, which must allow only redistributable licenses.
+
+    The policy deliberately covers the whole workspace graph, not just the published
+    crate: `climate-py` is not publishable, but the dependencies it compiles into the
+    wheel are redistributed, so excluding it would hide pyo3 and numpy from the check.
+    """
     job = _crate_quality_jobs()["rust-deny"]
     policy = _read_toml(Path("deny.toml"))
 
     assert "tool: cargo-deny@" in job, "an unpinned linter can fail an unrelated change"
     assert "run: cargo deny --locked check" in job
-    assert {"MIT", "Apache-2.0", "BSD-3-Clause"} <= set(policy["licenses"]["allow"])
+    # The bindings compile into the shipped wheel, so their licenses must be allowed too.
+    assert {"MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause"} <= set(policy["licenses"]["allow"])
+    assert policy["graph"].get("exclude-dev") is True
+    assert "exclude" not in policy["graph"], "the shipped bindings tree stays in scope"
     assert policy["bans"]["multiple-versions"] == "deny"
+    assert policy["bans"]["wildcards"] == "deny"
     assert policy["sources"]["unknown-registry"] == "deny"
-    assert "climate-py" in policy["graph"]["exclude"], "the unpublished PyO3 seam is out of scope"
+    assert policy["advisories"]["yanked"] == "deny"
+
+
+def test_pyo3_seam_pins_the_crate_version_for_the_wildcard_ban() -> None:
+    """A path-only dependency is a wildcard, which `bans.wildcards = "deny"` rejects."""
+    dependency = _read_toml(Path("crates/climate-py/Cargo.toml"))["dependencies"]["climate-indices"]
+    crate_version = _read_toml(Path("crates/climate-indices/Cargo.toml"))["package"]["version"]
+
+    assert dependency["path"] == "../climate-indices"
+    assert dependency.get("version") == crate_version, "the pin must match the workspace crate"
 
 
 def test_native_jobs_run_on_every_event_and_pure_python_legs_stay_rust_free() -> None:

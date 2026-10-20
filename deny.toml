@@ -1,25 +1,34 @@
-# cargo-deny policy for the published `climate-indices` crate (CRATE-09, #1313).
+# cargo-deny policy for the Rust code that reaches users (CRATE-09, #1313).
 # CI runs `cargo deny --locked check` (the `rust-deny` job); the same command runs
 # locally, see docs/development-guide.md ("Crate quality gates").
+#
+# The checked graph is the whole Cargo.lock, so it covers both what the published
+# `climate-indices` crate resolves and what the `climate-py` bindings compile into the
+# wheel a user installs. `climate-py` is not publishable, but its dependencies are.
 
 [graph]
-# climate-py is the unpublished PyO3 seam: its dependencies reach users inside the
-# wheel, not through crates.io. Dev-dependencies (criterion) never reach a crate user.
-exclude = ["climate-py"]
+# Criterion and its tree are development-only: they reach no user and are exempt.
 exclude-dev = true
 
 [advisories]
+# A yanked crate cannot be re-resolved, so it is a build failure rather than a warning.
 yanked = "deny"
+# Vulnerability advisories fail by default. Unmaintained and unsound advisories stay at
+# their warning severity, so an upstream that stops maintaining a dependency surfaces in
+# the job log without blocking an unrelated pull request.
 
 [licenses]
-# Redistributable permissive licenses only. `ndarray` and its numeric dependencies are
-# dual-licensed MIT OR Apache-2.0; the crate itself is BSD-3-Clause. Add a license here
-# only after reading what redistributing it in a crate's source and binaries requires.
-allow = ["MIT", "Apache-2.0", "BSD-3-Clause"]
+# Permissive licenses only: every crate in the graph may be redistributed in source and
+# in the compiled wheel. The workspace is BSD-3-Clause, `ndarray` is MIT OR Apache-2.0,
+# `numpy` is BSD-2-Clause, `unicode-ident` adds Unicode-3.0, and pyo3's build helpers
+# carry Apache-2.0 WITH LLVM-exception. Add a license here only after reading what
+# redistributing it requires.
+allow = ["MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause", "BSD-3-Clause", "Unicode-3.0"]
 
 [bans]
 # Two versions of one dependency double compile time and binary size for every user.
 multiple-versions = "deny"
+# A dependency without a version constraint cannot be resolved from a registry.
 wildcards = "deny"
 
 [sources]
