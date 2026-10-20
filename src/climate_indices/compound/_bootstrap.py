@@ -499,10 +499,13 @@ def _bootstrap(
         "p_value_scope": "local, unadjusted; not field significance",
         "quality_flags": dict(_FLAGS),
         "evidence": (
-            "synthetic characterization and regression only; no external validation; screening evidence only "
-            "for hazards independent of each other with serially independent or 6-month-overlap persistence "
-            "at 200 years; the 36-month-persistence characterization failed a predeclared gate; shorter records, "
-            "other persistence, other hazard frequencies, and lagged conditioning were not characterized"
+            "synthetic characterization and regression only; no external validation; screening evidence for "
+            "200-year monthly records at 1,999 resamples when the sources are serially independent or overlap "
+            "across 1 to 30 months, the hazards are independent of each other or correlate 0.5 at the same time, "
+            "monthly exceedance probabilities are 0.30 to 0.60 or 0.70 to 0.80, and the conditional lag window "
+            "is (0, 0), (0, 1), (0, 3), or (1, 3); 100-year records pass every predeclared gate while 60-year and "
+            "30-year records fail several; 36-month persistence, monthly probabilities near 0.20, and the "
+            "399-resample configuration are not covered"
         ),
         "numpy_version": np.__version__,
         "scipy_version": scipy.__version__,
@@ -615,16 +618,20 @@ def bootstrap_dependence(
     Notes:
         All p-values are local and unadjusted. These guards do not detect long
         memory, nonstationarity, or impact relevance. Synthetic characterization
-        gives screening evidence for the intervals and p-values only for serially
-        independent or 6-month-overlap sources whose hazards are independent of
-        each other, with hazard frequencies of 0.35 to 0.55 and no lag, at 200
-        years and 399 resamples. For 36-month persistence one predeclared coverage
-        gate failed (12-year blocks, LMF) and null rejection exceeded the nominal
-        5% at every block length. Other frequencies, lagged conditioning, and
-        shorter records were not characterized (see VALIDATION.md). Inspect block
-        sensitivity at max(1, floor(L/2)), L, and 2L. Seeded bitwise identity across dependency
-        versions is not promised. See ADR-0022 and the synthetic characterization
-        configuration in scripts/characterize_compound_bootstrap.py.
+        gives screening evidence for the intervals and p-values of 200-year monthly
+        records at the default 1,999 resamples when the sources are serially
+        independent or overlap across 1 to 30 months, the hazards are independent
+        of each other or correlate 0.5 at the same time, monthly exceedance
+        probabilities are 0.30 to 0.60 or 0.70 to 0.80, and the conditional lag
+        window is (0, 0), (0, 1), (0, 3), or (1, 3). A 100-year record passes every
+        predeclared gate; 60-year and 30-year records fail several, and the guards
+        also refuse much of a 30-year record. 36-month persistence, monthly
+        probabilities near 0.20, and the 399-resample configuration are not covered
+        by that scope. Inspect block sensitivity at max(1, floor(L/2)), L, and 2L;
+        do not choose a block length by its p-value. Seeded bitwise identity across
+        dependency versions is not promised. VALIDATION.md reports every measured
+        case. See ADR-0022 and the synthetic characterization configuration in
+        scripts/characterize_compound_bootstrap.py.
     """
     if isinstance(hazards, xr.Dataset):
         # deferred: the xarray route imports this module

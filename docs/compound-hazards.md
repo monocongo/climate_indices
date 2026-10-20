@@ -138,10 +138,15 @@ Pair counts are not independent observations and must not enter a binomial signi
 ## Run a seeded monthly bootstrap example
 
 :::{warning}
-The bootstrap has synthetic screening evidence only for independent hazards from serially independent or 6-month-overlap sources.
-The measured scope uses 200-year records, frequencies from 0.35 to 0.55, no lag, and 399 resamples.
-The 36-month-persistence characterization failed a coverage gate and showed excessive null rejection.
-Shorter records, other frequencies, lagged conditioning, and the default 1,999 resamples remain uncharacterized.
+The bootstrap has synthetic screening evidence only inside a measured scope: 100- and
+200-year records at the default 1,999 resamples, serially independent sources or sources
+that overlap across 1 to 30 months, hazards that are independent of each other or
+correlate 0.5 at the same time, monthly exceedance probabilities of 0.30 to 0.60 or 0.70
+to 0.80, and conditional lag windows of `(0, 0)`, `(0, 1)`, `(0, 3)`, or `(1, 3)`.
+36-month persistence, monthly probabilities near 0.20, 60-year and 30-year records, and
+the 399-resample configuration each failed a predeclared gate. No independent-hazard
+case exceeded its per-month rejection band; the failures are interval under-coverage and
+suppressed p-values where few effective blocks or occurrences remain.
 See the [evidence record](https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md#compound-bootstrap-characterization).
 :::
 
@@ -161,11 +166,11 @@ monthly = compound.harmonize(
 )
 inference = compound.bootstrap_dependence(
     monthly, statistic="likelihood_multiplication_factor",
-    seed=1374, n_resamples=399,
+    seed=1374,
 )
 assert inference.n_years == 200
 assert np.isfinite(inference.estimate).all()
-assert np.all(inference.n_null_resamples == 399)
+assert np.all(inference.n_null_resamples == 1999)
 assert np.all(inference.quality_flags == 0)
 ```
 
