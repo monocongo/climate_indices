@@ -538,12 +538,30 @@ def _uncommented(text: str) -> str:
 
 
 def _job_needs(job: str) -> set[str]:
-    """A job's `needs:` as a set, whether it is written as a flow or a block list."""
+    """A job's `needs:` as a set, whether it is a scalar, a flow list, or a block list."""
     flow = re.search(r"^    needs: \[(.*?)\]$", job, re.MULTILINE)
     if flow:
         return {name.strip() for name in flow.group(1).split(",") if name.strip()}
     block = re.search(r"^    needs:\n((?:      - \S+\n)+)", job, re.MULTILINE)
-    return {line.strip().removeprefix("- ") for line in block.group(1).splitlines()} if block else set()
+    if block:
+        return {line.strip().removeprefix("- ") for line in block.group(1).splitlines()}
+    scalar = re.search(r"^    needs: (\S+)$", job, re.MULTILINE)
+    return {scalar.group(1)} if scalar else set()
+
+
+def _job_steps(job: str) -> list[str]:
+    """A job's steps, each kept whole so a check binds to the step that carries it."""
+    return re.split(r"^      - ", job, flags=re.MULTILINE)[1:]
+
+
+def _job_scripts(job: str) -> str:
+    """Only the `run:` scripts a job executes.
+
+    A command left in a step name, an `env:` value, or a comment must not satisfy a
+    check that claims the job runs it.
+    """
+    finder = re.compile(r"^ {8}run: (.*)((?:\n {10}.*)*)", re.MULTILINE)
+    return "\n".join("".join(match.groups()) for match in finder.finditer(job))
 
 
 def _tag_patterns(workflow: str) -> list[str]:
@@ -606,7 +624,10 @@ def test_crate_release_pins_every_action_and_checkout() -> None:
     for use in re.findall(r"^\s+uses: (.*)$", workflow, re.MULTILINE):
         assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}\s{2}# v\S+", use.strip()), f"not commit-pinned: {use}"
     for name, job in _crate_release_jobs().items():
-        assert "ref: ${{ github.sha }}" in job, f"{name} checks out a mutable ref"
+        checkouts = [step for step in _job_steps(job) if "uses: actions/checkout@" in step]
+        assert checkouts, f"{name} has no checkout step"
+        for step in checkouts:
+            assert "ref: ${{ github.sha }}" in step, f"{name} checks out a mutable ref"
 
 
 def test_crate_release_gates_match_the_required_checks() -> None:
@@ -619,23 +640,35 @@ def test_crate_release_gates_match_the_required_checks() -> None:
     """
     jobs = _crate_release_jobs()
     gate_names = ("crate-gate", "crate-msrv", "crate-semver", "crate-deny")
-    release = "\n".join(jobs[name] for name in gate_names)
     required = "\n".join(_crate_quality_jobs().values())
 
     assert set(jobs) == {"validate-crate-tag", *gate_names, "publish-crate"}, "a new job needs covering here"
 
-    for command in (
-        "cargo package -p climate-indices --locked",
-        "cargo clippy --all-targets --all-features --locked -- -D warnings",
-        "cargo test --all-features --locked",
-        'RUSTDOCFLAGS: "-D warnings"',
-        "cargo doc --all-features --no-deps --locked",
-        'cargo "+$msrv" check -p climate-indices --lib --all-features --locked',
-        "cargo semver-checks check-release -p climate-indices",
-        "cargo deny --locked check -W unmaintained -W unsound",
-    ):
+    gate_commands = {
+        "crate-gate": (
+            "cargo package -p climate-indices --locked",
+            "cargo clippy --all-targets --all-features --locked -- -D warnings",
+            "cargo test --all-features --locked",
+            "cargo doc --all-features --no-deps --locked",
+        ),
+        "crate-msrv": ('cargo "+$msrv" check -p climate-indices --lib --all-features --locked',),
+        "crate-semver": ("cargo semver-checks check-release -p climate-indices",),
+        "crate-deny": ("cargo deny --locked check -W unmaintained -W unsound",),
+    }
+    commands = [command for gate in gate_commands.values() for command in gate]
+
+    for command in commands:
         assert command in required, f"a required check no longer runs: {command}"
-        assert command in release, f"a release gate no longer runs: {command}"
+    for name, gate in gate_commands.items():
+        scripts = _job_scripts(jobs[name])
+        for command in gate:
+            assert command in scripts, f"{name} no longer runs: {command}"
+    assert any(
+        'RUSTDOCFLAGS: "-D warnings"' in step
+        for step in _job_steps(jobs["crate-gate"])
+        if "cargo doc --all-features --no-deps --locked" in step
+    ), "documenting the packaged crate must deny rustdoc warnings"
+    assert 'RUSTDOCFLAGS: "-D warnings"' in required, "the required check no longer denies rustdoc warnings"
 
     for name, job in jobs.items():
         assert job.strip(), f"{name} is missing from the workflow"
@@ -643,6 +676,8 @@ def test_crate_release_gates_match_the_required_checks() -> None:
         assert "continue-on-error" not in job, f"{name} must be able to block the release"
         assert "timeout-minutes: 30" in job, f"{name} needs a bounded failure window"
 
+    for name in gate_names:
+        assert _job_needs(jobs[name]) == {"validate-crate-tag"}, f"{name} no longer waits for the tag validation"
     assert _job_needs(jobs["publish-crate"]) == set(gate_names)
     assert "run: cargo publish -p climate-indices --locked" in jobs["publish-crate"]
 
