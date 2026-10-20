@@ -59,7 +59,9 @@ ownership and cadence.
    `climate_indices._native`. Depending on a *published* `climate-core` version instead
    would force a crates.io release before every wheel change, and would couple a wheel
    build to registry state and the network. The published wheel embeds the compiled crate,
-   so no wheel pins a crate version and the two artifacts release independently.
+   so no wheel pins a crate version and the two artifacts release independently. The
+   requirement is the range `>=0.1.0-rc.1, <1.0.0`, so it admits every stable `0.x`
+   release as well as the `0.1.0-rc.N` pre-release that CRATE-10's rehearsal lane spends.
 
 4. **The crate README stands alone.** It cites `climate_indices` as its origin and as the
    numerical parity oracle, and links to this repository and the Python project, but a
@@ -117,6 +119,16 @@ ownership and cadence.
   `publish = false` through the workspace.
 - Crate releases and PyPI releases are independent in both directions, and neither tag
   namespace can start the other workflow.
+- CRATE-10 ([#1314](https://github.com/monocongo/climate_indices/issues/1314)) publishes
+  a pre-release to rehearse the release path, so the crate tags a version such as
+  `0.1.0-rc.1` before the first stable one, and the bindings requirement became a range
+  that admits a pre-release. A caret requirement such as `"0"` does not match one, and
+  `cargo package` cannot resolve the workspace for a pre-release version. The range still
+  admits every stable `0.x` release, so decision 3's property holds for a stable release:
+  a later crate release needs no further bindings manifest change. Cargo matches a
+  pre-release only against a requirement that names that same version, so each new
+  version's pre-release rehearsal moves the range's floor. The rehearsal is documented in
+  {doc}`../release-process`.
 - {doc}`0017-rust-core-acceleration-backend` keeps the historical name, and
   `docs/architecture.md` states the crate as `climate-indices` with its independent
   version track. The published `0.0.0` placeholder contains no algorithms.

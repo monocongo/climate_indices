@@ -500,13 +500,16 @@ def test_crate_gate_enforces_the_dependency_policy() -> None:
 def test_pyo3_seam_accepts_any_0x_crate_version_without_a_wildcard() -> None:
     """A path-only dependency is a wildcard, which `bans.wildcards = "deny"` rejects.
 
-    `version = "0"` accepts every independent 0.x crate release (docs/adr/0021 decision 2),
-    so a crate release needs no bindings manifest change (decision 3).
+    The range admits every independent 0.x crate release and the pre-release of the
+    versions it admits (docs/adr/0021 decisions 2 and 3), so a crate release needs no
+    bindings manifest change and the rehearsal lane can tag a pre-release. A caret
+    requirement such as `"0"` matches no pre-release, and `cargo package` then cannot
+    resolve the workspace.
     """
     dependency = _read_toml(Path("crates/climate-py/Cargo.toml"))["dependencies"]["climate-indices"]
 
     assert dependency["path"] == "../climate-indices"
-    assert dependency.get("version") == "0", "an explicit 0.x requirement, not a wildcard"
+    assert dependency.get("version") == ">=0.1.0-rc.1, <1.0.0", "an explicit 0.x range, not a wildcard"
 
 
 def _crate_release_workflow() -> str:
@@ -687,12 +690,16 @@ def test_crate_release_validates_the_tag_version_and_changelog() -> None:
 
     A crates.io version cannot be replaced, so a mismatch is caught while it is still
     free. The version is read from the manifest the publish job reads, so the guard
-    cannot drift from it.
+    cannot drift from it. The tag shape accepts a pre-release suffix, which is the
+    rehearsal lane, and refuses any other one (docs/release-process.md).
     """
     job = _uncommented(_crate_release_jobs()["validate-crate-tag"])
     manifest = _read_toml(Path("crates/climate-indices/Cargo.toml"))["package"]
 
-    assert 'if [[ ! "${GITHUB_REF}" =~ ^refs/tags/climate-indices-v[0-9]+\\.[0-9]+\\.[0-9]+$ ]]; then' in job
+    assert (
+        'if [[ ! "${GITHUB_REF}" =~ '
+        "^refs/tags/climate-indices-v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then" in job
+    )
     assert "fetch-depth: 0" in job
     assert 'git merge-base --is-ancestor "${GITHUB_SHA}" "origin/main"' in job
     assert 'TAG_VERSION="${GITHUB_REF#refs/tags/climate-indices-v}"' in job
@@ -701,8 +708,9 @@ def test_crate_release_validates_the_tag_version_and_changelog() -> None:
         "an '## Unreleased' heading would be published as a released version"
     )
     assert 'if ! grep -qE "^## ${CRATE_VERSION//./\\\\.} - [0-9]{4}-[0-9]{2}-[0-9]{2}$" "$changelog"; then' in job
-    # The independent 0.x track, and the publishability the guard reads, must stay put.
-    assert re.fullmatch(r"0\.\d+\.\d+", manifest["version"])
+    # The independent 0.x track, the pre-release shape of the rehearsal lane, and
+    # the publishability the guard reads, must stay put.
+    assert re.fullmatch(r"0\.\d+\.\d+(-[0-9A-Za-z.-]+)?", manifest["version"])
     assert manifest["publish"] is True
 
 
@@ -739,13 +747,17 @@ def test_release_process_documents_the_crate_release_path() -> None:
         "A gate job fails",
         "The publish state is unknown",
         "cargo yank --version X.Y.Z climate-indices",
-        # the rehearsal and its boundary
-        "is not a trusted publisher",
-        "What a rehearsal does not prove",
-        # why no pre-release lane exists
+        # the rehearsal lane: the pre-release tag, the version a user has to name,
+        # and the bindings range that makes a pre-release resolvable
+        "climate-indices-vX.Y.Z-rc.N",
+        "cargo add climate-indices@X.Y.Z",
+        "Cargo skips a pre-release",
+        'climate-indices = ">=0.1.0-rc.1, <1.0.0"',
         "candidate versions found which didn't match: 0.1.0-rc.1",
     ):
         assert expected in text, expected
+
+    assert "climate_indices-rehearsal" not in text, "the crate lane publishes from this repository"
 
 
 def test_native_jobs_run_on_every_event_and_pure_python_legs_stay_rust_free() -> None:
