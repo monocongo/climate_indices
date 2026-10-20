@@ -59,9 +59,17 @@ def validate(dataset: xr.Dataset, year: int) -> None:
         raise ValueError(f"{year}: nonphysical temperature or wind speed")
 
 
+def cache_path(cache_dir: Path, year: int) -> Path:
+    """Name one annual cache for its selection, so a changed source cannot reuse it."""
+    selection = hashlib.sha256(
+        json.dumps([SOURCE_URL, VARIABLES, LATITUDES, LONGITUDES], sort_keys=True).encode()
+    ).hexdigest()[:12]
+    return cache_dir / f"arco_era5_{year}_{selection}.nc"
+
+
 def read_year(source: xr.Dataset, year: int, cache_dir: Path) -> xr.Dataset:
     """Read one selected year, reusing a validated local subset when present."""
-    path = cache_dir / f"arco_era5_{year}.nc"
+    path = cache_path(cache_dir, year)
     if path.exists():
         with xr.open_dataset(path) as cached:
             subset: xr.Dataset = cached.load()

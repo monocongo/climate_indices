@@ -60,7 +60,7 @@ def test_acquisition_retains_sample_values_and_validates_cache(tmp_path: Path) -
     xr.testing.assert_identical(result, module.read_year(xr.Dataset(), 2000, tmp_path))
 
     corrupted = result.isel(time=slice(1, None))
-    corrupted.to_netcdf(tmp_path / "arco_era5_2000.nc", engine="h5netcdf")
+    corrupted.to_netcdf(module.cache_path(tmp_path, 2000), engine="h5netcdf")
     empty_source = xr.Dataset()
     with pytest.raises(ValueError, match="complete six-hourly"):
         module.read_year(empty_source, 2000, tmp_path)
@@ -82,7 +82,7 @@ def test_acquisition_rejects_invalid_inputs(tmp_path: Path, defect: str) -> None
         source["2m_temperature"][0, 0, 0] = 0.0
     with pytest.raises((ValueError, KeyError)):
         module.read_year(source, 2000, tmp_path)
-    assert not (tmp_path / "arco_era5_2000.nc").exists()
+    assert not module.cache_path(tmp_path, 2000).exists()
 
 
 def test_energy_notebook_executes_without_network(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -130,7 +130,7 @@ def test_acquisition_rejects_incompatible_units(tmp_path: Path, cached: bool, fi
     source = _source_year()
     source[field].attrs["units"] = units
     if cached:
-        source.rename(module.VARIABLES).to_netcdf(tmp_path / "arco_era5_2000.nc", engine="h5netcdf")
+        source.rename(module.VARIABLES).to_netcdf(module.cache_path(tmp_path, 2000), engine="h5netcdf")
         source = xr.Dataset()
     with pytest.raises(ValueError, match="units|must be in"):
         module.read_year(source, 2000, tmp_path)
@@ -207,6 +207,18 @@ def test_docs_use_current_interpreter_despite_external_kernelspec(
     exec(compile(setup, "docs/tutorials.md", "exec"), namespace)
     assert Path(namespace["manager"].kernel_spec.argv[0]).resolve() == Path(sys.executable).resolve()
     assert "client.execute(cleanup_kc=True)" in block
+
+
+def test_annual_cache_reuse_is_bound_to_the_source_selection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A cache made from another source selection is not reused after the source changes."""
+    pytest.importorskip("h5py")
+    module = _preparation_module()
+    source = _source_year()
+    module.read_year(source, 2000, tmp_path)
+    assert len(list(tmp_path.iterdir())) == 1
+    monkeypatch.setattr(module, "SOURCE_URL", "https://example.invalid/other.zarr")
+    module.read_year(source, 2000, tmp_path)
+    assert len(list(tmp_path.iterdir())) == 2
 
 
 def test_interrupted_annual_cache_is_not_published(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
