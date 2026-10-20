@@ -93,13 +93,12 @@ def test_unsupported_index_dtypes_are_rejected(backend: str, dtype: str) -> None
         data = data.expand_dims(site=[0])
     if backend == "dask":
         data = data.chunk({"time": -1, "site": 1})
-    with pytest.raises(InputTypeError):
-        if backend == "numpy":
+    if backend == "numpy":
+        with pytest.raises(InputTypeError):
             _summary(values)
-        else:
-            result = _summary(data, year_start_month=1)
-            if isinstance(result, xr.Dataset):
-                result.compute()
+    else:
+        with pytest.raises(InputTypeError):
+            _summary(data, year_start_month=1)
 
 
 @pytest.mark.parametrize("lazy", [False, True])
@@ -232,26 +231,30 @@ def test_gridded_summary_stays_lazy_on_cells_and_rejects_a_split_time_chunk() ->
     assert lazy["count"].chunks is not None
     np.testing.assert_array_equal(lazy["count"].compute().values, eager["count"].values)
 
+    split_time = data.chunk({"time": 2, "site": 1})
     with pytest.raises(CoordinateValidationError, match="chunk"):
-        flood.flood_event_summary(data.chunk({"time": 2, "site": 1}), year_start_month=1)
+        flood.flood_event_summary(split_time, year_start_month=1)
 
 
 def test_dataarray_input_requires_year_start_month() -> None:
+    data = _daily_dataarray(np.array([0.0, 2.0]))
     with pytest.raises(InvalidArgumentError, match="year_start_month"):
-        _summary(_daily_dataarray(np.array([0.0, 2.0])))
+        _summary(data)
 
 
 @pytest.mark.parametrize("year_start_month", [0, 13, 1.5, True])
 def test_invalid_year_start_month_is_rejected(year_start_month: object) -> None:
+    data = _daily_dataarray(np.array([0.0, 2.0]))
     with pytest.raises(InvalidArgumentError, match="year_start_month"):
-        _summary(_daily_dataarray(np.array([0.0, 2.0])), year_start_month=year_start_month)
+        _summary(data, year_start_month=year_start_month)
 
 
 def test_numpy_input_rejects_year_start_month_and_dataarray_rejects_periods() -> None:
     with pytest.raises(InvalidArgumentError, match="year_start_month"):
         _summary([0.0, 2.0], year_start_month=1)
+    data = _daily_dataarray(np.array([0.0, 2.0]))
     with pytest.raises(InvalidArgumentError, match="periods"):
-        _summary(_daily_dataarray(np.array([0.0, 2.0])), year_start_month=1, periods=[2000, 2000])
+        _summary(data, year_start_month=1, periods=[2000, 2000])
 
 
 def test_a_non_datetime_or_missing_time_coordinate_is_rejected() -> None:
@@ -276,5 +279,6 @@ def test_gridded_empty_time_axis_is_rejected() -> None:
 def test_invalid_options_are_rejected_before_dispatch(kwargs: dict[str, object]) -> None:
     with pytest.raises(InvalidArgumentError):
         _summary([0.0, 2.0], **kwargs)
+    data = _daily_dataarray(np.array([0.0, 2.0]))
     with pytest.raises(InvalidArgumentError):
-        _summary(_daily_dataarray(np.array([0.0, 2.0])), year_start_month=1, **kwargs)
+        _summary(data, year_start_month=1, **kwargs)
