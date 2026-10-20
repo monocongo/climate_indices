@@ -118,11 +118,12 @@ def test_characterization_reduced_configuration(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(script, "RESAMPLES", 9)
     previous_disable = logging.root.manager.disable
     try:
-        report = script.characterize()
+        report = script.characterize(groups=("replication",))
     finally:
         logging.disable(previous_disable)
     assert len(report["results"]) == len(script.SCENARIOS) * len(script.STATISTICS) * len(script.LENGTHS)
     assert report["configuration"]["trials"] == 2
+    assert {scenario["scenario"] for scenario in report["scenarios"]} == {name for name, _, _ in script.SCENARIOS}
     for result in report["results"]:
         assert len(result["truth"]) == len(result["covered"]) == 12
         assert all(0 <= count <= 2 for count in result["covered"])
@@ -131,6 +132,80 @@ def test_characterization_reduced_configuration(monkeypatch: pytest.MonkeyPatch)
     assert report["passed"] == all(
         result["coverage_gate_passed"] and result["null_gate_passed"] is not False for result in report["results"]
     )
+
+
+def test_characterization_plan_is_predeclared_and_streams_are_unique() -> None:
+    script = characterize_compound_bootstrap
+    scenarios = script._plan()
+    assert [scenario.group for scenario in scenarios] == [
+        *(["replication"] * 4),
+        *(["record_length"] * 6),
+        *(["persistence"] * 4),
+        *(["lagged_conditioning"] * 6),
+        *(["hazard_frequency"] * 9),
+        *(["dependent_hazards"] * 3),
+        *(["default_resamples"] * 4),
+    ]
+    # A repeated stream index would silently reuse another scenario's draws.
+    assert len({scenario.stream for scenario in scenarios}) == len(scenarios)
+    assert [(scenario.moving_average_months, scenario.rho) for scenario in scenarios[:4]] == [
+        (width, rho) for _, width, rho in script.SCENARIOS
+    ]
+    assert {scenario.resamples for scenario in scenarios if scenario.group == "default_resamples"} == {1999}
+    assert all(
+        scenario.resamples == script.RESAMPLES for scenario in scenarios if scenario.group != "default_resamples"
+    )
+    assert {scenario.lag_window for scenario in scenarios if scenario.group == "lagged_conditioning"} == {
+        (0, 1),
+        (0, 3),
+        (1, 3),
+    }
+    # Lagged conditioning is defined for the conditional statistic only.
+    assert all(
+        scenario.statistics == ("conditional_probability",) for scenario in scenarios if scenario.lag_window != (0, 0)
+    )
+    short = [scenario for scenario in scenarios if scenario.group == "record_length"]
+    assert {scenario.years for scenario in short} == {30, 60, 100}
+    # Every record-length scenario also requests the ten-block edge at six-year blocks.
+    assert all(6 in scenario.lengths for scenario in short)
+
+
+def test_lagged_truth_matches_the_closed_form_at_zero_lag() -> None:
+    """The simulation reference agrees with quadrature, which validates it for nonzero lags."""
+    script = characterize_compound_bootstrap
+    scenario = script.Scenario(
+        "check", "lagged_conditioning", 0, 1, 0.0, "seasonal", 200, 399, (0, 0), script.CONDITIONAL, (6,)
+    )
+    analytic = script._analytic_truths(scenario)["conditional_probability"]
+    np.testing.assert_allclose(script._lagged_truth(scenario), analytic, rtol=0, atol=0.02)
+
+
+def test_structural_guard_months_are_excluded_from_the_gates() -> None:
+    script = characterize_compound_bootstrap
+    scenario = script._plan()[0]
+    case = script.Case(
+        covered=np.full(12, script.TRIALS, dtype=np.int64),
+        rejected=np.zeros(12, dtype=np.int64),
+        intervals=np.full(12, script.TRIALS, dtype=np.int64),
+        p_values=np.full(12, script.TRIALS, dtype=np.int64),
+        structural=np.zeros(12, dtype=np.int64),
+        few_blocks=np.zeros(12, dtype=np.int64),
+        length=6,
+        decisions=np.zeros((script.TRIALS, 12), dtype=bool),
+    )
+    truth = np.full(12, 0.5)
+    result = script._case_result(scenario, "joint_probability", 6, case, truth, 109, 19)
+    assert result["coverage_gate_passed"] is True
+    assert result["null_gate_passed"] is True
+    case.covered[0] = 100
+    assert script._case_result(scenario, "joint_probability", 6, case, truth, 109, 19)["coverage_gate_passed"] is False
+    case.structural[0] = 1
+    result = script._case_result(scenario, "joint_probability", 6, case, truth, 109, 19)
+    assert result["coverage_gate_passed"] is True
+    assert result["not_inferable_months"][0] == 1
+    # A missing p-value fails the null gate unless the month carries a structural guard.
+    case.p_values[1] = 0
+    assert script._case_result(scenario, "joint_probability", 6, case, truth, 109, 19)["null_gate_passed"] is False
 
 
 def test_memory_budget_reproduces_the_design_figures() -> None:
