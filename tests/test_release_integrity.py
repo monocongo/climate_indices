@@ -494,13 +494,16 @@ def test_crate_gate_enforces_the_dependency_policy() -> None:
     assert policy["advisories"]["yanked"] == "deny"
 
 
-def test_pyo3_seam_pins_the_crate_version_for_the_wildcard_ban() -> None:
-    """A path-only dependency is a wildcard, which `bans.wildcards = "deny"` rejects."""
+def test_pyo3_seam_accepts_any_0x_crate_version_without_a_wildcard() -> None:
+    """A path-only dependency is a wildcard, which `bans.wildcards = "deny"` rejects.
+
+    `version = "0"` accepts every independent 0.x crate release (docs/adr/0021 decision 2),
+    so a crate release needs no bindings manifest change (decision 3).
+    """
     dependency = _read_toml(Path("crates/climate-py/Cargo.toml"))["dependencies"]["climate-indices"]
-    crate_version = _read_toml(Path("crates/climate-indices/Cargo.toml"))["package"]["version"]
 
     assert dependency["path"] == "../climate-indices"
-    assert dependency.get("version") == crate_version, "the pin must match the workspace crate"
+    assert dependency.get("version") == "0", "an explicit 0.x requirement, not a wildcard"
 
 
 def test_native_jobs_run_on_every_event_and_pure_python_legs_stay_rust_free() -> None:
