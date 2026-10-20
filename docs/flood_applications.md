@@ -169,10 +169,41 @@ section for what the indices do and do not show about the event.
 ## Summarizing exceedances as events
 
 `flood.flood_events(flood_index_values)` turns a daily index into events (runs of
-days above a threshold, by default `I_F > 0`) with onset, duration, peak, and
-severity per event, for one series or a `(time, *cells)` block. Pass `threshold`
-to raise the bar and `min_duration` to drop short runs. Events inherit the
-caveat below: they are runs of high flood potential, not recorded floods.
+days strictly above a threshold, by default `I_F > 0`) with onset, duration,
+peak, and severity per event, for one series or a `(time, *cells)` block. Pass
+`threshold` to raise the bar and `min_duration` to drop short runs. A day exactly
+equal to the threshold is not an event day, and severity is the sum of the raw
+index values on the event's days. Events inherit the caveat below: they are runs
+of high flood potential, not recorded floods.
+
+`flood.flood_event_summary(...)` groups those events by their onset period and
+reports the event count, total duration, `max_severity`, maximum peak, and
+valid-day count per period, plus the frequency (events per valid day).
+`max_severity` is the largest event magnitude: the sum of deviations above
+`threshold`, not the raw sum in `flood_events.severity`. The two sums agree
+only when `threshold=0`. For a NumPy series, pass `periods` labels or omit
+`periods` for a whole-series summary. For a DataArray, pass `year_start_month` to
+label each step with the start year of its annual period, matching
+`flood_index()`; a one-dimensional DataArray returns a `FloodStatistics`, and a
+gridded DataArray returns an `xr.Dataset` with the summary variables over a
+`period` dimension plus an `events` variable per cell. An event belongs to the
+period it starts in, so an event spanning a boundary contributes its full
+duration to its onset period.
+
+A return period `T` is not computed. The Deo et al. (2015) estimator is not
+recoverable from the available material, so the package reports the event rate
+instead and does not invent a plotting position. For a rough recurrence
+interval, rank each year's maximum severity and apply a caller-side
+plotting-position convention such as the Weibull `T = (n + 1) / rank`; state
+that it describes the index record, not a flood-frequency analysis of discharge.
+The summary `frequency` is the event rate: event count divided by valid input
+steps. `climate_indices.runs.RunSet.interarrival` is the start-to-start spacing
+to the next retained event, in input steps; the final event has NaN spacing.
+It is an interval, not a rate. Flood-frequency analysis of discharge records
+stays out of scope.
+
+The same helpers apply to positive runs of EDI, which shares the PE kernel with
+`I_F`; pass the EDI series in place of the Flood Index.
 
 ## What these indices cannot tell you
 
