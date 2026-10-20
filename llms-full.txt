@@ -3215,9 +3215,9 @@ each is a required check on the pull request. Run them locally with
 
 The gates read the crate's own `rust-version` and version, so moving either needs no
 workflow change. `cargo semver-checks` compares against the published baseline: while
-`0.0.0` is the newest release on crates.io the check has nothing to compare, and it
-starts guarding the API once the first real release (CRATE-11) supersedes the
-placeholder.
+`0.0.0` is the only release on crates.io the check has nothing to compare, and it has a
+baseline once a newer version is published — the rehearsal pre-release or the first real
+release (CRATE-11), whichever lands first.
 
 CI runs the native legs with `CLIMATE_INDICES_REQUIRE_NATIVE=1`, which turns a
 missing extension into a test failure instead of a skip so a broken build cannot

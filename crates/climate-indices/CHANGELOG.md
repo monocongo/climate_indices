@@ -4,7 +4,11 @@ All notable changes to the `climate-indices` crate are recorded here. The crate
 follows its own `0.x` version track, independent of the `climate_indices` Python
 distribution, and uses [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.1.0-rc.1 - 2026-10-20
+
+A pre-release that rehearses the `0.1.0` release path before the stable version
+is spent (see `docs/release-process.md`). Cargo does not select it by default, so
+it changes nothing for a user who does not name it.
 
 ### Added
 
