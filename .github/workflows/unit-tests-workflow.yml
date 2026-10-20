@@ -218,6 +218,14 @@ jobs:
       - name: Lint Rust
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # rustdoc is the crate's user-facing API documentation. A warning is an
+      # error here, so a broken intra-doc link or an undocumented item cannot
+      # reach docs.rs.
+      - name: Check crate documentation
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: cargo doc -p climate-indices --no-deps
+
       - name: Run Cargo tests
         run: cargo test --workspace
 

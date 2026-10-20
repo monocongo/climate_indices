@@ -24,6 +24,7 @@ _logger = _get_structlog_logger(__name__)
 
 # declare the function names that should be included in the public API for this module
 __all__ = [
+    "CalendarPlan",
     "DailyCalendarPlan",
     "compute_days",
     "count_zeros_and_non_missings",
@@ -341,7 +342,7 @@ def gregorian_length_as_366day(
     Return the number of values a Gregorian span occupies in a 366-day year layout.
 
     A trailing partial year is counted with only its observed days, not padded;
-    ``DailyCalendarPlan.all_leap_length`` is the padded length for the same span.
+    ``CalendarPlan.all_leap_length`` is the padded length for the same span.
 
     :param length_gregorian: the number of Gregorian days in the span
     :param year_start: the Gregorian year of the first day
@@ -368,40 +369,60 @@ def gregorian_length_as_366day(
 
 
 @dataclass(frozen=True)
-class DailyCalendarPlan:
+class CalendarPlan:
     """
-    Map Gregorian daily values to the NumPy core's 366-day calendar positions.
+    Map Gregorian values to the NumPy core's 366-day calendar positions.
 
-    The values are assumed to begin on January 1 of ``year_start`` and to step
-    one calendar day at a time; the plan is a positional mapping and validates
-    only the total length, not the timestamps themselves.
+    The values are assumed to begin on January 1 (at 00:00 for a sub-daily plan) of
+    ``year_start`` and to step at one fixed interval; the plan is a positional
+    mapping and validates only the total length, not the timestamps themselves.
 
     :param year_start: the Gregorian year of the first value
-    :param observed_days_by_year: the number of Gregorian values falling in each year
+    :param observed_days_by_year: the number of Gregorian values falling in each year,
+        kept under its 3.x name: days for a daily plan, hours for an hourly one
+    :param steps_per_day: the number of values each calendar day carries, 1 for daily
+        data and 24 for hourly data
     """
 
     year_start: int
     observed_days_by_year: tuple[int, ...]
+    steps_per_day: int = 1
 
     def __post_init__(self) -> None:
-        """Reject year counts that cannot describe one contiguous daily series."""
-        for offset, observed_days in enumerate(self.observed_days_by_year):
-            days_in_year = 366 if calendar.isleap(self.year_start + offset) else 365
-            if not 0 <= observed_days <= days_in_year:
+        """Reject year counts that cannot describe one contiguous series."""
+        if not isinstance(self.steps_per_day, (int, np.integer)) or self.steps_per_day < 1:
+            raise ValueError(f"Invalid steps per day: {self.steps_per_day} is not a positive integer")
+        for offset, observed_steps in enumerate(self.observed_days_by_year):
+            steps_in_year = self.steps_in_year(self.year_start + offset)
+            if not 0 <= observed_steps <= steps_in_year:
                 raise ValueError(
-                    f"Invalid observed days for {self.year_start + offset}: "
-                    f"{observed_days} is outside 0..{days_in_year}"
+                    f"Invalid observed steps for {self.year_start + offset}: "
+                    f"{observed_steps} is outside 0..{steps_in_year}"
                 )
-            if offset < len(self.observed_days_by_year) - 1 and observed_days != days_in_year:
+            if offset < len(self.observed_days_by_year) - 1 and observed_steps != steps_in_year:
                 raise ValueError(
-                    f"Invalid observed days for {self.year_start + offset}: "
-                    f"only the final year may be partial, got {observed_days} of {days_in_year}"
+                    f"Invalid observed steps for {self.year_start + offset}: "
+                    f"only the final year may be partial, got {observed_steps} of {steps_in_year}"
                 )
 
+    def steps_in_year(self, year: int) -> int:
+        """Return the Gregorian complement of ``year`` at this plan's resolution."""
+        return (366 if calendar.isleap(year) else 365) * self.steps_per_day
+
+    @property
+    def _synthetic_step_start(self) -> int:
+        """Return the position of the first synthesized February 29 step in a year."""
+        return 59 * self.steps_per_day
+
     @classmethod
-    def from_year_span(cls, year_start: int, total_years: int, observed_length: int) -> "DailyCalendarPlan":
+    def from_year_span(
+        cls, year_start: int, total_years: int, observed_length: int, steps_per_day: int = 1
+    ) -> "CalendarPlan":
         """
-        Plan the conversion of ``observed_length`` Gregorian daily values spanning ``total_years`` years.
+        Plan the conversion of ``observed_length`` Gregorian values spanning ``total_years`` years.
+
+        ``steps_per_day`` fixes the resolution the values are counted at: 1 for daily
+        data, 24 for hourly data, whose 366-day layout carries 8784 values per year.
 
         Values are distributed across the years in calendar order. Only the
         final year may be partial; its missing positions are held as NaN when
@@ -423,46 +444,47 @@ class DailyCalendarPlan:
         if observed_length < 0:
             raise ValueError("Invalid observed length: must not be negative")
         year_capacities = tuple(
-            366 if calendar.isleap(year) else 365 for year in range(year_start, year_start + total_years)
+            (366 if calendar.isleap(year) else 365) * steps_per_day
+            for year in range(year_start, year_start + total_years)
         )
         if observed_length > sum(year_capacities):
-            raise ValueError("Invalid observed length: exceeds the days in the declared span")
+            raise ValueError("Invalid observed length: exceeds the values in the declared span")
         remaining = observed_length
-        observed_days: list[int] = []
-        for days_in_year in year_capacities:
-            observed_days.append(min(remaining, days_in_year))
-            remaining -= observed_days[-1]
-        return cls(year_start, tuple(observed_days))
+        observed_steps: list[int] = []
+        for steps_in_year in year_capacities:
+            observed_steps.append(min(remaining, steps_in_year))
+            remaining -= observed_steps[-1]
+        return cls(year_start, tuple(observed_steps), steps_per_day)
 
     @property
     def original_length(self) -> int:
-        """Return the number of observed Gregorian days."""
+        """Return the number of observed Gregorian values."""
         return sum(self.observed_days_by_year)
 
     @property
     def all_leap_length(self) -> int:
         """Return the number of values required by the 366-day NumPy core."""
-        return len(self.observed_days_by_year) * 366
+        return len(self.observed_days_by_year) * 366 * self.steps_per_day
 
     @property
     def populated_length(self) -> int:
         """Return the number of 366-day positions this span actually fills.
 
         A complete final year fills all 366 positions, because ``to_all_leap``
-        synthesizes its February 29 value. A partial final year fills its observed
-        days, plus that synthesized February 29 once it has passed February 28; the
+        synthesizes its February 29 values. A partial final year fills its observed
+        steps, plus that synthesized February 29 once it has passed February 28; the
         rest of its padded positions stay NaN, and no sliding window can sum
         through them.
         """
         last_year = self.year_start + len(self.observed_days_by_year) - 1
         observed_in_last_year = self.observed_days_by_year[-1]
-        days_in_last_year = 366 if calendar.isleap(last_year) else 365
-        if observed_in_last_year == days_in_last_year:
+        steps_in_last_year = self.steps_in_year(last_year)
+        if observed_in_last_year == steps_in_last_year:
             return self.all_leap_length
         populated_in_last_year = observed_in_last_year
-        if days_in_last_year == 365 and observed_in_last_year > 59:
-            populated_in_last_year += 1
-        return self.all_leap_length - (366 - populated_in_last_year)
+        if steps_in_last_year == 365 * self.steps_per_day and observed_in_last_year > self._synthetic_step_start:
+            populated_in_last_year += self.steps_per_day
+        return self.all_leap_length - (366 * self.steps_per_day - populated_in_last_year)
 
     def to_all_leap(self, values: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
         """
@@ -480,44 +502,61 @@ class DailyCalendarPlan:
         source = np.asarray(values)
         if source.ndim < 1 or source.shape[0] != self.original_length:
             raise DataShapeError(
-                "Daily calendar transformation requires one complete time-series slice",
+                "Calendar transformation requires one complete time-series slice",
                 expected_shape=f"({self.original_length},)",
                 actual_shape=source.shape,
             )
 
+        steps = self.steps_per_day
         transformed = np.full((self.all_leap_length, *source.shape[1:]), np.nan, dtype=float)
         source_index = 0
         target_index = 0
 
-        for year_offset, observed_days in enumerate(self.observed_days_by_year):
+        for year_offset, observed_steps in enumerate(self.observed_days_by_year):
             year = self.year_start + year_offset
-            source_year = source[source_index : source_index + observed_days]
+            source_year = source[source_index : source_index + observed_steps]
 
             if calendar.isleap(year):
-                transformed[target_index : target_index + observed_days] = source_year
+                transformed[target_index : target_index + observed_steps] = source_year
             else:
-                days_before_february_29 = min(observed_days, 59)
-                transformed[target_index : target_index + days_before_february_29] = source_year[
-                    :days_before_february_29
+                steps_before_february_29 = min(observed_steps, self._synthetic_step_start)
+                transformed[target_index : target_index + steps_before_february_29] = source_year[
+                    :steps_before_february_29
                 ]
-                if observed_days > 59:
-                    transformed[target_index + 59] = (source_year[58] + source_year[59]) / 2
-                    transformed[target_index + 60 : target_index + observed_days + 1] = source_year[59:]
+                if observed_steps > self._synthetic_step_start:
+                    before = source_year[steps_before_february_29 - 1]
+                    after = source_year[steps_before_february_29]
+                    synthetic_start = target_index + self._synthetic_step_start
+                    if steps == 1:
+                        # the daily fill stays the exact midpoint in the input dtype
+                        transformed[synthetic_start] = (before + after) / 2
+                    else:
+                        # a linear ramp between the last step before the gap and the first after it
+                        weights = (np.arange(1, steps + 1) / (steps + 1)).reshape(
+                            (steps, *((1,) * (source_year.ndim - 1)))
+                        )
+                        transformed[synthetic_start : synthetic_start + steps] = (
+                            1.0 - weights
+                        ) * before + weights * after
+                    tail_start = synthetic_start + steps
+                    transformed[tail_start : tail_start + observed_steps - steps_before_february_29] = source_year[
+                        steps_before_february_29:
+                    ]
 
-            source_index += observed_days
-            target_index += 366
+            source_index += observed_steps
+            target_index += 366 * steps
 
         return transformed
 
     def to_gregorian(self, values: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
         """
-        Remove synthetic February 29 values and trim to observed Gregorian days.
+        Remove synthetic February 29 values and trim to observed Gregorian values.
 
         Args:
             values: an array whose leading axis is one complete 366-day record.
 
         Returns:
-            The values in the Gregorian layout, trimmed to the observed days.
+            The values in the Gregorian layout, trimmed to the observed values.
 
         Raises:
             DataShapeError: if the leading axis length is not ``all_leap_length``.
@@ -525,35 +564,42 @@ class DailyCalendarPlan:
         source = np.asarray(values)
         if source.ndim < 1 or source.shape[0] != self.all_leap_length:
             raise DataShapeError(
-                "Daily calendar restoration requires one complete 366-day time-series slice",
+                "Calendar restoration requires one complete 366-day time-series slice",
                 expected_shape=f"({self.all_leap_length},)",
                 actual_shape=source.shape,
             )
 
+        steps = self.steps_per_day
         restored = np.full((self.original_length, *source.shape[1:]), np.nan, dtype=float)
         source_index = 0
         target_index = 0
 
-        for year_offset, observed_days in enumerate(self.observed_days_by_year):
+        for year_offset, observed_steps in enumerate(self.observed_days_by_year):
             year = self.year_start + year_offset
             if calendar.isleap(year):
-                restored[target_index : target_index + observed_days] = source[
-                    source_index : source_index + observed_days
+                restored[target_index : target_index + observed_steps] = source[
+                    source_index : source_index + observed_steps
                 ]
             else:
-                days_before_february_29 = min(observed_days, 59)
-                restored[target_index : target_index + days_before_february_29] = source[
-                    source_index : source_index + days_before_february_29
+                steps_before_february_29 = min(observed_steps, self._synthetic_step_start)
+                restored[target_index : target_index + steps_before_february_29] = source[
+                    source_index : source_index + steps_before_february_29
                 ]
-                if observed_days > 59:
-                    restored[target_index + 59 : target_index + observed_days] = source[
-                        source_index + 60 : source_index + observed_days + 1
+                if observed_steps > self._synthetic_step_start:
+                    synthetic_start = source_index + self._synthetic_step_start
+                    tail_start = synthetic_start + steps
+                    restored[target_index + steps_before_february_29 : target_index + observed_steps] = source[
+                        tail_start : tail_start + observed_steps - steps_before_february_29
                     ]
 
-            source_index += 366
-            target_index += observed_days
+            source_index += 366 * steps
+            target_index += observed_steps
 
         return restored
+
+
+# the daily name predates sub-daily plans, which carry steps_per_day > 1
+DailyCalendarPlan = CalendarPlan
 
 
 def transform_to_366day(
@@ -609,13 +655,12 @@ def transform_to_366day(
     if len(original) == 0:
         raise ValueError("Invalid input array: an empty array cannot represent any year")
 
-    plan = DailyCalendarPlan.from_year_span(year_start, total_years, len(original))
+    plan = CalendarPlan.from_year_span(year_start, total_years, len(original))
     if plan.original_length != len(original):
         # more values than the declared span can hold
         raise ValueError("Incompatible shapes")
     for offset, observed_days in enumerate(plan.observed_days_by_year[:-1]):
-        days_in_year = 366 if calendar.isleap(year_start + offset) else 365
-        if observed_days != days_in_year:
+        if observed_days != plan.steps_in_year(year_start + offset):
             # only the final year may be short; an earlier gap means the input
             # length contradicts the declared span
             raise ValueError("Incompatible shapes")
@@ -677,7 +722,7 @@ def transform_to_gregorian(
 
     total_years = int(original.size / 366)
     # the input's 366-day layout gives every year a full Gregorian complement
-    plan = DailyCalendarPlan(
+    plan = CalendarPlan(
         year_start,
         tuple(366 if calendar.isleap(year) else 365 for year in range(year_start, year_start + total_years)),
     )

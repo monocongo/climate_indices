@@ -110,6 +110,7 @@ Homebrew `rustup` is keg-only: see
 ```bash
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
+RUSTDOCFLAGS="-D warnings" cargo doc -p climate-indices --no-deps
 PYO3_PYTHON="$PWD/.venv/bin/python" cargo test --workspace
 uv run maturin develop --release
 CLIMATE_INDICES_REQUIRE_NATIVE=1 uv run pytest tests/test_native_parity.py tests/test_native_parity_distributions.py tests/test_native_backend.py

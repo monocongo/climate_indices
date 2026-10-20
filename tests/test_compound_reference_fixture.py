@@ -1,4 +1,4 @@
-"""Offline integrity and author-method checks; the compound API does not exist yet."""
+"""Offline fixture integrity, author-method checks, and scoped compound API reproduction."""
 
 from __future__ import annotations
 
@@ -14,6 +14,8 @@ from typing import Any
 
 import numpy as np
 import pytest
+
+from climate_indices import compound
 
 FIXTURE_DIR = Path(__file__).parent / "fixture" / "compound"
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "prepare_compound_reference_fixture.py"
@@ -101,11 +103,9 @@ def test_reference_records_source_and_method_pins() -> None:
     ]
 
 
-@pytest.mark.parametrize("case", REFERENCE["cases"], ids=lambda case: f"cell{case['cell']}-month{case['month']}")
-def test_author_reference_matches_independent_contingency_counts(case: dict[str, Any]) -> None:
-    """Use index lookup, interpolation, Counter, and rational arithmetic, not the generator."""
+def _author_prepared_inputs(column: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Reproduce source preparation by date lookup and gap interpolation, not the generator."""
     inputs = _inputs()
-    column = case["cell"]
     dates = inputs["daily_time"]
     dates = dates[(dates >= np.datetime64("1922-01-31")) & (dates <= np.datetime64("2021-12-31"))]
     monthly_positions = np.searchsorted(inputs["monthly_time"], dates, side="right") - 1
@@ -117,6 +117,13 @@ def test_author_reference_matches_independent_contingency_counts(case: dict[str,
     offsets = np.arange(len(dates))
     drought_values[~valid] = np.interp(offsets[~valid], offsets[valid], drought_values[valid])
     heat_values = inputs["daily_hwi"][np.searchsorted(inputs["daily_time"], dates), column]
+    return dates, heat_values, drought_values
+
+
+@pytest.mark.parametrize("case", REFERENCE["cases"], ids=lambda case: f"cell{case['cell']}-month{case['month']}")
+def test_author_reference_matches_independent_contingency_counts(case: dict[str, Any]) -> None:
+    """Use index lookup, interpolation, Counter, and rational arithmetic, not the generator."""
+    dates, heat_values, drought_values = _author_prepared_inputs(case["cell"])
     selected = dates.astype("datetime64[M]").astype(np.int64) % 12 + 1 == case["month"]
     table = Counter(zip(heat_values[selected] >= 0, drought_values[selected] <= -1, strict=True))
     n = sum(table.values())
@@ -132,6 +139,61 @@ def test_author_reference_matches_independent_contingency_counts(case: dict[str,
     assert case["lmf"] == pytest.approx(float(Fraction(n_joint * n, n_heat * n_drought)), rel=0, abs=1e-12)
 
 
+@pytest.mark.validation
+@pytest.mark.parametrize("case", REFERENCE["cases"], ids=lambda case: f"cell{case['cell']}-month{case['month']}")
+def test_compound_api_reproduces_public_summer_reference(case: dict[str, Any]) -> None:
+    """Compare the public API to committed same-author counts, not a new expected calculation."""
+    dates, heat_values, drought_values = _author_prepared_inputs(case["cell"])
+    source_metadata = {
+        name: {
+            "physical_threshold": threshold,
+            "comparator": comparator,
+            "dataset_doi": REFERENCE["dataset_doi"],
+            "author_commit": REFERENCE["author_commit"],
+            "preparation": REFERENCE["preparation"]["monthly_to_daily"] if name == "drought" else "none",
+            "source": REFERENCE["sources"][filename],
+            "cell": REFERENCE["cells"][case["cell"]],
+        }
+        for name, threshold, comparator, filename in (
+            ("heat", 0, ">=", "heatwave_SMHI.nc"),
+            ("drought", -1, "<=", "SPEI12.nc"),
+        )
+    }
+    hazards = compound.harmonize(
+        {"heat": heat_values >= 0, "drought": drought_values <= -1},
+        time={"heat": dates, "drought": dates},
+        cadence={"heat": "daily", "drought": "daily"},
+        input_scale={"heat": "indicator", "drought": "indicator"},
+        thresholds={"heat": 0.5, "drought": 0.5},
+        directions={"heat": "above", "drought": "above"},
+        validity={"heat": np.isfinite(heat_values), "drought": np.isfinite(drought_values)},
+        target_cadence="daily",
+        source_metadata=source_metadata,
+    )
+    result = compound.joint_statistics(hazards)
+    month = case["month"] - 1
+    assert result.names == ("heat", "drought")
+    assert result.n_valid[month] == case["n_days"]
+    assert result.n_joint[month] == case["n_joint"]
+    np.testing.assert_array_equal(result.n_marginal[:, month], [case["n_heat"], case["n_drought"]])
+    np.testing.assert_allclose(
+        [
+            result.joint_probability[month],
+            result.independent_probability[month],
+            result.likelihood_multiplication_factor[month],
+        ],
+        [case["joint_probability"], case["independent_probability"], case["lmf"]],
+        rtol=0,
+        atol=1e-12,
+    )
+    assert result.quality_flags[month] == 0
+    sources = json.loads(json.dumps(result.metadata))["harmonization"]["sources"]
+    for name in result.names:
+        assert sources[name]["source_metadata"] == source_metadata[name]
+        assert sources[name]["calibration_period"] == "unknown"
+        assert sources[name]["comparator"] == source_metadata[name]["comparator"]
+
+
 def test_author_comparators_are_inclusive_and_do_not_mutate_inputs(preparation: dict[str, Any]) -> None:
     hwi = np.array([0.0, -0.1, 2.0, -2.0])
     spei = np.array([-1.0, -2.0, 0.0, 1.0])
@@ -142,9 +204,24 @@ def test_author_comparators_are_inclusive_and_do_not_mutate_inputs(preparation: 
     np.testing.assert_array_equal(spei, drought_copy)
 
 
-def test_author_zero_joint_result_is_undefined_not_the_future_module_zero(preparation: dict[str, Any]) -> None:
+def test_author_zero_joint_result_differs_from_compound_contract(preparation: dict[str, Any]) -> None:
     counts = preparation["author_counts"](np.array([-1.0, 1.0]), np.array([-2.0, 0.0]))
     assert (counts["n_heat"], counts["n_drought"], counts["n_joint"], counts["lmf"]) == (1, 1, 0, None)
+    dates = np.arange("1922-01", "2022-01", dtype="datetime64[M]").astype("datetime64[D]")
+    heat = np.arange(len(dates)) % 2 == 0
+    hazards = compound.harmonize(
+        {"heat": heat, "drought": ~heat},
+        time={"heat": dates, "drought": dates},
+        cadence={"heat": "monthly", "drought": "monthly"},
+        input_scale={"heat": "indicator", "drought": "indicator"},
+        thresholds={"heat": 0.5, "drought": 0.5},
+        directions={"heat": "above", "drought": "above"},
+        target_cadence="monthly",
+    )
+    result = compound.joint_statistics(hazards, groupby="pooled")
+    assert result.n_joint == 0
+    assert (result.n_marginal > 0).all()
+    assert result.likelihood_multiplication_factor == 0
 
 
 @pytest.mark.parametrize(

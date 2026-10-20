@@ -548,10 +548,18 @@ class TestXarrayAdapterInferenceHelpers:
         periodicity = _infer_periodicity(time_da)
         assert periodicity == compute.Periodicity.daily
 
+    def test_infer_periodicity_hourly(self):
+        """_infer_periodicity maps an hourly cadence to Periodicity.hourly."""
+        time = pd.date_range("2000-01-01", periods=100, freq="h")
+        time_da = xr.DataArray(time, dims=["time"])
+
+        periodicity = _infer_periodicity(time_da)
+        assert periodicity == compute.Periodicity.hourly
+
     def test_infer_periodicity_unsupported_raises(self):
         """_infer_periodicity raises CoordinateValidationError for unsupported freq."""
-        # hourly frequency not supported
-        time = pd.date_range("2000-01-01", periods=100, freq="h")
+        # a twelve-hourly cadence is neither daily nor hourly
+        time = pd.date_range("2000-01-01", periods=100, freq="12h")
         time_da = xr.DataArray(time, dims=["time"])
 
         with pytest.raises(CoordinateValidationError) as exc_info:

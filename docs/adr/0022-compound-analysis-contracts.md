@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted. CMP-09 (#1373) completes the described API implementations.
+Amended by CMP-10 (#1374) to record the completed guide and scoped public-study reproduction.
+The accepted API contracts remain unchanged. CMP-09 (#1373) completed the described API implementations.
 The maintainer approved these contracts and the bounded milestone scope.
 [CMP-01 (#1365)](https://github.com/monocongo/climate_indices/issues/1365) records this decision under
 [parent issue #1364](https://github.com/monocongo/climate_indices/issues/1364).
@@ -25,7 +26,7 @@ of each other, at 200 years. A 36-month-persistence case failed a coverage gate 
 rejection exceeded nominal, and other conditions were not characterized, so the intervals and
 p-values are not claimed beyond that scope. See `VALIDATION.md`.
 The described APIs exist. This status does not claim completed scientific validation;
-the published-study reproduction and final guide remain in CMP-10 (#1374).
+the [guide](../compound-hazards.md) and nine summer cases in CMP-10 (#1374) establish scoped same-author reference reproduction only.
 The implementation responsibilities are explicit:
 
 | Proposed public function | NumPy implementation | Beta xarray implementation | Current state |
@@ -38,7 +39,7 @@ The implementation responsibilities are explicit:
 | `compound_events_xarray()` | It reuses the NumPy event matcher. | [#1373](https://github.com/monocongo/climate_indices/issues/1373) | Eager numeric catalog implemented (#1373). |
 
 The reference fixture is [#1366](https://github.com/monocongo/climate_indices/issues/1366).
-Final reproduction, user documentation, and evidence classification are [#1374](https://github.com/monocongo/climate_indices/issues/1374).
+The scoped reproduction, user guide, and evidence classification are recorded in [#1374](https://github.com/monocongo/climate_indices/issues/1374) and `VALIDATION.md`.
 The implementation table records the shipped API scope; evidence classification remains separate.
 
 ## Context
@@ -271,8 +272,10 @@ Study-specific review remains necessary.
 
 The [parent issue's children](https://github.com/monocongo/climate_indices/issues/1364)
 separate contract publication, reference fixtures, harmonization, statistics, events, inference, adapters, and final evidence.
-The maintainer approved issue creation, but implementation remains blocked until this ADR's PR merges.
-The milestone cannot close without the public-input reproduction and honest `VALIDATION.md` classifications.
+CMP-01 through CMP-10 provide the implementations, public-input reproduction, and evidence classifications.
+The reproduction covers three Swedish cells and three summer months, not the full map or its significance mask.
+Further bootstrap calibration remains in [#1398](https://github.com/monocongo/climate_indices/issues/1398).
+Release scheduling and milestone closure remain maintainer decisions.
 Synthetic tests, author-method reproduction, and independent external validation remain distinct evidence tiers.
 
 ## Scientific source boundary

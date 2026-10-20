@@ -812,7 +812,7 @@ def test_daily_gridded_spi_accepts_a_partial_final_year(tmp_path):
     _run_daily_spi(precip_path, tmp_path / "spi_daily")
 
     # 2010 is a partial final year: 166 observed days padded to 366 for the core
-    plan = utils.DailyCalendarPlan.from_year_span(start_year, 2011 - start_year, time.size)
+    plan = utils.CalendarPlan.from_year_span(start_year, 2011 - start_year, time.size)
     assert plan.observed_days_by_year[-1] == 166
 
     with xr.open_dataset(tmp_path / "spi_daily_spi_gamma_30.nc") as dataset:
@@ -873,7 +873,7 @@ def test_daily_divisions_spi_converts_and_restores(tmp_path):
 
     _run_daily_spi(precip_path, tmp_path / "spi_daily_divisions")
 
-    plan = utils.DailyCalendarPlan.from_year_span(start_year, 2011 - start_year, time.size)
+    plan = utils.CalendarPlan.from_year_span(start_year, 2011 - start_year, time.size)
     with xr.open_dataset(tmp_path / "spi_daily_divisions_spi_gamma_30.nc") as dataset:
         written = dataset["spi_gamma_30"].values
         assert written.shape == values.shape
@@ -907,7 +907,7 @@ def test_daily_divisions_time_major_spi_converts_and_restores(tmp_path):
 
     _run_daily_spi(precip_path, tmp_path / "spi_daily_divisions_time_major")
 
-    plan = utils.DailyCalendarPlan.from_year_span(start_year, 2011 - start_year, time.size)
+    plan = utils.CalendarPlan.from_year_span(start_year, 2011 - start_year, time.size)
     with xr.open_dataset(tmp_path / "spi_daily_divisions_time_major_spi_gamma_30.nc") as dataset:
         written = dataset["spi_gamma_30"].values
         assert written.shape == (1, time.size)

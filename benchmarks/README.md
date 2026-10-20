@@ -1366,3 +1366,22 @@ for the new seam (and scalar-boundary assertions), not oracle values/tolerances.
   hosts. No registry input change or numerical improvement masks that result.
 - #1324: raw samples, revision/runtime metadata, final source/extension digests,
   profiles and RSS are now durable. Remote/isolated-host repeat runs remain open.
+
+## Hourly standardized energy indices (#1177)
+
+```bash
+uv run benchmarks/profile_hourly_srepi.py
+```
+
+The script builds deterministic hourly input, runs `energy.srepi` at a 720-hour
+(30-day) mean scale over a 30-year calibration period, and reports the wall time and
+peak traced allocation for one series and one 25-cell time-major block. A warm-up call
+runs first. `--years` and `--cells` change the span and grid width. The block is
+three-dimensional, `(time, cells, 1)`, and passed with `spatial_time_major=True`,
+because a two-dimensional `(time, cells)` input is read as one series.
+
+On a 41-year span (360,144 hourly values) this host reports about 0.03 s and 6 MiB peak
+for the series, and 2.2 s and 150 MiB peak for the 25-cell block. The block's window
+sum is the cost: `compute.sum_to_scale` re-sums every sliding window for a time-major
+block, so its work grows with `scale`. The xarray route runs one kernel per cell
+instead and is cheaper on a wide grid.

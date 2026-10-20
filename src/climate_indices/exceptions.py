@@ -257,7 +257,7 @@ class PeriodicityError(InvalidArgumentError):
     This is a specialization of InvalidArgumentError for the common case
     of periodicity validation failures across compute, indices, and CLI
     modules. The periodicity argument must be a valid Periodicity enum
-    member (monthly or daily).
+    member (monthly, daily, or hourly).
 
     Attributes:
         periodicity_value: The invalid periodicity value that was provided
@@ -273,7 +273,7 @@ class PeriodicityError(InvalidArgumentError):
             message,
             argument_name="periodicity",
             argument_value=periodicity_value,
-            valid_values="Periodicity.monthly, Periodicity.daily",
+            valid_values="Periodicity.monthly, Periodicity.daily, Periodicity.hourly",
         )
         self.periodicity_value = periodicity_value
 
