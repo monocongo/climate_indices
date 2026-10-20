@@ -39,7 +39,7 @@ jobs:
           # A stable version, or the pre-release the rehearsal lane spends before it
           # (docs/release-process.md). Any other suffix is refused, so a mistyped tag
           # cannot publish a version nobody intended to spend.
-          if [[ ! "${GITHUB_REF}" =~ ^refs/tags/climate-indices-v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+          if [[ ! "${GITHUB_REF}" =~ ^refs/tags/climate-indices-v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
             echo "::error::Crate tags must match climate-indices-vX.Y.Z or climate-indices-vX.Y.Z-rc.N; got ${GITHUB_REF#refs/tags/}"
             exit 1
           fi

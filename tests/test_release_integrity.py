@@ -500,11 +500,10 @@ def test_crate_gate_enforces_the_dependency_policy() -> None:
 def test_pyo3_seam_accepts_any_0x_crate_version_without_a_wildcard() -> None:
     """A path-only dependency is a wildcard, which `bans.wildcards = "deny"` rejects.
 
-    The range admits every independent 0.x crate release and the pre-release of the
-    versions it admits (docs/adr/0021 decisions 2 and 3), so a crate release needs no
-    bindings manifest change and the rehearsal lane can tag a pre-release. A caret
-    requirement such as `"0"` matches no pre-release, and `cargo package` then cannot
-    resolve the workspace.
+    The range admits stable 0.x releases from 0.1.0 and the 0.1.0-rc.N series
+    (docs/adr/0021 decisions 2 and 3). A later prerelease series, such as 0.2.0-rc.1,
+    needs a bindings requirement change. A caret requirement such as `"0"` matches
+    no pre-release, and `cargo package` then cannot resolve the workspace.
     """
     dependency = _read_toml(Path("crates/climate-py/Cargo.toml"))["dependencies"]["climate-indices"]
 
@@ -685,20 +684,57 @@ def test_crate_release_gates_match_the_required_checks() -> None:
     assert "run: cargo publish -p climate-indices --locked" in jobs["publish-crate"]
 
 
+@pytest.mark.parametrize(
+    ("tag", "accepted"),
+    [
+        ("climate-indices-v0.1.0", True),
+        ("climate-indices-v1.2.3", True),
+        ("climate-indices-v0.1.0-rc.1", True),
+        ("climate-indices-v0.2.0-rc.12", True),
+        ("climate-indices-v0.1.0-beta.1", False),
+        ("climate-indices-v0.1.0-rc1", False),
+        ("climate-indices-v0.1.0-rc.", False),
+        ("climate-indices-v0.1.0-rc.x", False),
+        ("climate-indices-v0.1.0-rc.1.extra", False),
+        ("climate-indices-v0.1.0-rc.1+build", False),
+        ("climate-indices-v0.1", False),
+        ("v0.1.0", False),
+    ],
+)
+def test_crate_release_tag_guard_accepts_only_stable_or_numeric_rc_tags(tag: str, accepted: bool) -> None:
+    """Execute the workflow's Bash guard against supported and unsupported tags."""
+    step = next(
+        step
+        for step in _job_steps(_crate_release_jobs()["validate-crate-tag"])
+        if step.startswith("name: Validate crate tag format\n")
+    )
+    script = _job_scripts(step).removeprefix("|\n")
+    result = subprocess.run(
+        ["bash", "-c", script],
+        env={**os.environ, "GITHUB_REF": f"refs/tags/{tag}"},
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    assert result.returncode == (0 if accepted else 1), result.stdout + result.stderr
+    if not accepted:
+        assert "::error::Crate tags must match" in result.stdout
+
+
 def test_crate_release_validates_the_tag_version_and_changelog() -> None:
     """A tag, the manifest version, and the changelog heading must agree before publish.
 
     A crates.io version cannot be replaced, so a mismatch is caught while it is still
     free. The version is read from the manifest the publish job reads, so the guard
-    cannot drift from it. The tag shape accepts a pre-release suffix, which is the
-    rehearsal lane, and refuses any other one (docs/release-process.md).
+    cannot drift from it. The tag shape accepts only stable versions or numeric
+    release candidates for the rehearsal lane (docs/release-process.md).
     """
     job = _uncommented(_crate_release_jobs()["validate-crate-tag"])
     manifest = _read_toml(Path("crates/climate-indices/Cargo.toml"))["package"]
 
     assert (
         'if [[ ! "${GITHUB_REF}" =~ '
-        "^refs/tags/climate-indices-v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then" in job
+        "^refs/tags/climate-indices-v[0-9]+\\.[0-9]+\\.[0-9]+(-rc\\.[0-9]+)?$ ]]; then" in job
     )
     assert "fetch-depth: 0" in job
     assert 'git merge-base --is-ancestor "${GITHUB_SHA}" "origin/main"' in job
@@ -710,7 +746,7 @@ def test_crate_release_validates_the_tag_version_and_changelog() -> None:
     assert 'if ! grep -qE "^## ${CRATE_VERSION//./\\\\.} - [0-9]{4}-[0-9]{2}-[0-9]{2}$" "$changelog"; then' in job
     # The independent 0.x track, the pre-release shape of the rehearsal lane, and
     # the publishability the guard reads, must stay put.
-    assert re.fullmatch(r"0\.\d+\.\d+(-[0-9A-Za-z.-]+)?", manifest["version"])
+    assert re.fullmatch(r"0\.\d+\.\d+(-rc\.\d+)?", manifest["version"])
     assert manifest["publish"] is True
 
 

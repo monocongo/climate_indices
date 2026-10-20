@@ -115,8 +115,9 @@ ownership and cadence.
   so `climate_indices` names both without a collision.
 - Before CRATE-05 both crates inherited `version.workspace = true` and
   `publish = false` from the workspace; that split is what CRATE-05 changed. The crate
-  now carries `version = "0.1.0"` and `publish = true`, and `climate-py` keeps
-  `publish = false` through the workspace.
+  now carries `version = "0.1.0-rc.1"` for CRATE-10's rehearsal pre-release
+  and `publish = true`. The first stable release remains `0.1.0`, and `climate-py`
+  keeps `publish = false` through the workspace.
 - Crate releases and PyPI releases are independent in both directions, and neither tag
   namespace can start the other workflow.
 - CRATE-10 ([#1314](https://github.com/monocongo/climate_indices/issues/1314)) publishes
