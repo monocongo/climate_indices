@@ -483,7 +483,7 @@ def test_crate_gate_enforces_the_dependency_policy() -> None:
     policy = _read_toml(Path("deny.toml"))
 
     assert "tool: cargo-deny@" in job, "an unpinned linter can fail an unrelated change"
-    assert "run: cargo deny --locked check" in job
+    assert "run: cargo deny --locked check -W unmaintained -W unsound" in job
     # The bindings compile into the shipped wheel, so their licenses must be allowed too.
     assert {"MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause"} <= set(policy["licenses"]["allow"])
     assert policy["graph"].get("exclude-dev") is True

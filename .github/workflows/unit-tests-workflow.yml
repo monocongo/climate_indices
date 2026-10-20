@@ -395,7 +395,7 @@ jobs:
           tool: cargo-deny@0.20.2
 
       - name: Check licenses, advisories, bans, and sources
-        run: cargo deny --locked check
+        run: cargo deny --locked check -W unmaintained -W unsound
 
   # The core suite with the Rust extension built, on the pull-request boundary
   # legs of `test` (a subset of its matrix, not a new product).

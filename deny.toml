@@ -1,6 +1,6 @@
 # cargo-deny policy for the Rust code that reaches users (CRATE-09, #1313).
-# CI runs `cargo deny --locked check` (the `rust-deny` job); the same command runs
-# locally, see docs/development-guide.md ("Crate quality gates").
+# CI runs `cargo deny --locked check -W unmaintained -W unsound` (the `rust-deny` job);
+# the same command runs locally, see docs/development-guide.md ("Crate quality gates").
 #
 # The checked graph is the whole Cargo.lock, so it covers both what the published
 # `climate-indices` crate resolves and what the `climate-py` bindings compile into the
@@ -13,9 +13,10 @@ exclude-dev = true
 [advisories]
 # A yanked crate cannot be re-resolved, so it is a build failure rather than a warning.
 yanked = "deny"
-# Vulnerability advisories fail by default. Unmaintained and unsound advisories stay at
-# their warning severity, so an upstream that stops maintaining a dependency surfaces in
-# the job log without blocking an unrelated pull request.
+# Vulnerability advisories fail. Unmaintained (any crate) and unsound (direct workspace
+# dependencies) advisories are warnings, because the `rust-deny` job passes
+# `-W unmaintained -W unsound`: an upstream that stops maintaining a dependency surfaces
+# in the job log without blocking an unrelated pull request.
 
 [licenses]
 # Permissive licenses only: every crate in the graph may be redistributed in source and
