@@ -283,7 +283,7 @@ each is a required check on the pull request. Run them locally with
 
 | Command | What it proves |
 |---------|----------------|
-| `cargo package -p climate-indices --locked`, unpack into a directory **outside** this checkout, then `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test --all-features`, and `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps` | The crate that a user receives lints, tests, and documents cleanly. Running it from the unpacked `.crate` is what catches a file the crate needs but does not ship. |
+| `cargo package -p climate-indices --locked`, unpack into a directory **outside** this checkout, copy `rust-toolchain.toml` into it, then `cargo clippy --all-targets --all-features --locked -- -D warnings`, `cargo test --all-features --locked`, and `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps --locked` | The crate that a user receives lints, tests, and documents cleanly, on the pinned compiler. Running it from the unpacked `.crate` is what catches a file the crate needs but does not ship. |
 | `cargo "+{msrv}" check -p climate-indices --lib --all-features --locked`, where `{msrv}` is the crate's `rust-version` | The library builds on its declared minimum supported Rust version (1.85). `--lib` leaves out `criterion`, which only the benchmarks use. |
 | `cargo semver-checks check-release -p climate-indices` | The public API is compatible with the latest version on crates.io. A deliberate break fails here, cited to the offending item. |
 | `cargo deny --locked check` | The licenses, advisories, duplicate versions, and sources permitted by `deny.toml` cover everything that reaches a user — the published crate and the `climate-py` bindings the wheel compiles. |
