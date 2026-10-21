@@ -1709,7 +1709,10 @@ def xarray_adapter(
                         bound.apply_defaults()
                     except TypeError as error:
                         raise PeriodicityError(
-                            message=f"Could not resolve the periodicity for {func.__name__}: its arguments do not bind to its signature. Daily calendar conversion cannot be planned."
+                            message=(
+                                f"Could not resolve the periodicity for {func.__name__}: its arguments do not bind "
+                                f"to its signature: {error}. Daily calendar conversion cannot be planned."
+                            )
                         ) from error
                     periodicity = bound.arguments.get(calendar)
                     if not isinstance(periodicity, compute.Periodicity):

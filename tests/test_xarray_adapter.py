@@ -1040,8 +1040,11 @@ class TestXarrayAdapterIntegration:
         result = defaulted(sample_monthly_precip_da)
         np.testing.assert_array_equal(result.values, sample_monthly_precip_da.values * 2)
 
-    def test_bind_failure_does_not_override_explicit_temporal_params(self, sample_monthly_precip_da):
-        """A typo'd keyword must not let inferred values replace explicit params (#1090)."""
+    @pytest.mark.parametrize("lazy", [False, True], ids=["eager", "dask"])
+    def test_bind_failure_does_not_override_explicit_temporal_params(
+        self, sample_monthly_precip_da: xr.DataArray, lazy: bool
+    ) -> None:
+        """Calendar errors name typos without replacing explicit temporal parameters."""
         calls = []
 
         @xarray_adapter(
@@ -1058,15 +1061,18 @@ class TestXarrayAdapterIntegration:
 
         # sample_monthly_precip_da is a monthly 1980-2019 coordinate, so inference
         # would produce data_start_year=1980 and periodicity=monthly if it ran
-        with pytest.raises(PeriodicityError, match="do not bind"):
-            masked(
-                sample_monthly_precip_da,
-                data_start_year=1990,
-                periodicity=compute.Periodicity.daily,
-                bogus=1,
-            )
+        data = sample_monthly_precip_da.chunk({"time": -1}) if lazy else sample_monthly_precip_da
+        with patch("climate_indices.xarray_adapter.xr.apply_ufunc", wraps=xr.apply_ufunc) as apply_ufunc:
+            with pytest.raises(PeriodicityError, match="do not bind.*unexpected keyword argument 'bogus'"):
+                masked(
+                    data,
+                    data_start_year=1990,
+                    periodicity=compute.Periodicity.daily,
+                    bogus=1,
+                )
 
         assert calls == []
+        apply_ufunc.assert_not_called()
 
     @pytest.mark.parametrize("lazy", [False, True], ids=["eager", "dask"])
     @pytest.mark.parametrize("gridded", [False, True], ids=["series", "grid"])
