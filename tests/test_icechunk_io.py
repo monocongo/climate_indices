@@ -192,8 +192,9 @@ def test_dask_write_uses_to_icechunk(
 def test_malformed_write_preserves_snapshot(dataset: xr.Dataset, icechunk_repo: Any) -> None:
     """A write that a schema mismatch rejects leaves the committed snapshot in place."""
     snapshot = write_icechunk(dataset, icechunk_repo, message="Initial input")
+    malformed = dataset.rename({"lon": "x"})
     with pytest.raises(ValueError, match="different dimension names"):
-        write_icechunk(dataset.rename({"lon": "x"}), icechunk_repo, message="Malformed update", mode="a")
+        write_icechunk(malformed, icechunk_repo, message="Malformed update", mode="a")
     assert icechunk_repo.lookup_branch("main") == snapshot
     with open_icechunk(icechunk_repo) as reopened:
         xr.testing.assert_identical(reopened.compute(), dataset)
