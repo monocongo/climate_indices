@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import re
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -199,12 +200,7 @@ class TestXarrayAdapterExtractRewrap:
         def simple_scale(values: np.ndarray, scale: int) -> np.ndarray:
             return values * scale
 
-        result = simple_scale(
-            sample_monthly_precip_da,
-            scale=2,
-            data_start_year=1980,
-            periodicity=compute.Periodicity.monthly,
-        )
+        result = simple_scale(sample_monthly_precip_da, scale=2)
 
         assert isinstance(result, xr.DataArray)
         assert result.dims == sample_monthly_precip_da.dims
@@ -218,12 +214,7 @@ class TestXarrayAdapterExtractRewrap:
         def simple_scale(values: np.ndarray, scale: int) -> np.ndarray:
             return values * scale
 
-        result_da = simple_scale(
-            sample_monthly_precip_da,
-            scale=3,
-            data_start_year=1980,
-            periodicity=compute.Periodicity.monthly,
-        )
+        result_da = simple_scale(sample_monthly_precip_da, scale=3)
 
         # manually compute what the result should be
         expected_values = sample_monthly_precip_da.values * 3
@@ -1077,19 +1068,59 @@ class TestXarrayAdapterIntegration:
 
         assert calls == []
 
-    def test_bind_failure_keeps_explicit_params_without_periodicity(self, sample_monthly_precip_da):
-        """Without a periodicity seam, a bind failure must still keep explicit params (#1090)."""
+    @pytest.mark.parametrize("lazy", [False, True], ids=["eager", "dask"])
+    @pytest.mark.parametrize("gridded", [False, True], ids=["series", "grid"])
+    @pytest.mark.parametrize("infer_params", [False, True], ids=["no-inference", "inference"])
+    def test_unknown_keyword_without_periodicity_rejected_before_compute(
+        self, sample_monthly_precip_da: xr.DataArray, lazy: bool, gridded: bool, infer_params: bool
+    ) -> None:
+        """Unknown keywords must fail before computation or lazy graph construction (#1092)."""
         calls = []
 
-        @xarray_adapter()
+        @xarray_adapter(infer_params=infer_params)
         def needs_start_year(values: np.ndarray, data_start_year: int) -> np.ndarray:
             calls.append(data_start_year)
             return np.full(values.shape, float(data_start_year))
 
-        result = needs_start_year(sample_monthly_precip_da, data_start_year=1990, bogus=1)
+        data = sample_monthly_precip_da
+        if gridded:
+            data = data.expand_dims(lat=[10.0, 20.0])
+        if lazy:
+            data = data.chunk({"time": -1})
 
-        assert calls == [1990]
-        np.testing.assert_array_equal(result.values, np.full(sample_monthly_precip_da.shape, 1990.0))
+        with patch("climate_indices.xarray_adapter.xr.apply_ufunc", wraps=xr.apply_ufunc) as apply_ufunc:
+            with pytest.raises(TypeError, match="unexpected keyword argument 'bogus'"):
+                needs_start_year(data, data_start_year=1990, bogus=1)
+
+        assert calls == []
+        apply_ufunc.assert_not_called()
+
+    @pytest.mark.parametrize("lazy", [False, True], ids=["eager", "dask"])
+    @pytest.mark.parametrize("gridded", [False, True], ids=["series", "grid"])
+    @pytest.mark.parametrize("explicit_start_year", [False, True], ids=["inferred-year", "explicit-year"])
+    def test_declared_var_kwargs_reach_kernel(
+        self, sample_monthly_precip_da: xr.DataArray, lazy: bool, gridded: bool, explicit_start_year: bool
+    ) -> None:
+        """Custom **kwargs remain valid alongside optional and inferred parameters."""
+
+        @xarray_adapter(inferred_parameters={"data_start_year": INFER_TIME_PARAMETERS["data_start_year"]})
+        def custom_index(values: np.ndarray, data_start_year: int, offset: int = 1, **options: int) -> np.ndarray:
+            return np.full(values.shape, float(data_start_year + offset + options.get("adjustment", 0)))
+
+        data = sample_monthly_precip_da
+        if gridded:
+            data = data.expand_dims(lat=[10.0, 20.0])
+        if lazy:
+            data = data.chunk({"time": -1})
+
+        kwargs = {"data_start_year": 1990} if explicit_start_year else {}
+        result = custom_index(data, offset=2, adjustment=3, **kwargs)
+        if lazy:
+            assert result.chunks is not None
+        result = result.compute()
+
+        expected_year = 1990 if explicit_start_year else 1980
+        np.testing.assert_array_equal(result.values, np.full(data.shape, float(expected_year + 5)))
 
 
 def _finalize_numpy_result(
