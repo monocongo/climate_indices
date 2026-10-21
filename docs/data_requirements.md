@@ -78,13 +78,20 @@ rejects unrecognized declarations.
   29 values. This is not a per-calendar-slot minimum of observed samples;
   [issue #760](https://github.com/monocongo/climate_indices/issues/760) tracks
   the unresolved observed-versus-synthetic sufficiency policy.
-- Pearson fitting requires enough non-zero values per calendar period. SPI
-  and the default `standardized_index()` enable gamma fallback when a Pearson
-  fit raises a fitting error or its transform loses more than half of the
-  input's valid values. The decision applies to the whole input block, not
-  each insufficient calendar period or cell; a failed period alone does not
-  guarantee fallback. SPEI does not enable that fallback. Use gamma for
-  strongly zero-inflated precipitation, and inspect output and fit diagnostics.
+- Pearson fitting requires at least four non-zero values in every calendar
+  period. A period that falls short, or whose L-moment fit fails, gets zeroed
+  parameters instead of raising: on the default normal output scale its zero
+  values come out at the -3.09 lower bound and its non-zero values come out
+  NaN, and the fit logs a failure-count warning (a high-failure-rate warning
+  when more than 80% of the fits fail). SPI and the default
+  `standardized_index()` enable gamma fallback only when a Pearson fit raises
+  a fitting error or its transform loses more than half of the input's valid
+  values. The decision applies to the whole input block, not each calendar
+  period or cell: failed periods count only through the NaN values they add,
+  so a mostly-zero record whose periods all fail can still return Pearson
+  output pinned at -3.09. SPEI substitutes the same zeroed parameters and does
+  not enable that fallback. Use gamma for strongly zero-inflated
+  precipitation, and inspect output and fit diagnostics.
 - SPI, SPEI, `standardized_index()`, EDDI, Palmer, and
   `percentage_of_normal()` reject a reversed Calibration Period with
   `CalibrationPeriodError`. Gamma, Pearson Type III, and log-logistic fits

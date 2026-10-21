@@ -5841,7 +5841,7 @@ The library performs goodness-of-fit testing to validate that the fitted distrib
 
 **Fallback strategy**:
 
-If Pearson Type III fitting fails (due to insufficient data or numerical issues), the library automatically falls back to gamma distribution with warning messages in the log.
+A calendar period with fewer than four non-zero values, or whose L-moment fit fails, gets zeroed Pearson Type III parameters and a logged warning; that alone does not trigger a fallback. SPI and `standardized_index()` refit the whole input with gamma, logging `distribution_fallback`, only when the Pearson fit raises a fitting error or its transform loses more than half of the input's valid values. SPEI does not fall back. See {doc}`data_requirements` for what a failed period outputs.
 
 ### Run Theory (Event Identification)
 

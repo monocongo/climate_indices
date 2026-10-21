@@ -39,7 +39,10 @@ supersede this repository's `docs/<topic>`, `feature/<topic>`, and `test/<topic>
 The maintainer authorized issue creation and preparation of the CMP-01 documentation PR.
 The parent and ten child issues now exist with native parent and dependency links.
 No implementation issue may start before the ADR PR merges.
-No project board, GitHub milestone, or release target was created. The delivery date remains unassigned.
+The compound module targets 3.1.0 in the existing GitHub milestone
+[`v3.1.0 — Compound module and flood foundation`](https://github.com/monocongo/climate_indices/milestone/8).
+The release gates appear in delivery item 7 below. The delivery date remains unassigned.
+No project board was created.
 
 ## Goal and publishable scope
 
@@ -621,7 +624,8 @@ Use only existing labels; no `compound` or `epic:compound` label currently exist
 | [CMP-10 (#1374)](https://github.com/monocongo/climate_indices/issues/1374) | Complete the published reproduction, user guide, and evidence report. | CMP-02, CMP-04, CMP-05, CMP-07, CMP-08, CMP-09. |
 
 CMP-05 waits for CMP-04; CMP-06 can proceed beside conditional and inference work.
-Do not create a GitHub milestone or project board without separate approval; a parent issue is sufficient initially.
+The parent issue belongs to the existing 3.1.0 milestone named in the status section.
+Do not create additional GitHub milestones or a project board without separate approval.
 
 ## GitHub issue specifications
 
@@ -956,7 +960,7 @@ No Rust gate is needed unless later work touches native code or native dispatch.
 4. **Conservative support:** The minimum counts, complete-month aggregation, and complete-year inference segment policy are approved. They can exclude sparse real records.
 5. **Bootstrap evidence:** The year-block heuristic is approved as the proposed default, conditional on CMP-07's characterization gate. It is not a universal persistence correction.
 6. **Reference logistics:** CMP-02 may retrieve the approximately 3 GB drought–heatwave source pair after its blockers resolve. No large download occurred during planning.
-7. **Delivery:** The release target remains unassigned pending the contracts and reference audit. This plan does not assume that 3.1.0 is available.
+7. **Delivery:** Targeted for 3.1.0, in the milestone `v3.1.0 — Compound module and flood foundation`. The release waits on the measured published reproduction in CMP-10 (#1374) and on the bootstrap calibration in #1398. Until both land, the milestone evidence stays regression, analytic, and synthetic.
 
 Main scientific risks are sparse joint events, shared seasonal drivers, upstream fit error,
 nonstationarity, overlapping Timescales, and treating local p-values or observed lags as stronger evidence than they provide.
