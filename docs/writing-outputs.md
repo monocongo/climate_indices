@@ -1,6 +1,6 @@
-# Write NetCDF and Zarr outputs
+# Write NetCDF, Zarr, and Icechunk outputs
 
-Goal: persist computed index values to NetCDF or Zarr, and confirm the write
+Goal: persist computed index values to NetCDF, Zarr, or Icechunk, and confirm the write
 succeeded. The command line and the xarray API both compute index values; this
 page covers where those results go. The writer options are listed in the
 [command-line reference](reference.md#command-line-interface); the measured
@@ -85,6 +85,75 @@ intact. Close readers before rerunning, keep one writer per output path, and tre
 the final directory swap as not crash-atomic — the notebook's write cell
 ([notebooks/zarr_dask_spi_spei.ipynb](https://github.com/monocongo/climate_indices/blob/main/notebooks/zarr_dask_spi_spei.ipynb))
 is the staged example.
+
+## Read and write Icechunk snapshots
+
+Install the optional extra with `pip install 'climate_indices[icechunk]'`.
+Icechunk requires Python 3.11 or later and Zarr v3. The existing
+`xarray>=2025.6.1` requirement exceeds the `to_icechunk` floor of 2025.1.1.
+The base package still supports Python 3.10 without Icechunk.
+
+Use `open_icechunk` to read a committed snapshot. Select a variable and pass it
+to the existing index API. The reader preserves stored chunks; put the full time
+axis in one chunk before fitting.
+
+```python
+import icechunk
+
+from climate_indices import spi
+from climate_indices.icechunk_io import open_icechunk, write_icechunk
+from climate_indices.indices import Distribution
+
+input_repo = icechunk.Repository.open(
+    icechunk.local_filesystem_storage("prepared_input.icechunk")
+)
+output_repo = icechunk.Repository.open_or_create(
+    icechunk.local_filesystem_storage("out/indices.icechunk")
+)
+with open_icechunk(input_repo) as inputs:
+    spi_lazy = spi(
+        inputs["precip"].chunk({"time": -1, "lat": 10, "lon": 10}),
+        scale=3,
+        distribution=Distribution.gamma,
+        calibration_year_initial=1981,
+        calibration_year_final=2010,
+    )
+    snapshot_id = write_icechunk(
+        spi_lazy.to_dataset(name="spi").chunk({"time": 12}),
+        output_repo,
+        message="Compute SPI-3",
+    )
+
+with open_icechunk(output_repo) as committed:
+    print(snapshot_id, committed["spi"].attrs)
+```
+
+`write_icechunk` calls `icechunk.xarray.to_icechunk(dataset, session, mode=...)`,
+then `session.commit(message)`. It completes all Dask writes before committing.
+Use `to_icechunk`, never `Dataset.to_zarr`, for Icechunk, including distributed
+or multiprocessing writes: it records worker writes in the session.
+Use `to_zarr` for ordinary Zarr stores as before.
+
+Icechunk does not support consolidated metadata. The reader explicitly calls
+`xr.open_zarr(session.store, consolidated=False, chunks={})`, and `to_icechunk`
+disables consolidation internally. Do not use the ordinary Zarr example's
+`consolidated=True` settings with Icechunk.
+
+The [Dask SPI/SPEI notebook](https://github.com/monocongo/climate_indices/blob/main/notebooks/zarr_dask_spi_spei.ipynb)
+can write its existing `ds_output` through the same single session. Replace its
+Zarr staging and directory-swap block with
+`write_icechunk(ds_output, output_repo, message="Compute SPI/SPEI")`.
+Keep the client open until the helper returns. A threaded scheduler also works.
+Dask scheduling does not select the numerical backend; the existing optional
+Rust dispatch and Python fallback remain unchanged.
+
+Keep input and output repositories separate, and use one writer per output
+branch. The default `mode="w-"` rejects an existing group. For an intentional
+replacement, use `mode="w"`: it changes only the new snapshot and preserves
+previous snapshots. A failed write does not advance the branch. Never delete
+or recreate an existing repository to retry a write. The helpers propagate write
+and commit errors; they do not merge concurrent sessions or retry conflicts.
+The optional `branch` argument selects an existing branch (default `"main"`).
 
 ## Write NetCDF from a lazy xarray result
 
