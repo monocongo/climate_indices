@@ -185,14 +185,22 @@ The nine summer cases reproduce same-author counts and LMF, not independent vali
 #### Monthly bootstrap inference
 
 :::{warning}
-Synthetic characterization gives screening evidence for these intervals and
-p-values only for serially independent or 6-month-overlap sources whose hazards
-are independent of each other, with hazard frequencies of 0.35 to 0.55 and no lag,
-at 200 years and 399 resamples. For 36-month persistence one coverage check
-failed and null rejection exceeded the nominal 5% at every block length, so do not
-read those results as nominal. Hazards that depend on each other were measured
-only with 36-month persistence. Other frequencies, lagged conditioning, and
-shorter records were not characterized. See the
+Synthetic characterization gives screening evidence for these intervals and p-values
+only inside a measured scope, condition by condition rather than as one configuration.
+At the default 1,999 resamples: 200-year records with the seasonal monthly
+probabilities (0.35 to 0.55), source overlap of 1, 6, or 36 months, and independent
+hazards. At 399 resamples: 200-year records with 1 to 30 months of overlap, conditional
+lag windows of `(0, 0)`, `(0, 1)`, `(0, 3)`, and `(1, 3)` at 1- and 6-month overlap,
+monthly probabilities of 0.30 to 0.60 (1- and 6-month overlap) or 0.70 to 0.80 (1-, 6-,
+and 36-month overlap), hazards that correlate 0.5 at the same time with 1, 6, or 12
+months of overlap, and 100-year records with the seasonal probabilities. The plan
+crossed no two of those conditions. 36-month persistence at 399 resamples with
+independent hazards, correlated 36-month persistence at the default resamples, monthly
+probabilities near 0.20, and 60-year and 30-year records each failed a predeclared gate,
+so do not read those results as nominal.
+No independent-hazard case exceeded its per-month rejection band; the failures are
+interval under-coverage and suppressed p-values where few effective blocks or
+occurrences remain. See the
 [validation record](https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md#compound-bootstrap-characterization).
 This is synthetic evidence, not an external validation of the method.
 :::
@@ -267,7 +275,9 @@ and
 [`compound-bootstrap-characterization.json`](https://github.com/monocongo/climate_indices/blob/main/docs/design/compound-bootstrap-characterization.json).
 The guards do not detect nonstationarity, long memory, or impact relevance.
 The [worked guide](compound-hazards.md#run-a-seeded-monthly-bootstrap-example) includes a seeded example within the measured synthetic conditions.
-Further calibration remains in [#1398](https://github.com/monocongo/climate_indices/issues/1398).
+The calibration measurements of [#1398](https://github.com/monocongo/climate_indices/issues/1398)
+use the same script; their predeclared design, results, and maintainer decision are in
+`docs/design/compound-bootstrap-calibration.md`.
 
 (compound-xarray-route)=
 #### Beta xarray route

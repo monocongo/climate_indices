@@ -417,7 +417,7 @@ It separates independent external validation, same-author reference reproduction
 | Compound joint statistics (`compound.joint_statistics`, `JointResult`) | Scoped reference-reproduced, not independently validated, for the nine public summer cases below; otherwise analytic/specification-level regression | Exact integer equality for counts and exact equality for the balanced Cartesian tables; `atol=1e-12` with `rtol=0` for closed-form probabilities; the Gaussian cases are predeclared 5-sigma Monte Carlo bands, not tolerances | `tests/test_compound_statistics.py` checks pooled and monthly counts against hand-counted contingency tables, one complete-case support for every marginal with different per-source validity masks (two and three sources), balanced two- and three-source independence (`LMF=1` exactly), the closed-form Gaussian joint probability `1/4 + asin(rho)/(2*pi)` at `rho=0` and `rho=0.5` within its declared band, disjoint hazards (`LMF=0`), a zero marginal (`NaN` plus the `undefined_denominator` flag), short support, sparse occurrences, all-missing grid cells, invalid steps never counting as non-exceedances, and pooled-versus-monthly recounting. Hypothesis tests cover source-permutation symmetry, count nesting, and probability bounds on generated validity masks. It also checks option and manual-`AlignedHazards` validation, read-only results, the JSON manifest, and lifecycle logging. These tests do not use the `validation` marker. | The analytic values come from closed form or hand counting. The separate public-study comparison below reproduces the same-author counts and LMF, not an independent oracle. Agreement of the beta xarray route (#1372) with this function is interface equivalence. `LMF=1` in a balanced design is a property of that design, not evidence of independence in real data. This descriptive function makes no inference about significance; see the separate bootstrap evidence below. Known gaps: the plan's nonzero-threshold quadrature and independent-uniform-envelope checks are not implemented, outside the summer reference scope. The nine public cases do not validate other thresholds, three-hazard real-data relationships, upstream SPEI, or the published significance mask. |
 | Compound conditional statistics (`compound.conditional_probability`, `ConditionalResult`) | Regression only; specification-level (no external oracle adopted) | Exact integer equality for counts and exact equality for hand-enumerated windows; `atol=1e-12` with `rtol=0` for closed-form frequencies | `tests/test_compound_statistics.py` checks the `(0, 0)` identity against the joint and marginal counts, hand-enumerated forward windows, one counted success per given-positive anchor despite several target occurrences in its window, discarded incomplete trailing horizons (including a window that already holds a target occurrence), a discarded anchor whose window holds an unknown target step, asymmetry under a role swap, the response-window baseline against the one-step marginal and the joint probability, anchor-month grouping across a year boundary, daily civil-day steps across 29 February, a zero conditioning count (`NaN` plus the `undefined_denominator` flag), short support, all-missing grid cells, and a third source that never enters the selected pair's eligibility. Hypothesis tests cover count nesting and probability bounds on generated validity masks. It also checks option, role, and window validation, read-only results, the JSON manifest, and lifecycle logging. These tests do not use the `validation` marker. | No external oracle is used: the analytic values come from closed form or hand enumeration, so this is specification-level evidence, not external validation. A lagged association is not a validated causal cascade and is not an event-onset conversion probability. Agreement of the beta xarray route (#1372) with this function is interface equivalence, and this descriptive function makes no significance or confidence claim; see the separate bootstrap evidence below. The public LMF reproduction below does not validate conditional response windows. |
 | Compound events (`compound.compound_events`, `CompoundEventSet`) | Regression only; specification-level (no external oracle adopted) | Exact index, count, lag, and flag equality; the outputs are indices, counts, lags, and flags (NaN where a lag does not apply), so no numeric tolerance applies | `tests/test_compound_events.py` checks the all-pairs concurrent and sequential enumeration, the four boundary-censor flags, and the rejected-bridge count against an independent brute-force interval scan over 24 seeded random scenarios with random unknown steps, plus hand-counted inclusive-end cases, repeated matches, lag-window boundaries, sequential bridges through an unknown step (rejected and counted), a matched and a rejected candidate in one window, empty catalogs with stable dtypes, validation of manually constructed `RunSet` objects, read-only result arrays, lifecycle logging, and the serializable manifest. These tests do not use the `validation` marker. | No external oracle and no published reference values are committed, and this specification-level status stands until an independent matching oracle exists. The seeded brute-force scan is an internal specification oracle, not external validation. Pair counts are not independent observations, so no significance claim is made or supported here. Agreement with the eager xarray catalog (#1373) is interface equivalence, not validation. |
-| Compound monthly bootstrap (`compound.bootstrap_dependence`, `BootstrapResult`) | Synthetic characterization and regression only; screening evidence for serially independent or 6-month-overlap sources, with hazards independent of each other, at 200 years; the 36-month-persistence characterization failed a predeclared gate | Exact counts and seeded repeats; `atol=1e-12`, `rtol=0` for closed-form frequencies and linear quantiles. Characterization uses predeclared exact-binomial acceptance counts, not floating-point tolerances. | `tests/test_compound_bootstrap.py` covers paired versus independent sampling, tiny-block enumeration, month phase, original-chronology lag responses, missing-year segments, earliest ties, separate interval/null guards, zero-joint suppression, inclusive null ties, valid-resample fractions, immutable outputs, lifecycle events, and cell-tile invariance. `scripts/characterize_compound_bootstrap.py` records 128 independent 200-year Gaussian records per scenario, 399 resamples, three statistics, seasonal marginals, overlapping 6- and 36-month windows, and 3/6/12-year block sensitivity. The measured report is `docs/design/compound-bootstrap-characterization.json`. | Supported scope: serially independent or 6-month-overlap sources, with hazards independent of each other, at 200 years, where every predeclared gate passed. The 36-month-persistence scenarios are unsupported: one coverage gate failed (twelve-year LMF) and null rejection exceeded the nominal 5% at every block length. Hazards that depend on each other were measured only with 36-month persistence. Hazard frequencies outside 0.35 to 0.55, lagged conditioning, records shorter than 200 years, and the default 1,999 resamples (399 were used) were not characterized. No external validation, daily inference, field significance, or arbitrary-persistence guarantee is claimed. See the Compound Bootstrap Characterization section below. |
+| Compound monthly bootstrap (`compound.bootstrap_dependence`, `BootstrapResult`) | Synthetic characterization and regression only; screening evidence measured group by group, not as one configuration: at the default 1,999 resamples, 200-year records with the seasonal frequencies (0.35 to 0.55) and 1, 6, or 36 months of persistence with independent hazards; at 399 resamples, 200-year records with 1 to 30 months of persistence, monthly frequencies of 0.30 to 0.60 or 0.70 to 0.80, conditional lag windows to `(1, 3)`, 0.5-correlated hazards at 1, 6, or 12 months of persistence, and 100-year records; 36-month persistence at 399 resamples with independent hazards and at the default resamples with correlated hazards, 60- and 30-year records, and frequencies near 0.20 each failed a predeclared gate | Exact counts and seeded repeats; `atol=1e-12`, `rtol=0` for closed-form frequencies and linear quantiles. Characterization uses predeclared exact-binomial acceptance counts, not floating-point tolerances. | `tests/test_compound_bootstrap.py` covers paired versus independent sampling, tiny-block enumeration, month phase, original-chronology lag responses, missing-year segments, earliest ties, separate interval/null guards, zero-joint suppression, inclusive null ties, valid-resample fractions, immutable outputs, lifecycle events, and cell-tile invariance. `scripts/characterize_compound_bootstrap.py` records 128 independent Gaussian records per scenario over 183 cases: the four original 200-year scenarios, record lengths of 30, 60, and 100 years, persistence of 12 to 36 months, conditional lag windows `(0, 1)`, `(0, 3)`, and `(1, 3)`, frequency profiles from 0.20 to 0.80, correlated hazards, and 399 and 1,999 resamples. A 40,000-year simulation supplies the lagged-conditional truth, and a test checks that reference against quadrature at zero lag. The measured report is `docs/design/compound-bootstrap-characterization.json`. | Supported scope (maintainer decision, 2026-10-19), grouped by the resample count that measured each condition because the plan crossed no two of them: at the default 1,999 resamples, 200-year monthly records with the seasonal frequencies (0.35 to 0.55), source overlap of 1, 6, or 36 months, and independent hazards; at 399 resamples, 200-year monthly records with 1 to 30 months of overlap, lag windows `(0, 0)`, `(0, 1)`, `(0, 3)`, and `(1, 3)`, frequencies of 0.30 to 0.60 or 0.70 to 0.80, and hazards correlated 0.5 at the same time with 1, 6, or 12 months of overlap, plus 100-year records with the seasonal frequencies. Unsupported: 36-month persistence at 399 resamples for independent hazards and at the default resamples for correlated hazards, frequencies near 0.20, 60- and 30-year records, and `wide` at 36-month overlap; each failed a predeclared gate when the guards answered, except `wide` at 36 months, which was not run. No support guard was added, because no observable separates the passing from the failing cases without refusing a supported one. No independent-hazard case exceeded its per-month null rejection band, and the 36-month pooled null rejection falls from 7.5% at 399 resamples to 3.5% (3.2% to 3.8%) at the default resamples. No external validation, daily inference, field significance, or arbitrary-persistence guarantee is claimed. See the Compound Bootstrap Characterization section below. |
 | Compound beta xarray routes (`compound.harmonize`, `joint_statistics`, `conditional_probability`, `bootstrap_dependence` on `xarray` input) | Regression only; interface equivalence with the NumPy routes (no external oracle adopted) | Exact equality for every count, flag, Boolean, and NaN position; the estimates come from the same NumPy arithmetic on the same counts, so no numeric tolerance applies | `tests/test_compound_xarray.py` compares every result field of each route with its NumPy counterpart, per month and pooled, for in-memory and Dask input over several spatial chunkings; checks bootstrap results are identical across tile boundaries; proves graph construction runs no task under a scheduler that raises; and checks custom and transposed dimensions, NaN versus explicit validity masks, daily-to-monthly reduction, `join="inner"` with its warning, a single location, and the rejected layouts (split time or hazard chunks, mismatched spatial chunks, mixed backends, missing or shifted coordinates, dimension-only or non-Gregorian time, and options that apply only to NumPy input). It also checks registry attributes, bounds, flag masks, no inherited `standard_name` or bounds, the versioned JSON manifest, h5netcdf and Zarr round trips, the `BetaFeatureWarning` and replayed-warning policy, and lifecycle events. `scripts/measure_compound_xarray_memory.py` records per-tile memory in `docs/design/compound-xarray-memory.json`. These tests do not use the `validation` marker. | Equivalence shows the Dataset routes reproduce the NumPy core, not that either is scientifically validated; the NumPy rows above state that evidence. Value-dependent support warnings are not emitted for Dask input, so read `quality_flags`. Memory figures are `tracemalloc` lower bounds from one machine, one platform, and one daily and one monthly configuration, with a manual peak-RSS spot check for `harmonize` only, and bootstrap tile width is set by compute time, which was not characterized. The route is beta (ADR-0012). |
 | HDD, CDD, EDD (`energy.heating_degree_days`, `cooling_degree_days`, `energy_degree_days`) | Exact reference for the published cooling example; specification-level for heating and energy degree days | `rtol=0`, `atol=1e-12` °C day after the `(F - 32) * 5/9` conversion | `tests/test_energy_reference.py` (marked `validation`) reproduces NOAA CPC's published seven-day CDD series (`[67, 65, 70, 74, 78, 65, 68]` °F to `[2, 0, 5, 9, 13, 0, 3]` °F day, total 32 °F day) with the exact `(65 - 32) * 5/9` °C base. Heating, EDD, and missing-day cases are hand-calculated specification checks; EDD = HDD + CDD is an algebraic identity, not an independent oracle. `tests/test_energy_degree_days.py` repeats the CPC example outside the marker and covers input validation, dtypes, missing values, and scalar/empty shapes; `tests/test_energy_xarray.py` covers temperature-unit inference. | No public default base ships: C3S and Eurostat pair an activation threshold with a separate reference temperature, which one base per transform cannot reproduce. The functions take a caller-supplied daily mean temperature, so a caller holding Tmin and Tmax computes `(Tmin + Tmax) / 2` first; no other averaging or weighting is implemented, and no C3S numeric comparison is committed. |
 | Hub-height wind-speed profile (`energy.hub_height_wind_speed`, `energy.wind_shear_exponent`) | Independent-implementation comparison on synthetic inputs; not observed-wind validation | `rtol=0`, `atol=1e-12` m s⁻¹; two-level shear recovery `atol=1e-15` as consistency evidence only | `tests/test_energy_reference.py` (marked `validation`) compares the power-law and log-law profiles against pinned `xclim` 0.62.0 `wind_profile` and `windpowerlib` 0.2.2 `logarithmic_profile` outputs for nine synthetic cases, including calm, identity, and missing masks. `tests/test_energy_wind.py` and `tests/test_energy_xarray.py` cover the contracts outside the marker. | The inputs are synthetic and heights are generic, so neither comparison establishes skill against observed hub-height wind. Calm handling and the default one-seventh exponent are project conventions. |
@@ -505,6 +505,8 @@ public-study reproduction above concerns frequency counts, not event catalogs.
 
 ## Compound Bootstrap Characterization
 
+### The #1371 experiment
+
 The synthetic experiment predeclared a familywise error budget of 0.01 across
 864 binomial comparisons. Each coverage case required at least 109 covered
 records out of 128. Each independent-null case allowed at most 19 rejections
@@ -528,38 +530,69 @@ ties. The rerun used the same seeds and configuration. Interval coverage is
 identical, null rejection counts changed by one in 4 of 36 cases, and no gate
 outcome changed.
 
-### Supported scope (maintainer decision, 2026-10-18)
+### #1398 measurements (2026-10-19)
 
-The maintainer kept the method unchanged and narrowed the claim to what the
-measurements support:
+[Issue #1398](https://github.com/monocongo/climate_indices/issues/1398) measured 183
+cases: the four #1371 scenarios again, plus record lengths of 30, 60, and 100 years,
+persistence of 12, 18, 24, and 30 months, conditional lag windows `(0, 1)`, `(0, 3)`,
+and `(1, 3)`, monthly frequencies of 0.20 to 0.30, 0.30 to 0.60, and 0.70 to 0.80,
+hazards correlated 0.5 at 1, 6, and 12 months of persistence, and the default 1,999
+resamples. The gates, bands, and scenario plan were committed before the run, and the
+replication group reproduces the #1371 report field by field. The predeclared design,
+results, and decision are in `docs/design/compound-bootstrap-calibration.md`.
 
-- **Supported.** Seasonal sources that are serially independent, or that overlap
-  across 6 months, at 200 years. All 18 coverage gates and all 18 independent-null
-  gates passed. Mean coverage ranged from 90.5% to 95.1% across block lengths
-  (92.4% to 94.0% at the default six-year blocks), and mean null rejection from
-  4.0% to 5.5%. This is screening evidence, not proof of nominal 95% coverage.
-  Both supported scenarios used hazards that are independent of each other
-  (same-time correlation 0, so the true LMF is 1). Interval coverage for hazards
-  that depend on each other (correlation 0.5) was measured only with 36-month
-  persistence, where mean coverage was 89.3% to 92.1%.
-- **Unsupported.** Sources that persist for 36 months. The twelve-year LMF
-  coverage gate failed as above, and mean coverage across the nine independent
-  and nine correlated cases was 89.3% to 92.3%. The per-month null gates passed
-  (at most 14 rejections against the limit of 19), but the pooled rejection rate
-  across the nine independent cases was 7.5% (6.7% to 8.2% per case) against a
-  nominal 5%. The pooled rate is a descriptive summary, not a predeclared gate.
-  Block lengths of 3, 6, and 12 years did not restore calibration. Do not read
-  an interval or p-value from such sources as nominal.
-- **Not characterized.** Records shorter than 200 years, where the minimum of
-  30 complete years leaves few nonoverlapping blocks; persistence between 6 and
-  36 months; hazard frequencies outside the 0.35 to 0.55 range of the seasonal
-  marginals; conditional lag windows other than `(0, 0)`; and the default 1,999
-  resamples, since the experiment used 399.
+47 of the 183 cases fail a predeclared gate. The failures fall into three mechanisms.
+37 cases miss the interval coverage band, and 45 cases carry a month where the library
+suppressed the p-value because fewer than 95% of resamples were valid; 35 cases do both.
+**No independent-hazard case exceeded its per-month rejection band.** The pooled
+rejection rate across the 24 independent-hazard 200-year scenarios is 3.5% to 7.5%.
+At the default 1,999 resamples the 36-month independent scenario passes all nine gate
+checks and its pooled rejection rate is 3.5% (3.2% to 3.8%), so most of the 7.5% excess
+seen at 399 resamples was a resample-count artifact. Under-coverage is the remaining
+limit, and it appears where few effective blocks or few effective occurrences remain.
+Coverage passes at 100 years and fails at 30 and 60 years; it passes for 12, 18, 24,
+and 30 months of persistence and fails at 36; it passes for monthly probabilities from
+0.30 upward and fails near 0.20.
 
-Improving calibration for multi-year persistence needs a different method or
-support contract and is not part of this milestone. The beta xarray adapter is #1372,
-with equivalence-only evidence recorded in the compound xarray row above.
-The [worked guide](docs/compound-hazards.md) preserves these limits; #1398 owns further bootstrap calibration.
+### Supported scope (maintainer decision, 2026-10-19)
+
+This statement supersedes the narrower 2026-10-18 one. The maintainer kept the method
+unchanged, added no support guard because no observable separates the passing from the
+failing cases without refusing supported ones, and widened the claim only where every
+predeclared gate passed:
+
+- **Supported**, listed group by group because the plan crossed none of these
+  conditions with each other:
+  - At the default 1,999 resamples: 200-year monthly records with the seasonal
+    frequencies (0.35 to 0.55) and source overlap of 1, 6, or 36 months, hazards
+    independent of each other. The independent 36-month case passes every gate here.
+  - At 399 resamples: 200-year monthly records with source overlap of 1 to 30 months;
+    conditional lag windows `(0, 1)`, `(0, 3)`, and `(1, 3)` at 1- and 6-month overlap;
+    monthly frequencies of 0.30 to 0.60 at 1- and 6-month overlap and 0.70 to 0.80 at 1-,
+    6-, and 36-month overlap; hazards correlated 0.5 at the same time with 1, 6, or 12
+    months of overlap, where rejection describes power rather than null calibration; and
+    100-year records with the seasonal frequencies at 1- and 6-month overlap.
+  - Every listed condition passed every gate in its group. Measured coverage is 91.5% to
+    94.8%. This is screening evidence, not proof of nominal 95% coverage.
+- **Unsupported.** Sources that persist for 36 months: with independent hazards the
+  twelve-year LMF coverage gate fails at 399 resamples and passes at the default
+  resamples, and with correlated hazards the default-resample case fails one coverage
+  gate (3-year blocks, month 4, 107 of 128). Monthly probabilities near
+  0.20, where the null p-value is suppressed on too many resamples and coverage also
+  fails at 36-month persistence. Records of 60 years, which miss coverage in months 6
+  to 8 (94 to 108 of 128) and suppress p-values in months 6 to 9. Records of 30 years,
+  where the guards remove 23% of month-records at typical frequencies and 63% near
+  0.20, and the answered records fail both gates. Profile `wide` at 36-month overlap,
+  which was not run. Do not read an interval or p-value from these cases as nominal.
+- **Never claimed.** No external validation, daily inference, field significance,
+  nonstationarity, or long memory. The guards report refusal through `quality_flags`
+  and effective resample counts; they do not detect the source structure itself.
+
+The beta xarray adapter is #1372, with equivalence-only evidence recorded in the
+compound xarray row above. The [worked guide](docs/compound-hazards.md) preserves these
+limits. Improving calibration for 36-month persistence or 60-year records needs a
+different method or support contract, and a reopen would need its own predeclared
+characterization.
 
 ## Flood Evidence Classification
 
