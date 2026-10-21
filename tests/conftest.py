@@ -1417,3 +1417,30 @@ def assert_publish_restores_previous_set(
     with pytest.raises(error, match="interrupted publication"):
         generator._publish(staging)
     assert {path.name: path.read_bytes() for path in target.iterdir()} == previous
+
+
+@pytest.fixture
+def icechunk_repo() -> Any:
+    """A fresh in-memory Icechunk repository, skipped without the optional extra.
+
+    In-memory storage keeps the test hermetic and needs no cleanup, which covers every
+    test except a process-based distributed write; that one uses
+    ``icechunk_repo_filesystem`` instead.
+    """
+    icechunk = pytest.importorskip("icechunk")
+    return icechunk.Repository.open_or_create(icechunk.in_memory_storage())
+
+
+@pytest.fixture
+def icechunk_repo_filesystem(tmp_path: Path) -> Any:
+    """A fresh on-disk Icechunk repository, visible to distributed worker processes."""
+    icechunk = pytest.importorskip("icechunk")
+    return icechunk.Repository.create(icechunk.local_filesystem_storage(str(tmp_path / "repository")))
+
+
+@pytest.fixture
+def dask_client() -> Iterator[Any]:
+    """A process-based distributed client for the Icechunk worker-write test."""
+    distributed = pytest.importorskip("distributed")
+    with distributed.Client(n_workers=2, threads_per_worker=1, processes=True, dashboard_address=":0") as client:
+        yield client

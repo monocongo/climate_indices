@@ -188,6 +188,7 @@ markers = [
     "slow: slow tests that may be skipped in CI (deselect with '-m \"not slow\"')",
     "release: pre-release integrity checks — run before pushing a release tag with '-m release'",
     "validation: external or release-gate scientific validation tests (run with '-m validation')",
+    "icechunk: optional Icechunk I/O integration tests (run with '-m icechunk')",
 ]
 addopts = "-m 'not benchmark and not validation'"
 

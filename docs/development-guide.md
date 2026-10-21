@@ -474,6 +474,35 @@ from climate_indices import compute, exceptions
 - **Property-based tests**: Use hypothesis for invariants
 - **Markers**: Use `@pytest.mark.benchmark` for performance tests
 
+### Icechunk I/O tests
+
+The optional Icechunk integration tests live in `tests/test_icechunk_io.py` and are
+marked `icechunk`. They cover round-trip fidelity, SPI and SPEI parity across Icechunk,
+NetCDF, and Zarr inputs, session and snapshot semantics, and eager, threaded, and
+distributed writes. Install the extra and run just that suite:
+
+```bash
+uv sync --extra icechunk   # Python 3.11 or later; `--dev` installs it too
+uv run pytest -m icechunk
+```
+
+Without the extra (Python 3.10, or a base install) the module skips. Every CI matrix leg
+on Python 3.11 and later installs the `dev` group, so those legs run the suite already;
+the marker is for selecting it locally.
+
+One test is opt-in in a second way: `test_r2_round_trip` writes to the shared Cloudflare
+R2 bucket, so it is marked `validation` and excluded from the default selection. It needs
+both an explicit switch and credentials in the environment:
+
+```bash
+R2_TEST=1 R2_ACCOUNT_ID=<account> R2_ACCESS_KEY_ID=<key> R2_SECRET_ACCESS_KEY=<secret> \
+  uv run pytest -m validation tests/test_icechunk_io.py
+```
+
+It creates a fresh `R2_PREFIX/pytest-<id>` repository (default prefix `examples/icechunk`,
+default bucket `climate-indices`) and leaves that snapshot for inspection, so it never
+touches another object in the bucket. Delete the prefix when it is no longer needed.
+
 ### Git Workflow
 1. Create feature branch from `main`
 2. Make changes with descriptive commits
