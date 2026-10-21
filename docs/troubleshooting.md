@@ -246,12 +246,12 @@ result_np = indices.spi(
 
 **Cross-reference:** See {doc}`xarray_migration` Pitfall 3.
 
-### Unsupported frequency (weekly/hourly)
+### Unsupported frequency (weekly, twelve-hourly, quarterly)
 
 :::{warning}
-**Error:** `CoordinateValidationError: Unsupported frequency 'W' - only 'MS'/'ME'/'M' (monthly) and 'D' (daily) supported`
+**Error:** `CoordinateValidationError: Unsupported frequency 'W' - only 'MS'/'ME'/'M' (monthly), 'D' (daily), and 'h' (hourly) supported`
 
-**Cause:** Your data has weekly (`W`), hourly (`H`), quarterly (`Q`), or annual (`A`) frequency. The library only supports monthly and daily time series.
+**Cause:** Your data has weekly (`W`), twelve-hourly (`12h`), quarterly (`Q`), or annual (`A`) frequency. An hourly cadence is supported for the empirical standardized energy indices; every other frequency must be resampled first.
 
 **Solution:** Resample to a supported frequency:
 
@@ -260,7 +260,7 @@ result_np = indices.spi(
 da_monthly = da.resample(time="MS").sum()
 result = indices.spi(da_monthly, scale=6, distribution=indices.Distribution.gamma)
 
-# for hourly to daily (e.g., temperature, use mean)
+# for twelve-hourly to daily (e.g., temperature, use mean)
 da_daily = da.resample(time="D").mean()
 ```
 
@@ -359,9 +359,9 @@ result = indices.eddi(
 :::{warning}
 **Error:** `ValueError: Invalid shape of input array: (30, 12, 2) -- a (time, *cells) block whose first cell axis is a calendar period length is ambiguous with a (years, periods, *cells) array; declare it with spatial_time_major=True`
 
-**Cause:** A `(time, *cells)` block whose first cell axis is a calendar period length (12 or 366) is structurally identical to a `(years, periods, *cells)` array. Reading one as the other returns plausible numbers rather than failing, so `indices.spi`, `indices.spei`, and `compute.prepare_scaled` refuse the shape until the caller says which reading is meant.
+**Cause:** A `(time, *cells)` block whose first cell axis is a calendar period length (12, 366, or 8784) is structurally identical to a `(years, periods, *cells)` array. Reading one as the other returns plausible numbers rather than failing, so `indices.spi`, `indices.spei`, and `compute.prepare_scaled` refuse the shape until the caller says which reading is meant.
 
-**Solution:** Reorder the cell axes so the first one is not 12 or 366, or declare the block:
+**Solution:** Reorder the cell axes so the first one is not 12, 366, or 8784, or declare the block:
 
 ```python
 from climate_indices import indices
@@ -657,7 +657,9 @@ ______________________________________________________________________
 
 **Error (daily):** `InvalidArgumentError: Invalid scale argument: 2197. Scale must be an integer in the range [1, 2196]. Common scales: 1 (daily), 7 (weekly), 30 (monthly), 90 (seasonal), 365 (annual).`
 
-**Cause:** The `scale` parameter is outside the valid range (1-72 for monthly data, 1-2196 for daily data) or is not an integer.
+**Error (hourly):** `InvalidArgumentError: Invalid scale argument: 52705. Scale must be an integer in the range [1, 52704]. Common scales: 24 (daily), 168 (weekly), 720 (monthly), 2160 (seasonal), 8760 (annual, 8784 in the 366-day layout).`
+
+**Cause:** The `scale` parameter is outside the valid range (1-72 for monthly data, 1-2196 for daily data, 1-52704 for hourly data) or is not an integer.
 
 **Solution:** Use a valid scale value:
 
@@ -714,7 +716,7 @@ pearson_result = indices.spi(precip_da, scale=6, distribution=indices.Distributi
 ### Invalid periodicity
 
 :::{warning}
-**Error:** `PeriodicityError: Invalid periodicity argument: weekly. Periodicity must be a Periodicity enum member. Supported values: monthly, daily. Use compute.Periodicity.monthly or compute.Periodicity.daily.`
+**Error:** `PeriodicityError: Invalid periodicity argument: weekly. Periodicity must be a Periodicity enum member. Supported values: monthly, daily, hourly. Use compute.Periodicity.monthly, compute.Periodicity.daily, or compute.Periodicity.hourly.`
 
 **Cause:** The `periodicity` parameter is not a valid `Periodicity` enum member.
 

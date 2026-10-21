@@ -191,10 +191,16 @@ class Periodicity(Enum):
     'daily' indicates an array of full years of daily values with 366 days per year,
     as if each year were a leap year and any missing final months of the final
     year filled with NaN values, with array size == (# years * 366)
+
+    'hourly' indicates an array of full years of hourly values with 366 days of 24
+    hours per year, i.e. 8784 values per year, on the same 366-day calendar, so a
+    non-leap year carries 24 synthesized February 29 values, and any missing final
+    days of the final year filled with NaN values, with array size == (# years * 8784)
     """
 
     monthly = 12
     daily = 366
+    hourly = 8784
 
     def __str__(self) -> str:
         return self.name
@@ -211,6 +217,8 @@ class Periodicity(Enum):
             unit = "month"
         elif self.name == "daily":
             unit = "day"
+        elif self.name == "hourly":
+            unit = "hour"
         else:
             raise ValueError(f"No periodicity unit corresponding to {self.name}")
 
@@ -220,7 +228,7 @@ class Periodicity(Enum):
     def period_length(self) -> int:
         """
         The number of time steps comprising one year at this periodicity,
-        i.e. 12 for monthly data and 366 for daily data.
+        i.e. 12 for monthly data, 366 for daily data, and 8784 for hourly data.
         """
         return int(self.value)
 
@@ -294,8 +302,8 @@ def _validate_array(
             )
             raise PeriodicityError(message, periodicity_value=str(periodicity))
 
-        elif periodicity is Periodicity.monthly or periodicity is Periodicity.daily:
-            # we've been passed a 1-D array with shape (months) or (days),
+        elif isinstance(periodicity, Periodicity):
+            # we've been passed a 1-D array with shape (months), (days), or (hours),
             # reshape it to 2-D with shape (years, period_length)
             values = utils.reshape_to_2d(values, periodicity.period_length)
 
@@ -426,11 +434,11 @@ def reshape_time_major(values: np.ndarray, periodicity: Periodicity) -> np.ndarr
     trailing partial period is padded with NaN values as in the 1-D case.
 
     :param values: time-major array of values, shape (time, ``*cells``)
-    :param periodicity: specifies whether data is monthly (12) or daily (366)
+    :param periodicity: specifies whether data is monthly (12), daily (366), or hourly (8784)
     :return: the values with shape (years, period_length, ``*cells``)
-    :raises PeriodicityError: if periodicity is neither monthly nor daily
+    :raises PeriodicityError: if periodicity is not a ``Periodicity`` member
     """
-    if periodicity is not Periodicity.monthly and periodicity is not Periodicity.daily:
+    if not isinstance(periodicity, Periodicity):
         raise PeriodicityError(f"Invalid periodicity argument: {periodicity}", periodicity_value=str(periodicity))
 
     period_length = periodicity.period_length
@@ -471,7 +479,7 @@ def unfold_time_major(values: np.ndarray, original_shape: tuple[int, ...]) -> np
 
 
 def reshape_values(values: np.ndarray, periodicity: Periodicity) -> np.ndarray:
-    if periodicity is Periodicity.monthly or periodicity is Periodicity.daily:
+    if isinstance(periodicity, Periodicity):
         return utils.reshape_to_2d(values, periodicity.period_length)
     else:
         raise PeriodicityError(f"Invalid periodicity argument: {periodicity}", periodicity_value=str(periodicity))
@@ -1174,8 +1182,9 @@ def transform_fitted_pearson(
     log.info("distribution_transform_started")
 
     # the distribution object is imported lazily: indices imports this module
-    from climate_indices.indices import Distribution
+    from climate_indices.indices import Distribution, _validate_hourly_distribution
 
+    _validate_hourly_distribution(periodicity, Distribution.pearson)
     params = {"prob_zero": probabilities_of_zero, "loc": locs, "scale": scales, "skew": skews}
 
     # validate (and possibly reshape) the input array before the all-missing return,
@@ -2346,7 +2355,8 @@ def prepare_scaled(
             spatial array with shape (time, ``*cells``) and three or more dimensions,
             whose trailing cell dimensions are preserved.
         scale: The number of values for which each sliding summation will encompass.
-        periodicity: Specifies whether data is monthly (12 time steps per year) or daily.
+        periodicity: Specifies whether data is monthly (12 time steps per year), daily
+            (366), or hourly (8784).
         clip_negatives: Whether negative values are clipped to zero, defaults to True.
         reshape: Whether the scaled values are reshaped to (years, period_length),
             defaults to True. For a time-major spatial input the result is
@@ -2355,8 +2365,8 @@ def prepare_scaled(
         spatial_time_major: Declares that a three-or-more-dimensional ``values`` is a
             time-major block of independent time series, shaped (time, ``*cells``). That is
             how a block is read anyway, except when the first cell axis is a calendar
-            period length (12 or 366), which makes the shape equally readable as a
-            (years, periods, ``*cells``) array; there the caller has to say which it means.
+            period length (12, 366, or 8784), which makes the shape equally readable as
+            a (years, periods, ``*cells``) array; there the caller has to say which it means.
             ``xarray_adapter`` sets this for every block it packs.
         aggregation: Whether each window is summed ("sum", the SPI/SPEI accumulation and
             the default) or averaged ("mean") over ``scale``. A mean is the window sum
@@ -2375,7 +2385,7 @@ def prepare_scaled(
     # periodicity must be validated regardless of whether the result is reshaped,
     # since reshape_values() is the only other place this is checked and it's
     # skipped entirely when reshape=False
-    if periodicity is not Periodicity.monthly and periodicity is not Periodicity.daily:
+    if not isinstance(periodicity, Periodicity):
         raise PeriodicityError(f"Invalid periodicity argument: {periodicity}", periodicity_value=str(periodicity))
     _validate_aggregation(aggregation)
 
@@ -2514,6 +2524,10 @@ def transform_fitted_gamma(
     validate_output_scale(output_scale)
     _validate_zero_handling(zero_handling)
 
+    from climate_indices.indices import Distribution, _validate_hourly_distribution
+
+    _validate_hourly_distribution(periodicity, Distribution.gamma)
+
     log = _logger.bind(
         operation="transform_fitted_gamma",
         output_scale=output_scale,
@@ -2534,8 +2548,6 @@ def transform_fitted_gamma(
 
     # validate (and possibly reshape) the input array
     values = _validate_array(values, periodicity)
-
-    from climate_indices.indices import Distribution
 
     params = {"alpha": alphas, "beta": betas, "prob_zero": probabilities_of_zero}
     FittedDistribution.validate_supplied(values, Distribution.gamma, params)
@@ -2726,8 +2738,9 @@ def transform_fitted_beta(
     log.info("distribution_transform_started")
 
     # the distribution object is imported lazily: indices imports this module
-    from climate_indices.indices import Distribution
+    from climate_indices.indices import Distribution, _validate_hourly_distribution
 
+    _validate_hourly_distribution(periodicity, Distribution.beta)
     params = {"alpha": alphas, "beta": betas, "prob_zero": probabilities_of_zero, "prob_one": probabilities_of_one}
 
     # validate a partial or mis-shaped supplied set before the all-missing return, as
@@ -3047,8 +3060,9 @@ def transform_fitted_loglogistic(
     log.info("distribution_transform_started")
 
     # the distribution object is imported lazily: indices imports this module
-    from climate_indices.indices import Distribution
+    from climate_indices.indices import Distribution, _validate_hourly_distribution
 
+    _validate_hourly_distribution(periodicity, Distribution.loglogistic)
     params = {"loc": locs, "scale": scales, "shape": shapes}
 
     # validate a partial or mis-shaped supplied set before the all-missing return, as
@@ -3118,8 +3132,9 @@ def transform_fitted_empirical(
     instead, so the step ranks against every calibration year.
 
     :param values: 2-D array of values, with each row representing a year containing
-        twelve columns representing the respective calendar months, or 366 columns
-        representing days as if all years were leap years. A time-major spatial block
+        twelve columns representing the respective calendar months, 366 columns
+        representing days as if all years were leap years, or 8784 columns
+        representing hours on that same calendar. A time-major spatial block
         already folded to (years, time_steps, ``*cells``) is also accepted.
     :param data_start_year: the initial year of the input values array
     :param calibration_start_year: the initial year to use for the calibration period
@@ -3159,16 +3174,24 @@ def transform_fitted_empirical(
         counts += calibration_year <= values
     valid_counts = np.count_nonzero(~np.isnan(calibration_values), axis=0)
 
-    probabilities = np.where(
-        np.isnan(values) | (valid_counts < MIN_CALIBRATION_VALUES_FOR_EMPIRICAL),
-        np.nan,
-        (1.0 + counts) / (valid_counts + 2.0),
-    )
-    mapped = _map_non_normal_scale(probabilities, output_scale)
-    result: np.ndarray = scipy.stats.norm.ppf(probabilities) if mapped is None else mapped
+    # the plotting position replaces the counts in place and the inverse-normal
+    # transform writes into the same array: hourly blocks make this the widest
+    # allocation in the pipeline, and probing for output_scale="normal" via
+    # scipy.stats.norm.ppf peaked at about seven times the input
+    missing = np.isnan(values)
+    missing |= valid_counts < MIN_CALIBRATION_VALUES_FOR_EMPIRICAL
+    counts += 1.0
+    counts /= valid_counts + 2.0
+    counts[missing] = np.nan
 
-    log.info("distribution_transform_completed", output_shape=str(result.shape))
-    return result
+    if output_scale == "normal":
+        scipy.special.ndtri(counts, out=counts)
+    elif output_scale == "bounded":
+        counts *= 2.0
+        counts -= 1.0
+
+    log.info("distribution_transform_completed", output_shape=str(counts.shape))
+    return counts
 
 
 # normalized fitting-parameter keys, paired with the deprecated alias accepted for each
@@ -3790,8 +3813,9 @@ def fit_and_standardize(
         data_start_year: The initial year of the input values array.
         calibration_start_year: The initial year to use for the calibration period.
         calibration_end_year: The final year to use for the calibration period.
-        periodicity: The type of time series represented by the input data, either
-            monthly (12 time steps per year) or daily (366 time steps per year).
+        periodicity: The type of time series represented by the input data: monthly
+            (12 time steps per year), daily (366), or hourly (8784), where hourly
+            accepts only the empirical distribution.
         fitting_params: Optional dictionary of pre-computed distribution fitting
             parameters, with the keys "alpha" and "beta" (and optionally
             "prob_zero") when fitting to gamma or beta, "prob_one" as well when
@@ -3838,6 +3862,17 @@ def fit_and_standardize(
     # AttributeError; the branches below need no further distribution check
     if getattr(distribution, "value", None) not in _SUPPORTED_DISTRIBUTIONS:
         raise ValueError(f"Unsupported distribution: {distribution}")
+
+    # an hourly calendar step carries too few calibration values to fit, so only the
+    # rank transform standardizes it; this seam is public, so the rule lives here as
+    # well as in indices.standardized_index (ADR-0019, #1177)
+    if periodicity is Periodicity.hourly and distribution.value != "empirical":
+        raise InvalidArgumentError(
+            "Hourly periodicity supports only the empirical distribution.",
+            argument_name="distribution",
+            argument_value=str(distribution),
+            valid_values="Distribution.empirical",
+        )
 
     # reject a reversed window here, before the dispatch: a complete supplied
     # parameter set skips the resolver calls inside the transforms, so without this

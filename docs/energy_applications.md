@@ -100,8 +100,10 @@ negatives as given and raises for any other distribution
 The accumulation window ("Timescale" in prose; `scale` in code) works as it
 does for SPI and SPEI, with one addition. The family is daily first: a weekly
 index is daily input with a Timescale of 7, and a 30-day index is daily input
-with a Timescale of 30; calendar months use monthly input. Sub-daily (hourly)
-input is planned separately ([#1177][energy-1177]).
+with a Timescale of 30; calendar months use monthly input. Hourly input uses the
+`hourly` periodicity and the empirical distribution only, standardized in
+hour-of-day x day-of-year strata ([#1177][energy-1177]). A 30-year record leaves about
+30 calibration values per stratum, which is too few for a parametric fit.
 
 Daily NumPy inputs to `indices.standardized_index()` must start on January 1
 and use the internal 366-slot year layout. The energy NumPy wrappers
@@ -109,7 +111,9 @@ inherit this layout. Convert Gregorian arrays with
 {func}`climate_indices.utils.transform_to_366day` before standardizing them;
 see {doc}`data_requirements` for the conversion requirements. Do not pass an
 ordinary Gregorian array directly: seasonal fitting would use the wrong day
-slots. Existing xarray index adapters handle Gregorian time coordinates
+slots. Hourly NumPy input follows the same rule in the 8784-slot layout:
+`utils.CalendarPlan.from_year_span(year_start, years, len(values), steps_per_day=24).to_all_leap(values)`
+converts a Gregorian hourly series. Existing xarray index adapters handle Gregorian time coordinates
 separately, including the standardized energy adapters ([#1174][energy-1174]).
 
 Precipitation is *summed* over its window, but a capacity factor is
@@ -400,8 +404,13 @@ and sub-national units ([DOI 10.24381/3bb607bd][c3s-doi]). Its capacity
 factors, degree days, and demand series are ready inputs to the standardized
 indices.
 ERA5 itself, or CMIP model output, supplies the raw temperature, wind,
-radiation, and precipitation for the physical transforms. An end-to-end
-gridded demonstration on these data is planned ([#1179][energy-1179]).
+radiation, and precipitation for the physical transforms. The
+[ERA5 energy demonstration notebook][energy-demo] computes wind-resource and
+degree-day proxies, SREPI, standardized demand, an explicitly normalized SRLI
+proxy, events, and sampled-cell maps for the January 2017 cold spell. It runs
+without credentials on a committed twelve-cell subset during the documentation
+doctest build. Its wind-only proxy and illustrative demand/capacity assumptions
+are not actual generation or load, or a reproduction of C3S energy indicators.
 
 ## What these indices cannot tell you
 
@@ -457,5 +466,5 @@ gridded demonstration on these data is planned ([#1179][energy-1179]).
 [energy-1175]: https://github.com/monocongo/climate_indices/issues/1175
 [energy-1176]: https://github.com/monocongo/climate_indices/issues/1176
 [energy-1177]: https://github.com/monocongo/climate_indices/issues/1177
-[energy-1179]: https://github.com/monocongo/climate_indices/issues/1179
+[energy-demo]: https://github.com/monocongo/climate_indices/blob/main/notebooks/energy_demo.ipynb
 [energy-1180]: https://github.com/monocongo/climate_indices/issues/1180

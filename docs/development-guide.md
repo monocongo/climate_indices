@@ -273,6 +273,26 @@ The everyday Rust commands, for reference:
 | `cargo build` / `cargo test --workspace` | Compiles the crates / runs the crate-level Rust tests; set `PYO3_PYTHON` to the project interpreter, as in [step 8](#8-verify), so they link the right Python |
 | `cargo fmt --all -- --check` | Formatting; CI fails on any diff |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Lints; CI fails on any warning |
+| `RUSTDOCFLAGS="-D warnings" cargo doc -p climate-indices --no-deps` | Crate documentation; CI fails on any rustdoc warning |
+
+### Crate quality gates
+
+The published `climate-indices` crate has four required CI gates, one job each, so
+each is a required check on the pull request. Run them locally with
+`cargo install --locked cargo-deny@0.20.2 cargo-semver-checks@0.51.0` once, then:
+
+| Command | What it proves |
+|---------|----------------|
+| `cargo package -p climate-indices --locked`, unpack into a directory **outside** this checkout, copy `rust-toolchain.toml` into it, then `cargo clippy --all-targets --all-features --locked -- -D warnings`, `cargo test --all-features --locked`, and `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps --locked` | The crate that a user receives lints, tests, and documents cleanly, on the pinned compiler. Running it from the unpacked `.crate` is what catches a file the crate needs but does not ship. |
+| `cargo "+{msrv}" check -p climate-indices --lib --all-features --locked`, where `{msrv}` is the crate's `rust-version` | The library builds on its declared minimum supported Rust version (1.85). `--lib` leaves out `criterion`, which only the benchmarks use. |
+| `cargo semver-checks check-release -p climate-indices` | The public API is compatible with the latest version on crates.io. A deliberate break fails here, cited to the offending item. |
+| `cargo deny --locked check -W unmaintained -W unsound` | The licenses, advisories, duplicate versions, and sources permitted by `deny.toml` cover everything that reaches a user — the published crate and the `climate-py` bindings the wheel compiles. Unmaintained and unsound advisories are warnings, so an upstream archive notice does not block an unrelated pull request. |
+
+The gates read the crate's own `rust-version` and version, so moving either needs no
+workflow change. `cargo semver-checks` compares against the published baseline: while
+`0.0.0` is the only release on crates.io the check has nothing to compare, and it has a
+baseline once a newer version is published — the rehearsal pre-release or the first real
+release (CRATE-11), whichever lands first.
 
 CI runs the native legs with `CLIMATE_INDICES_REQUIRE_NATIVE=1`, which turns a
 missing extension into a test failure instead of a skip so a broken build cannot
@@ -405,6 +425,7 @@ uv run pytest tests/test_review_scripts.py
 ```bash
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
+RUSTDOCFLAGS="-D warnings" cargo doc -p climate-indices --no-deps
 PYO3_PYTHON="$(uv run python -c 'import sys; print(sys.executable)')" cargo test --workspace
 uv run maturin develop --release
 uv run python -c "import climate_indices._native"

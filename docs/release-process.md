@@ -4,6 +4,10 @@ This is the maintainer runbook for releasing `climate_indices`. Releases are
 tag-based from `main`; pushing a valid release tag starts the GitHub Actions
 release workflow and publishes to PyPI through Trusted Publishing.
 
+The Rust crate `climate-indices` has its own release track, described under
+*Rust crate release* below. It publishes to crates.io from a separate tag
+namespace and never publishes to PyPI.
+
 ## Release invariants
 
 - `main` is trunk and must be releasable.
@@ -12,6 +16,8 @@ release workflow and publishes to PyPI through Trusted Publishing.
 - Package versions omit the leading `v`: `X.Y.Z`.
 - The Git tag, `pyproject.toml`, GitHub Release, and PyPI version must match.
 - The maintainer creates and pushes release tags; agents never perform these actions.
+- Crate tags use their own namespace, `climate-indices-vX.Y.Z`, so neither release
+  workflow can start the other.
 - Long-lived `release/*` branches are avoided except for approved maintenance
   work on older supported versions.
 
@@ -323,7 +329,8 @@ separate build and publish jobs, short-lived OIDC credentials, and explicit
 production-environment approval. TestPyPI can be useful for future workflow
 changes, but it is not configured here and is not a substitute for this
 repository's frozen-candidate rehearsal. The current exact-tag guard rejects
-`v3.0.0rc1`; do not try an RC tag as a production dry run.
+`v3.0.0rc1`; do not try an RC tag as a production dry run. The crate has its own
+pre-release lane in *Rust crate release* below, and it does not touch PyPI.
 
 If publishing fails at the OIDC step, verify the PyPI trusted publisher settings
 and the GitHub environment name before changing workflow credentials.
@@ -380,3 +387,234 @@ Use the normal trunk flow for hotfixes whenever possible:
 For an older supported version, a maintainer may approve a maintenance branch.
 Keep it narrow, document the target version, and merge forward to `main` when
 applicable.
+
+## Rust crate release
+
+The crate `climate-indices` (`crates/climate-indices`) publishes to crates.io on
+its own `0.x` track, independently of the Python release above. See
+[ADR-0021](adr/0021-climate-indices-crate-identity.md) for the identity, the
+version scheme, and the tag namespace. Publishing runs from
+`.github/workflows/crate-release.yml` through crates.io Trusted Publishing/OIDC,
+so this repository stores no crates.io API token.
+
+Only the maintainer releases the crate. Agents never create a crate tag, push
+one, or approve the `release` environment.
+
+### Crate release invariants
+
+- Crate tags are annotated tags named `climate-indices-vX.Y.Z` for a stable
+  release and `climate-indices-vX.Y.Z-rc.N` for the rehearsal pre-release. The
+  workflow accepts those two shapes and refuses any other suffix, so a mistyped
+  tag cannot spend a version nobody intended to publish. The rehearsal lane
+  exists because `crates/climate-py` admits a pre-release (see *Crate rehearsal*
+  below).
+- The tag version, the `version` in `crates/climate-indices/Cargo.toml`, and the
+  crate changelog heading must all name the same version. The workflow checks all
+  three before it publishes anything.
+- The crate version and the crate changelog are the crate's own.
+  `crates/climate-indices/CHANGELOG.md` holds the crate history, and it does not
+  follow `pyproject.toml` or the root `CHANGELOG.md`.
+- A published crates.io version cannot be replaced or edited. A version is used
+  once, and the remedy for a bad release is `cargo yank`, not a new upload of the
+  same version.
+- `climate-py` stays `publish = false`. Only the crate is published.
+
+### Crate one-time setup
+
+Confirm all five items before the first crate release:
+
+1. On crates.io, the `climate-indices` crate has a trusted publisher with owner
+   `monocongo`, repository `climate_indices`, workflow `crate-release.yml`, and
+   environment `release`. The crate exists on crates.io already (the `0.0.0`
+   placeholder), so no bootstrap token is needed to register the publisher.
+2. The crates.io owner list is the intended one. Only `monocongo` is an owner
+   today. ADR-0021 decision 5 leaves the second owner to the maintainer, and
+   adding one is a crates.io account action rather than a repository change.
+3. The GitHub tag ruleset covers the new namespace. The *Protect release tags*
+   ruleset matches `refs/tags/v*.*.*` only, so add `refs/tags/climate-indices-v*`
+   to it. The pattern matches the prefix, so it covers a pre-release tag as well
+   as a stable one. Without it, a crate tag can be moved or deleted, and the
+   "never move a pushed tag" invariant has no enforcement.
+4. The GitHub `release` environment still requires a reviewer. The crate publish
+   job uses that same environment, so a crate release needs the same approval as
+   the PyPI release.
+5. This repository has no `CARGO_REGISTRY_TOKEN` secret. The publish job exchanges
+   the workflow's OIDC identity for a short-lived token, and
+   `crates-io-auth-action` revokes that token when the job ends.
+
+### Crate release steps
+
+These steps publish one version, stable or pre-release. A stable release runs them
+once for the rehearsal pre-release and once for the stable version, as *Crate
+rehearsal* below describes.
+
+1. Set `version` in `crates/climate-indices/Cargo.toml` to the version being
+   published (`X.Y.Z`, or `X.Y.Z-rc.N` for the rehearsal), then refresh the member
+   version recorded in `Cargo.lock`. Every crate gate runs with `--locked`, and a
+   stale lock fails them:
+   ```bash
+   cargo update --workspace
+   ```
+2. Give `crates/climate-indices/CHANGELOG.md` a heading for the version being
+   published, as `## X.Y.Z - YYYY-MM-DD` with the intended tag day. Retitle the
+   `## Unreleased` heading when one is present, and keep the earlier entries. The
+   workflow refuses to publish while an `## Unreleased` section is present.
+3. Open a PR into `main`, then let the maintainer merge it after review and
+   passing CI.
+4. Record the full 40-character SHA of the merged `main` tip.
+5. From a clean maintainer worktree, confirm that the candidate has not moved and
+   that the tag is free. The PyPI checks in *Tag creation* above do not apply to
+   the crate: this project publishes no crate to PyPI, and no crate job reads a
+   tagger date.
+   ```bash
+   git switch main
+   git pull --ff-only origin main
+   CANDIDATE=<full 40-character SHA recorded on the release ticket>
+   test -z "$(git status --porcelain)" || { echo "working tree is not clean"; exit 1; }
+   test "$(git rev-parse HEAD)" = "$CANDIDATE" || { echo "local candidate changed"; exit 1; }
+   test "$(git rev-parse origin/main)" = "$CANDIDATE" || { echo "remote candidate changed"; exit 1; }
+   git remote get-url --push origin   # must be monocongo/climate_indices
+   git tag -l climate-indices-vX.Y.Z  # must print nothing
+   ```
+6. Create and inspect the annotated tag:
+   ```bash
+   git tag -a climate-indices-vX.Y.Z "$CANDIDATE" -m "Release climate-indices vX.Y.Z"
+   git show --stat climate-indices-vX.Y.Z
+   git rev-parse 'climate-indices-vX.Y.Z^{commit}'   # must equal $CANDIDATE
+   ```
+7. Confirm the version is absent from crates.io, then push only that tag. The
+   crates.io API refuses a request without a `User-Agent`, so the read needs one:
+   ```bash
+   curl -s -H 'User-Agent: climate-indices-release (https://github.com/monocongo/climate_indices)' \
+     https://crates.io/api/v1/crates/climate-indices/versions \
+     | python3 -c "import json,sys; print([v['num'] for v in json.load(sys.stdin)['versions']])"
+   git push origin climate-indices-vX.Y.Z
+   ```
+8. Approve the `release` environment when the run waits at `publish-crate`.
+9. Read every job's conclusion and run the crate post-release checks below.
+
+### The crate release workflow
+
+`.github/workflows/crate-release.yml` runs on crate tags only, and it:
+
+1. validates the tag format, the reachability of the tagged commit from
+   `origin/main`, the tag version against the crate manifest, and the dated crate
+   changelog heading;
+2. runs the four crate quality gates on the tagged commit: `crate-gate`,
+   `crate-msrv`, `crate-semver`, and `crate-deny`;
+3. after environment approval, exchanges the OIDC identity for a short-lived
+   crates.io token in the publish-only job and runs
+   `cargo publish -p climate-indices --locked`.
+
+It creates no GitHub Release and it does not touch PyPI. Only the publish job
+receives `id-token: write`, and every job checks out the immutable event SHA, so
+a tag moved during a run cannot publish unvalidated commits.
+
+### Crate rehearsal
+
+A release is rehearsed by publishing a pre-release version from a crate tag in
+this repository, one tag before the stable one. The rehearsal is a real
+publication: it spends the pre-release version, docs.rs builds it, and every stage
+of the path runs, including the OIDC token exchange and crates.io accepting the
+archive. No stable version is spent, and Cargo ignores a pre-release unless a user
+names it.
+
+The PyPI rehearsal in *Release rehearsal* above keeps its rehearsal repository and
+its exact-tag guard; this lane is the crate's own, and the two cannot start each
+other (ADR-0021 decision 5).
+
+The lane works because `crates/climate-py` admits a pre-release. Its requirement is
+`climate-indices = ">=0.1.0-rc.1, <1.0.0"`, a range that admits every stable `0.x`
+release as well, so decision 3 of ADR-0021 still holds for a stable release. Cargo
+matches a pre-release only against a requirement that names that same version, so a
+rehearsal of a later version moves the range's floor to that version. A caret
+requirement such as `"0"` matches no pre-release at all, and `cargo package` would
+then fail to resolve the workspace:
+
+```text
+error: failed to select a version for the requirement `climate-indices = "^0"`
+candidate versions found which didn't match: 0.1.0-rc.1
+```
+
+Rehearse the packaging and verification steps locally first, at the candidate SHA
+rather than at whatever the current worktree holds:
+
+```bash
+set -u
+CANDIDATE=<full 40-character SHA recorded on the release ticket>
+git fetch -q origin || { echo "cannot fetch origin"; exit 1; }
+git checkout --detach "$CANDIDATE"
+test "$(git rev-parse HEAD)" = "$CANDIDATE" || { echo "not at the candidate SHA: $(git rev-parse HEAD)"; exit 1; }
+cargo publish --dry-run --locked -p climate-indices
+```
+
+Then rehearse the tagged path:
+
+1. Prepare a candidate whose version is the pre-release, such as `0.1.0-rc.1`: the
+   same version in `crates/climate-indices/Cargo.toml` and in the crate changelog
+   heading, and the bindings range in `crates/climate-py/Cargo.toml` naming it when
+   the version series is new. Run *Crate release steps* above for it, so the PR
+   merges into `main` and the tag reads `climate-indices-v0.1.0-rc.1`.
+2. Read every job's conclusion. `validate-crate-tag`, `crate-gate`, `crate-msrv`,
+   `crate-semver`, `crate-deny`, and `publish-crate` must all succeed, because the
+   rehearsal is a real publication. A network error or an action-resolution
+   failure is a defect to fix, not the expected outcome.
+3. Run the crate post-release checks below against the pre-release, and record the
+   run URL and each check on the release ticket.
+4. Promote to the stable release: set the manifest to `X.Y.Z`, give the crate
+   changelog a `## X.Y.Z - YYYY-MM-DD` heading while the pre-release entry stays
+   below it, and run *Crate release steps* above again for the stable tag.
+
+A pre-release does not prove that `cargo add climate-indices` resolves without a
+version, and it does not make the crate's latest version anything other than the
+newest stable release. crates.io lists the pre-release permanently, and the remedy
+for a bad one is `cargo yank`.
+
+### If a crate publication fails
+
+- **crates.io rejects the OIDC exchange.** The trusted publisher on crates.io does
+  not match this repository, the workflow file name, or the environment name.
+  Correct the crates.io configuration. Do not add an API token to the repository.
+- **`cargo publish` reports that the version is already uploaded.** A crates.io
+  version cannot be replaced. Do not retag: prepare the next version from `main`.
+- **The tag shape is refused.** `validate-crate-tag` fails before any gate runs, so
+  nothing is published and no version is spent. Push a correctly named tag on the
+  same candidate instead of moving the refused one.
+- **A gate job fails.** Fix `main`, then tag a new version. Never move a pushed
+  tag.
+- **The publish state is unknown.** `cargo publish` creates a version or fails; it
+  does not leave a partial upload. Check crates.io with the version-list command
+  in *Crate release steps* above. If the version is listed, the publish succeeded
+  and the post-release checks apply. If it is not listed, fix the cause and tag a
+  new version.
+- **A published version must be withdrawn.** Yank it. The command needs a
+  crates.io API token, which Trusted Publishing does not supply, so the maintainer
+  runs it from their own machine and not from this workflow:
+   ```bash
+   cargo yank --version X.Y.Z climate-indices
+   ```
+   A yank is the only available remedy for a single version. Deleting the crate
+  itself is possible only under narrow crates.io policy conditions, and it would
+  also remove the `0.0.0` name reservation.
+- **The run waits at `publish-crate`.** The `release` environment requires a
+  reviewer, so a maintainer must approve the deployment.
+
+### Crate post-release checks
+
+1. Confirm that crates.io lists the version and that the crate page shows the
+   README and the license.
+2. Confirm that docs.rs built the version without warnings. The build starts a few
+   minutes after the publish, and a warning there is a defect to fix in the next
+   version.
+3. Install the release in a scratch crate outside this checkout, naming the
+   version explicitly: Cargo skips a pre-release it was not asked for.
+   ```bash
+   cargo new /tmp/crate-check
+   cd /tmp/crate-check
+   cargo add climate-indices@X.Y.Z
+   cargo build
+   ```
+4. Confirm that the crate changelog heading carries the release day, and add a
+   fresh `## Unreleased` heading for the next cycle.
+5. Add the crates.io link to the next release notes or the README when the
+   maintainer asks for it.

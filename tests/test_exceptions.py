@@ -173,7 +173,7 @@ ATTRIBUTE_CASES = [
         {
             "argument_name": "periodicity",
             "argument_value": None,
-            "valid_values": "Periodicity.monthly, Periodicity.daily",
+            "valid_values": "Periodicity.monthly, Periodicity.daily, Periodicity.hourly",
         },
         {"periodicity_value": "argument_value"},
     ),

@@ -1,0 +1,237 @@
+name: Release crate to crates.io
+
+# Crate tags live in their own namespace (docs/adr/0021 decision 5). The Python
+# release workflow triggers on `v*.*.*`, which this prefix cannot match, so a
+# crate tag starts no PyPI release and a Python tag publishes no crate.
+on:
+  push:
+    tags:
+      - 'climate-indices-v*'
+
+permissions:
+  contents: read
+
+jobs:
+  # A published crate version cannot be replaced, so everything that can be
+  # decided from the tag and the tagged tree is decided here, before the gates
+  # and the publish job spend a runner minute.
+  validate-crate-tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # This job reads the tagged tree (the manifest version and the changelog),
+          # so it pins the same immutable SHA the gates and the publish job use.
+          # The reachability check needs the history, and `git fetch` below needs
+          # the credential the checkout persists.
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        run: rustup toolchain install --no-self-update
+
+      - name: Validate crate tag format
+        run: |
+          # A stable version, or the pre-release the rehearsal lane spends before it
+          # (docs/release-process.md). Any other suffix is refused, so a mistyped tag
+          # cannot publish a version nobody intended to spend.
+          if [[ ! "${GITHUB_REF}" =~ ^refs/tags/climate-indices-v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
+            echo "::error::Crate tags must match climate-indices-vX.Y.Z or climate-indices-vX.Y.Z-rc.N; got ${GITHUB_REF#refs/tags/}"
+            exit 1
+          fi
+
+      - name: Verify tag commit is on main
+        run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" "origin/main"; then
+            echo "::error::Crate tag commit ${GITHUB_SHA} is not reachable from origin/main"
+            exit 1
+          fi
+
+      - name: Validate the crate version and changelog
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/climate-indices-v}"
+          CRATE_VERSION=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "climate-indices") | .version')
+          test -n "$CRATE_VERSION"
+          test "$CRATE_VERSION" != null
+          if [ "$TAG_VERSION" != "$CRATE_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match the crate version ($CRATE_VERSION)"
+            exit 1
+          fi
+          # The crate changelog keeps an `## Unreleased` section between releases.
+          # A version is published once, so the section has to be retitled first.
+          changelog=crates/climate-indices/CHANGELOG.md
+          if grep -qE '^## Unreleased[[:space:]]*$' "$changelog"; then
+            echo "::error::$changelog still has an '## Unreleased' section; retitle it '## $CRATE_VERSION - YYYY-MM-DD' before tagging"
+            exit 1
+          fi
+          if ! grep -qE "^## ${CRATE_VERSION//./\\.} - [0-9]{4}-[0-9]{2}-[0-9]{2}$" "$changelog"; then
+            echo "::error::$changelog has no dated '## $CRATE_VERSION - YYYY-MM-DD' entry"
+            exit 1
+          fi
+          echo "Version validated: $CRATE_VERSION"
+
+  # The four crate gates of the unit-test workflow (CRATE-09), repeated here so a
+  # release is gated on the tagged commit itself rather than on a run of uncertain
+  # provenance: a tag may point at a commit older than main's tip. Every checkout
+  # pins `${GITHUB_SHA}`, the immutable event SHA the tag validation approved,
+  # never the mutable tag name.
+
+  # Lint, test, and document the crate as a user receives it: the unpacked .crate,
+  # not the checkout. A file the crate needs but does not ship (a test fixture, a
+  # README) fails here instead of for the first user. No Python is involved.
+  crate-gate:
+    needs: validate-crate-tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # Fetches from the crates.io registry, so the job fails inside a known window.
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        run: rustup toolchain install --no-self-update
+
+      # The unpacked crate sits outside the checkout, so it gets the pinned
+      # toolchain from a copy of rust-toolchain.toml instead of the runner default.
+      - name: Unpack the packaged crate
+        run: |
+          cargo package -p climate-indices --locked
+          mkdir "$RUNNER_TEMP/published"
+          tar -xzf target/package/climate-indices-*.crate -C "$RUNNER_TEMP/published" --strip-components=1
+          cp rust-toolchain.toml "$RUNNER_TEMP/published/"
+
+      - name: Lint the packaged crate
+        working-directory: ${{ runner.temp }}/published
+        run: cargo clippy --all-targets --all-features --locked -- -D warnings
+
+      - name: Test the packaged crate
+        working-directory: ${{ runner.temp }}/published
+        run: cargo test --all-features --locked
+
+      - name: Document the packaged crate
+        working-directory: ${{ runner.temp }}/published
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: cargo doc --all-features --no-deps --locked
+
+  # The library must build on the `rust-version` its Cargo.toml declares, read from
+  # there so the gate cannot drift from the promise. `--lib`: criterion, a
+  # dev-dependency, is not part of what a user compiles.
+  crate-msrv:
+    needs: validate-crate-tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        run: rustup toolchain install --no-self-update
+
+      - name: Check the crate on its minimum supported Rust version
+        run: |
+          msrv=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "climate-indices") | .rust_version')
+          test -n "$msrv"
+          test "$msrv" != null
+          rustup toolchain install "$msrv" --profile minimal --no-self-update
+          cargo "+$msrv" check -p climate-indices --lib --all-features --locked
+
+  # A public-API change that needs a new version fails here. The baseline is the
+  # latest version published on crates.io, so the gate has teeth once the first
+  # real release (CRATE-11) supersedes the API-free 0.0.0 placeholder.
+  crate-semver:
+    needs: validate-crate-tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        run: rustup toolchain install --no-self-update
+
+      - name: Install cargo-semver-checks
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283  # v2.87.29
+        with:
+          tool: cargo-semver-checks@0.51.0
+
+      - name: Check the public API against the latest published version
+        run: cargo semver-checks check-release -p climate-indices
+
+  # Licenses, advisories, duplicate versions, and sources for what the crate ships,
+  # per deny.toml.
+  crate-deny:
+    needs: validate-crate-tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        run: rustup toolchain install --no-self-update
+
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283  # v2.87.29
+        with:
+          tool: cargo-deny@0.20.2
+
+      - name: Check licenses, advisories, bans, and sources
+        run: cargo deny --locked check -W unmaintained -W unsound
+
+  # Keep the environment-gated OIDC token limited to the publish-only job: the
+  # token is exchanged here, not earlier, and crates-io-auth-action revokes it
+  # when the job ends. No long-lived crates.io token exists in this repository.
+  publish-crate:
+    needs: [crate-gate, crate-msrv, crate-semver, crate-deny]
+    runs-on: ubuntu-latest
+    environment: release  # Requires manual approval
+    permissions:
+      contents: read
+      id-token: write  # Required for trusted publishing
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        run: rustup toolchain install --no-self-update
+
+      - name: Authenticate with crates.io
+        id: auth
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18  # v1.0.5
+
+      - name: Publish the crate
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: cargo publish -p climate-indices --locked

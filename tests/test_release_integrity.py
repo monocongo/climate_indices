@@ -1,6 +1,7 @@
 """Release integrity guardrails.
 
-Catches packaging and release-sequencing regressions before they reach PyPI.
+Catches packaging and release-sequencing regressions before they reach PyPI or
+crates.io.
 
 Two tiers of tests:
 
@@ -10,6 +11,7 @@ Two tiers of tests:
     - Release tags must point to commits on main
     - Built wheels are smoke-tested outside the source checkout
     - Core public API symbols are importable after install
+    - The crate publishes only after its gates, from its own tag namespace
 
   Release-time only (run before pushing a release tag):
     uv run pytest -m release tests/test_release_integrity.py
@@ -79,6 +81,7 @@ def _workflow_python_matrix(relative_path: Path) -> list[str]:
 
 
 UNIT_TESTS_WORKFLOW = Path(".github/workflows/unit-tests-workflow.yml")
+CRATE_RELEASE_WORKFLOW = Path(".github/workflows/crate-release.yml")
 
 
 def _workflow_job(workflow: str, job: str) -> str:
@@ -411,6 +414,386 @@ def test_rust_job_proves_the_crates_package_correctly() -> None:
     assert "timeout-minutes: 30" in job
     assert "cargo publish --dry-run -p climate-indices" in job
     assert 'select(.name == "climate-py") | .publish == []' in job
+
+
+def _crate_quality_jobs() -> dict[str, str]:
+    """The published-crate quality gates of the unit-test workflow, keyed by job name."""
+    workflow = (ROOT / UNIT_TESTS_WORKFLOW).read_text(encoding="utf-8")
+    return {name: _workflow_job(workflow, name) for name in ("rust-crate", "rust-msrv", "rust-semver", "rust-deny")}
+
+
+def test_crate_quality_gates_are_separate_required_checks() -> None:
+    """Each gate is its own job, so each can be a required check, and none may be optional."""
+    for name, job in _crate_quality_jobs().items():
+        assert job.strip(), f"{name} is missing from the workflow"
+        assert not re.search(r"^    if:", job, re.MULTILINE), f"{name} must run on every event"
+        assert "continue-on-error" not in job, f"{name} must block the pull request"
+        assert "persist-credentials: false" in job, f"{name} never pushes, so it takes no token"
+        # The gates resolve against the crates.io registry, so they need a finite bound.
+        assert "timeout-minutes: 30" in job, f"{name} needs a bounded failure window"
+
+
+def test_crate_gate_checks_the_packaged_artifact() -> None:
+    """Lint, test, and document the unpacked `.crate`, not the checkout.
+
+    A test fixture or README the crate needs but does not ship only fails here: the
+    unpacked directory sits outside the checkout, so the workspace and its files cannot
+    mask a packaging omission.
+    """
+    job = _crate_quality_jobs()["rust-crate"]
+
+    assert "run: rustup toolchain install --no-self-update" in job
+    assert "cargo package -p climate-indices --locked" in job
+    assert "tar -xzf target/package/climate-indices-*.crate" in job
+    assert '"$RUNNER_TEMP/published"' in job
+    assert "cp rust-toolchain.toml" in job, "the unpacked crate must use the pinned compiler"
+    assert "working-directory: ${{ runner.temp }}/published" in job
+    assert "run: cargo clippy --all-targets --all-features --locked -- -D warnings" in job
+    assert "run: cargo test --all-features --locked" in job
+    assert 'RUSTDOCFLAGS: "-D warnings"' in job
+    assert "run: cargo doc --all-features --no-deps --locked" in job
+    assert "setup-python" not in job, "the crate gate proves Rust needs no Python"
+
+
+def test_crate_gate_builds_on_the_declared_minimum_rust_version() -> None:
+    """The MSRV job reads `rust-version` from the crate, so the gate cannot drift from the promise."""
+    job = _crate_quality_jobs()["rust-msrv"]
+    crate_manifest = _read_toml(Path("crates/climate-indices/Cargo.toml"))["package"]
+
+    assert re.fullmatch(r"\d+\.\d+", crate_manifest["rust-version"]), "an exact MSRV, not a range"
+    assert 'select(.name == "climate-indices") | .rust_version' in job
+    assert 'rustup toolchain install "$msrv" --profile minimal --no-self-update' in job
+    assert 'cargo "+$msrv" check -p climate-indices --lib --all-features --locked' in job
+
+
+def test_crate_gate_checks_the_public_api_against_the_published_version() -> None:
+    """cargo-semver-checks compares the crate with the latest crates.io release."""
+    job = _crate_quality_jobs()["rust-semver"]
+
+    assert "uses: taiki-e/install-action@" in job, "install the pinned tool, do not build it per run"
+    assert "tool: cargo-semver-checks@" in job, "an unpinned linter can fail an unrelated change"
+    assert "run: cargo semver-checks check-release -p climate-indices" in job
+
+
+def test_crate_gate_enforces_the_dependency_policy() -> None:
+    """`cargo deny` reads deny.toml, which must allow only redistributable licenses.
+
+    The policy deliberately covers the whole workspace graph, not just the published
+    crate: `climate-py` is not publishable, but the dependencies it compiles into the
+    wheel are redistributed, so excluding it would hide pyo3 and numpy from the check.
+    """
+    job = _crate_quality_jobs()["rust-deny"]
+    policy = _read_toml(Path("deny.toml"))
+
+    assert "tool: cargo-deny@" in job, "an unpinned linter can fail an unrelated change"
+    assert "run: cargo deny --locked check -W unmaintained -W unsound" in job
+    # The bindings compile into the shipped wheel, so their licenses must be allowed too.
+    assert {"MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause"} <= set(policy["licenses"]["allow"])
+    assert policy["graph"].get("exclude-dev") is True
+    assert "exclude" not in policy["graph"], "the shipped bindings tree stays in scope"
+    assert policy["bans"]["multiple-versions"] == "deny"
+    assert policy["bans"]["wildcards"] == "deny"
+    assert policy["sources"]["unknown-registry"] == "deny"
+    assert policy["advisories"]["yanked"] == "deny"
+
+
+def test_pyo3_seam_accepts_any_0x_crate_version_without_a_wildcard() -> None:
+    """A path-only dependency is a wildcard, which `bans.wildcards = "deny"` rejects.
+
+    The range admits stable 0.x releases from 0.1.0 and the 0.1.0-rc.N series
+    (docs/adr/0021 decisions 2 and 3). A later prerelease series, such as 0.2.0-rc.1,
+    needs a bindings requirement change. A caret requirement such as `"0"` matches
+    no pre-release, and `cargo package` then cannot resolve the workspace.
+    """
+    dependency = _read_toml(Path("crates/climate-py/Cargo.toml"))["dependencies"]["climate-indices"]
+
+    assert dependency["path"] == "../climate-indices"
+    assert dependency.get("version") == ">=0.1.0-rc.1, <1.0.0", "an explicit 0.x range, not a wildcard"
+
+
+def _crate_release_workflow() -> str:
+    """The crates.io release workflow text (CRATE-10)."""
+    return (ROOT / CRATE_RELEASE_WORKFLOW).read_text(encoding="utf-8")
+
+
+def _crate_release_job_names() -> list[str]:
+    """Every job name the crate release workflow declares, derived from its own text.
+
+    Deriving the names keeps a newly added job inside the checks below instead of
+    silently outside them; comparing that set against an explicit one is what makes
+    adding a job a deliberate act.
+    """
+    workflow = _crate_release_workflow()
+    candidates = re.findall(r"^  ([\w-]+):$", workflow, re.MULTILINE)
+    return [name for name in candidates if "runs-on:" in _workflow_job(workflow, name)]
+
+
+def _crate_release_jobs() -> dict[str, str]:
+    """Every crate release job, keyed by job name."""
+    workflow = _crate_release_workflow()
+    return {name: _workflow_job(workflow, name) for name in _crate_release_job_names()}
+
+
+def _uncommented(text: str) -> str:
+    """Drop comment lines, so a commented-out guard cannot satisfy a check."""
+    return "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
+
+
+def _job_needs(job: str) -> set[str]:
+    """A job's `needs:` as a set, whether it is a scalar, a flow list, or a block list."""
+    flow = re.search(r"^    needs: \[(.*?)\]$", job, re.MULTILINE)
+    if flow:
+        return {name.strip() for name in flow.group(1).split(",") if name.strip()}
+    block = re.search(r"^    needs:\n((?:      - \S+\n)+)", job, re.MULTILINE)
+    if block:
+        return {line.strip().removeprefix("- ") for line in block.group(1).splitlines()}
+    scalar = re.search(r"^    needs: (\S+)$", job, re.MULTILINE)
+    return {scalar.group(1)} if scalar else set()
+
+
+def _job_steps(job: str) -> list[str]:
+    """A job's steps, each kept whole so a check binds to the step that carries it."""
+    return re.split(r"^      - ", job, flags=re.MULTILINE)[1:]
+
+
+def _job_scripts(job: str) -> str:
+    """Only the `run:` scripts a job executes.
+
+    A command left in a step name, an `env:` value, or a comment must not satisfy a
+    check that claims the job runs it.
+    """
+    finder = re.compile(r"^ {8}run: (.*)((?:\n {10}.*)*)", re.MULTILINE)
+    return "\n".join("".join(match.groups()) for match in finder.finditer(job))
+
+
+def _tag_patterns(workflow: str) -> list[str]:
+    """A workflow's push tag patterns, so an extra pattern cannot slip past unnoticed."""
+    block = re.search(r"^on:\n  push:\n    tags:\n((?:      - .+\n)+)", workflow, re.MULTILINE)
+    assert block, "the workflow must trigger on push tags"
+    return [line.strip().removeprefix("- ").strip().strip("'\"") for line in block.group(1).splitlines()]
+
+
+def test_crate_release_workflow_starts_only_on_crate_tags() -> None:
+    """The two release namespaces cannot start each other (docs/adr/0021 decision 5).
+
+    The Python release workflow triggers on `v*.*.*`, a glob that requires a leading
+    `v`, so a `climate-indices-` prefix never matches it. A crate tag therefore
+    publishes no PyPI release, and a Python tag publishes no crate.
+    """
+    assert _tag_patterns(_crate_release_workflow()) == ["climate-indices-v*"]
+    python_release = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert _tag_patterns(python_release) == ["v*.*.*"]
+    assert not fnmatch.fnmatch("climate-indices-v0.1.0", "v*.*.*"), "the tag namespaces must not overlap"
+    assert fnmatch.fnmatch("v0.1.0", "v*.*.*")
+
+
+def test_crate_release_uses_oidc_not_a_stored_token() -> None:
+    """The crate publish job exchanges the workflow's OIDC identity for a short-lived token.
+
+    A stored crates.io token is the failure this prevents: it is long-lived, usable
+    from anywhere, and must be revoked by hand after an exposure. Only the
+    publish-only job may take the OIDC identity, and every other job is limited to a
+    read-only token.
+    """
+    workflow = _crate_release_workflow()
+    jobs = _crate_release_jobs()
+
+    assert "secrets." not in workflow, "the crate release workflow needs no repository secret"
+    assert workflow.count("id-token: write") == 1, "only the publish-only job may take an OIDC token"
+    assert "id-token: write" in jobs["publish-crate"]
+    assert "environment: release" in jobs["publish-crate"], "the manual approval gate was removed"
+    assert "CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}" in jobs["publish-crate"]
+    for name, job in jobs.items():
+        if name == "publish-crate":
+            continue
+        # `write-all` would grant the OIDC identity too, and counting the literal
+        # `id-token: write` would not see it.
+        assert re.search(r"^    permissions:\n      contents: read$", job, re.MULTILINE), f"{name} is not read-only"
+        assert "id-token" not in job, f"{name} must not reach the OIDC identity"
+        assert "write-all" not in job, f"{name} must not take a write token"
+
+
+def test_crate_release_pins_every_action_and_checkout() -> None:
+    """Every action is pinned to a commit, and every checkout to the event SHA.
+
+    An unpinned action is repository-controlled code running with the publish job's
+    identity. A checkout of the tag name rather than the event SHA would let a tag
+    moved mid-run build commits the tag validation never approved.
+    """
+    workflow = _crate_release_workflow()
+
+    assert "ref: ${{ github.ref }}" not in workflow
+    for use in re.findall(r"^\s+uses: (.*)$", workflow, re.MULTILINE):
+        assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}\s{2}# v\S+", use.strip()), f"not commit-pinned: {use}"
+    for name, job in _crate_release_jobs().items():
+        checkouts = [step for step in _job_steps(job) if "uses: actions/checkout@" in step]
+        assert checkouts, f"{name} has no checkout step"
+        for step in checkouts:
+            assert "ref: ${{ github.sha }}" in step, f"{name} checks out a mutable ref"
+
+
+def test_crate_release_gates_match_the_required_checks() -> None:
+    """The release gates run the same commands as the CRATE-09 required checks.
+
+    They repeat in this workflow instead of trusting a run of uncertain provenance:
+    a tag may point at a commit older than the tip of `main`. A gate that drifted
+    from the check the pull request passed would let a release succeed where the
+    check would have failed.
+    """
+    jobs = _crate_release_jobs()
+    gate_names = ("crate-gate", "crate-msrv", "crate-semver", "crate-deny")
+    required = "\n".join(_crate_quality_jobs().values())
+
+    assert set(jobs) == {"validate-crate-tag", *gate_names, "publish-crate"}, "a new job needs covering here"
+
+    gate_commands = {
+        "crate-gate": (
+            "cargo package -p climate-indices --locked",
+            "cargo clippy --all-targets --all-features --locked -- -D warnings",
+            "cargo test --all-features --locked",
+            "cargo doc --all-features --no-deps --locked",
+        ),
+        "crate-msrv": ('cargo "+$msrv" check -p climate-indices --lib --all-features --locked',),
+        "crate-semver": ("cargo semver-checks check-release -p climate-indices",),
+        "crate-deny": ("cargo deny --locked check -W unmaintained -W unsound",),
+    }
+    commands = [command for gate in gate_commands.values() for command in gate]
+
+    for command in commands:
+        assert command in required, f"a required check no longer runs: {command}"
+    for name, gate in gate_commands.items():
+        scripts = _job_scripts(jobs[name])
+        for command in gate:
+            assert command in scripts, f"{name} no longer runs: {command}"
+    assert any(
+        'RUSTDOCFLAGS: "-D warnings"' in step
+        for step in _job_steps(jobs["crate-gate"])
+        if "cargo doc --all-features --no-deps --locked" in step
+    ), "documenting the packaged crate must deny rustdoc warnings"
+    assert 'RUSTDOCFLAGS: "-D warnings"' in required, "the required check no longer denies rustdoc warnings"
+
+    for name, job in jobs.items():
+        assert job.strip(), f"{name} is missing from the workflow"
+        assert not re.search(r"^ +if:", job, re.MULTILINE), f"{name} must run on every crate tag"
+        assert "continue-on-error" not in job, f"{name} must be able to block the release"
+        assert "timeout-minutes: 30" in job, f"{name} needs a bounded failure window"
+
+    for name in gate_names:
+        assert _job_needs(jobs[name]) == {"validate-crate-tag"}, f"{name} no longer waits for the tag validation"
+    assert _job_needs(jobs["publish-crate"]) == set(gate_names)
+    assert "run: cargo publish -p climate-indices --locked" in jobs["publish-crate"]
+
+
+@pytest.mark.parametrize(
+    ("tag", "accepted"),
+    [
+        ("climate-indices-v0.1.0", True),
+        ("climate-indices-v1.2.3", True),
+        ("climate-indices-v0.1.0-rc.1", True),
+        ("climate-indices-v0.2.0-rc.12", True),
+        ("climate-indices-v0.1.0-beta.1", False),
+        ("climate-indices-v0.1.0-rc1", False),
+        ("climate-indices-v0.1.0-rc.", False),
+        ("climate-indices-v0.1.0-rc.x", False),
+        ("climate-indices-v0.1.0-rc.1.extra", False),
+        ("climate-indices-v0.1.0-rc.1+build", False),
+        ("climate-indices-v0.1", False),
+        ("v0.1.0", False),
+    ],
+)
+def test_crate_release_tag_guard_accepts_only_stable_or_numeric_rc_tags(tag: str, accepted: bool) -> None:
+    """Execute the workflow's Bash guard against supported and unsupported tags."""
+    step = next(
+        step
+        for step in _job_steps(_crate_release_jobs()["validate-crate-tag"])
+        if step.startswith("name: Validate crate tag format\n")
+    )
+    script = _job_scripts(step).removeprefix("|\n")
+    result = subprocess.run(
+        ["bash", "-c", script],
+        env={**os.environ, "GITHUB_REF": f"refs/tags/{tag}"},
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    assert result.returncode == (0 if accepted else 1), result.stdout + result.stderr
+    if not accepted:
+        assert "::error::Crate tags must match" in result.stdout
+
+
+def test_crate_release_validates_the_tag_version_and_changelog() -> None:
+    """A tag, the manifest version, and the changelog heading must agree before publish.
+
+    A crates.io version cannot be replaced, so a mismatch is caught while it is still
+    free. The version is read from the manifest the publish job reads, so the guard
+    cannot drift from it. The tag shape accepts only stable versions or numeric
+    release candidates for the rehearsal lane (docs/release-process.md).
+    """
+    job = _uncommented(_crate_release_jobs()["validate-crate-tag"])
+    manifest = _read_toml(Path("crates/climate-indices/Cargo.toml"))["package"]
+
+    assert (
+        'if [[ ! "${GITHUB_REF}" =~ '
+        "^refs/tags/climate-indices-v[0-9]+\\.[0-9]+\\.[0-9]+(-rc\\.[0-9]+)?$ ]]; then" in job
+    )
+    assert "fetch-depth: 0" in job
+    assert 'git merge-base --is-ancestor "${GITHUB_SHA}" "origin/main"' in job
+    assert 'TAG_VERSION="${GITHUB_REF#refs/tags/climate-indices-v}"' in job
+    assert 'select(.name == "climate-indices") | .version' in job
+    assert "if grep -qE '^## Unreleased[[:space:]]*$' \"$changelog\"; then" in job, (
+        "an '## Unreleased' heading would be published as a released version"
+    )
+    assert 'if ! grep -qE "^## ${CRATE_VERSION//./\\\\.} - [0-9]{4}-[0-9]{2}-[0-9]{2}$" "$changelog"; then' in job
+    # The independent 0.x track, the pre-release shape of the rehearsal lane, and
+    # the publishability the guard reads, must stay put.
+    assert re.fullmatch(r"0\.\d+\.\d+(-rc\.\d+)?", manifest["version"])
+    assert manifest["publish"] is True
+
+
+def test_release_process_documents_the_crate_release_path() -> None:
+    """The crate runbook must state its setup, its steps, its rehearsal, and its failure paths.
+
+    A maintainer follows this page to publish a version that cannot be replaced, so
+    each documented step and each failure path has to survive edits to the page.
+    """
+    release_process = (ROOT / "docs" / "release-process.md").read_text(encoding="utf-8")
+    section = re.search(r"^## Rust crate release$.*?(?=^## |\Z)", release_process, re.MULTILINE | re.DOTALL)
+    assert section is not None, "docs/release-process.md must keep the '## Rust crate release' section"
+    text = " ".join(section.group(0).split())
+
+    for expected in (
+        ".github/workflows/crate-release.yml",
+        "crates-io-auth-action",
+        "climate-indices-vX.Y.Z",
+        "### Crate one-time setup",
+        "### Crate release steps",
+        "### Crate rehearsal",
+        "### If a crate publication fails",
+        "### Crate post-release checks",
+        # the one-time setup that gates the first release
+        "trusted publisher",
+        "refs/tags/climate-indices-v*",
+        # the steps a release cannot skip
+        "cargo update --workspace",
+        "cargo publish --dry-run --locked -p climate-indices",
+        "User-Agent",
+        # the failure paths
+        "crates.io rejects the OIDC exchange",
+        "reports that the version is already uploaded",
+        "A gate job fails",
+        "The publish state is unknown",
+        "cargo yank --version X.Y.Z climate-indices",
+        # the rehearsal lane: the pre-release tag, the version a user has to name,
+        # and the bindings range that makes a pre-release resolvable
+        "climate-indices-vX.Y.Z-rc.N",
+        "cargo add climate-indices@X.Y.Z",
+        "Cargo skips a pre-release",
+        'climate-indices = ">=0.1.0-rc.1, <1.0.0"',
+        "candidate versions found which didn't match: 0.1.0-rc.1",
+    ):
+        assert expected in text, expected
+
+    assert "climate_indices-rehearsal" not in text, "the crate lane publishes from this repository"
 
 
 def test_native_jobs_run_on_every_event_and_pure_python_legs_stay_rust_free() -> None:

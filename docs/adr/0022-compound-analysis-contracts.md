@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted. CMP-09 (#1373) completes the described API implementations.
+Amended by CMP-10 (#1374) to record the completed guide and scoped public-study reproduction,
+and by [#1398](https://github.com/monocongo/climate_indices/issues/1398) to record the
+bootstrap calibration decision.
+The accepted API contracts remain unchanged. CMP-09 (#1373) completed the described API implementations.
 The maintainer approved these contracts and the bounded milestone scope.
 [CMP-01 (#1365)](https://github.com/monocongo/climate_indices/issues/1365) records this decision under
 [parent issue #1364](https://github.com/monocongo/climate_indices/issues/1364).
@@ -20,12 +23,19 @@ catalog ([#1373](https://github.com/monocongo/climate_indices/issues/1373)) are 
 The xarray routes are equivalence-tested against the NumPy core, not independently
 validated. Bootstrap evidence is synthetic characterization and regression only.
 The maintainer narrowed its supported scope (#1371) to the synthetic cases that passed every
-predeclared gate: serially independent or 6-month-overlap sources whose hazards are independent
-of each other, at 200 years. A 36-month-persistence case failed a coverage gate and its null
-rejection exceeded nominal, and other conditions were not characterized, so the intervals and
-p-values are not claimed beyond that scope. See `VALIDATION.md`.
+predeclared gate, and then measured further conditions in #1398. The supported scope now covers,
+grouped by the resample count that measured each condition because the plan crossed no two of
+them: at the default 1,999 resamples, 200-year records with the seasonal monthly probabilities
+(0.35 to 0.55), source persistence of 1, 6, or 36 months, and hazards independent of each other;
+at 399 resamples, 200-year records with 1 to 30 months of source persistence, conditional lag
+windows to `(1, 3)`, monthly probabilities of 0.30 to 0.60 or 0.70 to 0.80, hazards correlating
+0.5 at the same time with 1, 6, or 12 months of source persistence, and 100-year records.
+36-month persistence at 399 resamples for independent hazards, correlated 36-month persistence at
+the default resamples, monthly probabilities near 0.20, and 60-year and 30-year records failed
+predeclared gates, so the intervals and p-values are not claimed there.
+See `VALIDATION.md` and the amendment below.
 The described APIs exist. This status does not claim completed scientific validation;
-the published-study reproduction and final guide remain in CMP-10 (#1374).
+the [guide](../compound-hazards.md) and nine summer cases in CMP-10 (#1374) establish scoped same-author reference reproduction only.
 The implementation responsibilities are explicit:
 
 | Proposed public function | NumPy implementation | Beta xarray implementation | Current state |
@@ -38,7 +48,7 @@ The implementation responsibilities are explicit:
 | `compound_events_xarray()` | It reuses the NumPy event matcher. | [#1373](https://github.com/monocongo/climate_indices/issues/1373) | Eager numeric catalog implemented (#1373). |
 
 The reference fixture is [#1366](https://github.com/monocongo/climate_indices/issues/1366).
-Final reproduction, user documentation, and evidence classification are [#1374](https://github.com/monocongo/climate_indices/issues/1374).
+The scoped reproduction, user guide, and evidence classification are recorded in [#1374](https://github.com/monocongo/climate_indices/issues/1374) and `VALIDATION.md`.
 The implementation table records the shipped API scope; evidence classification remains separate.
 
 ## Context
@@ -247,6 +257,43 @@ Add no dependency and no compound native kernel.
 Earthflux remains a downstream consumer with no import, service, licensing, or configuration dependency from the library.
 Its needs are stable names, numeric serialization, CF-style metadata, and auditable counts and choices.
 
+## Amendment: bootstrap calibration scope (#1398)
+
+[Issue #1398](https://github.com/monocongo/climate_indices/issues/1398) measured the
+conditions #1371 left open: record lengths from 30 years, persistence between 6 and 36
+months, conditional lag windows, hazard frequencies outside 0.35 to 0.55, hazards that
+depend on each other at short persistence, and the default 1,999 resamples.
+`docs/design/compound-bootstrap-calibration.md` records the predeclared gates, the
+results, and the decision. `docs/design/compound-bootstrap-characterization.json` holds
+all 183 measured cases.
+
+The decision leaves the design of section 6 unchanged. The evidence:
+
+- No independent-hazard case exceeded its per-month null rejection band. The 7.5%
+  pooled rejection that #1371 recorded for the 36-month case at 399 resamples falls to
+  3.5% at the default 1,999 resamples, so the null test needs no change.
+- The remaining failures are interval under-coverage, which appears where few effective
+  blocks or few effective occurrences remain: 30- and 60-year records, 36-month
+  persistence, and monthly probabilities near 0.20. Percentile intervals from
+  non-circular blocks carry that resolution limit, and `few_blocks` already reports part
+  of it.
+- No support guard was added. A guard is justified only if a quantity observable from
+  the function's own inputs separates the passing from the failing cases without
+  refusing a supported case, and no such quantity exists here: a passing 36-month case
+  sits 0.011 below a failing one on within-month lag-1 autocorrelation, and the failing
+  60-year cases show no persistence to detect. A fitted multi-variable rule would need
+  its own predeclared characterization.
+- The supported scope widened only where every predeclared gate passed, group by group
+  rather than as one configuration. At 399 resamples: 100-year records, persistence to
+  30 months, lagged conditioning, monthly probabilities of 0.30 to 0.60 or 0.70 to 0.80,
+  and correlated hazards at 1, 6, and 12 months of persistence. At the default 1,999
+  resamples: 200-year records with the seasonal probabilities and 1, 6, or 36 months of
+  persistence, hazards independent. The plan crossed no two of those conditions.
+
+The guards of section 6, the default of 1,999 realizations, and the requirement to
+validate defaults through synthetic characterization stand. A later method change for
+36-month persistence or short records would need its own predeclared characterization.
+
 ## Alternatives considered
 
 - **Copula-first scope:** Deferred. Empirical support and calendar contracts need evidence before adding multivariate fitting assumptions.
@@ -271,8 +318,12 @@ Study-specific review remains necessary.
 
 The [parent issue's children](https://github.com/monocongo/climate_indices/issues/1364)
 separate contract publication, reference fixtures, harmonization, statistics, events, inference, adapters, and final evidence.
-The maintainer approved issue creation, but implementation remains blocked until this ADR's PR merges.
-The milestone cannot close without the public-input reproduction and honest `VALIDATION.md` classifications.
+CMP-01 through CMP-10 provide the implementations, public-input reproduction, and evidence classifications.
+The reproduction covers three Swedish cells and three summer months, not the full map or its significance mask.
+The #1398 amendment records the measured bootstrap calibration scope; a later method
+change for 36-month persistence or short records needs its own predeclared
+characterization.
+Release scheduling and milestone closure remain maintainer decisions.
 Synthetic tests, author-method reproduction, and independent external validation remain distinct evidence tiers.
 
 ## Scientific source boundary

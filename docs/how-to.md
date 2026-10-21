@@ -12,6 +12,7 @@ the indices themselves, see {doc}`explanation`; for formulas and parameters, see
 workflow-examples
 standardized-hydrologic-indices
 hydropower-precipitation-proxy
+compound-hazards
 choosing-parameters
 checking-distribution-fit
 troubleshooting

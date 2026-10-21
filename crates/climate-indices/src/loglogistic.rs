@@ -76,6 +76,18 @@ fn fit_column(column: ArrayView1<'_, f64>, sorted: &mut Vec<f64>) -> Option<[f64
 /// and `valid == false`. Negative values are ordinary sample values.
 /// See the `Measured accuracy` section in [`crate`], entry `spei_loglogistic`
 /// in `tests/parity_registry.py`. It measures a complete workflow, not isolated fits.
+///
+/// # Example
+///
+/// ```
+/// use climate_indices::loglogistic::loglogistic_parameters;
+/// use ndarray::array;
+///
+/// let sample_mm = array![[1.0], [2.0], [3.0], [4.0], [5.0], [6.0], [7.0]];
+/// let fit = loglogistic_parameters(sample_mm.view());
+/// assert!(fit.valid[0]);
+/// assert_eq!(fit.locs[0], 4.0);
+/// ```
 pub fn loglogistic_parameters(calibration: ArrayView2<'_, f64>) -> LogLogisticFit {
     let columns = calibration.ncols();
     let mut fit = LogLogisticFit {
@@ -157,6 +169,24 @@ pub fn loglogistic_cdf(x: f64, loc: f64, scale: f64, shape: f64) -> f64 {
 /// Calendar columns follow [`crate`]; no calendar selection occurs here.
 /// See the `Measured accuracy` section in [`crate`], entry `spei_loglogistic`
 /// in `tests/parity_registry.py`. It measures a complete workflow, not this isolated block CDF.
+///
+/// # Example
+///
+/// ```
+/// use climate_indices::loglogistic::{loglogistic_cdf_block, loglogistic_parameters};
+/// use ndarray::array;
+///
+/// let sample_mm = array![[1.0], [2.0], [3.0], [4.0], [5.0], [6.0], [7.0]];
+/// let fit = loglogistic_parameters(sample_mm.view());
+/// let probabilities = loglogistic_cdf_block(
+///     sample_mm.view(),
+///     fit.locs.view(),
+///     fit.scales.view(),
+///     fit.shapes.view(),
+/// )?;
+/// assert!(probabilities[[3, 0]] > 0.0 && probabilities[[3, 0]] < 1.0);
+/// # Ok::<(), climate_indices::ClimateError>(())
+/// ```
 pub fn loglogistic_cdf_block(
     values: ArrayView2<'_, f64>,
     locs: ArrayView1<'_, f64>,

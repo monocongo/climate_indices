@@ -46,6 +46,21 @@ use crate::special::{igam, igamc};
 /// See the `Measured accuracy` section in [`crate`], entries `spi_gamma`,
 /// `spi_gamma_spatial_block`, `spei_gamma`, and `fit_diagnostics` from
 /// `tests/parity_registry.py`. These measure complete workflows, not isolated fits.
+///
+/// # Example
+///
+/// ```
+/// use climate_indices::gamma::gamma_parameters;
+/// use ndarray::array;
+///
+/// // Rows are years, columns are calendar months already restricted to the
+/// // Calibration Period.
+/// let rain_mm = array![[10.0, 40.0], [20.0, 50.0], [30.0, 60.0]];
+/// let (alphas, betas) = gamma_parameters(rain_mm.view());
+/// assert_eq!(alphas.len(), 2);
+/// assert!(alphas.iter().all(|alpha| *alpha > 0.0));
+/// assert!(betas.iter().all(|beta| *beta > 0.0));
+/// ```
 pub fn gamma_parameters(calibration: ArrayView2<'_, f64>) -> (Array1<f64>, Array1<f64>) {
     let columns = calibration.ncols();
     let mut alphas = Array1::<f64>::zeros(columns);
@@ -156,6 +171,27 @@ pub fn gamma_sf(x: f64, alpha: f64) -> f64 {
 /// See the `Measured accuracy` section in [`crate`], entries `spi_gamma`,
 /// `spi_gamma_mean_zero`, `spi_gamma_spatial_block`, and `spei_gamma` in
 /// `tests/parity_registry.py`. These measure complete workflows, not isolated probabilities.
+///
+/// # Example
+///
+/// ```
+/// use climate_indices::gamma::{gamma_parameters, gamma_probabilities};
+/// use ndarray::{array, Array1};
+///
+/// let calibration_mm = array![[0.0], [10.0], [20.0], [30.0]];
+/// let (alphas, betas) = gamma_parameters(calibration_mm.view());
+/// // One column, with one of its four calibration values exactly zero.
+/// let probability_of_zero = Array1::from_elem(1, 0.25);
+/// let probabilities = gamma_probabilities(
+///     array![[0.0], [15.0]].view(),
+///     alphas.view(),
+///     betas.view(),
+///     probability_of_zero.view(),
+/// )?;
+/// assert_eq!(probabilities[[0, 0]], 0.25);
+/// assert!(probabilities[[1, 0]] > 0.25);
+/// # Ok::<(), climate_indices::ClimateError>(())
+/// ```
 pub fn gamma_probabilities(
     values: ArrayView2<'_, f64>,
     alphas: ArrayView1<'_, f64>,

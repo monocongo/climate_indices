@@ -169,7 +169,7 @@ class _ComputeContext:
     # inputs a registration prepared alongside the request, e.g. Palmer's AWC
     prepared: xr.Dataset | None = None
     # the daily 366-day calendar plan shared by input conversion and output restoration
-    calendar_plan: utils.DailyCalendarPlan | None = None
+    calendar_plan: utils.CalendarPlan | None = None
 
 
 def _validate_precipitation_input(
@@ -767,6 +767,7 @@ _OUTPUT_SCALE_INDICES = ("spi", "spei", "srepi", "demand_index", "srli")
 _SCALE_INCREMENTS: dict[compute.Periodicity, str] = {
     compute.Periodicity.daily: "day",
     compute.Periodicity.monthly: "month",
+    compute.Periodicity.hourly: "hour",
 }
 
 
@@ -788,7 +789,7 @@ def _log_status(request: _IndexRequest) -> None:
         )
 
 
-def _daily_calendar_plan(dataset: xr.Dataset) -> utils.DailyCalendarPlan:
+def _daily_calendar_plan(dataset: xr.Dataset) -> utils.CalendarPlan:
     """
     Plan the 366-day calendar conversion for a daily input dataset.
 
@@ -806,7 +807,7 @@ def _daily_calendar_plan(dataset: xr.Dataset) -> utils.DailyCalendarPlan:
     if time_values.size > 1 and not np.all(np.diff(time_values) == np.timedelta64(1, "D")):
         raise ValueError("Daily input time coordinate must contain contiguous daily steps")
     final_year = int(time_values[-1].astype("datetime64[Y]").astype(int)) + 1970
-    return utils.DailyCalendarPlan.from_year_span(year_start, final_year - year_start + 1, len(time_values))
+    return utils.CalendarPlan.from_year_span(year_start, final_year - year_start + 1, len(time_values))
 
 
 # the chunking xr.open_mfdataset() uses per input type, collapsing the whole

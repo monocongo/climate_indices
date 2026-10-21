@@ -16,7 +16,7 @@ import xarray as xr
 from climate_indices.flood._antecedent import APIResult, APIState
 from climate_indices.flood._antecedent import antecedent_precipitation_index as _numpy_api
 from climate_indices.flood._edi import edi as _numpy_edi
-from climate_indices.flood._events import FloodEvents, flood_events
+from climate_indices.flood._events import FloodEvents, FloodStatistics, flood_event_summary, flood_events
 from climate_indices.flood._if import flood_index as _numpy_flood_index
 from climate_indices.flood._pe import effective_precipitation as _numpy_pe
 from climate_indices.flood._xarray import (
@@ -311,9 +311,11 @@ __all__ = [
     "APIResult",
     "APIState",
     "FloodEvents",
+    "FloodStatistics",
     "antecedent_precipitation_index",
     "edi",
     "effective_precipitation",
+    "flood_event_summary",
     "flood_events",
     "flood_index",
 ]

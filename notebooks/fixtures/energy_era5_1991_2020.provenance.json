@@ -1,0 +1,27 @@
+{
+  "source_url": "https://storage.googleapis.com/gcp-public-data-arco-era5/ar/1959-2022-6h-240x121_equiangular_with_poles_conservative.zarr",
+  "source_variables": {
+    "2m_temperature": "temperature_k",
+    "10m_wind_speed": "wind_speed_10m"
+  },
+  "retrieved": "2026-10-19",
+  "period": [
+    "1991-01-01T00:00",
+    "2020-12-31T18:00"
+  ],
+  "latitude": [
+    48.0,
+    51.0,
+    54.0
+  ],
+  "longitude": [
+    3.0,
+    6.0,
+    9.0,
+    12.0
+  ],
+  "sampling": "six-hourly; every second 1.5-degree grid point; no new spatial or temporal averaging",
+  "sha256": "1e2cb4650e8f5cb6a585213bc2ff6a0c5eea041303a79a8f2e0edd892032c2e0",
+  "size_bytes": 3903440,
+  "generator": "scripts/prepare_energy_demo_inputs.py"
+}

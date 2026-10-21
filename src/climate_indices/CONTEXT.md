@@ -7,11 +7,12 @@ A Python scientific computing library that turns raw climate observations (preci
 ### Core concepts
 
 **Timescale**:
-The number of consecutive time steps (months or days) accumulated before an index is computed — e.g. a 6-month accumulation window produces "SPI-6." Public function parameters are spelled `scale` in code (`indices.py`, `compute.py`, `typed_public_api.py`); use "Timescale" in prose and documentation.
+The number of consecutive time steps (months, days, or hours) accumulated before an index is computed — e.g. a 6-month accumulation window produces "SPI-6." Public function parameters are spelled `scale` in code (`indices.py`, `compute.py`, `typed_public_api.py`); use "Timescale" in prose and documentation.
 _Avoid_: Scale (fine as a code identifier, not as prose)
 
 **Periodicity**:
-The calendar granularity of an input time series — `monthly` (12 values/year) or `daily` (366 values/year, every year treated as a leap year). Determines how values are reshaped and grouped by calendar position before fitting.
+The calendar granularity of an input time series — `monthly` (12 values/year), `daily` (366 values/year, every year treated as a leap year), or `hourly` (8784 values/year on that same 366-day calendar, so a non-leap year carries 24 synthesized February 29 hours; only the empirical distribution standardizes it). Determines how values are reshaped and grouped by calendar position before fitting.
+_Avoid_: frequency (that is the pandas/xarray cadence string the adapter infers, not the enum)
 
 **Calibration Period**:
 The fixed span of years whose data defines "normal" — the distribution parameters (or, for PNP, the simple average) are fit only on this window, and all years (including years outside it) are then standardized against it. Enforced minimum is 30 years for a single-series in-memory input that contains NaNs; gridded in-memory and Dask-backed inputs are not preflighted, so sparse cells are fitted from the values that remain. The Python API spells the boundary years `calibration_year_initial`/`calibration_year_final`; `indices.percentage_of_normal` and the typed API also accept the older `calibration_start_year`/`calibration_end_year` keywords as deprecated aliases (removed in 4.0.0), and the `compute.py` internal helpers use that start/end spelling. The CLI's flags are `--calibration_start_year`/`--calibration_end_year` with `--calibration_year_initial`/`--calibration_year_final` aliases.
@@ -147,6 +148,46 @@ A dimensionless, state-free CFFWIS behavior index combining ISI and BUI; compute
 **DSR (Daily Severity Rating)**:
 The `0.0272 * FWI ** 1.77` transform of the Canadian FWI that makes seasonal averaging meaningful; computed by `fire.daily_severity_rating()`.
 
+### Compound hazards
+
+**Declared Hazard**:
+A source with an explicit cadence, input scale, threshold, and direction.
+`compound.harmonize()` accepts fitted probability values with strict comparisons or Boolean indicators with separate observation validity.
+For physical indicators, the source manifest records the original threshold and comparator.
+A declaration does not establish a valid distribution fit.
+
+**Aligned Hazards**:
+The `AlignedHazards` result stores Boolean exceedance and validity on a shared Gregorian cadence grid.
+Unknown observations retain their positions and remain invalid, not non-occurrences.
+Daily-to-monthly reduction applies `any` or `all` to indicators and requires every civil day to be observed.
+The library never expands monthly values to days.
+
+**Complete-Case Support**:
+The dates where every source selected for a joint statistic is observed.
+`n_valid`, all marginal counts, and the joint count use this same support.
+The count unit is a cadence step, not a run or an independent event.
+
+**Likelihood Multiplication Factor (LMF)**:
+The observed joint frequency divided by the product of observed marginal frequencies on the same Complete-Case Support.
+It is nonnegative. Positive marginals with no joint occurrence give zero; a zero marginal makes LMF undefined.
+`LMF = 1` does not establish independence, and a pooled LMF is not an average of monthly LMFs.
+
+**Eligible Anchor**:
+An observed conditioning-source step whose complete inclusive target-response window is observed.
+`conditional_probability()` counts at most one response per positive anchor and excludes incomplete or unknown horizons.
+It describes a time-step association, not causality or an event-onset conversion probability.
+
+**Compound Event Pair**:
+Two source runs whose intervals overlap or whose sequential lag meets the declared window.
+Concurrent pairs report the intersection; sequential pairs report `lag = B.start - A.end`, so adjacency has lag one.
+Unknown bridges cannot establish sequential matches. Pair counts are not independent observations.
+
+**Inference Support**:
+Each cell's longest contiguous segment of complete observed calendar years, with the earliest segment selected on a tie.
+`bootstrap_dependence()` reports its `estimate` on this monthly support and `full_record_estimate` on all eligible original observations.
+Synthetic screening evidence has a narrow scope; see [VALIDATION.md](../../VALIDATION.md#compound-bootstrap-characterization).
+Daily inference remains unsupported.
+
 ### Statistics
 
 **L-Moments**:
@@ -155,7 +196,7 @@ Linear-combination-of-order-statistics summary measures of a sample's location, 
 ### Gridded execution
 
 **Spatial Block** (spelled time-major in code):
-A gridded input array shaped `(time, *cells)` — the time axis first, every trailing axis an independent cell — that the fitting-based indices scale, fit, and transform in one pass. Any array with three or more dimensions is read this way; 1-D input stays a series and 2-D input stays the legacy `(years, periods)` layout. The one ambiguous shape is a block whose first cell axis is a calendar period length (12 or 366), which is indistinguishable from a `(years, periods, *cells)` array; that shape has to be declared with `spatial_time_major=True`, which `xarray_adapter` sets for every block it packs. See [ADR-0009](../../docs/adr/0009-spatial-block-declaration.md).
+A gridded input array shaped `(time, *cells)` — the time axis first, every trailing axis an independent cell — that the fitting-based indices scale, fit, and transform in one pass. Any array with three or more dimensions is read this way; 1-D input stays a series and 2-D input stays the legacy `(years, periods)` layout. The one ambiguous shape is a block whose first cell axis is a calendar period length (12, 366, or 8784), which is indistinguishable from a `(years, periods, *cells)` array; that shape has to be declared with `spatial_time_major=True`, which `xarray_adapter` sets for every block it packs. See [ADR-0009](../../docs/adr/0009-spatial-block-declaration.md).
 _Avoid_: time-major block (the code spelling, not the prose term)
 
 **Spatial Kernel**:
