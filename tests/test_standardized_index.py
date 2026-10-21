@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 
 import numpy as np
 import pytest
@@ -212,6 +213,31 @@ def test_standardized_index_reports_its_own_fallback_context(
     assert fallbacks[0]["context"] == "standardized index computation"
     assert fallbacks[0]["from_distribution"] == "pearson"
     assert fallbacks[0]["to_distribution"] == "gamma"
+
+
+@pytest.mark.parametrize("index", [indices.spi, indices.standardized_index])
+def test_failed_pearson_periods_get_zeroed_parameters_not_the_gamma_fallback(
+    index: Callable[..., np.ndarray], caplog: pytest.LogCaptureFixture
+) -> None:
+    """Every calendar period failing the non-zero minimum does not by itself fall back (#1128)."""
+    # 30 years of zeros except the last 3: each calendar month has 3 non-zero 12-month
+    # sums, one short of MIN_NON_ZERO_VALUES_FOR_PEARSON, so all 12 periods fail
+    values = np.zeros(30 * 12)
+    values[-36:] = np.linspace(10.0, 80.0, 36)
+
+    caplog.set_level(logging.WARNING)
+    result = index(values, 12, indices.Distribution.pearson, 1990, 1990, 2019, compute.Periodicity.monthly)
+
+    assert not [
+        record
+        for record in caplog.records
+        if isinstance(record.msg, dict) and record.msg.get("event") == "distribution_fallback"
+    ]
+    # zeroed parameters pin the zero sums to the lower bound and lose the non-zero ones,
+    # which stay below the half-of-valid-values loss that would trigger the fallback
+    np.testing.assert_array_equal(result[11:-36], -3.09)
+    assert np.isnan(result[:11]).all()
+    assert np.isnan(result[-36:]).all()
 
 
 @pytest.mark.parametrize(
