@@ -1524,6 +1524,29 @@ def xarray_adapter(
             result_xarray = spi(precip_da, scale=3, distribution=Distribution.gamma)
             # result_xarray.attrs now includes: scale=3, distribution="gamma", climate_indices_version="x.y.z"
 
+        A custom adapter rejects misspelled keywords instead of silently ignoring
+        them. The same validation applies to eager and Dask-backed DataArrays:
+
+        .. code-block:: python
+
+            import numpy as np
+            import xarray as xr
+            from climate_indices.xarray_adapter import xarray_adapter
+
+            @xarray_adapter()
+            def multiply(values, factor=1):
+                return values * factor
+
+            data = xr.DataArray(
+                np.arange(12.0),
+                dims="time",
+                coords={"time": xr.date_range("2000-01-01", periods=12, freq="MS")},
+            )
+            result = multiply(data, factor=2)
+
+            # Raises TypeError naming 'fator'; the function is not called.
+            multiply(data, fator=2)
+
     Notes:
         - NumPy inputs: Passed through unchanged to the wrapped function
         - xarray inputs: Values extracted, parameters inferred, result rewrapped with coords
@@ -1533,6 +1556,8 @@ def xarray_adapter(
         - With ``spatial_kernel=True``, spatial DataArrays (more than one non-core
           dimension) reach the wrapped function as one ``(time, *cells)`` block, flagged
           through its ``spatial_time_major`` keyword, instead of one time series per cell
+        - Unknown keyword arguments are rejected before computation or lazy graph
+          construction; functions declaring ``**kwargs`` receive those extra keywords
         - Uses inspect.signature() for generic parameter mapping (works with any function)
     """
 
@@ -1684,7 +1709,10 @@ def xarray_adapter(
                         bound.apply_defaults()
                     except TypeError as error:
                         raise PeriodicityError(
-                            message=f"Could not resolve the periodicity for {func.__name__}: its arguments do not bind to its signature. Daily calendar conversion cannot be planned."
+                            message=(
+                                f"Could not resolve the periodicity for {func.__name__}: its arguments do not bind "
+                                f"to its signature: {error}. Daily calendar conversion cannot be planned."
+                            )
                         ) from error
                     periodicity = bound.arguments.get(calendar)
                     if not isinstance(periodicity, compute.Periodicity):
@@ -1706,6 +1734,10 @@ def xarray_adapter(
                 except TypeError:
                     pass
 
+            # Validate before removing secondary arguments for apply_ufunc. Partial
+            # binding leaves missing-argument handling to the wrapped function.
+            signature.bind_partial(*modified_args, **call_kwargs)
+
             # spatial kernels read the core dimension first, with the cell dimensions
             # ahead of it, so apply_ufunc makes one call per non-core block instead of
             # one call per cell. A 2-D input has only a single dimension to broadcast
@@ -1720,13 +1752,10 @@ def xarray_adapter(
                 call_kwargs = dict(modified_kwargs)
                 call_kwargs.update(inferred_params)
 
-                # filter kwargs to function signature, excluding DataArray secondary names
+                # exclude DataArray secondary names
                 # (secondaries are positional args to apply_ufunc, not kwargs)
-                sig = inspect.signature(func)
                 secondary_names = set(additional_input_names or [])
-                valid_kwargs = {
-                    k: v for k, v in call_kwargs.items() if k in sig.parameters and k not in secondary_names
-                }
+                valid_kwargs = {k: v for k, v in call_kwargs.items() if k not in secondary_names}
 
                 # collect input DataArrays for apply_ufunc in parameter order
                 # primary + aligned secondaries (reuse resolution from earlier in wrapper)
@@ -1797,17 +1826,13 @@ def xarray_adapter(
             # apply inferred params (already computed above before the branch)
             call_kwargs.update(inferred_params)
 
-            # filter call_kwargs to only include params the function accepts. DataArray
-            # secondaries are dropped here because apply_ufunc passes them positionally
+            # DataArray secondaries are dropped here because apply_ufunc passes them positionally
             # alongside the primary; numpy secondaries stay, as they are keyword-only
             # inputs to the wrapped function.
-            sig = inspect.signature(func)
             positional_secondaries = {
                 name for name, (_, value) in resolved_secondaries.items() if isinstance(value, xr.DataArray)
             }
-            valid_kwargs = {
-                k: v for k, v in call_kwargs.items() if k in sig.parameters and k not in positional_secondaries
-            }
+            valid_kwargs = {k: v for k, v in call_kwargs.items() if k not in positional_secondaries}
 
             # check if input is multi-dimensional (has spatial dims beyond time)
             # and has a time dimension (required for apply_ufunc with input_core_dims)
