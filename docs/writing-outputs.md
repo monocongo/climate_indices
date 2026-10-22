@@ -128,6 +128,10 @@ with open_icechunk(output_repo) as committed:
     print(snapshot_id, committed["spi"].attrs)
 ```
 
+The [Icechunk SPI and SPEI notebook](https://github.com/monocongo/climate_indices/blob/main/notebooks/icechunk_spi_spei.ipynb)
+runs this workflow end to end on a synthetic grid. It needs no prepared data and no
+network access.
+
 `write_icechunk` calls `icechunk.xarray.to_icechunk(dataset, session, mode=...)`,
 then `session.commit(message)`. It completes all Dask writes before committing.
 Use `to_icechunk`, never `Dataset.to_zarr`, for Icechunk, including distributed

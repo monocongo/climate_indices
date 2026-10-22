@@ -666,6 +666,7 @@ jobs:
           notebooks/xarray_getting_started.ipynb
           notebooks/palmer_indices_xarray.ipynb
           notebooks/eddi_xarray.ipynb
+          notebooks/icechunk_spi_spei.ipynb
 
       # The Zarr/Dask tutorial is owned by tests/test_e2e_with_dask.py in the
       # core suite; do not re-add a notebook-execution step here (#917).
