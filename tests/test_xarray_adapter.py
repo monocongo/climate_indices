@@ -1062,7 +1062,7 @@ class TestXarrayAdapterIntegration:
         # sample_monthly_precip_da is a monthly 1980-2019 coordinate, so inference
         # would produce data_start_year=1980 and periodicity=monthly if it ran
         data = sample_monthly_precip_da.chunk({"time": -1}) if lazy else sample_monthly_precip_da
-        with patch("climate_indices.xarray_adapter.xr.apply_ufunc", wraps=xr.apply_ufunc) as apply_ufunc:
+        with patch.object(xr, "apply_ufunc", wraps=xr.apply_ufunc) as apply_ufunc:
             with pytest.raises(PeriodicityError, match="do not bind.*unexpected keyword argument 'bogus'"):
                 masked(
                     data,
@@ -1094,7 +1094,7 @@ class TestXarrayAdapterIntegration:
         if lazy:
             data = data.chunk({"time": -1})
 
-        with patch("climate_indices.xarray_adapter.xr.apply_ufunc", wraps=xr.apply_ufunc) as apply_ufunc:
+        with patch.object(xr, "apply_ufunc", wraps=xr.apply_ufunc) as apply_ufunc:
             with pytest.raises(TypeError, match="unexpected keyword argument 'bogus'"):
                 needs_start_year(data, data_start_year=1990, bogus=1)
 
