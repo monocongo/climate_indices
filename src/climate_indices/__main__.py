@@ -1436,7 +1436,7 @@ def _pnp_variable_attributes(request: _IndexRequest, source: xr.DataArray) -> tu
         "pnp",
         index_name="PNP",
         calculation_metadata={"scale": request.scale},
-        extra={"valid_min": -1000.0, "valid_max": 1000.0},
+        extra={"valid_min": 0.0},
     )
     var_name = "pnp_" + str(request.scale).zfill(2)
 

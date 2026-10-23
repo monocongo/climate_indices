@@ -262,8 +262,8 @@ CF_METADATA: dict[str, CFAttributes] = {
         ),
     },
     "percentage_of_normal": {
-        "long_name": "Percent of Normal Precipitation",
-        "units": "%",
+        "long_name": "Percent of Normal Precipitation (ratio; 1 = 100%)",
+        "units": "1",
         "references": (
             "Willeke, G., Hosking, J. R. M., Wallis, J. R., & Guttman, N. B. (1994). "
             "The National Drought Atlas. Institute for Water Resources Report 94-NDS-4, "
@@ -281,8 +281,8 @@ CF_METADATA: dict[str, CFAttributes] = {
         ),
     },
     "pnp": {
-        "long_name": "Percent of Normal Precipitation",
-        "units": "%",
+        "long_name": "Percent of Normal Precipitation (ratio; 1 = 100%)",
+        "units": "1",
         "references": (
             "Willeke, G., Hosking, J. R. M., Wallis, J. R., & Guttman, N. B. (1994). "
             "The National Drought Atlas. Institute for Water Resources Report 94-NDS-4, "

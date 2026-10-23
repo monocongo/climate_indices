@@ -218,7 +218,7 @@ Where *P*{sub}`i` is the precipitation in month *i*.
 **Equation:**
 
 $$
-PNP = \frac{P_{observed}}{P_{normal}} \times 100
+PNP = \frac{P_{observed}}{P_{normal}}
 $$
 
 Where:
@@ -226,12 +226,21 @@ Where:
 - *P*{sub}`observed` = observed precipitation for the period
 - *P*{sub}`normal` = long-term average precipitation for the same calendar period
 
+The output is a dimensionless ratio with units `"1"`: `1.0` is 100% of normal,
+and `0.5` is 50% of normal. Multiply by 100 to display a percentage.
+This convention preserves the values returned by earlier releases.
+For nonnegative precipitation, the ratio is nonnegative and has no finite upper
+bound. A zero or missing normal produces NaN.
+
 **Implementation details:**
 
 - Supports multi-step scales (e.g., 3-month, 6-month, or daily equivalents such as 90-day)
 - Computes normals separately for each calendar time step
 - Standard calibration period: 1981-2010 (U.S. climate normals)
 - Can use any calibration period ≥30 years
+- CLI PNP variables carry `valid_min: 0.0` and no `valid_max` because the ratio is unbounded.
+- With `--pack`, the CLI selects storage per variable. PNP ratios above 3.2767
+  use float32 instead of packed int16, so different timescales can use different storage types.
 
 ## Statistical Methods
 

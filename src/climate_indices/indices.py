@@ -1306,16 +1306,14 @@ def percentage_of_normal(
     *,
     spatial_time_major: bool = False,
 ) -> np.ndarray:
-    """Compute the percentage of normal precipitation.
+    """Compute the ratio of normal precipitation (PNP).
 
-    This function finds the percent of normal values (average of each calendar
-    month or day over a specified calibration period of years) for a specified
-    time steps scale. The normal precipitation for each calendar time step is
-    computed for the specified time steps scale, and then each time step's
-    scaled value is compared against the corresponding calendar time step's
-    average to determine the percentage of normal. The period that defines the
-    normal is described by the calibration start and end years arguments.
-    The calibration period typically used for US climate monitoring is 1981-2010.
+    Each timescale-aggregated precipitation value is divided by the average
+    for the same calendar month or day over the calibration period. The result
+    is a dimensionless ratio: 1.0 is normal precipitation (100%), and 0.5 is
+    half of normal (50%). Multiply the result by 100 to express it as a
+    percentage. The calibration period typically used for US climate monitoring
+    is 1981-2010.
 
     Args:
         values: 1-D numpy array of precipitation values, any length, initial
@@ -1348,8 +1346,8 @@ def percentage_of_normal(
             shape this function reads without being told.
 
     Returns:
-        Percent of normal precipitation values corresponding to the scaled
-        precipitation values array (numpy.ndarray of type float): 1-D for a
+        Ratio of normal precipitation values (1.0 = 100% of normal) corresponding
+        to the scaled precipitation values array (numpy.ndarray of type float): 1-D for a
         1-D or 2-D input, or the (time, ``*cells``) layout of a declared block.
 
     Raises:
