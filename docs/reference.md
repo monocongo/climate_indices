@@ -133,11 +133,12 @@ duration in seconds. It has no xarray/Dask adapter, and neither does
 `wind_capacity_factor()`: both take arrays and return arrays without metadata.
 `energy_drought_events()` reports run metrics and period summaries through the
 generic run-theory utility, and returns a Dataset of period summaries plus one run
-structure per cell for a gridded DataArray. The standardized energy indices and
-the event statistics accept DataArrays through the stable xarray index layer (from 3.1.0)
+structure per cell for a gridded DataArray. The DataArray route for
+`energy_drought_events()` remains Beta. The energy index and diagnostic APIs
+have stable DataArray support from 3.1.0
 ([#1166](https://github.com/monocongo/climate_indices/issues/1166),
 [#1174](https://github.com/monocongo/climate_indices/issues/1174)).
-see {doc}`energy_applications` for scope and validation limits.
+See {doc}`energy_applications` for scope and validation limits.
 
 Validation status of each shipped energy index. [VALIDATION.md](https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md)
 records the tolerances, evidence, and known gaps.

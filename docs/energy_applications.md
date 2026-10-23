@@ -178,7 +178,8 @@ SREPI, the standardized demand index, and SRLI.
 The NumPy degree-day, wind-profile, wind and PV capacity-factor, and event-statistics
 functions in `climate_indices.energy` are available, as are SREPI, the standardized
 demand index, and SRLI with its residual-load helper.
-The NumPy and DataArray APIs are stable from 3.1.0.
+The NumPy APIs are stable. The DataArray index and diagnostic APIs are stable
+from 3.1.0. The DataArray route for `energy_drought_events()` remains Beta.
 [ADR-0019](adr/0019-energy-module-api-and-aggregation.md) fixes the package and scope boundary.
 The internal energy subsystem design note records function names, units, and argument contracts. The [energy-family epic #1157][energy-epic] tracks the implementation
 order.

@@ -64,9 +64,9 @@ climate-driven energy supply and demand.
 
 **[Energy](https://climate-indices.readthedocs.io/en/latest/energy_applications.html)** (`climate_indices.energy`)
 
-Available now, with stable `xarray.DataArray` support from 3.1.0 for the degree days, the
-hub-height wind profile, SREPI, the standardized demand index, SRLI, and
-energy-drought events:
+The degree-day, wind-profile, and standardized energy index APIs have stable
+`xarray.DataArray` support from 3.1.0. The DataArray route for
+`energy_drought_events()` remains Beta. Available functions include:
 
 - Heating, cooling, and energy degree days (HDD / CDD / EDD). Validation: exact reference for
   the published cooling example; specification-level for heating and energy degree days
