@@ -2248,8 +2248,9 @@ def _run_energy_index(
     The energy indices compute through xarray only, as the fire and flood
     indices do: their adapters stamp the CF metadata, keep Dask arrays lazy,
     and transform each grid cell independently. The output variable is named
-    for its CF registry entry, plus the scale and output scale for the
-    standardized indices, as SPI's output name carries them.
+    for its CF registry entry, plus the Timescale and output scale for the
+    standardized indices. Hourly names also carry the periodicity to keep
+    them separate from existing daily and monthly outputs.
 
     :param arguments: the parsed command line arguments
     :param input_type: the input type determined by argument validation
@@ -2270,6 +2271,8 @@ def _run_energy_index(
         index_values.name = _ENERGY_OUTPUT_NAMES[index] + name_suffix
         if scale is not None:
             index_values.name += "_" + str(scale).zfill(2)
+            if request.periodicity is compute.Periodicity.hourly:
+                index_values.name += "_hourly"
             if request.output_scale != "normal":
                 index_values.name += "_" + request.output_scale
 

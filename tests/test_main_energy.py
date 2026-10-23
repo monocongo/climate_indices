@@ -578,7 +578,12 @@ def _hourly_source(index: str) -> xr.DataArray:
 
 class TestEnergyHourly:
     @pytest.mark.parametrize("index", _STANDARDIZED_INDICES)
-    def test_hourly_output_equals_the_library_result(self, tmp_path, index):
+    @pytest.mark.parametrize("output_scale", ["normal", "probability"])
+    def test_hourly_output_equals_the_library_result(self, tmp_path, index, output_scale):
+        daily_source = _INPUTS[index]()
+        cli_main.process_climate_indices(
+            _arguments_for(index, tmp_path, scales=[_HOURLY_SCALE], output_scale=output_scale)
+        )
         source = _hourly_source(index)
         source.to_netcdf(tmp_path / "input.nc")
 
@@ -594,6 +599,8 @@ class TestEnergyHourly:
                 _VALUES_VARIABLE,
                 "--scales",
                 str(_HOURLY_SCALE),
+                "--output_scale",
+                output_scale,
                 "--output_file_base",
                 str(tmp_path / "out"),
                 "--multiprocessing",
@@ -601,12 +608,25 @@ class TestEnergyHourly:
             ]
         )
 
-        name = f"{cli_main._ENERGY_OUTPUT_NAMES[index]}_{_HOURLY_SCALE}"
+        base = f"{cli_main._ENERGY_OUTPUT_NAMES[index]}_{_HOURLY_SCALE}"
+        suffix = "" if output_scale == "normal" else f"_{output_scale}"
+        name = f"{base}_hourly{suffix}"
         with xr.open_dataset(tmp_path / f"out_{name}.nc") as dataset:
             np.testing.assert_array_equal(dataset["time"].values, source["time"].values)
             assert np.isfinite(dataset[name].values).any()
             np.testing.assert_allclose(
-                dataset[name].values, _expected(index, source, _HOURLY_SCALE).values, equal_nan=True
+                dataset[name].values,
+                _expected(index, source, _HOURLY_SCALE, output_scale=output_scale).values,
+                equal_nan=True,
+            )
+
+        daily_name = base + suffix
+        with xr.open_dataset(tmp_path / f"out_{daily_name}.nc") as dataset:
+            np.testing.assert_array_equal(dataset["time"].values, daily_source["time"].values)
+            np.testing.assert_allclose(
+                dataset[daily_name].values,
+                _expected(index, daily_source, _HOURLY_SCALE, output_scale=output_scale).values,
+                equal_nan=True,
             )
 
     @pytest.mark.parametrize("index", sorted(set(cli_main._INDEX_PIPELINES) - set(_STANDARDIZED_INDICES)))

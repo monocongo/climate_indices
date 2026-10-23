@@ -210,11 +210,13 @@ three take `--scales`, the optional `--calibration_start_year`,
 distribution, which needs at least ten valid calibration values per calendar
 step. `--periodicity` must match the cadence of the input series: the adapter
 rejects a daily request for a monthly series, and the other way round. These three
-indices also accept `--periodicity hourly`, with scales in hours (24 for a day,
+indices also accept `--periodicity hourly`, with Timescales in hours (24 for a day,
 168 for a week). An hourly input must begin at 00:00 on January 1 and contain
 contiguous hours, and the output keeps the input's Gregorian hour axis. Every
-other index rejects `--periodicity hourly`. Their
-output files carry the scale in the name, for example
+other index rejects `--periodicity hourly`. Hourly file and variable names include
+`_hourly` after the Timescale, for example `<out_dir>/energy_example_hourly_srepi_24_hourly.nc`.
+Daily and monthly names remain unchanged.
+Their output files carry the Timescale in the name, for example
 `<out_dir>/energy_example_srepi_03.nc` and
 `<out_dir>/energy_example_standardized_demand_index_12.nc`. Like KBDI and the
 flood indices, the energy indices are not computed by the `--index all`
