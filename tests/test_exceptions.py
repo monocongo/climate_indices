@@ -12,7 +12,7 @@ import warnings
 
 import pytest
 
-from climate_indices import ClimateIndicesError, compute, exceptions
+from climate_indices import BetaFeatureWarning, ClimateIndicesError, compute, exceptions
 
 # (class, parent, expected) rows. A tuple parent compares exact __bases__ and
 # so pins the documented immediate base; a class parent checks ancestry.
@@ -543,6 +543,13 @@ def test_wrap_value_error_is_keyword_only() -> None:
     assert parameters["exc"].kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
     for name in ("message", "argument_name", "argument_value", "valid_values"):
         assert parameters[name].kind == inspect.Parameter.KEYWORD_ONLY, name
+
+
+def test_beta_warning_public_imports_remain_identical() -> None:
+    """Compound beta routes still need the public warning after index API promotion."""
+    assert BetaFeatureWarning is exceptions.BetaFeatureWarning
+    with pytest.warns(BetaFeatureWarning, match="compound"):
+        warnings.warn("compound route", exceptions.BetaFeatureWarning, stacklevel=1)
 
 
 def test_compute_module_reexports_remain_compatible() -> None:

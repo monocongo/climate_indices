@@ -16,7 +16,7 @@ non-parametric ranking workflow:
 ## Public API
 
 Use `climate_indices.eddi()` for the typed public API. It accepts NumPy arrays
-and beta xarray `DataArray` inputs. NumPy callers must provide temporal
+and xarray `DataArray` inputs. Both APIs are stable from 3.1.0. NumPy callers must provide temporal
 parameters explicitly; xarray callers can infer them from the time coordinate.
 
 ## Validation

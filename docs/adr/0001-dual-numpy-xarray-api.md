@@ -2,6 +2,9 @@
 
 ## Status
 
+Amended by #1061: the DataArray index APIs are Stable from 3.1.0 under
+{doc}`0012-xarray-api-stays-beta-through-3.0.0`. The dual-API computation boundary is unchanged.
+
 Amended: the mechanism in the opening paragraph is not the only route. PCI
 bypasses the shared adapter and wraps `indices.pci()` by hand, because its output
 is a single scalar (`a024f408`), and the adapter's 1-D in-memory path calls the
@@ -14,7 +17,7 @@ has no CF metadata of its own, so its xarray entry point was deferred: the flood
 family's design decision landed without covering this path (ADRs 0013 and 0014),
 leaving it with the metadata and named-wrapper decisions.
 {doc}`0020-standardized-index-public-surface` settles all three — no named
-wrappers, one neutral CF entry, a wired Beta xarray entry re-exported at the
+wrappers, one neutral CF entry, a wired xarray entry re-exported at the
 package root — and that surface landed with
 [#1174](https://github.com/monocongo/climate_indices/issues/1174). The NumPy core
 stays at `climate_indices.indices.standardized_index`, and the adapted

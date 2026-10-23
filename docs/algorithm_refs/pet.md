@@ -19,7 +19,7 @@
 
 Use `climate_indices.pet_thornthwaite()`, `climate_indices.pet_hargreaves()`,
 and `climate_indices.pet_penman_monteith()`. All three accept NumPy arrays and
-xarray DataArrays; the NumPy path is stable and the xarray path is beta.
+xarray DataArrays; the NumPy path is stable, and the xarray path is stable from 3.1.0.
 
 ## FAO-56 Penman-Monteith
 

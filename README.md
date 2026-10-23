@@ -64,7 +64,7 @@ climate-driven energy supply and demand.
 
 **[Energy](https://climate-indices.readthedocs.io/en/latest/energy_applications.html)** (`climate_indices.energy`)
 
-Available now, with beta `xarray.DataArray` support for the degree days, the
+Available now, with stable `xarray.DataArray` support from 3.1.0 for the degree days, the
 hub-height wind profile, SREPI, the standardized demand index, SRLI, and
 energy-drought events:
 
@@ -291,20 +291,23 @@ Python 3.9 support was dropped in v2.2.0 (August 2025) due to `scipy>=1.15.3` re
 | API Surface | Status | Guarantee |
 |:------------|:------:|:----------|
 | NumPy array functions (`indices.spi`, `indices.spei`, `indices.pet`, and the `flood` indices) | **Stable** | No breaking changes in minor versions |
-| xarray DataArray entry points (any index function accepting `xr.DataArray`) | **Beta** | No breaking changes in patch versions |
+| xarray index entry points accepting `xr.DataArray` (including Dataset-returning index and diagnostic functions) | **Stable from 3.1.0** | No breaking changes in minor versions |
+| Compound xarray Dataset routes and eager event catalogs | **Beta** | No breaking changes in patch versions |
 
-**Stable API**: The NumPy-based computation functions follow strict semantic versioning.
+**Stable API**: The NumPy computation functions and xarray index APIs follow strict semantic versioning.
+The xarray adapter provides automatic parameter inference, coordinate preservation, CF metadata, and Dask support.
+Its interface is stable from 3.1.0, after the 3.0.0 calendar-alignment release
+([ADR-0012](docs/adr/0012-xarray-api-stays-beta-through-3.0.0.md)).
+Results follow the documented [numerical-equivalence bounds](docs/performance.md#numerical-equivalence).
+This promotion changes no numerical algorithm or calendar behavior.
 
-**Beta API**: The xarray adapter layer provides automatic parameter inference, coordinate
-preservation, CF metadata, and Dask support. While beta, computation results follow the
-stable NumPy API's documented [numerical-equivalence bounds](docs/performance.md#numerical-equivalence)
-— only the interface surface (parameter names, metadata attributes,
-coordinate handling) may evolve. Beta features are marked in docstrings, with
-``BetaFeatureWarning`` as their public warning category. The adapter stays Beta in 3.0.0
-and is promoted no earlier than 3.1.0, once the 3.0.0 calendar alignment has a release
-of soak time ([ADR-0012](docs/adr/0012-xarray-api-stays-beta-through-3.0.0.md)).
+**Beta API**: The compound xarray Dataset routes and eager event catalogs remain Beta under
+[ADR-0022](docs/adr/0022-compound-analysis-contracts.md).
+Their interfaces may change in minor releases, but not patch releases.
+They continue to emit `BetaFeatureWarning`; its public imports and warning filters remain supported.
+Stable DataArray index APIs do not emit this warning.
 
-See `docs/xarray_compatibility.md` for the 3.0.0 compatibility matrix, including
+See `docs/xarray_compatibility.md` for the compatibility matrix, including
 Dask chunking constraints, metadata behavior, and the Palmer xarray adapter.
 See `docs/performance.md` for a runnable parallel SPI/SPEI example and
 the measured speedups behind the chunk and scheduler guidance.

@@ -1,10 +1,14 @@
 # xarray Compatibility Matrix
 
-:::{warning}
-The xarray API is beta in 3.0.0 and is promoted no earlier than 3.1.0
-([ADR-0012](adr/0012-xarray-api-stays-beta-through-3.0.0.md)). Numerical results
-are expected to match the stable NumPy API, while parameter inference, metadata,
-and coordinate behavior may change with a minor version, never in a patch release.
+:::{note}
+The DataArray index APIs and public adapter interface are **Stable** from 3.1.0
+([ADR-0012](adr/0012-xarray-api-stays-beta-through-3.0.0.md)).
+They introduce no breaking interface changes in minor versions.
+This includes index and diagnostic functions that return Datasets.
+The promotion changes no numerical algorithm, calendar behavior, or Dask chunk requirement.
+The compound Dataset routes and eager event catalogs remain **Beta** under
+[ADR-0022](adr/0022-compound-analysis-contracts.md) and continue to emit `BetaFeatureWarning`.
+Its public imports and existing warning filters remain supported.
 :::
 
 | Feature | Supported | Coverage |
@@ -16,7 +20,7 @@ and coordinate behavior may change with a minor version, never in a patch releas
 | `DataArray` inputs for standardized energy indices | Yes | `energy.srepi()`, `energy.standardized_demand_index()`, and `energy.srli()` take the same adapter path as the generic seam, with their own registry entries. `srepi()` defaults to `aggregation="mean"`, which suits a capacity factor, so accumulated production must pass `aggregation="sum"` explicitly; the demand index and SRLI default to `"sum"`. A DataArray input keeps the NumPy wrapper's distribution restrictions: empirical or beta for SREPI and the demand index, empirical only for the signed SRLI series. See `tests/test_energy_standardized_xarray.py`. |
 | `DataArray` inputs for energy-drought event statistics | Yes | `energy.energy_drought_events()` returns the NumPy `RunStatistics` for a 1-D DataArray and an `xr.Dataset` for a gridded one: `count`, `total_duration`, `max_magnitude`, `valid_count`, and `frequency` over a `period` dimension plus the input's cell dimensions, and one `events` variable holding each cell's `RunSet`. A one-dimensional DataArray is evaluated eagerly, so a Dask-backed series is computed. Dask-backed gridded input must keep the time dimension in a single chunk, because events run the whole time axis; an empty time axis is rejected on the gridded path rather than reported as an empty summary. See `tests/test_energy_events.py`. |
 | `DataArray` inputs for flood PE, EDI, I_F, and API | Yes | `flood.effective_precipitation()`, `flood.edi()` (also `climate_indices.edi()`), `flood.flood_index()`, and `flood.antecedent_precipitation_index()` accept daily precipitation/PE with CF units converted to mm. For PE, EDI, and I_F, Gregorian dates are converted to all-leap days before each NumPy computation and restored afterward; API consumes the daily series as given. PE must be computed before EDI/I_F and use the same duration. EDI and I_F infer calendar and Calibration Period years when omitted; I_F still requires `year_start_month`. API keeps its recursive-state contract (`initial_state`/`return_state`, `spin_up`, `nan_policy`/`max_gap_days`), and the returned state stays NumPy. A complete `time` Dask chunk is mandatory; spatial chunks run independently. `tests/test_flood_xarray.py` compares NumPy, eager xarray, and Dask outputs. These indices describe flood potential, not observed flooding. When chaining xarray PE into EDI/I_F, the second adapter reconstructs non-leap February 29 by interpolating **PE**, not the rainfall that produced it; the chained result can differ from applying both NumPy kernels to a single all-leap rainfall array ([#1147](https://github.com/monocongo/climate_indices/issues/1147)). |
-| `DataArray` inputs for energy degree days and wind profiles | Yes | `energy.heating_degree_days()`, `energy.cooling_degree_days()`, `energy.energy_degree_days()`, `energy.hub_height_wind_speed()`, and the auxiliary `energy.wind_shear_exponent()` preserve labels and match the NumPy functions exactly. Temperature units are inferred from CF attributes (K, °C, °F); bases remain explicit °C values. Wind units must be m s⁻¹ or absent. HDD/CDD attach `air_temperature_threshold`, EDD attaches both bases, and hub-height wind attaches `height`. Shared wind/alpha coordinates must match exactly; unlabeled non-scalar companions are rejected. Every dimension may have multiple Dask chunks. Each DataArray call emits `BetaFeatureWarning`. See `tests/test_energy_xarray.py`. These transforms describe climate-driven demand/resources, not actual load or generation. |
+| `DataArray` inputs for energy degree days and wind profiles | Yes | `energy.heating_degree_days()`, `energy.cooling_degree_days()`, `energy.energy_degree_days()`, `energy.hub_height_wind_speed()`, and the auxiliary `energy.wind_shear_exponent()` preserve labels and match the NumPy functions exactly. Temperature units are inferred from CF attributes (K, °C, °F); bases remain explicit °C values. Wind units must be m s⁻¹ or absent. HDD/CDD attach `air_temperature_threshold`, EDD attaches both bases, and hub-height wind attaches `height`. Shared wind/alpha coordinates must match exactly; unlabeled non-scalar companions are rejected. Every dimension may have multiple Dask chunks. These stable DataArray calls do not emit `BetaFeatureWarning`. See `tests/test_energy_xarray.py`. These transforms describe climate-driven demand/resources, not actual load or generation. |
 | `DataArray` inputs for compound hazards | Yes | `compound.harmonize()` takes a mapping of DataArrays and returns a Dataset; `compound.joint_statistics()`, `compound.conditional_probability()`, and `compound.bootstrap_dependence()` take that Dataset. Results equal the NumPy routes exactly; `time` (and `hazard`) must be one Dask chunk, spatial chunks must match across inputs, and nothing is rechunked, loaded, or computed. Dask input leaves the value-dependent support warnings to `quality_flags`. Each call emits `BetaFeatureWarning`. See `tests/test_compound_xarray.py` and the {ref}`compound reference <compound-xarray-route>`. `compound.compound_events_xarray()` adds an eager numeric event catalog: it takes the prepared Dataset, rejects Dask-backed variables and coordinates without computing them, and returns one `event` row per matched pair beside a `cell` lookup table. See `tests/test_compound_catalog.py` and the {ref}`catalog reference <compound-event-catalog>`. |
 | `DataArray` inputs for PET Thornthwaite | Yes | xarray adapter tests cover scalar and spatial latitude handling. |
 | `DataArray` inputs for PET Hargreaves | Yes | xarray adapter tests cover aligned daily temperature inputs. |
@@ -115,10 +119,11 @@ applies per cell along the time axis.
 
 ## Operational Guidance
 
-- Use NumPy APIs for stable production integrations that cannot absorb beta
-  interface changes.
-- Use xarray APIs for labeled, gridded workflows where coordinate preservation
-  and metadata are more valuable than strict interface stability.
+- Use NumPy APIs for plain-array workflows.
+- Use the stable DataArray index APIs for labeled, gridded workflows with
+  coordinate preservation and metadata.
+- If you require stable interfaces, use the NumPy compound routes instead of
+  the Beta compound Dataset routes and eager event catalogs.
 - For a complete runnable gridded SPI and SPEI example with the chunking and
   scheduler guidance applied, see [Gridded Performance](performance.md).
 - Keep Dask chunks spatial when possible and leave `time` as one chunk before

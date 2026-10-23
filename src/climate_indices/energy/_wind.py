@@ -125,7 +125,7 @@ def hub_height_wind_speed(
     ``obstacle_height=0``. Neither profile models terrain, obstacles, bias
     adjustment, or non-neutral atmospheric stability.
 
-    DataArray input uses the beta adapter, preserving coordinates and adding
+    DataArray input uses the stable adapter, preserving coordinates and adding
     registry CF metadata and a scalar ``height`` coordinate in metres. Wind
     units must be m s⁻¹ or absent. For the power law, ``alpha`` must be a
     scalar or DataArray with exactly matching shared coordinate labels.
@@ -274,7 +274,7 @@ def wind_shear_exponent(
 
     When either wind input is a DataArray, both must be DataArrays with
     exactly matching shared coordinate labels and m s⁻¹ or absent units.
-    This beta path returns a dimensionless DataArray with output provenance.
+    This stable path returns a dimensionless DataArray with output provenance.
     Dask arrays remain lazy; all dimensions may have multiple chunks.
 
     Args:

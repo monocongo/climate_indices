@@ -19,6 +19,20 @@ outputs retain the existing `calibration_start_year`/`calibration_end_year`
 attributes alongside the canonical names; their history entry still records the
 timescale, not calibration years. No numerical behavior changes.
 
+## DataArray index API promotion (3.1.0)
+
+The DataArray index APIs and public `xarray_adapter` interface become Stable.
+This includes index and diagnostic functions that accept DataArrays and return Datasets.
+The promotion changes no signatures, return types, numerical algorithms, or calendar rules.
+Energy DataArray transforms no longer emit `BetaFeatureWarning`.
+
+`BetaFeatureWarning` remains public in both `climate_indices` and
+`climate_indices.exceptions`. Existing imports and warning filters keep working.
+The compound Dataset routes and eager event catalogs remain Beta and continue to emit it.
+The proposed warning-class removal in #1061 does not apply to this scoped promotion;
+there is no public-name removal to migrate.
+See [ADR-0012](../adr/0012-xarray-api-stays-beta-through-3.0.0.md) for the decision.
+
 ## Breaking changes in 3.1.0
 
 ### `compute.scale_values` removed (3.1.0)

@@ -2,6 +2,10 @@
 
 ## Status
 
+Amended by #1061: the 3.1.0 promotion in ADR-0012 covers DataArray index APIs,
+not compound Dataset routes or eager event catalogs. These routes remain Beta
+and continue to emit the public `BetaFeatureWarning`. Their contracts are unchanged.
+
 Amended by CMP-10 (#1374) to record the completed guide and scoped public-study reproduction,
 and by [#1398](https://github.com/monocongo/climate_indices/issues/1398) to record the
 bootstrap calibration decision.

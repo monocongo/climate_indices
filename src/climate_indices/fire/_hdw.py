@@ -238,12 +238,10 @@ def hot_dry_windy(
     This function accepts both NumPy arrays and xarray DataArrays. Type
     checkers narrow the return type based on the input type.
 
-    .. warning:: **Beta Feature (xarray path only)** -- When called with
-       ``xr.DataArray`` input, this function uses the beta xarray adapter
-       layer: CF metadata from the ``hdw`` registry entry, CF
-       ``units``-attribute temperature inference, and Dask parallelism over
-       every dimension except ``level_dim``, which must be a single chunk.
-       The NumPy array interface and underlying computation are stable.
+    When called with ``xr.DataArray`` input, this function uses the stable
+    xarray adapter layer (3.1.0): CF metadata from the ``hdw`` registry entry, CF
+    ``units``-attribute temperature inference, and Dask parallelism over
+    every dimension except ``level_dim``, which must be a single chunk.
 
     A weather-only index of dangerous fire-behavior potential (Srock et al.,
     2018): the vapor pressure deficit (VPD) times the wind speed, maximized

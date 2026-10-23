@@ -171,7 +171,7 @@ reject reversed windows; exception classes differ as described above.
 
 ## See also
 
-- `docs/xarray_compatibility.md` for coverage status of the beta xarray API.
+- `docs/xarray_compatibility.md` for coverage and stability status of the xarray APIs.
 - {doc}`xarray_migration` for moving a workflow from NumPy to xarray.
 - `docs/adr/0003-dask-time-dimension-single-chunk.md` and
   `docs/adr/0004-xarray-calendar-semantics.md` for chunking and calendar

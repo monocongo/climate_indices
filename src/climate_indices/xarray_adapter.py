@@ -14,10 +14,9 @@ References:
     Architecture Decision 1: Wrapper Approach (NumPy core + xarray adapter)
     Architecture Decision 2: Decorator Pattern (@xarray_adapter)
 
-.. warning:: **Beta Feature** — The xarray adapter layer is beta through 3.0.0 and is
-   promoted no earlier than 3.1.0. Its interface may change with a minor version,
-   never in a patch release. The NumPy computation core (``indices.py``,
-   ``compute.py``) is stable: no breaking changes occur in minor versions.
+The xarray index API and the public adapter interface are stable from 3.1.0
+(ADR-0012). Like the NumPy computation core, they introduce no breaking changes
+in minor versions. The compound Dataset routes are separate and remain beta.
 """
 
 from __future__ import annotations
@@ -1461,9 +1460,8 @@ def xarray_adapter(
     compute with NumPy function, rewrap result). For multi-input functions, it aligns DataArrays
     using inner join before computation.
 
-    .. warning:: **Beta Feature** — The ``@xarray_adapter`` decorator and all xarray
-       dispatch infrastructure are beta. The decorator interface may change in future
-       minor releases. NumPy passthrough behavior is stable.
+    The public decorator interface and NumPy passthrough behavior are stable
+    from 3.1.0 (ADR-0012).
 
     Args:
         calendar: Fixed periodicity, the parameter name holding an inferred/explicit
@@ -2074,10 +2072,6 @@ def pet_thornthwaite(
     a time dimension), this function uses xr.apply_ufunc to handle spatial broadcasting
     of the latitude parameter across gridded temperature data.
 
-    .. warning:: **Beta Feature (xarray path)** — When called with ``xr.DataArray``
-       input, this function uses the beta xarray adapter layer. The NumPy array
-       interface and underlying computation are stable.
-
     Args:
         temperature: Monthly average temperature values in degrees Celsius.
             For numpy: 1-D array of monthly temperatures
@@ -2269,10 +2263,6 @@ def pet_hargreaves(
     This function provides xarray DataArray support for the Hargreaves PET calculation.
     Unlike Thornthwaite (monthly), Hargreaves uses daily min/max temperature data.
     The mean temperature is automatically derived as (tmin + tmax) / 2.
-
-    .. warning:: **Beta Feature (xarray path)** — When called with ``xr.DataArray``
-       input, this function uses the beta xarray adapter layer. The NumPy array
-       interface and underlying computation are stable.
 
     Args:
         daily_tmin_celsius: Daily minimum temperature values in degrees Celsius.
@@ -2872,10 +2862,6 @@ def palmer_pdsi(
     broadcast the way latitude is -- a scalar for a single location, or a DataArray
     whose dimensions are a subset of the precipitation's cell dimensions.
 
-    .. warning:: **Beta Feature (xarray path)** — When called with ``xr.DataArray``
-       input, this function uses the beta xarray adapter layer. The NumPy array
-       interface and underlying computation are stable.
-
     Args:
         precips: Monthly precipitation values in inches.
             For numpy: 1-D array, ``(years, 12)`` array, or a 3-D time-major
@@ -3362,10 +3348,6 @@ def fit_diagnostics(
     a calendar-step dimension (``month`` or ``dayofyear``) and the input's cell
     dimensions. It uses ``xr.apply_ufunc`` directly rather than the ``@xarray_adapter``
     decorator because a Dataset of variables, not the input shape, is the result.
-
-    .. warning:: **Beta Feature (xarray path)** — When called with ``xr.DataArray``
-       input, this function uses the beta xarray adapter layer. The NumPy array
-       interface and underlying computation are stable.
 
     Args:
         values: NumPy array or xarray DataArray of non-negative values. The NumPy

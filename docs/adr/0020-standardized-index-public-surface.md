@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted. The public-surface decision and the CF metadata entry landed with this
+Amended by #1061: the DataArray standardization and diagnostic APIs are Stable
+from 3.1.0 under {doc}`0012-xarray-api-stays-beta-through-3.0.0`.
+The public-surface decision and the CF metadata entry landed with this
 record; the xarray wiring, the xarray `fit_diagnostics()` aggregation report, and
 the package-root re-export landed with
 [#1174](https://github.com/monocongo/climate_indices/issues/1174), which this
@@ -45,8 +47,8 @@ per-block caveat.
    label keyword would thread a caller string through the registry and the adapter
    for that same result.
 
-3. **The xarray entry is wired, Beta.** `standardized_index` joins the adapter's
-   shared path, Beta under {doc}`0012-xarray-api-stays-beta-through-3.0.0`, with the
+3. **The xarray entry is wired, Stable from 3.1.0.** `standardized_index` joins the adapter's
+   shared path, Stable under {doc}`0012-xarray-api-stays-beta-through-3.0.0`, with the
    `fitting_params`-per-block caveat and calibration inference every other entry
    carries. It exposes `aggregation` on the xarray arm, and the xarray arm of
    `fit_diagnostics()` reports the same, completing the deferral
@@ -71,7 +73,7 @@ to a closed or non-covering decision, and it points here. The deferral closed wi
 The two published pages stop deferring. The [SRI and SSI
 recipes](../standardized-hydrologic-indices.md) and the [flood
 applications](../flood_applications.md) state that SRI and SSI are recipes over a generic seam with
-no named wrapper, and that the xarray path is the beta `standardized_index` entry.
+no named wrapper, and that the xarray path is the stable `standardized_index` entry.
 
 `CF_METADATA["standardized_index"]` landed ahead of its adapter, which the
 registry's own contract permits (an entry may precede its adapter; no adapter

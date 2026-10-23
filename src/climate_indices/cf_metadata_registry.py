@@ -40,7 +40,7 @@ class CFAttributes(_CFAttributesRequired, total=False):
     convention, e.g. the CFFWIS moisture codes' `cffwis_classic` against a
     future FWI2025 variant).
 
-    .. note:: Part of the beta xarray adapter layer. See :doc:`xarray_migration`.
+    .. note:: Part of the stable xarray adapter layer. See :doc:`xarray_migration`.
     """
 
     standard_name: str

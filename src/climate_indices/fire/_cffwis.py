@@ -829,12 +829,11 @@ def cffwis(
     This function accepts both NumPy arrays and xarray DataArrays. Type
     checkers narrow the return type based on the input type.
 
-    .. warning:: **Beta Feature (xarray path only)** -- When called with
-       ``xr.DataArray`` weather inputs, this function uses the beta xarray
-       adapter layer: CF ``units``-attribute conversion, latitude and month
-       inference from coordinates, per-variable CF metadata from the registry,
-       and Dask spatial-chunk parallelism with a required single ``time``
-       chunk. The NumPy array interface and underlying computation are stable.
+    When called with ``xr.DataArray`` weather inputs, this function uses the
+    stable xarray adapter layer (3.1.0): CF ``units``-attribute conversion,
+    latitude and month inference from coordinates, per-variable CF metadata
+    from the registry, and Dask spatial-chunk parallelism with a required
+    single ``time`` chunk.
 
     ``outputs`` lets a caller who needs only some of the seven quantities
     avoid computing and returning the rest: the moisture codes always run

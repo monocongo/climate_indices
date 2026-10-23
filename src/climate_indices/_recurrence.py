@@ -10,7 +10,7 @@ lifecycle logging every recurrence emits. Each index supplies only its daily
 step, its validity rule and its typed frozen state.
 
 This module is NumPy-only by design: the stable NumPy core never depends on
-the beta xarray layer (``docs/adr/0006-fire-recursive-state-and-execution.md``).
+the xarray layer (``docs/adr/0006-fire-recursive-state-and-execution.md``).
 """
 
 from __future__ import annotations
