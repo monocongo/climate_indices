@@ -698,6 +698,19 @@ def _validate_consumed_flags(args: argparse.Namespace, handlers: Sequence[_Index
         raise ValueError(msg)
 
 
+def _validate_cli_periodicity(args: argparse.Namespace, handlers: Sequence[_IndexRegistration]) -> None:
+    """Reject hourly periodicity for indices without hourly support."""
+    if getattr(args, "periodicity", None) is compute.Periodicity.hourly and any(
+        handler.index not in _HOURLY_INDICES for handler in handlers
+    ):
+        msg = (
+            f"Invalid periodicity argument for {args.index}: '{args.periodicity}' -- "
+            "only srepi, demand_index, and srli support hourly"
+        )
+        _logger.error(msg)
+        raise ValueError(msg)
+
+
 def _validate_args(args: argparse.Namespace) -> DatasetLayout:
     """
     Validate the processing settings to confirm that proper argument
@@ -714,6 +727,8 @@ def _validate_args(args: argparse.Namespace) -> DatasetLayout:
     """
 
     handlers = _handlers_for_index(args.index)
+
+    _validate_cli_periodicity(args, handlers)
     _validate_consumed_flags(args, handlers)
 
     for handler in handlers:
@@ -762,6 +777,10 @@ def _validate_args(args: argparse.Namespace) -> DatasetLayout:
 # the CLI indices that write a standardized output, the only ones that accept
 # --output_scale
 _OUTPUT_SCALE_INDICES = ("spi", "spei", "srepi", "demand_index", "srli")
+
+# the CLI indices that accept --periodicity hourly: the standardized energy
+# indices, whose xarray adapters plan and restore the hourly calendar
+_HOURLY_INDICES = ("srepi", "demand_index", "srli")
 
 # the increment each periodicity's log messages are expressed in
 _SCALE_INCREMENTS: dict[compute.Periodicity, str] = {
@@ -2233,8 +2252,9 @@ def _run_energy_index(
     The energy indices compute through xarray only, as the fire and flood
     indices do: their adapters stamp the CF metadata, keep Dask arrays lazy,
     and transform each grid cell independently. The output variable is named
-    for its CF registry entry, plus the scale and output scale for the
-    standardized indices, as SPI's output name carries them.
+    for its CF registry entry, plus the Timescale and output scale for the
+    standardized indices. Hourly names also carry the periodicity to keep
+    them separate from existing daily and monthly outputs.
 
     :param arguments: the parsed command line arguments
     :param input_type: the input type determined by argument validation
@@ -2255,6 +2275,8 @@ def _run_energy_index(
         index_values.name = _ENERGY_OUTPUT_NAMES[index] + name_suffix
         if scale is not None:
             index_values.name += "_" + str(scale).zfill(2)
+            if request.periodicity is compute.Periodicity.hourly:
+                index_values.name += "_hourly"
             if request.output_scale != "normal":
                 index_values.name += "_" + request.output_scale
 

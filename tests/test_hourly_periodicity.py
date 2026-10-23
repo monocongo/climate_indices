@@ -491,10 +491,10 @@ class TestHourlySurfaceGates:
         with pytest.raises(InvalidArgumentError, match="Hourly periodicity supports only the empirical distribution"):
             transform(values, 2000, 2000, 2009, compute.Periodicity.hourly, **parameters)
 
-    def test_the_cli_does_not_offer_hourly(self) -> None:
-        assert compute.Periodicity.hourly not in _cli.CLI_PERIODICITIES
+    def test_the_cli_offers_hourly(self) -> None:
+        assert compute.Periodicity.hourly in _cli.CLI_PERIODICITIES
 
         parser = cli_main._build_parser()
+        arguments = parser.parse_args(["--periodicity", "hourly", "--index", "srepi", "--output_file_base", "out"])
 
-        with pytest.raises(SystemExit):
-            parser.parse_args(["--periodicity", "hourly", "--index", "srepi"])
+        assert arguments.periodicity is compute.Periodicity.hourly

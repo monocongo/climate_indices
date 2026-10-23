@@ -79,6 +79,13 @@ implementation landed with unit tests rather than an independent hourly oracle,
 because the survey records that SEI accepts hourly timestamps without stratifying
 them and #1160 landed no hourly fixture.
 
+Amended by the hourly CLI option
+([#1406](https://github.com/monocongo/climate_indices/issues/1406)): `--periodicity
+hourly` reaches `srepi`, `demand_index`, and `srli`, which already run through the
+xarray adapters that validate the 00:00 January 1 start and contiguous hours, plan the
+8784-slot layout, and restore the Gregorian hour axis. Every other index rejects
+`hourly` during argument validation, before any output is written.
+
 Decision 2's `aggregation` keyword landed with this record
 ([#1158](https://github.com/monocongo/climate_indices/issues/1158)) and reached the
 xarray surfaces with
