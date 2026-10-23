@@ -330,14 +330,16 @@ The PCI equation and implementation details are in {doc}`algorithm-reference`.
 
 ### Percentage of Normal Precipitation (PNP)
 
-The Percentage of Normal Precipitation (PNP) expresses precipitation as a percentage of the long-term average for a given location and time period.
+The Percentage of Normal Precipitation (PNP) expresses precipitation as a ratio of the long-term average for a given location and time period.
+The output has units `"1"`: `1.0` means 100% of normal, and `0.5` means 50%.
+Multiply by 100 to display a percentage; the library does not apply this conversion.
 
 **Interpretation:**
 
-- PNP > 100%: Above-normal precipitation
-- PNP = 100%: Normal precipitation
-- PNP < 100%: Below-normal precipitation
-- PNP < 70%: Drought conditions (rule of thumb)
+- PNP > 1.0: Above-normal precipitation
+- PNP = 1.0: Normal precipitation
+- PNP < 1.0: Below-normal precipitation
+- PNP < 0.7: Drought conditions (rule of thumb)
 
 **Use cases:**
 

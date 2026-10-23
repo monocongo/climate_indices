@@ -573,7 +573,7 @@ def percentage_of_normal(
 
 
 def percentage_of_normal(values: Any, *args: Any, **kwargs: Any) -> npt.NDArray[np.float64] | xr.DataArray:
-    """Compute Percentage of Normal Precipitation (PNP).
+    """Compute the ratio of normal precipitation (PNP; 1.0 = 100% of normal).
 
     This function accepts both NumPy arrays and xarray DataArrays. Type checkers
     will narrow the return type based on the input type.
@@ -601,7 +601,8 @@ def percentage_of_normal(values: Any, *args: Any, **kwargs: Any) -> npt.NDArray[
             for NumPy, optional for xarray.
 
     Returns:
-        PNP values as numpy.ndarray or xarray.DataArray (matches input type).
+        Ratios of normal precipitation as numpy.ndarray or xarray.DataArray
+        (matches input type). Multiply by 100 to express the values as percentages.
     """
     result = _delegate(
         _wrapped_percentage_of_normal, values, *args, **indices._translate_pnp_calibration_kwargs(kwargs)

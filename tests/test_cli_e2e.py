@@ -13,6 +13,8 @@ before the fix, ``_parallel_process()`` raised ``ValueError`` for every CLI
 Palmers invocation and wrote no output.
 """
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 import xarray as xr
@@ -715,6 +717,31 @@ def test_pnp_matches_in_process_computation(tmp_path, precips_mm_monthly):
         np.testing.assert_allclose(written.values, expected, equal_nan=True)
         assert written.attrs["long_name"] == CF_METADATA["pnp"]["long_name"]
         assert written.attrs["units"] == CF_METADATA["pnp"]["units"]
+
+
+@pytest.mark.parametrize(
+    "pack, peak, dtype", [(False, 20.0, "float64"), (True, 20.0, "int16"), (True, 20000.0, "float32")]
+)
+def test_pnp_ratio_metadata_and_packing(tmp_path: Path, pack: bool, peak: float, dtype: str) -> None:
+    """CLI metadata describes ratios, including zero and very large wet anomalies."""
+    values = np.full((2011 - _DATA_START_YEAR + 1) * 12, 10.0)
+    values[-4:] = [0.0, 5.0, 10.0, peak]
+    precip_path = tmp_path / "precip.nc"
+    _write_timeseries(precip_path, values)
+    arguments = [*_common_arguments("pnp", precip_path, tmp_path / "ratios"), "--scales", "1"]
+    if pack:
+        arguments.append("--pack")
+    main(arguments)
+
+    with xr.open_dataset(tmp_path / "ratios_pnp_01.nc") as dataset:
+        written = dataset["pnp_01"]
+        # These ratios are exactly representable in every selected encoding.
+        np.testing.assert_array_equal(written.values[-4:], [0.0, 0.5, 1.0, peak / 10.0])
+        assert written.attrs["units"] == "1"
+        assert "ratio; 1 = 100%" in written.attrs["long_name"]
+        assert written.attrs["valid_min"] == 0.0
+        assert "valid_max" not in written.attrs
+        assert written.encoding["dtype"] == np.dtype(dtype)
 
 
 def test_all_runs_each_index_into_its_own_output(tmp_path, precips_mm_monthly, pet_thornthwaite_mm, palmer_awcs):

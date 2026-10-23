@@ -79,11 +79,11 @@ class TestPNPXarrayCFMetadata:
 
     def test_has_long_name(self, pnp_xarray_result: xr.DataArray) -> None:
         assert "long_name" in pnp_xarray_result.attrs
-        assert pnp_xarray_result.attrs["long_name"] == "Percent of Normal Precipitation"
+        assert pnp_xarray_result.attrs["long_name"] == "Percent of Normal Precipitation (ratio; 1 = 100%)"
 
     def test_has_units(self, pnp_xarray_result: xr.DataArray) -> None:
         assert "units" in pnp_xarray_result.attrs
-        assert pnp_xarray_result.attrs["units"] == "%"
+        assert pnp_xarray_result.attrs["units"] == "1"
 
     def test_has_references(self, pnp_xarray_result: xr.DataArray) -> None:
         assert "references" in pnp_xarray_result.attrs
@@ -99,6 +99,47 @@ class TestPNPXarrayCFMetadata:
     def test_has_scale_in_attrs(self, pnp_xarray_result: xr.DataArray) -> None:
         assert "scale" in pnp_xarray_result.attrs
         assert pnp_xarray_result.attrs["scale"] == 6
+
+
+@pytest.mark.parametrize("gridded", [False, True])
+@pytest.mark.parametrize("dask_backed", [False, True])
+@pytest.mark.parametrize("last_precip, expected_ratio", [(0.0, 0.0), (5.0, 0.5), (10.0, 1.0), (20.0, 2.0)])
+def test_pnp_ratio_values_and_units(
+    last_precip: float, expected_ratio: float, dask_backed: bool, gridded: bool
+) -> None:
+    """Normal precipitation is 1.0, not 100, on both public API paths."""
+    values = np.full(30 * 12, 10.0)
+    values[-1] = last_precip
+    expected = np.ones(values.size)
+    expected[-1] = expected_ratio
+    result = numpy_pnp(values, 1, 1991, 1991, 2019, Periodicity.monthly)
+    np.testing.assert_array_equal(result, expected)
+
+    precip = xr.DataArray(
+        values,
+        dims="time",
+        coords={"time": xr.date_range("1991-01-01", periods=values.size, freq="MS")},
+        attrs={
+            "units": "mm",
+            "valid_min": 5.0,
+            "valid_max": 20.0,
+            "valid_range": [5.0, 20.0],
+            "actual_range": [0.0, 20.0],
+        },
+    )
+    if gridded:
+        precip = precip.expand_dims(lat=[40.0, 41.0], lon=[-105.0, -104.0])
+    if dask_backed:
+        precip = precip.chunk({"time": -1})
+    input_attrs = precip.attrs.copy()
+    output = percentage_of_normal(precip, scale=1, calibration_year_initial=1991, calibration_year_final=2019)
+    np.testing.assert_array_equal(output.values, np.broadcast_to(expected, precip.shape))
+    assert output.attrs["units"] == "1"
+    assert "ratio; 1 = 100%" in output.attrs["long_name"]
+    assert output.attrs["valid_min"] == 0.0
+    for attr in ("valid_max", "valid_range", "actual_range"):
+        assert attr not in output.attrs
+    assert precip.attrs == input_attrs
 
 
 def test_pnp_calibration_attrs_preserve_legacy_names(sample_monthly_precip_da: xr.DataArray) -> None:

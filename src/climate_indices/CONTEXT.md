@@ -57,7 +57,7 @@ _Avoid_: Precipitation index
 The same standardization methodology as SPI, but applied to accumulated (precipitation − PET) instead of precipitation alone — captures both moisture supply and atmospheric demand.
 
 **PNP (Percentage of Normal Precipitation)**:
-Each timescale-accumulated value expressed as a percentage of the average ("normal") value for that same calendar time step over the calibration period. Not distribution-fitted or standardized — a simpler ratio-to-normal measure, distinct from SPI/SPEI.
+Each timescale-accumulated value divided by the average ("normal") value for that same calendar time step over the calibration period. The output is a dimensionless ratio: 1.0 means 100% of normal, and 0.5 means 50%. Not distribution-fitted or standardized — a simpler ratio-to-normal measure, distinct from SPI/SPEI.
 _Avoid_: Percent of Normal Precipitation (this wording appears in the CF metadata registry's `long_name`; prefer "Percentage of Normal Precipitation" / PNP for consistency with the public API and function name)
 
 **EDDI (Evaporative Demand Drought Index)**:
