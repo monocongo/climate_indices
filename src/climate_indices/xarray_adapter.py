@@ -1384,6 +1384,13 @@ def _finalize_ufunc_result(
         cf_metadata, cf_metadata_variants, valid_kwargs, metadata_variant_parameter
     )
     output_attrs = build_output_attrs(input_da, resolved_cf_metadata, calc_metadata, index_name=resolved_index_name)
+    if func_name == "percentage_of_normal":
+        # The input's precipitation range does not describe the dimensionless
+        # ratio; PNP is nonnegative with no finite upper bound, as the CLI path
+        # (_cli_output.build_index_attrs) already declares.
+        for attr in ("valid_min", "valid_max", "valid_range", "actual_range"):
+            output_attrs.pop(attr, None)
+        output_attrs["valid_min"] = 0.0
     if is_spi:
         compute.validate_output_scale(valid_kwargs.get("output_scale", "normal"))
         output_attrs.pop("valid_range", None)
