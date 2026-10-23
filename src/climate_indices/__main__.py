@@ -698,6 +698,19 @@ def _validate_consumed_flags(args: argparse.Namespace, handlers: Sequence[_Index
         raise ValueError(msg)
 
 
+def _validate_cli_periodicity(args: argparse.Namespace, handlers: Sequence[_IndexRegistration]) -> None:
+    """Reject hourly periodicity for indices without hourly support."""
+    if getattr(args, "periodicity", None) is compute.Periodicity.hourly and any(
+        handler.index not in _HOURLY_INDICES for handler in handlers
+    ):
+        msg = (
+            f"Invalid periodicity argument for {args.index}: '{args.periodicity}' -- "
+            "only srepi, demand_index, and srli support hourly"
+        )
+        _logger.error(msg)
+        raise ValueError(msg)
+
+
 def _validate_args(args: argparse.Namespace) -> DatasetLayout:
     """
     Validate the processing settings to confirm that proper argument
@@ -715,16 +728,7 @@ def _validate_args(args: argparse.Namespace) -> DatasetLayout:
 
     handlers = _handlers_for_index(args.index)
 
-    if getattr(args, "periodicity", None) is compute.Periodicity.hourly and any(
-        handler.index not in _HOURLY_INDICES for handler in handlers
-    ):
-        msg = (
-            f"Invalid periodicity argument for {args.index}: '{args.periodicity}' -- "
-            "only srepi, demand_index, and srli support hourly"
-        )
-        _logger.error(msg)
-        raise ValueError(msg)
-
+    _validate_cli_periodicity(args, handlers)
     _validate_consumed_flags(args, handlers)
 
     for handler in handlers:
