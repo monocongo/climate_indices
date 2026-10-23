@@ -29,6 +29,8 @@ _COOLING_BASE = 24.0
 _HUB_HEIGHT = 100.0
 _ROUGHNESS = 0.03
 _SCALE = 3
+# a day of hours, the hourly counterpart of the scale the daily tests use
+_HOURLY_SCALE = 24
 # variable names other than the ones the CLI writes, so reading a hard-coded name fails
 _TEMPERATURE_VARIABLE = "t2m"
 _WIND_VARIABLE = "sfcWind"
@@ -37,6 +39,13 @@ _VALUES_VARIABLE = "cf"
 _DEGREE_DAY_INDICES = ("hdd", "cdd", "edd")
 _STANDARDIZED_INDICES = ("srepi", "demand_index", "srli")
 _INDICES = (*_DEGREE_DAY_INDICES, "wind_profile", *_STANDARDIZED_INDICES)
+
+# the largest scale each CLI periodicity accepts
+_SCALE_MAXIMUM = {
+    compute.Periodicity.monthly: indices.SCALE_MAX,
+    compute.Periodicity.daily: indices.SCALE_MAX_DAILY,
+    compute.Periodicity.hourly: indices.SCALE_MAX_HOURLY,
+}
 
 # the CF registry name of each index's output variable
 _OUTPUT_NAMES = {
@@ -292,7 +301,7 @@ class TestEnergyValidation:
     @pytest.mark.parametrize("periodicity", _cli.CLI_PERIODICITIES)
     @pytest.mark.parametrize("invalid_scale", [0, -1, "above_maximum"])
     def test_invalid_scale_lists_write_no_output(self, tmp_path, index, periodicity, invalid_scale):
-        maximum = indices.SCALE_MAX_DAILY if periodicity is compute.Periodicity.daily else indices.SCALE_MAX
+        maximum = _SCALE_MAXIMUM[periodicity]
         if invalid_scale == "above_maximum":
             invalid_scale = maximum + 1
         arguments = _arguments_for(index, tmp_path, periodicity=periodicity, scales=[1, invalid_scale])
@@ -307,7 +316,7 @@ class TestEnergyValidation:
     @pytest.mark.parametrize("index", _STANDARDIZED_INDICES)
     @pytest.mark.parametrize("periodicity", _cli.CLI_PERIODICITIES)
     def test_accepts_periodicity_specific_scale_limits(self, index, periodicity):
-        maximum = indices.SCALE_MAX_DAILY if periodicity is compute.Periodicity.daily else indices.SCALE_MAX
+        maximum = _SCALE_MAXIMUM[periodicity]
         arguments = _energy_arguments(index, periodicity=periodicity, scales=[1, maximum])
 
         cli_main._validate_scales(arguments)
@@ -551,6 +560,93 @@ class TestEnergyProcessing:
         name = _OUTPUT_NAMES[index]
         with xr.open_dataset(tmp_path / f"out_{name}.nc", engine="h5netcdf") as dataset:
             assert dataset[name].encoding["chunksizes"] == (2, 3, 500)
+
+
+def _hourly_source(index: str) -> xr.DataArray:
+    """An hourly input series for a standardized index, over the same twelve years as the daily ones."""
+    time = xr.date_range("2015-01-01", f"{2014 + _RECORD_YEARS}-12-31T23:00", freq="h")
+    values = np.random.default_rng(42).random((1, 2, time.size))
+    if index == "srli":
+        values -= 0.5
+    return xr.DataArray(
+        values,
+        dims=("lat", "lon", "time"),
+        coords={"lat": [25.0], "lon": [-100.0, -99.0], "time": time},
+        name=_VALUES_VARIABLE,
+    )
+
+
+class TestEnergyHourly:
+    @pytest.mark.parametrize("index", _STANDARDIZED_INDICES)
+    def test_hourly_output_equals_the_library_result(self, tmp_path, index):
+        source = _hourly_source(index)
+        source.to_netcdf(tmp_path / "input.nc")
+
+        cli_main.main(
+            [
+                "--index",
+                index,
+                "--periodicity",
+                "hourly",
+                "--netcdf_values",
+                str(tmp_path / "input.nc"),
+                "--var_name_values",
+                _VALUES_VARIABLE,
+                "--scales",
+                str(_HOURLY_SCALE),
+                "--output_file_base",
+                str(tmp_path / "out"),
+                "--multiprocessing",
+                "single",
+            ]
+        )
+
+        name = f"{cli_main._ENERGY_OUTPUT_NAMES[index]}_{_HOURLY_SCALE}"
+        with xr.open_dataset(tmp_path / f"out_{name}.nc") as dataset:
+            np.testing.assert_array_equal(dataset["time"].values, source["time"].values)
+            assert np.isfinite(dataset[name].values).any()
+            np.testing.assert_allclose(
+                dataset[name].values, _expected(index, source, _HOURLY_SCALE).values, equal_nan=True
+            )
+
+    @pytest.mark.parametrize("index", sorted(set(cli_main._INDEX_PIPELINES) - set(_STANDARDIZED_INDICES)))
+    def test_other_indices_reject_hourly_without_output(self, tmp_path, index):
+        arguments = _energy_arguments(
+            index, periodicity=compute.Periodicity.hourly, output_file_base=str(tmp_path / "out")
+        )
+
+        with pytest.raises(ValueError) as error:
+            cli_main.process_climate_indices(arguments)
+
+        assert str(error.value) == (
+            f"Invalid periodicity argument for {index}: 'hourly' -- only srepi, demand_index, and srli support hourly"
+        )
+        assert not list(tmp_path.iterdir())
+
+    @pytest.mark.parametrize(
+        ("defect", "message"),
+        [
+            ("late_start", "must begin at 00:00 on January 1"),
+            ("missing_hour", "ensure regular spacing"),
+        ],
+    )
+    def test_rejects_an_hourly_input_off_the_hour_calendar(self, tmp_path, defect, message):
+        source = _hourly_source("srepi")
+        source = source.isel(time=slice(1, None)) if defect == "late_start" else source.drop_isel(time=100)
+        source.to_netcdf(tmp_path / "input.nc")
+        arguments = _energy_arguments(
+            "srepi",
+            periodicity=compute.Periodicity.hourly,
+            scales=[_HOURLY_SCALE],
+            netcdf_values=str(tmp_path / "input.nc"),
+            var_name_values=_VALUES_VARIABLE,
+            output_file_base=str(tmp_path / "out"),
+        )
+
+        with pytest.raises(CoordinateValidationError, match=message):
+            cli_main.process_climate_indices(arguments)
+
+        assert not list(tmp_path.glob("out*"))
 
 
 class TestEnergyRegistration:

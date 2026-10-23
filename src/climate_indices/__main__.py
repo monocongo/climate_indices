@@ -714,6 +714,17 @@ def _validate_args(args: argparse.Namespace) -> DatasetLayout:
     """
 
     handlers = _handlers_for_index(args.index)
+
+    if getattr(args, "periodicity", None) is compute.Periodicity.hourly and any(
+        handler.index not in _HOURLY_INDICES for handler in handlers
+    ):
+        msg = (
+            f"Invalid periodicity argument for {args.index}: '{args.periodicity}' -- "
+            "only srepi, demand_index, and srli support hourly"
+        )
+        _logger.error(msg)
+        raise ValueError(msg)
+
     _validate_consumed_flags(args, handlers)
 
     for handler in handlers:
@@ -762,6 +773,10 @@ def _validate_args(args: argparse.Namespace) -> DatasetLayout:
 # the CLI indices that write a standardized output, the only ones that accept
 # --output_scale
 _OUTPUT_SCALE_INDICES = ("spi", "spei", "srepi", "demand_index", "srli")
+
+# the CLI indices that accept --periodicity hourly: the standardized energy
+# indices, whose xarray adapters plan and restore the hourly calendar
+_HOURLY_INDICES = ("srepi", "demand_index", "srli")
 
 # the increment each periodicity's log messages are expressed in
 _SCALE_INCREMENTS: dict[compute.Periodicity, str] = {

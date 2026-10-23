@@ -215,8 +215,10 @@ the original Gregorian time coordinate.
   the additivity decision 5 promised: no signature changed.
 - **Clock values, no zone conversion.** Timestamps are read as given; the calendar
   ignores daylight-saving shifts, so a caller supplies a UTC series.
-- **Hourly is an API surface.** `--periodicity` stays monthly/daily in the CLI; an
-  hourly CLI option is a follow-up, not part of this decision.
+- **Hourly reaches the CLI through the adapters.** #1177 kept hourly an API surface;
+  [#1406](https://github.com/monocongo/climate_indices/issues/1406) added
+  `--periodicity hourly` for `srepi`, `demand_index`, and `srli`, which run through the
+  xarray adapters above, and every other index rejects it before writing output.
 - **No hourly SEI fixture yet.** The survey records that SEI accepts hourly timestamps
   but does not stratify them, and #1160 landed no hourly fixture, so the hourly contract
   rests on the unit tests and the plotting-position definition rather than an
@@ -224,10 +226,6 @@ the original Gregorian time coordinate.
 
 ## Deferred
 
-- **Hourly CLI option.** [#1406](https://github.com/monocongo/climate_indices/issues/1406).
-  [#1178](https://github.com/monocongo/climate_indices/issues/1178) wired the energy
-  indices into the CLI at monthly and daily steps; an hourly `--periodicity` choice is a
-  separate change to that input pipeline.
 - **Smoothed seasonal-diurnal climatology.** [#1407](https://github.com/monocongo/climate_indices/issues/1407).
   Hour × day-of-year strata are the shipped contract; a smoothed climatology would be a
   separate standardization option.
