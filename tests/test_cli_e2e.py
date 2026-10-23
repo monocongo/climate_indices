@@ -13,6 +13,8 @@ before the fix, ``_parallel_process()`` raised ``ValueError`` for every CLI
 Palmers invocation and wrote no output.
 """
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 import xarray as xr
@@ -720,7 +722,7 @@ def test_pnp_matches_in_process_computation(tmp_path, precips_mm_monthly):
 @pytest.mark.parametrize(
     "pack, peak, dtype", [(False, 20.0, "float64"), (True, 20.0, "int16"), (True, 20000.0, "float32")]
 )
-def test_pnp_ratio_metadata_and_packing(tmp_path, pack, peak, dtype):
+def test_pnp_ratio_metadata_and_packing(tmp_path: Path, pack: bool, peak: float, dtype: str) -> None:
     """CLI metadata describes ratios, including zero and very large wet anomalies."""
     values = np.full((2011 - _DATA_START_YEAR + 1) * 12, 10.0)
     values[-4:] = [0.0, 5.0, 10.0, peak]
