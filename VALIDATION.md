@@ -252,8 +252,8 @@ figure* status:
   per-index contract suites, run outside the `validation` marker, cover the
   Eq. (3) API recursion, the fixed-window EDI algebra, annual-maximum
   normalization, missing data, and Spatial Block layouts, and
-  `tests/test_flood_xarray.py` checks NumPy/eager/Dask equivalence for the beta
-  xarray route.
+  `tests/test_flood_xarray.py` checks NumPy/eager/Dask equivalence for the
+  DataArray index APIs, stable from 3.1.0.
 
 Even the tabulated Table 5, if it is eventually committed, would show
 reproduction of the originating group's own arithmetic rather than independent
