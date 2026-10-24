@@ -176,10 +176,15 @@ process_climate_indices --index srepi --periodicity daily \
 --netcdf_values /data/wind_capacity_factor.nc --var_name_values cf \
 --scales 3 12 --calibration_start_year 1991 --calibration_end_year 2020 \
 --output_file_base <out_dir>/energy_example
+
+process_climate_indices --index srepi --periodicity hourly \
+--netcdf_values /data/hourly_wind_capacity_factor.nc --var_name_values cf \
+--scales 24 168 --calibration_start_year 1991 --calibration_end_year 2020 \
+--output_file_base <out_dir>/energy_example_hourly
 ```
 
 The above commands compute the energy indices through the `energy` module, all
-with `--periodicity daily`. The degree days (`hdd`, `cdd`, and `edd`) take a
+with `--periodicity daily` except the last. The degree days (`hdd`, `cdd`, and `edd`) take a
 daily mean temperature input in °C, or K or °F, which the adapter converts. Each
 needs the base temperature it is defined against: `--heating_base_temperature`
 for `hdd` and `edd`, and `--cooling_base_temperature` for `cdd` and `edd`. The
@@ -204,8 +209,14 @@ three take `--scales`, the optional `--calibration_start_year`,
 `--calibration_end_year`, and `--output_scale` arguments, and the empirical
 distribution, which needs at least ten valid calibration values per calendar
 step. `--periodicity` must match the cadence of the input series: the adapter
-rejects a daily request for a monthly series, and the other way round. Their
-output files carry the scale in the name, for example
+rejects a daily request for a monthly series, and the other way round. These three
+indices also accept `--periodicity hourly`, with Timescales in hours (24 for a day,
+168 for a week). An hourly input must begin at 00:00 on January 1 and contain
+contiguous hours, and the output keeps the input's Gregorian hour axis. Every
+other index rejects `--periodicity hourly`. Hourly file and variable names include
+`_hourly` after the Timescale, for example `<out_dir>/energy_example_hourly_srepi_24_hourly.nc`.
+Daily and monthly names remain unchanged.
+Their output files carry the Timescale in the name, for example
 `<out_dir>/energy_example_srepi_03.nc` and
 `<out_dir>/energy_example_standardized_demand_index_12.nc`. Like KBDI and the
 flood indices, the energy indices are not computed by the `--index all`
