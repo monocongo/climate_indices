@@ -317,7 +317,7 @@ def srli(
     Unlike :func:`srepi` and :func:`standardized_demand_index`, this function takes no
     ``fitting_params`` or ``zero_handling``: both belong to the parametric families.
 
-    DataArray input takes the beta adapter path; temporal parameters are inferred from
+    DataArray input takes the stable adapter path; temporal parameters are inferred from
     the time coordinate when omitted, the ``srli`` registry metadata is stamped, and
     each grid cell is standardized independently to match its NumPy series exactly.
     The adapter validates ``distribution`` at call time, before building a Dask graph.

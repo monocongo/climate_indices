@@ -339,7 +339,7 @@ def srepi(
     :func:`climate_indices.indices.standardized_index` rejects a value outside that
     range. All other arguments are those of that function.
 
-    DataArray input uses the beta adapter: temporal parameters are inferred from the
+    DataArray input uses the stable adapter: temporal parameters are inferred from the
     time coordinate when omitted, the ``srepi`` registry metadata is stamped, and
     each grid cell is fitted independently to match its NumPy series exactly.
     The adapter passes the same ``fitting_params`` to every cell.

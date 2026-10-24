@@ -9,15 +9,20 @@
 
 Starting with version 2.3.0, the `climate_indices` library provides native support for xarray DataArrays alongside the traditional NumPy array API. This migration guide helps existing users understand the benefits of adopting the xarray API and provides practical examples for transitioning from NumPy-based workflows to xarray-based workflows.
 
-:::{warning}
-**Beta Feature**
+:::{note}
+**Stable index API from 3.1.0**
 
-The xarray DataArray API described in this guide is **beta** in 3.0.0 and is
-promoted no earlier than 3.1.0
-([ADR-0012](adr/0012-xarray-api-stays-beta-through-3.0.0.md)). The interface
-(parameter inference, metadata attributes, coordinate handling) may change with a
-minor version, never in a patch release. The underlying computation results are
-intended to be identical to the stable NumPy API.
+The DataArray index APIs in this guide are **Stable** from 3.1.0
+([ADR-0012](adr/0012-xarray-api-stays-beta-through-3.0.0.md)).
+Parameter inference, metadata attributes, and coordinate handling have the same
+no-breaking-changes-in-minor-versions guarantee as the NumPy API.
+The promotion changes no numerical algorithm, calendar conversion, or Dask chunk requirement.
+It includes index and diagnostic functions that accept DataArrays and return Datasets.
+
+The compound Dataset routes and eager event catalogs remain **Beta** under
+[ADR-0022](adr/0022-compound-analysis-contracts.md) and continue to emit `BetaFeatureWarning`.
+The warning remains publicly importable; existing filters need no changes.
+Stable DataArray index APIs do not emit it.
 :::
 
 :::{warning}
@@ -786,7 +791,7 @@ with Client(n_workers=4, threads_per_worker=1) as client:
 - {func}`climate_indices.eddi` — Evaporative Demand Drought Index
 - {func}`climate_indices.percentage_of_normal` — Percent of Normal Precipitation
 - {func}`climate_indices.pdsi` — Palmer Drought Severity Index family (Dataset output)
-- {func}`climate_indices.fit_diagnostics` — Distribution fit diagnostics (Dataset output, beta)
+- {func}`climate_indices.fit_diagnostics` — Distribution fit diagnostics (Dataset output, stable from 3.1.0)
 
 **Supporting classes:**
 

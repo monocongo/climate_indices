@@ -2,6 +2,9 @@
 
 ## Status
 
+Amended by #1061: fire DataArray entry points are Stable from 3.1.0 under
+{doc}`0012-xarray-api-stays-beta-through-3.0.0`. Namespacing and computation are unchanged.
+
 Amended: the flat-module deferral recorded in the Decision section is complete.
 `cec29737` ("refactor(fire): promote the flat module to a fire package")
 promoted `fire.py` to `src/climate_indices/fire/`, so the trigger is met and
@@ -24,7 +27,7 @@ re-exported from the package root. The Canadian FWI component is
 `fire.cffwis_fwi()`, never `fire.fwi()`, and Fosberg remains
 `fire.fosberg_ffwi()`.
 
-Beta xarray paths retain the same `fire.<name>` route, use the established
+Stable xarray paths retain the same `fire.<name>` route, use the established
 xarray adapter and CF metadata registry, and do not add unqualified entries to
 `typed_public_api.py`. CFFWIS returns named outputs: a result object for NumPy
 and an `xarray.Dataset` for xarray.

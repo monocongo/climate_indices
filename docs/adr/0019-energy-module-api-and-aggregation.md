@@ -2,6 +2,10 @@
 
 ## Status
 
+Amended by #1061: energy DataArray entry points are Stable from 3.1.0 under
+{doc}`0012-xarray-api-stays-beta-through-3.0.0`. Energy transforms stop emitting
+`BetaFeatureWarning`. Earlier Beta descriptions below record their status at introduction.
+
 Amended: decision 2 also exposes matching aggregation on `indices.fit_diagnostics()`
 so its fitting parameters can be reused by the standardized index.
 
@@ -120,7 +124,7 @@ series such as residual load.
 1. **Package.** Energy computations live in `climate_indices.energy`, a package with a
    public facade over underscore-prefixed implementation modules, mirroring `fire` and
    `flood`, and are imported as `from climate_indices import energy`. No energy function
-   is re-exported from the package root or added to `typed_public_api.py`. Beta xarray
+   is re-exported from the package root or added to `typed_public_api.py`. Stable xarray
    paths keep the `energy.<name>` route under
    {doc}`0012-xarray-api-stays-beta-through-3.0.0`. The package lands with
    its first real function, not as an empty scaffold.

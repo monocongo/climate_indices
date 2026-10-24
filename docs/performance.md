@@ -1,9 +1,10 @@
 # Gridded Performance
 
 :::{note}
-The gridded xarray API is beta in 3.0.0. The NumPy API remains the stable
-integration surface; this page covers the Dask execution path for the xarray
-adapters described in the [xarray compatibility matrix](xarray_compatibility.md).
+The gridded DataArray index API is stable from 3.1.0, as is the NumPy API.
+This page covers the Dask execution path for the index adapters described in
+the [xarray compatibility matrix](xarray_compatibility.md).
+Compound Dataset routes and eager event catalogs remain beta.
 :::
 
 The gridded index kernels are vectorized once per spatial block: a Dask-backed

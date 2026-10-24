@@ -73,11 +73,10 @@ periodicity that the xarray API infers:
 (360,)
 ```
 
-:::{warning}
-**Beta Feature**
-
-The xarray API shown below is **beta** and may change in future minor releases.
-Computation results are identical to the stable NumPy array API.
+:::{note}
+The DataArray index API shown below is **Stable from 3.1.0**.
+It has the same no-breaking-changes-in-minor-versions guarantee as the NumPy API.
+The promotion changes no computation results.
 :::
 
 ## Compute PET

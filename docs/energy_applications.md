@@ -177,15 +177,15 @@ SREPI, the standardized demand index, and SRLI.
 
 The NumPy degree-day, wind-profile, wind and PV capacity-factor, and event-statistics
 functions in `climate_indices.energy` are available, as are SREPI, the standardized
-demand index, and SRLI with its residual-load helper. The package, its
-NumPy and beta xarray tiers, and the scope boundary are fixed by
-[ADR-0019](adr/0019-energy-module-api-and-aggregation.md), with function names,
-units, and argument contracts recorded in the internal energy subsystem design
-note. The [energy-family epic #1157][energy-epic] tracks the implementation
+demand index, and SRLI with its residual-load helper.
+The NumPy APIs are stable. The DataArray index and diagnostic APIs are stable
+from 3.1.0. The DataArray route for `energy_drought_events()` remains Beta.
+[ADR-0019](adr/0019-energy-module-api-and-aggregation.md) fixes the package and scope boundary.
+The internal energy subsystem design note records function names, units, and argument contracts. The [energy-family epic #1157][energy-epic] tracks the implementation
 order.
 
 - **Heating, cooling, and energy degree days (HDD, CDD, EDD)** — *NumPy API
-  available ([#1164][energy-1164]); DataArray input is beta
+  available ([#1164][energy-1164]); DataArray input is stable from 3.1.0
   ([#1166][energy-1166])*. Mean-based degree days from daily mean 2 m
   temperature against a base temperature, in °C day; EDD is HDD plus CDD with
   separate heating and cooling bases. CPC's single-base convention ships;
@@ -199,7 +199,7 @@ order.
   {func}`climate_indices.energy.wind_shear_exponent` derives per-sample
   shear from two levels: calm pairs yield NaN; positive inverted profiles
   retain negative shear. The default power exponent, 1/7, is a generic
-  approximation, not a site-calibrated value. DataArray input is beta
+  approximation, not a site-calibrated value. DataArray input is stable from 3.1.0
   ([#1166][energy-1166]): coordinates are preserved, and every dimension may
   carry multiple Dask chunks.
 - **Hydropower precipitation proxy** — available as the
@@ -218,7 +218,7 @@ order.
   window by default, so accumulated production needs `aggregation="sum"`;
   the demand index sums by default. `energy.SREPI_DROUGHT_THRESHOLDS` holds
   Allen & Otero's moderate, severe, and extreme cut-offs (−1.28, −1.64, −1.96).
-  DataArray input is beta ([#1174][energy-1174]): temporal parameters are
+  DataArray input is stable from 3.1.0 ([#1174][energy-1174]): temporal parameters are
   inferred from the time coordinate, the `srepi` or `standardized_demand_index`
   registry metadata is stamped, and each grid cell is fitted independently to
   match its NumPy series exactly.
@@ -231,7 +231,7 @@ order.
   empirical distribution ([#1168][energy-1168]) and never clips a negative.
   High values mark stress. On the default `output_scale="normal"`, Allen &
   Otero (2023) class drought at 1.28, 1.64, and 1.96; the `probability` and
-  `bounded` scales need cut-offs of their own. DataArray input is beta
+  `bounded` scales need cut-offs of their own. DataArray input is stable from 3.1.0
   ([#1174][energy-1174]) and keeps the empirical distribution: a parametric fit
   does not suit a signed series.
 - **Energy-drought event statistics** — available as

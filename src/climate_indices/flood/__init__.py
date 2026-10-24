@@ -1,7 +1,7 @@
 """Daily indices of flood potential, not observed flooding.
 
 Effective precipitation is the shared input for EDI and the Flood Index.
-The NumPy API is stable; DataArray dispatch is beta.
+The NumPy API is stable; DataArray dispatch is stable from 3.1.0.
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ def effective_precipitation(
     """Calculate effective precipitation in mm (flood potential, not flooding).
 
     NumPy input follows the stable fixed-window kernel; DataArray input uses
-    beta xarray dispatch with Gregorian daily conversion, lazy Dask spatial
+    stable xarray dispatch with Gregorian daily conversion, lazy Dask spatial
     chunks, CF precipitation units, and output metadata.
     """
     if isinstance(precipitation, xr.DataArray):
@@ -109,7 +109,7 @@ def edi(
 ) -> npt.NDArray[np.float64] | xr.DataArray:
     """Calculate fixed-window EDI from PE (flood potential, not flooding).
 
-    DataArray dispatch is beta; omitted years are inferred from daily coordinates.
+    DataArray dispatch is stable; omitted years are inferred from daily coordinates.
     PE must be computed with the same duration and in millimeters. A DataArray's
     Gregorian PE is interpolated to the all-leap layout, so non-leap February 29
     PE is the mean of adjacent PE values, not PE of interpolated rainfall (ADR-0014).
@@ -173,7 +173,7 @@ def flood_index(
 ) -> npt.NDArray[np.float64] | xr.DataArray:
     """Calculate the Flood Index from PE (flood potential, not flooding).
 
-    DataArray dispatch is beta. The omitted calibration start defaults to the
+    DataArray dispatch is stable. The omitted calibration start defaults to the
     first coordinate year plus one, excluding the standard 365-day PE warm-up
     year without loading data. This also skips a year for PE with no warm-up
     NaNs or a shorter duration; pass an explicit start to include it, or a later
@@ -260,7 +260,7 @@ def antecedent_precipitation_index(
 ) -> npt.NDArray[np.float64] | xr.DataArray | APIResult:
     """Compute daily antecedent wetness in mm (flood potential, not flooding).
 
-    NumPy input follows the stable recurrence; DataArray input uses beta xarray
+    NumPy input follows the stable recurrence; DataArray input uses stable xarray
     dispatch with CF unit conversion and spatial Dask blocks. Its ``time_dim``
     must be a single chunk, with any spatial chunking. An attached time
     coordinate must hold consecutive daily samples; a dimension-only time axis
