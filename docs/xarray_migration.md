@@ -21,8 +21,13 @@ It includes index and diagnostic functions that accept DataArrays and return Dat
 
 The compound Dataset routes and eager event catalogs remain **Beta** under
 [ADR-0022](adr/0022-compound-analysis-contracts.md) and continue to emit `BetaFeatureWarning`.
-The warning remains publicly importable; existing filters need no changes.
+The warning remains publicly importable from `climate_indices` and
+`climate_indices.exceptions`; existing filters need no changes.
 Stable DataArray index APIs do not emit it.
+No warning import or filter migration is required.
+See the [API change record](deprecations/api-changes.md#dataarray-index-api-promotion-310)
+for the promotion details and the
+[compatibility matrix](xarray_compatibility.md) for each route's constraints.
 :::
 
 :::{warning}

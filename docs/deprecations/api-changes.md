@@ -22,6 +22,7 @@ timescale, not calibration years. No numerical behavior changes.
 ## DataArray index API promotion (3.1.0)
 
 The DataArray index APIs and public `xarray_adapter` interface become Stable.
+They introduce no breaking interface changes in minor versions.
 This includes index and diagnostic functions that accept DataArrays and return Datasets.
 The promotion changes no signatures, return types, numerical algorithms, or calendar rules.
 Energy DataArray transforms no longer emit `BetaFeatureWarning`.
@@ -32,6 +33,8 @@ The compound Dataset routes and eager event catalogs remain Beta and continue to
 The proposed warning-class removal in #1061 does not apply to this scoped promotion;
 there is no public-name removal to migrate.
 See [ADR-0012](../adr/0012-xarray-api-stays-beta-through-3.0.0.md) for the decision.
+The [compatibility matrix](../xarray_compatibility.md) lists route-specific constraints.
+The [xarray migration guide](../xarray_migration.md) gives NumPy-to-DataArray examples.
 
 ## Breaking changes in 3.1.0
 
