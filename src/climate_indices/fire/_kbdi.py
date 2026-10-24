@@ -236,12 +236,10 @@ def kbdi(
     This function accepts both NumPy arrays and xarray DataArrays. Type
     checkers narrow the return type based on the input type.
 
-    .. warning:: **Beta Feature (xarray path only)** -- When called with
-       ``xr.DataArray`` input, this function uses the beta xarray adapter
-       layer: per-call CF metadata resolution (``kbdi`` vs. ``kbdi_imperial``
-       by ``units``), CF ``units``-attribute unit inference, and Dask
-       spatial-chunk parallelism with a required single ``time`` chunk. The
-       NumPy array interface and underlying computation are stable.
+    When called with ``xr.DataArray`` input, this function uses the stable
+    xarray adapter layer (3.1.0): per-call CF metadata resolution (``kbdi`` vs.
+    ``kbdi_imperial`` by ``units``), CF ``units``-attribute unit inference,
+    and Dask spatial-chunk parallelism with a required single ``time`` chunk.
 
     The implementation evaluates the corrected continuous Equation 18 of
     Keetch and Byram (1968), using Alexander's (1990) corrected 8.30

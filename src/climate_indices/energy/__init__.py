@@ -5,10 +5,10 @@ Wind profiles and capacity factors describe climate-driven resources, not actual
 Event statistics describe index runs, not recorded supply shortfalls.
 The wind and PV capacity-factor transforms are NumPy-only. The NumPy
 reference functions are stable; degree-day and wind-profile DataArray dispatch
-is beta, preserves CF metadata, and supports lazy Dask chunks on every dimension.
+is stable from 3.1.0, preserves CF metadata, and supports lazy Dask chunks on every dimension.
 SREPI, the standardized demand index, and SRLI describe the climate-driven component of
 supply and demand, not actual generation or load; their NumPy functions are stable,
-their xarray adapters are beta, and event statistics report a per-cell run structure
+their xarray adapters are stable from 3.1.0, and event statistics report a per-cell run structure
 instead of a gridded index.
 Import this package as ``from climate_indices import energy``; no energy
 function is re-exported from the package root (ADR-0019).

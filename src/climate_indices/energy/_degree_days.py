@@ -80,7 +80,7 @@ def heating_degree_days(
     a non-default single base, so the base is always supplied explicitly. This
     index describes climate-driven heating demand, not actual load.
 
-    DataArray input uses the beta adapter and returns a DataArray with CF
+    DataArray input uses the stable adapter and returns a DataArray with CF
     metadata and a scalar air-temperature threshold coordinate. Temperature
     units are inferred from its CF ``units`` attribute; the base remains °C.
     An attached ``time`` coordinate must contain consecutive daily samples.
@@ -141,7 +141,7 @@ def cooling_degree_days(
     a non-default single base, so the base is always supplied explicitly. This
     index describes climate-driven cooling demand, not actual load.
 
-    DataArray input uses the beta adapter and returns a DataArray with CF
+    DataArray input uses the stable adapter and returns a DataArray with CF
     metadata and a scalar air-temperature threshold coordinate. Temperature
     units are inferred from its CF ``units`` attribute; the base remains °C.
     An attached ``time`` coordinate must contain consecutive daily samples.
@@ -206,7 +206,7 @@ def energy_degree_days(
     identity, not an independent oracle. This index describes climate-driven
     energy demand, not actual load.
 
-    DataArray input uses the beta adapter and returns a DataArray with CF
+    DataArray input uses the stable adapter and returns a DataArray with CF
     metadata and scalar heating/cooling base coordinates. Temperature units
     are inferred from its CF ``units`` attribute; both bases remain °C.
     An attached ``time`` coordinate must contain consecutive daily samples.

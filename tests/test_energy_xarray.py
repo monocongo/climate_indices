@@ -23,8 +23,6 @@ from climate_indices.exceptions import (
     InvalidArgumentError,
 )
 
-pytestmark = pytest.mark.filterwarnings("ignore::climate_indices.exceptions.BetaFeatureWarning")
-
 CASES: list[tuple[str, dict[str, Any]]] = [
     ("heating_degree_days", {"base_temperature": 18.0}),
     ("cooling_degree_days", {"base_temperature": 18.0}),
@@ -100,7 +98,7 @@ def test_dask_stays_lazy_with_multiple_time_and_spatial_chunks(name: str, kwargs
     def reject_task(*args: Any) -> None:
         pytest.fail("The adapter evaluated a Dask task before compute().")
 
-    with Callback(pretask=reject_task), pytest.warns(BetaFeatureWarning):  # type: ignore[no-untyped-call]
+    with Callback(pretask=reject_task):  # type: ignore[no-untyped-call]
         result = _call(name, lazy, kwargs)
     assert result.chunks == lazy.chunks
     expected = _call(name, data.values, kwargs)
@@ -278,11 +276,18 @@ def test_unlabeled_non_scalar_companions_and_mixed_winds_are_rejected() -> None:
 
 
 @pytest.mark.parametrize("name,kwargs", CASES)
-def test_numpy_calls_do_not_emit_beta_warnings(name: str, kwargs: dict[str, Any]) -> None:
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        _call(name, _data(name).values, kwargs)
-    assert not any(issubclass(w.category, BetaFeatureWarning) for w in caught)
+@pytest.mark.parametrize("backend", ["numpy", "xarray", "dask"])
+def test_stable_calls_do_not_emit_beta_warnings(name: str, kwargs: dict[str, Any], backend: str) -> None:
+    values: Any = _data(name)
+    if backend == "numpy":
+        values = values.values
+    elif backend == "dask":
+        values = values.chunk(time=2, lat=1)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", BetaFeatureWarning)
+        result = _call(name, values, kwargs)
+        if backend == "dask":
+            result.compute(scheduler="synchronous")
 
 
 @pytest.mark.parametrize("name,kwargs", CASES[:3])

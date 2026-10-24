@@ -84,27 +84,27 @@ potential of the approach in one region, not a transferable rule.
 
 ## Wet-extreme indices
 
-PE, EDI, I_F, and API are available through the stable NumPy API and beta xarray
-dispatch as `flood.effective_precipitation()`, `flood.edi()` (also
+PE, EDI, I_F, and API provide stable NumPy and DataArray APIs from 3.1.0.
+Use `flood.effective_precipitation()`, `flood.edi()` (also
 `climate_indices.edi()`), `flood.flood_index()`, and
 `flood.antecedent_precipitation_index()`. Module and function names are fixed
 by [ADR-0013](adr/0013-flood-module-api-and-naming.md), with argument names,
 units, and signatures recorded in the internal flood subsystem design note.
 The [flood-family epic #1098][flood-epic] tracks the implementation order.
 
-- **Effective Precipitation (PE)** — *NumPy and beta xarray APIs available
+- **Effective Precipitation (PE)** — *NumPy and stable xarray APIs available
   (FLOOD-08 [#1105][flood-1105], FLOOD-11 [#1108][flood-1108])*. The daily accumulated-wetness kernel shared by EDI
   and I_F, after [Byun & Wilhite (1999)][byun-1999]. Its fixed 365-day
   window yields NaN until a full window is available and for any window with
   a missing day. It measures flood potential, not flooding.
-- **Effective Drought Index (EDI)** — *NumPy and beta xarray APIs available
+- **Effective Drought Index (EDI)** — *NumPy and stable xarray APIs available
   (FLOOD-09 [#1106][flood-1106], FLOOD-11 [#1108][flood-1108])*. A daily standardized index derived from effective
   precipitation ([Byun & Wilhite (1999)][byun-1999]); despite the name, it
   shares its kernel with the flood family. It implements the fixed-window form,
   not the paper's variable-duration extension
   ([ADR-0014](adr/0014-flood-family-scientific-conventions.md)); see
   {doc}`algorithm_refs/edi` for the algorithm and validation status.
-- **Flood Index (I_F)** — *NumPy and beta xarray APIs available
+- **Flood Index (I_F)** — *NumPy and stable xarray APIs available
   (FLOOD-10 [#1107][flood-1107], FLOOD-11 [#1108][flood-1108])*. A daily flood-potential index that standardizes effective precipitation
   ([Deo et al. (2015)][deo-2015]). The annual-maximum window follows the
   caller's year boundary, and the kernel question — the abstracts describe an
@@ -120,7 +120,7 @@ The [flood-family epic #1098][flood-epic] tracks the implementation order.
   At least two complete calibration periods must remain. The CLI uses the same
   default; NumPy still requires explicit years. EDI retains its first-year
   default because it uses finite observations per calendar day, not annual maxima.
-- **Antecedent Precipitation Index (API)** — *NumPy and beta xarray APIs available
+- **Antecedent Precipitation Index (API)** — *NumPy and stable xarray APIs available
   (FLOOD-12 [#1109][flood-1109], FLOOD-13 [#1110][flood-1110])*. A daily recursive wetness measure in mm, after
   Kohler & Linsley (1951): `API_t = k * API_(t-1) + P_t`, where `0 < k < 1` and
   today's precipitation is added after decay. `flood.antecedent_precipitation_index(precipitation, k)`
@@ -137,7 +137,7 @@ The [flood-family epic #1098][flood-epic] tracks the implementation order.
   (FLOOD-17 [#1114][flood-1114]). Named wrappers are not provided: SRI and SSI
   stay recipes over the generic seam
   ([ADR-0020](adr/0020-standardized-index-public-surface.md)). Its xarray entry
-  point is the Beta adapter path re-exported as `climate_indices.standardized_index`,
+  point is the stable adapter path (from 3.1.0) re-exported as `climate_indices.standardized_index`,
   with one neutral CF metadata entry ([#1174][flood-1174]).
 
 PE, EDI, I_F, and API are also exposed through the existing command line as

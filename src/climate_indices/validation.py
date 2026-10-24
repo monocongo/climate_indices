@@ -59,7 +59,7 @@ class InputType(Enum):
 
     Used by detect_input_type() to determine which computation path to use.
 
-    .. note:: Part of the beta xarray API layer. See :doc:`xarray_migration`.
+    .. note:: Part of the stable xarray API layer. See :doc:`xarray_migration`.
 
     Attributes:
         NUMPY: Input is NumPy-coercible (ndarray, list, tuple, scalars)
@@ -77,7 +77,7 @@ def detect_input_type(data: Any) -> InputType:
     perform any data transformation or coercion. The actual dispatch logic
     is handled by the @xarray_adapter decorator.
 
-    .. note:: Part of the beta xarray API layer. See :doc:`xarray_migration`.
+    .. note:: Part of the stable xarray API layer. See :doc:`xarray_migration`.
 
     Args:
         data: Input data to classify

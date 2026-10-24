@@ -1,8 +1,7 @@
-"""Beta, elementwise xarray execution for the energy transforms."""
+"""Stable, elementwise xarray execution for the energy transforms."""
 
 from __future__ import annotations
 
-import warnings
 from collections.abc import Callable
 from typing import Any, TypeVar, cast
 
@@ -13,7 +12,6 @@ from climate_indices import compute, indices
 from climate_indices._units import _convert_temperature_units, _validate_daily_time_coordinate
 from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.exceptions import (
-    BetaFeatureWarning,
     CoordinateValidationError,
     InputTypeError,
     InvalidArgumentError,
@@ -44,7 +42,7 @@ _TEMPORAL_PARAMETERS = ("data_start_year", "calibration_year_initial", "calibrat
 def apply_standardized(
     adapter: Callable[..., _StandardizedReturn], values: Any, **parameters: Any
 ) -> _StandardizedReturn:
-    """Dispatch a standardized energy index through its beta xarray adapter.
+    """Dispatch a standardized energy index through its stable xarray adapter.
 
     Every parameter travels as a keyword, because the adapter's gridded path forwards
     only keywords to its block kernel. A temporal parameter left as ``None`` is omitted
@@ -163,11 +161,6 @@ def apply_elementwise(
     for data in secondary:
         if isinstance(data, xr.DataArray):
             _validate_shared_coordinates(primary, data)
-    warnings.warn(
-        "The energy xarray adapter is beta; the NumPy API is stable (ADR-0012).",
-        BetaFeatureWarning,
-        stacklevel=3,
-    )
     result: xr.DataArray = xr.apply_ufunc(
         function,
         *inputs,

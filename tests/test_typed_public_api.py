@@ -52,6 +52,8 @@ from climate_indices.xarray_adapter import (
     pet_thornthwaite as pet_thornthwaite_impl,
 )
 
+pytestmark = pytest.mark.filterwarnings("error::climate_indices.exceptions.BetaFeatureWarning")
+
 # fixtures now consolidated in conftest.py
 
 

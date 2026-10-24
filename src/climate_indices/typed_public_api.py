@@ -23,12 +23,12 @@ their parameter names to the wrapped function.
 PCI uses a manual wrapper instead of @xarray_adapter because its output shape
 (scalar) differs from input shape (365/366 daily values).
 
-.. warning:: **Beta Feature (xarray path)** — The xarray DataArray overloads in
-   this module are beta. The NumPy overloads are stable.
+The NumPy and xarray DataArray overloads are stable from 3.1.0 (ADR-0012).
+Their interfaces do not introduce breaking changes in minor versions.
 
 Fire-weather APIs are intentionally namespaced under ``climate_indices.fire``.
 Do not add unqualified fire wrappers or package-level re-exports here; each
-beta xarray path stays on its corresponding ``fire.<name>`` public route.
+xarray path stays on its corresponding ``fire.<name>`` public route.
 """
 
 from __future__ import annotations
@@ -270,12 +270,6 @@ def standardized_index(values: Any, *args: Any, **kwargs: Any) -> npt.NDArray[np
     index", ``units`` "1", and no ``standard_name``. Rename the returned DataArray
     for a discipline-specific name (ADR-0020).
 
-    .. warning:: **Beta Feature (xarray path only)** — When called with an
-       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
-       The xarray interface (parameter inference, metadata handling, coordinate
-       preservation) may change in future minor releases. The NumPy array interface
-       is stable.
-
     Args:
         values: NumPy array or xarray DataArray of the series to standardize.
         scale: Number of time steps over which values are accumulated (or averaged,
@@ -361,12 +355,6 @@ def spi(values: Any, *args: Any, **kwargs: Any) -> npt.NDArray[np.float64] | xr.
     For xarray inputs, temporal parameters are optional and will be inferred from
     coordinate attributes if not provided.
 
-    .. warning:: **Beta Feature (xarray path only)** — When called with an
-       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
-       The xarray interface (parameter inference, metadata handling, coordinate
-       preservation) may change in future minor releases. The NumPy array interface
-       is stable.
-
     Args:
         values: 1-D numpy array or xarray DataArray of precipitation values.
         scale: Number of time steps over which values should be scaled.
@@ -437,12 +425,6 @@ def spei(precips_mm: Any, pet_mm: Any, *args: Any, **kwargs: Any) -> npt.NDArray
     For NumPy inputs, all temporal parameters are required.
     For xarray inputs, temporal parameters are optional and will be inferred from
     coordinate attributes if not provided.
-
-    .. warning:: **Beta Feature (xarray path only)** — When called with an
-       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
-       The xarray interface (parameter inference, metadata handling, coordinate
-       preservation) may change in future minor releases. The NumPy array interface
-       is stable.
 
     Args:
         precips_mm: Array of precipitation values in millimeters.
@@ -582,12 +564,6 @@ def percentage_of_normal(values: Any, *args: Any, **kwargs: Any) -> npt.NDArray[
     For xarray inputs, temporal parameters are optional and will be inferred from
     coordinate attributes if not provided.
 
-    .. warning:: **Beta Feature (xarray path only)** -- When called with an
-       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
-       The xarray interface (parameter inference, metadata handling, coordinate
-       preservation) may change in future minor releases. The NumPy array interface
-       is stable.
-
     Args:
         values: 1-D numpy array or xarray DataArray of precipitation values.
         scale: Number of time steps over which the normal is computed.
@@ -637,11 +613,6 @@ def pci(
 
     PCI requires exactly 365 or 366 daily rainfall values representing a single
     year. The output is a single scalar value.
-
-    .. warning:: **Beta Feature (xarray path only)** -- When called with an
-       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
-       The xarray interface (metadata handling) may change in future minor
-       releases. The NumPy array interface is stable.
 
     Args:
         rainfall_mm: 1-D array or DataArray of daily rainfall values in mm.
@@ -702,11 +673,6 @@ def pet_thornthwaite(
     if not provided, and ``latitude`` may be a scalar or DataArray for spatial
     broadcasting.
 
-    .. warning:: **Beta Feature (xarray path only)** -- When called with an
-       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
-       The xarray interface may change in future minor releases. The NumPy array
-       interface is stable.
-
     Args:
         temperature: Monthly average temperature values in degrees Celsius.
             For numpy: 1-D array of monthly temperatures.
@@ -758,11 +724,6 @@ def pet_hargreaves(
     For NumPy inputs, scalar ``latitude`` is required.
     For xarray inputs, ``latitude`` may be a scalar or DataArray for spatial
     broadcasting.
-
-    .. warning:: **Beta Feature (xarray path only)** -- When called with an
-       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
-       The xarray interface may change in future minor releases. The NumPy array
-       interface is stable.
 
     Args:
         daily_tmin_celsius: Daily minimum temperature values in degrees Celsius.
@@ -841,11 +802,6 @@ def pet_penman_monteith(
     provided, and ``latitude`` may be a scalar or DataArray for spatial
     broadcasting.
 
-    .. warning:: **Beta Feature (xarray path only)** -- When called with an
-       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
-       The xarray interface may change in future minor releases. The NumPy array
-       interface is stable.
-
     Args:
         daily_tmin_celsius: Daily minimum temperature values in degrees Celsius.
         daily_tmax_celsius: Daily maximum temperature values in degrees Celsius.
@@ -916,11 +872,6 @@ def eddi(pet_values: Any, *args: Any, **kwargs: Any) -> npt.NDArray[np.float64] 
     For NumPy inputs, all temporal parameters are required.
     For xarray inputs, temporal parameters are optional and inferred from
     coordinate attributes if not provided.
-
-    .. warning:: **Beta Feature (xarray path only)** — When called with an
-       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
-       The xarray interface may change in future minor releases. The NumPy array
-       interface is stable.
 
     Args:
         pet_values: 1-D numpy array or xarray DataArray of PET values.
@@ -1005,12 +956,6 @@ def pdsi(
     coordinate, and the return is an ``xr.Dataset`` with one variable per index
     (``pdsi``, ``phdi``, ``pmdi``, ``z_index``), each carrying its own CF metadata.
 
-    .. warning:: **Beta Feature (xarray path only)** — When called with an
-       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
-       The xarray interface (parameter inference, metadata handling, coordinate
-       preservation) may change in future minor releases. The NumPy array interface
-       is stable.
-
     Args:
         precips: Monthly precipitation values in inches.
         pet: Monthly potential evapotranspiration values in inches, matching
@@ -1090,12 +1035,6 @@ def fit_diagnostics(
     per fitted block, and ``distribution_used`` names the family that does apply;
     ``distribution_used`` does not carry the ``month``/``dayofyear`` dimension, since
     the fall back is decided per fitted block (per Dask chunk for chunked input).
-
-    .. warning:: **Beta Feature (xarray path only)** — When called with an
-       ``xr.DataArray`` input, this function uses the beta xarray adapter layer.
-       The xarray interface (parameter inference, metadata handling, coordinate
-       preservation) may change in future minor releases. The NumPy array interface
-       is stable.
 
     Args:
         values: NumPy array or xarray DataArray of non-negative values.

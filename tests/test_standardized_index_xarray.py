@@ -1,4 +1,4 @@
-"""The generic standardization seam's beta xarray path (ADR-0020, #1174).
+"""The generic standardization seam's stable xarray path (ADR-0020, #1174).
 
 Parity with the NumPy core, the aggregation seam, inference, metadata, and the
 package-root re-export. Distribution behaviour is covered by the existing seam tests;

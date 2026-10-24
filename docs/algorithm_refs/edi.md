@@ -29,8 +29,8 @@ The published variable-duration dry-spell extension and five-day running-mean
 smoothing of the per-calendar-day climatology are **not implemented**. The
 default PE window is 365 days; other windows are caller experiments, not the
 recorded EDI form ([ADR-0014](../adr/0014-flood-family-scientific-conventions.md)).
-`flood.edi()` is the stable NumPy route, `flood.edi(DataArray)` is the beta
-xarray dispatch, and `climate_indices.edi()` reaches the same function at the
+`flood.edi()` is the stable NumPy route, `flood.edi(DataArray)` is the xarray
+dispatch (stable from 3.1.0), and `climate_indices.edi()` reaches the same function at the
 package root ([ADR-0013](../adr/0013-flood-module-api-and-naming.md), FLOOD-11
 [#1108](https://github.com/monocongo/climate_indices/issues/1108)).
 

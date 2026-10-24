@@ -2,6 +2,9 @@
 
 ## Status
 
+Amended by #1061: the xarray index layer is Stable from 3.1.0 under
+{doc}`0012-xarray-api-stays-beta-through-3.0.0`. The NumPy-only state boundary is unchanged.
+
 Amended: the shared dimension-chunk guard is now
 `validation.validate_dask_chunks`. The `xarray_adapter._validate_dask_chunks`
 spelling this record carried named the private function until `68e04aac` moved it
@@ -25,7 +28,7 @@ frozen state dataclass: `KBDIState`, `FFMCState`, `DMCState`, `DCState`, or
 `CFFWISState`. It contains the output code plus every auxiliary recurrence
 value needed to resume exactly, such as KBDI's cumulative wet-spell
 precipitation. A generic tuple would conceal that required state; an xarray
-`Dataset` would make the stable NumPy core depend on the beta xarray layer.
+`Dataset` would make the stable NumPy core depend on the xarray layer.
 
 Each single-output API accepts keyword-only `initial_<code>: float or
 spatial field | None`,

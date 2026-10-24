@@ -301,13 +301,11 @@ def haines_index(
     This function accepts both NumPy arrays and xarray DataArrays. Type
     checkers narrow the return type based on the input type.
 
-    .. warning:: **Beta Feature (xarray path only)** -- When called with
-       ``xr.DataArray`` input, this function uses the beta xarray adapter
-       layer: CF metadata from the ``haines_<variant>`` registry entry, CF
-       ``units``-attribute temperature conversion, and Dask parallelism over
-       every dimension (no dimension has a chunk constraint, because nothing
-       is reduced). The NumPy array interface and underlying computation are
-       stable.
+    When called with ``xr.DataArray`` input, this function uses the stable
+    xarray adapter layer (3.1.0): CF metadata from the ``haines_<variant>``
+    registry entry, CF ``units``-attribute temperature conversion, and Dask
+    parallelism over every dimension. No dimension has a chunk constraint,
+    because nothing is reduced.
 
     The index sums a stability term and a moisture term, each scored 1 to 3
     against the lapse rate and dewpoint depression of one lower-atmosphere

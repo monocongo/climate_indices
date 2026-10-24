@@ -1,7 +1,7 @@
 """Standardized energy indices as xarray adapters (#1174).
 
 SREPI, the standardized demand index, and SRLI wrap the generic seam, so these tests
-pin what the adapter layer adds: beta dispatch, the wrapper defaults, registry metadata,
+pin what the adapter layer adds: stable dispatch, the wrapper defaults, registry metadata,
 gridded and Dask parity against the NumPy functions, and the retained restrictions.
 """
 

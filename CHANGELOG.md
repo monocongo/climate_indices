@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - unreleased
+
+### Changed
+
+- **Stable xarray DataArray index APIs and public adapter interface**: these APIs
+  now promise no breaking interface changes in minor versions (ADR-0012, #1061).
+  This includes index and diagnostic functions that return Datasets. Energy
+  elementwise transforms no longer emit `BetaFeatureWarning`. Numerical algorithms,
+  calendar behavior, and Dask chunk requirements do not change. The compound Dataset
+  routes and eager event catalogs, including `energy.energy_drought_events()`, remain
+  Beta. `BetaFeatureWarning` remains public for existing imports and warning filters.
+
 ## [3.0.0] - 2026-10-12
 
 Published on PyPI on 2026-10-12; see the [release notes](docs/release-notes-3.0.0.md)
@@ -756,6 +768,7 @@ change states what a user sees, how to detect it, and what to change in
 - requirements.txt (dependencies now specified solely in pyproject.toml)
 - setup.py (now using poetry as the build tool)
 
+[3.1.0]: https://github.com/monocongo/climate_indices/compare/v3.0.0...HEAD
 [3.0.0]: https://github.com/monocongo/climate_indices/compare/v2.4.0...v3.0.0
 [2.2.0]: https://github.com/monocongo/climate_indices/compare/v2.1.1...v2.2.0
 [2.1.1]: https://github.com/monocongo/climate_indices/compare/v2.0.0...v2.1.1

@@ -2,6 +2,9 @@
 
 ## Status
 
+Amended by #1061: flood DataArray entry points are Stable from 3.1.0 under
+{doc}`0012-xarray-api-stays-beta-through-3.0.0`. Namespacing and computation are unchanged.
+
 Amended: `flood.effective_precipitation()` and the `flood` package landed in
 #1105; the remaining public names and their xarray adapters landed with FLOOD-09
 through FLOOD-13 (#1106–#1110), and the root `climate_indices.edi` route is
@@ -59,9 +62,9 @@ a precedent worth more than the interim convenience of exposing it early.
 `flood.edi()` is available from #1106 for callers and for the #1104 fixture
 tests; the root route follows once both paths exist.
 
-Beta xarray paths stay on their `flood.<name>` route, as the fire paths stay on
-`fire.<name>`, and are beta under [ADR-0012](./0012-xarray-api-stays-beta-through-3.0.0.md)'s
-policy until that policy changes.
+Stable xarray paths stay on their `flood.<name>` route, as the fire paths stay on
+`fire.<name>`, under [ADR-0012](./0012-xarray-api-stays-beta-through-3.0.0.md)'s
+3.1.0 promotion.
 
 Argument names, units, and signatures are recorded in the flood subsystem design
 note (`docs/design/flood-subsystem.md`), which stays in the repository rather
