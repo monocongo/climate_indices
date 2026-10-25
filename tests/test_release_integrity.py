@@ -1458,6 +1458,10 @@ def test_v310_stable_dataarray_api_surface_is_pinned() -> None:
     Dataset routes and the energy-drought event statistics Beta. A name that silently
     moved between the tiers would change the compatibility promise, so both sets are
     pinned, and `compound` stays an explicit-import package rather than a root export.
+    Export alone cannot tell the tiers apart, so each Beta route must also keep its
+    `Yes (Beta)` row in the compatibility matrix; the compound routes'
+    `BetaFeatureWarning` is pinned in tests/test_compound_xarray.py and
+    tests/test_compound_catalog.py.
     """
     import climate_indices
     from climate_indices import compound
@@ -1474,10 +1478,15 @@ def test_v310_stable_dataarray_api_surface_is_pinned() -> None:
             assert callable(getattr(module, name)), f"{module_name}.{name}"
 
     assert "compound" not in climate_indices.__all__, "compound stays an explicit import (ADR-0022)"
+    matrix = (ROOT / "docs" / "xarray_compatibility.md").read_text(encoding="utf-8")
+    # (Supported, Coverage) per feature row; only the Coverage cell may contain a pipe
+    rows = [line.split("|", 3)[2:] for line in matrix.splitlines() if line.startswith("| `DataArray` inputs for ")]
     for module_name, names in sorted(BETA_DATAARRAY_API_NAMES.items()):
         module = compound if module_name == "compound" else getattr(climate_indices, module_name)
         for name in sorted(names):
             assert name in module.__all__, f"{module_name}.{name}"
+            tiers = {tier.strip() for tier, coverage in rows if f"`{module_name}.{name}()`" in coverage}
+            assert tiers == {"Yes (Beta)"}, f"{module_name}.{name} must stay Beta in the compatibility matrix: {tiers}"
 
 
 def test_icechunk_is_an_optional_extra_and_imports_lazily() -> None:
