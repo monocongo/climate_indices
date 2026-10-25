@@ -181,7 +181,13 @@ def apply_elementwise(
     else:
         metadata = cast(dict[str, str], CF_METADATA[index])
     result.attrs = build_output_attrs(
-        primary, cf_metadata=metadata, calculation_metadata=calculation_metadata, index_name=metadata["long_name"]
+        primary,
+        cf_metadata=metadata,
+        calculation_metadata=calculation_metadata,
+        index_name=metadata["long_name"],
+        # the companions are positional here; their order follows each energy call's signature
+        inputs={"primary": primary, **{f"companion_{position}": data for position, data in enumerate(secondary, 1)}},
+        implementation=f"{function.__module__}.{getattr(function, '__qualname__', type(function).__name__)}",
     )
     return result
 

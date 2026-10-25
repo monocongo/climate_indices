@@ -1948,7 +1948,7 @@ The **climate_indices** library implements a **layered library architecture** op
 | **sphinx** | Documentation generation |
 
 ### Build and Deployment
-- **Build Backend**: Hatchling (PEP 517 compliant); the optional Rust extension is built with maturin (see [Optional Rust Backend](#optional-rust-backend))
+- **Build Backend**: Hatchling (PEP 517 compliant); the optional Rust extension is built with maturin (see [Optional Rust Backend](#optional-rust-backend)). The `hatch_build.py` build hook embeds the source commit in the sdist and the wheel, and the release workflow runs it as a script before the maturin builds ([Dataset provenance](docs/provenance.md#software-identity))
 - **Package Manager**: uv (modern resolver, lockfile support)
 - **CI/CD**: GitHub Actions (3 workflows: unit tests, releases, benchmarks)
 - **Container**: Docker with Python 3.14-slim base image
@@ -1985,6 +1985,7 @@ The **climate_indices** library implements a **layered library architecture** op
 │  logging_config.py    │  Structured logging setup                │
 │  exceptions.py        │  Exception hierarchy with context        │
 │  performance.py       │  Performance metrics tracking            │
+│  provenance.py        │  Output provenance records               │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -2147,6 +2148,15 @@ process_climate_indices = "climate_indices.__main__:main"
 - **`performance.py`**: Memory metrics
   - `get_process_memory_mb()`: current process memory usage
   - `check_large_array_memory()`: returns memory metrics when arrays exceed the 1 GB threshold
+
+- **`provenance.py`**: Output provenance (see [Dataset provenance](docs/provenance.md))
+  - Builds the strict-JSON `climate_indices_provenance` record and the searchable
+    `climate_indices_git_commit` attribute; `build_output_attrs()` in `xarray_adapter.py`
+    attaches them, so every adapter and the CLI share one path
+  - Describes inputs from attributes, encodings, and in-memory indexes only; it never
+    reads data, and the numerical kernels never import it
+  - `software_identity()`: the version and source commit, resolved once per process
+  - `with_source()`: caller-supplied source identifiers for an input
 
 ## Optional Rust Backend
 

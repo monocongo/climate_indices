@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -589,8 +589,18 @@ def _cffwis_variable_results(
     active_components: tuple[str, ...],
     temperature_celsius: xr.DataArray,
     options: _CFFWISCallOptions,
+    inputs: dict[str, Any],
 ) -> dict[str, xr.DataArray]:
     """Attach each component's CF metadata; the adapter has restored the time coordinates."""
+    parameters = {
+        "nan_policy": options.nan_policy,
+        "max_gap_days": options.max_gap_days,
+        "spin_up": options.spin_up,
+        "initial_ffmc": options.initial_ffmc,
+        "initial_dmc": options.initial_dmc,
+        "initial_dc": options.initial_dc,
+        "initial_state": options.initial_state,
+    }
     variable_results: dict[str, xr.DataArray] = {}
     for position, name in enumerate(active_components):
         variable = result_arrays[position]
@@ -599,6 +609,9 @@ def _cffwis_variable_results(
             cf_metadata=CF_METADATA[name],  # type: ignore[arg-type]
             calculation_metadata={"nan_policy": options.nan_policy},
             index_name=name.upper(),
+            inputs=inputs,
+            parameters=parameters,
+            implementation="climate_indices.fire.cffwis",
         )
         variable_results[name] = variable
     return variable_results
@@ -674,7 +687,21 @@ def _cffwis_xarray(
         kernel_kwargs={"options": options, "optional_kinds": _cffwis_optional_kinds(options)},
     )
     result_arrays = adapter_output.outputs
-    variable_results = _cffwis_variable_results(result_arrays, active_components, temperature_celsius, options)
+    inputs = {
+        "temperature_celsius": temperature_celsius,
+        "relative_humidity_percent": relative_humidity_percent,
+        "wind_speed_meters_per_second": wind_speed_meters_per_second,
+        "precipitation_mm": precipitation_mm,
+        "latitude_degrees_north": latitude_degrees_north,
+        "month": month,
+    }
+    variable_results = _cffwis_variable_results(
+        result_arrays,
+        active_components,
+        temperature_celsius,
+        options,
+        {name: value for name, value in inputs.items() if value is not None},
+    )
 
     if not options.return_state:
         return xr.Dataset(variable_results)

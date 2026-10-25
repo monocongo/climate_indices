@@ -694,6 +694,24 @@ def _kbdi_xarray(
         # with the "metric"/"imperial" mode string.
         calculation_metadata={"nan_policy": nan_policy},
         index_name="KBDI",
+        # the inputs as given, before the unit conversion rewrote their units
+        inputs={
+            "precipitation": precipitation,
+            "maximum_temperature": maximum_temperature,
+            **({} if mean_annual_precipitation is None else {"mean_annual_precipitation": mean_annual_precipitation}),
+        },
+        parameters={
+            "units": units,
+            "initial_kbdi": initial_kbdi,
+            "initial_state": initial_state,
+            "spin_up": spin_up,
+            "nan_policy": nan_policy,
+            "max_gap_days": max_gap_days,
+            "mean_annual_precipitation": "derived from precipitation"
+            if mean_annual_precipitation is None
+            else "supplied",
+        },
+        implementation="climate_indices.fire.kbdi",
     )
 
     if not return_state:

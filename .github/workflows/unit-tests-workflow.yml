@@ -505,6 +505,10 @@ jobs:
       - name: Install Rust toolchain
         run: rustup toolchain install --no-self-update
 
+      # as release.yml does: maturin ships the commit hatch_build.py writes
+      - name: Embed the source commit
+        run: uv run --no-sync --no-build python hatch_build.py
+
       - name: Build native wheel
         run: uv run --no-sync --no-build maturin build --release --interpreter python --out dist-native
 
@@ -564,6 +568,13 @@ jobs:
           time = pd.date_range("1990-01-01", periods=values.size, freq="MS")
           dataarray = xr.DataArray(values, dims="time", coords={"time": time}, name="precipitation")
           assert climate_indices.spi(dataarray, 3, indices.Distribution.gamma).sizes["time"] == values.size
+
+          # the wheel reports the commit it was built from, without the checkout
+          from climate_indices import provenance
+
+          identity = provenance.software_identity()
+          assert identity["git_commit"] == os.environ["GITHUB_SHA"], identity
+          assert identity["git_commit_source"] == "build-metadata", identity
           PY
 
   validation:

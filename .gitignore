@@ -123,3 +123,6 @@ target/
 *.pyd
 # MSVC debug symbols written beside the extension by maturin develop
 *.pdb
+
+# written by hatch_build.py for the maturin wheels; never committed
+src/climate_indices/_build_info.json

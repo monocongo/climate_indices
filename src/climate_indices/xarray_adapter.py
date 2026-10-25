@@ -27,7 +27,7 @@ import functools
 import inspect
 import json
 import warnings
-from collections.abc import Callable, Hashable
+from collections.abc import Callable, Hashable, Mapping
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, TypeVar, cast
@@ -38,7 +38,7 @@ import pandas as pd
 import structlog.stdlib
 import xarray as xr
 
-from climate_indices import compute, eto, indices, palmer, pm_eto, utils
+from climate_indices import compute, eto, indices, palmer, pm_eto, provenance, utils
 from climate_indices._calibration_period import MIN_CALIBRATION_YEARS, CalibrationPeriod, resolve_calibration_period
 from climate_indices.cf_metadata_registry import CF_METADATA, spi_output_attributes
 from climate_indices.exceptions import (
@@ -1146,8 +1146,13 @@ def build_output_attrs(
     cf_metadata: dict[str, str] | None = None,
     calculation_metadata: dict[str, Any] | None = None,
     index_name: str | None = None,
+    *,
+    inputs: Mapping[str, Any] | None = None,
+    parameters: Mapping[str, Any] | None = None,
+    implementation: str | None = None,
+    interface: str = "python",
 ) -> dict[str, Any]:
-    """Build output attributes with CF metadata, calculation metadata, version, and history.
+    """Build output attributes with CF metadata, calculation metadata, version, provenance, and history.
 
     Pure attribute construction—centralizes the dict-building logic so every execution
     path applies identical metadata.
@@ -1159,15 +1164,26 @@ def build_output_attrs(
             (e.g., scale, distribution). Enum values are automatically serialized to .name strings.
         index_name: Optional climate index display name for history tracking
             (e.g., "SPI"). If provided, appends a CF-compliant history entry.
+        inputs: Every input by role (DataArray, NumPy value, or provenance snapshot),
+            described in the provenance record. Defaults to ``input_da`` as ``"primary"``.
+        parameters: The effective parameters for the provenance record. Defaults to
+            ``calculation_metadata``.
+        implementation: Qualified name of the computing function, for the provenance record.
+        interface: ``"python"`` or ``"cli"``, for the provenance record.
 
     Returns:
         Dictionary of attributes to assign to output DataArray
 
     Notes:
-        - Attribute layering: input attrs → CF metadata → calculation metadata → version → history
+        - Attribute layering: input attrs → CF metadata → calculation metadata → version
+          and provenance → history
+        - Provenance attributes an input carries are never inherited (see :doc:`provenance`)
     """
-    # deep-copy DA-level attrs for output (prevents mutation)
+    # deep-copy DA-level attrs for output (prevents mutation); an input's own
+    # provenance describes the input, so the output records it as upstream instead
     output_attrs = copy.deepcopy(input_da.attrs)
+    for key in provenance.OWN_ATTRS:
+        output_attrs.pop(key, None)
 
     # apply CF metadata overrides to DA-level attrs only
     if cf_metadata is not None:
@@ -1206,6 +1222,15 @@ def build_output_attrs(
     from climate_indices import __version__
 
     output_attrs["climate_indices_version"] = __version__
+    output_attrs.update(
+        provenance.provenance_attributes(
+            index=index_name,
+            implementation=implementation,
+            interface=interface,
+            parameters=parameters if parameters is not None else calculation_metadata or {},
+            inputs=inputs if inputs is not None else {"primary": input_da},
+        )
+    )
 
     # add history entry for provenance tracking
     if index_name is not None:
@@ -1251,6 +1276,28 @@ def _report_effective_calibration_years(
     calc_metadata["calibration_year_initial"], calc_metadata["calibration_year_final"] = _effective_calibration_years(
         input_da[time_dim], initial, final, valid_kwargs.get("data_start_year")
     )
+
+
+# set by the adapter for the kernel, so the bound value is not the one the kernel received
+_INTERNAL_PARAMETERS = frozenset({"spatial_time_major"})
+
+
+def _effective_parameters(
+    signature: inspect.Signature,
+    valid_kwargs: dict[str, Any],
+    input_names: set[str],
+) -> dict[str, Any]:
+    """Every non-input parameter the kernel ran with: explicit, inferred, and default values."""
+    known = {name: value for name, value in valid_kwargs.items() if name in signature.parameters}
+    bound = signature.bind_partial(**known)
+    bound.apply_defaults()
+    return {
+        name: value
+        for name, value in bound.arguments.items()
+        if name not in input_names
+        and name not in _INTERNAL_PARAMETERS
+        and signature.parameters[name].kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+    }
 
 
 def _collect_input_dataarrays(
@@ -1336,6 +1383,9 @@ def _finalize_ufunc_result(
     func_name: str,
     is_spi: bool = False,
     time_dim: str = "time",
+    signature: inspect.Signature | None = None,
+    provenance_inputs: Mapping[str, Any] | None = None,
+    implementation: str | None = None,
 ) -> xr.DataArray:
     """Rewrap a computation result with the input's coords, dims, attrs, and name.
 
@@ -1357,6 +1407,10 @@ def _finalize_ufunc_result(
         is_spi: Whether the wrapped function is indices.spi
         time_dim: Name of the input's time dimension, read to report the calibration
             years a clamped window actually used
+        signature: The wrapped function's signature; when given, the provenance record
+            holds every effective parameter instead of the calculation metadata only
+        provenance_inputs: Every input by parameter name, for the provenance record
+        implementation: Qualified name of the wrapped function, for the provenance record
 
     Returns:
         Finalized DataArray with restored dimensions, metadata, and coordinate attributes
@@ -1385,7 +1439,19 @@ def _finalize_ufunc_result(
     resolved_cf_metadata = _resolve_cf_metadata(
         cf_metadata, cf_metadata_variants, valid_kwargs, metadata_variant_parameter
     )
-    output_attrs = build_output_attrs(input_da, resolved_cf_metadata, calc_metadata, index_name=resolved_index_name)
+    parameters = None
+    if signature is not None:
+        parameters = _effective_parameters(signature, valid_kwargs, set(provenance_inputs or ()))
+        _report_effective_calibration_years(parameters, input_da, valid_kwargs, time_dim)
+    output_attrs = build_output_attrs(
+        input_da,
+        resolved_cf_metadata,
+        calc_metadata,
+        index_name=resolved_index_name,
+        inputs=provenance_inputs,
+        parameters=parameters,
+        implementation=implementation,
+    )
     _apply_output_range_attributes(output_attrs, func_name)
     if is_spi:
         compute.validate_output_scale(valid_kwargs.get("output_scale", "normal"))
@@ -1566,6 +1632,8 @@ def xarray_adapter(
     def decorator(func: Callable[..., np.ndarray[Any, Any]]) -> Callable[..., np.ndarray[Any, Any] | xr.DataArray]:
         signature = inspect.signature(func)
         declared = set(signature.parameters)
+        data_parameter = next(iter(signature.parameters), "values")
+        implementation = f"{func.__module__}.{func.__qualname__}"
         if isinstance(calendar, str) and calendar not in declared:
             raise ValueError(f"Calendar parameter {calendar!r} is not accepted by {func.__name__}")
         unknown_inferences = set(inferred_parameters or {}) - declared
@@ -1663,6 +1731,14 @@ def xarray_adapter(
                 if calendar is not None:
                     _validate_supported_calendar(time_coord)
                 validate_time_monotonicity(time_coord)
+
+            # every input as the kernel consumes it (aligned), by parameter name, for the
+            # provenance record; the 1-D path below replaces the secondaries with values
+            provenance_inputs: dict[str, Any] = {data_parameter: input_da}
+            for name, (pos_index, value) in resolved_secondaries.items():
+                if isinstance(value, xr.DataArray):
+                    value = modified_args[pos_index] if pos_index is not None else modified_kwargs[name]
+                provenance_inputs[name] = value
 
             # detect Dask-backed arrays
             input_dataarrays = _collect_input_dataarrays(
@@ -1794,6 +1870,9 @@ def xarray_adapter(
                     func_name=func.__name__,
                     is_spi=func is indices.spi,
                     time_dim=time_dim,
+                    signature=signature,
+                    provenance_inputs=provenance_inputs,
+                    implementation=implementation,
                 )
 
                 # log completion (NaN metrics omitted for Dask—would trigger compute)
@@ -1880,6 +1959,9 @@ def xarray_adapter(
                     func_name=func.__name__,
                     is_spi=func is indices.spi,
                     time_dim=time_dim,
+                    signature=signature,
+                    provenance_inputs=provenance_inputs,
+                    implementation=implementation,
                 )
 
                 # log completion
@@ -1971,6 +2053,9 @@ def xarray_adapter(
                 func_name=func.__name__,
                 is_spi=func is indices.spi,
                 time_dim=time_dim,
+                signature=signature,
+                provenance_inputs=provenance_inputs,
+                implementation=implementation,
             )
 
             # log completion with NaN metrics
@@ -2018,6 +2103,9 @@ def _spatial_kernel_call(
     calendar_plan: utils.CalendarPlan | None = None,
     time_dim: str = "time",
     completion_fields: dict[str, Any] | None = None,
+    provenance_inputs: Mapping[str, Any] | None = None,
+    provenance_parameters: Mapping[str, Any] | None = None,
+    implementation: str | None = None,
 ) -> tuple[xr.DataArray, ...]:
     """Pack manual adapters through the decorator's calendar and transpose policy.
 
@@ -2054,7 +2142,16 @@ def _spatial_kernel_call(
     )
     arrays = result if isinstance(result, tuple) else (result,)
     finalized = [
-        _finalize_spatial_output(array, output, primary, calculation_metadata, time_dim)
+        _finalize_spatial_output(
+            array,
+            output,
+            primary,
+            calculation_metadata,
+            time_dim,
+            provenance_inputs=provenance_inputs,
+            provenance_parameters=provenance_parameters,
+            implementation=implementation,
+        )
         for array, output in zip(arrays, outputs, strict=True)
     ]
     _log().info(
@@ -2072,6 +2169,10 @@ def _finalize_spatial_output(
     primary: xr.DataArray,
     calculation_metadata: dict[str, Any],
     time_dim: str,
+    *,
+    provenance_inputs: Mapping[str, Any] | None = None,
+    provenance_parameters: Mapping[str, Any] | None = None,
+    implementation: str | None = None,
 ) -> xr.DataArray:
     """Transform, transpose, label, and attribute one packed kernel output."""
     if output.transform is not None:
@@ -2084,7 +2185,15 @@ def _finalize_spatial_output(
     variable: xr.DataArray = array.transpose(*dims)
     if output.coordinate is not None:
         variable = variable.assign_coords({output.core_dim: output.coordinate})
-    variable.attrs = build_output_attrs(primary, output.cf_metadata, calculation_metadata, output.index_name)
+    variable.attrs = build_output_attrs(
+        primary,
+        output.cf_metadata,
+        calculation_metadata,
+        output.index_name,
+        inputs=provenance_inputs,
+        parameters=provenance_parameters,
+        implementation=implementation,
+    )
     for attribute in output.drop_attrs:
         variable.attrs.pop(attribute, None)
     return variable
@@ -2291,6 +2400,8 @@ def pet_thornthwaite(
         spatial_kernel=use_spatial_kernel,
         outputs=(_SpatialOutput(time_dim, CF_METADATA["pet_thornthwaite"], "PET Thornthwaite"),),  # type: ignore[arg-type]
         calculation_metadata={"latitude": _build_latitude_attr(lat_for_ufunc), "data_start_year": data_start_year},
+        provenance_inputs={"temperature": temp_da, "latitude": latitude},
+        implementation="climate_indices.indices.pet",
         completion_event="pet_thornthwaite_completed",
         completion_fields={
             "data_start_year": data_start_year,
@@ -2490,6 +2601,12 @@ def pet_hargreaves(
         calendar_plan=calendar_plan,
         outputs=(_SpatialOutput(time_dim, CF_METADATA["pet_hargreaves"], "PET Hargreaves"),),  # type: ignore[arg-type]
         calculation_metadata={"latitude": _build_latitude_attr(lat_for_ufunc)},
+        provenance_inputs={
+            "daily_tmin_celsius": tmin_aligned,
+            "daily_tmax_celsius": tmax_aligned,
+            "latitude": latitude,
+        },
+        implementation="climate_indices.eto.eto_hargreaves",
         completion_event="pet_hargreaves_completed",
         completion_fields={
             "latitude": f"DataArray(dims={latitude.dims})"
@@ -2540,15 +2657,22 @@ def _finalize_penman_monteith_result(
     result: xr.DataArray,
     tmin_aligned: xr.DataArray,
     latitude: float | np.floating | xr.DataArray,
+    *,
+    inputs: Mapping[str, Any],
+    parameters: Mapping[str, Any],
 ) -> xr.DataArray:
-    """Restore dimension order and stamp CF, version, history, and latitude attrs."""
+    """Restore dimension order and stamp CF, version, provenance, history, and latitude attrs."""
     desired_dims = list(tmin_aligned.dims) + [dim for dim in result.dims if dim not in tmin_aligned.dims]
     result = result.transpose(*desired_dims)
+    calculation_metadata = {"latitude": _build_latitude_attr(latitude)}
     result.attrs = build_output_attrs(
         tmin_aligned,
         CF_METADATA["pet_penman_monteith"],  # type: ignore[arg-type]
-        {"latitude": _build_latitude_attr(latitude)},
+        calculation_metadata,
         "PET Penman-Monteith",
+        inputs=inputs,
+        parameters={**calculation_metadata, **parameters},
+        implementation="climate_indices.pm_eto.penman_monteith_eto",
     )
     if isinstance(latitude, xr.DataArray):
         lat_desc = f"DataArray(dims={latitude.dims})"
@@ -2793,7 +2917,18 @@ def pet_penman_monteith(
         output_dtypes=[float],
     )
 
-    return _finalize_penman_monteith_result(result, tmin_aligned, latitude)
+    return _finalize_penman_monteith_result(
+        result,
+        tmin_aligned,
+        latitude,
+        inputs={
+            "daily_tmin_celsius": tmin_aligned,
+            "daily_tmax_celsius": tmax_aligned,
+            "latitude": latitude,
+            **{name: value for name, value in optional_inputs.items() if value is not None},
+        },
+        parameters={"wind_speed_height_m": wind_speed_height_m, "albedo": albedo, "coastal": radiation.coastal},
+    )
 
 
 def _pdsi_numpy_passthrough(
@@ -3042,6 +3177,9 @@ def palmer_pdsi(
             for name, display_name in display_names.items()
         ),
         calculation_metadata=calculation_metadata,
+        provenance_inputs={"precips": precips_da, "pet": pet_da, "awc": awc},
+        provenance_parameters={**calculation_metadata, "fitting_params": fitting_params},
+        implementation="climate_indices.palmer.pdsi",
         completion_event="palmer_pdsi_completed",
         completion_fields={
             "spatial_kernel": use_spatial_kernel,
@@ -3396,6 +3534,8 @@ def fit_diagnostics(
         calendar_plan=calendar_plan,
         outputs=outputs,
         calculation_metadata=calculation_metadata,
+        provenance_parameters=calculation_metadata,
+        implementation="climate_indices.indices.fit_diagnostics",
         completion_event="fit_diagnostics_completed",
         completion_fields={"period_dim": period_dim, "distribution": distribution.value},
         time_dim=time_dim,

@@ -5,8 +5,8 @@ through ``write_netcdf_atomic`` here. The shared-memory route also builds its
 variable attributes with ``build_index_attrs``: they come from
 :data:`climate_indices.cf_metadata_registry.CF_METADATA` through the same
 ``build_output_attrs`` layering the xarray adapters use, so a CLI output carries
-the registry's long name, units and references plus the library version and a
-history entry. (The xarray route already stamped those attrs in its adapter.)
+the registry's long name, units and references plus the library version, the
+provenance record, and a history entry. (The xarray route already stamped those attrs in its adapter.)
 Writes go beside the target and replace it only once the whole file is on disk,
 so a failed computation cannot leave a hollow file where an earlier output was.
 
@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import os
 import tempfile
-from collections.abc import Hashable
+from collections.abc import Hashable, Mapping
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -48,6 +48,8 @@ def build_index_attrs(
     index_name: str,
     calculation_metadata: dict[str, Any] | None = None,
     extra: dict[str, Any] | None = None,
+    inputs: Mapping[str, Any] | None = None,
+    parameters: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build output attributes from ``CF_METADATA`` for a CLI index output.
 
@@ -57,6 +59,9 @@ def build_index_attrs(
     :param calculation_metadata: parameters recorded in the history entry
     :param extra: attributes that override the registry entry, e.g. a valid
         range the registry's attribute model does not carry
+    :param inputs: every input by role, for the provenance record; snapshots
+        taken before unit normalization keep the source's own units
+    :param parameters: the kernel's effective arguments, for the provenance record
     :return: the output variable's attributes
     """
     attrs = build_output_attrs(
@@ -64,6 +69,9 @@ def build_index_attrs(
         cast("dict[str, str]", CF_METADATA[cf_key]),
         calculation_metadata,
         index_name=index_name,
+        inputs=inputs,
+        parameters=parameters,
+        interface="cli",
     )
     # The source's own valid range describes the input, not the computed index;
     # drop it so only an explicit ``extra`` range reaches the output.

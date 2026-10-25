@@ -35,6 +35,7 @@ from climate_indices.compute import Periodicity
 from climate_indices.exceptions import InvalidArgumentError
 from climate_indices.flood._edi import edi as numpy_edi
 from climate_indices.indices import Distribution
+from climate_indices.provenance import PROVENANCE_ATTR
 from climate_indices.xarray_adapter import INFER_TIME_PARAMETERS, xarray_adapter
 from climate_indices.xarray_adapter import (
     fit_diagnostics as fit_diagnostics_impl,
@@ -111,9 +112,9 @@ def _verify_xarray_matches_manual_wrapping(
     history_manual_content = result_manual.attrs["history"][20:]
     assert history_typed_content == history_manual_content
 
-    # verify all non-history attributes are identical
-    attrs_typed = {k: v for k, v in result_typed.attrs.items() if k != "history"}
-    attrs_manual = {k: v for k, v in result_manual.attrs.items() if k != "history"}
+    # verify all attributes that carry no timestamp are identical
+    attrs_typed = {k: v for k, v in result_typed.attrs.items() if k not in _TIMESTAMPED_ATTRS}
+    attrs_manual = {k: v for k, v in result_manual.attrs.items() if k not in _TIMESTAMPED_ATTRS}
     assert attrs_typed == attrs_manual
 
 
@@ -253,11 +254,15 @@ def test_overload_tests_cover_every_public_overloaded_function() -> None:
     assert overloaded == set(_PUBLIC_IMPLEMENTATIONS) == set(_EXPECTED_OVERLOADS)
 
 
+# stamped to the second, so two otherwise identical runs can differ across a second boundary
+_TIMESTAMPED_ATTRS = frozenset({"history", PROVENANCE_ATTR})
+
+
 def _assert_same_result(left: xr.DataArray, right: xr.DataArray) -> None:
-    """Assert equal values and metadata, ignoring the timestamped history attribute."""
+    """Assert equal values and metadata, ignoring the timestamped history and provenance attributes."""
     np.testing.assert_array_equal(left.values, right.values)
-    assert {key: value for key, value in left.attrs.items() if key != "history"} == {
-        key: value for key, value in right.attrs.items() if key != "history"
+    assert {key: value for key, value in left.attrs.items() if key not in _TIMESTAMPED_ATTRS} == {
+        key: value for key, value in right.attrs.items() if key not in _TIMESTAMPED_ATTRS
     }
 
 

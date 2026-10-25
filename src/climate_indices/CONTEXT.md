@@ -221,7 +221,7 @@ A schema-validated JSON record (source, URL, download date, checksum, tolerance)
 _Avoid_: Provenance (ambiguous alone — see also Output Provenance)
 
 **Output Provenance**:
-A version string and CF-style `history` attribute stamped onto computed index outputs (xarray DataArrays), recording that climate_indices produced them and with what version. A domain concept about the results themselves, distinct from Fixture Provenance.
+The metadata stamped onto each computed output variable (xarray DataArrays, and the CLI's NetCDF variables) recording how it was produced: `climate_indices_version`, `climate_indices_git_commit`, a CF-style `history` line, and the strict-JSON `climate_indices_provenance` record of the software identity, backend, effective parameters, and each input with its metadata and upstream lineage (`climate_indices.provenance`, [provenance reference](../../docs/provenance.md), #1470). A domain concept about the results themselves, distinct from Fixture Provenance and from the Explorer's planned Output Provenance Manifest.
 _Avoid_: Provenance (ambiguous alone — see also Fixture Provenance)
 
 **CF Standard Name Omission**:

@@ -196,6 +196,13 @@ def _hdw_xarray(
         temperature_celsius,
         cf_metadata=CF_METADATA["hdw"],  # type: ignore[arg-type]
         index_name="HDW",
+        inputs={
+            "temperature_celsius": temperature_celsius,
+            "relative_humidity_percent": relative_humidity_percent,
+            "wind_speed_meters_per_second": wind_speed_meters_per_second,
+            "height_agl_meters": height_agl_meters,
+        },
+        implementation="climate_indices.fire.hot_dry_windy",
     )
     return result
 

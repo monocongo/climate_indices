@@ -261,8 +261,9 @@ def _flags(meanings: Mapping[str, int]) -> dict[str, Any]:
 
 
 def _dataset_attrs(label: str, **common: str) -> dict[str, Any]:
-    """Return version, history, and scalar choices, inheriting nothing from a source array."""
-    return {**build_output_attrs(xr.DataArray(0), index_name=label), **common}
+    """Return version, provenance, history, and scalar choices, inheriting nothing from a source array."""
+    # the result's compound_manifest attribute names its sources, so the record lists no inputs
+    return {**build_output_attrs(xr.DataArray(0), index_name=label, inputs={}, parameters=common), **common}
 
 
 # --- harmonize -----------------------------------------------------------------------------------

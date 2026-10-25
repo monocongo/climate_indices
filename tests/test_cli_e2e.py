@@ -23,6 +23,7 @@ from climate_indices import compute, indices, palmer, utils
 from climate_indices.__main__ import _SPI_DISTRIBUTIONS, main
 from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.exceptions import InvalidArgumentError
+from climate_indices.provenance import PROVENANCE_ATTR
 
 # the fixture data starts in January of this year (see tests/conftest.py)
 _DATA_START_YEAR = 1895
@@ -172,9 +173,11 @@ def test_pack_flag_is_opt_in_and_packs_spi_to_int16(tmp_path, precips_mm_monthly
         xr.open_dataset(tmp_path / "packed_spi_gamma_06.nc") as packed,
     ):
         np.testing.assert_allclose(packed["spi_gamma_06"].values, plain["spi_gamma_06"].values, atol=5e-5 + 1e-12)
-        # history is stamped to the second, and the two runs can straddle a second boundary
-        assert {k: v for k, v in packed["spi_gamma_06"].attrs.items() if k != "history"} == {
-            k: v for k, v in plain["spi_gamma_06"].attrs.items() if k != "history"
+        # history and the provenance record are stamped to the second, and the two
+        # runs can straddle a second boundary
+        timestamped = {"history", PROVENANCE_ATTR}
+        assert {k: v for k, v in packed["spi_gamma_06"].attrs.items() if k not in timestamped} == {
+            k: v for k, v in plain["spi_gamma_06"].attrs.items() if k not in timestamped
         }
 
 

@@ -6,8 +6,8 @@ import argparse
 import logging
 import multiprocessing
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Hashable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Hashable, Mapping, Sequence
+from dataclasses import dataclass, field
 from datetime import datetime
 from functools import partial
 from typing import Any, Literal, cast
@@ -15,7 +15,7 @@ from typing import Any, Literal, cast
 import numpy as np
 import xarray as xr
 
-from climate_indices import compute, energy, fire, flood, indices, palmer, utils
+from climate_indices import compute, energy, fire, flood, indices, palmer, provenance, utils
 from climate_indices._cli import _add_common_spi_arguments, _open_with_default_chunks
 from climate_indices._cli_output import build_index_attrs, write_netcdf_atomic
 from climate_indices._cli_transport import (
@@ -171,6 +171,20 @@ class _ComputeContext:
     prepared: xr.Dataset | None = None
     # the daily 366-day calendar plan shared by input conversion and output restoration
     calendar_plan: utils.CalendarPlan | None = None
+    # each input described as opened, by role, before unit normalization rewrote it
+    input_records: dict[str, provenance.InputSnapshot] = field(default_factory=dict)
+
+    def output_provenance(self) -> dict[str, Any]:
+        """The inputs and effective kernel arguments an output's provenance record names."""
+        inputs: dict[str, Any] = dict(self.input_records)
+        if self.prepared is not None and self.request.var_name_awc is not None:
+            # unit conversion rewrote the AWC values in place, not its attributes
+            inputs["awc"] = provenance.with_source(
+                self.prepared[self.request.var_name_awc],
+                uri=self.request.netcdf_awc,
+                dataset_attributes=self.prepared.attrs,
+            )
+        return {"inputs": inputs, "parameters": self.arguments}
 
 
 def _validate_precipitation_input(
@@ -862,6 +876,40 @@ def _input_chunksizes(dataset: xr.Dataset) -> tuple[tuple[int, ...], tuple[Any, 
     return (), ()
 
 
+# each shared-memory input's provenance role, with the request fields naming its file and variable
+_INPUT_ROLES = (
+    ("precipitation", "netcdf_precip", "var_name_precip"),
+    ("temperature", "netcdf_temp", "var_name_temp"),
+    ("pet", "netcdf_pet", "var_name_pet"),
+)
+
+
+def _snapshot_inputs(
+    request: _IndexRequest, dataset: xr.Dataset, first_file: str
+) -> dict[str, provenance.InputSnapshot]:
+    """
+    Describe each input as opened, for the outputs' provenance records.
+
+    ``open_mfdataset`` keeps the first file's global attributes, so only an input
+    read from that file records them.
+
+    param request: the index request being computed
+    param dataset: the opened, trimmed inputs
+    param first_file: the file whose global attributes the dataset carries
+    return: each input's description by role
+    """
+    records: dict[str, provenance.InputSnapshot] = {}
+    for role, file_field, var_field in _INPUT_ROLES:
+        path, var_name = getattr(request, file_field), getattr(request, var_field)
+        if path is None or var_name is None or var_name not in dataset:
+            continue
+        labeled = provenance.with_source(
+            dataset[var_name], uri=path, dataset_attributes=dataset.attrs if path == first_file else None
+        )
+        records[role] = provenance.snapshot_input(labeled)
+    return records
+
+
 def _trim_to_input_variables(request: _IndexRequest, dataset: xr.Dataset) -> tuple[xr.Dataset, list[str]]:
     """
     Keep only the data variables an index's request actually uses.
@@ -1045,6 +1093,8 @@ def _compute_write_index(request: _IndexRequest, transport: Transport) -> tuple[
 
     # trim out all data variables from the dataset except the ones we'll need
     dataset, input_var_names = _trim_to_input_variables(request, dataset)
+    # before unit normalization replaces the inputs' own units
+    input_records = _snapshot_inputs(request, dataset, files[0])
 
     # get the initial year of the data
     request.data_start_year = int(str(dataset["time"].values[0])[0:4])
@@ -1099,6 +1149,7 @@ def _compute_write_index(request: _IndexRequest, transport: Transport) -> tuple[
         prepared=prepared,
         transport=transport,
         arguments=handler.build_arguments(request),
+        input_records=input_records,
     )
 
     handler.compute(context)
@@ -1364,13 +1415,15 @@ def _standardized_variable_attributes(
     cf_base: str,
     display_name: str,
     var_name_base: str,
+    run: Mapping[str, Any] | None = None,
     extra: dict[str, Any] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Name and describe a standardized-index output for the requested output scale.
 
     The long name, units and variant metadata come from ``CF_METADATA``; the
     scale and distribution are recorded in the history entry instead. ``extra``
-    carries the output scale's valid range, which the registry does not hold.
+    carries the output scale's valid range, which the registry does not hold, and
+    ``run`` the inputs and parameters the provenance record names.
     """
     if request.distribution is None:
         raise ValueError(_UNVALIDATED_DISTRIBUTION)
@@ -1387,6 +1440,7 @@ def _standardized_variable_attributes(
             "output_scale": request.output_scale,
         },
         extra=extra,
+        **(run or {}),
     )
     var_name = var_name_base + "_" + request.distribution.value + "_" + str(request.scale).zfill(2)
     if request.output_scale != "normal":
@@ -1445,7 +1499,7 @@ def _write_single_output(context: _ComputeContext) -> tuple[str, str]:
         raise TypeError(f"the '{handler.index}' index does not write a single output")
 
     output_var_name, output_var_attributes = handler.variable_attributes(
-        request, _output_source(request, context.dataset)
+        request, _output_source(request, context.dataset), context.output_provenance()
     )
 
     # get the shared memory results array and convert it to a numpy array
@@ -1571,8 +1625,10 @@ class _SingleOutputAdapter(_SharedArrayAdapter):
 
     @staticmethod
     @abstractmethod
-    def variable_attributes(request: _IndexRequest, source: xr.DataArray) -> tuple[str, dict[str, Any]]:
-        """Name and describe the output variable."""
+    def variable_attributes(
+        request: _IndexRequest, source: xr.DataArray, run: Mapping[str, Any] | None = None
+    ) -> tuple[str, dict[str, Any]]:
+        """Name and describe the output variable, from the request and ``run``'s provenance."""
 
 
 class _SPIAdapter(_SingleOutputAdapter):
@@ -1589,13 +1645,16 @@ class _SPIAdapter(_SingleOutputAdapter):
     build_arguments = staticmethod(_spi_arguments)
 
     @staticmethod
-    def variable_attributes(request: _IndexRequest, source: xr.DataArray) -> tuple[str, dict[str, Any]]:
+    def variable_attributes(
+        request: _IndexRequest, source: xr.DataArray, run: Mapping[str, Any] | None = None
+    ) -> tuple[str, dict[str, Any]]:
         return _standardized_variable_attributes(
             request,
             source,
             "spi",
             "SPI",
             "spi",
+            run,
             extra=spi_output_attributes(request.zero_handling, request.output_scale),
         )
 
@@ -1633,13 +1692,16 @@ class _SPEIAdapter(_SingleOutputAdapter):
         return (request.var_name_precip, request.var_name_pet)
 
     @staticmethod
-    def variable_attributes(request: _IndexRequest, source: xr.DataArray) -> tuple[str, dict[str, Any]]:
+    def variable_attributes(
+        request: _IndexRequest, source: xr.DataArray, run: Mapping[str, Any] | None = None
+    ) -> tuple[str, dict[str, Any]]:
         return _standardized_variable_attributes(
             request,
             source,
             "spei",
             "SPEI",
             "spei",
+            run,
             extra=standardized_output_bounds(request.output_scale),
         )
 
@@ -1678,7 +1740,9 @@ class _PNPAdapter(_SingleOutputAdapter):
         }
 
     @staticmethod
-    def variable_attributes(request: _IndexRequest, source: xr.DataArray) -> tuple[str, dict[str, Any]]:
+    def variable_attributes(
+        request: _IndexRequest, source: xr.DataArray, run: Mapping[str, Any] | None = None
+    ) -> tuple[str, dict[str, Any]]:
         if request.scale is None:
             raise ValueError(_UNVALIDATED_SCALE)
         attrs = build_index_attrs(
@@ -1687,6 +1751,7 @@ class _PNPAdapter(_SingleOutputAdapter):
             index_name="PNP",
             calculation_metadata={"scale": request.scale},
             extra={"valid_min": 0.0},
+            **(run or {}),
         )
         return "pnp_" + str(request.scale).zfill(2), attrs
 
@@ -1719,12 +1784,15 @@ class _PETAdapter(_SingleOutputAdapter):
         return {"data_start_year": request.data_start_year}
 
     @staticmethod
-    def variable_attributes(request: _IndexRequest, source: xr.DataArray) -> tuple[str, dict[str, Any]]:
+    def variable_attributes(
+        request: _IndexRequest, source: xr.DataArray, run: Mapping[str, Any] | None = None
+    ) -> tuple[str, dict[str, Any]]:
         attrs = build_index_attrs(
             source,
             "pet_thornthwaite",
             index_name="PET",
             extra={"valid_min": 0.0, "valid_max": 10000.0},
+            **(run or {}),
         )
         return "pet_thornthwaite", attrs
 
@@ -1839,7 +1907,7 @@ class _PalmersAdapter(_SharedArrayAdapter):
             index_values = context.transport.read(key, context.output_shape)
             # scPDSI's percentile rescaling has no hard bound.
             extra = None if var_name == "scpdsi" else {"valid_min": -10.0, "valid_max": 10.0}
-            attrs = build_index_attrs(source, cf_key, index_name=index_name, extra=extra)
+            attrs = build_index_attrs(source, cf_key, index_name=index_name, extra=extra, **context.output_provenance())
             dataset[var_name] = xr.Variable(
                 dims=context.output_dims,
                 data=index_values,
@@ -1860,6 +1928,22 @@ class _PalmersAdapter(_SharedArrayAdapter):
     @staticmethod
     def run(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
         _compute_write_index(_IndexRequest.from_arguments(arguments, index="palmers", input_type=input_type), transport)
+
+
+def _labeled_input(dataset: xr.Dataset, var_name: str, netcdf_file: str) -> xr.DataArray:
+    """
+    Select an xarray-route input, labeled with its file and global attributes for provenance.
+
+    A variable selected from a Dataset does not carry the Dataset's global
+    attributes, so the library could not record them otherwise. The copy is
+    shallow: the data stays lazy and keeps its encoding.
+
+    :param dataset: the opened input file
+    :param var_name: the input variable
+    :param netcdf_file: the file it was opened from
+    :return: the labeled input variable
+    """
+    return provenance.with_source(dataset[var_name], uri=netcdf_file, dataset_attributes=dataset.attrs)
 
 
 def _time_whole_chunks(input_type: DatasetLayout) -> dict[str, Any]:
@@ -2014,8 +2098,8 @@ class _KBDIAdapter(_IndexAdapter):
             units: Literal["metric", "imperial"] = arguments.kbdi_units or "metric"
             initial_kbdi: float = 0.0 if arguments.kbdi_initial is None else arguments.kbdi_initial
             kbdi_values = fire.kbdi(
-                dataset_precip[request.var_name_precip],
-                dataset_temp[request.var_name_temp],
+                _labeled_input(dataset_precip, request.var_name_precip, request.netcdf_precip),
+                _labeled_input(dataset_temp, request.var_name_temp, request.netcdf_temp),
                 units=units,
                 initial_kbdi=initial_kbdi,
             )
@@ -2023,7 +2107,12 @@ class _KBDIAdapter(_IndexAdapter):
                 raise TypeError("KBDI computation must return an xarray.DataArray")
             kbdi_values.name = "kbdi_imperial" if units == "imperial" else "kbdi"
             output_file = f"{request.output_file_base}_{kbdi_values.name}.nc"
-            _write_xarray_index(request, kbdi_values, output_file, dataset_precip[request.var_name_precip])
+            _write_xarray_index(
+                request,
+                kbdi_values,
+                output_file,
+                _labeled_input(dataset_precip, request.var_name_precip, request.netcdf_precip),
+            )
 
 
 class _PEAdapter(_IndexAdapter):
@@ -2045,7 +2134,7 @@ class _PEAdapter(_IndexAdapter):
         with _open_with_default_chunks(
             xr.open_dataset, request.netcdf_precip, chunks=_time_whole_chunks(input_type)
         ) as dataset_precip:
-            precipitation = dataset_precip[request.var_name_precip]
+            precipitation = _labeled_input(dataset_precip, request.var_name_precip, request.netcdf_precip)
             pe_values = flood.effective_precipitation(precipitation)
             pe_values.name = "pe"
             output_file = f"{request.output_file_base}_pe.nc"
@@ -2078,7 +2167,7 @@ def _run_from_pe(
     with _open_with_default_chunks(
         xr.open_dataset, request.netcdf_pe, chunks=_time_whole_chunks(input_type)
     ) as dataset_pe:
-        pe = dataset_pe[request.var_name_pe]
+        pe = _labeled_input(dataset_pe, request.var_name_pe, request.netcdf_pe)
         index_values = compute_index(pe)
 
         # the xarray route names the result after its PE input
@@ -2152,7 +2241,7 @@ class _APIAdapter(_IndexAdapter):
         with _open_with_default_chunks(
             xr.open_dataset, request.netcdf_precip, chunks=_time_whole_chunks(input_type)
         ) as dataset_precip:
-            precipitation = dataset_precip[request.var_name_precip]
+            precipitation = _labeled_input(dataset_precip, request.var_name_precip, request.netcdf_precip)
             api_values = flood.antecedent_precipitation_index(precipitation, arguments.api_k)
             if not isinstance(api_values, xr.DataArray):
                 raise TypeError("API computation must return an xarray.DataArray")
@@ -2223,7 +2312,7 @@ def _run_energy_index(
     netcdf_file, variable = _energy_input(request)
 
     with _open_with_default_chunks(xr.open_dataset, netcdf_file, chunks=_time_whole_chunks(input_type)) as dataset:
-        source = dataset[variable]
+        source = _labeled_input(dataset, variable, netcdf_file)
         index_values = transform(source)
 
         # name the output for its registry entry rather than its input variable

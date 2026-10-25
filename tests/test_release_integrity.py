@@ -988,6 +988,29 @@ def test_native_wheel_job_checks_built_wheels_outside_the_checkout() -> None:
     assert "climate_indices.spi(dataarray, 3, indices.Distribution.gamma)" in wheel_job
 
 
+def test_every_built_artifact_embeds_and_reports_its_source_commit() -> None:
+    """Hatchling embeds the commit itself; the maturin wheels need hatch_build.py run first (#1470).
+
+    Each job that installs a built wheel outside the checkout asserts the commit it reports.
+    """
+    pyproject = _read_toml(Path("pyproject.toml"))
+    assert "custom" in pyproject["tool"]["hatch"]["build"]["hooks"]
+    assert (ROOT / "hatch_build.py").is_file()
+    build_info = "src/climate_indices/_build_info.json"
+    assert {"path": build_info, "format": "wheel"} in pyproject["tool"]["maturin"]["include"]
+    assert build_info in (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+
+    release = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    build_wheels = _workflow_job(release, "build-wheels")
+    assert build_wheels.index("run: python hatch_build.py") < build_wheels.index("uses: PyO3/maturin-action@")
+    native_wheel = _native_jobs()["native-wheel"]
+    assert native_wheel.index("python hatch_build.py") < native_wheel.index("maturin build")
+    reported = 'assert identity["git_commit"] == os.environ["GITHUB_SHA"], identity'
+    for job in (_workflow_job(release, "wheel-check"), _workflow_job(release, "no-rust-install"), native_wheel):
+        assert reported in job
+        assert 'identity["git_commit_source"] == "build-metadata"' in job
+
+
 def test_climate_py_builds_abi3_wheels() -> None:
     """abi3 (PyO3 `abi3-py310`) is what lets one wheel per platform cover every supported Python.
 
