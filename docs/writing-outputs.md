@@ -88,10 +88,11 @@ is the staged example.
 
 ## Read and write Icechunk snapshots
 
-Install the optional extra with `pip install 'climate_indices[icechunk]'`.
-Icechunk requires Python 3.11 or later and Zarr v3. The existing
-`xarray>=2025.6.1` requirement exceeds the `to_icechunk` floor of 2025.1.1.
-The base package still supports Python 3.10 without Icechunk.
+Install the optional extra with `pip install 'climate_indices[icechunk]'`, which
+installs `icechunk>=1.1.21,<2`. Icechunk requires Python 3.11 or later and Zarr v3.
+The existing `xarray>=2025.6.1` requirement exceeds the `to_icechunk` floor of
+2025.1.1. The core install is unchanged: without the extra, the base package keeps
+its Python 3.10 support and installs no Icechunk dependency.
 
 Use `open_icechunk` to read a committed snapshot. Select a variable and pass it
 to the existing index API. The reader preserves stored chunks; put the full time
@@ -137,6 +138,10 @@ then `session.commit(message)`. It completes all Dask writes before committing.
 Use `to_icechunk`, never `Dataset.to_zarr`, for Icechunk, including distributed
 or multiprocessing writes: it records worker writes in the session.
 Use `to_zarr` for ordinary Zarr stores as before.
+
+Icechunk stores return the same SPI and SPEI values as NetCDF and Zarr stores for
+the same inputs; `tests/test_icechunk_io.py` compares all three backends against
+the Python/SciPy oracle.
 
 Icechunk does not support consolidated metadata. The reader explicitly calls
 `xr.open_zarr(session.store, consolidated=False, chunks={})`, and `to_icechunk`
