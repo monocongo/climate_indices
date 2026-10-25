@@ -204,12 +204,18 @@ builds the pure-Python wheel. Developers who
 want the extension from a checkout build it with `uv run maturin develop --release`; see
 [the Rust backend section of the architecture notes](docs/architecture.md#optional-rust-backend).
 
-An optional `icechunk` extra adds Icechunk-backed reads and writes
-(`icechunk>=1.1.21,<2`). It needs Python 3.11 or later, and the core install is
-unchanged:
+Starting with 3.1.0, the optional `icechunk` extra adds Icechunk-backed reads and
+writes (`icechunk>=1.1.21,<2`). It needs Python 3.11 or later; the core install is
+unchanged. Until 3.1.0 is published, install the extra from a 3.1.0 source checkout:
 
 ```bash
-pip install "climate_indices[icechunk]"
+pip install ".[icechunk]"
+```
+
+After 3.1.0 is published, install it from PyPI:
+
+```bash
+pip install "climate_indices[icechunk]>=3.1.0"
 ```
 
 See [Write NetCDF, Zarr, and Icechunk outputs](docs/writing-outputs.md#read-and-write-icechunk-snapshots)
@@ -217,9 +223,13 @@ and the [Icechunk SPI/SPEI notebook](notebooks/icechunk_spi_spei.ipynb).
 
 ## Rust crate
 
-The numerical kernels also ship as a standalone crate, `climate-indices`
-([crates.io](https://crates.io/crates/climate-indices),
-[docs.rs](https://docs.rs/climate-indices)). It is pure Rust: `ndarray` is its only
+The numerical kernels are also available in the standalone `climate-indices`
+crate's `0.1.0-rc.1` prerelease
+([crates.io](https://crates.io/crates/climate-indices/0.1.0-rc.1),
+[docs.rs](https://docs.rs/climate-indices/0.1.0-rc.1)). Cargo requires an explicit
+prerelease version, such as `climate-indices = "0.1.0-rc.1"`; it does not select
+this version by default. The earlier `0.0.0` package reserves the name and contains
+no algorithms. The crate is pure Rust: `ndarray` is its only
 dependency, and it has no PyO3 or Python bindings. It provides kernels, not complete
 index workflows, so the caller prepares calendars, selects the Calibration Period,
 validates physical ranges, and applies the final transform.
