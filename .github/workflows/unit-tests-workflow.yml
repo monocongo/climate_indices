@@ -532,6 +532,8 @@ jobs:
           from pathlib import Path
 
           import numpy as np
+          import pandas as pd
+          import xarray as xr
 
           import climate_indices
           from climate_indices import _native, compute, indices
@@ -558,6 +560,10 @@ jobs:
               result = indices.spi(values, 3, indices.Distribution.gamma, 1990, 1990, 2019, compute.Periodicity.monthly)
           assert np.isfinite(result[2:]).all() and np.isnan(result[:2]).all()
           assert recorder.calls == {"gamma_parameters", "gamma_probabilities", "norm_ppf"}, recorder.calls
+          # The Stable DataArray index API must import and run from the installed wheel.
+          time = pd.date_range("1990-01-01", periods=values.size, freq="MS")
+          dataarray = xr.DataArray(values, dims="time", coords={"time": time}, name="precipitation")
+          assert climate_indices.spi(dataarray, 3, indices.Distribution.gamma).sizes["time"] == values.size
           PY
 
   validation:

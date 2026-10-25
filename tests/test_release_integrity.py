@@ -82,6 +82,56 @@ def _workflow_python_matrix(relative_path: Path) -> list[str]:
 
 UNIT_TESTS_WORKFLOW = Path(".github/workflows/unit-tests-workflow.yml")
 CRATE_RELEASE_WORKFLOW = Path(".github/workflows/crate-release.yml")
+CRATE_CHANGELOG = Path("crates/climate-indices/CHANGELOG.md")
+CRATE_MANIFEST = Path("crates/climate-indices/Cargo.toml")
+
+# The 3.1.0 Stable DataArray surface (docs/xarray_compatibility.md, ADR-0012). The
+# Beta routes stay out of these sets, so moving a name between the tiers needs an
+# ADR change and an edit here.
+STABLE_DATAARRAY_API_NAMES = frozenset(
+    {
+        "eddi",
+        "edi",
+        "fit_diagnostics",
+        "pci",
+        "pdsi",
+        "percentage_of_normal",
+        "pet_hargreaves",
+        "pet_penman_monteith",
+        "pet_thornthwaite",
+        "spei",
+        "spi",
+        "standardized_index",
+    }
+)
+STABLE_DATAARRAY_MODULE_API_NAMES: dict[str, frozenset[str]] = {
+    "energy": frozenset(
+        {
+            "cooling_degree_days",
+            "energy_degree_days",
+            "heating_degree_days",
+            "hub_height_wind_speed",
+            "srepi",
+            "srli",
+            "standardized_demand_index",
+            "wind_shear_exponent",
+        }
+    ),
+    "fire": frozenset({"cffwis", "haines_index", "hot_dry_windy", "kbdi"}),
+    "flood": frozenset({"antecedent_precipitation_index", "edi", "effective_precipitation", "flood_index"}),
+}
+BETA_DATAARRAY_API_NAMES: dict[str, frozenset[str]] = {
+    "compound": frozenset(
+        {
+            "bootstrap_dependence",
+            "compound_events_xarray",
+            "conditional_probability",
+            "harmonize",
+            "joint_statistics",
+        }
+    ),
+    "energy": frozenset({"energy_drought_events"}),
+}
 
 
 def _workflow_job(workflow: str, job: str) -> str:
@@ -587,6 +637,34 @@ def test_crate_release_workflow_starts_only_on_crate_tags() -> None:
     assert fnmatch.fnmatch("v0.1.0", "v*.*.*")
 
 
+def test_python_release_tag_guard_rejects_the_crate_namespace() -> None:
+    """The Python release workflow refuses a crate tag, so the two lanes cannot start each other.
+
+    `test_crate_release_workflow_starts_only_on_crate_tags` compares the trigger globs;
+    this executes the guard behind the Python glob, so the refusal rests on the workflow
+    itself and not only on the trigger pattern.
+    """
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    step = next(
+        step
+        for step in _job_steps(_workflow_job(workflow, "validate-release-tag"))
+        if step.startswith("name: Validate SemVer tag\n")
+    )
+    script = _job_scripts(step).removeprefix("|\n")
+
+    for tag, accepted in (("v3.1.0", True), ("climate-indices-v0.1.0", False)):
+        result = subprocess.run(
+            ["bash", "-c", script],
+            env={**os.environ, "GITHUB_REF": f"refs/tags/{tag}"},
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        assert result.returncode == (0 if accepted else 1), result.stdout + result.stderr
+        if not accepted:
+            assert "::error::Release tags must match" in result.stdout
+
+
 def test_crate_release_uses_oidc_not_a_stored_token() -> None:
     """The crate publish job exchanges the workflow's OIDC identity for a short-lived token.
 
@@ -750,6 +828,30 @@ def test_crate_release_validates_the_tag_version_and_changelog() -> None:
     assert manifest["publish"] is True
 
 
+def test_crate_changelog_guard_matches_the_manifest_version() -> None:
+    """The crate changelog follows the same retitle-before-tag rule the release guard enforces.
+
+    `cargo publish` spends a version permanently, so the tag validation refuses a tag
+    whose manifest version has no dated changelog entry or whose changelog still carries
+    an `## Unreleased` section. This applies the same rule to the tree, so a mismatch
+    fails on a pull request instead of on the tag.
+    """
+    job = _uncommented(_crate_release_jobs()["validate-crate-tag"])
+    changelog_ref = re.search(r"^[ \t]*changelog=(\S+)$", job, re.MULTILINE)
+    assert changelog_ref, "the tag validation no longer names the changelog it reads"
+    assert changelog_ref.group(1) == str(CRATE_CHANGELOG), "the guard must read the crate changelog"
+
+    changelog = (ROOT / CRATE_CHANGELOG).read_text(encoding="utf-8")
+    version = _read_toml(CRATE_MANIFEST)["package"]["version"]
+
+    assert not re.search(r"^## Unreleased[ \t]*$", changelog, re.MULTILINE), (
+        "an '## Unreleased' heading would be published as a released version"
+    )
+    assert re.search(rf"^## {re.escape(version)} - \d{{4}}-\d{{2}}-\d{{2}}$", changelog, re.MULTILINE), (
+        f"{CRATE_CHANGELOG} has no dated '## {version} - YYYY-MM-DD' entry"
+    )
+
+
 def test_release_process_documents_the_crate_release_path() -> None:
     """The crate runbook must state its setup, its steps, its rehearsal, and its failure paths.
 
@@ -879,6 +981,8 @@ def test_native_wheel_job_checks_built_wheels_outside_the_checkout() -> None:
     assert wheel_job.index("python -m venv") < wheel_job.index('cd "${RUNNER_TEMP}"') < wheel_job.index("<<'PY'")
     assert "assert not Path(module.__file__).resolve().is_relative_to(workspace), module.__file__" in wheel_job
     assert 'assert recorder.calls == {"gamma_parameters", "gamma_probabilities", "norm_ppf"}' in wheel_job
+    assert 'xr.DataArray(values, dims="time"' in wheel_job, "the smoke test must exercise the DataArray API"
+    assert "climate_indices.spi(dataarray, 3, indices.Distribution.gamma)" in wheel_job
 
 
 def test_climate_py_builds_abi3_wheels() -> None:
@@ -1167,6 +1271,8 @@ def test_release_workflow_wheel_check_installs_every_published_wheel() -> None:
     assert 'assert recorder.calls == {"gamma_parameters", "gamma_probabilities", "norm_ppf"}' in wheel_check
     declared_scripts = " ".join(_read_toml(Path("pyproject.toml"))["project"]["scripts"])
     assert f"for entry_point in {declared_scripts}; do" in wheel_check
+    assert 'xr.DataArray(values, dims="time"' in wheel_check, "the smoke test must exercise the DataArray API"
+    assert "climate_indices.spi(dataarray, 3, indices.Distribution.gamma)" in wheel_check
 
 
 def test_release_workflow_installs_wheel_on_boundary_pythons() -> None:
@@ -1227,6 +1333,11 @@ def test_release_workflow_tests_the_no_rust_install_path() -> None:
         no_rust.index("- name: Run core tests against the installed package"),
     )
     assert order == tuple(sorted(order)), "the toolchain must be gone before anything is installed"
+    assert 'metadata("climate_indices").get_all("Requires-Dist")' in no_rust, (
+        "the pure wheel must prove Icechunk is not a core requirement"
+    )
+    assert "import climate_indices.icechunk_io" in no_rust
+    assert 'assert "icechunk" not in sys.modules' in no_rust
 
 
 def test_minimum_dependency_job_preserves_resolved_environment() -> None:
@@ -1336,6 +1447,59 @@ def test_v300_public_api_importable() -> None:
     }
     for name in fire.__all__:
         assert callable(getattr(fire, name)), f"fire.{name} is not callable"
+
+
+def test_v310_stable_dataarray_api_surface_is_pinned() -> None:
+    """The 3.1.0 promotion fixes which DataArray routes are Stable and which stay Beta.
+
+    ADR-0012 promotes the DataArray index APIs for 3.1.0; ADR-0022 keeps the compound
+    Dataset routes and the energy-drought event statistics Beta. A name that silently
+    moved between the tiers would change the compatibility promise, so both sets are
+    pinned, and `compound` stays an explicit-import package rather than a root export.
+    """
+    import climate_indices
+    from climate_indices import compound
+
+    for name in sorted(STABLE_DATAARRAY_API_NAMES):
+        assert name in climate_indices.__all__, name
+        assert callable(getattr(climate_indices, name)), name
+
+    for module_name, names in sorted(STABLE_DATAARRAY_MODULE_API_NAMES.items()):
+        assert module_name in climate_indices.__all__, module_name
+        module = getattr(climate_indices, module_name)
+        for name in sorted(names):
+            assert name in module.__all__, f"{module_name}.{name}"
+            assert callable(getattr(module, name)), f"{module_name}.{name}"
+
+    assert "compound" not in climate_indices.__all__, "compound stays an explicit import (ADR-0022)"
+    for module_name, names in sorted(BETA_DATAARRAY_API_NAMES.items()):
+        module = compound if module_name == "compound" else getattr(climate_indices, module_name)
+        for name in sorted(names):
+            assert name in module.__all__, f"{module_name}.{name}"
+
+
+def test_icechunk_is_an_optional_extra_and_imports_lazily() -> None:
+    """A core install must not need Icechunk: the extra carries it and the code imports it lazily."""
+    project = _read_toml(Path("pyproject.toml"))["project"]
+
+    assert not [dependency for dependency in project["dependencies"] if "icechunk" in dependency], (
+        "icechunk must stay out of the core dependencies"
+    )
+    assert project["optional-dependencies"]["icechunk"] == ["icechunk>=1.1.21,<2; python_version >= '3.11'"]
+    module = (ROOT / "src" / "climate_indices" / "icechunk_io.py").read_text(encoding="utf-8")
+    assert not re.search(r"^(?:import|from)\s+icechunk", _uncommented(module), re.MULTILINE), (
+        "icechunk_io must import Icechunk lazily, so a core install still imports it"
+    )
+    # A fresh interpreter proves the import chain, not this session's module cache.
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys, climate_indices, climate_indices.icechunk_io; "
+            "assert 'icechunk' not in sys.modules, 'the core import path imported Icechunk'",
+        ],
+        check=True,
+    )
 
 
 def test_tag_date_reads_the_annotated_tag_and_ignores_lightweight_tags(tmp_path: Path) -> None:

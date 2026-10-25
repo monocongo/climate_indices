@@ -344,6 +344,8 @@ jobs:
         from pathlib import Path
 
         import numpy as np
+        import pandas as pd
+        import xarray as xr
 
         import climate_indices
         from climate_indices import _native, compute, indices
@@ -368,6 +370,10 @@ jobs:
             result = indices.spi(values, 3, indices.Distribution.gamma, 1990, 1990, 2019, compute.Periodicity.monthly)
         assert np.isfinite(result[2:]).all() and np.isnan(result[:2]).all()
         assert recorder.calls == {"gamma_parameters", "gamma_probabilities", "norm_ppf"}, recorder.calls
+        # The Stable DataArray index API must import and run from the installed wheel.
+        time = pd.date_range("1990-01-01", periods=values.size, freq="MS")
+        dataarray = xr.DataArray(values, dims="time", coords={"time": time}, name="precipitation")
+        assert climate_indices.spi(dataarray, 3, indices.Distribution.gamma).sizes["time"] == values.size
         PY
         for entry_point in climate_indices process_climate_indices; do
           "${VENV_BIN}/${entry_point}${SCRIPT_SUFFIX}" --help > /dev/null
@@ -474,15 +480,24 @@ jobs:
         uv run --no-sync --no-build python - <<'PY'
         import importlib.util
         import sys
+        from importlib.metadata import metadata
         from pathlib import Path
 
         import climate_indices
+        import climate_indices.icechunk_io
 
         # The virtualenv sits inside GITHUB_WORKSPACE, so the import must come from
         # the environment (sys.prefix), not merely from outside the workspace.
         prefix = Path(sys.prefix).resolve()
         assert Path(climate_indices.__file__).resolve().is_relative_to(prefix), climate_indices.__file__
         assert importlib.util.find_spec("climate_indices._native") is None, "the pure wheel must not carry the extension"
+        # Icechunk is optional: no core requirement may name it, and reaching the
+        # optional I/O module must leave it unimported.
+        requirements = metadata("climate_indices").get_all("Requires-Dist") or []
+        icechunk_requirements = [requirement for requirement in requirements if "icechunk" in requirement]
+        assert icechunk_requirements, "the icechunk extra must be declared"
+        assert all("extra ==" in requirement for requirement in icechunk_requirements), icechunk_requirements
+        assert "icechunk" not in sys.modules, "importing climate_indices must not import Icechunk"
         PY
 
     - name: Run core tests against the installed package
