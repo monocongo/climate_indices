@@ -483,6 +483,8 @@ jobs:
         from importlib.metadata import metadata
         from pathlib import Path
 
+        from packaging.requirements import Requirement
+
         import climate_indices
         import climate_indices.icechunk_io
 
@@ -491,12 +493,27 @@ jobs:
         prefix = Path(sys.prefix).resolve()
         assert Path(climate_indices.__file__).resolve().is_relative_to(prefix), climate_indices.__file__
         assert importlib.util.find_spec("climate_indices._native") is None, "the pure wheel must not carry the extension"
-        # Icechunk is optional: no core requirement may name it, and reaching the
-        # optional I/O module must leave it unimported.
-        requirements = metadata("climate_indices").get_all("Requires-Dist") or []
-        icechunk_requirements = [requirement for requirement in requirements if "icechunk" in requirement]
-        assert icechunk_requirements, "the icechunk extra must be declared"
-        assert all("extra ==" in requirement for requirement in icechunk_requirements), icechunk_requirements
+        # Icechunk is optional: the named extra must select it and a core install must
+        # not, and reaching the optional I/O module must leave it unimported.
+        wheel_metadata = metadata("climate_indices")
+        icechunk = [
+            requirement
+            for requirement in map(Requirement, wheel_metadata.get_all("Requires-Dist") or [])
+            if requirement.name == "icechunk"
+        ]
+        # This interpreter, and an Icechunk-capable Python so the 3.10 leg checks the extra too.
+        environments = ({}, {"python_version": "3.14", "python_full_version": "3.14.0"})
+        selecting = {
+            extra
+            for environment in environments
+            for extra in ["", *(wheel_metadata.get_all("Provides-Extra") or [])]
+            if any(
+                requirement.marker is None or requirement.marker.evaluate({**environment, "extra": extra})
+                for requirement in icechunk
+            )
+        }
+        assert "icechunk" in selecting, f"the icechunk extra must select Icechunk: {icechunk}"
+        assert "" not in selecting, f"a core install must not select Icechunk: {icechunk}"
         assert "icechunk" not in sys.modules, "importing climate_indices must not import Icechunk"
         PY
 

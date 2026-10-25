@@ -1334,9 +1334,10 @@ def test_release_workflow_tests_the_no_rust_install_path() -> None:
         no_rust.index("- name: Run core tests against the installed package"),
     )
     assert order == tuple(sorted(order)), "the toolchain must be gone before anything is installed"
-    assert 'metadata("climate_indices").get_all("Requires-Dist")' in no_rust, (
-        "the pure wheel must prove Icechunk is not a core requirement"
-    )
+    assert 'map(Requirement, wheel_metadata.get_all("Requires-Dist") or [])' in no_rust
+    assert 'if requirement.name == "icechunk"' in no_rust, "the check must match the distribution, not a substring"
+    assert 'assert "icechunk" in selecting' in no_rust, "the named extra, not another one, must select Icechunk"
+    assert 'assert "" not in selecting' in no_rust, "the pure wheel must prove Icechunk is not a core requirement"
     assert "import climate_indices.icechunk_io" in no_rust
     assert 'assert "icechunk" not in sys.modules' in no_rust
 
