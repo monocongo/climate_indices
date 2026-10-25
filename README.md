@@ -59,8 +59,8 @@ climate-driven energy supply and demand.
   [Flood Index (I_F)](docs/algorithm_refs/flood_index.md), and the
   [Antecedent Precipitation Index (API)](https://forecast.weather.gov/glossary.php?word=Antedecent+Precipitation+Index):
   daily accumulated-wetness measures that indicate flood potential, not flooding
-- `flood_events()`, which extracts events with onset, duration, peak, and severity from a
-  daily flood index
+- `flood_events()` and `flood_event_summary()`, which extract events with onset, duration,
+  peak, and severity from a daily flood index and summarize them per period or hydrological year
 
 **[Energy](https://climate-indices.readthedocs.io/en/latest/energy_applications.html)** (`climate_indices.energy`)
 
@@ -84,6 +84,15 @@ The degree-day, wind-profile, and standardized energy index APIs have stable
 - A documented recipe for a capacity-weighted precipitation proxy for hydropower
 - These indices describe the climate-driven component of energy supply and demand, not
   actual generation or load
+
+**[Compound hazards](https://climate-indices.readthedocs.io/en/latest/compound-hazards.html)** (`climate_indices.compound`)
+
+- Declared-hazard harmonization onto a shared calendar, joint counts and frequencies, the
+  likelihood multiplication factor, conditional probabilities, concurrent and sequential
+  event matching, and a monthly block bootstrap
+- The NumPy routes are stable; the Dataset routes and the eager event catalogs are Beta
+  ([ADR-0022](docs/adr/0022-compound-analysis-contracts.md))
+- These statistics describe co-occurrence; they make no causal or significance claim
 
 **Supporting tools**
 
@@ -162,10 +171,12 @@ See [drought.gov](https://www.drought.gov/drought/python-climate-indices).
 
 ## Installation
 
-This README describes 3.0.0, published on PyPI on 2026-10-12. Relative to 2.x it
-adds the `fire`, `flood`, and `runs` modules and the optional Rust backend.
+This README describes 3.1.0, which is not yet published on PyPI. The published 3.0.0
+release added the `fire`, `flood`, and `runs` modules and the optional Rust backend.
+Relative to 3.0.0, 3.1.0 adds the `compound` module and the `energy` family, promotes the
+DataArray index APIs to Stable, and adds optional Icechunk I/O.
 
-Install the current release from PyPI:
+Install the current published release from PyPI:
 
 ```bash
 pip install "climate-indices>=3.0"
@@ -192,6 +203,43 @@ runs the Python implementation. Installing from source needs no Rust toolchain e
 builds the pure-Python wheel. Developers who
 want the extension from a checkout build it with `uv run maturin develop --release`; see
 [the Rust backend section of the architecture notes](docs/architecture.md#optional-rust-backend).
+
+Starting with 3.1.0, the optional `icechunk` extra adds Icechunk-backed reads and
+writes (`icechunk>=1.1.21,<2`). It needs Python 3.11 or later; the core install is
+unchanged. Until 3.1.0 is published, install the extra from a 3.1.0 source checkout:
+
+```bash
+pip install ".[icechunk]"
+```
+
+After 3.1.0 is published, install it from PyPI:
+
+```bash
+pip install "climate_indices[icechunk]>=3.1.0"
+```
+
+See [Write NetCDF, Zarr, and Icechunk outputs](docs/writing-outputs.md#read-and-write-icechunk-snapshots)
+and the [Icechunk SPI/SPEI notebook](notebooks/icechunk_spi_spei.ipynb).
+
+## Rust crate
+
+The numerical kernels are also available in the standalone `climate-indices`
+crate's `0.1.0-rc.1` prerelease
+([crates.io](https://crates.io/crates/climate-indices/0.1.0-rc.1),
+[docs.rs](https://docs.rs/climate-indices/0.1.0-rc.1)). Cargo requires an explicit
+prerelease version, such as `climate-indices = "0.1.0-rc.1"`; it does not select
+this version by default. The earlier `0.0.0` package reserves the name and contains
+no algorithms. The crate is pure Rust: `ndarray` is its only
+dependency, and it has no PyO3 or Python bindings. It provides kernels, not complete
+index workflows, so the caller prepares calendars, selects the Calibration Period,
+validates physical ranges, and applies the final transform.
+
+The crate follows its own `0.x` version track, independent of the Python distribution
+version, and needs Rust 1.85 or later. Before 1.0, a minor version can make breaking
+changes. See [`crates/climate-indices/README.md`](crates/climate-indices/README.md) for
+usage, examples, and benchmarks, and
+[`crates/climate-indices/CHANGELOG.md`](crates/climate-indices/CHANGELOG.md) for the
+published versions.
 
 ## Developer Workflow
 
@@ -290,7 +338,7 @@ Python 3.9 support was dropped in v2.2.0 (August 2025) due to `scipy>=1.15.3` re
 
 | API Surface | Status | Guarantee |
 |:------------|:------:|:----------|
-| NumPy array functions (`indices.spi`, `indices.spei`, `indices.pet`, and the `flood` indices) | **Stable** | No breaking changes in minor versions |
+| NumPy array functions (`indices.spi`, `indices.spei`, `indices.pet`, the `fire`, `flood`, `energy`, and `compound` NumPy routes) | **Stable** | No breaking changes in minor versions |
 | xarray index entry points accepting `xr.DataArray` (including Dataset-returning index and diagnostic functions) | **Stable from 3.1.0** | No breaking changes in minor versions |
 | Compound xarray Dataset routes and eager event catalogs | **Beta** | No breaking changes in patch versions |
 
