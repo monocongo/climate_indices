@@ -5,7 +5,7 @@ message: >-
   added here when available — check the repository for the current
   persistent identifier.
 title: climate_indices
-version: 3.0.0
+version: 3.1.0
 abstract: >-
   Reference implementations of climate drought indices commonly used
   in drought monitoring and climate research, including the

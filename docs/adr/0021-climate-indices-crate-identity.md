@@ -12,6 +12,10 @@ The identity is decided here; CRATE-05
 ([#1309](https://github.com/monocongo/climate_indices/issues/1309)) performed the rename,
 which is why the present tense below describes the crate as `climate-indices` while the
 context and alternatives keep the `climate-core` name they were written with.
+CRATE-10 ([#1314](https://github.com/monocongo/climate_indices/issues/1314)) and CRATE-11
+([#1315](https://github.com/monocongo/climate_indices/issues/1315)) amended the release
+facts: the published `0.1.0-rc.1` rehearsal, the bindings range, trusted publishing, and
+the `0.1.0` manifest version.
 
 ## Context
 
@@ -75,8 +79,8 @@ ownership and cadence.
    requires `^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$`, so a crate tag starts no PyPI release,
    and a Python tag publishes no crate. The crate releases when the crate changes, not
    with PyPI. CRATE-10 ([#1314](https://github.com/monocongo/climate_indices/issues/1314))
-   decides the second owner and whether publishing moves to crates.io trusted publishing
-   before the first real release.
+   moved publishing to crates.io trusted publishing; a second owner remains the
+   maintainer's decision.
 
 6. **No further name reservations.** crates.io treats `climate_indices` and
    `climate-indices` as one name, so the obvious variant is already blocked, and
@@ -115,9 +119,9 @@ ownership and cadence.
   so `climate_indices` names both without a collision.
 - Before CRATE-05 both crates inherited `version.workspace = true` and
   `publish = false` from the workspace; that split is what CRATE-05 changed. The crate
-  now carries `version = "0.1.0-rc.1"` for CRATE-10's rehearsal pre-release
-  and `publish = true`. The first stable release remains `0.1.0`, and `climate-py`
-  keeps `publish = false` through the workspace.
+  now carries `version = "0.1.0"` for its first stable release, which CRATE-11
+  publishes, and `publish = true`; CRATE-10's rehearsal published `0.1.0-rc.1` first. `climate-py` keeps
+  `publish = false` through the workspace.
 - Crate releases and PyPI releases are independent in both directions, and neither tag
   namespace can start the other workflow.
 - CRATE-10 ([#1314](https://github.com/monocongo/climate_indices/issues/1314)) publishes
@@ -137,8 +141,9 @@ ownership and cadence.
   ([#1308](https://github.com/monocongo/climate_indices/issues/1308)) states the numerical
   contract and CRATE-06 ([#1310](https://github.com/monocongo/climate_indices/issues/1310))
   makes the crate verifiable without Python. The `0.0.0` placeholder carries no algorithm,
-  so nothing is exposed until the first real release in CRATE-11
-  ([#1315](https://github.com/monocongo/climate_indices/issues/1315)).
+  so nothing was exposed until CRATE-10 published the `0.1.0-rc.1` rehearsal; CRATE-11
+  ([#1315](https://github.com/monocongo/climate_indices/issues/1315)) publishes the first
+  stable release.
 
 ## References
 

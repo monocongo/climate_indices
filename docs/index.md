@@ -26,3 +26,17 @@ one changes and how to adapt, and
 [CHANGELOG.md](https://github.com/monocongo/climate_indices/blob/main/CHANGELOG.md)
 for the full release history.
 :::
+
+## Versions
+
+| Component | Version | Support |
+| --- | --- | --- |
+| `climate_indices` (Python) | 3.1.0 | Python 3.10–3.14 |
+| `climate-indices` (Rust crate) | 0.1.0-rc.1 (prerelease) | Rust 1.85 or later |
+
+`climate_indices` 3.1.0 is the current development version; 3.0.0 is published on
+[PyPI](https://pypi.org/project/climate-indices/).
+The Rust crate follows its own `0.x` track, independent of the Python distribution
+version; see its
+[changelog](https://github.com/monocongo/climate_indices/blob/main/crates/climate-indices/CHANGELOG.md)
+for published versions.
