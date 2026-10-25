@@ -85,9 +85,9 @@ CRATE_RELEASE_WORKFLOW = Path(".github/workflows/crate-release.yml")
 CRATE_CHANGELOG = Path("crates/climate-indices/CHANGELOG.md")
 CRATE_MANIFEST = Path("crates/climate-indices/Cargo.toml")
 
-# The 3.1.0 Stable DataArray surface (docs/xarray_compatibility.md, ADR-0012). The
-# Beta routes stay out of these sets, so moving a name between the tiers needs an
-# ADR change and an edit here.
+# The 3.1.0 Stable DataArray surface and public `xarray_adapter` decorator
+# (docs/xarray_compatibility.md, ADR-0012). The Beta routes stay out of these sets,
+# so moving a name between the tiers needs an ADR change and an edit here.
 STABLE_DATAARRAY_API_NAMES = frozenset(
     {
         "eddi",
@@ -102,6 +102,7 @@ STABLE_DATAARRAY_API_NAMES = frozenset(
         "spei",
         "spi",
         "standardized_index",
+        "xarray_adapter",
     }
 )
 STABLE_DATAARRAY_MODULE_API_NAMES: dict[str, frozenset[str]] = {
