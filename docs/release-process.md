@@ -555,18 +555,21 @@ Then rehearse the tagged path:
 
 1. Prepare a candidate whose version is the pre-release, such as `X.Y.Z-rc.N`: the
    same version in `crates/climate-indices/Cargo.toml` and in the crate changelog
-   heading, and the bindings range in `crates/climate-py/Cargo.toml` naming it when
-   the version series is new. Run *Crate release steps* above for it, so the PR
-   merges into `main` and the tag reads `climate-indices-vX.Y.Z-rc.N`.
+   heading, and the bindings range in `crates/climate-py/Cargo.toml` set to
+   `">=X.Y.Z-rc.N, <1.0.0"`. Every rehearsal sets this floor, because the stable
+   range `">=0.1.0, <1.0.0"` admits no pre-release. Run *Crate release steps*
+   above for it, so the PR merges into `main` and the tag reads
+   `climate-indices-vX.Y.Z-rc.N`.
 2. Read every job's conclusion. `validate-crate-tag`, `crate-gate`, `crate-msrv`,
    `crate-semver`, `crate-deny`, and `publish-crate` must all succeed, because the
    rehearsal is a real publication. A network error or an action-resolution
    failure is a defect to fix, not the expected outcome.
 3. Run the crate post-release checks below against the pre-release, and record the
    run URL and each check on the release ticket.
-4. Promote to the stable release: set the manifest to `X.Y.Z`, give the crate
-   changelog a `## X.Y.Z - YYYY-MM-DD` heading while the pre-release entry stays
-   below it, and run *Crate release steps* above again for the stable tag.
+4. Promote to the stable release: set the manifest to `X.Y.Z`, restore the
+   bindings range to `">=0.1.0, <1.0.0"`, give the crate changelog a
+   `## X.Y.Z - YYYY-MM-DD` heading while the pre-release entry stays below it, and
+   run *Crate release steps* above again for the stable tag.
 
 A pre-release does not prove that `cargo add climate-indices` resolves without a
 version, and it does not make the crate's latest version anything other than the
