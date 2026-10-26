@@ -1,8 +1,7 @@
 # climate_indices 3.1.0 release notes
 
-**Draft:** 3.1.0 is not yet tagged or published, and no release date is set. The
-candidate freeze replaces this notice with the release date. The
-[release runbook](release-process.md) records the candidate and tag mechanics.
+Released 2026-10-26 from `main`; the [release runbook](release-process.md) records the
+candidate and tag mechanics.
 
 Version 3.1.0 adds compound-hazard analysis and energy-sector indices, promotes
 the DataArray index APIs to Stable, and adds optional Icechunk I/O. Review the
