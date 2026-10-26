@@ -232,12 +232,11 @@ and the [Icechunk SPI/SPEI notebook](notebooks/icechunk_spi_spei.ipynb).
 ## Rust crate
 
 The numerical kernels are also available in the standalone `climate-indices`
-crate's `0.1.0-rc.1` prerelease
-([crates.io](https://crates.io/crates/climate-indices/0.1.0-rc.1),
-[docs.rs](https://docs.rs/climate-indices/0.1.0-rc.1)). Cargo requires an explicit
-prerelease version, such as `climate-indices = "0.1.0-rc.1"`; it does not select
-this version by default. The earlier `0.0.0` package reserves the name and contains
-no algorithms. The crate is pure Rust: `ndarray` is its only
+crate's `0.1.0` release
+([crates.io](https://crates.io/crates/climate-indices),
+[docs.rs](https://docs.rs/climate-indices)):
+`cargo add climate-indices`. The earlier `0.0.0` package reserved the name and
+contains no algorithms. The crate is pure Rust: `ndarray` is its only
 dependency, and it has no PyO3 or Python bindings. It provides kernels, not complete
 index workflows, so the caller prepares calendars, selects the Calibration Period,
 validates physical ranges, and applies the final transform.

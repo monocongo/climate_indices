@@ -456,9 +456,10 @@ rehearsal* below describes.
    cargo update --workspace
    ```
 2. Give `crates/climate-indices/CHANGELOG.md` a heading for the version being
-   published, as `## X.Y.Z - YYYY-MM-DD` with the intended tag day. Retitle the
-   `## Unreleased` heading when one is present, and keep the earlier entries. The
-   workflow refuses to publish while an `## Unreleased` section is present.
+   published, as `## X.Y.Z - YYYY-MM-DD` with the intended tag day, and keep the
+   earlier entries. The changelog carries no `## Unreleased` heading: the crate
+   guard in `tests/test_release_integrity.py` refuses one in the tree, and the
+   workflow refuses to publish while one is present.
 3. Open a PR into `main`, then let the maintainer merge it after review and
    passing CI.
 4. Record the full 40-character SHA of the merged `main` tip.
@@ -614,7 +615,9 @@ for a bad one is `cargo yank`.
    cargo add climate-indices@X.Y.Z
    cargo build
    ```
-4. Confirm that the crate changelog heading carries the release day, and add a
-   fresh `## Unreleased` heading for the next cycle.
+4. Confirm that the crate changelog heading carries the release day. Do not add a
+   `## Unreleased` heading for the next cycle: the crate guard in
+   `tests/test_release_integrity.py` refuses one, and the next version's dated
+   heading is added when that release is prepared.
 5. Add the crates.io link to the next release notes or the README when the
    maintainer asks for it.
