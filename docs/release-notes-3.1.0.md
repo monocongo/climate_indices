@@ -1,12 +1,14 @@
 # climate_indices 3.1.0 release notes
 
-Released 2026-10-26 from `main`; the [release runbook](release-process.md) records the
-candidate and tag mechanics.
+Release preparation for the planned date 2026-10-26. Confirm publication via the
+[`v3.1.0` GitHub Release](https://github.com/monocongo/climate_indices/releases/tag/v3.1.0)
+and [PyPI artifacts](https://pypi.org/project/climate-indices/3.1.0/). The
+{doc}`release runbook <release-process>` records the candidate and tag mechanics.
 
 Version 3.1.0 adds compound-hazard analysis and energy-sector indices, promotes
 the DataArray index APIs to Stable, and adds optional Icechunk I/O. Review the
 [full changelog](https://github.com/monocongo/climate_indices/blob/main/CHANGELOG.md) and
-[API migration guide](deprecations/api-changes.md) before upgrading from 3.0.0.
+{doc}`API migration guide <deprecations/api-changes>` before upgrading from 3.0.0.
 
 ## Highlights
 
@@ -18,8 +20,8 @@ the DataArray index APIs to Stable, and adds optional Icechunk I/O. Review the
   eager event catalog `compound_events_xarray()` are Beta. The statistics describe
   co-occurrence, not causation or significance. A reproduction of published LMF cases
   and a bootstrap calibration study are scoped evidence, not unrestricted scientific
-  validation. See the [compound-hazards guide](compound-hazards.md) and
-  [ADR-0022](adr/0022-compound-analysis-contracts.md).
+  validation. See the {doc}`compound-hazards guide <compound-hazards>` and
+  {doc}`ADR-0022 <adr/0022-compound-analysis-contracts>`.
 - **Energy indices:** The new `climate_indices.energy` module provides heating,
   cooling, and energy degree days; hub-height wind speed and the wind-shear exponent;
   wind and temperature-derated PV capacity factors (NumPy-only); SREPI, a
@@ -28,7 +30,7 @@ the DataArray index APIs to Stable, and adds optional Icechunk I/O. Review the
   supply and demand, not actual generation or load. Evidence differs by index:
   SREPI, the demand index, and SRLI are compared with R `SEI` 0.2.0 fixtures, while
   the wind capacity factor and event statistics are regression-only. See
-  [energy applications](energy_applications.md) and
+  {doc}`energy applications <energy_applications>` and
   [VALIDATION.md](https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md).
 - **Stable DataArray APIs:** The DataArray index entry points, including the
   Dataset-returning index and diagnostic functions, and the public `xarray_adapter`
@@ -36,7 +38,7 @@ the DataArray index APIs to Stable, and adds optional Icechunk I/O. Review the
   promotion changes no signature, numerical algorithm, calendar rule, or Dask chunk
   requirement. The compound Dataset routes, the eager event catalogs, and the
   `energy_drought_events()` DataArray route remain Beta. See the
-  [compatibility matrix](xarray_compatibility.md).
+  {doc}`compatibility matrix <xarray_compatibility>`.
 - **Optional Icechunk I/O:** `climate_indices.icechunk_io.open_icechunk()` and
   `write_icechunk()` read and write transactional Icechunk snapshots. The
   `icechunk` extra needs Python 3.11 or later; the core install and its Python 3.10
@@ -60,7 +62,7 @@ the DataArray index APIs to Stable, and adds optional Icechunk I/O. Review the
 `demand_index`, and `srli`. `--output_scale` applies to the three standardized
 energy indices, and `--periodicity hourly` is accepted only for `srepi`,
 `demand_index`, and `srli`. The `all` and `scaled` selections do not change. See
-the [workflow examples](workflow-examples.md).
+the {doc}`workflow examples <workflow-examples>`.
 
 ## Rust crate
 
@@ -95,5 +97,5 @@ records the removal of `compute.scale_values()` under 3.0.0, the release that
 removed it.
 
 See the [changelog](https://github.com/monocongo/climate_indices/blob/main/CHANGELOG.md) for exact conditions, affected entry
-points, and references, and the [migration guide](deprecations/api-changes.md)
+points, and references, and the {doc}`migration guide <deprecations/api-changes>`
 for detection and remedies.
