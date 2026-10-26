@@ -140,7 +140,8 @@ or multiprocessing writes: it records worker writes in the session.
 Use `to_zarr` for ordinary Zarr stores as before.
 
 Icechunk stores return the same SPI and SPEI values as NetCDF and Zarr stores for
-the same inputs; `tests/test_icechunk_io.py` compares all three backends against
+the same inputs; [`tests/test_icechunk_io.py`](https://github.com/monocongo/climate_indices/blob/main/tests/test_icechunk_io.py)
+compares all three backends against
 the Python/SciPy oracle.
 
 Icechunk does not support consolidated metadata. The reader explicitly calls
