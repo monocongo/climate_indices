@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import multiprocessing
+from abc import ABC, abstractmethod
 from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -578,7 +579,7 @@ def _validate_scales(args: argparse.Namespace) -> None:
         args.scales = list(dict.fromkeys(args.scales))
 
 
-def _validate_output_scale(args: argparse.Namespace, handlers: Sequence[_IndexRegistration]) -> None:
+def _validate_output_scale(args: argparse.Namespace, handlers: Sequence[_IndexAdapter]) -> None:
     """
     Validate that ``--output_scale`` applies to at least one requested index,
     and warn about any requested indices it will be ignored for.
@@ -598,7 +599,7 @@ def _validate_output_scale(args: argparse.Namespace, handlers: Sequence[_IndexRe
     unsupported = [
         handler.index
         for handler in handlers
-        if handler.variable_attributes is not None and handler.index not in _OUTPUT_SCALE_INDICES
+        if isinstance(handler, _SingleOutputAdapter) and handler.index not in _OUTPUT_SCALE_INDICES
     ]
     if unsupported:
         _logger.warning(
@@ -608,7 +609,7 @@ def _validate_output_scale(args: argparse.Namespace, handlers: Sequence[_IndexRe
         )
 
 
-def _validate_cli_zero_handling(args: argparse.Namespace, handlers: Sequence[_IndexRegistration]) -> None:
+def _validate_cli_zero_handling(args: argparse.Namespace, handlers: Sequence[_IndexAdapter]) -> None:
     """Validate that the requested zero-handling mode applies to SPI only."""
     zero_handling = getattr(args, "zero_handling", "classic")
     compute._validate_zero_handling(zero_handling)
@@ -657,7 +658,7 @@ def _join_flag_names(names: Sequence[str]) -> str:
     return ", ".join(names[:-1]) + f", and {names[-1]}"
 
 
-def _validate_consumed_flags(args: argparse.Namespace, handlers: Sequence[_IndexRegistration]) -> None:
+def _validate_consumed_flags(args: argparse.Namespace, handlers: Sequence[_IndexAdapter]) -> None:
     """
     Reject a provided argument that no requested index consumes.
 
@@ -698,7 +699,7 @@ def _validate_consumed_flags(args: argparse.Namespace, handlers: Sequence[_Index
         raise ValueError(msg)
 
 
-def _validate_cli_periodicity(args: argparse.Namespace, handlers: Sequence[_IndexRegistration]) -> None:
+def _validate_cli_periodicity(args: argparse.Namespace, handlers: Sequence[_IndexAdapter]) -> None:
     """Reject hourly periodicity for indices without hourly support."""
     if getattr(args, "periodicity", None) is compute.Periodicity.hourly and any(
         handler.index not in _HOURLY_INDICES for handler in handlers
@@ -732,8 +733,7 @@ def _validate_args(args: argparse.Namespace) -> DatasetLayout:
     _validate_consumed_flags(args, handlers)
 
     for handler in handlers:
-        if handler.validate_arguments is not None:
-            handler.validate_arguments(args)
+        handler.validate_arguments(args)
 
     # only the standardized indices have an output scale to set
     if getattr(args, "output_scale", None) is not None:
@@ -759,8 +759,7 @@ def _validate_args(args: argparse.Namespace) -> DatasetLayout:
 
     # index-specific checks that need the precipitation input's shape
     for handler in handlers:
-        if handler.validate_inputs is not None:
-            handler.validate_inputs(args, context)
+        handler.validate_inputs(args, context)
 
     if any(handler.requires_pet_or_temp for handler in handlers):
         _validate_pet_or_temperature_input(args, context)
@@ -1024,7 +1023,7 @@ def _compute_write_index(request: _IndexRequest, transport: Transport) -> tuple[
         None for an index that writes more than one output file
     """
 
-    handler = _registry_for(request.index)
+    handler = _shared_array_adapter(request.index)
 
     _log_status(request)
 
@@ -1070,7 +1069,7 @@ def _compute_write_index(request: _IndexRequest, transport: Transport) -> tuple[
     # precipitation and PET to millimeters for every other index; this runs
     # before the inputs are copied into shared memory below, so an invalid AWC
     # label is rejected without paying for those full-array copies
-    prepared = handler.prepare_inputs(request, dataset) if handler.prepare_inputs is not None else None
+    prepared = handler.prepare_inputs(request, dataset)
 
     # confirm every variable's dimensions before copying any of them, so an
     # invalid variable cannot leave the shared arrays half filled
@@ -1099,11 +1098,8 @@ def _compute_write_index(request: _IndexRequest, transport: Transport) -> tuple[
         calendar_plan=calendar_plan,
         prepared=prepared,
         transport=transport,
-        arguments=handler.build_arguments(request) if handler.build_arguments is not None else {},
+        arguments=handler.build_arguments(request),
     )
-
-    assert handler.compute is not None, f"the '{handler.index}' index does not compute from shared arrays"
-    assert handler.write is not None, f"the '{handler.index}' index does not compute from shared arrays"
 
     handler.compute(context)
     return handler.write(context)
@@ -1244,10 +1240,7 @@ def _parallel_process(request: _IndexRequest, arguments: dict[str, Any], transpo
     :param arguments: the kernel's arguments, as the index's registration builds them
     :param transport: the shared-array transport for this CLI invocation
     """
-    handler = _registry_for(request.index)
-    assert handler.kernel is not None
-    assert handler.worker is not None
-    assert handler.input_array_keys is not None
+    handler = _shared_array_adapter(request.index)
 
     transport.execute(
         kernel=handler.kernel,
@@ -1260,67 +1253,82 @@ def _parallel_process(request: _IndexRequest, arguments: dict[str, Any], transpo
     )
 
 
-@dataclass(frozen=True)
-class _IndexRegistration:
-    """
-    Everything the CLI needs in order to compute one index.
-
-    A registration collects what used to be re-derived from the index name at
-    each use: the input files and arguments it requires, the arguments its
-    kernel takes, the output variable's name and attributes, the shared-memory
-    arrays it reads and writes, the worker that applies the kernel, and -- for
-    the top-level pipeline -- how the index is run. An index that computes
-    through xarray instead of the shared-memory route registers only ``run``.
-
-    Fields left ``None`` are ones the index in question does not use.
-    """
+class _IndexAdapter(ABC):
+    """The CLI pipeline interface, with explicit no-op validation methods."""
 
     index: str
-    run: Callable[[argparse.Namespace, DatasetLayout, Transport], None]
-    # names of the request's input fields this index reads, declared so that
-    # from_arguments() copies only the inputs the index actually consumes
     input_paths: tuple[str, ...] = ()
-    requires_precip: bool = False
-    # takes a PE file, or a precipitation file to compute PE from, rather than
-    # precipitation alone
-    requires_pe: bool = False
-    requires_pet_or_temp: bool = False
-    requires_awc: bool = False
-    # reads its own series rather than precipitation, a PE or PET file, or
-    # temperature: the wind profile takes a wind speed, and the standardized
-    # energy indices take the series they standardize
-    requires_wind: bool = False
-    requires_values: bool = False
-    requires_scales: bool = False
-    # the argparse dest names this index consumes, beyond the universal
-    # arguments (index, periodicity, output, multiprocessing, chunking) and the
-    # globally validated output_scale and zero_handling. A provided flag that no
-    # requested index declares here is rejected.
+    requires_precip = False
+    requires_pe = False
+    requires_pet_or_temp = False
+    requires_awc = False
+    requires_wind = False
+    requires_values = False
+    requires_scales = False
     consumed_flags: frozenset[str] = frozenset()
-    validate_arguments: Callable[[argparse.Namespace], None] | None = None
-    validate_inputs: Callable[[argparse.Namespace, _InputContext], None] | None = None
-    build_arguments: Callable[[_IndexRequest], dict[str, Any]] | None = None
-    variable_attributes: Callable[[_IndexRequest, xr.DataArray], tuple[str, dict[str, Any]]] | None = None
-    prepare_inputs: Callable[[_IndexRequest, xr.Dataset], xr.Dataset] | None = None
-    prepare_arrays: Callable[[_ComputeContext], None] | None = None
-    kernel: Callable[..., Any] | None = None
-    input_array_keys: Callable[[_IndexRequest], tuple[str, ...]] | None = None
+
+    @staticmethod
+    def validate_arguments(args: argparse.Namespace) -> None:
+        """Check index-specific arguments before opening inputs."""
+        return None
+
+    @staticmethod
+    def validate_inputs(args: argparse.Namespace, context: _InputContext) -> None:
+        """Check companion inputs against the primary input."""
+        return None
+
+    @staticmethod
+    @abstractmethod
+    def run(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
+        """Run this index, including any prerequisite computation."""
+
+
+class _SharedArrayAdapter(_IndexAdapter):
+    """Require the complete shared-array path, not a subset of optional hooks."""
+
     output_keys: tuple[str, ...] = (RESULT_ARRAY_KEY,)
-    coordinate_input: bool = False
-    worker: Callable[[WorkItem], None] | None = None
-    compute: Callable[[_ComputeContext], None] | None = None
-    write: Callable[[_ComputeContext], tuple[str, str] | None] | None = None
+    coordinate_input = False
 
+    @staticmethod
+    @abstractmethod
+    def kernel(*args: Any, **kwargs: Any) -> Any:
+        """Compute one spatial block or series in a worker."""
 
-# the five outputs the Palmer routines produce, in the order they are written:
-# shared-array key, output variable name, CF_METADATA key, history display name
-_PALMER_OUTPUTS = (
-    (PALMER_RESULT_KEYS[0], "pdsi", "pdsi", "PDSI"),
-    (PALMER_RESULT_KEYS[1], "phdi", "phdi", "PHDI"),
-    (PALMER_RESULT_KEYS[2], "pmdi", "pmdi", "PMDI"),
-    (PALMER_RESULT_KEYS[3], "zindex", "z_index", "Palmer Z-Index"),
-    (PALMER_RESULT_KEYS[4], "scpdsi", "scpdsi", "scPDSI"),
-)
+    @staticmethod
+    @abstractmethod
+    def worker(item: WorkItem) -> None:
+        """Apply the kernel to the transport's shared arrays."""
+
+    @staticmethod
+    @abstractmethod
+    def input_array_keys(request: _IndexRequest) -> tuple[str, ...]:
+        """Name the shared inputs in kernel argument order."""
+
+    @staticmethod
+    @abstractmethod
+    def build_arguments(request: _IndexRequest) -> dict[str, Any]:
+        """Build the kernel parameters."""
+
+    @staticmethod
+    def prepare_inputs(request: _IndexRequest, dataset: xr.Dataset) -> xr.Dataset | None:
+        """Prepare companion inputs before the transport copies arrays."""
+        return None
+
+    @staticmethod
+    def prepare_arrays(context: _ComputeContext) -> None:
+        """Copy any coordinate arrays required by this index."""
+        return None
+
+    @staticmethod
+    @abstractmethod
+    def compute(context: _ComputeContext) -> None:
+        """Allocate outputs and execute the kernel."""
+
+    @staticmethod
+    @abstractmethod
+    def write(context: _ComputeContext) -> tuple[str, str] | None:
+        """Write all outputs through the atomic writer."""
+
 
 # the registrations run only after _validate_args() has filled the request, so
 # these assertions are invariant checks rather than input validation; keep each
@@ -1338,24 +1346,6 @@ def _precipitation_array_key(request: _IndexRequest) -> tuple[str, ...]:
     return (request.var_name_precip,)
 
 
-def _precipitation_and_pet_array_keys(request: _IndexRequest) -> tuple[str, ...]:
-    assert request.var_name_precip is not None, _UNVALIDATED_PRECIP
-    assert request.var_name_pet is not None, _UNVALIDATED_PET
-    return (request.var_name_precip, request.var_name_pet)
-
-
-def _temperature_and_latitude_array_keys(request: _IndexRequest) -> tuple[str, ...]:
-    assert request.var_name_temp is not None, _UNVALIDATED_TEMP
-    return (request.var_name_temp, LATITUDE_ARRAY_KEY)
-
-
-def _palmer_array_keys(request: _IndexRequest) -> tuple[str, ...]:
-    assert request.var_name_precip is not None, _UNVALIDATED_PRECIP
-    assert request.var_name_pet is not None, _UNVALIDATED_PET
-    assert request.var_name_awc is not None, _UNVALIDATED_AWC
-    return (request.var_name_precip, request.var_name_pet, request.var_name_awc)
-
-
 def _spi_arguments(request: _IndexRequest) -> dict[str, Any]:
     return {
         "data_start_year": request.data_start_year,
@@ -1367,28 +1357,6 @@ def _spi_arguments(request: _IndexRequest) -> dict[str, Any]:
         "output_scale": request.output_scale,
         "zero_handling": request.zero_handling,
     }
-
-
-def _pnp_arguments(request: _IndexRequest) -> dict[str, Any]:
-    return {
-        "data_start_year": request.data_start_year,
-        "scale": request.scale,
-        "calibration_start_year": request.calibration_start_year,
-        "calibration_end_year": request.calibration_end_year,
-        "periodicity": request.periodicity,
-    }
-
-
-def _palmer_arguments(request: _IndexRequest) -> dict[str, Any]:
-    return {
-        "data_start_year": request.data_start_year,
-        "calibration_start_year": request.calibration_start_year,
-        "calibration_end_year": request.calibration_end_year,
-    }
-
-
-def _pet_arguments(request: _IndexRequest) -> dict[str, Any]:
-    return {"data_start_year": request.data_start_year}
 
 
 def _standardized_variable_attributes(
@@ -1426,104 +1394,13 @@ def _standardized_variable_attributes(
     return var_name, attrs
 
 
-def _spi_variable_attributes(request: _IndexRequest, source: xr.DataArray) -> tuple[str, dict[str, Any]]:
-    return _standardized_variable_attributes(
-        request,
-        source,
-        "spi",
-        "SPI",
-        "spi",
-        extra=spi_output_attributes(request.zero_handling, request.output_scale),
-    )
-
-
-def _spei_variable_attributes(request: _IndexRequest, source: xr.DataArray) -> tuple[str, dict[str, Any]]:
-    return _standardized_variable_attributes(
-        request,
-        source,
-        "spei",
-        "SPEI",
-        "spei",
-        extra=standardized_output_bounds(request.output_scale),
-    )
-
-
-def _pnp_variable_attributes(request: _IndexRequest, source: xr.DataArray) -> tuple[str, dict[str, Any]]:
-    assert request.scale is not None, _UNVALIDATED_SCALE
-    attrs = build_index_attrs(
-        source,
-        "pnp",
-        index_name="PNP",
-        calculation_metadata={"scale": request.scale},
-        extra={"valid_min": 0.0},
-    )
-    var_name = "pnp_" + str(request.scale).zfill(2)
-
-    return var_name, attrs
-
-
-def _pet_variable_attributes(request: _IndexRequest, source: xr.DataArray) -> tuple[str, dict[str, Any]]:
-    attrs = build_index_attrs(
-        source,
-        "pet_thornthwaite",
-        index_name="PET",
-        extra={"valid_min": 0.0, "valid_max": 10000.0},
-    )
-    return "pet_thornthwaite", attrs
-
-
-def _prepare_palmer_inputs(request: _IndexRequest, dataset: xr.Dataset) -> xr.Dataset:
-    """
-    Convert the Palmer inputs to the inches palmer.pdsi() takes.
-
-    :param request: the index request being computed
-    :param dataset: the opened inputs, converted in place
-    :return: the opened available water capacity dataset
-    :raise ValueError: if the available water capacity units are unsupported
-    """
-    assert request.var_name_precip is not None, _UNVALIDATED_PRECIP
-    assert request.var_name_pet is not None, _UNVALIDATED_PET
-
-    for var_name in (request.var_name_precip, request.var_name_pet):
-        # out-of-place so integer-valued variables are promoted rather than rejected
-        dataset[var_name].values = dataset[var_name].values / 25.4
-
-    if request.netcdf_awc is None or request.var_name_awc is None:
-        raise ValueError("Missing the AWC file and/or variable name argument(s)")
-
-    awc_dataset = xr.open_dataset(request.netcdf_awc)
-
-    # the Palmer routines take available water capacity in inches; an
-    # absent units attribute is assumed to already be inches
-    awc_var_name = request.var_name_awc
-    awc_units = str(awc_dataset[awc_var_name].attrs.get("units", "")).strip().lower()
-    if awc_units in ("mm", "millimeters", "millimeter"):
-        awc_dataset[awc_var_name].values = awc_dataset[awc_var_name].values / 25.4
-    elif awc_units and awc_units not in ("inch", "inches"):
-        # !r so a units attribute holding newlines/control characters can't
-        # forge log lines or alter terminal rendering when this is logged
-        raise ValueError(f"Unsupported available water capacity units: {awc_units!r}")
-
-    return awc_dataset
-
-
-def _prepare_latitude_array(context: _ComputeContext) -> None:
-    """
-    Copy the latitude coordinate into a shared-memory array for the PET workers.
-
-    :param context: the opened inputs and output settings of the request
-    """
-    latitudes = context.dataset["lat"]
-    context.transport.write(LATITUDE_ARRAY_KEY, latitudes.values)
-
-
 def _compute_single_array(context: _ComputeContext) -> None:
     """
     Apply the index's kernel across the shared inputs, into one shared result array.
 
     :param context: the opened inputs and output settings of the request
     """
-    handler = _registry_for(context.request.index)
+    handler = _shared_array_adapter(context.request.index)
     # an aggregate pipeline reuses the result buffer across indices, whose
     # output shapes can differ (e.g. transposed input dimensions), so reallocate
     # rather than reshape an incompatible buffer
@@ -1531,37 +1408,9 @@ def _compute_single_array(context: _ComputeContext) -> None:
     if RESULT_ARRAY_KEY not in transport or transport.shape(RESULT_ARRAY_KEY) != context.output_shape:
         transport.allocate(RESULT_ARRAY_KEY, context.output_shape)
 
-    if handler.prepare_arrays is not None:
-        handler.prepare_arrays(context)
+    handler.prepare_arrays(context)
 
     _parallel_process(context.request, context.arguments, transport)
-
-
-def _compute_palmers(context: _ComputeContext) -> None:
-    """
-    Apply the Palmer kernel across the shared inputs, into its five shared result arrays.
-
-    :param context: the opened inputs and output settings of the request
-    """
-    request = context.request
-    assert request.var_name_precip is not None, _UNVALIDATED_PRECIP
-    assert request.var_name_pet is not None, _UNVALIDATED_PET
-    assert request.var_name_awc is not None, _UNVALIDATED_AWC
-    assert context.prepared is not None, "the AWC dataset is opened before the shared arrays are filled"
-
-    # read AWC data into a shared memory array; already opened and unit-validated
-    transport = context.transport
-    awc_array = context.prepared[request.var_name_awc]
-    transport.write(request.var_name_awc, awc_array.values)
-
-    # add shared memory arrays for the computed Palmers to the store
-    for key, _var_name, _cf_key, _index_name in _PALMER_OUTPUTS:
-        if key not in transport:
-            transport.allocate(key, context.output_shape)
-
-    # TODO once we support daily Palmers then we'll need to convert values
-    #  from a 366-day calendar back into a normal/Gregorian calendar
-    _parallel_process(request, context.arguments, transport)
 
 
 def _output_source(request: _IndexRequest, dataset: xr.Dataset) -> xr.DataArray:
@@ -1590,8 +1439,9 @@ def _write_single_output(context: _ComputeContext) -> tuple[str, str]:
     :return: the name of the file written and of the variable within it
     """
     request = context.request
-    handler = _registry_for(request.index)
-    assert handler.variable_attributes is not None, "a single-output index names its output variable"
+    handler = _shared_array_adapter(request.index)
+    if not isinstance(handler, _SingleOutputAdapter):
+        raise TypeError(f"the '{handler.index}' index does not write a single output")
 
     output_var_name, output_var_attributes = handler.variable_attributes(
         request, _output_source(request, context.dataset)
@@ -1633,135 +1483,6 @@ def _write_single_output(context: _ComputeContext) -> tuple[str, str]:
     return netcdf_file_name, output_var_name
 
 
-def _write_palmer_outputs(context: _ComputeContext) -> None:
-    """
-    Write each of the computed Palmer outputs into its own NetCDF file.
-
-    :param context: the opened inputs and output settings of the request
-    """
-    dataset = context.dataset
-    source = _output_source(context.request, dataset)
-    output_encodings = _trimmed_output_encodings(context.output_encodings, context.output_shape)
-    for key, var_name, cf_key, index_name in _PALMER_OUTPUTS:
-        # get the shared memory results array and convert it to a numpy array
-        # the shared buffer holds float64, so this is already a private copy
-        index_values = context.transport.read(key, context.output_shape)
-        # scPDSI's percentile rescaling has no hard bound, unlike the
-        # historical (and conservative) range kept for the standard outputs
-        extra = None if var_name == "scpdsi" else {"valid_min": -10.0, "valid_max": 10.0}
-        attrs = build_index_attrs(source, cf_key, index_name=index_name, extra=extra)
-
-        # create a new variable for this output and assign it into the dataset
-        variable = xr.Variable(
-            dims=context.output_dims,
-            data=index_values,
-            attrs=attrs,
-            encoding=output_encodings,
-        )
-        dataset[var_name] = variable
-
-        # remove all data variables except for the new one
-        drop_var_names = [name for name in dataset.data_vars if name != var_name]
-        if len(drop_var_names):
-            dataset = dataset.drop_vars(names=drop_var_names)
-
-        # write the dataset as NetCDF
-        netcdf_file_name = context.request.output_file_base + "_" + var_name + ".nc"
-        write_netcdf_atomic(dataset, netcdf_file_name, engine=context.output_engine, pack=context.request.pack_output)
-
-
-def _validate_kbdi_arguments(args: argparse.Namespace) -> None:
-    """
-    Validate that KBDI was given the arguments it can use.
-
-    KBDI is computed for daily inputs only, through the fire module. The
-    arguments it cannot use are rejected centrally, from the registration's
-    declared flags (see ``_validate_consumed_flags``).
-
-    :param args: an arguments object of the type returned by
-        argparse.ArgumentParser.parse_args()
-    :raise ValueError: if the periodicity is not daily, or the temperature
-        input KBDI requires is missing
-    """
-    if args.periodicity is not compute.Periodicity.daily:
-        msg = "Invalid periodicity argument for KBDI: " + f"'{args.periodicity}' -- only 'daily' is supported"
-        _logger.error(msg)
-        raise ValueError(msg)
-
-    if args.netcdf_temp is None:
-        msg = "Missing the required temperature file argument"
-        _logger.error(msg)
-        raise ValueError(msg)
-
-    if args.var_name_temp is None:
-        msg = "Missing temperature variable name"
-        _logger.error(msg)
-        raise ValueError(msg)
-
-
-def _validate_kbdi_inputs(args: argparse.Namespace, context: _InputContext) -> None:
-    """
-    Validate that KBDI's maximum temperature input matches the precipitation input.
-
-    :param args: an arguments object of the type returned by
-        argparse.ArgumentParser.parse_args()
-    :param context: the validated precipitation input
-    :raise ValueError: if the temperature input is invalid or does not match
-    """
-    with xr.open_dataset(args.netcdf_temp) as dataset_temp:
-        if args.var_name_temp not in dataset_temp.variables:
-            msg = (
-                f"Invalid temperature variable name: '{args.var_name_temp}'"
-                + f" does not exist in temperature file '{args.netcdf_temp}'"
-            )
-            _logger.error(msg)
-            raise ValueError(msg)
-
-        dimensions_temp = dataset_temp[args.var_name_temp].dims
-        # compare dimension names rather than storage order: either supported
-        # order of each input is valid, and fire.kbdi() aligns by name
-        if set(dimensions_temp) != set(context.dimensions):
-            msg = (
-                f"Invalid dimensions of the temperature variable: {dimensions_temp} "
-                + f"(expected the precipitation variable dimensions: {context.dimensions})"
-            )
-            _logger.error(msg)
-            raise ValueError(msg)
-
-        if not np.array_equal(context.times, dataset_temp["time"].values[:]):
-            msg = "Precipitation and temperature variables contain non-matching times"
-            _logger.error(msg)
-            raise ValueError(msg)
-
-        if context.input_type == DatasetLayout.GRID:
-            assert context.latitudes is not None
-            assert context.longitudes is not None
-            if not np.allclose(
-                context.latitudes,
-                dataset_temp["lat"][:],
-                atol=utils.get_tolerance(context.latitudes),
-            ):
-                msg = "Precipitation and temperature variables contain non-matching latitudes"
-                _logger.error(msg)
-                raise ValueError(msg)
-
-            if not np.allclose(
-                context.longitudes,
-                dataset_temp["lon"][:],
-                atol=utils.get_tolerance(context.longitudes),
-            ):
-                msg = "Precipitation and temperature variables contain non-matching longitudes"
-                _logger.error(msg)
-                raise ValueError(msg)
-
-        elif context.input_type == DatasetLayout.DIVISIONS:
-            assert context.divisions is not None
-            if not np.array_equal(context.divisions, dataset_temp["division"][:]):
-                msg = "Precipitation and temperature variables contain non-matching division IDs"
-                _logger.error(msg)
-                raise ValueError(msg)
-
-
 def _validate_flood_arguments(args: argparse.Namespace) -> None:
     """
     Validate that a flood index was given the arguments it can use.
@@ -1794,30 +1515,6 @@ def _validate_flood_arguments(args: argparse.Namespace) -> None:
         raise ValueError(msg)
 
 
-def _validate_energy_arguments(args: argparse.Namespace) -> None:
-    """
-    Validate that an energy index was given the arguments it can use.
-
-    The degree days are computed per daily time step, through the energy
-    module, and each needs the base temperature it is defined against. The wind
-    profile needs its two heights, and each profile method rejects the argument
-    that belongs to the other: a roughness length for the logarithmic law, and
-    the shear exponent for the power law. The arguments an index cannot use are
-    rejected centrally, from the registration's declared flags (see
-    ``_validate_consumed_flags``).
-
-    :param args: an arguments object of the type returned by
-        argparse.ArgumentParser.parse_args()
-    :raise ValueError: if the periodicity is not daily, or a required argument
-        is missing, or an argument the selected profile method cannot use is
-        provided
-    """
-    if args.index in _ENERGY_DEGREE_DAY_INDICES:
-        _validate_degree_day_arguments(args)
-    elif args.index == "wind_profile":
-        _validate_wind_profile_arguments(args)
-
-
 def _validate_degree_day_arguments(args: argparse.Namespace) -> None:
     """
     Validate the arguments a degree-day index can use.
@@ -1846,35 +1543,6 @@ def _validate_degree_day_arguments(args: argparse.Namespace) -> None:
         raise ValueError(msg)
 
 
-def _validate_wind_profile_arguments(args: argparse.Namespace) -> None:
-    """
-    Validate the arguments the wind profile can use.
-
-    :param args: an arguments object whose index is the wind profile
-    :raise ValueError: if a required height is missing, or an argument the
-        selected profile method cannot use is provided
-    """
-    if args.hub_height is None:
-        msg = "Missing the required --hub_height argument"
-        _logger.error(msg)
-        raise ValueError(msg)
-
-    if args.wind_profile_method == "log":
-        if args.roughness_length is None:
-            msg = "Missing the required --roughness_length argument for the log wind profile"
-            _logger.error(msg)
-            raise ValueError(msg)
-
-        if args.wind_shear_alpha is not None:
-            msg = "The --wind_shear_alpha argument is not applicable to the log wind profile"
-            _logger.error(msg)
-            raise ValueError(msg)
-    elif args.roughness_length is not None:
-        msg = "The --roughness_length argument requires --wind_profile_method log"
-        _logger.error(msg)
-        raise ValueError(msg)
-
-
 # the distributions `--index spi` computes; log-logistic is the SPEI reference
 # distribution and `indices.spi()` rejects it (#106), and empirical (#1168) and beta
 # (#1169) are reserved for `indices.standardized_index()`
@@ -1882,94 +1550,301 @@ _SPI_DISTRIBUTIONS = (indices.Distribution.gamma, indices.Distribution.pearson)
 _SPEI_DISTRIBUTIONS = (*_SPI_DISTRIBUTIONS, indices.Distribution.loglogistic)
 
 
-def _run_spi(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
-    """
-    Compute SPI for each requested scale and distribution.
-
-    :param arguments: the parsed command line arguments
-    :param input_type: the input type determined by argument validation
-    """
-    for scale in arguments.scales:
-        for distribution in _SPI_DISTRIBUTIONS:
-            _compute_write_index(
-                _IndexRequest.from_arguments(
-                    arguments,
-                    index="spi",
-                    input_type=input_type,
-                    scale=scale,
-                    distribution=distribution,
-                ),
-                transport,
-            )
+# The parser checks these declarations before opening any input files.
+_PRECIP_FLAGS = frozenset({"netcdf_precip", "var_name_precip"})
+_TEMPERATURE_FLAGS = frozenset({"netcdf_temp", "var_name_temp"})
+_PET_FLAGS = frozenset({"netcdf_pet", "var_name_pet"})
+_AWC_FLAGS = frozenset({"netcdf_awc", "var_name_awc"})
+_PE_FLAGS = frozenset({"netcdf_pe", "var_name_pe"})
+_WIND_FLAGS = frozenset({"netcdf_wind", "var_name_wind"})
+_VALUES_FLAGS = frozenset({"netcdf_values", "var_name_values"})
+_CALIBRATION_FLAGS = frozenset({"calibration_start_year", "calibration_end_year"})
+_SCALE_FLAGS = frozenset({"scales"})
 
 
-def _run_spei(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
-    """
-    Compute SPEI for each requested scale and distribution.
+class _SingleOutputAdapter(_SharedArrayAdapter):
+    """Share allocation and atomic writing for single-output kernels."""
 
-    :param arguments: the parsed command line arguments
-    :param input_type: the input type determined by argument validation
-    """
-    for scale in arguments.scales:
-        for distribution in _SPEI_DISTRIBUTIONS:
-            _compute_write_index(
-                _IndexRequest.from_arguments(
-                    arguments,
-                    index="spei",
-                    input_type=input_type,
-                    scale=scale,
-                    distribution=distribution,
-                ),
-                transport,
-            )
+    compute = staticmethod(_compute_single_array)
+    write = staticmethod(_write_single_output)
+
+    @staticmethod
+    @abstractmethod
+    def variable_attributes(request: _IndexRequest, source: xr.DataArray) -> tuple[str, dict[str, Any]]:
+        """Name and describe the output variable."""
 
 
-def _run_pnp(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
-    """
-    Compute percentage of normal precipitation for each requested scale.
+class _SPIAdapter(_SingleOutputAdapter):
+    """Compute SPI for each requested timescale and distribution."""
 
-    :param arguments: the parsed command line arguments
-    :param input_type: the input type determined by argument validation
-    """
-    for scale in arguments.scales:
-        _compute_write_index(
-            _IndexRequest.from_arguments(arguments, index="pnp", input_type=input_type, scale=scale), transport
+    index = "spi"
+    input_paths = ("netcdf_precip", "var_name_precip")
+    requires_precip = True
+    requires_scales = True
+    consumed_flags = _PRECIP_FLAGS | _CALIBRATION_FLAGS | _SCALE_FLAGS
+    kernel = staticmethod(_spi)
+    worker = staticmethod(run_along_axis)
+    input_array_keys = staticmethod(_precipitation_array_key)
+    build_arguments = staticmethod(_spi_arguments)
+
+    @staticmethod
+    def variable_attributes(request: _IndexRequest, source: xr.DataArray) -> tuple[str, dict[str, Any]]:
+        return _standardized_variable_attributes(
+            request,
+            source,
+            "spi",
+            "SPI",
+            "spi",
+            extra=spi_output_attributes(request.zero_handling, request.output_scale),
         )
 
-
-def _run_pet(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
-    """
-    Compute PET from the temperature input, unless a PET input was provided.
-
-    Within an aggregate index this runs before SPEI and Palmers, so that either
-    can consume the computed PET values when the caller supplied only
-    temperature.
-
-    :param arguments: the parsed command line arguments
-    :param input_type: the input type determined by argument validation
-    """
-    # a provided PET file substitutes for a computed one only when a later
-    # index in the pipeline consumes it; --index pet always computes from
-    # temperature
-    if arguments.netcdf_pet is not None and arguments.index != "pet":
-        return
-
-    request = _IndexRequest.from_arguments(arguments, index="pet", input_type=input_type)
-    # a PET file a later index reads stays unpacked, so --pack cannot change that index's values
-    request.pack_output = request.pack_output and arguments.index == "pet"
-    result = _compute_write_index(request, transport)
-    assert result is not None, "PET computation should return file and variable name"
-    arguments.netcdf_pet, arguments.var_name_pet = result
+    @staticmethod
+    def run(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
+        for scale in arguments.scales:
+            for distribution in _SPI_DISTRIBUTIONS:
+                _compute_write_index(
+                    _IndexRequest.from_arguments(
+                        arguments, index="spi", input_type=input_type, scale=scale, distribution=distribution
+                    ),
+                    transport,
+                )
 
 
-def _run_palmers(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
-    """
-    Compute the Palmer drought indices.
+class _SPEIAdapter(_SingleOutputAdapter):
+    """Compute SPEI after the pipeline supplies PET."""
 
-    :param arguments: the parsed command line arguments
-    :param input_type: the input type determined by argument validation
-    """
-    _compute_write_index(_IndexRequest.from_arguments(arguments, index="palmers", input_type=input_type), transport)
+    index = "spei"
+    input_paths = ("netcdf_precip", "var_name_precip", "netcdf_pet", "var_name_pet")
+    requires_precip = True
+    requires_pet_or_temp = True
+    requires_scales = True
+    consumed_flags = _PRECIP_FLAGS | _TEMPERATURE_FLAGS | _PET_FLAGS | _CALIBRATION_FLAGS | _SCALE_FLAGS
+    kernel = staticmethod(_spei)
+    worker = staticmethod(run_along_axis_double)
+    build_arguments = staticmethod(_spi_arguments)
+
+    @staticmethod
+    def input_array_keys(request: _IndexRequest) -> tuple[str, ...]:
+        assert request.var_name_precip is not None, _UNVALIDATED_PRECIP
+        assert request.var_name_pet is not None, _UNVALIDATED_PET
+        return (request.var_name_precip, request.var_name_pet)
+
+    @staticmethod
+    def variable_attributes(request: _IndexRequest, source: xr.DataArray) -> tuple[str, dict[str, Any]]:
+        return _standardized_variable_attributes(
+            request,
+            source,
+            "spei",
+            "SPEI",
+            "spei",
+            extra=standardized_output_bounds(request.output_scale),
+        )
+
+    @staticmethod
+    def run(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
+        for scale in arguments.scales:
+            for distribution in _SPEI_DISTRIBUTIONS:
+                _compute_write_index(
+                    _IndexRequest.from_arguments(
+                        arguments, index="spei", input_type=input_type, scale=scale, distribution=distribution
+                    ),
+                    transport,
+                )
+
+
+class _PNPAdapter(_SingleOutputAdapter):
+    """Compute Percentage of Normal Precipitation for each requested timescale."""
+
+    index = "pnp"
+    input_paths = ("netcdf_precip", "var_name_precip")
+    requires_precip = True
+    requires_scales = True
+    consumed_flags = _PRECIP_FLAGS | _CALIBRATION_FLAGS | _SCALE_FLAGS
+    kernel = staticmethod(_pnp)
+    worker = staticmethod(run_along_axis)
+    input_array_keys = staticmethod(_precipitation_array_key)
+
+    @staticmethod
+    def build_arguments(request: _IndexRequest) -> dict[str, Any]:
+        return {
+            "data_start_year": request.data_start_year,
+            "scale": request.scale,
+            "calibration_start_year": request.calibration_start_year,
+            "calibration_end_year": request.calibration_end_year,
+            "periodicity": request.periodicity,
+        }
+
+    @staticmethod
+    def variable_attributes(request: _IndexRequest, source: xr.DataArray) -> tuple[str, dict[str, Any]]:
+        assert request.scale is not None, _UNVALIDATED_SCALE
+        attrs = build_index_attrs(
+            source,
+            "pnp",
+            index_name="PNP",
+            calculation_metadata={"scale": request.scale},
+            extra={"valid_min": 0.0},
+        )
+        return "pnp_" + str(request.scale).zfill(2), attrs
+
+    @staticmethod
+    def run(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
+        for scale in arguments.scales:
+            _compute_write_index(
+                _IndexRequest.from_arguments(arguments, index="pnp", input_type=input_type, scale=scale), transport
+            )
+
+
+class _PETAdapter(_SingleOutputAdapter):
+    """Compute PET and make its file available to later pipeline members."""
+
+    index = "pet"
+    input_paths = ("netcdf_temp", "var_name_temp")
+    consumed_flags = _TEMPERATURE_FLAGS
+    kernel = staticmethod(_pet)
+    worker = staticmethod(run_along_axis_double)
+    coordinate_input = True
+
+    @staticmethod
+    def input_array_keys(request: _IndexRequest) -> tuple[str, ...]:
+        assert request.var_name_temp is not None, _UNVALIDATED_TEMP
+        return (request.var_name_temp, LATITUDE_ARRAY_KEY)
+
+    @staticmethod
+    def build_arguments(request: _IndexRequest) -> dict[str, Any]:
+        return {"data_start_year": request.data_start_year}
+
+    @staticmethod
+    def variable_attributes(request: _IndexRequest, source: xr.DataArray) -> tuple[str, dict[str, Any]]:
+        attrs = build_index_attrs(
+            source,
+            "pet_thornthwaite",
+            index_name="PET",
+            extra={"valid_min": 0.0, "valid_max": 10000.0},
+        )
+        return "pet_thornthwaite", attrs
+
+    @staticmethod
+    def prepare_arrays(context: _ComputeContext) -> None:
+        latitudes = context.dataset["lat"]
+        context.transport.write(LATITUDE_ARRAY_KEY, latitudes.values)
+
+    @staticmethod
+    def run(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
+        # A provided PET file replaces computation only when another index consumes it.
+        if arguments.netcdf_pet is not None and arguments.index != "pet":
+            return
+
+        request = _IndexRequest.from_arguments(arguments, index="pet", input_type=input_type)
+        # Intermediate PET stays unpacked so packing cannot change a later index's values.
+        request.pack_output = request.pack_output and arguments.index == "pet"
+        result = _compute_write_index(request, transport)
+        assert result is not None, "PET computation should return file and variable name"
+        arguments.netcdf_pet, arguments.var_name_pet = result
+
+
+class _PalmersAdapter(_SharedArrayAdapter):
+    """Prepare, compute, and write all five Palmer outputs."""
+
+    index = "palmers"
+    input_paths = ("netcdf_precip", "var_name_precip", "netcdf_pet", "var_name_pet", "netcdf_awc", "var_name_awc")
+    requires_precip = True
+    requires_pet_or_temp = True
+    requires_awc = True
+    consumed_flags = _PRECIP_FLAGS | _TEMPERATURE_FLAGS | _PET_FLAGS | _AWC_FLAGS | _CALIBRATION_FLAGS
+    kernel = staticmethod(_palmers)
+    worker = staticmethod(run_palmers)
+    # Shared key, output name, CF metadata key, and history display name.
+    outputs = (
+        (PALMER_RESULT_KEYS[0], "pdsi", "pdsi", "PDSI"),
+        (PALMER_RESULT_KEYS[1], "phdi", "phdi", "PHDI"),
+        (PALMER_RESULT_KEYS[2], "pmdi", "pmdi", "PMDI"),
+        (PALMER_RESULT_KEYS[3], "zindex", "z_index", "Palmer Z-Index"),
+        (PALMER_RESULT_KEYS[4], "scpdsi", "scpdsi", "scPDSI"),
+    )
+    output_keys = tuple(key for key, _var_name, _cf_key, _index_name in outputs)
+
+    @staticmethod
+    def input_array_keys(request: _IndexRequest) -> tuple[str, ...]:
+        assert request.var_name_precip is not None, _UNVALIDATED_PRECIP
+        assert request.var_name_pet is not None, _UNVALIDATED_PET
+        assert request.var_name_awc is not None, _UNVALIDATED_AWC
+        return (request.var_name_precip, request.var_name_pet, request.var_name_awc)
+
+    @staticmethod
+    def build_arguments(request: _IndexRequest) -> dict[str, Any]:
+        return {
+            "data_start_year": request.data_start_year,
+            "calibration_start_year": request.calibration_start_year,
+            "calibration_end_year": request.calibration_end_year,
+        }
+
+    @staticmethod
+    def prepare_inputs(request: _IndexRequest, dataset: xr.Dataset) -> xr.Dataset:
+        """Convert monthly depths and AWC to the inches the Palmer kernel requires."""
+        assert request.var_name_precip is not None, _UNVALIDATED_PRECIP
+        assert request.var_name_pet is not None, _UNVALIDATED_PET
+        for var_name in (request.var_name_precip, request.var_name_pet):
+            # Out-of-place division also promotes integer input arrays.
+            dataset[var_name].values = dataset[var_name].values / 25.4
+        if request.netcdf_awc is None or request.var_name_awc is None:
+            raise ValueError("Missing the AWC file and/or variable name argument(s)")
+        awc_dataset = xr.open_dataset(request.netcdf_awc)
+        awc_var_name = request.var_name_awc
+        # An absent units attribute means the AWC is already in inches.
+        awc_units = str(awc_dataset[awc_var_name].attrs.get("units", "")).strip().lower()
+        if awc_units in ("mm", "millimeters", "millimeter"):
+            awc_dataset[awc_var_name].values = awc_dataset[awc_var_name].values / 25.4
+        elif awc_units and awc_units not in ("inch", "inches"):
+            # Use !r so control characters cannot alter log lines or terminal output.
+            raise ValueError(f"Unsupported available water capacity units: {awc_units!r}")
+        return awc_dataset
+
+    @staticmethod
+    def compute(context: _ComputeContext) -> None:
+        request = context.request
+        assert request.var_name_precip is not None, _UNVALIDATED_PRECIP
+        assert request.var_name_pet is not None, _UNVALIDATED_PET
+        assert request.var_name_awc is not None, _UNVALIDATED_AWC
+        assert context.prepared is not None, "the AWC dataset is opened before the shared arrays are filled"
+        transport = context.transport
+        awc_array = context.prepared[request.var_name_awc]
+        transport.write(request.var_name_awc, awc_array.values)
+        for key in _PalmersAdapter.output_keys:
+            if key not in transport:
+                transport.allocate(key, context.output_shape)
+        # TODO Restore the Gregorian calendar here if daily Palmers become supported.
+        _parallel_process(request, context.arguments, transport)
+
+    @staticmethod
+    def write(context: _ComputeContext) -> None:
+        dataset = context.dataset
+        source = _output_source(context.request, dataset)
+        output_encodings = _trimmed_output_encodings(context.output_encodings, context.output_shape)
+        for key, var_name, cf_key, index_name in _PalmersAdapter.outputs:
+            index_values = context.transport.read(key, context.output_shape)
+            # scPDSI's percentile rescaling has no hard bound.
+            extra = None if var_name == "scpdsi" else {"valid_min": -10.0, "valid_max": 10.0}
+            attrs = build_index_attrs(source, cf_key, index_name=index_name, extra=extra)
+            dataset[var_name] = xr.Variable(
+                dims=context.output_dims,
+                data=index_values,
+                attrs=attrs,
+                encoding=output_encodings,
+            )
+            drop_var_names = [name for name in dataset.data_vars if name != var_name]
+            if len(drop_var_names):
+                dataset = dataset.drop_vars(names=drop_var_names)
+            netcdf_file_name = context.request.output_file_base + "_" + var_name + ".nc"
+            write_netcdf_atomic(
+                dataset,
+                netcdf_file_name,
+                engine=context.output_engine,
+                pack=context.request.pack_output,
+            )
+
+    @staticmethod
+    def run(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
+        _compute_write_index(_IndexRequest.from_arguments(arguments, index="palmers", input_type=input_type), transport)
 
 
 def _time_whole_chunks(input_type: DatasetLayout) -> dict[str, Any]:
@@ -2026,73 +1901,127 @@ def _write_xarray_index(
     write_netcdf_atomic(values, output_file, engine=output_engine, pack=request.pack_output)
 
 
-def _run_kbdi(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
-    """
-    Compute KBDI through the fire module's xarray API.
+class _KBDIAdapter(_IndexAdapter):
+    """Use the fire xarray path without shared-array calendar or unit conversion."""
 
-    KBDI does not route through _compute_write_index(), since the shared daily
-    path reshapes daily inputs into 366-day years and coerces input units, both
-    of which corrupt the KBDI recurrence.
+    index = "kbdi"
+    input_paths = ("netcdf_precip", "var_name_precip", "netcdf_temp", "var_name_temp")
+    requires_precip = True
+    consumed_flags = _PRECIP_FLAGS | _TEMPERATURE_FLAGS | frozenset({"kbdi_units", "kbdi_initial"})
 
-    :param arguments: the parsed command line arguments
-    :param input_type: the input type determined by argument validation
-    """
-    request = _IndexRequest.from_arguments(arguments, index="kbdi", input_type=input_type)
-    assert request.netcdf_precip is not None and request.var_name_precip is not None
-    assert request.netcdf_temp is not None and request.var_name_temp is not None
+    @staticmethod
+    def validate_arguments(args: argparse.Namespace) -> None:
+        if args.periodicity is not compute.Periodicity.daily:
+            msg = "Invalid periodicity argument for KBDI: " + f"'{args.periodicity}' -- only 'daily' is supported"
+            _logger.error(msg)
+            raise ValueError(msg)
+        if args.netcdf_temp is None:
+            msg = "Missing the required temperature file argument"
+            _logger.error(msg)
+            raise ValueError(msg)
+        if args.var_name_temp is None:
+            msg = "Missing temperature variable name"
+            _logger.error(msg)
+            raise ValueError(msg)
 
-    chunks = _time_whole_chunks(request.input_type)
+    @staticmethod
+    def validate_inputs(args: argparse.Namespace, context: _InputContext) -> None:
+        with xr.open_dataset(args.netcdf_temp) as dataset_temp:
+            if args.var_name_temp not in dataset_temp.variables:
+                msg = (
+                    f"Invalid temperature variable name: '{args.var_name_temp}'"
+                    + f" does not exist in temperature file '{args.netcdf_temp}'"
+                )
+                _logger.error(msg)
+                raise ValueError(msg)
+            dimensions_temp = dataset_temp[args.var_name_temp].dims
+            # Compare names, not storage order, because fire.kbdi() aligns dimensions by name.
+            if set(dimensions_temp) != set(context.dimensions):
+                msg = (
+                    f"Invalid dimensions of the temperature variable: {dimensions_temp} "
+                    + f"(expected the precipitation variable dimensions: {context.dimensions})"
+                )
+                _logger.error(msg)
+                raise ValueError(msg)
+            if not np.array_equal(context.times, dataset_temp["time"].values[:]):
+                msg = "Precipitation and temperature variables contain non-matching times"
+                _logger.error(msg)
+                raise ValueError(msg)
+            if context.input_type == DatasetLayout.GRID:
+                assert context.latitudes is not None
+                assert context.longitudes is not None
+                if not np.allclose(
+                    context.latitudes,
+                    dataset_temp["lat"][:],
+                    atol=utils.get_tolerance(context.latitudes),
+                ):
+                    msg = "Precipitation and temperature variables contain non-matching latitudes"
+                    _logger.error(msg)
+                    raise ValueError(msg)
+                if not np.allclose(
+                    context.longitudes,
+                    dataset_temp["lon"][:],
+                    atol=utils.get_tolerance(context.longitudes),
+                ):
+                    msg = "Precipitation and temperature variables contain non-matching longitudes"
+                    _logger.error(msg)
+                    raise ValueError(msg)
+            elif context.input_type == DatasetLayout.DIVISIONS:
+                assert context.divisions is not None
+                if not np.array_equal(context.divisions, dataset_temp["division"][:]):
+                    msg = "Precipitation and temperature variables contain non-matching division IDs"
+                    _logger.error(msg)
+                    raise ValueError(msg)
 
-    with (
-        _open_with_default_chunks(xr.open_dataset, request.netcdf_precip, chunks=chunks) as dataset_precip,
-        _open_with_default_chunks(xr.open_dataset, request.netcdf_temp, chunks=chunks) as dataset_temp,
-    ):
-        # these default to None so an unconsumed KBDI flag on another index is
-        # detectable; resolve the documented defaults here
-        units: Literal["metric", "imperial"] = arguments.kbdi_units or "metric"
-        initial_kbdi: float = 0.0 if arguments.kbdi_initial is None else arguments.kbdi_initial
-        kbdi_values = fire.kbdi(
-            dataset_precip[request.var_name_precip],
-            dataset_temp[request.var_name_temp],
-            units=units,
-            initial_kbdi=initial_kbdi,
-        )
+    @staticmethod
+    def run(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
+        request = _IndexRequest.from_arguments(arguments, index="kbdi", input_type=input_type)
+        assert request.netcdf_precip is not None and request.var_name_precip is not None
+        assert request.netcdf_temp is not None and request.var_name_temp is not None
+        chunks = _time_whole_chunks(request.input_type)
+        with (
+            _open_with_default_chunks(xr.open_dataset, request.netcdf_precip, chunks=chunks) as dataset_precip,
+            _open_with_default_chunks(xr.open_dataset, request.netcdf_temp, chunks=chunks) as dataset_temp,
+        ):
+            # Resolve defaults here so flags for other indices remain detectable as unused.
+            units: Literal["metric", "imperial"] = arguments.kbdi_units or "metric"
+            initial_kbdi: float = 0.0 if arguments.kbdi_initial is None else arguments.kbdi_initial
+            kbdi_values = fire.kbdi(
+                dataset_precip[request.var_name_precip],
+                dataset_temp[request.var_name_temp],
+                units=units,
+                initial_kbdi=initial_kbdi,
+            )
+            assert isinstance(kbdi_values, xr.DataArray)
+            kbdi_values.name = "kbdi_imperial" if units == "imperial" else "kbdi"
+            output_file = f"{request.output_file_base}_{kbdi_values.name}.nc"
+            _write_xarray_index(request, kbdi_values, output_file, dataset_precip[request.var_name_precip])
 
-        # the xarray route names the result after its precipitation
-        # input; use the CF variable name the `units` argument selected
-        kbdi_values.name = "kbdi_imperial" if units == "imperial" else "kbdi"
-        output_file = f"{request.output_file_base}_{kbdi_values.name}.nc"
-        _write_xarray_index(request, kbdi_values, output_file, dataset_precip[request.var_name_precip])
 
+class _PEAdapter(_IndexAdapter):
+    """Compute PE and supply its file to indices that require it."""
 
-def _run_pe(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
-    """
-    Compute effective precipitation (PE) through the flood module's xarray API.
+    index = "pe"
+    input_paths = ("netcdf_precip", "var_name_precip")
+    requires_precip = True
+    consumed_flags = _PRECIP_FLAGS
+    validate_arguments = staticmethod(_validate_flood_arguments)
 
-    This is also the first step of the indices computed from PE: it writes the
-    PE file, and points ``--netcdf_pe`` at it for them to consume, as the PET
-    step does for SPEI.
-
-    :param arguments: the parsed command line arguments
-    :param input_type: the input type determined by argument validation
-    """
-    request = _IndexRequest.from_arguments(arguments, index="pe", input_type=input_type)
-    assert request.netcdf_precip is not None and request.var_name_precip is not None
-    # as for PET: a PE file a later index reads stays unpacked
-    request.pack_output = request.pack_output and arguments.index == "pe"
-
-    with _open_with_default_chunks(
-        xr.open_dataset, request.netcdf_precip, chunks=_time_whole_chunks(input_type)
-    ) as dataset_precip:
-        precipitation = dataset_precip[request.var_name_precip]
-        pe_values = flood.effective_precipitation(precipitation)
-
-        # the xarray route names the result after its precipitation input
-        pe_values.name = "pe"
-        output_file = f"{request.output_file_base}_pe.nc"
-        _write_xarray_index(request, pe_values, output_file, precipitation)
-
-    arguments.netcdf_pe, arguments.var_name_pe = output_file, "pe"
+    @staticmethod
+    def run(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
+        request = _IndexRequest.from_arguments(arguments, index="pe", input_type=input_type)
+        assert request.netcdf_precip is not None and request.var_name_precip is not None
+        # Intermediate PE stays unpacked, as intermediate PET does.
+        request.pack_output = request.pack_output and arguments.index == "pe"
+        with _open_with_default_chunks(
+            xr.open_dataset, request.netcdf_precip, chunks=_time_whole_chunks(input_type)
+        ) as dataset_precip:
+            precipitation = dataset_precip[request.var_name_precip]
+            pe_values = flood.effective_precipitation(precipitation)
+            pe_values.name = "pe"
+            output_file = f"{request.output_file_base}_pe.nc"
+            _write_xarray_index(request, pe_values, output_file, precipitation)
+        arguments.netcdf_pe, arguments.var_name_pe = output_file, "pe"
 
 
 def _run_from_pe(
@@ -2111,7 +2040,7 @@ def _run_from_pe(
     :param compute_index: the flood module's xarray call that computes the index from PE
     """
     if arguments.netcdf_pe is None:
-        _run_pe(arguments, input_type, transport)
+        _registry_for("pe").run(arguments, input_type, transport)
 
     request = _IndexRequest.from_arguments(arguments, index=index, input_type=input_type)
     assert request.netcdf_pe is not None and request.var_name_pe is not None
@@ -2127,83 +2056,77 @@ def _run_from_pe(
         _write_xarray_index(request, index_values, f"{request.output_file_base}_{index}.nc", pe)
 
 
-def _run_edi(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
-    """
-    Compute the Effective Drought Index through the flood module's xarray API.
+class _EDIAdapter(_IndexAdapter):
+    """Compute the Effective Drought Index from supplied or computed PE."""
 
-    :param arguments: the parsed command line arguments
-    :param input_type: the input type determined by argument validation
-    """
-    _run_from_pe(
-        arguments,
-        input_type,
-        "edi",
-        lambda pe: flood.edi(
-            pe,
-            calibration_year_initial=arguments.calibration_start_year,
-            calibration_year_final=arguments.calibration_end_year,
-        ),
-        transport,
-    )
+    index = "edi"
+    input_paths = ("netcdf_pe", "var_name_pe")
+    requires_pe = True
+    consumed_flags = _PRECIP_FLAGS | _PE_FLAGS | _CALIBRATION_FLAGS
+    validate_arguments = staticmethod(_validate_flood_arguments)
 
-
-def _run_flood_index(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
-    """
-    Compute the Flood Index through the flood module's xarray API.
-
-    :param arguments: the parsed command line arguments
-    :param input_type: the input type determined by argument validation
-    """
-
-    _run_from_pe(
-        arguments,
-        input_type,
-        "flood_index",
-        lambda pe: flood.flood_index(
-            pe,
-            calibration_year_initial=arguments.calibration_start_year,
-            calibration_year_final=arguments.calibration_end_year,
-            year_start_month=arguments.year_start_month,
-        ),
-        transport,
-    )
+    @staticmethod
+    def run(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
+        _run_from_pe(
+            arguments,
+            input_type,
+            "edi",
+            lambda pe: flood.edi(
+                pe,
+                calibration_year_initial=arguments.calibration_start_year,
+                calibration_year_final=arguments.calibration_end_year,
+            ),
+            transport,
+        )
 
 
-def _run_api(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
-    """
-    Compute the Antecedent Precipitation Index through the flood module's xarray API.
+class _FloodIndexAdapter(_IndexAdapter):
+    """Compute the Flood Index from supplied or computed PE."""
 
-    :param arguments: the parsed command line arguments
-    :param input_type: the input type determined by argument validation
-    """
-    request = _IndexRequest.from_arguments(arguments, index="api", input_type=input_type)
-    assert request.netcdf_precip is not None and request.var_name_precip is not None
+    index = "flood_index"
+    input_paths = ("netcdf_pe", "var_name_pe")
+    requires_pe = True
+    consumed_flags = _PRECIP_FLAGS | _PE_FLAGS | _CALIBRATION_FLAGS | frozenset({"year_start_month"})
+    validate_arguments = staticmethod(_validate_flood_arguments)
 
-    with _open_with_default_chunks(
-        xr.open_dataset, request.netcdf_precip, chunks=_time_whole_chunks(input_type)
-    ) as dataset_precip:
-        precipitation = dataset_precip[request.var_name_precip]
-        api_values = flood.antecedent_precipitation_index(precipitation, arguments.api_k)
-        assert isinstance(api_values, xr.DataArray)
+    @staticmethod
+    def run(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
+        _run_from_pe(
+            arguments,
+            input_type,
+            "flood_index",
+            lambda pe: flood.flood_index(
+                pe,
+                calibration_year_initial=arguments.calibration_start_year,
+                calibration_year_final=arguments.calibration_end_year,
+                year_start_month=arguments.year_start_month,
+            ),
+            transport,
+        )
 
-        # the xarray route names the result after its precipitation input
-        api_values.name = "api"
-        _write_xarray_index(request, api_values, f"{request.output_file_base}_api.nc", precipitation)
 
+class _APIAdapter(_IndexAdapter):
+    """Compute the Antecedent Precipitation Index through xarray."""
 
-# the CF registry name, and so the output variable name, of each energy index
-_ENERGY_OUTPUT_NAMES: dict[str, str] = {
-    "hdd": "heating_degree_days",
-    "cdd": "cooling_degree_days",
-    "edd": "energy_degree_days",
-    "wind_profile": "hub_height_wind_speed",
-    "srepi": "srepi",
-    "demand_index": "standardized_demand_index",
-    "srli": "srli",
-}
+    index = "api"
+    input_paths = ("netcdf_precip", "var_name_precip")
+    requires_precip = True
+    consumed_flags = _PRECIP_FLAGS | frozenset({"api_k"})
+    validate_arguments = staticmethod(_validate_flood_arguments)
 
-# the energy degree days, which are computed per daily time step
-_ENERGY_DEGREE_DAY_INDICES = ("hdd", "cdd", "edd")
+    @staticmethod
+    def run(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
+        request = _IndexRequest.from_arguments(arguments, index="api", input_type=input_type)
+        assert request.netcdf_precip is not None and request.var_name_precip is not None
+        with _open_with_default_chunks(
+            xr.open_dataset, request.netcdf_precip, chunks=_time_whole_chunks(input_type)
+        ) as dataset_precip:
+            precipitation = dataset_precip[request.var_name_precip]
+            api_values = flood.antecedent_precipitation_index(precipitation, arguments.api_k)
+            assert isinstance(api_values, xr.DataArray)
+            api_values.name = "api"
+            _write_xarray_index(request, api_values, f"{request.output_file_base}_api.nc", precipitation)
+
 
 # the request fields naming each energy index's input file and variable
 _ENERGY_INPUT_FIELDS: tuple[tuple[str, str], ...] = (
@@ -2283,368 +2206,250 @@ def _run_energy_index(
         _write_xarray_index(request, index_values, f"{request.output_file_base}_{index_values.name}.nc", source)
 
 
-def _run_hdd(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
-    """
-    Compute heating degree days through the energy module's xarray API.
+class _EnergyAdapter(_IndexAdapter):
+    """Declare the CF output name used by the shared xarray energy runner."""
 
-    :param arguments: the parsed command line arguments
-    :param input_type: the input type determined by argument validation
-    """
-    if arguments.heating_base_temperature is None:
-        raise ValueError(_UNVALIDATED_BASE)
-    _run_energy_index(
-        arguments,
-        input_type,
-        "hdd",
-        partial(energy.heating_degree_days, base_temperature=arguments.heating_base_temperature),
+    output_name: str
+
+
+class _HDDAdapter(_EnergyAdapter):
+    """Compute heating degree days through xarray."""
+
+    index = "hdd"
+    output_name = "heating_degree_days"
+    input_paths = ("netcdf_temp", "var_name_temp")
+    consumed_flags = _TEMPERATURE_FLAGS | frozenset({"heating_base_temperature"})
+    validate_arguments = staticmethod(_validate_degree_day_arguments)
+
+    @staticmethod
+    def run(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
+        if arguments.heating_base_temperature is None:
+            raise ValueError(_UNVALIDATED_BASE)
+        _run_energy_index(
+            arguments,
+            input_type,
+            "hdd",
+            partial(energy.heating_degree_days, base_temperature=arguments.heating_base_temperature),
+        )
+
+
+class _CDDAdapter(_EnergyAdapter):
+    """Compute cooling degree days through xarray."""
+
+    index = "cdd"
+    output_name = "cooling_degree_days"
+    input_paths = ("netcdf_temp", "var_name_temp")
+    consumed_flags = _TEMPERATURE_FLAGS | frozenset({"cooling_base_temperature"})
+    validate_arguments = staticmethod(_validate_degree_day_arguments)
+
+    @staticmethod
+    def run(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
+        if arguments.cooling_base_temperature is None:
+            raise ValueError(_UNVALIDATED_BASE)
+        _run_energy_index(
+            arguments,
+            input_type,
+            "cdd",
+            partial(energy.cooling_degree_days, base_temperature=arguments.cooling_base_temperature),
+        )
+
+
+class _EDDAdapter(_EnergyAdapter):
+    """Compute energy degree days through xarray."""
+
+    index = "edd"
+    output_name = "energy_degree_days"
+    input_paths = ("netcdf_temp", "var_name_temp")
+    consumed_flags = _TEMPERATURE_FLAGS | frozenset({"heating_base_temperature", "cooling_base_temperature"})
+    validate_arguments = staticmethod(_validate_degree_day_arguments)
+
+    @staticmethod
+    def run(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
+        if arguments.heating_base_temperature is None or arguments.cooling_base_temperature is None:
+            raise ValueError(_UNVALIDATED_BASE)
+        _run_energy_index(
+            arguments,
+            input_type,
+            "edd",
+            partial(
+                energy.energy_degree_days,
+                heating_base_temperature=arguments.heating_base_temperature,
+                cooling_base_temperature=arguments.cooling_base_temperature,
+            ),
+        )
+
+
+class _WindProfileAdapter(_EnergyAdapter):
+    """Compute hub-height wind speed with the selected profile method."""
+
+    index = "wind_profile"
+    output_name = "hub_height_wind_speed"
+    input_paths = ("netcdf_wind", "var_name_wind")
+    requires_wind = True
+    consumed_flags = _WIND_FLAGS | frozenset(
+        {"reference_height", "hub_height", "wind_profile_method", "wind_shear_alpha", "roughness_length"}
     )
 
+    @staticmethod
+    def validate_arguments(args: argparse.Namespace) -> None:
+        if args.hub_height is None:
+            msg = "Missing the required --hub_height argument"
+            _logger.error(msg)
+            raise ValueError(msg)
+        if args.wind_profile_method == "log":
+            if args.roughness_length is None:
+                msg = "Missing the required --roughness_length argument for the log wind profile"
+                _logger.error(msg)
+                raise ValueError(msg)
+            if args.wind_shear_alpha is not None:
+                msg = "The --wind_shear_alpha argument is not applicable to the log wind profile"
+                _logger.error(msg)
+                raise ValueError(msg)
+        elif args.roughness_length is not None:
+            msg = "The --roughness_length argument requires --wind_profile_method log"
+            _logger.error(msg)
+            raise ValueError(msg)
 
-def _run_cdd(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
-    """
-    Compute cooling degree days through the energy module's xarray API.
-
-    :param arguments: the parsed command line arguments
-    :param input_type: the input type determined by argument validation
-    """
-    if arguments.cooling_base_temperature is None:
-        raise ValueError(_UNVALIDATED_BASE)
-    _run_energy_index(
-        arguments,
-        input_type,
-        "cdd",
-        partial(energy.cooling_degree_days, base_temperature=arguments.cooling_base_temperature),
-    )
-
-
-def _run_edd(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
-    """
-    Compute energy degree days through the energy module's xarray API.
-
-    :param arguments: the parsed command line arguments
-    :param input_type: the input type determined by argument validation
-    """
-    if arguments.heating_base_temperature is None or arguments.cooling_base_temperature is None:
-        raise ValueError(_UNVALIDATED_BASE)
-    _run_energy_index(
-        arguments,
-        input_type,
-        "edd",
-        partial(
-            energy.energy_degree_days,
-            heating_base_temperature=arguments.heating_base_temperature,
-            cooling_base_temperature=arguments.cooling_base_temperature,
-        ),
-    )
-
-
-def _run_wind_profile(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
-    """
-    Compute hub-height wind speed through the energy module's xarray API.
-
-    The reference height defaults to 10 m, the height of the standard
-    near-surface wind field, and the shear exponent to the power law's 1/7. The
-    logarithmic profile takes the roughness length instead of the exponent, and
-    its output name carries the method so neither profile overwrites the other.
-
-    :param arguments: the parsed command line arguments
-    :param input_type: the input type determined by argument validation
-    """
-    if arguments.hub_height is None:
-        raise ValueError(_UNVALIDATED_HEIGHT)
-    reference_height = 10.0 if arguments.reference_height is None else arguments.reference_height
-
-    if arguments.wind_profile_method == "log":
+    @staticmethod
+    def run(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
+        if arguments.hub_height is None:
+            raise ValueError(_UNVALIDATED_HEIGHT)
+        reference_height = 10.0 if arguments.reference_height is None else arguments.reference_height
+        if arguments.wind_profile_method == "log":
+            transform = partial(
+                energy.hub_height_wind_speed,
+                reference_height=reference_height,
+                hub_height=arguments.hub_height,
+                method="log",
+                roughness_length=arguments.roughness_length,
+            )
+            _run_energy_index(arguments, input_type, "wind_profile", transform, name_suffix="_log")
+            return
+        alpha = 1 / 7 if arguments.wind_shear_alpha is None else arguments.wind_shear_alpha
         transform = partial(
             energy.hub_height_wind_speed,
             reference_height=reference_height,
             hub_height=arguments.hub_height,
-            method="log",
-            roughness_length=arguments.roughness_length,
+            method="power",
+            alpha=alpha,
         )
-        _run_energy_index(arguments, input_type, "wind_profile", transform, name_suffix="_log")
-        return
+        _run_energy_index(arguments, input_type, "wind_profile", transform)
 
-    alpha = 1 / 7 if arguments.wind_shear_alpha is None else arguments.wind_shear_alpha
-    transform = partial(
-        energy.hub_height_wind_speed,
-        reference_height=reference_height,
-        hub_height=arguments.hub_height,
-        method="power",
-        alpha=alpha,
+
+class _SREPIAdapter(_EnergyAdapter):
+    """Compute SREPI for each requested timescale."""
+
+    index = "srepi"
+    output_name = "srepi"
+    input_paths = ("netcdf_values", "var_name_values")
+    requires_values = True
+    requires_scales = True
+    consumed_flags = _VALUES_FLAGS | _CALIBRATION_FLAGS | _SCALE_FLAGS
+
+    @staticmethod
+    def run(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
+        for scale in arguments.scales:
+            _run_energy_index(
+                arguments,
+                input_type,
+                "srepi",
+                partial(
+                    energy.srepi,
+                    scale=scale,
+                    periodicity=arguments.periodicity,
+                    calibration_year_initial=arguments.calibration_start_year,
+                    calibration_year_final=arguments.calibration_end_year,
+                    output_scale=arguments.output_scale or "normal",
+                    zero_handling=arguments.zero_handling,
+                ),
+                scale=scale,
+            )
+
+
+class _DemandIndexAdapter(_EnergyAdapter):
+    """Compute the standardized demand index for each requested timescale."""
+
+    index = "demand_index"
+    output_name = "standardized_demand_index"
+    input_paths = ("netcdf_values", "var_name_values")
+    requires_values = True
+    requires_scales = True
+    consumed_flags = _VALUES_FLAGS | _CALIBRATION_FLAGS | _SCALE_FLAGS
+
+    @staticmethod
+    def run(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
+        for scale in arguments.scales:
+            _run_energy_index(
+                arguments,
+                input_type,
+                "demand_index",
+                partial(
+                    energy.standardized_demand_index,
+                    scale=scale,
+                    periodicity=arguments.periodicity,
+                    calibration_year_initial=arguments.calibration_start_year,
+                    calibration_year_final=arguments.calibration_end_year,
+                    output_scale=arguments.output_scale or "normal",
+                    zero_handling=arguments.zero_handling,
+                ),
+                scale=scale,
+            )
+
+
+class _SRLIAdapter(_EnergyAdapter):
+    """Compute SRLI for each requested timescale."""
+
+    index = "srli"
+    output_name = "srli"
+    input_paths = ("netcdf_values", "var_name_values")
+    requires_values = True
+    requires_scales = True
+    consumed_flags = _VALUES_FLAGS | _CALIBRATION_FLAGS | _SCALE_FLAGS
+
+    @staticmethod
+    def run(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
+        for scale in arguments.scales:
+            _run_energy_index(
+                arguments,
+                input_type,
+                "srli",
+                partial(
+                    energy.srli,
+                    scale=scale,
+                    periodicity=arguments.periodicity,
+                    calibration_year_initial=arguments.calibration_start_year,
+                    calibration_year_final=arguments.calibration_end_year,
+                    output_scale=arguments.output_scale or "normal",
+                ),
+                scale=scale,
+            )
+
+
+_INDEX_REGISTRY: dict[str, _IndexAdapter] = {
+    adapter.index: adapter
+    for adapter in (
+        _SPIAdapter(),
+        _SPEIAdapter(),
+        _PNPAdapter(),
+        _PETAdapter(),
+        _PalmersAdapter(),
+        _KBDIAdapter(),
+        _PEAdapter(),
+        _EDIAdapter(),
+        _FloodIndexAdapter(),
+        _APIAdapter(),
+        _HDDAdapter(),
+        _CDDAdapter(),
+        _EDDAdapter(),
+        _WindProfileAdapter(),
+        _SREPIAdapter(),
+        _DemandIndexAdapter(),
+        _SRLIAdapter(),
     )
+}
 
-    _run_energy_index(arguments, input_type, "wind_profile", transform)
-
-
-def _run_srepi(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
-    """
-    Compute SREPI for each requested scale through the energy xarray adapter.
-
-    :param arguments: the parsed command line arguments
-    :param input_type: the input type determined by argument validation
-    """
-    for scale in arguments.scales:
-        _run_energy_index(
-            arguments,
-            input_type,
-            "srepi",
-            partial(
-                energy.srepi,
-                scale=scale,
-                periodicity=arguments.periodicity,
-                calibration_year_initial=arguments.calibration_start_year,
-                calibration_year_final=arguments.calibration_end_year,
-                output_scale=arguments.output_scale or "normal",
-                zero_handling=arguments.zero_handling,
-            ),
-            scale=scale,
-        )
-
-
-def _run_demand_index(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
-    """
-    Compute the standardized demand index for each requested scale.
-
-    :param arguments: the parsed command line arguments
-    :param input_type: the input type determined by argument validation
-    """
-    for scale in arguments.scales:
-        _run_energy_index(
-            arguments,
-            input_type,
-            "demand_index",
-            partial(
-                energy.standardized_demand_index,
-                scale=scale,
-                periodicity=arguments.periodicity,
-                calibration_year_initial=arguments.calibration_start_year,
-                calibration_year_final=arguments.calibration_end_year,
-                output_scale=arguments.output_scale or "normal",
-                zero_handling=arguments.zero_handling,
-            ),
-            scale=scale,
-        )
-
-
-def _run_srli(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
-    """
-    Compute SRLI for each requested scale through the energy xarray adapter.
-
-    :param arguments: the parsed command line arguments
-    :param input_type: the input type determined by argument validation
-    """
-    for scale in arguments.scales:
-        _run_energy_index(
-            arguments,
-            input_type,
-            "srli",
-            partial(
-                energy.srli,
-                scale=scale,
-                periodicity=arguments.periodicity,
-                calibration_year_initial=arguments.calibration_start_year,
-                calibration_year_final=arguments.calibration_end_year,
-                output_scale=arguments.output_scale or "normal",
-            ),
-            scale=scale,
-        )
-
-
-# the argparse dest names the registrations consume, grouped by input kind;
-# universal arguments and the globally validated output_scale and zero_handling
-# are not repeated here
-_PRECIP_FLAGS = frozenset({"netcdf_precip", "var_name_precip"})
-_TEMPERATURE_FLAGS = frozenset({"netcdf_temp", "var_name_temp"})
-_PET_FLAGS = frozenset({"netcdf_pet", "var_name_pet"})
-_AWC_FLAGS = frozenset({"netcdf_awc", "var_name_awc"})
-_PE_FLAGS = frozenset({"netcdf_pe", "var_name_pe"})
-_WIND_FLAGS = frozenset({"netcdf_wind", "var_name_wind"})
-_VALUES_FLAGS = frozenset({"netcdf_values", "var_name_values"})
-_CALIBRATION_FLAGS = frozenset({"calibration_start_year", "calibration_end_year"})
-_SCALE_FLAGS = frozenset({"scales"})
-
-_INDEX_REGISTRY: dict[str, _IndexRegistration] = {
-    "spi": _IndexRegistration(
-        index="spi",
-        run=_run_spi,
-        input_paths=("netcdf_precip", "var_name_precip"),
-        requires_precip=True,
-        requires_scales=True,
-        consumed_flags=_PRECIP_FLAGS | _CALIBRATION_FLAGS | _SCALE_FLAGS,
-        build_arguments=_spi_arguments,
-        variable_attributes=_spi_variable_attributes,
-        kernel=_spi,
-        input_array_keys=_precipitation_array_key,
-        worker=run_along_axis,
-        compute=_compute_single_array,
-        write=_write_single_output,
-    ),
-    "spei": _IndexRegistration(
-        index="spei",
-        run=_run_spei,
-        input_paths=("netcdf_precip", "var_name_precip", "netcdf_pet", "var_name_pet"),
-        requires_precip=True,
-        requires_pet_or_temp=True,
-        requires_scales=True,
-        consumed_flags=_PRECIP_FLAGS | _TEMPERATURE_FLAGS | _PET_FLAGS | _CALIBRATION_FLAGS | _SCALE_FLAGS,
-        build_arguments=_spi_arguments,
-        variable_attributes=_spei_variable_attributes,
-        kernel=_spei,
-        input_array_keys=_precipitation_and_pet_array_keys,
-        worker=run_along_axis_double,
-        compute=_compute_single_array,
-        write=_write_single_output,
-    ),
-    "pnp": _IndexRegistration(
-        index="pnp",
-        run=_run_pnp,
-        input_paths=("netcdf_precip", "var_name_precip"),
-        requires_precip=True,
-        requires_scales=True,
-        consumed_flags=_PRECIP_FLAGS | _CALIBRATION_FLAGS | _SCALE_FLAGS,
-        build_arguments=_pnp_arguments,
-        variable_attributes=_pnp_variable_attributes,
-        kernel=_pnp,
-        input_array_keys=_precipitation_array_key,
-        worker=run_along_axis,
-        compute=_compute_single_array,
-        write=_write_single_output,
-    ),
-    "pet": _IndexRegistration(
-        index="pet",
-        run=_run_pet,
-        input_paths=("netcdf_temp", "var_name_temp"),
-        consumed_flags=_TEMPERATURE_FLAGS,
-        build_arguments=_pet_arguments,
-        variable_attributes=_pet_variable_attributes,
-        prepare_arrays=_prepare_latitude_array,
-        kernel=_pet,
-        input_array_keys=_temperature_and_latitude_array_keys,
-        coordinate_input=True,
-        worker=run_along_axis_double,
-        compute=_compute_single_array,
-        write=_write_single_output,
-    ),
-    "palmers": _IndexRegistration(
-        index="palmers",
-        run=_run_palmers,
-        input_paths=(
-            "netcdf_precip",
-            "var_name_precip",
-            "netcdf_pet",
-            "var_name_pet",
-            "netcdf_awc",
-            "var_name_awc",
-        ),
-        requires_precip=True,
-        requires_pet_or_temp=True,
-        requires_awc=True,
-        consumed_flags=_PRECIP_FLAGS | _TEMPERATURE_FLAGS | _PET_FLAGS | _AWC_FLAGS | _CALIBRATION_FLAGS,
-        build_arguments=_palmer_arguments,
-        prepare_inputs=_prepare_palmer_inputs,
-        kernel=_palmers,
-        input_array_keys=_palmer_array_keys,
-        output_keys=tuple(key for key, _var_name, _cf_key, _index_name in _PALMER_OUTPUTS),
-        worker=run_palmers,
-        compute=_compute_palmers,
-        write=_write_palmer_outputs,
-    ),
-    "kbdi": _IndexRegistration(
-        index="kbdi",
-        run=_run_kbdi,
-        input_paths=("netcdf_precip", "var_name_precip", "netcdf_temp", "var_name_temp"),
-        requires_precip=True,
-        consumed_flags=_PRECIP_FLAGS | _TEMPERATURE_FLAGS | frozenset({"kbdi_units", "kbdi_initial"}),
-        validate_arguments=_validate_kbdi_arguments,
-        validate_inputs=_validate_kbdi_inputs,
-    ),
-    "pe": _IndexRegistration(
-        index="pe",
-        run=_run_pe,
-        input_paths=("netcdf_precip", "var_name_precip"),
-        requires_precip=True,
-        consumed_flags=_PRECIP_FLAGS,
-        validate_arguments=_validate_flood_arguments,
-    ),
-    "edi": _IndexRegistration(
-        index="edi",
-        run=_run_edi,
-        input_paths=("netcdf_pe", "var_name_pe"),
-        requires_pe=True,
-        consumed_flags=_PRECIP_FLAGS | _PE_FLAGS | _CALIBRATION_FLAGS,
-        validate_arguments=_validate_flood_arguments,
-    ),
-    "flood_index": _IndexRegistration(
-        index="flood_index",
-        run=_run_flood_index,
-        input_paths=("netcdf_pe", "var_name_pe"),
-        requires_pe=True,
-        consumed_flags=_PRECIP_FLAGS | _PE_FLAGS | _CALIBRATION_FLAGS | frozenset({"year_start_month"}),
-        validate_arguments=_validate_flood_arguments,
-    ),
-    "api": _IndexRegistration(
-        index="api",
-        run=_run_api,
-        input_paths=("netcdf_precip", "var_name_precip"),
-        requires_precip=True,
-        consumed_flags=_PRECIP_FLAGS | frozenset({"api_k"}),
-        validate_arguments=_validate_flood_arguments,
-    ),
-    "hdd": _IndexRegistration(
-        index="hdd",
-        run=_run_hdd,
-        input_paths=("netcdf_temp", "var_name_temp"),
-        consumed_flags=_TEMPERATURE_FLAGS | frozenset({"heating_base_temperature"}),
-        validate_arguments=_validate_energy_arguments,
-    ),
-    "cdd": _IndexRegistration(
-        index="cdd",
-        run=_run_cdd,
-        input_paths=("netcdf_temp", "var_name_temp"),
-        consumed_flags=_TEMPERATURE_FLAGS | frozenset({"cooling_base_temperature"}),
-        validate_arguments=_validate_energy_arguments,
-    ),
-    "edd": _IndexRegistration(
-        index="edd",
-        run=_run_edd,
-        input_paths=("netcdf_temp", "var_name_temp"),
-        consumed_flags=_TEMPERATURE_FLAGS | frozenset({"heating_base_temperature", "cooling_base_temperature"}),
-        validate_arguments=_validate_energy_arguments,
-    ),
-    "wind_profile": _IndexRegistration(
-        index="wind_profile",
-        run=_run_wind_profile,
-        input_paths=("netcdf_wind", "var_name_wind"),
-        requires_wind=True,
-        consumed_flags=_WIND_FLAGS
-        | frozenset({"reference_height", "hub_height", "wind_profile_method", "wind_shear_alpha", "roughness_length"}),
-        validate_arguments=_validate_energy_arguments,
-    ),
-    "srepi": _IndexRegistration(
-        index="srepi",
-        run=_run_srepi,
-        input_paths=("netcdf_values", "var_name_values"),
-        requires_values=True,
-        requires_scales=True,
-        consumed_flags=_VALUES_FLAGS | _CALIBRATION_FLAGS | _SCALE_FLAGS,
-    ),
-    "demand_index": _IndexRegistration(
-        index="demand_index",
-        run=_run_demand_index,
-        input_paths=("netcdf_values", "var_name_values"),
-        requires_values=True,
-        requires_scales=True,
-        consumed_flags=_VALUES_FLAGS | _CALIBRATION_FLAGS | _SCALE_FLAGS,
-    ),
-    "srli": _IndexRegistration(
-        index="srli",
-        run=_run_srli,
-        input_paths=("netcdf_values", "var_name_values"),
-        requires_values=True,
-        requires_scales=True,
-        consumed_flags=_VALUES_FLAGS | _CALIBRATION_FLAGS | _SCALE_FLAGS,
-    ),
+_ENERGY_OUTPUT_NAMES = {
+    adapter.index: adapter.output_name for adapter in _INDEX_REGISTRY.values() if isinstance(adapter, _EnergyAdapter)
 }
 
 # the indices behind each --index value, in the order they are run: PET runs
@@ -2675,7 +2480,7 @@ _INDEX_PIPELINES: dict[str, tuple[str, ...]] = {
 }
 
 
-def _registry_for(index: str) -> _IndexRegistration:
+def _registry_for(index: str) -> _IndexAdapter:
     """
     Return the registration of one computable index.
 
@@ -2689,7 +2494,7 @@ def _registry_for(index: str) -> _IndexRegistration:
         raise ValueError(f"Unsupported index: '{index}'") from None
 
 
-def _handlers_for_index(index: str) -> tuple[_IndexRegistration, ...]:
+def _handlers_for_index(index: str) -> tuple[_IndexAdapter, ...]:
     """
     Return the registrations behind an ``--index`` value, in execution order.
 
@@ -2704,6 +2509,13 @@ def _handlers_for_index(index: str) -> tuple[_IndexRegistration, ...]:
         raise ValueError(f"Unsupported index: '{index}'") from None
 
     return tuple(_INDEX_REGISTRY[name] for name in pipeline)
+
+
+def _shared_array_adapter(index: str) -> _SharedArrayAdapter:
+    adapter = _registry_for(index)
+    if not isinstance(adapter, _SharedArrayAdapter):
+        raise TypeError(f"the '{index}' index does not compute from shared arrays")
+    return adapter
 
 
 def _build_parser() -> argparse.ArgumentParser:
