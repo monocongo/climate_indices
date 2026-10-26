@@ -163,8 +163,9 @@ replacement, use `mode="w"`: it changes only the new snapshot and preserves
 previous snapshots. A write that fails before the commit does not advance the
 branch. A commit error, such as a network timeout, can leave the outcome unknown:
 the branch can already point to the new snapshot. Compare
-`output_repo.lookup_branch("main")` with the tip before the write, then retry
-only if it did not change. A blind retry with `mode="w"` adds another snapshot,
+`output_repo.lookup_branch(branch)`, where `branch` is the branch passed to
+`write_icechunk`, with the tip before the write, then retry only if it did not
+change. A blind retry with `mode="w"` adds another snapshot,
 and one with `mode="w-"` rejects the group that the first commit created. Never
 delete or recreate an existing repository to retry a write. The helpers propagate
 write and commit errors; they do not merge concurrent sessions or retry conflicts.
