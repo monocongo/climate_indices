@@ -232,12 +232,11 @@ and the [Icechunk SPI/SPEI notebook](notebooks/icechunk_spi_spei.ipynb).
 ## Rust crate
 
 The numerical kernels are also available in the standalone `climate-indices`
-crate's `0.1.0-rc.1` prerelease
-([crates.io](https://crates.io/crates/climate-indices/0.1.0-rc.1),
-[docs.rs](https://docs.rs/climate-indices/0.1.0-rc.1)). Cargo requires an explicit
-prerelease version, such as `climate-indices = "0.1.0-rc.1"`; it does not select
-this version by default. The earlier `0.0.0` package reserves the name and contains
-no algorithms. The crate is pure Rust: `ndarray` is its only
+crate's `0.1.0` release
+([crates.io](https://crates.io/crates/climate-indices),
+[docs.rs](https://docs.rs/climate-indices)):
+`cargo add climate-indices`. The earlier `0.0.0` package reserved the name and
+contains no algorithms. The crate is pure Rust: `ndarray` is its only
 dependency, and it has no PyO3 or Python bindings. It provides kernels, not complete
 index workflows, so the caller prepares calendars, selects the Calibration Period,
 validates physical ranges, and applies the final transform.
@@ -1989,6 +1988,20 @@ The **climate_indices** library implements a **layered library architecture** op
 └────────────────────────────────────────────────────────────────────┘
 ```
 
+### Shared domain vocabulary
+
+`vocabulary.py` defines `Distribution`, `Periodicity`, `OutputScale`,
+`ZeroHandling`, and `Aggregation`, their validation tables, and shared choice
+validators. It imports only the standard library and `exceptions.py`.
+`compute.py` and `indices.py` import these definitions without a reverse
+import from the computation layer into the public API.
+
+New code imports the types from `climate_indices.vocabulary`.
+Existing paths, including `indices.Distribution` and `compute.Periodicity`,
+remain available as re-exports of the same objects.
+The enums retain their original `__module__` values for pickle and autodoc
+compatibility. `validate_output_scale` also retains its documented module path.
+
 ### Layer Responsibilities
 
 #### 1. CLI Layer
@@ -2035,7 +2048,7 @@ process_climate_indices = "climate_indices.__main__:main"
 - **`indices.py`**: Legacy numpy API
   - Backward-compatible function signatures
   - Direct numpy array inputs/outputs
-  - Distribution enum (`Distribution.gamma`, `Distribution.pearson`)
+  - Re-exports the Distribution enum (`Distribution.gamma`, `Distribution.pearson`)
   - SPI, SPEI, PNP, PET computation
 
 **API Design Decision**: The dual API approach allows:
@@ -2054,7 +2067,7 @@ process_climate_indices = "climate_indices.__main__:main"
   - `gamma_parameters()`, `pearson_parameters()`: Distribution fitting
   - `transform_fitted_gamma()`, `transform_fitted_pearson()`: CDF transformation
   - `sum_to_scale()`: Optimized sliding window summation
-  - `Periodicity` enum: `monthly` (12 steps/year), `daily` (366 steps/year), with a `period_length` property and a `unit()` method
+  - Re-exports the `Periodicity` enum: `monthly` (12 steps/year), `daily` (366 steps/year), and `hourly` (8784 steps/year), with a `period_length` property and a `unit()` method
 
 - **`palmer.py`**: Palmer Drought Index family
   - PDSI (Palmer Drought Severity Index)
@@ -3293,10 +3306,9 @@ each is a required check on the pull request. Run them locally with
 | `cargo deny --locked check -W unmaintained -W unsound` | The licenses, advisories, duplicate versions, and sources permitted by `deny.toml` cover everything that reaches a user — the published crate and the `climate-py` bindings the wheel compiles. Unmaintained and unsound advisories are warnings, so an upstream archive notice does not block an unrelated pull request. |
 
 The gates read the crate's own `rust-version` and version, so moving either needs no
-workflow change. `cargo semver-checks` compares against the published baseline: while
-`0.0.0` is the only release on crates.io the check has nothing to compare, and it has a
-baseline once a newer version is published — the rehearsal pre-release or the first real
-release (CRATE-11), whichever lands first.
+workflow change. `cargo semver-checks` compares against the published baseline. The
+`0.0.0` placeholder had no API to compare; since `0.1.0` was published, the check has a
+real baseline.
 
 CI runs the native legs with `CLIMATE_INDICES_REQUIRE_NATIVE=1`, which turns a
 missing extension into a test failure instead of a skip so a broken build cannot

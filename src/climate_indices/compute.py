@@ -8,8 +8,7 @@ import sys
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
-from enum import Enum
-from typing import TYPE_CHECKING, Any, Literal, cast, get_args
+from typing import Any, cast
 
 import numpy as np
 import scipy.special
@@ -29,6 +28,20 @@ from climate_indices.exceptions import (
     ShortCalibrationWarning,
 )
 from climate_indices.logging_config import get_logger
+from climate_indices.vocabulary import (
+    _PERIOD_LENGTHS,
+    OUTPUT_SCALES,
+    Aggregation,
+    Distribution,
+    OutputScale,
+    Periodicity,
+    ZeroHandling,
+    _validate_hourly_distribution,
+)
+from climate_indices.vocabulary import _ZERO_HANDLING_MODES as _ZERO_HANDLING_MODES
+from climate_indices.vocabulary import _validate_aggregation as _validate_aggregation
+from climate_indices.vocabulary import _validate_zero_handling as _validate_zero_handling
+from climate_indices.vocabulary import validate_output_scale as validate_output_scale
 
 try:
     # the optional Rust kernels (docs/architecture.md); without the extension every
@@ -37,14 +50,10 @@ try:
 except ImportError:
     _native = None  # type: ignore[assignment]
 
-if TYPE_CHECKING:
-    # only for typing: climate_indices.indices imports this module, so importing
-    # Distribution here at runtime would be circular
-    from climate_indices.indices import Distribution
-
 # declare the function names that should be included in the public API for this module
 __all__ = [
     "FitDiagnostics",
+    "Distribution",
     "Periodicity",
     "Aggregation",
     "OutputScale",
@@ -95,25 +104,10 @@ MIN_CALIBRATION_VALUES_FOR_EMPIRICAL = 10
 # Kolmogorov-Smirnov test p-value threshold for goodness-of-fit warnings
 GOODNESS_OF_FIT_P_VALUE_THRESHOLD = 0.05
 
-#: Where a zero accumulation is placed within the probability mass at zero, see
-#: ADR-0015: "classic" scores it Φ⁻¹(p0), "center_of_mass" Φ⁻¹(p0 / 2), and
-#: "mean_zero" −φ(Φ⁻¹(p0)) / p0.
-ZeroHandling = Literal["classic", "center_of_mass", "mean_zero"]
-
-_ZERO_HANDLING_MODES: tuple[str, ...] = get_args(ZeroHandling)
-
 #: How far outside [0, 1] a value may sit before the beta path rejects it. The
 #: tolerance absorbs the rounding of a windowed mean over bounded values, which can
 #: land a few ulps outside the range, and no real out-of-support observation.
 _BETA_SUPPORT_TOLERANCE = 1e-12
-
-#: How each time step's ``scale`` values are combined before the fit, see ADR-0019.
-#: "sum" accumulates them, the SPI/SPEI convention; "mean" averages them, which keeps a
-#: bounded series such as a capacity factor in its own range. It is chosen independently
-#: of the distribution, since the two answer different questions about the same window.
-Aggregation = Literal["sum", "mean"]
-
-_AGGREGATIONS: tuple[str, ...] = get_args(Aggregation)
 
 
 class _PearsonFitLost(Exception):
@@ -179,74 +173,9 @@ class DistributionFallbackStrategy:
 _default_fallback_strategy = DistributionFallbackStrategy()
 
 
-class Periodicity(Enum):
-    """
-    Enumeration type for specifying dataset periodicity.
-
-    'monthly' indicates an array of monthly values, assumed to span full years,
-    i.e. the first value corresponds to January of the initial year and any
-    missing final months of the final year filled with NaN values,
-    with size == # of years * 12
-
-    'daily' indicates an array of full years of daily values with 366 days per year,
-    as if each year were a leap year and any missing final months of the final
-    year filled with NaN values, with array size == (# years * 366)
-
-    'hourly' indicates an array of full years of hourly values with 366 days of 24
-    hours per year, i.e. 8784 values per year, on the same 366-day calendar, so a
-    non-leap year carries 24 synthesized February 29 values, and any missing final
-    days of the final year filled with NaN values, with array size == (# years * 8784)
-    """
-
-    monthly = 12
-    daily = 366
-    hourly = 8784
-
-    def __str__(self) -> str:
-        return self.name
-
-    @staticmethod
-    def from_string(s: str) -> "Periodicity":
-        try:
-            return Periodicity[s]
-        except KeyError as err:
-            raise ValueError(f"No periodicity enumeration corresponding to {s}") from err
-
-    def unit(self) -> str:
-        if self.name == "monthly":
-            unit = "month"
-        elif self.name == "daily":
-            unit = "day"
-        elif self.name == "hourly":
-            unit = "hour"
-        else:
-            raise ValueError(f"No periodicity unit corresponding to {self.name}")
-
-        return unit
-
-    @property
-    def period_length(self) -> int:
-        """
-        The number of time steps comprising one year at this periodicity,
-        i.e. 12 for monthly data, 366 for daily data, and 8784 for hourly data.
-        """
-        return int(self.value)
-
-
-# the valid number of time steps per year, i.e. the length of the second axis
-# of a 2-D (years, periods) input array
-_PERIOD_LENGTHS = frozenset(periodicity.period_length for periodicity in Periodicity)
-
 # defensive guard: every native dispatch first checks _native_float64 or
 # _native is not None, so this only fires if the extension disappears in between
 _NATIVE_EXTENSION_MISSING = "the native extension is not installed"
-
-# the output conventions the standardized indices return: the standard-normal
-# z-score ("normal", the default), the fitted cumulative probability
-# ("probability", the PIT value in [0, 1]), and its signed counterpart
-# ("bounded", 2p - 1 in [-1, 1])
-OutputScale = Literal["normal", "probability", "bounded"]
-OUTPUT_SCALES: tuple[OutputScale, ...] = ("normal", "probability", "bounded")
 
 
 def _map_non_normal_scale(probabilities: np.ndarray, output_scale: OutputScale) -> np.ndarray | None:
@@ -260,21 +189,6 @@ def _map_non_normal_scale(probabilities: np.ndarray, output_scale: OutputScale) 
     if output_scale == "bounded":
         return (2.0 * probabilities) - 1.0
     return None
-
-
-def validate_output_scale(output_scale: str) -> None:
-    """Validate that an output scale is one of the accepted values.
-
-    :param output_scale: the output-scale value to validate
-    :raises InvalidArgumentError: if the value is not one of ``OUTPUT_SCALES``
-    """
-    if output_scale not in OUTPUT_SCALES:
-        raise InvalidArgumentError(
-            f"Invalid output_scale argument: {output_scale!r}. Supported values: {', '.join(OUTPUT_SCALES)}.",
-            argument_name="output_scale",
-            argument_value=repr(output_scale),
-            valid_values=", ".join(OUTPUT_SCALES),
-        )
 
 
 def _validate_array(
@@ -521,21 +435,6 @@ def _summarize_array(arr: np.ndarray | None, name: str = "array") -> str:
         f"min={min_val:.4g}, max={max_val:.4g}, mean={mean_val:.4g}, "
         f"nan_count={nan_count}/{arr.size}"
     )
-
-
-def _validate_zero_handling(zero_handling: str) -> None:
-    """Reject a zero-handling mode other than the three ADR-0015 names."""
-    if not isinstance(zero_handling, str) or zero_handling not in _ZERO_HANDLING_MODES:
-        raise ValueError(
-            f"Invalid zero_handling argument: {zero_handling!r} -- "
-            "must be one of 'classic', 'center_of_mass', or 'mean_zero'"
-        )
-
-
-def _validate_aggregation(aggregation: str) -> None:
-    """Reject an aggregation other than the two ADR-0019 operations."""
-    if not isinstance(aggregation, str) or aggregation not in _AGGREGATIONS:
-        raise ValueError(f"Invalid aggregation argument: {aggregation!r} -- must be one of 'sum' or 'mean'")
 
 
 def _calibration_probability_of(calibration_values: np.ndarray, boundary: float) -> np.ndarray:
@@ -1180,9 +1079,6 @@ def transform_fitted_pearson(
         input_shape=str(values.shape),
     )
     log.info("distribution_transform_started")
-
-    # the distribution object is imported lazily: indices imports this module
-    from climate_indices.indices import Distribution, _validate_hourly_distribution
 
     _validate_hourly_distribution(periodicity, Distribution.pearson)
     params = {"prob_zero": probabilities_of_zero, "loc": locs, "scale": scales, "skew": skews}
@@ -2524,8 +2420,6 @@ def transform_fitted_gamma(
     validate_output_scale(output_scale)
     _validate_zero_handling(zero_handling)
 
-    from climate_indices.indices import Distribution, _validate_hourly_distribution
-
     _validate_hourly_distribution(periodicity, Distribution.gamma)
 
     log = _logger.bind(
@@ -2736,9 +2630,6 @@ def transform_fitted_beta(
         input_shape=str(values.shape),
     )
     log.info("distribution_transform_started")
-
-    # the distribution object is imported lazily: indices imports this module
-    from climate_indices.indices import Distribution, _validate_hourly_distribution
 
     _validate_hourly_distribution(periodicity, Distribution.beta)
     params = {"alpha": alphas, "beta": betas, "prob_zero": probabilities_of_zero, "prob_one": probabilities_of_one}
@@ -3058,9 +2949,6 @@ def transform_fitted_loglogistic(
         input_shape=str(values.shape),
     )
     log.info("distribution_transform_started")
-
-    # the distribution object is imported lazily: indices imports this module
-    from climate_indices.indices import Distribution, _validate_hourly_distribution
 
     _validate_hourly_distribution(periodicity, Distribution.loglogistic)
     params = {"loc": locs, "scale": scales, "shape": shapes}
@@ -3722,10 +3610,6 @@ def _fit_pearson_with_fallback(
         The transformed values, whether the gamma fall back was used, and the fitted
         gamma parameters when it was (otherwise None).
     """
-    # only needed to name the gamma fall back's result; importing at module load would
-    # be circular because indices imports this module
-    from climate_indices.indices import Distribution
-
     if values.ndim == 1:
         # the Pearson fit reshapes a 1-D series to (years, periods); do it here so the
         # valid-input mask below has the shape of the fitted result
@@ -4044,10 +3928,6 @@ def _resolve_pearson_diagnostics_fit(
     fallback_context: str,
 ) -> tuple[FittedDistribution, bool]:
     """Resolve a Pearson Type III diagnostic fit, applying the two gamma fall-back triggers."""
-    # only needed to name the gamma fall back's result; importing at module load would
-    # be circular because indices imports this module
-    from climate_indices.indices import Distribution
-
     fell_back_to_gamma = False
     try:
         fitted = FittedDistribution.resolve(

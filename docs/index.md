@@ -32,7 +32,7 @@ for the full release history.
 | Component | Version | Support |
 | --- | --- | --- |
 | `climate_indices` (Python) | 3.1.0 | Python 3.10–3.14 |
-| `climate-indices` (Rust crate) | 0.1.0-rc.1 (prerelease) | Rust 1.85 or later |
+| `climate-indices` (Rust crate) | 0.1.0 | Rust 1.85 or later |
 
 `climate_indices` 3.1.0 is the current development version; 3.0.0 is published on
 [PyPI](https://pypi.org/project/climate-indices/).
