@@ -187,6 +187,20 @@ def test_beta_support_errors_precede_inferred_boundary_mass_errors() -> None:
         )
 
 
+def test_supplied_beta_parameter_errors_precede_support_errors() -> None:
+    """A malformed supplied mass is reported before an out-of-support observation."""
+    values = np.tile(np.array([1.0, 1.5])[:, None], (1, 12))
+    with pytest.raises(ValueError, match="must lie in"):
+        compute.transform_fitted_beta(
+            values,
+            2000,
+            2000,
+            2001,
+            compute.Periodicity.monthly,
+            probabilities_of_zero=np.full(12, -0.1),
+        )
+
+
 def test_empirical_masked_partial_year_is_prepared_once() -> None:
     """Padding must not discard calibration masks or retain a second filled record."""
     values = np.ma.array(np.arange(121.0), mask=np.arange(121) == 0)

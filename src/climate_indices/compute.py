@@ -1053,9 +1053,16 @@ def _prepare_transform(
     if kind != "pearson" and np.ma.isMaskedArray(values):
         values = np.ma.filled(values.astype(float), np.nan)
     prepared = _validate_array(values, periodicity)
-    # support is a property of the observations, so it must fail before a missing
-    # boundary mass is counted into a mass-sum error during resolution
     if kind == "beta":
+        # a supplied-parameter error precedes the support error, and the resolver's
+        # inferred boundary-mass checks follow it; validating the supplied set here
+        # lets _transform_fitted tell the resolver to skip its own validation
+        if fitting_params is not None:
+            FittedDistribution.validate_supplied(
+                prepared, distribution, _normalize_fitting_params(fitting_params) or {}
+            )
+        # support is a property of the observations, so it must fail before a missing
+        # boundary mass is counted into a mass-sum error during resolution
         _validate_beta_support(prepared)
     return prepared, log
 
@@ -1083,6 +1090,7 @@ def _transform_fitted(
         calibration_end_year,
         periodicity,
         fitting_params,
+        _validated=distribution.value == "beta",
     )
     return fitted._transform_prepared(prepared, output_scale, zero_handling, log)
 
@@ -3353,13 +3361,16 @@ class FittedDistribution:
         calibration_end_year: int,
         periodicity: Periodicity,
         fitting_params: dict[str, Any] | None = None,
+        *,
+        _validated: bool = False,
     ) -> "FittedDistribution":
         """Build a fitted distribution from the data or from the caller's parameters.
 
         The canonical keys of ``fitting_params`` are resolved here: a parameter left as
         None is fitted from the calibration period of ``values``; a supplied one is
         validated here and broadcast only when transforming or diagnosing values.
-        Deprecated key aliases are normalized here.
+        Deprecated key aliases are normalized here. ``_validated`` lets an internal
+        caller that already validated the supplied set skip the second validation.
         """
         if getattr(distribution, "value", None) not in _SUPPORTED_DISTRIBUTIONS:
             raise ValueError(f"Unsupported distribution: {distribution}")
@@ -3371,7 +3382,8 @@ class FittedDistribution:
         # the period-to-cell broadcast see the same shape the index pipeline uses
         values = _validate_array(values, periodicity)
         params = _normalize_fitting_params(fitting_params) or {}
-        cls.validate_supplied(values, distribution, params)
+        if not _validated:
+            cls.validate_supplied(values, distribution, params)
         kind = distribution.value
         if kind == "empirical":
             calibration_values, _, _ = _calibration_block(
