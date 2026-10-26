@@ -16,7 +16,14 @@ import pandas as pd
 import pytest
 import xarray as xr
 
+import climate_indices
+
 ROOT = Path(__file__).resolve().parents[1]
+# The tutorial and its docs block locate this checkout from the imported package, which an installed wheel is not in.
+requires_checkout_import = pytest.mark.skipif(
+    Path(climate_indices.__file__).resolve().parent != ROOT / "src/climate_indices",
+    reason="the energy tutorial runs from this checkout, so climate_indices must import from its src/",
+)
 
 
 def _preparation_module() -> Any:
@@ -85,6 +92,7 @@ def test_acquisition_rejects_invalid_inputs(tmp_path: Path, defect: str) -> None
     assert not module.cache_path(tmp_path, 2000).exists()
 
 
+@requires_checkout_import
 def test_energy_notebook_executes_without_network(monkeypatch: pytest.MonkeyPatch) -> None:
     """Run the actual cells offline; the docs gate separately proves kernel execution."""
     pytest.importorskip("h5py")
@@ -187,6 +195,7 @@ def test_successful_publication_records_written_bytes(tmp_path: Path, filename: 
     assert provenance["source"] == module.SOURCE_URL
 
 
+@requires_checkout_import
 def test_docs_use_current_interpreter_despite_external_kernelspec(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
