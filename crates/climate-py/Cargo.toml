@@ -13,13 +13,12 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # The range admits every stable 0.x crate release, so a crate release needs no bindings
-# manifest change, and it admits the `0.1.0-rc.N` pre-release the rehearsal lane pushes
-# (docs/release-process.md). Cargo matches a pre-release only against a requirement that
-# names that same version, so a later version's pre-release moves the floor with it; a
-# caret requirement such as "0" matches none, and `cargo package` then cannot resolve the
-# workspace. The path keeps local builds on the workspace crate (docs/adr/0021 decisions 2
-# and 3).
-climate-indices = { version = ">=0.1.0-rc.1, <1.0.0", path = "../climate-indices" }
+# manifest change. Cargo matches a pre-release only against a requirement that names that
+# same version, so a rehearsal pre-release (docs/release-process.md) moves the floor to
+# its own version; a caret requirement such as "0" matches none, and `cargo package` then
+# cannot resolve the workspace. The path keeps local builds on the workspace crate
+# (docs/adr/0021 decisions 2 and 3).
+climate-indices = { version = ">=0.1.0, <1.0.0", path = "../climate-indices" }
 numpy = "0.29.0"
 # abi3: one wheel per platform validates on every supported CPython (3.10-3.14), so
 # the published wheel matrix has no interpreter axis (docs/adr/0018)

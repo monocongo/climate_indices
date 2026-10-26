@@ -232,12 +232,11 @@ and the [Icechunk SPI/SPEI notebook](notebooks/icechunk_spi_spei.ipynb).
 ## Rust crate
 
 The numerical kernels are also available in the standalone `climate-indices`
-crate's `0.1.0-rc.1` prerelease
-([crates.io](https://crates.io/crates/climate-indices/0.1.0-rc.1),
-[docs.rs](https://docs.rs/climate-indices/0.1.0-rc.1)). Cargo requires an explicit
-prerelease version, such as `climate-indices = "0.1.0-rc.1"`; it does not select
-this version by default. The earlier `0.0.0` package reserves the name and contains
-no algorithms. The crate is pure Rust: `ndarray` is its only
+crate's `0.1.0` release
+([crates.io](https://crates.io/crates/climate-indices),
+[docs.rs](https://docs.rs/climate-indices)):
+`cargo add climate-indices`. The earlier `0.0.0` package reserved the name and
+contains no algorithms. The crate is pure Rust: `ndarray` is its only
 dependency, and it has no PyO3 or Python bindings. It provides kernels, not complete
 index workflows, so the caller prepares calendars, selects the Calibration Period,
 validates physical ranges, and applies the final transform.
@@ -3283,10 +3282,9 @@ each is a required check on the pull request. Run them locally with
 | `cargo deny --locked check -W unmaintained -W unsound` | The licenses, advisories, duplicate versions, and sources permitted by `deny.toml` cover everything that reaches a user — the published crate and the `climate-py` bindings the wheel compiles. Unmaintained and unsound advisories are warnings, so an upstream archive notice does not block an unrelated pull request. |
 
 The gates read the crate's own `rust-version` and version, so moving either needs no
-workflow change. `cargo semver-checks` compares against the published baseline: while
-`0.0.0` is the only release on crates.io the check has nothing to compare, and it has a
-baseline once a newer version is published — the rehearsal pre-release or the first real
-release (CRATE-11), whichever lands first.
+workflow change. `cargo semver-checks` compares against the published baseline. The
+`0.0.0` placeholder had no API to compare; since `0.1.0` was published, the check has a
+real baseline.
 
 CI runs the native legs with `CLIMATE_INDICES_REQUIRE_NATIVE=1`, which turns a
 missing extension into a test failure instead of a skip so a broken build cannot

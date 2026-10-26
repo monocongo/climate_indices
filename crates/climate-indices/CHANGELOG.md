@@ -4,7 +4,7 @@ All notable changes to the `climate-indices` crate are recorded here. The crate
 follows its own `0.x` version track, independent of the `climate_indices` Python
 distribution, and uses [Semantic Versioning](https://semver.org/).
 
-## 0.1.0 - 2026-10-25
+## 0.1.0 - 2026-10-26
 
 The first stable release. Its code is the same as `0.1.0-rc.1`.
 
