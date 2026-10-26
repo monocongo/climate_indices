@@ -1,9 +1,8 @@
 [package]
 name = "climate-indices"
 description = "Pure-Rust numerical kernels for climate indices: SPI, SPEI, EDDI, PET, Palmer, fire weather, and flood"
-# independent 0.x track, not the workspace or PyPI version (docs/adr/0021); the
-# pre-release rehearses the 0.1.0 release path (docs/release-process.md)
-version = "0.1.0-rc.1"
+# independent 0.x track, not the workspace or PyPI version (docs/adr/0021)
+version = "0.1.0"
 edition.workspace = true
 rust-version = "1.85"
 license.workspace = true

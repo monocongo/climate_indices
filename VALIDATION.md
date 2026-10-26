@@ -1,7 +1,12 @@
 # Validation Status
 
-This document records evidence for the library, including the 3.0.0 release artifacts and later additions.
+This document records evidence for the library, including the 3.0.0 release artifacts and the 3.1.0 development version.
 It separates independent external validation, same-author reference reproduction, synthetic characterization, and regression coverage.
+The 3.1.0 additions are the compound-hazard module and the energy family.
+Neither has an adopted product-level external oracle.
+The compound evidence is a same-author published-method reproduction, a synthetic bootstrap characterization, and interface equivalence.
+The energy evidence includes an exact published example, independent-implementation comparisons on synthetic and real-series inputs, and specification-level rows.
+Their scope limits are in the sections below.
 
 ## Test Commands
 
