@@ -275,6 +275,16 @@ The everyday Rust commands, for reference:
 | `cargo clippy --workspace --all-targets -- -D warnings` | Lints; CI fails on any warning |
 | `RUSTDOCFLAGS="-D warnings" cargo doc -p climate-indices --no-deps` | Crate documentation; CI fails on any rustdoc warning |
 
+### Published-crate consumer smoke test
+
+After each stable crate release and monthly between releases, run the
+[published-crate consumer smoke test](release-process.md#published-crate-consumer-smoke-test).
+It uses unversioned `cargo add climate-indices` in a fresh project outside the checkout.
+It checks the selected stable version, calculates PNP with result assertions, and builds local crate documentation.
+For the first stable release, the expected version is `0.1.0`.
+This test checks what a Rust user downloads from crates.io; the workspace gates below check repository changes.
+It does not replace kernel parity tests, scientific validation, or the docs.rs check.
+
 ### Crate quality gates
 
 The published `climate-indices` crate has four required CI gates, one job each, so
