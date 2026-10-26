@@ -19,6 +19,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A commit error, such as a timeout, can leave the outcome unknown, so check the
   branch tip before you retry. The helpers do not merge concurrent sessions or
   retry conflicts (#1445, #1447, #1450, #1461).
+- **Compound-hazard analysis** (`climate_indices.compound`): `harmonize()` thresholds
+  declared inputs and aligns them onto one calendar as `AlignedHazards`;
+  `joint_statistics()` returns joint counts, frequencies, and the likelihood
+  multiplication factor (LMF) for two or three hazards; `conditional_probability()`
+  returns conditional and forward-window frequencies; `compound_events()` matches
+  concurrent and sequential events; and `bootstrap_dependence()` adds monthly
+  block-bootstrap intervals and calendar-conditioned independence tests. The NumPy
+  routes are stable. The xarray Dataset routes, which bound Dask execution, and the
+  eager event catalog `compound_events_xarray()`, which raises before a block would
+  exceed its row cap, are Beta. The statistics describe co-occurrence and make no
+  causal or significance claim. A reproduction of published LMF cases and a bootstrap
+  calibration for record length, persistence, and lagged conditioning are scoped
+  evidence, not unrestricted scientific validation (ADR-0022; #1375, #1379, #1380,
+  #1386, #1388, #1392, #1397, #1400, #1402, #1405, #1410, #1412, #1424).
+- **Energy family** (`climate_indices.energy`): heating, cooling, and energy degree
+  days; hub-height wind speed and the wind-shear exponent; wind and
+  temperature-derated PV capacity factors (NumPy-only); SREPI, the standardized
+  demand index, and SRLI for signed residual-load series, with the `residual_load()`
+  helper, following Allen and Otero (2023); and run-theory energy-drought events
+  (`energy_drought_events()`). Degree days, wind profiles, and the standardized energy
+  indices accept DataArrays; the `energy_drought_events()` DataArray route is Beta.
+  CF metadata entries, the energy applications page, a hydropower precipitation-proxy
+  recipe, and a cached ERA5 demonstration notebook document the family. The outputs
+  describe the climate-driven component of energy supply and demand, not actual
+  generation or load. Evidence differs by index: SREPI, the demand index, and SRLI are
+  compared with R `SEI` 0.2.0 fixtures, while the wind capacity factor and the event
+  statistics are regression-only; `VALIDATION.md` records each level (ADR-0019;
+  #1346, #1357, #1359, #1360, #1362, #1363, #1376, #1378, #1382, #1383, #1390, #1391,
+  #1393, #1394, #1395, #1396, #1399, #1404, #1413).
+- **Energy indices in the CLI**: `--index` accepts `hdd`, `cdd`, `edd`,
+  `wind_profile`, `srepi`, `demand_index`, and `srli`; `--output_scale` covers the
+  three standardized energy indices; and `--periodicity hourly` is accepted for
+  `srepi`, `demand_index`, and `srli` only. `--index all` and `--index scaled` do not
+  change (#1401, #1455).
+- **Standardized-index options**: `indices.standardized_index()` and
+  `compute.prepare_scaled()` take a keyword-only `aggregation`, `"sum"` (the default)
+  or `"mean"`. `Distribution.empirical` ranks each value against the same calendar
+  step's Calibration Period with the SEI plotting position `(1 + k) / (n + 2)`; a step
+  with fewer than 10 calibration values is missing. `Distribution.beta` fits bounded
+  `[0, 1]` series, such as capacity factors, with point masses at 0 and 1. The
+  keyword-only `clip_negatives` (default `True`) set to `False` lets the empirical
+  path rank a signed series and makes gamma and Pearson Type III raise
+  `InvalidArgumentError` on negative values. `spi()`, `spei()`, and
+  `fit_diagnostics()` still reject the empirical and beta options.
+  `climate_indices.standardized_index` is the xarray entry point at the package root
+  (ADR-0020; #1346, #1354, #1385, #1389, #1399).
+- **Hourly periodicity** (`compute.Periodicity.hourly`): 8784 values per year on the
+  366-day calendar, stratified by hour of day and day of year. Only
+  `Distribution.empirical` is accepted at this periodicity. The xarray adapter
+  requires a contiguous hourly series that starts at 00:00 on January 1 and applies no
+  time-zone or daylight-saving conversion, so supply UTC values (#1408).
+- **Flood event summaries**: `flood.flood_event_summary()` summarizes flood-potential
+  events by onset period or hydrological year (`year_start_month`) and returns
+  `FloodStatistics`, or a Dataset for DataArray input. `flood.flood_events()` and
+  `runs.identify_runs()` now share one run scan; `flood_events()` keeps its signature,
+  ordering, and exact per-event values. The summaries do not add a hydrologic model
+  (#1258, #1425).
+- **Standalone Rust crate**: the in-repository kernel crate is renamed from
+  `climate-core` to `climate-indices` and has public kernel contracts, numerical
+  documentation, Python-independent tests, examples, Criterion benchmarks, and its own
+  release gates. It follows an independent `0.x` track from `climate-indices-vX.Y.Z`
+  tags, and version 0.1.0 is published on crates.io; see
+  `crates/climate-indices/CHANGELOG.md`. The Python package and its
+  `climate_indices._native` extension have no interface change (ADR-0021; #1361,
+  #1377, #1381, #1384, #1403, #1409, #1411, #1414, #1415, #1426, #1471).
 
 ### Changed
 
@@ -29,6 +94,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   calendar behavior, and Dask chunk requirements do not change. The compound Dataset
   routes and eager event catalogs, including `energy.energy_drought_events()`, remain
   Beta. `BetaFeatureWarning` remains public for existing imports and warning filters.
+- **NumPy blocks with 8784 values on the first cell axis**: a gridded NumPy array whose
+  first cell axis has exactly 8784 values is now ambiguous with the hourly
+  `(years, periods, *cells)` layout and must declare `spatial_time_major=True`, as
+  lengths 12 and 366 already must. `PeriodicityError.valid_values` and its message
+  now include `hourly` (#1408).
+- **Faster daily recurrences**: KBDI computes its climatology denominator once per
+  cell, and the shared daily recurrence driver behind the native KBDI, FFMC, DMC, and
+  DC kernels and the Antecedent Precipitation Index steps and records each cell in one
+  pass. Outputs are bit-identical (#1355, #1356).
+
+### Fixed
+
+- **Unknown xarray adapter keywords**: a function wrapped with `@xarray_adapter()`
+  now raises `TypeError` for an unknown keyword argument before eager computation or
+  Dask graph construction; it previously discarded the keyword silently. A wrapped
+  function with an explicit `**kwargs` parameter still receives its extra keywords
+  (#1092, #1449).
+- **Percent-of-normal metadata**: PNP values are ratios, so `1.0` is normal. The CF
+  metadata for `pnp` and `percentage_of_normal` now uses `units: "1"`, the CLI writes
+  `valid_min: 0.0` and no `valid_max`, and the algorithm pages use ratio thresholds.
+  No computed value changes (#1452, #1453).
+- **Pearson fallback guidance**: the data-requirements page separates the per-period
+  Pearson Type III substitution from the gamma fallback (#1429).
+
+### Security
+
+- **Locked dependency updates**: `uv.lock` pins `certifi` 2026.10.19, `nbconvert`
+  7.17.2, and `Pillow` 13.0.0 on Python 3.11 and later. Pillow 13.0.0 requires
+  Python 3.11, and no patched 12.x release exists, so the Python 3.10 lock stays on
+  Pillow 12.3.0. Published dependency ranges are unchanged (#1443, #1451, #1457).
 
 ## [3.0.0] - 2026-10-12
 

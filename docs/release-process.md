@@ -356,7 +356,7 @@ After the workflow completes:
    On a supported native-wheel platform, also confirm `climate_indices._native`
    imports; other platforms should retain the documented pure-Python path.
 6. The workflow generates GitHub Release notes from merged PRs, not from
-   `docs/release-notes-3.0.0.md`. The maintainer should add the curated highlights,
+   `docs/release-notes-X.Y.Z.md`. The maintainer should add the curated highlights,
    migration warnings, and a permalink to the tagged release-notes document;
    convert relative documentation links to absolute URLs when copying text.
 7. Open a follow-up PR for any next-cycle changelog preparation if needed.

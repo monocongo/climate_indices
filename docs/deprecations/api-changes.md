@@ -36,6 +36,35 @@ See [ADR-0012](../adr/0012-xarray-api-stays-beta-through-3.0.0.md) for the decis
 The [compatibility matrix](../xarray_compatibility.md) lists route-specific constraints.
 The [xarray migration guide](../xarray_migration.md) gives NumPy-to-DataArray examples.
 
+## Behavior changes in 3.1.0
+
+3.1.0 removes no public name. Two narrow behavior changes can reject calls that
+3.0.0 accepted.
+
+### NumPy blocks with 8784 values on the first cell axis (3.1.0)
+
+**What a user sees:** a gridded NumPy array whose first cell axis has exactly
+8784 values now raises a shape-validation error that names
+`spatial_time_major=True`. 8784 is the hourly period length, so such a block is
+ambiguous with a `(years, periods, *cells)` array, as lengths 12 and 366 already
+are.
+
+**How to detect it:** look for `(time, 8784, ...)` NumPy inputs to the index
+functions.
+
+**What to change:** pass `spatial_time_major=True`, or reorder the cell axes.
+
+### Unknown xarray adapter keywords raise `TypeError` (3.1.0)
+
+**What a user sees:** a function wrapped with `@xarray_adapter()` raises
+`TypeError` for an unknown keyword argument. 3.0.0 discarded the keyword silently,
+so the result ignored the caller's intended setting.
+
+**How to detect it:** run the calls; the error names the unknown keyword.
+
+**What to change:** correct or remove the keyword. A wrapped function with an
+explicit `**kwargs` parameter still receives its extra keywords.
+
 ## Breaking changes in 3.0.0
 
 3.0.0 ships seven breaking changes that users hit without a deprecation period.
