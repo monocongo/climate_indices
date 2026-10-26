@@ -36,9 +36,12 @@ See [ADR-0012](../adr/0012-xarray-api-stays-beta-through-3.0.0.md) for the decis
 The [compatibility matrix](../xarray_compatibility.md) lists route-specific constraints.
 The [xarray migration guide](../xarray_migration.md) gives NumPy-to-DataArray examples.
 
-## Breaking changes in 3.1.0
+## Breaking changes in 3.0.0
 
-### `compute.scale_values` removed (3.1.0)
+3.0.0 ships seven breaking changes that users hit without a deprecation period.
+Each one below states what a user sees, how to detect it, and what to change.
+
+### `compute.scale_values` removed (3.0.0)
 
 **What a user sees:** `from climate_indices.compute import scale_values` or
 `compute.scale_values(...)` now raises `ImportError`/`AttributeError`.
@@ -50,11 +53,6 @@ The [xarray migration guide](../xarray_migration.md) gives NumPy-to-DataArray ex
 `compute.prepare_scaled(values, scale, periodicity)` instead. `scale_values` was
 a thin pass-through over `prepare_scaled`, which owns the shared preparation
 pipeline.
-
-## Breaking changes in 3.0.0
-
-3.0.0 ships six breaking changes that users hit without a deprecation period.
-Each one below states what a user sees, how to detect it, and what to change.
 
 ### Daily xarray calendar alignment (3.0.0)
 

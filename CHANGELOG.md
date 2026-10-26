@@ -397,6 +397,9 @@ change states what a user sees, how to detect it, and what to change in
 - **`compute.adjust_calibration_years()`**: removed. It was undocumented and used
   only inside `compute`; window resolution moved to `climate_indices._calibration_period`
   (#1214).
+- **`compute.scale_values()`**: removed. Call `compute.prepare_scaled(values, scale,
+  periodicity)`, which it only passed through to. This entry was missing when 3.0.0
+  was published (#1235).
 
 ### Fixed
 
