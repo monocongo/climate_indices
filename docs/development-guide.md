@@ -289,10 +289,9 @@ each is a required check on the pull request. Run them locally with
 | `cargo deny --locked check -W unmaintained -W unsound` | The licenses, advisories, duplicate versions, and sources permitted by `deny.toml` cover everything that reaches a user — the published crate and the `climate-py` bindings the wheel compiles. Unmaintained and unsound advisories are warnings, so an upstream archive notice does not block an unrelated pull request. |
 
 The gates read the crate's own `rust-version` and version, so moving either needs no
-workflow change. `cargo semver-checks` compares against the published baseline: while
-`0.0.0` is the only release on crates.io the check has nothing to compare, and it has a
-baseline once a newer version is published — the rehearsal pre-release or the first real
-release (CRATE-11), whichever lands first.
+workflow change. `cargo semver-checks` compares against the published baseline. The
+`0.0.0` placeholder had no API to compare; since `0.1.0` was published, the check has a
+real baseline.
 
 CI runs the native legs with `CLIMATE_INDICES_REQUIRE_NATIVE=1`, which turns a
 missing extension into a test failure instead of a skip so a broken build cannot

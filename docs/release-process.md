@@ -458,7 +458,7 @@ rehearsal* below describes.
 2. Give `crates/climate-indices/CHANGELOG.md` a heading for the version being
    published, as `## X.Y.Z - YYYY-MM-DD` with the intended tag day, and keep the
    earlier entries. A rehearsal names its full pre-release version, such as
-   `## 0.1.0-rc.1 - YYYY-MM-DD`, because the workflow compares the whole version.
+   `## X.Y.Z-rc.N - YYYY-MM-DD`, because the workflow compares the whole version.
    The changelog carries no `## Unreleased` heading: the crate
    guard in `tests/test_release_integrity.py` refuses one in the tree, and the
    workflow refuses to publish while one is present.
@@ -526,17 +526,17 @@ The PyPI rehearsal in *Release rehearsal* above keeps its rehearsal repository a
 its exact-tag guard; this lane is the crate's own, and the two cannot start each
 other (ADR-0021 decision 5).
 
-The lane works because `crates/climate-py` admits a pre-release. Its requirement is
-`climate-indices = ">=0.1.0-rc.1, <1.0.0"`, a range that admits every stable `0.x`
-release as well, so decision 3 of ADR-0021 still holds for a stable release. Cargo
-matches a pre-release only against a requirement that names that same version, so a
-rehearsal of a later version moves the range's floor to that version. A caret
-requirement such as `"0"` matches no pre-release at all, and `cargo package` would
-then fail to resolve the workspace:
+The lane needs `crates/climate-py` to admit the pre-release. Its requirement is
+`climate-indices = ">=0.1.0, <1.0.0"`, a range that admits every stable `0.x`
+release, so decision 3 of ADR-0021 holds for a stable release. Cargo matches a
+pre-release only against a requirement that names that same version, so a rehearsal
+moves the range's floor to its pre-release version, such as
+`">=X.Y.Z-rc.N, <1.0.0"`. A caret requirement such as `"0"` matches no pre-release
+at all, and `cargo package` would then fail to resolve the workspace:
 
 ```text
 error: failed to select a version for the requirement `climate-indices = "^0"`
-candidate versions found which didn't match: 0.1.0-rc.1
+candidate versions found which didn't match: X.Y.Z-rc.N
 ```
 
 Rehearse the packaging and verification steps locally first, at the candidate SHA
@@ -553,11 +553,11 @@ cargo publish --dry-run --locked -p climate-indices
 
 Then rehearse the tagged path:
 
-1. Prepare a candidate whose version is the pre-release, such as `0.1.0-rc.1`: the
+1. Prepare a candidate whose version is the pre-release, such as `X.Y.Z-rc.N`: the
    same version in `crates/climate-indices/Cargo.toml` and in the crate changelog
    heading, and the bindings range in `crates/climate-py/Cargo.toml` naming it when
    the version series is new. Run *Crate release steps* above for it, so the PR
-   merges into `main` and the tag reads `climate-indices-v0.1.0-rc.1`.
+   merges into `main` and the tag reads `climate-indices-vX.Y.Z-rc.N`.
 2. Read every job's conclusion. `validate-crate-tag`, `crate-gate`, `crate-msrv`,
    `crate-semver`, `crate-deny`, and `publish-crate` must all succeed, because the
    rehearsal is a real publication. A network error or an action-resolution
