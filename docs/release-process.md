@@ -456,12 +456,9 @@ rehearsal* below describes.
    cargo update --workspace
    ```
 2. Give `crates/climate-indices/CHANGELOG.md` a heading for the version being
-   published, as `## X.Y.Z - YYYY-MM-DD` with the intended tag day, and keep the
-   earlier entries. A rehearsal names its full pre-release version, such as
-   `## X.Y.Z-rc.N - YYYY-MM-DD`, because the workflow compares the whole version.
-   The changelog carries no `## Unreleased` heading: the crate
-   guard in `tests/test_release_integrity.py` refuses one in the tree, and the
-   workflow refuses to publish while one is present.
+   published, as `## X.Y.Z - YYYY-MM-DD` with the intended tag day. Retitle the
+   `## Unreleased` heading when one is present, and keep the earlier entries. The
+   workflow refuses to publish while an `## Unreleased` section is present.
 3. Open a PR into `main`, then let the maintainer merge it after review and
    passing CI.
 4. Record the full 40-character SHA of the merged `main` tip.
@@ -526,17 +523,17 @@ The PyPI rehearsal in *Release rehearsal* above keeps its rehearsal repository a
 its exact-tag guard; this lane is the crate's own, and the two cannot start each
 other (ADR-0021 decision 5).
 
-The lane needs `crates/climate-py` to admit the pre-release. Its requirement is
-`climate-indices = ">=0.1.0, <1.0.0"`, a range that admits every stable `0.x`
-release, so decision 3 of ADR-0021 holds for a stable release. Cargo matches a
-pre-release only against a requirement that names that same version, so a rehearsal
-moves the range's floor to its pre-release version, such as
-`">=X.Y.Z-rc.N, <1.0.0"`. A caret requirement such as `"0"` matches no pre-release
-at all, and `cargo package` would then fail to resolve the workspace:
+The lane works because `crates/climate-py` admits a pre-release. Its requirement is
+`climate-indices = ">=0.1.0-rc.1, <1.0.0"`, a range that admits every stable `0.x`
+release as well, so decision 3 of ADR-0021 still holds for a stable release. Cargo
+matches a pre-release only against a requirement that names that same version, so a
+rehearsal of a later version moves the range's floor to that version. A caret
+requirement such as `"0"` matches no pre-release at all, and `cargo package` would
+then fail to resolve the workspace:
 
 ```text
 error: failed to select a version for the requirement `climate-indices = "^0"`
-candidate versions found which didn't match: X.Y.Z-rc.N
+candidate versions found which didn't match: 0.1.0-rc.1
 ```
 
 Rehearse the packaging and verification steps locally first, at the candidate SHA
@@ -553,23 +550,20 @@ cargo publish --dry-run --locked -p climate-indices
 
 Then rehearse the tagged path:
 
-1. Prepare a candidate whose version is the pre-release, such as `X.Y.Z-rc.N`: the
+1. Prepare a candidate whose version is the pre-release, such as `0.1.0-rc.1`: the
    same version in `crates/climate-indices/Cargo.toml` and in the crate changelog
-   heading, and the bindings range in `crates/climate-py/Cargo.toml` set to
-   `">=X.Y.Z-rc.N, <1.0.0"`. Every rehearsal sets this floor, because the stable
-   range `">=0.1.0, <1.0.0"` admits no pre-release. Run *Crate release steps*
-   above for it, so the PR merges into `main` and the tag reads
-   `climate-indices-vX.Y.Z-rc.N`.
+   heading, and the bindings range in `crates/climate-py/Cargo.toml` naming it when
+   the version series is new. Run *Crate release steps* above for it, so the PR
+   merges into `main` and the tag reads `climate-indices-v0.1.0-rc.1`.
 2. Read every job's conclusion. `validate-crate-tag`, `crate-gate`, `crate-msrv`,
    `crate-semver`, `crate-deny`, and `publish-crate` must all succeed, because the
    rehearsal is a real publication. A network error or an action-resolution
    failure is a defect to fix, not the expected outcome.
 3. Run the crate post-release checks below against the pre-release, and record the
    run URL and each check on the release ticket.
-4. Promote to the stable release: set the manifest to `X.Y.Z`, restore the
-   bindings range to `">=0.1.0, <1.0.0"`, give the crate changelog a
-   `## X.Y.Z - YYYY-MM-DD` heading while the pre-release entry stays below it, and
-   run *Crate release steps* above again for the stable tag.
+4. Promote to the stable release: set the manifest to `X.Y.Z`, give the crate
+   changelog a `## X.Y.Z - YYYY-MM-DD` heading while the pre-release entry stays
+   below it, and run *Crate release steps* above again for the stable tag.
 
 A pre-release does not prove that `cargo add climate-indices` resolves without a
 version, and it does not make the crate's latest version anything other than the
@@ -620,9 +614,7 @@ for a bad one is `cargo yank`.
    cargo add climate-indices@X.Y.Z
    cargo build
    ```
-4. Confirm that the crate changelog heading carries the release day. Do not add a
-   `## Unreleased` heading for the next cycle: the crate guard in
-   `tests/test_release_integrity.py` refuses one, and the next version's dated
-   heading is added when that release is prepared.
+4. Confirm that the crate changelog heading carries the release day, and add a
+   fresh `## Unreleased` heading for the next cycle.
 5. Add the crates.io link to the next release notes or the README when the
    maintainer asks for it.

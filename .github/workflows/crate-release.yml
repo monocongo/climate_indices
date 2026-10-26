@@ -63,9 +63,8 @@ jobs:
             echo "::error::Tag version ($TAG_VERSION) does not match the crate version ($CRATE_VERSION)"
             exit 1
           fi
-          # The crate changelog carries a dated heading for the manifest version
-          # and no `## Unreleased` heading (tests/test_release_integrity.py guards
-          # the tree). A version is published once, so this catches a stale one.
+          # The crate changelog keeps an `## Unreleased` section between releases.
+          # A version is published once, so the section has to be retitled first.
           changelog=crates/climate-indices/CHANGELOG.md
           if grep -qE '^## Unreleased[[:space:]]*$' "$changelog"; then
             echo "::error::$changelog still has an '## Unreleased' section; retitle it '## $CRATE_VERSION - YYYY-MM-DD' before tagging"

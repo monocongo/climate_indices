@@ -551,14 +551,15 @@ def test_crate_gate_enforces_the_dependency_policy() -> None:
 def test_pyo3_seam_accepts_any_0x_crate_version_without_a_wildcard() -> None:
     """A path-only dependency is a wildcard, which `bans.wildcards = "deny"` rejects.
 
-    The range admits stable 0.x releases from 0.1.0 (docs/adr/0021 decisions 2 and 3).
-    A rehearsal pre-release, such as 0.2.0-rc.1, needs a bindings requirement change. A caret requirement such as `"0"` matches
+    The range admits stable 0.x releases from 0.1.0 and the 0.1.0-rc.N series
+    (docs/adr/0021 decisions 2 and 3). A later prerelease series, such as 0.2.0-rc.1,
+    needs a bindings requirement change. A caret requirement such as `"0"` matches
     no pre-release, and `cargo package` then cannot resolve the workspace.
     """
     dependency = _read_toml(Path("crates/climate-py/Cargo.toml"))["dependencies"]["climate-indices"]
 
     assert dependency["path"] == "../climate-indices"
-    assert dependency.get("version") == ">=0.1.0, <1.0.0", "an explicit 0.x range, not a wildcard"
+    assert dependency.get("version") == ">=0.1.0-rc.1, <1.0.0", "an explicit 0.x range, not a wildcard"
 
 
 def _crate_release_workflow() -> str:
@@ -890,8 +891,8 @@ def test_release_process_documents_the_crate_release_path() -> None:
         "climate-indices-vX.Y.Z-rc.N",
         "cargo add climate-indices@X.Y.Z",
         "Cargo skips a pre-release",
-        'climate-indices = ">=0.1.0, <1.0.0"',
-        "candidate versions found which didn't match: X.Y.Z-rc.N",
+        'climate-indices = ">=0.1.0-rc.1, <1.0.0"',
+        "candidate versions found which didn't match: 0.1.0-rc.1",
     ):
         assert expected in text, expected
 
