@@ -13,6 +13,7 @@ from typing import Any, cast
 import numpy as np
 import scipy.special
 import scipy.stats
+from structlog.stdlib import BoundLogger
 
 from climate_indices import lmoments, utils
 from climate_indices._calibration_period import CalibrationPeriod, resolve_calibration_period
@@ -513,6 +514,8 @@ def _validate_broadcastable_parameters(
         if parameter is None:
             continue
         shape = np.shape(parameter)
+        if len(shape) == 1 and len(target_shape) > 2:
+            shape = (1, shape[0], *([1] * (len(target_shape) - 2)))
         try:
             broadcasts = np.broadcast_shapes(target_shape, shape) == tuple(target_shape)
         except ValueError:
@@ -1003,6 +1006,87 @@ def _validate_pearson_parameter_cells(
             )
 
 
+def _prepare_transform(
+    values: np.ndarray,
+    distribution: Distribution,
+    periodicity: Periodicity,
+    output_scale: OutputScale,
+    zero_handling: ZeroHandling,
+    fitting_params: dict[str, Any] | None = None,
+) -> tuple[np.ndarray | None, BoundLogger]:
+    """Prepare one transform; None preserves the adapter's original all-missing input."""
+    validate_output_scale(output_scale)
+    _validate_zero_handling(zero_handling)
+    kind = distribution.value
+    if kind == "gamma":
+        _validate_hourly_distribution(periodicity, distribution)
+    log = _logger.bind(
+        operation=f"transform_fitted_{kind}",
+        output_scale=output_scale,
+        distribution="pearson3" if kind == "pearson" else kind,
+        periodicity=str(periodicity),
+        input_shape=str(values.shape),
+    )
+    log.info("distribution_transform_started")
+    if kind != "gamma":
+        _validate_hourly_distribution(periodicity, distribution)
+
+    # Gamma historically returns before shape and parameter validation. The other
+    # parametric adapters reject invalid supplied sets even on an all-missing input.
+    if kind != "empirical":
+        try:
+            all_missing = is_all_missing(values)
+        except TypeError:
+            # Preserve parameter-error precedence for unsupported input dtypes without
+            # validating a numeric fit twice on the ordinary path.
+            if kind != "gamma" and fitting_params is not None:
+                FittedDistribution.validate_supplied(_validate_array(values, periodicity), distribution, fitting_params)
+            raise
+        if all_missing:
+            if kind != "gamma":
+                validated = _validate_array(values, periodicity)
+                if fitting_params is not None:
+                    FittedDistribution.validate_supplied(validated, distribution, fitting_params)
+            return None, log
+
+    # Pearson keeps its established masked-array semantics; the other kernels read NaN.
+    if kind != "pearson" and np.ma.isMaskedArray(values):
+        values = np.ma.filled(values.astype(float), np.nan)
+    prepared = _validate_array(values, periodicity)
+    # support is a property of the observations, so it must fail before a missing
+    # boundary mass is counted into a mass-sum error during resolution
+    if kind == "beta":
+        _validate_beta_support(prepared)
+    return prepared, log
+
+
+def _transform_fitted(
+    values: np.ndarray,
+    distribution: Distribution,
+    data_start_year: int,
+    calibration_start_year: int,
+    calibration_end_year: int,
+    periodicity: Periodicity,
+    fitting_params: dict[str, Any],
+    output_scale: OutputScale,
+    zero_handling: ZeroHandling = "classic",
+) -> np.ndarray:
+    """Resolve a public adapter's fit once and transform its prepared values."""
+    prepared, log = _prepare_transform(values, distribution, periodicity, output_scale, zero_handling, fitting_params)
+    if prepared is None:
+        return values
+    fitted = FittedDistribution.resolve(
+        prepared,
+        distribution,
+        data_start_year,
+        calibration_start_year,
+        calibration_end_year,
+        periodicity,
+        fitting_params,
+    )
+    return fitted._transform_prepared(prepared, output_scale, zero_handling, log)
+
+
 def transform_fitted_pearson(
     values: np.ndarray,
     data_start_year: int,
@@ -1068,60 +1152,17 @@ def transform_fitted_pearson(
         Pearson Type III parameter set is partial or does not carry the period (and
         cell) axes
     """
-    validate_output_scale(output_scale)
-    _validate_zero_handling(zero_handling)
-
-    log = _logger.bind(
-        operation="transform_fitted_pearson",
-        output_scale=output_scale,
-        distribution="pearson3",
-        periodicity=str(periodicity),
-        input_shape=str(values.shape),
-    )
-    log.info("distribution_transform_started")
-
-    _validate_hourly_distribution(periodicity, Distribution.pearson)
-    params = {"prob_zero": probabilities_of_zero, "loc": locs, "scale": scales, "skew": skews}
-
-    # validate (and possibly reshape) the input array before the all-missing return,
-    # so a partial or mis-shaped parameter set is rejected even when the values carry
-    # no data and the fit is skipped
-    validated_values = _validate_array(values, periodicity)
-    FittedDistribution.validate_supplied(validated_values, Distribution.pearson, params)
-
-    # if we're passed all missing values then we can't compute anything,
-    # and we'll return the same array of missing values, un-reshaped
-    if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
-        return values
-
-    # fit the parameters from the data if none were provided, otherwise use the
-    # supplied set, which resolution has already broadcast for a spatial block
-    fitted = FittedDistribution.resolve(
-        validated_values,
+    return _transform_fitted(
+        values,
         Distribution.pearson,
         data_start_year,
         calibration_start_year,
         calibration_end_year,
         periodicity,
-        params,
-    )
-
-    # broadcast a period-only parameter across a spatial block's cells
-    parameters = _broadcast_parameters(validated_values, fitted.parameters)
-
-    # fit each value to the Pearson Type III distribution
-    values = _pearson_fit(
-        validated_values,
-        parameters["prob_zero"],
-        parameters["skew"],
-        parameters["loc"],
-        parameters["scale"],
+        {"prob_zero": probabilities_of_zero, "loc": locs, "scale": scales, "skew": skews},
         output_scale,
         zero_handling,
     )
-
-    log.info("distribution_transform_completed", output_shape=str(values.shape))
-    return values
 
 
 def _check_calibration_data_quality(
@@ -2417,47 +2458,28 @@ def transform_fitted_gamma(
         the values, or a supplied ``probabilities_of_zero`` has a value outside
         [0, 1]
     """
-    validate_output_scale(output_scale)
-    _validate_zero_handling(zero_handling)
-
-    _validate_hourly_distribution(periodicity, Distribution.gamma)
-
-    log = _logger.bind(
-        operation="transform_fitted_gamma",
-        output_scale=output_scale,
-        distribution="gamma",
-        periodicity=str(periodicity),
-        input_shape=str(values.shape),
-    )
-    log.info("distribution_transform_started")
-
-    # if we're passed all missing values then we can't compute anything,
-    # then we return the same array of missing values
-    if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
-        return values
-
-    # a mask is a missing marker, so make it the explicit NaN the transform reads
-    if np.ma.isMaskedArray(values):
-        values = np.ma.filled(values.astype(float), np.nan)
-
-    # validate (and possibly reshape) the input array
-    values = _validate_array(values, periodicity)
-
-    params = {"alpha": alphas, "beta": betas, "prob_zero": probabilities_of_zero}
-    FittedDistribution.validate_supplied(values, Distribution.gamma, params)
-    fitted = FittedDistribution.resolve(
+    return _transform_fitted(
         values,
         Distribution.gamma,
         data_start_year,
         calibration_start_year,
         calibration_end_year,
         periodicity,
-        params,
+        {"alpha": alphas, "beta": betas, "prob_zero": probabilities_of_zero},
+        output_scale,
+        zero_handling,
     )
-    parameters = _broadcast_parameters(values, fitted.parameters)
-    alphas = parameters["alpha"]
-    betas = parameters["beta"]
-    probabilities_of_zero = parameters["prob_zero"]
+
+
+def _gamma_fit(
+    values: np.ndarray,
+    alphas: np.ndarray,
+    betas: np.ndarray,
+    probabilities_of_zero: np.ndarray,
+    output_scale: OutputScale,
+    zero_handling: ZeroHandling,
+) -> np.ndarray:
+    """Apply the gamma CDF, zero mass, and requested output scale."""
 
     # a step whose mass is 1 (every calibration value zero) has no gamma fit, and a
     # step without calibration data (or a supplied NaN) has no defined zero mass:
@@ -2520,7 +2542,6 @@ def transform_fitted_gamma(
     if scaled is not None:
         scaled = _place_zeros(scaled, placement_mask, probabilities_of_zero, zero_handling, output_scale)
         scaled = _missing_where_zero_mass_undefined(scaled, placement_mask, undefined_zero_mass)
-        log.info("distribution_transform_completed", output_shape=str(scaled.shape))
         return scaled
 
     # the values we'll return are the values at which the probabilities of
@@ -2551,7 +2572,6 @@ def transform_fitted_gamma(
 
     result_values = _place_zeros(result_values, placement_mask, probabilities_of_zero, zero_handling)
     result_values = _missing_where_zero_mass_undefined(result_values, placement_mask, undefined_zero_mass)
-    log.info("distribution_transform_completed", output_shape=str(result_values.shape))
     return result_values
 
 
@@ -2619,52 +2639,29 @@ def transform_fitted_beta(
         cell dimensions that do not match the values or a value outside [0, 1], or the
         resolved boundary masses sum above 1
     """
-    validate_output_scale(output_scale)
-    _validate_zero_handling(zero_handling)
-
-    log = _logger.bind(
-        operation="transform_fitted_beta",
-        output_scale=output_scale,
-        distribution="beta",
-        periodicity=str(periodicity),
-        input_shape=str(values.shape),
-    )
-    log.info("distribution_transform_started")
-
-    _validate_hourly_distribution(periodicity, Distribution.beta)
-    params = {"alpha": alphas, "beta": betas, "prob_zero": probabilities_of_zero, "prob_one": probabilities_of_one}
-
-    # validate a partial or mis-shaped supplied set before the all-missing return, as
-    # transform_fitted_pearson does
-    FittedDistribution.validate_supplied(_validate_array(values, periodicity), Distribution.beta, params)
-
-    # if we're passed all missing values then we can't compute anything,
-    # then we return the same array of missing values
-    if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
-        return values
-
-    # a mask is a missing marker, so make it the explicit NaN the transform reads
-    if np.ma.isMaskedArray(values):
-        values = np.ma.filled(values.astype(float), np.nan)
-
-    # validate (and possibly reshape) the input array
-    values = _validate_array(values, periodicity)
-    _validate_beta_support(values)
-
-    fitted = FittedDistribution.resolve(
+    return _transform_fitted(
         values,
         Distribution.beta,
         data_start_year,
         calibration_start_year,
         calibration_end_year,
         periodicity,
-        params,
+        {"alpha": alphas, "beta": betas, "prob_zero": probabilities_of_zero, "prob_one": probabilities_of_one},
+        output_scale,
+        zero_handling,
     )
-    parameters = _broadcast_parameters(values, fitted.parameters)
-    alphas = parameters["alpha"]
-    betas = parameters["beta"]
-    probabilities_of_zero = parameters["prob_zero"]
-    probabilities_of_one = parameters["prob_one"]
+
+
+def _beta_fit(
+    values: np.ndarray,
+    alphas: np.ndarray,
+    betas: np.ndarray,
+    probabilities_of_zero: np.ndarray,
+    probabilities_of_one: np.ndarray,
+    output_scale: OutputScale,
+    zero_handling: ZeroHandling,
+) -> np.ndarray:
+    """Apply the beta CDF, both boundary masses, and requested output scale."""
 
     # a step whose whole calibration mass sits at one boundary has no interior fit, and
     # reports it as the extreme end it is: gamma reads an all-zero step as the extreme
@@ -2715,7 +2712,6 @@ def transform_fitted_beta(
         scaled = _place_zeros(scaled, one_mask, effective_one, zero_handling, output_scale, upper=True)
         scaled = _missing_where_zero_mass_undefined(scaled, zero_mask, undefined_zero_mass)
         scaled = _missing_where_zero_mass_undefined(scaled, one_mask, undefined_one_mass)
-        log.info("distribution_transform_completed", output_shape=str(scaled.shape))
         return scaled
 
     # the values we'll return are the values at which the probabilities of
@@ -2748,7 +2744,6 @@ def transform_fitted_beta(
     result_values = _place_zeros(result_values, one_mask, effective_one, zero_handling, upper=True)
     result_values = _missing_where_zero_mass_undefined(result_values, zero_mask, undefined_zero_mass)
     result_values = _missing_where_zero_mass_undefined(result_values, one_mask, undefined_one_mass)
-    log.info("distribution_transform_completed", output_shape=str(result_values.shape))
     return result_values
 
 
@@ -2939,54 +2934,16 @@ def transform_fitted_loglogistic(
     :rtype: numpy.ndarray of floats
     :raises ValueError: if only some of the three fitting parameters are provided
     """
-    validate_output_scale(output_scale)
-
-    log = _logger.bind(
-        operation="transform_fitted_loglogistic",
-        output_scale=output_scale,
-        distribution="loglogistic",
-        periodicity=str(periodicity),
-        input_shape=str(values.shape),
-    )
-    log.info("distribution_transform_started")
-
-    _validate_hourly_distribution(periodicity, Distribution.loglogistic)
-    params = {"loc": locs, "scale": scales, "shape": shapes}
-
-    # validate a partial or mis-shaped supplied set before the all-missing return, as
-    # transform_fitted_pearson does
-    FittedDistribution.validate_supplied(_validate_array(values, periodicity), Distribution.loglogistic, params)
-
-    # if we're passed all missing values then we can't compute anything,
-    # and we'll return the same array of missing values
-    if (isinstance(values, np.ma.MaskedArray) and values.mask.all()) or np.all(np.isnan(values)):
-        return values
-
-    if np.ma.isMaskedArray(values):
-        values = np.ma.filled(values.astype(float), np.nan)
-
-    values = _validate_array(values, periodicity)
-    fitted = FittedDistribution.resolve(
+    return _transform_fitted(
         values,
         Distribution.loglogistic,
         data_start_year,
         calibration_start_year,
         calibration_end_year,
         periodicity,
-        params,
-    )
-
-    parameters = _broadcast_parameters(values, fitted.parameters)
-    values = _loglogistic_fit(
-        values,
-        parameters["loc"],
-        parameters["scale"],
-        parameters["shape"],
+        {"loc": locs, "scale": scales, "shape": shapes},
         output_scale,
     )
-
-    log.info("distribution_transform_completed", output_shape=str(values.shape))
-    return values
 
 
 def transform_fitted_empirical(
@@ -3035,24 +2992,20 @@ def transform_fitted_empirical(
         input array
     :rtype: numpy.ndarray of floats
     """
-    validate_output_scale(output_scale)
-
-    log = _logger.bind(
-        operation="transform_fitted_empirical",
-        output_scale=output_scale,
-        distribution="empirical",
-        periodicity=str(periodicity),
-        input_shape=str(values.shape),
+    return _transform_fitted(
+        values,
+        Distribution.empirical,
+        data_start_year,
+        calibration_start_year,
+        calibration_end_year,
+        periodicity,
+        {},
+        output_scale,
     )
-    log.info("distribution_transform_started")
 
-    if np.ma.isMaskedArray(values):
-        values = np.ma.filled(values.astype(float), np.nan)
 
-    values = _validate_array(values, periodicity)
-    calibration_values, _, _ = _calibration_block(
-        values, data_start_year, calibration_start_year, calibration_end_year, periodicity
-    )
+def _empirical_fit(values: np.ndarray, calibration_values: np.ndarray, output_scale: OutputScale) -> np.ndarray:
+    """Rank values against the resolved Calibration Period sample."""
 
     # count the calibration values at or below each value one calibration year at a
     # time, so memory stays at one input-sized array whatever the record length; a
@@ -3078,7 +3031,6 @@ def transform_fitted_empirical(
         counts *= 2.0
         counts -= 1.0
 
-    log.info("distribution_transform_completed", output_shape=str(counts.shape))
     return counts
 
 
@@ -3336,9 +3288,10 @@ class FittedDistribution:
     One module owns everything a fit knows: which parameters the distribution has, how
     caller-supplied ``fitting_params`` are normalized and validated, how a period-only
     parameter array is broadcast across a spatial block's cells, and how the fit is
-    transformed and diagnosed. The gamma, beta, Pearson Type III and log-logistic
-    transforms and the diagnostics surface are compositions over it; the public
-    ``transform_fitted_*`` functions remain compatibility adapters.
+    transformed and diagnosed. Transform calls the private numerical kernels directly;
+    the public ``transform_fitted_*`` functions prepare input and resolve a fit once.
+    The empirical distribution retains its Calibration Period sample in
+    ``calibration_values`` and has no fitting parameters.
 
     ``parameters`` is keyed as the ``fitting_params`` argument accepts the fit:
     ``alpha``/``beta``/``prob_zero`` for gamma, ``alpha``/``beta``/
@@ -3350,6 +3303,7 @@ class FittedDistribution:
     distribution: "Distribution"
     parameters: dict[str, np.ndarray]
     periodicity: Periodicity
+    calibration_values: np.ndarray | None = None
 
     @classmethod
     def validate_supplied(cls, values: np.ndarray, distribution: "Distribution", params: dict[str, Any]) -> None:
@@ -3369,15 +3323,13 @@ class FittedDistribution:
                 _validate_probability_mass(values, supplied_prob_zero, "prob_zero")
             alphas, betas = params.get("alpha"), params.get("beta")
             if alphas is not None or betas is not None:
-                present = {
-                    name: parameter for name, parameter in (("alpha", alphas), ("beta", betas)) if parameter is not None
-                }
-                prepared = _broadcast_parameters(values, present)
-                _validate_broadcastable_parameters(
-                    values.shape, (("alpha", prepared.get("alpha")), ("beta", prepared.get("beta")))
-                )
+                _validate_broadcastable_parameters(values.shape, (("alpha", alphas), ("beta", betas)))
             if kind == "beta":
                 _validate_beta_parameters(values, params)
+            return
+
+        if kind == "empirical":
+            _validate_empirical_fitting_params(distribution, params)
             return
 
         keys = _PARAMETER_KEYS[kind]
@@ -3406,18 +3358,26 @@ class FittedDistribution:
 
         The canonical keys of ``fitting_params`` are resolved here: a parameter left as
         None is fitted from the calibration period of ``values``; a supplied one is
-        validated and broadcast. Deprecated key aliases are normalized here.
+        validated here and broadcast only when transforming or diagnosing values.
+        Deprecated key aliases are normalized here.
         """
-        try:
-            _PARAMETER_KEYS[distribution.value]
-        except KeyError as err:
-            raise ValueError(f"Unsupported distribution: {distribution}") from err
+        if getattr(distribution, "value", None) not in _SUPPORTED_DISTRIBUTIONS:
+            raise ValueError(f"Unsupported distribution: {distribution}")
+        _validate_empirical_fitting_params(distribution, fitting_params)
+        # Padding a masked partial year discards its mask, so fill before folding.
+        if distribution.value == "empirical" and np.ma.isMaskedArray(values):
+            values = np.ma.filled(values.astype(float), np.nan)
         # fold a 1-D series like the transforms do, so the period-axis validation and
         # the period-to-cell broadcast see the same shape the index pipeline uses
         values = _validate_array(values, periodicity)
         params = _normalize_fitting_params(fitting_params) or {}
         cls.validate_supplied(values, distribution, params)
         kind = distribution.value
+        if kind == "empirical":
+            calibration_values, _, _ = _calibration_block(
+                values, data_start_year, calibration_start_year, calibration_end_year, periodicity
+            )
+            return cls(distribution, {}, periodicity, calibration_values)
         if kind == "gamma":
             parameters = _resolve_gamma_parameters(
                 values, params, data_start_year, calibration_start_year, calibration_end_year, periodicity
@@ -3443,67 +3403,83 @@ class FittedDistribution:
         *,
         zero_handling: ZeroHandling = "classic",
     ) -> np.ndarray:
-        """Transform values through this fit on the requested output scale.
-
-        Delegates to the public ``transform_fitted_*`` adapters, which remain the single
-        numerical implementation and the seam a caller can replace.
-        """
+        """Transform values through the resolved fit without re-entering public adapters."""
         kind = self.distribution.value
-        if kind == "gamma":
-            return transform_fitted_gamma(
-                values,
-                0,
-                0,
-                0,
-                self.periodicity,
-                self.parameters["alpha"],
-                self.parameters["beta"],
-                self.parameters["prob_zero"],
-                output_scale,
-                zero_handling=zero_handling,
+        if kind != "gamma":
+            # A reused fit can see different cells. Reject a mismatch before the
+            # all-missing return, as the public adapters' re-validation did; gamma
+            # keeps its historical early return.
+            self._validate_cell_layout(_validate_array(values, self.periodicity))
+        prepared, log = _prepare_transform(values, self.distribution, self.periodicity, output_scale, zero_handling)
+        if prepared is None:
+            return values
+        return self._transform_prepared(prepared, output_scale, zero_handling, log)
+
+    def _validate_cell_layout(self, values: np.ndarray) -> np.ndarray | None:
+        """Return the fit's Calibration Period sample aligned to ``values``, if it has one."""
+        if self.distribution.value == "empirical":
+            sample = self.calibration_values
+            if sample is None:
+                raise ValueError("An empirical fit requires a Calibration Period sample")
+            if sample.ndim == 2 and values.ndim > 2:
+                sample = sample.reshape((sample.shape[0], sample.shape[1], *([1] * (values.ndim - 2))))
+            elif sample.ndim > 2 and sample.shape[1:] != values.shape[1:]:
+                raise ValueError(
+                    f"The Calibration Period sample has cell dimensions {sample.shape[1:]}, "
+                    f"which do not match the values' {values.shape[1:]}"
+                )
+            return sample
+
+        keys: tuple[str, ...]
+        if self.distribution.value in ("gamma", "beta"):
+            _validate_broadcastable_parameters(
+                values.shape, tuple((key, self.parameters[key]) for key in ("alpha", "beta"))
             )
-        if kind == "pearson":
-            parameters = self.parameters
-            return transform_fitted_pearson(
+            keys = ("prob_zero", "prob_one") if self.distribution.value == "beta" else ("prob_zero",)
+        else:
+            keys = _PARAMETER_KEYS.get(self.distribution.value, ())
+        _validate_pearson_parameter_cells(values, tuple((key, self.parameters[key]) for key in keys))
+        return None
+
+    def _transform_prepared(
+        self, values: np.ndarray, output_scale: OutputScale, zero_handling: ZeroHandling, log: BoundLogger
+    ) -> np.ndarray:
+        """Broadcast once and run the private kernel for already-prepared values."""
+        kind = self.distribution.value
+        sample = self._validate_cell_layout(values)
+        parameters = _broadcast_parameters(values, self.parameters)
+        if kind == "gamma":
+            result = _gamma_fit(
+                values, parameters["alpha"], parameters["beta"], parameters["prob_zero"], output_scale, zero_handling
+            )
+        elif kind == "pearson":
+            result = _pearson_fit(
                 values,
-                0,
-                0,
-                0,
-                self.periodicity,
                 parameters["prob_zero"],
+                parameters["skew"],
                 parameters["loc"],
                 parameters["scale"],
-                parameters["skew"],
                 output_scale,
-                zero_handling=zero_handling,
+                zero_handling,
             )
-        if kind == "beta":
-            parameters = self.parameters
-            return transform_fitted_beta(
+        elif kind == "beta":
+            result = _beta_fit(
                 values,
-                0,
-                0,
-                0,
-                self.periodicity,
                 parameters["alpha"],
                 parameters["beta"],
                 parameters["prob_zero"],
                 parameters["prob_one"],
                 output_scale,
-                zero_handling=zero_handling,
+                zero_handling,
             )
-        parameters = self.parameters
-        return transform_fitted_loglogistic(
-            values,
-            0,
-            0,
-            0,
-            self.periodicity,
-            parameters["loc"],
-            parameters["scale"],
-            parameters["shape"],
-            output_scale,
-        )
+        elif kind == "empirical":
+            if sample is None:
+                raise ValueError("An empirical fit requires a Calibration Period sample")
+            result = _empirical_fit(values, sample, output_scale)
+        else:
+            result = _loglogistic_fit(values, parameters["loc"], parameters["scale"], parameters["shape"], output_scale)
+        log.info("distribution_transform_completed", output_shape=str(result.shape))
+        return result
 
     def diagnostics(
         self, calibration_values: np.ndarray
@@ -3773,8 +3749,15 @@ def fit_and_standardize(
     if distribution.value == "empirical":
         if is_all_missing(values):
             return values
-        return transform_fitted_empirical(
-            values, data_start_year, calibration_start_year, calibration_end_year, periodicity, output_scale
+        return _transform_fitted(
+            values,
+            distribution,
+            data_start_year,
+            calibration_start_year,
+            calibration_end_year,
+            periodicity,
+            {},
+            output_scale,
         )
 
     # an all-missing input has nothing to fit, so return it before any fit: a direct
