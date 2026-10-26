@@ -49,7 +49,10 @@ Shared helpers still handle input opening, chunking, validation, and writing.
 `Transport` and `_cli_transport.py` do not change.
 The multiprocessing kernels remain module-level functions so workers can
 serialize them. The xarray-backed indices retain their existing Dask execution.
-This preserves the execution split in ADR-0002.
+This refactor does not change either execution path.
+ADR-0002 assigns multiprocessing to the CLI and Dask to the xarray API.
+The xarray-backed CLI adapters used Dask before this refactor, so they do not
+follow that boundary. This refactor does not resolve that existing difference.
 All output paths retain the existing atomic NetCDF writer.
 
 ## Checks
