@@ -623,11 +623,11 @@ for a bad one is `cargo yank`.
 
 Run this test after each stable crate release and monthly between releases.
 It checks the published crate, not the workspace source or the Python extension.
-For [#1315](https://github.com/monocongo/climate_indices/issues/1315), the expected stable version is `0.1.0`.
-After a later stable release, change `EXPECTED_VERSION` to that release before running the test.
+The block starts with `EXPECTED_VERSION=0.1.0` for [#1315](https://github.com/monocongo/climate_indices/issues/1315).
+Before running the test, set `EXPECTED_VERSION` to the stable release under test.
 Do not add a version to `cargo add climate-indices`: that would bypass the default-selection check.
 
-Use Bash on macOS or Linux with an installed Rust toolchain and access to crates.io.
+Use Bash on macOS or Linux with Rust and Cargo 1.85 or newer and access to crates.io.
 The block creates a temporary project outside the checkout and uses fresh Cargo cache and build directories.
 It does not publish anything or change the repository.
 It keeps the temporary directory for evidence and prints its path before it starts.
@@ -678,7 +678,7 @@ PNP means Percentage of Normal Precipitation and returns a dimensionless ratio, 
 The assertions require the ratios `[0.5, 1.0, 1.5]`.
 This checks installation and a public kernel call, not scientific accuracy or all kernels.
 
-A successful run must show `climate-indices v0.1.0`, the expected PNP ratios, and a documentation path.
+A successful run must show `climate-indices v$EXPECTED_VERSION` with the configured version, the expected PNP ratios, and a documentation path.
 Open the printed `index.html` in a browser and confirm that the crate page and its `pnp` module render correctly.
 The shell checks that the page exists; it does not check browser rendering.
 
@@ -688,6 +688,8 @@ For #1315, record whether the browser check passed as well as the command result
 Only the maintainer closes the release ticket after checking its other requirements.
 
 If the version check fails, inspect the selected version before continuing.
+If Cargo selects an older release immediately after publication, wait for the registry index to include the expected version.
+Then rerun the whole block; its fresh Cargo cache forces a new index request.
 A later stable release can legitimately change the default selection.
 Do not pin the dependency to make this check pass.
 Local documentation success does not replace the separate docs.rs post-release check.

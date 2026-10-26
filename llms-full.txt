@@ -3272,10 +3272,10 @@ The everyday Rust commands, for reference:
 ### Published-crate consumer smoke test
 
 After each stable crate release and monthly between releases, run the
-[published-crate consumer smoke test](docs/release-process.md#published-crate-consumer-smoke-test).
+published-crate consumer smoke test in {doc}`release-process`.
 It uses unversioned `cargo add climate-indices` in a fresh project outside the checkout.
 It checks the selected stable version, calculates PNP with result assertions, and builds local crate documentation.
-For the first stable release, the expected version is `0.1.0`.
+Set `EXPECTED_VERSION` to the stable release under test.
 This test checks what a Rust user downloads from crates.io; the workspace gates below check repository changes.
 It does not replace kernel parity tests, scientific validation, or the docs.rs check.
 
