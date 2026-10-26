@@ -160,9 +160,14 @@ Rust dispatch and Python fallback remain unchanged.
 Keep input and output repositories separate, and use one writer per output
 branch. The default `mode="w-"` rejects an existing group. For an intentional
 replacement, use `mode="w"`: it changes only the new snapshot and preserves
-previous snapshots. A failed write does not advance the branch. Never delete
-or recreate an existing repository to retry a write. The helpers propagate write
-and commit errors; they do not merge concurrent sessions or retry conflicts.
+previous snapshots. A write that fails before the commit does not advance the
+branch. A commit error, such as a network timeout, can leave the outcome unknown:
+the branch can already point to the new snapshot. Compare
+`output_repo.lookup_branch("main")` with the tip before the write, then retry
+only if it did not change. A blind retry with `mode="w"` adds another snapshot,
+and one with `mode="w-"` rejects the group that the first commit created. Never
+delete or recreate an existing repository to retry a write. The helpers propagate
+write and commit errors; they do not merge concurrent sessions or retry conflicts.
 The optional `branch` argument selects an existing branch (default `"main"`).
 
 ## Write NetCDF from a lazy xarray result

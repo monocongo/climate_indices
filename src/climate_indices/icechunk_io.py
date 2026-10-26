@@ -44,7 +44,8 @@ def write_icechunk(
 
     Use ``to_icechunk``, not ``Dataset.to_zarr``, to track Dask worker writes.
     The writer disables consolidated metadata and completes all writes before commit.
-    A write or commit failure propagates without replacing the committed snapshot.
+    A write failure before commit propagates without replacing the committed snapshot.
+    A commit error can leave the outcome unknown; check the branch tip before retrying.
 
     Args:
         dataset: The eager or Dask-backed Dataset to write.
