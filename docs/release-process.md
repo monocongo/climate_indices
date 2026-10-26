@@ -457,7 +457,9 @@ rehearsal* below describes.
    ```
 2. Give `crates/climate-indices/CHANGELOG.md` a heading for the version being
    published, as `## X.Y.Z - YYYY-MM-DD` with the intended tag day, and keep the
-   earlier entries. The changelog carries no `## Unreleased` heading: the crate
+   earlier entries. A rehearsal names its full pre-release version, such as
+   `## 0.1.0-rc.1 - YYYY-MM-DD`, because the workflow compares the whole version.
+   The changelog carries no `## Unreleased` heading: the crate
    guard in `tests/test_release_integrity.py` refuses one in the tree, and the
    workflow refuses to publish while one is present.
 3. Open a PR into `main`, then let the maintainer merge it after review and
