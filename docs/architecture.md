@@ -83,6 +83,20 @@ The **climate_indices** library implements a **layered library architecture** op
 └────────────────────────────────────────────────────────────────────┘
 ```
 
+### Shared domain vocabulary
+
+`vocabulary.py` defines `Distribution`, `Periodicity`, `OutputScale`,
+`ZeroHandling`, and `Aggregation`, their validation tables, and shared choice
+validators. It imports only the standard library and `exceptions.py`.
+`compute.py` and `indices.py` import these definitions without a reverse
+import from the computation layer into the public API.
+
+New code imports the types from `climate_indices.vocabulary`.
+Existing paths, including `indices.Distribution` and `compute.Periodicity`,
+remain available as re-exports of the same objects.
+The enums retain their original `__module__` values for pickle and autodoc
+compatibility. `validate_output_scale` also retains its documented module path.
+
 ### Layer Responsibilities
 
 #### 1. CLI Layer
@@ -129,7 +143,7 @@ process_climate_indices = "climate_indices.__main__:main"
 - **`indices.py`**: Legacy numpy API
   - Backward-compatible function signatures
   - Direct numpy array inputs/outputs
-  - Distribution enum (`Distribution.gamma`, `Distribution.pearson`)
+  - Re-exports the Distribution enum (`Distribution.gamma`, `Distribution.pearson`)
   - SPI, SPEI, PNP, PET computation
 
 **API Design Decision**: The dual API approach allows:
@@ -148,7 +162,7 @@ process_climate_indices = "climate_indices.__main__:main"
   - `gamma_parameters()`, `pearson_parameters()`: Distribution fitting
   - `transform_fitted_gamma()`, `transform_fitted_pearson()`: CDF transformation
   - `sum_to_scale()`: Optimized sliding window summation
-  - `Periodicity` enum: `monthly` (12 steps/year), `daily` (366 steps/year), with a `period_length` property and a `unit()` method
+  - Re-exports the `Periodicity` enum: `monthly` (12 steps/year), `daily` (366 steps/year), and `hourly` (8784 steps/year), with a `period_length` property and a `unit()` method
 
 - **`palmer.py`**: Palmer Drought Index family
   - PDSI (Palmer Drought Severity Index)

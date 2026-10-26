@@ -44,9 +44,8 @@ import xarray as xr
 
 from climate_indices import compute, indices, pm_eto
 from climate_indices.cf_metadata_registry import CF_METADATA
-from climate_indices.compute import OutputScale, Periodicity, ZeroHandling
-from climate_indices.indices import Distribution
 from climate_indices.validation import InputType, detect_input_type
+from climate_indices.vocabulary import Distribution, OutputScale, Periodicity, ZeroHandling
 from climate_indices.xarray_adapter import (
     INFER_TIME_PARAMETERS,
     build_output_attrs,
