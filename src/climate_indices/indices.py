@@ -5,7 +5,6 @@ from __future__ import annotations
 import functools
 import time
 from collections.abc import Callable
-from enum import Enum
 from typing import Any, ParamSpec, TypeVar, cast, overload
 
 import numpy as np
@@ -21,6 +20,8 @@ from climate_indices.exceptions import (
 )
 from climate_indices.logging_config import get_logger, log_calculation_failure
 from climate_indices.performance import check_large_array_memory
+from climate_indices.vocabulary import Distribution as Distribution
+from climate_indices.vocabulary import _validate_hourly_distribution as _validate_hourly_distribution
 
 # declare the function names that should be included in the public API for this module
 __all__ = [
@@ -33,41 +34,6 @@ __all__ = [
     "spi",
     "standardized_index",
 ]
-
-
-class Distribution(Enum):
-    """
-    Enumeration type for distribution fittings used for SPI and SPEI.
-    """
-
-    pearson = "pearson"
-    gamma = "gamma"
-    #: Generalized logistic (Hosking's GLO), the "log-Logistic" distribution R's
-    #: SPEI package and SPEIbase fit; see ADR-0016. Supported by ``spei()`` only.
-    loglogistic = "loglogistic"
-    #: The empirical (rank-based) distribution: plotting-position probabilities over
-    #: the Calibration Period, with no fitted parameters (#1168). Supported by
-    #: ``standardized_index()`` only.
-    empirical = "empirical"
-    #: The beta distribution, the bounded [0, 1] family a capacity factor or another
-    #: bounded series is standardized with; see ADR-0024. Supported by
-    #: ``standardized_index()`` only.
-    beta = "beta"
-
-    @property
-    def display_name(self) -> str:
-        """Human-readable name for prose and metadata ("log-logistic", not "loglogistic")."""
-        return _DISTRIBUTION_DISPLAY_NAMES[self]
-
-
-#: human-readable distribution names; every member but ``loglogistic`` is its own value
-_DISTRIBUTION_DISPLAY_NAMES = {
-    Distribution.pearson: "pearson",
-    Distribution.gamma: "gamma",
-    Distribution.loglogistic: "log-logistic",
-    Distribution.empirical: "empirical",
-    Distribution.beta: "beta",
-}
 
 
 # retrieve structlog logger for this module
@@ -236,29 +202,6 @@ def _validate_periodicity(periodicity: compute.Periodicity, *, allow_hourly: boo
             argument_name="periodicity",
             argument_value=str(periodicity),
             valid_values="Periodicity.monthly, Periodicity.daily",
-        )
-
-
-def _validate_hourly_distribution(periodicity: compute.Periodicity, distribution: Distribution) -> None:
-    """Reject an hourly series outside the rank-based empirical transform.
-
-    An hourly calendar step carries only a few dozen calibration values over a normal
-    record, which is too few for a parametric fit; the empirical rank transform needs
-    no fit and is the only supported hourly standard. See ADR-0019.
-
-    Args:
-        periodicity: The periodicity of the series
-        distribution: The distribution requested for the standard
-
-    Raises:
-        InvalidArgumentError: If the periodicity is hourly and the distribution is not empirical
-    """
-    if periodicity is compute.Periodicity.hourly and distribution is not Distribution.empirical:
-        raise InvalidArgumentError(
-            "Hourly periodicity supports only the empirical distribution.",
-            argument_name="distribution",
-            argument_value=str(distribution),
-            valid_values="Distribution.empirical",
         )
 
 
