@@ -1,4 +1,8 @@
-"""Optional, transactional Icechunk I/O for xarray datasets."""
+"""Optional, transactional Icechunk I/O for xarray datasets.
+
+The ``climate_indices[icechunk]`` extra installs ``icechunk>=1.1.21,<2`` and
+requires Python 3.11 or later and Zarr v3. The base install is unchanged.
+"""
 
 from __future__ import annotations
 
@@ -17,7 +21,8 @@ def open_icechunk(repository: Repository, *, branch: str = "main") -> xr.Dataset
 
     Args:
         repository: An existing Icechunk repository. Install ``climate_indices[icechunk]``
-            to create or open repositories with Icechunk (Python 3.11 or later).
+            (``icechunk>=1.1.21,<2``, Python 3.11 or later) to create or open
+            repositories with Icechunk.
         branch: The branch to read. The read-only session fixes the snapshot at open time.
 
     Returns:
@@ -39,12 +44,14 @@ def write_icechunk(
 
     Use ``to_icechunk``, not ``Dataset.to_zarr``, to track Dask worker writes.
     The writer disables consolidated metadata and completes all writes before commit.
-    A write or commit failure propagates without replacing the committed snapshot.
+    A write failure before commit propagates without replacing the committed snapshot.
+    A commit error can leave the outcome unknown; check the branch tip before retrying.
 
     Args:
         dataset: The eager or Dask-backed Dataset to write.
         repository: An existing Icechunk repository. This helper never deletes or
-            recreates it. Install ``climate_indices[icechunk]`` (Python 3.11 or later).
+            recreates it. Install ``climate_indices[icechunk]``
+            (``icechunk>=1.1.21,<2``, Python 3.11 or later).
         message: The commit message.
         branch: The branch to update. Use one writer per branch.
         mode: ``w-`` rejects an existing group. Use ``w`` to replace its contents

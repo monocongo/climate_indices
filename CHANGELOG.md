@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.1.0] - unreleased
 
+### Added
+
+- **Optional Icechunk I/O integration** (`climate_indices.icechunk_io`):
+  `open_icechunk` and `write_icechunk` read and write transactional Icechunk
+  snapshots without changing the core install. The `icechunk>=1.1.21,<2` extra
+  requires Python 3.11 or later and Zarr v3; the base package keeps its Python 3.10
+  support and dependencies. Writes default to `mode="w-"`, which rejects an
+  existing group; `mode="w"` replaces the group in a new snapshot and preserves
+  older snapshots. A write that fails before the commit does not advance the branch.
+  A commit error, such as a timeout, can leave the outcome unknown, so check the
+  branch tip before you retry. The helpers do not merge concurrent sessions or
+  retry conflicts (#1445, #1447, #1450, #1461).
+
 ### Changed
 
 - **Stable xarray DataArray index APIs and public adapter interface**: these APIs

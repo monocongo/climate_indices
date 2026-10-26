@@ -88,10 +88,11 @@ is the staged example.
 
 ## Read and write Icechunk snapshots
 
-Install the optional extra with `pip install 'climate_indices[icechunk]'`.
-Icechunk requires Python 3.11 or later and Zarr v3. The existing
-`xarray>=2025.6.1` requirement exceeds the `to_icechunk` floor of 2025.1.1.
-The base package still supports Python 3.10 without Icechunk.
+Install the optional extra with `pip install 'climate_indices[icechunk]'`, which
+installs `icechunk>=1.1.21,<2`. Icechunk requires Python 3.11 or later and Zarr v3.
+The existing `xarray>=2025.6.1` requirement exceeds the `to_icechunk` floor of
+2025.1.1. The core install is unchanged: without the extra, the base package keeps
+its Python 3.10 support and installs no Icechunk dependency.
 
 Use `open_icechunk` to read a committed snapshot. Select a variable and pass it
 to the existing index API. The reader preserves stored chunks; put the full time
@@ -138,6 +139,11 @@ Use `to_icechunk`, never `Dataset.to_zarr`, for Icechunk, including distributed
 or multiprocessing writes: it records worker writes in the session.
 Use `to_zarr` for ordinary Zarr stores as before.
 
+Icechunk stores return the same SPI and SPEI values as NetCDF and Zarr stores for
+the same inputs; [`tests/test_icechunk_io.py`](https://github.com/monocongo/climate_indices/blob/main/tests/test_icechunk_io.py)
+compares all three backends against
+the Python/SciPy oracle.
+
 Icechunk does not support consolidated metadata. The reader explicitly calls
 `xr.open_zarr(session.store, consolidated=False, chunks={})`, and `to_icechunk`
 disables consolidation internally. Do not use the ordinary Zarr example's
@@ -154,9 +160,15 @@ Rust dispatch and Python fallback remain unchanged.
 Keep input and output repositories separate, and use one writer per output
 branch. The default `mode="w-"` rejects an existing group. For an intentional
 replacement, use `mode="w"`: it changes only the new snapshot and preserves
-previous snapshots. A failed write does not advance the branch. Never delete
-or recreate an existing repository to retry a write. The helpers propagate write
-and commit errors; they do not merge concurrent sessions or retry conflicts.
+previous snapshots. A write that fails before the commit does not advance the
+branch. A commit error, such as a network timeout, can leave the outcome unknown:
+the branch can already point to the new snapshot. Compare
+`output_repo.lookup_branch(branch)`, where `branch` is the branch passed to
+`write_icechunk`, with the tip before the write, then retry only if it did not
+change. A blind retry with `mode="w"` adds another snapshot,
+and one with `mode="w-"` rejects the group that the first commit created. Never
+delete or recreate an existing repository to retry a write. The helpers propagate
+write and commit errors; they do not merge concurrent sessions or retry conflicts.
 The optional `branch` argument selects an existing branch (default `"main"`).
 
 ## Write NetCDF from a lazy xarray result
