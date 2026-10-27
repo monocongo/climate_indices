@@ -1197,7 +1197,8 @@ mod tests {
     fn complete_input_with_extreme_values_matches_the_day_loop() {
         let mut weather = weather(60, 9, 99);
         for cell in 0..9 {
-            weather.temperature[[3, cell]] = 1e4;
+            // the hottest day the fast path takes
+            weather.temperature[[3, cell]] = kbdi_fast::MAX_TEMPERATURE_CELSIUS;
             weather.temperature[[4, cell]] = -1e4;
             weather.temperature[[5, cell]] = 70.0;
             weather.precipitation[[6, cell]] = 1e6;
@@ -1287,6 +1288,24 @@ mod tests {
         let (history, state) = replay(&weather, 0);
         weather.precipitation = column_major(&weather.precipitation);
         weather.temperature = column_major(&weather.temperature);
+        let run = complete_run(&weather, 0, true);
+        for (got, want) in run.values.unwrap().iter().zip(&history) {
+            assert_eq!(got.to_bits(), want.to_bits());
+        }
+        assert_eq!(run.state, state);
+    }
+
+    #[test]
+    fn a_temperature_beyond_the_fast_path_limit_keeps_the_general_driver() {
+        // at 1e4 C the driver's deficit times heat overflows to infinity and
+        // the cap returns 203.2 mm, even against a climatology so negative that
+        // its denominator is near overflow; the reordered fraction would stay
+        // finite and tiny there, so the fast path leaves the run to the driver
+        let mut weather = weather(20, 9, 13);
+        weather.mean_annual[4] = -405_000.0;
+        weather.temperature[[3, 4]] = 1e4;
+        let (history, state) = replay(&weather, 0);
+        assert_eq!(history[[3, 4]], KBDI_MAX_MM);
         let run = complete_run(&weather, 0, true);
         for (got, want) in run.values.unwrap().iter().zip(&history) {
             assert_eq!(got.to_bits(), want.to_bits());
