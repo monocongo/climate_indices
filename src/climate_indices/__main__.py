@@ -1812,7 +1812,7 @@ class _PalmersAdapter(_SharedArrayAdapter):
         for key in _PalmersAdapter.output_keys:
             if key not in transport:
                 transport.allocate(key, context.output_shape)
-        # TODO Restore the Gregorian calendar here if daily Palmers become supported.
+        # Palmer inputs are monthly, so the outputs need no 366-day calendar conversion.
         _parallel_process(request, context.arguments, transport)
 
     @staticmethod
