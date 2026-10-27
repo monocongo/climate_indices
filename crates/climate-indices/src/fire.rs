@@ -693,6 +693,14 @@ fn check_day_length(
 /// KBDI returns `ClimateError::NonFinite`, with no partial result. This checks
 /// the KBDI value, not finiteness of the auxiliary wet-spell accumulator.
 ///
+/// Complete input (every day observed, every cell usable, no season mask, a
+/// finite climatology, and finite carried state with KBDI at most 203.2 mm)
+/// takes a reordered path: the drying term leaves the index's dependency chain
+/// and uses a table-driven `exp`. It stays within `rtol = atol = 1e-10` of the
+/// day-by-day recurrence rather than bit-identical to it, gives the same bits on
+/// every platform, and keeps the wet-spell accumulator exact. All other input
+/// keeps the day-by-day recurrence. See ADR-0025.
+///
 /// See the Measured accuracy section of [`crate`], registry entry `fire_kbdi`
 /// in `tests/parity_registry.py`, and Rust test
 /// `kbdi_ignores_rain_inside_the_first_wet_spell`.
