@@ -807,7 +807,7 @@ class TestFailureLifecycle:
     ) -> None:
         stream = _capture_stream(log_level="INFO")
         with mock.patch(
-            "climate_indices.compute.transform_fitted_pearson",
+            "climate_indices.compute.pearson_parameters",
             side_effect=compute.DistributionFittingError("Pearson failed"),
         ):
             result = indices.spi(
@@ -833,11 +833,11 @@ class TestFailureLifecycle:
     ) -> None:
         stream = _capture_stream(log_level="INFO")
         with mock.patch(
-            "climate_indices.compute.transform_fitted_pearson",
+            "climate_indices.compute.pearson_parameters",
             side_effect=compute.DistributionFittingError("Pearson failed"),
         ):
             with mock.patch(
-                "climate_indices.compute.transform_fitted_gamma",
+                "climate_indices.compute.gamma_parameters",
                 side_effect=RuntimeError("Gamma fallback failed"),
             ):
                 with pytest.raises(RuntimeError, match="Gamma fallback failed"):
