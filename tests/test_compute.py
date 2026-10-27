@@ -1078,7 +1078,7 @@ def test_fit_and_standardize_falls_back_to_gamma_only_when_asked():
     """
     values = np.arange(1.0, 121.0).reshape(10, 12)
     failed_pearson = mock.patch(
-        "climate_indices.compute.transform_fitted_pearson",
+        "climate_indices.compute.pearson_parameters",
         side_effect=compute.DistributionFittingError("Pearson failed", distribution_name="pearson3"),
     )
 
@@ -1110,7 +1110,7 @@ def test_fit_and_standardize_raises_for_a_partial_pearson_parameter_set_with_the
     """A partial Pearson set is an argument error, not a failed fit, even with the fall back (#1215)."""
     values = np.arange(1.0, 481.0).reshape(40, 12)
 
-    with mock.patch("climate_indices.compute.transform_fitted_gamma") as gamma:
+    with mock.patch("climate_indices.compute.gamma_parameters") as gamma:
         with pytest.raises(ValueError, match="either none or all"):
             compute.fit_and_standardize(
                 values,
@@ -1159,7 +1159,7 @@ def test_a_goodness_of_fit_warning_error_does_not_change_the_fitted_distribution
     ):
         with warnings.catch_warnings():
             warnings.simplefilter("error", GoodnessOfFitWarning)
-            with mock.patch("climate_indices.compute.transform_fitted_gamma") as gamma:
+            with mock.patch("climate_indices.compute.gamma_parameters") as gamma:
                 with pytest.raises(GoodnessOfFitWarning):
                     compute.fit_and_standardize(
                         values,
@@ -1181,8 +1181,8 @@ def test_fit_and_standardize_falls_back_when_pearson_leaves_excessive_nans():
     """
     values = np.arange(1.0, 121.0).reshape(10, 12)
 
-    with mock.patch("climate_indices.compute.transform_fitted_pearson", return_value=np.full(values.shape, np.nan)):
-        with mock.patch("climate_indices.compute.transform_fitted_gamma", return_value=np.ones(values.shape)) as gamma:
+    with mock.patch("climate_indices.compute._pearson_fit", return_value=np.full(values.shape, np.nan)):
+        with mock.patch("climate_indices.compute._gamma_fit", return_value=np.ones(values.shape)) as gamma:
             computed = compute.fit_and_standardize(
                 values,
                 indices.Distribution.pearson,
@@ -1208,8 +1208,8 @@ def test_fit_and_standardize_does_not_count_missing_input_as_a_failed_pearson_fi
     values[:8] = np.nan
     pearson_result = np.where(np.isnan(values), np.nan, 0.5)
 
-    with mock.patch("climate_indices.compute.transform_fitted_pearson", return_value=pearson_result):
-        with mock.patch("climate_indices.compute.transform_fitted_gamma") as gamma:
+    with mock.patch("climate_indices.compute._pearson_fit", return_value=pearson_result):
+        with mock.patch("climate_indices.compute._gamma_fit") as gamma:
             computed = compute.fit_and_standardize(
                 values,
                 indices.Distribution.pearson,
@@ -1246,7 +1246,7 @@ def test_fit_and_standardize_does_not_fall_back_when_the_input_is_entirely_missi
     """
     values = np.full((10, 12), np.nan)
 
-    with mock.patch("climate_indices.compute.transform_fitted_gamma") as gamma:
+    with mock.patch("climate_indices.compute.gamma_parameters") as gamma:
         computed = compute.fit_and_standardize(
             values,
             indices.Distribution.pearson,
@@ -1290,8 +1290,8 @@ def test_fit_and_standardize_falls_back_only_when_pearson_loses_over_half_of_the
     pearson_result = np.where(np.isnan(values), np.nan, 0.5)
     pearson_result.flat[np.flatnonzero(~np.isnan(values))[:lost]] = np.nan
 
-    with mock.patch("climate_indices.compute.transform_fitted_pearson", return_value=pearson_result):
-        with mock.patch("climate_indices.compute.transform_fitted_gamma", return_value=np.ones(values.shape)) as gamma:
+    with mock.patch("climate_indices.compute._pearson_fit", return_value=pearson_result):
+        with mock.patch("climate_indices.compute._gamma_fit", return_value=np.ones(values.shape)) as gamma:
             computed = compute.fit_and_standardize(
                 values,
                 indices.Distribution.pearson,
@@ -1443,7 +1443,7 @@ def test_fit_diagnostics_reports_the_gamma_fall_back():
 
     with (
         mock.patch("climate_indices.compute._pearson_lost_valid_fraction", return_value=1.0),
-        mock.patch("climate_indices.compute.transform_fitted_pearson") as pearson_transform,
+        mock.patch.object(compute.FittedDistribution, "transform") as pearson_transform,
     ):
         diagnostics = compute.fit_diagnostics(
             values,
@@ -1553,7 +1553,7 @@ def test_fit_diagnostics_raises_for_a_partial_pearson_parameter_set_with_the_fal
     """A partial Pearson set is an argument error even when the fall back is enabled (#1215)."""
     values = np.arange(1.0, 481.0).reshape(40, 12)
 
-    with mock.patch("climate_indices.compute.transform_fitted_gamma") as gamma:
+    with mock.patch("climate_indices.compute.gamma_parameters") as gamma:
         with pytest.raises(ValueError, match="either none or all"):
             compute.fit_diagnostics(
                 values,
@@ -1608,7 +1608,7 @@ def test_fit_diagnostics_propagates_a_goodness_of_fit_warning_error():
     ):
         with warnings.catch_warnings():
             warnings.simplefilter("error", GoodnessOfFitWarning)
-            with mock.patch("climate_indices.compute.transform_fitted_gamma") as gamma:
+            with mock.patch("climate_indices.compute.gamma_parameters") as gamma:
                 with pytest.raises(GoodnessOfFitWarning):
                     compute.fit_diagnostics(
                         values,

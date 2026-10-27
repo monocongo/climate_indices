@@ -107,7 +107,7 @@ def test_consumers_of_computed_pet_run_it_first():
 def test_each_registration_declares_its_runner(index):
     registration = cli_main._registry_for(index)
 
-    assert registration.run.__name__ == f"_run_{index}"
+    assert registration.run.__qualname__ == f"{type(registration).__name__}.run"
     assert registration.input_paths
 
 
@@ -115,21 +115,15 @@ def test_each_registration_declares_its_runner(index):
 def test_shared_array_indices_declare_their_kernel(index):
     registration = cli_main._registry_for(index)
 
-    assert registration.kernel is not None
-    assert registration.worker is not None
-    assert registration.input_array_keys is not None
-    assert registration.build_arguments is not None
-    assert registration.compute is not None
-    assert registration.write is not None
+    assert isinstance(registration, cli_main._SharedArrayAdapter)
+    assert not type(registration).__abstractmethods__
 
 
 def test_kbdi_computes_through_xarray_only():
     registration = cli_main._registry_for("kbdi")
 
-    assert registration.kernel is None
-    assert registration.compute is None
-    assert registration.write is None
-    assert registration.run is cli_main._run_kbdi
+    assert isinstance(registration, cli_main._KBDIAdapter)
+    assert not isinstance(registration, cli_main._SharedArrayAdapter)
 
 
 def test_handlers_for_index_returns_registrations_in_pipeline_order():
@@ -150,11 +144,15 @@ def test_process_climate_indices_runs_the_pipeline_in_order(monkeypatch):
     """An --index value runs its registered indices, rather than a chain of ifs."""
     calls: list[tuple[str, DatasetLayout]] = []
 
-    def _recorder(name: str) -> cli_main._IndexRegistration:
-        def _run(arguments: argparse.Namespace, input_type: DatasetLayout, _transport) -> None:
-            calls.append((name, input_type))
+    def _recorder(name: str) -> cli_main._IndexAdapter:
+        class Recorder(cli_main._IndexAdapter):
+            index = name
 
-        return cli_main._IndexRegistration(index=name, run=_run)
+            @staticmethod
+            def run(arguments: argparse.Namespace, input_type: DatasetLayout, transport) -> None:
+                calls.append((name, input_type))
+
+        return Recorder()
 
     monkeypatch.setattr(
         cli_main,
