@@ -1330,9 +1330,7 @@ class _SharedArrayAdapter(_IndexAdapter):
         """Write all outputs through the atomic writer."""
 
 
-# the registrations run only after _validate_args() has filled the request, so
-# these assertions are invariant checks rather than input validation; keep each
-# message identical across the registrations that assert it
+# Keep adapter invariant checks active when Python optimization is enabled.
 _UNVALIDATED_PRECIP = "the precipitation variable name was not validated"
 _UNVALIDATED_PET = "the PET variable name was not validated"
 _UNVALIDATED_TEMP = "the temperature variable name was not validated"
@@ -1342,7 +1340,8 @@ _UNVALIDATED_SCALE = "the scale was not validated"
 
 
 def _precipitation_array_key(request: _IndexRequest) -> tuple[str, ...]:
-    assert request.var_name_precip is not None, _UNVALIDATED_PRECIP
+    if request.var_name_precip is None:
+        raise ValueError(_UNVALIDATED_PRECIP)
     return (request.var_name_precip,)
 
 
@@ -1373,8 +1372,10 @@ def _standardized_variable_attributes(
     scale and distribution are recorded in the history entry instead. ``extra``
     carries the output scale's valid range, which the registry does not hold.
     """
-    assert request.distribution is not None, _UNVALIDATED_DISTRIBUTION
-    assert request.scale is not None, _UNVALIDATED_SCALE
+    if request.distribution is None:
+        raise ValueError(_UNVALIDATED_DISTRIBUTION)
+    if request.scale is None:
+        raise ValueError(_UNVALIDATED_SCALE)
     cf_key = cf_base if request.output_scale == "normal" else f"{cf_base}_{request.output_scale}"
     attrs = build_index_attrs(
         source,
@@ -1625,8 +1626,10 @@ class _SPEIAdapter(_SingleOutputAdapter):
 
     @staticmethod
     def input_array_keys(request: _IndexRequest) -> tuple[str, ...]:
-        assert request.var_name_precip is not None, _UNVALIDATED_PRECIP
-        assert request.var_name_pet is not None, _UNVALIDATED_PET
+        if request.var_name_precip is None:
+            raise ValueError(_UNVALIDATED_PRECIP)
+        if request.var_name_pet is None:
+            raise ValueError(_UNVALIDATED_PET)
         return (request.var_name_precip, request.var_name_pet)
 
     @staticmethod
@@ -1676,7 +1679,8 @@ class _PNPAdapter(_SingleOutputAdapter):
 
     @staticmethod
     def variable_attributes(request: _IndexRequest, source: xr.DataArray) -> tuple[str, dict[str, Any]]:
-        assert request.scale is not None, _UNVALIDATED_SCALE
+        if request.scale is None:
+            raise ValueError(_UNVALIDATED_SCALE)
         attrs = build_index_attrs(
             source,
             "pnp",
@@ -1706,7 +1710,8 @@ class _PETAdapter(_SingleOutputAdapter):
 
     @staticmethod
     def input_array_keys(request: _IndexRequest) -> tuple[str, ...]:
-        assert request.var_name_temp is not None, _UNVALIDATED_TEMP
+        if request.var_name_temp is None:
+            raise ValueError(_UNVALIDATED_TEMP)
         return (request.var_name_temp, LATITUDE_ARRAY_KEY)
 
     @staticmethod
@@ -1738,7 +1743,8 @@ class _PETAdapter(_SingleOutputAdapter):
         # Intermediate PET stays unpacked so packing cannot change a later index's values.
         request.pack_output = request.pack_output and arguments.index == "pet"
         result = _compute_write_index(request, transport)
-        assert result is not None, "PET computation should return file and variable name"
+        if result is None:
+            raise RuntimeError("PET computation should return file and variable name")
         arguments.netcdf_pet, arguments.var_name_pet = result
 
 
@@ -1765,9 +1771,12 @@ class _PalmersAdapter(_SharedArrayAdapter):
 
     @staticmethod
     def input_array_keys(request: _IndexRequest) -> tuple[str, ...]:
-        assert request.var_name_precip is not None, _UNVALIDATED_PRECIP
-        assert request.var_name_pet is not None, _UNVALIDATED_PET
-        assert request.var_name_awc is not None, _UNVALIDATED_AWC
+        if request.var_name_precip is None:
+            raise ValueError(_UNVALIDATED_PRECIP)
+        if request.var_name_pet is None:
+            raise ValueError(_UNVALIDATED_PET)
+        if request.var_name_awc is None:
+            raise ValueError(_UNVALIDATED_AWC)
         return (request.var_name_precip, request.var_name_pet, request.var_name_awc)
 
     @staticmethod
@@ -1781,8 +1790,10 @@ class _PalmersAdapter(_SharedArrayAdapter):
     @staticmethod
     def prepare_inputs(request: _IndexRequest, dataset: xr.Dataset) -> xr.Dataset:
         """Convert monthly depths and AWC to the inches the Palmer kernel requires."""
-        assert request.var_name_precip is not None, _UNVALIDATED_PRECIP
-        assert request.var_name_pet is not None, _UNVALIDATED_PET
+        if request.var_name_precip is None:
+            raise ValueError(_UNVALIDATED_PRECIP)
+        if request.var_name_pet is None:
+            raise ValueError(_UNVALIDATED_PET)
         for var_name in (request.var_name_precip, request.var_name_pet):
             # Out-of-place division also promotes integer input arrays.
             dataset[var_name].values = dataset[var_name].values / 25.4
@@ -1802,10 +1813,14 @@ class _PalmersAdapter(_SharedArrayAdapter):
     @staticmethod
     def compute(context: _ComputeContext) -> None:
         request = context.request
-        assert request.var_name_precip is not None, _UNVALIDATED_PRECIP
-        assert request.var_name_pet is not None, _UNVALIDATED_PET
-        assert request.var_name_awc is not None, _UNVALIDATED_AWC
-        assert context.prepared is not None, "the AWC dataset is opened before the shared arrays are filled"
+        if request.var_name_precip is None:
+            raise ValueError(_UNVALIDATED_PRECIP)
+        if request.var_name_pet is None:
+            raise ValueError(_UNVALIDATED_PET)
+        if request.var_name_awc is None:
+            raise ValueError(_UNVALIDATED_AWC)
+        if context.prepared is None:
+            raise RuntimeError("the AWC dataset is opened before the shared arrays are filled")
         transport = context.transport
         awc_array = context.prepared[request.var_name_awc]
         transport.write(request.var_name_awc, awc_array.values)
@@ -1948,8 +1963,10 @@ class _KBDIAdapter(_IndexAdapter):
                 _logger.error(msg)
                 raise ValueError(msg)
             if context.input_type == DatasetLayout.GRID:
-                assert context.latitudes is not None
-                assert context.longitudes is not None
+                if context.latitudes is None:
+                    raise ValueError("the input latitudes were not validated")
+                if context.longitudes is None:
+                    raise ValueError("the input longitudes were not validated")
                 if not np.allclose(
                     context.latitudes,
                     dataset_temp["lat"][:],
@@ -1967,7 +1984,8 @@ class _KBDIAdapter(_IndexAdapter):
                     _logger.error(msg)
                     raise ValueError(msg)
             elif context.input_type == DatasetLayout.DIVISIONS:
-                assert context.divisions is not None
+                if context.divisions is None:
+                    raise ValueError("the input divisions were not validated")
                 if not np.array_equal(context.divisions, dataset_temp["division"][:]):
                     msg = "Precipitation and temperature variables contain non-matching division IDs"
                     _logger.error(msg)
@@ -1976,8 +1994,10 @@ class _KBDIAdapter(_IndexAdapter):
     @staticmethod
     def run(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
         request = _IndexRequest.from_arguments(arguments, index="kbdi", input_type=input_type)
-        assert request.netcdf_precip is not None and request.var_name_precip is not None
-        assert request.netcdf_temp is not None and request.var_name_temp is not None
+        if request.netcdf_precip is None or request.var_name_precip is None:
+            raise ValueError("the precipitation input was not validated")
+        if request.netcdf_temp is None or request.var_name_temp is None:
+            raise ValueError("the temperature input was not validated")
         chunks = _time_whole_chunks(request.input_type)
         with (
             _open_with_default_chunks(xr.open_dataset, request.netcdf_precip, chunks=chunks) as dataset_precip,
@@ -1992,7 +2012,8 @@ class _KBDIAdapter(_IndexAdapter):
                 units=units,
                 initial_kbdi=initial_kbdi,
             )
-            assert isinstance(kbdi_values, xr.DataArray)
+            if not isinstance(kbdi_values, xr.DataArray):
+                raise TypeError("KBDI computation must return an xarray.DataArray")
             kbdi_values.name = "kbdi_imperial" if units == "imperial" else "kbdi"
             output_file = f"{request.output_file_base}_{kbdi_values.name}.nc"
             _write_xarray_index(request, kbdi_values, output_file, dataset_precip[request.var_name_precip])
@@ -2010,7 +2031,8 @@ class _PEAdapter(_IndexAdapter):
     @staticmethod
     def run(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
         request = _IndexRequest.from_arguments(arguments, index="pe", input_type=input_type)
-        assert request.netcdf_precip is not None and request.var_name_precip is not None
+        if request.netcdf_precip is None or request.var_name_precip is None:
+            raise ValueError("the precipitation input was not validated")
         # Intermediate PE stays unpacked, as intermediate PET does.
         request.pack_output = request.pack_output and arguments.index == "pe"
         with _open_with_default_chunks(
@@ -2043,7 +2065,8 @@ def _run_from_pe(
         _registry_for("pe").run(arguments, input_type, transport)
 
     request = _IndexRequest.from_arguments(arguments, index=index, input_type=input_type)
-    assert request.netcdf_pe is not None and request.var_name_pe is not None
+    if request.netcdf_pe is None or request.var_name_pe is None:
+        raise ValueError("the PE input was not validated")
 
     with _open_with_default_chunks(
         xr.open_dataset, request.netcdf_pe, chunks=_time_whole_chunks(input_type)
@@ -2117,13 +2140,15 @@ class _APIAdapter(_IndexAdapter):
     @staticmethod
     def run(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
         request = _IndexRequest.from_arguments(arguments, index="api", input_type=input_type)
-        assert request.netcdf_precip is not None and request.var_name_precip is not None
+        if request.netcdf_precip is None or request.var_name_precip is None:
+            raise ValueError("the precipitation input was not validated")
         with _open_with_default_chunks(
             xr.open_dataset, request.netcdf_precip, chunks=_time_whole_chunks(input_type)
         ) as dataset_precip:
             precipitation = dataset_precip[request.var_name_precip]
             api_values = flood.antecedent_precipitation_index(precipitation, arguments.api_k)
-            assert isinstance(api_values, xr.DataArray)
+            if not isinstance(api_values, xr.DataArray):
+                raise TypeError("API computation must return an xarray.DataArray")
             api_values.name = "api"
             _write_xarray_index(request, api_values, f"{request.output_file_base}_api.nc", precipitation)
 
