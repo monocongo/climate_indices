@@ -326,6 +326,21 @@ mod tests {
     }
 
     #[test]
+    fn the_table_heat_term_stays_close_to_the_platform_exp_up_to_the_limit() {
+        // above 80 C the argument grows to about 614, and an ulp of the
+        // argument becomes a relative error of the exponential (3.3e-14
+        // measured at every 0.37 degrees)
+        let mut worst: f64 = 0.0;
+        let mut temperature = 80.0;
+        while temperature <= MAX_TEMPERATURE_CELSIUS {
+            let want = reference_heat(temperature);
+            worst = worst.max(((heat(temperature) - want) / want).abs());
+            temperature += 0.37;
+        }
+        assert!(worst < 1e-13, "worst relative error {worst:e}");
+    }
+
+    #[test]
     fn the_drying_fraction_is_zero_below_ten_degrees_and_finite_at_any_temperature() {
         let scale = climatology_scale(800.0);
         for temperature in [-1e300, -1e4, -40.0, 0.0, 9.999_999] {
