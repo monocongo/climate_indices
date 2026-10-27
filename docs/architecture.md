@@ -400,9 +400,12 @@ line-by-line ports of the Python expressions, including the
 `np.maximum`/`np.minimum` NaN propagation and NumPy's operation order. The
 combined `cffwis()` orchestrator runs each of its three codes through the same
 kernels; the components are independent, so running them outside the shared day
-loop cannot change a result. Elementwise fire indices (ISI, BUI, FWI, DSR,
-Fosberg, HDW, Haines) stay in Python: they are single NumPy expressions with no
-recurrence, and a port would not pay for itself.
+loop cannot change a result. The CFFWIS behavior indices (ISI, BUI, FWI, DSR)
+and the overwinter Drought Code are approved for porting under RUSTUP-08: they
+complete the Fire Weather Index System in the crate even though the Python
+speed stays near 1x. The standalone elementwise indices (Fosberg FFWI, HDW,
+Haines) stay in Python for 3.1.1; RUSTUP-09 to RUSTUP-11 are closed as not
+planned and can reopen if a Rust user needs them.
 
 The Palmer family ports its loops and state machines. Dispatch for every stage
 lives in `palmer.py`, which owns `pdsi()` and `scpdsi()`; the private
@@ -638,7 +641,11 @@ recorded in CI is the evidence for the platform it ran on rather than a new
 tolerance.
 
 **Migration policy.** Port expensive numerical kernels, hot loops, and
-algorithms that benefit materially from native execution. Keep in Python:
+algorithms that benefit materially from native execution. A port may also be
+accepted for crate completeness when a Rust user cannot otherwise compute an
+index family, even without a measured Python speedup; for 3.1.1 that exception
+covers only the CFFWIS behavior indices and the overwinter Drought Code. Keep
+in Python:
 xarray orchestration, CF metadata, validation at the public API boundary,
 provenance, the CLI, logging and warnings, file and network I/O, and all other
 user-facing behavior. A port reproduces the Python numerics, including their
