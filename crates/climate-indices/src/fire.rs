@@ -694,12 +694,13 @@ fn check_day_length(
 /// the KBDI value, not finiteness of the auxiliary wet-spell accumulator.
 ///
 /// Complete input (every day observed, every cell usable, no season mask, a
-/// finite climatology, and finite carried state with KBDI at most 203.2 mm)
+/// finite climatology, finite carried state with KBDI at most 203.2 mm, and
+/// finite standard-layout weather with every temperature at most 7000 C)
 /// takes a reordered path: the drying term leaves the index's dependency chain
-/// and uses a table-driven `exp`. It stays within `rtol = atol = 1e-10` of the
-/// day-by-day recurrence rather than bit-identical to it, gives the same bits on
-/// every platform, and keeps the wet-spell accumulator exact. All other input
-/// keeps the day-by-day recurrence. See ADR-0025.
+/// and its heat term uses a table-driven `exp` with the same bits on every
+/// platform. It stays within `rtol = atol = 1e-10` of the day-by-day recurrence
+/// rather than bit-identical to it, and keeps the wet-spell accumulator exact.
+/// All other input keeps the day-by-day recurrence. See ADR-0025.
 ///
 /// See the Measured accuracy section of [`crate`], registry entry `fire_kbdi`
 /// in `tests/parity_registry.py`, and Rust test
