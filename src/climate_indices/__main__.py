@@ -1916,6 +1916,9 @@ def _write_xarray_index(
     write_netcdf_atomic(values, output_file, engine=output_engine, pack=request.pack_output)
 
 
+_UNVALIDATED_PRECIP_INPUT = "the precipitation input was not validated"
+
+
 class _KBDIAdapter(_IndexAdapter):
     """Use the fire xarray path without shared-array calendar or unit conversion."""
 
@@ -1962,40 +1965,44 @@ class _KBDIAdapter(_IndexAdapter):
                 msg = "Precipitation and temperature variables contain non-matching times"
                 _logger.error(msg)
                 raise ValueError(msg)
-            if context.input_type == DatasetLayout.GRID:
-                if context.latitudes is None:
-                    raise ValueError("the input latitudes were not validated")
-                if context.longitudes is None:
-                    raise ValueError("the input longitudes were not validated")
-                if not np.allclose(
-                    context.latitudes,
-                    dataset_temp["lat"][:],
-                    atol=utils.get_tolerance(context.latitudes),
-                ):
-                    msg = "Precipitation and temperature variables contain non-matching latitudes"
-                    _logger.error(msg)
-                    raise ValueError(msg)
-                if not np.allclose(
-                    context.longitudes,
-                    dataset_temp["lon"][:],
-                    atol=utils.get_tolerance(context.longitudes),
-                ):
-                    msg = "Precipitation and temperature variables contain non-matching longitudes"
-                    _logger.error(msg)
-                    raise ValueError(msg)
-            elif context.input_type == DatasetLayout.DIVISIONS:
-                if context.divisions is None:
-                    raise ValueError("the input divisions were not validated")
-                if not np.array_equal(context.divisions, dataset_temp["division"][:]):
-                    msg = "Precipitation and temperature variables contain non-matching division IDs"
-                    _logger.error(msg)
-                    raise ValueError(msg)
+            _KBDIAdapter._validate_coordinates(dataset_temp, context)
+
+    @staticmethod
+    def _validate_coordinates(dataset_temp: xr.Dataset, context: _InputContext) -> None:
+        if context.input_type == DatasetLayout.GRID:
+            if context.latitudes is None:
+                raise ValueError("the input latitudes were not validated")
+            if context.longitudes is None:
+                raise ValueError("the input longitudes were not validated")
+            if not np.allclose(
+                context.latitudes,
+                dataset_temp["lat"][:],
+                atol=utils.get_tolerance(context.latitudes),
+            ):
+                msg = "Precipitation and temperature variables contain non-matching latitudes"
+                _logger.error(msg)
+                raise ValueError(msg)
+            if not np.allclose(
+                context.longitudes,
+                dataset_temp["lon"][:],
+                atol=utils.get_tolerance(context.longitudes),
+            ):
+                msg = "Precipitation and temperature variables contain non-matching longitudes"
+                _logger.error(msg)
+                raise ValueError(msg)
+        elif context.input_type == DatasetLayout.DIVISIONS:
+            if context.divisions is None:
+                raise ValueError("the input divisions were not validated")
+            if not np.array_equal(context.divisions, dataset_temp["division"][:]):
+                msg = "Precipitation and temperature variables contain non-matching division IDs"
+                _logger.error(msg)
+                raise ValueError(msg)
 
     @staticmethod
     def run(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
         request = _IndexRequest.from_arguments(arguments, index="kbdi", input_type=input_type)
         if request.netcdf_precip is None or request.var_name_precip is None:
-            raise ValueError("the precipitation input was not validated")
+            raise ValueError(_UNVALIDATED_PRECIP_INPUT)
         if request.netcdf_temp is None or request.var_name_temp is None:
             raise ValueError("the temperature input was not validated")
         chunks = _time_whole_chunks(request.input_type)
@@ -2032,7 +2039,7 @@ class _PEAdapter(_IndexAdapter):
     def run(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
         request = _IndexRequest.from_arguments(arguments, index="pe", input_type=input_type)
         if request.netcdf_precip is None or request.var_name_precip is None:
-            raise ValueError("the precipitation input was not validated")
+            raise ValueError(_UNVALIDATED_PRECIP_INPUT)
         # Intermediate PE stays unpacked, as intermediate PET does.
         request.pack_output = request.pack_output and arguments.index == "pe"
         with _open_with_default_chunks(
@@ -2141,7 +2148,7 @@ class _APIAdapter(_IndexAdapter):
     def run(arguments: argparse.Namespace, input_type: DatasetLayout, transport: Transport) -> None:
         request = _IndexRequest.from_arguments(arguments, index="api", input_type=input_type)
         if request.netcdf_precip is None or request.var_name_precip is None:
-            raise ValueError("the precipitation input was not validated")
+            raise ValueError(_UNVALIDATED_PRECIP_INPUT)
         with _open_with_default_chunks(
             xr.open_dataset, request.netcdf_precip, chunks=_time_whole_chunks(input_type)
         ) as dataset_precip:

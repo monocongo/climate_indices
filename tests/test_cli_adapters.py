@@ -121,8 +121,9 @@ def test_shared_input_keys_reject_missing_names(
     adapter_request: cli._IndexRequest, index: str, field: str, message: str
 ) -> None:
     setattr(adapter_request, field, None)
+    adapter = cli._shared_array_adapter(index)
     with pytest.raises(ValueError, match=message):
-        cli._shared_array_adapter(index).input_array_keys(adapter_request)
+        adapter.input_array_keys(adapter_request)
 
 
 @pytest.mark.parametrize(
@@ -135,8 +136,9 @@ def test_output_attributes_reject_missing_parameters(
     setattr(adapter_request, field, None)
     adapter = cli._shared_array_adapter(index)
     assert isinstance(adapter, cli._SingleOutputAdapter)
+    source = xr.DataArray()
     with pytest.raises(ValueError, match=f"the {field} was not validated"):
-        adapter.variable_attributes(adapter_request, xr.DataArray())
+        adapter.variable_attributes(adapter_request, source)
 
 
 @pytest.mark.parametrize("method", ["prepare_inputs", "compute"])
@@ -148,11 +150,14 @@ def test_palmer_steps_reject_missing_names(
     adapter_request: cli._IndexRequest, method: str, field: str, message: str
 ) -> None:
     setattr(adapter_request, field, None)
-    with pytest.raises(ValueError, match=message):
-        if method == "prepare_inputs":
-            cli._PalmersAdapter.prepare_inputs(adapter_request, xr.Dataset())
-        else:
-            cli._PalmersAdapter.compute(_palmer_context(adapter_request))
+    if method == "prepare_inputs":
+        dataset = xr.Dataset()
+        with pytest.raises(ValueError, match=message):
+            cli._PalmersAdapter.prepare_inputs(adapter_request, dataset)
+    else:
+        context = _palmer_context(adapter_request)
+        with pytest.raises(ValueError, match=message):
+            cli._PalmersAdapter.compute(context)
 
 
 def _palmer_context(request: cli._IndexRequest) -> cli._ComputeContext:
@@ -170,13 +175,15 @@ def _palmer_context(request: cli._IndexRequest) -> cli._ComputeContext:
 
 def test_palmer_compute_requires_awc_name(adapter_request: cli._IndexRequest) -> None:
     adapter_request.var_name_awc = None
+    context = _palmer_context(adapter_request)
     with pytest.raises(ValueError, match="AWC variable name"):
-        cli._PalmersAdapter.compute(_palmer_context(adapter_request))
+        cli._PalmersAdapter.compute(context)
 
 
 def test_palmer_compute_requires_prepared_awc(adapter_request: cli._IndexRequest) -> None:
+    context = _palmer_context(adapter_request)
     with pytest.raises(RuntimeError, match="AWC dataset"):
-        cli._PalmersAdapter.compute(_palmer_context(adapter_request))
+        cli._PalmersAdapter.compute(context)
 
 
 @pytest.mark.parametrize(
@@ -200,16 +207,19 @@ def test_xarray_runners_reject_missing_inputs(
     if field == "netcdf_pe":
         # Simulate a prerequisite that did not supply its output file.
         monkeypatch.setattr(cli._PEAdapter, "run", staticmethod(lambda *_args: None))
+    adapter = cli._registry_for(index)
+    transport = Transport(1)
     with pytest.raises(ValueError, match=message):
-        cli._registry_for(index).run(arguments, DatasetLayout.TIMESERIES, Transport(1))
+        adapter.run(arguments, DatasetLayout.TIMESERIES, transport)
 
 
 def test_pet_runner_requires_a_result(adapter_request: cli._IndexRequest, monkeypatch: pytest.MonkeyPatch) -> None:
     arguments = argparse.Namespace(**vars(adapter_request))
     arguments.index = "pet"
     monkeypatch.setattr(cli, "_compute_write_index", lambda *_args: None)
+    transport = Transport(1)
     with pytest.raises(RuntimeError, match="PET computation should return"):
-        cli._PETAdapter.run(arguments, DatasetLayout.TIMESERIES, Transport(1))
+        cli._PETAdapter.run(arguments, DatasetLayout.TIMESERIES, transport)
 
 
 @pytest.mark.parametrize(
@@ -225,8 +235,10 @@ def test_xarray_runners_require_dataarray_results(
         lambda *_args, **_kwargs: xr.Dataset({"precip": ("time", [1.0]), "temp": ("time", [20.0])}),
     )
     monkeypatch.setattr(module, kernel, lambda *_args, **_kwargs: np.zeros(1))
+    adapter = cli._registry_for(index)
+    transport = Transport(1)
     with pytest.raises(TypeError, match="must return an xarray.DataArray"):
-        cli._registry_for(index).run(arguments, DatasetLayout.TIMESERIES, Transport(1))
+        adapter.run(arguments, DatasetLayout.TIMESERIES, transport)
 
 
 @pytest.mark.parametrize(
@@ -248,5 +260,6 @@ def test_kbdi_validation_requires_coordinates(
         divisions=None if field == "divisions" else np.array([1]),
     )
     monkeypatch.setattr(xr, "open_dataset", lambda *_args: temperature)
+    arguments = argparse.Namespace(**vars(adapter_request))
     with pytest.raises(ValueError, match=field):
-        cli._KBDIAdapter.validate_inputs(argparse.Namespace(**vars(adapter_request)), context)
+        cli._KBDIAdapter.validate_inputs(arguments, context)
