@@ -4,7 +4,13 @@
 
 Amended by [#1288](https://github.com/monocongo/climate_indices/issues/1288),
 which corrected item 6's masked-array claim to match the code; the decision
-itself stands. The decision is implemented by the RUST ticket series under the epic
+itself stands. Amended by
+[#1421](https://github.com/monocongo/climate_indices/issues/1421), which moves
+item 6's import out of each owning module into one backend module,
+`climate_indices._native_backend`. That module owns the import, the
+kernel-presence check, the float64 and reporting-policy gate, and error
+translation; each owning module keeps its eligibility rule. The substance of item
+6 is unchanged. The decision is implemented by the RUST ticket series under the epic
 [#1270](https://github.com/monocongo/climate_indices/issues/1270): the workspace
 scaffold and SPI gamma port (RUST-001, RUST-002), the CI jobs (RUST-003), and the
 per-kernel ports that followed. Packaging of binary wheels is deferred to RUST-013
@@ -74,8 +80,9 @@ contract more thoroughly than leaving the performance on the table.
    diverges, and whether reproducing the Python numerical method closes the gap.
    Fixtures and existing reference tests are never edited to match Rust.
 
-6. **Dispatch routes by input, never by fallback on failure.** The Python module
-   that owns a computation imports `_native` inside `try`/`except ImportError` and
+6. **Dispatch routes by input, never by fallback on failure.**
+   `climate_indices._native_backend` imports `_native` inside `try`/`except
+   ImportError` for every family, and the Python module that owns a computation
    routes to Rust only for a plain, aligned float64 `ndarray` in a supported layout
    whose prepared arguments the kernel accepts; anything else — unaligned arrays,
    other dtypes, parameters that vary by year, NumPy floating-point error policies
