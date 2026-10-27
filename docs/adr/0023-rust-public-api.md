@@ -11,6 +11,12 @@ CRATE-05 ([#1309](https://github.com/monocongo/climate_indices/issues/1309)) ren
 package from `climate-core` to `climate-indices` and moved it to
 `crates/climate-indices`, so the import path below is `climate_indices`.
 
+[RUSTUP-03 (#1433)](https://github.com/monocongo/climate_indices/issues/1433)
+amends decisions 2–3: Timescale Aggregation is approved for implementation;
+complete index workflows remain outside the crate for 3.1.1.
+The Aggregation kernel is not implemented by this amendment.
+Until its separate port lands, callers still supply window sums and means.
+
 ## Context
 
 The block kernels already accept borrowed arrays and return owned numerical results.
@@ -45,7 +51,8 @@ The approved choice accepts that compatibility cost and preserves the existing k
    Strided views remain supported where the function does not document a restriction.
    Standard Palmer recursion accepts `(months, cells)`; Wells recursion remains per-series.
    Thornthwaite and Palmer water-balance blocks retain `(years, 12, cells)`.
-   This task adds no complete SPI/SPEI workflow or duplicate per-series wrappers.
+   Complete SPI/SPEI/standardized-index workflows remain outside the crate for 3.1.1.
+   Callers compose the kernels; the crate adds no duplicate per-series wrappers.
 
 3. **State units and calendar responsibilities explicitly.**
    Precipitation and PET kernels use mm, and temperature inputs use degrees C.
@@ -55,7 +62,11 @@ The approved choice accepts that compatibility cost and preserves the existing k
    Array indices are zero-based; day-of-year and calendar-month inputs are one-based where documented.
    Monthly calendar layouts contain 12 steps per year.
    Prepared all-leap daily layouts contain 366 positions per year, including February 29 in every year.
-   Callers select the Calibration Period and supply any calendar padding, aggregation, clipping, or final index transformation.
+   Callers select the Timescale and Calibration Period and supply calendar padding, clipping, and the final index transformation.
+   The approved exception is a Timescale Aggregation kernel over `(steps, cells)`, pending a separate port under RUSTUP-03.
+   It computes trailing window sums or means; a mean is the window sum divided by `scale`.
+   The output retains the input shape, with the leading `scale - 1` positions set to NaN.
+   A window containing a missing value is NaN; missing values are never skipped.
    Kernels retain their current structural checks and kernel-specific NaN behavior.
    They do not perform general physical-range validation.
 
@@ -92,6 +103,31 @@ The approved choice accepts that compatibility cost and preserves the existing k
    There is no demonstrated need for serde, parallel execution, or another optional dependency here.
    Python bindings remain in the separate, unpublished `climate-py` crate.
 
+## Timescale Aggregation and workflow decision (RUSTUP-03)
+
+**Q1: accept Timescale Aggregation as a numerical kernel.**
+`compute.sum_to_scale` currently uses `np.convolve` for a series and a strided
+sliding-window reduction for a Spatial Block.
+`compute.prepare_scaled` divides the sum by `scale` for a mean.
+The SPI and SPEI Rust examples each implement their own `trailing_sum`.
+A shared block kernel removes that duplication without taking ownership of calendars or index policy.
+
+The [#1177 hourly benchmark](https://github.com/monocongo/climate_indices/blob/main/benchmarks/README.md#hourly-standardized-energy-indices-1177)
+reports about 2.2 s and 150 MiB peak allocation for a 25-cell, 41-year block at a 720-hour Timescale.
+It attributes the cost to re-summing each window; the work grows with the Timescale.
+This is existing benchmark evidence, not a measurement or speedup from this amendment.
+
+The separate port must preserve {doc}`0017-rust-core-acceleration-backend` decisions 4–6.
+Its parity checks must establish the summation order for both NumPy paths before selecting an optimization.
+A running sum or prefix subtraction is not equivalent under cancellation and can retain errors after a missing value leaves the window.
+Signed, extreme-magnitude windows need measured absolute and relative errors, not an assumed `1e-10` bound.
+Any tolerance exception requires the measurements and justification that ADR-0017 specifies.
+
+**Q2: decline complete index workflows for 3.1.1.**
+Calibration Period resolution, Pearson-to-gamma fallback, Zero Handling, data-quality warnings, and clipping remain caller responsibilities.
+Moving them into `spi()`/`spei()`/standardized-index crate functions would duplicate Python orchestration and conflict with ADR-0017 decision 3.
+The runnable Rust examples remain the workflow guidance.
+
 ## Compiling sketch and validation
 
 The crate-level rustdoc in `crates/climate-indices/src/lib.rs` demonstrates a single-series call,
@@ -104,6 +140,7 @@ The synthetic fit sample illustrates shape conventions, not a sufficient scienti
 The workspace build and native Python parity tests verify that `climate-py` still consumes the surface.
 No kernel changes its numerical expressions or operation order.
 This record makes no new measured accuracy claim.
+The RUSTUP-03 amendment changes no numerical code; its planned kernel needs separate parity and performance validation.
 
 ## Alternatives considered
 
@@ -126,3 +163,8 @@ packaging metadata, and the first real crate release stays with
   and updated the compiling rustdoc imports with it.
 - [CRATE-06 — Standalone validation](https://github.com/monocongo/climate_indices/issues/1310) owns standalone reference fixtures.
 - [CRATE-07 — Rust-user documentation](https://github.com/monocongo/climate_indices/issues/1311) owns full examples and guides beyond this API sketch.
+- [RUSTUP-03](https://github.com/monocongo/climate_indices/issues/1433) owns the Aggregation decision and the follow-up port issue under
+  [RUSTUP-00](https://github.com/monocongo/climate_indices/issues/1430).
+  The port must include the kernel module, binding, stub, plain-float64 dispatch in `compute.sum_to_scale`, and parity registry entries.
+  It must repeat the #1177 hourly benchmark and update the numerical contract and both CHANGELOGs.
+  The port depends on RUSTUP-03 and must block [RUSTUP-12](https://github.com/monocongo/climate_indices/issues/1442).
