@@ -225,9 +225,11 @@ pub(crate) type CompleteRun = (Option<Array2<f64>>, Vec<KbdiCell>);
 ///
 /// The caller guarantees the contract in the module docs and that every
 /// `mean_annual_precipitation_mm`, every initial state and every initial
-/// index at most 203.2 mm are finite. Returns `None` when a precipitation or
-/// temperature value is not finite, so the caller can rerun the general
-/// driver, which reports it.
+/// index at most 203.2 mm are finite. Returns `None`, so the caller can run
+/// the general driver instead, when a precipitation or temperature value is
+/// not finite (the driver reports it) or when either weather view is not in
+/// standard layout: the driver reads such views in place, where this path
+/// would have to copy both full grids.
 pub(crate) fn run(
     precipitation_mm: ArrayView2<'_, f64>,
     maximum_temperature_celsius: ArrayView2<'_, f64>,
@@ -237,8 +239,8 @@ pub(crate) fn run(
     record: bool,
 ) -> Option<CompleteRun> {
     let (days, cells) = precipitation_mm.dim();
-    let precipitation = precipitation_mm.as_standard_layout();
-    let temperature = maximum_temperature_celsius.as_standard_layout();
+    let precipitation = precipitation_mm.as_slice()?;
+    let temperature = maximum_temperature_celsius.as_slice()?;
     let scales: Vec<f64> = mean_annual_precipitation_mm
         .iter()
         .map(|&r| climatology_scale(r))
@@ -252,10 +254,6 @@ pub(crate) fn run(
     // every recorded value is written, so the zeroed (lazily committed) array
     // is never read before it is overwritten
     let mut values = record.then(|| Array2::<f64>::zeros((days - spin_up, cells)));
-    let (precipitation, temperature) = (
-        precipitation.as_slice().expect("standard layout"),
-        temperature.as_slice().expect("standard layout"),
-    );
     let mut total = 0.0;
     for (days, history) in [
         (0..spin_up, None),
