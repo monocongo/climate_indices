@@ -29,6 +29,11 @@ use crate::kbdi_exp_table::{EXP2_TABLE_BITS, HEAT_OFFSET};
 
 /// Cells advanced together, each in its own lane.
 const LANES: usize = 8;
+/// The hottest day a run may hold, far above any real temperature. From about
+/// 8030 °C the driver's `(203.2 − Q1) · heat` overflows to infinity and caps
+/// the index at 203.2 mm, an order of operations the reordered fraction does
+/// not reproduce, so a hotter run is left to the driver.
+pub(crate) const MAX_TEMPERATURE_CELSIUS: f64 = 7000.0;
 /// Cells per tile: a tile's lane groups share the rows they read and write.
 pub(crate) const TILE_CELLS: usize = 256;
 /// Days a tile advances before the next tile.
@@ -68,7 +73,9 @@ fn fmin(a: f64, b: f64) -> f64 {
 /// argument is reduced as `x = (m + j/256) ln 2 + r`, `|r| <= ln 2 / 512`;
 /// `2^(j/256)` comes from the table and `exp(r) − 1` from a degree-4
 /// polynomial (truncation below 4e-17 relative). The argument is clamped at
-/// 709 so no temperature overflows; there is no lower clamp, because below
+/// 709 so no temperature overflows; [`run`] declines any day above
+/// [`MAX_TEMPERATURE_CELSIUS`], well below the clamp, so the clamp never
+/// changes a returned value. There is no lower clamp, because below
 /// 10 °C [`drying_fraction`] discards the value, and a very negative argument
 /// only yields a finite or NaN result there (the table index is masked).
 #[inline(always)]
@@ -168,7 +175,13 @@ fn lanes<const N: usize>(
         let t: &[f64; N] = rows.temperature[at..at + N].try_into().expect("N lanes");
         let k: [f64; N] = std::array::from_fn(|lane| drying_fraction(t[lane], scales[lane]));
         for lane in 0..N {
-            total[lane] += p[lane] + t[lane];
+            // a day above the limit counts as infinite, which declines the run
+            let checked = if t[lane] <= MAX_TEMPERATURE_CELSIUS {
+                t[lane]
+            } else {
+                f64::INFINITY
+            };
+            total[lane] += p[lane] + checked;
             (q[lane], w[lane]) = step(q[lane], w[lane], p[lane], k[lane]);
         }
         if let Some(history) = rows.history.as_deref_mut() {
@@ -185,9 +198,11 @@ fn lanes<const N: usize>(
 /// precipitation and temperature value read.
 ///
 /// The sum is finite only if every value is: a NaN or infinite input makes it
-/// NaN or infinite. Finite inputs large enough to overflow it (near 1e308)
-/// make it infinite too, which only sends a valid run to the general driver.
-/// One add per value, cheaper than testing each value.
+/// NaN or infinite, and so does a temperature above
+/// [`MAX_TEMPERATURE_CELSIUS`], which [`lanes`] adds as infinity. Finite inputs
+/// large enough to overflow it (near 1e308) make it infinite too, which only
+/// sends a valid run to the general driver. One add per value, cheaper than
+/// testing each value.
 fn advance(rows: &mut Rows<'_>, scales: &[f64], kbdi: &mut [f64], wet_spell: &mut [f64]) -> f64 {
     let cells = rows.cells;
     let grouped = cells / LANES * LANES;
@@ -227,7 +242,8 @@ pub(crate) type CompleteRun = (Option<Array2<f64>>, Vec<KbdiCell>);
 /// `mean_annual_precipitation_mm`, every initial state and every initial
 /// index at most 203.2 mm are finite. Returns `None`, so the caller can run
 /// the general driver instead, when a precipitation or temperature value is
-/// not finite (the driver reports it) or when either weather view is not in
+/// not finite (the driver reports it), when a temperature is above
+/// [`MAX_TEMPERATURE_CELSIUS`], or when either weather view is not in
 /// standard layout: the driver reads such views in place, where this path
 /// would have to copy both full grids.
 pub(crate) fn run(
