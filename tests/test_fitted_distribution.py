@@ -232,6 +232,23 @@ def test_reused_fit_rejects_incompatible_cells(distribution: indices.Distributio
 
 
 @pytest.mark.parametrize(
+    "distribution", [kind for kind in indices.Distribution if kind is not indices.Distribution.gamma]
+)
+@pytest.mark.parametrize(
+    ("kwargs", "error"),
+    [({"output_scale": "bad"}, InvalidArgumentError), ({"zero_handling": "bad"}, ValueError)],
+)
+def test_reused_fit_checks_arguments_before_cells(
+    distribution: indices.Distribution, kwargs: dict[str, str], error: type[Exception]
+) -> None:
+    """An invalid argument fails before a cell mismatch, as in the public adapters."""
+    values = np.random.default_rng(1417).uniform(0.1, 0.9, (30, 12, 2))
+    fitted = compute.FittedDistribution.resolve(values, distribution, 1981, 1981, 2010, compute.Periodicity.monthly)
+    with pytest.raises(error, match=next(iter(kwargs))):
+        fitted.transform(np.full((1, 12, 1), 0.5), **kwargs)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
     ("distribution", "params"),
     [
         (indices.Distribution.pearson, {"locs": np.ones(12)}),

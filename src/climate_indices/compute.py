@@ -3419,8 +3419,11 @@ class FittedDistribution:
         kind = self.distribution.value
         if kind != "gamma":
             # A reused fit can see different cells. Reject a mismatch before the
-            # all-missing return, as the public adapters' re-validation did; gamma
-            # keeps its historical early return.
+            # all-missing return, as the public adapters' re-validation did, but after
+            # their argument checks; gamma keeps its historical early return.
+            validate_output_scale(output_scale)
+            _validate_zero_handling(zero_handling)
+            _validate_hourly_distribution(self.periodicity, self.distribution)
             self._validate_cell_layout(_validate_array(values, self.periodicity))
         prepared, log = _prepare_transform(values, self.distribution, self.periodicity, output_scale, zero_handling)
         if prepared is None:
