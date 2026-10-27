@@ -612,8 +612,8 @@ for a bad one is `cargo yank`.
 2. Confirm that docs.rs built the version without warnings. The build starts a few
    minutes after the publish, and a warning there is a defect to fix in the next
    version.
-3. Install the release in a scratch crate outside this checkout, naming the
-   version explicitly: Cargo skips a pre-release it was not asked for.
+3. For a stable release, run the [published-crate consumer smoke test](#published-crate-consumer-smoke-test) below.
+   For a pre-release, name the version explicitly: Cargo skips a pre-release it was not asked for.
    ```bash
    cargo new /tmp/crate-check
    cd /tmp/crate-check
@@ -626,3 +626,78 @@ for a bad one is `cargo yank`.
    heading is added when that release is prepared.
 5. Add the crates.io link to the next release notes or the README when the
    maintainer asks for it.
+
+### Published-crate consumer smoke test
+
+Run this test after each stable crate release and monthly between releases.
+It checks the published crate, not the workspace source or the Python extension.
+The block starts with `EXPECTED_VERSION=0.1.0` for [#1315](https://github.com/monocongo/climate_indices/issues/1315).
+Before running the test, set `EXPECTED_VERSION` to the stable release under test.
+Do not add a version to `cargo add climate-indices`: that would bypass the default-selection check.
+
+Use Bash on macOS or Linux with Rust and Cargo 1.85 or newer and access to crates.io.
+The block creates a temporary project outside the checkout and uses fresh Cargo cache and build directories.
+It does not publish anything or change the repository.
+It keeps the temporary directory for evidence and prints its path before it starts.
+
+```bash
+(
+    set -euo pipefail
+    EXPECTED_VERSION=0.1.0
+    scratch=$(mktemp -d "${TMPDIR:-/tmp}/climate-indices-smoke.XXXXXX")
+    printf 'Evidence directory: %s\n' "$scratch"
+    export CARGO_HOME="$scratch/cargo-home"
+    export CARGO_TARGET_DIR="$scratch/target"
+    cd "$scratch"
+    date -u '+%Y-%m-%dT%H:%M:%SZ'
+    rustc --version
+    cargo --version
+    cargo new --bin --vcs none --edition 2024 consumer
+    cd consumer
+    cargo add climate-indices
+    cargo add ndarray@0.17
+    cargo tree --locked -i climate-indices --depth 0 \
+        | grep -Fx "climate-indices v$EXPECTED_VERSION"
+
+    cat > src/main.rs <<'RS'
+use climate_indices::{ClimateError, pnp::pnp_percentages};
+use ndarray::{Array2, array};
+
+fn main() -> Result<(), ClimateError> {
+    let precipitation_mm = array![[50.0], [100.0], [150.0]];
+    let monthly_normals_mm = Array2::from_elem((12, 1), 100.0);
+    let pnp = pnp_percentages(precipitation_mm.view(), monthly_normals_mm.view())?;
+    assert_eq!(pnp, array![[0.5], [1.0], [1.5]]);
+    println!("PNP ratios: {:?}", pnp.column(0).to_vec());
+    Ok(())
+}
+RS
+
+    cargo run --locked
+    RUSTDOCFLAGS="-D warnings" cargo doc --locked -p climate-indices --no-deps
+    test -s "$CARGO_TARGET_DIR/doc/climate_indices/index.html"
+    printf 'Local documentation: %s\n' "$CARGO_TARGET_DIR/doc/climate_indices/index.html"
+)
+```
+
+The calculation uses synthetic monthly precipitation for one cell at Timescale 1.
+The supplied monthly normals are 100 mm; the test does not estimate them from a Calibration Period.
+PNP means Percentage of Normal Precipitation and returns a dimensionless ratio, not a value multiplied by 100.
+The assertions require the ratios `[0.5, 1.0, 1.5]`.
+This checks installation and a public kernel call, not scientific accuracy or all kernels.
+
+A successful run must show `climate-indices v$EXPECTED_VERSION` with the configured version, the expected PNP ratios, and a documentation path.
+Open the printed `index.html` in a browser and confirm that the crate page and its `pnp` module render correctly.
+The shell checks that the page exists; it does not check browser rendering.
+
+Record the UTC date, OS, Rust/Cargo versions, selected crate version, calculation output, and documentation result on the release ticket.
+Keep the console output, `consumer/Cargo.toml`, and `consumer/Cargo.lock` with that record.
+For #1315, record whether the browser check passed as well as the command results.
+Only the maintainer closes the release ticket after checking its other requirements.
+
+If the version check fails, inspect the selected version before continuing.
+If Cargo selects an older release immediately after publication, wait for the registry index to include the expected version.
+Then rerun the whole block; its fresh Cargo cache forces a new index request.
+A later stable release can legitimately change the default selection.
+Do not pin the dependency to make this check pass.
+Local documentation success does not replace the separate docs.rs post-release check.
