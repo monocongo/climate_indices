@@ -549,7 +549,7 @@ def test_the_pearson_fall_back_uses_the_calibration_zero_mass_and_the_mode(zero_
     values[:10:2, :] = 0.0
     values[12::6, :] = 0.0
     failed_pearson = mock.patch(
-        "climate_indices.compute.transform_fitted_pearson",
+        "climate_indices.compute.pearson_parameters",
         side_effect=compute.DistributionFittingError("Pearson failed", distribution_name="pearson3"),
     )
 
