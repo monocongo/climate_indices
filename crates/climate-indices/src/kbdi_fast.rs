@@ -5,7 +5,7 @@
 //! driver's missing-day bookkeeping never fires, so a run is the step applied
 //! to every cell on every day, recorded after the spin-up. This module computes
 //! that faster, within the `rtol = atol = 1e-10` parity tolerance rather than
-//! bit for bit:
+//! bit for bit (see ADR-0025):
 //!
 //! - the drying fraction `k = max(heat · 1e-3 / den, 0)` (0 below 10 °C) does
 //!   not depend on the index, so it is computed off the dependency chain, and

@@ -913,7 +913,7 @@ mod tests {
                     kbdi_climatology_denominator(if cell == 0 { 800.0 } else { 900.0 }),
                 );
                 // complete input takes the fast path, held to the native-parity
-                // tolerance rather than bit for bit
+                // tolerance rather than bit for bit (ADR-0025)
                 assert!(within_parity(values[[day, cell]], replayed[cell].kbdi));
             }
         }
