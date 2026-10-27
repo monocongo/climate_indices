@@ -214,7 +214,7 @@ pub struct KbdiCell {
 ///
 /// It depends only on a cell's mean annual precipitation, so a run computes it
 /// once per cell instead of on every drought day.
-fn kbdi_climatology_denominator(mean_annual_precipitation_mm: f64) -> f64 {
+pub(crate) fn kbdi_climatology_denominator(mean_annual_precipitation_mm: f64) -> f64 {
     1.0 + 10.88 * (-0.001736 * mean_annual_precipitation_mm).exp()
 }
 

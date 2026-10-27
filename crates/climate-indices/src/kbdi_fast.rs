@@ -21,7 +21,10 @@ use std::ops::Range;
 
 use ndarray::{Array2, ArrayView1, ArrayView2};
 
-use crate::fire::{KBDI_DRYING_TEMPERATURE_CELSIUS, KBDI_MAX_MM, KBDI_RAIN_THRESHOLD_MM, KbdiCell};
+use crate::fire::{
+    KBDI_DRYING_TEMPERATURE_CELSIUS, KBDI_MAX_MM, KBDI_RAIN_THRESHOLD_MM, KbdiCell,
+    kbdi_climatology_denominator,
+};
 use crate::kbdi_exp_table::{EXP2_TABLE_BITS, HEAT_OFFSET};
 
 /// Cells advanced together, each in its own lane.
@@ -91,7 +94,7 @@ pub(crate) fn heat(temperature_celsius: f64) -> f64 {
 
 /// `1e-3 / (1 + 10.88 exp(−0.001736 R))`, once per cell.
 pub(crate) fn climatology_scale(mean_annual_precipitation_mm: f64) -> f64 {
-    1e-3 / (1.0 + 10.88 * (-0.001736 * mean_annual_precipitation_mm).exp())
+    1e-3 / kbdi_climatology_denominator(mean_annual_precipitation_mm)
 }
 
 /// The share of the remaining deficit `203.2 − Q1` one day dries, 0 below
