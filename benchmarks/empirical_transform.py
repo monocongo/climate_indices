@@ -5,7 +5,9 @@ Run with ``BACKEND=python`` or ``BACKEND=rust`` and ``CALIBRATION_YEARS=20`` or
 
     for years in 20 60; do
       for backend in python rust; do
-        BACKEND=$backend CALIBRATION_YEARS=$years uv run benchmarks/empirical_transform.py
+        for run in 1 2 3; do
+          BACKEND=$backend CALIBRATION_YEARS=$years uv run benchmarks/empirical_transform.py
+        done
       done
     done
 
@@ -36,7 +38,8 @@ from tests import conftest  # noqa: E402  (the tests' recorder is reused rather 
 
 backend = os.environ["BACKEND"]
 years = int(os.environ["CALIBRATION_YEARS"])
-assert backend in {"python", "rust"} and years in {20, 60}
+if backend not in {"python", "rust"} or years not in {20, 60}:
+    raise ValueError("BACKEND must be python or rust, and CALIBRATION_YEARS must be 20 or 60")
 
 values = np.random.default_rng(1435).gamma(2.0, size=(60, 12, 65536))
 calibration = values[:years]
@@ -47,7 +50,8 @@ native = getattr(compute, "_native", None)
 if backend == "python":
     patch.setattr(compute, "_native", None)
 else:
-    assert native is not None, "build the extension with `uv run maturin develop --release`"
+    if native is None:
+        raise RuntimeError("build the extension with `uv run maturin develop --release`")
     recorder = conftest.NativeRecorder(native)
     patch.setattr(compute, "_native", recorder)
 
@@ -56,7 +60,8 @@ with np.errstate(all="ignore"):
     probe = compute._empirical_fit(values[:, :, :1], calibration[:, :, :1], "probability")
 expected = (1 + (calibration[:, None, :, :1] <= values[None, :, :, :1]).sum(axis=0)) / (years + 2)
 np.testing.assert_array_equal(probe, expected)
-assert recorder is None or recorder.calls == {"empirical_transform"}
+if recorder is not None and recorder.calls != {"empirical_transform"}:
+    raise RuntimeError("the probe did not call the native empirical_transform kernel")
 
 rss_unit = 1 if platform.system() == "Darwin" else 1024
 before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * rss_unit
@@ -67,8 +72,10 @@ with np.errstate(all="ignore"):
 after = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * rss_unit
 patch.undo()
 
-assert result.shape == values.shape and np.isfinite(result[0]).all()
-assert recorder is None or recorder.calls == {"empirical_transform"}
+if result.shape != values.shape or not np.isfinite(result[0]).all():
+    raise RuntimeError("the empirical transform returned an invalid result")
+if recorder is not None and recorder.calls != {"empirical_transform"}:
+    raise RuntimeError("the benchmark did not call the native empirical_transform kernel")
 print(
     json.dumps(
         {

@@ -1014,14 +1014,19 @@ so the binding's input copies are inside both the time and the peak RSS:
 ```bash
 for years in 20 60; do
   for backend in python rust; do
-    BACKEND=$backend CALIBRATION_YEARS=$years uv run benchmarks/empirical_transform.py
+    for run in 1 2 3; do
+      BACKEND=$backend CALIBRATION_YEARS=$years uv run benchmarks/empirical_transform.py
+    done
   done
 done
 ```
 
 The block is 60 years x 12 months x 65,536 cells (47,185,920 values, 360 MiB) of
-gamma-distributed values, transformed at `output_scale="normal"`, best of three
-runs per row. The Rust rows fail unless the recorder saw `empirical_transform`,
+gamma-distributed values, transformed at `output_scale="normal"`. Each invocation
+prints one JSON record. For each backend and calibration window, select the record
+with the smallest `seconds` value from the three fresh-process runs.
+Use that record's RSS fields for the same table row.
+The Rust rows fail unless the recorder saw `empirical_transform`,
 so a silent fallback to Python cannot be reported under the native label. Peak
 RSS is the process high-water mark around the call.
 
@@ -1041,8 +1046,14 @@ alone -- the ranking and the transform -- not the validation, aggregation, and
 logging ahead of it, and the peak bytes are a bound for one call rather than a
 steady-state working set.
 
-The same harness also times the two new registry entries on the registry's fixed
-samples: `empirical` at 0.140 ms Rust against 0.178 ms Python (1.27x) and
+A separate harness, `benchmarks/rust_vs_python.py`, times the two new registry
+entries on the registry's fixed samples. Run it with:
+
+```bash
+uv run benchmarks/rust_vs_python.py --skip-sweep --skip-threads --skip-dask
+```
+
+It measured `empirical` at 0.140 ms Rust against 0.178 ms Python (1.27x) and
 `empirical_spatial_block` at 0.174 ms against 0.234 ms (1.35x). The committed run
 in `benchmarks/results/rust_vs_python.txt` predates both entries, and the tables
 above it pick them up at its next regeneration.
