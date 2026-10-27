@@ -564,9 +564,7 @@ class TestFloodRegistration:
         registration = cli_main._registry_for(index)
 
         assert cli_main._INDEX_PIPELINES[index] == (index,)
-        assert registration.kernel is None
-        assert registration.compute is None
-        assert registration.write is None
+        assert not isinstance(registration, cli_main._SharedArrayAdapter)
         assert registration.validate_arguments is cli_main._validate_flood_arguments
 
     def test_the_cli_parses_the_flood_arguments(self, monkeypatch):
