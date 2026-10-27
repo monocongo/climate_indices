@@ -44,7 +44,9 @@ is just the daily step applied to every cell on every day.
    at most 7000 °C. From about 8030 °C the driver's `(203.2 − Q1) · heat` overflows to
    infinity and caps the index at 203.2 mm, an order of operations the reordered
    fraction does not reproduce. A run that fails either check is recomputed by the
-   driver, which gives the same result as checking the inputs first.
+   driver, which gives the same result as checking the inputs first. Finite inputs large
+   enough to overflow the sum (near 1e308) also send a run to the driver; that only
+   costs speed, because the driver handles every input the fast path does.
 2. **The drying fraction leaves the dependency chain.**
    `k = max(heat · 1e-3 / den, 0)` (0 below 10 °C) is computed per cell-day from inputs
    alone. The index step becomes `Q = min(203.2, Q1 + (203.2 − Q1) k)`. The wet-spell
