@@ -17,6 +17,7 @@ import json
 import warnings
 from collections.abc import Callable
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 import numpy as np
@@ -36,16 +37,7 @@ _KERNELS = {"gamma_parameters", "gamma_probabilities", "norm_ppf"}
 _EDDI_KERNELS = {"tukey_probabilities", "hastings_inverse_normal"}
 
 
-class _Recorder:
-    """Stand-in for the extension module that records which kernels were called."""
-
-    def __init__(self, module: Any) -> None:
-        self._module = module
-        self.calls: set[str] = set()
-
-    def __getattr__(self, name: str) -> Any:
-        self.calls.add(name)
-        return getattr(self._module, name)
+_Recorder = conftest.NativeRecorder
 
 
 def _rust_and_python(monkeypatch: pytest.MonkeyPatch, run: Callable[[], Any]) -> tuple[Any, Any, set[str]]:
@@ -76,6 +68,26 @@ def _with_zeros(values: np.ndarray, fraction: float, seed: int) -> np.ndarray:
     dry = values.copy()
     dry[rng.random(dry.shape) < fraction] = 0.0
     return dry
+
+
+def test_recorder_does_not_count_attribute_probes():
+    recorder = _Recorder(native)
+    assert hasattr(recorder, "gamma_parameters")
+    assert callable(recorder.gamma_parameters)
+    assert not hasattr(recorder, "missing_kernel")
+    assert not recorder.calls
+
+
+@pytest.mark.parametrize("missing_kernels", [{name} for name in sorted(_KERNELS)] + [_KERNELS])
+def test_spi_missing_kernels_do_not_count_as_native_calls(monkeypatch, precips_mm_monthly, missing_kernels):
+    stale = ModuleType("climate_indices._native")
+    for name in _KERNELS - missing_kernels:
+        setattr(stale, name, getattr(native, name))
+    monkeypatch.setattr("tests.test_native_parity.native", stale)
+
+    rust, python, calls = _rust_and_python(monkeypatch, _spi(precips_mm_monthly, 3, 1981, 2010))
+    assert calls == _KERNELS - missing_kernels
+    _assert_parity(rust, python)
 
 
 @pytest.mark.parametrize("scale", [1, 3, 6, 12, 24])
