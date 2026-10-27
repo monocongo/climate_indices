@@ -14,6 +14,10 @@
 //! Celsius), and the operation order is the Python one: the recording paths in
 //! `tests/test_native_parity_fire.py` compare the two at
 //! `rtol = atol = 1e-10` with identical NaN positions.
+//!
+//! One exception (ADR-0025): KBDI over complete input reorders its drying term
+//! and advances eight cells at a time in lanes. It holds the same tolerance but
+//! not the Python bits; [`kbdi`] lists which input takes that path.
 
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 
