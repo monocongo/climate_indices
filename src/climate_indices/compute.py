@@ -3737,7 +3737,8 @@ def fit_and_standardize(
         fallback_context=fallback_context,
         transform=lambda fitted, prepared: fitted.transform(prepared, output_scale, zero_handling=zero_handling),
     )
-    assert standardized is not None, "this caller always supplies a transform"
+    if standardized is None:
+        raise RuntimeError("Pearson standardization returned no transformed values")
     return standardized
 
 

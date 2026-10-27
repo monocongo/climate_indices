@@ -119,6 +119,16 @@ def test_fit_failure_is_reported_or_propagated(
         assert events[0]["reason"] == str(failure)
 
 
+def test_standardization_rejects_a_missing_transform_result() -> None:
+    """The transform result check must remain active when Python optimization is enabled."""
+    values = np.ones((40, 12))
+    with (
+        mock.patch.object(compute, "_resolve_pearson_with_fallback", return_value=(None, None)),
+        pytest.raises(RuntimeError, match="Pearson standardization returned no transformed values"),
+    ):
+        compute.fit_and_standardize(values, compute.Distribution.pearson, 1981, 1981, 2020, compute.Periodicity.monthly)
+
+
 @pytest.mark.parametrize("distribution", [compute.Distribution.gamma, compute.Distribution.pearson])
 @pytest.mark.parametrize("spatial", [False, True])
 @pytest.mark.parametrize("steps", [1, 5, 6, 12])
