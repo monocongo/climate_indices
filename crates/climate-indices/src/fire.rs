@@ -790,7 +790,7 @@ pub fn kbdi(
 mod tests {
     use super::*;
     use crate::recurrence::recurrence_inputs;
-    use ndarray::{Array1, Array2, array};
+    use ndarray::{Array1, Array2, ShapeBuilder, array};
 
     #[test]
     fn ffmc_rain_below_the_threshold_moistens_by_the_wetting_side() {
@@ -1271,6 +1271,27 @@ mod tests {
             }
         }
         assert!(values[[days - 1, cells - 1]].is_nan());
+    }
+
+    #[test]
+    fn weather_not_in_standard_layout_keeps_the_general_driver() {
+        // the driver reads a column-major view in place; the fast path would
+        // have to copy both grids, so it declines
+        fn column_major(values: &Array2<f64>) -> Array2<f64> {
+            let mut copy = Array2::zeros(values.raw_dim().f());
+            copy.assign(values);
+            copy
+        }
+        // the fast path is not bit-identical on this run (see above)
+        let mut weather = weather(400, 9, 7);
+        let (history, state) = replay(&weather, 0);
+        weather.precipitation = column_major(&weather.precipitation);
+        weather.temperature = column_major(&weather.temperature);
+        let run = complete_run(&weather, 0, true);
+        for (got, want) in run.values.unwrap().iter().zip(&history) {
+            assert_eq!(got.to_bits(), want.to_bits());
+        }
+        assert_eq!(run.state, state);
     }
 
     #[test]
