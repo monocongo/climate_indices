@@ -61,6 +61,40 @@ def test_four_outputs_preserve_layout_metadata_and_cell_parameters(chunked, cell
     assert any("packing_completed" in record.message for record in caplog.records)
 
 
+@pytest.mark.parametrize("chunked", [False, True])
+@pytest.mark.parametrize("spatial_kernel", [False, True])
+@pytest.mark.parametrize("cell_shape", [(), (2, 2), (2, 3)])
+def test_single_reduced_output_preserves_spatial_values(chunked, spatial_kernel, cell_shape):
+    """A sole reduced output keeps its cell axes, including a scalar result."""
+    dims = ("time", "lat", "lon")[: 1 + len(cell_shape)]
+    shape = (24, *cell_shape)
+    source = xr.DataArray(
+        np.arange(np.prod(shape), dtype=float).reshape(shape),
+        dims=dims,
+        coords={dim: np.arange(size) for dim, size in zip(dims, shape, strict=True)},
+    )
+    expected = source.mean("time")
+    if chunked:
+        source = source.chunk({"time": -1})
+    calls = []
+
+    def kernel(series, **kwargs):
+        assert kwargs.get("spatial_time_major", False) is spatial_kernel
+        calls.append(series.shape)
+        return series.mean(axis=0 if spatial_kernel else -1)
+
+    (result,) = _spatial_kernel_call(
+        kernel,
+        (source,),
+        spatial_kernel=spatial_kernel,
+        outputs=(_SpatialOutput(None, {}, "Mean"),),
+        calculation_metadata={},
+        completion_event="reduction_completed",
+    )
+    assert bool(calls) is not chunked
+    xr.testing.assert_equal(result.compute(), expected)
+
+
 @pytest.mark.parametrize("spatial_kernel", [False, True])
 def test_calendar_conversion_applies_only_to_time_series_outputs(spatial_kernel):
     """Static inputs and reduced outputs do not receive Gregorian restoration."""

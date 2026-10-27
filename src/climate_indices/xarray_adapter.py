@@ -448,7 +448,9 @@ def _make_calendar_aware_numpy_wrapper(
                     for array, dim in zip(result, output_core_dims, strict=True)
                 ),
             )
-        return cast(_KernelResult, np.moveaxis(cast(np.ndarray, result), 0, -1)) if core_axis_first else result
+        if core_axis_first and output_core_dims[0] is not None:
+            return cast(_KernelResult, np.moveaxis(cast(np.ndarray, result), 0, -1))
+        return result
 
     return wrapper
 
