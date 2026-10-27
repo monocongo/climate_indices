@@ -153,7 +153,12 @@ struct Rows<'a> {
 
 /// Advance the `N` adjacent cells from `first` over `days`, from and back into
 /// their state, which stays in registers in between; returns the sum of every
-/// precipitation and temperature value read (see [`advance`]).
+/// precipitation and temperature value read, made infinite when a temperature
+/// is above [`MAX_TEMPERATURE_CELSIUS`] (see [`advance`]).
+///
+/// The limit is a running maximum per lane, checked once after the loop. A
+/// select inside the loop's sum crashed LLVM's SLP vectorizer on x86-64
+/// (rustc 1.99, `vectorizeHorReduction`) when building `climate-py`.
 #[inline(always)]
 fn lanes<const N: usize>(
     rows: &mut Rows<'_>,
@@ -169,19 +174,15 @@ fn lanes<const N: usize>(
     let mut q: [f64; N] = kbdi[cell_range.clone()].try_into().expect("N lanes");
     let mut w: [f64; N] = wet_spell[cell_range.clone()].try_into().expect("N lanes");
     let mut total = [0.0; N];
+    let mut hottest = [f64::NEG_INFINITY; N];
     for day in days {
         let at = day * cells + first;
         let p: &[f64; N] = rows.precipitation[at..at + N].try_into().expect("N lanes");
         let t: &[f64; N] = rows.temperature[at..at + N].try_into().expect("N lanes");
         let k: [f64; N] = std::array::from_fn(|lane| drying_fraction(t[lane], scales[lane]));
         for lane in 0..N {
-            // a day above the limit counts as infinite, which declines the run
-            let checked = if t[lane] <= MAX_TEMPERATURE_CELSIUS {
-                t[lane]
-            } else {
-                f64::INFINITY
-            };
-            total[lane] += p[lane] + checked;
+            total[lane] += p[lane] + t[lane];
+            hottest[lane] = fmax(hottest[lane], t[lane]);
             (q[lane], w[lane]) = step(q[lane], w[lane], p[lane], k[lane]);
         }
         if let Some(history) = rows.history.as_deref_mut() {
@@ -191,15 +192,21 @@ fn lanes<const N: usize>(
     }
     kbdi[cell_range.clone()].copy_from_slice(&q);
     wet_spell[cell_range].copy_from_slice(&w);
-    total.iter().sum()
+    let hottest = hottest.iter().fold(f64::NEG_INFINITY, |a, &b| fmax(a, b));
+    total.iter().sum::<f64>()
+        + if hottest <= MAX_TEMPERATURE_CELSIUS {
+            0.0
+        } else {
+            f64::INFINITY
+        }
 }
 
 /// Advance every cell over `rows.days`; returns the sum of every
 /// precipitation and temperature value read.
 ///
 /// The sum is finite only if every value is: a NaN or infinite input makes it
-/// NaN or infinite, and so does a temperature above
-/// [`MAX_TEMPERATURE_CELSIUS`], which [`lanes`] adds as infinity. Finite inputs
+/// NaN or infinite, and [`lanes`] makes it infinite for a temperature above
+/// [`MAX_TEMPERATURE_CELSIUS`]. Finite inputs
 /// large enough to overflow it (near 1e308) make it infinite too, which only
 /// sends a valid run to the general driver. One add per value, cheaper than
 /// testing each value.
