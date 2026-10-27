@@ -25,6 +25,8 @@ The registry records the exact derivations and parameters.
 | --- | --- | --- | --- |
 | `eddi` | `hastings_inverse_normal`, `tukey_probabilities` | 0.000000e+00 | 0.000000e+00 |
 | `eddi_spatial_block` | `hastings_inverse_normal`, `tukey_probabilities` | 0.000000e+00 | 0.000000e+00 |
+| `empirical` | `empirical_transform` | 0.000000e+00 | 0.000000e+00 |
+| `empirical_spatial_block` | `empirical_transform` | 2.220446e-16 | 2.478786e-16 |
 | `fire_drought_code` | `drought_code` | 0.000000e+00 | 0.000000e+00 |
 | `fire_duff_moisture_code` | `duff_moisture_code` | 0.000000e+00 | 0.000000e+00 |
 | `fire_ffmc` | `ffmc` | 0.000000e+00 | 0.000000e+00 |

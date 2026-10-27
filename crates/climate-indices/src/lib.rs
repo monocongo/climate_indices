@@ -97,6 +97,7 @@
 use std::fmt;
 
 pub mod eddi;
+pub mod empirical;
 pub mod eto;
 pub mod fire;
 pub mod flood;

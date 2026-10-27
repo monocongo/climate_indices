@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use climate_indices::recurrence::{MissingDayPolicy, RecurrenceInputs};
-use climate_indices::{eddi, eto, fire, flood, gamma, loglogistic, palmer};
+use climate_indices::{eddi, empirical, eto, fire, flood, gamma, loglogistic, palmer};
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use ndarray::{Array1, Array2, Array3};
 
@@ -86,6 +86,25 @@ fn monthly(c: &mut Criterion) {
                 )))
             })
         });
+
+        let positions =
+            empirical::plotting_positions(water_balance_mm.view(), water_balance_mm.view())
+                .unwrap();
+        assert!(positions.iter().all(|value| (0.0..1.0).contains(value)));
+        group.bench_function(
+            BenchmarkId::new("empirical_plotting_positions", cells),
+            |b| {
+                b.iter(|| {
+                    black_box(
+                        empirical::plotting_positions(
+                            black_box(water_balance_mm.view()),
+                            black_box(water_balance_mm.view()),
+                        )
+                        .unwrap(),
+                    )
+                })
+            },
+        );
 
         let latitudes_radians = Array1::from_elem(cells, 40.0_f64.to_radians());
         let leap_years = Array1::from_shape_fn(YEARS, |year| {
