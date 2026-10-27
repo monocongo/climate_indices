@@ -2213,6 +2213,32 @@ xarray adapter) uses them:
 | calibration normals and ratios in `indices.percentage_of_normal` | `pnp::pnp_normals`, `pnp::pnp_percentages` |
 | monthly reduction and ratio in `indices.pci` | `pci::pci` |
 
+**Beta remains Python/SciPy for 3.1.1.** The decision in
+[#1432](https://github.com/monocongo/climate_indices/issues/1432) defers a Rust
+beta kernel. `compute.beta_parameters` keeps its NumPy method-of-moments fit.
+`compute.transform_fitted_beta` keeps `scipy.stats.beta.cdf` and the mixing of
+the zero and one boundary masses in Python. This applies to
+`standardized_index(..., Distribution.beta)` and its callers, including
+`energy.srepi` and `energy.standardized_demand_index`.
+The shared inverse-normal step can still use `special::norm_ppf` through the
+existing native dispatch.
+
+SciPy 1.17.0 evaluates the beta CDF with Boost Math's regularized incomplete
+beta routine, `ibeta`, rather than Cephes `incbet`
+([SciPy documentation](https://docs.scipy.org/doc/scipy-1.17.0/reference/generated/scipy.special.betainc.html)).
+[ADR-0017 decision 7](docs/adr/0017-rust-core-acceleration-backend.md#decision)
+therefore requires a port of the Boost implementation and its supporting
+special functions. The comparison reported in #1432 found that Cephes `incbet`
+exceeds the `rtol = atol = 1e-10` parity contract, including after the
+inverse-normal transform and clipping. This deferral changes neither the
+contract nor ADR-0017; it grants no tolerance exception.
+
+The issue's single-run timing gives insufficient evidence of a Python speed
+benefit to justify that port. Reconsider the deferral when a Rust user needs
+bounded-series standardization. A future port must target the exact Boost
+revision vendored in the reference SciPy version, not Boost's development
+branch.
+
 The PET entry points follow the same dispatch rule as the gamma kernels. The
 public FAO-56 helper functions stay Python callables; `pm_eto.penman_monteith_eto`
 resolves the humidity and radiation pathways, and checks the wind measurement
