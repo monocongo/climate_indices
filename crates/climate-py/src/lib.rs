@@ -241,6 +241,26 @@ fn pearson_cdf<'py>(
     .map_err(|error| PyValueError::new_err(error.to_string()))
 }
 
+/// Gamma KS statistics from copied calibration arrays; warning policy stays in Python.
+#[pyfunction]
+fn gamma_ks_statistics<'py>(
+    py: Python<'py>,
+    values: PyReadonlyArray2<'py, f64>,
+    alphas: PyReadonlyArray1<'py, f64>,
+    betas: PyReadonlyArray1<'py, f64>,
+) -> PyResult<Bound<'py, PyArray1<f64>>> {
+    let (values, alphas, betas) = (
+        checked_copy(&values)?,
+        checked_copy(&alphas)?,
+        checked_copy(&betas)?,
+    );
+    py.detach(|| {
+        climate_indices::gamma::gamma_ks_statistics(values.view(), alphas.view(), betas.view())
+    })
+    .map(|statistics| statistics.into_pyarray(py))
+    .map_err(|error| PyValueError::new_err(error.to_string()))
+}
+
 /// Pearson KS statistics from copied calibration arrays; warning policy stays in Python.
 #[pyfunction]
 fn pearson_ks_statistics<'py>(
@@ -823,6 +843,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(pearson_parameters, m)?)?;
     m.add_function(wrap_pyfunction!(pearson_cdf, m)?)?;
     m.add_function(wrap_pyfunction!(pearson_ks_statistics, m)?)?;
+    m.add_function(wrap_pyfunction!(gamma_ks_statistics, m)?)?;
     m.add_function(wrap_pyfunction!(loglogistic_parameters, m)?)?;
     m.add_function(wrap_pyfunction!(loglogistic_cdf, m)?)?;
     m.add_function(wrap_pyfunction!(norm_ppf, m)?)?;

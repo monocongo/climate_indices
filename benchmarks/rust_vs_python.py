@@ -453,7 +453,8 @@ def compare(
         blocks: number of cell blocks the input is split into for the pool
 
     Returns:
-        the samples, whether the Rust run called every kernel the entry registers, and its extension time
+        the samples, whether the Rust run called every kernel the entry reaches on this
+        path, and its extension time
     """
     run = build(slice(None)) if workers is None else pooled(build, cells, blocks, workers)
     timer = KernelTimer(require_native())
@@ -465,7 +466,8 @@ def compare(
         patch.undo()
     rust_samples = tuple(elapsed for backend, elapsed in events if backend == "rust")
     python_samples = tuple(elapsed for backend, elapsed in events if backend == "python")
-    return Comparison(entry.name, workers, rust_samples, python_samples, entry.kernels <= timer.calls, timer.seconds)
+    kernels = entry.kernels if entry.spatial_kernels is None else entry.spatial_kernels
+    return Comparison(entry.name, workers, rust_samples, python_samples, kernels <= timer.calls, timer.seconds)
 
 
 def _worker_dispatch_probe() -> dict[str, Any]:

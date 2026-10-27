@@ -3,6 +3,63 @@
 Reproducible performance measurement for the #893 vectorization/parallelization
 epic. Reports here are evidence artifacts, not CI gates.
 
+## Gamma goodness-of-fit D statistics (#1434)
+
+The single-series gamma check now computes sorted CDFs and KS D statistics in Rust.
+Python retains exact p-values and warning decisions for candidate and near-threshold fits.
+The spatial check does not change.
+
+The following measurements use macOS arm64, CPython 3.14.7, and a release-mode extension.
+The daily comparison uses the same environment and input before and after this change.
+The before measurement uses `f86d6964`, with the existing native fit and transform enabled.
+The after measurement adds native gamma D statistics.
+
+| Measurement | Before | After | Before/after |
+| --- | --- | --- | --- |
+| Daily single-series SPI-30, 40 years | 5.199 ms | 3.374 ms | 1.54x |
+| Monthly supplied-parameter D statistics, registry corpus | 0.068 ms (Python) | 0.014 ms (Rust) | 5.00x |
+
+The daily measurement uses 366 steps per year, seed 1434, and gamma-distributed precipitation without missing values.
+Logging is disabled, warnings are filtered, and NumPy errors are ignored to permit native dispatch.
+Default error policies retain Python, so these figures do not describe default-policy performance.
+The daily result is the minimum of five batches of 100 calls after warm-up.
+Reproduce it on each revision with this command:
+
+```bash
+uv run maturin develop --release
+uv run python - <<'PY'
+import logging
+import platform
+import timeit
+import warnings
+
+import numpy as np
+from climate_indices import indices, compute
+
+logging.disable(logging.CRITICAL)
+values = np.random.default_rng(1434).gamma(2.0, 4.0, 40 * 366)
+
+def run():
+    return indices.spi(values, 30, indices.Distribution.gamma, 1981, 1981, 2020, compute.Periodicity.daily)
+
+with np.errstate(all="ignore"), warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    run()
+    result = run()
+    assert result.shape == values.shape and np.isfinite(result[29:]).all()
+    seconds = min(timeit.repeat(run, number=100, repeat=5)) / 100
+print(platform.platform(), platform.python_version(), f"{seconds * 1000:.6f} ms/call")
+PY
+```
+
+The registry benchmark compares the complete `_gamma_ks_statistics` call, including the binding copy.
+Its input preparation follows `tests/parity_registry.py`.
+It alternates the backend order and reports the minimum of five calls after warm-up:
+
+```bash
+CLIMATE_INDICES_LOG_LEVEL=ERROR uv run benchmarks/rust_vs_python.py --cold-entries gamma_ks_statistics --skip-sweep --skip-threads --skip-dask --repeat 5
+```
+
 ## Profiling the gridded SPI workflow (#921)
 
 ```bash

@@ -294,6 +294,7 @@ xarray adapter) uses them:
 |---|---|
 | method-of-moments block of `compute.gamma_parameters` | `gamma::gamma_parameters` |
 | `scipy.stats.gamma.cdf` and zero-mass mixing in `compute.transform_fitted_gamma` | `gamma::gamma_probabilities` |
+| sorted CDFs and KS D statistics in the single-series `compute._check_goodness_of_fit_gamma` | `gamma::gamma_ks_statistics` |
 | `scipy.stats.norm.ppf` in `compute.transform_fitted_gamma` | `special::norm_ppf` |
 | the year loop of `eto.eto_thornthwaite` | `eto::thornthwaite` |
 | the day loop of `eto.eto_hargreaves` | `eto::hargreaves` |
@@ -301,6 +302,7 @@ xarray adapter) uses them:
 | the intermediate chain of `pm_eto.penman_monteith_eto` | `pm_eto::penman_monteith_eto` |
 | sample L-moments and the Pearson Type III fit of `compute.pearson_parameters` (`lmoments.fit`, `fit_spatial`) | `lmoments::sample_lmoments`, `pearson::pearson_parameters` |
 | `scipy.stats.pearson3.cdf` in `compute._pearson_fit` | `pearson::pearson_cdf_block` |
+| sorted CDFs and KS D statistics in the single-series `compute._check_goodness_of_fit_pearson` | `pearson::pearson_ks_statistics` |
 | GLO fit of `compute.loglogistic_parameters` (`lmoments.fit_glo`, `fit_glo_spatial`) | `loglogistic::loglogistic_parameters` |
 | GLO probability step of `compute._loglogistic_fit` | `loglogistic::loglogistic_cdf_block` |
 | rank count and Tukey plotting position in the per-period loop of `indices.eddi` | `eddi::tukey_probabilities` |
@@ -577,13 +579,18 @@ Which path an input takes, and why. Every row is asserted by
 | `overflowing_lmoment_block` | Python fit | an infinity makes the L-moments NaN, which the two fits report differently |
 | `oversized_lmoment_block` | Python fit | a finite value above `1e100` exceeds the native L-moment safety bound |
 
-Pearson's single-series goodness-of-fit check also batches sorted calibration
-CDFs and KS D statistics in `pearson::pearson_ks_statistics`. Python keeps the
-validation, critical values, candidate exact p-values, warnings, and logging.
+The single-series gamma and Pearson goodness-of-fit checks batch sorted calibration
+CDFs and KS D statistics in `gamma::gamma_ks_statistics` and
+`pearson::pearson_ks_statistics`. They share a private sorting and D-statistic helper.
+Gamma uses `special::igam(alpha, x / beta)`, not `gamma::gamma_cdf`, so negative
+scaled arguments return NaN, as `scipy.special.gammainc` requires.
+Python keeps validation, critical values, candidate exact p-values, warnings, and logging.
 Only a D statistic below the critical value by the full parity envelope
 (`1e-10 * (1 + abs(critical))`, plus dtype epsilon) skips the SciPy check;
 candidates and near-boundary statistics use the original oracle decision.
-Spatial goodness-of-fit remains Python. Extension errors propagate before the
+Spatial goodness-of-fit remains Python. Non-ignoring NumPy or SciPy special-function
+error policies, non-float64 arrays, masks, and older extensions retain the Python check.
+Extension errors propagate before the
 reference check's exception handler and are never retried.
 
 ### Parity tolerance
@@ -605,11 +612,12 @@ are measured on macOS arm64
 | `fire_duff_moisture_code` | `duff_moisture_code` | 0.000e+00 | 0.000e+00 |
 | `fire_ffmc` | `ffmc` | 0.000e+00 | 0.000e+00 |
 | `fire_kbdi` | `kbdi` | 0.000e+00 | 0.000e+00 |
-| `fit_diagnostics` | `gamma_parameters` | 0.000e+00 | 0.000e+00 |
-| `flood_api` | `antecedent_precipitation_index` | 0.000e+00 | 0.000e+00 |
+| `fit_diagnostics` | `gamma_ks_statistics`, `gamma_parameters` | 0.000e+00 | 0.000e+00 |
+| `flood_api` | `antecedent_precipitation_index` | no finite comparison | no finite comparison |
 | `flood_edi` | `edi`, `effective_precipitation` | 8.527e-14 | 7.883e-15 |
 | `flood_flood_index` | `effective_precipitation`, `flood_index` | 2.220e-16 | 1.096e-15 |
 | `flood_pe` | `effective_precipitation` | 4.547e-13 | 2.781e-16 |
+| `gamma_ks_statistics` | `gamma_ks_statistics` | 0.000e+00 | 0.000e+00 |
 | `hargreaves` | `hargreaves` | 4.441e-16 | 1.975e-16 |
 | `palmer_pdsi` | `palmer_k_prime`, `palmer_pdi`, `palmer_raw_zindex`, `palmer_water_balance` | 0.000e+00 | 0.000e+00 |
 | `palmer_scpdsi` | `palmer_k_prime`, `palmer_raw_zindex`, `palmer_water_balance`, `palmer_wells`, `scpdsi_duration_factors` | 0.000e+00 | 0.000e+00 |
@@ -618,10 +626,10 @@ are measured on macOS arm64
 | `penman_monteith` | `fao56_eto` | 8.882e-16 | 4.337e-16 |
 | `percentage_of_normal` | `pnp_normals`, `pnp_percentages` | 0.000e+00 | 0.000e+00 |
 | `pm_eto_intermediates` | `pm_eto` | 0.000e+00 | 0.000e+00 |
-| `spei_gamma` | `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 2.220e-16 | 3.457e-16 |
+| `spei_gamma` | `gamma_ks_statistics`, `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 2.220e-16 | 3.457e-16 |
 | `spei_loglogistic` | `loglogistic_cdf`, `loglogistic_parameters` | 0.000e+00 | 0.000e+00 |
-| `spi_gamma` | `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 1.998e-15 | 4.765e-14 |
-| `spi_gamma_mean_zero` | `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 1.998e-15 | 4.765e-14 |
+| `spi_gamma` | `gamma_ks_statistics`, `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 1.998e-15 | 4.765e-14 |
+| `spi_gamma_mean_zero` | `gamma_ks_statistics`, `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 1.998e-15 | 4.765e-14 |
 | `spi_gamma_spatial_block` | `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 7.105e-15 | 1.868e-13 |
 | `spi_pearson` | `pearson_cdf`, `pearson_ks_statistics`, `pearson_parameters` | 8.604e-15 | 6.822e-14 |
 | `thornthwaite` | `thornthwaite` | 2.842e-14 | 2.208e-16 |

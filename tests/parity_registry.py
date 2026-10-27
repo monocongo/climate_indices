@@ -73,6 +73,9 @@ class Entry:
     dispatch: ModuleType
     run: Callable[[np.ndarray], Callable[[], Any]]
     kernels: frozenset[str]
+    # Kernels reached when the same surface runs a Spatial Block; None when it matches
+    # ``kernels``. The gamma goodness-of-fit spatial branch stays in Python.
+    spatial_kernels: frozenset[str] | None = None
     rtol: float = RTOL
     atol: float = ATOL
 
@@ -226,12 +229,20 @@ def _months(values: np.ndarray) -> np.ndarray:
 # Entries
 # ---------------------------------------------------------------------------
 
-_GAMMA_KERNELS = frozenset({"gamma_parameters", "gamma_probabilities", "norm_ppf"})
+_GAMMA_SPATIAL_KERNELS = frozenset({"gamma_parameters", "gamma_probabilities", "norm_ppf"})
+_GAMMA_KERNELS = _GAMMA_SPATIAL_KERNELS | {"gamma_ks_statistics"}
 # The L-moment fits feed the kernel's own CDF; the normal transform of SPI's Pearson
 # and GLO surfaces is the Python inverse normal, so `norm_ppf` is not among them.
 _PEARSON_KERNELS = frozenset({"pearson_parameters", "pearson_cdf"})
 _GLO_KERNELS = frozenset({"loglogistic_parameters", "loglogistic_cdf"})
 _PALMER_WATER_BALANCE = frozenset({"palmer_water_balance", "palmer_k_prime", "palmer_raw_zindex"})
+
+
+def _gamma_ks(values: np.ndarray) -> Callable[[], Any]:
+    calibration = values.reshape(-1, 12)
+    alphas = np.full(12, 2.0)
+    betas = np.full(12, 30.0)
+    return lambda: compute._gamma_ks_statistics(calibration, alphas, betas)
 
 
 def _pearson_ks(values: np.ndarray) -> Callable[[], Any]:
@@ -449,16 +460,25 @@ def _flood_entries() -> Iterator[Entry]:
 
 
 ENTRIES: tuple[Entry, ...] = (
-    Entry("spi_gamma", MONTHLY, compute, lambda values: _spi(values, indices.Distribution.gamma), _GAMMA_KERNELS),
+    Entry(
+        "spi_gamma",
+        MONTHLY,
+        compute,
+        lambda values: _spi(values, indices.Distribution.gamma),
+        _GAMMA_KERNELS,
+        _GAMMA_SPATIAL_KERNELS,
+    ),
     Entry(
         "spi_gamma_mean_zero",
         MONTHLY,
         compute,
         lambda values: _spi(values, indices.Distribution.gamma, zero_handling="mean_zero"),
         _GAMMA_KERNELS,
+        _GAMMA_SPATIAL_KERNELS,
     ),
     Entry("spi_pearson", MONTHLY, compute, lambda values: _spi(values, indices.Distribution.pearson), _PEARSON_KERNELS),
     Entry("pearson_ks_statistics", MONTHLY, compute, _pearson_ks, frozenset({"pearson_ks_statistics"})),
+    Entry("gamma_ks_statistics", MONTHLY, compute, _gamma_ks, frozenset({"gamma_ks_statistics"})),
     Entry(
         "spei_loglogistic",
         MONTHLY,
@@ -471,14 +491,16 @@ ENTRIES: tuple[Entry, ...] = (
         BLOCK,
         compute,
         lambda values: _spi(values, indices.Distribution.gamma),
-        _GAMMA_KERNELS,
+        _GAMMA_SPATIAL_KERNELS,
     ),
-    Entry("spei_gamma", MONTHLY, compute, _spei, _GAMMA_KERNELS),
+    Entry("spei_gamma", MONTHLY, compute, _spei, _GAMMA_KERNELS, _GAMMA_SPATIAL_KERNELS),
     Entry("percentage_of_normal", MONTHLY, compute, _pnp, frozenset({"pnp_normals", "pnp_percentages"})),
     Entry("eddi", MONTHLY, compute, _eddi, frozenset({"tukey_probabilities", "hastings_inverse_normal"})),
     Entry("eddi_spatial_block", BLOCK, compute, _eddi, frozenset({"tukey_probabilities", "hastings_inverse_normal"})),
     Entry("pci", DAILY, compute, _pci, frozenset({"pci"})),
-    Entry("fit_diagnostics", MONTHLY, compute, _fit_diagnostics, frozenset({"gamma_parameters"})),
+    Entry(
+        "fit_diagnostics", MONTHLY, compute, _fit_diagnostics, frozenset({"gamma_parameters", "gamma_ks_statistics"})
+    ),
     Entry("thornthwaite", MONTHLY, eto, _thornthwaite, frozenset({"thornthwaite"})),
     Entry("hargreaves", DAILY, eto, _hargreaves, frozenset({"hargreaves"})),
     Entry("penman_monteith", DAILY, pm_eto, _penman_monteith, frozenset({"fao56_eto"})),

@@ -32,6 +32,11 @@ def gamma_probabilities(
     betas: npt.NDArray[np.float64],
     probabilities_of_zero: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]: ...
+def gamma_ks_statistics(
+    values: npt.NDArray[np.float64],
+    alphas: npt.NDArray[np.float64],
+    betas: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]: ...
 def pnp_normals(
     calibration: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]: ...
