@@ -2,10 +2,12 @@
 
 ``crates/climate-indices`` runs the KBDI and CFFWIS moisture-code daily recursions
 over a whole time axis per cell (``docs/architecture.md``). This module is the
-fire package's only native boundary: it decides whether the extension can take
-a recurrence's prepared arrays, builds the callable that
-:mod:`climate_indices._recurrence` runs in place of its day loop, and translates
-the extension's errors into the ones the Python driver raises.
+fire package's eligibility rule and marshalling: it decides whether the
+extension can take a recurrence's prepared arrays and builds the callable that
+:mod:`climate_indices._recurrence` runs in place of its day loop.
+:mod:`climate_indices._native_backend` owns the extension itself, the shared
+float64 and reporting-policy gate, and the translation of the extension's
+errors into the ones the Python driver raises.
 
 Nothing here holds an algorithm. The Python implementations in ``_kbdi.py`` and
 ``_cffwis_codes.py`` stay the parity oracles, and every layout this module
@@ -25,7 +27,7 @@ from typing import TYPE_CHECKING, Any, cast
 import numpy as np
 import numpy.typing as npt
 
-from climate_indices import compute
+from climate_indices import _native_backend
 from climate_indices._native_arrays import (
     _block,
     _cells,
@@ -35,41 +37,20 @@ from climate_indices._native_arrays import (
     _flat,
     _mask,
     _merges_cells,
-    _with_kernels,
 )
-from climate_indices._recurrence import _MAX_NATIVE_OPTION, NativeRecurrence, _raise_non_finite
+from climate_indices._recurrence import _MAX_NATIVE_OPTION, NativeRecurrence
 
 if TYPE_CHECKING:
     from climate_indices.fire._cffwis_codes import _CodeInputs, _MoistureCode
 
-try:
-    # the optional Rust kernels (docs/architecture.md); without the extension the
-    # fire recurrences run the Python steps they always have
-    from climate_indices import _native
-except ImportError:
-    _native = None  # type: ignore[assignment]
-
-
-def _native_module() -> ModuleType | None:
-    """The optional Rust extension, or None when this install is pure Python.
-
-    Every guard reads the module through this accessor: a successful import is
-    typed as always present, which would make the fallback branches look
-    unreachable to the type checker.
-    """
-    return _native
+# this family's switch on the optional Rust kernels (climate_indices._native_backend);
+# None runs the fire recurrences on the Python steps they always have
+_native = _native_backend.EXTENSION
 
 
 def _kernel_module(*names: str) -> ModuleType | None:
-    """The extension when it exposes every named kernel, else None.
-
-    A stale installed extension can import successfully yet predate a kernel
-    (``docs/architecture.md``). Dispatching into it would raise
-    ``AttributeError`` instead of leaving the recurrence on its Python steps, so
-    a missing kernel or the shared ``NonFiniteResultError`` declines the whole
-    call.
-    """
-    return _with_kernels(_native_module(), *names, "NonFiniteResultError")
+    """The extension when it exposes every named kernel and the shared ``NonFiniteResultError``, else None."""
+    return _native_backend.kernels(_native, *names, "NonFiniteResultError")
 
 
 def _optional_mask(array: npt.NDArray[np.bool_] | None, days: int, cells: int) -> npt.NDArray[np.bool_] | None:
@@ -172,7 +153,7 @@ def _run_moisture_kernel(
         "max_gap_days": max_gap_days,
         "record": shape is not None,
     }
-    try:
+    with _native_backend.finite_results(native, arrays.index_type):
         if arrays.index_type == "ffmc":
             history, final, final_gaps = native.ffmc(
                 relative_humidity_percent=_block(cast(npt.NDArray[np.float64], arrays.humidity), days, cells),
@@ -197,8 +178,6 @@ def _run_moisture_kernel(
                 initial_dc=_flat(arrays.state_value, cells),
                 **common,
             )
-    except native.NonFiniteResultError as exc:  # pragma: no cover - defensive parity with the Python driver
-        _raise_non_finite(arrays.index_type, exc)
 
     # the kernel returns whole arrays; the driver reads the component's own
     # state and gap arrays, so write the results back where it looks for them
@@ -226,7 +205,7 @@ def _run_kbdi_kernel(
         return None
     days = arrays.days
     cells = arrays.cells
-    try:
+    with _native_backend.finite_results(native, "kbdi"):
         history, final_kbdi, final_wet_spell, final_gaps = native.kbdi(
             precipitation_mm=_block(arrays.precipitation, days, cells),
             maximum_temperature_celsius=_block(arrays.temperature, days, cells),
@@ -242,8 +221,6 @@ def _run_kbdi_kernel(
             max_gap_days=max_gap_days,
             record=shape is not None,
         )
-    except native.NonFiniteResultError as exc:  # pragma: no cover - defensive parity with the Python driver
-        _raise_non_finite("kbdi", exc)
 
     arrays.kbdi_value[...] = final_kbdi.reshape(arrays.kbdi_value.shape)
     arrays.wet_spell[...] = final_wet_spell.reshape(arrays.wet_spell.shape)
@@ -283,7 +260,7 @@ def moisture_code_recurrence(
         float64_inputs.append(inputs.humidity)
     if inputs.wind_kilometers_per_hour is not None:
         float64_inputs.append(inputs.wind_kilometers_per_hour)
-    if not compute._native_float64s(*float64_inputs):
+    if not _native_backend.takes(*float64_inputs):
         return None
 
     days = temperature.shape[0]
@@ -349,7 +326,7 @@ def kbdi_recurrence(
     native = _kernel_module("kbdi")
     if native is None:
         return None
-    if not compute._native_float64s(
+    if not _native_backend.takes(
         kbdi_value,
         wet_spell_precipitation,
         precipitation_mm,

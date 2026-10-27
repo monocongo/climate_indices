@@ -1,6 +1,7 @@
 # Type stub for the optional Rust extension built from crates/climate-py.
-# The extension is absent from pure-Python installs; callers import it inside
-# try/except ImportError and fall back to the Python implementation. Every
+# The extension is absent from pure-Python installs; climate_indices._native_backend
+# imports it inside try/except ImportError, and every family then falls back to its
+# Python implementation. Every
 # float64 array must be a float64 ndarray, every validity mask a bool ndarray,
 # and every index array an int64 ndarray; other dtypes raise TypeError.
 
@@ -12,15 +13,16 @@ __version__: str
 class NonFiniteResultError(ValueError):
     """A recurrence step produced a non-finite value from finite inputs.
 
-    The Python driver raises ``InvalidArgumentError`` for this; the dispatch
-    translates it, so a caller never sees this type.
+    The Python driver raises ``InvalidArgumentError`` for this;
+    ``climate_indices._native_backend`` translates it, so a caller never sees
+    this type.
     """
 
 class NoConvergenceError(ValueError):
     """A Palmer calibration stage could not produce a usable value.
 
-    The message is the Python one; ``palmer`` raises ``ConvergenceError`` for it,
-    so a caller never sees this type.
+    The message is the Python one; ``climate_indices._native_backend`` raises
+    ``ConvergenceError`` for it, so a caller never sees this type.
     """
 
 def gamma_parameters(

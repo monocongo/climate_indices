@@ -361,32 +361,45 @@ the GIL, avoiding input-sized copies.
 
 ### 5. Add dispatch and routing
 
+`climate_indices._native_backend` is the one seam to the extension. It is the only
+module that imports `climate_indices._native`, and it owns the kernel-presence check
+(`kernels`), the plain, aligned float64 and reporting-policy gate (`plain_float64`,
+`policy_allows`, and `takes`, which combines them), and the translation of the
+extension's errors (`converging`, `finite_results`). A family module never imports
+the extension itself. It copies `_native_backend.EXTENSION` into its own `_native`
+attribute, which is that family's switch, and keeps only its eligibility rule and its
+marshalling. A new family module also goes into `NATIVE_FAMILIES` in
+`tests/conftest.py`; `tests/test_native_backend.py` fails until it does.
+
 The index dispatch helper is named `_native_<kernel>`, lives next to the Python
 implementation it ports in `compute.py`, and is reached by its public callers in
-`indices.py` as `compute._native_<kernel>`. The fire recurrences use a different
-pattern: `fire/_native.py` defines `moisture_code_recurrence` and `kbdi_recurrence`,
-which return a callable for the shared daily runner rather than a computed result.
-Two caller patterns are in use: a helper returns `None` when a
-routing condition fails and its caller runs the Python path (as
-`_native_gamma_probabilities` does), or the helper carries no guard of its own and is
-called only after the caller's `_native_float64` guard has passed (as
-`_native_gamma_parameters` does). Dispatch takes the Rust path only when every
-routing condition holds:
+`indices.py` as `compute._native_<kernel>`. It returns `None` when a routing
+condition fails, and its caller then runs the Python path (as
+`_native_gamma_probabilities` and `_native_gamma_parameters` do). The fire and flood
+recurrences use a different pattern: `fire/_native.py` and `flood/_native.py` define
+functions such as `moisture_code_recurrence` and `api_recurrence`, which return a
+callable for the shared daily runner rather than a computed result. Dispatch takes
+the Rust path only when every routing condition holds:
 
-- the extension imported (`_native is not None`) and actually exporting the kernel —
-the two EDDI helpers probe with `hasattr(_native, "<kernel>")`, so an extension
-built before the port falls back to Python;
-- a plain, aligned float64 `ndarray` whose layout the kernel supports — use the
+- the family's switch is set (`_native is not None`) and every operand is a plain,
+aligned float64 `ndarray` whose layout the kernel supports — in `compute.py`, use the
 existing `_native_float64` / `_native_lmoment_input` guards rather than writing new
 ones;
 - prepared arguments the kernel accepts, e.g. parameters that are one per calendar
 step (and cell); caller-supplied parameters that vary by year stay in Python;
 - NumPy floating-point errors ignored (`np.errstate(all="ignore")`): warnings,
 exceptions, callbacks, logging, or printing keep the Python path, because the
-kernels do not implement NumPy's reporting policies.
+kernels do not implement NumPy's reporting policies;
+- the extension exports the kernel: probe with
+`_native_backend.kernels(_native, "<kernel>")`, so an extension built before the
+port falls back to Python. `compute`, `eto`, and `pm_eto` probe after every other
+condition, just before the call, because their parity recorders count a probe as a
+read.
 
 A kernel is never retried in Python after a Rust runtime error: the exception
-propagates. A missing extension is not an error, it is the pure-Python install.
+propagates, or `_native_backend.converging` or `finite_results` re-raises it as the
+error the Python path raises. A missing extension is not an error, it is the
+pure-Python install.
 
 ### 6. Write the parity tests
 
@@ -398,14 +411,16 @@ computation twice through the public or compute-level API: once with `_native`
 replaced by the `_Recorder` around the extension, once with `_native` set to `None`,
 comparing at `rtol = atol = 1e-10` with matching NaN positions. The compute suites
 patch `compute._native`; the fire suite patches `climate_indices.fire._native._native`,
-and the Palmer suite patches `palmer._native`.
+and the Palmer suite patches `palmer._native`. `conftest.disable_native(monkeypatch,
+*families)` points the named families, or every family when none is named, at their
+Python implementations.
 Tests that establish invocation assert the recorded call set, so a run that never
 reached Rust fails instead of passing Python against Python; result-only comparisons
-discard the call set, and intentional-fallback cases assert an empty one. The EDDI
-guards probe with `hasattr`, which the compute recorder also records, so a stale
-extension that imports but predates an EDDI export records the probe, falls back to
-Python, and still satisfies the expected EDDI call set: the probe is never evidence
-of invocation, and the extension must be rebuilt after adding a kernel. Cover the edge
+discard the call set, and intentional-fallback cases assert an empty one. The compute
+guards probe with `_native_backend.kernels`, which the compute recorder also records,
+so a stale extension that imports but predates an export records the probe, falls
+back to Python, and still satisfies the expected call set: the probe is never
+evidence of invocation, and the extension must be rebuilt after adding a kernel. Cover the edge
 cases the doc block promises: all-missing and all-zero columns, a constant column,
 supplied parameters, and masked or unaligned inputs that must fall back.
 

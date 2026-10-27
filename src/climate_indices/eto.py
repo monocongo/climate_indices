@@ -24,11 +24,11 @@ from __future__ import annotations
 import calendar
 import math
 import time
-from types import ModuleType
 
 import numpy as np
 
-from climate_indices import compute, utils
+from climate_indices import _native_backend, compute, utils
+from climate_indices._native_arrays import _cells
 from climate_indices.exceptions import InvalidArgumentError
 from climate_indices.logging_config import get_logger, log_calculation_failure
 from climate_indices.performance import check_large_array_memory
@@ -36,22 +36,9 @@ from climate_indices.performance import check_large_array_memory
 # retrieve structlog logger for this module
 _logger = get_logger(__name__)
 
-try:
-    # the optional Rust kernels (docs/architecture.md); without the extension both
-    # PET implementations below run the Python expressions they always have
-    from climate_indices import _native
-except ImportError:
-    _native = None  # type: ignore[assignment]
-
-
-def _native_module() -> ModuleType | None:
-    """The optional Rust extension, or None when this install is pure Python.
-
-    Every dispatch guard reads the module through this accessor: a successful
-    import is typed as always present, which would make the fallback branch look
-    unreachable to the type checker.
-    """
-    return _native
+# this family's switch on the optional Rust kernels (climate_indices._native_backend);
+# None runs both PET implementations below on the Python expressions they always have
+_native = _native_backend.EXTENSION
 
 
 # declare the function names that should be included in the public API for this module
@@ -302,9 +289,9 @@ def _native_latitude(latitude_radians: float | np.ndarray, cell_shape: tuple[int
     :return: a flat view holding one latitude per cell, or None when the kernels cannot
         take the latitude
     """
-    cells = int(np.prod(cell_shape, dtype=np.intp))
+    cells = _cells(cell_shape)
     if isinstance(latitude_radians, np.ndarray):
-        if not compute._plain_float64(latitude_radians):
+        if not _native_backend.plain_float64(latitude_radians):
             return None
         if not cell_shape:
             # the 1-D/2-D path takes a scalar latitude, as it always has
@@ -340,8 +327,7 @@ def _native_thornthwaite(
     :return: the PET block in the shape of ``values``, or None when the kernel
         cannot take these inputs
     """
-    native = _native_module()
-    if native is None or not compute._native_float64(values):
+    if _native is None or not _native_backend.takes(values):
         return None
 
     # np.nanmean warns for an all-NaN month column, which only Python can report;
@@ -355,11 +341,11 @@ def _native_thornthwaite(
     if latitude_kernel is None:
         return None
 
-    # an extension built before the PET kernels keeps the Python path
-    if not hasattr(native, "thornthwaite"):
+    native = _native_backend.kernels(_native, "thornthwaite")
+    if native is None:
         return None
 
-    cells = int(np.prod(cell_shape, dtype=np.intp))
+    cells = _cells(cell_shape)
     leap_years = np.array([calendar.isleap(data_start_year + year) for year in range(years)], dtype=np.bool_)
     pet = native.thornthwaite(
         np.ascontiguousarray(values).reshape(years, 12, cells),
@@ -391,10 +377,7 @@ def _native_hargreaves(
     :return: the PET block in the shape of the inputs and the bytes the route holds
         besides the caller's arrays, or None when the kernel cannot take these inputs
     """
-    native = _native_module()
-    if native is None:
-        return None
-    if not compute._native_float64s(daily_tmin_celsius, daily_tmax_celsius, daily_tmean_celsius):
+    if _native is None or not _native_backend.takes(daily_tmin_celsius, daily_tmax_celsius, daily_tmean_celsius):
         return None
     # equal sizes in different layouts fail on the Python path, which the flat
     # kernel inputs would otherwise pair cell by cell
@@ -407,11 +390,11 @@ def _native_hargreaves(
     if latitude_kernel is None:
         return None
 
-    # an extension built before the PET kernels keeps the Python path
-    if not hasattr(native, "hargreaves"):
+    native = _native_backend.kernels(_native, "hargreaves")
+    if native is None:
         return None
 
-    cells = int(np.prod(cell_shape, dtype=np.intp))
+    cells = _cells(cell_shape)
 
     # the kernel copies each operand before it releases the GIL, and a block that does
     # not lie contiguously is copied here to flatten it, so the route holds these bytes
