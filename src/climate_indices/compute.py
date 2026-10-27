@@ -1006,6 +1006,31 @@ def _validate_pearson_parameter_cells(
             )
 
 
+def _is_all_missing_input(
+    values: np.ndarray,
+    distribution: Distribution,
+    periodicity: Periodicity,
+    fitting_params: dict[str, Any] | None,
+) -> bool:
+    """Report an all-missing parametric input, validating its shape and supplied set first."""
+    kind = distribution.value
+    if kind == "empirical":
+        return False
+    try:
+        all_missing = is_all_missing(values)
+    except TypeError:
+        # Preserve parameter-error precedence for unsupported input dtypes without
+        # validating a numeric fit twice on the ordinary path.
+        if kind != "gamma" and fitting_params is not None:
+            FittedDistribution.validate_supplied(_validate_array(values, periodicity), distribution, fitting_params)
+        raise
+    if all_missing and kind != "gamma":
+        validated = _validate_array(values, periodicity)
+        if fitting_params is not None:
+            FittedDistribution.validate_supplied(validated, distribution, fitting_params)
+    return all_missing
+
+
 def _prepare_transform(
     values: np.ndarray,
     distribution: Distribution,
@@ -1033,21 +1058,8 @@ def _prepare_transform(
 
     # Gamma historically returns before shape and parameter validation. The other
     # parametric adapters reject invalid supplied sets even on an all-missing input.
-    if kind != "empirical":
-        try:
-            all_missing = is_all_missing(values)
-        except TypeError:
-            # Preserve parameter-error precedence for unsupported input dtypes without
-            # validating a numeric fit twice on the ordinary path.
-            if kind != "gamma" and fitting_params is not None:
-                FittedDistribution.validate_supplied(_validate_array(values, periodicity), distribution, fitting_params)
-            raise
-        if all_missing:
-            if kind != "gamma":
-                validated = _validate_array(values, periodicity)
-                if fitting_params is not None:
-                    FittedDistribution.validate_supplied(validated, distribution, fitting_params)
-            return None, log
+    if _is_all_missing_input(values, distribution, periodicity, fitting_params):
+        return None, log
 
     # Pearson keeps its established masked-array semantics; the other kernels read NaN.
     if kind != "pearson" and np.ma.isMaskedArray(values):
