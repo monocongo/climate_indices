@@ -216,8 +216,7 @@ class TestPalmersWorker:
 
         transport = _palmer_transport(precips, pet, np.array([awc]), shape, (1,))
 
-        palmers = cli_main._registry_for("palmers")
-        assert palmers.worker is not None
+        palmers = cli_main._shared_array_adapter("palmers")
         item = _cli_transport.WorkItem(
             kernel=palmers.kernel,
             input_names=("precip", "pet", "awc"),
@@ -267,7 +266,7 @@ class TestPalmersWorker:
         n_time = 24
         shape = (1, n_time)
         transport = _cli_transport.Transport(1)
-        for key, _var_name, _cf_key, _index_name in cli_main._PALMER_OUTPUTS:
+        for key, _var_name, _cf_key, _index_name in cli_main._PalmersAdapter.outputs:
             transport.allocate(key, shape)
         request = cli_main._IndexRequest(
             index="palmers",
@@ -288,10 +287,10 @@ class TestPalmersWorker:
             transport=transport,
         )
 
-        cli_main._write_palmer_outputs(context)
+        cli_main._PalmersAdapter.write(context)
 
         assert caplog.messages.count("Trimming copied input chunksizes (1, 100) to the output shape (1, 24)") == 1
-        for _key, var_name, _cf_key, _index_name in cli_main._PALMER_OUTPUTS:
+        for _key, var_name, _cf_key, _index_name in cli_main._PalmersAdapter.outputs:
             with xr.open_dataset(tmp_path / f"out_{var_name}.nc", engine="h5netcdf") as written:
                 assert written[var_name].encoding["chunksizes"] == shape
 
@@ -311,7 +310,7 @@ class TestPalmersWorker:
             calls.append((precips.shape, parameters.get("spatial_time_major", False)))
             return tuple(np.full(precips.shape, position + 1.0) for position in range(5))
 
-        output_keys = cli_main._registry_for("palmers").output_keys
+        output_keys = cli_main._shared_array_adapter("palmers").output_keys
         item = _cli_transport.WorkItem(
             kernel=recording_palmers,
             input_names=("precip", "pet", "awc"),
@@ -356,7 +355,7 @@ class TestPalmersWorker:
 
         transport = _palmer_transport(precip_grid, pet_grid, awcs, shape, (lat, lon))
 
-        palmers = cli_main._registry_for("palmers")
+        palmers = cli_main._shared_array_adapter("palmers")
         item = _cli_transport.WorkItem(
             kernel=palmers.kernel,
             input_names=("precip", "pet", "awc"),
