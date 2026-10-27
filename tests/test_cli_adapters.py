@@ -25,7 +25,8 @@ def test_shared_array_adapter_requires_a_complete_implementation() -> None:
         "build_arguments",
         "run",
     } <= KernelOnly.__abstractmethods__
-    pytest.raises(TypeError, KernelOnly).match("abstract")
+    with pytest.raises(TypeError, match="abstract"):
+        KernelOnly()  # type: ignore[abstract]
 
 
 @pytest.mark.parametrize("name", tuple(cli._INDEX_REGISTRY))
