@@ -737,8 +737,9 @@ pub fn kbdi(
             actual: mean_annual_precipitation_mm.len(),
         });
     }
-    if complete_input(mean_annual_precipitation_mm, initial_state, inputs)
-        && let Some((values, state)) = kbdi_fast::run(
+    // not a let chain: the crate's MSRV (1.85) predates them
+    let fast = if complete_input(mean_annual_precipitation_mm, initial_state, inputs) {
+        kbdi_fast::run(
             precipitation_mm,
             maximum_temperature_celsius,
             mean_annual_precipitation_mm,
@@ -746,7 +747,10 @@ pub fn kbdi(
             inputs.spin_up,
             record,
         )
-    {
+    } else {
+        None
+    };
+    if let Some((values, state)) = fast {
         // every cell observed every day, so every gap count closed at zero
         return Ok(KbdiRun {
             values,
