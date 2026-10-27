@@ -35,11 +35,16 @@ is just the daily step applied to every cell on every day.
    - every day is observed and every cell is usable;
    - there is no season mask;
    - every climatology is finite with a finite denominator;
-   - every carried state is finite, with the index at most 203.2 mm.
+   - every carried state is finite, with the index at most 203.2 mm;
+   - both weather views are in standard layout. The driver reads a strided or
+     column-major view in place, where the fast path would have to copy both grids.
 
-   Precipitation and temperature finiteness is checked inside the run, folded into a
-   running sum of the inputs. A run that fails it is recomputed by the driver, which
-   gives the same result as checking the inputs first.
+   Two more conditions are checked inside the run, folded into a running sum of the
+   inputs: every precipitation and temperature value is finite, and every temperature is
+   at most 7000 °C. From about 8030 °C the driver's `(203.2 − Q1) · heat` overflows to
+   infinity and caps the index at 203.2 mm, an order of operations the reordered
+   fraction does not reproduce. A run that fails either check is recomputed by the
+   driver, which gives the same result as checking the inputs first.
 2. **The drying fraction leaves the dependency chain.**
    `k = max(heat · 1e-3 / den, 0)` (0 below 10 °C) is computed per cell-day from inputs
    alone. The index step becomes `Q = min(203.2, Q1 + (203.2 − Q1) k)`. The wet-spell
@@ -64,8 +69,9 @@ is just the daily step applied to every cell on every day.
 - **The native KBDI output changes, within the contract.** Against the previous kernel
   the change is at most 3.3e-13 mm, on the benchmark workloads and on stress inputs:
   cold climates, 40 % rain days, climatologies from 50 to 4000 mm, temperatures of
-  ±1e4 °C. That is well inside `rtol = atol = 1e-10`, and the Python oracle and every
-  native parity test hold at that tolerance. Output is no longer bit-identical to 3.0.0
+  ±1e4 °C (a run with a day above 7000 °C now goes to the driver; see decision 1).
+  That is well inside `rtol = atol = 1e-10`, and the Python oracle and every native
+  parity test hold at that tolerance. Output is no longer bit-identical to 3.0.0
   on any platform, but it is now identical across platforms for complete input.
 - **Measured speed.** Single-threaded `fire::kbdi` on Windows ARM64 (Snapdragon X
   Elite), against the bit-identical driver it replaces for complete input:
