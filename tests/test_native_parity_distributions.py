@@ -195,7 +195,7 @@ def test_pearson_parameters_daily(monkeypatch, precips_mm_daily, data_year_start
 
 
 @pytest.mark.parametrize("dry_months", range(13))
-def test_the_gamma_fallback_fires_on_the_same_inputs(monkeypatch, precips_mm_monthly, dry_months):
+def test_the_gamma_fallback_fires_on_the_same_inputs(monkeypatch, precips_mm_monthly, dry_months, caplog):
     """The Pearson fit is lost, and the block refitted with gamma, for the same blocks on both paths.
 
     The first ``dry_months`` calendar months are dry through the calibration years 1981-2010 (rows
@@ -205,11 +205,26 @@ def test_the_gamma_fallback_fires_on_the_same_inputs(monkeypatch, precips_mm_mon
     block = precips_mm_monthly.copy()
     block[86:116, :dry_months] = 0.0
 
+    caplog.set_level(logging.WARNING)
+
     def run() -> tuple[bool, np.ndarray]:
-        standardized, used, _ = compute._fit_pearson_with_fallback(
-            block.copy(), indices.Distribution.pearson, _DATA_START, 1981, 2010, _MONTHLY, None, "test"
+        caplog.clear()
+        standardized = compute.fit_and_standardize(
+            block.copy(),
+            indices.Distribution.pearson,
+            _DATA_START,
+            1981,
+            2010,
+            _MONTHLY,
+            fallback_to_gamma=True,
         )
-        return used, standardized
+        events = [
+            record.msg
+            for record in caplog.records
+            if isinstance(record.msg, dict) and record.msg.get("event") == "distribution_fallback"
+        ]
+        assert len(events) <= 1
+        return bool(events), standardized
 
     recorder = _Recorder(native)
     with np.errstate(all="ignore"), warnings.catch_warnings():
