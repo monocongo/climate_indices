@@ -232,10 +232,115 @@ pub fn gamma_probabilities(
     Ok(probabilities)
 }
 
+/// KS D per calibration column, excluding NaNs.
+/// Warning thresholds and exact p-values stay in Python.
+///
+/// # Numerical contract
+///
+/// The two-sided, one-sample statistic is
+/// `max_i(i/n - F(x_i), F(x_i) - (i-1)/n)` for sorted retained values.
+/// `F(x) = igam(alpha, x / beta)` follows `scipy.special.gammainc`,
+/// unlike [`gamma_cdf`], which returns zero for negative arguments.
+/// Inputs have shape `(years, columns)`, with one alpha and beta per column.
+/// The output has one dimensionless D per column.
+/// Values and betas share units; alphas are dimensionless.
+/// Calendar columns follow [`crate`]; the caller selects the Calibration Period.
+/// NaNs are excluded. Zeros, including -0.0, are retained; the caller replaces
+/// the separate zero mass with NaN before this check when appropriate.
+/// An empty sample, non-finite or non-positive parameters, or a NaN CDF returns NaN.
+/// Negative scaled arguments therefore return NaN, while positive infinity has CDF 1.
+/// Constant samples still produce D. This function does not fit parameters.
+/// Parameter-length mismatches return [`ClimateError::ShapeMismatch`].
+/// See the `Measured accuracy` section in [`crate`], entry `gamma_ks_statistics`
+/// in `tests/parity_registry.py`. This measures supplied-parameter diagnostics,
+/// not parameter fitting or the complete SPI workflow.
+pub fn gamma_ks_statistics(
+    values: ArrayView2<'_, f64>,
+    alphas: ArrayView1<'_, f64>,
+    betas: ArrayView1<'_, f64>,
+) -> Result<Array1<f64>, ClimateError> {
+    let columns = values.ncols();
+    for (argument, parameter) in [("alphas", &alphas), ("betas", &betas)] {
+        if parameter.len() != columns {
+            return Err(ClimateError::ShapeMismatch {
+                argument,
+                expected: columns,
+                actual: parameter.len(),
+            });
+        }
+    }
+    let mut result = Array1::from_elem(columns, f64::NAN);
+    let mut sorted = Vec::with_capacity(values.nrows());
+    for column in 0..columns {
+        let (alpha, beta) = (alphas[column], betas[column]);
+        if !(alpha.is_finite() && beta.is_finite() && alpha > 0.0 && beta > 0.0) {
+            continue;
+        }
+        sorted.clear();
+        sorted.extend(
+            values
+                .column(column)
+                .iter()
+                .copied()
+                .filter(|x| !x.is_nan()),
+        );
+        result[column] = crate::ks::d_statistic(&mut sorted, |value| igam(alpha, value / beta));
+    }
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use ndarray::array;
+
+    #[test]
+    fn ks_matches_exponential_closed_form_and_retains_zeros() {
+        let values = array![[2.0, 0.0], [f64::NAN, -0.0], [2.0, f64::NAN]];
+        let statistics = gamma_ks_statistics(
+            values.view(),
+            array![1.0, 1.0].view(),
+            array![2.0, 2.0].view(),
+        )
+        .unwrap();
+        // Gamma(1, 2) at x=2 has F(x)=1-exp(-1); a repeated sample has D=max(F,1-F).
+        assert!((statistics[0] - (1.0 - (-1.0_f64).exp())).abs() < 1e-14);
+        assert_eq!(statistics[1], 1.0);
+    }
+
+    #[test]
+    fn ks_handles_missing_invalid_and_negative_inputs() {
+        let values = array![[f64::NAN, -1.0, 1.0, 1.0, 1.0, 1.0, 1.0]];
+        let statistics = gamma_ks_statistics(
+            values.view(),
+            array![1.0, 1.0, 0.0, f64::INFINITY, 1.0, 1.0, f64::NAN].view(),
+            array![1.0, 1.0, 1.0, 1.0, 0.0, f64::INFINITY, 1.0].view(),
+        )
+        .unwrap();
+        assert!(statistics.iter().all(|d| d.is_nan()));
+        let empty = Array2::zeros((0, 1));
+        let statistics =
+            gamma_ks_statistics(empty.view(), array![1.0].view(), array![1.0].view()).unwrap();
+        assert!(statistics[0].is_nan());
+    }
+
+    #[test]
+    fn ks_validates_each_parameter_length() {
+        for (alphas, betas, argument) in [
+            (array![1.0], array![1.0, 1.0], "alphas"),
+            (array![1.0, 1.0], array![1.0], "betas"),
+        ] {
+            assert_eq!(
+                gamma_ks_statistics(array![[1.0, 2.0]].view(), alphas.view(), betas.view())
+                    .unwrap_err(),
+                ClimateError::ShapeMismatch {
+                    argument,
+                    expected: 2,
+                    actual: 1
+                },
+            );
+        }
+    }
 
     #[test]
     fn fit_excludes_zeros_and_missing_values() {

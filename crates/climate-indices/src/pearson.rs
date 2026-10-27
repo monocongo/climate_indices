@@ -299,28 +299,8 @@ pub fn pearson_ks_statistics(
                 .copied()
                 .filter(|x| !x.is_nan() && *x != 0.0),
         );
-        if sorted.is_empty() {
-            continue;
-        }
-        sorted.sort_by(f64::total_cmp);
-        let size = sorted.len() as f64;
-        let mut upper = f64::NEG_INFINITY;
-        let mut lower = f64::NEG_INFINITY;
-        for (index, &value) in sorted.iter().enumerate() {
-            let cdf = pearson_cdf(value, skew, loc, scale);
-            if cdf.is_nan() {
-                upper = f64::NAN;
-                break;
-            }
-            let rank = (index + 1) as f64;
-            upper = upper.max(rank / size - cdf);
-            lower = lower.max(cdf - (rank - 1.0) / size);
-        }
-        result[column] = if upper.is_nan() {
-            f64::NAN
-        } else {
-            upper.max(lower)
-        };
+        result[column] =
+            crate::ks::d_statistic(&mut sorted, |value| pearson_cdf(value, skew, loc, scale));
     }
     Ok(result)
 }

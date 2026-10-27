@@ -29,11 +29,12 @@ The registry records the exact derivations and parameters.
 | `fire_duff_moisture_code` | `duff_moisture_code` | 0.000000e+00 | 0.000000e+00 |
 | `fire_ffmc` | `ffmc` | 0.000000e+00 | 0.000000e+00 |
 | `fire_kbdi` | `kbdi` | 0.000000e+00 | 0.000000e+00 |
-| `fit_diagnostics` | `gamma_parameters` | 0.000000e+00 | 0.000000e+00 |
+| `fit_diagnostics` | `gamma_ks_statistics`, `gamma_parameters` | 0.000000e+00 | 0.000000e+00 |
 | `flood_api` | `antecedent_precipitation_index` | no finite comparison | no finite comparison |
 | `flood_edi` | `edi`, `effective_precipitation` | 8.526513e-14 | 7.882583e-15 |
 | `flood_flood_index` | `effective_precipitation`, `flood_index` | 2.220446e-16 | 1.096055e-15 |
 | `flood_pe` | `effective_precipitation` | 4.547474e-13 | 2.780533e-16 |
+| `gamma_ks_statistics` | `gamma_ks_statistics` | 0.000000e+00 | 0.000000e+00 |
 | `hargreaves` | `hargreaves` | 4.440892e-16 | 1.974933e-16 |
 | `palmer_pdsi` | `palmer_k_prime`, `palmer_pdi`, `palmer_raw_zindex`, `palmer_water_balance` | 0.000000e+00 | 0.000000e+00 |
 | `palmer_scpdsi` | `palmer_k_prime`, `palmer_raw_zindex`, `palmer_water_balance`, `palmer_wells`, `scpdsi_duration_factors` | 0.000000e+00 | 0.000000e+00 |
@@ -42,10 +43,10 @@ The registry records the exact derivations and parameters.
 | `penman_monteith` | `fao56_eto` | 8.881784e-16 | 4.336616e-16 |
 | `percentage_of_normal` | `pnp_normals`, `pnp_percentages` | 0.000000e+00 | 0.000000e+00 |
 | `pm_eto_intermediates` | `pm_eto` | 0.000000e+00 | 0.000000e+00 |
-| `spei_gamma` | `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 2.220446e-16 | 3.456693e-16 |
+| `spei_gamma` | `gamma_ks_statistics`, `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 2.220446e-16 | 3.456693e-16 |
 | `spei_loglogistic` | `loglogistic_cdf`, `loglogistic_parameters` | 0.000000e+00 | 0.000000e+00 |
-| `spi_gamma` | `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 1.998401e-15 | 4.764927e-14 |
-| `spi_gamma_mean_zero` | `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 1.998401e-15 | 4.764927e-14 |
+| `spi_gamma` | `gamma_ks_statistics`, `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 1.998401e-15 | 4.764927e-14 |
+| `spi_gamma_mean_zero` | `gamma_ks_statistics`, `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 1.998401e-15 | 4.764927e-14 |
 | `spi_gamma_spatial_block` | `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 7.105427e-15 | 1.867507e-13 |
 | `spi_pearson` | `pearson_cdf`, `pearson_ks_statistics`, `pearson_parameters` | 8.604228e-15 | 6.821559e-14 |
 | `thornthwaite` | `thornthwaite` | 2.842171e-14 | 2.207812e-16 |
