@@ -33,7 +33,8 @@ def _short_calibration_warnings(caught: list[warnings.WarningMessage]) -> list[w
 class TestCoordinateInference:
     @pytest.mark.parametrize("frequency", ["MS", "ME", "D", "h"])
     def test_endpoints_include_partial_calendar_years(self, frequency):
-        time = pd.date_range("2000-01-01", "2004-06-15", freq=frequency)
+        # xr.date_range maps ME to the legacy M alias on pandas < 2.2
+        time = xr.date_range("2000-01-01", "2004-06-15", freq=frequency)
         assert CalibrationPeriod.infer_years(time.values) == (2000, 2004)
 
     @pytest.mark.parametrize("year_start_month", range(1, 13))
