@@ -1685,8 +1685,9 @@ The binding copies the input before releasing the GIL; the core allocates only i
 `uv run python scripts/native_parity_maxima.py --write-contract` measures four Aggregation entries.
 Their maximum absolute and relative errors are both zero on this host.
 The ordinary entries use the registry's fixed precipitation samples, including zeros and missing values.
-The signed entries inject cancellation, overflow, both infinities, NaN, signed zero, and a subnormal.
-`tests/test_native_parity_aggregation.py` additionally checks Timescales 2, 3, 7, 8, 12, 128, 129, and 720.
+The signed entries inject cancellation, overflow, both infinities, and NaN.
+Their signed-zero and subnormal probes change no window sum.
+`tests/test_native_parity_aggregation.py` checks those cases and Timescales 2, 3, 7, 8, 12, 128, 129, and 720.
 Every comparison retains `rtol = atol = 1e-10` and identical NaN positions.
 No tolerance exception is needed.
 
