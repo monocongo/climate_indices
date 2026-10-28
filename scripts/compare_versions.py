@@ -430,7 +430,7 @@ def run_cli(
 
     try:
         # S8705: list argv, no shell; every path is absolute and the remaining values are ints or fixed choices.
-        subprocess.run(cmd, check=True, capture_output=True, timeout=timeout)  # NOSONAR (S8705)
+        subprocess.run(cmd, check=True, capture_output=True, timeout=timeout)  # nosec B603 # NOSONAR (S8705)
         return True
     except subprocess.CalledProcessError as exc:
         stderr_preview = exc.stderr.decode(errors="replace")[:300]
