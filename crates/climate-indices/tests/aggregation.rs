@@ -53,8 +53,16 @@ fn grouping_matches_numpy_block_reductions() {
 fn shapes_identity_invalid_and_strided_views() {
     for shape in [(0, 2), (3, 0), (1, 1)] {
         let input = Array2::from_elem(shape, -0.0);
-        assert_eq!(trailing_sum(input.view(), 1).unwrap(), input);
-        assert_eq!(trailing_mean(input.view(), 1).unwrap(), input);
+        // compare bits: f64 `==` treats -0.0 and +0.0 as equal
+        let bits = input.mapv(f64::to_bits);
+        assert_eq!(
+            trailing_sum(input.view(), 1).unwrap().mapv(f64::to_bits),
+            bits
+        );
+        assert_eq!(
+            trailing_mean(input.view(), 1).unwrap().mapv(f64::to_bits),
+            bits
+        );
         let result = trailing_sum(input.view(), usize::MAX).unwrap();
         assert_eq!(result.dim(), shape);
         assert!(result.iter().all(|x| x.is_nan()));
