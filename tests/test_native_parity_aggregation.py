@@ -123,8 +123,12 @@ def test_ineligible_layouts_retain_python(monkeypatch: pytest.MonkeyPatch, kind:
     elif kind == "two_dimensional":
         values = values.reshape(20, 6)
     if kind == "two_dimensional":
-        with pytest.raises(ValueError):
+        # ignore reporting so the dispatch predicate itself must decline the 2-D input
+        recorder = conftest.NativeRecorder(native)
+        monkeypatch.setattr(compute, "_native", recorder)
+        with np.errstate(all="ignore"), pytest.raises(ValueError):
             compute.sum_to_scale(values, 3)
+        assert not recorder.calls
     else:
         assert _compare(monkeypatch, values, 3) == set()
 
