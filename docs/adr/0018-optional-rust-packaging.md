@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted. Implements [#1283](https://github.com/monocongo/climate_indices/issues/1283)
+Amended for [#1511](https://github.com/monocongo/climate_indices/issues/1511):
+`crates/climate-py/Cargo.toml` now uses `abi3-py311` because Python support starts at 3.11.
+The original Python 3.10 wheel result below remains historical evidence.
+
+Implements [#1283](https://github.com/monocongo/climate_indices/issues/1283)
 (RUST-013), the packaging questions the RUST-012 record
 ([#1282](https://github.com/monocongo/climate_indices/issues/1282)) defers to this ticket
 in its decision 8 and in its "maturin as the PEP 517 backend now" alternative. The
@@ -45,9 +49,9 @@ Three facts constrain the choice:
    the pure artifacts.** `release.yml` builds them in `build-wheels` and publishes them
    with the sdist and the pure wheel from the same tag, so the fallback rule in the
    Context applies: a matching platform wheel wins, everything else gets the pure wheel.
-3. **abi3 (`abi3-py310`) rather than one wheel per interpreter.** `rust-numpy` works with
-   PyO3's limited API, so a single `cp310-abi3` wheel per platform validates on every
-   supported Python (3.10–3.14). The matrix has no interpreter axis, and the same wheel
+3. **abi3 (`abi3-py311`) rather than one wheel per interpreter.** `rust-numpy` works with
+   PyO3's limited API, so a single `cp311-abi3` wheel per platform validates on every
+   supported Python (3.11–3.14). The matrix has no interpreter axis, and the same wheel
    file is installed on the oldest and newest supported versions in CI.
 4. **The published matrix is five wheels**: `x86_64` and `aarch64` manylinux_2_28, macOS
    arm64, macOS `x86_64`, and Windows `x86_64`. Every one is built and imported on its own

@@ -30,6 +30,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tomllib
 from datetime import date
 from importlib.metadata import version as get_pkg_version
 from pathlib import Path
@@ -37,11 +38,6 @@ from typing import Any
 
 import pytest
 from packaging.specifiers import SpecifierSet
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover - exercised only on Python 3.10
-    import tomli as tomllib
 
 ROOT = Path(__file__).parent.parent
 PYTHON_CLASSIFIER_PREFIX = "Programming Language :: Python :: "
@@ -215,6 +211,18 @@ def test_python_classifiers_are_contiguous_and_match_requires_python() -> None:
     )
 
 
+def test_python_support_starts_at_311() -> None:
+    """Metadata and analysis tools must reject the retired Python 3.10 baseline."""
+    pyproject = _read_toml(Path("pyproject.toml"))
+    constraint = SpecifierSet(pyproject["project"]["requires-python"])
+
+    assert "3.10.99" not in constraint
+    assert "3.11.0" in constraint
+    assert _declared_python_versions()[0] == "3.11"
+    assert pyproject["tool"]["ruff"]["target-version"] == "py311"
+    assert pyproject["tool"]["mypy"]["python_version"] == "3.11"
+
+
 def test_uv_lock_matches_declared_python_constraint() -> None:
     """The lockfile must use the same normalized Python constraint as metadata."""
     locked_constraint = _read_toml(Path("uv.lock"))["requires-python"]
@@ -381,8 +389,7 @@ def test_full_matrix_runs_beyond_pull_requests_and_the_pull_request_job_is_ungat
 def test_test_full_job_runs_the_same_core_command_as_the_pull_request_job() -> None:
     """A leg must mean the same thing in `test` and `test-full`: locked dev install, same core command.
 
-    Source builds stay allowed in both jobs: the 3.10 legs need the sdist-only asciitree
-    from the zarr 2.x stack, so neither job can pass `--no-build`.
+    Source builds stay allowed in both jobs because newer interpreters can lack dependency wheels.
     """
     workflow = (ROOT / UNIT_TESTS_WORKFLOW).read_text(encoding="utf-8")
     pull_request_job = _workflow_job(workflow, "test")
@@ -989,7 +996,7 @@ def test_native_wheel_job_checks_built_wheels_outside_the_checkout() -> None:
 
 
 def test_climate_py_builds_abi3_wheels() -> None:
-    """abi3 (PyO3 `abi3-py310`) is what lets one wheel per platform cover every supported Python.
+    """abi3 lets one wheel per platform cover every supported Python.
 
     Dropping the feature silently reintroduces an interpreter axis in the release wheel matrix,
     so it is pinned here rather than only in the workflow.
@@ -997,7 +1004,8 @@ def test_climate_py_builds_abi3_wheels() -> None:
     manifest = _read_toml(Path("crates/climate-py/Cargo.toml"))
     pyo3 = manifest["dependencies"]["pyo3"]
 
-    assert "abi3-py310" in pyo3["features"], pyo3
+    minimum = _declared_python_versions()[0].replace(".", "")
+    assert {feature for feature in pyo3["features"] if feature.startswith("abi3-py")} == {f"abi3-py{minimum}"}
 
 
 def test_docker_uses_latest_supported_python() -> None:
@@ -1501,7 +1509,7 @@ def test_icechunk_is_an_optional_extra_and_imports_lazily() -> None:
     assert not [dependency for dependency in project["dependencies"] if "icechunk" in dependency], (
         "icechunk must stay out of the core dependencies"
     )
-    assert project["optional-dependencies"]["icechunk"] == ["icechunk>=1.1.21,<2; python_version >= '3.11'"]
+    assert project["optional-dependencies"]["icechunk"] == ["icechunk>=1.1.21,<2"]
     module = (ROOT / "src" / "climate_indices" / "icechunk_io.py").read_text(encoding="utf-8")
     assert not re.search(r"^(?:import|from)\s+icechunk", _uncommented(module), re.MULTILINE), (
         "icechunk_io must import Icechunk lazily, so a core install still imports it"

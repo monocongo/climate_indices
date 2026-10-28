@@ -293,7 +293,7 @@ def layer_storage_mm(
     thickness = _layer_thicknesses_mm([str(name) for name in fractions[layer_dim].values], layers_mm)
     scaled = fractions * xr.DataArray(thickness, coords={layer_dim: fractions[layer_dim].values}, dims=[layer_dim])
     scaled = scaled.assign_attrs(units="mm", long_name="Stored plant-available water per soil layer")
-    return cast(xr.DataArray, scaled)
+    return scaled
 
 
 def van_genuchten_available_water(
@@ -417,10 +417,7 @@ def integrate_depth(
     )
     # A layer below the column contributes nothing, even where it is missing; 0 * NaN would not.
     total = (storage_mm.where(included > 0.0, 0.0) * included).sum(dim=layer_dim, skipna=False)
-    return cast(
-        xr.DataArray,
-        total.assign_attrs(units="mm", long_name=_TOTAL_WATER_LONG_NAME, aws_depth_mm=float(depth_mm)),
-    )
+    return total.assign_attrs(units="mm", long_name=_TOTAL_WATER_LONG_NAME, aws_depth_mm=float(depth_mm))
 
 
 def _included_fraction(name: str, layers_mm: Sequence[tuple[str, float, float]], depth_mm: float) -> float:
@@ -439,10 +436,7 @@ def aws_mm_to_inches(aws_mm: xr.DataArray | npt.ArrayLike) -> xr.DataArray | npt
     """Convert millimetres of available water to the inches the Palmer code takes."""
     if isinstance(aws_mm, xr.DataArray):
         inches = aws_mm / SURFACE_LAYER_MM
-        return cast(
-            xr.DataArray,
-            inches.assign_attrs(units="inches", long_name="Total available water capacity"),
-        )
+        return inches.assign_attrs(units="inches", long_name="Total available water capacity")
     return np.asarray(aws_mm, dtype=float) / SURFACE_LAYER_MM
 
 
@@ -812,7 +806,7 @@ def _climate_land_mask(climate: xr.DataArray, *, lat_dim: str, lon_dim: str) -> 
     mask = climate.notnull()
     if other_dims:
         mask = mask.any(dim=other_dims)
-    return cast(xr.DataArray, mask.transpose(lat_dim, lon_dim))
+    return mask.transpose(lat_dim, lon_dim)
 
 
 def _validated_axis(values: npt.NDArray[np.float64], name: str) -> npt.NDArray[np.float64]:
@@ -978,7 +972,7 @@ def _open_raster_window(
             field = field.sortby(dim)
         field = cast(xr.DataArray, field.rename("values"))
         if eager:
-            return cast(xr.DataArray, field.compute(scheduler="synchronous"))
+            return field.compute(scheduler="synchronous")
         return field
 
 
@@ -996,7 +990,7 @@ def _pixel_window(field: xr.DataArray, bounds: Bounds, halo_pixels: int, path_or
                 "climate grid and that both use the same longitude convention (-180..180)"
             )
         windows[dim] = slice(int(inside[0]), int(inside[-1]) + 1)
-    return cast(xr.DataArray, field.isel(windows))
+    return field.isel(windows)
 
 
 def _open_tile_with_retry(tile: Path | str, bounds: Bounds, *, attempts: int = POLARIS_READ_ATTEMPTS) -> xr.DataArray:
@@ -1361,7 +1355,7 @@ def _read_single_layer(raster: Path, climate: xr.DataArray, *, lat_dim: str, lon
         field = _open_raster_window(str(raster), bounds, halo_pixels=1)
     except OSError as error:
         raise SourceUnavailableError(f"could not read soil raster {raster}: {error}") from error
-    return cast(xr.DataArray, field.rename({"lat": lat_dim, "lon": lon_dim}))
+    return field.rename({"lat": lat_dim, "lon": lon_dim})
 
 
 def _grid_bounds(climate: xr.DataArray, *, lat_dim: str, lon_dim: str) -> Bounds:
@@ -1421,7 +1415,7 @@ def _polaris_parameter(
         if not isinstance(combined, xr.Dataset) or "values" not in combined:
             raise AwsIngestError(f"POLARIS {parameter}/{layer} tiles could not be combined into one field")
         field = combined["values"]
-    return cast(xr.DataArray, field.rename(parameter))
+    return field.rename(parameter)
 
 
 def _polaris_tile_paths(parameter: str, layer: str, bounds: Bounds, raw_dir: Path | None) -> list[Path | str]:
