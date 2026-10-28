@@ -2,9 +2,9 @@
 
 Every fitted or ranked index turns a requested Calibration Period (inclusive
 calendar years) into a row slice of an array folded to ``(years, periods, ...)``.
-This module owns that arithmetic and the two policies an index can apply to a
-window the record does not cover: ``"clamp"`` it to the whole record, or
-``"reject"`` it. Each index names its policy at its call site. A reversed window
+This module owns coordinate inference, the single-series non-NaN sample check,
+and the two policies an index can apply to a window the record does not cover:
+``"clamp"`` it to the whole record, or ``"reject"`` it. Each index names its policy at its call site. A reversed window
 (start year after end year) is rejected under both, since no policy can give it a
 meaning (#1231).
 """
@@ -12,9 +12,16 @@ meaning (#1231).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
-from climate_indices.exceptions import InvalidArgumentError
+import numpy as np
+import numpy.typing as npt
+import pandas as pd
+
+from climate_indices.exceptions import InsufficientDataError, InvalidArgumentError
+
+# The single-series preflight enforces this minimum; distribution fits only warn.
+MIN_CALIBRATION_YEARS = 30
 
 CalibrationPolicy = Literal["clamp", "reject"]
 
@@ -38,6 +45,80 @@ class CalibrationPeriod:
     start_year: int
     end_year: int
     start_index: int  # row of ``start_year`` on the folded year axis
+
+    @staticmethod
+    def infer_years(
+        time_values: npt.NDArray[np.datetime64], *, complete_years: bool = False, year_start_month: int = 1
+    ) -> tuple[int, int]:
+        """Infer inclusive year bounds from validated labeled time endpoints.
+
+        The adapter includes partial calendar years. Daily flood callers request
+        only complete annual periods, labeled by their start year. Bounds can be
+        reversed when no complete period exists; the kernel retains responsibility
+        for rejecting that window, rather than constructing a resolved period here.
+        This reads coordinates only, never climate values or Dask tasks.
+        """
+        first_year = int(pd.Timestamp(time_values[0]).year)
+        last = pd.Timestamp(time_values[-1])
+        if not complete_years:
+            return first_year, int(last.year)
+        if year_start_month == 1:
+            last_year = last.year if last.is_year_end else last.year - 1
+        else:
+            end_month = year_start_month - 1
+            end_year = last.year if last.month >= year_start_month else last.year - 1
+            if last.month == end_month and last.is_month_end:
+                end_year = last.year
+            last_year = end_year - 1
+        return first_year, int(last_year)
+
+    def validate_non_nan_sample_size(
+        self,
+        time_values: npt.NDArray[np.datetime64],
+        values: npt.NDArray[Any],
+        min_years: int = MIN_CALIBRATION_YEARS,
+    ) -> None:
+        """Enforce the single-series preflight minimum within this period.
+
+        Issue #1156 removed grid-wide rejection based on the first cell. Gridded
+        and Dask inputs still bypass this check; new per-cell thresholds are outside
+        this refactor. Daily counts use 365 samples per year, as the preflight runs
+        before all-leap conversion. Fitting-quality warnings remain independent.
+        """
+        time_index = pd.DatetimeIndex(time_values)
+        time_years = time_index.year.values
+        calibration_mask = (time_years >= self.start_year) & (time_years <= self.end_year)
+        calibration_values = values[calibration_mask]
+        if len(calibration_values) == 0:
+            raise InsufficientDataError(
+                message=(
+                    f"Calibration period ({self.start_year}-{self.end_year}) "
+                    f"contains no data points. Check that calibration years overlap with time coordinate range."
+                ),
+                non_zero_count=0,
+                required_count=min_years,
+            )
+        non_nan_count = int(np.sum(~np.isnan(calibration_values)))
+        freq = pd.infer_freq(time_index)
+        if freq in ("MS", "ME", "M"):
+            periods_per_year = 12
+        elif freq == "D":
+            periods_per_year = 365
+        else:
+            periods_per_year = len(calibration_values) // self.n_years
+            if periods_per_year == 0:
+                periods_per_year = 12
+        effective_years = non_nan_count / periods_per_year
+        if effective_years < min_years:
+            raise InsufficientDataError(
+                message=(
+                    f"Insufficient non-NaN data in calibration period ({self.start_year}-{self.end_year}). "
+                    f"Found {non_nan_count} non-NaN values ({effective_years:.1f} effective years), "
+                    f"but at least {min_years} years of non-NaN data required for reliable distribution fitting."
+                ),
+                non_zero_count=non_nan_count,
+                required_count=int(min_years * periods_per_year),
+            )
 
     @property
     def n_years(self) -> int:
