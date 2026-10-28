@@ -253,6 +253,8 @@ True
 A Zarr store returns the same record:
 
 ```{doctest} provenance
+:skipif: not __import__("importlib.util", fromlist=["util"]).find_spec("zarr")
+
 >>> store = Path(workdir.name) / "spi.zarr"
 >>> _ = combined.to_zarr(store, mode="w", consolidated=False)
 >>> with xr.open_zarr(store, consolidated=False) as reopened:

@@ -83,6 +83,8 @@ dev = [
 docs = [
     # the quickstart doctest writes NetCDF through the h5netcdf backend
     "h5py>=3.11.0",
+    # the provenance doctest writes and reopens a Zarr store
+    "zarr>=2.18",
     # The docs doctest build executes the cached energy notebook.
     "ipykernel>=6.29",
     "matplotlib>=3.10.3",

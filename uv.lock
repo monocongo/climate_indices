@@ -862,6 +862,9 @@ docs = [
     { name = "sphinx-autodoc-typehints", version = "3.6.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "sphinx-rtd-theme" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
+    { name = "zarr", version = "2.18.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "zarr", version = "3.1.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
+    { name = "zarr", version = "3.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
 icechunk = [
     { name = "icechunk", marker = "python_full_version >= '3.11'" },
@@ -990,6 +993,7 @@ requires-dist = [
     { name = "twine", marker = "extra == 'dev'", specifier = ">=6.1.0" },
     { name = "types-psutil", marker = "extra == 'dev'", specifier = ">=5.9.0" },
     { name = "xarray", specifier = ">=2025.6.1" },
+    { name = "zarr", marker = "extra == 'docs'", specifier = ">=2.18" },
     { name = "zarr", marker = "extra == 'test'", specifier = ">=2.18" },
 ]
 provides-extras = ["icechunk", "test", "aws", "dev", "docs", "performance"]
