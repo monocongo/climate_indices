@@ -621,12 +621,18 @@ def test_behavior_indices_with_a_transposed_layout_keep_the_python_path(monkeypa
     """A layout that cannot be viewed as (n, 1) without a copy leaves the expression in Python."""
     from climate_indices.fire import _cffwis_behavior as behavior
 
-    # the public entry point copies its input into a contiguous float64 array,
-    # so the transposed layout reaches the seam through the private helper,
-    # which the orchestrator reads directly
     ffmc = np.arange(12.0).reshape(3, 4).T
     wind = np.arange(12.0).reshape(3, 4).T
     run = partial(behavior._initial_spread_index, ffmc, wind)
+
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == set()
+    _assert_parity(rust, python)
+
+
+def test_public_buildup_index_with_broadcast_operands_keeps_the_python_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Public broadcasting can produce layouts that require copies to flatten."""
+    run = partial(fire.buildup_index, np.arange(4.0)[:, None], np.arange(3.0)[None, :])
 
     rust, python, calls = _rust_and_python(monkeypatch, run)
     assert calls == set()

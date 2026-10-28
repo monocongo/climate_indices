@@ -76,8 +76,9 @@ def _elementwise_block(array: npt.NDArray[np.float64]) -> npt.NDArray[np.float64
     """
     if not _native_backend.takes(array) or array.size == 0:
         return None
-    block = array.reshape(-1, 1)
-    return block if np.shares_memory(block, array) else None
+    if not _merges_cells(array[np.newaxis]):
+        return None
+    return array.reshape(-1, 1)
 
 
 def _recorded_history(

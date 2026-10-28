@@ -916,10 +916,12 @@ fn bui_next(dmc: f64, dc: f64) -> f64 {
 /// The equations are evaluated in the Python reference's operation order, with
 /// NumPy's `where` branches selected after both are computed: the `BUI > 80`
 /// damped branch, the `initial <= 1` branch, and
-/// `exponentiated = exp(2.72 * (0.434 * log(initial)) ** 0.647)`. A zero
-/// `initial` takes its own value, while a negative or NaN one follows NumPy's
-/// `log` into NaN. NaN inputs propagate, and a finite input can overflow to
-/// infinity, which the caller masks as NaN. `exp`, `log`, and `powf` can differ
+/// `exponentiated = exp(2.72 * (0.434 * log(initial)) ** 0.647)`.
+/// An `initial <= 1` returns unchanged, including zero and negative values.
+/// For a negative `initial`, the discarded `exponentiated` branch is NaN.
+/// The Python public wrapper separately masks negative inputs as NaN.
+/// NaN inputs propagate, and a finite input can overflow to infinity, which
+/// the caller masks as NaN. `exp`, `log`, and `powf` can differ
 /// from NumPy's float64 loops in the last bit on some platforms.
 ///
 /// Returns [`ClimateError::ShapeMismatch`] if the two shapes differ.

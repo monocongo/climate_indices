@@ -565,9 +565,11 @@ than first materialized in Python; that boundary copy is the native path's own
 buffer and is not part of the `array_memory_mb` a recurrence reports, which
 counts the one recorded history the kernel returns. The behavior-index kernels
 take `(n, 1)` views of one flat block: a layout whose reshape would copy, such
-as a transposed or broadcast array, keeps the Python expression, and the public
-entry points copy their input into a contiguous float64 array before the seam
-reads it. The flood kernels differ in
+as a transposed or partially broadcast array, keeps the Python expression.
+The public entry points coerce inputs to float64 and broadcast them where
+needed. These steps can preserve existing layouts; they do not guarantee
+contiguous arrays. The dispatch checks strides before reshaping, so rejecting
+a layout does not allocate a full-size copy. The flood kernels differ in
 one respect: a time-last (transposed) array reshapes to a view, and a layout
 that cannot merge without a copy, such as a regional slice of a larger grid or a
 Fortran-ordered array, is copied once in Python and still runs natively, because
