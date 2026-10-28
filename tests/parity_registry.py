@@ -290,6 +290,22 @@ def _pnp(values: np.ndarray) -> Callable[[], Any]:
     )
 
 
+def _empirical(values: np.ndarray) -> Callable[[], Any]:
+    start, calibration_start, calibration_end = _monthly_window(values)
+    signed = values - 50.0
+    return lambda: indices.standardized_index(
+        signed,
+        6,
+        indices.Distribution.empirical,
+        start,
+        calibration_start,
+        calibration_end,
+        compute.Periodicity.monthly,
+        clip_negatives=False,
+        spatial_time_major=values.ndim > 1,
+    )
+
+
 def _eddi(values: np.ndarray) -> Callable[[], Any]:
     start, calibration_start, calibration_end = _monthly_window(values)
     return lambda: indices.eddi(
@@ -495,6 +511,8 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry("spei_gamma", MONTHLY, compute, _spei, _GAMMA_KERNELS, _GAMMA_SPATIAL_KERNELS),
     Entry("percentage_of_normal", MONTHLY, compute, _pnp, frozenset({"pnp_normals", "pnp_percentages"})),
+    Entry("empirical", MONTHLY, compute, _empirical, frozenset({"empirical_transform"})),
+    Entry("empirical_spatial_block", BLOCK, compute, _empirical, frozenset({"empirical_transform"})),
     Entry("eddi", MONTHLY, compute, _eddi, frozenset({"tukey_probabilities", "hastings_inverse_normal"})),
     Entry("eddi_spatial_block", BLOCK, compute, _eddi, frozenset({"tukey_probabilities", "hastings_inverse_normal"})),
     Entry("pci", DAILY, compute, _pci, frozenset({"pci"})),

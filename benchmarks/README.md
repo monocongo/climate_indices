@@ -975,6 +975,8 @@ A single station series per entry: 35 years of monthly values (420 values) or 5
 years of daily values (1825), the registry's fixed samples. `Python/Rust` above
 1.00 means the Rust path is faster. Each repetition alternates which backend runs
 first, so drift over the run (clock, cache, thermal) does not favour either side.
+The two later registry entries, `empirical` and `empirical_spatial_block`, are
+measured in the `#1387`-scale subsection below instead.
 
 | entry | family | Rust | Python | Python/Rust |
 |---|---|---|---|---|
@@ -1056,6 +1058,62 @@ that grows with cell count is inside the same slope.
 
 At one cell the two backends differ by 1.20x (SPI gamma) and 1.52x (EDDI): most
 of a small call is the fixed cost both paths pay.
+
+### The empirical transform on a #1387-scale block
+
+#1387 measured the Python empirical ranking loop -- one full pass over the
+calibration sample per calibration year -- at 0.57 s to 4.58 s on blocks of 47
+to 94 million values. The port replaces that loop with one sort per column and
+a binary search per value. `benchmarks/empirical_transform.py` repeats the
+47-million-value block with the native dispatch on and off, in a fresh process,
+so the binding's input copies are inside both the time and the peak RSS:
+
+```bash
+for years in 20 60; do
+  for backend in python rust; do
+    for run in 1 2 3; do
+      BACKEND=$backend CALIBRATION_YEARS=$years uv run benchmarks/empirical_transform.py
+    done
+  done
+done
+```
+
+The block is 60 years x 12 months x 65,536 cells (47,185,920 values, 360 MiB) of
+gamma-distributed values, transformed at `output_scale="normal"`. Each invocation
+prints one JSON record. For each backend and calibration window, select the record
+with the smallest `seconds` value from the three fresh-process runs.
+Use that record's RSS fields for the same table row.
+The Rust rows fail unless the recorder saw `empirical_transform`,
+so a silent fallback to Python cannot be reported under the native label. Peak
+RSS is the process high-water mark around the call.
+
+| calibration years | Rust | Python | Python/Rust | Rust peak RSS increase | Python peak RSS increase |
+|---|---|---|---|---|---|
+| 20 | 0.806 s | 1.014 s | 1.26 | 881 MB | 469 MB |
+| 60 | 1.078 s | 2.210 s | 2.05 | 1132 MB | 485 MB |
+
+The Python ranking loop is the row that scales with the window: its time grows
+2.18x from 20 to 60 calibration years while the native path grows 1.34x. Neither
+row removes the per-value inverse normal. The native route is not a pure win at
+this size: it copies both operands before it releases the GIL, so peak RSS rises
+about 412 MB (20 years) and 647 MB (60 years) over the Python path, consistent
+with the `2V + C + 8Y` bound in the ported-kernels section of
+`docs/architecture.md`. The measured seconds cover `compute._empirical_fit`
+alone -- the ranking and the transform -- not the validation, aggregation, and
+logging ahead of it, and the peak bytes are a bound for one call rather than a
+steady-state working set.
+
+A separate harness, `benchmarks/rust_vs_python.py`, times the two new registry
+entries on the registry's fixed samples. Run it with:
+
+```bash
+uv run benchmarks/rust_vs_python.py --skip-sweep --skip-threads --skip-dask
+```
+
+It measured `empirical` at 0.140 ms Rust against 0.178 ms Python (1.27x) and
+`empirical_spatial_block` at 0.174 ms against 0.234 ms (1.35x). The committed run
+in `benchmarks/results/rust_vs_python.txt` predates both entries, and the tables
+above it pick them up at its next regeneration.
 
 ### Thread scaling
 
