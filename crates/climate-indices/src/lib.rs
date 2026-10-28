@@ -101,6 +101,7 @@ pub mod eto;
 pub mod fire;
 pub mod flood;
 pub mod gamma;
+mod ks;
 pub mod lmoments;
 pub mod loglogistic;
 pub mod palmer;
