@@ -1286,10 +1286,11 @@ def _effective_parameters(
     signature: inspect.Signature,
     valid_kwargs: dict[str, Any],
     input_names: set[str],
+    positional_args: tuple[Any, ...] = (),
 ) -> dict[str, Any]:
     """Every non-input parameter the kernel ran with: explicit, inferred, and default values."""
     known = {name: value for name, value in valid_kwargs.items() if name in signature.parameters}
-    bound = signature.bind_partial(**known)
+    bound = signature.bind_partial(*positional_args, **known)
     bound.apply_defaults()
     return {
         name: value
@@ -1384,6 +1385,7 @@ def _finalize_ufunc_result(
     is_spi: bool = False,
     time_dim: str = "time",
     signature: inspect.Signature | None = None,
+    positional_args: tuple[Any, ...] = (),
     provenance_inputs: Mapping[str, Any] | None = None,
     implementation: str | None = None,
 ) -> xr.DataArray:
@@ -1409,6 +1411,7 @@ def _finalize_ufunc_result(
             years a clamped window actually used
         signature: The wrapped function's signature; when given, the provenance record
             holds every effective parameter instead of the calculation metadata only
+        positional_args: Positional arguments consumed by the eager one-dimensional kernel
         provenance_inputs: Every input by parameter name, for the provenance record
         implementation: Qualified name of the wrapped function, for the provenance record
 
@@ -1441,8 +1444,8 @@ def _finalize_ufunc_result(
     )
     parameters = None
     if signature is not None:
-        parameters = _effective_parameters(signature, valid_kwargs, set(provenance_inputs or ()))
-        _report_effective_calibration_years(parameters, input_da, valid_kwargs, time_dim)
+        parameters = _effective_parameters(signature, valid_kwargs, set(provenance_inputs or ()), positional_args)
+        _report_effective_calibration_years(parameters, input_da, parameters, time_dim)
     output_attrs = build_output_attrs(
         input_da,
         resolved_cf_metadata,
@@ -2054,6 +2057,7 @@ def xarray_adapter(
                 is_spi=func is indices.spi,
                 time_dim=time_dim,
                 signature=signature,
+                positional_args=tuple(modified_args),
                 provenance_inputs=provenance_inputs,
                 implementation=implementation,
             )

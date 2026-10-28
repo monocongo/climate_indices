@@ -84,9 +84,10 @@ to the `compound_manifest` attribute that names their sources.
   use it to remove duplicate steps.
 - `truncated`: present only when a size limit dropped sections.
 
-`created` and `record_id` change on every run, as `history` does. To compare two
-results, compare the fields that describe the computation (`software`, `backend`,
-`parameters`, and the inputs' identifiers) rather than the whole record.
+`created` records UTC time with whole-second precision. `record_id` identifies the
+record contents, including that timestamp, not a unique execution. Identical
+computations within one second can have the same record ID. To compare two
+results, compare `software`, `backend`, `parameters`, and the inputs' identifiers.
 
 Unavailable values are explicit: `null`, with a `*_source` field or a note that
 says why.
@@ -167,10 +168,11 @@ licensing, and lineage keys of `dataset_attributes` are kept, such as `title`,
 identifies; nothing is computed, and an object-store ETag is not a content
 checksum.
 
-The command line labels each input with its file and that file's global
-attributes. Its shared-memory indices describe each input right after opening
-the files, so the record keeps the source's own `units`, not the units after
-normalization.
+The command line labels each input with its file. The xarray routes also record
+each file's global attributes. The shared-memory routes retain global attributes
+only for inputs from the first opened file. Secondary files' global attributes
+are unavailable after the files are combined. These routes describe each input
+before unit normalization, so the record keeps the source's own `units`.
 
 ### Normalization and limits
 
@@ -182,21 +184,26 @@ normalization.
   recorded by type, shape, and dtype.
 - Strings are truncated at 1024 characters, mappings at 64 keys, and nesting at
   depth 4, each with an explicit marker. Other objects become
-  `{"unsupported_type": "<name>"}`.
+  `{"unsupported_type": "<name>"}`. Supported fire-state objects record their
+  fields, including units and gap bookkeeping. Small state arrays include their
+  values; larger arrays retain only their shape and dtype.
 - A record is at most 32 KiB, far below HDF5's 64 KiB attribute limit. Above
   that, input attributes, then dataset attributes, then upstream digests are
   replaced by `{"omitted": "record size limit"}`, and `truncated` lists them.
+  If necessary, parameters and complete input descriptions are omitted next.
+  The limit includes `record_id` and the truncation markers.
 - The JSON is ASCII with sorted keys, so NetCDF-3, NetCDF-4, and Zarr store it
   unchanged.
 
 ### Privacy
 
-- A local path is reduced to its file name; absolute paths and user names are
-  not recorded.
+- A local source locator is reduced to its file name, without its directories.
 - A URL loses its user information, query string, and fragment. Signed-URL
   tokens are in the query string, so they are removed.
-- In recorded text, URL credentials and query strings are removed, and the home
-  directory is replaced by `~`.
+- In recorded text, URL credentials and query strings are removed. Recognizable
+  absolute paths, including `file://` URLs, are reduced to their file names.
+  This is not a general anonymization guarantee. Review free text before sharing
+  outputs, particularly paths with spaces or names written outside paths.
 - Attributes whose names look like secrets (`password`, `token`, `secret`,
   `api_key`, `credential`, `signature`, `authorization`) are recorded as
   `[redacted]`.

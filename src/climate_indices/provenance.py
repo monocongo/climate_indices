@@ -25,7 +25,7 @@ import re
 import shutil
 import subprocess  # nosec B404 # runs only the resolved git binary, with fixed arguments
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from importlib import metadata
 from pathlib import Path
 from typing import Any
@@ -445,7 +445,7 @@ def describe_input(role: str, data: Any) -> dict[str, Any]:
         record["source"] = _locator(os.fspath(source))
     caller = _decode(data.attrs.get(SOURCE_ATTR))
     if isinstance(caller, dict):
-        record.update(caller)  # a caller's own locator wins over the opened file's
+        record.update(_source_fields(caller))  # only validated source fields can override the opened file's locator
     record["upstream"] = _upstream(data.attrs.get(PROVENANCE_ATTR))
     return record
 
@@ -482,6 +482,53 @@ def _array_summary(data: Any) -> dict[str, Any]:
     return summary
 
 
+def _source_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate and sanitize persisted source fields without accepting arbitrary input fields."""
+    result: dict[str, Any] = {}
+    source = payload.get("source")
+    if isinstance(source, dict):
+        if source.get("kind") == "url" and isinstance(source.get("url"), str):
+            result["source"] = _locator(source["url"])
+            if source.get("query_removed") is True:
+                result["source"]["query_removed"] = True
+        elif source.get("kind") == "local-file" and isinstance(source.get("name"), str):
+            result["source"] = _locator(source["name"])
+    for field, keys in (
+        ("identifiers", ("dataset_id", "doi", "version")),
+        ("checksum", ("algorithm", "value", "object")),
+    ):
+        value = payload.get(field)
+        if isinstance(value, dict):
+            result[field] = _jsonable({key: value[key] for key in keys if key in value})
+    attrs = payload.get("dataset_attributes")
+    if isinstance(attrs, dict):
+        result["dataset_attributes"] = _dataset_attributes(attrs)
+    return result
+
+
+def _lineage_digest(record: dict[str, Any]) -> dict[str, Any] | None:
+    """Accept only the fields a lineage digest describes, normalized as fresh metadata."""
+    inputs = record.get("inputs", [])
+    if not isinstance(inputs, list) or any(not isinstance(entry, dict) for entry in inputs):
+        return None
+    if "record_id" in record and not isinstance(record["record_id"], str):
+        return None
+    digest: dict[str, Any] = {
+        key: _jsonable(record[key]) for key in ("record_id", "created", "operation", "parameters") if key in record
+    }
+    software = record.get("software")
+    if isinstance(software, dict):
+        digest["software"] = {key: _jsonable(software.get(key)) for key in ("version", "git_commit", "git_dirty")}
+    digest["inputs"] = [
+        {
+            **{key: _jsonable(entry[key]) for key in ("role", "variable") if key in entry},
+            **{key: value for key, value in _source_fields(entry).items() if key in ("source", "identifiers")},
+        }
+        for entry in inputs[:_MAX_ITEMS]
+    ]
+    return digest
+
+
 def _upstream(raw: Any) -> list[dict[str, Any]]:
     """Digests of an input's own record and its upstream steps, flattened and deduplicated."""
     if raw is None:
@@ -489,21 +536,23 @@ def _upstream(raw: Any) -> list[dict[str, Any]]:
     record = _decode(raw)
     if not isinstance(record, dict) or record.get("schema") != SCHEMA:
         return [{"unparseable": True}]
-    digest = {key: record.get(key) for key in ("record_id", "created", "operation", "parameters") if key in record}
-    software = record.get("software")
-    if isinstance(software, dict):
-        digest["software"] = {key: software.get(key) for key in ("version", "git_commit", "git_dirty")}
-    inputs = [entry for entry in record.get("inputs", []) if isinstance(entry, dict)]
-    digest["inputs"] = [
-        {key: entry[key] for key in ("role", "variable", "source", "identifiers") if key in entry} for entry in inputs
-    ]
+    digest = _lineage_digest(record)
+    if digest is None:
+        return [{"unparseable": True}]
     flattened = [digest]
     seen = {digest.get("record_id")}
-    for entry in inputs:
-        for step in entry.get("upstream", []):
-            if isinstance(step, dict) and step.get("record_id") not in seen:
-                seen.add(step.get("record_id"))
-                flattened.append(step)
+    for entry in record.get("inputs", []):
+        upstream = entry.get("upstream", [])
+        if not isinstance(upstream, list):
+            flattened.append({"unparseable": True})
+            continue
+        for step in upstream:
+            normalized = _lineage_digest(step) if isinstance(step, dict) else None
+            if normalized is None:
+                flattened.append({"unparseable": True})
+            elif normalized.get("record_id") not in seen:
+                seen.add(normalized.get("record_id"))
+                flattened.append(normalized)
     if len(flattened) > _MAX_UPSTREAM:
         flattened = [*flattened[:_MAX_UPSTREAM], {"omitted_steps": len(flattened) - _MAX_UPSTREAM}]
     return flattened
@@ -516,6 +565,8 @@ def _dataset_attributes(attrs: Mapping[str, Any]) -> Any:
 
 def _bounded(record: dict[str, Any]) -> dict[str, Any]:
     """Drop the bulkiest sections, in order, until the record fits ``_MAX_RECORD_BYTES``."""
+    # Reserve the exact serialized record_id space before hashing the final reduced record.
+    record["record_id"] = "sha256:" + "0" * 64
     truncated: list[str] = []
     for section in ("attributes", "dataset_attributes", "upstream"):
         if len(_canonical(record)) <= _MAX_RECORD_BYTES:
@@ -524,11 +575,15 @@ def _bounded(record: dict[str, Any]) -> dict[str, Any]:
             if section in entry:
                 entry[section] = {"omitted": "record size limit"}
         truncated.append(f"inputs[].{section}")
-    if len(_canonical(record)) > _MAX_RECORD_BYTES:
-        record["parameters"] = {"omitted": "record size limit"}
-        truncated.append("parameters")
-    if truncated:
         record["truncated"] = truncated
+    for section in ("parameters", "inputs", "operation", "software", "backend"):
+        if len(_canonical(record)) <= _MAX_RECORD_BYTES:
+            break
+        omitted = {"omitted": "record size limit"}
+        record[section] = [omitted] if section == "inputs" else omitted
+        truncated.append(section)
+        record["truncated"] = truncated
+    del record["record_id"]
     return record
 
 
@@ -558,6 +613,8 @@ def _jsonable(value: Any, depth: int = 0) -> Any:
         return str(value.isoformat())
     if isinstance(value, os.PathLike):
         return _locator(os.fspath(value))
+    if isinstance(value, np.ndarray) and value.ndim == 0:
+        return _jsonable(value.item(), depth)
     if depth >= _MAX_DEPTH:
         return {"omitted": "nesting depth limit"}
     if isinstance(value, Mapping):
@@ -573,6 +630,11 @@ def _jsonable(value: Any, depth: int = 0) -> Any:
         return [_jsonable(item, depth + 1) for item in value]
     if isinstance(value, np.ndarray | list | tuple) or hasattr(value, "shape"):
         return _array_summary(value)
+    # Deferred imports keep the metadata module independent of fire's adapter import cycle.
+    from climate_indices.fire import CFFWISState, DCState, DMCState, FFMCState, KBDIState
+
+    if isinstance(value, KBDIState | CFFWISState | FFMCState | DMCState | DCState):
+        return _jsonable({field.name: getattr(value, field.name) for field in fields(value)}, depth)
     return {"unsupported_type": type(value).__name__}
 
 
@@ -595,10 +657,16 @@ def _truncate(text: str) -> str:
 
 
 def _scrub(text: str) -> str:
-    """Remove URL credentials and query strings, and the home directory, from free text."""
-    text = _URL.sub(lambda match: _sanitize_url(match.group(0))[0], text)
-    home = str(Path.home())
-    return text.replace(home, "~") if len(home) > 1 else text
+    """Sanitize URLs and reduce recognizable absolute file paths to their file names."""
+    pattern = rf"{_URL.pattern}|(?<![\w:/])(?:[A-Za-z]:[\\/]|/|~[\\/])[^\s\"'<>]+"
+
+    def replace(match: re.Match[str]) -> str:
+        value = match.group(0)
+        if "://" in value and not value.lower().startswith("file://"):
+            return _sanitize_url(value)[0]
+        return str(_locator(value)["name"])
+
+    return re.sub(pattern, replace, text)
 
 
 def _sanitize_url(url: str) -> tuple[str, bool]:
@@ -606,6 +674,8 @@ def _sanitize_url(url: str) -> tuple[str, bool]:
     try:
         parts = urlsplit(url)
         host = parts.hostname or ""
+        if ":" in host:
+            host = f"[{host}]"
         netloc = f"{host}:{parts.port}" if parts.port is not None else host
     except ValueError:
         return "[unparseable URL]", False
@@ -616,11 +686,15 @@ def _sanitize_url(url: str) -> tuple[str, bool]:
 def _locator(raw: str) -> dict[str, Any]:
     """A privacy-safe source locator: a local file's name, or a sanitized URL."""
     if "://" not in raw:
-        return {"kind": "local-file", "name": re.split(r"[\\/]", raw.rstrip("\\/"))[-1]}
+        return {"kind": "local-file", "name": _truncate(re.split(r"[\\/]", raw.rstrip("\\/"))[-1])}
     if raw.lower().startswith("file://"):
-        return {"kind": "local-file", "name": re.split(r"[\\/]", urlsplit(raw).path.rstrip("/"))[-1]}
+        try:
+            path = urlsplit(raw).path
+        except ValueError:
+            return {"kind": "local-file", "name": "[unparseable URL]"}
+        return {"kind": "local-file", "name": _truncate(re.split(r"[\\/]", path.rstrip("/"))[-1])}
     url, query_removed = _sanitize_url(raw)
-    locator: dict[str, Any] = {"kind": "url", "url": url.removesuffix(f"?{_REDACTED}")}
+    locator: dict[str, Any] = {"kind": "url", "url": _truncate(url.removesuffix(f"?{_REDACTED}"))}
     if query_removed:
         locator["query_removed"] = True
     return locator

@@ -654,6 +654,8 @@ def _cffwis_xarray(
         output_core_dims += [None] * 6
         output_dtypes += [np.float64, np.int64] * 3
 
+    resolved_inputs: dict[str, Any] = {}
+
     def build_extra_inputs(alignment: StatefulAlignment) -> tuple[tuple[xr.DataArray, str | None], ...]:
         time_coord = alignment.time_source.coords[time_dim] if alignment.time_source is not None else None
         latitude = _resolve_cffwis_latitude(
@@ -662,6 +664,10 @@ def _cffwis_xarray(
             time_dim,
             alignment.spatial_dims,
             alignment.spatial_shape,
+        )
+        # The eager resolver already validated the scalar value; do not compute lazy fields here.
+        resolved_inputs["latitude_degrees_north"] = (
+            latitude.item() if latitude.ndim == 0 and latitude.chunks is None else latitude
         )
         month_data = _resolve_cffwis_month(month, time_coord, time_dim, alignment.time_length)
         _validate_cffwis_seeds(options, alignment.internal_spatial_shape)
@@ -692,8 +698,8 @@ def _cffwis_xarray(
         "relative_humidity_percent": relative_humidity_percent,
         "wind_speed_meters_per_second": wind_speed_meters_per_second,
         "precipitation_mm": precipitation_mm,
-        "latitude_degrees_north": latitude_degrees_north,
         "month": month,
+        **resolved_inputs,
     }
     variable_results = _cffwis_variable_results(
         result_arrays,

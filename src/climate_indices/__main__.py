@@ -35,6 +35,7 @@ from climate_indices._units import _convert_precipitation_units, _convert_temper
 from climate_indices.cf_metadata_registry import spi_output_attributes, standardized_output_bounds
 from climate_indices.exceptions import ConvergenceError, InsufficientDataError
 from climate_indices.validation import DatasetLayout, detect_dataset_layout, expected_dimensions
+from climate_indices.xarray_adapter import _report_effective_calibration_years
 
 # Retrieve logger and set desired logging level
 _logger = utils.get_logger(__name__, logging.INFO)
@@ -184,7 +185,12 @@ class _ComputeContext:
                 uri=self.request.netcdf_awc,
                 dataset_attributes=self.prepared.attrs,
             )
-        return {"inputs": inputs, "parameters": self.arguments}
+        parameters = dict(self.arguments)
+        if self.request.index in ("spi", "spei") and self.request.var_name_precip is not None:
+            _report_effective_calibration_years(
+                parameters, self.dataset[self.request.var_name_precip], parameters, "time"
+            )
+        return {"inputs": inputs, "parameters": parameters}
 
 
 def _validate_precipitation_input(
@@ -907,6 +913,9 @@ def _snapshot_inputs(
             dataset[var_name], uri=path, dataset_attributes=dataset.attrs if path == first_file else None
         )
         records[role] = provenance.snapshot_input(labeled)
+    if request.index == "pet":
+        latitude = provenance.with_source(dataset["lat"], uri=request.netcdf_temp, dataset_attributes=dataset.attrs)
+        records["latitude"] = provenance.snapshot_input(latitude)
     return records
 
 

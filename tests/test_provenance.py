@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import hashlib
 import json
 import os
 import shutil
@@ -19,12 +20,12 @@ import pytest
 import xarray as xr
 
 import climate_indices
-from climate_indices import compute, indices, provenance
+from climate_indices import compute, energy, fire, indices, provenance
 from climate_indices.__main__ import main
 from climate_indices.exceptions import InvalidArgumentError
 from climate_indices.indices import Distribution
 from climate_indices.provenance import PROVENANCE_ATTR, read_provenance, resolve_software_identity
-from climate_indices.xarray_adapter import build_output_attrs
+from climate_indices.xarray_adapter import build_output_attrs, xarray_adapter
 
 GIT = shutil.which("git")
 needs_git = pytest.mark.skipif(GIT is None, reason="git is not installed")
@@ -273,7 +274,7 @@ def test_locators_and_text_lose_credentials_tokens_and_local_directories() -> No
     entry = _strict(serialized)["inputs"][0]
     assert entry["source"] == {"kind": "local-file", "name": "precip.nc"}
     assert entry["attributes"]["source"] == "fetched from https://data.example.org:8443/x.nc?[redacted]"
-    assert entry["attributes"]["comment"] == "prepared in ~/work"
+    assert entry["attributes"]["comment"] == "prepared in work"
     assert entry["attributes"]["api_key"] == entry["attributes"]["Authorization"] == "[redacted]"
 
 
@@ -285,7 +286,14 @@ def test_locators_and_text_lose_credentials_tokens_and_local_directories() -> No
             {"kind": "url", "url": "s3://bucket/store.zarr", "query_removed": True},
         ),
         ("https://user:pw@host/p.nc", {"kind": "url", "url": "https://host/p.nc"}),
+        (
+            "https://user:pw@[2001:db8::1]:8443/p.nc?token=secret#part",
+            {"kind": "url", "url": "https://[2001:db8::1]:8443/p.nc", "query_removed": True},
+        ),
+        ("https://[2001:db8::1]/p.nc", {"kind": "url", "url": "https://[2001:db8::1]/p.nc"}),
         ("file:///Users/alice/data/p.nc", {"kind": "local-file", "name": "p.nc"}),
+        ("file://alice:pw@host/private/p.nc?token=secret#part", {"kind": "local-file", "name": "p.nc"}),
+        ("file://[broken", {"kind": "local-file", "name": "[unparseable URL]"}),
         ("C:\\Users\\bob\\data\\p.nc", {"kind": "local-file", "name": "p.nc"}),
         ("/home/carol/p.zarr/", {"kind": "local-file", "name": "p.zarr"}),
     ],
@@ -442,7 +450,10 @@ def test_metadata_collection_keeps_dask_inputs_lazy_and_values_unchanged() -> No
 # --- the command line ----------------------------------------------------------------------------
 
 
-def test_cli_output_records_the_input_as_opened_before_unit_normalization(tmp_path: Path) -> None:
+@pytest.mark.parametrize(("initial", "final", "effective_final"), [(1981, 2010, 2010), (1950, 2050, 2020)])
+def test_cli_output_records_the_input_as_opened_before_unit_normalization(
+    tmp_path: Path, initial: int, final: int, effective_final: int
+) -> None:
     precip_path = tmp_path / "precip.nc"
     time = xr.date_range("1981-01-01", periods=480, freq="MS")
     xr.Dataset(
@@ -454,7 +465,7 @@ def test_cli_output_records_the_input_as_opened_before_unit_normalization(tmp_pa
     main(
         [
             "--index", "spi", "--periodicity", "monthly", "--scales", "3",
-            "--calibration_start_year", "1981", "--calibration_end_year", "2010",
+            "--calibration_start_year", str(initial), "--calibration_end_year", str(final),
             "--netcdf_precip", str(precip_path), "--var_name_precip", "precip",
             "--output_file_base", str(tmp_path / "out"), "--multiprocessing", "single",
         ]
@@ -471,6 +482,7 @@ def test_cli_output_records_the_input_as_opened_before_unit_normalization(tmp_pa
     assert entry["dataset_attributes"] == {"history": "2026-01-01: created", "title": "Fixture"}
     assert str(tmp_path) not in json.dumps(record)
     assert record["parameters"]["calibration_year_initial"] == 1981
+    assert record["parameters"]["calibration_year_final"] == effective_final
     assert record["parameters"]["periodicity"] == "monthly"
     assert record["parameters"]["distribution"] == "gamma"
 
@@ -499,6 +511,213 @@ def test_cli_xarray_route_records_the_input_file_and_its_global_attributes(tmp_p
     [entry] = record["inputs"]
     assert entry["source"] == {"kind": "local-file", "name": "tas.nc"}
     assert entry["dataset_attributes"] == {"institution": "Test", "title": "Daily fixture"}
+
+
+# --- review regressions --------------------------------------------------------------------------
+
+
+def test_log_wind_profile_records_the_effective_roughness_length() -> None:
+    wind = xr.DataArray([5.0, 10.0], dims="time", attrs={"units": "m s-1"})
+    records = []
+    for roughness in (0.01, 0.1):
+        output = energy.hub_height_wind_speed(wind, 10.0, 100.0, method="log", roughness_length=roughness)
+        records.append(_strict(output.attrs[PROVENANCE_ATTR]))
+    assert [record["parameters"]["roughness_length"] for record in records] == [0.01, 0.1]
+    assert records[0]["record_id"] != records[1]["record_id"]
+
+
+def test_positional_scientific_parameters_describe_the_eager_calculation() -> None:
+    @xarray_adapter(infer_params=False)
+    def gain(values: Any, factor: float = 1.0) -> Any:
+        return values * factor
+
+    data = xr.DataArray([1.0, 2.0], dims="time")
+    output = gain(data, 2.0)
+    assert isinstance(output, xr.DataArray)
+    np.testing.assert_array_equal(output.values, [2.0, 4.0])
+    assert _strict(output.attrs[PROVENANCE_ATTR])["parameters"] == {"factor": 2.0}
+
+
+@pytest.mark.parametrize("lazy", [False, True])
+def test_cffwis_records_inferred_scalar_latitude_and_initial_state(lazy: bool) -> None:
+    time = xr.date_range("2001-07-01T12:00:00", periods=3, freq="D")
+    temperature = xr.DataArray([20.0] * 3, dims="time", coords={"time": time, "lat": 46.0}, attrs={"units": "degC"})
+    humidity = xr.full_like(temperature, 45.0)
+    wind = xr.full_like(temperature, 3.0)
+    rain = xr.zeros_like(temperature)
+    rain.attrs["units"] = "mm"
+    state = fire.CFFWISState(
+        ffmc=fire.FFMCState(ffmc=np.array(85.0), trailing_gap_days=np.array(0)),
+        dmc=fire.DMCState(dmc=np.array(6.0), trailing_gap_days=None),
+        dc=fire.DCState(dc=np.array(15.0), trailing_gap_days=np.array(1)),
+    )
+    if lazy:
+        temperature, humidity, wind, rain = (data.chunk({"time": -1}) for data in (temperature, humidity, wind, rain))
+
+    def forbid(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("provenance triggered a Dask computation")
+
+    with dask.config.set(scheduler=forbid):
+        output = fire.cffwis(temperature, humidity, wind, rain, initial_state=state, outputs="fwi")
+    assert isinstance(output, xr.Dataset)
+    record = _strict(output["fwi"].attrs[PROVENANCE_ATTR])
+    inputs = {entry["role"]: entry for entry in record["inputs"]}
+    assert inputs["latitude_degrees_north"]["value"] == 46.0
+    assert record["parameters"]["initial_state"] == {
+        "ffmc": {"ffmc": 85.0, "trailing_gap_days": 0},
+        "dmc": {"dmc": 6.0, "trailing_gap_days": None},
+        "dc": {"dc": 15.0, "trailing_gap_days": 1},
+    }
+
+
+def test_kbdi_records_state_values_units_and_wet_spell_bookkeeping() -> None:
+    state = fire.KBDIState(
+        kbdi=np.array([10.0, 20.0]),
+        wet_spell_precipitation=np.array([2.0, 3.0]),
+        trailing_gap_days=np.array([0, 1]),
+        units="imperial",
+    )
+    attrs = build_output_attrs(_monthly(), parameters={"initial_state": state})
+    assert _strict(attrs[PROVENANCE_ATTR])["parameters"]["initial_state"] == {
+        "kbdi": [10.0, 20.0],
+        "wet_spell_precipitation": [2.0, 3.0],
+        "trailing_gap_days": [0, 1],
+        "units": "imperial",
+    }
+
+
+@pytest.mark.parametrize("engine", ["h5netcdf", "zarr"])
+def test_reopened_source_and_lineage_metadata_are_validated_and_sanitized(tmp_path: Path, engine: str) -> None:
+    locator = {"kind": "url", "url": "https://alice:password@host/p.nc?token=secret#part"}
+    step = {
+        "record_id": "upstream-step",
+        "parameters": {"api_key": "hidden-key", "nested": {"token": "hidden-token"}},
+        "inputs": [{"role": "original", "source": locator}],
+    }
+    data = _monthly()
+    data.attrs[provenance.SOURCE_ATTR] = json.dumps(
+        {
+            "source": locator,
+            "role": "wrong-role",
+            "attributes": {"secret": "injected-attributes"},
+            "identifiers": {"dataset_id": {"password": "hidden-id"}},
+            "dataset_attributes": {"history": "downloaded https://bob:pw@host/p.nc?key=hidden-query"},
+        }
+    )
+    data.attrs[PROVENANCE_ATTR] = json.dumps(
+        {
+            **step,
+            "schema": provenance.SCHEMA,
+            "record_id": "parent",
+            "inputs": [{"role": "previous", "source": locator, "upstream": [step]}],
+        }
+    )
+    with _write_and_reopen(xr.Dataset({"prcp": data}), tmp_path / f"input.{engine}", engine) as reopened:
+        attrs = build_output_attrs(_monthly(), inputs={"secondary": reopened["prcp"]})
+    serialized = attrs[PROVENANCE_ATTR]
+    entry = _strict(serialized)["inputs"][0]
+    assert entry["role"] == "secondary"
+    assert entry["attributes"] == {"units": "mm"}
+    assert entry["source"] == {"kind": "url", "url": "https://host/p.nc", "query_removed": True}
+    assert [step["record_id"] for step in entry["upstream"]] == ["parent", "upstream-step"]
+    for secret in ("alice", "bob", "password@", "pw@", "token=secret", "hidden-", "injected-", "#part"):
+        assert secret not in serialized
+    assert entry["upstream"][1]["parameters"]["nested"]["token"] == "[redacted]"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"inputs": None},
+        {"inputs": {}},
+        {"record_id": []},
+        {"record_id": {}},
+        {"inputs": [{"upstream": None}]},
+        {"inputs": [{"upstream": {}}]},
+        {"inputs": [{"upstream": [{"record_id": []}]}]},
+    ],
+)
+def test_structurally_invalid_lineage_is_nonfatal(payload: dict[str, Any]) -> None:
+    data = _monthly()
+    data.attrs[PROVENANCE_ATTR] = json.dumps({"schema": provenance.SCHEMA, **payload})
+    attrs = build_output_attrs(data)
+    assert {"unparseable": True} in _strict(attrs[PROVENANCE_ATTR])["inputs"][0]["upstream"]
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "file:///srv/private/customer-a/pet.nc",
+        "file://bob:pw@host/private/pet.nc?token=secret#part",
+        "/home/alice/private/pet.nc",
+        r"C:\Users\alice\private\pet.nc",
+    ],
+)
+def test_secondary_history_does_not_disclose_absolute_directories(path: str) -> None:
+    data = _monthly(history=f"processed {path}")
+    attrs = build_output_attrs(_monthly(), inputs={"secondary": data})
+    assert _strict(attrs[PROVENANCE_ATTR])["inputs"][0]["attributes"]["history"] == "processed pet.nc"
+
+
+def test_long_locators_and_unicode_identifiers_cannot_exceed_the_final_budget() -> None:
+    data = provenance.with_source(
+        _monthly(),
+        uri="https://example.org/" + "x" * 70000,
+        dataset_id="\U0001f30d" * 1024,
+        doi="\U0001f30d" * 1024,
+        version="\U0001f30d" * 1024,
+    )
+    attrs = build_output_attrs(data, inputs={f"input{i}": data for i in range(4)})
+    serialized = attrs[PROVENANCE_ATTR]
+    assert len(serialized.encode("ascii")) <= 32 * 1024
+    record = _strict(serialized)
+    assert record["truncated"]
+    record_id = record.pop("record_id")
+    assert record_id == "sha256:" + hashlib.sha256(provenance._canonical(record).encode("ascii")).hexdigest()
+
+
+def test_final_size_check_includes_record_id_and_truncation_markers(monkeypatch: pytest.MonkeyPatch) -> None:
+    attrs = build_output_attrs(_monthly(), parameters={"comment": "x" * 900})
+    record = _strict(attrs[PROVENANCE_ATTR])
+    record.pop("record_id")
+    budget = len(provenance._canonical(record)) + 10
+    monkeypatch.setattr(provenance, "_MAX_RECORD_BYTES", budget)
+    attrs = build_output_attrs(_monthly(), parameters={"comment": "x" * 900})
+    assert len(attrs[PROVENANCE_ATTR].encode("ascii")) <= budget
+    assert "truncated" in _strict(attrs[PROVENANCE_ATTR])
+
+
+def test_cli_pet_records_division_latitude_as_a_consumed_input(tmp_path: Path) -> None:
+    time = xr.date_range("1981-01-01", periods=24, freq="MS")
+    xr.Dataset(
+        {
+            "temp": (("division", "time"), np.full((1, 24), 15.0), {"units": "degC"}),
+            "lat": ("division", [40.0], {"units": "degrees_north"}),
+        },
+        coords={"division": [101], "time": time},
+    ).to_netcdf(tmp_path / "temp.nc")
+    main(
+        [
+            "--index",
+            "pet",
+            "--periodicity",
+            "monthly",
+            "--netcdf_temp",
+            str(tmp_path / "temp.nc"),
+            "--var_name_temp",
+            "temp",
+            "--output_file_base",
+            str(tmp_path / "out"),
+            "--multiprocessing",
+            "single",
+        ]
+    )
+    with xr.open_dataset(tmp_path / "out_pet_thornthwaite.nc") as written:
+        record = _strict(written["pet_thornthwaite"].attrs[PROVENANCE_ATTR])
+    inputs = {entry["role"]: entry for entry in record["inputs"]}
+    assert inputs["latitude"]["variable"] == "lat"
+    assert inputs["latitude"]["dims"] == ["division"]
+    assert inputs["latitude"]["source"] == {"kind": "local-file", "name": "temp.nc"}
 
 
 # --- software identity ---------------------------------------------------------------------------
