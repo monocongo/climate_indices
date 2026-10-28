@@ -54,6 +54,11 @@ def effective_precipitation(
     return _numpy_pe(precipitation, duration=duration, spatial_time_major=spatial_time_major)
 
 
+def _given_years(**years: int | None) -> dict[str, Any]:
+    """Drop omitted years so the xarray adapter infers them."""
+    return {key: value for key, value in years.items() if value is not None}
+
+
 @overload
 def edi(
     pe: xr.DataArray,
@@ -95,7 +100,6 @@ def edi(
     PE is the mean of adjacent PE values, not PE of interpolated rainfall (ADR-0014).
     """
     if isinstance(pe, xr.DataArray):
-        kwargs: dict[str, Any] = {"duration": duration}
         if (
             calibration_year_final is None
             and "time" in pe.coords
@@ -105,14 +109,12 @@ def edi(
             and not np.isnat(pe.time.values[-1])
         ):
             calibration_year_final = CalibrationPeriod.infer_years(pe.time.values, complete_years=True)[1]
-        for key, value in (
-            ("data_start_year", data_start_year),
-            ("calibration_year_initial", calibration_year_initial),
-            ("calibration_year_final", calibration_year_final),
-        ):
-            if value is not None:
-                kwargs[key] = value
-        return _wrapped_edi(convert_pe_input(pe, argument_name="pe"), **kwargs)
+        years = _given_years(
+            data_start_year=data_start_year,
+            calibration_year_initial=calibration_year_initial,
+            calibration_year_final=calibration_year_final,
+        )
+        return _wrapped_edi(convert_pe_input(pe, argument_name="pe"), duration=duration, **years)
     if data_start_year is None or calibration_year_initial is None or calibration_year_final is None:
         raise TypeError("NumPy EDI requires data_start_year and both calibration years")
     return _numpy_edi(
@@ -172,7 +174,6 @@ def flood_index(
     PE is the mean of adjacent PE values, not PE of interpolated rainfall (ADR-0014).
     """
     if isinstance(pe, xr.DataArray):
-        kwargs: dict[str, Any] = {"year_start_month": year_start_month}
         if (
             "time" in pe.coords
             and pe.sizes.get("time")
@@ -186,14 +187,14 @@ def flood_index(
                 calibration_year_final = CalibrationPeriod.infer_years(
                     pe.time.values, complete_years=True, year_start_month=year_start_month
                 )[1]
-        for key, value in (
-            ("data_start_year", data_start_year),
-            ("calibration_year_initial", calibration_year_initial),
-            ("calibration_year_final", calibration_year_final),
-        ):
-            if value is not None:
-                kwargs[key] = value
-        return _wrapped_flood_index(convert_pe_input(pe, argument_name="pe"), **kwargs)
+        years = _given_years(
+            data_start_year=data_start_year,
+            calibration_year_initial=calibration_year_initial,
+            calibration_year_final=calibration_year_final,
+        )
+        return _wrapped_flood_index(
+            convert_pe_input(pe, argument_name="pe"), year_start_month=year_start_month, **years
+        )
     if data_start_year is None or calibration_year_initial is None or calibration_year_final is None:
         raise TypeError("NumPy Flood Index requires data_start_year and both calibration years")
     return _numpy_flood_index(
