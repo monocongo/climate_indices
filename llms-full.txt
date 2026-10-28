@@ -2178,7 +2178,7 @@ src/climate_indices/_native.pyi  # type stub for the extension
   It owns the kernel-presence check, the plain, aligned float64 and
   reporting-policy gate, and the translation of the extension's errors. The
   module that owns each computation (`compute`, `eto`, `pm_eto`, `palmer`,
-  `fire._native`, `flood._native`) keeps its eligibility rule and its
+  `fire._native`, `flood._native`, `runs`) keeps its eligibility rule and its
   marshalling, and copies the extension into its own `_native` attribute,
   the family's switch. A runtime error raised by the extension propagates
   and is never silently retried in Python.
