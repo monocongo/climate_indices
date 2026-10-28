@@ -3,6 +3,59 @@
 Reproducible performance measurement for the #893 vectorization/parallelization
 epic. Reports here are evidence artifacts, not CI gates.
 
+## Compound bootstrap resample metrics (#1437)
+
+The Rust kernel evaluates paired and independence-null metrics from Python-generated year indices.
+Python retains every random draw, point estimate, quantile, and p-value.
+The following measurements use macOS 27.0.1 arm64, CPython 3.14.7, NumPy 2.4.2, and a release-mode extension.
+They report complete public calls, including Python sampling and inference summaries.
+
+| Measurement | Python | Rust | Python/Rust |
+| --- | --- | --- | --- |
+| Registry monthly series, 35 years, 1,999 resamples | 76.331 ms | 16.871 ms | 4.52 |
+| Monthly block, 60 years, 100 cells, 1,999 resamples | 8.211097 s | 1.761301 s | 4.66 |
+
+The registry harness alternates the backend order.
+The block measurement runs the Rust backend first, then Python.
+Both report the minimum of three calls after one warm-up call per backend.
+Other sessions used the same machine, so these results are local evidence, not isolated hardware measurements.
+NumPy errors are ignored to permit native dispatch; default error policies retain Python.
+
+Reproduce the measurements with the existing benchmark helpers:
+
+```bash
+uv run maturin develop --release
+CLIMATE_INDICES_LOG_LEVEL=ERROR uv run python - <<'PY'
+import dataclasses
+import sys
+import numpy as np
+sys.path.insert(0, "benchmarks")
+import rust_vs_python as bench
+from climate_indices import compound
+from tests.parity_registry import ENTRIES_BY_NAME
+from tests.test_compound_bootstrap import prepared
+
+print(bench.render_entries(bench.time_entries([ENTRIES_BY_NAME["compound_bootstrap"]], repeats=3)))
+hazards = dataclasses.replace(
+    prepared(cells=100),
+    exceedance=np.random.default_rng(1437).random((2, 720, 100)) < 0.7,
+)
+def run():
+    return compound.bootstrap_dependence(
+        hazards, statistic="joint_probability", seed=17, block_length_years=4,
+    )
+rust = bench.measure(run, 3)
+with bench.python_backend():
+    python = bench.measure(run, 3)
+print(f"Rust {rust:.6f} s; Python {python:.6f} s; ratio {python / rust:.3f}")
+PY
+```
+
+Index draws remain separate calls to `_year_indices`, in their original order.
+Only metric evaluation uses batches of at most 256 resamples, which limits additional index memory.
+Exact parity tests cover both grouping modes, all statistics, two or three sources, and block lengths 1, 4, and 60.
+They cross a batch boundary and include the no-draw case where a block spans the entire support.
+
 ## Gamma goodness-of-fit D statistics (#1434)
 
 The single-series gamma check now computes sorted CDFs and KS D statistics in Rust.
