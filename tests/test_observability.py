@@ -215,6 +215,21 @@ class TestConsoleOutput:
         assert "console warning text" in output
         assert "warning" in output.lower()
 
+    def test_stdlib_exception_renders_a_plain_traceback_without_locals(self) -> None:
+        """A stdlib logger's traceback is plain text and omits frame locals, even with rich installed."""
+        stream = _capture_stream(log_format="console", log_level="INFO")
+        frame_local = "frame-local-sentinel"
+        try:
+            # the message is upper-cased so only a locals dump can print the sentinel
+            raise ValueError(frame_local.upper())
+        except ValueError:
+            logging.getLogger("test.stdlib").exception("caught exception")
+
+        output = stream.getvalue()
+        assert "Traceback (most recent call last):" in output
+        assert "ValueError: FRAME-LOCAL-SENTINEL" in output
+        assert frame_local not in output
+
 
 class TestCalculationLifecycle:
     """Every public index emits exactly one started and one completed event."""
