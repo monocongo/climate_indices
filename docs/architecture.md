@@ -285,8 +285,9 @@ src/climate_indices/_native.pyi  # type stub for the extension
 followed by EDDI's empirical ranking and inverse normal, the distribution fits
 SPEI adds, Pearson Type III (also used by SPI and the standardized index), the
 log-logistic (generalized logistic, GLO), the PNP and PCI numerical blocks, the
-fire-weather recurrences, the flood family, and the Palmer family's water
-balance, Z-index, and spell recursions. The gamma and distribution-fit kernels
+fire-weather recurrences, the flood family, the empirical distribution's plotting
+positions, and the Palmer family's water balance, Z-index, and spell recursions.
+The gamma and distribution-fit kernels
 replace the
 numerical blocks inside `compute.py` functions; the EDDI, PNP, and PCI kernels
 replace the blocks inside the `indices.py` functions that own them, so the
@@ -313,6 +314,7 @@ xarray adapter) uses them:
 | GLO probability step of `compute._loglogistic_fit` | `loglogistic::loglogistic_cdf_block` |
 | rank count and Tukey plotting position in the per-period loop of `indices.eddi` | `eddi::tukey_probabilities` |
 | `indices._hastings_inverse_normal` | `eddi::hastings_inverse_normal` |
+| rank count and SEI plotting position in `compute._empirical_fit` | `empirical::plotting_positions` |
 | calibration normals and ratios in `indices.percentage_of_normal` | `pnp::pnp_normals`, `pnp::pnp_percentages` |
 | monthly reduction and ratio in `indices.pci` | `pci::pci` |
 
@@ -366,6 +368,29 @@ across cells (`_EDDI_RANK_COMPARISON_ELEMENT_BUDGET`) only bounds an intermediat
 under the Python path; the Rust kernel walks every column in one pass, which
 cannot change a count. The calibration-period resolution, the leading-scale-pad
 mask, and the unfolding to the caller's layout stay in Python, as they did.
+
+The empirical distribution has no fit: `k` counts the Calibration Period values
+at or below each value (maximum-tie rank). `empirical::plotting_positions` sorts
+each non-missing calibration column once and uses binary searches for
+`p = (1 + k) / (n + 2)`. Signed zeros compare equal, infinities rank normally,
+and a column with fewer than ten valid calibration values produces NaN.
+The binding applies Cephes `ndtri` to the owned result in place for normal output.
+Python retains bounded scaling, calendar preparation, broadcasting, and clipping.
+An older extension without `empirical_transform` keeps the Python implementation.
+
+The empirical native route has a different peak-memory bound from the Python
+reference's one input-sized float64 work array. For contiguous prepared inputs,
+let `V` be the values' bytes, `C` the calibration sample's bytes, and `Y` its years.
+Beyond caller-owned inputs, the binding needs `2V + C + 8Y` bytes: a values copy,
+a calibration copy, the result, and one reusable sorted column. It copies before
+releasing the GIL to prevent concurrent mutation of caller-owned storage.
+Normal and bounded scaling allocate no second result. Non-contiguous folding
+can also copy up to `V + C` bytes before the binding runs.
+The measured peak RSS increase for the 47-million-value case was 881 MB with a
+20-year calibration sample and 1132 MB with a 60-year one, both within 50 KiB
+of that bound. The Python reference rose by 469 MB and 485 MB on the
+same blocks. These measurements cover `_empirical_fit`, not the full index
+pipeline. See `benchmarks/README.md` for the command and timings.
 
 The special functions are line-by-line ports of the Cephes `igam`, `ndtri`,
 `ndtr`, and `lgam` that SciPy 1.17 evaluates, since a generic implementation
@@ -605,6 +630,12 @@ reference check's exception handler and are never retried.
 
 ### Parity tolerance
 
+The empirical targeted tests compare the two paths exactly on their fixed inputs,
+where the rank counts are integers and the inverse normal agrees bit for bit; the
+registry's two entries are held to the contract below, whose largest measured
+empirical deviation (2.220e-16, on the spatial block) comes from the inverse
+normal rather than the ranking.
+
 The contract is `rtol = atol = 1e-10` with matching NaN positions, per kernel,
 and `scripts/native_parity_maxima.py` measures what each entry actually deviates
 by on its family's fixed sample; the Hypothesis draws in the suite are held to
@@ -618,6 +649,8 @@ are measured on macOS arm64
 | --- | --- | --- | --- |
 | `eddi` | `hastings_inverse_normal`, `tukey_probabilities` | 0.000e+00 | 0.000e+00 |
 | `eddi_spatial_block` | `hastings_inverse_normal`, `tukey_probabilities` | 0.000e+00 | 0.000e+00 |
+| `empirical` | `empirical_transform` | 0.000e+00 | 0.000e+00 |
+| `empirical_spatial_block` | `empirical_transform` | 2.220e-16 | 2.479e-16 |
 | `fire_drought_code` | `drought_code` | 0.000e+00 | 0.000e+00 |
 | `fire_duff_moisture_code` | `duff_moisture_code` | 0.000e+00 | 0.000e+00 |
 | `fire_ffmc` | `ffmc` | 0.000e+00 | 0.000e+00 |

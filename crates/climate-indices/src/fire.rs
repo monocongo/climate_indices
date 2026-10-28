@@ -14,10 +14,15 @@
 //! Celsius), and the operation order is the Python one: the recording paths in
 //! `tests/test_native_parity_fire.py` compare the two at
 //! `rtol = atol = 1e-10` with identical NaN positions.
+//!
+//! One exception (ADR-0025): KBDI over complete input reorders its drying term
+//! and advances eight cells at a time in lanes. It holds the same tolerance but
+//! not the Python bits; [`kbdi`] lists which input takes that path.
 
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 
 use crate::ClimateError;
+use crate::kbdi_fast;
 use crate::recurrence::{RecurrenceInputs, run};
 
 // The CFFWIS constants of `fire/_cffwis_codes.py`. The published FFMC equations
@@ -36,9 +41,9 @@ const DC_PRECIPITATION_THRESHOLD_MM: f64 = 2.8;
 const DC_TEMPERATURE_FLOOR_CELSIUS: f64 = -2.8;
 
 // The KBDI constants of `fire/_kbdi.py`.
-const KBDI_MAX_MM: f64 = 203.2;
-const KBDI_RAIN_THRESHOLD_MM: f64 = 5.08;
-const KBDI_DRYING_TEMPERATURE_CELSIUS: f64 = 10.0;
+pub(crate) const KBDI_MAX_MM: f64 = 203.2;
+pub(crate) const KBDI_RAIN_THRESHOLD_MM: f64 = 5.08;
+pub(crate) const KBDI_DRYING_TEMPERATURE_CELSIUS: f64 = 10.0;
 
 /// `np.maximum`, which propagates NaN instead of dropping it.
 fn maximum(left: f64, right: f64) -> f64 {
@@ -213,7 +218,7 @@ pub struct KbdiCell {
 ///
 /// It depends only on a cell's mean annual precipitation, so a run computes it
 /// once per cell instead of on every drought day.
-fn kbdi_climatology_denominator(mean_annual_precipitation_mm: f64) -> f64 {
+pub(crate) fn kbdi_climatology_denominator(mean_annual_precipitation_mm: f64) -> f64 {
     1.0 + 10.88 * (-0.001736 * mean_annual_precipitation_mm).exp()
 }
 
@@ -258,6 +263,56 @@ fn kbdi_next(
         kbdi: minimum(KBDI_MAX_MM, after_rain + maximum(drying, 0.0)),
         wet_spell_precipitation,
     }
+}
+
+/// Whether every flag of a `(days, cells)` observation mask is set.
+///
+/// A whole run's mask is read once per call, so a standard-layout one is
+/// folded in 64-flag chunks without an early exit, which vectorizes.
+fn every_day_observed(weather_valid: ArrayView2<'_, bool>) -> bool {
+    match weather_valid.as_slice() {
+        Some(flags) => flags
+            .chunks(64)
+            .all(|chunk| chunk.iter().fold(true, |all, &observed| all & observed)),
+        None => weather_valid.iter().all(|&observed| observed),
+    }
+}
+
+/// Whether a KBDI run meets [`kbdi_fast`]'s complete-input contract.
+///
+/// Under it the general driver steps every cell on every day and never
+/// poisons, bridges or carries one, so the fast path computes the same run.
+/// Anything outside it (a missing or off-season day, an unusable cell, a NaN
+/// or out-of-range carried state, a mis-sized argument the driver reports)
+/// keeps the general driver. Precipitation and temperature finiteness is
+/// checked inside the fast path, which declines a run that fails it.
+fn complete_input(
+    mean_annual_precipitation_mm: ArrayView1<'_, f64>,
+    initial_state: &[KbdiCell],
+    inputs: &RecurrenceInputs<'_>,
+) -> bool {
+    let (days, cells) = inputs.weather_valid.dim();
+    days > 0
+        && cells > 0
+        && inputs.in_season.is_none()
+        && initial_state.len() == cells
+        && inputs.static_valid.len() == cells
+        && inputs.trailing_gap_days.len() == cells
+        && inputs.static_valid.iter().all(|&usable| usable)
+        && every_day_observed(inputs.weather_valid)
+        && mean_annual_precipitation_mm.iter().all(|&value| {
+            // a climatology so negative that its denominator overflows makes the
+            // driver's drying term inf / inf on a hot enough day, a NonFinite
+            // error the fast path would not raise
+            value.is_finite() && kbdi_fast::climatology_scale(value) > 0.0
+        })
+        && initial_state.iter().all(|cell| {
+            // above the cap the driver takes its no-drying branch, which the
+            // fast step does not reproduce once the drying fraction is huge
+            cell.kbdi.is_finite()
+                && cell.kbdi <= KBDI_MAX_MM
+                && cell.wet_spell_precipitation.is_finite()
+        })
 }
 
 /// The recorded history and final state of one moisture code.
@@ -642,6 +697,15 @@ fn check_day_length(
 /// KBDI returns `ClimateError::NonFinite`, with no partial result. This checks
 /// the KBDI value, not finiteness of the auxiliary wet-spell accumulator.
 ///
+/// Complete input (every day observed, every cell usable, no season mask, a
+/// finite climatology, finite carried state with KBDI at most 203.2 mm, and
+/// finite standard-layout weather with every temperature at most 7000 C)
+/// takes a reordered path: the drying term leaves the index's dependency chain
+/// and its heat term uses a table-driven `exp` with the same bits on every
+/// platform. It stays within `rtol = atol = 1e-10` of the day-by-day recurrence
+/// rather than bit-identical to it, and keeps the wet-spell accumulator exact.
+/// All other input keeps the day-by-day recurrence. See ADR-0025.
+///
 /// See the Measured accuracy section of [`crate`], registry entry `fire_kbdi`
 /// in `tests/parity_registry.py`, and Rust test
 /// `kbdi_ignores_rain_inside_the_first_wet_spell`.
@@ -678,6 +742,27 @@ pub fn kbdi(
             actual: mean_annual_precipitation_mm.len(),
         });
     }
+    // not a let chain: the crate's MSRV (1.85) predates them
+    let fast = if complete_input(mean_annual_precipitation_mm, initial_state, inputs) {
+        kbdi_fast::run(
+            precipitation_mm,
+            maximum_temperature_celsius,
+            mean_annual_precipitation_mm,
+            initial_state,
+            inputs.spin_up,
+            record,
+        )
+    } else {
+        None
+    };
+    if let Some((values, state)) = fast {
+        // every cell observed every day, so every gap count closed at zero
+        return Ok(KbdiRun {
+            values,
+            state,
+            trailing_gap_days: Some(Array1::zeros(cells)),
+        });
+    }
     let denominators: Vec<f64> = mean_annual_precipitation_mm
         .iter()
         .map(|&mean_annual| kbdi_climatology_denominator(mean_annual))
@@ -710,7 +795,7 @@ pub fn kbdi(
 mod tests {
     use super::*;
     use crate::recurrence::recurrence_inputs;
-    use ndarray::{Array2, array};
+    use ndarray::{Array1, Array2, ShapeBuilder, array};
 
     #[test]
     fn ffmc_rain_below_the_threshold_moistens_by_the_wetting_side() {
@@ -773,6 +858,11 @@ mod tests {
         let crossing = kbdi_next(dry, 8.0, 5.0, kbdi_climatology_denominator(800.0));
         assert_eq!(crossing.kbdi, 150.0 - (8.0 - KBDI_RAIN_THRESHOLD_MM));
         assert_eq!(crossing.wet_spell_precipitation, 8.0);
+    }
+
+    /// The native-parity tolerance, `rtol = atol = 1e-10`.
+    fn within_parity(got: f64, want: f64) -> bool {
+        (got - want).abs() <= 1e-10 + 1e-10 * want.abs()
     }
 
     #[test]
@@ -839,10 +929,16 @@ mod tests {
                     temperature[[day, cell]],
                     kbdi_climatology_denominator(if cell == 0 { 800.0 } else { 900.0 }),
                 );
-                assert_eq!(values[[day, cell]], replayed[cell].kbdi);
+                // complete input takes the fast path, held to the native-parity
+                // tolerance rather than bit for bit (ADR-0025)
+                assert!(within_parity(values[[day, cell]], replayed[cell].kbdi));
             }
         }
-        assert_eq!(run.state, replayed);
+        for (got, want) in run.state.iter().zip(&replayed) {
+            assert!(within_parity(got.kbdi, want.kbdi));
+            // the wet-spell arithmetic is the same operations in the same order
+            assert_eq!(got.wet_spell_precipitation, want.wet_spell_precipitation);
+        }
         assert_eq!(run.trailing_gap_days.unwrap(), array![0, 0]);
     }
 
@@ -942,5 +1038,311 @@ mod tests {
                 actual: 1
             }
         );
+    }
+
+    /// SplitMix64, for deterministic test weather without a dependency.
+    struct SplitMix(u64);
+
+    impl SplitMix {
+        /// A uniform draw from [0, 1).
+        fn unit(&mut self) -> f64 {
+            self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+            let mut z = self.0;
+            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            ((z ^ (z >> 31)) >> 11) as f64 / (1_u64 << 53) as f64
+        }
+    }
+
+    /// Complete KBDI weather: rain on about 40 % of days, a seasonal cycle that
+    /// crosses the 10 C drying threshold, climatologies from arid to wet, and
+    /// carried states anywhere in the index range.
+    struct Weather {
+        precipitation: Array2<f64>,
+        temperature: Array2<f64>,
+        mean_annual: Array1<f64>,
+        initial: Vec<KbdiCell>,
+    }
+
+    fn weather(days: usize, cells: usize, seed: u64) -> Weather {
+        let mut draw = SplitMix(seed);
+        let precipitation = Array2::from_shape_fn((days, cells), |_| {
+            if draw.unit() < 0.4 {
+                -12.0 * (1.0 - draw.unit()).ln()
+            } else {
+                0.0
+            }
+        });
+        let temperature = Array2::from_shape_fn((days, cells), |(day, _)| {
+            15.0 + 20.0 * (day as f64 * std::f64::consts::TAU / 365.25).sin()
+                + 20.0 * (draw.unit() - 0.5)
+        });
+        let mean_annual = Array1::from_shape_fn(cells, |_| 50.0 + 3950.0 * draw.unit());
+        let initial = (0..cells)
+            .map(|_| KbdiCell {
+                kbdi: KBDI_MAX_MM * draw.unit(),
+                wet_spell_precipitation: 10.0 * draw.unit(),
+            })
+            .collect();
+        Weather {
+            precipitation,
+            temperature,
+            mean_annual,
+            initial,
+        }
+    }
+
+    /// `kbdi` with every cell usable, observed on the days `weather_valid` marks.
+    fn run_with(
+        weather: &Weather,
+        weather_valid: &Array2<bool>,
+        spin_up: usize,
+        record: bool,
+    ) -> KbdiRun {
+        let cells = weather.mean_annual.len();
+        let static_valid = Array1::from_elem(cells, true);
+        let gaps = Array1::from_elem(cells, -1_i64);
+        kbdi(
+            weather.precipitation.view(),
+            weather.temperature.view(),
+            weather.mean_annual.view(),
+            &weather.initial,
+            &recurrence_inputs(
+                weather_valid.view(),
+                static_valid.view(),
+                None,
+                gaps.view(),
+                spin_up,
+                "propagate",
+                0,
+            )
+            .unwrap(),
+            record,
+        )
+        .unwrap()
+    }
+
+    fn complete_run(weather: &Weather, spin_up: usize, record: bool) -> KbdiRun {
+        let weather_valid = Array2::from_elem(weather.precipitation.dim(), true);
+        run_with(weather, &weather_valid, spin_up, record)
+    }
+
+    /// What the general driver does with complete input: `kbdi_next` on every
+    /// cell every day, recorded after the spin-up.
+    fn replay(weather: &Weather, spin_up: usize) -> (Array2<f64>, Vec<KbdiCell>) {
+        let (days, cells) = weather.precipitation.dim();
+        let spin_up = spin_up.min(days);
+        let mut state = weather.initial.clone();
+        let mut history = Array2::from_elem((days - spin_up, cells), f64::NAN);
+        for day in 0..days {
+            for cell in 0..cells {
+                state[cell] = kbdi_next(
+                    state[cell],
+                    weather.precipitation[[day, cell]],
+                    weather.temperature[[day, cell]],
+                    kbdi_climatology_denominator(weather.mean_annual[cell]),
+                );
+                if day >= spin_up {
+                    history[[day - spin_up, cell]] = state[cell].kbdi;
+                }
+            }
+        }
+        (history, state)
+    }
+
+    fn assert_matches_replay(weather: &Weather, spin_up: usize) {
+        let (history, state) = replay(weather, spin_up);
+        for record in [true, false] {
+            let run = complete_run(weather, spin_up, record);
+            match run.values {
+                Some(values) => {
+                    assert_eq!(values.dim(), history.dim());
+                    for (got, want) in values.iter().zip(&history) {
+                        assert!(within_parity(*got, *want), "{got} vs {want}");
+                    }
+                }
+                None => assert!(!record),
+            }
+            for (got, want) in run.state.iter().zip(&state) {
+                assert!(
+                    within_parity(got.kbdi, want.kbdi),
+                    "{} vs {}",
+                    got.kbdi,
+                    want.kbdi
+                );
+                assert_eq!(got.wet_spell_precipitation, want.wet_spell_precipitation);
+            }
+            assert_eq!(run.trailing_gap_days.unwrap(), Array1::zeros(state.len()));
+        }
+    }
+
+    #[test]
+    fn complete_input_matches_the_day_loop_at_every_shape() {
+        // one cell; fewer cells than a lane group; exactly one group; a group
+        // and a leftover; several tiles with a partial one; day counts that
+        // split a tile's day block; spin-ups shorter and longer than the run
+        for (seed, (days, cells, spin_up)) in [
+            (1, 1, 0),
+            (400, 1, 0),
+            (400, 1, 30),
+            (90, 3, 0),
+            (70, 8, 5),
+            (70, 9, 0),
+            (33, 17, 40),
+            (100, 600, 7),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            assert_matches_replay(&weather(days, cells, seed as u64), spin_up);
+        }
+    }
+
+    #[test]
+    fn complete_input_with_extreme_values_matches_the_day_loop() {
+        let mut weather = weather(60, 9, 99);
+        for cell in 0..9 {
+            // the hottest day the fast path takes
+            weather.temperature[[3, cell]] = kbdi_fast::MAX_TEMPERATURE_CELSIUS;
+            weather.temperature[[4, cell]] = -1e4;
+            weather.temperature[[5, cell]] = 70.0;
+            weather.precipitation[[6, cell]] = 1e6;
+            weather.precipitation[[7, cell]] = KBDI_RAIN_THRESHOLD_MM;
+        }
+        weather.mean_annual[0] = -1e4;
+        weather.mean_annual[1] = 1e6;
+        weather.initial[2].kbdi = -50.0;
+        weather.initial[3].kbdi = KBDI_MAX_MM;
+        weather.initial[4].wet_spell_precipitation = KBDI_RAIN_THRESHOLD_MM;
+        assert_matches_replay(&weather, 0);
+    }
+
+    #[test]
+    fn an_overflowing_climatology_keeps_the_driver_non_finite_error() {
+        // the denominator overflows, so a 1e4 C day dries by inf / inf
+        let mut weather = weather(20, 9, 5);
+        weather.mean_annual[6] = -1e6;
+        weather.temperature[[12, 6]] = 1e4;
+        let weather_valid = Array2::from_elem(weather.precipitation.dim(), true);
+        let static_valid = Array1::from_elem(9, true);
+        let gaps = Array1::from_elem(9, -1_i64);
+        let result = kbdi(
+            weather.precipitation.view(),
+            weather.temperature.view(),
+            weather.mean_annual.view(),
+            &weather.initial,
+            &recurrence_inputs(
+                weather_valid.view(),
+                static_valid.view(),
+                None,
+                gaps.view(),
+                0,
+                "propagate",
+                0,
+            )
+            .unwrap(),
+            true,
+        );
+        assert_eq!(
+            result.unwrap_err(),
+            ClimateError::NonFinite { index_type: "kbdi" }
+        );
+    }
+
+    #[test]
+    fn input_outside_the_complete_contract_keeps_the_general_driver_bit_for_bit() {
+        let weather = weather(400, 9, 7);
+        let (history, _) = replay(&weather, 0);
+        let (days, cells) = weather.precipitation.dim();
+        // the fast path is not bit-identical on this run, so the comparison
+        // below tells the two paths apart
+        let fast = complete_run(&weather, 0, true).values.unwrap();
+        assert!(
+            fast.iter()
+                .zip(&history)
+                .any(|(a, b)| a.to_bits() != b.to_bits())
+        );
+        // one missing day, the last day of the last cell
+        let mut weather_valid = Array2::from_elem((days, cells), true);
+        weather_valid[[days - 1, cells - 1]] = false;
+        let values = run_with(&weather, &weather_valid, 0, true).values.unwrap();
+        for day in 0..days {
+            for cell in 0..cells {
+                if (day, cell) != (days - 1, cells - 1) {
+                    assert_eq!(
+                        values[[day, cell]].to_bits(),
+                        history[[day, cell]].to_bits()
+                    );
+                }
+            }
+        }
+        assert!(values[[days - 1, cells - 1]].is_nan());
+    }
+
+    #[test]
+    fn weather_not_in_standard_layout_keeps_the_general_driver() {
+        // the driver reads a column-major view in place; the fast path would
+        // have to copy both grids, so it declines
+        fn column_major(values: &Array2<f64>) -> Array2<f64> {
+            let mut copy = Array2::zeros(values.raw_dim().f());
+            copy.assign(values);
+            copy
+        }
+        // the fast path is not bit-identical on this run (see above)
+        let mut weather = weather(400, 9, 7);
+        let (history, state) = replay(&weather, 0);
+        weather.precipitation = column_major(&weather.precipitation);
+        weather.temperature = column_major(&weather.temperature);
+        let run = complete_run(&weather, 0, true);
+        for (got, want) in run.values.unwrap().iter().zip(&history) {
+            assert_eq!(got.to_bits(), want.to_bits());
+        }
+        assert_eq!(run.state, state);
+    }
+
+    #[test]
+    fn a_temperature_beyond_the_fast_path_limit_keeps_the_general_driver() {
+        // at 1e4 C the driver's deficit times heat overflows to infinity and
+        // the cap returns 203.2 mm, even against a climatology so negative that
+        // its denominator is near overflow; the reordered fraction would stay
+        // finite and tiny there, so the fast path leaves the run to the driver
+        let mut weather = weather(20, 9, 13);
+        weather.mean_annual[4] = -405_000.0;
+        weather.temperature[[3, 4]] = 1e4;
+        let (history, state) = replay(&weather, 0);
+        assert_eq!(history[[3, 4]], KBDI_MAX_MM);
+        let run = complete_run(&weather, 0, true);
+        for (got, want) in run.values.unwrap().iter().zip(&history) {
+            assert_eq!(got.to_bits(), want.to_bits());
+        }
+        assert_eq!(run.state, state);
+    }
+
+    #[test]
+    fn a_carried_index_above_the_cap_keeps_the_general_driver() {
+        // above 203.2 the driver skips drying on a 1e4 C day, where the fast
+        // step would subtract an enormous drying term
+        let mut weather = weather(20, 9, 11);
+        weather.initial[5].kbdi = 1e300;
+        weather.temperature[[0, 5]] = 1e4;
+        let (history, state) = replay(&weather, 0);
+        let run = complete_run(&weather, 0, true);
+        for (got, want) in run.values.unwrap().iter().zip(&history) {
+            assert_eq!(got.to_bits(), want.to_bits());
+        }
+        assert_eq!(run.state, state);
+    }
+
+    #[test]
+    fn non_finite_weather_on_an_observed_day_keeps_the_general_driver() {
+        let mut weather = weather(50, 9, 3);
+        weather.temperature[[10, 4]] = f64::NAN;
+        weather.precipitation[[20, 8]] = f64::INFINITY;
+        let (history, state) = replay(&weather, 0);
+        let run = complete_run(&weather, 0, true);
+        for (got, want) in run.values.unwrap().iter().zip(&history) {
+            assert_eq!(got.to_bits(), want.to_bits());
+        }
+        assert_eq!(run.state, state);
     }
 }

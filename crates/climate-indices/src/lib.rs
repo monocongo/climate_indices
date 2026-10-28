@@ -97,10 +97,13 @@
 use std::fmt;
 
 pub mod eddi;
+pub mod empirical;
 pub mod eto;
 pub mod fire;
 pub mod flood;
 pub mod gamma;
+mod kbdi_exp_table;
+mod kbdi_fast;
 mod ks;
 pub mod lmoments;
 pub mod loglogistic;

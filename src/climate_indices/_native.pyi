@@ -82,6 +82,9 @@ def loglogistic_cdf(
     scales: npt.NDArray[np.float64],
     shapes: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]: ...
+def empirical_transform(
+    calibration: npt.NDArray[np.float64], values: npt.NDArray[np.float64], normal: bool
+) -> npt.NDArray[np.float64]: ...
 def norm_ppf(probabilities: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]: ...
 def thornthwaite(
     monthly_temps_celsius: npt.NDArray[np.float64],
