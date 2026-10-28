@@ -10,9 +10,9 @@ from typing import Any, Literal, overload
 
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 import xarray as xr
 
+from climate_indices._calibration_period import CalibrationPeriod
 from climate_indices.flood._antecedent import APIResult, APIState
 from climate_indices.flood._antecedent import antecedent_precipitation_index as _numpy_api
 from climate_indices.flood._edi import edi as _numpy_edi
@@ -52,26 +52,6 @@ def effective_precipitation(
     if isinstance(precipitation, xr.DataArray):
         return _wrapped_pe(convert_pe_input(precipitation, argument_name="precipitation"), duration=duration)
     return _numpy_pe(precipitation, duration=duration, spatial_time_major=spatial_time_major)
-
-
-def _last_complete_calibration_year(pe: xr.DataArray, year_start_month: int) -> int | None:
-    """Return last complete annual period's start year, if time is labeled."""
-    if (
-        "time" not in pe.coords
-        or not pe.sizes.get("time")
-        or not np.issubdtype(pe.time.dtype, np.datetime64)
-        or np.isnat(pe.time.values[-1])
-        or not 1 <= year_start_month <= 12
-    ):
-        return None
-    last = pd.Timestamp(pe.time.values[-1])
-    if year_start_month == 1:
-        return int(last.year if last.is_year_end else last.year - 1)
-    end_month = year_start_month - 1
-    end_year = last.year if last.month >= year_start_month else last.year - 1
-    if last.month == end_month and last.is_month_end:
-        end_year = last.year
-    return int(end_year - 1)
 
 
 @overload
@@ -116,8 +96,15 @@ def edi(
     """
     if isinstance(pe, xr.DataArray):
         kwargs: dict[str, Any] = {"duration": duration}
-        if calibration_year_final is None:
-            calibration_year_final = _last_complete_calibration_year(pe, 1)
+        if (
+            calibration_year_final is None
+            and "time" in pe.coords
+            and pe.sizes.get("time")
+            and np.issubdtype(pe.time.dtype, np.datetime64)
+            and not np.isnat(pe.time.values[0])
+            and not np.isnat(pe.time.values[-1])
+        ):
+            calibration_year_final = CalibrationPeriod.infer_years(pe.time.values, complete_years=True)[1]
         for key, value in (
             ("data_start_year", data_start_year),
             ("calibration_year_initial", calibration_year_initial),
@@ -187,15 +174,18 @@ def flood_index(
     if isinstance(pe, xr.DataArray):
         kwargs: dict[str, Any] = {"year_start_month": year_start_month}
         if (
-            calibration_year_initial is None
-            and "time" in pe.coords
+            "time" in pe.coords
             and pe.sizes.get("time")
             and np.issubdtype(pe.time.dtype, np.datetime64)
             and not np.isnat(pe.time.values[0])
+            and not np.isnat(pe.time.values[-1])
         ):
-            calibration_year_initial = int(pd.Timestamp(pe.time.values[0]).year) + 1
-        if calibration_year_final is None:
-            calibration_year_final = _last_complete_calibration_year(pe, year_start_month)
+            if calibration_year_initial is None:
+                calibration_year_initial = CalibrationPeriod.infer_years(pe.time.values)[0] + 1
+            if calibration_year_final is None and 1 <= year_start_month <= 12:
+                calibration_year_final = CalibrationPeriod.infer_years(
+                    pe.time.values, complete_years=True, year_start_month=year_start_month
+                )[1]
         for key, value in (
             ("data_start_year", data_start_year),
             ("calibration_year_initial", calibration_year_initial),

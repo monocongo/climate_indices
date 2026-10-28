@@ -16,6 +16,7 @@ import scipy.stats
 from structlog.stdlib import BoundLogger
 
 from climate_indices import lmoments, utils
+from climate_indices._calibration_period import MIN_CALIBRATION_YEARS as MIN_CALIBRATION_YEARS
 from climate_indices._calibration_period import CalibrationPeriod, resolve_calibration_period
 from climate_indices.exceptions import (
     CalibrationPeriodClampedWarning,
@@ -94,9 +95,6 @@ HIGH_FAILURE_RATE_THRESHOLD = 0.8  # 80%
 # Data quality warning thresholds
 # Maximum acceptable proportion of missing data in calibration period
 MISSING_DATA_THRESHOLD = 0.20  # 20%
-
-# Minimum recommended calibration period length in years
-MIN_CALIBRATION_YEARS = 30
 
 # Minimum number of valid Calibration Period values a calendar step needs before the
 # empirical transform ranks against it, the n_thres default of the SEI oracle (#1160)

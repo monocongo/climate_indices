@@ -38,9 +38,8 @@ import structlog.stdlib
 import xarray as xr
 
 from climate_indices import compute, eto, indices, palmer, pm_eto, utils
-from climate_indices._calibration_period import resolve_calibration_period
+from climate_indices._calibration_period import MIN_CALIBRATION_YEARS, CalibrationPeriod, resolve_calibration_period
 from climate_indices.cf_metadata_registry import CF_METADATA, spi_output_attributes
-from climate_indices.compute import MIN_CALIBRATION_YEARS
 from climate_indices.exceptions import (
     CoordinateValidationError,
     InputAlignmentWarning,
@@ -466,9 +465,7 @@ def _infer_calibration_period(time_coord: xr.DataArray) -> tuple[int, int]:
     Returns:
         Tuple of (first_year, last_year) covering the full time range
     """
-    first_year = pd.Timestamp(time_coord.values[0]).year
-    last_year = pd.Timestamp(time_coord.values[-1]).year
-    return (first_year, last_year)
+    return CalibrationPeriod.infer_years(time_coord.values)
 
 
 def _effective_calibration_years(
@@ -699,53 +696,8 @@ def _validate_calibration_non_nan_sample_size(
         InsufficientDataError: If calibration period has fewer than min_years
             of non-NaN data, making distribution fitting impossible
     """
-    # extract year values from time coordinate
-    time_years = pd.DatetimeIndex(time_coord.values).year.values
-
-    # find indices within calibration period
-    calibration_mask = (time_years >= calibration_year_initial) & (time_years <= calibration_year_final)
-
-    # extract calibration slice
-    calibration_values = values[calibration_mask]
-
-    if len(calibration_values) == 0:
-        raise InsufficientDataError(
-            message=(
-                f"Calibration period ({calibration_year_initial}-{calibration_year_final}) "
-                f"contains no data points. Check that calibration years overlap with time coordinate range."
-            ),
-            non_zero_count=0,
-            required_count=min_years,
-        )
-
-    # count non-NaN values
-    non_nan_count = int(np.sum(~np.isnan(calibration_values)))
-
-    # infer periods per year from time coordinate frequency
-    freq = xr.infer_freq(time_coord)  # type: ignore[no-untyped-call]
-    if freq in ("MS", "ME", "M"):
-        periods_per_year = 12
-    elif freq == "D":
-        periods_per_year = 365
-    else:
-        # fallback: estimate from total calibration span
-        periods_per_year = len(calibration_values) // (calibration_year_final - calibration_year_initial + 1)
-        if periods_per_year == 0:
-            periods_per_year = 12  # conservative default
-
-    # compute effective non-NaN years
-    effective_years = non_nan_count / periods_per_year
-
-    if effective_years < min_years:
-        raise InsufficientDataError(
-            message=(
-                f"Insufficient non-NaN data in calibration period ({calibration_year_initial}-{calibration_year_final}). "
-                f"Found {non_nan_count} non-NaN values ({effective_years:.1f} effective years), "
-                f"but at least {min_years} years of non-NaN data required for reliable distribution fitting."
-            ),
-            non_zero_count=non_nan_count,
-            required_count=int(min_years * periods_per_year),
-        )
+    period = CalibrationPeriod(calibration_year_initial, calibration_year_final, 0)
+    period.validate_non_nan_sample_size(time_coord.values, values, min_years)
 
 
 def _resolve_secondary_inputs(
