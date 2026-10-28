@@ -1615,3 +1615,67 @@ for the series, and 2.2 s and 150 MiB peak for the 25-cell block. The block's wi
 sum is the cost: `compute.sum_to_scale` re-sums every sliding window for a time-major
 block, so its work grows with `scale`. The xarray route runs one kernel per cell
 instead and is cheaper on a wide grid.
+
+## Timescale Aggregation port (#1485)
+
+The Rust kernel reduces each window independently, in the existing Spatial Block order.
+It does not use a running sum or prefix subtraction.
+Multiple cells use sequential addition; a singleton cell uses NumPy's pairwise grouping.
+Its complexity remains O(steps × cells × Timescale).
+The binding copies the input before releasing the GIL; the core allocates only its output.
+
+### Accuracy and dispatch
+
+`uv run python scripts/native_parity_maxima.py --write-contract` measures four Aggregation entries.
+Their maximum absolute and relative errors are both zero on this host.
+The ordinary entries use the registry's fixed precipitation samples, including zeros and missing values.
+The signed entries inject cancellation, overflow, both infinities, NaN, signed zero, and a subnormal.
+`tests/test_native_parity_aggregation.py` additionally checks Timescales 2, 3, 7, 8, 12, 128, 129, and 720.
+Every comparison retains `rtol = atol = 1e-10` and identical NaN positions.
+No tolerance exception is needed.
+
+The singleton Spatial Block order is not the series convolution order.
+For `np.tile([1e16, 1, 1, 1, 1, 1, 1, -1e16], 3)`, the ungated singleton kernel differs from convolution:
+
+| Timescale | Maximum absolute error | Maximum relative error | Last kernel sum | Last convolution sum |
+| --- | --- | --- | --- | --- |
+| 8 | 4 | 0.42857142857142855 | 4 | 0 |
+| 12 | 8 | 0.25 | -9999999999999992 | -9999999999999996 |
+| 24 | 8 | 1 | 16 | 8 |
+
+These are rejected dispatch candidates, not accepted parity errors.
+NumPy 2.4.2 uses sequential `small_correlate` through length 11, then a dot product that can use BLAS.
+The kernel's singleton pairwise grouping begins at eight, so only series Timescales 2–7 dispatch.
+C-contiguous Spatial Blocks can dispatch at any valid Timescale; other block layouts retain Python.
+This preserves each seam rather than silently making their cancellation results equal.
+
+### Time and memory
+
+The following measurements ran on an Apple M5, macOS 27.0.1 arm64, CPython 3.14.7,
+NumPy 2.4.2, SciPy 1.17.0, and Rust 1.99.0.
+The extension used the release profile without custom compiler flags.
+Each backend used the same deterministic input, one warm-up call, `perf_counter`, and `tracemalloc`.
+Both used `np.errstate(all="ignore")`; the Python run disabled `compute._native`.
+The native run enabled all eligible compute kernels, including the existing empirical transform.
+These are complete SREPI timings, not isolated Aggregation speedups.
+
+```bash
+uv run maturin develop --release
+/usr/bin/time -l uv run benchmarks/profile_hourly_srepi.py --years 41 --cells 25 --backend python
+/usr/bin/time -l uv run benchmarks/profile_hourly_srepi.py --years 41 --cells 25 --backend native
+```
+
+| Case | Shape | Timescale | Python seconds | Native seconds | Python traced peak MiB | Native traced peak MiB |
+| --- | --- | --- | --- | --- | --- | --- |
+| Hourly SREPI series | `(360144,)` | 720 | 0.032737 | 0.027435 | 6.0 | 5.5 |
+| Hourly SREPI grid | `(360144, 25, 1)` | 720 | 2.122316 | 1.287011 | 150.0 | 68.7 |
+| Monthly sum series | `(492,)` | 3 | 0.000013 | 0.000017 | <0.1 | <0.1 |
+| Monthly sum grid | `(492, 25, 1)` | 3 | 0.000056 | 0.000021 | 0.2 | <0.1 |
+
+The hourly series still uses NumPy convolution on both backends.
+The short monthly series shows native dispatch overhead rather than an improvement.
+`tracemalloc` does not count Rust-owned buffers, so its smaller native peak is not a total-memory reduction.
+The external process high-water resident size was **392.8125 MiB for Python and 522.015625 MiB for native**.
+Those process maxima include imports, input creation, warm-ups, and all four cases; they are not per-call allocation figures.
+The native run used more process memory despite its shorter grid wall time.
+These are individual local measurements, not statistical estimates or cross-platform performance guarantees.

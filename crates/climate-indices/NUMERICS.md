@@ -8,7 +8,8 @@ No algorithm, physical-range validation, or calendar preparation changes in this
 
 ## Workflow measurements
 
-Each row compares a complete workflow against the Python/SciPy reference with native dispatch disabled.
+Each row compares a registered Python entry point against the Python/SciPy reference with native dispatch disabled.
+The Aggregation entries isolate trailing sums; the other entries cover workflows or numerical seams.
 The harness verifies that the listed Rust kernels actually ran.
 A workflow error is not an isolated error bound for each kernel it uses.
 The numerical contracts on each function identify the applicable rows.
@@ -20,14 +21,20 @@ Palmer replaces gaps and clips precipitation to [5, 300] in the inch-based water
 The monthly record starts in 1981; its Calibration Period includes 1983 through the final record year, 2015.
 Only `flood_edi` and `flood_flood_index` prepare an all-leap calendar; `flood_pe` and `flood_api` retain the 365-day inputs.
 The registry records the exact derivations and parameters.
+The signed Aggregation entries inject cancellation, overflow, infinities, NaN, signed zero, and a subnormal.
+They compare a three-step series window and a twelve-step Spatial Block window without changing either order.
 
 | Entry | Rust kernels reached | Max absolute | Max relative |
 | --- | --- | --- | --- |
+| `aggregation_monthly` | `trailing_sum` | 0.000000e+00 | 0.000000e+00 |
+| `aggregation_signed_monthly` | `trailing_sum` | 0.000000e+00 | 0.000000e+00 |
+| `aggregation_signed_spatial_block` | `trailing_sum` | 0.000000e+00 | 0.000000e+00 |
+| `aggregation_spatial_block` | `trailing_sum` | 0.000000e+00 | 0.000000e+00 |
 | `compound_bootstrap` | `compound_resample_metrics` | 0.000000e+00 | 0.000000e+00 |
-| `eddi` | `hastings_inverse_normal`, `tukey_probabilities` | 0.000000e+00 | 0.000000e+00 |
-| `eddi_spatial_block` | `hastings_inverse_normal`, `tukey_probabilities` | 0.000000e+00 | 0.000000e+00 |
-| `empirical` | `empirical_transform` | 0.000000e+00 | 0.000000e+00 |
-| `empirical_spatial_block` | `empirical_transform` | 2.220446e-16 | 2.478786e-16 |
+| `eddi` | `hastings_inverse_normal`, `trailing_sum`, `tukey_probabilities` | 0.000000e+00 | 0.000000e+00 |
+| `eddi_spatial_block` | `hastings_inverse_normal`, `trailing_sum`, `tukey_probabilities` | 0.000000e+00 | 0.000000e+00 |
+| `empirical` | `empirical_transform`, `trailing_sum` | 0.000000e+00 | 0.000000e+00 |
+| `empirical_spatial_block` | `empirical_transform`, `trailing_sum` | 2.220446e-16 | 2.478786e-16 |
 | `fire_drought_code` | `drought_code` | 0.000000e+00 | 0.000000e+00 |
 | `fire_duff_moisture_code` | `duff_moisture_code` | 0.000000e+00 | 0.000000e+00 |
 | `fire_ffmc` | `ffmc` | 0.000000e+00 | 0.000000e+00 |
@@ -44,15 +51,15 @@ The registry records the exact derivations and parameters.
 | `pci` | `pci` | 0.000000e+00 | 0.000000e+00 |
 | `pearson_ks_statistics` | `pearson_ks_statistics` | 3.330669e-16 | 1.829831e-15 |
 | `penman_monteith` | `fao56_eto` | 8.881784e-16 | 4.336616e-16 |
-| `percentage_of_normal` | `pnp_normals`, `pnp_percentages` | 0.000000e+00 | 0.000000e+00 |
+| `percentage_of_normal` | `pnp_normals`, `pnp_percentages`, `trailing_sum` | 0.000000e+00 | 0.000000e+00 |
 | `pm_eto_intermediates` | `pm_eto` | 0.000000e+00 | 0.000000e+00 |
 | `runs_identify` | `identify_runs` | 0.000000e+00 | 0.000000e+00 |
-| `spei_gamma` | `gamma_ks_statistics`, `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 2.220446e-16 | 3.456693e-16 |
-| `spei_loglogistic` | `loglogistic_cdf`, `loglogistic_parameters` | 0.000000e+00 | 0.000000e+00 |
-| `spi_gamma` | `gamma_ks_statistics`, `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 1.998401e-15 | 4.764927e-14 |
-| `spi_gamma_mean_zero` | `gamma_ks_statistics`, `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 1.998401e-15 | 4.764927e-14 |
-| `spi_gamma_spatial_block` | `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 7.105427e-15 | 1.867507e-13 |
-| `spi_pearson` | `pearson_cdf`, `pearson_ks_statistics`, `pearson_parameters` | 8.604228e-15 | 6.821559e-14 |
+| `spei_gamma` | `gamma_ks_statistics`, `gamma_parameters`, `gamma_probabilities`, `norm_ppf`, `trailing_sum` | 2.220446e-16 | 3.456693e-16 |
+| `spei_loglogistic` | `loglogistic_cdf`, `loglogistic_parameters`, `trailing_sum` | 0.000000e+00 | 0.000000e+00 |
+| `spi_gamma` | `gamma_ks_statistics`, `gamma_parameters`, `gamma_probabilities`, `norm_ppf`, `trailing_sum` | 1.998401e-15 | 4.764927e-14 |
+| `spi_gamma_mean_zero` | `gamma_ks_statistics`, `gamma_parameters`, `gamma_probabilities`, `norm_ppf`, `trailing_sum` | 1.998401e-15 | 4.764927e-14 |
+| `spi_gamma_spatial_block` | `gamma_parameters`, `gamma_probabilities`, `norm_ppf`, `trailing_sum` | 7.105427e-15 | 1.867507e-13 |
+| `spi_pearson` | `pearson_cdf`, `pearson_ks_statistics`, `pearson_parameters`, `trailing_sum` | 8.604228e-15 | 6.821559e-14 |
 | `thornthwaite` | `thornthwaite` | 2.842171e-14 | 2.207812e-16 |
 
 These entries have no finite comparison on this corpus: `flood_api`.

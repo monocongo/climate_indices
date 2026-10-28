@@ -495,7 +495,42 @@ def _flood_entries() -> Iterator[Entry]:
         )
 
 
+def _aggregation_extremes(values: np.ndarray, scale: int) -> Callable[[], np.ndarray]:
+    signed = values.copy() - 50.0
+    probes = [1e16, 1, 1, 1, 1, 1, 1, -1e16, 1e308, 1e308, -1e308, -1e308, np.inf, -np.inf, np.nan, -0.0, 5e-324]
+    signed[: len(probes)] = np.asarray(probes).reshape((-1,) + (1,) * (values.ndim - 1))
+    return lambda: compute.sum_to_scale(signed, scale)
+
+
 ENTRIES: tuple[Entry, ...] = (
+    Entry(
+        "aggregation_signed_monthly",
+        MONTHLY,
+        compute,
+        lambda values: _aggregation_extremes(values, 3),
+        frozenset({"trailing_sum"}),
+    ),
+    Entry(
+        "aggregation_signed_spatial_block",
+        BLOCK,
+        compute,
+        lambda values: _aggregation_extremes(values, 12),
+        frozenset({"trailing_sum"}),
+    ),
+    Entry(
+        "aggregation_monthly",
+        MONTHLY,
+        compute,
+        lambda values: lambda: compute.sum_to_scale(values, 3),
+        frozenset({"trailing_sum"}),
+    ),
+    Entry(
+        "aggregation_spatial_block",
+        BLOCK,
+        compute,
+        lambda values: lambda: compute.sum_to_scale(values, 12),
+        frozenset({"trailing_sum"}),
+    ),
     Entry(
         "spi_gamma",
         MONTHLY,

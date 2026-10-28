@@ -52,6 +52,9 @@ def compound_resample_metrics(
     statistic: str,
     groupby: str,
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]: ...
+
+# Spatial Block reduction order; a series uses a singleton cell axis.
+def trailing_sum(values: npt.NDArray[np.float64], scale: int) -> npt.NDArray[np.float64]: ...
 def gamma_parameters(
     calibration: npt.NDArray[np.float64],
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]: ...

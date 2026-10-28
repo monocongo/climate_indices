@@ -559,7 +559,7 @@ jobs:
           with np.errstate(all="ignore"):
               result = indices.spi(values, 3, indices.Distribution.gamma, 1990, 1990, 2019, compute.Periodicity.monthly)
           assert np.isfinite(result[2:]).all() and np.isnan(result[:2]).all()
-          assert recorder.calls == {"gamma_parameters", "gamma_probabilities", "gamma_ks_statistics", "norm_ppf"}, recorder.calls
+          assert recorder.calls == {"gamma_parameters", "gamma_probabilities", "gamma_ks_statistics", "norm_ppf", "trailing_sum"}, recorder.calls
           # The Stable DataArray index API must import and run from the installed wheel.
           time = pd.date_range("1990-01-01", periods=values.size, freq="MS")
           dataarray = xr.DataArray(values, dims="time", coords={"time": time}, name="precipitation")

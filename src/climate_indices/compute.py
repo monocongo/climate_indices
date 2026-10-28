@@ -273,6 +273,20 @@ def sum_to_scale(
         # rather than the data under the mask (np.convolve reads under it)
         values = np.ma.filled(values.astype(float), np.nan)
 
+    native = _native_backend.kernels(_native, "trailing_sum")
+    if (
+        native is not None
+        and type(scale) is int
+        and (values.ndim == 1 and scale < 8 or values.ndim > 2 and values.flags.c_contiguous)
+        and 1 < scale <= values.shape[0]
+        and _native_backend.takes(values)
+    ):
+        # shortcut: longer convolutions retain NumPy's platform-dependent dot order;
+        # extend dispatch only after that order has a parity-preserving port.
+        block = values.reshape(values.shape[0], -1)
+        sums: np.ndarray = native.trailing_sum(block, scale)
+        return sums.reshape(values.shape)
+
     if values.ndim > 2:
         # time-major spatial arrays are summed window-wise along the time axis: one
         # vectorized window per time step for every cell, no per-cell Python loop

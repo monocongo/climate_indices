@@ -7,10 +7,14 @@ aggregated monthly product. Reported figures are evidence artifacts, not CI gate
 
 Run from the repository root::
 
-    uv run benchmarks/profile_hourly_srepi.py
+    uv run benchmarks/profile_hourly_srepi.py --backend python
+    uv run benchmarks/profile_hourly_srepi.py --backend native
 
 A warm-up call runs first, so first-call imports and caches stay out of the
-measurement window.
+measurement window. Both backends ignore NumPy floating-point reporting, as native
+execution requires. The native run requires the built extension; long series
+convolutions still use NumPy. Peak traced allocation excludes Rust buffers; use an
+external process-memory measurement as well (for example, macOS `/usr/bin/time -l`).
 """
 
 from __future__ import annotations
@@ -90,6 +94,20 @@ def _run(years: int, cells: int) -> list[Measurement]:
         call()  # warm-up
         measurements.append(_measure(name, values, call))
     print(f"span {span[0]}-{span[1]} ({years} years, scale 720 hours, cells {cells if cells else 0})")
+    # A short monthly Timescale checks dispatch overhead outside the hourly case.
+    monthly = np.random.default_rng(1485).uniform(0, 100, size=years * 12)
+    for name, values in (
+        ("monthly-series", monthly),
+        ("monthly-grid", np.broadcast_to(monthly[:, None, None], (monthly.size, cells, 1)).copy()),
+    ):
+
+        def monthly_call(values: np.ndarray = values) -> np.ndarray:
+            return compute.sum_to_scale(values, 3)
+
+        warmed = monthly_call()
+        assert warmed.shape == values.shape
+        assert np.isnan(warmed[:2]).all()
+        measurements.append(_measure(name, values, monthly_call))
     return measurements
 
 
@@ -98,14 +116,23 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--years", type=int, default=DEFAULT_YEARS, help="years of hourly input")
     parser.add_argument("--cells", type=int, default=DEFAULT_CELLS, help="grid cells for the gridded call")
+    parser.add_argument("--backend", choices=("python", "native"), default="python")
     arguments = parser.parse_args()
+    if arguments.backend == "native":
+        if compute._native is None or not hasattr(compute._native, "trailing_sum"):
+            raise RuntimeError("Build the extension with uv run maturin develop --release first")
+    else:
+        compute._native = None
 
+    print(f"backend {arguments.backend}")
     print(f"python {platform.python_version()} on {platform.platform()}")
     print(f"period length {HOURS_PER_YEAR} hours, numpy {np.__version__}")
-    for measurement in _run(arguments.years, arguments.cells):
+    with np.errstate(all="ignore"):
+        measurements = _run(arguments.years, arguments.cells)
+    for measurement in measurements:
         print(
             f"  {measurement.name:<7} input {str(measurement.shape):<18} "
-            f"{measurement.seconds:8.3f} s  peak {measurement.peak_mebibytes:9.1f} MiB"
+            f"{measurement.seconds:10.6f} s  peak {measurement.peak_mebibytes:9.1f} MiB"
         )
 
 

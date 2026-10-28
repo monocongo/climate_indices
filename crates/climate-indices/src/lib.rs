@@ -2,7 +2,8 @@
 //!
 //! The public modules expose numerical kernels, not a complete SPI/SPEI workflow.
 //! Callers prepare calendars, select the Calibration Period, validate physical
-//! ranges, and apply any required aggregation and final index transformation.
+//! ranges, and apply the final index transformation. The [`aggregation`] module
+//! provides trailing Timescale sums and means without calendar preparation.
 //! Kernels check the structural constraints documented on each function.
 //! This crate has no Python, I/O, logging, or metadata dependency.
 //!
@@ -96,6 +97,7 @@
 
 use std::fmt;
 
+pub mod aggregation;
 pub mod compound;
 pub mod eddi;
 pub mod empirical;

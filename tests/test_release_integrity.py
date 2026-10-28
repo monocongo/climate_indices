@@ -981,7 +981,7 @@ def test_native_wheel_job_checks_built_wheels_outside_the_checkout() -> None:
     assert wheel_job.index("python -m venv") < wheel_job.index('cd "${RUNNER_TEMP}"') < wheel_job.index("<<'PY'")
     assert "assert not Path(module.__file__).resolve().is_relative_to(workspace), module.__file__" in wheel_job
     assert (
-        'assert recorder.calls == {"gamma_parameters", "gamma_probabilities", "gamma_ks_statistics", "norm_ppf"}'
+        'assert recorder.calls == {"gamma_parameters", "gamma_probabilities", "gamma_ks_statistics", "norm_ppf", "trailing_sum"}'
         in wheel_job
     )
     assert 'xr.DataArray(values, dims="time"' in wheel_job, "the smoke test must exercise the DataArray API"
@@ -1272,7 +1272,7 @@ def test_release_workflow_wheel_check_installs_every_published_wheel() -> None:
     assert 'assert "py3-none-any" not in resolved, resolved' in wheel_check
     assert "assert not Path(module.__file__).resolve().is_relative_to(workspace), module.__file__" in wheel_check
     assert (
-        'assert recorder.calls == {"gamma_parameters", "gamma_probabilities", "gamma_ks_statistics", "norm_ppf"}'
+        'assert recorder.calls == {"gamma_parameters", "gamma_probabilities", "gamma_ks_statistics", "norm_ppf", "trailing_sum"}'
         in wheel_check
     )
     declared_scripts = " ".join(_read_toml(Path("pyproject.toml"))["project"]["scripts"])

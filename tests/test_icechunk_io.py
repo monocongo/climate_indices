@@ -139,7 +139,7 @@ def test_storage_backend_parity(
         xr.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-8)
         conftest.assert_native_parity(actual, expected)
         if recorder is not None:
-            assert recorder.calls == {"gamma_parameters", "gamma_probabilities", "norm_ppf"}
+            assert recorder.calls == {"gamma_parameters", "gamma_probabilities", "norm_ppf", "trailing_sum"}
     assert compute._native is recorder
 
 
