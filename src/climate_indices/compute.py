@@ -281,8 +281,9 @@ def sum_to_scale(
         and (values.ndim == 1 and scale < 8 or values.ndim > 2 and values.flags.c_contiguous)
         and 1 < scale <= values.shape[0]
     ):
-        # shortcut: longer convolutions retain NumPy's platform-dependent dot order;
-        # extend dispatch only after that order has a parity-preserving port.
+        # shortcut: a series from Timescale 8 keeps np.convolve, whose sequential (through 11) and
+        # BLAS-capable dot orders differ from the kernel's pairwise grouping; extend dispatch only
+        # after that order has a parity-preserving port.
         block = values.reshape(values.shape[0], -1)
         sums: np.ndarray = native.trailing_sum(block, scale)
         return sums.reshape(values.shape)
