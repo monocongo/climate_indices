@@ -20,6 +20,7 @@ import numpy.typing as npt
 import scipy
 import xarray as xr
 
+from climate_indices import _native_backend
 from climate_indices.compound._harmonize import AlignedHazards, _check_choice, _freeze, _immutable, _replay
 from climate_indices.compound._statistics import (
     GroupBy,
@@ -32,6 +33,10 @@ from climate_indices.compound._statistics import (
 )
 from climate_indices.exceptions import ClimateIndicesWarning, InvalidArgumentError
 from climate_indices.logging_config import get_logger, log_calculation_failure
+
+# this family's switch on the optional Rust kernels (climate_indices._native_backend);
+# None evaluates every resample on the Python path
+_native = _native_backend.EXTENSION
 
 Statistic: TypeAlias = Literal["joint_probability", "likelihood_multiplication_factor", "conditional_probability"]
 Alternative: TypeAlias = Literal["greater", "less"]
@@ -226,6 +231,21 @@ def _resample(
     paired = np.full(shape, np.nan)
     null = np.full(shape, np.nan)
     eligible = np.ones(rows.shape[1:], dtype=bool)
+    native = _native_backend.kernels(_native, "compound_resample_metrics")
+    if native is not None and _native_backend.policy_allows():
+        # Bound index memory independently of n_resamples; retain the original draw order.
+        for start in range(0, n_resamples, 256):
+            stop = min(start + 256, n_resamples)
+            paired_years = np.empty((stop - start, years), dtype=np.int64)
+            null_years = np.empty((stop - start, len(rows), years), dtype=np.int64)
+            for b in range(stop - start):
+                paired_years[b] = _year_indices(paired_rng, years, length)
+                for source in range(len(rows)):
+                    null_years[b, source] = _year_indices(null_rng, years, length)
+            estimates, excesses = native.compound_resample_metrics(rows, paired_years, null_years, statistic, groupby)
+            paired[start:stop] = estimates.reshape(paired[start:stop].shape)
+            null[start:stop] = excesses.reshape(null[start:stop].shape)
+        return paired, null
     for b in range(n_resamples):
         indices = _year_indices(paired_rng, years, length)
         paired[b] = _metrics(rows[:, indices], eligible, statistic, groupby)[0]
