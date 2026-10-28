@@ -119,6 +119,35 @@ def test_fit_failure_is_reported_or_propagated(
         assert events[0]["reason"] == str(failure)
 
 
+@pytest.mark.parametrize(("stage", "fallback"), [("transform", False), ("transform", True), ("loss_measurement", True)])
+def test_post_fit_errors_propagate_without_fallback(fallback: bool, stage: str) -> None:
+    """Only fit resolution errors can trigger Gamma fallback."""
+    values = np.random.default_rng(1418).gamma(2.0, 2.0, (40, 12))
+    failure = DistributionFittingError("Post-fit failure", distribution_name="pearson3")
+    target = compute.FittedDistribution if stage == "transform" else compute
+    name = "transform" if stage == "transform" else "_pearson_lost_valid_fraction"
+    surface = compute.fit_and_standardize if stage == "transform" else compute.fit_diagnostics
+    with (
+        mock.patch.object(target, name, side_effect=failure) as operation,
+        mock.patch.object(compute.FittedDistribution, "resolve", wraps=compute.FittedDistribution.resolve) as resolve,
+        mock.patch.object(compute._default_fallback_strategy, "log_fallback_warning") as log_fallback,
+    ):
+        with pytest.raises(DistributionFittingError) as caught:
+            surface(
+                values,
+                compute.Distribution.pearson,
+                1981,
+                1981,
+                2020,
+                compute.Periodicity.monthly,
+                fallback_to_gamma=fallback,
+            )
+        assert caught.value is failure
+        operation.assert_called_once()
+    resolve.assert_called_once()
+    log_fallback.assert_not_called()
+
+
 def test_standardization_rejects_a_missing_transform_result() -> None:
     """The transform result check must remain active when Python optimization is enabled."""
     values = np.ones((40, 12))

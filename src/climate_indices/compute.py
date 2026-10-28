@@ -3569,9 +3569,10 @@ def _resolve_pearson_with_fallback(
 ) -> tuple[FittedDistribution, np.ndarray | None]:
     """Resolve one whole-block fallback decision and report the distribution used.
 
-    Only a DistributionFittingError or excessive loss permits fallback. Argument
-    errors and warnings propagate. The transform path measures its actual lost values;
-    diagnostics uses the mirrored CDF masks without running a transform (#1216).
+    Only a DistributionFittingError during fit resolution or excessive loss permits
+    fallback. Transform errors, argument errors, and warnings propagate.
+    The transform path measures its actual lost values; diagnostics uses the mirrored
+    CDF masks without running a transform (#1216).
     This is the only distinction between the two paths' fallback measurements.
     """
     if values.ndim == 1:
@@ -3586,6 +3587,11 @@ def _resolve_pearson_with_fallback(
             periodicity,
             fitting_params,
         )
+    except DistributionFittingError as exc:
+        if not fallback_to_gamma:
+            raise
+        reason = str(exc)
+    else:
         standardized = transform(fitted, values) if transform is not None else None
         if not fallback_to_gamma:
             return fitted, standardized
@@ -3595,11 +3601,6 @@ def _resolve_pearson_with_fallback(
             valid = ~np.isnan(values)
             valid_count = np.count_nonzero(valid)
             lost_fraction = float(np.count_nonzero(np.isnan(standardized[valid]))) / valid_count if valid_count else 0.0
-    except DistributionFittingError as exc:
-        if not fallback_to_gamma:
-            raise
-        reason = str(exc)
-    else:
         if lost_fraction > _default_fallback_strategy.max_nan_percentage:
             reason = "Pearson distribution fitting resulted in excessive missing values"
         else:
