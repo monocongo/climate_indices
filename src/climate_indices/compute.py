@@ -3065,8 +3065,32 @@ def transform_fitted_empirical(
     )
 
 
+def _native_empirical_fit(
+    values: np.ndarray, calibration_values: np.ndarray, output_scale: OutputScale
+) -> np.ndarray | None:
+    """Use native ranking for matching float64 columns; keep broadcasting in Python."""
+    if (
+        not _native_float64s(values, calibration_values)
+        or values.shape[1:] != calibration_values.shape[1:]
+        or not hasattr(_native, "empirical_transform")
+    ):
+        return None
+    if _native is None:  # _native_float64s guarantees it; this narrows the type
+        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
+    result = _native.empirical_transform(
+        _as_columns(calibration_values), _as_columns(values), output_scale == "normal"
+    ).reshape(values.shape)
+    if output_scale == "bounded":
+        result *= 2.0
+        result -= 1.0
+    return result
+
+
 def _empirical_fit(values: np.ndarray, calibration_values: np.ndarray, output_scale: OutputScale) -> np.ndarray:
     """Rank values against the resolved Calibration Period sample."""
+    native = _native_empirical_fit(values, calibration_values, output_scale)
+    if native is not None:
+        return native
 
     # count the calibration values at or below each value one calibration year at a
     # time, so memory stays at one input-sized array whatever the record length; a
