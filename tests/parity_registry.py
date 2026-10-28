@@ -35,7 +35,7 @@ import pytest
 import xarray as xr
 from hypothesis import strategies as st
 
-from climate_indices import compute, eto, fire, flood, indices, palmer, pm_eto
+from climate_indices import compute, eto, fire, flood, indices, palmer, pm_eto, runs
 from climate_indices.fire import _native as fire_native
 from climate_indices.flood import _native as flood_native
 from tests import conftest
@@ -319,6 +319,16 @@ def _eddi(values: np.ndarray) -> Callable[[], Any]:
     )
 
 
+def _runs_identify(values: np.ndarray) -> Callable[[], Any]:
+    # Preserve gaps and map daily precipitation to signed index values.
+    signed = (values - 12.0) / 8.0
+    return lambda: tuple(
+        runs.identify_runs(signed, threshold=-1.0, direction=direction, min_duration=2, max_gap=max_gap)
+        for direction in ("below", "above")
+        for max_gap in (0, 2)
+    )
+
+
 def _pci(values: np.ndarray) -> Callable[[], Any]:
     # a calendar year of rain: the only lengths the entry point accepts, and no NaN
     return lambda: indices.pci(np.nan_to_num(values[:365]))
@@ -516,6 +526,7 @@ ENTRIES: tuple[Entry, ...] = (
     Entry("eddi", MONTHLY, compute, _eddi, frozenset({"tukey_probabilities", "hastings_inverse_normal"})),
     Entry("eddi_spatial_block", BLOCK, compute, _eddi, frozenset({"tukey_probabilities", "hastings_inverse_normal"})),
     Entry("pci", DAILY, compute, _pci, frozenset({"pci"})),
+    Entry("runs_identify", DAILY, runs, _runs_identify, frozenset({"identify_runs"})),
     Entry(
         "fit_diagnostics", MONTHLY, compute, _fit_diagnostics, frozenset({"gamma_parameters", "gamma_ks_statistics"})
     ),

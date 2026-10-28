@@ -2191,7 +2191,8 @@ followed by EDDI's empirical ranking and inverse normal, the distribution fits
 SPEI adds, Pearson Type III (also used by SPI and the standardized index), the
 log-logistic (generalized logistic, GLO), the PNP and PCI numerical blocks, the
 fire-weather recurrences, the flood family, the empirical distribution's plotting
-positions, and the Palmer family's water balance, Z-index, and spell recursions.
+positions, the Palmer family's water balance, Z-index, and spell recursions,
+and Run Theory identification and per-run metrics.
 The gamma and distribution-fit kernels
 replace the
 numerical blocks inside `compute.py` functions; the EDDI, PNP, and PCI kernels
@@ -2222,6 +2223,7 @@ xarray adapter) uses them:
 | rank count and SEI plotting position in `compute._empirical_fit` | `empirical::plotting_positions` |
 | calibration normals and ratios in `indices.percentage_of_normal` | `pnp::pnp_normals`, `pnp::pnp_percentages` |
 | monthly reduction and ratio in `indices.pci` | `pci::pci` |
+| threshold scan and per-run metrics in `runs._identify_runs` | `runs::identify_runs` |
 
 **Beta remains Python/SciPy for 3.1.1.** The decision in
 [#1432](https://github.com/monocongo/climate_indices/issues/1432) defers a Rust
@@ -2402,6 +2404,23 @@ adapters reach the kernels through the same NumPy entry points. An API decay
 constant whose type would promote the Python step beyond float64 (an extended
 `np.longdouble`) keeps the Python recurrence.
 
+Run Theory uses `runs::identify_runs` over `(steps, cells)` blocks.
+Its flat outputs are ordered by cell and then by start.
+The Python dispatch supplies one cell and constructs the existing `RunSet`.
+Python retains option validation, masked-array conversion, period grouping, and xarray dispatch.
+`summarize_runs`, `energy.energy_drought_events`, and `flood.flood_event_summary` inherit the kernel through the shared run layer.
+`identify_runs_xarray` still calls once per cell; it does not send an entire Spatial Block to Rust.
+`flood_events` retains its separate Python block scan and raw-severity metrics.
+
+The run kernel preserves strict comparisons, NaN barriers, pooling before duration filtering, and first-occurrence peak ties.
+It sums active deviations with `reduction::pairwise_sum`; pooled gaps affect duration but not magnitude.
+Interarrival uses retained starts within each cell.
+Python limits duration and gap options to equivalent bounds based on series length before converting to binding integers.
+The binding copies the input before releasing the GIL.
+The kernel reuses a buffer containing one run's active deviations.
+The registry entry `runs_identify` checks both directions, with and without pooling, on signed daily values.
+Its fixed corpus has zero measured deviation; this is not a universal error bound.
+
 Dispatch takes the Rust path only for a
 plain, aligned float64 `ndarray` whose fit parameters are aligned and one per
 calendar step (and cell). Unaligned arrays, other dtypes, and caller-supplied
@@ -2574,6 +2593,7 @@ are measured on macOS arm64
 | `penman_monteith` | `fao56_eto` | 8.882e-16 | 4.337e-16 |
 | `percentage_of_normal` | `pnp_normals`, `pnp_percentages` | 0.000e+00 | 0.000e+00 |
 | `pm_eto_intermediates` | `pm_eto` | 0.000e+00 | 0.000e+00 |
+| `runs_identify` | `identify_runs` | 0.000e+00 | 0.000e+00 |
 | `spei_gamma` | `gamma_ks_statistics`, `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 2.220e-16 | 3.457e-16 |
 | `spei_loglogistic` | `loglogistic_cdf`, `loglogistic_parameters` | 0.000e+00 | 0.000e+00 |
 | `spi_gamma` | `gamma_ks_statistics`, `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 1.998e-15 | 4.765e-14 |

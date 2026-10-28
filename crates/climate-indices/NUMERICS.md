@@ -45,6 +45,7 @@ The registry records the exact derivations and parameters.
 | `penman_monteith` | `fao56_eto` | 8.881784e-16 | 4.336616e-16 |
 | `percentage_of_normal` | `pnp_normals`, `pnp_percentages` | 0.000000e+00 | 0.000000e+00 |
 | `pm_eto_intermediates` | `pm_eto` | 0.000000e+00 | 0.000000e+00 |
+| `runs_identify` | `identify_runs` | 0.000000e+00 | 0.000000e+00 |
 | `spei_gamma` | `gamma_ks_statistics`, `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 2.220446e-16 | 3.456693e-16 |
 | `spei_loglogistic` | `loglogistic_cdf`, `loglogistic_parameters` | 0.000000e+00 | 0.000000e+00 |
 | `spi_gamma` | `gamma_ks_statistics`, `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 1.998401e-15 | 4.764927e-14 |

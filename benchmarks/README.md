@@ -3,6 +3,68 @@
 Reproducible performance measurement for the #893 vectorization/parallelization
 epic. Reports here are evidence artifacts, not CI gates.
 
+## Run Theory metrics (#1436)
+
+These measurements use macOS arm64, CPython 3.14.7, and the release-mode extension.
+The 100-year daily series has 36,500 steps and 892 runs below -1.0.
+The eager xarray grid repeats this series over 25 cells.
+Each result includes Python validation, binding copies, and result construction.
+The xarray measurement also includes its existing per-cell dispatch.
+
+| Measurement | Python | Rust | Python/Rust |
+| --- | --- | --- | --- |
+| `identify_runs`, one series | 1.728208 ms | 0.046875 ms | 36.87x |
+| `identify_runs_xarray`, 25 cells | 47.254416 ms | 1.802875 ms | 26.21x |
+| Registry `runs_identify`, both directions and pooling options | 1.411834 ms | 0.043042 ms | 32.80x |
+
+The harness alternates backend order and takes the minimum of seven calls after warm-up.
+It ignores NumPy floating-point errors and disables warning promotion to permit native dispatch.
+Default error policies retain Python, so these figures do not describe default-policy performance.
+The measurements use synthetic data, not an external scientific reference.
+
+Reproduce the series and grid measurements from the repository root:
+
+```bash
+uv run maturin develop --release
+uv run python - <<'PY'
+import sys
+from pathlib import Path
+
+import numpy as np
+import pytest
+import xarray as xr
+
+sys.path.insert(0, str(Path("benchmarks").resolve()))
+from rust_vs_python import measure_backends, native_policy
+from climate_indices import runs
+from tests import conftest
+
+rng = np.random.default_rng(1436)
+series = np.convolve(rng.normal(size=36500), np.ones(31) / np.sqrt(31), mode="same")
+grid = xr.DataArray(np.tile(series[:, None], (1, 25)), dims=("time", "site"))
+with native_policy(), pytest.MonkeyPatch.context() as patch:
+    for label, run in (
+        ("series", lambda: runs.identify_runs(series)),
+        ("grid", lambda: runs.identify_runs_xarray(grid)),
+    ):
+        rust, python, calls = conftest.rust_and_python(patch, runs, run)
+        assert calls == {"identify_runs"}
+        if label == "grid":
+            np.testing.assert_array_equal(rust.values, python.values)
+        else:
+            conftest.assert_native_parity(rust, python)
+        patch.undo()
+        rust_seconds, python_seconds = measure_backends(run, run, repeats=7)
+        print(label, python_seconds, rust_seconds, python_seconds / rust_seconds)
+PY
+```
+
+The registry entry also joins the existing benchmark automatically:
+
+```bash
+uv run benchmarks/rust_vs_python.py --cold-entries runs_identify --skip-sweep --skip-threads --skip-dask --repeat 7
+```
+
 ## Gamma goodness-of-fit D statistics (#1434)
 
 The single-series gamma check now computes sorted CDFs and KS D statistics in Rust.
