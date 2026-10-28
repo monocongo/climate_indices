@@ -17,6 +17,7 @@ unless ``CLIMATE_INDICES_REQUIRE_NATIVE=1`` is set, as in CI's native legs.
 from __future__ import annotations
 
 import csv
+import itertools
 import json
 from collections.abc import Callable
 from functools import partial
@@ -245,7 +246,7 @@ def test_multi_season_run_with_overwintering(monkeypatch) -> None:
         return autumn, next_season, spring_seed
 
     rust, python, calls = _rust_and_python(monkeypatch, run)
-    assert calls == {"drought_code"}
+    assert calls == {"drought_code", "overwinter_dc"}
     _assert_parity(rust, python)
     # the fully recharged cell starts the second season at the published seed
     assert rust[2][1] == 15.0
@@ -543,13 +544,154 @@ def test_kbdi_resumes_from_a_returned_state(monkeypatch) -> None:
     _assert_parity(rust, python)
 
 
+# The behavior indices and the overwinter start-up Drought Code.
+
+_BEHAVIOR_COMPONENTS = ("isi", "bui", "fwi", "dsr")
+_ALL_COMPONENTS = ("ffmc", "dmc", "dc", "isi", "bui", "fwi", "dsr")
+
+
+def test_behavior_indices_reference_record(monkeypatch) -> None:
+    """The NRCan record's derived columns, through the orchestrator on the Rust path."""
+    columns = _cffwis_fixture()
+    run = _cffwis_run(columns, outputs=_BEHAVIOR_COMPONENTS, return_state=True)
+
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == {
+        "ffmc",
+        "duff_moisture_code",
+        "drought_code",
+        "initial_spread_index",
+        "buildup_index",
+        "fwi",
+        "daily_severity_rating",
+    }
+    _assert_parity(rust, python)
+    # the fixture's own reference columns, at the committed CSV round-trip bound
+    for name in _BEHAVIOR_COMPONENTS:
+        np.testing.assert_allclose(np.asarray(getattr(rust, name)).ravel(), columns[name], atol=1e-9, equal_nan=True)
+
+
+def test_behavior_index_boundaries_reach_the_kernels(monkeypatch) -> None:
+    """The exact-zero, threshold, and NaN branches match on both paths.
+
+    The private helpers are the seam the orchestrator reads, so they take the
+    raw (unmasked) values the boundary cases need.
+    """
+    from climate_indices.fire import _cffwis_behavior as behavior
+
+    # DMC = DC = 0, DMC = 0 with DC > 0, NaN, and negative inputs
+    ffmc = np.array([85.0, 0.0, 101.0, np.nan, -1.0])
+    wind = np.array([20.0, 0.0, 10.0, 10.0, 10.0])
+    dmc = np.array([0.0, 0.0, 34.0, np.nan, -1.0])
+    dc = np.array([0.0, 50.0, 100.0, 100.0, 100.0])
+
+    def run() -> tuple[Any, Any, Any, Any]:
+        isi = behavior._initial_spread_index(ffmc, wind)
+        bui = behavior._buildup_index(dmc, dc)
+        fwi = behavior._cffwis_fwi(isi, bui)
+        return isi, bui, fwi, behavior._daily_severity_rating(fwi)
+
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == {"initial_spread_index", "buildup_index", "fwi", "daily_severity_rating"}
+    _assert_parity(rust, python)
+    # the exact-zero branches and the NaN positions survive the kernels
+    assert rust[1][0] == 0.0 and rust[1][1] == 0.0
+    assert np.isnan(rust[0][3]) and np.isnan(rust[1][3]) and np.isnan(rust[2][3])
+
+
+def test_fwi_threshold_and_initial_branches_reach_the_kernel(monkeypatch) -> None:
+    """BUI at 80 on both sides and an initial of exactly one match on both paths."""
+    from climate_indices.fire import _cffwis_behavior as behavior
+
+    # ISI 5 with BUI 0 makes the initial exactly one, the unchanged branch
+    isi = np.array([5.0, 10.0, np.nan, -1.0])
+    bui = np.array([0.0, 80.0 - 1e-9, 100.0, 0.0])
+    run = partial(behavior._cffwis_fwi, isi, bui)
+
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == {"fwi"}
+    _assert_parity(rust, python)
+    assert rust[0] == 1.0
+    assert rust[1] > 1.0 and np.isfinite(rust[1])
+    assert np.isnan(rust[2])
+    assert rust[3] == -0.2
+
+
+def test_behavior_indices_with_a_transposed_layout_keep_the_python_path(monkeypatch) -> None:
+    """A layout that cannot be viewed as (n, 1) without a copy leaves the expression in Python."""
+    from climate_indices.fire import _cffwis_behavior as behavior
+
+    # the public entry point copies its input into a contiguous float64 array,
+    # so the transposed layout reaches the seam through the private helper,
+    # which the orchestrator reads directly
+    ffmc = np.arange(12.0).reshape(3, 4).T
+    wind = np.arange(12.0).reshape(3, 4).T
+    run = partial(behavior._initial_spread_index, ffmc, wind)
+
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == set()
+    _assert_parity(rust, python)
+
+
+@pytest.mark.parametrize(
+    "outputs",
+    [combo for size in range(1, len(_ALL_COMPONENTS) + 1) for combo in itertools.combinations(_ALL_COMPONENTS, size)],
+    ids=lambda outputs: "+".join(outputs),
+)
+def test_cffwis_returns_identical_outputs_for_every_subset(monkeypatch, outputs) -> None:
+    """Every outputs subset selects the same components on both backends."""
+    columns = _cffwis_fixture()
+    run = _cffwis_run(columns, outputs=outputs, return_state=True)
+
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    _assert_parity(rust, python)
+    for name in _ALL_COMPONENTS:
+        assert (getattr(rust, name) is None) == (name not in outputs)
+
+
+def test_overwinter_dc_matches_on_both_backends(monkeypatch) -> None:
+    """The reference cases, a dry winter, a full recharge, and the undefined zero equivalent."""
+    final_fall_dc = np.array([300.0, 100.0, 500.0, 250.0, np.nan, -1.0])
+    # precipitation of zero, a full recharge, and the reference cases' totals
+    overwinter_precipitation = np.array([0.0, 200.0, 110.0, 0.0, 50.0, 50.0])
+
+    for carry_over_fraction, wetting_efficiency in ((0.75, 0.75), (1.0, 0.9), (0.0, 0.0)):
+        run = partial(
+            fire.overwinter_drought_code,
+            final_fall_dc,
+            overwinter_precipitation,
+            carry_over_fraction=carry_over_fraction,
+            wetting_efficiency=wetting_efficiency,
+        )
+        rust, python, calls = _rust_and_python(monkeypatch, run)
+        assert calls == {"overwinter_dc"}
+        _assert_parity(rust, python)
+        if carry_over_fraction > 0.0:
+            # the start-up code never falls below the published seed where it is defined
+            assert np.nanmin(rust) >= 15.0
+        else:
+            # both fractions zero leave the start-up moisture equivalent at zero,
+            # so the whole result is the masked NaN
+            assert np.isnan(rust).all()
+    # a full recharge reaches the seed exactly
+    assert fire.overwinter_drought_code(np.array([100.0]), np.array([200.0]))[0] == 15.0
+
+
 # The combined orchestrator: three codes through one shared day loop, and a
 # selection that keeps only some of their histories.
 
 
 def test_cffwis_orchestrator(monkeypatch) -> None:
     rust, python, calls = _rust_and_python(monkeypatch, _cffwis_run(_cffwis_fixture(), return_state=True))
-    assert calls == {"ffmc", "duff_moisture_code", "drought_code"}
+    assert calls == {
+        "ffmc",
+        "duff_moisture_code",
+        "drought_code",
+        "initial_spread_index",
+        "buildup_index",
+        "fwi",
+        "daily_severity_rating",
+    }
     _assert_parity(rust, python)
 
 
@@ -557,7 +699,7 @@ def test_cffwis_orchestrator_with_a_partial_selection(monkeypatch) -> None:
     """A selection keeps only what it reads, so a code can run without recording."""
     run = _cffwis_run(_cffwis_fixture(), outputs=("dc", "isi"), return_state=True)
     rust, python, calls = _rust_and_python(monkeypatch, run)
-    assert calls == {"ffmc", "duff_moisture_code", "drought_code"}
+    assert calls == {"ffmc", "duff_moisture_code", "drought_code", "initial_spread_index"}
     # the DMC feeds neither output, so its history is never allocated
     assert rust.dmc is None
     _assert_parity(rust, python)
@@ -568,7 +710,15 @@ def test_cffwis_orchestrator_with_missing_days(monkeypatch) -> None:
     columns["temperature_celsius"] = _with_gaps(columns["temperature_celsius"], 0.1, seed=4)
     run = _cffwis_run(columns, nan_policy="bridge", max_gap_days=1)
     rust, python, calls = _rust_and_python(monkeypatch, run)
-    assert calls == {"ffmc", "duff_moisture_code", "drought_code"}
+    assert calls == {
+        "ffmc",
+        "duff_moisture_code",
+        "drought_code",
+        "initial_spread_index",
+        "buildup_index",
+        "fwi",
+        "daily_severity_rating",
+    }
     _assert_parity(rust, python)
 
 

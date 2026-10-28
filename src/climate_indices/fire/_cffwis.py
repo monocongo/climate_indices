@@ -64,6 +64,7 @@ from climate_indices.fire._cffwis_codes import (
     _run_cffwis_recurrence,
 )
 from climate_indices.fire._native import moisture_code_recurrence
+from climate_indices.fire._native import overwinter_dc as _native_overwinter_dc
 
 __all__ = [
     "CFFWISResult",
@@ -670,6 +671,9 @@ def overwinter_drought_code(
     def evaluate() -> npt.NDArray[np.float64]:
         # Eq. 3: final autumn moisture equivalent, then Eq. 2: overwinter
         # refill, then Eq. 4: the start-up code it implies
+        native = _native_overwinter_dc(dc, precipitation, float(carry_over_fraction), float(wetting_efficiency))
+        if native is not None:
+            return native
         final_moisture = _dc_moisture_equivalent(dc)
         start_moisture = (
             float(carry_over_fraction) * final_moisture

@@ -392,6 +392,31 @@ def _fire_runs(values: np.ndarray) -> dict[str, Callable[[], Any]]:
     }
 
 
+def _fire_behavior_indices(values: np.ndarray) -> Callable[[], Any]:
+    """The four derived CFFWIS outputs through the orchestrator, which is where they are computed."""
+    temperature = _daily_temperature(values)
+    humidity = _relative_humidity(values)
+    wind = _wind_speed(values)
+    precipitation = np.mod(np.nan_to_num(values), 20.0)
+    months = _months(values)
+    return lambda: fire.cffwis(
+        temperature,
+        humidity,
+        wind,
+        precipitation,
+        40.0,
+        months,
+        outputs=("isi", "bui", "fwi", "dsr"),
+    )
+
+
+def _fire_overwinter_dc(values: np.ndarray) -> Callable[[], Any]:
+    """The overwinter start-up DC from a final autumn DC and a winter precipitation total."""
+    final_fall_dc = np.mod(np.nan_to_num(values), 600.0)
+    overwinter_precipitation = np.mod(np.nan_to_num(values), 250.0)
+    return lambda: fire.overwinter_drought_code(final_fall_dc, overwinter_precipitation)
+
+
 def _flood_precipitation(values: np.ndarray) -> Callable[[], Any]:
     return lambda: flood.effective_precipitation(values, duration=60)
 
@@ -465,6 +490,20 @@ def _fire_entries() -> Iterator[Entry]:
             run=lambda values, key=name: _fire_runs(values)[key],
             kernels=frozenset({name}),
         )
+    yield Entry(
+        name="fire_behavior_indices",
+        family=DAILY,
+        dispatch=fire_native,
+        run=_fire_behavior_indices,
+        kernels=frozenset({"initial_spread_index", "buildup_index", "fwi", "daily_severity_rating"}),
+    )
+    yield Entry(
+        name="fire_overwinter_dc",
+        family=DAILY,
+        dispatch=fire_native,
+        run=_fire_overwinter_dc,
+        kernels=frozenset({"overwinter_dc"}),
+    )
 
 
 def _flood_entries() -> Iterator[Entry]:

@@ -250,15 +250,23 @@ def test_fire_uses_python_when_the_extension_predates_fire_kernels(monkeypatch: 
     temperature = np.full(days, 22.0)
     humidity = np.full(days, 40.0)
     wind = np.full(days, 5.0)
+    final_fall_dc = np.array([300.0])
+    overwinter_precipitation = np.array([100.0])
     with np.errstate(all="ignore"):
         monkeypatch.setattr(fire_native, "_native", None)
         expected_ffmc = fire.ffmc(temperature, humidity, wind, precipitation)
         expected_kbdi = fire.kbdi(precipitation, temperature, 800.0)
+        expected_isi = fire.initial_spread_index(np.asarray(expected_ffmc), wind)
+        expected_spring = fire.overwinter_drought_code(final_fall_dc, overwinter_precipitation)
         monkeypatch.setattr(fire_native, "_native", SimpleNamespace())
         actual_ffmc = fire.ffmc(temperature, humidity, wind, precipitation)
         actual_kbdi = fire.kbdi(precipitation, temperature, 800.0)
+        actual_isi = fire.initial_spread_index(np.asarray(actual_ffmc), wind)
+        actual_spring = fire.overwinter_drought_code(final_fall_dc, overwinter_precipitation)
     np.testing.assert_array_equal(actual_ffmc, expected_ffmc)
     np.testing.assert_array_equal(actual_kbdi, expected_kbdi)
+    np.testing.assert_array_equal(actual_isi, expected_isi)
+    np.testing.assert_array_equal(actual_spring, expected_spring)
 
 
 @pytest.mark.parametrize("oversized", ["initial_kbdi", "initial_wet_spell_precipitation"])

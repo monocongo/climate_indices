@@ -19,7 +19,7 @@
 //! and advances eight cells at a time in lanes. It holds the same tolerance but
 //! not the Python bits; [`kbdi`] lists which input takes that path.
 
-use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
+use ndarray::{Array1, Array2, ArrayView1, ArrayView2, Zip};
 
 use crate::ClimateError;
 use crate::kbdi_fast;
@@ -791,6 +791,271 @@ pub fn kbdi(
     })
 }
 
+/// The Initial Spread Index from FFMC and 10 m wind (Van Wagner and Pickett, 1985, Eq. 24-26).
+///
+/// # Numerical contract
+///
+/// Both inputs have shape `(days, cells)`, with one day and one cell per
+/// element; the caller prepares the calendar and validation. FFMC is
+/// dimensionless and wind is in km/h, as [`ffmc`] takes it; the public Python
+/// API converts m/s to km/h before this call. Outputs are dimensionless ISI
+/// with the shape of the inputs.
+///
+/// The equations are evaluated in the Python reference's operation order:
+/// `moisture = FFMC_COEFFICIENT * (101 - FFMC) / (59.5 + FFMC)`,
+/// `wind_factor = exp(0.05039 * wind)`,
+/// `fine_fuel_factor = 91.9 * exp(-0.1386 * moisture) * (1 + moisture**5.31 / 49300000)`,
+/// and `0.208 * wind_factor * fine_fuel_factor`. `exp` and `powf` can differ
+/// from NumPy's float64 loops in the last bit on some platforms. NaN inputs
+/// propagate; a finite, in-range input can still overflow to infinity, which
+/// the caller masks as NaN.
+///
+/// Returns [`ClimateError::ShapeMismatch`] if the two shapes differ.
+///
+/// See the `Measured accuracy` section of [`crate`], registry entry
+/// `fire_behavior_indices` in `tests/parity_registry.py`.
+/// `tests/test_native_parity_fire.py` checks the workflow and the targeted
+/// boundary cases. Registry measurements compare full workflow outputs, not an
+/// independent scientific reference.
+pub fn initial_spread_index(
+    ffmc: ArrayView2<'_, f64>,
+    wind_speed_kilometers_per_hour: ArrayView2<'_, f64>,
+) -> Result<Array2<f64>, ClimateError> {
+    if ffmc.dim() != wind_speed_kilometers_per_hour.dim() {
+        return Err(ClimateError::ShapeMismatch {
+            argument: "wind_speed_kilometers_per_hour",
+            expected: ffmc.len(),
+            actual: wind_speed_kilometers_per_hour.len(),
+        });
+    }
+    let mut result = Array2::zeros(ffmc.raw_dim());
+    Zip::from(&mut result)
+        .and(&ffmc)
+        .and(&wind_speed_kilometers_per_hour)
+        .for_each(|out, &ffmc, &wind| *out = isi_next(ffmc, wind));
+    Ok(result)
+}
+
+/// Advance one ISI value (Van Wagner and Pickett, 1985, Eq. 24-26).
+fn isi_next(ffmc: f64, wind_speed_kilometers_per_hour: f64) -> f64 {
+    let moisture = FFMC_COEFFICIENT * (101.0 - ffmc) / (59.5 + ffmc);
+    let wind_factor = (0.05039 * wind_speed_kilometers_per_hour).exp();
+    let fine_fuel_factor =
+        91.9 * (-0.1386 * moisture).exp() * (1.0 + moisture.powf(5.31) / 49_300_000.0);
+    0.208 * wind_factor * fine_fuel_factor
+}
+
+/// The Buildup Index from DMC and DC (Van Wagner and Pickett, 1985, Eq. 27).
+///
+/// # Numerical contract
+///
+/// Both inputs have shape `(days, cells)`, dimensionless and non-negative; the
+/// caller prepares the calendar and validation. Outputs are dimensionless BUI
+/// with the shape of the inputs.
+///
+/// The equations are evaluated in the Python reference's operation order, with
+/// NumPy's `where` branches selected after both are computed. The exact-zero
+/// branches are deliberate: `combined` is zero when DMC and DC are both exactly
+/// zero, and `weight` is zero when DMC is exactly zero. The characteristic
+/// moisture `(0.0114 * DMC) ** 1.7` is NaN for negative DMC, and the reduced
+/// value floors at zero with NumPy's NaN-propagating `maximum`. NaN inputs
+/// propagate. `powf` can differ from NumPy's float64 loop in the last bit on
+/// some platforms.
+///
+/// Returns [`ClimateError::ShapeMismatch`] if the two shapes differ.
+///
+/// See the `Measured accuracy` section of [`crate`], registry entry
+/// `fire_behavior_indices` in `tests/parity_registry.py`.
+/// `tests/test_native_parity_fire.py` checks the workflow and the targeted
+/// boundary cases. Registry measurements compare full workflow outputs, not an
+/// independent scientific reference.
+pub fn buildup_index(
+    dmc: ArrayView2<'_, f64>,
+    dc: ArrayView2<'_, f64>,
+) -> Result<Array2<f64>, ClimateError> {
+    if dmc.dim() != dc.dim() {
+        return Err(ClimateError::ShapeMismatch {
+            argument: "dc",
+            expected: dmc.len(),
+            actual: dc.len(),
+        });
+    }
+    let mut result = Array2::zeros(dmc.raw_dim());
+    Zip::from(&mut result)
+        .and(&dmc)
+        .and(&dc)
+        .for_each(|out, &dmc, &dc| *out = bui_next(dmc, dc));
+    Ok(result)
+}
+
+/// Advance one BUI value (Van Wagner and Pickett, 1985, Eq. 27).
+fn bui_next(dmc: f64, dc: f64) -> f64 {
+    let combined = if dmc == 0.0 && dc == 0.0 {
+        0.0
+    } else {
+        0.8 * dc * dmc / (dmc + 0.4 * dc)
+    };
+    let weight = if dmc == 0.0 {
+        0.0
+    } else {
+        (dmc - combined) / dmc
+    };
+    let characteristic = 0.92 + (0.0114 * dmc).powf(1.7);
+    let reduced = maximum(dmc - characteristic * weight, 0.0);
+    if combined < dmc { reduced } else { combined }
+}
+
+/// The Canadian Fire Weather Index from ISI and BUI (Van Wagner and Pickett, 1985, Eq. 28-30).
+///
+/// # Numerical contract
+///
+/// Both inputs have shape `(days, cells)`, dimensionless and non-negative; the
+/// caller prepares the calendar and validation. Outputs are dimensionless FWI
+/// with the shape of the inputs.
+///
+/// The equations are evaluated in the Python reference's operation order, with
+/// NumPy's `where` branches selected after both are computed: the `BUI > 80`
+/// damped branch, the `initial <= 1` branch, and
+/// `exponentiated = exp(2.72 * (0.434 * log(initial)) ** 0.647)`. A zero
+/// `initial` takes its own value, while a negative or NaN one follows NumPy's
+/// `log` into NaN. NaN inputs propagate, and a finite input can overflow to
+/// infinity, which the caller masks as NaN. `exp`, `log`, and `powf` can differ
+/// from NumPy's float64 loops in the last bit on some platforms.
+///
+/// Returns [`ClimateError::ShapeMismatch`] if the two shapes differ.
+///
+/// See the `Measured accuracy` section of [`crate`], registry entry
+/// `fire_behavior_indices` in `tests/parity_registry.py`.
+/// `tests/test_native_parity_fire.py` checks the workflow and the targeted
+/// boundary cases. Registry measurements compare full workflow outputs, not an
+/// independent scientific reference.
+pub fn fwi(
+    isi: ArrayView2<'_, f64>,
+    bui: ArrayView2<'_, f64>,
+) -> Result<Array2<f64>, ClimateError> {
+    if isi.dim() != bui.dim() {
+        return Err(ClimateError::ShapeMismatch {
+            argument: "bui",
+            expected: isi.len(),
+            actual: bui.len(),
+        });
+    }
+    let mut result = Array2::zeros(isi.raw_dim());
+    Zip::from(&mut result)
+        .and(&isi)
+        .and(&bui)
+        .for_each(|out, &isi, &bui| *out = fwi_next(isi, bui));
+    Ok(result)
+}
+
+/// Advance one FWI value (Van Wagner and Pickett, 1985, Eq. 28-30).
+fn fwi_next(isi: f64, bui: f64) -> f64 {
+    let damped = 1000.0 / (25.0 + 108.64 / (0.023 * bui).exp());
+    let fuel_available = if bui > 80.0 {
+        damped
+    } else {
+        0.626 * bui.powf(0.809) + 2.0
+    };
+    let initial = 0.1 * isi * fuel_available;
+    let exponentiated = (2.72 * (0.434 * initial.ln()).powf(0.647)).exp();
+    if initial <= 1.0 {
+        initial
+    } else {
+        exponentiated
+    }
+}
+
+/// The Daily Severity Rating from the Canadian FWI (Van Wagner, 1987, Eq. 31).
+///
+/// # Numerical contract
+///
+/// The input has shape `(days, cells)`, dimensionless and non-negative; the
+/// caller prepares the calendar and validation. The output is dimensionless DSR
+/// with the shape of the input, evaluated as `0.0272 * FWI**1.77` in the Python
+/// reference's operation order. A negative input follows NumPy's `**` into NaN.
+/// NaN inputs propagate. `powf` can differ from NumPy's float64 loop in the
+/// last bit on some platforms.
+///
+/// See the `Measured accuracy` section of [`crate`], registry entry
+/// `fire_behavior_indices` in `tests/parity_registry.py`.
+/// `tests/test_native_parity_fire.py` checks the workflow and the targeted
+/// boundary cases. Registry measurements compare full workflow outputs, not an
+/// independent scientific reference.
+pub fn daily_severity_rating(fwi: ArrayView2<'_, f64>) -> Array2<f64> {
+    fwi.mapv(dsr_next)
+}
+
+/// Advance one DSR value (Van Wagner, 1987, Eq. 31).
+fn dsr_next(fwi: f64) -> f64 {
+    0.0272 * fwi.powf(1.77)
+}
+
+/// The spring start-up Drought Code after overwintering (Lawson and Armitage, 2008, Eq. 2-4).
+///
+/// # Numerical contract
+///
+/// `final_fall_dc` and `overwinter_precipitation_mm` have shape `(days, cells)`;
+/// the DC is dimensionless and the precipitation is in mm. The carry-over
+/// fraction and wetting efficiency are dimensionless scalars in `[0, 1]`, which
+/// the caller validates; this kernel does not. Outputs are the start-up DC in
+/// the input shape.
+///
+/// The equations are evaluated in the Python reference's operation order:
+/// `final_moisture = 800 * exp(-DC / 400)`,
+/// `start_moisture = carry * final_moisture + wetting * 3.94 * precipitation`,
+/// `start = 400 * log(800 / start_moisture)`, and
+/// `max(start, 15)`. A zero start-up moisture equivalent gives an infinite
+/// `start` (log of infinity), which the caller masks as NaN, as NumPy's
+/// `np.log` does before the Python mask. A zero `start_moisture` with a zero
+/// numerator also yields infinity rather than NaN. NaN inputs propagate.
+/// `exp`, `log`, and the NaN-propagating `maximum` follow the Python
+/// expressions; they can differ from NumPy's float64 loops in the last bit on
+/// some platforms.
+///
+/// Returns [`ClimateError::ShapeMismatch`] if the two shapes differ.
+///
+/// See the `Measured accuracy` section of [`crate`], registry entry
+/// `fire_overwinter_dc` in `tests/parity_registry.py`.
+/// `tests/test_native_parity_fire.py` checks the workflow and the targeted
+/// boundary cases. Registry measurements compare full workflow outputs, not an
+/// independent scientific reference.
+pub fn overwinter_dc(
+    final_fall_dc: ArrayView2<'_, f64>,
+    overwinter_precipitation_mm: ArrayView2<'_, f64>,
+    carry_over_fraction: f64,
+    wetting_efficiency: f64,
+) -> Result<Array2<f64>, ClimateError> {
+    if final_fall_dc.dim() != overwinter_precipitation_mm.dim() {
+        return Err(ClimateError::ShapeMismatch {
+            argument: "overwinter_precipitation_mm",
+            expected: final_fall_dc.len(),
+            actual: overwinter_precipitation_mm.len(),
+        });
+    }
+    let mut result = Array2::zeros(final_fall_dc.raw_dim());
+    Zip::from(&mut result)
+        .and(&final_fall_dc)
+        .and(&overwinter_precipitation_mm)
+        .for_each(|out, &dc, &precipitation| {
+            *out = overwinter_dc_next(dc, precipitation, carry_over_fraction, wetting_efficiency)
+        });
+    Ok(result)
+}
+
+/// Advance one overwinter Drought Code value (Lawson and Armitage, 2008, Eq. 2-4).
+fn overwinter_dc_next(
+    final_fall_dc: f64,
+    overwinter_precipitation_mm: f64,
+    carry_over_fraction: f64,
+    wetting_efficiency: f64,
+) -> f64 {
+    let final_moisture = 800.0 * (-final_fall_dc / 400.0).exp();
+    let start_moisture = carry_over_fraction * final_moisture
+        + wetting_efficiency * 3.94 * overwinter_precipitation_mm;
+    let start = 400.0 * (800.0 / start_moisture).ln();
+    maximum(start, 15.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -824,6 +1089,81 @@ mod tests {
         assert_eq!(dc_next(100.0, -10.0, 0.0, -1.6), 100.0);
         assert!(dc_next(100.0, 25.0, 0.0, 6.4) > 100.0);
         assert!(dc_next(100.0, 25.0, 30.0, 6.4) < 100.0);
+    }
+
+    #[test]
+    fn isi_rises_with_wind_and_ffmc_and_propagates_nan() {
+        assert!(isi_next(85.0, 20.0) > isi_next(85.0, 10.0));
+        assert!(isi_next(90.0, 20.0) > isi_next(85.0, 20.0));
+        assert!(isi_next(f64::NAN, 20.0).is_nan());
+        assert!(isi_next(85.0, f64::NAN).is_nan());
+        // the shape check is part of the kernel, not only the binding
+        let one = array![[85.0]];
+        let two = array![[1.0], [2.0]];
+        assert!(matches!(
+            initial_spread_index(one.view(), two.view()),
+            Err(ClimateError::ShapeMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn bui_keeps_its_exact_zero_branches_and_floor() {
+        assert_eq!(bui_next(0.0, 0.0), 0.0);
+        // DMC exactly zero with a positive DC stays zero rather than dividing by it
+        assert_eq!(bui_next(0.0, 50.0), 0.0);
+        // a positive DMC with DC zero takes the reduced branch above the floor
+        assert!(bui_next(10.0, 0.0) > 0.0);
+        assert!(bui_next(f64::NAN, 10.0).is_nan());
+        assert!(bui_next(10.0, f64::NAN).is_nan());
+        // a negative DMC makes the characteristic moisture NaN, which propagates
+        assert!(bui_next(-1.0, 10.0).is_nan());
+    }
+
+    #[test]
+    fn fwi_keeps_its_threshold_and_initial_branches() {
+        // the BUI 80 threshold changes the fuel-availability branch, and both
+        // sides are finite
+        let below = fwi_next(5.0, 79.999);
+        let above = fwi_next(5.0, 80.001);
+        assert!(below.is_finite() && above.is_finite());
+        assert!(below > 0.0 && above > 0.0);
+        // initial at or below one is returned unchanged; above one it is exponentiated
+        assert_eq!(fwi_next(1.0, 0.0), 0.2);
+        assert!(fwi_next(10.0, 0.0) > 1.0);
+        assert!(fwi_next(f64::NAN, 0.0).is_nan());
+        assert!(fwi_next(0.0, f64::NAN).is_nan());
+        // a negative ISI leaves initial at or below one, so it is returned unchanged
+        assert_eq!(fwi_next(-1.0, 0.0), -0.2);
+        // a negative BUI makes the fuel-availability branch NaN, which propagates
+        assert!(fwi_next(1.0, -1.0).is_nan());
+    }
+
+    #[test]
+    fn dsr_is_the_power_transform_and_propagates_nan() {
+        assert_eq!(dsr_next(0.0), 0.0);
+        assert_eq!(dsr_next(1.0), 0.0272);
+        assert!(dsr_next(10.0) > dsr_next(1.0));
+        assert!(dsr_next(f64::NAN).is_nan());
+        assert!(dsr_next(-1.0).is_nan());
+    }
+
+    #[test]
+    fn overwinter_dc_keeps_the_seed_and_the_undefined_moisture_equivalent() {
+        // 200 mm at the reference fractions recharges the layer to the seed
+        assert_eq!(overwinter_dc_next(100.0, 200.0, 0.75, 0.75), 15.0);
+        // a dry winter carries most of the autumn DC
+        assert!(overwinter_dc_next(300.0, 0.0, 0.75, 0.75) > 300.0);
+        // both fractions zero leave the start-up moisture equivalent at zero,
+        // so the log is infinite and the caller masks it as NaN
+        assert!(overwinter_dc_next(300.0, 100.0, 0.0, 0.0).is_infinite());
+        assert!(overwinter_dc_next(f64::NAN, 100.0, 0.75, 0.75).is_nan());
+        assert!(overwinter_dc_next(300.0, f64::NAN, 0.75, 0.75).is_nan());
+        let one = array![[300.0]];
+        let two = array![[1.0], [2.0]];
+        assert!(matches!(
+            overwinter_dc(one.view(), two.view(), 0.75, 0.75),
+            Err(ClimateError::ShapeMismatch { .. })
+        ));
     }
 
     #[test]

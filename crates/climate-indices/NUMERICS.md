@@ -28,10 +28,12 @@ The registry records the exact derivations and parameters.
 | `eddi_spatial_block` | `hastings_inverse_normal`, `tukey_probabilities` | 0.000000e+00 | 0.000000e+00 |
 | `empirical` | `empirical_transform` | 0.000000e+00 | 0.000000e+00 |
 | `empirical_spatial_block` | `empirical_transform` | 2.220446e-16 | 2.478786e-16 |
+| `fire_behavior_indices` | `buildup_index`, `daily_severity_rating`, `drought_code`, `duff_moisture_code`, `ffmc`, `fwi`, `initial_spread_index` | 0.000000e+00 | 0.000000e+00 |
 | `fire_drought_code` | `drought_code` | 0.000000e+00 | 0.000000e+00 |
 | `fire_duff_moisture_code` | `duff_moisture_code` | 0.000000e+00 | 0.000000e+00 |
 | `fire_ffmc` | `ffmc` | 0.000000e+00 | 0.000000e+00 |
 | `fire_kbdi` | `kbdi` | 0.000000e+00 | 0.000000e+00 |
+| `fire_overwinter_dc` | `overwinter_dc` | 0.000000e+00 | 0.000000e+00 |
 | `fit_diagnostics` | `gamma_ks_statistics`, `gamma_parameters` | 0.000000e+00 | 0.000000e+00 |
 | `flood_api` | `antecedent_precipitation_index` | no finite comparison | no finite comparison |
 | `flood_edi` | `edi`, `effective_precipitation` | 8.526513e-14 | 7.882583e-15 |

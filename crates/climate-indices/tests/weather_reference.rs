@@ -350,6 +350,46 @@ fn fire_recurrences_match_python_histories_and_final_states() {
 }
 
 #[test]
+fn fire_behavior_indices_and_overwinter_match_python_regression() {
+    let f = fixture("weather_fire.txt");
+    // the histories are recorded after the two-day spin-up, so the wind aligns from day two
+    let wind_kmh = f["wind_kmh"].slice(s![2.., ..]);
+    let overwinter_precipitation = f["overwinter_precipitation"].view();
+    for policy in ["propagate", "bridge"] {
+        let ffmc = &f[&format!("ffmc_{policy}")];
+        let dmc = &f[&format!("dmc_{policy}")];
+        let dc = &f[&format!("dc_{policy}")];
+        let isi = fire::initial_spread_index(ffmc.view(), wind_kmh.view()).unwrap();
+        parity(&format!("isi_{policy}"), &isi, &f[&format!("isi_{policy}")]);
+        let bui = fire::buildup_index(dmc.view(), dc.view()).unwrap();
+        parity(&format!("bui_{policy}"), &bui, &f[&format!("bui_{policy}")]);
+        let fwi = fire::fwi(isi.view(), bui.view()).unwrap();
+        parity(&format!("fwi_{policy}"), &fwi, &f[&format!("fwi_{policy}")]);
+        let dsr = fire::daily_severity_rating(fwi.view());
+        parity(&format!("dsr_{policy}"), &dsr, &f[&format!("dsr_{policy}")]);
+        let overwinter = fire::overwinter_dc(
+            f[&format!("dc_{policy}_state")].view(),
+            overwinter_precipitation,
+            0.75,
+            0.75,
+        )
+        .unwrap();
+        parity(
+            &format!("overwinter_dc_{policy}"),
+            &overwinter,
+            &f[&format!("overwinter_dc_{policy}")],
+        );
+        // the start-up code never falls below the published seed where it is defined
+        assert!(
+            overwinter
+                .iter()
+                .filter(|v| v.is_finite())
+                .all(|v| *v >= 15.0 - 1e-10)
+        );
+    }
+}
+
+#[test]
 fn flood_kernels_match_python_regression() {
     let f = fixture("weather_flood.txt");
     for duration in [1, 2, 7] {
