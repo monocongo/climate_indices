@@ -84,9 +84,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `crates/climate-indices/CHANGELOG.md`. The Python package and its
   `climate_indices._native` extension have no interface change (ADR-0021; #1361,
   #1377, #1381, #1384, #1403, #1409, #1411, #1414, #1415, #1426, #1471).
-
-### Added
-
 - **Dataset provenance** (`climate_indices.provenance`, #1470): every output
   variable the xarray adapters and the CLI build now carries
   `climate_indices_git_commit`, `climate_indices_provenance_schema_version`, and a

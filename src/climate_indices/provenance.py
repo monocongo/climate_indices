@@ -542,20 +542,24 @@ def _upstream(raw: Any) -> list[dict[str, Any]]:
     flattened = [digest]
     seen = {digest.get("record_id")}
     for entry in record.get("inputs", []):
-        upstream = entry.get("upstream", [])
-        if not isinstance(upstream, list):
-            flattened.append({"unparseable": True})
-            continue
-        for step in upstream:
-            normalized = _lineage_digest(step) if isinstance(step, dict) else None
-            if normalized is None:
-                flattened.append({"unparseable": True})
-            elif normalized.get("record_id") not in seen:
-                seen.add(normalized.get("record_id"))
-                flattened.append(normalized)
+        _append_upstream(flattened, seen, entry.get("upstream", []))
     if len(flattened) > _MAX_UPSTREAM:
         flattened = [*flattened[:_MAX_UPSTREAM], {"omitted_steps": len(flattened) - _MAX_UPSTREAM}]
     return flattened
+
+
+def _append_upstream(flattened: list[dict[str, Any]], seen: set[Any], upstream: Any) -> None:
+    """Append valid, distinct lineage steps and flag malformed entries."""
+    if not isinstance(upstream, list):
+        flattened.append({"unparseable": True})
+        return
+    for step in upstream:
+        normalized = _lineage_digest(step) if isinstance(step, dict) else None
+        if normalized is None:
+            flattened.append({"unparseable": True})
+        elif normalized.get("record_id") not in seen:
+            seen.add(normalized.get("record_id"))
+            flattened.append(normalized)
 
 
 def _dataset_attributes(attrs: Mapping[str, Any]) -> Any:
@@ -602,9 +606,7 @@ def _jsonable(value: Any, depth: int = 0) -> Any:
     if isinstance(value, bool | int):
         return value
     if isinstance(value, float):
-        if math.isfinite(value):
-            return value
-        return "NaN" if math.isnan(value) else ("Infinity" if value > 0 else "-Infinity")
+        return _jsonable_float(value)
     if isinstance(value, bytes | bytearray):
         value = bytes(value).decode("utf-8", errors="replace")
     if isinstance(value, str):
@@ -615,6 +617,20 @@ def _jsonable(value: Any, depth: int = 0) -> Any:
         return _locator(os.fspath(value))
     if isinstance(value, np.ndarray) and value.ndim == 0:
         return _jsonable(value.item(), depth)
+    return _jsonable_container(value, depth)
+
+
+def _jsonable_float(value: float) -> float | str:
+    """Keep finite floats and label nonfinite values without nonstandard JSON tokens."""
+    if math.isfinite(value):
+        return value
+    if math.isnan(value):
+        return "NaN"
+    return "Infinity" if value > 0 else "-Infinity"
+
+
+def _jsonable_container(value: Any, depth: int) -> Any:
+    """Bound structured metadata, summarize arrays, and describe supported fire states."""
     if depth >= _MAX_DEPTH:
         return {"omitted": "nesting depth limit"}
     if isinstance(value, Mapping):

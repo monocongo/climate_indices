@@ -140,7 +140,8 @@ def test_a_wheel_built_from_a_modified_checkout_is_marked_dirty(tmp_path: Path) 
 
 def _hook_module() -> ModuleType:
     spec = importlib.util.spec_from_file_location("hatch_build", ROOT / "hatch_build.py")
-    assert spec is not None and spec.loader is not None
+    assert spec is not None
+    assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -175,4 +176,5 @@ def test_the_script_writes_build_info_for_maturin_only_in_a_checkout(tmp_path: P
     written = json.loads((root / "src" / "climate_indices" / "_build_info.json").read_text())
     assert written == {"git_commit": head, "git_dirty": False}
     assert _git(root, "status", "--porcelain") == ""  # git-ignored, so the tree stays clean
-    assert refused.returncode != 0 and "not its own Git checkout" in refused.stderr
+    assert refused.returncode != 0
+    assert "not its own Git checkout" in refused.stderr

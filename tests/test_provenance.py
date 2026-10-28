@@ -106,7 +106,8 @@ def test_different_calibration_periods_remain_distinguishable() -> None:
     )
 
     early_record, late_record = read_provenance(early), read_provenance(late)
-    assert early_record is not None and late_record is not None
+    assert early_record is not None
+    assert late_record is not None
     assert early_record["parameters"]["calibration_year_initial"] == 1981
     assert late_record["parameters"]["calibration_year_initial"] == 1991
     assert early_record["record_id"] != late_record["record_id"]
@@ -174,6 +175,18 @@ def test_hargreaves_records_both_temperature_inputs_and_latitude() -> None:
     assert inputs[2]["value"] == 40.0
 
 
+def test_each_fit_diagnostics_output_records_the_values_input() -> None:
+    precipitation = _monthly()
+
+    result = climate_indices.fit_diagnostics(precipitation, scale=3, distribution=Distribution.gamma)
+
+    for variable in result.data_vars.values():
+        record = read_provenance(variable)
+        assert record is not None
+        assert [entry["role"] for entry in record["inputs"]] == ["values"]
+        assert record["inputs"][0]["variable"] == "prcp"
+
+
 def test_the_backend_entry_ignores_a_non_string_native_version(monkeypatch: pytest.MonkeyPatch) -> None:
     """The native parity tests swap the extension for a recorder, whose attributes are callables."""
     monkeypatch.setattr(compute, "_native", types.SimpleNamespace(__version__=lambda: "3.1.0"))
@@ -226,15 +239,18 @@ def test_unusual_input_metadata_serializes_to_strict_bounded_json() -> None:
     recorded = _strict(output[PROVENANCE_ATTR])["inputs"][0]["attributes"]
     assert recorded["float32_nan"] == "NaN"
     assert (recorded["positive_inf"], recorded["negative_inf"]) == ("Infinity", "-Infinity")
-    assert recorded["numpy_int"] == 7 and recorded["numpy_bool"] is True
+    assert recorded["numpy_int"] == 7
+    assert recorded["numpy_bool"] is True
     assert recorded["bytes"] == "café \ufffd"
     assert recorded["date"] == "2020-01-02"
     assert recorded["datetime64"] == "2020-01-02T03:04:05"
     assert recorded["small_array"] == [1, 2, 3]
     assert recorded["large_array"] == {"type": "ndarray", "shape": [1000], "dtype": "float64"}
-    assert len(recorded["long_text"]) < 1100 and recorded["long_text"].endswith("[truncated 3976 characters]")
+    assert len(recorded["long_text"]) < 1100
+    assert recorded["long_text"].endswith("[truncated 3976 characters]")
     assert "nesting depth limit" in json.dumps(recorded["nested"])
-    assert recorded["many"]["omitted_keys"] == 36 and len(recorded["many"]) == 65
+    assert recorded["many"]["omitted_keys"] == 36
+    assert len(recorded["many"]) == 65
     assert recorded["opaque"] == {"unsupported_type": "object"}
     assert recorded["complex"] == {"unsupported_type": "complex"}
 
@@ -327,10 +343,12 @@ def test_with_source_identifiers_checksum_and_dataset_attributes() -> None:
 
 
 def test_with_source_rejects_an_incomplete_checksum_and_a_non_dataarray() -> None:
+    precipitation = _monthly()
+    values = np.zeros(3)
     with pytest.raises(InvalidArgumentError, match="object"):
-        provenance.with_source(_monthly(), checksum={"algorithm": "md5", "value": "0"})
+        provenance.with_source(precipitation, checksum={"algorithm": "md5", "value": "0"})
     with pytest.raises(InvalidArgumentError):
-        provenance.with_source(np.zeros(3), uri="x.nc")  # type: ignore[arg-type]
+        provenance.with_source(values, uri="x.nc")  # type: ignore[arg-type]
 
 
 # --- history and lineage -------------------------------------------------------------------------
@@ -350,7 +368,8 @@ def test_history_is_extended_and_upstream_lineage_is_a_bounded_digest() -> None:
     entry = f"SPEI-3 calculated using gamma distribution (climate_indices v{climate_indices.__version__})"
     assert spei.attrs["history"].splitlines()[1].endswith(entry)
     pet_record, spei_record = read_provenance(pet), read_provenance(spei)
-    assert pet_record is not None and spei_record is not None
+    assert pet_record is not None
+    assert spei_record is not None
     pet_entry = spei_record["inputs"][1]
     assert pet_entry["attributes"]["history"].startswith("2020-01-01: regridded")
     assert PROVENANCE_ATTR not in pet_entry["attributes"]
@@ -436,7 +455,8 @@ def test_metadata_collection_keeps_dask_inputs_lazy_and_values_unchanged() -> No
     with dask.config.set(scheduler=forbid):
         lazy = climate_indices.spi(lazy_input, scale=3, distribution=Distribution.gamma)
 
-    assert lazy.chunks == lazy_input.chunks and lazy.dtype == np.float64
+    assert lazy.chunks == lazy_input.chunks
+    assert lazy.dtype == np.float64
     record = read_provenance(lazy)
     assert record is not None
     assert record["inputs"][0]["chunked"] is True
@@ -817,7 +837,8 @@ def test_missing_git_or_an_unborn_head_degrade_to_unknown(tmp_path: Path) -> Non
 
     assert (without_git["git_commit"], without_git["git_commit_source"]) == (None, "unavailable")
     assert "embedded build metadata is not used" in without_git["notes"][0]
-    assert no_commit["git_commit"] is None and no_commit["git_dirty"] is None
+    assert no_commit["git_commit"] is None
+    assert no_commit["git_dirty"] is None
 
 
 def test_an_installed_package_reports_its_embedded_build_commit(tmp_path: Path) -> None:

@@ -78,8 +78,11 @@ to the `compound_manifest` attribute that names their sources.
   Supplied `fitting_params` are recorded by identity: small arrays inline, larger
   ones by shape and dtype, never their full values.
 - `inputs`: one entry per input, by role (the function parameter name, or the
-  CLI role `precipitation`, `temperature`, `pet`, or `awc`). See
-  [Input metadata](#input-metadata).
+  CLI role `precipitation`, `temperature`, `pet`, or `awc`). Energy elementwise
+  transforms use `primary`, `companion_1`, `companion_2`, and subsequent numbered
+  roles in positional input order, not parameter names. Compound Dataset routes
+  record no inputs; their `compound_manifest` attribute identifies the sources.
+  See [Input metadata](#input-metadata).
 - `record_id`: a SHA-256 of the record without this field. Upstream references
   use it to remove duplicate steps.
 - `truncated`: present only when a size limit dropped sections.
