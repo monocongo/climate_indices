@@ -182,3 +182,9 @@ def test_poor_fit_warning_aggregates_scalar_and_spatial_results(
     assert warning.threshold == compute.GOODNESS_OF_FIT_P_VALUE_THRESHOLD
     assert warning.poor_fit_count == steps * (2 if spatial else 1)
     assert warning.total_steps == 12 * (2 if spatial else 1)
+    message = str(warning)
+    assert message.count(" (p=") == min(warning.poor_fit_count, 5)
+    if warning.poor_fit_count > 5:
+        assert f", and {warning.poor_fit_count - 5} more" in message
+    else:
+        assert ", and " not in message
