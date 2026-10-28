@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import sys
+import types
 from importlib import metadata
 from pathlib import Path
 from typing import Any
@@ -170,6 +171,19 @@ def test_hargreaves_records_both_temperature_inputs_and_latitude() -> None:
         ("latitude", None),
     ]
     assert inputs[2]["value"] == 40.0
+
+
+def test_the_backend_entry_ignores_a_non_string_native_version(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The native parity tests swap the extension for a recorder, whose attributes are callables."""
+    monkeypatch.setattr(compute, "_native", types.SimpleNamespace(__version__=lambda: "3.1.0"))
+
+    backend = read_provenance(climate_indices.spi(_monthly(), scale=3, distribution=Distribution.gamma))["backend"]  # type: ignore[index]
+
+    assert backend == {
+        "native_extension": "available",
+        "native_version": None,
+        "kernel_selection": "per call at execution time; not recorded",
+    }
 
 
 def test_numpy_input_returns_a_plain_array_without_metadata() -> None:

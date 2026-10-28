@@ -363,9 +363,11 @@ def _backend_identity() -> dict[str, Any]:
     from climate_indices import compute
 
     native = getattr(compute, "_native", None)
+    # a test double may expose any attribute as a callable, so only a real version string counts
+    version = None if native is None else getattr(native, "__version__", None)
     return {
         "native_extension": "not-installed" if native is None else "available",
-        "native_version": None if native is None else getattr(native, "__version__", None),
+        "native_version": version if isinstance(version, str) else None,
         "kernel_selection": "per call at execution time; not recorded",
     }
 
