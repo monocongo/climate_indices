@@ -595,8 +595,11 @@ def test_behavior_index_boundaries_reach_the_kernels(monkeypatch) -> None:
     assert calls == {"initial_spread_index", "buildup_index", "fwi", "daily_severity_rating"}
     _assert_parity(rust, python)
     # the exact-zero branches and the NaN positions survive the kernels
-    assert rust[1][0] == 0.0 and rust[1][1] == 0.0
-    assert np.isnan(rust[0][3]) and np.isnan(rust[1][3]) and np.isnan(rust[2][3])
+    assert rust[1][0] == 0.0
+    assert rust[1][1] == 0.0
+    assert np.isnan(rust[0][3])
+    assert np.isnan(rust[1][3])
+    assert np.isnan(rust[2][3])
 
 
 def test_fwi_threshold_and_initial_branches_reach_the_kernel(monkeypatch) -> None:
@@ -612,7 +615,8 @@ def test_fwi_threshold_and_initial_branches_reach_the_kernel(monkeypatch) -> Non
     assert calls == {"fwi"}
     _assert_parity(rust, python)
     assert rust[0] == 1.0
-    assert rust[1] > 1.0 and np.isfinite(rust[1])
+    assert rust[1] > 1.0
+    assert np.isfinite(rust[1])
     assert np.isnan(rust[2])
     assert rust[3] == -0.2
 
