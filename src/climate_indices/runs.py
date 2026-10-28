@@ -40,12 +40,17 @@ import numpy as np
 import numpy.typing as npt
 import xarray as xr
 
+from climate_indices import _native_backend
 from climate_indices.exceptions import (
     DataShapeError,
     DimensionMismatchError,
     InputTypeError,
     InvalidArgumentError,
 )
+
+# this family's switch on the optional Rust kernels (climate_indices._native_backend);
+# None runs the scan and per-run loop below on their pure-Python implementation
+_native = _native_backend.EXTENSION
 
 __all__ = ["RunSet", "RunStatistics", "identify_runs", "identify_runs_xarray", "summarize_runs"]
 
@@ -341,6 +346,19 @@ def _identify_runs(
 ) -> RunSet:
     """Find runs in a validated one-dimensional float64 series (the apply_ufunc kernel)."""
     series = np.asarray(series, dtype=np.float64)
+    native = _native_backend.kernels(_native, "identify_runs")
+    if native is not None and _native_backend.takes(series):
+        # a duration or gap longer than the series is equivalent to the caller's value,
+        # and the binding's integer parameters cannot hold an arbitrarily large Python int
+        result = native.identify_runs(
+            series[:, None],
+            threshold,
+            direction,
+            min(min_duration, series.size + 1),
+            min(max_gap, series.size),
+        )
+        return RunSet(*result[1:])
+
     condition = _exceedance(series, threshold, direction)
     _, starts, ends = _scan_runs(
         condition[None, :], np.isnan(series)[None, :], max_gap=max_gap, min_duration=min_duration

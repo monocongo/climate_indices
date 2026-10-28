@@ -11,7 +11,7 @@ import xarray as xr
 
 import climate_indices as ci
 from climate_indices import compute, indices, palmer
-from climate_indices._calibration_period import CalibrationPeriodError, resolve_calibration_period
+from climate_indices._calibration_period import CalibrationPeriod, CalibrationPeriodError, resolve_calibration_period
 from climate_indices.exceptions import CalibrationPeriodClampedWarning, InvalidArgumentError, ShortCalibrationWarning
 
 MONTHLY = compute.Periodicity.monthly
@@ -28,6 +28,50 @@ def _record(n_years: int, seed: int = 0) -> np.ndarray:
 
 def _short_calibration_warnings(caught: list[warnings.WarningMessage]) -> list[warnings.WarningMessage]:
     return [w for w in caught if issubclass(w.category, ShortCalibrationWarning)]
+
+
+class TestCoordinateInference:
+    @pytest.mark.parametrize("frequency", ["MS", "ME", "D", "h"])
+    def test_endpoints_include_partial_calendar_years(self, frequency):
+        # xr.date_range maps ME to the legacy M alias on pandas < 2.2
+        time = xr.date_range("2000-01-01", "2004-06-15", freq=frequency)
+        assert CalibrationPeriod.infer_years(time.values) == (2000, 2004)
+
+    @pytest.mark.parametrize("year_start_month", range(1, 13))
+    @pytest.mark.parametrize("day_offset", [-1, 0, 1])
+    def test_complete_annual_periods_use_their_start_year(self, year_start_month, day_offset):
+        boundary = pd.Timestamp(2004, year_start_month, 1) - pd.Timedelta(days=1)
+        last = boundary + pd.Timedelta(days=day_offset)
+        time = pd.date_range("2000-01-01", last, freq="D")
+        expected_end = 2002 if day_offset < 0 else 2003
+        assert CalibrationPeriod.infer_years(time.values, complete_years=True, year_start_month=year_start_month) == (
+            2000,
+            expected_end,
+        )
+
+    def test_no_complete_year_preserves_bounds_for_kernel_validation(self):
+        time = pd.date_range("2000-01-01", "2000-02-29", freq="D")
+        assert CalibrationPeriod.infer_years(time.values, complete_years=True) == (2000, 1999)
+        assert CalibrationPeriod.infer_years(time.values, complete_years=True, year_start_month=7) == (2000, 1998)
+
+    def test_single_timestamp_has_endpoint_years(self):
+        time = pd.DatetimeIndex(["2000-02-29"])
+        assert CalibrationPeriod.infer_years(time.values) == (2000, 2000)
+
+
+class TestCalibrationSample:
+    def test_thirty_year_boundary_counts_only_non_nan_calibration_samples(self):
+        from climate_indices.exceptions import InsufficientDataError
+
+        time = pd.date_range("1980-01-01", "2020-12-01", freq="MS")
+        values = np.ones(time.size)
+        values[0] = np.nan  # a missing value outside the window does not count
+        period = resolve_calibration_period(1980, 41, 1991, 2020, policy="clamp")
+        period.validate_non_nan_sample_size(time.values, values)
+        values[-1] = np.nan
+        with pytest.raises(InsufficientDataError, match="359 non-NaN values") as caught:
+            period.validate_non_nan_sample_size(time.values, values)
+        assert caught.value.required_count == 360
 
 
 class TestClamp:

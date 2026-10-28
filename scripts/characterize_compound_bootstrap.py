@@ -247,7 +247,8 @@ def _write_report(value: Path, report: dict[str, Any]) -> None:
     # Recheck the path after characterization because directory symlinks can change during the calculation.
     output = _output_path(value)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    # S8707: _output_path resolved the path (symlinks included) and confined it to a .json file below OUTPUT_ROOT.
+    output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")  # NOSONAR (S8707)
 
 
 def _probabilities(profile: str) -> npt.NDArray[np.float64]:

@@ -10,6 +10,26 @@ import numpy.typing as npt
 
 __version__: str
 
+# Flat arrays: cell, start, end, duration, magnitude, intensity, peak_value,
+# peak_index, interarrival. Integer metrics are int64; other metrics are float64.
+def identify_runs(
+    values: npt.NDArray[np.float64],
+    threshold: float,
+    direction: str,
+    min_duration: int,
+    max_gap: int,
+) -> tuple[
+    npt.NDArray[np.int64],
+    npt.NDArray[np.int64],
+    npt.NDArray[np.int64],
+    npt.NDArray[np.int64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.int64],
+    npt.NDArray[np.float64],
+]: ...
+
 class NonFiniteResultError(ValueError):
     """A recurrence step produced a non-finite value from finite inputs.
 

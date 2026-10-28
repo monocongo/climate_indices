@@ -38,6 +38,18 @@ type LogLogisticArrays<'py> = (
     Bound<'py, PyArray1<bool>>,
 );
 
+type RunArrays<'py> = (
+    Bound<'py, PyArray1<i64>>,
+    Bound<'py, PyArray1<i64>>,
+    Bound<'py, PyArray1<i64>>,
+    Bound<'py, PyArray1<i64>>,
+    Bound<'py, PyArray1<f64>>,
+    Bound<'py, PyArray1<f64>>,
+    Bound<'py, PyArray1<f64>>,
+    Bound<'py, PyArray1<i64>>,
+    Bound<'py, PyArray1<f64>>,
+);
+
 // A recurrence step produced a non-finite value from finite inputs.
 //
 // Distinct from `PyValueError` so the Python dispatch can raise the
@@ -964,6 +976,53 @@ fn antecedent_precipitation_index<'py>(
     ))
 }
 
+/// Flat run metrics of a (steps, cells) block, ordered by cell and start.
+#[pyfunction]
+fn identify_runs<'py>(
+    py: Python<'py>,
+    values: PyReadonlyArray2<'py, f64>,
+    threshold: f64,
+    direction: &str,
+    min_duration: usize,
+    max_gap: usize,
+) -> PyResult<RunArrays<'py>> {
+    use climate_indices::runs::Direction;
+
+    let direction = match direction {
+        "below" => Direction::Below,
+        "above" => Direction::Above,
+        _ => {
+            return Err(PyValueError::new_err(
+                "direction must be 'below' or 'above'",
+            ));
+        }
+    };
+    let values = checked_copy(&values)?;
+    let result = py.detach(|| {
+        climate_indices::runs::identify_runs(
+            values.view(),
+            threshold,
+            direction,
+            min_duration,
+            max_gap,
+        )
+    });
+    let indices = |values: Vec<usize>| {
+        Array1::from_iter(values.into_iter().map(|value| value as i64)).into_pyarray(py)
+    };
+    Ok((
+        indices(result.cell),
+        indices(result.start),
+        indices(result.end),
+        indices(result.duration),
+        Array1::from(result.magnitude).into_pyarray(py),
+        Array1::from(result.intensity).into_pyarray(py),
+        Array1::from(result.peak_value).into_pyarray(py),
+        indices(result.peak_index),
+        Array1::from(result.interarrival).into_pyarray(py),
+    ))
+}
+
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", climate_indices::VERSION)?;
@@ -1004,6 +1063,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(edi, m)?)?;
     m.add_function(wrap_pyfunction!(flood_index, m)?)?;
     m.add_function(wrap_pyfunction!(antecedent_precipitation_index, m)?)?;
+    m.add_function(wrap_pyfunction!(identify_runs, m)?)?;
     pet::register(m)?;
     palmer::register(m)?;
     Ok(())
