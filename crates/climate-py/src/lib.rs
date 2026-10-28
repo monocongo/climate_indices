@@ -333,6 +333,28 @@ fn loglogistic_cdf<'py>(
     .map_err(|error| PyValueError::new_err(error.to_string()))
 }
 
+/// SEI plotting positions, with an optional in-place inverse normal transform.
+#[pyfunction]
+fn empirical_transform<'py>(
+    py: Python<'py>,
+    calibration: PyReadonlyArray2<'py, f64>,
+    values: PyReadonlyArray2<'py, f64>,
+    normal: bool,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    let calibration = checked_copy(&calibration)?;
+    let values = checked_copy(&values)?;
+    py.detach(|| {
+        let mut result =
+            climate_indices::empirical::plotting_positions(calibration.view(), values.view())?;
+        if normal {
+            result.mapv_inplace(climate_indices::special::ndtri);
+        }
+        Ok(result)
+    })
+    .map(|result| result.into_pyarray(py))
+    .map_err(climate_error)
+}
+
 /// `scipy.stats.norm.ppf` applied element-wise to an array of any shape.
 #[pyfunction]
 fn norm_ppf<'py>(
@@ -847,6 +869,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(loglogistic_parameters, m)?)?;
     m.add_function(wrap_pyfunction!(loglogistic_cdf, m)?)?;
     m.add_function(wrap_pyfunction!(norm_ppf, m)?)?;
+    m.add_function(wrap_pyfunction!(empirical_transform, m)?)?;
     m.add_function(wrap_pyfunction!(tukey_probabilities, m)?)?;
     m.add_function(wrap_pyfunction!(hastings_inverse_normal, m)?)?;
     m.add_function(wrap_pyfunction!(ffmc, m)?)?;
