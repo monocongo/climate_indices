@@ -240,6 +240,25 @@ def kbdi(
     npt.NDArray[np.float64],
     npt.NDArray[np.int64] | None,
 ]: ...
+def initial_spread_index(
+    ffmc: npt.NDArray[np.float64],
+    wind_speed_kilometers_per_hour: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]: ...
+def buildup_index(
+    dmc: npt.NDArray[np.float64],
+    dc: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]: ...
+def fwi(
+    isi: npt.NDArray[np.float64],
+    bui: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]: ...
+def daily_severity_rating(fwi: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]: ...
+def overwinter_dc(
+    final_fall_dc: npt.NDArray[np.float64],
+    overwinter_precipitation_mm: npt.NDArray[np.float64],
+    carry_over_fraction: float,
+    wetting_efficiency: float,
+) -> npt.NDArray[np.float64]: ...
 def effective_precipitation(precipitation_mm: npt.NDArray[np.float64], duration: int) -> npt.NDArray[np.float64]: ...
 def edi(
     years: npt.NDArray[np.float64],

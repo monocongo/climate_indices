@@ -13,6 +13,7 @@ import numpy as np
 import numpy.typing as npt
 
 from climate_indices._recurrence import _as_float_array
+from climate_indices.fire import _native as _fire_native
 from climate_indices.fire._cffwis_codes import (
     _FFMC_COEFFICIENT,
     _FFMC_MAXIMUM,
@@ -27,6 +28,9 @@ def _initial_spread_index(
     wind_speed_kilometers_per_hour: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
     """Combine FFMC and wind into ISI (Van Wagner and Pickett, 1985, Eq. 24-26)."""
+    native = _fire_native.initial_spread_index(ffmc, wind_speed_kilometers_per_hour)
+    if native is not None:
+        return native
     moisture = _FFMC_COEFFICIENT * (101.0 - ffmc) / (59.5 + ffmc)
     wind_factor = np.exp(0.05039 * wind_speed_kilometers_per_hour)
     fine_fuel_factor = 91.9 * np.exp(-0.1386 * moisture) * (1.0 + moisture**5.31 / 49300000.0)
@@ -38,6 +42,9 @@ def _buildup_index(
     dc: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
     """Combine DMC and DC into BUI (Van Wagner and Pickett, 1985, Eq. 27)."""
+    native = _fire_native.buildup_index(dmc, dc)
+    if native is not None:
+        return native
     with np.errstate(divide="ignore", invalid="ignore"):
         # exact-zero branch, as in the cffdrs reference: np.equal keeps the
         # deliberate equality out of the float-comparison lint rule
@@ -53,6 +60,9 @@ def _cffwis_fwi(
     bui: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
     """Combine ISI and BUI into the Canadian FWI (Van Wagner and Pickett, 1985, Eq. 28-30)."""
+    native = _fire_native.fwi(isi, bui)
+    if native is not None:
+        return native
     with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
         damped = 1000.0 / (25.0 + 108.64 / np.exp(0.023 * bui))
         initial = 0.1 * isi * np.where(bui > 80.0, damped, 0.626 * bui**0.809 + 2.0)
@@ -62,6 +72,9 @@ def _cffwis_fwi(
 
 def _daily_severity_rating(fwi: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
     """Transform FWI into DSR (Van Wagner, 1987, Eq. 31)."""
+    native = _fire_native.daily_severity_rating(fwi)
+    if native is not None:
+        return native
     return 0.0272 * fwi**1.77
 
 

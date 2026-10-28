@@ -3,6 +3,62 @@
 Reproducible performance measurement for the #893 vectorization/parallelization
 epic. Reports here are evidence artifacts, not CI gates.
 
+## CFFWIS behavior indices and overwinter Drought Code (#1438)
+
+The Rust kernels evaluate ISI, BUI, the Canadian FWI, DSR, and the Lawson and
+Armitage (2008) overwinter start-up Drought Code elementwise, completing the
+Fire Weather Index System in the crate. RUSTUP-01 approved the port for crate
+completeness, not for a Python speedup.
+
+The derived chain is memory-bound, so the native path stays near 1x. A
+3.65-million-value grid (3650 days x 1000 cells), best of five after a warm-up
+call per backend, with NumPy errors ignored, on macOS 27.0.1 arm64, CPython
+3.14.7, NumPy 2.4.2, and a release-mode extension:
+
+| Measurement | Python | Rust | Python/Rust |
+| --- | --- | --- | --- |
+| ISI -> BUI -> FWI -> DSR chain, 3.65M values | 168.675 ms | 159.887 ms | 1.05 |
+| `fire.cffwis()` over the same grid | 668.869 ms | 422.408 ms | 1.58 |
+
+The orchestrator row includes the three moisture-code recurrences, which are
+faster in Rust; the derived chain alone is the near-1x trade. The registry entry
+`fire_overwinter_dc` times 0.071 ms Python against 0.077 ms Rust on the
+1825-value daily sample (0.93x): the public call's validation and logging
+dominate one power-and-log expression at that size. The other registry entry,
+`fire_behavior_indices`, measures the whole `fire.cffwis()` workflow on that
+sample at 19.288 ms Python against 0.424 ms Rust (45.48x), where the Python day
+loop's per-day overhead dominates the small grid.
+
+Reproduce the elementwise measurement with the harness helpers:
+
+```bash
+uv run maturin develop --release
+PYTHONWARNINGS=error CLIMATE_INDICES_LOG_LEVEL=ERROR uv run python - <<'PY'
+import sys
+import numpy as np
+
+sys.path.insert(0, "benchmarks")
+import rust_vs_python as bench
+from climate_indices import fire
+
+rng = np.random.default_rng(20261028)
+days, cells = 3650, 1000
+ffmc = rng.uniform(0.0, 101.0, (days, cells))
+wind = rng.uniform(0.0, 20.0, (days, cells))
+dmc = rng.uniform(0.0, 200.0, (days, cells))
+dc = rng.uniform(0.0, 800.0, (days, cells))
+
+def run():
+    isi = fire.initial_spread_index(ffmc, wind)
+    bui = fire.buildup_index(dmc, dc)
+    fwi = fire.cffwis_fwi(isi, bui)
+    return fire.daily_severity_rating(fwi)
+
+rust, python = bench.measure_backends(run, run, repeats=5)
+print(f"Rust {rust * 1e3:.3f} ms  Python {python * 1e3:.3f} ms  Python/Rust {python / rust:.2f}")
+PY
+```
+
 ## Run Theory metrics (#1436)
 
 These measurements use macOS arm64, CPython 3.14.7, and the release-mode extension.
