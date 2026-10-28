@@ -37,6 +37,7 @@ Usage examples::
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import subprocess
 import sys
@@ -126,8 +127,9 @@ def create_venv(venv_dir: Path, python_version: str = "3.11") -> None:
         venv_dir: Target directory for the venv (created if missing).
         python_version: Python version string passed to ``uv venv --python``.
     """
-    venv_dir.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
+    # S8707/S8705: venv_dir is the operator's absolute --tmp-dir plus a fixed name; list argv, no shell.
+    venv_dir.mkdir(parents=True, exist_ok=True)  # NOSONAR (S8707)
+    subprocess.run(  # NOSONAR (S8705)
         ["uv", "venv", "--python", python_version, str(venv_dir)],
         check=True,
         capture_output=True,
@@ -170,7 +172,8 @@ def install_local_version(venv_dir: Path, repo_root: Path, git_ref: str = "HEAD"
             capture_output=True,
         )
     else:
-        subprocess.run(
+        # S8705: --local-ref passed _git_ref's allowlist, so it cannot start with "-" or break the URL.
+        subprocess.run(  # NOSONAR (S8705)
             [
                 "uv",
                 "pip",
@@ -386,7 +389,8 @@ def run_cli(
     Returns:
         ``True`` on success, ``False`` on failure or timeout.
     """
-    output_dir.mkdir(parents=True, exist_ok=True)
+    # S8707: output_dir is the operator's absolute --tmp-dir plus a fixed name.
+    output_dir.mkdir(parents=True, exist_ok=True)  # NOSONAR (S8707)
     output_base = str(output_dir / "output")
 
     # Use the entry-point script (process_climate_indices) rather than
@@ -425,7 +429,8 @@ def run_cli(
         cmd += ["--netcdf_pet", str(pet_nc), "--var_name_pet", var_name_pet]
 
     try:
-        subprocess.run(cmd, check=True, capture_output=True, timeout=timeout)
+        # S8705: list argv, no shell; every path is absolute and the remaining values are ints or fixed choices.
+        subprocess.run(cmd, check=True, capture_output=True, timeout=timeout)  # nosec B603 # NOSONAR (S8705)
         return True
     except subprocess.CalledProcessError as exc:
         stderr_preview = exc.stderr.decode(errors="replace")[:300]
@@ -872,7 +877,7 @@ def resolve_input_data(
     """
     # priority 1: user-supplied directory
     if args.input_data:
-        input_dir = Path(args.input_data)
+        input_dir = Path(args.input_data).resolve()
         precip_files = sorted(input_dir.glob("*prcp*.nc")) + sorted(input_dir.glob("*precip*.nc"))
         temp_files = sorted(input_dir.glob("*tavg*.nc")) + sorted(input_dir.glob("*temp*.nc"))
         if precip_files and temp_files:
@@ -894,7 +899,8 @@ def resolve_input_data(
     if not example_dir.exists():
         print("  Cloning monocongo/example_climate_indices (depth=1)...")
         try:
-            subprocess.run(
+            # S8705: fixed URL; the target is the operator's absolute --tmp-dir plus a fixed name.
+            subprocess.run(  # NOSONAR (S8705)
                 [
                     "git",
                     "clone",
@@ -960,7 +966,8 @@ def run_all_indices(
     """
     # clear any stale output files from previous runs to avoid false comparisons
     if output_dir.exists():
-        shutil.rmtree(output_dir)
+        # S8707: removes only the fixed output_v220/output_v230 directory this script creates in --tmp-dir.
+        shutil.rmtree(output_dir)  # NOSONAR (S8707)
     output_dir.mkdir(parents=True, exist_ok=True)
     results: dict[str, bool] = {}
 
@@ -1091,6 +1098,13 @@ def collect_comparisons(
 # ─── CLI argument parser ──────────────────────────────────────────────────────
 
 
+def _git_ref(value: str) -> str:
+    """Accept a branch, tag, commit, or ``HEAD~n``-style ref, never an option-like value."""
+    if not re.fullmatch(r"[\w.~^/+][\w.~^/+-]*", value):
+        raise argparse.ArgumentTypeError(f"invalid git ref: {value!r}")
+    return value
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     """Build and return the script's argument parser.
 
@@ -1114,6 +1128,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--local-ref",
+        type=_git_ref,
         default="HEAD",
         help="Git ref for the new version to install locally (default: HEAD).",
     )
@@ -1183,16 +1198,19 @@ def main() -> int:
 
     # early exit: create example NetCDF and stop
     if args.create_example_netcdf:
-        example_out_dir = Path(args.create_example_netcdf)
-        example_out_dir.mkdir(parents=True, exist_ok=True)
+        example_out_dir = Path(args.create_example_netcdf).resolve()
+        # S8707: developer-run script writing to the operator's own directory; only a fixed file name is joined.
+        example_out_dir.mkdir(parents=True, exist_ok=True)  # NOSONAR (S8707)
         fixtures_dir = repo_root / "tests" / "fixture"
         create_example_netcdf(fixtures_dir, example_out_dir / "example_nclimgrid_lowres.nc")
         return 0
 
     # set up temp working directory
     if args.tmp_dir:
-        tmpdir = Path(args.tmp_dir)
-        tmpdir.mkdir(parents=True, exist_ok=True)
+        # resolve so no path handed to uv or git can start with "-" and parse as an option
+        tmpdir = Path(args.tmp_dir).resolve()
+        # S8707: the operator's own working directory; the script joins only fixed names below it.
+        tmpdir.mkdir(parents=True, exist_ok=True)  # NOSONAR (S8707)
         cleanup_tmp = False
     else:
         tmpdir = Path(tempfile.mkdtemp(prefix="climate_compare_"))
