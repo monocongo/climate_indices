@@ -105,8 +105,10 @@ def _run(years: int, cells: int) -> list[Measurement]:
             return compute.sum_to_scale(values, 3)
 
         warmed = monthly_call()
-        assert warmed.shape == values.shape
-        assert np.isnan(warmed[:2]).all()
+        if warmed.shape != values.shape:
+            raise RuntimeError(f"{name}: aggregation returned an unexpected shape")
+        if not np.isnan(warmed[:2]).all():
+            raise RuntimeError(f"{name}: aggregation did not preserve leading NaNs")
         measurements.append(_measure(name, values, monthly_call))
     return measurements
 
