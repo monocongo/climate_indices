@@ -32,7 +32,7 @@ RTOL = 1e-10
 ATOL = 1e-10
 
 _DATA_START = 1895
-_KERNELS = {"gamma_parameters", "gamma_probabilities", "norm_ppf"}
+_KERNELS = {"gamma_parameters", "gamma_probabilities", "gamma_ks_statistics", "norm_ppf"}
 _EDDI_KERNELS = {"tukey_probabilities", "hastings_inverse_normal"}
 
 
@@ -106,7 +106,7 @@ def test_spi_daily_series_with_zeros_and_gaps(
     )
     rust, python, calls = _rust_and_python(monkeypatch, run)
     # Scale 1 has calendar steps with no non-zero calibration value.
-    assert calls == ({"gamma_probabilities", "norm_ppf"} if scale == 1 else _KERNELS)
+    assert calls == ({"gamma_probabilities", "gamma_ks_statistics", "norm_ppf"} if scale == 1 else _KERNELS)
     _assert_parity(rust, python)
 
 
@@ -141,7 +141,7 @@ def test_spi_with_an_all_zero_calendar_month(monkeypatch, precips_mm_monthly):
     dry = precips_mm_monthly.copy()
     dry[:, 6] = 0.0
     rust, python, calls = _rust_and_python(monkeypatch, _spi(dry, 1, 1981, 2010))
-    assert calls == {"gamma_probabilities", "norm_ppf"}
+    assert calls == {"gamma_probabilities", "gamma_ks_statistics", "norm_ppf"}
     _assert_parity(rust, python)
 
 
@@ -202,7 +202,7 @@ def test_spi_output_scales(monkeypatch, precips_mm_monthly, output_scale):
     dry = _with_zeros(precips_mm_monthly, 0.2, seed=3)
     rust, python, calls = _rust_and_python(monkeypatch, _spi(dry, 3, 1981, 2010, output_scale=output_scale))
     # the probability scales skip the inverse-normal transform
-    assert calls == {"gamma_parameters", "gamma_probabilities"}
+    assert calls == {"gamma_parameters", "gamma_probabilities", "gamma_ks_statistics"}
     _assert_parity(rust, python)
 
 
@@ -221,7 +221,7 @@ def test_spi_spatial_block_with_masked_ocean(monkeypatch, precips_mm_monthly):
     [
         pytest.param(np.s_[:0], _KERNELS, id="empty-mask"),
         pytest.param(np.s_[1981 - _DATA_START, :], _KERNELS, id="partial-mask"),
-        pytest.param(np.s_[:, 0], {"gamma_probabilities", "norm_ppf"}, id="masked-column"),
+        pytest.param(np.s_[:, 0], {"gamma_probabilities", "gamma_ks_statistics", "norm_ppf"}, id="masked-column"),
         pytest.param(np.s_[:], set(), id="fully-masked"),
     ],
 )
@@ -322,7 +322,7 @@ def test_masked_gamma_parameter_resolver_normalizes_before_dispatch(monkeypatch,
         return compute._resolve_gamma_parameters(masked, {}, _DATA_START, 1981, 2010, compute.Periodicity.monthly)
 
     rust, python, calls = _rust_and_python(monkeypatch, run)
-    assert calls == (set() if fully_masked else {"gamma_parameters"})
+    assert calls == (set() if fully_masked else {"gamma_parameters", "gamma_ks_statistics"})
     for name in ("alpha", "beta", "prob_zero"):
         assert type(rust[name]) is np.ndarray
         assert type(python[name]) is np.ndarray
@@ -391,7 +391,11 @@ def test_unclipped_transform_tails(monkeypatch, precips_mm_monthly, precips_mm_d
     start = _DATA_START if periodicity is compute.Periodicity.monthly else 1998
     run = lambda: compute.transform_fitted_gamma(values, start, start, start + 9, periodicity)  # noqa: E731
     rust, python, calls = _rust_and_python(monkeypatch, run)
-    expected = {"gamma_probabilities", "norm_ppf"} if periodicity is compute.Periodicity.daily else _KERNELS
+    expected = (
+        {"gamma_probabilities", "gamma_ks_statistics", "norm_ppf"}
+        if periodicity is compute.Periodicity.daily
+        else _KERNELS
+    )
     assert calls == expected
     assert np.nanmax(np.abs(python)) > 3.09
     _assert_parity(rust, python)
@@ -599,7 +603,7 @@ def test_degenerate_gamma_blocks_preserve_values_warnings_and_routing(monkeypatc
             )
         results.append((alphas, betas, transformed))
         recorded.append([(warning.category, str(warning.message)) for warning in caught])
-    assert recorder.calls == (_KERNELS if native_fit else {"gamma_probabilities", "norm_ppf"})
+    assert recorder.calls == (_KERNELS if native_fit else {"gamma_probabilities", "gamma_ks_statistics", "norm_ppf"})
     for rust, python in zip(*results, strict=True):
         _assert_parity(rust, python)
     assert recorded[0] == recorded[1]

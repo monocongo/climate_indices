@@ -457,6 +457,29 @@ def test_kbdi_with_missing_days_and_spatial_blocks(monkeypatch) -> None:
     _assert_parity(rust, python)
 
 
+def test_kbdi_over_complete_input_across_lanes_and_tiles(monkeypatch) -> None:
+    """Complete input takes the reordered fast path (ADR-0025) and stays within the contract.
+
+    300 cells cover a full 256-cell tile, whole 8-cell lane groups, and a partial one.
+    """
+    rng = np.random.default_rng(20261027)
+    days, cells = 800, 300
+    rain_day = rng.random((days, cells)) < 0.3
+    precipitation = np.where(rain_day, rng.gamma(0.8, 12.0, (days, cells)), 0.0)
+    temperature = 22.0 + 10.0 * rng.standard_normal((days, cells))
+    run = partial(
+        fire.kbdi,
+        precipitation,
+        temperature,
+        rng.uniform(200.0, 2500.0, cells),
+        return_state=True,
+    )
+
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == {"kbdi"}
+    _assert_parity(rust, python)
+
+
 def test_kbdi_se38_figure1_with_its_published_initial_value(monkeypatch) -> None:
     """The published SE-38 example, seeded with its previous-day KBDI in inches."""
     fixture = Path(__file__).parent / "fixture" / "kbdi_se38_figure1" / "figure1.csv"

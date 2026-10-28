@@ -1375,6 +1375,7 @@ def _check_goodness_of_fit_gamma(
         _check_goodness_of_fit_gamma_spatial(calibration_values, alphas, betas)
         return
 
+    native_statistics = _native_gamma_ks_statistics(calibration_values, alphas, betas)
     time_steps = calibration_values.shape[1]
     poor_fit_steps = []
 
@@ -1393,6 +1394,12 @@ def _check_goodness_of_fit_gamma(
 
             # perform Kolmogorov-Smirnov test
             try:
+                if native_statistics is not None:
+                    critical = _ks_critical_value(len(valid_values))
+                    # Candidates and near-boundary statistics keep SciPy's exact decision.
+                    parity_margin = 1e-10 * (1.0 + abs(critical)) + np.finfo(valid_values.dtype).eps
+                    if native_statistics[time_step_index] < critical - parity_margin:
+                        continue
                 sorted_values = np.sort(valid_values)
                 # the regularized lower incomplete gamma function is the gamma CDF
                 p_value = _ks_poor_fit_p_value(
@@ -1508,6 +1515,40 @@ def _check_goodness_of_fit_gamma_spatial(
     )
 
     _warn_poor_fit(poor_fits, Distribution.gamma, time_steps * cell_count, spatial=True)
+
+
+def _native_gamma_ks_statistics(values: np.ndarray, alphas: np.ndarray, betas: np.ndarray) -> np.ndarray | None:
+    """Batched CDF and D statistics, or None where Python keeps the check."""
+    if (
+        values.ndim != 2
+        or not _native_float64s(values, alphas, betas)
+        or any(parameter.shape != (values.shape[1],) for parameter in (alphas, betas))
+        or _native is None
+        or not hasattr(_native, "gamma_ks_statistics")
+        # Rust cannot emit SciPy's caller-requested special-function diagnostics.
+        or any(policy != "ignore" for name, policy in scipy.special.geterr().items() if name != "memory")
+    ):
+        return None
+    return _native.gamma_ks_statistics(values, alphas, betas)
+
+
+def _gamma_ks_statistics(values: np.ndarray, alphas: np.ndarray, betas: np.ndarray) -> np.ndarray:
+    """Native statistics and retained SciPy oracle, shared with parity checks."""
+    native = _native_gamma_ks_statistics(values, alphas, betas)
+    if native is not None:
+        return native
+    result = np.full(values.shape[1], np.nan)
+    for column in range(values.shape[1]):
+        alpha, beta = alphas[column], betas[column]
+        if not (np.isfinite(alpha) and np.isfinite(beta) and alpha > 0 and beta > 0):
+            continue
+        sample = values[:, column]
+        sample = np.sort(sample[~np.isnan(sample)])
+        if sample.size:
+            result[column] = _ks_d_statistic(
+                sample, scipy.special.gammainc(float(alpha), sample.astype(float) / float(beta))
+            )
+    return result
 
 
 def _native_pearson_ks_statistics(
