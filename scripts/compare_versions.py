@@ -1100,7 +1100,7 @@ def collect_comparisons(
 
 def _git_ref(value: str) -> str:
     """Accept a branch, tag, commit, or ``HEAD~n``-style ref, never an option-like value."""
-    if not re.fullmatch(r"[\w.~^/][\w.~^/-]*", value):
+    if not re.fullmatch(r"[\w.~^/+][\w.~^/+-]*", value):
         raise argparse.ArgumentTypeError(f"invalid git ref: {value!r}")
     return value
 

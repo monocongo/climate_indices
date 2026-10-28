@@ -90,11 +90,12 @@ def test_compare_versions_local_ref_rejects_option_like_values() -> None:
     """--local-ref reaches git through uv, so option-like or URL-breaking refs must fail at parse time."""
     pytest.importorskip("matplotlib")  # the script's own PEP 723 dependency, not in the test group
     compare_versions = _load_script("compare_versions", "scripts/compare_versions.py")
-    for ref in ("HEAD", "main", "v2.3.0", "origin/fix/issue-1", "HEAD~1", "abc123^"):
-        assert compare_versions._git_ref(ref) == ref
+    parser = compare_versions.build_arg_parser()
+    for ref in ("HEAD", "main", "v2.3.0", "v2.3.0+local", "origin/fix/issue-1", "fix/spi+spei", "HEAD~1", "abc123^"):
+        assert parser.parse_args([f"--local-ref={ref}"]).local_ref == ref
     for ref in ("", "-x", "--upload-pack=touch /tmp/pwned", "main@evil", "a b"):
-        with pytest.raises(argparse.ArgumentTypeError, match="invalid git ref"):
-            compare_versions._git_ref(ref)
+        with pytest.raises(SystemExit):
+            parser.parse_args([f"--local-ref={ref}"])
 
 
 def test_characterization_writes_a_validated_json_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
