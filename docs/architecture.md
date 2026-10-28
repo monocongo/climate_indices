@@ -273,7 +273,7 @@ src/climate_indices/_native.pyi  # type stub for the extension
   It owns the kernel-presence check, the plain, aligned float64 and
   reporting-policy gate, and the translation of the extension's errors. The
   module that owns each computation (`compute`, `eto`, `pm_eto`, `palmer`,
-  `fire._native`, `flood._native`, `runs`) keeps its eligibility rule and its
+  `fire._native`, `flood._native`, `compound._bootstrap`, `runs`) keeps its eligibility rule and its
   marshalling, and copies the extension into its own `_native` attribute,
   the family's switch. A runtime error raised by the extension propagates
   and is never silently retried in Python.
@@ -319,6 +319,14 @@ xarray adapter) uses them:
 | calibration normals and ratios in `indices.percentage_of_normal` | `pnp::pnp_normals`, `pnp::pnp_percentages` |
 | monthly reduction and ratio in `indices.pci` | `pci::pci` |
 | threshold scan and per-run metrics in `runs._identify_runs` | `runs::identify_runs` |
+| paired and independence-null metrics in `compound._bootstrap._resample` | `compound::resample_metrics` |
+
+The compound bootstrap kernel accepts Boolean occurrences and Python-generated int64 year indices.
+Python retains support selection, random generators, point estimates, quantiles, p-values, quality flags, and warnings.
+The dispatch evaluates at most 256 resamples per native call to limit index-array memory.
+It calls `_year_indices` separately for each resample and channel, in the original order.
+It does not batch random draws or change either generator's stream.
+Targeted tests require exact results, including NaN positions, across batch boundaries and when a block spans the entire support.
 
 **Beta remains Python/SciPy for 3.1.1.** The decision in
 [#1432](https://github.com/monocongo/climate_indices/issues/1432) defers a Rust
@@ -666,6 +674,7 @@ are measured on macOS arm64
 
 | Entry | Kernels | Max absolute | Max relative |
 | --- | --- | --- | --- |
+| `compound_bootstrap` | `compound_resample_metrics` | 0.000e+00 | 0.000e+00 |
 | `eddi` | `hastings_inverse_normal`, `tukey_probabilities` | 0.000e+00 | 0.000e+00 |
 | `eddi_spatial_block` | `hastings_inverse_normal`, `tukey_probabilities` | 0.000e+00 | 0.000e+00 |
 | `empirical` | `empirical_transform` | 0.000e+00 | 0.000e+00 |

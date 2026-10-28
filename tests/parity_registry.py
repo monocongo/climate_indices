@@ -35,7 +35,8 @@ import pytest
 import xarray as xr
 from hypothesis import strategies as st
 
-from climate_indices import compute, eto, fire, flood, indices, palmer, pm_eto, runs
+from climate_indices import compound, compute, eto, fire, flood, indices, palmer, pm_eto, runs
+from climate_indices.compound import _bootstrap as compound_bootstrap
 from climate_indices.fire import _native as fire_native
 from climate_indices.flood import _native as flood_native
 from tests import conftest
@@ -455,6 +456,15 @@ def _scpdsi(values: np.ndarray) -> Callable[[], Any]:
     return lambda: palmer.scpdsi(precipitation, _palmer_pet(values), 4.0, start, calibration_start, calibration_end)
 
 
+def _compound_bootstrap(values: np.ndarray) -> Callable[[], Any]:
+    calendar = np.nan_to_num(values).reshape(-1, 12)
+    occurrences = calendar >= np.median(calendar, axis=0)
+    rows = np.stack((occurrences, np.roll(occurrences, 1, axis=0))).reshape(2, -1)
+    time = np.arange("1900-01", np.datetime64("1900-01", "M") + rows.shape[1], dtype="datetime64[M]")
+    hazards = compound.AlignedHazards(("A", "B"), time.astype("datetime64[D]"), "monthly", rows, np.ones_like(rows), {})
+    return lambda: compound.bootstrap_dependence(hazards, statistic="joint_probability", seed=17)
+
+
 def _fire_entries() -> Iterator[Entry]:
     sample = SAMPLES[DAILY]
     for name in _fire_runs(sample):
@@ -527,6 +537,9 @@ ENTRIES: tuple[Entry, ...] = (
     Entry("eddi_spatial_block", BLOCK, compute, _eddi, frozenset({"tukey_probabilities", "hastings_inverse_normal"})),
     Entry("pci", DAILY, compute, _pci, frozenset({"pci"})),
     Entry("runs_identify", DAILY, runs, _runs_identify, frozenset({"identify_runs"})),
+    Entry(
+        "compound_bootstrap", MONTHLY, compound_bootstrap, _compound_bootstrap, frozenset({"compound_resample_metrics"})
+    ),
     Entry(
         "fit_diagnostics", MONTHLY, compute, _fit_diagnostics, frozenset({"gamma_parameters", "gamma_ks_statistics"})
     ),

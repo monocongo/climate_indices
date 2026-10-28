@@ -20,6 +20,7 @@ import xarray as xr
 from hypothesis import settings as hypothesis_settings
 
 from climate_indices import compute, eto, logging_config, palmer, pm_eto, runs
+from climate_indices.compound import _bootstrap as compound_bootstrap
 from climate_indices.fire import _native as fire_native
 from climate_indices.flood import _native as flood_native
 
@@ -91,6 +92,7 @@ NATIVE_FAMILIES: dict[str, ModuleType] = {
     "fire": fire_native,
     "flood": flood_native,
     "runs": runs,
+    "compound": compound_bootstrap,
 }
 
 

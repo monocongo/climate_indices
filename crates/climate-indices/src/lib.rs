@@ -96,6 +96,7 @@
 
 use std::fmt;
 
+pub mod compound;
 pub mod eddi;
 pub mod empirical;
 pub mod eto;

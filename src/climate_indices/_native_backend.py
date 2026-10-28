@@ -4,8 +4,8 @@
 is imported here and nowhere else. Each family that dispatches to it copies
 :data:`EXTENSION` into its own module attribute ``_native``: ``compute``,
 ``eto``, ``pm_eto``, ``palmer``, ``climate_indices.fire._native``,
-``climate_indices.flood._native``, and ``climate_indices.runs``. That attribute
-is the family's switch.
+``climate_indices.flood._native``, ``climate_indices.compound._bootstrap``, and
+``climate_indices.runs``. That attribute is the family's switch.
 Pointing it at None keeps the family on its Python implementation, and pointing
 it at a recorder instruments it, without touching any other family; tests do
 both through ``disable_native`` and ``NATIVE_FAMILIES`` in ``tests/conftest.py``.
