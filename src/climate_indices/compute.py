@@ -107,14 +107,6 @@ GOODNESS_OF_FIT_P_VALUE_THRESHOLD = 0.05
 _BETA_SUPPORT_TOLERANCE = 1e-12
 
 
-class _PearsonFitLost(Exception):
-    """The Pearson Type III fit lost too many of the input's valid values to be usable.
-
-    A fit outcome that warrants a gamma fall back, not an argument error: it is raised
-    after a fit has run, so ``_fit_pearson_with_fallback`` may act on it.
-    """
-
-
 class DistributionFallbackStrategy:
     """Strategy class for managing Pearson→Gamma distribution fallback logic."""
 
@@ -1322,6 +1314,33 @@ def _ks_exact_p_value(sorted_values: np.ndarray, cdf_values: np.ndarray) -> Any:
     return scipy.stats.kstest(sorted_values, lambda _: cdf_values).pvalue
 
 
+def _warn_poor_fit(
+    poor_fits: list[tuple[int, float]], distribution: Distribution, total_steps: int, *, spatial: bool = False
+) -> None:
+    """Emit one warning with at most five examples for a scalar or spatial fit."""
+    if not poor_fits:
+        return
+    example_text = ", ".join(f"step {idx} (p={p:.4f})" for idx, p in poor_fits[:5])
+    if len(poor_fits) > 5:
+        example_text += f", and {len(poor_fits) - 5} more"
+    label = "Gamma" if distribution is Distribution.gamma else "Pearson Type III"
+    unit = "time step/cell combinations" if spatial else "time steps"
+    message = (
+        f"{label} distribution shows poor goodness-of-fit for {len(poor_fits)} of "
+        f"{total_steps} {unit} (p < {GOODNESS_OF_FIT_P_VALUE_THRESHOLD}). "
+        f"Examples: {example_text}. Consider using a different distribution or "
+        f"investigating data quality issues."
+    )
+    warning = GoodnessOfFitWarning(
+        message,
+        distribution_name="gamma" if distribution is Distribution.gamma else "pearson3",
+        threshold=GOODNESS_OF_FIT_P_VALUE_THRESHOLD,
+        poor_fit_count=len(poor_fits),
+        total_steps=total_steps,
+    )
+    warnings.warn(warning, stacklevel=4)
+
+
 def _check_goodness_of_fit_gamma(
     calibration_values: np.ndarray,
     alphas: np.ndarray,
@@ -1383,27 +1402,7 @@ def _check_goodness_of_fit_gamma(
                 # ignore fitting errors during goodness-of-fit check
                 continue
 
-    if poor_fit_steps:
-        # show up to 5 examples
-        examples = poor_fit_steps[:5]
-        example_text = ", ".join([f"step {idx} (p={p:.4f})" for idx, p in examples])
-        if len(poor_fit_steps) > 5:
-            example_text += f", and {len(poor_fit_steps) - 5} more"
-
-        message = (
-            f"Gamma distribution shows poor goodness-of-fit for {len(poor_fit_steps)} of "
-            f"{time_steps} time steps (p < {GOODNESS_OF_FIT_P_VALUE_THRESHOLD}). "
-            f"Examples: {example_text}. Consider using a different distribution or "
-            f"investigating data quality issues."
-        )
-        warning = GoodnessOfFitWarning(
-            message,
-            distribution_name="gamma",
-            threshold=GOODNESS_OF_FIT_P_VALUE_THRESHOLD,
-            poor_fit_count=len(poor_fit_steps),
-            total_steps=time_steps,
-        )
-        warnings.warn(warning, stacklevel=3)
+    _warn_poor_fit(poor_fit_steps, Distribution.gamma, time_steps)
 
 
 def _spatial_poor_fits(
@@ -1505,30 +1504,7 @@ def _check_goodness_of_fit_gamma_spatial(
         ),
     )
 
-    if not poor_fits:
-        return
-
-    # show up to 5 examples
-    examples = poor_fits[:5]
-    example_text = ", ".join([f"step {idx} (p={p:.4f})" for idx, p in examples])
-    if len(poor_fits) > 5:
-        example_text += f", and {len(poor_fits) - 5} more"
-
-    comparisons = time_steps * cell_count
-    message = (
-        f"Gamma distribution shows poor goodness-of-fit for {len(poor_fits)} of "
-        f"{comparisons} time step/cell combinations (p < {GOODNESS_OF_FIT_P_VALUE_THRESHOLD}). "
-        f"Examples: {example_text}. Consider using a different distribution or "
-        f"investigating data quality issues."
-    )
-    warning = GoodnessOfFitWarning(
-        message,
-        distribution_name="gamma",
-        threshold=GOODNESS_OF_FIT_P_VALUE_THRESHOLD,
-        poor_fit_count=len(poor_fits),
-        total_steps=comparisons,
-    )
-    warnings.warn(warning, stacklevel=3)
+    _warn_poor_fit(poor_fits, Distribution.gamma, time_steps * cell_count, spatial=True)
 
 
 def _native_gamma_ks_statistics(values: np.ndarray, alphas: np.ndarray, betas: np.ndarray) -> np.ndarray | None:
@@ -1670,27 +1646,7 @@ def _check_goodness_of_fit_pearson(
                 # ignore fitting errors during goodness-of-fit check
                 continue
 
-    if poor_fit_steps:
-        # show up to 5 examples
-        examples = poor_fit_steps[:5]
-        example_text = ", ".join([f"step {idx} (p={p:.4f})" for idx, p in examples])
-        if len(poor_fit_steps) > 5:
-            example_text += f", and {len(poor_fit_steps) - 5} more"
-
-        message = (
-            f"Pearson Type III distribution shows poor goodness-of-fit for {len(poor_fit_steps)} of "
-            f"{time_steps} time steps (p < {GOODNESS_OF_FIT_P_VALUE_THRESHOLD}). "
-            f"Examples: {example_text}. Consider using a different distribution or "
-            f"investigating data quality issues."
-        )
-        warning = GoodnessOfFitWarning(
-            message,
-            distribution_name="pearson3",
-            threshold=GOODNESS_OF_FIT_P_VALUE_THRESHOLD,
-            poor_fit_count=len(poor_fit_steps),
-            total_steps=time_steps,
-        )
-        warnings.warn(warning, stacklevel=3)
+    _warn_poor_fit(poor_fit_steps, Distribution.pearson, time_steps)
 
 
 def _check_goodness_of_fit_pearson_spatial(
@@ -1751,30 +1707,7 @@ def _check_goodness_of_fit_pearson_spatial(
         lambda column, candidate: cdf_values[(slice(0, column.size),) + candidate],
     )
 
-    if not poor_fits:
-        return
-
-    # show up to 5 examples
-    examples = poor_fits[:5]
-    example_text = ", ".join([f"step {idx} (p={p:.4f})" for idx, p in examples])
-    if len(poor_fits) > 5:
-        example_text += f", and {len(poor_fits) - 5} more"
-
-    comparisons = time_steps * cell_count
-    message = (
-        f"Pearson Type III distribution shows poor goodness-of-fit for {len(poor_fits)} of "
-        f"{comparisons} time step/cell combinations (p < {GOODNESS_OF_FIT_P_VALUE_THRESHOLD}). "
-        f"Examples: {example_text}. Consider using a different distribution or "
-        f"investigating data quality issues."
-    )
-    warning = GoodnessOfFitWarning(
-        message,
-        distribution_name="pearson3",
-        threshold=GOODNESS_OF_FIT_P_VALUE_THRESHOLD,
-        poor_fit_count=len(poor_fits),
-        total_steps=comparisons,
-    )
-    warnings.warn(warning, stacklevel=3)
+    _warn_poor_fit(poor_fits, Distribution.pearson, time_steps * cell_count, spatial=True)
 
 
 def _replace_zeros_with_nan(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -3595,9 +3528,13 @@ class FittedDistribution:
         return (*statistics, parameters)
 
 
-def _pearson_lost_valid_fraction(values: np.ndarray, parameters: dict[str, np.ndarray]) -> float:
-    """Fraction of the input's valid values a Pearson Type III transform would lose.
+def _pearson_lost_valid_fraction(
+    values: np.ndarray, parameters: dict[str, np.ndarray], standardized: np.ndarray | None = None
+) -> float:
+    """Fraction of valid input values lost by an actual or predicted Pearson transform.
 
+    If transformed values are supplied, count their newly missing values directly.
+    Otherwise, predict the loss from the fitted CDF and the transform's masks.
     The transform turns a value below 0.0005 into a finite sentinel wherever the zero
     mass is defined (``_pearson_fit``'s zero and trace masks), so only a NaN fitted CDF
     at or above that threshold is lost. A NaN zero mass loses every value. This mirrors
@@ -3607,6 +3544,8 @@ def _pearson_lost_valid_fraction(values: np.ndarray, parameters: dict[str, np.nd
     valid = ~np.isnan(values)
     if not valid.any():
         return 0.0
+    if standardized is not None:
+        return float(np.count_nonzero(np.isnan(standardized[valid]))) / float(np.count_nonzero(valid))
     parameters = _broadcast_parameters(values, parameters)
     probabilities_of_zero = np.broadcast_to(np.asarray(parameters["prob_zero"], dtype=float), values.shape)
     skews = np.asarray(parameters["skew"], dtype=float)
@@ -3627,44 +3566,29 @@ def _pearson_lost_valid_fraction(values: np.ndarray, parameters: dict[str, np.nd
     return float(np.count_nonzero(lost & valid)) / float(np.count_nonzero(valid))
 
 
-def _fit_pearson_with_fallback(
+def _resolve_pearson_with_fallback(
     values: np.ndarray,
-    distribution: "Distribution",
+    distribution: Distribution,
     data_start_year: int,
     calibration_start_year: int,
     calibration_end_year: int,
     periodicity: Periodicity,
     fitting_params: dict[str, Any] | None,
-    fallback_context: str,
-    output_scale: OutputScale = "normal",
     *,
-    zero_handling: ZeroHandling = "classic",
-) -> tuple[np.ndarray, bool, dict[str, np.ndarray] | None]:
-    """Transform a Pearson Type III fit, falling back to gamma when the fit fails.
+    fallback_to_gamma: bool,
+    fallback_context: str,
+    transform: Callable[[FittedDistribution, np.ndarray], np.ndarray] | None = None,
+) -> tuple[FittedDistribution, np.ndarray | None]:
+    """Resolve one whole-block fallback decision and report the distribution used.
 
-    The fall back is a property of the whole input block, not of one grid cell: when a
-    Pearson Type III fit fails outright, or loses more than half of the input's valid
-    values, the scaled input is refitted with gamma. A value that was already missing
-    does not count against the fit.
-
-    Args:
-        values: 2-D (years, periods) or folded (years, periods, ``*cells``) scaled values.
-        distribution: The Pearson Type III ``indices.Distribution`` member to fit.
-        fitting_params: Pre-computed parameters, or None to fit them from the data.
-        fallback_context: Context included in the fall-back warning log message.
-        output_scale: One of ``compute.OUTPUT_SCALES``, applied to whichever
-            distribution produces the result.
-        zero_handling: Zero-placement mode, applied by whichever transform runs.
-
-    Returns:
-        The transformed values, whether the gamma fall back was used, and the fitted
-        gamma parameters when it was (otherwise None).
+    Only a DistributionFittingError during fit resolution or excessive loss permits
+    fallback. Transform errors, argument errors, and warnings propagate.
+    The transform path measures its actual lost values; diagnostics uses the mirrored
+    CDF masks without running a transform (#1216).
+    This is the only distinction between the two paths' fallback measurements.
     """
     if values.ndim == 1:
-        # the Pearson fit reshapes a 1-D series to (years, periods); do it here so the
-        # valid-input mask below has the shape of the fitted result
         values = _validate_array(values, periodicity)
-
     try:
         fitted = FittedDistribution.resolve(
             values,
@@ -3675,39 +3599,30 @@ def _fit_pearson_with_fallback(
             periodicity,
             fitting_params,
         )
-        standardized = fitted.transform(values, output_scale, zero_handling=zero_handling)
+    except DistributionFittingError as exc:
+        if not fallback_to_gamma:
+            raise
+        reason = str(exc)
+    else:
+        standardized = transform(fitted, values) if transform is not None else None
+        if not fallback_to_gamma:
+            return fitted, standardized
+        lost_fraction = _pearson_lost_valid_fraction(values, fitted.parameters, standardized)
+        if lost_fraction > _default_fallback_strategy.max_nan_percentage:
+            reason = "Pearson distribution fitting resulted in excessive missing values"
+        else:
+            return fitted, standardized
 
-        # check if fallback is needed due to excessive NaN values, judging only the
-        # values the fit lost: input that was already missing (an ocean mask, a sparse
-        # series) says nothing about whether the Pearson fit worked, and an input with
-        # nothing valid has nothing to lose. This is the transform's exact lost-value
-        # measure; fit_diagnostics mirrors it with _pearson_lost_valid_fraction, which
-        # reproduces the transform's NaN pattern without running it (#1216).
-        valid = ~np.isnan(values)
-        if valid.any() and _default_fallback_strategy.should_fallback_from_excessive_nans(standardized[valid]):
-            raise _PearsonFitLost("Pearson distribution fitting resulted in excessive missing values")
-
-    except (DistributionFittingError, _PearsonFitLost) as e:
-        # only a fit outcome reaches here: a caller's argument error (a partial or
-        # mis-shaped parameter set) raises a plain ValueError from ``resolve``, which
-        # this narrowed except lets propagate, so spi raises where it once fell back
-        _default_fallback_strategy.log_fallback_warning(str(e), context=fallback_context)
-
-        # the fall back refits the scaled input, never the Pearson result it replaces;
-        # the fitted distribution is built here rather than inside the transform so a
-        # caller reporting the fit can name the distribution it actually used
-        fallback = FittedDistribution.resolve(
-            values,
-            Distribution.gamma,
-            data_start_year,
-            calibration_start_year,
-            calibration_end_year,
-            periodicity,
-        )
-        fallback_values = fallback.transform(values, output_scale, zero_handling=zero_handling)
-        return fallback_values, True, {"alpha": fallback.parameters["alpha"], "beta": fallback.parameters["beta"]}
-
-    return standardized, False, None
+    _default_fallback_strategy.log_fallback_warning(reason, context=fallback_context)
+    fitted = FittedDistribution.resolve(
+        values,
+        Distribution.gamma,
+        data_start_year,
+        calibration_start_year,
+        calibration_end_year,
+        periodicity,
+    )
+    return fitted, transform(fitted, values) if transform is not None else None
 
 
 def fit_and_standardize(
@@ -3859,19 +3774,7 @@ def fit_and_standardize(
         )
         return fitted.transform(values, output_scale, zero_handling=zero_handling)
 
-    if not fallback_to_gamma:
-        fitted = FittedDistribution.resolve(
-            values,
-            distribution,
-            data_start_year,
-            calibration_start_year,
-            calibration_end_year,
-            periodicity,
-            fitting_params,
-        )
-        return fitted.transform(values, output_scale, zero_handling=zero_handling)
-
-    standardized, _, _ = _fit_pearson_with_fallback(
+    _, standardized = _resolve_pearson_with_fallback(
         values,
         distribution,
         data_start_year,
@@ -3879,10 +3782,12 @@ def fit_and_standardize(
         calibration_end_year,
         periodicity,
         fitting_params,
-        fallback_context,
-        output_scale,
-        zero_handling=zero_handling,
+        fallback_to_gamma=fallback_to_gamma,
+        fallback_context=fallback_context,
+        transform=lambda fitted, prepared: fitted.transform(prepared, output_scale, zero_handling=zero_handling),
     )
+    if standardized is None:
+        raise RuntimeError("Pearson standardization returned no transformed values")
     return standardized
 
 
@@ -3972,66 +3877,6 @@ def _ks_fit_diagnostics(
     return ks_statistic, ks_p_value, n_valid
 
 
-def _resolve_pearson_diagnostics_fit(
-    values: np.ndarray,
-    distribution: "Distribution",
-    data_start_year: int,
-    calibration_start_year: int,
-    calibration_end_year: int,
-    periodicity: Periodicity,
-    fitting_params: dict[str, Any] | None,
-    *,
-    fallback_to_gamma: bool,
-    fallback_context: str,
-) -> tuple[FittedDistribution, bool]:
-    """Resolve a Pearson Type III diagnostic fit, applying the two gamma fall-back triggers."""
-    fell_back_to_gamma = False
-    try:
-        fitted = FittedDistribution.resolve(
-            values,
-            distribution,
-            data_start_year,
-            calibration_start_year,
-            calibration_end_year,
-            periodicity,
-            fitting_params,
-        )
-        # the second fall-back trigger: a fit that lost more than half of the input's
-        # valid values, judged from the fit outcome rather than a discarded transform
-        lost_valid_fraction = _pearson_lost_valid_fraction(values, fitted.parameters) if fallback_to_gamma else 0.0
-    except DistributionFittingError as exc:
-        # a failed Pearson fit is the fall back's first trigger; it is decided from
-        # the fit itself, so the diagnostics surface never runs the transform
-        if not fallback_to_gamma:
-            raise
-        _default_fallback_strategy.log_fallback_warning(str(exc), context=fallback_context)
-        fitted = FittedDistribution.resolve(
-            values,
-            Distribution.gamma,
-            data_start_year,
-            calibration_start_year,
-            calibration_end_year,
-            periodicity,
-        )
-        fell_back_to_gamma = True
-    else:
-        if fallback_to_gamma and lost_valid_fraction > _default_fallback_strategy.max_nan_percentage:
-            _default_fallback_strategy.log_fallback_warning(
-                "Pearson distribution fitting resulted in excessive missing values",
-                context=fallback_context,
-            )
-            fitted = FittedDistribution.resolve(
-                values,
-                Distribution.gamma,
-                data_start_year,
-                calibration_start_year,
-                calibration_end_year,
-                periodicity,
-            )
-            fell_back_to_gamma = True
-    return fitted, fell_back_to_gamma
-
-
 def fit_diagnostics(
     values: np.ndarray,
     distribution: "Distribution",
@@ -4094,7 +3939,7 @@ def fit_diagnostics(
 
     fell_back_to_gamma = False
     if distribution.value == "pearson":
-        fitted, fell_back_to_gamma = _resolve_pearson_diagnostics_fit(
+        fitted, _ = _resolve_pearson_with_fallback(
             values,
             distribution,
             data_start_year,
@@ -4105,6 +3950,7 @@ def fit_diagnostics(
             fallback_to_gamma=fallback_to_gamma,
             fallback_context=fallback_context,
         )
+        fell_back_to_gamma = fitted.distribution is Distribution.gamma
     else:
         fitted = FittedDistribution.resolve(
             values,
