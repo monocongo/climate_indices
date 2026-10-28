@@ -392,9 +392,8 @@ exceptions, callbacks, logging, or printing keep the Python path, because the
 kernels do not implement NumPy's reporting policies;
 - the extension exports the kernel: probe with
 `_native_backend.kernels(_native, "<kernel>")`, so an extension built before the
-port falls back to Python. `compute`, `eto`, and `pm_eto` probe after every other
-condition, just before the call, because their parity recorders count a probe as a
-read.
+port falls back to Python. Probe after the other routing checks, just before the
+kernel call. `NativeRecorder` records kernel calls, not availability probes.
 
 A kernel is never retried in Python after a Rust runtime error: the exception
 propagates, or `_native_backend.converging` or `finite_results` re-raises it as the
@@ -416,13 +415,13 @@ and the Palmer suite patches `palmer._native`. `conftest.disable_native(monkeypa
 Python implementations.
 Tests that establish invocation assert the recorded call set, so a run that never
 reached Rust fails instead of passing Python against Python; result-only comparisons
-discard the call set, and intentional-fallback cases assert an empty one. The compute
-guards probe with `_native_backend.kernels`, which the compute recorder also records,
-so a stale extension that imports but predates an export records the probe, falls
-back to Python, and still satisfies the expected call set: the probe is never
-evidence of invocation, and the extension must be rebuilt after adding a kernel. Cover the edge
-cases the doc block promises: all-missing and all-zero columns, a constant column,
-supplied parameters, and masked or unaligned inputs that must fall back.
+discard the call set, and intentional-fallback cases assert an empty one.
+`NativeRecorder` records kernel calls, not the availability probes that
+`_native_backend.kernels` makes. If an extension lacks a kernel, dispatch falls back
+to Python without recording a call to that kernel. A test that expects that call
+fails. Rebuild the extension after adding a kernel. Cover the edge cases that the
+doc block promises: all-missing and all-zero columns, a constant column, supplied
+parameters, and masked or unaligned inputs that must fall back.
 
 A test that targets the Python reference itself uses the `python_backend` fixture
 from `tests/conftest.py`, which sets the `_native` attribute of every dispatch module
