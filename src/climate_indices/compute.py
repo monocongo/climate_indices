@@ -4,7 +4,6 @@ Common classes and functions used to compute the various climate indices.
 
 import functools
 import math
-import sys
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -15,7 +14,7 @@ import scipy.special
 import scipy.stats
 from structlog.stdlib import BoundLogger
 
-from climate_indices import lmoments, utils
+from climate_indices import _native_backend, lmoments, utils
 from climate_indices._calibration_period import MIN_CALIBRATION_YEARS as MIN_CALIBRATION_YEARS
 from climate_indices._calibration_period import CalibrationPeriod, resolve_calibration_period
 from climate_indices.exceptions import (
@@ -45,12 +44,9 @@ from climate_indices.vocabulary import _validate_aggregation as _validate_aggreg
 from climate_indices.vocabulary import _validate_zero_handling as _validate_zero_handling
 from climate_indices.vocabulary import validate_output_scale as validate_output_scale
 
-try:
-    # the optional Rust kernels (docs/architecture.md); without the extension every
-    # computation below runs its pure-Python implementation
-    from climate_indices import _native
-except ImportError:
-    _native = None  # type: ignore[assignment]
+# this family's switch on the optional Rust kernels (climate_indices._native_backend);
+# None runs every computation below on its pure-Python implementation
+_native = _native_backend.EXTENSION
 
 # declare the function names that should be included in the public API for this module
 __all__ = [
@@ -109,14 +105,6 @@ GOODNESS_OF_FIT_P_VALUE_THRESHOLD = 0.05
 _BETA_SUPPORT_TOLERANCE = 1e-12
 
 
-class _PearsonFitLost(Exception):
-    """The Pearson Type III fit lost too many of the input's valid values to be usable.
-
-    A fit outcome that warrants a gamma fall back, not an argument error: it is raised
-    after a fit has run, so ``_fit_pearson_with_fallback`` may act on it.
-    """
-
-
 class DistributionFallbackStrategy:
     """Strategy class for managing Pearson→Gamma distribution fallback logic."""
 
@@ -170,11 +158,6 @@ class DistributionFallbackStrategy:
 
 # Global fallback strategy instance
 _default_fallback_strategy = DistributionFallbackStrategy()
-
-
-# defensive guard: every native dispatch first checks _native_float64 or
-# _native is not None, so this only fires if the extension disappears in between
-_NATIVE_EXTENSION_MISSING = "the native extension is not installed"
 
 
 def _map_non_normal_scale(probabilities: np.ndarray, output_scale: OutputScale) -> np.ndarray | None:
@@ -741,10 +724,9 @@ def pearson_parameters(
     )
     log = log.bind(calibration_period=f"{period.start_year}-{period.end_year}")
 
-    if _native_lmoment_input(calibration_values):
-        probabilities_of_zero, locs, scales, skews, failed_fitting_count = _native_pearson_parameters(
-            calibration_values
-        )
+    native_fit = _native_pearson_parameters(calibration_values)
+    if native_fit is not None:
+        probabilities_of_zero, locs, scales, skews, failed_fitting_count = native_fit
         total_fitting_count = math.prod(calibration_values.shape[1:])
     elif calibration_values.ndim > 2:
         (
@@ -1330,6 +1312,33 @@ def _ks_exact_p_value(sorted_values: np.ndarray, cdf_values: np.ndarray) -> Any:
     return scipy.stats.kstest(sorted_values, lambda _: cdf_values).pvalue
 
 
+def _warn_poor_fit(
+    poor_fits: list[tuple[int, float]], distribution: Distribution, total_steps: int, *, spatial: bool = False
+) -> None:
+    """Emit one warning with at most five examples for a scalar or spatial fit."""
+    if not poor_fits:
+        return
+    example_text = ", ".join(f"step {idx} (p={p:.4f})" for idx, p in poor_fits[:5])
+    if len(poor_fits) > 5:
+        example_text += f", and {len(poor_fits) - 5} more"
+    label = "Gamma" if distribution is Distribution.gamma else "Pearson Type III"
+    unit = "time step/cell combinations" if spatial else "time steps"
+    message = (
+        f"{label} distribution shows poor goodness-of-fit for {len(poor_fits)} of "
+        f"{total_steps} {unit} (p < {GOODNESS_OF_FIT_P_VALUE_THRESHOLD}). "
+        f"Examples: {example_text}. Consider using a different distribution or "
+        f"investigating data quality issues."
+    )
+    warning = GoodnessOfFitWarning(
+        message,
+        distribution_name="gamma" if distribution is Distribution.gamma else "pearson3",
+        threshold=GOODNESS_OF_FIT_P_VALUE_THRESHOLD,
+        poor_fit_count=len(poor_fits),
+        total_steps=total_steps,
+    )
+    warnings.warn(warning, stacklevel=4)
+
+
 def _check_goodness_of_fit_gamma(
     calibration_values: np.ndarray,
     alphas: np.ndarray,
@@ -1391,27 +1400,7 @@ def _check_goodness_of_fit_gamma(
                 # ignore fitting errors during goodness-of-fit check
                 continue
 
-    if poor_fit_steps:
-        # show up to 5 examples
-        examples = poor_fit_steps[:5]
-        example_text = ", ".join([f"step {idx} (p={p:.4f})" for idx, p in examples])
-        if len(poor_fit_steps) > 5:
-            example_text += f", and {len(poor_fit_steps) - 5} more"
-
-        message = (
-            f"Gamma distribution shows poor goodness-of-fit for {len(poor_fit_steps)} of "
-            f"{time_steps} time steps (p < {GOODNESS_OF_FIT_P_VALUE_THRESHOLD}). "
-            f"Examples: {example_text}. Consider using a different distribution or "
-            f"investigating data quality issues."
-        )
-        warning = GoodnessOfFitWarning(
-            message,
-            distribution_name="gamma",
-            threshold=GOODNESS_OF_FIT_P_VALUE_THRESHOLD,
-            poor_fit_count=len(poor_fit_steps),
-            total_steps=time_steps,
-        )
-        warnings.warn(warning, stacklevel=3)
+    _warn_poor_fit(poor_fit_steps, Distribution.gamma, time_steps)
 
 
 def _spatial_poor_fits(
@@ -1513,45 +1502,24 @@ def _check_goodness_of_fit_gamma_spatial(
         ),
     )
 
-    if not poor_fits:
-        return
-
-    # show up to 5 examples
-    examples = poor_fits[:5]
-    example_text = ", ".join([f"step {idx} (p={p:.4f})" for idx, p in examples])
-    if len(poor_fits) > 5:
-        example_text += f", and {len(poor_fits) - 5} more"
-
-    comparisons = time_steps * cell_count
-    message = (
-        f"Gamma distribution shows poor goodness-of-fit for {len(poor_fits)} of "
-        f"{comparisons} time step/cell combinations (p < {GOODNESS_OF_FIT_P_VALUE_THRESHOLD}). "
-        f"Examples: {example_text}. Consider using a different distribution or "
-        f"investigating data quality issues."
-    )
-    warning = GoodnessOfFitWarning(
-        message,
-        distribution_name="gamma",
-        threshold=GOODNESS_OF_FIT_P_VALUE_THRESHOLD,
-        poor_fit_count=len(poor_fits),
-        total_steps=comparisons,
-    )
-    warnings.warn(warning, stacklevel=3)
+    _warn_poor_fit(poor_fits, Distribution.gamma, time_steps * cell_count, spatial=True)
 
 
 def _native_gamma_ks_statistics(values: np.ndarray, alphas: np.ndarray, betas: np.ndarray) -> np.ndarray | None:
     """Batched CDF and D statistics, or None where Python keeps the check."""
     if (
         values.ndim != 2
-        or not _native_float64s(values, alphas, betas)
+        or not _native_float64(values, alphas, betas)
         or any(parameter.shape != (values.shape[1],) for parameter in (alphas, betas))
-        or _native is None
-        or not hasattr(_native, "gamma_ks_statistics")
         # Rust cannot emit SciPy's caller-requested special-function diagnostics.
         or any(policy != "ignore" for name, policy in scipy.special.geterr().items() if name != "memory")
     ):
         return None
-    return _native.gamma_ks_statistics(values, alphas, betas)
+    native = _native_backend.kernels(_native, "gamma_ks_statistics")
+    if native is None:
+        return None
+    statistics: np.ndarray = native.gamma_ks_statistics(values, alphas, betas)
+    return statistics
 
 
 def _gamma_ks_statistics(values: np.ndarray, alphas: np.ndarray, betas: np.ndarray) -> np.ndarray:
@@ -1579,16 +1547,17 @@ def _native_pearson_ks_statistics(
     """Batched CDF and D statistics, or None where Python keeps the check."""
     if (
         values.ndim != 2
-        or not _native_float64s(values, locs, scales, skews)
+        or not _native_float64(values, locs, scales, skews)
         or any(parameter.shape != (values.shape[1],) for parameter in (locs, scales, skews))
         or np.any(np.abs(values) > 1e100)
-        or _native is None
-        or not hasattr(_native, "pearson_ks_statistics")
-        # Rust cannot emit SciPy's caller-requested special-function diagnostics.
-        or any(policy != "ignore" for name, policy in scipy.special.geterr().items() if name != "memory")
     ):
         return None
-    return _native.pearson_ks_statistics(values, skews, locs, scales)
+    native = _native_backend.kernels(_native, "pearson_ks_statistics")
+    # Rust cannot emit SciPy's caller-requested special-function diagnostics.
+    if native is None or any(policy != "ignore" for name, policy in scipy.special.geterr().items() if name != "memory"):
+        return None
+    statistics: np.ndarray = native.pearson_ks_statistics(values, skews, locs, scales)
+    return statistics
 
 
 def _pearson_ks_statistics(values: np.ndarray, locs: np.ndarray, scales: np.ndarray, skews: np.ndarray) -> np.ndarray:
@@ -1675,27 +1644,7 @@ def _check_goodness_of_fit_pearson(
                 # ignore fitting errors during goodness-of-fit check
                 continue
 
-    if poor_fit_steps:
-        # show up to 5 examples
-        examples = poor_fit_steps[:5]
-        example_text = ", ".join([f"step {idx} (p={p:.4f})" for idx, p in examples])
-        if len(poor_fit_steps) > 5:
-            example_text += f", and {len(poor_fit_steps) - 5} more"
-
-        message = (
-            f"Pearson Type III distribution shows poor goodness-of-fit for {len(poor_fit_steps)} of "
-            f"{time_steps} time steps (p < {GOODNESS_OF_FIT_P_VALUE_THRESHOLD}). "
-            f"Examples: {example_text}. Consider using a different distribution or "
-            f"investigating data quality issues."
-        )
-        warning = GoodnessOfFitWarning(
-            message,
-            distribution_name="pearson3",
-            threshold=GOODNESS_OF_FIT_P_VALUE_THRESHOLD,
-            poor_fit_count=len(poor_fit_steps),
-            total_steps=time_steps,
-        )
-        warnings.warn(warning, stacklevel=3)
+    _warn_poor_fit(poor_fit_steps, Distribution.pearson, time_steps)
 
 
 def _check_goodness_of_fit_pearson_spatial(
@@ -1756,30 +1705,7 @@ def _check_goodness_of_fit_pearson_spatial(
         lambda column, candidate: cdf_values[(slice(0, column.size),) + candidate],
     )
 
-    if not poor_fits:
-        return
-
-    # show up to 5 examples
-    examples = poor_fits[:5]
-    example_text = ", ".join([f"step {idx} (p={p:.4f})" for idx, p in examples])
-    if len(poor_fits) > 5:
-        example_text += f", and {len(poor_fits) - 5} more"
-
-    comparisons = time_steps * cell_count
-    message = (
-        f"Pearson Type III distribution shows poor goodness-of-fit for {len(poor_fits)} of "
-        f"{comparisons} time step/cell combinations (p < {GOODNESS_OF_FIT_P_VALUE_THRESHOLD}). "
-        f"Examples: {example_text}. Consider using a different distribution or "
-        f"investigating data quality issues."
-    )
-    warning = GoodnessOfFitWarning(
-        message,
-        distribution_name="pearson3",
-        threshold=GOODNESS_OF_FIT_P_VALUE_THRESHOLD,
-        poor_fit_count=len(poor_fits),
-        total_steps=comparisons,
-    )
-    warnings.warn(warning, stacklevel=3)
+    _warn_poor_fit(poor_fits, Distribution.pearson, time_steps * cell_count, spatial=True)
 
 
 def _replace_zeros_with_nan(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -1801,35 +1727,9 @@ def _replace_zeros_with_nan(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]
     return zero_mask, values_copy
 
 
-def _plain_float64(array: np.ndarray) -> bool:
-    """Whether an operand is a plain, aligned float64 array."""
-    return (
-        type(array) is np.ndarray
-        and array.dtype == np.float64
-        and array.flags.aligned
-        and array.ctypes.data % array.dtype.alignment == 0
-    )
-
-
-def _native_policy_allows() -> bool:
-    """Whether Rust can preserve the caller's floating-point reporting policy."""
-    return (
-        all(policy == "ignore" for policy in np.geterr().values())
-        and not getattr(sys.flags, "context_aware_warnings", False)
-        and not any(
-            action == "error" and issubclass(RuntimeWarning, category) for action, _, category, _, _ in warnings.filters
-        )
-    )
-
-
-def _native_float64(array: np.ndarray) -> bool:
-    """Whether the extension can take an operand without changing reporting."""
-    return _native is not None and _plain_float64(array) and _native_policy_allows()
-
-
-def _native_float64s(*arrays: np.ndarray) -> bool:
-    """Check operand layouts and the shared reporting policy once per call."""
-    return _native is not None and all(_plain_float64(array) for array in arrays) and _native_policy_allows()
+def _native_float64(*arrays: np.ndarray) -> bool:
+    """Whether compute's switch is on and the extension takes every operand without changing reporting."""
+    return _native is not None and _native_backend.takes(*arrays)
 
 
 def _as_columns(values: np.ndarray) -> np.ndarray:
@@ -1845,12 +1745,7 @@ def _per_column(parameter: np.ndarray, values: np.ndarray) -> np.ndarray | None:
     parameter can do; Python handles those. A masked array or ``DataArray`` is not
     plain: the NumPy path reads its mask or labels, which a bare buffer would drop.
     """
-    if (
-        type(parameter) is not np.ndarray
-        or parameter.dtype != np.float64
-        or not parameter.flags.aligned
-        or parameter.ctypes.data % parameter.dtype.alignment != 0
-    ):
+    if not _native_backend.plain_float64(parameter):
         return None
     if parameter.ndim == values.ndim:
         if parameter.shape[0] != 1:
@@ -1865,11 +1760,19 @@ def _per_column(parameter: np.ndarray, values: np.ndarray) -> np.ndarray | None:
     return np.broadcast_to(parameter, values.shape[1:]).reshape(-1)
 
 
-def _native_gamma_parameters(calibration_values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """The Rust method-of-moments gamma fit, shaped like the NumPy block it mirrors."""
-    if _native is None:  # every caller dispatches through _native_float64; this narrows the type
-        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
-    alphas, betas = _native.gamma_parameters(_as_columns(calibration_values))
+def _native_gamma_parameters(calibration_values: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
+    """The Rust method-of-moments gamma fit, shaped like the NumPy block it mirrors, or None.
+
+    np.nanmean emits an empty-slice warning even when floating-point errors are
+    ignored, so a column with no positive value (all missing, zero, or negative)
+    keeps the Python reductions, whose log mean is then empty.
+    """
+    if not _native_float64(calibration_values) or not np.all(np.any(calibration_values > 0.0, axis=0)):
+        return None
+    native = _native_backend.kernels(_native, "gamma_parameters")
+    if native is None:
+        return None
+    alphas, betas = native.gamma_parameters(_as_columns(calibration_values))
     step_shape = calibration_values.shape[1:]
     return alphas.reshape(step_shape), betas.reshape(step_shape)
 
@@ -1880,14 +1783,17 @@ def _native_gamma_probabilities(
     """The Rust zero-inflated gamma CDF, or None where the Python implementation runs."""
     if not _native_float64(values):
         return None
-    if _native is None:  # _native_float64 guarantees it; this narrows the type
-        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
     alpha_columns = _per_column(alphas, values)
     beta_columns = _per_column(betas, values)
     zero_columns = _per_column(probabilities_of_zero, values)
     if alpha_columns is None or beta_columns is None or zero_columns is None:
         return None
-    probabilities = _native.gamma_probabilities(_as_columns(values), alpha_columns, beta_columns, zero_columns)
+    native = _native_backend.kernels(_native, "gamma_probabilities")
+    if native is None:
+        return None
+    probabilities: np.ndarray = native.gamma_probabilities(
+        _as_columns(values), alpha_columns, beta_columns, zero_columns
+    )
     return probabilities.reshape(values.shape)
 
 
@@ -1895,13 +1801,14 @@ def _native_pnp_percentages(
     scale_sums: np.ndarray, calibration_sums: np.ndarray, period_length: int
 ) -> np.ndarray | None:
     """The Rust PNP normals and their ratios, or None where the Python implementation runs."""
-    if not _native_float64s(scale_sums, calibration_sums):
+    if not _native_float64(scale_sums, calibration_sums):
         return None
-    if _native is None:  # _native_float64 guarantees it; this narrows the type
-        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
+    native = _native_backend.kernels(_native, "pnp_normals", "pnp_percentages")
+    if native is None:
+        return None
     period_sums = _as_columns(calibration_sums)
-    normals = _native.pnp_normals(period_sums).reshape(period_length, -1)
-    percentages = _native.pnp_percentages(_as_columns(scale_sums), normals)
+    normals = native.pnp_normals(period_sums).reshape(period_length, -1)
+    percentages: np.ndarray = native.pnp_percentages(_as_columns(scale_sums), normals)
     return percentages.reshape(scale_sums.shape)
 
 
@@ -1913,9 +1820,10 @@ def _native_pci(rainfall_mm: np.ndarray) -> np.ndarray | None:
     """
     if rainfall_mm.ndim != 1 or not _native_float64(rainfall_mm):
         return None
-    if _native is None:  # _native_float64 guarantees it; this narrows the type
-        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
-    return np.array([_native.pci(rainfall_mm)])
+    native = _native_backend.kernels(_native, "pci")
+    if native is None:
+        return None
+    return np.array([native.pci(rainfall_mm)])
 
 
 # The L-moment fits take a block only when every value is NaN or small enough that the
@@ -1935,15 +1843,19 @@ def _native_lmoment_input(calibration_values: np.ndarray) -> bool:
 
 def _native_pearson_parameters(
     calibration_values: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]:
-    """The Rust Pearson Type III fit, shaped like the NumPy block it mirrors.
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, int] | None:
+    """The Rust Pearson Type III fit, shaped like the NumPy block it mirrors, or None.
 
     :return: probability of zero, loc, scale, and skew shaped (time_steps, ``*cells``),
-        and the count of (time step, cell) fits that failed
+        and the count of (time step, cell) fits that failed; None where the Python
+        fit runs
     """
-    if _native is None:  # every caller dispatches through _native_float64; this narrows the type
-        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
-    probabilities_of_zero, locs, scales, skews, valid = _native.pearson_parameters(_as_columns(calibration_values))
+    if not _native_lmoment_input(calibration_values):
+        return None
+    native = _native_backend.kernels(_native, "pearson_parameters")
+    if native is None:
+        return None
+    probabilities_of_zero, locs, scales, skews, valid = native.pearson_parameters(_as_columns(calibration_values))
     step_shape = calibration_values.shape[1:]
     return (
         probabilities_of_zero.reshape(step_shape),
@@ -1958,28 +1870,32 @@ def _native_pearson_cdf(values: np.ndarray, skew: np.ndarray, loc: np.ndarray, s
     """The Rust ``scipy.stats.pearson3.cdf``, or None where the Python implementation runs."""
     if values.ndim < 2 or not _native_float64(values):
         return None
-    if _native is None:  # _native_float64 guarantees it; this narrows the type
-        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
     skew_columns = _per_column(skew, values)
     loc_columns = _per_column(loc, values)
     scale_columns = _per_column(scale, values)
     if skew_columns is None or loc_columns is None or scale_columns is None:
         return None
-    cdf = _native.pearson_cdf(_as_columns(values), skew_columns, loc_columns, scale_columns)
+    native = _native_backend.kernels(_native, "pearson_cdf")
+    if native is None:
+        return None
+    cdf: np.ndarray = native.pearson_cdf(_as_columns(values), skew_columns, loc_columns, scale_columns)
     return cdf.reshape(values.shape)
 
 
 def _native_loglogistic_parameters(
     calibration_values: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
-    """The Rust GLO fit, shaped like the NumPy block it mirrors.
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, int] | None:
+    """The Rust GLO fit, shaped like the NumPy block it mirrors, or None.
 
     :return: loc, scale, and shape shaped (time_steps, ``*cells``), and the count of
-        (time step, cell) fits that failed
+        (time step, cell) fits that failed; None where the Python fit runs
     """
-    if _native is None:  # every caller dispatches through _native_float64; this narrows the type
-        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
-    locs, scales, shapes, valid = _native.loglogistic_parameters(_as_columns(calibration_values))
+    if not _native_lmoment_input(calibration_values):
+        return None
+    native = _native_backend.kernels(_native, "loglogistic_parameters")
+    if native is None:
+        return None
+    locs, scales, shapes, valid = native.loglogistic_parameters(_as_columns(calibration_values))
     step_shape = calibration_values.shape[1:]
     return (
         locs.reshape(step_shape),
@@ -1995,34 +1911,39 @@ def _native_loglogistic_cdf(
     """The Rust GLO CDF clipped to [0, 1], or None where the Python implementation runs."""
     if values.ndim < 2 or not _native_float64(values):
         return None
-    if _native is None:  # _native_float64 guarantees it; this narrows the type
-        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
     loc_columns = _per_column(locs, values)
     scale_columns = _per_column(scales, values)
     shape_columns = _per_column(shapes, values)
     if loc_columns is None or scale_columns is None or shape_columns is None:
         return None
-    probabilities = _native.loglogistic_cdf(_as_columns(values), loc_columns, scale_columns, shape_columns)
+    native = _native_backend.kernels(_native, "loglogistic_cdf")
+    if native is None:
+        return None
+    probabilities: np.ndarray = native.loglogistic_cdf(_as_columns(values), loc_columns, scale_columns, shape_columns)
     return probabilities.reshape(values.shape)
 
 
 def _native_tukey_probabilities(climatology: np.ndarray, values: np.ndarray, pads: np.ndarray) -> np.ndarray | None:
     """The Rust rank count and Tukey plotting position, or None where the Python implementation runs."""
-    if not _native_float64s(climatology, values) or not hasattr(_native, "tukey_probabilities"):
+    if not _native_float64(climatology, values):
         return None
-    if _native is None:  # _native_float64 guarantees it; this narrows the type
-        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
+    native = _native_backend.kernels(_native, "tukey_probabilities")
+    if native is None:
+        return None
     # the per-column pad counts arrive as NumPy integers; the kernel takes float64
-    return _native.tukey_probabilities(climatology, values, np.asarray(pads, dtype=np.float64))
+    probabilities: np.ndarray = native.tukey_probabilities(climatology, values, np.asarray(pads, dtype=np.float64))
+    return probabilities
 
 
 def _native_hastings_inverse_normal(probabilities: np.ndarray) -> np.ndarray | None:
     """The Rust Hastings inverse normal, or None where the Python implementation runs."""
-    if not _native_float64(probabilities) or not hasattr(_native, "hastings_inverse_normal"):
+    if not _native_float64(probabilities):
         return None
-    if _native is None:  # _native_float64 guarantees it; this narrows the type
-        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
-    return _native.hastings_inverse_normal(probabilities)
+    native = _native_backend.kernels(_native, "hastings_inverse_normal")
+    if native is None:
+        return None
+    normal: np.ndarray = native.hastings_inverse_normal(probabilities)
+    return normal
 
 
 def gamma_parameters(
@@ -2105,11 +2026,9 @@ def gamma_parameters(
 
     # compute the gamma distribution's shape and scale parameters, alpha and beta
     # using method of moments estimation
-    # np.nanmean emits an empty-slice warning even when floating-point errors
-    # are ignored, so a column with no positive value (all missing, zero, or
-    # negative) must keep the Python reductions, whose log mean is then empty.
-    if _native_float64(calibration_values) and np.all(np.any(calibration_values > 0.0, axis=0)):
-        alphas, betas = _native_gamma_parameters(calibration_values)
+    native_fit = _native_gamma_parameters(calibration_values)
+    if native_fit is not None:
+        alphas, betas = native_fit
     else:
         means = np.nanmean(calibration_values, axis=0)
         log_means = np.log(means)
@@ -2608,10 +2527,9 @@ def _gamma_fit(
     # as determined by the normal distribution's quantile (or inverse
     # cumulative distribution) function
     result_values: np.ndarray
-    if _native_float64(probabilities):
-        if _native is None:  # _native_float64 guarantees it; this narrows the type
-            raise RuntimeError(_NATIVE_EXTENSION_MISSING)
-        result_values = _native.norm_ppf(probabilities)
+    native = _native_backend.kernels(_native, "norm_ppf") if _native_float64(probabilities) else None
+    if native is not None:
+        result_values = native.norm_ppf(probabilities)
     else:
         try:
             result_values = scipy.stats.norm.ppf(probabilities)
@@ -2778,10 +2696,9 @@ def _beta_fit(
     # as determined by the normal distribution's quantile (or inverse
     # cumulative distribution) function
     result_values: np.ndarray
-    if _native_float64(probabilities):
-        if _native is None:  # _native_float64 guarantees it; this narrows the type
-            raise RuntimeError(_NATIVE_EXTENSION_MISSING)
-        result_values = _native.norm_ppf(probabilities)
+    native = _native_backend.kernels(_native, "norm_ppf") if _native_float64(probabilities) else None
+    if native is not None:
+        result_values = native.norm_ppf(probabilities)
     else:
         try:
             result_values = scipy.stats.norm.ppf(probabilities)
@@ -2854,8 +2771,9 @@ def loglogistic_parameters(
     )
     log = log.bind(calibration_period=f"{period.start_year}-{period.end_year}")
 
-    if _native_lmoment_input(calibration_values):
-        locs, scales, shapes, failed_fitting_count = _native_loglogistic_parameters(calibration_values)
+    native_fit = _native_loglogistic_parameters(calibration_values)
+    if native_fit is not None:
+        locs, scales, shapes, failed_fitting_count = native_fit
         total_fitting_count = math.prod(calibration_values.shape[1:])
     elif calibration_values.ndim > 2:
         locs, scales, shapes, failed_fitting_count = _loglogistic_parameters_spatial(calibration_values)
@@ -3067,15 +2985,12 @@ def _native_empirical_fit(
     values: np.ndarray, calibration_values: np.ndarray, output_scale: OutputScale
 ) -> np.ndarray | None:
     """Use native ranking for matching float64 columns; keep broadcasting in Python."""
-    if (
-        not _native_float64s(values, calibration_values)
-        or values.shape[1:] != calibration_values.shape[1:]
-        or not hasattr(_native, "empirical_transform")
-    ):
+    if not _native_float64(values, calibration_values) or values.shape[1:] != calibration_values.shape[1:]:
         return None
-    if _native is None:  # _native_float64s guarantees it; this narrows the type
-        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
-    result = _native.empirical_transform(
+    native = _native_backend.kernels(_native, "empirical_transform")
+    if native is None:
+        return None
+    result: np.ndarray = native.empirical_transform(
         _as_columns(calibration_values), _as_columns(values), output_scale == "normal"
     ).reshape(values.shape)
     if output_scale == "bounded":
@@ -3611,9 +3526,13 @@ class FittedDistribution:
         return (*statistics, parameters)
 
 
-def _pearson_lost_valid_fraction(values: np.ndarray, parameters: dict[str, np.ndarray]) -> float:
-    """Fraction of the input's valid values a Pearson Type III transform would lose.
+def _pearson_lost_valid_fraction(
+    values: np.ndarray, parameters: dict[str, np.ndarray], standardized: np.ndarray | None = None
+) -> float:
+    """Fraction of valid input values lost by an actual or predicted Pearson transform.
 
+    If transformed values are supplied, count their newly missing values directly.
+    Otherwise, predict the loss from the fitted CDF and the transform's masks.
     The transform turns a value below 0.0005 into a finite sentinel wherever the zero
     mass is defined (``_pearson_fit``'s zero and trace masks), so only a NaN fitted CDF
     at or above that threshold is lost. A NaN zero mass loses every value. This mirrors
@@ -3623,6 +3542,8 @@ def _pearson_lost_valid_fraction(values: np.ndarray, parameters: dict[str, np.nd
     valid = ~np.isnan(values)
     if not valid.any():
         return 0.0
+    if standardized is not None:
+        return float(np.count_nonzero(np.isnan(standardized[valid]))) / float(np.count_nonzero(valid))
     parameters = _broadcast_parameters(values, parameters)
     probabilities_of_zero = np.broadcast_to(np.asarray(parameters["prob_zero"], dtype=float), values.shape)
     skews = np.asarray(parameters["skew"], dtype=float)
@@ -3643,44 +3564,29 @@ def _pearson_lost_valid_fraction(values: np.ndarray, parameters: dict[str, np.nd
     return float(np.count_nonzero(lost & valid)) / float(np.count_nonzero(valid))
 
 
-def _fit_pearson_with_fallback(
+def _resolve_pearson_with_fallback(
     values: np.ndarray,
-    distribution: "Distribution",
+    distribution: Distribution,
     data_start_year: int,
     calibration_start_year: int,
     calibration_end_year: int,
     periodicity: Periodicity,
     fitting_params: dict[str, Any] | None,
-    fallback_context: str,
-    output_scale: OutputScale = "normal",
     *,
-    zero_handling: ZeroHandling = "classic",
-) -> tuple[np.ndarray, bool, dict[str, np.ndarray] | None]:
-    """Transform a Pearson Type III fit, falling back to gamma when the fit fails.
+    fallback_to_gamma: bool,
+    fallback_context: str,
+    transform: Callable[[FittedDistribution, np.ndarray], np.ndarray] | None = None,
+) -> tuple[FittedDistribution, np.ndarray | None]:
+    """Resolve one whole-block fallback decision and report the distribution used.
 
-    The fall back is a property of the whole input block, not of one grid cell: when a
-    Pearson Type III fit fails outright, or loses more than half of the input's valid
-    values, the scaled input is refitted with gamma. A value that was already missing
-    does not count against the fit.
-
-    Args:
-        values: 2-D (years, periods) or folded (years, periods, ``*cells``) scaled values.
-        distribution: The Pearson Type III ``indices.Distribution`` member to fit.
-        fitting_params: Pre-computed parameters, or None to fit them from the data.
-        fallback_context: Context included in the fall-back warning log message.
-        output_scale: One of ``compute.OUTPUT_SCALES``, applied to whichever
-            distribution produces the result.
-        zero_handling: Zero-placement mode, applied by whichever transform runs.
-
-    Returns:
-        The transformed values, whether the gamma fall back was used, and the fitted
-        gamma parameters when it was (otherwise None).
+    Only a DistributionFittingError during fit resolution or excessive loss permits
+    fallback. Transform errors, argument errors, and warnings propagate.
+    The transform path measures its actual lost values; diagnostics uses the mirrored
+    CDF masks without running a transform (#1216).
+    This is the only distinction between the two paths' fallback measurements.
     """
     if values.ndim == 1:
-        # the Pearson fit reshapes a 1-D series to (years, periods); do it here so the
-        # valid-input mask below has the shape of the fitted result
         values = _validate_array(values, periodicity)
-
     try:
         fitted = FittedDistribution.resolve(
             values,
@@ -3691,39 +3597,30 @@ def _fit_pearson_with_fallback(
             periodicity,
             fitting_params,
         )
-        standardized = fitted.transform(values, output_scale, zero_handling=zero_handling)
+    except DistributionFittingError as exc:
+        if not fallback_to_gamma:
+            raise
+        reason = str(exc)
+    else:
+        standardized = transform(fitted, values) if transform is not None else None
+        if not fallback_to_gamma:
+            return fitted, standardized
+        lost_fraction = _pearson_lost_valid_fraction(values, fitted.parameters, standardized)
+        if lost_fraction > _default_fallback_strategy.max_nan_percentage:
+            reason = "Pearson distribution fitting resulted in excessive missing values"
+        else:
+            return fitted, standardized
 
-        # check if fallback is needed due to excessive NaN values, judging only the
-        # values the fit lost: input that was already missing (an ocean mask, a sparse
-        # series) says nothing about whether the Pearson fit worked, and an input with
-        # nothing valid has nothing to lose. This is the transform's exact lost-value
-        # measure; fit_diagnostics mirrors it with _pearson_lost_valid_fraction, which
-        # reproduces the transform's NaN pattern without running it (#1216).
-        valid = ~np.isnan(values)
-        if valid.any() and _default_fallback_strategy.should_fallback_from_excessive_nans(standardized[valid]):
-            raise _PearsonFitLost("Pearson distribution fitting resulted in excessive missing values")
-
-    except (DistributionFittingError, _PearsonFitLost) as e:
-        # only a fit outcome reaches here: a caller's argument error (a partial or
-        # mis-shaped parameter set) raises a plain ValueError from ``resolve``, which
-        # this narrowed except lets propagate, so spi raises where it once fell back
-        _default_fallback_strategy.log_fallback_warning(str(e), context=fallback_context)
-
-        # the fall back refits the scaled input, never the Pearson result it replaces;
-        # the fitted distribution is built here rather than inside the transform so a
-        # caller reporting the fit can name the distribution it actually used
-        fallback = FittedDistribution.resolve(
-            values,
-            Distribution.gamma,
-            data_start_year,
-            calibration_start_year,
-            calibration_end_year,
-            periodicity,
-        )
-        fallback_values = fallback.transform(values, output_scale, zero_handling=zero_handling)
-        return fallback_values, True, {"alpha": fallback.parameters["alpha"], "beta": fallback.parameters["beta"]}
-
-    return standardized, False, None
+    _default_fallback_strategy.log_fallback_warning(reason, context=fallback_context)
+    fitted = FittedDistribution.resolve(
+        values,
+        Distribution.gamma,
+        data_start_year,
+        calibration_start_year,
+        calibration_end_year,
+        periodicity,
+    )
+    return fitted, transform(fitted, values) if transform is not None else None
 
 
 def fit_and_standardize(
@@ -3875,19 +3772,7 @@ def fit_and_standardize(
         )
         return fitted.transform(values, output_scale, zero_handling=zero_handling)
 
-    if not fallback_to_gamma:
-        fitted = FittedDistribution.resolve(
-            values,
-            distribution,
-            data_start_year,
-            calibration_start_year,
-            calibration_end_year,
-            periodicity,
-            fitting_params,
-        )
-        return fitted.transform(values, output_scale, zero_handling=zero_handling)
-
-    standardized, _, _ = _fit_pearson_with_fallback(
+    _, standardized = _resolve_pearson_with_fallback(
         values,
         distribution,
         data_start_year,
@@ -3895,10 +3780,12 @@ def fit_and_standardize(
         calibration_end_year,
         periodicity,
         fitting_params,
-        fallback_context,
-        output_scale,
-        zero_handling=zero_handling,
+        fallback_to_gamma=fallback_to_gamma,
+        fallback_context=fallback_context,
+        transform=lambda fitted, prepared: fitted.transform(prepared, output_scale, zero_handling=zero_handling),
     )
+    if standardized is None:
+        raise RuntimeError("Pearson standardization returned no transformed values")
     return standardized
 
 
@@ -3988,66 +3875,6 @@ def _ks_fit_diagnostics(
     return ks_statistic, ks_p_value, n_valid
 
 
-def _resolve_pearson_diagnostics_fit(
-    values: np.ndarray,
-    distribution: "Distribution",
-    data_start_year: int,
-    calibration_start_year: int,
-    calibration_end_year: int,
-    periodicity: Periodicity,
-    fitting_params: dict[str, Any] | None,
-    *,
-    fallback_to_gamma: bool,
-    fallback_context: str,
-) -> tuple[FittedDistribution, bool]:
-    """Resolve a Pearson Type III diagnostic fit, applying the two gamma fall-back triggers."""
-    fell_back_to_gamma = False
-    try:
-        fitted = FittedDistribution.resolve(
-            values,
-            distribution,
-            data_start_year,
-            calibration_start_year,
-            calibration_end_year,
-            periodicity,
-            fitting_params,
-        )
-        # the second fall-back trigger: a fit that lost more than half of the input's
-        # valid values, judged from the fit outcome rather than a discarded transform
-        lost_valid_fraction = _pearson_lost_valid_fraction(values, fitted.parameters) if fallback_to_gamma else 0.0
-    except DistributionFittingError as exc:
-        # a failed Pearson fit is the fall back's first trigger; it is decided from
-        # the fit itself, so the diagnostics surface never runs the transform
-        if not fallback_to_gamma:
-            raise
-        _default_fallback_strategy.log_fallback_warning(str(exc), context=fallback_context)
-        fitted = FittedDistribution.resolve(
-            values,
-            Distribution.gamma,
-            data_start_year,
-            calibration_start_year,
-            calibration_end_year,
-            periodicity,
-        )
-        fell_back_to_gamma = True
-    else:
-        if fallback_to_gamma and lost_valid_fraction > _default_fallback_strategy.max_nan_percentage:
-            _default_fallback_strategy.log_fallback_warning(
-                "Pearson distribution fitting resulted in excessive missing values",
-                context=fallback_context,
-            )
-            fitted = FittedDistribution.resolve(
-                values,
-                Distribution.gamma,
-                data_start_year,
-                calibration_start_year,
-                calibration_end_year,
-                periodicity,
-            )
-            fell_back_to_gamma = True
-    return fitted, fell_back_to_gamma
-
-
 def fit_diagnostics(
     values: np.ndarray,
     distribution: "Distribution",
@@ -4110,7 +3937,7 @@ def fit_diagnostics(
 
     fell_back_to_gamma = False
     if distribution.value == "pearson":
-        fitted, fell_back_to_gamma = _resolve_pearson_diagnostics_fit(
+        fitted, _ = _resolve_pearson_with_fallback(
             values,
             distribution,
             data_start_year,
@@ -4121,6 +3948,7 @@ def fit_diagnostics(
             fallback_to_gamma=fallback_to_gamma,
             fallback_context=fallback_context,
         )
+        fell_back_to_gamma = fitted.distribution is Distribution.gamma
     else:
         fitted = FittedDistribution.resolve(
             values,

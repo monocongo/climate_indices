@@ -28,6 +28,7 @@ import inspect
 import json
 import warnings
 from collections.abc import Callable, Hashable
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, TypeVar, cast
 
@@ -390,12 +391,19 @@ def _validate_calendar_secondary_inputs(
             )
 
 
+_KernelResult = TypeVar("_KernelResult")
+
+
 def _make_calendar_aware_numpy_wrapper(
-    func: Callable[..., np.ndarray[Any, Any]],
+    func: Callable[..., _KernelResult],
     valid_kwargs: dict[str, Any],
     calendar_plan: utils.CalendarPlan | None,
     core_axis_first: bool = False,
-) -> Callable[..., np.ndarray[Any, Any]]:
+    *,
+    time_series_count: int | None = None,
+    output_core_dims: tuple[str | None, ...] = ("time",),
+    time_dim: str = "time",
+) -> Callable[..., _KernelResult]:
     """Build an apply_ufunc callable that restores Gregorian daily output.
 
     Args:
@@ -404,39 +412,58 @@ def _make_calendar_aware_numpy_wrapper(
             the core dimension over last, so the arrays are transposed into the
             kernel's layout here, and the kernel is told that its input is a declared
             time-major block rather than a plain time series.
+        time_series_count: Number of leading positional arguments that carry the core
+            dimension. Static parameters after it are neither transposed nor converted.
+            Defaults to every argument, the decorator's all-time-series contract.
+        output_core_dims: Each output's core dimension, in kernel return order. Only an
+            output whose core dimension is ``time_dim`` is restored to Gregorian.
+        time_dim: Name of the core time dimension.
     """
     if core_axis_first:
         # a block whose first cell axis is a calendar period length is ambiguous with a
         # (years, periods, *cells) array, so the kernel is told which reading this is
         valid_kwargs = {**valid_kwargs, "spatial_time_major": True}
 
-    def wrapper(*numpy_arrays: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
-        # every positional argument here is a time series: _collect_input_dataarrays
-        # yields only DataArrays, and apply_ufunc is called with one [time_dim] entry
-        # in input_core_dims per collected array, so a non-time-series positional
-        # would fail inside apply_ufunc before ever reaching this wrapper
-        adapted = tuple(np.moveaxis(array, -1, 0) for array in numpy_arrays) if core_axis_first else numpy_arrays
+    def wrapper(*numpy_arrays: np.ndarray[Any, Any]) -> _KernelResult:
+        count = len(numpy_arrays) if time_series_count is None else time_series_count
+        adapted = tuple(
+            np.moveaxis(array, -1, 0) if core_axis_first and position < count else array
+            for position, array in enumerate(numpy_arrays)
+        )
         result = _compute_with_calendar_plan(
             func,
             adapted,
             valid_kwargs,
             calendar_plan,
-            set(range(len(adapted))),
+            set(range(count)),
             set(),
+            output_time_axes=tuple(dim == time_dim for dim in output_core_dims),
         )
-        return np.moveaxis(result, 0, -1) if core_axis_first else result
+        if isinstance(result, tuple):
+            return cast(
+                _KernelResult,
+                tuple(
+                    np.moveaxis(array, 0, -1) if core_axis_first and dim is not None else array
+                    for array, dim in zip(result, output_core_dims, strict=True)
+                ),
+            )
+        if core_axis_first and output_core_dims[0] is not None:
+            return cast(_KernelResult, np.moveaxis(cast(np.ndarray, result), 0, -1))
+        return result
 
     return wrapper
 
 
 def _compute_with_calendar_plan(
-    func: Callable[..., np.ndarray[Any, Any]],
+    func: Callable[..., _KernelResult],
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
     calendar_plan: utils.CalendarPlan | None,
     time_series_arg_positions: set[int],
     time_series_kwarg_names: set[str],
-) -> np.ndarray[Any, Any]:
+    *,
+    output_time_axes: tuple[bool, ...] | None = None,
+) -> _KernelResult:
     """Run a NumPy computation against 366-day values and restore Gregorian output."""
     if calendar_plan is None:
         return func(*args, **kwargs)
@@ -453,7 +480,18 @@ def _compute_with_calendar_plan(
     # release the all-leap copies before the Gregorian restoration allocates its own,
     # so a spatial block does not hold both full-width sets of arrays at once
     del adapted_args, adapted_kwargs
-    return calendar_plan.to_gregorian(all_leap_result)
+    if isinstance(all_leap_result, tuple):
+        restore = output_time_axes if output_time_axes is not None else (True,) * len(all_leap_result)
+        return cast(
+            _KernelResult,
+            tuple(
+                calendar_plan.to_gregorian(array) if is_time else array
+                for array, is_time in zip(all_leap_result, restore, strict=True)
+            ),
+        )
+    if output_time_axes is not None and not output_time_axes[0]:
+        return all_leap_result
+    return cast(_KernelResult, calendar_plan.to_gregorian(cast(np.ndarray, all_leap_result)))
 
 
 def _infer_calibration_period(time_coord: xr.DataArray) -> tuple[int, int]:
@@ -1955,6 +1993,103 @@ def xarray_adapter(
     return decorator
 
 
+@dataclass(frozen=True)
+class _SpatialOutput:
+    """Declare a kernel output's core dimension, coordinate, and metadata."""
+
+    core_dim: str | None
+    cf_metadata: dict[str, str]
+    index_name: str
+    coordinate: np.ndarray | None = None
+    transform: Callable[[xr.DataArray], xr.DataArray] | None = None
+    drop_attrs: tuple[str, ...] = ()
+
+
+def _spatial_kernel_call(
+    kernel: Callable[..., Any],
+    inputs: tuple[xr.DataArray, ...],
+    *,
+    spatial_kernel: bool,
+    outputs: tuple[_SpatialOutput, ...],
+    calculation_metadata: dict[str, Any],
+    completion_event: str,
+    cell_params: tuple[Any, ...] = (),
+    kernel_kwargs: dict[str, Any] | None = None,
+    calendar_plan: utils.CalendarPlan | None = None,
+    time_dim: str = "time",
+    completion_fields: dict[str, Any] | None = None,
+) -> tuple[xr.DataArray, ...]:
+    """Pack manual adapters through the decorator's calendar and transpose policy.
+
+    Time-series inputs precede static cell parameters. Kernels return time-first
+    arrays on the Spatial Kernel path, and core-last arrays on the Per-Cell Path.
+    Only outputs that retain the time dimension receive Gregorian restoration.
+    Validation and cell-parameter normalization stay with the caller.
+    """
+    primary = inputs[0]
+    wrapped = _make_calendar_aware_numpy_wrapper(
+        kernel,
+        kernel_kwargs or {},
+        calendar_plan,
+        core_axis_first=spatial_kernel,
+        time_series_count=len(inputs),
+        output_core_dims=tuple(output.core_dim for output in outputs),
+        time_dim=time_dim,
+    )
+    output_sizes = {
+        output.core_dim: len(output.coordinate)
+        for output in outputs
+        if output.core_dim is not None and output.coordinate is not None
+    }
+    result = xr.apply_ufunc(
+        wrapped,
+        *inputs,
+        *cell_params,
+        input_core_dims=[[time_dim]] * len(inputs) + [[] for _ in cell_params],
+        output_core_dims=[[output.core_dim] if output.core_dim is not None else [] for output in outputs],
+        vectorize=not spatial_kernel,
+        dask="parallelized",
+        dask_gufunc_kwargs={"allow_rechunk": True, "output_sizes": output_sizes},
+        output_dtypes=[float] * len(outputs),
+    )
+    arrays = result if isinstance(result, tuple) else (result,)
+    finalized = [
+        _finalize_spatial_output(array, output, primary, calculation_metadata, time_dim)
+        for array, output in zip(arrays, outputs, strict=True)
+    ]
+    _log().info(
+        completion_event,
+        input_shape=primary.shape,
+        output_shape=finalized[0].shape,
+        **(completion_fields or {}),
+    )
+    return tuple(finalized)
+
+
+def _finalize_spatial_output(
+    array: xr.DataArray,
+    output: _SpatialOutput,
+    primary: xr.DataArray,
+    calculation_metadata: dict[str, Any],
+    time_dim: str,
+) -> xr.DataArray:
+    """Transform, transpose, label, and attribute one packed kernel output."""
+    if output.transform is not None:
+        array = output.transform(array)
+    if output.core_dim is not None and output.core_dim != time_dim:
+        dims = [output.core_dim] + [dim for dim in array.dims if dim != output.core_dim]
+    else:
+        dims = [dim for dim in primary.dims if dim in array.dims]
+        dims += [dim for dim in array.dims if dim not in dims]
+    variable: xr.DataArray = array.transpose(*dims)
+    if output.coordinate is not None:
+        variable = variable.assign_coords({output.core_dim: output.coordinate})
+    variable.attrs = build_output_attrs(primary, output.cf_metadata, calculation_metadata, output.index_name)
+    for attribute in output.drop_attrs:
+        variable.attrs.pop(attribute, None)
+    return variable
+
+
 _CellParam = TypeVar("_CellParam")
 
 
@@ -2148,60 +2283,23 @@ def pet_thornthwaite(
     # block's order
     use_spatial_kernel, lat_for_ufunc = _spatial_kernel_cell_param(temp_da, latitude, time_dim)
 
-    def _pet_block(temps: np.ndarray, lat: np.ndarray, year: int) -> np.ndarray:
-        """Wrapper for indices.pet that reads a (time, *cells) block with per-cell latitudes."""
-        pet = indices.pet(np.moveaxis(temps, -1, 0), lat, year, spatial_time_major=True)
-        return np.moveaxis(pet, 0, -1)
-
-    # compute using xr.apply_ufunc with spatial broadcasting
-    # input_core_dims: temperature's time dim is "core"; latitude and year arrive as
-    #   scalars per iteration on the per-cell path and as cell arrays on the other
-    # output_core_dims: preserve time dimension in output
-    # vectorize=True: loop over non-core dims (lat, lon) calling indices.pet per gridpoint,
-    # whereas the spatial kernel path hands the whole (time, *cells) block over at once
-    # dask_gufunc_kwargs: allow_rechunk=True permits chunked core dimensions (for dask arrays)
-    result = xr.apply_ufunc(
-        _pet_block if use_spatial_kernel else indices.pet,
-        temp_da,
-        lat_for_ufunc,
-        data_start_year,
-        input_core_dims=[[time_dim], [], []],
-        output_core_dims=[[time_dim]],
-        vectorize=not use_spatial_kernel,
-        dask="parallelized",
-        dask_gufunc_kwargs={"allow_rechunk": True},
-        output_dtypes=[float],
-    )
-
-    # restore original dimension order (apply_ufunc places output core dims last);
-    # a latitude broadcast over a dimension the temperature does not have adds that
-    # dimension to the result, so keep the temperature's dims first
-    desired_dims = list(temp_da.dims) + [dim for dim in result.dims if dim not in temp_da.dims]
-    result = result.transpose(*desired_dims)
-
-    # CF metadata, provenance and calculation attrs share one owner with the other indices
-    result.attrs = build_output_attrs(
-        temp_da,
-        CF_METADATA["pet_thornthwaite"],  # type: ignore[arg-type]
-        {"latitude": _build_latitude_attr(lat_for_ufunc), "data_start_year": data_start_year},
-        "PET Thornthwaite",
-    )
-
-    if isinstance(latitude, xr.DataArray):
-        lat_desc = f"DataArray(dims={latitude.dims})"
-    else:
-        lat_desc = str(lat_for_ufunc)
-
-    _log().info(
-        "pet_thornthwaite_completed",
-        input_shape=temp_da.shape,
-        output_shape=result.shape,
-        data_start_year=data_start_year,
-        latitude=lat_desc,
-    )
-
-    result_array: xr.DataArray = result
-    return result_array
+    return _spatial_kernel_call(
+        indices.pet,
+        (temp_da,),
+        cell_params=(lat_for_ufunc,),
+        kernel_kwargs={"data_start_year": data_start_year},
+        spatial_kernel=use_spatial_kernel,
+        outputs=(_SpatialOutput(time_dim, CF_METADATA["pet_thornthwaite"], "PET Thornthwaite"),),  # type: ignore[arg-type]
+        calculation_metadata={"latitude": _build_latitude_attr(lat_for_ufunc), "data_start_year": data_start_year},
+        completion_event="pet_thornthwaite_completed",
+        completion_fields={
+            "data_start_year": data_start_year,
+            "latitude": f"DataArray(dims={latitude.dims})"
+            if isinstance(latitude, xr.DataArray)
+            else str(lat_for_ufunc),
+        },
+        time_dim=time_dim,
+    )[0]
 
 
 def pet_hargreaves(
@@ -2376,84 +2474,30 @@ def pet_hargreaves(
     # the block's order
     use_spatial_kernel, lat_for_ufunc = _spatial_kernel_cell_param(tmin_aligned, latitude, time_dim)
 
-    # wrapper functions to handle read-only array views from apply_ufunc
-    # eto.eto_hargreaves may modify arrays in-place, so create writable copies
-    def _eto_hargreaves_with_copy(tmin: np.ndarray, tmax: np.ndarray, tmean: np.ndarray, lat: float) -> np.ndarray:
-        """Wrapper for eto.eto_hargreaves that creates writable copies."""
-        return eto.eto_hargreaves(tmin.copy(), tmax.copy(), tmean.copy(), lat)
+    def _hargreaves_kernel(
+        tmin: np.ndarray, tmax: np.ndarray, tmean: np.ndarray, lat: Any, *, spatial_time_major: bool = False
+    ) -> np.ndarray:
+        """Keep per-cell views writable without copying Spatial Blocks."""
+        if not spatial_time_major:
+            tmin, tmax, tmean = tmin.copy(), tmax.copy(), tmean.copy()
+        return eto.eto_hargreaves(tmin, tmax, tmean, lat, spatial_time_major=spatial_time_major)
 
-    def _hargreaves_with_copy(tmin: np.ndarray, tmax: np.ndarray, tmean: np.ndarray, lat: float) -> np.ndarray:
-        """Compute Hargreaves ETo against 366-day positions and restore Gregorian output."""
-        return _compute_with_calendar_plan(
-            _eto_hargreaves_with_copy,
-            (tmin, tmax, tmean, lat),
-            {},
-            calendar_plan,
-            # latitude at position 3 is a scalar, not a time series
-            {0, 1, 2},
-            set(),
-        )
-
-    def _hargreaves_block(tmin: np.ndarray, tmax: np.ndarray, tmean: np.ndarray, lat: np.ndarray) -> np.ndarray:
-        """Compute Hargreaves ETo once per (time, *cells) block, with per-cell latitudes."""
-        block = _compute_with_calendar_plan(
-            eto.eto_hargreaves,
-            (
-                np.moveaxis(tmin, -1, 0),
-                np.moveaxis(tmax, -1, 0),
-                np.moveaxis(tmean, -1, 0),
-                lat,
-            ),
-            {"spatial_time_major": True},
-            calendar_plan,
-            {0, 1, 2},
-            set(),
-        )
-        return np.moveaxis(block, 0, -1)
-
-    # compute using xr.apply_ufunc with spatial broadcasting
-    result = xr.apply_ufunc(
-        _hargreaves_block if use_spatial_kernel else _hargreaves_with_copy,
-        tmin_aligned,
-        tmax_aligned,
-        tmean_da,
-        lat_for_ufunc,
-        input_core_dims=[[time_dim], [time_dim], [time_dim], []],
-        output_core_dims=[[time_dim]],
-        vectorize=not use_spatial_kernel,
-        dask="parallelized",
-        dask_gufunc_kwargs={"allow_rechunk": True},
-        output_dtypes=[float],
-    )
-
-    # restore original dimension order (apply_ufunc places output core dims last)
-    # if latitude was a DataArray with extra dims, result will have those too
-    # prioritize tmin dimensions, then any extra dimensions from latitude broadcast
-    desired_dims = list(tmin_aligned.dims) + [d for d in result.dims if d not in tmin_aligned.dims]
-    result = result.transpose(*desired_dims)
-
-    # CF metadata, provenance and calculation attrs share one owner with the other indices
-    result.attrs = build_output_attrs(
-        tmin_aligned,
-        CF_METADATA["pet_hargreaves"],  # type: ignore[arg-type]
-        {"latitude": _build_latitude_attr(lat_for_ufunc)},
-        "PET Hargreaves",
-    )
-
-    if isinstance(latitude, xr.DataArray):
-        lat_desc = f"DataArray(dims={latitude.dims})"
-    else:
-        lat_desc = str(lat_for_ufunc)
-
-    _log().info(
-        "pet_hargreaves_completed",
-        input_shape=tmin_aligned.shape,
-        output_shape=result.shape,
-        latitude=lat_desc,
-    )
-
-    result_array: xr.DataArray = result
-    return result_array
+    return _spatial_kernel_call(
+        _hargreaves_kernel,
+        (tmin_aligned, tmax_aligned, tmean_da),
+        cell_params=(lat_for_ufunc,),
+        spatial_kernel=use_spatial_kernel,
+        calendar_plan=calendar_plan,
+        outputs=(_SpatialOutput(time_dim, CF_METADATA["pet_hargreaves"], "PET Hargreaves"),),  # type: ignore[arg-type]
+        calculation_metadata={"latitude": _build_latitude_attr(lat_for_ufunc)},
+        completion_event="pet_hargreaves_completed",
+        completion_fields={
+            "latitude": f"DataArray(dims={latitude.dims})"
+            if isinstance(latitude, xr.DataArray)
+            else str(lat_for_ufunc),
+        },
+        time_dim=time_dim,
+    )[0]
 
 
 def _align_penman_monteith_inputs(
@@ -2960,53 +3004,16 @@ def palmer_pdsi(
         )
     use_spatial_kernel, awc_for_ufunc = _spatial_kernel_cell_param(precips_da, awc, time_dim)
 
-    def _pdsi_block(
-        precips_block: np.ndarray,
-        pet_block: np.ndarray,
-        awc_block: Any,
-        **kwargs: Any,
-    ) -> tuple[np.ndarray, ...]:
-        """Run palmer.pdsi once on a (time, *cells) block, returning its four indices."""
-        result = palmer.pdsi(
-            np.moveaxis(precips_block, -1, 0),
-            np.moveaxis(pet_block, -1, 0),
-            awc_block,
-            spatial_time_major=True,
-            **kwargs,
-        )
-        return tuple(np.asarray(np.moveaxis(output, 0, -1), dtype=float) for output in result[:4])
-
-    def _pdsi_per_cell(
+    def _pdsi_kernel(
         precips_series: np.ndarray,
         pet_series: np.ndarray,
         awc_value: Any,
         **kwargs: Any,
     ) -> tuple[np.ndarray, ...]:
-        """Run palmer.pdsi on one 1-D series, returning its four indices."""
+        """Return the four Palmer arrays without the fitted-parameter dictionary."""
         result = palmer.pdsi(precips_series, pet_series, awc_value, **kwargs)
         return tuple(np.asarray(output, dtype=float) for output in result[:4])
 
-    # input_core_dims: the time dimension is core for both index inputs; AWC arrives
-    #   as a scalar per cell on the per-cell path and a cell array on the other
-    # output_core_dims: each of the four Palmer outputs preserves the time dimension
-    result = xr.apply_ufunc(
-        _pdsi_block if use_spatial_kernel else _pdsi_per_cell,
-        precips_da,
-        pet_da,
-        awc_for_ufunc,
-        input_core_dims=[[time_dim], [time_dim], []],
-        output_core_dims=[[time_dim]] * 4,
-        vectorize=not use_spatial_kernel,
-        dask="parallelized",
-        dask_gufunc_kwargs={"allow_rechunk": True},
-        output_dtypes=[float] * 4,
-        kwargs=provided,
-    )
-    result_arrays = result if isinstance(result, tuple) else (result,)
-
-    # restore original dimension order (apply_ufunc places output core dims last);
-    # an AWC broadcast over a dimension the index inputs lack adds that dimension
-    desired_dims = list(precips_da.dims) + [dim for dim in result_arrays[0].dims if dim not in precips_da.dims]
     calculation_metadata: dict[str, Any] = {
         key: provided[key]
         for key in ("data_start_year", "calibration_year_initial", "calibration_year_final")
@@ -3024,26 +3031,25 @@ def palmer_pdsi(
         calculation_metadata["fitting_params"] = f"dict(keys={','.join(sorted(fitting_params))})"
 
     display_names = {"pdsi": "PDSI", "phdi": "PHDI", "pmdi": "PMDI", "z_index": "Z-Index"}
-    variables: dict[str, xr.DataArray] = {}
-    for name, array in zip(("pdsi", "phdi", "pmdi", "z_index"), result_arrays, strict=True):
-        variable = array.transpose(*desired_dims)
-        variable.attrs = build_output_attrs(
-            precips_da,
-            cf_metadata=CF_METADATA[name],  # type: ignore[arg-type]
-            calculation_metadata=calculation_metadata,
-            index_name=display_names[name],
-        )
-        variables[name] = variable
-
-    _log().info(
-        "palmer_pdsi_completed",
-        input_shape=precips_da.shape,
-        output_shape=variables["pdsi"].shape,
+    arrays = _spatial_kernel_call(
+        _pdsi_kernel,
+        (precips_da, pet_da),
+        cell_params=(awc_for_ufunc,),
+        kernel_kwargs=provided,
         spatial_kernel=use_spatial_kernel,
-        **{key: str(value) for key, value in calculation_metadata.items()},
+        outputs=tuple(
+            _SpatialOutput(time_dim, CF_METADATA[name], display_name)  # type: ignore[arg-type]
+            for name, display_name in display_names.items()
+        ),
+        calculation_metadata=calculation_metadata,
+        completion_event="palmer_pdsi_completed",
+        completion_fields={
+            "spatial_kernel": use_spatial_kernel,
+            **{key: str(value) for key, value in calculation_metadata.items()},
+        },
+        time_dim=time_dim,
     )
-
-    return xr.Dataset(variables)
+    return xr.Dataset(dict(zip(display_names, arrays, strict=True)))
 
 
 #: Per-variable CF metadata for the fit-diagnostics Dataset. Diagnostics are an audit
@@ -3166,78 +3172,25 @@ def _validate_diagnostics_fitting_params(
             )
 
 
-def _diagnostics_dataset(
-    input_da: xr.DataArray,
-    by_name: dict[str, xr.DataArray],
-    variable_names: tuple[str, ...],
-    period_dim: str,
-    period_length: int,
-    provided: dict[str, Any],
-    fitting_params: dict[str, Any] | None,
-    time_dim: str,
-) -> xr.Dataset:
-    """Rewrap block outputs with calendar coordinates and CF metadata."""
-    cell_dims = [dim for dim in input_da.dims if dim != time_dim]
-    calculation_metadata: dict[str, Any] = {key: value for key, value in provided.items() if key != "fitting_params"}
-    if fitting_params:
-        calculation_metadata["fitting_params"] = f"dict(keys={','.join(sorted(fitting_params))})"
-
-    variables: dict[str, xr.DataArray] = {}
-    for name in variable_names:
-        variable = by_name[name].transpose(period_dim, *cell_dims)
-        variable = variable.assign_coords({period_dim: np.arange(1, period_length + 1)})
-        variable.attrs = build_output_attrs(
-            input_da,
-            cf_metadata=_FIT_DIAGNOSTICS_CF_METADATA[name],
-            calculation_metadata=calculation_metadata,
-            index_name="Fit diagnostics",
-        )
-        variables[name] = variable
-
-    distribution_used = xr.where(by_name["distribution_code"] > 0, "pearson", "gamma")  # type: ignore[no-untyped-call]
-    distribution_used.attrs = build_output_attrs(
-        input_da,
-        cf_metadata=_FIT_DIAGNOSTICS_CF_METADATA["distribution_used"],
-        calculation_metadata=calculation_metadata,
-        index_name="Fit diagnostics",
-    )
-    # a categorical variable carries no units, and the input's would otherwise leak through
-    distribution_used.attrs.pop("units", None)
-    variables["distribution_used"] = distribution_used
-    return xr.Dataset(variables)
-
-
 def _diagnostics_block(
     block: np.ndarray,
     *,
-    calendar_plan: utils.CalendarPlan | None,
     parameter_slots: tuple[str, ...],
     **kwargs: Any,
 ) -> tuple[np.ndarray, ...]:
-    """Run the NumPy diagnostics once on one calendar-aware (time, *cells) block."""
-    time_first = np.moveaxis(block, -1, 0)
-    if calendar_plan is not None:
-        time_first = calendar_plan.to_all_leap(time_first)
-    diagnostics = indices.fit_diagnostics(time_first, spatial_time_major=True, **kwargs)
+    """Return fitted arrays and a categorical distribution for one declared block."""
+    diagnostics = indices.fit_diagnostics(block, **kwargs)
     # a parameter that does not apply to the fitted distribution is NaN, so the
     # Dataset schema stays fixed whichever way a block-level fall back goes
     reference = next(iter(diagnostics.parameters.values()))
     fitted: list[np.ndarray] = []
     for name in parameter_slots:
         parameter = diagnostics.parameters.get(name)
-        fitted.append(
-            np.moveaxis(
-                np.asarray(parameter, dtype=float) if parameter is not None else np.full_like(reference, np.nan),
-                0,
-                -1,
-            )
-        )
+        fitted.append(np.asarray(parameter, dtype=float) if parameter is not None else np.full_like(reference, np.nan))
     for name in _FIT_DIAGNOSTICS_FIELDS:
-        fitted.append(np.moveaxis(np.asarray(getattr(diagnostics, name), dtype=float), 0, -1))
-    # the code is 1.0 for pearson, 0.0 for gamma (requested or fallen back to),
-    # broadcast over the block's cell dims because apply_ufunc's non-vectorized
-    # path expects every output to carry the loop dimensions
-    code = np.full(block.shape[:-1], float(diagnostics.distribution.value == "pearson"))
+        fitted.append(np.asarray(getattr(diagnostics, name), dtype=float))
+    # Numeric codes keep apply_ufunc's vectorized and Dask paths consistent.
+    code = np.full(block.shape[1:], float(diagnostics.distribution.value == "pearson"))
     return (*fitted, code)
 
 
@@ -3414,31 +3367,37 @@ def fit_diagnostics(
         parameter_slots = _FIT_DIAGNOSTICS_GAMMA_SLOTS
     variable_names = (*parameter_slots, *_FIT_DIAGNOSTICS_FIELDS)
 
-    kernel_outputs = (*parameter_slots, *_FIT_DIAGNOSTICS_FIELDS, "distribution_code")
-    result = xr.apply_ufunc(
-        functools.partial(_diagnostics_block, calendar_plan=calendar_plan, parameter_slots=parameter_slots),
-        input_da,
-        input_core_dims=[[time_dim]],
-        output_core_dims=[[period_dim]] * (len(kernel_outputs) - 1) + [[]],
-        # a 2-D input has a single cell dimension, for which the block reading is
-        # ambiguous with the legacy (years, periods) layout, so it keeps the
-        # per-cell path the index adapters use
-        vectorize=input_da.ndim == 2,
-        dask="parallelized",
-        dask_gufunc_kwargs={"allow_rechunk": True, "output_sizes": {period_dim: period_length}},
-        output_dtypes=[float] * len(kernel_outputs),
-        kwargs=provided,
+    calculation_metadata = {key: value for key, value in provided.items() if key != "fitting_params"}
+    if fitting_params:
+        calculation_metadata["fitting_params"] = f"dict(keys={','.join(sorted(fitting_params))})"
+    outputs = tuple(
+        _SpatialOutput(
+            period_dim,
+            _FIT_DIAGNOSTICS_CF_METADATA[name],
+            "Fit diagnostics",
+            coordinate=np.arange(1, period_length + 1),
+        )
+        for name in variable_names
+    ) + (
+        _SpatialOutput(
+            None,
+            _FIT_DIAGNOSTICS_CF_METADATA["distribution_used"],
+            "Fit diagnostics",
+            transform=lambda code: xr.where(code > 0, "pearson", "gamma"),  # type: ignore[no-untyped-call]
+            drop_attrs=("units",),
+        ),
     )
-    arrays = result if isinstance(result, tuple) else (result,)
-    by_name = dict(zip(kernel_outputs, arrays, strict=True))
-    dataset = _diagnostics_dataset(
-        input_da, by_name, variable_names, period_dim, period_length, provided, fitting_params, time_dim
+    arrays = _spatial_kernel_call(
+        functools.partial(_diagnostics_block, parameter_slots=parameter_slots),
+        (input_da,),
+        kernel_kwargs=provided,
+        # A single cell axis keeps the legacy per-cell interpretation.
+        spatial_kernel=input_da.ndim != 2,
+        calendar_plan=calendar_plan,
+        outputs=outputs,
+        calculation_metadata=calculation_metadata,
+        completion_event="fit_diagnostics_completed",
+        completion_fields={"period_dim": period_dim, "distribution": distribution.value},
+        time_dim=time_dim,
     )
-    _log().info(
-        "fit_diagnostics_completed",
-        input_shape=input_da.shape,
-        period_dim=period_dim,
-        distribution=distribution.value,
-    )
-
-    return dataset
+    return xr.Dataset(dict(zip((*variable_names, "distribution_used"), arrays, strict=True)))

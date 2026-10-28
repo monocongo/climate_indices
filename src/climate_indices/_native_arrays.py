@@ -1,18 +1,17 @@
-"""Array views and extension checks shared by the native dispatch modules.
+"""The array marshalling shared by the native dispatch families.
 
-``climate_indices.fire._native`` and ``climate_indices.flood._native`` hand the
-Rust kernels (``docs/architecture.md``) time-first arrays as ``(days, cells)``
-blocks and per-cell vectors. The helpers here build those as views, so the
-binding's own copy before it releases the GIL is the only full-size copy of an
-input whose cells merge into one axis. Each dispatch module decides what
-happens to a layout that cannot be viewed that way: fire keeps it on the Python
-path, and flood lets the reshape copy it. Each also keeps its own ``_native``
-attribute, so tests can disable one family's kernels without the other's.
+:mod:`climate_indices._native_backend` decides whether a call reaches the Rust
+kernels (``docs/architecture.md``); the helpers here shape what it hands them.
+``climate_indices.fire._native`` and ``climate_indices.flood._native`` pass
+time-first arrays as ``(days, cells)`` blocks and per-cell vectors, built as
+views, so the binding's own copy before it releases the GIL is the only
+full-size copy of an input whose cells merge into one axis. Each family decides
+what happens to a layout that cannot be viewed that way: fire keeps it on the
+Python path, and flood lets the reshape copy it.
 """
 
 from __future__ import annotations
 
-from types import ModuleType
 from typing import Any
 
 import numpy as np
@@ -21,19 +20,6 @@ import numpy.typing as npt
 # The calendar and gap-count arrays a kernel takes: Python's ``intp`` (the fire
 # day-length band) and the ``int64`` months and gap counts.
 _Counts = npt.NDArray[np.int64] | npt.NDArray[np.intp]
-
-
-def _with_kernels(native: ModuleType | None, *names: str) -> ModuleType | None:
-    """The extension when it exposes every named attribute, else None.
-
-    A stale installed extension can import successfully yet predate a kernel
-    (``docs/architecture.md``). Dispatching into it would raise
-    ``AttributeError`` instead of leaving the computation on its Python path,
-    so a missing kernel declines the whole call.
-    """
-    if native is None or not all(hasattr(native, name) for name in names):
-        return None
-    return native
 
 
 def _cells(shape: tuple[int, ...]) -> int:

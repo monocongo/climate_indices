@@ -13,7 +13,7 @@ from typing import Literal
 import numpy as np
 import pytest
 
-from climate_indices import compute, pm_eto
+from climate_indices import _native_backend, pm_eto
 from tests import conftest, parity_registry
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / "benchmarks"))
@@ -196,26 +196,25 @@ def test_constant_operands_stay_unexpanded(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_multi_operand_guard_checks_policy_once(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(compute, "_native", SimpleNamespace())
     calls = []
-    monkeypatch.setattr(compute, "_native_policy_allows", lambda: calls.append(None) or True)
-    assert compute._native_float64s(np.ones(3), np.ones(3), np.ones(3))
+    monkeypatch.setattr(_native_backend, "policy_allows", lambda: calls.append(None) or True)
+    assert _native_backend.takes(np.ones(3), np.ones(3), np.ones(3))
     assert len(calls) == 1
     calls.clear()
-    assert not compute._native_float64s(np.ones(3), np.ones(3, dtype=np.float32))
+    assert not _native_backend.takes(np.ones(3), np.ones(3, dtype=np.float32))
     assert not calls
 
 
 def test_pm_policy_checked_once(monkeypatch: pytest.MonkeyPatch) -> None:
     conftest.import_native()
-    original = compute._native_policy_allows
+    original = _native_backend.policy_allows
     calls = []
 
     def policy() -> bool:
         calls.append(None)
         return original()
 
-    monkeypatch.setattr(compute, "_native_policy_allows", policy)
+    monkeypatch.setattr(_native_backend, "policy_allows", policy)
     with harness.native_policy():
         for name in ("pm_eto_intermediates", "penman_monteith"):
             calls.clear()

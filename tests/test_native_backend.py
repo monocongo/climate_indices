@@ -10,13 +10,14 @@ import re
 import subprocess
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
 import pytest
 
-from climate_indices import compute, eto, fire, indices, pm_eto
+from climate_indices import _native_backend, compute, eto, fire, indices, palmer, pm_eto
 from climate_indices.fire import _native as fire_native
 from climate_indices.flood import _native as flood_native
 from tests import conftest
@@ -32,6 +33,32 @@ def test_native_extension_reports_crate_version() -> None:
 def test_compute_dispatches_to_the_built_extension() -> None:
     native = conftest.import_native()
     assert compute._native is native
+
+
+def test_every_family_reading_the_extension_has_a_test_switch() -> None:
+    """A family missing from ``NATIVE_FAMILIES`` would keep running Rust under ``python_backend``."""
+    package = Path(compute.__file__).parent
+    readers = {
+        ".".join(("climate_indices", *path.relative_to(package).with_suffix("").parts))
+        for path in package.rglob("*.py")
+        if "_native_backend.EXTENSION" in path.read_text(encoding="utf-8")
+    }
+    assert readers == {module.__name__ for module in conftest.NATIVE_FAMILIES.values()}
+
+
+def test_disable_native_switches_off_only_the_named_family(monkeypatch: pytest.MonkeyPatch) -> None:
+    conftest.disable_native(monkeypatch, "fire")
+    assert fire_native._native is None
+    others = [module for name, module in conftest.NATIVE_FAMILIES.items() if name != "fire"]
+    assert all(module._native is _native_backend.EXTENSION for module in others)
+
+
+def test_one_family_switch_does_not_gate_another(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Disabling ``compute`` leaves Palmer on the extension: each family reads only its own switch."""
+    native = conftest.import_native()
+    conftest.disable_native(monkeypatch, "compute")
+    with np.errstate(all="ignore"):
+        assert palmer._palmer_native("palmer_pdi", np.zeros((1, 12, 1))) is native
 
 
 def test_pet_dispatches_to_the_built_extension() -> None:
@@ -175,6 +202,21 @@ result = indices.spi(values, 3, indices.Distribution.gamma, 1990, 1990, 2019, co
 assert np.isfinite(result[2:]).all() and np.isnan(result[:2]).all()
 """
     subprocess.run([sys.executable, "-c", code], check=True)
+
+
+@pytest.mark.parametrize("backend", [None, SimpleNamespace()], ids=["absent", "stale"])
+@pytest.mark.parametrize("kernel", ["gamma_ks_statistics", "empirical_fit"])
+def test_distribution_helpers_keep_python_without_native_kernels(
+    monkeypatch: pytest.MonkeyPatch, backend: Any, kernel: str
+) -> None:
+    monkeypatch.setattr(compute, "_native", backend)
+    values = np.ones((40, 1))
+    with np.errstate(all="ignore"):
+        if kernel == "gamma_ks_statistics":
+            result = compute._native_gamma_ks_statistics(values, np.ones(1), np.ones(1))
+        else:
+            result = compute._native_empirical_fit(values, values, "probability")
+    assert result is None
 
 
 def test_eddi_uses_python_when_the_extension_predates_eddi_kernels(monkeypatch: pytest.MonkeyPatch) -> None:

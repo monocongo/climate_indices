@@ -884,7 +884,7 @@ against the pure-Python implementations they reproduce exactly (`rtol = atol =
 1e-10`, identical NaN positions). These are ad-hoc measurements rather than a
 committed harness: a call reaches the Rust path only with NumPy's
 floating-point errors ignored and default warning filters (the dispatch guard
-`compute._native_float64`), so the Rust column is the best case for the
+`_native_backend.takes`), so the Rust column is the best case for the
 dispatch, not what a caller under default error policies gets. The Python
 column had `eto._native`/`pm_eto._native` set to None.
 
@@ -961,7 +961,7 @@ PYTHONWARNINGS=error uv run benchmarks/rust_vs_python.py --repeat 5 --write
 
 The Rust column is the dispatch-enabled case: a call reaches the extension only
 with NumPy's floating-point errors ignored and no `RuntimeWarning` filter set to
-error (`compute._native_float64`), the guard `docs/architecture.md` records and
+error (`_native_backend.takes`), the guard `docs/architecture.md` records and
 RUST-015 settled the routing around. Rust-labeled measurements run under
 `np.errstate(all="ignore")` with warning filters cleared locally, including when
 `PYTHONWARNINGS=error` is set. Context-aware warnings disable native dispatch, so
