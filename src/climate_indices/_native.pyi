@@ -25,6 +25,13 @@ class NoConvergenceError(ValueError):
     ``ConvergenceError`` for it, so a caller never sees this type.
     """
 
+def compound_resample_metrics(
+    rows: npt.NDArray[np.bool_],
+    paired_years: npt.NDArray[np.int64],
+    null_years: npt.NDArray[np.int64],
+    statistic: str,
+    groupby: str,
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]: ...
 def gamma_parameters(
     calibration: npt.NDArray[np.float64],
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]: ...

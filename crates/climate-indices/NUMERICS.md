@@ -23,6 +23,7 @@ The registry records the exact derivations and parameters.
 
 | Entry | Rust kernels reached | Max absolute | Max relative |
 | --- | --- | --- | --- |
+| `compound_bootstrap` | `compound_resample_metrics` | 0.000000e+00 | 0.000000e+00 |
 | `eddi` | `hastings_inverse_normal`, `tukey_probabilities` | 0.000000e+00 | 0.000000e+00 |
 | `eddi_spatial_block` | `hastings_inverse_normal`, `tukey_probabilities` | 0.000000e+00 | 0.000000e+00 |
 | `empirical` | `empirical_transform` | 0.000000e+00 | 0.000000e+00 |

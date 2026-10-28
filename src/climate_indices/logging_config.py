@@ -74,7 +74,9 @@ def configure_logging(log_format: LogFormat = "console", log_level: object = _UN
     if log_format == "json":
         renderer: Processor = structlog.processors.JSONRenderer()
     else:
-        renderer = structlog.dev.ConsoleRenderer()
+        # ConsoleRenderer otherwise switches to rich tracebacks whenever rich is importable,
+        # which print every frame's locals and cost ~0.1-0.3 s per logged exception.
+        renderer = structlog.dev.ConsoleRenderer(exception_formatter=structlog.dev.plain_traceback)
 
     # configure stdlib logging with structlog formatter
     formatter = structlog.stdlib.ProcessorFormatter(
