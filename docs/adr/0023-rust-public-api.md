@@ -108,7 +108,7 @@ The approved choice accepts that compatibility cost and preserves the existing k
 ## Timescale Aggregation and workflow decision (RUSTUP-03)
 
 **Q1: accept Timescale Aggregation as a numerical kernel.**
-`compute.sum_to_scale` currently uses `np.convolve` for a series and a strided
+`compute.sum_to_scale` used `np.convolve` for a series and a strided
 sliding-window reduction for a Spatial Block.
 `compute.prepare_scaled` divides the sum by `scale` for a mean.
 The SPI and SPEI Rust examples each implemented their own `trailing_sum`.
