@@ -204,6 +204,21 @@ assert np.isfinite(result[2:]).all() and np.isnan(result[:2]).all()
     subprocess.run([sys.executable, "-c", code], check=True)
 
 
+@pytest.mark.parametrize("backend", [None, SimpleNamespace()], ids=["absent", "stale"])
+@pytest.mark.parametrize("kernel", ["gamma_ks_statistics", "empirical_fit"])
+def test_distribution_helpers_keep_python_without_native_kernels(
+    monkeypatch: pytest.MonkeyPatch, backend: Any, kernel: str
+) -> None:
+    monkeypatch.setattr(compute, "_native", backend)
+    values = np.ones((40, 1))
+    with np.errstate(all="ignore"):
+        if kernel == "gamma_ks_statistics":
+            result = compute._native_gamma_ks_statistics(values, np.ones(1), np.ones(1))
+        else:
+            result = compute._native_empirical_fit(values, values, "probability")
+    assert result is None
+
+
 def test_eddi_uses_python_when_the_extension_predates_eddi_kernels(monkeypatch: pytest.MonkeyPatch) -> None:
     values = np.random.default_rng(0).uniform(50.0, 150.0, 360)
     with np.errstate(all="ignore"):

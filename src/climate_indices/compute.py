@@ -1535,15 +1535,17 @@ def _native_gamma_ks_statistics(values: np.ndarray, alphas: np.ndarray, betas: n
     """Batched CDF and D statistics, or None where Python keeps the check."""
     if (
         values.ndim != 2
-        or not _native_float64s(values, alphas, betas)
+        or not _native_float64(values, alphas, betas)
         or any(parameter.shape != (values.shape[1],) for parameter in (alphas, betas))
-        or _native is None
-        or not hasattr(_native, "gamma_ks_statistics")
         # Rust cannot emit SciPy's caller-requested special-function diagnostics.
         or any(policy != "ignore" for name, policy in scipy.special.geterr().items() if name != "memory")
     ):
         return None
-    return _native.gamma_ks_statistics(values, alphas, betas)
+    native = _native_backend.kernels(_native, "gamma_ks_statistics")
+    if native is None:
+        return None
+    statistics: np.ndarray = native.gamma_ks_statistics(values, alphas, betas)
+    return statistics
 
 
 def _gamma_ks_statistics(values: np.ndarray, alphas: np.ndarray, betas: np.ndarray) -> np.ndarray:
@@ -3052,15 +3054,12 @@ def _native_empirical_fit(
     values: np.ndarray, calibration_values: np.ndarray, output_scale: OutputScale
 ) -> np.ndarray | None:
     """Use native ranking for matching float64 columns; keep broadcasting in Python."""
-    if (
-        not _native_float64s(values, calibration_values)
-        or values.shape[1:] != calibration_values.shape[1:]
-        or not hasattr(_native, "empirical_transform")
-    ):
+    if not _native_float64(values, calibration_values) or values.shape[1:] != calibration_values.shape[1:]:
         return None
-    if _native is None:  # _native_float64s guarantees it; this narrows the type
-        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
-    result = _native.empirical_transform(
+    native = _native_backend.kernels(_native, "empirical_transform")
+    if native is None:
+        return None
+    result: np.ndarray = native.empirical_transform(
         _as_columns(calibration_values), _as_columns(values), output_scale == "normal"
     ).reshape(values.shape)
     if output_scale == "bounded":
