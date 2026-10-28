@@ -2101,22 +2101,10 @@ def _spatial_kernel_call(
         output_dtypes=[float] * len(outputs),
     )
     arrays = result if isinstance(result, tuple) else (result,)
-    finalized = []
-    for array, output in zip(arrays, outputs, strict=True):
-        if output.transform is not None:
-            array = output.transform(array)
-        if output.core_dim is not None and output.core_dim != time_dim:
-            dims = [output.core_dim] + [dim for dim in array.dims if dim != output.core_dim]
-        else:
-            dims = [dim for dim in primary.dims if dim in array.dims]
-            dims += [dim for dim in array.dims if dim not in dims]
-        variable = array.transpose(*dims)
-        if output.coordinate is not None:
-            variable = variable.assign_coords({output.core_dim: output.coordinate})
-        variable.attrs = build_output_attrs(primary, output.cf_metadata, calculation_metadata, output.index_name)
-        for attribute in output.drop_attrs:
-            variable.attrs.pop(attribute, None)
-        finalized.append(variable)
+    finalized = [
+        _finalize_spatial_output(array, output, primary, calculation_metadata, time_dim)
+        for array, output in zip(arrays, outputs, strict=True)
+    ]
     _log().info(
         completion_event,
         input_shape=primary.shape,
@@ -2124,6 +2112,30 @@ def _spatial_kernel_call(
         **(completion_fields or {}),
     )
     return tuple(finalized)
+
+
+def _finalize_spatial_output(
+    array: xr.DataArray,
+    output: _SpatialOutput,
+    primary: xr.DataArray,
+    calculation_metadata: dict[str, Any],
+    time_dim: str,
+) -> xr.DataArray:
+    """Transform, transpose, label, and attribute one packed kernel output."""
+    if output.transform is not None:
+        array = output.transform(array)
+    if output.core_dim is not None and output.core_dim != time_dim:
+        dims = [output.core_dim] + [dim for dim in array.dims if dim != output.core_dim]
+    else:
+        dims = [dim for dim in primary.dims if dim in array.dims]
+        dims += [dim for dim in array.dims if dim not in dims]
+    variable: xr.DataArray = array.transpose(*dims)
+    if output.coordinate is not None:
+        variable = variable.assign_coords({output.core_dim: output.coordinate})
+    variable.attrs = build_output_attrs(primary, output.cf_metadata, calculation_metadata, output.index_name)
+    for attribute in output.drop_attrs:
+        variable.attrs.pop(attribute, None)
+    return variable
 
 
 _CellParam = TypeVar("_CellParam")
