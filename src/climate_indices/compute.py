@@ -3546,9 +3546,13 @@ class FittedDistribution:
         return (*statistics, parameters)
 
 
-def _pearson_lost_valid_fraction(values: np.ndarray, parameters: dict[str, np.ndarray]) -> float:
-    """Fraction of the input's valid values a Pearson Type III transform would lose.
+def _pearson_lost_valid_fraction(
+    values: np.ndarray, parameters: dict[str, np.ndarray], standardized: np.ndarray | None = None
+) -> float:
+    """Fraction of valid input values lost by an actual or predicted Pearson transform.
 
+    If transformed values are supplied, count their newly missing values directly.
+    Otherwise, predict the loss from the fitted CDF and the transform's masks.
     The transform turns a value below 0.0005 into a finite sentinel wherever the zero
     mass is defined (``_pearson_fit``'s zero and trace masks), so only a NaN fitted CDF
     at or above that threshold is lost. A NaN zero mass loses every value. This mirrors
@@ -3558,6 +3562,8 @@ def _pearson_lost_valid_fraction(values: np.ndarray, parameters: dict[str, np.nd
     valid = ~np.isnan(values)
     if not valid.any():
         return 0.0
+    if standardized is not None:
+        return float(np.count_nonzero(np.isnan(standardized[valid]))) / float(np.count_nonzero(valid))
     parameters = _broadcast_parameters(values, parameters)
     probabilities_of_zero = np.broadcast_to(np.asarray(parameters["prob_zero"], dtype=float), values.shape)
     skews = np.asarray(parameters["skew"], dtype=float)
@@ -3619,12 +3625,7 @@ def _resolve_pearson_with_fallback(
         standardized = transform(fitted, values) if transform is not None else None
         if not fallback_to_gamma:
             return fitted, standardized
-        if standardized is None:
-            lost_fraction = _pearson_lost_valid_fraction(values, fitted.parameters)
-        else:
-            valid = ~np.isnan(values)
-            valid_count = np.count_nonzero(valid)
-            lost_fraction = float(np.count_nonzero(np.isnan(standardized[valid]))) / valid_count if valid_count else 0.0
+        lost_fraction = _pearson_lost_valid_fraction(values, fitted.parameters, standardized)
         if lost_fraction > _default_fallback_strategy.max_nan_percentage:
             reason = "Pearson distribution fitting resulted in excessive missing values"
         else:

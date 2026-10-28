@@ -82,6 +82,22 @@ def test_fallback_reports_the_same_distribution_on_both_surfaces(
     np.testing.assert_array_equal(result, expected)
 
 
+@pytest.mark.parametrize(
+    ("values", "standardized", "expected"),
+    [
+        ([np.nan, np.nan], [np.nan, np.nan], 0.0),
+        ([1.0, np.nan, 2.0], [np.nan, np.nan, 3.0], 0.5),
+        ([1.0, np.nan, 2.0], [1.0, np.nan, 3.0], 0.0),
+    ],
+)
+def test_actual_loss_uses_only_valid_input_values(
+    values: list[float], standardized: list[float], expected: float
+) -> None:
+    """An actual transform needs no fitted-CDF prediction or parameter broadcasting."""
+    with mock.patch.object(compute, "_broadcast_parameters", side_effect=AssertionError("CDF prediction")):
+        assert compute._pearson_lost_valid_fraction(np.array(values), {}, np.array(standardized)) == expected
+
+
 @pytest.mark.parametrize("diagnostics", [False, True])
 @pytest.mark.parametrize("fallback", [False, True])
 def test_fit_failure_is_reported_or_propagated(
