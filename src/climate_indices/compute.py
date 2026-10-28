@@ -4,7 +4,6 @@ Common classes and functions used to compute the various climate indices.
 
 import functools
 import math
-import sys
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -15,7 +14,7 @@ import scipy.special
 import scipy.stats
 from structlog.stdlib import BoundLogger
 
-from climate_indices import lmoments, utils
+from climate_indices import _native_backend, lmoments, utils
 from climate_indices._calibration_period import CalibrationPeriod, resolve_calibration_period
 from climate_indices.exceptions import (
     CalibrationPeriodClampedWarning,
@@ -44,12 +43,9 @@ from climate_indices.vocabulary import _validate_aggregation as _validate_aggreg
 from climate_indices.vocabulary import _validate_zero_handling as _validate_zero_handling
 from climate_indices.vocabulary import validate_output_scale as validate_output_scale
 
-try:
-    # the optional Rust kernels (docs/architecture.md); without the extension every
-    # computation below runs its pure-Python implementation
-    from climate_indices import _native
-except ImportError:
-    _native = None  # type: ignore[assignment]
+# this family's switch on the optional Rust kernels (climate_indices._native_backend);
+# None runs every computation below on its pure-Python implementation
+_native = _native_backend.EXTENSION
 
 # declare the function names that should be included in the public API for this module
 __all__ = [
@@ -172,11 +168,6 @@ class DistributionFallbackStrategy:
 
 # Global fallback strategy instance
 _default_fallback_strategy = DistributionFallbackStrategy()
-
-
-# defensive guard: every native dispatch first checks _native_float64 or
-# _native is not None, so this only fires if the extension disappears in between
-_NATIVE_EXTENSION_MISSING = "the native extension is not installed"
 
 
 def _map_non_normal_scale(probabilities: np.ndarray, output_scale: OutputScale) -> np.ndarray | None:
@@ -743,10 +734,9 @@ def pearson_parameters(
     )
     log = log.bind(calibration_period=f"{period.start_year}-{period.end_year}")
 
-    if _native_lmoment_input(calibration_values):
-        probabilities_of_zero, locs, scales, skews, failed_fitting_count = _native_pearson_parameters(
-            calibration_values
-        )
+    native_fit = _native_pearson_parameters(calibration_values)
+    if native_fit is not None:
+        probabilities_of_zero, locs, scales, skews, failed_fitting_count = native_fit
         total_fitting_count = math.prod(calibration_values.shape[1:])
     elif calibration_values.ndim > 2:
         (
@@ -1545,15 +1535,17 @@ def _native_gamma_ks_statistics(values: np.ndarray, alphas: np.ndarray, betas: n
     """Batched CDF and D statistics, or None where Python keeps the check."""
     if (
         values.ndim != 2
-        or not _native_float64s(values, alphas, betas)
+        or not _native_float64(values, alphas, betas)
         or any(parameter.shape != (values.shape[1],) for parameter in (alphas, betas))
-        or _native is None
-        or not hasattr(_native, "gamma_ks_statistics")
         # Rust cannot emit SciPy's caller-requested special-function diagnostics.
         or any(policy != "ignore" for name, policy in scipy.special.geterr().items() if name != "memory")
     ):
         return None
-    return _native.gamma_ks_statistics(values, alphas, betas)
+    native = _native_backend.kernels(_native, "gamma_ks_statistics")
+    if native is None:
+        return None
+    statistics: np.ndarray = native.gamma_ks_statistics(values, alphas, betas)
+    return statistics
 
 
 def _gamma_ks_statistics(values: np.ndarray, alphas: np.ndarray, betas: np.ndarray) -> np.ndarray:
@@ -1581,16 +1573,17 @@ def _native_pearson_ks_statistics(
     """Batched CDF and D statistics, or None where Python keeps the check."""
     if (
         values.ndim != 2
-        or not _native_float64s(values, locs, scales, skews)
+        or not _native_float64(values, locs, scales, skews)
         or any(parameter.shape != (values.shape[1],) for parameter in (locs, scales, skews))
         or np.any(np.abs(values) > 1e100)
-        or _native is None
-        or not hasattr(_native, "pearson_ks_statistics")
-        # Rust cannot emit SciPy's caller-requested special-function diagnostics.
-        or any(policy != "ignore" for name, policy in scipy.special.geterr().items() if name != "memory")
     ):
         return None
-    return _native.pearson_ks_statistics(values, skews, locs, scales)
+    native = _native_backend.kernels(_native, "pearson_ks_statistics")
+    # Rust cannot emit SciPy's caller-requested special-function diagnostics.
+    if native is None or any(policy != "ignore" for name, policy in scipy.special.geterr().items() if name != "memory"):
+        return None
+    statistics: np.ndarray = native.pearson_ks_statistics(values, skews, locs, scales)
+    return statistics
 
 
 def _pearson_ks_statistics(values: np.ndarray, locs: np.ndarray, scales: np.ndarray, skews: np.ndarray) -> np.ndarray:
@@ -1803,35 +1796,9 @@ def _replace_zeros_with_nan(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]
     return zero_mask, values_copy
 
 
-def _plain_float64(array: np.ndarray) -> bool:
-    """Whether an operand is a plain, aligned float64 array."""
-    return (
-        type(array) is np.ndarray
-        and array.dtype == np.float64
-        and array.flags.aligned
-        and array.ctypes.data % array.dtype.alignment == 0
-    )
-
-
-def _native_policy_allows() -> bool:
-    """Whether Rust can preserve the caller's floating-point reporting policy."""
-    return (
-        all(policy == "ignore" for policy in np.geterr().values())
-        and not getattr(sys.flags, "context_aware_warnings", False)
-        and not any(
-            action == "error" and issubclass(RuntimeWarning, category) for action, _, category, _, _ in warnings.filters
-        )
-    )
-
-
-def _native_float64(array: np.ndarray) -> bool:
-    """Whether the extension can take an operand without changing reporting."""
-    return _native is not None and _plain_float64(array) and _native_policy_allows()
-
-
-def _native_float64s(*arrays: np.ndarray) -> bool:
-    """Check operand layouts and the shared reporting policy once per call."""
-    return _native is not None and all(_plain_float64(array) for array in arrays) and _native_policy_allows()
+def _native_float64(*arrays: np.ndarray) -> bool:
+    """Whether compute's switch is on and the extension takes every operand without changing reporting."""
+    return _native is not None and _native_backend.takes(*arrays)
 
 
 def _as_columns(values: np.ndarray) -> np.ndarray:
@@ -1847,12 +1814,7 @@ def _per_column(parameter: np.ndarray, values: np.ndarray) -> np.ndarray | None:
     parameter can do; Python handles those. A masked array or ``DataArray`` is not
     plain: the NumPy path reads its mask or labels, which a bare buffer would drop.
     """
-    if (
-        type(parameter) is not np.ndarray
-        or parameter.dtype != np.float64
-        or not parameter.flags.aligned
-        or parameter.ctypes.data % parameter.dtype.alignment != 0
-    ):
+    if not _native_backend.plain_float64(parameter):
         return None
     if parameter.ndim == values.ndim:
         if parameter.shape[0] != 1:
@@ -1867,11 +1829,19 @@ def _per_column(parameter: np.ndarray, values: np.ndarray) -> np.ndarray | None:
     return np.broadcast_to(parameter, values.shape[1:]).reshape(-1)
 
 
-def _native_gamma_parameters(calibration_values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """The Rust method-of-moments gamma fit, shaped like the NumPy block it mirrors."""
-    if _native is None:  # every caller dispatches through _native_float64; this narrows the type
-        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
-    alphas, betas = _native.gamma_parameters(_as_columns(calibration_values))
+def _native_gamma_parameters(calibration_values: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
+    """The Rust method-of-moments gamma fit, shaped like the NumPy block it mirrors, or None.
+
+    np.nanmean emits an empty-slice warning even when floating-point errors are
+    ignored, so a column with no positive value (all missing, zero, or negative)
+    keeps the Python reductions, whose log mean is then empty.
+    """
+    if not _native_float64(calibration_values) or not np.all(np.any(calibration_values > 0.0, axis=0)):
+        return None
+    native = _native_backend.kernels(_native, "gamma_parameters")
+    if native is None:
+        return None
+    alphas, betas = native.gamma_parameters(_as_columns(calibration_values))
     step_shape = calibration_values.shape[1:]
     return alphas.reshape(step_shape), betas.reshape(step_shape)
 
@@ -1882,14 +1852,17 @@ def _native_gamma_probabilities(
     """The Rust zero-inflated gamma CDF, or None where the Python implementation runs."""
     if not _native_float64(values):
         return None
-    if _native is None:  # _native_float64 guarantees it; this narrows the type
-        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
     alpha_columns = _per_column(alphas, values)
     beta_columns = _per_column(betas, values)
     zero_columns = _per_column(probabilities_of_zero, values)
     if alpha_columns is None or beta_columns is None or zero_columns is None:
         return None
-    probabilities = _native.gamma_probabilities(_as_columns(values), alpha_columns, beta_columns, zero_columns)
+    native = _native_backend.kernels(_native, "gamma_probabilities")
+    if native is None:
+        return None
+    probabilities: np.ndarray = native.gamma_probabilities(
+        _as_columns(values), alpha_columns, beta_columns, zero_columns
+    )
     return probabilities.reshape(values.shape)
 
 
@@ -1897,13 +1870,14 @@ def _native_pnp_percentages(
     scale_sums: np.ndarray, calibration_sums: np.ndarray, period_length: int
 ) -> np.ndarray | None:
     """The Rust PNP normals and their ratios, or None where the Python implementation runs."""
-    if not _native_float64s(scale_sums, calibration_sums):
+    if not _native_float64(scale_sums, calibration_sums):
         return None
-    if _native is None:  # _native_float64 guarantees it; this narrows the type
-        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
+    native = _native_backend.kernels(_native, "pnp_normals", "pnp_percentages")
+    if native is None:
+        return None
     period_sums = _as_columns(calibration_sums)
-    normals = _native.pnp_normals(period_sums).reshape(period_length, -1)
-    percentages = _native.pnp_percentages(_as_columns(scale_sums), normals)
+    normals = native.pnp_normals(period_sums).reshape(period_length, -1)
+    percentages: np.ndarray = native.pnp_percentages(_as_columns(scale_sums), normals)
     return percentages.reshape(scale_sums.shape)
 
 
@@ -1915,9 +1889,10 @@ def _native_pci(rainfall_mm: np.ndarray) -> np.ndarray | None:
     """
     if rainfall_mm.ndim != 1 or not _native_float64(rainfall_mm):
         return None
-    if _native is None:  # _native_float64 guarantees it; this narrows the type
-        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
-    return np.array([_native.pci(rainfall_mm)])
+    native = _native_backend.kernels(_native, "pci")
+    if native is None:
+        return None
+    return np.array([native.pci(rainfall_mm)])
 
 
 # The L-moment fits take a block only when every value is NaN or small enough that the
@@ -1937,15 +1912,19 @@ def _native_lmoment_input(calibration_values: np.ndarray) -> bool:
 
 def _native_pearson_parameters(
     calibration_values: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]:
-    """The Rust Pearson Type III fit, shaped like the NumPy block it mirrors.
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, int] | None:
+    """The Rust Pearson Type III fit, shaped like the NumPy block it mirrors, or None.
 
     :return: probability of zero, loc, scale, and skew shaped (time_steps, ``*cells``),
-        and the count of (time step, cell) fits that failed
+        and the count of (time step, cell) fits that failed; None where the Python
+        fit runs
     """
-    if _native is None:  # every caller dispatches through _native_float64; this narrows the type
-        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
-    probabilities_of_zero, locs, scales, skews, valid = _native.pearson_parameters(_as_columns(calibration_values))
+    if not _native_lmoment_input(calibration_values):
+        return None
+    native = _native_backend.kernels(_native, "pearson_parameters")
+    if native is None:
+        return None
+    probabilities_of_zero, locs, scales, skews, valid = native.pearson_parameters(_as_columns(calibration_values))
     step_shape = calibration_values.shape[1:]
     return (
         probabilities_of_zero.reshape(step_shape),
@@ -1960,28 +1939,32 @@ def _native_pearson_cdf(values: np.ndarray, skew: np.ndarray, loc: np.ndarray, s
     """The Rust ``scipy.stats.pearson3.cdf``, or None where the Python implementation runs."""
     if values.ndim < 2 or not _native_float64(values):
         return None
-    if _native is None:  # _native_float64 guarantees it; this narrows the type
-        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
     skew_columns = _per_column(skew, values)
     loc_columns = _per_column(loc, values)
     scale_columns = _per_column(scale, values)
     if skew_columns is None or loc_columns is None or scale_columns is None:
         return None
-    cdf = _native.pearson_cdf(_as_columns(values), skew_columns, loc_columns, scale_columns)
+    native = _native_backend.kernels(_native, "pearson_cdf")
+    if native is None:
+        return None
+    cdf: np.ndarray = native.pearson_cdf(_as_columns(values), skew_columns, loc_columns, scale_columns)
     return cdf.reshape(values.shape)
 
 
 def _native_loglogistic_parameters(
     calibration_values: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
-    """The Rust GLO fit, shaped like the NumPy block it mirrors.
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, int] | None:
+    """The Rust GLO fit, shaped like the NumPy block it mirrors, or None.
 
     :return: loc, scale, and shape shaped (time_steps, ``*cells``), and the count of
-        (time step, cell) fits that failed
+        (time step, cell) fits that failed; None where the Python fit runs
     """
-    if _native is None:  # every caller dispatches through _native_float64; this narrows the type
-        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
-    locs, scales, shapes, valid = _native.loglogistic_parameters(_as_columns(calibration_values))
+    if not _native_lmoment_input(calibration_values):
+        return None
+    native = _native_backend.kernels(_native, "loglogistic_parameters")
+    if native is None:
+        return None
+    locs, scales, shapes, valid = native.loglogistic_parameters(_as_columns(calibration_values))
     step_shape = calibration_values.shape[1:]
     return (
         locs.reshape(step_shape),
@@ -1997,34 +1980,39 @@ def _native_loglogistic_cdf(
     """The Rust GLO CDF clipped to [0, 1], or None where the Python implementation runs."""
     if values.ndim < 2 or not _native_float64(values):
         return None
-    if _native is None:  # _native_float64 guarantees it; this narrows the type
-        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
     loc_columns = _per_column(locs, values)
     scale_columns = _per_column(scales, values)
     shape_columns = _per_column(shapes, values)
     if loc_columns is None or scale_columns is None or shape_columns is None:
         return None
-    probabilities = _native.loglogistic_cdf(_as_columns(values), loc_columns, scale_columns, shape_columns)
+    native = _native_backend.kernels(_native, "loglogistic_cdf")
+    if native is None:
+        return None
+    probabilities: np.ndarray = native.loglogistic_cdf(_as_columns(values), loc_columns, scale_columns, shape_columns)
     return probabilities.reshape(values.shape)
 
 
 def _native_tukey_probabilities(climatology: np.ndarray, values: np.ndarray, pads: np.ndarray) -> np.ndarray | None:
     """The Rust rank count and Tukey plotting position, or None where the Python implementation runs."""
-    if not _native_float64s(climatology, values) or not hasattr(_native, "tukey_probabilities"):
+    if not _native_float64(climatology, values):
         return None
-    if _native is None:  # _native_float64 guarantees it; this narrows the type
-        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
+    native = _native_backend.kernels(_native, "tukey_probabilities")
+    if native is None:
+        return None
     # the per-column pad counts arrive as NumPy integers; the kernel takes float64
-    return _native.tukey_probabilities(climatology, values, np.asarray(pads, dtype=np.float64))
+    probabilities: np.ndarray = native.tukey_probabilities(climatology, values, np.asarray(pads, dtype=np.float64))
+    return probabilities
 
 
 def _native_hastings_inverse_normal(probabilities: np.ndarray) -> np.ndarray | None:
     """The Rust Hastings inverse normal, or None where the Python implementation runs."""
-    if not _native_float64(probabilities) or not hasattr(_native, "hastings_inverse_normal"):
+    if not _native_float64(probabilities):
         return None
-    if _native is None:  # _native_float64 guarantees it; this narrows the type
-        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
-    return _native.hastings_inverse_normal(probabilities)
+    native = _native_backend.kernels(_native, "hastings_inverse_normal")
+    if native is None:
+        return None
+    normal: np.ndarray = native.hastings_inverse_normal(probabilities)
+    return normal
 
 
 def gamma_parameters(
@@ -2107,11 +2095,9 @@ def gamma_parameters(
 
     # compute the gamma distribution's shape and scale parameters, alpha and beta
     # using method of moments estimation
-    # np.nanmean emits an empty-slice warning even when floating-point errors
-    # are ignored, so a column with no positive value (all missing, zero, or
-    # negative) must keep the Python reductions, whose log mean is then empty.
-    if _native_float64(calibration_values) and np.all(np.any(calibration_values > 0.0, axis=0)):
-        alphas, betas = _native_gamma_parameters(calibration_values)
+    native_fit = _native_gamma_parameters(calibration_values)
+    if native_fit is not None:
+        alphas, betas = native_fit
     else:
         means = np.nanmean(calibration_values, axis=0)
         log_means = np.log(means)
@@ -2610,10 +2596,9 @@ def _gamma_fit(
     # as determined by the normal distribution's quantile (or inverse
     # cumulative distribution) function
     result_values: np.ndarray
-    if _native_float64(probabilities):
-        if _native is None:  # _native_float64 guarantees it; this narrows the type
-            raise RuntimeError(_NATIVE_EXTENSION_MISSING)
-        result_values = _native.norm_ppf(probabilities)
+    native = _native_backend.kernels(_native, "norm_ppf") if _native_float64(probabilities) else None
+    if native is not None:
+        result_values = native.norm_ppf(probabilities)
     else:
         try:
             result_values = scipy.stats.norm.ppf(probabilities)
@@ -2780,10 +2765,9 @@ def _beta_fit(
     # as determined by the normal distribution's quantile (or inverse
     # cumulative distribution) function
     result_values: np.ndarray
-    if _native_float64(probabilities):
-        if _native is None:  # _native_float64 guarantees it; this narrows the type
-            raise RuntimeError(_NATIVE_EXTENSION_MISSING)
-        result_values = _native.norm_ppf(probabilities)
+    native = _native_backend.kernels(_native, "norm_ppf") if _native_float64(probabilities) else None
+    if native is not None:
+        result_values = native.norm_ppf(probabilities)
     else:
         try:
             result_values = scipy.stats.norm.ppf(probabilities)
@@ -2856,8 +2840,9 @@ def loglogistic_parameters(
     )
     log = log.bind(calibration_period=f"{period.start_year}-{period.end_year}")
 
-    if _native_lmoment_input(calibration_values):
-        locs, scales, shapes, failed_fitting_count = _native_loglogistic_parameters(calibration_values)
+    native_fit = _native_loglogistic_parameters(calibration_values)
+    if native_fit is not None:
+        locs, scales, shapes, failed_fitting_count = native_fit
         total_fitting_count = math.prod(calibration_values.shape[1:])
     elif calibration_values.ndim > 2:
         locs, scales, shapes, failed_fitting_count = _loglogistic_parameters_spatial(calibration_values)
@@ -3069,15 +3054,12 @@ def _native_empirical_fit(
     values: np.ndarray, calibration_values: np.ndarray, output_scale: OutputScale
 ) -> np.ndarray | None:
     """Use native ranking for matching float64 columns; keep broadcasting in Python."""
-    if (
-        not _native_float64s(values, calibration_values)
-        or values.shape[1:] != calibration_values.shape[1:]
-        or not hasattr(_native, "empirical_transform")
-    ):
+    if not _native_float64(values, calibration_values) or values.shape[1:] != calibration_values.shape[1:]:
         return None
-    if _native is None:  # _native_float64s guarantees it; this narrows the type
-        raise RuntimeError(_NATIVE_EXTENSION_MISSING)
-    result = _native.empirical_transform(
+    native = _native_backend.kernels(_native, "empirical_transform")
+    if native is None:
+        return None
+    result: np.ndarray = native.empirical_transform(
         _as_columns(calibration_values), _as_columns(values), output_scale == "normal"
     ).reshape(values.shape)
     if output_scale == "bounded":

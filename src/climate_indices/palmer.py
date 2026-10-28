@@ -9,7 +9,7 @@ from typing import Any, NamedTuple
 import numpy as np
 from structlog.stdlib import BoundLogger
 
-from climate_indices import _palmer_pdi, _palmer_wells, compute, self_calibration, utils
+from climate_indices import _native_backend, _palmer_pdi, _palmer_wells, compute, self_calibration, utils
 from climate_indices._calibration_period import resolve_calibration_period
 from climate_indices._palmer_common import _py_max, _py_min
 from climate_indices._palmer_duration import DurationFactors
@@ -19,12 +19,9 @@ from climate_indices.logging_config import get_logger
 
 _logger = get_logger(__name__)
 
-try:
-    # the optional Rust kernels (docs/architecture.md); without the extension every
-    # Palmer stage below runs its Python implementation
-    from climate_indices import _native
-except ImportError:
-    _native = None  # type: ignore[assignment]
+# this family's switch on the optional Rust kernels (climate_indices._native_backend);
+# None runs every Palmer stage below on its Python implementation
+_native = _native_backend.EXTENSION
 
 # declare the function names that should be included in the public API for this module
 __all__ = ["pdsi", "scpdsi"]
@@ -251,15 +248,10 @@ def _calc_cafec_ratio(
 def _palmer_native(kernel: str, *arrays: np.ndarray) -> ModuleType | None:
     """The Rust extension when it has ``kernel`` and takes every array as it is, else None.
 
-    Every dispatch guard reads the module through this accessor, so the fallback
-    branch stays visible to the type checker; ``compute._native_float64`` holds the
-    shared plain-aligned-float64 and floating-point-policy rule. An extension built
-    before the Palmer kernels keeps the Python path.
+    An extension built before the Palmer kernels keeps the Python path.
     """
-    native: ModuleType | None = _native
-    if native is None or not hasattr(native, kernel):
-        return None
-    if not compute._native_float64s(*arrays):
+    native = _native_backend.kernels(_native, kernel)
+    if native is None or not _native_backend.takes(*arrays):
         return None
     return native
 
@@ -276,11 +268,13 @@ def _native_awc(awc: float | np.ndarray, n_cells: int) -> np.ndarray | None:
     """
     if type(awc) in (int, float, np.float64):
         return np.broadcast_to(np.float64(awc), (n_cells,))
-    if isinstance(awc, np.ndarray) and awc.shape in ((), (n_cells,)) and compute._plain_float64(awc):
+    if isinstance(awc, np.ndarray) and awc.shape in ((), (n_cells,)) and _native_backend.plain_float64(awc):
         return np.broadcast_to(awc, (n_cells,))
     return None
 
 
+# the water balance's monthly and calibration-sum fields, which
+# scripts/prepare_rust_palmer_fixtures.py also reads
 _WATER_BALANCE_MONTHLY = ("spdat", "pldat", "prdat", "rdat", "tldat", "etdat", "rodat", "sssdat", "ssudat")
 _WATER_BALANCE_SUMS = ("psum", "spsum", "petsum", "plsum", "prsum", "rsum", "tlsum", "etsum", "rosum")
 
@@ -294,15 +288,38 @@ def _native_water_balances(prepared: _PalmerPrepared) -> bool:
     # The kernel replaces these buffers; release them before allocating its outputs.
     for name in _WATER_BALANCE_MONTHLY:
         setattr(prepared, name, np.empty((0, 12, prepared.n_cells)))
-    monthly, sums = native.palmer_water_balance(
+    # unpacked into the fields in the kernel's return order, so the type checker
+    # checks every target instead of trusting a list of attribute names
+    (
+        (
+            prepared.spdat,
+            prepared.pldat,
+            prepared.prdat,
+            prepared.rdat,
+            prepared.tldat,
+            prepared.etdat,
+            prepared.rodat,
+            prepared.sssdat,
+            prepared.ssudat,
+        ),
+        (
+            prepared.psum,
+            prepared.spsum,
+            prepared.petsum,
+            prepared.plsum,
+            prepared.prsum,
+            prepared.rsum,
+            prepared.tlsum,
+            prepared.etsum,
+            prepared.rosum,
+        ),
+    ) = native.palmer_water_balance(
         prepared.precips,
         prepared.pet,
         awc,
         prepared.calibration_year_initial_idx,
         prepared.calibration_year_final_idx,
     )
-    for name, values in zip(_WATER_BALANCE_MONTHLY + _WATER_BALANCE_SUMS, monthly + sums, strict=True):
-        setattr(prepared, name, values)
     return True
 
 
@@ -896,7 +913,7 @@ def _wells_recursion(z_values: np.ndarray, factors: DurationFactors) -> tuple[np
     if native is None or z_values.ndim != 1 or np.any(np.isinf(z_values)):
         result = _palmer_wells.calculate(z_values, factors=factors)
         return result.pdsi, result.phdi, result.pmdi
-    try:
+    with _native_backend.converging(native, "scPDSI Wells recursion"):
         pdsi, phdi, pmdi = native.palmer_wells(
             z_values,
             factors.wetm,
@@ -909,8 +926,6 @@ def _wells_recursion(z_values: np.ndarray, factors: DurationFactors) -> tuple[np
             factors.dryc,
             factors.dry_spell_c,
         )
-    except native.NoConvergenceError as error:
-        raise ConvergenceError(str(error), algorithm="scPDSI Wells recursion") from None
     return pdsi, phdi, pmdi
 
 
@@ -930,10 +945,8 @@ def _scpdsi_duration_factors(calibration_z: np.ndarray, sign: int) -> tuple[floa
         or np.count_nonzero(~np.isnan(calibration_z)) < longest
     ):
         return self_calibration.duration_factors(calibration_z, sign)
-    try:
+    with _native_backend.converging(native, "scPDSI duration-factor least squares"):
         m, b = native.scpdsi_duration_factors(calibration_z, sign)
-    except native.NoConvergenceError as error:
-        raise ConvergenceError(str(error), algorithm="scPDSI duration-factor least squares") from None
     return m, b
 
 

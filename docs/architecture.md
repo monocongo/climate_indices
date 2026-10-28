@@ -267,10 +267,16 @@ src/climate_indices/_native.pyi  # type stub for the extension
   arrays and errors at the boundary and holds no climate algorithm. It stays
   `publish = false`, inherited from the workspace, and reaches a user only as
   the wheel `climate_indices._native`.
-- **Dispatch** lives in the Python module that owns each computation. It
-  imports `climate_indices._native` inside `try`/`except ImportError`; without
-  the extension every computation runs in pure Python. A runtime error raised
-  by the extension propagates and is never silently retried in Python.
+- **Dispatch** has one seam. `climate_indices._native_backend` is the only
+  module that imports `climate_indices._native`, inside `try`/`except
+  ImportError`; without the extension every computation runs in pure Python.
+  It owns the kernel-presence check, the plain, aligned float64 and
+  reporting-policy gate, and the translation of the extension's errors. The
+  module that owns each computation (`compute`, `eto`, `pm_eto`, `palmer`,
+  `fire._native`, `flood._native`) keeps its eligibility rule and its
+  marshalling, and copies the extension into its own `_native` attribute,
+  the family's switch. A runtime error raised by the extension propagates
+  and is never silently retried in Python.
 - **Reference implementation**: the Python implementations stay alive and
   directly testable. They are the oracle for Rust parity tests until a separate,
   explicit decision retires them.
@@ -460,8 +466,8 @@ an `np.float64` (other scalars keep their NumPy type promotion in Python), and a
 array AWC only when it is one plain float64 value per cell. An infinite Z value
 and a calibration Z series too short for the longest rolling window keep the
 Python path, which raises its own error; the kernels' abatement and least-squares
-failures raise `_native.NoConvergenceError`, which `palmer.py` re-raises as the
-`ConvergenceError` the Python path raises. The native water balance releases its
+failures raise `_native.NoConvergenceError`, which `_native_backend` re-raises as
+the `ConvergenceError` the Python path raises. The native water balance releases its
 unused Python output placeholders before allocating Rust outputs; its inputs are
 still copied before releasing the GIL. The K-prime and raw Z-index stages borrow
 the CAFEC arrays with the GIL held, avoiding five full-record copies per stage.
@@ -532,9 +538,10 @@ the Python path is roughly
 three times slower than the kernel plus that copy (365-day PE over 400 cells).
 The public flood entry points already hand the dispatch a C-contiguous array,
 since their validation copies, so the policy matters to direct callers of
-`flood._native`. A loaded extension that predates a kernel,
-or a recurrence option wider than the binding's integer parameters, also keeps
-the recurrence on its Python steps rather than failing at the boundary.
+`flood._native`. A recurrence option wider than the binding's integer
+parameters also keeps the recurrence on its Python steps rather than failing at
+the boundary. In every family, a loaded extension that predates a kernel keeps
+that computation on its Python path (`_native_backend.kernels`).
 Native dispatch also requires NumPy floating-point errors to be ignored
 (`np.errstate(all="ignore")`); policies that warn, raise, call, log, or print keep
 the Python path. A warning filter that promotes `RuntimeWarning` (or a superclass)
@@ -575,7 +582,10 @@ returned API state and a resumed run that is bitwise a single pass) explicitly
 ignore floating-point errors and compare the
 two paths at `rtol = atol = 1e-10` with matching NaN positions, and the
 `python_backend` fixture in
-`tests/conftest.py` pins any test to the Python reference. The
+`tests/conftest.py` pins any test to the Python reference. Its
+`disable_native(monkeypatch, *families)` is the one hook behind that fixture:
+it points the named families of `NATIVE_FAMILIES`, or every family, at their
+Python implementations, and one family's switch never gates another's. The
 consolidated suite in `tests/test_native_parity_registry.py` drives the same
 comparison from one registry
 (`tests/parity_registry.py`: Python entry point, dispatch module, expected

@@ -45,14 +45,7 @@ SUPPLEMENTAL = parity_registry.Entry(
     lambda values: parity_registry._spei(values, indices.Distribution.pearson),
     frozenset({"pearson_parameters", "pearson_ks_statistics", "pearson_cdf"}),
 )
-DISPATCHES = (
-    conftest.compute,
-    conftest.eto,
-    conftest.pm_eto,
-    conftest.fire_native,
-    conftest.flood_native,
-    conftest.palmer,
-)
+DISPATCHES = tuple(conftest.NATIVE_FAMILIES.values())
 
 
 class PreparedCalls:

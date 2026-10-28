@@ -79,14 +79,24 @@ def python_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     disable_native(monkeypatch)
 
 
-def disable_native(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Point every dispatch module at the Python implementations."""
-    monkeypatch.setattr(compute, "_native", None)
-    monkeypatch.setattr(eto, "_native", None)
-    monkeypatch.setattr(pm_eto, "_native", None)
-    monkeypatch.setattr(fire_native, "_native", None)
-    monkeypatch.setattr(flood_native, "_native", None)
-    monkeypatch.setattr(palmer, "_native", None)
+#: Each native family's dispatch module. Its ``_native`` attribute is the family's
+#: switch on the Rust kernels (``climate_indices._native_backend``): None keeps the
+#: family on its Python implementation, and a recorder instruments it, without
+#: touching any other family. ``test_native_backend.py`` checks this list is complete.
+NATIVE_FAMILIES: dict[str, ModuleType] = {
+    "compute": compute,
+    "eto": eto,
+    "pm_eto": pm_eto,
+    "palmer": palmer,
+    "fire": fire_native,
+    "flood": flood_native,
+}
+
+
+def disable_native(monkeypatch: pytest.MonkeyPatch, *families: str) -> None:
+    """Point the named families, or every family when none is named, at their Python implementations."""
+    for family in families or NATIVE_FAMILIES:
+        monkeypatch.setattr(NATIVE_FAMILIES[family], "_native", None)
 
 
 NATIVE_PARITY_RTOL = 1e-10

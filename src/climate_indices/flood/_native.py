@@ -2,11 +2,13 @@
 
 ``crates/climate-indices`` computes effective precipitation, the EDI and Flood
 Index standardizations, and the Antecedent Precipitation Index recurrence
-(``docs/architecture.md``). This module is the flood package's only native
-boundary: it decides whether the extension can take an entry point's prepared
-arrays, reshapes them into the time-first ``(time, cells)`` blocks the kernels
-read, and builds the callable :mod:`climate_indices._recurrence` runs in place
-of its day loop for the API.
+(``docs/architecture.md``). This module is the flood package's eligibility rule
+and marshalling: it decides whether the extension can take an entry point's
+prepared arrays, reshapes them into the time-first ``(time, cells)`` blocks the
+kernels read, and builds the callable :mod:`climate_indices._recurrence` runs in
+place of its day loop for the API. :mod:`climate_indices._native_backend` owns
+the extension itself, the shared float64 and reporting-policy gate, and the
+translation of the extension's errors.
 
 Nothing here holds an algorithm. The Python implementations in ``_pe.py``,
 ``_edi.py``, ``_if.py``, and ``_antecedent.py`` stay the parity oracles, and
@@ -22,33 +24,20 @@ from types import ModuleType
 import numpy as np
 import numpy.typing as npt
 
-from climate_indices import compute
-from climate_indices._native_arrays import _block, _cells, _counts_flat, _flags_flat, _flat, _mask, _with_kernels
-from climate_indices._recurrence import _MAX_NATIVE_OPTION, NativeRecurrence, _raise_non_finite
+from climate_indices import _native_backend
+from climate_indices._native_arrays import _block, _cells, _counts_flat, _flags_flat, _flat, _mask
+from climate_indices._recurrence import _MAX_NATIVE_OPTION, NativeRecurrence
 
-try:
-    # the optional Rust kernels (docs/architecture.md); without the extension the
-    # flood indices run the Python implementations they always have
-    from climate_indices import _native
-except ImportError:
-    _native = None  # type: ignore[assignment]
+# this family's switch on the optional Rust kernels (climate_indices._native_backend);
+# None runs the flood indices on the Python implementations they always have
+_native = _native_backend.EXTENSION
 
 _API_INDEX_TYPE = "antecedent_precipitation_index"
 
 
-def _native_module() -> ModuleType | None:
-    """The optional Rust extension, or None when this install is pure Python.
-
-    Every guard reads the module through this accessor: a successful import is
-    typed as always present, which would make the fallback branches look
-    unreachable to the type checker.
-    """
-    return _native
-
-
 def _kernel_module(*names: str) -> ModuleType | None:
-    """The extension when it exposes every named attribute, else None (see :func:`_with_kernels`)."""
-    return _with_kernels(_native_module(), *names)
+    """The extension when it exposes every named attribute, else None."""
+    return _native_backend.kernels(_native, *names)
 
 
 def _time_first_block(array: npt.NDArray[np.float64]) -> npt.NDArray[np.float64] | None:
@@ -59,7 +48,7 @@ def _time_first_block(array: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]
     public entry points validate their input with ``np.ma.asarray``, which
     already makes it C-contiguous, so from those the block is always a view.
     """
-    if not compute._native_float64(array):
+    if not _native_backend.takes(array):
         return None
     rows = array.shape[0]
     columns = _cells(array.shape[1:])
@@ -134,7 +123,7 @@ def api_recurrence(
     native = _kernel_module("antecedent_precipitation_index", "NonFiniteResultError")
     if native is None or np.result_type(k, np.float64) != np.float64:
         return None
-    if not compute._native_float64s(precipitation, api):
+    if not _native_backend.takes(precipitation, api):
         return None
     days = precipitation.shape[0]
     cells = _cells(precipitation.shape[1:])
@@ -155,7 +144,7 @@ def api_recurrence(
             return None
         # built here, inside the runner's guarded region, so a copy a layout
         # needs is reported through the recurrence's failure events
-        try:
+        with _native_backend.finite_results(native, _API_INDEX_TYPE):
             history, final_api, final_gaps = native.antecedent_precipitation_index(
                 precipitation_mm=_block(precipitation, days, cells),
                 k=decay,
@@ -168,8 +157,6 @@ def api_recurrence(
                 max_gap_days=max_gap_days,
                 record=shape is not None,
             )
-        except native.NonFiniteResultError as exc:
-            _raise_non_finite(_API_INDEX_TYPE, exc)
 
         # the kernel returns whole arrays; the driver and the returned APIState
         # read the component's own state and gap arrays, so write them back there

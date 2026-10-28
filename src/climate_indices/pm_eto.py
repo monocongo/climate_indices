@@ -23,31 +23,17 @@ Allen, R.G., Pereira, L.S., Raes, D. and Smith, M. (1998)
 from __future__ import annotations
 
 from dataclasses import dataclass
-from types import ModuleType
 from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 
-from climate_indices import compute
+from climate_indices import _native_backend
 from climate_indices.exceptions import InvalidArgumentError
 
-try:
-    # the optional Rust kernels (docs/architecture.md); without the extension the
-    # Penman-Monteith entry points below run their pure-Python implementations
-    from climate_indices import _native
-except ImportError:
-    _native = None  # type: ignore[assignment]
-
-
-def _native_module() -> ModuleType | None:
-    """The optional Rust extension, or None when this install is pure Python.
-
-    Every dispatch guard reads the module through this accessor: a successful
-    import is typed as always present, which would make the fallback branch look
-    unreachable to the type checker.
-    """
-    return _native
+# this family's switch on the optional Rust kernels (climate_indices._native_backend);
+# None runs the Penman-Monteith entry points below on their pure-Python implementations
+_native = _native_backend.EXTENSION
 
 
 # union type for function signatures
@@ -443,7 +429,7 @@ def _native_operand(value: Any) -> float | np.ndarray | None:
         error policy the kernels do not take
     """
     if isinstance(value, np.ndarray):
-        return value if compute._plain_float64(value) else None
+        return value if _native_backend.plain_float64(value) else None
     if isinstance(value, float):
         return value
     return None
@@ -466,7 +452,7 @@ def _native_arrays(
     arrays = [operand for operand in operands if isinstance(operand, np.ndarray)]
     if not any(array.ndim != 0 for array in arrays):
         return None
-    if not policy_checked and not compute._native_policy_allows():
+    if not policy_checked and not _native_backend.policy_allows():
         return None
     shape = next(array.shape for array in arrays if array.ndim != 0)
     if not all(array.ndim == 0 or (array.shape == shape and array.flags.c_contiguous) for array in arrays):
@@ -527,7 +513,6 @@ def pm_eto(
         Reference evapotranspiration ETo in mm/day, same shape as inputs.
 
     """
-    extension = _native_module()
     native = (
         _native_arrays(
             net_radiation,
@@ -539,10 +524,11 @@ def pm_eto(
             delta,
             gamma,
         )
-        if extension is not None
+        if _native is not None
         else None
     )
-    if extension is not None and native is not None and hasattr(extension, "pm_eto"):
+    extension = None if native is None else _native_backend.kernels(_native, "pm_eto")
+    if extension is not None and native is not None:
         shape, arrays = native
         return np.asarray(extension.pm_eto(*arrays)).reshape(shape)
 
@@ -1024,8 +1010,7 @@ def _native_penman_monteith_eto(
     :return: the ETo array in the broadcast shape of the inputs, or None when the
         kernel cannot take these inputs
     """
-    extension = _native_module()
-    if extension is None:
+    if _native is None:
         return None
 
     # an operand the kernels cannot take keeps the Python path, so its own
@@ -1061,7 +1046,7 @@ def _native_penman_monteith_eto(
             albedo,
         )
     )
-    if policy_checked and not compute._native_policy_allows():
+    if policy_checked and not _native_backend.policy_allows():
         return None
 
     # Eq 47 validates the measurement height before any pathway is chosen
@@ -1112,8 +1097,8 @@ def _native_penman_monteith_eto(
         (sunshine_hours,) = arrays[offset : offset + 1]
 
     (daily_tmin, daily_tmax, latitude, elevation, wind_speed, wind_height, day, soil_heat_flux, albedo) = arrays[0:9]
-    # an extension built before the PET kernels keeps the Python path
-    if not hasattr(extension, "fao56_eto"):
+    extension = _native_backend.kernels(_native, "fao56_eto")
+    if extension is None:
         return None
     eto = extension.fao56_eto(
         daily_tmin,
