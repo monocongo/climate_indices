@@ -4,12 +4,13 @@
 //! errors at the boundary and holds no climate algorithm of its own; the
 //! Python package decides when to call it and falls back to its pure-Python
 //! implementation when the extension is not installed. Inputs must already be
-//! float64 arrays: extraction fails with `TypeError` rather than casting.
+//! float64 arrays; occurrence masks use bool and indices use int64. Extraction
+//! fails with `TypeError` rather than casting.
 
 use numpy::ndarray::{Array, Array1, Array2, CowArray, Dimension, ShapeBuilder};
 use numpy::{
     IntoPyArray, PyArray1, PyArray2, PyArrayDyn, PyArrayMethods, PyReadonlyArray, PyReadonlyArray1,
-    PyReadonlyArray2, PyReadonlyArrayDyn, PyUntypedArrayMethods,
+    PyReadonlyArray2, PyReadonlyArray3, PyReadonlyArrayDyn, PyUntypedArrayMethods,
 };
 use pyo3::create_exception;
 use pyo3::exceptions::PyValueError;
@@ -22,6 +23,7 @@ mod palmer;
 mod pet;
 
 type ParameterArrays<'py> = (Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>);
+type ResampleArrays<'py> = (Bound<'py, PyArray2<f64>>, Bound<'py, PyArray2<f64>>);
 type PearsonArrays<'py> = (
     Bound<'py, PyArray1<f64>>,
     Bound<'py, PyArray1<f64>>,
@@ -110,6 +112,45 @@ fn checked_copy_counts<D: Dimension>(
     array: &PyReadonlyArray<'_, i64, D>,
 ) -> PyResult<Array<i64, D>> {
     copy_indexed(array, "int64")
+}
+
+/// Compound bootstrap metrics from Python-generated whole-year indices.
+#[pyfunction]
+fn compound_resample_metrics<'py>(
+    py: Python<'py>,
+    rows: PyReadonlyArray3<'py, bool>,
+    paired_years: PyReadonlyArray2<'py, i64>,
+    null_years: PyReadonlyArray3<'py, i64>,
+    statistic: &str,
+    groupby: &str,
+) -> PyResult<ResampleArrays<'py>> {
+    use climate_indices::compound::{GroupBy, Statistic};
+    let statistic = match statistic {
+        "joint_probability" => Statistic::JointProbability,
+        "likelihood_multiplication_factor" => Statistic::LikelihoodMultiplicationFactor,
+        "conditional_probability" => Statistic::ConditionalProbability,
+        _ => return Err(PyValueError::new_err("unknown compound statistic")),
+    };
+    let groupby = match groupby {
+        "month" => GroupBy::Month,
+        "pooled" => GroupBy::Pooled,
+        _ => return Err(PyValueError::new_err("unknown compound groupby")),
+    };
+    let rows = checked_copy_flags(&rows)?;
+    let paired_years = checked_copy_counts(&paired_years)?;
+    let null_years = checked_copy_counts(&null_years)?;
+    let (paired, null) = py
+        .detach(|| {
+            climate_indices::compound::resample_metrics(
+                rows.view(),
+                paired_years.view(),
+                null_years.view(),
+                statistic,
+                groupby,
+            )
+        })
+        .map_err(climate_error)?;
+    Ok((paired.into_pyarray(py), null.into_pyarray(py)))
 }
 
 /// Gamma shape and scale per column of a (years, columns) calibration block.
@@ -857,6 +898,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
         "NoConvergenceError",
         m.py().get_type::<NoConvergenceError>(),
     )?;
+    m.add_function(wrap_pyfunction!(compound_resample_metrics, m)?)?;
     m.add_function(wrap_pyfunction!(gamma_parameters, m)?)?;
     m.add_function(wrap_pyfunction!(gamma_probabilities, m)?)?;
     m.add_function(wrap_pyfunction!(pnp_normals, m)?)?;
