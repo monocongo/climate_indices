@@ -5,6 +5,7 @@ from typing import Any
 
 import numpy as np
 import pytest
+import xarray as xr
 
 from climate_indices import compute
 from tests import conftest
@@ -95,10 +96,10 @@ def test_direct_boundary_behavior_is_unchanged(
 
 
 @pytest.mark.parametrize(
-    "kind", ["float32", "integer", "subclass", "fortran", "strided", "unaligned", "two_dimensional"]
+    "kind", ["float32", "integer", "subclass", "fortran", "strided", "unaligned", "data_array", "two_dimensional"]
 )
 def test_ineligible_layouts_retain_python(monkeypatch: pytest.MonkeyPatch, kind: str) -> None:
-    values: np.ndarray = np.arange(120.0).reshape(20, 3, 2)
+    values: Any = np.arange(120.0).reshape(20, 3, 2)
     if kind == "float32":
         values = values.astype(np.float32)
     elif kind == "integer":
@@ -116,6 +117,9 @@ def test_ineligible_layouts_retain_python(monkeypatch: pytest.MonkeyPatch, kind:
     elif kind == "unaligned":
         values = np.ndarray(values.shape, dtype=np.float64, buffer=bytearray(values.nbytes + 1), offset=1)
         values.fill(1)
+    elif kind == "data_array":
+        # a duck array has no `flags`; dispatch must decline it before reading them
+        values = xr.DataArray(values)
     elif kind == "two_dimensional":
         values = values.reshape(20, 6)
     if kind == "two_dimensional":

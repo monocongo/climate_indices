@@ -277,9 +277,9 @@ def sum_to_scale(
     if (
         native is not None
         and type(scale) is int
+        and _native_backend.takes(values)
         and (values.ndim == 1 and scale < 8 or values.ndim > 2 and values.flags.c_contiguous)
         and 1 < scale <= values.shape[0]
-        and _native_backend.takes(values)
     ):
         # shortcut: longer convolutions retain NumPy's platform-dependent dot order;
         # extend dispatch only after that order has a parity-preserving port.
