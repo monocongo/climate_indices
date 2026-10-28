@@ -822,6 +822,83 @@ fn kbdi<'py>(
     ))
 }
 
+/// The Initial Spread Index of a (days, cells) FFMC and km/h wind block.
+#[pyfunction]
+fn initial_spread_index<'py>(
+    py: Python<'py>,
+    ffmc: PyReadonlyArray2<'py, f64>,
+    wind_speed_kilometers_per_hour: PyReadonlyArray2<'py, f64>,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    let ffmc = checked_copy(&ffmc)?;
+    let wind = checked_copy(&wind_speed_kilometers_per_hour)?;
+    py.detach(|| climate_indices::fire::initial_spread_index(ffmc.view(), wind.view()))
+        .map(|result| result.into_pyarray(py))
+        .map_err(climate_error)
+}
+
+/// The Buildup Index of a (days, cells) DMC and DC block.
+#[pyfunction]
+fn buildup_index<'py>(
+    py: Python<'py>,
+    dmc: PyReadonlyArray2<'py, f64>,
+    dc: PyReadonlyArray2<'py, f64>,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    let dmc = checked_copy(&dmc)?;
+    let dc = checked_copy(&dc)?;
+    py.detach(|| climate_indices::fire::buildup_index(dmc.view(), dc.view()))
+        .map(|result| result.into_pyarray(py))
+        .map_err(climate_error)
+}
+
+/// The Canadian Fire Weather Index of a (days, cells) ISI and BUI block.
+#[pyfunction]
+fn fwi<'py>(
+    py: Python<'py>,
+    isi: PyReadonlyArray2<'py, f64>,
+    bui: PyReadonlyArray2<'py, f64>,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    let isi = checked_copy(&isi)?;
+    let bui = checked_copy(&bui)?;
+    py.detach(|| climate_indices::fire::fwi(isi.view(), bui.view()))
+        .map(|result| result.into_pyarray(py))
+        .map_err(climate_error)
+}
+
+/// The Daily Severity Rating of a (days, cells) Canadian FWI block.
+#[pyfunction]
+fn daily_severity_rating<'py>(
+    py: Python<'py>,
+    fwi: PyReadonlyArray2<'py, f64>,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    let fwi = checked_copy(&fwi)?;
+    Ok(py
+        .detach(|| climate_indices::fire::daily_severity_rating(fwi.view()))
+        .into_pyarray(py))
+}
+
+/// The spring start-up Drought Code after overwintering (Lawson and Armitage, 2008, Eq. 2-4).
+#[pyfunction]
+fn overwinter_dc<'py>(
+    py: Python<'py>,
+    final_fall_dc: PyReadonlyArray2<'py, f64>,
+    overwinter_precipitation_mm: PyReadonlyArray2<'py, f64>,
+    carry_over_fraction: f64,
+    wetting_efficiency: f64,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    let final_fall_dc = checked_copy(&final_fall_dc)?;
+    let precipitation = checked_copy(&overwinter_precipitation_mm)?;
+    py.detach(|| {
+        climate_indices::fire::overwinter_dc(
+            final_fall_dc.view(),
+            precipitation.view(),
+            carry_over_fraction,
+            wetting_efficiency,
+        )
+    })
+    .map(|result| result.into_pyarray(py))
+    .map_err(climate_error)
+}
+
 /// Daily effective precipitation of a (days, cells) block (Byun and Wilhite, 1999, Eq. 2).
 #[pyfunction]
 fn effective_precipitation<'py>(
@@ -991,6 +1068,11 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(duff_moisture_code, m)?)?;
     m.add_function(wrap_pyfunction!(drought_code, m)?)?;
     m.add_function(wrap_pyfunction!(kbdi, m)?)?;
+    m.add_function(wrap_pyfunction!(initial_spread_index, m)?)?;
+    m.add_function(wrap_pyfunction!(buildup_index, m)?)?;
+    m.add_function(wrap_pyfunction!(fwi, m)?)?;
+    m.add_function(wrap_pyfunction!(daily_severity_rating, m)?)?;
+    m.add_function(wrap_pyfunction!(overwinter_dc, m)?)?;
     m.add_function(wrap_pyfunction!(effective_precipitation, m)?)?;
     m.add_function(wrap_pyfunction!(edi, m)?)?;
     m.add_function(wrap_pyfunction!(flood_index, m)?)?;

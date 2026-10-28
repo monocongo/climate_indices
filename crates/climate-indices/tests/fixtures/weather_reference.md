@@ -128,6 +128,14 @@ Every run records its history, final code, and final gap counts. KBDI also
 records its final wet-spell precipitation. Initial wet-spell precipitation is
 zero, initial gap counts are -1, and all static inputs are valid.
 
+The behavior indices are computed from those recorded histories with the public
+Python functions, so `isi`, `bui`, `fwi`, and `dsr` have the `(16, 5)` shape of
+the histories and are dimensionless. The overwinter start-up DC uses the same
+final DC state and `overwinter_precipitation`
+`[0, 200, 110, 50, 250]` mm at the reference fractions 0.75 and 0.75, giving
+`overwinter_dc_propagate` and `overwinter_dc_bridge`, each shaped `(1, 5)` and
+dimensionless.
+
 ### `weather_flood.txt`
 
 `rain`, `pe_1`, `pe_2`, `pe_7`, and `flood_index` have shape `(1115, 3)`.
@@ -224,6 +232,9 @@ requested modules:
 - `pm_eto::pm_eto`, `pm_eto::penman_monteith_eto`, and `pm_eto::Operand::at` run directly.
 - `fire::ffmc`, `fire::dmc`, `fire::dc`, and `fire::kbdi` run against Python values.
   The first three also run against NRCan values.
+- `fire::initial_spread_index`, `fire::buildup_index`, `fire::fwi`,
+  `fire::daily_severity_rating`, and `fire::overwinter_dc` run against Python
+  values derived from the recorded moisture-code histories.
 - `flood::effective_precipitation`, `flood::edi`, `flood::flood_index`, and
   `flood::antecedent_precipitation_index` run against Python values.
 

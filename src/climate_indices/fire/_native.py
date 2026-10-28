@@ -1,20 +1,23 @@
-"""The optional Rust kernels behind the fire-weather recurrences.
+"""The optional Rust kernels behind the fire-weather recurrences and derived indices.
 
 ``crates/climate-indices`` runs the KBDI and CFFWIS moisture-code daily recursions
-over a whole time axis per cell (``docs/architecture.md``). This module is the
-fire package's eligibility rule and marshalling: it decides whether the
+over a whole time axis per cell, and evaluates the CFFWIS behavior indices and
+the overwinter Drought Code elementwise (``docs/architecture.md``). This module
+is the fire package's eligibility rule and marshalling: it decides whether the
 extension can take a recurrence's prepared arrays and builds the callable that
-:mod:`climate_indices._recurrence` runs in place of its day loop.
+:mod:`climate_indices._recurrence` runs in place of its day loop, and it reshapes
+the behavior indices' broadcast arrays to the ``(n, 1)`` block their kernels take.
 :mod:`climate_indices._native_backend` owns the extension itself, the shared
 float64 and reporting-policy gate, and the translation of the extension's
 errors into the ones the Python driver raises.
 
-Nothing here holds an algorithm. The Python implementations in ``_kbdi.py`` and
-``_cffwis_codes.py`` stay the parity oracles, and every layout this module
-cannot hand to the extension unchanged stays on the Python path. The kernels
-take views of the time-first arrays: the binding's own copy before it releases
-the GIL is the only full-size copy of an input, so a broadcast month series or
-season mask is never materialized here first.
+Nothing here holds an algorithm. The Python implementations in ``_kbdi.py``,
+``_cffwis_codes.py``, ``_cffwis_behavior.py``, and ``_cffwis.py`` stay the parity
+oracles, and every layout this module cannot hand to the extension unchanged
+stays on the Python path. The kernels take views of the prepared arrays: the
+binding's own copy before it releases the GIL is the only full-size copy of an
+input, so a broadcast month series or season mask is never materialized here
+first, and a behavior-index reshape that would copy declines the kernel.
 """
 
 from __future__ import annotations
@@ -61,6 +64,21 @@ def _optional_mask(array: npt.NDArray[np.bool_] | None, days: int, cells: int) -
 def _counts(array: _Counts, days: int, cells: int) -> npt.NDArray[np.int64]:
     """One time-first calendar array as the ``(days, cells)`` view a kernel takes."""
     return np.asarray(array, dtype=np.int64).reshape(days, cells)
+
+
+def _elementwise_block(array: npt.NDArray[np.float64]) -> npt.NDArray[np.float64] | None:
+    """A plain float64 array as the ``(n, 1)`` block an elementwise kernel takes, or None.
+
+    The block is a view: a reshape that would copy (a transposed or broadcast
+    layout) leaves the computation on the Python path, which is the parity
+    oracle. The binding's own copy before it releases the GIL is then the only
+    full-size copy of an input.
+    """
+    if not _native_backend.takes(array) or array.size == 0:
+        return None
+    if not _merges_cells(array[np.newaxis]):
+        return None
+    return array.reshape(-1, 1)
 
 
 def _recorded_history(
@@ -354,3 +372,92 @@ def kbdi_recurrence(
         cells=cells,
     )
     return partial(_run_kbdi_kernel, native, arrays)
+
+
+def initial_spread_index(
+    ffmc: npt.NDArray[np.float64],
+    wind_speed_kilometers_per_hour: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64] | None:
+    """The Rust Initial Spread Index of two same-shape blocks, or None to stay on the Python path.
+
+    The kernel takes the FFMC and the km/h wind as ``(n, 1)`` views, so a
+    broadcast, transposed, or otherwise unreshapeable layout stays on the
+    Python path, which is the parity oracle.
+    """
+    native = _kernel_module("initial_spread_index")
+    if native is None:
+        return None
+    ffmc_block = _elementwise_block(ffmc)
+    wind_block = _elementwise_block(wind_speed_kilometers_per_hour)
+    if ffmc_block is None or wind_block is None or ffmc.shape != wind_speed_kilometers_per_hour.shape:
+        return None
+    result: npt.NDArray[np.float64] = native.initial_spread_index(ffmc_block, wind_block)
+    return result.reshape(ffmc.shape)
+
+
+def buildup_index(
+    dmc: npt.NDArray[np.float64],
+    dc: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64] | None:
+    """The Rust Buildup Index of two same-shape blocks, or None to stay on the Python path."""
+    native = _kernel_module("buildup_index")
+    if native is None:
+        return None
+    dmc_block = _elementwise_block(dmc)
+    dc_block = _elementwise_block(dc)
+    if dmc_block is None or dc_block is None or dmc.shape != dc.shape:
+        return None
+    result: npt.NDArray[np.float64] = native.buildup_index(dmc_block, dc_block)
+    return result.reshape(dmc.shape)
+
+
+def fwi(
+    isi: npt.NDArray[np.float64],
+    bui: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64] | None:
+    """The Rust Canadian FWI of two same-shape blocks, or None to stay on the Python path."""
+    native = _kernel_module("fwi")
+    if native is None:
+        return None
+    isi_block = _elementwise_block(isi)
+    bui_block = _elementwise_block(bui)
+    if isi_block is None or bui_block is None or isi.shape != bui.shape:
+        return None
+    result: npt.NDArray[np.float64] = native.fwi(isi_block, bui_block)
+    return result.reshape(isi.shape)
+
+
+def daily_severity_rating(fwi_values: npt.NDArray[np.float64]) -> npt.NDArray[np.float64] | None:
+    """The Rust Daily Severity Rating of a block, or None to stay on the Python path."""
+    native = _kernel_module("daily_severity_rating")
+    if native is None:
+        return None
+    block = _elementwise_block(fwi_values)
+    if block is None:
+        return None
+    result: npt.NDArray[np.float64] = native.daily_severity_rating(block)
+    return result.reshape(fwi_values.shape)
+
+
+def overwinter_dc(
+    final_fall_dc: npt.NDArray[np.float64],
+    overwinter_precipitation_mm: npt.NDArray[np.float64],
+    carry_over_fraction: float,
+    wetting_efficiency: float,
+) -> npt.NDArray[np.float64] | None:
+    """The Rust overwinter start-up Drought Code, or None to stay on the Python path.
+
+    The kernel takes the autumn DC and the overwinter precipitation as ``(n, 1)``
+    views plus the two fractions as scalars; the caller validates the fractions.
+    """
+    native = _kernel_module("overwinter_dc")
+    if native is None:
+        return None
+    dc_block = _elementwise_block(final_fall_dc)
+    precipitation_block = _elementwise_block(overwinter_precipitation_mm)
+    if dc_block is None or precipitation_block is None or final_fall_dc.shape != overwinter_precipitation_mm.shape:
+        return None
+    result: npt.NDArray[np.float64] = native.overwinter_dc(
+        dc_block, precipitation_block, carry_over_fraction, wetting_efficiency
+    )
+    return result.reshape(final_fall_dc.shape)

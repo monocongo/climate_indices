@@ -15,7 +15,7 @@ from typing import Literal
 # Block extension imports before importing any package module, even if it is installed.
 sys.modules["climate_indices._native"] = None  # type: ignore[assignment]
 
-SOURCE_REVISION = "f4cb938eb622a3ddf8b96c129337e0ebecd4121e"
+SOURCE_REVISION = "2f2e7ca24fe2fdda3f0d52690b017d2729e8adda"
 ROOT = Path(__file__).resolve().parents[1]
 GUARDED_PATHS = (
     "src/climate_indices",
@@ -249,10 +249,25 @@ def fire_recurrences() -> None:
             arrays[f"{key}_gaps"] = result.state.trailing_gap_days
             if name == "kbdi":
                 arrays[f"{key}_wet_spell"] = result.state.wet_spell_precipitation
+        # the derived indices read the same recorded histories the codes returned,
+        # so the Rust kernels take exactly the arrays the Python seam reads
+        isi = fire.initial_spread_index(arrays[f"ffmc_{policy}"], wind[2:])
+        bui = fire.buildup_index(arrays[f"dmc_{policy}"], arrays[f"dc_{policy}"])
+        fwi = fire.cffwis_fwi(isi, bui)
+        arrays[f"isi_{policy}"] = isi
+        arrays[f"bui_{policy}"] = bui
+        arrays[f"fwi_{policy}"] = fwi
+        arrays[f"dsr_{policy}"] = fire.daily_severity_rating(fwi)
+    overwinter_precipitation = np.array([0.0, 200.0, 110.0, 50.0, 250.0])
+    arrays["overwinter_precipitation"] = overwinter_precipitation
+    for policy, _ in POLICIES:
+        arrays[f"overwinter_dc_{policy}"] = fire.overwinter_drought_code(
+            arrays[f"dc_{policy}_state"], overwinter_precipitation
+        )
     save(
         "weather_fire.txt",
         arrays,
-        "temperature: degrees C; humidity: percent; wind: km/h; rain/annual rain/KBDI/wet spell: mm; DMC table: hours; DC table: equation adjustment; codes: dimensionless; month: 1-based; bands/gaps: integer; season: 0/1",
+        "temperature: degrees C; humidity: percent; wind: km/h; rain/annual rain/KBDI/wet spell/overwinter rain: mm; DMC table: hours; DC table: equation adjustment; codes/ISI/BUI/FWI/DSR: dimensionless; month: 1-based; bands/gaps: integer; season: 0/1",
     )
 
 

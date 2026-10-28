@@ -285,9 +285,9 @@ src/climate_indices/_native.pyi  # type stub for the extension
 followed by EDDI's empirical ranking and inverse normal, the distribution fits
 SPEI adds, Pearson Type III (also used by SPI and the standardized index), the
 log-logistic (generalized logistic, GLO), the PNP and PCI numerical blocks, the
-fire-weather recurrences, the flood family, the empirical distribution's plotting
-positions, the Palmer family's water balance, Z-index, and spell recursions,
-and Run Theory identification and per-run metrics.
+fire-weather recurrences and behavior indices, the flood family, the empirical
+distribution's plotting positions, the Palmer family's water balance,
+Z-index, and spell recursions, and Run Theory identification and per-run metrics.
 The gamma and distribution-fit kernels
 replace the
 numerical blocks inside `compute.py` functions; the EDDI, PNP, and PCI kernels
@@ -447,6 +447,11 @@ and the error surface around it:
 | `fire.duff_moisture_code` recurrence | `fire::dmc` over `recurrence::run` |
 | `fire.drought_code` recurrence | `fire::dc` over `recurrence::run` |
 | `fire.kbdi` recurrence | `fire::kbdi` over `recurrence::run` |
+| `fire._initial_spread_index` | `fire::initial_spread_index` |
+| `fire._buildup_index` | `fire::buildup_index` |
+| `fire._cffwis_fwi` | `fire::fwi` |
+| `fire._daily_severity_rating` | `fire::daily_severity_rating` |
+| `fire.overwinter_drought_code` (`evaluate()`) | `fire::overwinter_dc` |
 
 `recurrence::run` ports the shared day loop in `climate_indices._recurrence`:
 the ADR-0007 missing-day policy, the ADR-0010 seasonal carry mask, the spin-up
@@ -459,9 +464,10 @@ line-by-line ports of the Python expressions, including the
 combined `cffwis()` orchestrator runs each of its three codes through the same
 kernels; the components are independent, so running them outside the shared day
 loop cannot change a result. The CFFWIS behavior indices (ISI, BUI, FWI, DSR)
-and the overwinter Drought Code are approved for porting under RUSTUP-08: they
-complete the Fire Weather Index System in the crate even though the Python
-speed stays near 1x. The standalone elementwise indices (Fosberg FFWI, HDW,
+and the overwinter Drought Code are ported under RUSTUP-08: they complete the
+Fire Weather Index System in the crate even though the Python speed stays near
+1x, and the Python expressions in `_cffwis_behavior.py` and `_cffwis.py` stay
+the parity oracles. The standalone elementwise indices (Fosberg FFWI, HDW,
 Haines) stay in Python for 3.1.1; RUSTUP-09 to RUSTUP-11 are closed as not
 planned and can reopen if a Rust user needs them.
 
@@ -574,7 +580,13 @@ copy) stays in Python as well. The kernels take views of the prepared arrays, so
 a broadcast month series or season mask is copied once, by the binding, rather
 than first materialized in Python; that boundary copy is the native path's own
 buffer and is not part of the `array_memory_mb` a recurrence reports, which
-counts the one recorded history the kernel returns. The flood kernels differ in
+counts the one recorded history the kernel returns. The behavior-index kernels
+take `(n, 1)` views of one flat block: a layout whose reshape would copy, such
+as a transposed or partially broadcast array, keeps the Python expression.
+The public entry points coerce inputs to float64 and broadcast them where
+needed. These steps can preserve existing layouts; they do not guarantee
+contiguous arrays. The dispatch checks strides before reshaping, so rejecting
+a layout does not allocate a full-size copy. The flood kernels differ in
 one respect: a time-last (transposed) array reshapes to a view, and a layout
 that cannot merge without a copy, such as a regional slice of a larger grid or a
 Fortran-ordered array, is copied once in Python and still runs natively, because
@@ -700,10 +712,12 @@ are measured on macOS arm64
 | `eddi_spatial_block` | `hastings_inverse_normal`, `trailing_sum`, `tukey_probabilities` | 0.000e+00 | 0.000e+00 |
 | `empirical` | `empirical_transform`, `trailing_sum` | 0.000e+00 | 0.000e+00 |
 | `empirical_spatial_block` | `empirical_transform`, `trailing_sum` | 2.220e-16 | 2.479e-16 |
+| `fire_behavior_indices` | `buildup_index`, `daily_severity_rating`, `drought_code`, `duff_moisture_code`, `ffmc`, `fwi`, `initial_spread_index` | 0.000e+00 | 0.000e+00 |
 | `fire_drought_code` | `drought_code` | 0.000e+00 | 0.000e+00 |
 | `fire_duff_moisture_code` | `duff_moisture_code` | 0.000e+00 | 0.000e+00 |
 | `fire_ffmc` | `ffmc` | 0.000e+00 | 0.000e+00 |
 | `fire_kbdi` | `kbdi` | 0.000e+00 | 0.000e+00 |
+| `fire_overwinter_dc` | `overwinter_dc` | 0.000e+00 | 0.000e+00 |
 | `fit_diagnostics` | `gamma_ks_statistics`, `gamma_parameters` | 0.000e+00 | 0.000e+00 |
 | `flood_api` | `antecedent_precipitation_index` | no finite comparison | no finite comparison |
 | `flood_edi` | `edi`, `effective_precipitation` | 8.527e-14 | 7.883e-15 |

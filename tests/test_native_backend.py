@@ -9,6 +9,7 @@ missing extension a failure.
 import re
 import subprocess
 import sys
+import tracemalloc
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
@@ -122,6 +123,49 @@ def test_pet_uses_python_when_the_extension_predates_pet_kernels(
 def test_fire_dispatches_to_the_built_extension() -> None:
     native = conftest.import_native()
     assert fire_native._native is native
+
+
+@pytest.mark.parametrize("layout", ["transposed", "broadcast_rows", "broadcast_columns"])
+def test_fire_elementwise_layout_rejection_does_not_allocate_a_copy(layout: str) -> None:
+    """An ineligible layout must not allocate a full-size array during the check."""
+    values = np.arange(512.0)
+    if layout == "transposed":
+        array = np.arange(512 * 512.0).reshape(512, 512).T
+    elif layout == "broadcast_rows":
+        array = np.broadcast_to(values, (512, 512))
+    else:
+        array = np.broadcast_to(values[:, None], (512, 512))
+
+    with np.errstate(all="ignore"):
+        tracemalloc.start()
+        try:
+            block = fire_native._elementwise_block(array)
+            _, peak = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+    assert block is None
+    assert peak < array.nbytes // 2
+
+
+@pytest.mark.parametrize(
+    "array",
+    [
+        np.array(5.0),
+        np.arange(12.0).reshape(3, 4),
+        np.arange(24.0).reshape(3, 8)[:, ::2],
+        np.arange(12.0).reshape(3, 4)[::-1, ::-1],
+        np.broadcast_to(np.array(5.0), (3, 4)),
+        np.arange(12.0).reshape(3, 1, 4),
+    ],
+    ids=["scalar", "contiguous", "strided", "reversed", "constant_broadcast", "singleton_axis"],
+)
+def test_fire_elementwise_compatible_layouts_remain_views(array: np.ndarray) -> None:
+    with np.errstate(all="ignore"):
+        block = fire_native._elementwise_block(array)
+    assert block is not None
+    assert block.shape == (array.size, 1)
+    assert np.shares_memory(block, array)
+    np.testing.assert_array_equal(block[:, 0], array.ravel())
 
 
 def test_fire_python_recurrences_run_when_the_extension_is_absent() -> None:
@@ -250,15 +294,23 @@ def test_fire_uses_python_when_the_extension_predates_fire_kernels(monkeypatch: 
     temperature = np.full(days, 22.0)
     humidity = np.full(days, 40.0)
     wind = np.full(days, 5.0)
+    final_fall_dc = np.array([300.0])
+    overwinter_precipitation = np.array([100.0])
     with np.errstate(all="ignore"):
         monkeypatch.setattr(fire_native, "_native", None)
         expected_ffmc = fire.ffmc(temperature, humidity, wind, precipitation)
         expected_kbdi = fire.kbdi(precipitation, temperature, 800.0)
+        expected_isi = fire.initial_spread_index(np.asarray(expected_ffmc), wind)
+        expected_spring = fire.overwinter_drought_code(final_fall_dc, overwinter_precipitation)
         monkeypatch.setattr(fire_native, "_native", SimpleNamespace())
         actual_ffmc = fire.ffmc(temperature, humidity, wind, precipitation)
         actual_kbdi = fire.kbdi(precipitation, temperature, 800.0)
+        actual_isi = fire.initial_spread_index(np.asarray(actual_ffmc), wind)
+        actual_spring = fire.overwinter_drought_code(final_fall_dc, overwinter_precipitation)
     np.testing.assert_array_equal(actual_ffmc, expected_ffmc)
     np.testing.assert_array_equal(actual_kbdi, expected_kbdi)
+    np.testing.assert_array_equal(actual_isi, expected_isi)
+    np.testing.assert_array_equal(actual_spring, expected_spring)
 
 
 @pytest.mark.parametrize("oversized", ["initial_kbdi", "initial_wet_spell_precipitation"])
