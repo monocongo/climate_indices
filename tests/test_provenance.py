@@ -1001,6 +1001,7 @@ def test_direct_url_is_used_only_for_the_imported_distribution_and_conflicts_are
 
 
 @needs_git
+@pytest.mark.skipif(sys.platform == "win32", reason="the fake git is a POSIX shell script")
 def test_git_runs_once_per_process_and_never_on_import(tmp_path: Path) -> None:
     marker = tmp_path / "git-calls"
     fake_bin = tmp_path / "bin"
