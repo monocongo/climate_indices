@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -312,8 +312,7 @@ def _align_month_to_weather_time(month: xr.DataArray, time_coord: xr.DataArray |
     # aligned weather axis so a reordered series cannot be paired
     # positionally
     try:
-        # mypy loses the isinstance narrowing across xarray's Self-returning reindex
-        month = cast(xr.DataArray, month.reindex({time_dim: time_coord}))
+        month = month.reindex({time_dim: time_coord})
     except (KeyError, TypeError, ValueError) as exc:
         wrap_value_error(
             exc,
@@ -355,7 +354,7 @@ def _month_dataarray_values(
         # a lazily-backed month stays lazy: apply_ufunc requires a single
         # core-dim chunk, and the rechunk rewrites the lazy graph without
         # computing it
-        month = cast(xr.DataArray, month.chunk({time_dim: -1}))
+        month = month.chunk({time_dim: -1})
         if month.sizes[time_dim] != time_length:
             raise InvalidArgumentError(
                 f"month has {month.sizes[time_dim]} entries but the time dimension has {time_length} steps.",

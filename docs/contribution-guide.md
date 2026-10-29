@@ -9,7 +9,7 @@ this guide is the site's walkthrough of it. Where the two differ, the root
 document wins.
 
 ### Prerequisites
-1. **Python 3.10+** installed
+1. **Python 3.11–3.14** installed
 2. **uv** package manager installed
 3. **Git** for version control
 4. Familiarity with pytest and type hints

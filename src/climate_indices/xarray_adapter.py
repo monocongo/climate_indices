@@ -991,7 +991,7 @@ def _build_history_entry(
         "2026-02-07T10:23:45Z: SPI calculated (climate_indices v2.0.0)"
     """
     # generate UTC timestamp
-    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime(_HISTORY_TIMESTAMP_FORMAT)
+    timestamp = datetime.datetime.now(datetime.UTC).strftime(_HISTORY_TIMESTAMP_FORMAT)
 
     # build description from metadata
     description_parts = [index_name]
@@ -1375,7 +1375,7 @@ def _finalize_ufunc_result(
 
     # A ufunc can return input coordinate variables by reference; detach their
     # metadata without copying large result data before writing output attrs.
-    result_da = cast(xr.DataArray, result_da.copy(deep=False))
+    result_da = result_da.copy(deep=False)
     # apply metadata using build_output_attrs
     calc_metadata = _capture_calculation_metadata(calculation_metadata_keys, valid_kwargs)
     if calc_metadata is not None:

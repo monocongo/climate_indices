@@ -8,7 +8,7 @@
 - **Maturity**: Production/Stable (Development Status 5)
 - **Development Version**: 3.1.0 (not yet published)
 - **Published Version**: 3.0.0
-- **Python Support**: 3.10, 3.11, 3.12, 3.13, 3.14
+- **Python Support**: 3.11, 3.12, 3.13, 3.14
 - **License**: BSD 3-Clause
 - **Documentation**: [ReadTheDocs](https://climate-indices.readthedocs.io/)
 - **Repository**: [GitHub](https://github.com/monocongo/climate_indices)
@@ -31,7 +31,7 @@
 ### Repository Structure
 - **Type**: Monolith (single cohesive codebase)
 - **Project Type**: Library
-- **Primary Language**: Python 3.10+
+- **Primary Language**: Python 3.11+
 - **Build System**: Hatchling (PEP 517) + uv for dependency management
 - **Package Management**: uv (modern Python package installer/resolver)
 
@@ -63,7 +63,7 @@ The installed script names map to the single full-featured CLI:
 ### Technology Stack Summary
 | Category | Technology |
 |----------|-----------|
-| **Core Language** | Python 3.10+ |
+| **Core Language** | Python 3.11+ |
 | **Scientific Computing** | NumPy, SciPy, xarray, Dask, pandas, cftime, h5netcdf |
 | **Logging** | structlog (structured logging) |
 | **Testing** | pytest, hypothesis (property-based), pytest-benchmark |
@@ -218,7 +218,7 @@ uv run pytest -m benchmark
 
 ### Dependencies and Constraints
 - **Core dependencies**: cftime>=1.6.4.post1, dask>=2025.7.0, h5netcdf>=1.6.3, numpy>=1.24.0, pandas>=2.0.0, scipy>=1.15.3, structlog>=24.1.0, xarray>=2025.6.1
-- **Python version**: Must support Python 3.10-3.14 (`requires-python = ">=3.10,<3.15"`)
+- **Python version**: Must support Python 3.11-3.14 (`requires-python = ">=3.11,<3.15"`)
 - **Line length**: 120 characters (ruff configuration)
 - **Import order**: stdlib → third-party → local (enforced by ruff)
 - **Test markers**: Use `@pytest.mark.benchmark` for performance tests, `@pytest.mark.slow` for long-running tests
