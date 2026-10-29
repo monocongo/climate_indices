@@ -1,9 +1,11 @@
 # climate-indices
 
-Pure-Rust numerical kernels for climate and drought indices: the Standardized
-Precipitation Index (SPI), the Standardized Precipitation Evapotranspiration Index
-(SPEI), the Evaporative Demand Drought Index (EDDI), potential evapotranspiration (PET),
-the Palmer family, fire-weather indices, and flood indices.
+Pure-Rust numerical kernels cover drought, fire weather, flood, Run Theory,
+empirical distributions, compound bootstrap metrics, and trailing-window aggregation.
+The drought families include the Standardized Precipitation Index (SPI),
+the Standardized Precipitation Evapotranspiration Index (SPEI),
+the Evaporative Demand Drought Index (EDDI), potential evapotranspiration (PET),
+and the Palmer family.
 
 The crate's only dependency is `ndarray`: no I/O, logging, or metadata layer. It
 provides kernels, not
@@ -12,11 +14,32 @@ validates physical ranges, and applies the final index transformation.
 The `aggregation` module provides trailing Timescale sums and means; callers choose
 when to apply them and retain all calendar responsibilities.
 
+## Modules
+
+- `aggregation` provides trailing Timescale sums and means.
+- `gamma`, `pearson`, `loglogistic`, and `lmoments` provide distribution fits,
+  probabilities, and goodness-of-fit statistics.
+- `empirical` provides SEI plotting positions for signed climate and energy series.
+- `eddi` provides Tukey plotting positions and the Hastings inverse normal.
+- `eto` and `pm_eto` provide Thornthwaite, Hargreaves, and Penman-Monteith PET.
+- `pnp` and `pci` provide precipitation ratios and concentration indices.
+- `palmer`, `palmer_zindex`, `palmer_pdi`, `palmer_wells`, and `self_calibration`
+  provide water balance, Z-Index, PDSI, and scPDSI kernels.
+- `fire` provides KBDI, CFFWIS moisture codes, ISI, BUI, FWI, DSR, and overwinter Drought Code.
+- `flood` provides effective precipitation, EDI, the Flood Index, and the Antecedent Precipitation Index.
+- `runs` provides threshold-run identification and per-run metrics.
+- `compound` evaluates paired and independence-null bootstrap resample metrics.
+  Callers supply the resample indices; the crate generates no random draws.
+- `recurrence` provides the shared daily recurrence driver and missing-day policies.
+- `special` provides the special functions used by the distribution kernels.
+
+Fosberg FFWI, HDW, and Haines kernels are not included.
+
 ## Usage
 
 ```toml
 [dependencies]
-climate-indices = "0.1"
+climate-indices = "0.1.1"
 ndarray = "0.17"
 ```
 
@@ -91,7 +114,8 @@ single codegen unit. No custom CPU flags are required.
 or a random-number dependency. Its base sample is
 `((step * 37 + cell * 17 + 11) % 101) / 100.0`. Monthly cases use 40 years
 (1980–2019), 12 months, and either 1 or 32 cells. Rain includes zeros; the
-log-logistic fit uses signed synthetic water-balance values. Fits use all 40 years.
+log-logistic fit and empirical plotting positions use signed synthetic water-balance values.
+Fits and empirical calibration use all 40 years.
 Thornthwaite uses positive temperatures, 40° latitude, and Gregorian leap flags.
 EDDI ranks only January's PET against its 40-year sample, without leading pads.
 Palmer receives rain, PET, and a five-inch available water capacity in inches.
@@ -105,11 +129,12 @@ and output assertions run outside the timed loops. Each timed iteration calls on
 kernel with borrowed views and consumes its output through `std::hint::black_box`.
 Kernel allocations and output destruction are included. Each recurrence starts
 from the same initial state. The smoke command checks fit validity, probability
-ranges, PET, water-balance and FFMC outputs, and effective-precipitation padding.
+ranges, empirical plotting positions, PET, water-balance and FFMC outputs, and effective-precipitation padding.
 
 This is a representative subset, not complete workflow coverage: Gamma fit and
-probabilities, log-logistic fit, EDDI ranking, Thornthwaite PET, Palmer water balance,
-FFMC, and effective precipitation. It excludes other PET, distribution, Palmer,
+probabilities, log-logistic fit, empirical plotting positions, EDDI ranking,
+Thornthwaite PET, Palmer water balance, FFMC, and effective precipitation.
+It excludes aggregation, runs, compound metrics, other PET, distribution, Palmer,
 fire, and flood kernels, final index transformations, I/O, and parallel execution.
 It does not measure complete SPI, SPEI, EDDI, or PDSI workflows.
 
@@ -121,6 +146,7 @@ kernels serially. The command above used Criterion's defaults: a three-second
 warm-up, five-second measurement target, and 100 samples per case. The recorded
 run added `-- --noplot`; it used no custom `RUSTFLAGS`.
 
+These measurements predate the empirical benchmark and do not measure that kernel.
 Times and throughput below are Criterion's central estimates, not minimum times.
 Throughput counts millions of input time-cell values per second (Melem/s), not
 output arrays or arithmetic operations. EDDI counts 40 values per cell; the other

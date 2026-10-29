@@ -7,6 +7,23 @@
 //! Kernels check the structural constraints documented on each function.
 //! This crate has no Python, I/O, logging, or metadata dependency.
 //!
+//! # Module overview
+//!
+//! - [`gamma`], [`pearson`], [`loglogistic`], and [`lmoments`] provide distribution
+//!   fits, probabilities, and goodness-of-fit statistics.
+//! - [`empirical`] provides SEI plotting positions; [`eddi`] provides Tukey
+//!   plotting positions and the Hastings inverse normal.
+//! - [`aggregation`] provides trailing Timescale sums and means.
+//! - [`eto`] and [`pm_eto`] provide PET; [`pnp`] and [`pci`] provide precipitation indices.
+//! - [`palmer`], [`palmer_zindex`], [`palmer_pdi`], [`palmer_wells`], and
+//!   [`self_calibration`] provide the Palmer and scPDSI kernels.
+//! - [`fire`] provides KBDI, CFFWIS moisture codes, ISI, BUI, FWI, DSR,
+//!   and overwinter Drought Code, but not Fosberg FFWI, HDW, or Haines.
+//! - [`flood`] provides effective precipitation, EDI, Flood Index, and API kernels.
+//! - [`runs`] identifies threshold runs and computes their per-run metrics.
+//! - [`compound`] evaluates bootstrap resample metrics from caller-supplied indices.
+//! - [`recurrence`] provides the daily driver; [`special`] provides special functions.
+//!
 //! # Arrays and compatibility
 //!
 //! Array inputs borrow `ndarray` views; array outputs own their data.

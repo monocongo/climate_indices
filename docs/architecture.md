@@ -295,9 +295,12 @@ src/climate_indices/_native.pyi  # type stub for the extension
 followed by EDDI's empirical ranking and inverse normal, the distribution fits
 SPEI adds, Pearson Type III (also used by SPI and the standardized index), the
 log-logistic (generalized logistic, GLO), the PNP and PCI numerical blocks, the
-fire-weather recurrences and behavior indices, the flood family, the empirical
-distribution's plotting positions, the Palmer family's water balance,
-Z-index, and spell recursions, and Run Theory identification and per-run metrics.
+fire-weather recurrences, CFFWIS behavior indices and overwinter Drought Code,
+the flood family, the empirical distribution's plotting positions, the Palmer
+family's water balance, Z-index, and spell recursions, Run Theory identification
+and per-run metrics, compound bootstrap resample metrics, gamma goodness-of-fit
+D statistics, and trailing Timescale sums and means.
+Fosberg FFWI, HDW, and Haines remain in Python.
 The gamma and distribution-fit kernels
 replace the
 numerical blocks inside `compute.py` functions; the EDDI, PNP, and PCI kernels

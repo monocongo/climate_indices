@@ -1,8 +1,8 @@
 [package]
 name = "climate-indices"
-description = "Pure-Rust numerical kernels for climate indices: SPI, SPEI, EDDI, PET, Palmer, fire weather, and flood"
+description = "Pure-Rust kernels for drought, fire weather, flood, empirical distributions, runs, compound metrics, and aggregation"
 # independent 0.x track, not the workspace or PyPI version (docs/adr/0021)
-version = "0.1.0"
+version = "0.1.1"
 edition.workspace = true
 rust-version = "1.85"
 license.workspace = true

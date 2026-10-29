@@ -1,9 +1,13 @@
-//! Fire-weather kernels: the KBDI and CFFWIS moisture-code daily recursions.
+//! Fire-weather kernels cover KBDI, CFFWIS moisture codes and behavior indices,
+//! and overwinter Drought Code.
 //!
-//! Ports of `climate_indices.fire._kbdi` and
-//! `climate_indices.fire._cffwis_codes`, which stay the parity oracles. Each
-//! kernel runs one recurrence over the whole time axis, one cell at a time, and
-//! returns the recorded history plus the final state and gap counts; the
+//! Ports of `climate_indices.fire._kbdi`, `climate_indices.fire._cffwis_codes`,
+//! `climate_indices.fire._cffwis_behavior`, and `climate_indices.fire._cffwis`,
+//! which stay the parity oracles.
+//! The behavior indices (ISI, BUI, FWI, DSR) and overwinter Drought Code are
+//! elementwise kernels. Each moisture-code kernel runs one recurrence over the
+//! whole time axis, one cell at a time, and returns the recorded history plus
+//! the final state and gap counts; the
 //! missing-day policy, seasonal carry, and spin-up come from [`crate::recurrence`].
 //!
 //! The equations follow Van Wagner and Pickett (1985) as implemented by the
