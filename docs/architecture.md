@@ -326,12 +326,14 @@ xarray adapter) uses them:
 accept borrowed `(steps, cells)` views and retain the shape.
 Each window starts independently, so missing values, infinities, overflow, and cancellation cannot contaminate later windows.
 Multiple cells use oldest-to-newest addition; a singleton cell uses NumPy's pairwise grouping.
-The work remains O(steps × cells × Timescale), without a padded input allocation.
+The work remains O(steps × cells × Timescale), without the Python path's padded
+concatenation; the binding copies the input once.
 
 `compute.sum_to_scale` dispatches plain, aligned float64 C-contiguous Spatial Blocks under the shared reporting-policy gate.
-A one-dimensional series can dispatch for Timescales 2–7, including strided series.
+A one-dimensional series can dispatch for Timescales 2–7, including strided series;
+that path is slower than `np.convolve` on this host, and the benchmark records the measured cost.
 Longer series retain `np.convolve`: its summation order differs from the singleton Spatial Block reduction and can depend on BLAS.
-Non-C-contiguous blocks retain Python because concatenation can select a different reduction layout.
+Non-C-contiguous blocks retain Python: the rule is conservative, and dispatch would first copy them to C order.
 Invalid or overlong windows, empty records, other dtypes, and direct two-dimensional inputs retain their existing Python behavior.
 Mask normalization precedes dispatch; `scale == 1` still returns the original input.
 `compute.prepare_scaled` retains its mean division and never calls `trailing_mean`.
