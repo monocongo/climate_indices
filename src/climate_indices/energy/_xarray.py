@@ -187,7 +187,7 @@ def apply_elementwise(
         index_name=metadata["long_name"],
         # the companions are positional here; their order follows each energy call's signature
         inputs={"primary": primary, **{f"companion_{position}": data for position, data in enumerate(secondary, 1)}},
-        implementation=f"{function.__module__}.{getattr(function, '__qualname__', type(function).__name__)}",
+        implementation=f"climate_indices.energy.{index}",  # the public function, not its private or local kernel
     )
     return result
 

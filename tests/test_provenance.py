@@ -561,6 +561,21 @@ def test_cli_xarray_route_records_the_input_file_and_its_global_attributes(tmp_p
 # --- review regressions --------------------------------------------------------------------------
 
 
+def test_energy_records_name_the_public_function_not_its_kernel() -> None:
+    time = xr.date_range("2000-01-01", periods=3, freq="D")
+    temperature = xr.DataArray([5.0, 12.0, 20.0], dims="time", coords={"time": time}, attrs={"units": "degC"})
+    wind = xr.DataArray([4.0, 5.0, 6.0], dims="time", coords={"time": time}, attrs={"units": "m s-1"})
+    outputs = {
+        "hub_height_wind_speed": energy.hub_height_wind_speed(wind, reference_height=10, hub_height=80),
+        "wind_shear_exponent": energy.wind_shear_exponent(wind, wind * 1.1, lower_height=10, upper_height=80),
+        "heating_degree_days": energy.heating_degree_days(temperature, base_temperature=18.0),
+    }
+
+    for name, output in outputs.items():
+        record = _strict(output.attrs[PROVENANCE_ATTR])
+        assert record["operation"]["implementation"] == f"climate_indices.energy.{name}"
+
+
 def test_log_wind_profile_records_the_effective_roughness_length() -> None:
     wind = xr.DataArray([5.0, 10.0], dims="time", attrs={"units": "m s-1"})
     records = []
