@@ -14,8 +14,10 @@ package from `climate-core` to `climate-indices` and moved it to
 [RUSTUP-03 (#1433)](https://github.com/monocongo/climate_indices/issues/1433)
 amends decisions 2–3: Timescale Aggregation is approved for implementation;
 complete index workflows remain outside the crate for 3.1.1.
-The Aggregation kernel is not implemented by this amendment.
-Until its separate port lands, callers still supply window sums and means.
+The amendment itself added no kernel.
+[RUSTUP-13 (#1485)](https://github.com/monocongo/climate_indices/issues/1485)
+implements `aggregation::trailing_sum` and `aggregation::trailing_mean`.
+Callers still select the Timescale and prepare calendars; complete workflows remain outside the crate.
 
 ## Context
 
@@ -63,7 +65,7 @@ The approved choice accepts that compatibility cost and preserves the existing k
    Monthly calendar layouts contain 12 steps per year.
    Prepared all-leap daily layouts contain 366 positions per year, including February 29 in every year.
    Callers select the Timescale and Calibration Period and supply calendar padding, clipping, and the final index transformation.
-   The approved exception is a Timescale Aggregation kernel over `(steps, cells)`, pending a separate port under RUSTUP-03.
+   The implemented exception is the Timescale Aggregation module over `(steps, cells)`, added by RUSTUP-13 (#1485).
    It computes trailing window sums or means; a mean is the window sum divided by `scale`.
    The output retains the input shape, with the leading `scale - 1` positions set to NaN.
    A window containing a missing value is NaN; missing values are never skipped.
@@ -106,11 +108,11 @@ The approved choice accepts that compatibility cost and preserves the existing k
 ## Timescale Aggregation and workflow decision (RUSTUP-03)
 
 **Q1: accept Timescale Aggregation as a numerical kernel.**
-`compute.sum_to_scale` currently uses `np.convolve` for a series and a strided
+`compute.sum_to_scale` used `np.convolve` for a series and a strided
 sliding-window reduction for a Spatial Block.
 `compute.prepare_scaled` divides the sum by `scale` for a mean.
-The SPI and SPEI Rust examples each implement their own `trailing_sum`.
-A shared block kernel removes that duplication without taking ownership of calendars or index policy.
+The SPI and SPEI Rust examples each implemented their own `trailing_sum`.
+The shared block kernel now removes that duplication without taking ownership of calendars or index policy.
 
 The [#1177 hourly benchmark](https://github.com/monocongo/climate_indices/blob/main/benchmarks/README.md#hourly-standardized-energy-indices-1177)
 reports about 2.2 s and 150 MiB peak allocation for a 25-cell, 41-year block at a 720-hour Timescale.
@@ -140,7 +142,10 @@ The synthetic fit sample illustrates shape conventions, not a sufficient scienti
 The workspace build and native Python parity tests verify that `climate-py` still consumes the surface.
 No kernel changes its numerical expressions or operation order.
 This record makes no new measured accuracy claim.
-The RUSTUP-03 amendment changes no numerical code; its planned kernel needs separate parity and performance validation.
+The RUSTUP-03 amendment changed no numerical code.
+RUSTUP-13 adds independent-window reductions with the existing operation orders, not a running sum.
+Its dispatch retains longer series convolutions and non-C-contiguous Python blocks rather than changing their reduction order.
+The parity registry, numerical contract, and `benchmarks/README.md` record its separate accuracy and performance measurements.
 
 ## Alternatives considered
 

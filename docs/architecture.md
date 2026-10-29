@@ -310,6 +310,7 @@ xarray adapter) uses them:
 
 | Python seam | Rust kernel (`climate-indices`) |
 |---|---|
+| eligible trailing-window sums in `compute.sum_to_scale` | `aggregation::trailing_sum` (`trailing_mean` is also public Rust) |
 | method-of-moments block of `compute.gamma_parameters` | `gamma::gamma_parameters` |
 | `scipy.stats.gamma.cdf` and zero-mass mixing in `compute.transform_fitted_gamma` | `gamma::gamma_probabilities` |
 | sorted CDFs and KS D statistics in the single-series `compute._check_goodness_of_fit_gamma` | `gamma::gamma_ks_statistics` |
@@ -330,6 +331,24 @@ xarray adapter) uses them:
 | monthly reduction and ratio in `indices.pci` | `pci::pci` |
 | threshold scan and per-run metrics in `runs._identify_runs` | `runs::identify_runs` |
 | paired and independence-null metrics in `compound._bootstrap._resample` | `compound::resample_metrics` |
+
+**Timescale Aggregation (#1485).** `aggregation::trailing_sum` and `trailing_mean`
+accept borrowed `(steps, cells)` views and retain the shape.
+Each window starts independently, so missing values, infinities, overflow, and cancellation cannot contaminate later windows.
+Multiple cells use oldest-to-newest addition; a singleton cell uses NumPy's pairwise grouping.
+The work remains O(steps × cells × Timescale), without the Python path's padded
+concatenation; the binding copies the input once.
+
+`compute.sum_to_scale` dispatches plain, aligned float64 C-contiguous Spatial Blocks under the shared reporting-policy gate.
+A one-dimensional series can dispatch for Timescales 2–7, including strided series;
+that path is slower than `np.convolve` on this host, and the benchmark records the measured cost.
+Longer series retain `np.convolve`: its summation order differs from the singleton Spatial Block reduction and can depend on BLAS.
+Non-C-contiguous blocks retain Python: the rule is conservative, and dispatch would first copy them to C order.
+Invalid or overlong windows, empty records, other dtypes, and direct two-dimensional inputs retain their existing Python behavior.
+Mask normalization precedes dispatch; `scale == 1` still returns the original input.
+`compute.prepare_scaled` retains its mean division and never calls `trailing_mean`.
+The binding copies input storage before releasing the GIL, as the other native bindings do.
+See [the measured time and memory results](https://github.com/monocongo/climate_indices/blob/main/benchmarks/README.md#timescale-aggregation-port-1485).
 
 The compound bootstrap kernel accepts Boolean occurrences and Python-generated int64 year indices.
 Python retains support selection, random generators, point estimates, quantiles, p-values, quality flags, and warnings.
@@ -696,11 +715,15 @@ are measured on macOS arm64
 
 | Entry | Kernels | Max absolute | Max relative |
 | --- | --- | --- | --- |
+| `aggregation_monthly` | `trailing_sum` | 0.000e+00 | 0.000e+00 |
+| `aggregation_signed_monthly` | `trailing_sum` | 0.000e+00 | 0.000e+00 |
+| `aggregation_signed_spatial_block` | `trailing_sum` | 0.000e+00 | 0.000e+00 |
+| `aggregation_spatial_block` | `trailing_sum` | 0.000e+00 | 0.000e+00 |
 | `compound_bootstrap` | `compound_resample_metrics` | 0.000e+00 | 0.000e+00 |
-| `eddi` | `hastings_inverse_normal`, `tukey_probabilities` | 0.000e+00 | 0.000e+00 |
-| `eddi_spatial_block` | `hastings_inverse_normal`, `tukey_probabilities` | 0.000e+00 | 0.000e+00 |
-| `empirical` | `empirical_transform` | 0.000e+00 | 0.000e+00 |
-| `empirical_spatial_block` | `empirical_transform` | 2.220e-16 | 2.479e-16 |
+| `eddi` | `hastings_inverse_normal`, `trailing_sum`, `tukey_probabilities` | 0.000e+00 | 0.000e+00 |
+| `eddi_spatial_block` | `hastings_inverse_normal`, `trailing_sum`, `tukey_probabilities` | 0.000e+00 | 0.000e+00 |
+| `empirical` | `empirical_transform`, `trailing_sum` | 0.000e+00 | 0.000e+00 |
+| `empirical_spatial_block` | `empirical_transform`, `trailing_sum` | 2.220e-16 | 2.479e-16 |
 | `fire_behavior_indices` | `buildup_index`, `daily_severity_rating`, `drought_code`, `duff_moisture_code`, `ffmc`, `fwi`, `initial_spread_index` | 0.000e+00 | 0.000e+00 |
 | `fire_drought_code` | `drought_code` | 0.000e+00 | 0.000e+00 |
 | `fire_duff_moisture_code` | `duff_moisture_code` | 0.000e+00 | 0.000e+00 |
@@ -719,15 +742,15 @@ are measured on macOS arm64
 | `pci` | `pci` | 0.000e+00 | 0.000e+00 |
 | `pearson_ks_statistics` | `pearson_ks_statistics` | 3.331e-16 | 1.830e-15 |
 | `penman_monteith` | `fao56_eto` | 8.882e-16 | 4.337e-16 |
-| `percentage_of_normal` | `pnp_normals`, `pnp_percentages` | 0.000e+00 | 0.000e+00 |
+| `percentage_of_normal` | `pnp_normals`, `pnp_percentages`, `trailing_sum` | 0.000e+00 | 0.000e+00 |
 | `pm_eto_intermediates` | `pm_eto` | 0.000e+00 | 0.000e+00 |
 | `runs_identify` | `identify_runs` | 0.000e+00 | 0.000e+00 |
-| `spei_gamma` | `gamma_ks_statistics`, `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 2.220e-16 | 3.457e-16 |
-| `spei_loglogistic` | `loglogistic_cdf`, `loglogistic_parameters` | 0.000e+00 | 0.000e+00 |
-| `spi_gamma` | `gamma_ks_statistics`, `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 1.998e-15 | 4.765e-14 |
-| `spi_gamma_mean_zero` | `gamma_ks_statistics`, `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 1.998e-15 | 4.765e-14 |
-| `spi_gamma_spatial_block` | `gamma_parameters`, `gamma_probabilities`, `norm_ppf` | 7.105e-15 | 1.868e-13 |
-| `spi_pearson` | `pearson_cdf`, `pearson_ks_statistics`, `pearson_parameters` | 8.604e-15 | 6.822e-14 |
+| `spei_gamma` | `gamma_ks_statistics`, `gamma_parameters`, `gamma_probabilities`, `norm_ppf`, `trailing_sum` | 2.220e-16 | 3.457e-16 |
+| `spei_loglogistic` | `loglogistic_cdf`, `loglogistic_parameters`, `trailing_sum` | 0.000e+00 | 0.000e+00 |
+| `spi_gamma` | `gamma_ks_statistics`, `gamma_parameters`, `gamma_probabilities`, `norm_ppf`, `trailing_sum` | 1.998e-15 | 4.765e-14 |
+| `spi_gamma_mean_zero` | `gamma_ks_statistics`, `gamma_parameters`, `gamma_probabilities`, `norm_ppf`, `trailing_sum` | 1.998e-15 | 4.765e-14 |
+| `spi_gamma_spatial_block` | `gamma_parameters`, `gamma_probabilities`, `norm_ppf`, `trailing_sum` | 7.105e-15 | 1.868e-13 |
+| `spi_pearson` | `pearson_cdf`, `pearson_ks_statistics`, `pearson_parameters`, `trailing_sum` | 8.604e-15 | 6.822e-14 |
 | `thornthwaite` | `thornthwaite` | 2.842e-14 | 2.208e-16 |
 
 The largest measured absolute deviation is 4.547e-13 (`flood_pe`), more than two

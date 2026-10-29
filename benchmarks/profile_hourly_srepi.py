@@ -7,10 +7,14 @@ aggregated monthly product. Reported figures are evidence artifacts, not CI gate
 
 Run from the repository root::
 
-    uv run benchmarks/profile_hourly_srepi.py
+    uv run benchmarks/profile_hourly_srepi.py --backend python
+    uv run benchmarks/profile_hourly_srepi.py --backend native
 
 A warm-up call runs first, so first-call imports and caches stay out of the
-measurement window.
+measurement window. Both backends ignore NumPy floating-point reporting, as native
+execution requires. The native run requires the built extension; long series
+convolutions still use NumPy. Peak traced allocation excludes Rust buffers; use an
+external process-memory measurement as well (for example, macOS `/usr/bin/time -l`).
 """
 
 from __future__ import annotations
@@ -35,7 +39,7 @@ DEFAULT_CELLS = 25
 
 @dataclass(frozen=True)
 class Measurement:
-    """One timed call and the peak allocation it made."""
+    """The fastest timed call and the peak allocation the call made."""
 
     name: str
     shape: tuple[int, ...]
@@ -61,11 +65,22 @@ def _hourly_block(years: int, cells: int = 0) -> np.ndarray:
 
 
 def _measure(name: str, values: np.ndarray, call: Callable[[], object]) -> Measurement:
-    """Time one call and record its peak traced allocation."""
+    """Time repeated calls without tracing, then record the peak traced allocation.
+
+    An active tracer inflates the timed window and penalizes the backend with more
+    tracked allocations, so the fastest of at least three calls, and at least 0.05 s of
+    calls, is reported. The peak comes from a separate traced call.
+    """
+    deadline = time.perf_counter() + 0.05
+    seconds = float("inf")
+    repetitions = 0
+    while repetitions < 3 or time.perf_counter() < deadline:
+        started = time.perf_counter()
+        call()
+        seconds = min(seconds, time.perf_counter() - started)
+        repetitions += 1
     tracemalloc.start()
-    started = time.perf_counter()
     call()
-    seconds = time.perf_counter() - started
     _, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
     return Measurement(name=name, shape=values.shape, seconds=seconds, peak_mebibytes=peak / (1024 * 1024))
@@ -90,6 +105,22 @@ def _run(years: int, cells: int) -> list[Measurement]:
         call()  # warm-up
         measurements.append(_measure(name, values, call))
     print(f"span {span[0]}-{span[1]} ({years} years, scale 720 hours, cells {cells if cells else 0})")
+    # A short monthly Timescale checks the one-dimensional dispatch cost outside the hourly case.
+    monthly = np.random.default_rng(1485).uniform(0, 100, size=years * 12)
+    for name, values in (
+        ("monthly-series", monthly),
+        ("monthly-grid", np.broadcast_to(monthly[:, None, None], (monthly.size, cells, 1)).copy()),
+    ):
+
+        def monthly_call(values: np.ndarray = values) -> np.ndarray:
+            return compute.sum_to_scale(values, 3)
+
+        warmed = monthly_call()
+        if warmed.shape != values.shape:
+            raise RuntimeError(f"{name}: aggregation returned an unexpected shape")
+        if not np.isnan(warmed[:2]).all():
+            raise RuntimeError(f"{name}: aggregation did not preserve leading NaNs")
+        measurements.append(_measure(name, values, monthly_call))
     return measurements
 
 
@@ -98,14 +129,28 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--years", type=int, default=DEFAULT_YEARS, help="years of hourly input")
     parser.add_argument("--cells", type=int, default=DEFAULT_CELLS, help="grid cells for the gridded call")
+    parser.add_argument("--backend", choices=("python", "native"), default="python")
     arguments = parser.parse_args()
+    selected = compute._native
+    try:
+        if arguments.backend == "native":
+            if selected is None or not hasattr(selected, "trailing_sum"):
+                raise RuntimeError("Build the extension with uv run maturin develop --release first")
+        else:
+            compute._native = None
 
-    print(f"python {platform.python_version()} on {platform.platform()}")
-    print(f"period length {HOURS_PER_YEAR} hours, numpy {np.__version__}")
-    for measurement in _run(arguments.years, arguments.cells):
+        print(f"backend {arguments.backend}")
+        print(f"python {platform.python_version()} on {platform.platform()}")
+        print(f"period length {HOURS_PER_YEAR} hours, numpy {np.__version__}")
+        with np.errstate(all="ignore"):
+            measurements = _run(arguments.years, arguments.cells)
+    finally:
+        # a later run in the same process must see the imported extension again
+        compute._native = selected
+    for measurement in measurements:
         print(
             f"  {measurement.name:<7} input {str(measurement.shape):<18} "
-            f"{measurement.seconds:8.3f} s  peak {measurement.peak_mebibytes:9.1f} MiB"
+            f"{measurement.seconds:10.6f} s  peak {measurement.peak_mebibytes:9.1f} MiB"
         )
 
 
