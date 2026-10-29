@@ -353,7 +353,7 @@ def _repository_url(distribution: metadata.Distribution | None) -> str | None:
     for entry in distribution.metadata.get_all("Project-URL") or []:
         label, _, url = str(entry).partition(",")
         if label.strip().lower() == "repository":
-            return url.strip()
+            return _sanitize_url(url.strip())[0]
     return None
 
 

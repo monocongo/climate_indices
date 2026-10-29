@@ -802,11 +802,18 @@ def _build_info(package: Path, commit: str, dirty: bool = False) -> None:
 class _FakeDistribution(metadata.Distribution):
     """An installed-distribution stand-in with a chosen version, files, and direct_url.json."""
 
-    def __init__(self, site: Path, *, version: str = "9.9.9", direct_url: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        site: Path,
+        *,
+        version: str = "9.9.9",
+        direct_url: dict[str, Any] | None = None,
+        repository: str = "https://github.com/monocongo/climate_indices",
+    ) -> None:
         self._site = site
         self._files = {
             "METADATA": f"Metadata-Version: 2.1\nName: climate_indices\nVersion: {version}\n"
-            "Project-URL: Repository, https://github.com/monocongo/climate_indices\n"
+            f"Project-URL: Repository, {repository}\n"
         }
         if direct_url is not None:
             self._files["direct_url.json"] = json.dumps(direct_url)
@@ -882,6 +889,14 @@ def test_an_installed_package_reports_its_embedded_build_commit(tmp_path: Path) 
         "git_commit_source": "build-metadata",
         "git_dirty": True,
     }
+
+
+def test_the_repository_url_loses_credentials_and_query(tmp_path: Path) -> None:
+    fake = _FakeDistribution(tmp_path, repository="https://alice:hunter2@github.com/o/r?token=t#part")
+
+    identity = resolve_software_identity(tmp_path, fake, None)
+
+    assert identity["repository_url"] == "https://github.com/o/r?[redacted]"
 
 
 @pytest.mark.parametrize(
