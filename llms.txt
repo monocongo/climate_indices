@@ -328,7 +328,7 @@ git push origin vX.Y.Z
 
 Supports Python **3.11–3.14**.
 
-Python 3.10 support ends in v3.1.1. Use Python 3.11 or later for this release.
+Python 3.10 support ends in v3.1.1. This source checkout already requires Python 3.11 or later.
 
 All supported versions are tested on Linux (ubuntu-latest) for every pull request and push
 to `main`. Python 3.14 is additionally tested on macOS on every event, and 3.11 on macOS on
