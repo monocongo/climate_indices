@@ -6,7 +6,8 @@ distribution, and uses [Semantic Versioning](https://semver.org/).
 
 ## 0.1.1 - 2026-10-29
 
-This is a release candidate, not a publication record.
+This entry prepares the stable `0.1.1` release; it is not a publication record.
+It does not describe an `-rc.N` prerelease for the separate crate rehearsal.
 The maintainer must confirm the tag date before publication.
 The additions preserve the `0.1.0` public API and its Rust 1.85 minimum.
 
