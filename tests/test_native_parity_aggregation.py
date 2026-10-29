@@ -188,3 +188,6 @@ def test_binding_checks_alignment_and_scale() -> None:
         native.trailing_sum(unaligned, 3)
     empty = np.ones((0, 2))[::-1]
     assert native.trailing_sum(empty, 3).shape == empty.shape
+    identity = np.array([[-0.0], [1.5], [np.nan]])
+    np.testing.assert_array_equal(native.trailing_sum(identity, 1), identity)
+    assert np.signbit(native.trailing_sum(identity, 1)[0, 0])

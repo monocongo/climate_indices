@@ -173,6 +173,10 @@ fn trailing_sum<'py>(
     scale: usize,
 ) -> PyResult<Bound<'py, PyArray2<f64>>> {
     let values = checked_copy(&values)?;
+    if scale == 1 {
+        // an identity result: the kernel would clone the input a second time
+        return Ok(values.into_pyarray(py));
+    }
     py.detach(|| climate_indices::aggregation::trailing_sum(values.view(), scale))
         .map(|sums| sums.into_pyarray(py))
         .map_err(climate_error)
