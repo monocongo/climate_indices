@@ -37,6 +37,7 @@ from climate_indices.exceptions import (
 )
 from climate_indices.fire import _cffwis
 from climate_indices.xarray_adapter import _wrap_spatial
+from tests.conftest import assert_native_parity
 
 # the weather series behind every reference vector, with distinct dry, rainy,
 # cold, and wetting days plus a month sequence that exercises all four table
@@ -271,14 +272,18 @@ def _run_chained(weather: _Weather, **options: object) -> tuple[np.ndarray, ...]
 
 
 def _assert_matches_chained(weather: _Weather, **options: object) -> fire.CFFWISResult:
-    """The orchestrator's seven outputs must equal the separately chained calls."""
+    """Codes match exactly; derived indices meet the cross-backend contract."""
     result = _run_orchestrator(weather, **options)
     for name, orchestrated in zip(
         ("ffmc", "dmc", "dc", "isi", "bui", "fwi", "dsr"),
         _run_chained(weather, **options),
         strict=True,
     ):
-        np.testing.assert_array_equal(getattr(result, name), orchestrated)
+        if name in _CODE_NAMES:
+            np.testing.assert_array_equal(getattr(result, name), orchestrated)
+        else:
+            # Public wrappers can use Rust while the orchestrator uses NumPy (ADR-0017).
+            assert_native_parity(getattr(result, name), orchestrated)
     return result
 
 
@@ -460,8 +465,20 @@ def test_orchestrator_matches_the_reference_series() -> None:
         np.testing.assert_allclose(values, expected, rtol=0.0, atol=_REFERENCE_TOLERANCE)
 
 
-def test_orchestrator_matches_individually_chained_calls_bitwise() -> None:
+def test_orchestrator_matches_individually_chained_calls() -> None:
     _assert_matches_chained(_reference_weather())
+
+
+@pytest.mark.usefixtures("python_backend")
+def test_python_orchestrator_matches_individually_chained_calls_bitwise() -> None:
+    weather = _reference_weather()
+    result = _run_orchestrator(weather)
+    for name, expected in zip(
+        ("ffmc", "dmc", "dc", "isi", "bui", "fwi", "dsr"),
+        _run_chained(weather),
+        strict=True,
+    ):
+        np.testing.assert_array_equal(getattr(result, name), expected)
 
 
 def test_orchestrator_matches_the_southern_reference_series() -> None:
@@ -930,7 +947,7 @@ def test_single_pass_orchestrator_is_faster_than_chained_calls() -> None:
         return fire.daily_severity_rating(fire.cffwis_fwi(isi, bui))
 
     orchestrated = orchestrator()
-    np.testing.assert_array_equal(orchestrated.dsr, separate())
+    assert_native_parity(orchestrated.dsr, separate())
     # alternate the timed runs so a warming runner does not bias either path
     orchestrator_time = separate_time = float("inf")
     for _ in range(3):

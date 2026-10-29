@@ -31,21 +31,38 @@ jobs:
         run: uv run --no-sync --no-build maturin develop --release
       - name: Record CPU and numerical differences
         run: uv run --no-sync --no-build python scripts/diagnose_cffwis_1513.py
-      - name: Reproduce the unchanged module
+      - name: Verify the module and native fire parity
         id: baseline
-        continue-on-error: true
         run: >-
-          uv run --no-sync --no-build pytest tests/test_fire_cffwis_behavior.py
+          uv run --no-sync --no-build pytest
+          tests/test_fire_cffwis_behavior.py tests/test_native_parity_fire.py
       - name: Repeat without AVX-512 NumPy dispatch
         env:
           NPY_DISABLE_CPU_FEATURES: X86_V4,AVX512_ICL,AVX512_SPR
         run: |
           uv run --no-sync --no-build python scripts/diagnose_cffwis_1513.py
           uv run --no-sync --no-build pytest tests/test_fire_cffwis_behavior.py
-      - name: Record the baseline outcome
+      - name: Set up the minimum supported Python 3.10
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: '3.10'
+      - name: Run the minimum Python native CI checks
+        env:
+          UV_PROJECT_ENVIRONMENT: .venv310
+        run: |
+          uv sync --locked --dev --python 3.10
+          uv run --no-sync --no-build maturin develop --release
+          uv run --no-sync --no-build pytest -n auto \
+            --ignore=tests/test_release_integrity.py \
+            --ignore=tests/test_review_scripts.py \
+            --ignore=tests/test_type_checking.py
+          uv run --no-sync --no-build pytest -q \
+            tests/test_native_parity_registry.py tests/test_native_e2e_parity.py
+          uv run --no-sync --no-build python scripts/native_parity_maxima.py
+      - name: Record the module outcome
         if: always()
         env:
           BASELINE_OUTCOME: ${{ steps.baseline.outcome }}
         run: |
-          echo "Unchanged module outcome: $BASELINE_OUTCOME" \
+          echo "Module outcome: $BASELINE_OUTCOME" \
             >> "$GITHUB_STEP_SUMMARY"
