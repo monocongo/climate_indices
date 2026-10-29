@@ -5,12 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-Development note (#1485; not included in 3.1.0): the Rust `aggregation` module
-adds trailing Timescale sums and means. Eligible float64 `compute.sum_to_scale`
-calls use the optional native kernel. Independent windows preserve missing-value
-recovery and existing reduction orders. Longer series convolutions and
-non-C-contiguous blocks retain Python. The next release preparation will assign
-this change to a versioned entry.
+## [3.1.1] - unreleased
+
+### Changed
+
+- **Expanded optional Rust backend**: eligible float64 calls now use native gamma
+  goodness-of-fit D statistics, empirical plotting positions, Run Theory identification
+  and per-run metrics, compound bootstrap resample metrics, CFFWIS behavior indices
+  (ISI, BUI, FWI, DSR), overwinter Drought Code, and trailing Timescale sums.
+  The standalone crate release candidate is `0.1.1`. These dispatch paths preserve
+  the existing results within `rtol = atol = 1e-10`, including missing-value positions;
+  public signatures and validation do not change. Complete-input KBDI uses its
+  tolerance-preserving fast path, not bitwise identity. Longer series convolutions
+  and non-C-contiguous aggregation blocks retain Python, as do Fosberg FFWI, HDW,
+  and Haines. The crate also exposes trailing means to Rust callers
+  (ADR-0025; #1434–#1438, #1442, #1485).
 
 ## [3.1.0] - 2026-10-26
 
