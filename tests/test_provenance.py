@@ -300,15 +300,15 @@ def test_text_reduces_a_windows_network_path_to_its_file_name() -> None:
         dims="x",
         name="v",
         attrs={
-            "comment": r"copied from \\fileserver\projects\climate\prcp.nc today",
-            "note": r"the regex \\d+ is not a path",
+            "comment": r"copied from \\fileserver\projects\climate\prcp.nc and \\192.168.1.5\share\q.nc today",
+            "note": r"the regex \\d+ or \\S+\\w* and a literal \\n\\t are not paths",
         },
     )
 
     attributes = _strict(build_output_attrs(data, index_name="Test")[PROVENANCE_ATTR])["inputs"][0]["attributes"]
 
-    assert attributes["comment"] == "copied from prcp.nc today"
-    assert attributes["note"] == r"the regex \\d+ is not a path"
+    assert attributes["comment"] == "copied from prcp.nc and q.nc today"
+    assert attributes["note"] == r"the regex \\d+ or \\S+\\w* and a literal \\n\\t are not paths"
 
 
 @pytest.mark.parametrize(

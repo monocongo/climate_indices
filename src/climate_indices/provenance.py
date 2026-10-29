@@ -675,7 +675,7 @@ def _truncate(text: str) -> str:
 def _scrub(text: str) -> str:
     """Sanitize URLs and reduce recognizable absolute file paths to their file names."""
     # absolute paths: a drive letter, a root, a home directory, or a Windows network share (\\host\share)
-    pattern = rf"{_URL.pattern}|(?<![\w:/])(?:[A-Za-z]:[\\/]|/|~[\\/]|\\\\[^\s\\/\"'<>]+\\)[^\s\"'<>]+"
+    pattern = rf"{_URL.pattern}|(?<![\w:/])(?:[A-Za-z]:[\\/]|/|~[\\/]|\\\\[A-Za-z0-9][A-Za-z0-9._-]*\\(?=[^\s\\/\"'<>]))[^\s\"'<>]+"
 
     def replace(match: re.Match[str]) -> str:
         value = match.group(0)
