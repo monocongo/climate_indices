@@ -198,7 +198,7 @@ def read_provenance(data: xr.DataArray) -> dict[str, Any] | None:
         return None
     try:
         record: dict[str, Any] = json.loads(raw.decode() if isinstance(raw, bytes) else raw)
-    except ValueError as error:
+    except (TypeError, ValueError) as error:  # a non-text attribute is as invalid as malformed text
         raise ValueError(f"{PROVENANCE_ATTR} of {data.name!r} is not valid JSON: {error}") from error
     return record
 
@@ -674,7 +674,8 @@ def _truncate(text: str) -> str:
 
 def _scrub(text: str) -> str:
     """Sanitize URLs and reduce recognizable absolute file paths to their file names."""
-    pattern = rf"{_URL.pattern}|(?<![\w:/])(?:[A-Za-z]:[\\/]|/|~[\\/])[^\s\"'<>]+"
+    # absolute paths: a drive letter, a root, a home directory, or a Windows network share (\\host\share)
+    pattern = rf"{_URL.pattern}|(?<![\w:/])(?:[A-Za-z]:[\\/]|/|~[\\/]|\\\\[^\s\\/\"'<>]+\\)[^\s\"'<>]+"
 
     def replace(match: re.Match[str]) -> str:
         value = match.group(0)

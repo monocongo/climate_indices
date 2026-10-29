@@ -294,6 +294,23 @@ def test_locators_and_text_lose_credentials_tokens_and_local_directories() -> No
     assert entry["attributes"]["api_key"] == entry["attributes"]["Authorization"] == "[redacted]"
 
 
+def test_text_reduces_a_windows_network_path_to_its_file_name() -> None:
+    data = xr.DataArray(
+        np.zeros(2),
+        dims="x",
+        name="v",
+        attrs={
+            "comment": r"copied from \\fileserver\projects\climate\prcp.nc today",
+            "note": r"the regex \\d+ is not a path",
+        },
+    )
+
+    attributes = _strict(build_output_attrs(data, index_name="Test")[PROVENANCE_ATTR])["inputs"][0]["attributes"]
+
+    assert attributes["comment"] == "copied from prcp.nc today"
+    assert attributes["note"] == r"the regex \\d+ is not a path"
+
+
 @pytest.mark.parametrize(
     ("uri", "expected"),
     [
@@ -395,6 +412,14 @@ def test_reattaching_replaces_the_record_and_never_inherits_input_provenance() -
     assert attrs["climate_indices_git_commit"] == (provenance.software_identity()["git_commit"] or "unknown")
     assert [step["record_id"] for step in record["inputs"][0]["upstream"]] == [read_provenance(first)["record_id"]]  # type: ignore[index]
     assert attrs["history"].count("Repeat calculated") == 1
+
+
+@pytest.mark.parametrize("raw", ["{not json", 5])
+def test_read_provenance_rejects_an_attribute_that_is_not_json(raw: Any) -> None:
+    data = xr.DataArray(np.zeros(1), dims="x", name="v", attrs={PROVENANCE_ATTR: raw})
+
+    with pytest.raises(ValueError, match="not valid JSON"):
+        read_provenance(data)
 
 
 def test_an_unparseable_input_record_is_flagged_not_propagated() -> None:
