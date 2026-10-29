@@ -1418,6 +1418,11 @@ def _spi_arguments(request: _IndexRequest) -> dict[str, Any]:
     }
 
 
+def _spei_arguments(request: _IndexRequest) -> dict[str, Any]:
+    # SPEI has no zero-mass placement, and the CLI rejects --zero_handling for it
+    return {key: value for key, value in _spi_arguments(request).items() if key != "zero_handling"}
+
+
 def _standardized_variable_attributes(
     request: _IndexRequest,
     source: xr.DataArray,
@@ -1690,7 +1695,7 @@ class _SPEIAdapter(_SingleOutputAdapter):
     consumed_flags = _PRECIP_FLAGS | _TEMPERATURE_FLAGS | _PET_FLAGS | _CALIBRATION_FLAGS | _SCALE_FLAGS
     kernel = staticmethod(_spei)
     worker = staticmethod(run_along_axis_double)
-    build_arguments = staticmethod(_spi_arguments)
+    build_arguments = staticmethod(_spei_arguments)
 
     @staticmethod
     def input_array_keys(request: _IndexRequest) -> tuple[str, ...]:

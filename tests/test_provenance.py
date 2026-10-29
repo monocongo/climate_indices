@@ -576,6 +576,36 @@ def test_energy_records_name_the_public_function_not_its_kernel() -> None:
         assert record["operation"]["implementation"] == f"climate_indices.energy.{name}"
 
 
+def test_cli_spei_records_only_parameters_the_computation_used(tmp_path: Path) -> None:
+    time = xr.date_range("1981-01-01", periods=480, freq="MS")
+    rng = np.random.default_rng(5)
+    for name, shape in (("precip", 30.0), ("pet", 10.0)):
+        xr.Dataset(
+            {
+                name: (("division", "time"), rng.gamma(2.0, shape, (1, time.size)), {"units": "mm"}),
+                "lat": (("division",), [40.0]),  # the CLI reads a per-division latitude
+            },
+            coords={"division": [1], "time": time},
+        ).to_netcdf(tmp_path / f"{name}.nc")
+
+    main(
+        [
+            "--index", "spei", "--periodicity", "monthly", "--scales", "3",
+            "--calibration_start_year", "1981", "--calibration_end_year", "2010",
+            "--netcdf_precip", str(tmp_path / "precip.nc"), "--var_name_precip", "precip",
+            "--netcdf_pet", str(tmp_path / "pet.nc"), "--var_name_pet", "pet",
+            "--output_file_base", str(tmp_path / "out"), "--multiprocessing", "single",
+        ]
+    )  # fmt: skip
+
+    with xr.open_dataset(tmp_path / "out_spei_gamma_03.nc") as written:
+        record = read_provenance(written["spei_gamma_03"])
+    assert record is not None
+    assert "zero_handling" not in record["parameters"]  # indices.spei has no such parameter
+    assert record["parameters"]["scale"] == 3
+    assert [entry["role"] for entry in record["inputs"]] == ["precipitation", "pet"]
+
+
 def test_log_wind_profile_records_the_effective_roughness_length() -> None:
     wind = xr.DataArray([5.0, 10.0], dims="time", attrs={"units": "m s-1"})
     records = []
