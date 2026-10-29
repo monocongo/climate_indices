@@ -41,7 +41,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
+        python-version: ['3.11', '3.12', '3.13', '3.14']
 
     steps:
     - name: Checkout code
@@ -64,10 +64,9 @@ jobs:
       run: uv sync --locked --dev
 
     # Unlike the pull-request workflow, every check below runs on every Python
-    # (mypy is the one exception, see its step): this is the last gate before
-    # publishing, and the pull-request `lint` and `validation` jobs only see the
-    # 3.12 dependency stack, so the numerical validation on the 3.10 and 3.11
-    # stacks is checked only here.
+    # because this is the last gate before publishing. The pull-request `lint`
+    # and `validation` jobs only see the 3.12 dependency stack, so the numerical
+    # validation on the 3.11 stack is checked only here.
     # Core tests run under xdist (`-n auto`); the others stay serial.
     - name: Run ruff linter
       run: uv run --no-sync --no-build ruff check src/ tests/
@@ -75,17 +74,7 @@ jobs:
     - name: Check ruff formatting
       run: uv run --no-sync --no-build ruff format --check src/ tests/
 
-    # numpy 2.2.x is the last release supporting Python 3.10, and its stubs
-    # declare the ndarray type parameters without PEP 696 defaults and leave
-    # `np.ma.isMaskedArray`, `np.ma.filled`, and `np.asarray` untyped. The 3.10
-    # stack therefore reports several hundred stub-vintage findings that no
-    # single source tree can satisfy on both stacks: a `cast` the 2.2.x stubs
-    # require is `redundant-cast` under 2.4.x, and an ignore needed on 2.4.x is
-    # an unused ignore on 2.2.x. `python_version` in pyproject.toml is pinned to
-    # "3.10", so the 3.11-3.14 legs still check 3.10 language semantics.
-    # Revisit when Python 3.10 support is dropped.
     - name: Run mypy type checker
-      if: matrix.python-version != '3.10'
       run: uv run --no-sync --no-build mypy src/
 
     - name: Run core tests
@@ -186,7 +175,7 @@ jobs:
         retention-days: 30
 
   # Binary wheels that carry the optional Rust backend (`climate_indices._native`).
-  # abi3 (PyO3 `abi3-py310`, `crates/climate-py/Cargo.toml`) validates one wheel
+  # abi3 (PyO3 `abi3-py311`, `crates/climate-py/Cargo.toml`) validates one wheel
   # per platform on every supported Python, so this matrix has no interpreter
   # axis. Linux wheels build inside the `manylinux` container named in the matrix,
   # which is what sets their glibc floor; macOS and Windows build on their own
@@ -229,7 +218,7 @@ jobs:
         manylinux: ${{ matrix.manylinux }}
         args: --release --locked --out dist
 
-    # An abi3 wheel's tag carries only the platform (cp310-abi3-...). An
+    # An abi3 wheel's tag carries the minimum Python and platform (cp311-abi3-...). An
     # interpreter-specific tag here means the abi3 feature stopped applying and
     # this matrix would need a Python axis.
     - name: Check the wheel tag is abi3
@@ -269,7 +258,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            python-version: '3.10'
+            python-version: '3.11'
             wheel: '*manylinux*x86_64.whl'
           - os: ubuntu-latest
             python-version: '3.14'
@@ -393,7 +382,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - python-version: '3.10'
+          - python-version: '3.11'
           - python-version: '3.14'
 
     steps:
@@ -419,7 +408,7 @@ jobs:
     # The locked environment without the project, so that the artifact installed
     # below is what `climate_indices` resolves to and no dependency is re-resolved.
     - name: Install dependencies without the project
-      run: uv sync --locked --dev --no-install-project  # NOSONAR: 3.10 needs the sdist-only asciitree and 3.14 the sdist-only cartopy
+      run: uv sync --locked --dev --no-install-project  # NOSONAR: 3.14 needs the sdist-only cartopy
 
     - name: Remove the Rust toolchain from PATH
       run: |
@@ -501,7 +490,7 @@ jobs:
             for requirement in map(Requirement, wheel_metadata.get_all("Requires-Dist") or [])
             if requirement.name == "icechunk"
         ]
-        # This interpreter, and an Icechunk-capable Python so the 3.10 leg checks the extra too.
+        # Check optional dependency selection on this interpreter and the newest supported Python.
         environments = ({}, {"python_version": "3.14", "python_full_version": "3.14.0"})
         selecting = {
             extra

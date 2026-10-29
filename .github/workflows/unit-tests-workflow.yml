@@ -88,10 +88,10 @@ jobs:
         run: uv run --no-sync --no-build sphinx-build -E -b doctest docs docs/_build/doctest
 
   # Compatibility policy: expensive or environment-independent suites run once
-  # (`validation` on 3.12, repo/meta checks on 3.10, minimum dependencies on
-  # 3.10). The full behavior suite runs on every supported interpreter, split
-  # across two jobs by event. uv.lock resolves three distinct dependency stacks
-  # (3.10; 3.11; 3.12-3.14), but interpreter behavior differs, so a pull
+  # (`validation` on 3.12, repo/meta checks and minimum dependencies on 3.11).
+  # The full behavior suite runs on every supported interpreter, split
+  # across two jobs by event. uv.lock resolves two distinct dependency stacks
+  # (3.11; 3.12-3.14), but interpreter behavior differs, so a pull
   # request runs every supported minor on Linux plus macOS on the newest
   # interpreter (this job); `test-full` keeps the remaining macOS minimum leg
   # on pushes to main, merge groups, the weekly schedule, and manual dispatch.
@@ -104,7 +104,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
+        python-version: ['3.11', '3.12', '3.13', '3.14']
         os: [ubuntu-latest]
         include:
           - python-version: '3.14'
@@ -122,8 +122,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
 
-      # `--no-build` is not usable here: Python 3.10 resolves zarr 2.x, whose
-      # asciitree dependency ships as an sdist-only release.
+      # Allow source builds for dependencies without wheels on newer interpreters.
       - name: Install dependencies
         run: uv sync --locked --dev
 
@@ -150,7 +149,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.10']
+        python-version: ['3.11']
         os: [macos-latest]
 
     steps:
@@ -165,10 +164,8 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
 
-      # Python 3.10 resolves zarr 2.x, whose asciitree dependency ships as an
-      # sdist-only release, so source builds must stay allowed here.
       - name: Install dependencies
-        run: uv sync --locked --dev  # NOSONAR: 3.10 needs the sdist-only asciitree from the zarr 2.x stack
+        run: uv sync --locked --dev
 
       - name: Run core tests
         run: >
@@ -410,7 +407,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.10', '3.14']
+        python-version: ['3.11', '3.14']
         os: [ubuntu-latest]
         include:
           - python-version: '3.14'
@@ -428,11 +425,9 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
 
-      # `--no-build` is not usable here: Python 3.10 resolves zarr 2.x, whose
-      # asciitree dependency ships as an sdist-only release, and cartopy has no
-      # Python 3.14 wheel.
+      # Allow source builds because cartopy has no Python 3.14 wheel.
       - name: Install dependencies
-        run: uv sync --locked --dev  # NOSONAR: 3.10 needs the sdist-only asciitree and 3.14 the sdist-only cartopy
+        run: uv sync --locked --dev  # NOSONAR: 3.14 needs the sdist-only cartopy
 
       - name: Install Rust toolchain
         run: rustup toolchain install --no-self-update
@@ -477,7 +472,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.10', '3.14']
+        python-version: ['3.11', '3.14']
         os: [ubuntu-latest, macos-latest]
         include:
           - python-version: '3.14'
@@ -496,11 +491,10 @@ jobs:
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
 
       # Only the locked maturin is needed, but the dev group is installed whole to
-      # stay on the locked toolchain. `--no-build` is not usable here: Python 3.10
-      # resolves zarr 2.x, whose asciitree dependency ships as an sdist-only
-      # release, and cartopy has no Python 3.14 wheel.
+      # stay on the locked toolchain. Allow source builds because cartopy has no
+      # Python 3.14 wheel.
       - name: Install dependencies
-        run: uv sync --locked --dev  # NOSONAR: 3.10 needs the sdist-only asciitree and 3.14 the sdist-only cartopy
+        run: uv sync --locked --dev  # NOSONAR: 3.14 needs the sdist-only cartopy
 
       - name: Install Rust toolchain
         run: rustup toolchain install --no-self-update
@@ -596,20 +590,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-      # Minimum supported Python: keeps the tomllib/tomli and
-      # typing_extensions compatibility branches exercised on every PR.
-      - name: Set up Python 3.10
+      # Run the repository checks on the minimum supported Python.
+      - name: Set up Python 3.11
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
-          python-version: '3.10'
+          python-version: '3.11'
 
       - name: Install uv
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
 
-      # `--no-install-package`: the meta checks never import zarr, and Python
-      # 3.10 resolves zarr 2.x, whose asciitree dependency is sdist-only.
       - name: Install dependencies
-        run: uv sync --locked --dev --no-build --no-install-package zarr --no-install-package asciitree
+        run: uv sync --locked --dev --no-build
 
       - name: Run repo and meta checks
         run: >
@@ -626,16 +617,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-      - name: Set up Python 3.10
+      - name: Set up Python 3.11
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
-          python-version: '3.10'
+          python-version: '3.11'
 
       - name: Install uv
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
 
-      # `--no-build` is not usable here: Python 3.10 resolves zarr 2.x, whose
-      # asciitree dependency ships as an sdist-only release.
       - name: Install minimum dependencies
         run: uv sync --no-dev --group test --resolution lowest-direct
 

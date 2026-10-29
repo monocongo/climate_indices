@@ -6,7 +6,7 @@ same functions; the input contract is in {doc}`data_requirements`.
 
 ## Install
 
-Requires Python 3.10+. Install the package from PyPI:
+Requires Python 3.11–3.14. Install the package from PyPI:
 
 ```bash
 pip install climate-indices

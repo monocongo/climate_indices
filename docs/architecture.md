@@ -23,7 +23,7 @@ The **climate_indices** library implements a **layered library architecture** op
 ### Core Dependencies
 | Dependency | Version | Purpose |
 |------------|---------|---------|
-| **Python** | 3.10-3.14 | Language runtime |
+| **Python** | 3.11-3.14 | Language runtime |
 | **scipy** | >=1.15.3 | Statistical distributions, numerical optimization |
 | **xarray** | >=2025.6.1 | Labeled multi-dimensional arrays, CF metadata |
 | **dask** | >=2025.7.0 | Parallel computation, lazy evaluation |
@@ -775,7 +775,7 @@ extension into `src/climate_indices/`, where it stays importable after `uv sync`
 reinstalls the project; delete the `_native.*` file to return to pure Python.
 
 **Packaging.** maturin also builds the published binary wheels, and they ship in
-the same release as the sdist and the pure wheel. They are abi3 (`abi3-py310`), so
+the same release as the sdist and the pure wheel. They are abi3 (`abi3-py311`), so
 one wheel per platform validates on every supported Python, and there are five:
 manylinux_2_28 `x86_64` and `aarch64`, macOS arm64 and `x86_64`, and Windows
 `x86_64`. pip prefers a matching platform wheel over `py3-none-any`; a platform
@@ -805,7 +805,7 @@ no Rust toolchain, so they keep proving the fallback.
   `tests/test_native_parity_distributions.py`,
   `tests/test_native_parity_fire.py`, and `tests/test_native_parity_palmer.py`
   have no other skip. The Python 3.14-only context-aware-warnings routing check lives in
-  `tests/test_native_backend.py` and skips on the 3.10 leg. It then runs the consolidated
+  `tests/test_native_backend.py` and skips on the 3.11 leg. It then runs the consolidated
   parity suite as a named step, so a leg that collected nothing from it fails visibly
   rather than passing silently, and writes the measured parity maxima
   (`scripts/native_parity_maxima.py`, the table above) into the job summary.
@@ -864,7 +864,7 @@ climate_indices/
 │   └── *.md                      # AI-readable project docs
 │
 ├── .github/workflows/            # CI/CD pipelines
-│   ├── unit-tests-workflow.yml   # Test matrix (Python 3.10-3.14)
+│   ├── unit-tests-workflow.yml   # Test matrix (Python 3.11-3.14)
 │   ├── release.yml               # Automated PyPI releases
 │   └── benchmarks.yml            # Performance tracking
 │
@@ -1066,10 +1066,10 @@ uv run pytest tests/test_property_based.py
 ```yaml
 Matrix (core suite):
   test (every event):
-    - ubuntu-latest: Python 3.10, 3.11, 3.12, 3.13, 3.14
+    - ubuntu-latest: Python 3.11, 3.12, 3.13, 3.14
     - macos-latest: Python 3.14
   test-full (everything except pull requests):
-    - macos-latest: Python 3.10
+    - macos-latest: Python 3.11
 Steps:
   1. Checkout code
   2. Setup Python + uv

@@ -3,7 +3,7 @@
 ## Prerequisites
 
 ### Required Software
-- **Python**: 3.10, 3.11, 3.12, 3.13, or 3.14
+- **Python**: 3.11, 3.12, 3.13, or 3.14
 - **uv**: Modern Python package installer ([https://github.com/astral-sh/uv](https://github.com/astral-sh/uv))
 - **Git**: Version control
 - **Make**: Build automation (optional, for Sphinx docs)
@@ -118,9 +118,7 @@ uv run --python 3.12 mypy src/ tests/test_type_checking.py
 uv run --python 3.12 mypy src/climate_indices/typed_public_api.py
 ```
 
-The `mypy` commands require a Python 3.11+ dependency stack. The Python 3.10
-stack pins numpy to 2.2.x, whose stubs raise findings that no single source tree
-can satisfy on both stacks, so the release workflow skips its mypy leg on 3.10.
+The release workflow runs mypy on every supported Python version.
 
 ### Building Documentation
 
@@ -151,7 +149,7 @@ uv run maturin build --release --out dist
 # Output in dist/
 # - climate_indices-X.Y.Z-py3-none-any.whl
 # - climate_indices-X.Y.Z.tar.gz
-# - climate_indices-X.Y.Z-cp310-abi3-<platform>.whl
+# - climate_indices-X.Y.Z-cp311-abi3-<platform>.whl
 ```
 
 ## Project Structure
@@ -471,7 +469,7 @@ every parity test.
 
 ### Python Style
 - **Line length**: 120 characters
-- **Python version**: 3.10 minimum (avoid syntax and stdlib added after 3.10)
+- **Python version**: 3.11 minimum (avoid syntax and stdlib added after 3.11)
 - **Type hints**: Required for all functions
 - **Docstrings**: Google-style for all public functions
 - **Imports**: stdlib → third-party → local (enforced by ruff)
@@ -509,9 +507,8 @@ uv sync --extra icechunk   # Python 3.11 or later; `--dev` installs it too
 uv run pytest -m icechunk
 ```
 
-Without the extra (Python 3.10, or a base install) the module skips. Every CI matrix leg
-on Python 3.11 and later installs the `dev` group, so those legs run the suite already;
-the marker is for selecting it locally.
+Without the extra, the module skips. Every supported CI matrix leg installs the `dev`
+group and runs the suite; the marker selects it locally.
 
 One test is opt-in in a second way: `test_r2_round_trip` writes to the shared Cloudflare
 R2 bucket, so it is marked `validation` and excluded from the default selection. It needs
