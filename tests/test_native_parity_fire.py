@@ -571,6 +571,24 @@ def test_behavior_indices_reference_record(monkeypatch) -> None:
         np.testing.assert_allclose(np.asarray(getattr(rust, name)).ravel(), columns[name], atol=1e-9, equal_nan=True)
 
 
+def test_default_policy_orchestrator_and_public_derivatives_use_different_backends(monkeypatch) -> None:
+    """Default reporting keeps the orchestrator in Python, but public wrappers can use Rust."""
+    columns = _cffwis_fixture()
+    recorder = conftest.NativeRecorder(native)
+    monkeypatch.setattr(fire_native, "_native", recorder)
+    with np.errstate(divide="warn", over="warn", invalid="warn", under="ignore"):
+        result = _cffwis_run(columns)()
+        assert recorder.calls == set()
+        isi = fire.initial_spread_index(result.ffmc, columns["wind_speed_kmh"] / 3.6)
+        bui = fire.buildup_index(result.dmc, result.dc)
+        fwi = fire.cffwis_fwi(isi, bui)
+        dsr = fire.daily_severity_rating(fwi)
+    assert recorder.calls == {"initial_spread_index", "buildup_index", "fwi", "daily_severity_rating"}
+    for name, expected in zip(_BEHAVIOR_COMPONENTS, (isi, bui, fwi, dsr), strict=True):
+        # AVX-512 NumPy power and scalar Rust powf need only meet ADR-0017's 1e-10 bound.
+        _assert_parity(getattr(result, name), expected)
+
+
 def test_behavior_index_boundaries_reach_the_kernels(monkeypatch) -> None:
     """The exact-zero, threshold, and NaN branches match on both paths.
 
