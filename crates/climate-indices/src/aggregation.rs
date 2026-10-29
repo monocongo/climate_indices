@@ -23,7 +23,8 @@ use crate::{ClimateError, reduction::pairwise_sum};
 ///
 /// The operation order matches NumPy's C-contiguous Spatial Block oracle:
 /// multiple cells add from oldest to newest, starting at positive zero; a
-/// singleton cell uses NumPy's pairwise reduction with its positive-zero identity.
+/// singleton cell uses NumPy's pairwise reduction, which starts at `-0.0`, and
+/// the kernel adds that result to positive zero.
 /// This order does not depend on the Rust input's strides. NumPy's 1-D convolution
 /// has a different, potentially BLAS-dependent order for larger windows; it is
 /// not this kernel's oracle. Work is O(steps * cells * scale), with only the output
