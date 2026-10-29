@@ -1,4 +1,4 @@
-//! NumPy's float64 pairwise reduction, shared by PNP, PCI, and Timescale Aggregation.
+//! NumPy's float64 pairwise reduction, shared by PNP, PCI, Flood, Runs, and Timescale Aggregation.
 //!
 //! Port of DOUBLE_pairwise_sum in NumPy 2.4.2's
 //! numpy/_core/src/umath/loops_utils.h.src (PW_BLOCKSIZE = 128).
