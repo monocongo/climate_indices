@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import runpy
-import sys
 from collections import Counter
 from datetime import date, timedelta
 from fractions import Fraction
@@ -362,8 +361,6 @@ def synthetic_sources(preparation: dict[str, Any], tmp_path: Path, monkeypatch: 
 def test_preparation_publishes_a_complete_fixture_without_leftovers(
     preparation: dict[str, Any], synthetic_sources: Path, tmp_path: Path, compact_date: bool
 ) -> None:
-    if compact_date and sys.version_info < (3, 11):
-        pytest.skip("Python 3.10 does not accept compact ISO dates.")
     output = tmp_path / "fixture"
     today = date.today()
     download_date = today.strftime("%Y%m%d") if compact_date else today.isoformat()

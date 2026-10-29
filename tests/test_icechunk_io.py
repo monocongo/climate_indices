@@ -1,6 +1,6 @@
 """Icechunk I/O tests: round-trip fidelity, storage parity, and session semantics.
 
-The module skips when the optional extra is absent (Python 3.10 or a base install);
+The module skips when the optional extra is absent from a base install;
 run it with ``pytest -m icechunk``. The opt-in Cloudflare R2 round trip is also marked
 ``validation``, so the default selection excludes it and it needs credentials in the
 environment (see ``docs/development-guide.md``).
