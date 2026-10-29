@@ -175,7 +175,9 @@ The command line labels each input with its file. The xarray routes also record
 each file's global attributes. The shared-memory routes retain global attributes
 only for inputs from the first opened file. Secondary files' global attributes
 are unavailable after the files are combined. These routes describe each input
-before unit normalization, so the record keeps the source's own `units`.
+before unit normalization, so the record keeps the source's own `units`. The one
+exception is the flood family (`pe`, `edi`, and `flood_index`): it converts
+precipitation to millimeters first, so its record shows `units` as `mm`.
 
 ### Normalization and limits
 

@@ -20,7 +20,7 @@ import pytest
 import xarray as xr
 
 import climate_indices
-from climate_indices import compute, energy, fire, indices, provenance
+from climate_indices import compute, energy, fire, flood, indices, provenance
 from climate_indices.__main__ import main
 from climate_indices.exceptions import InvalidArgumentError
 from climate_indices.indices import Distribution
@@ -574,6 +574,18 @@ def test_energy_records_name_the_public_function_not_its_kernel() -> None:
     for name, output in outputs.items():
         record = _strict(output.attrs[PROVENANCE_ATTR])
         assert record["operation"]["implementation"] == f"climate_indices.energy.{name}"
+
+
+def test_flood_records_the_precipitation_units_after_conversion_to_millimeters() -> None:
+    # docs/provenance.md names this as the one input family that does not keep its source units
+    time = xr.date_range("2000-01-01", periods=60, freq="D")
+    precipitation = xr.DataArray(
+        np.random.default_rng(0).random(time.size), dims="time", coords={"time": time}, attrs={"units": "inches"}
+    )
+
+    record = _strict(flood.effective_precipitation(precipitation).attrs[PROVENANCE_ATTR])
+
+    assert record["inputs"][0]["attributes"]["units"] == "mm"
 
 
 def test_cli_spei_records_only_parameters_the_computation_used(tmp_path: Path) -> None:
