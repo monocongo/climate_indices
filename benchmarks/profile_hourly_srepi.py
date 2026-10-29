@@ -39,7 +39,7 @@ DEFAULT_CELLS = 25
 
 @dataclass(frozen=True)
 class Measurement:
-    """One timed call and the peak allocation it made."""
+    """The fastest timed call and the peak allocation the call made."""
 
     name: str
     shape: tuple[int, ...]
@@ -65,11 +65,22 @@ def _hourly_block(years: int, cells: int = 0) -> np.ndarray:
 
 
 def _measure(name: str, values: np.ndarray, call: Callable[[], object]) -> Measurement:
-    """Time one call and record its peak traced allocation."""
+    """Time repeated calls without tracing, then record the peak traced allocation.
+
+    An active tracer inflates the timed window and penalizes the backend with more
+    tracked allocations, so the fastest of at least three calls, and at least 0.05 s of
+    calls, is reported. The peak comes from a separate traced call.
+    """
+    deadline = time.perf_counter() + 0.05
+    seconds = float("inf")
+    repetitions = 0
+    while repetitions < 3 or time.perf_counter() < deadline:
+        started = time.perf_counter()
+        call()
+        seconds = min(seconds, time.perf_counter() - started)
+        repetitions += 1
     tracemalloc.start()
-    started = time.perf_counter()
     call()
-    seconds = time.perf_counter() - started
     _, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
     return Measurement(name=name, shape=values.shape, seconds=seconds, peak_mebibytes=peak / (1024 * 1024))
@@ -94,7 +105,7 @@ def _run(years: int, cells: int) -> list[Measurement]:
         call()  # warm-up
         measurements.append(_measure(name, values, call))
     print(f"span {span[0]}-{span[1]} ({years} years, scale 720 hours, cells {cells if cells else 0})")
-    # A short monthly Timescale checks dispatch overhead outside the hourly case.
+    # A short monthly Timescale checks the one-dimensional dispatch cost outside the hourly case.
     monthly = np.random.default_rng(1485).uniform(0, 100, size=years * 12)
     for name, values in (
         ("monthly-series", monthly),
@@ -120,17 +131,22 @@ def main() -> None:
     parser.add_argument("--cells", type=int, default=DEFAULT_CELLS, help="grid cells for the gridded call")
     parser.add_argument("--backend", choices=("python", "native"), default="python")
     arguments = parser.parse_args()
-    if arguments.backend == "native":
-        if compute._native is None or not hasattr(compute._native, "trailing_sum"):
-            raise RuntimeError("Build the extension with uv run maturin develop --release first")
-    else:
-        compute._native = None
+    selected = compute._native
+    try:
+        if arguments.backend == "native":
+            if selected is None or not hasattr(selected, "trailing_sum"):
+                raise RuntimeError("Build the extension with uv run maturin develop --release first")
+        else:
+            compute._native = None
 
-    print(f"backend {arguments.backend}")
-    print(f"python {platform.python_version()} on {platform.platform()}")
-    print(f"period length {HOURS_PER_YEAR} hours, numpy {np.__version__}")
-    with np.errstate(all="ignore"):
-        measurements = _run(arguments.years, arguments.cells)
+        print(f"backend {arguments.backend}")
+        print(f"python {platform.python_version()} on {platform.platform()}")
+        print(f"period length {HOURS_PER_YEAR} hours, numpy {np.__version__}")
+        with np.errstate(all="ignore"):
+            measurements = _run(arguments.years, arguments.cells)
+    finally:
+        # a later run in the same process must see the imported extension again
+        compute._native = selected
     for measurement in measurements:
         print(
             f"  {measurement.name:<7} input {str(measurement.shape):<18} "
