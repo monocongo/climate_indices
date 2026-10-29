@@ -165,6 +165,23 @@ fn compound_resample_metrics<'py>(
     Ok((paired.into_pyarray(py), null.into_pyarray(py)))
 }
 
+/// Trailing sums of a (steps, cells) block in Spatial Block reduction order.
+#[pyfunction]
+fn trailing_sum<'py>(
+    py: Python<'py>,
+    values: PyReadonlyArray2<'py, f64>,
+    scale: usize,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    let values = checked_copy(&values)?;
+    if scale == 1 {
+        // an identity result: the kernel would clone the input a second time
+        return Ok(values.into_pyarray(py));
+    }
+    py.detach(|| climate_indices::aggregation::trailing_sum(values.view(), scale))
+        .map(|sums| sums.into_pyarray(py))
+        .map_err(climate_error)
+}
+
 /// Gamma shape and scale per column of a (years, columns) calibration block.
 #[pyfunction]
 fn gamma_parameters<'py>(
@@ -1035,6 +1052,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.py().get_type::<NoConvergenceError>(),
     )?;
     m.add_function(wrap_pyfunction!(compound_resample_metrics, m)?)?;
+    m.add_function(wrap_pyfunction!(trailing_sum, m)?)?;
     m.add_function(wrap_pyfunction!(gamma_parameters, m)?)?;
     m.add_function(wrap_pyfunction!(gamma_probabilities, m)?)?;
     m.add_function(wrap_pyfunction!(pnp_normals, m)?)?;

@@ -8,7 +8,9 @@ the Palmer family, fire-weather indices, and flood indices.
 The crate's only dependency is `ndarray`: no I/O, logging, or metadata layer. It
 provides kernels, not
 complete index workflows: the caller prepares calendars, selects the calibration period,
-validates physical ranges, and applies any aggregation and final index transformation.
+validates physical ranges, and applies the final index transformation.
+The `aggregation` module provides trailing Timescale sums and means; callers choose
+when to apply them and retain all calendar responsibilities.
 
 ## Usage
 

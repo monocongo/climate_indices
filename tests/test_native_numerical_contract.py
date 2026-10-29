@@ -188,7 +188,12 @@ def test_nonfinite_result_is_not_reported_as_zero_error(value: float) -> None:
 
 def test_report_renders_measured_maxima() -> None:
     run = parity_registry.ParityRun(
-        parity_registry.ENTRIES[0], np.array([1.0]), np.array([1.0]), frozenset({"gamma_parameters"}), 2e-14, 4e-14
+        parity_registry.ENTRIES_BY_NAME["spi_gamma"],
+        np.array([1.0]),
+        np.array([1.0]),
+        frozenset({"gamma_parameters"}),
+        2e-14,
+        4e-14,
     )
     report = native_parity_maxima.contract_report([run], {"special_ndtr": (1e-16, 2e-16)})
     assert "| `spi_gamma` | `gamma_parameters` | 2.000000e-14 | 4.000000e-14 |" in report

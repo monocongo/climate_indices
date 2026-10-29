@@ -18,9 +18,10 @@
 use std::f64::consts::PI;
 
 use climate_indices::ClimateError;
+use climate_indices::aggregation::trailing_sum;
 use climate_indices::loglogistic::{loglogistic_cdf_block, loglogistic_parameters};
 use climate_indices::special::norm_ppf;
-use ndarray::{Array2, ArrayView2};
+use ndarray::Array2;
 
 const YEARS: usize = 40;
 const MONTHS: usize = 12;
@@ -31,7 +32,14 @@ fn main() -> Result<(), ClimateError> {
     // SPEI takes the difference of two records the caller supplies: an observed
     // precipitation record and a PET record. See `examples/pet.rs` for PET.
     let water_mm = &monthly_precipitation() - &monthly_pet();
-    let accumulated_mm = trailing_sum(water_mm.view(), SCALE);
+    // Flatten the calendar before Aggregation, then restore the fitting columns.
+    let steps = water_mm
+        .view()
+        .into_shape_with_order((YEARS * MONTHS, 1))
+        .unwrap();
+    let accumulated_mm = trailing_sum(steps, SCALE)?
+        .into_shape_with_order((YEARS, MONTHS))
+        .unwrap();
 
     // The Calibration Period is the caller's choice. This example calibrates on
     // every year; the fit excludes the NaN warm-up windows by itself.
@@ -91,24 +99,6 @@ fn main() -> Result<(), ClimateError> {
     }
 
     Ok(())
-}
-
-/// Sum the `SCALE` months ending at each position, across year boundaries.
-///
-/// The crate leaves accumulation to the caller. A window that holds a missing
-/// value is itself missing, so the leading `SCALE - 1` positions stay NaN.
-fn trailing_sum(values: ArrayView2<'_, f64>, scale: usize) -> Array2<f64> {
-    let (years, months) = values.dim();
-    let mut accumulated = Array2::<f64>::from_elem((years, months), f64::NAN);
-    for index in (scale - 1)..(years * months) {
-        let window: Vec<f64> = (index + 1 - scale..=index)
-            .map(|position| values[[position / months, position % months]])
-            .collect();
-        if window.iter().all(|value| !value.is_nan()) {
-            accumulated[[index / months, index % months]] = window.iter().sum();
-        }
-    }
-    accumulated
 }
 
 /// A deterministic synthetic precipitation record, in mm.

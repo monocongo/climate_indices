@@ -11,6 +11,7 @@
 use std::f64::consts::PI;
 
 use climate_indices::ClimateError;
+use climate_indices::aggregation::trailing_sum;
 use climate_indices::gamma::{gamma_parameters, gamma_probabilities};
 use climate_indices::special::norm_ppf;
 use ndarray::{Array1, Array2, ArrayView2};
@@ -22,7 +23,14 @@ const SCALE: usize = 3;
 
 fn main() -> Result<(), ClimateError> {
     let precipitation_mm = monthly_precipitation();
-    let accumulated_mm = trailing_sum(precipitation_mm.view(), SCALE);
+    // Flatten the calendar before Aggregation, then restore the fitting columns.
+    let steps = precipitation_mm
+        .view()
+        .into_shape_with_order((YEARS * MONTHS, 1))
+        .unwrap();
+    let accumulated_mm = trailing_sum(steps, SCALE)?
+        .into_shape_with_order((YEARS, MONTHS))
+        .unwrap();
 
     // The Calibration Period is the caller's choice. This example calibrates on
     // every year; the fit excludes the NaN warm-up windows by itself.
@@ -80,24 +88,6 @@ fn main() -> Result<(), ClimateError> {
     }
 
     Ok(())
-}
-
-/// Sum the `SCALE` months ending at each position, across year boundaries.
-///
-/// The crate leaves accumulation to the caller. A window that holds a missing
-/// value is itself missing, so the leading `SCALE - 1` positions stay NaN.
-fn trailing_sum(values: ArrayView2<'_, f64>, scale: usize) -> Array2<f64> {
-    let (years, months) = values.dim();
-    let mut accumulated = Array2::<f64>::from_elem((years, months), f64::NAN);
-    for index in (scale - 1)..(years * months) {
-        let window: Vec<f64> = (index + 1 - scale..=index)
-            .map(|position| values[[position / months, position % months]])
-            .collect();
-        if window.iter().all(|value| !value.is_nan()) {
-            accumulated[[index / months, index % months]] = window.iter().sum();
-        }
-    }
-    accumulated
 }
 
 /// The empirical fraction of exact zeros in each calendar month.

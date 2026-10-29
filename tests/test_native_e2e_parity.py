@@ -78,7 +78,7 @@ def _spi(values: Any, **kwargs: Any) -> Any:
 def test_xarray_adapter_parity(monkeypatch: pytest.MonkeyPatch) -> None:
     """The xarray adapter returns the same DataArray on both backends."""
     rust, python, calls = _run_both(monkeypatch, lambda: _spi(_series()))
-    assert calls == {"gamma_parameters", "gamma_probabilities", "gamma_ks_statistics", "norm_ppf"}
+    assert calls == {"gamma_parameters", "gamma_probabilities", "gamma_ks_statistics", "norm_ppf", "trailing_sum"}
     conftest.assert_native_parity(rust, python)
 
 
@@ -86,7 +86,7 @@ def test_threaded_dask_parity(monkeypatch: pytest.MonkeyPatch) -> None:
     """A chunked, Dask-backed input computes to the same result on both backends."""
     chunked = _series().chunk({"time": -1})
     rust, python, calls = _run_both(monkeypatch, lambda: _spi(chunked).compute())
-    assert calls == {"gamma_parameters", "gamma_probabilities", "gamma_ks_statistics", "norm_ppf"}
+    assert calls == {"gamma_parameters", "gamma_probabilities", "gamma_ks_statistics", "norm_ppf", "trailing_sum"}
     conftest.assert_native_parity(rust, python)
 
 
@@ -105,7 +105,7 @@ def test_distributed_dask_parity(monkeypatch: pytest.MonkeyPatch) -> None:
             return _spi(chunked).compute()
 
     rust, python, calls = _run_both(monkeypatch, run)
-    assert calls == {"gamma_parameters", "gamma_probabilities", "gamma_ks_statistics", "norm_ppf"}
+    assert calls == {"gamma_parameters", "gamma_probabilities", "gamma_ks_statistics", "norm_ppf", "trailing_sum"}
     conftest.assert_native_parity(rust, python)
 
 
@@ -123,7 +123,7 @@ def test_fit_diagnostics_parity(monkeypatch: pytest.MonkeyPatch) -> None:
             compute.Periodicity.monthly,
         ),
     )
-    assert calls == {"gamma_parameters", "gamma_ks_statistics"}
+    assert calls == {"gamma_parameters", "gamma_ks_statistics", "trailing_sum"}
     conftest.assert_native_parity(rust, python)
 
 
@@ -178,6 +178,7 @@ def test_cli_parity(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
         "pearson_cdf",
         "pearson_parameters",
         "pearson_ks_statistics",
+        "trailing_sum",
     }
     for distribution in ("gamma", "pearson"):
         rust = written("native", distribution)
