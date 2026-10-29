@@ -400,7 +400,7 @@ def provenance_attributes(
     record: dict[str, Any] = {
         "schema": SCHEMA,
         "schema_version": SCHEMA_VERSION,
-        "created": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "created": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "operation": operation,
         "software": software,
         "backend": _backend_identity(),

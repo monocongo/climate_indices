@@ -337,7 +337,7 @@ def test_two_observations_in_one_month_are_rejected() -> None:
     "time",
     [
         np.array(
-            [dt.datetime(2000, 1, 1, tzinfo=dt.timezone.utc), dt.datetime(2000, 2, 1, tzinfo=dt.timezone.utc)],
+            [dt.datetime(2000, 1, 1, tzinfo=dt.UTC), dt.datetime(2000, 2, 1, tzinfo=dt.UTC)],
             dtype=object,
         ),
         pd.date_range("2000-01-01", periods=2, freq="MS", tz="UTC"),

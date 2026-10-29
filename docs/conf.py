@@ -14,11 +14,7 @@
 import logging
 import os
 import sys
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
+import tomllib
 
 # since our source files are under a src folder we need to add that as our first path
 sys.path.insert(0, os.path.abspath("../src"))

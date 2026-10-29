@@ -9,16 +9,11 @@ under pytest, which executes the call bodies but verifies no types.
 
 from __future__ import annotations
 
-import sys
+from typing import assert_type
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-
-if sys.version_info >= (3, 11):
-    from typing import assert_type
-else:
-    from typing_extensions import assert_type
 import xarray as xr
 
 from climate_indices import compound, energy, fire, fit_diagnostics, percentage_of_normal, spei, spi

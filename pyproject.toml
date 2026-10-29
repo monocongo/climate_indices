@@ -16,7 +16,6 @@ classifiers = [
      'Intended Audience :: Education',
      'Intended Audience :: Science/Research',
      'License :: OSI Approved :: BSD License',
-     'Programming Language :: Python :: 3.10',
      'Programming Language :: Python :: 3.11',
      'Programming Language :: Python :: 3.12',
      'Programming Language :: Python :: 3.13',
@@ -24,7 +23,7 @@ classifiers = [
      'Topic :: Software Development :: Libraries :: Python Modules',
      'Topic :: Scientific/Engineering :: Atmospheric Science',
 ]
-requires-python = ">=3.10,<3.15"
+requires-python = ">=3.11,<3.15"
 dependencies = [
     "cftime>=1.6.4.post1",
     "dask>=2025.7.0",
@@ -36,8 +35,8 @@ dependencies = [
     "xarray>=2025.6.1",
 ]
 [project.optional-dependencies]
-# Icechunk uses Zarr v3 and requires Python 3.11 or later.
-icechunk = ["icechunk>=1.1.21,<2; python_version >= '3.11'"]
+# Icechunk uses Zarr v3.
+icechunk = ["icechunk>=1.1.21,<2"]
 # NOTE: Test dependencies are intentionally duplicated in [dependency-groups].test below.
 # This is required because pip uses [project.optional-dependencies] for `pip install .[test]`
 # while uv uses [dependency-groups] for `uv sync --group test`. Both systems need the same
@@ -64,7 +63,7 @@ aws = [
 ]
 dev = [
     "climate-indices[test,docs]",
-    "icechunk>=1.1.21,<2; python_version >= '3.11'",
+    "icechunk>=1.1.21,<2",
     "build>=1.3.0",
     "cartopy>=0.24.1",
     "distributed>=2025.7.0",
@@ -94,7 +93,6 @@ docs = [
     "sphinx>=8.1.3",
     "sphinx-autodoc-typehints>=3.0.1",
     "sphinx-rtd-theme>=1.0",
-    "tomli>=2.0.0; python_version < '3.11'",
 ]
 performance = [
     "psutil>=5.9.0",
@@ -112,7 +110,7 @@ process_climate_indices = "climate_indices.__main__:main"
 'Changelog' = 'https://github.com/monocongo/climate_indices/blob/main/CHANGELOG.md'
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 120
 exclude = [
     "notebooks",  # Jupyter notebooks
@@ -135,7 +133,7 @@ ignore = [
 per-file-ignores = {"__init__.py" = ["F401"], "tests/**/*" = ["B011"]}
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 # Strict applies to the whole package: mypy 2.x applies an override's `strict`
 # globally regardless of its `module` pattern, so state it here rather than in a
 # per-module override that does not actually scope it.
@@ -174,7 +172,7 @@ module = [
 ignore_missing_imports = true
 
 # Optional test-only dependency; its py3.12+ syntax breaks parsing under
-# python_version = "3.10", and no first-party code imports it.
+# python_version = "3.11", and no first-party code imports it.
 [[tool.mypy.overrides]]
 module = ["zarr.*"]
 follow_imports = "skip"
@@ -273,7 +271,7 @@ test = [
 ]
 dev = [
     {include-group = "test"},
-    "icechunk>=1.1.21,<2; python_version >= '3.11'",
+    "icechunk>=1.1.21,<2",
     "aiohttp>=3.14.3",
     "build>=1.3.0",
     "cartopy>=0.24.1",
@@ -291,7 +289,6 @@ dev = [
     "sphinx>=8.1.3",
     "sphinx-autodoc-typehints>=3.0.1",
     "sphinx-rtd-theme>=1.0",
-    "tomli>=2.0.0; python_version < '3.11'",
     "twine>=6.1.0",
     "types-psutil>=5.9.0",
 ]

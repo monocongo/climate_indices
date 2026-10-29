@@ -91,8 +91,8 @@ is the staged example.
 Install the optional extra with `pip install 'climate_indices[icechunk]'`, which
 installs `icechunk>=1.1.21,<2`. Icechunk requires Python 3.11 or later and Zarr v3.
 The existing `xarray>=2025.6.1` requirement exceeds the `to_icechunk` floor of
-2025.1.1. The core install is unchanged: without the extra, the base package keeps
-its Python 3.10 support and installs no Icechunk dependency.
+2025.1.1. Without the extra, the base package installs no Icechunk dependency.
+Both installation paths require Python 3.11–3.14.
 
 Use `open_icechunk` to read a committed snapshot. Select a variable and pass it
 to the existing index API. The reader preserves stored chunks; put the full time

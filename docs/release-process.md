@@ -345,7 +345,7 @@ After the workflow completes:
    in `pyproject.toml` and every supported Python minor appears in the classifiers.
 4. Confirm the Python support badge renders the same minimum and maximum versions
    listed in the release's classifiers:
-   `https://img.shields.io/badge/Python-3.10--3.14-blue?logo=python`.
+   `https://img.shields.io/badge/Python-3.11--3.14-blue?logo=python`.
 5. Install from PyPI in a fresh environment outside the checkout:
    ```bash
    CHECK_DIR="$(mktemp -d)"
