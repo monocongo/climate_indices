@@ -45,6 +45,8 @@ test = [
     "coverage>=7.10.1",
     "distributed>=2025.7.0",
     "hypothesis>=6.100.0",
+    # builds wheels offline (--no-isolation) in tests/test_build_provenance.py
+    "hatchling>=1.27.0",
     "jsonschema>=4.0.0",
     "pytest>=8.4.1",
     "pytest-benchmark>=4.0.0",
@@ -80,6 +82,8 @@ dev = [
 docs = [
     # the quickstart doctest writes NetCDF through the h5netcdf backend
     "h5py>=3.11.0",
+    # the provenance doctest writes and reopens a Zarr store
+    "zarr>=2.18",
     # The docs doctest build executes the cached energy notebook.
     "ipykernel>=6.29",
     "matplotlib>=3.10.3",
@@ -199,6 +203,8 @@ addopts = "-m 'not benchmark and not validation'"
 manifest-path = "crates/climate-py/Cargo.toml"
 python-source = "src"
 module-name = "climate_indices._native"
+# hatch_build.py writes this, git-ignored, before the release builds the platform wheels
+include = [{ path = "src/climate_indices/_build_info.json", format = "wheel" }]
 
 [tool.pytest-benchmark]
 min_rounds = 5
@@ -206,6 +212,9 @@ warmup = true
 warmup_iterations = 1
 columns = ["mean", "stddev", "rounds", "iterations"]
 sort = "mean"
+
+# hatch_build.py embeds the source commit in the sdist and the wheel (docs/provenance.md)
+[tool.hatch.build.hooks.custom]
 
 [tool.hatch.build.targets.sdist]
 exclude = [
@@ -251,6 +260,8 @@ test = [
     "coverage>=7.10.1",
     "distributed>=2025.7.0",
     "hypothesis>=6.100.0",
+    # builds wheels offline (--no-isolation) in tests/test_build_provenance.py
+    "hatchling>=1.27.0",
     "jsonschema>=4.0.0",
     "pytest>=8.4.1",
     "pytest-benchmark>=4.0.0",

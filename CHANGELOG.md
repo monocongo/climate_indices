@@ -91,6 +91,18 @@ this change to a versioned entry.
   `crates/climate-indices/CHANGELOG.md`. The Python package and its
   `climate_indices._native` extension have no interface change (ADR-0021; #1361,
   #1377, #1381, #1384, #1403, #1409, #1411, #1414, #1415, #1426, #1471).
+- **Dataset provenance** (`climate_indices.provenance`, #1470): every output
+  variable the xarray adapters and the CLI build now carries
+  `climate_indices_git_commit`, `climate_indices_provenance_schema_version`, and a
+  strict-JSON `climate_indices_provenance` record of the software identity, the
+  backend, every effective parameter (including defaults and inferred values), and
+  each input with its metadata and upstream lineage. Records are per variable,
+  bounded, sanitized of credentials and local paths, and survive NetCDF and Zarr
+  round trips. `with_source()` labels inputs with source identifiers, and
+  `read_provenance()` decodes a record. Builds embed the source commit through a
+  Hatchling build hook (`hatch_build.py`), so installed wheels report it without Git.
+  Existing attributes and the `history` format are unchanged; see
+  [Dataset provenance](docs/provenance.md).
 
 ### Changed
 

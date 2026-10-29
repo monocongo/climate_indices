@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -588,8 +588,18 @@ def _cffwis_variable_results(
     active_components: tuple[str, ...],
     temperature_celsius: xr.DataArray,
     options: _CFFWISCallOptions,
+    inputs: dict[str, Any],
 ) -> dict[str, xr.DataArray]:
     """Attach each component's CF metadata; the adapter has restored the time coordinates."""
+    parameters = {
+        "nan_policy": options.nan_policy,
+        "max_gap_days": options.max_gap_days,
+        "spin_up": options.spin_up,
+        "initial_ffmc": options.initial_ffmc,
+        "initial_dmc": options.initial_dmc,
+        "initial_dc": options.initial_dc,
+        "initial_state": options.initial_state,
+    }
     variable_results: dict[str, xr.DataArray] = {}
     for position, name in enumerate(active_components):
         variable = result_arrays[position]
@@ -598,6 +608,9 @@ def _cffwis_variable_results(
             cf_metadata=CF_METADATA[name],  # type: ignore[arg-type]
             calculation_metadata={"nan_policy": options.nan_policy},
             index_name=name.upper(),
+            inputs=inputs,
+            parameters=parameters,
+            implementation="climate_indices.fire.cffwis",
         )
         variable_results[name] = variable
     return variable_results
@@ -640,6 +653,8 @@ def _cffwis_xarray(
         output_core_dims += [None] * 6
         output_dtypes += [np.float64, np.int64] * 3
 
+    resolved_inputs: dict[str, Any] = {}
+
     def build_extra_inputs(alignment: StatefulAlignment) -> tuple[tuple[xr.DataArray, str | None], ...]:
         time_coord = alignment.time_source.coords[time_dim] if alignment.time_source is not None else None
         latitude = _resolve_cffwis_latitude(
@@ -648,6 +663,10 @@ def _cffwis_xarray(
             time_dim,
             alignment.spatial_dims,
             alignment.spatial_shape,
+        )
+        # The eager resolver already validated the scalar value; do not compute lazy fields here.
+        resolved_inputs["latitude_degrees_north"] = (
+            latitude.item() if latitude.ndim == 0 and latitude.chunks is None else latitude
         )
         month_data = _resolve_cffwis_month(month, time_coord, time_dim, alignment.time_length)
         _validate_cffwis_seeds(options, alignment.internal_spatial_shape)
@@ -673,7 +692,21 @@ def _cffwis_xarray(
         kernel_kwargs={"options": options, "optional_kinds": _cffwis_optional_kinds(options)},
     )
     result_arrays = adapter_output.outputs
-    variable_results = _cffwis_variable_results(result_arrays, active_components, temperature_celsius, options)
+    inputs = {
+        "temperature_celsius": temperature_celsius,
+        "relative_humidity_percent": relative_humidity_percent,
+        "wind_speed_meters_per_second": wind_speed_meters_per_second,
+        "precipitation_mm": precipitation_mm,
+        "month": month,
+        **resolved_inputs,
+    }
+    variable_results = _cffwis_variable_results(
+        result_arrays,
+        active_components,
+        temperature_celsius,
+        options,
+        {name: value for name, value in inputs.items() if value is not None},
+    )
 
     if not options.return_state:
         return xr.Dataset(variable_results)

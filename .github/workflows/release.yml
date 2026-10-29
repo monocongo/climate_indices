@@ -209,6 +209,17 @@ jobs:
       with:
         ref: ${{ github.sha }}
 
+    # maturin does not run the Hatchling build hook, so write the source commit it
+    # would embed into this ephemeral checkout first; `[tool.maturin] include`
+    # ships the git-ignored file in the wheel (docs/provenance.md).
+    - name: Set up Python
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+      with:
+        python-version: '3.11'
+
+    - name: Embed the source commit
+      run: python hatch_build.py
+
     # The compiler pin comes from rust-toolchain.toml, which maturin-action reads
     # before building; the manylinux container is used only for Linux targets.
     - name: Build binary wheel
@@ -363,6 +374,13 @@ jobs:
         time = pd.date_range("1990-01-01", periods=values.size, freq="MS")
         dataarray = xr.DataArray(values, dims="time", coords={"time": time}, name="precipitation")
         assert climate_indices.spi(dataarray, 3, indices.Distribution.gamma).sizes["time"] == values.size
+
+        # the wheel reports the commit it was built from, without Git or the checkout
+        from climate_indices import provenance
+
+        identity = provenance.software_identity()
+        assert identity["git_commit"] == os.environ["GITHUB_SHA"], identity
+        assert identity["git_commit_source"] == "build-metadata" and identity["git_dirty"] is False, identity
         PY
         for entry_point in climate_indices process_climate_indices; do
           "${VENV_BIN}/${entry_point}${SCRIPT_SUFFIX}" --help > /dev/null
@@ -504,6 +522,15 @@ jobs:
         assert "icechunk" in selecting, f"the icechunk extra must select Icechunk: {icechunk}"
         assert "" not in selecting, f"a core install must not select Icechunk: {icechunk}"
         assert "icechunk" not in sys.modules, "importing climate_indices must not import Icechunk"
+
+        # the wheel rebuilt from the sdist, which has no .git, keeps the sdist's source commit
+        import os
+
+        from climate_indices import provenance
+
+        identity = provenance.software_identity()
+        assert identity["git_commit"] == os.environ["GITHUB_SHA"], identity
+        assert identity["git_commit_source"] == "build-metadata" and identity["git_dirty"] is False, identity
         PY
 
     - name: Run core tests against the installed package

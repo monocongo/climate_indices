@@ -755,9 +755,19 @@ def _haines_xarray(
         dask="parallelized",
         output_dtypes=[np.float64],
     )
+    # the inputs as given, before the unit conversion rewrote their units
+    source_inputs = {
+        "temperature_lower_celsius": temperature_lower_celsius,
+        "temperature_upper_celsius": temperature_upper_celsius,
+        "dewpoint_celsius": dewpoint_celsius,
+        "surface_pressure_hpa": surface_pressure_hpa,
+    }
     result.attrs = build_output_attrs(
         temperature_lower_celsius,
         cf_metadata=CF_METADATA[f"haines_{variant}"],  # type: ignore[arg-type]
         index_name="Haines Index",
+        inputs={name: value for name, value in source_inputs.items() if value is not None},
+        parameters={"variant": variant},
+        implementation="climate_indices.fire.haines_index",
     )
     return result

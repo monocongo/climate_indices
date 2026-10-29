@@ -197,7 +197,12 @@ def hub_height_wind_speed(
             "hub_height_wind_speed",
             wind_input(wind_speed, "wind_speed"),
             *xarray_inputs,
-            calculation_metadata={"reference_height": reference_height, "hub_height": hub_height, "method": method},
+            calculation_metadata={
+                "reference_height": reference_height,
+                "hub_height": hub_height,
+                "method": method,
+                **({"roughness_length": roughness_length} if method == "log" else {}),
+            },
         )
         return scalar_coordinate(xarray_result, "height", hub_height, standard_name="height", units="m", positive="up")
     if method == "power" and isinstance(alpha, xr.DataArray):

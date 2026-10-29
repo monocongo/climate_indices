@@ -12,6 +12,7 @@ indices themselves, see {doc}`explanation`.
 :maxdepth: 1
 
 algorithm-reference
+provenance
 rust-numerical-contract
 data_requirements
 error-reference
@@ -458,6 +459,15 @@ The Dask-backed SPI/SPEI workflow is demonstrated end to end in
 ```{eval-rst}
 .. automodule:: climate_indices.xarray_adapter
    :members:
+```
+
+### climate_indices.provenance
+
+The record each output variable carries; see {doc}`provenance`.
+
+```{eval-rst}
+.. automodule:: climate_indices.provenance
+   :members: with_source, read_provenance, software_identity
 ```
 
 ## Core Computation Modules

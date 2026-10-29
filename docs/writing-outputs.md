@@ -204,10 +204,15 @@ without loading the values:
 ```python
 import xarray as xr
 
+from climate_indices.provenance import read_provenance
+
 reopened = xr.open_zarr("out/spi.zarr", consolidated=True)
 attrs = reopened["spi"].attrs
 print(attrs["scale"], attrs["distribution"], attrs["calibration_year_initial"])
 assert attrs["climate_indices_version"]
+# The full record: software and commit, effective parameters, and each input.
+record = read_provenance(reopened["spi"])
+print(record["software"]["git_commit"], record["parameters"]["periodicity"])
 # The first scale - 1 outputs have no full window, so they are NaN by design.
 assert bool(reopened["spi"].isel(time=slice(0, 2)).isnull().all())
 ```
@@ -221,3 +226,9 @@ and distribution where they apply. The distribution and scale also appear in
 the file name, so keep the run arguments alongside it:
 `xr.open_dataset("/data/out/indices_spi_gamma_03.nc")["spi_gamma_03"].attrs`
 shows what the file itself does and does not record.
+
+Both routes also stamp `climate_indices_git_commit` and a strict-JSON
+`climate_indices_provenance` record on every output variable: the source commit,
+the backend, every effective parameter, and each input with the metadata it
+supplied. The record is per variable, so it survives merging outputs into one
+file. {doc}`provenance` describes the record and how to read it.
