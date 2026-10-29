@@ -1286,6 +1286,41 @@ It measured `empirical` at 0.140 ms Rust against 0.178 ms Python (1.27x) and
 in `benchmarks/results/rust_vs_python.txt` predates both entries, and the tables
 above it pick them up at its next regeneration.
 
+#### Why the Python fallback keeps the ranking loop
+
+#1387 also asked for a pure-Python rewrite that ranks from one sorted
+calibration sample instead of one pass per calibration year. The Rust port
+replaces that loop for native builds, as the table above shows. The rewrite of
+the pure-Python fallback was measured and rejected: NumPy has no batched
+`np.searchsorted`, so the alternatives cannot reach the requested
+`log2(n_calibration_years)` cost on the whole block.
+
+Measured on the same 47,185,920-value block on 2026-10-29, Apple Silicon arm64,
+macOS 27.0.1, Python 3.14.7, NumPy 2.4.2, SciPy 1.17.0. Each value is the rank
+count alone, in one fresh process. The full `_empirical_fit` adds the per-value
+inverse normal.
+
+| implementation | 20y count | 60y count |
+|---|---|---|
+| per-year loop (kept) | 0.57 s | 1.68 s |
+| boolean comparison cube, one reduction | 0.55 s | 1.56 s |
+| sort-once merge (`argsort`) | 1.07 s | 1.52 s |
+| batched binary search | 2.0 s | -- |
+
+The sort-once merge is the requested algorithm. It wins at 60 calibration years
+(1.52 s against 1.68 s) and regresses at 20 years (1.07 s against 0.57 s);
+typical calibration windows sit at or below 40 years. The boolean comparison
+cube reads the value block once per chunk instead of once per calibration year
+and helps about 5% at both windows, within run-to-run variation. The gather
+based binary search is slower than the loop, because NumPy batches no
+`searchsorted`. The decision is therefore:
+
+- Grid-scale work, tens of millions of values over a multi-decade window, is
+  served by the native `empirical_transform` kernel.
+- The pure-Python fallback stays for extension-free installs. It keeps its exact
+  maximum-tie rank and its peak-memory bound of one input-sized float64 array,
+  and its cost grows linearly with the calibration window, as the table shows.
+
 ### Thread scaling
 
 4096 cells in four blocks of 1024, every row the same work, best of five.
