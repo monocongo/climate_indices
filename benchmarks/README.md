@@ -1729,7 +1729,7 @@ NumPy 2.4.2, SciPy 1.17.0, and Rust 1.99.0.
 The extension used the release profile without custom compiler flags.
 Each backend used the same deterministic input and one warm-up call.
 `profile_hourly_srepi.py` times repeated calls with `perf_counter` and no active tracer, and reports the fastest call;
-it records the peak with `tracemalloc` in a separate call, because a tracing timer penalizes the backend with more tracked allocations.
+it records the peak with `tracemalloc` in a separate call, because an active tracer inflates the timed window and penalizes the backend with more tracked allocations.
 Both backends used `np.errstate(all="ignore")`; the Python run disabled `compute._native`.
 The native run enabled all eligible compute kernels, including the existing empirical transform.
 The Python column is therefore not the default-policy native install: a native install pays the dispatch gate on every call, and it keeps the Python path only when the gate declines.
@@ -1749,7 +1749,7 @@ uv run maturin develop --release
 | Monthly sum grid | `(492, 25, 1)` | 3 | 0.000023 | 0.000012 | 0.2 | <0.1 |
 
 The hourly series still uses NumPy convolution on both backends, because its Timescale exceeds the one-dimensional dispatch limit.
-The short monthly series is slower natively, and the isolated measurements below show that the one-dimensional dispatch loses at every measured length.
+The short monthly series is slower natively, and the isolated measurements above show that the one-dimensional dispatch loses at every measured length.
 The grid case is the change's measured benefit: the isolated Aggregation call is 1.60 times faster (1.912 s to 1.196 s at Timescale 720), and the complete SREPI call is about 1.66 times faster with a smaller traced peak.
 `tracemalloc` does not count Rust-owned buffers, so its smaller native peak is not a total-memory reduction.
 The external process high-water resident size was **392.7188 MiB for Python and 521.9531 MiB for native**.
