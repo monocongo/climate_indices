@@ -37,11 +37,23 @@ Fosberg FFWI, HDW, and Haines kernels are not included.
 
 ## Usage
 
+The following example uses the published `0.1.0` release:
+
 ```toml
 [dependencies]
-climate-indices = "0.1.1"
+climate-indices = "0.1.0"
 ndarray = "0.17"
 ```
+
+The module list above describes this checkout, including additions planned for `0.1.1`.
+Until `0.1.1` is published, use a local path dependency for those additions:
+
+```toml
+climate-indices = { path = "../climate_indices/crates/climate-indices" }
+```
+
+Replace the `climate-indices` dependency under `[dependencies]` with this entry.
+Adjust the path relative to your application's `Cargo.toml`.
 
 Array inputs borrow `ndarray` views and array outputs own their data. A daily block has
 shape `(days, cells)`, so one series and a grid use the same call:
