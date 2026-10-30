@@ -11,7 +11,6 @@ from __future__ import annotations
 import argparse
 import json
 import platform
-import resource
 import time
 
 import numpy as np
@@ -58,6 +57,15 @@ def rank_counts(values: np.ndarray, calibration: np.ndarray, implementation: str
     return counts
 
 
+def peak_rss_bytes() -> int | None:
+    """Return the process peak RSS, or None where the POSIX-only ``resource`` module is missing."""
+    try:
+        import resource
+    except ModuleNotFoundError:
+        return None
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * (1 if platform.system() == "Darwin" else 1024)
+
+
 def check_counts() -> None:
     """Check all implementations against direct comparisons, including chunk tails."""
     rng = np.random.default_rng(1435)
@@ -84,12 +92,11 @@ def main() -> None:
     check_counts()
     values = np.random.default_rng(1435).gamma(2.0, size=(60, 12 * args.cells))
     calibration = values[: args.calibration_years]
-    rss_unit = 1 if platform.system() == "Darwin" else 1024
-    before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * rss_unit
+    before = peak_rss_bytes()
     start = time.perf_counter()
     counts = rank_counts(values, calibration, args.implementation, args.chunk_columns)
     seconds = time.perf_counter() - start
-    after = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * rss_unit
+    after = peak_rss_bytes()
     np.testing.assert_array_equal(counts[:, :1], (calibration[:, None, :1] <= values[None, :, :1]).sum(axis=0))
     print(
         json.dumps(
@@ -101,7 +108,7 @@ def main() -> None:
                 "seconds": seconds,
                 "input_bytes": values.nbytes,
                 "peak_rss_bytes": after,
-                "peak_increase_bytes": after - before,
+                "peak_increase_bytes": None if before is None or after is None else after - before,
                 "python": platform.python_version(),
                 "numpy": np.__version__,
                 "platform": platform.platform(),

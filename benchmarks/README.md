@@ -1314,6 +1314,7 @@ The alternatives process chunks of 8,192 flattened month/cell columns; each chun
 Use `--chunk-columns` to change this size or `--cells` for a smaller workload.
 Each invocation checks all four implementations against direct comparisons with ties, NaNs, infinities, and incomplete chunks.
 It prints one JSON record with the workload, versions, elapsed time, and peak RSS.
+The RSS fields are `null` where Python has no `resource` module, as on Windows.
 Select the smallest `seconds` value from three fresh-process runs for each implementation and calibration window.
 The timer includes sorting and work-array allocation, but excludes input generation and the plotting-position and inverse-normal transforms.
 
