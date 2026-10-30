@@ -1286,6 +1286,62 @@ It measured `empirical` at 0.140 ms Rust against 0.178 ms Python (1.27x) and
 in `benchmarks/results/rust_vs_python.txt` predates both entries, and the tables
 above it pick them up at its next regeneration.
 
+#### Why the Python fallback keeps the ranking loop
+
+#1387 also asked for a pure-Python rewrite that ranks from one sorted
+calibration sample instead of one pass per calibration year. NumPy has no
+built-in batched `np.searchsorted`. A custom gather-based binary search does
+achieve `O(log n_calibration_years)` search rounds per value after sorting.
+The measured runtime, including sorting and NumPy array operations, is the
+reason to retain the fallback loop, not an inability to achieve logarithmic search.
+
+`benchmarks/empirical_ranking.py` contains four reference implementations and
+replaces the earlier, uncommitted prototypes as the source of the measurements below.
+Run each implementation in a fresh process:
+
+```bash
+for years in 20 60; do
+  for implementation in loop cube merge binary; do
+    for run in 1 2 3; do
+      uv run benchmarks/empirical_ranking.py --implementation "$implementation" --calibration-years "$years"
+    done
+  done
+done
+```
+
+The default block contains 60 years x 12 months x 65,536 cells, or 47,185,920 values.
+The alternatives process chunks of 8,192 flattened month/cell columns; each chunk includes all 60 query years.
+Use `--chunk-columns` to change this size or `--cells` for a smaller workload.
+Each invocation checks all four implementations against direct comparisons with ties, NaNs, infinities, and incomplete chunks.
+It prints one JSON record with the workload, versions, elapsed time, and peak RSS.
+The RSS fields are `null` where Python has no `resource` module, as on Windows.
+Select the smallest `seconds` value from three fresh-process runs for each implementation and calibration window.
+The timer includes sorting and work-array allocation, but excludes input generation and the plotting-position and inverse-normal transforms.
+
+Measured on 2026-10-29, Apple Silicon arm64, macOS 27.0.1, Python 3.14.7, NumPy 2.4.2:
+
+| implementation | 20y count | 60y count |
+|---|---|---|
+| per-year loop (kept) | 0.588 s | 1.708 s |
+| boolean comparison cube, one reduction per chunk | 0.559 s | 1.592 s |
+| sort-once merge (`argsort`) | 1.901 s | 2.904 s |
+| batched binary search | 1.266 s | 1.993 s |
+
+Both sorting alternatives are slower than the loop at the measured 20- and 60-year windows.
+The boolean comparison cube improves runtime by about 5–7%, but allocates a comparison cube per chunk.
+These results describe the committed implementations and workload; they do not rule out faster NumPy designs.
+The decision is therefore:
+
+- Eligible calls use the native `empirical_transform` kernel, including grid-scale work.
+  Both operands must be plain, aligned float64 arrays with matching trailing shapes.
+  The kernel must be available, and the floating-point and warning policies must permit native execution.
+  NumPy's default floating-point policy does not permit it; the full-transform benchmark uses `np.errstate(all="ignore")`.
+  Calls that fail these checks use the Python loop, even with the extension installed.
+- The pure-Python fallback retains its exact maximum-tie rank and one input-sized float64 work array.
+  Boolean comparison temporaries, calibration-validity masks, and missing-value masks also use memory.
+  The work-array size is not a total peak-memory bound; the preceding full-transform table reports measured RSS increases.
+  The loop's cost grows linearly with the calibration window.
+
 ### Thread scaling
 
 4096 cells in four blocks of 1024, every row the same work, best of five.
