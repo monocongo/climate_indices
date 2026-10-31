@@ -105,6 +105,15 @@ with a Timescale of 30; calendar months use monthly input. Hourly input uses the
 hour-of-day x day-of-year strata ([#1177][energy-1177]). A 30-year record leaves about
 30 calibration values per stratum, which is too few for a parametric fit.
 
+The optional keyword-only `pool_window_days` widens each step's calibration sample to
+the same hour on that many neighbouring days, a smoothed seasonal-diurnal climatology
+that raises the sample to `30 x (2k + 1)` values and refines the tail resolution. The
+default `0` keeps the hour x day-of-year strata, so it leaves every existing result
+unchanged. The window wraps the year boundary, and the synthesized 29 February hours
+stay out of every pooled sample; a 29 February target is still scored from its
+neighbouring days. The keyword is available only for hourly empirical standardization,
+and it is rejected for any other periodicity or distribution ([#1407][energy-1407]).
+
 Daily NumPy inputs to `indices.standardized_index()` must start on January 1
 and use the internal 366-slot year layout. The energy NumPy wrappers
 inherit this layout. Convert Gregorian arrays with
@@ -466,5 +475,6 @@ are not actual generation or load, or a reproduction of C3S energy indicators.
 [energy-1175]: https://github.com/monocongo/climate_indices/issues/1175
 [energy-1176]: https://github.com/monocongo/climate_indices/issues/1176
 [energy-1177]: https://github.com/monocongo/climate_indices/issues/1177
+[energy-1407]: https://github.com/monocongo/climate_indices/issues/1407
 [energy-demo]: https://github.com/monocongo/climate_indices/blob/main/notebooks/energy_demo.ipynb
 [energy-1180]: https://github.com/monocongo/climate_indices/issues/1180

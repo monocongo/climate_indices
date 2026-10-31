@@ -518,6 +518,7 @@ def _standardized_index_pipeline(
     fallback_to_gamma: bool = True,
     preprocess: Callable[[np.ndarray], np.ndarray] | None = None,
     aggregation: compute.Aggregation = "sum",
+    pool_window_days: int = 0,
 ) -> np.ndarray:
     """Scale, fit, and transform a series in the pipeline shared by the index wrappers.
 
@@ -554,6 +555,9 @@ def _standardized_index_pipeline(
             this pipeline's full failure context.
         aggregation: Whether each ``scale`` window is summed or averaged; only
             :func:`standardized_index` exposes it, every other index sums.
+        pool_window_days: Neighbouring days pooled into each empirical hourly step;
+            only :func:`standardized_index` exposes it, every other index keeps the
+            shipped hour x day-of-year strata.
 
     Returns:
         Standardized values in the input's size and layout.
@@ -650,6 +654,7 @@ def _standardized_index_pipeline(
             fallback_context=fallback_context,
             output_scale=output_scale,
             zero_handling=zero_handling,
+            pool_window_days=pool_window_days,
         )
 
         # clip z-scores to the supported range, including any zeros a
@@ -681,6 +686,7 @@ def standardized_index(
     zero_handling: compute.ZeroHandling = "classic",
     aggregation: compute.Aggregation = "sum",
     clip_negatives: bool = True,
+    pool_window_days: int = 0,
 ) -> np.ndarray:
     """Standardize a monthly or daily series against a fitted distribution.
 
@@ -770,6 +776,12 @@ def standardized_index(
             than clip it (ADR-0019). The beta distribution never clips: its support
             check rejects a negative, because clipping would count it in the zero
             mass and standardize a different series (ADR-0024).
+        pool_window_days: Number of neighbouring days on each side of an hourly
+            empirical step whose values join its calibration sample, zero (the
+            default) keeping the shipped hour x day-of-year strata. A positive value
+            is a smoothed seasonal-diurnal climatology that widens the sample by whole
+            days at the same hour and holds 29 February out of every pooled sample. It
+            is rejected for any other periodicity or distribution (#1407).
 
     Returns:
         1-D array of standardized values, unitless and of the same length as the
@@ -783,7 +795,9 @@ def standardized_index(
             surface does not accept, or if a beta fit is given a value outside
             [0, 1].
         ValueError: If ``zero_handling`` is not one of the three modes, if
-            ``aggregation`` is not "sum" or "mean", a Pearson ``fitting_params``
+            ``aggregation`` is not "sum" or "mean", ``pool_window_days`` is not a
+            non-negative integer or a positive value is paired with a non-hourly or
+            non-empirical call, a Pearson ``fitting_params``
             set is partial or does not carry the period (and cell) axes, or a beta
             mass pair sums above 1 or a supplied beta shape is not finite and positive
             (unless NaN).
@@ -813,6 +827,7 @@ def standardized_index(
         # check raises instead (ADR-0019, decision 3; ADR-0024, decision 4)
         clip_negatives=clip_negatives and distribution is not Distribution.beta,
         preprocess=(lambda series: _reject_negative_values(series, distribution)) if reject_negatives else None,
+        pool_window_days=pool_window_days,
     )
 
 

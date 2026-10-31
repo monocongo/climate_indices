@@ -305,7 +305,11 @@ external anchor and no product-level oracle:
   position, the calendar plan, and agreement between the NumPy and xarray paths.
   There is no independent hourly oracle, because `SEI` accepts hourly timestamps
   but does not stratify by hour of day or day of year. The ERA5/C3S gridded
-  demonstration remains pending (`#1179`).
+  demonstration remains pending (`#1179`). The pooled seasonal-diurnal option
+  (`#1407`) is specification evidence for the same reason: its tests pin the pooled
+  plotting position against an explicit window reference, the 29 February holdout,
+  the year-boundary wrap, the unchanged default, and the finer tail resolution on a
+  synthetic hourly series.
 
 Energy indices describe the climate-driven component of energy supply and
 demand, not actual generation, load, or residual load. Even an exactly

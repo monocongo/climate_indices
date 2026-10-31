@@ -163,6 +163,7 @@ def _srli_numpy(
     aggregation: compute.Aggregation = "sum",
     spatial_time_major: bool = False,
     output_scale: compute.OutputScale = "normal",
+    pool_window_days: int = 0,
 ) -> np.ndarray:
     """Standardized Residual Load Index (SRLI) of Allen & Otero (2023).
 
@@ -201,6 +202,10 @@ def _srli_numpy(
         aggregation: How each window is combined, "sum" (the default) or "mean".
         spatial_time_major: Read a time-major block of independent series.
         output_scale: "normal" (the default), "probability", or "bounded".
+        pool_window_days: Number of neighbouring days on each side of an hourly
+            empirical step whose values join its calibration sample; zero (the default)
+            keeps the shipped hour x day-of-year strata. Available only with
+            ``Periodicity.hourly`` and ``Distribution.empirical`` (#1407).
 
     Returns:
         Unitless standardized values, shaped as
@@ -229,6 +234,7 @@ def _srli_numpy(
         output_scale=output_scale,
         aggregation=aggregation,
         clip_negatives=False,
+        pool_window_days=pool_window_days,
     )
 
 
@@ -264,6 +270,7 @@ def srli(
     distribution: indices.Distribution = indices.Distribution.empirical,
     aggregation: compute.Aggregation = "sum",
     output_scale: compute.OutputScale = "normal",
+    pool_window_days: int = 0,
 ) -> xr.DataArray: ...
 
 
@@ -280,6 +287,7 @@ def srli(
     aggregation: compute.Aggregation = "sum",
     spatial_time_major: bool = False,
     output_scale: compute.OutputScale = "normal",
+    pool_window_days: int = 0,
 ) -> npt.NDArray[np.float64]: ...
 
 
@@ -295,6 +303,7 @@ def srli(
     aggregation: compute.Aggregation = "sum",
     spatial_time_major: bool = False,
     output_scale: compute.OutputScale = "normal",
+    pool_window_days: int = 0,
 ) -> npt.NDArray[np.float64] | xr.DataArray:
     """Standardized Residual Load Index (SRLI) of Allen & Otero (2023).
 
@@ -344,6 +353,10 @@ def srli(
         spatial_time_major: Read a time-major block of independent series. Only used
             for NumPy input.
         output_scale: "normal" (the default), "probability", or "bounded".
+        pool_window_days: Number of neighbouring days on each side of an hourly
+            empirical step whose values join its calibration sample; zero (the default)
+            keeps the shipped hour x day-of-year strata. Available only with
+            ``Periodicity.hourly`` and ``Distribution.empirical`` (#1407).
 
     Returns:
         Unitless standardized values: an array for NumPy input, a DataArray carrying
@@ -373,4 +386,5 @@ def srli(
         aggregation=aggregation,
         spatial_time_major=spatial_time_major,
         output_scale=output_scale,
+        pool_window_days=pool_window_days,
     )

@@ -96,6 +96,9 @@ MISSING_DATA_THRESHOLD = 0.20  # 20%
 # empirical transform ranks against it, the n_thres default of the SEI oracle (#1160)
 MIN_CALIBRATION_VALUES_FOR_EMPIRICAL = 10
 
+#: One day of the hourly layout, the block a pooled window shifts by.
+_HOURS_PER_DAY = 24
+
 # Kolmogorov-Smirnov test p-value threshold for goodness-of-fit warnings
 GOODNESS_OF_FIT_P_VALUE_THRESHOLD = 0.05
 
@@ -1084,6 +1087,7 @@ def _transform_fitted(
     fitting_params: dict[str, Any],
     output_scale: OutputScale,
     zero_handling: ZeroHandling = "classic",
+    pool_window_days: int = 0,
 ) -> np.ndarray:
     """Resolve a public adapter's fit once and transform its prepared values."""
     prepared, log = _prepare_transform(values, distribution, periodicity, output_scale, zero_handling, fitting_params)
@@ -1098,6 +1102,7 @@ def _transform_fitted(
         periodicity,
         fitting_params,
         _validated=distribution.value == "beta",
+        pool_window_days=pool_window_days,
     )
     return fitted._transform_prepared(prepared, output_scale, zero_handling, log)
 
@@ -2945,6 +2950,8 @@ def transform_fitted_empirical(
     calibration_end_year: int,
     periodicity: Periodicity,
     output_scale: OutputScale = "normal",
+    *,
+    pool_window_days: int = 0,
 ) -> np.ndarray:
     """
     Transform values to normalized sigmas through their empirical (rank-based) probability.
@@ -2980,10 +2987,19 @@ def transform_fitted_empirical(
     :param output_scale: one of ``compute.OUTPUT_SCALES``; "probability" returns the
         plotting-position probability, "bounded" returns ``2p - 1``, and "normal"
         (the default) returns the standard-normal z-score, unclipped
+    :param pool_window_days: number of neighbouring days on each side of a step whose
+        values join its calibration sample; zero (the default) ranks each step against
+        itself, and a positive integer widens the sample by whole days at the same hour.
+        Available only for hourly data, where all of 29 February is held out of every
+        pooled sample because a non-leap year's hours there are synthesized. See
+        ``_pooled_empirical_counts``.
     :return: array of transformed values, corresponding in size and shape to the
         input array
     :rtype: numpy.ndarray of floats
+    :raises InvalidArgumentError: if ``pool_window_days`` is not a non-negative
+        integer, or a positive value is paired with a non-hourly periodicity
     """
+    _validate_pool_window_days(pool_window_days, periodicity, Distribution.empirical)
     return _transform_fitted(
         values,
         Distribution.empirical,
@@ -2993,6 +3009,7 @@ def transform_fitted_empirical(
         periodicity,
         {},
         output_scale,
+        pool_window_days=pool_window_days,
     )
 
 
@@ -3014,19 +3031,33 @@ def _native_empirical_fit(
     return result
 
 
-def _empirical_fit(values: np.ndarray, calibration_values: np.ndarray, output_scale: OutputScale) -> np.ndarray:
-    """Rank values against the resolved Calibration Period sample."""
-    native = _native_empirical_fit(values, calibration_values, output_scale)
+def _empirical_fit(
+    values: np.ndarray,
+    calibration_values: np.ndarray,
+    output_scale: OutputScale,
+    pool_window_days: int = 0,
+) -> np.ndarray:
+    """Rank values against the resolved Calibration Period sample.
+
+    Zero ``pool_window_days`` (the default) ranks each calendar step against itself,
+    the shipped hourly contract. A positive value pools the same hour on that many
+    neighbouring days into the sample, a smoothed seasonal-diurnal climatology.
+    """
+    # shortcut: pooled ranking stays in Python, add a Rust kernel if pooled hourly grids become hot
+    native = None if pool_window_days else _native_empirical_fit(values, calibration_values, output_scale)
     if native is not None:
         return native
 
     # count the calibration values at or below each value one calibration year at a
     # time, so memory stays at one input-sized array whatever the record length; a
     # missing calibration value compares False and is not counted
-    counts = np.zeros(values.shape)
-    for calibration_year in calibration_values:
-        counts += calibration_year <= values
-    valid_counts = np.count_nonzero(~np.isnan(calibration_values), axis=0)
+    if pool_window_days:
+        counts, valid_counts = _pooled_empirical_counts(values, calibration_values, pool_window_days)
+    else:
+        counts = np.zeros(values.shape)
+        for calibration_year in calibration_values:
+            counts += calibration_year <= values
+        valid_counts = np.count_nonzero(~np.isnan(calibration_values), axis=0)
 
     # the plotting position replaces the counts in place and the inverse-normal
     # transform writes into the same array: hourly blocks make this the widest
@@ -3045,6 +3076,34 @@ def _empirical_fit(values: np.ndarray, calibration_values: np.ndarray, output_sc
         counts -= 1.0
 
     return counts
+
+
+def _pooled_empirical_counts(
+    values: np.ndarray, calibration_values: np.ndarray, pool_window_days: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """Count each value against the same hour on a window of neighbouring days.
+
+    The hourly layout stores one day as a contiguous block of 24 steps, so a whole-day
+    shift is 24 steps along the period axis and ``np.roll`` wraps the year boundary. All
+    of 29 February is held out of every window, because a non-leap year's 24 hours there
+    are synthesized rather than observed; a target on 29 February is still scored, from
+    its neighbouring days. Memory stays at one sample-sized temporary per offset, and
+    the ranking cost multiplies by ``2 * pool_window_days + 1``.
+
+    :return: the counts at or below each value, and the valid pooled sample size at each
+        calendar step
+    """
+    sample = calibration_values.copy()
+    february_29_start = 59 * _HOURS_PER_DAY
+    sample[:, february_29_start : february_29_start + _HOURS_PER_DAY, ...] = np.nan
+    counts = np.zeros(values.shape)
+    valid_counts = np.zeros(values.shape[1:], dtype=np.int64)
+    for offset in range(-pool_window_days, pool_window_days + 1):
+        shifted = np.roll(sample, offset * _HOURS_PER_DAY, axis=1)
+        for calibration_year in shifted:
+            counts += calibration_year <= values
+        valid_counts += np.count_nonzero(~np.isnan(shifted), axis=0)
+    return counts, valid_counts
 
 
 # normalized fitting-parameter keys, paired with the deprecated alias accepted for each
@@ -3109,6 +3168,39 @@ def _validate_empirical_fitting_params(
             "The empirical distribution has no fitting parameters; pass fitting_params=None.",
             argument_name="fitting_params",
             argument_value=str(sorted(fitting_params)),
+        )
+
+
+def _validate_pool_window_days(
+    pool_window_days: int,
+    periodicity: Periodicity,
+    distribution: "Distribution",
+) -> None:
+    """
+    Reject a smoothing window that is not a non-negative integer on the hourly path.
+
+    The pooled seasonal-diurnal climatology widens an hourly empirical step's
+    calibration sample to the same hour on the neighbouring days, so the option has no
+    meaning for a parametric fit or a coarser calendar.
+
+    :raises InvalidArgumentError: if the value is not a non-negative integer, or a
+        positive value is paired with any distribution but the empirical one or any
+        periodicity but hourly
+    """
+    if isinstance(pool_window_days, bool) or not isinstance(pool_window_days, (int, np.integer)):
+        raise InvalidArgumentError(
+            "pool_window_days must be a non-negative integer.",
+            argument_name="pool_window_days",
+            argument_value=repr(pool_window_days),
+        )
+    if pool_window_days < 0 or (
+        pool_window_days and (periodicity is not Periodicity.hourly or distribution.value != "empirical")
+    ):
+        raise InvalidArgumentError(
+            "pool_window_days is available only for hourly empirical standardization.",
+            argument_name="pool_window_days",
+            argument_value=str(pool_window_days),
+            valid_values="0, or a positive integer with Periodicity.hourly and Distribution.empirical",
         )
 
 
@@ -3317,6 +3409,7 @@ class FittedDistribution:
     parameters: dict[str, np.ndarray]
     periodicity: Periodicity
     calibration_values: np.ndarray | None = None
+    pool_window_days: int = 0
 
     @classmethod
     def validate_supplied(cls, values: np.ndarray, distribution: "Distribution", params: dict[str, Any]) -> None:
@@ -3368,6 +3461,7 @@ class FittedDistribution:
         fitting_params: dict[str, Any] | None = None,
         *,
         _validated: bool = False,
+        pool_window_days: int = 0,
     ) -> "FittedDistribution":
         """Build a fitted distribution from the data or from the caller's parameters.
 
@@ -3394,7 +3488,7 @@ class FittedDistribution:
             calibration_values, _, _ = _calibration_block(
                 values, data_start_year, calibration_start_year, calibration_end_year, periodicity
             )
-            return cls(distribution, {}, periodicity, calibration_values)
+            return cls(distribution, {}, periodicity, calibration_values, pool_window_days)
         if kind == "gamma":
             parameters = _resolve_gamma_parameters(
                 values, params, data_start_year, calibration_start_year, calibration_end_year, periodicity
@@ -3495,7 +3589,7 @@ class FittedDistribution:
         elif kind == "empirical":
             if sample is None:
                 raise ValueError("An empirical fit requires a Calibration Period sample")
-            result = _empirical_fit(values, sample, output_scale)
+            result = _empirical_fit(values, sample, output_scale, pool_window_days=self.pool_window_days)
         else:
             result = _loglogistic_fit(values, parameters["loc"], parameters["scale"], parameters["shape"], output_scale)
         log.info("distribution_transform_completed", output_shape=str(result.shape))
@@ -3651,6 +3745,7 @@ def fit_and_standardize(
     fallback_context: str = "",
     output_scale: OutputScale = "normal",
     zero_handling: ZeroHandling = "classic",
+    pool_window_days: int = 0,
 ) -> np.ndarray:
     """
     Fit values to the specified distribution and transform the values to the
@@ -3701,6 +3796,11 @@ def fit_and_standardize(
             empirical distributions have no zero mass, so the mode does not apply to
             them, and beta applies the mode to both of its boundary masses,
             mirroring the mass at 1 about 1/2.
+        pool_window_days: Number of neighbouring days on each side of a step whose values
+            join its empirical calibration sample; zero (the default) keeps the shipped
+            hourly hour x day-of-year strata. Available only for hourly empirical
+            standardization, which widens the sample by whole days at the same hour and
+            holds 29 February out of every pooled sample.
 
     Returns:
         2-D array of transformed/fitted values, corresponding in size and shape to
@@ -3708,7 +3808,9 @@ def fit_and_standardize(
 
     Raises:
         InvalidArgumentError: If ``output_scale`` is not one of ``compute.OUTPUT_SCALES``,
-            if ``fitting_params`` is given with the empirical distribution, or a beta
+            if ``fitting_params`` is given with the empirical distribution, if
+            ``pool_window_days`` is not a non-negative integer or a positive value is
+            paired with a non-hourly or non-empirical call, or a beta
             fit is given a value outside [0, 1] beyond the rounding tolerance of a
             windowed mean.
         ValueError: If the distribution is none of gamma, beta, Pearson Type III,
@@ -3745,6 +3847,7 @@ def fit_and_standardize(
     )
 
     _validate_empirical_fitting_params(distribution, fitting_params)
+    _validate_pool_window_days(pool_window_days, periodicity, distribution)
 
     # rank-based: the calibration sample is the fit, so there is no parameter set to
     # reuse, and zeros are ordinary values with no zero mass for zero_handling to place
@@ -3760,6 +3863,7 @@ def fit_and_standardize(
             periodicity,
             {},
             output_scale,
+            pool_window_days=pool_window_days,
         )
 
     # an all-missing input has nothing to fit, so return it before any fit: a direct

@@ -90,6 +90,23 @@ xarray adapters that validate the 00:00 January 1 start and contiguous hours, pl
 8784-slot layout, and restore the Gregorian hour axis. Every other index rejects
 `hourly` during argument validation, before any output is written.
 
+Amended by the pooled seasonal-diurnal climatology
+([#1407](https://github.com/monocongo/climate_indices/issues/1407)): the empirical
+hourly path gains keyword-only `pool_window_days`, default `0`. A zero window keeps
+decision 5's shipped hour x day-of-year strata, so every existing hourly result is
+unchanged. A positive window widens each step's calibration sample to the same hour on
+that many neighbouring days, wrapping the year boundary; a 30-year step grows from
+about 30 values to `30 x (2k + 1)`, which refines the tail resolution of a thin hourly
+record that the SEI fixture's 100-value recommendation
+(`tests/fixture/energy_sei/warnings.txt`) covers only for monthly data. All of
+29 February is held out of every pooled sample, because a non-leap year's 24 hours
+there are synthesized rather than observed; a 29 February target is still scored, from
+its neighbouring days. The keyword is rejected for every periodicity but hourly and
+every distribution but empirical, and it reaches `indices.standardized_index()`, the
+generic xarray `standardized_index()`, and `energy.srepi()`,
+`energy.standardized_demand_index()`, and `energy.srli()`. Pooled ranking stays in
+Python, so the native empirical kernel runs only with the default window.
+
 Decision 2's `aggregation` keyword landed with this record
 ([#1158](https://github.com/monocongo/climate_indices/issues/1158)) and reached the
 xarray surfaces with
