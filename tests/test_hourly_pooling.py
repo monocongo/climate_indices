@@ -7,6 +7,8 @@ shipped hour x day-of-year strata, so every existing hourly result is unchanged.
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -110,6 +112,23 @@ class TestPooledProbability:
         # the same value scores lower than under its own stratum, which has twelve values
         assert probabilities[0, 100 * HOURS_PER_DAY] < (2.0 / 14.0)
 
+    def test_integer_observations_match_floating_point(self) -> None:
+        values = _ramp_rows().astype(int)
+        original = values.copy()
+
+        np.testing.assert_array_equal(
+            _probabilities(values, POOL_WINDOW_DAYS), _probabilities(values.astype(float), POOL_WINDOW_DAYS)
+        )
+        np.testing.assert_array_equal(values, original)
+
+    def test_largest_window_counts_each_calendar_day_once(self) -> None:
+        values = _ramp_rows()
+        probabilities = _probabilities(values, 182)
+
+        for column in (0, FEBRUARY_29_START, 200 * HOURS_PER_DAY):
+            expected = _pooled_reference(values, 0, column, 182)
+            assert probabilities[0, column] == pytest.approx(expected, abs=1e-15)
+
     def test_probability_is_monotone_in_the_value(self) -> None:
         probabilities = _probabilities(_ramp_rows(), POOL_WINDOW_DAYS)
 
@@ -178,7 +197,7 @@ class TestTailResolution:
 class TestPoolingRejections:
     """The window is a non-negative integer on the hourly empirical path only."""
 
-    @pytest.mark.parametrize("pool_window_days", [-1, 1.0, 1.5, np.nan, True, "3", None])
+    @pytest.mark.parametrize("pool_window_days", [-1, 183, 366, 10**9, 1.0, 1.5, np.nan, True, "3", None])
     def test_invalid_window_is_rejected(self, pool_window_days) -> None:
         with pytest.raises(InvalidArgumentError, match="pool_window_days"):
             indices.standardized_index(
@@ -191,6 +210,47 @@ class TestPoolingRejections:
                 periodicity=compute.Periodicity.hourly,
                 pool_window_days=pool_window_days,
             )
+
+    @pytest.mark.parametrize("pool_window_days", [-1, 183, "3", 1])
+    def test_all_missing_numpy_input_still_validates_the_window(self, pool_window_days) -> None:
+        with pytest.raises(InvalidArgumentError, match="pool_window_days"):
+            indices.standardized_index(
+                np.full(36, np.nan),
+                1,
+                indices.Distribution.gamma,
+                CALIBRATION_FIRST,
+                CALIBRATION_FIRST,
+                CALIBRATION_FIRST + 2,
+                compute.Periodicity.monthly,
+                pool_window_days=pool_window_days,
+            )
+
+    @pytest.mark.parametrize("pool_window_days", [-1, 183, "3", True, 1])
+    @pytest.mark.parametrize("distribution", [indices.Distribution.empirical, indices.Distribution.gamma])
+    def test_reusable_fit_validates_the_window(self, pool_window_days, distribution) -> None:
+        with pytest.raises(InvalidArgumentError, match="pool_window_days"):
+            compute.FittedDistribution.resolve(
+                np.ones((12, 12)),
+                distribution,
+                CALIBRATION_FIRST,
+                CALIBRATION_FIRST,
+                CALIBRATION_LAST,
+                compute.Periodicity.monthly,
+                pool_window_days=pool_window_days,
+            )
+
+    @pytest.mark.parametrize("distribution", [indices.Distribution.empirical, indices.Distribution.gamma])
+    def test_zero_window_remains_valid_for_monthly_fits(self, distribution) -> None:
+        fitted = compute.FittedDistribution.resolve(
+            np.random.default_rng(1407).uniform(1.0, 10.0, size=(12, 12)),
+            distribution,
+            CALIBRATION_FIRST,
+            CALIBRATION_FIRST,
+            CALIBRATION_LAST,
+            compute.Periodicity.monthly,
+            pool_window_days=0,
+        )
+        assert fitted.pool_window_days == 0
 
     def test_a_non_hourly_calendar_is_rejected(self) -> None:
         with pytest.raises(InvalidArgumentError, match="hourly empirical"):
@@ -207,16 +267,7 @@ class TestPoolingRejections:
 
     def test_a_non_empirical_distribution_is_rejected(self) -> None:
         with pytest.raises(InvalidArgumentError, match="hourly empirical"):
-            indices.standardized_index(
-                np.zeros(3 * 12),
-                1,
-                indices.Distribution.gamma,
-                data_start_year=CALIBRATION_FIRST,
-                calibration_year_initial=CALIBRATION_FIRST,
-                calibration_year_final=CALIBRATION_FIRST + 1,
-                periodicity=compute.Periodicity.monthly,
-                pool_window_days=1,
-            )
+            compute._validate_pool_window_days(1, compute.Periodicity.hourly, indices.Distribution.gamma)
 
     def test_the_public_transform_and_seam_reject_the_same(self) -> None:
         monthly = np.zeros((3, 12))
@@ -301,6 +352,33 @@ class TestEnergyWrappers:
 
         with pytest.raises(InvalidArgumentError, match="pool_window_days"):
             energy.srepi(data, scale=1, pool_window_days=-1)
+
+    @pytest.mark.parametrize(
+        "adapter", [energy.srepi, energy.standardized_demand_index, energy.srli, climate_indices.standardized_index]
+    )
+    @pytest.mark.parametrize("pool_window_days", [0, POOL_WINDOW_DAYS])
+    def test_xarray_records_the_calibration_window(self, adapter, pool_window_days) -> None:
+        time, values = self._gregorian_hourly()
+        data = xr.DataArray(values, coords={"time": time}, dims=("time",)).chunk({"time": -1})
+        result = adapter(
+            data,
+            scale=1,
+            distribution=indices.Distribution.empirical,
+            pool_window_days=pool_window_days,
+        )
+
+        assert result.attrs["pool_window_days"] == pool_window_days
+        provenance = json.loads(result.attrs["climate_indices_provenance"])
+        assert provenance["parameters"]["pool_window_days"] == pool_window_days
+
+    @pytest.mark.parametrize("adapter", [energy.srepi, energy.standardized_demand_index, energy.srli])
+    @pytest.mark.parametrize("hourly", [False, True])
+    def test_xarray_rejects_a_malformed_distribution(self, adapter, hourly) -> None:
+        time = pd.date_range("2000-01-01", periods=36, freq="h" if hourly else "MS")
+        data = xr.DataArray(np.zeros(time.size), coords={"time": time}, dims=("time",)).chunk({"time": -1})
+
+        with pytest.raises(InvalidArgumentError, match="distribution"):
+            adapter(data, scale=1, distribution="empirical", pool_window_days=1)
 
     def test_generic_standardized_index_forwards_the_window(self) -> None:
         values = _ramp_rows()
