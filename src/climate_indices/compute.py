@@ -3108,7 +3108,9 @@ def _pooled_empirical_counts(
     :return: the counts at or below each value, and the valid pooled sample size at each
         calendar step
     """
-    sample = calibration_values.astype(float, copy=True)
+    # Promote integers and float32 to a NaN-capable float, but keep a higher-precision
+    # float as-is so distinct calibration values cannot collapse into ties.
+    sample = calibration_values.astype(np.result_type(calibration_values.dtype, np.float64), copy=True)
     # A scaled value at flat position p accumulates the ``scale`` steps ending at p, so it
     # is contaminated when p lies at or after a 29 February hour and before that hour plus
     # ``scale``. Mark every such position across the flattened series the scaling ran on.
