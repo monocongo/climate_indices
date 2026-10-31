@@ -674,7 +674,7 @@ def _standardized_index_pipeline(
 
 
 def standardized_index(
-    values: np.ndarray,
+    values: np.ndarray,  # NOSONAR (S107) the public API exposes each standardization option as a keyword
     scale: int,
     distribution: Distribution,
     data_start_year: int,
