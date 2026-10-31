@@ -309,8 +309,9 @@ class TestPoolingRejections:
             compute._validate_pool_window_days(1, compute.Periodicity.hourly, indices.Distribution.gamma)
 
     def test_a_full_cycle_scale_is_rejected_with_pooling(self) -> None:
+        rows = _ramp_rows()
         with pytest.raises(InvalidArgumentError, match="full hourly cycle"):
-            _probabilities(_ramp_rows(), POOL_WINDOW_DAYS, scale=8761)
+            _probabilities(rows, POOL_WINDOW_DAYS, scale=8761)
 
     def test_the_public_transform_rejects_a_full_cycle_scale(self) -> None:
         with pytest.raises(InvalidArgumentError, match="full hourly cycle"):
