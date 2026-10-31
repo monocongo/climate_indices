@@ -3101,8 +3101,10 @@ def _pooled_empirical_counts(
     are synthesized rather than observed; a target on 29 February is still scored, from
     its neighbouring days. A ``scale`` above one extends the holdout by the ``scale - 1``
     steps that follow each held-out hour in the flattened series the scaling ran on, so a
-    scaled value that spans the synthesized day is held out as well. Memory stays at one
-    sample-sized temporary per offset, and the ranking cost multiplies by
+    scaled value that spans the synthesized day is held out as well; the mark starts a
+    lookback of years before the sample, because the sample's flat positions begin at its
+    first year while every scaled value was accumulated from the record start. Memory
+    stays at one sample-sized temporary per offset, and the ranking cost multiplies by
     ``2 * pool_window_days + 1``.
 
     :return: the counts at or below each value, and the valid pooled sample size at each
@@ -3118,9 +3120,15 @@ def _pooled_empirical_counts(
     calendar_steps = sample.shape[0] * hours_per_year
     held_out = np.zeros(calendar_steps, dtype=bool)
     february_29_start = 59 * _HOURS_PER_DAY
-    for year in range(sample.shape[0]):
+    # the sample's flat positions start at its first year, but the scaled values were
+    # accumulated from the record start, so a 29 February in the year before the sample
+    # can still lie inside the accumulation window; start the mark far enough back
+    lookback_years = (scale + _HOURS_PER_DAY - 2) // hours_per_year + 1
+    for year in range(-lookback_years, sample.shape[0]):
         start = year * hours_per_year + february_29_start
-        held_out[start : start + _HOURS_PER_DAY + scale - 1] = True
+        stop = start + _HOURS_PER_DAY + scale - 1
+        if stop > 0:
+            held_out[max(start, 0) : stop] = True
     sample.reshape(calendar_steps, *sample.shape[2:])[held_out] = np.nan
     counts = np.zeros(values.shape)
     valid_counts = np.zeros(values.shape[1:], dtype=np.int64)

@@ -34,7 +34,11 @@ def _ramp_rows(years: int = 12) -> np.ndarray:
 
 
 def _probabilities(
-    values: np.ndarray, pool_window_days: int = 0, calibration_last: int = CALIBRATION_LAST, scale: int = 1
+    values: np.ndarray,
+    pool_window_days: int = 0,
+    calibration_last: int = CALIBRATION_LAST,
+    scale: int = 1,
+    calibration_first: int = CALIBRATION_FIRST,
 ) -> np.ndarray:
     """Standardize a (years, 8784) block on the probability scale in the hourly layout."""
     result = indices.standardized_index(
@@ -42,7 +46,7 @@ def _probabilities(
         scale,
         indices.Distribution.empirical,
         data_start_year=CALIBRATION_FIRST,
-        calibration_year_initial=CALIBRATION_FIRST,
+        calibration_year_initial=calibration_first,
         calibration_year_final=calibration_last,
         periodicity=compute.Periodicity.hourly,
         output_scale="probability",
@@ -181,6 +185,23 @@ class TestFebruary29AndYearBoundary:
         untouched = np.ones(HOURS_PER_YEAR, dtype=bool)
         untouched[FEBRUARY_29_START : FEBRUARY_29_START + HOURS_PER_DAY + scale - 1] = False
         np.testing.assert_array_equal(perturbed[:, untouched], baseline[:, untouched])
+
+    def test_scaled_windows_before_the_calibration_block_are_held_out(self) -> None:
+        # a scale that reaches from the previous year's synthesized 29 February into the
+        # calibration block; the block's flat positions start at the first calibration
+        # year, so the spill-in has to be marked there rather than from the record start
+        scale = 8000
+        values = np.random.default_rng(1407).normal(size=(13, HOURS_PER_YEAR))
+        baseline = _probabilities(values, POOL_WINDOW_DAYS, scale=scale, calibration_first=CALIBRATION_FIRST + 1)
+        values[0, FEBRUARY_29_START : FEBRUARY_29_START + HOURS_PER_DAY] = 1.0e9
+
+        perturbed = _probabilities(values, POOL_WINDOW_DAYS, scale=scale, calibration_first=CALIBRATION_FIRST + 1)
+
+        # only a target whose own scaled window spans the perturbed day may move; no
+        # other step may count the contaminated scaled values from the year before
+        contaminated = np.zeros(values.size, dtype=bool)
+        contaminated[FEBRUARY_29_START : FEBRUARY_29_START + HOURS_PER_DAY + scale - 1] = True
+        np.testing.assert_array_equal(perturbed.ravel()[~contaminated], baseline.ravel()[~contaminated])
 
     def test_the_pooled_window_wraps_the_year_boundary(self) -> None:
         values = np.zeros((12, HOURS_PER_YEAR))
