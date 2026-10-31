@@ -6,8 +6,7 @@
 
 ### Project Status
 - **Maturity**: Production/Stable (Development Status 5)
-- **Development Version**: 3.1.0 (not yet published)
-- **Published Version**: 3.0.0
+- See [PyPI](https://pypi.org/project/climate-indices/) for published Python releases.
 - **Python Support**: 3.11, 3.12, 3.13, 3.14
 - **License**: BSD 3-Clause
 - **Documentation**: [ReadTheDocs](https://climate-indices.readthedocs.io/)
