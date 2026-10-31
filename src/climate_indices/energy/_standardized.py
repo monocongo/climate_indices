@@ -58,6 +58,7 @@ def _standardize(
     spatial_time_major: bool,
     output_scale: compute.OutputScale,
     zero_handling: compute.ZeroHandling,
+    pool_window_days: int,
 ) -> np.ndarray:
     _validate_distribution(distribution)
     # negatives are never clipped to zero: an empirical rank takes them as given and beta rejects them
@@ -75,6 +76,7 @@ def _standardize(
         zero_handling=zero_handling,
         aggregation=aggregation,
         clip_negatives=False,
+        pool_window_days=pool_window_days,
     )
 
 
@@ -92,6 +94,7 @@ def _srepi_numpy(
     spatial_time_major: bool = False,
     output_scale: compute.OutputScale = "normal",
     zero_handling: compute.ZeroHandling = "classic",
+    pool_window_days: int = 0,
 ) -> np.ndarray:
     """Standardized Renewable Energy Production Index (SREPI) of Allen & Otero (2023).
 
@@ -127,6 +130,10 @@ def _srepi_numpy(
         output_scale: "normal" (the default), "probability", or "bounded".
         zero_handling: Placement of a zero value within the boundary mass (beta only),
             one of ``compute.ZeroHandling``: "classic", "center_of_mass", or "mean_zero".
+        pool_window_days: Number of neighbouring days on each side of an hourly
+            empirical step whose values join its calibration sample; zero (the default)
+            keeps the shipped hour x day-of-year strata. Available only with
+            ``Periodicity.hourly`` and ``Distribution.empirical`` (#1407).
 
     Returns:
         Unitless standardized values, shaped as
@@ -156,6 +163,7 @@ def _srepi_numpy(
         spatial_time_major=spatial_time_major,
         output_scale=output_scale,
         zero_handling=zero_handling,
+        pool_window_days=pool_window_days,
     )
 
 
@@ -173,6 +181,7 @@ def _standardized_demand_index_numpy(
     spatial_time_major: bool = False,
     output_scale: compute.OutputScale = "normal",
     zero_handling: compute.ZeroHandling = "classic",
+    pool_window_days: int = 0,
 ) -> np.ndarray:
     """Standardized demand index over energy demand or energy degree days (EDD).
 
@@ -204,6 +213,10 @@ def _standardized_demand_index_numpy(
         output_scale: "normal" (the default), "probability", or "bounded".
         zero_handling: Placement of a zero value within the boundary mass (beta only),
             one of ``compute.ZeroHandling``: "classic", "center_of_mass", or "mean_zero".
+        pool_window_days: Number of neighbouring days on each side of an hourly
+            empirical step whose values join its calibration sample; zero (the default)
+            keeps the shipped hour x day-of-year strata. Available only with
+            ``Periodicity.hourly`` and ``Distribution.empirical`` (#1407).
 
     Returns:
         Unitless standardized values, shaped as
@@ -233,6 +246,7 @@ def _standardized_demand_index_numpy(
         spatial_time_major=spatial_time_major,
         output_scale=output_scale,
         zero_handling=zero_handling,
+        pool_window_days=pool_window_days,
     )
 
 
@@ -240,8 +254,8 @@ _wrapped_srepi: Callable[..., npt.NDArray[np.float64] | xr.DataArray] = xarray_a
     calendar="periodicity",
     inferred_parameters=INFER_TIME_PARAMETERS,
     argument_validators=(
-        *STANDARDIZED_INDEX_VALIDATORS,
         lambda args: _validate_distribution(args["distribution"]),
+        *STANDARDIZED_INDEX_VALIDATORS,
     ),
     timescale_parameter="scale",
     cf_metadata=CF_METADATA["srepi"],  # type: ignore[arg-type]
@@ -252,6 +266,7 @@ _wrapped_srepi: Callable[..., npt.NDArray[np.float64] | xr.DataArray] = xarray_a
         "calibration_year_initial",
         "calibration_year_final",
         "aggregation",
+        "pool_window_days",
     ],
 )(_srepi_numpy)
 
@@ -259,8 +274,8 @@ _wrapped_standardized_demand_index: Callable[..., npt.NDArray[np.float64] | xr.D
     calendar="periodicity",
     inferred_parameters=INFER_TIME_PARAMETERS,
     argument_validators=(
-        *STANDARDIZED_INDEX_VALIDATORS,
         lambda args: _validate_distribution(args["distribution"]),
+        *STANDARDIZED_INDEX_VALIDATORS,
     ),
     timescale_parameter="scale",
     cf_metadata=CF_METADATA["standardized_demand_index"],  # type: ignore[arg-type]
@@ -271,6 +286,7 @@ _wrapped_standardized_demand_index: Callable[..., npt.NDArray[np.float64] | xr.D
         "calibration_year_initial",
         "calibration_year_final",
         "aggregation",
+        "pool_window_days",
     ],
 )(_standardized_demand_index_numpy)
 
@@ -289,6 +305,7 @@ def srepi(
     aggregation: compute.Aggregation = "mean",
     output_scale: compute.OutputScale = "normal",
     zero_handling: compute.ZeroHandling = "classic",
+    pool_window_days: int = 0,
 ) -> xr.DataArray: ...
 
 
@@ -307,6 +324,7 @@ def srepi(
     spatial_time_major: bool = False,
     output_scale: compute.OutputScale = "normal",
     zero_handling: compute.ZeroHandling = "classic",
+    pool_window_days: int = 0,
 ) -> npt.NDArray[np.float64]: ...
 
 
@@ -324,6 +342,7 @@ def srepi(
     spatial_time_major: bool = False,
     output_scale: compute.OutputScale = "normal",
     zero_handling: compute.ZeroHandling = "classic",
+    pool_window_days: int = 0,
 ) -> npt.NDArray[np.float64] | xr.DataArray:
     """Standardized Renewable Energy Production Index (SREPI) of Allen & Otero (2023).
 
@@ -370,6 +389,10 @@ def srepi(
         output_scale: "normal" (the default), "probability", or "bounded".
         zero_handling: Placement of a zero value within the boundary mass (beta only),
             one of ``compute.ZeroHandling``: "classic", "center_of_mass", or "mean_zero".
+        pool_window_days: Number of neighbouring days on each side of an hourly
+            empirical step whose values join its calibration sample; zero (the default)
+            keeps the shipped hour x day-of-year strata. Available only with
+            ``Periodicity.hourly`` and ``Distribution.empirical`` (#1407).
 
     Returns:
         Unitless standardized values: an array for NumPy input, a DataArray carrying
@@ -402,6 +425,7 @@ def srepi(
         spatial_time_major=spatial_time_major,
         output_scale=output_scale,
         zero_handling=zero_handling,
+        pool_window_days=pool_window_days,
     )
 
 
@@ -419,6 +443,7 @@ def standardized_demand_index(
     aggregation: compute.Aggregation = "sum",
     output_scale: compute.OutputScale = "normal",
     zero_handling: compute.ZeroHandling = "classic",
+    pool_window_days: int = 0,
 ) -> xr.DataArray: ...
 
 
@@ -437,6 +462,7 @@ def standardized_demand_index(
     spatial_time_major: bool = False,
     output_scale: compute.OutputScale = "normal",
     zero_handling: compute.ZeroHandling = "classic",
+    pool_window_days: int = 0,
 ) -> npt.NDArray[np.float64]: ...
 
 
@@ -454,6 +480,7 @@ def standardized_demand_index(
     spatial_time_major: bool = False,
     output_scale: compute.OutputScale = "normal",
     zero_handling: compute.ZeroHandling = "classic",
+    pool_window_days: int = 0,
 ) -> npt.NDArray[np.float64] | xr.DataArray:
     """Standardized demand index over energy demand or energy degree days (EDD).
 
@@ -492,6 +519,10 @@ def standardized_demand_index(
         output_scale: "normal" (the default), "probability", or "bounded".
         zero_handling: Placement of a zero value within the boundary mass (beta only),
             one of ``compute.ZeroHandling``: "classic", "center_of_mass", or "mean_zero".
+        pool_window_days: Number of neighbouring days on each side of an hourly
+            empirical step whose values join its calibration sample; zero (the default)
+            keeps the shipped hour x day-of-year strata. Available only with
+            ``Periodicity.hourly`` and ``Distribution.empirical`` (#1407).
 
     Returns:
         Unitless standardized values: an array for NumPy input, a DataArray carrying
@@ -524,4 +555,5 @@ def standardized_demand_index(
         spatial_time_major=spatial_time_major,
         output_scale=output_scale,
         zero_handling=zero_handling,
+        pool_window_days=pool_window_days,
     )

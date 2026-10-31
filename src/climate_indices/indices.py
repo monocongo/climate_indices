@@ -518,6 +518,7 @@ def _standardized_index_pipeline(
     fallback_to_gamma: bool = True,
     preprocess: Callable[[np.ndarray], np.ndarray] | None = None,
     aggregation: compute.Aggregation = "sum",
+    pool_window_days: int = 0,
 ) -> np.ndarray:
     """Scale, fit, and transform a series in the pipeline shared by the index wrappers.
 
@@ -554,6 +555,9 @@ def _standardized_index_pipeline(
             this pipeline's full failure context.
         aggregation: Whether each ``scale`` window is summed or averaged; only
             :func:`standardized_index` exposes it, every other index sums.
+        pool_window_days: Neighbouring days pooled into each empirical hourly step;
+            only :func:`standardized_index` exposes it, every other index keeps the
+            shipped hour x day-of-year strata.
 
     Returns:
         Standardized values in the input's size and layout.
@@ -566,6 +570,7 @@ def _standardized_index_pipeline(
     _validate_hourly_distribution(periodicity, distribution)
     compute.validate_output_scale(output_scale)
     compute._validate_zero_handling(zero_handling)
+    compute._validate_pool_window_days(pool_window_days, periodicity, distribution, scale=scale)
 
     # bind context and emit calculation_started event
     log = _logger.bind(
@@ -650,6 +655,8 @@ def _standardized_index_pipeline(
             fallback_context=fallback_context,
             output_scale=output_scale,
             zero_handling=zero_handling,
+            pool_window_days=pool_window_days,
+            scale=scale,
         )
 
         # clip z-scores to the supported range, including any zeros a
@@ -667,7 +674,7 @@ def _standardized_index_pipeline(
 
 
 def standardized_index(
-    values: np.ndarray,
+    values: np.ndarray,  # NOSONAR (S107) the public API exposes each standardization option as a keyword
     scale: int,
     distribution: Distribution,
     data_start_year: int,
@@ -681,6 +688,7 @@ def standardized_index(
     zero_handling: compute.ZeroHandling = "classic",
     aggregation: compute.Aggregation = "sum",
     clip_negatives: bool = True,
+    pool_window_days: int = 0,
 ) -> np.ndarray:
     """Standardize a monthly or daily series against a fitted distribution.
 
@@ -770,6 +778,17 @@ def standardized_index(
             than clip it (ADR-0019). The beta distribution never clips: its support
             check rejects a negative, because clipping would count it in the zero
             mass and standardize a different series (ADR-0024).
+        pool_window_days: Number of neighbouring days on each side of an hourly
+            empirical step whose values join its calibration sample, zero (the
+            default) keeping the shipped hour x day-of-year strata. A positive value
+            is a smoothed seasonal-diurnal climatology that widens the sample by whole
+            days at the same hour and holds 29 February out of every pooled sample. It
+            is rejected for any other periodicity or distribution (#1407). The maximum
+            is 182 days, so each calendar day enters a sample at most once. A ``scale``
+            above one also sets a minimum of ``ceil(held_out_days / 2)`` days, where
+            ``held_out_days = ceil((23 + scale) / 24)`` (16 days at ``scale=720``), so
+            the 29 February holdout cannot empty a pooled sample; from ``scale=8714``
+            no window is accepted.
 
     Returns:
         1-D array of standardized values, unitless and of the same length as the
@@ -781,7 +800,9 @@ def standardized_index(
             Type III fit is given negative values, if ``fitting_params`` is given
             with the empirical distribution, if ``distribution`` is a member this
             surface does not accept, or if a beta fit is given a value outside
-            [0, 1].
+            [0, 1], or if ``pool_window_days`` is not an integer from 0 through 182
+            or a positive value is paired with a non-hourly or non-empirical call or
+            with a ``scale`` that leaves the window below that minimum.
         ValueError: If ``zero_handling`` is not one of the three modes, if
             ``aggregation`` is not "sum" or "mean", a Pearson ``fitting_params``
             set is partial or does not carry the period (and cell) axes, or a beta
@@ -813,6 +834,7 @@ def standardized_index(
         # check raises instead (ADR-0019, decision 3; ADR-0024, decision 4)
         clip_negatives=clip_negatives and distribution is not Distribution.beta,
         preprocess=(lambda series: _reject_negative_values(series, distribution)) if reject_negatives else None,
+        pool_window_days=pool_window_days,
     )
 
 

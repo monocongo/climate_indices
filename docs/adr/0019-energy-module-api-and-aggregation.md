@@ -90,6 +90,39 @@ xarray adapters that validate the 00:00 January 1 start and contiguous hours, pl
 8784-slot layout, and restore the Gregorian hour axis. Every other index rejects
 `hourly` during argument validation, before any output is written.
 
+Amended by the pooled seasonal-diurnal climatology
+([#1407](https://github.com/monocongo/climate_indices/issues/1407)): the empirical
+hourly path gains keyword-only `pool_window_days`, default `0`. A zero window keeps
+decision 5's shipped hour x day-of-year strata, so every existing hourly result is
+unchanged. A positive window widens each step's calibration sample to the same hour on
+that many neighbouring days, wrapping the year boundary; a 30-year step grows from
+about 30 values to `30 x (2k + 1)`, which refines the tail resolution of a thin hourly
+record that the SEI fixture's 100-value recommendation
+(`tests/fixture/energy_sei/warnings.txt`) covers only for monthly data. All of
+29 February is held out of every pooled sample, because a non-leap year's 24 hours
+there are synthesized rather than observed; a 29 February target is still scored, from
+its neighbouring days. The holdout follows each scaled value's accumulation window, so
+a `scale` above one also holds out the `scale - 1` steps after 29 February, and a scale
+long enough to span a full hourly cycle is rejected. A positive window is rejected for
+every periodicity but hourly and every distribution but empirical, and it may not
+exceed 182 days, so each calendar day enters a sample at most once. A `scale` above one
+also sets a minimum window of `ceil(held_out_days / 2)` days, where
+`held_out_days = ceil((23 + scale) / 24)`, so the holdout cannot empty a pooled sample:
+`scale=720` needs at least 16 days, and no window is accepted from `scale=8714`. An
+explicit zero is accepted on any periodicity and
+distribution. The keyword reaches `indices.standardized_index()`, the generic xarray
+`standardized_index()`, and `energy.srepi()`,
+`energy.standardized_demand_index()`, and `energy.srli()`. Pooled ranking stays in
+Python, so the native empirical kernel runs only with the default window. A day window
+was chosen over a harmonic fit of the seasonal-diurnal cycle because it keeps SEI's
+empirical plotting position and adds no fitted model. Its memory cost does not grow
+with the window: the pooled path holds one copy of the calibration sample and one
+shifted copy at a time, while runtime grows with `2k + 1`. On
+`benchmarks/profile_hourly_srepi.py` (41 years, a 30-year calibration, `scale=720`),
+a 25-cell block peaks at 290 MiB with a 16- or 30-day window, against 150 MiB
+unpooled. Peak memory is linear in cells, so a realistic grid needs about 12 MiB per
+cell for that record, against 6 MiB unpooled.
+
 Decision 2's `aggregation` keyword landed with this record
 ([#1158](https://github.com/monocongo/climate_indices/issues/1158)) and reached the
 xarray surfaces with

@@ -1,0 +1,22 @@
+{
+  "source": "Iowa Environmental Mesonet (Iowa State University), ASOS/METAR archive, Fresno Yosemite International Airport (FAT), California",
+  "url": "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?station=FAT&data=tmpf&year1=2000&month1=1&day1=1&year2=2012&month2=1&day2=1&tz=Etc%2FUTC&format=onlycomma&latlon=no&elev=no&missing=empty&trace=empty&direct=no&report_type=3",
+  "download_date": "2026-10-31",
+  "subset_description": "Observed January routine METAR temperatures, 2000-2011, in degrees Fahrenheit with original UTC timestamps. The compressed CSV retains 8893 source rows, including two missing temperatures and one duplicate hourly slot. The test keeps the last routine report within each UTC hour. It leaves absent hours and all unprovided months missing, without interpolation. Calibration uses 2000-2010; 2011 is an independent evaluation year.",
+  "checksum_sha256": "8777ada417b8f3be9681cfb9761f5741702d727999dccbd08e51b2b2f48979be",
+  "fixture_version": "1.0.0",
+  "validation_tolerance": {
+    "probability_atol": 1e-15,
+    "rtol": 0
+  },
+  "measured_stats": {
+    "lower_tail_year_removal": {
+      "evaluation_hours": 49,
+      "strata_rms_probability_change": 0.012918256391635418,
+      "pooled_rms_probability_change": 0.012337275303576825
+    }
+  },
+  "citation": "Iowa Environmental Mesonet, ASOS/AWOS/METAR data archive. Service documentation: https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?help",
+  "license": "Public domain, per https://mesonet.agron.iastate.edu/disclaimer.php; attribution: Iowa Environmental Mesonet of Iowa State University.",
+  "notes": "To reproduce the fixture, download the URL, retain the CSV header and rows whose valid timestamp has month 01, preserve their bytes and order, and gzip the result with mtime=0. The raw download SHA-256 is 3e2ae09db6dcda82ff877f78009348582d910afc19d36f3efe897404470f5ffb. The uncompressed subset SHA-256 is 679bc13bc5a835ea1ad1ba2f55e02a3ab870d8b30cbae74bef7c9115fba39164. Regression characterization only, not an independent probability oracle or a general stability guarantee. The test selects January 8-24 hours with all twelve annual observations and full-calibration stratum probability <= 0.2. It removes each calibration year in turn and compares the root mean square probability change against each method's full-calibration result on the same fixed evaluation hours. The seven-day window stays within January. Adjacent observations are correlated; this measures sensitivity, not effective sample size, confidence intervals, or predictive accuracy. Short-calibration and missing-data warnings are expected. Maintainer confirmation of extraction and redistribution remains outstanding."
+}

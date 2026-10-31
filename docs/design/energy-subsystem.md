@@ -223,12 +223,24 @@ the original Gregorian time coordinate.
   but does not stratify them, and #1160 landed no hourly fixture, so the hourly contract
   rests on the unit tests and the plotting-position definition rather than an
   independent implementation.
+- **Pooled seasonal-diurnal option.** [#1407](https://github.com/monocongo/climate_indices/issues/1407)
+  adds keyword-only `pool_window_days`, default `0`. A positive value pools each step
+  with the same hour on that many neighbouring days, which raises a 30-year step from
+  about 30 calibration values to `30 x (2k + 1)`. The window wraps the year boundary,
+  and all of 29 February is held out of every pooled sample because a non-leap year's
+  hours there are synthesized; a 29 February target is still scored from its
+  neighbouring days. The option is available only for hourly empirical
+  standardization, on `indices.standardized_index()`, the generic xarray
+  `standardized_index()`, and the three standardized energy wrappers. Pooled ranking
+  stays in Python, so the native empirical kernel covers only the default window.
+  Tail resolution against the unpooled strata is compared in
+  `tests/test_hourly_pooling.py` on a synthetic hourly series, because no committed
+  hourly oracle or fixture exists.
 
 ## Deferred
 
-- **Smoothed seasonal-diurnal climatology.** [#1407](https://github.com/monocongo/climate_indices/issues/1407).
-  Hour × day-of-year strata are the shipped contract; a smoothed climatology would be a
-  separate standardization option.
+No deferred item is open for the sub-daily calendar; the pooled seasonal-diurnal
+option landed with [#1407](https://github.com/monocongo/climate_indices/issues/1407).
 
 ## References
 

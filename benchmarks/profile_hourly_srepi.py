@@ -86,7 +86,7 @@ def _measure(name: str, values: np.ndarray, call: Callable[[], object]) -> Measu
     return Measurement(name=name, shape=values.shape, seconds=seconds, peak_mebibytes=peak / (1024 * 1024))
 
 
-def _run(years: int, cells: int) -> list[Measurement]:
+def _run(years: int, cells: int, pool_window_days: int = 0) -> list[Measurement]:
     """Measure the series and gridded hourly calls for a span and grid width."""
     span = (DATA_START_YEAR, DATA_START_YEAR + years - 1)
     measurements: list[Measurement] = []
@@ -101,10 +101,14 @@ def _run(years: int, cells: int) -> list[Measurement]:
             periodicity=compute.Periodicity.hourly,
             aggregation="mean",
             spatial_time_major=values.ndim > 1,
+            pool_window_days=pool_window_days,
         )
         call()  # warm-up
         measurements.append(_measure(name, values, call))
-    print(f"span {span[0]}-{span[1]} ({years} years, scale 720 hours, cells {cells if cells else 0})")
+    print(
+        f"span {span[0]}-{span[1]} ({years} years, scale 720 hours, cells {cells if cells else 0}, "
+        f"pool_window_days {pool_window_days})"
+    )
     # A short monthly Timescale checks the one-dimensional dispatch cost outside the hourly case.
     monthly = np.random.default_rng(1485).uniform(0, 100, size=years * 12)
     for name, values in (
@@ -129,6 +133,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--years", type=int, default=DEFAULT_YEARS, help="years of hourly input")
     parser.add_argument("--cells", type=int, default=DEFAULT_CELLS, help="grid cells for the gridded call")
+    parser.add_argument(
+        "--pool-window-days",
+        type=int,
+        default=0,
+        help="neighbouring days pooled into each hourly step; 0 keeps the hour x day-of-year strata",
+    )
     parser.add_argument("--backend", choices=("python", "native"), default="python")
     arguments = parser.parse_args()
     selected = compute._native
@@ -143,7 +153,7 @@ def main() -> None:
         print(f"python {platform.python_version()} on {platform.platform()}")
         print(f"period length {HOURS_PER_YEAR} hours, numpy {np.__version__}")
         with np.errstate(all="ignore"):
-            measurements = _run(arguments.years, arguments.cells)
+            measurements = _run(arguments.years, arguments.cells, arguments.pool_window_days)
     finally:
         # a later run in the same process must see the imported extension again
         compute._native = selected
