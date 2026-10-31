@@ -242,8 +242,8 @@ _wrapped_srli: Callable[..., npt.NDArray[np.float64] | xr.DataArray] = xarray_ad
     calendar="periodicity",
     inferred_parameters=INFER_TIME_PARAMETERS,
     argument_validators=(
-        *STANDARDIZED_VALIDATORS,
         lambda args: _validate_distribution(args["distribution"]),
+        *STANDARDIZED_VALIDATORS,
     ),
     timescale_parameter="scale",
     cf_metadata=CF_METADATA["srli"],  # type: ignore[arg-type]
@@ -254,6 +254,7 @@ _wrapped_srli: Callable[..., npt.NDArray[np.float64] | xr.DataArray] = xarray_ad
         "calibration_year_initial",
         "calibration_year_final",
         "aggregation",
+        "pool_window_days",
     ],
 )(_srli_numpy)
 

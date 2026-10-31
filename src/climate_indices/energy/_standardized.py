@@ -254,8 +254,8 @@ _wrapped_srepi: Callable[..., npt.NDArray[np.float64] | xr.DataArray] = xarray_a
     calendar="periodicity",
     inferred_parameters=INFER_TIME_PARAMETERS,
     argument_validators=(
-        *STANDARDIZED_INDEX_VALIDATORS,
         lambda args: _validate_distribution(args["distribution"]),
+        *STANDARDIZED_INDEX_VALIDATORS,
     ),
     timescale_parameter="scale",
     cf_metadata=CF_METADATA["srepi"],  # type: ignore[arg-type]
@@ -266,6 +266,7 @@ _wrapped_srepi: Callable[..., npt.NDArray[np.float64] | xr.DataArray] = xarray_a
         "calibration_year_initial",
         "calibration_year_final",
         "aggregation",
+        "pool_window_days",
     ],
 )(_srepi_numpy)
 
@@ -273,8 +274,8 @@ _wrapped_standardized_demand_index: Callable[..., npt.NDArray[np.float64] | xr.D
     calendar="periodicity",
     inferred_parameters=INFER_TIME_PARAMETERS,
     argument_validators=(
-        *STANDARDIZED_INDEX_VALIDATORS,
         lambda args: _validate_distribution(args["distribution"]),
+        *STANDARDIZED_INDEX_VALIDATORS,
     ),
     timescale_parameter="scale",
     cf_metadata=CF_METADATA["standardized_demand_index"],  # type: ignore[arg-type]
@@ -285,6 +286,7 @@ _wrapped_standardized_demand_index: Callable[..., npt.NDArray[np.float64] | xr.D
         "calibration_year_initial",
         "calibration_year_final",
         "aggregation",
+        "pool_window_days",
     ],
 )(_standardized_demand_index_numpy)
 

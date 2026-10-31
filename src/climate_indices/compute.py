@@ -2996,8 +2996,8 @@ def transform_fitted_empirical(
     :return: array of transformed values, corresponding in size and shape to the
         input array
     :rtype: numpy.ndarray of floats
-    :raises InvalidArgumentError: if ``pool_window_days`` is not a non-negative
-        integer, or a positive value is paired with a non-hourly periodicity
+    :raises InvalidArgumentError: if ``pool_window_days`` is not an integer from 0 through
+        182, or a positive value is paired with a non-hourly periodicity
     """
     _validate_pool_window_days(pool_window_days, periodicity, Distribution.empirical)
     return _transform_fitted(
@@ -3093,7 +3093,7 @@ def _pooled_empirical_counts(
     :return: the counts at or below each value, and the valid pooled sample size at each
         calendar step
     """
-    sample = calibration_values.copy()
+    sample = calibration_values.astype(float, copy=True)
     february_29_start = 59 * _HOURS_PER_DAY
     sample[:, february_29_start : february_29_start + _HOURS_PER_DAY, ...] = np.nan
     counts = np.zeros(values.shape)
@@ -3177,15 +3177,15 @@ def _validate_pool_window_days(
     distribution: "Distribution",
 ) -> None:
     """
-    Reject a smoothing window that is not a non-negative integer on the hourly path.
+    Reject a smoothing window outside 0 through 182 days on the hourly path.
 
     The pooled seasonal-diurnal climatology widens an hourly empirical step's
     calibration sample to the same hour on the neighbouring days, so the option has no
     meaning for a parametric fit or a coarser calendar.
 
-    :raises InvalidArgumentError: if the value is not a non-negative integer, or a
-        positive value is paired with any distribution but the empirical one or any
-        periodicity but hourly
+    :raises InvalidArgumentError: if the value is not an integer from 0 through 182,
+        or a positive value is paired with a non-empirical distribution or non-hourly
+        periodicity. The upper bound prevents repeated days in the 366-day cycle.
     """
     if isinstance(pool_window_days, bool) or not isinstance(pool_window_days, (int, np.integer)):
         raise InvalidArgumentError(
@@ -3193,9 +3193,13 @@ def _validate_pool_window_days(
             argument_name="pool_window_days",
             argument_value=repr(pool_window_days),
         )
-    if pool_window_days < 0 or (
-        pool_window_days and (periodicity is not Periodicity.hourly or distribution.value != "empirical")
-    ):
+    if not 0 <= pool_window_days <= 182:
+        raise InvalidArgumentError(
+            "pool_window_days must be between 0 and 182 to avoid repeated calendar days.",
+            argument_name="pool_window_days",
+            argument_value=str(pool_window_days),
+        )
+    if pool_window_days and (periodicity is not Periodicity.hourly or distribution.value != "empirical"):
         raise InvalidArgumentError(
             "pool_window_days is available only for hourly empirical standardization.",
             argument_name="pool_window_days",
@@ -3473,6 +3477,7 @@ class FittedDistribution:
         """
         if getattr(distribution, "value", None) not in _SUPPORTED_DISTRIBUTIONS:
             raise ValueError(f"Unsupported distribution: {distribution}")
+        _validate_pool_window_days(pool_window_days, periodicity, distribution)
         _validate_empirical_fitting_params(distribution, fitting_params)
         # Padding a masked partial year discards its mask, so fill before folding.
         if distribution.value == "empirical" and np.ma.isMaskedArray(values):
@@ -3809,7 +3814,7 @@ def fit_and_standardize(
     Raises:
         InvalidArgumentError: If ``output_scale`` is not one of ``compute.OUTPUT_SCALES``,
             if ``fitting_params`` is given with the empirical distribution, if
-            ``pool_window_days`` is not a non-negative integer or a positive value is
+            ``pool_window_days`` is not an integer from 0 through 182 or a positive value is
             paired with a non-hourly or non-empirical call, or a beta
             fit is given a value outside [0, 1] beyond the rounding tolerance of a
             windowed mean.

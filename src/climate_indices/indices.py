@@ -570,6 +570,7 @@ def _standardized_index_pipeline(
     _validate_hourly_distribution(periodicity, distribution)
     compute.validate_output_scale(output_scale)
     compute._validate_zero_handling(zero_handling)
+    compute._validate_pool_window_days(pool_window_days, periodicity, distribution)
 
     # bind context and emit calculation_started event
     log = _logger.bind(
@@ -781,7 +782,8 @@ def standardized_index(
             default) keeping the shipped hour x day-of-year strata. A positive value
             is a smoothed seasonal-diurnal climatology that widens the sample by whole
             days at the same hour and holds 29 February out of every pooled sample. It
-            is rejected for any other periodicity or distribution (#1407).
+            is rejected for any other periodicity or distribution (#1407). The maximum
+            is 182 days, so each calendar day enters a sample at most once.
 
     Returns:
         1-D array of standardized values, unitless and of the same length as the
@@ -793,11 +795,10 @@ def standardized_index(
             Type III fit is given negative values, if ``fitting_params`` is given
             with the empirical distribution, if ``distribution`` is a member this
             surface does not accept, or if a beta fit is given a value outside
-            [0, 1].
+            [0, 1], or if ``pool_window_days`` is not an integer from 0 through 182
+            or a positive value is paired with a non-hourly or non-empirical call.
         ValueError: If ``zero_handling`` is not one of the three modes, if
-            ``aggregation`` is not "sum" or "mean", ``pool_window_days`` is not a
-            non-negative integer or a positive value is paired with a non-hourly or
-            non-empirical call, a Pearson ``fitting_params``
+            ``aggregation`` is not "sum" or "mean", a Pearson ``fitting_params``
             set is partial or does not carry the period (and cell) axes, or a beta
             mass pair sums above 1 or a supplied beta shape is not finite and positive
             (unless NaN).
