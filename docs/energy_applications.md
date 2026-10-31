@@ -115,8 +115,10 @@ neighbouring days. The holdout follows the accumulation window, so a `scale` abo
 also holds out the `scale - 1` steps after 29 February. A positive window is available
 only for hourly empirical standardization, is rejected for any other periodicity or
 distribution, and may not exceed 182 days, so each calendar day enters a sample at most
-once; an explicit zero
-is accepted on any periodicity and distribution ([#1407][energy-1407]).
+once. A `scale` above one also sets a minimum window of `ceil(held_out_days / 2)` days,
+where `held_out_days = ceil((23 + scale) / 24)`, so the holdout cannot empty a pooled
+sample: `scale=720` needs at least 16 days, and no window is accepted from `scale=8714`.
+An explicit zero is accepted on any periodicity and distribution ([#1407][energy-1407]).
 
 Daily NumPy inputs to `indices.standardized_index()` must start on January 1
 and use the internal 366-slot year layout. The energy NumPy wrappers

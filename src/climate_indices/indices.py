@@ -784,7 +784,11 @@ def standardized_index(
             is a smoothed seasonal-diurnal climatology that widens the sample by whole
             days at the same hour and holds 29 February out of every pooled sample. It
             is rejected for any other periodicity or distribution (#1407). The maximum
-            is 182 days, so each calendar day enters a sample at most once.
+            is 182 days, so each calendar day enters a sample at most once. A ``scale``
+            above one also sets a minimum of ``ceil(held_out_days / 2)`` days, where
+            ``held_out_days = ceil((23 + scale) / 24)`` (16 days at ``scale=720``), so
+            the 29 February holdout cannot empty a pooled sample; from ``scale=8714``
+            no window is accepted.
 
     Returns:
         1-D array of standardized values, unitless and of the same length as the
@@ -797,7 +801,8 @@ def standardized_index(
             with the empirical distribution, if ``distribution`` is a member this
             surface does not accept, or if a beta fit is given a value outside
             [0, 1], or if ``pool_window_days`` is not an integer from 0 through 182
-            or a positive value is paired with a non-hourly or non-empirical call.
+            or a positive value is paired with a non-hourly or non-empirical call or
+            with a ``scale`` that leaves the window below that minimum.
         ValueError: If ``zero_handling`` is not one of the three modes, if
             ``aggregation`` is not "sum" or "mean", a Pearson ``fitting_params``
             set is partial or does not carry the period (and cell) axes, or a beta

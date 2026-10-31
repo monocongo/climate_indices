@@ -105,8 +105,11 @@ its neighbouring days. The holdout follows each scaled value's accumulation wind
 a `scale` above one also holds out the `scale - 1` steps after 29 February, and a scale
 long enough to span a full hourly cycle is rejected. A positive window is rejected for
 every periodicity but hourly and every distribution but empirical, and it may not
-exceed 182 days, so each calendar day enters a sample at most once. An explicit zero is
-accepted on any periodicity and
+exceed 182 days, so each calendar day enters a sample at most once. A `scale` above one
+also sets a minimum window of `ceil(held_out_days / 2)` days, where
+`held_out_days = ceil((23 + scale) / 24)`, so the holdout cannot empty a pooled sample:
+`scale=720` needs at least 16 days, and no window is accepted from `scale=8714`. An
+explicit zero is accepted on any periodicity and
 distribution. The keyword reaches `indices.standardized_index()`, the generic xarray
 `standardized_index()`, and `energy.srepi()`,
 `energy.standardized_demand_index()`, and `energy.srli()`. Pooled ranking stays in
