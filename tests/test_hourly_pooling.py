@@ -8,6 +8,8 @@ shipped hour x day-of-year strata, so every existing hourly result is unchanged.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -212,7 +214,7 @@ class TestPoolingRejections:
     """The window is a non-negative integer on the hourly empirical path only."""
 
     @pytest.mark.parametrize("pool_window_days", [-1, 183, 366, 10**9, 1.0, 1.5, np.nan, True, "3", None])
-    def test_invalid_window_is_rejected(self, pool_window_days) -> None:
+    def test_invalid_window_is_rejected(self, pool_window_days: object) -> None:
         with pytest.raises(InvalidArgumentError, match="pool_window_days"):
             indices.standardized_index(
                 np.zeros(2 * HOURS_PER_YEAR),
@@ -226,7 +228,7 @@ class TestPoolingRejections:
             )
 
     @pytest.mark.parametrize("pool_window_days", [-1, 183, "3", 1])
-    def test_all_missing_numpy_input_still_validates_the_window(self, pool_window_days) -> None:
+    def test_all_missing_numpy_input_still_validates_the_window(self, pool_window_days: object) -> None:
         with pytest.raises(InvalidArgumentError, match="pool_window_days"):
             indices.standardized_index(
                 np.full(36, np.nan),
@@ -241,7 +243,9 @@ class TestPoolingRejections:
 
     @pytest.mark.parametrize("pool_window_days", [-1, 183, "3", True, 1])
     @pytest.mark.parametrize("distribution", [indices.Distribution.empirical, indices.Distribution.gamma])
-    def test_reusable_fit_validates_the_window(self, pool_window_days, distribution) -> None:
+    def test_reusable_fit_validates_the_window(
+        self, pool_window_days: object, distribution: indices.Distribution
+    ) -> None:
         with pytest.raises(InvalidArgumentError, match="pool_window_days"):
             compute.FittedDistribution.resolve(
                 np.ones((12, 12)),
@@ -254,7 +258,7 @@ class TestPoolingRejections:
             )
 
     @pytest.mark.parametrize("distribution", [indices.Distribution.empirical, indices.Distribution.gamma])
-    def test_zero_window_remains_valid_for_monthly_fits(self, distribution) -> None:
+    def test_zero_window_remains_valid_for_monthly_fits(self, distribution: indices.Distribution) -> None:
         fitted = compute.FittedDistribution.resolve(
             np.random.default_rng(1407).uniform(1.0, 10.0, size=(12, 12)),
             distribution,
@@ -333,7 +337,7 @@ class TestEnergyWrappers:
     }
 
     @pytest.mark.parametrize("adapter", [energy.srepi, energy.standardized_demand_index, energy.srli])
-    def test_numpy_forwarding_changes_the_result(self, adapter) -> None:
+    def test_numpy_forwarding_changes_the_result(self, adapter: Callable[..., Any]) -> None:
         values = _ramp_rows()
 
         default = adapter(values, 1, **self.NUMPY_KWARGS)
@@ -387,7 +391,7 @@ class TestEnergyWrappers:
         "adapter", [energy.srepi, energy.standardized_demand_index, energy.srli, climate_indices.standardized_index]
     )
     @pytest.mark.parametrize("pool_window_days", [0, POOL_WINDOW_DAYS])
-    def test_xarray_records_the_calibration_window(self, adapter, pool_window_days) -> None:
+    def test_xarray_records_the_calibration_window(self, adapter: Callable[..., Any], pool_window_days: int) -> None:
         time, values = self._gregorian_hourly()
         data = xr.DataArray(values, coords={"time": time}, dims=("time",)).chunk({"time": -1})
         result = adapter(
@@ -403,7 +407,7 @@ class TestEnergyWrappers:
 
     @pytest.mark.parametrize("adapter", [energy.srepi, energy.standardized_demand_index, energy.srli])
     @pytest.mark.parametrize("hourly", [False, True])
-    def test_xarray_rejects_a_malformed_distribution(self, adapter, hourly) -> None:
+    def test_xarray_rejects_a_malformed_distribution(self, adapter: Callable[..., Any], hourly: bool) -> None:
         time = pd.date_range("2000-01-01", periods=36, freq="h" if hourly else "MS")
         data = xr.DataArray(np.zeros(time.size), coords={"time": time}, dims=("time",)).chunk({"time": -1})
 
