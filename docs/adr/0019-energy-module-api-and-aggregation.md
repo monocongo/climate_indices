@@ -113,7 +113,15 @@ explicit zero is accepted on any periodicity and
 distribution. The keyword reaches `indices.standardized_index()`, the generic xarray
 `standardized_index()`, and `energy.srepi()`,
 `energy.standardized_demand_index()`, and `energy.srli()`. Pooled ranking stays in
-Python, so the native empirical kernel runs only with the default window.
+Python, so the native empirical kernel runs only with the default window. A day window
+was chosen over a harmonic fit of the seasonal-diurnal cycle because it keeps SEI's
+empirical plotting position and adds no fitted model. Its memory cost does not grow
+with the window: the pooled path holds one copy of the calibration sample and one
+shifted copy at a time, while runtime grows with `2k + 1`. On
+`benchmarks/profile_hourly_srepi.py` (41 years, a 30-year calibration, `scale=720`),
+a 25-cell block peaks at 290 MiB with a 16- or 30-day window, against 150 MiB
+unpooled. Peak memory is linear in cells, so a realistic grid needs about 12 MiB per
+cell for that record, against 6 MiB unpooled.
 
 Decision 2's `aggregation` keyword landed with this record
 ([#1158](https://github.com/monocongo/climate_indices/issues/1158)) and reached the
