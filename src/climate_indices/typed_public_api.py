@@ -172,6 +172,7 @@ _wrapped_standardized_index = xarray_adapter(
         "calibration_year_initial",
         "calibration_year_final",
         "aggregation",
+        "pool_window_days",
     ],
 )(indices.standardized_index)
 
