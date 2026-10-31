@@ -101,9 +101,11 @@ record that the SEI fixture's 100-value recommendation
 (`tests/fixture/energy_sei/warnings.txt`) covers only for monthly data. All of
 29 February is held out of every pooled sample, because a non-leap year's 24 hours
 there are synthesized rather than observed; a 29 February target is still scored, from
-its neighbouring days. The keyword is rejected for every periodicity but hourly and
-every distribution but empirical, and it reaches `indices.standardized_index()`, the
-generic xarray `standardized_index()`, and `energy.srepi()`,
+its neighbouring days. A positive window is rejected for every periodicity but hourly
+and every distribution but empirical, and it may not exceed 182 days, so each calendar
+day enters a sample at most once. An explicit zero is accepted on any periodicity and
+distribution. The keyword reaches `indices.standardized_index()`, the generic xarray
+`standardized_index()`, and `energy.srepi()`,
 `energy.standardized_demand_index()`, and `energy.srli()`. Pooled ranking stays in
 Python, so the native empirical kernel runs only with the default window.
 

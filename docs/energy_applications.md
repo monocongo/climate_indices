@@ -111,8 +111,10 @@ that raises the sample to `30 x (2k + 1)` values and refines the tail resolution
 default `0` keeps the hour x day-of-year strata, so it leaves every existing result
 unchanged. The window wraps the year boundary, and the synthesized 29 February hours
 stay out of every pooled sample; a 29 February target is still scored from its
-neighbouring days. The keyword is available only for hourly empirical standardization,
-and it is rejected for any other periodicity or distribution ([#1407][energy-1407]).
+neighbouring days. A positive window is available only for hourly empirical
+standardization, is rejected for any other periodicity or distribution, and may not
+exceed 182 days, so each calendar day enters a sample at most once; an explicit zero
+is accepted on any periodicity and distribution ([#1407][energy-1407]).
 
 Daily NumPy inputs to `indices.standardized_index()` must start on January 1
 and use the internal 366-slot year layout. The energy NumPy wrappers
