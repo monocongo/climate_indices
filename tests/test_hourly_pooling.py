@@ -324,8 +324,9 @@ class TestPoolingRejections:
             _probabilities(rows, POOL_WINDOW_DAYS, scale=8761)
 
     def test_a_scaled_february_29_holdout_cannot_cover_the_pooled_window(self) -> None:
+        rows = _ramp_rows()
         with pytest.raises(InvalidArgumentError, match="would empty some pooled samples") as exc_info:
-            _probabilities(_ramp_rows(), pool_window_days=1, scale=26)
+            _probabilities(rows, pool_window_days=1, scale=26)
 
         assert exc_info.value.argument_name == "pool_window_days"
         assert exc_info.value.argument_value == "1"
