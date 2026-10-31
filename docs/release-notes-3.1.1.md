@@ -1,8 +1,9 @@
 # climate_indices 3.1.1 release notes
 
-Version 3.1.1 is unreleased. The release date is not selected.
-The {doc}`release runbook <release-process>` describes the date, candidate freeze,
-and rehearsal requirements.
+Release preparation for the planned date 2026-11-01. Confirm publication via the
+[`v3.1.1` GitHub Release](https://github.com/monocongo/climate_indices/releases/tag/v3.1.1)
+and [PyPI artifacts](https://pypi.org/project/climate-indices/3.1.1/). The
+{doc}`release runbook <release-process>` records the candidate and tag mechanics.
 
 Version 3.1.1 adds Output Provenance, expands optional Rust acceleration, and
 requires Python 3.11–3.14. Review the {doc}`migration guidance <deprecations/api-changes>`
