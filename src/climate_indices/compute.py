@@ -3129,7 +3129,8 @@ def _pooled_empirical_counts(
         stop = start + _HOURS_PER_DAY + scale - 1
         if stop > 0:
             held_out[max(start, 0) : stop] = True
-    sample.reshape(calendar_steps, *sample.shape[2:])[held_out] = np.nan
+    # index sample itself: a C-order reshape of a Fortran-ordered sample is a copy
+    sample[held_out.reshape(sample.shape[:2])] = np.nan
     counts = np.zeros(values.shape)
     valid_counts = np.zeros(values.shape[1:], dtype=np.int64)
     for offset in range(-pool_window_days, pool_window_days + 1):

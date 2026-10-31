@@ -172,6 +172,15 @@ class TestFebruary29AndYearBoundary:
         mask[FEBRUARY_29_START : FEBRUARY_29_START + HOURS_PER_DAY] = False
         np.testing.assert_array_equal(perturbed[:, mask], baseline[:, mask])
 
+    def test_holdout_does_not_depend_on_the_calibration_memory_layout(self) -> None:
+        calibration = np.random.default_rng(1407).normal(size=(12, HOURS_PER_YEAR))
+
+        c_order = compute._pooled_empirical_counts(calibration, calibration, POOL_WINDOW_DAYS)
+        fortran_order = compute._pooled_empirical_counts(calibration, np.asfortranarray(calibration), POOL_WINDOW_DAYS)
+
+        for expected, actual in zip(c_order, fortran_order, strict=True):
+            np.testing.assert_array_equal(actual, expected)
+
     def test_scaled_windows_spanning_february_29_are_held_out(self) -> None:
         scale = 2
         sample = np.random.default_rng(1407).normal(size=(12, HOURS_PER_YEAR))
