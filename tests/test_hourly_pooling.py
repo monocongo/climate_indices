@@ -200,11 +200,12 @@ class TestFebruary29AndYearBoundary:
         # calibration block; the block's flat positions start at the first calibration
         # year, so the spill-in has to be marked there rather than from the record start
         scale = 8000
+        pool_window_days = 168  # wide enough that the holdout cannot empty a pooled sample
         values = np.random.default_rng(1407).normal(size=(13, HOURS_PER_YEAR))
-        baseline = _probabilities(values, POOL_WINDOW_DAYS, scale=scale, calibration_first=CALIBRATION_FIRST + 1)
+        baseline = _probabilities(values, pool_window_days, scale=scale, calibration_first=CALIBRATION_FIRST + 1)
         values[0, FEBRUARY_29_START : FEBRUARY_29_START + HOURS_PER_DAY] = 1.0e9
 
-        perturbed = _probabilities(values, POOL_WINDOW_DAYS, scale=scale, calibration_first=CALIBRATION_FIRST + 1)
+        perturbed = _probabilities(values, pool_window_days, scale=scale, calibration_first=CALIBRATION_FIRST + 1)
 
         # only a target whose own scaled window spans the perturbed day may move; no
         # other step may count the contaminated scaled values from the year before
@@ -321,6 +322,14 @@ class TestPoolingRejections:
         rows = _ramp_rows()
         with pytest.raises(InvalidArgumentError, match="full hourly cycle"):
             _probabilities(rows, POOL_WINDOW_DAYS, scale=8761)
+
+    def test_a_scaled_february_29_holdout_cannot_cover_the_pooled_window(self) -> None:
+        with pytest.raises(InvalidArgumentError, match="would empty some pooled samples") as exc_info:
+            _probabilities(_ramp_rows(), pool_window_days=1, scale=26)
+
+        assert exc_info.value.argument_name == "pool_window_days"
+        assert exc_info.value.argument_value == "1"
+        assert exc_info.value.valid_values == "at least 2 days for scale 26"
 
     def test_the_public_transform_rejects_a_full_cycle_scale(self) -> None:
         with pytest.raises(InvalidArgumentError, match="full hourly cycle"):

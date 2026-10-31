@@ -3223,8 +3223,8 @@ def _validate_pool_window_days(
     :raises InvalidArgumentError: if the value is not an integer from 0 through 182,
         or a positive value is paired with a non-empirical distribution or non-hourly
         periodicity. The upper bound prevents repeated days in the 366-day cycle. A
-        positive window is also rejected when ``scale`` is long enough that its
-        29 February holdout spans a full hourly cycle and would leave no sample.
+        positive window is also rejected when the scaled 29 February holdout can cover
+        the entire pooled window and empty some pooled samples.
     """
     if isinstance(pool_window_days, bool) or not isinstance(pool_window_days, (int, np.integer)):
         raise InvalidArgumentError(
@@ -3251,6 +3251,14 @@ def _validate_pool_window_days(
             argument_name="pool_window_days",
             argument_value=str(pool_window_days),
             valid_values=f"Pooling with a scale below {Periodicity.hourly.period_length - _HOURS_PER_DAY + 1}",
+        )
+    held_out_days = -(-(_HOURS_PER_DAY + scale - 1) // _HOURS_PER_DAY)
+    if pool_window_days and held_out_days >= 2 * pool_window_days + 1:
+        raise InvalidArgumentError(
+            "pool_window_days is too narrow for this scale: the 29 February holdout would empty some pooled samples.",
+            argument_name="pool_window_days",
+            argument_value=str(pool_window_days),
+            valid_values=f"at least {(held_out_days + 1) // 2} days for scale {scale}",
         )
 
 
