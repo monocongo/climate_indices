@@ -19,6 +19,7 @@ error-reference
 xarray_compatibility
 research/nclimgrid-acquisition-and-redistribution
 deprecations/index
+release-notes-3.1.1
 release-notes-3.1.0
 release-notes-3.0.0
 ```
