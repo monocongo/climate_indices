@@ -3245,6 +3245,13 @@ def _validate_pool_window_days(
             argument_value=str(pool_window_days),
             valid_values="0, or a positive integer with Periodicity.hourly and Distribution.empirical",
         )
+    if pool_window_days and (isinstance(scale, bool) or not isinstance(scale, (int, np.integer)) or scale < 1):
+        raise InvalidArgumentError(
+            "scale must be a positive integer when pool_window_days is positive.",
+            argument_name="scale",
+            argument_value=repr(scale),
+            valid_values="a positive integer",
+        )
     if pool_window_days and scale >= Periodicity.hourly.period_length - _HOURS_PER_DAY + 1:
         raise InvalidArgumentError(
             "pool_window_days cannot be combined with a scale that spans a full hourly cycle.",
@@ -3254,11 +3261,17 @@ def _validate_pool_window_days(
         )
     held_out_days = -(-(_HOURS_PER_DAY + scale - 1) // _HOURS_PER_DAY)
     if pool_window_days and held_out_days >= 2 * pool_window_days + 1:
+        required = (held_out_days + 1) // 2
         raise InvalidArgumentError(
             "pool_window_days is too narrow for this scale: the 29 February holdout would empty some pooled samples.",
             argument_name="pool_window_days",
             argument_value=str(pool_window_days),
-            valid_values=f"at least {(held_out_days + 1) // 2} days for scale {scale}",
+            # the 182-day cap leaves no accepted window once the holdout needs more than that
+            valid_values=(
+                f"at least {required} days for scale {scale}"
+                if required <= 182
+                else f"none: pooling is unavailable for scale {scale}"
+            ),
         )
 
 

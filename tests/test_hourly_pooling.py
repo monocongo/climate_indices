@@ -332,6 +332,28 @@ class TestPoolingRejections:
         assert exc_info.value.argument_value == "1"
         assert exc_info.value.valid_values == "at least 2 days for scale 26"
 
+    @pytest.mark.parametrize("scale", [0, -1, 1.5, True, "24", None])
+    def test_a_pooled_window_requires_a_positive_integer_scale(self, scale: object) -> None:
+        with pytest.raises(InvalidArgumentError, match="scale") as exc_info:
+            compute._validate_pool_window_days(
+                POOL_WINDOW_DAYS,
+                compute.Periodicity.hourly,
+                indices.Distribution.empirical,
+                scale=scale,  # type: ignore[arg-type]
+            )
+
+        assert exc_info.value.argument_name == "scale"
+
+    def test_the_narrow_window_error_names_no_window_when_pooling_is_unavailable(self) -> None:
+        validate = compute._validate_pool_window_days
+        hourly, empirical = compute.Periodicity.hourly, indices.Distribution.empirical
+        # the largest scale whose 29 February holdout a 182-day window still outlasts
+        validate(182, hourly, empirical, scale=8713)
+        with pytest.raises(InvalidArgumentError, match="would empty some pooled samples") as exc_info:
+            validate(182, hourly, empirical, scale=8714)
+
+        assert exc_info.value.valid_values == "none: pooling is unavailable for scale 8714"
+
     def test_the_public_transform_rejects_a_full_cycle_scale(self) -> None:
         with pytest.raises(InvalidArgumentError, match="full hourly cycle"):
             compute.transform_fitted_empirical(
