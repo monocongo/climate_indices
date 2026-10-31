@@ -570,7 +570,7 @@ def _standardized_index_pipeline(
     _validate_hourly_distribution(periodicity, distribution)
     compute.validate_output_scale(output_scale)
     compute._validate_zero_handling(zero_handling)
-    compute._validate_pool_window_days(pool_window_days, periodicity, distribution)
+    compute._validate_pool_window_days(pool_window_days, periodicity, distribution, scale=scale)
 
     # bind context and emit calculation_started event
     log = _logger.bind(
@@ -656,6 +656,7 @@ def _standardized_index_pipeline(
             output_scale=output_scale,
             zero_handling=zero_handling,
             pool_window_days=pool_window_days,
+            scale=scale,
         )
 
         # clip z-scores to the supported range, including any zeros a

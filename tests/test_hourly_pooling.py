@@ -32,12 +32,12 @@ def _ramp_rows(years: int = 12) -> np.ndarray:
 
 
 def _probabilities(
-    values: np.ndarray, pool_window_days: int = 0, calibration_last: int = CALIBRATION_LAST
+    values: np.ndarray, pool_window_days: int = 0, calibration_last: int = CALIBRATION_LAST, scale: int = 1
 ) -> np.ndarray:
     """Standardize a (years, 8784) block on the probability scale in the hourly layout."""
     result = indices.standardized_index(
         values.ravel(),
-        1,
+        scale,
         indices.Distribution.empirical,
         data_start_year=CALIBRATION_FIRST,
         calibration_year_initial=CALIBRATION_FIRST,
@@ -166,6 +166,20 @@ class TestFebruary29AndYearBoundary:
         mask[FEBRUARY_29_START : FEBRUARY_29_START + HOURS_PER_DAY] = False
         np.testing.assert_array_equal(perturbed[:, mask], baseline[:, mask])
 
+    def test_scaled_windows_spanning_february_29_are_held_out(self) -> None:
+        scale = 2
+        sample = np.random.default_rng(1407).normal(size=(12, HOURS_PER_YEAR))
+        baseline = _probabilities(sample, POOL_WINDOW_DAYS, scale=scale)
+        sample[:, FEBRUARY_29_START : FEBRUARY_29_START + HOURS_PER_DAY] = 1.0e9
+
+        perturbed = _probabilities(sample, POOL_WINDOW_DAYS, scale=scale)
+
+        # every step whose own scaled window spans 29 February is the only step that can
+        # move; every other step held out the contaminated scaled values from its sample
+        untouched = np.ones(HOURS_PER_YEAR, dtype=bool)
+        untouched[FEBRUARY_29_START : FEBRUARY_29_START + HOURS_PER_DAY + scale - 1] = False
+        np.testing.assert_array_equal(perturbed[:, untouched], baseline[:, untouched])
+
     def test_the_pooled_window_wraps_the_year_boundary(self) -> None:
         values = np.zeros((12, HOURS_PER_YEAR))
         baseline = _probabilities(values, POOL_WINDOW_DAYS)
@@ -268,6 +282,22 @@ class TestPoolingRejections:
     def test_a_non_empirical_distribution_is_rejected(self) -> None:
         with pytest.raises(InvalidArgumentError, match="hourly empirical"):
             compute._validate_pool_window_days(1, compute.Periodicity.hourly, indices.Distribution.gamma)
+
+    def test_a_full_cycle_scale_is_rejected_with_pooling(self) -> None:
+        with pytest.raises(InvalidArgumentError, match="full hourly cycle"):
+            _probabilities(_ramp_rows(), POOL_WINDOW_DAYS, scale=8761)
+
+    def test_the_public_transform_rejects_a_full_cycle_scale(self) -> None:
+        with pytest.raises(InvalidArgumentError, match="full hourly cycle"):
+            compute.transform_fitted_empirical(
+                np.zeros((2, HOURS_PER_YEAR)),
+                CALIBRATION_FIRST,
+                CALIBRATION_FIRST,
+                CALIBRATION_FIRST + 1,
+                compute.Periodicity.hourly,
+                pool_window_days=POOL_WINDOW_DAYS,
+                scale=8761,
+            )
 
     def test_the_public_transform_and_seam_reject_the_same(self) -> None:
         monthly = np.zeros((3, 12))
