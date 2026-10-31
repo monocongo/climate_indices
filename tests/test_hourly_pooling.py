@@ -7,8 +7,10 @@ shipped hour x day-of-year strata, so every existing hourly result is unchanged.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -68,6 +70,25 @@ def _pooled_reference(sample: np.ndarray, row: int, column: int, pool_window_day
     if np.isnan(value) or pooled.size < 10:
         return float("nan")
     return float((1.0 + np.count_nonzero(pooled <= value)) / (pooled.size + 2.0))
+
+
+@pytest.fixture
+def observed_hourly_temperatures() -> np.ndarray:
+    """Load observed Fresno January temperatures into the all-leap hourly layout."""
+    directory = Path(__file__).parent / "fixture" / "hourly_observed"
+    path = directory / "fresno_january_2000_2011.csv.gz"
+    provenance = json.loads((directory / "provenance.json").read_text())
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == provenance["checksum_sha256"]
+    observations = pd.read_csv(path, parse_dates=["valid"])
+    assert len(observations) == 8893
+    assert np.all(observations["station"].to_numpy() == "FAT")
+    assert np.all(observations["valid"].dt.month.to_numpy() == 1)
+    # Keep the last routine report in each UTC hour; never fill missing observations.
+    observations = observations.loc[~observations["valid"].dt.floor("h").duplicated(keep="last")]
+    time = observations["valid"].dt
+    values = np.full((12, HOURS_PER_YEAR), np.nan)
+    values[time.year - CALIBRATION_FIRST, (time.day - 1) * HOURS_PER_DAY + time.hour] = observations["tmpf"]
+    return values
 
 
 class TestDefaultWindow:
@@ -228,7 +249,7 @@ class TestFebruary29AndYearBoundary:
 class TestTailResolution:
     """Pooling refines the tail resolution of a thin hourly calibration."""
 
-    def test_pooling_adds_distinct_tail_probabilities(self) -> None:
+    def test_pooling_adds_distinct_tail_probabilities(self, observed_hourly_temperatures: np.ndarray) -> None:
         values = _ramp_rows()
         # eleven calibration years: above the ten-value minimum, below the 100-value
         # recommendation recorded in tests/fixture/energy_sei/warnings.txt
@@ -239,6 +260,42 @@ class TestTailResolution:
         assert len(np.unique(pooled)) > len(np.unique(default))
         # the rarest pooled value scores lower, so a rarer event is resolvable
         assert pooled.min() < default.min()
+
+        observed = observed_hourly_temperatures
+        calibration, targets = observed[:-1], observed[-1]
+        # Score 2011 independently; January 8-24 keeps every seven-day window in January.
+        columns = np.arange(7 * HOURS_PER_DAY, 24 * HOURS_PER_DAY)
+        columns = columns[np.isfinite(observed[:, columns]).all(axis=0)]
+        strata = (1 + np.count_nonzero(calibration[:, columns] <= targets[columns], axis=0)) / 13.0
+        columns = columns[strata <= 0.2]
+        assert columns.size == 49
+
+        rms_changes = []
+        full_tails = []
+        for window in (0, POOL_WINDOW_DAYS):
+            full = _probabilities(observed, window, calibration_last=2010)[-1, columns]
+            # Recount observed same-hour samples independently of either implementation.
+            neighbours = columns[:, np.newaxis] + HOURS_PER_DAY * np.arange(-window, window + 1)
+            sample = calibration[:, neighbours]
+            expected = (1 + np.count_nonzero(sample <= targets[columns, np.newaxis], axis=(0, 2))) / (
+                2 + np.count_nonzero(np.isfinite(sample), axis=(0, 2))
+            )
+            np.testing.assert_allclose(full, expected, rtol=0, atol=1e-15)
+            full_tails.append(full)
+
+            changes = []
+            for year in range(calibration.shape[0]):
+                reduced = observed.copy()
+                reduced[year] = np.nan
+                tail = _probabilities(reduced, window, calibration_last=2010)[-1, columns]
+                assert np.isfinite(tail).all()
+                changes.append(tail - full)
+            rms_changes.append(np.sqrt(np.mean(np.square(changes))))
+
+        assert np.unique(full_tails[1]).size > np.unique(full_tails[0]).size
+        assert full_tails[1].min() < full_tails[0].min()
+        # This fixture measures year-removal sensitivity, not independent-sample uncertainty.
+        assert 0 < rms_changes[1] < rms_changes[0]
 
 
 class TestPoolingRejections:
