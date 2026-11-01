@@ -65,11 +65,18 @@ unreproducible claim of reproduction.
    {doc}`0005-fire-module-api`.
 
 2. **The public names are `reliability_indices()`, `ReliabilityResult`,
-   `classify_interruptions()`, and `group_momentary_events()`.** One entry point
-   returns every metric in a frozen result object:
+   `classify_interruptions()`, `group_momentary_events()`, and
+   `simulate_reliability()`.** One metric entry point returns every metric in a
+   frozen result object:
 
-   - `reliability_indices()` takes the event record and the served-customer
-     count and returns a `ReliabilityResult`.
+   - `reliability_indices()` takes the event record, `total_customers`, and
+     optional reporting-period inputs and returns a `ReliabilityResult`.
+     `total_customers` is the positive average served-customer count over the
+     period. ASAI requires positive `period_hours` or explicit period start/end
+     bounds from which the library derives actual elapsed hours. Without either,
+     ASAI is undefined and the result names it; the library never infers the
+     reporting period from event timestamps.
+     The result records the supplied period without annualizing partial periods.
    - `ReliabilityResult` is a frozen dataclass carrying SAIFI, SAIDI, CAIDI,
      MAIFI_E (and MAIFI where the input admits it), ASAI, the outage count, and
      the shared accumulators `CI = Σ N_i` and `CMI = Σ r_i N_i`, so
@@ -80,6 +87,20 @@ unreproducible claim of reproduction.
    - `group_momentary_events()` collapses reclosing operations of one device
      within the threshold window into one momentary event, the grouping
      decision 4 needs.
+   - `simulate_reliability()` takes supplied component failure rates and repair
+     distributions, a series or parallel arrangement, `total_customers`,
+     `horizon_hours`, `n_trials`, and a required explicit seed.
+     It produces an event log for each trial and calls `reliability_indices()`
+     with that trial's log and horizon, returning a `ReliabilityResult` per trial.
+     [#1343](https://github.com/monocongo/climate_indices/issues/1343) implements
+     this entry point. It rejects `component_topology` with `InvalidArgumentError`
+     because connectivity resolution is deferred.
+
+   The event record requires `event_id`, `start_time`, `customers_interrupted`,
+   and either an `end_time` timestamp or a `duration` in minutes.
+   [#1337](https://github.com/monocongo/climate_indices/issues/1337) defines the
+   full schema and validation rules, including the optional flags in decisions
+   4 and 5.
 
    **Six `saifi()`-style scalar functions are rejected.** Each metric is a ratio
    over the same two accumulators, so six functions would recompute the same
@@ -126,10 +147,11 @@ unreproducible claim of reproduction.
    the default and exclusion is an explicit keyword. The library never infers
    planned status from a cause string or a duration.
 
-6. **Units are minutes for durations and durations-per-customer, per-period for
-   frequencies, and dimensionless for ASAI.** Durations `r_i` and durations per
-   customer (SAIDI, CAIDI) are minutes. SAIFI, MAIFI_E, and MAIFI are
-   interruptions or events per customer **per the supplied reporting period**,
+6. **Durations use minutes, frequencies apply per reporting period, and ASAI
+   is dimensionless.** Durations `r_i` are minutes. SAIDI is minutes per customer
+   per period; CAIDI is minutes per customer interruption.
+   SAIFI, MAIFI_E, and MAIFI are interruptions or events per customer
+   **per the supplied reporting period**,
    not per year. ASAI is a dimensionless fraction in [0, 1] and is never
    reported as a percentage. **Partial periods are computed exactly over the
    supplied period, with no annualization and no extrapolation**, so a
@@ -204,8 +226,9 @@ unreproducible claim of reproduction.
     | SAIDI | `N_T = 1000`, `Σ r_i N_i = 24 000` customer-minutes | 24.0 minutes per customer per period |
     | CAIDI | `Σ r_i N_i = 24 000`, `Σ N_i = 300` | 80.0 minutes per interruption; equals `SAIDI / SAIFI` |
     | MAIFI_E | `N_T = 1000`, `Σ IDE_i N_i = 300` | 0.3 momentary events per customer per period |
-    | ASAI | `H = 24 h`, `Σ r_i N_i = 24 000` customer-minutes | 0.983333, from `1 − 24 000 / (1000 · 24 · 60)` |
-    | No outage | `Σ N_i = 0` | SAIFI 0, SAIDI 0, ASAI 1.0; CAIDI and MAIFI undefined, named in the result, at most one warning |
+    | ASAI | `N_T = 1000`, `H = 24 h`, `Σ r_i N_i = 24 000` customer-minutes | 0.983333, from `1 − 24 000 / (1000 · 24 · 60)` |
+    | No outage, operation data absent | Empty event record, `N_T = 1000`, `H = 24 h`, no `device_operations` column | SAIFI 0, SAIDI 0, MAIFI_E 0, ASAI 1.0; CAIDI undefined (0/0); MAIFI undefined because operation data is absent. The result names both undefined metrics and emits at most one warning. |
+    | No outage, operation data available | Empty event record, `N_T = 1000`, `H = 24 h`, `device_operations` column supplied | SAIFI 0, SAIDI 0, MAIFI_E 0, MAIFI 0, ASAI 1.0; only CAIDI is undefined (0/0). The result names it and emits at most one warning. |
     | Leap year | 366-day period | `H = 8784` hours, against 8760 for 365 days |
 
     These are analytic checks, not external validation: no event-level oracle is

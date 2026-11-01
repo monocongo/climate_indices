@@ -91,9 +91,11 @@ dismissing it: it is a candidate for that sibling, not a rejection on merit.
 
 `climate_indices` accepts deterministic power-distribution reliability indices
 computed from an outage or interruption record plus a served-customer count:
-SAIFI, SAIDI, CAIDI, MAIFI and MAIFI_E, ASAI, and outage counts. Network
-topology resolution and customer connectivity, AC/DC power flow, protection
-coordination and recloser-sequence modelling, cascading-failure and
+SAIFI, SAIDI, CAIDI, MAIFI and MAIFI_E, ASAI, and outage counts.
+The scope also includes a seeded Monte Carlo path over supplied component data,
+with series and parallel aggregation only. Network topology resolution and
+customer connectivity, AC/DC power flow, protection coordination and
+recloser-sequence modelling, cascading-failure and
 weather-to-failure models, restoration and crew dispatch, regulatory report
 formats, and annualization of partial periods are out of scope. The exact
 boundary, the module and unit conventions, the sustained/momentary threshold,
@@ -165,7 +167,8 @@ vocabulary at `src/climate_indices/CONTEXT.md`):
   `src/climate_indices/CONTEXT.md`, `VALIDATION.md`
 - Explanation: `docs/explanation.md`, `docs/algorithms.md`,
   `docs/wildfire_applications.md`, `docs/flood_applications.md`,
-  `docs/energy_applications.md`, `docs/licensing.md`, `docs/adr/`,
+  `docs/energy_applications.md`, `docs/licensing.md`, `docs/adr/`
+  (including the approved reliability design in ADR-0026),
   `docs/ai-assisted-development.md`,
   `docs/algorithm_refs/`, `docs/architecture.md`,
   `docs/project-overview.md`, `docs/floating_point_best_practices.md`
