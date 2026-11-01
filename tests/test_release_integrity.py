@@ -1018,6 +1018,38 @@ def test_every_built_artifact_embeds_and_reports_its_source_commit() -> None:
         assert 'identity["git_commit_source"] == "build-metadata"' in job
 
 
+def test_every_git_lfs_tracked_file_is_stored_as_an_lfs_pointer() -> None:
+    """A file marked `filter=lfs` but committed as a plain blob reports a dirty tree.
+
+    `hatch_build.py` reads `git status --porcelain --untracked-files=no`, and the release
+    workflow requires the embedded `git_dirty` to be false. With Git LFS configured, the
+    clean filter makes `git status` report such a file as modified on a fresh checkout,
+    which failed the 3.1.1 release rehearsal (#1524).
+    """
+    header = b"version https://git-lfs.github.com/spec/v1\n"
+    listed = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, check=True, capture_output=True).stdout
+    attributes = subprocess.run(
+        ["git", "check-attr", "-z", "--stdin", "filter"], cwd=ROOT, check=True, capture_output=True, input=listed
+    ).stdout.split(b"\0")
+    tracked_as_lfs = [
+        os.fsdecode(path)
+        for path, attribute, value in zip(attributes[0::3], attributes[1::3], attributes[2::3], strict=False)
+        if attribute == b"filter" and value == b"lfs"
+    ]
+    assert tracked_as_lfs, "no tracked file is marked filter=lfs, so the check below proves nothing"
+    plain_blobs = [
+        path
+        for path in tracked_as_lfs
+        if not subprocess.run(
+            ["git", "cat-file", "blob", f"HEAD:{path}"], cwd=ROOT, check=True, capture_output=True
+        ).stdout.startswith(header)
+    ]
+    assert not plain_blobs, (
+        f"{plain_blobs} are marked filter=lfs but committed as plain blobs; "
+        "store them as LFS objects or clear the filter attribute for those paths"
+    )
+
+
 def test_climate_py_builds_abi3_wheels() -> None:
     """abi3 lets one wheel per platform cover every supported Python.
 
