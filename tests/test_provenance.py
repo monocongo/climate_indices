@@ -414,11 +414,22 @@ def test_reattaching_replaces_the_record_and_never_inherits_input_provenance() -
     assert attrs["history"].count("Repeat calculated") == 1
 
 
-@pytest.mark.parametrize("raw", ["{not json", 5])
-def test_read_provenance_rejects_an_attribute_that_is_not_json(raw: Any) -> None:
-    data = xr.DataArray(np.zeros(1), dims="x", name="v", attrs={PROVENANCE_ATTR: raw})
+@pytest.mark.parametrize("container", [xr.DataArray, xr.Dataset])
+@pytest.mark.parametrize("raw", [None, '{"schema_version":"1.0.0"}', b'{"schema_version":"1.0.0"}'])
+def test_read_provenance_reads_own_attributes(container: Any, raw: Any) -> None:
+    data = container(attrs={} if raw is None else {PROVENANCE_ATTR: raw})
 
-    with pytest.raises(ValueError, match="not valid JSON"):
+    assert read_provenance(data) == (None if raw is None else {"schema_version": "1.0.0"})
+
+
+@pytest.mark.parametrize("container, label", [(xr.DataArray, "'v'"), (xr.Dataset, "Dataset")])
+@pytest.mark.parametrize("raw", ["{not json", 5])
+def test_read_provenance_rejects_an_attribute_that_is_not_json(container: Any, label: str, raw: Any) -> None:
+    variable = xr.DataArray(np.zeros(1), dims="x", name="v")
+    data = variable if container is xr.DataArray else xr.Dataset({"name": variable})
+    data.attrs[PROVENANCE_ATTR] = raw
+
+    with pytest.raises(ValueError, match=f"{PROVENANCE_ATTR} of {label} is not valid JSON"):
         read_provenance(data)
 
 

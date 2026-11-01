@@ -23,6 +23,7 @@ with software identity, backend availability, effective parameters, input metada
 and upstream lineage. The record remains attached through NetCDF and Zarr round trips.
 Compound Dataset routes are an exception to per-variable storage:
 they store the record only at Dataset level, beside their source manifest.
+`read_provenance()` accepts a DataArray or Dataset and reads its own attributes.
 Use `read_provenance(result)` for these routes, not `read_provenance(result[variable])`.
 
 `climate_indices.provenance.with_source()` labels inputs with source identifiers.

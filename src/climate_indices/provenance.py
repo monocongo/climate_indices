@@ -180,15 +180,16 @@ def with_source(
     return labeled
 
 
-def read_provenance(data: xr.DataArray) -> dict[str, Any] | None:
-    """Decode the provenance record of one output variable.
+def read_provenance(data: xr.DataArray | xr.Dataset) -> dict[str, Any] | None:
+    """Decode the provenance record from a DataArray's or Dataset's own attributes.
 
     Args:
-        data: A computed DataArray, or a variable of a reopened NetCDF or Zarr
-            dataset, e.g. ``xr.open_dataset(path)["spi"]``.
+        data: A computed DataArray or Dataset, including reopened NetCDF or Zarr
+            outputs, e.g. ``xr.open_dataset(path)["spi"]``. Compound-hazard
+            Dataset routes store the record on the Dataset, not its variables.
 
     Returns:
-        The decoded record, or None when the variable carries none.
+        The decoded record, or None when the object carries none.
 
     Raises:
         ValueError: If the attribute holds invalid JSON.
@@ -199,7 +200,8 @@ def read_provenance(data: xr.DataArray) -> dict[str, Any] | None:
     try:
         record: dict[str, Any] = json.loads(raw.decode() if isinstance(raw, bytes) else raw)
     except (TypeError, ValueError) as error:  # a non-text attribute is as invalid as malformed text
-        raise ValueError(f"{PROVENANCE_ATTR} of {data.name!r} is not valid JSON: {error}") from error
+        label = repr(data.name) if isinstance(data, xr.DataArray) else "Dataset"
+        raise ValueError(f"{PROVENANCE_ATTR} of {label} is not valid JSON: {error}") from error
     return record
 
 

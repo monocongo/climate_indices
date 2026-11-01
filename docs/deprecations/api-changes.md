@@ -38,6 +38,7 @@ If Python 3.10 is required, pin `climate-indices==3.1.0`.
 **What a user sees:** xarray and CLI outputs gain `climate_indices_git_commit`,
 `climate_indices_provenance_schema_version`, and `climate_indices_provenance` attributes.
 Compound Dataset routes are an exception to per-variable storage: they store the record only at Dataset level.
+`read_provenance()` accepts a DataArray or Dataset and reads its own attributes.
 Use `read_provenance(result)` for these routes, not `read_provenance(result[variable])`.
 Existing calculation attributes and the `history` format remain unchanged.
 

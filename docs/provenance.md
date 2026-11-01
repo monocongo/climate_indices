@@ -33,6 +33,7 @@ tree keeps its base commit and reports `git_dirty: true`.
 
 The compound-hazard Dataset routes keep their record only as a Dataset attribute, next
 to the `compound_manifest` attribute that names their sources. Their individual variables have no record.
+`read_provenance()` accepts a DataArray or Dataset and reads its own attributes.
 Use `read_provenance(result)` for these routes; `read_provenance(result[variable])` returns `None`.
 
 ## Record contents
@@ -280,7 +281,7 @@ True
 workdir.cleanup()
 ```
 
-`read_provenance()` returns `None` for a variable without a record. From a shell,
+`read_provenance()` returns `None` for a DataArray or Dataset without a record. From a shell,
 `ncdump -h` shows the attributes of a NetCDF output, and the JSON string can be
 pretty-printed with any JSON tool.
 

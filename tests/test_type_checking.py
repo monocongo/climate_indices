@@ -9,7 +9,7 @@ under pytest, which executes the call bodies but verifies no types.
 
 from __future__ import annotations
 
-from typing import assert_type
+from typing import Any, assert_type
 
 import numpy as np
 import numpy.typing as npt
@@ -20,7 +20,13 @@ from climate_indices import compound, energy, fire, fit_diagnostics, percentage_
 from climate_indices.compute import FitDiagnostics, Periodicity
 from climate_indices.indices import Distribution
 from climate_indices.indices import percentage_of_normal as numpy_pnp
+from climate_indices.provenance import read_provenance
 from climate_indices.runs import RunSet, RunStatistics, summarize_runs
+
+
+def test_read_provenance_accepts_dataarray_and_dataset() -> None:
+    assert_type(read_provenance(xr.DataArray()), dict[str, Any] | None)
+    assert_type(read_provenance(xr.Dataset()), dict[str, Any] | None)
 
 
 def test_energy_event_return_types() -> None:

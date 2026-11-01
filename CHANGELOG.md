@@ -21,6 +21,7 @@ See the [release notes](docs/release-notes-3.1.1.md) and
   they store the record only at Dataset level. Use `read_provenance(result)` for these routes,
   not `read_provenance(result[variable])`.
   `with_source()` labels inputs, and `read_provenance()` decodes a record.
+  `read_provenance()` accepts a DataArray or Dataset and reads its own attributes.
 
   Builds embed the source commit through `hatch_build.py` for installations without Git.
   Records survive NetCDF and Zarr round trips without computing lazy input data.

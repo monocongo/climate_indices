@@ -225,6 +225,7 @@ This metadata records how an output was produced.
 It includes `climate_indices_version`, `climate_indices_git_commit`, a CF-style `history` line, and the strict-JSON `climate_indices_provenance` record.
 The record describes software identity, backend, effective parameters, input metadata, and upstream lineage (`climate_indices.provenance`, [provenance reference](../../docs/provenance.md), #1470).
 Xarray DataArrays and CLI NetCDF variables store it per variable; compound-hazard Dataset routes store it only on the Dataset.
+`read_provenance()` accepts a DataArray or Dataset and reads its own attributes.
 For compound-hazard Dataset routes, use `read_provenance(result)`, not `read_provenance(result[variable])`.
 Output Provenance concerns results, unlike Fixture Provenance and the Explorer's planned Output Provenance Manifest.
 _Avoid_: Provenance (ambiguous alone — see also Fixture Provenance)
