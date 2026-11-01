@@ -6,7 +6,7 @@ The project's primary license is
 [BSD-3-Clause](https://github.com/monocongo/climate_indices/blob/main/LICENSE),
 with the existing copyright notice: Copyright 2017, James Adams.
 The original code came from NCEI/NOAA through
-[drought.gov](https://www.drought.gov/drought/python-climate-indices).
+[drought.gov](https://www.drought.gov/data-maps-tools/climate-and-drought-indices-python-spi-spei-pet).
 The original public-domain notice appears below without changes to its wording.
 This document organization does not change the project's licensing terms.
 
