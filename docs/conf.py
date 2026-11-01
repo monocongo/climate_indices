@@ -94,6 +94,7 @@ language = "en"
 # here also keeps them out of the Markdown build. See the
 # "Documentation audience" section of CONTRIBUTING.md for the
 # published/internal split and each published page's reader-need quadrant.
+# ADR-0026 is a published explanation in adr/index.md, not an excluded draft.
 exclude_patterns = [
     "_build",
     "Thumbs.db",
