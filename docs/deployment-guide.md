@@ -175,7 +175,9 @@ import fails only when the extension is absent, which is not an error
 ### Package Contents
 **Included**:
 - `src/climate_indices/` - All source code
-- `LICENSE` - BSD 3-Clause license
+- `LICENSE` contains the primary BSD 3-Clause license.
+- `THIRD_PARTY_NOTICES.md` contains the third-party notices and license texts.
+- `docs/licensing.md` contains the licensing history and original NOAA public-domain notice.
 - `README.md` - Package description
 
 The binary wheels add the compiled extension (`climate_indices/_native.abi3.so`, or
