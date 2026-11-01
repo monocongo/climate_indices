@@ -167,7 +167,9 @@ unreproducible claim of reproduction.
    needs a utility-specific five-year daily-SAIDI history that this package does
    not hold. Results with and without major events are not comparable, and the
    result records that no Major Event Day filter was applied. Detecting and
-   filtering Major Event Days is a named follow-up, not a ticket in this epic.
+   filtering Major Event Days is tracked in
+   [#1527](https://github.com/monocongo/climate_indices/issues/1527), a separate
+   follow-up outside this epic.
 
 8. **No new mandatory dependency.** The metric core is NumPy. `pandas` (already
    a hard dependency) handles record ingest, and `scipy.stats` (already a hard
