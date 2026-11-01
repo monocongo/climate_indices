@@ -1,7 +1,8 @@
 # Dataset provenance
 
-Every output variable that `climate_indices` computes through its xarray API or
-its command line carries a provenance record. The record names the software
+Output variables that `climate_indices` computes through its xarray API or
+its command line carry a provenance record, except for the compound-hazard Dataset routes.
+The record names the software
 that produced the variable, the computational backend, the effective
 scientific parameters, and each input with the metadata it supplied. The
 record is stored as variable attributes, so it survives NetCDF and Zarr write
@@ -15,8 +16,8 @@ documented tolerances (see {doc}`rust-numerical-contract`).
 
 ## Attributes
 
-Each output variable gets these project-defined attributes. They are not CF or
-ACDD attributes, and they do not change `Conventions`.
+Each output variable gets these project-defined attributes, except for the compound-hazard Dataset routes described below.
+They are not CF or ACDD attributes, and they do not change `Conventions`.
 
 | Attribute | Value |
 | --- | --- |
@@ -30,8 +31,9 @@ ACDD attributes, and they do not change `Conventions`.
 the record before you treat the commit as the exact code: a modified working
 tree keeps its base commit and reports `git_dirty: true`.
 
-The compound-hazard Dataset routes keep their record as a Dataset attribute, next
-to the `compound_manifest` attribute that names their sources.
+The compound-hazard Dataset routes keep their record only as a Dataset attribute, next
+to the `compound_manifest` attribute that names their sources. Their individual variables have no record.
+Use `read_provenance(result)` for these routes; `read_provenance(result[variable])` returns `None`.
 
 ## Record contents
 
@@ -290,8 +292,9 @@ pretty-printed with any JSON tool.
   digest instead.
 - **Derived inputs.** Computing SPEI from a PET result records the PET record as
   the upstream step of the `pet_mm` input, with its own inputs' identifiers.
-- **Merged runs.** Records are per variable and nothing is written as a global
-  attribute, so merging outputs from separate runs keeps each variable's lineage.
+- **Merged runs.** Except for compound-hazard Dataset routes, records are per variable, not global attributes.
+  Merging outputs from separate runs keeps each variable's lineage.
+  Compound records are Dataset attributes and do not stay with variables selected from those Datasets.
 - **History.** The output keeps its primary input's `history` and appends one
   line. Each input's own `history` stays in its entry of the record.
 

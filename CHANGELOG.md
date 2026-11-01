@@ -17,13 +17,17 @@ See the [release notes](docs/release-notes-3.1.1.md) and
   It records software identity, backend availability, effective parameters, input metadata,
   and upstream lineage, with documented limits for each route.
   `climate_indices_git_commit` and `climate_indices_provenance_schema_version`
-  provide searchable attributes. Compound Dataset routes store the record at Dataset level.
+  provide searchable attributes. Compound Dataset routes are an exception to per-variable storage:
+  they store the record only at Dataset level. Use `read_provenance(result)` for these routes,
+  not `read_provenance(result[variable])`.
   `with_source()` labels inputs, and `read_provenance()` decodes a record.
 
   Builds embed the source commit through `hatch_build.py` for installations without Git.
   Records survive NetCDF and Zarr round trips without computing lazy input data.
   The record does not identify the kernel that ran or guarantee identical results.
   Existing attributes and the `history` format remain unchanged.
+  The record removes recognized credentials and reduces recognized absolute paths to their file names.
+  File names can remain. Sanitization does not guarantee anonymity; review free text before sharing outputs.
   See [Dataset provenance](docs/provenance.md) for limits and privacy requirements.
 
 ### Changed

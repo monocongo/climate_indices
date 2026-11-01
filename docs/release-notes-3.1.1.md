@@ -1,9 +1,8 @@
 # climate_indices 3.1.1 release notes
 
-Release preparation for the planned date 2026-11-01. Confirm publication via the
+The release date is 2026-11-01. See the
 [`v3.1.1` GitHub Release](https://github.com/monocongo/climate_indices/releases/tag/v3.1.1)
-and [PyPI artifacts](https://pypi.org/project/climate-indices/3.1.1/). The
-{doc}`release runbook <release-process>` records the candidate and tag mechanics.
+and [PyPI artifacts](https://pypi.org/project/climate-indices/3.1.1/).
 
 Version 3.1.1 adds Output Provenance, expands optional Rust acceleration, and
 requires Python 3.11–3.14. Review the {doc}`migration guidance <deprecations/api-changes>`
@@ -22,7 +21,9 @@ Upgrade Python before installing 3.1.1. If you must retain Python 3.10, use
 Xarray and CLI outputs carry a strict-JSON `climate_indices_provenance` record
 with software identity, backend availability, effective parameters, input metadata,
 and upstream lineage. The record remains attached through NetCDF and Zarr round trips.
-Compound Dataset routes store it at Dataset level, beside their source manifest.
+Compound Dataset routes are an exception to per-variable storage:
+they store the record only at Dataset level, beside their source manifest.
+Use `read_provenance(result)` for these routes, not `read_provenance(result[variable])`.
 
 `climate_indices.provenance.with_source()` labels inputs with source identifiers.
 `read_provenance()` decodes an output record. Builds embed the source commit,
@@ -32,7 +33,8 @@ compute lazy input data. Existing attributes and the `history` format remain unc
 The record supports reproducibility but does not guarantee identical numbers.
 It records native-extension availability, not the kernel that ran.
 Parameter and input detail depend on the route, and size limits can omit sections.
-The record removes recognized credentials and local paths, but it does not guarantee anonymity.
+The record removes recognized credentials and reduces recognized absolute paths to their file names.
+File names can remain. The record does not guarantee anonymity.
 Review free text before sharing outputs. See {doc}`Dataset provenance <provenance>`
 for the schema, limits, and privacy rules.
 

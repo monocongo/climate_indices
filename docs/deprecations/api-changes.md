@@ -37,7 +37,8 @@ If Python 3.10 is required, pin `climate-indices==3.1.0`.
 
 **What a user sees:** xarray and CLI outputs gain `climate_indices_git_commit`,
 `climate_indices_provenance_schema_version`, and `climate_indices_provenance` attributes.
-Compound Dataset routes store the record at Dataset level.
+Compound Dataset routes are an exception to per-variable storage: they store the record only at Dataset level.
+Use `read_provenance(result)` for these routes, not `read_provenance(result[variable])`.
 Existing calculation attributes and the `history` format remain unchanged.
 
 **How to detect it:** inspect output attributes or use
@@ -47,7 +48,9 @@ Existing calculation attributes and the `history` format remain unchanged.
 if they reject the new attributes. No numerical or function-call migration is required.
 Use `with_source()` when input source identifiers or Dataset attributes must accompany a calculation.
 The record does not identify the kernel that ran or guarantee identical results.
-Review free-text metadata before sharing outputs; sanitization does not guarantee anonymity.
+The record removes recognized credentials and reduces recognized absolute paths to their file names.
+File names can remain. Sanitization does not guarantee anonymity.
+Review free-text metadata before sharing outputs.
 See {doc}`Dataset provenance </provenance>` for route-specific contents and size limits.
 
 ### Pearson fallback errors (3.1.1)
