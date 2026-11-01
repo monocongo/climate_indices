@@ -184,5 +184,7 @@ not identical elapsed times.
 
 ## License
 
-BSD-3-Clause. The [`LICENSE`](LICENSE) file includes the third-party notices for the
-ported Cephes and NumPy routines.
+The primary license is BSD-3-Clause. The [`LICENSE`](LICENSE) file also retains
+the original NOAA public-domain notice and the complete third-party notices and
+license texts for Cephes, SciPy/xsf, NumPy, and the Boost.Math Lanczos coefficients.
+The Boost.Math coefficients remain under the Boost Software License 1.0.

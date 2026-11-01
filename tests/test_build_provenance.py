@@ -58,7 +58,16 @@ def _project(tmp_path: Path) -> tuple[Path, str]:
     root = tmp_path / "project"
     ignore = shutil.ignore_patterns("__pycache__", "*.so", "*.pyd", "_build_info.json")
     shutil.copytree(ROOT / "src" / "climate_indices", root / "src" / "climate_indices", ignore=ignore)
-    for name in ("pyproject.toml", "hatch_build.py", "README.md", "LICENSE", ".gitignore"):
+    for name in (
+        "pyproject.toml",
+        "hatch_build.py",
+        "README.md",
+        "LICENSE",
+        "THIRD_PARTY_NOTICES.md",
+        "docs/licensing.md",
+        ".gitignore",
+    ):
+        (root / name).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / name, root / name)
     return root, _repository(root)
 
@@ -85,7 +94,13 @@ def test_the_sdist_and_the_wheel_built_from_it_report_the_commit_without_git(tmp
     root, head = _project(tmp_path)
 
     sdist = _build(root, "build_sdist", tmp_path / "dist")
+    legal_files = ("LICENSE", "THIRD_PARTY_NOTICES.md", "docs/licensing.md")
     with tarfile.open(sdist) as archive:
+        prefix = sdist.name.removesuffix(".tar.gz")
+        for name in legal_files:
+            legal_member = archive.extractfile(f"{prefix}/{name}")
+            assert legal_member is not None
+            assert legal_member.read() == (ROOT / name).read_bytes()
         member = archive.extractfile(f"{sdist.name.removesuffix('.tar.gz')}/src/climate_indices/_build_info.json")
         assert member is not None
         assert json.loads(member.read()) == {"git_commit": head, "git_dirty": False}
@@ -98,6 +113,12 @@ def test_the_sdist_and_the_wheel_built_from_it_report_the_commit_without_git(tmp
         archive.extractall(unrelated, **({"filter": "data"} if hasattr(tarfile, "data_filter") else {}))
     wheel = _build(unrelated / sdist.name.removesuffix(".tar.gz"), "build_wheel", tmp_path / "wheel")
     assert _wheel_build_info(wheel) == {"git_commit": head, "git_dirty": False}
+    with zipfile.ZipFile(wheel) as archive:
+        metadata = next(name for name in archive.namelist() if name.endswith(".dist-info/METADATA"))
+        for name in legal_files:
+            path = f"{metadata.removesuffix('METADATA')}licenses/{name}"
+            assert archive.read(path) == (ROOT / name).read_bytes()
+            assert f"License-File: {name}\n" in archive.read(metadata).decode()
 
     # install by unpacking the wheel, then import it with no git on PATH and the
     # unrelated repository as the working directory

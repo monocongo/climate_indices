@@ -9,6 +9,7 @@ description = 'Reference implementations of various climate indices typically us
 authors = [{name = "James Adams", email = "monocongo@gmail.com"}]
 readme = 'README.md'
 license = {file = "LICENSE"}
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md", "docs/licensing.md"]
 keywords = ["climate", "drought", "meteorology", "SPI", "SPEI", "PET", "precipitation", "evapotranspiration"]
 classifiers = [
      'Development Status :: 5 - Production/Stable',

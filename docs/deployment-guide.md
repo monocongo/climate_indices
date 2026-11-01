@@ -27,7 +27,8 @@ FROM python:3.14-slim AS builder
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
-COPY README.md LICENSE ./
+COPY README.md LICENSE THIRD_PARTY_NOTICES.md ./
+COPY docs/licensing.md ./docs/licensing.md
 COPY src/ ./src/
 RUN uv sync --frozen --no-dev
 

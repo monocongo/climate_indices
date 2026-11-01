@@ -21,6 +21,7 @@ flood_applications
 energy_applications
 floating_point_best_practices
 ai-assisted-development
+licensing
 adr/index
 ```
 
@@ -78,11 +79,10 @@ have at it, and/or contact us to see if we can help.
 
 ## Copyright and licensing
 
-This is a developmental version of code that is originally developed at
-NCEI/NOAA, official release version available on
-[drought.gov](https://www.drought.gov/drought/python-climate-indices).
-This software is under BSD 3-Clause license, copyright James Adams, 2017.
-Please read more on our [license](https://github.com/monocongo/climate_indices/blob/main/LICENSE) page.
+The project's primary license is
+[BSD-3-Clause](https://github.com/monocongo/climate_indices/blob/main/LICENSE),
+copyright James Adams, 2017.
+See {doc}`licensing` for the original NOAA public-domain notice and the third-party exceptions.
 
 ## Citation
 
