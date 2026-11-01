@@ -2,3 +2,10 @@
 # Preserve the original license bytes, including trailing spaces.
 crates/climate-indices/LICENSE -text
 tests/fixture/original_combined_license.txt -text whitespace=-blank-at-eol
+
+# These two fixtures are stored as ordinary blobs, not as LFS objects, so the LFS clean
+# filter reports them as modified on a fresh checkout and `hatch_build.py` embeds a dirty
+# tree, which the release workflow refuses (#1524). Clear the filter attributes until they
+# are stored as LFS objects.
+notebooks/fixtures/energy_era5_1991_2020.nc -filter -diff -merge -text
+tests/fixture/nclimgrid_awc/polaris_awc_1000mm.nc -filter -diff -merge -text
