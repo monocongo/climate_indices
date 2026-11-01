@@ -162,6 +162,89 @@ records the tolerances, evidence, and known gaps.
    :imported-members:
 ```
 
+(reliability-event-contract)=
+### climate_indices.reliability
+
+The reliability package currently validates and classifies interruption records.
+It does not yet calculate indices or simulate failures.
+[ADR-0026](adr/0026-reliability-module-api-and-conventions.md) fixes those later capabilities.
+Import it with `from climate_indices import reliability`.
+
+`classify_interruptions(events, threshold_minutes=5.0)` accepts a DataFrame,
+a column mapping, or a sequence of row mappings. It returns a new DataFrame
+in input order. It never changes the caller's table or removes events.
+Durations strictly above five minutes are sustained by default.
+Durations at or below five minutes are momentary, including zero duration.
+An explicit type remains unchanged; a contradiction emits one `ClimateIndicesWarning`.
+A null optional type is derived from duration.
+
+| Field | Contract |
+| --- | --- |
+| `event_id` | A unique, non-null string or integer. Booleans are invalid. |
+| `start_time` | A non-null timestamp. |
+| `duration` or `end_time` | Supply at least one complete column. Durations are finite, nonnegative minutes. End times cannot precede start times. |
+| `customers_interrupted` | A nonnegative integer within int64 bounds. Floating-point counts, numeric strings, and Booleans are rejected, not converted. |
+| `interruption_type` | Optional `sustained` or `momentary`. |
+| `planned` | Optional Boolean. Absent or null values become `False`. Planned events remain included. |
+| `device_id`, `cause` | Optional strings. Null values remain unknown. |
+| `device_operations` | Optional nonnegative int64 integers. Nulls remain unknown in a nullable `Int64` column. An absent column stays absent. |
+| `momentary_event_excluded` | Optional Boolean. Absent or null values become `False`. No association with sustained events is inferred. |
+| `component_ids` | Optional lists of string identifiers. These labels do not resolve connectivity. Nulls remain unknown. |
+
+Normalization returns float64 duration arrays and int64 customer-count arrays.
+It preserves exact integer counts, including counts above the float64 exact-integer range.
+Missing or masked required values are errors.
+Missing optional values include `None`, `pd.NA`, NaN, and masked values.
+Optional Boolean nulls use the documented defaults, not inferred status.
+For DataFrames with optional integer nulls, use pandas nullable `Int64` rather than floating-point columns.
+
+Timezone-aware timestamps become UTC. Timezone-naive timestamps remain naive.
+A table cannot mix the two. Timestamps must fit `datetime64[ns]`.
+When both duration sources exist, their absolute difference cannot exceed `1e-9` minutes.
+Durations must form representable timestamp intervals.
+Positive-duration intervals use half-open bounds: touching endpoints do not overlap.
+All overlaps produce one `OverlappingEventsWarning` from `climate_indices.exceptions`.
+Zero-duration events remain in the table and do not overlap other intervals.
+
+Invalid fields raise `InvalidArgumentError` from `climate_indices.exceptions`.
+Its `argument_name` names the field, such as `event_id`, `duration`, or `start_time`.
+Unknown columns, including simulation-only `failure_rate`, `repair_time`, and topology edges,
+are rejected. Simulation inputs are not part of this deterministic contract.
+The shipped [JSON Schema](https://github.com/monocongo/climate_indices/blob/main/src/climate_indices/reliability/event_schema.json)
+checks JSON record structure. Runtime validation also checks identifier uniqueness,
+calendar validity, timezone awareness, interval consistency, and customer bounds.
+JSON timestamps use ISO 8601 strings; Python inputs also accept pandas and datetime timestamps.
+JSON Schema treats `1.0` as an integer, but runtime count validation requires integer values without a floating-point dtype.
+
+The shared internal metric-input validator additionally requires positive, finite
+`total_customers`: the average served-customer count over the reporting period.
+It can be fractional. No event count can exceed it.
+Classification alone has no served-customer input and therefore does not enforce that upper bound.
+The internal reporting-period validator accepts positive `period_hours` or explicit
+`period_start` and `period_end`. Bounds must have matching timezone awareness and positive elapsed time.
+A complete 2023 period has 8760 hours; a complete 2024 period has 8784 hours.
+Timezone-aware periods use actual elapsed hours, including daylight-saving changes.
+If hours and bounds are both supplied, they must agree within `1e-9` hours.
+Without either input, the period remains undefined. Event timestamps never determine it.
+These internal validators support later metric tickets; they are not additional public functions.
+
+```{doctest}
+>>> from climate_indices import reliability
+>>> events = [{"event_id": "a", "start_time": "2024-01-01T00:00:00Z",
+...            "duration": 5.0, "customers_interrupted": 10}]
+>>> classified = reliability.classify_interruptions(events)
+>>> classified["interruption_type"].tolist()
+['momentary']
+>>> str(classified["customers_interrupted"].to_numpy().dtype)
+'int64'
+```
+
+```{eval-rst}
+.. automodule:: climate_indices.reliability
+   :members:
+   :imported-members:
+```
+
 ### climate_indices.compound
 
 Declared-input harmonization, frequency statistics, and run matching for compound-hazard

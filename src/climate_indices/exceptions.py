@@ -316,6 +316,10 @@ class ClimateIndicesWarning(UserWarning):
     pass
 
 
+class OverlappingEventsWarning(ClimateIndicesWarning):
+    """Reliability event intervals overlap; validation retains every event."""
+
+
 class MissingDataWarning(ClimateIndicesWarning):
     """Warning issued when calibration period has excessive missing data.
 
