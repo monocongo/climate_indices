@@ -199,7 +199,7 @@ The binary wheels add the compiled extension (`climate_indices/_native.abi3.so`,
 ### Build Configuration
 ```toml
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
