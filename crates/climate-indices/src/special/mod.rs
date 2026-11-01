@@ -16,7 +16,7 @@
 //! dropped, keeping its return values.
 //!
 //! Licensing: the original Cephes notices and the full xsf BSD-3-Clause and
-//! Boost Software License 1.0 texts are retained in the repository's LICENSE.
+//! Boost Software License 1.0 texts are retained in this crate's LICENSE.
 //! xsf is Copyright (c) 2024, SciPy. The Lanczos coefficients come from
 //! Boost.Math (`lanczos.hpp`, (C) Copyright John Maddock 2006).
 

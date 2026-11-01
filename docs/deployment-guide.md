@@ -27,7 +27,8 @@ FROM python:3.14-slim AS builder
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
-COPY README.md LICENSE ./
+COPY README.md LICENSE THIRD_PARTY_NOTICES.md ./
+COPY docs/licensing.md ./docs/licensing.md
 COPY src/ ./src/
 RUN uv sync --frozen --no-dev
 
@@ -174,8 +175,14 @@ import fails only when the extension is absent, which is not an error
 ### Package Contents
 **Included**:
 - `src/climate_indices/` - All source code
-- `LICENSE` - BSD 3-Clause license
+- `LICENSE` contains the primary BSD 3-Clause license.
+- `THIRD_PARTY_NOTICES.md` contains the third-party notices and license texts.
+- `docs/licensing.md` contains the licensing history and original NOAA public-domain notice.
 - `README.md` - Package description
+
+Source distributions retain the listed legal-document paths.
+Wheels store all three legal documents under `<distribution>.dist-info/licenses/`,
+preserving their relative paths, including `docs/licensing.md`.
 
 The binary wheels add the compiled extension (`climate_indices/_native.abi3.so`, or
 `_native.pyd` on Windows); the `py3-none-any` wheel and the sdist contain only the
@@ -183,7 +190,7 @@ The binary wheels add the compiled extension (`climate_indices/_native.abi3.so`,
 
 **Excluded** (defined in `pyproject.toml`):
 - `tests/` - Test suite
-- `docs/` - Documentation source
+- `docs/` - Documentation source, except the legal document `docs/licensing.md`
 - `notebooks/` - Jupyter notebooks
 - `.github/` - CI/CD workflows
 - `.venv/` - Virtual environment
@@ -192,7 +199,7 @@ The binary wheels add the compiled extension (`climate_indices/_native.abi3.so`,
 ### Build Configuration
 ```toml
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]

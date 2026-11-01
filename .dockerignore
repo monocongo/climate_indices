@@ -3,7 +3,8 @@
 Dockerfile
 .dockerignore
 tests/
-docs/
+docs/*
+!docs/licensing.md
 htmlcov/
 .coverage
 *.pyc
