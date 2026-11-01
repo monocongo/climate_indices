@@ -1026,7 +1026,8 @@ def test_every_git_lfs_tracked_file_is_stored_as_an_lfs_pointer() -> None:
     clean filter makes `git status` report such a file as modified on a fresh checkout,
     which failed the 3.1.1 release rehearsal (#1524).
     """
-    pointer = re.compile(rb"version https://git-lfs\.github\.com/spec/v1\noid sha256:[0-9a-f]{64}\nsize [0-9]+\n")
+    # an empty file is its own LFS pointer (git-lfs spec), so the empty blob is valid too
+    pointer = re.compile(rb"(?:version https://git-lfs\.github\.com/spec/v1\noid sha256:[0-9a-f]{64}\nsize [0-9]+\n)?")
     listed = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, check=True, capture_output=True).stdout
     attributes = subprocess.run(
         ["git", "check-attr", "--cached", "-z", "--stdin", "filter"],
@@ -1060,6 +1061,7 @@ def test_every_git_lfs_tracked_file_is_stored_as_an_lfs_pointer() -> None:
     [
         (b"version https://git-lfs.github.com/spec/v1\noid sha256:" + b"a" * 64 + b"\nsize 123\n", True),
         (b"version https://git-lfs.github.com/spec/v1\noid sha256:" + b"0" * 64 + b"\nsize 0\n", True),
+        (b"", True),
         (b"plain data\n", False),
         (b"version https://git-lfsXgithubXcom/spec/v1\noid sha256:" + b"a" * 64 + b"\nsize 1\n", False),
         (b"version https://git-lfs.github.com/spec/v1\n", False),
@@ -1078,7 +1080,7 @@ def test_lfs_integrity_checks_the_staged_snapshot(
 
     def git(*args: str) -> None:
         subprocess.run(
-            ["git", "-c", "filter.lfs.clean=", "-c", "filter.lfs.required=false", *args],
+            ["git", "-c", "filter.lfs.clean=", "-c", "filter.lfs.process=", "-c", "filter.lfs.required=false", *args],
             cwd=tmp_path,
             check=True,
             capture_output=True,
