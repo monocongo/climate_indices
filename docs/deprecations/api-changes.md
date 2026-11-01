@@ -19,6 +19,67 @@ outputs retain the existing `calibration_start_year`/`calibration_end_year`
 attributes alongside the canonical names; their history entry still records the
 timescale, not calibration years. No numerical behavior changes.
 
+## Upgrade considerations for 3.1.1
+
+### Python 3.10 support removed (3.1.1)
+
+**What a user sees:** Python 3.10 cannot install 3.1.1 because its
+`Requires-Python` constraint is `>=3.11,<3.15`.
+An unpinned install can select an older compatible package instead.
+
+**How to detect it:** check `python --version` and the installed package version.
+Check deployment images, environment files, and CI jobs for Python 3.10.
+
+**What to change:** upgrade to Python 3.11–3.14 before installing 3.1.1.
+If Python 3.10 is required, pin `climate-indices==3.1.0`.
+
+### Output Provenance attributes (3.1.1)
+
+**What a user sees:** xarray and CLI outputs gain `climate_indices_git_commit`,
+`climate_indices_provenance_schema_version`, and `climate_indices_provenance` attributes.
+Compound Dataset routes are an exception to per-variable storage: they store the record only at Dataset level.
+`read_provenance()` accepts a DataArray or Dataset and reads its own attributes.
+Use `read_provenance(result)` for these routes, not `read_provenance(result[variable])`.
+Existing calculation attributes and the `history` format remain unchanged.
+
+**How to detect it:** inspect output attributes or use
+`climate_indices.provenance.read_provenance()`.
+
+**What to change:** update exact attribute comparisons and metadata allowlists
+if they reject the new attributes. No numerical or function-call migration is required.
+Use `with_source()` when input source identifiers or Dataset attributes must accompany a calculation.
+The record does not identify the kernel that ran or guarantee identical results.
+The record removes recognized credentials and reduces recognized absolute paths to their file names.
+File names can remain. Sanitization does not guarantee anonymity.
+Review free-text metadata before sharing outputs.
+See {doc}`Dataset provenance </provenance>` for route-specific contents and size limits.
+
+### Pearson fallback errors (3.1.1)
+
+**What a user sees:** post-fit transform and loss-measurement errors propagate
+instead of triggering gamma fallback.
+Fallback remains available for fit-resolution failures and excessive loss of valid values.
+
+**How to detect it:** check calls that request Pearson fitting with gamma fallback
+and previously completed after a post-fit error.
+
+**What to change:** investigate the reported error instead of depending on a gamma retry.
+Handle the reported exception where the application can recover.
+
+### Native results and imports (3.1.1)
+
+Additional eligible float64 operations now use the optional Rust backend.
+The parity contract remains `rtol = atol = 1e-10`, with matching missing-value positions.
+Complete-input KBDI does not promise bitwise identity.
+Use tolerance-based comparisons rather than exact comparisons across backends.
+See {doc}`the numerical contract </rust-numerical-contract>` for the supported conditions.
+
+Existing enum imports remain valid, including `indices.Distribution` and `compute.Periodicity`.
+The shared `climate_indices.vocabulary` definitions preserve object identity and enum pickle compatibility.
+No import migration is required.
+
+See the {doc}`3.1.1 release notes </release-notes-3.1.1>` for the complete upgrade summary.
+
 ## DataArray index API promotion (3.1.0)
 
 The DataArray index APIs and public `xarray_adapter` interface become Stable.

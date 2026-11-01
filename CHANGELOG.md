@@ -5,21 +5,78 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.1.1] - unreleased
+## [3.1.1] - 2026-11-01
+
+See the [release notes](docs/release-notes-3.1.1.md) and
+[migration guidance](docs/deprecations/api-changes.md#upgrade-considerations-for-311).
+
+### Added
+
+- **Output Provenance** (`climate_indices.provenance`, #1470, #1510): xarray
+  and CLI outputs now carry a strict-JSON `climate_indices_provenance` record.
+  It records software identity, backend availability, effective parameters, input metadata,
+  and upstream lineage, with documented limits for each route.
+  `climate_indices_git_commit` and `climate_indices_provenance_schema_version`
+  provide searchable attributes. Compound Dataset routes are an exception to per-variable storage:
+  they store the record only at Dataset level. Use `read_provenance(result)` for these routes,
+  not `read_provenance(result[variable])`.
+  `with_source()` labels inputs, and `read_provenance()` decodes a record.
+  `read_provenance()` accepts a DataArray or Dataset and reads its own attributes.
+
+  Builds embed the source commit through `hatch_build.py` for installations without Git.
+  Records survive NetCDF and Zarr round trips without computing lazy input data.
+  The record does not identify the kernel that ran or guarantee identical results.
+  Existing attributes and the `history` format remain unchanged.
+  The record removes recognized credentials and reduces recognized absolute paths to their file names.
+  File names can remain. Sanitization does not guarantee anonymity; review free text before sharing outputs.
+  See [Dataset provenance](docs/provenance.md) for limits and privacy requirements.
 
 ### Changed
 
-- **Expanded optional Rust backend**: eligible float64 calls now use native gamma
-  goodness-of-fit D statistics, empirical plotting positions, Run Theory identification
-  and per-run metrics, compound bootstrap resample metrics, CFFWIS behavior indices
-  (ISI, BUI, FWI, DSR), overwinter Drought Code, and trailing Timescale sums.
-  The standalone crate release candidate is `0.1.1`. These dispatch paths preserve
-  the existing results within `rtol = atol = 1e-10`, including missing-value positions;
-  public signatures and validation do not change. Complete-input KBDI uses its
-  tolerance-preserving fast path, not bitwise identity. Longer series convolutions
-  and non-C-contiguous aggregation blocks retain Python, as do Fosberg FFWI, HDW,
-  and Haines. The crate also exposes trailing means to Rust callers
-  (ADR-0025; #1434–#1438, #1442, #1485).
+- **Python support**: the package now requires Python 3.11–3.14
+  (`>=3.11,<3.15`). Python 3.10 users must upgrade Python or retain version 3.1.0.
+  The CI matrix, release checks, and documentation use the new minimum (#1511, #1512).
+- **Expanded optional Rust backend**: eligible float64 calls now use additional native kernels.
+  These include gamma goodness-of-fit D statistics, empirical plotting positions,
+  Run Theory identification and per-run metrics, and compound bootstrap resample metrics.
+  They also include CFFWIS behavior indices (ISI, BUI, FWI, DSR),
+  overwinter Drought Code, and trailing Timescale sums.
+  These paths retain the parity contract of `rtol = atol = 1e-10`, with matching
+  missing-value positions. Complete-input KBDI uses a tolerance-preserving fast path,
+  not bitwise identity. Longer series convolutions and non-C-contiguous aggregation
+  blocks retain Python, as do Fosberg FFWI, HDW, Haines, and the beta distribution.
+
+  The standalone crate prepares version `0.1.1` on its independent release track.
+  The crate also exposes trailing means to Rust callers
+  (ADR-0025; #1434–#1438, #1442, #1485, #1493, #1508, #1509, #1516).
+- **Shared execution internals**: distribution transforms, Pearson fallback reporting,
+  native dispatch, CLI index adapters, Spatial Kernel packing, and Calibration Period
+  inference now use shared implementations. Public signatures, CLI selections, calendar
+  rules, and Dask chunk requirements remain unchanged (#1417–#1423).
+- **Shared vocabulary**: `climate_indices.vocabulary` defines `Distribution`,
+  `Periodicity`, `OutputScale`, `ZeroHandling`, and `Aggregation`.
+  Existing import paths remain aliases of the same objects, with enum pickle
+  compatibility preserved (#1419, #1481).
+- **Benchmarks and contributor guidance**: reproducible empirical-ranking comparisons
+  document why the Python fallback retains its ranking loop. The release runbook adds the
+  published-crate consumer smoke test (#1315, #1387, #1477, #1517).
+
+### Fixed
+
+- **Pearson fallback error boundary**: post-fit transform and loss-measurement errors
+  propagate instead of triggering gamma fallback. Fitting and diagnostics share the
+  fallback decision and poor-fit reporting policy (#1418, #1492).
+- **Console exception logging**: console logs use plain tracebacks, even when `rich`
+  is installed. They no longer include frame-local variables through Rich's traceback
+  formatter. JSON logging remains unchanged (#1454, #1497).
+- **Documentation versions**: the homepage derives its Python support range from
+  package metadata. The overview no longer reports stale package versions (#986, #1518).
+
+### Security
+
+- **Locked dependency updates**: `uv.lock` pins `msgpack` 1.2.3, `filelock` 4.2.1,
+  and `tornado` 6.6. Published runtime dependency ranges remain unchanged.
+  Development tooling also updates Ruff and GitHub Actions (#1500–#1505, #1515).
 
 ## [3.1.0] - 2026-10-26
 
@@ -100,18 +157,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `crates/climate-indices/CHANGELOG.md`. The Python package and its
   `climate_indices._native` extension have no interface change (ADR-0021; #1361,
   #1377, #1381, #1384, #1403, #1409, #1411, #1414, #1415, #1426, #1471).
-- **Dataset provenance** (`climate_indices.provenance`, #1470): every output
-  variable the xarray adapters and the CLI build now carries
-  `climate_indices_git_commit`, `climate_indices_provenance_schema_version`, and a
-  strict-JSON `climate_indices_provenance` record of the software identity, the
-  backend, every effective parameter (including defaults and inferred values), and
-  each input with its metadata and upstream lineage. Records are per variable,
-  bounded, sanitized of credentials and local paths, and survive NetCDF and Zarr
-  round trips. `with_source()` labels inputs with source identifiers, and
-  `read_provenance()` decodes a record. Builds embed the source commit through a
-  Hatchling build hook (`hatch_build.py`), so installed wheels report it without Git.
-  Existing attributes and the `history` format are unchanged; see
-  [Dataset provenance](docs/provenance.md).
 
 ### Changed
 
