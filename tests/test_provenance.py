@@ -433,6 +433,17 @@ def test_read_provenance_rejects_an_attribute_that_is_not_json(container: Any, l
         read_provenance(data)
 
 
+@pytest.mark.parametrize("container, label", [(xr.DataArray, "'v'"), (xr.Dataset, "Dataset")])
+@pytest.mark.parametrize("raw, kind", [("[]", "list"), ("null", "NoneType"), (b'"text"', "str")])
+def test_read_provenance_rejects_json_that_is_not_an_object(container: Any, label: str, raw: Any, kind: str) -> None:
+    variable = xr.DataArray(np.zeros(1), dims="x", name="v")
+    data = variable if container is xr.DataArray else xr.Dataset({"name": variable})
+    data.attrs[PROVENANCE_ATTR] = raw
+
+    with pytest.raises(ValueError, match=f"{PROVENANCE_ATTR} of {label} is not a JSON object: {kind}"):
+        read_provenance(data)
+
+
 def test_an_unparseable_input_record_is_flagged_not_propagated() -> None:
     data = _monthly()
     data.attrs[PROVENANCE_ATTR] = "{not json"
