@@ -455,6 +455,37 @@ def test_standalone_rust_job_checks_the_crate_without_python() -> None:
     assert "setup-uv" not in job
 
 
+def test_crate_license_matches_original_bytes() -> None:
+    """Match the pre-split root license from commit 150c7366."""
+    original = (ROOT / "tests/fixture/original_combined_license.txt").read_bytes()
+    assert (ROOT / "crates/climate-indices/LICENSE").read_bytes() == original
+
+
+def test_primary_license_is_separate_and_all_original_notices_are_preserved() -> None:
+    """The crate retains the original combined license as a standalone distribution."""
+    combined = (ROOT / "crates/climate-indices/LICENSE").read_text(encoding="utf-8")
+    primary, historical = combined.split("Previous Public Domain License", maxsplit=1)
+    historical, third_party = historical.split("Third-party notices for", maxsplit=1)
+
+    def legal_text(text: str) -> str:
+        # Ignore only decorative separators, blank lines, and trailing whitespace.
+        return "\n".join(line.rstrip() for line in text.splitlines() if line.strip() and not line.startswith("===="))
+
+    primary_license = (ROOT / "LICENSE").read_text(encoding="utf-8")
+    assert legal_text(primary_license) == legal_text(primary)
+    assert "Copyright 2017, James Adams" in primary_license
+    assert "NOAA" not in primary_license
+    assert "Third-party" not in primary_license
+    history = (ROOT / "docs/licensing.md").read_text(encoding="utf-8")
+    notices = (ROOT / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
+    assert legal_text("Previous Public Domain License" + historical) == legal_text(
+        history.split("```text\n", maxsplit=1)[1].split("```", maxsplit=1)[0]
+    )
+    assert legal_text("Third-party notices for" + third_party) == legal_text(
+        notices.split("```text\n", maxsplit=1)[1].split("```", maxsplit=1)[0]
+    )
+
+
 def test_rust_job_proves_the_crates_package_correctly() -> None:
     """`climate-indices` must package with its README and license, and `climate-py` must not.
 

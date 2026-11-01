@@ -10,7 +10,8 @@ WORKDIR /app
 
 # Copy dependency and project metadata files
 COPY pyproject.toml uv.lock ./
-COPY README.md LICENSE ./
+COPY README.md LICENSE THIRD_PARTY_NOTICES.md ./
+COPY docs/licensing.md ./docs/licensing.md
 COPY src/ ./src/
 
 # Install dependencies
