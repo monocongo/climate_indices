@@ -1026,10 +1026,14 @@ def test_every_git_lfs_tracked_file_is_stored_as_an_lfs_pointer() -> None:
     clean filter makes `git status` report such a file as modified on a fresh checkout,
     which failed the 3.1.1 release rehearsal (#1524).
     """
-    header = b"version https://git-lfs.github.com/spec/v1\n"
+    pointer = re.compile(rb"version https://git-lfs\.github\.com/spec/v1\noid sha256:[0-9a-f]{64}\nsize [0-9]+\n")
     listed = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, check=True, capture_output=True).stdout
     attributes = subprocess.run(
-        ["git", "check-attr", "-z", "--stdin", "filter"], cwd=ROOT, check=True, capture_output=True, input=listed
+        ["git", "check-attr", "--cached", "-z", "--stdin", "filter"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        input=listed,
     ).stdout.split(b"\0")
     tracked_as_lfs = [
         os.fsdecode(path)
@@ -1037,17 +1041,82 @@ def test_every_git_lfs_tracked_file_is_stored_as_an_lfs_pointer() -> None:
         if attribute == b"filter" and value == b"lfs"
     ]
     assert tracked_as_lfs, "no tracked file is marked filter=lfs, so the check below proves nothing"
-    plain_blobs = [
+    invalid_pointers = [
         path
         for path in tracked_as_lfs
-        if not subprocess.run(
-            ["git", "cat-file", "blob", f"HEAD:{path}"], cwd=ROOT, check=True, capture_output=True
-        ).stdout.startswith(header)
+        if not pointer.fullmatch(
+            subprocess.run(["git", "cat-file", "blob", f":{path}"], cwd=ROOT, check=True, capture_output=True).stdout
+        )
     ]
-    assert not plain_blobs, (
-        f"{plain_blobs} are marked filter=lfs but committed as plain blobs; "
+    assert not invalid_pointers, (
+        f"{invalid_pointers} are marked filter=lfs but their staged blobs are not valid LFS pointers; "
         "store them as LFS objects or clear the filter attribute for those paths"
     )
+
+
+@pytest.mark.parametrize("change", ["new", "renamed", "replaced"])
+@pytest.mark.parametrize(
+    ("blob", "valid"),
+    [
+        (b"version https://git-lfs.github.com/spec/v1\noid sha256:" + b"a" * 64 + b"\nsize 123\n", True),
+        (b"version https://git-lfs.github.com/spec/v1\noid sha256:" + b"0" * 64 + b"\nsize 0\n", True),
+        (b"plain data\n", False),
+        (b"version https://git-lfsXgithubXcom/spec/v1\noid sha256:" + b"a" * 64 + b"\nsize 1\n", False),
+        (b"version https://git-lfs.github.com/spec/v1\n", False),
+        (b"version https://git-lfs.github.com/spec/v1\noid sha256:abc\nsize 123\n", False),
+        (b"version https://git-lfs.github.com/spec/v1\noid sha256:" + b"g" * 64 + b"\nsize 123\n", False),
+        (b"version https://git-lfs.github.com/spec/v1\noid sha256:" + b"a" * 64 + b"\n", False),
+        (b"version https://git-lfs.github.com/spec/v1\noid sha256:" + b"a" * 64 + b"\nsize -1\n", False),
+        (b"version https://git-lfs.github.com/spec/v1\noid sha256:" + b"a" * 64 + b"\nsize NaN\n", False),
+        (b"version https://git-lfs.github.com/spec/v1\noid sha256:" + b"a" * 64 + b"\nsize 1\nextra\n", False),
+    ],
+)
+def test_lfs_integrity_checks_the_staged_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str, blob: bytes, valid: bool
+) -> None:
+    """Check staged additions, renames, and replacements without using HEAD or worktree bytes."""
+
+    def git(*args: str) -> None:
+        subprocess.run(
+            ["git", "-c", "filter.lfs.clean=", "-c", "filter.lfs.required=false", *args],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+
+    git("init", "--quiet")
+    attributes = tmp_path / ".gitattributes"
+    attributes.write_text("*.bin -filter\n", encoding="utf-8")
+    if change != "new":
+        (tmp_path / ("old.bin" if change == "renamed" else "fixture.bin")).write_bytes(b"old plain data\n")
+    git("add", ".")
+    git(
+        "-c",
+        "user.name=release",
+        "-c",
+        "user.email=release@example.invalid",
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "--quiet",
+        "-m",
+        "baseline",
+    )
+    if change == "renamed":
+        git("mv", "old.bin", "fixture.bin")
+    attributes.write_text("*.bin filter=lfs\n", encoding="utf-8")
+    fixture = tmp_path / "fixture.bin"
+    fixture.write_bytes(blob)
+    git("add", ".gitattributes", "fixture.bin")
+    attributes.write_text("*.bin -filter\n", encoding="utf-8")
+    fixture.write_bytes(b"unstaged data\n")
+    monkeypatch.setattr(sys.modules[__name__], "ROOT", tmp_path)
+
+    if valid:
+        test_every_git_lfs_tracked_file_is_stored_as_an_lfs_pointer()
+    else:
+        with pytest.raises(AssertionError, match="not valid LFS pointers"):
+            test_every_git_lfs_tracked_file_is_stored_as_an_lfs_pointer()
 
 
 def test_climate_py_builds_abi3_wheels() -> None:
