@@ -97,6 +97,12 @@ def test_the_sdist_and_the_wheel_built_from_it_report_the_commit_without_git(tmp
     legal_files = ("LICENSE", "THIRD_PARTY_NOTICES.md", "docs/licensing.md")
     with tarfile.open(sdist) as archive:
         prefix = sdist.name.removesuffix(".tar.gz")
+        pkg_info = archive.extractfile(f"{prefix}/PKG-INFO")
+        assert pkg_info is not None
+        sdist_metadata = pkg_info.read().decode()
+        assert "License-Expression: BSD-3-Clause AND BSL-1.0\n" in sdist_metadata
+        assert "Classifier: License ::" not in sdist_metadata
+        assert "\nLicense:" not in sdist_metadata
         for name in legal_files:
             legal_member = archive.extractfile(f"{prefix}/{name}")
             assert legal_member is not None
@@ -115,10 +121,14 @@ def test_the_sdist_and_the_wheel_built_from_it_report_the_commit_without_git(tmp
     assert _wheel_build_info(wheel) == {"git_commit": head, "git_dirty": False}
     with zipfile.ZipFile(wheel) as archive:
         metadata = next(name for name in archive.namelist() if name.endswith(".dist-info/METADATA"))
+        wheel_metadata = archive.read(metadata).decode()
+        assert "License-Expression: BSD-3-Clause AND BSL-1.0\n" in wheel_metadata
+        assert "Classifier: License ::" not in wheel_metadata
+        assert "\nLicense:" not in wheel_metadata
         for name in legal_files:
             path = f"{metadata.removesuffix('METADATA')}licenses/{name}"
             assert archive.read(path) == (ROOT / name).read_bytes()
-            assert f"License-File: {name}\n" in archive.read(metadata).decode()
+            assert f"License-File: {name}\n" in wheel_metadata
 
     # install by unpacking the wheel, then import it with no git on PATH and the
     # unrelated repository as the working directory
