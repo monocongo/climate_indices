@@ -2,6 +2,11 @@
 
 ## Status
 
+Amended by {doc}`0026-reliability-module-api-and-conventions` (#1336): the
+approved reliability design uses a namespaced package rather than `compute.py`
+and unqualified modern-API functions. Implementation remains pending under
+#1337–#1345; existing APIs do not change.
+
 Amended by #1061: the DataArray index APIs are Stable from 3.1.0 under
 {doc}`0012-xarray-api-stays-beta-through-3.0.0`. The dual-API computation boundary is unchanged.
 
@@ -30,4 +35,7 @@ as the other index functions.
 
 The established numpy API in `indices.py` remains stable and receives no new functions, except the NumPy-only `standardized_index()` sanctioned by the amendment above. New non-Palmer index computations must be added to `compute.py` and exposed through the modern API in `typed_public_api.py` and `xarray_adapter.py`. Palmer-family computations are the established exception: they live in `palmer.py`; ADR-0011 granted the standard PDSI family an xarray entry point (`climate_indices.pdsi()`, #1016), while scPDSI remains NumPy-only. Adding xarray support for other Palmer indices requires a separate, explicit architecture decision rather than unsupported wiring through `indices.py` or `xarray_adapter.py`. The fire family is the documented exception in
 [ADR-0005](./0005-fire-module-api.md), and the flood family is the second, in
-[ADR-0013](./0013-flood-module-api-and-naming.md).
+[ADR-0013](./0013-flood-module-api-and-naming.md). The approved reliability
+exception is [ADR-0026](./0026-reliability-module-api-and-conventions.md):
+`climate_indices.reliability` will own its computations and public names, with
+no package-root function re-exports. Its xarray adapter remains a later ticket.

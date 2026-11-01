@@ -87,6 +87,36 @@ The PV transform uses the reference configuration in
 references, not dependencies. Point an out-of-scope proposal there rather than
 dismissing it: it is a candidate for that sibling, not a rejection on merit.
 
+## Power-system reliability scope
+
+`climate_indices` accepts deterministic power-distribution reliability indices
+computed from an outage or interruption record plus a served-customer count:
+SAIFI, SAIDI, CAIDI, MAIFI and MAIFI_E, ASAI, and outage counts.
+The scope also includes a seeded Monte Carlo path over supplied component data,
+with series and parallel aggregation only. Network topology resolution and
+customer connectivity, AC/DC power flow, protection coordination and
+recloser-sequence modelling, cascading-failure and
+weather-to-failure models, restoration and crew dispatch, regulatory report
+formats, and annualization of partial periods are out of scope. The exact
+boundary, the module and unit conventions, the sustained/momentary threshold,
+and the MAIFI flavour are in
+[ADR-0026](docs/adr/0026-reliability-module-api-and-conventions.md).
+
+A separate repository becomes justified when two or more of these are true:
+
+1. An implementation requires resolving network topology or customer
+   connectivity.
+2. An implementation requires AC or DC power flow, protection coordination, or
+   recloser-sequence modelling.
+3. The reliability code exceeds roughly 30 percent of the package's source
+   volume.
+4. Reliability-specific dependencies would be forced on all `climate_indices`
+   users.
+5. The release cadence needs to diverge.
+
+Until two hold, an out-of-scope reliability proposal is a candidate for that
+sibling, not a rejection on merit.
+
 ## Documentation audience
 
 Everything on the published site is for users and contributors of the shipped
@@ -137,7 +167,8 @@ vocabulary at `src/climate_indices/CONTEXT.md`):
   `src/climate_indices/CONTEXT.md`, `VALIDATION.md`
 - Explanation: `docs/explanation.md`, `docs/algorithms.md`,
   `docs/wildfire_applications.md`, `docs/flood_applications.md`,
-  `docs/energy_applications.md`, `docs/licensing.md`, `docs/adr/`,
+  `docs/energy_applications.md`, `docs/licensing.md`, `docs/adr/`
+  (including the approved reliability design in ADR-0026),
   `docs/ai-assisted-development.md`,
   `docs/algorithm_refs/`, `docs/architecture.md`,
   `docs/project-overview.md`, `docs/floating_point_best_practices.md`
