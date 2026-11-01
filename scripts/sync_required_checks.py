@@ -76,32 +76,33 @@ def declared_checks(path: Path | None = None) -> list[str]:
 
 def _job_text(workflow: str, job: str) -> str:
     """One top-level job's text, without the comment block that precedes the next job."""
-    match = re.search(rf"^  {re.escape(job)}:\n(.*?)(?=^  [\w-]+:\n|\Z)", workflow, re.MULTILINE | re.DOTALL)
+    match = re.search(rf"^ {{2}}{re.escape(job)}:\n(.*?)(?=^ {{2}}[\w-]+:\n|\Z)", workflow, re.MULTILINE | re.DOTALL)
     if not match:
         raise ValueError(f"no top-level job named {job!r}")
-    return re.split(r"^  #", match.group(1), maxsplit=1, flags=re.MULTILINE)[0]
+    return re.split(r"^ {2}#", match.group(1), maxsplit=1, flags=re.MULTILINE)[0]
 
 
 def _job_contexts(job: str, body: str) -> set[str]:
     """The contexts one job reports: one per matrix leg, or the bare job name."""
-    if re.search(r"^    name:", body, re.MULTILINE):
+    if re.search(r"^ {4}name:", body, re.MULTILINE):
         raise ValueError(f"job {job!r}: explicit job names are not supported")
-    condition = re.search(r"^    if:\s*([^\n]+)", body, re.MULTILINE)
+    condition = re.search(r"^ {4}if:\s*([^\n]+)", body, re.MULTILINE)
     always = condition is not None and condition[1].strip() in {"always()", "${{ always() }}"}
     if condition and not always:
         raise ValueError(f"job {job!r}: condition may skip pull requests")
-    if re.search(r"^    needs:", body, re.MULTILINE) and not always:
+    if re.search(r"^ {4}needs:", body, re.MULTILINE) and not always:
         raise ValueError(f"job {job!r}: dependencies may skip pull requests; use an unconditional job")
     if not re.search(r"^\s+matrix:", body, re.MULTILINE):
         return {job}
 
     # Fail closed: only the repository's ordered two-axis matrix format is supported.
-    matrix = re.search(r"^      matrix:(.*?)(?=^ {0,6}\S|\Z)", body, re.MULTILINE | re.DOTALL)
+    matrix = re.search(r"^ {6}matrix:", body, re.MULTILINE)
+    matrix_body = re.split(r"^ {0,6}\S", body[matrix.end() :], maxsplit=1, flags=re.MULTILINE)[0] if matrix else ""
     shape = re.fullmatch(
-        r"\n        python-version: \[([^]\n]+)]\n        os: \[([^]\n]+)]\n"
-        r"(?:        include:\n((?:          - python-version: ['\"]\d+\.\d+['\"]\n"
-        r"            os: [\w.-]+\n)+))?\s*",
-        matrix[1] if matrix else "",
+        r"\n {8}python-version: \[([^]\n]+)]\n {8}os: \[([^]\n]+)]\n"
+        r"(?: {8}include:\n((?: {10}- python-version: ['\"]\d+\.\d+['\"]\n"
+        r" {12}os: [\w.-]+\n)+))?\s*",
+        matrix_body,
     )
     if (
         not shape
@@ -110,9 +111,11 @@ def _job_contexts(job: str, body: str) -> set[str]:
     ):
         raise ValueError(f"job {job!r}: parser does not support this matrix shape")
     legs = {
-        (python, system) for python in re.findall(r"\d+\.\d+", shape[1]) for system in re.findall(r"[\w.-]+", shape[2])
+        (python.strip().strip("'\""), system.strip())
+        for python in shape[1].split(",")
+        for system in shape[2].split(",")
     }
-    legs |= set(re.findall(r"- python-version: ['\"](\d+\.\d+)['\"]\n            os: ([\w.-]+)", shape[3] or ""))
+    legs |= set(re.findall(r"- python-version: ['\"](\d+\.\d+)['\"]\n {12}os: ([\w.-]+)", shape[3] or ""))
     return {f"{job} ({python}, {system})" for python, system in legs}
 
 
@@ -150,8 +153,8 @@ def _gh_api(
     if input_data is not None:
         command += ["--input", "-"]
     command += ["--", endpoint]
-    # Arguments use a fixed API route and separate options; no shell interprets them.
-    result = subprocess.run(  # nosec B603 B607
+    # S8705: validated repo and fixed route follow --; branch data cannot become options, and no shell runs.
+    result = subprocess.run(  # nosec B603 B607 # NOSONAR (S8705)
         command,
         input=json.dumps(input_data) if input_data is not None else None,
         capture_output=True,

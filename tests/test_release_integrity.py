@@ -45,7 +45,8 @@ ROOT = Path(__file__).parent.parent
 PYTHON_CLASSIFIER_PREFIX = "Programming Language :: Python :: "
 
 _sync_spec = importlib.util.spec_from_file_location("sync_required_checks", ROOT / "scripts/sync_required_checks.py")
-assert _sync_spec is not None and _sync_spec.loader is not None
+assert _sync_spec is not None
+assert _sync_spec.loader is not None
 sync_required_checks = importlib.util.module_from_spec(_sync_spec)
 _sync_spec.loader.exec_module(sync_required_checks)
 

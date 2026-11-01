@@ -68,6 +68,7 @@ sync_required_checks = _load_script("sync_required_checks", "scripts/sync_requir
             "        os: [ubuntu-latest]\n        python-version: ['3.11', '3.12', '3.13', '3.14']",
         ),
         ("        include:", "        exclude:"),
+        ("      matrix:\n", "      matrix: unsupported\n"),
         ("            os: macos-latest", "            os: macos-latest\n            features: default"),
         ("        python-version: ['3.11', '3.12', '3.13', '3.14']", "        python-version: ${{ inputs.pythons }}"),
         ("    runs-on:", "    name: Python tests\n    runs-on:"),
@@ -79,8 +80,27 @@ def test_required_check_parser_rejects_unsupported_jobs(old: str, new: str) -> N
     workflow = (ROOT / sync_required_checks.WORKFLOW).read_text(encoding="utf-8")
     body = sync_required_checks._job_text(workflow, "test")
     assert old in body
+    changed_body = body.replace(old, new)
     with pytest.raises(ValueError):
-        sync_required_checks._job_contexts("test", body.replace(old, new))
+        sync_required_checks._job_contexts("test", changed_body)
+
+
+@pytest.mark.parametrize("include", [False, True])
+def test_required_check_parser_preserves_matrix_contexts(include: bool) -> None:
+    body = (
+        "    strategy:\n"
+        "      matrix:\n"
+        "        python-version: [\"3.11\", '3.14']\n"
+        "        os: [ubuntu-latest, macos-latest]\n"
+    )
+    expected = {
+        f"test ({python}, {system})" for python in ("3.11", "3.14") for system in ("ubuntu-latest", "macos-latest")
+    }
+    if include:
+        body += "        include:\n          - python-version: '3.12'\n            os: windows-latest\n"
+        expected.add("test (3.12, windows-latest)")
+    body += "\n    steps: []\n"
+    assert sync_required_checks._job_contexts("test", body) == expected
 
 
 @pytest.mark.parametrize("condition", ["always()", "${{ always() }}"])
@@ -175,17 +195,35 @@ def test_required_check_api_keeps_arguments_separate(monkeypatch: pytest.MonkeyP
     ]
     assert json.loads(run.call_args.kwargs["input"]) == {"checks": []}
     run.reset_mock()
-    for repo in ("--hostname=evil", "owner/repo?query", "owner/repo/extra"):
+    for repo in ("--hostname=evil", "owner/repo?query", "owner/repo/extra", "owner/repo\n--hostname=evil"):
         with pytest.raises(ValueError):
             sync_required_checks._gh_api(endpoint, repo)
+    for path in ("--hostname=evil", "https://example.com/repos/owner/repo", "repos/owner/repo/branches/main"):
+        with pytest.raises(ValueError):
+            sync_required_checks._gh_api(path, None)
     run.assert_not_called()
 
 
-def test_required_check_live_encodes_branch(monkeypatch: pytest.MonkeyPatch) -> None:
-    api = Mock(return_value=json.dumps({"contexts": []}))
-    monkeypatch.setattr(sync_required_checks, "_gh_api", api)
-    assert sync_required_checks.live_checks(None, "release/next") == ({"contexts": []}, [])
-    assert "/branches/release%2Fnext/" in api.call_args.args[0]
+@pytest.mark.parametrize(
+    "branch,encoded",
+    [
+        ("release/next", "release%2Fnext"),
+        ("--hostname=evil", "--hostname%3Devil"),
+        ("main?ref=evil&x=y", "main%3Fref%3Devil%26x%3Dy"),
+        ("main\n--hostname=evil", "main%0A--hostname%3Devil"),
+        ("main; echo bad", "main%3B%20echo%20bad"),
+    ],
+)
+def test_required_check_live_encodes_branch(monkeypatch: pytest.MonkeyPatch, branch: str, encoded: str) -> None:
+    run = Mock(return_value=argparse.Namespace(returncode=0, stdout=json.dumps({"contexts": []})))
+    monkeypatch.setattr(sync_required_checks.subprocess, "run", run)
+    assert sync_required_checks.live_checks(None, branch) == ({"contexts": []}, [])
+    assert run.call_args.args[0] == [
+        "gh",
+        "api",
+        "--",
+        f"repos/{{owner}}/{{repo}}/branches/{encoded}/protection/required_status_checks",
+    ]
 
 
 def test_characterization_output_accepts_only_json_below_design_root(
