@@ -155,6 +155,9 @@ _STANDARDIZED_INDEX_VALIDATORS = (
     lambda args: compute.validate_output_scale(args["output_scale"]),
     lambda args: compute._validate_zero_handling(args["zero_handling"]),
     lambda args: compute._validate_aggregation(args["aggregation"]),
+    lambda args: compute._validate_pool_window_days(
+        args["pool_window_days"], args["periodicity"], args["distribution"], scale=args["scale"]
+    ),
 )
 _wrapped_standardized_index = xarray_adapter(
     calendar="periodicity",
@@ -169,6 +172,7 @@ _wrapped_standardized_index = xarray_adapter(
         "calibration_year_initial",
         "calibration_year_final",
         "aggregation",
+        "pool_window_days",
     ],
 )(indices.standardized_index)
 
@@ -234,6 +238,7 @@ def standardized_index(
     zero_handling: ZeroHandling = "classic",
     aggregation: compute.Aggregation = "sum",
     clip_negatives: bool = True,
+    pool_window_days: int = 0,
 ) -> npt.NDArray[np.float64]: ...
 
 
@@ -252,6 +257,7 @@ def standardized_index(
     zero_handling: ZeroHandling = "classic",
     aggregation: compute.Aggregation = "sum",
     clip_negatives: bool = True,
+    pool_window_days: int = 0,
 ) -> xr.DataArray: ...
 
 
@@ -301,6 +307,10 @@ def standardized_index(values: Any, *args: Any, **kwargs: Any) -> npt.NDArray[np
             such as residual load needs False. The beta distribution never clips,
             because a clipped value would join the zero mass and standardize a
             different series.
+        pool_window_days: Number of neighbouring days on each side of an hourly
+            empirical step whose values join its calibration sample; zero (the default)
+            keeps the shipped hour x day-of-year strata. Available only with
+            ``Periodicity.hourly`` and ``Distribution.empirical`` (#1407).
 
     Returns:
         Standardized values as numpy.ndarray or xarray.DataArray, matching the
