@@ -1,1 +1,4 @@
 *.nc filter=lfs diff=lfs merge=lfs -text
+# Preserve the original license bytes, including trailing spaces.
+crates/climate-indices/LICENSE -text
+tests/fixture/original_combined_license.txt -text whitespace=-blank-at-eol

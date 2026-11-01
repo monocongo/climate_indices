@@ -455,6 +455,12 @@ def test_standalone_rust_job_checks_the_crate_without_python() -> None:
     assert "setup-uv" not in job
 
 
+def test_crate_license_matches_original_bytes() -> None:
+    """Match the pre-split root license from commit 150c7366."""
+    original = (ROOT / "tests/fixture/original_combined_license.txt").read_bytes()
+    assert (ROOT / "crates/climate-indices/LICENSE").read_bytes() == original
+
+
 def test_primary_license_is_separate_and_all_original_notices_are_preserved() -> None:
     """The crate retains the original combined license as a standalone distribution."""
     combined = (ROOT / "crates/climate-indices/LICENSE").read_text(encoding="utf-8")
