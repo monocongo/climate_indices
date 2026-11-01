@@ -12,6 +12,7 @@ Two tiers of tests:
     - Built wheels are smoke-tested outside the source checkout
     - Core public API symbols are importable after install
     - The crate publishes only after its gates, from its own tag namespace
+    - The reviewed required-status-check names match the workflow's jobs and matrices
 
   Release-time only (run before pushing a release tag):
     uv run pytest -m release tests/test_release_integrity.py
@@ -77,6 +78,7 @@ def _workflow_python_matrix(relative_path: Path) -> list[str]:
 
 
 UNIT_TESTS_WORKFLOW = Path(".github/workflows/unit-tests-workflow.yml")
+REQUIRED_CHECKS_FILE = Path(".github/required-status-checks.txt")
 CRATE_RELEASE_WORKFLOW = Path(".github/workflows/crate-release.yml")
 CRATE_CHANGELOG = Path("crates/climate-indices/CHANGELOG.md")
 CRATE_MANIFEST = Path("crates/climate-indices/Cargo.toml")
@@ -150,6 +152,65 @@ def _job_legs(job: str) -> set[tuple[str, str]]:
         for system in re.findall(r"[\w.-]+", systems[0])
     }
     return legs | set(re.findall(r"- python-version:\s*['\"](\d+\.\d+)['\"]\s+os:\s*([\w.-]+)", job))
+
+
+def _declared_required_checks() -> list[str]:
+    """The reviewed required status-check contexts, in file order, with comments dropped."""
+    text = (ROOT / REQUIRED_CHECKS_FILE).read_text(encoding="utf-8")
+    return [line.strip() for line in text.splitlines() if line.strip() and not line.lstrip().startswith("#")]
+
+
+def _job_contexts(job: str, body: str) -> set[str]:
+    """The contexts one job reports: `<job> (<python>, <os>)` per matrix leg, else `<job>`."""
+    matrix = re.search(r"^\s+python-version:\s*\[", body, re.MULTILINE) or re.search(
+        r"^\s+os:\s*\[", body, re.MULTILINE
+    )
+    if matrix:
+        return {f"{job} ({python}, {system})" for python, system in _job_legs(body)}
+    return {job}
+
+
+def _workflow_contexts_for(checks: list[str]) -> set[str]:
+    """The contexts the workflow reports for the jobs the reviewed list names."""
+    workflow = (ROOT / UNIT_TESTS_WORKFLOW).read_text(encoding="utf-8")
+    contexts: set[str] = set()
+    for check in checks:
+        job = check.split(" (", 1)[0]
+        contexts |= _job_contexts(job, _workflow_job(workflow, job))
+    return contexts
+
+
+def test_required_check_names_match_the_workflow_contexts() -> None:
+    """A matrix change renames contexts, so the reviewed list must name what the jobs report.
+
+    GitHub reports a stale required context as "Expected - Waiting for status to be
+    reported", which blocks every pull request until branch protection is updated.
+    """
+    declared = _declared_required_checks()
+
+    assert len(declared) == len(set(declared)), f"{REQUIRED_CHECKS_FILE} repeats a context"
+    assert sorted(declared) == sorted(_workflow_contexts_for(declared)), (
+        f"{REQUIRED_CHECKS_FILE} and {UNIT_TESTS_WORKFLOW} disagree; "
+        "run scripts/sync_required_checks.py to see the difference"
+    )
+
+
+def test_required_checks_exclude_jobs_that_skip_on_pull_requests() -> None:
+    """A job gated off pull requests never reports there, so requiring it blocks every PR."""
+    workflow = (ROOT / UNIT_TESTS_WORKFLOW).read_text(encoding="utf-8")
+    required_jobs = {check.split(" (", 1)[0] for check in _declared_required_checks()}
+
+    assert "test-full" not in required_jobs, f"{REQUIRED_CHECKS_FILE} must not require test-full"
+    for job in required_jobs:
+        assert not re.search(r"^    if:", _workflow_job(workflow, job), re.MULTILINE), f"job {job!r} is gated"
+
+
+def test_required_checks_still_require_the_rust_and_native_jobs() -> None:
+    """#1292's purpose: a broken Rust build, lint, or wheel must not merge."""
+    required_jobs = {check.split(" (", 1)[0] for check in _declared_required_checks()}
+
+    assert {"rust", "test-native", "native-wheel"} <= required_jobs
+    assert {"rust-standalone", "rust-crate", "rust-msrv", "rust-semver", "rust-deny"} <= required_jobs
 
 
 def _expected_badge_url() -> str:
