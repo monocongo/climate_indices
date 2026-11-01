@@ -52,6 +52,10 @@ jobs:
       - name: Run mypy type checker
         run: uv run --no-sync --no-build mypy src/ tests/test_type_checking.py
 
+      # Branch-protection drift must fail a required job, not only optional meta.
+      - name: Check required status contexts
+        run: uv run --no-sync --no-build pytest tests/test_release_integrity.py -k required_check
+
   docs:
     runs-on: ubuntu-latest
     permissions:

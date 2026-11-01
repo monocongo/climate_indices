@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import contextlib
 import fnmatch
+import importlib.util
 import os
 import re
 import shlex
@@ -42,6 +43,11 @@ from packaging.specifiers import SpecifierSet
 
 ROOT = Path(__file__).parent.parent
 PYTHON_CLASSIFIER_PREFIX = "Programming Language :: Python :: "
+
+_sync_spec = importlib.util.spec_from_file_location("sync_required_checks", ROOT / "scripts/sync_required_checks.py")
+assert _sync_spec is not None and _sync_spec.loader is not None
+sync_required_checks = importlib.util.module_from_spec(_sync_spec)
+_sync_spec.loader.exec_module(sync_required_checks)
 
 
 def _read_toml(relative_path: Path) -> dict[str, Any]:
@@ -160,26 +166,6 @@ def _declared_required_checks() -> list[str]:
     return [line.strip() for line in text.splitlines() if line.strip() and not line.lstrip().startswith("#")]
 
 
-def _job_contexts(job: str, body: str) -> set[str]:
-    """The contexts one job reports: `<job> (<python>, <os>)` per matrix leg, else `<job>`."""
-    matrix = re.search(r"^\s+python-version:\s*\[", body, re.MULTILINE) or re.search(
-        r"^\s+os:\s*\[", body, re.MULTILINE
-    )
-    if matrix:
-        return {f"{job} ({python}, {system})" for python, system in _job_legs(body)}
-    return {job}
-
-
-def _workflow_contexts_for(checks: list[str]) -> set[str]:
-    """The contexts the workflow reports for the jobs the reviewed list names."""
-    workflow = (ROOT / UNIT_TESTS_WORKFLOW).read_text(encoding="utf-8")
-    contexts: set[str] = set()
-    for check in checks:
-        job = check.split(" (", 1)[0]
-        contexts |= _job_contexts(job, _workflow_job(workflow, job))
-    return contexts
-
-
 def test_required_check_names_match_the_workflow_contexts() -> None:
     """A matrix change renames contexts, so the reviewed list must name what the jobs report.
 
@@ -189,7 +175,7 @@ def test_required_check_names_match_the_workflow_contexts() -> None:
     declared = _declared_required_checks()
 
     assert len(declared) == len(set(declared)), f"{REQUIRED_CHECKS_FILE} repeats a context"
-    assert sorted(declared) == sorted(_workflow_contexts_for(declared)), (
+    assert sorted(declared) == sorted(sync_required_checks.workflow_contexts()), (
         f"{REQUIRED_CHECKS_FILE} and {UNIT_TESTS_WORKFLOW} disagree; "
         "run scripts/sync_required_checks.py to see the difference"
     )
@@ -197,20 +183,24 @@ def test_required_check_names_match_the_workflow_contexts() -> None:
 
 def test_required_checks_exclude_jobs_that_skip_on_pull_requests() -> None:
     """A job gated off pull requests never reports there, so requiring it blocks every PR."""
-    workflow = (ROOT / UNIT_TESTS_WORKFLOW).read_text(encoding="utf-8")
-    required_jobs = {check.split(" (", 1)[0] for check in _declared_required_checks()}
-
-    assert "test-full" not in required_jobs, f"{REQUIRED_CHECKS_FILE} must not require test-full"
-    for job in required_jobs:
-        assert not re.search(r"^    if:", _workflow_job(workflow, job), re.MULTILINE), f"job {job!r} is gated"
+    assert "test-full" not in sync_required_checks.REQUIRED_JOBS
+    assert sync_required_checks.workflow_contexts()
 
 
 def test_required_checks_still_require_the_rust_and_native_jobs() -> None:
     """#1292's purpose: a broken Rust build, lint, or wheel must not merge."""
     required_jobs = {check.split(" (", 1)[0] for check in _declared_required_checks()}
 
+    assert {"lint", "test", "test-minimum-deps", "notebooks", "security-audit"} <= required_jobs
     assert {"rust", "test-native", "native-wheel"} <= required_jobs
     assert {"rust-standalone", "rust-crate", "rust-msrv", "rust-semver", "rust-deny"} <= required_jobs
+
+
+def test_required_check_drift_runs_in_a_required_job() -> None:
+    """The drift test must block merges even when the optional meta job fails."""
+    workflow = (ROOT / UNIT_TESTS_WORKFLOW).read_text(encoding="utf-8")
+    assert "lint" in sync_required_checks.REQUIRED_JOBS
+    assert "pytest tests/test_release_integrity.py -k required_check" in _workflow_job(workflow, "lint")
 
 
 def _expected_badge_url() -> str:
