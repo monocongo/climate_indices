@@ -180,13 +180,17 @@ import fails only when the extension is absent, which is not an error
 - `docs/licensing.md` contains the licensing history and original NOAA public-domain notice.
 - `README.md` - Package description
 
+Source distributions retain the listed legal-document paths.
+Wheels store all three legal documents under `<distribution>.dist-info/licenses/`,
+preserving their relative paths, including `docs/licensing.md`.
+
 The binary wheels add the compiled extension (`climate_indices/_native.abi3.so`, or
 `_native.pyd` on Windows); the `py3-none-any` wheel and the sdist contain only the
 `_native.pyi` type stub, so both install and run without a Rust toolchain.
 
 **Excluded** (defined in `pyproject.toml`):
 - `tests/` - Test suite
-- `docs/` - Documentation source
+- `docs/` - Documentation source, except the legal document `docs/licensing.md`
 - `notebooks/` - Jupyter notebooks
 - `.github/` - CI/CD workflows
 - `.venv/` - Virtual environment
