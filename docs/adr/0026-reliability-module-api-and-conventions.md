@@ -91,7 +91,8 @@ unreproducible claim of reproduction.
      distributions, a series or parallel arrangement, `total_customers`,
      `horizon_hours`, `n_trials`, and a required explicit seed.
      It produces an event log for each trial and calls `reliability_indices()`
-     with that trial's log and horizon, returning a `ReliabilityResult` per trial.
+     with that trial's log and horizon. It returns one `ReliabilityResult` per
+     trial as a `tuple[ReliabilityResult, ...]`, ordered by trial index.
      [#1343](https://github.com/monocongo/climate_indices/issues/1343) implements
      this entry point. It rejects `component_topology` with `InvalidArgumentError`
      because connectivity resolution is deferred.
@@ -228,6 +229,7 @@ unreproducible claim of reproduction.
     | SAIDI | `N_T = 1000`, `Σ r_i N_i = 24 000` customer-minutes | 24.0 minutes per customer per period |
     | CAIDI | `Σ r_i N_i = 24 000`, `Σ N_i = 300` | 80.0 minutes per interruption; equals `SAIDI / SAIFI` |
     | MAIFI_E | `N_T = 1000`, `Σ IDE_i N_i = 300` | 0.3 momentary events per customer per period |
+    | MAIFI, device-operation form | `N_T = 1000`, `Σ device_operations_i N_i = 300` | 0.3 device operations per customer per period |
     | ASAI | `N_T = 1000`, `H = 24 h`, `Σ r_i N_i = 24 000` customer-minutes | 0.983333, from `1 − 24 000 / (1000 · 24 · 60)` |
     | No outage, operation data absent | Empty event record, `N_T = 1000`, `H = 24 h`, no `device_operations` column | SAIFI 0, SAIDI 0, MAIFI_E 0, ASAI 1.0; CAIDI undefined (0/0); MAIFI undefined because operation data is absent. The result names both undefined metrics and emits at most one warning. |
     | No outage, operation data available | Empty event record, `N_T = 1000`, `H = 24 h`, `device_operations` column supplied | SAIFI 0, SAIDI 0, MAIFI_E 0, MAIFI 0, ASAI 1.0; only CAIDI is undefined (0/0). The result names it and emits at most one warning. |
