@@ -40,7 +40,7 @@ import xarray as xr
 
 from climate_indices import compute, eto, indices, palmer, pm_eto, provenance, utils
 from climate_indices._calibration_period import MIN_CALIBRATION_YEARS, CalibrationPeriod, resolve_calibration_period
-from climate_indices.cf_metadata_registry import CF_METADATA, spi_output_attributes
+from climate_indices.cf_metadata_registry import CF_METADATA, spi_output_attributes, standardized_output_bounds
 from climate_indices.exceptions import (
     CoordinateValidationError,
     InputAlignmentWarning,
@@ -526,15 +526,20 @@ def _effective_calibration_years(
     return period.start_year, period.end_year
 
 
-def _supplies_complete_fit(valid_kwargs: dict[str, Any]) -> bool:
+def _supplies_complete_fit(valid_kwargs: dict[str, Any], func_name: str = "") -> bool:
     """True when ``fitting_params`` carries every parameter of the distribution.
 
     Nothing is fitted then, so no window of the record produced the parameters.
     """
     params = valid_kwargs.get("fitting_params")
     distribution = valid_kwargs.get("distribution")
+    if not params or distribution is None:
+        return False
+    if func_name == "_spai":
+        keys = indices._SPAI_PARAMETER_KEYS.get(distribution)
+        return keys is not None and all(params.get(key) is not None for key in ("mean", *keys))
     # an empirical (rank-based) distribution has no parameter keys; the index rejects it
-    if not params or distribution is None or distribution.value not in compute._PARAMETER_KEYS:
+    if distribution.value not in compute._PARAMETER_KEYS:
         return False
     altnames = dict(compute._FIT_ALTNAMES)
     return all(
@@ -1274,6 +1279,7 @@ def _report_effective_calibration_years(
     input_da: xr.DataArray,
     valid_kwargs: dict[str, Any],
     time_dim: str,
+    func_name: str = "",
 ) -> None:
     """Rewrite calibration years to those the fit actually used (#1050).
 
@@ -1285,7 +1291,7 @@ def _report_effective_calibration_years(
         return
     initial = calc_metadata.get("calibration_year_initial")
     final = calc_metadata.get("calibration_year_final")
-    if initial is None or final is None or _supplies_complete_fit(valid_kwargs):
+    if initial is None or final is None or _supplies_complete_fit(valid_kwargs, func_name):
         return
     calc_metadata["calibration_year_initial"], calc_metadata["calibration_year_final"] = _effective_calibration_years(
         input_da[time_dim], initial, final, valid_kwargs.get("data_start_year")
@@ -1372,17 +1378,20 @@ def _resolve_cf_metadata(
     return {**(cf_metadata or {}), **variant}
 
 
-def _apply_output_range_attributes(output_attrs: dict[str, Any], func_name: str) -> None:
+def _apply_output_range_attributes(output_attrs: dict[str, Any], func_name: str, valid_kwargs: dict[str, Any]) -> None:
     """Drop inherited input bounds that do not describe the computed output.
 
     The input's precipitation range does not describe the dimensionless ratio,
     so PNP declares ``valid_min`` 0.0 with no finite upper bound, as the CLI
     path (``_cli_output.build_index_attrs``) already does.
     """
-    if func_name == "percentage_of_normal":
+    if func_name in {"percentage_of_normal", "_spai"}:
         for attr in ("valid_min", "valid_max", "valid_range", "actual_range"):
             output_attrs.pop(attr, None)
-        output_attrs["valid_min"] = 0.0
+        if func_name == "_spai":
+            output_attrs.update(standardized_output_bounds(valid_kwargs.get("output_scale", "normal")))
+        else:
+            output_attrs["valid_min"] = 0.0
 
 
 def _finalize_ufunc_result(
@@ -1445,7 +1454,7 @@ def _finalize_ufunc_result(
     calc_metadata = _capture_calculation_metadata(calculation_metadata_keys, valid_kwargs)
     if calc_metadata is not None:
         # report the years the fit used, not the ones requested (#1050)
-        _report_effective_calibration_years(calc_metadata, input_da, valid_kwargs, time_dim)
+        _report_effective_calibration_years(calc_metadata, input_da, valid_kwargs, time_dim, func_name)
     resolved_index_name = index_display_name if index_display_name is not None else func_name.upper()
     resolved_cf_metadata = _resolve_cf_metadata(
         cf_metadata, cf_metadata_variants, valid_kwargs, metadata_variant_parameter
@@ -1453,7 +1462,7 @@ def _finalize_ufunc_result(
     parameters = None
     if output_provenance.parameters is not None:
         parameters = dict(output_provenance.parameters)
-        _report_effective_calibration_years(parameters, input_da, parameters, time_dim)
+        _report_effective_calibration_years(parameters, input_da, parameters, time_dim, func_name)
     output_attrs = build_output_attrs(
         input_da,
         resolved_cf_metadata,
@@ -1463,7 +1472,7 @@ def _finalize_ufunc_result(
         parameters=parameters,
         implementation=output_provenance.implementation,
     )
-    _apply_output_range_attributes(output_attrs, func_name)
+    _apply_output_range_attributes(output_attrs, func_name, valid_kwargs)
     if is_spi:
         _apply_spi_output_attributes(output_attrs, valid_kwargs, resolved_cf_metadata)
     result_da.attrs = output_attrs

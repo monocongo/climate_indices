@@ -116,7 +116,7 @@ Copy-and-adapt invocations are in {doc}`workflow-examples`.
 
 ## Public API — Index Functions
 
-:::{note} The NumPy overloads are stable. The DataArray index overloads in `typed_public_api` are **Stable from 3.1.0**, including Dataset-returning functions. See {doc}`xarray_migration` for details.
+:::{note} The NumPy overloads are stable. The DataArray index overloads in `typed_public_api` are **Stable from 3.1.0**, including Dataset-returning functions, with one exception: `spai()`, added in 3.2.0, is **Beta** on both its NumPy and DataArray routes and emits `BetaFeatureWarning`. See {doc}`xarray_migration` for details.
 :::
 
 ### climate_indices.typed_public_api
