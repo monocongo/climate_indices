@@ -248,8 +248,9 @@ def test_empty_input_returns_an_empty_frame() -> None:
 
 @pytest.mark.parametrize("value", [0, -1, np.nan, np.inf, True, "5", 1e12])
 def test_invalid_window_minutes(value: Any) -> None:
+    rows = [operation("op-1", "2024-01-01T00:00:00")]
     with pytest.raises(InvalidArgumentError) as exc:
-        reliability.group_momentary_events([operation("op-1", "2024-01-01T00:00:00")], window_minutes=value)
+        reliability.group_momentary_events(rows, window_minutes=value)
     assert exc.value.argument_name == "window_minutes"
 
 

@@ -1,7 +1,7 @@
 """Normalize reliability event records and reporting-period inputs."""
 
 import warnings
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from datetime import date, datetime
 from numbers import Integral, Real
 from typing import TypeAlias
@@ -295,6 +295,45 @@ def classify_interruptions(events: EventTable, *, threshold_minutes: float = 5.0
     return frame
 
 
+def _momentary_groups(by_device: dict[object, list[int]], start_ns: list[int], window_ns: int) -> Iterator[list[int]]:
+    """Yield groups anchored at each device's first ungrouped operation."""
+    for positions in by_device.values():
+        positions.sort(key=lambda position: (start_ns[position], position))
+        cursor = 0
+        while cursor < len(positions):
+            anchor = positions[cursor]
+            deadline = start_ns[anchor] + window_ns
+            members = [anchor]
+            cursor += 1
+            while cursor < len(positions) and start_ns[positions[cursor]] <= deadline:
+                members.append(positions[cursor])
+                cursor += 1
+            yield members
+
+
+def _momentary_group_end(
+    members: list[int],
+    end_ns: list[int],
+    deadline: int,
+    customer_counts: list[int],
+    exclusion_flags: list[bool],
+) -> int:
+    """Validate a group's interval and shared fields, then return its last end position."""
+    last_end = max(members, key=lambda position: end_ns[position])
+    if end_ns[last_end] > deadline:
+        raise _invalid("momentary_event", "must complete within window_minutes; supply completed events")
+    customers = {customer_counts[position] for position in members}
+    if len(customers) > 1:
+        raise _invalid(
+            "customers_interrupted",
+            "grouped momentary operations must interrupt the same customers; supply one event-level row",
+        )
+    excluded = {exclusion_flags[position] for position in members}
+    if len(excluded) > 1:
+        raise _invalid("momentary_event_excluded", "grouped momentary operations must share one exclusion flag")
+    return last_end
+
+
 def group_momentary_events(
     events: EventTable,
     *,
@@ -375,39 +414,19 @@ def group_momentary_events(
     end_positions: list[int] = []
     durations: list[float] = []
     operation_totals: list[object] = []
-    for positions in by_device.values():
-        positions.sort(key=lambda position: (start_ns[position], position))
-        cursor = 0
-        while cursor < len(positions):
-            anchor = positions[cursor]
-            deadline = start_ns[anchor] + window_ns
-            members = [anchor]
-            cursor += 1
-            while cursor < len(positions) and start_ns[positions[cursor]] <= deadline:
-                members.append(positions[cursor])
-                cursor += 1
-            last_end = max(members, key=lambda position: end_ns[position])
-            if end_ns[last_end] > deadline:
-                raise _invalid("momentary_event", "must complete within window_minutes; supply completed events")
-            customers = {customer_counts[position] for position in members}
-            if len(customers) > 1:
-                raise _invalid(
-                    "customers_interrupted",
-                    "grouped momentary operations must interrupt the same customers; supply one event-level row",
-                )
-            excluded = {exclusion_flags[position] for position in members}
-            if len(excluded) > 1:
-                raise _invalid("momentary_event_excluded", "grouped momentary operations must share one exclusion flag")
-            grouped[min(members)] = anchor
-            end_positions.append(last_end)
-            durations.append((end_ns[last_end] - start_ns[anchor]) / 60_000_000_000)
-            if operations is not None:
-                counts = [operations[position] for position in members]
-                operation_totals.append(
-                    _integer(sum(int(value) for value in counts), "device_operations")
-                    if all(not pd.isna(value) for value in counts)
-                    else pd.NA
-                )
+    for members in _momentary_groups(by_device, start_ns, window_ns):
+        anchor = members[0]
+        last_end = _momentary_group_end(members, end_ns, start_ns[anchor] + window_ns, customer_counts, exclusion_flags)
+        grouped[min(members)] = anchor
+        end_positions.append(last_end)
+        durations.append((end_ns[last_end] - start_ns[anchor]) / 60_000_000_000)
+        if operations is not None:
+            counts = [operations[position] for position in members]
+            operation_totals.append(
+                _integer(sum(int(value) for value in counts), "device_operations")
+                if all(not pd.isna(value) for value in counts)
+                else pd.NA
+            )
 
     keep = sorted([position for position in range(len(frame)) if not momentary[position]] + list(grouped))
     result = frame.iloc[[grouped.get(position, position) for position in keep]].copy()
