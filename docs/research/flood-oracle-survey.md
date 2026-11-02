@@ -691,8 +691,8 @@ Using `VALIDATION.md` vocabulary explicitly:
 - `tests/fixture/provenance_schema.json`; `docs/research/dri-wrcc-scpdsi-assessment.md`
   (structure precedent for a repository oracle survey).
 
-Note: issue #1101 and `VALIDATION.md` both cite `docs/research/spi-dataset-survey.md`,
-which is not present on `main` - it exists only on the unmerged
-`research/spi-dataset-survey` branch. This survey therefore takes
-`docs/research/dri-wrcc-scpdsi-assessment.md` as its structural precedent. The dangling
-reference in `VALIDATION.md` is pre-existing and outside this ticket's scope.
+Note: issue #1101 cites `docs/research/spi-dataset-survey.md`, which is not present
+on `main`. It exists only on the unmerged `research/spi-dataset-survey` branch.
+This survey therefore takes `docs/research/dri-wrcc-scpdsi-assessment.md` as its
+structural precedent. `VALIDATION.md` now cites that branch and commit `79fec847`,
+which corrects its earlier dangling file reference (#1528).

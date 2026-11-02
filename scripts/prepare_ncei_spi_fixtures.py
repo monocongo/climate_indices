@@ -191,7 +191,8 @@ def _write_provenance(directory: Path, checksum: str) -> None:
             "separate, older Fortran-derived codebase (drought.gov separately lists 'Source "
             "Code: Drought Indices in Fortran (SPI, PDSI)' as distinct public-release code), "
             "but NOAA does not publish an explicit statement that the two are unrelated, so "
-            "independence is plausible but not airtight -- see docs/research/spi-dataset-survey.md. "
+            "independence is plausible but not airtight -- see the survey on the unmerged branch "
+            "research/spi-dataset-survey (commit 79fec847), not present on main. "
             "MEASURED (full-period-of-record calibration, all 344 divisions): see measured_stats."
         ),
     }
