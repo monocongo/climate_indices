@@ -37,6 +37,7 @@ def _missing(value: object) -> bool:
     return (
         value is None
         or value is pd.NA
+        or value is pd.NaT
         or value is np.ma.masked
         or (isinstance(value, (float, np.floating)) and bool(np.isnan(value)))
     )

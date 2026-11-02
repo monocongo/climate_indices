@@ -194,7 +194,7 @@ A null optional type is derived from duration.
 Normalization returns float64 duration arrays and int64 customer-count arrays.
 It preserves exact integer counts, including counts above the float64 exact-integer range.
 Missing or masked required values are errors.
-Missing optional values include `None`, `pd.NA`, NaN, and masked values.
+Missing optional values include `None`, `pd.NA`, `pd.NaT`, NaN, and masked values.
 Optional Boolean nulls use the documented defaults, not inferred status.
 For DataFrames with optional integer nulls, use pandas nullable `Int64` rather than floating-point columns.
 

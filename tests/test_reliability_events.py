@@ -114,6 +114,12 @@ def test_end_times_and_timezone_normalization() -> None:
     assert result["end_time"].iloc[0] == pd.Timestamp("2024-01-01T00:10:00Z")
 
 
+def test_nat_optional_values_are_missing() -> None:
+    result = reliability.classify_interruptions([record(cause=pd.NaT, planned=pd.NaT)])
+    assert result["cause"].tolist() == [None]
+    assert result["planned"].tolist() == [False]
+
+
 def test_explicit_types_are_retained_with_one_warning() -> None:
     with pytest.warns(ClimateIndicesWarning, match="interruption_type") as caught:
         result = reliability.classify_interruptions([record(interruption_type="momentary")])
