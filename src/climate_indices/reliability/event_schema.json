@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/monocongo/climate_indices/reliability/events-v1",
+  "title": "Reliability event table",
+  "description": "Deterministic records only. Runtime validation checks identifiers, timestamps, durations, timezone awareness, overlaps, and served-customer bounds.",
+  "type": "array",
+  "anyOf": [
+    {"items": {"required": ["duration"]}},
+    {"items": {"required": ["end_time"]}}
+  ],
+  "items": {
+    "type": "object",
+    "required": ["event_id", "start_time", "customers_interrupted"],
+    "properties": {
+      "event_id": {"type": ["string", "integer"]},
+      "start_time": {"$ref": "#/$defs/timestamp"},
+      "end_time": {"$ref": "#/$defs/timestamp"},
+      "duration": {"type": "number", "minimum": 0, "description": "Minutes, including zero."},
+      "customers_interrupted": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
+      "interruption_type": {"enum": ["sustained", "momentary", null]},
+      "planned": {"type": ["boolean", "null"], "default": false},
+      "device_id": {"type": ["string", "null"]},
+      "device_operations": {"type": ["integer", "null"], "minimum": 0, "maximum": 9223372036854775807},
+      "momentary_event_excluded": {"type": ["boolean", "null"], "default": false},
+      "cause": {"type": ["string", "null"]},
+      "component_ids": {"type": ["array", "null"], "items": {"type": "string"}}
+    },
+    "additionalProperties": false
+  },
+  "$defs": {
+    "timestamp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?(Z|[+-]\\d{2}:\\d{2})?$",
+      "description": "ISO 8601 timestamp with optional timezone offset. Runtime validation checks calendar validity. All timestamps must share timezone awareness."
+    }
+  }
+}

@@ -53,6 +53,7 @@ HIERARCHY_CASES = [
     (exceptions.GoodnessOfFitWarning, (exceptions.ClimateIndicesWarning,), True),
     (exceptions.InputAlignmentWarning, (exceptions.ClimateIndicesWarning,), True),
     (exceptions.BetaFeatureWarning, (exceptions.ClimateIndicesWarning,), True),
+    (exceptions.OverlappingEventsWarning, (exceptions.ClimateIndicesWarning,), True),
     (exceptions.ClimateIndicesDeprecationWarning, (exceptions.ClimateIndicesWarning, DeprecationWarning), True),
     (exceptions.ClimateIndicesWarning, ClimateIndicesError, False),
     (exceptions.MissingDataWarning, ClimateIndicesError, False),
@@ -61,6 +62,7 @@ HIERARCHY_CASES = [
     (exceptions.GoodnessOfFitWarning, ClimateIndicesError, False),
     (exceptions.InputAlignmentWarning, ClimateIndicesError, False),
     (exceptions.BetaFeatureWarning, ClimateIndicesError, False),
+    (exceptions.OverlappingEventsWarning, ClimateIndicesError, False),
     (exceptions.ClimateIndicesDeprecationWarning, ClimateIndicesError, False),
     (ClimateIndicesError, exceptions.ClimateIndicesWarning, False),
     (exceptions.DimensionMismatchError, exceptions.ClimateIndicesWarning, False),
@@ -88,6 +90,7 @@ CATCHABILITY_CASES = [
     (exceptions.GoodnessOfFitWarning, exceptions.ClimateIndicesWarning, True),
     (exceptions.InputAlignmentWarning, exceptions.ClimateIndicesWarning, True),
     (exceptions.BetaFeatureWarning, exceptions.ClimateIndicesWarning, True),
+    (exceptions.OverlappingEventsWarning, exceptions.ClimateIndicesWarning, True),
     (exceptions.ClimateIndicesDeprecationWarning, exceptions.ClimateIndicesWarning, True),
     (exceptions.ClimateIndicesDeprecationWarning, DeprecationWarning, True),
 ]
@@ -100,6 +103,7 @@ LIBRARY_WARNINGS = [
     (exceptions.GoodnessOfFitWarning, "poor fit"),
     (exceptions.InputAlignmentWarning, "alignment needed"),
     (exceptions.BetaFeatureWarning, "beta feature"),
+    (exceptions.OverlappingEventsWarning, "overlapping events"),
     (exceptions.ClimateIndicesDeprecationWarning, "deprecated"),
 ]
 
@@ -280,6 +284,7 @@ PICKLE_CASES = [
         {"original_size": 100, "aligned_size": 80, "dropped_count": 20},
     ),
     (exceptions.BetaFeatureWarning, ("beta feature",), {}),
+    (exceptions.OverlappingEventsWarning, ("overlapping events",), {}),
     (
         exceptions.ClimateIndicesDeprecationWarning,
         ("deprecated feature",),
@@ -475,6 +480,7 @@ def test_module_all_lists_exactly_the_public_types_and_helper() -> None:
         "GoodnessOfFitWarning",
         "InputAlignmentWarning",
         "BetaFeatureWarning",
+        "OverlappingEventsWarning",
         "ClimateIndicesDeprecationWarning",
         "emit_deprecation_warning",
         "wrap_value_error",
@@ -489,8 +495,9 @@ def test_module_all_lists_exactly_the_public_types_and_helper() -> None:
         getattr(exceptions, name) for name in exceptions.__all__ if isinstance(getattr(exceptions, name), type)
     }
     abstract_types = {ClimateIndicesError, exceptions.ClimateIndicesWarning}
-    # BetaFeatureWarning is a bare marker warning with no context attributes to check
-    attributable_types = public_types - abstract_types - {exceptions.BetaFeatureWarning}
+    # bare marker warnings carry no context attributes to check
+    bare_markers = {exceptions.BetaFeatureWarning, exceptions.OverlappingEventsWarning}
+    attributable_types = public_types - abstract_types - bare_markers
     assert public_types <= {row[0] for row in HIERARCHY_CASES}
     assert public_types <= {row[0] for row in PICKLE_CASES}
     assert public_types - abstract_types <= {row[0] for row in CATCHABILITY_CASES}

@@ -2,6 +2,8 @@
 # Preserve the original license bytes, including trailing spaces.
 crates/climate-indices/LICENSE -text
 tests/fixture/original_combined_license.txt -text whitespace=-blank-at-eol
+# The checksum test hashes this fixture's working-tree bytes, so pin LF on every platform.
+tests/fixture/reliability/events.json text eol=lf
 
 # These two fixtures are stored as ordinary blobs, not as LFS objects, so the LFS clean
 # filter reports them as modified on a fresh checkout and `hatch_build.py` embeds a dirty
