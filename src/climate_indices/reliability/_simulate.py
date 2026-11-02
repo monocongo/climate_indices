@@ -62,6 +62,8 @@ def _component_spec(spec: Mapping[str, Any], component_id: str) -> _Component:
         if "repair_sigma" not in spec:
             raise _invalid("repair_sigma", "is required for the lognormal distribution")
         repair_sigma = _number(spec["repair_sigma"], "repair_sigma", positive=True)
+        if math.exp(math.log(repair_time) - 0.5 * repair_sigma * repair_sigma) == 0.0:
+            raise _invalid("repair_sigma", "produces an unrepresentable lognormal scale")
     elif "repair_sigma" in spec:
         raise _invalid("repair_sigma", "is only valid with the lognormal distribution")
     return _Component(
@@ -102,7 +104,7 @@ def _customer_count(total_customers: object) -> int:
     count = _number(total_customers, "total_customers", positive=True)
     if count != math.floor(count):
         raise _invalid("total_customers", "must be a whole served-customer count")
-    return int(count)
+    return _integer(int(count), "total_customers")
 
 
 def _repair_distribution(spec: _Component) -> Any | None:
@@ -111,8 +113,8 @@ def _repair_distribution(spec: _Component) -> Any | None:
         return None
     if spec.repair_distribution == "exponential":
         return stats.expon(scale=spec.repair_time)
-    # ``repair_time`` is the distribution mean, so the log-scale median is mean * exp(-sigma**2 / 2).
-    median = spec.repair_time * math.exp(-0.5 * spec.repair_sigma**2)  # type: ignore[operator]
+    # Compute in log space to avoid intermediate underflow for a representable median.
+    median = math.exp(math.log(spec.repair_time) - 0.5 * spec.repair_sigma * spec.repair_sigma)  # type: ignore[operator]
     return stats.lognorm(s=spec.repair_sigma, scale=median)
 
 
@@ -206,7 +208,7 @@ def simulate_reliability(
     total_customers: float,
     horizon_hours: float,
     n_trials: int,
-    seed: int,
+    seed: int | None = None,
     component_topology: Mapping[str, Sequence[str]] | None = None,
 ) -> tuple[ReliabilityResult, ...]:
     """Simulate series or parallel component failures into reliability metrics.
@@ -235,7 +237,8 @@ def simulate_reliability(
     * ``repair_distribution``: optional ``"fixed"``, ``"exponential"`` (default),
       or ``"lognormal"``.
     * ``repair_sigma``: required positive log-scale shape for the lognormal
-      distribution and invalid otherwise.
+      distribution and invalid otherwise. The resulting scale must be representable
+      as a positive float64 value.
 
     A zero ``failure_rate`` component never fails. It cannot bring a parallel
     system down.
@@ -244,13 +247,14 @@ def simulate_reliability(
         components: Non-empty sequence of component mappings. See the field
             list above.
         arrangement: ``"series"`` or ``"parallel"``.
-        total_customers: Positive whole served-customer count. Every simulated
-            event interrupts all of them, so the count must be an integer.
+        total_customers: Positive whole served-customer count within int64.
+            Every simulated event interrupts all of them.
         horizon_hours: Positive simulated horizon in hours. A shorter horizon
             than a year is not annualized.
         n_trials: Positive number of independent trials.
-        seed: Nonnegative integer seed. It is required and is the only source of
-            randomness; the library holds no module-level generator state.
+        seed: Nonnegative integer seed. Omitting it or passing ``None`` raises
+            ``InvalidArgumentError``. It is the only source of randomness;
+            the library holds no module-level generator state.
         component_topology: Deferred connectivity input. Only ``None`` is
             accepted; any supplied value raises. Customer connectivity and
             network topology resolution are out of scope (ADR-0026).

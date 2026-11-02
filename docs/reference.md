@@ -319,7 +319,7 @@ If the constructor omits `customer_minutes_interrupted`, CAIDI remains NaN.
 ASAI is not implemented yet.
 
 `simulate_reliability(components, *, arrangement, total_customers, horizon_hours,
-n_trials, seed, component_topology=None)` runs a seeded Monte Carlo simulation of
+n_trials, seed=None, component_topology=None)` runs a seeded Monte Carlo simulation of
 `components` and returns one `ReliabilityResult` per trial, ordered by trial index.
 Every component starts operational at hour 0. A component fails after an exponential
 wait with its constant `failure_rate` (failures per hour), then recovers after a draw
@@ -343,14 +343,17 @@ time in hours), an optional `repair_distribution` of `"fixed"`, `"exponential"`
 with the lognormal distribution and invalid otherwise). The fixed distribution uses
 `repair_time` as the deterministic duration; the exponential uses it as the mean; the
 lognormal uses it as the mean with log-scale median `repair_time * exp(-repair_sigma**2 / 2)`.
+The lognormal scale must be representable as a positive float64 value.
+An unrepresentable scale raises `InvalidArgumentError` naming `repair_sigma` before sampling.
 A zero `failure_rate` component never fails, so it cannot bring a parallel system down.
 
-`total_customers` must be a positive whole count, because every simulated event
+`total_customers` must be a positive whole count within int64, because every simulated event
 interrupts all of them. `horizon_hours` and `n_trials` must be positive, and a horizon
 shorter than a year is never annualized. `seed` is a required nonnegative integer and
-the only source of randomness; the library holds no module-level generator state, so an
-identical seed and identical arguments reproduce the tuple exactly. Trials are sampled
-in order from one generator, so a shorter run is an exact prefix of a longer run with
+the only source of randomness. Omitting it or passing `None` raises `InvalidArgumentError` naming `seed`.
+
+The library holds no module-level generator state, so identical seeds and arguments reproduce the tuple exactly.
+Trials are sampled in order from one generator, so a shorter run is an exact prefix of a longer run with
 the same seed. Supplying `component_topology` raises `InvalidArgumentError` naming that
 field, because customer connectivity and network topology resolution are deferred
 (ADR-0026). The same exception names any invalid component or envelope field.
@@ -368,7 +371,14 @@ This excludes momentary downtime, unlike an integral of all system downtime.
 
 `tests/test_reliability_simulation.py` checks this independent analytic expectation
 within three standard errors, with mean repairs above and below five minutes.
+
+A second analytic reference checks two components in series with exponential failures and repairs.
+It uses a continuous-time Markov chain, which describes transitions between component failure states.
+The transient states have the first component down, the second down, or both down.
+The reference integrates outage durations until both components recover, with the same five-minute threshold and horizon clipping.
+
 A separate test checks that the standard error falls at the `1 / sqrt(n)` rate.
+A larger trial count does not guarantee a closer trial mean on every run.
 For multiple components, the tests check that parallel SAIDI never exceeds series
 SAIDI for identical component histories. Interruption counts have no such ordering:
 one long series outage can contain multiple separate parallel outages.

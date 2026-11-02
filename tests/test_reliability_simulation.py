@@ -4,6 +4,8 @@ The analytic SAIDI reference uses one initially operational component with
 exponential failures and repairs. Its failure-onset intensity is ``rate * P_up(t)``.
 For each onset, the expected clipped repair duration contributes only if it exceeds
 five minutes. The quadrature therefore measures sustained downtime, not all downtime.
+A second reference uses a continuous-time Markov chain for two components in
+series, with the same threshold and horizon clipping.
 The convergence tolerance is three standard errors of the trial mean. A separate
 test checks that the standard error falls at the ``1 / sqrt(n)`` rate.
 Trials are sampled in order from one generator, so a shorter run is an exact
@@ -18,7 +20,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-from scipy import integrate
+from scipy import integrate, linalg
 
 from climate_indices import reliability
 from climate_indices.exceptions import InvalidArgumentError
@@ -107,14 +109,15 @@ def test_different_seeds_produce_different_results() -> None:
 
 def test_seed_is_required() -> None:
     components = [component()]
-    with pytest.raises(TypeError):
+    with pytest.raises(InvalidArgumentError) as error:
         reliability.simulate_reliability(
             components,
             arrangement="series",
             total_customers=TOTAL_CUSTOMERS,
             horizon_hours=HORIZON_HOURS,
             n_trials=1,
-        )  # type: ignore[call-arg]
+        )
+    assert error.value.argument_name == "seed"
     with pytest.raises(InvalidArgumentError) as error:
         simulate(components, n_trials=1, seed=None)
     assert error.value.argument_name == "seed"
@@ -127,9 +130,7 @@ def test_public_surface_is_exported_without_extras() -> None:
 
 def test_trials_are_ordered_by_trial_index() -> None:
     runs = simulate([component()], n_trials=3, seed=7)
-    assert [result.outage_count for result in runs] == [
-        result.outage_count for result in simulate([component()], n_trials=3, seed=7)
-    ]
+    assert runs[:2] == simulate([component()], n_trials=2, seed=7)
     assert all(isinstance(result, reliability.ReliabilityResult) for result in runs)
 
 
@@ -143,6 +144,52 @@ def test_mean_converges_to_sustained_analytic_expectation(repair_time: float, ar
     analytic = _analytic_saidi_minutes(0.01, repair_time, HORIZON_HOURS)
     # Three standard errors of the trial mean: a ~99.7 percent Monte Carlo band.
     standard_error = float(np.std(saidi, ddof=1) / math.sqrt(n_trials))
+    assert abs(float(np.mean(saidi)) - analytic) <= 3.0 * standard_error
+
+
+def _analytic_series_saidi_minutes(
+    failure_rates: tuple[float, float], mean_repair_hours: tuple[float, float], horizon_hours: float
+) -> float:
+    """Integrate sustained downtime for two independent exponential components."""
+    first_rate, second_rate = failure_rates
+    first_repair, second_repair = (1.0 / mean for mean in mean_repair_hours)
+    # Transient states: first down, second down, both down; both up is absorbing.
+    transition = np.array(
+        [
+            [-(first_repair + second_rate), 0.0, second_rate],
+            [0.0, -(second_repair + first_rate), first_rate],
+            [second_repair, first_repair, -(first_repair + second_repair)],
+        ]
+    )
+    onset_rate = first_rate + second_rate
+    initial = np.array([first_rate, second_rate, 0.0]) / onset_rate
+    threshold_hours = 5.0 / 60.0
+    at_threshold = linalg.expm(transition * threshold_hours)
+    sustained_threshold = threshold_hours * float(initial @ at_threshold @ np.ones(3))
+    availability = [_availability(rate, mean) for rate, mean in zip(failure_rates, mean_repair_hours, strict=True)]
+
+    def integrand(hour: float) -> float:
+        both_up = math.prod(steady + (1.0 - steady) * math.exp(-approach * hour) for steady, approach in availability)
+        remaining = horizon_hours - hour
+        # E[min(D, remaining) * I(min(D, remaining) > threshold)] for system repair D.
+        tail_integral = linalg.solve(transition, (linalg.expm(transition * remaining) - at_threshold) @ np.ones(3))
+        sustained_hours = sustained_threshold + float(initial @ tail_integral)
+        return onset_rate * both_up * sustained_hours
+
+    return 60.0 * float(integrate.quad(integrand, 0.0, horizon_hours - threshold_hours, limit=200)[0])
+
+
+def test_series_analytic_reference_reduces_to_one_failing_component() -> None:
+    analytic = _analytic_series_saidi_minutes((0.01, 0.0), (4.0, 2.0), 24.0)
+    assert analytic == pytest.approx(_analytic_saidi_minutes(0.01, 4.0, 24.0), rel=1e-12)
+
+
+def test_two_component_series_mean_converges_to_sustained_analytic_expectation() -> None:
+    components = [component("c1", 0.01, 4.0), component("c2", 0.005, 2.0)]
+    runs = simulate(components, n_trials=2000, seed=20240101)
+    saidi = np.array([result.saidi for result in runs], dtype=np.float64)
+    analytic = _analytic_series_saidi_minutes((0.01, 0.005), (4.0, 2.0), HORIZON_HOURS)
+    standard_error = float(np.std(saidi, ddof=1) / math.sqrt(saidi.size))
     assert abs(float(np.mean(saidi)) - analytic) <= 3.0 * standard_error
 
 
@@ -232,6 +279,40 @@ def test_repair_distribution_mean_matches_requested_mean(distribution: str, chan
     caidi = np.array([result.caidi for result in runs], dtype=np.float64)
     # CAIDI is the mean realized restoration time; 24 hours is 1440 minutes.
     assert float(np.mean(caidi)) == pytest.approx(1440.0, rel=0.03)
+
+
+@pytest.mark.parametrize("failure_rate", [0.0, 0.01])
+@pytest.mark.parametrize(("repair_time", "sigma"), [(4.0, 40.0), (4.0, 1e308), (1e-300, 20.0)])
+def test_unrepresentable_lognormal_scale_is_rejected(failure_rate: float, repair_time: float, sigma: float) -> None:
+    spec = component(
+        failure_rate=failure_rate, repair_time=repair_time, repair_distribution="lognormal", repair_sigma=sigma
+    )
+    with pytest.raises(InvalidArgumentError) as error:
+        simulate([spec], n_trials=1)
+    assert error.value.argument_name == "repair_sigma"
+
+
+def test_lognormal_scale_avoids_intermediate_underflow() -> None:
+    spec = _simulate._component_spec(
+        component(repair_time=1e300, repair_distribution="lognormal", repair_sigma=40.0), "c1"
+    )
+    distribution = _simulate._repair_distribution(spec)
+    assert distribution is not None
+    assert distribution.kwds["scale"] == pytest.approx(math.exp(math.log(1e300) - 800.0), rel=1e-12, abs=0.0)
+
+
+@pytest.mark.parametrize("failure_rate", [0.0, 0.01])
+def test_customer_count_above_int64_is_rejected_before_sampling(failure_rate: float) -> None:
+    with pytest.raises(InvalidArgumentError) as error:
+        simulate([component(failure_rate=failure_rate)], n_trials=1, total_customers=2**63)
+    assert error.value.argument_name == "total_customers"
+
+
+def test_largest_float64_customer_count_within_int64_is_accepted() -> None:
+    customers = int(np.nextafter(float(2**63), 0.0))
+    (result,) = simulate([component()], n_trials=1, total_customers=customers)
+    assert result.customer_interruptions > 0
+    assert result.customer_interruptions % customers == 0
 
 
 def test_empty_trials_report_defined_zero_metrics() -> None:
