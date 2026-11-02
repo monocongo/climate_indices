@@ -58,18 +58,19 @@ def test_window_parity(monkeypatch: pytest.MonkeyPatch, cells: int | None, scale
     if cells is not None:
         values = np.broadcast_to(values[:, None, None], (values.size, cells, 1)).copy()
     calls = _compare(monkeypatch, values, scale)
-    assert calls == ({"trailing_sum"} if cells is not None or scale < 8 else set())
+    # a one-dimensional series keeps np.convolve, whatever the Timescale
+    assert calls == ({"trailing_sum"} if cells is not None else set())
 
 
 def test_independent_reference_and_mean_is_divided_once(monkeypatch: pytest.MonkeyPatch) -> None:
     recorder = conftest.NativeRecorder(native)
     monkeypatch.setattr(compute, "_native", recorder)
-    values = np.array([3.0, 4, 6, 2, 1, 3, 5, 8, 5])
+    block = np.array([3.0, 4, 6, 2, 1, 3, 5, 8, 5])[:, None, None]
     expected = np.array([np.nan, np.nan, 13, 12, 9, 6, 9, 16, 18])
     with np.errstate(all="ignore"):
-        np.testing.assert_array_equal(compute.sum_to_scale(values, 3), expected)
-        mean = compute.prepare_scaled(values, 3, compute.Periodicity.monthly, reshape=False, aggregation="mean")
-    np.testing.assert_allclose(mean, expected / 3, rtol=1e-10, atol=1e-10)
+        np.testing.assert_array_equal(compute.sum_to_scale(block, 3)[:, 0, 0], expected)
+        mean = compute.prepare_scaled(block, 3, compute.Periodicity.monthly, reshape=False, aggregation="mean")
+    np.testing.assert_allclose(mean[:, 0, 0], expected / 3, rtol=1e-10, atol=1e-10)
     assert recorder.calls == {"trailing_sum"}
 
 
@@ -135,13 +136,19 @@ def test_ineligible_layouts_retain_python(monkeypatch: pytest.MonkeyPatch, kind:
 
 def test_mask_normalization_and_identity(monkeypatch: pytest.MonkeyPatch) -> None:
     values = np.ma.array(np.arange(24.0), mask=np.arange(24) == 8)
-    assert _compare(monkeypatch, values, 3) == {"trailing_sum"}
-    assert _compare(monkeypatch, np.ma.array(np.zeros(24), mask=True), 3) == {"trailing_sum"}
+    # a one-dimensional masked series is normalized, then kept on np.convolve
+    assert _compare(monkeypatch, values, 3) == set()
+    assert _compare(monkeypatch, np.ma.array(np.zeros(24), mask=True), 3) == set()
     recorder = conftest.NativeRecorder(native)
     monkeypatch.setattr(compute, "_native", recorder)
     assert compute.sum_to_scale(values, 1) is values
     assert not recorder.calls
-    assert _compare(monkeypatch, np.arange(24.0)[::-2], 3) == {"trailing_sum"}
+    assert _compare(monkeypatch, np.arange(24.0)[::-2], 3) == set()
+    # the same normalization reaches the kernel through a Spatial Block
+    mask = np.zeros((12, 2, 1), dtype=bool)
+    mask[8] = True
+    block = np.ma.array(np.arange(24.0).reshape(12, 2, 1), mask=mask)
+    assert _compare(monkeypatch, block, 3) == {"trailing_sum"}
 
 
 @pytest.mark.parametrize("policy", ["warn", "raise", "call", "log", "print"])
@@ -158,7 +165,7 @@ def test_runtime_warning_error_filter_retain_python(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(compute, "_native", recorder)
     with warnings.catch_warnings(), np.errstate(all="ignore"):
         warnings.simplefilter("error", RuntimeWarning)
-        compute.sum_to_scale(np.ones(12), 3)
+        compute.sum_to_scale(np.ones((12, 2, 1)), 3)
     assert not recorder.calls
 
 
@@ -176,7 +183,7 @@ def test_stale_extension_and_runtime_failure(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setattr(compute, "_native", Broken())
     with np.errstate(all="ignore"), pytest.raises(RuntimeError, match="kernel failed"):
-        compute.sum_to_scale(np.ones(12), 3)
+        compute.sum_to_scale(np.ones((12, 2, 1)), 3)
 
 
 def test_binding_checks_alignment_and_scale() -> None:

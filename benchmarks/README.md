@@ -1873,24 +1873,26 @@ For `np.tile([1e16, 1, 1, 1, 1, 1, 1, -1e16], 3)`, the ungated singleton kernel 
 
 These are rejected dispatch candidates, not accepted parity errors.
 NumPy 2.4.2 uses sequential `small_correlate` through length 11, then a dot product that can use BLAS.
-The kernel's singleton pairwise grouping begins at eight, so only series Timescales 2–7 dispatch.
+The kernel's singleton pairwise grouping begins at eight, so a one-dimensional series keeps `np.convolve` at every Timescale.
 C-contiguous Spatial Blocks can dispatch at any valid Timescale; other block layouts retain Python.
 This preserves each seam rather than silently making their cancellation results equal.
 
-The one-dimensional series dispatch is a measured cost, not a benefit.
-Isolated `compute.sum_to_scale` calls under `np.errstate(all="ignore")`, with the fastest of five `timeit` repeats:
+The one-dimensional series dispatch was a measured cost, not a benefit, so it was removed.
+Isolated `compute.sum_to_scale` calls under `np.errstate(all="ignore")`, measured on 2026-11-02 with the fastest of five `timeit` repeats:
 
-| Length | Timescale | Python microseconds | Native microseconds | Native / Python |
+| Length | Timescale | Python microseconds | Kernel microseconds | Kernel / Python |
 | --- | --- | --- | --- | --- |
-| 492 | 3 | 1.9 | 3.1 | 1.65 |
-| 492 | 7 | 2.2 | 3.5 | 1.61 |
-| 8784 | 3 | 5.9 | 19.8 | 3.33 |
-| 8784 | 7 | 8.9 | 27.5 | 3.08 |
-| 360144 | 3 | 192.2 | 966.4 | 5.03 |
-| 360144 | 7 | 296.3 | 1191.2 | 4.02 |
+| 492 | 3 | 1.8 | 3.6 | 1.93 |
+| 492 | 7 | 2.1 | 4.0 | 1.93 |
+| 8784 | 3 | 6.1 | 21.2 | 3.51 |
+| 8784 | 7 | 8.7 | 29.0 | 3.32 |
+| 360144 | 3 | 219.6 | 1161.7 | 5.29 |
+| 360144 | 7 | 337.3 | 1363.3 | 4.04 |
 
 The kernel copies the input, allocates the output, and reduces each singleton window with a scalar pairwise fold, while `np.convolve` is vectorized.
-A full workflow hides the cost, and the default floating-point policy keeps the NumPy path.
+The kernel lost at every measured length, so `compute.sum_to_scale` no longer dispatches a one-dimensional series.
+Every series keeps `np.convolve`, and only a C-contiguous Spatial Block dispatches.
+The dispatch condition also tests the shape before the shared gate, so a series call does not read the reporting policy at all.
 The Spatial Block path is where the kernel pays off.
 
 ### Time and memory
@@ -1919,9 +1921,9 @@ uv run maturin develop --release
 | Monthly sum series | `(492,)` | 3 | 0.000002 | 0.000003 | <0.1 | <0.1 |
 | Monthly sum grid | `(492, 25, 1)` | 3 | 0.000023 | 0.000012 | 0.2 | <0.1 |
 
-The hourly series still uses NumPy convolution on both backends, because its Timescale exceeds the one-dimensional dispatch limit.
-The short monthly series is slower natively, and the isolated measurements above show that the one-dimensional dispatch loses at every measured length.
-The grid case is the change's measured benefit: the isolated Aggregation call is 1.60 times faster (1.912 s to 1.196 s at Timescale 720), and the complete SREPI call is about 1.66 times faster with a smaller traced peak.
+The hourly series uses NumPy convolution on both backends, because every one-dimensional series keeps it.
+The short monthly series row predates the removal of the one-dimensional dispatch; after removal that series is the same NumPy convolution on both backends, and a re-run measured 0.000002 s natively.
+The grid case is the change's measured benefit: the isolated Aggregation call is 1.61 times faster (1.928 s to 1.197 s at Timescale 720), and the complete SREPI call is about 1.68 times faster with a smaller traced peak.
 `tracemalloc` does not count Rust-owned buffers, so its smaller native peak is not a total-memory reduction.
 The external process high-water resident size was **392.7188 MiB for Python and 521.9531 MiB for native**.
 Those process maxima include imports, input creation, warm-ups, and all four cases; they are not per-call allocation figures.

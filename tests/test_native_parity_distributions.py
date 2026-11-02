@@ -51,7 +51,7 @@ def _spei(precips, pet, scale, distribution, **kwargs):
 @pytest.mark.parametrize("scale", [1, 3, 6, 12])
 def test_spi_pearson_monthly_reference_series(monkeypatch, precips_mm_monthly, scale):
     rust, python, calls = _rust_and_python(monkeypatch, _spi_pearson(precips_mm_monthly, scale, 1981, 2010))
-    assert calls == _PEARSON | ({"trailing_sum"} if 1 < scale < 8 else set())
+    assert calls == _PEARSON
     _assert_parity(rust, python)
     assert np.isnan(rust[: scale - 1]).all()
 
@@ -72,7 +72,7 @@ def test_spi_pearson_matches_the_committed_fixture(
         data_start=data_year_start_monthly,
     )
     rust, python, calls = _rust_and_python(monkeypatch, run)
-    assert calls == _PEARSON | {"trailing_sum"}
+    assert calls == _PEARSON
     _assert_parity(rust, python)
     # the same tolerance tests/test_indices.py holds the Python path to
     np.testing.assert_allclose(rust, spi_6_month_pearson3, atol=0.01, equal_nan=True)
@@ -86,7 +86,7 @@ def test_spi_pearson_zeros_zero_handling_and_output_scales(
     dry = _with_zeros(precips_mm_monthly, 0.25, seed=11)
     run = _spi_pearson(dry, 3, 1981, 2010, zero_handling=zero_handling, output_scale=output_scale)
     rust, python, calls = _rust_and_python(monkeypatch, run)
-    assert calls == _PEARSON | {"trailing_sum"}
+    assert calls == _PEARSON
     _assert_parity(rust, python)
 
 
@@ -105,7 +105,7 @@ def test_spi_pearson_with_missing_values(monkeypatch, precips_mm_monthly):
     gappy[np.random.default_rng(13).random(gappy.size) < 0.15] = np.nan
     gappy[:30] = np.nan
     rust, python, calls = _rust_and_python(monkeypatch, _spi_pearson(gappy, 6, 1981, 2010))
-    assert calls == _PEARSON | {"trailing_sum"}
+    assert calls == _PEARSON
     _assert_parity(rust, python)
 
 
@@ -157,7 +157,7 @@ def test_ncei_precipitation_runs_on_the_rust_kernels(monkeypatch, scale):
     )
     rust, python, calls = _rust_and_python(monkeypatch, run)
     # a fallback to gamma would add the gamma kernels
-    assert calls == _PEARSON | ({"trailing_sum"} if 1 < scale < 8 else set())
+    assert calls == _PEARSON
     _assert_parity(rust, python)
 
     reference = np.load(fixtures / "ncei_spi" / f"sp{scale:02d}.npy")[:8].astype(np.float64)
@@ -254,7 +254,7 @@ def test_the_gamma_fallback_fires_on_the_same_inputs(monkeypatch, precips_mm_mon
 def test_spei_at_several_scales(monkeypatch, precips_mm_monthly, pet_thornthwaite_mm, distribution, kernels, scale):
     run = _spei(precips_mm_monthly, pet_thornthwaite_mm, scale, distribution)
     rust, python, calls = _rust_and_python(monkeypatch, run)
-    assert calls == kernels | ({"trailing_sum"} if 1 < scale < 8 else set())
+    assert calls == kernels
     _assert_parity(rust, python)
 
 
@@ -263,7 +263,7 @@ def test_spei_at_several_scales(monkeypatch, precips_mm_monthly, pet_thornthwait
 def test_spei_output_scales(monkeypatch, precips_mm_monthly, pet_thornthwaite_mm, distribution, output_scale):
     run = _spei(precips_mm_monthly, pet_thornthwaite_mm, 3, distribution, output_scale=output_scale)
     rust, python, calls = _rust_and_python(monkeypatch, run)
-    assert calls == _KERNELS[distribution] | {"trailing_sum"}
+    assert calls == _KERNELS[distribution]
     _assert_parity(rust, python)
 
 
@@ -283,7 +283,7 @@ def test_spei_loglogistic_with_zero_precipitation(
         data_year_end_monthly,
     )
     rust, python, calls = _rust_and_python(monkeypatch, run)
-    assert calls == _GLO | {"trailing_sum"}
+    assert calls == _GLO
     _assert_parity(rust, python)
 
 

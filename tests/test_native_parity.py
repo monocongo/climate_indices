@@ -93,7 +93,8 @@ def test_spi_missing_kernels_do_not_count_as_native_calls(monkeypatch, precips_m
 @pytest.mark.parametrize("scale", [1, 3, 6, 12, 24])
 def test_spi_monthly_reference_series(monkeypatch, precips_mm_monthly, scale):
     rust, python, calls = _rust_and_python(monkeypatch, _spi(precips_mm_monthly, scale, 1981, 2010))
-    assert calls == _KERNELS | ({"trailing_sum"} if 1 < scale < 8 else set())
+    # a one-dimensional series keeps np.convolve at every Timescale
+    assert calls == _KERNELS
     _assert_parity(rust, python)
     # the leading scale - 1 months have no complete sum on either path
     assert np.isnan(rust[: scale - 1]).all()
@@ -133,7 +134,7 @@ def test_spi_matches_the_committed_gamma_fixtures(
     for scale, fixture in ((1, spi_1_month_gamma), (6, spi_6_month_gamma)):
         run = _spi(precips_mm_monthly, scale, data_year_start_monthly, data_year_end_monthly)
         rust, python, calls = _rust_and_python(monkeypatch, run)
-        assert calls == _KERNELS | ({"trailing_sum"} if scale > 1 else set())
+        assert calls == _KERNELS
         _assert_parity(rust, python)
         # the same tolerance tests/test_indices.py holds the Python path to
         np.testing.assert_allclose(rust, fixture, atol=0.001, equal_nan=True)
@@ -214,7 +215,7 @@ def test_spi_output_scales(monkeypatch, precips_mm_monthly, output_scale):
     dry = _with_zeros(precips_mm_monthly, 0.2, seed=3)
     rust, python, calls = _rust_and_python(monkeypatch, _spi(dry, 3, 1981, 2010, output_scale=output_scale))
     # the probability scales skip the inverse-normal transform
-    assert calls == {"gamma_parameters", "gamma_probabilities", "gamma_ks_statistics", "trailing_sum"}
+    assert calls == {"gamma_parameters", "gamma_probabilities", "gamma_ks_statistics"}
     _assert_parity(rust, python)
 
 
@@ -392,7 +393,7 @@ def test_spei_gamma_uses_the_same_kernels(
         )
 
     rust, python, calls = _rust_and_python(monkeypatch, run)
-    assert calls == _KERNELS | {"trailing_sum"}
+    assert calls == _KERNELS
     _assert_parity(rust, python)
 
 
@@ -732,7 +733,7 @@ def _pnp(values: np.ndarray, scale: int, start: int, end: int, **kwargs: Any) ->
 @pytest.mark.parametrize("scale", [1, 3, 6])
 def test_pnp_monthly_reference_series(monkeypatch, precips_mm_monthly, scale):
     rust, python, calls = _rust_and_python(monkeypatch, _pnp(precips_mm_monthly.flatten(), scale, 1981, 2010))
-    assert calls == _PNP_KERNELS | ({"trailing_sum"} if scale > 1 else set())
+    assert calls == _PNP_KERNELS
     _assert_parity(rust, python)
     # the leading scale - 1 months have no complete sum on either path
     assert np.isnan(rust[: scale - 1]).all()
@@ -754,7 +755,7 @@ def test_pnp_matches_the_committed_fixture(
         data_start=data_year_start_monthly,
     )
     rust, python, calls = _rust_and_python(monkeypatch, run)
-    assert calls == _PNP_KERNELS | {"trailing_sum"}
+    assert calls == _PNP_KERNELS
     _assert_parity(rust, python)
     # the same tolerance tests/test_indices.py holds the Python path to
     np.testing.assert_allclose(rust, pnp_6month, atol=0.01, equal_nan=True)
@@ -975,7 +976,7 @@ def _spatial_pet_block(pet_thornthwaite_mm: np.ndarray) -> np.ndarray:
 def test_eddi_monthly_reference_series(monkeypatch, pet_thornthwaite_mm, scale):
     rust, python, calls = _rust_and_python(monkeypatch, _eddi(pet_thornthwaite_mm, scale, 1981, 2010))
     _assert_parity(rust, python)
-    assert calls == _EDDI_KERNELS | ({"trailing_sum"} if scale > 1 else set())
+    assert calls == _EDDI_KERNELS
 
 
 def test_eddi_daily_series(monkeypatch):
@@ -994,7 +995,7 @@ def test_eddi_missing_values_and_ties(monkeypatch, pet_thornthwaite_mm):
     values[100:140] = 42.0
     rust, python, calls = _rust_and_python(monkeypatch, _eddi(values, 3, 1981, 2010))
     _assert_parity(rust, python)
-    assert calls == _EDDI_KERNELS | {"trailing_sum"}
+    assert calls == _EDDI_KERNELS
 
 
 def test_eddi_short_calibration_and_missing_climatology(monkeypatch):
@@ -1044,7 +1045,7 @@ def test_eddi_matches_the_committed_noaa_fixtures(monkeypatch):
             data_start=metadata["data_start_year"],
         )
         rust, python, calls = _rust_and_python(monkeypatch, run)
-        assert calls == _EDDI_KERNELS | ({"trailing_sum"} if scale > 1 else set())
+        assert calls == _EDDI_KERNELS
         _assert_parity(rust, python)
         reference = np.load(directory / "eddi_reference.npy")
         valid = ~np.isnan(reference)
