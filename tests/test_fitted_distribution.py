@@ -9,8 +9,17 @@ import scipy.stats
 from climate_indices import compute, indices
 from climate_indices.exceptions import InvalidArgumentError
 
+# The FittedDistribution seam fits one distribution per calendar period, which serves
+# SPI, SPEI, standardized_index, and the energy indices. SPAI's t location-scale and
+# normal fits are pooled over every calendar period and live in indices.spai() only.
+_FITTED_DISTRIBUTIONS = tuple(
+    kind
+    for kind in indices.Distribution
+    if kind not in (indices.Distribution.t_location_scale, indices.Distribution.normal)
+)
 
-@pytest.mark.parametrize("distribution", list(indices.Distribution))
+
+@pytest.mark.parametrize("distribution", _FITTED_DISTRIBUTIONS)
 @pytest.mark.parametrize("output_scale", compute.OUTPUT_SCALES)
 def test_transform_owns_the_kernels(
     distribution: indices.Distribution, output_scale: compute.OutputScale, monkeypatch: pytest.MonkeyPatch
@@ -25,7 +34,7 @@ def test_transform_owns_the_kernels(
     def fail(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("A resolved fit must not re-enter a public adapter or resolve again")
 
-    for kind in indices.Distribution:
+    for kind in _FITTED_DISTRIBUTIONS:
         monkeypatch.setattr(compute, f"transform_fitted_{kind.value}", fail)
     monkeypatch.setattr(compute.FittedDistribution, "resolve", fail)
     monkeypatch.setattr(compute.FittedDistribution, "validate_supplied", fail)
@@ -39,7 +48,7 @@ def test_transform_owns_the_kernels(
     ]
 
 
-@pytest.mark.parametrize("distribution", list(indices.Distribution))
+@pytest.mark.parametrize("distribution", _FITTED_DISTRIBUTIONS)
 @pytest.mark.parametrize("supplied", [False, True])
 def test_public_adapter_resolves_validates_and_broadcasts_once(
     distribution: indices.Distribution, supplied: bool
@@ -78,7 +87,7 @@ def test_public_adapter_resolves_validates_and_broadcasts_once(
     assert broadcast.call_count == 1
 
 
-@pytest.mark.parametrize("distribution", list(indices.Distribution))
+@pytest.mark.parametrize("distribution", _FITTED_DISTRIBUTIONS)
 def test_all_missing_adapter_keeps_its_return_shape(distribution: indices.Distribution) -> None:
     """Parametric adapters return the original array; empirical retains its folded shape."""
     values = np.full(120, np.nan)
@@ -221,7 +230,7 @@ def test_empirical_masked_partial_year_is_prepared_once() -> None:
 
 
 @pytest.mark.parametrize(
-    "distribution", [kind for kind in indices.Distribution if kind is not indices.Distribution.empirical]
+    "distribution", [kind for kind in _FITTED_DISTRIBUTIONS if kind is not indices.Distribution.empirical]
 )
 def test_reused_fit_rejects_incompatible_cells(distribution: indices.Distribution) -> None:
     """A two-cell fit must not expand an input that carries only one cell."""
@@ -232,7 +241,7 @@ def test_reused_fit_rejects_incompatible_cells(distribution: indices.Distributio
 
 
 @pytest.mark.parametrize(
-    "distribution", [kind for kind in indices.Distribution if kind is not indices.Distribution.gamma]
+    "distribution", [kind for kind in _FITTED_DISTRIBUTIONS if kind is not indices.Distribution.gamma]
 )
 @pytest.mark.parametrize(
     ("kwargs", "error"),

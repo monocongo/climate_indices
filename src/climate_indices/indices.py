@@ -4,16 +4,21 @@ from __future__ import annotations
 
 import functools
 import time
+import warnings
 from collections.abc import Callable
 from typing import Any, ParamSpec, TypeVar, cast, overload
 
 import numpy as np
+import scipy.special
+import scipy.stats
 import structlog.stdlib
 
-from climate_indices import compute, eto
+from climate_indices import compute, eto, lmoments
 from climate_indices._calibration_period import CalibrationPeriod, CalibrationPolicy, resolve_calibration_period
 from climate_indices.exceptions import (
+    BetaFeatureWarning,
     DataShapeError,
+    InsufficientDataError,
     InvalidArgumentError,
     PeriodicityError,
     emit_deprecation_warning,
@@ -30,6 +35,7 @@ __all__ = [
     "percentage_of_normal",
     "pci",
     "pet",
+    "spai",
     "spei",
     "spi",
     "standardized_index",
@@ -145,6 +151,8 @@ def _validate_distribution(
             " Beta fits a series bounded by [0, 1], with aggregation='mean'; "
             "standardized_index() is the supported beta surface."
         )
+    elif distribution in (Distribution.t_location_scale, Distribution.normal):
+        message += " It fits signed precipitation anomalies; spai() is its supported surface."
     raise InvalidArgumentError(
         message,
         argument_name="distribution",
@@ -1169,6 +1177,528 @@ def spei(
         output_scale=output_scale,
         clip_negatives=False,
         fallback_to_gamma=False,
+    )
+
+
+# SPAI subtracts each calendar period's calibration mean and fits one distribution to
+# the anomalies of every period pooled (#1480); gamma's positive support cannot hold a
+# signed anomaly
+_SPAI_DISTRIBUTIONS = (Distribution.t_location_scale, Distribution.pearson, Distribution.normal)
+
+# the parameters each SPAI distribution fits, one value per cell
+_SPAI_PARAMETER_KEYS: dict[Distribution, tuple[str, ...]] = {
+    Distribution.t_location_scale: ("df", "loc", "scale"),
+    Distribution.pearson: ("loc", "scale", "skew"),
+    Distribution.normal: ("loc", "scale"),
+}
+
+# one calibration value per calendar period leaves every anomaly exactly zero, so the
+# pooled fit has no scale to estimate; SPAI needs at least two calibration years
+_SPAI_MIN_CALIBRATION_YEARS = 2
+
+# the fewest valid pooled calibration anomalies a cell needs before it is fitted
+_SPAI_MIN_FIT_VALUES = lmoments.MIN_VALUES_FOR_LMOMENTS
+
+# a constant cell's pooled anomalies keep about this many machine epsilons of rounding
+# noise after its period means are subtracted, relative to the cell's own magnitude; a
+# cell whose spread is at or below that has no scale to estimate (a cell that never
+# rains, for one) and stays missing (docs/floating_point_best_practices.md). Being
+# relative to each cell, the cutoff does not depend on the input's precipitation units.
+_SPAI_ZERO_SPREAD_RTOL = 1e3 * float(np.finfo(float).eps)
+
+# keeps the inverse normal finite; a normal-scale result is then clipped like SPI's
+_SPAI_PROBABILITY_EPSILON = float(np.finfo(float).eps)
+
+# the t fit holds the pooled anomalies, the values, the weights, the residuals, the
+# squared residuals, and their ratio at once, so its working set is about this many
+# copies of the input and the memory diagnostic must account for them
+_SPAI_FIT_BUFFER_COPIES = 6
+
+# the t location-scale fit stops once no parameter (location, scale, log degrees of
+# freedom) moves more than the tolerance in an iteration, or at the cap; the upper
+# degrees-of-freedom bound is a normal distribution for every practical purpose
+_T_FIT_TOLERANCE = 1e-6
+_T_FIT_MAX_ITERATIONS = 200
+_T_FIT_INITIAL_DF = 10.0
+_T_FIT_LOG_DF_BOUNDS = (float(np.log(0.2)), float(np.log(1e4)))
+
+_SPAI_BETA_MESSAGE = "SPAI is beta: its interface may change in a minor release (#1480)."
+
+
+def _spai_period_means(calibration: np.ndarray) -> np.ndarray:
+    """Each calendar period's calibration mean.
+
+    ``calibration`` is shaped (years, periods, cells). A period with no valid
+    calibration value has a NaN mean, so that period's anomalies are missing.
+    """
+    valid = ~np.isnan(calibration)
+    counts = np.count_nonzero(valid, axis=0)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        means: np.ndarray = np.where(valid, calibration, 0.0).sum(axis=0) / counts
+    return means
+
+
+def _fit_normal(pooled: np.ndarray) -> dict[str, np.ndarray]:
+    """Maximum-likelihood normal parameters of every column of ``pooled`` (samples, cells)."""
+    valid = ~np.isnan(pooled)
+    counts = np.count_nonzero(valid, axis=0)
+    loc = np.where(valid, pooled, 0.0).sum(axis=0) / counts
+    scale = np.sqrt((np.where(valid, pooled - loc, 0.0) ** 2).sum(axis=0) / counts)
+    return {"loc": loc, "scale": scale}
+
+
+def _fit_t_location_scale(pooled: np.ndarray) -> dict[str, np.ndarray]:
+    """Maximum-likelihood t location-scale parameters of every column of ``pooled``.
+
+    A vectorized ECME iteration (Liu and Rubin, 1995) over every column at once: the EM
+    updates of location and scale, then one Newton step on the log degrees of freedom
+    of the observed log-likelihood. There is no loop over cells, unlike a per-cell
+    ``scipy.stats.t.fit``; #1480 records the benchmark against it. Each column stops
+    at its own convergence, so its fit does not depend on the other columns.
+    """
+    valid = ~np.isnan(pooled)
+    counts = np.count_nonzero(valid, axis=0)
+    values = np.where(valid, pooled, 0.0)
+    start = _fit_normal(pooled)
+    loc, variance = start["loc"], start["scale"] ** 2
+    log_df = np.full(loc.shape, np.log(_T_FIT_INITIAL_DF))
+    active = np.ones(loc.shape, dtype=bool)
+    # shortcut: linear EM convergence, ~100-200 iterations on monsoon-like series; a joint
+    # Newton step on all three parameters would cut that if gridded runs prove too slow
+    for _ in range(_T_FIT_MAX_ITERATIONS):
+        # only the columns still converging do sample-level work, so a block whose cells
+        # converge at different iterations stops scanning the finished ones
+        columns = np.flatnonzero(active)
+        column_valid = valid[:, columns]
+        column_values = values[:, columns]
+        column_counts = counts[columns]
+        column_loc = loc[columns]
+        column_variance = variance[columns]
+        column_log_df = log_df[columns]
+
+        df = np.exp(column_log_df)
+        weights = np.where(column_valid, (df + 1.0) / (df + (column_values - column_loc) ** 2 / column_variance), 0.0)
+        new_loc = (weights * column_values).sum(axis=0) / weights.sum(axis=0)
+        residuals = np.where(column_valid, column_values - new_loc, 0.0)
+        new_variance = (weights * residuals**2).sum(axis=0) / column_counts
+
+        # derivatives of the observed log-likelihood in df at the new location and scale
+        squared = residuals**2 / new_variance
+        ratio = squared / (df + squared)
+        half = 0.5 * (df + 1.0) / df
+        gradient = (
+            0.5 * column_counts * (scipy.special.digamma((df + 1.0) / 2.0) - scipy.special.digamma(df / 2.0) - 1.0 / df)
+            - 0.5 * np.log1p(squared / df).sum(axis=0)
+            + half * ratio.sum(axis=0)
+        )
+        curvature = (
+            0.25 * column_counts * (scipy.special.polygamma(1, (df + 1.0) / 2.0) - scipy.special.polygamma(1, df / 2.0))
+            + 0.5 * column_counts / df**2
+            + 0.5 * ratio.sum(axis=0) * (df - 1.0) / df**2
+            - half * (squared / (df + squared) ** 2).sum(axis=0)
+        )
+
+        # a Newton step on log df where the log-likelihood is concave there, otherwise a
+        # unit step uphill; at most one e-fold, so a flat likelihood cannot overshoot
+        log_gradient = df * gradient
+        log_curvature = df**2 * curvature + log_gradient
+        with np.errstate(divide="ignore", invalid="ignore"):
+            step = np.where(log_curvature < 0.0, -log_gradient / log_curvature, np.sign(log_gradient))
+        new_log_df = np.clip(column_log_df + np.clip(step, -1.0, 1.0), *_T_FIT_LOG_DF_BOUNDS)
+
+        # the location and scale changes are measured against the column's own scale, so
+        # the test is invariant to the input's units; log df is already dimensionless
+        column_scale = np.sqrt(column_variance)
+        change = np.maximum.reduce(
+            [
+                np.abs(new_loc - column_loc) / column_scale,
+                np.abs(np.sqrt(new_variance) - column_scale) / column_scale,
+                np.abs(new_log_df - column_log_df),
+            ]
+        )
+        # a converged column keeps its parameters while the others iterate on
+        loc[columns] = new_loc
+        variance[columns] = new_variance
+        log_df[columns] = new_log_df
+        active[columns] = change >= _T_FIT_TOLERANCE
+        if not active.any():
+            break
+    if active.any():
+        # the iteration cap, not the tolerance, ended these fits; the parameters are still
+        # the best estimate so far, so they are returned rather than discarded
+        _logger.bind(
+            from_distribution="t_location_scale",
+            reason="iteration cap",
+            context="SPAI computation",
+            failure_count=int(np.count_nonzero(active)),
+            total_count=int(active.size),
+        ).warning("fit_not_converged")
+    return {"df": np.exp(log_df), "loc": loc, "scale": np.sqrt(variance)}
+
+
+def _fit_pearson_or_normal(pooled: np.ndarray) -> dict[str, np.ndarray]:
+    """Pearson Type III L-moment parameters of every column, normal where the fit fails.
+
+    A column whose L-moments are invalid falls back to the normal distribution, the
+    zero-skew Pearson Type III, and the fall back is logged as a ``distribution_fallback``
+    warning event.
+    """
+    locs, scales, skews, fitted = lmoments.fit_spatial(pooled)
+    if not fitted.all():
+        normal = _fit_normal(pooled)
+        locs = np.where(fitted, locs, normal["loc"])
+        scales = np.where(fitted, scales, normal["scale"])
+        skews = np.where(fitted, skews, 0.0)
+        _logger.bind(
+            from_distribution="pearson",
+            to_distribution="normal",
+            reason="invalid L-moments",
+            context="SPAI computation",
+            failure_count=int(np.count_nonzero(~fitted)),
+            total_count=int(fitted.size),
+        ).warning("distribution_fallback")
+    return {"loc": locs, "scale": scales, "skew": skews}
+
+
+_SPAI_FITS: dict[Distribution, Callable[[np.ndarray], dict[str, np.ndarray]]] = {
+    Distribution.t_location_scale: _fit_t_location_scale,
+    Distribution.pearson: _fit_pearson_or_normal,
+    Distribution.normal: _fit_normal,
+}
+
+
+def _spai_fit(
+    pooled: np.ndarray, distribution: Distribution, magnitude: np.ndarray | None = None
+) -> dict[str, np.ndarray]:
+    """Fit ``distribution`` to each cell's pooled calibration anomalies, NaN where too few.
+
+    A cell with too few valid anomalies, or with no spread across them, has no scale to
+    estimate and stays missing rather than being fitted on a degenerate sample.
+    ``magnitude`` is each cell's raw calibration magnitude, used as the zero-spread
+    cutoff's scale; without it the pooled anomalies' own magnitude is used instead.
+    """
+    parameters = {key: np.full(pooled.shape[1], np.nan) for key in _SPAI_PARAMETER_KEYS[distribution]}
+    fittable = np.count_nonzero(~np.isnan(pooled), axis=0) >= _SPAI_MIN_FIT_VALUES
+    if fittable.any():
+        # every fittable column has at least one valid value, so min and max are defined
+        candidates = pooled[:, fittable]
+        cell_magnitude = np.nanmax(np.abs(candidates), axis=0) if magnitude is None else magnitude[fittable]
+        spread = np.nanmax(candidates, axis=0) - np.nanmin(candidates, axis=0)
+        # a constant cell's anomalies keep roughly eps * |x| of rounding noise, so a spread
+        # above that relative bound is real, whether the input is in millimeters or metres;
+        # the raw magnitude is passed in because a constant cell's anomalies are only that noise
+        degenerate = spread <= _SPAI_ZERO_SPREAD_RTOL * cell_magnitude
+        fittable_columns = np.flatnonzero(fittable)[~degenerate]
+        if fittable_columns.size:
+            # column-major, so every column sum runs over contiguous memory in the same order
+            # whatever the number of columns, and a cell's fit does not depend on its block
+            for key, fitted in _SPAI_FITS[distribution](np.asfortranarray(pooled[:, fittable_columns])).items():
+                parameters[key][fittable_columns] = fitted
+    return parameters
+
+
+def _spai_cdf(anomalies: np.ndarray, distribution: Distribution, parameters: dict[str, np.ndarray]) -> np.ndarray:
+    """The fitted cumulative probability of every anomaly, NaN where a parameter is."""
+    loc, scale = parameters["loc"], parameters["scale"]
+    if distribution is Distribution.t_location_scale:
+        return cast(np.ndarray, scipy.stats.t.cdf(anomalies, parameters["df"], loc=loc, scale=scale))
+    if distribution is Distribution.pearson:
+        return cast(np.ndarray, scipy.stats.pearson3.cdf(anomalies, parameters["skew"], loc=loc, scale=scale))
+    return cast(np.ndarray, scipy.stats.norm.cdf(anomalies, loc=loc, scale=scale))
+
+
+def _resolve_spai_parameters(
+    fitting_params: dict[str, Any] | None,
+    distribution: Distribution,
+    periods: int,
+    cells_shape: tuple[int, ...],
+) -> dict[str, np.ndarray] | None:
+    """Broadcast a caller's complete SPAI parameter set to (periods, cells) and (cells,).
+
+    Returns None when there is nothing to reuse, so every parameter is fitted.
+    """
+    if fitting_params is None:
+        return None
+    required = ("mean", *_SPAI_PARAMETER_KEYS[distribution])
+    missing = [key for key in required if fitting_params.get(key) is None]
+    if missing:
+        raise InvalidArgumentError(
+            f"SPAI fitting_params for the {distribution.display_name} distribution must carry every "
+            f"parameter; missing: {', '.join(missing)}. Pass None to fit them all.",
+            argument_name="fitting_params",
+            argument_value=", ".join(sorted(fitting_params)),
+            valid_values=", ".join(required),
+        )
+    cell_count = int(np.prod(cells_shape, dtype=np.intp))
+    resolved: dict[str, np.ndarray] = {}
+    for key in required:
+        array = np.asarray(fitting_params[key], dtype=float)
+        per_period = key == "mean"
+        if per_period and array.ndim == 1:
+            # one value per calendar period, broadcast across the cells
+            array = array.reshape(-1, *([1] * len(cells_shape)))
+        try:
+            broadcast = np.broadcast_to(array, (periods, *cells_shape) if per_period else cells_shape)
+        except ValueError as error:
+            raise InvalidArgumentError(
+                f"SPAI fitting_params key {key!r} does not broadcast: 'mean' needs one value per "
+                f"calendar period ({periods}), and the distribution parameters one per cell {cells_shape}.",
+                argument_name="fitting_params",
+                argument_value=f"{key}: shape {array.shape}",
+            ) from error
+        if key in {"scale", "df"} and np.any(np.isfinite(broadcast) & (broadcast <= 0.0)):
+            # a nonpositive scale or degrees of freedom is not a fit; NaN stays available
+            # for a cell whose fit is missing, but a supplied invalid value would
+            # otherwise reach the CDF and turn valid observations into missing scores
+            raise InvalidArgumentError(
+                f"SPAI fitting_params key {key!r} must be positive where finite.",
+                argument_name="fitting_params",
+                argument_value=key,
+                valid_values="a positive value, or NaN for a missing fit",
+            )
+        resolved[key] = broadcast.reshape(periods, cell_count) if per_period else broadcast.reshape(cell_count)
+    return resolved
+
+
+def _spai(
+    values: np.ndarray,
+    scale: int,
+    distribution: Distribution,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: compute.Periodicity,
+    fitting_params: dict[str, Any] | None = None,
+    *,
+    spatial_time_major: bool = False,
+    output_scale: compute.OutputScale = "normal",
+) -> np.ndarray:
+    """:func:`spai` without its warning, so the xarray route warns once per call, not per block."""
+    _validate_periodicity(periodicity)
+    _validate_scale(scale, periodicity)
+    _validate_distribution(distribution, _SPAI_DISTRIBUTIONS)
+    compute.validate_output_scale(output_scale)
+
+    log = _logger.bind(
+        index_type="spai",
+        scale=scale,
+        distribution=distribution.value,
+        output_scale=output_scale,
+        input_shape=values.shape,
+        input_elements=values.size,
+    )
+    log.info("calculation_started")
+    t0 = time.perf_counter()
+    # the fit holds several arrays the size of the pooled anomalies, so the working set
+    # is a multiple of the input rather than the input alone
+    memory_metrics = check_large_array_memory(values, extra_bytes=_SPAI_FIT_BUFFER_COPIES * values.nbytes)
+
+    try:
+        original_shape = values.shape
+        input_all_missing = compute.is_all_missing(values)
+        # the accumulation SPI uses: (years, periods) for a series, (years, periods, *cells)
+        # for a time-major block, and the unfolded input when everything is missing
+        scaled = compute.prepare_scaled(values, scale, periodicity, spatial_time_major=spatial_time_major)
+        if input_all_missing:
+            # an incomplete or non-broadcastable parameter set is a configuration error
+            # whatever the input holds, so it is rejected before the early return
+            _resolve_spai_parameters(
+                fitting_params,
+                distribution,
+                periodicity.period_length,
+                tuple(scaled.shape[1:]) if scaled.ndim > 2 else (),
+            )
+            _resolve_unfolded_window(
+                scaled,
+                periodicity,
+                data_start_year,
+                calibration_year_initial,
+                calibration_year_final,
+                policy="clamp",
+            )
+            _log_calculation_completed(log, t0, scaled.shape, memory_metrics)
+            return scaled
+
+        years, periods, *cells_shape = scaled.shape
+        folded = scaled.reshape(years, periods, -1)
+        period = resolve_calibration_period(
+            data_start_year, years, calibration_year_initial, calibration_year_final, policy="clamp"
+        )
+        if period.n_years < _SPAI_MIN_CALIBRATION_YEARS:
+            raise InsufficientDataError(
+                f"SPAI needs a Calibration Period of at least {_SPAI_MIN_CALIBRATION_YEARS} years: one "
+                f"calibration value per calendar period leaves every anomaly zero. "
+                f"{period.start_year}-{period.end_year} spans {period.n_years}.",
+                required_count=_SPAI_MIN_CALIBRATION_YEARS,
+            )
+        calibration = folded[period.rows]
+        compute._check_calibration_data_quality(
+            calibration, period.start_year, period.end_year, (calibration_year_initial, calibration_year_final)
+        )
+
+        parameters = _resolve_spai_parameters(fitting_params, distribution, periods, tuple(cells_shape))
+        means = _spai_period_means(calibration) if parameters is None else parameters["mean"]
+        anomalies = folded - means
+        if parameters is None:
+            # one fit per cell over every calendar period of the Calibration Period; the
+            # zero-spread cutoff is scaled by the raw calibration magnitude, not the
+            # anomalies', because a constant cell's anomalies are only rounding noise
+            calibration_magnitude = np.where(np.isnan(calibration), 0.0, np.abs(calibration)).max(axis=(0, 1))
+            parameters = _spai_fit(
+                anomalies[period.rows].reshape(-1, folded.shape[2]), distribution, calibration_magnitude
+            )
+        probabilities = _spai_cdf(anomalies, distribution, parameters)
+
+        result = compute._map_non_normal_scale(probabilities, output_scale)
+        if result is None:
+            bounded = np.clip(probabilities, _SPAI_PROBABILITY_EPSILON, 1.0 - _SPAI_PROBABILITY_EPSILON)
+            result = _clip_fitted_values(scipy.stats.norm.ppf(bounded), output_scale)
+        result = compute.unfold_time_major(result.reshape(years, periods, *cells_shape), original_shape)
+        _log_calculation_completed(log, t0, result.shape, memory_metrics)
+        return result
+    except Exception as exc:
+        log_calculation_failure(log, exc, calibration_period=f"{calibration_year_initial}-{calibration_year_final}")
+        raise
+
+
+def spai(
+    values: np.ndarray,
+    scale: int,
+    distribution: Distribution,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: compute.Periodicity,
+    fitting_params: dict[str, Any] | None = None,
+    *,
+    spatial_time_major: bool = False,
+    output_scale: compute.OutputScale = "normal",
+) -> np.ndarray:
+    """Compute SPAI, the Standardized Precipitation Anomaly Index (Chanda and Maity, 2015).
+
+    Chanda and Maity propose SPAI for meteorological drought where precipitation is
+    strongly seasonal and periodic, as in monsoon-dominated climates. It standardizes the
+    anomalies of precipitation rather than the raw precipitation series, and they compare
+    it with SPI. Where :func:`spi` fits one distribution per calendar period, SPAI
+    subtracts each calendar period's mean and fits one distribution to the anomalies of
+    every period pooled together:
+
+    1. ``P`` is ``values`` accumulated over ``scale`` time steps, as for :func:`spi`, so
+       the first ``scale - 1`` steps are NaN.
+    2. ``mean_i`` of each calendar period ``i`` (month, or day of the 366-day year) is
+       taken over the Calibration Period only.
+    3. ``Z = P - mean_i`` over the whole series: the anomaly, in the input's units.
+    4. One distribution ``F`` is fitted to each cell's pooled Calibration Period ``Z``.
+    5. ``SPAI = Φ⁻¹(F(Z))``, with ``F(Z)`` clipped to ``[ε, 1 - ε]`` (machine ``ε``) so
+       the inverse normal stays finite, and the result clipped to [-3.09, 3.09] as for
+       :func:`spi` and :func:`spei`.
+
+    The anomaly is the calendar-period mean subtraction alone, the original paper's
+    Eq. (5) as the authors' closure reproduces it: ``y_ij = x_ij - x̄_j``. The pooled
+    fit's own scale therefore supplies the normalization. Because the fit is pooled, the
+    result is near standard normal only over the Calibration Period as a whole, not
+    within each calendar period, and only as far as ``F`` describes the pooled
+    anomalies: the symmetric t location-scale and normal families cannot follow strongly
+    skewed anomalies, such as those of months that rarely rain. A given anomaly value
+    scores the same in a dry and a wet month, because one distribution is fitted to the
+    pooled anomalies; that is the published design. The score still follows the pooled
+    fitted distribution, not the month's own spread, so a small absolute deficit scores
+    strongly negative when the pooled spread is small. The same authors' later papers
+    instead divide the anomaly by each calendar period's standard deviation. The article
+    body is paywalled, so Eq. (5)
+    is taken from the authors' closure, which reproduces the equation, and from
+    accessible secondary sources; contacting the authors remains open. See the SPAI
+    section of ``VALIDATION.md`` (#1480).
+
+    The distributions, each fitted to the pooled ``Z``:
+
+    - ``Distribution.t_location_scale``, the reference choice for this index:
+      ``F(Z) = T_ν((Z - μ) / σ)``, Student's t with ``ν`` degrees of freedom, fitted by
+      maximum likelihood with a vectorized ECME iteration. The authors' closure records
+      a t location-scale distribution as suitable for the Indian precipitation anomaly
+      series.
+    - ``Distribution.pearson``: Pearson Type III fitted by L-moments. A cell whose
+      L-moments are invalid falls back to the normal distribution, the zero-skew
+      Pearson Type III, with a ``distribution_fallback`` warning event.
+    - ``Distribution.normal``: fitted by maximum likelihood, so
+      ``SPAI = (Z - m) / s`` is the pooled anomaly rescaled by its pooled calibration
+      mean ``m`` and standard deviation ``s``. With complete calibration data ``m = 0``
+      and ``s`` is the anomaly's pooled root-mean-square deviation.
+
+    Gamma is rejected because ``Z`` takes negative values outside its support.
+
+    This is a Beta API (#1480): each call emits a
+    :class:`~climate_indices.exceptions.BetaFeatureWarning`, and the interface may
+    change in a minor release.
+
+    Args:
+        values: Precipitation values in any units, laid out as for :func:`spi`: a 1-D
+            series starting in January of ``data_start_year``, a legacy 2-D
+            (years, periods) array read as one series, or a time-major
+            (time, ``*cells``) block. Negative values are clipped to zero.
+        scale: Number of time steps accumulated before the anomalies are taken.
+        distribution: ``Distribution.t_location_scale``, ``Distribution.pearson``, or
+            ``Distribution.normal``.
+        data_start_year: Initial year of the input series.
+        calibration_year_initial: Initial year of the Calibration Period.
+        calibration_year_final: Final year of the Calibration Period. A window the
+            record does not cover is clamped to the record, as for :func:`spi`.
+        periodicity: ``compute.Periodicity.monthly`` (12 values/year) or
+            ``compute.Periodicity.daily`` (366 values/year). Hourly data is rejected.
+        fitting_params: Optional complete parameter set to reuse instead of fitting:
+            "mean", one value per calendar period, shaped (periods,) or
+            (periods, ``*cells``), and the distribution's own parameters, each a
+            scalar or shaped like the cells: "df", "loc", and "scale" for t
+            location-scale, "loc", "scale", and "skew" for Pearson Type III, or "loc"
+            and "scale" for normal.
+        spatial_time_major: Read a three-or-more-dimensional ``values`` as a
+            time-major block; required only for the ambiguous shape whose first cell
+            axis is a calendar period length, as for :func:`spi`.
+        output_scale: "normal" (the default) returns the z-score; "probability"
+            returns ``F(Z)`` in [0, 1] without clipping; "bounded" returns
+            ``2F(Z) - 1`` in [-1, 1].
+
+    Returns:
+        SPAI values, unitless: a 1-D array as long as the flattened input, or the
+        input's (time, ``*cells``) shape for a time-major block.
+
+    Raises:
+        InsufficientDataError: If the Calibration Period, after clamping, spans fewer
+            than two years, or ``scale`` is longer than the series.
+        InvalidArgumentError: If ``distribution``, ``scale``, ``periodicity``, or
+            ``output_scale`` is not supported here, the Calibration Period is
+            reversed, or ``fitting_params`` is incomplete or does not broadcast.
+        PeriodicityError: If ``periodicity`` is not a ``Periodicity`` member.
+        ValueError: If ``values`` has an unsupported or undeclared ambiguous shape.
+
+    Missing data and edge cases:
+        A NaN input makes every accumulation window that holds it NaN. A calendar
+        period with no valid Calibration Period value has a NaN mean, so its anomalies
+        are NaN; a period whose calibration values are constant has zero anomalies, so
+        its SPAI is the pooled probability of a zero anomaly, never infinite. A cell
+        whose pooled calibration anomalies hold fewer than four valid values, or no
+        spread across them (a cell that never rains, for one), has no scale to estimate
+        and is NaN, with no runtime warning; an all-missing input is returned as NaN. A
+        Calibration Period shorter than 30 years warns.
+
+    Reference:
+        Chanda, K., and Maity, R. (2015). Meteorological drought quantification with
+        Standardized Precipitation Anomaly Index for the regions with strongly
+        seasonal and periodic precipitation. Journal of Hydrologic Engineering,
+        20(12), 06015007. https://doi.org/10.1061/(ASCE)HE.1943-5584.0001236
+    """
+    warnings.warn(_SPAI_BETA_MESSAGE, BetaFeatureWarning, stacklevel=2)
+    return _spai(
+        values,
+        scale,
+        distribution,
+        data_start_year,
+        calibration_year_initial,
+        calibration_year_final,
+        periodicity,
+        fitting_params,
+        spatial_time_major=spatial_time_major,
+        output_scale=output_scale,
     )
 
 

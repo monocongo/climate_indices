@@ -138,6 +138,8 @@ BETA_DATAARRAY_API_NAMES: dict[str, frozenset[str]] = {
     ),
     "energy": frozenset({"energy_drought_events"}),
 }
+# Beta routes exported at the package root; SPAI ships Beta in 3.2.0 (#1480)
+BETA_ROOT_API_NAMES = frozenset({"spai"})
 
 
 def _workflow_job(workflow: str, job: str) -> str:
@@ -1705,7 +1707,7 @@ def test_v310_stable_dataarray_api_surface_is_pinned() -> None:
     Export alone cannot tell the tiers apart, so each Beta route must also keep its
     `Yes (Beta)` row in the compatibility matrix; the compound routes'
     `BetaFeatureWarning` is pinned in tests/test_compound_xarray.py and
-    tests/test_compound_catalog.py.
+    tests/test_compound_catalog.py. SPAI is Beta at the package root in 3.2.0 (#1480).
     """
     import climate_indices
     from climate_indices import compound
@@ -1731,6 +1733,12 @@ def test_v310_stable_dataarray_api_surface_is_pinned() -> None:
             assert name in module.__all__, f"{module_name}.{name}"
             tiers = {tier.strip() for tier, coverage in rows if f"`{module_name}.{name}()`" in coverage}
             assert tiers == {"Yes (Beta)"}, f"{module_name}.{name} must stay Beta in the compatibility matrix: {tiers}"
+
+    for name in sorted(BETA_ROOT_API_NAMES):
+        assert name in climate_indices.__all__, name
+        assert name not in STABLE_DATAARRAY_API_NAMES, name
+        tiers = {tier.strip() for tier, coverage in rows if f"`climate_indices.{name}()`" in coverage}
+        assert tiers == {"Yes (Beta)"}, f"{name} must stay Beta in the compatibility matrix: {tiers}"
 
 
 def test_icechunk_is_an_optional_extra_and_imports_lazily() -> None:

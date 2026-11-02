@@ -151,6 +151,14 @@ _SPEI_REFERENCES = (
     "https://doi.org/10.1175/2009JCLI2909.1"
 )
 
+_SPAI_REFERENCES = (
+    "Chanda, K., & Maity, R. (2015). "
+    "Meteorological Drought Quantification with Standardized Precipitation Anomaly Index "
+    "for the Regions with Strongly Seasonal and Periodic Precipitation. "
+    "Journal of Hydrologic Engineering, 20(12), 06015007. "
+    "https://doi.org/10.1061/(ASCE)HE.1943-5584.0001236"
+)
+
 # The energy entries share their source publications (ADR-0019, #1162); keep the
 # rendered `references` text identical across the entries that cite each.
 _C3S_ENERGY_INDICATORS = (
@@ -192,6 +200,29 @@ CF_METADATA: dict[str, CFAttributes] = {
         "description": ("Fitted cumulative probability of the accumulated precipitation mapped to [-1, 1] as 2p - 1."),
         "climate_indices_variant": "bounded",
         "references": _SPI_REFERENCES,
+    },
+    "spai": {
+        "long_name": "Standardized Precipitation Anomaly Index",
+        "units": "dimensionless",
+        "references": _SPAI_REFERENCES,
+    },
+    "spai_probability": {
+        "long_name": "Standardized Precipitation Anomaly Index probability",
+        "units": "1",
+        "description": (
+            "Fitted cumulative probability of the precipitation anomaly, the "
+            "probability integral transform (PIT) value in [0, 1], before the "
+            "inverse-normal transform."
+        ),
+        "climate_indices_variant": "probability",
+        "references": _SPAI_REFERENCES,
+    },
+    "spai_bounded": {
+        "long_name": "Standardized Precipitation Anomaly Index bounded probability",
+        "units": "1",
+        "description": "Fitted cumulative probability of the precipitation anomaly mapped to [-1, 1] as 2p - 1.",
+        "climate_indices_variant": "bounded",
+        "references": _SPAI_REFERENCES,
     },
     "spei": {
         "long_name": "Standardized Precipitation Evapotranspiration Index",
