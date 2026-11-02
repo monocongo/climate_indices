@@ -370,17 +370,19 @@ non-periodic Arkansas series.
 
 **When to consider SPAI:**
 
-- Precipitation with a pronounced wet season, where a deficit in the wet season
-  should weigh differently from a deficit in the dry season
+- Precipitation with a pronounced wet season, where drought severity should reflect
+  absolute anomalies rather than each month's relative spread
 - Comparison with SPI on the same series
 
 **Limitations:**
 
 - Beta (#1480): the interface may change in a minor release
-- Regression-level evidence only; no independent SPAI reference dataset is committed
+- No independent SPAI reference dataset is committed; the evidence also includes
+  specification-level checks and estimator cross-checks
   ([VALIDATION.md](https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md))
-- A given anomaly value scores the same in every calendar period, so a deficit that is
-  small in absolute terms does not register as drought. The same authors' later papers
+- A given anomaly value scores the same in every calendar period, but the score still
+  depends on the pooled fitted distribution: a small absolute deficit can score
+  strongly negative when the pooled spread is small. The same authors' later papers
   divide the anomaly by each calendar period's standard deviation instead; this
   library follows the original paper's Eq. (5)
 - The symmetric t location-scale and normal fits cannot follow strongly skewed

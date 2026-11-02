@@ -18,7 +18,11 @@ __all__ = [
 
 class Distribution(Enum):
     """
-    Enumeration type for distribution fittings used for SPI and SPEI.
+    Enumeration type for the distribution families the fitting-based indices use.
+
+    SPI and SPEI use ``gamma``, ``pearson``, and ``loglogistic``;
+    ``standardized_index()`` also accepts ``empirical`` and ``beta``; ``spai()`` uses
+    ``t_location_scale``, ``pearson``, and ``normal``.
     """
 
     pearson = "pearson"

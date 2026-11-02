@@ -168,21 +168,30 @@ fits one distribution per calendar period. `indices.spai()` and
    SPAI = \Phi^{-1}\left(F(y)\right)
    $$
 
-   with *F*(*y*) clipped to [ε, 1 − ε] (machine ε) so the inverse normal is finite,
-   and the default `output_scale="normal"` clipped to [-3.09, 3.09] as for SPI.
-   `"probability"` returns *F*(*y*) and `"bounded"` returns 2*F*(*y*) − 1.
+   For the default `output_scale="normal"`, *F*(*y*) is clipped to [ε, 1 − ε] (machine
+   ε) before the inverse normal so the result is finite, and the result is clipped to
+   [-3.09, 3.09] as for SPI. `"probability"` returns the un-clipped *F*(*y*) in
+   [0, 1], and `"bounded"` returns the un-clipped 2*F*(*y*) − 1.
 
 **Key differences from SPI:**
 
 - SPAI is near standard normal over the pooled Calibration Period, not within each
-  calendar period; each period keeps its own anomaly shape. Because the pooled anomaly
-  is a scale mixture, the lighter-tailed Pearson and normal fits reach the ±3.09 clip
-  on wet-season values more often than the heavy-tailed t fit does.
-- A given anomaly value scores the same in a dry and a wet month, so a deficit that is
-  small in absolute terms does not register as drought whatever the month's own spread.
-  That is the published design. The same authors' later papers instead divide each
-  calendar period's anomaly by its own standard deviation, which scales the deficit by
-  the month's variability; this library follows the paper's Eq. (5).
+  calendar period; each period keeps its own anomaly shape. The pooled result is only
+  near standard normal as far as the fitted family describes the pooled anomalies: a
+  pooled sample with a large point mass, such as constant zero precipitation in the dry
+  months of a strongly seasonal climate, maps that whole mass to one score instead of
+  spreading it normally, and the normal fit only rescales the anomalies. Because the
+  pooled anomaly is a scale mixture, the lighter-tailed Pearson and normal fits reach
+  the ±3.09 clip on wet-season values more often than the heavy-tailed t fit does.
+- A given anomaly value scores the same in a dry and a wet month, because one
+  distribution is fitted to the pooled anomalies rather than one per calendar period;
+  that is the published design. The score still depends on the pooled fitted
+  distribution, not the month's own spread, so a small absolute deficit can score
+  strongly negative when the pooled spread is small, and rescaling all precipitation
+  changes the absolute deficit without changing the score. The same authors' later
+  papers instead divide each calendar period's anomaly by its own standard deviation,
+  which scales the deficit by the month's variability; this library follows the paper's
+  Eq. (5).
 
 ## PET computation
 
