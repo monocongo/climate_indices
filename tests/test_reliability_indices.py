@@ -121,9 +121,9 @@ def test_caidi_is_undefined_without_customer_interruptions(events: Any) -> None:
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         result = reliability.reliability_indices(events, total_customers=100)
-    assert math.isnan(result.caidi)
-    assert result.undefined_metrics == ("caidi",)
-    assert len(caught) <= 1
+        assert math.isnan(result.caidi)
+        assert result.undefined_metrics == ("caidi",)
+        assert len(caught) == 0
 
 
 def test_dataframe_and_mapping_inputs_agree() -> None:
