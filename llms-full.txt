@@ -182,10 +182,11 @@ See [drought.gov](https://www.drought.gov/drought/python-climate-indices).
 
 ## Installation
 
-This README describes 3.1.0, which is not yet published on PyPI. The published 3.0.0
+This README describes 3.2.0, which is not yet published on PyPI. The published 3.0.0
 release added the `fire`, `flood`, and `runs` modules and the optional Rust backend.
 Relative to 3.0.0, 3.1.0 adds the `compound` module and the `energy` family, promotes the
-DataArray index APIs to Stable, and adds optional Icechunk I/O.
+DataArray index APIs to Stable, and adds optional Icechunk I/O. Relative to 3.1.1, 3.2.0
+adds SPAI and its pooled-anomaly fit.
 
 Install the current published release from PyPI:
 
