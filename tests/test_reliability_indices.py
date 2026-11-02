@@ -203,6 +203,19 @@ def test_fractional_extended_precision_total_customers_is_accepted() -> None:
     assert isinstance(result.saifi, float)
 
 
+@pytest.mark.skipif(
+    np.finfo(np.longdouble).nmant <= np.finfo(np.float64).nmant,
+    reason="platform NumPy longdouble is float64, so 2**53 + 1 is representable",
+)
+def test_integral_extended_precision_total_customers_must_be_exact() -> None:
+    events = [record(duration=60.0, customers_interrupted=20)]
+    total: Any = np.longdouble(2**53 + 1)
+    assert total != float(total)
+    with pytest.raises(InvalidArgumentError) as exc:
+        reliability.reliability_indices(events, total_customers=total)
+    assert exc.value.argument_name == "total_customers"
+
+
 def test_row_order_does_not_change_the_result() -> None:
     rows = [
         record(event_id="a", duration=60.0, customers_interrupted=20),
