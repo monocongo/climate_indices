@@ -14,11 +14,16 @@ included by default.
 Amended by ENERGY2-5 ([#1339](https://github.com/monocongo/climate_indices/issues/1339)):
 the same function and result compute SAIDI and the shared
 `CMI = sum(r_i N_i)` accumulator over the same sustained rows, and the
-`SAIDI_hours` conversion is documented for the later ASAI relationship. CAIDI,
-momentary metrics (MAIFI_E, MAIFI), availability (ASAI), grouping, simulation,
+`SAIDI_hours` conversion is documented for the later ASAI relationship.
+Amended by ENERGY2-6 ([#1340](https://github.com/monocongo/climate_indices/issues/1340)):
+`ReliabilityResult.caidi` computes `CMI / CI` from the shared accumulators.
+It returns NaN when `CI` is zero and names `caidi` in `undefined_metrics` without an additional warning.
+Both are read-only properties, so the result constructor remains unchanged.
+CAIDI is independent of `total_customers`; its identity with `SAIDI / SAIFI` permits floating-point rounding.
+Momentary metrics (MAIFI_E, MAIFI), availability (ASAI), grouping, simulation,
 adapters, and the reporting-period inputs remain unimplemented.
-ENERGY2-6 through ENERGY2-11
-([#1340](https://github.com/monocongo/climate_indices/issues/1340)–[#1345](https://github.com/monocongo/climate_indices/issues/1345))
+ENERGY2-7 through ENERGY2-11
+([#1341](https://github.com/monocongo/climate_indices/issues/1341)–[#1345](https://github.com/monocongo/climate_indices/issues/1345))
 implement the remaining design. Each decision is amended here as its implementation lands, as
 {doc}`0013-flood-module-api-and-naming` was for flood.
 
@@ -94,7 +99,9 @@ unreproducible claim of reproduction.
    - `ReliabilityResult` is a frozen dataclass carrying SAIFI, SAIDI, CAIDI,
      MAIFI_E (and MAIFI where the input admits it), ASAI, the outage count, and
      the shared accumulators `CI = Σ N_i` and `CMI = Σ r_i N_i`, so
-     `CAIDI == SAIDI / SAIFI` holds by construction rather than by convention.
+     `CAIDI = SAIDI / SAIFI` holds mathematically through those shared accumulators.
+     CAIDI uses `CMI / CI` directly to preserve independence from `total_customers`.
+     The separately rounded floating-point values need not satisfy bit-for-bit equality.
      It also names any metric that is undefined for the input.
    - `classify_interruptions()` applies the sustained/momentary threshold of
      decision 3.
@@ -121,9 +128,9 @@ unreproducible claim of reproduction.
    **Six `saifi()`-style scalar functions are rejected.** Each metric is a ratio
    over the same two accumulators, so six functions would recompute the same
    sums six times and could disagree about the record they summed. A single
-   result object computes them once, makes the `CAIDI == SAIDI / SAIFI` identity
-   structural, and lets a degenerate input report all of its undefined metrics
-   together.
+   result object computes them once, preserves the mathematical `CAIDI = SAIDI / SAIFI`
+   identity subject to floating-point rounding, and lets a degenerate input report
+   all of its undefined metrics together.
 
 3. **The sustained/momentary threshold is an explicit parameter, defaulting to 5
    minutes.** IEEE Std 1366-2022 defines a sustained interruption as any

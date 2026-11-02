@@ -234,6 +234,7 @@ validator supports later metric tickets. Neither is an additional public functio
 `reliability_indices(events, total_customers=None, *, exclude_planned=False, threshold_minutes=5.0)`
 returns a frozen `ReliabilityResult` with `saifi`, `saidi`,
 `customer_interruptions`, `customer_minutes_interrupted`, and `outage_count`.
+It also exposes the read-only properties `caidi` and `undefined_metrics`.
 SAIFI is `CI / N_T`, where `CI = sum(N_i)` over sustained interruptions.
 Each sustained event row contributes its own `N_i`, so `CI` is additive across those
 rows: two rows carrying the same customer count contribute twice.
@@ -243,7 +244,13 @@ sustained interruption minutes per served customer for the period represented by
 the supplied events and average customer count. Divide SAIDI by 60 to get
 `SAIDI_hours`, the unit the ASAI relationship consumes in ENERGY2-8; a partial-period
 SAIDI is never annualized.
-The two metrics share one sustained-row mask, so `exclude_planned` and
+CAIDI (Customer Average Interruption Duration Index) is `CMI / CI`, in minutes per customer interruption.
+It is independent of `total_customers` and represents the customer-weighted average restoration time.
+For one sustained event with interrupted customers, CAIDI equals its duration, subject to floating-point rounding.
+The identity `CAIDI = SAIDI / SAIFI` is mathematical, not generally bit-for-bit in floating-point arithmetic.
+For example, a six-minute event affecting three customers with `total_customers=1000` gives CAIDI `6.0`.
+The separately rounded ratio `SAIDI / SAIFI` gives `5.999999999999999`.
+The three metrics share one sustained-row mask, so `exclude_planned` and
 `threshold_minutes` have one meaning.
 The function accepts no reporting-period bounds; partial periods are computed
 exactly and are never annualized.
@@ -254,7 +261,13 @@ Momentary rows contribute nothing. Planned sustained interruptions are included 
 value raises `InvalidArgumentError` naming `total_customers`.
 An empty event log returns SAIFI and SAIDI `0.0`, `customer_interruptions` 0,
 `customer_minutes_interrupted` 0, and `outage_count` 0.
-CAIDI, MAIFI, ASAI, and the simulation path are not implemented yet.
+When `CI` is zero, CAIDI is NaN and `undefined_metrics` is `("caidi",)`.
+This includes empty logs, momentary-only logs, and sustained rows with zero interrupted customers.
+Undefined CAIDI does not produce an additional warning.
+An explicitly sustained zero-duration event with interrupted customers instead gives CAIDI `0.0` and `undefined_metrics == ()`.
+The original result constructor remains unchanged; both properties derive from its accumulators.
+If the constructor omits `customer_minutes_interrupted`, CAIDI remains NaN and `undefined_metrics` names `caidi`.
+MAIFI, ASAI, and the simulation path are not implemented yet.
 
 ```{doctest}
 >>> from climate_indices import reliability
@@ -278,6 +291,12 @@ CAIDI, MAIFI, ASAI, and the simulation path are not implemented yet.
 (30, 1800.0, 1)
 >>> result.saidi / 60
 0.3
+>>> result.caidi, result.undefined_metrics
+(60.0, ())
+>>> empty = reliability.reliability_indices([], total_customers=100)
+>>> import math
+>>> math.isnan(empty.caidi), empty.undefined_metrics
+(True, ('caidi',))
 ```
 
 ```{eval-rst}

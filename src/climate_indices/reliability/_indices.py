@@ -31,6 +31,13 @@ class ReliabilityResult:
     events. ``outage_count`` is the number of sustained event rows that
     contributed.
 
+    ``caidi`` is a read-only property: ``CMI / CI`` minutes per customer
+    interruption, independent of the served-customer count. It equals
+    ``saidi / saifi`` up to floating-point rounding. With no sustained customer
+    interruptions, it returns NaN and ``undefined_metrics`` names ``"caidi"``.
+    A sustained interruption with zero duration has CAIDI ``0.0``.
+    Both properties derive from the accumulators without adding constructor fields.
+
     The original three constructor fields retain their order.
     If callers omit ``saidi`` or ``customer_minutes_interrupted``, each omitted
     field defaults to NaN because the original fields cannot determine duration.
@@ -46,6 +53,18 @@ class ReliabilityResult:
     outage_count: int
     saidi: float = math.nan
     customer_minutes_interrupted: float = math.nan
+
+    @property
+    def caidi(self) -> float:
+        """Return ``CMI / CI`` minutes per interruption, or NaN when CI is zero."""
+        if self.customer_interruptions == 0:
+            return math.nan
+        return self.customer_minutes_interrupted / self.customer_interruptions
+
+    @property
+    def undefined_metrics(self) -> tuple[str, ...]:
+        """Return undefined derived metric names, currently only ``caidi``."""
+        return ("caidi",) if math.isnan(self.caidi) else ()
 
     def __eq__(self, other: object) -> bool:
         if type(other) is not type(self):
@@ -66,7 +85,7 @@ def reliability_indices(
     exclude_planned: bool = False,
     threshold_minutes: float = 5.0,
 ) -> ReliabilityResult:
-    """Compute SAIFI and SAIDI over sustained interruptions and the shared accumulators.
+    """Compute SAIFI, SAIDI, and CAIDI from shared sustained-interruption accumulators.
 
     Args:
         events: A DataFrame, column mapping, or sequence of row mappings,
@@ -83,7 +102,8 @@ def reliability_indices(
     Returns:
         A frozen ``ReliabilityResult``. An empty event log returns SAIFI and
         SAIDI ``0.0`` with zero customer interruptions, zero customer-minutes,
-        and zero outages.
+        and zero outages. CAIDI is NaN, and ``undefined_metrics`` is
+        ``("caidi",)``. Undefined CAIDI does not produce an additional warning.
 
     Raises:
         InvalidArgumentError: ``total_customers`` is absent or invalid,

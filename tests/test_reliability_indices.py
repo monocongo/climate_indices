@@ -1,8 +1,9 @@
-"""Contract tests for the reliability metric accumulators (SAIFI and CI)."""
+"""Contract tests for sustained reliability metrics and their shared accumulators."""
 
 import dataclasses
 import json
 import math
+import warnings
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -41,6 +42,8 @@ def test_result_preserves_original_constructor(result: reliability.ReliabilityRe
     assert result.outage_count == 2
     assert np.isnan(result.saidi)
     assert np.isnan(result.customer_minutes_interrupted)
+    assert math.isnan(result.caidi)
+    assert result.undefined_metrics == ("caidi",)
 
 
 def test_legacy_three_field_results_compare_equal_and_hash_equal() -> None:
@@ -87,6 +90,10 @@ def test_nominal_analytic_case() -> None:
     assert result.saidi == pytest.approx(24.0)
     assert result.customer_interruptions == 30
     assert result.customer_minutes_interrupted == pytest.approx(2400.0)
+    assert result.caidi == 80.0
+    assert result.caidi == result.saidi / result.saifi
+    assert result.undefined_metrics == ()
+    assert isinstance(result.caidi, float)
     assert result.outage_count == 2
     assert isinstance(result.saifi, float)
     assert isinstance(result.saidi, float)
@@ -103,6 +110,20 @@ def test_empty_log_returns_zero_without_infinity(events: Any) -> None:
     assert result == reliability.ReliabilityResult(
         saifi=0.0, saidi=0.0, customer_interruptions=0, customer_minutes_interrupted=0.0, outage_count=0
     )
+
+
+@pytest.mark.parametrize(
+    "events",
+    [[], {}, pd.DataFrame(), [record(duration=1.0)], [record(customers_interrupted=0)]],
+    ids=["empty-rows", "empty-mapping", "empty-frame", "momentary-only", "zero-customers"],
+)
+def test_caidi_is_undefined_without_customer_interruptions(events: Any) -> None:
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = reliability.reliability_indices(events, total_customers=100)
+    assert math.isnan(result.caidi)
+    assert result.undefined_metrics == ("caidi",)
+    assert len(caught) <= 1
 
 
 def test_dataframe_and_mapping_inputs_agree() -> None:
@@ -187,6 +208,8 @@ def test_zero_duration_event_counts_only_when_explicitly_sustained() -> None:
     assert counted.saidi == pytest.approx(0.0)
     assert counted.customer_interruptions == 5
     assert counted.customer_minutes_interrupted == pytest.approx(0.0)
+    assert counted.caidi == 0.0
+    assert counted.undefined_metrics == ()
     assert counted.outage_count == 1
 
 
@@ -358,6 +381,7 @@ def test_aggregate_customer_interruptions_beyond_int64_stay_exact() -> None:
     result = reliability.reliability_indices(events, total_customers=float(huge))
     assert result.customer_interruptions == 2**63
     assert result.saifi == pytest.approx(2.0)
+    assert result.caidi == 60.0
 
 
 def test_single_sustained_event_shares_the_saidi_relationship() -> None:
@@ -369,19 +393,55 @@ def test_single_sustained_event_shares_the_saidi_relationship() -> None:
 
 
 def test_customer_minutes_relationship_to_caidi() -> None:
-    """CMI equals SAIDI times N_T and CAIDI times CI on the same record.
-
-    CAIDI is computed here as ``CMI / CI``; the production CAIDI belongs to
-    ENERGY2-6 (issue #1340).
-    """
+    """CMI equals SAIDI times N_T and CAIDI times CI on the same record."""
     events = json.loads(FIXTURE.read_text())
     result = reliability.reliability_indices(events, total_customers=1000)
-    caidi = result.customer_minutes_interrupted / result.customer_interruptions
     assert result.customer_minutes_interrupted == pytest.approx(result.saidi * 1000)
-    assert result.customer_minutes_interrupted == pytest.approx(caidi * result.customer_interruptions)
-    assert caidi == pytest.approx(80.0)
+    assert result.customer_minutes_interrupted == pytest.approx(result.caidi * result.customer_interruptions)
+    assert result.caidi == 80.0
     assert result.saidi == pytest.approx(24.0)
     assert result.saidi / 60 == pytest.approx(0.4)
+
+
+@pytest.mark.parametrize("duration", [6.0, 17.25, 120.0])
+def test_caidi_single_event_is_its_restoration_time(duration: float) -> None:
+    result = reliability.reliability_indices([record(duration=duration, customers_interrupted=3)], total_customers=1000)
+    assert result.caidi == duration
+    assert result.undefined_metrics == ()
+
+
+@pytest.mark.parametrize("total_customers", [30.0, 100.0, 100.5, 1000.0])
+@pytest.mark.parametrize("durations, counts", [([6.0], [3]), ([60.0, 120.0], [20, 10]), ([6.1, 17.3], [7, 11])])
+def test_caidi_population_independence_and_general_identity(
+    total_customers: float, durations: list[float], counts: list[int]
+) -> None:
+    rows = [
+        record(event_id=i, start_time=f"2024-01-0{i + 1}T00:00:00", duration=duration, customers_interrupted=count)
+        for i, (duration, count) in enumerate(zip(durations, counts, strict=True))
+    ]
+    result = reliability.reliability_indices(rows, total_customers=total_customers)
+    baseline = reliability.reliability_indices(rows, total_customers=100)
+    reference = sum(Fraction(duration) * count for duration, count in zip(durations, counts, strict=True)) / sum(counts)
+    assert result.caidi == baseline.caidi
+    # Four float64 epsilons cover the product, sum, and separately rounded divisions.
+    tolerance = 4 * np.finfo(np.float64).eps
+    np.testing.assert_allclose(result.caidi, float(reference), rtol=tolerance, atol=0)
+    np.testing.assert_allclose(result.caidi, result.saidi / result.saifi, rtol=tolerance, atol=0)
+
+
+def test_caidi_uses_the_same_planned_and_threshold_filters() -> None:
+    rows = [
+        record(event_id="unplanned", duration=60.0, customers_interrupted=10),
+        record(event_id="planned", start_time="2024-01-02", duration=120.0, customers_interrupted=20, planned=True),
+        record(event_id="short", start_time="2024-01-03", duration=3.0, customers_interrupted=5),
+    ]
+    assert reliability.reliability_indices(rows, total_customers=100).caidi == 100.0
+    assert reliability.reliability_indices(rows, total_customers=100, exclude_planned=True).caidi == 60.0
+    included = reliability.reliability_indices(rows, total_customers=100, threshold_minutes=1.0)
+    np.testing.assert_allclose(included.caidi, float(Fraction(3015, 35)), rtol=4 * np.finfo(float).eps, atol=0)
+    empty = reliability.reliability_indices(rows[1:2], total_customers=100, exclude_planned=True)
+    assert math.isnan(empty.caidi)
+    assert empty.undefined_metrics == ("caidi",)
 
 
 def test_exclude_planned_filters_saidi_and_customer_minutes() -> None:

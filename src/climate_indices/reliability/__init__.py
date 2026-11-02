@@ -2,10 +2,11 @@
 
 Import this package with ``from climate_indices import reliability``.
 ``classify_interruptions()`` validates and classifies event records.
-``reliability_indices()`` computes SAIFI, SAIDI, and the shared
+``reliability_indices()`` computes SAIFI, SAIDI, CAIDI, and the shared
 customer-interruption (``CI``) and customer-minute (``CMI``) accumulators from
-sustained events. CAIDI, momentary metrics, availability, and simulation are
-not implemented yet.
+sustained events. CAIDI is NaN when no sustained customer interruption occurs;
+the result names it in ``undefined_metrics``. Momentary metrics, availability,
+and simulation are not implemented yet.
 """
 
 from climate_indices.reliability._events import classify_interruptions
