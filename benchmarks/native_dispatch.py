@@ -109,16 +109,15 @@ def recording(sink: Any) -> Iterator[None]:
         return result
 
     def sum_to_scale(values: np.ndarray, scale: int) -> np.ndarray:
-        # Mirror sum_to_scale's early return and mask normalization, so a reported
-        # route-specific restriction is one the actual call can reach. The shared
-        # gate's own reason is emitted by the patched ``takes``.
+        # Mirror sum_to_scale's early return, mask normalization, and guard order, so a
+        # reported route-specific restriction is one the actual call can reach. The shared
+        # gate's own reason is emitted by the patched ``takes``, which a series never reaches.
         if scale != 1:
             normalized = np.ma.filled(values.astype(float), np.nan) if np.ma.isMaskedArray(values) else values
-            if fallback_reason(normalized) is None:
-                if normalized.ndim == 1:
-                    _emit(sink, fallback="trailing_sum: one-dimensional series")
-                elif normalized.ndim > 2 and not normalized.flags.c_contiguous:
-                    _emit(sink, fallback="trailing_sum: block is not C-contiguous")
+            if normalized.ndim == 1:
+                _emit(sink, fallback="trailing_sum: one-dimensional series")
+            elif normalized.ndim > 2 and fallback_reason(normalized) is None and not normalized.flags.c_contiguous:
+                _emit(sink, fallback="trailing_sum: block is not C-contiguous")
         return original_sum(values, scale)
 
     with pytest.MonkeyPatch.context() as patch:

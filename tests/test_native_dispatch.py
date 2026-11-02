@@ -37,6 +37,8 @@ def test_default_policy_keeps_python_and_names_the_reason(
 
     assert summary["kernels"] == []
     assert "numpy-policy: divide=warn, over=warn, invalid=warn" in summary["fallbacks"]
+    # sum_to_scale rejects the series before it consults the shared gate
+    assert "trailing_sum: one-dimensional series" in summary["fallbacks"]
 
     entry_point = indices.spi if distribution == indices.Distribution.gamma else indices.standardized_index
     values = recipe.sample_grid().values[:, 0, 0].copy()
