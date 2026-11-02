@@ -166,7 +166,7 @@ records the tolerances, evidence, and known gaps.
 ### climate_indices.reliability
 
 The reliability package validates and classifies interruption records and computes
-SAIFI and SAIDI from sustained interruptions. CAIDI, momentary metrics, availability,
+SAIFI, SAIDI, and CAIDI from sustained interruptions. Momentary metrics, availability,
 and simulation are not implemented yet.
 [ADR-0026](adr/0026-reliability-module-api-and-conventions.md) fixes the conventions
 for those later tickets.
