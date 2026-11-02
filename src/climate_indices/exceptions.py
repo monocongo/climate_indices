@@ -27,6 +27,7 @@ __all__ = [
     "CalibrationPeriodClampedWarning",
     "GoodnessOfFitWarning",
     "InputAlignmentWarning",
+    "OverlappingEventsWarning",
     "BetaFeatureWarning",
     "ClimateIndicesDeprecationWarning",
     "emit_deprecation_warning",
