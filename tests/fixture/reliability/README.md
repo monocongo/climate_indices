@@ -12,4 +12,6 @@ The two sustained records have 300 customer interruptions and 24,000 customer-mi
 The two momentary records have 300 customer events and 750 customer device operations.
 The final record has zero duration and zero customers. It remains in the normalized record.
 
-These are accumulator checks. This ticket does not implement the metrics.
+`reliability_indices(events, total_customers=1000)` computes SAIFI 0.3 from the
+two sustained records, with 300 customer interruptions and two outages. The
+remaining accumulators are checks only until their metric tickets land.

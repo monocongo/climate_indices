@@ -7,9 +7,14 @@ Approved for implementation.
 Amended by ENERGY2-3 ([#1337](https://github.com/monocongo/climate_indices/issues/1337)):
 event normalization, `classify_interruptions()`, the event JSON Schema,
 and internal served-customer and reporting-period validation are implemented.
-Metric calculations, grouping, simulation, and adapters remain unimplemented.
-ENERGY2-4 through ENERGY2-11
-([#1338](https://github.com/monocongo/climate_indices/issues/1338)–[#1345](https://github.com/monocongo/climate_indices/issues/1345))
+Amended by ENERGY2-4 ([#1338](https://github.com/monocongo/climate_indices/issues/1338)):
+`reliability_indices()` and the frozen `ReliabilityResult` compute SAIFI and the
+shared `CI = sum(N_i)` accumulator from sustained events, with planned outages
+included by default. Duration metrics (SAIDI, CAIDI), momentary metrics
+(MAIFI_E, MAIFI), availability (ASAI), the `CMI` accumulator, grouping,
+simulation, adapters, and the reporting-period inputs remain unimplemented.
+ENERGY2-5 through ENERGY2-11
+([#1339](https://github.com/monocongo/climate_indices/issues/1339)–[#1345](https://github.com/monocongo/climate_indices/issues/1345))
 implement the remaining design. Each decision is amended here as its implementation lands, as
 {doc}`0013-flood-module-api-and-naming` was for flood.
 
