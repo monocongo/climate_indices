@@ -195,6 +195,14 @@ def test_fractional_total_customers_is_accepted() -> None:
     assert isinstance(result.saifi, float)
 
 
+def test_fractional_extended_precision_total_customers_is_accepted() -> None:
+    events = [record(duration=60.0, customers_interrupted=20)]
+    total: Any = np.longdouble("100.1")
+    result = reliability.reliability_indices(events, total_customers=total)
+    assert result.saifi == pytest.approx(20 / 100.1)
+    assert isinstance(result.saifi, float)
+
+
 def test_row_order_does_not_change_the_result() -> None:
     rows = [
         record(event_id="a", duration=60.0, customers_interrupted=20),

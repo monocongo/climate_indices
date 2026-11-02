@@ -57,7 +57,7 @@ def _number(value: object, name: str, *, positive: bool = False) -> float:
     # A Fraction with denominator one is mathematically integral, so it must
     # also survive the float64 round trip exactly; later bounds (for example
     # customers_interrupted <= total_customers) compare against it.
-    if getattr(value, "denominator", 1) == 1 and value != result:
+    if getattr(value, "denominator", None) == 1 and value != result:
         raise _invalid(name, "cannot be represented exactly as float64")
     return result
 
