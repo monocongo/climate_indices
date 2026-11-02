@@ -350,6 +350,7 @@ def group_momentary_events(
     except (ValueError, TypeError, OverflowError) as exc:
         raise _invalid("window_minutes", "must fit a pandas Timedelta") from exc
     frame = classify_interruptions(events, threshold_minutes=threshold_minutes)
+    frame["grouped_momentary_event"] = False
     momentary = (frame["interruption_type"] == "momentary").to_numpy()
     if not momentary.any():
         return frame.copy()
@@ -412,7 +413,6 @@ def group_momentary_events(
     grouped_positions = list(grouped)
     result.loc[grouped_positions, "end_time"] = end_times.take(end_positions)
     result.loc[grouped_positions, "duration"] = durations
-    result["grouped_momentary_event"] = False
     result.loc[grouped_positions, "grouped_momentary_event"] = True
     if operations is not None:
         result.loc[grouped_positions, "device_operations"] = pd.array(operation_totals, dtype="Int64")

@@ -223,10 +223,27 @@ def test_unsorted_grouping_keeps_anchor_metadata_and_nullable_counts() -> None:
     pd.testing.assert_frame_equal(frame, original)
 
 
+@pytest.mark.parametrize("include_momentary", [False, True])
+@pytest.mark.parametrize("flags", [{}, {"grouped_momentary_event": None}, {"grouped_momentary_event": True}])
+def test_grouped_flag_is_consistent_on_sustained_rows(include_momentary: bool, flags: dict[str, object]) -> None:
+    rows = [{**operation("sustained", "2024-01-01T00:00:00", duration=60.0), **flags}]
+    if include_momentary:
+        rows.append({**operation("momentary", "2024-01-01T02:00:00"), **flags})
+    frame = pd.DataFrame(rows)
+    original = frame.copy(deep=True)
+
+    grouped = reliability.group_momentary_events(frame)
+
+    assert grouped["grouped_momentary_event"].tolist() == ([False, True] if include_momentary else [False])
+    assert grouped["grouped_momentary_event"].dtype == bool
+    pd.testing.assert_frame_equal(frame, original)
+
+
 def test_empty_input_returns_an_empty_frame() -> None:
     grouped = reliability.group_momentary_events([])
     assert grouped.empty
     assert grouped["duration"].dtype == np.float64
+    assert grouped["grouped_momentary_event"].dtype == bool
 
 
 @pytest.mark.parametrize("value", [0, -1, np.nan, np.inf, True, "5", 1e12])
