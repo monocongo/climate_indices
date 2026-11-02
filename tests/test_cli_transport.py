@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import multiprocessing
+
 import numpy as np
 import pytest
 import xarray as xr
@@ -95,6 +97,93 @@ def test_pool_and_inline_executors_agree():
 
     np.testing.assert_array_equal(inline, np.arange(6.0) * 2.0)
     np.testing.assert_array_equal(pooled, inline)
+
+
+def _floating_point_policy(x, parameters):
+    return np.full_like(x, float(np.geterr()["divide"] == parameters["divide"]))
+
+
+@pytest.mark.parametrize("policy", ["default", "ignore", "raise"])
+def test_pool_receives_callers_policy(monkeypatch, policy):
+    """Spawned pool workers receive the policy at map time, without changing the parent."""
+    spawn_context = multiprocessing.get_context("spawn")
+    monkeypatch.setattr(_cli_transport.multiprocessing, "Pool", spawn_context.Pool)
+    # the shared arrays must come from the same context as the pool: a fork-context
+    # lock cannot cross into a spawned worker
+    monkeypatch.setattr(_cli_transport.multiprocessing, "Array", spawn_context.Array)
+    transport = _cli_transport.Transport(2)
+    transport.write("values", np.ones((2, 12)))
+    transport.allocate("out", (2, 12))
+    executor = _cli_transport.PoolExecutor(transport.store, 2)
+    settings = {"divide": "warn", "over": "warn", "under": "ignore", "invalid": "warn"}
+    if policy != "default":
+        settings = dict.fromkeys(settings, policy)
+    previous = np.geterr()
+    with np.errstate(**settings):
+        transport.execute(
+            kernel=_floating_point_policy,
+            input_names=("values",),
+            output_names=("out",),
+            coordinate_input=False,
+            layout=DatasetLayout.DIVISIONS,
+            arguments={"divide": settings["divide"]},
+            worker=_cli_transport.run_along_axis,
+            executor=executor,
+        )
+        assert np.geterr() == settings
+    assert np.geterr() == previous
+    np.testing.assert_array_equal(transport.read("out"), 1.0)
+
+
+def _module_level_handler(kind, flag):
+    pass
+
+
+def _reports_the_errcall(x, parameters):
+    return np.full_like(x, np.geterrcall() is parameters["handler"])
+
+
+def test_pool_forwards_the_error_handler(monkeypatch):
+    """A spawned worker installs the handler its ``call`` policy needs, not just the policy."""
+    spawn_context = multiprocessing.get_context("spawn")
+    monkeypatch.setattr(_cli_transport.multiprocessing, "Pool", spawn_context.Pool)
+    monkeypatch.setattr(_cli_transport.multiprocessing, "Array", spawn_context.Array)
+    transport = _cli_transport.Transport(2)
+    transport.write("values", np.ones((2, 12)))
+    transport.allocate("out", (2, 12))
+    executor = _cli_transport.PoolExecutor(transport.store, 2)
+    previous_policy, previous_handler = np.geterr(), np.geterrcall()
+    try:
+        np.seterr(divide="call")
+        np.seterrcall(_module_level_handler)
+        transport.execute(
+            kernel=_reports_the_errcall,
+            input_names=("values",),
+            output_names=("out",),
+            coordinate_input=False,
+            layout=DatasetLayout.DIVISIONS,
+            arguments={"handler": _module_level_handler},
+            worker=_cli_transport.run_along_axis,
+            executor=executor,
+        )
+    finally:
+        np.seterr(**previous_policy)
+        np.seterrcall(previous_handler)
+    np.testing.assert_array_equal(transport.read("out"), 1.0)
+
+
+def test_worker_error_state_forwards_any_handler():
+    """The handler travels as-is; only the start method decides whether it must pickle."""
+    previous_policy, previous_handler = np.geterr(), np.geterrcall()
+    try:
+        np.seterr(divide="call")
+        np.seterrcall(lambda kind, flag: None)
+        policy, handler = _cli_transport._worker_error_state()
+    finally:
+        np.seterr(**previous_policy)
+        np.seterrcall(previous_handler)
+    assert policy["divide"] == "call"
+    assert callable(handler)
 
 
 def test_execute_uses_the_supplied_executor():

@@ -148,6 +148,24 @@ A dimensionless, state-free CFFWIS behavior index combining ISI and BUI; compute
 **DSR (Daily Severity Rating)**:
 The `0.0272 * FWI ** 1.77` transform of the Canadian FWI that makes seasonal averaging meaningful; computed by `fire.daily_severity_rating()`.
 
+### Power-system reliability
+
+**Interruption Record**:
+An event log of power losses, with event identifiers, start times, durations, and interrupted-customer counts.
+Distinct events can overlap in time without being duplicates.
+
+**Sustained Interruption**:
+A power loss that lasts longer than the declared duration threshold, which defaults to five minutes.
+A momentary interruption lasts at most that threshold, including exactly five minutes under the default convention.
+
+**Served-Customer Count**:
+The positive average number of customers served during a reporting period.
+It is the denominator for customer-weighted reliability indices, not the sum of interrupted customers.
+
+**Reporting Period**:
+The explicit time interval over which reliability events and customer counts apply.
+Its duration uses actual elapsed hours, not a fixed annual multiplier.
+
 ### Compound hazards
 
 **Declared Hazard**:

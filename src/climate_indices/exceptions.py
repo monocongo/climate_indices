@@ -27,6 +27,7 @@ __all__ = [
     "CalibrationPeriodClampedWarning",
     "GoodnessOfFitWarning",
     "InputAlignmentWarning",
+    "OverlappingEventsWarning",
     "BetaFeatureWarning",
     "ClimateIndicesDeprecationWarning",
     "emit_deprecation_warning",
@@ -314,6 +315,10 @@ class ClimateIndicesWarning(UserWarning):
     """
 
     pass
+
+
+class OverlappingEventsWarning(ClimateIndicesWarning):
+    """Reliability event intervals overlap; validation retains every event."""
 
 
 class MissingDataWarning(ClimateIndicesWarning):

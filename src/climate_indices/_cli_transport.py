@@ -156,10 +156,31 @@ class WorkItem:
 _worker_store: SharedArrayStore | None = None
 
 
-def _initialize_worker(store: SharedArrayStore) -> None:
-    """Pool initializer: hand each worker the process-inherited store."""
+def _initialize_worker(
+    store: SharedArrayStore,
+    float_error_policy: dict[str, Any],
+    float_error_handler: Any,
+) -> None:
+    """Give each pool worker the shared store and the caller's NumPy policy."""
     global _worker_store
     _worker_store = store
+    np.seterr(**float_error_policy)
+    if float_error_handler is not None:
+        np.seterrcall(float_error_handler)
+
+
+def _worker_error_state() -> tuple[Any, Any]:
+    """The caller's NumPy error policy and the handler its ``call``/``log`` modes need.
+
+    The handler crosses the process boundary with the policy. The start method
+    decides how: a forked worker inherits it, so any callable works, while a
+    spawned worker needs it to be picklable and multiprocessing raises its own
+    error when it is not.
+    """
+    policy = np.geterr()
+    if not any(action in {"call", "log"} for action in policy.values()):
+        return policy, None
+    return policy, np.geterrcall()
 
 
 def _require_worker_store() -> SharedArrayStore:
@@ -297,10 +318,11 @@ class PoolExecutor:
         self._processes = processes
 
     def map(self, worker: Callable[[WorkItem], None], items: Sequence[WorkItem]) -> None:
+        policy, handler = _worker_error_state()
         with multiprocessing.Pool(
             processes=self._processes,
             initializer=_initialize_worker,
-            initargs=(self._store,),
+            initargs=(self._store, policy, handler),
         ) as pool:
             pool.map(worker, items)
 
