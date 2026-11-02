@@ -165,9 +165,11 @@ records the tolerances, evidence, and known gaps.
 (reliability-event-contract)=
 ### climate_indices.reliability
 
-The reliability package currently validates and classifies interruption records.
-It does not yet calculate indices or simulate failures.
-[ADR-0026](adr/0026-reliability-module-api-and-conventions.md) fixes those later capabilities.
+The reliability package validates and classifies interruption records and computes
+SAIFI from sustained interruptions. Duration and momentary metrics, availability,
+and simulation are not implemented yet.
+[ADR-0026](adr/0026-reliability-module-api-and-conventions.md) fixes the conventions
+for those later tickets.
 Import it with `from climate_indices import reliability`.
 
 `classify_interruptions(events, *, threshold_minutes=5.0)` accepts a DataFrame,
@@ -226,7 +228,21 @@ A complete 2023 period has 8760 hours; a complete 2024 period has 8784 hours.
 Timezone-aware periods use actual elapsed hours, including daylight-saving changes.
 If hours and bounds are both supplied, they must agree within `1e-9` hours.
 Without either input, the period remains undefined. Event timestamps never determine it.
-These internal validators support later metric tickets; they are not additional public functions.
+The served-customer validator backs `reliability_indices()`; the reporting-period
+validator supports later metric tickets. Neither is an additional public function.
+
+`reliability_indices(events, total_customers=None, *, exclude_planned=False, threshold_minutes=5.0)`
+returns a frozen `ReliabilityResult` with `saifi`, `customer_interruptions`, and `outage_count`.
+SAIFI is `CI / N_T`, where `CI = sum(N_i)` over sustained interruptions.
+It is sustained customer interruptions per served customer per the supplied reporting period.
+Partial periods are computed exactly and are never annualized.
+Momentary rows contribute nothing. Planned sustained interruptions are included by default.
+`exclude_planned=True` removes them and must be a Boolean.
+`threshold_minutes` follows `classify_interruptions()`.
+`total_customers` is required, positive, and may be fractional; an absent or invalid
+value raises `InvalidArgumentError` naming `total_customers`.
+An empty event log returns SAIFI `0.0`, `customer_interruptions` 0, and `outage_count` 0.
+SAIDI, CAIDI, MAIFI, ASAI, and the simulation path are not implemented yet.
 
 ```{doctest}
 >>> from climate_indices import reliability
@@ -237,6 +253,17 @@ These internal validators support later metric tickets; they are not additional 
 ['momentary']
 >>> str(classified["customers_interrupted"].to_numpy().dtype)
 'int64'
+```
+
+```{doctest}
+>>> from climate_indices import reliability
+>>> sustained = [{"event_id": "s", "start_time": "2024-01-01T03:00:00Z",
+...              "duration": 60.0, "customers_interrupted": 30}]
+>>> result = reliability.reliability_indices(sustained, total_customers=100)
+>>> result.saifi
+0.3
+>>> result.customer_interruptions, result.outage_count
+(30, 1)
 ```
 
 ```{eval-rst}
