@@ -759,13 +759,15 @@ def test_asai_full_exposure_is_zero(duration: float, customers: int) -> None:
 @pytest.mark.parametrize("hours", [0.0, -1.0, math.nan, math.inf, -math.inf])
 def test_direct_result_asai_with_invalid_period_is_undefined(hours: float) -> None:
     result = reliability.ReliabilityResult(1.0, 1, 1, saidi=60.0, period_hours=hours)
-    assert result.asai is not None and math.isnan(result.asai)
+    assert result.asai is not None
+    assert math.isnan(result.asai)
     assert "asai" in result.undefined_metrics
 
 
 def test_asai_excess_beyond_rounding_tolerance_is_undefined() -> None:
     result = reliability.ReliabilityResult(1.0, 1, 1, saidi=60 * (1 + 2 * math.ulp(1.0)), period_hours=1)
-    assert result.asai is not None and math.isnan(result.asai)
+    assert result.asai is not None
+    assert math.isnan(result.asai)
     assert "asai" in result.undefined_metrics
 
 
@@ -774,7 +776,8 @@ def test_asai_excess_exposure_is_undefined_not_clamped() -> None:
     with pytest.warns(OverlappingEventsWarning) as caught:
         result = reliability.reliability_indices(rows, total_customers=100, period_hours=1)
     assert len(caught) == 1
-    assert result.asai is not None and math.isnan(result.asai)
+    assert result.asai is not None
+    assert math.isnan(result.asai)
     assert result.undefined_metrics == ("maifi", "asai")
     assert result.saidi == 120.0
     assert result.outage_count == 2
@@ -800,7 +803,8 @@ def test_asai_extreme_positive_hours_do_not_overflow_exposure_product(hours: flo
 def test_result_equality_distinguishes_unset_saidi_when_asai_is_requested() -> None:
     unset = reliability.ReliabilityResult(0.0, 0, 0, period_hours=24)
     zero = reliability.ReliabilityResult(0.0, 0, 0, saidi=0.0, period_hours=24)
-    assert unset.asai is not None and math.isnan(unset.asai)
+    assert unset.asai is not None
+    assert math.isnan(unset.asai)
     assert zero.asai == 1.0
     assert unset != zero
     same = reliability.ReliabilityResult(0.0, 0, 0, period_hours=24)
