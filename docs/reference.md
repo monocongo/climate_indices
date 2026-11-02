@@ -170,7 +170,7 @@ It does not yet calculate indices or simulate failures.
 [ADR-0026](adr/0026-reliability-module-api-and-conventions.md) fixes those later capabilities.
 Import it with `from climate_indices import reliability`.
 
-`classify_interruptions(events, threshold_minutes=5.0)` accepts a DataFrame,
+`classify_interruptions(events, *, threshold_minutes=5.0)` accepts a DataFrame,
 a column mapping, or a sequence of row mappings. It returns a new DataFrame
 in input order. It never changes the caller's table or removes events.
 Durations strictly above five minutes are sustained by default.
