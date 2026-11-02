@@ -112,6 +112,22 @@ fn checked_copy<D: Dimension>(array: &PyReadonlyArray<'_, f64, D>) -> PyResult<A
     Ok(checked_view(array)?.into_owned())
 }
 
+/// `checked_copy` with a standard-layout result.
+///
+/// `empirical_transform` reuses the values copy as its result buffer and returns a
+/// C-ordered array. `into_owned` keeps a contiguous view's layout, so a
+/// non-standard input is copied in logical order instead.
+fn checked_copy_standard<D: Dimension>(
+    array: &PyReadonlyArray<'_, f64, D>,
+) -> PyResult<Array<f64, D>> {
+    let view = checked_view(array)?;
+    if view.is_standard_layout() {
+        return Ok(view.into_owned());
+    }
+    Array::from_shape_vec(view.raw_dim(), view.iter().copied().collect())
+        .map_err(|error| PyValueError::new_err(error.to_string()))
+}
+
 /// A validity mask.
 fn checked_copy_flags<D: Dimension>(
     array: &PyReadonlyArray<'_, bool, D>,
@@ -412,14 +428,17 @@ fn empirical_transform<'py>(
     normal: bool,
 ) -> PyResult<Bound<'py, PyArray2<f64>>> {
     let calibration = checked_copy(&calibration)?;
-    let values = checked_copy(&values)?;
+    // The values copy doubles as the result: the in-place rank overwrites it.
+    let mut values = checked_copy_standard(&values)?;
     py.detach(|| {
-        let mut result =
-            climate_indices::empirical::plotting_positions(calibration.view(), values.view())?;
+        climate_indices::empirical::plotting_positions_in_place(
+            calibration.view(),
+            values.view_mut(),
+        )?;
         if normal {
-            result.mapv_inplace(climate_indices::special::ndtri);
+            values.mapv_inplace(climate_indices::special::ndtri);
         }
-        Ok(result)
+        Ok(values)
     })
     .map(|result| result.into_pyarray(py))
     .map_err(climate_error)
