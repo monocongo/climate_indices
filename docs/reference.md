@@ -179,6 +179,8 @@ Durations strictly above five minutes are sustained by default.
 Durations at or below five minutes are momentary, including zero duration.
 An explicit type remains unchanged; a contradiction emits one `ClimateIndicesWarning`.
 A null optional type is derived from duration.
+A row flagged `grouped_momentary_event` is exempt from that warning, because its
+duration is an event span rather than an operation duration.
 
 | Field | Contract |
 | --- | --- |
@@ -191,6 +193,7 @@ A null optional type is derived from duration.
 | `device_id`, `cause` | Optional strings. Null values remain unknown. |
 | `device_operations` | Optional nonnegative int64 integers. Nulls remain unknown in a nullable `Int64` column. An absent column stays absent. |
 | `momentary_event_excluded` | Optional Boolean. Absent or null values become `False`. No association with sustained events is inferred. |
+| `grouped_momentary_event` | Optional Boolean. Absent or null values become `False`. True on a row assembled by `group_momentary_events()`; its type is authoritative and its duration is an elapsed sequence span. |
 | `component_ids` | Optional lists of string identifiers. These labels do not resolve connectivity. Nulls remain unknown. |
 
 Normalization returns float64 duration arrays and int64 customer-count arrays.
@@ -241,8 +244,12 @@ rows, which is a library convention and can merge distinct unknown devices.
 The window is separate from the sustained-interruption threshold.
 Each grouped row keeps the anchor `event_id`, `start_time`, and `device_id`, takes
 the latest `end_time` and the elapsed anchor-to-end `duration`, and carries the
-group's common customer count. Supplied `device_operations` are summed, and an
-absent column stays absent.
+group's common customer count. Its `duration` is the complete sequence interval,
+so it includes the gaps between operations and can exceed the threshold. The
+helper sets `grouped_momentary_event` True, so a later classification keeps the
+momentary type without a contradiction warning. A caller-supplied row without
+that flag still warns when an explicit type contradicts its duration. Supplied
+`device_operations` are summed, and an absent column stays absent.
 A group whose operation ends after the window raises `InvalidArgumentError` naming
 `momentary_event`; it is never split or silently extended.
 A group whose operations interrupt different customer counts raises
@@ -351,6 +358,22 @@ ASAI and the simulation path are not implemented yet.
 ... ])
 >>> grouped["event_id"].tolist()
 ['op-1']
+```
+
+```{doctest}
+>>> from climate_indices import reliability
+>>> operations = [
+...     {"event_id": "op-1", "start_time": "2024-01-01T00:00:00Z", "duration": 0.0,
+...      "customers_interrupted": 15, "device_operations": 1},
+...     {"event_id": "op-2", "start_time": "2024-01-01T00:03:00Z", "duration": 0.0,
+...      "customers_interrupted": 15, "device_operations": 1},
+... ]
+>>> grouped = reliability.group_momentary_events(operations, threshold_minutes=1.0)
+>>> bool(grouped["grouped_momentary_event"].iloc[0]), grouped["duration"].tolist()
+(True, [3.0])
+>>> result = reliability.reliability_indices(grouped, total_customers=100, threshold_minutes=1.0)
+>>> result.maifi_e, result.maifi
+(0.15, 0.3)
 ```
 
 ```{eval-rst}

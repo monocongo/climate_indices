@@ -22,6 +22,7 @@
       "device_id": {"type": ["string", "null"]},
       "device_operations": {"type": ["integer", "null"], "minimum": 0, "maximum": 9223372036854775807},
       "momentary_event_excluded": {"type": ["boolean", "null"], "default": false},
+      "grouped_momentary_event": {"type": ["boolean", "null"], "default": false, "description": "True for a momentary event assembled by group_momentary_events(); its duration is the elapsed sequence span, so its authoritative type is kept without a contradiction warning."},
       "cause": {"type": ["string", "null"]},
       "component_ids": {"type": ["array", "null"], "items": {"type": "string"}}
     },

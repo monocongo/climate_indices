@@ -23,6 +23,7 @@ _FIELDS = {
     "device_id",
     "device_operations",
     "momentary_event_excluded",
+    "grouped_momentary_event",
     "cause",
     "component_ids",
 }
@@ -216,13 +217,18 @@ def _component_ids(frame: pd.DataFrame) -> None:
 
 
 def _classify(frame: pd.DataFrame, threshold: float) -> None:
-    """Derive interruption types, retaining explicit types with one warning."""
+    """Derive interruption types, retaining explicit types with one warning.
+
+    A grouped momentary event keeps its authoritative type without a warning,
+    because its duration is an elapsed sequence span, not an operation duration.
+    """
     derived = np.where(frame["duration"] > threshold, "sustained", "momentary").tolist()
     explicit = frame["interruption_type"].tolist() if "interruption_type" in frame else [None] * len(frame)
+    grouped = frame["grouped_momentary_event"].tolist() if "grouped_momentary_event" in frame else [False] * len(frame)
     if any(not _missing(v) and (not isinstance(v, str) or v not in ("sustained", "momentary")) for v in explicit):
         raise _invalid("interruption_type", "must contain sustained, momentary, or null")
     frame["interruption_type"] = [d if _missing(v) else v for v, d in zip(explicit, derived, strict=True)]
-    if any(not _missing(v) and v != d for v, d in zip(explicit, derived, strict=True)):
+    if any(not _missing(v) and v != d and not g for v, d, g in zip(explicit, derived, grouped, strict=True)):
         warnings.warn(
             "interruption_type contradicts duration; explicit types are retained.", ClimateIndicesWarning, stacklevel=2
         )
@@ -276,6 +282,8 @@ def classify_interruptions(events: EventTable, *, threshold_minutes: float = 5.0
     frame["duration"] = duration
     _flag_column(frame, "planned")
     _flag_column(frame, "momentary_event_excluded")
+    if "grouped_momentary_event" in frame:
+        _flag_column(frame, "grouped_momentary_event")
     _string_column(frame, "device_id")
     _string_column(frame, "cause")
     _device_operations(frame)
@@ -319,9 +327,12 @@ def group_momentary_events(
         A new DataFrame in input order. Sustained rows pass through unchanged.
         Each grouped event keeps the anchor ``event_id``, ``start_time``, and
         ``device_id``; it takes the latest ``end_time``, the elapsed
-        anchor-to-end ``duration``, and the group's common customer count.
-        Supplied ``device_operations`` are summed, and an absent column stays
-        absent.
+        anchor-to-end ``duration``, and the group's common customer count. The
+        duration is the complete sequence span, so it may exceed the
+        classification threshold. The helper sets ``grouped_momentary_event``
+        True on every assembled row, so a later classification keeps the
+        momentary type without a contradiction warning. Supplied
+        ``device_operations`` are summed, and an absent column stays absent.
 
     Raises:
         InvalidArgumentError: A field is invalid, a grouped event interrupts
@@ -401,6 +412,8 @@ def group_momentary_events(
     grouped_positions = list(grouped)
     result.loc[grouped_positions, "end_time"] = end_times.take(end_positions)
     result.loc[grouped_positions, "duration"] = durations
+    result["grouped_momentary_event"] = False
+    result.loc[grouped_positions, "grouped_momentary_event"] = True
     if operations is not None:
         result.loc[grouped_positions, "device_operations"] = pd.array(operation_totals, dtype="Int64")
     return result.reset_index(drop=True)

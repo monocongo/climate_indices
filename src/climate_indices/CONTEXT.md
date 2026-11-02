@@ -158,6 +158,11 @@ Distinct events can overlap in time without being duplicates.
 A power loss that lasts longer than the declared duration threshold, which defaults to five minutes.
 A momentary interruption lasts at most that threshold, including exactly five minutes under the default convention.
 
+**Grouped Momentary Event**:
+One momentary interruption event assembled from the reclosing operations of one device within a grouping window.
+Its start is the first operation's start and its end is the latest operation's end, so its elapsed duration includes the gaps between operations and can exceed the classification threshold.
+Its momentary classification comes from its member operations, not from that span.
+
 **Served-Customer Count**:
 The positive average number of customers served during a reporting period.
 It is the denominator for customer-weighted reliability indices, not the sum of interrupted customers.

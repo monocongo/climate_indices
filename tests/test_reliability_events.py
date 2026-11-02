@@ -55,6 +55,7 @@ def record(**changes: object) -> dict[str, object]:
         ({"device_id": 1}, "device_id"),
         ({"cause": 1}, "cause"),
         ({"momentary_event_excluded": 1}, "momentary_event_excluded"),
+        ({"grouped_momentary_event": 1}, "grouped_momentary_event"),
         ({"component_ids": [1]}, "component_ids"),
         ({"interruption_type": ["momentary"]}, "interruption_type"),
         ({"duration": None}, "duration"),
@@ -135,6 +136,15 @@ def test_mixed_time_columns_are_rejected() -> None:
     with pytest.raises(InvalidArgumentError) as exc:
         reliability.classify_interruptions(rows)
     assert exc.value.argument_name == "duration"
+
+
+def test_grouped_momentary_event_keeps_its_type_without_a_warning() -> None:
+    row = record(duration=60.0, interruption_type="momentary", grouped_momentary_event=True)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ClimateIndicesWarning)
+        result = reliability.classify_interruptions([row])
+    assert result["interruption_type"].tolist() == ["momentary"]
+    assert result["grouped_momentary_event"].tolist() == [True]
 
 
 def test_explicit_types_are_retained_with_one_warning() -> None:

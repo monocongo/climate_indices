@@ -1,5 +1,6 @@
 """Contract tests for momentary-operation grouping into MAIFI_E events."""
 
+import warnings
 from typing import Any
 
 import numpy as np
@@ -7,7 +8,7 @@ import pandas as pd
 import pytest
 
 from climate_indices import reliability
-from climate_indices.exceptions import InvalidArgumentError
+from climate_indices.exceptions import ClimateIndicesWarning, InvalidArgumentError
 
 
 def operation(
@@ -216,8 +217,8 @@ def test_unsorted_grouping_keeps_anchor_metadata_and_nullable_counts() -> None:
     frame = pd.DataFrame(rows, index=[7, 7, 3], dtype=object)
     original = frame.copy(deep=True)
     grouped = reliability.group_momentary_events(frame)
-    expected_rows = [dict(rows[2], duration=3.5), rows[1]]
-    expected = reliability.classify_interruptions(expected_rows)
+    expected_rows = [dict(rows[2], duration=3.5, grouped_momentary_event=True), rows[1]]
+    expected = reliability.classify_interruptions(expected_rows)[grouped.columns]
     pd.testing.assert_frame_equal(grouped, expected)
     pd.testing.assert_frame_equal(frame, original)
 
@@ -263,3 +264,22 @@ def test_window_minutes_is_separate_from_the_threshold() -> None:
     grouped = reliability.group_momentary_events(rows, threshold_minutes=1.0)
     assert grouped["event_id"].tolist() == ["op-1"]
     assert grouped["duration"].tolist() == [3.0]
+
+
+def test_grouping_chains_into_the_metrics_without_a_contradiction_warning() -> None:
+    rows = [
+        operation("op-1", "2024-01-01T00:00:00", duration=0.0, device_operations=1),
+        operation("op-2", "2024-01-01T00:03:00", duration=0.0, device_operations=1),
+    ]
+    grouped = reliability.group_momentary_events(rows, threshold_minutes=1.0)
+    assert grouped["grouped_momentary_event"].tolist() == [True]
+    assert grouped["duration"].tolist() == [3.0]
+    elapsed = (grouped["end_time"].iloc[0] - grouped["start_time"].iloc[0]) / pd.Timedelta(minutes=1)
+    assert grouped["duration"].iloc[0] == pytest.approx(elapsed)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ClimateIndicesWarning)
+        result = reliability.reliability_indices(grouped, total_customers=100, threshold_minutes=1.0)
+    assert result.maifi_e == pytest.approx(0.15)
+    assert result.maifi == pytest.approx(0.3)
+    assert result.saifi == 0.0
+    assert result.saidi == 0.0

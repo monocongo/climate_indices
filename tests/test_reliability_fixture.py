@@ -48,6 +48,7 @@ def test_analytic_fixture_schema_provenance_and_arrays() -> None:
         {"event_id": None},
         {"start_time": "not-a-time"},
         {"planned": "false"},
+        {"grouped_momentary_event": 1},
         {"failure_rate": 0.2},
         {"component_ids": "line"},
         {"interruption_type": "brief"},

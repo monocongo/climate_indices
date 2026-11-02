@@ -27,6 +27,10 @@ Amended by ENERGY2-7 ([#1341](https://github.com/monocongo/climate_indices/issue
 `reliability_indices()` and `ReliabilityResult` report `maifi_e`, the momentary
 interruption event frequency, and `maifi`, the device-operation frequency, and
 `group_momentary_events()` groups raw momentary operations into events.
+Amended by the [#1341](https://github.com/monocongo/climate_indices/issues/1341)
+review: a grouped row keeps the complete sequence interval, and the optional
+`grouped_momentary_event` field marks an assembled row so its type survives a
+later classification without a contradiction warning.
 Availability (ASAI), simulation, adapters, and the reporting-period inputs remain
 unimplemented.
 ENERGY2-8 through ENERGY2-11
@@ -189,6 +193,16 @@ unreproducible claim of reproduction.
    `device_id` values. Rows without the column or with null device identifiers
    group by time with other unknown-device rows. This library convention can
    merge distinct unknown devices.
+
+   **A grouped row keeps the complete sequence interval.** Its `start_time` is
+   the anchor operation's start and its `end_time` is the latest operation's end,
+   so its elapsed `duration` includes the gaps between operations and can exceed
+   the classification threshold. Its momentary classification comes from its
+   member operations, not from that span, and the helper sets
+   `grouped_momentary_event` so a later classification keeps the type without a
+   contradiction warning. That field also records the loss: the row's duration is
+   an event span, not an operation duration. A caller-supplied row without the
+   flag still warns when its explicit type contradicts its duration.
 
 5. **Planned outages are included by default, driven by an explicit `planned`
    flag; `exclude_planned` is the opt-in.** Most U.S. reporting includes planned
