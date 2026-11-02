@@ -1456,8 +1456,9 @@ On macOS arm64 (Python 3.11, NumPy 2.4.2):
 The two worker rows are the ones the RUST-011 harness could not observe. Under
 an all-ignore caller, Dask's `threads` and `processes` schedulers still start
 each worker from its own default policy, so they stay on Python. The default
-caller policy keeps every route on Python, and the per-route outputs are
-unchanged; `tests/test_native_dispatch.py` pins both.
+caller policy keeps every route on Python. `tests/test_native_dispatch.py` pins
+the NumPy fallback output and the CLI worker policy; it does not pin every
+route's output.
 
 The library owns the CLI pool, so it now passes the caller's floating-point
 policy to each worker (`_cli_transport._initialize_worker`). NumPy's error state
@@ -1483,21 +1484,29 @@ def all_ignore() -> None:
     np.seterr(all="ignore")
 
 
-lazy = spi(grid, scale=3, distribution=Distribution.gamma,
-           calibration_year_initial=1981, calibration_year_final=2010)
-with ProcessPoolExecutor(
-    max_workers=4,
-    mp_context=multiprocessing.get_context("spawn"),
-    initializer=all_ignore,
-) as pool:
-    result = compute(lazy, scheduler="processes", pool=pool)
+if __name__ == "__main__":
+    # spawn re-imports this module in each child, so only the parent starts the pool
+    lazy = spi(grid, scale=3, distribution=Distribution.gamma,
+               calibration_year_initial=1981, calibration_year_final=2010)
+    with ProcessPoolExecutor(
+        max_workers=4,
+        mp_context=multiprocessing.get_context("spawn"),
+        initializer=all_ignore,
+    ) as pool:
+        result = compute(lazy, scheduler="processes", pool=pool)
 ```
 
-A distributed client can use `client.run(np.seterr, all="ignore")` instead. Both
-forms change warning behavior inside those workers: floating-point warnings that
-the default policy reports are then ignored there. `tests/test_native_dispatch.py`
-and `benchmarks/native_dispatch.py` fail when a native row does not reach the
-expected kernels.
+The initializer runs once in each worker process before any task, so the policy is
+active where the tasks run. A distributed client cannot use
+`client.run(np.seterr, all="ignore")` instead: NumPy's policy is thread-local, and
+`client.run` executes once in each worker's event-loop thread, not in the executor
+threads that run tasks, so those keep the default policy and still decline native
+dispatch. The library does not configure a user-owned scheduler (ADR-0002), so set
+the policy in each task thread before relying on native dispatch there.
+
+`benchmarks/native_dispatch.py` fails when a route expected to run natively
+reports no kernel, and `tests/test_native_dispatch.py` covers the expectation and
+the CLI worker policy.
 
 ### Limits
 
