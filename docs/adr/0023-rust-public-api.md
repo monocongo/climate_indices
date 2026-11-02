@@ -19,15 +19,17 @@ The amendment itself added no kernel.
 implements `aggregation::trailing_sum` and `aggregation::trailing_mean`.
 Callers still select the Timescale and prepare calendars; complete workflows remain outside the crate.
 RUST-ROI-02 ([#1532](https://github.com/monocongo/climate_indices/issues/1532))
-adds `empirical::plotting_positions_in_place`, which writes the probabilities
-into a caller-provided `ArrayViewMut2` instead of returning an owned array, so
-the Python binding can reuse its protected values copy as the result.
-This is the first public kernel that returns through a borrowed mutable view;
-decision 1's borrowed-input convention otherwise stands.
+amends decision 1: it adds `empirical::plotting_positions_in_place`, which writes
+the probabilities into a caller-provided `ArrayViewMut2` instead of returning an
+owned array, so the Python binding can reuse its protected values copy as the
+result. This is the first public kernel that returns through a borrowed mutable
+view; decision 1 now records that exception, and its borrowed-input convention
+otherwise stands.
 
 ## Context
 
-The block kernels already accept borrowed arrays and return owned numerical results.
+The block kernels already accept borrowed arrays and return owned numerical results,
+except `empirical::plotting_positions_in_place`, which writes through a borrowed mutable view.
 Other public kernels use scalars or slices.
 Their public modules include distribution fitting, PET, Palmer, fire, flood,
 and the shared daily recurrence engine.
@@ -42,6 +44,8 @@ The approved choice accepts that compatibility cost and preserves the existing k
 
 1. **Retain the existing public kernel modules and signatures.**
    Block-kernel inputs use borrowed ndarray views; outputs use owned arrays and existing result structs.
+   The exception is `empirical::plotting_positions_in_place`, which writes into a caller-provided
+   `ArrayViewMut2` and returns `()` so a caller can reuse the values array it already owns.
    Existing scalar and slice-based APIs retain their signatures, including scalar and `Option<f64>` results.
    The crate does not re-export ndarray or add array wrapper types.
    Callers depend on a compatible ndarray version, currently `0.17.2`.
