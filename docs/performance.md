@@ -313,16 +313,20 @@ above:
   4.00 s).
 
 The dispatch guard requires NumPy's floating-point errors ignored and no warning-as-error
-filters; NumPy's error state is thread-local. The harness explicitly initializes thread
-workers with each requested policy: only its all-ignore row reaches Rust. Process rows
-set the caller's policy only and report native reachability as `n/a`, because the recorder
-cannot observe another process. A separate default spawned-worker probe reports a mixed
-policy, consistent with Python dispatch in that configuration, not every process pool.
-A caller-provided pool initializer can change worker policies. The process-versus-thread
-ignore timing gap therefore combines backend and scheduler/serialization effects, not
-scheduler overhead alone; the probe does not verify routing in the timed process workers.
-The guidance above and in [Operational Guidance](xarray_compatibility.md#operational-guidance)
-stands.
+filters; NumPy's error state is thread-local and process-local. The harness explicitly
+initializes thread workers with each requested policy: only its all-ignore row reaches
+Rust. Its process rows set the caller's policy only, so its local recorder cannot observe
+them and reports `n/a`. A separate committed recipe,
+`benchmarks/native_dispatch.py` (#1531), installs the recorder inside Dask process
+workers and the CLI pool and reports the kernels that actually ran, so those rows are now
+observed rather than `n/a`. It finds that Dask `threads` and `processes` workers start
+from their own default policy under an all-ignore caller and stay on Python; a
+caller-provided worker initializer that sets all-ignore reaches Rust. The CLI pool is
+library-owned, so `_cli_transport` now passes the caller's policy to each worker and an
+all-ignore CLI run reaches Rust. A default caller policy keeps every route on Python with
+unchanged outputs. The process-versus-thread ignore timing gap therefore combines backend
+and scheduler/serialization effects, not scheduler overhead alone. The guidance above and in
+[Operational Guidance](xarray_compatibility.md#operational-guidance) stands.
 
 The full tables -- every entry, the fixed and per-cell fit, thread scaling, and the
 Dask policy rows -- are in

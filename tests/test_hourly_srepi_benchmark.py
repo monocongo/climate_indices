@@ -1,5 +1,6 @@
 """Check the hourly benchmark's aggregation guards with optimized Python."""
 
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,18 @@ import pytest
 from climate_indices import compute, energy
 
 SCRIPT = Path(__file__).resolve().parents[1] / "benchmarks" / "profile_hourly_srepi.py"
+
+
+def test_native_benchmark_rejects_silent_fallback(monkeypatch):
+    """An installed extension is insufficient when the public call uses Python."""
+    from benchmarks import profile_hourly_srepi as harness
+    from tests import conftest
+
+    monkeypatch.setattr(compute, "_native", conftest.import_native())
+    monkeypatch.setattr(energy, "srepi", lambda *args, **kwargs: None)
+    monkeypatch.setattr(sys, "argv", [str(SCRIPT), "--backend", "native", "--years", "1", "--cells", "2"])
+    with pytest.raises(RuntimeError, match="empirical_transform"):
+        harness.main()
 
 
 @pytest.mark.parametrize("optimize", [0, 1])
@@ -27,7 +40,7 @@ def test_hourly_benchmark_aggregation_guards(monkeypatch, optimize, case):
         return result
 
     monkeypatch.setattr(compute, "sum_to_scale", aggregate)
-    namespace: dict[str, Any] = {"__name__": __name__}
+    namespace: dict[str, Any] = {"__name__": __name__, "__file__": str(SCRIPT)}
     code = compile(SCRIPT.read_text(), str(SCRIPT), "exec", optimize=optimize)
     exec(code, namespace)
     if case == "valid":

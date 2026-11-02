@@ -618,7 +618,12 @@ Native dispatch also requires NumPy floating-point errors to be ignored
 the Python path. A warning filter that promotes `RuntimeWarning` (or a superclass)
 to an exception also keeps Python, even under `all="ignore"`. Python 3.14
 context-aware warnings conservatively keep the Python path. Default NumPy error
-policies therefore use Python even when the extension is installed.
+policies therefore use Python even when the extension is installed. NumPy's policy
+is thread-local and process-local. Among the pools the library owns, the CLI's
+(`_cli_transport`) passes the caller's policy to each worker, so an all-ignore CLI
+run can reach eligible kernels when the other dispatch gates pass; the xarray API
+never configures a user-owned scheduler
+(ADR-0002), so `benchmarks/native_dispatch.py` documents the Dask opt-in instead.
 
 For gamma calibration blocks, the contract is:
 
