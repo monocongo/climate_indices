@@ -12,6 +12,7 @@ Two tiers of tests:
     - Built wheels are smoke-tested outside the source checkout
     - Core public API symbols are importable after install
     - The crate publishes only after its gates, from its own tag namespace
+    - The reviewed required-status-check names match the workflow's jobs and matrices
 
   Release-time only (run before pushing a release tag):
     uv run pytest -m release tests/test_release_integrity.py
@@ -25,6 +26,7 @@ from __future__ import annotations
 
 import contextlib
 import fnmatch
+import importlib.util
 import os
 import re
 import shlex
@@ -41,6 +43,12 @@ from packaging.specifiers import SpecifierSet
 
 ROOT = Path(__file__).parent.parent
 PYTHON_CLASSIFIER_PREFIX = "Programming Language :: Python :: "
+
+_sync_spec = importlib.util.spec_from_file_location("sync_required_checks", ROOT / "scripts/sync_required_checks.py")
+assert _sync_spec is not None
+assert _sync_spec.loader is not None
+sync_required_checks = importlib.util.module_from_spec(_sync_spec)
+_sync_spec.loader.exec_module(sync_required_checks)
 
 
 def _read_toml(relative_path: Path) -> dict[str, Any]:
@@ -77,6 +85,7 @@ def _workflow_python_matrix(relative_path: Path) -> list[str]:
 
 
 UNIT_TESTS_WORKFLOW = Path(".github/workflows/unit-tests-workflow.yml")
+REQUIRED_CHECKS_FILE = Path(".github/required-status-checks.txt")
 CRATE_RELEASE_WORKFLOW = Path(".github/workflows/crate-release.yml")
 CRATE_CHANGELOG = Path("crates/climate-indices/CHANGELOG.md")
 CRATE_MANIFEST = Path("crates/climate-indices/Cargo.toml")
@@ -150,6 +159,71 @@ def _job_legs(job: str) -> set[tuple[str, str]]:
         for system in re.findall(r"[\w.-]+", systems[0])
     }
     return legs | set(re.findall(r"- python-version:\s*['\"](\d+\.\d+)['\"]\s+os:\s*([\w.-]+)", job))
+
+
+def _declared_required_checks() -> list[str]:
+    """The reviewed required status-check contexts, in file order, with comments dropped."""
+    text = (ROOT / REQUIRED_CHECKS_FILE).read_text(encoding="utf-8")
+    return [line.strip() for line in text.splitlines() if line.strip() and not line.lstrip().startswith("#")]
+
+
+def test_required_check_names_match_the_workflow_contexts() -> None:
+    """A matrix change renames contexts, so the reviewed list must name what the jobs report.
+
+    GitHub reports a stale required context as "Expected - Waiting for status to be
+    reported", which blocks every pull request until branch protection is updated.
+    """
+    declared = _declared_required_checks()
+
+    assert len(declared) == len(set(declared)), f"{REQUIRED_CHECKS_FILE} repeats a context"
+    assert sorted(declared) == sorted(sync_required_checks.workflow_contexts()), (
+        f"{REQUIRED_CHECKS_FILE} and {UNIT_TESTS_WORKFLOW} disagree; "
+        "run scripts/sync_required_checks.py to see the difference"
+    )
+
+
+def test_required_checks_exclude_jobs_that_skip_on_pull_requests() -> None:
+    """A job gated off pull requests never reports there, so requiring it blocks every PR."""
+    assert "test-full" not in sync_required_checks.REQUIRED_JOBS
+    assert sync_required_checks.workflow_contexts()
+
+
+def test_required_checks_still_require_the_rust_and_native_jobs() -> None:
+    """#1292's purpose: a broken Rust build, lint, or wheel must not merge."""
+    required_jobs = {check.split(" (", 1)[0] for check in _declared_required_checks()}
+
+    assert {"lint", "test", "test-minimum-deps", "notebooks", "security-audit"} <= required_jobs
+    assert {"rust", "test-native", "native-wheel"} <= required_jobs
+    assert {"rust-standalone", "rust-crate", "rust-msrv", "rust-semver", "rust-deny"} <= required_jobs
+
+
+def test_required_check_drift_runs_in_a_required_job() -> None:
+    """The drift test must block merges even when the optional meta job fails."""
+    workflow = (ROOT / UNIT_TESTS_WORKFLOW).read_text(encoding="utf-8")
+    assert "lint" in sync_required_checks.REQUIRED_JOBS
+    assert re.search(
+        r"^[ \t]+run:[ \t]+uv run --no-sync --no-build pytest tests/test_release_integrity\.py -k required_check[ \t]*$",
+        _workflow_job(workflow, "lint"),
+        re.MULTILINE,
+    )
+
+
+def test_required_check_drift_rejects_a_commented_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A commented command does not run the required-check tests."""
+    workflow = tmp_path / UNIT_TESTS_WORKFLOW
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(
+        "jobs:\n"
+        "  lint:\n"
+        "    steps:\n"
+        "      - name: Check required status contexts\n"
+        "        # run: uv run --no-sync --no-build pytest tests/test_release_integrity.py -k required_check\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(sys.modules[__name__], "ROOT", tmp_path)
+
+    with pytest.raises(AssertionError):
+        test_required_check_drift_runs_in_a_required_job()
 
 
 def _expected_badge_url() -> str:

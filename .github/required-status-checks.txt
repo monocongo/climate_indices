@@ -1,0 +1,49 @@
+# Required status checks on the `main` branch, in GitHub's context-name spelling.
+#
+# Branch protection is a repository setting, so it is not stored in the repo. This
+# file is the reviewed source of truth for that setting: it names every context
+# that must pass before a pull request can merge. `tests/test_release_integrity.py`
+# derives the context names from `.github/workflows/unit-tests-workflow.yml` and
+# fails when the two disagree, so a matrix change cannot silently leave a stale
+# required context behind (GitHub would then report the old name as
+# "Expected - Waiting for status to be reported" and block every pull request).
+#
+# After a change to the workflow's jobs or matrices, update this list and apply it:
+#
+#     uv run python scripts/sync_required_checks.py --apply
+#
+# The script reads this file, shows the difference against the live setting, and
+# verifies the result by reading the setting back. It needs a token that can write
+# branch protection, which means admin on the repository; the `repo` scope on a
+# repository the user owns is enough.
+#
+# A job with a matrix reports one context per leg, named `<job> (<python>, <os>)`.
+# A job without a matrix reports a context named `<job>`.
+#
+# Do not add `test-full`. It has `if: github.event_name != 'pull_request'`, reports
+# `skipped` on pull requests, and would block every pull request forever.
+# `docs`, `validation`, and `meta` do report, but they are deliberately optional.
+
+lint
+test (3.11, ubuntu-latest)
+test (3.12, ubuntu-latest)
+test (3.13, ubuntu-latest)
+test (3.14, ubuntu-latest)
+test (3.14, macos-latest)
+test-minimum-deps
+notebooks
+security-audit
+test-native (3.11, ubuntu-latest)
+test-native (3.14, ubuntu-latest)
+test-native (3.14, macos-latest)
+rust
+native-wheel (3.11, ubuntu-latest)
+native-wheel (3.11, macos-latest)
+native-wheel (3.14, ubuntu-latest)
+native-wheel (3.14, macos-latest)
+native-wheel (3.14, windows-latest)
+rust-standalone
+rust-crate
+rust-msrv
+rust-semver
+rust-deny
