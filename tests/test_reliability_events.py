@@ -28,6 +28,7 @@ def test_classification_boundary_and_normalized_arrays() -> None:
     assert result["customers_interrupted"].to_numpy().dtype == np.dtype("int64")
     np.testing.assert_array_equal(result["duration"], events["duration"])
     assert result["planned"].tolist() == [False] * 4
+    assert "grouped_momentary_event" not in result
     assert "interruption_type" not in events
 
 
@@ -138,8 +139,12 @@ def test_mixed_time_columns_are_rejected() -> None:
     assert exc.value.argument_name == "duration"
 
 
-def test_grouped_momentary_event_keeps_its_type_without_a_warning() -> None:
-    row = record(duration=60.0, interruption_type="momentary", grouped_momentary_event=True)
+@pytest.mark.parametrize(
+    "type_fields",
+    [{}, *({"interruption_type": value} for value in ("momentary", None, pd.NA, pd.NaT, np.nan, np.ma.masked))],
+)
+def test_grouped_momentary_event_keeps_its_type_without_a_warning(type_fields: dict[str, object]) -> None:
+    row = record(duration=60.0, grouped_momentary_event=True, **type_fields)
     with warnings.catch_warnings():
         warnings.simplefilter("error", ClimateIndicesWarning)
         result = reliability.classify_interruptions([row])
@@ -205,6 +210,7 @@ def test_optional_missing_values_and_input_copy() -> None:
                 component_ids=None,
                 interruption_type=None,
                 momentary_event_excluded=None,
+                grouped_momentary_event=None,
             )
         ]
     )
@@ -213,6 +219,7 @@ def test_optional_missing_values_and_input_copy() -> None:
     pd.testing.assert_frame_equal(frame, original)
     assert result["planned"].tolist() == [False]
     assert result["momentary_event_excluded"].tolist() == [False]
+    assert result["grouped_momentary_event"].tolist() == [False]
     assert result["interruption_type"].tolist() == ["sustained"]
     assert str(result["device_operations"].dtype) == "Int64"
     assert pd.isna(result["device_operations"].iloc[0])

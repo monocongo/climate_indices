@@ -178,7 +178,8 @@ in input order. It never changes the caller's table or removes events.
 Durations strictly above five minutes are sustained by default.
 Durations at or below five minutes are momentary, including zero duration.
 An explicit type remains unchanged; a contradiction emits one `ClimateIndicesWarning`.
-A null optional type is derived from duration.
+If the type is absent or null, classification uses the duration unless `grouped_momentary_event` is `True`.
+In that case, classification uses `momentary`.
 A row flagged `grouped_momentary_event` is exempt from that warning, because its
 duration is an event span rather than an operation duration.
 
@@ -193,7 +194,7 @@ duration is an event span rather than an operation duration.
 | `device_id`, `cause` | Optional strings. Null values remain unknown. |
 | `device_operations` | Optional nonnegative int64 integers. Nulls remain unknown in a nullable `Int64` column. An absent column stays absent. |
 | `momentary_event_excluded` | Optional Boolean. Absent or null values become `False`. No association with sustained events is inferred. |
-| `grouped_momentary_event` | Optional Boolean. Absent or null values become `False`. True on a row assembled by `group_momentary_events()`; its type is authoritative and its duration is an elapsed sequence span. |
+| `grouped_momentary_event` | This optional Boolean flag identifies a row assembled by `group_momentary_events()`. Null values become `False` when the column is supplied. If the column is absent, classification treats the flag as `False` and leaves the column absent. A flagged row has an authoritative type and an elapsed sequence span as its duration. |
 | `component_ids` | Optional lists of string identifiers. These labels do not resolve connectivity. Nulls remain unknown. |
 
 Normalization returns float64 duration arrays and int64 customer-count arrays.

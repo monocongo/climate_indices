@@ -160,6 +160,8 @@ A momentary interruption lasts at most that threshold, including exactly five mi
 
 **Grouped Momentary Event**:
 One momentary interruption event assembled from the reclosing operations of one device within a grouping window.
+Rows with no `device_id` column or a null device identifier group by time with other unknown-device rows.
+This library convention can combine distinct unknown devices.
 Its start is the first operation's start and its end is the latest operation's end, so its elapsed duration includes the gaps between operations and can exceed the classification threshold.
 Its momentary classification comes from its member operations, not from that span.
 

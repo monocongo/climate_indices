@@ -186,6 +186,21 @@ def test_momentary_rows_contribute_nothing_to_sustained_metrics() -> None:
     assert with_momentary.maifi_e == pytest.approx(0.07)
 
 
+@pytest.mark.parametrize("type_fields", [{}, {"interruption_type": None}])
+def test_grouped_momentary_event_without_explicit_type_uses_momentary_metrics(type_fields: dict[str, object]) -> None:
+    row = record(duration=60.0, grouped_momentary_event=True, device_operations=2, **type_fields)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ClimateIndicesWarning)
+        result = reliability.reliability_indices([row], total_customers=100)
+    assert result.saifi == 0.0
+    assert result.saidi == 0.0
+    assert result.customer_interruptions == 0
+    assert result.customer_minutes_interrupted == 0.0
+    assert result.outage_count == 0
+    assert result.maifi_e == pytest.approx(0.05)
+    assert result.maifi == pytest.approx(0.1)
+
+
 def test_explicitly_momentary_long_row_is_excluded_with_one_warning() -> None:
     row = record(duration=60.0, customers_interrupted=50, interruption_type="momentary")
     with pytest.warns(ClimateIndicesWarning, match="interruption_type") as caught:

@@ -226,7 +226,7 @@ def test_unsorted_grouping_keeps_anchor_metadata_and_nullable_counts() -> None:
 @pytest.mark.parametrize("include_momentary", [False, True])
 @pytest.mark.parametrize("flags", [{}, {"grouped_momentary_event": None}, {"grouped_momentary_event": True}])
 def test_grouped_flag_is_consistent_on_sustained_rows(include_momentary: bool, flags: dict[str, object]) -> None:
-    rows = [{**operation("sustained", "2024-01-01T00:00:00", duration=60.0), **flags}]
+    rows = [{**operation("sustained", "2024-01-01T00:00:00", duration=60.0, interruption_type="sustained"), **flags}]
     if include_momentary:
         rows.append({**operation("momentary", "2024-01-01T02:00:00"), **flags})
     frame = pd.DataFrame(rows)

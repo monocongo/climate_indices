@@ -227,7 +227,9 @@ def _classify(frame: pd.DataFrame, threshold: float) -> None:
     grouped = frame["grouped_momentary_event"].tolist() if "grouped_momentary_event" in frame else [False] * len(frame)
     if any(not _missing(v) and (not isinstance(v, str) or v not in ("sustained", "momentary")) for v in explicit):
         raise _invalid("interruption_type", "must contain sustained, momentary, or null")
-    frame["interruption_type"] = [d if _missing(v) else v for v, d in zip(explicit, derived, strict=True)]
+    frame["interruption_type"] = [
+        ("momentary" if g else d) if _missing(v) else v for v, d, g in zip(explicit, derived, grouped, strict=True)
+    ]
     if any(not _missing(v) and v != d and not g for v, d, g in zip(explicit, derived, grouped, strict=True)):
         warnings.warn(
             "interruption_type contradicts duration; explicit types are retained.", ClimateIndicesWarning, stacklevel=2
