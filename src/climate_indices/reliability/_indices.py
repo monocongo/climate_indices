@@ -8,11 +8,12 @@ from climate_indices.reliability._events import EventTable, _normalize_events
 
 @dataclass(frozen=True)
 class ReliabilityResult:
-    """Frozen reliability metrics for one supplied reporting period.
+    """Frozen reliability metrics for one supplied event log and customer count.
 
-    ``saifi`` is sustained customer interruptions per served customer per the
-    supplied reporting period. Partial periods are computed exactly and are
-    never annualized. ``customer_interruptions`` is the shared
+    ``saifi`` is sustained customer interruptions per served customer for the
+    period represented by the supplied event log and average customer count.
+    Partial periods are computed exactly and are never annualized.
+    ``customer_interruptions`` is the shared
     ``CI = sum(N_i)`` accumulator: the total customers interrupted by sustained
     events. ``outage_count`` is the number of sustained event rows that
     contributed.
