@@ -43,6 +43,16 @@ class ReliabilityResult:
     events. ``outage_count`` is the number of sustained event rows that
     contributed.
 
+    ``maifi_e`` is the momentary interruption event frequency:
+    ``sum(N_i) / N_T`` over momentary event rows that are not flagged
+    ``momentary_event_excluded``, in momentary events per customer. ``maifi`` is
+    the momentary interruption frequency: ``sum(device_operations_i * N_i) / N_T``
+    over all momentary rows, in device operations per customer. It is ``None``
+    when the input has no ``device_operations`` column or a momentary row leaves
+    its operation count unknown, because an operation frequency cannot be
+    recovered from an event count. Without a ``device_operations`` column,
+    ``undefined_metrics`` names ``"maifi"``.
+
     ``caidi`` is a read-only property: ``CMI / CI`` minutes per customer
     interruption, independent of the served-customer count. It equals
     ``saidi / saifi`` up to floating-point rounding. With no sustained customer
@@ -50,7 +60,8 @@ class ReliabilityResult:
     A sustained interruption with zero duration has CAIDI ``0.0``.
     Both properties derive from the accumulators without adding constructor fields.
 
-    The original three constructor fields retain their order.
+    The original three constructor fields retain their order, and ``maifi_e``
+    and ``maifi`` follow the duration metrics so existing positional calls stay valid.
     If callers omit ``saidi`` or ``customer_minutes_interrupted``, each omitted
     field defaults to NaN because the original fields cannot determine duration.
     ``reliability_indices()`` always supplies both duration metrics.
@@ -69,6 +80,8 @@ class ReliabilityResult:
     outage_count: int
     saidi: float = math.nan
     customer_minutes_interrupted: float = math.nan
+    maifi_e: float = 0.0
+    maifi: float | None = None
 
     @property
     def caidi(self) -> float:
@@ -79,8 +92,11 @@ class ReliabilityResult:
 
     @property
     def undefined_metrics(self) -> tuple[str, ...]:
-        """Return undefined derived metric names, currently only ``caidi``."""
-        return ("caidi",) if math.isnan(self.caidi) else ()
+        """Return the names of metrics the input cannot determine."""
+        names = ["caidi"] if math.isnan(self.caidi) else []
+        if self.maifi is None:
+            names.append("maifi")
+        return tuple(names)
 
     def __eq__(self, other: object) -> bool:
         if type(other) is not type(self):
@@ -107,7 +123,7 @@ def reliability_indices(
     exclude_planned: bool = False,
     threshold_minutes: float = 5.0,
 ) -> ReliabilityResult:
-    """Compute SAIFI, SAIDI, and CAIDI from shared sustained-interruption accumulators.
+    """Compute SAIFI, SAIDI, CAIDI, MAIFI_E, and MAIFI from the event records.
 
     Args:
         events: A DataFrame, column mapping, or sequence of row mappings,
@@ -122,10 +138,13 @@ def reliability_indices(
             momentary.
 
     Returns:
-        A frozen ``ReliabilityResult``. An empty event log returns SAIFI and
-        SAIDI ``0.0`` with zero customer interruptions, zero customer-minutes,
-        and zero outages. CAIDI is NaN, and ``undefined_metrics`` is
-        ``("caidi",)``. Undefined CAIDI does not produce an additional warning.
+        A frozen ``ReliabilityResult``. An empty event log returns SAIFI, SAIDI,
+        and ``maifi_e`` ``0.0`` with zero customer interruptions, zero
+        customer-minutes, and zero outages. CAIDI is NaN and ``maifi`` is
+        ``None`` without a ``device_operations`` column, so ``undefined_metrics``
+        is ``("caidi", "maifi")``. A supplied ``device_operations`` column makes
+        ``maifi`` defined, including ``0.0`` for a log with no momentary rows.
+        Undefined metrics do not produce an additional warning.
 
     Raises:
         InvalidArgumentError: ``total_customers`` is absent or invalid,
@@ -151,10 +170,21 @@ def reliability_indices(
     products = frame.loc[mask, "duration"] * frame.loc[mask, "customers_interrupted"]
     # math.fsum keeps the accumulator order-independent, so shuffled rows agree exactly.
     customer_minutes_interrupted = float(math.fsum(products.tolist()))
+    momentary = frame["interruption_type"] == "momentary"
+    event_mask = momentary & ~frame["momentary_event_excluded"]
+    event_customers = sum(int(count) for count in frame.loc[event_mask, "customers_interrupted"])
+    maifi = None
+    if "device_operations" in frame:
+        operations = frame.loc[momentary, "device_operations"]
+        if not operations.isna().any():
+            contributions = operations * frame.loc[momentary, "customers_interrupted"]
+            maifi = float(math.fsum(contributions.tolist())) / float(total_customers)
     return ReliabilityResult(
         saifi=customer_interruptions / float(total_customers),
         saidi=customer_minutes_interrupted / float(total_customers),
         customer_interruptions=customer_interruptions,
         customer_minutes_interrupted=customer_minutes_interrupted,
         outage_count=int(mask.sum()),
+        maifi_e=event_customers / float(total_customers),
+        maifi=maifi,
     )
