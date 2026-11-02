@@ -1199,6 +1199,11 @@ _SPAI_MIN_CALIBRATION_YEARS = 2
 # the fewest valid pooled calibration anomalies a cell needs before it is fitted
 _SPAI_MIN_FIT_VALUES = lmoments.MIN_VALUES_FOR_LMOMENTS
 
+# a cell whose pooled calibration anomalies span this little, in the input's precipitation
+# units, has no scale to estimate (a cell that never rains, for one), so it stays missing
+# (docs/floating_point_best_practices.md)
+_SPAI_ZERO_SPREAD_ATOL = 1e-6
+
 # keeps the inverse normal finite; a normal-scale result is then clipped like SPI's
 _SPAI_PROBABILITY_EPSILON = float(np.finfo(float).eps)
 
@@ -1333,14 +1338,23 @@ _SPAI_FITS: dict[Distribution, Callable[[np.ndarray], dict[str, np.ndarray]]] = 
 
 
 def _spai_fit(pooled: np.ndarray, distribution: Distribution) -> dict[str, np.ndarray]:
-    """Fit ``distribution`` to each cell's pooled calibration anomalies, NaN where too few."""
-    fittable = np.count_nonzero(~np.isnan(pooled), axis=0) >= _SPAI_MIN_FIT_VALUES
+    """Fit ``distribution`` to each cell's pooled calibration anomalies, NaN where too few.
+
+    A cell with too few valid anomalies, or with no spread across them, has no scale to
+    estimate and stays missing rather than being fitted on a degenerate sample.
+    """
     parameters = {key: np.full(pooled.shape[1], np.nan) for key in _SPAI_PARAMETER_KEYS[distribution]}
+    fittable = np.count_nonzero(~np.isnan(pooled), axis=0) >= _SPAI_MIN_FIT_VALUES
     if fittable.any():
-        # column-major, so every column sum runs over contiguous memory in the same order
-        # whatever the number of columns, and a cell's fit does not depend on its block
-        for key, fitted in _SPAI_FITS[distribution](np.asfortranarray(pooled[:, fittable])).items():
-            parameters[key][fittable] = fitted
+        # every fittable column has at least one valid value, so min and max are defined
+        candidates = pooled[:, fittable]
+        spread = np.nanmax(candidates, axis=0) - np.nanmin(candidates, axis=0)
+        fittable_columns = np.flatnonzero(fittable)[~np.isclose(spread, 0.0, atol=_SPAI_ZERO_SPREAD_ATOL)]
+        if fittable_columns.size:
+            # column-major, so every column sum runs over contiguous memory in the same order
+            # whatever the number of columns, and a cell's fit does not depend on its block
+            for key, fitted in _SPAI_FITS[distribution](np.asfortranarray(pooled[:, fittable_columns])).items():
+                parameters[key][fittable_columns] = fitted
     return parameters
 
 
@@ -1596,9 +1610,10 @@ def spai(
         period with no valid Calibration Period value has a NaN mean, so its anomalies
         are NaN; a period whose calibration values are constant has zero anomalies, so
         its SPAI is the pooled probability of a zero anomaly, never infinite. A cell
-        with fewer than four valid pooled calibration anomalies is NaN, and an
-        all-missing input is returned as NaN. A Calibration Period shorter than 30 years
-        warns.
+        whose pooled calibration anomalies hold fewer than four valid values, or no
+        spread across them (a cell that never rains, for one), has no scale to estimate
+        and is NaN, with no runtime warning; an all-missing input is returned as NaN. A
+        Calibration Period shorter than 30 years warns.
 
     Reference:
         Chanda, K., and Maity, R. (2015). Meteorological drought quantification with

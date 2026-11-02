@@ -134,6 +134,34 @@ def test_constant_calendar_period_is_a_constant_not_missing(
     assert len(np.unique(result[:, 0])) == 1
 
 
+@pytest.mark.parametrize("distribution", SPAI_DISTRIBUTIONS, ids=lambda d: d.name)
+def test_cell_with_no_pooled_spread_is_missing_without_a_warning(
+    distribution: indices.Distribution, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A cell that never rains has no anomaly spread to fit, so it is missing, quietly."""
+    caplog.set_level(logging.WARNING)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        result = _spai(np.zeros(YEARS * 12), distribution)
+
+    assert np.isnan(result).all()
+    assert not [
+        record.msg
+        for record in caplog.records
+        if isinstance(record.msg, dict) and record.msg.get("event") == "distribution_fallback"
+    ]
+
+
+def test_constant_cell_does_not_disturb_its_neighbours(seasonal: np.ndarray) -> None:
+    block = np.stack([seasonal, np.zeros(YEARS * 12)], axis=1)[:, :, np.newaxis]
+
+    result = _spai(block)
+
+    assert np.isnan(result[:, 1, 0]).all()
+    np.testing.assert_array_equal(result[:, 0, 0], _spai(seasonal))
+
+
 def test_calendar_period_with_no_calibration_values_is_missing(seasonal: np.ndarray) -> None:
     """A January the Calibration Period never observes has no mean, so its SPAI is NaN."""
     values = seasonal.copy().reshape(YEARS, 12)

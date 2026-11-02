@@ -385,7 +385,8 @@ non-periodic Arkansas series.
   library follows the original paper's Eq. (5)
 - The symmetric t location-scale and normal fits cannot follow strongly skewed
   anomalies, such as those of months that rarely rain
-- A calendar period with no calibration value is missing
+- A calendar period with no calibration value is missing, and so is a cell whose pooled
+  anomalies have no spread, such as a cell that never rains
 - The paper is paywalled, so the anomaly definition rests on the authors' closure and
   accessible secondary sources. No discrepancy was found, but the article body itself
   has not been read

@@ -145,8 +145,9 @@ fits one distribution per calendar period. `indices.spai()` and
    leaves one calibration value per period and therefore every anomaly zero.
 
 3. **Pooled fit**: fit one distribution *F* to each cell's Calibration Period anomaly
-   over every calendar period at once. A cell with fewer than four valid pooled
-   values is missing.
+   over every calendar period at once. A cell with fewer than four valid pooled values,
+   or with no spread across them (a cell that never rains, for one), has no scale to
+   estimate and is missing.
 
    - **t location-scale** (the reference choice): *F*(*y*) = *T*{sub}`ν`((*y* − *μ*) / *σ*),
      fitted by maximum likelihood with a vectorized ECME iteration (Liu & Rubin, 1995):
