@@ -136,7 +136,9 @@ fits one distribution per calendar period. `indices.spai()` and
    y = P - \mu_i
    $$
 
-   This is the original paper's Eq. (5), as the authors' closure reproduces it. A
+   This is the original paper's Eq. (5), as the authors' closure reproduces it. The
+   article body is paywalled, so the transcription rests on that closure and on
+   accessible secondary sources; contacting the authors remains open (#1480). A
    period with no valid calibration value has a NaN mean, so its anomalies are
    missing; a period with a constant calibration value has zero anomalies, never
    infinite ones. A Calibration Period of fewer than two years is rejected, because it

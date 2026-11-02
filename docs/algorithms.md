@@ -386,6 +386,9 @@ non-periodic Arkansas series.
 - The symmetric t location-scale and normal fits cannot follow strongly skewed
   anomalies, such as those of months that rarely rain
 - A calendar period with no calibration value is missing
+- The paper is paywalled, so the anomaly definition rests on the authors' closure and
+  accessible secondary sources. No discrepancy was found, but the article body itself
+  has not been read
 
 The SPAI equations and implementation details are in {doc}`algorithm-reference`.
 

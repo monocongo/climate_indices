@@ -1525,8 +1525,10 @@ def spai(
     scores the same in a dry and a wet month, so a deficit that is small in absolute
     terms does not register as drought whatever the month's own spread; that is the
     published design, and the same authors' later papers instead divide the anomaly by
-    each calendar period's standard deviation. See the SPAI section of ``VALIDATION.md``
-    (#1480).
+    each calendar period's standard deviation. The article body is paywalled, so Eq. (5)
+    is taken from the authors' closure, which reproduces the equation, and from
+    accessible secondary sources; contacting the authors remains open. See the SPAI
+    section of ``VALIDATION.md`` (#1480).
 
     The distributions, each fitted to the pooled ``Z``:
 
