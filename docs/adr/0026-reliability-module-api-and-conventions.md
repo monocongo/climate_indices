@@ -19,7 +19,10 @@ Amended by ENERGY2-6 ([#1340](https://github.com/monocongo/climate_indices/issue
 `ReliabilityResult.caidi` computes `CMI / CI` from the shared accumulators.
 It returns NaN when `CI` is zero and names `caidi` in `undefined_metrics` without an additional warning.
 Both are read-only properties, so the result constructor remains unchanged.
-CAIDI is independent of `total_customers`; its identity with `SAIDI / SAIFI` permits floating-point rounding.
+CAIDI is the definitional `CMI / CI` ratio and is exactly independent of
+`total_customers`; that ratio is tested exactly. Its identity with `SAIDI / SAIFI`
+holds mathematically and is tested within four float64 epsilons, not bit-for-bit,
+because SAIDI and SAIFI are rounded separately.
 Momentary metrics (MAIFI_E, MAIFI), availability (ASAI), grouping, simulation,
 adapters, and the reporting-period inputs remain unimplemented.
 ENERGY2-7 through ENERGY2-11

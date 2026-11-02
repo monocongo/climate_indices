@@ -436,9 +436,11 @@ def test_caidi_population_independence_and_general_identity(
     baseline = reliability.reliability_indices(rows, total_customers=100)
     reference = sum(Fraction(duration) * count for duration, count in zip(durations, counts, strict=True)) / sum(counts)
     assert result.caidi == baseline.caidi
-    # Four float64 epsilons cover the product, sum, and separately rounded divisions.
+    # CAIDI is the definitional accumulator ratio, so the analytic value is exact here.
+    assert result.caidi == float(reference)
+    # The identity with SAIDI / SAIFI is mathematical. SAIDI and SAIFI are rounded
+    # separately, so four float64 epsilons bound the accumulation and divisions.
     tolerance = 4 * np.finfo(np.float64).eps
-    np.testing.assert_allclose(result.caidi, float(reference), rtol=tolerance, atol=0)
     np.testing.assert_allclose(result.caidi, result.saidi / result.saifi, rtol=tolerance, atol=0)
 
 
@@ -451,7 +453,7 @@ def test_caidi_uses_the_same_planned_and_threshold_filters() -> None:
     assert reliability.reliability_indices(rows, total_customers=100).caidi == 100.0
     assert reliability.reliability_indices(rows, total_customers=100, exclude_planned=True).caidi == 60.0
     included = reliability.reliability_indices(rows, total_customers=100, threshold_minutes=1.0)
-    np.testing.assert_allclose(included.caidi, float(Fraction(3015, 35)), rtol=4 * np.finfo(float).eps, atol=0)
+    assert included.caidi == float(Fraction(3015, 35))
     empty = reliability.reliability_indices(rows[1:2], total_customers=100, exclude_planned=True)
     assert math.isnan(empty.caidi)
     assert empty.undefined_metrics == ("caidi",)
