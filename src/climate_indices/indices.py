@@ -1207,6 +1207,11 @@ _SPAI_ZERO_SPREAD_ATOL = 1e-6
 # keeps the inverse normal finite; a normal-scale result is then clipped like SPI's
 _SPAI_PROBABILITY_EPSILON = float(np.finfo(float).eps)
 
+# the t fit holds the pooled anomalies, the values, the weights, the residuals, the
+# squared residuals, and their ratio at once, so its working set is about this many
+# copies of the input and the memory diagnostic must account for them
+_SPAI_FIT_BUFFER_COPIES = 6
+
 # the t location-scale fit stops once no parameter (location, scale, log degrees of
 # freedom) moves more than the tolerance in an iteration, or at the cap; the upper
 # degrees-of-freedom bound is a normal distribution for every practical purpose
@@ -1256,27 +1261,37 @@ def _fit_t_location_scale(pooled: np.ndarray) -> dict[str, np.ndarray]:
     loc, variance = start["loc"], start["scale"] ** 2
     log_df = np.full(loc.shape, np.log(_T_FIT_INITIAL_DF))
     active = np.ones(loc.shape, dtype=bool)
-    # shortcut: linear EM convergence, ~150-200 iterations on monsoon-like series; a joint
+    # shortcut: linear EM convergence, ~100-200 iterations on monsoon-like series; a joint
     # Newton step on all three parameters would cut that if gridded runs prove too slow
     for _ in range(_T_FIT_MAX_ITERATIONS):
-        df = np.exp(log_df)
-        weights = np.where(valid, (df + 1.0) / (df + (values - loc) ** 2 / variance), 0.0)
-        new_loc = (weights * values).sum(axis=0) / weights.sum(axis=0)
-        residuals = np.where(valid, values - new_loc, 0.0)
-        new_variance = (weights * residuals**2).sum(axis=0) / counts
+        # only the columns still converging do sample-level work, so a block whose cells
+        # converge at different iterations stops scanning the finished ones
+        columns = np.flatnonzero(active)
+        column_valid = valid[:, columns]
+        column_values = values[:, columns]
+        column_counts = counts[columns]
+        column_loc = loc[columns]
+        column_variance = variance[columns]
+        column_log_df = log_df[columns]
+
+        df = np.exp(column_log_df)
+        weights = np.where(column_valid, (df + 1.0) / (df + (column_values - column_loc) ** 2 / column_variance), 0.0)
+        new_loc = (weights * column_values).sum(axis=0) / weights.sum(axis=0)
+        residuals = np.where(column_valid, column_values - new_loc, 0.0)
+        new_variance = (weights * residuals**2).sum(axis=0) / column_counts
 
         # derivatives of the observed log-likelihood in df at the new location and scale
         squared = residuals**2 / new_variance
         ratio = squared / (df + squared)
         half = 0.5 * (df + 1.0) / df
         gradient = (
-            0.5 * counts * (scipy.special.digamma((df + 1.0) / 2.0) - scipy.special.digamma(df / 2.0) - 1.0 / df)
+            0.5 * column_counts * (scipy.special.digamma((df + 1.0) / 2.0) - scipy.special.digamma(df / 2.0) - 1.0 / df)
             - 0.5 * np.log1p(squared / df).sum(axis=0)
             + half * ratio.sum(axis=0)
         )
         curvature = (
-            0.25 * counts * (scipy.special.polygamma(1, (df + 1.0) / 2.0) - scipy.special.polygamma(1, df / 2.0))
-            + 0.5 * counts / df**2
+            0.25 * column_counts * (scipy.special.polygamma(1, (df + 1.0) / 2.0) - scipy.special.polygamma(1, df / 2.0))
+            + 0.5 * column_counts / df**2
             + 0.5 * ratio.sum(axis=0) * (df - 1.0) / df**2
             - half * (squared / (df + squared) ** 2).sum(axis=0)
         )
@@ -1287,22 +1302,35 @@ def _fit_t_location_scale(pooled: np.ndarray) -> dict[str, np.ndarray]:
         log_curvature = df**2 * curvature + log_gradient
         with np.errstate(divide="ignore", invalid="ignore"):
             step = np.where(log_curvature < 0.0, -log_gradient / log_curvature, np.sign(log_gradient))
-        new_log_df = np.clip(log_df + np.clip(step, -1.0, 1.0), *_T_FIT_LOG_DF_BOUNDS)
+        new_log_df = np.clip(column_log_df + np.clip(step, -1.0, 1.0), *_T_FIT_LOG_DF_BOUNDS)
 
+        # the location and scale changes are measured against the column's own scale, so
+        # the test is invariant to the input's units; log df is already dimensionless
+        column_scale = np.sqrt(column_variance)
         change = np.maximum.reduce(
             [
-                np.abs(new_loc - loc),
-                np.abs(np.sqrt(new_variance) - np.sqrt(variance)),
-                np.abs(new_log_df - log_df),
+                np.abs(new_loc - column_loc) / column_scale,
+                np.abs(np.sqrt(new_variance) - column_scale) / column_scale,
+                np.abs(new_log_df - column_log_df),
             ]
         )
         # a converged column keeps its parameters while the others iterate on
-        loc = np.where(active, new_loc, loc)
-        variance = np.where(active, new_variance, variance)
-        log_df = np.where(active, new_log_df, log_df)
-        active &= change >= _T_FIT_TOLERANCE
+        loc[columns] = new_loc
+        variance[columns] = new_variance
+        log_df[columns] = new_log_df
+        active[columns] = change >= _T_FIT_TOLERANCE
         if not active.any():
             break
+    if active.any():
+        # the iteration cap, not the tolerance, ended these fits; the parameters are still
+        # the best estimate so far, so they are returned rather than discarded
+        _logger.bind(
+            from_distribution="t_location_scale",
+            reason="iteration cap",
+            context="SPAI computation",
+            failure_count=int(np.count_nonzero(active)),
+            total_count=int(active.size),
+        ).warning("fit_not_converged")
     return {"df": np.exp(log_df), "loc": loc, "scale": np.sqrt(variance)}
 
 
@@ -1407,6 +1435,16 @@ def _resolve_spai_parameters(
                 argument_name="fitting_params",
                 argument_value=f"{key}: shape {array.shape}",
             ) from error
+        if key in {"scale", "df"} and np.any(np.isfinite(broadcast) & (broadcast <= 0.0)):
+            # a nonpositive scale or degrees of freedom is not a fit; NaN stays available
+            # for a cell whose fit is missing, but a supplied invalid value would
+            # otherwise reach the CDF and turn valid observations into missing scores
+            raise InvalidArgumentError(
+                f"SPAI fitting_params key {key!r} must be positive where finite.",
+                argument_name="fitting_params",
+                argument_value=key,
+                valid_values="a positive value, or NaN for a missing fit",
+            )
         resolved[key] = broadcast.reshape(periods, cell_count) if per_period else broadcast.reshape(cell_count)
     return resolved
 
@@ -1440,7 +1478,9 @@ def _spai(
     )
     log.info("calculation_started")
     t0 = time.perf_counter()
-    memory_metrics = check_large_array_memory(values)
+    # the fit holds several arrays the size of the pooled anomalies, so the working set
+    # is a multiple of the input rather than the input alone
+    memory_metrics = check_large_array_memory(values, extra_bytes=_SPAI_FIT_BUFFER_COPIES * values.nbytes)
 
     try:
         original_shape = values.shape
@@ -1449,6 +1489,14 @@ def _spai(
         # for a time-major block, and the unfolded input when everything is missing
         scaled = compute.prepare_scaled(values, scale, periodicity, spatial_time_major=spatial_time_major)
         if input_all_missing:
+            # an incomplete or non-broadcastable parameter set is a configuration error
+            # whatever the input holds, so it is rejected before the early return
+            _resolve_spai_parameters(
+                fitting_params,
+                distribution,
+                periodicity.period_length,
+                tuple(scaled.shape[1:]) if scaled.ndim > 2 else (),
+            )
             _resolve_unfolded_window(
                 scaled,
                 periodicity,
@@ -1536,10 +1584,12 @@ def spai(
     within each calendar period, and only as far as ``F`` describes the pooled
     anomalies: the symmetric t location-scale and normal families cannot follow strongly
     skewed anomalies, such as those of months that rarely rain. A given anomaly value
-    scores the same in a dry and a wet month, so a deficit that is small in absolute
-    terms does not register as drought whatever the month's own spread; that is the
-    published design, and the same authors' later papers instead divide the anomaly by
-    each calendar period's standard deviation. The article body is paywalled, so Eq. (5)
+    scores the same in a dry and a wet month, because one distribution is fitted to the
+    pooled anomalies; that is the published design. The score still follows the pooled
+    fitted distribution, not the month's own spread, so a small absolute deficit scores
+    strongly negative when the pooled spread is small. The same authors' later papers
+    instead divide the anomaly by each calendar period's standard deviation. The article
+    body is paywalled, so Eq. (5)
     is taken from the authors' closure, which reproduces the equation, and from
     accessible secondary sources; contacting the authors remains open. See the SPAI
     section of ``VALIDATION.md`` (#1480).

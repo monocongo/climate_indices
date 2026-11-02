@@ -435,3 +435,57 @@ def test_xarray_series_matches_numpy_and_carries_the_probability_metadata(season
     np.testing.assert_array_equal(result.values, _spai(seasonal, output_scale="probability"))
     assert result.attrs["long_name"] == "Standardized Precipitation Anomaly Index probability"
     assert result.attrs["climate_indices_variant"] == "probability"
+
+
+def test_all_missing_input_still_validates_fitting_params() -> None:
+    missing = np.full(YEARS * 12, np.nan)
+
+    with pytest.raises(InvalidArgumentError, match="df"):
+        _spai(missing, T, fitting_params={"mean": np.ones(12), "loc": 0.0, "scale": 1.0})
+    with pytest.raises(InvalidArgumentError, match="broadcast"):
+        _spai(missing, NORMAL, fitting_params={"mean": np.ones(12), "loc": np.ones(3), "scale": 1.0})
+
+
+@pytest.mark.parametrize("key,value", [("scale", 0.0), ("scale", -1.0), ("df", 0.0), ("df", -2.5)])
+def test_nonpositive_fitting_params_are_rejected(seasonal: np.ndarray, key: str, value: float) -> None:
+    parameters = {"mean": np.full(12, 2.0), "loc": 0.0, "scale": 1.0, "df": 5.0}
+    parameters[key] = value
+
+    with pytest.raises(InvalidArgumentError, match=key) as error:
+        _spai(seasonal, T, fitting_params=parameters)
+    assert error.value.argument_name == "fitting_params"
+
+
+def test_nan_fitting_params_stay_available_for_missing_fits(seasonal: np.ndarray) -> None:
+    parameters = {"mean": np.full(12, 2.0), "loc": 0.0, "scale": np.nan, "df": 5.0}
+
+    result = _spai(seasonal, T, fitting_params=parameters)
+
+    assert np.isnan(result).all()
+
+
+def test_iteration_cap_logs_the_unconverged_cells(
+    seasonal: np.ndarray, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(indices, "_T_FIT_MAX_ITERATIONS", 2)
+    caplog.set_level(logging.WARNING)
+
+    result = _spai(seasonal, T)
+
+    assert not np.isnan(result).all()
+    unconverged = [
+        record.msg
+        for record in caplog.records
+        if isinstance(record.msg, dict) and record.msg.get("event") == "fit_not_converged"
+    ]
+    assert len(unconverged) == 1
+    assert unconverged[0]["failure_count"] == 1
+    assert unconverged[0]["total_count"] == 1
+
+
+def test_spai_is_invariant_to_precipitation_units(seasonal: np.ndarray) -> None:
+    """The ECME stopping test is unit-free, so a unit conversion cannot change the score."""
+    millimetres = _spai(seasonal, T)
+    inches = _spai(seasonal / 25.4, T)
+
+    np.testing.assert_allclose(inches, millimetres, rtol=0, atol=1e-9)
