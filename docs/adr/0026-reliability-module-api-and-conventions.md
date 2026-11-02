@@ -23,10 +23,18 @@ CAIDI is the definitional `CMI / CI` ratio and is exactly independent of
 `total_customers`; that ratio is tested exactly. Its identity with `SAIDI / SAIFI`
 holds mathematically and is tested within four float64 epsilons, not bit-for-bit,
 because SAIDI and SAIFI are rounded separately.
-Momentary metrics (MAIFI_E, MAIFI), availability (ASAI), grouping, simulation,
-adapters, and the reporting-period inputs remain unimplemented.
-ENERGY2-7 through ENERGY2-11
-([#1341](https://github.com/monocongo/climate_indices/issues/1341)–[#1345](https://github.com/monocongo/climate_indices/issues/1345))
+Amended by ENERGY2-7 ([#1341](https://github.com/monocongo/climate_indices/issues/1341)):
+`reliability_indices()` and `ReliabilityResult` report `maifi_e`, the momentary
+interruption event frequency, and `maifi`, the device-operation frequency, and
+`group_momentary_events()` groups raw momentary operations into events.
+Amended by the [#1341](https://github.com/monocongo/climate_indices/issues/1341)
+review: a grouped row keeps the complete sequence interval, and the optional
+`grouped_momentary_event` field marks an assembled row so its type survives a
+later classification without a contradiction warning.
+Availability (ASAI), simulation, adapters, and the reporting-period inputs remain
+unimplemented.
+ENERGY2-8 through ENERGY2-11
+([#1342](https://github.com/monocongo/climate_indices/issues/1342)–[#1345](https://github.com/monocongo/climate_indices/issues/1345))
 implement the remaining design. Each decision is amended here as its implementation lands, as
 {doc}`0013-flood-module-api-and-naming` was for flood.
 
@@ -109,8 +117,9 @@ unreproducible claim of reproduction.
    - `classify_interruptions()` applies the sustained/momentary threshold of
      decision 3.
    - `group_momentary_events()` collapses reclosing operations of one device
-     within the threshold window into one momentary event, the grouping
-     decision 4 needs.
+     within a configurable grouping window (default five minutes), anchored at
+     the first operation, into one momentary event. The grouping window is a
+     separate setting from the classification threshold of decision 3.
    - `simulate_reliability()` takes supplied component failure rates and repair
      distributions, a series or parallel arrangement, `total_customers`,
      `horizon_hours`, `n_trials`, and a required explicit seed.
@@ -166,6 +175,34 @@ unreproducible claim of reproduction.
    A caller who wants the IEEE exclusion sets the flag; a caller who does not
    gets the unflagged event count, and the result records that the exclusion was
    not applied.
+
+   **`maifi_e` counts supplied rows as events, and `maifi` needs operation
+   data.** `reliability_indices()` never regroups a caller's rows, so a raw
+   operation log passes through `group_momentary_events()` first, whose output
+   is one row per event. `maifi_e` excludes flagged rows; `maifi` uses each
+   row's `device_operations` and is undefined without that column. The exclusion
+   flag therefore removes an event from `maifi_e` only, as the 2003 subclause
+   attaches it to the event form.
+
+   **Grouping is lossy, so the helper rejects unsupported input.** Row totals
+   cannot recover the distinct customers of an event, because two operations can
+   interrupt the same set or different sets. The helper raises for a group whose
+   operations interrupt different customer counts and accepts equal counts under
+   a stated same-customer assumption. It also raises for a group that completes
+   after its window or mixes exclusion flags, and it never merges different
+   `device_id` values. Rows without the column or with null device identifiers
+   group by time with other unknown-device rows. This library convention can
+   merge distinct unknown devices.
+
+   **A grouped row keeps the complete sequence interval.** Its `start_time` is
+   the anchor operation's start and its `end_time` is the latest operation's end,
+   so its elapsed `duration` includes the gaps between operations and can exceed
+   the classification threshold. Its momentary classification comes from its
+   member operations, not from that span, and the helper sets
+   `grouped_momentary_event` so a later classification keeps the type without a
+   contradiction warning. That field also records the loss: the row's duration is
+   an event span, not an operation duration. A caller-supplied row without the
+   flag still warns when its explicit type contradicts its duration.
 
 5. **Planned outages are included by default, driven by an explicit `planned`
    flag; `exclude_planned` is the opt-in.** Most U.S. reporting includes planned
@@ -253,7 +290,7 @@ unreproducible claim of reproduction.
     | SAIFI | `N_T = 1000`, `Σ N_i = 300` | 0.3 interruptions per customer per period |
     | SAIDI | `N_T = 1000`, `Σ r_i N_i = 24 000` customer-minutes | 24.0 minutes per customer per period |
     | CAIDI | `Σ r_i N_i = 24 000`, `Σ N_i = 300` | 80.0 minutes per interruption; equals `SAIDI / SAIFI` |
-    | MAIFI_E | `N_T = 1000`, `Σ IDE_i N_i = 300`, where `IDE_i` is 1 for a momentary event that `group_momentary_events()` returns without `momentary_event_excluded` set and 0 for any other record | 0.3 momentary events per customer per period |
+    | MAIFI_E | `N_T = 1000`, `Σ IDE_i N_i = 300`, where `IDE_i` is 1 for a supplied momentary row without `momentary_event_excluded` set and 0 for any other record; `group_momentary_events()` is the opt-in helper that produces one such row per event from a raw operation log | 0.3 momentary events per customer per period |
     | MAIFI, device-operation form | Same record as MAIFI_E, `N_T = 1000`, `Σ device_operations_i N_i = 750` | 0.75 device operations per customer per period; differs from MAIFI_E 0.3 on the same record |
     | ASAI | `N_T = 1000`, `H = 24 h`, `Σ r_i N_i = 24 000` customer-minutes | 0.983333, from `1 − 24 000 / (1000 · 24 · 60)` |
     | No outage, operation data absent | Empty event record, `N_T = 1000`, `H = 24 h`, no `device_operations` column | SAIFI 0, SAIDI 0, MAIFI_E 0, ASAI 1.0; CAIDI undefined (0/0); MAIFI undefined because operation data is absent. The result names both undefined metrics and emits at most one warning. |

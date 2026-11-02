@@ -179,6 +179,7 @@ vocabulary at `src/climate_indices/CONTEXT.md`):
   `docs/research/flood-oracle-survey.md`,
   `docs/research/energy-oracle-survey.md`,
   `docs/research/import-cycle-investigation.md`,
+  `docs/research/maifi-event-grouping.md`,
   `docs/explorer/`, `docs/architecture-deepening-review-*.md`,
   `docs/ai-assisted-development-report-*.md`, `docs/release-story-notes.md`,
   `docs/test_fixture_management.md`, `CONTEXT-MAP.md`

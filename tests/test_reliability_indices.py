@@ -43,7 +43,9 @@ def test_result_preserves_original_constructor(result: reliability.ReliabilityRe
     assert np.isnan(result.saidi)
     assert np.isnan(result.customer_minutes_interrupted)
     assert math.isnan(result.caidi)
-    assert result.undefined_metrics == ("caidi",)
+    assert result.maifi_e == 0.0
+    assert result.maifi is None
+    assert result.undefined_metrics == ("caidi", "maifi")
 
 
 def test_legacy_three_field_results_compare_equal_and_hash_equal() -> None:
@@ -67,9 +69,9 @@ def test_unset_duration_with_positive_interruptions_is_not_zero_duration() -> No
     )
     assert unset != zero
     assert math.isnan(unset.caidi)
-    assert unset.undefined_metrics == ("caidi",)
+    assert unset.undefined_metrics == ("caidi", "maifi")
     assert zero.caidi == 0.0
-    assert zero.undefined_metrics == ()
+    assert zero.undefined_metrics == ("maifi",)
 
 
 def test_unset_saidi_does_not_distinguish_equal_caidi() -> None:
@@ -116,7 +118,9 @@ def test_nominal_analytic_case() -> None:
     assert result.customer_minutes_interrupted == pytest.approx(2400.0)
     assert result.caidi == 80.0
     assert result.caidi == result.saidi / result.saifi
-    assert result.undefined_metrics == ()
+    assert result.maifi_e == 0.0
+    assert result.maifi is None
+    assert result.undefined_metrics == ("maifi",)
     assert isinstance(result.caidi, float)
     assert result.outage_count == 2
     assert isinstance(result.saifi, float)
@@ -146,7 +150,7 @@ def test_caidi_is_undefined_without_customer_interruptions(events: Any) -> None:
         warnings.simplefilter("always")
         result = reliability.reliability_indices(events, total_customers=100)
         assert math.isnan(result.caidi)
-        assert result.undefined_metrics == ("caidi",)
+        assert result.undefined_metrics == ("caidi", "maifi")
         assert len(caught) == 0
 
 
@@ -162,7 +166,7 @@ def test_dataframe_and_mapping_inputs_agree() -> None:
     assert from_rows == from_frame == from_mapping
 
 
-def test_momentary_rows_contribute_nothing() -> None:
+def test_momentary_rows_contribute_nothing_to_sustained_metrics() -> None:
     sustained = record(event_id="sustained", duration=60.0, customers_interrupted=20)
     momentary = record(
         event_id="momentary",
@@ -173,9 +177,28 @@ def test_momentary_rows_contribute_nothing() -> None:
     )
     without = reliability.reliability_indices([sustained], total_customers=100)
     with_momentary = reliability.reliability_indices([sustained, momentary], total_customers=100)
-    assert with_momentary == without
+    assert with_momentary.saifi == without.saifi
+    assert with_momentary.saidi == without.saidi
+    assert with_momentary.caidi == without.caidi
     assert with_momentary.customer_interruptions == 20
     assert with_momentary.outage_count == 1
+    assert without.maifi_e == 0.0
+    assert with_momentary.maifi_e == pytest.approx(0.07)
+
+
+@pytest.mark.parametrize("type_fields", [{}, {"interruption_type": None}])
+def test_grouped_momentary_event_without_explicit_type_uses_momentary_metrics(type_fields: dict[str, object]) -> None:
+    row = record(duration=60.0, grouped_momentary_event=True, device_operations=2, **type_fields)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ClimateIndicesWarning)
+        result = reliability.reliability_indices([row], total_customers=100)
+    assert result.saifi == 0.0
+    assert result.saidi == 0.0
+    assert result.customer_interruptions == 0
+    assert result.customer_minutes_interrupted == 0.0
+    assert result.outage_count == 0
+    assert result.maifi_e == pytest.approx(0.05)
+    assert result.maifi == pytest.approx(0.1)
 
 
 def test_explicitly_momentary_long_row_is_excluded_with_one_warning() -> None:
@@ -184,7 +207,12 @@ def test_explicitly_momentary_long_row_is_excluded_with_one_warning() -> None:
         result = reliability.reliability_indices([row], total_customers=100)
     assert len(caught) == 1
     assert result == reliability.ReliabilityResult(
-        saifi=0.0, saidi=0.0, customer_interruptions=0, customer_minutes_interrupted=0.0, outage_count=0
+        saifi=0.0,
+        saidi=0.0,
+        customer_interruptions=0,
+        customer_minutes_interrupted=0.0,
+        outage_count=0,
+        maifi_e=0.5,
     )
 
 
@@ -222,7 +250,12 @@ def test_adr_0026_fixture_analytic_case() -> None:
 def test_zero_duration_event_counts_only_when_explicitly_sustained() -> None:
     derived = reliability.reliability_indices([record(duration=0.0, customers_interrupted=5)], total_customers=100)
     assert derived == reliability.ReliabilityResult(
-        saifi=0.0, saidi=0.0, customer_interruptions=0, customer_minutes_interrupted=0.0, outage_count=0
+        saifi=0.0,
+        saidi=0.0,
+        customer_interruptions=0,
+        customer_minutes_interrupted=0.0,
+        outage_count=0,
+        maifi_e=0.05,
     )
     explicit = record(duration=0.0, customers_interrupted=5, interruption_type="sustained")
     with pytest.warns(ClimateIndicesWarning, match="interruption_type") as caught:
@@ -233,7 +266,7 @@ def test_zero_duration_event_counts_only_when_explicitly_sustained() -> None:
     assert counted.customer_interruptions == 5
     assert counted.customer_minutes_interrupted == pytest.approx(0.0)
     assert counted.caidi == 0.0
-    assert counted.undefined_metrics == ()
+    assert counted.undefined_metrics == ("maifi",)
     assert counted.outage_count == 1
 
 
@@ -431,7 +464,7 @@ def test_customer_minutes_relationship_to_caidi() -> None:
 def test_caidi_single_event_is_its_restoration_time(duration: float) -> None:
     result = reliability.reliability_indices([record(duration=duration, customers_interrupted=3)], total_customers=1000)
     assert result.caidi == duration
-    assert result.undefined_metrics == ()
+    assert result.undefined_metrics == ("maifi",)
 
 
 @pytest.mark.parametrize("total_customers", [30.0, 100.0, 100.5, 1000.0])
@@ -467,7 +500,7 @@ def test_caidi_uses_the_same_planned_and_threshold_filters() -> None:
     assert included.caidi == float(Fraction(3015, 35))
     empty = reliability.reliability_indices(rows[1:2], total_customers=100, exclude_planned=True)
     assert math.isnan(empty.caidi)
-    assert empty.undefined_metrics == ("caidi",)
+    assert empty.undefined_metrics == ("caidi", "maifi")
 
 
 def test_exclude_planned_filters_saidi_and_customer_minutes() -> None:
@@ -575,3 +608,102 @@ def test_result_is_frozen() -> None:
 def test_public_exports() -> None:
     assert "reliability_indices" in reliability.__all__
     assert "ReliabilityResult" in reliability.__all__
+    assert "group_momentary_events" in reliability.__all__
+
+
+def test_nominal_momentary_event_and_operation_forms() -> None:
+    rows = [
+        record(event_id="a", duration=1.0, customers_interrupted=15, device_operations=2),
+        record(
+            event_id="b", start_time="2024-01-01T00:10:00", duration=2.0, customers_interrupted=15, device_operations=1
+        ),
+    ]
+    result = reliability.reliability_indices(rows, total_customers=100)
+    assert result.maifi_e == pytest.approx(0.3)
+    assert result.maifi == pytest.approx(0.45)
+    assert result.saifi == 0.0
+    assert result.saidi == 0.0
+    assert result.undefined_metrics == ("caidi",)
+
+
+@pytest.mark.parametrize("operations, customers", [(2**62, 2), (2, 2**62)])
+def test_operation_products_beyond_int64_do_not_overflow(operations: int, customers: int) -> None:
+    row = record(duration=1.0, customers_interrupted=customers, device_operations=operations)
+    result = reliability.reliability_indices([row], total_customers=float(customers))
+    assert result.maifi == float(operations)
+
+
+def test_momentary_event_form_ignores_operations_without_operation_data() -> None:
+    rows = [record(event_id="a", duration=1.0, customers_interrupted=15), record(event_id="b", duration=2.0)]
+    rows[1]["customers_interrupted"] = 15
+    rows[1]["start_time"] = "2024-01-01T00:10:00"
+    result = reliability.reliability_indices(rows, total_customers=100)
+    assert result.maifi_e == pytest.approx(0.3)
+    assert result.maifi is None
+    assert result.undefined_metrics == ("caidi", "maifi")
+
+
+def test_operation_form_is_none_when_device_operations_are_absent() -> None:
+    row = record(duration=1.0, customers_interrupted=15)
+    result = reliability.reliability_indices([row], total_customers=100)
+    assert result.maifi_e == pytest.approx(0.15)
+    assert result.maifi is None
+    assert "maifi" in result.undefined_metrics
+
+
+def test_operation_form_is_zero_when_the_column_is_present_without_momentary_rows() -> None:
+    result = reliability.reliability_indices(
+        [record(duration=60.0, customers_interrupted=5, device_operations=1)], total_customers=100
+    )
+    assert result.maifi_e == 0.0
+    assert result.maifi == 0.0
+    assert result.undefined_metrics == ()
+
+
+def test_operation_form_is_none_when_a_momentary_operation_count_is_missing() -> None:
+    row = record(duration=1.0, customers_interrupted=15, device_operations=None)
+    result = reliability.reliability_indices([row], total_customers=100)
+    assert result.maifi_e == pytest.approx(0.15)
+    assert result.maifi is None
+
+
+def test_excluded_momentary_event_leaves_the_event_form_only() -> None:
+    row = record(duration=1.0, customers_interrupted=15, device_operations=2, momentary_event_excluded=True)
+    result = reliability.reliability_indices([row], total_customers=100)
+    assert result.maifi_e == 0.0
+    assert result.maifi == pytest.approx(0.3)
+
+
+def test_adr_0026_fixture_maifi_analytic_values() -> None:
+    events = json.loads(FIXTURE.read_text())
+    result = reliability.reliability_indices(events, total_customers=1000)
+    assert result.maifi_e == pytest.approx(0.3)
+    assert result.maifi == pytest.approx(0.75)
+    assert result.undefined_metrics == ()
+
+
+def test_empty_log_reports_zero_event_form_and_undefined_operation_form() -> None:
+    result = reliability.reliability_indices([], total_customers=1000)
+    assert result.maifi_e == 0.0
+    assert result.maifi is None
+    assert result.undefined_metrics == ("caidi", "maifi")
+
+
+def test_empty_log_with_operation_column_reports_zero_operation_form() -> None:
+    result = reliability.reliability_indices(pd.DataFrame(columns=["device_operations"]), total_customers=1000)
+    assert result.maifi_e == 0.0
+    assert result.maifi == 0.0
+    assert result.undefined_metrics == ("caidi",)
+
+
+def test_momentary_row_order_does_not_change_the_maifi_values() -> None:
+    rows = [
+        record(event_id="a", duration=1.0, customers_interrupted=15, device_operations=2),
+        record(
+            event_id="b", start_time="2024-01-01T00:10:00", duration=2.0, customers_interrupted=15, device_operations=1
+        ),
+    ]
+    forward = reliability.reliability_indices(rows, total_customers=100)
+    backward = reliability.reliability_indices(list(reversed(rows)), total_customers=100)
+    assert forward.maifi_e == backward.maifi_e
+    assert forward.maifi == backward.maifi

@@ -1,7 +1,7 @@
 """Normalize reliability event records and reporting-period inputs."""
 
 import warnings
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from datetime import date, datetime
 from numbers import Integral, Real
 from typing import TypeAlias
@@ -23,6 +23,7 @@ _FIELDS = {
     "device_id",
     "device_operations",
     "momentary_event_excluded",
+    "grouped_momentary_event",
     "cause",
     "component_ids",
 }
@@ -216,13 +217,20 @@ def _component_ids(frame: pd.DataFrame) -> None:
 
 
 def _classify(frame: pd.DataFrame, threshold: float) -> None:
-    """Derive interruption types, retaining explicit types with one warning."""
+    """Derive interruption types, retaining explicit types with one warning.
+
+    A grouped momentary event keeps its authoritative type without a warning,
+    because its duration is an elapsed sequence span, not an operation duration.
+    """
     derived = np.where(frame["duration"] > threshold, "sustained", "momentary").tolist()
     explicit = frame["interruption_type"].tolist() if "interruption_type" in frame else [None] * len(frame)
+    grouped = frame["grouped_momentary_event"].tolist() if "grouped_momentary_event" in frame else [False] * len(frame)
     if any(not _missing(v) and (not isinstance(v, str) or v not in ("sustained", "momentary")) for v in explicit):
         raise _invalid("interruption_type", "must contain sustained, momentary, or null")
-    frame["interruption_type"] = [d if _missing(v) else v for v, d in zip(explicit, derived, strict=True)]
-    if any(not _missing(v) and v != d for v, d in zip(explicit, derived, strict=True)):
+    frame["interruption_type"] = [
+        ("momentary" if g else d) if _missing(v) else v for v, d, g in zip(explicit, derived, grouped, strict=True)
+    ]
+    if any(not _missing(v) and v != d and not g for v, d, g in zip(explicit, derived, grouped, strict=True)):
         warnings.warn(
             "interruption_type contradicts duration; explicit types are retained.", ClimateIndicesWarning, stacklevel=2
         )
@@ -276,6 +284,8 @@ def classify_interruptions(events: EventTable, *, threshold_minutes: float = 5.0
     frame["duration"] = duration
     _flag_column(frame, "planned")
     _flag_column(frame, "momentary_event_excluded")
+    if "grouped_momentary_event" in frame:
+        _flag_column(frame, "grouped_momentary_event")
     _string_column(frame, "device_id")
     _string_column(frame, "cause")
     _device_operations(frame)
@@ -283,6 +293,151 @@ def classify_interruptions(events: EventTable, *, threshold_minutes: float = 5.0
     _classify(frame, threshold)
     _warn_overlaps(start, end, duration)
     return frame
+
+
+def _momentary_groups(by_device: dict[object, list[int]], start_ns: list[int], window_ns: int) -> Iterator[list[int]]:
+    """Yield groups anchored at each device's first ungrouped operation."""
+    for positions in by_device.values():
+        positions.sort(key=lambda position: (start_ns[position], position))
+        cursor = 0
+        while cursor < len(positions):
+            anchor = positions[cursor]
+            deadline = start_ns[anchor] + window_ns
+            members = [anchor]
+            cursor += 1
+            while cursor < len(positions) and start_ns[positions[cursor]] <= deadline:
+                members.append(positions[cursor])
+                cursor += 1
+            yield members
+
+
+def _momentary_group_end(
+    members: list[int],
+    end_ns: list[int],
+    deadline: int,
+    customer_counts: list[int],
+    exclusion_flags: list[bool],
+) -> int:
+    """Validate a group's interval and shared fields, then return its last end position."""
+    last_end = max(members, key=lambda position: end_ns[position])
+    if end_ns[last_end] > deadline:
+        raise _invalid("momentary_event", "must complete within window_minutes; supply completed events")
+    customers = {customer_counts[position] for position in members}
+    if len(customers) > 1:
+        raise _invalid(
+            "customers_interrupted",
+            "grouped momentary operations must interrupt the same customers; supply one event-level row",
+        )
+    excluded = {exclusion_flags[position] for position in members}
+    if len(excluded) > 1:
+        raise _invalid("momentary_event_excluded", "grouped momentary operations must share one exclusion flag")
+    return last_end
+
+
+def group_momentary_events(
+    events: EventTable,
+    *,
+    window_minutes: float = 5.0,
+    threshold_minutes: float = 5.0,
+) -> pd.DataFrame:
+    """Collapse momentary operation rows into one event per device and window.
+
+    Each momentary input row must be a single reclosing operation. An event is
+    anchored at the start of its first operation on one ``device_id``. A later
+    operation on the same device joins when its start time is at most
+    ``window_minutes`` after the anchor; the window never moves forward from the
+    latest operation, and operations on different devices never join. Rows with
+    no ``device_id`` group only with other rows that also have none, which is a
+    library convention and can merge distinct unknown devices.
+
+    The window and the sustained-interruption threshold are separate settings.
+    The IEEE grouping rule is informative rather than a requirement, and the
+    supplied record may already hold whole reclosing sequences; this helper
+    cannot tell a second operation from a new sequence.
+
+    Args:
+        events: A DataFrame, column mapping, or sequence of row mappings,
+            validated and classified by the reliability event contract.
+        window_minutes: Positive grouping window, in minutes. An operation joins
+            its anchor when it starts at or before the anchor plus this window.
+        threshold_minutes: Positive sustained-interruption threshold, passed to
+            :func:`classify_interruptions`. It classifies rows; it does not set
+            the grouping window.
+
+    Returns:
+        A new DataFrame in input order. Sustained rows pass through unchanged.
+        Each grouped event keeps the anchor ``event_id``, ``start_time``, and
+        ``device_id``; it takes the latest ``end_time``, the elapsed
+        anchor-to-end ``duration``, and the group's common customer count. The
+        duration is the complete sequence span, so it may exceed the
+        classification threshold. The helper sets ``grouped_momentary_event``
+        True on every assembled row, so a later classification keeps the
+        momentary type without a contradiction warning. Supplied
+        ``device_operations`` are summed, and an absent column stays absent.
+
+    Raises:
+        InvalidArgumentError: A field is invalid, a grouped event interrupts
+            different customer counts, a grouped event mixes
+            ``momentary_event_excluded`` values, or an operation ends after its
+            window. The exception's ``argument_name`` identifies the field.
+
+    Warns:
+        ClimateIndicesWarning: An explicit type contradicts the duration.
+        OverlappingEventsWarning: Positive-duration intervals overlap.
+    """
+    window = _number(window_minutes, "window_minutes", positive=True)
+    try:
+        window_ns = int(pd.Timedelta(minutes=window).value)
+    except (ValueError, TypeError, OverflowError) as exc:
+        raise _invalid("window_minutes", "must fit a pandas Timedelta") from exc
+    frame = classify_interruptions(events, threshold_minutes=threshold_minutes)
+    frame["grouped_momentary_event"] = False
+    momentary = (frame["interruption_type"] == "momentary").to_numpy()
+    if not momentary.any():
+        return frame.copy()
+
+    # Python integers prevent overflow when a deadline exceeds Timestamp.max.
+    start_ns = pd.DatetimeIndex(frame["start_time"]).asi8.tolist()
+    end_times = pd.DatetimeIndex(frame["end_time"])
+    end_ns = end_times.asi8.tolist()
+    customer_counts = frame["customers_interrupted"].tolist()
+    exclusion_flags = frame["momentary_event_excluded"].tolist()
+    operations = frame["device_operations"].tolist() if "device_operations" in frame else None
+
+    device_keys = frame["device_id"].tolist() if "device_id" in frame.columns else [None] * len(frame)
+    by_device: dict[object, list[int]] = {}
+    for position in range(len(frame)):
+        if momentary[position]:
+            by_device.setdefault(device_keys[position], []).append(position)
+
+    grouped: dict[int, int] = {}
+    end_positions: list[int] = []
+    durations: list[float] = []
+    operation_totals: list[object] = []
+    for members in _momentary_groups(by_device, start_ns, window_ns):
+        anchor = members[0]
+        last_end = _momentary_group_end(members, end_ns, start_ns[anchor] + window_ns, customer_counts, exclusion_flags)
+        grouped[min(members)] = anchor
+        end_positions.append(last_end)
+        durations.append((end_ns[last_end] - start_ns[anchor]) / 60_000_000_000)
+        if operations is not None:
+            counts = [operations[position] for position in members]
+            operation_totals.append(
+                _integer(sum(int(value) for value in counts), "device_operations")
+                if all(not pd.isna(value) for value in counts)
+                else pd.NA
+            )
+
+    keep = sorted([position for position in range(len(frame)) if not momentary[position]] + list(grouped))
+    result = frame.iloc[[grouped.get(position, position) for position in keep]].copy()
+    result.index = pd.Index(keep)
+    grouped_positions = list(grouped)
+    result.loc[grouped_positions, "end_time"] = end_times.take(end_positions)
+    result.loc[grouped_positions, "duration"] = durations
+    result.loc[grouped_positions, "grouped_momentary_event"] = True
+    if operations is not None:
+        result.loc[grouped_positions, "device_operations"] = pd.array(operation_totals, dtype="Int64")
+    return result.reset_index(drop=True)
 
 
 def _normalize_events(events: EventTable, *, total_customers: float, threshold_minutes: float = 5.0) -> pd.DataFrame:

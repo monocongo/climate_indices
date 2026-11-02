@@ -166,8 +166,8 @@ records the tolerances, evidence, and known gaps.
 ### climate_indices.reliability
 
 The reliability package validates and classifies interruption records and computes
-SAIFI, SAIDI, and CAIDI from sustained interruptions. Momentary metrics, availability,
-and simulation are not implemented yet.
+SAIFI, SAIDI, CAIDI, MAIFI_E, and MAIFI from the event records. Availability and
+simulation are not implemented yet.
 [ADR-0026](adr/0026-reliability-module-api-and-conventions.md) fixes the conventions
 for those later tickets.
 Import it with `from climate_indices import reliability`.
@@ -178,7 +178,10 @@ in input order. It never changes the caller's table or removes events.
 Durations strictly above five minutes are sustained by default.
 Durations at or below five minutes are momentary, including zero duration.
 An explicit type remains unchanged; a contradiction emits one `ClimateIndicesWarning`.
-A null optional type is derived from duration.
+If the type is absent or null, classification uses the duration unless `grouped_momentary_event` is `True`.
+In that case, classification uses `momentary`.
+A row flagged `grouped_momentary_event` is exempt from that warning, because its
+duration is an event span rather than an operation duration.
 
 | Field | Contract |
 | --- | --- |
@@ -191,6 +194,7 @@ A null optional type is derived from duration.
 | `device_id`, `cause` | Optional strings. Null values remain unknown. |
 | `device_operations` | Optional nonnegative int64 integers. Nulls remain unknown in a nullable `Int64` column. An absent column stays absent. |
 | `momentary_event_excluded` | Optional Boolean. Absent or null values become `False`. No association with sustained events is inferred. |
+| `grouped_momentary_event` | This optional Boolean flag identifies a row assembled by `group_momentary_events()`. Null values become `False` when the column is supplied. If the column is absent, classification treats the flag as `False` and leaves the column absent. A flagged row has an authoritative type and an elapsed sequence span as its duration. |
 | `component_ids` | Optional lists of string identifiers. These labels do not resolve connectivity. Nulls remain unknown. |
 
 Normalization returns float64 duration arrays and int64 customer-count arrays.
@@ -231,9 +235,36 @@ Without either input, the period remains undefined. Event timestamps never deter
 The served-customer validator backs `reliability_indices()`; the reporting-period
 validator supports later metric tickets. Neither is an additional public function.
 
+`group_momentary_events(events, *, window_minutes=5.0, threshold_minutes=5.0)`
+collapses raw momentary operation rows into one event per device and window.
+Each event is anchored at the start of its first operation on one `device_id`.
+A later operation joins when it starts at most `window_minutes` after the anchor;
+the window never moves forward from the latest operation, and operations on
+different devices never join. Rows with no `device_id` group only with other such
+rows, which is a library convention and can merge distinct unknown devices.
+The window is separate from the sustained-interruption threshold.
+Each grouped row keeps the anchor `event_id`, `start_time`, and `device_id`, takes
+the latest `end_time` and the elapsed anchor-to-end `duration`, and carries the
+group's common customer count. Its `duration` is the complete sequence interval,
+so it includes the gaps between operations and can exceed the threshold. The
+helper sets `grouped_momentary_event` True, so a later classification keeps the
+momentary type without a contradiction warning. A caller-supplied row without
+that flag still warns when an explicit type contradicts its duration. Supplied
+`device_operations` are summed, and an absent column stays absent.
+A group whose operation ends after the window raises `InvalidArgumentError` naming
+`momentary_event`; it is never split or silently extended.
+A group whose operations interrupt different customer counts raises
+`InvalidArgumentError` naming `customers_interrupted`, because row totals cannot
+recover the distinct customers of an event. Equal counts are accepted under a
+stated same-customer assumption. A group that mixes `momentary_event_excluded`
+values raises `InvalidArgumentError` naming that field.
+The helper cannot tell a second operation from a new reclosing sequence, so it
+suits raw operation logs, not records that already hold whole sequences.
+
 `reliability_indices(events, total_customers=None, *, exclude_planned=False, threshold_minutes=5.0)`
 returns a frozen `ReliabilityResult` with `saifi`, `saidi`,
-`customer_interruptions`, `customer_minutes_interrupted`, and `outage_count`.
+`customer_interruptions`, `customer_minutes_interrupted`, `outage_count`,
+`maifi_e`, and `maifi`.
 It also exposes the read-only properties `caidi` and `undefined_metrics`.
 SAIFI is `CI / N_T`, where `CI = sum(N_i)` over sustained interruptions.
 Each sustained event row contributes its own `N_i`, so `CI` is additive across those
@@ -253,22 +284,37 @@ For example, a six-minute event affecting three customers with `total_customers=
 The separately rounded ratio `SAIDI / SAIFI` gives `5.999999999999999`.
 The three metrics share one sustained-row mask, so `exclude_planned` and
 `threshold_minutes` have one meaning.
+`maifi_e` is the momentary interruption event frequency
+`sum(N_i) / N_T` over momentary rows, where an event flagged
+`momentary_event_excluded` contributes nothing. It counts supplied rows as events;
+the library never regroups a caller's rows. Use `group_momentary_events()` first
+to turn a raw operation log into one row per event.
+`maifi` is the device-operation frequency
+`sum(device_operations_i * N_i) / N_T` over all momentary rows, including excluded
+events. This library applies the exclusion to `maifi_e` only.
+Including those operations in `maifi` is a library convention, not a verified IEEE requirement.
+It is `None` when the input has no `device_operations` column or a momentary row
+leaves its operation count unknown, because an operation frequency cannot be
+recovered from an event count. It is `0.0` when the column is supplied and no
+momentary row operates.
 The function accepts no reporting-period bounds; partial periods are computed
 exactly and are never annualized.
-Momentary rows contribute nothing. Planned sustained interruptions are included by default.
+Momentary rows contribute nothing to SAIFI, SAIDI, or CAIDI. Planned sustained interruptions are included by default.
 `exclude_planned=True` removes them and must be a Boolean.
 `threshold_minutes` follows `classify_interruptions()`.
 `total_customers` is required, positive, and may be fractional; an absent or invalid
 value raises `InvalidArgumentError` naming `total_customers`.
-An empty event log returns SAIFI and SAIDI `0.0`, `customer_interruptions` 0,
-`customer_minutes_interrupted` 0, and `outage_count` 0.
-When `CI` is zero, CAIDI is NaN and `undefined_metrics` is `("caidi",)`.
+An empty event log returns SAIFI, SAIDI, and `maifi_e` `0.0`,
+`customer_interruptions` 0, `customer_minutes_interrupted` 0, and `outage_count` 0.
+When `CI` is zero, CAIDI is NaN and `undefined_metrics` includes `"caidi"`.
 This includes empty logs, momentary-only logs, and sustained rows with zero interrupted customers.
-Undefined CAIDI does not produce an additional warning.
-An explicitly sustained zero-duration event with interrupted customers instead gives CAIDI `0.0` and `undefined_metrics == ()`.
-The original result constructor remains unchanged; both properties derive from its accumulators.
-If the constructor omits `customer_minutes_interrupted`, CAIDI remains NaN and `undefined_metrics` names `caidi`.
-MAIFI, ASAI, and the simulation path are not implemented yet.
+An explicitly sustained zero-duration event with interrupted customers instead gives CAIDI `0.0`.
+`undefined_metrics` names each metric the input cannot determine, in the order
+`caidi`, then `maifi`. Undefined metrics do not produce an additional warning.
+The original three result fields retain their order; `maifi_e` and `maifi` follow
+them with defaults, so existing positional calls stay valid.
+If the constructor omits `customer_minutes_interrupted`, CAIDI remains NaN.
+ASAI and the simulation path are not implemented yet.
 
 ```{doctest}
 >>> from climate_indices import reliability
@@ -293,11 +339,42 @@ MAIFI, ASAI, and the simulation path are not implemented yet.
 >>> result.saidi / 60
 0.3
 >>> result.caidi, result.undefined_metrics
-(60.0, ())
+(60.0, ('maifi',))
 >>> empty = reliability.reliability_indices([], total_customers=100)
 >>> import math
 >>> math.isnan(empty.caidi), empty.undefined_metrics
-(True, ('caidi',))
+(True, ('caidi', 'maifi'))
+```
+
+```{doctest}
+>>> from climate_indices import reliability
+>>> momentary = [{"event_id": "m", "start_time": "2024-01-01T05:00:00Z",
+...               "duration": 2.0, "customers_interrupted": 15, "device_operations": 2}]
+>>> result = reliability.reliability_indices(momentary, total_customers=100)
+>>> result.maifi_e, result.maifi
+(0.15, 0.3)
+>>> grouped = reliability.group_momentary_events([
+...     {"event_id": "op-1", "start_time": "2024-01-01T00:00:00Z", "duration": 0.0, "customers_interrupted": 15},
+...     {"event_id": "op-2", "start_time": "2024-01-01T00:04:00Z", "duration": 0.0, "customers_interrupted": 15},
+... ])
+>>> grouped["event_id"].tolist()
+['op-1']
+```
+
+```{doctest}
+>>> from climate_indices import reliability
+>>> operations = [
+...     {"event_id": "op-1", "start_time": "2024-01-01T00:00:00Z", "duration": 0.0,
+...      "customers_interrupted": 15, "device_operations": 1},
+...     {"event_id": "op-2", "start_time": "2024-01-01T00:03:00Z", "duration": 0.0,
+...      "customers_interrupted": 15, "device_operations": 1},
+... ]
+>>> grouped = reliability.group_momentary_events(operations, threshold_minutes=1.0)
+>>> bool(grouped["grouped_momentary_event"].iloc[0]), grouped["duration"].tolist()
+(True, [3.0])
+>>> result = reliability.reliability_indices(grouped, total_customers=100, threshold_minutes=1.0)
+>>> result.maifi_e, result.maifi
+(0.15, 0.3)
 ```
 
 ```{eval-rst}

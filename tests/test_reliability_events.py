@@ -28,6 +28,7 @@ def test_classification_boundary_and_normalized_arrays() -> None:
     assert result["customers_interrupted"].to_numpy().dtype == np.dtype("int64")
     np.testing.assert_array_equal(result["duration"], events["duration"])
     assert result["planned"].tolist() == [False] * 4
+    assert "grouped_momentary_event" not in result
     assert "interruption_type" not in events
 
 
@@ -55,6 +56,7 @@ def record(**changes: object) -> dict[str, object]:
         ({"device_id": 1}, "device_id"),
         ({"cause": 1}, "cause"),
         ({"momentary_event_excluded": 1}, "momentary_event_excluded"),
+        ({"grouped_momentary_event": 1}, "grouped_momentary_event"),
         ({"component_ids": [1]}, "component_ids"),
         ({"interruption_type": ["momentary"]}, "interruption_type"),
         ({"duration": None}, "duration"),
@@ -137,6 +139,19 @@ def test_mixed_time_columns_are_rejected() -> None:
     assert exc.value.argument_name == "duration"
 
 
+@pytest.mark.parametrize(
+    "type_fields",
+    [{}, *({"interruption_type": value} for value in ("momentary", None, pd.NA, pd.NaT, np.nan, np.ma.masked))],
+)
+def test_grouped_momentary_event_keeps_its_type_without_a_warning(type_fields: dict[str, object]) -> None:
+    row = record(duration=60.0, grouped_momentary_event=True, **type_fields)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ClimateIndicesWarning)
+        result = reliability.classify_interruptions([row])
+    assert result["interruption_type"].tolist() == ["momentary"]
+    assert result["grouped_momentary_event"].tolist() == [True]
+
+
 def test_explicit_types_are_retained_with_one_warning() -> None:
     event = record(interruption_type="momentary")
     with pytest.warns(ClimateIndicesWarning, match="interruption_type") as caught:
@@ -195,6 +210,7 @@ def test_optional_missing_values_and_input_copy() -> None:
                 component_ids=None,
                 interruption_type=None,
                 momentary_event_excluded=None,
+                grouped_momentary_event=None,
             )
         ]
     )
@@ -203,6 +219,7 @@ def test_optional_missing_values_and_input_copy() -> None:
     pd.testing.assert_frame_equal(frame, original)
     assert result["planned"].tolist() == [False]
     assert result["momentary_event_excluded"].tolist() == [False]
+    assert result["grouped_momentary_event"].tolist() == [False]
     assert result["interruption_type"].tolist() == ["sustained"]
     assert str(result["device_operations"].dtype) == "Int64"
     assert pd.isna(result["device_operations"].iloc[0])
