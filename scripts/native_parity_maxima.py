@@ -126,7 +126,7 @@ def contract_report(runs: list[parity_registry.ParityRun], scalar_errors: dict[s
         "The registry records the exact derivations and parameters.",
         "The signed Aggregation entries inject cancellation, overflow, infinities, and NaN.",
         "Their signed-zero and subnormal probes change no window sum; `tests/test_native_parity_aggregation.py` checks those cases.",
-        "They compare a three-step series window and a twelve-step Spatial Block window without changing either order.",
+        "They compare a three-step and a twelve-step Spatial Block window without changing either order.",
         "",
         "| Entry | Rust kernels reached | Max absolute | Max relative |",
         "| --- | --- | --- | --- |",
