@@ -234,8 +234,8 @@ validator supports later metric tickets. Neither is an additional public functio
 `reliability_indices(events, total_customers=None, *, exclude_planned=False, threshold_minutes=5.0)`
 returns a frozen `ReliabilityResult` with `saifi`, `customer_interruptions`, and `outage_count`.
 SAIFI is `CI / N_T`, where `CI = sum(N_i)` over sustained interruptions.
-Each event row contributes its own `N_i`, so splitting one event's customers across
-rows preserves `CI`, while two rows carrying the same customer count contribute twice.
+Each sustained event row contributes its own `N_i`, so `CI` is additive across those
+rows: two rows carrying the same customer count contribute twice.
 It is sustained customer interruptions per served customer for the period
 represented by the supplied events and average customer count.
 The function accepts no reporting-period bounds; partial periods are computed
