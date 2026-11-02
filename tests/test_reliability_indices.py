@@ -42,6 +42,34 @@ def test_result_preserves_original_constructor(result: reliability.ReliabilityRe
     assert np.isnan(result.customer_minutes_interrupted)
 
 
+def test_legacy_three_field_results_compare_equal_and_hash_equal() -> None:
+    first = reliability.ReliabilityResult(0.0, 0, 0)
+    second = reliability.ReliabilityResult(0.0, 0, 0)
+    assert first == second
+    assert hash(first) == hash(second)
+
+
+def test_legacy_result_equals_equivalent_zero_duration_result() -> None:
+    legacy = reliability.ReliabilityResult(0.0, 0, 0)
+    empty = reliability.reliability_indices([], total_customers=1000)
+    assert legacy == empty
+    assert hash(legacy) == hash(empty)
+
+
+def test_populated_duration_metrics_distinguish_results() -> None:
+    base = reliability.ReliabilityResult(
+        saifi=0.3, saidi=24.0, customer_interruptions=30, customer_minutes_interrupted=2400.0, outage_count=2
+    )
+    other_saidi = reliability.ReliabilityResult(
+        saifi=0.3, saidi=48.0, customer_interruptions=30, customer_minutes_interrupted=2400.0, outage_count=2
+    )
+    other_cmi = reliability.ReliabilityResult(
+        saifi=0.3, saidi=24.0, customer_interruptions=30, customer_minutes_interrupted=4800.0, outage_count=2
+    )
+    assert base != other_saidi
+    assert base != other_cmi
+
+
 def test_nominal_analytic_case() -> None:
     events = [
         record(event_id="a", duration=60.0, customers_interrupted=20),

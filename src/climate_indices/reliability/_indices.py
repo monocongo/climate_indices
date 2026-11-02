@@ -1,13 +1,18 @@
 """Reliability metric accumulators over normalized event records (ADR-0026)."""
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 from climate_indices.exceptions import InvalidArgumentError
 from climate_indices.reliability._events import EventTable, _normalize_events
 
 
-@dataclass(frozen=True)
+def _comparable(value: object) -> object:
+    """Map an unset NaN duration to 0.0 so legacy three-field results stay comparable."""
+    return 0.0 if isinstance(value, float) and math.isnan(value) else value
+
+
+@dataclass(frozen=True, eq=False)
 class ReliabilityResult:
     """Frozen reliability metrics for one supplied event log and customer count.
 
@@ -26,6 +31,10 @@ class ReliabilityResult:
     If callers omit ``saidi`` or ``customer_minutes_interrupted``, each omitted
     field defaults to NaN because the original fields cannot determine duration.
     ``reliability_indices()`` always supplies both duration metrics.
+
+    Equality and hashing treat an unset NaN duration as ``0.0``. An omitted
+    duration therefore matches an equivalent zero-duration result, while
+    populated and differing duration metrics remain distinguishable.
     """
 
     saifi: float
@@ -33,6 +42,16 @@ class ReliabilityResult:
     outage_count: int
     saidi: float = math.nan
     customer_minutes_interrupted: float = math.nan
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ReliabilityResult):
+            return NotImplemented
+        return all(
+            _comparable(getattr(self, field.name)) == _comparable(getattr(other, field.name)) for field in fields(self)
+        )
+
+    def __hash__(self) -> int:
+        return hash(tuple(_comparable(getattr(self, field.name)) for field in fields(self)))
 
 
 def reliability_indices(
