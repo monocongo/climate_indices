@@ -2,7 +2,7 @@
 
 ## Status
 
-Approved for implementation.
+Amended.
 
 Amended by ENERGY2-3 ([#1337](https://github.com/monocongo/climate_indices/issues/1337)):
 event normalization, `classify_interruptions()`, the event JSON Schema,
