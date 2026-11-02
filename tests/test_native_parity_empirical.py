@@ -117,7 +117,8 @@ def test_empirical_binding_accepts_empty_blocks(shape):
     values = np.empty(shape)
     result = native.empirical_transform(values, values, True)
     assert result.shape == shape
-    assert result.flags["C_CONTIGUOUS"] and result.flags["WRITEABLE"]
+    assert result.flags["C_CONTIGUOUS"]
+    assert result.flags["WRITEABLE"]
 
 
 def _bits(values: np.ndarray) -> np.ndarray:
@@ -132,9 +133,12 @@ def test_empirical_binding_result_is_independent_c_order_float64():
     values[0, 0] = np.nan
     calibration_before, values_before = calibration.copy(), values.copy()
     result = native.empirical_transform(calibration, values, True)
-    assert result.dtype == np.float64 and result.shape == values.shape
-    assert result.flags["C_CONTIGUOUS"] and result.flags["WRITEABLE"]
-    assert not np.shares_memory(result, calibration) and not np.shares_memory(result, values)
+    assert result.dtype == np.float64
+    assert result.shape == values.shape
+    assert result.flags["C_CONTIGUOUS"]
+    assert result.flags["WRITEABLE"]
+    assert not np.shares_memory(result, calibration)
+    assert not np.shares_memory(result, values)
     np.testing.assert_array_equal(_bits(calibration), _bits(calibration_before))
     np.testing.assert_array_equal(_bits(values), _bits(values_before))
     assert np.isnan(result[0, 0])
