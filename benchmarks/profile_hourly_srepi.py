@@ -132,7 +132,9 @@ def _run(years: int, cells: int, pool_window_days: int = 0, verify_native: bool 
             spatial_time_major=values.ndim > 1,
             pool_window_days=pool_window_days,
         )
-        required = {"empirical_transform"}
+        # pooled ranking keeps the empirical transform in Python by design, so only
+        # an unpooled run expects that kernel
+        required = set() if pool_window_days else {"empirical_transform"}
         if block_cells:
             required.add("trailing_sum")
         _warm_up(call, name, required, verify_native)
