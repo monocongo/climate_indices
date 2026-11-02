@@ -334,14 +334,22 @@ def group_momentary_events(
         OverlappingEventsWarning: Positive-duration intervals overlap.
     """
     window = _number(window_minutes, "window_minutes", positive=True)
+    try:
+        window_ns = int(pd.Timedelta(minutes=window).value)
+    except (ValueError, TypeError, OverflowError) as exc:
+        raise _invalid("window_minutes", "must fit a pandas Timedelta") from exc
     frame = classify_interruptions(events, threshold_minutes=threshold_minutes)
     momentary = (frame["interruption_type"] == "momentary").to_numpy()
     if not momentary.any():
         return frame.copy()
 
-    start_ns = pd.DatetimeIndex(frame["start_time"]).asi8
-    end_ns = pd.DatetimeIndex(frame["end_time"]).asi8
-    window_ns = int(pd.Timedelta(minutes=window).value)
+    # Python integers prevent overflow when a deadline exceeds Timestamp.max.
+    start_ns = pd.DatetimeIndex(frame["start_time"]).asi8.tolist()
+    end_times = pd.DatetimeIndex(frame["end_time"])
+    end_ns = end_times.asi8.tolist()
+    customer_counts = frame["customers_interrupted"].tolist()
+    exclusion_flags = frame["momentary_event_excluded"].tolist()
+    operations = frame["device_operations"].tolist() if "device_operations" in frame else None
 
     device_keys = frame["device_id"].tolist() if "device_id" in frame.columns else [None] * len(frame)
     by_device: dict[object, list[int]] = {}
@@ -349,7 +357,10 @@ def group_momentary_events(
         if momentary[position]:
             by_device.setdefault(device_keys[position], []).append(position)
 
-    grouped: dict[int, dict[str, object]] = {}
+    grouped: dict[int, int] = {}
+    end_positions: list[int] = []
+    durations: list[float] = []
+    operation_totals: list[object] = []
     for positions in by_device.values():
         positions.sort(key=lambda position: (start_ns[position], position))
         cursor = 0
@@ -361,51 +372,38 @@ def group_momentary_events(
             while cursor < len(positions) and start_ns[positions[cursor]] <= deadline:
                 members.append(positions[cursor])
                 cursor += 1
-            if end_ns[members].max() > deadline:
+            last_end = max(members, key=lambda position: end_ns[position])
+            if end_ns[last_end] > deadline:
                 raise _invalid("momentary_event", "must complete within window_minutes; supply completed events")
-            customers = {int(frame["customers_interrupted"].iloc[position]) for position in members}
+            customers = {customer_counts[position] for position in members}
             if len(customers) > 1:
                 raise _invalid(
                     "customers_interrupted",
                     "grouped momentary operations must interrupt the same customers; supply one event-level row",
                 )
-            excluded = {bool(frame["momentary_event_excluded"].iloc[position]) for position in members}
+            excluded = {exclusion_flags[position] for position in members}
             if len(excluded) > 1:
                 raise _invalid("momentary_event_excluded", "grouped momentary operations must share one exclusion flag")
-            row = {column: frame[column].iloc[anchor] for column in frame.columns}
-            end = frame["end_time"].iloc[members].max()
-            row["start_time"] = frame["start_time"].iloc[anchor]
-            row["end_time"] = end
-            row["duration"] = (end - row["start_time"]) / pd.Timedelta(minutes=1)
-            row["customers_interrupted"] = next(iter(customers))
-            row["interruption_type"] = "momentary"
-            row["momentary_event_excluded"] = next(iter(excluded))
-            if "device_operations" in frame.columns:
-                operations = [frame["device_operations"].iloc[position] for position in members]
-                row["device_operations"] = (
-                    sum(int(value) for value in operations)
-                    if all(not pd.isna(value) for value in operations)
+            grouped[min(members)] = anchor
+            end_positions.append(last_end)
+            durations.append((end_ns[last_end] - start_ns[anchor]) / 60_000_000_000)
+            if operations is not None:
+                counts = [operations[position] for position in members]
+                operation_totals.append(
+                    _integer(sum(int(value) for value in counts), "device_operations")
+                    if all(not pd.isna(value) for value in counts)
                     else pd.NA
                 )
-            grouped[min(members)] = row
 
-    items = [
-        (position, {column: frame[column].iloc[position] for column in frame.columns})
-        for position in range(len(frame))
-        if not momentary[position]
-    ]
-    items.extend(grouped.items())
-    items.sort(key=lambda item: item[0])
-    result = pd.DataFrame([row for _, row in items], columns=list(frame.columns))
-    result["duration"] = result["duration"].astype("float64")
-    result["customers_interrupted"] = result["customers_interrupted"].astype("int64")
-    result["start_time"] = pd.DatetimeIndex(result["start_time"])
-    result["end_time"] = pd.DatetimeIndex(result["end_time"])
-    result["planned"] = result["planned"].astype("bool")
-    result["momentary_event_excluded"] = result["momentary_event_excluded"].astype("bool")
-    if "device_operations" in result.columns:
-        result["device_operations"] = result["device_operations"].astype("Int64")
-    return result
+    keep = sorted([position for position in range(len(frame)) if not momentary[position]] + list(grouped))
+    result = frame.iloc[[grouped.get(position, position) for position in keep]].copy()
+    result.index = pd.Index(keep)
+    grouped_positions = list(grouped)
+    result.loc[grouped_positions, "end_time"] = end_times.take(end_positions)
+    result.loc[grouped_positions, "duration"] = durations
+    if operations is not None:
+        result.loc[grouped_positions, "device_operations"] = pd.array(operation_totals, dtype="Int64")
+    return result.reset_index(drop=True)
 
 
 def _normalize_events(events: EventTable, *, total_customers: float, threshold_minutes: float = 5.0) -> pd.DataFrame:
