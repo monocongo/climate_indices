@@ -172,6 +172,20 @@ def test_pool_forwards_the_error_handler(monkeypatch):
     np.testing.assert_array_equal(transport.read("out"), 1.0)
 
 
+def test_worker_error_state_forwards_any_handler():
+    """The handler travels as-is; only the start method decides whether it must pickle."""
+    previous_policy, previous_handler = np.geterr(), np.geterrcall()
+    try:
+        np.seterr(divide="call")
+        np.seterrcall(lambda kind, flag: None)
+        policy, handler = _cli_transport._worker_error_state()
+    finally:
+        np.seterr(**previous_policy)
+        np.seterrcall(previous_handler)
+    assert policy["divide"] == "call"
+    assert callable(handler)
+
+
 def test_execute_uses_the_supplied_executor():
     """``Transport.execute`` dispatches through the injected executor."""
     recorded: list[list[WorkItem]] = []

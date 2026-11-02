@@ -17,7 +17,6 @@ inline executor sets and then restores it around its map.
 from __future__ import annotations
 
 import multiprocessing
-import pickle
 from collections.abc import Callable, Hashable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -173,29 +172,15 @@ def _initialize_worker(
 def _worker_error_state() -> tuple[Any, Any]:
     """The caller's NumPy error policy and the handler its ``call``/``log`` modes need.
 
-    A spawned worker starts from its own ``np.seterrcall`` state, so the handler
-    must cross the process boundary with the policy. A policy that names ``call``
-    or ``log`` without a handler the worker can install would raise ``NameError``
-    at the first floating-point event instead of invoking the handler, so reject
-    that state before the pool starts rather than install an incomplete policy.
+    The handler crosses the process boundary with the policy. The start method
+    decides how: a forked worker inherits it, so any callable works, while a
+    spawned worker needs it to be picklable and multiprocessing raises its own
+    error when it is not.
     """
     policy = np.geterr()
     if not any(action in {"call", "log"} for action in policy.values()):
         return policy, None
-    handler = np.geterrcall()
-    if handler is None:
-        raise ValueError(
-            "the caller's NumPy error policy uses 'call' or 'log' without a handler set by "
-            "np.seterrcall; CLI pool workers cannot install that policy"
-        )
-    try:
-        pickle.dumps(handler)
-    except Exception as exc:
-        raise ValueError(
-            "the NumPy error handler set by np.seterrcall cannot be sent to CLI pool workers; "
-            "use an importable callable or run with a single process"
-        ) from exc
-    return policy, handler
+    return policy, np.geterrcall()
 
 
 def _require_worker_store() -> SharedArrayStore:
