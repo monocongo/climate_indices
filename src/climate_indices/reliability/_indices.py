@@ -6,10 +6,14 @@ from dataclasses import dataclass, fields
 from climate_indices.exceptions import InvalidArgumentError
 from climate_indices.reliability._events import EventTable, _normalize_events
 
+_DURATION_FIELDS = frozenset({"saidi", "customer_minutes_interrupted"})
 
-def _comparable(value: object) -> object:
+
+def _comparable(field_name: str, value: object) -> object:
     """Map an unset NaN duration to 0.0 so legacy three-field results stay comparable."""
-    return 0.0 if isinstance(value, float) and math.isnan(value) else value
+    if field_name in _DURATION_FIELDS and isinstance(value, float) and math.isnan(value):
+        return 0.0
+    return value
 
 
 @dataclass(frozen=True, eq=False)
@@ -47,11 +51,12 @@ class ReliabilityResult:
         if not isinstance(other, ReliabilityResult):
             return NotImplemented
         return all(
-            _comparable(getattr(self, field.name)) == _comparable(getattr(other, field.name)) for field in fields(self)
+            _comparable(field.name, getattr(self, field.name)) == _comparable(field.name, getattr(other, field.name))
+            for field in fields(self)
         )
 
     def __hash__(self) -> int:
-        return hash(tuple(_comparable(getattr(self, field.name)) for field in fields(self)))
+        return hash(tuple(_comparable(field.name, getattr(self, field.name)) for field in fields(self)))
 
 
 def reliability_indices(

@@ -2,6 +2,7 @@
 
 import dataclasses
 import json
+import math
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -54,6 +55,13 @@ def test_legacy_result_equals_equivalent_zero_duration_result() -> None:
     empty = reliability.reliability_indices([], total_customers=1000)
     assert legacy == empty
     assert hash(legacy) == hash(empty)
+
+
+def test_nan_saifi_is_not_normalized() -> None:
+    unset_saifi = reliability.ReliabilityResult(math.nan, 0, 0)
+    zero_saifi = reliability.ReliabilityResult(0.0, 0, 0)
+    assert unset_saifi != zero_saifi
+    assert hash(unset_saifi) != hash(zero_saifi)
 
 
 def test_populated_duration_metrics_distinguish_results() -> None:
