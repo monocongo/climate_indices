@@ -7,11 +7,23 @@ from climate_indices.exceptions import InvalidArgumentError
 from climate_indices.reliability._events import EventTable, _normalize_events
 
 _DURATION_FIELDS = frozenset({"saidi", "customer_minutes_interrupted"})
+_UNSET_DURATION = object()
 
 
-def _comparable(field_name: str, value: object) -> object:
-    """Map an unset NaN duration to 0.0 so legacy three-field results stay comparable."""
+def _comparable(field_name: str, value: object, customer_interruptions: int) -> object:
+    """Normalize an unset NaN duration to match the derived-metric semantics.
+
+    CAIDI is ``customer_minutes_interrupted / customer_interruptions``. With no
+    customer interruptions, CAIDI is undefined whatever the duration, so an unset
+    NaN duration compares as 0.0 and a legacy three-field result matches an
+    equivalent zero-duration result. With positive interruptions only an unset
+    ``customer_minutes_interrupted`` changes CAIDI, so only that field maps to a
+    marker distinct from an explicit 0.0. ``saidi`` does not determine CAIDI, so
+    its unset NaN still compares as 0.0.
+    """
     if field_name in _DURATION_FIELDS and isinstance(value, float) and math.isnan(value):
+        if field_name == "customer_minutes_interrupted" and customer_interruptions != 0:
+            return _UNSET_DURATION
         return 0.0
     return value
 
@@ -31,14 +43,25 @@ class ReliabilityResult:
     events. ``outage_count`` is the number of sustained event rows that
     contributed.
 
+    ``caidi`` is a read-only property: ``CMI / CI`` minutes per customer
+    interruption, independent of the served-customer count. It equals
+    ``saidi / saifi`` up to floating-point rounding. With no sustained customer
+    interruptions, it returns NaN and ``undefined_metrics`` names ``"caidi"``.
+    A sustained interruption with zero duration has CAIDI ``0.0``.
+    Both properties derive from the accumulators without adding constructor fields.
+
     The original three constructor fields retain their order.
     If callers omit ``saidi`` or ``customer_minutes_interrupted``, each omitted
     field defaults to NaN because the original fields cannot determine duration.
     ``reliability_indices()`` always supplies both duration metrics.
 
-    Equality and hashing treat an unset NaN duration as ``0.0``. An omitted
-    duration therefore matches an equivalent zero-duration result, while
-    populated and differing duration metrics remain distinguishable.
+    Equality and hashing normalize an unset NaN duration. A result with no
+    customer interruptions compares as if both durations were ``0.0``, so a legacy
+    three-field result matches an equivalent zero-duration result. With positive
+    interruptions an unset ``customer_minutes_interrupted`` stays distinct from an
+    explicit ``0.0``, because it changes CAIDI. An unset ``saidi`` still compares
+    as ``0.0``, because ``saidi`` does not determine CAIDI. Results with different
+    CAIDI therefore never compare equal.
     """
 
     saifi: float
@@ -47,16 +70,34 @@ class ReliabilityResult:
     saidi: float = math.nan
     customer_minutes_interrupted: float = math.nan
 
+    @property
+    def caidi(self) -> float:
+        """Return ``CMI / CI`` minutes per interruption, or NaN when CI is zero."""
+        if self.customer_interruptions == 0:
+            return math.nan
+        return self.customer_minutes_interrupted / self.customer_interruptions
+
+    @property
+    def undefined_metrics(self) -> tuple[str, ...]:
+        """Return undefined derived metric names, currently only ``caidi``."""
+        return ("caidi",) if math.isnan(self.caidi) else ()
+
     def __eq__(self, other: object) -> bool:
         if type(other) is not type(self):
             return NotImplemented
         return all(
-            _comparable(field.name, getattr(self, field.name)) == _comparable(field.name, getattr(other, field.name))
+            _comparable(field.name, getattr(self, field.name), self.customer_interruptions)
+            == _comparable(field.name, getattr(other, field.name), other.customer_interruptions)
             for field in fields(self)
         )
 
     def __hash__(self) -> int:
-        return hash(tuple(_comparable(field.name, getattr(self, field.name)) for field in fields(self)))
+        return hash(
+            tuple(
+                _comparable(field.name, getattr(self, field.name), self.customer_interruptions)
+                for field in fields(self)
+            )
+        )
 
 
 def reliability_indices(
@@ -66,7 +107,7 @@ def reliability_indices(
     exclude_planned: bool = False,
     threshold_minutes: float = 5.0,
 ) -> ReliabilityResult:
-    """Compute SAIFI and SAIDI over sustained interruptions and the shared accumulators.
+    """Compute SAIFI, SAIDI, and CAIDI from shared sustained-interruption accumulators.
 
     Args:
         events: A DataFrame, column mapping, or sequence of row mappings,
@@ -83,7 +124,8 @@ def reliability_indices(
     Returns:
         A frozen ``ReliabilityResult``. An empty event log returns SAIFI and
         SAIDI ``0.0`` with zero customer interruptions, zero customer-minutes,
-        and zero outages.
+        and zero outages. CAIDI is NaN, and ``undefined_metrics`` is
+        ``("caidi",)``. Undefined CAIDI does not produce an additional warning.
 
     Raises:
         InvalidArgumentError: ``total_customers`` is absent or invalid,

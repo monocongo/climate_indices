@@ -12,7 +12,7 @@ The two sustained records have 300 customer interruptions and 24,000 customer-mi
 The two momentary records have 300 customer events and 750 customer device operations.
 The final record has zero duration and zero customers. It remains in the normalized record.
 
-`reliability_indices(events, total_customers=1000)` computes SAIFI 0.3 and
-SAIDI 24.0 from the two sustained records, with 300 customer interruptions,
-24,000 customer-minutes, and two outages. CAIDI, the momentary metrics, and
-availability are checks only until their metric tickets land.
+`reliability_indices(events, total_customers=1000)` computes SAIFI 0.3,
+SAIDI 24.0, and CAIDI 80.0 from the two sustained records.
+The result has 300 customer interruptions, 24,000 customer-minutes, two outages, and no undefined metrics.
+The momentary metrics and availability remain checks only until their metric tickets land.
