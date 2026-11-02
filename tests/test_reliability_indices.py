@@ -38,8 +38,10 @@ def test_nominal_analytic_case() -> None:
     assert result.customer_interruptions == 30
     assert result.outage_count == 2
     assert isinstance(result.saifi, float)
-    assert isinstance(result.customer_interruptions, int) and not isinstance(result.customer_interruptions, bool)
-    assert isinstance(result.outage_count, int) and not isinstance(result.outage_count, bool)
+    assert isinstance(result.customer_interruptions, int)
+    assert not isinstance(result.customer_interruptions, bool)
+    assert isinstance(result.outage_count, int)
+    assert not isinstance(result.outage_count, bool)
 
 
 @pytest.mark.parametrize("events", [[], pd.DataFrame()])
@@ -206,21 +208,24 @@ def test_caidi_identity_seed_matches_the_adr_table() -> None:
 
 @pytest.mark.parametrize("total", [0, -1, np.nan, np.inf, True, "100"])
 def test_invalid_total_customers(total: Any) -> None:
+    events = [record()]
     with pytest.raises(InvalidArgumentError) as exc:
-        reliability.reliability_indices([record()], total_customers=total)
+        reliability.reliability_indices(events, total_customers=total)
     assert exc.value.argument_name == "total_customers"
 
 
 def test_missing_total_customers_names_the_argument() -> None:
+    events = [record()]
     with pytest.raises(InvalidArgumentError) as exc:
-        reliability.reliability_indices([record()])
+        reliability.reliability_indices(events)
     assert exc.value.argument_name == "total_customers"
 
 
 @pytest.mark.parametrize("value", ["false", 1, 0, None, [], np.bool_(True)])
 def test_invalid_exclude_planned(value: Any) -> None:
+    events = [record()]
     with pytest.raises(InvalidArgumentError) as exc:
-        reliability.reliability_indices([record()], total_customers=100, exclude_planned=value)
+        reliability.reliability_indices(events, total_customers=100, exclude_planned=value)
     assert exc.value.argument_name == "exclude_planned"
 
 
@@ -231,14 +236,16 @@ def test_numpy_boolean_planned_values_are_accepted() -> None:
 
 
 def test_negative_customer_count_raises() -> None:
+    events = [record(customers_interrupted=-1)]
     with pytest.raises(InvalidArgumentError) as exc:
-        reliability.reliability_indices([record(customers_interrupted=-1)], total_customers=100)
+        reliability.reliability_indices(events, total_customers=100)
     assert exc.value.argument_name == "customers_interrupted"
 
 
 def test_event_count_above_total_customers_raises() -> None:
+    events = [record(customers_interrupted=11)]
     with pytest.raises(InvalidArgumentError) as exc:
-        reliability.reliability_indices([record(customers_interrupted=11)], total_customers=10)
+        reliability.reliability_indices(events, total_customers=10)
     assert exc.value.argument_name == "customers_interrupted"
 
 
