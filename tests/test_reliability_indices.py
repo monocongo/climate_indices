@@ -172,6 +172,13 @@ def test_accepted_denominator_types_return_python_float(total: Any) -> None:
     assert result.saifi == pytest.approx(0.2)
 
 
+def test_fractional_total_customers_is_accepted() -> None:
+    events = [record(duration=60.0, customers_interrupted=20)]
+    result = reliability.reliability_indices(events, total_customers=100.5)
+    assert result.saifi == pytest.approx(20 / 100.5)
+    assert isinstance(result.saifi, float)
+
+
 def test_row_order_does_not_change_the_result() -> None:
     rows = [
         record(event_id="a", duration=60.0, customers_interrupted=20),
