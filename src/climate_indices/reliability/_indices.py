@@ -68,7 +68,7 @@ def reliability_indices(
     mask = frame["interruption_type"] == "sustained"
     if exclude_planned:
         mask &= ~frame["planned"]
-    customer_interruptions = int(frame.loc[mask, "customers_interrupted"].sum())
+    customer_interruptions = sum(int(count) for count in frame.loc[mask, "customers_interrupted"])
     return ReliabilityResult(
         saifi=customer_interruptions / float(total_customers),
         customer_interruptions=customer_interruptions,

@@ -235,6 +235,17 @@ def test_event_count_above_total_customers_raises() -> None:
     assert exc.value.argument_name == "customers_interrupted"
 
 
+def test_aggregate_customer_interruptions_beyond_int64_stay_exact() -> None:
+    huge = 2**62
+    events = [
+        record(event_id="a", duration=60.0, customers_interrupted=huge),
+        record(event_id="b", start_time="2024-01-01T02:00:00", duration=60.0, customers_interrupted=huge),
+    ]
+    result = reliability.reliability_indices(events, total_customers=float(huge))
+    assert result.customer_interruptions == 2**63
+    assert result.saifi == pytest.approx(2.0)
+
+
 def test_result_is_frozen() -> None:
     result = reliability.ReliabilityResult(saifi=0.3, customer_interruptions=30, outage_count=2)
     with pytest.raises(dataclasses.FrozenInstanceError):
