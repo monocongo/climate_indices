@@ -1258,21 +1258,46 @@ The Rust rows fail unless the recorder saw `empirical_transform`,
 so a silent fallback to Python cannot be reported under the native label. Peak
 RSS is the process high-water mark around the call.
 
+Measured on 2026-11-02, Apple Silicon arm64, macOS 27.0.1, Python 3.14.7,
+NumPy 2.4.2, SciPy 1.17.0, Rust 1.99.0, release-mode extension:
+
 | calibration years | Rust | Python | Python/Rust | Rust peak RSS increase | Python peak RSS increase |
 |---|---|---|---|---|---|
-| 20 | 0.806 s | 1.014 s | 1.26 | 881 MB | 469 MB |
-| 60 | 1.078 s | 2.210 s | 2.05 | 1132 MB | 485 MB |
+| 20 | 0.635 s | 0.930 s | 1.46 | 503 MB | 469 MB |
+| 60 | 0.957 s | 2.136 s | 2.23 | 755 MB | 485 MB |
 
 The Python ranking loop is the row that scales with the window: its time grows
-2.18x from 20 to 60 calibration years while the native path grows 1.34x. Neither
-row removes the per-value inverse normal. The native route is not a pure win at
-this size: it copies both operands before it releases the GIL, so peak RSS rises
-about 412 MB (20 years) and 647 MB (60 years) over the Python path, consistent
-with the `2V + C + 8Y` bound in the ported-kernels section of
-`docs/architecture.md`. The measured seconds cover `compute._empirical_fit`
-alone -- the ranking and the transform -- not the validation, aggregation, and
-logging ahead of it, and the peak bytes are a bound for one call rather than a
-steady-state working set.
+2.30x from 20 to 60 calibration years while the native path grows 1.51x. Neither
+row removes the per-value inverse normal. The kernel ranks the values copy the
+binding already holds and overwrites it with the probabilities, so the native
+peak fell 378 MB at both windows: from 881 MB to 503 MB at 20 years and from
+1132 MB to 755 MB at 60. That matches the `V + C + 8Y` bound in the
+ported-kernels section of `docs/architecture.md`. The native route still needs
+34 MB more than Python at 20 years and 270 MB more at 60 years. The measured
+seconds cover `compute._empirical_fit` alone -- the ranking and the transform --
+not the validation, aggregation, and logging ahead of it, and the peak bytes are
+a bound for one call rather than a steady-state working set.
+
+One complete public call reaches the same kernel. The same 47,185,920 values are
+packed as the time-major block `(720, 65,536, 1)` and passed to
+`indices.standardized_index`:
+
+```python
+indices.standardized_index(
+    block, 1, indices.Distribution.empirical, 1900, 1900, 1919,
+    compute.Periodicity.monthly, clip_negatives=False, spatial_time_major=True,
+)
+```
+
+The native call takes 0.679 s and a 944 MB peak RSS increase at 20 calibration
+years, and 0.999 s and 802 MB at 60 (1959 as the final calibration year). The
+60-year peak fell 378 MB with the same kernel saving; the 20-year peak did not
+fall. After the transform, `indices._clip_fitted_values` allocates a full-size
+`np.clip` result, and at 20 years the calibration buffer the kernel frees is too
+small for that allocation to reuse, so the clipped copy sets the 20-year peak.
+These rows cover the complete call, including validation, aggregation, clipping,
+and the inverse normal, and remain a per-call bound rather than a steady-state
+working set.
 
 A separate harness, `benchmarks/rust_vs_python.py`, times the two new registry
 entries on the registry's fixed samples. Run it with:
