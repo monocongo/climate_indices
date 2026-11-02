@@ -53,6 +53,21 @@ def test_default_policy_keeps_python_and_names_the_reason(
     np.testing.assert_array_equal(reference, expected)
 
 
+def test_native_row_must_report_a_kernel() -> None:
+    """A route expected to run natively with no observed kernel is a regression, not a report."""
+    assert recipe.expected_native("numpy", "default", None) is False
+    assert recipe.expected_native("numpy", "ignore", None) is True
+    assert recipe.expected_native("dask-threads", "ignore", None) is False
+    assert recipe.expected_native("dask-threads", "ignore", "ignore") is True
+
+    recipe.require_expected("numpy", "ignore", None, {"kernels": ["gamma_parameters"]})
+    recipe.require_expected("dask-threads", "ignore", None, {"kernels": []})
+    with pytest.raises(RuntimeError):
+        recipe.require_expected("numpy", "ignore", None, {"kernels": []})
+    with pytest.raises(RuntimeError):
+        recipe.require_expected("dask-threads", "ignore", "ignore", {"kernels": []})
+
+
 def test_cli_workers_apply_the_callers_policy() -> None:
     """Under all-ignore, the CLI pool's workers reach the native kernels (#1531)."""
     with np.errstate(all="ignore"):

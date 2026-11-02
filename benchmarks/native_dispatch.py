@@ -109,15 +109,16 @@ def recording(sink: Any) -> Iterator[None]:
         return result
 
     def sum_to_scale(values: np.ndarray, scale: int) -> np.ndarray:
-        # These are the route-specific restrictions after the shared gate.
-        reason = fallback_reason(values)
-        if reason is None and scale != 1:
-            if values.ndim == 1 and scale >= 8:
-                reason = "trailing_sum: series Timescale >= 8"
-            elif values.ndim > 2 and not values.flags.c_contiguous:
-                reason = "trailing_sum: block is not C-contiguous"
-        if reason is not None:
-            _emit(sink, fallback=reason)
+        # Mirror sum_to_scale's early return and mask normalization, so a reported
+        # route-specific restriction is one the actual call can reach. The shared
+        # gate's own reason is emitted by the patched ``takes``.
+        if scale != 1:
+            normalized = np.ma.filled(values.astype(float), np.nan) if np.ma.isMaskedArray(values) else values
+            if fallback_reason(normalized) is None:
+                if normalized.ndim == 1 and scale >= 8:
+                    _emit(sink, fallback="trailing_sum: series Timescale >= 8")
+                elif normalized.ndim > 2 and not normalized.flags.c_contiguous:
+                    _emit(sink, fallback="trailing_sum: block is not C-contiguous")
         return original_sum(values, scale)
 
     with pytest.MonkeyPatch.context() as patch:
@@ -248,6 +249,29 @@ def summarize(events: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+# the routes whose own NumPy policy can reach Rust without a worker opt-in
+_CALLER_POLICY_ROUTES = frozenset({"numpy", "xarray", "cli"})
+
+
+def expected_native(route: str, caller_policy: str, worker_policy: str | None) -> bool:
+    """Whether this route and policy should have run at least one native kernel."""
+    if caller_policy == "default":
+        return False
+    if route in _CALLER_POLICY_ROUTES:
+        return True
+    return worker_policy is not None
+
+
+def require_expected(
+    route: str, caller_policy: str, worker_policy: str | None, summary: dict[str, Any]
+) -> None:
+    """Fail when a route expected to run natively reports no kernel, or the reverse."""
+    expected = expected_native(route, caller_policy, worker_policy)
+    if bool(summary["kernels"]) != expected:
+        wanted = "native kernels" if expected else "Python"
+        raise RuntimeError(f"{route} under the {caller_policy} caller policy: expected {wanted}, got {summary}")
+
+
 def main() -> None:
     """Print one JSON record per route and policy, plus explicit Dask worker opt-ins."""
     importlib.import_module("climate_indices._native")
@@ -262,19 +286,23 @@ def main() -> None:
                 )
                 for distribution in distributions:
                     _, events = run_route(route, distribution)
+                    summary = summarize(events)
+                    require_expected(route, caller_policy, None, summary)
                     print(
                         json.dumps(
                             {
                                 "route": route,
                                 "distribution": distribution.value,
                                 "caller_policy": caller_policy,
-                                **summarize(events),
+                                **summary,
                             }
                         )
                     )
     with np.errstate(all="ignore"):
         for route in ("dask-threads", "dask-processes"):
             _, events = run_route(route, indices.Distribution.gamma, worker_policy="ignore")
+            summary = summarize(events)
+            require_expected(route, "ignore", "ignore", summary)
             print(
                 json.dumps(
                     {
@@ -282,7 +310,7 @@ def main() -> None:
                         "distribution": "gamma",
                         "caller_policy": "ignore",
                         "worker_policy": "ignore",
-                        **summarize(events),
+                        **summary,
                     }
                 )
             )
