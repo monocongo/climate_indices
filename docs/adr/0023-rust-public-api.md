@@ -18,6 +18,12 @@ The amendment itself added no kernel.
 [RUSTUP-13 (#1485)](https://github.com/monocongo/climate_indices/issues/1485)
 implements `aggregation::trailing_sum` and `aggregation::trailing_mean`.
 Callers still select the Timescale and prepare calendars; complete workflows remain outside the crate.
+RUST-ROI-02 ([#1532](https://github.com/monocongo/climate_indices/issues/1532))
+adds `empirical::plotting_positions_in_place`, which writes the probabilities
+into a caller-provided `ArrayViewMut2` instead of returning an owned array, so
+the Python binding can reuse its protected values copy as the result.
+This is the first public kernel that returns through a borrowed mutable view;
+decision 1's borrowed-input convention otherwise stands.
 
 ## Context
 

@@ -4,7 +4,7 @@
 //! `compute._empirical_fit`. Calendar preparation, Calibration Period selection,
 //! output scaling, validation, and logging remain the caller's responsibility.
 
-use ndarray::{Array2, ArrayView2, Zip};
+use ndarray::{Array2, ArrayView2, ArrayViewMut2, Zip};
 
 use crate::ClimateError;
 
@@ -64,6 +64,55 @@ pub fn plotting_positions(
             }
         });
     Ok(probabilities)
+}
+
+/// Rank each value against its column's Calibration Period sample, in place.
+///
+/// This is the in-place form of [`plotting_positions`] for a caller that already
+/// owns a copy of the values and wants to reuse it as the result. The value at
+/// each position is read before that position is written.
+///
+/// # Numerical contract
+///
+/// Every position is overwritten with the probability [`plotting_positions`]
+/// would return for it, or with NaN when the value is NaN or the column is short.
+/// The result is identical to [`plotting_positions`], including tie handling,
+/// signed zeros, infinities, and the ten-valid-value minimum. Strided and empty
+/// views are accepted, and `values` keeps its layout. Returns
+/// [`ClimateError::ShapeMismatch`] if column counts differ.
+/// See the measured workflow rows `empirical` and `empirical_spatial_block` in
+/// the crate's `Measured accuracy` section.
+pub fn plotting_positions_in_place(
+    calibration: ArrayView2<'_, f64>,
+    mut values: ArrayViewMut2<'_, f64>,
+) -> Result<(), ClimateError> {
+    if calibration.ncols() != values.ncols() {
+        return Err(ClimateError::ShapeMismatch {
+            argument: "calibration",
+            expected: values.ncols(),
+            actual: calibration.ncols(),
+        });
+    }
+    let mut sorted = Vec::with_capacity(calibration.nrows());
+    Zip::from(values.columns_mut())
+        .and(calibration.columns())
+        .for_each(|mut values, calibration| {
+            sorted.clear();
+            sorted.extend(calibration.iter().copied().filter(|value| !value.is_nan()));
+            if sorted.len() < 10 {
+                values.fill(f64::NAN);
+                return;
+            }
+            sorted.sort_unstable_by(f64::total_cmp);
+            let denominator = sorted.len() as f64 + 2.0;
+            for value in values.iter_mut() {
+                if !value.is_nan() {
+                    let count = sorted.partition_point(|&sample| sample <= *value);
+                    *value = (count as f64 + 1.0) / denominator;
+                }
+            }
+        });
+    Ok(())
 }
 
 #[cfg(test)]
@@ -153,10 +202,92 @@ mod tests {
     }
 
     #[test]
+    fn in_place_matches_the_allocating_kernel() {
+        let calibration = array![
+            [-2.0, f64::NAN],
+            [1.0, 1.0],
+            [3.0, 2.0],
+            [-0.0, 3.0],
+            [0.0, 4.0],
+            [2.0, 5.0],
+            [f64::NAN, 6.0],
+            [5.0, 7.0],
+            [-1.0, 8.0],
+            [4.0, 9.0],
+            [f64::NAN, 10.0]
+        ];
+        let values = array![
+            [-2.0, 1.0],
+            [0.0, 2.0],
+            [2.5, 3.0],
+            [f64::NAN, 4.0],
+            [10.0, 5.0],
+            [f64::NEG_INFINITY, 6.0]
+        ];
+        let expected = plotting_positions(calibration.view(), values.view()).unwrap();
+        // The first column has nine valid calibration values, so it is all NaN.
+        assert_eq!(
+            expected
+                .column(0)
+                .iter()
+                .filter(|value| value.is_nan())
+                .count(),
+            6
+        );
+        let mut actual = values.clone();
+        plotting_positions_in_place(calibration.view(), actual.view_mut()).unwrap();
+        assert!(
+            expected
+                .iter()
+                .zip(actual.iter())
+                .all(|(expected, actual)| expected.to_bits() == actual.to_bits())
+        );
+    }
+
+    #[test]
+    fn in_place_accepts_strided_and_empty_views() {
+        let calibration = Array2::from_elem((10, 4), 0.0);
+        let mut values = Array2::from_elem((2, 4), -0.0);
+        let expected = plotting_positions(
+            calibration
+                .slice_axis(Axis(0), Slice::new(0, None, -1))
+                .slice_axis_move(Axis(1), Slice::new(0, None, 2)),
+            values.slice_axis(Axis(1), Slice::new(0, None, 2)),
+        )
+        .unwrap();
+        {
+            let mut strided = values.slice_axis_mut(Axis(1), Slice::new(0, None, 2));
+            plotting_positions_in_place(
+                calibration
+                    .slice_axis(Axis(0), Slice::new(0, None, -1))
+                    .slice_axis_move(Axis(1), Slice::new(0, None, 2)),
+                strided.view_mut(),
+            )
+            .unwrap();
+        }
+        assert_eq!(values.slice_axis(Axis(1), Slice::new(0, None, 2)), expected);
+        let mut empty = Array2::<f64>::zeros((0, 4));
+        plotting_positions_in_place(calibration.view(), empty.view_mut()).unwrap();
+        assert_eq!(empty.dim(), (0, 4));
+    }
+
+    #[test]
     fn mismatched_columns_are_an_error() {
         assert_eq!(
             plotting_positions(Array2::zeros((10, 2)).view(), Array2::zeros((1, 3)).view())
                 .unwrap_err(),
+            ClimateError::ShapeMismatch {
+                argument: "calibration",
+                expected: 3,
+                actual: 2
+            }
+        );
+        assert_eq!(
+            plotting_positions_in_place(
+                Array2::zeros((10, 2)).view(),
+                Array2::zeros((1, 3)).view_mut()
+            )
+            .unwrap_err(),
             ClimateError::ShapeMismatch {
                 argument: "calibration",
                 expected: 3,

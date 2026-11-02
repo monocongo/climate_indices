@@ -115,7 +115,60 @@ def test_empirical_binding_rejects_shape_mismatch():
 @pytest.mark.parametrize("shape", [(0, 12), (10, 0)])
 def test_empirical_binding_accepts_empty_blocks(shape):
     values = np.empty(shape)
-    assert native.empirical_transform(values, values, True).shape == shape
+    result = native.empirical_transform(values, values, True)
+    assert result.shape == shape
+    assert result.flags["C_CONTIGUOUS"] and result.flags["WRITEABLE"]
+
+
+def _bits(values: np.ndarray) -> np.ndarray:
+    """Exact float64 bit patterns, so two NaN payloads still compare equal."""
+    return values.view(np.uint64)
+
+
+def test_empirical_binding_result_is_independent_c_order_float64():
+    """The in-place rank returns its own buffer, not a view of either input."""
+    calibration = np.random.default_rng(7).normal(size=(20, 6))
+    values = np.random.default_rng(8).normal(size=(24, 6))
+    values[0, 0] = np.nan
+    calibration_before, values_before = calibration.copy(), values.copy()
+    result = native.empirical_transform(calibration, values, True)
+    assert result.dtype == np.float64 and result.shape == values.shape
+    assert result.flags["C_CONTIGUOUS"] and result.flags["WRITEABLE"]
+    assert not np.shares_memory(result, calibration) and not np.shares_memory(result, values)
+    np.testing.assert_array_equal(_bits(calibration), _bits(calibration_before))
+    np.testing.assert_array_equal(_bits(values), _bits(values_before))
+    assert np.isnan(result[0, 0])
+
+
+def test_empirical_binding_aliased_inputs_stay_unchanged():
+    values = np.random.default_rng(9).normal(size=(15, 4))
+    values[0, 0] = np.nan
+    before = values.copy()
+    result = native.empirical_transform(values, values, False)
+    np.testing.assert_array_equal(_bits(values), _bits(before))
+    assert not np.shares_memory(result, values)
+    expected = native.empirical_transform(before, before, False)
+    np.testing.assert_array_equal(_bits(result), _bits(expected))
+
+
+def test_empirical_binding_normalizes_a_fortran_input():
+    """A non-standard layout keeps the C-ordered result the allocating kernel produced."""
+    calibration = np.asfortranarray(np.random.default_rng(10).normal(size=(20, 5)))
+    values = np.asfortranarray(np.random.default_rng(11).normal(size=(24, 5)))
+    result = native.empirical_transform(calibration, values, True)
+    assert result.flags["C_CONTIGUOUS"]
+    expected = native.empirical_transform(np.ascontiguousarray(calibration), np.ascontiguousarray(values), True)
+    np.testing.assert_array_equal(_bits(result), _bits(expected))
+
+
+def test_empirical_binding_normalizes_a_reversed_input():
+    """A negative-stride input is read in logical order and copied out C-ordered."""
+    calibration = np.random.default_rng(12).normal(size=(20, 8))
+    values = np.random.default_rng(13).normal(size=(24, 8))
+    expected = native.empirical_transform(calibration, values, True)
+    result = native.empirical_transform(calibration[::-1], values[::-1], True)
+    assert result.flags["C_CONTIGUOUS"]
+    np.testing.assert_array_equal(_bits(result), _bits(expected[::-1]))
 
 
 @pytest.mark.parametrize("argument", [0, 1])
