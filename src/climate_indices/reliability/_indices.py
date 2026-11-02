@@ -13,14 +13,18 @@ _UNSET_DURATION = object()
 def _comparable(field_name: str, value: object, customer_interruptions: int) -> object:
     """Normalize an unset NaN duration to match the derived-metric semantics.
 
-    With no customer interruptions, CAIDI is undefined whatever the duration, so
-    an unset NaN duration compares as 0.0 and a legacy three-field result matches
-    an equivalent zero-duration result. With positive interruptions the duration
-    determines CAIDI, so an unset NaN duration maps to a marker that stays
-    distinct from an explicit 0.0.
+    CAIDI is ``customer_minutes_interrupted / customer_interruptions``. With no
+    customer interruptions, CAIDI is undefined whatever the duration, so an unset
+    NaN duration compares as 0.0 and a legacy three-field result matches an
+    equivalent zero-duration result. With positive interruptions only an unset
+    ``customer_minutes_interrupted`` changes CAIDI, so only that field maps to a
+    marker distinct from an explicit 0.0. ``saidi`` does not determine CAIDI, so
+    its unset NaN still compares as 0.0.
     """
     if field_name in _DURATION_FIELDS and isinstance(value, float) and math.isnan(value):
-        return 0.0 if customer_interruptions == 0 else _UNSET_DURATION
+        if field_name == "customer_minutes_interrupted" and customer_interruptions != 0:
+            return _UNSET_DURATION
+        return 0.0
     return value
 
 
@@ -51,10 +55,13 @@ class ReliabilityResult:
     field defaults to NaN because the original fields cannot determine duration.
     ``reliability_indices()`` always supplies both duration metrics.
 
-    Equality and hashing treat an unset NaN duration as ``0.0`` only when
-    ``customer_interruptions`` is zero, where CAIDI is undefined whatever the
-    duration. With positive interruptions the NaN duration stays distinct from
-    an explicit ``0.0``, so results with different CAIDI never compare equal.
+    Equality and hashing normalize an unset NaN duration. A result with no
+    customer interruptions compares as if both durations were ``0.0``, so a legacy
+    three-field result matches an equivalent zero-duration result. With positive
+    interruptions an unset ``customer_minutes_interrupted`` stays distinct from an
+    explicit ``0.0``, because it changes CAIDI. An unset ``saidi`` still compares
+    as ``0.0``, because ``saidi`` does not determine CAIDI. Results with different
+    CAIDI therefore never compare equal.
     """
 
     saifi: float

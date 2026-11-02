@@ -66,11 +66,22 @@ def test_unset_duration_with_positive_interruptions_is_not_zero_duration() -> No
         saifi=0.1, saidi=0.0, customer_interruptions=10, customer_minutes_interrupted=0.0, outage_count=1
     )
     assert unset != zero
-    assert hash(unset) != hash(zero)
     assert math.isnan(unset.caidi)
     assert unset.undefined_metrics == ("caidi",)
     assert zero.caidi == 0.0
     assert zero.undefined_metrics == ()
+
+
+def test_unset_saidi_does_not_distinguish_equal_caidi() -> None:
+    unset = reliability.ReliabilityResult(
+        saifi=0.1, customer_interruptions=10, customer_minutes_interrupted=5.0, outage_count=1
+    )
+    zero = reliability.ReliabilityResult(
+        saifi=0.1, saidi=0.0, customer_interruptions=10, customer_minutes_interrupted=5.0, outage_count=1
+    )
+    assert unset == zero
+    assert hash(unset) == hash(zero)
+    assert unset.caidi == zero.caidi == 0.5
 
 
 def test_nan_saifi_is_not_normalized() -> None:
