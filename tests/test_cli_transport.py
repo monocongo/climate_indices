@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import multiprocessing
+
 import numpy as np
 import pytest
 import xarray as xr
@@ -95,6 +97,38 @@ def test_pool_and_inline_executors_agree():
 
     np.testing.assert_array_equal(inline, np.arange(6.0) * 2.0)
     np.testing.assert_array_equal(pooled, inline)
+
+
+def _floating_point_policy(x, parameters):
+    return np.full_like(x, float(np.geterr()["divide"] == parameters["divide"]))
+
+
+@pytest.mark.parametrize("policy", ["default", "ignore", "raise"])
+def test_pool_receives_callers_policy(monkeypatch, policy):
+    """Spawned pool workers receive the policy at map time, without changing the parent."""
+    monkeypatch.setattr(_cli_transport.multiprocessing, "Pool", multiprocessing.get_context("spawn").Pool)
+    transport = _cli_transport.Transport(2)
+    transport.write("values", np.ones((2, 12)))
+    transport.allocate("out", (2, 12))
+    executor = _cli_transport.PoolExecutor(transport.store, 2)
+    settings = {"divide": "warn", "over": "warn", "under": "ignore", "invalid": "warn"}
+    if policy != "default":
+        settings = dict.fromkeys(settings, policy)
+    previous = np.geterr()
+    with np.errstate(**settings):
+        transport.execute(
+            kernel=_floating_point_policy,
+            input_names=("values",),
+            output_names=("out",),
+            coordinate_input=False,
+            layout=DatasetLayout.DIVISIONS,
+            arguments={"divide": settings["divide"]},
+            worker=_cli_transport.run_along_axis,
+            executor=executor,
+        )
+        assert np.geterr() == settings
+    assert np.geterr() == previous
+    np.testing.assert_array_equal(transport.read("out"), 1.0)
 
 
 def test_execute_uses_the_supplied_executor():

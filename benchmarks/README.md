@@ -1419,7 +1419,85 @@ combines backend and scheduler/serialization effects.
   CONUS scale; it does not fire there.
 - Default spawned workers in the separate Dask probe retain a mixed NumPy error
   policy, consistent with Python dispatch. Caller-provided process pools with
-  all-ignore worker policies can differ; the local recorder cannot verify them.
+  all-ignore worker policies can differ; the separate dispatch recipe below now
+  observes them in process workers and CLI workers rather than reporting `n/a`.
+
+### Observed dispatch and fallback reasons (#1531)
+
+An installed extension does not prove that a call ran in Rust. The recipe
+`benchmarks/native_dispatch.py` records the kernels that actually ran and names
+the shared gate that declined:
+
+```bash
+uv run maturin develop --release
+uv run benchmarks/native_dispatch.py
+```
+
+It runs NumPy `indices.spi` (gamma) and `indices.standardized_index`
+(empirical), xarray eager, Dask `threads`, Dask `processes`, and the CLI pool,
+under the default caller policy and an all-ignore caller policy. It reuses
+`tests/conftest.py::NativeRecorder` and adds no library code; it asserts its own
+reason names still agree with `_native_backend.takes`, so the report cannot
+drift from the gate. One JSON record per route and policy carries the observed
+kernel set, each fallback reason, and the NumPy policy and warning filters active
+in the process or thread that ran.
+
+On macOS arm64 (Python 3.11, NumPy 2.4.2):
+
+| route | default policy | all-ignore caller | all-ignore caller + all-ignore worker |
+|---|---|---|---|
+| NumPy `indices.spi` (gamma) | Python; `numpy-policy: divide=warn, over=warn, invalid=warn` | Rust | -- |
+| NumPy empirical | Python; same reason | Rust | -- |
+| xarray eager (gamma, empirical) | Python; same reason | Rust | -- |
+| Dask `threads` | Python; same reason | Python; same reason (thread default) | Rust |
+| Dask `processes` | Python; same reason | Python; same reason (worker default) | Rust |
+| CLI pool (gamma) | Python; same reason | Rust | -- |
+
+The two worker rows are the ones the RUST-011 harness could not observe. Under
+an all-ignore caller, Dask's `threads` and `processes` schedulers still start
+each worker from its own default policy, so they stay on Python. The default
+caller policy keeps every route on Python, and the per-route outputs are
+unchanged; `tests/test_native_dispatch.py` pins both.
+
+The library owns the CLI pool, so it now passes the caller's floating-point
+policy to each worker (`_cli_transport._initialize_worker`). NumPy's error state
+is thread-local and process-local, which is why the scheduler the user owns needs
+the opt-in below.
+
+#### Dask opt-in: install the all-ignore policy in each worker
+
+`compute._native` reaches a worker process with the extension imported, but the
+worker's NumPy policy is its own. Opt in by initializing each worker:
+
+```python
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor
+
+import numpy as np
+from dask import compute
+from climate_indices import Distribution, spi
+
+
+def all_ignore() -> None:
+    # the native gate requires every NumPy floating-point error ignored
+    np.seterr(all="ignore")
+
+
+lazy = spi(grid, scale=3, distribution=Distribution.gamma,
+           calibration_year_initial=1981, calibration_year_final=2010)
+with ProcessPoolExecutor(
+    max_workers=4,
+    mp_context=multiprocessing.get_context("spawn"),
+    initializer=all_ignore,
+) as pool:
+    result = compute(lazy, scheduler="processes", pool=pool)
+```
+
+A distributed client can use `client.run(np.seterr, all="ignore")` instead. Both
+forms change warning behavior inside those workers: floating-point warnings that
+the default policy reports are then ignored there. `tests/test_native_dispatch.py`
+and `benchmarks/native_dispatch.py` fail when a native row does not reach the
+expected kernels.
 
 ### Limits
 
@@ -1718,7 +1796,10 @@ uv run benchmarks/profile_hourly_srepi.py
 The script builds deterministic hourly input, runs `energy.srepi` at a 720-hour
 (30-day) mean scale over a 30-year calibration period, and reports the wall time and
 peak traced allocation for one series and one 25-cell time-major block. A warm-up call
-runs first. `--years` and `--cells` change the span and grid width. The block is
+runs first. `--years` and `--cells` change the span and grid width. Under `--backend
+native` the warm-up call records the kernels the run reached and fails when the expected
+ones (`empirical_transform`, and `trailing_sum` for the grid) did not run, so an
+installed-but-unused extension cannot report a Python number under the native label. The block is
 three-dimensional, `(time, cells, 1)`, and passed with `spatial_time_major=True`,
 because a two-dimensional `(time, cells)` input is read as one series.
 

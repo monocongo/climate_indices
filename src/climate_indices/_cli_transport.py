@@ -156,10 +156,11 @@ class WorkItem:
 _worker_store: SharedArrayStore | None = None
 
 
-def _initialize_worker(store: SharedArrayStore) -> None:
-    """Pool initializer: hand each worker the process-inherited store."""
+def _initialize_worker(store: SharedArrayStore, float_error_policy: dict[str, Any]) -> None:
+    """Give each pool worker the shared store and the caller's NumPy policy."""
     global _worker_store
     _worker_store = store
+    np.seterr(**float_error_policy)
 
 
 def _require_worker_store() -> SharedArrayStore:
@@ -300,7 +301,7 @@ class PoolExecutor:
         with multiprocessing.Pool(
             processes=self._processes,
             initializer=_initialize_worker,
-            initargs=(self._store,),
+            initargs=(self._store, np.geterr()),
         ) as pool:
             pool.map(worker, items)
 

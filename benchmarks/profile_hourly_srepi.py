@@ -21,14 +21,23 @@ from __future__ import annotations
 
 import argparse
 import platform
+import sys
 import time
 import tracemalloc
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
+from typing import TypeVar
 
 import numpy as np
+import pytest
 
-from climate_indices import compute, energy
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from climate_indices import compute, energy  # noqa: E402
+from tests import conftest  # noqa: E402
 
 HOURS_PER_YEAR = compute.Periodicity.hourly.period_length
 DATA_START_YEAR = 1980
@@ -86,7 +95,27 @@ def _measure(name: str, values: np.ndarray, call: Callable[[], object]) -> Measu
     return Measurement(name=name, shape=values.shape, seconds=seconds, peak_mebibytes=peak / (1024 * 1024))
 
 
-def _run(years: int, cells: int, pool_window_days: int = 0) -> list[Measurement]:
+_Result = TypeVar("_Result")
+
+
+def _warm_up(call: Callable[[], _Result], name: str, required: set[str], verify_native: bool) -> _Result:
+    """Verify dispatch outside the timing window, without adding recorder overhead to timings."""
+    if not verify_native:
+        return call()
+    selected = compute._native
+    if selected is None:
+        raise RuntimeError("Build the extension with uv run maturin develop --release first")
+    recorder = conftest.NativeRecorder(selected)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(compute, "_native", recorder)
+        result = call()
+    if not required <= recorder.calls:
+        raise RuntimeError(f"{name}: native kernels did not run: {sorted(required - recorder.calls)}")
+    print(f"  {name} verified kernels {sorted(recorder.calls)}")
+    return result
+
+
+def _run(years: int, cells: int, pool_window_days: int = 0, verify_native: bool = False) -> list[Measurement]:
     """Measure the series and gridded hourly calls for a span and grid width."""
     span = (DATA_START_YEAR, DATA_START_YEAR + years - 1)
     measurements: list[Measurement] = []
@@ -103,7 +132,10 @@ def _run(years: int, cells: int, pool_window_days: int = 0) -> list[Measurement]
             spatial_time_major=values.ndim > 1,
             pool_window_days=pool_window_days,
         )
-        call()  # warm-up
+        required = {"empirical_transform"}
+        if block_cells:
+            required.add("trailing_sum")
+        _warm_up(call, name, required, verify_native)
         measurements.append(_measure(name, values, call))
     print(
         f"span {span[0]}-{span[1]} ({years} years, scale 720 hours, cells {cells if cells else 0}, "
@@ -119,7 +151,7 @@ def _run(years: int, cells: int, pool_window_days: int = 0) -> list[Measurement]
         def monthly_call(values: np.ndarray = values) -> np.ndarray:
             return compute.sum_to_scale(values, 3)
 
-        warmed = monthly_call()
+        warmed = _warm_up(monthly_call, name, {"trailing_sum"}, verify_native)
         if warmed.shape != values.shape:
             raise RuntimeError(f"{name}: aggregation returned an unexpected shape")
         if not np.isnan(warmed[:2]).all():
@@ -153,7 +185,12 @@ def main() -> None:
         print(f"python {platform.python_version()} on {platform.platform()}")
         print(f"period length {HOURS_PER_YEAR} hours, numpy {np.__version__}")
         with np.errstate(all="ignore"):
-            measurements = _run(arguments.years, arguments.cells, arguments.pool_window_days)
+            measurements = _run(
+                arguments.years,
+                arguments.cells,
+                arguments.pool_window_days,
+                verify_native=arguments.backend == "native",
+            )
     finally:
         # a later run in the same process must see the imported extension again
         compute._native = selected
