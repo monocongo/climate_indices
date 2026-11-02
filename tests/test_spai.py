@@ -502,3 +502,15 @@ def test_eager_xarray_series_honors_spais_own_calibration_contract(seasonal: np.
     result = climate_indices.spai(data, 1, T, calibration_year_initial=START, calibration_year_final=START + 9)
 
     np.testing.assert_array_equal(result.values, indices.spai(short, 1, T, START, START, START + 9, MONTHLY))
+
+
+def test_zero_spread_cutoff_is_relative_to_each_cells_magnitude() -> None:
+    """A varying cell is fitted in any unit; only a cell with no real spread stays missing."""
+    varying = np.random.default_rng(7).uniform(0.0, 1e-6, size=(600, 1))
+    constant = np.full((600, 1), 3e-7)
+
+    parameters = indices._spai_fit(np.concatenate([varying, constant], axis=1), T)
+
+    assert np.isfinite(parameters["scale"][0])
+    assert parameters["scale"][0] > 0.0
+    assert np.isnan(parameters["scale"][1])

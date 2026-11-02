@@ -1199,10 +1199,12 @@ _SPAI_MIN_CALIBRATION_YEARS = 2
 # the fewest valid pooled calibration anomalies a cell needs before it is fitted
 _SPAI_MIN_FIT_VALUES = lmoments.MIN_VALUES_FOR_LMOMENTS
 
-# a cell whose pooled calibration anomalies span this little, in the input's precipitation
-# units, has no scale to estimate (a cell that never rains, for one), so it stays missing
-# (docs/floating_point_best_practices.md)
-_SPAI_ZERO_SPREAD_ATOL = 1e-6
+# a constant cell's pooled anomalies keep about this many machine epsilons of rounding
+# noise after its period means are subtracted, relative to the cell's own magnitude; a
+# cell whose spread is at or below that has no scale to estimate (a cell that never
+# rains, for one) and stays missing (docs/floating_point_best_practices.md). Being
+# relative to each cell, the cutoff does not depend on the input's precipitation units.
+_SPAI_ZERO_SPREAD_RTOL = 1e3 * float(np.finfo(float).eps)
 
 # keeps the inverse normal finite; a normal-scale result is then clipped like SPI's
 _SPAI_PROBABILITY_EPSILON = float(np.finfo(float).eps)
@@ -1376,8 +1378,12 @@ def _spai_fit(pooled: np.ndarray, distribution: Distribution) -> dict[str, np.nd
     if fittable.any():
         # every fittable column has at least one valid value, so min and max are defined
         candidates = pooled[:, fittable]
+        magnitude = np.nanmax(np.abs(candidates), axis=0)
         spread = np.nanmax(candidates, axis=0) - np.nanmin(candidates, axis=0)
-        fittable_columns = np.flatnonzero(fittable)[~np.isclose(spread, 0.0, atol=_SPAI_ZERO_SPREAD_ATOL)]
+        # a constant cell's anomalies keep roughly eps * |x| of rounding noise, so a spread
+        # above that relative bound is real, whether the input is in millimeters or metres
+        degenerate = spread <= _SPAI_ZERO_SPREAD_RTOL * magnitude
+        fittable_columns = np.flatnonzero(fittable)[~degenerate]
         if fittable_columns.size:
             # column-major, so every column sum runs over contiguous memory in the same order
             # whatever the number of columns, and a cell's fit does not depend on its block
