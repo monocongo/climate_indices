@@ -248,7 +248,7 @@ CAIDI (Customer Average Interruption Duration Index) is `CMI / CI`, in minutes p
 It is independent of `total_customers` and represents the customer-weighted average restoration time.
 For one sustained event with interrupted customers, CAIDI equals its duration up to product and division rounding.
 CAIDI is the definitional accumulator ratio `CMI / CI`, which the library guarantees exactly, and which is exactly independent of `total_customers`.
-The identity `CAIDI = SAIDI / SAIFI` is mathematical. The library bounds it within a few float64 epsilons rather than promising bit-for-bit equality, because SAIDI and SAIFI are rounded separately.
+The identity `CAIDI = SAIDI / SAIFI` is mathematical. Tests bound it within four float64 epsilons for the covered inputs; no general bound or bit-for-bit equality is promised, because SAIDI and SAIFI are rounded separately.
 For example, a six-minute event affecting three customers with `total_customers=1000` gives CAIDI `6.0`.
 The separately rounded ratio `SAIDI / SAIFI` gives `5.999999999999999`.
 The three metrics share one sustained-row mask, so `exclude_planned` and
