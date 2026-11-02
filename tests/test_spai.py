@@ -418,6 +418,93 @@ def test_numpy_and_xarray_paths_are_identical(
     assert "Chanda" in result.attrs["references"]
 
 
+@pytest.mark.parametrize(
+    "output_scale, bounds", [("normal", (-3.09, 3.09)), ("probability", (0.0, 1.0)), ("bounded", (-1.0, 1.0))]
+)
+@pytest.mark.parametrize("route", ["series", "eager_grid", "dask_grid"])
+def test_xarray_output_replaces_precipitation_ranges(
+    seasonal: np.ndarray, output_scale: compute.OutputScale, bounds: tuple[float, float], route: str
+) -> None:
+    data = _gridded(seasonal)
+    if route == "series":
+        data = data.isel(lat=0, lon=0)
+    elif route == "dask_grid":
+        data = data.chunk({"time": -1, "lat": 1})
+    input_attrs = {
+        "valid_min": 0.0,
+        "valid_max": 1000.0,
+        "valid_range": [0.0, 1000.0],
+        "actual_range": [0.0, 200.0],
+        "source": "test precipitation",
+    }
+    data.attrs.update(input_attrs)
+
+    result = climate_indices.spai(data, 1, NORMAL, output_scale=output_scale).compute()
+
+    assert result.attrs["valid_min"] == bounds[0]
+    assert result.attrs["valid_max"] == bounds[1]
+    assert "valid_range" not in result.attrs
+    assert "actual_range" not in result.attrs
+    assert result.attrs["source"] == input_attrs["source"]
+    assert data.attrs == input_attrs
+    assert float(result.min()) >= bounds[0]
+    assert float(result.max()) <= bounds[1]
+    if output_scale != "probability":
+        assert float(result.min()) < 0.0
+
+
+@pytest.mark.parametrize("distribution", SPAI_DISTRIBUTIONS, ids=lambda d: d.name)
+@pytest.mark.parametrize("route", ["series", "eager_grid", "dask_grid"])
+def test_xarray_reused_parameters_preserve_calibration_years(
+    seasonal: np.ndarray, distribution: indices.Distribution, route: str
+) -> None:
+    from climate_indices.provenance import read_provenance
+
+    data = _gridded(seasonal)
+    if route == "series":
+        data = data.isel(lat=0, lon=0)
+    elif route == "dask_grid":
+        data = data.chunk({"time": -1, "lat": 1})
+    parameters: dict[str, Any] = {"mean": SEASONAL_MEAN, "loc": 0.0, "scale": 50.0}
+    if distribution == T:
+        parameters["df"] = 8.0
+    elif distribution == PEARSON:
+        parameters["skew"] = 0.1
+
+    result = climate_indices.spai(
+        data,
+        1,
+        distribution,
+        calibration_year_initial=1951,
+        calibration_year_final=1990,
+        fitting_params=parameters,
+    ).compute()
+
+    assert result.attrs["calibration_year_initial"] == 1951
+    assert result.attrs["calibration_year_final"] == 1990
+    record = read_provenance(result)
+    assert record is not None
+    assert record["parameters"]["calibration_year_initial"] == 1951
+    assert record["parameters"]["calibration_year_final"] == 1990
+    expected = indices.spai(data.values, 1, distribution, START, 1951, 1990, MONTHLY, fitting_params=parameters)
+    np.testing.assert_array_equal(result.values, expected)
+
+
+def test_xarray_new_fit_reports_effective_calibration_years(seasonal: np.ndarray) -> None:
+    from climate_indices.provenance import read_provenance
+
+    result = climate_indices.spai(
+        _gridded(seasonal), 1, NORMAL, calibration_year_initial=1951, calibration_year_final=1990
+    )
+
+    assert result.attrs["calibration_year_initial"] == START
+    assert result.attrs["calibration_year_final"] == START + YEARS - 1
+    record = read_provenance(result)
+    assert record is not None
+    assert record["parameters"]["calibration_year_initial"] == START
+    assert record["parameters"]["calibration_year_final"] == START + YEARS - 1
+
+
 def test_xarray_series_matches_numpy_and_carries_the_probability_metadata(seasonal: np.ndarray) -> None:
     data = xr.DataArray(
         seasonal, dims="time", coords={"time": xr.date_range(f"{START}-01-01", periods=YEARS * 12, freq="MS")}
