@@ -231,11 +231,13 @@ unreproducible claim of reproduction.
    reported as a percentage. ASAI uses `1 - (SAIDI / 60) / H`, with minutes
    converted to hours. Without a reporting period, ASAI is None and named in
    `undefined_metrics`. Valid overlapping rows can accumulate more interruption
-   time than the reporting exposure. In that case, ASAI is NaN and named as
-   undefined; the sustained accumulators and row count remain unchanged.
-   No result is clamped to zero. Undefined derived metrics produce no additional
-   warning. **Partial periods are computed exactly over the
-   supplied period, with no annualization and no extrapolation**, so a
+   time than the reporting exposure. An unavailable fraction up to one
+   floating-point step above 1 gives ASAI `0.0` to allow for rounding; a larger
+   excess gives ASAI NaN and names it undefined. The sustained accumulators and
+   row count remain unchanged, and no larger result is clamped to zero.
+   Undefined derived metrics produce no additional warning.
+   **Partial periods are computed exactly over the supplied period, with no
+   annualization and no extrapolation**, so a
    partial-period index is not comparable to an annual index and the result says
    so. Hours in the period `H` are actual hours: 8760 for a 365-day year and
    8784 for a 366-day year.
