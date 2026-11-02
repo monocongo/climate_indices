@@ -25,6 +25,9 @@ climate-driven energy supply and demand.
   selectable placement of zero accumulations (`zero_handling`)
 - [SPEI](https://climatedataguide.ucar.edu/climate-data/standardized-precipitation-evapotranspiration-index-spei),
   Standardized Precipitation Evapotranspiration Index, utilizing gamma, Pearson Type III, and generalized-logistic (log-logistic) distributions
+- [SPAI](https://doi.org/10.1061/%28ASCE%29HE.1943-5584.0001236), Standardized Precipitation
+  Anomaly Index (Beta), for strongly seasonal, monsoon-dominated precipitation: one t
+  location-scale, Pearson Type III, or normal fit to the pooled precipitation anomalies
 - Standardized index (`indices.standardized_index()`), the SPI fitting pipeline for any
   non-negative series, such as runoff or streamflow for
   [SRI/SSI work](docs/standardized-hydrologic-indices.md)
@@ -171,10 +174,11 @@ See [drought.gov](https://www.drought.gov/drought/python-climate-indices).
 
 ## Installation
 
-This README describes 3.1.0, which is not yet published on PyPI. The published 3.0.0
+This README describes 3.2.0, which is not yet published on PyPI. The published 3.0.0
 release added the `fire`, `flood`, and `runs` modules and the optional Rust backend.
 Relative to 3.0.0, 3.1.0 adds the `compound` module and the `energy` family, promotes the
-DataArray index APIs to Stable, and adds optional Icechunk I/O.
+DataArray index APIs to Stable, and adds optional Icechunk I/O. Relative to 3.1.1, 3.2.0
+adds SPAI and its pooled-anomaly fit.
 
 Install the current published release from PyPI:
 
@@ -344,6 +348,7 @@ Python 3.9 support was dropped in v2.2.0 (August 2025) due to `scipy>=1.15.3` re
 | NumPy array functions (`indices.spi`, `indices.spei`, `indices.pet`, the `fire`, `flood`, `energy`, and `compound` NumPy routes) | **Stable** | No breaking changes in minor versions |
 | xarray index entry points accepting `xr.DataArray` (including Dataset-returning index and diagnostic functions) | **Stable from 3.1.0** | No breaking changes in minor versions |
 | Compound xarray Dataset routes and eager event catalogs | **Beta** | No breaking changes in patch versions |
+| SPAI (`indices.spai` and `climate_indices.spai`, NumPy and `xr.DataArray`) | **Beta** | No breaking changes in patch versions |
 
 **Stable API**: The NumPy computation functions and xarray index APIs follow strict semantic versioning.
 The xarray adapter provides automatic parameter inference, coordinate preservation, CF metadata, and Dask support.
@@ -356,6 +361,7 @@ This promotion changes no numerical algorithm or calendar behavior.
 [ADR-0022](docs/adr/0022-compound-analysis-contracts.md).
 Their interfaces may change in minor releases, but not patch releases.
 They continue to emit `BetaFeatureWarning`; its public imports and warning filters remain supported.
+SPAI is Beta on both its NumPy and DataArray routes and emits `BetaFeatureWarning` once per call.
 Stable DataArray index APIs do not emit this warning.
 
 See `docs/xarray_compatibility.md` for the compatibility matrix, including

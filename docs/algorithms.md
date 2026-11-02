@@ -357,6 +357,44 @@ Multiply by 100 to display a percentage; the library does not apply this convers
 
 The PNP equation and implementation details are in {doc}`algorithm-reference`.
 
+### Standardized Precipitation Anomaly Index (SPAI)
+
+Chanda and Maity (2015) propose SPAI for meteorological drought where precipitation is
+strongly seasonal and periodic, as in monsoon-dominated climates. SPAI standardizes the
+anomalies of precipitation rather than the raw precipitation series: it subtracts each
+calendar period's Calibration Period mean, then fits one distribution to the anomalies
+of every period pooled. The authors compare SPAI with SPI and report that SPAI
+distinguishes the consequences of rainfall shortage or surplus in monsoon and
+non-monsoon months, which SPI does not, on a strongly periodic Indian series and a
+non-periodic Arkansas series.
+
+**When to consider SPAI:**
+
+- Precipitation with a pronounced wet season, where drought severity should reflect
+  absolute anomalies rather than each month's relative spread
+- Comparison with SPI on the same series
+
+**Limitations:**
+
+- Beta (#1480): the interface may change in a minor release
+- No independent SPAI reference dataset is committed; the evidence also includes
+  specification-level checks and estimator cross-checks
+  ([VALIDATION.md](https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md))
+- A given anomaly value scores the same in every calendar period, but the score still
+  depends on the pooled fitted distribution: a small absolute deficit can score
+  strongly negative when the pooled spread is small. The same authors' later papers
+  divide the anomaly by each calendar period's standard deviation instead; this
+  library follows the original paper's Eq. (5)
+- The symmetric t location-scale and normal fits cannot follow strongly skewed
+  anomalies, such as those of months that rarely rain
+- A calendar period with no calibration value is missing, and so is a cell whose pooled
+  anomalies have no spread, such as a cell that never rains
+- The paper is paywalled, so the anomaly definition rests on the authors' closure and
+  accessible secondary sources. No discrepancy was found, but the article body itself
+  has not been read
+
+The SPAI equations and implementation details are in {doc}`algorithm-reference`.
+
 ## Validation Datasets and Methods
 
 ### Reference Datasets

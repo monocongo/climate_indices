@@ -119,6 +119,80 @@ The SPEI computation follows these steps:
 - More sensitive to warming trends
 - Better represents agricultural drought (crop water stress)
 
+## SPAI computation
+
+The Standardized Precipitation Anomaly Index (Chanda & Maity, 2015) fits **one**
+distribution to the precipitation anomalies of every calendar period pooled, where SPI
+fits one distribution per calendar period. `indices.spai()` and
+`climate_indices.spai()` are Beta (#1480).
+
+1. **Aggregation**: accumulate precipitation over the Timescale exactly as for SPI;
+   the first `scale - 1` values are missing.
+
+2. **Anomaly**: for each calendar period *i* (month, or day of the 366-day year), take
+   the Calibration Period mean *μ*{sub}`i`, then over the whole series
+
+   $$
+   y = P - \mu_i
+   $$
+
+   This is the original paper's Eq. (5), as the authors' closure reproduces it. The
+   article body is paywalled, so the transcription rests on that closure and on
+   accessible secondary sources; contacting the authors remains open (#1480). A
+   period with no valid calibration value has a NaN mean, so its anomalies are
+   missing; a period with a constant calibration value has zero anomalies, never
+   infinite ones. A Calibration Period of fewer than two years is rejected, because it
+   leaves one calibration value per period and therefore every anomaly zero.
+
+3. **Pooled fit**: fit one distribution *F* to each cell's Calibration Period anomaly
+   over every calendar period at once. A cell with fewer than four valid pooled values,
+   or with no spread across them (a cell that never rains, for one), has no scale to
+   estimate and is missing.
+
+   - **t location-scale** (the reference choice): *F*(*y*) = *T*{sub}`ν`((*y* − *μ*) / *σ*),
+     fitted by maximum likelihood with a vectorized ECME iteration (Liu & Rubin, 1995):
+     EM updates of *μ* and *σ*, one Newton step on log *ν*, each cell stopping at its
+     own convergence (tolerance `1e-6`, at most 200 iterations, 0.2 ≤ *ν* ≤ 10⁴).
+   - **Pearson Type III**: L-moments, as for SPI but with no probability of zero; a
+     cell with invalid L-moments falls back to the normal distribution with a
+     `distribution_fallback` warning event.
+   - **Normal**: maximum likelihood, so SPAI = (*y* − *m*) / *s*, the anomaly rescaled
+     by its pooled calibration mean and standard deviation. With complete calibration
+     data *m* = 0 and *s* is the anomaly's pooled root-mean-square deviation.
+
+   Gamma is not offered, because the anomaly is signed.
+
+4. **Transformation**:
+
+   $$
+   SPAI = \Phi^{-1}\left(F(y)\right)
+   $$
+
+   For the default `output_scale="normal"`, *F*(*y*) is clipped to [ε, 1 − ε] (machine
+   ε) before the inverse normal so the result is finite, and the result is clipped to
+   [-3.09, 3.09] as for SPI. `"probability"` returns the un-clipped *F*(*y*) in
+   [0, 1], and `"bounded"` returns the un-clipped 2*F*(*y*) − 1.
+
+**Key differences from SPI:**
+
+- SPAI is near standard normal over the pooled Calibration Period, not within each
+  calendar period; each period keeps its own anomaly shape. The pooled result is only
+  near standard normal as far as the fitted family describes the pooled anomalies: a
+  pooled sample with a large point mass, such as constant zero precipitation in the dry
+  months of a strongly seasonal climate, maps that whole mass to one score instead of
+  spreading it normally, and the normal fit only rescales the anomalies. Because the
+  pooled anomaly is a scale mixture, the lighter-tailed Pearson and normal fits reach
+  the ±3.09 clip on wet-season values more often than the heavy-tailed t fit does.
+- A given anomaly value scores the same in a dry and a wet month, because one
+  distribution is fitted to the pooled anomalies rather than one per calendar period;
+  that is the published design. The score still depends on the pooled fitted
+  distribution, not the month's own spread, so a small absolute deficit can score
+  strongly negative when the pooled spread is small, and rescaling all precipitation
+  changes the absolute deficit without changing the score. The same authors' later
+  papers instead divide each calendar period's anomaly by its own standard deviation,
+  which scales the deficit by the month's variability; this library follows the paper's
+  Eq. (5).
+
 ## PET computation
 
 The two temperature-based methods this library implements, and their equations;
@@ -510,6 +584,7 @@ are recorded in
 **SPI and Drought Indices:**
 
 - McKee, T. B., Doesken, N. J., & Kleist, J. (1993). The relationship of drought frequency and duration to time scales. *Proceedings of the 8th Conference on Applied Climatology*, 17-22 January, Anaheim, CA. American Meteorological Society, Boston, MA, 179-184.
+- Chanda, K., & Maity, R. (2015). Meteorological Drought Quantification with Standardized Precipitation Anomaly Index for the Regions with Strongly Seasonal and Periodic Precipitation. *Journal of Hydrologic Engineering*, 20(12), 06015007. <https://doi.org/10.1061/(ASCE)HE.1943-5584.0001236>
 - Vicente-Serrano, S. M., Begueria, S., & Lopez-Moreno, J. I. (2010). A Multiscalar Drought Index Sensitive to Global Warming: The Standardized Precipitation Evapotranspiration Index. *Journal of Climate*, 23(7), 1696-1718. <https://doi.org/10.1175/2009JCLI2909.1>
 
 **Potential Evapotranspiration:**
@@ -530,6 +605,7 @@ are recorded in
 **Statistical Methods:**
 
 - Hosking, J. R. M. (1997). *FORTRAN Routines for Use with the Method of L-Moments, Version 3*. IBM Research Report RC20525. IBM Research Division, T. J. Watson Research Center, Yorktown Heights, NY. (Note: Available through various online archives and the R package `lmomco`)
+- Liu, C., & Rubin, D. B. (1995). ML estimation of the t distribution using EM and its extensions, ECM and ECME. *Statistica Sinica*, 5(1), 19-39.
 
 **Additional Resources:**
 

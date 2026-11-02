@@ -4,7 +4,7 @@ This module provides statically-typed wrappers around the xarray-adapted index
 functions. The @overload signatures enable IDE autocomplete and mypy --strict
 correctness by narrowing return types based on input types:
 
-- spi(np.ndarray, ...) -> np.ndarray      (and likewise for spei, eddi, percentage_of_normal, pci)
+- spi(np.ndarray, ...) -> np.ndarray      (and likewise for spei, spai, eddi, percentage_of_normal, pci)
 - spi(xr.DataArray, ...) -> xr.DataArray  (and pet_thornthwaite, pet_hargreaves)
 
 The Palmer family follows the same dispatch: pdsi(np.ndarray, ...) returns the
@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import inspect
 import typing
+import warnings
 from collections.abc import Callable
 from typing import Any, cast, overload
 
@@ -44,6 +45,7 @@ import xarray as xr
 
 from climate_indices import compute, indices, pm_eto
 from climate_indices.cf_metadata_registry import CF_METADATA
+from climate_indices.exceptions import BetaFeatureWarning
 from climate_indices.validation import InputType, detect_input_type
 from climate_indices.vocabulary import Distribution, OutputScale, Periodicity, ZeroHandling
 from climate_indices.xarray_adapter import (
@@ -77,6 +79,10 @@ _SPEI_CF_METADATA_VARIANTS: dict[str, dict[str, str]] = {
     "probability": CF_METADATA["spei_probability"],  # type: ignore[dict-item]
     "bounded": CF_METADATA["spei_bounded"],  # type: ignore[dict-item]
 }
+_SPAI_CF_METADATA_VARIANTS: dict[str, dict[str, str]] = {
+    "probability": CF_METADATA["spai_probability"],  # type: ignore[dict-item]
+    "bounded": CF_METADATA["spai_bounded"],  # type: ignore[dict-item]
+}
 
 # Validators mirror the NumPy core; run here before xarray builds a Dask graph.
 _TEMPORAL_VALIDATORS = (
@@ -99,6 +105,11 @@ _SPEI_VALIDATORS = (
     lambda args: indices._validate_distribution(
         args["distribution"], (Distribution.gamma, Distribution.pearson, Distribution.loglogistic)
     ),
+    lambda args: compute.validate_output_scale(args["output_scale"]),
+)
+_SPAI_VALIDATORS = (
+    *_TEMPORAL_VALIDATORS,
+    lambda args: indices._validate_distribution(args["distribution"], indices._SPAI_DISTRIBUTIONS),
     lambda args: compute.validate_output_scale(args["output_scale"]),
 )
 
@@ -129,6 +140,23 @@ _wrapped_spei = xarray_adapter(
     additional_input_names=["pet_mm"],
     spatial_kernel=True,
 )(indices.spei)
+
+# the warning-free core, so a gridded call warns once rather than once per block
+_wrapped_spai = xarray_adapter(
+    calendar="periodicity",
+    inferred_parameters=INFER_TIME_PARAMETERS,
+    argument_validators=_SPAI_VALIDATORS,
+    timescale_parameter="scale",
+    metadata_variant_parameter="output_scale",
+    cf_metadata=CF_METADATA["spai"],  # type: ignore[arg-type]
+    cf_metadata_variants=_SPAI_CF_METADATA_VARIANTS,
+    index_display_name="SPAI",
+    calculation_metadata_keys=["scale", "distribution", "calibration_year_initial", "calibration_year_final"],
+    spatial_kernel=True,
+    # SPAI has its own calibration contract (two years, four pooled anomalies), so the
+    # fitting indices' 30-year non-NaN preflight must not reject an eager series first
+    validate_calibration_sample=False,
+)(indices._spai)
 
 _wrapped_eddi = xarray_adapter(
     calendar="periodicity",
@@ -459,6 +487,76 @@ def spei(precips_mm: Any, pet_mm: Any, *args: Any, **kwargs: Any) -> npt.NDArray
         SPEI values as numpy.ndarray or xarray.DataArray (matches input type).
     """
     return _delegate(_wrapped_spei, precips_mm, pet_mm, *args, **kwargs)
+
+
+# SPAI overloads
+@overload
+def spai(
+    values: npt.NDArray[np.float64],
+    scale: int,
+    distribution: Distribution,
+    data_start_year: int,
+    calibration_year_initial: int,
+    calibration_year_final: int,
+    periodicity: Periodicity,
+    fitting_params: dict[str, Any] | None = None,
+    *,
+    output_scale: OutputScale = "normal",
+) -> npt.NDArray[np.float64]: ...
+
+
+@overload
+def spai(
+    values: xr.DataArray,
+    scale: int,
+    distribution: Distribution,
+    data_start_year: int | None = None,
+    calibration_year_initial: int | None = None,
+    calibration_year_final: int | None = None,
+    periodicity: Periodicity | None = None,
+    fitting_params: dict[str, Any] | None = None,
+    *,
+    output_scale: OutputScale = "normal",
+) -> xr.DataArray: ...
+
+
+def spai(values: Any, *args: Any, **kwargs: Any) -> npt.NDArray[np.float64] | xr.DataArray:
+    """Compute SPAI (Standardized Precipitation Anomaly Index), a Beta API.
+
+    This function accepts both NumPy arrays and xarray DataArrays, and each call emits
+    one :class:`~climate_indices.exceptions.BetaFeatureWarning` (#1480). See
+    :func:`climate_indices.indices.spai` for the method, distributions, and edge cases.
+
+    For NumPy inputs, all temporal parameters are required. For xarray inputs,
+    temporal parameters are optional and are inferred from the time coordinate.
+    Gridded input is fitted one Dask spatial block at a time, with the pooled fit per
+    cell; ``time`` must be a single chunk.
+
+    Args:
+        values: NumPy array or xarray DataArray of precipitation values.
+        scale: Number of time steps accumulated before the anomalies are taken.
+        distribution: ``Distribution.t_location_scale`` (the reference choice),
+            ``Distribution.pearson``, or ``Distribution.normal``.
+        data_start_year: Initial year of the input dataset (required for NumPy,
+            optional for xarray).
+        calibration_year_initial: Initial year of the Calibration Period (required
+            for NumPy, optional for xarray).
+        calibration_year_final: Final year of the Calibration Period (required for
+            NumPy, optional for xarray).
+        periodicity: Time series periodicity ('monthly' or 'daily'). Required for
+            NumPy, optional for xarray.
+        fitting_params: Optional complete parameter set to reuse instead of fitting.
+            The xarray path passes the same value to every block, so cell-specific
+            parameters are not supported there.
+        output_scale: Output convention: "normal" (the default) returns the z-score,
+            "probability" the fitted cumulative probability in [0, 1], and "bounded"
+            ``2p - 1``.
+
+    Returns:
+        SPAI values as numpy.ndarray or xarray.DataArray (matches input type).
+    """
+    warnings.warn(indices._SPAI_BETA_MESSAGE, BetaFeatureWarning, stacklevel=2)
+    return _delegate(_wrapped_spai, values, *args, **kwargs)
 
 
 # Percentage of Normal (PNP) overloads
@@ -1079,6 +1177,7 @@ def fit_diagnostics(
 for _public_function in (
     spi,
     spei,
+    spai,
     standardized_index,
     percentage_of_normal,
     eddi,
