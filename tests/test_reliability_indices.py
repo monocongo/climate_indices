@@ -2,6 +2,7 @@
 
 import dataclasses
 import json
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
@@ -161,6 +162,14 @@ def test_scaling_total_customers_scales_saifi_inversely() -> None:
     base = reliability.reliability_indices(events, total_customers=100)
     scaled = reliability.reliability_indices(events, total_customers=300)
     assert scaled.saifi == pytest.approx(base.saifi / 3)
+
+
+@pytest.mark.parametrize("total", [np.float32(100), np.longdouble(100), Fraction(100, 1)])
+def test_accepted_denominator_types_return_python_float(total: Any) -> None:
+    events = [record(duration=60.0, customers_interrupted=20)]
+    result = reliability.reliability_indices(events, total_customers=total)
+    assert isinstance(result.saifi, float)
+    assert result.saifi == pytest.approx(0.2)
 
 
 def test_row_order_does_not_change_the_result() -> None:

@@ -70,7 +70,7 @@ def reliability_indices(
         mask &= ~frame["planned"]
     customer_interruptions = int(frame.loc[mask, "customers_interrupted"].sum())
     return ReliabilityResult(
-        saifi=customer_interruptions / total_customers,
+        saifi=customer_interruptions / float(total_customers),
         customer_interruptions=customer_interruptions,
         outage_count=int(mask.sum()),
     )
