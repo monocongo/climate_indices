@@ -106,7 +106,9 @@ pub fn plotting_positions_in_place(
             sorted.sort_unstable_by(f64::total_cmp);
             let denominator = sorted.len() as f64 + 2.0;
             for value in values.iter_mut() {
-                if !value.is_nan() {
+                if value.is_nan() {
+                    *value = f64::NAN;
+                } else {
                     let count = sorted.partition_point(|&sample| sample <= *value);
                     *value = (count as f64 + 1.0) / denominator;
                 }
@@ -221,7 +223,8 @@ mod tests {
             [0.0, 2.0],
             [2.5, 3.0],
             [f64::NAN, 4.0],
-            [10.0, 5.0],
+            // A payload NaN must come back as the canonical NaN.
+            [10.0, f64::from_bits(0xFFF8_0000_0000_0001)],
             [f64::NEG_INFINITY, 6.0]
         ];
         let expected = plotting_positions(calibration.view(), values.view()).unwrap();
