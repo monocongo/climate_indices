@@ -489,3 +489,16 @@ def test_spai_is_invariant_to_precipitation_units(seasonal: np.ndarray) -> None:
     inches = _spai(seasonal / 25.4, T)
 
     np.testing.assert_allclose(inches, millimetres, rtol=0, atol=1e-9)
+
+
+def test_eager_xarray_series_honors_spais_own_calibration_contract(seasonal: np.ndarray) -> None:
+    """A short eager series reaches SPAI's two-year floor, not the adapter's 30-year one."""
+    short = seasonal[: 10 * 12].copy()
+    short[5] = np.nan
+    data = xr.DataArray(
+        short, dims="time", coords={"time": xr.date_range(f"{START}-01-01", periods=short.size, freq="MS")}
+    )
+
+    result = climate_indices.spai(data, 1, T, calibration_year_initial=START, calibration_year_final=START + 9)
+
+    np.testing.assert_array_equal(result.values, indices.spai(short, 1, T, START, START, START + 9, MONTHLY))

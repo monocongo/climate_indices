@@ -153,6 +153,9 @@ _wrapped_spai = xarray_adapter(
     index_display_name="SPAI",
     calculation_metadata_keys=["scale", "distribution", "calibration_year_initial", "calibration_year_final"],
     spatial_kernel=True,
+    # SPAI has its own calibration contract (two years, four pooled anomalies), so the
+    # fitting indices' 30-year non-NaN preflight must not reject an eager series first
+    validate_calibration_sample=False,
 )(indices._spai)
 
 _wrapped_eddi = xarray_adapter(
