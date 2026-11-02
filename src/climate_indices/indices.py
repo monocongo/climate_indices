@@ -1367,22 +1367,27 @@ _SPAI_FITS: dict[Distribution, Callable[[np.ndarray], dict[str, np.ndarray]]] = 
 }
 
 
-def _spai_fit(pooled: np.ndarray, distribution: Distribution) -> dict[str, np.ndarray]:
+def _spai_fit(
+    pooled: np.ndarray, distribution: Distribution, magnitude: np.ndarray | None = None
+) -> dict[str, np.ndarray]:
     """Fit ``distribution`` to each cell's pooled calibration anomalies, NaN where too few.
 
     A cell with too few valid anomalies, or with no spread across them, has no scale to
     estimate and stays missing rather than being fitted on a degenerate sample.
+    ``magnitude`` is each cell's raw calibration magnitude, used as the zero-spread
+    cutoff's scale; without it the pooled anomalies' own magnitude is used instead.
     """
     parameters = {key: np.full(pooled.shape[1], np.nan) for key in _SPAI_PARAMETER_KEYS[distribution]}
     fittable = np.count_nonzero(~np.isnan(pooled), axis=0) >= _SPAI_MIN_FIT_VALUES
     if fittable.any():
         # every fittable column has at least one valid value, so min and max are defined
         candidates = pooled[:, fittable]
-        magnitude = np.nanmax(np.abs(candidates), axis=0)
+        cell_magnitude = np.nanmax(np.abs(candidates), axis=0) if magnitude is None else magnitude[fittable]
         spread = np.nanmax(candidates, axis=0) - np.nanmin(candidates, axis=0)
         # a constant cell's anomalies keep roughly eps * |x| of rounding noise, so a spread
-        # above that relative bound is real, whether the input is in millimeters or metres
-        degenerate = spread <= _SPAI_ZERO_SPREAD_RTOL * magnitude
+        # above that relative bound is real, whether the input is in millimeters or metres;
+        # the raw magnitude is passed in because a constant cell's anomalies are only that noise
+        degenerate = spread <= _SPAI_ZERO_SPREAD_RTOL * cell_magnitude
         fittable_columns = np.flatnonzero(fittable)[~degenerate]
         if fittable_columns.size:
             # column-major, so every column sum runs over contiguous memory in the same order
@@ -1535,8 +1540,13 @@ def _spai(
         means = _spai_period_means(calibration) if parameters is None else parameters["mean"]
         anomalies = folded - means
         if parameters is None:
-            # one fit per cell over every calendar period of the Calibration Period
-            parameters = _spai_fit(anomalies[period.rows].reshape(-1, folded.shape[2]), distribution)
+            # one fit per cell over every calendar period of the Calibration Period; the
+            # zero-spread cutoff is scaled by the raw calibration magnitude, not the
+            # anomalies', because a constant cell's anomalies are only rounding noise
+            calibration_magnitude = np.where(np.isnan(calibration), 0.0, np.abs(calibration)).max(axis=(0, 1))
+            parameters = _spai_fit(
+                anomalies[period.rows].reshape(-1, folded.shape[2]), distribution, calibration_magnitude
+            )
         probabilities = _spai_cdf(anomalies, distribution, parameters)
 
         result = compute._map_non_normal_scale(probabilities, output_scale)

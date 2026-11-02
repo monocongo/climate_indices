@@ -514,3 +514,19 @@ def test_zero_spread_cutoff_is_relative_to_each_cells_magnitude() -> None:
     assert np.isfinite(parameters["scale"][0])
     assert parameters["scale"][0] > 0.0
     assert np.isnan(parameters["scale"][1])
+
+
+def test_constant_nonzero_cell_with_a_partial_calibration_window_is_missing() -> None:
+    """A non-zero constant cell has no spread even when its calibration window is uneven.
+
+    The first ``scale - 1`` accumulations are missing, so the calendar periods they fall in
+    average one fewer calibration year than the others. Those period means then differ by
+    rounding, and the pooled anomalies of a constant cell span only that rounding noise,
+    which must not be mistaken for a spread to fit (the cutoff is scaled by the raw cell).
+    """
+    values = np.full(YEARS * 12, 1.1)
+    values[:3] = np.nan
+
+    result = _spai(values, scale=3)
+
+    assert np.isnan(result).all()
