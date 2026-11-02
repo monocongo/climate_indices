@@ -2241,7 +2241,7 @@ xarray adapter) uses them:
 | GLO probability step of `compute._loglogistic_fit` | `loglogistic::loglogistic_cdf_block` |
 | rank count and Tukey plotting position in the per-period loop of `indices.eddi` | `eddi::tukey_probabilities` |
 | `indices._hastings_inverse_normal` | `eddi::hastings_inverse_normal` |
-| rank count and SEI plotting position in `compute._empirical_fit` | `empirical::plotting_positions` |
+| rank count and SEI plotting position in `compute._empirical_fit` | `empirical::plotting_positions_in_place` |
 | calibration normals and ratios in `indices.percentage_of_normal` | `pnp::pnp_normals`, `pnp::pnp_percentages` |
 | monthly reduction and ratio in `indices.pci` | `pci::pci` |
 | threshold scan and per-run metrics in `runs._identify_runs` | `runs::identify_runs` |
@@ -2324,8 +2324,8 @@ cannot change a count. The calibration-period resolution, the leading-scale-pad
 mask, and the unfolding to the caller's layout stay in Python, as they did.
 
 The empirical distribution has no fit: `k` counts the Calibration Period values
-at or below each value (maximum-tie rank). `empirical::plotting_positions` sorts
-each non-missing calibration column once and uses binary searches for
+at or below each value (maximum-tie rank). `empirical::plotting_positions_in_place`
+sorts each non-missing calibration column once and uses binary searches for
 `p = (1 + k) / (n + 2)`. Signed zeros compare equal, infinities rank normally,
 and a column with fewer than ten valid calibration values produces NaN.
 The binding applies Cephes `ndtri` to the owned result in place for normal output.
@@ -2335,16 +2335,22 @@ An older extension without `empirical_transform` keeps the Python implementation
 The empirical native route has a different peak-memory bound from the Python
 reference's one input-sized float64 work array. For contiguous prepared inputs,
 let `V` be the values' bytes, `C` the calibration sample's bytes, and `Y` its years.
-Beyond caller-owned inputs, the binding needs `2V + C + 8Y` bytes: a values copy,
-a calibration copy, the result, and one reusable sorted column. It copies before
-releasing the GIL to prevent concurrent mutation of caller-owned storage.
-Normal and bounded scaling allocate no second result. Non-contiguous folding
-can also copy up to `V + C` bytes before the binding runs.
-The measured peak RSS increase for the 47-million-value case was 881 MB with a
-20-year calibration sample and 1132 MB with a 60-year one, both within 50 KiB
-of that bound. The Python reference rose by 469 MB and 485 MB on the
-same blocks. These measurements cover `_empirical_fit`, not the full index
-pipeline. See `benchmarks/README.md` for the command and timings.
+Beyond caller-owned inputs, the binding needs `V + C + 8Y` bytes: a values copy
+that doubles as the result, a calibration copy, and one reusable sorted column.
+It copies before releasing the GIL to prevent concurrent mutation of caller-owned
+storage, and it copies into standard layout, so a Fortran-ordered or strided
+input still returns a C-ordered array. The kernel ranks each value of the owned
+copy in place and applies `ndtri` in place for normal output, so the separate
+values-sized result allocation is gone. Bounded scaling allocates no second
+result. Non-contiguous folding can also copy up to `V + C` bytes before the
+binding runs.
+The measured peak RSS increase for the 47-million-value case was 503 MB with a
+20-year calibration sample and 755 MB with a 60-year one, both within 50 KiB of
+that bound. The same blocks rose 881 MB and 1132 MB while the kernel allocated
+its own result. The Python reference rose by 469 MB and 485 MB on the same
+blocks. These measurements cover `_empirical_fit`, not the full index pipeline,
+where a later clipped copy can set the process peak; see `benchmarks/README.md`
+for the command, the timings, and the complete-call rows.
 
 The special functions are line-by-line ports of the Cephes `igam`, `ndtri`,
 `ndtr`, and `lgam` that SciPy 1.17 evaluates, since a generic implementation

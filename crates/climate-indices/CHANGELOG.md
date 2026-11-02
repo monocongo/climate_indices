@@ -15,6 +15,9 @@ The additions preserve the `0.1.0` public API and its Rust 1.85 minimum.
 
 - `gamma::gamma_ks_statistics` computes gamma goodness-of-fit D statistics (#1434).
 - `empirical::plotting_positions` computes SEI plotting positions for signed series (#1435).
+- `empirical::plotting_positions_in_place` writes those positions into a
+  caller-provided mutable view, so a caller can reuse an owned values copy as the
+  result (#1532).
 - `runs::identify_runs` identifies threshold runs and computes per-run metrics (#1436).
 - `compound::resample_metrics` evaluates paired and independence-null monthly
   bootstrap metrics from caller-supplied resample indices (#1437).
