@@ -12,7 +12,6 @@ import pytest
 
 from climate_indices import reliability
 from climate_indices.exceptions import ClimateIndicesWarning, InvalidArgumentError
-from climate_indices.reliability._events import _normalize_events
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests/fixture/reliability/events.json"
@@ -174,6 +173,21 @@ def test_accepted_denominator_types_return_python_float(total: Any) -> None:
     assert result.saifi == pytest.approx(0.2)
 
 
+def test_fraction_denominator_must_be_exact() -> None:
+    events = [record(duration=60.0, customers_interrupted=2**53 + 4)]
+    denominator: Any = Fraction(2**53 + 3, 1)
+    with pytest.raises(InvalidArgumentError) as exc:
+        reliability.reliability_indices(events, total_customers=denominator)
+    assert exc.value.argument_name == "total_customers"
+
+
+def test_none_event_log_is_rejected() -> None:
+    events: Any = None
+    with pytest.raises(InvalidArgumentError) as exc:
+        reliability.reliability_indices(events, total_customers=100)
+    assert exc.value.argument_name == "events"
+
+
 def test_fractional_total_customers_is_accepted() -> None:
     events = [record(duration=60.0, customers_interrupted=20)]
     result = reliability.reliability_indices(events, total_customers=100.5)
@@ -194,7 +208,7 @@ def test_row_order_does_not_change_the_result() -> None:
 
 def test_caidi_identity_seed_matches_the_adr_table() -> None:
     events = json.loads(FIXTURE.read_text())
-    frame = _normalize_events(events, total_customers=1000)
+    frame = reliability.classify_interruptions(events)
     sustained = frame[frame["interruption_type"] == "sustained"]
     customer_minutes = float((sustained["duration"] * sustained["customers_interrupted"]).sum())
     customer_interruptions = sum(int(count) for count in sustained["customers_interrupted"].tolist())
@@ -202,11 +216,11 @@ def test_caidi_identity_seed_matches_the_adr_table() -> None:
     assert result.customer_interruptions == customer_interruptions == 300
     assert customer_minutes == 24000
     assert result.saifi == pytest.approx(0.3)
-    assert (customer_minutes / 1000) / result.saifi == pytest.approx(customer_minutes / customer_interruptions)
+    assert customer_minutes / 1000 == pytest.approx(24.0)
     assert customer_minutes / customer_interruptions == pytest.approx(80.0)
 
 
-@pytest.mark.parametrize("total", [0, -1, np.nan, np.inf, True, "100"])
+@pytest.mark.parametrize("total", [0, -1, np.nan, np.inf, True, "100", np.int64(2**53 + 3), np.uint64(2**53 + 1)])
 def test_invalid_total_customers(total: Any) -> None:
     events = [record()]
     with pytest.raises(InvalidArgumentError) as exc:
@@ -219,6 +233,7 @@ def test_missing_total_customers_names_the_argument() -> None:
     with pytest.raises(InvalidArgumentError) as exc:
         reliability.reliability_indices(events)
     assert exc.value.argument_name == "total_customers"
+    assert "supply the positive average served-customer count" in str(exc.value)
 
 
 @pytest.mark.parametrize("value", ["false", 1, 0, None, [], np.bool_(True)])

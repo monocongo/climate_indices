@@ -54,6 +54,11 @@ def _number(value: object, name: str, *, positive: bool = False) -> float:
         raise _invalid(name, "must be finite and positive" if positive else "must be finite and nonnegative")
     if isinstance(value, (Integral, np.integer)) and result != int(value):
         raise _invalid(name, "cannot be represented exactly as float64")
+    # A Fraction with denominator one is mathematically integral, so it must
+    # also survive the float64 round trip exactly; later bounds (for example
+    # customers_interrupted <= total_customers) compare against it.
+    if getattr(value, "denominator", 1) == 1 and value != result:
+        raise _invalid(name, "cannot be represented exactly as float64")
     return result
 
 
@@ -91,6 +96,8 @@ def _timestamps(values: Sequence[object], name: str) -> pd.DatetimeIndex:
 
 def _event_frame(events: EventTable) -> pd.DataFrame:
     """Return a deep copy with unique, known columns and required fields."""
+    if events is None:
+        raise _invalid("events", "must be a DataFrame, mapping, or sequence of row mappings")
     try:
         frame = pd.DataFrame(events, dtype=object).copy(deep=True)
     except (ValueError, TypeError) as exc:
