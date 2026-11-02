@@ -1,4 +1,4 @@
-"""Independent-implementation tests for log-logistic SPEI against R's SPEI package.
+"""Cross-implementation tests for log-logistic SPEI against R's SPEI package.
 
 These tests compare ``indices.spei()`` with ``Distribution.loglogistic`` against
 the R ``SPEI`` package's ``distribution = "log-Logistic"``, ``fit = "ub-pwm"``

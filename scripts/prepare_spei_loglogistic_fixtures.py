@@ -10,7 +10,7 @@ Runs ``scripts/spei_loglogistic_reference.R`` against the committed nClimDiv
 inputs of three CONUS climate divisions and against a short, highly skewed
 synthetic series, and commits the R ``SPEI`` package's log-logistic
 standardized index (``distribution = "log-Logistic"``, ``fit = "ub-pwm"``) as
-the independent-implementation reference for this library's
+the cross-implementation reference for this library's
 ``indices.Distribution.loglogistic``.
 
 This script must be run manually when refreshing the reference data:
