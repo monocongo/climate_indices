@@ -20,7 +20,7 @@ class Distribution(Enum):
     """
     Enumeration type for the distribution families the fitting-based indices use.
 
-    SPI and SPEI use ``gamma``, ``pearson``, and ``loglogistic``;
+    SPI uses ``gamma`` and ``pearson``; SPEI also uses ``loglogistic``;
     ``standardized_index()`` also accepts ``empirical`` and ``beta``; ``spai()`` uses
     ``t_location_scale``, ``pearson``, and ``normal``.
     """
