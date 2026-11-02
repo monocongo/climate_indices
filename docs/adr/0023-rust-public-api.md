@@ -18,6 +18,8 @@ The amendment itself added no kernel.
 [RUSTUP-13 (#1485)](https://github.com/monocongo/climate_indices/issues/1485)
 implements `aggregation::trailing_sum` and `aggregation::trailing_mean`.
 Callers still select the Timescale and prepare calendars; complete workflows remain outside the crate.
+RUST-ROI-04 ([#1534](https://github.com/monocongo/climate_indices/issues/1534))
+removed the series dispatch: a one-dimensional series now keeps `np.convolve` at every Timescale.
 RUST-ROI-02 ([#1532](https://github.com/monocongo/climate_indices/issues/1532))
 amends decision 1: it adds `empirical::plotting_positions_in_place`, which writes
 the probabilities into a caller-provided `ArrayViewMut2` instead of returning an
@@ -154,7 +156,7 @@ No kernel changes its numerical expressions or operation order.
 This record makes no new measured accuracy claim.
 The RUSTUP-03 amendment changed no numerical code.
 RUSTUP-13 adds independent-window reductions with the existing operation orders, not a running sum.
-Its dispatch retains longer series convolutions and non-C-contiguous Python blocks rather than changing their reduction order.
+Its dispatch retains `np.convolve` for every one-dimensional series and Python for non-C-contiguous blocks rather than changing their reduction order.
 The parity registry, numerical contract, and `benchmarks/README.md` record its separate accuracy and performance measurements.
 
 ## Alternatives considered
