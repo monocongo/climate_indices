@@ -7,12 +7,20 @@ from climate_indices.exceptions import InvalidArgumentError
 from climate_indices.reliability._events import EventTable, _normalize_events
 
 _DURATION_FIELDS = frozenset({"saidi", "customer_minutes_interrupted"})
+_UNSET_DURATION = object()
 
 
-def _comparable(field_name: str, value: object) -> object:
-    """Map an unset NaN duration to 0.0 so legacy three-field results stay comparable."""
+def _comparable(field_name: str, value: object, customer_interruptions: int) -> object:
+    """Normalize an unset NaN duration to match the derived-metric semantics.
+
+    With no customer interruptions, CAIDI is undefined whatever the duration, so
+    an unset NaN duration compares as 0.0 and a legacy three-field result matches
+    an equivalent zero-duration result. With positive interruptions the duration
+    determines CAIDI, so an unset NaN duration maps to a marker that stays
+    distinct from an explicit 0.0.
+    """
     if field_name in _DURATION_FIELDS and isinstance(value, float) and math.isnan(value):
-        return 0.0
+        return 0.0 if customer_interruptions == 0 else _UNSET_DURATION
     return value
 
 
@@ -43,9 +51,10 @@ class ReliabilityResult:
     field defaults to NaN because the original fields cannot determine duration.
     ``reliability_indices()`` always supplies both duration metrics.
 
-    Equality and hashing treat an unset NaN duration as ``0.0``. An omitted
-    duration therefore matches an equivalent zero-duration result, while
-    populated and differing duration metrics remain distinguishable.
+    Equality and hashing treat an unset NaN duration as ``0.0`` only when
+    ``customer_interruptions`` is zero, where CAIDI is undefined whatever the
+    duration. With positive interruptions the NaN duration stays distinct from
+    an explicit ``0.0``, so results with different CAIDI never compare equal.
     """
 
     saifi: float
@@ -70,12 +79,18 @@ class ReliabilityResult:
         if type(other) is not type(self):
             return NotImplemented
         return all(
-            _comparable(field.name, getattr(self, field.name)) == _comparable(field.name, getattr(other, field.name))
+            _comparable(field.name, getattr(self, field.name), self.customer_interruptions)
+            == _comparable(field.name, getattr(other, field.name), other.customer_interruptions)
             for field in fields(self)
         )
 
     def __hash__(self) -> int:
-        return hash(tuple(_comparable(field.name, getattr(self, field.name)) for field in fields(self)))
+        return hash(
+            tuple(
+                _comparable(field.name, getattr(self, field.name), self.customer_interruptions)
+                for field in fields(self)
+            )
+        )
 
 
 def reliability_indices(

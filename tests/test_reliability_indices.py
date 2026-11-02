@@ -60,6 +60,19 @@ def test_legacy_result_equals_equivalent_zero_duration_result() -> None:
     assert hash(legacy) == hash(empty)
 
 
+def test_unset_duration_with_positive_interruptions_is_not_zero_duration() -> None:
+    unset = reliability.ReliabilityResult(saifi=0.1, customer_interruptions=10, outage_count=1)
+    zero = reliability.ReliabilityResult(
+        saifi=0.1, saidi=0.0, customer_interruptions=10, customer_minutes_interrupted=0.0, outage_count=1
+    )
+    assert unset != zero
+    assert hash(unset) != hash(zero)
+    assert math.isnan(unset.caidi)
+    assert unset.undefined_metrics == ("caidi",)
+    assert zero.caidi == 0.0
+    assert zero.undefined_metrics == ()
+
+
 def test_nan_saifi_is_not_normalized() -> None:
     unset_saifi = reliability.ReliabilityResult(math.nan, 0, 0)
     zero_saifi = reliability.ReliabilityResult(0.0, 0, 0)
