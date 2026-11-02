@@ -21,13 +21,18 @@ class ReliabilityResult:
     ``CMI = sum(r_i * N_i)`` accumulator: total customer-minutes from sustained
     events. ``outage_count`` is the number of sustained event rows that
     contributed.
+
+    The original three constructor fields retain their order.
+    If callers omit ``saidi`` or ``customer_minutes_interrupted``, each omitted
+    field defaults to NaN because the original fields cannot determine duration.
+    ``reliability_indices()`` always supplies both duration metrics.
     """
 
     saifi: float
-    saidi: float
     customer_interruptions: int
-    customer_minutes_interrupted: float
     outage_count: int
+    saidi: float = math.nan
+    customer_minutes_interrupted: float = math.nan
 
 
 def reliability_indices(

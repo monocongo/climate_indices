@@ -27,6 +27,21 @@ def record(**changes: object) -> dict[str, object]:
     }
 
 
+@pytest.mark.parametrize(
+    "result",
+    [
+        reliability.ReliabilityResult(0.3, 30, 2),
+        reliability.ReliabilityResult(saifi=0.3, customer_interruptions=30, outage_count=2),
+    ],
+)
+def test_result_preserves_original_constructor(result: reliability.ReliabilityResult) -> None:
+    assert result.saifi == pytest.approx(0.3)
+    assert result.customer_interruptions == 30
+    assert result.outage_count == 2
+    assert np.isnan(result.saidi)
+    assert np.isnan(result.customer_minutes_interrupted)
+
+
 def test_nominal_analytic_case() -> None:
     events = [
         record(event_id="a", duration=60.0, customers_interrupted=20),
@@ -422,8 +437,9 @@ def test_missing_duration_and_end_time_raise_through_reliability_indices() -> No
 
 @pytest.mark.parametrize("duration", [-1, np.nan])
 def test_invalid_duration_raises_through_reliability_indices(duration: float) -> None:
+    events = [record(duration=duration)]
     with pytest.raises(InvalidArgumentError) as exc:
-        reliability.reliability_indices([record(duration=duration)], total_customers=100)
+        reliability.reliability_indices(events, total_customers=100)
     assert exc.value.argument_name == "duration"
 
 
