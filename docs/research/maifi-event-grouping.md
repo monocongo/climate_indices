@@ -158,7 +158,7 @@ Rows 1–9 are constructed. Rows 10–12 use published values with a constructed
 | 1 | Helper; operations at 0:00 and 4:00, 30 s each | One event, `device_operations` 2 |
 | 2 | Operations at 0:00, 4:00, and 8:00 | Two events, {0:00, 4:00} and {8:00} |
 | 3 | 0:00, then 5:00 with zero duration | One event; inclusive boundary |
-| 4 | 0:00, then 5:00 lasting 30 s | One event by start; completion guard fires |
+| 4 | 0:00, then 5:00 lasting 30 s | `InvalidArgumentError`: the start joins the window, but the completion check rejects the group |
 | 5 | Operations at 0:00 and 5:01 | Two events |
 | 6 | 0:00, then 4:50 to 5:20 | Guard fires; no split |
 | 7 | D1 at 0:00, D2 at 1:00, null device at 0:30 and 2:00 | Three events: D1, D2, and the two null rows |
@@ -174,8 +174,8 @@ Rows 1–9 are constructed. Rows 10–12 use published values with a constructed
    and reject unsupported customer-count estimates.
 2. The helper cannot reconstruct sequence boundaries or customer identity from the existing schema.
    Null-device grouping is a library convention, not an IEEE definition.
-3. Implementation must amend ADR-0026 to distinguish the grouping window from the classification threshold.
-   It must also distinguish the event exclusion from the operation metric.
+3. ADR-0026 now distinguishes the grouping window from the classification threshold.
+   It also distinguishes the event exclusion from the operation metric.
 4. The 2022 preview has front matter only ([IEEE 2022 preview, PDF pp. 1–6][ieee-2022]).
    A 2024 panel slide reports no major changes, as a presenter's view ([DRWG 2024, slide 4][drwg-2024]).
    This research does not establish IEEE Std 1366-2022 conformance.

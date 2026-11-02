@@ -186,7 +186,9 @@ unreproducible claim of reproduction.
    operations interrupt different customer counts and accepts equal counts under
    a stated same-customer assumption. It also raises for a group that completes
    after its window or mixes exclusion flags, and it never merges different
-   `device_id` values.
+   `device_id` values. Rows without the column or with null device identifiers
+   group by time with other unknown-device rows. This library convention can
+   merge distinct unknown devices.
 
 5. **Planned outages are included by default, driven by an explicit `planned`
    flag; `exclude_planned` is the opt-in.** Most U.S. reporting includes planned

@@ -283,7 +283,8 @@ the library never regroups a caller's rows. Use `group_momentary_events()` first
 to turn a raw operation log into one row per event.
 `maifi` is the device-operation frequency
 `sum(device_operations_i * N_i) / N_T` over all momentary rows, including excluded
-events, because the IEEE exclusion attaches to the event form only.
+events. This library applies the exclusion to `maifi_e` only.
+Including those operations in `maifi` is a library convention, not a verified IEEE requirement.
 It is `None` when the input has no `device_operations` column or a momentary row
 leaves its operation count unknown, because an operation frequency cannot be
 recovered from an event count. It is `0.0` when the column is supplied and no
