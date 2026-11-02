@@ -165,9 +165,10 @@ records the tolerances, evidence, and known gaps.
 (reliability-event-contract)=
 ### climate_indices.reliability
 
-The reliability package validates and classifies interruption records and computes
-SAIFI, SAIDI, CAIDI, MAIFI_E, and MAIFI from the event records. Availability and
-simulation are not implemented yet.
+The reliability package validates and classifies interruption records, computes
+SAIFI, SAIDI, CAIDI, MAIFI_E, and MAIFI from the event records, and runs a seeded
+Monte Carlo simulation of component failures into the same metric path. Availability
+is not implemented yet.
 [ADR-0026](adr/0026-reliability-module-api-and-conventions.md) fixes the conventions
 for those later tickets.
 Import it with `from climate_indices import reliability`.
@@ -215,7 +216,8 @@ Zero-duration events remain in the table and do not overlap other intervals.
 Invalid fields raise `InvalidArgumentError` from `climate_indices.exceptions`.
 Its `argument_name` names the field, such as `event_id`, `duration`, or `start_time`.
 Unknown columns, including simulation-only `failure_rate`, `repair_time`, and topology edges,
-are rejected. Simulation inputs are not part of this deterministic contract.
+are rejected. Simulation inputs are not part of this deterministic contract; they belong
+to `simulate_reliability()`, which produces the event log the contract consumes.
 The shipped [JSON Schema](https://github.com/monocongo/climate_indices/blob/main/src/climate_indices/reliability/event_schema.json)
 checks JSON record structure. Runtime validation also checks identifier uniqueness,
 calendar validity, timezone awareness, interval consistency, and customer bounds.
@@ -314,7 +316,76 @@ An explicitly sustained zero-duration event with interrupted customers instead g
 The original three result fields retain their order; `maifi_e` and `maifi` follow
 them with defaults, so existing positional calls stay valid.
 If the constructor omits `customer_minutes_interrupted`, CAIDI remains NaN.
-ASAI and the simulation path are not implemented yet.
+ASAI is not implemented yet.
+
+`simulate_reliability(components, *, arrangement, total_customers, horizon_hours,
+n_trials, seed, component_topology=None)` runs a seeded Monte Carlo simulation of
+`components` and returns one `ReliabilityResult` per trial, ordered by trial index.
+Every component starts operational at hour 0. A component fails after an exponential
+wait with its constant `failure_rate` (failures per hour), then recovers after a draw
+from its restoration distribution. All served customers are interrupted whenever the
+system is down, so a trial's SAIDI is its system downtime in minutes. A series system
+is down when any component is down; a parallel system is down only when every
+component is down. The system-down intervals are the union of the component down
+intervals for a series arrangement and their intersection for a parallel
+arrangement; each trial's system-down intervals form an event log that
+`reliability_indices()` consumes, so the simulation uses the validated metric path and
+cannot drift from the metric definitions. System-down intervals are clipped at the
+horizon, so an outage that continues past it contributes only through the horizon.
+
+Each component is a mapping with `component_id` (a non-empty unique string),
+`failure_rate` (nonnegative failures per hour), `repair_time` (positive mean restoration
+time in hours), an optional `repair_distribution` of `"fixed"`, `"exponential"`
+(default), or `"lognormal"`, and `repair_sigma` (a positive log-scale shape, required
+with the lognormal distribution and invalid otherwise). The fixed distribution uses
+`repair_time` as the deterministic duration; the exponential uses it as the mean; the
+lognormal uses it as the mean with log-scale median `repair_time * exp(-repair_sigma**2 / 2)`.
+A zero `failure_rate` component never fails, so it cannot bring a parallel system down.
+
+`total_customers` must be a positive whole count, because every simulated event
+interrupts all of them. `horizon_hours` and `n_trials` must be positive, and a horizon
+shorter than a year is never annualized. `seed` is a required nonnegative integer and
+the only source of randomness; the library holds no module-level generator state, so an
+identical seed and identical arguments reproduce the tuple exactly. Trials are sampled
+in order from one generator, so a shorter run is an exact prefix of a longer run with
+the same seed. Supplying `component_topology` raises `InvalidArgumentError` naming that
+field, because customer connectivity and network topology resolution are deferred
+(ADR-0026). The same exception names any invalid component or envelope field.
+
+The analytic reference is independent of the implementation. For independent
+components that start operational, fail after exponential waits, and recover after an
+exponential repair, the expected system downtime over a horizon is a quadrature of the
+exact two-state availability `P_up(t) = A + (1 - A) * exp(-(rate + repair_rate) * t)`:
+the series expectation integrates `1 - prod(P_up_i(t))` and the parallel expectation
+integrates `prod(1 - P_up_i(t))`. `tests/test_reliability_simulation.py` asserts the
+trial mean lies within three standard errors of that quadrature and that the standard
+error falls at the `1 / sqrt(n)` rate. It also checks that a parallel system's SAIDI
+never exceeds the series case for the same components, and that each restoration
+distribution's realized mean repair time (through CAIDI) matches the requested mean.
+
+```{doctest}
+>>> from climate_indices import reliability
+>>> spec = [{"component_id": "c1", "failure_rate": 0.02, "repair_time": 4.0}]
+>>> runs = reliability.simulate_reliability(
+...     spec, arrangement="series", total_customers=100, horizon_hours=8760.0,
+...     n_trials=3, seed=7)
+>>> len(runs)
+3
+>>> runs == reliability.simulate_reliability(
+...     spec, arrangement="series", total_customers=100, horizon_hours=8760.0,
+...     n_trials=3, seed=7)
+True
+>>> fixed = [{"component_id": "c1", "failure_rate": 0.02, "repair_time": 4.0,
+...           "repair_distribution": "fixed"}]
+>>> series = reliability.simulate_reliability(
+...     fixed, arrangement="series", total_customers=100, horizon_hours=8760.0,
+...     n_trials=10, seed=3)
+>>> parallel = reliability.simulate_reliability(
+...     fixed, arrangement="parallel", total_customers=100, horizon_hours=8760.0,
+...     n_trials=10, seed=3)
+>>> all(a.saidi <= b.saidi for a, b in zip(series, parallel, strict=True))
+True
+```
 
 ```{doctest}
 >>> from climate_indices import reliability

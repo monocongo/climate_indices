@@ -31,7 +31,15 @@ Amended by the [#1341](https://github.com/monocongo/climate_indices/issues/1341)
 review: a grouped row keeps the complete sequence interval, and the optional
 `grouped_momentary_event` field marks an assembled row so its type survives a
 later classification without a contradiction warning.
-Availability (ASAI), simulation, adapters, and the reporting-period inputs remain
+Amended by ENERGY2-9 ([#1343](https://github.com/monocongo/climate_indices/issues/1343)):
+`simulate_reliability()` implements the seeded Monte Carlo path over supplied
+components with series and parallel aggregation, an explicit required seed,
+fixed, exponential, and lognormal restoration distributions, and rejection of
+`component_topology` with `InvalidArgumentError`. Each trial's system-down
+intervals form an event log that `reliability_indices()` consumes. Trials are
+sampled in order from one generator, so a shorter run is an exact prefix of a
+longer run with the same seed.
+Availability (ASAI), adapters, and the reporting-period inputs remain
 unimplemented.
 ENERGY2-8 through ENERGY2-11
 ([#1342](https://github.com/monocongo/climate_indices/issues/1342)–[#1345](https://github.com/monocongo/climate_indices/issues/1345))
