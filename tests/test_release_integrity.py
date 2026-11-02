@@ -201,7 +201,29 @@ def test_required_check_drift_runs_in_a_required_job() -> None:
     """The drift test must block merges even when the optional meta job fails."""
     workflow = (ROOT / UNIT_TESTS_WORKFLOW).read_text(encoding="utf-8")
     assert "lint" in sync_required_checks.REQUIRED_JOBS
-    assert "pytest tests/test_release_integrity.py -k required_check" in _workflow_job(workflow, "lint")
+    assert re.search(
+        r"^[ \t]+run:[ \t]+uv run --no-sync --no-build pytest tests/test_release_integrity\.py -k required_check[ \t]*$",
+        _workflow_job(workflow, "lint"),
+        re.MULTILINE,
+    )
+
+
+def test_required_check_drift_rejects_a_commented_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A commented command does not run the required-check tests."""
+    workflow = tmp_path / UNIT_TESTS_WORKFLOW
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(
+        "jobs:\n"
+        "  lint:\n"
+        "    steps:\n"
+        "      - name: Check required status contexts\n"
+        "        # run: uv run --no-sync --no-build pytest tests/test_release_integrity.py -k required_check\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(sys.modules[__name__], "ROOT", tmp_path)
+
+    with pytest.raises(AssertionError):
+        test_required_check_drift_runs_in_a_required_job()
 
 
 def _expected_badge_url() -> str:
