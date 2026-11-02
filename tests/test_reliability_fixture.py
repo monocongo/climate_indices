@@ -66,3 +66,17 @@ def test_event_schema_requires_a_duration_source() -> None:
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate([row], schema)
     jsonschema.validate([{**row, "end_time": row["start_time"]}], schema)
+
+
+def test_event_schema_requires_one_complete_time_column() -> None:
+    schema = json.loads(SCHEMA.read_text())
+    by_duration = {"event_id": "a", "start_time": "2024-01-01T00:00:00Z", "duration": 1.0, "customers_interrupted": 0}
+    by_end_time = {
+        "event_id": "b",
+        "start_time": "2024-01-01T01:00:00Z",
+        "end_time": "2024-01-01T01:01:00Z",
+        "customers_interrupted": 0,
+    }
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate([by_duration, by_end_time], schema)
+    jsonschema.validate([by_end_time, {**by_end_time, "event_id": "c"}], schema)

@@ -120,6 +120,21 @@ def test_nat_optional_values_are_missing() -> None:
     assert result["planned"].tolist() == [False]
 
 
+def test_mixed_time_columns_are_rejected() -> None:
+    rows = [
+        record(),
+        {
+            "event_id": "b",
+            "start_time": "2024-01-02T00:00:00",
+            "end_time": "2024-01-02T00:20:00",
+            "customers_interrupted": 5,
+        },
+    ]
+    with pytest.raises(InvalidArgumentError) as exc:
+        reliability.classify_interruptions(rows)
+    assert exc.value.argument_name == "duration"
+
+
 def test_explicit_types_are_retained_with_one_warning() -> None:
     with pytest.warns(ClimateIndicesWarning, match="interruption_type") as caught:
         result = reliability.classify_interruptions([record(interruption_type="momentary")])

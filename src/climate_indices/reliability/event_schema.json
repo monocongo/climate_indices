@@ -4,10 +4,13 @@
   "title": "Reliability event table",
   "description": "Deterministic records only. Runtime validation checks identifiers, timestamps, durations, timezone awareness, overlaps, and served-customer bounds.",
   "type": "array",
+  "anyOf": [
+    {"items": {"required": ["duration"]}},
+    {"items": {"required": ["end_time"]}}
+  ],
   "items": {
     "type": "object",
     "required": ["event_id", "start_time", "customers_interrupted"],
-    "anyOf": [{"required": ["end_time"]}, {"required": ["duration"]}],
     "properties": {
       "event_id": {"type": ["string", "integer"]},
       "start_time": {"$ref": "#/$defs/timestamp"},
