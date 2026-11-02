@@ -143,7 +143,8 @@ def _run(years: int, cells: int, pool_window_days: int = 0, verify_native: bool 
         f"span {span[0]}-{span[1]} ({years} years, scale 720 hours, cells {cells if cells else 0}, "
         f"pool_window_days {pool_window_days})"
     )
-    # A short monthly Timescale checks the one-dimensional dispatch cost outside the hourly case.
+    # A short monthly Timescale checks the routing outside the hourly case: the series
+    # keeps np.convolve, the C-contiguous Spatial Block dispatches.
     monthly = np.random.default_rng(1485).uniform(0, 100, size=years * 12)
     for name, values in (
         ("monthly-series", monthly),
@@ -153,7 +154,7 @@ def _run(years: int, cells: int, pool_window_days: int = 0, verify_native: bool 
         def monthly_call(values: np.ndarray = values) -> np.ndarray:
             return compute.sum_to_scale(values, 3)
 
-        warmed = _warm_up(monthly_call, name, {"trailing_sum"}, verify_native)
+        warmed = _warm_up(monthly_call, name, {"trailing_sum"} if values.ndim > 2 else set(), verify_native)
         if warmed.shape != values.shape:
             raise RuntimeError(f"{name}: aggregation returned an unexpected shape")
         if not np.isnan(warmed[:2]).all():

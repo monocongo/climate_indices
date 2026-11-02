@@ -544,7 +544,7 @@ def _aggregation_extremes(values: np.ndarray, scale: int) -> Callable[[], np.nda
 ENTRIES: tuple[Entry, ...] = (
     Entry(
         "aggregation_signed_monthly",
-        MONTHLY,
+        BLOCK,
         compute,
         lambda values: _aggregation_extremes(values, 3),
         frozenset({"trailing_sum"}),
@@ -558,7 +558,7 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         "aggregation_monthly",
-        MONTHLY,
+        BLOCK,
         compute,
         lambda values: lambda: compute.sum_to_scale(values, 3),
         frozenset({"trailing_sum"}),
@@ -723,6 +723,14 @@ def _routing_cases() -> tuple[RoutingCase, ...]:
                 oversized, start, calibration_start, calibration_end, compute.Periodicity.monthly
             ),
             forbidden=frozenset({"pearson_parameters"}),
+        ),
+        RoutingCase(
+            "one_dimensional_series",
+            "a one-dimensional series keeps np.convolve: the kernel's singleton pairwise order differs "
+            "from it and the kernel is slower at every measured length",
+            compute,
+            lambda: compute.sum_to_scale(values, 3),
+            forbidden=frozenset({"trailing_sum"}),
         ),
         RoutingCase(
             "plain_daily_series",

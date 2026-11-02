@@ -280,13 +280,14 @@ def sum_to_scale(
     if (
         native is not None
         and type(scale) is int
+        and values.ndim > 2
         and _native_backend.takes(values)
-        and (values.ndim == 1 and scale < 8 or values.ndim > 2 and values.flags.c_contiguous)
+        and values.flags.c_contiguous
         and 1 < scale <= values.shape[0]
     ):
-        # shortcut: a series from Timescale 8 keeps np.convolve, whose sequential (through 11) and
-        # BLAS-capable dot orders differ from the kernel's pairwise grouping; extend dispatch only
-        # after that order has a parity-preserving port.
+        # shortcut: a one-dimensional series keeps np.convolve, whose sequential (through 11) and
+        # BLAS-capable dot orders differ from the kernel's pairwise grouping, and which is faster at
+        # every measured length. Dispatch only a Spatial Block.
         block = values.reshape(values.shape[0], -1)
         sums: np.ndarray = native.trailing_sum(block, scale)
         return sums.reshape(values.shape)

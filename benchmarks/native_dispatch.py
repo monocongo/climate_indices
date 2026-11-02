@@ -115,8 +115,8 @@ def recording(sink: Any) -> Iterator[None]:
         if scale != 1:
             normalized = np.ma.filled(values.astype(float), np.nan) if np.ma.isMaskedArray(values) else values
             if fallback_reason(normalized) is None:
-                if normalized.ndim == 1 and scale >= 8:
-                    _emit(sink, fallback="trailing_sum: series Timescale >= 8")
+                if normalized.ndim == 1:
+                    _emit(sink, fallback="trailing_sum: one-dimensional series")
                 elif normalized.ndim > 2 and not normalized.flags.c_contiguous:
                     _emit(sink, fallback="trailing_sum: block is not C-contiguous")
         return original_sum(values, scale)
