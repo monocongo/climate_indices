@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import gc
 import importlib.util
 import json
@@ -53,6 +54,176 @@ measure_compound_xarray_memory = _load_script(
     "measure_compound_xarray_memory",
     "scripts/measure_compound_xarray_memory.py",
 )
+
+
+sync_required_checks = _load_script("sync_required_checks", "scripts/sync_required_checks.py")
+
+
+@pytest.mark.parametrize(
+    "old,new",
+    [
+        ("        os: [ubuntu-latest]", "        features: [default]\n        os: [ubuntu-latest]"),
+        (
+            "        python-version: ['3.11', '3.12', '3.13', '3.14']\n        os: [ubuntu-latest]",
+            "        os: [ubuntu-latest]\n        python-version: ['3.11', '3.12', '3.13', '3.14']",
+        ),
+        ("        include:", "        exclude:"),
+        ("      matrix:\n", "      matrix: unsupported\n"),
+        ("            os: macos-latest", "            os: macos-latest\n            features: default"),
+        ("        python-version: ['3.11', '3.12', '3.13', '3.14']", "        python-version: ${{ inputs.pythons }}"),
+        ("    runs-on:", "    name: Python tests\n    runs-on:"),
+        ("    runs-on:", "    if: github.event_name != 'pull_request'\n    runs-on:"),
+        ("    runs-on:", "    needs: test-full\n    runs-on:"),
+    ],
+)
+def test_required_check_parser_rejects_unsupported_jobs(old: str, new: str) -> None:
+    workflow = (ROOT / sync_required_checks.WORKFLOW).read_text(encoding="utf-8")
+    body = sync_required_checks._job_text(workflow, "test")
+    assert old in body
+    changed_body = body.replace(old, new)
+    with pytest.raises(ValueError):
+        sync_required_checks._job_contexts("test", changed_body)
+
+
+@pytest.mark.parametrize("include", [False, True])
+def test_required_check_parser_preserves_matrix_contexts(include: bool) -> None:
+    body = (
+        "    strategy:\n"
+        "      matrix:\n"
+        "        python-version: [\"3.11\", '3.14']\n"
+        "        os: [ubuntu-latest, macos-latest]\n"
+    )
+    expected = {
+        f"test ({python}, {system})" for python in ("3.11", "3.14") for system in ("ubuntu-latest", "macos-latest")
+    }
+    if include:
+        body += "        include:\n          - python-version: '3.12'\n            os: windows-latest\n"
+        expected.add("test (3.12, windows-latest)")
+    body += "\n    steps: []\n"
+    assert sync_required_checks._job_contexts("test", body) == expected
+
+
+@pytest.mark.parametrize("condition", ["always()", "${{ always() }}"])
+def test_required_check_parser_accepts_always(condition: str) -> None:
+    body = f"    if: {condition}\n    needs: test-full\n    steps: []\n"
+    assert sync_required_checks._job_contexts("lint", body) == {"lint"}
+
+
+@pytest.mark.parametrize("job", sorted(sync_required_checks.REQUIRED_JOBS))
+def test_required_check_apply_rejects_missing_job(job: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    declared = [check for check in sync_required_checks.declared_checks() if check.split(" (", 1)[0] != job]
+    monkeypatch.setattr(sync_required_checks, "declared_checks", lambda: declared)
+    api = Mock(side_effect=AssertionError("Invalid input must not reach GitHub"))
+    monkeypatch.setattr(sync_required_checks, "_gh_api", api)
+    assert sync_required_checks.main(["--apply"]) == 1
+    api.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "scenario,expected",
+    [
+        ("report", 0),
+        ("apply", 0),
+        ("mismatch", 1),
+        ("stale", 1),
+        ("changed", 1),
+        ("invalid-json", 1),
+        ("duplicate", 1),
+        ("unsupported", 1),
+    ],
+)
+def test_required_check_sync_write_safeguards(scenario: str, expected: int, monkeypatch: pytest.MonkeyPatch) -> None:
+    script = sync_required_checks
+    declared = script.declared_checks()
+    payload = {"strict": True, "contexts": ["old"], "checks": [{"context": "old", "app_id": script.ACTIONS_APP_ID}]}
+    reads = 0
+    writes: list[tuple[str, dict[str, Any]]] = []
+
+    def api(path: str, repo: str | None, *, method: str | None = None, input_data: Any = None) -> str:
+        nonlocal reads
+        assert repo == "owner/repo"
+        if method == "PATCH":
+            writes.append((path, input_data))
+            return "{}"
+        if "/contents/" in path:
+            if scenario == "invalid-json":
+                return "not json"
+            relative = path.split("/contents/", 1)[1].split("?", 1)[0]
+            content = b"stale" if scenario == "stale" else (ROOT / relative).read_bytes()
+            return json.dumps({"content": base64.b64encode(content).decode()})
+        reads += 1
+        if writes:
+            return json.dumps({"contexts": ["wrong"] if scenario == "mismatch" else declared})
+        return json.dumps({**payload, "strict": False} if scenario == "changed" and reads == 2 else payload)
+
+    monkeypatch.setattr(script, "_gh_api", api)
+    if scenario == "duplicate":
+        monkeypatch.setattr(script, "declared_checks", lambda: declared + declared[:1])
+    if scenario == "unsupported":
+
+        def unsupported() -> set[str]:
+            raise ValueError("unsupported matrix")
+
+        monkeypatch.setattr(script, "workflow_contexts", unsupported)
+    argv = ["--repo", "owner/repo", "--branch", "release/next"]
+    assert script.main(argv + ([] if scenario == "report" else ["--apply"])) == expected
+    if scenario in {"apply", "mismatch"}:
+        assert writes == [
+            (
+                "repos/{owner}/{repo}/branches/release%2Fnext/protection/required_status_checks",
+                {"strict": True, "checks": [{"context": check, "app_id": script.ACTIONS_APP_ID} for check in declared]},
+            )
+        ]
+    else:
+        assert writes == []
+
+
+def test_required_check_api_keeps_arguments_separate(monkeypatch: pytest.MonkeyPatch) -> None:
+    run = Mock(return_value=argparse.Namespace(returncode=0, stdout="{}"))
+    monkeypatch.setattr(sync_required_checks.subprocess, "run", run)
+    endpoint = "repos/{owner}/{repo}/branches/main/protection/required_status_checks"
+    sync_required_checks._gh_api(endpoint, "owner/repo", method="PATCH", input_data={"checks": []})
+    assert run.call_args.args[0] == [
+        "gh",
+        "api",
+        "-X",
+        "PATCH",
+        "--input",
+        "-",
+        "--",
+        "repos/owner/repo/branches/main/protection/required_status_checks",
+    ]
+    assert json.loads(run.call_args.kwargs["input"]) == {"checks": []}
+    run.reset_mock()
+    for repo in ("--hostname=evil", "owner/repo?query", "owner/repo/extra", "owner/repo\n--hostname=evil"):
+        with pytest.raises(ValueError):
+            sync_required_checks._gh_api(endpoint, repo)
+    for path in ("--hostname=evil", "https://example.com/repos/owner/repo", "repos/owner/repo/branches/main"):
+        with pytest.raises(ValueError):
+            sync_required_checks._gh_api(path, None)
+    run.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "branch,encoded",
+    [
+        ("release/next", "release%2Fnext"),
+        ("--hostname=evil", "--hostname%3Devil"),
+        ("main?ref=evil&x=y", "main%3Fref%3Devil%26x%3Dy"),
+        ("main\n--hostname=evil", "main%0A--hostname%3Devil"),
+        ("main; echo bad", "main%3B%20echo%20bad"),
+    ],
+)
+def test_required_check_live_encodes_branch(monkeypatch: pytest.MonkeyPatch, branch: str, encoded: str) -> None:
+    run = Mock(return_value=argparse.Namespace(returncode=0, stdout=json.dumps({"contexts": []})))
+    monkeypatch.setattr(sync_required_checks.subprocess, "run", run)
+    assert sync_required_checks.live_checks(None, branch) == ({"contexts": []}, [])
+    assert run.call_args.args[0] == [
+        "gh",
+        "api",
+        "--",
+        f"repos/{{owner}}/{{repo}}/branches/{encoded}/protection/required_status_checks",
+    ]
 
 
 def test_characterization_output_accepts_only_json_below_design_root(
