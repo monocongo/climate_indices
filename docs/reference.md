@@ -280,14 +280,22 @@ CAIDI is the definitional accumulator ratio `CMI / CI`, which the library guaran
 The identity `CAIDI = SAIDI / SAIFI` is mathematical. Tests bound it within four float64 epsilons for the covered inputs; no general bound or bit-for-bit equality is promised, because SAIDI and SAIFI are rounded separately.
 For example, a six-minute event affecting three customers with `total_customers=1000` gives CAIDI `6.0`.
 The separately rounded ratio `SAIDI / SAIFI` gives `5.999999999999999`.
+
 ASAI (Average Service Availability Index) is the dimensionless fraction
-`1 - (SAIDI / 60) / H`, equivalent to `(N_T * H * 60 - CMI) / (N_T * H * 60)`.
+`1 - (SAIDI / 60) / H` when interruption time does not exceed the reporting exposure.
+Under this condition, it is mathematically equivalent to `(N_T * H * 60 - CMI) / (N_T * H * 60)`.
 Here, `H` is the supplied or derived `period_hours`. ASAI is not a percentage.
+
 Without hours or explicit period bounds, ASAI is None and `undefined_metrics` includes `"asai"`.
 The library never assumes 8760 hours or infers a period from event timestamps.
 With a period and no sustained customer-minutes, ASAI is `1.0`.
+
 If accumulated interruption minutes exceed the reporting exposure, ASAI is NaN and `undefined_metrics` includes `"asai"`.
-Overlapping events remain valid and contribute to the sustained accumulators; the library does not clamp ASAI or discard rows.
+A computed unavailable fraction up to `1 + math.ulp(1.0)` instead gives ASAI `0.0` to allow for rounding.
+Here, `math.ulp(1.0)` is one floating-point step above 1.
+Larger excesses remain undefined; the library does not clamp them to zero.
+Overlapping events remain valid and contribute to the sustained accumulators; the library does not discard rows.
+
 The result records elapsed hours in `period_hours`.
 Bounds do not filter or clip events. Supply the log for the reporting period.
 Partial periods use their exact elapsed hours, without annualization or extrapolation.
@@ -313,7 +321,7 @@ momentary row operates.
 Each restoration-stage row has its own unique `event_id` and counts separately.
 `momentary_outage_count` separately tallies momentary rows, including zero-duration
 and zero-customer rows. It does not group rows or apply `momentary_event_excluded`,
-which affects MAIFI only. It is independent of `exclude_planned`, because that
+which affects MAIFI_E only. It is independent of `exclude_planned`, because that
 filter applies to sustained rows.
 Momentary rows contribute nothing to SAIFI, SAIDI, or CAIDI. Planned sustained interruptions are included by default.
 `exclude_planned=True` removes them and must be a Boolean.
@@ -332,6 +340,7 @@ them with defaults, so existing positional calls stay valid.
 `period_hours` and `momentary_outage_count` follow those with defaults.
 If the constructor omits `customer_minutes_interrupted`, CAIDI remains NaN.
 If the constructor supplies a period but omits SAIDI, ASAI is also NaN.
+If a directly constructed result has a non-positive or non-finite `period_hours`, ASAI is NaN and `undefined_metrics` includes `"asai"`.
 Equality and hashing preserve the legacy duration rules without a period.
 With a period, an unset SAIDI remains distinct from zero because it changes ASAI.
 The simulation path is not implemented yet.

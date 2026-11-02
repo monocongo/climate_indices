@@ -43,14 +43,19 @@ class ReliabilityResult:
     contributed. A step-restored interruption has several rows, so each row
     counts separately. ``momentary_outage_count`` separately tallies momentary
     rows, including zero-duration and zero-customer rows. ``exclude_planned``
-    filters sustained rows only, so it does not change this count. It does not group rows or apply ``momentary_event_excluded``; that
-    flag affects MAIFI only.
+    filters sustained rows only, so it does not change this count. It does not
+    group rows or apply ``momentary_event_excluded``; that flag affects MAIFI_E only.
 
     ``period_hours`` records the supplied or derived elapsed reporting hours.
     ``asai`` is a read-only availability fraction, ``1 - (saidi / 60) / period_hours``.
     Without a period, it is None and ``undefined_metrics`` names ``"asai"``.
-    If interruption time exceeds exposure, ASAI is NaN and remains named as
-    undefined. Overlapping events remain valid; the library does not clamp ASAI.
+
+    A non-positive or non-finite period makes ASAI NaN for a directly constructed
+    result. If interruption time exceeds exposure, ASAI is NaN and remains named
+    as undefined. A computed unavailable fraction up to one floating-point step
+    above 1 instead gives ASAI ``0.0`` to allow for rounding. Larger excesses stay
+    undefined. Overlapping events remain valid.
+
     Bounds do not filter or clip events; callers supply the reporting-period log.
     No Major Event Day filter is applied.
 
@@ -101,10 +106,15 @@ class ReliabilityResult:
 
     @property
     def asai(self) -> float | None:
-        """Return availability, None without hours, or NaN for excess exposure."""
+        """Return availability, None without hours, or NaN for invalid exposure."""
         if self.period_hours is None:
             return None
+        if not math.isfinite(self.period_hours) or self.period_hours <= 0:
+            return math.nan
         unavailable = (self.saidi / 60) / self.period_hours
+        # Allow one floating-point step above full exposure for arithmetic rounding.
+        if 1 < unavailable <= 1 + math.ulp(1.0):
+            return 0.0
         return 1 - unavailable if unavailable <= 1 else math.nan
 
     @property
@@ -180,7 +190,8 @@ def reliability_indices(
         customer-minutes, and zero outages. CAIDI is NaN and ``maifi`` is
         ``None`` without a ``device_operations`` column. ASAI is 1.0 with a
         reporting period, otherwise None. If sustained interruption minutes
-        exceed the reporting exposure, ASAI is NaN, not clamped.
+        exceed the reporting exposure beyond the one-step rounding tolerance,
+        ASAI is NaN, not clamped.
         ``undefined_metrics`` names every undefined derived metric in CAIDI,
         MAIFI, ASAI order, without an additional warning. The result records
         elapsed hours and never annualizes partial periods. No Major Event Day

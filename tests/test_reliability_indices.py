@@ -745,12 +745,28 @@ def test_asai_bounds_and_monotonicity_for_seeded_valid_exposure() -> None:
         assert values == sorted(values, reverse=True)
 
 
-def test_asai_full_exposure_is_zero() -> None:
+@pytest.mark.parametrize("duration, customers", [(60.0, 100), (6.4, 3)])
+def test_asai_full_exposure_is_zero(duration: float, customers: int) -> None:
     result = reliability.reliability_indices(
-        [record(duration=60.0, customers_interrupted=100)], total_customers=100, period_hours=1
+        [record(duration=duration, customers_interrupted=customers)],
+        total_customers=customers,
+        period_hours=duration / 60,
     )
     assert result.asai == 0.0
     assert result.undefined_metrics == ("maifi",)
+
+
+@pytest.mark.parametrize("hours", [0.0, -1.0, math.nan, math.inf, -math.inf])
+def test_direct_result_asai_with_invalid_period_is_undefined(hours: float) -> None:
+    result = reliability.ReliabilityResult(1.0, 1, 1, saidi=60.0, period_hours=hours)
+    assert result.asai is not None and math.isnan(result.asai)
+    assert "asai" in result.undefined_metrics
+
+
+def test_asai_excess_beyond_rounding_tolerance_is_undefined() -> None:
+    result = reliability.ReliabilityResult(1.0, 1, 1, saidi=60 * (1 + 2 * math.ulp(1.0)), period_hours=1)
+    assert result.asai is not None and math.isnan(result.asai)
+    assert "asai" in result.undefined_metrics
 
 
 def test_asai_excess_exposure_is_undefined_not_clamped() -> None:

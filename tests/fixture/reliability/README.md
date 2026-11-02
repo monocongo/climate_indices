@@ -17,4 +17,4 @@ SAIDI 24.0, CAIDI 80.0, and ASAI `1 - (24 / 60) / 24` from the two sustained rec
 The result has 300 customer interruptions, 24,000 customer-minutes, two sustained outages, and no undefined metrics.
 Its `momentary_outage_count` is three, including the final zero-duration row.
 Without a reporting period, ASAI is None and `undefined_metrics` names `asai`.
-The momentary metrics remain checks only until their metric ticket lands.
+The result also reports MAIFI_E 0.3 and MAIFI 0.75 from the momentary records.

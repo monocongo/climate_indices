@@ -36,12 +36,13 @@ Amended by ENERGY2-8 ([#1342](https://github.com/monocongo/climate_indices/issue
 `ReliabilityResult.period_hours` records elapsed hours, and its read-only `asai`
 property computes `1 - (SAIDI / 60) / H` from the shared sustained calculation.
 Without a period, ASAI is None and `undefined_metrics` names `asai`.
-If interruption time exceeds exposure, ASAI is NaN and remains named as undefined;
-overlapping event rows remain valid, without clamping or deduplication.
+If interruption time exceeds exposure, ASAI is NaN and remains named as undefined.
+A computed unavailable fraction up to one floating-point step above 1 instead gives ASAI `0.0` to allow for rounding.
+Larger excesses remain undefined; overlapping event rows remain valid, without clamping or deduplication.
 The existing `outage_count` tallies sustained rows, including separate restoration stages.
 `momentary_outage_count` separately tallies momentary rows; it is independent of
 `exclude_planned`, which filters sustained rows.
-It does not group rows or apply the MAIFI-only `momentary_event_excluded` flag.
+It does not group rows or apply the MAIFI_E-only `momentary_event_excluded` flag.
 Simulation and adapters remain unimplemented.
 ENERGY2-9 through ENERGY2-11
 ([#1343](https://github.com/monocongo/climate_indices/issues/1343)–[#1345](https://github.com/monocongo/climate_indices/issues/1345))
