@@ -34,6 +34,12 @@ class Distribution(Enum):
     #: bounded series is standardized with; see ADR-0024. Supported by
     #: ``standardized_index()`` only.
     beta = "beta"
+    #: Student's t location-scale family, fitted by maximum likelihood to the pooled
+    #: precipitation anomalies of SPAI. Supported by ``spai()`` only.
+    t_location_scale = "t_location_scale"
+    #: The normal distribution, under which SPAI is the pooled anomaly rescaled by its
+    #: pooled calibration mean and standard deviation. Supported by ``spai()`` only.
+    normal = "normal"
 
     @property
     def display_name(self) -> str:
@@ -48,6 +54,8 @@ _DISTRIBUTION_DISPLAY_NAMES = {
     Distribution.loglogistic: "log-logistic",
     Distribution.empirical: "empirical",
     Distribution.beta: "beta",
+    Distribution.t_location_scale: "t location-scale",
+    Distribution.normal: "normal",
 }
 
 

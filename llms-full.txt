@@ -33,6 +33,9 @@ climate-driven energy supply and demand.
   selectable placement of zero accumulations (`zero_handling`)
 - [SPEI](https://climatedataguide.ucar.edu/climate-data/standardized-precipitation-evapotranspiration-index-spei),
   Standardized Precipitation Evapotranspiration Index, utilizing gamma, Pearson Type III, and generalized-logistic (log-logistic) distributions
+- [SPAI](https://doi.org/10.1061/%28ASCE%29HE.1943-5584.0001236), Standardized Precipitation
+  Anomaly Index (Beta), for strongly seasonal, monsoon-dominated precipitation: one t
+  location-scale, Pearson Type III, or normal fit to the pooled precipitation anomalies
 - Standardized index (`indices.standardized_index()`), the SPI fitting pipeline for any
   non-negative series, such as runoff or streamflow for
   [SRI/SSI work](docs/standardized-hydrologic-indices.md)
@@ -352,6 +355,7 @@ Python 3.9 support was dropped in v2.2.0 (August 2025) due to `scipy>=1.15.3` re
 | NumPy array functions (`indices.spi`, `indices.spei`, `indices.pet`, the `fire`, `flood`, `energy`, and `compound` NumPy routes) | **Stable** | No breaking changes in minor versions |
 | xarray index entry points accepting `xr.DataArray` (including Dataset-returning index and diagnostic functions) | **Stable from 3.1.0** | No breaking changes in minor versions |
 | Compound xarray Dataset routes and eager event catalogs | **Beta** | No breaking changes in patch versions |
+| SPAI (`indices.spai` and `climate_indices.spai`, NumPy and `xr.DataArray`) | **Beta** | No breaking changes in patch versions |
 
 **Stable API**: The NumPy computation functions and xarray index APIs follow strict semantic versioning.
 The xarray adapter provides automatic parameter inference, coordinate preservation, CF metadata, and Dask support.
@@ -364,6 +368,7 @@ This promotion changes no numerical algorithm or calendar behavior.
 [ADR-0022](docs/adr/0022-compound-analysis-contracts.md).
 Their interfaces may change in minor releases, but not patch releases.
 They continue to emit `BetaFeatureWarning`; its public imports and warning filters remain supported.
+SPAI is Beta on both its NumPy and DataArray routes and emits `BetaFeatureWarning` once per call.
 Stable DataArray index APIs do not emit this warning.
 
 See `docs/xarray_compatibility.md` for the compatibility matrix, including
@@ -433,6 +438,7 @@ This document records evidence for the library, including the 3.0.0 release arti
 It separates independent external validation, same-author reference reproduction, synthetic characterization, and regression coverage.
 The 3.1.0 additions are the compound-hazard module and the energy family.
 Neither has an adopted product-level external oracle.
+The 3.2.0 addition is SPAI, whose evidence is regression, specification-level, and an estimator cross-check; it also has no adopted external oracle.
 The compound evidence is a same-author published-method reproduction, a synthetic bootstrap characterization, and interface equivalence.
 The energy evidence includes an exact published example, independent-implementation comparisons on synthetic and real-series inputs, and specification-level rows.
 Their scope limits are in the sections below.
@@ -453,6 +459,7 @@ Their scope limits are in the sections below.
 | Index | Status | Tolerance | Evidence | Known gap |
 | --- | --- | --- | --- | --- |
 | SPI | Validated (internal) + qualified external comparison (Pearson III) | Gamma `atol=1e-8`, Pearson `atol=1e-5` in xarray equivalence tests; NOAA NCEI climdiv characterization ceilings documented in `tests/test_ncei_spi_reference.py` | Legacy NumPy fixtures and xarray equivalence tests compare gamma and Pearson outputs across scales. `tests/test_ncei_spi_reference.py` characterizes `indices.spi()` (Pearson III, full-period-of-record calibration) against NOAA NCEI's operational climdiv SPI product for all 344 climate divisions and all 7 published timescales; marked `validation`. | `tests/fixture/ncei_spi/provenance.json` records that NCEI's climate-divisional SPI product's independence from this codebase's lineage could not be confirmed as airtight from public documentation alone (see `docs/research/spi-dataset-survey.md`), and that NCEI's actual calibration behavior is a full/expanding period-of-record window rather than its documented fixed 1931-1990 baseline (Baldwin & Chen 2020). WMO SPI User Guide worked-example extraction remains outstanding (issue #778). |
+| SPAI (`indices.spai`, `climate_indices.spai`) | Regression only; specification-level, with an independent-implementation cross-check for the t location-scale fit and a closed-form check for the normal fit (no external reference dataset adopted) | t location-scale within `atol=1e-3` of `scipy.stats.t.fit` and a log-likelihood no lower (measured 3e-6 on the synthetic seasonal series); `atol=1e-12` against an independent `scipy` normal computation; the t location-scale reference fit's pooled Calibration Period `|mean| <= 0.05` and `|sd - 1| <= 0.05` (measured `<= 0.015` and `<= 0.006` over five seeds); NumPy, eager, and Dask paths equal exactly | `tests/test_spai.py` checks the reference fit's pooled calibration moments, monotonicity in precipitation within each calendar period, one linear map of the anomaly under the normal fit, NaN propagation through the accumulation windows, a constant calendar period (a constant score, never infinite), a calendar period the Calibration Period never observes (NaN), the first `scale - 1` missing values, the two-year Calibration Period floor, an unchanged fit when data outside the Calibration Period changes, daily periodicity, the Pearson-to-normal fallback warning event, `fitting_params` reuse, the rejected distributions and periodicities, and exact agreement between the NumPy, eager xarray, per-cell, and Dask routes. | The comparison against `scipy` is an estimator cross-check and a closed form, not an independent scientific oracle, and its input is synthetic. No published SPAI values are committed: the article is paywalled and the paper's Indian and Arkansas case studies are not reproduced. The pooled calibration moments hold for the t location-scale reference fit only: the pooled anomaly is a scale mixture, so the lighter-tailed Pearson and normal fits reach the `+/-3.09` clip on wet-season values (measured pooled `|sd - 1|` up to 0.07 and 0.11 over five seeds) and their clipped spread falls short of one. The pooled moments hold over the whole Calibration Period only, not within each calendar period. See "SPAI Evidence Classification" and #1480. |
 | SPI zero placement | SEI independent-implementation comparison; SCI estimator cross-check; closed-form and property regression | Zero-placement constants `atol=1e-12`; parameter-matched full series `atol=1e-6`; end-to-end `atol=0.01`; SCI centre-of-mass `atol=0.2` (Weibull-vs-empirical `p0` estimator difference) | `tests/test_zero_handling.py` pins each ADR-0015 mode's normal-scale closed form at `p0 ∈ {0.1, 0.5, 0.9}`, the ideal sample means, and the zero/positive ordering. `tests/test_zero_handling_reference.py` (marked `validation`) compares the modes to committed fixtures generated by R `SEI` 0.2.0 (`std_index(..., lower = 0, cens = "prob" | "normal")`) and R `SCI` 1.0-3 (`p0.center.mass = TRUE`): the SEI zero constants match exactly, the full series matches when run on SEI's fitted shape/rate, and the end-to-end difference is at most 0.0032 (SEI's MLE gamma versus this library's method-of-moments approximation). SCI's committed `p0` estimator is independently produced and its documented `(np+1)/(2(n+1))` placement is compared to the exercised mode. The fixture also asserts its SEI shape/rate differ from this library's own fit, so a self-derived fixture cannot pass. Fixture provenance and tolerances are in `tests/fixture/zero_handling/provenance.json`; regenerate with `scripts/prepare_zero_handling_fixtures.py`. | An all-zero calibration step diverges by design: SEI's censored modes assign their constant without a fit, while this library follows ADR-0015 decision 5 and scores the step's zeros as classic (SEI classic gives `+Inf`). SCI estimates `p0` with the Weibull plotting position `np/(n+1)` and places zeros at `(np+1)/(2(n+1))`, so its constants differ from this library's `np/(2n)` by at most 0.16 in z for this fixture and more for sparser steps; `sci_center_of_mass_probability` records the estimator it uses. |
 | SPEI | Validated (internal) + input-matched cross-implementation comparison (log-logistic, SPEIbase v2.11); gamma/Thornthwaite plausibility check | Gamma `atol=1e-8`, Pearson `atol=1e-5` in xarray equivalence tests; log-logistic like-for-like floors (correlation >= 0.97) in `tests/fixture/speibase_cru_ts/provenance.json`; gamma plausibility floors in `tests/fixture/speibase/provenance.json` | Legacy NumPy fixtures and xarray equivalence tests compare gamma and Pearson outputs across scales. `tests/test_speibase_like_for_like.py` feeds `indices.spei()` the CRU TS 4.09 precipitation and FAO-56 Penman-Monteith PET that SPEIbase v2.11 was computed from, standardizes each 0.5-degree cell with the log-logistic distribution over 1901-2024, averages the per-cell series inside three CONUS climate divisions, and reproduces the CSIC SPEIbase v2.11 grids (correlation 0.9996-0.99999, mean absolute difference 0.003-0.016 across divisions and timescales). `tests/test_speibase_reference.py` retains the earlier gamma/Thornthwaite comparison against grid-cell-mean SPEIbase as a plausibility check. Both are marked `validation`. | The like-for-like comparison removes the PET-method, distribution-family, and combined precipitation/spatial-support confounds of the plausibility check. `climate_indices.lmoments.fit_glo` is a port of the same `lmom` PELGLO routine R `SPEI` uses, so close agreement is expected, not algorithm independence. The small residual is dominated by a PET day-length convention difference: the test uses leap-aware month lengths (matching public SPEIbase `R/functions.R`), while a near-uniform month reproduces the committed v2.11 grids two to four times more closely. The gamma/Thornthwaite comparison remains plausibility only; see "SPEI Plausibility Classification" below. |
 | SPEI log-logistic | Validated (external independent implementation) | Series `atol=1e-6`; GLO parameters `rtol=1e-8`, `atol=1e-6` | `tests/test_spei_loglogistic_reference.py` (marked `validation`) compares `indices.spei()` (`Distribution.loglogistic`) against the R `SPEI` package (`distribution = "log-Logistic"`, `fit = "ub-pwm"`) for the same three CONUS climate divisions at timescales 1/3/6/12, plus a short highly skewed synthetic series whose constant calendar step is unfittable at scale 1. Both sides fit the identical `(P − PET) + 1000` scaled series. | R `SPEI` fits each calendar step with unbiased-PWM L-moments (`TLMoments::PWM` + `lmom::pelglo`), the estimator `lmoments.fit_glo` implements, so the standardized series agree at ~1e-12 and the parameters to ≤~1e-10; the recorded tolerance absorbs cross-platform wobble only. `SPEI` does not clip to `[-3.09, 3.09]`, so the tests exclude the clipped tail and assert the clip separately. See "SPEI Log-Logistic Cross-Implementation" below. |
@@ -485,6 +492,74 @@ Their scope limits are in the sections below.
 | SREPI and standardized demand index (`energy.srepi`, `energy.standardized_demand_index`) | Independent-implementation comparison against R `SEI` 0.2.0; the empirical plotting position, tie rule, and minimum-observation count are fixed to `SEI`'s convention | `scaled_atol=1e-12`, `probability_atol=1e-15`, `normal_atol=1e-12` | `tests/test_energy_sei_reference.py` (marked `validation`) compares the empirical standardization against `SEI` 0.2.0 on the Bloomfield and Brayshaw (2021) German onshore wind capacity-factor series (852 monthly means, 1950-2020, calibration 1981-2010) in two cases and on synthetic capacity, production, demand, and residual arrays in ten cases; it then compares `srepi()` on the capacity, production, and reading cases and `standardized_demand_index()` on the synthetic demand cases. A gamma control is parameter-matched to `SEI`'s MLE values. Fixture provenance, checksums, and session information are in `tests/fixture/energy_sei/`. | The comparison is monthly, so no seasonal-diurnal or hourly calibration is validated against an independent implementation (`#1177` ships with specification tests only); only the two `reading` cases use provider data, so demand, production, and residual coverage is synthetic. The two real-series cases calibrate on 30 values per calendar month, below the 100-value empirical recommendation in `tests/fixture/energy_sei/warnings.txt`, so their probabilities are multiples of 1/32. The gamma control does not validate the library's gamma estimator. No C3S energy-indicator product comparison is committed, the beta distribution has no external reference distribution, and maintainer confirmation of fixture extraction and redistribution remains outstanding. |
 | SRLI and residual load (`energy.srli`, `energy.residual_load`) | Independent-implementation comparison against R `SEI` 0.2.0; specification-level for the subtraction | The same `SEI` tolerances as SREPI | `tests/test_energy_sei_reference.py` (marked `validation`) compares `srli()` against `SEI` on the signed series, `tests/test_energy_srli.py` covers the NumPy contracts and negative retention, and `tests/test_energy_standardized_xarray.py` covers the xarray route and the empirical-only distribution restriction. | The committed residual cases are synthetic `demand - production` arrays, so no energy-system demand, capacity, or dispatch model is validated, and no C3S demand comparison is committed. |
 | Energy-drought events (`energy.energy_drought_events`) | Regression only; specification-level (no external event catalogue adopted) | Hand-enumerated windows and exact integer counts; NumPy, eager, and Dask summaries compared exactly | `tests/test_energy_events.py` checks run metrics and period summaries on SPI, SREPI, and SRLI series, threshold-relative magnitude, missing steps, period label counts, and gridded Dask summaries that keep the time axis in one chunk. `docs/research/energy-oracle-survey.md` records that `SEI`'s event loop is not a missing-value-policy oracle. | No observed event catalogue validates onset, duration, or severity, and the `SEI` magnitude identity is a qualification, not parity. |
+
+## SPAI Evidence Classification
+
+`indices.spai()` and `climate_indices.spai()` were added in 3.2.0 (#1480) and are Beta on
+both their NumPy and DataArray routes.
+
+**Classification: regression and specification level, with an estimator cross-check.**
+No independent SPAI reference dataset is committed, and none was located.
+The Chanda and Maity (2015) article is paywalled, and its abstract does not name the fitted
+distribution.
+The paper's Indian and Arkansas case studies are not reproduced, and no SPAI values from
+any source are pinned.
+
+**Anomaly definition confirmed from the authors' closure.** The implementation computes the
+anomaly as the calendar-period mean subtraction alone, the original paper's Eq. (5). The
+authors' closure reproduces that equation as `y_ij = x_ij - x̄_j` and, in its Eq. (2), gives
+the anomaly series' standard deviation as `sqrt(Σ(x_ij - x̄_j)² / (n·m - 1))`, measuring
+65.3 mm for Gangetic West Bengal against 138.9 mm for the raw series. A divided anomaly
+would be dimensionless and near unit scale, so the original SPAI does not divide by the
+calendar period's standard deviation. The same closure states the design property this
+implementation preserves: "a given anomaly value in both low and high precipitation months
+will produce an identical SPAI value", because one distribution is fitted to all the
+anomalies "rather than 12 monthwise distributions used in case of SPI".
+
+- Chanda, K., & Maity, R., *Closure to "Meteorological Drought Quantification with
+  Standardized Precipitation Anomaly Index..."*, *Journal of Hydrologic Engineering* 21(5),
+  <https://doi.org/10.1061/(ASCE)HE.1943-5584.0001369>.
+- A peer-reviewed open-access application, *Scientific Reports* 15 (2025),
+  <https://doi.org/10.1038/s41598-025-16859-9>, gives the anomaly as `y_ij = x_ij - x̄_j`
+  and states that "no normalization by standard deviation (s_j) occurs here", then fits one
+  t location-scale distribution to the whole anomaly series by maximum likelihood and
+  applies `SPAI = Φ⁻¹[F_t(y_ij | μ, σ, ν)]`.
+- A peer-reviewed application, *Earth and Space Science* (2020),
+  <https://doi.org/10.1029/2020EA001264>, likewise subtracts the long-term mean for each
+  calendar step, then standardizes with an empirical (Weibull plotting-position) CDF.
+
+The t location-scale family is corroborated by the authors themselves: the same closure
+records "t-location scale distribution is a suitable parametric distribution that can
+describe the anomaly series for Indian precipitation (Chanda and Maity 2016)".
+
+**The same authors' later papers instead divide the anomaly by the calendar period's
+standard deviation.** The Hydrological Sciences Journal 2016 paper
+(<https://doi.org/10.1080/02626667.2015.1006232>) defines the anomaly by each calendar
+step's mean and standard deviation and fits one t location-scale distribution to the whole
+anomaly series; their open-access *Meteorological Applications* 2020 paper
+(<https://doi.org/10.1002/met.1881>) gives the anomaly as `(x_i,j - x̄_j) / s_j`, then fits
+an empirical distribution. Those descriptions are the alternative variant; this library
+implements the cited paper's Eq. (5). The difference re-weights the calendar periods, so
+values from the two variants are not interchangeable, and no external reference settles
+which variant a given application used.
+
+What the committed evidence does show:
+
+- The t location-scale parameters match `scipy.stats.t.fit` on a synthetic strongly
+  seasonal series within `atol=1e-3` in the SPAI value (measured 3e-6), with a
+  log-likelihood no lower than scipy's.
+- The normal fit matches an independent `scipy` closed-form computation at `atol=1e-12`,
+  and reduces to the pooled anomaly rescaled by its pooled calibration mean and standard
+  deviation.
+- The t location-scale reference fit's pooled Calibration Period output has
+  `|mean| <= 0.05` and `|sd - 1| <= 0.05` (measured `<= 0.015` and `<= 0.006` over five
+  seeds). The bound does not extend to the Pearson and normal fits, whose clipped spread
+  falls short of one because the pooled anomaly is a scale mixture; it applies to the
+  pooled window only, and no calendar period is promised a unit variance.
+- The NumPy, eager xarray, per-cell, and Dask routes agree exactly.
+
+The estimator cross-check is a property of the implementation, not external validation,
+and its inputs are synthetic.
 
 ## Compound Published-Method Reproduction
 
@@ -1031,6 +1106,7 @@ This includes index and diagnostic functions that return Datasets.
 The promotion changes no numerical algorithm, calendar behavior, or Dask chunk requirement.
 The compound Dataset routes and eager event catalogs remain **Beta** under
 [ADR-0022](docs/adr/0022-compound-analysis-contracts.md) and continue to emit `BetaFeatureWarning`.
+SPAI (`climate_indices.spai()`), added in 3.2.0, is **Beta** on both its NumPy and DataArray routes and emits `BetaFeatureWarning` once per call.
 Its public imports and existing warning filters remain supported.
 See the [API change record](docs/deprecations/api-changes.md#dataarray-index-api-promotion-310)
 for the promotion and warning compatibility details.
@@ -1040,6 +1116,7 @@ for the promotion and warning compatibility details.
 | --- | --- | --- |
 | `DataArray` inputs for SPI | Yes | `tests/test_xarray_equivalence.py` compares 1-D and gridded xarray outputs to NumPy. |
 | `DataArray` inputs for SPEI | Yes | `tests/test_xarray_equivalence.py` compares xarray precipitation/PET inputs to NumPy. |
+| `DataArray` inputs for SPAI | Yes (Beta) | `climate_indices.spai()` (also `climate_indices.indices.spai()` for NumPy) takes the SPI adapter path: temporal parameters are inferred from the time coordinate, a gridded input is packed into `(time, *cells)` blocks, and `time` must be one Dask chunk. Each cell gets its own pooled fit over the anomalies of every calendar period, and every cell's result equals its NumPy series exactly under any spatial chunking. `fitting_params` reaches every block unchanged, so cell-specific parameters are not supported. The output carries `CF_METADATA["spai"]` (or its probability and bounded variants) and no `standard_name`. Each call emits `BetaFeatureWarning`. See `tests/test_spai.py`. |
 | `DataArray` inputs for EDDI | Yes | EDDI wrapper and metadata tests cover the typed public API. |
 | `DataArray` inputs for the generic standardized index | Yes | `climate_indices.standardized_index()` (also `climate_indices.indices.standardized_index()` for NumPy) standardizes a caller-supplied series under the selected distribution's support constraints, so it stamps the neutral `CF_METADATA["standardized_index"]` entry: `long_name` "Standardized index", `units` "1", no `standard_name`. Temporal parameters are inferred from the time coordinate, `aggregation` (`"sum"` or `"mean"`) reaches the fit and is recorded in the output's calculation metadata, and all four distribution families (gamma, Pearson Type III, empirical, beta) stay available. Beta requires source and windowed values in `[0, 1]`. Gamma and Pearson Type III clip negative values to zero by default and reject them with `clip_negatives=False`. Empirical preserves signed values with `clip_negatives=False`. Gridded input is standardized one cell at a time, so every cell matches its own NumPy series exactly, and `fitting_params` reaches every cell unchanged, so cell-specific parameters are not supported. Root re-export, aggregation reporting, and the neutral metadata follow [ADR-0020](docs/adr/0020-standardized-index-public-surface.md). See `tests/test_standardized_index_xarray.py`. |
 | `DataArray` inputs for standardized energy indices | Yes | `energy.srepi()`, `energy.standardized_demand_index()`, and `energy.srli()` take the same adapter path as the generic seam, with their own registry entries. `srepi()` defaults to `aggregation="mean"`, which suits a capacity factor, so accumulated production must pass `aggregation="sum"` explicitly; the demand index and SRLI default to `"sum"`. A DataArray input keeps the NumPy wrapper's distribution restrictions: empirical or beta for SREPI and the demand index, empirical only for the signed SRLI series. See `tests/test_energy_standardized_xarray.py`. |
@@ -5771,6 +5848,38 @@ Multiply by 100 to display a percentage; the library does not apply this convers
 
 The PNP equation and implementation details are in {doc}`algorithm-reference`.
 
+### Standardized Precipitation Anomaly Index (SPAI)
+
+Chanda and Maity (2015) propose SPAI for meteorological drought where precipitation is
+strongly seasonal and periodic, as in monsoon-dominated climates. SPAI standardizes the
+anomalies of precipitation rather than the raw precipitation series: it subtracts each
+calendar period's Calibration Period mean, then fits one distribution to the anomalies
+of every period pooled. The authors compare SPAI with SPI and report that SPAI
+distinguishes the consequences of rainfall shortage or surplus in monsoon and
+non-monsoon months, which SPI does not, on a strongly periodic Indian series and a
+non-periodic Arkansas series.
+
+**When to consider SPAI:**
+
+- Precipitation with a pronounced wet season, where a deficit in the wet season
+  should weigh differently from a deficit in the dry season
+- Comparison with SPI on the same series
+
+**Limitations:**
+
+- Beta (#1480): the interface may change in a minor release
+- Regression-level evidence only; no independent SPAI reference dataset is committed
+  ([VALIDATION.md](https://github.com/monocongo/climate_indices/blob/main/VALIDATION.md))
+- A given anomaly value scores the same in every calendar period, so a deficit that is
+  small in absolute terms does not register as drought. The same authors' later papers
+  divide the anomaly by each calendar period's standard deviation instead; this
+  library follows the original paper's Eq. (5)
+- The symmetric t location-scale and normal fits cannot follow strongly skewed
+  anomalies, such as those of months that rarely rain
+- A calendar period with no calibration value is missing
+
+The SPAI equations and implementation details are in {doc}`algorithm-reference`.
+
 ## Validation Datasets and Methods
 
 ### Reference Datasets
@@ -5952,6 +6061,68 @@ The SPEI computation follows these steps:
 - Requires both precipitation and temperature data
 - More sensitive to warming trends
 - Better represents agricultural drought (crop water stress)
+
+## SPAI computation
+
+The Standardized Precipitation Anomaly Index (Chanda & Maity, 2015) fits **one**
+distribution to the precipitation anomalies of every calendar period pooled, where SPI
+fits one distribution per calendar period. `indices.spai()` and
+`climate_indices.spai()` are Beta (#1480).
+
+1. **Aggregation**: accumulate precipitation over the Timescale exactly as for SPI;
+   the first `scale - 1` values are missing.
+
+2. **Anomaly**: for each calendar period *i* (month, or day of the 366-day year), take
+   the Calibration Period mean *μ*{sub}`i`, then over the whole series
+
+   $$
+   y = P - \mu_i
+   $$
+
+   This is the original paper's Eq. (5), as the authors' closure reproduces it. A
+   period with no valid calibration value has a NaN mean, so its anomalies are
+   missing; a period with a constant calibration value has zero anomalies, never
+   infinite ones. A Calibration Period of fewer than two years is rejected, because it
+   leaves one calibration value per period and therefore every anomaly zero.
+
+3. **Pooled fit**: fit one distribution *F* to each cell's Calibration Period anomaly
+   over every calendar period at once. A cell with fewer than four valid pooled
+   values is missing.
+
+   - **t location-scale** (the reference choice): *F*(*y*) = *T*{sub}`ν`((*y* − *μ*) / *σ*),
+     fitted by maximum likelihood with a vectorized ECME iteration (Liu & Rubin, 1995):
+     EM updates of *μ* and *σ*, one Newton step on log *ν*, each cell stopping at its
+     own convergence (tolerance `1e-6`, at most 200 iterations, 0.2 ≤ *ν* ≤ 10⁴).
+   - **Pearson Type III**: L-moments, as for SPI but with no probability of zero; a
+     cell with invalid L-moments falls back to the normal distribution with a
+     `distribution_fallback` warning event.
+   - **Normal**: maximum likelihood, so SPAI = (*y* − *m*) / *s*, the anomaly rescaled
+     by its pooled calibration mean and standard deviation. With complete calibration
+     data *m* = 0 and *s* is the anomaly's pooled root-mean-square deviation.
+
+   Gamma is not offered, because the anomaly is signed.
+
+4. **Transformation**:
+
+   $$
+   SPAI = \Phi^{-1}\left(F(y)\right)
+   $$
+
+   with *F*(*y*) clipped to [ε, 1 − ε] (machine ε) so the inverse normal is finite,
+   and the default `output_scale="normal"` clipped to [-3.09, 3.09] as for SPI.
+   `"probability"` returns *F*(*y*) and `"bounded"` returns 2*F*(*y*) − 1.
+
+**Key differences from SPI:**
+
+- SPAI is near standard normal over the pooled Calibration Period, not within each
+  calendar period; each period keeps its own anomaly shape. Because the pooled anomaly
+  is a scale mixture, the lighter-tailed Pearson and normal fits reach the ±3.09 clip
+  on wet-season values more often than the heavy-tailed t fit does.
+- A given anomaly value scores the same in a dry and a wet month, so a deficit that is
+  small in absolute terms does not register as drought whatever the month's own spread.
+  That is the published design. The same authors' later papers instead divide each
+  calendar period's anomaly by its own standard deviation, which scales the deficit by
+  the month's variability; this library follows the paper's Eq. (5).
 
 ## PET computation
 
@@ -6344,6 +6515,7 @@ are recorded in
 **SPI and Drought Indices:**
 
 - McKee, T. B., Doesken, N. J., & Kleist, J. (1993). The relationship of drought frequency and duration to time scales. *Proceedings of the 8th Conference on Applied Climatology*, 17-22 January, Anaheim, CA. American Meteorological Society, Boston, MA, 179-184.
+- Chanda, K., & Maity, R. (2015). Meteorological Drought Quantification with Standardized Precipitation Anomaly Index for the Regions with Strongly Seasonal and Periodic Precipitation. *Journal of Hydrologic Engineering*, 20(12), 06015007. <https://doi.org/10.1061/(ASCE)HE.1943-5584.0001236>
 - Vicente-Serrano, S. M., Begueria, S., & Lopez-Moreno, J. I. (2010). A Multiscalar Drought Index Sensitive to Global Warming: The Standardized Precipitation Evapotranspiration Index. *Journal of Climate*, 23(7), 1696-1718. <https://doi.org/10.1175/2009JCLI2909.1>
 
 **Potential Evapotranspiration:**
@@ -6364,6 +6536,7 @@ are recorded in
 **Statistical Methods:**
 
 - Hosking, J. R. M. (1997). *FORTRAN Routines for Use with the Method of L-Moments, Version 3*. IBM Research Report RC20525. IBM Research Division, T. J. Watson Research Center, Yorktown Heights, NY. (Note: Available through various online archives and the R package `lmomco`)
+- Liu, C., & Rubin, D. B. (1995). ML estimation of the t distribution using EM and its extensions, ECM and ECME. *Statistica Sinica*, 5(1), 19-39.
 
 **Additional Resources:**
 
