@@ -48,7 +48,7 @@ class ReliabilityResult:
     customer_minutes_interrupted: float = math.nan
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, ReliabilityResult):
+        if type(other) is not type(self):
             return NotImplemented
         return all(
             _comparable(field.name, getattr(self, field.name)) == _comparable(field.name, getattr(other, field.name))
