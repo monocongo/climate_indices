@@ -81,8 +81,9 @@ def record(**changes: object) -> dict[str, object]:
     ],
 )
 def test_invalid_fields_name_the_argument(changes: dict[str, object], argument: str) -> None:
+    events = [record(**changes)]
     with pytest.raises(InvalidArgumentError) as exc:
-        reliability.classify_interruptions([record(**changes)])
+        reliability.classify_interruptions(events)
     assert exc.value.argument_name == argument
 
 
@@ -93,8 +94,9 @@ def test_missing_and_duplicate_fields() -> None:
         with pytest.raises(InvalidArgumentError) as exc:
             reliability.classify_interruptions([row])
         assert exc.value.argument_name == field
+    duplicate = [record(), record()]
     with pytest.raises(InvalidArgumentError) as exc:
-        reliability.classify_interruptions([record(), record()])
+        reliability.classify_interruptions(duplicate)
     assert exc.value.argument_name == "event_id"
 
 
@@ -136,8 +138,9 @@ def test_mixed_time_columns_are_rejected() -> None:
 
 
 def test_explicit_types_are_retained_with_one_warning() -> None:
+    event = record(interruption_type="momentary")
     with pytest.warns(ClimateIndicesWarning, match="interruption_type") as caught:
-        result = reliability.classify_interruptions([record(interruption_type="momentary")])
+        result = reliability.classify_interruptions([event])
     assert len(caught) == 1
     assert result["interruption_type"].tolist() == ["momentary"]
     result = reliability.classify_interruptions([record(duration=1)], threshold_minutes=0.5)
@@ -146,8 +149,9 @@ def test_explicit_types_are_retained_with_one_warning() -> None:
 
 @pytest.mark.parametrize("value", [0, -1, np.nan, np.inf, True, "5"])
 def test_invalid_threshold(value: Any) -> None:
+    events = [record()]
     with pytest.raises(InvalidArgumentError) as exc:
-        reliability.classify_interruptions([record()], threshold_minutes=value)
+        reliability.classify_interruptions(events, threshold_minutes=value)
     assert exc.value.argument_name == "threshold_minutes"
 
 
@@ -220,21 +224,24 @@ def test_optional_integer_nulls_and_large_counts_keep_exact_values() -> None:
 def test_invalid_served_customer_count(total: Any) -> None:
     from climate_indices.reliability._events import _normalize_events
 
+    events = [record()]
     with pytest.raises(InvalidArgumentError) as exc:
-        _normalize_events([record()], total_customers=total)
+        _normalize_events(events, total_customers=total)
     assert exc.value.argument_name == "total_customers"
 
 
 def test_customer_bound_and_average_served_count() -> None:
     from climate_indices.reliability._events import _normalize_events
 
+    event = [record()]
     with pytest.raises(InvalidArgumentError) as exc:
-        _normalize_events([record()], total_customers=4.5)
+        _normalize_events(event, total_customers=4.5)
     assert exc.value.argument_name == "customers_interrupted"
-    result = _normalize_events([record()], total_customers=5.5)
+    result = _normalize_events(event, total_customers=5.5)
     assert result["customers_interrupted"].tolist() == [5]
+    oversized = [record(customers_interrupted=2**53 + 1)]
     with pytest.raises(InvalidArgumentError) as exc:
-        _normalize_events([record(customers_interrupted=2**53 + 1)], total_customers=2**53)
+        _normalize_events(oversized, total_customers=2**53)
     assert exc.value.argument_name == "customers_interrupted"
 
 
