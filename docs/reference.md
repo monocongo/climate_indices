@@ -166,7 +166,7 @@ records the tolerances, evidence, and known gaps.
 ### climate_indices.reliability
 
 The reliability package validates and classifies interruption records and computes
-SAIFI from sustained interruptions. Duration and momentary metrics, availability,
+SAIFI and SAIDI from sustained interruptions. CAIDI, momentary metrics, availability,
 and simulation are not implemented yet.
 [ADR-0026](adr/0026-reliability-module-api-and-conventions.md) fixes the conventions
 for those later tickets.
@@ -232,12 +232,19 @@ The served-customer validator backs `reliability_indices()`; the reporting-perio
 validator supports later metric tickets. Neither is an additional public function.
 
 `reliability_indices(events, total_customers=None, *, exclude_planned=False, threshold_minutes=5.0)`
-returns a frozen `ReliabilityResult` with `saifi`, `customer_interruptions`, and `outage_count`.
+returns a frozen `ReliabilityResult` with `saifi`, `saidi`,
+`customer_interruptions`, `customer_minutes_interrupted`, and `outage_count`.
 SAIFI is `CI / N_T`, where `CI = sum(N_i)` over sustained interruptions.
 Each sustained event row contributes its own `N_i`, so `CI` is additive across those
 rows: two rows carrying the same customer count contribute twice.
-It is sustained customer interruptions per served customer for the period
-represented by the supplied events and average customer count.
+SAIDI is `CMI / N_T`, where `CMI = sum(r_i * N_i)` over the same sustained rows and
+`r_i` is the duration in minutes. `CMI` is total customer-minutes. SAIDI is
+sustained interruption minutes per served customer for the period represented by
+the supplied events and average customer count. Divide SAIDI by 60 to get
+`SAIDI_hours`, the unit the ASAI relationship consumes in ENERGY2-8; a partial-period
+SAIDI is never annualized.
+The two metrics share one sustained-row mask, so `exclude_planned` and
+`threshold_minutes` have one meaning.
 The function accepts no reporting-period bounds; partial periods are computed
 exactly and are never annualized.
 Momentary rows contribute nothing. Planned sustained interruptions are included by default.
@@ -245,8 +252,9 @@ Momentary rows contribute nothing. Planned sustained interruptions are included 
 `threshold_minutes` follows `classify_interruptions()`.
 `total_customers` is required, positive, and may be fractional; an absent or invalid
 value raises `InvalidArgumentError` naming `total_customers`.
-An empty event log returns SAIFI `0.0`, `customer_interruptions` 0, and `outage_count` 0.
-SAIDI, CAIDI, MAIFI, ASAI, and the simulation path are not implemented yet.
+An empty event log returns SAIFI and SAIDI `0.0`, `customer_interruptions` 0,
+`customer_minutes_interrupted` 0, and `outage_count` 0.
+CAIDI, MAIFI, ASAI, and the simulation path are not implemented yet.
 
 ```{doctest}
 >>> from climate_indices import reliability
@@ -264,10 +272,12 @@ SAIDI, CAIDI, MAIFI, ASAI, and the simulation path are not implemented yet.
 >>> sustained = [{"event_id": "s", "start_time": "2024-01-01T03:00:00Z",
 ...              "duration": 60.0, "customers_interrupted": 30}]
 >>> result = reliability.reliability_indices(sustained, total_customers=100)
->>> result.saifi
+>>> result.saifi, result.saidi
+(0.3, 18.0)
+>>> result.customer_interruptions, result.customer_minutes_interrupted, result.outage_count
+(30, 1800.0, 1)
+>>> result.saidi / 60
 0.3
->>> result.customer_interruptions, result.outage_count
-(30, 1)
 ```
 
 ```{eval-rst}

@@ -10,11 +10,15 @@ and internal served-customer and reporting-period validation are implemented.
 Amended by ENERGY2-4 ([#1338](https://github.com/monocongo/climate_indices/issues/1338)):
 `reliability_indices()` and the frozen `ReliabilityResult` compute SAIFI and the
 shared `CI = sum(N_i)` accumulator from sustained events, with planned outages
-included by default. Duration metrics (SAIDI, CAIDI), momentary metrics
-(MAIFI_E, MAIFI), availability (ASAI), the `CMI` accumulator, grouping,
-simulation, adapters, and the reporting-period inputs remain unimplemented.
-ENERGY2-5 through ENERGY2-11
-([#1339](https://github.com/monocongo/climate_indices/issues/1339)–[#1345](https://github.com/monocongo/climate_indices/issues/1345))
+included by default.
+Amended by ENERGY2-5 ([#1339](https://github.com/monocongo/climate_indices/issues/1339)):
+the same function and result compute SAIDI and the shared
+`CMI = sum(r_i N_i)` accumulator over the same sustained rows, and the
+`SAIDI_hours` conversion is documented for the later ASAI relationship. CAIDI,
+momentary metrics (MAIFI_E, MAIFI), availability (ASAI), grouping, simulation,
+adapters, and the reporting-period inputs remain unimplemented.
+ENERGY2-6 through ENERGY2-11
+([#1340](https://github.com/monocongo/climate_indices/issues/1340)–[#1345](https://github.com/monocongo/climate_indices/issues/1345))
 implement the remaining design. Each decision is amended here as its implementation lands, as
 {doc}`0013-flood-module-api-and-naming` was for flood.
 

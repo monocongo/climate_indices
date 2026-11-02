@@ -1,5 +1,6 @@
 """Reliability metric accumulators over normalized event records (ADR-0026)."""
 
+import math
 from dataclasses import dataclass
 
 from climate_indices.exceptions import InvalidArgumentError
@@ -12,15 +13,20 @@ class ReliabilityResult:
 
     ``saifi`` is sustained customer interruptions per served customer for the
     period represented by the supplied event log and average customer count.
-    Partial periods are computed exactly and are never annualized.
+    ``saidi`` is sustained interruption minutes per served customer for the same
+    period. Partial periods are computed exactly and are never annualized.
     ``customer_interruptions`` is the shared
     ``CI = sum(N_i)`` accumulator: the total customers interrupted by sustained
+    events. ``customer_minutes_interrupted`` is the shared
+    ``CMI = sum(r_i * N_i)`` accumulator: total customer-minutes from sustained
     events. ``outage_count`` is the number of sustained event rows that
     contributed.
     """
 
     saifi: float
+    saidi: float
     customer_interruptions: int
+    customer_minutes_interrupted: float
     outage_count: int
 
 
@@ -31,7 +37,7 @@ def reliability_indices(
     exclude_planned: bool = False,
     threshold_minutes: float = 5.0,
 ) -> ReliabilityResult:
-    """Compute SAIFI over sustained interruptions and the shared CI accumulator.
+    """Compute SAIFI and SAIDI over sustained interruptions and the shared accumulators.
 
     Args:
         events: A DataFrame, column mapping, or sequence of row mappings,
@@ -46,8 +52,9 @@ def reliability_indices(
             momentary.
 
     Returns:
-        A frozen ``ReliabilityResult``. An empty event log returns SAIFI ``0.0``
-        with zero customer interruptions and zero outages.
+        A frozen ``ReliabilityResult``. An empty event log returns SAIFI and
+        SAIDI ``0.0`` with zero customer interruptions, zero customer-minutes,
+        and zero outages.
 
     Raises:
         InvalidArgumentError: ``total_customers`` is absent or invalid,
@@ -70,8 +77,13 @@ def reliability_indices(
     if exclude_planned:
         mask &= ~frame["planned"]
     customer_interruptions = sum(int(count) for count in frame.loc[mask, "customers_interrupted"])
+    products = frame.loc[mask, "duration"] * frame.loc[mask, "customers_interrupted"]
+    # math.fsum keeps the accumulator order-independent, so shuffled rows agree exactly.
+    customer_minutes_interrupted = float(math.fsum(products.tolist()))
     return ReliabilityResult(
         saifi=customer_interruptions / float(total_customers),
+        saidi=customer_minutes_interrupted / float(total_customers),
         customer_interruptions=customer_interruptions,
+        customer_minutes_interrupted=customer_minutes_interrupted,
         outage_count=int(mask.sum()),
     )
