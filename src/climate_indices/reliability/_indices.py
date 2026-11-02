@@ -177,8 +177,11 @@ def reliability_indices(
     if "device_operations" in frame:
         operations = frame.loc[momentary, "device_operations"]
         if not operations.isna().any():
-            contributions = operations * frame.loc[momentary, "customers_interrupted"]
-            maifi = float(math.fsum(contributions.tolist())) / float(total_customers)
+            contributions = (
+                int(count) * int(customers)
+                for count, customers in zip(operations, frame.loc[momentary, "customers_interrupted"], strict=True)
+            )
+            maifi = float(math.fsum(contributions)) / float(total_customers)
     return ReliabilityResult(
         saifi=customer_interruptions / float(total_customers),
         saidi=customer_minutes_interrupted / float(total_customers),

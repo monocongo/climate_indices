@@ -611,6 +611,13 @@ def test_nominal_momentary_event_and_operation_forms() -> None:
     assert result.undefined_metrics == ("caidi",)
 
 
+@pytest.mark.parametrize("operations, customers", [(2**62, 2), (2, 2**62)])
+def test_operation_products_beyond_int64_do_not_overflow(operations: int, customers: int) -> None:
+    row = record(duration=1.0, customers_interrupted=customers, device_operations=operations)
+    result = reliability.reliability_indices([row], total_customers=float(customers))
+    assert result.maifi == float(operations)
+
+
 def test_momentary_event_form_ignores_operations_without_operation_data() -> None:
     rows = [record(event_id="a", duration=1.0, customers_interrupted=15), record(event_id="b", duration=2.0)]
     rows[1]["customers_interrupted"] = 15
