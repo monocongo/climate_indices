@@ -2,10 +2,15 @@
 
 ## Status
 
-Approved for implementation. The design is fixed; no reliability code exists yet.
-ENERGY2-3 through ENERGY2-11
-([#1337](https://github.com/monocongo/climate_indices/issues/1337)–[#1345](https://github.com/monocongo/climate_indices/issues/1345))
-implement it. Each decision is amended here as its implementation lands, as
+Approved for implementation.
+
+Amended by ENERGY2-3 ([#1337](https://github.com/monocongo/climate_indices/issues/1337)):
+event normalization, `classify_interruptions()`, the event JSON Schema,
+and internal served-customer and reporting-period validation are implemented.
+Metric calculations, grouping, simulation, and adapters remain unimplemented.
+ENERGY2-4 through ENERGY2-11
+([#1338](https://github.com/monocongo/climate_indices/issues/1338)–[#1345](https://github.com/monocongo/climate_indices/issues/1345))
+implement the remaining design. Each decision is amended here as its implementation lands, as
 {doc}`0013-flood-module-api-and-naming` was for flood.
 
 The ticket named "ADR-0019", which was free when the epic was written. That
@@ -99,9 +104,10 @@ unreproducible claim of reproduction.
 
    The event record requires `event_id`, `start_time`, `customers_interrupted`,
    and either an `end_time` timestamp or a `duration` in minutes.
-   [#1337](https://github.com/monocongo/climate_indices/issues/1337) defines the
+   [#1337](https://github.com/monocongo/climate_indices/issues/1337) implements the
    full schema and validation rules, including the optional flags in decisions
-   4 and 5.
+   4 and 5. The {ref}`event contract <reliability-event-contract>`
+   documents the shipped classifier and internal validation helpers.
 
    **Six `saifi()`-style scalar functions are rejected.** Each metric is a ratio
    over the same two accumulators, so six functions would recompute the same

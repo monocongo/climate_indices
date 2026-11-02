@@ -1,0 +1,45 @@
+[
+  {
+    "event_id": "sustained-1",
+    "start_time": "2024-01-01T00:00:00Z",
+    "duration": 60.0,
+    "customers_interrupted": 100,
+    "device_operations": 1,
+    "component_ids": ["line-a"]
+  },
+  {
+    "event_id": "sustained-2",
+    "start_time": "2024-01-01T02:00:00Z",
+    "duration": 90.0,
+    "customers_interrupted": 200,
+    "device_operations": 1,
+    "component_ids": ["line-b"]
+  },
+  {
+    "event_id": "momentary-1",
+    "start_time": "2024-01-01T04:00:00Z",
+    "duration": 1.0,
+    "customers_interrupted": 150,
+    "device_id": "recloser-a",
+    "device_operations": 2,
+    "momentary_event_excluded": false
+  },
+  {
+    "event_id": "momentary-2",
+    "start_time": "2024-01-01T05:00:00Z",
+    "duration": 2.0,
+    "customers_interrupted": 150,
+    "device_id": "recloser-b",
+    "device_operations": 3,
+    "momentary_event_excluded": false
+  },
+  {
+    "event_id": "zero-duration",
+    "start_time": "2024-01-01T06:00:00Z",
+    "duration": 0.0,
+    "customers_interrupted": 0,
+    "device_operations": 0,
+    "planned": true,
+    "cause": "synthetic zero-duration check"
+  }
+]

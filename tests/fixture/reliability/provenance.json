@@ -1,0 +1,12 @@
+{
+  "source": "Hand-computed synthetic reliability records from ADR-0026",
+  "url": "https://github.com/monocongo/climate_indices/blob/main/docs/adr/0026-reliability-module-api-and-conventions.md",
+  "download_date": "2026-11-01",
+  "subset_description": "Five synthetic, non-overlapping records: two sustained events, two momentary events, and one zero-duration event. The served-customer count is 1000 and the reporting period is 24 hours.",
+  "checksum_sha256": "ebbc75f371f9a56121225b7804eb5f6c27307c65fb5188d5d11f5d26ad027ded",
+  "fixture_version": "1.0.0",
+  "validation_tolerance": {"rtol": 0, "atol": 0},
+  "citation": "ADR-0026, decision 10. The definition target is IEEE Std 1366-2022; these records are not IEEE source data.",
+  "license": "BSD-3-Clause",
+  "notes": "This fixture provides specification and regression checks, not external validation. The download_date is the fixture creation date; no external dataset was downloaded. Checksum covers events.json bytes only."
+}
