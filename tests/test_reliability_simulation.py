@@ -1,21 +1,13 @@
 """Contract tests for the seeded Monte Carlo reliability simulation (ENERGY2-9, #1343).
 
-The independent reference is not the implementation. For independent components
-that start operational, fail after exponential waits, and recover after a repair
-drawn from the configured distribution, the expected system downtime over a
-horizon is a quadrature of the exact two-state availability ``P_up(t)``:
-
-* a series system is down when any component is down, so its expectation is the
-  union measure ``integral(1 - prod(P_up_i(t)))``;
-* a parallel system is down when every component is down, so its expectation is
-  the intersection measure ``integral(prod(1 - P_up_i(t)))``.
-
-With all served customers interrupted, SAIDI equals that downtime in minutes, so
-the quadrature is an analytic SAIDI expectation. The convergence tolerance is a
-Monte Carlo standard-error band (three standard errors of the trial mean), not an
-arbitrary percentage; a second test checks the standard error falls at the
-``1 / sqrt(n)`` rate. Trials are sampled in order from one generator, so a
-shorter run is an exact prefix of a longer one with the same seed.
+The analytic SAIDI reference uses one initially operational component with
+exponential failures and repairs. Its failure-onset intensity is ``rate * P_up(t)``.
+For each onset, the expected clipped repair duration contributes only if it exceeds
+five minutes. The quadrature therefore measures sustained downtime, not all downtime.
+The convergence tolerance is three standard errors of the trial mean. A separate
+test checks that the standard error falls at the ``1 / sqrt(n)`` rate.
+Trials are sampled in order from one generator, so a shorter run is an exact
+prefix of a longer one with the same seed.
 """
 
 from __future__ import annotations
@@ -30,6 +22,7 @@ from scipy import integrate
 
 from climate_indices import reliability
 from climate_indices.exceptions import InvalidArgumentError
+from climate_indices.reliability import _simulate
 
 HORIZON_HOURS = 8760.0
 TOTAL_CUSTOMERS = 1000
@@ -75,32 +68,23 @@ def _availability(failure_rate: float, mean_repair_hours: float) -> tuple[float,
     return availability, failure_rate + repair_rate
 
 
-def _analytic_downtime_minutes(
-    components: Sequence[Mapping[str, Any]],
-    arrangement: str,
-    horizon_hours: float,
-) -> float:
-    """Quadrature of the exact expected system downtime, in minutes."""
-    states = [_availability(float(spec["failure_rate"]), float(spec["repair_time"])) for spec in components]
+def _analytic_saidi_minutes(failure_rate: float, mean_repair_hours: float, horizon_hours: float) -> float:
+    """Integrate sustained downtime for one component with exponential repairs."""
+    threshold_hours = 5.0 / 60.0
+    if horizon_hours <= threshold_hours:
+        return 0.0
+    steady, approach = _availability(failure_rate, mean_repair_hours)
 
-    def availability_at(component: int, hour: float) -> float:
-        steady, approach = states[component]
-        return steady + (1.0 - steady) * math.exp(-approach * hour)
+    def integrand(hour: float) -> float:
+        up = steady + (1.0 - steady) * math.exp(-approach * hour)
+        remaining = horizon_hours - hour
+        # E[min(repair, remaining) * I(min(repair, remaining) > threshold)].
+        sustained_hours = (threshold_hours + mean_repair_hours) * math.exp(
+            -threshold_hours / mean_repair_hours
+        ) - mean_repair_hours * math.exp(-remaining / mean_repair_hours)
+        return failure_rate * up * sustained_hours
 
-    def union_integrand(hour: float) -> float:
-        up = 1.0
-        for index in range(len(states)):
-            up *= availability_at(index, hour)
-        return 1.0 - up
-
-    def intersection_integrand(hour: float) -> float:
-        down = 1.0
-        for index in range(len(states)):
-            down *= 1.0 - availability_at(index, hour)
-        return down
-
-    integrand = union_integrand if arrangement == "series" else intersection_integrand
-    downtime_hours = float(integrate.quad(integrand, 0.0, horizon_hours, limit=200)[0])
+    downtime_hours = float(integrate.quad(integrand, 0.0, horizon_hours - threshold_hours, limit=200)[0])
     return downtime_hours * 60.0
 
 
@@ -122,16 +106,17 @@ def test_different_seeds_produce_different_results() -> None:
 
 
 def test_seed_is_required() -> None:
+    components = [component()]
     with pytest.raises(TypeError):
         reliability.simulate_reliability(
-            [component()],
+            components,
             arrangement="series",
             total_customers=TOTAL_CUSTOMERS,
             horizon_hours=HORIZON_HOURS,
             n_trials=1,
         )  # type: ignore[call-arg]
     with pytest.raises(InvalidArgumentError) as error:
-        simulate([component()], n_trials=1, seed=None)
+        simulate(components, n_trials=1, seed=None)
     assert error.value.argument_name == "seed"
 
 
@@ -148,15 +133,17 @@ def test_trials_are_ordered_by_trial_index() -> None:
     assert all(isinstance(result, reliability.ReliabilityResult) for result in runs)
 
 
-def test_series_mean_converges_to_analytic_expectation() -> None:
-    components = [component("c1", 0.01, 4.0), component("c2", 0.005, 2.0)]
+@pytest.mark.parametrize("repair_time", [0.05, 4.0])
+@pytest.mark.parametrize("arrangement", ["series", "parallel"])
+def test_mean_converges_to_sustained_analytic_expectation(repair_time: float, arrangement: str) -> None:
+    components = [component("c1", 0.01, repair_time)]
     n_trials = 2000
-    runs = simulate(components, n_trials=n_trials, seed=20240101)
+    runs = simulate(components, arrangement=arrangement, n_trials=n_trials, seed=20240101)
     saidi = np.array([result.saidi for result in runs], dtype=np.float64)
-    analytic = _analytic_downtime_minutes(components, "series", HORIZON_HOURS)
+    analytic = _analytic_saidi_minutes(0.01, repair_time, HORIZON_HOURS)
     # Three standard errors of the trial mean: a ~99.7 percent Monte Carlo band.
     standard_error = float(np.std(saidi, ddof=1) / math.sqrt(n_trials))
-    assert abs(float(np.mean(saidi)) - analytic) <= max(3.0 * standard_error, 5.0)
+    assert abs(float(np.mean(saidi)) - analytic) <= 3.0 * standard_error
 
 
 def test_standard_error_falls_with_trial_count() -> None:
@@ -174,10 +161,61 @@ def test_parallel_system_downtime_does_not_exceed_series() -> None:
     parallel = simulate(components, arrangement="parallel", n_trials=200, seed=5150)
     for series_result, parallel_result in zip(series, parallel, strict=True):
         assert parallel_result.saidi <= series_result.saidi
-        assert parallel_result.customer_interruptions <= series_result.customer_interruptions
-    parallel_analytic = _analytic_downtime_minutes(components, "parallel", HORIZON_HOURS)
-    series_analytic = _analytic_downtime_minutes(components, "series", HORIZON_HOURS)
-    assert parallel_analytic < series_analytic
+
+
+def test_parallel_can_have_more_interruptions_than_series(monkeypatch: pytest.MonkeyPatch) -> None:
+    intervals = {"c1": [(1.0, 10.0)], "c2": [(2.0, 3.0), (4.0, 5.0)]}
+    monkeypatch.setattr(_simulate, "_down_intervals", lambda spec, horizon, rng: intervals[spec.component_id])
+    components = [component("c1"), component("c2")]
+    (series,) = simulate(components, arrangement="series", n_trials=1)
+    (parallel,) = simulate(components, arrangement="parallel", n_trials=1)
+    assert series.saidi == 540.0
+    assert parallel.saidi == 120.0
+    assert series.customer_interruptions == TOTAL_CUSTOMERS
+    assert parallel.customer_interruptions == 2 * TOTAL_CUSTOMERS
+
+
+@pytest.mark.parametrize(
+    ("intervals", "saidi", "momentary_events"),
+    [
+        ([(1.0, 1.05)], 0.0, 1.0),
+        ([(0.0, 5.0 / 60.0)], 0.0, 1.0),
+        ([(1.0, 1.5)], 30.0, 0.0),
+    ],
+)
+def test_simulated_intervals_use_default_classification(
+    monkeypatch: pytest.MonkeyPatch,
+    intervals: list[tuple[float, float]],
+    saidi: float,
+    momentary_events: float,
+) -> None:
+    monkeypatch.setattr(_simulate, "_down_intervals", lambda spec, horizon, rng: intervals)
+    (result,) = simulate([component()], n_trials=1)
+    assert result.saidi == saidi
+    assert result.maifi_e == momentary_events
+    assert result.saifi == (1.0 if saidi > 0.0 else 0.0)
+    assert result.customer_interruptions == (TOTAL_CUSTOMERS if saidi > 0.0 else 0)
+
+
+def test_horizon_clipped_repairs_are_momentary() -> None:
+    spec = component(failure_rate=1000.0, repair_time=1.0, repair_distribution="fixed")
+    (result,) = simulate([spec], n_trials=1, horizon_hours=0.05)
+    assert result.outage_count == 0
+    assert result.maifi_e == 1.0
+    assert result.saidi == 0.0
+    assert result.saifi == 0.0
+    assert result.customer_interruptions == 0
+    assert _analytic_saidi_minutes(1000.0, 1.0, 0.05) == 0.0
+
+
+def test_fixed_three_minute_repairs_are_momentary() -> None:
+    spec = component(failure_rate=1000.0, repair_time=0.05, repair_distribution="fixed")
+    (result,) = simulate([spec], n_trials=1, horizon_hours=1.0)
+    assert result.outage_count == 0
+    assert result.maifi_e > 0.0
+    assert result.saidi == 0.0
+    assert result.saifi == 0.0
+    assert result.customer_interruptions == 0
 
 
 @pytest.mark.parametrize(
@@ -208,8 +246,9 @@ def test_empty_trials_report_defined_zero_metrics() -> None:
 
 
 def test_component_topology_is_rejected_as_deferred() -> None:
+    components = [component()]
     with pytest.raises(InvalidArgumentError) as error:
-        simulate([component()], n_trials=1, component_topology={"c1": ["c2"]})
+        simulate(components, n_trials=1, component_topology={"c1": ["c2"]})
     assert error.value.argument_name == "component_topology"
 
 
@@ -229,8 +268,9 @@ def test_component_topology_is_rejected_as_deferred() -> None:
     ],
 )
 def test_scalar_envelope_validation(changes: dict[str, Any], argument_name: str) -> None:
+    components = [component()]
     with pytest.raises(InvalidArgumentError) as error:
-        simulate([component()], **changes)
+        simulate(components, **changes)
     assert error.value.argument_name == argument_name
 
 
@@ -259,8 +299,9 @@ def test_components_must_be_a_non_empty_sequence_of_unique_specs() -> None:
     with pytest.raises(InvalidArgumentError) as error:
         simulate([], n_trials=1)
     assert error.value.argument_name == "components"
+    components = [component("c1"), component("c1")]
     with pytest.raises(InvalidArgumentError) as error:
-        simulate([component("c1"), component("c1")], n_trials=1)
+        simulate(components, n_trials=1)
     assert error.value.argument_name == "component_id"
 
 

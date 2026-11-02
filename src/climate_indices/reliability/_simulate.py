@@ -46,6 +46,33 @@ def _invalid(name: str, message: str) -> InvalidArgumentError:
     return InvalidArgumentError(f"{name}: {message}", argument_name=name)
 
 
+def _component_spec(spec: Mapping[str, Any], component_id: str) -> _Component:
+    """Validate one component's failure and restoration parameters."""
+    if "failure_rate" not in spec:
+        raise _invalid("failure_rate", "is required")
+    failure_rate = _number(spec["failure_rate"], "failure_rate")
+    if "repair_time" not in spec:
+        raise _invalid("repair_time", "is required")
+    repair_time = _number(spec["repair_time"], "repair_time", positive=True)
+    distribution = spec.get("repair_distribution", "exponential")
+    if distribution not in _REPAIR_DISTRIBUTIONS:
+        raise _invalid("repair_distribution", "must be fixed, exponential, or lognormal")
+    repair_sigma = None
+    if distribution == "lognormal":
+        if "repair_sigma" not in spec:
+            raise _invalid("repair_sigma", "is required for the lognormal distribution")
+        repair_sigma = _number(spec["repair_sigma"], "repair_sigma", positive=True)
+    elif "repair_sigma" in spec:
+        raise _invalid("repair_sigma", "is only valid with the lognormal distribution")
+    return _Component(
+        component_id=component_id,
+        failure_rate=failure_rate,
+        repair_time=repair_time,
+        repair_distribution=str(distribution),
+        repair_sigma=repair_sigma,
+    )
+
+
 def _component_specs(components: object) -> tuple[_Component, ...]:
     """Validate the supplied component mappings into internal specs."""
     if isinstance(components, (str, bytes, Mapping)) or not isinstance(components, Sequence):
@@ -66,31 +93,7 @@ def _component_specs(components: object) -> tuple[_Component, ...]:
         if component_id in identifiers:
             raise _invalid("component_id", "must be unique")
         identifiers.add(component_id)
-        if "failure_rate" not in spec:
-            raise _invalid("failure_rate", "is required")
-        failure_rate = _number(spec["failure_rate"], "failure_rate")
-        if "repair_time" not in spec:
-            raise _invalid("repair_time", "is required")
-        repair_time = _number(spec["repair_time"], "repair_time", positive=True)
-        distribution = spec.get("repair_distribution", "exponential")
-        if distribution not in _REPAIR_DISTRIBUTIONS:
-            raise _invalid("repair_distribution", "must be fixed, exponential, or lognormal")
-        repair_sigma = None
-        if distribution == "lognormal":
-            if "repair_sigma" not in spec:
-                raise _invalid("repair_sigma", "is required for the lognormal distribution")
-            repair_sigma = _number(spec["repair_sigma"], "repair_sigma", positive=True)
-        elif "repair_sigma" in spec:
-            raise _invalid("repair_sigma", "is only valid with the lognormal distribution")
-        specs.append(
-            _Component(
-                component_id=component_id,
-                failure_rate=failure_rate,
-                repair_time=repair_time,
-                repair_distribution=str(distribution),
-                repair_sigma=repair_sigma,
-            )
-        )
+        specs.append(_component_spec(spec, component_id))
     return tuple(specs)
 
 
@@ -115,7 +118,7 @@ def _repair_distribution(spec: _Component) -> Any | None:
 
 def _down_intervals(spec: _Component, horizon_hours: float, rng: np.random.Generator) -> list[tuple[float, float]]:
     """Sample one component's down intervals inside the horizon, in hours."""
-    if spec.failure_rate == 0.0:
+    if spec.failure_rate <= 0.0:
         return []
     up_time = stats.expon(scale=1.0 / spec.failure_rate)
     repair = _repair_distribution(spec)
@@ -211,13 +214,15 @@ def simulate_reliability(
     Every component starts operational at hour 0. A component fails after an
     exponential wait with its constant ``failure_rate``, then recovers after a
     draw from its restoration distribution. All served customers are interrupted
-    whenever the system is down, so a trial's SAIDI is its system downtime in
-    minutes. A series system is down when any component is down; a parallel
-    system is down only when every component is down. Each trial's system-down
+    whenever the system is down. SAIDI counts only system-down intervals longer
+    than five minutes; intervals of five minutes or less contribute to MAIFI_E,
+    not SAIDI, SAIFI, or customer interruptions. A series system is down when
+    any component is down. A parallel system is down only when every component
+    is down. Each trial's system-down
     intervals form an event log that :func:`reliability_indices` consumes, so the
     simulation uses the validated metric path and definition. System-down
     intervals are clipped at the horizon, so an outage that continues beyond it
-    contributes only through the horizon.
+    contributes only through the horizon. Classification uses the clipped duration.
 
     Components are mappings with these fields:
 

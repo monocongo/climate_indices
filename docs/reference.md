@@ -324,14 +324,17 @@ n_trials, seed, component_topology=None)` runs a seeded Monte Carlo simulation o
 Every component starts operational at hour 0. A component fails after an exponential
 wait with its constant `failure_rate` (failures per hour), then recovers after a draw
 from its restoration distribution. All served customers are interrupted whenever the
-system is down, so a trial's SAIDI is its system downtime in minutes. A series system
-is down when any component is down; a parallel system is down only when every
-component is down. The system-down intervals are the union of the component down
+system is down. SAIDI counts only system-down intervals longer than five minutes.
+Intervals of five minutes or less contribute to MAIFI_E, not SAIDI, SAIFI, or
+customer interruptions. A series system is down when any component is down.
+A parallel system is down only when every component is down.
+The system-down intervals are the union of the component down
 intervals for a series arrangement and their intersection for a parallel
 arrangement; each trial's system-down intervals form an event log that
 `reliability_indices()` consumes, so the simulation uses the validated metric path and
 cannot drift from the metric definitions. System-down intervals are clipped at the
 horizon, so an outage that continues past it contributes only through the horizon.
+The classifier uses the clipped duration.
 
 Each component is a mapping with `component_id` (a non-empty unique string),
 `failure_rate` (nonnegative failures per hour), `repair_time` (positive mean restoration
@@ -352,16 +355,25 @@ the same seed. Supplying `component_topology` raises `InvalidArgumentError` nami
 field, because customer connectivity and network topology resolution are deferred
 (ADR-0026). The same exception names any invalid component or envelope field.
 
-The analytic reference is independent of the implementation. For independent
-components that start operational, fail after exponential waits, and recover after an
-exponential repair, the expected system downtime over a horizon is a quadrature of the
-exact two-state availability `P_up(t) = A + (1 - A) * exp(-(rate + repair_rate) * t)`:
-the series expectation integrates `1 - prod(P_up_i(t))` and the parallel expectation
-integrates `prod(1 - P_up_i(t))`. `tests/test_reliability_simulation.py` asserts the
-trial mean lies within three standard errors of that quadrature and that the standard
-error falls at the `1 / sqrt(n)` rate. It also checks that a parallel system's SAIDI
-never exceeds the series case for the same components, and that each restoration
-distribution's realized mean repair time (through CAIDI) matches the requested mean.
+The analytic SAIDI reference uses one initially operational component with exponential
+failures and repairs. Its availability is
+`P_up(t) = A + (1 - A) * exp(-(rate + repair_rate) * t)`, where
+`A = repair_rate / (rate + repair_rate)`. The failure-onset intensity is
+`rate * P_up(t)`. For an onset at `t`, let `R = horizon_hours - t`,
+`m = repair_time`, and `d = 5 / 60` hours. When `R > d`, the expected sustained
+contribution is `(d + m) * exp(-d / m) - m * exp(-R / m)` hours.
+When `R <= d`, the contribution is zero. Integrating the onset intensity times
+this contribution gives expected SAIDI after conversion to minutes.
+This excludes momentary downtime, unlike an integral of all system downtime.
+
+`tests/test_reliability_simulation.py` checks this independent analytic expectation
+within three standard errors, with mean repairs above and below five minutes.
+A separate test checks that the standard error falls at the `1 / sqrt(n)` rate.
+For multiple components, the tests check that parallel SAIDI never exceeds series
+SAIDI for identical component histories. Interruption counts have no such ordering:
+one long series outage can contain multiple separate parallel outages.
+The tests also check each restoration distribution's realized mean through CAIDI
+for long mean repairs, with a three-percent tolerance.
 
 ```{doctest}
 >>> from climate_indices import reliability
@@ -376,6 +388,8 @@ distribution's realized mean repair time (through CAIDI) matches the requested m
 ...     n_trials=3, seed=7)
 True
 >>> fixed = [{"component_id": "c1", "failure_rate": 0.02, "repair_time": 4.0,
+...           "repair_distribution": "fixed"},
+...          {"component_id": "c2", "failure_rate": 0.01, "repair_time": 2.0,
 ...           "repair_distribution": "fixed"}]
 >>> series = reliability.simulate_reliability(
 ...     fixed, arrangement="series", total_customers=100, horizon_hours=8760.0,
@@ -383,7 +397,7 @@ True
 >>> parallel = reliability.simulate_reliability(
 ...     fixed, arrangement="parallel", total_customers=100, horizon_hours=8760.0,
 ...     n_trials=10, seed=3)
->>> all(a.saidi <= b.saidi for a, b in zip(series, parallel, strict=True))
+>>> all(p.saidi <= s.saidi for s, p in zip(series, parallel, strict=True))
 True
 ```
 
