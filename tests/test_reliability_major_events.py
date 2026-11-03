@@ -178,17 +178,20 @@ def test_history_ending_on_a_leap_day() -> None:
     )
     assert (accepted.history_start, accepted.history_end) == (date(2019, 3, 1), end)
     reject = pd.date_range("2019-02-28", "2024-02-29", freq="D")
+    too_long = pd.Series([1.0] * len(reject), index=reject)
     with pytest.raises(InvalidArgumentError) as error:
-        reliability.major_event_day_threshold(pd.Series([1.0] * len(reject), index=reject))
+        reliability.major_event_day_threshold(too_long)
     assert error.value.argument_name == "daily_saidi"
 
 
 def test_out_of_range_dates_are_rejected() -> None:
+    microsecond_days = pd.Series([1.0, 2.0, 3.0], index=pd.date_range("3000-01-01", periods=3))
     with pytest.raises(InvalidArgumentError) as error:
-        reliability.major_event_day_threshold(pd.Series([1.0, 2.0, 3.0], index=pd.date_range("3000-01-01", periods=3)))
+        reliability.major_event_day_threshold(microsecond_days)
     assert error.value.argument_name == "daily_saidi"
+    object_days = pd.Series([1.0, 2.0], index=[date(3000, 1, 1), date(3000, 1, 2)])
     with pytest.raises(InvalidArgumentError) as error:
-        reliability.major_event_day_threshold(pd.Series([1.0, 2.0], index=[date(3000, 1, 1), date(3000, 1, 2)]))
+        reliability.major_event_day_threshold(object_days)
     assert error.value.argument_name == "daily_saidi"
 
 
@@ -250,19 +253,17 @@ def test_timezone_aware_history_assigns_local_calendar_days() -> None:
 )
 def test_event_timezone_awareness_must_match_the_history(history_tz: str | None, start_time: str) -> None:
     med = reliability.major_event_day_threshold(history([1.0, 2.0], start="2023-12-30", tz=history_tz))
+    events = [event("a", start_time, 60.0, 1)]
     with pytest.raises(InvalidArgumentError) as error:
-        reliability.reliability_indices(
-            [event("a", start_time, 60.0, 1)], total_customers=100, major_event_threshold=med
-        )
+        reliability.reliability_indices(events, total_customers=100, major_event_threshold=med)
     assert error.value.argument_name == "start_time"
 
 
 @pytest.mark.parametrize("start_time", ["2023-12-31T23:59:00", "2023-06-01T00:00:00"])
 def test_events_must_follow_the_threshold_history(start_time: str) -> None:
+    events = [event("a", start_time, 60.0, 1)]
     with pytest.raises(InvalidArgumentError) as error:
-        reliability.reliability_indices(
-            [event("a", start_time, 60.0, 1)], total_customers=100, major_event_threshold=threshold(10.0)
-        )
+        reliability.reliability_indices(events, total_customers=100, major_event_threshold=threshold(10.0))
     assert error.value.argument_name == "start_time"
 
 
@@ -290,10 +291,9 @@ def test_major_event_threshold_must_be_a_threshold_object(value: Any) -> None:
 def test_directly_constructed_threshold_is_validated(changes: dict[str, object]) -> None:
     fields: dict[str, Any] = {"t_med": 10.0, "alpha": 0.0, "beta": 0.0, "history_start": date(2023, 1, 1)}
     fields.update({"history_end": date(2023, 12, 31), "positive_days": 2, **changes})
+    med = reliability.MajorEventDayThreshold(**fields)
     with pytest.raises(InvalidArgumentError) as error:
-        reliability.reliability_indices(
-            [], total_customers=100, major_event_threshold=reliability.MajorEventDayThreshold(**fields)
-        )
+        reliability.reliability_indices([], total_customers=100, major_event_threshold=med)
     assert error.value.argument_name == "major_event_threshold"
 
 

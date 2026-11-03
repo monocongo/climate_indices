@@ -59,6 +59,30 @@ def _calendar(labels: pd.Index) -> pd.DatetimeIndex:
     return index
 
 
+def _ordered_days(labels: pd.DatetimeIndex) -> tuple[np.ndarray, date, date]:
+    """Sort the history's day labels, and return their order and first and last days."""
+    # Local wall-clock nanoseconds: midnight is a whole number of days since the epoch.
+    try:
+        wall = (labels.tz_localize(None) if labels.tz is not None else labels).as_unit("ns").asi8
+    except (ValueError, OverflowError) as exc:
+        raise _invalid("daily_saidi", "dates must fit datetime64[ns]") from exc
+    order = np.argsort(wall, kind="stable")
+    wall = wall[order]
+    if (wall % _DAY_NS != 0).any():
+        raise _invalid("daily_saidi", "must label calendar days at local midnight")
+    if (np.diff(wall) == 0).any():
+        raise _invalid("daily_saidi", "must contain one value per calendar day")
+    if (np.diff(wall) != _DAY_NS).any():
+        raise _invalid("daily_saidi", "must contain every calendar day; an unknown day is not a zero day")
+    first = _EPOCH + timedelta(days=int(wall[0]) // _DAY_NS) if len(wall) else _EPOCH
+    last = _EPOCH + timedelta(days=int(wall[-1]) // _DAY_NS) if len(wall) else _EPOCH
+    # Five years before February 29 is February 28; that year is never a leap year.
+    five_years_back = last.replace(year=last.year - 5, day=28 if (last.month, last.day) == (2, 29) else last.day)
+    if len(wall) and first <= five_years_back:
+        raise _invalid("daily_saidi", "must not exceed five years")
+    return order, first, last
+
+
 def major_event_day_threshold(daily_saidi: pd.Series | Mapping[Any, object]) -> MajorEventDayThreshold:
     """Fit the IEEE 1366 Major Event Day threshold to a daily-SAIDI history.
 
@@ -100,25 +124,7 @@ def major_event_day_threshold(daily_saidi: pd.Series | Mapping[Any, object]) -> 
     except (ValueError, TypeError) as exc:
         raise _invalid("daily_saidi", "must be a Series or mapping indexed by calendar dates") from exc
     labels = _calendar(series.index)
-    # Local wall-clock nanoseconds: midnight is a whole number of days since the epoch.
-    try:
-        wall = (labels.tz_localize(None) if labels.tz is not None else labels).as_unit("ns").asi8
-    except (ValueError, OverflowError) as exc:
-        raise _invalid("daily_saidi", "dates must fit datetime64[ns]") from exc
-    order = np.argsort(wall, kind="stable")
-    wall = wall[order]
-    if (wall % _DAY_NS != 0).any():
-        raise _invalid("daily_saidi", "must label calendar days at local midnight")
-    if (np.diff(wall) == 0).any():
-        raise _invalid("daily_saidi", "must contain one value per calendar day")
-    if (np.diff(wall) != _DAY_NS).any():
-        raise _invalid("daily_saidi", "must contain every calendar day; an unknown day is not a zero day")
-    first = _EPOCH + timedelta(days=int(wall[0]) // _DAY_NS) if len(wall) else _EPOCH
-    last = _EPOCH + timedelta(days=int(wall[-1]) // _DAY_NS) if len(wall) else _EPOCH
-    # Five years before February 29 is February 28; that year is never a leap year.
-    five_years_back = last.replace(year=last.year - 5, day=28 if (last.month, last.day) == (2, 29) else last.day)
-    if len(wall) and first <= five_years_back:
-        raise _invalid("daily_saidi", "must not exceed five years")
+    order, first, last = _ordered_days(labels)
     values = []
     for value in series.iloc[order].tolist():
         if _missing(value):
