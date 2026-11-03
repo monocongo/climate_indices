@@ -32,7 +32,7 @@ for the full release history.
 | Component | Version | Support |
 | --- | --- | --- |
 | `climate_indices` (Python) | {sub-ref}`release` | Python 3.11–3.14 |
-| `climate-indices` (Rust crate) | 0.1.0 | Rust 1.85 or later |
+| `climate-indices` (Rust crate) | 0.1.1 | Rust 1.85 or later |
 
 This documentation uses the Python version from `pyproject.toml`, shown above.
 See [PyPI](https://pypi.org/project/climate-indices/) for published Python releases.

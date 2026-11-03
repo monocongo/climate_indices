@@ -5,6 +5,115 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] - unreleased
+
+See the [release notes](docs/release-notes-3.2.0.md) and
+[migration guidance](docs/deprecations/api-changes.md#upgrade-considerations-for-320).
+The standalone Rust crate `climate-indices` published version `0.1.1` to crates.io on
+2026-11-03, ahead of this release, on its own track and from its own tag (see
+**Rust crate 0.1.1** below).
+
+### Added
+
+- **Power-system reliability indices (`climate_indices.reliability`)**: a public
+  namespace, imported with `from climate_indices import reliability` and not re-exported
+  at the package root. `classify_interruptions()` validates interruption event records and
+  classifies each as sustained or momentary at an explicit threshold (5 minutes by
+  default; exactly 5:00 is momentary). `reliability_indices()` returns a frozen
+  `ReliabilityResult` with SAIFI, SAIDI, CAIDI, MAIFI_E, MAIFI, ASAI, the shared
+  customer-interruption (`CI`) and customer-minute (`CMI`) accumulators, and separate
+  sustained and momentary outage counts. A metric with no defined value is NaN or
+  `None` and is named in `undefined_metrics`; none is replaced by zero. Durations are
+  minutes, a partial period is never annualized, and planned outages count unless
+  `exclude_planned=True`, which removes planned sustained rows only; planned momentary
+  rows still contribute to MAIFI, MAIFI_E, and the momentary count. `group_momentary_events()` collapses raw momentary operations
+  into events, and `simulate_reliability()` runs a seeded Monte Carlo series or parallel
+  component simulation into the same deterministic metric path. `OverlappingEventsWarning`
+  is new in `climate_indices.exceptions`; overlapping events stay valid and are never
+  discarded. ADR-0026 fixes the conventions; the documentation adds a reference section, an
+  algorithm reference, an application page, and the `notebooks/reliability_demo.ipynb`
+  notebook. Evidence is specification and regression level plus 20 EIA aggregate rows
+  (2015–2024) for relationship and bounds checks; no event-level oracle exists for the
+  sustained metrics or ASAI, and `VALIDATION.md` states the limits (#1335–#1345).
+- **Major Event Day detection for reliability indices**: `major_event_day_threshold()`
+  fits the IEEE 1366 threshold `T_MED = exp(alpha + 2.5*beta)` to a validated daily-SAIDI
+  history, and `reliability_indices(..., major_event_threshold=...)` opts in to removing
+  every event that starts on a major day before all metrics are computed. The default
+  applies no filter, and the result records the threshold, its history interval, and the
+  excluded days. The rules were verified against IEEE Std 1366-2012 clause 3.5; the 2022
+  edition was not available, and the sample standard deviation (`n - 1`) and the unchanged
+  ASAI exposure after filtering are project conventions (#1527).
+- **SPAI, the Standardized Precipitation Anomaly Index** (Chanda and Maity, 2015):
+  `indices.spai()` (NumPy) and `climate_indices.spai()` (NumPy and `xr.DataArray`). SPAI
+  subtracts each calendar period's Calibration Period mean and fits one distribution to
+  every period's anomalies pooled, where SPI fits one distribution per calendar period.
+  `Distribution.t_location_scale` (the reference choice), `Distribution.pearson` (which
+  falls back to normal with a `distribution_fallback` warning event), and
+  `Distribution.normal` are accepted. `t_location_scale` and `normal` are new
+  `Distribution` members, and every other index rejects them with `InvalidArgumentError`.
+  `output_scale` selects `"normal"`, `"probability"`, or
+  `"bounded"` output with matching CF metadata, gridded Dask input is fitted one spatial
+  block at a time (`time` in a single chunk), and there is no CLI flag. Both routes are
+  **Beta** and emit `BetaFeatureWarning` once per call. Evidence is regression and
+  specification level with an estimator cross-check; no SPAI reference values were
+  available, and the article body was not readable, so the anomaly definition rests on the
+  authors' closure (#1480).
+- **Native-dispatch verification** (`benchmarks/native_dispatch.py`): records the kernels
+  that actually ran for NumPy, xarray, Dask threads and processes, and the CLI pool under
+  the default and all-ignore caller policies, and names the first shared gate that made a
+  call decline. `profile_hourly_srepi.py --backend native` now raises when the expected
+  kernels did not run, instead of reporting a Python timing under the native label (#1531).
+
+### Changed
+
+- **Rust crate 0.1.1**: the standalone `climate-indices` crate published `0.1.1` to
+  [crates.io](https://crates.io/crates/climate-indices/0.1.1) on 2026-11-03 from the tag
+  `climate-indices-v0.1.1`, independent of the Python distribution (ADR-0021). Its
+  kernels are the ones the Python extension gained in 3.1.1: gamma goodness-of-fit D
+  statistics, empirical plotting positions, Run Theory, compound resample metrics, the
+  CFFWIS behavior indices and overwinter Drought Code, trailing sums and means, and the
+  KBDI fast path. The one public API added since 3.1.1 is
+  `empirical::plotting_positions_in_place` (#1532). `0.1.1` keeps the `0.1.0` public API
+  and its Rust 1.85 minimum, and `cargo semver-checks` accepts it against `0.1.0`. Python
+  wheels are built from the workspace crate, so this release does not install or depend
+  on the crates.io package. See the
+  [crate changelog](crates/climate-indices/CHANGELOG.md) (#1442, #1547).
+- **Lower peak memory in the native empirical transform**: the binding writes plotting
+  positions into the values copy it already holds and applies `ndtri` in place, so the
+  peak-RSS bound for contiguous prepared input falls from `2V + C + 8Y` to `V + C + 8Y`
+  bytes. On a 47,185,920-value block the Rust peak fell by exactly one values buffer
+  (360 MiB) and the median time did not rise. A complete 20-year `standardized_index()`
+  call keeps its peak, because a later `np.clip` copy in the Python pipeline sets it.
+  The parity contract and the Python fallback are unchanged (#1532).
+- **One-dimensional aggregation stays on `np.convolve`**: `compute.sum_to_scale` no longer
+  sends a series to the Rust `trailing_sum` kernel at Timescales 2–7, where the kernel
+  measured 1.9 to 5.3 times slower at every tested length. Only a plain, aligned, float64,
+  C-contiguous Spatial Block dispatches. Results are unchanged, and this narrows the
+  trailing-sum dispatch described under 3.1.1 (#1534).
+- **CLI worker pool forwards the NumPy error policy**: each pool worker now applies the
+  caller's `np.geterr()` policy, so eligible calls in a CLI run under an all-ignore policy
+  can reach the Rust kernels, as in-process calls can. A missing extension, a
+  warning-as-error filter, or context-aware warnings still keep the Python path. Default callers and default outputs are unchanged
+  (#1531).
+- **Licensing files and package metadata**: the root `LICENSE` holds only the BSD-3-Clause
+  text, so license scanners identify it. The Cephes, SciPy/xsf, NumPy, and Boost.Math
+  notices move to `THIRD_PARTY_NOTICES.md`, and the historical NOAA public-domain notice
+  stays verbatim in `docs/licensing.md`. The package declares the SPDX expression
+  `BSD-3-Clause AND BSL-1.0` with `license-files`, so the sdist and both wheels carry all
+  three documents, and the `License :: OSI Approved :: BSD License` classifier is gone.
+  The build requires `hatchling>=1.27.0`. The licensing terms do not change, and the crate
+  keeps its own combined `LICENSE` (#1522, #1523).
+- **Validation records**: the SPEI log-logistic row is reclassified as a cross-implementation
+  check of a port that shares the R `SPEI` estimator lineage, not an independent one. The
+  missing SPI dataset survey is cited by branch and commit. A new row covers
+  `standardized_index()` with `Distribution.empirical`, anchored on R `SEI` 0.2.0 output for
+  monthly data only; hourly pooling has no external comparison and weekly periodicity is
+  unsupported (#1528, #1542).
+- **CI**: `.github/required-status-checks.txt` and `scripts/sync_required_checks.py` keep
+  the required status-check contexts in step with the workflow matrix, and
+  `tests/test_release_integrity.py` fails when they drift. The two Python 3.10 contexts
+  stopped reporting when the minimum moved to Python 3.11, which this prevents (#1292).
+
 ## [3.1.1] - 2026-11-01
 
 See the [release notes](docs/release-notes-3.1.1.md) and
