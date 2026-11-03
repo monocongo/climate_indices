@@ -26,14 +26,15 @@ interruptions, the reporting period, and the Major Event Day — is defined in
 
 ## Definitions and units
 
-Let the interruption record contain sustained event rows indexed by *i*. For
-row *i*:
-
-- *N*{sub}`i` is the number of customers interrupted by the event.
-- *r*{sub}`i` is the duration in minutes.
-- *N*{sub}`T` is the average served-customer count over the reporting period.
-  It is positive and may be fractional.
-- *H* is the reporting period in hours.
+Let the sustained event rows be indexed by *i* and the momentary event rows by
+*j*. For a sustained row *i*, *N*{sub}`i` is the number of customers
+interrupted by the event and *r*{sub}`i` is the duration in minutes. For a
+momentary row *j*, *N*{sub}`j` is the number of customers interrupted and
+*D*{sub}`j` is the row's `device_operations` count. *IDE*{sub}`j` is 1 for a
+momentary row that is not flagged `momentary_event_excluded`, and 0 otherwise.
+Throughout, *N*{sub}`T` is the average served-customer count over the reporting
+period (positive and possibly fractional), and *H* is the reporting period in
+hours.
 
 The two shared accumulators are
 
@@ -51,8 +52,8 @@ interrupted. Both sums run over sustained rows only.
 | SAIFI | $CI / N_T$ | Customer interruptions (*CI*) | Served customers (*N*{sub}`T`) | Interruptions per customer per reporting period |
 | SAIDI | $CMI / N_T$ | Customer-minutes interrupted (*CMI*) | Served customers (*N*{sub}`T`) | Minutes per customer per reporting period |
 | CAIDI | $CMI / CI$ | Customer-minutes interrupted (*CMI*) | Customer interruptions (*CI*) | Minutes per customer interruption |
-| MAIFI_E | $\sum_i IDE_i N_i / N_T$ | Momentary interruption events (*IDE*{sub}`i` ∈ {0, 1}) | Served customers (*N*{sub}`T`) | Momentary events per customer per reporting period |
-| MAIFI | $\sum_i D_i N_i / N_T$ | Device operations (*D*{sub}`i`) | Served customers (*N*{sub}`T`) | Device operations per customer per reporting period |
+| MAIFI_E | $\sum_j IDE_j N_j / N_T$ | Customer-weighted momentary events (*IDE*{sub}`j`·*N*{sub}`j`) | Served customers (*N*{sub}`T`) | Momentary events per customer per reporting period |
+| MAIFI | $\sum_j D_j N_j / N_T$ | Customer-weighted device operations (*D*{sub}`j`·*N*{sub}`j`) | Served customers (*N*{sub}`T`) | Device operations per customer per reporting period |
 | ASAI | $1 - \dfrac{SAIDI / 60}{H}$ | Available customer-hours | Total customer-hours | Dimensionless fraction in [0, 1] |
 
 SAIFI, SAIDI, CAIDI, and the two MAIFI forms are frequencies or durations

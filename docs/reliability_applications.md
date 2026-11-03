@@ -31,7 +31,8 @@ Each row names one interruption event. The required fields are:
 - `event_id` — a unique string or integer identifier.
 - `start_time` — the interruption start timestamp.
 - `customers_interrupted` — a nonnegative integer count.
-- `duration` (minutes) or `end_time` — exactly one complete time source.
+- `duration` (minutes) or `end_time` — at least one complete time source.
+  When both are supplied, they must agree within 1e-9 minutes.
 
 Optional fields record context: `interruption_type` (`sustained` or
 `momentary`), `planned`, `device_id`, `device_operations`,
@@ -80,11 +81,12 @@ The two sustained records contribute 300 customer interruptions and 24,000
 customer-minutes, so SAIFI is 0.3 interruptions per customer and SAIDI is 24.0
 minutes per customer over the day. CAIDI is their ratio, 80.0 minutes per
 customer interruption. ASAI is `1 - (24 / 60) / 24`, about 0.9833, the
-available fraction of customer-hours. The momentary records contribute 300
-momentary events and 750 device operations, so MAIFI_E is 0.3 events per
-customer and MAIFI is 0.75 device operations per customer. The final
-zero-duration row is momentary and raises `momentary_outage_count` to three; it
-contributes nothing to the sustained metrics.
+available fraction of customer-hours. The two momentary rows with customers
+contribute customer-weighted totals of 300 momentary events and 750 device
+operations, so MAIFI_E is 0.3 events per customer and MAIFI is 0.75 device
+operations per customer. The final zero-duration row is momentary and raises
+`momentary_outage_count` to three; it contributes nothing to the sustained
+metrics.
 
 The same example runs end to end in the
 [reliability demonstration notebook][reliability-demo], which the
