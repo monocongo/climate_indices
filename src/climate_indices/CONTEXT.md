@@ -213,6 +213,79 @@ Each cell's longest contiguous segment of complete observed calendar years, with
 Synthetic screening evidence has a narrow scope; see [VALIDATION.md](../../VALIDATION.md#compound-bootstrap-characterization).
 Daily inference remains unsupported.
 
+### Reliability family
+
+Power-system distribution reliability indices computed from an interruption
+event log and an average served-customer count, in the `reliability` package
+(`from climate_indices import reliability`). These are distribution-reliability
+indices, **not resilience metrics**: they measure past interruptions, not how a
+system withstands a hazard. The EPRI Climate READi forward-looking metrics
+(CORi, LORi, DORi) need fragility curves the library does not model
+([ADR-0026](../../docs/adr/0026-reliability-module-api-and-conventions.md)).
+See [the reliability algorithm reference](../../docs/algorithm_refs/reliability.md)
+for equations and units.
+
+**SAIFI (System Average Interruption Frequency Index)**:
+Sustained customer interruptions per served customer per reporting period,
+`CI / N_T`. A frequency, never per year.
+
+**SAIDI (System Average Interruption Duration Index)**:
+Sustained interruption minutes per served customer per reporting period,
+`CMI / N_T`. Divide by 60 for `SAIDI_hours`.
+_Avoid_: Average outage duration (ambiguous: CAIDI is the per-interruption average)
+
+**CAIDI (Customer Average Interruption Duration Index)**:
+`CMI / CI`, the customer-weighted average restoration time in minutes per
+customer interruption. Independent of the served-customer count. NaN when no
+sustained customer interruption exists.
+_Avoid_: SAIDI per interruption (the identity is mathematical, not the definition)
+
+**MAIFI_E (Momentary Average Interruption Event Frequency Index)**:
+Momentary interruption events per served customer per reporting period.
+Counts supplied rows as events and honours the caller-set
+`momentary_event_excluded` flag. Distinct from MAIFI, the device-operation form.
+
+**MAIFI (Momentary Average Interruption Frequency Index)**:
+Device operations per served customer per reporting period, reported only when
+the record supplies per-event `device_operations` and no momentary row leaves
+it unknown.
+
+**ASAI (Average Service Availability Index)**:
+The dimensionless available fraction `1 - (SAIDI / 60) / H` in [0, 1], never a
+percentage. `None` without a reporting period and NaN when interruption time
+exceeds the reporting exposure.
+
+**Customer Interruptions (CI)**:
+The shared accumulator `CI = sum(N_i)` over sustained rows. Each row
+contributes its own customer count; the library never deduplicates customers
+or merges step-restoration rows.
+
+**Customer Minutes Interrupted (CMI)**:
+The shared accumulator `CMI = sum(r_i * N_i)` over sustained rows, in
+customer-minutes. `SAIDI = CMI / N_T` and `CAIDI = CMI / CI`.
+
+**Sustained Interruption**:
+An interruption whose duration is strictly above the threshold (default five
+minutes). Sustained rows feed SAIFI, SAIDI, CAIDI, ASAI, and `outage_count` by
+default; `exclude_planned=True` removes planned sustained rows from all of
+them.
+
+**Momentary Interruption**:
+An interruption whose duration is at or below the threshold, including zero
+duration. Momentary rows feed MAIFI_E, MAIFI, and `momentary_outage_count`, and
+contribute nothing to the sustained metrics.
+
+**Reporting Period (Exposure)**:
+The elapsed hours a result covers, supplied as `period_hours` or derived from
+`period_start` and `period_end`. Actual hours, leap-aware and
+daylight-saving-aware. Partial periods are never annualized, so results from
+periods of different lengths are not comparable.
+
+**Major Event Day**:
+A day whose daily SAIDI exceeds the IEEE 1366 threshold `exp(alpha + 2.5 beta)`.
+The recipe is documented but not implemented: it needs a utility-specific
+five-year daily-SAIDI history the library does not hold.
+
 ### Statistics
 
 **L-Moments**:
