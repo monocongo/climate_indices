@@ -113,7 +113,8 @@ def test_eia_aggregate_relationship_and_synthetic_accumulators(row: dict[str, An
     assert result.asai == pytest.approx(
         1 - row["saidi"] / (60 * hours), rel=TOLERANCE["rtol"], abs=TOLERANCE["asai_atol"]
     )
-    assert result.asai is not None and 0 <= result.asai <= 1
+    assert result.asai is not None
+    assert 0 <= result.asai <= 1
 
 
 @pytest.mark.parametrize("row", REFERENCE["eia_panel"], ids=lambda row: f"{row['year']}-{row['scope']}")
