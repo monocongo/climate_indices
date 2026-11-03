@@ -82,7 +82,8 @@ zero-duration and zero-customer rows; it does not group rows.
 
 ## Sustained and momentary interruptions
 
-Every row is classified as *sustained* or *momentary* by its duration. A
+When an ungrouped row has no explicit `interruption_type`, the library
+classifies it as *sustained* or *momentary* by duration. A
 duration strictly above `threshold_minutes` (default 5.0) is sustained; a
 duration at or below it is momentary. Equality is momentary. The default
 threshold is the IEEE and EIA convention; some regulators use one minute or

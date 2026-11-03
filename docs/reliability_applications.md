@@ -89,9 +89,10 @@ operations per customer. The final zero-duration row is momentary and raises
 `momentary_outage_count` to three; it contributes nothing to the sustained
 metrics.
 
-The same example runs end to end in the
-[reliability demonstration notebook][reliability-demo], which the
-documentation doctest build executes.
+The same example runs in the
+[reliability demonstration notebook][reliability-demo].
+`tests/test_reliability_demo.py` executes its code cells as a separate offline
+regression test; the documentation doctest build does not execute the notebook.
 
 ## Reading the result
 
