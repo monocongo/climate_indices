@@ -924,20 +924,6 @@ The record each output variable carries; see {doc}`provenance`.
    :members:
 ```
 
-### climate_indices.drought.pm_eto
-
-```{eval-rst}
-.. automodule:: climate_indices.drought.pm_eto
-   :members:
-```
-
-### climate_indices.drought.self_calibration
-
-```{eval-rst}
-.. automodule:: climate_indices.drought.self_calibration
-   :members:
-```
-
 ### climate_indices.lmoments
 
 ```{eval-rst}
