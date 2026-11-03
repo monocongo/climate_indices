@@ -19,6 +19,47 @@ outputs retain the existing `calibration_start_year`/`calibration_end_year`
 attributes alongside the canonical names; their history entry still records the
 timescale, not calibration years. No numerical behavior changes.
 
+## Upgrade considerations for 3.2.0
+
+Version 3.2.0 removes no public API and needs no function-call migration.
+Three changes can affect code that inspects the package or its environment.
+
+### New `Distribution` members (3.2.0)
+
+**What a user sees:** `Distribution` gains `t_location_scale` and `normal`.
+Only `spai()` accepts them. `spi()`, `spei()`, and `standardized_index()` reject them
+with `InvalidArgumentError`.
+
+**How to detect it:** look for code that loops over `Distribution`, builds a menu from
+it, or matches its members exhaustively.
+
+**What to change:** filter to the members the called index supports.
+Code that names a member directly is unaffected.
+
+### Package license metadata (3.2.0)
+
+**What a user sees:** the wheel and sdist metadata declare the SPDX expression
+`BSD-3-Clause AND BSL-1.0` in `License-Expression` and list `LICENSE`,
+`THIRD_PARTY_NOTICES.md`, and `docs/licensing.md` as `License-File` entries.
+The `License :: OSI Approved :: BSD License` classifier is removed.
+The licensing terms do not change.
+
+**How to detect it:** check compliance or inventory tooling that reads the
+license classifier or expects a single `LICENSE` file.
+
+**What to change:** read `License-Expression` and `License-File` instead.
+Building from the sdist now requires `hatchling>=1.27.0`.
+
+### Native results and the CLI worker pool (3.2.0)
+
+A command-line run under an all-ignore NumPy error policy now reaches the optional
+Rust kernels in its worker processes. A one-dimensional series keeps `np.convolve` for
+trailing sums. Default callers and default outputs are unchanged, and the parity contract
+remains `rtol = atol = 1e-10`. Use tolerance-based comparisons across backends.
+See {doc}`the numerical contract </rust-numerical-contract>`.
+
+See the {doc}`3.2.0 release notes </release-notes-3.2.0>` for the complete upgrade summary.
+
 ## Upgrade considerations for 3.1.1
 
 ### Python 3.10 support removed (3.1.1)

@@ -177,8 +177,9 @@ See [drought.gov](https://www.drought.gov/drought/python-climate-indices).
 This README describes 3.2.0, which is not yet published on PyPI. The published 3.0.0
 release added the `fire`, `flood`, and `runs` modules and the optional Rust backend.
 Relative to 3.0.0, 3.1.0 adds the `compound` module and the `energy` family, promotes the
-DataArray index APIs to Stable, and adds optional Icechunk I/O. Relative to 3.1.1, 3.2.0
-adds SPAI and its pooled-anomaly fit.
+DataArray index APIs to Stable, and adds optional Icechunk I/O. Relative to 3.1.0, 3.1.1
+adds Output Provenance and requires Python 3.11 or later. Relative to 3.1.1, 3.2.0 adds the
+`reliability` module, with Major Event Day filtering, and SPAI and its pooled-anomaly fit.
 
 Install the current published release from PyPI:
 
@@ -210,13 +211,7 @@ want the extension from a checkout build it with `uv run maturin develop --relea
 
 Starting with 3.1.0, the optional `icechunk` extra adds Icechunk-backed reads and
 writes (`icechunk>=1.1.21,<2`). It needs Python 3.11 or later; the core install is
-unchanged. Until 3.1.0 is published, install the extra from a 3.1.0 source checkout:
-
-```bash
-pip install ".[icechunk]"
-```
-
-After 3.1.0 is published, install it from PyPI:
+unchanged. Install it from PyPI:
 
 ```bash
 pip install "climate_indices[icechunk]>=3.1.0"
@@ -228,7 +223,7 @@ and the [Icechunk SPI/SPEI notebook](notebooks/icechunk_spi_spei.ipynb).
 ## Rust crate
 
 The numerical kernels are also available in the standalone `climate-indices`
-crate's `0.1.0` release
+crate's `0.1.1` release
 ([crates.io](https://crates.io/crates/climate-indices),
 [docs.rs](https://docs.rs/climate-indices)):
 `cargo add climate-indices`. The earlier `0.0.0` package reserved the name and
@@ -324,7 +319,7 @@ git push origin vX.Y.Z
 
 Supports Python **3.11–3.14**.
 
-Python 3.10 support ends in v3.1.1. This source checkout already requires Python 3.11 or later.
+Python 3.10 support ended in v3.1.1. Version 3.1.0 is the last release that supports it.
 
 All supported versions are tested on Linux (ubuntu-latest) for every pull request and push
 to `main`. Python 3.14 is additionally tested on macOS on every event, and 3.11 on macOS on
