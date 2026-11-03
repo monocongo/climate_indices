@@ -22,6 +22,9 @@ def _load_reference(directory: Path) -> dict[str, Any]:
 
 
 REFERENCE = _load_reference(FIXTURE)
+# The recorded tolerances are the single source of truth for the assertions below.
+PROVENANCE = cast(dict[str, Any], json.loads((FIXTURE / "provenance.json").read_text()))
+TOLERANCE = PROVENANCE["validation_tolerance"]
 
 
 def test_reference_panel_has_every_declared_year_and_scope() -> None:
@@ -32,12 +35,11 @@ def test_reference_panel_has_every_declared_year_and_scope() -> None:
 
 
 def test_provenance_checksum_and_fixed_tolerances() -> None:
-    provenance = json.loads((FIXTURE / "provenance.json").read_text())
     schema = json.loads((FIXTURE.parent / "provenance_schema.json").read_text())
-    jsonschema.validate(provenance, schema)
-    assert hashlib.sha256((FIXTURE / "reference.json").read_bytes()).hexdigest() == provenance["checksum_sha256"]
-    assert provenance["license"]
-    assert provenance["validation_tolerance"] == {
+    jsonschema.validate(PROVENANCE, schema)
+    assert hashlib.sha256((FIXTURE / "reference.json").read_bytes()).hexdigest() == PROVENANCE["checksum_sha256"]
+    assert PROVENANCE["license"]
+    assert TOLERANCE == {
         "rtol": 0,
         "saidi_rounding_minutes": 0.05,
         "saifi_rounding": 0.0005,
@@ -61,10 +63,9 @@ def _assert_eia_relationship(row: dict[str, Any]) -> None:
     assert 0 < saidi <= minutes_in_year
     assert 0 < saifi < minutes_in_year / 5
     assert 5 < caidi <= minutes_in_year
-    tolerance = json.loads((FIXTURE / "provenance.json").read_text())["validation_tolerance"]
-    ds = tolerance["saidi_rounding_minutes"]
-    df = tolerance["saifi_rounding"]
-    dc = tolerance["caidi_rounding_minutes"]
+    ds = TOLERANCE["saidi_rounding_minutes"]
+    df = TOLERANCE["saifi_rounding"]
+    dc = TOLERANCE["caidi_rounding_minutes"]
     ratio = saidi / saifi
     # Propagate half-last-digit rounding through both extremes of the ratio.
     atol = dc + max((saidi + ds) / (saifi - df) - ratio, ratio - (saidi - ds) / (saifi + df))
@@ -94,18 +95,24 @@ def test_eia_aggregate_relationship_and_synthetic_accumulators(row: dict[str, An
         period_end=f"{row['year'] + 1}-01-01T00:00:00Z",
     )
     assert result.customer_interruptions == ci
-    assert result.customer_minutes_interrupted == pytest.approx(row["saidi"] * total_customers, rel=0, abs=1e-9)
-    assert result.saifi == pytest.approx(row["saifi"], rel=0, abs=1e-12)
-    assert result.saidi == pytest.approx(row["saidi"], rel=0, abs=1e-12)
-    assert result.caidi == pytest.approx(duration, rel=0, abs=1e-12)
-    assert result.caidi == pytest.approx(result.saidi / result.saifi, rel=0, abs=1e-12)
+    assert result.customer_minutes_interrupted == pytest.approx(
+        row["saidi"] * total_customers, rel=TOLERANCE["rtol"], abs=TOLERANCE["accumulator_atol"]
+    )
+    assert result.saifi == pytest.approx(row["saifi"], rel=TOLERANCE["rtol"], abs=TOLERANCE["arithmetic_atol"])
+    assert result.saidi == pytest.approx(row["saidi"], rel=TOLERANCE["rtol"], abs=TOLERANCE["arithmetic_atol"])
+    assert result.caidi == pytest.approx(duration, rel=TOLERANCE["rtol"], abs=TOLERANCE["arithmetic_atol"])
+    assert result.caidi == pytest.approx(
+        result.saidi / result.saifi, rel=TOLERANCE["rtol"], abs=TOLERANCE["arithmetic_atol"]
+    )
     assert result.outage_count == 2
     assert result.momentary_outage_count == 0
     assert result.maifi_e == 0
     assert result.maifi is None
     hours = (366 if calendar.isleap(row["year"]) else 365) * 24
     assert result.period_hours == hours
-    assert result.asai == pytest.approx(1 - row["saidi"] / (60 * hours), rel=0, abs=1e-15)
+    assert result.asai == pytest.approx(
+        1 - row["saidi"] / (60 * hours), rel=TOLERANCE["rtol"], abs=TOLERANCE["asai_atol"]
+    )
     assert result.asai is not None and 0 <= result.asai <= 1
 
 
@@ -128,21 +135,29 @@ def test_epri_style_customer_normalized_outage_at_stated_frequency(affected_frac
     assert len(caught) == 1
     event_hours = result.customer_minutes_interrupted / (60 * scenario["total_customers"])
     assert event_hours == pytest.approx(
-        scenario["customer_outage_hours_per_customer_per_event"] * affected_fraction, rel=0, abs=1e-12
+        scenario["customer_outage_hours_per_customer_per_event"] * affected_fraction,
+        rel=TOLERANCE["rtol"],
+        abs=TOLERANCE["arithmetic_atol"],
     )
-    assert event_hours == pytest.approx(result.saidi / 60, rel=0, abs=1e-12)
-    assert result.caidi / 60 == pytest.approx(2.0, rel=0, abs=1e-12)
+    assert event_hours == pytest.approx(result.saidi / 60, rel=TOLERANCE["rtol"], abs=TOLERANCE["arithmetic_atol"])
+    assert result.caidi / 60 == pytest.approx(2.0, rel=TOLERANCE["rtol"], abs=TOLERANCE["arithmetic_atol"])
     frequency = scenario["event_frequency_per_year"]
     expected_hours = scenario["expected_customer_outage_hours_per_customer_per_year"] * affected_fraction
-    assert frequency * event_hours == pytest.approx(expected_hours, rel=0, abs=1e-12)
-    assert frequency * result.saifi * result.caidi / 60 == pytest.approx(expected_hours, rel=0, abs=1e-12)
+    assert frequency * event_hours == pytest.approx(
+        expected_hours, rel=TOLERANCE["rtol"], abs=TOLERANCE["arithmetic_atol"]
+    )
+    assert frequency * result.saifi * result.caidi / 60 == pytest.approx(
+        expected_hours, rel=TOLERANCE["rtol"], abs=TOLERANCE["arithmetic_atol"]
+    )
     assert result.period_hours == 24  # The caller's risk calculation does not annualize the library result.
 
 
 def test_ieee_2012_published_momentary_example() -> None:
     example = REFERENCE["ieee_momentary_example"]
     result = reliability.reliability_indices(example["events"], total_customers=example["total_customers"])
-    assert result.saifi == example["expected_saifi"]
-    assert result.maifi == example["expected_maifi"]
-    assert result.maifi_e == example["expected_maifi_e"]
+    assert result.saifi == pytest.approx(example["expected_saifi"], rel=TOLERANCE["rtol"], abs=TOLERANCE["ieee_atol"])
+    assert result.maifi == pytest.approx(example["expected_maifi"], rel=TOLERANCE["rtol"], abs=TOLERANCE["ieee_atol"])
+    assert result.maifi_e == pytest.approx(
+        example["expected_maifi_e"], rel=TOLERANCE["rtol"], abs=TOLERANCE["ieee_atol"]
+    )
     assert result.outage_count == result.momentary_outage_count == 1
