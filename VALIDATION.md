@@ -481,7 +481,8 @@ without a tolerance, and the history validation matrix of ADR-0026 decision 7.
 It also checks filtered results against an unfiltered call on the manually
 filtered log through the shared metric path. It reproduces the IEEE Std
 1366-2012 clause 3.5.1 example from the public CPUC copy. Its printed rounded
-`alpha` and `beta` match the sample standard deviation. January 28 is the only
+`alpha` matches the mean of the log-SAIDI values and `beta` matches their
+sample standard deviation. January 28 is the only
 Major Event Day, and SAIDI is 287.348 with all events and 49.855 without it
 (printed 287.35 and 49.86). The printed `T_MED` of 66.69 comes from rounded
 intermediates; full precision gives 67.10, so the example is not a

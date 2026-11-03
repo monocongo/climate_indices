@@ -4,6 +4,7 @@ import dataclasses
 import math
 import random
 from datetime import date, timedelta
+from fractions import Fraction
 from typing import Any
 
 import numpy as np
@@ -34,7 +35,7 @@ def history(values: list[float], start: str = "2023-01-01", tz: str | None = Non
     return pd.Series(values, index=pd.date_range(start, periods=len(values), freq="D", tz=tz))
 
 
-def threshold(t_med: float, history_end: date = date(2023, 12, 31), **changes: Any) -> Any:
+def threshold(t_med: float | np.floating[Any], history_end: date = date(2023, 12, 31), **changes: Any) -> Any:
     fields = {
         "t_med": t_med,
         "alpha": math.log(t_med),
@@ -133,6 +134,16 @@ def test_classification_uses_a_strict_comparison(t_med: float, expected_days: tu
     result = reliability.reliability_indices(events, total_customers=100, major_event_threshold=threshold(t_med))
     assert result.major_event_days == expected_days
     assert result.outage_count == (0 if expected_days else 1)
+
+
+def test_numpy_threshold_keeps_float64_comparison_semantics() -> None:
+    # A NumPy threshold scalar must not round the daily SAIDI it is compared with.
+    events = [event("a", "2024-01-02T08:00:00", math.nextafter(6.0, math.inf), 1)]
+    result = reliability.reliability_indices(
+        events, total_customers=1, major_event_threshold=threshold(np.float32(6.0))
+    )
+    assert result.major_event_days == (date(2024, 1, 2),)
+    assert result.outage_count == 0
 
 
 def test_filtering_removes_every_row_on_a_major_event_day_through_the_shared_path() -> None:
@@ -358,6 +369,7 @@ def test_five_years_is_the_longest_accepted_history() -> None:
         [1.0, math.inf, 2.0],
         [1.0, -math.inf, 2.0],
         [1.0, -0.5, 2.0],
+        [1.0, Fraction(-1, 10**400), 2.0],
         [1.0, True, 2.0],
         [1.0, "2.0", 2.0],
         [],
@@ -373,6 +385,7 @@ def test_five_years_is_the_longest_accepted_history() -> None:
         "inf",
         "negative-inf",
         "negative",
+        "negative-underflow",
         "boolean",
         "string",
         "empty",

@@ -148,6 +148,8 @@ that project policy; this research does not change it.
 
 ## Proposed validation policy, pending approval
 
+*Pre-implementation snapshot.* ADR-0026 decision 7 adopted the validation policy
+and #1527 implemented it; this section records what was proposed before that.
 These are conservative library proposals, **not verified IEEE requirements**.
 The existing `InvalidArgumentError` should identify the offending input.
 No additional dependency is needed.
@@ -168,6 +170,10 @@ history. A stronger minimum would require a separate, justified decision.
 No warning threshold or goodness-of-fit cutoff is selected by this research.
 
 ## Public API and metadata work still required
+
+*Pre-implementation snapshot.* ADR-0026 decision 7 fixed the public API and the
+recorded metadata, and #1527 implemented them; this section records the
+questions that were open before that decision.
 
 Do not add a second set of scalar reliability metrics. The implementation should
 keep detection separate from opt-in filtering at `reliability_indices()`.
@@ -233,6 +239,11 @@ matrix, and compare filtered and unfiltered shared accumulators.
 3. Resolve the estimator, validation, calendar, restoration, and filtered-exposure questions in ADR-0026.
 4. Wait for the shared duration and reporting-period metric paths to land.
 5. Implement and test detection, opt-in filtering, and metadata together under #1527.
+
+These prerequisites were resolved differently than listed. Steps 3–5 were
+completed: ADR-0026 decision 7 fixed the conventions, the shared metric paths
+landed, and #1527 implemented detection, filtering, and metadata. Steps 1 and 2
+were not achieved, so the implementation rests on the 2012 evidence.
 
 This spike supplies source evidence and explicit gaps. It does not satisfy all
 acceptance criteria for #1527, approve an API, or change the evidence in `VALIDATION.md`.

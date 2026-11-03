@@ -160,7 +160,9 @@ def _major_event_days(
     """
     if not isinstance(threshold, MajorEventDayThreshold):
         raise _invalid("major_event_threshold", "must be a MajorEventDayThreshold or None")
-    _number(threshold.t_med, "major_event_threshold", positive=True)
+    # Normalize to float64 once: a NumPy scalar keeps its own dtype in a mixed
+    # comparison (NEP 50) and would round the daily SAIDI it is compared with.
+    t_med = _number(threshold.t_med, "major_event_threshold", positive=True)
     if isinstance(threshold.history_end, datetime) or not isinstance(threshold.history_end, date):
         raise _invalid("major_event_threshold", "history_end must be a date, not a timestamp")
     if threshold.timezone is not None and not isinstance(threshold.timezone, tzinfo):
@@ -178,5 +180,5 @@ def _major_event_days(
     for day, product, counted in zip(days, products, sustained.tolist(), strict=True):
         if counted:
             minutes.setdefault(day, []).append(product)
-    major = {day for day, values in minutes.items() if math.fsum(values) / total_customers > threshold.t_med}
+    major = {day for day, values in minutes.items() if math.fsum(values) / total_customers > t_med}
     return np.array([day not in major for day in days], dtype=bool), tuple(sorted(major))

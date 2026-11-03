@@ -168,7 +168,10 @@ logarithms. `major_event_day_threshold()` fits the threshold to a
 caller-supplied, utility-specific history of daily SAIDI, normally the five
 years that end on the last day of the last complete reporting period. A shorter
 history is accepted and recorded; a longer one, a missing day, a missing value,
-or fewer than two positive days is rejected.
+or fewer than two positive days is rejected. The threshold carries no units, so
+the history must use the same units, customer-count basis, sustained-event
+threshold, and planned-outage policy as the call it filters; a mismatch
+classifies the wrong days rather than raising.
 
 Filtering is opt-in. Pass the threshold to `reliability_indices()` as
 `major_event_threshold`. Daily SAIDI is then *Σ* *r*{sub}`i` *N*{sub}`i` /
