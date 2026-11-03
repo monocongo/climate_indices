@@ -196,7 +196,9 @@ def test_history_ending_on_a_leap_day() -> None:
 
 
 def test_out_of_range_dates_are_rejected() -> None:
-    microsecond_days = pd.Series([1.0, 2.0, 3.0], index=pd.date_range("3000-01-01", periods=3))
+    # Pin the unit: pandas 2.x defaults to nanosecond resolution, where this range raises
+    # at construction instead of reaching the function under test.
+    microsecond_days = pd.Series([1.0, 2.0, 3.0], index=pd.date_range("3000-01-01", periods=3, unit="us"))
     with pytest.raises(InvalidArgumentError) as error:
         reliability.major_event_day_threshold(microsecond_days)
     assert error.value.argument_name == "daily_saidi"
