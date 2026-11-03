@@ -1237,9 +1237,9 @@ for the promotion and warning compatibility details.
 | --- | --- | --- |
 | `DataArray` inputs for SPI | Yes | `tests/test_xarray_equivalence.py` compares 1-D and gridded xarray outputs to NumPy. |
 | `DataArray` inputs for SPEI | Yes | `tests/test_xarray_equivalence.py` compares xarray precipitation/PET inputs to NumPy. |
-| `DataArray` inputs for SPAI | Yes (Beta) | `climate_indices.spai()` takes the SPI adapter path for `DataArray` inputs: temporal parameters are inferred from the time coordinate, and a gridded input is packed into `(time, *cells)` blocks. `climate_indices.indices.spai()` is the direct NumPy route, and its callers must provide the required temporal parameters. Dask-backed input requires `time` to be one chunk; an eager input has no chunk requirement. Each cell gets its own pooled fit over the Calibration Period anomalies from every calendar period when `fitting_params` is omitted; a complete mapping is reused instead of fitting, and every cell's result equals its NumPy series exactly under any spatial chunking. `fitting_params` reaches every block unchanged and is not sliced to match each block, so cell-specific parameters are supported only for an eager input with two or more non-time dimensions, which runs as one block; a `(time, cell)` input is fitted one cell at a time. Ordinary pooled per-cell fitting supports Dask spatial chunks. Cell-specific `fitting_params` are not supported when a Dask grid is split across spatial blocks. The output carries `CF_METADATA["spai"]` (or its probability and bounded variants) and no `standard_name`. Each call emits `BetaFeatureWarning`. See `tests/test_spai.py`. |
+| `DataArray` inputs for SPAI | Yes (Beta) | `climate_indices.spai()` takes the SPI adapter path for `DataArray` inputs: temporal parameters are inferred from the time coordinate, and a gridded input is packed into `(time, *cells)` blocks. `climate_indices.drought.indices.spai()` is the direct NumPy route, and its callers must provide the required temporal parameters. Dask-backed input requires `time` to be one chunk; an eager input has no chunk requirement. Each cell gets its own pooled fit over the Calibration Period anomalies from every calendar period when `fitting_params` is omitted; a complete mapping is reused instead of fitting, and every cell's result equals its NumPy series exactly under any spatial chunking. `fitting_params` reaches every block unchanged and is not sliced to match each block, so cell-specific parameters are supported only for an eager input with two or more non-time dimensions, which runs as one block; a `(time, cell)` input is fitted one cell at a time. Ordinary pooled per-cell fitting supports Dask spatial chunks. Cell-specific `fitting_params` are not supported when a Dask grid is split across spatial blocks. The output carries `CF_METADATA["spai"]` (or its probability and bounded variants) and no `standard_name`. Each call emits `BetaFeatureWarning`. See `tests/test_spai.py`. |
 | `DataArray` inputs for EDDI | Yes | EDDI wrapper and metadata tests cover the typed public API. |
-| `DataArray` inputs for the generic standardized index | Yes | `climate_indices.standardized_index()` (also `climate_indices.indices.standardized_index()` for NumPy) standardizes a caller-supplied series under the selected distribution's support constraints, so it stamps the neutral `CF_METADATA["standardized_index"]` entry: `long_name` "Standardized index", `units` "1", no `standard_name`. Temporal parameters are inferred from the time coordinate, `aggregation` (`"sum"` or `"mean"`) reaches the fit and is recorded in the output's calculation metadata, and all four distribution families (gamma, Pearson Type III, empirical, beta) stay available. Beta requires source and windowed values in `[0, 1]`. Gamma and Pearson Type III clip negative values to zero by default and reject them with `clip_negatives=False`. Empirical preserves signed values with `clip_negatives=False`. Gridded input is standardized one cell at a time, so every cell matches its own NumPy series exactly, and `fitting_params` reaches every cell unchanged, so cell-specific parameters are not supported. Root re-export, aggregation reporting, and the neutral metadata follow [ADR-0020](docs/adr/0020-standardized-index-public-surface.md). See `tests/test_standardized_index_xarray.py`. |
+| `DataArray` inputs for the generic standardized index | Yes | `climate_indices.standardized_index()` (also `climate_indices.drought.indices.standardized_index()` for NumPy) standardizes a caller-supplied series under the selected distribution's support constraints, so it stamps the neutral `CF_METADATA["standardized_index"]` entry: `long_name` "Standardized index", `units` "1", no `standard_name`. Temporal parameters are inferred from the time coordinate, `aggregation` (`"sum"` or `"mean"`) reaches the fit and is recorded in the output's calculation metadata, and all four distribution families (gamma, Pearson Type III, empirical, beta) stay available. Beta requires source and windowed values in `[0, 1]`. Gamma and Pearson Type III clip negative values to zero by default and reject them with `clip_negatives=False`. Empirical preserves signed values with `clip_negatives=False`. Gridded input is standardized one cell at a time, so every cell matches its own NumPy series exactly, and `fitting_params` reaches every cell unchanged, so cell-specific parameters are not supported. Root re-export, aggregation reporting, and the neutral metadata follow [ADR-0020](docs/adr/0020-standardized-index-public-surface.md). See `tests/test_standardized_index_xarray.py`. |
 | `DataArray` inputs for standardized energy indices | Yes | `energy.srepi()`, `energy.standardized_demand_index()`, and `energy.srli()` take the same adapter path as the generic seam, with their own registry entries. `srepi()` defaults to `aggregation="mean"`, which suits a capacity factor, so accumulated production must pass `aggregation="sum"` explicitly; the demand index and SRLI default to `"sum"`. A DataArray input keeps the NumPy wrapper's distribution restrictions: empirical or beta for SREPI and the demand index, empirical only for the signed SRLI series. See `tests/test_energy_standardized_xarray.py`. |
 | `DataArray` inputs for energy-drought event statistics | Yes (Beta) | `energy.energy_drought_events()` returns the NumPy `RunStatistics` for a 1-D DataArray and an `xr.Dataset` for a gridded one: `count`, `total_duration`, `max_magnitude`, `valid_count`, and `frequency` over a `period` dimension plus the input's cell dimensions, and one `events` variable holding each cell's `RunSet`. A one-dimensional DataArray is evaluated eagerly, so a Dask-backed series is computed. Dask-backed gridded input must keep the time dimension in a single chunk, because events run the whole time axis; an empty time axis is rejected on the gridded path rather than reported as an empty summary. See `tests/test_energy_events.py`. |
 | `DataArray` inputs for flood PE, EDI, I_F, and API | Yes | `flood.effective_precipitation()`, `flood.edi()` (also `climate_indices.edi()`), `flood.flood_index()`, and `flood.antecedent_precipitation_index()` accept daily precipitation/PE with CF units converted to mm. For PE, EDI, and I_F, Gregorian dates are converted to all-leap days before each NumPy computation and restored afterward; API consumes the daily series as given. PE must be computed before EDI/I_F and use the same duration. EDI and I_F infer calendar and Calibration Period years when omitted; I_F still requires `year_start_month`. API keeps its recursive-state contract (`initial_state`/`return_state`, `spin_up`, `nan_policy`/`max_gap_days`), and the returned state stays NumPy. A complete `time` Dask chunk is mandatory; spatial chunks run independently. `tests/test_flood_xarray.py` compares NumPy, eager xarray, and Dask outputs. These indices describe flood potential, not observed flooding. When chaining xarray PE into EDI/I_F, the second adapter reconstructs non-leap February 29 by interpolating **PE**, not the rainfall that produced it; the chained result can differ from applying both NumPy kernels to a single all-leap rainfall array ([#1147](https://github.com/monocongo/climate_indices/issues/1147)). |
@@ -1373,7 +1373,7 @@ applies per cell along the time axis.
 
   ```python
   from climate_indices import spi
-  from climate_indices.indices import Distribution
+  from climate_indices.drought.indices import Distribution
 
   spi_lazy = spi(
       values=precip.chunk({"time": -1, "lat": 20, "lon": 20}),
@@ -1707,7 +1707,7 @@ former; the latter's hosts were unreachable). Both worked examples are
 instead taken from secondary sources that reproduce the original equations
 with full inputs and outputs — the same two worked examples used by PyETo
 (https://github.com/woodcrafty/PyETo) to validate its own Thornthwaite and
-Hargreaves implementations, which `climate_indices.eto` credits in its
+Hargreaves implementations, which `climate_indices.drought.eto` credits in its
 module docstring as the code it was derived from. Full citations, and the
 derivation of the (latitude, day-of-year) inputs each worked example
 implies, are documented in `tests/fixture/pet_literature/metadata.json`.
@@ -1761,8 +1761,8 @@ precipitation, PET, and available water capacity:
 - Palmer Z-Index
 - Self-calibrated Palmer Drought Severity Index (scPDSI)
 
-The public NumPy APIs are `climate_indices.palmer.pdsi()` and
-`climate_indices.palmer.scpdsi()`. `climate_indices.pdsi()` accepts labeled
+The public NumPy APIs are `climate_indices.drought.palmer.pdsi()` and
+`climate_indices.drought.palmer.scpdsi()`. `climate_indices.pdsi()` accepts labeled
 xarray inputs and returns an `xr.Dataset` of the four standard outputs
 (`pdsi`, `phdi`, `pmdi`, `z_index`) with CF metadata; scPDSI stays NumPy-only.
 The 3.0.0 xarray notebook demonstrates the manual rewrap pattern for callers
@@ -1788,8 +1788,8 @@ passes over the requested calibration period.
 ### Exact-zero comparisons
 
 Both recursions branch on exact comparisons against zero, and every float
-equality comparison site in `src/climate_indices/palmer.py` and the pdi.f
-recursion in `src/climate_indices/_palmer_pdi.py` carries a rationale comment
+equality comparison site in `src/climate_indices/drought/palmer.py` and the pdi.f
+recursion in `src/climate_indices/drought/_palmer_pdi.py` carries a rationale comment
 plus a `# NOSONAR` marker. Those zeros are state sentinels, not
 near-equality: the statements that clear a spell, a candidate, or a calibration
 sum assign `0.0` exactly. A tolerance would change the spell state machine and
@@ -1875,7 +1875,7 @@ open (issue #780).
 - **Drought / Moisture Indices**: SPI, SPEI, PNP, EDDI, PCI
 - **Palmer Family**: PDSI, PHDI, PMDI, Palmer Z-Index, and self-calibrated scPDSI
 - **Flood-Potential Indices**: `climate_indices.flood` namespace — Effective Precipitation, fixed-window EDI, Flood Index, and the recursive Antecedent Precipitation Index
-- **PET Methods**: Thornthwaite, Hargreaves, and FAO-56 Penman-Monteith (`climate_indices.pet_penman_monteith`) are public APIs; lower-level primitives in `pm_eto.py` are internal and back the fire-weather indices
+- **PET Methods**: Thornthwaite, Hargreaves, and FAO-56 Penman-Monteith (`climate_indices.pet_penman_monteith`) are public APIs; lower-level primitives in `drought/pm_eto.py` are internal and back the fire-weather indices
 - **Fire-Weather Indices**: `climate_indices.fire` namespace — Fosberg Fire Weather Index (FFWI), Hot-Dry-Windy Index (HDW), Keetch-Byram Drought Index (KBDI), and the Canadian Forest Fire Weather Index System (FFMC, DMC, DC, ISI, BUI, FWI, DSR)
 - **Run Theory**: `runs` module for identifying contiguous above/below-threshold events (duration, magnitude, intensity, peak, interarrival)
 - **Flexible Input Formats**: NumPy arrays, xarray DataArrays, and Dask arrays
@@ -1893,6 +1893,14 @@ open (issue #780).
 - **Build System**: Hatchling (PEP 517) + uv for dependency management
 - **Package Management**: uv (modern Python package installer/resolver)
 
+### Drought namespace
+
+`climate_indices.drought` exposes the same typed NumPy/DataArray functions as the package root.
+Direct NumPy implementations live in `drought.indices` and `drought.palmer`.
+The generic standardization and diagnostic functions and PET implementations remain here for now.
+Shared `compute`, `vocabulary`, and `lmoments` modules stay at the root.
+See [ADR-0027](docs/adr/0027-drought-namespace-and-module-migration.md) for the nine module moves and temporary public-module aliases.
+
 ### Architecture Pattern
 **Layered Library Architecture**:
 ```
@@ -1900,14 +1908,14 @@ open (issue #780).
 │   CLI Layer                         │  ← __main__.py, _cli.py
 ├─────────────────────────────────────┤
 │   Public API Layer                  │  ← typed_public_api.py, xarray_adapter.py,
-│                                     │     cf_metadata_registry.py, fire/, flood/
+│                                     │     cf_metadata_registry.py, drought/, fire/, flood/
 ├─────────────────────────────────────┤
-│   Computation Layer                 │  ← indices.py, compute.py, palmer.py,
-│                                     │     self_calibration.py, eto.py, pm_eto.py,
+│   Computation Layer                 │  ← drought/indices.py, compute.py, drought/palmer.py,
+│                                     │     drought/self_calibration.py, drought/eto.py, drought/pm_eto.py,
 │                                     │     runs.py, validation.py
 ├─────────────────────────────────────┤
-│   Math/Statistics Layer             │  ← lmoments.py, _palmer_duration.py,
-│                                     │     _palmer_pdi.py, _palmer_wells.py
+│   Math/Statistics Layer             │  ← lmoments.py, drought/_palmer_duration.py,
+│                                     │     drought/_palmer_pdi.py, drought/_palmer_wells.py
 ├─────────────────────────────────────┤
 │   Infrastructure Layer              │  ← utils.py, logging_config.py,
 │                                     │     exceptions.py, performance.py
@@ -1950,7 +1958,7 @@ uv sync --group dev
 #### Modern xarray API (Recommended)
 ```python
 import climate_indices as ci
-from climate_indices import indices
+from climate_indices.drought import indices
 import xarray as xr
 
 # Load precipitation data
@@ -1975,7 +1983,8 @@ spi_6 = ci.spi(
 > `--calibration_year_initial`/`--calibration_year_final` as aliases for its
 > `--calibration_start_year`/`--calibration_end_year` flags.
 ```python
-from climate_indices import indices, compute
+from climate_indices import compute
+from climate_indices.drought import indices
 import numpy as np
 
 # Load data as numpy array
@@ -2048,10 +2057,10 @@ uv run pytest -m benchmark
 ## AI-Assisted Development Guidance
 
 ### Recommended Starting Points for AI Agents
-1. **For understanding computation**: Start with `docs/architecture.md`, then `src/climate_indices/compute.py` and `src/climate_indices/indices.py`
+1. **For understanding computation**: Start with `docs/architecture.md`, then `src/climate_indices/compute.py` and `src/climate_indices/drought/indices.py`
 2. **For understanding the public API**: Read `src/climate_indices/typed_public_api.py` (strict mypy typing) and `src/climate_indices/xarray_adapter.py`
 3. **For understanding the CLI**: Examine `src/climate_indices/__main__.py` (the index pipeline registry and `--index` handling) and `src/climate_indices/_cli.py` (shared argument registration)
-4. **For understanding Palmer calculations**: Read `src/climate_indices/palmer.py`, `src/climate_indices/_palmer_pdi.py`, `src/climate_indices/_palmer_wells.py`, `src/climate_indices/_palmer_duration.py`, and `src/climate_indices/self_calibration.py`
+4. **For understanding Palmer calculations**: Read `src/climate_indices/drought/palmer.py`, `src/climate_indices/drought/_palmer_pdi.py`, `src/climate_indices/drought/_palmer_wells.py`, `src/climate_indices/drought/_palmer_duration.py`, and `src/climate_indices/drought/self_calibration.py`
 5. **For understanding fire-weather indices**: Read `src/climate_indices/fire/__init__.py` and the subsystem design in `docs/design/fire-subsystem.md`
 6. **For understanding flood-potential indices**: Read `src/climate_indices/flood/__init__.py` (public dispatch) and the `flood/_pe.py`, `flood/_edi.py`, `flood/_if.py`, `flood/_antecedent.py` kernels
 7. **For understanding run theory**: Read `src/climate_indices/runs.py`
@@ -2063,7 +2072,7 @@ uv run pytest -m benchmark
 - **Calibration period**: Default minimum 30 years; violations trigger `ShortCalibrationWarning`
 - **Pearson Type III fitting**: Requires at least 4 non-zero values per calendar time step; fewer raise `InsufficientDataError`
 - **Coordinate validation**: Time coordinates must be monotonically increasing; xarray inputs undergo automatic validation
-- **Backward compatibility**: Legacy NumPy API (`indices.py`) must remain stable; new features go to the xarray API
+- **Backward compatibility**: Legacy NumPy API (`drought/indices.py`) must remain stable; new features go to the xarray API
 - **Fire namespace**: Fire-weather indices are exposed only under `climate_indices.fire`; they are not top-level package functions (see ADR-0005)
 - **Flood namespace**: Flood-potential indices are exposed only under `climate_indices.flood` (see ADR-0013); `edi` (flood) and `eddi` (drought) are distinct indices
 
@@ -2084,16 +2093,16 @@ uv run pytest -m benchmark
 ### Common Pitfalls
 1. **Do NOT** use wildcard imports (`from module import *`) - explicitly forbidden by ruff
 2. **Dask time chunks**: SPI/SPEI and stateful fire adapters reject split time chunks; PET adapters accept them and rechunk internally
-3. **Do NOT** modify the `indices.py` API in a breaking way - backward compatibility requirement
+3. **Do NOT** modify the `drought/indices.py` API in a breaking way - backward compatibility requirement
 4. **Do NOT** commit without running tests - pre-commit hooks will fail
 5. **Do NOT** use string paths - always use `pathlib.Path` objects
 
 ### Key Files for Modification Scenarios
 | Task | Primary Files | Test Files |
 |------|--------------|------------|
-| Add new index | `compute.py`, `indices.py`, `typed_public_api.py`, `xarray_adapter.py` | `test_compute.py`, `test_indices.py`, `test_typed_public_api.py`, `test_xarray_adapter.py` |
-| Add new distribution | `compute.py`, `indices.py`, `lmoments.py` | `test_compute.py`, `test_property_based.py` |
-| Modify Palmer indices | `palmer.py`, `_palmer_pdi.py`, `_palmer_wells.py`, `_palmer_duration.py`, `self_calibration.py` | `test_palmer.py`, `test_scpdsi.py`, `test_self_calibration.py` |
+| Add new index | `compute.py`, `drought/indices.py`, `typed_public_api.py`, `xarray_adapter.py` | `test_compute.py`, `test_indices.py`, `test_typed_public_api.py`, `test_xarray_adapter.py` |
+| Add new distribution | `compute.py`, `drought/indices.py`, `lmoments.py` | `test_compute.py`, `test_property_based.py` |
+| Modify Palmer indices | `drought/palmer.py`, `drought/_palmer_pdi.py`, `drought/_palmer_wells.py`, `drought/_palmer_duration.py`, `drought/self_calibration.py` | `test_palmer.py`, `test_scpdsi.py`, `test_self_calibration.py` |
 | Add a fire-weather index | `fire/` subpackage | `test_fire*.py`, reference tests |
 | Add a flood-potential index | `flood/` subpackage, `typed_public_api.py` | `test_flood*.py`, `test_main_flood.py` |
 | Modify run extraction | `runs.py` | `test_runs.py` |
@@ -2172,16 +2181,16 @@ The **climate_indices** library implements a **layered library architecture** op
 │  typed_public_api.py  │  Strict mypy, xarray wrappers            │
 │  xarray_adapter.py    │  CF-compliant xarray interface           │
 │  validation.py        │  Shared input validation facade          │
-│  indices.py           │  Legacy numpy API (backward compat)       │
+│  drought/indices.py    │  Legacy numpy API (backward compat)       │
 ├────────────────────────────────────────────────────────────────────┤
 │                    Computation Layer                               │
 ├────────────────────────────────────────────────────────────────────┤
 │  compute.py           │  Core algorithms (scaling, fitting, PDF) │
-│  palmer.py            │  Palmer drought indices implementation    │
+│  drought/palmer.py     │  Palmer drought indices implementation    │
 ├────────────────────────────────────────────────────────────────────┤
 │                 Math/Statistics Layer                              │
 ├────────────────────────────────────────────────────────────────────┤
-│  eto.py               │  PET: Thornthwaite, Hargreaves methods   │
+│  drought/eto.py        │  PET: Thornthwaite, Hargreaves methods   │
 │  lmoments.py          │  L-moments for distribution fitting       │
 ├────────────────────────────────────────────────────────────────────┤
 │                  Infrastructure Layer                              │
@@ -2193,6 +2202,21 @@ The **climate_indices** library implements a **layered library architecture** op
 │  provenance.py        │  Output provenance records               │
 └────────────────────────────────────────────────────────────────────┘
 ```
+
+### Drought namespace
+
+`climate_indices.drought` owns the drought, Palmer, and PET implementations.
+Its facade lazily resolves the same `typed_public_api` objects that the package root exports.
+It also exports the same `HumidityInputs` and `RadiationInputs` classes.
+The lazy `__getattr__` avoids initialization cycles with the adapters.
+Generic `standardized_index` and `fit_diagnostics` functions and shared PET implementations remain here for now.
+KBDI stays in `fire`; EDI stays in `flood`.
+
+The five old public module paths are warning-emitting `sys.modules` identity aliases until removal in 4.0.0.
+They preserve monkeypatch behavior and old public-module pickle lookups during the deprecation period.
+The four old private `_palmer_*` paths have no aliases.
+See [ADR-0027](docs/adr/0027-drought-namespace-and-module-migration.md) for the complete module table.
+Unless stated otherwise, the short module names `indices`, `palmer`, `eto`, `pm_eto`, and `self_calibration` below refer to `drought` modules.
 
 ### Shared domain vocabulary
 
@@ -2251,7 +2275,7 @@ process_climate_indices = "climate_indices.__main__:main"
     dimension orders each layout accepts
   - Time-dimension, monotonicity, and Dask single-chunk validation
 
-- **`indices.py`**: Legacy numpy API
+- **`drought/indices.py`**: Legacy numpy API
   - Backward-compatible function signatures
   - Direct numpy array inputs/outputs
   - Re-exports the Distribution enum (`Distribution.gamma`, `Distribution.pearson`)
@@ -2275,7 +2299,7 @@ process_climate_indices = "climate_indices.__main__:main"
   - `sum_to_scale()`: Optimized sliding window summation
   - Re-exports the `Periodicity` enum: `monthly` (12 steps/year), `daily` (366 steps/year), and `hourly` (8784 steps/year), with a `period_length` property and a `unit()` method
 
-- **`palmer.py`**: Palmer Drought Index family
+- **`drought/palmer.py`**: Palmer Drought Index family
   - PDSI (Palmer Drought Severity Index)
   - PHDI (Palmer Hydrological Drought Index)
   - PMDI (Palmer Modified Drought Index)
@@ -2311,7 +2335,7 @@ process_climate_indices = "climate_indices.__main__:main"
 **Purpose**: Low-level mathematical and statistical functions.
 
 **Modules**:
-- **`eto.py`**: Potential Evapotranspiration methods
+- **`drought/eto.py`**: Potential Evapotranspiration methods
   - **Thornthwaite (1948)**: Monthly PET from temperature and latitude
     - Heat index computation
     - Day length adjustment based on latitude
@@ -2966,10 +2990,23 @@ climate_indices/
 │   ├── typed_public_api.py       # Strict mypy-compliant API
 │   ├── xarray_adapter.py         # Modern xarray interface
 │   ├── validation.py             # Shared input validation facade
-│   ├── indices.py                # Legacy numpy API (STABLE)
-│   ├── compute.py                # Core computation algorithms
-│   ├── palmer.py                 # Palmer drought indices
-│   ├── eto.py                    # PET: Thornthwaite & Hargreaves
+│   ├── drought/                  # Drought, Palmer, and PET ownership
+│   │   ├── __init__.py           # Lazy typed facade, same objects as root
+│   │   ├── indices.py            # Direct NumPy API
+│   │   ├── palmer.py             # Palmer drought indices
+│   │   ├── _palmer_common.py     # Shared private Palmer helpers
+│   │   ├── _palmer_duration.py   # Private duration-factor helpers
+│   │   ├── _palmer_pdi.py        # Private PDSI recursion
+│   │   ├── _palmer_wells.py      # Private Wells recursion
+│   │   ├── self_calibration.py   # scPDSI duration-factor fitting
+│   │   ├── eto.py               # Thornthwaite and Hargreaves PET
+│   │   └── pm_eto.py            # Penman-Monteith PET and input types
+│   ├── indices.py                # Deprecated identity alias
+│   ├── palmer.py                 # Deprecated identity alias
+│   ├── self_calibration.py       # Deprecated identity alias
+│   ├── eto.py                    # Deprecated identity alias
+│   ├── pm_eto.py                 # Deprecated identity alias
+│   ├── compute.py                # Shared computation algorithms
 │   ├── lmoments.py               # L-moments for Pearson fitting
 │   ├── utils.py                  # Utility functions
 │   ├── logging_config.py         # Structured logging setup
@@ -3758,7 +3795,7 @@ marshalling. A new family module also goes into `NATIVE_FAMILIES` in
 
 The index dispatch helper is named `_native_<kernel>`, lives next to the Python
 implementation it ports in `compute.py`, and is reached by its public callers in
-`indices.py` as `compute._native_<kernel>`. It returns `None` when a routing
+`drought/indices.py` as `compute._native_<kernel>`. It returns `None` when a routing
 condition fails, and its caller then runs the Python path (as
 `_native_gamma_probabilities` and `_native_gamma_parameters` do). The fire and flood
 recurrences use a different pattern: `fire/_native.py` and `flood/_native.py` define
@@ -4205,7 +4242,7 @@ Before submitting:
 
 ### Adding a New Climate Index
 1. Implement core algorithm in `compute.py`
-2. Add high-level function to `indices.py` (numpy API)
+2. Use `drought/indices.py` for the established NumPy drought API, subject to [ADR-0001](docs/adr/0001-dual-numpy-xarray-api.md).
 3. Add wrapper to `xarray_adapter.py` (xarray API)
 4. Add tests in `tests/test_compute.py`, `test_indices.py`, `test_xarray_adapter.py`
 5. Update documentation in `docs/reference.md` and any relevant `docs/*.md` guides
@@ -4479,9 +4516,9 @@ This section shows how to convert common NumPy workflows to the equivalent xarra
 
 ```python
 import numpy as np
-from climate_indices import indices
+from climate_indices.drought import indices
 from climate_indices.compute import Periodicity
-from climate_indices.indices import Distribution
+from climate_indices.drought.indices import Distribution
 
 # 40 years × 12 months/year = 480 monthly values
 precip_mm = np.load("monthly_precip.npy")  # shape: (40, 12)
@@ -4505,7 +4542,7 @@ spi_values = indices.spi(
 import pandas as pd
 import xarray as xr
 from climate_indices import spi
-from climate_indices.indices import Distribution
+from climate_indices.drought.indices import Distribution
 
 # load data as xarray DataArray with time coordinate
 time = pd.date_range("1980-01-01", periods=480, freq="MS")
@@ -4529,7 +4566,7 @@ spi_result = spi(
 
 **Key changes:**
 
-- Import from the package root (`from climate_indices import spi`) instead of `climate_indices.indices`
+- Import from the package root (`from climate_indices import spi`) instead of `climate_indices.drought.indices`.
 - Data shape changes from 2D (years, months) to 1D with labeled time dimension
 - Only 2 required parameters (`scale`, `distribution`) instead of 6
 - All temporal parameters (`data_start_year`, `calibration_year_initial`, `calibration_year_final`, `periodicity`) are optional and inferred automatically
@@ -4541,9 +4578,9 @@ spi_result = spi(
 
 ```python
 import numpy as np
-from climate_indices import indices
+from climate_indices.drought import indices
 from climate_indices.compute import Periodicity
-from climate_indices.indices import Distribution
+from climate_indices.drought.indices import Distribution
 
 # load precipitation and PET arrays
 precip_mm = np.load("monthly_precip.npy")  # shape: (40, 12)
@@ -4571,7 +4608,7 @@ spei_values = indices.spei(
 import pandas as pd
 import xarray as xr
 from climate_indices import spei
-from climate_indices.indices import Distribution
+from climate_indices.drought.indices import Distribution
 
 # load precipitation and PET as DataArrays
 # they can have different time ranges!
@@ -4602,7 +4639,7 @@ spei_result = spei(
 
 **Key changes:**
 
-- Import from `climate_indices.spei` instead of `climate_indices.indices.spei`
+- Import `spei` from `climate_indices`, not from `climate_indices.drought.indices`.
 - Inputs no longer need to be pre-aligned — `xr.align(join="inner")` handles mismatched time ranges
 - A warning is emitted if alignment drops timesteps, helping detect data issues
 - Only 3 required parameters (`scale`, `distribution`) instead of 7
@@ -4612,7 +4649,7 @@ spei_result = spei(
 **Before (NumPy):**
 
 ```python
-from climate_indices import indices
+from climate_indices.drought import indices
 
 # 1D array of 480 monthly temperatures
 temp_celsius = np.load("monthly_temp.npy")  # shape: (480,)
@@ -4672,7 +4709,7 @@ pet_grid = pet_thornthwaite(temp_grid, latitude=lat_array)
 
 **Key changes:**
 
-- Import from `climate_indices.xarray_adapter` instead of `climate_indices.indices`
+- Import from `climate_indices.xarray_adapter` instead of `climate_indices.drought.indices`.
 - `data_start_year` is optional and inferred from time coordinate
 - Latitude can be a scalar or DataArray for spatial broadcasting
 - Function name changes to `pet_thornthwaite()` for clarity
@@ -4682,7 +4719,7 @@ pet_grid = pet_thornthwaite(temp_grid, latitude=lat_array)
 **Before (NumPy):**
 
 ```python
-from climate_indices.eto import eto_hargreaves
+from climate_indices.drought.eto import eto_hargreaves
 
 # 1D arrays of daily min/max temperatures
 tmin = np.load("daily_tmin.npy")  # shape: (1825,)
@@ -5046,7 +5083,7 @@ spi_result.to_netcdf("output.nc")  # triggers compute + streams to disk
 ```python
 import xarray as xr
 from climate_indices import spi
-from climate_indices.indices import Distribution
+from climate_indices.drought.indices import Distribution
 
 # load monthly precipitation from NetCDF
 ds = xr.open_dataset("PRISM_precip_monthly_1981_2020.nc")
@@ -5072,7 +5109,7 @@ spi_12.to_netcdf("spi_12_CONUS_1981_2020.nc")
 ```python
 import xarray as xr
 from climate_indices import spei
-from climate_indices.indices import Distribution
+from climate_indices.drought.indices import Distribution
 
 # load precipitation and PET from different files
 # they may have different time ranges!
@@ -5132,7 +5169,7 @@ pet_grid.to_netcdf("pet_thornthwaite_grid.nc")
 ```python
 import xarray as xr
 from climate_indices import spi
-from climate_indices.indices import Distribution
+from climate_indices.drought.indices import Distribution
 
 # open large global dataset with Dask chunking
 # (data not loaded into memory yet)
@@ -5179,7 +5216,7 @@ with Client(n_workers=4, threads_per_worker=1) as client:
 
 **Supporting classes:**
 
-- {class}`climate_indices.indices.Distribution` — Distribution types for fitting
+- {class}`climate_indices.drought.indices.Distribution` — Distribution types for fitting
 - {class}`climate_indices.compute.Periodicity` — Time series periodicity (monthly/daily)
 
 **Exceptions:**
@@ -5233,7 +5270,7 @@ import pandas as pd
 import xarray as xr
 
 from climate_indices import spei, spi
-from climate_indices.indices import Distribution
+from climate_indices.drought.indices import Distribution
 
 def main() -> None:
     time = pd.date_range("1981-01-01", periods=40 * 12, freq="MS")
@@ -5895,7 +5932,7 @@ The Palmer Drought Severity Index (PDSI) and related indices were developed by W
 - **PMDI**: Palmer Modified Drought Index (short-term agricultural drought)
 - **Z-Index**: Palmer Z-Index (monthly moisture anomaly)
 - **scPDSI**: Self-Calibrated PDSI (Wells et al., 2004), available through
-  {func}`climate_indices.palmer.scpdsi`, improves spatial comparability by
+  {func}`climate_indices.drought.palmer.scpdsi`, improves spatial comparability by
   calibrating to each location's climate.
 
 These indices are based on a water balance model that accounts for precipitation, evapotranspiration, soil moisture, and runoff.
