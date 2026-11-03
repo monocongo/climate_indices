@@ -2,9 +2,11 @@
 
 import math
 from dataclasses import dataclass, fields
+from datetime import date
 
 from climate_indices.exceptions import InvalidArgumentError
 from climate_indices.reliability._events import EventTable, _normalize_events, _period_hours
+from climate_indices.reliability._major_events import MajorEventDayThreshold, _major_event_days
 
 _DURATION_FIELDS = frozenset({"saidi", "customer_minutes_interrupted"})
 _UNSET_DURATION = object()
@@ -57,7 +59,12 @@ class ReliabilityResult:
     undefined. Overlapping events remain valid.
 
     Bounds do not filter or clip events; callers supply the reporting-period log.
-    No Major Event Day filter is applied.
+
+    ``major_event_threshold`` is the ``MajorEventDayThreshold`` that filtered the
+    log, or None when no Major Event Day filter was applied. ``major_event_days``
+    lists the excluded calendar days in ascending order. Every metric, count,
+    and accumulator excludes all rows that start on those days. The reporting
+    period is unchanged, so filtered ASAI uses the full ``period_hours``.
 
     ``maifi_e`` is the momentary interruption event frequency:
     ``sum(N_i) / N_T`` over momentary event rows that are not flagged
@@ -75,7 +82,8 @@ class ReliabilityResult:
     interruptions, it returns NaN and ``undefined_metrics`` names ``"caidi"``.
     A sustained interruption with zero duration has CAIDI ``0.0``.
     Derived metrics do not add constructor fields. The new fields are
-    ``period_hours`` and ``momentary_outage_count``.
+    ``period_hours``, ``momentary_outage_count``, ``major_event_threshold``, and
+    ``major_event_days``.
 
     The original three constructor fields retain their order, and ``maifi_e``
     and ``maifi`` follow the duration metrics so existing positional calls stay valid.
@@ -103,6 +111,8 @@ class ReliabilityResult:
     maifi: float | None = None
     period_hours: float | None = None
     momentary_outage_count: int = 0
+    major_event_threshold: MajorEventDayThreshold | None = None
+    major_event_days: tuple[date, ...] = ()
 
     @property
     def asai(self) -> float | None:
@@ -161,6 +171,7 @@ def reliability_indices(
     period_hours: float | None = None,
     period_start: object = None,
     period_end: object = None,
+    major_event_threshold: MajorEventDayThreshold | None = None,
 ) -> ReliabilityResult:
     """Compute SAIFI, SAIDI, CAIDI, MAIFI_E, MAIFI, and ASAI from the event records.
 
@@ -183,6 +194,12 @@ def reliability_indices(
         period_end: Explicit reporting end timestamp, later than the start.
             If hours and bounds are supplied, they must agree within 1e-9 hours.
             Bounds do not filter or clip events; supply the appropriate log.
+        major_event_threshold: Opt-in Major Event Day filter from
+            ``major_event_day_threshold()``. Daily SAIDI sums the sustained
+            rows that the metrics count, by start day, over ``total_customers``.
+            A day whose daily SAIDI strictly exceeds ``t_med`` is removed with
+            every row that starts on it. Every row must start after the
+            threshold's history. The default None applies no filter.
 
     Returns:
         A frozen ``ReliabilityResult``. An empty event log returns SAIFI, SAIDI,
@@ -194,14 +211,17 @@ def reliability_indices(
         ASAI is NaN, not clamped.
         ``undefined_metrics`` names every undefined derived metric in CAIDI,
         MAIFI, ASAI order, without an additional warning. The result records
-        elapsed hours and never annualizes partial periods. No Major Event Day
-        filter is applied.
+        elapsed hours and never annualizes partial periods. It records the
+        Major Event Day threshold and excluded days, or None and an empty tuple
+        when no filter was applied.
 
     Raises:
         InvalidArgumentError: ``total_customers`` is absent or invalid,
             ``exclude_planned`` is not a Boolean, the reporting period is
-            invalid, or the event record is invalid. The exception's
-            ``argument_name`` identifies the field.
+            invalid, the event record is invalid, ``major_event_threshold`` is
+            invalid, or an event does not follow the threshold's history or
+            timezone awareness. The exception's ``argument_name`` identifies
+            the field.
 
     Warns:
         ClimateIndicesWarning: An explicit type contradicts the duration.
@@ -219,6 +239,10 @@ def reliability_indices(
     mask = frame["interruption_type"] == "sustained"
     if exclude_planned:
         mask &= ~frame["planned"]
+    major_event_days: tuple[date, ...] = ()
+    if major_event_threshold is not None:
+        keep, major_event_days = _major_event_days(frame, mask, float(total_customers), major_event_threshold)
+        frame, mask = frame[keep], mask[keep]
     customer_interruptions = sum(int(count) for count in frame.loc[mask, "customers_interrupted"])
     products = frame.loc[mask, "duration"] * frame.loc[mask, "customers_interrupted"]
     # math.fsum keeps the accumulator order-independent, so shuffled rows agree exactly.
@@ -245,4 +269,6 @@ def reliability_indices(
         maifi=maifi,
         period_hours=hours,
         momentary_outage_count=int(momentary.sum()),
+        major_event_threshold=major_event_threshold,
+        major_event_days=major_event_days,
     )

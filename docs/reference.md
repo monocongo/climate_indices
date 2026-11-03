@@ -261,10 +261,11 @@ values raises `InvalidArgumentError` naming that field.
 The helper cannot tell a second operation from a new reclosing sequence, so it
 suits raw operation logs, not records that already hold whole sequences.
 
-`reliability_indices(events, total_customers=None, *, exclude_planned=False, threshold_minutes=5.0, period_hours=None, period_start=None, period_end=None)`
+`reliability_indices(events, total_customers=None, *, exclude_planned=False, threshold_minutes=5.0, period_hours=None, period_start=None, period_end=None, major_event_threshold=None)`
 returns a frozen `ReliabilityResult` with `saifi`, `saidi`,
 `customer_interruptions`, `customer_minutes_interrupted`, `outage_count`,
-`maifi_e`, `maifi`, `momentary_outage_count`, and `period_hours`.
+`maifi_e`, `maifi`, `momentary_outage_count`, `period_hours`,
+`major_event_threshold`, and `major_event_days`.
 It also exposes the read-only properties `caidi`, `asai`, and `undefined_metrics`.
 SAIFI is `CI / N_T`, where `CI = sum(N_i)` over sustained interruptions.
 Each sustained event row contributes its own `N_i`, so `CI` is additive across those
@@ -300,7 +301,35 @@ Overlapping events remain valid and contribute to the sustained accumulators; th
 The result records elapsed hours in `period_hours`.
 Bounds do not filter or clip events. Supply the log for the reporting period.
 Partial periods use their exact elapsed hours, without annualization or extrapolation.
-Results from periods of different lengths are not directly comparable. No Major Event Day filter is applied.
+Results from periods of different lengths are not directly comparable.
+The default applies no Major Event Day filter: `major_event_threshold` is None and `major_event_days` is empty.
+
+`major_event_day_threshold(daily_saidi)` fits the IEEE 1366 Beta Method threshold
+`T_MED = exp(alpha + 2.5 * beta)` to a Series or mapping from calendar day to daily SAIDI.
+It returns a frozen `MajorEventDayThreshold` with `t_med`, `alpha`, `beta`,
+`positive_days`, `history_start`, `history_end`, and `timezone`.
+Zero days stay in the history interval but not in the logarithmic sample.
+`alpha` and `beta` are the mean and sample standard deviation (`n - 1`) of the
+natural logarithms of the positive days.
+The history must cover every calendar day once, at most five years, with
+finite, nonnegative values and at least two positive days.
+A shorter history is accepted and recorded.
+Violations raise `InvalidArgumentError` naming `daily_saidi`.
+These rules are verified against IEEE Std 1366-2012; the 2022 text was not
+available (ADR-0026, decision 7).
+
+Passing the threshold as `major_event_threshold` opts in to filtering.
+Daily SAIDI sums the sustained rows that SAIDI counts by start day, divided by
+`total_customers`, so `threshold_minutes` and `exclude_planned` apply.
+An interruption that spans midnight accrues to its start day.
+A day whose daily SAIDI strictly exceeds `t_med` is a Major Event Day, and every
+row that starts on it is removed before any metric is computed.
+The result records the threshold and the excluded days in ascending order.
+The reporting period is unchanged, so filtered ASAI uses the full `period_hours`.
+Every row must start after `history_end`; a threshold applies to the next period.
+A timezone-aware history assigns aware event times to days in its own timezone.
+A naive history requires naive event times.
+Filtered and unfiltered results describe different event sets and are not comparable.
 
 The sustained metrics and ASAI share one sustained-row mask, so `exclude_planned` and
 `threshold_minutes` have one meaning.
@@ -470,6 +499,29 @@ True
 True
 >>> reliability.reliability_indices([], total_customers=100, period_hours=24).asai
 1.0
+```
+
+```{doctest}
+>>> import math
+>>> import pandas as pd
+>>> from climate_indices import reliability
+>>> days = pd.date_range("2023-12-27", periods=5, freq="D")
+>>> med = reliability.major_event_day_threshold(
+...     pd.Series([0.0, math.exp(-1), 1.0, math.e, 0.0], index=days))
+>>> round(med.t_med, 6), med.positive_days, str(med.history_end)
+(12.182494, 3, '2023-12-31')
+>>> events = [
+...     {"event_id": "storm", "start_time": "2024-01-02T20:00:00", "duration": 600.0,
+...      "customers_interrupted": 50},
+...     {"event_id": "routine", "start_time": "2024-01-05T09:00:00", "duration": 60.0,
+...      "customers_interrupted": 10},
+... ]
+>>> reliability.reliability_indices(events, total_customers=100).saidi
+306.0
+>>> filtered = reliability.reliability_indices(
+...     events, total_customers=100, major_event_threshold=med)
+>>> filtered.saidi, [str(day) for day in filtered.major_event_days]
+(6.0, ['2024-01-02'])
 ```
 
 ```{doctest}

@@ -131,7 +131,9 @@ Partial periods are computed exactly over the supplied period, with no
 annualization and no extrapolation. A result for a short period is therefore
 **not comparable** with a full-year result, or with a partial-period result of
 a different length. The result records `period_hours` so the exposure is
-explicit. No Major Event Day filter is applied; filter the event log first if
-one is required.
+explicit. No Major Event Day filter is applied by default. To remove Major Event
+Days, fit `major_event_day_threshold()` to the utility's daily-SAIDI history and
+pass it as `major_event_threshold`. Filtered and unfiltered results are not
+comparable.
 
 [reliability-demo]: https://github.com/monocongo/climate_indices/blob/main/notebooks/reliability_demo.ipynb

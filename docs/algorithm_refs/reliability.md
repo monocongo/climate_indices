@@ -154,10 +154,44 @@ partial-period result is therefore not comparable with a full-year result, nor
 with a partial-period result of a different length. The result records the
 elapsed `period_hours` so the exposure is explicit.
 
-No Major Event Day filter is applied. The IEEE 1366 recipe,
-*T*{sub}`MED` = exp(*α* + 2.5*β*) over a utility-specific five-year daily
-SAIDI history, is documented but not implemented; the library holds no such
-history. Results with and without major events are not comparable.
+## Major Event Days
+
+A Major Event Day is a day whose daily SAIDI strictly exceeds the IEEE 1366
+Beta Method threshold
+
+*T*{sub}`MED` = exp(*α* + 2.5*β*),
+
+where *α* and *β* are the mean and sample standard deviation (`n - 1` divisor)
+of the natural logarithms of the positive daily SAIDI values in the history.
+Days without interruptions stay in the history but are excluded from the
+logarithms. `major_event_day_threshold()` fits the threshold to a
+caller-supplied, utility-specific history of daily SAIDI, normally the five
+years that end on the last day of the last complete reporting period. A shorter
+history is accepted and recorded; a longer one, a missing day, a missing value,
+or fewer than two positive days is rejected.
+
+Filtering is opt-in. Pass the threshold to `reliability_indices()` as
+`major_event_threshold`. Daily SAIDI is then *Σ* *r*{sub}`i` *N*{sub}`i` /
+*N*{sub}`T` over the counted sustained rows that start on that day, so an
+interruption that spans midnight accrues to its start day. Every row that
+starts on a Major Event Day is removed, and all metrics use the remaining rows.
+The result records the threshold, its history interval, and the excluded days.
+The reporting period is unchanged, so no metric is rescaled for the removed
+days and filtered ASAI uses the full *H*. The threshold applies only to events
+after its history.
+
+These rules are verified against IEEE Std 1366-2012, clause 3.5. The 2022
+text was not available, so their 2022 conformance is unverified; see
+[ADR-0026](../adr/0026-reliability-module-api-and-conventions.md), decision 7.
+The sample standard deviation is a project convention supported by the method
+author's paper and the 2012 worked example, not by explicit clause text. The
+method assumes approximately Gaussian logarithms, and the library does not
+test that assumption.
+
+Results with and without Major Event Days describe different event sets and
+are not comparable. Two filtered results are comparable only when their
+reporting periods, customer populations, interruption definitions, history
+windows, units, and day boundaries also agree.
 
 ## Conventions that vary between utilities
 
@@ -171,7 +205,7 @@ and exposes it as a parameter where a parameter is possible.
 | Planned outages | Included by default | `exclude_planned=True` removes planned sustained rows; it does not change the momentary metrics |
 | MAIFI form | Report `maifi_e` (events) always; report `maifi` (device operations) when operation counts are supplied | Supply `device_operations` to enable `maifi`; use `group_momentary_events()` to form events from a raw operation log |
 | Momentary events tied to a sustained interruption | Not excluded unless flagged | Set `momentary_event_excluded=True` on those rows |
-| Major Event Day filter | Not applied | Not implemented; filter the event log before calling |
+| Major Event Day filter | Not applied | Pass `major_event_threshold=major_event_day_threshold(history)` to `reliability_indices()` |
 | Partial-period annualization | Never annualized | None; the result always reflects the supplied period |
 | Reporting exposure for ASAI | Must be supplied explicitly | `period_hours`, or `period_start` and `period_end` |
 
@@ -204,6 +238,12 @@ planned-outage filters, ASAI exposure and rounding, the reporting-period
 elapsed hours, and the grouping rules. The committed fixture under
 `tests/fixture/reliability/` records its provenance against
 `tests/fixture/provenance_schema.json`.
+`tests/test_reliability_major_events.py` checks the Major Event Day threshold
+against a hand-computed history, the strict boundary, the history validation
+rules, and filtered and unfiltered results through the shared metric path. It
+also reproduces the IEEE Std 1366-2012 worked example: the printed rounded
+*α* and *β*, the single January 28 Major Event Day, and the printed SAIDI
+with and without it.
 
 These are **specification-and-regression checks, not external scientific
 validation**. The fixture is hand-computed synthetic data, and no event-level
