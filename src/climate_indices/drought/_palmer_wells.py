@@ -1,6 +1,6 @@
 """Wells-lineage Palmer recursion used by self-calibrating PDSI.
 
-The standard :mod:`climate_indices.palmer` recursion follows NCEI's ``pdi.f``
+The standard :mod:`climate_indices.drought.palmer` recursion follows NCEI's ``pdi.f``
 lineage.  Self-calibrating PDSI instead uses the spell-selection rules described
 by Wells, Goddard, and Hayes (2004), so the two state machines intentionally
 remain isolated.
@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from climate_indices._palmer_duration import DurationFactors
+from climate_indices.drought._palmer_duration import DurationFactors
 from climate_indices.exceptions import ConvergenceError
 
 _TOLERANCE = 1e-5

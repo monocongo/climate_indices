@@ -13,8 +13,9 @@ import scipy.special
 import scipy.stats
 import structlog.stdlib
 
-from climate_indices import compute, eto, lmoments
+from climate_indices import compute, lmoments
 from climate_indices._calibration_period import CalibrationPeriod, CalibrationPolicy, resolve_calibration_period
+from climate_indices.drought import eto
 from climate_indices.exceptions import (
     BetaFeatureWarning,
     DataShapeError,

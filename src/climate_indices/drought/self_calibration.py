@@ -14,7 +14,7 @@ divergences are deliberate and are noted at each site; changing them would break
 numeric parity with the published algorithm.
 
 These functions are independent of the ``data``-dict machinery in
-``climate_indices.palmer`` and take no calibration-period arguments -- callers
+``climate_indices.drought.palmer`` and take no calibration-period arguments -- callers
 slice the Z-index series to the calibration window before calling.
 """
 

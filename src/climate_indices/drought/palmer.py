@@ -9,11 +9,12 @@ from typing import Any, NamedTuple
 import numpy as np
 from structlog.stdlib import BoundLogger
 
-from climate_indices import _native_backend, _palmer_pdi, _palmer_wells, compute, self_calibration, utils
+from climate_indices import _native_backend, compute, utils
 from climate_indices._calibration_period import resolve_calibration_period
-from climate_indices._palmer_common import _py_max, _py_min
-from climate_indices._palmer_duration import DurationFactors
-from climate_indices._palmer_pdi import PdiDurationFactors
+from climate_indices.drought import _palmer_pdi, _palmer_wells, self_calibration
+from climate_indices.drought._palmer_common import _py_max, _py_min
+from climate_indices.drought._palmer_duration import DurationFactors
+from climate_indices.drought._palmer_pdi import PdiDurationFactors
 from climate_indices.exceptions import ConvergenceError
 from climate_indices.logging_config import get_logger
 
@@ -1322,7 +1323,7 @@ def scpdsi(
             duration-factor fit must yield contracting recurrence coefficients;
             a short or climatologically skewed calibration period can pull a
             fitted slope non-positive and trigger this (see
-            :func:`climate_indices.self_calibration.duration_factors`).
+            :func:`climate_indices.drought.self_calibration.duration_factors`).
     """
     if np.ndim(precips) > 2 or np.ndim(pet) > 2:
         raise ValueError(

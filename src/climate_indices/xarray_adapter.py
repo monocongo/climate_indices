@@ -38,9 +38,10 @@ import pandas as pd
 import structlog.stdlib
 import xarray as xr
 
-from climate_indices import compute, eto, indices, palmer, pm_eto, provenance, utils
+from climate_indices import compute, provenance, utils
 from climate_indices._calibration_period import MIN_CALIBRATION_YEARS, CalibrationPeriod, resolve_calibration_period
 from climate_indices.cf_metadata_registry import CF_METADATA, spi_output_attributes, standardized_output_bounds
+from climate_indices.drought import eto, indices, palmer, pm_eto
 from climate_indices.exceptions import (
     CoordinateValidationError,
     InputAlignmentWarning,
@@ -2425,7 +2426,7 @@ def pet_thornthwaite(
         calculation_metadata={"latitude": _build_latitude_attr(lat_for_ufunc), "data_start_year": data_start_year},
         output_provenance=_OutputProvenance(
             inputs={"temperature": temp_da, "latitude": latitude},
-            implementation="climate_indices.indices.pet",
+            implementation="climate_indices.drought.indices.pet",
         ),
         completion_event="pet_thornthwaite_completed",
         completion_fields={
@@ -2632,7 +2633,7 @@ def pet_hargreaves(
                 "daily_tmax_celsius": tmax_aligned,
                 "latitude": latitude,
             },
-            implementation="climate_indices.eto.eto_hargreaves",
+            implementation="climate_indices.drought.eto.eto_hargreaves",
         ),
         completion_event="pet_hargreaves_completed",
         completion_fields={
@@ -2699,7 +2700,7 @@ def _finalize_penman_monteith_result(
         "PET Penman-Monteith",
         inputs=inputs,
         parameters={**calculation_metadata, **parameters},
-        implementation="climate_indices.pm_eto.penman_monteith_eto",
+        implementation="climate_indices.drought.pm_eto.penman_monteith_eto",
     )
     if isinstance(latitude, xr.DataArray):
         lat_desc = f"DataArray(dims={latitude.dims})"
@@ -2761,9 +2762,9 @@ def pet_penman_monteith(
             NumPy input; inferred from the time coordinate for xarray input.
         wind_speed_height_m: Height at which the wind speed was measured [m].
         humidity: Optional actual-vapour-pressure inputs, in pathway precedence
-            order; see :class:`climate_indices.pm_eto.HumidityInputs`.
+            order; see :class:`climate_indices.drought.pm_eto.HumidityInputs`.
         radiation: Optional solar-radiation inputs, in pathway precedence order;
-            see :class:`climate_indices.pm_eto.RadiationInputs`.
+            see :class:`climate_indices.drought.pm_eto.RadiationInputs`.
         soil_heat_flux_mj_m2_day: Soil heat flux density [MJ m-2 day-1]; use 0 for
             daily steps.
         albedo: Canopy reflection coefficient (0.23 for the grass reference).
@@ -3207,7 +3208,7 @@ def palmer_pdsi(
         output_provenance=_OutputProvenance(
             inputs={"precips": precips_da, "pet": pet_da, "awc": awc},
             parameters={**calculation_metadata, "fitting_params": fitting_params},
-            implementation="climate_indices.palmer.pdsi",
+            implementation="climate_indices.drought.palmer.pdsi",
         ),
         completion_event="palmer_pdsi_completed",
         completion_fields={
@@ -3414,7 +3415,7 @@ def fit_diagnostics(
 ) -> compute.FitDiagnostics | xr.Dataset:
     """Fit a distribution and return per-calendar-step diagnostics, with xarray/Dask support.
 
-    This is the audit surface of :func:`climate_indices.indices.fit_diagnostics` as a
+    This is the audit surface of :func:`climate_indices.drought.indices.fit_diagnostics` as a
     CF-annotated ``xr.Dataset``: one variable per fitted parameter plus ``prob_zero``,
     ``n_valid``, ``ks_statistic``, ``ks_p_value``, and ``distribution_used``, each over
     a calendar-step dimension (``month`` or ``dayofyear``) and the input's cell
@@ -3423,7 +3424,7 @@ def fit_diagnostics(
 
     Args:
         values: NumPy array or xarray DataArray of non-negative values. The NumPy
-            layouts are the ones :func:`climate_indices.indices.fit_diagnostics`
+            layouts are the ones :func:`climate_indices.drought.indices.fit_diagnostics`
             accepts; the xarray layout is read from its dimensions, with the core
             time dimension plus any number of cell dimensions.
         scale: Number of time steps accumulated before fitting.
@@ -3452,7 +3453,7 @@ def fit_diagnostics(
 
     Returns:
         For NumPy input, the :class:`climate_indices.compute.FitDiagnostics` that
-        :func:`climate_indices.indices.fit_diagnostics` returns. For xarray input, an
+        :func:`climate_indices.drought.indices.fit_diagnostics` returns. For xarray input, an
         ``xr.Dataset`` whose variables are reduced over time only: a calendar-step
         dimension (``month`` for monthly data, ``dayofyear`` for daily data) plus the
         input's cell dimensions, each variable carrying CF attributes and provenance
@@ -3566,7 +3567,7 @@ def fit_diagnostics(
         output_provenance=_OutputProvenance(
             inputs={"values": input_da},
             parameters=calculation_metadata,
-            implementation="climate_indices.indices.fit_diagnostics",
+            implementation="climate_indices.drought.indices.fit_diagnostics",
         ),
         completion_event="fit_diagnostics_completed",
         completion_fields={"period_dim": period_dim, "distribution": distribution.value},
