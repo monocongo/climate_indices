@@ -20,8 +20,11 @@ SAIDI and CAIDI use minutes. SAIFI uses interruptions per customer per year.
 The table supplies aggregate values, not durations, customer counts, or event identifiers.
 The values are public domain under [EIA's reuse policy](https://www.eia.gov/about/copyrights_reuse.php).
 
-The transcription retains the published values, including omitted trailing zeros.
-The rounding intervals have half-widths of 0.05 minute for SAIDI and CAIDI, and 0.0005 for SAIFI.
+The fixture normalizes the numerical values to an inferred column precision of 0.1 minute for SAIDI and CAIDI and 0.001 for SAIFI.
+Cells such as SAIDI 268.4 and SAIFI 1.275 support this inference.
+We interpret shorter values, such as SAIFI 1.42, as values with omitted trailing zeros.
+This is an assumption, not a documented EIA precision guarantee.
+Under this assumption, the rounding intervals have half-widths of 0.05 minute for SAIDI and CAIDI, and 0.0005 for SAIFI.
 For published `s = SAIDI`, `f = SAIFI`, and `c = CAIDI`, the test requires:
 
 ```text
@@ -29,7 +32,7 @@ abs(c - s/f) <= 0.05 + max((s+0.05)/(f-0.0005) - s/f,
                            s/f - (s-0.05)/(f+0.0005))
 ```
 
-This bound accounts for rounding in all three published values. It is not a fitted tolerance.
+This bound accounts for rounding in all three published values under the inferred precision convention. It is not a fitted tolerance.
 The test checks every row, rejects a one-minute CAIDI corruption in every row, and verifies finite values and bounds.
 The test also constructs equivalent two-row logs using 1,000 synthetic served customers.
 Those logs check public-API accumulator consistency and ASAI bounds, not EIA's original event arithmetic or Major Event Day filtering.
@@ -99,5 +102,6 @@ Run the offline checks with:
 uv run pytest -m validation tests/test_reliability_reference.py
 ```
 
-The default suite deselects this entire module. Missing files cause failures, not skips or network downloads.
+The default suite deselects every test in this module, but collection still imports the module and reads its fixtures.
+Missing files cause failures, not skips or network downloads.
 `provenance.json` follows `tests/fixture/provenance_schema.json` and records the licence and tolerances.

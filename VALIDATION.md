@@ -66,14 +66,16 @@ Their scope limits are in the sections below.
 The committed panel and scenarios are in `tests/fixture/reliability_benchmarks/`.
 Its README records source locations, retrieval checksums, units, licences, and evidence limits.
 Its schema-validated provenance records the fixture checksum and fixed tolerances.
-Missing fixtures fail rather than skip. The default suite deselects the module.
+Missing fixtures fail rather than skip.
+The default suite deselects the module's tests, but collection still imports the module and reads its fixtures.
 
 **Sustained metrics and ASAI: regression coverage, not independent validation; no event-level oracle from an operational outage log.**
 The EIA Electric Power Annual [Table 11.1](https://www.eia.gov/electricity/annual/html/epa_11_01.html)
 provides 20 national aggregate rows for 2015–2024.
 The panel keeps IEEE-method all-events and without-Major-Event-Day values separate.
-It checks `CAIDI = SAIDI / SAIFI` for every row with propagated source-rounding intervals.
+It checks `CAIDI = SAIDI / SAIFI` for every row with propagated rounding intervals.
 The interval half-widths are 0.05 minute for SAIDI and CAIDI and 0.0005 for SAIFI.
+These assume uniform column precision with omitted trailing zeros, inferred from the displayed values rather than explicitly guaranteed by EIA.
 A one-minute CAIDI corruption must fail the same check for every row.
 
 Equivalent synthetic logs exercise `reliability_indices()` and its shared accumulators for every panel row.
