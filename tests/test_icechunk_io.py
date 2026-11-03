@@ -24,8 +24,8 @@ import pytest
 import xarray as xr
 
 from climate_indices import compute, spei, spi
+from climate_indices.drought.indices import Distribution
 from climate_indices.icechunk_io import open_icechunk, write_icechunk
-from climate_indices.indices import Distribution
 from tests import conftest
 
 icechunk = pytest.importorskip("icechunk")

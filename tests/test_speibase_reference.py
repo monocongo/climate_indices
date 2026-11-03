@@ -38,7 +38,8 @@ from types import ModuleType
 import numpy as np
 import pytest
 
-from climate_indices import compute, eto, indices
+from climate_indices import compute
+from climate_indices.drought import eto, indices
 
 _FIXTURE_ROOT = Path(__file__).parent / "fixture"
 _PALMER_ROOT = _FIXTURE_ROOT / "palmer"

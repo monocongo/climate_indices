@@ -19,7 +19,8 @@ from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 from hypothesis.extra import numpy as npst
 
-from climate_indices import compute, eto, indices, palmer
+from climate_indices import compute
+from climate_indices.drought import eto, indices, palmer
 from climate_indices.exceptions import GoodnessOfFitWarning, MissingDataWarning, ShortCalibrationWarning
 
 

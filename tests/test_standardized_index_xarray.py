@@ -12,9 +12,9 @@ import pytest
 import xarray as xr
 
 import climate_indices
-from climate_indices import indices
 from climate_indices.cf_metadata_registry import CF_METADATA
 from climate_indices.compute import Periodicity
+from climate_indices.drought import indices
 from climate_indices.exceptions import CoordinateValidationError, InvalidArgumentError
 
 SCALE = 3

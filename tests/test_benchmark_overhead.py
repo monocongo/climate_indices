@@ -19,10 +19,11 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from climate_indices import indices, spei, spi
+from climate_indices import spei, spi
 from climate_indices.compute import Periodicity
-from climate_indices.eto import eto_hargreaves
-from climate_indices.indices import Distribution
+from climate_indices.drought import indices
+from climate_indices.drought.eto import eto_hargreaves
+from climate_indices.drought.indices import Distribution
 from climate_indices.xarray_adapter import pet_hargreaves, pet_thornthwaite
 
 # measurement parameters for stable paired overhead measurement

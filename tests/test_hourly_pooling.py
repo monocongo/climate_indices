@@ -19,7 +19,8 @@ import pytest
 import xarray as xr
 
 import climate_indices
-from climate_indices import compute, energy, indices, utils
+from climate_indices import compute, energy, utils
+from climate_indices.drought import indices
 from climate_indices.exceptions import InvalidArgumentError
 
 HOURS_PER_YEAR = compute.Periodicity.hourly.period_length

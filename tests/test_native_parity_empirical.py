@@ -5,7 +5,8 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from climate_indices import compute, indices
+from climate_indices import compute
+from climate_indices.drought import indices
 from tests.test_native_parity import _Recorder, _rust_and_python, native
 
 

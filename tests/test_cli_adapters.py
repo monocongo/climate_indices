@@ -9,8 +9,9 @@ import pytest
 import xarray as xr
 
 from climate_indices import __main__ as cli
-from climate_indices import compute, fire, flood, indices
+from climate_indices import compute, fire, flood
 from climate_indices._cli_transport import Transport
+from climate_indices.drought import indices
 from climate_indices.validation import DatasetLayout
 
 

@@ -16,7 +16,8 @@ import pytest
 import xarray as xr
 
 from climate_indices import __main__ as cli_main
-from climate_indices import _cli, compute, energy, indices
+from climate_indices import _cli, compute, energy
+from climate_indices.drought import indices
 from climate_indices.exceptions import CoordinateValidationError, InvalidArgumentError
 
 # twelve complete calendar years of daily record, 2015 through 2026: the

@@ -8,7 +8,8 @@ import numpy as np
 import pytest
 
 from benchmarks import native_dispatch as recipe
-from climate_indices import compute, indices
+from climate_indices import compute
+from climate_indices.drought import indices
 from tests import conftest
 
 

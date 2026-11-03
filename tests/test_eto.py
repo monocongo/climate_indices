@@ -4,7 +4,7 @@ import math
 import numpy as np
 import pytest
 
-from climate_indices import eto
+from climate_indices.drought import eto
 from climate_indices.exceptions import InvalidArgumentError
 
 # ------------------------------------------------------------------------------
@@ -246,7 +246,7 @@ def test_eto_hargreaves_literature_mehta(
 
     See tests/fixture/pet_literature/metadata.json for the full citation and
     for how the source's extraterrestrial radiation input was mapped onto a
-    (latitude, day_of_year) pair for climate_indices.eto.eto_hargreaves.
+    (latitude, day_of_year) pair for climate_indices.drought.eto.eto_hargreaves.
     """
     tmin, tmax, tmean = hargreaves_literature_tmin_tmax_tmean_celsius
     day_of_year = 58  # back-solved to reproduce the source's et_rad input

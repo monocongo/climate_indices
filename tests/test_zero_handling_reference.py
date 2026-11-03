@@ -24,7 +24,8 @@ import numpy as np
 import pytest
 import scipy.stats
 
-from climate_indices import compute, indices
+from climate_indices import compute
+from climate_indices.drought import indices
 
 pytestmark = pytest.mark.validation
 

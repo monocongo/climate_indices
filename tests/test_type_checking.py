@@ -18,8 +18,8 @@ import xarray as xr
 
 from climate_indices import compound, energy, fire, fit_diagnostics, percentage_of_normal, spei, spi
 from climate_indices.compute import FitDiagnostics, Periodicity
-from climate_indices.indices import Distribution
-from climate_indices.indices import percentage_of_normal as numpy_pnp
+from climate_indices.drought.indices import Distribution
+from climate_indices.drought.indices import percentage_of_normal as numpy_pnp
 from climate_indices.provenance import read_provenance
 from climate_indices.runs import RunSet, RunStatistics, summarize_runs
 

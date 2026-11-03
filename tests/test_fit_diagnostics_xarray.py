@@ -1,7 +1,7 @@
 """Tests for the xarray/Dask fit-diagnostics surface.
 
 The diagnostics are an audit view of a fitted distribution, so the tests here
-pin parity with :func:`climate_indices.indices.fit_diagnostics`, the calendar
+pin parity with :func:`climate_indices.drought.indices.fit_diagnostics`, the calendar
 dimension naming, distribution fallback reporting, rejection paths, Dask
 laziness, and a NetCDF round-trip.
 """
@@ -15,10 +15,11 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from climate_indices import compute, fit_diagnostics, indices, utils
+from climate_indices import compute, fit_diagnostics, utils
 from climate_indices.compute import FitDiagnostics, Periodicity
+from climate_indices.drought import indices
+from climate_indices.drought.indices import Distribution
 from climate_indices.exceptions import CoordinateValidationError, InsufficientDataError
-from climate_indices.indices import Distribution
 
 _CALIBRATION_START_YEAR = 1981
 _CALIBRATION_END_YEAR = 2010

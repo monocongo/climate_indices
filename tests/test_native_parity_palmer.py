@@ -21,9 +21,9 @@ from typing import Any
 import numpy as np
 import pytest
 
-from climate_indices import palmer, self_calibration
-from climate_indices._palmer_duration import DurationFactors
-from climate_indices._palmer_pdi import PdiDurationFactors
+from climate_indices.drought import palmer, self_calibration
+from climate_indices.drought._palmer_duration import DurationFactors
+from climate_indices.drought._palmer_pdi import PdiDurationFactors
 from climate_indices.exceptions import ConvergenceError, InsufficientDataError, InvalidArgumentError
 from tests import conftest
 

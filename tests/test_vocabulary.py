@@ -8,7 +8,8 @@ from typing import get_args, get_type_hints
 
 import pytest
 
-from climate_indices import compute, indices, vocabulary
+from climate_indices import compute, vocabulary
+from climate_indices.drought import indices
 from climate_indices.exceptions import InvalidArgumentError
 
 

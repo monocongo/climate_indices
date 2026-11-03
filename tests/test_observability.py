@@ -21,8 +21,9 @@ from unittest import mock
 import numpy as np
 import pytest
 
-from climate_indices import _recurrence, compute, fire, indices, palmer
-from climate_indices.eto import eto_hargreaves
+from climate_indices import _recurrence, compute, fire
+from climate_indices.drought import indices, palmer
+from climate_indices.drought.eto import eto_hargreaves
 from climate_indices.exceptions import DataShapeError, InvalidArgumentError
 from climate_indices.logging_config import (
     ENV_LOG_LEVEL,

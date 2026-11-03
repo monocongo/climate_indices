@@ -14,7 +14,8 @@ import numpy as np
 import pytest
 from scipy import stats
 
-from climate_indices import compute, indices, lmoments
+from climate_indices import compute, lmoments
+from climate_indices.drought import indices
 from climate_indices.exceptions import InvalidArgumentError
 
 _DATA_START_YEAR = 1950
