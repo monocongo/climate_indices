@@ -167,7 +167,7 @@ records the tolerances, evidence, and known gaps.
 
 The reliability package validates and classifies interruption records and computes
 SAIFI, SAIDI, CAIDI, MAIFI_E, MAIFI, ASAI, and outage counts from the event records.
-Simulation is not implemented yet.
+It runs a seeded Monte Carlo simulation of component failures into the same metric path.
 [ADR-0026](adr/0026-reliability-module-api-and-conventions.md) fixes the conventions
 for those later tickets.
 Import it with `from climate_indices import reliability`.
@@ -215,7 +215,8 @@ Zero-duration events remain in the table and do not overlap other intervals.
 Invalid fields raise `InvalidArgumentError` from `climate_indices.exceptions`.
 Its `argument_name` names the field, such as `event_id`, `duration`, or `start_time`.
 Unknown columns, including simulation-only `failure_rate`, `repair_time`, and topology edges,
-are rejected. Simulation inputs are not part of this deterministic contract.
+are rejected. Simulation inputs are not part of this deterministic contract; they belong
+to `simulate_reliability()`, which produces the event log the contract consumes.
 The shipped [JSON Schema](https://github.com/monocongo/climate_indices/blob/main/src/climate_indices/reliability/event_schema.json)
 checks JSON record structure. Runtime validation also checks identifier uniqueness,
 calendar validity, timezone awareness, interval consistency, and customer bounds.
@@ -343,7 +344,99 @@ If the constructor supplies a period but omits SAIDI, ASAI is also NaN.
 If a directly constructed result has a non-positive or non-finite `period_hours`, ASAI is NaN and `undefined_metrics` includes `"asai"`.
 Equality and hashing preserve the legacy duration rules without a period.
 With a period, an unset SAIDI remains distinct from zero because it changes ASAI.
-The simulation path is not implemented yet.
+
+`simulate_reliability(components, *, arrangement, total_customers, horizon_hours,
+n_trials, seed=None, component_topology=None)` runs a seeded Monte Carlo simulation of
+`components` and returns one `ReliabilityResult` per trial, ordered by trial index.
+Every component starts operational at hour 0. A component fails after an exponential
+wait with its constant `failure_rate` (failures per hour), then recovers after a draw
+from its restoration distribution. All served customers are interrupted whenever the
+system is down. SAIDI counts only system-down intervals longer than five minutes.
+Intervals of five minutes or less contribute to MAIFI_E, not SAIDI, SAIFI, or
+customer interruptions. A series system is down when any component is down.
+A parallel system is down only when every component is down.
+The system-down intervals are the union of the component down
+intervals for a series arrangement and their intersection for a parallel
+arrangement; each trial's system-down intervals form an event log that
+`reliability_indices()` consumes, so the simulation uses the validated metric path and
+cannot drift from the metric definitions. System-down intervals are clipped at the
+horizon, so an outage that continues past it contributes only through the horizon.
+The classifier uses the clipped duration.
+
+Each component is a mapping with `component_id` (a non-empty unique string),
+`failure_rate` (nonnegative failures per hour), `repair_time` (positive mean restoration
+time in hours), an optional `repair_distribution` of `"fixed"`, `"exponential"`
+(default), or `"lognormal"`, and `repair_sigma` (a positive log-scale shape, required
+with the lognormal distribution and invalid otherwise). The fixed distribution uses
+`repair_time` as the deterministic duration; the exponential uses it as the mean; the
+lognormal uses it as the mean with log-scale median `repair_time * exp(-repair_sigma**2 / 2)`.
+The lognormal scale must be representable as a positive float64 value.
+An unrepresentable scale raises `InvalidArgumentError` naming `repair_sigma` before sampling.
+A zero `failure_rate` component never fails, so it cannot bring a parallel system down.
+
+`total_customers` must be a positive whole count within int64, because every simulated event
+interrupts all of them. `horizon_hours` and `n_trials` must be positive, and a horizon
+shorter than a year is never annualized. `seed` is a required nonnegative integer and
+the only source of randomness. Omitting it or passing `None` raises `InvalidArgumentError` naming `seed`.
+
+The library holds no module-level generator state, so identical seeds and arguments reproduce the tuple exactly.
+Trials are sampled in order from one generator, so a shorter run is an exact prefix of a longer run with
+the same seed. Supplying `component_topology` raises `InvalidArgumentError` naming that
+field, because customer connectivity and network topology resolution are deferred
+(ADR-0026). The same exception names any invalid component or envelope field.
+
+The analytic SAIDI reference uses one initially operational component with exponential
+failures and repairs. Its availability is
+`P_up(t) = A + (1 - A) * exp(-(rate + repair_rate) * t)`, where
+`A = repair_rate / (rate + repair_rate)`. The failure-onset intensity is
+`rate * P_up(t)`. For an onset at `t`, let `R = horizon_hours - t`,
+`m = repair_time`, and `d = 5 / 60` hours. When `R > d`, the expected sustained
+contribution is `(d + m) * exp(-d / m) - m * exp(-R / m)` hours.
+When `R <= d`, the contribution is zero. Integrating the onset intensity times
+this contribution gives expected SAIDI after conversion to minutes.
+This excludes momentary downtime, unlike an integral of all system downtime.
+
+`tests/test_reliability_simulation.py` checks this independent analytic expectation
+within three standard errors, with mean repairs above and below five minutes.
+
+A second analytic reference checks two components in series with exponential failures and repairs.
+It uses a continuous-time Markov chain, which describes transitions between component failure states.
+The transient states have the first component down, the second down, or both down.
+The reference integrates outage durations until both components recover, with the same five-minute threshold and horizon clipping.
+
+A separate test checks that the standard error falls at the `1 / sqrt(n)` rate.
+A larger trial count does not guarantee a closer trial mean on every run.
+For multiple components, the tests check that parallel SAIDI never exceeds series
+SAIDI for identical component histories. Interruption counts have no such ordering:
+one long series outage can contain multiple separate parallel outages.
+The tests also check each restoration distribution's realized mean through CAIDI
+for long mean repairs, with a three-percent tolerance.
+
+```{doctest}
+>>> from climate_indices import reliability
+>>> spec = [{"component_id": "c1", "failure_rate": 0.02, "repair_time": 4.0}]
+>>> runs = reliability.simulate_reliability(
+...     spec, arrangement="series", total_customers=100, horizon_hours=8760.0,
+...     n_trials=3, seed=7)
+>>> len(runs)
+3
+>>> runs == reliability.simulate_reliability(
+...     spec, arrangement="series", total_customers=100, horizon_hours=8760.0,
+...     n_trials=3, seed=7)
+True
+>>> fixed = [{"component_id": "c1", "failure_rate": 0.02, "repair_time": 4.0,
+...           "repair_distribution": "fixed"},
+...          {"component_id": "c2", "failure_rate": 0.01, "repair_time": 2.0,
+...           "repair_distribution": "fixed"}]
+>>> series = reliability.simulate_reliability(
+...     fixed, arrangement="series", total_customers=100, horizon_hours=8760.0,
+...     n_trials=10, seed=3)
+>>> parallel = reliability.simulate_reliability(
+...     fixed, arrangement="parallel", total_customers=100, horizon_hours=8760.0,
+...     n_trials=10, seed=3)
+>>> all(p.saidi <= s.saidi for s, p in zip(series, parallel, strict=True))
+True
+```
 
 ```{doctest}
 >>> from climate_indices import reliability

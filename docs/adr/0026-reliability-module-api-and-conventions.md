@@ -43,9 +43,17 @@ The existing `outage_count` tallies sustained rows, including separate restorati
 `momentary_outage_count` separately tallies momentary rows; it is independent of
 `exclude_planned`, which filters sustained rows.
 It does not group rows or apply the MAIFI_E-only `momentary_event_excluded` flag.
-Simulation and adapters remain unimplemented.
-ENERGY2-9 through ENERGY2-11
-([#1343](https://github.com/monocongo/climate_indices/issues/1343)–[#1345](https://github.com/monocongo/climate_indices/issues/1345))
+Amended by ENERGY2-9 ([#1343](https://github.com/monocongo/climate_indices/issues/1343)):
+`simulate_reliability()` implements the seeded Monte Carlo path over supplied
+components with series and parallel aggregation, an explicit required seed,
+fixed, exponential, and lognormal restoration distributions, and rejection of
+`component_topology` with `InvalidArgumentError`. Each trial's system-down
+intervals form an event log that `reliability_indices()` consumes. Trials are
+sampled in order from one generator, so a shorter run is an exact prefix of a
+longer run with the same seed.
+Adapters remain unimplemented.
+ENERGY2-10 through ENERGY2-11
+([#1344](https://github.com/monocongo/climate_indices/issues/1344)–[#1345](https://github.com/monocongo/climate_indices/issues/1345))
 implement the remaining design. Each decision is amended here as its implementation lands, as
 {doc}`0013-flood-module-api-and-naming` was for flood.
 
