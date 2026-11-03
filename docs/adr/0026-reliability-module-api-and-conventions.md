@@ -299,7 +299,9 @@ unreproducible claim of reproduction.
      is not a Major Event Day, and the comparison has no tolerance.
    - An interruption that spans midnight accrues to the day it begins.
    - Daily SAIDI identifies the days, but all indices are calculated with those
-     days removed, and the activity on them is reported separately.
+     days removed. The clause asks for the activity on them to be analyzed and
+     reported separately; the result records the excluded days so a caller can
+     report them, and it does not compute a separate Major Event Day metric.
 
    **`β` uses the sample standard deviation, `n - 1` divisor, as a project
    convention.** The 2012 clause names no divisor. The method author's paper
@@ -312,7 +314,8 @@ unreproducible claim of reproduction.
    **`major_event_day_threshold(daily_saidi)` validates the history it is
    given.** It takes a Series or mapping from calendar day to daily SAIDI and
    returns a frozen `MajorEventDayThreshold` with `t_med`, `alpha`, `beta`,
-   `positive_days`, `history_start`, `history_end`, and `timezone`. The caller
+   `history_start`, `history_end`, `positive_days`, and `timezone`, in that
+   constructor order. The caller
    selects the interval; the library does not choose a window from a longer
    record. These validation rules are project choices, because the clause does
    not address them. Each raises `InvalidArgumentError` naming `daily_saidi`:

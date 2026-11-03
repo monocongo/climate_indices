@@ -93,13 +93,18 @@ def major_event_day_threshold(daily_saidi: pd.Series | Mapping[Any, object]) -> 
             positive days; or gives a threshold that overflows float64. The
             exception's ``argument_name`` is ``daily_saidi``.
     """
+    if not isinstance(daily_saidi, (pd.Series, Mapping)):
+        raise _invalid("daily_saidi", "must be a Series or mapping indexed by calendar dates, not a list or DataFrame")
     try:
         series = daily_saidi if isinstance(daily_saidi, pd.Series) else pd.Series(daily_saidi, dtype=object)
     except (ValueError, TypeError) as exc:
         raise _invalid("daily_saidi", "must be a Series or mapping indexed by calendar dates") from exc
     labels = _calendar(series.index)
     # Local wall-clock nanoseconds: midnight is a whole number of days since the epoch.
-    wall = (labels.tz_localize(None) if labels.tz is not None else labels).as_unit("ns").asi8
+    try:
+        wall = (labels.tz_localize(None) if labels.tz is not None else labels).as_unit("ns").asi8
+    except (ValueError, OverflowError) as exc:
+        raise _invalid("daily_saidi", "dates must fit datetime64[ns]") from exc
     order = np.argsort(wall, kind="stable")
     wall = wall[order]
     if (wall % _DAY_NS != 0).any():
@@ -152,6 +157,8 @@ def _major_event_days(
     _number(threshold.t_med, "major_event_threshold", positive=True)
     if isinstance(threshold.history_end, datetime) or not isinstance(threshold.history_end, date):
         raise _invalid("major_event_threshold", "history_end must be a date, not a timestamp")
+    if threshold.timezone is not None and not isinstance(threshold.timezone, tzinfo):
+        raise _invalid("major_event_threshold", "timezone must be a tzinfo or None")
     start = pd.DatetimeIndex(frame["start_time"])
     if len(start) and (start.tz is None) != (threshold.timezone is None):
         raise _invalid("start_time", "timezone awareness must match the Major Event Day history")

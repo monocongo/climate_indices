@@ -155,6 +155,52 @@ def test_filtering_removes_every_row_on_a_major_event_day_through_the_shared_pat
     assert filtered.asai == manual.asai
 
 
+def test_daily_saidi_sums_every_sustained_row_of_one_day() -> None:
+    # Two rows of 40 daily SAIDI each; neither alone exceeds 50, and together they do.
+    events = [event("a", "2024-01-02T00:00:00", 40.0, 100), event("b", "2024-01-02T01:00:00", 40.0, 100)]
+    result = reliability.reliability_indices(events, total_customers=100, major_event_threshold=threshold(50.0))
+    assert result.major_event_days == (date(2024, 1, 2),)
+    assert result.outage_count == 0
+    assert result.saidi == 0.0
+
+
+def test_multiple_major_event_days_are_listed_in_ascending_order() -> None:
+    events = [event("later", "2024-01-05T00:00:00", 60.0, 100), event("earlier", "2024-01-02T00:00:00", 60.0, 100)]
+    result = reliability.reliability_indices(events, total_customers=100, major_event_threshold=threshold(50.0))
+    assert result.major_event_days == (date(2024, 1, 2), date(2024, 1, 5))
+
+
+def test_history_ending_on_a_leap_day() -> None:
+    end = date(2024, 2, 29)
+    accept = pd.date_range("2019-03-01", "2024-02-29", freq="D")
+    accepted = reliability.major_event_day_threshold(
+        pd.Series([1.0 + (offset % 7) for offset in range(len(accept))], index=accept)
+    )
+    assert (accepted.history_start, accepted.history_end) == (date(2019, 3, 1), end)
+    reject = pd.date_range("2019-02-28", "2024-02-29", freq="D")
+    with pytest.raises(InvalidArgumentError) as error:
+        reliability.major_event_day_threshold(pd.Series([1.0] * len(reject), index=reject))
+    assert error.value.argument_name == "daily_saidi"
+
+
+def test_out_of_range_dates_are_rejected() -> None:
+    with pytest.raises(InvalidArgumentError) as error:
+        reliability.major_event_day_threshold(pd.Series([1.0, 2.0, 3.0], index=pd.date_range("3000-01-01", periods=3)))
+    assert error.value.argument_name == "daily_saidi"
+    with pytest.raises(InvalidArgumentError) as error:
+        reliability.major_event_day_threshold(pd.Series([1.0, 2.0], index=[date(3000, 1, 1), date(3000, 1, 2)]))
+    assert error.value.argument_name == "daily_saidi"
+
+
+def test_threshold_timezone_must_be_a_tzinfo() -> None:
+    med = threshold(10.0)
+    for timezone in ["Not/AZone", 3600, object()]:
+        invalid = dataclasses.replace(med, timezone=timezone)
+        with pytest.raises(InvalidArgumentError) as error:
+            reliability.reliability_indices([], total_customers=100, major_event_threshold=invalid)
+        assert error.value.argument_name == "major_event_threshold"
+
+
 def test_multi_day_interruption_accrues_to_its_start_day() -> None:
     # 600 minutes x 10 customers / 100 customers = 60 daily SAIDI, all on January 2.
     events = [event("overnight", "2024-01-02T23:00:00", 600.0, 10), event("small", "2024-01-03T10:00:00", 10.0, 1)]
@@ -348,16 +394,25 @@ def test_invalid_history_values_are_rejected(values: list[object]) -> None:
         pd.Series([1.0, 2.0, 3.0], index=pd.to_datetime(["2023-01-01", "2023-01-02", "2023-01-02"])),
         pd.Series([1.0, 2.0], index=pd.to_datetime(["2023-01-01T00:00", "2023-01-02T06:00"])),
         pd.Series([1.0, 2.0], index=pd.to_datetime(["2023-01-01", None])),
+        pd.Series([1.0, 2.0], index=["2023-01-01", "not-a-date"]),
         pd.Series([1.0, 2.0]),
-        [1.0, 2.0],
-        None,
     ],
-    ids=["missing-date", "duplicate-date", "not-midnight", "missing-label", "integer-index", "list", "none"],
+    ids=["missing-date", "duplicate-date", "not-midnight", "missing-label", "unparseable-label", "integer-index"],
 )
 def test_invalid_history_calendars_are_rejected(daily_saidi: Any) -> None:
     with pytest.raises(InvalidArgumentError) as error:
         reliability.major_event_day_threshold(daily_saidi)
     assert error.value.argument_name == "daily_saidi"
+
+
+@pytest.mark.parametrize(
+    "daily_saidi", [None, [1.0, 2.0], pd.DataFrame({"a": [1.0, 2.0]})], ids=["none", "list", "frame"]
+)
+def test_history_must_be_a_series_or_mapping(daily_saidi: Any) -> None:
+    with pytest.raises(InvalidArgumentError) as error:
+        reliability.major_event_day_threshold(daily_saidi)
+    assert error.value.argument_name == "daily_saidi"
+    assert "Series or mapping" in str(error.value)
 
 
 def test_public_names_are_exported() -> None:

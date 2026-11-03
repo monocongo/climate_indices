@@ -307,7 +307,8 @@ The default applies no Major Event Day filter: `major_event_threshold` is None a
 `major_event_day_threshold(daily_saidi)` fits the IEEE 1366 Beta Method threshold
 `T_MED = exp(alpha + 2.5 * beta)` to a Series or mapping from calendar day to daily SAIDI.
 It returns a frozen `MajorEventDayThreshold` with `t_med`, `alpha`, `beta`,
-`positive_days`, `history_start`, `history_end`, and `timezone`.
+`history_start`, `history_end`, `positive_days`, and `timezone`, in that
+constructor order.
 Zero days stay in the history interval but not in the logarithmic sample.
 `alpha` and `beta` are the mean and sample standard deviation (`n - 1`) of the
 natural logarithms of the positive days.
@@ -345,7 +346,9 @@ Including those operations in `maifi` is a library convention, not a verified IE
 It is `None` when the input has no `device_operations` column or a momentary row
 leaves its operation count unknown, because an operation frequency cannot be
 recovered from an event count. It is `0.0` when the column is supplied and no
-momentary row operates.
+momentary row operates. Removing a Major Event Day can remove every momentary
+row; `maifi` is then `0.0` rather than `None`, because the input supplied
+operation data and the remaining rows hold no operations.
 
 `outage_count` tallies sustained rows, not unique physical incidents or customers.
 Each restoration-stage row has its own unique `event_id` and counts separately.

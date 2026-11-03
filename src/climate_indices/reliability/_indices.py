@@ -74,7 +74,9 @@ class ReliabilityResult:
     when the input has no ``device_operations`` column or a momentary row leaves
     its operation count unknown, because an operation frequency cannot be
     recovered from an event count. Without a ``device_operations`` column,
-    ``undefined_metrics`` names ``"maifi"``.
+    ``undefined_metrics`` names ``"maifi"``. A Major Event Day filter can
+    remove every momentary row; ``maifi`` is then ``0.0`` rather than ``None``,
+    because the input supplied operation data and no remaining row operates.
 
     ``caidi`` is a read-only property: ``CMI / CI`` minutes per customer
     interruption, independent of the served-customer count. It equals
