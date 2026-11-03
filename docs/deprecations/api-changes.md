@@ -22,7 +22,7 @@ timescale, not calibration years. No numerical behavior changes.
 ## Upgrade considerations for 3.2.0
 
 Version 3.2.0 removes no public API and needs no function-call migration.
-Three changes can affect code that inspects the package or its environment.
+Three changes can affect enum introspection, package metadata, or numerical results.
 
 ### New `Distribution` members (3.2.0)
 
@@ -52,8 +52,9 @@ Building from the sdist now requires `hatchling>=1.27.0`.
 
 ### Native results and the CLI worker pool (3.2.0)
 
-A command-line run under an all-ignore NumPy error policy now reaches the optional
-Rust kernels in its worker processes. A one-dimensional series keeps `np.convolve` for
+A command-line run under an all-ignore NumPy error policy now permits the optional
+Rust kernels in its worker processes, so eligible calls can reach them. A missing
+extension, a warning-as-error filter, or context-aware warnings still keep the Python path. A one-dimensional series keeps `np.convolve` for
 trailing sums. Default callers and default outputs are unchanged, and the parity contract
 remains `rtol = atol = 1e-10`. Use tolerance-based comparisons across backends.
 See {doc}`the numerical contract </rust-numerical-contract>`.

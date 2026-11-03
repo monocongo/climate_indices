@@ -25,7 +25,8 @@ The standalone Rust crate `climate-indices` published version `0.1.1` to crates.
   sustained and momentary outage counts. A metric with no defined value is NaN or
   `None` and is named in `undefined_metrics`; none is replaced by zero. Durations are
   minutes, a partial period is never annualized, and planned outages count unless
-  `exclude_planned=True`. `group_momentary_events()` collapses raw momentary operations
+  `exclude_planned=True`, which removes planned sustained rows only; planned momentary
+  rows still contribute to MAIFI, MAIFI_E, and the momentary count. `group_momentary_events()` collapses raw momentary operations
   into events, and `simulate_reliability()` runs a seeded Monte Carlo series or parallel
   component simulation into the same deterministic metric path. `OverlappingEventsWarning`
   is new in `climate_indices.exceptions`; overlapping events stay valid and are never
@@ -90,8 +91,9 @@ The standalone Rust crate `climate-indices` published version `0.1.1` to crates.
   C-contiguous Spatial Block dispatches. Results are unchanged, and this narrows the
   trailing-sum dispatch described under 3.1.1 (#1534).
 - **CLI worker pool forwards the NumPy error policy**: each pool worker now applies the
-  caller's `np.geterr()` policy, so a CLI run under an all-ignore policy reaches the Rust
-  kernels, as an in-process call does. Default callers and default outputs are unchanged
+  caller's `np.geterr()` policy, so eligible calls in a CLI run under an all-ignore policy
+  can reach the Rust kernels, as in-process calls can. A missing extension, a
+  warning-as-error filter, or context-aware warnings still keep the Python path. Default callers and default outputs are unchanged
   (#1531).
 - **Licensing files and package metadata**: the root `LICENSE` holds only the BSD-3-Clause
   text, so license scanners identify it. The Cephes, SciPy/xsf, NumPy, and Boost.Math
@@ -105,7 +107,8 @@ The standalone Rust crate `climate-indices` published version `0.1.1` to crates.
   check of a port that shares the R `SPEI` estimator lineage, not an independent one. The
   missing SPI dataset survey is cited by branch and commit. A new row covers
   `standardized_index()` with `Distribution.empirical`, anchored on R `SEI` 0.2.0 output for
-  monthly data only; hourly and weekly pooling have no external comparison (#1528, #1542).
+  monthly data only; hourly pooling has no external comparison and weekly periodicity is
+  unsupported (#1528, #1542).
 - **CI**: `.github/required-status-checks.txt` and `scripts/sync_required_checks.py` keep
   the required status-check contexts in step with the workflow matrix, and
   `tests/test_release_integrity.py` fails when they drift. The two Python 3.10 contexts

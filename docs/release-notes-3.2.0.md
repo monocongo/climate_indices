@@ -28,7 +28,9 @@ indices from interruption event records. Import it with `from climate_indices im
 
 A metric with no defined value is NaN or `None` and appears in `undefined_metrics`.
 The library never replaces it with zero. Durations are in minutes, and a partial period is
-never annualized. Planned outages count unless you pass `exclude_planned=True`.
+never annualized. Planned outages count unless you pass `exclude_planned=True`. That flag removes planned
+sustained rows only. Planned momentary rows still contribute to MAIFI, MAIFI_E, and the
+momentary count.
 Overlapping events stay valid, and one `OverlappingEventsWarning` reports them.
 
 `major_event_day_threshold()` fits the IEEE 1366 Major Event Day threshold to a daily-SAIDI
@@ -69,7 +71,9 @@ contract remains `rtol = atol = 1e-10` with matching missing-value positions.
 - A one-dimensional series keeps `np.convolve` for trailing sums at Timescales 2 to 7,
   because the kernel measured slower at every tested length. A Spatial Block still dispatches.
 - The CLI worker pool now applies the caller's NumPy error policy in each worker. A CLI run
-  under an all-ignore policy therefore reaches the kernels, as an in-process call does.
+  under an all-ignore policy therefore permits the kernels, so eligible calls can reach them,
+  as in-process calls can. A missing extension, a warning-as-error filter, or
+  context-aware warnings still keep the Python path.
 
 `benchmarks/native_dispatch.py` now records which kernels ran on each route and names the
 first gate that made a call decline. See the {doc}`numerical contract <rust-numerical-contract>`
