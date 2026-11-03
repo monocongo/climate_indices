@@ -54,8 +54,9 @@ Building from the sdist now requires `hatchling>=1.27.0`.
 
 A command-line run under an all-ignore NumPy error policy now permits the optional
 Rust kernels in its worker processes, so eligible calls can reach them. A missing
-extension, a warning-as-error filter, or context-aware warnings still keep the Python path. A one-dimensional series keeps `np.convolve` for
-trailing sums. Default callers and default outputs are unchanged, and the parity contract
+extension, a filter that promotes `RuntimeWarning` (or a superclass) to an error, or
+context-aware warnings still keep the Python path. A one-dimensional series keeps
+`np.convolve` for trailing sums. Default callers and default outputs are unchanged, and the parity contract
 remains `rtol = atol = 1e-10`. Use tolerance-based comparisons across backends.
 See {doc}`the numerical contract </rust-numerical-contract>`.
 
