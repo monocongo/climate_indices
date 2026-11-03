@@ -1,4 +1,4 @@
-//! Penman-Monteith (FAO-56) PET kernels, mirroring `climate_indices.pm_eto`.
+//! Penman-Monteith (FAO-56) PET kernels, mirroring `climate_indices.drought.pm_eto`.
 //!
 //! The kernels are ports of the Python reference implementation, which stays the
 //! parity oracle: the same operation order, the same libm call sites, and the
@@ -13,7 +13,7 @@ use ndarray::{Array1, ArrayView1};
 
 use crate::ClimateError;
 
-// physical constants, as `pm_eto.py` declares them
+// physical constants, as `drought/pm_eto.py` declares them
 const ATMOSPHERIC_PRESSURE_SEA_LEVEL: f64 = 101.3;
 const TEMPERATURE_LAPSE_RATE: f64 = 0.0065;
 const BASE_TEMPERATURE_K: f64 = 293.0;
@@ -186,7 +186,7 @@ pub struct PmEtoInputs<'a> {
     pub gamma: Operand<'a>,
 }
 
-/// The meteorological inputs of `pm_eto.penman_monteith_eto`, already broadcast to
+/// The meteorological inputs of `climate_indices.drought.pm_eto.penman_monteith_eto`, already broadcast to
 /// one element per position, with the humidity and radiation pathways resolved.
 pub struct MetInputs<'a> {
     /// Daily minimum air temperature in degrees C.
@@ -409,7 +409,7 @@ fn actual_vapor_pressure(
 }
 
 /// Derive the FAO-56 intermediates and evaluate Eq 6, the port of
-/// `pm_eto.penman_monteith_eto`.
+/// `climate_indices.drought.pm_eto.penman_monteith_eto`.
 ///
 /// # Numerical contract
 ///

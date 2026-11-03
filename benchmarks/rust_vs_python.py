@@ -73,7 +73,8 @@ if str(ROOT) not in sys.path:
 import parallel_scaling  # noqa: E402  (a sibling script: benchmarks/ is on sys.path when it runs)
 import pytest  # noqa: E402  (pytest.MonkeyPatch is the tests' backend switch, used directly)
 
-from climate_indices import compute, eto, indices, palmer  # noqa: E402
+from climate_indices import compute  # noqa: E402
+from climate_indices.drought import eto, indices, palmer  # noqa: E402
 from tests import conftest, parity_registry  # noqa: E402
 from tests.parity_registry import ENTRIES, SAMPLES, Entry  # noqa: E402
 

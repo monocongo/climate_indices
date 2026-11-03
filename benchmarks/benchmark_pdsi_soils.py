@@ -208,12 +208,12 @@ def _scpdsi_field(
 ) -> xr.DataArray:
     """Compute scPDSI for every cell of an AWS field.
 
-    ``palmer.scpdsi()`` stays on the per-location path by design (ADR-0011), so
+    ``climate_indices.drought.palmer.scpdsi()`` stays on the per-location path by design (ADR-0011), so
     the grid is looped here exactly as the CLI loops it, and a location whose
     calibration cannot fit usable factors is left missing instead of aborting
     the run.
     """
-    from climate_indices import palmer
+    from climate_indices.drought import palmer
     from climate_indices.exceptions import ConvergenceError, InsufficientDataError
 
     try:

@@ -107,7 +107,7 @@ _INPUT_OFFSET = (_DATA_START_YEAR - _PALMER_INPUT_START_YEAR) * 12
 _CATEGORY_BOUNDARIES = (-2.0, -1.5, -1.0, 1.0, 1.5, 2.0)
 
 # Frozen regression expectations from the original fixture generation (GitHub
-# issue #779): agreement between climate_indices.indices.spei() (gamma
+# issue #779): agreement between climate_indices.drought.indices.spei() (gamma
 # distribution, Thornthwaite PET, full-period-of-record calibration 1901-2022)
 # and the grid-cell-mean SPEIbase v2.11 series, per division and timescale.
 #
@@ -415,7 +415,8 @@ def _computed_spei_series(division: str, latitude: float, scale: int) -> np.ndar
     committed nClimDiv inputs (inches, Fahrenheit), Thornthwaite PET, gamma
     distribution, and full-period-of-record calibration.
     """
-    from climate_indices import compute, eto, indices
+    from climate_indices import compute
+    from climate_indices.drought import eto, indices
 
     precip_mm = (
         np.load(_PALMER_ROOT / division / "precips.npy").astype(np.float64)[_INPUT_OFFSET : _INPUT_OFFSET + _N_MONTHS]

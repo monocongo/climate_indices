@@ -32,11 +32,15 @@ import numpy as np  # noqa: E402
 import scipy  # noqa: E402
 from scipy import special, stats  # noqa: E402
 
-from climate_indices import compute, indices, lmoments  # noqa: E402
+from climate_indices import compute, lmoments  # noqa: E402
+from climate_indices.drought import indices  # noqa: E402
 
 for module in (compute, indices, lmoments):
     assert module.__file__ is not None
-    assert Path(module.__file__).resolve() == SOURCE / f"{module.__name__.split('.')[-1]}.py"
+    assert (
+        Path(module.__file__).resolve()
+        == SOURCE / f"{module.__name__.removeprefix('climate_indices.').replace('.', '/')}.py"
+    )
 assert compute._native is None
 assert sys.modules.get("climate_indices._native") is None
 
@@ -339,7 +343,7 @@ def simple_indices() -> None:
         ]
     )
     pads = np.array([0, 1, 2, 0, 1])
-    # Retain indices.eddi's NumPy rank-count/probability step before clipping.
+    # Retain climate_indices.drought.indices.eddi's NumPy rank-count/probability step before clipping.
     counts = np.count_nonzero(~np.isnan(climatology), axis=0)
     below = np.count_nonzero(climatology[:, None, :] < values[None, :, :], axis=0)
     probabilities = (pads + below + 0.66) / (counts + pads + 0.33)

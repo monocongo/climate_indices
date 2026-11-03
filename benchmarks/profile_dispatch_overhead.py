@@ -34,7 +34,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from benchmarks.rust_vs_python import native_policy, python_backend  # noqa: E402
-from climate_indices import eto, indices, logging_config, pm_eto  # noqa: E402
+from climate_indices import logging_config  # noqa: E402
+from climate_indices.drought import eto, indices, pm_eto  # noqa: E402
 from tests import conftest, parity_registry  # noqa: E402
 
 SIZES = (365, 1826, 18262, 146000, 1000000)
