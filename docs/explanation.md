@@ -16,9 +16,11 @@ algorithm_refs/flood_index
 algorithm_refs/eddi
 algorithm_refs/palmer
 algorithm_refs/pet
+algorithm_refs/reliability
 wildfire_applications
 flood_applications
 energy_applications
+reliability_applications
 floating_point_best_practices
 ai-assisted-development
 licensing

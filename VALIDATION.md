@@ -395,6 +395,53 @@ reproduced standardized index would not be a generation or demand forecast.
 `tests/fixture/energy_wind/` record that maintainer confirmation of fixture
 transcription or generation and redistribution is still outstanding.
 
+## Reliability Evidence Classification
+
+The reliability family — SAIFI, SAIDI, CAIDI, MAIFI_E, MAIFI, ASAI, and the
+outage counts — is **specification-and-regression evidence only**. No
+event-level external oracle was adopted, so nothing here is independent
+scientific validation.
+
+The reported arithmetic is reproduced against hand-computed analytic cases.
+The committed fixture under `tests/fixture/reliability/` is five synthetic
+records derived from the ADR-0026 decision-10 table, not downloaded data. Its
+`provenance.json` validates against `tests/fixture/provenance_schema.json`,
+records the SHA-256 checksum of `events.json`, and sets the validation
+tolerance to `rtol=0, atol=0` because the expected values are exact rational
+arithmetic. That zero tolerance is honest for the analytic cases only; it is
+not a claim that the indices agree with a utility's reports.
+
+No independent implementation and no product oracle are adopted. EIA Form
+EIA-861 Table 11.1 is aggregated national reporting, so it can validate
+relationships between indices rather than arithmetic on an event log; it is
+cited as context, not compared numerically. This is the same distinction
+`VALIDATION.md` draws elsewhere between reproducing a source's own arithmetic
+and validating a method against independent data.
+
+What the tests check: the ADR-0026 analytic cases, the sustained/momentary
+split, the additive `CI` and `CMI` accumulators, the threshold and
+planned-outage filters, ASAI exposure and its one-step rounding tolerance,
+leap-aware and daylight-saving-aware elapsed hours, the grouping rules, the
+field contract, and schema and checksum validation of the fixture. See
+`tests/test_reliability_indices.py`, `tests/test_reliability_events.py`,
+`tests/test_reliability_grouping.py`, and `tests/test_reliability_fixture.py`.
+
+Known gaps, stated without overstating coverage: Major Event Day detection and
+filtering are not implemented, so results with and without major events are
+not comparable; network topology and customer connectivity are not resolved;
+and the Monte Carlo path, xarray adapter, and CLI integration are unimplemented.
+Several conventions vary between utilities — the sustained/momentary
+threshold, planned-outage inclusion, the MAIFI flavour, the IEEE momentary
+pre-sustained exclusion, and partial-period annualization — and the library
+fixes a documented default for each rather than inferring a jurisdiction. See
+{doc}`algorithm_refs/reliability` and [ADR-0026](adr/0026-reliability-module-api-and-conventions.md).
+
+Reliability indices describe how often and how long service was interrupted
+under past conditions. They are not resilience metrics, and they are not
+forecasts. The EPRI Climate READi forward-looking metrics (CORi, LORi, DORi)
+need fragility curves and hazard event probabilities that this library does
+not model, so they are out of scope rather than pending.
+
 ## EDDI Fixture Policy
 
 The paired NOAA PSL EDDI fixtures are committed and run in CI. They contain
