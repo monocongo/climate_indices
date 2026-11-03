@@ -431,7 +431,8 @@ filtering are not implemented, so results with and without major events are
 not comparable; network topology and customer connectivity are not resolved;
 and the xarray adapter and CLI integration are unimplemented. The seeded Monte
 Carlo path is implemented; `tests/test_reliability_simulation.py` checks it
-against the analytic series and parallel results, not an external oracle.
+against a single-component analytic reference for both arrangements and a
+two-component series reference, not an external oracle.
 Several conventions vary between utilities — the sustained/momentary
 threshold, planned-outage inclusion, the MAIFI flavour, the IEEE momentary
 pre-sustained exclusion, and partial-period annualization — and the library
