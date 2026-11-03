@@ -324,7 +324,9 @@ def test_empty_trials_report_defined_zero_metrics() -> None:
         assert result.saidi == 0.0
         assert result.customer_interruptions == 0
         assert math.isnan(result.caidi)
-        assert result.undefined_metrics == ("caidi", "maifi")
+        # Simulation results carry no reporting period, so ASAI is undefined too.
+        assert result.asai is None
+        assert result.undefined_metrics == ("caidi", "maifi", "asai")
 
 
 def test_component_topology_is_rejected_as_deferred() -> None:

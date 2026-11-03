@@ -31,6 +31,18 @@ Amended by the [#1341](https://github.com/monocongo/climate_indices/issues/1341)
 review: a grouped row keeps the complete sequence interval, and the optional
 `grouped_momentary_event` field marks an assembled row so its type survives a
 later classification without a contradiction warning.
+Amended by ENERGY2-8 ([#1342](https://github.com/monocongo/climate_indices/issues/1342)):
+`reliability_indices()` accepts reporting hours or explicit period bounds.
+`ReliabilityResult.period_hours` records elapsed hours, and its read-only `asai`
+property computes `1 - (SAIDI / 60) / H` from the shared sustained calculation.
+Without a period, ASAI is None and `undefined_metrics` names `asai`.
+If interruption time exceeds exposure, ASAI is NaN and remains named as undefined.
+A computed unavailable fraction up to one floating-point step above 1 instead gives ASAI `0.0` to allow for rounding.
+Larger excesses remain undefined; overlapping event rows remain valid, without clamping or deduplication.
+The existing `outage_count` tallies sustained rows, including separate restoration stages.
+`momentary_outage_count` separately tallies momentary rows; it is independent of
+`exclude_planned`, which filters sustained rows.
+It does not group rows or apply the MAIFI_E-only `momentary_event_excluded` flag.
 Amended by ENERGY2-9 ([#1343](https://github.com/monocongo/climate_indices/issues/1343)):
 `simulate_reliability()` implements the seeded Monte Carlo path over supplied
 components with series and parallel aggregation, an explicit required seed,
@@ -39,10 +51,9 @@ fixed, exponential, and lognormal restoration distributions, and rejection of
 intervals form an event log that `reliability_indices()` consumes. Trials are
 sampled in order from one generator, so a shorter run is an exact prefix of a
 longer run with the same seed.
-Availability (ASAI), adapters, and the reporting-period inputs remain
-unimplemented.
-ENERGY2-8 through ENERGY2-11
-([#1342](https://github.com/monocongo/climate_indices/issues/1342)–[#1345](https://github.com/monocongo/climate_indices/issues/1345))
+Adapters remain unimplemented.
+ENERGY2-10 through ENERGY2-11
+([#1344](https://github.com/monocongo/climate_indices/issues/1344)–[#1345](https://github.com/monocongo/climate_indices/issues/1345))
 implement the remaining design. Each decision is amended here as its implementation lands, as
 {doc}`0013-flood-module-api-and-naming` was for flood.
 
@@ -114,7 +125,8 @@ unreproducible claim of reproduction.
      bounds from which the library derives actual elapsed hours. Without either,
      ASAI is undefined and the result names it; the library never infers the
      reporting period from event timestamps.
-     The result records the supplied period without annualizing partial periods.
+     The result records elapsed `period_hours` without annualizing partial periods.
+     Bounds do not filter or clip events; callers supply the reporting-period log.
    - `ReliabilityResult` is a frozen dataclass carrying SAIFI, SAIDI, CAIDI,
      MAIFI_E (and MAIFI where the input admits it), ASAI, the outage count, and
      the shared accumulators `CI = Σ N_i` and `CMI = Σ r_i N_i`, so
@@ -224,8 +236,16 @@ unreproducible claim of reproduction.
    SAIFI, MAIFI_E, and MAIFI are interruptions or events per customer
    **per the supplied reporting period**,
    not per year. ASAI is a dimensionless fraction in [0, 1] and is never
-   reported as a percentage. **Partial periods are computed exactly over the
-   supplied period, with no annualization and no extrapolation**, so a
+   reported as a percentage. ASAI uses `1 - (SAIDI / 60) / H`, with minutes
+   converted to hours. Without a reporting period, ASAI is None and named in
+   `undefined_metrics`. Valid overlapping rows can accumulate more interruption
+   time than the reporting exposure. An unavailable fraction up to one
+   floating-point step above 1 gives ASAI `0.0` to allow for rounding; a larger
+   excess gives ASAI NaN and names it undefined. The sustained accumulators and
+   row count remain unchanged, and no larger result is clamped to zero.
+   Undefined derived metrics produce no additional warning.
+   **Partial periods are computed exactly over the supplied period, with no
+   annualization and no extrapolation**, so a
    partial-period index is not comparable to an annual index and the result says
    so. Hours in the period `H` are actual hours: 8760 for a 365-day year and
    8784 for a 366-day year.
