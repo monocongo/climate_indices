@@ -10,17 +10,9 @@ from typing import Any
 
 import pytest
 
-import climate_indices
-
 ROOT = Path(__file__).resolve().parents[1]
-# The notebook locates this checkout from the imported package, which an installed wheel is not in.
-requires_checkout_import = pytest.mark.skipif(
-    Path(climate_indices.__file__).resolve().parent != ROOT / "src/climate_indices",
-    reason="the reliability notebook runs from this checkout, so climate_indices must import from its src/",
-)
 
 
-@requires_checkout_import
 def test_reliability_notebook_executes_without_network(monkeypatch: pytest.MonkeyPatch) -> None:
     """Run the actual cells offline and re-check the documented fixture numbers."""
 
