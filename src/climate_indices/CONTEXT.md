@@ -266,7 +266,9 @@ customer-minutes. `SAIDI = CMI / N_T` and `CAIDI = CMI / CI`.
 
 **Sustained Interruption**:
 An interruption whose duration is strictly above the threshold (default five
-minutes). Sustained rows feed SAIFI, SAIDI, CAIDI, ASAI, and `outage_count`.
+minutes). Sustained rows feed SAIFI, SAIDI, CAIDI, ASAI, and `outage_count` by
+default; `exclude_planned=True` removes planned sustained rows from all of
+them.
 
 **Momentary Interruption**:
 An interruption whose duration is at or below the threshold, including zero
