@@ -1,8 +1,9 @@
 # climate_indices 3.2.0 release notes
 
-Version 3.2.0 is unreleased. The release date is not selected.
-The {doc}`release runbook <release-process>` describes the date, candidate freeze,
-and rehearsal requirements.
+Release preparation for the planned date 2026-11-03. Confirm publication via the
+[`v3.2.0` GitHub Release](https://github.com/monocongo/climate_indices/releases/tag/v3.2.0)
+and [PyPI artifacts](https://pypi.org/project/climate-indices/3.2.0/). The
+{doc}`release runbook <release-process>` records the candidate and tag mechanics.
 
 Version 3.2.0 adds the power-system reliability indices, Major Event Day detection,
 and the Standardized Precipitation Anomaly Index (SPAI). It also tightens the optional
