@@ -1,0 +1,44 @@
+{
+  "eia_panel": [
+    {"year": 2015, "scope": "all_events", "saidi": 209.0, "saifi": 1.275, "caidi": 163.9},
+    {"year": 2015, "scope": "without_major_event_days", "saidi": 117.0, "saifi": 1.073, "caidi": 109.1},
+    {"year": 2016, "scope": "all_events", "saidi": 268.4, "saifi": 1.327, "caidi": 202.2},
+    {"year": 2016, "scope": "without_major_event_days", "saidi": 119.8, "saifi": 1.082, "caidi": 110.7},
+    {"year": 2017, "scope": "all_events", "saidi": 505.9, "saifi": 1.420, "caidi": 356.2},
+    {"year": 2017, "scope": "without_major_event_days", "saidi": 117.0, "saifi": 1.023, "caidi": 114.3},
+    {"year": 2018, "scope": "all_events", "saidi": 349.2, "saifi": 1.340, "caidi": 260.5},
+    {"year": 2018, "scope": "without_major_event_days", "saidi": 121.4, "saifi": 1.051, "caidi": 115.5},
+    {"year": 2019, "scope": "all_events", "saidi": 295.5, "saifi": 1.332, "caidi": 221.8},
+    {"year": 2019, "scope": "without_major_event_days", "saidi": 122.2, "saifi": 1.040, "caidi": 117.5},
+    {"year": 2020, "scope": "all_events", "saidi": 456.1, "saifi": 1.385, "caidi": 329.3},
+    {"year": 2020, "scope": "without_major_event_days", "saidi": 116.0, "saifi": 1.013, "caidi": 114.5},
+    {"year": 2021, "scope": "all_events", "saidi": 475.8, "saifi": 1.436, "caidi": 331.2},
+    {"year": 2021, "scope": "without_major_event_days", "saidi": 125.7, "saifi": 1.039, "caidi": 120.9},
+    {"year": 2022, "scope": "all_events", "saidi": 333.0, "saifi": 1.426, "caidi": 233.5},
+    {"year": 2022, "scope": "without_major_event_days", "saidi": 131.1, "saifi": 1.090, "caidi": 120.2},
+    {"year": 2023, "scope": "all_events", "saidi": 366.6, "saifi": 1.348, "caidi": 271.8},
+    {"year": 2023, "scope": "without_major_event_days", "saidi": 123.9, "saifi": 1.022, "caidi": 121.3},
+    {"year": 2024, "scope": "all_events", "saidi": 662.6, "saifi": 1.531, "caidi": 432.7},
+    {"year": 2024, "scope": "without_major_event_days", "saidi": 131.6, "saifi": 1.065, "caidi": 123.6}
+  ],
+  "epri_style_scenario": {
+    "total_customers": 1000,
+    "event_frequency_per_year": 0.25,
+    "customer_outage_hours_per_customer_per_event": 2.0,
+    "expected_customer_outage_hours_per_customer_per_year": 0.5,
+    "events": [
+      {"event_id": "cohort-a", "start_time": "2024-01-01T00:00:00Z", "duration": 60.0, "customers_interrupted": 500},
+      {"event_id": "cohort-b", "start_time": "2024-01-01T00:00:00Z", "duration": 180.0, "customers_interrupted": 500}
+    ]
+  },
+  "ieee_momentary_example": {
+    "total_customers": 2000,
+    "expected_saifi": 0.125,
+    "expected_maifi": 0.75,
+    "expected_maifi_e": 0.375,
+    "events": [
+      {"event_id": "momentary", "start_time": "2024-01-01T00:00:00Z", "duration": 1.0, "customers_interrupted": 750, "device_operations": 2},
+      {"event_id": "sustained", "start_time": "2024-01-01T01:00:00Z", "duration": 60.0, "customers_interrupted": 250, "device_operations": 0}
+    ]
+  }
+}

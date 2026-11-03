@@ -60,6 +60,49 @@ Their scope limits are in the sections below.
 | SRLI and residual load (`energy.srli`, `energy.residual_load`) | Independent-implementation comparison against R `SEI` 0.2.0; specification-level for the subtraction | The same `SEI` tolerances as SREPI | `tests/test_energy_sei_reference.py` (marked `validation`) compares `srli()` against `SEI` on the signed series, `tests/test_energy_srli.py` covers the NumPy contracts and negative retention, and `tests/test_energy_standardized_xarray.py` covers the xarray route and the empirical-only distribution restriction. | The committed residual cases are synthetic `demand - production` arrays, so no energy-system demand, capacity, or dispatch model is validated, and no C3S demand comparison is committed. |
 | Energy-drought events (`energy.energy_drought_events`) | Regression only; specification-level (no external event catalogue adopted) | Hand-enumerated windows and exact integer counts; NumPy, eager, and Dask summaries compared exactly | `tests/test_energy_events.py` checks run metrics and period summaries on SPI, SREPI, and SRLI series, threshold-relative magnitude, missing steps, period label counts, and gridded Dask summaries that keep the time axis in one chunk. `docs/research/energy-oracle-survey.md` records that `SEI`'s event loop is not a missing-value-policy oracle. | No observed event catalogue validates onset, duration, or severity, and the `SEI` magnitude identity is a qualification, not parity. |
 
+## Reliability Benchmark Relationships
+
+`tests/test_reliability_reference.py` supplies offline `validation` tests for #1345.
+The committed panel and scenarios are in `tests/fixture/reliability_benchmarks/`.
+Its README records source locations, retrieval checksums, units, licences, and evidence limits.
+Its schema-validated provenance records the fixture checksum and fixed tolerances.
+Missing fixtures fail rather than skip. The default suite deselects the module.
+
+**Sustained metrics and ASAI: regression coverage, not independent validation; no event-level oracle from an operational outage log.**
+The EIA Electric Power Annual [Table 11.1](https://www.eia.gov/electricity/annual/html/epa_11_01.html)
+provides 20 national aggregate rows for 2015–2024.
+The panel keeps IEEE-method all-events and without-Major-Event-Day values separate.
+It checks `CAIDI = SAIDI / SAIFI` for every row with propagated source-rounding intervals.
+The interval half-widths are 0.05 minute for SAIDI and CAIDI and 0.0005 for SAIFI.
+A one-minute CAIDI corruption must fail the same check for every row.
+
+Equivalent synthetic logs exercise `reliability_indices()` and its shared accumulators for every panel row.
+They check finite values, bounds, elapsed reporting hours, and the ASAI relationship.
+They do not reconstruct EIA's actual events, customer populations, or Major Event Day filtering.
+Arithmetic tolerances are `rtol=0, atol=1e-12`, with `atol=1e-9` for customer-minutes and `atol=1e-15` for ASAI.
+The source's 2003/2012 IEEE reporting methods do not establish conformance to the library's 2022 target.
+
+**Momentary metrics: one published worked-example reproduction, not operational validation.**
+IEEE Std 1366-2012 section 4.3.1, equations 47–49, supplies SAIFI 0.125, MAIFI 0.75, and MAIFI_E 0.375.
+The test reproduces these exactly from the published customer counts and operation count.
+The fixture uses constructed timestamps and durations; it does not validate sustained durations or raw-operation grouping.
+The public docket source and the precise construction are recorded in the fixture README.
+No IEEE document is redistributed.
+
+**EPRI-style scenario: specification-level caller-side post-processing only.**
+The [EPRI Climate READi Appendix A](https://apps.epri.com/climate-readi-modeling-guide/en/appendix.html#customer-outage-risk-cori)
+relates customer-normalized outage hours to reliability indices.
+The constructed scenario gives two outage hours per served customer for one hazard event.
+A supplied frequency of 0.25 events per year gives an expected contribution of 0.5 hours per customer per year.
+A second case halves the affected population and keeps CAIDI unchanged.
+Thus the general relationship uses `frequency * SAIFI * CAIDI / 60`, including the affected-customer fraction.
+The library result retains its supplied 24-hour period and does not annualize it.
+
+These checks do not implement READi metrics CORi, LORi, or DORi.
+They do not validate fragility curves, hazard probabilities, resilience forecasts, or Monte Carlo results.
+The existing analytic event fixture remains specification and regression evidence under
+[ADR-0026](docs/adr/0026-reliability-module-api-and-conventions.md).
+
 ## SPAI Evidence Classification
 
 `indices.spai()` and `climate_indices.spai()` were added in 3.2.0 (#1480) and are Beta on
