@@ -262,8 +262,9 @@ def test_event_timezone_awareness_must_match_the_history(history_tz: str | None,
 @pytest.mark.parametrize("start_time", ["2023-12-31T23:59:00", "2023-06-01T00:00:00"])
 def test_events_must_follow_the_threshold_history(start_time: str) -> None:
     events = [event("a", start_time, 60.0, 1)]
+    med = threshold(10.0)
     with pytest.raises(InvalidArgumentError) as error:
-        reliability.reliability_indices(events, total_customers=100, major_event_threshold=threshold(10.0))
+        reliability.reliability_indices(events, total_customers=100, major_event_threshold=med)
     assert error.value.argument_name == "start_time"
 
 
