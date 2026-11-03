@@ -222,7 +222,8 @@ indices, **not resilience metrics**: they measure past interruptions, not how a
 system withstands a hazard. The EPRI Climate READi forward-looking metrics
 (CORi, LORi, DORi) need fragility curves the library does not model
 ([ADR-0026](../../docs/adr/0026-reliability-module-api-and-conventions.md)).
-See {doc}`algorithm_refs/reliability` for equations and units.
+See [the reliability algorithm reference](../../docs/algorithm_refs/reliability.md)
+for equations and units.
 
 **SAIFI (System Average Interruption Frequency Index)**:
 Sustained customer interruptions per served customer per reporting period,

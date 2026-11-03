@@ -433,8 +433,8 @@ and the Monte Carlo path, xarray adapter, and CLI integration are unimplemented.
 Several conventions vary between utilities — the sustained/momentary
 threshold, planned-outage inclusion, the MAIFI flavour, the IEEE momentary
 pre-sustained exclusion, and partial-period annualization — and the library
-fixes a documented default for each rather than inferring a jurisdiction. See
-{doc}`algorithm_refs/reliability` and [ADR-0026](adr/0026-reliability-module-api-and-conventions.md).
+fixes a documented default for each rather than inferring a jurisdiction. See [the reliability algorithm reference](docs/algorithm_refs/reliability.md) and
+[ADR-0026](docs/adr/0026-reliability-module-api-and-conventions.md).
 
 Reliability indices describe how often and how long service was interrupted
 under past conditions. They are not resilience metrics, and they are not
