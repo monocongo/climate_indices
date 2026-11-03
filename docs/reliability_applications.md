@@ -57,9 +57,11 @@ source checkout, where the committed fixture is present.
 from pathlib import Path
 import json
 
+import climate_indices
 from climate_indices import reliability
 
-events = json.loads(Path("tests/fixture/reliability/events.json").read_text())
+repository = Path(climate_indices.__file__).resolve().parents[2]
+events = json.loads((repository / "tests/fixture/reliability/events.json").read_text())
 result = reliability.reliability_indices(events, total_customers=1000, period_hours=24)
 
 assert result.saifi == 0.3
