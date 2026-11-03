@@ -282,9 +282,12 @@ daylight-saving-aware. Partial periods are never annualized, so results from
 periods of different lengths are not comparable.
 
 **Major Event Day**:
-A day whose daily SAIDI exceeds the IEEE 1366 threshold `exp(alpha + 2.5 beta)`.
-The recipe is documented but not implemented: it needs a utility-specific
-five-year daily-SAIDI history the library does not hold.
+A day whose daily SAIDI strictly exceeds the IEEE 1366 threshold
+`exp(alpha + 2.5 beta)`, fitted by `major_event_day_threshold()` to a
+caller-supplied daily-SAIDI history of up to five years. An interruption
+accrues to the day it begins. Removing Major Event Days is opt-in through
+`major_event_threshold`; the default result is unfiltered, and filtered and
+unfiltered results are not comparable.
 
 ### Statistics
 

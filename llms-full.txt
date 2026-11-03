@@ -906,16 +906,39 @@ field contract, and schema and checksum validation of the fixture. See
 `tests/test_reliability_indices.py`, `tests/test_reliability_events.py`,
 `tests/test_reliability_grouping.py`, and `tests/test_reliability_fixture.py`.
 
-Known gaps, stated without overstating coverage: Major Event Day detection and
-filtering are not implemented, so results with and without major events are
-not comparable; network topology and customer connectivity are not resolved;
+**Major Event Day detection and filtering: specification-and-regression
+evidence, with one published worked-example reproduction; verified against
+IEEE Std 1366-2012, not 2022.** `tests/test_reliability_major_events.py`
+checks `major_event_day_threshold()` against the hand-computed history
+`[0, e^-1, 1, e, 0]`, whose threshold is `exp(2.5)` within `rel=1e-15`.
+It checks the strict `>` boundary at `T_MED` and one float64 step below it,
+without a tolerance, and the history validation matrix of ADR-0026 decision 7.
+It also checks filtered results against an unfiltered call on the manually
+filtered log through the shared metric path. It reproduces the IEEE Std
+1366-2012 clause 3.5.1 example from the public CPUC copy. Its printed rounded
+`alpha` matches the mean of the log-SAIDI values and `beta` matches their
+sample standard deviation. January 28 is the only
+Major Event Day, and SAIDI is 287.348 with all events and 49.855 without it
+(printed 287.35 and 49.86). The printed `T_MED` of 66.69 comes from rounded
+intermediates; full precision gives 67.10, so the example is not a
+threshold oracle at full precision. The IEEE Std 1366-2022 text was not
+obtained, so 2022 conformance is unverified. The sample standard deviation,
+the validation rules, and the unchanged ASAI exposure after filtering are
+project conventions, not verified IEEE requirements. No utility's Major Event
+Day determinations are reproduced, and the Gaussian assumption of the method
+is not tested.
+
+Known gaps, stated without overstating coverage: Major Event Day rules are
+not verified against the 2022 edition, and the library does not build a
+daily-SAIDI history from a multi-year event log; network topology and customer connectivity are not resolved;
 and the xarray adapter and CLI integration are unimplemented. The seeded Monte
 Carlo path is implemented; `tests/test_reliability_simulation.py` checks it
 against a single-component analytic reference for both arrangements and a
 two-component series reference, not an external oracle.
 Several conventions vary between utilities — the sustained/momentary
 threshold, planned-outage inclusion, the MAIFI flavour, the IEEE momentary
-pre-sustained exclusion, and partial-period annualization — and the library
+pre-sustained exclusion, Major Event Day filtering, and partial-period
+annualization — and the library
 fixes a documented default for each rather than inferring a jurisdiction. See [the reliability algorithm reference](docs/algorithm_refs/reliability.md) and
 [ADR-0026](docs/adr/0026-reliability-module-api-and-conventions.md).
 

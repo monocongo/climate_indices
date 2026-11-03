@@ -8,7 +8,10 @@ accumulators. It counts sustained and momentary rows separately. CAIDI is NaN
 when no sustained customer interruption occurs, and MAIFI is None without a
 ``device_operations`` column. ASAI is None without reporting hours or explicit
 period bounds. It is NaN when interruption time exceeds exposure. The result
-names each undefined metric in ``undefined_metrics``. ``group_momentary_events()``
+names each undefined metric in ``undefined_metrics``. ``major_event_day_threshold()``
+fits the IEEE 1366 Major Event Day threshold to a daily-SAIDI history, and
+``reliability_indices(..., major_event_threshold=...)`` opts in to removing
+Major Event Days. The default applies no filter. ``group_momentary_events()``
 collapses raw momentary operations into events. ``simulate_reliability()`` runs a
 seeded Monte Carlo series or parallel component simulation into the deterministic
 metric path.
@@ -16,12 +19,15 @@ metric path.
 
 from climate_indices.reliability._events import classify_interruptions, group_momentary_events
 from climate_indices.reliability._indices import ReliabilityResult, reliability_indices
+from climate_indices.reliability._major_events import MajorEventDayThreshold, major_event_day_threshold
 from climate_indices.reliability._simulate import simulate_reliability
 
 __all__ = [
+    "MajorEventDayThreshold",
     "ReliabilityResult",
     "classify_interruptions",
     "group_momentary_events",
+    "major_event_day_threshold",
     "reliability_indices",
     "simulate_reliability",
 ]

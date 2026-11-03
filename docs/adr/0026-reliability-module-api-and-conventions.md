@@ -51,6 +51,14 @@ fixed, exponential, and lognormal restoration distributions, and rejection of
 intervals form an event log that `reliability_indices()` consumes. Trials are
 sampled in order from one generator, so a shorter run is an exact prefix of a
 longer run with the same seed.
+Amended by [#1527](https://github.com/monocongo/climate_indices/issues/1527):
+`major_event_day_threshold()` fits the Beta Method Major Event Day threshold to
+a caller-supplied daily-SAIDI history and returns a frozen
+`MajorEventDayThreshold`. `reliability_indices()` removes Major Event Days only
+when a threshold is passed as `major_event_threshold`, and the result records
+the threshold and the excluded days. The rules are verified against IEEE Std
+1366-2012, not the 2022 edition, because no lawful copy of the 2022 text was
+obtained; decision 7 records the conventions, the evidence, and that limit.
 Adapters remain unimplemented.
 ENERGY2-10 through ENERGY2-11
 ([#1344](https://github.com/monocongo/climate_indices/issues/1344)–[#1345](https://github.com/monocongo/climate_indices/issues/1345))
@@ -87,7 +95,9 @@ The published material that would settle every convention is partly second-hand
 or paywalled. IEEE Std 1366-2022 sells the guide that defines the indices; the
 definitions and the Major Event Day recipe are quoted here from the IEEE
 distribution-reliability working group's own public material and the guide's
-public front matter, not from a vendored copy. The EPRI Climate READi
+public front matter, not from a vendored copy. The Major Event Day rules of
+decision 7 come from the IEEE Std 1366-2012 text attached to a public utility
+commission filing, because the 2022 text was not available. The EPRI Climate READi
 power-system modelling guide is public but states that the industry has not
 settled on a resilience metric. Where a convention cannot be pinned from an
 accessible source, this record prefers a documented, citable choice over an
@@ -114,8 +124,9 @@ unreproducible claim of reproduction.
    {doc}`0005-fire-module-api`.
 
 2. **The public names are `reliability_indices()`, `ReliabilityResult`,
-   `classify_interruptions()`, `group_momentary_events()`, and
-   `simulate_reliability()`.** One metric entry point returns every metric in a
+   `classify_interruptions()`, `group_momentary_events()`,
+   `simulate_reliability()`, `major_event_day_threshold()`, and
+   `MajorEventDayThreshold`.** One metric entry point returns every metric in a
    frozen result object:
 
    - `reliability_indices()` takes the event record, `total_customers`, and
@@ -149,6 +160,10 @@ unreproducible claim of reproduction.
      [#1343](https://github.com/monocongo/climate_indices/issues/1343) implements
      this entry point. It rejects `component_topology` with `InvalidArgumentError`
      because connectivity resolution is deferred.
+   - `major_event_day_threshold()` fits the Major Event Day threshold of
+     decision 7 to a daily-SAIDI history and returns a frozen
+     `MajorEventDayThreshold`. Passing that object to `reliability_indices()` as
+     `major_event_threshold` is the only way to filter Major Event Days.
 
    The event record requires `event_id`, `start_time`, `customers_interrupted`,
    and either an `end_time` timestamp or a `duration` in minutes.
@@ -250,17 +265,118 @@ unreproducible claim of reproduction.
    so. Hours in the period `H` are actual hours: 8760 for a 365-day year and
    8784 for a 366-day year.
 
-7. **Major Event Days are not detected.** The IEEE 1366 recipe is documented but
-   not implemented: `T_MED = exp(α + 2.5β)`, where `α` is the average of
-   `ln(daily SAIDI)` and `β` is the standard deviation of `ln(daily SAIDI)`
-   over typically five years of daily SAIDI, excluding days with no
-   interruptions; a day whose SAIDI exceeds `T_MED` is a Major Event Day. It
-   needs a utility-specific five-year daily-SAIDI history that this package does
-   not hold. Results with and without major events are not comparable, and the
-   result records that no Major Event Day filter was applied. Detecting and
-   filtering Major Event Days is tracked in
-   [#1527](https://github.com/monocongo/climate_indices/issues/1527), a separate
-   follow-up outside this epic.
+7. **Major Event Days are detected from a caller-supplied daily-SAIDI history
+   and removed only on request.** The default result is unfiltered. The
+   threshold uses the IEEE 1366 Beta Method, `T_MED = exp(α + 2.5β)`.
+   [#1527](https://github.com/monocongo/climate_indices/issues/1527) implements
+   it as a follow-up outside the original epic.
+
+   **The rules are verified against IEEE Std 1366-2012, not 2022.** The
+   verified text is clause 3.5 and its example (printed pages 10–13) of the IEEE
+   Std 1366-2012 copy in a public CPUC filing. That filing labels its appendix
+   2022, but the attached title and page headers say 2012. No lawful copy of the
+   2022 text was obtained. On 2026-11-02 and 2026-11-03, the IEEE SA page, IEEE
+   Xplore, and the ANSI store returned HTTP 403, a bot challenge, or no readable
+   standard text. No access control was bypassed, and no copy was bought. The
+   2022 conformance target of decision 10 is therefore unverified for Major
+   Event Days, and the #1527 requirement to verify against 2022 is not met.
+   Reverify these rules when a licensed 2022 copy is available.
+   [`docs/research/major-event-day-conventions.md`](https://github.com/monocongo/climate_indices/blob/main/docs/research/major-event-day-conventions.md)
+   holds the source record and checksums.
+
+   The 2012 clause fixes these rules, and the library follows each one:
+
+   - The history is the daily SAIDI for five sequential years, ending on the
+     last day of the last complete reporting period. With fewer than five years,
+     all available history is used.
+   - Days without interruptions are excluded from the sample, because their
+     logarithm is undefined.
+   - `α` is the mean and `β` the standard deviation of the natural logarithms
+     of the positive daily SAIDI values.
+   - The threshold is calculated at the end of a reporting period for use in
+     the next period.
+   - A Major Event Day has daily SAIDI strictly greater than `T_MED`. Equality
+     is not a Major Event Day, and the comparison has no tolerance.
+   - An interruption that spans midnight accrues to the day it begins.
+   - Daily SAIDI identifies the days, but all indices are calculated with those
+     days removed. The clause asks for the activity on them to be analyzed and
+     reported separately; the result records the excluded days so a caller can
+     report them, and it does not compute a separate Major Event Day metric.
+
+   **`β` uses the sample standard deviation, `n - 1` divisor, as a project
+   convention.** The 2012 clause names no divisor. The method author's paper
+   (Christie, equation 6) uses `n - 1`, and the clause's worked example prints
+   `β = 1.90`, which matches the sample value 1.905 and not the population
+   value 1.873. That example prints `T_MED = 66.69`, which is `exp(4.20)` from
+   its rounded intermediates; full precision gives 67.10, so the example is not
+   a full-precision threshold oracle.
+
+   **`major_event_day_threshold(daily_saidi)` validates the history it is
+   given.** It takes a Series or mapping from calendar day to daily SAIDI and
+   returns a frozen `MajorEventDayThreshold` with `t_med`, `alpha`, `beta`,
+   `history_start`, `history_end`, `positive_days`, and `timezone`, in that
+   constructor order. The caller
+   selects the interval; the library does not choose a window from a longer
+   record. These validation rules are project choices, because the clause does
+   not address them. Each raises `InvalidArgumentError` naming `daily_saidi`:
+
+   | History condition | Behavior |
+   | --- | --- |
+   | Missing value (`None`, NaN, `pd.NA`, masked) or a missing calendar day | Rejected. An unknown day is never treated as a zero day or dropped. |
+   | Duplicate day, non-midnight label, or a label that is not a date | Rejected, so each day has exactly one value. |
+   | Negative, infinite, Boolean, or string value | Rejected before any logarithm. |
+   | More than five years from first to last day | Rejected, because the clause uses five years. |
+   | Fewer than five years | Accepted, as the clause allows. `history_start`, `history_end`, and `positive_days` record the reduced support. |
+   | Empty, all-zero, or one positive day | Rejected, because the sample standard deviation needs two positive days. |
+   | Constant positive values | Accepted; `β = 0` and `T_MED` equals that value up to rounding. |
+   | Threshold that overflows float64 | Rejected; no infinite threshold is returned. |
+
+   Two positive days is the arithmetic minimum, not a claim of adequate
+   statistical support. The clause also assumes that the logarithms closely
+   resemble a Gaussian distribution; the library does not test that
+   assumption. A caller can construct a `MajorEventDayThreshold` directly, for
+   example from a regulator-published `T_MED`. `reliability_indices()` then
+   requires a positive, finite `t_med` and a calendar-date `history_end`.
+
+   **Daily SAIDI uses the target log's own conventions.** With
+   `major_event_threshold`, `reliability_indices()` sums `r_i N_i` by start
+   day over the sustained rows that SAIFI and SAIDI count, so the
+   sustained/momentary threshold and `exclude_planned` apply, and divides by
+   `total_customers`. Momentary rows never make a Major Event Day. Units are
+   minutes per customer per day, so the history must use the same units,
+   customer-count basis, planned-outage policy, and sustained threshold. The
+   library cannot check that agreement for a supplied history. Every row that
+   starts on a Major Event Day is removed — sustained, momentary, planned, or
+   flagged — and every metric, count, and accumulator uses the remaining rows
+   through the same path as an unfiltered call.
+
+   **The day boundary comes from the history.** A timezone-naive history labels
+   naive calendar days and requires naive event timestamps. A history indexed by
+   timezone-aware midnights declares its timezone, and aware event start times
+   are converted to it before assignment to days. Mixed awareness raises
+   `InvalidArgumentError` naming `start_time`. Each row is assigned by its own
+   `start_time`; the library does not link restoration-stage rows. A staged
+   restoration accrues to the original start day only if its rows carry that
+   start time. Every row must also start after `history_end`, because a
+   threshold applies to the period after its history.
+
+   **The result records the filter.** `ReliabilityResult.major_event_threshold`
+   holds the threshold that was applied, with its value and history interval,
+   or None when no filter was applied. `major_event_days` lists the excluded
+   days in ascending order, or is empty. The reporting period is not changed:
+   filtered ASAI uses the full `period_hours`, and no metric is rescaled by the
+   remaining day count. The 2012 example sums the remaining daily SAIDI values
+   without a multiplier. The unchanged ASAI exposure is a project convention,
+   because the clause does not address it. The August 2002 working-group draft
+   rules that replace zero days and rescale filtered indices are not adopted.
+   The library does not refit the threshold after removing large days and does
+   not apply the clause 5.3 catastrophic-event treatment.
+
+   **Filtered and unfiltered results are not comparable.** They describe
+   different event sets. Two filtered results are comparable only if their
+   reporting periods, customer populations, interruption definitions, history
+   windows, units, and day boundaries also agree. Partial periods remain
+   unannualized, as decision 6 requires.
 
 8. **No new mandatory dependency.** The metric core is NumPy. `pandas` (already
    a hard dependency) handles record ingest, and `scipy.stats` (already a hard
@@ -324,6 +440,9 @@ unreproducible claim of reproduction.
     | No outage, operation data absent | Empty event record, `N_T = 1000`, `H = 24 h`, no `device_operations` column | SAIFI 0, SAIDI 0, MAIFI_E 0, ASAI 1.0; CAIDI undefined (0/0); MAIFI undefined because operation data is absent. The result names both undefined metrics and emits at most one warning. |
     | No outage, operation data available | Empty event record, `N_T = 1000`, `H = 24 h`, `device_operations` column supplied | SAIFI 0, SAIDI 0, MAIFI_E 0, MAIFI 0, ASAI 1.0; only CAIDI is undefined (0/0). The result names it and emits at most one warning. |
     | Leap year | 366-day period | `H = 8784` hours, against 8760 for 365 days |
+    | Major Event Day threshold | Daily SAIDI `[0, e^-1, 1, e, 0]` | Zero days excluded; logarithms `[-1, 0, 1]`, `α = 0`, sample `β = 1`, `T_MED = exp(2.5)` |
+    | Strict boundary | One day with daily SAIDI exactly `T_MED = 6.0` | Not a Major Event Day; with `T_MED` one float64 step below 6.0 it is |
+    | IEEE 2012 example | Table 2 history, then Table 3 daily SAIDI for January 1994 | `α` prints −0.555 and `β` 1.90; January 28 (237.493) is the only Major Event Day; SAIDI 287.348 unfiltered and 49.855 filtered (printed 287.35 and 49.86) |
 
     These are analytic checks, not external validation: no event-level oracle is
     available, because EIA Form EIA-861 Table 11.1 is aggregated and can validate
@@ -331,7 +450,10 @@ unreproducible claim of reproduction.
     honestly in `VALIDATION.md`.
 
 11. **Sources are cited for what they are.** IEEE Std 1366-2022 defines the
-    indices and the Major Event Day recipe. EIA Form EIA-861 Table 11.1 is the
+    indices and the Major Event Day recipe. The Major Event Day rules
+    implemented here are verified against IEEE Std 1366-2012 only (decision 7).
+    Christie's paper supports the sample standard deviation; it is not normative
+    text. EIA Form EIA-861 Table 11.1 is the
     aggregated national reporting context. The EPRI Climate READi power-system
     modelling guide (Distribution Operations, Appendix A) is the climate-risk
     motivation and states that the industry has not settled on a resilience
@@ -354,7 +476,8 @@ that row is specification-and-regression, not external validation, because no
 event-level oracle was found. The Monte Carlo path is unit-and-regression
 evidence against the analytic series and parallel results.
 
-The named follow-ups are Major Event Day detection and filtering; network
+The named follow-ups are verification of the Major Event Day rules against a
+licensed IEEE Std 1366-2022 copy; network
 topology resolution and customer connectivity, gated on the criteria in decision
 9; and the xarray adapter and CLI integration, which consume the package rather
 than being components of it, as for fire and flood.
@@ -368,6 +491,12 @@ changes.
 - IEEE Std 1366-2022, *IEEE Guide for Electric Power Distribution Reliability
   Indices*. Approved 21 September 2022, published 22 November 2022; supersedes
   IEEE Std 1366-2012. https://standards.ieee.org/ieee/1366/7243/
+- IEEE Std 1366-2012, *IEEE Guide for Electric Power Distribution Reliability
+  Indices*, clause 3.5, as attached to a public CPUC filing.
+  https://docs.cpuc.ca.gov/PublishedDocs/Efile/G000/M549/K465/549465153.PDF
+- R. D. Christie, *Statistical Classification of Major Reliability Event Days in
+  Distribution Systems*, revision 2, 8 August 2001, equation 6.
+  https://people.ece.uw.edu/christie/Major%20Events%20Classification02.pdf
 - U.S. Energy Information Administration, Form EIA-861, *Annual Electric Power
   Industry Report*, Table 11.1 (reliability).
 - EPRI, *Climate READi power-system modelling guide*, Distribution Operations,

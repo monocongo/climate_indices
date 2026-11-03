@@ -51,7 +51,9 @@ def _number(value: object, name: str, *, positive: bool = False) -> float:
         result = float(value)
     except (ValueError, OverflowError) as exc:
         raise _invalid(name, "must be a finite float64 value") from exc
-    if not np.isfinite(result) or (result <= 0 if positive else result < 0):
+    # An exact negative can underflow to -0.0, which is not less than zero.
+    negative = result < 0 or value < 0
+    if not np.isfinite(result) or (result <= 0 if positive else negative):
         raise _invalid(name, "must be finite and positive" if positive else "must be finite and nonnegative")
     if isinstance(value, (Integral, np.integer)) and result != int(value):
         raise _invalid(name, "cannot be represented exactly as float64")
