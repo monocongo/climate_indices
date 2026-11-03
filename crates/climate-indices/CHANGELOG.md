@@ -4,11 +4,10 @@ All notable changes to the `climate-indices` crate are recorded here. The crate
 follows its own `0.x` version track, independent of the `climate_indices` Python
 distribution, and uses [Semantic Versioning](https://semver.org/).
 
-## 0.1.1 - 2026-10-29
+## 0.1.1 - 2026-11-03
 
-This entry prepares the stable `0.1.1` release; it is not a publication record.
-It does not describe an `-rc.N` prerelease for the separate crate rehearsal.
-The maintainer must confirm the tag date before publication.
+This entry records the stable `0.1.1` release. It is not an `-rc.N` prerelease
+for the separate crate rehearsal.
 The additions preserve the `0.1.0` public API and its Rust 1.85 minimum.
 
 ### Added
