@@ -4,6 +4,10 @@
 
 Amended.
 
+Amended by {doc}`0027-drought-namespace-and-module-migration` (#1555):
+the drought NumPy module named in decision 1 is now `drought/indices.py`.
+Shared `compute.py` and the reliability scope remain unchanged.
+
 Amended by ENERGY2-3 ([#1337](https://github.com/monocongo/climate_indices/issues/1337)):
 event normalization, `classify_interruptions()`, the event JSON Schema,
 and internal served-customer and reporting-period validation are implemented.
@@ -112,7 +116,7 @@ unreproducible claim of reproduction.
    Carlo path). It follows {doc}`0005-fire-module-api` and
    {doc}`0013-flood-module-api-and-naming`: a family of indices that share a
    physical basis and evolve together gets its own namespaced package rather
-   than being spread through the drought-oriented `indices.py` and `compute.py`.
+   than being spread through the drought-oriented `drought/indices.py` and shared `compute.py`.
    It is imported as `from climate_indices import reliability`. Nothing is
    re-exported from the package root, and no unqualified name is added to
    `typed_public_api.py`. **It is not under `energy`**, because

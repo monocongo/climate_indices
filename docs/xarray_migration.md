@@ -100,9 +100,9 @@ This section shows how to convert common NumPy workflows to the equivalent xarra
 
 ```python
 import numpy as np
-from climate_indices import indices
+from climate_indices.drought import indices
 from climate_indices.compute import Periodicity
-from climate_indices.indices import Distribution
+from climate_indices.drought.indices import Distribution
 
 # 40 years × 12 months/year = 480 monthly values
 precip_mm = np.load("monthly_precip.npy")  # shape: (40, 12)
@@ -126,7 +126,7 @@ spi_values = indices.spi(
 import pandas as pd
 import xarray as xr
 from climate_indices import spi
-from climate_indices.indices import Distribution
+from climate_indices.drought.indices import Distribution
 
 # load data as xarray DataArray with time coordinate
 time = pd.date_range("1980-01-01", periods=480, freq="MS")
@@ -150,7 +150,7 @@ spi_result = spi(
 
 **Key changes:**
 
-- Import from the package root (`from climate_indices import spi`) instead of `climate_indices.indices`
+- Import from the package root (`from climate_indices import spi`) instead of `climate_indices.drought.indices`.
 - Data shape changes from 2D (years, months) to 1D with labeled time dimension
 - Only 2 required parameters (`scale`, `distribution`) instead of 6
 - All temporal parameters (`data_start_year`, `calibration_year_initial`, `calibration_year_final`, `periodicity`) are optional and inferred automatically
@@ -162,9 +162,9 @@ spi_result = spi(
 
 ```python
 import numpy as np
-from climate_indices import indices
+from climate_indices.drought import indices
 from climate_indices.compute import Periodicity
-from climate_indices.indices import Distribution
+from climate_indices.drought.indices import Distribution
 
 # load precipitation and PET arrays
 precip_mm = np.load("monthly_precip.npy")  # shape: (40, 12)
@@ -192,7 +192,7 @@ spei_values = indices.spei(
 import pandas as pd
 import xarray as xr
 from climate_indices import spei
-from climate_indices.indices import Distribution
+from climate_indices.drought.indices import Distribution
 
 # load precipitation and PET as DataArrays
 # they can have different time ranges!
@@ -223,7 +223,7 @@ spei_result = spei(
 
 **Key changes:**
 
-- Import from `climate_indices.spei` instead of `climate_indices.indices.spei`
+- Import `spei` from `climate_indices`, not from `climate_indices.drought.indices`.
 - Inputs no longer need to be pre-aligned — `xr.align(join="inner")` handles mismatched time ranges
 - A warning is emitted if alignment drops timesteps, helping detect data issues
 - Only 3 required parameters (`scale`, `distribution`) instead of 7
@@ -233,7 +233,7 @@ spei_result = spei(
 **Before (NumPy):**
 
 ```python
-from climate_indices import indices
+from climate_indices.drought import indices
 
 # 1D array of 480 monthly temperatures
 temp_celsius = np.load("monthly_temp.npy")  # shape: (480,)
@@ -293,7 +293,7 @@ pet_grid = pet_thornthwaite(temp_grid, latitude=lat_array)
 
 **Key changes:**
 
-- Import from `climate_indices.xarray_adapter` instead of `climate_indices.indices`
+- Import from `climate_indices.xarray_adapter` instead of `climate_indices.drought.indices`.
 - `data_start_year` is optional and inferred from time coordinate
 - Latitude can be a scalar or DataArray for spatial broadcasting
 - Function name changes to `pet_thornthwaite()` for clarity
@@ -303,7 +303,7 @@ pet_grid = pet_thornthwaite(temp_grid, latitude=lat_array)
 **Before (NumPy):**
 
 ```python
-from climate_indices.eto import eto_hargreaves
+from climate_indices.drought.eto import eto_hargreaves
 
 # 1D arrays of daily min/max temperatures
 tmin = np.load("daily_tmin.npy")  # shape: (1825,)
@@ -667,7 +667,7 @@ spi_result.to_netcdf("output.nc")  # triggers compute + streams to disk
 ```python
 import xarray as xr
 from climate_indices import spi
-from climate_indices.indices import Distribution
+from climate_indices.drought.indices import Distribution
 
 # load monthly precipitation from NetCDF
 ds = xr.open_dataset("PRISM_precip_monthly_1981_2020.nc")
@@ -693,7 +693,7 @@ spi_12.to_netcdf("spi_12_CONUS_1981_2020.nc")
 ```python
 import xarray as xr
 from climate_indices import spei
-from climate_indices.indices import Distribution
+from climate_indices.drought.indices import Distribution
 
 # load precipitation and PET from different files
 # they may have different time ranges!
@@ -753,7 +753,7 @@ pet_grid.to_netcdf("pet_thornthwaite_grid.nc")
 ```python
 import xarray as xr
 from climate_indices import spi
-from climate_indices.indices import Distribution
+from climate_indices.drought.indices import Distribution
 
 # open large global dataset with Dask chunking
 # (data not loaded into memory yet)
@@ -800,7 +800,7 @@ with Client(n_workers=4, threads_per_worker=1) as client:
 
 **Supporting classes:**
 
-- {class}`climate_indices.indices.Distribution` — Distribution types for fitting
+- {class}`climate_indices.drought.indices.Distribution` — Distribution types for fitting
 - {class}`climate_indices.compute.Periodicity` — Time series periodicity (monthly/daily)
 
 **Exceptions:**

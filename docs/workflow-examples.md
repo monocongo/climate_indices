@@ -268,7 +268,7 @@ Jan. 1951 through Dec. 2010. The output files will be
 and `<out_dir>/nclimgrid_lowres_scpdsi.nc`.
 
 :::{note}
-The Palmer routines ({func}`climate_indices.palmer.pdsi`) take precipitation,
+The Palmer routines ({func}`climate_indices.drought.palmer.pdsi`) take precipitation,
 PET, and available water capacity in inches. The command line normalizes
 precipitation and PET to millimeters for the other indices, so these inputs
 may declare a depth: values labeled `inches`/`inch`, `mm`/`millimeters`, or
@@ -281,7 +281,7 @@ declares any other unit is rejected.
 
 :::{note}
 Self-calibrated PDSI (scPDSI) is available through the NumPy API as
-{func}`climate_indices.palmer.scpdsi` and through
+{func}`climate_indices.drought.palmer.scpdsi` and through
 `process_climate_indices --index palmers`, which writes it as
 `<output_file_base>_scpdsi.nc` alongside PDSI, PHDI, PMDI, and Z-Index.
 :::
@@ -326,7 +326,8 @@ in a NetCDF file, were removed with the script in 3.0.0 -- see
 ```python
 import xarray as xr
 
-from climate_indices import compute, indices
+from climate_indices import compute
+from climate_indices.drought import indices
 
 periodicity = compute.Periodicity.monthly
 precipitation = xr.open_dataset("nclimgrid_prcp.nc")["prcp"].transpose("time", "lat", "lon")

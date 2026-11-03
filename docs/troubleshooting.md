@@ -40,7 +40,8 @@ ______________________________________________________________________
 
 ```python
 import pandas as pd
-from climate_indices import indices, compute
+from climate_indices import compute
+from climate_indices.drought import indices
 
 # WRONG: passing pandas Series
 precip_series = pd.Series([20, 30, 15, ...])
@@ -85,7 +86,7 @@ result = indices.spi(precip_da, scale=6, distribution=indices.Distribution.gamma
 
 ```python
 import xarray as xr
-from climate_indices import indices
+from climate_indices.drought import indices
 
 # load NetCDF file (returns Dataset)
 ds = xr.open_dataset("precipitation.nc")
@@ -335,7 +336,7 @@ ______________________________________________________________________
 
 ```python
 import numpy as np
-from climate_indices import indices
+from climate_indices.drought import indices
 from climate_indices.compute import Periodicity
 
 # (time, lat, lon) for a 40-year monthly grid: 480 timesteps, 5 latitudes, 6 longitudes
@@ -364,9 +365,9 @@ result = indices.eddi(
 **Solution:** Reorder the cell axes so the first one is not 12, 366, or 8784, or declare the block:
 
 ```python
-from climate_indices import indices
+from climate_indices.drought import indices
 from climate_indices.compute import Periodicity
-from climate_indices.indices import Distribution
+from climate_indices.drought.indices import Distribution
 
 # WRONG: (30, 12, 2) is ambiguous -- 30 years of 12 months, or 30 timesteps of 12 cells
 # result = indices.spi(values, scale=3, ..., periodicity=Periodicity.monthly)
@@ -519,7 +520,7 @@ ______________________________________________________________________
 **Solution 1:** Try Pearson Type III distribution (more robust):
 
 ```python
-from climate_indices import indices
+from climate_indices.drought import indices
 
 # switch to Pearson distribution
 result = indices.spi(
@@ -613,7 +614,7 @@ result = indices.spi(precip_filtered, scale=6, distribution=indices.Distribution
 All distribution fitting exceptions include structured metadata for programmatic handling:
 
 ```python
-from climate_indices import indices
+from climate_indices.drought import indices
 from climate_indices.exceptions import DistributionFittingError, PearsonFittingError
 
 try:
@@ -693,7 +694,7 @@ spi_90 = indices.spi(
 **Solution:** Use the `Distribution` enum:
 
 ```python
-from climate_indices import indices
+from climate_indices.drought import indices
 
 # WRONG: using string
 # result = indices.spi(precip_da, scale=6, distribution="gamma")  # raises InvalidArgumentError
@@ -723,7 +724,8 @@ pearson_result = indices.spi(precip_da, scale=6, distribution=indices.Distributi
 **Solution:** Use the `Periodicity` enum:
 
 ```python
-from climate_indices import indices, compute
+from climate_indices import compute
+from climate_indices.drought import indices
 
 # WRONG: using string
 # result = indices.spi(values, scale=6, periodicity="monthly", ...)  # raises PeriodicityError
@@ -769,7 +771,7 @@ ______________________________________________________________________
 
 ```python
 import xarray as xr
-from climate_indices import indices
+from climate_indices.drought import indices
 
 # load Dask-backed data
 da = xr.open_mfdataset("precip_*.nc", chunks={"time": 120, "lat": 10, "lon": 10})["precipitation"]
@@ -798,7 +800,7 @@ result = indices.spi(da_rechunked, scale=6, distribution=indices.Distribution.ga
 
 ```python
 import xarray as xr
-from climate_indices import indices
+from climate_indices.drought import indices
 
 # check time ranges
 print(f"Precip: {precip_da.time.min().values} to {precip_da.time.max().values}")
@@ -1143,7 +1145,7 @@ Use Dask-backed xarray DataArrays when your dataset doesn't fit in memory or whe
 
 ```python
 import xarray as xr
-from climate_indices import indices
+from climate_indices.drought import indices
 
 # load large dataset with Dask chunking
 da = xr.open_mfdataset(
@@ -1273,7 +1275,7 @@ Dask adds overhead, so avoid it for small datasets:
 
 ```python
 import xarray as xr
-from climate_indices import indices
+from climate_indices.drought import indices
 
 # small 1-D time series: use in-memory (no chunks)
 precip_small = xr.open_dataarray("station_precip.nc")  # no chunks= argument
@@ -1304,7 +1306,7 @@ from climate_indices.logging_config import configure_logging
 configure_logging(log_level="DEBUG")
 
 # now all operations will log detailed information
-from climate_indices import indices
+from climate_indices.drought import indices
 result = indices.spi(precip_da, scale=6, distribution=indices.Distribution.gamma)
 ```
 

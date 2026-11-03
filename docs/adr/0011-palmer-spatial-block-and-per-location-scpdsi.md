@@ -2,9 +2,15 @@
 
 ## Status
 
+Amended by {doc}`0027-drought-namespace-and-module-migration` (#1555):
+Palmer implementations now live under `climate_indices.drought`.
+Current references to `palmer`, `_palmer_wells`, and `self_calibration` below name modules in that package.
+The quoted earlier decision and removed TODO retain their historical names.
+The spatial-block and per-location contracts do not change.
+
 Amended: the per-location cost argument below counted a duration-factor fit per
 recursion. The code fits the wet and dry factors once per location and reuses them
-across all four recursions (`palmer.py`, `_calculate_scpdsi_prepared`), so the
+across all four recursions (`drought/palmer.py`, `_calculate_scpdsi_prepared`), so the
 fits are one pair, not four. The decision — scPDSI stays on the per-location
 path — is unchanged.
 

@@ -62,16 +62,16 @@ The **climate_indices** library implements a **layered library architecture** op
 │  typed_public_api.py  │  Strict mypy, xarray wrappers            │
 │  xarray_adapter.py    │  CF-compliant xarray interface           │
 │  validation.py        │  Shared input validation facade          │
-│  indices.py           │  Legacy numpy API (backward compat)       │
+│  drought/indices.py    │  Legacy numpy API (backward compat)       │
 ├────────────────────────────────────────────────────────────────────┤
 │                    Computation Layer                               │
 ├────────────────────────────────────────────────────────────────────┤
 │  compute.py           │  Core algorithms (scaling, fitting, PDF) │
-│  palmer.py            │  Palmer drought indices implementation    │
+│  drought/palmer.py     │  Palmer drought indices implementation    │
 ├────────────────────────────────────────────────────────────────────┤
 │                 Math/Statistics Layer                              │
 ├────────────────────────────────────────────────────────────────────┤
-│  eto.py               │  PET: Thornthwaite, Hargreaves methods   │
+│  drought/eto.py        │  PET: Thornthwaite, Hargreaves methods   │
 │  lmoments.py          │  L-moments for distribution fitting       │
 ├────────────────────────────────────────────────────────────────────┤
 │                  Infrastructure Layer                              │
@@ -83,6 +83,21 @@ The **climate_indices** library implements a **layered library architecture** op
 │  provenance.py        │  Output provenance records               │
 └────────────────────────────────────────────────────────────────────┘
 ```
+
+### Drought namespace
+
+`climate_indices.drought` owns the drought, Palmer, and PET implementations.
+Its facade lazily resolves the same `typed_public_api` objects that the package root exports.
+It also exports the same `HumidityInputs` and `RadiationInputs` classes.
+The lazy `__getattr__` avoids initialization cycles with the adapters.
+Generic `standardized_index` and `fit_diagnostics` functions and shared PET implementations remain here for now.
+KBDI stays in `fire`; EDI stays in `flood`.
+
+The five old public module paths are warning-emitting `sys.modules` identity aliases until removal in 4.0.0.
+They preserve monkeypatch behavior and old public-module pickle lookups during the deprecation period.
+The four old private `_palmer_*` paths have no aliases.
+See [ADR-0027](adr/0027-drought-namespace-and-module-migration.md) for the complete module table.
+Unless stated otherwise, the short module names `indices`, `palmer`, `eto`, `pm_eto`, and `self_calibration` below refer to `drought` modules.
 
 ### Shared domain vocabulary
 
@@ -141,7 +156,7 @@ process_climate_indices = "climate_indices.__main__:main"
     dimension orders each layout accepts
   - Time-dimension, monotonicity, and Dask single-chunk validation
 
-- **`indices.py`**: Legacy numpy API
+- **`drought/indices.py`**: Legacy numpy API
   - Backward-compatible function signatures
   - Direct numpy array inputs/outputs
   - Re-exports the Distribution enum (`Distribution.gamma`, `Distribution.pearson`)
@@ -165,7 +180,7 @@ process_climate_indices = "climate_indices.__main__:main"
   - `sum_to_scale()`: Optimized sliding window summation
   - Re-exports the `Periodicity` enum: `monthly` (12 steps/year), `daily` (366 steps/year), and `hourly` (8784 steps/year), with a `period_length` property and a `unit()` method
 
-- **`palmer.py`**: Palmer Drought Index family
+- **`drought/palmer.py`**: Palmer Drought Index family
   - PDSI (Palmer Drought Severity Index)
   - PHDI (Palmer Hydrological Drought Index)
   - PMDI (Palmer Modified Drought Index)
@@ -201,7 +216,7 @@ process_climate_indices = "climate_indices.__main__:main"
 **Purpose**: Low-level mathematical and statistical functions.
 
 **Modules**:
-- **`eto.py`**: Potential Evapotranspiration methods
+- **`drought/eto.py`**: Potential Evapotranspiration methods
   - **Thornthwaite (1948)**: Monthly PET from temperature and latitude
     - Heat index computation
     - Day length adjustment based on latitude
@@ -856,10 +871,23 @@ climate_indices/
 │   ├── typed_public_api.py       # Strict mypy-compliant API
 │   ├── xarray_adapter.py         # Modern xarray interface
 │   ├── validation.py             # Shared input validation facade
-│   ├── indices.py                # Legacy numpy API (STABLE)
-│   ├── compute.py                # Core computation algorithms
-│   ├── palmer.py                 # Palmer drought indices
-│   ├── eto.py                    # PET: Thornthwaite & Hargreaves
+│   ├── drought/                  # Drought, Palmer, and PET ownership
+│   │   ├── __init__.py           # Lazy typed facade, same objects as root
+│   │   ├── indices.py            # Direct NumPy API
+│   │   ├── palmer.py             # Palmer drought indices
+│   │   ├── _palmer_common.py     # Shared private Palmer helpers
+│   │   ├── _palmer_duration.py   # Private duration-factor helpers
+│   │   ├── _palmer_pdi.py        # Private PDSI recursion
+│   │   ├── _palmer_wells.py      # Private Wells recursion
+│   │   ├── self_calibration.py   # scPDSI duration-factor fitting
+│   │   ├── eto.py               # Thornthwaite and Hargreaves PET
+│   │   └── pm_eto.py            # Penman-Monteith PET and input types
+│   ├── indices.py                # Deprecated identity alias
+│   ├── palmer.py                 # Deprecated identity alias
+│   ├── self_calibration.py       # Deprecated identity alias
+│   ├── eto.py                    # Deprecated identity alias
+│   ├── pm_eto.py                 # Deprecated identity alias
+│   ├── compute.py                # Shared computation algorithms
 │   ├── lmoments.py               # L-moments for Pearson fitting
 │   ├── utils.py                  # Utility functions
 │   ├── logging_config.py         # Structured logging setup

@@ -371,7 +371,7 @@ marshalling. A new family module also goes into `NATIVE_FAMILIES` in
 
 The index dispatch helper is named `_native_<kernel>`, lives next to the Python
 implementation it ports in `compute.py`, and is reached by its public callers in
-`indices.py` as `compute._native_<kernel>`. It returns `None` when a routing
+`drought/indices.py` as `compute._native_<kernel>`. It returns `None` when a routing
 condition fails, and its caller then runs the Python path (as
 `_native_gamma_probabilities` and `_native_gamma_parameters` do). The fire and flood
 recurrences use a different pattern: `fire/_native.py` and `flood/_native.py` define

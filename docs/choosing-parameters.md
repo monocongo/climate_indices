@@ -169,7 +169,7 @@ import pandas as pd
 import xarray as xr
 
 from climate_indices import spi
-from climate_indices.indices import Distribution
+from climate_indices.drought.indices import Distribution
 
 rng = np.random.default_rng(42)
 precip = xr.DataArray(

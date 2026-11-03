@@ -16,7 +16,7 @@
 - **Drought / Moisture Indices**: SPI, SPEI, PNP, EDDI, PCI
 - **Palmer Family**: PDSI, PHDI, PMDI, Palmer Z-Index, and self-calibrated scPDSI
 - **Flood-Potential Indices**: `climate_indices.flood` namespace — Effective Precipitation, fixed-window EDI, Flood Index, and the recursive Antecedent Precipitation Index
-- **PET Methods**: Thornthwaite, Hargreaves, and FAO-56 Penman-Monteith (`climate_indices.pet_penman_monteith`) are public APIs; lower-level primitives in `pm_eto.py` are internal and back the fire-weather indices
+- **PET Methods**: Thornthwaite, Hargreaves, and FAO-56 Penman-Monteith (`climate_indices.pet_penman_monteith`) are public APIs; lower-level primitives in `drought/pm_eto.py` are internal and back the fire-weather indices
 - **Fire-Weather Indices**: `climate_indices.fire` namespace — Fosberg Fire Weather Index (FFWI), Hot-Dry-Windy Index (HDW), Keetch-Byram Drought Index (KBDI), and the Canadian Forest Fire Weather Index System (FFMC, DMC, DC, ISI, BUI, FWI, DSR)
 - **Run Theory**: `runs` module for identifying contiguous above/below-threshold events (duration, magnitude, intensity, peak, interarrival)
 - **Flexible Input Formats**: NumPy arrays, xarray DataArrays, and Dask arrays
@@ -34,6 +34,14 @@
 - **Build System**: Hatchling (PEP 517) + uv for dependency management
 - **Package Management**: uv (modern Python package installer/resolver)
 
+### Drought namespace
+
+`climate_indices.drought` exposes the same typed NumPy/DataArray functions as the package root.
+Direct NumPy implementations live in `drought.indices` and `drought.palmer`.
+The generic standardization and diagnostic functions and PET implementations remain here for now.
+Shared `compute`, `vocabulary`, and `lmoments` modules stay at the root.
+See [ADR-0027](adr/0027-drought-namespace-and-module-migration.md) for the nine module moves and temporary public-module aliases.
+
 ### Architecture Pattern
 **Layered Library Architecture**:
 ```
@@ -41,14 +49,14 @@
 │   CLI Layer                         │  ← __main__.py, _cli.py
 ├─────────────────────────────────────┤
 │   Public API Layer                  │  ← typed_public_api.py, xarray_adapter.py,
-│                                     │     cf_metadata_registry.py, fire/, flood/
+│                                     │     cf_metadata_registry.py, drought/, fire/, flood/
 ├─────────────────────────────────────┤
-│   Computation Layer                 │  ← indices.py, compute.py, palmer.py,
-│                                     │     self_calibration.py, eto.py, pm_eto.py,
+│   Computation Layer                 │  ← drought/indices.py, compute.py, drought/palmer.py,
+│                                     │     drought/self_calibration.py, drought/eto.py, drought/pm_eto.py,
 │                                     │     runs.py, validation.py
 ├─────────────────────────────────────┤
-│   Math/Statistics Layer             │  ← lmoments.py, _palmer_duration.py,
-│                                     │     _palmer_pdi.py, _palmer_wells.py
+│   Math/Statistics Layer             │  ← lmoments.py, drought/_palmer_duration.py,
+│                                     │     drought/_palmer_pdi.py, drought/_palmer_wells.py
 ├─────────────────────────────────────┤
 │   Infrastructure Layer              │  ← utils.py, logging_config.py,
 │                                     │     exceptions.py, performance.py
@@ -91,7 +99,7 @@ uv sync --group dev
 #### Modern xarray API (Recommended)
 ```python
 import climate_indices as ci
-from climate_indices import indices
+from climate_indices.drought import indices
 import xarray as xr
 
 # Load precipitation data
@@ -116,7 +124,8 @@ spi_6 = ci.spi(
 > `--calibration_year_initial`/`--calibration_year_final` as aliases for its
 > `--calibration_start_year`/`--calibration_end_year` flags.
 ```python
-from climate_indices import indices, compute
+from climate_indices import compute
+from climate_indices.drought import indices
 import numpy as np
 
 # Load data as numpy array
@@ -189,10 +198,10 @@ uv run pytest -m benchmark
 ## AI-Assisted Development Guidance
 
 ### Recommended Starting Points for AI Agents
-1. **For understanding computation**: Start with `docs/architecture.md`, then `src/climate_indices/compute.py` and `src/climate_indices/indices.py`
+1. **For understanding computation**: Start with `docs/architecture.md`, then `src/climate_indices/compute.py` and `src/climate_indices/drought/indices.py`
 2. **For understanding the public API**: Read `src/climate_indices/typed_public_api.py` (strict mypy typing) and `src/climate_indices/xarray_adapter.py`
 3. **For understanding the CLI**: Examine `src/climate_indices/__main__.py` (the index pipeline registry and `--index` handling) and `src/climate_indices/_cli.py` (shared argument registration)
-4. **For understanding Palmer calculations**: Read `src/climate_indices/palmer.py`, `src/climate_indices/_palmer_pdi.py`, `src/climate_indices/_palmer_wells.py`, `src/climate_indices/_palmer_duration.py`, and `src/climate_indices/self_calibration.py`
+4. **For understanding Palmer calculations**: Read `src/climate_indices/drought/palmer.py`, `src/climate_indices/drought/_palmer_pdi.py`, `src/climate_indices/drought/_palmer_wells.py`, `src/climate_indices/drought/_palmer_duration.py`, and `src/climate_indices/drought/self_calibration.py`
 5. **For understanding fire-weather indices**: Read `src/climate_indices/fire/__init__.py` and the subsystem design in `docs/design/fire-subsystem.md`
 6. **For understanding flood-potential indices**: Read `src/climate_indices/flood/__init__.py` (public dispatch) and the `flood/_pe.py`, `flood/_edi.py`, `flood/_if.py`, `flood/_antecedent.py` kernels
 7. **For understanding run theory**: Read `src/climate_indices/runs.py`
@@ -204,7 +213,7 @@ uv run pytest -m benchmark
 - **Calibration period**: Default minimum 30 years; violations trigger `ShortCalibrationWarning`
 - **Pearson Type III fitting**: Requires at least 4 non-zero values per calendar time step; fewer raise `InsufficientDataError`
 - **Coordinate validation**: Time coordinates must be monotonically increasing; xarray inputs undergo automatic validation
-- **Backward compatibility**: Legacy NumPy API (`indices.py`) must remain stable; new features go to the xarray API
+- **Backward compatibility**: Legacy NumPy API (`drought/indices.py`) must remain stable; new features go to the xarray API
 - **Fire namespace**: Fire-weather indices are exposed only under `climate_indices.fire`; they are not top-level package functions (see ADR-0005)
 - **Flood namespace**: Flood-potential indices are exposed only under `climate_indices.flood` (see ADR-0013); `edi` (flood) and `eddi` (drought) are distinct indices
 
@@ -225,16 +234,16 @@ uv run pytest -m benchmark
 ### Common Pitfalls
 1. **Do NOT** use wildcard imports (`from module import *`) - explicitly forbidden by ruff
 2. **Dask time chunks**: SPI/SPEI and stateful fire adapters reject split time chunks; PET adapters accept them and rechunk internally
-3. **Do NOT** modify the `indices.py` API in a breaking way - backward compatibility requirement
+3. **Do NOT** modify the `drought/indices.py` API in a breaking way - backward compatibility requirement
 4. **Do NOT** commit without running tests - pre-commit hooks will fail
 5. **Do NOT** use string paths - always use `pathlib.Path` objects
 
 ### Key Files for Modification Scenarios
 | Task | Primary Files | Test Files |
 |------|--------------|------------|
-| Add new index | `compute.py`, `indices.py`, `typed_public_api.py`, `xarray_adapter.py` | `test_compute.py`, `test_indices.py`, `test_typed_public_api.py`, `test_xarray_adapter.py` |
-| Add new distribution | `compute.py`, `indices.py`, `lmoments.py` | `test_compute.py`, `test_property_based.py` |
-| Modify Palmer indices | `palmer.py`, `_palmer_pdi.py`, `_palmer_wells.py`, `_palmer_duration.py`, `self_calibration.py` | `test_palmer.py`, `test_scpdsi.py`, `test_self_calibration.py` |
+| Add new index | `compute.py`, `drought/indices.py`, `typed_public_api.py`, `xarray_adapter.py` | `test_compute.py`, `test_indices.py`, `test_typed_public_api.py`, `test_xarray_adapter.py` |
+| Add new distribution | `compute.py`, `drought/indices.py`, `lmoments.py` | `test_compute.py`, `test_property_based.py` |
+| Modify Palmer indices | `drought/palmer.py`, `drought/_palmer_pdi.py`, `drought/_palmer_wells.py`, `drought/_palmer_duration.py`, `drought/self_calibration.py` | `test_palmer.py`, `test_scpdsi.py`, `test_self_calibration.py` |
 | Add a fire-weather index | `fire/` subpackage | `test_fire*.py`, reference tests |
 | Add a flood-potential index | `flood/` subpackage, `typed_public_api.py` | `test_flood*.py`, `test_main_flood.py` |
 | Modify run extraction | `runs.py` | `test_runs.py` |

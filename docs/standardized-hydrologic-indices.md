@@ -23,7 +23,8 @@ The recipe assumes `runoff` is a 1-D NumPy array of non-negative monthly
 values covering 1981-01 through 2010-12.
 
 ```python
-from climate_indices import compute, indices
+from climate_indices import compute
+from climate_indices.drought import indices
 
 sri = indices.standardized_index(
     runoff,  # 1-D numpy array of non-negative monthly values
@@ -49,7 +50,8 @@ The recipe assumes `streamflow` is a 1-D NumPy array of non-negative monthly
 values covering 1981-01 through 2010-12.
 
 ```python
-from climate_indices import compute, indices
+from climate_indices import compute
+from climate_indices.drought import indices
 
 ssi = indices.standardized_index(
     streamflow,  # 1-D numpy array of non-negative monthly values

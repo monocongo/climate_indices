@@ -253,7 +253,7 @@ Before submitting:
 
 ### Adding a New Climate Index
 1. Implement core algorithm in `compute.py`
-2. Add high-level function to `indices.py` (numpy API)
+2. Use `drought/indices.py` for the established NumPy drought API, subject to [ADR-0001](adr/0001-dual-numpy-xarray-api.md).
 3. Add wrapper to `xarray_adapter.py` (xarray API)
 4. Add tests in `tests/test_compute.py`, `test_indices.py`, `test_xarray_adapter.py`
 5. Update documentation in `docs/reference.md` and any relevant `docs/*.md` guides
