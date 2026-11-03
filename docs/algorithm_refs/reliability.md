@@ -56,9 +56,10 @@ interrupted. Both sums run over sustained rows only.
 | MAIFI | $\sum_j D_j N_j / N_T$ | Customer-weighted device operations (*D*{sub}`j`·*N*{sub}`j`) | Served customers (*N*{sub}`T`) | Device operations per customer per reporting period |
 | ASAI | $1 - \dfrac{SAIDI / 60}{H}$ | Available customer-hours | Total customer-hours | Dimensionless fraction in [0, 1] |
 
-SAIFI, SAIDI, CAIDI, and the two MAIFI forms are frequencies or durations
-**per the supplied reporting period**, never per year. Divide SAIDI by 60 to
-obtain `SAIDI_hours`, the unit ASAI uses. CAIDI is the definitional ratio
+SAIFI, SAIDI, and the two MAIFI forms are frequencies or durations
+**per the supplied reporting period**, never per year. CAIDI is measured in
+minutes per customer interruption, not per reporting period. Divide SAIDI by 60
+to obtain `SAIDI_hours`, the unit ASAI uses. CAIDI is the definitional ratio
 *CMI* / *CI*, so it is exactly independent of *N*{sub}`T`; the identity
 `CAIDI = SAIDI / SAIFI` holds mathematically through the shared accumulators,
 but the separately rounded values need not match bit for bit.
