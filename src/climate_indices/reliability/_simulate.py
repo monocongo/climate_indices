@@ -62,7 +62,7 @@ def _component_spec(spec: Mapping[str, Any], component_id: str) -> _Component:
         if "repair_sigma" not in spec:
             raise _invalid("repair_sigma", "is required for the lognormal distribution")
         repair_sigma = _number(spec["repair_sigma"], "repair_sigma", positive=True)
-        if math.exp(math.log(repair_time) - 0.5 * repair_sigma * repair_sigma) == 0.0:
+        if math.exp(math.log(repair_time) - 0.5 * repair_sigma * repair_sigma) <= 0.0:
             raise _invalid("repair_sigma", "produces an unrepresentable lognormal scale")
     elif "repair_sigma" in spec:
         raise _invalid("repair_sigma", "is only valid with the lognormal distribution")

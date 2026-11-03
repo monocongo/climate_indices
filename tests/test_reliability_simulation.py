@@ -303,8 +303,9 @@ def test_lognormal_scale_avoids_intermediate_underflow() -> None:
 
 @pytest.mark.parametrize("failure_rate", [0.0, 0.01])
 def test_customer_count_above_int64_is_rejected_before_sampling(failure_rate: float) -> None:
+    spec = component(failure_rate=failure_rate)
     with pytest.raises(InvalidArgumentError) as error:
-        simulate([component(failure_rate=failure_rate)], n_trials=1, total_customers=2**63)
+        simulate([spec], n_trials=1, total_customers=2**63)
     assert error.value.argument_name == "total_customers"
 
 
