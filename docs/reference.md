@@ -166,8 +166,8 @@ records the tolerances, evidence, and known gaps.
 ### climate_indices.reliability
 
 The reliability package validates and classifies interruption records and computes
-SAIFI, SAIDI, CAIDI, MAIFI_E, and MAIFI from the event records. Availability and
-simulation are not implemented yet.
+SAIFI, SAIDI, CAIDI, MAIFI_E, MAIFI, ASAI, and outage counts from the event records.
+It runs a seeded Monte Carlo simulation of component failures into the same metric path.
 [ADR-0026](adr/0026-reliability-module-api-and-conventions.md) fixes the conventions
 for those later tickets.
 Import it with `from climate_indices import reliability`.
@@ -215,7 +215,8 @@ Zero-duration events remain in the table and do not overlap other intervals.
 Invalid fields raise `InvalidArgumentError` from `climate_indices.exceptions`.
 Its `argument_name` names the field, such as `event_id`, `duration`, or `start_time`.
 Unknown columns, including simulation-only `failure_rate`, `repair_time`, and topology edges,
-are rejected. Simulation inputs are not part of this deterministic contract.
+are rejected. Simulation inputs are not part of this deterministic contract; they belong
+to `simulate_reliability()`, which produces the event log the contract consumes.
 The shipped [JSON Schema](https://github.com/monocongo/climate_indices/blob/main/src/climate_indices/reliability/event_schema.json)
 checks JSON record structure. Runtime validation also checks identifier uniqueness,
 calendar validity, timezone awareness, interval consistency, and customer bounds.
@@ -232,8 +233,7 @@ A complete 2023 period has 8760 hours; a complete 2024 period has 8784 hours.
 Timezone-aware periods use actual elapsed hours, including daylight-saving changes.
 If hours and bounds are both supplied, they must agree within `1e-9` hours.
 Without either input, the period remains undefined. Event timestamps never determine it.
-The served-customer validator backs `reliability_indices()`; the reporting-period
-validator supports later metric tickets. Neither is an additional public function.
+Both validators support `reliability_indices()`. Neither is an additional public function.
 
 `group_momentary_events(events, *, window_minutes=5.0, threshold_minutes=5.0)`
 collapses raw momentary operation rows into one event per device and window.
@@ -261,11 +261,11 @@ values raises `InvalidArgumentError` naming that field.
 The helper cannot tell a second operation from a new reclosing sequence, so it
 suits raw operation logs, not records that already hold whole sequences.
 
-`reliability_indices(events, total_customers=None, *, exclude_planned=False, threshold_minutes=5.0)`
+`reliability_indices(events, total_customers=None, *, exclude_planned=False, threshold_minutes=5.0, period_hours=None, period_start=None, period_end=None)`
 returns a frozen `ReliabilityResult` with `saifi`, `saidi`,
 `customer_interruptions`, `customer_minutes_interrupted`, `outage_count`,
-`maifi_e`, and `maifi`.
-It also exposes the read-only properties `caidi` and `undefined_metrics`.
+`maifi_e`, `maifi`, `momentary_outage_count`, and `period_hours`.
+It also exposes the read-only properties `caidi`, `asai`, and `undefined_metrics`.
 SAIFI is `CI / N_T`, where `CI = sum(N_i)` over sustained interruptions.
 Each sustained event row contributes its own `N_i`, so `CI` is additive across those
 rows: two rows carrying the same customer count contribute twice.
@@ -273,8 +273,7 @@ SAIDI is `CMI / N_T`, where `CMI = sum(r_i * N_i)` over the same sustained rows 
 `r_i` is the duration in minutes. `CMI` is total customer-minutes. SAIDI is
 sustained interruption minutes per served customer for the period represented by
 the supplied events and average customer count. Divide SAIDI by 60 to get
-`SAIDI_hours`, the unit the ASAI relationship consumes in ENERGY2-8; a partial-period
-SAIDI is never annualized.
+`SAIDI_hours`, the unit the ASAI relationship uses. A partial-period SAIDI is never annualized.
 CAIDI (Customer Average Interruption Duration Index) is `CMI / CI`, in minutes per customer interruption.
 It is independent of `total_customers` and represents the customer-weighted average restoration time.
 For one sustained event with interrupted customers, CAIDI equals its duration up to product and division rounding.
@@ -282,7 +281,28 @@ CAIDI is the definitional accumulator ratio `CMI / CI`, which the library guaran
 The identity `CAIDI = SAIDI / SAIFI` is mathematical. Tests bound it within four float64 epsilons for the covered inputs; no general bound or bit-for-bit equality is promised, because SAIDI and SAIFI are rounded separately.
 For example, a six-minute event affecting three customers with `total_customers=1000` gives CAIDI `6.0`.
 The separately rounded ratio `SAIDI / SAIFI` gives `5.999999999999999`.
-The three metrics share one sustained-row mask, so `exclude_planned` and
+
+ASAI (Average Service Availability Index) is the dimensionless fraction
+`1 - (SAIDI / 60) / H` when interruption time does not exceed the reporting exposure.
+Under this condition, it is mathematically equivalent to `(N_T * H * 60 - CMI) / (N_T * H * 60)`.
+Here, `H` is the supplied or derived `period_hours`. ASAI is not a percentage.
+
+Without hours or explicit period bounds, ASAI is None and `undefined_metrics` includes `"asai"`.
+The library never assumes 8760 hours or infers a period from event timestamps.
+With a period and no sustained customer-minutes, ASAI is `1.0`.
+
+If accumulated interruption minutes exceed the reporting exposure, ASAI is NaN and `undefined_metrics` includes `"asai"`.
+A computed unavailable fraction up to `1 + math.ulp(1.0)` instead gives ASAI `0.0` to allow for rounding.
+Here, `math.ulp(1.0)` is one floating-point step above 1.
+Larger excesses remain undefined; the library does not clamp them to zero.
+Overlapping events remain valid and contribute to the sustained accumulators; the library does not discard rows.
+
+The result records elapsed hours in `period_hours`.
+Bounds do not filter or clip events. Supply the log for the reporting period.
+Partial periods use their exact elapsed hours, without annualization or extrapolation.
+Results from periods of different lengths are not directly comparable. No Major Event Day filter is applied.
+
+The sustained metrics and ASAI share one sustained-row mask, so `exclude_planned` and
 `threshold_minutes` have one meaning.
 `maifi_e` is the momentary interruption event frequency
 `sum(N_i) / N_T` over momentary rows, where an event flagged
@@ -297,8 +317,13 @@ It is `None` when the input has no `device_operations` column or a momentary row
 leaves its operation count unknown, because an operation frequency cannot be
 recovered from an event count. It is `0.0` when the column is supplied and no
 momentary row operates.
-The function accepts no reporting-period bounds; partial periods are computed
-exactly and are never annualized.
+
+`outage_count` tallies sustained rows, not unique physical incidents or customers.
+Each restoration-stage row has its own unique `event_id` and counts separately.
+`momentary_outage_count` separately tallies momentary rows, including zero-duration
+and zero-customer rows. It does not group rows or apply `momentary_event_excluded`,
+which affects MAIFI_E only. It is independent of `exclude_planned`, because that
+filter applies to sustained rows.
 Momentary rows contribute nothing to SAIFI, SAIDI, or CAIDI. Planned sustained interruptions are included by default.
 `exclude_planned=True` removes them and must be a Boolean.
 `threshold_minutes` follows `classify_interruptions()`.
@@ -310,11 +335,108 @@ When `CI` is zero, CAIDI is NaN and `undefined_metrics` includes `"caidi"`.
 This includes empty logs, momentary-only logs, and sustained rows with zero interrupted customers.
 An explicitly sustained zero-duration event with interrupted customers instead gives CAIDI `0.0`.
 `undefined_metrics` names each metric the input cannot determine, in the order
-`caidi`, then `maifi`. Undefined metrics do not produce an additional warning.
+`caidi`, then `maifi`, then `asai`. Undefined metrics do not produce an additional warning.
 The original three result fields retain their order; `maifi_e` and `maifi` follow
 them with defaults, so existing positional calls stay valid.
+`period_hours` and `momentary_outage_count` follow those with defaults.
 If the constructor omits `customer_minutes_interrupted`, CAIDI remains NaN.
-ASAI and the simulation path are not implemented yet.
+If the constructor supplies a period but omits SAIDI, ASAI is also NaN.
+If a directly constructed result has a non-positive or non-finite `period_hours`, ASAI is NaN and `undefined_metrics` includes `"asai"`.
+Equality and hashing preserve the legacy duration rules without a period.
+With a period, an unset SAIDI remains distinct from zero because it changes ASAI.
+
+`simulate_reliability(components, *, arrangement, total_customers, horizon_hours,
+n_trials, seed=None, component_topology=None)` runs a seeded Monte Carlo simulation of
+`components` and returns one `ReliabilityResult` per trial, ordered by trial index.
+Every component starts operational at hour 0. A component fails after an exponential
+wait with its constant `failure_rate` (failures per hour), then recovers after a draw
+from its restoration distribution. All served customers are interrupted whenever the
+system is down. SAIDI counts only system-down intervals longer than five minutes.
+Intervals of five minutes or less contribute to MAIFI_E, not SAIDI, SAIFI, or
+customer interruptions. A series system is down when any component is down.
+A parallel system is down only when every component is down.
+The system-down intervals are the union of the component down
+intervals for a series arrangement and their intersection for a parallel
+arrangement; each trial's system-down intervals form an event log that
+`reliability_indices()` consumes, so the simulation uses the validated metric path and
+cannot drift from the metric definitions. System-down intervals are clipped at the
+horizon, so an outage that continues past it contributes only through the horizon.
+The classifier uses the clipped duration.
+
+Each component is a mapping with `component_id` (a non-empty unique string),
+`failure_rate` (nonnegative failures per hour), `repair_time` (positive mean restoration
+time in hours), an optional `repair_distribution` of `"fixed"`, `"exponential"`
+(default), or `"lognormal"`, and `repair_sigma` (a positive log-scale shape, required
+with the lognormal distribution and invalid otherwise). The fixed distribution uses
+`repair_time` as the deterministic duration; the exponential uses it as the mean; the
+lognormal uses it as the mean with log-scale median `repair_time * exp(-repair_sigma**2 / 2)`.
+The lognormal scale must be representable as a positive float64 value.
+An unrepresentable scale raises `InvalidArgumentError` naming `repair_sigma` before sampling.
+A zero `failure_rate` component never fails, so it cannot bring a parallel system down.
+
+`total_customers` must be a positive whole count within int64, because every simulated event
+interrupts all of them. `horizon_hours` and `n_trials` must be positive, and a horizon
+shorter than a year is never annualized. `seed` is a required nonnegative integer and
+the only source of randomness. Omitting it or passing `None` raises `InvalidArgumentError` naming `seed`.
+
+The library holds no module-level generator state, so identical seeds and arguments reproduce the tuple exactly.
+Trials are sampled in order from one generator, so a shorter run is an exact prefix of a longer run with
+the same seed. Supplying `component_topology` raises `InvalidArgumentError` naming that
+field, because customer connectivity and network topology resolution are deferred
+(ADR-0026). The same exception names any invalid component or envelope field.
+
+The analytic SAIDI reference uses one initially operational component with exponential
+failures and repairs. Its availability is
+`P_up(t) = A + (1 - A) * exp(-(rate + repair_rate) * t)`, where
+`A = repair_rate / (rate + repair_rate)`. The failure-onset intensity is
+`rate * P_up(t)`. For an onset at `t`, let `R = horizon_hours - t`,
+`m = repair_time`, and `d = 5 / 60` hours. When `R > d`, the expected sustained
+contribution is `(d + m) * exp(-d / m) - m * exp(-R / m)` hours.
+When `R <= d`, the contribution is zero. Integrating the onset intensity times
+this contribution gives expected SAIDI after conversion to minutes.
+This excludes momentary downtime, unlike an integral of all system downtime.
+
+`tests/test_reliability_simulation.py` checks this independent analytic expectation
+within three standard errors, with mean repairs above and below five minutes.
+
+A second analytic reference checks two components in series with exponential failures and repairs.
+It uses a continuous-time Markov chain, which describes transitions between component failure states.
+The transient states have the first component down, the second down, or both down.
+The reference integrates outage durations until both components recover, with the same five-minute threshold and horizon clipping.
+
+A separate test checks that the standard error falls at the `1 / sqrt(n)` rate.
+A larger trial count does not guarantee a closer trial mean on every run.
+For multiple components, the tests check that parallel SAIDI never exceeds series
+SAIDI for identical component histories. Interruption counts have no such ordering:
+one long series outage can contain multiple separate parallel outages.
+The tests also check each restoration distribution's realized mean through CAIDI
+for long mean repairs, with a three-percent tolerance.
+
+```{doctest}
+>>> from climate_indices import reliability
+>>> spec = [{"component_id": "c1", "failure_rate": 0.02, "repair_time": 4.0}]
+>>> runs = reliability.simulate_reliability(
+...     spec, arrangement="series", total_customers=100, horizon_hours=8760.0,
+...     n_trials=3, seed=7)
+>>> len(runs)
+3
+>>> runs == reliability.simulate_reliability(
+...     spec, arrangement="series", total_customers=100, horizon_hours=8760.0,
+...     n_trials=3, seed=7)
+True
+>>> fixed = [{"component_id": "c1", "failure_rate": 0.02, "repair_time": 4.0,
+...           "repair_distribution": "fixed"},
+...          {"component_id": "c2", "failure_rate": 0.01, "repair_time": 2.0,
+...           "repair_distribution": "fixed"}]
+>>> series = reliability.simulate_reliability(
+...     fixed, arrangement="series", total_customers=100, horizon_hours=8760.0,
+...     n_trials=10, seed=3)
+>>> parallel = reliability.simulate_reliability(
+...     fixed, arrangement="parallel", total_customers=100, horizon_hours=8760.0,
+...     n_trials=10, seed=3)
+>>> all(p.saidi <= s.saidi for s, p in zip(series, parallel, strict=True))
+True
+```
 
 ```{doctest}
 >>> from climate_indices import reliability
@@ -331,19 +453,23 @@ ASAI and the simulation path are not implemented yet.
 >>> from climate_indices import reliability
 >>> sustained = [{"event_id": "s", "start_time": "2024-01-01T03:00:00Z",
 ...              "duration": 60.0, "customers_interrupted": 30}]
->>> result = reliability.reliability_indices(sustained, total_customers=100)
+>>> result = reliability.reliability_indices(sustained, total_customers=100, period_hours=24)
 >>> result.saifi, result.saidi
 (0.3, 18.0)
 >>> result.customer_interruptions, result.customer_minutes_interrupted, result.outage_count
 (30, 1800.0, 1)
 >>> result.saidi / 60
 0.3
->>> result.caidi, result.undefined_metrics
-(60.0, ('maifi',))
+>>> result.caidi, result.asai, result.period_hours, result.undefined_metrics
+(60.0, 0.9875, 24.0, ('maifi',))
 >>> empty = reliability.reliability_indices([], total_customers=100)
 >>> import math
 >>> math.isnan(empty.caidi), empty.undefined_metrics
-(True, ('caidi', 'maifi'))
+(True, ('caidi', 'maifi', 'asai'))
+>>> empty.asai is None
+True
+>>> reliability.reliability_indices([], total_customers=100, period_hours=24).asai
+1.0
 ```
 
 ```{doctest}
