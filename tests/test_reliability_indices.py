@@ -245,11 +245,12 @@ def test_planned_rows_are_included_by_default_and_excluded_on_request() -> None:
 def test_adr_0026_fixture_analytic_case() -> None:
     events = json.loads(FIXTURE.read_text())
     result = reliability.reliability_indices(events, total_customers=1000, period_hours=24)
-    assert result.asai == pytest.approx(float(Fraction(59, 60)), rel=0, abs=1e-15)
-    assert result.saifi == pytest.approx(0.3)
-    assert result.saidi == pytest.approx(24.0)
+    # The fixture declares rtol=0, atol=0: the expected values are exact rational arithmetic.
+    assert result.asai == float(Fraction(59, 60))
+    assert result.saifi == 0.3
+    assert result.saidi == 24.0
     assert result.customer_interruptions == 300
-    assert result.customer_minutes_interrupted == pytest.approx(24000.0)
+    assert result.customer_minutes_interrupted == 24000.0
     assert result.outage_count == 2
     assert result.momentary_outage_count == 3
 
@@ -388,9 +389,9 @@ def test_caidi_identity_seed_matches_the_adr_table() -> None:
     result = reliability.reliability_indices(events, total_customers=1000)
     assert result.customer_interruptions == customer_interruptions == 300
     assert customer_minutes == 24000
-    assert result.saifi == pytest.approx(0.3)
-    assert customer_minutes / 1000 == pytest.approx(24.0)
-    assert customer_minutes / customer_interruptions == pytest.approx(80.0)
+    assert result.saifi == 0.3
+    assert customer_minutes / 1000 == 24.0
+    assert customer_minutes / customer_interruptions == 80.0
 
 
 @pytest.mark.parametrize("total", [0, -1, np.nan, np.inf, True, "100", np.int64(2**53 + 3), np.uint64(2**53 + 1)])
