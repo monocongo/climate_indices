@@ -23,6 +23,7 @@ def test_analytic_fixture_schema_provenance_and_arrays() -> None:
     jsonschema.validate(events, schema)
     provenance = json.loads((FIXTURE / "provenance.json").read_text())
     jsonschema.validate(provenance, json.loads((ROOT / "tests/fixture/provenance_schema.json").read_text()))
+    assert provenance["validation_tolerance"] == {"rtol": 0, "atol": 0}
     assert hashlib.sha256((FIXTURE / "events.json").read_bytes()).hexdigest() == provenance["checksum_sha256"]
     result = _normalize_events(events, total_customers=1000)
     sustained = result[result["interruption_type"] == "sustained"]
