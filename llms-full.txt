@@ -1895,7 +1895,7 @@ open (issue #780).
 
 ### Drought namespace
 
-`climate_indices.drought` exposes the same typed NumPy/DataArray functions as the package root.
+`climate_indices.drought` re-exports the typed NumPy/DataArray drought functions that are also available at the package root.
 Direct NumPy implementations live in `drought.indices` and `drought.palmer`.
 The generic standardization and diagnostic functions and PET implementations remain here for now.
 Shared `compute`, `vocabulary`, and `lmoments` modules stay at the root.
