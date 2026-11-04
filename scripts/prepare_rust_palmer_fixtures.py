@@ -52,7 +52,9 @@ def generate() -> None:
     from climate_indices.drought._palmer_pdi import PdiDurationFactors
 
     assert palmer._native is None and compute._native is None
-    assert Path(palmer.__file__).resolve() == ROOT / "src/climate_indices/drought/palmer.py"
+    expected = ROOT / "src/climate_indices/drought/palmer.py"
+    if Path(palmer.__file__).resolve() != expected:
+        raise RuntimeError(f"{palmer.__name__} imported from {palmer.__file__}, not {expected}")
     revision = SOURCE_REVISION
     sections: list[str] = []
 

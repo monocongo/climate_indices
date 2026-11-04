@@ -36,11 +36,9 @@ from climate_indices import compute, lmoments  # noqa: E402
 from climate_indices.drought import indices  # noqa: E402
 
 for module in (compute, indices, lmoments):
-    assert module.__file__ is not None
-    assert (
-        Path(module.__file__).resolve()
-        == SOURCE / f"{module.__name__.removeprefix('climate_indices.').replace('.', '/')}.py"
-    )
+    expected = SOURCE / f"{module.__name__.removeprefix('climate_indices.').replace('.', '/')}.py"
+    if module.__file__ is None or Path(module.__file__).resolve() != expected:
+        raise RuntimeError(f"{module.__name__} imported from {module.__file__}, not {expected}")
 assert compute._native is None
 assert sys.modules.get("climate_indices._native") is None
 
