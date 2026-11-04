@@ -16,8 +16,27 @@ Drought Index in ``flood``.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from climate_indices.drought import eto, indices, palmer, pm_eto, self_calibration
 from climate_indices.drought.pm_eto import HumidityInputs, RadiationInputs
+
+if TYPE_CHECKING:
+    # Type checkers see the overloaded signatures that __getattr__ resolves at runtime.
+    from climate_indices.typed_public_api import (
+        eddi,
+        fit_diagnostics,
+        pci,
+        pdsi,
+        percentage_of_normal,
+        pet_hargreaves,
+        pet_penman_monteith,
+        pet_thornthwaite,
+        spai,
+        spei,
+        spi,
+        standardized_index,
+    )
 
 # The typed public API re-exports. They are resolved lazily because
 # typed_public_api imports the drought implementation modules, so importing it
