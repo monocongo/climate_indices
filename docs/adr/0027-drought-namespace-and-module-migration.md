@@ -71,6 +71,7 @@ Shared vocabulary objects retain their existing identity and compatibility modul
 ## Consequences
 
 Users can migrate imports without changing calculations, array layouts, calibration periods, or backend selection.
+New output provenance records name the canonical implementation paths, for example `climate_indices.drought.indices.spi`; previously stored records keep the paths they stored (see {doc}`the provenance guide </provenance>`).
 Maintained examples and API reference targets use the canonical paths.
 The {doc}`migration guide </deprecations/api-changes>` explains warning detection and import changes.
 

@@ -18,6 +18,11 @@ Old and new imports resolve to the same module, so monkeypatches affect both pat
 Old pickle records that name these public paths can still resolve during this period.
 This move changes no numerical behavior or function signature.
 
+Newly written results also name the canonical implementation modules in their
+provenance record, for example `climate_indices.drought.indices.spi`;
+records already written keep the paths they stored.
+See {doc}`the provenance guide </provenance>`.
+
 The old private paths `climate_indices._palmer_common`,
 `climate_indices._palmer_duration`, `climate_indices._palmer_pdi`, and
 `climate_indices._palmer_wells` have no aliases and now fail to import.
