@@ -33,7 +33,7 @@ and stored module names for the old paths.
 To expose deprecation warnings during a Python run, use:
 
 ```bash
-python -W default::climate_indices.exceptions.ClimateIndicesDeprecationWarning your_script.py
+python -W default::DeprecationWarning your_script.py
 ```
 
 **What to change:** use the canonical implementation paths for NumPy-only calls.
