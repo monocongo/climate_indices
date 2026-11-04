@@ -15,7 +15,8 @@ import pytest
 import xarray as xr
 from scipy.stats import norm
 
-from climate_indices import compute, indices, spei, spi, typed_public_api
+from climate_indices import compute, spei, spi, typed_public_api
+from climate_indices.drought import indices
 from climate_indices.exceptions import InvalidArgumentError
 
 _DISTRIBUTIONS = (indices.Distribution.gamma, indices.Distribution.pearson)

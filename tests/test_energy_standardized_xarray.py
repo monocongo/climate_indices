@@ -11,8 +11,9 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from climate_indices import compute, energy, indices
+from climate_indices import compute, energy
 from climate_indices.cf_metadata_registry import CF_METADATA
+from climate_indices.drought import indices
 from climate_indices.exceptions import InvalidArgumentError
 
 MONTHLY = compute.Periodicity.monthly

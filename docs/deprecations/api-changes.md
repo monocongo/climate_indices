@@ -5,6 +5,64 @@ breaking changes that ship without a deprecation period.
 
 ## Deprecations
 
+### Drought module paths (deprecated in 3.x)
+
+**What a user sees:** the drought implementation modules now live under
+`climate_indices.drought`.
+Imports from `climate_indices.indices`, `climate_indices.palmer`,
+`climate_indices.self_calibration`, `climate_indices.eto`, and
+`climate_indices.pm_eto` emit `ClimateIndicesDeprecationWarning`.
+These five paths remain identity aliases until their removal in 4.0.0.
+
+Old and new imports resolve to the same module, so monkeypatches affect both paths.
+Old pickle records that name these public paths can still resolve during this period.
+This move changes no numerical behavior or function signature.
+
+Newly written results also name the canonical implementation modules in their
+provenance record, for example `climate_indices.drought.indices.spi`;
+records already written keep the paths they stored.
+See {doc}`the provenance guide </provenance>`.
+
+The old private paths `climate_indices._palmer_common`,
+`climate_indices._palmer_duration`, `climate_indices._palmer_pdi`, and
+`climate_indices._palmer_wells` have no aliases and now fail to import.
+Their implementations moved under `climate_indices.drought`, but they remain private.
+
+**How to detect it:** search imports, string-based patch targets, plugin configuration,
+and stored module names for the old paths.
+To expose deprecation warnings during a Python run, use:
+
+```bash
+python -W default::DeprecationWarning your_script.py
+```
+
+**What to change:** use the canonical implementation paths for NumPy-only calls.
+Keep shared core imports separate:
+
+```python
+from climate_indices import compute
+from climate_indices.drought import indices, palmer
+from climate_indices.drought.pm_eto import HumidityInputs, RadiationInputs
+```
+
+For the typed NumPy/DataArray API, use the drought facade:
+
+```python
+from climate_indices import drought
+
+# These are the same function objects as climate_indices.spi, climate_indices.spei, etc.
+spi = drought.spi
+spei = drought.spei
+```
+
+Existing root imports such as `from climate_indices import spi` remain supported
+without a migration warning.
+The facade also exposes SPAI, PDSI, EDDI, PNP, PCI, all three `pet_*` functions,
+`standardized_index`, `fit_diagnostics`, `HumidityInputs`, and `RadiationInputs`.
+KBDI stays in `fire`; EDI stays in `flood`.
+For private Palmer imports, use public Palmer functions where possible.
+See [ADR-0027](../adr/0027-drought-namespace-and-module-migration.md) for the complete move table and alias contract.
+
 ### PNP `calibration_start_year`/`calibration_end_year` (deprecated in 3.0.0)
 
 `percentage_of_normal` used `calibration_start_year`/`calibration_end_year`
@@ -255,8 +313,8 @@ semantics behind the correction.
 
 ### NumPy gridded input shape guard (3.0.0)
 
-**What a user sees:** {func}`climate_indices.indices.spi`,
-{func}`climate_indices.indices.spei`, and
+**What a user sees:** {func}`climate_indices.drought.indices.spi`,
+{func}`climate_indices.drought.indices.spei`, and
 {func}`climate_indices.compute.prepare_scaled` now read a
 three-or-more-dimensional NumPy array as a time-major `(time, *cells)` block.
 One shape cannot be told apart from a `(years, periods, *cells)` array — a block
@@ -277,8 +335,8 @@ all three, and `indices.spi` accepts declared blocks it used to reject.
 
 Two further NumPy entry points pin their dimension errors to
 {class}`DataShapeError <climate_indices.exceptions.DataShapeError>` rather than
-to `ValueError`: {func}`climate_indices.indices.eddi` and
-{func}`climate_indices.indices.percentage_of_normal` reject **every** undeclared
+to `ValueError`: {func}`climate_indices.drought.indices.eddi` and
+{func}`climate_indices.drought.indices.percentage_of_normal` reject **every** undeclared
 three-or-more-dimensional input, not only the ambiguous shape. `indices.eddi`
 already raised `DataShapeError` in 2.4.0, so only its declared-block acceptance
 path is new. `indices.percentage_of_normal` did not: it reached `np.convolve`
@@ -335,7 +393,7 @@ thresholds tuned against the previous values. The fix landed in
 {class}`PeriodicityError <climate_indices.exceptions.PeriodicityError>` where
 those paths previously raised a bare `ValueError` for an invalid periodicity
 argument. Error messages are unchanged. The same change lands on
-{func}`climate_indices.indices.spi`, {func}`climate_indices.indices.spei`, and
+{func}`climate_indices.drought.indices.spi`, {func}`climate_indices.drought.indices.spei`, and
 the other index functions, which previously raised the parent
 `InvalidArgumentError` instead of the specialization.
 
@@ -410,7 +468,7 @@ returns it. See
 **What a user sees:** a calibration window whose first year is after its last
 (for example `calibration_year_initial=2010, calibration_year_final=2000`) now
 raises `CalibrationPeriodError` from every index. So does
-{func}`climate_indices.indices.percentage_of_normal` for any window its record
+{func}`climate_indices.drought.indices.percentage_of_normal` for any window its record
 does not cover: one that starts before the data, ends after the last year the
 data reaches, or starts after the data. `CalibrationPeriodError` is both an
 `InvalidArgumentError` and a `ValueError`, so a handler for either still catches

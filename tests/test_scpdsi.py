@@ -8,8 +8,8 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from climate_indices import palmer
-from climate_indices._palmer_duration import DurationFactors
+from climate_indices.drought import palmer
+from climate_indices.drought._palmer_duration import DurationFactors
 from climate_indices.exceptions import ConvergenceError
 
 ATOL = 5e-5

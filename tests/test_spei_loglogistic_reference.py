@@ -33,7 +33,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from climate_indices import compute, eto, indices
+from climate_indices import compute
+from climate_indices.drought import eto, indices
 
 _FIXTURE_ROOT = Path(__file__).parent / "fixture"
 _SPEI_ROOT = _FIXTURE_ROOT / "spei_loglogistic"

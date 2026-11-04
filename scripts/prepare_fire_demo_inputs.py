@@ -81,7 +81,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from climate_indices.pm_eto import saturation_vapor_pressure
+from climate_indices.drought.pm_eto import saturation_vapor_pressure
 
 SOURCE_URL = (
     "https://storage.googleapis.com/gcp-public-data-arco-era5/ar/"

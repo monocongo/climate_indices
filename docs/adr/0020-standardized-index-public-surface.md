@@ -2,6 +2,13 @@
 
 ## Status
 
+Amended by {doc}`0027-drought-namespace-and-module-migration` (#1555):
+the NumPy core now lives in `climate_indices.drought.indices`.
+The drought facade exposes the same typed `standardized_index` and `fit_diagnostics` objects as the root.
+The generic functions remain here for now; their CF metadata and API contracts do not change.
+New provenance records name their canonical `climate_indices.drought.indices` implementation path.
+Current short `indices` references below name `drought.indices`.
+
 Amended by #1061: the DataArray standardization and diagnostic APIs are Stable
 from 3.1.0 under {doc}`0012-xarray-api-stays-beta-through-3.0.0`.
 The public-surface decision and the CF metadata entry landed with this
@@ -62,7 +69,7 @@ per-block caveat.
    the `climate_indices` root re-exports in the same change that wires its xarray
    entry, because the root re-exports are the `typed_public_api` functions carrying
    both the NumPy and the xarray contract ({doc}`0001-dual-numpy-xarray-api`). The
-   NumPy core stays at `climate_indices.indices.standardized_index`.
+   NumPy core stays at `climate_indices.drought.indices.standardized_index`.
 
 ## Consequences
 

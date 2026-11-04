@@ -14,8 +14,9 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from climate_indices import compute, indices, palmer, typed_public_api
+from climate_indices import compute, typed_public_api
 from climate_indices.cf_metadata_registry import CF_METADATA
+from climate_indices.drought import indices, palmer
 from climate_indices.exceptions import (
     CoordinateValidationError,
     DataShapeError,

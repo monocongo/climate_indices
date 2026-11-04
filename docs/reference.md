@@ -120,6 +120,25 @@ Copy-and-adapt invocations are in {doc}`workflow-examples`.
 :::{note} The NumPy overloads are stable. The DataArray index overloads in `typed_public_api` are **Stable from 3.1.0**, including Dataset-returning functions, with one exception: `spai()`, added in 3.2.0, is **Beta** on both its NumPy and DataArray routes and emits `BetaFeatureWarning`. See {doc}`xarray_migration` for details.
 :::
 
+### climate_indices.drought
+
+The drought facade exposes the same typed NumPy/DataArray function objects as the package root.
+Import the facade with `from climate_indices import drought`.
+Call `drought.spi()`, `drought.spei()`, or another entry below.
+`HumidityInputs` and `RadiationInputs` are also the same classes at both paths.
+For direct NumPy implementations, use `climate_indices.drought.indices` or `climate_indices.drought.palmer`.
+
+The old public module paths are deprecated in 3.x and removed in 4.0.0.
+See {doc}`deprecations/api-changes`.
+KBDI stays in `fire`, and EDI stays in `flood`.
+
+```{eval-rst}
+.. automodule:: climate_indices.drought
+   :members: spi, spei, spai, pdsi, eddi, percentage_of_normal, pet_thornthwaite, pet_hargreaves, pet_penman_monteith, pci, standardized_index, fit_diagnostics, HumidityInputs, RadiationInputs
+   :imported-members:
+   :no-index:
+```
+
 ### climate_indices.typed_public_api
 
 ```{eval-rst}
@@ -884,24 +903,24 @@ The record each output variable carries; see {doc}`provenance`.
    :exclude-members: DistributionFittingError, InsufficientDataError, PearsonFittingError
 ```
 
-### climate_indices.indices
+### climate_indices.drought.indices
 
 ```{eval-rst}
-.. automodule:: climate_indices.indices
+.. automodule:: climate_indices.drought.indices
    :members:
 ```
 
-### climate_indices.eto
+### climate_indices.drought.eto
 
 ```{eval-rst}
-.. automodule:: climate_indices.eto
+.. automodule:: climate_indices.drought.eto
    :members:
 ```
 
-### climate_indices.palmer
+### climate_indices.drought.palmer
 
 ```{eval-rst}
-.. automodule:: climate_indices.palmer
+.. automodule:: climate_indices.drought.palmer
    :members:
 ```
 

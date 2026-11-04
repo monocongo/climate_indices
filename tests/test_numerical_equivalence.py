@@ -34,7 +34,8 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from climate_indices import compute, eddi, indices, percentage_of_normal, pet_thornthwaite, spei, spi
+from climate_indices import compute, eddi, percentage_of_normal, pet_thornthwaite, spei, spi
+from climate_indices.drought import indices
 
 # The two paths that reorder or rebroadcast arithmetic round differently from the serial
 # API on some CPUs: Thornthwaite PET reorders the same arithmetic inside its block

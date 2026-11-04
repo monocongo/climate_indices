@@ -16,10 +16,10 @@ import numpy.typing as npt
 import pandas as pd
 import xarray as xr
 
-from climate_indices import compound, energy, fire, fit_diagnostics, percentage_of_normal, spei, spi
+from climate_indices import compound, drought, energy, fire, fit_diagnostics, percentage_of_normal, spei, spi
 from climate_indices.compute import FitDiagnostics, Periodicity
-from climate_indices.indices import Distribution
-from climate_indices.indices import percentage_of_normal as numpy_pnp
+from climate_indices.drought.indices import Distribution
+from climate_indices.drought.indices import percentage_of_normal as numpy_pnp
 from climate_indices.provenance import read_provenance
 from climate_indices.runs import RunSet, RunStatistics, summarize_runs
 
@@ -144,6 +144,13 @@ def test_spi_numpy_return_type() -> None:
         calibration_year_final=2019,
         periodicity=Periodicity.monthly,
     )
+    assert_type(result, npt.NDArray[np.float64])
+
+
+def test_drought_facade_keeps_the_overloads() -> None:
+    """The lazily resolved drought facade names keep their overloaded signatures."""
+    values = np.random.default_rng(42).gamma(shape=2.0, scale=50.0, size=480)
+    result = drought.spi(values, 6, Distribution.gamma, 1980, 1980, 2019, Periodicity.monthly)
     assert_type(result, npt.NDArray[np.float64])
 
 

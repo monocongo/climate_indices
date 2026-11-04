@@ -19,9 +19,10 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from climate_indices import compute, indices, palmer, utils
+from climate_indices import compute, utils
 from climate_indices.__main__ import _SPI_DISTRIBUTIONS, main
 from climate_indices.cf_metadata_registry import CF_METADATA
+from climate_indices.drought import indices, palmer
 from climate_indices.exceptions import InvalidArgumentError
 from climate_indices.provenance import PROVENANCE_ATTR
 

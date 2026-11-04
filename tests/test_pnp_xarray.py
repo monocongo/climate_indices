@@ -15,8 +15,8 @@ import xarray as xr
 
 from climate_indices import percentage_of_normal
 from climate_indices.compute import Periodicity
+from climate_indices.drought.indices import percentage_of_normal as numpy_pnp
 from climate_indices.exceptions import ClimateIndicesDeprecationWarning
-from climate_indices.indices import percentage_of_normal as numpy_pnp
 
 
 @pytest.fixture(scope="module")

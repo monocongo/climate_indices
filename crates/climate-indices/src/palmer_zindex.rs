@@ -5,7 +5,7 @@
 //! conditions (CAFEC) precipitation, the mean absolute moisture departure, and
 //! the K-weighted Z-index.
 //!
-//! The Python implementation in `climate_indices.palmer` stays the reference
+//! The Python implementation in `climate_indices.drought.palmer` stays the reference
 //! oracle; `tests/test_native_parity_palmer.py` checks these kernels against it
 //! at `rtol = atol = 1e-10`. The CAFEC ratios, the T ratio, the K-factor
 //! normalization, the scPDSI finiteness check, validation, and logging stay in
@@ -72,7 +72,8 @@ impl CafecInputs<'_> {
     /// CAFEC precipitation for one month, one cell.
     ///
     /// Python: the `phat`/`cafec` expression shared by
-    /// `palmer._calc_k_prime_and_dbar` and `palmer._calc_cafec_zindex`, summed
+    /// `climate_indices.drought.palmer._calc_k_prime_and_dbar` and
+    /// `climate_indices.drought.palmer._calc_cafec_zindex`, summed
     /// left to right as NumPy evaluates it.
     fn cafec(&self, year: usize, month: usize, cell: usize) -> f64 {
         self.alpha[[month, cell]] * self.pet[[year, month, cell]]
@@ -100,7 +101,7 @@ fn check_coefficients(
 
 /// Monthly mean absolute moisture departure (`dbar`) and the raw K-prime factors.
 ///
-/// - Python source: `palmer._calc_k_prime_and_dbar`.
+/// - Python source: `climate_indices.drought.palmer._calc_k_prime_and_dbar`.
 /// - Inputs: the water balance and CAFEC coefficients in `inputs`; `trat`, the
 ///   `(12, n_cells)` moisture-demand ratio; the inclusive calibration year rows.
 /// - Outputs: `(dbar, k_prime)`, each `(12, n_cells)`.
@@ -176,7 +177,7 @@ pub fn k_prime_and_dbar(
 
 /// The K-weighted Z-index for every month of the record.
 ///
-/// - Python source: `palmer._calc_raw_zindex` and the `_calc_cafec_zindex` it
+/// - Python source: `climate_indices.drought.palmer._calc_raw_zindex` and the `_calc_cafec_zindex` it
 ///   calls once per month.
 /// - Inputs: the water balance and CAFEC coefficients in `inputs`; `ak`, the
 ///   `(12, n_cells)` K factors (normalized for PDSI, raw K-prime for scPDSI).

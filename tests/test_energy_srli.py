@@ -12,7 +12,8 @@ from typing import Any
 import numpy as np
 import pytest
 
-from climate_indices import compute, energy, indices
+from climate_indices import compute, energy
+from climate_indices.drought import indices
 from climate_indices.exceptions import InputTypeError, InvalidArgumentError
 
 MONTHLY = compute.Periodicity.monthly

@@ -23,7 +23,7 @@ import numpy as np
 import xarray as xr
 import pandas as pd
 from climate_indices import spi, spei, pet_thornthwaite
-from climate_indices.indices import Distribution
+from climate_indices.drought.indices import Distribution
 
 # seed RNG for reproducible synthetic data
 np.random.seed(42)

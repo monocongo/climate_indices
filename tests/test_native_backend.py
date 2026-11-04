@@ -18,7 +18,8 @@ from typing import Any
 import numpy as np
 import pytest
 
-from climate_indices import _native_backend, compute, eto, fire, indices, palmer, pm_eto
+from climate_indices import _native_backend, compute, fire
+from climate_indices.drought import eto, indices, palmer, pm_eto
 from climate_indices.fire import _native as fire_native
 from climate_indices.flood import _native as flood_native
 from tests import conftest
@@ -74,7 +75,7 @@ def test_pet_python_implementation_runs_when_the_extension_is_absent() -> None:
 import sys
 sys.modules["climate_indices._native"] = None
 import numpy as np
-from climate_indices import eto, pm_eto
+from climate_indices.drought import eto, pm_eto
 assert eto._native is None and pm_eto._native is None
 pet = eto.eto_thornthwaite(np.full(24, 15.0), 40.0, 2001)
 assert np.isfinite(pet).all()
@@ -239,7 +240,8 @@ def test_python_implementation_runs_when_the_extension_is_absent() -> None:
 import sys
 sys.modules["climate_indices._native"] = None
 import numpy as np
-from climate_indices import compute, indices
+from climate_indices import compute
+from climate_indices.drought import indices
 assert compute._native is None
 values = np.random.default_rng(0).gamma(2.0, 30.0, 360)
 result = indices.spi(values, 3, indices.Distribution.gamma, 1990, 1990, 2019, compute.Periodicity.monthly)

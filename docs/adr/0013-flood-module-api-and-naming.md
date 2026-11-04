@@ -2,6 +2,11 @@
 
 ## Status
 
+Amended by {doc}`0027-drought-namespace-and-module-migration` (#1555):
+the drought NumPy module is now `drought/indices.py`.
+EDI stays in `flood`, including its existing root re-export.
+The application-naming decision remains unchanged.
+
 Amended by #1061: flood DataArray entry points are Stable from 3.1.0 under
 {doc}`0012-xarray-api-stays-beta-through-3.0.0`. Namespacing and computation are unchanged.
 
@@ -17,7 +22,7 @@ Index (I_F), and the Antecedent Precipitation Index (API).
 [ADR-0005](./0005-fire-module-api.md) settled the same question for fire weather
 and applies directly here. A family of indices that share a physical basis and
 evolve together gets its own namespaced package rather than being spread through
-the drought-oriented `indices.py` and `compute.py`, whose top-level names it
+the drought-oriented `drought/indices.py` and shared `compute.py`, whose public names it
 would crowd. That precedent also answers the family-naming question this issue
 was opened to resolve: `climate_indices.fire` holds KBDI, which is physically a
 drought/fuel-dryness index, because the *application* names the family. EDI is
@@ -74,14 +79,14 @@ than this site because it also plans unimplemented indices — the arrangement
 ## Consequences
 
 `climate_indices.edi` did not exist before the xarray adapter landed (#1108);
-it is live now. Nothing is added to `indices.py`, so the existing top-level
+it is live now. Nothing is added to `drought/indices.py`, so the existing top-level
 drought API is unchanged by this family, and a future reader who greps
 `climate_indices.edi` finds a route that exists rather than one this record
 merely planned.
 
 This amends [ADR-0001](./0001-dual-numpy-xarray-api.md) only for the flood
 family, as [ADR-0005](./0005-fire-module-api.md) did for fire. Named wrappers
-over `indices.standardized_index()` are outside this decision and stay open
+over `drought.indices.standardized_index()` are outside this decision and stay open
 ([#1132](https://github.com/monocongo/climate_indices/issues/1132)).
 
 The CLI is not part of this subsystem: as with fire, flood indices reach the CLI

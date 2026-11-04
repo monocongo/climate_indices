@@ -29,7 +29,8 @@ subprocess.run(["git", "diff", "--quiet", SOURCE_REVISION, "--", *GUARDED_PATHS]
 
 import numpy as np  # noqa: E402
 
-from climate_indices import eto, fire, flood, pm_eto  # noqa: E402
+from climate_indices import fire, flood  # noqa: E402
+from climate_indices.drought import eto, pm_eto  # noqa: E402
 from climate_indices.fire import _cffwis_codes as codes  # noqa: E402
 from climate_indices.fire import _native as fire_native  # noqa: E402
 from climate_indices.flood import _native as flood_native  # noqa: E402

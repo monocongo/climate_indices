@@ -18,7 +18,8 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from climate_indices import compute, indices, spei, spi
+from climate_indices import compute, spei, spi
+from climate_indices.drought import indices
 from climate_indices.exceptions import (
     CoordinateValidationError,
     InputAlignmentWarning,

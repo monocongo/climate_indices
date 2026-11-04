@@ -15,8 +15,9 @@ import pytest
 import xarray as xr
 
 from climate_indices import __main__ as cli_main
-from climate_indices import _cli_transport, compute, indices
+from climate_indices import _cli_transport, compute
 from climate_indices.__main__ import DatasetLayout
+from climate_indices.drought import indices
 
 # the --index values the CLI accepts, in the order they are offered
 _EXPECTED_INDEX_CHOICES = (

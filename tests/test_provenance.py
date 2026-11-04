@@ -20,10 +20,11 @@ import pytest
 import xarray as xr
 
 import climate_indices
-from climate_indices import compute, energy, fire, flood, indices, provenance
+from climate_indices import compute, energy, fire, flood, provenance
 from climate_indices.__main__ import main
+from climate_indices.drought import indices
+from climate_indices.drought.indices import Distribution
 from climate_indices.exceptions import InvalidArgumentError
-from climate_indices.indices import Distribution
 from climate_indices.provenance import PROVENANCE_ATTR, read_provenance, resolve_software_identity
 from climate_indices.xarray_adapter import build_output_attrs, xarray_adapter
 
@@ -63,7 +64,7 @@ def test_spi_output_carries_version_commit_schema_and_record() -> None:
     assert record["operation"] == {
         "index": "SPI",
         "interface": "python",
-        "implementation": "climate_indices.indices.spi",
+        "implementation": "climate_indices.drought.indices.spi",
     }
     assert record["backend"]["kernel_selection"] == "per call at execution time; not recorded"
     assert datetime.datetime.strptime(record["created"], "%Y-%m-%dT%H:%M:%SZ")

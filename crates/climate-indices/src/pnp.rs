@@ -3,7 +3,7 @@
 //!
 //! Reference: `docs/algorithms.md` § Percentage of Normal Precipitation. The
 //! Python source is the `valid_counts`/`averages` block and the `np.divide`
-//! calls of `indices.percentage_of_normal`, which stays the reference oracle.
+//! calls of `climate_indices.drought.indices.percentage_of_normal`, which stays the reference oracle.
 //! Resolving and rejecting the calibration period, padding a trailing partial
 //! period with NaN, the deprecated calibration keywords, logging, and warnings
 //! all stay in Python; these kernels take the prepared scale sums and return
@@ -19,7 +19,7 @@ use crate::reduction::pairwise_sum;
 /// # Numerical contract
 ///
 /// - Python source: the `valid_counts`, `averages`, and `averages > 0.0` lines
-///   of `indices.percentage_of_normal`.
+///   of `climate_indices.drought.indices.percentage_of_normal`.
 /// - Inputs: `calibration`, shaped (calibration years, columns), each column one
 ///   calendar step of one cell, already sliced to the calibration period and
 ///   padded with NaN to whole periods -- the caller reshapes the block the way
@@ -78,7 +78,7 @@ pub fn pnp_normals(calibration: ArrayView2<'_, f64>) -> Array1<f64> {
 /// # Numerical contract
 ///
 /// - Python source: the `whole_periods` and remainder `np.divide` calls of
-///   `indices.percentage_of_normal`, which leave a value NaN wherever its
+///   `climate_indices.drought.indices.percentage_of_normal`, which leave a value NaN wherever its
 ///   normal is NaN.
 /// - Inputs: `scale_sums`, shaped (time, columns), the sliding scale sums in
 ///   time order; `normals`, shaped (period length, columns), the calendar-step

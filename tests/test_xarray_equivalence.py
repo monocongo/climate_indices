@@ -12,10 +12,11 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from climate_indices import eddi, indices, percentage_of_normal, spei, spi, utils
+from climate_indices import eddi, percentage_of_normal, spei, spi, utils
 from climate_indices.compute import Periodicity
+from climate_indices.drought import indices
+from climate_indices.drought.indices import Distribution
 from climate_indices.exceptions import CoordinateValidationError, InputTypeError
-from climate_indices.indices import Distribution
 
 
 class TestSPIXarrayEquivalence:
@@ -783,7 +784,7 @@ class TestPETXarrayEquivalence:
         shifted.
         """
         # import here to avoid circular dependency
-        from climate_indices.eto import eto_hargreaves
+        from climate_indices.drought.eto import eto_hargreaves
         from climate_indices.xarray_adapter import pet_hargreaves
 
         # latitude for testing - typical mid-latitude location
@@ -843,7 +844,7 @@ class TestPETXarrayEquivalence:
         bench_daily_tmax_da: xr.DataArray,
     ):
         """Hargreaves PET no longer reuses drifted positional NumPy output."""
-        from climate_indices.eto import eto_hargreaves
+        from climate_indices.drought.eto import eto_hargreaves
         from climate_indices.xarray_adapter import pet_hargreaves
 
         latitude = 40.0

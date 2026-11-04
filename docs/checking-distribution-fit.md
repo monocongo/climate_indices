@@ -9,7 +9,7 @@ probability-scale (PIT) output.
 
 ```python
 from climate_indices import fit_diagnostics, spi
-from climate_indices.indices import Distribution
+from climate_indices.drought.indices import Distribution
 
 # precip: monthly xarray.DataArray with (time, lat, lon) and units="mm"
 options = dict(

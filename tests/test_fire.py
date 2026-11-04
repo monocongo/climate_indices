@@ -10,8 +10,9 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from climate_indices import fire, pm_eto
+from climate_indices import fire
 from climate_indices.cf_metadata_registry import CF_METADATA
+from climate_indices.drought import pm_eto
 from climate_indices.exceptions import CoordinateValidationError, DimensionMismatchError, InvalidArgumentError
 
 

@@ -13,7 +13,8 @@ from typing import Literal
 import numpy as np
 import pytest
 
-from climate_indices import _native_backend, pm_eto
+from climate_indices import _native_backend
+from climate_indices.drought import pm_eto
 from tests import conftest, parity_registry
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / "benchmarks"))

@@ -4,7 +4,7 @@ from typing import Any
 
 import numpy as np
 
-from climate_indices import _palmer_pdi, palmer
+from climate_indices.drought import _palmer_pdi, palmer
 
 _VALID_PARAMS: dict[str, Any] = {
     "alpha": [1.0] * 12,

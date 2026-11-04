@@ -38,6 +38,10 @@ Use `read_provenance(result)` for these routes; `read_provenance(result[variable
 
 ## Record contents
 
+This example records the earlier root-module layout.
+New drought results name implementations such as `climate_indices.drought.indices.spi`.
+Stored records retain their original implementation paths.
+
 ```json
 {
   "schema": "climate_indices.dataset-provenance",
@@ -241,7 +245,7 @@ precipitation = xr.DataArray(
 
 ```{doctest} provenance
 >>> import climate_indices
->>> from climate_indices.indices import Distribution
+>>> from climate_indices.drought.indices import Distribution
 >>> from climate_indices.provenance import read_provenance
 >>>
 >>> spi_1981 = climate_indices.spi(

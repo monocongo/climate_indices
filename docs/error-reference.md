@@ -104,7 +104,7 @@ ClimateIndicesWarning (base warning)
 ### Catching all library errors
 
 ```python
-from climate_indices import indices
+from climate_indices.drought import indices
 from climate_indices.exceptions import ClimateIndicesError
 
 try:

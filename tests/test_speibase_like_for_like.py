@@ -36,7 +36,8 @@ from types import ModuleType
 import numpy as np
 import pytest
 
-from climate_indices import compute, indices
+from climate_indices import compute
+from climate_indices.drought import indices
 
 _FIXTURE_ROOT = Path(__file__).parent / "fixture"
 _INPUT_ROOT = _FIXTURE_ROOT / "speibase_cru_ts"
