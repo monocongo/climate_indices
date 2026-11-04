@@ -2,8 +2,9 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
-from climate_indices import energy, fire, flood
+from climate_indices import drought, energy, fire, flood
 from climate_indices.cf_metadata_registry import CF_METADATA, CFAttributes
+from climate_indices.drought.pm_eto import HumidityInputs, RadiationInputs
 from climate_indices.exceptions import (
     BetaFeatureWarning,
     ClimateIndicesDeprecationWarning,
@@ -14,7 +15,6 @@ from climate_indices.exceptions import (
 )
 from climate_indices.flood import edi
 from climate_indices.logging_config import configure_logging
-from climate_indices.pm_eto import HumidityInputs, RadiationInputs
 from climate_indices.typed_public_api import (
     eddi,
     fit_diagnostics,
@@ -56,6 +56,7 @@ __all__ = [
     "HumidityInputs",
     "RadiationInputs",
     "detect_input_type",
+    "drought",
     "eddi",
     "edi",
     "emit_deprecation_warning",

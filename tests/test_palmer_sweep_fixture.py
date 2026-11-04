@@ -21,7 +21,7 @@ def test_failing_division_does_not_abort_the_sweep(monkeypatch):
             raise ValueError("boom")
         return ("result",)
 
-    monkeypatch.setattr("climate_indices.palmer.pdsi", fake_pdsi)
+    monkeypatch.setattr("climate_indices.drought.palmer.pdsi", fake_pdsi)
 
     # Failing division first, so a healthy second division proves the sweep continued.
     inputs = {
@@ -86,7 +86,7 @@ def test_stored_input_failure_does_not_abort_the_sweep(monkeypatch):
     def fake_pdsi(precips, pet, awc, *args):
         return ("result",)
 
-    monkeypatch.setattr("climate_indices.palmer.pdsi", fake_pdsi)
+    monkeypatch.setattr("climate_indices.drought.palmer.pdsi", fake_pdsi)
 
     inputs = conftest._PalmerSweep()
     inputs["001"] = RuntimeError("failed to load Palmer fixture inputs for division 001")

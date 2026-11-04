@@ -41,7 +41,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from climate_indices import self_calibration
+from climate_indices.drought import self_calibration
 
 _FIXTURE_ROOT = Path(__file__).parent / "fixture"
 _NCLIMDIV_ROOT = _FIXTURE_ROOT / "nclimdiv"

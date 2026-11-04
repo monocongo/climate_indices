@@ -3,8 +3,8 @@ import types
 import numpy as np
 import pytest
 
-from climate_indices import _palmer_pdi, palmer
-from climate_indices._palmer_duration import DurationFactors
+from climate_indices.drought import _palmer_pdi, palmer
+from climate_indices.drought._palmer_duration import DurationFactors
 from climate_indices.exceptions import ConvergenceError
 
 

@@ -4,7 +4,7 @@ Residual load is demand minus renewable production. Both the helper and the inde
 describe the **climate-driven component** of supply and demand, not actual load: a
 series of observed consumption also carries capacity changes, curtailment, outages,
 markets, and behaviour. Residual load is signed, so SRLI is a thin wrapper over
-:func:`climate_indices.indices.standardized_index` (ADR-0019) that admits only the
+:func:`climate_indices.drought.indices.standardized_index` (ADR-0019) that admits only the
 empirical (rank-based) distribution, the one path with no support for a negative value
 to violate.
 """
@@ -18,8 +18,9 @@ import numpy as np
 import numpy.typing as npt
 import xarray as xr
 
-from climate_indices import compute, indices
+from climate_indices import compute
 from climate_indices.cf_metadata_registry import CF_METADATA
+from climate_indices.drought import indices
 from climate_indices.energy._xarray import STANDARDIZED_VALIDATORS, apply_standardized
 from climate_indices.exceptions import InputTypeError, InvalidArgumentError
 from climate_indices.xarray_adapter import INFER_TIME_PARAMETERS, xarray_adapter
@@ -177,7 +178,7 @@ def _srli_numpy(
     zero would standardize a different series. Only the empirical distribution accepts a
     signed series, so any other ``distribution`` raises. Each value's probability is its
     rank among the valid Calibration Period values at its calendar step (the plotting
-    position of :func:`climate_indices.indices.standardized_index`), so the choice of
+    position of :func:`climate_indices.drought.indices.standardized_index`), so the choice of
     ``aggregation`` moves the accumulated value but not its rank. Allen & Otero recommend
     this distribution above roughly 100 observations; the index makes no fallback to a
     parametric fit below that. A constant Calibration Period series ties every value at
@@ -188,7 +189,7 @@ def _srli_numpy(
 
     Args:
         values: 1-D array of signed residual load, with the layouts that
-            :func:`climate_indices.indices.standardized_index` accepts.
+            :func:`climate_indices.drought.indices.standardized_index` accepts.
         scale: Number of time steps in each window before standardization.
         data_start_year: Initial year of the input series.
         calibration_year_initial: Initial year of the Calibration Period.
@@ -209,7 +210,7 @@ def _srli_numpy(
 
     Returns:
         Unitless standardized values, shaped as
-        :func:`climate_indices.indices.standardized_index` returns them. A calendar step
+        :func:`climate_indices.drought.indices.standardized_index` returns them. A calendar step
         with fewer than ten valid calibration values is NaN.
 
     Raises:
@@ -318,7 +319,7 @@ def srli(
     zero would standardize a different series. Only the empirical distribution accepts a
     signed series, so any other ``distribution`` raises. Each value's probability is its
     rank among the valid Calibration Period values at its calendar step (the plotting
-    position of :func:`climate_indices.indices.standardized_index`), so the choice of
+    position of :func:`climate_indices.drought.indices.standardized_index`), so the choice of
     ``aggregation`` moves the accumulated value but not its rank. Allen & Otero recommend
     this distribution above roughly 100 observations; the index makes no fallback to a
     parametric fit below that. A constant Calibration Period series ties every value at
@@ -335,7 +336,7 @@ def srli(
     Args:
         values: 1-D array of signed residual load, or a DataArray with a time dimension
             plus optional cell dimensions, with the layouts that
-            :func:`climate_indices.indices.standardized_index` accepts.
+            :func:`climate_indices.drought.indices.standardized_index` accepts.
         scale: Number of time steps in each window before standardization.
         data_start_year: Initial year of the input series. Required for NumPy input;
             inferred for DataArray input.

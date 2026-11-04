@@ -14,7 +14,6 @@ from climate_indices import (
     eddi,
     edi,
     fit_diagnostics,
-    indices,
     pci,
     pdsi,
     percentage_of_normal,
@@ -27,9 +26,10 @@ from climate_indices import (
     standardized_index,
 )
 from climate_indices.compute import Periodicity
+from climate_indices.drought import indices
+from climate_indices.drought.indices import Distribution
 from climate_indices.exceptions import InvalidArgumentError
 from climate_indices.flood._edi import edi as numpy_edi
-from climate_indices.indices import Distribution
 from climate_indices.provenance import PROVENANCE_ATTR
 from climate_indices.xarray_adapter import INFER_TIME_PARAMETERS, xarray_adapter
 from climate_indices.xarray_adapter import (
@@ -448,9 +448,9 @@ class TestSPIOverloads:
         assert result.attrs["calibration_year_final"] == 2015
 
     def test_spi_numpy_matches_indices_module(self) -> None:
-        """Results for NumPy inputs should match climate_indices.indices.spi."""
+        """Results for NumPy inputs should match climate_indices.drought.indices.spi."""
         # import the original function for comparison
-        from climate_indices.indices import spi as indices_spi
+        from climate_indices.drought.indices import spi as indices_spi
 
         rng = np.random.default_rng(42)
         values = rng.gamma(shape=2.0, scale=50.0, size=480)
@@ -479,7 +479,7 @@ class TestSPIOverloads:
 
     def test_spi_xarray_matches_manual_wrapping(self, sample_monthly_precip_da: xr.DataArray) -> None:
         """Results for xarray inputs should match manually-wrapped function."""
-        from climate_indices.indices import spi as indices_spi
+        from climate_indices.drought.indices import spi as indices_spi
         from climate_indices.xarray_adapter import CF_METADATA
 
         _verify_xarray_matches_manual_wrapping(
@@ -579,9 +579,9 @@ class TestSPEIOverloads:
         assert result.attrs["calibration_year_final"] == 2015
 
     def test_spei_numpy_matches_indices_module(self) -> None:
-        """Results for NumPy inputs should match climate_indices.indices.spei."""
+        """Results for NumPy inputs should match climate_indices.drought.indices.spei."""
         # import the original function for comparison
-        from climate_indices.indices import spei as indices_spei
+        from climate_indices.drought.indices import spei as indices_spei
 
         rng = np.random.default_rng(42)
         precips = rng.gamma(shape=2.0, scale=50.0, size=480)
@@ -615,7 +615,7 @@ class TestSPEIOverloads:
         self, sample_monthly_precip_da: xr.DataArray, sample_monthly_pet_da: xr.DataArray
     ) -> None:
         """Results for xarray inputs should match manually-wrapped function."""
-        from climate_indices.indices import spei as indices_spei
+        from climate_indices.drought.indices import spei as indices_spei
         from climate_indices.xarray_adapter import CF_METADATA
 
         _verify_xarray_matches_manual_wrapping(

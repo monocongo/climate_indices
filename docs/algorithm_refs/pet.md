@@ -116,7 +116,7 @@ former; the latter's hosts were unreachable). Both worked examples are
 instead taken from secondary sources that reproduce the original equations
 with full inputs and outputs — the same two worked examples used by PyETo
 (https://github.com/woodcrafty/PyETo) to validate its own Thornthwaite and
-Hargreaves implementations, which `climate_indices.eto` credits in its
+Hargreaves implementations, which `climate_indices.drought.eto` credits in its
 module docstring as the code it was derived from. Full citations, and the
 derivation of the (latitude, day-of-year) inputs each worked example
 implies, are documented in `tests/fixture/pet_literature/metadata.json`.

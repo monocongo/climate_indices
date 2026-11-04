@@ -23,7 +23,8 @@ import pytest
 import xarray as xr
 from dask.callbacks import Callback
 
-from climate_indices import __version__, compute, exceptions, indices
+from climate_indices import __version__, compute, exceptions
+from climate_indices.drought import indices
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 NOTEBOOK = REPO_ROOT / "notebooks" / "zarr_dask_spi_spei.ipynb"

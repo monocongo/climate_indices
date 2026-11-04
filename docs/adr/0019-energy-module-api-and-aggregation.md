@@ -2,6 +2,11 @@
 
 ## Status
 
+Amended by {doc}`0027-drought-namespace-and-module-migration` (#1555):
+current `indices` references below mean `climate_indices.drought.indices`.
+The generic standardization and diagnostic functions remain there for now.
+Shared `compute.py` stays at the root, and the aggregation contract does not change.
+
 Amended by #1061: energy DataArray entry points are Stable from 3.1.0 under
 {doc}`0012-xarray-api-stays-beta-through-3.0.0`. Energy transforms stop emitting
 `BetaFeatureWarning`. Earlier Beta descriptions below record their status at introduction.
@@ -138,8 +143,8 @@ standardized energy indices (SREPI, a standardized demand index, SRLI) with
 run-theory energy-drought events. {doc}`0005-fire-module-api` and
 {doc}`0013-flood-module-api-and-naming` settled the same question for fire
 and flood, and apply here: a family of indices that share a physical basis and evolve
-together gets a namespaced package rather than the drought-oriented `indices.py` and
-`compute.py`, whose top-level names it would crowd.
+together gets a namespaced package rather than the drought-oriented `drought/indices.py` and
+shared `compute.py`, whose public names it would crowd.
 
 `indices.standardized_index()` cannot carry the standardized energy indices as it
 stood. It *summed* the series over `scale`, which is right for accumulated precipitation

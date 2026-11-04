@@ -9,7 +9,7 @@ Cargo only reads the checked-in text fixture and never runs this script.
 from __future__ import annotations
 
 import platform
-import subprocess
+import subprocess  # nosec B404 # runs only git, with literal arguments and no shell
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -20,12 +20,12 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 DESTINATION = ROOT / "crates/climate-indices/tests/fixtures/palmer_reference.txt"
 SOURCES = (
-    "palmer.py",
-    "_palmer_common.py",
-    "_palmer_duration.py",
-    "_palmer_pdi.py",
-    "_palmer_wells.py",
-    "self_calibration.py",
+    "drought/palmer.py",
+    "drought/_palmer_common.py",
+    "drought/_palmer_duration.py",
+    "drought/_palmer_pdi.py",
+    "drought/_palmer_wells.py",
+    "drought/self_calibration.py",
     "_calibration_period.py",
     "utils.py",
     "compute.py",
@@ -41,17 +41,25 @@ SOURCE_REVISION = "f4cb938eb622a3ddf8b96c129337e0ebecd4121e"
 def generate() -> None:
     """Write deterministic golden values without importing the native extension."""
     # The guard must precede the imports: a changed checkout executes them on import.
-    paths = [f"src/climate_indices/{name}" for name in SOURCES]
-    subprocess.run(
-        ["git", "diff", "--exit-code", SOURCE_REVISION, "--", *paths], cwd=ROOT, check=True, capture_output=True
-    )
+    # Each source is compared with its content at SOURCE_REVISION, at the path it had
+    # there: the drought modules were still flat at the top level before they moved.
+    for name in SOURCES:
+        path = f"src/climate_indices/{name}"
+        pinned = f"{SOURCE_REVISION}:{path}"
+        # Git is the operator's PATH binary; the arguments are literals and no shell runs.
+        if subprocess.run(["git", "cat-file", "-e", pinned], cwd=ROOT, capture_output=True).returncode != 0:  # nosec B603 B607
+            pinned = f"{SOURCE_REVISION}:src/climate_indices/{name.removeprefix('drought/')}"
+        subprocess.run(["git", "diff", "--exit-code", pinned, "--", path], cwd=ROOT, check=True, capture_output=True)  # nosec B603 B607
 
-    from climate_indices import compute, palmer, self_calibration
-    from climate_indices._palmer_duration import DurationFactors
-    from climate_indices._palmer_pdi import PdiDurationFactors
+    from climate_indices import compute
+    from climate_indices.drought import palmer, self_calibration
+    from climate_indices.drought._palmer_duration import DurationFactors
+    from climate_indices.drought._palmer_pdi import PdiDurationFactors
 
     assert palmer._native is None and compute._native is None
-    assert Path(palmer.__file__).resolve() == ROOT / "src/climate_indices/palmer.py"
+    expected = ROOT / "src/climate_indices/drought/palmer.py"
+    if Path(palmer.__file__).resolve() != expected:
+        raise RuntimeError(f"{palmer.__name__} imported from {palmer.__file__}, not {expected}")
     revision = SOURCE_REVISION
     sections: list[str] = []
 
@@ -184,13 +192,13 @@ def generate() -> None:
 # recursion.z: 120 months x 3 independent cells, with zeros, reversals, isolated
 # and consecutive gaps, and a fully missing cell. Both recursions use the same Z.
 # Cell 0 alternates rapidly; cell 1 has 24-month wet/dry regimes with rational noise.
-# pdi.*: _palmer_pdi.calculate through _pdi_recursion, flattened from (10, 12, 3).
-# wells.*: _palmer_wells.calculate through _wells_recursion, once per cell.
-# factors.*: _palmer_duration.DurationFactors default and asymmetric coefficients.
+# pdi.*: climate_indices.drought._palmer_pdi.calculate through _pdi_recursion, flattened from (10, 12, 3).
+# wells.*: climate_indices.drought._palmer_wells.calculate through _wells_recursion, once per cell.
+# factors.*: climate_indices.drought._palmer_duration.DurationFactors default and asymmetric coefficients.
 # PDI uses b/(m+b); Wells uses the stored Python-derived complement coefficients.
-# duration.*: self_calibration.duration_factors on each finite recursion.z cell,
+# duration.*: climate_indices.drought.self_calibration.duration_factors on each finite recursion.z cell,
 # using all 120 periods, omitting NaN periods. Each pair is (m, b), wet and dry.
-# percentile.*: self_calibration.nan_safe_percentile, truncated ranks, not interpolated.
+# percentile.*: climate_indices.drought.self_calibration.nan_safe_percentile, truncated ranks, not interpolated.
 # Padded NaN samples also represent all-missing and one-value cases.
 """
     DESTINATION.parent.mkdir(parents=True, exist_ok=True)

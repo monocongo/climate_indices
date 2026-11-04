@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from climate_indices import palmer
+from climate_indices.drought import palmer
 
 _DATA_START_YEAR = 1895
 _CALIBRATION_START = 1931

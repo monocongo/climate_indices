@@ -50,7 +50,7 @@ import xarray as xr
 from numpy.testing import assert_allclose
 
 from climate_indices import spi
-from climate_indices.indices import Distribution
+from climate_indices.drought.indices import Distribution
 
 if TYPE_CHECKING:
     pass

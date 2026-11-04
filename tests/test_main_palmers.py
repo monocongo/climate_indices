@@ -18,8 +18,9 @@ import pytest
 import xarray as xr
 
 from climate_indices import __main__ as cli_main
-from climate_indices import _cli_transport, compute, palmer
+from climate_indices import _cli_transport, compute
 from climate_indices.__main__ import DatasetLayout
+from climate_indices.drought import palmer
 
 _DIVISION_ID = "0101"
 _FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "fixture", "palmer", _DIVISION_ID)

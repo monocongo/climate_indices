@@ -198,6 +198,8 @@ def _validate_hourly_distribution(periodicity: Periodicity, distribution: Distri
 
 
 # Preserve pickle globals and autodoc paths at the established public re-exports.
-Distribution.__module__ = "climate_indices.indices"
+# Distribution names its canonical home so pickling never imports the deprecated
+# climate_indices.indices alias; records that name the alias still load through it.
+Distribution.__module__ = "climate_indices.drought.indices"
 Periodicity.__module__ = "climate_indices.compute"
 validate_output_scale.__module__ = "climate_indices.compute"

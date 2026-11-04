@@ -28,7 +28,8 @@ from typing import Any
 import numpy as np
 import pytest
 
-from climate_indices import compute, indices
+from climate_indices import compute
+from climate_indices.drought import indices
 
 # tolerance per NFR-EDDI-VAL (looser than SPI/SPEI due to non-parametric ranking)
 _RTOL = 1e-5

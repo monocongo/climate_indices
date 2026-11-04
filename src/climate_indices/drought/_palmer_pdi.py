@@ -1,10 +1,10 @@
 """NCEI ``pdi.f``-lineage Palmer spell recursion for the standard PDSI family.
 
-:mod:`climate_indices.palmer` prepares the water balance, CAFEC coefficients, and
+:mod:`climate_indices.drought.palmer` prepares the water balance, CAFEC coefficients, and
 the K-factor-weighted Z-index series; this module owns the spell recursion those
-feed.  It is the sibling of :mod:`climate_indices._palmer_wells`: both take a
+feed.  It is the sibling of :mod:`climate_indices.drought._palmer_wells`: both take a
 precomputed Z-index series and a validated :class:`PdiDurationFactors`/
-:class:`~climate_indices._palmer_duration.DurationFactors`, and differ only in the
+:class:`~climate_indices.drought._palmer_duration.DurationFactors`, and differ only in the
 spell-selection rules and in how each lineage expresses its duration-factor
 weighting fraction.  The ``pdi.f`` lineage divides (``c = b / (m + b)``); the
 Wells lineage subtracts the complement.  The forms agree in exact arithmetic but
@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from climate_indices._palmer_common import _py_max, _py_min
+from climate_indices.drought._palmer_common import _py_max, _py_min
 from climate_indices.exceptions import ConvergenceError
 
 
@@ -53,7 +53,7 @@ class PdiDurationFactors:
         Both denominators must be finite and strictly positive, and both weighting
         fractions ``c = b / (m + b)`` must be contractions (``|c| < 1``) so the
         unclamped ``px3`` recurrence cannot diverge.  This is deliberately narrower
-        than :meth:`climate_indices._palmer_duration.DurationFactors.from_fitted`,
+        than :meth:`climate_indices.drought._palmer_duration.DurationFactors.from_fitted`,
         which also rejects a non-contracting Wells cross coefficient that this
         lineage never computes.
 
@@ -573,8 +573,8 @@ def calculate(z_values: np.ndarray, factors: PdiDurationFactors) -> PdiResult:
     """Run the ``pdi.f`` Palmer recursion over a precomputed Z-index series.
 
     The Z series is the K-factor-weighted departure computed by
-    :mod:`climate_indices.palmer`; this function owns only the spell recursion
-    downstream of it, matching :func:`climate_indices._palmer_wells.calculate`.
+    :mod:`climate_indices.drought.palmer`; this function owns only the spell recursion
+    downstream of it, matching :func:`climate_indices.drought._palmer_wells.calculate`.
 
     Args:
         z_values: K-factor-weighted Z-index values, shaped ``(years, 12, n_cells)``

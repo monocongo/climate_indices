@@ -16,7 +16,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from climate_indices.pm_eto import (
+from climate_indices.drought.pm_eto import (
     ATMOSPHERIC_PRESSURE_SEA_LEVEL,
     LATENT_HEAT_DEFAULT,
     MOLECULAR_WEIGHT_RATIO,

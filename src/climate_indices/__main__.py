@@ -15,7 +15,7 @@ from typing import Any, Literal, cast
 import numpy as np
 import xarray as xr
 
-from climate_indices import compute, energy, fire, flood, indices, palmer, provenance, utils
+from climate_indices import compute, energy, fire, flood, provenance, utils
 from climate_indices._cli import _add_common_spi_arguments, _open_with_default_chunks
 from climate_indices._cli_output import build_index_attrs, write_netcdf_atomic
 from climate_indices._cli_transport import (
@@ -33,6 +33,7 @@ from climate_indices._cli_transport import (
 )
 from climate_indices._units import _convert_precipitation_units, _convert_temperature_units
 from climate_indices.cf_metadata_registry import spi_output_attributes, standardized_output_bounds
+from climate_indices.drought import indices, palmer
 from climate_indices.exceptions import ConvergenceError, InsufficientDataError
 from climate_indices.validation import DatasetLayout, detect_dataset_layout, expected_dimensions
 from climate_indices.xarray_adapter import _report_effective_calibration_years

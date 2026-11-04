@@ -60,7 +60,7 @@ _APPROVED_ORIGIN = "https://www.ncei.noaa.gov/"
 _MAX_DOWNLOAD_BYTES = 64 * 1024 * 1024  # files are ~6 MB; anything larger is malformed
 _MIN_DIVISION_COVERAGE = 0.95  # fraction of months that must be non-NaN per division
 
-# Agreement with climate_indices.indices.spi() (Pearson III, full-period-of-record
+# Agreement with climate_indices.drought.indices.spi() (Pearson III, full-period-of-record
 # calibration) measured across all 344 divisions (GitHub issue #777), and the
 # loose characterization ceilings the tests assert against. Written into
 # provenance.json, from which tests/test_ncei_spi_reference.py loads them.
@@ -165,7 +165,7 @@ def _write_provenance(directory: Path, checksum: str) -> None:
         ),
         "license": "U.S. Government work, public domain (17 U.S.C. Sec. 105).",
         "notes": (
-            "External ground truth for climate_indices.indices.spi() with "
+            "External ground truth for climate_indices.drought.indices.spi() with "
             "Distribution.pearson (Pearson Type III), matching NCEI's documented "
             "distribution choice for this product (drought-readme.txt). Input precipitation "
             "is the existing tests/fixture/palmer/<division>/precips.npy arrays, which are "

@@ -8,7 +8,8 @@ from collections.abc import Callable
 import numpy as np
 import pytest
 
-from climate_indices import compute, indices
+from climate_indices import compute
+from climate_indices.drought import indices
 
 # scale, distribution, calibration-start fixture, calibration-end fixture, golden SPI fixture
 _PARITY_CASES = (

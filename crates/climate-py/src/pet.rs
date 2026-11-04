@@ -15,7 +15,7 @@ use pyo3::prelude::*;
 use climate_indices::pm_eto::{HumidityPathway, MetInputs, Operand, PmEtoInputs, RadiationPathway};
 
 // selectors of the FAO-56 actual-vapour-pressure pathway (Eq 14-19); the Python
-// dispatch passes these codes and must match `pm_eto.py`'s constants
+// dispatch passes these codes and must match `drought/pm_eto.py`'s constants
 const HUMIDITY_DEWPOINT: u8 = 0;
 const HUMIDITY_RH_MIN_MAX: u8 = 1;
 const HUMIDITY_RH_MAX: u8 = 2;

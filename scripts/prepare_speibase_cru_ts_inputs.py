@@ -235,7 +235,8 @@ def _computed_series(precip: np.ndarray, pet: np.ndarray, scale: int) -> np.ndar
     near-uniform month length would match the committed SPEIbase v2.11 grids
     more closely, so that convention is the dominant residual (see provenance).
     """
-    from climate_indices import compute, indices
+    from climate_indices import compute
+    from climate_indices.drought import indices
 
     pet_mm = pet * _speibase._monthly_days(_DATA_START_YEAR, _N_MONTHS)
     cells = [

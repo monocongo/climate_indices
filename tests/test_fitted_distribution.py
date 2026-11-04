@@ -6,7 +6,8 @@ import numpy as np
 import pytest
 import scipy.stats
 
-from climate_indices import compute, indices
+from climate_indices import compute
+from climate_indices.drought import indices
 from climate_indices.exceptions import InvalidArgumentError
 
 # The FittedDistribution seam fits one distribution per calendar period, which serves

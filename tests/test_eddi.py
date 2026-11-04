@@ -8,7 +8,8 @@ import numpy as np
 import pytest
 from scipy import stats
 
-from climate_indices import compute, indices
+from climate_indices import compute
+from climate_indices.drought import indices
 from climate_indices.exceptions import DataShapeError, InvalidArgumentError
 
 # disable logging messages
@@ -19,7 +20,7 @@ UNEXPECTED_ALL_NANS_MESSAGE = "All-NaN input array does not result in the expect
 
 def test_hastings_inverse_normal_accuracy():
     """Test that Hastings approximation closely matches scipy.stats.norm.ppf()."""
-    from climate_indices.indices import _hastings_inverse_normal
+    from climate_indices.drought.indices import _hastings_inverse_normal
 
     # test across a range of probability values
     test_probs = np.array([0.001, 0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99, 0.999])
@@ -330,7 +331,7 @@ def test_eddi_2d_array(
 
 def test_eddi_noaa_tukey_ranking():
     """EDDI should use NOAA's zero-based Tukey plotting position."""
-    from climate_indices.indices import _hastings_inverse_normal
+    from climate_indices.drought.indices import _hastings_inverse_normal
 
     pet = np.arange(36, dtype=float)
     result = indices.eddi(
@@ -348,7 +349,7 @@ def test_eddi_noaa_tukey_ranking():
 
 def test_eddi_noaa_rank_includes_leading_scale_pad():
     """Leading scale pads occupy their NOAA rank positions."""
-    from climate_indices.indices import _hastings_inverse_normal
+    from climate_indices.drought.indices import _hastings_inverse_normal
 
     pet = np.arange(1, 37, dtype=float)
     result = indices.eddi(

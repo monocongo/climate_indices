@@ -20,8 +20,9 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from climate_indices import compute, fit_diagnostics, indices, spi
+from climate_indices import compute, fit_diagnostics, spi
 from climate_indices.__main__ import main
+from climate_indices.drought import indices
 from tests import conftest
 
 native = conftest.import_native()

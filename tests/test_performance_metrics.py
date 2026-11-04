@@ -10,8 +10,9 @@ from unittest.mock import Mock, patch
 import numpy as np
 import pytest
 
-from climate_indices import compute, indices
-from climate_indices.eto import eto_hargreaves
+from climate_indices import compute
+from climate_indices.drought import indices
+from climate_indices.drought.eto import eto_hargreaves
 from climate_indices.logging_config import _reset_logging_for_testing, configure_logging
 from climate_indices.performance import LARGE_ARRAY_THRESHOLD_BYTES, check_large_array_memory, get_process_memory_mb
 from tests import conftest
@@ -427,7 +428,7 @@ class TestMemoryMetricsInLogs:
         # mock check_large_array_memory to return metrics without allocating memory
         mock_metrics = {"array_memory_mb": 1500.5, "process_memory_mb": 2048.75}
 
-        with patch("climate_indices.indices.check_large_array_memory", return_value=mock_metrics):
+        with patch("climate_indices.drought.indices.check_large_array_memory", return_value=mock_metrics):
             # use small array but mocked check will return large metrics
             small_array = np.zeros(1000, dtype=np.float64)
             indices.spi(
@@ -461,7 +462,7 @@ class TestMemoryMetricsInLogs:
         """SPEI counts PET alongside precipitation in the memory diagnostic."""
         pet_mm = np.full_like(precips_mm_monthly, 50.0)
 
-        with patch("climate_indices.indices.check_large_array_memory", return_value=None) as mock_check:
+        with patch("climate_indices.drought.indices.check_large_array_memory", return_value=None) as mock_check:
             indices.spei(
                 precips_mm_monthly,
                 pet_mm,

@@ -209,7 +209,7 @@ follow to build:
   literally.
 - **Cross-links**: `` {doc}`troubleshooting` `` links another published page by
   its source path (no suffix); domain roles such as
-  `` {func}`climate_indices.palmer.pdsi` `` resolve through autodoc, so they
+  `` {func}`climate_indices.drought.palmer.pdsi` `` resolve through autodoc, so they
   have to name a module path the reference page documents — an unresolved role
   renders as plain code and does not fail the gate. Section links use heading
   anchors (`#some-heading`, provided by `myst_heading_anchors`), and a page

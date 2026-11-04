@@ -5,7 +5,7 @@
 //! comparative index", The Professional Geographer 32(3), 300-309
 //! (doi:10.1111/j.0033-0124.1980.00300.x), as `docs/algorithm-reference.md`
 //! cites it, and `docs/algorithms.md` § Precipitation Concentration Index. The
-//! Python source is the `np.add.reduceat` and ratio lines of `indices.pci`,
+//! Python source is the `np.add.reduceat` and ratio lines of `climate_indices.drought.indices.pci`,
 //! which stays the reference oracle. The year-length and missing-value
 //! validation, the masked-input early return, and logging all stay in Python,
 //! which dispatches only a complete year of float64 values with no missing day.
@@ -15,7 +15,7 @@ use ndarray::ArrayView1;
 use crate::reduction::pairwise_sum;
 
 /// Day-of-year start of each calendar month, keyed by the number of days in the
-/// year, exactly as `indices._PCI_MONTH_STARTS` holds them.
+/// year, exactly as `climate_indices.drought.indices._PCI_MONTH_STARTS` holds them.
 const MONTH_STARTS_365: [usize; 12] = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
 const MONTH_STARTS_366: [usize; 12] = [0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335];
 
@@ -26,7 +26,7 @@ const MONTH_STARTS_366: [usize; 12] = [0, 31, 60, 91, 121, 152, 182, 213, 244, 2
 ///
 /// - Python source: the `np.add.reduceat(rainfall, month_starts)` and
 ///   `(np.sum(monthly_totals**2) / (np.sum(monthly_totals) ** 2)) * 100` lines of
-///   `indices.pci`.
+///   `climate_indices.drought.indices.pci`.
 /// - Inputs: `rainfall`, one value per day of the year in calendar order, with
 ///   no missing day.
 /// - Outputs: `100 * Σ P_m² / (Σ P_m)²`, the NaN a year without rain gives

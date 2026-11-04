@@ -10,8 +10,9 @@ import pytest
 import xarray as xr
 
 import climate_indices as ci
-from climate_indices import compute, indices, palmer
+from climate_indices import compute
 from climate_indices._calibration_period import CalibrationPeriod, CalibrationPeriodError, resolve_calibration_period
+from climate_indices.drought import indices, palmer
 from climate_indices.exceptions import CalibrationPeriodClampedWarning, InvalidArgumentError, ShortCalibrationWarning
 
 MONTHLY = compute.Periodicity.monthly

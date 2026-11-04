@@ -43,8 +43,9 @@ import numpy as np
 import numpy.typing as npt
 import xarray as xr
 
-from climate_indices import compute, indices, pm_eto
+from climate_indices import compute
 from climate_indices.cf_metadata_registry import CF_METADATA
+from climate_indices.drought import indices, pm_eto
 from climate_indices.exceptions import BetaFeatureWarning
 from climate_indices.validation import InputType, detect_input_type
 from climate_indices.vocabulary import Distribution, OutputScale, Periodicity, ZeroHandling
@@ -412,7 +413,7 @@ def spi(values: Any, *args: Any, **kwargs: Any) -> npt.NDArray[np.float64] | xr.
             without clipping, and "bounded" returns ``2p - 1``.
         zero_handling: Where a zero accumulation is placed within the zero mass:
             "classic" (the default), "center_of_mass", or "mean_zero". See
-            :func:`climate_indices.indices.spi`.
+            :func:`climate_indices.drought.indices.spi`.
 
     Returns:
         SPI values as numpy.ndarray or xarray.DataArray (matches input type).
@@ -525,7 +526,7 @@ def spai(values: Any, *args: Any, **kwargs: Any) -> npt.NDArray[np.float64] | xr
 
     This function accepts both NumPy arrays and xarray DataArrays, and each call emits
     one :class:`~climate_indices.exceptions.BetaFeatureWarning` (#1480). See
-    :func:`climate_indices.indices.spai` for the method, distributions, and edge cases.
+    :func:`climate_indices.drought.indices.spai` for the method, distributions, and edge cases.
 
     For NumPy inputs, all temporal parameters are required. For xarray inputs,
     temporal parameters are optional and are inferred from the time coordinate.
@@ -918,9 +919,9 @@ def pet_penman_monteith(
         day_of_year: Day of the year (required for NumPy, inferred for xarray).
         wind_speed_height_m: Height at which the wind speed was measured [m].
         humidity: Optional actual-vapour-pressure inputs, in pathway precedence
-            order; see :class:`climate_indices.pm_eto.HumidityInputs`.
+            order; see :class:`climate_indices.drought.pm_eto.HumidityInputs`.
         radiation: Optional solar-radiation inputs, in pathway precedence order;
-            see :class:`climate_indices.pm_eto.RadiationInputs`.
+            see :class:`climate_indices.drought.pm_eto.RadiationInputs`.
         soil_heat_flux_mj_m2_day: Soil heat flux density [MJ m-2 day-1].
         albedo: Canopy reflection coefficient (0.23 for the grass reference).
         time_dim: Name of the time dimension in the input DataArray.
@@ -1058,7 +1059,7 @@ def pdsi(
     will narrow the return type based on the input type.
 
     For NumPy inputs, all temporal parameters are required and the return is the
-    five-item tuple :func:`climate_indices.palmer.pdsi` produces. For xarray
+    five-item tuple :func:`climate_indices.drought.palmer.pdsi` produces. For xarray
     inputs, temporal parameters are optional and inferred from the time
     coordinate, and the return is an ``xr.Dataset`` with one variable per index
     (``pdsi``, ``phdi``, ``pmdi``, ``z_index``), each carrying its own CF metadata.
@@ -1133,7 +1134,7 @@ def fit_diagnostics(
 
     For NumPy inputs, all temporal parameters are required and the return is the
     :class:`climate_indices.compute.FitDiagnostics` that
-    :func:`climate_indices.indices.fit_diagnostics` produces. For xarray inputs,
+    :func:`climate_indices.drought.indices.fit_diagnostics` produces. For xarray inputs,
     temporal parameters are optional and inferred from the time coordinate, and the
     return is an ``xr.Dataset`` of the fitted parameters, ``prob_zero``,
     ``n_valid``, ``ks_statistic``, ``ks_p_value``, and ``distribution_used`` over a

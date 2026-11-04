@@ -30,7 +30,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from climate_indices import __main__ as cli  # noqa: E402
-from climate_indices import _cli_transport, _native_backend, compute, indices, spi, standardized_index  # noqa: E402
+from climate_indices import _cli_transport, _native_backend, compute, spi, standardized_index  # noqa: E402
+from climate_indices.drought import indices  # noqa: E402
 from climate_indices.validation import DatasetLayout  # noqa: E402
 from tests.conftest import NativeRecorder  # noqa: E402
 

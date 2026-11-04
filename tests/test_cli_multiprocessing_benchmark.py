@@ -23,7 +23,7 @@ import xarray as xr
 
 from climate_indices import spi
 from climate_indices.compute import Periodicity
-from climate_indices.indices import Distribution
+from climate_indices.drought.indices import Distribution
 
 ROOT = Path(__file__).resolve().parents[1]
 BENCHMARKS = ROOT / "benchmarks"

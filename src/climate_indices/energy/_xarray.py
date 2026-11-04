@@ -8,9 +8,10 @@ from typing import Any, TypeVar, cast
 import numpy as np
 import xarray as xr
 
-from climate_indices import compute, indices
+from climate_indices import compute
 from climate_indices._units import _convert_temperature_units, _validate_daily_time_coordinate
 from climate_indices.cf_metadata_registry import CF_METADATA
+from climate_indices.drought import indices
 from climate_indices.exceptions import (
     CoordinateValidationError,
     InputTypeError,

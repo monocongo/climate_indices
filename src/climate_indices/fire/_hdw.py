@@ -9,10 +9,10 @@ import numpy as np
 import numpy.typing as npt
 import xarray as xr
 
-from climate_indices import pm_eto
 from climate_indices._recurrence import _as_float_array
 from climate_indices._units import _convert_temperature_units
 from climate_indices.cf_metadata_registry import CF_METADATA
+from climate_indices.drought import pm_eto
 from climate_indices.exceptions import (
     DimensionMismatchError,
     InvalidArgumentError,

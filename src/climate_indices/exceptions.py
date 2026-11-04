@@ -6,7 +6,9 @@ users to catch all library-specific errors with a single handler.
 
 from __future__ import annotations
 
+import sys
 import warnings
+from types import ModuleType
 from typing import Any, NoReturn
 
 __all__ = [
@@ -576,3 +578,25 @@ def emit_deprecation_warning(
         ClimateIndicesDeprecationWarning,
         stacklevel=stacklevel,
     )
+
+
+def alias_deprecated_module(*, old_name: str, canonical: ModuleType) -> None:
+    """Warn, then install ``canonical`` under ``old_name`` in ``sys.modules``.
+
+    A deprecated module stub calls this so that the old path and the canonical
+    path resolve to one module object. Identity keeps string-based patch targets
+    and old pickle records working for the deprecation period.
+
+    Args:
+        old_name: The deprecated module path, e.g. ``"climate_indices.indices"``.
+        canonical: The module object the old path should resolve to.
+    """
+    emit_deprecation_warning(
+        feature=f"The '{old_name}' module",
+        alternative=f"import from '{canonical.__name__}' instead",
+        deprecated_in="3.2.0",
+        removal_version="4.0.0",
+        migration_url="api-changes.html",
+        stacklevel=4,
+    )
+    sys.modules[old_name] = canonical

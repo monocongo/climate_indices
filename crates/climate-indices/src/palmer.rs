@@ -2,7 +2,7 @@
 //!
 //! Reference: Palmer (1965), "Meteorological Drought", U.S. Weather Bureau
 //! Research Paper 45, and the algorithmic lineage the Python package carries for
-//! PDSI/scPDSI. The Python implementation in `climate_indices.palmer` stays the
+//! PDSI/scPDSI. The Python implementation in `climate_indices.drought.palmer` stays the
 //! reference oracle; `tests/test_native_parity_palmer.py` checks this kernel
 //! against it at `rtol = atol = 1e-10`. The spell recursions, CAFEC/Z-index
 //! stages, validation, calibration-period resolution, warnings, logging, and
@@ -13,7 +13,7 @@ use ndarray::{Array2, Array3, ArrayView1, ArrayView3};
 
 use crate::ClimateError;
 
-/// Surface-layer available water capacity, in inches (`palmer.AWCTOP`).
+/// Surface-layer available water capacity, in inches (`climate_indices.drought.palmer.AWCTOP`).
 pub const AWCTOP: f64 = 1.0;
 
 /// Python's builtin `max(a, b)`: `b` only if `b > a`, so NaN order matters.
@@ -28,7 +28,7 @@ pub(crate) fn py_min(a: f64, b: f64) -> f64 {
 
 /// Available water capacity of the under layer, in inches.
 ///
-/// Python: `palmer._get_awc_bot`, `max(awc - AWCTOP, 0.0)` through the
+/// Python: `climate_indices.drought.palmer._get_awc_bot`, `max(awc - AWCTOP, 0.0)` through the
 /// builtin-order `_py_max`.
 fn awc_bottom(awc: f64) -> f64 {
     py_max(awc - AWCTOP, 0.0)
@@ -36,7 +36,7 @@ fn awc_bottom(awc: f64) -> f64 {
 
 /// Potential loss for one month, one cell.
 ///
-/// Python: `palmer._calc_potential_loss`.
+/// Python: `climate_indices.drought.palmer._calc_potential_loss`.
 fn potential_loss(pet: f64, ss: f64, su: f64, awc: f64) -> f64 {
     let awc_bot = awc_bottom(awc);
     let candidate = py_min(ss + su, ((pet - ss) * su) / (awc_bot + AWCTOP) + ss);
@@ -55,7 +55,7 @@ struct Recharge {
 
 /// Recharge, runoff, residual moisture, and loss to both layers for one month, one cell.
 ///
-/// Python: `palmer._calc_recharge`, reproducing its elementwise branch order
+/// Python: `climate_indices.drought.palmer._calc_recharge`, reproducing its elementwise branch order
 /// exactly. Both arms are evaluated and selected with the same comparisons, so a
 /// single location and a spatial cell take the same path.
 fn recharge(p: f64, pet: f64, ss: f64, su: f64, awc: f64) -> Recharge {
@@ -179,7 +179,7 @@ pub struct WaterBalance {
 
 /// The Palmer water balance over a `(n_years, 12, n_cells)` record.
 ///
-/// - Python source: `palmer._calc_water_balances`, including its per-month
+/// - Python source: `climate_indices.drought.palmer._calc_water_balances`, including its per-month
 ///   `potential_loss` and `recharge` calls and its calibration-period sum
 ///   accumulation.
 /// - Inputs: `precips` and `pet` shaped `(n_years, 12, n_cells)`, already folded

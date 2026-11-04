@@ -4,7 +4,7 @@
 //! Research Paper 45, as implemented by NCEI's `pdi.f` (statements 170-220 and
 //! the backtracking that resolves a deferred spell).
 //!
-//! The Python implementation in `climate_indices._palmer_pdi` stays the
+//! The Python implementation in `climate_indices.drought._palmer_pdi` stays the
 //! reference oracle; `tests/test_native_parity_palmer.py` checks this kernel
 //! against it at `rtol = atol = 1e-10`. Python vectorizes the state machine
 //! across cells with masks that partition every cell into exactly one branch,
@@ -60,7 +60,7 @@ pub struct PdiResult {
     pub pmdi: Array2<f64>,
 }
 
-/// The preliminary (near-real-time) PDSI, PMDI. Python: `_palmer_pdi._case`.
+/// The preliminary (near-real-time) PDSI, PMDI. Python: `climate_indices.drought._palmer_pdi._case`.
 fn case(prob: f64, x1: f64, x2: f64, x3: f64) -> f64 {
     let near_normal = if x1.abs() > x2.abs() { x1 } else { x2 };
     let pro = prob / 100.0;
@@ -77,7 +77,7 @@ fn case(prob: f64, x1: f64, x2: f64, x3: f64) -> f64 {
     if x3 == 0.0 { near_normal } else { established }
 }
 
-/// One cell's recursion state; Python: `_palmer_pdi._State` restricted to a cell.
+/// One cell's recursion state; Python: `climate_indices.drought._palmer_pdi._State` restricted to a cell.
 ///
 /// The per-month arrays are indexed by the flat month `t = year * 12 + month`,
 /// and the K8 window's `index` holds the flat month Python keeps as the
@@ -401,7 +401,7 @@ impl<'a> Cell<'a> {
 
 /// The `pdi.f` Palmer recursion over a precomputed Z-index series.
 ///
-/// - Python source: `_palmer_pdi.calculate` (statements 170-220,
+/// - Python source: `climate_indices.drought._palmer_pdi.calculate` (statements 170-220,
 ///   `_advance_month`, `_assign`, `_flush_spells`, `_backtrack_assigned_values`,
 ///   `_finish_up`).
 /// - Inputs: `z`, shaped `(n_months, n_cells)` (Python's `(years, 12, n_cells)`

@@ -16,7 +16,8 @@ from typing import Any, cast
 import numpy as np
 import pytest
 
-from climate_indices import compute, energy, indices
+from climate_indices import compute, energy
+from climate_indices.drought import indices
 from tests import conftest
 
 ROOT = Path(__file__).resolve().parents[1]
