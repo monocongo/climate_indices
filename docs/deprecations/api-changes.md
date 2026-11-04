@@ -100,11 +100,16 @@ occur, the same correction applies to the Pearson fit. Gamma fitting and the
 zero/trace transform rules do not change.
 
 One consequence is worth knowing when reading a corrected fit. A non-zero calibration
-value at or below the fitted lower support limit still takes the zero/trace score, as
-the support-limit mask did before this correction (ADR-0015). Excluding the zeros can
-place that limit above the smallest non-zero value where the zero-inclusive fit put it
-below zero, so a small non-zero value can share the zero score. Fit diagnostics flag
-the step as a poor fit; the mask's precedence is unchanged.
+value at or below the fitted lower support limit is still pinned to the support
+boundary, as the support-limit mask did before this correction (ADR-0015). On the
+normal scale the boundary CDF sentinel is 0.0005; on the probability scales it is 0.
+Excluding the zeros can place that limit above the smallest non-zero value where the
+zero-inclusive fit put it below zero, so a small non-zero value can score close to a
+zero. Only values below 0.0005 are zero or trace values, so `center_of_mass` and
+`mean_zero` move the zeros and trace values but not the boundary-pinned non-zero
+values; do not read their differing scores as equivalent. The Kolmogorov-Smirnov fit
+diagnostics test the whole fit, so they may warn about a poor fit but do not detect
+this case; the mask's precedence is unchanged.
 
 SPAI is the exception. Its pooled Pearson option has no probability of zero, so
 it fits every pooled anomaly value, exact zeros included, and is unchanged by
