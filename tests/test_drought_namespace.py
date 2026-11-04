@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import pickle
 import subprocess
 import sys
 import warnings
@@ -29,6 +30,17 @@ _PRIVATE_MODULES = (
     "climate_indices._palmer_pdi",
     "climate_indices._palmer_wells",
 )
+
+# old public module path -> (a public symbol, canonical module path) for the
+# string-based patch-target contract (ADR-0027).
+_PATCH_TARGETS = {
+    "climate_indices.indices": ("spi", "climate_indices.drought.indices"),
+    "climate_indices.palmer": ("pdsi", "climate_indices.drought.palmer"),
+    "climate_indices.eto": ("eto_hargreaves", "climate_indices.drought.eto"),
+    "climate_indices.pm_eto": ("penman_monteith_eto", "climate_indices.drought.pm_eto"),
+    "climate_indices.self_calibration": ("duration_factors", "climate_indices.drought.self_calibration"),
+}
+_PATCH_TARGET_CASES = [(old, symbol, canonical) for old, (symbol, canonical) in sorted(_PATCH_TARGETS.items())]
 
 # Names the drought facade re-exports from typed_public_api, which must be the
 # same objects as their package-root names (ADR-0027).
@@ -75,14 +87,35 @@ def test_drought_facade_exports_the_same_objects_as_the_root(name: str) -> None:
     assert getattr(drought, name) is getattr(climate_indices, name)
 
 
-def test_deprecated_alias_keeps_string_patch_targets(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Patching through the old module path reaches the canonical module."""
-    canonical = importlib.import_module("climate_indices.drought.palmer")
-    importlib.import_module("climate_indices.palmer")
+@pytest.mark.parametrize(("old_path", "symbol", "canonical_path"), _PATCH_TARGET_CASES)
+def test_deprecated_alias_keeps_string_patch_targets(
+    old_path: str, symbol: str, canonical_path: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Patching through an old module path reaches the canonical module."""
+    canonical = importlib.import_module(canonical_path)
+    importlib.import_module(old_path)
 
-    monkeypatch.setattr("climate_indices.palmer.pdsi", None)
+    monkeypatch.setattr(f"{old_path}.{symbol}", None)
 
-    assert vars(canonical)["pdsi"] is None
+    assert vars(canonical)[symbol] is None
+
+
+@pytest.mark.parametrize("name", sorted(_DEPRECATED_MODULES))
+def test_from_package_import_form_resolves_the_alias(name: str) -> None:
+    """`from climate_indices import <old name>` resolves to the canonical module."""
+    short = name.split(".")[-1]
+    package = __import__("climate_indices", fromlist=[short])
+    assert getattr(package, short) is importlib.import_module(f"climate_indices.drought.{short}")
+
+
+def test_old_pickle_records_still_load_through_the_alias() -> None:
+    """A pickle naming climate_indices.indices still loads (vocabulary keeps __module__)."""
+    from climate_indices.vocabulary import Distribution
+
+    payload = pickle.dumps(Distribution.gamma)
+    assert b"climate_indices.indices" in payload
+    # payload was produced by pickle.dumps above, not untrusted input
+    assert pickle.loads(payload) is Distribution.gamma  # pi-lens-ignore: python-insecure-deserialization
 
 
 @pytest.mark.parametrize("private_path", _PRIVATE_MODULES)
