@@ -39,6 +39,11 @@ gamma-fallback rules apply; the minimum remains four non-zero values.
 The shared correction also affects Pearson SPEI if its offset series contains
 exact zeros. Gamma fitting and the zero/trace transform rules do not change.
 
+SPAI is the exception. Its pooled Pearson option has no probability of zero, so
+it fits every pooled anomaly value, exact zeros included, and is unchanged by
+this correction. See the SPAI section of
+{doc}`the algorithm reference </algorithm-reference>`.
+
 ## Upgrade considerations for 3.2.0
 
 Version 3.2.0 removes no public API and needs no function-call migration.
