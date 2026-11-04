@@ -32,9 +32,7 @@ SOURCES = (
 )
 
 # The Python revision the checked-in values were generated from. A change to any
-# source under src/climate_indices is a regeneration decision: review it, then
-# update this. The guard covers the package directory rather than the module paths
-# in SOURCES, because a module move changes those paths.
+# listed source file is a regeneration decision: review it, then update this.
 SOURCE_REVISION = "f4cb938eb622a3ddf8b96c129337e0ebecd4121e"
 
 
@@ -43,12 +41,14 @@ SOURCE_REVISION = "f4cb938eb622a3ddf8b96c129337e0ebecd4121e"
 def generate() -> None:
     """Write deterministic golden values without importing the native extension."""
     # The guard must precede the imports: a changed checkout executes them on import.
-    subprocess.run(
-        ["git", "diff", "--exit-code", SOURCE_REVISION, "--", "src/climate_indices"],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-    )
+    # Each source is compared with its content at SOURCE_REVISION, at the path it had
+    # there: the drought modules were still flat at the top level before they moved.
+    for name in SOURCES:
+        path = f"src/climate_indices/{name}"
+        pinned = f"{SOURCE_REVISION}:{path}"
+        if subprocess.run(["git", "cat-file", "-e", pinned], cwd=ROOT, capture_output=True).returncode != 0:
+            pinned = f"{SOURCE_REVISION}:src/climate_indices/{name.removeprefix('drought/')}"
+        subprocess.run(["git", "diff", "--exit-code", pinned, "--", path], cwd=ROOT, check=True, capture_output=True)
 
     from climate_indices import compute
     from climate_indices.drought import palmer, self_calibration
