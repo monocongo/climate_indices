@@ -70,6 +70,24 @@ def test_invalid_nonzero_sample_keeps_zeroed_parameters(
         np.testing.assert_array_equal(result, 0.0)
 
 
+def test_fitted_location_is_the_nonzero_sample_mean(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(compute, "_native", None)
+    rng = np.random.default_rng(31)
+    values = rng.gamma(1.5, 40.0, (40, 12))
+    # A different zero count per calendar month, so a whole-record mean cannot pass.
+    zeros = rng.random(values.shape) < np.linspace(0.05, 0.5, 12)
+    values[zeros] = 0.0
+    probabilities_of_zero, locs, _, _ = compute.pearson_parameters(
+        values, 2000, 2000, 2039, compute.Periodicity.monthly
+    )
+    # The first L-moment is the sample mean, so it identifies the fitted sample exactly.
+    non_zero_mean = np.nansum(values, axis=0) / np.count_nonzero(values != 0, axis=0)
+    np.testing.assert_allclose(locs, non_zero_mean, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(probabilities_of_zero, np.count_nonzero(zeros, axis=0) / values.shape[0], rtol=0, atol=0)
+    # Without the correction the location is the whole-record mean, which differs.
+    assert not np.allclose(locs, np.nanmean(values, axis=0), rtol=1e-3, atol=1e-3)
+
+
 @pytest.mark.parametrize("dtype", ["int64", "float64"])
 def test_spatial_fit_keeps_masked_values_out_of_the_sample(dtype: str) -> None:
     sample = np.array([0, 0, 999, 1, 2, 3, 4, 5, 6, 7], dtype=dtype)
