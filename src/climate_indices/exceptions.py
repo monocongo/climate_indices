@@ -597,6 +597,6 @@ def alias_deprecated_module(*, old_name: str, canonical: ModuleType) -> None:
         deprecated_in="3.2.0",
         removal_version="4.0.0",
         migration_url="api-changes.html",
-        stacklevel=2,
+        stacklevel=4,
     )
     sys.modules[old_name] = canonical
