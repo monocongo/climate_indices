@@ -19,6 +19,26 @@ outputs retain the existing `calibration_start_year`/`calibration_end_year`
 attributes alongside the canonical names; their history entry still records the
 timescale, not calibration years. No numerical behavior changes.
 
+## Pearson zero-mass correction after 3.2.0
+
+This correction is pending release and applies to both the Python library and
+`pearson::pearson_parameters` in the standalone Rust crate (#1562).
+
+Pearson Type III fitting now excludes exact zeros from the continuous L-moment
+sample. The Probability of Zero still uses all non-missing Calibration Period
+values. Previously, zeros entered the continuous fit and the transform added
+their probability again. This biased non-zero SPI values toward wet conditions.
+
+Refitting data with calibration zeros changes Pearson SPI and
+`standardized_index()` output under every `zero_handling` mode. Fits without
+zeros and supplied `fitting_params` retain their behavior. Recompute saved
+Pearson parameters to use the correction. A constant non-zero sample now fails
+the continuous fit, even if zeros are present. The existing failure and
+gamma-fallback rules apply; the minimum remains four non-zero values.
+
+The shared correction also affects Pearson SPEI if its offset series contains
+exact zeros. Gamma fitting and the zero/trace transform rules do not change.
+
 ## Upgrade considerations for 3.2.0
 
 Version 3.2.0 removes no public API and needs no function-call migration.

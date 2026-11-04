@@ -48,8 +48,11 @@ The constant column produces an infinite gamma alpha and zero beta.
 Unusable Pearson and GLO fits retain zero parameters and an exact false validity flag.
 
 - `compute.gamma_parameters` supplies gamma alpha and beta.
-- `compute._pearson_parameters_spatial` supplies Pearson zero probabilities, locations, scales, and skews.
-  `lmoments.fit_spatial` and the four-nonzero-observation guard supply its validity mask.
+- `compute._pearson_parameters_spatial` supplies Pearson locations, scales, and skews.
+  The generator excludes exact zeros before calling the pinned estimator, which predates the correction in #1562.
+  `lmoments.fit_spatial` on that non-zero sample and the four-nonzero-observation guard supply its validity mask.
+  Zero probabilities use the original sample's zero counts divided by its non-missing counts; invalid fits retain zero probabilities.
+  The zero-mass column has `p0 = 1/3` and location `35/6`, checked independently in the generator.
 - `lmoments.fit_glo_spatial` supplies GLO locations, scales, shapes, and validity masks.
 
 Input values, locations, scales, and gamma beta use synthetic millimeters.

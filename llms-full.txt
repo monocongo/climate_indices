@@ -6125,7 +6125,9 @@ The SPI computation follows these steps:
    **Pearson Type III distribution** (alternative):
 
    - Three-parameter distribution with location, scale, and skewness
-   - Parameters estimated using L-moments method (Hosking, 1997)
+   - Parameters estimated using L-moments method (Hosking, 1997) from non-zero
+     Calibration Period values only. Exact zeros contribute to `p0`, not to the
+     continuous fit. At least four non-zero values are required.
    - Better for highly skewed precipitation distributions
    - Automatic fallback to gamma if fitting fails
 

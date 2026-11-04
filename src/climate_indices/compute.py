@@ -594,7 +594,9 @@ def _place_zeros(
 
 def calculate_time_step_params(time_step_values: np.ndarray) -> tuple[float, float, float, float]:
     """
-    Calculate Pearson Type III parameters for a time step's values.
+    Calculate Pearson Type III parameters from the non-zero values.
+
+    The zero mass uses all non-missing values, separately from the L-moment fit.
 
     :param time_step_values: Array of values for a specific time step (e.g., all January values)
     :return: Tuple of (probability_of_zero, loc, scale, skew)
@@ -618,7 +620,7 @@ def calculate_time_step_params(time_step_values: np.ndarray) -> tuple[float, flo
 
     # At this point we know non_zero_count >= MIN_NON_ZERO_VALUES_FOR_PEARSON
     try:
-        params = lmoments.fit(time_step_values)
+        params = lmoments.fit(time_step_values[time_step_values != 0])
         return probability_of_zero, params["loc"], params["scale"], params["skew"]
     except ValueError as e:
         message = f"L-moments fitting failed: {e}. Consider using Gamma distribution for this dataset."
@@ -640,7 +642,11 @@ def _pearson_parameters_spatial(
     :return: four parameter arrays shaped (time_steps, ``*cells``) and the count of
         failed (time step, cell) fits
     """
-    locs, scales, skews, valid = lmoments.fit_spatial(calibration_values)
+    # Zeros contribute only to the point mass, not to the continuous component.
+    nonzero_values = np.where(calibration_values == 0, np.nan, calibration_values)
+    if np.ma.isMaskedArray(calibration_values):
+        nonzero_values[np.ma.getmaskarray(calibration_values)] = np.nan
+    locs, scales, skews, valid = lmoments.fit_spatial(nonzero_values)
 
     number_of_zeros = np.count_nonzero(calibration_values == 0, axis=0)
     number_of_non_missing = np.count_nonzero(~np.isnan(calibration_values), axis=0)

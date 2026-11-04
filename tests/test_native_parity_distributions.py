@@ -179,6 +179,24 @@ def test_pearson_parameters_match_the_python_fit(monkeypatch, precips_mm_monthly
     _assert_parity(rust, python)
 
 
+@pytest.mark.parametrize("spatial", [False, True])
+def test_pearson_nonzero_component_matches_closed_form(monkeypatch: pytest.MonkeyPatch, spatial: bool) -> None:
+    sample = np.array([0, -0.0, np.nan, 1, 2, 3, 4, 5, 6, 7], dtype=float)
+    values = np.tile(sample[:, None], (1, 12))
+    if spatial:
+        values = np.repeat(values[..., None], 2, axis=-1)
+
+    def run() -> np.ndarray:
+        return np.stack(compute.pearson_parameters(values, 2000, 2000, 2009, _MONTHLY))
+
+    rust, python, calls = _rust_and_python(monkeypatch, run)
+    assert calls == ({"pearson_parameters"} if spatial else {"pearson_parameters", "pearson_ks_statistics"})
+    _assert_parity(rust, python)
+    for result, expected in zip(rust, (2 / 9, 4.0, 4 / 3 * np.sqrt(np.pi), 0.0), strict=True):
+        # The seven-point symmetric sample has exact L-moments; allow f64 roundoff.
+        np.testing.assert_allclose(result, expected, rtol=1e-12, atol=1e-12)
+
+
 def test_pearson_parameters_daily(monkeypatch, precips_mm_daily, data_year_start_daily):
     run = lambda: np.stack(  # noqa: E731
         compute.pearson_parameters(

@@ -87,10 +87,16 @@ def fitting() -> None:
         ]
     )
     alphas, betas = compute.gamma_parameters(calibration.copy(), 2000, 2000, 2009, compute.Periodicity.monthly)
-    p0, locs, scales, skews, failed = compute._pearson_parameters_spatial(calibration)
-    _, _, _, valid = lmoments.fit_spatial(calibration)
-    valid &= np.count_nonzero(~np.isnan(calibration) & (calibration != 0), axis=0) >= 4
+    # The pinned estimator predates #1562; exclude the zero mass explicitly.
+    nonzero_calibration = np.where(calibration == 0, np.nan, calibration)
+    _, locs, scales, skews, failed = compute._pearson_parameters_spatial(nonzero_calibration)
+    _, _, _, valid = lmoments.fit_spatial(nonzero_calibration)
+    valid &= np.count_nonzero(~np.isnan(nonzero_calibration), axis=0) >= 4
+    p0 = np.where(
+        valid, np.count_nonzero(calibration == 0, axis=0) / np.count_nonzero(~np.isnan(calibration), axis=0), 0.0
+    )
     assert failed == np.count_nonzero(~valid)
+    assert p0[4] == 1 / 3 and locs[4] == 35 / 6
     glo_loc, glo_scale, glo_shape, glo_valid = lmoments.fit_glo_spatial(calibration)
     assert valid.tolist() == [True] * 5 + [False] * 4 + [True] * 3
     assert glo_valid.tolist() == valid.tolist()
