@@ -2,7 +2,7 @@
 
 Use this recipe to standardize a capacity-weighted monthly precipitation series
 at Timescales of 1, 3, 6, and 12 months. It uses the existing
-{func}`climate_indices.indices.standardized_index` NumPy API, not a separate
+{func}`climate_indices.drought.indices.standardized_index` NumPy API, not a separate
 hydropower function.
 
 This proxy describes the **climate-driven component of hydro resource**, not
@@ -42,7 +42,8 @@ through December 2020. Replace it with your prepared monthly series.
 ```{testcode}
 import numpy as np
 
-from climate_indices import compute, indices
+from climate_indices import compute
+from climate_indices.drought import indices
 
 rng = np.random.default_rng(1167)
 weighted_precipitation = rng.gamma(shape=2.0, scale=40.0, size=40 * 12)

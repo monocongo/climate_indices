@@ -3,7 +3,7 @@
 Both describe the **climate-driven component** of supply or demand, not actual
 generation or load: a series of observed output or consumption also carries
 capacity changes, curtailment, outages, markets, and behaviour, so its scores are not
-weather-only diagnostics. They are thin wrappers over :func:`climate_indices.indices.standardized_index`
+weather-only diagnostics. They are thin wrappers over :func:`climate_indices.drought.indices.standardized_index`
 (ADR-0019), with the empirical (rank-based) distribution as the default that Allen &
 Otero (2023) recommend above roughly 100 observations. The beta distribution is
 the alternative for a bounded [0, 1] series such as a capacity factor.
@@ -19,8 +19,9 @@ import numpy as np
 import numpy.typing as npt
 import xarray as xr
 
-from climate_indices import compute, indices
+from climate_indices import compute
 from climate_indices.cf_metadata_registry import CF_METADATA
+from climate_indices.drought import indices
 from climate_indices.energy._xarray import STANDARDIZED_INDEX_VALIDATORS, apply_standardized
 from climate_indices.exceptions import InvalidArgumentError
 from climate_indices.xarray_adapter import INFER_TIME_PARAMETERS, xarray_adapter
@@ -107,12 +108,12 @@ def _srepi_numpy(
     production must pass ``aggregation="sum"``; input meaning is never inferred from
     magnitudes. The beta distribution needs every source and windowed value within
     [0, 1], which in practice means a capacity factor with ``aggregation="mean"``;
-    :func:`climate_indices.indices.standardized_index` rejects a value outside that
+    :func:`climate_indices.drought.indices.standardized_index` rejects a value outside that
     range. All other arguments are those of that function.
 
     Args:
         values: 1-D array of production or capacity factors, with the layouts that
-            :func:`climate_indices.indices.standardized_index` accepts.
+            :func:`climate_indices.drought.indices.standardized_index` accepts.
         scale: Number of time steps in each window before standardization.
         data_start_year: Initial year of the input series.
         calibration_year_initial: Initial year of the Calibration Period.
@@ -137,7 +138,7 @@ def _srepi_numpy(
 
     Returns:
         Unitless standardized values, shaped as
-        :func:`climate_indices.indices.standardized_index` returns them. With the
+        :func:`climate_indices.drought.indices.standardized_index` returns them. With the
         empirical distribution, a calendar step with fewer than ten valid calibration
         values is NaN.
 
@@ -195,7 +196,7 @@ def _standardized_demand_index_numpy(
 
     Args:
         values: 1-D array of demand or degree days, with the layouts that
-            :func:`climate_indices.indices.standardized_index` accepts.
+            :func:`climate_indices.drought.indices.standardized_index` accepts.
         scale: Number of time steps in each window before standardization.
         data_start_year: Initial year of the input series.
         calibration_year_initial: Initial year of the Calibration Period.
@@ -220,7 +221,7 @@ def _standardized_demand_index_numpy(
 
     Returns:
         Unitless standardized values, shaped as
-        :func:`climate_indices.indices.standardized_index` returns them. With the
+        :func:`climate_indices.drought.indices.standardized_index` returns them. With the
         empirical distribution, a calendar step with fewer than ten valid calibration
         values is NaN.
 
@@ -355,7 +356,7 @@ def srepi(
     production must pass ``aggregation="sum"``; input meaning is never inferred from
     magnitudes. The beta distribution needs every source and windowed value within
     [0, 1], which in practice means a capacity factor with ``aggregation="mean"``;
-    :func:`climate_indices.indices.standardized_index` rejects a value outside that
+    :func:`climate_indices.drought.indices.standardized_index` rejects a value outside that
     range. All other arguments are those of that function.
 
     DataArray input uses the stable adapter: temporal parameters are inferred from the
@@ -366,7 +367,7 @@ def srepi(
     Args:
         values: 1-D array of production or capacity factors, or a DataArray with a
             time dimension plus optional cell dimensions, with the layouts that
-            :func:`climate_indices.indices.standardized_index` accepts.
+            :func:`climate_indices.drought.indices.standardized_index` accepts.
         scale: Number of time steps in each window before standardization.
         data_start_year: Initial year of the input series. Required for NumPy input;
             inferred for DataArray input.
@@ -496,7 +497,7 @@ def standardized_demand_index(
     Args:
         values: 1-D array of demand or degree days, or a DataArray with a time
             dimension plus optional cell dimensions, with the layouts that
-            :func:`climate_indices.indices.standardized_index` accepts.
+            :func:`climate_indices.drought.indices.standardized_index` accepts.
         scale: Number of time steps in each window before standardization.
         data_start_year: Initial year of the input series. Required for NumPy input;
             inferred for DataArray input.

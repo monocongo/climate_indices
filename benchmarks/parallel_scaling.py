@@ -80,8 +80,8 @@ from profile_gridded_spi import (
 
 from climate_indices import eddi, pet_thornthwaite, spei, spi
 from climate_indices.compute import Periodicity
+from climate_indices.drought.indices import Distribution
 from climate_indices.exceptions import GoodnessOfFitWarning
-from climate_indices.indices import Distribution
 from climate_indices.logging_config import ENV_LOG_LEVEL
 
 PET_FRACTION = 0.6

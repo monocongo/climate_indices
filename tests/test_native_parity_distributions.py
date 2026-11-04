@@ -20,7 +20,8 @@ import scipy.special
 import scipy.stats
 import xarray as xr
 
-from climate_indices import compute, indices, lmoments
+from climate_indices import compute, lmoments
+from climate_indices.drought import indices
 from tests import conftest
 from tests.test_native_parity import _DATA_START, ATOL, RTOL, _assert_parity, _Recorder, _rust_and_python, _with_zeros
 

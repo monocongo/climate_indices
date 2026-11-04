@@ -23,7 +23,7 @@ import pytest
 import xarray as xr
 
 from climate_indices import __version__, spei, spi
-from climate_indices.indices import Distribution
+from climate_indices.drought.indices import Distribution
 
 # ==============================================================================
 # module-scoped result fixtures: cache expensive computations

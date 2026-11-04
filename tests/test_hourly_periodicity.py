@@ -11,7 +11,8 @@ import xarray as xr
 
 import climate_indices
 from climate_indices import __main__ as cli_main
-from climate_indices import _cli, compute, energy, indices, utils
+from climate_indices import _cli, compute, energy, utils
+from climate_indices.drought import indices
 from climate_indices.exceptions import CoordinateValidationError, InvalidArgumentError
 
 HOURS_PER_YEAR = 8784

@@ -35,8 +35,9 @@ import pytest
 import xarray as xr
 from hypothesis import strategies as st
 
-from climate_indices import compound, compute, eto, fire, flood, indices, palmer, pm_eto, runs
+from climate_indices import compound, compute, fire, flood, runs
 from climate_indices.compound import _bootstrap as compound_bootstrap
+from climate_indices.drought import eto, indices, palmer, pm_eto
 from climate_indices.fire import _native as fire_native
 from climate_indices.flood import _native as flood_native
 from tests import conftest

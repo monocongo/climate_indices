@@ -149,7 +149,8 @@ def _measure_agreement(
     inputs: dict[str, np.ndarray], cases: list[dict[str, Any]], references: dict[str, np.ndarray]
 ) -> dict[str, dict[str, float]]:
     """Measure the library against R outputs without generating reference values."""
-    from climate_indices import compute, indices
+    from climate_indices import compute
+    from climate_indices.drought import indices
 
     measurements: dict[str, dict[str, float]] = {}
     scales: tuple[tuple[compute.OutputScale, float], ...] = (("probability", 1e-15), ("normal", 1e-12))

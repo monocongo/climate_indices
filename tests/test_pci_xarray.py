@@ -12,8 +12,8 @@ import pytest
 import xarray as xr
 
 from climate_indices import pci
+from climate_indices.drought.indices import pci as numpy_pci
 from climate_indices.exceptions import InvalidArgumentError
-from climate_indices.indices import pci as numpy_pci
 
 
 @pytest.fixture(scope="module")

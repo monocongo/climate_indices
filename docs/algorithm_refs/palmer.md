@@ -11,8 +11,8 @@ precipitation, PET, and available water capacity:
 - Palmer Z-Index
 - Self-calibrated Palmer Drought Severity Index (scPDSI)
 
-The public NumPy APIs are `climate_indices.palmer.pdsi()` and
-`climate_indices.palmer.scpdsi()`. `climate_indices.pdsi()` accepts labeled
+The public NumPy APIs are `climate_indices.drought.palmer.pdsi()` and
+`climate_indices.drought.palmer.scpdsi()`. `climate_indices.pdsi()` accepts labeled
 xarray inputs and returns an `xr.Dataset` of the four standard outputs
 (`pdsi`, `phdi`, `pmdi`, `z_index`) with CF metadata; scPDSI stays NumPy-only.
 The 3.0.0 xarray notebook demonstrates the manual rewrap pattern for callers
@@ -38,8 +38,8 @@ passes over the requested calibration period.
 ### Exact-zero comparisons
 
 Both recursions branch on exact comparisons against zero, and every float
-equality comparison site in `src/climate_indices/palmer.py` and the pdi.f
-recursion in `src/climate_indices/_palmer_pdi.py` carries a rationale comment
+equality comparison site in `src/climate_indices/drought/palmer.py` and the pdi.f
+recursion in `src/climate_indices/drought/_palmer_pdi.py` carries a rationale comment
 plus a `# NOSONAR` marker. Those zeros are state sentinels, not
 near-equality: the statements that clear a spell, a candidate, or a calibration
 sum assign `0.0` exactly. A tolerance would change the spell state machine and

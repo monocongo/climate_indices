@@ -1,9 +1,9 @@
 """Before/after timings for the gridded Palmer PDSI kernel on the #893 reference grid.
 
-Runs ``climate_indices.palmer.pdsi`` on a deterministic synthetic grid matching
+Runs ``climate_indices.drought.palmer.pdsi`` on a deterministic synthetic grid matching
 the reference shape from the #893 performance epic (38x87 spatial cells, 40
 years of monthly precipitation and PET) two ways: the per-cell loop
-``__main__._apply_along_axis_palmers`` used before #937 (one ``palmer.pdsi()``
+``__main__._apply_along_axis_palmers`` used before #937 (one ``climate_indices.drought.palmer.pdsi()``
 call per grid cell), and the spatial block path #937 added
 (``spatial_time_major=True``, one call for the whole grid). Reports the
 before/after timings in the #921 "Findings" table style; #929, which would
@@ -28,7 +28,7 @@ from pathlib import Path
 import numpy as np
 from profile_gridded_spi import REFERENCE_LAT, REFERENCE_LON, REFERENCE_YEARS
 
-from climate_indices import palmer
+from climate_indices.drought import palmer
 
 DATA_START_YEAR = 1980
 CALIBRATION_PERIOD = (1981, 2010)
@@ -58,7 +58,7 @@ def build_inputs(lat: int, lon: int, years: int) -> tuple[np.ndarray, np.ndarray
 
 
 def run_per_cell(precip: np.ndarray, pet: np.ndarray, awc: np.ndarray) -> None:
-    """The pre-#937 CLI path: one palmer.pdsi() call per grid cell."""
+    """The pre-#937 CLI path: one climate_indices.drought.palmer.pdsi() call per grid cell."""
     lat, lon = awc.shape
     for i in range(lat):
         for j in range(lon):
@@ -73,7 +73,7 @@ def run_per_cell(precip: np.ndarray, pet: np.ndarray, awc: np.ndarray) -> None:
 
 
 def run_block(precip: np.ndarray, pet: np.ndarray, awc: np.ndarray) -> None:
-    """The #937 path: one palmer.pdsi() call for the whole grid."""
+    """The #937 path: one climate_indices.drought.palmer.pdsi() call for the whole grid."""
     palmer.pdsi(
         precip,
         pet,

@@ -12,8 +12,9 @@ import warnings
 import numpy as np
 import pytest
 
-from climate_indices import compute, indices
+from climate_indices import compute
 from climate_indices.compute import HIGH_FAILURE_RATE_THRESHOLD
+from climate_indices.drought import indices
 from climate_indices.lmoments import MIN_VALUES_FOR_LMOMENTS
 
 # Enable logging to capture warnings during tests

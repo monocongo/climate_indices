@@ -3,10 +3,10 @@
 //! Reference: Wells, Goddard, and Hayes (2004), "A Self-Calibrating Palmer
 //! Drought Severity Index", J. Climate 17(12), 2335-2351.
 //!
-//! The Python implementation in `climate_indices._palmer_wells` stays the
+//! The Python implementation in `climate_indices.drought._palmer_wells` stays the
 //! reference oracle; `tests/test_native_parity_palmer.py` checks this kernel
 //! against it at `rtol = atol = 1e-10`. Duration-factor validation and the
-//! derivation of the recurrence coefficients (`_palmer_duration.DurationFactors`)
+//! derivation of the recurrence coefficients (`climate_indices.drought._palmer_duration.DurationFactors`)
 //! and the infinite-Z check stay in Python; this kernel takes the coefficients
 //! Python derived.
 
@@ -20,7 +20,7 @@ const SPELL_THRESHOLD: f64 = 0.5;
 
 /// Validated duration factors and the Wells recurrence coefficients Python derived.
 ///
-/// Python: `_palmer_duration.DurationFactors`.
+/// Python: `climate_indices.drought._palmer_duration.DurationFactors`.
 #[derive(Debug, Clone, Copy)]
 pub struct WellsFactors {
     /// Wet-spell duration-factor slope `m`.
@@ -54,7 +54,7 @@ pub struct WellsResult {
     pub pmdi: Array1<f64>,
 }
 
-/// State carried between non-missing periods. Python: `_palmer_wells._State`.
+/// State carried between non-missing periods. Python: `climate_indices.drought._palmer_wells._State`.
 #[derive(Debug, Clone, Copy, Default)]
 struct State {
     x1: f64,
@@ -64,7 +64,7 @@ struct State {
     probability: f64,
 }
 
-/// One period's candidate state. Python: `_palmer_wells._Transition`.
+/// One period's candidate state. Python: `climate_indices.drought._palmer_wells._Transition`.
 #[derive(Debug, Clone, Copy, Default)]
 struct Transition {
     x1: f64,
@@ -76,7 +76,7 @@ struct Transition {
     spell_terminated: bool,
 }
 
-/// A deferred period. Python: `_palmer_wells._Tentative`.
+/// A deferred period. Python: `climate_indices.drought._palmer_wells._Tentative`.
 #[derive(Debug, Clone, Copy)]
 struct Tentative {
     index: usize,
@@ -85,14 +85,14 @@ struct Tentative {
     x3: f64,
 }
 
-/// Python: `_palmer_wells._candidate_values`, with its builtin `max`/`min`.
+/// Python: `climate_indices.drought._palmer_wells._candidate_values`, with its builtin `max`/`min`.
 fn candidate_values(state: &State, z: f64, factors: &WellsFactors) -> (f64, f64) {
     let x1 = py_max(0.0, factors.wetc * state.x1 + z / factors.wet_denominator);
     let x2 = py_min(0.0, factors.dryc * state.x2 + z / factors.dry_denominator);
     (x1, x2)
 }
 
-/// Resolve tentative periods. Python: `_palmer_wells._backtrack`.
+/// Resolve tentative periods. Python: `climate_indices.drought._palmer_wells._backtrack`.
 fn backtrack(pdsi: &mut Array1<f64>, tentative: &mut Vec<Tentative>, mut selection: u8) {
     if selection == 3 {
         for values in tentative.iter() {
@@ -119,7 +119,7 @@ fn backtrack(pdsi: &mut Array1<f64>, tentative: &mut Vec<Tentative>, mut selecti
     tentative.clear();
 }
 
-/// Python: `_palmer_wells._pmdi`.
+/// Python: `climate_indices.drought._palmer_wells._pmdi`.
 fn pmdi(probability: f64, x1: f64, x2: f64, x3: f64) -> f64 {
     if x3 == 0.0 {
         return if x1.abs() > x2.abs() { x1 } else { x2 };
@@ -137,7 +137,7 @@ fn pmdi(probability: f64, x1: f64, x2: f64, x3: f64) -> f64 {
 
 /// Advance an established spell while abatement is possible.
 ///
-/// Python: `_palmer_wells._abatement_transition`.
+/// Python: `climate_indices.drought._palmer_wells._abatement_transition`.
 fn abatement_transition(
     state: &State,
     z: f64,
@@ -211,7 +211,7 @@ fn abatement_transition(
     })
 }
 
-/// Continue or abate an established spell. Python: `_palmer_wells._continue_spell`.
+/// Continue or abate an established spell. Python: `climate_indices.drought._palmer_wells._continue_spell`.
 fn continue_spell(
     state: &State,
     z: f64,
@@ -247,7 +247,7 @@ fn continue_spell(
 
 /// Candidate selection and spell-establishment tie-breaks.
 ///
-/// Python: `_palmer_wells._establish_spell`. Each new transition is built field
+/// Python: `climate_indices.drought._palmer_wells._establish_spell`. Each new transition is built field
 /// by field, as Python builds it, so an `x3` of `-0.0` becomes `0.0` where
 /// Python's default does.
 fn establish_spell(transition: Transition) -> Transition {
@@ -300,7 +300,7 @@ fn establish_spell(transition: Transition) -> Transition {
     }
 }
 
-/// Assign or defer one period's PDSI. Python: `_palmer_wells._assign_period`.
+/// Assign or defer one period's PDSI. Python: `climate_indices.drought._palmer_wells._assign_period`.
 fn assign_period(
     pdsi: &mut Array1<f64>,
     tentative: &mut Vec<Tentative>,
@@ -327,7 +327,7 @@ fn assign_period(
 
 /// The Wells Palmer recursion over a Z-index series.
 ///
-/// - Python source: `_palmer_wells.calculate`.
+/// - Python source: `climate_indices.drought._palmer_wells.calculate`.
 /// - Inputs: `z`, the chronological Z-index series (NaN missing); `factors`,
 ///   validated with coefficients derived by Python.
 /// - Outputs: scPDSI, scPHDI, and scPMDI, each shaped like `z`.

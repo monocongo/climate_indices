@@ -17,7 +17,8 @@ import scipy.stats
 import xarray as xr
 
 import climate_indices
-from climate_indices import compute, indices, lmoments
+from climate_indices import compute, lmoments
+from climate_indices.drought import indices
 from climate_indices.exceptions import BetaFeatureWarning, InsufficientDataError, InvalidArgumentError
 
 pytestmark = pytest.mark.filterwarnings("ignore::climate_indices.exceptions.BetaFeatureWarning")

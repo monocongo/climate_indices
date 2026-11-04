@@ -24,7 +24,8 @@ import numpy as np
 import pytest
 import scipy.stats
 
-from climate_indices import compute, exceptions, indices
+from climate_indices import compute, exceptions
+from climate_indices.drought import indices
 from tests import conftest
 
 native = conftest.import_native()

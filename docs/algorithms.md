@@ -268,7 +268,7 @@ The Palmer Drought Severity Index (PDSI) and related indices were developed by W
 - **PMDI**: Palmer Modified Drought Index (short-term agricultural drought)
 - **Z-Index**: Palmer Z-Index (monthly moisture anomaly)
 - **scPDSI**: Self-Calibrated PDSI (Wells et al., 2004), available through
-  {func}`climate_indices.palmer.scpdsi`, improves spatial comparability by
+  {func}`climate_indices.drought.palmer.scpdsi`, improves spatial comparability by
   calibrating to each location's climate.
 
 These indices are based on a water balance model that accounts for precipitation, evapotranspiration, soil moisture, and runoff.

@@ -23,7 +23,7 @@ from typing import Any
 import numpy as np
 import pytest
 
-from climate_indices import eto, pm_eto
+from climate_indices.drought import eto, pm_eto
 from climate_indices.exceptions import InvalidArgumentError
 from tests import conftest
 

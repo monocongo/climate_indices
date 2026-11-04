@@ -2,12 +2,26 @@
 
 A Python scientific computing library that turns raw climate observations (precipitation, temperature) into standardized drought and moisture indices — SPI, SPEI, PNP, EDDI, and the Palmer family — via distribution fitting and statistical transformation. It also computes fire-weather indices, namespaced under the `fire` module, and wind- and solar-resource proxies under `energy`.
 
+## Application namespaces
+
+`climate_indices.drought` owns the drought, Palmer, and PET implementations.
+Its facade exposes the same typed NumPy/DataArray function objects as the package root,
+including `standardized_index` and `fit_diagnostics`, plus `HumidityInputs` and `RadiationInputs`.
+Generic standardization and PET remain here for now, even when other families use them.
+Shared services such as `compute`, `vocabulary`, and `lmoments` stay at the root.
+
+The canonical NumPy modules are `drought.indices` and `drought.palmer`.
+The old public module paths emit deprecation warnings in 3.x and are removed in 4.0.0.
+Old private `_palmer_*` paths have no aliases.
+See [ADR-0027](../../docs/adr/0027-drought-namespace-and-module-migration.md) for all nine module moves and the identity-alias contract.
+Application names determine ownership: KBDI stays in `fire`, and EDI stays in `flood`.
+
 ## Language
 
 ### Core concepts
 
 **Timescale**:
-The number of consecutive time steps (months, days, or hours) accumulated before an index is computed — e.g. a 6-month accumulation window produces "SPI-6." Public function parameters are spelled `scale` in code (`indices.py`, `compute.py`, `typed_public_api.py`); use "Timescale" in prose and documentation.
+The number of consecutive time steps (months, days, or hours) accumulated before an index is computed — e.g. a 6-month accumulation window produces "SPI-6." Public function parameters are spelled `scale` in code (`drought/indices.py`, `compute.py`, `typed_public_api.py`); use "Timescale" in prose and documentation.
 _Avoid_: Scale (fine as a code identifier, not as prose)
 
 **Periodicity**:
@@ -15,7 +29,7 @@ The calendar granularity of an input time series — `monthly` (12 values/year),
 _Avoid_: frequency (that is the pandas/xarray cadence string the adapter infers, not the enum)
 
 **Calibration Period**:
-The fixed span of years whose data defines "normal" — the distribution parameters (or, for PNP, the simple average) are fit only on this window, and all years (including years outside it) are then standardized against it. Enforced minimum is 30 years for a single-series in-memory input that contains NaNs; gridded in-memory and Dask-backed inputs are not preflighted, so sparse cells are fitted from the values that remain. The Python API spells the boundary years `calibration_year_initial`/`calibration_year_final`; `indices.percentage_of_normal` and the typed API also accept the older `calibration_start_year`/`calibration_end_year` keywords as deprecated aliases (removed in 4.0.0), and the `compute.py` internal helpers use that start/end spelling. The CLI's flags are `--calibration_start_year`/`--calibration_end_year` with `--calibration_year_initial`/`--calibration_year_final` aliases.
+The fixed span of years whose data defines "normal" — the distribution parameters (or, for PNP, the simple average) are fit only on this window, and all years (including years outside it) are then standardized against it. Enforced minimum is 30 years for a single-series in-memory input that contains NaNs; gridded in-memory and Dask-backed inputs are not preflighted, so sparse cells are fitted from the values that remain. The Python API spells the boundary years `calibration_year_initial`/`calibration_year_final`; `drought.indices.percentage_of_normal` and the typed API also accept the older `calibration_start_year`/`calibration_end_year` keywords as deprecated aliases (removed in 4.0.0), and the `compute.py` internal helpers use that start/end spelling. The CLI's flags are `--calibration_start_year`/`--calibration_end_year` with `--calibration_year_initial`/`--calibration_year_final` aliases.
 _Avoid_: Baseline period, reference period
 
 **Distribution / Distribution Fitting**:
@@ -62,7 +76,7 @@ _Avoid_: Percent of Normal Precipitation (this wording appears in the CF metadat
 
 **EDDI (Evaporative Demand Drought Index)**:
 A non-parametric drought index (NOAA PSL methodology) built from accumulated PET: values are ranked within each calendar period of the calibration window, ranks become cumulative probabilities, and probabilities become z-scores.
-EDDI is evaporative-demand drought (`climate_indices.eddi`); the distinct Effective Drought Index (EDI) uses effective precipitation in the flood family (`climate_indices.flood.edi`).
+EDDI is evaporative-demand drought (`climate_indices.drought.eddi`, also `climate_indices.eddi`); the distinct Effective Drought Index (EDI) uses effective precipitation in the flood family (`climate_indices.flood.edi`).
 
 ### Palmer family
 
@@ -80,7 +94,7 @@ A monthly moisture-anomaly index — the weighted difference between actual prec
 _Avoid_: Moisture anomaly index (informal synonym used in one comment; prefer Z-Index)
 
 **scPDSI (Self-calibrated Palmer Drought Severity Index)**:
-The Wells et al. (2004) self-calibrating variant of PDSI, which recalibrates duration factors and the K-prime (K′) climate characteristic per location instead of using fixed national constants. K-prime is distinct from the standard K-Factor defined below. It is available through the NumPy API as `palmer.scpdsi()` and through the CLI's `--index palmers` path, which writes it as `<output_file_base>_scpdsi.nc` alongside the four standard outputs.
+The Wells et al. (2004) self-calibrating variant of PDSI, which recalibrates duration factors and the K-prime (K′) climate characteristic per location instead of using fixed national constants. K-prime is distinct from the standard K-Factor defined below. It is available through the NumPy API as `drought.palmer.scpdsi()` and through the CLI's `--index palmers` path, which writes it as `<output_file_base>_scpdsi.nc` alongside the four standard outputs.
 
 **CAFEC (Climatically Appropriate For Existing Conditions)**:
 Per-calendar-month calibration coefficients (alpha, beta, gamma, delta) computed from calibration-period water-balance sums, representing the precipitation/moisture terms "appropriate" for that location's climate — actual conditions are compared against CAFEC to produce the Z-Index.

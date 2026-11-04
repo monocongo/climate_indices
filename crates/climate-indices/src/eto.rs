@@ -1,4 +1,4 @@
-//! Thornthwaite and Hargreaves PET kernels, mirroring `climate_indices.eto`.
+//! Thornthwaite and Hargreaves PET kernels, mirroring `climate_indices.drought.eto`.
 //!
 //! Both kernels are ports of the Python reference implementation, which stays
 //! the parity oracle: the same operation order, the same libm call sites, and
@@ -11,7 +11,7 @@ use ndarray::{Array1, Array2, Array3, ArrayView1, ArrayView2, ArrayView3};
 
 use crate::ClimateError;
 
-/// Days of each calendar month, for non-leap and leap years, as `eto.py` has them.
+/// Days of each calendar month, for non-leap and leap years, as `drought/eto.py` has them.
 const MONTH_DAYS_NONLEAP: [f64; 12] = [
     31.0, 28.0, 31.0, 30.0, 31.0, 30.0, 31.0, 31.0, 30.0, 31.0, 30.0, 31.0,
 ];
@@ -35,19 +35,19 @@ fn numpy_clip(value: f64, minimum: f64, maximum: f64) -> f64 {
     }
 }
 
-/// Solar declination, the port of `eto._solar_declination` (FAO-56 Eq 24).
+/// Solar declination, the port of `climate_indices.drought.eto._solar_declination` (FAO-56 Eq 24).
 fn solar_declination(day_of_year: f64) -> f64 {
     0.409 * (((2.0 * PI / 365.0) * day_of_year) - 1.39).sin()
 }
 
-/// Sunset hour angle, the port of `eto._sunset_hour_angle` (FAO-56 Eq 25).
+/// Sunset hour angle, the port of `climate_indices.drought.eto._sunset_hour_angle` (FAO-56 Eq 25).
 fn sunset_hour_angle(latitude_radians: f64, solar_declination_radians: f64) -> f64 {
     let cosine = -latitude_radians.tan() * solar_declination_radians.tan();
     numpy_clip(cosine, -1.0, 1.0).acos()
 }
 
 /// Mean daylight hours of each calendar month, the port of
-/// `eto._monthly_mean_daylight_hours`: one row per month, one column per cell.
+/// `climate_indices.drought.eto._monthly_mean_daylight_hours`: one row per month, one column per cell.
 fn monthly_mean_daylight_hours(latitude_radians: ArrayView1<'_, f64>, leap: bool) -> Array2<f64> {
     let month_days = if leap {
         MONTH_DAYS_LEAP
@@ -73,7 +73,7 @@ fn monthly_mean_daylight_hours(latitude_radians: ArrayView1<'_, f64>, leap: bool
     means
 }
 
-/// Thornthwaite (1948) monthly PET, the port of `eto.eto_thornthwaite`.
+/// Thornthwaite (1948) monthly PET, the port of `climate_indices.drought.eto.eto_thornthwaite`.
 ///
 /// `monthly_temps_celsius` is (years, 12, cells) with negative temperatures
 /// already clamped to zero, `latitude_radians` carries one latitude per cell,
@@ -196,7 +196,7 @@ pub fn thornthwaite(
     Ok(pet)
 }
 
-/// Hargreaves (1985) daily PET, the port of `eto.eto_hargreaves`.
+/// Hargreaves (1985) daily PET, the port of `climate_indices.drought.eto.eto_hargreaves`.
 ///
 /// The three daily blocks are (time, cells) in year-major 366-day order and
 /// `latitude_radians` carries one latitude per cell. Rows that no day of the

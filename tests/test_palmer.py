@@ -3,7 +3,7 @@ import os
 import numpy as np
 import pytest
 
-# Tests for `climate_indices.palmer.py`
+# Tests for `climate_indices.drought.palmer.py`
 ATOL = 5e-5
 RTOL = 0
 

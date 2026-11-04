@@ -5,7 +5,7 @@
 //! implementation's `get_Z_sum()`, `LeastSquares()`, `CalcDurFact()`, and
 //! `safe_percentile()`.
 //!
-//! The Python implementation in `climate_indices.self_calibration` stays the
+//! The Python implementation in `climate_indices.drought.self_calibration` stays the
 //! reference oracle; `tests/test_native_parity_palmer.py` checks this kernel
 //! against it at `rtol = atol = 1e-10`. Sign and window validation, the
 //! calibration-period slice, the short-record `InsufficientDataError`, and the
@@ -46,7 +46,7 @@ const PDSI_ANCHOR: f64 = 4.0;
 
 /// The 1-indexed `k`th smallest value, or NaN when `k` is out of range.
 ///
-/// Python: `self_calibration.kth_smallest`. The values carry no NaN; ties
+/// Python: `climate_indices.drought.self_calibration.kth_smallest`. The values carry no NaN; ties
 /// between `-0.0` and `0.0` may resolve to either zero, which no caller can
 /// tell apart.
 fn kth_smallest(values: &mut [f64], k: usize) -> f64 {
@@ -58,7 +58,7 @@ fn kth_smallest(values: &mut [f64], k: usize) -> f64 {
 
 /// The truncated-rank order statistic of the non-NaN values.
 ///
-/// Python: `self_calibration.nan_safe_percentile`, for a `fraction` Python has
+/// Python: `climate_indices.drought.self_calibration.nan_safe_percentile`, for a `fraction` Python has
 /// already checked lies in `[0, 1]`.
 ///
 /// # Numerical contract
@@ -84,7 +84,7 @@ pub fn nan_safe_percentile(values: &[f64], fraction: f64) -> f64 {
 
 /// The most extreme rolling sum that is not a freak anomaly.
 ///
-/// Python: `self_calibration._highest_reasonable`, only reached for wet spells.
+/// Python: `climate_indices.drought.self_calibration._highest_reasonable`, only reached for wet spells.
 fn highest_reasonable(sums: &[f64], spell: Spell) -> f64 {
     let sign = spell.sign();
     let threshold = nan_safe_percentile(sums, EXTREME_PERCENTILE);
@@ -111,7 +111,7 @@ fn highest_reasonable(sums: &[f64], spell: Spell) -> f64 {
 /// The representative extreme rolling Z sum for one window length, or `None`
 /// when the series never fills a window.
 ///
-/// Python: `self_calibration.extreme_z_sum`, including its subtract-then-add
+/// Python: `climate_indices.drought.self_calibration.extreme_z_sum`, including its subtract-then-add
 /// slide and the wet-only anomaly filter.
 fn extreme_z_sum(series: &[f64], window_length: usize, spell: Spell) -> Option<f64> {
     let sign = spell.sign();
@@ -158,7 +158,7 @@ fn degenerate(ss_x: f64, ss_y: f64) -> Result<(), ClimateError> {
 
 /// The reference's adaptive least-squares `(slope, intercept)`.
 ///
-/// Python: `self_calibration.least_squares_fit`, for its ten-point call.
+/// Python: `climate_indices.drought.self_calibration.least_squares_fit`, for its ten-point call.
 fn least_squares_fit(x: &[f64], y: &[f64], spell: Spell) -> Result<(f64, f64), ClimateError> {
     let sign = spell.sign();
     if !x.iter().chain(y).all(|v| v.is_finite()) {
@@ -221,7 +221,7 @@ fn least_squares_fit(x: &[f64], y: &[f64], spell: Spell) -> Result<(f64, f64), C
 
 /// The wet or dry duration factors `(m, b)` for one location.
 ///
-/// - Python source: `self_calibration.duration_factors`, with the
+/// - Python source: `climate_indices.drought.self_calibration.duration_factors`, with the
 ///   `extreme_z_sum`, `_highest_reasonable`, `nan_safe_percentile`,
 ///   `kth_smallest`, and `least_squares_fit` it calls.
 /// - Inputs: `z`, the calibration-period Z-index series; NaN is missing.

@@ -14,7 +14,8 @@ from pathlib import Path
 
 import numpy as np
 
-from climate_indices import compute, indices
+from climate_indices import compute
+from climate_indices.drought import indices
 
 _DOC = Path(__file__).resolve().parents[1] / "docs" / "standardized-hydrologic-indices.md"
 _START_YEAR = 1981

@@ -4,7 +4,8 @@ from unittest import mock
 import numpy as np
 import pytest
 
-from climate_indices import compute, indices
+from climate_indices import compute
+from climate_indices.drought import indices
 from climate_indices.exceptions import DataShapeError, InvalidArgumentError
 
 # disable logging messages

@@ -40,4 +40,5 @@ decision stands; the record's text was corrected in place), or
 0024-beta-distribution-for-bounded-series
 0025-kbdi-complete-input-fast-path
 0026-reliability-module-api-and-conventions
+0027-drought-namespace-and-module-migration
 ```

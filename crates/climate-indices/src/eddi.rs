@@ -5,7 +5,7 @@
 //! J. Hydrometeorology, doi:10.1175/JHM-D-15-0121.1, and Abramowitz & Stegun
 //! (1965), eq. 26.2.23, the approximation the NOAA PSL Fortran reference uses.
 //!
-//! The Python implementation in `climate_indices.indices` stays the reference
+//! The Python implementation in `climate_indices.drought.indices` stays the reference
 //! oracle; `tests/test_native_parity.py` checks these kernels against it at
 //! `rtol = atol = 1e-10` with identical NaN positions. Validation,
 //! calibration-period resolution, the leading-scale-pad mask, the unfolding to
@@ -16,7 +16,7 @@ use ndarray::{Array2, ArrayView1, ArrayView2, Zip};
 
 use crate::ClimateError;
 
-// Abramowitz & Stegun (1965) 26.2.23, digit for digit from `indices._HASTINGS_*`.
+// Abramowitz & Stegun (1965) 26.2.23, digit for digit from `climate_indices.drought.indices._HASTINGS_*`.
 const HASTINGS_C0: f64 = 2.515517;
 const HASTINGS_C1: f64 = 0.802853;
 const HASTINGS_C2: f64 = 0.010328;
@@ -30,7 +30,7 @@ const HASTINGS_D3: f64 = 0.001308;
 /// # Numerical contract
 ///
 /// - Python source: the rank count and `probabilities = ...` lines of the
-///   per-period loop in `indices.eddi`. Rust has no equivalent of Python's
+///   per-period loop in `climate_indices.drought.indices.eddi`. Rust has no equivalent of Python's
 ///   `_EDDI_RANK_COMPARISON_ELEMENT_BUDGET` chunking: the result is the same
 ///   whichever cells a chunk holds, so this walks every column in one pass.
 /// - Inputs: `climatology`, shaped (climatology years, columns), and `values`,
@@ -108,7 +108,7 @@ pub fn tukey_probabilities(
 }
 
 /// Abramowitz & Stegun (1965) 26.2.23, the inverse normal approximation EDDI
-/// uses, matching `indices._hastings_inverse_normal` and the NOAA PSL Fortran.
+/// uses, matching `climate_indices.drought.indices._hastings_inverse_normal` and the NOAA PSL Fortran.
 ///
 /// # Numerical contract
 ///

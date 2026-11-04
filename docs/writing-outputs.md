@@ -49,7 +49,7 @@ block to disk instead of collecting the whole grid in the client process.
 import xarray as xr
 
 from climate_indices import spi
-from climate_indices.indices import Distribution
+from climate_indices.drought.indices import Distribution
 
 
 def main() -> None:
@@ -103,7 +103,7 @@ import icechunk
 
 from climate_indices import spi
 from climate_indices.icechunk_io import open_icechunk, write_icechunk
-from climate_indices.indices import Distribution
+from climate_indices.drought.indices import Distribution
 
 input_repo = icechunk.Repository.open(
     icechunk.local_filesystem_storage("prepared_input.icechunk")

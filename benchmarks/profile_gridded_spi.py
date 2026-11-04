@@ -34,7 +34,7 @@ import xarray as xr
 
 from climate_indices import spi
 from climate_indices.compute import Periodicity
-from climate_indices.indices import Distribution
+from climate_indices.drought.indices import Distribution
 
 REFERENCE_LAT = 38
 REFERENCE_LON = 87

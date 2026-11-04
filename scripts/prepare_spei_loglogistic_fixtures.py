@@ -11,7 +11,7 @@ inputs of three CONUS climate divisions and against a short, highly skewed
 synthetic series, and commits the R ``SPEI`` package's log-logistic
 standardized index (``distribution = "log-Logistic"``, ``fit = "ub-pwm"``) as
 the cross-implementation reference for this library's
-``indices.Distribution.loglogistic``.
+``climate_indices.drought.indices.Distribution.loglogistic``.
 
 This script must be run manually when refreshing the reference data:
 
@@ -22,7 +22,7 @@ committed fixtures, not this script, are what the test suite loads, so CI does
 not need R.
 
 Both sides fit the identical scaled series: the script passes the R script the
-``(P − PET) + 1000`` water balance -- the same ``+1000`` offset ``indices.spei``
+``(P − PET) + 1000`` water balance -- the same ``+1000`` offset ``climate_indices.drought.indices.spei``
 applies internally -- so the comparison isolates the distribution fit from the
 scaling and offsetting steps. Because the GLO is a location family, the offset
 cancels in the standardized values; only the ``loc`` parameter carries it.
@@ -76,7 +76,7 @@ _DATA_END_YEAR = 2022
 _N_MONTHS = (_DATA_END_YEAR - _DATA_START_YEAR + 1) * 12
 _INPUT_OFFSET = (_DATA_START_YEAR - _PALMER_INPUT_START_YEAR) * 12
 
-# the +1000 mm offset indices.spei adds to the (P - PET) water balance before
+# the +1000 mm offset climate_indices.drought.indices.spei adds to the (P - PET) water balance before
 # scaling; passing it to SPEI keeps the two implementations fitting the same series
 _WATER_BALANCE_OFFSET_MM = 1000.0
 
@@ -101,7 +101,7 @@ def _load_temps_fahrenheit(division_id: str) -> np.ndarray:
 
 def _environmental_inputs(division: dict) -> tuple[np.ndarray, np.ndarray]:
     """Precipitation (mm) and Thornthwaite PET (mm) for 1901-2022."""
-    from climate_indices import eto
+    from climate_indices.drought import eto
 
     precip_inches = np.load(PALMER_ROOT / division["id"] / "precips.npy").astype(np.float64)[
         _INPUT_OFFSET : _INPUT_OFFSET + _N_MONTHS
@@ -237,7 +237,7 @@ def main() -> int:
     division_series: dict[str, np.ndarray] = {}
     for division in divisions:
         precip_mm, pet_mm = _environmental_inputs(division)
-        # mirror indices.spei's negative-precipitation clip before the water balance
+        # mirror climate_indices.drought.indices.spei's negative-precipitation clip before the water balance
         precip_mm = np.clip(precip_mm, 0.0, None)
         division_series[f"d{division['id']}"] = (precip_mm - pet_mm) + _WATER_BALANCE_OFFSET_MM
     synthetic_precip, synthetic_pet = _synthetic_inputs()
@@ -311,7 +311,7 @@ def main() -> int:
                 "(TLMoments::PWM + lmom::pelglo), the estimator lmoments.fit_glo implements, so the fitted "
                 "parameters and the standardized series agree to machine precision (series ~1e-12, "
                 "parameters <=~1e-10); the recorded tolerances absorb only cross-platform numerical "
-                "wobble. The R input is the (P - PET) + 1000 water balance indices.spei builds "
+                "wobble. The R input is the (P - PET) + 1000 water balance climate_indices.drought.indices.spei builds "
                 "internally, so both sides fit the identical scaled series; the offset cancels in the "
                 "standardized values. SPEI does not clip to the [-3.09, 3.09] range this library enforces, "
                 "so the comparison covers finite values inside that range and asserts this library's clip "

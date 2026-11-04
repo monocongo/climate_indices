@@ -2,7 +2,7 @@
 //!
 //! Every array argument must be a float64 ndarray in the layout the matching
 //! kernel documents: monthly arrays `(n_years, 12, n_cells)`, monthly
-//! coefficients `(12, n_cells)`. `palmer.py` reshapes to and from these.
+//! coefficients `(12, n_cells)`. `drought/palmer.py` reshapes to and from these.
 
 use numpy::ndarray::{CowArray, Ix2, Ix3};
 use numpy::{
@@ -269,7 +269,7 @@ fn palmer_wells<'py>(
 }
 
 /// scPDSI duration factors `(m, b)` for a calibration Z series; `sign` is
-/// `self_calibration.WET_SIGN` (1) or `DRY_SIGN` (-1).
+/// `climate_indices.drought.self_calibration.WET_SIGN` (1) or `DRY_SIGN` (-1).
 #[pyfunction]
 fn scpdsi_duration_factors(
     py: Python<'_>,

@@ -10,7 +10,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from climate_indices import ClimateIndicesError, compute, indices
+from climate_indices import ClimateIndicesError, compute
+from climate_indices.drought import indices
 from climate_indices.exceptions import InsufficientDataError, InvalidArgumentError
 
 
