@@ -108,12 +108,20 @@ def test_from_package_import_form_resolves_the_alias(name: str) -> None:
     assert getattr(package, short) is importlib.import_module(f"climate_indices.drought.{short}")
 
 
-def test_old_pickle_records_still_load_through_the_alias() -> None:
-    """A pickle naming climate_indices.indices still loads (vocabulary keeps __module__)."""
+def test_new_pickles_avoid_the_deprecated_alias(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pickling Distribution names the canonical path without importing the alias.
+
+    test_vocabulary covers old records that name climate_indices.indices.
+    """
     from climate_indices.vocabulary import Distribution
 
-    payload = pickle.dumps(Distribution.gamma)
-    assert b"climate_indices.indices" in payload
+    monkeypatch.delitem(sys.modules, "climate_indices.indices", raising=False)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ClimateIndicesDeprecationWarning)
+        payload = pickle.dumps(Distribution.gamma)
+
+    assert b"climate_indices.drought.indices" in payload
+    assert "climate_indices.indices" not in sys.modules
     # payload was produced by pickle.dumps above, not untrusted input
     assert pickle.loads(payload) is Distribution.gamma  # pi-lens-ignore: python-insecure-deserialization
 

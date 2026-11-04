@@ -25,15 +25,17 @@ def test_indices_reexports_distribution() -> None:
 @pytest.mark.parametrize("name", ["pearson", "gamma", "loglogistic", "empirical", "beta"])
 def test_distribution_legacy_pickle_and_metadata(name: str) -> None:
     member = vocabulary.Distribution[name]
-    # Protocol-0 payloads captured before the move also pin the serialized module path.
+    # Protocol-0 payloads captured before the move still load; new payloads name the canonical path.
     legacy = f"cclimate_indices.indices\nDistribution\np0\n(V{name}\np1\ntp2\nRp3\n.".encode()
     assert pickle.loads(legacy) is member
-    assert pickle.dumps(member, protocol=0) == legacy
+    assert pickle.dumps(member, protocol=0) == legacy.replace(
+        b"climate_indices.indices", b"climate_indices.drought.indices"
+    )
     assert pickle.loads(pickle.dumps(member)) is member
     assert member.value == name
     assert member.display_name == ("log-logistic" if name == "loglogistic" else name)
     assert repr(member) == f"<Distribution.{name}: '{name}'>"
-    assert type(member).__module__ == "climate_indices.indices"
+    assert type(member).__module__ == "climate_indices.drought.indices"
 
 
 @pytest.mark.parametrize(
