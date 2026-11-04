@@ -87,7 +87,11 @@ def fitting() -> None:
         ]
     )
     alphas, betas = compute.gamma_parameters(calibration.copy(), 2000, 2000, 2009, compute.Periodicity.monthly)
-    # The pinned estimator predates #1562; exclude the zero mass explicitly.
+    # Masking the zero mass before the fit keeps this expectation independent of the
+    # production zero handling: the same file also runs at the pinned revision, whose
+    # estimator predates #1562 and would otherwise fit the zeros into loc, scale, and
+    # skew. Re-running it here therefore cannot detect a revert of the Python-side
+    # exclusion; tests/test_pearson_zero_mass.py is what pins that behaviour.
     nonzero_calibration = np.where(calibration == 0, np.nan, calibration)
     _, locs, scales, skews, failed = compute._pearson_parameters_spatial(nonzero_calibration)
     _, _, _, valid = lmoments.fit_spatial(nonzero_calibration)

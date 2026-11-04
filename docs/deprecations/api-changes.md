@@ -36,8 +36,17 @@ Pearson parameters to use the correction. A constant non-zero sample now fails
 the continuous fit, even if zeros are present. The existing failure and
 gamma-fallback rules apply; the minimum remains four non-zero values.
 
-The shared correction also affects Pearson SPEI if its offset series contains
-exact zeros. Gamma fitting and the zero/trace transform rules do not change.
+SPEI is effectively unaffected: its input is offset by 1000 mm before fitting, so an
+exact zero offset needs a contrived precipitation/PET pair (ADR-0015). Where one does
+occur, the same correction applies to the Pearson fit. Gamma fitting and the
+zero/trace transform rules do not change.
+
+One consequence is worth knowing when reading a corrected fit. A non-zero calibration
+value at or below the fitted lower support limit still takes the zero/trace score, as
+the support-limit mask did before this correction (ADR-0015). Excluding the zeros can
+place that limit above the smallest non-zero value where the zero-inclusive fit put it
+below zero, so a small non-zero value can share the zero score. Fit diagnostics flag
+the step as a poor fit; the mask's precedence is unchanged.
 
 SPAI is the exception. Its pooled Pearson option has no probability of zero, so
 it fits every pooled anomaly value, exact zeros included, and is unchanged by

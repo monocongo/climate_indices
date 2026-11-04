@@ -1,5 +1,7 @@
 """Pearson fits exclude the zero mass from the continuous component (#1562)."""
 
+import warnings
+
 import numpy as np
 import pytest
 from scipy import stats
@@ -88,17 +90,92 @@ def test_fitted_location_is_the_nonzero_sample_mean(monkeypatch: pytest.MonkeyPa
     assert not np.allclose(locs, np.nanmean(values, axis=0), rtol=1e-3, atol=1e-3)
 
 
+def test_a_zero_skew_fit_has_an_unbounded_support() -> None:
+    # A zero skew is the normal limit, so both support limits must stay disabled
+    # without the 0/0 floating-point warnings the raw formula raises.
+    skews = np.array([0.0, 0.5, -0.5, np.nan])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        limits = compute._minimum_possible(skews, np.full(4, 2.5), np.ones(4))
+    assert limits[0] == -np.inf
+    assert np.isfinite(limits[1]) and np.isfinite(limits[2])
+    assert np.isnan(limits[3])
+
+
+def test_a_symmetric_nonzero_component_transforms_without_warnings() -> None:
+    # Every calendar month keeps the same symmetric non-zero component, so tau_3 = 0
+    # and the fit is valid everywhere: the only support-limit edge in play is skew == 0.
+    values = np.zeros((30, 12))
+    values[:4, :] = np.array([1.0, 2.0, 3.0, 4.0])[:, None]
+    probabilities_of_zero, locs, scales, skews = compute.pearson_parameters(
+        values, 2000, 2000, 2029, compute.Periodicity.monthly
+    )
+    np.testing.assert_array_equal(skews, 0.0)
+    np.testing.assert_allclose(locs, 2.5, rtol=1e-12, atol=1e-12)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        pit = compute.transform_fitted_pearson(
+            values,
+            2000,
+            2000,
+            2029,
+            compute.Periodicity.monthly,
+            output_scale="probability",
+            probabilities_of_zero=probabilities_of_zero,
+            locs=locs,
+            scales=scales,
+            skews=skews,
+        )
+    # Rows 0-3 hold 1.0-4.0 and row 4 is a zero, which keeps the whole mass at p0.
+    # The non-zero rows are the normal limit's CDF, mixed in above that mass.
+    p0 = 26 / 30
+    scale = 5 / 6 * np.sqrt(np.pi)
+    np.testing.assert_allclose(pit[4, 0], p0, rtol=0, atol=1e-12)
+    for row, value in ((0, 1.0), (3, 4.0)):
+        expected = p0 + (1 - p0) * stats.norm.cdf((value - 2.5) / scale)
+        np.testing.assert_allclose(pit[row, 0], expected, rtol=1e-12, atol=1e-12)
+
+
+def test_spai_pooled_pearson_fit_keeps_exact_zeros() -> None:
+    # SPAI has no probability of zero, so its pooled fit keeps every anomaly value.
+    # This is the exception the zero-mass correction documents.
+    pooled = np.array([[-2.0], [0.0], [0.0], [1.0], [2.0], [3.0]])
+    params = indices._fit_pearson_or_normal(pooled)
+    assert float(params["loc"][0]) == float(pooled.mean())
+    assert float(params["loc"][0]) != float(pooled[pooled != 0].mean())
+
+
+def test_series_fit_treats_masked_values_as_missing() -> None:
+    rng = np.random.default_rng(5)
+    values = rng.gamma(2.0, 30.0, (12, 12)) + 1.0
+    mask = np.zeros(values.shape, dtype=bool)
+    mask[0, 5] = True
+    mask[3, 2] = True
+    _, locs, _, _ = compute.pearson_parameters(
+        np.ma.array(values, mask=mask), 2000, 2000, 2011, compute.Periodicity.monthly
+    )
+    # The first L-moment is the sample mean of the values the fit kept.
+    kept = np.where(mask, np.nan, values)
+    np.testing.assert_allclose(locs, np.nanmean(kept, axis=0), rtol=1e-12, atol=1e-12)
+
+
 @pytest.mark.parametrize("dtype", ["int64", "float64"])
-def test_spatial_fit_keeps_masked_values_out_of_the_sample(dtype: str) -> None:
-    sample = np.array([0, 0, 999, 1, 2, 3, 4, 5, 6, 7], dtype=dtype)
+@pytest.mark.parametrize("sentinel", [999.0, 0.0])
+def test_spatial_fit_keeps_masked_values_out_of_the_sample(dtype: str, sentinel: float) -> None:
+    # A masked value is missing in both counts, wherever it sits and whatever it holds:
+    # the 0.0 sentinel is the only case where a mask changes the zero count.
+    sample = np.array([0, 0, sentinel, 1, 2, 3, 4, 5, 6, 7], dtype=dtype)
     values = np.tile(sample[:, None, None], (1, 12, 2))
-    masked = np.ma.array(values, mask=values == 999)
-    _, locs, scales, skews, failed = compute._pearson_parameters_spatial(masked)
+    mask = np.zeros(values.shape, dtype=bool)
+    mask[2, :, :] = True
+    masked = np.ma.array(values, mask=mask)
+    probabilities_of_zero, locs, scales, skews, failed = compute._pearson_parameters_spatial(masked)
     assert failed == 0
+    np.testing.assert_allclose(probabilities_of_zero, 2 / 9, rtol=0, atol=1e-12)
     for result, expected in zip((locs, scales, skews), (4.0, 4 / 3 * np.sqrt(np.pi), 0.0), strict=True):
         np.testing.assert_allclose(result, expected, rtol=1e-12, atol=1e-12)
     np.testing.assert_array_equal(masked.data, values)
-    np.testing.assert_array_equal(masked.mask, values == 999)
+    np.testing.assert_array_equal(np.ma.getmaskarray(masked), mask)
 
 
 @pytest.mark.parametrize("spatial", [False, True])
@@ -108,18 +185,16 @@ def test_spi_uses_the_conditional_nonzero_cdf(monkeypatch: pytest.MonkeyPatch, s
     values = np.tile(sample[:, None], (1, 12)).ravel()
     if spatial:
         values = np.repeat(values[:, None, None], 2, axis=-1)
-    # The support-limit formula divides by zero at the normal limit (skew == 0).
-    with np.errstate(divide="ignore", invalid="ignore"):
-        actual = indices.spi(
-            values,
-            1,
-            indices.Distribution.pearson,
-            2000,
-            2000,
-            2008,
-            compute.Periodicity.monthly,
-            output_scale="probability",
-        )
+    actual = indices.spi(
+        values,
+        1,
+        indices.Distribution.pearson,
+        2000,
+        2000,
+        2008,
+        compute.Periodicity.monthly,
+        output_scale="probability",
+    )
     # The nonzero sample is symmetric, so Pearson III reduces to this normal CDF.
     expected = 2 / 9 + 7 / 9 * stats.norm.cdf((values - 4) / (4 / 3 * np.sqrt(np.pi)))
     expected[values == 0] = 2 / 9

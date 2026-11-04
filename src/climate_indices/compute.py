@@ -603,6 +603,10 @@ def calculate_time_step_params(time_step_values: np.ndarray) -> tuple[float, flo
     :raises InsufficientDataError: When there are too few non-zero values
     :raises PearsonFittingError: When L-moments computation fails
     """
+    # a mask is a missing marker here, as it is in the cell-axis fit
+    if np.ma.isMaskedArray(time_step_values):
+        time_step_values = np.ma.filled(time_step_values.astype(float), np.nan)
+
     number_of_zeros, number_of_non_missing = utils.count_zeros_and_non_missings(time_step_values)
     non_zero_count = number_of_non_missing - number_of_zeros
 
@@ -829,12 +833,16 @@ def _minimum_possible(
     :return:
     """
 
-    alpha = 4.0 / (skew * skew)
+    # A zero skew is the normal limit, whose support is the whole real line, and the
+    # expressions below are 0/0 there. Give that case the infinite limit it implies,
+    # so both support-limit masks stay disabled without floating-point warnings.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        alpha = 4.0 / (skew * skew)
 
-    # calculate the lowest possible value that will
-    # fit the distribution (i.e. Z = 0)
-    result: np.ndarray = loc - ((alpha * scale * skew) / 2.0)
-    return result
+        # calculate the lowest possible value that will
+        # fit the distribution (i.e. Z = 0)
+        result: np.ndarray = loc - ((alpha * scale * skew) / 2.0)
+    return np.where(skew == 0.0, -np.inf, result)
 
 
 def _pearson_output_from_probabilities(

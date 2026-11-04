@@ -49,7 +49,10 @@ Unusable Pearson and GLO fits retain zero parameters and an exact false validity
 
 - `compute.gamma_parameters` supplies gamma alpha and beta.
 - `compute._pearson_parameters_spatial` supplies Pearson locations, scales, and skews.
-  The generator excludes exact zeros before calling the pinned estimator, which predates the correction in #1562.
+  The generator excludes exact zeros before calling the pinned estimator, which predates
+  the correction in #1562. That masking keeps the expectation independent of the production
+  zero handling and lets the same generator run at the pinned revision, so it does not
+  detect a revert of the Python-side exclusion; `tests/test_pearson_zero_mass.py` does.
   `lmoments.fit_spatial` on that non-zero sample and the four-nonzero-observation guard supply its validity mask.
   Zero probabilities use the original sample's zero counts divided by its non-missing counts; invalid fits retain zero probabilities.
   The zero-mass column has `p0 = 1/3` and location `35/6`, checked independently in the generator.

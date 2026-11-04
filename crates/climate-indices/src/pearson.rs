@@ -383,6 +383,43 @@ mod tests {
     }
 
     #[test]
+    fn fit_of_a_skewed_sample_ignores_its_zero_mass_and_missing_values() {
+        // The same skewed column as `fit_matches_the_python_oracle_on_each_branch`,
+        // with exact zeros and a NaN added: the zero mass changes, the fit does not.
+        // The reference values are that test's independent oracle values, and
+        // loc is the mean of the retained values, 102 / 10.
+        let sample = array![
+            [0.0],
+            [-0.0],
+            [f64::NAN],
+            [1.0],
+            [1.0],
+            [1.0],
+            [2.0],
+            [2.0],
+            [3.0],
+            [4.0],
+            [8.0],
+            [20.0],
+            [60.0]
+        ];
+        let fit = pearson_parameters(sample.view());
+        assert!(fit.valid[0]);
+        assert_eq!(fit.probabilities_of_zero[0], 2.0 / 12.0);
+        let expected = [
+            ("loc", fit.locs[0], 10.2),
+            ("scale", fit.scales[0], 26.672_309_243_115_933),
+            ("skew", fit.skews[0], 5.910_576_578_609_104),
+        ];
+        for (name, actual, wanted) in expected {
+            assert!(
+                (actual - wanted).abs() <= 1e-13 * wanted.abs(),
+                "{name} = {actual:e}, expected {wanted:e}"
+            );
+        }
+    }
+
+    #[test]
     fn fit_rejects_a_column_with_too_few_non_missing_values() {
         let sample = array![[1.0], [f64::NAN], [2.0], [3.0], [f64::NAN], [f64::NAN]];
         assert!(!pearson_parameters(sample.view()).valid[0]);
