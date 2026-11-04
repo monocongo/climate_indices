@@ -5,7 +5,8 @@
 Amended by {doc}`0027-drought-namespace-and-module-migration` (#1555):
 the NumPy core now lives in `climate_indices.drought.indices`.
 The drought facade exposes the same typed `standardized_index` and `fit_diagnostics` objects as the root.
-The generic functions remain here for now; their metadata and contracts do not change.
+The generic functions remain here for now; their CF metadata and API contracts do not change.
+New provenance records name their canonical `climate_indices.drought.indices` implementation path.
 Current short `indices` references below name `drought.indices`.
 
 Amended by #1061: the DataArray standardization and diagnostic APIs are Stable
