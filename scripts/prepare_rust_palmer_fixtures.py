@@ -32,7 +32,9 @@ SOURCES = (
 )
 
 # The Python revision the checked-in values were generated from. A change to any
-# listed source file is a regeneration decision: review it, then update this.
+# source under src/climate_indices is a regeneration decision: review it, then
+# update this. The guard covers the package directory rather than the module paths
+# in SOURCES, because a module move changes those paths.
 SOURCE_REVISION = "f4cb938eb622a3ddf8b96c129337e0ebecd4121e"
 
 
@@ -41,9 +43,11 @@ SOURCE_REVISION = "f4cb938eb622a3ddf8b96c129337e0ebecd4121e"
 def generate() -> None:
     """Write deterministic golden values without importing the native extension."""
     # The guard must precede the imports: a changed checkout executes them on import.
-    paths = [f"src/climate_indices/{name}" for name in SOURCES]
     subprocess.run(
-        ["git", "diff", "--exit-code", SOURCE_REVISION, "--", *paths], cwd=ROOT, check=True, capture_output=True
+        ["git", "diff", "--exit-code", SOURCE_REVISION, "--", "src/climate_indices"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
     )
 
     from climate_indices import compute
