@@ -9,7 +9,7 @@ Cargo only reads the checked-in text fixture and never runs this script.
 from __future__ import annotations
 
 import platform
-import subprocess
+import subprocess  # nosec B404 # runs only git, with literal arguments and no shell
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -46,9 +46,10 @@ def generate() -> None:
     for name in SOURCES:
         path = f"src/climate_indices/{name}"
         pinned = f"{SOURCE_REVISION}:{path}"
-        if subprocess.run(["git", "cat-file", "-e", pinned], cwd=ROOT, capture_output=True).returncode != 0:
+        # Git is the operator's PATH binary; the arguments are literals and no shell runs.
+        if subprocess.run(["git", "cat-file", "-e", pinned], cwd=ROOT, capture_output=True).returncode != 0:  # nosec B603 B607
             pinned = f"{SOURCE_REVISION}:src/climate_indices/{name.removeprefix('drought/')}"
-        subprocess.run(["git", "diff", "--exit-code", pinned, "--", path], cwd=ROOT, check=True, capture_output=True)
+        subprocess.run(["git", "diff", "--exit-code", pinned, "--", path], cwd=ROOT, check=True, capture_output=True)  # nosec B603 B607
 
     from climate_indices import compute
     from climate_indices.drought import palmer, self_calibration
