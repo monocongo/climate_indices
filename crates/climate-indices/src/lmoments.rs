@@ -21,8 +21,8 @@ pub(crate) const MIN_VALUES: usize = 4;
 ///   scratch buffer the caller reuses across columns, so a block of columns
 ///   allocates once.
 /// - Outputs: `[lambda_1, lambda_2, tau_3]`, with `tau_3 = lambda_3 / lambda_2`.
-/// - Zero semantics: zeros are ordinary sample values; the Pearson Type III
-///   fit's separate zero mass and minimum non-zero count are applied by the caller.
+/// - Zero semantics: zeros are ordinary sample values here. The Pearson Type III
+///   caller excludes them and applies its separate zero mass and minimum non-zero count.
 /// - NaN semantics: NaN is missing and excluded.
 /// - Short series / invalid input: fewer than [`MIN_VALUES`] non-missing
 ///   values, or a zero second sum (for example a constant sample), gives `None`;

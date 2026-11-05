@@ -33,9 +33,10 @@ calibration step's `p0` to 0, and Pearson
 support-limit masking can override the score. A spike is expected where
 `prob_zero` is high.
 The KS test excludes zero and missing calibration values; `n_valid` counts the
-non-zero values entering that test. Its p-values use the same calibration record
-as the fit (which also includes zeros for Pearson), so `p < 0.05` flags a fit to
-investigate, not a calibrated hypothesis test or proof that Pearson is better.
+non-zero values entering that test. Both distributions fit those same non-zero
+values, so the p-value assesses the fit's own estimation sample. A `p < 0.05`
+flags a fit to investigate, not a calibrated hypothesis test or proof that
+Pearson is better.
 Check `distribution_used` before attributing a Pearson result to Pearson: a
 failed Pearson fit can fall back to gamma for a spatial block. Missing p-values
 mean the KS test could not assess the fit.

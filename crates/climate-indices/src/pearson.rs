@@ -75,7 +75,7 @@ fn fit_column(column: ArrayView1<'_, f64>, sorted: &mut Vec<f64>) -> Option<[f64
         0.0
     };
 
-    let [loc, second, skewness] = sample_lmoments(column, sorted)?;
+    let [loc, second, skewness] = sample_lmoments(column.iter().filter(|&&x| x != 0.0), sorted)?;
     let t3 = skewness.abs();
     // negated so that a NaN L-moment is invalid
     if !(second > 0.0 && t3 < 1.0) {
@@ -116,7 +116,7 @@ fn fit_column(column: ArrayView1<'_, f64>, sorted: &mut Vec<f64>) -> Option<[f64
 ///   (and grid cell), already restricted to the calibration years.
 /// - Outputs: a [`PearsonFit`] with one value per column.
 /// - Zero semantics: zeros count toward the probability of zero, `zeros /
-///   non-missing`, and stay in the L-moment sample, as in Python.
+///   non-missing`, but are excluded from the continuous L-moment sample, as in Python.
 /// - NaN semantics: NaN is missing. A column with fewer than four non-zero
 ///   values, fewer than four non-missing values, a non-positive second
 ///   L-moment, or `|tau_3| >= 1` (or a NaN there) is invalid.
@@ -357,6 +357,66 @@ mod tests {
         assert_eq!(fit.probabilities_of_zero[1], 2.0 / 6.0);
         // invalid columns keep zero parameters
         assert_eq!((fit.locs[0], fit.scales[0], fit.skews[0]), (0.0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn fit_excludes_the_zero_mass_from_the_continuous_sample() {
+        let sample = array![
+            [0.0, 0.0],
+            [-0.0, 0.0],
+            [f64::NAN, f64::NAN],
+            [1.0, 2.0],
+            [2.0, 2.0],
+            [3.0, 2.0],
+            [4.0, 2.0],
+        ];
+        let fit = pearson_parameters(sample.view());
+        assert!(fit.valid[0]);
+        assert_eq!(fit.probabilities_of_zero[0], 2.0 / 6.0);
+        assert_eq!(fit.locs[0], 2.5);
+        assert_eq!(fit.skews[0], 0.0);
+        // The symmetric sample 1..=4 has lambda_2 = 5/6.
+        assert!((fit.scales[0] - 5.0 / 6.0 * PI.sqrt()).abs() < 1e-14);
+        assert!(!fit.valid[1], "the non-zero sample is constant");
+        assert_eq!(fit.probabilities_of_zero[1], 0.0);
+        assert_eq!((fit.locs[1], fit.scales[1], fit.skews[1]), (0.0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn fit_of_a_skewed_sample_ignores_its_zero_mass_and_missing_values() {
+        // The same skewed column as `fit_matches_the_python_oracle_on_each_branch`,
+        // with exact zeros and a NaN added: the zero mass changes, the fit does not.
+        // The reference values are that test's independent oracle values, and
+        // loc is the mean of the retained values, 102 / 10.
+        let sample = array![
+            [0.0],
+            [-0.0],
+            [f64::NAN],
+            [1.0],
+            [1.0],
+            [1.0],
+            [2.0],
+            [2.0],
+            [3.0],
+            [4.0],
+            [8.0],
+            [20.0],
+            [60.0]
+        ];
+        let fit = pearson_parameters(sample.view());
+        assert!(fit.valid[0]);
+        assert_eq!(fit.probabilities_of_zero[0], 2.0 / 12.0);
+        let expected = [
+            ("loc", fit.locs[0], 10.2),
+            ("scale", fit.scales[0], 26.672_309_243_115_933),
+            ("skew", fit.skews[0], 5.910_576_578_609_104),
+        ];
+        for (name, actual, wanted) in expected {
+            assert!(
+                (actual - wanted).abs() <= 1e-13 * wanted.abs(),
+                "{name} = {actual:e}, expected {wanted:e}"
+            );
+        }
     }
 
     #[test]
