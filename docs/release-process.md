@@ -46,7 +46,8 @@ namespace and never publishes to PyPI.
    Also reconcile the install instructions: when this release changes an optional
    extra or a dependency pin, update `README.md` and the docs that quote the install
    command, and replace any "install from a checkout" note with the PyPI command
-   once the new metadata is what PyPI will serve. If `README.md` changes, run
+   once the new metadata is what PyPI will serve. If any changed file is listed in
+   `SUMMARY_FILES` or `FULL_FILES` in `scripts/generate_llms_txt.py`, run
    `uv run scripts/generate_llms_txt.py` and commit `llms.txt` and `llms-full.txt`.
 7. Run validation locally.
 8. Open a PR into `main`.
