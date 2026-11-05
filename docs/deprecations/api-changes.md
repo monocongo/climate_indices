@@ -77,6 +77,45 @@ outputs retain the existing `calibration_start_year`/`calibration_end_year`
 attributes alongside the canonical names; their history entry still records the
 timescale, not calibration years. No numerical behavior changes.
 
+## Pearson zero-mass correction after 3.2.0
+
+This correction is pending release and applies to both the Python library and
+`pearson::pearson_parameters` in the standalone Rust crate (#1562).
+
+Pearson Type III fitting now excludes exact zeros from the continuous L-moment
+sample. The Probability of Zero still uses all non-missing Calibration Period
+values. Previously, zeros entered the continuous fit and the transform added
+their probability again. This biased non-zero SPI values toward wet conditions.
+
+Refitting data with calibration zeros changes Pearson SPI and
+`standardized_index()` output under every `zero_handling` mode. Fits without
+zeros and supplied `fitting_params` retain their behavior. Recompute saved
+Pearson parameters to use the correction. A constant non-zero sample now fails
+the continuous fit, even if zeros are present. The existing failure and
+gamma-fallback rules apply; the minimum remains four non-zero values.
+
+SPEI is effectively unaffected: its input is offset by 1000 mm before fitting, so an
+exact zero offset needs a contrived precipitation/PET pair (ADR-0015). Where one does
+occur, the same correction applies to the Pearson fit. Gamma fitting and the
+zero/trace transform rules do not change.
+
+One consequence is worth knowing when reading a corrected fit. A non-zero calibration
+value at or below the fitted lower support limit is still pinned to the support
+boundary, as the support-limit mask did before this correction (ADR-0015). On the
+normal scale the boundary CDF sentinel is 0.0005; on the probability scales it is 0.
+Excluding the zeros can place that limit above the smallest non-zero value where the
+zero-inclusive fit put it below zero, so a small non-zero value can score close to a
+zero. Only values below 0.0005 are zero or trace values, so `center_of_mass` and
+`mean_zero` move the zeros and trace values but not the boundary-pinned non-zero
+values; do not read their differing scores as equivalent. The Kolmogorov-Smirnov fit
+diagnostics test the whole fit, so they may warn about a poor fit but do not detect
+this case; the mask's precedence is unchanged.
+
+SPAI is the exception. Its pooled Pearson option has no probability of zero, so
+it fits every pooled anomaly value, exact zeros included, and is unchanged by
+this correction. See the SPAI section of
+{doc}`the algorithm reference </algorithm-reference>`.
+
 ## Upgrade considerations for 3.2.0
 
 Version 3.2.0 removes no public API and needs no function-call migration.

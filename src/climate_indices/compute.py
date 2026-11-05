@@ -594,13 +594,19 @@ def _place_zeros(
 
 def calculate_time_step_params(time_step_values: np.ndarray) -> tuple[float, float, float, float]:
     """
-    Calculate Pearson Type III parameters for a time step's values.
+    Calculate Pearson Type III parameters from the non-zero values.
+
+    The zero mass uses all non-missing values, separately from the L-moment fit.
 
     :param time_step_values: Array of values for a specific time step (e.g., all January values)
     :return: Tuple of (probability_of_zero, loc, scale, skew)
     :raises InsufficientDataError: When there are too few non-zero values
     :raises PearsonFittingError: When L-moments computation fails
     """
+    # a mask is a missing marker here, as it is in the cell-axis fit
+    if np.ma.isMaskedArray(time_step_values):
+        time_step_values = np.ma.filled(time_step_values.astype(float), np.nan)
+
     number_of_zeros, number_of_non_missing = utils.count_zeros_and_non_missings(time_step_values)
     non_zero_count = number_of_non_missing - number_of_zeros
 
@@ -618,7 +624,7 @@ def calculate_time_step_params(time_step_values: np.ndarray) -> tuple[float, flo
 
     # At this point we know non_zero_count >= MIN_NON_ZERO_VALUES_FOR_PEARSON
     try:
-        params = lmoments.fit(time_step_values)
+        params = lmoments.fit(time_step_values[time_step_values != 0])
         return probability_of_zero, params["loc"], params["scale"], params["skew"]
     except ValueError as e:
         message = f"L-moments fitting failed: {e}. Consider using Gamma distribution for this dataset."
@@ -640,7 +646,11 @@ def _pearson_parameters_spatial(
     :return: four parameter arrays shaped (time_steps, ``*cells``) and the count of
         failed (time step, cell) fits
     """
-    locs, scales, skews, valid = lmoments.fit_spatial(calibration_values)
+    # Zeros contribute only to the point mass, not to the continuous component.
+    nonzero_values = np.where(calibration_values == 0, np.nan, calibration_values)
+    if np.ma.isMaskedArray(calibration_values):
+        nonzero_values[np.ma.getmaskarray(calibration_values)] = np.nan
+    locs, scales, skews, valid = lmoments.fit_spatial(nonzero_values)
 
     number_of_zeros = np.count_nonzero(calibration_values == 0, axis=0)
     number_of_non_missing = np.count_nonzero(~np.isnan(calibration_values), axis=0)
@@ -823,12 +833,18 @@ def _minimum_possible(
     :return:
     """
 
-    alpha = 4.0 / (skew * skew)
+    # A zero skew is the normal limit, whose support is the whole real line, and the
+    # expressions below are 0/0 there. Give that case the infinite limit it implies,
+    # so both support-limit masks stay disabled without floating-point warnings. The
+    # limit follows the skew's sign (+inf below zero, -inf otherwise) because alpha also
+    # overflows for a tiny negative skew, and the skew < 0 mask must then stay empty.
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        alpha = 4.0 / (skew * skew)
 
-    # calculate the lowest possible value that will
-    # fit the distribution (i.e. Z = 0)
-    result: np.ndarray = loc - ((alpha * scale * skew) / 2.0)
-    return result
+        # calculate the lowest possible value that will
+        # fit the distribution (i.e. Z = 0)
+        result: np.ndarray = loc - ((alpha * scale * skew) / 2.0)
+    return np.where(np.isinf(alpha), np.where(skew < 0, np.inf, -np.inf), result)
 
 
 def _pearson_output_from_probabilities(

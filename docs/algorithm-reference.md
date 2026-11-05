@@ -40,7 +40,9 @@ The SPI computation follows these steps:
    **Pearson Type III distribution** (alternative):
 
    - Three-parameter distribution with location, scale, and skewness
-   - Parameters estimated using L-moments method (Hosking, 1997)
+   - Parameters estimated using L-moments method (Hosking, 1997) from non-zero
+     Calibration Period values only. Exact zeros contribute to `p0`, not to the
+     continuous fit. At least four non-zero values are required.
    - Better for highly skewed precipitation distributions
    - Automatic fallback to gamma if fitting fails
 
@@ -153,9 +155,11 @@ fits one distribution per calendar period. `indices.spai()` and
      fitted by maximum likelihood with a vectorized ECME iteration (Liu & Rubin, 1995):
      EM updates of *μ* and *σ*, one Newton step on log *ν*, each cell stopping at its
      own convergence (tolerance `1e-6`, at most 200 iterations, 0.2 ≤ *ν* ≤ 10⁴).
-   - **Pearson Type III**: L-moments, as for SPI but with no probability of zero; a
-     cell with invalid L-moments falls back to the normal distribution with a
-     `distribution_fallback` warning event.
+   - **Pearson Type III**: L-moments over every pooled anomaly value, exact zeros
+     included, and with no probability of zero. This is the pre-#1562 SPI fit: the
+     zero-mass correction excludes exact zeros only where a probability of zero is
+     estimated, which SPAI does not do here. A cell with invalid L-moments falls back
+     to the normal distribution with a `distribution_fallback` warning event.
    - **Normal**: maximum likelihood, so SPAI = (*y* − *m*) / *s*, the anomaly rescaled
      by its pooled calibration mean and standard deviation. With complete calibration
      data *m* = 0 and *s* is the anomaly's pooled root-mean-square deviation.
@@ -350,7 +354,9 @@ Where:
 - σ = scale parameter
 - γ = skewness parameter
 
-Parameters are estimated using L-moments method (see below) on the calibration period data.
+Parameters are estimated using the L-moments method (see below) on the calibration
+period's non-zero values. Exact zeros set the Probability of Zero instead and do not
+enter the fit.
 
 ### L-moments Estimation
 
@@ -365,7 +371,7 @@ L-moments (Linear moments) are used to estimate Pearson Type III distribution pa
 
 This library implements the L-moments estimation procedures from Hosking (1997):
 
-1. Compute sample L-moments (λ₁, λ₂, τ₃) from calibration data
+1. Compute sample L-moments (λ₁, λ₂, τ₃) from the non-zero calibration data
 2. Estimate Pearson Type III parameters from L-moments using analytical relationships
 3. Validate parameter estimates
 
