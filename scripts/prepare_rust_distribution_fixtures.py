@@ -102,7 +102,8 @@ def fitting() -> None:
         valid, np.count_nonzero(calibration == 0, axis=0) / np.count_nonzero(~np.isnan(calibration), axis=0), 0.0
     )
     assert failed == np.count_nonzero(~valid)
-    assert p0[4] == 1 / 3 and locs[4] == 35 / 6
+    if not (p0[4] == 1 / 3 and locs[4] == 35 / 6):
+        raise ValueError(f"zero-mass fixture column drifted: p0={p0[4]}, loc={locs[4]}")
     glo_loc, glo_scale, glo_shape, glo_valid = lmoments.fit_glo_spatial(calibration)
     assert valid.tolist() == [True] * 5 + [False] * 4 + [True] * 3
     assert glo_valid.tolist() == valid.tolist()
