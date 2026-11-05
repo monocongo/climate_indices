@@ -95,6 +95,7 @@ def test_pnp_copies_h5netcdf_input_chunksizes(monkeypatch, tmp_path, caplog):
     # h5netcdf reports on-disk chunks; xarray 2026.9.0 also adds a `contiguous`
     # key, which must be false for the copied chunk sizes to survive
     with xr.open_dataset(input_file, engine="h5netcdf") as opened:
+        assert opened["prcp"].encoding.get("chunksizes") == (2, 3, 12)
         assert not opened["prcp"].encoding.get("contiguous", False)
 
     _write_pnp_monthly(monkeypatch, tmp_path, input_file)
@@ -114,8 +115,10 @@ def test_input_chunksizes_ignores_contiguous_inputs(tmp_path):
     input_file = tmp_path / "contiguous.nc"
     dataset.to_netcdf(input_file, engine="h5netcdf")
 
+    # A contiguous file reports no chunk sizes; newer xarray also marks it
+    # `contiguous=True`, which `_input_chunksizes` honors separately
     with xr.open_mfdataset(input_file, engine="h5netcdf") as opened:
-        assert opened["prcp"].encoding.get("contiguous", True)
+        assert not opened["prcp"].encoding.get("chunksizes")
         assert cli_main._input_chunksizes(opened) == ((), ())
 
     # a backend that does report the key as True must be honored as well

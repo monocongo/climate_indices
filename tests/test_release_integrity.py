@@ -1743,12 +1743,17 @@ def test_v310_stable_dataarray_api_surface_is_pinned() -> None:
 
 def test_icechunk_is_an_optional_extra_and_imports_lazily() -> None:
     """A core install must not need Icechunk: the extra carries it and the code imports it lazily."""
-    project = _read_toml(Path("pyproject.toml"))["project"]
+    pyproject = _read_toml(Path("pyproject.toml"))
+    project = pyproject["project"]
 
     assert not [dependency for dependency in project["dependencies"] if "icechunk" in dependency], (
         "icechunk must stay out of the core dependencies"
     )
-    assert project["optional-dependencies"]["icechunk"] == ["icechunk>=2.2,<3; python_version >= '3.12'"]
+    requirement = "icechunk>=2.2,<3; python_version >= '3.12'"
+    assert project["optional-dependencies"]["icechunk"] == [requirement]
+    # The dev copies decide what CI installs, so they may not drift from the extra.
+    assert requirement in project["optional-dependencies"]["dev"]
+    assert requirement in pyproject["dependency-groups"]["dev"]
     module = (ROOT / "src" / "climate_indices" / "icechunk_io.py").read_text(encoding="utf-8")
     assert not re.search(r"^(?:import|from)\s+icechunk", _uncommented(module), re.MULTILINE), (
         "icechunk_io must import Icechunk lazily, so a core install still imports it"
