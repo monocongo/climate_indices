@@ -217,12 +217,13 @@ builds the pure-Python wheel. Developers who
 want the extension from a checkout build it with `uv run maturin develop --release`; see
 [the Rust backend section of the architecture notes](docs/architecture.md#optional-rust-backend).
 
-Starting with 3.1.0, the optional `icechunk` extra adds Icechunk-backed reads and
-writes (`icechunk>=1.1.21,<2`). It needs Python 3.11 or later; the core install is
-unchanged. Install it from PyPI:
+The optional `icechunk` extra adds Icechunk-backed reads and writes. Releases up to and
+including 3.2.0 pin `icechunk>=1.1.21,<2`. The `icechunk>=2.2,<3` extra is not yet on PyPI.
+It needs Python 3.12 or later; the core install is unchanged. Until a release publishes it,
+install from a checkout:
 
 ```bash
-pip install "climate_indices[icechunk]>=3.1.0"
+pip install ".[icechunk]"
 ```
 
 See [Write NetCDF, Zarr, and Icechunk outputs](docs/writing-outputs.md#read-and-write-icechunk-snapshots)
@@ -447,7 +448,7 @@ Their scope limits are in the sections below.
 | Validation marker suite | `uv run pytest -m validation` | External validation tests, including committed NOAA EDDI fixtures, the SPEIbase v2.11 SPEI plausibility floors and input-matched log-logistic comparison, the R `SPEI` log-logistic cross-implementation fixtures, the standard-Palmer nClimDiv comparison, the Srock et al. (2018) HDW event-discrimination fixture, the NOAA CPC degree-day worked example and the xclim/windpowerlib wind-profile fixtures (independent implementations on synthetic inputs), the R `SEI` empirical-standardization and energy-wrapper comparison, and the flood-family source-identity checks (specification-level, not external; see "Flood Evidence Classification"), pass; the nine committed compound summer cases reproduce the same-author counts and LMF without independent-validation or significance claims; scPDSI oracle cross-validation passes. |
 | Lint | `uv run ruff check src/ tests/` | No lint findings. |
 | Format | `uv run ruff format --check src/ tests/` | No formatting changes needed. |
-| Notebooks | `uv run jupyter nbconvert --execute --to notebook --inplace notebooks/xarray_getting_started.ipynb notebooks/palmer_indices_xarray.ipynb notebooks/eddi_xarray.ipynb notebooks/icechunk_spi_spei.ipynb` | All four notebooks execute from a clean checkout; the Icechunk notebook uses the optional extra that the `dev` group installs on Python 3.11 or later. |
+| Notebooks | `uv run jupyter nbconvert --execute --to notebook --inplace notebooks/xarray_getting_started.ipynb notebooks/palmer_indices_xarray.ipynb notebooks/eddi_xarray.ipynb notebooks/icechunk_spi_spei.ipynb` | Requires Python 3.12 or later. All four notebooks execute from a clean checkout; the Icechunk notebook uses the optional extra that the `dev` group installs on Python 3.12 or later. |
 | Notebook smoke (Zarr/Dask tutorial, local only) | `bash scripts/smoke_e2e_notebook.sh` | `notebooks/zarr_dask_spi_spei.ipynb` executes end to end from a fresh kernel against the prepared sample inputs. |
 
 ## Per-Index Evidence
@@ -3927,12 +3928,13 @@ NetCDF, and Zarr inputs, session and snapshot semantics, and eager, threaded, an
 distributed writes. Install the extra and run just that suite:
 
 ```bash
-uv sync --extra icechunk   # Python 3.11 or later; `--dev` installs it too
+uv sync --extra icechunk   # Python 3.12 or later; `--dev` installs it too
 uv run pytest -m icechunk
 ```
 
 Without the extra, the module skips. Every supported CI matrix leg installs the `dev`
-group and runs the suite; the marker selects it locally.
+group; the suite runs on the Python 3.12–3.14 legs and skips on 3.11, where Icechunk is
+not installable.
 
 One test is opt-in in a second way: `test_r2_round_trip` writes to the shared Cloudflare
 R2 bucket, so it is marked `validation` and excluded from the default selection. It needs

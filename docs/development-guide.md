@@ -503,12 +503,13 @@ NetCDF, and Zarr inputs, session and snapshot semantics, and eager, threaded, an
 distributed writes. Install the extra and run just that suite:
 
 ```bash
-uv sync --extra icechunk   # Python 3.11 or later; `--dev` installs it too
+uv sync --extra icechunk   # Python 3.12 or later; `--dev` installs it too
 uv run pytest -m icechunk
 ```
 
 Without the extra, the module skips. Every supported CI matrix leg installs the `dev`
-group and runs the suite; the marker selects it locally.
+group; the suite runs on the Python 3.12–3.14 legs and skips on 3.11, where Icechunk is
+not installable.
 
 One test is opt-in in a second way: `test_r2_round_trip` writes to the shared Cloudflare
 R2 bucket, so it is marked `validation` and excluded from the default selection. It needs
