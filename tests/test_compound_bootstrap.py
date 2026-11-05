@@ -23,7 +23,7 @@ def prepared(years: int = 60, *, cells: int | None = None) -> compound.AlignedHa
     rows = np.repeat(np.stack((y % 4 < 2, y % 2 == 0)), 12, axis=1)
     if cells is not None:
         rows = np.repeat(rows[..., None], cells, axis=2)
-    time = np.arange("1900-01", np.datetime64("1900-01", "M") + years * 12, dtype="datetime64[M]")
+    time = np.arange("1900-01", np.datetime64("1900-01", "M") + np.timedelta64(years * 12, "M"), dtype="datetime64[M]")
     return compound.AlignedHazards(("A", "B"), time.astype("datetime64[D]"), "monthly", rows, np.ones_like(rows), {})
 
 
