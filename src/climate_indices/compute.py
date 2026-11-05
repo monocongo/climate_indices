@@ -835,14 +835,16 @@ def _minimum_possible(
 
     # A zero skew is the normal limit, whose support is the whole real line, and the
     # expressions below are 0/0 there. Give that case the infinite limit it implies,
-    # so both support-limit masks stay disabled without floating-point warnings.
-    with np.errstate(divide="ignore", invalid="ignore"):
+    # so both support-limit masks stay disabled without floating-point warnings. The
+    # limit follows the skew's sign (+inf below zero, -inf otherwise) because alpha also
+    # overflows for a tiny negative skew, and the skew < 0 mask must then stay empty.
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
         alpha = 4.0 / (skew * skew)
 
         # calculate the lowest possible value that will
         # fit the distribution (i.e. Z = 0)
         result: np.ndarray = loc - ((alpha * scale * skew) / 2.0)
-    return np.where(np.isinf(alpha), -np.inf, result)
+    return np.where(np.isinf(alpha), np.where(skew < 0, np.inf, -np.inf), result)
 
 
 def _pearson_output_from_probabilities(

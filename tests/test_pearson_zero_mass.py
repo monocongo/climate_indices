@@ -103,6 +103,16 @@ def test_a_zero_skew_fit_has_an_unbounded_support() -> None:
     assert np.isnan(limits[3])
 
 
+def test_a_tiny_negative_skew_keeps_the_upper_support_mask_empty() -> None:
+    # alpha = 4 / skew**2 overflows for |skew| < ~1e-154, so a tiny negative skew must
+    # give +inf: -inf would make the (values >= limit) & (skew < 0) mask match everything.
+    skews = np.array([-1e-160, 1e-160, -0.0])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        limits = compute._minimum_possible(skews, np.full(3, 2.5), np.ones(3))
+    np.testing.assert_array_equal(limits, [np.inf, -np.inf, -np.inf])
+
+
 def test_a_symmetric_nonzero_component_transforms_without_warnings() -> None:
     # Every calendar month keeps the same symmetric non-zero component, so tau_3 = 0
     # and the fit is valid everywhere: the only support-limit edge in play is skew == 0.
