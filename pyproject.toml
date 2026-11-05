@@ -52,7 +52,7 @@ test = [
     "pytest-benchmark>=4.0.0",
     "pytest-cov>=6.2.1",
     "pytest-xdist>=3.8.0",
-    "zarr>=2.18",
+    "zarr>=3.1.0",
 ]
 # Optional geospatial dependencies for the available-water-capacity ingest module
 # (src/climate_indices/aws_ingest.py): raster reads, CRS handling and the
@@ -83,7 +83,7 @@ docs = [
     # the quickstart doctest writes NetCDF through the h5netcdf backend
     "h5py>=3.11.0",
     # the provenance doctest writes and reopens a Zarr store
-    "zarr>=2.18",
+    "zarr>=3.1.0",
     # The docs doctest build executes the cached energy notebook.
     "ipykernel>=6.29",
     "matplotlib>=3.10.3",
@@ -267,7 +267,7 @@ test = [
     "pytest-benchmark>=4.0.0",
     "pytest-cov>=6.2.1",
     "pytest-xdist>=3.8.0",
-    "zarr>=2.18",
+    "zarr>=3.1.0",
 ]
 dev = [
     {include-group = "test"},
