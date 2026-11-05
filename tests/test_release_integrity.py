@@ -1748,7 +1748,7 @@ def test_icechunk_is_an_optional_extra_and_imports_lazily() -> None:
     assert not [dependency for dependency in project["dependencies"] if "icechunk" in dependency], (
         "icechunk must stay out of the core dependencies"
     )
-    assert project["optional-dependencies"]["icechunk"] == ["icechunk>=1.1.21,<2"]
+    assert project["optional-dependencies"]["icechunk"] == ["icechunk>=2.2,<3; python_version >= '3.12'"]
     module = (ROOT / "src" / "climate_indices" / "icechunk_io.py").read_text(encoding="utf-8")
     assert not re.search(r"^(?:import|from)\s+icechunk", _uncommented(module), re.MULTILINE), (
         "icechunk_io must import Icechunk lazily, so a core install still imports it"
