@@ -842,7 +842,7 @@ def _minimum_possible(
         # calculate the lowest possible value that will
         # fit the distribution (i.e. Z = 0)
         result: np.ndarray = loc - ((alpha * scale * skew) / 2.0)
-    return np.where(skew == 0.0, -np.inf, result)
+    return np.where(np.isinf(alpha), -np.inf, result)
 
 
 def _pearson_output_from_probabilities(

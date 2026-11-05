@@ -98,7 +98,8 @@ def test_a_zero_skew_fit_has_an_unbounded_support() -> None:
         warnings.simplefilter("error", RuntimeWarning)
         limits = compute._minimum_possible(skews, np.full(4, 2.5), np.ones(4))
     assert limits[0] == -np.inf
-    assert np.isfinite(limits[1]) and np.isfinite(limits[2])
+    assert np.isfinite(limits[1])
+    assert np.isfinite(limits[2])
     assert np.isnan(limits[3])
 
 
