@@ -43,6 +43,12 @@ namespace and never publishes to PyPI.
 6. Reconcile the changelog, curated release notes, and migration guide with all
    changes selected for this release. Remove pre-publication draft notices from the
    release notes before freezing; refresh story-note metrics only against a named SHA.
+   Also reconcile the install instructions: when this release changes an optional
+   extra or a dependency pin, update `README.md` and the docs that quote the install
+   command, and replace any "install from a checkout" note with the PyPI command
+   once the new metadata is what PyPI will serve. If any changed file is listed in
+   `SUMMARY_FILES` or `FULL_FILES` in `scripts/generate_llms_txt.py`, run
+   `uv run scripts/generate_llms_txt.py` and commit `llms.txt` and `llms-full.txt`.
 7. Run validation locally.
 8. Open a PR into `main`.
 9. The maintainer merges after review and passing CI; agents never merge.
@@ -359,7 +365,11 @@ After the workflow completes:
    `docs/release-notes-X.Y.Z.md`. The maintainer should add the curated highlights,
    migration warnings, and a permalink to the tagged release-notes document;
    convert relative documentation links to absolute URLs when copying text.
-7. Open a follow-up PR for any next-cycle changelog preparation if needed.
+7. Confirm each documented install command works against the published release, in
+   particular any optional extra whose requirement changed. A documented command
+   that resolves to an older version than the release implies must be corrected
+   before the next release.
+8. Open a follow-up PR for any next-cycle changelog preparation if needed.
 
 ## If publication fails
 
