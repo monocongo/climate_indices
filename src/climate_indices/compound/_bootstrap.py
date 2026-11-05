@@ -459,7 +459,9 @@ def _bootstrap(
         years_used[cell], lengths[cell] = years, length
         if years:
             starts[cell] = np.datetime64(first_year + start, "Y").astype("datetime64[D]")
-            ends[cell] = (np.datetime64(first_year + end, "Y").astype("datetime64[M]") - 1).astype("datetime64[D]")
+            # subtract one named month, not a bare int, which numpy 2.5 deprecates
+            month_end = np.datetime64(first_year + end, "Y").astype("datetime64[M]")
+            ends[cell] = (month_end - np.timedelta64(1, "M")).astype("datetime64[D]")
         inference = _infer_segment(
             rows[:, start:end],
             statistic=statistic,
