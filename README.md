@@ -210,7 +210,7 @@ want the extension from a checkout build it with `uv run maturin develop --relea
 [the Rust backend section of the architecture notes](docs/architecture.md#optional-rust-backend).
 
 Starting with 3.1.0, the optional `icechunk` extra adds Icechunk-backed reads and
-writes (`icechunk>=1.1.21,<2`). It needs Python 3.11 or later; the core install is
+writes (`icechunk>=2.2,<3`). It needs Python 3.12 or later; the core install is
 unchanged. Install it from PyPI:
 
 ```bash

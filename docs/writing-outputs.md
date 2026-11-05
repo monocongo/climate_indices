@@ -89,10 +89,11 @@ is the staged example.
 ## Read and write Icechunk snapshots
 
 Install the optional extra with `pip install 'climate_indices[icechunk]'`, which
-installs `icechunk>=1.1.21,<2`. Icechunk requires Python 3.11 or later and Zarr v3.
+installs `icechunk>=2.2,<3`. Icechunk requires Python 3.12 or later and Zarr v3.
 The existing `xarray>=2025.6.1` requirement exceeds the `to_icechunk` floor of
 2025.1.1. Without the extra, the base package installs no Icechunk dependency.
-Both installation paths require Python 3.11–3.14.
+On Python 3.11 the extra installs no Icechunk dependency, so `open_icechunk` and
+`write_icechunk` need Python 3.12–3.14.
 
 Use `open_icechunk` to read a committed snapshot. Select a variable and pass it
 to the existing index API. The reader preserves stored chunks; put the full time
