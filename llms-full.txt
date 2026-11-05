@@ -217,12 +217,13 @@ builds the pure-Python wheel. Developers who
 want the extension from a checkout build it with `uv run maturin develop --release`; see
 [the Rust backend section of the architecture notes](docs/architecture.md#optional-rust-backend).
 
-Starting with 3.1.0, the optional `icechunk` extra adds Icechunk-backed reads and
-writes (`icechunk>=2.2,<3`). It needs Python 3.12 or later; the core install is
-unchanged. Install it from PyPI:
+The optional `icechunk` extra adds Icechunk-backed reads and writes. Releases up to and
+including 3.2.0 pin `icechunk>=1.1.21,<2`. The `icechunk>=2.2,<3` extra is not yet on PyPI.
+It needs Python 3.12 or later; the core install is unchanged. Until a release publishes it,
+install from a checkout:
 
 ```bash
-pip install "climate_indices[icechunk]>=3.1.0"
+pip install ".[icechunk]"
 ```
 
 See [Write NetCDF, Zarr, and Icechunk outputs](docs/writing-outputs.md#read-and-write-icechunk-snapshots)
