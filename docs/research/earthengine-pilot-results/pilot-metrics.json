@@ -260,8 +260,1010 @@
     }
   },
   "reference_b": {
-    "reason": "CE_API_KEY is not set",
-    "status": "pending"
+    "detail": {
+      "eddi_1": {
+        "grid_cells": [
+          [
+            -84.89166663333334,
+            30.691666666666677
+          ],
+          [
+            -84.39166663333334,
+            32.98333333333334
+          ],
+          [
+            -84.01666663333334,
+            34.48333333333334
+          ]
+        ],
+        "points": {
+          "-84.0,34.5": {
+            "bias": -0.08028383889475425,
+            "category_agreement": 0.7026515151515151,
+            "category_within_one": 0.9772727272727273,
+            "correlation": 0.9800124612421437,
+            "mae": 0.14391266805899275,
+            "max_abs_difference": 1.4033999999999998,
+            "mean_ours": 0.12116559292342755,
+            "mean_theirs": 0.2014494318181818,
+            "n": 528.0,
+            "normalized_rmse": 0.22562840372471837,
+            "rmse": 0.21037636359364528
+          },
+          "-84.4,33.0": {
+            "bias": -0.08848080764853167,
+            "category_agreement": 0.7234848484848485,
+            "category_within_one": 0.9848484848484849,
+            "correlation": 0.9846701815657803,
+            "mae": 0.13017958482046427,
+            "max_abs_difference": 1.0004,
+            "mean_ours": 0.042893624169650146,
+            "mean_theirs": 0.13137443181818179,
+            "n": 528.0,
+            "normalized_rmse": 0.20133545735482983,
+            "rmse": 0.18509511045196822
+          },
+          "-84.9,30.7": {
+            "bias": -0.08633145679503144,
+            "category_agreement": 0.7234848484848485,
+            "category_within_one": 0.9867424242424242,
+            "correlation": 0.9814267414176593,
+            "mae": 0.13747251382584108,
+            "max_abs_difference": 1.078878215666614,
+            "mean_ours": 0.0642704371443625,
+            "mean_theirs": 0.15060189393939394,
+            "n": 528.0,
+            "normalized_rmse": 0.21797113383220018,
+            "rmse": 0.20569827934372525
+          }
+        },
+        "request": {
+          "accumulation": "30",
+          "area_reducer": "mean",
+          "coordinates": "[[-84.9, 30.7], [-84.4, 33.0], [-84.0, 34.5]]",
+          "dataset": "GRIDMET",
+          "distribution": "nonparametric",
+          "end_date": "2024-12-31",
+          "end_year": 2016,
+          "start_date": "1981-01-01",
+          "start_year": 1981,
+          "variable": "eddi"
+        }
+      },
+      "eddi_12": {
+        "grid_cells": [
+          [
+            -84.89166663333334,
+            30.691666666666677
+          ],
+          [
+            -84.39166663333334,
+            32.98333333333334
+          ],
+          [
+            -84.01666663333334,
+            34.48333333333334
+          ]
+        ],
+        "points": {
+          "-84.0,34.5": {
+            "bias": -0.07167829904037218,
+            "category_agreement": 0.7291666666666666,
+            "category_within_one": 0.990530303030303,
+            "correlation": 0.9856065703029724,
+            "mae": 0.13278405342329208,
+            "max_abs_difference": 1.0004,
+            "mean_ours": 0.22918988277780963,
+            "mean_theirs": 0.3008681818181818,
+            "n": 528.0,
+            "normalized_rmse": 0.1984577073294179,
+            "rmse": 0.19148512458587147
+          },
+          "-84.4,33.0": {
+            "bias": -0.0943326054342713,
+            "category_agreement": 0.7651515151515151,
+            "category_within_one": 0.9981060606060606,
+            "correlation": 0.9943136374560456,
+            "mae": 0.09952738266866283,
+            "max_abs_difference": 0.41065668500320496,
+            "mean_ours": 0.10488444002027415,
+            "mean_theirs": 0.1992170454545454,
+            "n": 528.0,
+            "normalized_rmse": 0.15021094046491304,
+            "rmse": 0.13722293321332155
+          },
+          "-84.9,30.7": {
+            "bias": -0.0959926876118513,
+            "category_agreement": 0.7670454545454546,
+            "category_within_one": 1.0,
+            "correlation": 0.9947991146155155,
+            "mae": 0.0994849438510791,
+            "max_abs_difference": 0.4070159670601552,
+            "mean_ours": 0.13141223663057297,
+            "mean_theirs": 0.22740492424242428,
+            "n": 528.0,
+            "normalized_rmse": 0.14791806197305346,
+            "rmse": 0.13628893879197337
+          }
+        },
+        "request": {
+          "accumulation": "365",
+          "area_reducer": "mean",
+          "coordinates": "[[-84.9, 30.7], [-84.4, 33.0], [-84.0, 34.5]]",
+          "dataset": "GRIDMET",
+          "distribution": "nonparametric",
+          "end_date": "2024-12-31",
+          "end_year": 2016,
+          "start_date": "1981-01-01",
+          "start_year": 1981,
+          "variable": "eddi"
+        }
+      },
+      "eddi_3": {
+        "grid_cells": [
+          [
+            -84.89166663333334,
+            30.691666666666677
+          ],
+          [
+            -84.39166663333334,
+            32.98333333333334
+          ],
+          [
+            -84.01666663333334,
+            34.48333333333334
+          ]
+        ],
+        "points": {
+          "-84.0,34.5": {
+            "bias": -0.07965887200679778,
+            "category_agreement": 0.7102272727272727,
+            "category_within_one": 0.9753787878787878,
+            "correlation": 0.9844867725724269,
+            "mae": 0.13490830478861074,
+            "max_abs_difference": 1.0004,
+            "mean_ours": 0.15227900678108103,
+            "mean_theirs": 0.2319378787878788,
+            "n": 528.0,
+            "normalized_rmse": 0.20188033419565538,
+            "rmse": 0.18924290072206798
+          },
+          "-84.4,33.0": {
+            "bias": -0.08988198886780538,
+            "category_agreement": 0.7329545454545454,
+            "category_within_one": 0.990530303030303,
+            "correlation": 0.9873043041752327,
+            "mae": 0.12471748077750687,
+            "max_abs_difference": 1.0004,
+            "mean_ours": 0.056934299010982535,
+            "mean_theirs": 0.14681628787878787,
+            "n": 528.0,
+            "normalized_rmse": 0.19007984978787018,
+            "rmse": 0.17259485787299375
+          },
+          "-84.9,30.7": {
+            "bias": -0.08595665136871576,
+            "category_agreement": 0.7518939393939394,
+            "category_within_one": 0.9924242424242424,
+            "correlation": 0.9872685009991949,
+            "mae": 0.119564803032258,
+            "max_abs_difference": 1.0004,
+            "mean_ours": 0.0938971365100721,
+            "mean_theirs": 0.17985378787878786,
+            "n": 528.0,
+            "normalized_rmse": 0.191151952052035,
+            "rmse": 0.17761138144541225
+          }
+        },
+        "request": {
+          "accumulation": "90",
+          "area_reducer": "mean",
+          "coordinates": "[[-84.9, 30.7], [-84.4, 33.0], [-84.0, 34.5]]",
+          "dataset": "GRIDMET",
+          "distribution": "nonparametric",
+          "end_date": "2024-12-31",
+          "end_year": 2016,
+          "start_date": "1981-01-01",
+          "start_year": 1981,
+          "variable": "eddi"
+        }
+      },
+      "eddi_6": {
+        "grid_cells": [
+          [
+            -84.89166663333334,
+            30.691666666666677
+          ],
+          [
+            -84.39166663333334,
+            32.98333333333334
+          ],
+          [
+            -84.01666663333334,
+            34.48333333333334
+          ]
+        ],
+        "points": {
+          "-84.0,34.5": {
+            "bias": -0.07093540470376468,
+            "category_agreement": 0.7234848484848485,
+            "category_within_one": 0.9867424242424242,
+            "correlation": 0.9828304427631253,
+            "mae": 0.14257228962285023,
+            "max_abs_difference": 1.0004,
+            "mean_ours": 0.1939494437810838,
+            "mean_theirs": 0.26488484848484856,
+            "n": 528.0,
+            "normalized_rmse": 0.21536620218003855,
+            "rmse": 0.20415762019630151
+          },
+          "-84.4,33.0": {
+            "bias": -0.08846169077570308,
+            "category_agreement": 0.7575757575757576,
+            "category_within_one": 0.990530303030303,
+            "correlation": 0.9875191937383657,
+            "mae": 0.11838649399302827,
+            "max_abs_difference": 1.0004,
+            "mean_ours": 0.07356046831520599,
+            "mean_theirs": 0.1620221590909091,
+            "n": 528.0,
+            "normalized_rmse": 0.18993940421274763,
+            "rmse": 0.17241467270229488
+          },
+          "-84.9,30.7": {
+            "bias": -0.09122053512070023,
+            "category_agreement": 0.7386363636363636,
+            "category_within_one": 0.9924242424242424,
+            "correlation": 0.9901930481659682,
+            "mae": 0.11326470443218292,
+            "max_abs_difference": 1.0004,
+            "mean_ours": 0.11113022245505735,
+            "mean_theirs": 0.2023507575757576,
+            "n": 528.0,
+            "normalized_rmse": 0.17495434042725427,
+            "rmse": 0.16081468027172555
+          }
+        },
+        "request": {
+          "accumulation": "180",
+          "area_reducer": "mean",
+          "coordinates": "[[-84.9, 30.7], [-84.4, 33.0], [-84.0, 34.5]]",
+          "dataset": "GRIDMET",
+          "distribution": "nonparametric",
+          "end_date": "2024-12-31",
+          "end_year": 2016,
+          "start_date": "1981-01-01",
+          "start_year": 1981,
+          "variable": "eddi"
+        }
+      },
+      "spei_1": {
+        "grid_cells": [
+          [
+            -84.89166663333334,
+            30.691666666666677
+          ],
+          [
+            -84.39166663333334,
+            32.98333333333334
+          ],
+          [
+            -84.01666663333334,
+            34.48333333333334
+          ]
+        ],
+        "points": {
+          "-84.0,34.5": {
+            "bias": -0.05410584211994747,
+            "category_agreement": 0.6628787878787878,
+            "category_within_one": 0.9583333333333334,
+            "correlation": 0.970118872668767,
+            "mae": 0.171863518979924,
+            "max_abs_difference": 1.3472381403718232,
+            "mean_ours": 0.07743374121338585,
+            "mean_theirs": 0.13153958333333332,
+            "n": 528.0,
+            "normalized_rmse": 0.2552829500934427,
+            "rmse": 0.24930178871225708
+          },
+          "-84.4,33.0": {
+            "bias": -0.05543563267458829,
+            "category_agreement": 0.6931818181818182,
+            "category_within_one": 0.9734848484848485,
+            "correlation": 0.9785366877798068,
+            "mae": 0.14319088603309416,
+            "max_abs_difference": 1.436340000779701,
+            "mean_ours": 0.08883747338601777,
+            "mean_theirs": 0.14427310606060606,
+            "n": 528.0,
+            "normalized_rmse": 0.22311517259699734,
+            "rmse": 0.22088689532269445
+          },
+          "-84.9,30.7": {
+            "bias": -0.046659696227121926,
+            "category_agreement": 0.7424242424242424,
+            "category_within_one": 0.9734848484848485,
+            "correlation": 0.9844865406440755,
+            "mae": 0.12177658649021285,
+            "max_abs_difference": 1.2312562586382696,
+            "mean_ours": 0.05602515225772654,
+            "mean_theirs": 0.10268484848484849,
+            "n": 528.0,
+            "normalized_rmse": 0.19460228637474467,
+            "rmse": 0.18856000379378213
+          }
+        },
+        "request": {
+          "accumulation": "30",
+          "area_reducer": "mean",
+          "coordinates": "[[-84.9, 30.7], [-84.4, 33.0], [-84.0, 34.5]]",
+          "dataset": "GRIDMET",
+          "distribution": "nonparametric",
+          "end_date": "2024-12-31",
+          "end_year": 2016,
+          "start_date": "1981-01-01",
+          "start_year": 1981,
+          "variable": "spei"
+        }
+      },
+      "spei_12": {
+        "grid_cells": [
+          [
+            -84.89166663333334,
+            30.691666666666677
+          ],
+          [
+            -84.39166663333334,
+            32.98333333333334
+          ],
+          [
+            -84.01666663333334,
+            34.48333333333334
+          ]
+        ],
+        "points": {
+          "-84.0,34.5": {
+            "bias": -0.05179446113569236,
+            "category_agreement": 0.7613636363636364,
+            "category_within_one": 0.9810606060606061,
+            "correlation": 0.9892638579987363,
+            "mae": 0.11837585142931939,
+            "max_abs_difference": 0.6774124210938361,
+            "mean_ours": 0.1152881146218834,
+            "mean_theirs": 0.16708257575757574,
+            "n": 528.0,
+            "normalized_rmse": 0.17050102338540027,
+            "rmse": 0.16527332347910792
+          },
+          "-84.4,33.0": {
+            "bias": -0.05431538081530371,
+            "category_agreement": 0.7973484848484849,
+            "category_within_one": 1.0,
+            "correlation": 0.9969807366895769,
+            "mae": 0.07561182512377859,
+            "max_abs_difference": 0.46974374136173025,
+            "mean_ours": 0.13123840706348416,
+            "mean_theirs": 0.18555378787878787,
+            "n": 528.0,
+            "normalized_rmse": 0.12556965585551555,
+            "rmse": 0.11759872322658968
+          },
+          "-84.9,30.7": {
+            "bias": -0.05757003191501078,
+            "category_agreement": 0.7859848484848485,
+            "category_within_one": 1.0,
+            "correlation": 0.9966584996588024,
+            "mae": 0.07962898869194694,
+            "max_abs_difference": 0.46974374136173025,
+            "mean_ours": 0.10669322566074678,
+            "mean_theirs": 0.16426325757575758,
+            "n": 528.0,
+            "normalized_rmse": 0.1347875924751624,
+            "rmse": 0.13024961233604476
+          }
+        },
+        "request": {
+          "accumulation": "365",
+          "area_reducer": "mean",
+          "coordinates": "[[-84.9, 30.7], [-84.4, 33.0], [-84.0, 34.5]]",
+          "dataset": "GRIDMET",
+          "distribution": "nonparametric",
+          "end_date": "2024-12-31",
+          "end_year": 2016,
+          "start_date": "1981-01-01",
+          "start_year": 1981,
+          "variable": "spei"
+        }
+      },
+      "spei_3": {
+        "grid_cells": [
+          [
+            -84.89166663333334,
+            30.691666666666677
+          ],
+          [
+            -84.39166663333334,
+            32.98333333333334
+          ],
+          [
+            -84.01666663333334,
+            34.48333333333334
+          ]
+        ],
+        "points": {
+          "-84.0,34.5": {
+            "bias": -0.054558970001484346,
+            "category_agreement": 0.7348484848484849,
+            "category_within_one": 0.9753787878787878,
+            "correlation": 0.9798799945220376,
+            "mae": 0.14412020032061343,
+            "max_abs_difference": 1.1441871477238288,
+            "mean_ours": 0.10007890878639443,
+            "mean_theirs": 0.1546378787878788,
+            "n": 528.0,
+            "normalized_rmse": 0.21519082618883043,
+            "rmse": 0.20635379732805925
+          },
+          "-84.4,33.0": {
+            "bias": -0.05634242426034195,
+            "category_agreement": 0.75,
+            "category_within_one": 0.9867424242424242,
+            "correlation": 0.9897073290253063,
+            "mae": 0.11348128442465197,
+            "max_abs_difference": 0.702798675210733,
+            "mean_ours": 0.11574128786087015,
+            "mean_theirs": 0.1720837121212121,
+            "n": 528.0,
+            "normalized_rmse": 0.17263021809754697,
+            "rmse": 0.16333723762752717
+          },
+          "-84.9,30.7": {
+            "bias": -0.05359071347120771,
+            "category_agreement": 0.7575757575757576,
+            "category_within_one": 0.9753787878787878,
+            "correlation": 0.986334690931167,
+            "mae": 0.11837995047337592,
+            "max_abs_difference": 1.072434907667234,
+            "mean_ours": 0.07333807440758017,
+            "mean_theirs": 0.1269287878787879,
+            "n": 528.0,
+            "normalized_rmse": 0.18832176819210514,
+            "rmse": 0.17991549591617595
+          }
+        },
+        "request": {
+          "accumulation": "90",
+          "area_reducer": "mean",
+          "coordinates": "[[-84.9, 30.7], [-84.4, 33.0], [-84.0, 34.5]]",
+          "dataset": "GRIDMET",
+          "distribution": "nonparametric",
+          "end_date": "2024-12-31",
+          "end_year": 2016,
+          "start_date": "1981-01-01",
+          "start_year": 1981,
+          "variable": "spei"
+        }
+      },
+      "spei_6": {
+        "grid_cells": [
+          [
+            -84.89166663333334,
+            30.691666666666677
+          ],
+          [
+            -84.39166663333334,
+            32.98333333333334
+          ],
+          [
+            -84.01666663333334,
+            34.48333333333334
+          ]
+        ],
+        "points": {
+          "-84.0,34.5": {
+            "bias": -0.057054700076045795,
+            "category_agreement": 0.7253787878787878,
+            "category_within_one": 0.9829545454545454,
+            "correlation": 0.9830218045780661,
+            "mae": 0.14167716765904784,
+            "max_abs_difference": 0.6774124210938361,
+            "mean_ours": 0.1080553378027421,
+            "mean_theirs": 0.1651100378787879,
+            "n": 528.0,
+            "normalized_rmse": 0.2008284541723964,
+            "rmse": 0.19020718511929155
+          },
+          "-84.4,33.0": {
+            "bias": -0.05635726542252578,
+            "category_agreement": 0.7651515151515151,
+            "category_within_one": 0.9867424242424242,
+            "correlation": 0.9900487338852231,
+            "mae": 0.11359154070257124,
+            "max_abs_difference": 0.7013875789061638,
+            "mean_ours": 0.13286697700171662,
+            "mean_theirs": 0.1892242424242424,
+            "n": 528.0,
+            "normalized_rmse": 0.17096982450404763,
+            "rmse": 0.15937347344815733
+          },
+          "-84.9,30.7": {
+            "bias": -0.053855429413107024,
+            "category_agreement": 0.7215909090909091,
+            "category_within_one": 0.9810606060606061,
+            "correlation": 0.9865103220916938,
+            "mae": 0.12052137912227816,
+            "max_abs_difference": 0.8374804797347806,
+            "mean_ours": 0.09319722210204451,
+            "mean_theirs": 0.1470526515151515,
+            "n": 528.0,
+            "normalized_rmse": 0.18819037051519266,
+            "rmse": 0.180262659388274
+          }
+        },
+        "request": {
+          "accumulation": "180",
+          "area_reducer": "mean",
+          "coordinates": "[[-84.9, 30.7], [-84.4, 33.0], [-84.0, 34.5]]",
+          "dataset": "GRIDMET",
+          "distribution": "nonparametric",
+          "end_date": "2024-12-31",
+          "end_year": 2016,
+          "start_date": "1981-01-01",
+          "start_year": 1981,
+          "variable": "spei"
+        }
+      },
+      "spi_1": {
+        "grid_cells": [
+          [
+            -84.89166663333334,
+            30.691666666666677
+          ],
+          [
+            -84.39166663333334,
+            32.98333333333334
+          ],
+          [
+            -84.01666663333334,
+            34.48333333333334
+          ]
+        ],
+        "points": {
+          "-84.0,34.5": {
+            "bias": -0.054407755057658096,
+            "category_agreement": 0.6818181818181818,
+            "category_within_one": 0.9564393939393939,
+            "correlation": 0.9689214980478769,
+            "mae": 0.1748931922635998,
+            "max_abs_difference": 1.61340565333095,
+            "mean_ours": 0.10059622221506918,
+            "mean_theirs": 0.15500397727272727,
+            "n": 528.0,
+            "normalized_rmse": 0.2592634747494326,
+            "rmse": 0.2564135352065902
+          },
+          "-84.4,33.0": {
+            "bias": -0.06077372376997004,
+            "category_agreement": 0.6723484848484849,
+            "category_within_one": 0.9734848484848485,
+            "correlation": 0.9782981287007876,
+            "mae": 0.14900489055392507,
+            "max_abs_difference": 1.333101324789267,
+            "mean_ours": 0.09992097319972691,
+            "mean_theirs": 0.16069469696969696,
+            "n": 528.0,
+            "normalized_rmse": 0.22479166096992714,
+            "rmse": 0.22548567545985396
+          },
+          "-84.9,30.7": {
+            "bias": -0.05067748868746828,
+            "category_agreement": 0.7367424242424242,
+            "category_within_one": 0.9829545454545454,
+            "correlation": 0.9863594210535253,
+            "mae": 0.11929764817354266,
+            "max_abs_difference": 0.9953562586382696,
+            "mean_ours": 0.06471777646404686,
+            "mean_theirs": 0.11539526515151516,
+            "n": 528.0,
+            "normalized_rmse": 0.18570365715658346,
+            "rmse": 0.18148816201641366
+          }
+        },
+        "request": {
+          "accumulation": "30",
+          "area_reducer": "mean",
+          "coordinates": "[[-84.9, 30.7], [-84.4, 33.0], [-84.0, 34.5]]",
+          "dataset": "GRIDMET",
+          "distribution": "nonparametric",
+          "end_date": "2024-12-31",
+          "end_year": 2016,
+          "start_date": "1981-01-01",
+          "start_year": 1981,
+          "variable": "spi"
+        }
+      },
+      "spi_12": {
+        "grid_cells": [
+          [
+            -84.89166663333334,
+            30.691666666666677
+          ],
+          [
+            -84.39166663333334,
+            32.98333333333334
+          ],
+          [
+            -84.01666663333334,
+            34.48333333333334
+          ]
+        ],
+        "points": {
+          "-84.0,34.5": {
+            "bias": -0.06586823166684365,
+            "category_agreement": 0.7272727272727273,
+            "category_within_one": 0.9791666666666666,
+            "correlation": 0.9892147067303161,
+            "mae": 0.12263640902747729,
+            "max_abs_difference": 0.8374804797347806,
+            "mean_ours": 0.16607665469679272,
+            "mean_theirs": 0.23194488636363633,
+            "n": 528.0,
+            "normalized_rmse": 0.17611496871837876,
+            "rmse": 0.1739659681922703
+          },
+          "-84.4,33.0": {
+            "bias": -0.06839062926089745,
+            "category_agreement": 0.7916666666666666,
+            "category_within_one": 1.0,
+            "correlation": 0.9975504132169845,
+            "mae": 0.07937251062791592,
+            "max_abs_difference": 0.46974374136173025,
+            "mean_ours": 0.17565103740576923,
+            "mean_theirs": 0.24404166666666668,
+            "n": 528.0,
+            "normalized_rmse": 0.12916309151686328,
+            "rmse": 0.12355341554674207
+          },
+          "-84.9,30.7": {
+            "bias": -0.07172044530978168,
+            "category_agreement": 0.7935606060606061,
+            "category_within_one": 1.0,
+            "correlation": 0.9969007965568855,
+            "mae": 0.08442185772760435,
+            "max_abs_difference": 0.46974374136173025,
+            "mean_ours": 0.14764868347809706,
+            "mean_theirs": 0.2193691287878788,
+            "n": 528.0,
+            "normalized_rmse": 0.13932881845697245,
+            "rmse": 0.1372287594008512
+          }
+        },
+        "request": {
+          "accumulation": "365",
+          "area_reducer": "mean",
+          "coordinates": "[[-84.9, 30.7], [-84.4, 33.0], [-84.0, 34.5]]",
+          "dataset": "GRIDMET",
+          "distribution": "nonparametric",
+          "end_date": "2024-12-31",
+          "end_year": 2016,
+          "start_date": "1981-01-01",
+          "start_year": 1981,
+          "variable": "spi"
+        }
+      },
+      "spi_3": {
+        "grid_cells": [
+          [
+            -84.89166663333334,
+            30.691666666666677
+          ],
+          [
+            -84.39166663333334,
+            32.98333333333334
+          ],
+          [
+            -84.01666663333334,
+            34.48333333333334
+          ]
+        ],
+        "points": {
+          "-84.0,34.5": {
+            "bias": -0.0615200913964677,
+            "category_agreement": 0.6931818181818182,
+            "category_within_one": 0.9678030303030303,
+            "correlation": 0.9761675103176349,
+            "mae": 0.15337001300606412,
+            "max_abs_difference": 1.4088128522761714,
+            "mean_ours": 0.13137138587625954,
+            "mean_theirs": 0.19289147727272726,
+            "n": 528.0,
+            "normalized_rmse": 0.2314019492136812,
+            "rmse": 0.22319469716053136
+          },
+          "-84.4,33.0": {
+            "bias": -0.06363525185214212,
+            "category_agreement": 0.740530303030303,
+            "category_within_one": 0.9848484848484849,
+            "correlation": 0.9912162767533108,
+            "mae": 0.11043542791862865,
+            "max_abs_difference": 0.8788871477238289,
+            "mean_ours": 0.13406815723876694,
+            "mean_theirs": 0.1977034090909091,
+            "n": 528.0,
+            "normalized_rmse": 0.16647114907050078,
+            "rmse": 0.15996135694976588
+          },
+          "-84.9,30.7": {
+            "bias": -0.06480504842490868,
+            "category_agreement": 0.7367424242424242,
+            "category_within_one": 0.9678030303030303,
+            "correlation": 0.9841535241268732,
+            "mae": 0.12479145917082295,
+            "max_abs_difference": 1.1352315108528297,
+            "mean_ours": 0.09446919399933375,
+            "mean_theirs": 0.15927424242424243,
+            "n": 528.0,
+            "normalized_rmse": 0.20261337872283633,
+            "rmse": 0.19592795567575966
+          }
+        },
+        "request": {
+          "accumulation": "90",
+          "area_reducer": "mean",
+          "coordinates": "[[-84.9, 30.7], [-84.4, 33.0], [-84.0, 34.5]]",
+          "dataset": "GRIDMET",
+          "distribution": "nonparametric",
+          "end_date": "2024-12-31",
+          "end_year": 2016,
+          "start_date": "1981-01-01",
+          "start_year": 1981,
+          "variable": "spi"
+        }
+      },
+      "spi_6": {
+        "grid_cells": [
+          [
+            -84.89166663333334,
+            30.691666666666677
+          ],
+          [
+            -84.39166663333334,
+            32.98333333333334
+          ],
+          [
+            -84.01666663333334,
+            34.48333333333334
+          ]
+        ],
+        "points": {
+          "-84.0,34.5": {
+            "bias": -0.06492429790048637,
+            "category_agreement": 0.6988636363636364,
+            "category_within_one": 0.9715909090909091,
+            "correlation": 0.9824167930875667,
+            "mae": 0.14766740838155806,
+            "max_abs_difference": 0.8374804797347806,
+            "mean_ours": 0.14825524755405908,
+            "mean_theirs": 0.21317954545454543,
+            "n": 528.0,
+            "normalized_rmse": 0.2067541357909289,
+            "rmse": 0.19812996833908766
+          },
+          "-84.4,33.0": {
+            "bias": -0.06853666103916241,
+            "category_agreement": 0.7121212121212122,
+            "category_within_one": 0.9678030303030303,
+            "correlation": 0.9847235732949828,
+            "mae": 0.13228189005061863,
+            "max_abs_difference": 0.9706416189374398,
+            "mean_ours": 0.16233436168811033,
+            "mean_theirs": 0.23087102272727272,
+            "n": 528.0,
+            "normalized_rmse": 0.20196586969643482,
+            "rmse": 0.1908016004929269
+          },
+          "-84.9,30.7": {
+            "bias": -0.06403526523073623,
+            "category_agreement": 0.7348484848484849,
+            "category_within_one": 0.9753787878787878,
+            "correlation": 0.9850758091797132,
+            "mae": 0.12995368109065608,
+            "max_abs_difference": 1.052959999220299,
+            "mean_ours": 0.11490640143593042,
+            "mean_theirs": 0.17894166666666667,
+            "n": 528.0,
+            "normalized_rmse": 0.19842368802990598,
+            "rmse": 0.1909323173669498
+          }
+        },
+        "request": {
+          "accumulation": "180",
+          "area_reducer": "mean",
+          "coordinates": "[[-84.9, 30.7], [-84.4, 33.0], [-84.0, 34.5]]",
+          "dataset": "GRIDMET",
+          "distribution": "nonparametric",
+          "end_date": "2024-12-31",
+          "end_year": 2016,
+          "start_date": "1981-01-01",
+          "start_year": 1981,
+          "variable": "spi"
+        }
+      }
+    },
+    "endpoint": "https://api.climateengine.org/timeseries/standard_index/coordinates",
+    "metrics": {
+      "eddi_1": {
+        "bias": -0.08503203444610578,
+        "category_agreement": 0.7165404040404041,
+        "category_within_one": 0.9829545454545454,
+        "correlation": 0.9819398608502423,
+        "mae": 0.13718825556843267,
+        "max_abs_difference": 1.4033999999999998,
+        "mean_ours": 0.0761098847458134,
+        "mean_theirs": 0.1611419191919192,
+        "n": 1584.0,
+        "normalized_rmse": 0.21539223575251057,
+        "rmse": 0.20069063787920052
+      },
+      "eddi_12": {
+        "bias": -0.08733453069549826,
+        "category_agreement": 0.7537878787878788,
+        "category_within_one": 0.9962121212121212,
+        "correlation": 0.991101864312741,
+        "mae": 0.11059879331434469,
+        "max_abs_difference": 1.0004,
+        "mean_ours": 0.15516218647621893,
+        "mean_theirs": 0.2424967171717172,
+        "n": 1584.0,
+        "normalized_rmse": 0.16824847272835755,
+        "rmse": 0.15713196277267152
+      },
+      "eddi_3": {
+        "bias": -0.08516583741443963,
+        "category_agreement": 0.7316919191919192,
+        "category_within_one": 0.9861111111111112,
+        "correlation": 0.9863091625065896,
+        "mae": 0.1263968628661252,
+        "max_abs_difference": 1.0004,
+        "mean_ours": 0.1010368141007119,
+        "mean_theirs": 0.1862026515151515,
+        "n": 1584.0,
+        "normalized_rmse": 0.19453764117025465,
+        "rmse": 0.179951533527641
+      },
+      "eddi_6": {
+        "bias": -0.08353921020005599,
+        "category_agreement": 0.73989898989899,
+        "category_within_one": 0.98989898989899,
+        "correlation": 0.9865635749799091,
+        "mae": 0.12474116268268715,
+        "max_abs_difference": 1.0004,
+        "mean_ours": 0.1262133781837824,
+        "mean_theirs": 0.2097525883838384,
+        "n": 1584.0,
+        "normalized_rmse": 0.19455883537366778,
+        "rmse": 0.1800634283043562
+      },
+      "spei_1": {
+        "bias": -0.052067057007219225,
+        "category_agreement": 0.6994949494949495,
+        "category_within_one": 0.9684343434343434,
+        "correlation": 0.9776953773548624,
+        "mae": 0.14561033050107702,
+        "max_abs_difference": 1.436340000779701,
+        "mean_ours": 0.07409878895237673,
+        "mean_theirs": 0.12616584595959596,
+        "n": 1584.0,
+        "normalized_rmse": 0.2259315388754255,
+        "rmse": 0.22098060051441995
+      },
+      "spei_12": {
+        "bias": -0.05455995795533562,
+        "category_agreement": 0.7815656565656566,
+        "category_within_one": 0.9936868686868687,
+        "correlation": 0.9942024820707593,
+        "mae": 0.09120555508168164,
+        "max_abs_difference": 0.6774124210938361,
+        "mean_ours": 0.11773991578203812,
+        "mean_theirs": 0.17229987373737374,
+        "n": 1584.0,
+        "normalized_rmse": 0.14543623903446104,
+        "rmse": 0.13917577934880748
+      },
+      "spei_3": {
+        "bias": -0.054830702577678005,
+        "category_agreement": 0.7474747474747475,
+        "category_within_one": 0.9791666666666666,
+        "correlation": 0.9852439280537063,
+        "mae": 0.12532714507288042,
+        "max_abs_difference": 1.1441871477238288,
+        "mean_ours": 0.09638609035161493,
+        "mean_theirs": 0.15121679292929294,
+        "n": 1584.0,
+        "normalized_rmse": 0.19311725314352757,
+        "rmse": 0.18405662945432905
+      },
+      "spei_6": {
+        "bias": -0.05575579830389286,
+        "category_agreement": 0.7373737373737373,
+        "category_within_one": 0.9835858585858586,
+        "correlation": 0.9864497203621806,
+        "mae": 0.1252633624946324,
+        "max_abs_difference": 0.8374804797347806,
+        "mean_ours": 0.11137317896883442,
+        "mean_theirs": 0.16712897727272727,
+        "n": 1584.0,
+        "normalized_rmse": 0.18732037086850423,
+        "rmse": 0.17708124658817662
+      },
+      "spi_1": {
+        "bias": -0.05528632250503215,
+        "category_agreement": 0.696969696969697,
+        "category_within_one": 0.9709595959595959,
+        "correlation": 0.977812347872278,
+        "mae": 0.14773191033035585,
+        "max_abs_difference": 1.61340565333095,
+        "mean_ours": 0.08841165729294763,
+        "mean_theirs": 0.1436979797979798,
+        "n": 1584.0,
+        "normalized_rmse": 0.22564000943750487,
+        "rmse": 0.2232559396946502
+      },
+      "spi_12": {
+        "bias": -0.06865976874584093,
+        "category_agreement": 0.7708333333333334,
+        "category_within_one": 0.9930555555555556,
+        "correlation": 0.994461307684225,
+        "mae": 0.09547692579433252,
+        "max_abs_difference": 0.8374804797347806,
+        "mean_ours": 0.16312545852688634,
+        "mean_theirs": 0.2317852272727273,
+        "n": 1584.0,
+        "normalized_rmse": 0.15007775286300845,
+        "rmse": 0.14647108587139493
+      },
+      "spi_3": {
+        "bias": -0.0633201305578395,
+        "category_agreement": 0.7234848484848485,
+        "category_within_one": 0.9734848484848485,
+        "correlation": 0.9837733819079726,
+        "mae": 0.12953230003183855,
+        "max_abs_difference": 1.4088128522761714,
+        "mean_ours": 0.11996957903812007,
+        "mean_theirs": 0.18328970959595958,
+        "n": 1584.0,
+        "normalized_rmse": 0.2020954941971906,
+        "rmse": 0.19475734677890344
+      },
+      "spi_6": {
+        "bias": -0.06583207472346167,
+        "category_agreement": 0.7152777777777778,
+        "category_within_one": 0.9715909090909091,
+        "correlation": 0.9840484400102276,
+        "mae": 0.13663432650761093,
+        "max_abs_difference": 1.052959999220299,
+        "mean_ours": 0.1418320035593666,
+        "mean_theirs": 0.20766407828282826,
+        "n": 1584.0,
+        "normalized_rmse": 0.2024795633907776,
+        "rmse": 0.19331829101236472
+      }
+    },
+    "points": [
+      [
+        -84.9,
+        30.7
+      ],
+      [
+        -84.4,
+        33.0
+      ],
+      [
+        -84.0,
+        34.5
+      ]
+    ],
+    "sampling": "climate engine daily series sampled at the last record on or before each month end"
   },
   "region": {
     "bbox": [
@@ -275,9 +1277,9 @@
   },
   "software": {
     "distribution": "climate_indices",
-    "git_commit": "41c9a7474996055c1c895de08554d56f487d06c2",
+    "git_commit": "0254362608f4b99ee031b0eecd8e3bf82d0dbd01",
     "git_commit_source": "source-checkout",
-    "git_dirty": false,
+    "git_dirty": true,
     "repository_url": "https://github.com/monocongo/climate_indices",
     "version": "3.2.0"
   }
