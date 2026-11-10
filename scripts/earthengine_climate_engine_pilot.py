@@ -40,7 +40,9 @@ import calendar
 import json
 import math
 import os
+import shutil
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -259,13 +261,17 @@ def crop_grid_to_bbox(native: dict[str, Any], bbox: tuple[float, float, float, f
 
 
 def grids_match(left: dict[str, Any], right: dict[str, Any]) -> bool:
-    """Whether two grid parameter sets describe the same pixels."""
-    return left["shape_2d"] == right["shape_2d"] and bool(
-        np.allclose(
-            np.asarray(left["crs_transform"], dtype="float64"),
-            np.asarray(right["crs_transform"], dtype="float64"),
-            rtol=0.0,
-            atol=1e-9,
+    """Whether two grid parameter sets describe the same pixels in the same projection."""
+    return (
+        left.get("crs") == right.get("crs")
+        and left["shape_2d"] == right["shape_2d"]
+        and bool(
+            np.allclose(
+                np.asarray(left["crs_transform"], dtype="float64"),
+                np.asarray(right["crs_transform"], dtype="float64"),
+                rtol=0.0,
+                atol=1e-9,
+            )
         )
     )
 
@@ -479,7 +485,7 @@ def climate_engine_request(endpoint: str, body: dict[str, Any], key: str) -> dic
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=180) as response:
+        with urllib.request.urlopen(request, timeout=180) as response:  # nosec B310 # fixed https endpoint
             decoded = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         # A remote error body can echo request headers, including the key.
@@ -639,7 +645,9 @@ def plot_differences(fields: dict[str, xr.DataArray], directory: Path) -> list[s
     written = []
     for name, field in fields.items():
         mean_field = field.mean("time")
-        limit = float(np.nanpercentile(np.abs(mean_field.values), 99)) or 1.0
+        magnitudes = np.abs(mean_field.values)
+        finite = magnitudes[np.isfinite(magnitudes)]
+        limit = (float(np.percentile(finite, 99)) if finite.size else 0.0) or 1.0
         figure, axis = plt.subplots(figsize=(6, 4.5))
         mesh = axis.pcolormesh(
             field["x"].values,
@@ -692,6 +700,9 @@ def main(argv: list[str] | None = None) -> int:
     metrics, fields = compare(ours, reference)
 
     arguments.output_dir.mkdir(parents=True, exist_ok=True)
+    # Stage every artifact, then move the set into place, so a failed run cannot
+    # leave new maps beside the metrics JSON from an earlier run.
+    staging = Path(tempfile.mkdtemp(prefix=".pilot-", dir=arguments.output_dir))
     payload: dict[str, Any] = {
         "software": software_identity(),
         "region": {"bbox": PILOT_BBOX, "crs": grid.get("crs"), "grid": "native gridMET 4 km"},
@@ -707,7 +718,6 @@ def main(argv: list[str] | None = None) -> int:
         },
         "collections": {"daily": DAILY_COLLECTION, "drought": DROUGHT_COLLECTION, **anchor},
         "reference_a": metrics,
-        "difference_maps": plot_differences(fields, arguments.output_dir),
     }
 
     key = os.environ.get("CE_API_KEY", "").strip()
@@ -721,11 +731,19 @@ def main(argv: list[str] | None = None) -> int:
             "detail": ce_detail,
         }
     else:
-        payload["reference_b"] = {"status": "pending", "reason": "CE_API_KEY is not set"}
+        reason = "--skip-climate-engine was specified" if arguments.skip_climate_engine else "CE_API_KEY is not set"
+        payload["reference_b"] = {"status": "pending", "reason": reason}
 
-    output = arguments.output_dir / "pilot-metrics.json"
-    output.write_text(json.dumps(payload, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8")
-    print(f"wrote {output}", file=sys.stderr)
+    try:
+        payload["difference_maps"] = plot_differences(fields, staging)
+        output = staging / "pilot-metrics.json"
+        output.write_text(json.dumps(payload, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8")
+        for name in payload["difference_maps"]:
+            (staging / name).replace(arguments.output_dir / name)
+        output.replace(arguments.output_dir / output.name)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    print(f"wrote {arguments.output_dir / output.name}", file=sys.stderr)
     frame = pd.DataFrame(metrics).T
     print(frame[["n", "bias", "mae", "rmse", "correlation", "max_abs_difference", "category_agreement"]].to_string())
     return 0

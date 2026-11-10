@@ -14,6 +14,7 @@ import io
 import json
 import urllib.error
 from email.message import Message
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -32,6 +33,7 @@ CATALOG_BOUNDARIES = (-2.0, -1.6, -1.3, -0.8, -0.5, 0.5, 0.8, 1.3, 1.6, 2.0)
 
 # The native grid of both GRIDMET collections, as Earth Engine reports it.
 NATIVE_GRID = {
+    "crs": 'GEOGCS["unknown", DATUM["unknown", SPHEROID["Spheroid", 6378137.0, 298.257223563]]]',
     "crs_transform": (1.0 / 24.0, 0, -124.78749996666667, 0, -1.0 / 24.0, 49.42083333333334),
     "shape_2d": (1386, 585),
 }
@@ -119,7 +121,7 @@ def test_comparison_metrics_reject_a_shape_mismatch() -> None:
 
 
 def _single_cell(values: np.ndarray, start: str) -> xr.DataArray:
-    time = pd.date_range(start, periods=values.size, freq="ME")
+    time = pd.date_range(start, periods=values.size, freq=pd.offsets.MonthEnd())
     return xr.DataArray(values, dims=("time",), coords={"time": time}, attrs={"units": "mm"}, name="precipitation")
 
 
@@ -260,7 +262,7 @@ def test_crop_grid_to_bbox_rejects_a_metric_grid() -> None:
         pilot.crop_grid_to_bbox(metric, pilot.PILOT_BBOX)
 
 
-def test_grids_match_distinguishes_origin_and_shape() -> None:
+def test_grids_match_distinguishes_origin_projection_and_shape() -> None:
     left = pilot.crop_grid_to_bbox(NATIVE_GRID, pilot.PILOT_BBOX)
     assert pilot.grids_match(left, dict(left))
     shifted = dict(left)
@@ -270,7 +272,10 @@ def test_grids_match_distinguishes_origin_and_shape() -> None:
     assert not pilot.grids_match(left, shifted), "a one-pixel origin shift is a different grid"
     taller = dict(left)
     taller["shape_2d"] = (left["shape_2d"][0], left["shape_2d"][1] + 1)
-    assert not pilot.grids_match(left, taller)
+    assert not pilot.grids_match(left, taller), "one more row is a different grid"
+    reprojected = dict(left)
+    reprojected["crs"] = "EPSG:3857"
+    assert not pilot.grids_match(left, reprojected), "the same shape in another projection is a different grid"
 
 
 def test_check_monthly_totals_catches_unit_mistakes() -> None:
@@ -434,11 +439,23 @@ def test_climate_engine_http_error_does_not_echo_a_key(monkeypatch: pytest.Monke
     assert error.value.__suppress_context__
 
 
+def test_plot_differences_survives_an_all_missing_field(tmp_path: Path) -> None:
+    pytest.importorskip("matplotlib")
+    field = xr.DataArray(
+        np.full((2, 2, 3), np.nan),
+        dims=("y", "x", "time"),
+        coords={"y": [30.0, 31.0], "x": [-85.0, -84.0], "time": [0, 1, 2]},
+    )
+    written = pilot.plot_differences({"spi_1": field}, tmp_path)
+    assert written == ["difference-spi_1.png"]
+    assert (tmp_path / "difference-spi_1.png").is_file()
+
+
 def test_compare_climate_engine_selects_dates_not_input_positions(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(pilot, "COMPARISON_YEARS", (1981, 1981))
     monkeypatch.setattr(pilot, "SCALES", {1: "30d"})
     monkeypatch.setattr(pilot, "CE_POINTS", ((-84.9, 30.7),))
-    dates = pd.date_range("1980-01-31", periods=24, freq="ME")
+    dates = pd.date_range("1980-01-31", periods=24, freq=pd.offsets.MonthEnd())
     values = np.arange(24.0)
     cell = xr.DataArray(
         values[:, None, None], dims=("time", "y", "x"), coords={"time": dates, "y": [30.7], "x": [-84.9]}
