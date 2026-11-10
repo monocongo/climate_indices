@@ -1,7 +1,7 @@
 # Earth Engine and Climate Engine cross-validation pilot
 
 Status: step 1 of a proposed collaboration with the Climate Engine team (DRI).
-Reference A has run. Reference B is pending an API key. This page is an internal
+Both references have run. This page is an internal
 working note; the user-facing setup instructions live in
 [the Earth Engine and Climate Engine guide](../earthengine-climate-engine.md).
 
@@ -133,10 +133,14 @@ Subtract the closed-form +0.0538 plotting-position offset from each bias:
 | SPEI | +0.070 | +0.016 | +0.062 | +0.008 |
 | EDDI | −0.023 | **−0.076** | −0.026 | **−0.080** |
 
-For SPI and SPEI the residual is at most 0.016, i.e. the data agree and the
-convention difference explains the bias. For EDDI, where both sides already use
-the Tukey convention, the residual of about −0.08 is a genuine difference in
-method or input, not an artifact of ranks.
+Against reference A, the SPI and SPEI residual is at most 0.016, i.e. the data
+agree and the convention difference explains the bias. For EDDI, where both
+sides already use the Tukey convention, the residual of about −0.08 is a genuine
+difference in method or input, not an artifact of ranks.
+
+**This decomposition holds against reference A and does not hold against
+reference B**, whose SPI and SPEI bias has the opposite sign (see below). Read it
+as a statement about A, not as a general account of the difference.
 
 ### The EDDI residual is not a reference-crop problem
 
@@ -156,23 +160,66 @@ open question.
 
 ## Results, reference B
 
-Not run. `CE_API_KEY` is unset on the machine that produced these numbers, so
-the script records `reference_b.status = "pending"`. The request it will send is
-fixed in `climate_engine_series()` and covered by an offline test: dataset
-`GRIDMET`, `distribution=nonparametric`, `start_year=1981`, `end_year=2016`,
-`accumulation` 30/90/180/365 days, three points in the basin, key in the
-`Authorization` header only.
+The API returns a **daily** series: one SPI-3 value per day, each computed from
+the trailing 90 days. Three points in the basin were requested and the daily
+series was sampled at the last record on or before each month end, so the
+comparison lands on an observation with no phase offset. `n` is therefore
+3 points x 528 months.
 
-Reference B will be the more informative comparison once the key exists,
-because its `distribution=nonparametric` option is the same method family as
-ours, and its `accumulation` is expressed in days like reference A's windows.
+| Index | Scale | n | bias | MAE | RMSE | r | max abs | same class | within one class |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| SPI | 1 mo (90d) | 1,584 | −0.055 | 0.148 | 0.223 | 0.978 | 1.61 | 0.697 | 0.971 |
+| SPI | 3 mo (90d) | 1,584 | −0.063 | 0.130 | 0.195 | 0.984 | 1.41 | 0.724 | 0.974 |
+| SPI | 6 mo (180d) | 1,584 | −0.066 | 0.137 | 0.193 | 0.984 | 1.05 | 0.715 | 0.972 |
+| SPI | 12 mo (365d) | 1,584 | −0.069 | 0.096 | 0.147 | 0.995 | 0.84 | 0.771 | 0.993 |
+| SPEI | 1 mo | 1,584 | −0.052 | 0.146 | 0.221 | 0.978 | 1.44 | 0.700 | 0.968 |
+| SPEI | 3 mo | 1,584 | −0.055 | 0.125 | 0.184 | 0.985 | 1.14 | 0.748 | 0.979 |
+| SPEI | 6 mo | 1,584 | −0.056 | 0.125 | 0.177 | 0.986 | 0.84 | 0.737 | 0.984 |
+| SPEI | 12 mo | 1,584 | −0.055 | 0.091 | 0.139 | 0.994 | 0.68 | 0.782 | 0.994 |
+| EDDI | 1 mo | 1,584 | −0.085 | 0.137 | 0.201 | 0.982 | 1.40 | 0.717 | 0.983 |
+| EDDI | 3 mo | 1,584 | −0.085 | 0.126 | 0.180 | 0.986 | 1.00 | 0.732 | 0.986 |
+| EDDI | 6 mo | 1,584 | −0.084 | 0.125 | 0.180 | 0.987 | 1.00 | 0.740 | 0.990 |
+| EDDI | 12 mo | 1,584 | −0.087 | 0.111 | 0.157 | 0.991 | 1.00 | 0.754 | 0.996 |
 
-## Interpretation
+Per-point correlation for SPI-3 is 0.976, 0.984 and 0.991, so no single point
+drives the pooled figure.
+
+Three observations, in order of how much weight they deserve:
+
+1. **Reference B agrees more closely than reference A at every index and
+   scale.** SPI at one month correlates 0.978 against B and 0.928 against A;
+   SPI at twelve months 0.995 against B and 0.990 against A. B removes the two
+   things A cannot: the pentad sampling offset (B's daily series is sampled at
+   the month end itself) and the fixed-day window standing in for a calendar
+   month. That the rank-based method is common to both and B still agrees
+   better is evidence that A's scatter is dominated by sampling and window
+   shape rather than by the standardization.
+
+2. **The bias changes sign.** Against A, SPI and SPEI are biased *high*
+   (+0.048 to +0.070), which the +0.0538 plotting-position constant explains.
+   Against B they are biased *low* (−0.052 to −0.069) at the same three
+   latitudes, on the same dataset and the same baseline. If B also standardizes
+   with Tukey's symmetric position, the convention-expected offset is +0.054, so
+   the measured gap from that expectation is about **−0.11**. Nothing measured
+   here explains it, and it is not a small residual.
+
+3. **The two references disagree with each other in level.** Over the same
+   window, reference A's mean is +0.065 at three-month SPI (pooled over the
+   grid) and reference B's is +0.183 at the three points. Those are different
+   samples, so the numbers are not directly comparable, and this report does not
+   claim they are. It does make the level of each provider's product a question
+   worth asking directly, rather than something to infer.
+
+The per-point metrics, the nearest grid cell used for each point, and the exact
+request body are in `pilot-metrics.json` under `reference_b.detail`.
+
+## Interpretation## Interpretation
 
 1. **The implementations agree on the underlying data.** On identical inputs,
-   SPI and SPEI correlate at 0.93 to 0.99 with the catalog product across four
-   scales, and the bias is explained entirely by one documented convention
-   difference plus a window difference.
+   SPI and SPEI correlate at 0.93 to 0.99 with the catalog product and 0.98 to
+   1.00 with the Climate Engine API across four scales. The scatter is explained
+   by window shape and sampling; the *level* is not fully explained, and the two
+   references do not agree with each other on it.
 2. **The library carries two empirical conventions.** `eddi()` uses Tukey's
    symmetric plotting position; `Distribution.empirical` uses the SEI
    convention. Both are documented and tested, and they differ by a constant.
@@ -211,6 +258,11 @@ ours, and its `accumulation` is expressed in days like reference A's windows.
 - **`eto` versus `etr` remains unresolved for the reference.** The sensitivity
   run only shows which of the two matches better; it does not identify what the
   producer used.
+- **Reference B is three points, not a field.** Its `n` of 1,584 is three series
+  of 528 months, so it says nothing about spatial structure. It is the stronger
+  method comparison and the weaker coverage comparison.
+- **The B bias is unexplained.** Reporting it honestly is the point; the report
+  offers a hypothesis (a different standardization stratum) and not a cause.
 
 ## Open questions for the Climate Engine team
 
@@ -227,7 +279,16 @@ ours, and its `accumulation` is expressed in days like reference A's windows.
 5. Is there a documented reason for a 1981–2016 baseline rather than the full
    record? It fixes the sample at 36 values per stratum, which caps the
    achievable index magnitude.
-6. Would the team accept a contribution of `climate_indices` code as a
+6. Why does the `standard_index` series sit about 0.11 higher, on the z scale,
+   than this library's empirical SPI and SPEI at the same three points, when
+   both use a rank-based method over the same baseline? Candidates are the
+   standardization stratum (daily values standardized per calendar day of year
+   rather than per calendar month) and the treatment of the calibration years
+   inside the returned window.
+7. Is the daily cadence of the `standard_index` response intentional? It is
+   convenient, but a caller wanting a monthly product has to choose a sampling
+   rule, and the choice moves the values.
+8. Would the team accept a contribution of `climate_indices` code as a
    verification path for either product, and if so, which plotting position
    should a shared method note standardize on?
 
@@ -241,11 +302,11 @@ export EE_PROJECT=<a project registered for Earth Engine>
 # every time; writes the JSON and the sixteen maps
 uv run --extra earthengine scripts/earthengine_climate_engine_pilot.py
 
-# reference B, once a key exists
+# every time, including reference B
 CE_API_KEY=<key> uv run --extra earthengine scripts/earthengine_climate_engine_pilot.py
 ```
 
-The run takes about two minutes and reads 540 monthly images plus 528 pentads.
+The run takes about four minutes: 540 monthly images, 528 pentads, and twelve Climate Engine requests.
 Offline tests cover everything that does not need a network:
 `uv run pytest tests/test_earthengine_pilot_glue.py`.
 

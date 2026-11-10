@@ -1201,9 +1201,13 @@ Two measured facts qualify these numbers:
   alfalfa-reference-ET variant was measured and matches worse, so the
   reference crop does not explain it.
 
-The Climate Engine API reference (`/timeseries/standard_index`) has not been
-run: no API key was available. That comparison is recorded as pending, and no
-claim about it is made here.
+The Climate Engine API (`/timeseries/standard_index`, `distribution=nonparametric`,
+same 1981-2016 window) was compared at three points in the same basin over the
+same period. Correlation with this library is 0.978 to 0.995 across indices and
+scales, higher than against the catalog product at every one, while the bias is
+negative (-0.052 to -0.087) and not explained by the plotting-position constant.
+Three points are coverage, not a field; the method comparison is the stronger
+result and the level difference is an open question.
 
 ## References
 
