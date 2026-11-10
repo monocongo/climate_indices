@@ -1,26 +1,19 @@
 # Earth Engine and Climate Engine cross-validation pilot
 
-Status: step 1 of a proposed collaboration with the Climate Engine team (DRI).
-Both references have run. This page is an internal
-working note; the user-facing setup instructions live in
-[the Earth Engine and Climate Engine guide](../earthengine-climate-engine.md).
+Both references have run. This internal report records a characterization comparison, not reference reproduction.
+The [setup guide](../earthengine-climate-engine.md) gives the authentication instructions.
+No existing validation status changes.
 
 ## Purpose
 
-Answer one question with numbers: when `climate_indices` is given the same input
-data that a public provider used, does it produce the same drought index values,
-and where does it differ? The answer decides whether a joint dataset, a shared
-method note, or a contributed implementation is worth proposing.
+Measure agreement between `climate_indices` and two provider products that use gridMET inputs.
+Keep the references separate:
 
-Two references were chosen because they are independent of this library and of
-each other:
+- **A:** the Earth Engine catalog collection `GRIDMET/DROUGHT`.
+- **B:** the Climate Engine API `timeseries/standard_index/coordinates` endpoint.
 
-- **A. `GRIDMET/DROUGHT`**, the precomputed drought collection in the Earth
-  Engine Data Catalog.
-- **B. The Climate Engine API** `timeseries/standard_index` endpoint.
-
-They are reported separately. A result against one is never presented as a
-result against the other.
+These are separate products, not proven independent implementations.
+The pilot does not establish that their input series or methods are identical.
 
 ## What ran
 
@@ -28,73 +21,77 @@ result against the other.
 | --- | --- |
 | Library | `climate_indices` 3.2.0, branch `feature/earthengine-integration` |
 | Reader | `xee` 0.1.2, `earthengine-api` 1.7.52, Python 3.14.7 |
-| Inputs | `IDAHO_EPSCOR/GRIDMET`, bands `pr`, `eto`, `etr` (mm/day), 1980-01 to 2024-12 |
-| Reference A | `GRIDMET/DROUGHT`, 5-day pentad, 528 images read, 1981-01 to 2024-12 |
-| Reference B | `POST https://api.climateengine.org/timeseries/standard_index/coordinates`, not run (no key) |
-| Region | Apalachicola–Chattahoochee–Flint basin bounding box, 30.0–35.0 N, 85.7–83.3 W |
-| Grid | Native gridMET lattice, cropped to the box: 58 by 133 pixels, 7,714 cells, 4,638 m |
-| Cells with data | 7,303 (the masked remainder lies outside gridMET's land coverage) |
-| Calibration | 1981–2016, the baseline the catalog documents for reference A |
-| Comparison window | 1981–2024, 528 months |
-| Command | `uv run --extra earthengine scripts/earthengine_climate_engine_pilot.py` |
+| Inputs | `IDAHO_EPSCOR/GRIDMET`, bands `pr`, `eto`, `etr`, daily totals in mm |
+| Input years | 1980–2024; 1980 supplies the initial aggregation windows |
+| Reference A | `GRIDMET/DROUGHT`, one selected pentad per month, 528 images |
+| Reference B | `POST https://api.climateengine.org/timeseries/standard_index/coordinates` |
+| API points, longitude/latitude | (-84.9, 30.7), (-84.4, 33.0), (-84.0, 34.5) |
+| Region | ACF basin bounding rectangle, 29.5–35.0 N, 85.7–83.3 W; not a basin polygon |
+| Grid | Native gridMET lattice: 58 by 133 pixels, 7,714 cells, approximately 4,638 m |
+| Cells with data | 7,303 |
+| Calibration Period | 1981–2016 |
+| Comparison years | 1981–2024, 528 months |
+| Acquisition date | 2026-11-10 |
 
-Both collections report the identical native grid, and the script stops if they
-ever differ. The crop snaps to the source pixel edges, so no value is resampled
-before comparison.
+The script checks that both Earth Engine collections have the same native grid.
+It crops to pixel edges without changing the pixel spacing.
+For B, it selects the nearest grid cell to each requested point.
+The JSON records those cell coordinates and each API request body.
+The provider's spatial reducer is `mean`; pixel-selection equivalence remains unverified.
 
-The exact version, commit and dirty flag of every run are written to
-`docs/research/earthengine-pilot-results/pilot-metrics.json`.
+`docs/research/earthengine-pilot-results/pilot-metrics.json` records the library version, source commit, and dirty flag.
+The collection IDs identify live products, not immutable snapshots.
+Asset revision dates and input checksums were not captured, so later provider updates can change the results.
 
 ## Method alignment
 
-| Choice | `climate_indices` | Reference A | Match |
+| Choice | `climate_indices` | Reference A | Reference B |
 | --- | --- | --- | --- |
-| Distribution | rank based | non-parametric, plotting positions | Yes, family |
-| Plotting position | `(k + 1) / (n + 2)` for SPI and SPEI (SEI convention) | consistent with Tukey `(k − 1/3) / (n + 1/3)` | **No** for SPI and SPEI |
-| Plotting position, EDDI | Tukey `(k − 1/3) / (n + 1/3)` | Tukey | Yes |
-| Calibration | 1981–2016, explicit | 1981–2016, documented | Yes |
-| Accumulation window | calendar month | trailing fixed days, 5-day cadence | **No** |
-| Sampling date | month end | last pentad at or before month end | Offset 0–4 days, mean 1.83 |
-| Precipitations input | gridMET `pr` | gridMET `pr` | Yes |
-| Evaporative demand, SPEI | gridMET `eto` (grass) | "reference evapotranspiration", crop unnamed | Assumed |
-| Evaporative demand, EDDI | gridMET `eto` primary, `etr` sensitivity | crop unnamed | Assumed |
-| Time scales | 1, 3, 6, 12 calendar months | 30d, 90d, 180d, 1y | Nearest equivalent only |
+| Input family | gridMET `pr`; `eto` for primary SPEI/EDDI | gridMET; exact ET crop unresolved | `dataset=GRIDMET`; exact input equivalence unresolved |
+| Distribution | empirical/rank based | nonparametric plotting positions | `distribution=nonparametric` |
+| SPI/SPEI position | SEI `(k + 1) / (n + 2)` | endpoints consistent with Tukey; formula unconfirmed | documentation names Tukey; exact implementation unverified |
+| EDDI position | Tukey `(k − 1/3) / (n + 1/3)` | formula unconfirmed | exact implementation unverified |
+| Calibration Period | 1981–2016 | catalog documents 1981–2016 | request sets 1981–2016 |
+| Calendar grouping | each calendar month | unresolved | unresolved |
+| Aggregation | 1/3/6/12 calendar months | 30d/90d/180d/1y | 30/90/180/365 days |
+| Sampling | month end | last pentad on or before month end | last daily record at most four days before month end |
+| Spatial support | every cropped cell for A; three nearest cells for B | cropped field | three requested points |
 
-Two mismatches are structural and cannot be removed without changing what this
-library computes:
+The API's `accumulation` parameter uses days for the daily GRIDMET dataset.
+Daily output does not remove the fixed-day versus calendar-month window difference.
+For example, three calendar months can contain 89–92 days rather than exactly 90.
+Reference A's chosen timestamps precede month end by 0–4 days, with a mean of 1.83 days.
+The B response observed during notebook execution ends on 2024-12-30 despite the requested end date of 2024-12-31.
+Thus the sampling rule can retain a date offset; it does not guarantee exact month-end observations.
 
-1. **Window shape.** `climate_indices` accumulates whole calendar months.
-   Reference A accumulates fixed-length trailing windows sampled every five days.
-   A 12-month index therefore covers 365 or 366 days in the reference and 365 or
-   366 days for us, but a 3-month index covers 90 days there and 89 to 92 days
-   here.
-2. **Plotting position.** This library's `Distribution.empirical` uses the SEI
-   convention `(k + 1) / (n + 2)`, which is pinned by an external oracle
-   (`tests/test_zero_handling_reference.py`). On a 36-value calibration sample
-   that convention produces z from −1.620 to +1.938 with a mean of **+0.0538**.
-   The Tukey convention that reference A's endpoints imply is symmetric about
-   zero, with z from −2.089 to +2.089.
+### Rank-convention illustration
 
-   `eddi()` already uses the Tukey convention, so EDDI is comparable and
-   SPI/SPEI are not, in this specific respect. That asymmetry is in this
-   library, not in the reference.
-
-The number +0.0538 is the most important figure in this report. It is a constant
-that the plotting-position difference adds to every SPI and SPEI value, and it
-is computable in closed form:
+For 36 distinct calibration ranks, SEI normal quantiles have a discrete mean of approximately +0.0538.
+Tukey normal quantiles have a discrete mean of zero.
+The SEI endpoints are approximately −1.620 and +1.938; Tukey's are approximately ±2.089.
+This calculation reproduces those figures:
 
 ```bash
-uv run python -c "
-import numpy as np; from scipy.stats import norm
+uv run python -c '
+import numpy as np
+from scipy.stats import norm
 k = np.arange(1, 37)
-print(norm.ppf((k + 1) / 38).mean())"
+for p in ((k + 1) / 38, (k - 1/3) / (36 + 1/3)):
+    z = norm.ppf(p)
+    print(z.min(), z.max(), z.mean())
+'
 ```
+
+These are exact-normal calculations for distinct ranks, not a measured decomposition of the provider differences.
+The difference depends on rank, so +0.0538 is not a constant correction for individual observations.
+Ties, incomplete calibration samples, inverse-normal approximations, and observations outside the Calibration Period can alter the comparison.
+No SEI correction applies to EDDI, which already uses Tukey's position here.
 
 ## Results, reference A
 
-Pooled over 7,303 cells and 528 months, so `n` is about 3.85 million pairs per
-index and scale. `bias` is `mean(ours − reference)`. Category agreement uses the
-catalog's documented SPI/SPEI/EDDI classes.
+Bias is `mean(ours − reference)` over finite pairs.
+The category metrics use the catalog's eleven drought-to-wet classes, including the D0–D4 thresholds.
+They are index-category comparisons, not agreement with an observed USDM map.
 
 | Index | Scale | n | bias | MAE | RMSE | r | max abs | same class | within one class |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -111,211 +108,99 @@ catalog's documented SPI/SPEI/EDDI classes.
 | EDDI | 6 mo (180d) | 3,855,984 | −0.014 | 0.087 | 0.145 | 0.988 | 3.37 | 0.845 | 0.995 |
 | EDDI | 12 mo (1y) | 3,848,681 | −0.026 | 0.072 | 0.116 | 0.993 | 2.38 | 0.861 | 0.997 |
 
-Agreement improves monotonically with scale for all three indices. Correlation
-of 0.93 at one month is what a different accumulation window, a five-day
-sampling offset, and a different plotting position produce on the same
-underlying weather; correlation of 0.99 at twelve months means the annual
-accumulation removes most of that noise.
+Correlation increases and MAE decreases with timescale for this sample.
+The pilot does not isolate the causes of that pattern.
+The sixteen `difference-<index>_<scale>.png` files show mean signed differences, including the alfalfa-ET sensitivity.
+Positive and negative monthly errors can cancel in these maps; they do not show maximum monthly errors.
 
-Sixteen difference maps are in `docs/research/earthengine-pilot-results/`
-(`difference-<index>_<scale>.png`). The one-month maps show a weak gradient
-across the basin rather than isolated artifacts; the twelve-month maps show
-near-zero structure, which is consistent with the window mismatch being the
-dominant cause.
-
-### The bias decomposes
-
-Subtract the closed-form +0.0538 plotting-position offset from each bias:
-
-| Index | bias at 1 mo | residual after −0.0538 | bias at 12 mo | residual after −0.0538 |
-| --- | --- | --- | --- | --- |
-| SPI | +0.061 | +0.008 | +0.049 | −0.005 |
-| SPEI | +0.070 | +0.016 | +0.062 | +0.008 |
-| EDDI | −0.023 | **−0.076** | −0.026 | **−0.080** |
-
-Against reference A, the SPI and SPEI residual is at most 0.016, i.e. the data
-agree and the convention difference explains the bias. For EDDI, where both
-sides already use the Tukey convention, the residual of about −0.08 is a genuine
-difference in method or input, not an artifact of ranks.
-
-**This decomposition holds against reference A and does not hold against
-reference B**, whose SPI and SPEI bias has the opposite sign (see below). Read it
-as a statement about A, not as a general account of the difference.
-
-### The EDDI residual is not a reference-crop problem
-
-The catalog does not say whether its EDDI uses grass (`eto`) or alfalfa (`etr`)
-reference evapotranspiration. Reading both costs one extra band, so the run
-computes both:
+### Reference-crop sensitivity
 
 | EDDI input | bias at 1 mo | MAE at 1 mo | r at 1 mo | MAE at 12 mo | r at 12 mo |
 | --- | --- | --- | --- | --- | --- |
 | `eto`, grass | −0.023 | 0.175 | 0.958 | 0.072 | 0.993 |
 | `etr`, alfalfa | −0.043 | 0.211 | 0.948 | 0.140 | 0.978 |
 
-Alfalfa is worse at every scale, so the hypothesis that the gap comes from the
-reference crop is not supported. Grass reference ET matches better. The
-remaining −0.08 is unexplained by anything measured here and is listed as an
-open question.
+Grass reference ET matches more closely in this pilot.
+This sensitivity does not identify the reference producer's crop or explain the remaining bias.
 
 ## Results, reference B
 
-The API returns a **daily** series: one SPI-3 value per day, each computed from
-the trailing 90 days. Three points in the basin were requested and the daily
-series was sampled at the last record on or before each month end, so the
-comparison lands on an observation with no phase offset. `n` is therefore
-3 points x 528 months.
+The API returns a daily series for each point.
+The script samples those series at month ends under the bounded rule above.
+Each row contains 1,584 finite pairs: three points and 528 months.
 
 | Index | Scale | n | bias | MAE | RMSE | r | max abs | same class | within one class |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| SPI | 1 mo (90d) | 1,584 | −0.055 | 0.148 | 0.223 | 0.978 | 1.61 | 0.697 | 0.971 |
+| SPI | 1 mo (30d) | 1,584 | −0.055 | 0.148 | 0.223 | 0.978 | 1.61 | 0.697 | 0.971 |
 | SPI | 3 mo (90d) | 1,584 | −0.063 | 0.130 | 0.195 | 0.984 | 1.41 | 0.724 | 0.974 |
 | SPI | 6 mo (180d) | 1,584 | −0.066 | 0.137 | 0.193 | 0.984 | 1.05 | 0.715 | 0.972 |
 | SPI | 12 mo (365d) | 1,584 | −0.069 | 0.096 | 0.147 | 0.995 | 0.84 | 0.771 | 0.993 |
-| SPEI | 1 mo | 1,584 | −0.052 | 0.146 | 0.221 | 0.978 | 1.44 | 0.700 | 0.968 |
-| SPEI | 3 mo | 1,584 | −0.055 | 0.125 | 0.184 | 0.985 | 1.14 | 0.748 | 0.979 |
-| SPEI | 6 mo | 1,584 | −0.056 | 0.125 | 0.177 | 0.986 | 0.84 | 0.737 | 0.984 |
-| SPEI | 12 mo | 1,584 | −0.055 | 0.091 | 0.139 | 0.994 | 0.68 | 0.782 | 0.994 |
-| EDDI | 1 mo | 1,584 | −0.085 | 0.137 | 0.201 | 0.982 | 1.40 | 0.717 | 0.983 |
-| EDDI | 3 mo | 1,584 | −0.085 | 0.126 | 0.180 | 0.986 | 1.00 | 0.732 | 0.986 |
-| EDDI | 6 mo | 1,584 | −0.084 | 0.125 | 0.180 | 0.987 | 1.00 | 0.740 | 0.990 |
-| EDDI | 12 mo | 1,584 | −0.087 | 0.111 | 0.157 | 0.991 | 1.00 | 0.754 | 0.996 |
+| SPEI | 1 mo (30d) | 1,584 | −0.052 | 0.146 | 0.221 | 0.978 | 1.44 | 0.700 | 0.968 |
+| SPEI | 3 mo (90d) | 1,584 | −0.055 | 0.125 | 0.184 | 0.985 | 1.14 | 0.748 | 0.979 |
+| SPEI | 6 mo (180d) | 1,584 | −0.056 | 0.125 | 0.177 | 0.986 | 0.84 | 0.737 | 0.984 |
+| SPEI | 12 mo (365d) | 1,584 | −0.055 | 0.091 | 0.139 | 0.994 | 0.68 | 0.782 | 0.994 |
+| EDDI | 1 mo (30d) | 1,584 | −0.085 | 0.137 | 0.201 | 0.982 | 1.40 | 0.717 | 0.983 |
+| EDDI | 3 mo (90d) | 1,584 | −0.085 | 0.126 | 0.180 | 0.986 | 1.00 | 0.732 | 0.986 |
+| EDDI | 6 mo (180d) | 1,584 | −0.084 | 0.125 | 0.180 | 0.987 | 1.00 | 0.740 | 0.990 |
+| EDDI | 12 mo (365d) | 1,584 | −0.087 | 0.111 | 0.157 | 0.991 | 1.00 | 0.754 | 0.996 |
 
-Per-point correlation for SPI-3 is 0.976, 0.984 and 0.991, so no single point
-drives the pooled figure.
+SPI-3 per-point correlations are approximately 0.976, 0.984, and 0.991.
+The B biases are negative for every index and timescale.
+SPI and SPEI biases therefore have the opposite sign from the pooled A results.
+The cause remains unresolved.
 
-Three observations, in order of how much weight they deserve:
+A and B use different spatial samples here.
+Their pooled metrics cannot establish a provider ranking or a direct disagreement between the references.
+The fixed-day windows, calendar grouping, plotting positions, and spatial sampling require further alignment.
+The script does not tune any configuration to reduce these differences.
 
-1. **Reference B agrees more closely than reference A at every index and
-   scale.** SPI at one month correlates 0.978 against B and 0.928 against A;
-   SPI at twelve months 0.995 against B and 0.990 against A. B removes the two
-   things A cannot: the pentad sampling offset (B's daily series is sampled at
-   the month end itself) and the fixed-day window standing in for a calendar
-   month. That the rank-based method is common to both and B still agrees
-   better is evidence that A's scatter is dominated by sampling and window
-   shape rather than by the standardization.
+## Interpretation and limitations
 
-2. **The bias changes sign.** Against A, SPI and SPEI are biased *high*
-   (+0.048 to +0.070), which the +0.0538 plotting-position constant explains.
-   Against B they are biased *low* (−0.052 to −0.069) at the same three
-   latitudes, on the same dataset and the same baseline. If B also standardizes
-   with Tukey's symmetric position, the convention-expected offset is +0.054, so
-   the measured gap from that expectation is about **−0.11**. Nothing measured
-   here explains it, and it is not a small residual.
-
-3. **The two references disagree with each other in level.** Over the same
-   window, reference A's mean is +0.065 at three-month SPI (pooled over the
-   grid) and reference B's is +0.183 at the three points. Those are different
-   samples, so the numbers are not directly comparable, and this report does not
-   claim they are. It does make the level of each provider's product a question
-   worth asking directly, rather than something to infer.
-
-The per-point metrics, the nearest grid cell used for each point, and the exact
-request body are in `pilot-metrics.json` under `reference_b.detail`.
-
-## Interpretation## Interpretation
-
-1. **The implementations agree on the underlying data.** On identical inputs,
-   SPI and SPEI correlate at 0.93 to 0.99 with the catalog product and 0.98 to
-   1.00 with the Climate Engine API across four scales. The scatter is explained
-   by window shape and sampling; the *level* is not fully explained, and the two
-   references do not agree with each other on it.
-2. **The library carries two empirical conventions.** `eddi()` uses Tukey's
-   symmetric plotting position; `Distribution.empirical` uses the SEI
-   convention. Both are documented and tested, and they differ by a constant.
-   A user comparing EDDI against SPI from this library is comparing across two
-   conventions without being told.
-3. **Category agreement is the number users care about and the weakest one.**
-   Same-class agreement at one month is 0.64, and 0.91 within one class. A
-   one-class disagreement is normal for two products that differ in window and
-   plotting position; a two-class disagreement is not, and it occurs for about
-   9% of one-month pairs.
-4. **Nothing here needs a plausible-sounding excuse.** The residual biases are
-   small enough to attribute, or, for EDDI, small enough to list as open rather
-   than explain away.
-
-## Limitations
-
-- **Reference A is not an independent method.** It is UC Merced's product, and
-  this library's EDDI follows the same NOAA PSL lineage. Agreement on EDDI is
-  expected and is not evidence of correctness.
-- **One region, one period.** The ACF basin is humid and subtropical. A dry
-  basin would weight the tails differently, and the empirical ceiling binds
-  harder where values are extreme.
-- **Pooled metrics hide spatial structure.** `n` of 3.85 million is a large
-  sample of a small, correlated field. The effective sample size is closer to
-  the number of independent months than to the number of cell-months, so
-  treat the metrics as descriptive, not as significance tests.
-- **The empirical ceiling is load-bearing.** With a 36-value sample, this
-  library's SPI and SPEI cannot exceed +1.94 or fall below −1.62 inside the
-  calibration sample, while reference A reaches ±2.09. Extreme droughts are
-  therefore compared through a compressed scale, which inflates apparent
-  category disagreement exactly where users look most closely.
-- **The plotting-position inference is inference.** The ±2.090 endpoint of
-  reference A matches Tukey at n = 36 to four decimals, and Climate Engine
-  documents Tukey plotting positions, but the catalog page does not name the
-  formula. Treated as an open question, not a fact.
-- **`eto` versus `etr` remains unresolved for the reference.** The sensitivity
-  run only shows which of the two matches better; it does not identify what the
-  producer used.
-- **Reference B is three points, not a field.** Its `n` of 1,584 is three series
-  of 528 months, so it says nothing about spatial structure. It is the stronger
-  method comparison and the weaker coverage comparison.
-- **The B bias is unexplained.** Reporting it honestly is the point; the report
-  offers a hypothesis (a different standardization stratum) and not a cause.
+- This is a characterization comparison, not a correctness proof or reference reproduction.
+- The region is one humid southeastern rectangle, not the basin polygon or CONUS.
+- The references share gridMET inputs and may share method lineage; their independence is not established.
+- Approximately 3.85 million cell-month pairs are spatially and temporally correlated, not independent samples.
+- The B comparison covers three points and does not measure a spatial error field.
+- A rank-convention difference is plausible, but this pilot does not prove a causal bias decomposition.
+- The documented Tukey family does not establish identical tie handling, calibration grouping, or inverse-normal implementation.
+- Data-source identity does not establish byte-identical inputs, especially across live services.
+- The notebook's gamma SPI comparison demonstrates data access, not method-matched nonparametric reproduction.
+- The data terms remain provider-specific. No raw Climate Engine response or credential is committed.
 
 ## Open questions for the Climate Engine team
 
-1. Which plotting position does `GRIDMET/DROUGHT` and the Climate Engine
-   `standard_index` endpoint use: `(k + 1) / (n + 2)`, `k / (n + 1)`, or Tukey
-   `(k − 1/3) / (n + 1/3)`? The three differ by a constant offset of up to 0.054
-   in z for a 36-year baseline, which is the size of the bias measured here.
-2. Is standardization applied within each calendar month (12 strata, as this
-   library does), within each pentad of the year (73 strata), or pooled?
-3. Does the pentad labelled 30 January cover the five days ending that day or
-   starting it? This report assumes ending.
-4. Which reference crop does the catalog's EDDI use, grass or alfalfa? The
-   sensitivity here says grass, but it cannot confirm.
-5. Is there a documented reason for a 1981–2016 baseline rather than the full
-   record? It fixes the sample at 36 values per stratum, which caps the
-   achievable index magnitude.
-6. Why does the `standard_index` series sit about 0.11 higher, on the z scale,
-   than this library's empirical SPI and SPEI at the same three points, when
-   both use a rank-based method over the same baseline? Candidates are the
-   standardization stratum (daily values standardized per calendar day of year
-   rather than per calendar month) and the treatment of the calibration years
-   inside the returned window.
-7. Is the daily cadence of the `standard_index` response intentional? It is
-   convenient, but a caller wanting a monthly product has to choose a sampling
-   rule, and the choice moves the values.
-8. Would the team accept a contribution of `climate_indices` code as a
-   verification path for either product, and if so, which plotting position
-   should a shared method note standardize on?
+1. Which exact plotting position and tie rule do the catalog and API products use?
+2. Do they standardize within calendar days, pentads, months, or another grouping?
+3. Does each catalog timestamp mark the start or end of its pentad window?
+4. Which reference crop supplies SPEI and EDDI evaporative demand?
+5. Do the API's calibration years select the same calibration samples as the catalog's 1981–2016 window?
+6. Why does the API return no 2024-12-31 standard-index observation for this requested end date?
+7. Which grid cell or spatial footprint does the point reducer select?
+8. What explains the negative B bias after these settings are aligned?
+9. Can the team provide immutable asset versions, citation requirements, and permission to redistribute a small paired fixture?
+10. Would a shared method note or verification script help the collaboration?
 
 ## Reproduction
 
 ```bash
-# once per machine
+# Authenticate once on the machine.
 uv run --extra earthengine earthengine authenticate
 export EE_PROJECT=<a project registered for Earth Engine>
 
-# every time; writes the JSON and the sixteen maps
+# Load CE_API_KEY from your local environment without printing it.
 uv run --extra earthengine scripts/earthengine_climate_engine_pilot.py
 
-# every time, including reference B
-CE_API_KEY=<key> uv run --extra earthengine scripts/earthengine_climate_engine_pilot.py
+# Run the offline tests without credentials.
+uv run pytest tests/test_earthengine_pilot_glue.py
 ```
 
-The run takes about four minutes: 540 monthly images, 528 pentads, and twelve Climate Engine requests.
-Offline tests cover everything that does not need a network:
-`uv run pytest tests/test_earthengine_pilot_glue.py`.
+The pilot writes the metrics JSON and sixteen maps.
+Without `CE_API_KEY`, it records B as pending and runs only A.
+Runtime depends on provider latency and quotas; earlier complete runs took several minutes.
+The API key travels only in the authorization header.
 
-## Proposed `VALIDATION.md` entry
+## Validation entry
 
-Evidence level: **characterization comparison**, in the vocabulary
-`VALIDATION.md` already uses. It is not reference reproduction: the reference is
-a different implementation with a different accumulation window and a different
-plotting position, and no existing status is upgraded by this pilot.
-
-The proposed text is in the "Cross-provider characterization" section of
-[`VALIDATION.md`](../../VALIDATION.md).
+The [cross-provider section in `VALIDATION.md`](../../VALIDATION.md) records characterization evidence only.
+The script, offline tests, notebooks, and saved metrics provide the reproduction path.
+No core-library API changes or validation-status upgrades are part of this pilot.

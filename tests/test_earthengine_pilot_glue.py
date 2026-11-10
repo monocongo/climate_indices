@@ -3,14 +3,17 @@
 Nothing here needs a network connection or a credential. The tests cover the
 pure-Python parts of ``scripts/earthengine_climate_engine_pilot.py``: calendar
 bucketing, pentad sampling, grid cropping, the agreement metrics, the empirical
-(Tukey) standardization convention the comparison depends on, the Climate Engine
+(SEI) standardization convention the comparison depends on, the Climate Engine
 request shapes, and the response parser. The Earth Engine reads and the live API
 calls are integration territory and are not exercised here.
 """
 
 from __future__ import annotations
 
+import io
 import json
+import urllib.error
+from email.message import Message
 from typing import Any
 
 import numpy as np
@@ -403,6 +406,81 @@ def test_sample_at_month_ends_returns_missing_before_the_series_starts() -> None
     months = pilot.month_ends(1981, 1981)[:2]
     sampled = pilot.sample_at_month_ends(series, months)
     assert np.isnan(sampled).all(), "a month before the first record has no observation to sample"
+
+
+def test_sample_at_month_ends_does_not_fill_across_a_missing_month() -> None:
+    series = pd.Series([9.0], index=pd.to_datetime(["1981-01-31"]))
+    sampled = pilot.sample_at_month_ends(series, pilot.month_ends(1981, 1981)[:2])
+    assert sampled[0] == 9.0
+    assert np.isnan(sampled[1])
+
+
+def test_parse_climate_engine_points_rejects_empty_records() -> None:
+    payload = {"Data": [{"Metadata": {"DRI_OBJECTID": "[-84.9, 30.7]"}, "Data": []}]}
+    with pytest.raises(RuntimeError, match="no records"):
+        pilot.parse_climate_engine_points(payload, "spi")
+
+
+def test_climate_engine_http_error_does_not_echo_a_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    secret = "not-a-real-key"
+
+    def fail(request: Any, timeout: int) -> None:
+        raise urllib.error.HTTPError(request.full_url, 403, "Forbidden", Message(), io.BytesIO(secret.encode()))
+
+    monkeypatch.setattr("urllib.request.urlopen", fail)
+    with pytest.raises(RuntimeError, match="HTTP 403") as error:
+        pilot.climate_engine_series(secret, 1, "spi")
+    assert secret not in str(error.value)
+    assert error.value.__suppress_context__
+
+
+def test_compare_climate_engine_selects_dates_not_input_positions(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(pilot, "COMPARISON_YEARS", (1981, 1981))
+    monkeypatch.setattr(pilot, "SCALES", {1: "30d"})
+    monkeypatch.setattr(pilot, "CE_POINTS", ((-84.9, 30.7),))
+    dates = pd.date_range("1980-01-31", periods=24, freq="ME")
+    values = np.arange(24.0)
+    cell = xr.DataArray(
+        values[:, None, None], dims=("time", "y", "x"), coords={"time": dates, "y": [30.7], "x": [-84.9]}
+    )
+    ours = {f"{index}_1": cell for index in ("spi", "spei", "eddi")}
+
+    def response(key: str, scale: int, variable: str) -> dict[str, Any]:
+        return {
+            "request": {},
+            "response": {
+                "Data": [
+                    {
+                        "Metadata": {"DRI_OBJECTID": "[-84.9, 30.7]"},
+                        "Data": [
+                            {"Date": date.strftime("%Y-%m-%d"), variable: value}
+                            for date, value in zip(dates[12:], values[12:], strict=True)
+                        ],
+                    }
+                ]
+            },
+        }
+
+    monkeypatch.setattr(pilot, "climate_engine_series", response)
+    metrics, _ = pilot.compare_climate_engine(ours, "not-a-real-key")
+    for result in metrics.values():
+        assert result["n"] == 12
+        assert result["mae"] == 0.0
+
+
+def test_gridmet_filter_includes_the_final_day(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Collection:
+        def filterDate(self, start: str, end: str) -> None:
+            assert start == "1980-01-01"
+            assert end == "2025-01-01"
+            raise RuntimeError("date checked")
+
+    class EarthEngine:
+        def ImageCollection(self, name: str) -> Collection:
+            return Collection()
+
+    with pytest.raises(RuntimeError, match="date checked"):
+        pilot.open_monthly_gridmet(EarthEngine(), pilot.PILOT_BBOX, NATIVE_GRID)
 
 
 def test_scale_mapping_covers_the_catalog_scales() -> None:

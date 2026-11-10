@@ -202,9 +202,17 @@ curl -X POST "https://api.climateengine.org/timeseries/standard_index/coordinate
 The endpoint refuses a precomputed drought product as its input: use
 `GRIDMET`, not `GRIDMET_DROUGHT`, as the dataset.
 
-Pass the returned values to the NumPy API. `climate_indices.spi()` and
-`climate_indices.spei()` accept a 1-D array; there is no wrapper that reads the
-API for you, and none is planned until a pilot shows one is worth having.
+The standard-index endpoint returns indices, not raw precipitation or ET.
+Use `/timeseries/native/coordinates` to request raw inputs for a new calculation.
+The live response contains one `Data` block per point, labelled by `Metadata.DRI_OBJECTID`.
+Native columns can include units, such as `pr (mm)`; index columns use names such as `spi`.
+Treat `-9999` as missing before aggregation or comparison.
+
+`climate_indices.spi()` and `climate_indices.spei()` accept one-dimensional input arrays.
+The [Climate Engine notebook](https://github.com/monocongo/climate_indices/blob/main/notebooks/climate_engine_api_timeseries.ipynb)
+requests raw precipitation, checks daily completeness, aggregates calendar months, and computes SPI.
+Its gamma calculation demonstrates data access; it does not reproduce the API's nonparametric method.
+The pilot compares empirical indices separately and records the remaining method differences.
 
 ## Terms, licences and citation
 

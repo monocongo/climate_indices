@@ -1188,26 +1188,24 @@ different empirical plotting position for SPI and SPEI. No status in the
 | EDDI | 6 mo | 3,855,984 | -0.014 | 0.145 | 0.988 | 0.845 | 0.995 |
 | EDDI | 12 mo | 3,848,681 | -0.026 | 0.116 | 0.993 | 0.861 | 0.997 |
 
-Two measured facts qualify these numbers:
-
-- The SPI and SPEI bias is explained by a closed-form constant.
-  `Distribution.empirical` uses the SEI plotting position
-  `(k + 1) / (n + 2)`, whose expected value on a 36-value sample is +0.0538;
-  the reference's endpoints are consistent with Tukey's symmetric plotting
-  position, whose expected value is 0. After removing that constant the
-  residual bias is at most 0.016.
-- `eddi()` already uses Tukey's plotting position, so its residual bias of about
-  -0.08 is a method or input difference rather than a convention difference. An
-  alfalfa-reference-ET variant was measured and matches worse, so the
-  reference crop does not explain it.
+The plotting-position conventions qualify these numbers.
+`Distribution.empirical` uses the SEI position `(k + 1) / (n + 2)`.
+For 36 distinct calibration ranks, the exact normal quantiles have a mean of +0.0538.
+Tukey's positions have a mean of zero for those ranks.
+Their differences depend on rank; +0.0538 is not a constant correction for each observation or the full comparison period.
+The catalog endpoints suggest Tukey's convention but do not establish its formula.
+The EDDI biases above are -0.014 to -0.026; no SEI correction applies to EDDI.
+An alfalfa-reference-ET variant matches less closely, but that result does not establish the producer's reference crop.
 
 The Climate Engine API (`/timeseries/standard_index`, `distribution=nonparametric`,
-same 1981-2016 window) was compared at three points in the same basin over the
-same period. Correlation with this library is 0.978 to 0.995 across indices and
-scales, higher than against the catalog product at every one, while the bias is
-negative (-0.052 to -0.087) and not explained by the plotting-position constant.
-Three points are coverage, not a field; the method comparison is the stronger
-result and the level difference is an open question.
+same 1981-2016 Calibration Period) was compared at three points over the same years.
+Correlation is 0.978 to 0.995 across indices and timescales; bias is -0.052 to -0.087.
+The API requests use 30/90/180/365 trailing days, not calendar-month windows.
+The script samples the last daily record at most four days before each month end.
+Missing longer intervals remain missing.
+These point metrics and the catalog's field metrics have different spatial support.
+They cannot establish which reference agrees more closely on a common sample or explain the bias.
+The producer's exact rank formula, calendar grouping, reference crop, and endpoint date semantics remain open questions.
 
 ## References
 

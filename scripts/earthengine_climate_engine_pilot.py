@@ -10,8 +10,8 @@ separate in the report:
   (``distribution=nonparametric``, ``start_year=1981``, ``end_year=2016``).
 
 Both references standardize by rank with a plotting position, so this script
-uses ``Distribution.empirical`` (Tukey plotting position ``(k + 1) / (n + 2)``)
-for SPI and SPEI and :func:`climate_indices.eddi` (same convention) rather than
+uses ``Distribution.empirical`` (SEI plotting position ``(k + 1) / (n + 2)``)
+for SPI and SPEI and :func:`climate_indices.eddi` (Tukey plotting position) rather than
 gamma or log-logistic. The method alignment table and every known mismatch are
 recorded in ``docs/research/earthengine-climate-engine-pilot.md``; nothing here
 tunes a setting to a reference output.
@@ -304,7 +304,7 @@ def open_monthly_gridmet(ee: Any, bbox: tuple[float, float, float, float], grid:
     months = month_ends(*INPUT_YEARS)
     collection = (
         ee.ImageCollection(DAILY_COLLECTION)
-        .filterDate(f"{INPUT_YEARS[0]}-01-01", f"{INPUT_YEARS[1]}-12-31")
+        .filterDate(f"{INPUT_YEARS[0]}-01-01", f"{INPUT_YEARS[1] + 1}-01-01")
         .filterBounds(ee.Geometry.Rectangle(bbox))
         .select(["pr", "eto", "etr"])
     )
@@ -351,8 +351,10 @@ def open_drought_reference(
     each chosen pentad sits from its month end, which the report reports as the
     sampling offset rather than hiding it.
     """
-    collection = ee.ImageCollection(DROUGHT_COLLECTION).filterDate(
-        f"{COMPARISON_YEARS[0]}-01-01", f"{COMPARISON_YEARS[1]}-12-31"
+    collection = (
+        ee.ImageCollection(DROUGHT_COLLECTION)
+        .filterDate(f"{COMPARISON_YEARS[0]}-01-01", f"{COMPARISON_YEARS[1] + 1}-01-01")
+        .sort("system:time_start")
     )
     stamps = collection.aggregate_array("system:time_start").getInfo()
     chosen = last_pentad_index_per_month(stamps, comparison_months)
@@ -480,8 +482,8 @@ def climate_engine_request(endpoint: str, body: dict[str, Any], key: str) -> dic
         with urllib.request.urlopen(request, timeout=180) as response:
             decoded = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
-        detail = error.read().decode("utf-8", "replace")[:400]
-        raise RuntimeError(f"Climate Engine API returned HTTP {error.code}: {detail}") from error
+        # A remote error body can echo request headers, including the key.
+        raise RuntimeError(f"Climate Engine API returned HTTP {error.code}") from None
     if not isinstance(decoded, dict):
         raise RuntimeError(f"Climate Engine API returned a {type(decoded).__name__}, not a JSON object")
     return decoded
@@ -546,6 +548,8 @@ def parse_climate_engine_points(payload: dict[str, Any], variable: str) -> dict[
         if len(coordinates) != 2:  # noqa: PLR2004 - a point is a longitude and a latitude
             raise RuntimeError(f"expected a point coordinate, got {label!r}")
         records = block["Data"]
+        if not records:
+            raise RuntimeError(f"no records for point {label!r}")
         # The standard-index endpoint names the column after the variable; the
         # native endpoint appends the catalog unit, as in "pr (mm)".
         columns = records[0]
@@ -564,13 +568,14 @@ def parse_climate_engine_points(payload: dict[str, Any], variable: str) -> dict[
 def sample_at_month_ends(series: pd.Series, months: list[MonthEnd]) -> np.ndarray:
     """Take each month end's value from a possibly finer series.
 
-    Uses the last observation on or before the month end, so a daily series is
-    sampled without interpolation and the comparison stays on an observation
-    rather than a fit.
+    Uses the last observation at most four days before the month end. Longer
+    gaps stay missing instead of copying a stale observation across months.
     """
     if not series.index.is_monotonic_increasing:
         series = series.sort_index()
-    values = series.reindex(pd.DatetimeIndex([month.last_day for month in months]), method="ffill")
+    values = series.reindex(
+        pd.DatetimeIndex([month.last_day for month in months]), method="ffill", tolerance=pd.Timedelta(days=4)
+    )
     return np.asarray(values.to_numpy(dtype="float64"))
 
 
@@ -592,6 +597,8 @@ def compare_climate_engine(
             key_name = f"{index}_{scale}"
             response = climate_engine_series(key, scale, index)
             points = parse_climate_engine_points(response["response"], index)
+            if set(points) != set(CE_POINTS):
+                raise RuntimeError(f"{key_name}: the API did not return exactly the requested points")
             pooled_ours: list[np.ndarray] = []
             pooled_theirs: list[np.ndarray] = []
             per_point: dict[str, dict[str, float]] = {}
@@ -694,7 +701,7 @@ def main(argv: list[str] | None = None) -> int:
             "comparison_years": COMPARISON_YEARS,
         },
         "method": {
-            "ours": "Distribution.empirical (Tukey plotting position), per calendar month",
+            "ours": "SPI/SPEI: Distribution.empirical (SEI); EDDI: Tukey; per calendar month",
             "reference_a": "GRIDMET/DROUGHT, non-parametric, baseline 1981-2016, 5-day pentad",
             "scale_map": SCALES,
         },
@@ -709,7 +716,7 @@ def main(argv: list[str] | None = None) -> int:
         payload["reference_b"] = {
             "endpoint": CE_ENDPOINT,
             "points": [list(point) for point in CE_POINTS],
-            "sampling": "climate engine daily series sampled at the last record on or before each month end",
+            "sampling": "last daily record on or before each month end, at most four days earlier",
             "metrics": ce_metrics,
             "detail": ce_detail,
         }
