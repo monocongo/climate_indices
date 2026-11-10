@@ -738,9 +738,14 @@ alignment, per-scale metrics, difference maps and open questions are in
 
 **Evidence level: characterization comparison, not reference reproduction.**
 The reference is a different implementation with a different accumulation
-window (fixed trailing days, 5-day cadence, versus calendar months here) and a
-different empirical plotting position for SPI and SPEI. No status in the
+window (fixed trailing days, 5-day cadence, versus calendar months here). Its
+SPI and SPEI plotting position is unconfirmed; the catalog endpoints are
+consistent with Tukey, not with the SEI position used here. No status in the
 "Per-Index Evidence" table above is changed, raised or implied by this section.
+
+The category metrics use the catalog's eleven drought-to-wet classes, including
+the D0–D4 thresholds. They are index-category comparisons, not agreement with an
+observed USDM map.
 
 | Index | Scale | n | bias | RMSE | r | same class | within one class |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -757,6 +762,10 @@ different empirical plotting position for SPI and SPEI. No status in the
 | EDDI | 6 mo | 3,855,984 | -0.014 | 0.145 | 0.988 | 0.845 | 0.994 |
 | EDDI | 12 mo | 3,848,681 | -0.026 | 0.116 | 0.993 | 0.861 | 0.997 |
 
+One comparison month is missing for SPEI 1, 3 and 6 months and for EDDI 1, 3 and
+12 months, so those rows pair 7,303 cells with 527 months rather than 528. The
+saved metrics do not record which month.
+
 The plotting-position conventions qualify these numbers.
 `Distribution.empirical` uses the SEI position `(k + 1) / (n + 2)`.
 For 36 distinct calibration ranks, the exact normal quantiles have a mean of +0.0538.
@@ -766,8 +775,9 @@ The catalog endpoints suggest Tukey's convention but do not establish its formul
 The EDDI biases above are -0.014 to -0.026; no SEI correction applies to EDDI.
 An alfalfa-reference-ET variant matches less closely, but that result does not establish the producer's reference crop.
 
-The Climate Engine API (`/timeseries/standard_index`, `distribution=nonparametric`,
-same 1981-2016 Calibration Period) was compared at three points over the same years.
+The Climate Engine API (`/timeseries/standard_index/coordinates`,
+`distribution=nonparametric`, same 1981-2016 Calibration Period) was compared at
+three points over the same years.
 Correlation is 0.9777 to 0.9945 across indices and timescales; bias is -0.052 to -0.087.
 The API requests use 30/90/180/365 trailing days, not calendar-month windows.
 The script samples the last daily record at most four days before each month end.

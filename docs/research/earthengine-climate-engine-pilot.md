@@ -114,6 +114,8 @@ Correlation increases and MAE decreases with timescale for this sample.
 The pilot does not isolate the causes of that pattern.
 The sixteen `difference-<index>_<scale>.png` files show mean signed differences, including the alfalfa-ET sensitivity.
 Positive and negative monthly errors can cancel in these maps; they do not show maximum monthly errors.
+One comparison month is missing for SPEI 1, 3 and 6 months and for EDDI 1, 3 and 12 months.
+Those rows pair 7,303 cells with 527 months, not 528; the saved metrics do not record which month.
 
 ### Reference-crop sensitivity
 

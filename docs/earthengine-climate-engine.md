@@ -68,14 +68,15 @@ Verify before reading any data:
 
 ```bash
 uv run --extra earthengine python -c "
-import ee, os
-ee.Initialize(project=os.environ['EE_PROJECT'],
-              url='https://earthengine-highvolume.googleapis.com')
+from scripts.earthengine_climate_engine_pilot import initialize_ee, require_ee_project
+ee = initialize_ee(require_ee_project())
 print(ee.Number(1).getInfo())"
 ```
 
-`1` means both the credential and the project work. Never commit a credential,
-print one in a notebook, or paste one into an issue.
+`initialize_ee()` builds service-account credentials when both variables are set
+and falls back to the interactive credential otherwise. `1` means both the
+credential and the project work. Never commit a credential, print one in a
+notebook, or paste one into an issue.
 
 ## Read a collection with xee
 
@@ -88,23 +89,23 @@ import ee
 import xarray as xr
 from xee import helpers
 
-ee.Initialize(project="my-registered-project",
-              url="https://earthengine-highvolume.googleapis.com")
+from scripts.earthengine_climate_engine_pilot import crop_grid_to_bbox, initialize_ee
 
+initialize_ee("my-registered-project")
+
+bbox = (-85.7, 29.5, -83.3, 35.0)
 collection = (
     ee.ImageCollection("IDAHO_EPSCOR/GRIDMET")
     .filterDate("2020-01-01", "2021-01-01")
-    .filterBounds(ee.Geometry.Rectangle([-85.7, 29.5, -83.3, 35.0]))
+    .filterBounds(ee.Geometry.Rectangle(bbox))
     .select(["pr", "eto"])
 )
 
-# The native grid, then crop it to the area instead of resampling.
-grid = dict(helpers.extract_grid_params(collection))
-scale_x, _, origin_x, _, scale_y, origin_y = grid["crs_transform"]
+# The native grid, cropped to the area instead of resampled.
+grid = crop_grid_to_bbox(dict(helpers.extract_grid_params(collection)), bbox)
 dataset = xr.open_dataset(collection, engine="ee", **grid)
 ```
 
-`scripts/earthengine_climate_engine_pilot.py` shows the full crop:
 `crop_grid_to_bbox()` keeps the source pixel edges and returns the smallest
 aligned window, which is what lets you compare two collections cell by cell
 without resampling either one.
@@ -159,9 +160,11 @@ Two checks catch most silent mistakes:
 - Assert the time coordinate has one value per month and no gaps. A calendar
   month sum built server-side can silently return a duplicate or a missing step.
 
-`climate_indices` takes values in millimetres per month for SPI and SPEI, and
-millimetres per month of reference ET for EDDI. Both gridMET bands are already
-in millimetres per day, so a monthly sum is the input the library expects.
+`climate_indices` uses matching millimetre units for the SPEI water balance.
+SPI is scale-invariant and EDDI ranks its input, so any consistent units are
+valid for those indices. For both gridMET bands, which are already in
+millimetres per day, a monthly sum supplies the millimetre-per-month input
+shown here.
 
 ## Climate Engine API, standard index series
 
