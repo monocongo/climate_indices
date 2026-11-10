@@ -21,8 +21,11 @@ Your code does, and it hands the arrays to this library.
   applications or data created with the service, and the
   [Additional API Terms](https://developers.google.com/earth-engine/reference/Additional.API.Terms)
   restrict the API to development, research, and educational purposes.
-- For the Climate Engine API, a key from the Climate Engine team. Keys are
-  issued on request and expire after about 60 days.
+- For the Climate Engine API, a key. There is no self-service sign-up: keys are
+  issued by the Climate Engine team through
+  [their request form](https://forms.gle/ekVsexF6qU4cqWYv6), and requests are
+  usually answered within a few days. A key is valid for 60 days and is renewed
+  by filling out the same form again.
 
 ## Install
 
@@ -162,8 +165,13 @@ in millimetres per day, so a monthly sum is the input the library expects.
 
 ## Climate Engine API, standard index series
 
-The API returns a time series for a point or polygon. Its key goes in the
-`Authorization` header, never in the URL and never in a file you commit.
+The API returns a time series for a point or polygon. Request a key with the
+form linked in [Before you start](#before-you-start), then read it from the
+environment: `export CE_API_KEY=...`. It goes in the `Authorization` header,
+never in the URL, never in a notebook output, and never in a file you commit.
+
+A key is valid for 60 days. When it expires the API returns an authorisation
+error, not a data error; renew it with the same form.
 
 ```bash
 curl -X POST "https://api.climateengine.org/timeseries/standard_index/coordinates" \
