@@ -1,0 +1,284 @@
+{
+  "collections": {
+    "anchor_days_before_month_end_max": 4.0,
+    "anchor_days_before_month_end_mean": 1.8333333333333333,
+    "anchor_days_before_month_end_min": 0.0,
+    "daily": "IDAHO_EPSCOR/GRIDMET",
+    "drought": "GRIDMET/DROUGHT",
+    "pentads_read": 528.0
+  },
+  "difference_maps": [
+    "difference-spi_1.png",
+    "difference-spei_1.png",
+    "difference-eddi_1.png",
+    "difference-eddi_alfalfa_1.png",
+    "difference-spi_3.png",
+    "difference-spei_3.png",
+    "difference-eddi_3.png",
+    "difference-eddi_alfalfa_3.png",
+    "difference-spi_6.png",
+    "difference-spei_6.png",
+    "difference-eddi_6.png",
+    "difference-eddi_alfalfa_6.png",
+    "difference-spi_12.png",
+    "difference-spei_12.png",
+    "difference-eddi_12.png",
+    "difference-eddi_alfalfa_12.png"
+  ],
+  "method": {
+    "ours": "Distribution.empirical (Tukey plotting position), per calendar month",
+    "reference_a": "GRIDMET/DROUGHT, non-parametric, baseline 1981-2016, 5-day pentad",
+    "scale_map": {
+      "1": "30d",
+      "3": "90d",
+      "6": "180d",
+      "12": "1y"
+    }
+  },
+  "period": {
+    "calibration_years": [
+      1981,
+      2016
+    ],
+    "comparison_years": [
+      1981,
+      2024
+    ],
+    "input_years": [
+      1980,
+      2024
+    ]
+  },
+  "reference_a": {
+    "eddi_1": {
+      "bias": -0.02283028862529542,
+      "category_agreement": 0.7115450721948636,
+      "category_within_one": 0.9441730816349809,
+      "correlation": 0.9577617930526726,
+      "mae": 0.17520521286266466,
+      "max_abs_difference": 4.183615881229467,
+      "mean_ours": 0.055752843216859325,
+      "mean_theirs": 0.07858313184215478,
+      "n": 3848681.0,
+      "normalized_rmse": 0.2911675641196081,
+      "rmse": 0.2768850616211347
+    },
+    "eddi_12": {
+      "bias": -0.025831941247906037,
+      "category_agreement": 0.8607798360009572,
+      "category_within_one": 0.9967316075299564,
+      "correlation": 0.9928448153369076,
+      "mae": 0.07176447870929513,
+      "max_abs_difference": 2.380000021457672,
+      "mean_ours": 0.12253417845701035,
+      "mean_theirs": 0.14836611970491637,
+      "n": 3848681.0,
+      "normalized_rmse": 0.12363501886634999,
+      "rmse": 0.11580617171080011
+    },
+    "eddi_3": {
+      "bias": -0.02071769016097014,
+      "category_agreement": 0.8014223574258298,
+      "category_within_one": 0.9845892657770285,
+      "correlation": 0.9836311283943462,
+      "mae": 0.10845001467526401,
+      "max_abs_difference": 4.183615881229467,
+      "mean_ours": 0.07216181749004198,
+      "mean_theirs": 0.0928795076510121,
+      "n": 3848681.0,
+      "normalized_rmse": 0.18265196099557482,
+      "rmse": 0.17070232675043115
+    },
+    "eddi_6": {
+      "bias": -0.013865441535664966,
+      "category_agreement": 0.8446827061523077,
+      "category_within_one": 0.9944545931725858,
+      "correlation": 0.9882473922239494,
+      "mae": 0.08689111903374871,
+      "max_abs_difference": 3.367502653077592,
+      "mean_ours": 0.09733503442685706,
+      "mean_theirs": 0.11120047596252203,
+      "n": 3855984.0,
+      "normalized_rmse": 0.15563561060346157,
+      "rmse": 0.14492327199269725
+    },
+    "eddi_alfalfa_1": {
+      "bias": -0.04253023236015062,
+      "category_agreement": 0.6578105589941073,
+      "category_within_one": 0.9250844640020828,
+      "correlation": 0.9475890251694856,
+      "mae": 0.2114326961877753,
+      "max_abs_difference": 4.183615881229467,
+      "mean_ours": 0.03605289948200413,
+      "mean_theirs": 0.07858313184215478,
+      "n": 3848681.0,
+      "normalized_rmse": 0.3250517580630875,
+      "rmse": 0.30910715049422344
+    },
+    "eddi_alfalfa_12": {
+      "bias": -0.06361396222187815,
+      "category_agreement": 0.7536283209754199,
+      "category_within_one": 0.9771646441988827,
+      "correlation": 0.9781539849108606,
+      "mae": 0.14042273826620938,
+      "max_abs_difference": 2.4885113201203137,
+      "mean_ours": 0.08475215748303822,
+      "mean_theirs": 0.14836611970491637,
+      "n": 3848681.0,
+      "normalized_rmse": 0.2193404216429654,
+      "rmse": 0.20545129336990772
+    },
+    "eddi_alfalfa_3": {
+      "bias": -0.04672693395678033,
+      "category_agreement": 0.7295650120132066,
+      "category_within_one": 0.9692310170679254,
+      "correlation": 0.97403677742033,
+      "mae": 0.15088443361366083,
+      "max_abs_difference": 4.183615881229467,
+      "mean_ours": 0.046152573694231765,
+      "mean_theirs": 0.0928795076510121,
+      "n": 3848681.0,
+      "normalized_rmse": 0.23256610727268567,
+      "rmse": 0.21735094120177353
+    },
+    "eddi_alfalfa_6": {
+      "bias": -0.045358149976024144,
+      "category_agreement": 0.7555798986717788,
+      "category_within_one": 0.979553338395595,
+      "correlation": 0.9767026404505265,
+      "mae": 0.139981488837637,
+      "max_abs_difference": 3.542513366179804,
+      "mean_ours": 0.06584232598649785,
+      "mean_theirs": 0.11120047596252203,
+      "n": 3855984.0,
+      "normalized_rmse": 0.22153369536474962,
+      "rmse": 0.20628561718238841
+    },
+    "spei_1": {
+      "bias": 0.06990832954254274,
+      "category_agreement": 0.6370431844052546,
+      "category_within_one": 0.909036108734395,
+      "correlation": 0.9344407084061997,
+      "mae": 0.22587186368465467,
+      "max_abs_difference": 3.208958295231872,
+      "mean_ours": 0.07761069296759002,
+      "mean_theirs": 0.0077023634250472615,
+      "n": 3848681.0,
+      "normalized_rmse": 0.36411575509581035,
+      "rmse": 0.3544313228096354
+    },
+    "spei_12": {
+      "bias": 0.06236285419173635,
+      "category_agreement": 0.7548060365395707,
+      "category_within_one": 0.9875538902651049,
+      "correlation": 0.9910936388731867,
+      "mae": 0.11521366185393,
+      "max_abs_difference": 1.6498562579677174,
+      "mean_ours": 0.11990366817964075,
+      "mean_theirs": 0.0575408139879044,
+      "n": 3855984.0,
+      "normalized_rmse": 0.17139069559485284,
+      "rmse": 0.16354456291082237
+    },
+    "spei_3": {
+      "bias": 0.06197195206264187,
+      "category_agreement": 0.7027288050113792,
+      "category_within_one": 0.9619843785442337,
+      "correlation": 0.9775791374770415,
+      "mae": 0.1530172019743658,
+      "max_abs_difference": 2.569505567500262,
+      "mean_ours": 0.09782632090598545,
+      "mean_theirs": 0.035854368843343566,
+      "n": 3848681.0,
+      "normalized_rmse": 0.23256699813920556,
+      "rmse": 0.2240686698605434
+    },
+    "spei_6": {
+      "bias": 0.057632062704218744,
+      "category_agreement": 0.7367924231704316,
+      "category_within_one": 0.9752762050167317,
+      "correlation": 0.9860661028109351,
+      "mae": 0.12990320561112262,
+      "max_abs_difference": 1.9576870618931403,
+      "mean_ours": 0.11262271240130778,
+      "mean_theirs": 0.05499064969708901,
+      "n": 3848681.0,
+      "normalized_rmse": 0.19663161983798697,
+      "rmse": 0.1883180521135799
+    },
+    "spi_1": {
+      "bias": 0.06145773288863184,
+      "category_agreement": 0.6380249503109972,
+      "category_within_one": 0.9063634600143569,
+      "correlation": 0.9280437986811961,
+      "mae": 0.22981286276859933,
+      "max_abs_difference": 3.5021874930754753,
+      "mean_ours": 0.08865596004953549,
+      "mean_theirs": 0.02719822716090363,
+      "n": 3855984.0,
+      "normalized_rmse": 0.37793282351103796,
+      "rmse": 0.36859037416228546
+    },
+    "spi_12": {
+      "bias": 0.04866241941033727,
+      "category_agreement": 0.7425456122224574,
+      "category_within_one": 0.9842297063473292,
+      "correlation": 0.9897691493027971,
+      "mae": 0.11876664132531531,
+      "max_abs_difference": 1.823005788764359,
+      "mean_ours": 0.163460394912132,
+      "mean_theirs": 0.11479797550179473,
+      "n": 3855984.0,
+      "normalized_rmse": 0.17444835550416607,
+      "rmse": 0.17083939829015798
+    },
+    "spi_3": {
+      "bias": 0.05363833697368531,
+      "category_agreement": 0.6992516047784431,
+      "category_within_one": 0.9610138423810887,
+      "correlation": 0.9741774843453374,
+      "mae": 0.1565564781551009,
+      "max_abs_difference": 2.806497414347303,
+      "mean_ours": 0.11829946288209069,
+      "mean_theirs": 0.06466112590840538,
+      "n": 3855984.0,
+      "normalized_rmse": 0.24171013215444592,
+      "rmse": 0.23453319461676114
+    },
+    "spi_6": {
+      "bias": 0.04834809641541745,
+      "category_agreement": 0.7296033904704998,
+      "category_within_one": 0.9745328300117427,
+      "correlation": 0.9844267769221172,
+      "mae": 0.13310405951521134,
+      "max_abs_difference": 2.7236399149490125,
+      "mean_ours": 0.14101464212154446,
+      "mean_theirs": 0.09266654570612701,
+      "n": 3855984.0,
+      "normalized_rmse": 0.20039076559569285,
+      "rmse": 0.19435264880056882
+    }
+  },
+  "reference_b": {
+    "reason": "CE_API_KEY is not set",
+    "status": "pending"
+  },
+  "region": {
+    "bbox": [
+      -85.7,
+      29.5,
+      -83.3,
+      35.0
+    ],
+    "crs": "GEOGCS[\"unknown\", \n  DATUM[\"unknown\", \n    SPHEROID[\"Spheroid\", 6378137.0, 298.257223563]], \n  PRIMEM[\"Greenwich\", 0.0], \n  UNIT[\"degree\", 0.017453292519943295], \n  AXIS[\"Longitude\", EAST], \n  AXIS[\"Latitude\", NORTH]]",
+    "grid": "native gridMET 4 km"
+  },
+  "software": {
+    "distribution": "climate_indices",
+    "git_commit": "c2e6c3ef23738e22c2283cdabc681a788c0f2cfa",
+    "git_commit_source": "source-checkout",
+    "git_dirty": true,
+    "repository_url": "https://github.com/monocongo/climate_indices",
+    "version": "3.2.0"
+  }
+}

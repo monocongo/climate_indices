@@ -727,6 +727,53 @@ arithmetic behaves as Wells describes for these 344 divisions, not that the
 resulting scPDSI values themselves match an external authoritative source.
 See "Palmer Validation Classification" above for the latter.
 
+## Cross-Provider Characterization: Earth Engine GRIDMET Drought
+
+`climate_indices` was compared with the precomputed `GRIDMET/DROUGHT` collection
+in the Earth Engine Data Catalog over the Apalachicola-Chattahoochee-Flint basin
+bounding box, 1981-2024, on a 1981-2016 calibration window. The full method
+alignment, per-scale metrics, difference maps and open questions are in
+`docs/research/earthengine-climate-engine-pilot.md`; the numbers are produced by
+`scripts/earthengine_climate_engine_pilot.py`.
+
+**Evidence level: characterization comparison, not reference reproduction.**
+The reference is a different implementation with a different accumulation
+window (fixed trailing days, 5-day cadence, versus calendar months here) and a
+different empirical plotting position for SPI and SPEI. No status in the
+"Per-Index Evidence" table above is changed, raised or implied by this section.
+
+| Index | Scale | n | bias | RMSE | r | same class | within one class |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| SPI | 1 mo | 3,855,984 | +0.061 | 0.369 | 0.928 | 0.638 | 0.906 |
+| SPI | 3 mo | 3,855,984 | +0.054 | 0.235 | 0.974 | 0.699 | 0.961 |
+| SPI | 6 mo | 3,855,984 | +0.048 | 0.194 | 0.984 | 0.730 | 0.975 |
+| SPI | 12 mo | 3,855,984 | +0.049 | 0.171 | 0.990 | 0.743 | 0.984 |
+| SPEI | 1 mo | 3,848,681 | +0.070 | 0.354 | 0.934 | 0.637 | 0.909 |
+| SPEI | 3 mo | 3,848,681 | +0.062 | 0.224 | 0.978 | 0.703 | 0.962 |
+| SPEI | 6 mo | 3,848,681 | +0.058 | 0.188 | 0.986 | 0.737 | 0.975 |
+| SPEI | 12 mo | 3,855,984 | +0.062 | 0.164 | 0.991 | 0.755 | 0.988 |
+| EDDI | 1 mo | 3,848,681 | -0.023 | 0.277 | 0.958 | 0.712 | 0.944 |
+| EDDI | 3 mo | 3,848,681 | -0.021 | 0.171 | 0.984 | 0.801 | 0.985 |
+| EDDI | 6 mo | 3,855,984 | -0.014 | 0.145 | 0.988 | 0.845 | 0.995 |
+| EDDI | 12 mo | 3,848,681 | -0.026 | 0.116 | 0.993 | 0.861 | 0.997 |
+
+Two measured facts qualify these numbers:
+
+- The SPI and SPEI bias is explained by a closed-form constant.
+  `Distribution.empirical` uses the SEI plotting position
+  `(k + 1) / (n + 2)`, whose expected value on a 36-value sample is +0.0538;
+  the reference's endpoints are consistent with Tukey's symmetric plotting
+  position, whose expected value is 0. After removing that constant the
+  residual bias is at most 0.016.
+- `eddi()` already uses Tukey's plotting position, so its residual bias of about
+  -0.08 is a method or input difference rather than a convention difference. An
+  alfalfa-reference-ET variant was measured and matches worse, so the
+  reference crop does not explain it.
+
+The Climate Engine API reference (`/timeseries/standard_index`) has not been
+run: no API key was available. That comparison is recorded as pending, and no
+claim about it is made here.
+
 ## References
 
 - Beguería, S., Vicente-Serrano, S. M., Reig, F., and Latorre, B. (2014).

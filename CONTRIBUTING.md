@@ -154,7 +154,7 @@ vocabulary at `src/climate_indices/CONTEXT.md`):
   `docs/choosing-parameters.md`, `docs/writing-outputs.md`,
   `docs/standardized-hydrologic-indices.md`,
   `docs/hydropower-precipitation-proxy.md`, `docs/compound-hazards.md`,
-  `docs/troubleshooting.md`,
+  `docs/earthengine-climate-engine.md`, `docs/troubleshooting.md`,
   `docs/xarray_migration.md`, `docs/performance.md`,
   `docs/development-guide.md`, `docs/contribution-guide.md`,
   `docs/deployment-guide.md`, `docs/release-process.md`
@@ -180,6 +180,7 @@ vocabulary at `src/climate_indices/CONTEXT.md`):
   `docs/research/flood-oracle-survey.md`,
   `docs/research/energy-oracle-survey.md`,
   `docs/research/import-cycle-investigation.md`,
+  `docs/research/earthengine-climate-engine-pilot.md`,
   `docs/research/maifi-event-grouping.md`,
   `docs/research/major-event-day-conventions.md`,
   `docs/explorer/`, `docs/architecture-deepening-review-*.md`,
