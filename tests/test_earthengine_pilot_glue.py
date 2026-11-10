@@ -2,10 +2,10 @@
 
 Nothing here needs a network connection or a credential. The tests cover the
 pure-Python parts of ``scripts/earthengine_climate_engine_pilot.py``: calendar
-bucketing, pentad sampling, category binning, the agreement metrics, the
-empirical (Tukey) standardization convention the comparison depends on, and the
-Climate Engine request shape. The Earth Engine reads themselves are integration
-territory and are not exercised here.
+bucketing, pentad sampling, grid cropping, the agreement metrics, the empirical
+(Tukey) standardization convention the comparison depends on, the Climate Engine
+request shapes, and the response parser. The Earth Engine reads and the live API
+calls are integration territory and are not exercised here.
 """
 
 from __future__ import annotations
@@ -25,17 +25,12 @@ from scripts import earthengine_climate_engine_pilot as pilot
 
 # The catalog's documented SPI/SPEI/EDDI class boundaries, restated from the
 # Earth Engine GRIDMET_DROUGHT page so the test does not read the code it checks.
-CATALOG_BOUNDARIES = {
-    -2.0: "extreme drought",
-    -1.6: "severe drought",
-    -1.3: "moderate drought",
-    -0.8: "mild drought",
-    -0.5: "incipient dry spell",
-    0.5: "near normal",
-    0.8: "incipient wet spell",
-    1.3: "moderately wet",
-    1.6: "very wet",
-    2.0: "extremely wet",
+CATALOG_BOUNDARIES = (-2.0, -1.6, -1.3, -0.8, -0.5, 0.5, 0.8, 1.3, 1.6, 2.0)
+
+# The native grid of both GRIDMET collections, as Earth Engine reports it.
+NATIVE_GRID = {
+    "crs_transform": (1.0 / 24.0, 0, -124.78749996666667, 0, -1.0 / 24.0, 49.42083333333334),
+    "shape_2d": (1386, 585),
 }
 
 
@@ -48,7 +43,6 @@ def test_month_ends_covers_every_month_once() -> None:
     february = {m.year: m.last_day for m in months if m.month == 2}
     assert february[2000].astype("datetime64[D]") == np.datetime64("2000-02-29")
     assert february[2001].astype("datetime64[D]") == np.datetime64("2001-02-28")
-    # No duplicate or missing month labels.
     assert len({m.label for m in months}) == len(months)
 
 
@@ -57,8 +51,9 @@ def test_last_pentad_index_never_crosses_a_month_boundary() -> None:
     epoch_ms = pd.Timestamp("1980-01-01").value // 1_000_000
     stamps = epoch_ms + (np.arange(6) * 5 + 4).astype("int64") * 86_400_000
     months = pilot.month_ends(1980, 1980)[:1]
-    chosen = pilot.last_pentad_index_per_month(stamps, months)
-    assert chosen == [5], "January must take the 30 January pentad, the last one inside the month"
+    assert pilot.last_pentad_index_per_month(stamps, months) == [5], (
+        "January must take the 30 January pentad, the last one inside the month"
+    )
 
 
 def test_last_pentad_index_reports_a_month_before_the_first_pentad_and_borrows_backwards() -> None:
@@ -153,13 +148,13 @@ def test_empirical_standardization_uses_the_declared_plotting_position() -> None
     )
     ranks = np.arange(1, years.size + 1)
     expected = (ranks + 1) / (years.size + 2)
-    january_probability = probability.sel(time=probability["time"].dt.month == 1).values
-    assert np.allclose(january_probability, expected, atol=1e-12, rtol=0)
+    january_probability = probability.isel(time=probability["time"].dt.month.values == 1)
+    assert np.allclose(january_probability.values, expected, atol=1e-12, rtol=0)
     # The normal scale applies a Hastings inverse-normal approximation, so it
     # tracks the exact quantile to about a hundredth in the tail rather than to
     # machine precision. This pins the plotting position, not the approximation.
-    january_normal = normal.sel(time=normal["time"].dt.month == 1).values
-    assert np.allclose(january_normal, norm.ppf(expected), atol=0.02, rtol=0)
+    january_normal = normal.isel(time=normal["time"].dt.month.values == 1)
+    assert np.allclose(january_normal.values, norm.ppf(expected), atol=0.02, rtol=0)
 
 
 def test_empirical_baseline_length_caps_the_index_magnitude() -> None:
@@ -189,8 +184,8 @@ def test_empirical_baseline_length_caps_the_index_magnitude() -> None:
         calibration_year_initial=1981,
         calibration_year_final=2016,
     )
-    # Only the calibration years carry a full 36-value sample; a value outside
-    # it extrapolates to the open end of the plotting-position range.
+    # Only the calibration years carry a full 36-value sample; a value outside it
+    # extrapolates to the open end of the plotting-position range.
     january = (probability["time"].dt.month.values == 1) & (probability["time"].dt.year.values >= 1981)
     probability_january = probability.isel(time=january)
     normal_january = normal.isel(time=january)
@@ -212,7 +207,7 @@ def test_spei_path_keeps_a_signed_water_balance() -> None:
     generator = np.random.default_rng(20261110)
     seasonal = 50.0 + 40.0 * np.sin(2.0 * np.pi * (np.arange(12) + 0.5) / 12.0)
     precipitation = seasonal[None, :] + generator.normal(0.0, 10.0, size=(years.size, 12))
-    pet = np.full_like(precipitation, 400.0)
+    pet = np.full_like(precipitation, 400.0)  # every balance is negative
     balance = _single_cell((precipitation - pet).ravel(), "1980-01-31")
     clipped = standardized_index(
         balance, 1, Distribution.empirical, calibration_year_initial=1980, calibration_year_final=1999
@@ -230,61 +225,6 @@ def test_spei_path_keeps_a_signed_water_balance() -> None:
     assert len(np.unique(np.round(signed.values, 6))) > 12, "the signed path keeps the year-to-year ranking"
     assert float(np.max(signed.values)) > 0.5
     assert float(np.min(signed.values)) < -0.5
-
-
-class _FakeResponse:
-    def __init__(self, payload: dict[str, Any]) -> None:
-        self._body = json.dumps(payload).encode("utf-8")
-
-    def read(self) -> bytes:
-        return self._body
-
-    def __enter__(self) -> _FakeResponse:
-        return self
-
-    def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
-        return None
-
-
-def test_climate_engine_request_keeps_the_key_out_of_the_body(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The key belongs in the Authorization header only; it must never reach a file or the body."""
-    captured: dict[str, Any] = {}
-
-    def fake_urlopen(request: Any, timeout: int) -> _FakeResponse:
-        captured["url"] = request.full_url
-        captured["headers"] = dict(request.header_items())
-        captured["body"] = json.loads(request.data.decode("utf-8"))
-        captured["timeout"] = timeout
-        return _FakeResponse({"data": []})
-
-    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
-    secret = "not-a-real-key"
-    result = pilot.climate_engine_series(secret, 3, "spi")
-
-    assert captured["url"] == pilot.CE_ENDPOINT
-    assert captured["headers"]["Authorization"] == secret
-    assert secret not in json.dumps(captured["body"])
-    assert secret not in json.dumps(result)
-    body = captured["body"]
-    assert body["distribution"] == "nonparametric", "the reference documents a non-parametric option"
-    assert body["dataset"] == "GRIDMET"
-    assert body["accumulation"] == "90", "accumulation is in days for the daily GRIDMET dataset"
-    assert body["start_year"] == pilot.CALIBRATION_YEARS[0]
-    assert body["end_year"] == pilot.CALIBRATION_YEARS[1]
-    assert json.loads(body["coordinates"]) == [[lon, lat] for lon, lat in pilot.CE_POINTS]
-
-
-def test_scale_mapping_covers_the_catalog_scales() -> None:
-    """Each calendar-month scale must name a band that the catalog actually publishes."""
-    assert pilot.SCALES == {1: "30d", 3: "90d", 6: "180d", 12: "1y"}
-    assert set(pilot.SCALE_DAYS) == set(pilot.SCALES)
-
-
-# The native grid of both GRIDMET collections, as Earth Engine reports it.
-NATIVE_GRID = {
-    "crs_transform": (1.0 / 24.0, 0, -124.78749996666667, 0, -1.0 / 24.0, 49.42083333333334),
-    "shape_2d": (1386, 585),
-}
 
 
 def test_crop_grid_to_bbox_keeps_the_native_pixel_edges() -> None:
@@ -342,6 +282,48 @@ def test_check_monthly_totals_catches_unit_mistakes() -> None:
         pilot.check_monthly_totals(np.full((3, 2), 2.6), "precipitation")
 
 
+class _FakeResponse:
+    def __init__(self, payload: dict[str, Any]) -> None:
+        self._body = json.dumps(payload).encode("utf-8")
+
+    def read(self) -> bytes:
+        return self._body
+
+    def __enter__(self) -> _FakeResponse:
+        return self
+
+    def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
+        return None
+
+
+def test_climate_engine_request_keeps_the_key_out_of_the_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The key belongs in the Authorization header only; it must never reach a file or the body."""
+    captured: dict[str, Any] = {}
+
+    def fake_urlopen(request: Any, timeout: int) -> _FakeResponse:
+        captured["url"] = request.full_url
+        captured["headers"] = dict(request.header_items())
+        captured["body"] = json.loads(request.data.decode("utf-8"))
+        captured["timeout"] = timeout
+        return _FakeResponse({"Data": []})
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    secret = "not-a-real-key"
+    result = pilot.climate_engine_series(secret, 3, "spi")
+
+    assert captured["url"] == pilot.CE_ENDPOINT
+    assert captured["headers"]["Authorization"] == secret
+    assert secret not in json.dumps(captured["body"])
+    assert secret not in json.dumps(result)
+    body = captured["body"]
+    assert body["distribution"] == "nonparametric", "the reference documents a non-parametric option"
+    assert body["dataset"] == "GRIDMET"
+    assert body["accumulation"] == "90", "accumulation is in days for the daily GRIDMET dataset"
+    assert body["start_year"] == pilot.CALIBRATION_YEARS[0]
+    assert body["end_year"] == pilot.CALIBRATION_YEARS[1]
+    assert json.loads(body["coordinates"]) == [[lon, lat] for lon, lat in pilot.CE_POINTS]
+
+
 def test_climate_engine_native_request_targets_the_native_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, Any] = {}
 
@@ -360,26 +342,70 @@ def test_climate_engine_native_request_targets_the_native_endpoint(monkeypatch: 
     assert captured["headers"]["Authorization"] == "key"
 
 
-def test_parse_climate_engine_series_handles_the_documented_shape_and_sentinel() -> None:
-    """The response nests one series under ``Data`` and flags missing values as -9999."""
+def test_parse_climate_engine_points_reads_every_block() -> None:
+    """The response holds one block per point, labelled by DRI_OBJECTID, in daily records."""
     payload = {
         "Data": [
             {
-                "Data": {
-                    "Date": ["2020-01-01", "2020-02-01", "2020-03-01"],
-                    "spi": [1.25, -9999.0, -0.5],
-                }
+                "Metadata": {"DRI_OBJECTID": "[-84.9, 30.7]"},
+                "Data": [{"Date": "2020-01-01", "spi": 1.25}, {"Date": "2020-01-02", "spi": -9999.0}],
+            },
+            {
+                "Metadata": {"DRI_OBJECTID": "[-84.4, 33.0]"},
+                "Data": [{"Date": "2020-01-01", "spi": -0.5}, {"Date": "2020-01-02", "spi": 0.0}],
+            },
+        ]
+    }
+    points = pilot.parse_climate_engine_points(payload, "spi")
+    assert set(points) == {(-84.9, 30.7), (-84.4, 33.0)}
+    first = points[(-84.9, 30.7)]
+    assert first.iloc[0] == pytest.approx(1.25)
+    assert np.isnan(first.iloc[1]), "the API's -9999 sentinel must not enter a comparison as a real value"
+    assert first.index[0] == pd.Timestamp("2020-01-01"), "records keep their own dates"
+
+
+def test_parse_climate_engine_points_accepts_the_unit_suffixed_native_column() -> None:
+    """The native endpoint names its column after the variable and the catalog unit."""
+    payload = {
+        "Data": [
+            {
+                "Metadata": {"DRI_OBJECTID": "[-84.9, 30.7]"},
+                "Data": [{"Date": "2020-01-01", "pr (mm)": 4.5}, {"Date": "2020-01-02", "pr (mm)": 0.0}],
             }
         ]
     }
-    series = pilot.parse_climate_engine_series(payload, "spi")
-    assert list(series.index) == list(pd.to_datetime(["2020-01-01", "2020-02-01", "2020-03-01"]))
-    assert series.iloc[0] == pytest.approx(1.25)
-    assert np.isnan(series.iloc[1]), "the API's -9999 sentinel must not enter a fit as a real value"
-    assert series.iloc[2] == pytest.approx(-0.5)
-    assert series.name == "spi"
+    points = pilot.parse_climate_engine_points(payload, "pr")
+    assert list(points[(-84.9, 30.7)]) == [4.5, 0.0]
 
 
-def test_parse_climate_engine_series_rejects_a_nested_shape_it_cannot_read() -> None:
-    with pytest.raises(ValueError):
-        pilot.parse_climate_engine_series({"Data": []}, "spi")
+def test_parse_climate_engine_points_rejects_records_without_the_variable() -> None:
+    payload = {"Data": [{"Metadata": {"DRI_OBJECTID": "[-84.9, 30.7]"}, "Data": [{"Date": "2020-01-01"}]}]}
+    with pytest.raises(RuntimeError, match="none of them 'pr'"):
+        pilot.parse_climate_engine_points(payload, "pr")
+
+
+def test_parse_climate_engine_points_rejects_an_unreadable_label() -> None:
+    payload = {"Data": [{"Metadata": {"DRI_OBJECTID": "not-a-coordinate"}, "Data": []}]}
+    with pytest.raises(RuntimeError, match="could not read the point label"):
+        pilot.parse_climate_engine_points(payload, "spi")
+
+
+def test_sample_at_month_ends_takes_the_last_record_on_or_before() -> None:
+    """Sampling must land on an observation, never on an interpolation."""
+    index = pd.to_datetime(["1981-01-05", "1981-01-30", "1981-02-03", "1981-02-27"])
+    series = pd.Series([1.0, 2.0, 3.0, 4.0], index=index)
+    months = pilot.month_ends(1981, 1981)[:2]
+    assert list(pilot.sample_at_month_ends(series, months)) == [2.0, 4.0]
+
+
+def test_sample_at_month_ends_returns_missing_before_the_series_starts() -> None:
+    series = pd.Series([9.0], index=pd.to_datetime(["1981-03-01"]))
+    months = pilot.month_ends(1981, 1981)[:2]
+    sampled = pilot.sample_at_month_ends(series, months)
+    assert np.isnan(sampled).all(), "a month before the first record has no observation to sample"
+
+
+def test_scale_mapping_covers_the_catalog_scales() -> None:
+    """Each calendar-month scale must name a band that the catalog actually publishes."""
+    assert pilot.SCALES == {1: "30d", 3: "90d", 6: "180d", 12: "1y"}
+    assert set(pilot.SCALE_DAYS) == set(pilot.SCALES)

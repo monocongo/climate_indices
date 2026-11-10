@@ -526,19 +526,98 @@ def climate_engine_native(key: str, dataset: str, variable: str, start_date: str
     return {"request": body, "response": climate_engine_request(CE_NATIVE_ENDPOINT, body, key)}
 
 
-def parse_climate_engine_series(payload: dict[str, Any], variable: str) -> pd.Series:
-    """Turn a Climate Engine time-series response into a dated Series.
+def parse_climate_engine_points(payload: dict[str, Any], variable: str) -> dict[tuple[float, float], pd.Series]:
+    """Turn a Climate Engine time-series response into one dated Series per point.
 
-    The response nests one series under ``Data``, whose ``Data`` key maps column
-    names to value lists; ``Date`` is one of those columns. The API marks a missing
-    observation with ``-9999``, which becomes NaN here so it cannot enter a fit.
+    The response holds a list of blocks under ``Data``, one per requested
+    coordinate and labelled by ``Metadata.DRI_OBJECTID``. Each block's ``Data`` is
+    a list of ``{"Date": ..., "<variable>": value}`` records at the dataset's own
+    cadence, so a daily dataset returns a daily index series. The API marks a
+    missing observation with ``-9999``, which becomes NaN here so it cannot enter
+    a comparison as a real value.
     """
-    [series] = payload["Data"]
-    columns = series["Data"]
-    dates = pd.to_datetime(list(columns["Date"]))
-    values = np.asarray(columns[variable], dtype="float64")
-    series_out = pd.Series(values, index=dates, name=variable)
-    return series_out.where(series_out > -9999.0)
+    points: dict[tuple[float, float], pd.Series] = {}
+    for block in payload["Data"]:
+        label = block["Metadata"]["DRI_OBJECTID"]
+        try:
+            coordinates = json.loads(label)
+        except json.JSONDecodeError as error:
+            raise RuntimeError(f"could not read the point label {label!r} from the response") from error
+        if len(coordinates) != 2:  # noqa: PLR2004 - a point is a longitude and a latitude
+            raise RuntimeError(f"expected a point coordinate, got {label!r}")
+        records = block["Data"]
+        # The standard-index endpoint names the column after the variable; the
+        # native endpoint appends the catalog unit, as in "pr (mm)".
+        columns = records[0]
+        value_column = variable if variable in columns else ""
+        if not value_column:
+            value_column = next((name for name in columns if name.split(" ")[0] == variable and name != "Date"), "")
+        if not value_column:
+            raise RuntimeError(f"records carry {sorted(columns)}, none of them {variable!r}")
+        index = pd.to_datetime([record["Date"] for record in records])
+        values = np.asarray([record[value_column] for record in records], dtype="float64")
+        series = pd.Series(values, index=index, name=variable)
+        points[(float(coordinates[0]), float(coordinates[1]))] = series.where(series > -9999.0)
+    return points
+
+
+def sample_at_month_ends(series: pd.Series, months: list[MonthEnd]) -> np.ndarray:
+    """Take each month end's value from a possibly finer series.
+
+    Uses the last observation on or before the month end, so a daily series is
+    sampled without interpolation and the comparison stays on an observation
+    rather than a fit.
+    """
+    if not series.index.is_monotonic_increasing:
+        series = series.sort_index()
+    values = series.reindex(pd.DatetimeIndex([month.last_day for month in months]), method="ffill")
+    return np.asarray(values.to_numpy(dtype="float64"))
+
+
+def compare_climate_engine(
+    ours: dict[str, xr.DataArray], key: str
+) -> tuple[dict[str, dict[str, float]], dict[str, Any]]:
+    """Compare every index and scale at the Climate Engine points.
+
+    Returns pooled metrics per index and scale, plus the per-point metrics, the
+    nearest grid cell used for each point, and the request that produced them.
+    Only summaries are kept: the raw response is a daily series of about 16,000
+    records per point.
+    """
+    window = pd.DatetimeIndex([month.last_day for month in month_ends(*COMPARISON_YEARS)])
+    metrics: dict[str, dict[str, float]] = {}
+    detail: dict[str, Any] = {}
+    for scale in SCALES:
+        for index in ("spi", "spei", "eddi"):
+            key_name = f"{index}_{scale}"
+            response = climate_engine_series(key, scale, index)
+            points = parse_climate_engine_points(response["response"], index)
+            pooled_ours: list[np.ndarray] = []
+            pooled_theirs: list[np.ndarray] = []
+            per_point: dict[str, dict[str, float]] = {}
+            cells: list[list[float]] = []
+            for (longitude, latitude), theirs in points.items():
+                cell = ours[key_name].sel(x=longitude, y=latitude, method="nearest")
+                # Select by the same month ends used to sample the API series, so
+                # the two sides line up by date rather than by position.
+                grid_series = np.asarray(cell.sel(time=window).values, dtype="float64")
+                their_samples = sample_at_month_ends(theirs, month_ends(*COMPARISON_YEARS))
+                if grid_series.shape != their_samples.shape:
+                    raise RuntimeError(
+                        f"{key_name}: {grid_series.shape[0]} grid steps against "
+                        f"{their_samples.shape[0]} sampled API steps"
+                    )
+                per_point[f"{longitude},{latitude}"] = comparison_metrics(grid_series, their_samples)
+                cells.append([float(cell["x"]), float(cell["y"])])
+                pooled_ours.append(grid_series)
+                pooled_theirs.append(their_samples)
+            metrics[key_name] = comparison_metrics(np.concatenate(pooled_ours), np.concatenate(pooled_theirs))
+            detail[key_name] = {
+                "points": per_point,
+                "grid_cells": cells,
+                "request": response["request"],
+            }
+    return metrics, detail
 
 
 def plot_differences(fields: dict[str, xr.DataArray], directory: Path) -> list[str]:
@@ -626,10 +705,13 @@ def main(argv: list[str] | None = None) -> int:
 
     key = os.environ.get("CE_API_KEY", "").strip()
     if key and not arguments.skip_climate_engine:
+        ce_metrics, ce_detail = compare_climate_engine(ours, key)
         payload["reference_b"] = {
-            f"{index}_{scale}": climate_engine_series(key, scale, index)
-            for scale in SCALES
-            for index in ("spi", "spei", "eddi")
+            "endpoint": CE_ENDPOINT,
+            "points": [list(point) for point in CE_POINTS],
+            "sampling": "climate engine daily series sampled at the last record on or before each month end",
+            "metrics": ce_metrics,
+            "detail": ce_detail,
         }
     else:
         payload["reference_b"] = {"status": "pending", "reason": "CE_API_KEY is not set"}
