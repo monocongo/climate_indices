@@ -752,9 +752,9 @@ different empirical plotting position for SPI and SPEI. No status in the
 | SPEI | 3 mo | 3,848,681 | +0.062 | 0.224 | 0.978 | 0.703 | 0.962 |
 | SPEI | 6 mo | 3,848,681 | +0.058 | 0.188 | 0.986 | 0.737 | 0.975 |
 | SPEI | 12 mo | 3,855,984 | +0.062 | 0.164 | 0.991 | 0.755 | 0.988 |
-| EDDI | 1 mo | 3,848,681 | -0.023 | 0.277 | 0.958 | 0.712 | 0.944 |
-| EDDI | 3 mo | 3,848,681 | -0.021 | 0.171 | 0.984 | 0.801 | 0.985 |
-| EDDI | 6 mo | 3,855,984 | -0.014 | 0.145 | 0.988 | 0.845 | 0.995 |
+| EDDI | 1 mo | 3,848,681 | -0.022 | 0.277 | 0.958 | 0.712 | 0.944 |
+| EDDI | 3 mo | 3,848,681 | -0.021 | 0.170 | 0.984 | 0.802 | 0.985 |
+| EDDI | 6 mo | 3,855,984 | -0.014 | 0.145 | 0.988 | 0.845 | 0.994 |
 | EDDI | 12 mo | 3,848,681 | -0.026 | 0.116 | 0.993 | 0.861 | 0.997 |
 
 The plotting-position conventions qualify these numbers.
@@ -768,7 +768,7 @@ An alfalfa-reference-ET variant matches less closely, but that result does not e
 
 The Climate Engine API (`/timeseries/standard_index`, `distribution=nonparametric`,
 same 1981-2016 Calibration Period) was compared at three points over the same years.
-Correlation is 0.978 to 0.995 across indices and timescales; bias is -0.052 to -0.087.
+Correlation is 0.9777 to 0.9945 across indices and timescales; bias is -0.052 to -0.087.
 The API requests use 30/90/180/365 trailing days, not calendar-month windows.
 The script samples the last daily record at most four days before each month end.
 Missing longer intervals remain missing.

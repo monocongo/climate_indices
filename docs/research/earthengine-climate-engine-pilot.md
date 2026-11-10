@@ -40,6 +40,8 @@ The JSON records those cell coordinates and each API request body.
 The provider's spatial reducer is `mean`; pixel-selection equivalence remains unverified.
 
 `docs/research/earthengine-pilot-results/pilot-metrics.json` records the library version, source commit, and dirty flag.
+The final run records source commit `544e98b6cc0772db9f7650209e978ac4c1be2046` and `git_dirty=false`.
+The corrected Earth Engine filter includes 2024-12-31; earlier runs omitted that final input day.
 The collection IDs identify live products, not immutable snapshots.
 Asset revision dates and input checksums were not captured, so later provider updates can change the results.
 
@@ -103,9 +105,9 @@ They are index-category comparisons, not agreement with an observed USDM map.
 | SPEI | 3 mo (90d) | 3,848,681 | +0.062 | 0.153 | 0.224 | 0.978 | 2.57 | 0.703 | 0.962 |
 | SPEI | 6 mo (180d) | 3,848,681 | +0.058 | 0.130 | 0.188 | 0.986 | 1.96 | 0.737 | 0.975 |
 | SPEI | 12 mo (1y) | 3,855,984 | +0.062 | 0.115 | 0.164 | 0.991 | 1.65 | 0.755 | 0.988 |
-| EDDI | 1 mo (30d) | 3,848,681 | −0.023 | 0.175 | 0.277 | 0.958 | 4.18 | 0.712 | 0.944 |
-| EDDI | 3 mo (90d) | 3,848,681 | −0.021 | 0.108 | 0.171 | 0.984 | 4.18 | 0.801 | 0.985 |
-| EDDI | 6 mo (180d) | 3,855,984 | −0.014 | 0.087 | 0.145 | 0.988 | 3.37 | 0.845 | 0.995 |
+| EDDI | 1 mo (30d) | 3,848,681 | −0.022 | 0.175 | 0.277 | 0.958 | 4.18 | 0.712 | 0.944 |
+| EDDI | 3 mo (90d) | 3,848,681 | −0.021 | 0.108 | 0.170 | 0.984 | 4.18 | 0.802 | 0.985 |
+| EDDI | 6 mo (180d) | 3,855,984 | −0.014 | 0.087 | 0.145 | 0.988 | 3.37 | 0.845 | 0.994 |
 | EDDI | 12 mo (1y) | 3,848,681 | −0.026 | 0.072 | 0.116 | 0.993 | 2.38 | 0.861 | 0.997 |
 
 Correlation increases and MAE decreases with timescale for this sample.
@@ -117,8 +119,8 @@ Positive and negative monthly errors can cancel in these maps; they do not show 
 
 | EDDI input | bias at 1 mo | MAE at 1 mo | r at 1 mo | MAE at 12 mo | r at 12 mo |
 | --- | --- | --- | --- | --- | --- |
-| `eto`, grass | −0.023 | 0.175 | 0.958 | 0.072 | 0.993 |
-| `etr`, alfalfa | −0.043 | 0.211 | 0.948 | 0.140 | 0.978 |
+| `eto`, grass | −0.022 | 0.175 | 0.958 | 0.072 | 0.993 |
+| `etr`, alfalfa | −0.042 | 0.211 | 0.948 | 0.140 | 0.978 |
 
 Grass reference ET matches more closely in this pilot.
 This sensitivity does not identify the reference producer's crop or explain the remaining bias.
@@ -132,16 +134,16 @@ Each row contains 1,584 finite pairs: three points and 528 months.
 | Index | Scale | n | bias | MAE | RMSE | r | max abs | same class | within one class |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | SPI | 1 mo (30d) | 1,584 | −0.055 | 0.148 | 0.223 | 0.978 | 1.61 | 0.697 | 0.971 |
-| SPI | 3 mo (90d) | 1,584 | −0.063 | 0.130 | 0.195 | 0.984 | 1.41 | 0.724 | 0.974 |
+| SPI | 3 mo (90d) | 1,584 | −0.063 | 0.130 | 0.195 | 0.984 | 1.41 | 0.723 | 0.973 |
 | SPI | 6 mo (180d) | 1,584 | −0.066 | 0.137 | 0.193 | 0.984 | 1.05 | 0.715 | 0.972 |
-| SPI | 12 mo (365d) | 1,584 | −0.069 | 0.096 | 0.147 | 0.995 | 0.84 | 0.771 | 0.993 |
-| SPEI | 1 mo (30d) | 1,584 | −0.052 | 0.146 | 0.221 | 0.978 | 1.44 | 0.700 | 0.968 |
-| SPEI | 3 mo (90d) | 1,584 | −0.055 | 0.125 | 0.184 | 0.985 | 1.14 | 0.748 | 0.979 |
+| SPI | 12 mo (365d) | 1,584 | −0.069 | 0.095 | 0.146 | 0.994 | 0.84 | 0.771 | 0.993 |
+| SPEI | 1 mo (30d) | 1,584 | −0.052 | 0.146 | 0.221 | 0.978 | 1.44 | 0.699 | 0.968 |
+| SPEI | 3 mo (90d) | 1,584 | −0.055 | 0.125 | 0.184 | 0.985 | 1.14 | 0.747 | 0.979 |
 | SPEI | 6 mo (180d) | 1,584 | −0.056 | 0.125 | 0.177 | 0.986 | 0.84 | 0.737 | 0.984 |
 | SPEI | 12 mo (365d) | 1,584 | −0.055 | 0.091 | 0.139 | 0.994 | 0.68 | 0.782 | 0.994 |
-| EDDI | 1 mo (30d) | 1,584 | −0.085 | 0.137 | 0.201 | 0.982 | 1.40 | 0.717 | 0.983 |
+| EDDI | 1 mo (30d) | 1,584 | −0.084 | 0.137 | 0.200 | 0.982 | 1.40 | 0.717 | 0.983 |
 | EDDI | 3 mo (90d) | 1,584 | −0.085 | 0.126 | 0.180 | 0.986 | 1.00 | 0.732 | 0.986 |
-| EDDI | 6 mo (180d) | 1,584 | −0.084 | 0.125 | 0.180 | 0.987 | 1.00 | 0.740 | 0.990 |
+| EDDI | 6 mo (180d) | 1,584 | −0.083 | 0.125 | 0.180 | 0.987 | 1.00 | 0.739 | 0.990 |
 | EDDI | 12 mo (365d) | 1,584 | −0.087 | 0.111 | 0.157 | 0.991 | 1.00 | 0.754 | 0.996 |
 
 SPI-3 per-point correlations are approximately 0.976, 0.984, and 0.991.
