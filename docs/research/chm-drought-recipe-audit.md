@@ -290,12 +290,12 @@ is tested and reported; none is selected after seeing agreement.
 
 | Item | Declared value |
 | --- | --- |
-| Index | SPI, gamma distribution, monthly steps |
+| Index | SPI, gamma distribution, monthly steps; daily steps for the 14-day secondary target |
 | Timescales | 12 months (primary); 1, 3 and 6 months (secondary); 14-day SPI as a separate secondary target below |
-| Period | 1961-01 to 2022-12 (744 months) |
-| Input | Candidate CHM_PRE v4, 0.1-degree daily precipitation, monthly totals; identity with the product input is unconfirmed |
+| Period | 1961-01 to 2022-12 (744 monthly steps; daily series for the 14-day target) |
+| Input | Candidate CHM_PRE v4, 0.1-degree precipitation: monthly totals for monthly targets, daily values for the 14-day target. Identity with the product input is unconfirmed |
 | Cells | Six 0.1-degree cells, declared below |
-| Reference | CHM_SPI-{1,3,6,12}.nc from Zenodo record 14634774, archived under the MD5 values recorded below |
+| Reference | `CHM_SPI-{1,3,6,12}.nc` and `CHM_SPI-2W.nc` from Zenodo record 14634774, all in `SPI.zip` (MD5 `e7251e9e42b1d4976d64ed0e88fc1833`) |
 | Library | `climate_indices` 3.1.0, `indices.spi()` |
 
 These exact grid centers span the aridity gradient and lie inside the domain.
@@ -324,7 +324,7 @@ Use `utils.transform_to_366day` before `indices.spi()` with `scale=14` and
 afterward to remove synthetic February 29 outputs. This tests the library's
 366-day calendar, not an assumed match to 14 civil days near February 29.
 
-Read the 2-week reference file's dates and calendar before reading index values.
+Read the dates and calendar in `CHM_SPI-2W.nc` before reading index values.
 Use the published dates as trailing-window ends under A0; this remains a hypothesis.
 Compare only matching dates, without interpolation or a fitted time shift.
 If dates or calendar are unavailable, record the blocker and stop only this target.
