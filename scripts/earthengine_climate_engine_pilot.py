@@ -103,6 +103,13 @@ DEGREE_GRID_LIMIT = 1.0
 # a pending result so a failed read is reproducible from the metrics.
 HTTP_TIMEOUT_SECONDS = 180
 
+SYSTEM_INDEX = "system:index"
+SYSTEM_VERSION = "system:version"
+METRICS_FILENAME = "pilot-metrics.json"
+MANIFEST_FILENAME = "tukey-image-manifest.json.gz"
+FOLLOWUP_KEY = "tukey_followup_1571"
+CONTROL_TOLERANCE = "all original metrics match to absolute tolerance 1e-10"
+
 
 class ClimateEngineTransportError(RuntimeError):
     """A Climate Engine response was refused or unreadable, with a sanitized message."""
@@ -341,14 +348,14 @@ def image_manifest(ee: Any, collection: Any) -> list[dict[str, Any]]:
             lambda image: ee.Dictionary(
                 {
                     "id": ee.Image(image).id(),
-                    "system:index": ee.Image(image).get("system:index"),
-                    "system:version": ee.Image(image).get("system:version"),
+                    SYSTEM_INDEX: ee.Image(image).get(SYSTEM_INDEX),
+                    SYSTEM_VERSION: ee.Image(image).get(SYSTEM_VERSION),
                 }
             )
         )
         .getInfo()
     )
-    return [{name: row.get(name) for name in ("id", "system:index", "system:version")} for row in rows]
+    return [{name: row.get(name) for name in ("id", SYSTEM_INDEX, SYSTEM_VERSION)} for row in rows]
 
 
 def open_monthly_gridmet(
@@ -872,6 +879,46 @@ def calibration_rank_audit(dataset: xr.Dataset) -> dict[str, Any]:
     return result
 
 
+def _reference_b(
+    sei: dict[str, xr.DataArray], tukey: dict[str, xr.DataArray], original: dict[str, Any], skip: bool
+) -> tuple[dict[str, Any], str | None]:
+    """Read reference B, or return a pending record and no control result."""
+    key = os.environ.get("CE_API_KEY", "").strip()
+    if not key or skip:
+        return {"status": "pending", "reason": "skipped" if skip else "CE_API_KEY is not set"}, None
+    try:
+        results, baseline = followup_climate_engine(sei, tukey, key)
+    except (TimeoutError, urllib.error.URLError, ClimateEngineTransportError) as error:
+        # Keep reference A: a temporary provider failure is not a control failure.
+        return {
+            "status": "pending",
+            "reason": str(error) or type(error).__name__,
+            "http_timeout_seconds": HTTP_TIMEOUT_SECONDS,
+        }, None
+    check_baseline(baseline, original["reference_b"]["metrics"])
+    return results, CONTROL_TOLERANCE
+
+
+def _write_followup(output_dir: Path, original: dict[str, Any], results: dict[str, Any], manifest: Any) -> None:
+    """Stage the manifest and merged metrics, then move the set into place."""
+    manifest_bytes = gzip.compress(json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode(), mtime=0)
+    results["image_manifest"] = {
+        "file": MANIFEST_FILENAME,
+        "sha256": hashlib.sha256(manifest_bytes).hexdigest(),
+        "missing_version": {name: sum(row[SYSTEM_VERSION] is None for row in rows) for name, rows in manifest.items()},
+    }
+    original[FOLLOWUP_KEY] = results
+    # NOSONAR (S8707): the operator chooses the CLI output directory.
+    output_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".tukey-", dir=output_dir) as directory:
+        staging = Path(directory)
+        (staging / MANIFEST_FILENAME).write_bytes(manifest_bytes)
+        (staging / METRICS_FILENAME).write_text(json.dumps(original, indent=2, sort_keys=True, default=str) + "\n")
+        for name in (MANIFEST_FILENAME, METRICS_FILENAME):
+            (staging / name).replace(output_dir / name)
+    print(f"wrote {output_dir / METRICS_FILENAME} ({FOLLOWUP_KEY})")
+
+
 def run_tukey_followup(
     dataset: xr.Dataset,
     reference: xr.Dataset,
@@ -881,7 +928,7 @@ def run_tukey_followup(
     skip_climate_engine: bool,
 ) -> int:
     """Run the paired experiment and append results without replacing the original pilot."""
-    original_path = Path(__file__).resolve().parents[1] / "docs/research/earthengine-pilot-results/pilot-metrics.json"
+    original_path = Path(__file__).resolve().parents[1] / "docs/research/earthengine-pilot-results" / METRICS_FILENAME
     try:
         original = json.loads(original_path.read_text())
     except (OSError, json.JSONDecodeError) as error:
@@ -903,7 +950,7 @@ def run_tukey_followup(
         "software": software_identity(),
         "acquired_utc": datetime.now(UTC).isoformat(),
         "pre_registration": "https://github.com/monocongo/climate_indices/issues/1571",
-        "baseline_control": "all original reference A metrics match to absolute tolerance 1e-10",
+        "baseline_control": CONTROL_TOLERANCE,
         "collections": {"daily": DAILY_COLLECTION, "drought": DROUGHT_COLLECTION, **anchor},
         "method": {
             "position": "(min(count(calibration < value), n - 1) + 2/3) / (n + 1/3)",
@@ -923,44 +970,10 @@ def run_tukey_followup(
             for name, array in sei.items()
         },
     }
-    key = os.environ.get("CE_API_KEY", "").strip()
-    if key and not skip_climate_engine:
-        try:
-            results["reference_b"], baseline_b = followup_climate_engine(sei, tukey, key)
-        except (TimeoutError, urllib.error.URLError, ClimateEngineTransportError) as error:
-            # Keep reference A: a temporary provider failure is not a control failure.
-            message = str(error) or type(error).__name__
-            results["reference_b"] = {
-                "status": "pending",
-                "reason": message,
-                "http_timeout_seconds": HTTP_TIMEOUT_SECONDS,
-            }
-        else:
-            check_baseline(baseline_b, original["reference_b"]["metrics"])
-            results["baseline_control_b"] = "all original metrics match to absolute tolerance 1e-10"
-    else:
-        results["reference_b"] = {
-            "status": "pending",
-            "reason": "skipped" if skip_climate_engine else "CE_API_KEY is not set",
-        }
-    output_dir.mkdir(parents=True, exist_ok=True)
-    manifest_bytes = gzip.compress(json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode(), mtime=0)
-    manifest_name = "tukey-image-manifest.json.gz"
-    results["image_manifest"] = {
-        "file": manifest_name,
-        "sha256": hashlib.sha256(manifest_bytes).hexdigest(),
-        "missing_version": {
-            name: sum(row["system:version"] is None for row in rows) for name, rows in manifest.items()
-        },
-    }
-    original["tukey_followup_1571"] = results
-    with tempfile.TemporaryDirectory(prefix=".tukey-", dir=output_dir) as directory:
-        staging = Path(directory)
-        (staging / manifest_name).write_bytes(manifest_bytes)
-        (staging / "pilot-metrics.json").write_text(json.dumps(original, indent=2, sort_keys=True, default=str) + "\n")
-        for name in (manifest_name, "pilot-metrics.json"):
-            (staging / name).replace(output_dir / name)
-    print(f"wrote {output_dir / 'pilot-metrics.json'} (tukey_followup_1571)")
+    results["reference_b"], control_b = _reference_b(sei, tukey, original, skip_climate_engine)
+    if control_b:
+        results["baseline_control_b"] = control_b
+    _write_followup(output_dir, original, results, manifest)
     return 0
 
 

@@ -131,8 +131,9 @@ def test_tukey_grid_keeps_months_cells_signs_and_missing_separate() -> None:
     assert result.isel(time=12, y=0, x=0) < 0
     assert result.isel(time=13, y=0, x=0) > 0
     assert np.isnan(pilot.tukey_index(data.isel(y=1, x=1), 3, clip_negatives=False)).all()
+    truncated = data.isel(time=slice(1, None))
     with pytest.raises(ValueError, match="complete January-to-December"):
-        pilot.tukey_index(data.isel(time=slice(1, None)), 1, clip_negatives=False)
+        pilot.tukey_index(truncated, 1, clip_negatives=False)
 
 
 def test_followup_reads_each_climate_engine_series_once(monkeypatch: pytest.MonkeyPatch) -> None:
