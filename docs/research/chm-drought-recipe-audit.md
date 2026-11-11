@@ -22,12 +22,13 @@ pinned, and does the evidence support a bounded shared-input comparison?
 
 **Decision: go with characterization only.**
 
-- **SPI** is the only family whose declared input is exactly pinnable: monthly
-  totals from CHM_PRE (figshare v4, CC BY 4.0, MD5 recorded below). A bounded
-  six-cell, 1961-2022 comparison may proceed, under a predeclared hypothesis grid
-  (section "Predeclared comparison protocol"). The result is **characterization,
-  not parity**: the product does not declare its calibration period, gamma
-  estimator, zero placement, or clipping.
+- **SPI** has a reproducible candidate input: CHM_PRE v4 (figshare v4,
+  CC BY 4.0, MD5 recorded below). The CHM_Drought input revision remains unknown.
+  A bounded six-cell, 1961-2022 comparison may proceed under the predeclared
+  hypothesis grid (section "Predeclared comparison protocol"). The result is
+  **characterization, not parity**: input-version and recipe differences remain
+  confounded. The product does not declare its Calibration Period, gamma
+  estimator, Zero Handling, or clipping.
 - **SPEI** is **blocked for a shared-input comparison**. Its PET needs six
   interpolated meteorological fields that the product built in-house from
   restricted CMA station data. Those exact fields were never published. The
@@ -38,8 +39,8 @@ pinned, and does the evidence support a bounded shared-input comparison?
   parametric transform; this library's EDDI uses NOAA PSL empirical ranking.
   CHM's PDSI uses China-adjusted constants. Both differences are by design and
   must not be "fixed" to match one external product.
-- **2-week scales** have no direct library periodicity and stay out of the
-  comparison.
+- **2-week SPI** can use daily periodicity with `scale=14`. It is a secondary
+  characterization target, subject to the calendar and sampling checks below.
 
 No comparison should be read as an implementation-parity claim. The product
 publishes values, not a reproducible implementation or fitted parameters.
@@ -84,17 +85,17 @@ a stated one; it becomes a hypothesis in the comparison protocol.
 | Element | CHM_Drought V1.0 | climate_indices 3.1.0 | Status | Basis and source |
 | --- | --- | --- | --- | --- |
 | Input | Precipitation only (paper Table 1); CHM_PRE (NetCDF `Summary`; paper section 2.1) | Precipitation array, monthly or daily periodicity | matched | Stated |
-| Accumulation | Multi-month accumulation at 2 weeks and 1-12 months; window sums | `sum_to_scale` trailing sum, leading `scale - 1` values NaN | matched for 1-12 months | Stated scales |
+| Accumulation | Window sums at Timescales of 2 weeks and 1-12 months | `sum_to_scale` trailing sum, leading `scale - 1` values NaN | matched for 1-12 months | Stated Timescales |
 | Window alignment | Not stated. The metadata PDF reports 12-month values starting January 1962, which is one month later than a trailing sum that ends in the labeled month would start | Trailing sum ending in the labeled month (first 12-month value at 1961-12 for a 1961-01 start) | **unknown** | Not stated; tested as hypothesis A0 or A1 in the protocol |
 | Distribution | Gamma (supplement S2, Eq. S1) | `Distribution.gamma` | matched | Stated |
 | Gamma estimator | Supplement S2 prints the maximum-likelihood approximation: `A = ln(x_bar) - mean(ln x)`, `shape = (1 + sqrt(1 + 4A/3)) / (4A)`, `scale = x_bar / shape` | `compute.gamma_parameters` applies the identical formula (documented in the library as method of moments) | **unknown** | Sources conflict: the supplement prints the MLE approximation, while the NetCDF `Software` attribute names R `SPEI`, whose gamma path fits unbiased-PWM L-moments (`lmom::pelgam`), not this formula |
 | Zero mass | `F(x = 0) = m / n` (supplement Eq. S3) | `prob_zero = zeros / non-missing` over the calibration window | matched | Stated |
-| Zero placement | Not stated | `zero_handling="classic"` scores a zero at `Phi^-1(p0)`; alternatives `center_of_mass` (`p0/2`) and `mean_zero` exist | **unknown** | Not stated. R `SPEI` 1.8.1 (released 2023-03-02) evaluates its zero-mass adjustment before the standardized value is assigned in `R/spei.R`, so that adjustment does not reach the result; the current upstream source applies it after. The effective convention is version-dependent |
-| Calibration period | Not stated anywhere in the paper, supplement, metadata PDF, or NetCDF attributes | Explicit `calibration_year_initial` / `calibration_year_final`, per calendar month; a window the record does not cover is clamped (`policy="clamp"`) | **unknown** | Not stated |
+| Zero Handling | Not stated | `zero_handling="classic"` scores a zero at `Phi^-1(p0)`; alternatives `center_of_mass` (`p0/2`) and `mean_zero` exist | **unknown** | Not stated. R `SPEI` 1.8.1 (released 2023-03-02) evaluates its zero-mass adjustment before the standardized value is assigned in `R/spei.R`, so that adjustment does not reach the result; the current upstream source applies it after. The effective convention is version-dependent |
+| Calibration Period | Not stated anywhere in the paper, supplement, metadata PDF, or NetCDF attributes | Explicit `calibration_year_initial` / `calibration_year_final`, per calendar month; a window the record does not cover is clamped (`policy="clamp"`) | **unknown** | Not stated |
 | Per-calendar-month fit | Not stated | Yes: parameters are fitted per calendar month over the calibration years (`gamma_parameters`) | **unknown** | Not stated |
 | Normal transform | Standard normal inverse with the published rational approximation coefficients (supplement Eq. S4-S5) | `scipy.stats.norm.ppf` (numerically equivalent) | matched | Stated |
 | Clipping | Not stated | Clipped to `[-3.09, 3.09]` on the normal scale | **unknown** | Not stated. R `SPEI` does not clip |
-| 2-week scale | Published | No 2-week periodicity | different | Stated; the library supports monthly and daily periodicities |
+| 2-week Timescale | Published | Daily periodicity with `scale=14` | **unknown** | The library supports a 14-day accumulation; the product's calendar, sampling and window alignment remain unspecified |
 | Sign convention | Standardized drought index | Same | matched | Stated |
 
 ### SPEI
@@ -112,7 +113,7 @@ a stated one; it becomes a hypothesis in the comparison protocol.
 | Wind reference height | "Average wind speed" from station data; height not stated | `wind_speed_2m` converts from a declared measurement height, default 2 m | **unknown** | Not stated. CMA station wind is commonly measured at 10 m |
 | Elevation input | Psychrometric constant from elevation (supplement S9, Eq. S30); elevation source not stated for the PET grid | `atmospheric_pressure(elevation_m)` from the supplied elevation | **unknown** | Formula stated; the elevation field is not |
 | Daily to monthly aggregation | Not stated | The library computes daily ETo; monthly aggregation is the caller's step | **unknown** | Not stated. The SPEIbase evidence shows this convention is material: leap-aware month lengths versus a near-uniform month changes the fit residual by a factor of two to four |
-| Calibration period | Not stated | Explicit window, per calendar month | **unknown** | Not stated |
+| Calibration Period | Not stated | Explicit window, per calendar month | **unknown** | Not stated |
 | Clipping | Not stated | Clipped to `[-3.09, 3.09]` | **unknown** | Not stated |
 
 ### EDDI
@@ -123,8 +124,8 @@ a stated one; it becomes a hypothesis in the comparison protocol.
 | ET0 formula | ASCE-EWRI standardized reference ET, paper Eq. 4 with `Cn`, `Cd` (Allen et al., 2005); the paper does not print the `Cn` and `Cd` values | `pm_eto` (FAO-56 Eq. 6) | **unknown** | Form stated; constants absent. Only the short-grass daily pair (`Cn = 900`, `Cd = 0.34`) coincides with the FAO-56 form |
 | Standardization | Parametric: accumulate ET0, then apply the inverse-normal rational approximation to a probability `P(ET0)` (paper Eq. 5-7; supplement S4) | Non-parametric empirical ranking, Tukey plotting position, Hastings inverse-normal | **different** | Stated. Different by design; not a parity target |
 | Distribution for `P(ET0)` | Not stated | Empirical | **unknown** | Not stated |
-| Baseline or calibration period | Not stated | Explicit calibration window | **unknown** | Not stated |
-| Time axis | The audited EDDI-12 file labels time at day 15 of the month (`time[0] = 15`), unlike the month-start labels of the audited SPI, SPEI and Palmer files | Month-start labels | different | Observed in the NetCDF `time` variable |
+| Calibration Period | Not stated | Explicit calibration window | **unknown** | Not stated |
+| Time axis | The audited EDDI-12 file starts at an offset of 15 days (`time[0] = 15`), unlike the month-start labels of the audited SPI, SPEI and Palmer files | Month-start labels | **unknown** | Observed label offset, not a declared design difference. Whether the labels identify the same monthly window is untested; month alignment needs verification |
 | Clipping | Not stated | Clipped to `[-3.09, 3.09]` | **unknown** | Not stated |
 
 ### PDSI and SC-PDSI
@@ -137,7 +138,7 @@ a stated one; it becomes a hypothesis in the comparison protocol.
 | AWC source | Global Gridded Surfaces of Selected Soil Characteristics, DAAC `ds_id=1006` (paper section 2.1) | Supplied by the caller | **unknown** | Source stated; the grid version and the cell aggregation are not |
 | K-prime formulation | Palmer Eq. 8-9 (paper), supplement Eq. S14-S15 | Standard Palmer formulation, evidenced against nClimDiv | matched | Stated product equations; the library's standard formulation is the one measured in the nClimDiv row of `VALIDATION.md` |
 | SC-PDSI calibration | Wells et al. (2004), `fe = 2%`, percentile recalibration, two duration-factor sets; R `scPDSI` package (paper section 3.5; supplement S6) | Wells-lineage self-calibration, three rescaling passes | **different** | The self-calibration family is shared, but the base durations and constants differ by design |
-| Calibration period | Not stated for either Palmer index | Explicit window; SC-PDSI self-calibrates over it | **unknown** | Not stated |
+| Calibration Period | Not stated for either Palmer index | Explicit window; SC-PDSI self-calibrates over it | **unknown** | Not stated |
 
 The Palmer family stays outside the comparison. Matching it would require the
 China constants and a different scientific definition, which the epic excludes.
@@ -152,7 +153,7 @@ below are the recorded values in `VALIDATION.md` at `v3.1.0`.
 | PET Penman-Monteith (FAO-56) | `tests/test_pm_eto.py`, FAO-56 Examples 10-18 | Final ETo `atol = 0.05 mm/day`; radiation intermediates `0.05-0.1 MJ m-2 day-1`; Example 18 ETo = 3.88 mm/day | The equation CHM's SPEI cites; EDDI's ASCE-EWRI form reduces to it for the daily grass reference. Gap: monthly Example 17 is not encoded |
 | SPEI log-logistic cross-implementation | `tests/test_spei_loglogistic_reference.py`, R `SPEI` (`distribution = "log-Logistic"`, `fit = "ub-pwm"`) | Series `atol = 1e-6` declared; measured about `1e-12`. Parameters `rtol = 1e-8`, `atol = 1e-6`; measured at most about `1e-10` | The distribution route CHM names. Fixtures, provenance and a version-guarded regeneration script are committed under `tests/fixture/spei_loglogistic/` |
 | SPEI log-logistic like-for-like, SPEIbase v2.11 | `tests/test_speibase_like_for_like.py` | Correlation 0.9996-0.99999; mean absolute difference 0.003-0.016; floors at correlation >= 0.97 | The committed measurement of a PET month-length convention effect: leap-aware versus near-uniform months changes the residual two to four times |
-| SPI zero handling | `tests/test_zero_handling.py`, `tests/test_zero_handling_reference.py` (R `SEI`, R `SCI`) | Zero-placement constants `atol = 1e-12`; parameter-matched series `atol = 1e-6`; end-to-end `atol = 0.01`; measured end-to-end difference at most 0.0032 | The zero-placement modes the CHM comparison must vary. The library's gamma is an approximation; R `SEI` uses MLE gamma, and the measured difference is the same order as the CHM estimator question |
+| SPI zero handling | `tests/test_zero_handling.py`, `tests/test_zero_handling_reference.py` (R `SEI`, R `SCI`) | Zero Handling constants `atol = 1e-12`; parameter-matched series `atol = 1e-6`; end-to-end `atol = 0.01`; measured end-to-end difference at most 0.0032 | The Zero Handling modes the CHM comparison must vary. The library's gamma is an approximation; R `SEI` uses MLE gamma, and the measured difference is the same order as the CHM estimator question |
 | EDDI | `tests/test_noaa_eddi_reference.py`, NOAA PSL | `rtol = 1e-5`, `atol = 1e-5`; maximum observed error `2.43e-6` | Confirms the library's empirical route is the NOAA route. It says nothing about a parametric EDDI |
 | PDSI, standard Palmer | `tests/test_nclimdiv_reference.py` | Median absolute difference 0.0127 over 528,384 division-months; 86.2% within 0.05 | Standard-constant evidence only; not the China variant |
 | SC-PDSI | `tests/test_scpdsi.py`, Wells-lineage oracle | `atol = 5e-5`, `rtol = 0` | Self-calibration arithmetic, not CHM's China-constant base |
@@ -164,7 +165,7 @@ same `lmom` PELGLO routine R `SPEI` calls, so close agreement is expected.
 
 ## Input records
 
-### Precipitation (pinnable)
+### Precipitation (pinnable candidate; product revision unknown)
 
 CHM_PRE, described by [Han et al. (2023)](https://doi.org/10.5194/essd-15-3147-2023)
 and named in the SPI-12 and SPEI-12 `Summary` attributes.
@@ -206,10 +207,10 @@ The public CHM grids that exist today are later, separate releases:
 
 | Variable | Zenodo record | Version | Published | Coverage | Files |
 | --- | --- | --- | --- | --- | --- |
-| Tmax | [10.5281/zenodo.22097524](https://doi.org/10.5281/zenodo.22097524) | none stated | 2026-08-25 | 1961-2025 | eight zips, 5.18 GB |
-| Tmin | [10.5281/zenodo.22092514](https://doi.org/10.5281/zenodo.22092514) | none stated | 2026-08-25 | 1961-2025 | eight zips, 5.27 GB |
+| Tmax | [10.5281/zenodo.22097524](https://doi.org/10.5281/zenodo.22097524) | v2 | 2026-08-25 | 1961-2025 | eight zips, 5.18 GB |
+| Tmin | [10.5281/zenodo.22092514](https://doi.org/10.5281/zenodo.22092514) | v2 | 2026-08-25 | 1961-2025 | eight zips, 5.27 GB |
 | Tmean | [10.5281/zenodo.17472829](https://doi.org/10.5281/zenodo.17472829) | V1.0 | 2025-11-26 | 1961-2024 | seven NetCDF files, 21.55 GB |
-| Tmean | [10.5281/zenodo.22097727](https://doi.org/10.5281/zenodo.22097727) | none stated | 2026-08-25 | 1961-2025 | eight zips, 5.14 GB |
+| Tmean | [10.5281/zenodo.22097727](https://doi.org/10.5281/zenodo.22097727) | v2 | 2026-08-25 | 1961-2025 | eight zips, 5.14 GB |
 | Relative humidity | [10.5281/zenodo.17465143](https://doi.org/10.5281/zenodo.17465143) | V1.0 | 2025-11-26 | 1961-2024 | seven NetCDF files, 21.55 GB |
 | Sunshine duration | [10.5281/zenodo.17471082](https://doi.org/10.5281/zenodo.17471082) | V1.0 | 2025-11-26 | 1961-2024 | seven NetCDF files, 21.55 GB |
 | Wind speed | [10.5281/zenodo.22093257](https://doi.org/10.5281/zenodo.22093257) | 1.0 | 2026-08-25 | 1961-2025 | twelve zips, 8.23 GB |
@@ -254,7 +255,7 @@ and VPD; 15 in EDDI):
 Global attributes **absent** from every audited file, recorded as absent and not
 inferred:
 
-- calibration or reference period;
+- Calibration Period;
 - distribution name and fitted parameters;
 - gamma estimator, zero-mass convention, or clipping rule;
 - R version, package versions, or a processing date;
@@ -290,53 +291,75 @@ is tested and reported; none is selected after seeing agreement.
 | Item | Declared value |
 | --- | --- |
 | Index | SPI, gamma distribution, monthly steps |
-| Scales | 12 months (primary); 1, 3 and 6 months (secondary) |
+| Timescales | 12 months (primary); 1, 3 and 6 months (secondary); 14-day SPI as a separate secondary target below |
 | Period | 1961-01 to 2022-12 (744 months) |
-| Input | CHM_PRE v4, 0.1-degree daily precipitation, monthly totals |
+| Input | Candidate CHM_PRE v4, 0.1-degree daily precipitation, monthly totals; identity with the product input is unconfirmed |
 | Cells | Six 0.1-degree cells, declared below |
 | Reference | CHM_SPI-{1,3,6,12}.nc from Zenodo record 14634774, archived under the MD5 values recorded below |
 | Library | `climate_indices` 3.1.0, `indices.spi()` |
 
-Cells, chosen to span the aridity gradient and to sit well inside the domain:
+These exact grid centers span the aridity gradient and lie inside the domain.
+Use these centers on both grids, not rounded city coordinates.
 
-| Name | Longitude | Latitude | Setting |
+| Name | Longitude (E) | Latitude (N) | Setting |
 | --- | --- | --- | --- |
-| Guangzhou | 113.3 | 23.1 | humid subtropical |
-| Shanghai | 121.5 | 31.2 | humid coastal |
-| Beijing | 116.4 | 39.9 | semi-humid |
-| Lanzhou | 103.8 | 36.1 | semi-arid |
-| Urumqi | 87.6 | 43.8 | arid |
-| Lhasa | 91.1 | 29.7 | high-altitude |
+| Guangzhou | 113.25 | 23.05 | humid subtropical |
+| Shanghai | 121.45 | 31.15 | humid coastal |
+| Beijing | 116.35 | 39.85 | semi-humid |
+| Lanzhou | 103.75 | 36.05 | semi-arid |
+| Urumqi | 87.55 | 43.75 | arid |
+| Lhasa | 91.05 | 29.65 | high-altitude |
 
-The fixture build must assert that each selected cell is non-NaN in the reference
-file for every month after the scale's leading fill, and that it lies inside the
-CHM_PRE land mask. If a cell fails, the build stops; it does not substitute a cell
-after seeing results.
+The fixture build must verify that both coordinate axes contain each declared
+center, allowing only coordinate storage precision. It must assert that each
+selected cell is non-NaN in the reference file after the Timescale's leading
+fill, and that it lies inside the CHM_PRE land mask. If a cell fails, the build
+stops; it does not substitute a cell after seeing results.
+
+### Secondary 2-week SPI target
+
+Retain the daily CHM_PRE v4 series for the same six cells and 1961-2022 period.
+Use `utils.transform_to_366day` before `indices.spi()` with `scale=14` and
+`periodicity=compute.Periodicity.daily`. Use `utils.transform_to_gregorian`
+afterward to remove synthetic February 29 outputs. This tests the library's
+366-day calendar, not an assumed match to 14 civil days near February 29.
+
+Read the 2-week reference file's dates and calendar before reading index values.
+Use the published dates as trailing-window ends under A0; this remains a hypothesis.
+Compare only matching dates, without interpolation or a fitted time shift.
+If dates or calendar are unavailable, record the blocker and stop only this target.
+
+Report C1-C3, E1-E2 and Z1-Z3 with per-calendar-day fits and the same metrics,
+using time steps rather than months. Use A0 only; A1 below is a monthly hypothesis.
+Keep these results separate from the monthly characterization.
 
 ### Predeclared alternatives
 
 | Axis | Alternatives, all reported |
 | --- | --- |
-| Calibration period | C1: 1961-2022 (full record, per calendar month). C2: 1961-1990. C3: 1981-2010 |
+| Calibration Period | C1: 1961-2022 (full record, per calendar month). C2: 1961-1990. C3: 1981-2010 |
 | Gamma estimator | E1: the library's formula (the supplement's MLE approximation). E2: unbiased-PWM gamma (the R `SPEI` default, `lmom::pelgam`) |
-| Zero placement | Z1: `classic` (`Phi^-1(p0)`). Z2: `center_of_mass` (`Phi^-1(p0/2)`). Z3: no zero-mass adjustment (a zero maps to the lower tail, then clips) |
-| Alignment | A0: month label is the window end (library trailing sum). A1: one-month shift, if the reference's first valid 12-month value is January 1962 |
-| Clipping | Library clip at `+/-3.09` is always applied. Months where either side is at the clip are excluded from the residual metrics and counted separately |
+| Zero Handling | Z1: `classic` (`Phi^-1(p0)`). Z2: `center_of_mass` (`Phi^-1(p0/2)`). Z3: no zero-mass adjustment (a zero maps to the lower tail, then clips) |
+| Alignment | A0: the date label is the window end (library trailing sum). A1: monthly target only, a one-month shift if the reference's first valid 12-month value is January 1962 |
+| Clipping | Library clip at `+/-3.09` is always applied. Months where either absolute score is at least 3.09 are excluded from residual metrics, but their tolerance agreements and disagreements are counted separately |
 
 C1 is only a hypothesis. No source confirms it; it is the R `SPEI` default when
 `ref.start` and `ref.end` are left unset. C2 and C3 are the two 30-year normal
 periods a China product most plausibly used; they are included to bound the
 answer, not because a source names them.
 
-E2 requires an external gamma fit. C02 may compute it in R `SPEI` (a bounded
-script, version-pinned) or with an L-moment gamma fit implemented for the fixture.
+E2 requires an external gamma fit. The fixture build may compute it in R `SPEI`
+(a bounded script, version-pinned) or with an L-moment gamma fit for the fixture.
 Either way the fit output, script and versions are committed with the fixture.
 
 ### Metrics
 
-For each cell, scale and hypothesis combination, report:
+For each cell, Timescale and hypothesis combination, report:
 
-- number of compared months, and months excluded by clipping or missing data;
+- eligible months after the declared leading fill, retained months, coverage
+  (`retained / eligible`), and months excluded by clipping or missing data;
+- counts of clipped finite pairs within and outside `1e-3`, including zero
+  accumulations where only the library clips;
 - bias, mean absolute difference, root mean square difference, Pearson
   correlation;
 - mean sign agreement, and agreement of the seven-class scheme at cuts
@@ -346,10 +369,17 @@ For each cell, scale and hypothesis combination, report:
 
 ### Evidence rule
 
-The result is characterization in every case. A configuration whose differences
-are within `1e-3` for at least 99% of months is reported as "arithmetic agreement
-under hypothesis H" and must name H. It is not parity, because the product did
-not declare H.
+The result is characterization in every case. Apply the 99% threshold only to
+retained, unclipped finite pairs, using an absolute tolerance of `1e-3`.
+Report a passing configuration as "arithmetic agreement on the unclipped subset
+under hypothesis H". Name H and give the retained count, eligible count and
+coverage. An empty retained subset cannot qualify.
+
+This label does not establish agreement over the eligible series.
+Report excluded clipped disagreements separately; they remain disagreements,
+including zeros that Z3 clips when the reference gives a different finite score.
+Missing pairs remain untested. Neither subset agreement nor clipped agreement
+establishes parity: the input revision and recipe remain unconfirmed.
 
 If no configuration reaches that band, the residual pattern is reported as an
 unresolved difference. A structured pattern (by calendar month, aridity or
@@ -359,8 +389,8 @@ specification and its own evidence, per the epic's dependency chain.
 
 ### Fixture and provenance
 
-- Extract only the six cells' series, all scales, from the archived files. Store
-  those series, the cell indices, the archive MD5s and the extraction script.
+- Extract only the six cells' series at all declared Timescales from the archived files.
+  Store those series, the cell indices, the archive MD5s and the extraction script.
 - Archive MD5s for provenance: `SPI.zip` `e7251e9e42b1d4976d64ed0e88fc1833`,
   `SPEI.zip` `3aeffac0415befa8194dcc96deaef547`, `EDDI.zip`
   `dd6f360662a0a0b504a883bbd2a6d613`, `PDSI.zip` `3cbd057267c392b9f8505109d36265cf`,
@@ -382,14 +412,15 @@ specification and its own evidence, per the epic's dependency chain.
    or the daily mean of Tmin and Tmax?
 6. At which height was wind measured, and was it converted to 2 m?
 7. Which elevation field drives the psychrometric constant?
-8. For EDDI, which distribution and baseline produced `P(ET0)`?
+8. For EDDI, which distribution and Calibration Period produced `P(ET0)`?
 9. For PDSI and SC-PDSI, which AWC grid version and which calibration window
    were used?
 
-Questions 1-4 block SPI parity; 3, 5-7 also block SPEI. The product metadata
-answers none of them. No author contact was made; under the epic that needs a
-separate maintainer decision, and a future release of the processing code or a
-versioned metadata update would be the cheaper route.
+Questions 1, 2 and 4, plus unresolved SPI window alignment, block SPI parity.
+Questions 3 and 5-7 additionally block SPEI, not SPI. The product metadata does
+not resolve these questions. No author contact was made; that requires a separate
+maintainer decision under the epic. A processing-code release or versioned
+metadata update could supply the missing declarations.
 
 ## What this audit did not do
 
@@ -401,6 +432,6 @@ versioned metadata update would be the cheaper route.
 - It did not contact the authors or assert anything about their intent.
 
 A later session that finds a CHM_PRE or met-grid version declaration, a processing
-script, or a corrected metadata release should revisit questions 1-9 before C02
-runs, because a declared calibration period would remove the largest hypothesis
-axis.
+script, or a corrected metadata release should revisit the SPI blockers before
+the characterization run. A declared Calibration Period would remove the largest
+hypothesis axis.
