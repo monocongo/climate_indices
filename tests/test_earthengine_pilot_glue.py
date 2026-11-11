@@ -496,8 +496,9 @@ def test_gridmet_filter_includes_the_final_day(monkeypatch: pytest.MonkeyPatch) 
         def ImageCollection(self, name: str) -> Collection:
             return Collection()
 
+    engine = EarthEngine()
     with pytest.raises(RuntimeError, match="date checked"):
-        pilot.open_monthly_gridmet(EarthEngine(), pilot.PILOT_BBOX, NATIVE_GRID)
+        pilot.open_monthly_gridmet(engine, pilot.PILOT_BBOX, NATIVE_GRID)
 
 
 def test_scale_mapping_covers_the_catalog_scales() -> None:
