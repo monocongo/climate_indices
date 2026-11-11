@@ -106,6 +106,7 @@ exclude_patterns = [
     "research/dri-wrcc-scpdsi-assessment.md",
     "research/flood-oracle-survey.md",
     "research/energy-oracle-survey.md",
+    "research/chm-drought-recipe-audit.md",
     "research/import-cycle-investigation.md",
     "research/earthengine-climate-engine-pilot.md",
     "research/maifi-event-grouping.md",

@@ -179,6 +179,7 @@ vocabulary at `src/climate_indices/CONTEXT.md`):
   `docs/research/dri-wrcc-scpdsi-assessment.md`,
   `docs/research/flood-oracle-survey.md`,
   `docs/research/energy-oracle-survey.md`,
+  `docs/research/chm-drought-recipe-audit.md`,
   `docs/research/import-cycle-investigation.md`,
   `docs/research/earthengine-climate-engine-pilot.md`,
   `docs/research/maifi-event-grouping.md`,
