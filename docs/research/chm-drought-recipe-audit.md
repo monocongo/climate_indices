@@ -31,14 +31,15 @@ pinned, and does the evidence support a bounded shared-input comparison?
   estimator, Zero Handling, or clipping.
 - **SPEI** is **blocked for a shared-input comparison**. Its PET needs six
   interpolated meteorological fields that the product built in-house from
-  restricted CMA station data. Those exact fields were never published. The
-  public `CHM_Tmax`/`CHM_Tmin`/`CHM_Tmean`/`CHM_Rh`/`CHM_Ssd`/`CHM_Wind`
-  records postdate the product, cover different years, and carry no version or
-  checksum that ties them to CHM_Drought V1.0.
-- **EDDI** and the **Palmer** family are **not parity targets**. CHM's EDDI uses a
-  parametric transform; this library's EDDI uses NOAA PSL empirical ranking.
-  CHM's PDSI uses China-adjusted constants. Both differences are by design and
-  must not be "fixed" to match one external product.
+  restricted CMA station data. Those exact fields are not published as a dataset,
+  and their identity is unconfirmed. The public
+  `CHM_Tmax`/`CHM_Tmin`/`CHM_Tmean`/`CHM_Rh`/`CHM_Ssd`/`CHM_Wind` records
+  postdate the product, cover different years, and carry no version or checksum
+  that confirms their identity with CHM_Drought V1.0.
+- For **EDDI**, CHM's method for obtaining `P(ET0)` is not stated; this library
+  uses NOAA PSL empirical ranking. The **Palmer** family is **not a parity
+  target**: CHM's PDSI uses China-adjusted constants that must not be "fixed" to
+  match one external product.
 - **2-week SPI** can use daily periodicity with `scale=14`. It is a secondary
   characterization target, subject to the calendar and sampling checks below.
 
@@ -122,7 +123,7 @@ a stated one; it becomes a hypothesis in the comparison protocol.
 | --- | --- | --- | --- | --- |
 | Input | ET0 (paper Table 1) | PET array | matched | Stated |
 | ET0 formula | ASCE-EWRI standardized reference ET, paper Eq. 4 with `Cn`, `Cd` (Allen et al., 2005); the paper does not print the `Cn` and `Cd` values | `pm_eto` (FAO-56 Eq. 6) | **unknown** | Form stated; constants absent. Only the short-grass daily pair (`Cn = 900`, `Cd = 0.34`) coincides with the FAO-56 form |
-| Standardization | Parametric: accumulate ET0, then apply the inverse-normal rational approximation to a probability `P(ET0)` (paper Eq. 5-7; supplement S4) | Non-parametric empirical ranking, Tukey plotting position, Hastings inverse-normal | **different** | Stated. Different by design; not a parity target |
+| Standardization | Accumulate ET0, then apply the inverse-normal rational approximation to a probability `P(ET0)` (paper Eq. 5-7; supplement S4) | Non-parametric empirical ranking, Tukey plotting position, Hastings inverse-normal | **unknown** | The method for obtaining `P(ET0)` is not stated |
 | Distribution for `P(ET0)` | Not stated | Empirical | **unknown** | Not stated |
 | Calibration Period | Not stated | Explicit calibration window | **unknown** | Not stated |
 | Time axis | The audited EDDI-12 file starts at an offset of 15 days (`time[0] = 15`), unlike the month-start labels of the audited SPI, SPEI and Palmer files | Month-start labels | **unknown** | Observed label offset, not a declared design difference. Whether the labels identify the same monthly window is untested; month alignment needs verification |
@@ -203,12 +204,15 @@ S1). The interpolated fields used for V1.0 were therefore not a public dataset a
 build time. The raw CMA station observations are restricted and are not a
 redistribution input.
 
-The public CHM grids that exist today are later, separate releases:
+The public CHM grids that exist today are later releases whose identity is
+unconfirmed:
 
 | Variable | Zenodo record | Version | Published | Coverage | Files |
 | --- | --- | --- | --- | --- | --- |
 | Tmax | [10.5281/zenodo.22097524](https://doi.org/10.5281/zenodo.22097524) | v2 | 2026-08-25 | 1961-2025 | eight zips, 5.18 GB |
+| Tmax | [10.5281/zenodo.17489938](https://doi.org/10.5281/zenodo.17489938) | V1.0 | 2025-11-26 | 1961-2024 | seven NetCDF files, 21.55 GB |
 | Tmin | [10.5281/zenodo.22092514](https://doi.org/10.5281/zenodo.22092514) | v2 | 2026-08-25 | 1961-2025 | eight zips, 5.27 GB |
+| Tmin | [10.5281/zenodo.17495448](https://doi.org/10.5281/zenodo.17495448) | V1.0 | 2025-11-26 | 1961-2024 | seven NetCDF files, 21.55 GB |
 | Tmean | [10.5281/zenodo.17472829](https://doi.org/10.5281/zenodo.17472829) | V1.0 | 2025-11-26 | 1961-2024 | seven NetCDF files, 21.55 GB |
 | Tmean | [10.5281/zenodo.22097727](https://doi.org/10.5281/zenodo.22097727) | v2 | 2026-08-25 | 1961-2025 | eight zips, 5.14 GB |
 | Relative humidity | [10.5281/zenodo.17465143](https://doi.org/10.5281/zenodo.17465143) | V1.0 | 2025-11-26 | 1961-2024 | seven NetCDF files, 21.55 GB |
@@ -217,9 +221,9 @@ The public CHM grids that exist today are later, separate releases:
 
 All are CC BY 4.0. None predates the CHM_Drought V1.0 build, and none carries a
 version, file checksum or processing statement that ties it to CHM_Drought V1.0.
-Using them would change the input, so SPEI and EDDI comparisons would become
-product-chain characterization of two different products, not a shared-input
-comparison.
+Using them would not confirm that the input is the product's, so SPEI and EDDI
+comparisons would become product-chain characterization of two possibly
+different products, not a shared-input comparison.
 
 ### Superseded precipitation records
 
