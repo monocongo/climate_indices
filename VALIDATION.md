@@ -727,6 +727,65 @@ arithmetic behaves as Wells describes for these 344 divisions, not that the
 resulting scPDSI values themselves match an external authoritative source.
 See "Palmer Validation Classification" above for the latter.
 
+## Cross-Provider Characterization: Earth Engine GRIDMET Drought
+
+`climate_indices` was compared with the precomputed `GRIDMET/DROUGHT` collection
+in the Earth Engine Data Catalog over the Apalachicola-Chattahoochee-Flint basin
+bounding box, 1981-2024, on a 1981-2016 calibration window. The full method
+alignment, per-scale metrics, difference maps and open questions are in
+`docs/research/earthengine-climate-engine-pilot.md`; the numbers are produced by
+`scripts/earthengine_climate_engine_pilot.py`.
+
+**Evidence level: characterization comparison, not reference reproduction.**
+The reference is a different implementation with a different accumulation
+window (fixed trailing days, 5-day cadence, versus calendar months here). Its
+SPI and SPEI plotting position is unconfirmed; the catalog endpoints are
+consistent with Tukey, not with the SEI position used here. No status in the
+"Per-Index Evidence" table above is changed, raised or implied by this section.
+
+The category metrics use the catalog's eleven drought-to-wet classes, including
+the D0–D4 thresholds. They are index-category comparisons, not agreement with an
+observed USDM map.
+
+| Index | Scale | n | bias | RMSE | r | same class | within one class |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| SPI | 1 mo | 3,855,984 | +0.061 | 0.369 | 0.928 | 0.638 | 0.906 |
+| SPI | 3 mo | 3,855,984 | +0.054 | 0.235 | 0.974 | 0.699 | 0.961 |
+| SPI | 6 mo | 3,855,984 | +0.048 | 0.194 | 0.984 | 0.730 | 0.975 |
+| SPI | 12 mo | 3,855,984 | +0.049 | 0.171 | 0.990 | 0.743 | 0.984 |
+| SPEI | 1 mo | 3,848,681 | +0.070 | 0.354 | 0.934 | 0.637 | 0.909 |
+| SPEI | 3 mo | 3,848,681 | +0.062 | 0.224 | 0.978 | 0.703 | 0.962 |
+| SPEI | 6 mo | 3,848,681 | +0.058 | 0.188 | 0.986 | 0.737 | 0.975 |
+| SPEI | 12 mo | 3,855,984 | +0.062 | 0.164 | 0.991 | 0.755 | 0.988 |
+| EDDI | 1 mo | 3,848,681 | -0.022 | 0.277 | 0.958 | 0.712 | 0.944 |
+| EDDI | 3 mo | 3,848,681 | -0.021 | 0.170 | 0.984 | 0.802 | 0.985 |
+| EDDI | 6 mo | 3,855,984 | -0.014 | 0.145 | 0.988 | 0.845 | 0.994 |
+| EDDI | 12 mo | 3,848,681 | -0.026 | 0.116 | 0.993 | 0.861 | 0.997 |
+
+One comparison month is missing for SPEI 1, 3 and 6 months and for EDDI 1, 3 and
+12 months, so those rows pair 7,303 cells with 527 months rather than 528. The
+saved metrics do not record which month.
+
+The plotting-position conventions qualify these numbers.
+`Distribution.empirical` uses the SEI position `(k + 1) / (n + 2)`.
+For 36 distinct calibration ranks, the exact normal quantiles have a mean of +0.0538.
+Tukey's positions have a mean of zero for those ranks.
+Their differences depend on rank; +0.0538 is not a constant correction for each observation or the full comparison period.
+The catalog endpoints suggest Tukey's convention but do not establish its formula.
+The EDDI biases above are -0.014 to -0.026; no SEI correction applies to EDDI.
+An alfalfa-reference-ET variant matches less closely, but that result does not establish the producer's reference crop.
+
+The Climate Engine API (`/timeseries/standard_index/coordinates`,
+`distribution=nonparametric`, same 1981-2016 Calibration Period) was compared at
+three points over the same years.
+Correlation is 0.9777 to 0.9945 across indices and timescales; bias is -0.052 to -0.087.
+The API requests use 30/90/180/365 trailing days, not calendar-month windows.
+The script samples the last daily record at most four days before each month end.
+Missing longer intervals remain missing.
+These point metrics and the catalog's field metrics have different spatial support.
+They cannot establish which reference agrees more closely on a common sample or explain the bias.
+The producer's exact rank formula, calendar grouping, reference crop, and endpoint date semantics remain open questions.
+
 ## References
 
 - Beguería, S., Vicente-Serrano, S. M., Reig, F., and Latorre, B. (2014).

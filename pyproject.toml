@@ -37,6 +37,14 @@ dependencies = [
 [project.optional-dependencies]
 # Icechunk uses Zarr v3.
 icechunk = ["icechunk>=2.2,<3; python_version >= '3.12'"]
+# Optional Google Earth Engine access: the xee xarray backend plus the Earth
+# Engine client it drives. Neither is imported by the package; the notebooks and
+# scripts in notebooks/ and scripts/ import them directly. See the how-to page
+# docs/earthengine-climate-engine.md.
+earthengine = [
+    "xee>=0.1.2",
+    "earthengine-api>=1.6.12",
+]
 # NOTE: Test dependencies are intentionally duplicated in [dependency-groups].test below.
 # This is required because pip uses [project.optional-dependencies] for `pip install .[test]`
 # while uv uses [dependency-groups] for `uv sync --group test`. Both systems need the same
@@ -168,6 +176,17 @@ ignore_missing_imports = true
 module = [
     "rioxarray",
     "rasterio.*",
+]
+ignore_missing_imports = true
+
+# Optional Earth Engine dependencies behind the `earthengine` extra. Neither ships
+# type information, and only the notebooks and scripts behind that extra import them.
+[[tool.mypy.overrides]]
+module = [
+    "ee",
+    "ee.*",
+    "xee",
+    "xee.*",
 ]
 ignore_missing_imports = true
 

@@ -15,6 +15,7 @@ hydropower-precipitation-proxy
 compound-hazards
 choosing-parameters
 checking-distribution-fit
+earthengine-climate-engine
 troubleshooting
 xarray_migration
 performance
