@@ -13,6 +13,7 @@ from __future__ import annotations
 import http.client
 import io
 import json
+import ssl
 import urllib.error
 from email.message import Message
 from pathlib import Path
@@ -445,6 +446,7 @@ def test_climate_engine_http_error_does_not_echo_a_key(monkeypatch: pytest.Monke
     [
         ConnectionResetError("reset"),
         http.client.IncompleteRead(b"partial"),
+        ssl.SSLError("truncated TLS stream"),
         UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"),
         json.JSONDecodeError("truncated", "{", 1),
     ],

@@ -604,9 +604,10 @@ def climate_engine_request(endpoint: str, body: dict[str, Any], key: str) -> dic
     except urllib.error.HTTPError as error:
         # A remote error body can echo request headers, including the key.
         raise ClimateEngineTransportError(f"Climate Engine API returned HTTP {error.code}") from None
-    except (http.client.HTTPException, ConnectionError, UnicodeDecodeError, json.JSONDecodeError) as error:
-        # A dropped connection or a truncated body is a provider failure. The
-        # follow-up keeps the completed reference A when this error reaches it.
+    except (http.client.HTTPException, OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        # A dropped connection, a TLS failure or a truncated body is a provider failure.
+        # OSError covers resets, TLS, and read timeouts; the follow-up keeps the
+        # completed reference A when this error reaches it.
         raise ClimateEngineTransportError(f"Climate Engine response unreadable: {type(error).__name__}") from None
     if not isinstance(decoded, dict):
         raise RuntimeError(f"Climate Engine API returned a {type(decoded).__name__}, not a JSON object")
@@ -908,6 +909,32 @@ def _reference_b(
     return results, CONTROL_TOLERANCE
 
 
+def _published_manifest_sha(output_dir: Path) -> str | None:
+    """The manifest checksum the published metrics name, or ``None`` when unreadable."""
+    try:
+        named = json.loads((output_dir / METRICS_FILENAME).read_text())[FOLLOWUP_KEY]["image_manifest"]["sha256"]
+    except (OSError, KeyError, TypeError, json.JSONDecodeError):
+        return None
+    return named if isinstance(named, str) else None
+
+
+def _recovery_manifest(output_dir: Path) -> Path:
+    """Copy the published manifest aside, unless the existing copy is the recoverable one.
+
+    A retry after an interrupted publication must not overwrite the only manifest
+    whose checksum matches the published metrics, so the copy is refreshed only when
+    the published manifest is that one or no copy exists yet.
+    """
+    published = output_dir / MANIFEST_FILENAME
+    previous = output_dir / f"{MANIFEST_FILENAME}.previous"
+    if not published.exists():
+        return previous
+    named = _published_manifest_sha(output_dir)
+    if named is None or hashlib.sha256(published.read_bytes()).hexdigest() == named or not previous.exists():
+        shutil.copy2(published, previous)
+    return previous
+
+
 def _write_followup(output_dir: Path, original: dict[str, Any], results: dict[str, Any], manifest: Any) -> None:
     """Stage the manifest and merged metrics, then move the set into place."""
     manifest_bytes = gzip.compress(json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode(), mtime=0)
@@ -925,9 +952,7 @@ def _write_followup(output_dir: Path, original: dict[str, Any], results: dict[st
         # The manifest lands first, so keep the published one recoverable until the
         # metrics that name it are installed; an interruption between the two
         # replacements would otherwise leave metrics whose checksum has no manifest.
-        previous = output_dir / f"{MANIFEST_FILENAME}.previous"
-        if (output_dir / MANIFEST_FILENAME).exists():
-            shutil.copy2(output_dir / MANIFEST_FILENAME, previous)
+        previous = _recovery_manifest(output_dir)
         for name in (MANIFEST_FILENAME, METRICS_FILENAME):
             (staging / name).replace(output_dir / name)
         previous.unlink(missing_ok=True)

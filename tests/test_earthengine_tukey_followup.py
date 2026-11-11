@@ -268,8 +268,13 @@ def test_interrupted_publication_keeps_the_published_manifest_recoverable(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """The metrics name the manifest by checksum, so a half-installed pair must stay recoverable."""
-    pilot._write_followup(tmp_path, {}, {"note": "old"}, {pilot.DAILY_COLLECTION: []})
-    published = (tmp_path / pilot.MANIFEST_FILENAME).read_bytes()
+
+    def manifest(tag: str) -> dict[str, Any]:
+        return {pilot.DAILY_COLLECTION: [{pilot.SYSTEM_INDEX: tag, pilot.SYSTEM_VERSION: None}]}
+
+    pilot._write_followup(tmp_path, {}, {"note": "first"}, manifest("one"))
+    named = (tmp_path / pilot.MANIFEST_FILENAME).read_bytes()
+    previous = tmp_path / f"{pilot.MANIFEST_FILENAME}.previous"
 
     real_replace = Path.replace
 
@@ -279,21 +284,18 @@ def test_interrupted_publication_keeps_the_published_manifest_recoverable(
         return real_replace(self, target)
 
     monkeypatch.setattr(Path, "replace", fail_on_metrics)
-    with pytest.raises(OSError, match="interrupted"):
-        pilot._write_followup(
-            tmp_path,
-            {},
-            {"note": "new"},
-            {pilot.DAILY_COLLECTION: [{pilot.SYSTEM_INDEX: "x", pilot.SYSTEM_VERSION: None}]},
-        )
-    previous = tmp_path / f"{pilot.MANIFEST_FILENAME}.previous"
-    assert previous.read_bytes() == published, "the manifest the published metrics name must survive"
+    for tag in ("two", "three"):
+        with pytest.raises(OSError, match="interrupted"):
+            pilot._write_followup(tmp_path, {}, {"note": tag}, manifest(tag))
+        assert previous.read_bytes() == named, "a repeated interruption must not overwrite the recoverable manifest"
 
     monkeypatch.setattr(Path, "replace", real_replace)
-    pilot._write_followup(
-        tmp_path, {}, {"note": "new"}, {pilot.DAILY_COLLECTION: [{pilot.SYSTEM_INDEX: "x", pilot.SYSTEM_VERSION: None}]}
-    )
+    pilot._write_followup(tmp_path, {}, {"note": "four"}, manifest("four"))
     assert not previous.exists(), "the recovery copy goes away on success"
+    assert (
+        pilot._published_manifest_sha(tmp_path)
+        == hashlib.sha256((tmp_path / pilot.MANIFEST_FILENAME).read_bytes()).hexdigest()
+    ), "the published pair must be consistent again"
 
 
 def test_saved_followup_metrics_and_manifest_are_consistent() -> None:
