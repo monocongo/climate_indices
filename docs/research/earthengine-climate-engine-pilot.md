@@ -31,7 +31,7 @@ The pilot does not establish that their input series or methods are identical.
 | Cells with data | 7,303 |
 | Calibration Period | 1981–2016 |
 | Comparison years | 1981–2024, 528 months |
-| Acquisition date | 2026-11-10 |
+| Acquisition date | 2026-11-11 |
 
 The script checks that both Earth Engine collections have the same native grid.
 It crops to pixel edges without changing the pixel spacing.
@@ -40,10 +40,10 @@ The JSON records those cell coordinates and each API request body.
 The provider's spatial reducer is `mean`; pixel-selection equivalence remains unverified.
 
 `docs/research/earthengine-pilot-results/pilot-metrics.json` records the library version, source commit, and dirty flag.
-The final run records source commit `544e98b6cc0772db9f7650209e978ac4c1be2046` and `git_dirty=false`.
+The final run records source commit `5c8d3e8dd2afba0f99e9b9c2eccc5e970f29423e` and `git_dirty=false`.
 The corrected Earth Engine filter includes 2024-12-31; earlier runs omitted that final input day.
 The collection IDs identify live products, not immutable snapshots.
-Asset revision dates and input checksums were not captured, so later provider updates can change the results.
+The JSON therefore records each asset's Earth Engine revision and a SHA-256 over the exact time steps and values read, so a later provider update is detectable.
 
 ## Method alignment
 

@@ -4,7 +4,11 @@
     "anchor_days_before_month_end_mean": 1.8333333333333333,
     "anchor_days_before_month_end_min": 0.0,
     "daily": "IDAHO_EPSCOR/GRIDMET",
+    "daily_input_sha256": "acbafbb5b9e6174a7c0c10bae0d0dc9f20e0eeb37ce9ce70c4e4b85e808ead4e",
+    "daily_revision": "2026-11-11T03:24:52.035619Z",
     "drought": "GRIDMET/DROUGHT",
+    "drought_input_sha256": "052d713afd3e692b0fa15460f503884ac3852a92be192c2166e2440ef71b95ec",
+    "drought_revision": "2026-11-11T03:25:51.668198Z",
     "pentads_read": 528.0
   },
   "difference_maps": [
@@ -1277,7 +1281,7 @@
   },
   "software": {
     "distribution": "climate_indices",
-    "git_commit": "544e98b6cc0772db9f7650209e978ac4c1be2046",
+    "git_commit": "5c8d3e8dd2afba0f99e9b9c2eccc5e970f29423e",
     "git_commit_source": "source-checkout",
     "git_dirty": false,
     "repository_url": "https://github.com/monocongo/climate_indices",
