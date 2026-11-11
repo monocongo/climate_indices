@@ -887,26 +887,23 @@ def calibration_rank_audit(dataset: xr.Dataset) -> dict[str, Any]:
     return result
 
 
+def _pending_reference_b(reason: str) -> dict[str, Any]:
+    """A reference B record that names why B is absent, with the configured timeout."""
+    return {"status": "pending", "reason": reason, "http_timeout_seconds": HTTP_TIMEOUT_SECONDS}
+
+
 def _reference_b(
     sei: dict[str, xr.DataArray], tukey: dict[str, xr.DataArray], original: dict[str, Any], skip: bool
 ) -> tuple[dict[str, Any], str | None]:
     """Read reference B, or return a pending record and no control result."""
     key = os.environ.get("CE_API_KEY", "").strip()
     if not key or skip:
-        return {
-            "status": "pending",
-            "reason": "skipped" if skip else "CE_API_KEY is not set",
-            "http_timeout_seconds": HTTP_TIMEOUT_SECONDS,
-        }, None
+        return _pending_reference_b("skipped" if skip else "CE_API_KEY is not set"), None
     try:
         results, baseline = followup_climate_engine(sei, tukey, key)
     except (TimeoutError, urllib.error.URLError, ClimateEngineTransportError) as error:
         # Keep reference A: a temporary provider failure is not a control failure.
-        return {
-            "status": "pending",
-            "reason": str(error) or type(error).__name__,
-            "http_timeout_seconds": HTTP_TIMEOUT_SECONDS,
-        }, None
+        return _pending_reference_b(str(error) or type(error).__name__), None
     check_baseline(baseline, original["reference_b"]["metrics"])
     return results, CONTROL_TOLERANCE
 
@@ -1059,14 +1056,19 @@ def main(argv: list[str] | None = None) -> int:
 
     key = os.environ.get("CE_API_KEY", "").strip()
     if key and not arguments.skip_climate_engine:
-        ce_metrics, ce_detail = compare_climate_engine(ours, key)
-        payload["reference_b"] = {
-            "endpoint": CE_ENDPOINT,
-            "points": [list(point) for point in CE_POINTS],
-            "sampling": "last daily record on or before each month end, at most four days earlier",
-            "metrics": ce_metrics,
-            "detail": ce_detail,
-        }
+        try:
+            ce_metrics, ce_detail = compare_climate_engine(ours, key)
+        except (TimeoutError, urllib.error.URLError, ClimateEngineTransportError) as error:
+            # Keep reference A: a temporary provider failure is not a control failure.
+            payload["reference_b"] = _pending_reference_b(str(error) or type(error).__name__)
+        else:
+            payload["reference_b"] = {
+                "endpoint": CE_ENDPOINT,
+                "points": [list(point) for point in CE_POINTS],
+                "sampling": "last daily record on or before each month end, at most four days earlier",
+                "metrics": ce_metrics,
+                "detail": ce_detail,
+            }
     else:
         reason = "--skip-climate-engine was specified" if arguments.skip_climate_engine else "CE_API_KEY is not set"
         payload["reference_b"] = {"status": "pending", "reason": reason}
