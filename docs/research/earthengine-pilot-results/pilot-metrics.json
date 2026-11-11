@@ -3885,8 +3885,6 @@
       }
     },
     "reference_b": {
-      "attempt_note": "The first paired attempt failed with TimeoutError during the Climate Engine read. The completed reference A rerun used --skip-climate-engine.",
-      "attempted_software_commit": "80f4036d",
       "http_timeout_seconds": 180,
       "reason": "skipped",
       "status": "pending"

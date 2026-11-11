@@ -99,6 +99,35 @@ MONTHLY_TOTAL_BANDS = {"precipitation": (5.0, 500.0), "reference_et": (1.0, 500.
 # need ``fit_geometry`` instead of a crop.
 DEGREE_GRID_LIMIT = 1.0
 
+# Both references are read over one connection budget; the timeout is recorded with
+# a pending result so a failed read is reproducible from the metrics.
+HTTP_TIMEOUT_SECONDS = 180
+
+
+class ClimateEngineTransportError(RuntimeError):
+    """A Climate Engine response was refused or unreadable, with a sanitized message."""
+
+
+class _RefuseRedirect(urllib.request.HTTPRedirectHandler):
+    """Never forward a credential to a redirect target.
+
+    ``urllib`` copies ``Authorization`` to the new host, including an https-to-http
+    downgrade, so a redirect is reported as an HTTP error instead of followed.
+    """
+
+    def redirect_request(
+        self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str
+    ) -> urllib.request.Request | None:
+        return None
+
+
+_OPENER = urllib.request.build_opener(_RefuseRedirect())
+
+
+def _open_request(request: urllib.request.Request, timeout: float) -> Any:
+    """Open a request without following redirects."""
+    return _OPENER.open(request, timeout=timeout)
+
 
 @dataclass(frozen=True)
 class MonthEnd:
@@ -559,11 +588,11 @@ def climate_engine_request(endpoint: str, body: dict[str, Any], key: str) -> dic
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=180) as response:  # nosec B310 # fixed https endpoint
+        with _open_request(request, HTTP_TIMEOUT_SECONDS) as response:
             decoded = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         # A remote error body can echo request headers, including the key.
-        raise RuntimeError(f"Climate Engine API returned HTTP {error.code}") from None
+        raise ClimateEngineTransportError(f"Climate Engine API returned HTTP {error.code}") from None
     if not isinstance(decoded, dict):
         raise RuntimeError(f"Climate Engine API returned a {type(decoded).__name__}, not a JSON object")
     return decoded
@@ -767,7 +796,8 @@ def paired_metrics(sei: xr.DataArray, tukey: xr.DataArray, reference: xr.DataArr
     valid = np.isfinite(sei) & np.isfinite(tukey) & np.isfinite(reference)
     sei, tukey, reference = (array.where(valid) for array in (sei, tukey, reference))
     result: dict[str, Any] = {}
-    for initial, final in (COMPARISON_YEARS, CALIBRATION_YEARS, (2017, 2024)):
+    post_calibration = (CALIBRATION_YEARS[1] + 1, COMPARISON_YEARS[1])
+    for initial, final in (COMPARISON_YEARS, CALIBRATION_YEARS, post_calibration):
         window = slice(f"{initial}-01-01", f"{final}-12-31")
         a, b = (
             comparison_metrics(array.sel(time=window).values, reference.sel(time=window).values)
@@ -897,8 +927,14 @@ def run_tukey_followup(
     if key and not skip_climate_engine:
         try:
             results["reference_b"], baseline_b = followup_climate_engine(sei, tukey, key)
-        except (TimeoutError, urllib.error.URLError):
-            results["reference_b"] = {"status": "pending", "reason": "Climate Engine transport failed or timed out"}
+        except (TimeoutError, urllib.error.URLError, ClimateEngineTransportError) as error:
+            # Keep reference A: a temporary provider failure is not a control failure.
+            message = str(error) or type(error).__name__
+            results["reference_b"] = {
+                "status": "pending",
+                "reason": message,
+                "http_timeout_seconds": HTTP_TIMEOUT_SECONDS,
+            }
         else:
             check_baseline(baseline_b, original["reference_b"]["metrics"])
             results["baseline_control_b"] = "all original metrics match to absolute tolerance 1e-10"

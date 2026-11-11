@@ -287,8 +287,13 @@ The collection ID and image index identify each asset; the manifest also preserv
 The metrics record the compressed manifest's checksum.
 These acquisition-time records do not establish immutable snapshots or byte identity with the earlier run, which captured no input checksums.
 
-The first paired attempt timed out during the Climate Engine read, whose configured HTTP timeout was 180 seconds.
+The first paired attempt ran from commit `80f4036d` and timed out during the Climate Engine read.
+The configured HTTP timeout was 180 seconds.
 The completed rerun used `--skip-climate-engine` and retained A only.
+The saved B record therefore describes the completed run, not the failed attempt.
+A rerun of that command reproduces the record, including the timeout value.
+A provider HTTP failure now keeps the completed A results and records the sanitized status instead of aborting the write.
+The client also refuses redirects, so it cannot forward the credential to another host.
 Both credentials were present; neither credential nor a raw Climate Engine response entered the outputs.
 No new B metric or B control check is available.
 

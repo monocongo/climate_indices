@@ -315,7 +315,7 @@ def test_climate_engine_request_keeps_the_key_out_of_the_body(monkeypatch: pytes
         captured["timeout"] = timeout
         return _FakeResponse({"Data": []})
 
-    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr(pilot, "_open_request", fake_urlopen)
     secret = "not-a-real-key"
     result = pilot.climate_engine_series(secret, 3, "spi")
 
@@ -341,7 +341,7 @@ def test_climate_engine_native_request_targets_the_native_endpoint(monkeypatch: 
         captured["headers"] = dict(request.header_items())
         return _FakeResponse({"Data": []})
 
-    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr(pilot, "_open_request", fake_urlopen)
     pilot.climate_engine_native("key", "GRIDMET", "pr", "1981-01-01", "2024-12-31")
     assert captured["url"] == pilot.CE_NATIVE_ENDPOINT
     assert captured["body"]["dataset"] == "GRIDMET"
@@ -432,7 +432,7 @@ def test_climate_engine_http_error_does_not_echo_a_key(monkeypatch: pytest.Monke
     def fail(request: Any, timeout: int) -> None:
         raise urllib.error.HTTPError(request.full_url, 403, "Forbidden", Message(), io.BytesIO(secret.encode()))
 
-    monkeypatch.setattr("urllib.request.urlopen", fail)
+    monkeypatch.setattr(pilot, "_open_request", fail)
     with pytest.raises(RuntimeError, match="HTTP 403") as error:
         pilot.climate_engine_series(secret, 1, "spi")
     assert secret not in str(error.value)

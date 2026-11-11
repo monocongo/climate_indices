@@ -2,7 +2,9 @@
 
 import gzip
 import hashlib
+import io
 import json
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -212,6 +214,52 @@ def test_followup_preserves_original_results_when_b_is_unavailable(
     assert "not-a-real-key" not in json.dumps(saved)
 
 
+def test_credentials_are_never_forwarded_to_a_redirect_target() -> None:
+    handlers = vars(pilot._OPENER)["handlers"]
+    assert any(isinstance(handler, pilot._RefuseRedirect) for handler in handlers)
+    assert not any(type(handler) is urllib.request.HTTPRedirectHandler for handler in handlers), (
+        "a plain redirect handler would follow the target with the Authorization header"
+    )
+    request = urllib.request.Request("https://example.invalid", headers={"Authorization": "secret"})
+    refused = pilot._RefuseRedirect().redirect_request(request, None, 302, "Found", {}, "http://elsewhere")
+    assert refused is None
+
+
+def test_transport_error_retains_reference_a_and_records_the_status(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(pilot, "SCALES", {1: "30d"})
+    dates = pd.date_range("1980-01-31", periods=540, freq="ME")
+    values = np.random.default_rng(7).uniform(1.0, 100.0, (540, 2, 2))
+    dataset = xr.Dataset(
+        {
+            name: (("time", "y", "x"), values * (1 if name == "precipitation" else 0.5), {"units": "mm"})
+            for name in ("precipitation", "reference_et", "alfalfa_et")
+        },
+        coords={"time": dates},
+    )
+    ours = pilot.compute_indices(dataset)
+    reference = xr.Dataset(
+        {pilot.band_for(name): array.sel(time=slice("1981", "2024")) for name, array in ours.items()}
+    )
+    monkeypatch.setattr(pilot, "check_baseline", lambda current, baseline: None)
+    monkeypatch.setenv("CE_API_KEY", "not-a-real-key")
+
+    def refused(*args: Any) -> None:
+        raise pilot.ClimateEngineTransportError("Climate Engine API returned HTTP 503")
+
+    monkeypatch.setattr(pilot, "followup_climate_engine", refused)
+    pilot.run_tukey_followup(dataset, reference, {}, {}, tmp_path, False)
+    result = json.loads((tmp_path / "pilot-metrics.json").read_text())["tukey_followup_1571"]
+    assert result["reference_a"], "reference A must survive a provider refusal"
+    assert result["reference_b"] == {
+        "status": "pending",
+        "reason": "Climate Engine API returned HTTP 503",
+        "http_timeout_seconds": pilot.HTTP_TIMEOUT_SECONDS,
+    }
+    assert "not-a-real-key" not in json.dumps(result)
+
+
 def test_saved_followup_metrics_and_manifest_are_consistent() -> None:
     directory = Path(pilot.__file__).resolve().parents[1] / "docs/research/earthengine-pilot-results"
     payload = json.loads((directory / "pilot-metrics.json").read_text())
@@ -226,9 +274,14 @@ def test_saved_followup_metrics_and_manifest_are_consistent() -> None:
                 assert change == pytest.approx(rows[period]["tukey"][metric] - rows[period]["sei"][metric], abs=1e-14)
                 if name.startswith("eddi"):
                     assert change == 0.0
+    assert result["image_manifest"]["missing_version"] == {pilot.DAILY_COLLECTION: 0, pilot.DROUGHT_COLLECTION: 0}
     manifest_bytes = (directory / result["image_manifest"]["file"]).read_bytes()
     assert hashlib.sha256(manifest_bytes).hexdigest() == result["image_manifest"]["sha256"]
-    manifest = json.loads(gzip.decompress(manifest_bytes))
+    # Bound the expansion: a pull request controls both the blob and its recorded hash.
+    with gzip.GzipFile(fileobj=io.BytesIO(manifest_bytes)) as handle:
+        raw = handle.read(8 * 1024 * 1024)
+        assert handle.read(1) == b"", "the manifest must fit the decompression cap"
+    manifest = json.loads(raw)
     assert len(manifest[pilot.DAILY_COLLECTION]) == 16437
     assert len(manifest[pilot.DROUGHT_COLLECTION]) == 528
     for rows in manifest.values():
