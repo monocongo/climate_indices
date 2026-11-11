@@ -264,6 +264,38 @@ def test_transport_error_retains_reference_a_and_records_the_status(
     assert "not-a-real-key" not in json.dumps(result)
 
 
+def test_interrupted_publication_keeps_the_published_manifest_recoverable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The metrics name the manifest by checksum, so a half-installed pair must stay recoverable."""
+    pilot._write_followup(tmp_path, {}, {"note": "old"}, {pilot.DAILY_COLLECTION: []})
+    published = (tmp_path / pilot.MANIFEST_FILENAME).read_bytes()
+
+    real_replace = Path.replace
+
+    def fail_on_metrics(self: Path, target: Path) -> Path:
+        if target.name == pilot.METRICS_FILENAME:
+            raise OSError("interrupted")
+        return real_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", fail_on_metrics)
+    with pytest.raises(OSError, match="interrupted"):
+        pilot._write_followup(
+            tmp_path,
+            {},
+            {"note": "new"},
+            {pilot.DAILY_COLLECTION: [{pilot.SYSTEM_INDEX: "x", pilot.SYSTEM_VERSION: None}]},
+        )
+    previous = tmp_path / f"{pilot.MANIFEST_FILENAME}.previous"
+    assert previous.read_bytes() == published, "the manifest the published metrics name must survive"
+
+    monkeypatch.setattr(Path, "replace", real_replace)
+    pilot._write_followup(
+        tmp_path, {}, {"note": "new"}, {pilot.DAILY_COLLECTION: [{pilot.SYSTEM_INDEX: "x", pilot.SYSTEM_VERSION: None}]}
+    )
+    assert not previous.exists(), "the recovery copy goes away on success"
+
+
 def test_saved_followup_metrics_and_manifest_are_consistent() -> None:
     directory = Path(pilot.__file__).resolve().parents[1] / "docs/research/earthengine-pilot-results"
     payload = json.loads((directory / "pilot-metrics.json").read_text())

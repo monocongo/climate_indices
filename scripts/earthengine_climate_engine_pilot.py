@@ -925,8 +925,15 @@ def _write_followup(output_dir: Path, original: dict[str, Any], results: dict[st
         staging = Path(directory)
         (staging / MANIFEST_FILENAME).write_bytes(manifest_bytes)
         (staging / METRICS_FILENAME).write_text(json.dumps(original, indent=2, sort_keys=True, default=str) + "\n")
+        # The manifest lands first, so keep the published one recoverable until the
+        # metrics that name it are installed; an interruption between the two
+        # replacements would otherwise leave metrics whose checksum has no manifest.
+        previous = output_dir / f"{MANIFEST_FILENAME}.previous"
+        if (output_dir / MANIFEST_FILENAME).exists():
+            shutil.copy2(output_dir / MANIFEST_FILENAME, previous)
         for name in (MANIFEST_FILENAME, METRICS_FILENAME):
             (staging / name).replace(output_dir / name)
+        previous.unlink(missing_ok=True)
     print(f"wrote {output_dir / METRICS_FILENAME} ({FOLLOWUP_KEY})")
 
 
