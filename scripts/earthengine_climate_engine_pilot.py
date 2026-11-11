@@ -37,6 +37,8 @@ from __future__ import annotations
 
 import argparse
 import calendar
+import gzip
+import hashlib
 import json
 import math
 import os
@@ -46,14 +48,16 @@ import tempfile
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 import xarray as xr
+from scipy.special import ndtri
 
-from climate_indices import eddi, standardized_index
+from climate_indices import compute, eddi, standardized_index
 from climate_indices.drought.indices import Distribution
 from climate_indices.provenance import software_identity
 
@@ -300,7 +304,30 @@ def check_monthly_totals(values: Any, name: str) -> None:
         )
 
 
-def open_monthly_gridmet(ee: Any, bbox: tuple[float, float, float, float], grid: dict[str, Any]) -> xr.Dataset:
+def image_manifest(ee: Any, collection: Any) -> list[dict[str, Any]]:
+    """Record image identifiers and exposed versions without reading pixel values."""
+    rows = (
+        collection.toList(collection.size())
+        .map(
+            lambda image: ee.Dictionary(
+                {
+                    "id": ee.Image(image).id(),
+                    "system:index": ee.Image(image).get("system:index"),
+                    "system:version": ee.Image(image).get("system:version"),
+                }
+            )
+        )
+        .getInfo()
+    )
+    return [{name: row.get(name) for name in ("id", "system:index", "system:version")} for row in rows]
+
+
+def open_monthly_gridmet(
+    ee: Any,
+    bbox: tuple[float, float, float, float],
+    grid: dict[str, Any],
+    manifest: dict[str, Any] | None = None,
+) -> xr.Dataset:
     """Open daily gridMET ``pr`` and ``eto`` as calendar-month sums on the cropped native grid.
 
     Units: gridMET publishes ``pr`` and ``eto`` as millimetres per day, so a
@@ -314,7 +341,9 @@ def open_monthly_gridmet(ee: Any, bbox: tuple[float, float, float, float], grid:
         .filterBounds(ee.Geometry.Rectangle(bbox))
         .select(["pr", "eto", "etr"])
     )
-    dataset = xr.open_dataset(monthly_server_side(ee, collection, months), engine="ee", **grid)
+    if manifest is not None:
+        manifest[DAILY_COLLECTION] = image_manifest(ee, collection)
+    dataset = xr.open_dataset(monthly_server_side(ee, collection, months), engine="ee", **grid).load()
     if dataset.sizes.get("time") != len(months):
         raise RuntimeError(f"expected {len(months)} monthly steps, got {dataset.sizes.get('time')}")
     dataset = dataset.assign_coords(time=("time", [month.last_day for month in months]))
@@ -346,7 +375,10 @@ def open_monthly_gridmet(ee: Any, bbox: tuple[float, float, float, float], grid:
 
 
 def open_drought_reference(
-    ee: Any, comparison_months: list[MonthEnd], grid: dict[str, Any]
+    ee: Any,
+    comparison_months: list[MonthEnd],
+    grid: dict[str, Any],
+    manifest: dict[str, Any] | None = None,
 ) -> tuple[xr.Dataset, dict[str, float]]:
     """Open one pentad per month from ``GRIDMET/DROUGHT`` on the shared grid.
 
@@ -370,9 +402,10 @@ def open_drought_reference(
     if len(set(chosen)) != len(chosen):
         raise RuntimeError("two months selected the same pentad; the sampling rule is ambiguous")
     images = collection.toList(collection.size())
-    dataset = xr.open_dataset(
-        ee.ImageCollection(ee.List(chosen).map(lambda index: images.get(index))), engine="ee", **grid
-    )
+    selected = ee.ImageCollection(ee.List(chosen).map(lambda index: images.get(index)))
+    if manifest is not None:
+        manifest[DROUGHT_COLLECTION] = image_manifest(ee, selected)
+    dataset = xr.open_dataset(selected, engine="ee", **grid)
     if dataset.sizes.get("time") != len(comparison_months):
         raise RuntimeError(f"expected {len(comparison_months)} pentads, got {dataset.sizes.get('time')}")
 
@@ -401,7 +434,49 @@ def open_drought_reference(
     return dataset.assign_coords(time=("time", [month.last_day for month in comparison_months])), anchor
 
 
-def compute_indices(dataset: xr.Dataset) -> dict[str, xr.DataArray]:
+def tukey_probabilities(calibration: np.ndarray, values: np.ndarray) -> np.ndarray:
+    """Use EDDI's strict rank count, exact thirds, and bounded endpoint ranks.
+
+    The EDDI kernel cannot be used unchanged: it uses rounded constants, accepts
+    two calibration values, and lets values above the maximum exceed probability 1.
+    This pilot keeps SEI's ten-value threshold and exact inverse normal instead.
+    """
+    below = np.zeros(values.shape, dtype="float64")
+    for year in calibration:
+        below += year < values
+    count = np.count_nonzero(~np.isnan(calibration), axis=0)
+    probability = (np.minimum(below, np.maximum(count - 1, 0)) + 2 / 3) / (count + 1 / 3)
+    return np.where(np.isnan(values) | (count < compute.MIN_CALIBRATION_VALUES_FOR_EMPIRICAL), np.nan, probability)
+
+
+def tukey_index(data: xr.DataArray, scale: int, *, clip_negatives: bool) -> xr.DataArray:
+    """Standardize the pilot's complete monthly record, without changing library code."""
+    ordered = data.transpose("time", ...)
+    dates = pd.DatetimeIndex(ordered.time.values)
+    years = np.asarray(dates.year, dtype=int)
+    start_year, end_year = int(years[0]), int(years[-1])
+    expected_dates = pd.date_range(f"{start_year}-01-31", f"{end_year}-12-31", freq="ME")
+    if not dates.equals(expected_dates):
+        raise ValueError("Tukey pilot requires complete January-to-December monthly input")
+    initial, final = CALIBRATION_YEARS
+    if start_year > initial or end_year < final:
+        raise ValueError("Tukey pilot input does not cover the Calibration Period")
+    values = np.asarray(ordered.values, dtype="float64")
+    scaled = compute.prepare_scaled(
+        values, scale, compute.Periodicity.monthly, clip_negatives=clip_negatives, spatial_time_major=values.ndim > 2
+    )
+    # All-missing inputs return unfolded from prepare_scaled.
+    scaled = scaled.reshape((len(dates) // 12, 12) + values.shape[1:])
+    calibration = scaled[initial - start_year : final - start_year + 1]
+    normal = ndtri(tukey_probabilities(calibration, scaled)).reshape(values.shape)
+    return (
+        ordered.copy(data=normal)
+        .transpose(*data.dims)
+        .assign_attrs(plotting_position="Tukey exact thirds, strict-below rank, bounded endpoints", units="1")
+    )
+
+
+def compute_indices(dataset: xr.Dataset, spi_spei_position: str = "sei") -> dict[str, xr.DataArray]:
     """Compute SPI, SPEI and EDDI at every scale with the reference-matching distribution.
 
     SPEI's input is a signed water balance, so ``clip_negatives`` is off: clipping
@@ -416,23 +491,22 @@ def compute_indices(dataset: xr.Dataset) -> dict[str, xr.DataArray]:
     precipitation = dataset["precipitation"]
     reference_et = dataset["reference_et"]
     initial, final = CALIBRATION_YEARS
+    if spi_spei_position not in ("sei", "tukey"):
+        raise ValueError(f"unknown SPI/SPEI plotting position: {spi_spei_position}")
     results: dict[str, xr.DataArray] = {}
     for scale in SCALES:
-        results[f"spi_{scale}"] = standardized_index(
-            precipitation,
-            scale,
-            Distribution.empirical,
-            calibration_year_initial=initial,
-            calibration_year_final=final,
-        )
-        results[f"spei_{scale}"] = standardized_index(
-            precipitation - reference_et,
-            scale,
-            Distribution.empirical,
-            calibration_year_initial=initial,
-            calibration_year_final=final,
-            clip_negatives=False,
-        )
+        for index, data in (("spi", precipitation), ("spei", precipitation - reference_et)):
+            if spi_spei_position == "tukey":
+                results[f"{index}_{scale}"] = tukey_index(data, scale, clip_negatives=index == "spi")
+            else:
+                results[f"{index}_{scale}"] = standardized_index(
+                    data,
+                    scale,
+                    Distribution.empirical,
+                    calibration_year_initial=initial,
+                    calibration_year_final=final,
+                    clip_negatives=index == "spi",
+                )
         for name, evaporative_demand in (("eddi", reference_et), ("eddi_alfalfa", dataset["alfalfa_et"])):
             results[f"{name}_{scale}"] = eddi(
                 evaporative_demand,
@@ -669,6 +743,188 @@ def plot_differences(fields: dict[str, xr.DataArray], directory: Path) -> list[s
     return written
 
 
+def expected_rank_reduction(n: int) -> float:
+    """Compute the distinct-rank expectation from formulas, not measured inputs."""
+    ranks = np.arange(1, n + 1, dtype="float64")
+    return float(np.mean(ndtri((ranks + 1) / (n + 2)) - ndtri((ranks - 1 / 3) / (n + 1 / 3))))
+
+
+def check_baseline(current: dict[str, Any], baseline: dict[str, Any]) -> None:
+    """Stop if any original metric changes beyond floating-point reduction noise."""
+    if current.keys() != baseline.keys():
+        raise RuntimeError("baseline drift: index keys changed")
+    for index, metrics in baseline.items():
+        for name, expected in metrics.items():
+            if not np.isclose(current[index][name], expected, rtol=0, atol=1e-10, equal_nan=True):
+                raise RuntimeError(f"baseline drift: {index} {name}: {current[index][name]} versus {expected}")
+
+
+def paired_metrics(sei: xr.DataArray, tukey: xr.DataArray, reference: xr.DataArray) -> dict[str, Any]:
+    """Use identical finite pairs for both positions, every period, and monthly bias."""
+    sei, tukey, reference = xr.align(sei, tukey, reference, join="exact")
+    reference = reference.transpose(*sei.dims)
+    tukey = tukey.transpose(*sei.dims)
+    valid = np.isfinite(sei) & np.isfinite(tukey) & np.isfinite(reference)
+    sei, tukey, reference = (array.where(valid) for array in (sei, tukey, reference))
+    result: dict[str, Any] = {}
+    for initial, final in (COMPARISON_YEARS, CALIBRATION_YEARS, (2017, 2024)):
+        window = slice(f"{initial}-01-01", f"{final}-12-31")
+        a, b = (
+            comparison_metrics(array.sel(time=window).values, reference.sel(time=window).values)
+            for array in (sei, tukey)
+        )
+        result[f"{initial}-{final}"] = {"sei": a, "tukey": b, "change": {name: b[name] - a[name] for name in a}}
+    result["calendar_month_bias"] = {
+        name: [
+            comparison_metrics(
+                array.sel(time=array.time.dt.month == month).values,
+                reference.sel(time=reference.time.dt.month == month).values,
+            ).get("bias")
+            for month in range(1, 13)
+        ]
+        for name, array in (("sei", sei), ("tukey", tukey))
+    }
+    return result
+
+
+def followup_climate_engine(
+    sei: dict[str, xr.DataArray],
+    tukey: dict[str, xr.DataArray],
+    key: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Read each API series once for both conventions; retain no raw response."""
+    months = month_ends(*COMPARISON_YEARS)
+    time = [month.last_day for month in months]
+    results, baseline = {}, {}
+    for scale in SCALES:
+        for index in ("spi", "spei", "eddi"):
+            name = f"{index}_{scale}"
+            response = climate_engine_series(key, scale, index)
+            points = parse_climate_engine_points(response["response"], index)
+            if set(points) != set(CE_POINTS):
+                raise RuntimeError(f"{name}: the API did not return exactly the requested points")
+            theirs = xr.DataArray(
+                np.stack([sample_at_month_ends(points[point], months) for point in CE_POINTS]),
+                dims=("point", "time"),
+                coords={"time": time},
+            )
+            local = [
+                xr.concat(
+                    [arrays[name].sel(x=lon, y=lat, method="nearest").sel(time=time) for lon, lat in CE_POINTS],
+                    dim="point",
+                )
+                for arrays in (sei, tukey)
+            ]
+            baseline[name] = comparison_metrics(local[0].values, theirs.values)
+            results[name] = paired_metrics(local[0], local[1], theirs)
+            results[name]["request"] = response["request"]
+            results[name]["grid_cells"] = [[float(local[0].x[i]), float(local[0].y[i])] for i in range(len(CE_POINTS))]
+    return results, baseline
+
+
+def calibration_rank_audit(dataset: xr.Dataset) -> dict[str, Any]:
+    """Count sample sizes and tied calendar-month samples to qualify the rank expectation."""
+    result = {}
+    for scale in SCALES:
+        for index, data in (("spi", dataset.precipitation), ("spei", dataset.precipitation - dataset.reference_et)):
+            values = np.asarray(data.transpose("time", ...).values, dtype="float64")
+            scaled = compute.prepare_scaled(
+                values, scale, compute.Periodicity.monthly, clip_negatives=index == "spi", spatial_time_major=True
+            )
+            calibration = scaled[CALIBRATION_YEARS[0] - INPUT_YEARS[0] : CALIBRATION_YEARS[1] - INPUT_YEARS[0] + 1]
+            counts = np.count_nonzero(~np.isnan(calibration), axis=0)
+            n, frequency = np.unique(counts, return_counts=True)
+            ordered = np.sort(calibration, axis=0)
+            tied = np.any(ordered[1:] == ordered[:-1], axis=0)
+            result[f"{index}_{scale}"] = {
+                "sample_sizes": dict(zip(n.astype(str), frequency.astype(int).tolist(), strict=True)),
+                "tied_calendar_month_samples": int(np.count_nonzero(tied)),
+            }
+    return result
+
+
+def run_tukey_followup(
+    dataset: xr.Dataset,
+    reference: xr.Dataset,
+    anchor: dict[str, float],
+    manifest: dict[str, Any],
+    output_dir: Path,
+    skip_climate_engine: bool,
+) -> int:
+    """Run the paired experiment and append results without replacing the original pilot."""
+    original_path = Path(__file__).resolve().parents[1] / "docs/research/earthengine-pilot-results/pilot-metrics.json"
+    try:
+        original = json.loads(original_path.read_text())
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeError("could not read the original pilot metrics; the baseline control cannot run") from error
+    reference.load()
+    sei = compute_indices(dataset)
+    metrics, _ = compare(sei, reference)
+    check_baseline(metrics, original["reference_a"])
+    tukey = dict(sei)
+    for scale in SCALES:
+        for index, data in (("spi", dataset.precipitation), ("spei", dataset.precipitation - dataset.reference_et)):
+            tukey[f"{index}_{scale}"] = tukey_index(data, scale, clip_negatives=index == "spi")
+    # EDDI arrays are the unchanged control, not a second provider read or computation.
+    for name in sei:
+        if name.startswith("eddi") and not np.array_equal(sei[name], tukey[name], equal_nan=True):
+            raise RuntimeError(f"EDDI control changed: {name}")
+    window = slice("1981-01-01", "2024-12-31")
+    results: dict[str, Any] = {
+        "software": software_identity(),
+        "acquired_utc": datetime.now(UTC).isoformat(),
+        "pre_registration": "https://github.com/monocongo/climate_indices/issues/1571",
+        "baseline_control": "all original reference A metrics match to absolute tolerance 1e-10",
+        "collections": {"daily": DAILY_COLLECTION, "drought": DROUGHT_COLLECTION, **anchor},
+        "method": {
+            "position": "(min(count(calibration < value), n - 1) + 2/3) / (n + 1/3)",
+            "ties": "minimum rank",
+            "inverse_normal": "scipy.special.ndtri (same as SEI)",
+            "minimum_calibration_values": compute.MIN_CALIBRATION_VALUES_FOR_EMPIRICAL,
+            "alignment": "Matching a documented provider convention is method alignment, not tuning.",
+        },
+        "expected_calibration_bias_reduction": {str(n): expected_rank_reduction(n) for n in range(10, 37)},
+        "calibration_rank_audit": calibration_rank_audit(dataset),
+        "input_sha256": {
+            name: hashlib.sha256(np.ascontiguousarray(array.values).tobytes()).hexdigest()
+            for name, array in dataset.data_vars.items()
+        },
+        "reference_a": {
+            name: paired_metrics(array.sel(time=window), tukey[name].sel(time=window), reference[band_for(name)])
+            for name, array in sei.items()
+        },
+    }
+    key = os.environ.get("CE_API_KEY", "").strip()
+    if key and not skip_climate_engine:
+        results["reference_b"], baseline_b = followup_climate_engine(sei, tukey, key)
+        check_baseline(baseline_b, original["reference_b"]["metrics"])
+        results["baseline_control_b"] = "all original metrics match to absolute tolerance 1e-10"
+    else:
+        results["reference_b"] = {
+            "status": "pending",
+            "reason": "skipped" if skip_climate_engine else "CE_API_KEY is not set",
+        }
+    output_dir.mkdir(parents=True, exist_ok=True)
+    manifest_bytes = gzip.compress(json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode(), mtime=0)
+    manifest_name = "tukey-image-manifest.json.gz"
+    results["image_manifest"] = {
+        "file": manifest_name,
+        "sha256": hashlib.sha256(manifest_bytes).hexdigest(),
+        "missing_version": {
+            name: sum(row["system:version"] is None for row in rows) for name, rows in manifest.items()
+        },
+    }
+    original["tukey_followup_1571"] = results
+    with tempfile.TemporaryDirectory(prefix=".tukey-", dir=output_dir) as directory:
+        staging = Path(directory)
+        (staging / manifest_name).write_bytes(manifest_bytes)
+        (staging / "pilot-metrics.json").write_text(json.dumps(original, indent=2, sort_keys=True, default=str) + "\n")
+        for name in (manifest_name, "pilot-metrics.json"):
+            (staging / name).replace(output_dir / name)
+    print(f"wrote {output_dir / 'pilot-metrics.json'} (tukey_followup_1571)")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the pilot and write every number the report cites."""
     parser = argparse.ArgumentParser(description="Climate Engine and Earth Engine cross-validation pilot")
@@ -679,6 +935,12 @@ def main(argv: list[str] | None = None) -> int:
         help="directory for the metrics JSON and difference maps",
     )
     parser.add_argument("--skip-climate-engine", action="store_true", help="run reference A only")
+    parser.add_argument(
+        "--spi-spei-position",
+        choices=("sei", "tukey"),
+        default="sei",
+        help="tukey runs the paired #1571 follow-up; sei keeps the original pilot",
+    )
     arguments = parser.parse_args(argv)
 
     project = require_ee_project()
@@ -694,8 +956,13 @@ def main(argv: list[str] | None = None) -> int:
             "fix the grid handling before trusting any difference"
         )
     grid = crop_grid_to_bbox(daily_native, PILOT_BBOX)
-    dataset = open_monthly_gridmet(ee, PILOT_BBOX, grid)
-    reference, anchor = open_drought_reference(ee, month_ends(*COMPARISON_YEARS), grid)
+    manifest: dict[str, Any] | None = {} if arguments.spi_spei_position == "tukey" else None
+    dataset = open_monthly_gridmet(ee, PILOT_BBOX, grid, manifest)
+    reference, anchor = open_drought_reference(ee, month_ends(*COMPARISON_YEARS), grid, manifest)
+    if manifest is not None:
+        return run_tukey_followup(
+            dataset, reference, anchor, manifest, arguments.output_dir, arguments.skip_climate_engine
+        )
     ours = compute_indices(dataset)
     metrics, fields = compare(ours, reference)
 
