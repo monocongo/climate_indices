@@ -39,6 +39,7 @@ import argparse
 import calendar
 import gzip
 import hashlib
+import http.client
 import json
 import math
 import os
@@ -108,6 +109,7 @@ SYSTEM_VERSION = "system:version"
 METRICS_FILENAME = "pilot-metrics.json"
 MANIFEST_FILENAME = "tukey-image-manifest.json.gz"
 FOLLOWUP_KEY = "tukey_followup_1571"
+CONTROL_TOLERANCE_A = "all original reference A metrics match to absolute tolerance 1e-10"
 CONTROL_TOLERANCE = "all original metrics match to absolute tolerance 1e-10"
 
 
@@ -600,6 +602,10 @@ def climate_engine_request(endpoint: str, body: dict[str, Any], key: str) -> dic
     except urllib.error.HTTPError as error:
         # A remote error body can echo request headers, including the key.
         raise ClimateEngineTransportError(f"Climate Engine API returned HTTP {error.code}") from None
+    except (http.client.HTTPException, ConnectionError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        # A dropped connection or a truncated body is a provider failure. The
+        # follow-up keeps the completed reference A when this error reaches it.
+        raise ClimateEngineTransportError(f"Climate Engine response unreadable: {type(error).__name__}") from None
     if not isinstance(decoded, dict):
         raise RuntimeError(f"Climate Engine API returned a {type(decoded).__name__}, not a JSON object")
     return decoded
@@ -885,7 +891,11 @@ def _reference_b(
     """Read reference B, or return a pending record and no control result."""
     key = os.environ.get("CE_API_KEY", "").strip()
     if not key or skip:
-        return {"status": "pending", "reason": "skipped" if skip else "CE_API_KEY is not set"}, None
+        return {
+            "status": "pending",
+            "reason": "skipped" if skip else "CE_API_KEY is not set",
+            "http_timeout_seconds": HTTP_TIMEOUT_SECONDS,
+        }, None
     try:
         results, baseline = followup_climate_engine(sei, tukey, key)
     except (TimeoutError, urllib.error.URLError, ClimateEngineTransportError) as error:
@@ -949,7 +959,7 @@ def run_tukey_followup(
         "software": software_identity(),
         "acquired_utc": datetime.now(UTC).isoformat(),
         "pre_registration": "https://github.com/monocongo/climate_indices/issues/1571",
-        "baseline_control": CONTROL_TOLERANCE,
+        "baseline_control": CONTROL_TOLERANCE_A,
         "collections": {"daily": DAILY_COLLECTION, "drought": DROUGHT_COLLECTION, **anchor},
         "method": {
             "position": "(min(count(calibration < value), n - 1) + 2/3) / (n + 1/3)",

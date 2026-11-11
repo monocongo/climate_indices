@@ -210,6 +210,9 @@ def test_followup_preserves_original_results_when_b_is_unavailable(
         assert saved[name] == original[name]
     result = saved["tukey_followup_1571"]
     assert result["reference_b"]["status"] == "pending"
+    assert result["reference_b"]["http_timeout_seconds"] == pilot.HTTP_TIMEOUT_SECONDS
+    if skip:
+        assert result["reference_b"]["reason"] == "skipped"
     assert result["image_manifest"]["missing_version"][pilot.DAILY_COLLECTION] == 1
     assert json.loads(gzip.decompress((tmp_path / result["image_manifest"]["file"]).read_bytes())) == manifest
     assert "not-a-real-key" not in json.dumps(saved)
@@ -266,6 +269,12 @@ def test_saved_followup_metrics_and_manifest_are_consistent() -> None:
     payload = json.loads((directory / "pilot-metrics.json").read_text())
     result = payload["tukey_followup_1571"]
     assert result["software"]["git_dirty"] is False
+    assert result["reference_b"] == {
+        "status": "pending",
+        "reason": "skipped",
+        "http_timeout_seconds": pilot.HTTP_TIMEOUT_SECONDS,
+    }, "the saved B record must be what a --skip-climate-engine rerun writes"
+    assert result["baseline_control"] == pilot.CONTROL_TOLERANCE_A
     for name, rows in result["reference_a"].items():
         pilot.check_baseline({name: rows["1981-2024"]["sei"]}, {name: payload["reference_a"][name]})
         assert rows["1981-2024"]["sei"]["n"] == rows["1981-2016"]["sei"]["n"] + rows["2017-2024"]["sei"]["n"]

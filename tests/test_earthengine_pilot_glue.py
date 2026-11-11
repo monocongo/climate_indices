@@ -10,6 +10,7 @@ calls are integration territory and are not exercised here.
 
 from __future__ import annotations
 
+import http.client
 import io
 import json
 import urllib.error
@@ -436,6 +437,31 @@ def test_climate_engine_http_error_does_not_echo_a_key(monkeypatch: pytest.Monke
     with pytest.raises(RuntimeError, match="HTTP 403") as error:
         pilot.climate_engine_series(secret, 1, "spi")
     assert secret not in str(error.value)
+    assert error.value.__suppress_context__
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        ConnectionResetError("reset"),
+        http.client.IncompleteRead(b"partial"),
+        UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"),
+        json.JSONDecodeError("truncated", "{", 1),
+    ],
+)
+def test_climate_engine_mid_read_failure_becomes_a_transport_error(
+    monkeypatch: pytest.MonkeyPatch, failure: Exception
+) -> None:
+    """A dropped connection or a bad body must reach the follow-up as a provider failure."""
+
+    class _BrokenResponse(_FakeResponse):
+        def read(self) -> bytes:
+            raise failure
+
+    monkeypatch.setattr(pilot, "_open_request", lambda request, timeout: _BrokenResponse({}))
+    with pytest.raises(pilot.ClimateEngineTransportError, match="unreadable") as error:
+        pilot.climate_engine_series("not-a-real-key", 1, "spi")
+    assert "not-a-real-key" not in str(error.value)
     assert error.value.__suppress_context__
 
 
