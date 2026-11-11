@@ -1,5 +1,8 @@
 """Offline checks for the pre-registered plotting-position experiment (#1571)."""
 
+from pathlib import Path
+from typing import Any
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -106,3 +109,104 @@ def test_baseline_control_stops_on_drift() -> None:
 def test_expected_reduction_comes_from_formulas() -> None:
     expected = pilot.expected_rank_reduction(36)
     assert expected == pytest.approx(0.053831430857023244, abs=1e-14)
+
+
+def test_tukey_grid_keeps_months_cells_signs_and_missing_separate() -> None:
+    dates = pd.date_range("1980-01-31", periods=540, freq="ME")
+    years = np.repeat(np.arange(45.0) - 20, 12)
+    values = np.broadcast_to(years[:, None, None], (540, 2, 2)).copy()
+    values[1::12, 0, 0] *= -1
+    values[:, 1, 1] = np.nan
+    data = xr.DataArray(values, dims=("time", "y", "x"), coords={"time": dates})
+    result = pilot.tukey_index(data, 1, clip_negatives=False)
+    for y, x in ((0, 0), (0, 1), (1, 0)):
+        single = pilot.tukey_index(data.isel(y=y, x=x), 1, clip_negatives=False)
+        np.testing.assert_array_equal(result.isel(y=y, x=x).values, single.values)
+    assert np.isnan(result.isel(y=1, x=1)).all()
+    assert result.isel(time=12, y=0, x=0) < 0
+    assert result.isel(time=13, y=0, x=0) > 0
+    assert np.isnan(pilot.tukey_index(data.isel(y=1, x=1), 3, clip_negatives=False)).all()
+    with pytest.raises(ValueError, match="complete January-to-December"):
+        pilot.tukey_index(data.isel(time=slice(1, None)), 1, clip_negatives=False)
+
+
+def test_followup_reads_each_climate_engine_series_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(pilot, "SCALES", {1: "30d"})
+    monkeypatch.setattr(pilot, "CE_POINTS", ((-84.9, 30.7),))
+    dates = pd.date_range("1980-01-31", periods=540, freq="ME")
+    cell = xr.DataArray(
+        np.arange(540.0)[:, None, None], dims=("time", "y", "x"), coords={"time": dates, "y": [30.7], "x": [-84.9]}
+    )
+    sei = {f"{index}_1": cell for index in ("spi", "spei", "eddi")}
+    tukey = {name: array if name.startswith("eddi") else array - 0.05 for name, array in sei.items()}
+    calls = []
+
+    def response(key: str, scale: int, variable: str) -> dict[str, Any]:
+        calls.append(variable)
+        return {
+            "request": {"variable": variable},
+            "response": {
+                "Data": [
+                    {
+                        "Metadata": {"DRI_OBJECTID": "[-84.9, 30.7]"},
+                        "Data": [
+                            {"Date": date.strftime("%Y-%m-%d"), variable: float(i)} for i, date in enumerate(dates)
+                        ],
+                    }
+                ]
+            },
+        }
+
+    monkeypatch.setattr(pilot, "climate_engine_series", response)
+    results, baseline = pilot.followup_climate_engine(sei, tukey, "not-a-real-key")
+    assert calls == ["spi", "spei", "eddi"]
+    assert baseline["spi_1"]["bias"] == 0
+    assert results["spi_1"]["1981-2024"]["change"]["bias"] == pytest.approx(-0.05)
+    assert results["eddi_1"]["1981-2024"]["change"]["bias"] == 0
+    assert "response" not in results["spi_1"]
+
+
+@pytest.mark.parametrize("skip", [True, False])
+def test_followup_preserves_original_results_when_b_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    skip: bool,
+) -> None:
+    import gzip
+    import json
+
+    monkeypatch.setattr(pilot, "SCALES", {1: "30d"})
+    dates = pd.date_range("1980-01-31", periods=540, freq="ME")
+    values = np.random.default_rng(1571).uniform(1.0, 100.0, (540, 2, 2))
+    dataset = xr.Dataset(
+        {
+            name: (("time", "y", "x"), values * (1 if name == "precipitation" else 0.5), {"units": "mm"})
+            for name in ("precipitation", "reference_et", "alfalfa_et")
+        },
+        coords={"time": dates},
+    )
+    ours = pilot.compute_indices(dataset)
+    reference = xr.Dataset(
+        {pilot.band_for(name): array.sel(time=slice("1981", "2024")) for name, array in ours.items()}
+    )
+    original_path = (
+        Path(pilot.__file__).resolve().parents[1] / "docs/research/earthengine-pilot-results/pilot-metrics.json"
+    )
+    original = json.loads(original_path.read_text())
+    monkeypatch.setattr(pilot, "check_baseline", lambda current, baseline: None)
+    monkeypatch.setenv("CE_API_KEY", "not-a-real-key")
+
+    def timeout(*args: Any) -> None:
+        raise TimeoutError("not logged")
+
+    monkeypatch.setattr(pilot, "followup_climate_engine", timeout)
+    manifest = {pilot.DAILY_COLLECTION: [{"id": "sample", "system:index": "sample", "system:version": None}]}
+    pilot.run_tukey_followup(dataset, reference, {}, manifest, tmp_path, skip)
+    saved = json.loads((tmp_path / "pilot-metrics.json").read_text())
+    for name in original.keys() - {"tukey_followup_1571"}:
+        assert saved[name] == original[name]
+    result = saved["tukey_followup_1571"]
+    assert result["reference_b"]["status"] == "pending"
+    assert result["image_manifest"]["missing_version"][pilot.DAILY_COLLECTION] == 1
+    assert json.loads(gzip.decompress((tmp_path / result["image_manifest"]["file"]).read_bytes())) == manifest
+    assert "not-a-real-key" not in json.dumps(saved)

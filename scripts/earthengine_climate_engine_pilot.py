@@ -799,6 +799,7 @@ def followup_climate_engine(
     for scale in SCALES:
         for index in ("spi", "spei", "eddi"):
             name = f"{index}_{scale}"
+            print(f"reading Climate Engine {name}", file=sys.stderr)
             response = climate_engine_series(key, scale, index)
             points = parse_climate_engine_points(response["response"], index)
             if set(points) != set(CE_POINTS):
@@ -808,17 +809,15 @@ def followup_climate_engine(
                 dims=("point", "time"),
                 coords={"time": time},
             )
-            local = [
-                xr.concat(
-                    [arrays[name].sel(x=lon, y=lat, method="nearest").sel(time=time) for lon, lat in CE_POINTS],
-                    dim="point",
-                )
+            cells = [
+                [arrays[name].sel(x=lon, y=lat, method="nearest").sel(time=time) for lon, lat in CE_POINTS]
                 for arrays in (sei, tukey)
             ]
+            local = [xr.concat(selected, dim="point") for selected in cells]
             baseline[name] = comparison_metrics(local[0].values, theirs.values)
             results[name] = paired_metrics(local[0], local[1], theirs)
             results[name]["request"] = response["request"]
-            results[name]["grid_cells"] = [[float(local[0].x[i]), float(local[0].y[i])] for i in range(len(CE_POINTS))]
+            results[name]["grid_cells"] = [[float(cell.x), float(cell.y)] for cell in cells[0]]
     return results, baseline
 
 
@@ -896,9 +895,13 @@ def run_tukey_followup(
     }
     key = os.environ.get("CE_API_KEY", "").strip()
     if key and not skip_climate_engine:
-        results["reference_b"], baseline_b = followup_climate_engine(sei, tukey, key)
-        check_baseline(baseline_b, original["reference_b"]["metrics"])
-        results["baseline_control_b"] = "all original metrics match to absolute tolerance 1e-10"
+        try:
+            results["reference_b"], baseline_b = followup_climate_engine(sei, tukey, key)
+        except (TimeoutError, urllib.error.URLError):
+            results["reference_b"] = {"status": "pending", "reason": "Climate Engine transport failed or timed out"}
+        else:
+            check_baseline(baseline_b, original["reference_b"]["metrics"])
+            results["baseline_control_b"] = "all original metrics match to absolute tolerance 1e-10"
     else:
         results["reference_b"] = {
             "status": "pending",
