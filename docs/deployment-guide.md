@@ -74,7 +74,8 @@ Backend*.
 **Steps** (each test leg):
 1. Checkout code
 2. Setup Python and uv
-3. Install dependencies: `uv sync --locked --dev`
+3. Install dependencies: `uv sync --locked --dev --no-build` (wheels only; no
+   source builds)
 4. Run core tests: `pytest -n auto` (validation and repo checks are excluded;
    their own jobs run them)
 
