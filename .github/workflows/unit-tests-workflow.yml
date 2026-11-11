@@ -366,7 +366,7 @@ jobs:
         run: rustup toolchain install --no-self-update
 
       - name: Install cargo-semver-checks
-        uses: taiki-e/install-action@1919c4a95903d2c33e4a221102edca87309fc14b  # v2.89.0
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39  # v2.90.3
         with:
           tool: cargo-semver-checks@0.51.0
 
@@ -391,7 +391,7 @@ jobs:
         run: rustup toolchain install --no-self-update
 
       - name: Install cargo-deny
-        uses: taiki-e/install-action@1919c4a95903d2c33e4a221102edca87309fc14b  # v2.89.0
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39  # v2.90.3
         with:
           tool: cargo-deny@0.20.2
 
