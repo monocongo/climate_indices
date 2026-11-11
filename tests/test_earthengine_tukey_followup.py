@@ -136,6 +136,17 @@ def test_tukey_grid_keeps_months_cells_signs_and_missing_separate() -> None:
         pilot.tukey_index(truncated, 1, clip_negatives=False)
 
 
+def test_tukey_index_accepts_second_resolution_time() -> None:
+    # The Earth Engine reader can return second-resolution coordinates, and pandas 2
+    # compares DatetimeIndex units when checking for a complete monthly record.
+    dates = pd.date_range("1980-01-31", periods=540, freq=pd.offsets.MonthEnd()).as_unit("s")
+    data = xr.DataArray(np.repeat(np.arange(45.0), 12), dims="time", coords={"time": dates})
+    assert data.time.values.dtype == np.dtype("datetime64[s]")
+    result = pilot.tukey_index(data, 1, clip_negatives=False)
+    expected = pilot.tukey_index(data.assign_coords(time=dates.as_unit("ns")), 1, clip_negatives=False)
+    np.testing.assert_array_equal(result.values, expected.values)
+
+
 def test_followup_reads_each_climate_engine_series_once(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(pilot, "SCALES", {1: "30d"})
     monkeypatch.setattr(pilot, "CE_POINTS", ((-84.9, 30.7),))

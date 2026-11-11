@@ -492,10 +492,11 @@ def tukey_probabilities(calibration: np.ndarray, values: np.ndarray) -> np.ndarr
 def tukey_index(data: xr.DataArray, scale: int, *, clip_negatives: bool) -> xr.DataArray:
     """Standardize the pilot's complete monthly record, without changing library code."""
     ordered = data.transpose("time", ...)
-    dates = pd.DatetimeIndex(ordered.time.values)
+    # pandas 2 compares DatetimeIndex units in equals; Earth Engine can return second resolution.
+    dates = pd.DatetimeIndex(ordered.time.values).as_unit("ns")
     years = np.asarray(dates.year, dtype=int)
     start_year, end_year = int(years[0]), int(years[-1])
-    expected_dates = pd.date_range(f"{start_year}-01-31", f"{end_year}-12-31", freq=pd.offsets.MonthEnd())
+    expected_dates = pd.date_range(f"{start_year}-01-31", f"{end_year}-12-31", freq=pd.offsets.MonthEnd()).as_unit("ns")
     if not dates.equals(expected_dates):
         raise ValueError("Tukey pilot requires complete January-to-December monthly input")
     initial, final = CALIBRATION_YEARS
