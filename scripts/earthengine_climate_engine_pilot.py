@@ -69,6 +69,8 @@ from climate_indices.provenance import software_identity
 PILOT_BBOX = (-85.7, 29.5, -83.3, 35.0)
 DAILY_COLLECTION = "IDAHO_EPSCOR/GRIDMET"
 DROUGHT_COLLECTION = "GRIDMET/DROUGHT"
+TIME_START_PROPERTY = "system:time_start"
+MONTHLY_SUM_CELL_METHODS = "time: sum"
 HIGH_VOLUME_URL = "https://earthengine-highvolume.googleapis.com"
 CE_ENDPOINT = "https://api.climateengine.org/timeseries/standard_index/coordinates"
 CE_NATIVE_ENDPOINT = "https://api.climateengine.org/timeseries/native/coordinates"
@@ -260,7 +262,7 @@ def monthly_server_side(ee: Any, collection: Any, months: list[MonthEnd]) -> Any
         start = ee.Date.fromYMD(month.year, month.month, 1)
         last_day = start.advance(1, "month").advance(-1, "day")
         images.append(
-            collection.filterDate(start, last_day.advance(1, "day")).sum().set("system:time_start", last_day.millis())
+            collection.filterDate(start, last_day.advance(1, "day")).sum().set(TIME_START_PROPERTY, last_day.millis())
         )
     return ee.ImageCollection(images)
 
@@ -282,7 +284,7 @@ def crop_grid_to_bbox(native: dict[str, Any], bbox: tuple[float, float, float, f
     scale_x, shear_x, origin_x, shear_y, scale_y, origin_y = native["crs_transform"]
     if shear_x or shear_y:
         raise ValueError("only north-up grids without shear are supported")
-    if not 0 < abs(scale_x) < 1 or not 0 < abs(scale_y) < 1:
+    if not (0 < abs(scale_x) < DEGREE_GRID_LIMIT and 0 < abs(scale_y) < DEGREE_GRID_LIMIT):
         raise ValueError("grid pixel size is not in degrees, but the bounding box is in EPSG:4326")
     lon_min, lat_min, lon_max, lat_max = bbox
     column_first = math.floor((lon_min - origin_x) / scale_x)
@@ -392,21 +394,21 @@ def open_monthly_gridmet(
         units="mm",
         long_name="precipitation total",
         standard_name="precipitation_amount",
-        cell_methods="time: sum",
+        cell_methods=MONTHLY_SUM_CELL_METHODS,
         comment="calendar-month sum of daily gridMET pr",
     )
     dataset["reference_et"].attrs.update(
         units="mm",
         long_name="ASCE grass reference evapotranspiration total",
         standard_name="water_potential_evapotranspiration_amount",
-        cell_methods="time: sum",
+        cell_methods=MONTHLY_SUM_CELL_METHODS,
         comment="calendar-month sum of daily gridMET eto",
     )
     dataset["alfalfa_et"].attrs.update(
         units="mm",
         long_name="ASCE alfalfa reference evapotranspiration total",
         standard_name="water_potential_evapotranspiration_amount",
-        cell_methods="time: sum",
+        cell_methods=MONTHLY_SUM_CELL_METHODS,
         comment="calendar-month sum of daily gridMET etr; the catalog does not say which reference crop its EDDI uses",
     )
     return dataset
@@ -430,9 +432,9 @@ def open_drought_reference(
     collection = (
         ee.ImageCollection(DROUGHT_COLLECTION)
         .filterDate(f"{COMPARISON_YEARS[0]}-01-01", f"{COMPARISON_YEARS[1] + 1}-01-01")
-        .sort("system:time_start")
+        .sort(TIME_START_PROPERTY)
     )
-    stamps = collection.aggregate_array("system:time_start").getInfo()
+    stamps = collection.aggregate_array(TIME_START_PROPERTY).getInfo()
     chosen = last_pentad_index_per_month(stamps, comparison_months)
     missing = [comparison_months[position].label for position, index in enumerate(chosen) if index < 0]
     if missing:
