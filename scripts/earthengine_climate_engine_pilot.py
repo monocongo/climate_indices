@@ -495,7 +495,7 @@ def tukey_index(data: xr.DataArray, scale: int, *, clip_negatives: bool) -> xr.D
     dates = pd.DatetimeIndex(ordered.time.values)
     years = np.asarray(dates.year, dtype=int)
     start_year, end_year = int(years[0]), int(years[-1])
-    expected_dates = pd.date_range(f"{start_year}-01-31", f"{end_year}-12-31", freq="ME")
+    expected_dates = pd.date_range(f"{start_year}-01-31", f"{end_year}-12-31", freq=pd.offsets.MonthEnd())
     if not dates.equals(expected_dates):
         raise ValueError("Tukey pilot requires complete January-to-December monthly input")
     initial, final = CALIBRATION_YEARS
@@ -840,7 +840,9 @@ def followup_climate_engine(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Read each API series once for both conventions; retain no raw response."""
     months = month_ends(*COMPARISON_YEARS)
-    time = [month.last_day for month in months]
+    # Non-nano pandas builds a second-resolution index from datetime64 values, which
+    # stops the exact alignment against the nanosecond grid indexes below.
+    time = pd.DatetimeIndex([month.last_day for month in months], dtype="datetime64[ns]")
     results, baseline = {}, {}
     for scale in SCALES:
         for index in ("spi", "spei", "eddi"):

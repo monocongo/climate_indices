@@ -48,7 +48,7 @@ def test_tukey_matches_eddi_rank_semantics_with_documented_numerical_differences
     data = xr.DataArray(
         np.repeat(np.arange(36.0), 12),
         dims="time",
-        coords={"time": pd.date_range("1981-01-31", periods=432, freq="ME")},
+        coords={"time": pd.date_range("1981-01-31", periods=432, freq=pd.offsets.MonthEnd())},
     )
     result = pilot.tukey_index(data, 1, clip_negatives=False)
     expected = indices.eddi(data.values, 1, 1981, 1981, 2016, compute.Periodicity.monthly)
@@ -59,7 +59,7 @@ def test_tukey_matches_eddi_rank_semantics_with_documented_numerical_differences
 def test_compute_indices_sei_is_unchanged_and_eddi_is_identical(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(pilot, "SCALES", {1: "30d", 3: "90d"})
     random = np.random.default_rng(1571)
-    dates = pd.date_range("1980-01-31", periods=540, freq="ME")
+    dates = pd.date_range("1980-01-31", periods=540, freq=pd.offsets.MonthEnd())
     dataset = xr.Dataset(
         {
             name: ("time", random.uniform(0, 100, 540), {"units": "mm"})
@@ -90,7 +90,7 @@ def test_compute_indices_sei_is_unchanged_and_eddi_is_identical(monkeypatch: pyt
 
 
 def test_paired_metrics_use_common_pairs_and_split_dates() -> None:
-    dates = pd.date_range("1981-01-31", periods=528, freq="ME")
+    dates = pd.date_range("1981-01-31", periods=528, freq=pd.offsets.MonthEnd())
     reference = xr.DataArray(np.arange(528.0), dims="time", coords={"time": dates})
     sei = reference + 0.05
     tukey = reference.copy()
@@ -117,7 +117,7 @@ def test_expected_reduction_comes_from_formulas() -> None:
 
 
 def test_tukey_grid_keeps_months_cells_signs_and_missing_separate() -> None:
-    dates = pd.date_range("1980-01-31", periods=540, freq="ME")
+    dates = pd.date_range("1980-01-31", periods=540, freq=pd.offsets.MonthEnd())
     years = np.repeat(np.arange(45.0) - 20, 12)
     values = np.broadcast_to(years[:, None, None], (540, 2, 2)).copy()
     values[1::12, 0, 0] *= -1
@@ -139,7 +139,7 @@ def test_tukey_grid_keeps_months_cells_signs_and_missing_separate() -> None:
 def test_followup_reads_each_climate_engine_series_once(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(pilot, "SCALES", {1: "30d"})
     monkeypatch.setattr(pilot, "CE_POINTS", ((-84.9, 30.7),))
-    dates = pd.date_range("1980-01-31", periods=540, freq="ME")
+    dates = pd.date_range("1980-01-31", periods=540, freq=pd.offsets.MonthEnd())
     cell = xr.DataArray(
         np.arange(540.0)[:, None, None], dims=("time", "y", "x"), coords={"time": dates, "y": [30.7], "x": [-84.9]}
     )
@@ -179,7 +179,7 @@ def test_followup_preserves_original_results_when_b_is_unavailable(
     skip: bool,
 ) -> None:
     monkeypatch.setattr(pilot, "SCALES", {1: "30d"})
-    dates = pd.date_range("1980-01-31", periods=540, freq="ME")
+    dates = pd.date_range("1980-01-31", periods=540, freq=pd.offsets.MonthEnd())
     values = np.random.default_rng(1571).uniform(1.0, 100.0, (540, 2, 2))
     dataset = xr.Dataset(
         {
@@ -233,7 +233,7 @@ def test_transport_error_retains_reference_a_and_records_the_status(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(pilot, "SCALES", {1: "30d"})
-    dates = pd.date_range("1980-01-31", periods=540, freq="ME")
+    dates = pd.date_range("1980-01-31", periods=540, freq=pd.offsets.MonthEnd())
     values = np.random.default_rng(7).uniform(1.0, 100.0, (540, 2, 2))
     dataset = xr.Dataset(
         {
