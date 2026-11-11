@@ -1,5 +1,8 @@
 """Offline checks for the pre-registered plotting-position experiment (#1571)."""
 
+import gzip
+import hashlib
+import json
 from pathlib import Path
 from typing import Any
 
@@ -172,9 +175,6 @@ def test_followup_preserves_original_results_when_b_is_unavailable(
     tmp_path: Path,
     skip: bool,
 ) -> None:
-    import gzip
-    import json
-
     monkeypatch.setattr(pilot, "SCALES", {1: "30d"})
     dates = pd.date_range("1980-01-31", periods=540, freq="ME")
     values = np.random.default_rng(1571).uniform(1.0, 100.0, (540, 2, 2))
@@ -210,3 +210,26 @@ def test_followup_preserves_original_results_when_b_is_unavailable(
     assert result["image_manifest"]["missing_version"][pilot.DAILY_COLLECTION] == 1
     assert json.loads(gzip.decompress((tmp_path / result["image_manifest"]["file"]).read_bytes())) == manifest
     assert "not-a-real-key" not in json.dumps(saved)
+
+
+def test_saved_followup_metrics_and_manifest_are_consistent() -> None:
+    directory = Path(pilot.__file__).resolve().parents[1] / "docs/research/earthengine-pilot-results"
+    payload = json.loads((directory / "pilot-metrics.json").read_text())
+    result = payload["tukey_followup_1571"]
+    assert result["software"]["git_dirty"] is False
+    for name, rows in result["reference_a"].items():
+        pilot.check_baseline({name: rows["1981-2024"]["sei"]}, {name: payload["reference_a"][name]})
+        assert rows["1981-2024"]["sei"]["n"] == rows["1981-2016"]["sei"]["n"] + rows["2017-2024"]["sei"]["n"]
+        assert len(rows["calendar_month_bias"]["tukey"]) == 12
+        for period in ("1981-2024", "1981-2016", "2017-2024"):
+            for metric, change in rows[period]["change"].items():
+                assert change == pytest.approx(rows[period]["tukey"][metric] - rows[period]["sei"][metric], abs=1e-14)
+                if name.startswith("eddi"):
+                    assert change == 0.0
+    manifest_bytes = (directory / result["image_manifest"]["file"]).read_bytes()
+    assert hashlib.sha256(manifest_bytes).hexdigest() == result["image_manifest"]["sha256"]
+    manifest = json.loads(gzip.decompress(manifest_bytes))
+    assert len(manifest[pilot.DAILY_COLLECTION]) == 16437
+    assert len(manifest[pilot.DROUGHT_COLLECTION]) == 528
+    for rows in manifest.values():
+        assert all({"id", "system:index", "system:version"} <= row.keys() for row in rows)
