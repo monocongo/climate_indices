@@ -908,8 +908,7 @@ def _write_followup(output_dir: Path, original: dict[str, Any], results: dict[st
         "missing_version": {name: sum(row[SYSTEM_VERSION] is None for row in rows) for name, rows in manifest.items()},
     }
     original[FOLLOWUP_KEY] = results
-    # NOSONAR (S8707): the operator chooses the CLI output directory.
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)  # NOSONAR (S8707) operator-chosen CLI output directory
     with tempfile.TemporaryDirectory(prefix=".tukey-", dir=output_dir) as directory:
         staging = Path(directory)
         (staging / MANIFEST_FILENAME).write_bytes(manifest_bytes)
