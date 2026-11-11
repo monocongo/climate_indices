@@ -504,3 +504,45 @@ def test_scale_mapping_covers_the_catalog_scales() -> None:
     """Each calendar-month scale must name a band that the catalog actually publishes."""
     assert pilot.SCALES == {1: "30d", 3: "90d", 6: "180d", 12: "1y"}
     assert set(pilot.SCALE_DAYS) == set(pilot.SCALES)
+
+
+def _pinned_dataset() -> xr.Dataset:
+    return xr.Dataset(
+        {"precipitation": (("time", "y", "x"), np.zeros((2, 2, 2)))},
+        coords={"time": np.array(["2000-01-31", "2000-02-29"], dtype="datetime64[D]")},
+    )
+
+
+def test_input_checksum_pins_bands_values_and_time_steps() -> None:
+    """The digest must change with a band, a value or a time step, not just with the shape."""
+    base = _pinned_dataset()
+    digest = pilot.input_checksum(base)
+    assert pilot.input_checksum(base.copy(deep=True)) == digest
+
+    changed = base.copy(deep=True)
+    changed["precipitation"].values[0, 0, 0] = 1.0
+    assert pilot.input_checksum(changed) != digest, "a changed value must change the digest"
+
+    shifted = base.assign_coords(time=np.array(["2000-01-30", "2000-02-29"], dtype="datetime64[D]"))
+    assert pilot.input_checksum(shifted) != digest, "a changed time step must change the digest"
+
+    renamed = base.rename({"precipitation": "pr"})
+    assert pilot.input_checksum(renamed) != digest, "the band name is part of the identity"
+
+
+def test_collection_revision_prefers_a_version_and_falls_back_to_update_time() -> None:
+    class _Data:
+        def __init__(self, asset: dict[str, str]) -> None:
+            self.asset = asset
+
+        def getAsset(self, asset_id: str) -> dict[str, str]:
+            return self.asset
+
+    class EarthEngine:
+        def __init__(self, asset: dict[str, str]) -> None:
+            self.data = _Data(asset)
+
+    assert pilot.collection_revision(EarthEngine({"version": "v5", "updateTime": "2026-11-11"}), "A") == "v5"
+    legacy = EarthEngine({"version": "", "updateTime": "2026-11-11T03:25:51Z"})
+    assert pilot.collection_revision(legacy, "B") == "2026-11-11T03:25:51Z"
+    assert pilot.collection_revision(EarthEngine({}), "C") == "unknown"

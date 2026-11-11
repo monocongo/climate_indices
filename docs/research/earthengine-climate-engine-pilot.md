@@ -43,7 +43,7 @@ The provider's spatial reducer is `mean`; pixel-selection equivalence remains un
 The final run records source commit `544e98b6cc0772db9f7650209e978ac4c1be2046` and `git_dirty=false`.
 The corrected Earth Engine filter includes 2024-12-31; earlier runs omitted that final input day.
 The collection IDs identify live products, not immutable snapshots.
-Asset revision dates and input checksums were not captured, so later provider updates can change the results.
+The JSON therefore records each asset's Earth Engine revision and a SHA-256 over the exact time steps and values read, so a later provider update is detectable.
 
 ## Method alignment
 

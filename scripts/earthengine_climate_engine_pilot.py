@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import calendar
+import hashlib
 import json
 import math
 import os
@@ -669,6 +670,34 @@ def plot_differences(fields: dict[str, xr.DataArray], directory: Path) -> list[s
     return written
 
 
+def collection_revision(ee: Any, asset_id: str) -> str:
+    """Revision of a catalog asset, so the run can be tied to the inputs it read.
+
+    The legacy Earth Engine catalog exposes no ``version`` for these
+    collections, so their ``updateTime`` is the strongest revision the provider
+    publishes; the caller pairs it with :func:`input_checksum`.
+    """
+    asset = ee.data.getAsset(asset_id)
+    return str(asset.get("version") or asset.get("updateTime") or "unknown")
+
+
+def input_checksum(dataset: xr.Dataset) -> str:
+    """SHA-256 over one input's band names, time steps and read values.
+
+    The catalog assets identify live products, not immutable snapshots, so this
+    digest is what lets a reader detect a later provider update that would
+    change the recorded metrics.
+    """
+    digest = hashlib.sha256()
+    for band in sorted(str(band) for band in dataset.data_vars):
+        values = np.ascontiguousarray(dataset[band].values, dtype="<f8")
+        steps = np.ascontiguousarray(dataset[band]["time"].values, dtype="datetime64[s]").astype("int64")
+        digest.update(f"{band}:{values.shape}:".encode())
+        digest.update(steps.tobytes())
+        digest.update(values.tobytes())
+    return digest.hexdigest()
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the pilot and write every number the report cites."""
     parser = argparse.ArgumentParser(description="Climate Engine and Earth Engine cross-validation pilot")
@@ -685,6 +714,10 @@ def main(argv: list[str] | None = None) -> int:
     ee = initialize_ee(project)
     if ee.Number(1).getInfo() != 1:  # fail fast, before any collection is read
         raise SystemExit("Earth Engine did not answer a trivial computation")
+    revisions = {
+        "daily_revision": collection_revision(ee, DAILY_COLLECTION),
+        "drought_revision": collection_revision(ee, DROUGHT_COLLECTION),
+    }
 
     daily_native = native_grid(ee.ImageCollection(DAILY_COLLECTION).limit(1))
     drought_native = native_grid(ee.ImageCollection(DROUGHT_COLLECTION).limit(1))
@@ -716,7 +749,14 @@ def main(argv: list[str] | None = None) -> int:
             "reference_a": "GRIDMET/DROUGHT, non-parametric, baseline 1981-2016, 5-day pentad",
             "scale_map": SCALES,
         },
-        "collections": {"daily": DAILY_COLLECTION, "drought": DROUGHT_COLLECTION, **anchor},
+        "collections": {
+            "daily": DAILY_COLLECTION,
+            "drought": DROUGHT_COLLECTION,
+            "daily_input_sha256": input_checksum(dataset),
+            "drought_input_sha256": input_checksum(reference),
+            **revisions,
+            **anchor,
+        },
         "reference_a": metrics,
     }
 
