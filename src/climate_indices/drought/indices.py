@@ -1310,12 +1310,12 @@ def _fit_t_location_scale(pooled: np.ndarray) -> dict[str, np.ndarray]:
         # the location and scale changes are measured against the column's own scale, so
         # the test is invariant to the input's units; log df is already dimensionless
         column_scale = np.sqrt(column_variance)
-        change = np.maximum.reduce(
-            [
+        change = np.maximum(
+            np.maximum(
                 np.abs(new_loc - column_loc) / column_scale,
                 np.abs(np.sqrt(new_variance) - column_scale) / column_scale,
-                np.abs(new_log_df - column_log_df),
-            ]
+            ),
+            np.abs(new_log_df - column_log_df),
         )
         # a converged column keeps its parameters while the others iterate on
         loc[columns] = new_loc

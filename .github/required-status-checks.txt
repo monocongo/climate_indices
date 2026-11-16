@@ -29,12 +29,14 @@ test (3.11, ubuntu-latest)
 test (3.12, ubuntu-latest)
 test (3.13, ubuntu-latest)
 test (3.14, ubuntu-latest)
+test (3.15, ubuntu-latest)
 test (3.14, macos-latest)
 test-minimum-deps
 notebooks
 security-audit
 test-native (3.11, ubuntu-latest)
 test-native (3.14, ubuntu-latest)
+test-native (3.15, ubuntu-latest)
 test-native (3.14, macos-latest)
 rust
 native-wheel (3.11, ubuntu-latest)

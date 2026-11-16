@@ -48,15 +48,17 @@ ENTRYPOINT ["python", "-m", "climate_indices"]
 schedule (Mondays), and manual dispatch
 
 **Core test matrix** (`pytest -n auto`, split across two jobs):
-- `test` (every event): ubuntu-latest on Python 3.11, 3.12, 3.13, and 3.14,
+- `test` (every event): ubuntu-latest on Python 3.11, 3.12, 3.13, 3.14, and 3.15,
   plus macOS on 3.14
+  (the 3.15 leg builds `pyyaml`, `numcodecs`, `h5py` and `lz4` from source until they ship cp315 wheels)
 - `test-full` (everything except pull requests): macOS on Python 3.11
 
-`uv.lock` resolves two distinct dependency stacks (3.11; and 3.12
-through 3.14, which install identical packages), yet interpreter behavior
-differs, so a pull request still exercises every supported minor on Linux.
-Together the two jobs cover every supported Python on Linux and both boundaries
-on macOS, and `tests/test_release_integrity.py` enforces that the two never
+`uv.lock` resolves three dependency stacks (3.11; 3.12 through 3.14, which
+install identical packages; and 3.15, which moves to numpy 2.5 and scipy 1.18),
+yet interpreter behavior differs, so a pull request still exercises every
+supported minor on Linux. Together the two jobs cover every supported Python on
+Linux and, on macOS, the minimum and the newest Python whose dependencies all
+ship wheels (3.14), and `tests/test_release_integrity.py` enforces that the two never
 overlap and never drop a supported version.
 
 Single-owner jobs run once per event: `lint` (ruff, mypy), `docs`, `validation`
@@ -65,8 +67,8 @@ Single-owner jobs run once per event: `lint` (ruff, mypy), `docs`, `validation`
 
 Three Rust jobs run on every event next to the pure-Python legs: `rust` (cargo
 fmt, clippy, and tests), `test-native` (the core suite with the extension built and
-`CLIMATE_INDICES_REQUIRE_NATIVE=1`, on the boundary legs of `test`), and
-`native-wheel` (maturin wheels at both boundary Pythons on Linux and macOS, plus a
+`CLIMATE_INDICES_REQUIRE_NATIVE=1`, on Linux 3.11, 3.14 and 3.15 and macOS 3.14, a subset of the `test` legs), and
+`native-wheel` (maturin wheels at Python 3.11 and 3.14 on Linux and macOS, plus a
 Windows 3.14 smoke build, each installed and checked outside the checkout). They
 validate wheels but publish nothing. See `docs/architecture.md` § *Optional Rust
 Backend*.
@@ -75,7 +77,9 @@ Backend*.
 1. Checkout code
 2. Setup Python and uv
 3. Install dependencies: `uv sync --locked --dev --no-build` (wheels only; no
-   source builds)
+   source builds). The Linux 3.15 leg is the exception: it installs `libhdf5-dev` and
+   runs `uv sync --locked --dev`, building `pyyaml`, `numcodecs`, `h5py` and `lz4`
+   from source
 4. Run core tests: `pytest -n auto` (validation and repo checks are excluded;
    their own jobs run them)
 
@@ -95,7 +99,7 @@ Backend*.
 6. Build the five binary wheels that carry `climate_indices._native` with maturin:
    manylinux\_2\_28 x86-64 and aarch64, macOS arm64 and x86-64, and Windows x86-64.
    They are abi3 (`cp311-abi3-*`), so each one installs on every supported Python
-   (3.11 through 3.14); musllinux is not published
+   (3.11 through 3.15); musllinux is not published
 7. Validate package metadata: `twine check dist/*`
 8. Install the artifacts outside the checkout: `wheel-check` installs each platform
    wheel on the platform it was built for, asserts pip prefers it over the pure wheel,
@@ -146,7 +150,7 @@ git push origin vX.Y.Z
 - **Name**: `climate_indices`
 - **Version**: Defined in `pyproject.toml`
 - **License**: BSD 3-Clause
-- **Python**: >=3.11,<3.15
+- **Python**: >=3.11,<3.16
 
 ### Installation
 ```bash

@@ -3,7 +3,7 @@
 ## Prerequisites
 
 ### Required Software
-- **Python**: 3.11, 3.12, 3.13, or 3.14
+- **Python**: 3.11, 3.12, 3.13, 3.14, or 3.15 (3.15 on Linux only until `pyyaml`, `numcodecs`, `h5py` and `lz4` publish cp315 wheels; macOS and Windows stay on 3.14)
 - **uv**: Modern Python package installer ([https://github.com/astral-sh/uv](https://github.com/astral-sh/uv))
 - **Git**: Version control
 - **Make**: Build automation (optional, for Sphinx docs)
@@ -508,7 +508,7 @@ uv run pytest -m icechunk
 ```
 
 Without the extra, the module skips. Every supported CI matrix leg installs the `dev`
-group; the suite runs on the Python 3.12–3.14 legs and skips on 3.11, where Icechunk is
+group; the suite runs on the Python 3.12–3.15 legs and skips on 3.11, where Icechunk is
 not installable.
 
 One test is opt-in in a second way: `test_r2_round_trip` writes to the shared Cloudflare

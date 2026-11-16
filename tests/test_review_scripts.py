@@ -64,13 +64,16 @@ sync_required_checks = _load_script("sync_required_checks", "scripts/sync_requir
     [
         ("        os: [ubuntu-latest]", "        features: [default]\n        os: [ubuntu-latest]"),
         (
-            "        python-version: ['3.11', '3.12', '3.13', '3.14']\n        os: [ubuntu-latest]",
-            "        os: [ubuntu-latest]\n        python-version: ['3.11', '3.12', '3.13', '3.14']",
+            "        python-version: ['3.11', '3.12', '3.13', '3.14', '3.15']\n        os: [ubuntu-latest]",
+            "        os: [ubuntu-latest]\n        python-version: ['3.11', '3.12', '3.13', '3.14', '3.15']",
         ),
         ("        include:", "        exclude:"),
         ("      matrix:\n", "      matrix: unsupported\n"),
         ("            os: macos-latest", "            os: macos-latest\n            features: default"),
-        ("        python-version: ['3.11', '3.12', '3.13', '3.14']", "        python-version: ${{ inputs.pythons }}"),
+        (
+            "        python-version: ['3.11', '3.12', '3.13', '3.14', '3.15']",
+            "        python-version: ${{ inputs.pythons }}",
+        ),
         ("    runs-on:", "    name: Python tests\n    runs-on:"),
         ("    runs-on:", "    if: github.event_name != 'pull_request'\n    runs-on:"),
         ("    runs-on:", "    needs: test-full\n    runs-on:"),
