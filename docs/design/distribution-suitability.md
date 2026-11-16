@@ -165,7 +165,7 @@ def category_agreement(index_categories, reference_categories) -> tuple[float, f
 
 ### Risks
 
-- AIC evaluated at non-MLE estimates is biased against L-moment fits (OQ-1).
+- The criteria are penalized likelihoods at the library's own estimates (Thom's approximation, L-moments), not textbook AIC/AICc/BIC. A ranking therefore mixes how well a family fits with how efficient its estimator is, and can favour a family because of its estimator (OQ-1).
 - n of about 30 per month gives weak discrimination, so maps of "best" may be noise. Mitigation: report the delta, the decision-impact metrics and the GoF share.
 - GEV upper-bounded fits put an index value at ±∞ beyond the support. The existing ±3.09 normal-scale clip covers it; the probability scale returns 0 or 1.
 - Bootstrap cost on CONUS grids. Default off; Rust follow-on.
@@ -173,7 +173,7 @@ def category_agreement(index_categories, reference_categories) -> tuple[float, f
 
 ### Open questions
 
-- **OQ-1.** Evaluate log-likelihood at the library's own estimates (Thom, L-moments) or refit by MLE for the criteria? *Recommend the library estimates*, because those are the parameters the index actually uses. Record `log_likelihood_at = "fitted_estimates"` and each fitting method. An MLE option can come later.
+- **OQ-1.** Evaluate log-likelihood at the library's own estimates (Thom, L-moments) or refit by MLE for the criteria? *Recommend the library estimates*, because those are the parameters the index actually uses. Record `log_likelihood_at = "fitted_estimates"` and each fitting method, and state in the docs and docstrings that the ranking mixes distribution fit with estimator efficiency. The criteria keep the `aic`/`aicc`/`bic` names; the caveat travels with them. An MLE option can come later.
 - **OQ-2.** GEV for `standardized_index`/`spi`? They carry a physical zero mass, and GEV with ξ > 0 has support below 0. *Recommend SPEI only*, following the ADR-0016 precedent.
 - **OQ-3.** Common zero definition for gamma against Pearson (exact zeros vs below 0.0005)? *Recommend retaining exact zeros as the shared mixture definition*, because Pearson's trace rule is a transform convention; if traces are reclassified, document that the fitted samples and scores change.
 - **OQ-4.** Concordance counting with many-to-many overlaps? *Recommend reference-centric counting*: hit = a reference event overlapped by at least one index event; miss = one overlapped by none; false alarm = an index event overlapping no reference event. Expose a minimum-overlap setting later only if needed.
@@ -212,7 +212,7 @@ Follow-on, not part of this epic: a Rust GEV kernel and comparison-loop accelera
    - All values are fitted with no zero mass, as for GLO.
    - `spi`, `standardized_index` and `fit_diagnostics` reject GEV.
    - Empirical, beta and the SPAI families are not comparison candidates.
-2. **Estimators.** The comparison uses each family's existing estimator: gamma by Thom's MLE approximation; Pearson III, GLO and GEV by L-moments. Log-likelihood is evaluated at those estimates and labelled as such. MLE refitting is not part of this decision.
+2. **Estimators.** The comparison uses each family's existing estimator: gamma by Thom's MLE approximation; Pearson III, GLO and GEV by L-moments. Log-likelihood is evaluated at those estimates and labelled as such. Because these are not maximum-likelihood estimates in general, the criteria are penalized likelihoods at fitted estimates, and a ranking mixes distribution fit with estimator efficiency. MLE refitting is not part of this decision.
 3. **Criteria.** With k free parameters, plus 1 for p0 when a zero mass is fitted (the same for all candidates sharing it):
    - AIC = 2k − 2ℓ
    - AICc = AIC + 2k(k+1)/(n−k−1), NaN when n ≤ k + 1
@@ -244,7 +244,7 @@ Follow-on, not part of this epic: a Rust GEV kernel and comparison-loop accelera
 
 **Consequences.**
 - GEV adds one enum member, which affects exhaustive matches, the CLI choice list and the CF `distribution` attribute.
-- Criteria at L-moment estimates are not textbook AIC, and the attributes say so.
+- Criteria at the library's estimates are not textbook AIC; the docs, docstrings and attributes say the ranking mixes distribution fit with estimator efficiency.
 - Rust parity for GEV is deferred.
 
 ---
