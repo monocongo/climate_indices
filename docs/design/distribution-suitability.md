@@ -107,7 +107,8 @@ class DistributionComparison:
 
 def compare_distributions(
     values, scale, *, index: IndexRoute, candidates: Sequence[Distribution] | None = None,
-    pet_mm=None, data_start_year=None, calibration_year_initial=None,
+    pet_mm=None, aggregation: Aggregation = "sum", clip_negatives: bool = True,
+    data_start_year=None, calibration_year_initial=None,
     calibration_year_final=None, periodicity=None, criterion: Criterion = "aicc",
     gof: Sequence[Literal["ks", "ad"]] = ("ks", "ad"), n_bootstrap: int = 0,
     rng: np.random.Generator | int | None = None, spatial_time_major=False,
@@ -134,6 +135,8 @@ def category_agreement(index_categories, reference_categories) -> tuple[float, f
 ```
 
 **The SPEI route.** When `index="spei"`, the function requires `pet_mm` and applies the same water balance and offset as `spei()`. This guarantees that the `fitting_params` the comparison returns reproduce `spei(..., distribution=d)` exactly.
+
+**The `standardized_index` route.** `aggregation` and `clip_negatives` are applied exactly as `standardized_index()` applies them, before any candidate is fitted, so the compared series is the series the index would standardize. Both options are accepted only with `index="standardized_index"`. A signed series (`clip_negatives=False`) is outside the gamma and Pearson Type III candidates, as it is for `standardized_index()` itself, so that combination raises rather than score a different series.
 
 ### Guardrails
 
