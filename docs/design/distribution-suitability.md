@@ -162,7 +162,7 @@ def category_agreement(index_categories, reference_categories) -> tuple[float, f
   - Report the rejection share against nominal α across cells (`GoodnessOfFit.rejection_share`, at `alpha`).
   - Offer BH adjustment through `scipy.stats.false_discovery_control`, opt-in only (`bh_adjust=True`, which needs a cell axis and fills `ks_p_value_bh`/`ad_p_value_bh`).
   - Document that spatial correlation weakens the BH assumptions. Field significance is out of scope.
-- **Post-selection.** The GoF p-value of the AIC-selected candidate is a post-selection statistic, and the docs say so.
+- **Post-selection.** The GoF p-value of the candidate selected by the requested criterion is a post-selection statistic, and the docs say so.
 - **Bootstrap.** It refits with **the library's own estimator**. `scipy.stats.goodness_of_fit` refits by MLE, so it serves only as a cross-check for MLE-like gamma. The default is `n_bootstrap=0`. The cost (B × candidates × steps × cells) is documented, and the seed is recorded.
 
 ### Validation plan
