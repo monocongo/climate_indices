@@ -124,7 +124,7 @@ class GoodnessOfFit:
     ks_p_value_bootstrap: np.ndarray | None
     ad_p_value_bootstrap: np.ndarray | None
     ks_p_value_bh: np.ndarray | None      # BH-adjusted across cells; None unless bh_adjust
-    ad_p_value_bh: np.ndarray | None
+    ad_p_value_bh: np.ndarray | None       # None unless bh_adjust and n_bootstrap > 0 (AD has no naive p-value)
     rejection_share: np.ndarray | None    # (candidate, step, statistic): share of cells with p < alpha
     n_bootstrap: int
 
@@ -163,7 +163,7 @@ def category_agreement(index_categories, reference_categories) -> tuple[float, f
   - Daily data: rolling windows ending on the same calendar day in consecutive years overlap only when the Timescale exceeds one year. Warn when Timescale > 365 days; a Timescale of 13 to 365 days gets no warning.
 - **Multiple testing.**
   - Report the rejection share against nominal α across cells (`GoodnessOfFit.rejection_share`, at `alpha`).
-  - Offer BH adjustment through `scipy.stats.false_discovery_control`, opt-in only (`bh_adjust=True`, which needs a cell axis and fills `ks_p_value_bh`/`ad_p_value_bh`).
+  - Offer BH adjustment through `scipy.stats.false_discovery_control`, opt-in only (`bh_adjust=True`, which needs a cell axis and fills `ks_p_value_bh`). `ad_p_value_bh` is filled only when `n_bootstrap > 0`, because AD has no naive p-value to adjust; with `n_bootstrap=0` it stays `None`.
   - Document that spatial correlation weakens the BH assumptions. Field significance is out of scope.
 - **Post-selection.** The GoF p-value of the candidate selected by the requested criterion is a post-selection statistic, and the docs say so.
 - **Bootstrap.** It refits with **the library's own estimator**. `scipy.stats.goodness_of_fit` refits by MLE, so it serves only as a cross-check for MLE-like gamma. The default is `n_bootstrap=0`. The cost (B × candidates × steps × cells) is documented, and the seed is recorded.
@@ -400,7 +400,7 @@ Shared footer, used in every child:
 
 **Solution.**
 - Add `GoodnessOfFit` to the comparison: K–S statistic with its naive p-value (labelled), the AD statistic from the PIT, and an optional `n_bootstrap` parametric bootstrap that refits with the library estimator. Each bootstrap sample is drawn from the fitted mixed distribution, including p0.
-- Add the rejection-share summary (`rejection_share`, at `alpha`) and opt-in BH adjustment (`bh_adjust=True`, through `scipy.stats.false_discovery_control`, giving `ks_p_value_bh` and `ad_p_value_bh`).
+- Add the rejection-share summary (`rejection_share`, at `alpha`) and opt-in BH adjustment (`bh_adjust=True`, through `scipy.stats.false_discovery_control`, giving `ks_p_value_bh`, and `ad_p_value_bh` when `n_bootstrap > 0`).
 - Take `seed: int | None`. When it is None a seed is drawn from `numpy.random.SeedSequence().entropy`, and the seed actually used is recorded in `climate_indices_rng_seed`. A caller-supplied `Generator` is not accepted: it does not expose its original seed, so the stream could not be reproduced.
 
 **Scientific core:**
