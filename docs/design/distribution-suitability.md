@@ -320,7 +320,7 @@ Shared footer, used in every child:
 **Problem.** GEV is a common SPEI candidate in the suitability literature but cannot be fitted here.
 
 **Solution.**
-- Add `Distribution.gev`, `lmoments.fit_gev` (Hosking's L-moment estimator using the existing SAMLMR L-moments), `compute.gev_parameters` and `transform_fitted_gev`.
+- Add `Distribution.gev`, its entry in `_DISTRIBUTION_DISPLAY_NAMES` (`vocabulary.py`), `lmoments.fit_gev` (Hosking's L-moment estimator using the existing SAMLMR L-moments), `compute.gev_parameters` and `transform_fitted_gev`.
 - `spei()` accepts it on NumPy, xarray/Dask and the CLI choice list.
 - `spi`, `standardized_index` and `fit_diagnostics` reject it.
 
@@ -341,6 +341,7 @@ Shared footer, used in every child:
 - [ ] `fitting_params` round trip: `loc`, `scale`, `shape`.
 - [ ] xarray/Dask test with time in a single chunk.
 - [ ] The CF `distribution` attribute equals `gev`.
+- [ ] `Distribution.gev.display_name` resolves (no `KeyError`), and a CLI `spei` call with GEV passes the request-logging path.
 - [ ] `choosing-parameters.md` and the glossary updated.
 - [ ] VALIDATION row at the level the evidence supports.
 - [ ] llms bundles regenerated.
