@@ -474,7 +474,8 @@ They fall by 0.028 to 0.104 over 2017–2024, where the bias approaches zero.
 Correlation changes by at most 0.0024, and class agreement by at most 0.024, over the full period.
 
 The registered range of −0.10 to −0.12 therefore holds for the calibration period only.
-The full-period bias stops at −0.092, which is the same shortfall that reference A shows.
+The full-period bias reaches −0.092.
+The bias change (−0.023 to −0.030) is similar in size to the reference A change, not its residual bias.
 The B point metrics and the A field metrics still have different spatial support.
 They neither confirm nor refute each other, and both remain characterization evidence.
 
