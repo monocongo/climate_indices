@@ -3,7 +3,7 @@
 ## Prerequisites
 
 ### Required Software
-- **Python**: 3.11, 3.12, 3.13, 3.14, or 3.15
+- **Python**: 3.11, 3.12, 3.13, 3.14, or 3.15 (3.15 on Linux only until `pyyaml`, `numcodecs`, `h5py` and `lz4` publish cp315 wheels; macOS and Windows stay on 3.14)
 - **uv**: Modern Python package installer ([https://github.com/astral-sh/uv](https://github.com/astral-sh/uv))
 - **Git**: Version control
 - **Make**: Build automation (optional, for Sphinx docs)
