@@ -1269,8 +1269,8 @@ def _polaris_aws(
         # One neighbouring cell on each side of each axis preserves the block's cell edges.
         rows = np.flatnonzero(np.isin(latitudes, block_latitudes))
         columns = np.flatnonzero(np.isin(longitudes, block_longitudes))
-        target_latitudes = latitudes[max(0, int(rows.min()) - 1) : int(rows.max()) + 2]
-        target_longitudes = longitudes[max(0, int(columns.min()) - 1) : int(columns.max()) + 2]
+        target_latitudes = latitudes[max(0, int(np.min(rows)) - 1) : int(np.max(rows)) + 2]
+        target_longitudes = longitudes[max(0, int(np.min(columns)) - 1) : int(np.max(columns)) + 2]
         averaged = area_weighted_mean(
             # tiles are read as lat/lon; the climate grid may name its axes otherwise
             block_total.rename({"lat": lat_dim, "lon": lon_dim}),

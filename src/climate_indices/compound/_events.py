@@ -375,7 +375,7 @@ def _validated_runs(
         raise InvalidArgumentError(
             f"{name} runs must lie inside the {steps}-step time axis.",
             argument_name=name,
-            argument_value=f"start_index min={int(start.min())}, end_index max={int(end.max())}",
+            argument_value=f"start_index min={int(np.min(start))}, end_index max={int(np.max(end))}",
             valid_values=f"0 <= start_index <= end_index <= {steps - 1}",
         )
     unordered = np.flatnonzero(start[1:] <= end[:-1])

@@ -272,7 +272,7 @@ def _estimate_lmoments(
 
     # we need to have at least four values in order
     # to make a sample L-moments estimation
-    number_of_values = np.count_nonzero(~np.isnan(values))
+    number_of_values = int(np.count_nonzero(~np.isnan(values)))
     if number_of_values < MIN_VALUES_FOR_LMOMENTS:
         message = (
             "Insufficient number of values to perform sample L-moments estimation: "

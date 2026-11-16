@@ -479,7 +479,7 @@ def eto_thornthwaite(
     # convert the latitude from degrees to radians: the 1-D/2-D path takes a scalar,
     # while a spatial block keeps an array of per-cell latitudes
     if spatial_block and isinstance(latitude_degrees, np.ndarray):
-        latitude_radians = np.radians(latitude_degrees)
+        latitude_radians: float | np.ndarray = np.radians(latitude_degrees)
     else:
         # float() keeps a non-numeric latitude raising the TypeError it always has
         latitude_radians = math.radians(float(latitude_degrees))
@@ -645,7 +645,7 @@ def eto_hargreaves(
         if spatial_block and isinstance(latitude_degrees, np.ndarray):
             # the latitude is read as the per-cell array of a (time, *cells) block
             _validate_latitude_cells(np.radians(latitude_degrees), daily_tmean_celsius.shape[1:])
-            latitude = np.radians(latitude_degrees)
+            latitude: float | np.ndarray = np.radians(latitude_degrees)
         else:
             # float() keeps a non-numeric latitude raising the TypeError it always has
             latitude = math.radians(float(latitude_degrees))

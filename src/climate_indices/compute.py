@@ -1254,7 +1254,7 @@ def _check_calibration_data_quality(
     # check for excessive missing data
     total_values = calibration_values.size
     if total_values > 0:
-        missing_count = np.count_nonzero(np.isnan(calibration_values))
+        missing_count = int(np.count_nonzero(np.isnan(calibration_values)))
         missing_ratio = missing_count / total_values
         if missing_ratio > MISSING_DATA_THRESHOLD:
             message = (
@@ -1304,8 +1304,8 @@ def _ks_d_statistic(
     ranks = np.arange(1, sample_size + 1)
     return float(
         max(
-            (ranks / sample_size - cdf_values).max(),
-            (cdf_values - (ranks - 1) / sample_size).max(),
+            np.max(ranks / sample_size - cdf_values),
+            np.max(cdf_values - (ranks - 1) / sample_size),
         )
     )
 
