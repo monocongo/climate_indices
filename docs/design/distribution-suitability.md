@@ -462,12 +462,12 @@ Shared footer, used in every child:
 **Labels:** `enhancement`, `numpy-api`, `tests` · **Blocked by:** SUIT-06 · **Size:** M
 
 **Solution.**
-- `event_concordance()` uses `compound_events(mode="concurrent")` and reference-centric counting (OQ-4) to give hits, misses, false alarms, POD = hits/(hits+misses), FAR = FA/(hits+FA) and CSI = hits/(hits+misses+FA).
+- `event_concordance()` uses `compound_events(mode="concurrent")` and reference-centric counting (OQ-4) to give hits, misses, false alarms and `matched_index_events` (index events overlapping at least one reference event), with POD = hits/(hits+misses), FAR = FA/(matched_index_events+FA) and CSI = hits/(hits+misses+FA). FAR's denominator counts index events, so one index event overlapping two reference events gives two hits but one matched index event.
 - `category_agreement()` returns the exact and within-one shares, with the same definitions as the #1569 pilot's `category_agreement` and `category_within_one`.
 
 **Scientific core:**
 - **Edge cases:**
-  - Zero events on either side gives NaN ratios, not 0.
+  - A ratio is NaN, not 0, only when its own denominator is zero. With reference events but no index events, POD = 0 and CSI = 0, and only FAR is NaN.
   - Runs crossing invalid steps are rejected, as `compound_events` does.
   - Censored runs at the record edges are counted and flagged.
 
