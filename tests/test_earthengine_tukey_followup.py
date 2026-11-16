@@ -222,6 +222,7 @@ def test_followup_preserves_original_results_when_b_is_unavailable(
     result = saved["tukey_followup_1571"]
     assert result["reference_b"]["status"] == "pending"
     assert result["reference_b"]["http_timeout_seconds"] == pilot.HTTP_TIMEOUT_SECONDS
+    assert "baseline_control_b" not in result, "a pending B record must not claim the control ran"
     if skip:
         assert result["reference_b"]["reason"] == "skipped"
     assert result["image_manifest"]["missing_version"][pilot.DAILY_COLLECTION] == 1
