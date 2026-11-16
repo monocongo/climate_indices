@@ -98,7 +98,7 @@ class DistributionComparison:
     n_parameters: np.ndarray      # (candidate,)
     log_likelihood: np.ndarray    # (candidate, step, *cell), at the library's estimates
     aic: np.ndarray; aicc: np.ndarray; bic: np.ndarray
-    best: np.ndarray              # (step, *cell) index into candidates; -1 = none valid
+    best: np.ndarray              # (step, *cell) index into candidates; -1 = none eligible (fitted with a defined criterion)
     delta_to_runner_up: np.ndarray
     fit_failed: np.ndarray        # (candidate, step, *cell) bool
     parameters: Mapping[Distribution, Mapping[str, np.ndarray]]  # reusable as fitting_params
@@ -218,7 +218,7 @@ Follow-on, not part of this epic: a Rust GEV kernel and comparison-loop accelera
    - AICc = AIC + 2k(k+1)/(n−k−1), NaN when n ≤ k + 1
    - BIC = k·ln n − 2ℓ
    - Candidates are scored on one shared sample with one zero definition.
-4. **"Best".** `best` is the argmin of the chosen criterion (default `aicc`) over candidates that fitted. Ties go to the earlier candidate in canonical enum order. The value is −1 when no candidate fitted. `delta_to_runner_up` is always returned, and no significance threshold is applied.
+4. **"Best".** `best` is the argmin of the chosen criterion (default `aicc`) over candidates that fitted and have a defined criterion. Ties go to the earlier candidate in canonical enum order. The value is −1 when no candidate is eligible; `delta_to_runner_up` is NaN when fewer than two candidates are eligible. It is returned whenever it is defined, and no significance threshold is applied.
 5. **Goodness of fit.**
    - K–S is computed with naive p-values, labelled as naive.
    - The Anderson–Darling statistic is computed from the PIT.
@@ -348,7 +348,7 @@ Shared footer, used in every child:
   - A zero mass shared across candidates (OQ-3).
   - Pearson fallback is disabled inside the comparison: a failure is recorded, not substituted.
   - n ≤ k + 1, where AICc is NaN.
-  - Cells where every candidate fails, giving `best = -1`.
+  - Cells where no candidate is eligible, giving `best = -1`: every fit failed, or every fitted candidate has an undefined criterion (for example gamma-only with n ≤ k + 1).
   - The `n < 30` warning and the `scale > 12` dependence warning.
   - NaN cells.
 - **Precision:** criteria are compared to SciPy at `rtol=1e-10`.
