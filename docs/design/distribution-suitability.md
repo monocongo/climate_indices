@@ -1,8 +1,8 @@
 # Distribution-suitability assessment tools: design note
 
 Internal planning document (`docs/design/` is excluded from the published docs).
-Status: draft for maintainer review. The ADR-0028 text in section B is a draft;
-SUIT-01 publishes it under `docs/adr/` as `Approved for implementation` once approved.
+Status: ADR-0028 is published by SUIT-01 (#1582) as `docs/adr/0028-distribution-suitability-contracts.md`
+(`Approved for implementation`). The ADR is canonical; the section B draft below is kept for history.
 Inventory taken against `origin/main` at `aa076954` (2026-11-15).
 
 ## Where the repo overrides the task brief
@@ -190,16 +190,16 @@ def category_agreement(index_categories, reference_categories) -> tuple[float, f
 
 ### Open questions
 
-- **OQ-1.** Evaluate log-likelihood at the library's own estimates (Thom, L-moments) or refit by MLE for the criteria? *Recommend the library estimates*, because those are the parameters the index actually uses. Record `log_likelihood_at = "fitted_estimates"` and each fitting method, and state in the docs and docstrings that the ranking mixes distribution fit with estimator efficiency. The criteria keep the `aic`/`aicc`/`bic` names; the caveat travels with them. An MLE option can come later.
-- **OQ-2.** GEV for `standardized_index`/`spi`? They carry a physical zero mass, and GEV with ξ > 0 has support below 0. *Recommend SPEI only*, following the ADR-0016 precedent.
-- **OQ-3.** Common zero definition for gamma against Pearson (exact zeros vs below 0.0005)? *Recommend retaining exact zeros as the shared mixture definition*, because Pearson's trace rule is a transform convention; if traces are reclassified, document that the fitted samples and scores change.
-- **OQ-4.** Concordance counting with many-to-many overlaps? *Recommend reference-centric counting*: hit = a reference event overlapped by at least one index event; miss = one overlapped by none; false alarm = an index event overlapping no reference event. Index events overlapping at least one reference event are counted once, as matched index events, for FAR's denominator. Expose a minimum-overlap setting later only if needed.
+- **OQ-1. Resolved (ADR-0028).** Evaluate log-likelihood at the library's own estimates (Thom, L-moments) or refit by MLE for the criteria? *Recommend the library estimates*, because those are the parameters the index actually uses. Record `log_likelihood_at = "fitted_estimates"` and each fitting method, and state in the docs and docstrings that the ranking mixes distribution fit with estimator efficiency. The criteria keep the `aic`/`aicc`/`bic` names; the caveat travels with them. An MLE option can come later.
+- **OQ-2. Resolved (ADR-0028).** GEV for `standardized_index`/`spi`? They carry a physical zero mass, and GEV with ξ > 0 has support below 0. *Recommend SPEI only*, following the ADR-0016 precedent.
+- **OQ-3. Resolved (ADR-0028).** Common zero definition for gamma against Pearson (exact zeros vs below 0.0005)? *Recommend retaining exact zeros as the shared mixture definition*, because Pearson's trace rule is a transform convention; if traces are reclassified, document that the fitted samples and scores change.
+- **OQ-4. Resolved (ADR-0028).** Concordance counting with many-to-many overlaps? *Recommend reference-centric counting*: hit = a reference event overlapped by at least one index event; miss = one overlapped by none; false alarm = an index event overlapping no reference event. Index events overlapping at least one reference event are counted once, as matched index events, for FAR's denominator. Expose a minimum-overlap setting later only if needed.
 - **OQ-5.** Which independent reference does the reproduction use (USDM maps, a satellite index, soil-moisture percentiles), and on what licence? Until it is resolved, the notebook shows concordance on a labelled demonstration pairing.
 - **OQ-6.** Is a pooled (all-months) parametric SPI/SPEI fit needed beyond SPAI? *Recommend no*: SPAI is the pooled comparator.
-- **OQ-7.** Explicit `suitability` module import during Beta rather than root re-export? *Recommend explicit import*, as compound does.
+- **OQ-7. Resolved (ADR-0028).** Explicit `suitability` module import during Beta rather than root re-export? *Recommend explicit import*, as compound does.
 - **OQ-8.** Add an R `lmom` GEV fixture (an offline generator, as in #1195)?
 - **OQ-9.** Unverified details from the task brief, pending the paper: the candidate set, the K–S level and its per-zone use, AIC per grid point, the 83%/72% (Pearson III at 3/6 months) and 50%/59% (GEV at 12/24 months) figures, the role of SPAI, and the satellite index and its concordance method. Supply a PDF to verify them.
-- **OQ-10.** The `drought_category` wet side: USDM defines only None and D0–D4, while the pilot uses 11 symmetric bins. *Recommend the 6 USDM classes*. A wet classification can be added later.
+- **OQ-10. Resolved (ADR-0028).** The `drought_category` wet side: USDM defines only None and D0–D4, while the pilot uses 11 symmetric bins. *Recommend the 6 USDM classes*. A wet classification can be added later.
 
 ### Work breakdown (dependency order)
 
@@ -214,7 +214,7 @@ Follow-on, not part of this epic: a Rust GEV kernel and comparison-loop accelera
 
 ---
 
-## Section B. ADR-0028 draft (draft; published by SUIT-01 as `Approved for implementation`)
+## Section B. ADR-0028 draft (superseded by `docs/adr/0028-distribution-suitability-contracts.md`)
 
 **Title:** Distribution-suitability assessment contracts.
 
